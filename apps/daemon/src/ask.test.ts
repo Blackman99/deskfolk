@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { askAnswerText, askTranscriptText, parseAskAnswer, parseAskSpec, readAskAnswer, readAskSpec } from "./ask";
+import { askAnswerLines, askAnswerText, askTranscriptText, parseAskAnswer, parseAskSpec, readAskAnswer, readAskSpec } from "./ask";
 
 const AT = "2026-09-25T08:00:00.000Z";
 
@@ -63,6 +63,12 @@ describe("rendering", () => {
   test("the answer text is the choices, then your own words", () => {
     expect(askAnswerText({ selected: ["A", "B"], custom: "and C", answered_at: AT })).toBe("A\nB\nand C");
     expect(askAnswerText({ selected: [], custom: "just this", answered_at: AT })).toBe("just this");
+  });
+
+  test("your answer as a transcript reads it, apart from the question: what you picked, then your own words", () => {
+    expect(askAnswerLines({ selected: ["A", "B"], custom: "and C", answered_at: AT })).toBe("用户选了：A、B\n用户补充：and C");
+    expect(askAnswerLines({ selected: ["B"], custom: null, answered_at: AT })).toBe("用户选了：B");
+    expect(askAnswerLines({ selected: [], custom: "Deskfolk", answered_at: AT })).toBe("用户回答：Deskfolk");
   });
 
   test("a transcript line spells out choices and answer; an open question keeps its old shape", () => {

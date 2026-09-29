@@ -675,6 +675,30 @@ describe("send_message mentions", () => {
     store.close();
   });
 
+  test("an @ inside a cited path names nobody and pulls nobody into the group", async () => {
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    const { director, group } = filmGroup(store);
+    // Older plan folders were named after the request that opened them, `@` included.
+    const glued = "work/2026-09-23-请@选题策划看-e3wm/scratch/t001.jpg";
+    const result = await runCollabTool(
+      { ...ctxFor(store, director.bot.id, group.id), mentionWarned: new Set() },
+      "send_message",
+      {
+        body: [
+          "@分镜师 请看 [t000.jpg](work/2026-09-23-@选题策划-继续-e3wm/scratch/t000.jpg)",
+          "附件：work/2026-09-23-@张三，看-abcd/t125.jpg",
+          // A linked path repeats itself as the label, where the `@` follows Chinese text.
+          `[${glued}](${glued})`,
+        ].join("\n"),
+      },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.data?.mentions).toEqual(["分镜师"]);
+    expect(result.data?.unresolved_mentions).toEqual([]);
+    expect(store.isPresent(group.id, store.findBotByName("选题策划")!.id)).toBe(false);
+    store.close();
+  });
+
   test("an unknown @ in a direct session still sends", async () => {
     const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
     const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });

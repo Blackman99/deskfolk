@@ -172,6 +172,65 @@ export function patchTicketByUser(
   })();
 }
 
+/**
+ * What of a plan as it stands you typed on the board yourself: the goal if you set it last, the Done
+ * when lines and rules your edits brought in, and the tickets whose description you wrote last. Read
+ * from every revision, not the latest few,
+ * since every drag of a ticket on the board is a revision of yours too. The organizer counts these
+ * as your words, the same as a line you sent, so a rule you typed is never taken for one a Bot made
+ * up.
+ */
+export function userWrittenSpec(
+  ctx: StoreContext,
+  taskId: string,
+): { goal: boolean; acceptance: string[]; rules: string[]; ticketIds: string[] } {
+  const none = { goal: false, acceptance: [], rules: [], ticketIds: [] };
+  if (!ctx.db.query(`SELECT 1 FROM task_spec_revisions WHERE task_id = ? AND actor = 'user' LIMIT 1`).get(taskId)) return none;
+  const rows = ctx.db
+    .query<Pick<SpecRevisionRow, "spec" | "tickets_snapshot" | "actor">, [string]>(
+      `SELECT spec, tickets_snapshot, actor FROM task_spec_revisions WHERE task_id = ? ORDER BY revision ASC`,
+    )
+    .all(taskId);
+  const ruleBy = new Map<string, SpecRevisionRow["actor"]>();
+  const acceptanceBy = new Map<string, SpecRevisionRow["actor"]>();
+  const specBy = new Map<string, SpecRevisionRow["actor"]>();
+  let goal = "";
+  let goalBy: SpecRevisionRow["actor"] | null = null;
+  let acceptance: string[] = [];
+  let rules: string[] = [];
+  let specs = new Map<string, string>();
+  for (const row of rows) {
+    const parsed = parsePlanSpec(row.spec);
+    if ((parsed?.goal ?? "") !== goal) goalBy = row.actor;
+    goal = parsed?.goal ?? "";
+    const lines = parsed?.acceptance ?? [];
+    for (const line of lines) if (!acceptance.includes(line)) acceptanceBy.set(line, row.actor);
+    acceptance = lines;
+    const next = parsed?.rules ?? [];
+    for (const rule of next) if (!rules.includes(rule)) ruleBy.set(rule, row.actor);
+    rules = next;
+    const snapshot = new Map<string, string>();
+    try {
+      const parsed = JSON.parse(row.tickets_snapshot) as unknown;
+      if (Array.isArray(parsed)) for (const ticket of parsed as Ticket[]) snapshot.set(ticket.id, ticket.spec ?? "");
+    } catch {
+      // a snapshot that does not parse says nothing about who wrote what
+    }
+    for (const [id, spec] of snapshot) if (spec.trim() && spec !== specs.get(id)) specBy.set(id, row.actor);
+    specs = snapshot;
+  }
+  const now = parsePlanSpec(getTask(ctx, taskId).spec);
+  return {
+    goal: goalBy === "user" && !!now?.goal && now.goal === goal,
+    acceptance: (now?.acceptance ?? []).filter((line) => acceptanceBy.get(line) === "user"),
+    rules: (now?.rules ?? []).filter((rule) => ruleBy.get(rule) === "user"),
+    // A description changed since the last revision is no longer the one you wrote.
+    ticketIds: listTickets(ctx, taskId)
+      .filter((ticket) => specBy.get(ticket.id) === "user" && ticket.spec === specs.get(ticket.id))
+      .map((ticket) => ticket.id),
+  };
+}
+
 export type OrganizerTicketInput = {
   /** An existing ticket's id, or `new-N` for one the organizer wants opened. */
   id: string;
@@ -218,7 +277,8 @@ export const ORGANIZER_NEW_TICKETS_MAX = 10;
 
 const NEW_TICKET = /^new-\d+$/;
 
-function titleKey(title: string): string {
+/** How a ticket's title is matched: a `new-N` whose title is an existing ticket's is that ticket. */
+export function titleKey(title: string): string {
   return title.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
@@ -236,6 +296,11 @@ export function applyOrganizerResult(
     result: OrganizerResult;
     source: { messageId: string | null; turnId: string | null; messageBody: string };
     now?: Date;
+    /**
+     * The revision of `current` the run was built on. When the plan has moved since (a line or an
+     * edit of yours landed while the call was out), nothing is applied: the answer would undo it.
+     */
+    ifRevision?: number;
   },
 ): {
   task: Task;
@@ -250,9 +315,13 @@ export function applyOrganizerResult(
   /** `heldByChecks` is not empty and every one of them is holding it open only for lack of a run yet — none has failed. */
   awaitingEvidence: boolean;
 } {
-  const at = input.now ?? new Date();
-  const now = at.toISOString();
+  // On the store's clock, like the lines it files: that clock runs ahead of the wall clock when it
+  // is busy, and a version stamped by the wall clock could read as older than the line that made it,
+  // which a settle would then take for something you said since.
+  const now = input.now ? input.now.toISOString() : isoNow();
+  const at = new Date(now);
   return ctx.db.transaction(() => {
+    if (input.current && input.ifRevision !== undefined) assertRevision(ctx, input.current.id, input.ifRevision);
     const result = input.result;
     let target: Task | null = null;
     if (result.decision === "resume" && result.resumePlanId) {
@@ -402,4 +471,51 @@ export function taskDetail(ctx: StoreContext, taskId: string, present: (path: st
 
 export function isTicketStatusValue(value: unknown): value is TicketStatus {
   return isTicketStatus(value);
+}
+
+/**
+ * Whether a ticket of the plan went to review or done after `since`: a version recorded after then
+ * shows it there while the version before did not, or the board now does while the last version
+ * did not (the app's own move to review leaves no version). Only a ticket changed after `since`
+ * can have moved after it. The plan watch's sign that a call-back moved something: rewording a
+ * ticket that sits in review is no move, and a ticket sent back and handed over again is. Reads
+ * only each version's ticket ids, statuses and times, not the specs they carry.
+ */
+export function ticketHandedOverSince(ctx: StoreContext, taskId: string, since: string): boolean {
+  const rows = ctx.db
+    .query<
+      { revision: number; created_at: string; id: string | null; status: string | null; updated_at: string | null },
+      [string, string, string]
+    >(
+      `SELECT r.revision, r.created_at,
+              json_extract(j.value, '$.id') AS id,
+              json_extract(j.value, '$.status') AS status,
+              json_extract(j.value, '$.updated_at') AS updated_at
+       FROM task_spec_revisions r LEFT JOIN json_each(r.tickets_snapshot) AS j
+       WHERE r.task_id = ? AND r.revision >= COALESCE(
+         (SELECT MAX(revision) FROM task_spec_revisions WHERE task_id = ? AND created_at <= ?), 0)
+       ORDER BY r.revision ASC, j.key ASC`,
+    )
+    .all(taskId, taskId, since);
+  type Seen = { status: string; updated_at: string | null };
+  const versions = new Map<number, { at: string; board: Map<string, Seen> }>();
+  for (const row of rows) {
+    const version = versions.get(row.revision) ?? { at: row.created_at, board: new Map<string, Seen>() };
+    versions.set(row.revision, version);
+    if (row.id !== null && row.status !== null) version.board.set(row.id, { status: row.status, updated_at: row.updated_at });
+  }
+  const movedFrom = (before: ReadonlyMap<string, Seen>, board: ReadonlyMap<string, Seen>): boolean =>
+    [...board].some(
+      ([id, ticket]) =>
+        (ticket.status === "review" || ticket.status === "done") &&
+        (ticket.updated_at === null || ticket.updated_at > since) &&
+        before.get(id)?.status !== ticket.status,
+    );
+  let before = new Map<string, Seen>();
+  for (const { at, board } of versions.values()) {
+    if (at > since && movedFrom(before, board)) return true;
+    before = board;
+  }
+  const now = new Map(listTickets(ctx, taskId).map((ticket) => [ticket.id, { status: ticket.status, updated_at: ticket.updated_at }]));
+  return movedFrom(before, now);
 }

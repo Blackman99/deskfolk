@@ -132,4 +132,85 @@ describe("non-mention @ usage", () => {
     expect(parseMentions("请@分镜 出图", roster, { lenient: roster }).mentions).toEqual(["分镜师"]);
     expect(parseMentions("请@分镜出图", roster, { lenient: roster }).unresolved).toEqual(["分镜出图"]);
   });
+
+  test("an @ in a cited path, link target or URL wakes nobody", () => {
+    const roster = ["审稿员", "设计师", "开发工程师", "项目协调人"];
+    // Folders were named after the request that opened them, so older ones carry its `@`.
+    const plan = "work/2026-09-23-@审稿员-继续-e3wm";
+    const body = [
+      "@设计师 请接 [需求说明](docs/specs/ASSIGNMENT.md)。",
+      `抽帧：[t000.jpg](${plan}/scratch/e1check/t000.jpg)`,
+      `附件：${plan}/04-整理需求/scratch/verify/v2_000.jpg`,
+      "目录 2026-09-23-@审稿员-继续-e3wm 和 `work/@项目协调人-继续-e3wm/map.md`",
+      "[x](@审稿员.md)、https://example.com/@项目协调人、work/@张三-abcd/x.png",
+      "[x](work/请@审稿员看-e3wm/x.md)",
+      // The daemon links a path it cites with the path as its own label, the `@` included.
+      "[work/请@审稿员看-e3wm/x.md](work/请@审稿员看-e3wm/x.md)",
+      "[./work/请@审稿员看-e3wm/y.md](work/请@审稿员看-e3wm/y.md)",
+    ].join("\n");
+    const parsed = parseMentions(body, roster, { lenient: roster });
+    expect(parsed.mentions).toEqual(["设计师"]);
+    expect(parsed.unresolved).toEqual([]);
+    expect(parsed.spans).toHaveLength(1);
+  });
+
+  test("a link label that says something other than its target is still read", () => {
+    const roster = ["开发工程师"];
+    expect(parseMentions("[@开发工程师](work/x.md) 请看", roster).mentions).toEqual(["开发工程师"]);
+    expect(parseMentions("[看这里 @开发工程师](work/x.md)", roster).mentions).toEqual(["开发工程师"]);
+  });
+
+  test("an angle-bracket link target is skipped up to its `>)`, and not past it", () => {
+    const roster = ["A", "B"];
+    expect(parseMentions("[a](<d @A>)", roster).mentions).toEqual([]);
+    expect(parseMentions("[a](<d> @A)", roster).mentions).toEqual(["A"]);
+    // Two on one line: the cached `>` stop of the first must not end the second.
+    expect(parseMentions("[a](<x y>) [b](<p @A>) @B", roster).mentions).toEqual(["B"]);
+    // A `)` inside the angle brackets does not end the target.
+    expect(parseMentions("[a](<x) @A>) @B", roster).mentions).toEqual(["B"]);
+  });
+
+  test("a mention right after Chinese text, brackets, quotes or punctuation still counts", () => {
+    const roster = ["设计师", "开发工程师"];
+    const bodies = [
+      "请@开发工程师出图",
+      "（@开发工程师）",
+      "「@开发工程师」",
+      "**@开发工程师**",
+      "见 [板](production/TASKBOARD.md)@开发工程师",
+      "把work/abc/x.png发给@开发工程师",
+      "——@开发工程师",
+      // Not a link: a link target has no space in it.
+      "[P0](@开发工程师 负责)",
+    ];
+    expect(bodies.map((body) => parseMentions(body, roster).mentions)).toEqual(
+      bodies.map(() => ["开发工程师"]),
+    );
+  });
+
+  test("names joined by a slash are all named, but a slash inside a path joins nothing", () => {
+    const roster = ["设计师", "开发工程师"];
+    expect(parseMentions("@设计师/@开发工程师 一起看", roster).mentions).toEqual([
+      "设计师",
+      "开发工程师",
+    ]);
+    expect(parseMentions("@Researcher/@Writer", ["Researcher", "Writer"]).mentions).toEqual([
+      "Researcher",
+      "Writer",
+    ]);
+    expect(parseMentions("work/@设计师/@开发工程师/x.md", roster).mentions).toEqual([]);
+    expect(parseMentions("美术/@开发工程师", roster).mentions).toEqual([]);
+    expect(parseMentions("@foo/@bar 看", roster).unresolved).toEqual(["foo", "bar"]);
+    const everyone = parseMentions("@everyone/@开发工程师", roster);
+    expect(everyone.everyone).toBe(true);
+    expect(everyone.mentions).toEqual(["开发工程师"]);
+    const scope = parseMentions("装 @sveltejs/kit", roster, { lenient: roster });
+    expect(scope.mentions).toEqual([]);
+    expect(scope.unresolved).toEqual([]);
+  });
+
+  test("a long slash-joined run or a body full of `](` is read in one pass", () => {
+    expect(parseMentions(`${"@a/".repeat(20000)}@a`, ["a"]).mentions).toEqual(["a"]);
+    expect(parseMentions(`${"](<".repeat(100000)}@a`, ["a"]).mentions).toEqual(["a"]);
+  });
 });

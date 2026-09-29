@@ -7,7 +7,7 @@
  *
  * The prompt and the payload live here; the engine-side orchestration is in `organizer.ts`.
  */
-import { USER_MEMBER, type AcceptanceCheckKind, type Message, type TicketStatus } from "@real-bot/protocol";
+import { USER_MEMBER, type AcceptanceCheckKind, type Message, type Ticket, type TicketStatus } from "@real-bot/protocol";
 import { describeCheck } from "../acceptance-eval";
 import { sessionLabel } from "../context";
 import { extractJsonObject } from "../route-agent";
@@ -18,6 +18,7 @@ import {
   normalizePlanSpec,
   parsePlanSpec,
   type OrganizerCheckInput,
+  titleKey,
   type OrganizerResult,
   type OrganizerTicketInput,
   type PlanSpec,
@@ -29,18 +30,24 @@ import { takeCodePoints } from "../text";
 
 export const ORGANIZER_SYSTEM = `你在替这个会话整理「规划」和「任务」，不是回答用户，也不能发言。没有工具，不能读工作区。
 
-规划是一个会话里正在推进的一件事，有要点：kind（类别，用来找先例）、goal（现在到底要做什么）、acceptance（怎么算完成）、rules（用户定过的口径、约束、改善意见）、process（这件事定下来的做法、谁负责哪段）、progress（done / open / blocked）、status（active / done / parked）。任务是规划下能独立交付的一块：title、spec（要做什么、怎么算完成）、status（todo / doing / review / done / parked）、worker（谁负责，写 Bot 名字：建任务时按分工先填，之后按 trace 里实际在做的人改；没人就 null）。
+规划是一个会话里正在推进的一件事，有要点：kind（类别，用来找先例）、goal（现在到底要做什么）、acceptance（怎么算完成）、rules（用户自己定的口径、约束、改善意见）、process（这件事定下来的做法、谁负责哪段；Bot 自己定的做法和限制也写在这里，写明是谁定的）、progress（done / open / blocked）、status（active / done / parked）。任务是规划下能独立交付的一块：title、spec（要交出什么、怎么算完成）、status（todo / doing / review / done / parked）、worker（谁负责，写 Bot 名字：建任务时按分工先填，之后按 trace 里实际在做的人改；没人就 null）。
 
-根据用户消息这份 JSON 决定。mode 是 message（用户刚发了一句，message 就是那句）或 settle（这件事的轮都结束了，只更新要点和任务，decision 必须是 continue）。current_plan 是这个会话当前的规划及其任务（可能为 null）；current_plan.checks 是这个规划当前的验收检查——应用自己在本机跑出来的证据，每条有 id、item（对应哪条 acceptance）、kind、what（人话描述）、source（organizer 还是 user）、ticket（任务序号或 null）、last（上一次运行：outcome、detail、at、output，或 null 表示还没跑过）；recent_plans 是这个会话之前推进过的规划，只有 resume 会用到；elsewhere_plans 是这个会话里的 Bot 正在别的会话推进的事（home 是它开在哪，working 是此刻谁在哪做它，said_here 是这个会话里之前归到它的几句），只有 join 会用到；kinds 是已有的类别标签，能对上就原样用，对不上才起一个短的；since_last_revision 是上一版要点之后发生的事：messages（谁说了什么）、artifacts（谁交出了什么文件，归在哪个任务）、trace（谁做了什么、停在哪）、commands（这些轮真正跑过的命令和工具，带退出码和实际跑的目录 cwd）；current_plan.tickets[].files 是落在各任务目录里、被消息引用过的文件；precedents 是同类做完的规划的要点。
+根据用户消息这份 JSON 决定。mode 是 message（用户刚发了一句，message 就是那句）或 settle（这件事的轮都结束了，只更新要点和任务，decision 必须是 continue）。current_plan 是这个会话当前的规划及其任务（可能为 null）；current_plan.checks 是这个规划当前的验收检查——应用自己在本机跑出来的证据，每条有 id、item（对应哪条 acceptance）、kind、what（人话描述）、source（organizer 还是 user）、ticket（任务序号或 null）、last（上一次运行：outcome、detail、at、output，或 null 表示还没跑过）；current_plan.user_lines 是这件事里用户说过、但不在 since_last_revision.messages 里的话，早的在前（via 是 message 的是用户发的话，answer 是用户对 Bot 提问的回答，asked 是那个问题；太多时省掉中间的，user_lines_omitted 是省了几条）；current_plan.goal_user_typed 为 true 的 goal、acceptance_user_typed 里的验收、rules_user_typed 里的规则，是用户在流程图里亲手写的，tickets[].spec_user_typed 为 true 的任务说明也是；recent_plans 是这个会话之前推进过的规划，只有 resume 会用到；elsewhere_plans 是这个会话里的 Bot 正在别的会话推进的事（home 是它开在哪，working 是此刻谁在哪做它，said_here 是这个会话里之前归到它的几句），只有 join 会用到；kinds 是已有的类别标签，能对上就原样用，对不上才起一个短的；since_last_revision 是上一版要点之后发生的事：messages（谁说了什么：from 是 user 的是用户说的，bot 是 Bot 说的，app 是应用的提示；kind 是 ask 的是 Bot 的提问，answer 是用户的回答）、user_spoke（上一版之后用户有没有说过话或回答过提问）、artifacts（谁交出了什么文件，归在哪个任务）、trace（谁做了什么、停在哪）、commands（这些轮真正跑过的命令和工具，带退出码和实际跑的目录 cwd）；current_plan.tickets[].files 是落在各任务目录里、被消息引用过的文件；precedents 是同类做完的规划的要点，只作参考，它们的 rules 不抄进这件事。
 
 只输出一个 JSON 对象，不要 markdown 围栏，不要前言后语，不要 tool-call：
 {"decision": "continue" | "new" | "resume" | "join", "resume_plan_id": "…或 null", "join_plan_id": "…或 null", "plan": {"kind": "…", "goal": "…", "acceptance": ["…"], "rules": ["…"], "process": ["…"], "progress": {"done": ["…"], "open": ["…"], "blocked": ["…"]}, "status": "active"}, "tickets": [{"id": "已有任务的 id 或 new-1、new-2…", "title": "…", "spec": "…", "status": "todo", "worker": "Bot 名字或 null"}], "message_ticket": "这条消息在说哪个任务的 id 或 new-N，或 null", "checks": [{"id": "已有检查的 id 或 new-1、new-2…", "remove": true, "item": "对应哪条 acceptance", "ticket": "任务 id、new-N 或 null", "kind": "exists" | "contains" | "matches" | "command" | "continuity", "path": "…", "pattern": "…", "negate": false, "command": "…", "cwd": "…", "expect_exit": 0, "expect_stdout": "…", "timeout_sec": 120}]}
 
 策略：
 - decision：同一件事的后续、追问、改要求、问进度，都是 continue；明显换了一件不相干的事才 new；用户说回到之前那件、且 recent_plans 里有对得上的，才 resume 并给 resume_plan_id；这句明显在说 elsewhere_plans 里的某件事（说到它的内容、产物、进展、做法，或接着 said_here 往下说），而不是 current_plan，才 join 并给 join_plan_id。current_plan 为 null 时只能 new 或 join。拿不准就 continue。
-- plan：在你选中的那个规划的 spec 上改（continue 是 current_plan，join 是 elsewhere_plans 里那件），不要重写没变的部分。用户的改善意见、口径、约束进 rules；目标变了改 goal；怎么算完成进 acceptance；定下来的做法和分工进 process；progress 按 artifacts、commands 和 trace 更新。status 只在这件事明确做完时 done，明确搁置时 parked。
+- plan：在你选中的那个规划的 spec 上改（continue 是 current_plan，join 是 elsewhere_plans 里那件），不要重写没变的部分。goal 写用户要做成的事，用户改了才改；怎么算完成进 acceptance；定下来的做法和分工进 process；progress 按 artifacts、commands 和 trace 更新。progress.open 只写还没做的事；已经交出、只等用户看或验收的不写，谁问过什么、此刻有没有人在做也不写。status 只在这件事明确做完时 done，用户明确说搁置时 parked。
+- rules 只收用户自己的话：message、user_lines、messages 里 from 是 user 的话和 answer、rules_user_typed。可以精简，不能加用户没说的意思；提问、催进度、「继续」本身不是规则；回答只是选了下一步先做什么的，写进 process 或 progress。
+- Bot 说的决定和给自己定的限制不是规则，也不写进 goal、acceptance 或任务 spec，分三种放：Bot 自己决定的暂停、冻结、不再重试、只做一部分，写进 process 并写明是谁定的，因此停着的写进 progress.blocked，写清等什么能解开；要用户给的东西（授权、密钥、确认花钱）才能往下做的，写进 progress.blocked，写清要用户做什么；做法上的约束（不覆盖原文件、交付放哪个目录），写进 process。
+- 用户新说的话和已有规则冲突或盖过它时，改写或删掉那条旧的，不要把新的并列追加：用户说过「只做第一部分」、现在说「第二部分也做」，就改成「第一、第二部分都做」。用户说「继续推进」「不要停下来」「尽可能做好」时，Bot 自己决定的暂停、冻结、不再重试、只做一部分都撤掉，不管写在 rules、process、progress、acceptance 还是任务 spec 里，因此停着的挪回 progress.open，因此搁置的任务改回 todo；等用户给东西的那种，用户给了才撤（「不用考虑金额」撤掉因为花钱停着的）；做法上的约束不撤。
+- mode 是 message、user_lines_omitted 是 0 时：current_plan 里在用户的话和 rules_user_typed 里都找不到出处的规则、acceptance 里 Bot 自己加的限制（acceptance_user_typed 里的不动），按上面三种挪走；goal 只剩 Bot 眼下推进的一块、比用户要的窄时，按用户的话放回去（goal_user_typed 是 true 的不动）；spec_user_typed 不是 true 的任务 spec 写成了进展流水或禁令的，改回要交出什么。user_lines_omitted 大于 0 时不做这一步。
+- join 时看不到那件事的 user_lines：只按这句改它的要点，它已有的规则不挪。
+- settle 且 user_spoke 是 false 时：goal、acceptance、rules 原样照抄，已有任务的 spec 不改，规划不改成 parked；只记交出了什么、进展到哪、谁在做、做法和因此卡住的事。改了前面这几项，应用也会退回。
 - acceptance 写用户自己能检查的结果，不写「产出某某文档」「给出结论」这种谁写一份就算的话。要做出能用的东西（软件、网站、脚本、工具）时，必须有一条：「有启动方式（一条命令或一个文件），照着能在本机跑起来并走通主流程」。
-- tickets：把要交付的东西拆成任务，一个任务是能独立交出的一块，不要把一句话拆成好几个，也不要每条消息都新建。几个人各做一部分、合起来才是一个能用的东西时，另开一个「联调并给出启动方式」的任务，并在 rules 里写明最终交付放在哪个目录。已有任务用它的 id 引用（join 时是那件事的任务），只写 id 和变了的字段，例如 {"id": "…", "status": "review"}；没变的任务不用列，不列的不动。新任务用 new-1、new-2，要写 title。不能删任务，只能改成 done 或 parked。
+- tickets：把要交付的东西拆成任务，一个任务是能独立交出的一块，不要把一句话拆成好几个，也不要每条消息都新建。几个人各做一部分、合起来才是一个能用的东西时，另开一个「联调并给出启动方式」的任务，并在 process 里写明最终交付放在哪个目录。已有任务用它的 id 引用（join 时是那件事的任务），只写 id 和变了的字段，例如 {"id": "…", "status": "review"}；没变的任务不用列，不列的不动。新任务用 new-1、new-2，要写 title。不能删任务，只能改成 done 或 parked。spec 写这个任务要交出什么、怎么算完成；不写进展（进 progress），也不写 Bot 给自己定的禁令（进 process）。交付物没变就不改 spec；spec_user_typed 是 true 的，除非用户这句就在改它，不改。
 - 依据：Bot 说「已完成」「测试通过」「验收通过」不算依据。任务标 review 要有这个任务交出的文件；标 done 要有文件，而且说跑过、测过的要在 commands 里找得到（退出码 0）。只有文档、报告、没有能跑的东西，不能把「做出能用的东西」的任务标 done。有人交出了属于某任务的文件，至少标 review，并写上 worker。
 - checks（可选，缺省当空数组）：current_plan.checks 是应用自己跑出来的证据，比 Bot 自称「测试通过」「验收通过」更可信，也比 commands 里的命令记录更可信。只要有一条 checks 是 fail，这个规划就不能标 done，它对应的那个任务也不能标 done（已经是 done 的这次改回 doing）；blocked 或 error 既不算通过也不算失败，算卡住，写进 progress.blocked，不要据此判定完成或失败。只在确定的情况下才提议新检查（id 写 new-1、new-2…），一条 acceptance 最多配 0～2 条：exists/contains/matches 的 path 要能在 files、artifacts 或规则里找到出处；command 必须原样抄自 since_last_revision.commands 里退出码是 0 的那条，连 cwd 一起抄，不能凭空编；也可以是用户自己在消息里写下的命令或文件路径。交付物是由几个 Bot 分头做出的几部分拼起来的（章节、镜头、图片、幻灯片……），而 acceptance 或 rules 里提到「连贯」「衔接」「风格一致」「前后一致」这类跨部分的要求时，可以提一条 continuity（衔接一致）：path 是那份交付物，或者是能匹配到各部分的通配（同样要能在 files、artifacts 或规则里找到出处），或者 command 是能按顺序列出各部分的命令（同样必须抄自 commands 里跑成功过的那条），二者至少一个；不要凭空写一个从没出现过的文件或命令。代码要联调，仍然按前面「联调并给出启动方式」的做法开一条 command 检查，不用 continuity。只能新增，或者按 id 改动、删除 source 是 organizer 的检查（remove: true 是删除，其余字段不写就是不变）；source 是 user 的检查不要碰，也不要用同样的定义再开一条新的。这次答案如果新增或改了 checks，这次就不要把规划或它对应的任务标成 done——等它跑出结果再决定。改写了某条 acceptance 的措辞、而这条正好挂着检查，把这条检查的 item 也一起改成新措辞。
 - plan.status 标 done 时，每个任务也要在这次答案里标成 done 或 parked；还有待做或进行中的任务，这件事就没做完。
@@ -71,6 +78,29 @@ function tailCodePoints(text: string, limit: number): string {
   return chars.length > limit ? `…${chars.slice(-(limit - 1)).join("")}` : text;
 }
 
+/**
+ * Your lines about the plan the organizer reads beyond its window of recent ones: the rules are
+ * held against them. Lines, code points per line, and code points of text and question together;
+ * with the dates and keys around them the worst case is about 6k characters.
+ */
+export const ORGANIZER_USER_LINES = 40;
+export const ORGANIZER_USER_LINE_MAX = 300;
+export const ORGANIZER_USER_LINES_BUDGET = 4000;
+/** The first few you said are kept when the rest has to be cut: the job's opening terms. */
+export const ORGANIZER_USER_LINES_EARLIEST = 4;
+/** Your newest lines read before repeats and caps are applied. */
+export const ORGANIZER_USER_LINES_SCAN = 200;
+/** As much of the question behind an answer of yours as the organizer sees. */
+const ASKED_PREVIEW = 120;
+
+/** A ticket's description as the organizer is shown it: one line, clipped. */
+export function ticketSpecPreview(spec: string): string {
+  return clipBody(spec, TICKET_SPEC_PREVIEW).text;
+}
+
+/** One thing you said about the plan, as the organizer reads it: a line you sent, or your answer and the question it answers. */
+export type OrganizerUserLine = { via: "message" | "answer"; at: string; text: string; asked?: string; truncated?: true };
+
 export type OrganizerPayload = {
   mode: "message" | "settle";
   session: { id: string; kind: "direct" | "group"; name: string | null; members: string[] };
@@ -89,6 +119,8 @@ export type OrganizerPayload = {
       status: TicketStatus;
       worker: string | null;
       spec: string;
+      /** You wrote this description yourself on the board, and nobody has changed it since. */
+      spec_user_typed?: true;
       artifacts: number;
       /** Cited files filed under it or sitting in its folder, newest first. */
       files: string[];
@@ -105,6 +137,18 @@ export type OrganizerPayload = {
       /** Its most recent finished run; null when it has never run. */
       last: { outcome: "pass" | "fail" | "blocked" | "error"; detail: string; at: string; output: string | null } | null;
     }>;
+    /**
+     * What you said about the plan that is not among the lines since the last version, oldest
+     * first: the rules rest on these. Bounded; the middle goes first.
+     */
+    user_lines: OrganizerUserLine[];
+    user_lines_omitted: number;
+    /** Whether the goal as it stands is one you typed on the board yourself. */
+    goal_user_typed: boolean;
+    /** The plan's Done when lines you typed on the board yourself. */
+    acceptance_user_typed: string[];
+    /** The plan's rules you typed on the board yourself. */
+    rules_user_typed: string[];
   } | null;
   recent_plans: Array<{ id: string; goal: string; kind: string | null; status: PlanStatus; last_activity_at: string }>;
   /** Jobs the Bots here are on in other sessions: a line here can be about one of them. Message runs only. */
@@ -124,7 +168,21 @@ export type OrganizerPayload = {
   }>;
   kinds: string[];
   since_last_revision: {
-    messages: Array<{ id: string; author: string; kind: string; body: string; ticket_id: string | null; created_at: string; truncated?: true }>;
+    messages: Array<{
+      id: string;
+      author: string;
+      /** Who said it: you, a Bot, or the app. A Bot's line is never a rule. */
+      from: "user" | "bot" | "app";
+      kind: string;
+      body: string;
+      /** Your answer to a Bot's question, apart from the question: the answer is yours. */
+      answer?: string;
+      ticket_id: string | null;
+      created_at: string;
+      truncated?: true;
+    }>;
+    /** Whether you said anything, or answered a question, since the last version. Always true on a message run. */
+    user_spoke: boolean;
     artifacts: Array<{ path: string; by: string; ticket_id: string | null; cited_at: string }>;
     trace: string[];
     /** What the plan's turns actually ran, oldest first: who, under which ticket, where, and how it exited. */
@@ -147,10 +205,70 @@ function clipBody(body: string, limit: number): { text: string; truncated: boole
   return { text: clipped.text, truncated: clipped.truncated };
 }
 
+/** Who said a line, as the organizer is told it: rules are only taken from yours. */
+function speakerOf(row: { kind: string; author: string }): "user" | "bot" | "app" {
+  if (row.kind === "system") return "app";
+  return row.kind === "user" && row.author === USER_MEMBER ? "user" : "bot";
+}
+
+/**
+ * Your lines about the plan beyond the ones since the last version, bounded: a line said again
+ * counts once, where it was said last; each is clipped; and past the caps the first few you said
+ * are kept with the newest, and the middle is counted instead of shown.
+ */
+function userLinesOf(
+  store: Store,
+  planId: string,
+  shown: ReadonlySet<string>,
+): Pick<NonNullable<OrganizerPayload["current_plan"]>, "user_lines" | "user_lines_omitted"> {
+  const { lines, total } = store.taskUserLines(planId, {
+    earliest: ORGANIZER_USER_LINES_EARLIEST,
+    newest: ORGANIZER_USER_LINES_SCAN,
+    bodyMax: ORGANIZER_USER_LINE_MAX + 1,
+  });
+  const candidates = lines.filter((line) => !shown.has(line.id) && line.body.trim());
+  // An answer means what it means under its question, so it repeats only under the same one.
+  const keyOf = (line: (typeof candidates)[number]) => `${line.body.replace(/\s+/g, " ").trim()}\u0000${line.asked ?? ""}`;
+  const last = new Map(candidates.map((line, index) => [keyOf(line), index]));
+  const kept: OrganizerUserLine[] = [];
+  candidates.forEach((line, index) => {
+    if (last.get(keyOf(line)) !== index) return;
+    const text = clipBody(line.body, ORGANIZER_USER_LINE_MAX);
+    const item: OrganizerUserLine = { via: line.via, at: line.at, text: text.text };
+    if (line.asked !== null) item.asked = clipBody(line.asked, ASKED_PREVIEW).text;
+    // A body the query already cut is clipped even when collapsing its spaces brought it under the cap.
+    if (text.truncated || [...line.body].length > ORGANIZER_USER_LINE_MAX) item.truncated = true;
+    kept.push(item);
+  });
+  const cost = (line: OrganizerUserLine) => [...line.text].length + [...(line.asked ?? "")].length;
+  let chosen = kept;
+  if (kept.length > ORGANIZER_USER_LINES || kept.reduce((sum, line) => sum + cost(line), 0) > ORGANIZER_USER_LINES_BUDGET) {
+    const head = kept.slice(0, ORGANIZER_USER_LINES_EARLIEST);
+    let spent = head.reduce((sum, line) => sum + cost(line), 0);
+    const tail: OrganizerUserLine[] = [];
+    for (let index = kept.length - 1; index >= head.length; index -= 1) {
+      const line = kept[index]!;
+      if (head.length + tail.length >= ORGANIZER_USER_LINES || spent + cost(line) > ORGANIZER_USER_LINES_BUDGET) break;
+      spent += cost(line);
+      tail.unshift(line);
+    }
+    chosen = [...head, ...tail];
+  }
+  return { user_lines: chosen, user_lines_omitted: total - lines.length + (kept.length - chosen.length) };
+}
+
 /** What the organizer reads. Everything is capped so a long plan costs a bounded call. */
 export function organizerPayload(
   store: Store,
-  input: { mode: "message" | "settle"; sessionId: string; message: Message | null; current: Task | null; trace?: string[] },
+  input: {
+    mode: "message" | "settle";
+    sessionId: string;
+    message: Message | null;
+    current: Task | null;
+    trace?: string[];
+    /** A settle's reading, taken before the call, of whether you said anything since the last version. */
+    userSpoke?: boolean;
+  },
 ): OrganizerPayload {
   const session = store.getSession(input.sessionId);
   const members = store
@@ -162,15 +280,18 @@ export function organizerPayload(
   const messages = current
     ? store.taskMessagesSince(current.id, since, ORGANIZER_MESSAGES_LIMIT).map((row) => {
         const body = clipBody(row.body, ORGANIZER_BODY_LIMIT);
+        const answer = row.answer !== null ? clipBody(row.answer, ORGANIZER_BODY_LIMIT) : null;
         const item: OrganizerPayload["since_last_revision"]["messages"][number] = {
           id: row.id,
           author: nameOf(store, row.author),
+          from: speakerOf(row),
           kind: row.kind,
           body: body.text,
+          ...(answer ? { answer: answer.text } : {}),
           ticket_id: row.ticket_id,
           created_at: row.created_at,
         };
-        if (body.truncated) item.truncated = true;
+        if (body.truncated || answer?.truncated) item.truncated = true;
         return item;
       })
     : [];
@@ -214,6 +335,7 @@ export function organizerPayload(
       })
     : [];
   const spec = current ? parsePlanSpec(current.spec) : null;
+  const typed = current ? store.userWrittenSpec(current.id) : { goal: false, acceptance: [], rules: [], ticketIds: [] };
   const precedents: OrganizerPayload["precedents"] = [];
   if (spec?.kind && current) {
     for (const earlier of store.precedentTasks(spec.kind, current.id, 3)) {
@@ -246,6 +368,9 @@ export function organizerPayload(
           brief: current.brief ? clipBody(current.brief, ORGANIZER_BODY_LIMIT).text : null,
           revision: store.currentRevision(current.id),
           spec,
+          goal_user_typed: typed.goal,
+          acceptance_user_typed: typed.acceptance,
+          rules_user_typed: typed.rules,
           tickets: currentTickets
             .slice(0, ORGANIZER_TICKETS_LIMIT)
             .map((ticket) => ({
@@ -254,7 +379,8 @@ export function organizerPayload(
               title: ticket.title,
               status: ticket.status,
               worker: ticket.worker ? nameOf(store, ticket.worker) : null,
-              spec: clipBody(ticket.spec, TICKET_SPEC_PREVIEW).text,
+              spec: ticketSpecPreview(ticket.spec),
+              ...(typed.ticketIds.includes(ticket.id) ? { spec_user_typed: true as const } : {}),
               artifacts: artifactCounts.get(ticket.id) ?? 0,
               files: ticketFiles.get(ticket.id) ?? [],
             })),
@@ -276,6 +402,8 @@ export function organizerPayload(
                   }
                 : null,
             })),
+          // Each line is shown once: the one this run files, and those since the last version, are already there.
+          ...userLinesOf(store, current.id, new Set([...messages.map((row) => row.id), ...(input.message ? [input.message.id] : [])])),
         }
       : null,
     recent_plans: store
@@ -293,7 +421,14 @@ export function organizerPayload(
       }),
     elsewhere_plans: elsewhere.map((plan) => elsewherePlan(store, input.sessionId, plan)),
     kinds: store.distinctTaskKinds(ORGANIZER_KINDS_LIMIT),
-    since_last_revision: { messages, artifacts, trace: (input.trace ?? []).slice(-ORGANIZER_TRACE_LIMIT), commands },
+    since_last_revision: {
+      messages,
+      // A message run is you speaking; a settle says whether you did, as the app will hold it to.
+      user_spoke: input.mode === "message" || (input.userSpoke ?? false),
+      artifacts,
+      trace: (input.trace ?? []).slice(-ORGANIZER_TRACE_LIMIT),
+      commands,
+    },
     precedents,
   };
 }
@@ -456,4 +591,53 @@ export function parseOrganizerResult(
   }
   const checks = parseOrganizerChecks(parsed.checks, ctx.existingCheckIds ?? new Set());
   return { decision, resumePlanId, joinPlanId, spec, tickets, messageTicket, checks };
+}
+
+function sameLines(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((line, index) => line === b[index]);
+}
+
+/**
+ * What a settle may change when you have said nothing since the version it builds on: it files the
+ * handover. With no word of yours to go on, a changed goal, rule or Done when, or a rewritten
+ * ticket spec, is a Bot's decision written up as yours — a freeze a coordinator put on itself
+ * becoming a rule every Bot then obeys, a ticket's description turning into a list of what not to
+ * do. So those stay exactly as they were (a plan with no spec yet gets no rules), the plan is not
+ * parked, and an existing ticket keeps a description it already has; process, progress, a plan
+ * called done, ticket status and worker, and new tickets still land. `held` names what was kept,
+ * for the log.
+ */
+export function holdSettle(
+  result: OrganizerResult,
+  ctx: { before: PlanSpec | null; tickets: readonly Ticket[]; userSpoke: boolean },
+): { result: OrganizerResult; held: string[] } {
+  if (ctx.userSpoke) return { result, held: [] };
+  const before = ctx.before;
+  const held: string[] = [];
+  const spec: PlanSpec = {
+    ...result.spec,
+    kind: before?.kind ?? result.spec.kind,
+    goal: before?.goal ?? result.spec.goal,
+    acceptance: before ? before.acceptance : result.spec.acceptance,
+    rules: before ? before.rules : [],
+    status: result.spec.status === "parked" && before?.status !== "parked" ? (before?.status ?? "active") : result.spec.status,
+  };
+  if (spec.goal !== result.spec.goal) held.push("kept the goal as it was");
+  if (!sameLines(spec.acceptance, result.spec.acceptance)) held.push("kept Done when as it was");
+  if (!sameLines(spec.rules, result.spec.rules)) held.push("kept the rules as they were");
+  if (spec.status !== result.spec.status) held.push("did not park the plan");
+  const byId = new Map(ctx.tickets.map((ticket) => [ticket.id, ticket]));
+  const byTitle = new Map(ctx.tickets.map((ticket) => [titleKey(ticket.title), ticket]));
+  const tickets = result.tickets.map((entry) => {
+    // Matched the way the store will match it: by id, or a new-N named like an existing ticket.
+    const known = byId.get(entry.id) ?? (NEW_TICKET.test(entry.id) && entry.title ? byTitle.get(titleKey(entry.title)) : undefined);
+    // A ticket renamed in this answer is found by its new title too, as the store will find it.
+    if (known && entry.title) byTitle.set(titleKey(entry.title), known);
+    if (!known?.spec.trim() || !entry.spec || entry.spec === known.spec) return entry;
+    // Echoing the one-line preview it was shown is no rewrite, but it would still cut the spec short.
+    const echo = entry.spec === ticketSpecPreview(known.spec) || entry.spec.replace(/\s+/g, " ") === known.spec.replace(/\s+/g, " ").trim();
+    if (!echo) held.push(`kept ticket ${String(known.seq).padStart(2, "0")}'s spec`);
+    return { ...entry, spec: "" };
+  });
+  return { result: { ...result, spec, tickets }, held };
 }

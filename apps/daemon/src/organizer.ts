@@ -6,7 +6,9 @@
  * the plan is for now; which tickets exist and which one this line is about. The message is
  * stamped with the answer, so every turn it opens — a mention, a judgement that joined, a fork —
  * lands in the same plan and ticket. Once a plan's turns have all ended and it has been quiet for
- * a moment, a second call files what was handed over: ticket states, workers, progress.
+ * a moment, a second call files what was handed over: ticket states, workers, progress. A settle
+ * has no line of yours to go on: when you have said nothing since the last version it only files
+ * the handover, and the goal, Done when, rules and what each ticket is for stay as they were.
  *
  * It fails open. No default model, a refused call, an unreadable answer, a store that refuses the
  * change: the plan stays as it was and turns open where they would have anyway, and the log says
@@ -22,8 +24,9 @@ import { USER_MEMBER, type AcceptanceCheck, type AcceptanceCheckOutcome, type Me
 import { NO_ABLATION, type Ablation } from "./ablation";
 import { describeCheck } from "./acceptance-eval";
 import type { CompletionsClient, MappedUsage } from "./completions";
+import { HttpError } from "./errors";
 import { atomicWrite } from "./file-integrity";
-import { ORGANIZER_SYSTEM, organizerPayload, parseOrganizerResult } from "./prompts/organizer";
+import { holdSettle, ORGANIZER_SYSTEM, organizerPayload, parseOrganizerResult } from "./prompts/organizer";
 import { parsePlanSpec, PLAN_MAP_FILE, TICKET_FILE, type PlanSpec, type Store, type Task } from "./store";
 import { classifyPath } from "./workspace-paths";
 
@@ -49,7 +52,8 @@ export type OrganizerDeps = {
   log?: (line: string) => void;
   /**
    * A plan's quiet clock ran out and its settle is over, whether it filed anything or not: the
-   * engine checks whether the plan stopped with tickets open (see the turn engine's reconcile).
+   * engine checks whether the plan stopped with work left, tickets still open or, in a group, work
+   * its progress still lists (see `reconcilePlan` in engine/plan-watch.ts).
    */
   onQuiet?: (taskId: string) => void;
   /**
@@ -146,6 +150,8 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     sessionId: string;
     message: Message | null;
     current: Task | null;
+    /** A settle's reading of whether you said anything since the last version. */
+    userSpoke?: boolean;
   }): Promise<ReturnType<typeof parseOrganizerResult>> {
     const routing = await deps.routing();
     if (!routing || deps.draining()) return null;
@@ -155,6 +161,7 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
       message: input.message,
       current: input.current,
       trace: input.current ? traceLines(input.current.id) : [],
+      userSpoke: input.userSpoke,
     });
     // Which filing this was, for the line that says why it came to nothing.
     const what = input.mode === "message" ? `message ${input.message?.id}` : `plan ${input.current?.id}`;
@@ -290,29 +297,47 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     if (!opts?.evidence && store.taskMessagesSince(taskId, since, 1).length === 0 && store.taskArtifactsSince(taskId, since, 1).length === 0) {
       return false;
     }
+    // Read before the call, so the organizer is told what the app will hold it to: the version it
+    // builds on, and whether you said anything since. A line of yours that lands while the call is
+    // out has not been seen by it, and does not free its answer.
+    const revision = store.currentRevision(taskId);
+    const before = parsePlanSpec(task.spec);
+    const userSpoke = store.userSpokeSince(taskId, before ? since : "");
     inFlight.add(taskId);
     try {
-      const parsed = await call({ mode: "settle", sessionId: task.session_id, message: null, current: task });
+      const parsed = await call({ mode: "settle", sessionId: task.session_id, message: null, current: task, userSpoke });
       if (!parsed) return false;
       const lastTurn = store.db
         .query<{ id: string }, [string]>(`SELECT id FROM turns WHERE task_id = ? ORDER BY updated_at DESC, id DESC LIMIT 1`)
         .get(taskId);
       // The evidence settle is only for re-reading checks that just ran; it must not also let this
       // pass add, edit or remove checks of its own — that would never stop giving itself one more look.
-      const result = opts?.evidence ? { ...parsed, checks: undefined } : parsed;
+      const answer = opts?.evidence ? { ...parsed, checks: undefined } : parsed;
+      const { result, held } = holdSettle(
+        { ...answer, decision: "continue", resumePlanId: null, messageTicket: null },
+        { before, tickets: store.listTickets(taskId), userSpoke },
+      );
       try {
         const applied = store.transaction(() =>
           store.applyOrganizerResult({
             sessionId: task.session_id!,
             current: task,
-            result: { ...result, decision: "continue", resumePlanId: null, messageTicket: null },
+            result,
             source: { messageId: null, turnId: lastTurn?.id ?? null, messageBody: "" },
+            ifRevision: revision,
           }),
         );
+        for (const what of held) log(`[organizer] plan ${taskId}: nothing new from the user since the last version; ${what}`);
         noteHeldOpen(taskId, applied.heldOpenBy);
         if (applied.awaitingEvidence) awaitingEvidence.add(taskId);
         else awaitingEvidence.delete(taskId);
       } catch (error) {
+        // A line or an edit of yours moved the plan while this settle was out: its answer was built
+        // on the older version and would undo that. Tickets' files still show the handover.
+        if (error instanceof HttpError && error.status === 409) {
+          log(`[organizer] plan ${taskId}: the plan changed while it was being settled; nothing filed`);
+          return false;
+        }
         log(`[organizer] could not apply the settling of ${taskId}: ${error instanceof Error ? error.message : String(error)}`);
         return false;
       }

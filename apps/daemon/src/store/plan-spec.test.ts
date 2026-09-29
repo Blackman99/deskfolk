@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { ClientEvent } from "@real-bot/protocol";
 import { Store } from ".";
 import { HttpError } from "../errors";
+import { isoNow } from "../ids";
 import { normalizePlanSpec, parsePlanSpec, SPEC_GOAL_MAX, SPEC_ITEM_MAX, SPEC_LIST_MAX, type PlanSpec } from "./plan-shape";
 import { ORGANIZER_NEW_TICKETS_MAX, type OrganizerResult } from "./plan-spec";
 
@@ -192,6 +193,24 @@ describe("what one organizer run changes", () => {
     const turn = store.createTurn({ sessionId: session.id, botId: bot.id, triggerMessageId: message.id });
     expect(turn).toMatchObject({ task_id: applied.task.id, ticket_id: applied.tickets[1]!.id });
     expect(store.turnWorkDir(turn.id)).toBe(applied.tickets[1]!.dir);
+    store.close();
+  });
+
+  test("its version is stamped on the store's clock, so it never reads as older than the line it filed", () => {
+    const { store, session } = fixture();
+    // A busy store's clock runs ahead of the wall clock: every stamp within one millisecond moves it on.
+    for (let i = 0; i < 50; i++) isoNow();
+    const message = store.postMessage(session.id, { body: "帮我写一份周报" });
+    const applied = store.applyOrganizerResult({
+      sessionId: session.id,
+      current: null,
+      result: result({ decision: "new" }),
+      source: { messageId: message.id, turnId: null, messageBody: message.body },
+    });
+    const since = store.lastSpecRevisionAt(applied.task.id);
+    expect(since > store.getMessage(message.id).created_at).toBe(true);
+    // So the settle after it does not take that line for something you said since.
+    expect(store.userSpokeSince(applied.task.id, since)).toBe(false);
     store.close();
   });
 
@@ -576,6 +595,69 @@ describe("what one organizer run changes", () => {
     expect(detail.spec).toEqual(spec());
     expect(detail.tickets).toHaveLength(1);
     expect(detail.tickets[0]!.artifacts).toMatchObject([{ path: `${ticket.dir}/draft.md`, exists: true }]);
+    store.close();
+  });
+});
+
+describe("whether a plan handed a ticket over since a moment", () => {
+  test("a later version, or the board now, must show a ticket newly in review or done; rewording one that sits there is no move", () => {
+    const { store, session, bot, reviewer } = fixture();
+    const opener = store.postMessage(session.id, { body: "写周报" });
+    const at = (second: number) => new Date(Date.UTC(2026, 8, 28, 1, 0, second));
+    const plan = store.applyOrganizerResult({
+      sessionId: session.id,
+      current: null,
+      result: result({
+        decision: "new",
+        tickets: [
+          { id: "new-1", title: "初稿", spec: "写第一版", status: "review", worker: bot.id },
+          { id: "new-2", title: "审稿", spec: "过一遍", status: "doing", worker: reviewer.id },
+        ],
+      }),
+      source: { messageId: opener.id, turnId: null, messageBody: opener.body },
+      now: at(0),
+    });
+    const [draft, review] = plan.tickets;
+    const settle = (second: number, tickets: OrganizerResult["tickets"]) =>
+      store.applyOrganizerResult({
+        sessionId: session.id,
+        current: store.getTask(plan.task.id),
+        result: result({ tickets }),
+        source: { messageId: null, turnId: null, messageBody: "" },
+        now: at(second),
+      });
+    const movedSince = (second: number) => store.ticketHandedOverSince(plan.task.id, at(second).toISOString());
+
+    expect(movedSince(1)).toBe(false);
+    // Rewording the ticket already awaiting review is a new version, not a move.
+    settle(2, [{ id: draft!.id, spec: "写第一版，加上图表" }]);
+    expect(movedSince(1)).toBe(false);
+    // The other ticket handed over in a later version is.
+    settle(3, [{ id: review!.id, spec: "", status: "review" }]);
+    expect(movedSince(1)).toBe(true);
+    // A version that repeats the board as it stood is not.
+    settle(5, []);
+    expect(movedSince(4)).toBe(false);
+    // Sent back, then handed over again: a move, although it ends where it began.
+    settle(6, [{ id: draft!.id, spec: "", status: "doing" }]);
+    settle(7, [{ id: draft!.id, spec: "", status: "review" }]);
+    expect(movedSince(5)).toBe(true);
+    // A ticket opened already awaiting review is one.
+    expect(movedSince(8)).toBe(false);
+    settle(9, [{ id: "new-1", title: "排版", spec: "排好版", status: "review", worker: bot.id }]);
+    expect(movedSince(8)).toBe(true);
+
+    // The app's own move to review leaves no version: the board now shows it.
+    settle(11, [{ id: draft!.id, spec: "", status: "doing" }]);
+    expect(movedSince(12)).toBe(false);
+    expect(store.observeTicketWork({ ticketId: draft!.id, botId: bot.id, seen: "delivered", now: at(13) })).toMatchObject({ status: "review" });
+    expect(movedSince(12)).toBe(true);
+    // A ticket untouched since the moment did not move after it, whatever the last version said.
+    expect(movedSince(14)).toBe(false);
+
+    // Your edit marking one done is a version of the plan too.
+    store.patchTicketByUser(review!.id, { status: "done" });
+    expect(movedSince(15)).toBe(true);
     store.close();
   });
 });

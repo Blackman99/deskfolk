@@ -235,3 +235,11 @@ test("linkifyRosterMentions leaves emails and npm scopes untouched", () => {
   const linked = linkifyRosterMentions(text, [bot1], { members: [bot1] });
   expect(linked).toBe(`mail user@host.com and run @sveltejs/kit, then [@Researcher](${mentionHref("bot-1")})`);
 });
+
+test("linkifyRosterMentions leaves an @ inside a cited path as text", () => {
+  const text = "目录 work/@Researcher-继续-e3wm/x.md 和 2026-09-23-@Researcher-abcd，然后 @Researcher";
+  const linked = linkifyRosterMentions(text, [bot1], { members: [bot1] });
+  expect(linked).toBe(
+    `目录 work/@Researcher-继续-e3wm/x.md 和 2026-09-23-@Researcher-abcd，然后 [@Researcher](${mentionHref("bot-1")})`,
+  );
+});

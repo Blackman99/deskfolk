@@ -41,7 +41,7 @@ export const CHECK_BACK_MIN_MINUTES = 1;
 /** A week: long enough for "look again after the weekend", short enough to still be this job. */
 export const CHECK_BACK_MAX_MINUTES = 7 * 24 * 60;
 export const CHECK_BACK_NOTE_MAX = 500;
-/** The app's plan call-back lists the plan's open tickets and its failing checks' output, so it gets more room than a Bot's own note. */
+/** The app's plan call-back lists the plan's open tickets or those awaiting review, and its failing checks' output, so it gets more room than a Bot's own note. */
 export const PLAN_NUDGE_NOTE_MAX = 2500;
 
 export function scheduleCheckBack(
@@ -106,9 +106,11 @@ export function bookReportBack(
 }
 
 /**
- * The app's call-back for a plan that went quiet while some of its tickets are still to do or in
- * progress: due now, in the plan's session, for the Bot on one of those tickets, landing in that
- * ticket's folder. Like any booking it replaces the Bot's pending one there.
+ * The app's call-back for a plan that went quiet with work left — tickets still to do or in
+ * progress, or, in a group plan, everything handed over while its progress still lists work not
+ * done: due now, in the plan's session, for the Bot on the first open ticket (landing in that
+ * ticket's folder) or the Bot that spoke last in the plan (landing in the plan's). Like any
+ * booking it replaces the Bot's pending one there.
  */
 export function bookPlanNudge(
   ctx: StoreContext,
@@ -120,8 +122,9 @@ export function bookPlanNudge(
     throw new HttpError(422, "not_a_member", "not in that session");
   }
   // The store's clock, not the wall's: reconcile compares this against `acceptance_checks` rows
-  // (stamped with `isoNow()`), and `isoNow()` runs a little ahead of `Date.now()` in a burst — a
-  // nudge stamped behind a check's own `defined_at` would wrongly read as pre-dating it.
+  // and plan versions (stamped with `isoNow()`), and `isoNow()` runs a little ahead of `Date.now()`
+  // in a burst — a nudge stamped behind a check's own `defined_at`, or behind a settle filed just
+  // before it, would wrongly read as pre-dating them.
   const at = input.now ?? new Date(isoNow());
   return insertCheckBack(ctx, {
     botId: input.botId,

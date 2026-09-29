@@ -137,7 +137,8 @@ export function createFire(deps: FireDeps): Fire {
         body: routineFireBody(store.settingsCached().locale, claimed.title, claimed.instruction),
       });
       // Every routine has one standing plan, and every fire is a ticket of it, so a daily's days
-      // sit side by side and its rules and precedents accumulate. No model call decides this.
+      // sit side by side, its precedents accumulate, and the rules you set on its board stay. No
+      // model call decides this.
       const plan =
         store.routineTask(claimed.id) ??
         store.openTask({
