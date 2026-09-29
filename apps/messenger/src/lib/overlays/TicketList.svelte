@@ -443,19 +443,23 @@
 	}
 
 	.ticket-row.is-doing {
-		border-color: var(--accent-border);
+		/* The solid accent, not `--accent-border`: in the dark that wash is the same grey-teal as a
+		   done row's line. */
+		border-color: var(--accent);
 		border-left-color: var(--accent);
 		background: linear-gradient(135deg, var(--accent-tint) 0%, var(--pane) 50%);
 	}
 
 	.ticket-row.is-review {
-		border-color: var(--purple-line);
+		border-color: var(--purple);
 		border-left-color: var(--purple);
 		background: linear-gradient(135deg, var(--purple-bg) 0%, var(--pane) 50%);
 	}
 
 	.ticket-row.is-done {
-		border-color: var(--ok-line);
+		/* The solid green, not `--ok-line`: in the dark that wash reads as the same teal as a row
+		   that is still being done. */
+		border-color: var(--ok);
 		border-left-color: var(--ok);
 		background: linear-gradient(135deg, var(--ok-bg) 0%, var(--pane) 50%);
 	}

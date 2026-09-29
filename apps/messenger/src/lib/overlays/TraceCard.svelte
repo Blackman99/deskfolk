@@ -208,25 +208,29 @@
 	}
 
 	.trace-card.is-running {
-		border-color: var(--accent-border);
+		/* The solid accent, not `--accent-border`: at 35% that wash is the same grey-teal as a
+		   finished card's line, so the two could not be told apart. */
+		border-color: var(--accent);
 		border-left-color: var(--accent);
 		background: var(--accent-tint);
 	}
 
 	.trace-card.is-waiting_approval {
-		border-color: var(--warn-line);
+		border-color: var(--warn);
 		border-left-color: var(--warn);
 		background: var(--warn-bg);
 	}
 
 	.trace-card.is-waiting_ask {
-		border-color: var(--purple-line);
+		border-color: var(--purple);
 		border-left-color: var(--purple);
 		background: var(--purple-bg);
 	}
 
 	.trace-card.is-completed {
-		border-color: var(--ok-line);
+		/* The solid green, not `--ok-line`. In the dark that line is a 35% wash, and it settles
+		   into the same grey-teal as a live card. */
+		border-color: var(--ok);
 		border-left-color: var(--ok);
 		background: var(--ok-bg);
 	}
@@ -239,12 +243,15 @@
 
 	.trace-card.is-interrupted,
 	.trace-card.is-stopped {
-		border-color: var(--danger-line);
+		border-color: var(--danger);
 		border-left-color: var(--danger);
 		background: var(--danger-bg);
 	}
 
-	.trace-card.is-here {
+	/* Where you are, as a ring — but only on a card with no status colour of its own. A finished
+	   card and a live one in the same conversation would otherwise both wear this teal ring, and
+	   in the dark that ring is what you read instead of green against teal. */
+	.trace-card.is-here:not(.is-running):not(.is-waiting_approval):not(.is-waiting_ask):not(.is-completed):not(.is-interrupted):not(.is-stopped) {
 		box-shadow: inset 0 0 0 1px var(--accent);
 	}
 
