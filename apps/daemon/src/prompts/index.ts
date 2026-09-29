@@ -22,9 +22,18 @@ export {
   reportBackNote,
   stalledPlanBody,
   routineFireBody,
+  statusQuestionBody,
   unknownMentionBody,
   completionFailBody,
 } from "./transcript-copy";
-export type { FailingCheckLine, FailKind, OpenTicketLine } from "./transcript-copy";
+export type {
+  FailingCheckLine,
+  FailKind,
+  OpenTicketLine,
+  StatusArtifactLine,
+  StatusCheckSummary,
+  StatusTicketLine,
+  StatusWorkingLine,
+} from "./transcript-copy";
 export type { ChatTool } from "./tool-schema";
 export { builtinTools, COLLAB_TOOL_NAMES } from "./builtin-tools";

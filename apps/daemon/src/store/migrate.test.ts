@@ -171,6 +171,13 @@ describe("a database an earlier build created", () => {
         expect(checkTables).toEqual(["acceptance_check_runs", "acceptance_checks"]);
         const turnRunCols = reopened.db.query<{ name: string }, []>("PRAGMA table_info(turn_runs)").all().map((row) => row.name);
         expect(turnRunCols).toContain("cwd");
+        // `messages` picked up the 进度询问 status-line mark, defaulted to unhidden for every row
+        // that predates it.
+        const messageCols = reopened.db.query<{ name: string }, []>("PRAGMA table_info(messages)").all().map((row) => row.name);
+        expect(messageCols).toContain("hidden_from_bots");
+        expect(
+          reopened.db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM messages WHERE hidden_from_bots != 0").get()!.n,
+        ).toBe(0);
         expect(reopened.listChecks(turn.task_id!)).toEqual([]);
         reopened.patchSettingsSync({ workspace_path: join(dir, "workspace") });
         const check = reopened.createCheckByUser(turn.task_id!, { item: "交出 report.md", kind: "exists", path: "report.md" });

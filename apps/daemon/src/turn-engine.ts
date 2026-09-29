@@ -21,6 +21,7 @@ import { createParticipation } from "./engine/participation";
 import { createPlanWatch } from "./engine/plan-watch";
 import { createRouting } from "./engine/routing";
 import { createSpend } from "./engine/spend";
+import { createStatusQuestion } from "./engine/status-question";
 import { createTools } from "./engine/tools";
 import { HttpError } from "./errors";
 import { isoNow } from "./ids";
@@ -281,6 +282,13 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     ablation,
   });
 
+  const statusQuestion = createStatusQuestion({
+    store,
+    publishMessage: core.publishMessage,
+    reconcilePlan: planWatch.reconcilePlan,
+    admission: options.admission,
+  });
+
   const lifecycle = createLifecycle({
     store,
     publish,
@@ -359,6 +367,11 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   return {
     async handleInboundMessage(message, opts) {
       const fromUser = opts?.fromUser ?? message.author === USER_MEMBER;
+      // 进度询问: a status question about a plan this session has one to report on is answered from
+      // the store's own rows, right here — before anything below would organize, judge, wake or
+      // redirect a turn over it. The message is already stored and published; this only decides
+      // what happens next.
+      if (fromUser && statusQuestion.handle(message)) return;
       // Filing takes a model call, and the Bots it holds back show as thinking under the message
       // meanwhile, in the transcript and the list alike. Each row gives way once its turn or
       // judgement has started, so the Bot never blinks out in between.

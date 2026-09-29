@@ -164,6 +164,8 @@ export function insertMessage(
     paths?: string[];
     /** The choices on a question; only an `ask` carries them. */
     ask?: AskSpec | null;
+    /** Set on a 进度询问 status line: kept out of every Bot's context window and the organizer's payload. */
+    hiddenFromBots?: boolean;
   },
 ): Message {
   sessionRow(ctx, input.sessionId);
@@ -185,8 +187,8 @@ export function insertMessage(
         .get(input.turnId)
     : null;
   ctx.db.run(
-    `INSERT INTO messages (id, session_id, turn_id, parent_id, kind, author, body, source_turn_id, task_id, ticket_id, ask_spec, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO messages (id, session_id, turn_id, parent_id, kind, author, body, source_turn_id, task_id, ticket_id, ask_spec, hidden_from_bots, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       input.sessionId,
@@ -199,6 +201,7 @@ export function insertMessage(
       lineage?.task_id ?? null,
       lineage?.ticket_id ?? null,
       input.kind === "ask" && input.ask ? JSON.stringify(input.ask) : null,
+      input.hiddenFromBots ? 1 : 0,
       now,
     ],
   );
@@ -276,12 +279,18 @@ export function getMessage(ctx: StoreContext, id: string): Message {
   return hydrateMessage(ctx, messageRow(ctx, id));
 }
 
+/**
+ * A session's transcript for a Bot to read: what `context.ts` builds turns, judgements and composer
+ * suggestions from. A 进度询问 status line is left out here (but not from `listMessages`, search or
+ * unread — you can see it, a Bot never does) the same way a check-back's own note is: it is the
+ * app answering you, not something said in the conversation.
+ */
 export function listMainMessages(ctx: StoreContext, sessionId: string, limit: number): Message[] {
   sessionRow(ctx, sessionId);
   const rows = ctx.db
     .query<MessageRow, [string, number]>(
       `SELECT * FROM messages
-       WHERE session_id = ? AND kind != 'profile_change' AND ${notCheckBackLine()}
+       WHERE session_id = ? AND kind != 'profile_change' AND hidden_from_bots = 0 AND ${notCheckBackLine()}
        ORDER BY created_at DESC, rowid DESC
        LIMIT ?`,
     )
@@ -461,7 +470,7 @@ export function hydrateMessage(ctx: StoreContext, row: MessageRow): Message {
   const reactions = ctx.db
     .query<Reaction, [string]>(`SELECT * FROM reactions WHERE message_id = ?`)
     .all(row.id);
-  const { ask_spec, ask_answer, ...rest } = row;
+  const { ask_spec, ask_answer, hidden_from_bots: _hiddenFromBots, ...rest } = row;
   if (row.kind !== "ask") return { ...rest, attachments, reactions };
   return { ...rest, ask: readAskSpec(ask_spec), ask_answer: readAskAnswer(ask_answer), attachments, reactions };
 }

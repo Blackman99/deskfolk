@@ -2749,6 +2749,13 @@
 
 	.system-msg-content {
 		line-height: 1.4;
+		/* A 进度询问 status line is several lines long; a one-line unreachable/interrupt notice still
+		   reads fine top-aligned with its icon. */
+		align-items: flex-start;
+	}
+
+	.system-msg-content .body {
+		white-space: pre-wrap;
 	}
 
 	.system-msg-icon {

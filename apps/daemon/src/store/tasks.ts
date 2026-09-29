@@ -296,6 +296,7 @@ export function taskMessagesSince(
          WHERE (task_id = ? OR (session_id = ? AND kind = 'user'))
            AND (created_at > ? OR (kind = 'ask' AND json_extract(ask_answer, '$.answered_at') > ?))
            AND kind IN ('user', 'bot', 'ask', 'system')
+           AND hidden_from_bots = 0
            AND ${notCheckBackLine()}
          ORDER BY created_at DESC, id DESC
          LIMIT ?

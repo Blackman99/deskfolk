@@ -187,6 +187,8 @@ export type MessageRow = {
   /** JSON `AskAnswer` once you answered the question. */
   ask_answer?: string | null;
   message_seq?: number;
+  /** Set on the app's own 进度询问 status line: kept out of every Bot's context and the organizer's payload. */
+  hidden_from_bots?: number;
   created_at: string;
 };
 

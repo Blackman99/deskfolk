@@ -18,6 +18,14 @@ export function migrateSchema(db: Database): void {
   // already existed, so its new column needs the same guarded ALTER every other one here gets.
   const turnRunCols = db.query<{ name: string }, []>("PRAGMA table_info(turn_runs)").all().map((column) => column.name);
   if (turnRunCols.length > 0 && !turnRunCols.includes("cwd")) db.run("ALTER TABLE turn_runs ADD COLUMN cwd TEXT");
+  // The status line the app writes for a 进度询问 is a `system` message like any other — visible in
+  // the conversation, search and unread — except no Bot's context window or the organizer's payload
+  // should ever read it back: it is the app answering you, not something anyone here said. This
+  // column is that mark; `listMainMessages` and `taskMessagesSince` filter on it.
+  const statusLineCols = db.query<{ name: string }, []>("PRAGMA table_info(messages)").all().map((column) => column.name);
+  if (!statusLineCols.includes("hidden_from_bots")) {
+    db.run("ALTER TABLE messages ADD COLUMN hidden_from_bots INTEGER NOT NULL DEFAULT 0");
+  }
   const remoteDeviceCols = db.query<{ name: string }, []>("PRAGMA table_info(remote_devices)").all();
   if (!remoteDeviceCols.some((column) => column.name === "last_active_at")) {
     db.run("ALTER TABLE remote_devices ADD COLUMN last_active_at INTEGER NOT NULL DEFAULT 0");
