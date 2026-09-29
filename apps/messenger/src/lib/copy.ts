@@ -387,7 +387,6 @@ const zh = {
     themeDesc: "界面外观配色偏好",
     languageDesc: "界面所使用的显示语言",
     launchDesc: "系统登录时在后台自动启动 Deskfolk",
-    aboutSubtitle: "交给一组 Bot，盯到交付。",
     aboutDescription: "几个 Bot 分工交接，应用盯着验收：停在半路会追，没验证过会直说，每一步都查得到。",
     remoteSection: "远控（实验性）",
     remoteSubtitle: "浏览器配对身份只存在本机 IndexedDB。聊天、快照、草稿、命令和文件不持久化。",
@@ -556,7 +555,6 @@ const zh = {
     mcpUsageNotePlaceholder: "这台用来做什么、什么时候用、什么时候不要用",
     mcpUsageNoteHint:
       "写给所有 Bot 看，每一跳都排在服务器自带说明前面。名称和备注改完即写入、不用确认，改连接也不会丢；留空就只用服务器自带的说明。",
-    sectionAbout: "关于",
     version: (version: string) => `版本 ${version}`,
     checkUpdates: "检查更新",
     checkingUpdates: "检查中...",
@@ -1758,7 +1756,6 @@ const en: CopyShape<typeof zh> = {
     themeDesc: "Color theme for the interface",
     languageDesc: "Display language for the interface",
     launchDesc: `Start Deskfolk automatically when logging into ${osName}`,
-    aboutSubtitle: "Hand it to Bots that see it through.",
     aboutDescription:
       "Bots split the work and hand it on; stalls get chased, unverified claims get called out, and every step is on record.",
     remoteSection: "Remote (experimental)",
@@ -1932,7 +1929,6 @@ const en: CopyShape<typeof zh> = {
     mcpUsageNotePlaceholder: "What this server is for, when to use it, when not to",
     mcpUsageNoteHint:
       "Shown to every Bot on every hop, above the server's own instructions. The name and note save as you edit, with no confirmation, and survive connection changes; leave the note empty to rely on the server's own text.",
-    sectionAbout: "About",
     version: (version: string) => `Version ${version}`,
     checkUpdates: "Check for updates",
     checkingUpdates: "Checking...",

@@ -1656,56 +1656,39 @@ void runtime.setPushEnabled(enabled);
 				{:else if activeSettingsTab === 'about'}
 					<div class="settings-tab-pane">
 						<div class="settings-card settings-card-about">
-							<div class="settings-card-header">
-								<div class="settings-card-header-main">
-									<div class="settings-header-icon-wrap" aria-hidden="true">
-										<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-											<circle cx="12" cy="12" r="10"></circle>
-											<line x1="12" y1="16" x2="12" y2="12"></line>
-											<line x1="12" y1="8" x2="12.01" y2="8"></line>
-										</svg>
-									</div>
-									<div>
-										<h3 class="settings-card-title">{t.settings.sectionAbout}</h3>
-										<p class="settings-card-subtitle">{t.settings.aboutSubtitle}</p>
-									</div>
+							<!-- One block: the pane is already titled About, so the card leads with the app itself. -->
+							<div class="about-identity">
+								<!-- The Deskfolk mark: a message bubble holding two stacked teammates. -->
+								<svg class="about-logo" viewBox="0 0 64 64" width="44" height="44" aria-hidden="true">
+									<path fill="#146a7c" d="M22 6h20a16 16 0 0 1 16 16v14a16 16 0 0 1-16 16H24.5L11 61.5c-1.2 1-2.9.1-2.7-1.4L9.6 50A16 16 0 0 1 6 40V22A16 16 0 0 1 22 6Z" />
+									<circle cx="25" cy="29" r="10.5" fill="#ffffff" />
+									<circle cx="39.5" cy="29" r="10.5" fill="#f0ab3d" stroke="#146a7c" stroke-width="3" />
+								</svg>
+								<div class="settings-row-info">
+									<h3 class="settings-card-title">Deskfolk</h3>
+									<span class="settings-row-desc">{t.settings.aboutDescription}</span>
+									<span class="settings-row-desc">
+										<span class="about-version-chip inline-block font-mono text-11p5 text-muted">{t.settings.version(updateChecker.version ?? '0.1.0-rc.12')}</span>
+									</span>
 								</div>
-							</div>
-
-							<div class="settings-rows">
-								<div class="settings-row about-identity">
-									<!-- The Deskfolk mark: a message bubble holding two stacked teammates. -->
-									<svg class="about-logo" viewBox="0 0 64 64" width="44" height="44" aria-hidden="true">
-										<path fill="#146a7c" d="M22 6h20a16 16 0 0 1 16 16v14a16 16 0 0 1-16 16H24.5L11 61.5c-1.2 1-2.9.1-2.7-1.4L9.6 50A16 16 0 0 1 6 40V22A16 16 0 0 1 22 6Z" />
-										<circle cx="25" cy="29" r="10.5" fill="#ffffff" />
-										<circle cx="39.5" cy="29" r="10.5" fill="#f0ab3d" stroke="#146a7c" stroke-width="3" />
-									</svg>
-									<div class="settings-row-info">
-										<span class="settings-row-title">Deskfolk</span>
-										<span class="settings-row-desc">{t.settings.aboutDescription}</span>
-										<span class="settings-row-desc">
-											<span class="about-version-chip inline-block font-mono text-11p5 text-muted">{t.settings.version(updateChecker.version ?? '0.1.0-rc.12')}</span>
-										</span>
+								{#if updateChecker.available}
+									<div class="settings-row-action">
+										<button
+											type="button"
+											class="btn-check-update"
+											disabled={updateChecker.status === 'checking'}
+											onclick={() => void updateChecker.checkNow()}
+										>
+											{#if updateChecker.status === 'checking'}
+												<svg class="spin-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+													<circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle>
+													<path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor"></path>
+												</svg>
+											{/if}
+											<span>{updateChecker.status === 'checking' ? t.settings.checkingUpdates : t.settings.checkUpdates}</span>
+										</button>
 									</div>
-									{#if updateChecker.available}
-										<div class="settings-row-action">
-											<button
-												type="button"
-												class="btn-check-update"
-												disabled={updateChecker.status === 'checking'}
-												onclick={() => void updateChecker.checkNow()}
-											>
-												{#if updateChecker.status === 'checking'}
-													<svg class="spin-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-														<circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle>
-														<path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor"></path>
-													</svg>
-												{/if}
-												<span>{updateChecker.status === 'checking' ? t.settings.checkingUpdates : t.settings.checkUpdates}</span>
-											</button>
-										</div>
-									{/if}
-								</div>
+								{/if}
 							</div>
 
 							{#if updateChecker.available}
@@ -3101,6 +3084,8 @@ void runtime.setPushEnabled(enabled);
 	}
 
 	.about-identity {
+		display: flex;
+		align-items: center;
 		gap: 14px;
 	}
 
