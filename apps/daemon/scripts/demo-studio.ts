@@ -46,7 +46,9 @@ writeFileSync(
   { mode: 0o755 },
 );
 if (process.env.REAL_BOT_DEMO_CURLRC === "1") {
-  writeFileSync(join(home, ".curlrc"), ["connect-to = ::127.0.0.1:8443", "insecure", ""].join("\n"));
+  // Quoted: curl 8 reads the leading colons of an unquoted "::host:port" as the separator, and
+  // the rule it is left with sends nothing to the tape.
+  writeFileSync(join(home, ".curlrc"), ['connect-to = "::127.0.0.1:8443"', "insecure", ""].join("\n"));
 }
 
 const handle = await startRuntime({ dataDir, bind, endpointKey: memoryKeyStore(), schedule: false, supervisor: "none" });

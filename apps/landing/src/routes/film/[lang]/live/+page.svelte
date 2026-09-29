@@ -17,12 +17,12 @@
 
   const COPY = {
     zh: {
-      license: 'MIT 开源 · macOS Alpha 快照',
+      license: 'MIT 开源 · macOS 与 Windows（预览）Alpha 快照',
       tray: ['显示窗口', '停止所有轮次', '退出 Deskfolk'],
       now: '现在'
     },
     en: {
-      license: 'Open source under MIT · macOS alpha snapshot',
+      license: 'Open source under MIT · alpha for macOS and Windows (preview)',
       tray: ['Show window', 'Stop all turns', 'Quit Deskfolk'],
       now: 'now'
     }

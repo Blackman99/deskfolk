@@ -181,7 +181,7 @@ const zh: Dict = {
         title: '先选工作区和模型端点',
         body:
           '首次打开就是向导：选一个本机目录做共享工作区，再接一个 OpenAI 兼容端点，拉取它的模型列表、选好默认模型。之后每开一轮，由 agent 按任务挑模型和思考等级并留下一句理由，你不用每轮自选。',
-        callout: '密钥只在这一格里填，进钥匙串，不进聊天。'
+        callout: '密钥只在这一格里填，交给系统保管，不进聊天。'
       },
       {
         title: '建第一个 Bot',
@@ -216,7 +216,7 @@ const zh: Dict = {
       {
         title: '产物在旁边一块窗格里打开',
         body:
-          '点开回复里的预告片，它在「发布的产物」标签里打开，把标签拖到会话右边，窗口就分成左右两栏。产物窗格左边是这件事引用过的文件，右边按类型预览：视频和图片直接看，Markdown 和代码进 Monaco 编辑器，改完 ⌘S 写回同一路径。',
+          '点开回复里的预告片，它在「发布的产物」标签里打开，把标签拖到会话右边，窗口就分成左右两栏。产物窗格左边是这件事引用过的文件，右边按类型预览：视频和图片直接看，Markdown 和代码进 Monaco 编辑器，改完 ⌘S（Windows 上是 Ctrl+S）写回同一路径。',
         callout: '生成的海报和预告片，直接在旁边窗格里看。'
       },
       {
@@ -228,19 +228,19 @@ const zh: Dict = {
       {
         title: '分出一块，开你自己的终端',
         body:
-          '在产物标签上右键「向下分割」，在分出的空窗格里开一个终端：这是你自己的 shell，不走批准，Bot 也碰不到。会话、流程图、产物和终端四块摆在同一个窗口里；排法只记在这台 Mac 上，退出再开，分屏和终端都回来。',
+          '在产物标签上右键「向下分割」，在分出的空窗格里开一个终端：这是你自己的 shell，不走批准，Bot 也碰不到。会话、流程图、产物和终端四块摆在同一个窗口里；排法只记在这台电脑上，退出再开，分屏和终端都回来。',
         callout: '你自己的 shell，就在同一个窗口里。'
       },
       {
         title: '关窗不停，等你的事会来找你',
         body:
-          '窗口藏进托盘，进行中的轮次和终端都接着跑。Coordinator 验收完，macOS 横幅点开就是这条会话；Dock 角标只数你没看过的和还在等你的。私聊里的 Stop 立即停掉眼前这一轮；Cmd+Q 或托盘「退出」才结束窗口和守护进程。',
+          '窗口藏进托盘，进行中的轮次和终端都接着跑。Coordinator 验收完，macOS 横幅点开就是这条会话；Dock 角标只数你没看过的和还在等你的。私聊里的 Stop 立即停掉眼前这一轮；Cmd+Q 或托盘「退出」才结束窗口和守护进程。横幅和 Dock 角标目前只在 macOS 上有。',
         callout: '关窗不停；做完了，横幅来找你。'
       },
       {
-        title: '不在 Mac 旁，用手机接着管',
+        title: '不在电脑旁，用手机接着管',
         body:
-          '配对过的手机经你自己部署的中继连回这台 Mac：会话、批准、工作区和终端都在，消息在两端之间端到端加密，中继只转发它解不开的密文。在手机上 @Writer 补一句英文主标语，干活的仍是 Mac 上那个 Writer；你在手机上读过，Mac 的 Dock 角标也跟着消掉。配对只做一次：Mac 的设置里给出一段一次性配对内容，粘到手机上、两边核对指纹，再在 Mac 上用触控 ID 批准。这是默认关闭的实验功能。',
+          '配对过的手机经你自己部署的中继连回这台 Mac：会话、批准、工作区和终端都在，消息在两端之间端到端加密，中继只转发它解不开的密文。在手机上 @Writer 补一句英文主标语，干活的仍是 Mac 上那个 Writer；你在手机上读过，Mac 的 Dock 角标也跟着消掉。配对只做一次：Mac 的设置里给出一段一次性配对内容，粘到手机上、两边核对指纹，再在 Mac 上用触控 ID 批准。这是默认关闭的实验功能，目前只在 macOS 上有。',
         callout: '经你自己的中继，在手机上接着管。',
         link: { label: '接入步骤', page: 'remote' }
       }
@@ -330,7 +330,7 @@ const zh: Dict = {
     linkRemote: '远程访问'
   },
   footer: {
-    tagline: '在你自己电脑上运行的单人 agent 协作应用：macOS，以及 Windows 预览版。',
+    tagline: '本机运行的单人 agent 协作应用，支持 macOS，Windows 为预览版。',
     mit: 'MIT 协议开源。与 xAI / Grok 无官方附属关系。',
     contributors: 'Deskfolk Contributors'
   },
@@ -427,7 +427,7 @@ const en: Dict = {
         title: 'Set the workspace and a model endpoint',
         body:
           'The first run is a wizard: pick a local folder as the shared workspace, add an OpenAI-compatible endpoint, fetch its models and choose the default. From then on an agent picks the model and thinking level for each turn — and leaves a reason — instead of asking you every time.',
-        callout: 'The key goes in this one field, into the Keychain, never the chat.'
+        callout: 'The key goes in this one field, into the system\'s credential store, never the chat.'
       },
       {
         title: 'Create the first bot',
@@ -462,7 +462,7 @@ const en: Dict = {
       {
         title: 'The output opens in a pane beside it',
         body:
-          'Open the teaser from the reply and it lands in the "Launch\'s artifacts" tab; drag the tab to the right of the conversation and the window splits in two. The artifact pane lists the files this job touched on the left and previews the one you pick on the right: video and images play and show as they are, Markdown and code open in a Monaco editor, and ⌘S writes back to the same path.',
+          'Open the teaser from the reply and it lands in the "Launch\'s artifacts" tab; drag the tab to the right of the conversation and the window splits in two. The artifact pane lists the files this job touched on the left and previews the one you pick on the right: video and images play and show as they are, Markdown and code open in a Monaco editor, and ⌘S (Ctrl+S on Windows) writes back to the same path.',
         callout: 'The poster and the teaser open right in the pane beside it.'
       },
       {
@@ -474,19 +474,19 @@ const en: Dict = {
       {
         title: 'Split off a pane for your own terminal',
         body:
-          'Right-click the artifacts tab, pick Split down, and open a terminal in the new empty pane: it is your own shell, it needs no approval, and no Bot can touch it. Conversation, flow, artifact and terminal now share one window; the layout is remembered on this Mac, and Quit and reopen brings back the split and the terminal.',
+          'Right-click the artifacts tab, pick Split down, and open a terminal in the new empty pane: it is your own shell, it needs no approval, and no Bot can touch it. Conversation, flow, artifact and terminal now share one window; the layout is remembered on this computer, and Quit and reopen brings back the split and the terminal.',
         callout: 'Your own shell, in the same window.'
       },
       {
         title: 'Close the window; what waits on you finds you',
         body:
-          'The window hides in the tray, and running turns and terminals carry on. When Coordinator signs off the kit, a macOS banner opens straight to that conversation, and the Dock badge counts only what you have not seen plus what is still waiting on you. Stop in a direct chat ends the current turn immediately; only Cmd+Q or Quit in the tray ends the window and the daemon.',
+          'The window hides in the tray, and running turns and terminals carry on. When Coordinator signs off the kit, a macOS banner opens straight to that conversation, and the Dock badge counts only what you have not seen plus what is still waiting on you. Stop in a direct chat ends the current turn immediately; only Cmd+Q or Quit in the tray ends the window and the daemon. Banners and the Dock badge are macOS only for now.',
         callout: 'Closing the window stops nothing; when it’s done, a banner finds you.'
       },
       {
-        title: 'Away from the Mac, carry on from your phone',
+        title: 'Away from your computer, carry on from your phone',
         body:
-          'A paired phone reaches this Mac through a relay you deploy yourself: conversations, approvals, the workspace and your terminals are all there, encrypted end to end between the two, with the relay passing along ciphertext it cannot read. Ask @Writer for a Chinese tagline from the phone and it is still the Writer on the Mac doing the work; read it on the phone and the Mac\'s Dock badge clears too. Pairing happens once: the Mac\'s settings hand out a one-time code, you paste it on the phone, check that the fingerprints match, and approve at the Mac with Touch ID. It is an experimental feature, off by default.',
+          'A paired phone reaches this Mac through a relay you deploy yourself: conversations, approvals, the workspace and your terminals are all there, encrypted end to end between the two, with the relay passing along ciphertext it cannot read. Ask @Writer for a Chinese tagline from the phone and it is still the Writer on the Mac doing the work; read it on the phone and the Mac\'s Dock badge clears too. Pairing happens once: the Mac\'s settings hand out a one-time code, you paste it on the phone, check that the fingerprints match, and approve at the Mac with Touch ID. It is an experimental feature, off by default, and macOS only for now.',
         callout: 'Through your own relay, carry on from your phone.',
         link: { label: 'Set it up', page: 'remote' }
       }
@@ -576,7 +576,7 @@ const en: Dict = {
     linkRemote: 'Remote access'
   },
   footer: {
-    tagline: 'A single-user agent collaboration app that runs on your own computer: macOS, and Windows in preview.',
+    tagline: 'A single-user agent collaboration app for macOS, with a Windows preview.',
     mit: 'Open source under MIT. Not affiliated with xAI / Grok.',
     contributors: 'Deskfolk Contributors'
   },
