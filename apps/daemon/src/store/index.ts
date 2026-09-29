@@ -7,7 +7,7 @@
 import { chmodSync } from "node:fs";
 import { dirname } from "node:path";
 import { homedir } from "node:os";
-import { defaultAppDataDir, providerKeychainName, mcpAuthKeychainName, type ClientEvent, type RuntimeSnapshot } from "@real-bot/protocol";
+import { defaultAppDataDir, providerKeychainName, mcpAuthKeychainName, type CapabilitiesResponse, type ClientEvent, type RuntimeSnapshot } from "@real-bot/protocol";
 import { installChangeJournal, committedEvents } from "./events";
 import { Transactions } from "./transactions";
 import { Receipts } from "./receipts";
@@ -26,9 +26,11 @@ import * as memories from "./memories";
 import * as messages from "./messages";
 import { migrateSchema } from "./migrate";
 import * as notifications from "./notifications";
+import * as organizerRuns from "./organizer-runs";
 import * as providers from "./providers";
 import * as routines from "./routines";
 import * as routing from "./routing";
+import { assertSchemaGate, markCleanShutdown, readAndResetShutdownFlag, readEngineLevel, SCHEMA_LEVEL } from "./schema-gate";
 import * as search from "./search";
 import * as sessions from "./sessions";
 import * as settings from "./settings";
@@ -89,6 +91,8 @@ type Bound<F> = F extends (ctx: StoreContext, ...args: infer A) => infer R ? (..
 export class Store {
   readonly db: Database;
   readonly receipts: Receipts;
+  /** How the previous run ended, read once at boot before this run's own flag is set to `crash` (see `schema-gate.ts`). */
+  readonly previousShutdown: "clean" | "crash";
   private readonly ctx: StoreContext;
   private readonly listeners = new Set<(event: ClientEvent) => void>();
   private journalReady = false;
@@ -100,7 +104,25 @@ export class Store {
       this.db.run("PRAGMA journal_mode = WAL");
     }
     this.db.run("PRAGMA synchronous = FULL");
+    // The version gate has to run before `SCHEMA_SQL`, not after: that statement creates indexes
+    // and seeds rows, not just tables and columns, and a database whose floor this build cannot
+    // meet may have dropped something one of those statements assumes is still there — running it
+    // first can write to a database ADR 0040's version gate says to refuse outright, or fail with a
+    // raw SQLite error instead of the refusal a user is supposed to see (schema-gate.ts). A brand new database
+    // has no `settings` table yet, so there is nothing yet to gate on.
+    const hasSettingsTable = this.db.query<{ name: string }, []>(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'settings'",
+    ).get() !== null;
+    if (hasSettingsTable) {
+      try {
+        assertSchemaGate(this.db);
+      } catch (error) {
+        this.db.close();
+        throw error;
+      }
+    }
     this.db.exec(SCHEMA_SQL);
+    this.previousShutdown = readAndResetShutdownFlag(this.db);
     migrateSchema(this.db);
     if (options.filename && options.filename !== ":memory:") {
       try {
@@ -153,6 +175,15 @@ export class Store {
 
   readonly settingsCached = this.bind(settings.settingsCached);
   readonly patchSettingsSync = this.bind(settings.patchSettingsSync);
+  /** `GET /v1/capabilities`: what this build's engine understands, so a phone page (or a messenger
+   * built from a newer source tree) can show only what the daemon it is actually talking to supports. */
+  readonly capabilities = (): CapabilitiesResponse => ({
+    schema_level: SCHEMA_LEVEL,
+    engine_level: readEngineLevel(this.db),
+    features: [],
+  });
+  /** Called once, on the way out of a deliberate stop — never on a crash (see `schema-gate.ts`). */
+  readonly recordCleanShutdown = (): void => markCleanShutdown(this.db);
   readonly createProviderSync = this.bind(providers.createProviderSync);
   readonly patchProviderSync = this.bind(providers.patchProviderSync);
   readonly deleteProviderSync = this.bind(providers.deleteProviderSync);
@@ -318,6 +349,10 @@ export class Store {
   readonly applyOrganizerResult = this.bind(planSpec.applyOrganizerResult);
   readonly taskDetail = this.bind(planSpec.taskDetail);
   readonly ticketHandedOverSince = this.bind(planSpec.ticketHandedOverSince);
+
+  // Organizer runs (ADR 0040 P0 observability) ----------------------------------------------
+  readonly recordOrganizerRun = this.bind(organizerRuns.recordOrganizerRun);
+  readonly organizerRunsForTask = this.bind(organizerRuns.organizerRunsForTask);
 
   // Acceptance checks (可执行验收) ----------------------------------------------------------
   readonly getCheck = this.bind(acceptanceChecks.getCheck);

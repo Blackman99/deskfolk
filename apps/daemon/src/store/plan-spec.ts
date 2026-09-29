@@ -260,6 +260,22 @@ export type OrganizerResult = {
    * current plan or opens a new one (a `resume` or `join` never touches another plan's checks).
    */
   checks?: OrganizerCheckInput[];
+  /**
+   * The answer's own picks, exactly as written, before candidate-set or format validation narrowed
+   * them into `decision`/`resumePlanId`/`joinPlanId`/`messageTicket` above — kept only so
+   * `organizer.ts` can put what the model actually asked for on the `organizer_runs` row. Never read
+   * by `applyOrganizerResult`. A target is kept only beside the decision that uses it (a resume id
+   * beside `resume`, a join id beside `join`, a message ticket on a message filing), so a stray id
+   * beside some other decision never reads as a pick.
+   */
+  raw?: { decision: string; resumePlanId: string | null; joinPlanId: string | null; messageTicket: string | null };
+  /**
+   * Why `decision` is not the decision `raw` wrote: a resume/join with no target, or one that no
+   * longer qualified once the candidate set was re-read after the call returned (the race ADR 0040
+   * P1 fixes), a decision word that is none of the four, or anything but continue from a settle.
+   * Null when the written decision is the one that applies.
+   */
+  downgradeReason?: string | null;
 };
 
 /**

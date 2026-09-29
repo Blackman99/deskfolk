@@ -15,6 +15,7 @@ import { settingsCached } from "./settings";
 import { listSkills, withLearning as skillWithLearning } from "./skills";
 import { toBot, type BotRow, type StoreContext } from "./shared";
 import { getTurn } from "./turns";
+import { GATE_SETTING_KEYS } from "./schema-gate";
 
 type Change = { entity: string; id: string; op: string; session_id: string | null };
 
@@ -27,13 +28,15 @@ export function installChangeJournal(ctx: StoreContext): void {
       if (table === "spend" && op === "UPDATE") continue;
       const row = op === "DELETE" ? "OLD" : "NEW";
       const id = table === "settings" ? "'settings'" : `${row}.id`;
+      // The version gate's rows are not settings anyone edits (see GATE_SETTING_KEYS).
+      const when = table === "settings" ? ` WHEN ${row}.key NOT IN (${GATE_SETTING_KEYS.map((key) => `'${key}'`).join(", ")})` : "";
       // A ticket's "session" slot carries its plan, so a removed ticket can still say which board it left.
       const session = ["messages", "turns", "spend", "judgements", "notifications", "annotations", "tasks"].includes(table)
         ? `${row}.session_id`
         : table === "tickets"
           ? `${row}.task_id`
           : "NULL";
-      ctx.db.exec(`CREATE TEMP TRIGGER event_${table}_${op} AFTER ${op} ON main.${table}
+      ctx.db.exec(`CREATE TEMP TRIGGER event_${table}_${op} AFTER ${op} ON main.${table}${when}
         BEGIN INSERT INTO event_changes VALUES ('${table}', ${id}, '${op}', ${session}); END`);
     }
   }

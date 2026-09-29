@@ -161,7 +161,7 @@ All routes reject unknown body/query fields and wrong types **before** effects/r
 
 | Route | Method | Allowed body / query |
 |---|---|---|
-| `/v1/snapshot`, settings, providers, bots, sessions, allow-rules, mcp-servers, skills, memories, routines, credential-operations | GET | No body/query |
+| `/v1/snapshot`, settings, providers, bots, sessions, allow-rules, mcp-servers, skills, memories, routines, credential-operations, capabilities | GET | No body/query |
 | annotations | GET | query relpath string (≤4096), session_id/target_session_id/message_id/target_message_id ULIDs, status draft/open/resolved |
 | annotations `/:id`; annotations `/:id/crop` (PNG/JPEG bytes as a file response: inline `file.bytes` when it fits one frame, else type 0x05 chunks) | GET | No body/query |
 | annotations | POST | required target_message_id ULID, relpath string, anchor_kind text_range/image_region/pdf_region/html_element/media_time, anchor exact object of that kind's fields, content_sha256 64-hex, body string; nullable crop exact{mime image/png|image/jpeg, base64 ≤1,000,000 chars (`ANNOTATION_REMOTE_CROP_BASE64_MAX`)} — see the crop budget below |

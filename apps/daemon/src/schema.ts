@@ -615,6 +615,44 @@ CREATE TABLE IF NOT EXISTS spend (
   )
 );
 
+-- One organizer call (message-filing or settle), win or lose: the model's raw answer, what it
+-- could pick from and what it picked (before and after candidate-set validation), and whether the
+-- filing landed or why not. GET /v1/debug/organizer-runs?task_id= is the only reader; no foreign
+-- keys, so a deleted plan's history stays readable (deleting or clearing a session removes its own
+-- rows instead — see store/sessions.ts). Indexed on task_id and applied_task_id (a resume or join
+-- run's filing can land on a different plan than the one it started against) and, expression-
+-- indexed, on the raw resume/join target inside candidates_apply, so organizerRunsForTask's fourth
+-- way of finding a row — named as a target but rejected before landing anywhere — need not scan
+-- every row. Pruned to the newest ORGANIZER_RUNS_KEPT_PER_SESSION per session on every write,
+-- through organizer_runs_session so a write never reads the session's whole history.
+CREATE TABLE IF NOT EXISTS organizer_runs (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  task_id TEXT,
+  mode TEXT NOT NULL CHECK (mode IN ('message', 'settle')),
+  message_id TEXT,
+  spend_id TEXT,
+  raw_answer TEXT,
+  fail_kind TEXT,
+  decision TEXT CHECK (decision IS NULL OR decision IN ('continue', 'new', 'resume', 'join')),
+  candidates_payload TEXT NOT NULL,
+  candidates_apply TEXT,
+  candidates_at_parse TEXT,
+  downgrade_reason TEXT,
+  applied INTEGER NOT NULL,
+  reject_reason TEXT,
+  held TEXT,
+  applied_task_id TEXT,
+  applied_ticket_id TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS organizer_runs_session ON organizer_runs (session_id, created_at, id);
+CREATE INDEX IF NOT EXISTS organizer_runs_task ON organizer_runs (task_id, created_at);
+CREATE INDEX IF NOT EXISTS organizer_runs_applied_task ON organizer_runs (applied_task_id, created_at);
+CREATE INDEX IF NOT EXISTS organizer_runs_resume_named ON organizer_runs (json_extract(candidates_apply, '$.resume_plan_id'));
+CREATE INDEX IF NOT EXISTS organizer_runs_join_named ON organizer_runs (json_extract(candidates_apply, '$.join_plan_id'));
+
 CREATE TABLE IF NOT EXISTS notification_counters (
   name TEXT PRIMARY KEY,
   val INTEGER NOT NULL

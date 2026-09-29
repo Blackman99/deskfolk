@@ -71,6 +71,7 @@ export const TERM_GROUPS: Record<ManifestoTopic, readonly string[]> = {
     'Plan',
     'Ticket',
     'Organizer',
+    'Organizer run log',
     'Precedent',
     'Check-back',
     'Closing check',
@@ -90,7 +91,8 @@ export const TERM_GROUPS: Record<ManifestoTopic, readonly string[]> = {
     'Terminal',
     'Command stream',
     'Pane',
-    'Layout'
+    'Layout',
+    'Schema gate'
   ],
   models: [
     'Model endpoint',

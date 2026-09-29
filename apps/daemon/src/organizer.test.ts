@@ -799,7 +799,7 @@ function bareOrganizer(answers: Array<JudgeResult | Error | (() => JudgeResult)>
       model: "fixture",
       thinkingLevel: null,
     }),
-    recordSpend: () => {},
+    recordSpend: () => null,
     draining: () => false,
     log: (line) => lines.push(line),
   });
@@ -830,6 +830,28 @@ test("the organizer asks for room for a whole plan, a minute for a line and long
   expect(ORGANIZER_TIMEOUT_MS).toBeGreaterThanOrEqual(45_000);
 });
 
+test("a landed call bills a real spend row through the engine's own wiring, and the run points at it", async () => {
+  // bareOrganizer's recordSpend stub bypasses the real ledger; this goes through createTurnEngine's
+  // own `recordSpend` (turn-engine.ts), which hands the organizer `recordResponseSpend(...)?.id`.
+  const h = await harness((payload) => {
+    if (payload.mode === "message" && !payload.current_plan) {
+      return JSON.stringify({ decision: "new", plan: { goal: "写一份周报" }, tickets: [] });
+    }
+    return JSON.stringify({ decision: "continue", plan: payload.current_plan!.spec, tickets: [] });
+  });
+  const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+  const session = writer.direct_session.id;
+  const trigger = h.store.insertMessage({ sessionId: session, kind: "user", author: "user", body: "写一份周报" });
+  const first = h.completed();
+  await h.engine.handleInboundMessage(trigger, { fromUser: true });
+  await first;
+  const plan = h.store.sessionCurrentTask(session)!;
+  const messageRun = h.store.organizerRunsForTask(plan.id).find((run) => run.mode === "message")!;
+  expect(messageRun.spend_id).not.toBeNull();
+  const spend = h.store.db.query<{ id: string; kind: string }, [string]>("SELECT id, kind FROM spend WHERE id = ?").get(messageRun.spend_id!);
+  expect(spend).toMatchObject({ id: messageRun.spend_id, kind: "organize" });
+});
+
 test("a filing that comes to nothing files nothing and says why: cut off, unreadable, failed, thrown", async () => {
   // A cut-off plan would parse if it happened to close its braces; it is refused all the same.
   const cut = { ...judged('{"decision":"new","plan":{"goal":"写周报"}}'), truncated: true };
@@ -848,6 +870,91 @@ test("a filing that comes to nothing files nothing and says why: cut off, unread
   expect(h.lines[2]).toContain("first_byte");
   expect(h.lines[3]).toContain("socket hang up");
   for (const text of h.lines) expect(text).toMatch(/^\[organizer\] filing message /);
+});
+
+test("every organizer call writes a run row — the raw answer, what it could pick from and what it picked, applied or why not", async () => {
+  const cut = { ...judged('{"decision":"continue","plan":{"goal":"写周报"}}'), truncated: true };
+  const unreadable = judged("我不知道");
+  const failed: JudgeResult = { ...judged(""), content: null, failKind: "first_byte" };
+  const landed = judged(
+    JSON.stringify({
+      decision: "continue",
+      plan: { goal: "写周报" },
+      tickets: [{ id: "new-1", title: "初稿", spec: "写完初稿" }],
+      message_ticket: "new-1",
+    }),
+  );
+  const h = bareOrganizer([cut, unreadable, failed, new Error("socket hang up"), landed]);
+  const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+  const session = writer.direct_session.id;
+  const plan = h.store.openTask({ sessionId: session, title: "写一份周报" });
+  for (const body of ["一", "二", "三", "四", "五"]) {
+    const line = h.store.insertMessage({ sessionId: session, kind: "user", author: "user", body });
+    await h.organizer.organizeMessage(line);
+  }
+  // Newest first from the store; oldest first here, matching the order the calls were made in.
+  const runs = h.store.organizerRunsForTask(plan.id).slice().reverse();
+  expect(runs).toHaveLength(5);
+  expect(runs.map((run) => run.mode)).toEqual(["message", "message", "message", "message", "message"]);
+  expect(runs.map((run) => run.task_id)).toEqual([plan.id, plan.id, plan.id, plan.id, plan.id]);
+  expect(runs.map((run) => run.applied)).toEqual([false, false, false, false, true]);
+  expect(runs.map((run) => run.fail_kind)).toEqual(["truncated", "unparseable", "first_byte", "call_error", null]);
+  expect(runs[0]!.reject_reason).toContain(`${ORGANIZER_MAX_TOKENS}-token cap`);
+  expect(runs[1]!.reject_reason).toBe("the answer did not read as a plan");
+  expect(runs[2]!.reject_reason).toBe("the call failed (first_byte)");
+  expect(runs[3]!.reject_reason).toContain("socket hang up");
+  // Every rejected run kept the raw answer it read (or null when there was none) and picked nothing.
+  expect(runs[0]!.raw_answer).toContain('"decision":"continue"');
+  expect(runs[1]!.raw_answer).toBe("我不知道");
+  expect(runs[2]!.raw_answer).toBeNull();
+  expect(runs[3]!.raw_answer).toBeNull();
+  for (const run of runs.slice(0, 4)) {
+    expect(run.decision).toBeNull();
+    expect(run.candidates_apply).toBeNull();
+    expect(run.applied_task_id).toBeNull();
+    expect(run.applied_ticket_id).toBeNull();
+  }
+  const landedRun = runs[4]!;
+  expect(landedRun.applied).toBe(true);
+  expect(landedRun.reject_reason).toBeNull();
+  expect(landedRun.held).toBeNull();
+  expect(landedRun.decision).toBe("continue");
+  expect(landedRun.applied_task_id).toBe(plan.id);
+  expect(landedRun.applied_ticket_id).toBe(h.store.listTickets(plan.id)[0]!.id);
+  expect(landedRun.candidates_apply).toMatchObject({ resume_plan_id: null, join_plan_id: null, message_ticket: "new-1" });
+  expect(landedRun.candidates_apply!.ticket_ids).toHaveLength(1);
+  // bareOrganizer's recordSpend stub bills nothing; every row still gets one, just null.
+  expect(runs.every((run) => run.spend_id === null)).toBe(true);
+});
+
+test("a join target that stops qualifying while the call is out is downgraded, not silently dropped", async () => {
+  // The payload offers `elsewhere` as a job Writer is on here; before the answer is even parsed,
+  // its ticket moves off Writer's desk, so the candidate set re-read at parse time no longer has
+  // it — the race ADR 0040 P1 fixes. `parseOrganizerResult` falls back to continue, and with no
+  // current plan in this session that still opens a new one; only the raw `candidates_apply` names
+  // `elsewhere` as what the model actually asked for, and `downgrade_reason` says why it lost it.
+  const answers: Array<JudgeResult | (() => JudgeResult)> = [];
+  const h = bareOrganizer(answers);
+  const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+  const reviewer = h.store.createBot({ name: "Reviewer", duties: "review", boundaries: "stay" });
+  const other = h.store.createGroup({ name: "别的组", members: [writer.bot.id, reviewer.bot.id] });
+  const elsewhere = h.store.openTask({ sessionId: other.id, title: "别的事" });
+  const ticket = h.store.createTicket({ taskId: elsewhere.id, title: "在做的活", status: "doing", worker: writer.bot.id });
+  const session = writer.direct_session.id;
+  const line = h.store.insertMessage({ sessionId: session, kind: "user", author: "user", body: "接着做别的组那件事" });
+  answers.push(() => {
+    h.store.db.run("UPDATE tickets SET status = 'done' WHERE id = ?", [ticket.id]);
+    return judged(JSON.stringify({ decision: "join", join_plan_id: elsewhere.id, plan: { goal: "别的事" }, tickets: [] }));
+  });
+  const landed = await h.organizer.organizeMessage(line);
+  expect(landed.taskId).not.toBe(elsewhere.id);
+  const run = h.store.organizerRunsForTask(elsewhere.id)[0]!;
+  expect(run.decision).toBe("continue");
+  expect(run.applied_task_id).not.toBe(elsewhere.id);
+  expect(run.candidates_apply).toMatchObject({ decision: "join", join_plan_id: elsewhere.id });
+  expect(run.candidates_payload.elsewhere_plan_ids).toContain(elsewhere.id);
+  expect(run.candidates_at_parse?.elsewhere_plan_ids).not.toContain(elsewhere.id);
+  expect(run.downgrade_reason).toContain(elsewhere.id);
 });
 
 test("a line asking to stop never puts a parked plan back to work; one that says to go on does", async () => {
@@ -885,6 +992,15 @@ test("a line asking to stop never puts a parked plan back to work; one that says
     expect(h.lines).toEqual([
       `[organizer] filing message ${line.id}: a line asking to stop would have reopened parked plan ${plan.id}, nothing filed`,
     ]);
+    // The call landed and its answer parsed; the run row says exactly why applying it was refused.
+    const run = h.store.organizerRunsForTask(plan.id)[0]!;
+    expect(run).toMatchObject({
+      applied: false,
+      reject_reason: `a line asking to stop would have reopened parked plan ${plan.id}`,
+      decision: "resume",
+      applied_task_id: null,
+    });
+    expect(run.candidates_apply).toMatchObject({ resume_plan_id: plan.id });
   }
   expect(h.store.listSpecRevisions(plan.id)).toHaveLength(revisions);
   expect(JSON.parse(h.store.getTask(plan.id).spec!).rules).toEqual(["用户叫停，没说继续之前不再做"]);
@@ -893,6 +1009,8 @@ test("a line asking to stop never puts a parked plan back to work; one that says
   answers.push(reopen(plan.id));
   expect(await h.organizer.organizeMessage(goOn)).toMatchObject({ taskId: plan.id });
   expect(h.store.getTask(plan.id).status).toBe("active");
+  const landedRun = h.store.organizerRunsForTask(plan.id)[0]!;
+  expect(landedRun).toMatchObject({ applied: true, reject_reason: null, applied_task_id: plan.id });
 });
 
 test("a settle files what the Bots handed over in a parked plan but leaves it parked", async () => {
@@ -913,6 +1031,10 @@ test("a settle files what the Bots handed over in a parked plan but leaves it pa
   expect(task.status).toBe("parked");
   expect(JSON.parse(task.spec!)).toMatchObject({ status: "parked", progress: { done: ["Shot 12 已交"] } });
   expect(h.lines).toEqual([`[organizer] plan ${plan.id}: the settle called it active; kept parked`]);
+  const run = h.store.organizerRunsForTask(plan.id)[0]!;
+  expect(run).toMatchObject({ mode: "settle", message_id: null, applied: true, reject_reason: null, applied_task_id: plan.id, decision: "continue" });
+  // It landed, but not all of it: the row says which part was held back, in the log line's words.
+  expect(run.held).toEqual(["the settle called it active; kept parked"]);
 });
 
 test("stop lines are told from lines that say to go on", () => {

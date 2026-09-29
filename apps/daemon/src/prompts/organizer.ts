@@ -545,21 +545,45 @@ export function parseOrganizerResult(
   let resumePlanId: string | null = null;
   let joinPlanId: string | null = null;
   const decisionRaw = typeof parsed.decision === "string" ? parsed.decision.trim().toLowerCase() : "";
+  // What the answer named, before the candidate-set checks below can downgrade it — but only where
+  // it bears on the decision it wrote: a resume target beside `resume`, a join target beside
+  // `join`, a message ticket on a message filing. The format asks for every field each time
+  // (「…或 null」), and a stray id beside `continue` kept here would put this run on that plan's
+  // debug trail as if the answer had asked for it.
+  const named = (value: unknown): string | null => (typeof value === "string" ? value.trim() || null : null);
+  const rawResumePlanId = ctx.mode === "message" && decisionRaw === "resume" ? named(parsed.resume_plan_id) : null;
+  const rawJoinPlanId = ctx.mode === "message" && decisionRaw === "join" ? named(parsed.join_plan_id) : null;
+  const rawMessageTicket = ctx.mode === "message" ? named(parsed.message_ticket) : null;
+  // Why the decision that applies is not the one the answer wrote; null when it is.
+  let downgradeReason: string | null = null;
   if (ctx.mode === "message") {
     if (decisionRaw === "new") decision = "new";
     else if (decisionRaw === "resume") {
-      const id = typeof parsed.resume_plan_id === "string" ? parsed.resume_plan_id.trim() : "";
-      if (ctx.recentPlanIds.has(id)) {
+      if (rawResumePlanId && ctx.recentPlanIds.has(rawResumePlanId)) {
         decision = "resume";
-        resumePlanId = id;
+        resumePlanId = rawResumePlanId;
+      } else {
+        // A target the payload offered can stop qualifying by the time the call returns and this set
+        // is re-read. Until ADR 0040 P1 fixes that race, the fallback to continue can still open a
+        // new plan when the session has none; the reason is what keeps it from happening silently.
+        downgradeReason = rawResumePlanId
+          ? `named resume target ${rawResumePlanId} is not (or no longer) a recent plan of this session; decision fell back to continue`
+          : "resume named no resume_plan_id; decision fell back to continue";
       }
     } else if (decisionRaw === "join") {
-      const id = typeof parsed.join_plan_id === "string" ? parsed.join_plan_id.trim() : "";
-      if (ctx.elsewherePlanIds?.has(id)) {
+      if (rawJoinPlanId && ctx.elsewherePlanIds?.has(rawJoinPlanId)) {
         decision = "join";
-        joinPlanId = id;
+        joinPlanId = rawJoinPlanId;
+      } else {
+        downgradeReason = rawJoinPlanId
+          ? `named join target ${rawJoinPlanId} is not (or no longer) a job the Bots here are on elsewhere; decision fell back to continue`
+          : "join named no join_plan_id; decision fell back to continue";
       }
+    } else if (decisionRaw && decisionRaw !== "continue") {
+      downgradeReason = `decision "${decisionRaw}" is not one of continue, new, resume, join; fell back to continue`;
     }
+  } else if (decisionRaw && decisionRaw !== "continue") {
+    downgradeReason = `a settle only continues; decision "${decisionRaw}" was ignored`;
   }
   const byName = new Map(ctx.roster.map((bot) => [bot.name.trim().toLowerCase(), bot.id]));
   const tickets: OrganizerTicketInput[] = [];
@@ -591,7 +615,17 @@ export function parseOrganizerResult(
     if (ULID.test(id) || NEW_TICKET.test(id)) messageTicket = id;
   }
   const checks = parseOrganizerChecks(parsed.checks, ctx.existingCheckIds ?? new Set());
-  return { decision, resumePlanId, joinPlanId, spec, tickets, messageTicket, checks };
+  return {
+    decision,
+    resumePlanId,
+    joinPlanId,
+    spec,
+    tickets,
+    messageTicket,
+    checks,
+    raw: { decision: decisionRaw, resumePlanId: rawResumePlanId, joinPlanId: rawJoinPlanId, messageTicket: rawMessageTicket },
+    downgradeReason,
+  };
 }
 
 function sameLines(a: readonly string[], b: readonly string[]): boolean {

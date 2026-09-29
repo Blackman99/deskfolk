@@ -32,7 +32,7 @@ function add(method: Route["method"], pattern: string, body?: Fields, required?:
   routes.push({ method, path: path(pattern), body, required, patch });
 }
 function get(pattern: string, query?: Fields, queryRequired?: string[]): void { routes.push({ method: "GET", path: path(pattern), query, queryRequired }); }
-get("(snapshot|settings|providers|bots|sessions|allow-rules|mcp-servers|skills|memories|routines|credential-operations)");
+get("(snapshot|settings|providers|bots|sessions|allow-rules|mcp-servers|skills|memories|routines|credential-operations|capabilities)");
 get("(providers|bots|sessions|attachments|requests|tasks)/:id");
 get("sessions/:id/(judgements|routes|composer-suggestions)");
 const pageLimit: Check = v => typeof v === "string" && /^[1-9][0-9]{0,2}$/.test(v) && Number(v) <= 200;

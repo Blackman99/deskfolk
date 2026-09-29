@@ -51,6 +51,7 @@ describe("schema", () => {
       "notification_push_config",
       "notification_retention_notice",
       "notifications",
+      "organizer_runs",
       "pending_keys",
       "profile_revisions",
       "providers",

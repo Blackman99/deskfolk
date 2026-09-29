@@ -389,6 +389,35 @@ describe("what the organizer answered", () => {
     expect(settled).toMatchObject({ decision: "continue", messageTicket: null });
   });
 
+  test("the raw picks keep a target only beside the decision that uses it, and every downgrade says why", () => {
+    const plan = { goal: "写一份周报" };
+    const read = (answer: Record<string, unknown>, mode: "message" | "settle" = "message") =>
+      parseOrganizerResult(JSON.stringify({ plan, ...answer }), { ...ctx, mode })!;
+    // The format asks for every id each time; one left beside `continue` is not a pick.
+    const stray = read({ decision: "continue", resume_plan_id: "01ARZ3NDEKTSV4RRFFQ69G5FB1", join_plan_id: "01ARZ3NDEKTSV4RRFFQ69G5FE1" });
+    expect(stray.raw).toEqual({ decision: "continue", resumePlanId: null, joinPlanId: null, messageTicket: null });
+    expect(stray.downgradeReason).toBeNull();
+    // A resume keeps its own target, not the join one beside it.
+    const resumed = read({ decision: "resume", resume_plan_id: "01ARZ3NDEKTSV4RRFFQ69G5FB1", join_plan_id: "01ARZ3NDEKTSV4RRFFQ69G5FE1" });
+    expect(resumed.raw).toMatchObject({ resumePlanId: "01ARZ3NDEKTSV4RRFFQ69G5FB1", joinPlanId: null });
+    expect(resumed.downgradeReason).toBeNull();
+    // A target that does not qualify is kept as asked for, with the reason it did not apply.
+    const lost = read({ decision: "resume", resume_plan_id: "01ARZ3NDEKTSV4RRFFQ69G5FB9" });
+    expect(lost).toMatchObject({ decision: "continue", resumePlanId: null, raw: { decision: "resume", resumePlanId: "01ARZ3NDEKTSV4RRFFQ69G5FB9" } });
+    expect(lost.downgradeReason).toContain("01ARZ3NDEKTSV4RRFFQ69G5FB9");
+    // Downgrades that never named a qualifying target say so too, instead of passing as continue.
+    expect(read({ decision: "resume" }).downgradeReason).toBe("resume named no resume_plan_id; decision fell back to continue");
+    expect(read({ decision: "join", join_plan_id: null }).downgradeReason).toBe("join named no join_plan_id; decision fell back to continue");
+    expect(read({ decision: "Later" })).toMatchObject({ decision: "continue", raw: { decision: "later" } });
+    expect(read({ decision: "Later" }).downgradeReason).toContain('"later"');
+    const settled = read({ decision: "resume", resume_plan_id: "01ARZ3NDEKTSV4RRFFQ69G5FB1", message_ticket: "new-1" }, "settle");
+    expect(settled).toMatchObject({ decision: "continue", raw: { decision: "resume", resumePlanId: null, messageTicket: null } });
+    expect(settled.downgradeReason).toContain('"resume"');
+    // Continue, and an answer that leaves the decision out (which reads as continue), downgrade nothing.
+    expect(read({}).downgradeReason).toBeNull();
+    expect(read({ decision: "continue" }, "settle").downgradeReason).toBeNull();
+  });
+
   test("join needs a plan the Bots here are on elsewhere, and only a message run joins", () => {
     const plan = { goal: "写一份周报" };
     expect(parseOrganizerResult(JSON.stringify({ decision: "join", join_plan_id: "01ARZ3NDEKTSV4RRFFQ69G5FE1", plan, message_ticket: "01ARZ3NDEKTSV4RRFFQ69G5FC1" }), ctx)).toMatchObject({

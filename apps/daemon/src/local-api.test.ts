@@ -9,6 +9,7 @@ import { memoryKeyStore } from "./secrets";
 import { noisePng } from "./test-images";
 import { warmDisplayAvatar } from "./avatar-display";
 import { Store } from "./store";
+import { SCHEMA_LEVEL } from "./store/schema-gate";
 import type { TrashMover } from "./workspace-trash";
 
 type Harness = {
@@ -311,6 +312,63 @@ describe("empty roster and settings", () => {
       theme: "system",
       wizard_complete: false,
     });
+  });
+
+  test("GET capabilities reports the engine level a fresh database opens at", async () => {
+    const h = await start();
+    const res = await fetch(`${h.origin}/v1/capabilities`, { headers: auth(h) });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: 0, features: [] });
+  });
+
+  test("GET debug organizer-runs reads a plan's runs, newest first, and requires a task_id", async () => {
+    const h = await start();
+    const bot = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const plan = h.store.openTask({ sessionId: bot.direct_session.id, title: "写周报" });
+    const older = h.store.recordOrganizerRun({
+      sessionId: bot.direct_session.id,
+      taskId: plan.id,
+      mode: "message",
+      messageId: null,
+      spendId: null,
+      rawAnswer: "我不知道",
+      failKind: "unparseable",
+      decision: null,
+      candidatesPayload: { recent_plan_ids: [], elsewhere_plan_ids: [], existing_check_ids: [] },
+      candidatesApply: null,
+      candidatesAtParse: { recent_plan_ids: [], elsewhere_plan_ids: [], existing_check_ids: [] },
+      downgradeReason: null,
+      applied: false,
+      rejectReason: "the answer did not read as a plan",
+      held: null,
+      appliedTaskId: null,
+      appliedTicketId: null,
+    });
+    const newer = h.store.recordOrganizerRun({
+      sessionId: bot.direct_session.id,
+      taskId: plan.id,
+      mode: "settle",
+      messageId: null,
+      spendId: null,
+      rawAnswer: '{"decision":"continue","plan":{"goal":"写周报"}}',
+      failKind: null,
+      decision: "continue",
+      candidatesPayload: { recent_plan_ids: [], elsewhere_plan_ids: [], existing_check_ids: [] },
+      candidatesApply: { decision: "continue", resume_plan_id: null, join_plan_id: null, ticket_ids: [], message_ticket: null, check_ids: [] },
+      candidatesAtParse: { recent_plan_ids: [], elsewhere_plan_ids: [], existing_check_ids: [] },
+      downgradeReason: null,
+      applied: true,
+      rejectReason: null,
+      held: null,
+      appliedTaskId: plan.id,
+      appliedTicketId: null,
+    });
+    const res = await fetch(`${h.origin}/v1/debug/organizer-runs?task_id=${plan.id}`, { headers: auth(h) });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ items: [newer, older] });
+
+    expect((await fetch(`${h.origin}/v1/debug/organizer-runs`, { headers: auth(h) })).status).toBe(422);
+    expect((await fetch(`${h.origin}/v1/debug/organizer-runs?task_id=not-a-ulid`, { headers: auth(h) })).status).toBe(422);
   });
 
   test("patching theme to dark or light succeeds, invalid theme is 422", async () => {

@@ -8,6 +8,7 @@
  *   --crash-on-call     exit on tools/call
  *   --github            GitHub-shaped tools and instructions
  *   --media             Image and video tools with English descriptions
+ *   --video-polls=N     With --media: each job answers check_video with "running" N times, then "completed"
  *   --http              Streamable HTTP fixture; prints { port } then serves JSON-RPC
  *   --http-quiet-sse    Answer tools/call with an SSE stream that never sends a result
  */
@@ -19,6 +20,11 @@ const modernOnly = flags.has("--modern-only");
 const crashOnCall = flags.has("--crash-on-call");
 const github = flags.has("--github");
 const media = flags.has("--media");
+// A video job that takes a while, the way a real generator's does: without the flag it is done on
+// the first check, and every job is the one `fixture-video`.
+const videoPolls = Number(process.argv.find((arg) => arg.startsWith("--video-polls="))?.slice("--video-polls=".length) ?? 0);
+const videoChecks = new Map<string, number>();
+let videoJobs = 0;
 
 const tools = media
   ? [
@@ -174,11 +180,17 @@ function handle(msg: {
         : {};
     const modern = hasModernMeta(params);
     if (media && tools.some((tool) => tool.name === name)) {
-      const text = name === "submit_video"
-        ? JSON.stringify({ job_id: "fixture-video", status: "pending" })
-        : name === "check_video"
-          ? JSON.stringify({ job_id: args.job_id, status: "completed" })
-          : `generate_image: ${String(args.prompt ?? "")}`;
+      let text: string;
+      if (name === "submit_video") {
+        text = JSON.stringify({ job_id: videoPolls > 0 ? `fixture-video-${++videoJobs}` : "fixture-video", status: "pending" });
+      } else if (name === "check_video") {
+        const job = String(args.job_id ?? "");
+        const checks = (videoChecks.get(job) ?? 0) + 1;
+        videoChecks.set(job, checks);
+        text = JSON.stringify({ job_id: args.job_id, status: checks > videoPolls ? "completed" : "running" });
+      } else {
+        text = `generate_image: ${String(args.prompt ?? "")}`;
+      }
       send({
         jsonrpc: "2.0",
         id,

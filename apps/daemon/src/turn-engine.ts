@@ -158,13 +158,13 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       return creds ? routing.routingTarget(creds) : null;
     },
     recordSpend({ sessionId, target, usage, responded }) {
-      spend.recordResponseSpend({
+      return spend.recordResponseSpend({
         kind: "organize",
         owner: spend.spendOwner(sessionId, null),
         target: spend.callOf(target),
         usage,
         responded,
-      });
+      })?.id ?? null;
     },
     draining: () => Boolean(options.admission?.draining),
     settleQuietMs: options.settleQuietMs,

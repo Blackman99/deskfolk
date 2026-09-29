@@ -121,3 +121,13 @@ test("a posted message may point at workspace paths, as a list of non-empty stri
   expect(() => validateBusiness(post({ body: "", paths: [""] }))).toThrow();
   expect(() => validateBusiness(post({ body: "", paths: ["x".repeat(4097)] }))).toThrow();
 });
+
+test("a phone can read capabilities: bare GET is whitelisted, a query is not", () => {
+  expect(() => validateBusiness({ v: 1, id, method: "GET", path: "/v1/capabilities" })).not.toThrow();
+  expect(() => validateBusiness({ v: 1, id, method: "GET", path: "/v1/capabilities", query: { engine_level: "1" } })).toThrow();
+});
+
+test("the organizer's own debug trail is never on the remote whitelist, task_id or not", () => {
+  expect(() => validateBusiness({ v: 1, id, method: "GET", path: "/v1/debug/organizer-runs" })).toThrow();
+  expect(() => validateBusiness({ v: 1, id, method: "GET", path: "/v1/debug/organizer-runs", query: { task_id: id } })).toThrow();
+});

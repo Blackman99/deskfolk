@@ -20,7 +20,7 @@
  */
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { USER_MEMBER, type AcceptanceCheck, type AcceptanceCheckOutcome, type Message, type ThinkingLevel, type Ticket, type Turn } from "@real-bot/protocol";
+import { USER_MEMBER, type AcceptanceCheck, type AcceptanceCheckOutcome, type Message, type OrganizerRun, type ThinkingLevel, type Ticket, type Turn } from "@real-bot/protocol";
 import { NO_ABLATION, type Ablation } from "./ablation";
 import { describeCheck } from "./acceptance-eval";
 import type { CompletionsClient, MappedUsage } from "./completions";
@@ -29,6 +29,40 @@ import { atomicWrite } from "./file-integrity";
 import { holdSettle, ORGANIZER_SYSTEM, organizerPayload, parseOrganizerResult } from "./prompts/organizer";
 import { parsePlanSpec, PLAN_MAP_FILE, TICKET_FILE, type OrganizerResult, type PlanSpec, type Store, type Task } from "./store";
 import { classifyPath } from "./workspace-paths";
+
+/**
+ * Everything `call()` knows about one organizer call before its filing's fate is decided: the
+ * model's raw answer, what it could have picked from and what it actually picked. The caller adds
+ * the last piece — whether the filing landed, and where — and hands the whole thing to
+ * `finishOrganizerRun` exactly once (`store.recordOrganizerRun` has no update path).
+ */
+type PendingOrganizerRun = {
+  sessionId: string;
+  taskId: string | null;
+  mode: "message" | "settle";
+  messageId: string | null;
+  spendId: string | null;
+  rawAnswer: string | null;
+  failKind: string | null;
+  decision: OrganizerRun["decision"];
+  candidatesPayload: OrganizerRun["candidates_payload"];
+  candidatesApply: OrganizerRun["candidates_apply"];
+  candidatesAtParse: OrganizerRun["candidates_at_parse"];
+  downgradeReason: string | null;
+};
+
+/** Records one organizer run. Best-effort, like the spend ledger: a write that fails does not undo the filing it describes. */
+function finishOrganizerRun(
+  store: Store,
+  pending: PendingOrganizerRun,
+  outcome: { applied: boolean; rejectReason: string | null; held: string[] | null; appliedTaskId: string | null; appliedTicketId: string | null },
+): void {
+  try {
+    store.recordOrganizerRun({ ...pending, ...outcome });
+  } catch {
+    // observability only; the filing it describes already happened (or didn't) either way
+  }
+}
 
 export type OrganizerRouting = {
   baseUrl: string;
@@ -44,7 +78,8 @@ export type OrganizerDeps = {
   completions: CompletionsClient;
   /** The default endpoint's default model, resolved when a call is about to be made. */
   routing: () => Promise<OrganizerRouting | null>;
-  recordSpend: (input: { sessionId: string; target: OrganizerRouting; usage: MappedUsage | null; responded: boolean }) => void;
+  /** Returns the ledger row's id it billed the call as, or null when nothing was billable (see `engine/spend.ts`). */
+  recordSpend: (input: { sessionId: string; target: OrganizerRouting; usage: MappedUsage | null; responded: boolean }) => string | null;
   draining: () => boolean;
   /** How long a plan has to be quiet after its last turn before it is filed. Tests shorten it. */
   settleQuietMs?: number;
@@ -158,6 +193,13 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     }
   }
 
+  /**
+   * One organizer call, message or settle. Returns null for every way it can come to nothing —
+   * no routing, a throw, a failed or truncated or unreadable answer — and records why in
+   * `organizer_runs` for all but the first (there was no call yet to record). A parsed answer is
+   * not itself a filing: the caller still decides whether it applies, and records that outcome
+   * itself once it knows it, onto the `pending` row this returns.
+   */
   async function call(input: {
     mode: "message" | "settle";
     sessionId: string;
@@ -165,7 +207,7 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     current: Task | null;
     /** A settle's reading of whether you said anything since the last version. */
     userSpoke?: boolean;
-  }): Promise<ReturnType<typeof parseOrganizerResult>> {
+  }): Promise<{ parsed: OrganizerResult; pending: PendingOrganizerRun } | null> {
     const routing = await deps.routing();
     if (!routing || deps.draining()) return null;
     const payload = organizerPayload(store, {
@@ -178,6 +220,17 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     });
     // Which filing this was, for the line that says why it came to nothing.
     const what = input.mode === "message" ? `message ${input.message?.id}` : `plan ${input.current?.id}`;
+    const base = {
+      sessionId: input.sessionId,
+      taskId: input.current?.id ?? null,
+      mode: input.mode,
+      messageId: input.message?.id ?? null,
+      candidatesPayload: {
+        recent_plan_ids: payload.recent_plans.map((plan) => plan.id),
+        elsewhere_plan_ids: payload.elsewhere_plans.map((plan) => plan.id),
+        existing_check_ids: payload.current_plan?.checks.map((check) => check.id) ?? [],
+      },
+    };
     let result;
     try {
       result = await deps.completions.judge({
@@ -193,11 +246,18 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
         maxTokens: ORGANIZER_MAX_TOKENS,
       });
     } catch (error) {
-      log(`[organizer] filing ${what}: the call threw, nothing filed: ${error instanceof Error ? error.message : String(error)}`);
+      const message = error instanceof Error ? error.message : String(error);
+      log(`[organizer] filing ${what}: the call threw, nothing filed: ${message}`);
+      finishOrganizerRun(
+        store,
+        { ...base, spendId: null, rawAnswer: null, failKind: "call_error", decision: null, candidatesApply: null, candidatesAtParse: null, downgradeReason: null },
+        { applied: false, rejectReason: `the call threw: ${message}`, held: null, appliedTaskId: null, appliedTicketId: null },
+      );
       return null;
     }
+    let spendId: string | null = null;
     try {
-      deps.recordSpend({
+      spendId = deps.recordSpend({
         sessionId: input.sessionId,
         target: routing,
         usage: result.usage,
@@ -210,22 +270,69 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     // from the board, exactly like one that has not been tried.
     if (result.failKind && result.failKind !== "incomplete") {
       log(`[organizer] filing ${what}: the call failed (${result.failKind}), nothing filed`);
+      finishOrganizerRun(
+        store,
+        { ...base, spendId, rawAnswer: result.content ?? null, failKind: result.failKind, decision: null, candidatesApply: null, candidatesAtParse: null, downgradeReason: null },
+        { applied: false, rejectReason: `the call failed (${result.failKind})`, held: null, appliedTaskId: null, appliedTicketId: null },
+      );
       return null;
     }
     // A cut-off plan is not a shorter plan: its tickets and progress would be whatever fit.
     if (result.truncated) {
       log(`[organizer] filing ${what}: the answer stopped at the ${ORGANIZER_MAX_TOKENS}-token cap, nothing filed`);
+      finishOrganizerRun(
+        store,
+        { ...base, spendId, rawAnswer: result.content ?? null, failKind: "truncated", decision: null, candidatesApply: null, candidatesAtParse: null, downgradeReason: null },
+        { applied: false, rejectReason: `the answer stopped at the ${ORGANIZER_MAX_TOKENS}-token cap`, held: null, appliedTaskId: null, appliedTicketId: null },
+      );
       return null;
     }
+    // Read once, right before validating the answer against them, so the run row can show whether
+    // they had shifted since the payload was built (the resume/join race ADR 0040 P1 fixes: a
+    // target that stops qualifying while the call is out falls back to continue).
+    const recentPlanIds = new Set(store.sessionRecentTasks(input.sessionId).map((task) => task.id));
+    const elsewherePlanIds = new Set(input.mode === "message" ? store.elsewherePlans(input.sessionId).map((task) => task.id) : []);
+    const existingCheckIds = new Set(input.current ? store.listChecks(input.current.id).map((check) => check.id) : []);
+    const candidatesAtParse: OrganizerRun["candidates_at_parse"] = {
+      recent_plan_ids: [...recentPlanIds],
+      elsewhere_plan_ids: [...elsewherePlanIds],
+      existing_check_ids: [...existingCheckIds],
+    };
     const parsed = parseOrganizerResult(result.content ?? "", {
       mode: input.mode,
-      recentPlanIds: new Set(store.sessionRecentTasks(input.sessionId).map((task) => task.id)),
-      elsewherePlanIds: new Set(input.mode === "message" ? store.elsewherePlans(input.sessionId).map((task) => task.id) : []),
+      recentPlanIds,
+      elsewherePlanIds,
       roster: store.listBots().map((bot) => ({ id: bot.id, name: bot.name })),
-      existingCheckIds: new Set(input.current ? store.listChecks(input.current.id).map((check) => check.id) : []),
+      existingCheckIds,
     });
-    if (!parsed) log(`[organizer] filing ${what}: the answer did not read as a plan, nothing filed`);
-    return parsed;
+    if (!parsed) {
+      log(`[organizer] filing ${what}: the answer did not read as a plan, nothing filed`);
+      finishOrganizerRun(
+        store,
+        { ...base, spendId, rawAnswer: result.content ?? null, failKind: "unparseable", decision: null, candidatesApply: null, candidatesAtParse, downgradeReason: null },
+        { applied: false, rejectReason: "the answer did not read as a plan", held: null, appliedTaskId: null, appliedTicketId: null },
+      );
+      return null;
+    }
+    const pending: PendingOrganizerRun = {
+      ...base,
+      spendId,
+      rawAnswer: result.content ?? null,
+      failKind: null,
+      decision: parsed.decision,
+      // The answer's own picks, before validation — what it actually asked for, not what survived.
+      candidatesApply: {
+        decision: parsed.raw?.decision ?? "",
+        resume_plan_id: parsed.raw?.resumePlanId ?? null,
+        join_plan_id: parsed.raw?.joinPlanId ?? null,
+        ticket_ids: parsed.tickets.map((ticket) => ticket.id),
+        message_ticket: parsed.raw?.messageTicket ?? null,
+        check_ids: (parsed.checks ?? []).map((check) => check.id),
+      },
+      candidatesAtParse,
+      downgradeReason: parsed.downgradeReason ?? null,
+    };
+    return { parsed, pending };
   }
 
   /** The parked plan an answer would put back to work: the one it resumes, joins or continues. */
@@ -244,11 +351,16 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     }
   }
 
-  /** A plan called done over open tickets stays active; the log says which tickets kept it. */
-  function noteHeldOpen(taskId: string, held: readonly Ticket[]): void {
-    if (held.length === 0) return;
+  /**
+   * A plan called done over open tickets stays active; the log says which tickets kept it, and the
+   * same note (without the `[organizer] plan …:` prefix) goes on the run row's `held`.
+   */
+  function noteHeldOpen(taskId: string, held: readonly Ticket[]): string[] {
+    if (held.length === 0) return [];
     const which = held.map((ticket) => `${String(ticket.seq).padStart(2, "0")} ${ticket.status}`).join(", ");
-    log(`[organizer] plan ${taskId}: called done while tickets are still open (${which}); kept active`);
+    const note = `called done while tickets are still open (${which}); kept active`;
+    log(`[organizer] plan ${taskId}: ${note}`);
+    return [note];
   }
 
   function shouldFile(message: Message): boolean {
@@ -269,13 +381,21 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     const current = store.sessionCurrentTask(message.session_id);
     const fallback = { taskId: current?.id ?? null, ticketId: null };
     if (deps.draining() || ablation.has("organize-message") || !shouldFile(message)) return fallback;
-    const parsed = await call({ mode: "message", sessionId: message.session_id, message, current });
-    if (!parsed) return fallback;
+    const outcome = await call({ mode: "message", sessionId: message.session_id, message, current });
+    if (!outcome) return fallback;
+    const { parsed, pending } = outcome;
     // 「你私聊里的没停」 once came back as 「私聊里这件还没停，接着做完」 and put a stopped video
     // job back to work: a line asking to stop never reopens a parked plan, whatever the answer says.
     const reopened = parkedPlanReopened(parsed, current);
     if (reopened && asksToStop(message.body)) {
       log(`[organizer] filing message ${message.id}: a line asking to stop would have reopened parked plan ${reopened}, nothing filed`);
+      finishOrganizerRun(store, pending, {
+        applied: false,
+        rejectReason: `a line asking to stop would have reopened parked plan ${reopened}`,
+        held: null,
+        appliedTaskId: null,
+        appliedTicketId: null,
+      });
       return fallback;
     }
     let applied;
@@ -289,10 +409,19 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
         }),
       );
     } catch (error) {
-      log(`[organizer] could not apply the filing of ${message.id}: ${error instanceof Error ? error.message : String(error)}`);
+      const messageText = error instanceof Error ? error.message : String(error);
+      log(`[organizer] could not apply the filing of ${message.id}: ${messageText}`);
+      finishOrganizerRun(store, pending, { applied: false, rejectReason: `could not apply the filing: ${messageText}`, held: null, appliedTaskId: null, appliedTicketId: null });
       return fallback;
     }
-    noteHeldOpen(applied.task.id, applied.heldOpenBy);
+    const heldNotes = noteHeldOpen(applied.task.id, applied.heldOpenBy);
+    finishOrganizerRun(store, pending, {
+      applied: true,
+      rejectReason: null,
+      held: heldNotes.length > 0 ? heldNotes : null,
+      appliedTaskId: applied.task.id,
+      appliedTicketId: applied.messageTicketId,
+    });
     if (applied.awaitingEvidence) awaitingEvidence.add(applied.task.id);
     else awaitingEvidence.delete(applied.task.id);
     renderMirrors(applied.task.id);
@@ -341,23 +470,32 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     const userSpoke = store.userSpokeSince(taskId, before ? since : "");
     inFlight.add(taskId);
     try {
-      const parsed = await call({ mode: "settle", sessionId: task.session_id, message: null, current: task, userSpoke });
-      if (!parsed) return false;
-      const lastTurn = store.db
-        .query<{ id: string }, [string]>(`SELECT id FROM turns WHERE task_id = ? ORDER BY updated_at DESC, id DESC LIMIT 1`)
-        .get(taskId);
-      // A settle files what the Bots handed over; putting a parked plan back to work is yours to say.
-      const reopens = task.status === "parked" && parsed.spec.status === "active";
-      if (reopens) log(`[organizer] plan ${taskId}: the settle called it active; kept parked`);
-      const kept = reopens ? { ...parsed, spec: { ...parsed.spec, status: "parked" as const } } : parsed;
-      // The evidence settle is only for re-reading checks that just ran; it must not also let this
-      // pass add, edit or remove checks of its own — that would never stop giving itself one more look.
-      const answer = opts?.evidence ? { ...kept, checks: undefined } : kept;
-      const { result, held } = holdSettle(
-        { ...answer, decision: "continue", resumePlanId: null, messageTicket: null },
-        { before, tickets: store.listTickets(taskId), userSpoke },
-      );
+      const outcome = await call({ mode: "settle", sessionId: task.session_id, message: null, current: task, userSpoke });
+      if (!outcome) return false;
+      const { parsed, pending } = outcome;
+      // Everything from here on can throw (the lastTurn lookup, holdSettle, the apply itself), and
+      // every path — success or failure — must finish this pending row exactly once: a throw that
+      // slipped past `finishOrganizerRun` left it stuck open, and a second write onto an already-
+      // finished row would leave two contradictory ones for the same call (there is no update path).
+      let ok = false;
+      let rejectReason: string | null = null;
+      let held: string[] | null = null;
+      let appliedTaskId: string | null = null;
       try {
+        const lastTurn = store.db
+          .query<{ id: string }, [string]>(`SELECT id FROM turns WHERE task_id = ? ORDER BY updated_at DESC, id DESC LIMIT 1`)
+          .get(taskId);
+        // A settle files what the Bots handed over; putting a parked plan back to work is yours to say.
+        const reopens = task.status === "parked" && parsed.spec.status === "active";
+        if (reopens) log(`[organizer] plan ${taskId}: the settle called it active; kept parked`);
+        const kept = reopens ? { ...parsed, spec: { ...parsed.spec, status: "parked" as const } } : parsed;
+        // The evidence settle is only for re-reading checks that just ran; it must not also let this
+        // pass add, edit or remove checks of its own — that would never stop giving itself one more look.
+        const answer = opts?.evidence ? { ...kept, checks: undefined } : kept;
+        const { result, held: heldFromSettle } = holdSettle(
+          { ...answer, decision: "continue", resumePlanId: null, messageTicket: null },
+          { before, tickets: store.listTickets(taskId), userSpoke },
+        );
         const applied = store.transaction(() =>
           store.applyOrganizerResult({
             sessionId: task.session_id!,
@@ -367,20 +505,33 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
             ifRevision: revision,
           }),
         );
-        for (const what of held) log(`[organizer] plan ${taskId}: nothing new from the user since the last version; ${what}`);
-        noteHeldOpen(taskId, applied.heldOpenBy);
+        for (const what of heldFromSettle) log(`[organizer] plan ${taskId}: nothing new from the user since the last version; ${what}`);
+        const ticketHeldNotes = noteHeldOpen(taskId, applied.heldOpenBy);
+        const notes = [
+          ...(reopens ? ["the settle called it active; kept parked"] : []),
+          ...heldFromSettle.map((what) => `nothing new from the user since the last version; ${what}`),
+          ...ticketHeldNotes,
+        ];
+        held = notes.length > 0 ? notes : null;
         if (applied.awaitingEvidence) awaitingEvidence.add(taskId);
         else awaitingEvidence.delete(taskId);
+        appliedTaskId = applied.task.id;
+        ok = true;
       } catch (error) {
         // A line or an edit of yours moved the plan while this settle was out: its answer was built
         // on the older version and would undo that. Tickets' files still show the handover.
         if (error instanceof HttpError && error.status === 409) {
           log(`[organizer] plan ${taskId}: the plan changed while it was being settled; nothing filed`);
-          return false;
+          rejectReason = "the plan changed while it was being settled";
+        } else {
+          const messageText = error instanceof Error ? error.message : String(error);
+          log(`[organizer] could not apply the settling of ${taskId}: ${messageText}`);
+          rejectReason = `could not apply the settling: ${messageText}`;
         }
-        log(`[organizer] could not apply the settling of ${taskId}: ${error instanceof Error ? error.message : String(error)}`);
-        return false;
+      } finally {
+        finishOrganizerRun(store, pending, { applied: ok, rejectReason, held, appliedTaskId, appliedTicketId: null });
       }
+      if (!ok) return false;
       renderMirrors(taskId);
       return true;
     } finally {

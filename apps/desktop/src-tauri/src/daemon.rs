@@ -7,9 +7,9 @@ use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 
 pub fn spawn(resources: &std::path::Path) -> Option<Child> {
-    let mut cmd = if cfg!(debug_assertions)
-        || std::env::var("REAL_BOT_SOURCE_DAEMON").as_deref() == Ok("1")
-    {
+    let is_source_daemon = cfg!(debug_assertions)
+        || std::env::var("REAL_BOT_SOURCE_DAEMON").as_deref() == Ok("1");
+    let mut cmd = if is_source_daemon {
         let (bun, main_ts, cwd) = launch_spec()?;
         let mut cmd = Command::new(bun);
         if watch_daemon() {
@@ -29,9 +29,24 @@ pub fn spawn(resources: &std::path::Path) -> Option<Child> {
     let channel = super::remote_setup::prepare_channel(&mut cmd)?;
     #[cfg(windows)]
     suppress_console_window(&mut cmd);
-    cmd.stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::inherit());
+    cmd.stdin(Stdio::null()).stdout(Stdio::null());
+    // Only a source daemon THIS WINDOW spawns gets this treatment — `pnpm dev`'s usual daemon is
+    // pnpm's own child, never passes through here, and is unchanged: its stderr is still whatever
+    // pnpm gave it (the terminal `pnpm dev` runs in). Even here, "inherit was /dev/null" is only
+    // true when the window itself has no console (launched from Finder, or a script that redirected
+    // its own output away) — under `tauri dev` the window's stderr is a pipe back to the tauri
+    // CLI's terminal, so for that launch this instead MOVES already-visible output into the file
+    // below. Either way the point holds: every `[organizer]` line `organizer.ts` logs when a filing
+    // comes to nothing was easy to lose (ADR 0040 P0's observability), and now always lands somewhere
+    // durable. A packaged build's compiled daemon keeps inheriting stderr, unchanged. Rotation (see
+    // `dev_stderr_log`) is only checked here, at spawn: a `bun --watch` daemon that runs for a long
+    // stretch without this window restarting it keeps appending past the cap until it does. A file
+    // that failed to open — an unwritable data dir — falls back to the same inherited behavior
+    // rather than losing the daemon over a log.
+    match is_source_daemon.then(|| dev_stderr_log(&super::local_api::data_dir())).flatten() {
+        Some(file) => cmd.stderr(file),
+        None => cmd.stderr(Stdio::inherit()),
+    };
     if let Ok(dir) = std::env::var("REAL_BOT_DATA_DIR") {
         cmd.env("REAL_BOT_DATA_DIR", dir);
     }
@@ -41,6 +56,30 @@ pub fn spawn(resources: &std::path::Path) -> Option<Child> {
     #[cfg(windows)]
     end_with_this_process(&child);
     Some(child)
+}
+
+/// Where the source daemon's raw stderr goes in development: `daemon.log` (`startup-log.ts`) is a
+/// curated line per start, refusal and fatal error, not this — this is everything else, unfiltered.
+const DEV_STDERR_LOG_NAME: &str = "daemon-dev.stderr.log";
+/// The previous run's log, kept once past the size cap; the one before that is dropped.
+const DEV_STDERR_LOG_ROTATED_NAME: &str = "daemon-dev.stderr.log.1";
+/// Large enough to hold a `bun --watch` restart loop's worth of warnings, small enough to open in
+/// an editor without thinking about it.
+const DEV_STDERR_LOG_MAX_BYTES: u64 = 2 * 1024 * 1024;
+
+/// Opens the dev daemon's stderr file, rotating it first if the last run left it over the cap.
+/// `None` on any failure (an unwritable data dir, mainly) — the caller falls back to inheriting.
+fn dev_stderr_log(data_dir: &std::path::Path) -> Option<std::fs::File> {
+    std::fs::create_dir_all(data_dir).ok()?;
+    let path = data_dir.join(DEV_STDERR_LOG_NAME);
+    if std::fs::metadata(&path).map(|meta| meta.len()).unwrap_or(0) > DEV_STDERR_LOG_MAX_BYTES {
+        let _ = std::fs::rename(&path, data_dir.join(DEV_STDERR_LOG_ROTATED_NAME));
+    }
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .ok()
 }
 
 /// Windows has no process group that dies with its leader, so a window killed outright (Task
@@ -274,5 +313,54 @@ mod tests {
             which_candidates("bun.exe", true, None),
             vec!["bun.exe".to_string()]
         );
+    }
+
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static UNIQUE: AtomicU64 = AtomicU64::new(0);
+
+    fn temp_dir() -> PathBuf {
+        let n = UNIQUE.fetch_add(1, Ordering::SeqCst);
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join("independent-runtime-tests")
+            .join(format!("daemon-{}-{n}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn dev_stderr_log_opens_a_fresh_file_and_keeps_appending() {
+        let dir = temp_dir();
+        dev_stderr_log(&dir).unwrap();
+        std::fs::write(dir.join(DEV_STDERR_LOG_NAME), "first line\n").unwrap();
+        // Opening again (as the next `spawn()` would) appends rather than truncating: a restart
+        // loop's earlier output stays readable until the file actually earns rotation.
+        use std::io::Write;
+        write!(dev_stderr_log(&dir).unwrap(), "second line\n").unwrap();
+        let text = std::fs::read_to_string(dir.join(DEV_STDERR_LOG_NAME)).unwrap();
+        assert_eq!(text, "first line\nsecond line\n");
+        assert!(!dir.join(DEV_STDERR_LOG_ROTATED_NAME).is_file());
+    }
+
+    #[test]
+    fn dev_stderr_log_rotates_once_past_the_cap() {
+        let dir = temp_dir();
+        let path = dir.join(DEV_STDERR_LOG_NAME);
+        std::fs::write(&path, vec![b'x'; (DEV_STDERR_LOG_MAX_BYTES + 1) as usize]).unwrap();
+        dev_stderr_log(&dir).unwrap();
+        assert!(dir.join(DEV_STDERR_LOG_ROTATED_NAME).is_file(), "the oversized file should have moved aside");
+        // The freshly opened file starts empty, not appended to the content that just moved aside.
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "");
+    }
+
+    #[test]
+    fn dev_stderr_log_leaves_a_small_file_alone() {
+        let dir = temp_dir();
+        let path = dir.join(DEV_STDERR_LOG_NAME);
+        std::fs::write(&path, "small\n").unwrap();
+        dev_stderr_log(&dir).unwrap();
+        assert!(!dir.join(DEV_STDERR_LOG_ROTATED_NAME).is_file());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "small\n");
     }
 }

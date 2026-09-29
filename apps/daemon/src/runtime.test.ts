@@ -1,8 +1,10 @@
 import { chmodSync, existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
 import { LOCAL_API_BIND, LOCAL_API_NAME } from "@real-bot/protocol";
+import { stateDbPath } from "./descriptor";
 import { startRuntime, type RuntimeHandle } from "./runtime";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";
@@ -19,6 +21,16 @@ afterEach(async () => {
     if (dir) rmSync(dir, { recursive: true, force: true });
   }
 });
+
+/** The persisted shutdown flag, through a separate readonly handle, synchronously. */
+function shutdownFlag(dataDir: string): string | null {
+  const probe = new Database(stateDbPath(dataDir), { readonly: true });
+  try {
+    return probe.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'last_shutdown'").get()?.value ?? null;
+  } finally {
+    probe.close();
+  }
+}
 
 async function start(overrides: Parameters<typeof startRuntime>[0] extends infer T ? Partial<T> : never = {}) {
   const dataDir = mkdtempSync(join(tmpdir(), "real-bot-"));
@@ -58,6 +70,59 @@ describe("local API runtime", () => {
     expect(body.token).toBe(rt.token);
     expect(body.token.length).toBeGreaterThanOrEqual(64);
     expect(Number.isNaN(Date.parse(body.started_at))).toBe(false);
+  });
+
+  test("a normal stop records a clean shutdown; the next boot reads it before resetting to crash", async () => {
+    const rt = await start();
+    const stopped = rt.stop();
+    // Written before stop() awaits anything, so a kill that lands mid-shutdown still reads as clean.
+    expect(shutdownFlag(rt.dataDir)).toBe("clean");
+    await stopped;
+    const reopened = new Store({ filename: stateDbPath(rt.dataDir) });
+    expect(reopened.previousShutdown).toBe("clean");
+    reopened.close();
+  });
+
+  test("a process that never calls stop leaves the flag at crash for the next boot", async () => {
+    const rt = await start();
+    // Simulates a crash without disturbing the live runtime: a real crash kills the whole process,
+    // it does not leave this same runtime's engine/scheduler/terminals running against a store this
+    // test closed out from under them (closing `rt.store` directly here used to abort `stop()`
+    // partway through at `quiesce.close()`, on the now-closed store, which then left the engine's
+    // and scheduler's timers running into later test files). Read the persisted flag through a
+    // separate handle instead, and let afterEach's `stop()` shut this runtime down normally.
+    expect(shutdownFlag(rt.dataDir)).toBe("crash");
+  });
+
+  test("POST /v1/runtime/quit records a clean shutdown before its stop() awaits anything", async () => {
+    // Quit calls onQuit, then books stop() on a zero-delay timer. A timer booked from onQuit fires
+    // first, so this test's own stop() is the one that starts the shutdown, and the flag is read while
+    // that shutdown has done nothing but run its first synchronous statements: the window's quit
+    // handler kills the daemon 200ms after asking, so a write placed after anything slow in stop()
+    // would lose that race and the next boot would read a crash.
+    // Assigned from the timer below; typed by cast so the checks after it are not narrowed away.
+    let stopping = undefined as Promise<void> | undefined;
+    let flagAtStop = undefined as string | null | undefined;
+    const rt: RuntimeHandle = await start({
+      onQuit: () => {
+        setTimeout(() => {
+          const p = rt.stop();
+          flagAtStop = shutdownFlag(rt.dataDir);
+          stopping = p;
+        }, 0);
+      },
+    });
+    const res = await fetch(`${rt.origin}/v1/runtime/quit`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${rt.token}` },
+    });
+    expect(res.status).toBe(204);
+    while (!stopping) await Bun.sleep(1);
+    expect(flagAtStop).toBe("clean");
+    await stopping;
+    const reopened = new Store({ filename: stateDbPath(rt.dataDir) });
+    expect(reopened.previousShutdown).toBe("clean");
+    reopened.close();
   });
 
   test("GET /v1/runtime requires a bearer token", async () => {

@@ -157,7 +157,12 @@ export function createTools(deps: ToolsDeps): Tools {
         result = await dispatchTool(turn, live, call.name, args, streamId);
         publish({ event: "turn.tool", occurred_at: occurred(), turn_id: turnId, id: call.id,
           name: call.name, phase: "exited", duration_ms: Date.now() - startedAt,
-          exit_code: typeof result.data?.exit_code === "number" ? result.data.exit_code : null });
+          exit_code: typeof result.data?.exit_code === "number" ? result.data.exit_code : null,
+          // How it came back, unless it is still waiting on an approval or an answer: a refusal
+          // (bad arguments, a draining runtime) is known here, whether or not another hop follows.
+          ...(result.waitApproval || result.waitAsk
+            ? {}
+            : { ok: result.ok, ...(result.ok || !result.error ? {} : { error_code: result.error.code }) }) });
         if (!result.waitApproval) recordRun(turnId, live, call.name, args, result);
       }
       if (!active(turnId, live)) return "wait";

@@ -29,7 +29,7 @@ export type SpendTracker = {
     target: CallTarget;
     usage: MappedUsage | null;
     responded: boolean;
-  }) => void;
+  }) => Spend | null;
   recordSpend: (
     kind: "turn",
     turnId: string,
@@ -47,7 +47,7 @@ export type SpendTracker = {
     target: CallTarget;
     usage: MappedUsage | null;
     missing: Spend["missing_reason"];
-  }) => void;
+  }) => Spend;
 };
 
 export function createSpend(deps: SpendDeps): SpendTracker {
@@ -124,10 +124,10 @@ export function createSpend(deps: SpendDeps): SpendTracker {
     target: CallTarget;
     usage: MappedUsage | null;
     responded: boolean;
-  }): void {
+  }): Spend | null {
     const hasDigits = usageHasDigits(input.usage);
-    if (!hasDigits && !input.responded) return;
-    writeSpend({
+    if (!hasDigits && !input.responded) return null;
+    return writeSpend({
       kind: input.kind,
       owner: input.owner,
       turnId: input.turnId ?? null,
@@ -170,7 +170,7 @@ export function createSpend(deps: SpendDeps): SpendTracker {
     target: CallTarget;
     usage: MappedUsage | null;
     missing: Spend["missing_reason"];
-  }): void {
+  }): Spend {
     const row = store.insertSpend({
       kind: input.kind,
       sessionId: input.owner.sessionId,
@@ -193,6 +193,7 @@ export function createSpend(deps: SpendDeps): SpendTracker {
       missingReason: input.missing,
     });
     publishSpend(row);
+    return row;
   }
 
   return { callOf, spendOwner, usageHasDigits, recordResponseSpend, recordSpend, writeSpend };

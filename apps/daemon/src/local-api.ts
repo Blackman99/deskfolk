@@ -330,7 +330,10 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
     scope.guard?.();
     const url = new URL(request.url);
     validateRequestPath(url.pathname + url.search);
-    if (!url.pathname.startsWith("/v1/") || url.pathname.startsWith("/v1/runtime")) {
+    // /v1/debug is never on the remote whitelist either (remote/routes.ts); excluded here too, the
+    // same way /v1/runtime is, so a call that somehow reached dispatchBusiness still 404s instead
+    // of reading it.
+    if (!url.pathname.startsWith("/v1/") || url.pathname.startsWith("/v1/runtime") || url.pathname.startsWith("/v1/debug")) {
       throw new HttpError(404, "not_found", "not a business endpoint");
     }
     if (!["POST", "PATCH", "PUT", "DELETE"].includes(request.method)) {
@@ -926,6 +929,11 @@ function dispatch(
     return jsonResponse(body, 200, null);
   }
 
+  // Unlike /v1/runtime, this is on the remote whitelist (remote/routes.ts): a phone reads it too.
+  if (method === "GET" && path === "/v1/capabilities") {
+    return jsonResponse(store.capabilities(), 200, null);
+  }
+
   if (method === "POST" && path === "/v1/runtime/quit") {
     engine.abortAll();
     store.interruptRunningTurns((turnId) => engine.executionOf(turnId));
@@ -1329,6 +1337,13 @@ function dispatch(
   params = matchPath(path, "/v1/tasks/:id/spec-revisions");
   if (params && method === "GET") {
     return jsonResponse({ items: store.listSpecRevisions(params.id!) }, 200, null);
+  }
+
+  // Local only (see dispatchBusiness): the organizer's own trail (ADR 0040 P0's observability).
+  if (method === "GET" && path === "/v1/debug/organizer-runs") {
+    const taskId = url.searchParams.get("task_id") ?? "";
+    if (!ULID.test(taskId)) throw new HttpError(422, "invalid_args", "task_id is required");
+    return jsonResponse({ items: store.organizerRunsForTask(taskId) }, 200, null);
   }
 
   params = matchPath(path, "/v1/tasks/:id/spec");

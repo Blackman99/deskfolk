@@ -64,6 +64,7 @@ function closingHarness() {
     publishMessage: () => {},
     recordResponseSpend: (input) => {
       spendCalls.push(input);
+      return null;
     },
     spendOwner: (sessionId, botId) => ({ sessionId, sessionName: null, botId, botName: null }),
     executionOf: () => null,
@@ -382,7 +383,7 @@ describe("closing check: gating", () => {
         active: () => true,
         publishTurn: () => {},
         publishMessage: () => {},
-        recordResponseSpend: () => {},
+        recordResponseSpend: () => null,
         spendOwner: (sessionId, botId) => ({ sessionId, sessionName: null, botId, botName: null }),
         executionOf: () => null,
         observeTicket: () => {},

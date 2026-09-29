@@ -122,6 +122,18 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
     if (stopping) return stopping;
     stopping = (async () => {
       try {
+        // Every path that reaches `stop()` — quit, `/v1/runtime/stop`, handoff, a remote
+        // restart/stop, SIGINT/SIGTERM — is a deliberate shutdown; a crash never calls this
+        // function, which is the whole point of writing the flag (schema-gate.ts). It has to be
+        // written here, before the steps below, not after: closing a stdio MCP session can wait up
+        // to its configured `shutdownWaitMs`, and the window's own quit handler kills the daemon
+        // outright 200ms after asking for this stop, which would otherwise beat a write placed
+        // after the slow parts and read back as a crash on the next boot.
+        store?.recordCleanShutdown();
+      } catch {
+        // best effort; the process still exits below either way
+      }
+      try {
         closeSetup?.();
         closeDevSetup?.();
         remote?.stop();
