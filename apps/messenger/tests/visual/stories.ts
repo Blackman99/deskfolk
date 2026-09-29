@@ -263,8 +263,9 @@ const annotatedWorld = {
 };
 
 /** The settings modal keeps the open tab to itself, so the story clicks it like a person would. */
-const settingsTab = (index: number) => (host: HTMLElement) => {
-	host.querySelectorAll<HTMLButtonElement>('.settings-tab-btn')[index]?.click();
+/** By name: which tabs show depends on the runtime (Remote access only with a remote status). */
+const settingsTab = (tab: string) => (host: HTMLElement) => {
+	host.querySelector<HTMLButtonElement>(`[data-settings-tab="${tab}"]`)?.click();
 };
 
 const settingsProps = (over: Record<string, unknown> = {}) => ({
@@ -809,9 +810,23 @@ const defs: Record<StoryName, Story> = {
 			wrap: false
 		}
 	},
-	'settings-general': { component: SettingsModal as never, props: settingsProps(), afterMount: settingsTab(0) },
-	'settings-providers': { component: SettingsModal as never, props: settingsProps(), afterMount: settingsTab(2) },
-	'settings-mcp': { component: SettingsModal as never, props: settingsProps(), afterMount: settingsTab(3) },
+	'settings-general': { component: SettingsModal as never, props: settingsProps(), afterMount: settingsTab('general') },
+	'settings-providers': { component: SettingsModal as never, props: settingsProps(), afterMount: settingsTab('models') },
+	'settings-mcp': { component: SettingsModal as never, props: settingsProps(), afterMount: settingsTab('mcp') },
+	// The remote access tab before the Mac has a relay, with the deploy-your-own guide unfolded.
+	'settings-remote-guide': {
+		component: SettingsModal as never,
+		props: settingsProps({
+			runtime: fakeRuntime(world, { settingsOpen: true, remoteStatus: { state: 'off', diagnostic: null, devices: 0 } })
+		}),
+		afterMount: (host: HTMLElement) => {
+			settingsTab('remote')(host);
+			// The pane only exists once the tab switch has rendered.
+			flushSync();
+			const guide = host.querySelector<HTMLDetailsElement>('[data-testid=relay-guide]');
+			if (guide) guide.open = true;
+		}
+	},
 	/*
 	 * The About card with an update waiting. The card only draws inside a Tauri window, so the
 	 * story says the window is one and hands the checker a finished check — including the release
@@ -821,8 +836,7 @@ const defs: Record<StoryName, Story> = {
 		component: SettingsModal as never,
 		props: settingsProps(),
 		afterMount: (host: HTMLElement) => {
-			// general, preferences, models, mcp, notifications, about: About is the sixth tab.
-			settingsTab(5)(host);
+			settingsTab('about')(host);
 			(globalThis as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {
 				invoke: async () => null
 			};
@@ -948,14 +962,14 @@ export const rc11Stories = {
 	'settings-maintenance': {
 		component: SettingsModal as never,
 		props: settingsProps({ runtime: maintenanceRuntime() }),
-		afterMount: settingsTab(0),
+		afterMount: settingsTab('general'),
 		width: 1440,
 		height: 1000
 	},
 	'settings-maintenance-force': {
 		component: SettingsModal as never,
 		props: settingsProps({ runtime: maintenanceRuntime({ maintenanceForceConfirm: true, maintenanceStopConfirm: true, maintenanceRevokeId: '01ARZ3NDEKTSV4RRFFQ69G5FAW' }) }),
-		afterMount: settingsTab(0),
+		afterMount: settingsTab('general'),
 		width: 1440,
 		height: 1000
 	},
@@ -979,7 +993,7 @@ export const rc11Stories = {
 				otherRemoteDevices: () => []
 			})
 		}),
-		afterMount: settingsTab(0),
+		afterMount: settingsTab('general'),
 		width: 430,
 		height: 932
 	}

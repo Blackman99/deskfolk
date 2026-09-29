@@ -133,6 +133,7 @@ test("maintenance settings show status, diagnostics, drain, force confirm, revok
     openDeleteProviderConfirm: () => {},
     closeSettings: () => {},
   });
+  click(host.querySelector("[data-settings-tab=remote]"));
   expect(host.querySelector("[data-testid=remote-maintenance]")?.textContent).toContain("Maintenance");
   expect(host.querySelector("[data-testid=remote-version]")?.textContent).toContain("0.1.0-rc.2");
   expect(host.querySelector("[data-testid=remote-drain]")?.textContent).toContain("2 live turns");
@@ -177,6 +178,7 @@ test("unavailable supervisor copy and draining error are explicit", () => {
     openDeleteProviderConfirm: () => {},
     closeSettings: () => {},
   });
+  click(host.querySelector("[data-settings-tab=remote]"));
   expect(host.querySelector("[data-testid=remote-restart]")?.textContent).toContain("window is gone");
   expect(host.querySelector("[data-testid=remote-drain-restart]")?.hasAttribute("disabled")).toBe(true);
   expect(host.querySelector("[data-testid=remote-maintenance-error]")?.textContent).toContain("No supervisor");

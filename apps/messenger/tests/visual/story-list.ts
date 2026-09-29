@@ -53,6 +53,8 @@ export const STORY_SIZES = {
 	'settings-providers': { width: 1000, height: 720 },
 	'settings-mcp': { width: 1000, height: 720 },
 	'settings-about': { width: 1000, height: 720 },
+	// The remote access tab before the Mac has a relay, with the deploy-your-own guide unfolded.
+	'settings-remote-guide': { width: 1000, height: 900 },
 	// A four-pane arrangement with a real four-way cross in it: the junction handle, the tab
 	// strips and the focused-pane marking are all only visible here.
 	workbench: { width: 1280, height: 820 },

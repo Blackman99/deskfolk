@@ -28,8 +28,28 @@ function open(hostPairing: unknown, extra: Record<string, unknown> = {}) {
     openDeleteProviderConfirm: () => {},
     closeSettings: () => {},
   });
+  // The card lives on its own tab, which a runtime with no remote status does not show.
+  const remoteTab = rendered.host.querySelector("[data-settings-tab=remote]");
+  if (remoteTab) click(remoteTab);
   return { ...rendered, runtime };
 }
+
+test("remote access has a tab of its own, and General no longer carries the card", () => {
+  const { host, close } = open(null);
+  expect(host.querySelector(".settings-main-title")?.textContent).toBe("Remote access");
+  expect(host.querySelector(".settings-card-remote .settings-card-title")?.textContent).toBe("Relay connection");
+  click(host.querySelector("[data-settings-tab=general]"));
+  expect(host.querySelector(".settings-card-remote")).toBeNull();
+  expect(host.querySelector(".settings-card-workspace")).not.toBeNull();
+  close();
+});
+
+test("a runtime that reports nothing about remote access shows no tab for it", () => {
+  const { host, close } = open(null, { remoteStatus: null });
+  expect(host.querySelector("[data-settings-tab=remote]")).toBeNull();
+  expect(host.querySelector(".settings-card-remote")).toBeNull();
+  close();
+});
 
 test("an online host offers to pair a device", () => {
   const { host, runtime, close } = open(null);

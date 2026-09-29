@@ -81,7 +81,7 @@ Every variable, limit and recovery rule is in [self-hosted deployment](deploy-re
 
 ## 2. Point the Mac at the relay
 
-In the app, open **Settings → General → Remote (experimental)**. Until the Mac is registered, the card asks for the relay (its folded **No relay yet?** section holds the step 1 commands, ready to copy):
+In the app, open **Settings → Remote access**. Until the Mac is registered, the card asks for the relay (its folded **No relay yet?** section holds the step 1 commands, ready to copy):
 
 - **Relay address** — `https://relay.example.com`, the domain from step 1.
 - **Relay ID** — the `RELAY_ID` from the env file.
@@ -102,12 +102,12 @@ bun apps/daemon/scripts/dev-remote.ts status
 
 ## 3. Pair a phone
 
-1. On the Mac, in **Settings → General → Remote (experimental)**, choose **Pair a device**. The card shows a one-time code starting with `rb1` and the Mac's signing fingerprint. The code expires in ten minutes. (`bun apps/daemon/scripts/dev-remote.ts pair` prints the same code and copies it to the clipboard.)
+1. On the Mac, in **Settings → Remote access**, choose **Pair a device**. The card shows a one-time code starting with `rb1` and the Mac's signing fingerprint. The code expires in ten minutes. (`bun apps/daemon/scripts/dev-remote.ts pair` prints the same code and copies it to the clipboard.)
 2. Get the code to the phone — Universal Clipboard, AirDrop, a note you delete afterwards. It carries a one-time secret; keep it out of chats and logs.
 3. On the phone, open `https://relay.example.com` and paste the code into **Pairing payload**. The page shows the relay address and the Mac's fingerprint: check they match what the Mac shows, then tap **Submit and wait for Mac confirmation**. The code only works on the relay that served the page, so a pasted code cannot send the phone anywhere else.
 4. The Mac shows the device's name and its fingerprint. Compare it with the phone, then choose **Approve this device** and pass the Touch ID sheet, or enter your login password; the sheet names the device and its full fingerprint. Dismissing it pairs nothing and leaves the approve button there. (From source, the stand-in approves without a sheet.)
 5. The phone opens the chat list. Add the page to the Home Screen so it opens like an app.
-6. On the phone, in **Settings → Remote (experimental)**, choose **Register user verification on this device** if you want the maintenance actions.
+6. On the phone, in **Settings → Remote access**, choose **Register user verification on this device** if you want the maintenance actions.
 7. Turn pairing off again by running these two lines in the server's checkout. Paired devices keep working; set it back to `1` and run `up -d` again only to pair another.
 
    ```sh
@@ -123,7 +123,7 @@ The Mac sends the reminder itself, straight to the phone browser's push service 
 
 - **Contact:** push services require an operator contact, and pushes stay paused (`push_contact_required`) until the Mac has one. Set it through the Mac's local API: `GET /v1/notifications/push-config` for the current revision, then `PATCH` the same path with `{"contact_uri": "mailto:you@example.com", "if_revision": <revision>}`.
 - **Proxy:** if the Mac reaches the internet through a proxy, start it with `HTTPS_PROXY` set, for example `HTTPS_PROXY=http://127.0.0.1:7890 REAL_BOT_DEV_REMOTE=1 pnpm dev`. The system proxy setting alone does not reach the daemon. Details: [Web Push proxy](deploy-remote.md#web-push-proxy).
-- **On the phone:** turn on **Pending-item push** under **Settings → Remote (experimental)**, then send a test. The result tells queued, accepted by the push service, and timed out with a retry scheduled apart; whether the phone shows it is up to the browser and the system.
+- **On the phone:** turn on **Pending-item push** under **Settings → Remote access**, then send a test. The result tells queued, accepted by the push service, and timed out with a retry scheduled apart; whether the phone shows it is up to the browser and the system.
 
 ## When something is off
 

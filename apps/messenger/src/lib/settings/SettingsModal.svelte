@@ -52,7 +52,7 @@
 	import NotificationSettings from './NotificationSettings.svelte';
 	import RelayGuide from './RelayGuide.svelte';
 
-	type SettingsTab = 'general' | 'preferences' | 'models' | 'mcp' | 'notifications' | 'about';
+	type SettingsTab = 'general' | 'preferences' | 'models' | 'mcp' | 'notifications' | 'remote' | 'about';
 
 	type Props = {
 		mobileSettingsDetail?: boolean;
@@ -193,7 +193,9 @@
 						? t.settings.tabMcp
 						: tab === 'notifications'
 							? t.settings.tabNotifications
-							: t.settings.tabAbout;
+							: tab === 'remote'
+								? t.settings.tabRemote
+								: t.settings.tabAbout;
 	}
 	let independent = $state<IndependentStatus>(gatedIndependentStatus('g_pack_not_verified'));
 	let independentBusy = $state(false);
@@ -354,6 +356,11 @@
 		remoteState === 'online' ? 'ok' : remoteState === 'connecting' ? 'neutral' : remoteState === 'off' ? 'neutral' : 'warn'
 	);
 	const remoteExplains = $derived(remoteState === 'online' || remoteState === 'off' ? '' : t.remote.experimental);
+	/** A runtime that says nothing about remote access gets no tab for it, rather than an empty page. */
+	const remoteTabVisible = $derived(Boolean(runtime.remote || runtime.remoteStatus));
+	$effect(() => {
+		if (activeSettingsTab === 'remote' && !remoteTabVisible) activeSettingsTab = 'general';
+	});
 	/** Why the card offers no connect form when the runtime, not the relay, is what stands in the way. */
 	const remoteSetupNote = $derived(
 		runtime.remote
@@ -781,6 +788,7 @@
 						type="button"
 						class="settings-tab-btn"
 						class:is-active={activeSettingsTab === 'general'}
+						data-settings-tab="general"
 						onclick={() => openSettingsTab('general')}
 					>
 						<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -797,6 +805,7 @@
 						type="button"
 						class="settings-tab-btn"
 						class:is-active={activeSettingsTab === 'preferences'}
+						data-settings-tab="preferences"
 						onclick={() => openSettingsTab('preferences')}
 					>
 						<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -817,6 +826,7 @@
 						type="button"
 						class="settings-tab-btn"
 						class:is-active={activeSettingsTab === 'models'}
+						data-settings-tab="models"
 						onclick={() => openSettingsTab('models')}
 					>
 						<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -836,6 +846,7 @@
 						type="button"
 						class="settings-tab-btn"
 						class:is-active={activeSettingsTab === 'mcp'}
+						data-settings-tab="mcp"
 						onclick={() => openSettingsTab('mcp')}
 					>
 						<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -854,6 +865,7 @@
 						type="button"
 						class="settings-tab-btn"
 						class:is-active={activeSettingsTab === 'notifications'}
+						data-settings-tab="notifications"
 						onclick={() => openSettingsTab('notifications')}
 					>
 						<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -863,10 +875,27 @@
 						<span class="tab-name">{t.settings.tabNotifications}</span>
 					</button>
 
+					{#if remoteTabVisible}
+						<button
+							type="button"
+							class="settings-tab-btn"
+							class:is-active={activeSettingsTab === 'remote'}
+							data-settings-tab="remote"
+							onclick={() => openSettingsTab('remote')}
+						>
+							<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+								<rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+								<line x1="12" y1="18" x2="12.01" y2="18"></line>
+							</svg>
+							<span class="tab-name">{t.settings.tabRemote}</span>
+						</button>
+					{/if}
+
 					<button
 						type="button"
 						class="settings-tab-btn"
 						class:is-active={activeSettingsTab === 'about'}
+						data-settings-tab="about"
 						onclick={() => openSettingsTab('about')}
 						title={updateChecker.updateVisible ? `${t.settings.tabAbout} · ${t.sidebar.updateAvailable}` : t.settings.tabAbout}
 					>
@@ -929,332 +958,6 @@
 
 				{#if activeSettingsTab === 'general'}
 					<div class="settings-tab-pane">
-						{#if runtime.remote || runtime.remoteStatus}
-							<div class="settings-card settings-card-remote">
-								<div class="settings-card-header">
-									<div class="settings-card-header-main">
-										<div>
-											<h3 class="settings-card-title">{t.settings.remoteSection}</h3>
-											<p class="settings-card-subtitle">{t.settings.remoteSubtitle}</p>
-										</div>
-										<span class="settings-badge-{remoteTone}" data-testid="remote-state">{remoteLabel}</span>
-									</div>
-								</div>
-								{#if remoteExplains}
-									<p class="muted">{remoteLabel === t.remote.statusGated ? t.remote.experimental : remoteExplains}</p>
-								{/if}
-								{#if remoteSetupNote}
-									<p class="muted" data-testid="remote-setup-note">{remoteSetupNote}</p>
-								{/if}
-
-								{#if relayConnectable}
-									<form class="relay-connect" data-testid="remote-connect" onsubmit={connectRelay}>
-										<p class="pairing-invite-text">{t.remote.hostConnectIntro}</p>
-										<RelayGuide {t} {locale} />
-										<fieldset class="relay-connect-fields" disabled={runtime.hostSetupBusy}>
-											<div class="modal-section">
-												<label for="relay-connect-origin">{t.remote.hostConnectOrigin}</label>
-												<input
-													id="relay-connect-origin"
-													type="text"
-													class="mono"
-													inputmode="url"
-													autocomplete="off"
-													spellcheck="false"
-													placeholder="https://relay.example.com"
-													bind:value={relayForm.origin}
-													aria-invalid={relayInvalid === 'origin'}
-												/>
-												{#if relayInvalid === 'origin'}<p class="field-error">{t.remote.hostConnectInvalidOrigin}</p>{/if}
-											</div>
-											<div class="modal-section">
-												<label for="relay-connect-id">{t.remote.hostConnectRelayId}</label>
-												<input
-													id="relay-connect-id"
-													type="text"
-													class="mono"
-													autocomplete="off"
-													spellcheck="false"
-													bind:value={relayForm.relayId}
-													aria-invalid={relayInvalid === 'relayId'}
-												/>
-												{#if relayInvalid === 'relayId'}<p class="field-error">{t.remote.hostConnectInvalidRelayId}</p>{/if}
-											</div>
-											<div class="modal-section">
-												<label for="relay-connect-token">{t.remote.hostConnectToken}</label>
-												<input
-													id="relay-connect-token"
-													type="password"
-													class="mono"
-													autocomplete="off"
-													bind:value={relayForm.bootstrap}
-													aria-invalid={relayInvalid === 'bootstrap'}
-												/>
-												{#if relayInvalid === 'bootstrap'}
-													<p class="field-error">{t.remote.hostConnectInvalidToken}</p>
-												{:else}
-													<p class="field-hint muted">{t.remote.hostConnectTokenHint}</p>
-												{/if}
-											</div>
-										</fieldset>
-										{#if runtime.hostSetupError}
-											<p class="field-error" role="alert" data-testid="remote-connect-error">{relaySetupMessage(runtime.hostSetupError)}</p>
-										{/if}
-										<button
-											type="submit"
-											class="btn-pair"
-											disabled={runtime.hostSetupBusy || !relayForm.origin.trim() || !relayForm.relayId.trim() || !relayForm.bootstrap.trim()}
-										>
-											{t.remote.hostConnect}
-										</button>
-									</form>
-								{/if}
-
-								{#if !runtime.remote && runtime.remoteStatus?.state === 'online'}
-									<div class="pairing" data-testid="remote-pairing">
-										{#if !runtime.hostPairing}
-											<div class="pairing-invite">
-												<p class="pairing-invite-text">
-													{runtime.remoteStatus.devices === 0
-														? t.remote.hostPairEmpty
-														: t.remote.devices(runtime.remoteStatus.devices)}
-												</p>
-												<button
-													type="button"
-													class="btn-pair"
-													class:is-quiet={runtime.remoteStatus.devices > 0}
-													disabled={runtime.hostPairingBusy}
-													onclick={() => void runtime.startHostPairing()}
-												>
-													{t.remote.hostPair}
-												</button>
-											</div>
-										{:else if runtime.hostPairing.phase === 'offer' || runtime.hostPairing.phase === 'confirm'}
-											<ol class="pairing-steps">
-												<li>
-													<p class="pairing-step-text">{t.remote.hostPairPaste}</p>
-													<div class="pairing-code-row">
-														<code class="pairing-code mono" data-testid="pairing-code">{runtime.hostPairing.code}</code>
-														<button
-															type="button"
-															class="btn-xs pairing-copy"
-															data-testid="pairing-copy"
-															onclick={() => {
-																copyText(runtime.hostPairing && 'code' in runtime.hostPairing ? runtime.hostPairing.code : '');
-																pairingCopied = true;
-															}}
-														>
-															{pairingCopied ? t.chat.copied : t.chat.copyMessage}
-														</button>
-													</div>
-												</li>
-												<li>
-													<p class="pairing-step-text">{t.remote.hostPairFingerprint}</p>
-													<p class="pairing-fingerprint mono">{formatFingerprint(runtime.hostPairing.fingerprint)}</p>
-												</li>
-												<li>
-													{#if runtime.hostPairing.phase === 'offer'}
-														<p class="pairing-step-text pairing-waiting">{t.remote.hostPairWaiting}</p>
-													{:else}
-														<p class="pairing-step-text">{t.remote.hostPairArrived(runtime.hostPairing.name)}</p>
-														<p class="pairing-fingerprint mono">{formatFingerprint(runtime.hostPairing.deviceFingerprint)}</p>
-														<p class="pairing-step-note">{t.remote.hostPairCompare}</p>
-														<div class="pairing-decide">
-															<button
-																type="button"
-																class="btn-pair"
-																data-testid="pairing-confirm"
-																disabled={runtime.hostPairingBusy}
-																onclick={() => void runtime.confirmHostPairing()}
-															>
-																{t.remote.hostPairApprove}
-															</button>
-															<button type="button" class="btn-xs" disabled={runtime.hostPairingBusy} onclick={() => runtime.closeHostPairing()}>
-																{t.sidebar.cancel}
-															</button>
-														</div>
-													{/if}
-												</li>
-											</ol>
-											{#if runtime.hostPairing.phase === 'offer'}
-												<button type="button" class="btn-xs pairing-dismiss" disabled={runtime.hostPairingBusy} onclick={() => runtime.closeHostPairing()}>
-													{t.sidebar.cancel}
-												</button>
-											{/if}
-										{:else if runtime.hostPairing.phase === 'paired'}
-											<p class="pairing-done" data-testid="pairing-done">{t.remote.hostPairDone}</p>
-											<button type="button" class="btn-xs pairing-dismiss" onclick={() => runtime.closeHostPairing()}>{t.common.close}</button>
-										{:else}
-											<div class="pairing-failed" role="alert">
-												<p class="pairing-failed-text">
-													{runtime.hostPairing.error === 'expired'
-														? t.remote.hostPairExpired
-														: runtime.hostPairing.error === 'desktop_channel_unavailable'
-															? t.remote.setupChannelLost
-															: t.remote.hostPairFailed}
-												</p>
-												<div class="pairing-failed-actions">
-													<button type="button" class="btn-pair" disabled={runtime.hostPairingBusy} onclick={() => void runtime.startHostPairing()}>
-														{t.remote.hostPairRetry}
-													</button>
-													<button type="button" class="btn-xs" onclick={() => runtime.closeHostPairing()}>{t.common.close}</button>
-												</div>
-											</div>
-										{/if}
-									</div>
-									<div class="connected-devices" data-testid="host-devices">
-										<div class="connected-devices-head">
-											<h4 class="settings-card-title">{t.remote.connectedDevices}</h4>
-											<button type="button" class="btn-xs" disabled={runtime.hostDevicesBusy} onclick={() => void runtime.refreshHostDevices()}>{t.remote.refreshStatus}</button>
-										</div>
-										{#if runtime.hostDevicesError}
-											<p class="field-error">{t.remote.deviceActionFailed}</p>
-										{/if}
-										{#if runtime.hostDevices.length === 0}
-											<p class="muted">{t.remote.connectedDevicesEmpty}</p>
-										{:else}
-											<ul class="settings-device-list">
-												{#each runtime.hostDevices as device (device.id)}
-													<li>
-														<div class="device-copy">
-															<strong>{device.name}</strong>
-															<span lang={locale === 'zh' ? 'zh-CN' : 'en'}>{device.lastActiveAt ? t.remote.lastActive(formatDeviceLastActive(device.lastActiveAt, relativeTimeNow, locale)) : t.remote.lastActiveUnknown}</span>
-														</div>
-														<div class="device-actions">
-															<button type="button" class="btn-xs" data-testid={`host-remove-${device.id}`} disabled={runtime.hostDevicesBusy} onclick={() => { runtime.hostRemoveDeviceId = device.id; }}>{t.remote.removeDevice}</button>
-															{#if runtime.hostRemoveDeviceId === device.id}
-																<button type="button" class="btn-danger-xs" data-testid={`host-remove-confirm-${device.id}`} disabled={runtime.hostDevicesBusy} onclick={() => void runtime.removeHostDevice(device.id)}>{t.remote.removeDeviceConfirm(device.name)}</button>
-															{/if}
-														</div>
-													</li>
-												{/each}
-											</ul>
-										{/if}
-									</div>
-								{:else if runtime.remoteStatus && !runtime.remote && !relayConnectable && !remoteSetupNote}
-									<p class="muted">{t.remote.devices(runtime.remoteStatus.devices)}</p>
-								{/if}
-
-								<p class="pairing-footnote">{t.remote.noOfflineQueue}</p>
-								{#if runtime.remote}
-									<p class="muted">{t.remote.uvNeeded}</p>
-									{#if runtime.uvError}
-										<p class="field-error">{t.remote.uvFailed}</p>
-									{/if}
-									{#if !runtime.uvReady}
-										<button type="button" onclick={() => void runtime.registerUv()}>{t.remote.uvRegister}</button>
-									{/if}
-									<div class="settings-maintenance" data-testid="remote-maintenance">
-										<h4 class="settings-card-title">{t.remote.maintenance}</h4>
-										<p class="muted">{t.remote.maintenanceLead}</p>
-										{#if runtime.maintenance}
-											<p data-testid="remote-version">{t.remote.version(runtime.maintenance.version)}</p>
-											<p data-testid="remote-mode">
-												{runtime.maintenance.mode === 'window'
-													? t.remote.modeWindow
-													: runtime.maintenance.mode === 'standalone'
-														? t.remote.modeStandalone
-														: t.remote.modeNone}
-											</p>
-											<p data-testid="remote-restart">
-												{runtime.maintenance.restart === 'available'
-													? t.remote.restartAvailable
-													: t.remote.restartUnavailable}
-											</p>
-											<p data-testid="remote-drain">
-												{runtime.maintenance.drain.phase === 'draining'
-													? t.remote.drainWaiting(runtime.maintenance.drain.remaining)
-													: runtime.maintenance.drain.phase === 'drained'
-														? (runtime.maintenance.drain.forced ? t.remote.drainForced : t.remote.drainDrained)
-														: t.remote.drainRunning}
-											</p>
-										{/if}
-										<p class="muted">{t.remote.reconnectHint}</p>
-										{#if runtime.maintenanceError}
-											<p class="field-error" data-testid="remote-maintenance-error">
-												{runtime.maintenanceError === 'draining'
-													? t.remote.errorDraining
-													: runtime.maintenanceError === 'restart_unavailable'
-														? t.remote.errorUnavailable
-														: runtime.maintenanceError === 'cancelled'
-															? t.remote.errorCancelled
-															: runtime.maintenanceError === 'request_unknown'
-																? t.remote.errorUnknown
-																: t.remote.errorUv}
-											</p>
-										{/if}
-										<div class="settings-maintenance-actions">
-											<button type="button" data-testid="remote-refresh" onclick={() => void runtime.refreshMaintenance()}>{t.remote.refreshStatus}</button>
-											<button type="button" data-testid="remote-diagnostics" disabled={runtime.maintenanceBusy || !runtime.uvReady} onclick={() => void runtime.downloadDiagnostics()}>{t.remote.downloadDiagnostics}</button>
-											<button type="button" data-testid="remote-drain-restart" disabled={runtime.maintenanceBusy || !runtime.uvReady || runtime.maintenance?.restart !== 'available'} onclick={() => void runtime.restartRuntime(false)}>{t.remote.drainRestart}</button>
-											<button type="button" data-testid="remote-force-restart" disabled={runtime.maintenanceBusy || !runtime.uvReady || runtime.maintenance?.restart !== 'available'} onclick={() => { runtime.maintenanceForceConfirm = true; }}>{t.remote.forceRestart}</button>
-											<button type="button" data-testid="remote-stop" disabled={runtime.maintenanceBusy || !runtime.uvReady} onclick={() => { runtime.maintenanceStopConfirm = true; }}>{t.remote.stopRuntime}</button>
-										</div>
-										{#if runtime.maintenanceForceConfirm}
-											<p class="field-error">{t.remote.forceWarn}</p>
-											<button type="button" data-testid="remote-force-confirm" onclick={() => void runtime.restartRuntime(true)}>{t.remote.forceConfirm}</button>
-											<button type="button" onclick={() => { runtime.maintenanceForceConfirm = false; }}>{t.common.close}</button>
-										{/if}
-										{#if runtime.maintenanceStopConfirm}
-											<p class="field-error">{t.remote.stopWarn}</p>
-											<button type="button" data-testid="remote-stop-confirm" onclick={() => void runtime.stopRuntime()}>{t.remote.stopConfirm}</button>
-											<button type="button" onclick={() => { runtime.maintenanceStopConfirm = false; }}>{t.common.close}</button>
-										{/if}
-										<p class="muted">{t.remote.revokeOther}</p>
-										{#if runtime.otherRemoteDevices().length === 0}
-											<p class="muted">{t.remote.noOtherDevices}</p>
-										{:else}
-											<ul class="settings-device-list">
-												{#each runtime.otherRemoteDevices() as device (device.id)}
-													<li>
-														<span>{device.name}</span>
-														<button type="button" data-testid={`remote-revoke-${device.id}`} disabled={runtime.maintenanceBusy || !runtime.uvReady} onclick={() => { runtime.maintenanceRevokeId = device.id; }}>{t.remote.revokeOther}</button>
-														{#if runtime.maintenanceRevokeId === device.id}
-															<button type="button" data-testid={`remote-revoke-confirm-${device.id}`} onclick={() => void runtime.revokeRemoteDevice(device.id)}>{t.remote.revokeConfirm(device.name)}</button>
-														{/if}
-													</li>
-												{/each}
-											</ul>
-										{/if}
-									</div>
-									<div class="settings-row">
-										<div class="settings-row-info">
-											<span class="settings-row-title" id="push-setting-label">{t.remote.push}</span>
-											<span class="settings-row-desc">{t.remote.pushDesc}</span>
-										</div>
-										<div class="settings-row-action">
-											<label class="switch-toggle relative inline-flex items-center cursor-pointer select-none" for="remote-push-toggle" aria-labelledby="push-setting-label">
-												<input
-													id="remote-push-toggle"
-													type="checkbox"
-													checked={runtime.pushEnabled}
-													disabled={runtime.pushBusy || runtime.pushPermission === 'unsupported'}
-													onchange={(ev) =>
-														{
-const input = ev.currentTarget as HTMLInputElement;
-const enabled = input.checked;
-input.checked = runtime.pushEnabled;
-void runtime.setPushEnabled(enabled);
-}}
-												/>
-												<span class="switch-track" aria-hidden="true">
-													<span class="switch-thumb"></span>
-												</span>
-											</label>
-										</div>
-									</div>
-									{#if runtime.pushPermission === 'denied'}
-										<p class="muted">{t.remote.pushDenied}</p>
-									{/if}
-									{#if runtime.pushPermission === 'unsupported'}
-										<p class="muted">{t.remote.pushUnsupported}</p>
-									{/if}
-									{#if runtime.pushError === 'failed'}
-										<p class="field-error" role="alert">{t.remote.pushFailed} {#if runtime.pushErrorCode}<code>{runtime.pushErrorCode}</code>{/if}</p>
-									{/if}
-								{/if}
-							</div>
-						{/if}
 						<!-- Workspace Directory Section -->
 						<div class="settings-card settings-card-workspace">
 							<div class="settings-card-header">
@@ -1653,6 +1356,333 @@ void runtime.setPushEnabled(enabled);
 					<McpSettings bind:this={mcpSettings} {runtime} {t} {closeSettings} />
 				{:else if activeSettingsTab === 'notifications'}
 					<NotificationSettings {runtime} {t} />
+				{:else if activeSettingsTab === 'remote' && remoteTabVisible}
+					<div class="settings-tab-pane">
+						<div class="settings-card settings-card-remote">
+							<div class="settings-card-header">
+								<div class="settings-card-header-main">
+									<div>
+										<h3 class="settings-card-title">{t.settings.remoteSection}</h3>
+										<p class="settings-card-subtitle">{runtime.remote ? t.settings.remoteSubtitle : t.settings.remoteSubtitleHost}</p>
+									</div>
+									<span class="settings-badge-{remoteTone}" data-testid="remote-state">{remoteLabel}</span>
+								</div>
+							</div>
+							{#if remoteExplains}
+								<p class="muted">{remoteLabel === t.remote.statusGated ? t.remote.experimental : remoteExplains}</p>
+							{/if}
+							{#if remoteSetupNote}
+								<p class="muted" data-testid="remote-setup-note">{remoteSetupNote}</p>
+							{/if}
+
+							{#if relayConnectable}
+								<form class="relay-connect" data-testid="remote-connect" onsubmit={connectRelay}>
+									<p class="pairing-invite-text">{t.remote.hostConnectIntro}</p>
+									<RelayGuide {t} {locale} />
+									<fieldset class="relay-connect-fields" disabled={runtime.hostSetupBusy}>
+										<div class="modal-section">
+											<label for="relay-connect-origin">{t.remote.hostConnectOrigin}</label>
+											<input
+												id="relay-connect-origin"
+												type="text"
+												class="mono"
+												inputmode="url"
+												autocomplete="off"
+												spellcheck="false"
+												placeholder="https://relay.example.com"
+												bind:value={relayForm.origin}
+												aria-invalid={relayInvalid === 'origin'}
+											/>
+											{#if relayInvalid === 'origin'}<p class="field-error">{t.remote.hostConnectInvalidOrigin}</p>{/if}
+										</div>
+										<div class="modal-section">
+											<label for="relay-connect-id">{t.remote.hostConnectRelayId}</label>
+											<input
+												id="relay-connect-id"
+												type="text"
+												class="mono"
+												autocomplete="off"
+												spellcheck="false"
+												bind:value={relayForm.relayId}
+												aria-invalid={relayInvalid === 'relayId'}
+											/>
+											{#if relayInvalid === 'relayId'}<p class="field-error">{t.remote.hostConnectInvalidRelayId}</p>{/if}
+										</div>
+										<div class="modal-section">
+											<label for="relay-connect-token">{t.remote.hostConnectToken}</label>
+											<input
+												id="relay-connect-token"
+												type="password"
+												class="mono"
+												autocomplete="off"
+												bind:value={relayForm.bootstrap}
+												aria-invalid={relayInvalid === 'bootstrap'}
+											/>
+											{#if relayInvalid === 'bootstrap'}
+												<p class="field-error">{t.remote.hostConnectInvalidToken}</p>
+											{:else}
+												<p class="field-hint muted">{t.remote.hostConnectTokenHint}</p>
+											{/if}
+										</div>
+									</fieldset>
+									{#if runtime.hostSetupError}
+										<p class="field-error" role="alert" data-testid="remote-connect-error">{relaySetupMessage(runtime.hostSetupError)}</p>
+									{/if}
+									<button
+										type="submit"
+										class="btn-pair"
+										disabled={runtime.hostSetupBusy || !relayForm.origin.trim() || !relayForm.relayId.trim() || !relayForm.bootstrap.trim()}
+									>
+										{t.remote.hostConnect}
+									</button>
+								</form>
+							{/if}
+
+							{#if !runtime.remote && runtime.remoteStatus?.state === 'online'}
+								<div class="pairing" data-testid="remote-pairing">
+									{#if !runtime.hostPairing}
+										<div class="pairing-invite">
+											<p class="pairing-invite-text">
+												{runtime.remoteStatus.devices === 0
+													? t.remote.hostPairEmpty
+													: t.remote.devices(runtime.remoteStatus.devices)}
+											</p>
+											<button
+												type="button"
+												class="btn-pair"
+												class:is-quiet={runtime.remoteStatus.devices > 0}
+												disabled={runtime.hostPairingBusy}
+												onclick={() => void runtime.startHostPairing()}
+											>
+												{t.remote.hostPair}
+											</button>
+										</div>
+									{:else if runtime.hostPairing.phase === 'offer' || runtime.hostPairing.phase === 'confirm'}
+										<ol class="pairing-steps">
+											<li>
+												<p class="pairing-step-text">{t.remote.hostPairPaste}</p>
+												<div class="pairing-code-row">
+													<code class="pairing-code mono" data-testid="pairing-code">{runtime.hostPairing.code}</code>
+													<button
+														type="button"
+														class="btn-xs pairing-copy"
+														data-testid="pairing-copy"
+														onclick={() => {
+															copyText(runtime.hostPairing && 'code' in runtime.hostPairing ? runtime.hostPairing.code : '');
+															pairingCopied = true;
+														}}
+													>
+														{pairingCopied ? t.chat.copied : t.chat.copyMessage}
+													</button>
+												</div>
+											</li>
+											<li>
+												<p class="pairing-step-text">{t.remote.hostPairFingerprint}</p>
+												<p class="pairing-fingerprint mono">{formatFingerprint(runtime.hostPairing.fingerprint)}</p>
+											</li>
+											<li>
+												{#if runtime.hostPairing.phase === 'offer'}
+													<p class="pairing-step-text pairing-waiting">{t.remote.hostPairWaiting}</p>
+												{:else}
+													<p class="pairing-step-text">{t.remote.hostPairArrived(runtime.hostPairing.name)}</p>
+													<p class="pairing-fingerprint mono">{formatFingerprint(runtime.hostPairing.deviceFingerprint)}</p>
+													<p class="pairing-step-note">{t.remote.hostPairCompare}</p>
+													<div class="pairing-decide">
+														<button
+															type="button"
+															class="btn-pair"
+															data-testid="pairing-confirm"
+															disabled={runtime.hostPairingBusy}
+															onclick={() => void runtime.confirmHostPairing()}
+														>
+															{t.remote.hostPairApprove}
+														</button>
+														<button type="button" class="btn-xs" disabled={runtime.hostPairingBusy} onclick={() => runtime.closeHostPairing()}>
+															{t.sidebar.cancel}
+														</button>
+													</div>
+												{/if}
+											</li>
+										</ol>
+										{#if runtime.hostPairing.phase === 'offer'}
+											<button type="button" class="btn-xs pairing-dismiss" disabled={runtime.hostPairingBusy} onclick={() => runtime.closeHostPairing()}>
+												{t.sidebar.cancel}
+											</button>
+										{/if}
+									{:else if runtime.hostPairing.phase === 'paired'}
+										<p class="pairing-done" data-testid="pairing-done">{t.remote.hostPairDone}</p>
+										<button type="button" class="btn-xs pairing-dismiss" onclick={() => runtime.closeHostPairing()}>{t.common.close}</button>
+									{:else}
+										<div class="pairing-failed" role="alert">
+											<p class="pairing-failed-text">
+												{runtime.hostPairing.error === 'expired'
+													? t.remote.hostPairExpired
+													: runtime.hostPairing.error === 'desktop_channel_unavailable'
+														? t.remote.setupChannelLost
+														: t.remote.hostPairFailed}
+											</p>
+											<div class="pairing-failed-actions">
+												<button type="button" class="btn-pair" disabled={runtime.hostPairingBusy} onclick={() => void runtime.startHostPairing()}>
+													{t.remote.hostPairRetry}
+												</button>
+												<button type="button" class="btn-xs" onclick={() => runtime.closeHostPairing()}>{t.common.close}</button>
+											</div>
+										</div>
+									{/if}
+								</div>
+								<div class="connected-devices" data-testid="host-devices">
+									<div class="connected-devices-head">
+										<h4 class="settings-card-title">{t.remote.connectedDevices}</h4>
+										<button type="button" class="btn-xs" disabled={runtime.hostDevicesBusy} onclick={() => void runtime.refreshHostDevices()}>{t.remote.refreshStatus}</button>
+									</div>
+									{#if runtime.hostDevicesError}
+										<p class="field-error">{t.remote.deviceActionFailed}</p>
+									{/if}
+									{#if runtime.hostDevices.length === 0}
+										<p class="muted">{t.remote.connectedDevicesEmpty}</p>
+									{:else}
+										<ul class="settings-device-list">
+											{#each runtime.hostDevices as device (device.id)}
+												<li>
+													<div class="device-copy">
+														<strong>{device.name}</strong>
+														<span lang={locale === 'zh' ? 'zh-CN' : 'en'}>{device.lastActiveAt ? t.remote.lastActive(formatDeviceLastActive(device.lastActiveAt, relativeTimeNow, locale)) : t.remote.lastActiveUnknown}</span>
+													</div>
+													<div class="device-actions">
+														<button type="button" class="btn-xs" data-testid={`host-remove-${device.id}`} disabled={runtime.hostDevicesBusy} onclick={() => { runtime.hostRemoveDeviceId = device.id; }}>{t.remote.removeDevice}</button>
+														{#if runtime.hostRemoveDeviceId === device.id}
+															<button type="button" class="btn-danger-xs" data-testid={`host-remove-confirm-${device.id}`} disabled={runtime.hostDevicesBusy} onclick={() => void runtime.removeHostDevice(device.id)}>{t.remote.removeDeviceConfirm(device.name)}</button>
+														{/if}
+													</div>
+												</li>
+											{/each}
+										</ul>
+									{/if}
+								</div>
+							{:else if runtime.remoteStatus && !runtime.remote && !relayConnectable && !remoteSetupNote}
+								<p class="muted">{t.remote.devices(runtime.remoteStatus.devices)}</p>
+							{/if}
+
+							<p class="pairing-footnote">{t.remote.noOfflineQueue}</p>
+							{#if runtime.remote}
+								<p class="muted">{t.remote.uvNeeded}</p>
+								{#if runtime.uvError}
+									<p class="field-error">{t.remote.uvFailed}</p>
+								{/if}
+								{#if !runtime.uvReady}
+									<button type="button" onclick={() => void runtime.registerUv()}>{t.remote.uvRegister}</button>
+								{/if}
+								<div class="settings-maintenance" data-testid="remote-maintenance">
+									<h4 class="settings-card-title">{t.remote.maintenance}</h4>
+									<p class="muted">{t.remote.maintenanceLead}</p>
+									{#if runtime.maintenance}
+										<p data-testid="remote-version">{t.remote.version(runtime.maintenance.version)}</p>
+										<p data-testid="remote-mode">
+											{runtime.maintenance.mode === 'window'
+												? t.remote.modeWindow
+												: runtime.maintenance.mode === 'standalone'
+													? t.remote.modeStandalone
+													: t.remote.modeNone}
+										</p>
+										<p data-testid="remote-restart">
+											{runtime.maintenance.restart === 'available'
+												? t.remote.restartAvailable
+												: t.remote.restartUnavailable}
+										</p>
+										<p data-testid="remote-drain">
+											{runtime.maintenance.drain.phase === 'draining'
+												? t.remote.drainWaiting(runtime.maintenance.drain.remaining)
+												: runtime.maintenance.drain.phase === 'drained'
+													? (runtime.maintenance.drain.forced ? t.remote.drainForced : t.remote.drainDrained)
+													: t.remote.drainRunning}
+										</p>
+									{/if}
+									<p class="muted">{t.remote.reconnectHint}</p>
+									{#if runtime.maintenanceError}
+										<p class="field-error" data-testid="remote-maintenance-error">
+											{runtime.maintenanceError === 'draining'
+												? t.remote.errorDraining
+												: runtime.maintenanceError === 'restart_unavailable'
+													? t.remote.errorUnavailable
+													: runtime.maintenanceError === 'cancelled'
+														? t.remote.errorCancelled
+														: runtime.maintenanceError === 'request_unknown'
+															? t.remote.errorUnknown
+															: t.remote.errorUv}
+										</p>
+									{/if}
+									<div class="settings-maintenance-actions">
+										<button type="button" data-testid="remote-refresh" onclick={() => void runtime.refreshMaintenance()}>{t.remote.refreshStatus}</button>
+										<button type="button" data-testid="remote-diagnostics" disabled={runtime.maintenanceBusy || !runtime.uvReady} onclick={() => void runtime.downloadDiagnostics()}>{t.remote.downloadDiagnostics}</button>
+										<button type="button" data-testid="remote-drain-restart" disabled={runtime.maintenanceBusy || !runtime.uvReady || runtime.maintenance?.restart !== 'available'} onclick={() => void runtime.restartRuntime(false)}>{t.remote.drainRestart}</button>
+										<button type="button" data-testid="remote-force-restart" disabled={runtime.maintenanceBusy || !runtime.uvReady || runtime.maintenance?.restart !== 'available'} onclick={() => { runtime.maintenanceForceConfirm = true; }}>{t.remote.forceRestart}</button>
+										<button type="button" data-testid="remote-stop" disabled={runtime.maintenanceBusy || !runtime.uvReady} onclick={() => { runtime.maintenanceStopConfirm = true; }}>{t.remote.stopRuntime}</button>
+									</div>
+									{#if runtime.maintenanceForceConfirm}
+										<p class="field-error">{t.remote.forceWarn}</p>
+										<button type="button" data-testid="remote-force-confirm" onclick={() => void runtime.restartRuntime(true)}>{t.remote.forceConfirm}</button>
+										<button type="button" onclick={() => { runtime.maintenanceForceConfirm = false; }}>{t.common.close}</button>
+									{/if}
+									{#if runtime.maintenanceStopConfirm}
+										<p class="field-error">{t.remote.stopWarn}</p>
+										<button type="button" data-testid="remote-stop-confirm" onclick={() => void runtime.stopRuntime()}>{t.remote.stopConfirm}</button>
+										<button type="button" onclick={() => { runtime.maintenanceStopConfirm = false; }}>{t.common.close}</button>
+									{/if}
+									<p class="muted">{t.remote.revokeOther}</p>
+									{#if runtime.otherRemoteDevices().length === 0}
+										<p class="muted">{t.remote.noOtherDevices}</p>
+									{:else}
+										<ul class="settings-device-list">
+											{#each runtime.otherRemoteDevices() as device (device.id)}
+												<li>
+													<span>{device.name}</span>
+													<button type="button" data-testid={`remote-revoke-${device.id}`} disabled={runtime.maintenanceBusy || !runtime.uvReady} onclick={() => { runtime.maintenanceRevokeId = device.id; }}>{t.remote.revokeOther}</button>
+													{#if runtime.maintenanceRevokeId === device.id}
+														<button type="button" data-testid={`remote-revoke-confirm-${device.id}`} onclick={() => void runtime.revokeRemoteDevice(device.id)}>{t.remote.revokeConfirm(device.name)}</button>
+													{/if}
+												</li>
+											{/each}
+										</ul>
+									{/if}
+								</div>
+								<div class="settings-row">
+									<div class="settings-row-info">
+										<span class="settings-row-title" id="push-setting-label">{t.remote.push}</span>
+										<span class="settings-row-desc">{t.remote.pushDesc}</span>
+									</div>
+									<div class="settings-row-action">
+										<label class="switch-toggle relative inline-flex items-center cursor-pointer select-none" for="remote-push-toggle" aria-labelledby="push-setting-label">
+											<input
+												id="remote-push-toggle"
+												type="checkbox"
+												checked={runtime.pushEnabled}
+												disabled={runtime.pushBusy || runtime.pushPermission === 'unsupported'}
+												onchange={(ev) =>
+													{
+const input = ev.currentTarget as HTMLInputElement;
+const enabled = input.checked;
+input.checked = runtime.pushEnabled;
+void runtime.setPushEnabled(enabled);
+}}
+											/>
+											<span class="switch-track" aria-hidden="true">
+												<span class="switch-thumb"></span>
+											</span>
+										</label>
+									</div>
+								</div>
+								{#if runtime.pushPermission === 'denied'}
+									<p class="muted">{t.remote.pushDenied}</p>
+								{/if}
+								{#if runtime.pushPermission === 'unsupported'}
+									<p class="muted">{t.remote.pushUnsupported}</p>
+								{/if}
+								{#if runtime.pushError === 'failed'}
+									<p class="field-error" role="alert">{t.remote.pushFailed} {#if runtime.pushErrorCode}<code>{runtime.pushErrorCode}</code>{/if}</p>
+								{/if}
+							{/if}
+						</div>
+					</div>
 				{:else if activeSettingsTab === 'about'}
 					<div class="settings-tab-pane">
 						<div class="settings-card settings-card-about">
