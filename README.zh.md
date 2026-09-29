@@ -89,7 +89,7 @@ pnpm dev
 ```
 
 - **在 Windows 上从源码启动：** 同样 `git clone` / `pnpm install` / `pnpm dev`，用 Rust 的 MSVC 工具链加 Visual Studio Build Tools（勾选 "Desktop development with C++"）代替 Xcode，另外先跑一次 `cargo build --manifest-path apps/conpty-helper/Cargo.toml` 编终端 helper。建议也装上 Git for Windows：Bot 的 shell 工具找得到 Git Bash 就在里面跑命令，找不到才用 PowerShell。本地打安装包用 `pnpm --filter @real-bot/desktop tauri build --bundles nsis`。
-- **Windows 上还没有的：** 远控和手机配对、独立运行时、应用内下载安装更新、桌面通知与角标、图片缩略图。数据在 `%LOCALAPPDATA%\real-bot`，密钥在 Windows 凭据管理器；前置条件和细节见[开发说明](docs/development.md#windows实验性)。
+- **Windows 上还没有的：** 远控和手机配对、独立运行时、应用内下载安装更新、桌面通知与角标、图片缩略图。数据在 `%LOCALAPPDATA%\real-bot`，密钥在 Windows 凭据管理器；装法、差异和缺口见 [Windows 预览版](docs/windows.zh.md)，前置条件和打包见[开发说明](docs/development.md#windows实验性)。
 
 拿源码版干要跑几个小时的活（比如多镜头视频）时，用 `pnpm dev:steady` 代替 `pnpm dev`：守护进程不会因为改代码或 `git pull` 重启，进行中的轮次不会被打断。
 

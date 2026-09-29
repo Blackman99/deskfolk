@@ -4,7 +4,7 @@
 
 A single-person agent collaboration app running locally on macOS (with Windows as an experimental preview): a team of named, persistent Bots splits one job and hands it on until it is delivered, while the app keeps the plan and its done-when in view, chases what stalls and checks the delivery first. They collaborate through directs, groups, mentions and asynchronous handoffs (modelled on Grok Bot); the computer is a shared folder on this Mac, not a cloud VM.
 
-> **WIP**: This document defines the domain language; it is not a statement that every capability has passed acceptance. Entries are written for macOS (Dock, Keychain, Finder, Trash); what stands in for them on Windows, and what Windows does not have yet, is in the Windows section of the [development guide](docs/development.md). For the current scope, see the [README](README.md); for the direction of work on agent decisions, feedback on automatic tasks, reflection after each run, and full coverage of conversation operations, see the [roadmap](ROADMAP.md).
+> **WIP**: This document defines the domain language; it is not a statement that every capability has passed acceptance. Entries are written for macOS (Dock, Keychain, Finder, Trash); what stands in for them on Windows, and what Windows does not have yet, is in [Windows preview](docs/windows.md). For the current scope, see the [README](README.md); for the direction of work on agent decisions, feedback on automatic tasks, reflection after each run, and full coverage of conversation operations, see the [roadmap](ROADMAP.md).
 
 ## Language
 
@@ -13,7 +13,7 @@ A persistent teammate with a name, a role, and boundaries. It has its own 1:1 se
 _Avoid_: Agent, child agent, subagent, assistant, Endpoint
 
 **Roster**:
-The set of all Bots on this machine. There is no limit on how many there are, and anyone can create one. A Bot is not a security boundary. In the messenger, the roster is a single row of letter tiles at the top of the sidebar, not a grid of cards, and it does not include you.
+The set of all Bots on this machine. There is no limit on how many there are, and anyone can create one. A Bot is not a security boundary. In the app, the roster is a single row of letter tiles at the top of the sidebar, not a grid of cards, and it does not include you.
 _Avoid_: team account, tenant, seat, roster cards, putting you in the roster row
 
 **Group**:
@@ -37,7 +37,7 @@ One Bot passes work to another Bot, by speaking in a group or by private message
 _Avoid_: assigning work, routing, dispatch, bind
 
 **Workspace**:
-One local folder at the account level. Files, artifacts, and handoff attachments all live here, and all Bots share it. Bots are not isolated from each other. The messenger sidebar can open the whole workspace folder (on desktop it is a pane with a file tree and a preview, and it does not take over the artifact preview beside the conversation; on narrow screens and phones it is still an overlay that slides in from the right); UTF-8 text files in the workspace can be edited in the viewer and saved back to the same path.
+One local folder at the account level. Files, artifacts, and handoff attachments all live here, and all Bots share it. Bots are not isolated from each other. The sidebar can open the whole workspace folder (on desktop it is a pane with a file tree and a preview, and it does not take over the artifact preview beside the conversation; on narrow screens and phones it is still an overlay that slides in from the right); UTF-8 text files in the workspace can be edited in the viewer and saved back to the same path.
 _Avoid_: cloud computer, one folder per Bot, sandbox (unless a separate one is added later)
 
 **Plan**:
@@ -66,7 +66,7 @@ _Avoid_: one folder per Bot, artifact library, treating it as a sandbox, the app
 
 **Approval**:
 A dangerous action must be let through by you before it runs. Approval governs "the one step about to happen"; it cannot undo anything already done.
-_Avoid_: ConsentGate, gate (an openbot term)
+_Avoid_: ConsentGate, gate
 
 **Routine**:
 Recurring work attached to one Bot and triggered by the calendar. v1 has routines only, no event triggers. Each routine has a standing plan (it does not take the session's current plan and does not go through the organizer); each time it comes due, a new ticket `NN-<date>` opens under that plan, and that turn works in the ticket's directory. When it comes due, the daemon inserts a system line under that Bot's name into your direct with the Bot, "Routine '<name>': <what to do>", to wake it; as with a check-back, no message is sent in your name. A check-back is not a routine; see "Check-back".
@@ -97,7 +97,7 @@ A resident TypeScript process on this Mac that runs the tool-call loop itself. C
 _Avoid_: cloud computer, 24/7 server, treating the UI process as the runtime, keeps running with the lid closed, stops after one kill, standalone KeepAlive login item, closing the window kills terminals
 
 **App window**:
-The Tauri desktop window, which holds the Svelte messenger. Closing the window hides it to the tray rather than quitting; while hidden, it stays in the Dock. At login it goes only to the Dock and the tray, and the window does not pop up. Clicking the Dock icon, Cmd-Tab, Spotlight, left-clicking the tray, or opening the app again brings the window back. Only one window process runs at a time; a second launch just wakes the existing one and connects to the existing daemon. If the window crashes, it does not come back on its own. Before it connects to the daemon, Quit works, Stop does not, and the messenger shows "Can't reach the runtime". The width and height you dragged it to, and whether it was maximized, are the same when you reopen after quitting; the position is not remembered, so the window does not land off-screen after a display change. While you drag the border, the app does not ask whether the window is maximized: on macOS that query moves the window, so on release its position would differ from where you were dragging it.
+The Tauri desktop window, which holds the Svelte interface (the code and the development guide call it the messenger). Closing the window hides it to the tray rather than quitting; while hidden, it stays in the Dock. At login it goes only to the Dock and the tray, and the window does not pop up. Clicking the Dock icon, Cmd-Tab, Spotlight, left-clicking the tray, or opening the app again brings the window back. Only one window process runs at a time; a second launch just wakes the existing one and connects to the existing daemon. If the window crashes, it does not come back on its own. Before it connects to the daemon, Quit works, Stop does not, and the interface shows "Can't reach the runtime". The width and height you dragged it to, and whether it was maximized, are the same when you reopen after quitting; the position is not remembered, so the window does not land off-screen after a display change. While you drag the border, the app does not ask whether the window is maximized: on macOS that query moves the window, so on release its position would differ from where you were dragging it.
 _Avoid_: browser-only, no tray, hiding removes it from the Dock, window KeepAlive, grabbing the screen at login, multiple windows, treating a window crash as quitting
 
 **Pane**:
@@ -113,12 +113,12 @@ Ends this run of the app. Under window supervision (the default), both the windo
 _Avoid_: treating closing the window as quitting, closing only the window by default and leaving a headless daemon, treating Quit as turning off launch at login, Cmd+Q closing only the window in development mode, treating the gated standalone mode as enabled
 
 **Launch at login**:
-Optional, on by default. At login it starts only the window process, into the Dock and the tray, and the messenger window does not pop up; the window process then makes sure the daemon is running. Turning it off affects only the next login and does not kill the current run; at the next login neither the window nor the daemon comes up. Quitting does not clear this switch either. The daemon is not a login item of its own.
+Optional, on by default. At login it starts only the window process, into the Dock and the tray, and the window does not pop up; the window process then makes sure the daemon is running. Turning it off affects only the next login and does not kill the current run; at the next login neither the window nor the daemon comes up. Quitting does not clear this switch either. The daemon is not a login item of its own.
 _Avoid_: window popping up at login, turning it off kills the current run immediately, daemon as its own login item, quitting clears launch at login, turning off launch at login but leaving jobs that start themselves
 
 **Tray**:
 The menu bar icon of the window process. Left-click brings the window back. Right-click: Show window, Stop (the most recently active turn when the window is not open), Quit. There is no Hide and no Pause daemon. If the window crashes, the tray is gone too.
-_Avoid_: tray badge, a second messenger, the daemon running its own tray
+_Avoid_: tray badge, a second interface, the daemon running its own tray
 
 **User**:
 The one person running this Mac. There are no multiple users and no share links. You are in every group; you and any Bot in a group can bring others in and remove them. Removing a Bot does not delete it. You appear in sessions, transcripts and the present members, but not on the roster's row of letter tiles.
@@ -142,7 +142,7 @@ _Avoid_: per-Bot MCP, Bot as a tool permission boundary, hiding configured capab
 
 **Participation**:
 When a message from you or a Bot arrives in a group's main transcript, whoever is mentioned must join in. Only your plain messages (no `@` / `@everyone`) have each of the other present Bots make one judgement (join in or sit out). If you mentioned someone, or a Bot sent the message, those not mentioned do not judge. The app does not decide on anyone's behalf who speaks, and it does not cut off loops with step-count or member-count circuit breakers. Asking you something is an ask inside the turn after joining in, not a third outcome of judgement.
-_Avoid_: central arbitration, Dispatcher (an openbot term), routing, anti-loop cap, asking for help during judgement, judging again on every Bot message in a group
+_Avoid_: central arbitration, Dispatcher, routing, anti-loop cap, asking for help during judgement, judging again on every Bot message in a group
 
 **Judgement**:
 A short call made to each group member who wasn't mentioned, only when you post a main-transcript message in a group without mentioning anyone. It has no tools and returns join in or sit out as structured output. A judgement is not a turn; sitting out leaves nothing in the main transcript; a failed call counts as sitting out. A mention (including one by a Bot) skips judgement and starts turns only for those mentioned. Judgement sees the work the group is doing: the plan's Goal, Done when and Rules, the ticket list and who is on each ticket, the ticket this message was filed under, the files handed in so far, and the trace. What it decides is whether anyone is doing the part of the work that falls within its own role, not just whether this one message sounds like its business.
@@ -177,7 +177,7 @@ A line of yours that only asks how things stand ("how's it going", "done yet", "
 _Avoid_: waking the whole group for a "how's it going", interrupting a working Bot to ask for status, filing "how's it going" as a new job, having a model write the status, taking a line with an instruction for a status question
 
 **Turn**:
-A Bot, woken by a message, a mention, a handoff or a routine, working until it produces a reply, an ask or an approval card. A failed completion also ends the turn, and its final state is still completed, not interrupted. In a group, the same Bot has at most one turn in progress at a time; when another Bot mentions it or a check-back it scheduled comes due, that is heard by the current turn, and when you mention it or it judges to join in, the turn is redirected (see "Mention" and "Redirect"). Directs, routines and your explicit "Fork a turn" can still run several turns at once. Transcripts interleave by time. Spend is recorded per call; the messenger has a separate spend view, sessions show no numbers, and nothing is stopped because of spend. When a turn keeps calling tools without delivering a result, every 40 steps the loop asks it whether it is stuck (if it is stuck, it calls no tools and replies directly with where it is stuck and what it needs; if it is making progress, it carries on). At 160 steps its tools are put away, and its next reply is the end of the turn.
+A Bot, woken by a message, a mention, a handoff or a routine, working until it produces a reply, an ask or an approval card. A failed completion also ends the turn, and its final state is still completed, not interrupted. In a group, the same Bot has at most one turn in progress at a time; when another Bot mentions it or a check-back it scheduled comes due, that is heard by the current turn, and when you mention it or it judges to join in, the turn is redirected (see "Mention" and "Redirect"). Directs, routines and your explicit "Fork a turn" can still run several turns at once. Transcripts interleave by time. Spend is recorded per call; the app has a separate spend view, sessions show no numbers, and nothing is stopped because of spend. When a turn keeps calling tools without delivering a result, every 40 steps the loop asks it whether it is stuck (if it is stuck, it calls no tools and replies directly with where it is stuck and what it needs; if it is making progress, it carries on). At 160 steps its tools are put away, and its next reply is the end of the turn.
 _Avoid_: workflow step, Planner step, the same Bot running several turns in a group, a failed completion as a fifth final state, letting a turn call tools forever
 
 **Archive**:
@@ -257,7 +257,7 @@ What the model actually sees in a turn: the profile, the catalog of enabled skil
 _Avoid_: automatic summaries into the profile, a semantic-retrieval memory layer, a background distiller, estimating by token count, feeding earlier turns' tool results back in
 
 **Spend**:
-An append-only ledger of calls on this machine; seven kinds of endpoint call each record one row: turn completion, judgement, model routing before a turn opens, correction-chain review, each learning step after a review, input suggestions, and organizing. When the provider returns `cost_in_usd_ticks`, the call is recorded as reported; with no reported cost, it is estimated when both input and output tokens are present and a billing price is configured. The messenger has a separate spend view; the session top bar, list rows, settings and the model choice log show no spend figures. Details: [Behavior · Spend](docs/behavior.en.md#spend).
+An append-only ledger of calls on this machine; seven kinds of endpoint call each record one row: turn completion, judgement, model routing before a turn opens, correction-chain review, each learning step after a review, input suggestions, and organizing. When the provider returns `cost_in_usd_ticks`, the call is recorded as reported; with no reported cost, it is estimated when both input and output tokens are present and a billing price is configured. The app has a separate spend view; the session top bar, list rows, settings and the model choice log show no spend figures. Details: [Behavior · Spend](docs/behavior.en.md#spend).
 _Avoid_: budget circuit breaker, daily limit, automatic shutdown, treating estimates as reported or merging them into one amount, estimating missing tokens with a tokenizer, folding judgement into turns, MCP tools' own bills
 
 **Local API**:
