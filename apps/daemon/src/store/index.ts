@@ -73,7 +73,7 @@ export {
 } from "./acceptance-checks";
 export type { CheckDefinition, OrganizerCheckInput } from "./acceptance-checks";
 export { TICKET_STATUSES, TICKETS_MAX, TICKET_SPEC_MAX, TICKET_TITLE_MAX, isTicketStatus } from "./tickets";
-export { ORGANIZER_NEW_TICKETS_MAX } from "./plan-spec";
+export { ORGANIZER_NEW_TICKETS_MAX, titleKey } from "./plan-spec";
 export type { OrganizerResult, OrganizerTicketInput, SpecRevisionRow } from "./plan-spec";
 export { CHECK_BACK_MAX_MINUTES, CHECK_BACK_MIN_MINUTES, CHECK_BACK_NOTE_MAX, PLAN_NUDGE_NOTE_MAX } from "./check-backs";
 export type { CheckBack, QuietDirect } from "./check-backs";
@@ -284,6 +284,8 @@ export class Store {
   readonly taskLiveTurnCount = this.bind(tasks.taskLiveTurnCount);
   readonly taskArtifactsSince = this.bind(tasks.taskArtifactsSince);
   readonly taskMessagesSince = this.bind(tasks.taskMessagesSince);
+  readonly taskUserLines = this.bind(tasks.taskUserLines);
+  readonly userSpokeSince = this.bind(tasks.userSpokeSince);
   readonly setTaskSpec = this.bind(tasks.setTaskSpec);
   readonly routineTask = this.bind(tasks.routineTask);
   readonly distinctTaskKinds = this.bind(tasks.distinctTaskKinds);
@@ -309,11 +311,13 @@ export class Store {
   readonly listSpecRevisions = this.bind(planSpec.listSpecRevisions);
   readonly currentRevision = this.bind(planSpec.currentRevision);
   readonly lastSpecRevisionAt = this.bind(planSpec.lastSpecRevisionAt);
+  readonly userWrittenSpec = this.bind(planSpec.userWrittenSpec);
   readonly recordSpecRevision = this.bind(planSpec.recordSpecRevision);
   readonly setPlanSpecByUser = this.bind(planSpec.setPlanSpecByUser);
   readonly patchTicketByUser = this.bind(planSpec.patchTicketByUser);
   readonly applyOrganizerResult = this.bind(planSpec.applyOrganizerResult);
   readonly taskDetail = this.bind(planSpec.taskDetail);
+  readonly ticketHandedOverSince = this.bind(planSpec.ticketHandedOverSince);
 
   // Acceptance checks (可执行验收) ----------------------------------------------------------
   readonly getCheck = this.bind(acceptanceChecks.getCheck);

@@ -26,6 +26,10 @@ describe("ticket dir naming", () => {
   test("a title that leaves no slug still yields a numbered folder", () => {
     expect(ticketDirName(plan, 3, "???")).toBe(`${plan}/03`);
   });
+
+  test("leaves out @ like the plan folder does", () => {
+    expect(ticketDirName(plan, 4, "@开发工程师 复查")).toBe(`${plan}/04-开发工程师-复查`);
+  });
 });
 
 describe("tickets of a plan", () => {

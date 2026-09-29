@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { USER_MEMBER } from "@real-bot/protocol";
+import { isoNow } from "../ids";
 import { Store } from ".";
 import { CHECK_BACK_MAX_MINUTES, CHECK_BACK_NOTE_MAX } from "./check-backs";
 
@@ -170,5 +171,70 @@ describe("the line a check-back wakes its Bot with", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("the app's call-backs to a plan", () => {
+  test("are counted since you last said something in the plan, a line filed under it or an answer to its question; a line of yours elsewhere, or a Bot's own appointment, changes nothing", () => {
+    const { store, writer, reviewer, group, trigger, turn } = fixture();
+    const planId = turn.task_id!;
+    const at = (minute: number) => new Date(Date.UTC(2026, 8, 25, 10, minute));
+    const said = (minute: number, taskId: string | null) => {
+      const line = minute === 0 ? trigger : store.insertMessage({ sessionId: group.id, kind: "user", author: USER_MEMBER, body: "看看进度" });
+      store.db.run("UPDATE messages SET created_at = ?, task_id = ? WHERE id = ?", [at(minute).toISOString(), taskId, line.id]);
+    };
+    // The plan watch's budget: call-backs since you last said something in the plan, a line or an answer.
+    const spent = () => store.planNudgesSince(planId, store.lastUserLineAt(planId) ?? "");
+    const callBack = (botId: string, minute: number) =>
+      store.bookPlanNudge({ botId, sessionId: group.id, taskId: planId, ticketId: null, note: "规划静下来一阵了", now: at(minute) });
+
+    said(0, planId);
+    expect(spent()).toBe(0);
+    callBack(writer.id, 1);
+    callBack(reviewer.id, 2);
+    expect(spent()).toBe(2);
+    said(3, null);
+    callBack(writer.id, 4);
+    store.scheduleCheckBack({ botId: reviewer.id, sessionId: group.id, turnId: turn.id, note: "看 Writer 交了没", afterMinutes: 5, now: at(4) });
+    expect(spent()).toBe(3);
+    // Your line filed under the plan starts the count over.
+    said(5, planId);
+    expect(spent()).toBe(0);
+    callBack(writer.id, 6);
+    expect(spent()).toBe(1);
+    // So does your answer to one of its Bots' questions, dated when you answered it.
+    const ask = store.insertMessage({
+      sessionId: group.id,
+      kind: "ask",
+      author: writer.id,
+      body: "先做哪个？",
+      ask: { options: [{ label: "初稿" }, { label: "配图" }], multi_select: false },
+    });
+    store.db.run("UPDATE messages SET created_at = ?, task_id = ? WHERE id = ?", [at(6).toISOString(), planId, ask.id]);
+    callBack(writer.id, 7);
+    expect(spent()).toBe(2);
+    store.recordAskAnswer(ask.id, { selected: ["初稿"], custom: null, answered_at: at(8).toISOString() });
+    expect(spent()).toBe(0);
+    store.close();
+  });
+
+  test("are stamped on the store's clock, so a settle filed just before one is no hand-over after it", () => {
+    const { store, writer, group, turn } = fixture();
+    const planId = turn.task_id!;
+    const draft = store.createTicket({ taskId: planId, title: "初稿", status: "doing", worker: writer.id });
+    store.createTicket({ taskId: planId, title: "配图", status: "todo" });
+    const spec = { kind: "周报", goal: "写周报", acceptance: [], rules: [], process: [], progress: { done: [], open: [], blocked: [] }, status: "active" as const };
+    // A busy store's clock runs ahead of the wall clock.
+    for (let i = 0; i < 50; i += 1) isoNow();
+    store.applyOrganizerResult({
+      sessionId: group.id,
+      current: store.getTask(planId),
+      result: { decision: "continue", resumePlanId: null, spec, tickets: [{ id: draft.id, spec: "", status: "review" }], messageTicket: null },
+      source: { messageId: null, turnId: turn.id, messageBody: "" },
+    });
+    const nudge = store.bookPlanNudge({ botId: writer.id, sessionId: group.id, taskId: planId, ticketId: null, note: "规划静下来了" });
+    expect(nudge.created_at > store.lastSpecRevisionAt(planId)).toBe(true);
+    expect(store.ticketHandedOverSince(planId, nudge.created_at)).toBe(false);
+    store.close();
   });
 });

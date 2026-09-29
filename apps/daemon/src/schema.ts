@@ -376,7 +376,7 @@ CREATE TABLE IF NOT EXISTS check_backs (
   message_id TEXT,
   voided_at TEXT,
   -- Null for one the Bot booked itself; 'plan_nudge' for the app's call-back on a plan that went
-  -- quiet with tickets still open.
+  -- quiet with work still left.
   kind TEXT
 );
 

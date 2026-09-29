@@ -102,6 +102,11 @@ export type TurnEngineOptions = {
   chainQuietMs?: number;
   /** Side-calls switched off for a benchmark (see `ablation.ts`). The daemon never sets it. */
   ablation?: Ablation;
+  /**
+   * How long a group plan with everything handed over but work still in its progress, and its
+   * session, stay quiet before the Bot that spoke last in it is called back. Tests shorten it.
+   */
+  planLeftQuietMs?: number;
 };
 
 /** Long enough to still be debugging last week's turn, short enough not to hoard. */
@@ -291,6 +296,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     renderMirrors: organizer.renderMirrors,
     fireCheckBack: fire.fireCheckBack,
     ablation,
+    planLeftQuietMs: options.planLeftQuietMs,
   });
 
   const statusQuestion = createStatusQuestion({
@@ -328,6 +334,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     clearChainTimers: chains.clearTimers,
     clearDirectTimers: directReport.clearTimers,
     clearOrganizerTimers: organizer.clearTimers,
+    clearPlanTimers: () => planWatch.clearTimers(),
     inspectForTurn: tools.inspectForTurn,
     executeTools: tools.executeTools,
     closingCheck: closing.closingCheck,
@@ -531,6 +538,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       directReport.clearTimers();
       organizer.clearTimers();
       checks.abortAll();
+      planWatch.clearTimers();
       for (const id of [...core.lives.keys()]) lifecycle.abortLive(id);
     },
     unsettledTurnIds() {

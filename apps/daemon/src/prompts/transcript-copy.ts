@@ -46,6 +46,13 @@ export function checkBackNoteBody(locale: Locale, note: string): string {
 /** How much of the direct's last line a report-back quotes. */
 const REPORT_BACK_EXCERPT = 200;
 
+/** One line of someone else's words, whitespace folded, cut at `max` code points with an ellipsis. */
+function excerptOf(text: string, max: number): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  const points = [...flat];
+  return points.length > max ? `${points.slice(0, max).join("")}…` : flat;
+}
+
 /**
  * The note a quiet Bot↔Bot direct calls its opener back with, behind the check-back mark: who it
  * was with, the last word when the other Bot said anything, and to report before moving on.
@@ -60,9 +67,7 @@ export function reportBackNote(
       ? `Your direct with ${input.peer} has gone quiet; ${input.peer} did not answer your last message. Say here where things stand, then decide the next step.`
       : `你和${input.peer}的私聊静下来了，${input.peer}没有回你最后那条。先在这里交代现状，再决定下一步。`;
   }
-  const flat = input.last.body.replace(/\s+/g, " ").trim();
-  const points = [...flat];
-  const excerpt = points.length > REPORT_BACK_EXCERPT ? `${points.slice(0, REPORT_BACK_EXCERPT).join("")}…` : flat;
+  const excerpt = excerptOf(input.last.body, REPORT_BACK_EXCERPT);
   if (en) {
     const whose = input.last.mine ? "yours" : `${input.peer}'s`;
     return `Your direct with ${input.peer} has gone quiet; the last word was ${whose}: "${excerpt}". Report here how it came out, then carry on with the next step.`;
@@ -79,8 +84,14 @@ export function routineFireBody(locale: Locale, title: string, instruction: stri
   return locale === "en" ? `Routine "${title}": ${instruction}` : `日程「${title}」：${instruction}`;
 }
 
-/** One ticket of a plan that is still to do or in progress, as a plan call-back names it. */
-export type OpenTicketLine = { seq: number; title: string; status: "todo" | "doing"; worker: string | null };
+/** One ticket of a plan not yet closed out (to do, in progress or awaiting review), as a plan call-back names it. */
+export type OpenTicketLine = { seq: number; title: string; status: "todo" | "doing" | "review"; worker: string | null };
+
+const TICKET_STATE: Record<OpenTicketLine["status"], { zh: string; en: string }> = {
+  todo: { zh: "待做", en: "to do" },
+  doing: { zh: "进行中", en: "in progress" },
+  review: { zh: "待验收", en: "awaiting review" },
+};
 
 /** One failing acceptance check, as a plan call-back or a stalled notice names it. */
 export type FailingCheckLine = { item: string; what: string; detail: string; output: string | null };
@@ -88,13 +99,11 @@ export type FailingCheckLine = { item: string; what: string; detail: string; out
 function ticketLine(locale: Locale, ticket: OpenTicketLine, withWorker = true): string {
   const number = String(ticket.seq).padStart(2, "0");
   if (locale === "en") {
-    const state = ticket.status === "todo" ? "to do" : "in progress";
     const who = withWorker ? (ticket.worker ? `, ${ticket.worker}` : ", nobody on it") : "";
-    return `${number} "${ticket.title}" (${state}${who})`;
+    return `${number} "${ticket.title}" (${TICKET_STATE[ticket.status].en}${who})`;
   }
-  const state = ticket.status === "todo" ? "待做" : "进行中";
   const who = withWorker ? (ticket.worker ? `，${ticket.worker}` : "，还没人接") : "";
-  return `${number}《${ticket.title}》（${state}${who}）`;
+  return `${number}《${ticket.title}》（${TICKET_STATE[ticket.status].zh}${who}）`;
 }
 
 /** Code points of a failing check's captured output a nudge or a stalled notice keeps — the tail, not the head. */
@@ -149,30 +158,77 @@ export function planNudgeNote(
   return parts.join("\n\n");
 }
 
+/** Tickets awaiting review a plan call-back names; the rest are only counted. */
+export const PLAN_LEFT_REVIEW_MAX = 6;
+
 /**
- * The line the plan's session gets when a call-back brought nothing new: the plan has stopped with
- * tickets open, or its checks still failing, and picking it up is now yours. A system line, so it
- * wakes nobody.
+ * The note the app calls a Bot back to a quiet group plan with once everything is handed over but
+ * the plan's progress still lists work not done: what a useful answer is comes first, then the
+ * tickets awaiting review. The work not done is not repeated: the situation block shows it under
+ * Progress, and the organizer's words copied into the Bot's reminder to itself would read as the
+ * Bot's own instruction.
+ */
+export function planLeftNote(locale: Locale, input: { review: readonly OpenTicketLine[] }): string {
+  const shown = input.review.slice(0, PLAN_LEFT_REVIEW_MAX).map((ticket) => ticketLine(locale, ticket));
+  const more = input.review.length - shown.length;
+  if (locale === "en") {
+    const review = shown.length > 0 ? ` Awaiting review: ${shown.join("; ")}${more > 0 ? `; ${more} more` : ""}.` : "";
+    return `The plan has been quiet for a while with nothing to do or in progress, yet Progress in your situation still lists work not done or held up. Move it on: check each ticket awaiting review against its acceptance and give the commands you ran and what they showed; do not pass anyone's work for them, nor your own; hand what is not done yet to a Bot who can take it, by name, or carry on with it yourself; for what is held up, decide whether a pause or freeze the Bots set for themselves still stands, and if it does not, carry on; ask the user what needs the user's decision or what only the user can give. If none of that is possible, say plainly where it is stuck and what you need from whom.${review}`;
+  }
+  const review = shown.length > 0 ? `待验收：${shown.join("；")}${more > 0 ? `；还有 ${more} 个` : ""}。` : "";
+  return `规划静下来一阵了：没有待做或进行中的任务，局面「进展」里却还记着没做完或卡住的。接着推进：待验收的照它的验收核对，附上跑过的命令和结果，不替别人宣布通过，自己交的也不自己判；还没做的，点名交给接得了的 Bot，或者自己接着做；卡住的，想清楚你们自己定的暂停、冻结还该不该停，不该停就接着做；要用户拿主意、或只有用户给得了的，直接问用户。哪样都做不了，就直说卡在哪、需要谁做什么。${review}`;
+}
+
+/** Items of the plan's progress a stalled line quotes, and how long each may run. */
+export const STALLED_LEFT_ITEMS = 3;
+export const STALLED_LEFT_ITEM_MAX = 60;
+
+/**
+ * The line the plan's session gets when the app stops calling Bots back: the plan has stopped with
+ * tickets open, its checks still failing, or everything handed over while its progress still lists
+ * work not done or held up, and picking it up is now yours. `capped` is how many call-backs went out
+ * since you last said something in the plan when that budget is what stopped the next one;
+ * otherwise the last call-back moved nothing. A system line, so it wakes nobody.
  */
 export function stalledPlanBody(
   locale: Locale,
-  input: { open: readonly OpenTicketLine[]; called: string; failing?: readonly FailingCheckLine[] },
+  input: {
+    open: readonly OpenTicketLine[];
+    called: string;
+    failing?: readonly FailingCheckLine[];
+    left?: readonly string[];
+    capped?: number | null;
+  },
 ): string {
   const en = locale === "en";
   const failing = input.failing ?? [];
+  const left = input.left ?? [];
+  const capped = input.capped
+    ? en
+      ? `Bots have been called back ${input.capped} times since you last spoke in this plan, most recently ${input.called}; there will be no more.`
+      : `你上次在这件事里说话之后已经叫回 ${input.capped} 次，最近一次叫的是${input.called}，不再叫了。`
+    : null;
   const parts: string[] = [];
   if (input.open.length > 0) {
     const list = input.open.map((ticket) => ticketLine(locale, ticket));
     parts.push(
       en
-        ? `This plan has stopped with ${input.open.length} ticket${input.open.length === 1 ? "" : "s"} still open: ${list.join("; ")}. ${input.called} was called back once and nothing new was handed over since. To carry on, @ whoever should pick it up; or mark the tickets on the flow board.`
-        : `这件事停下了，还有 ${input.open.length} 个任务没收口：${list.join("；")}。已经叫过${input.called}一次，之后没有新的交付。要继续就 @ 该接手的 Bot，或者在流程图里改任务状态。`,
+        ? `This plan has stopped with ${input.open.length} ticket${input.open.length === 1 ? "" : "s"} still open: ${list.join("; ")}. ${capped ?? `${input.called} was called back once and nothing new was handed over since.`} To carry on, @ whoever should pick it up; or mark the tickets on the flow board.`
+        : `这件事停下了，还有 ${input.open.length} 个任务没收口：${list.join("；")}。${capped ?? `已经叫过${input.called}一次，之后没有新的交付。`}要继续就 @ 该接手的 Bot，或者在流程图里改任务状态。`,
     );
-  } else {
+  } else if (failing.length > 0) {
     parts.push(
       en
-        ? `This plan has stopped: ${input.called} was called back once over its failing checks, and nothing changed since. To carry on, @ whoever should pick it up; or change the checks on the flow board.`
-        : `这件事停下了：为验收检查没过叫过${input.called}一次，之后没有变化。要继续就 @ 该接手的 Bot，或者在流程图里改检查。`,
+        ? `This plan has stopped: ${capped ?? `${input.called} was called back once over its failing checks, and nothing changed since.`} To carry on, @ whoever should pick it up; or change the checks on the flow board.`
+        : `这件事停下了：${capped ?? `为验收检查没过叫过${input.called}一次，之后没有变化。`}要继续就 @ 该接手的 Bot，或者在流程图里改检查。`,
+    );
+  } else {
+    const shown = left.slice(0, STALLED_LEFT_ITEMS).map((item) => excerptOf(item, STALLED_LEFT_ITEM_MAX));
+    const more = left.length - shown.length;
+    parts.push(
+      en
+        ? `This plan has stopped: nothing is to do or in progress, yet its progress still lists work not done or held up: ${shown.join("; ")}${more > 0 ? ` (${more} more)` : ""}. ${capped ?? `${input.called} was called back once and no ticket has been handed over or closed since.`} To carry on, @ whoever should pick it up; or edit the plan and its tickets on the flow board.`
+        : `这件事停下了：没有待做或进行中的任务，进展里还记着没做完或卡住的：${shown.join("；")}${more > 0 ? `（还有 ${more} 条）` : ""}。${capped ?? `已经叫过${input.called}一次，之后没有任务交出或收口。`}要继续就 @ 该接手的 Bot，或者在流程图里改要点和任务。`,
     );
   }
   if (failing.length > 0) {

@@ -33,6 +33,15 @@ describe("plan dir naming", () => {
     const dir = taskDirName({ title: "   ", id: "0000000000000000000000ABCD" });
     expect(dir).toBe("work/abcd");
   });
+
+  test("leaves out @, so a file cited under the folder names nobody", () => {
+    expect(taskDirName({ title: "@审稿员 继续", id: "0000000000000000000000ABCD" })).toBe(
+      "work/审稿员-继续-abcd",
+    );
+    expect(taskDirName({ title: "请@审稿员看", id: "0000000000000000000000ABCD" })).toBe(
+      "work/请-审稿员看-abcd",
+    );
+  });
 });
 
 describe("reserved subdirs", () => {

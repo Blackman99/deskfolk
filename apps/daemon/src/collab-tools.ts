@@ -240,7 +240,18 @@ function sendMessage(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
   const roster = ctx.store.listBots();
   const selfName = roster.find((b) => b.id === ctx.botId)?.name;
   const presentNames = presentMemberNames(ctx.store, sessionId, roster);
-  const parsed = parseMentions(body, roster.map((b) => b.name), { lenient: presentNames });
+  // Mentions are checked on the body as it will be stored, with cited paths resolved into the
+  // work dir and linked: that is the text participation reads when it decides who to wake.
+  const corrected = resolveBodyPathsToWorkDir(body, ctx.workDir, (relpath) =>
+    pathExists(ctx.store, relpath),
+  );
+  const cited = mergeCitedPaths(
+    [...(ctx.writtenPaths ?? []), ...(optionalStringArray(args.paths, "paths") ?? [])],
+    [...extractWorkspacePathsFromBody(corrected), ...attachmentLinePaths(corrected)],
+  );
+  const resolved = resolveCitedPaths(ctx.store, cited);
+  const linked = linkifyWorkspacePaths(corrected, resolved.paths);
+  const parsed = parseMentions(linked, roster.map((b) => b.name), { lenient: presentNames });
   const emitted: ToolResult["emitted"] = [];
   if (ctx.admission?.draining && (sessionId !== ctx.sessionId || parsed.everyone || parsed.mentions.some(name => name !== selfName))) {
     return fail("draining", "new handoffs and child turns are paused; finish this turn without delegation");
@@ -264,15 +275,6 @@ function sendMessage(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
       return fail("unknown_mention", unknownMentionError(fresh, members));
     }
   }
-  const corrected = resolveBodyPathsToWorkDir(body, ctx.workDir, (relpath) =>
-    pathExists(ctx.store, relpath),
-  );
-  const cited = mergeCitedPaths(
-    [...(ctx.writtenPaths ?? []), ...(optionalStringArray(args.paths, "paths") ?? [])],
-    [...extractWorkspacePathsFromBody(corrected), ...attachmentLinePaths(corrected)],
-  );
-  const resolved = resolveCitedPaths(ctx.store, cited);
-  const linked = linkifyWorkspacePaths(corrected, resolved.paths);
   const message = ctx.store.insertMessage({
     sessionId,
     turnId: ctx.turnId,

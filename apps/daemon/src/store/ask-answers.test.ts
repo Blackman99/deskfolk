@@ -32,7 +32,9 @@ test("an answer lives on the question: readers see it there, a late answer count
 
   const rows = store.taskMessagesSince(plan.id, since);
   expect(rows.map((row) => row.id)).toEqual([ask.id]);
-  expect(rows[0]!.body).toBe("发给谁？\n选项（单选）：团队 / 老板\n用户选了：老板\n用户补充：抄送财务");
+  // The question reads with its choices; your answer comes apart from it, since it is yours.
+  expect(rows[0]!.body).toBe("发给谁？\n选项（单选）：团队 / 老板");
+  expect(rows[0]!.answer).toBe("用户选了：老板\n用户补充：抄送财务");
 
   expect(store.search("抄送财务").some((hit) => hit.kind === "message" && hit.id === ask.id)).toBe(true);
   expect(() => store.recordAskAnswer(ask.id, { selected: ["团队"], custom: null, answered_at: isoNow() }))

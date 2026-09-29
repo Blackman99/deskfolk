@@ -171,4 +171,18 @@ describe("non-mention @ usage", () => {
     expect(parseMentions("请@分镜 出图", roster, { lenient: roster }).mentions).toEqual(["分镜师"]);
     expect(parseMentions("请@分镜出图", roster, { lenient: roster }).unresolved).toEqual(["分镜出图"]);
   });
+
+  test("a cited file under a folder named after an @ request names nobody", () => {
+    const roster = ["审稿员", "设计师"];
+    const parsed = parseMentions(
+      [
+        "@设计师 请接。",
+        "抽帧：[t000.jpg](work/2026-09-23-@审稿员-继续-e3wm/scratch/t000.jpg)",
+        "附件：work/@审稿员-继续-e3wm/t125.jpg",
+      ].join("\n"),
+      roster,
+      { lenient: roster },
+    );
+    expect(parsed.mentions).toEqual(["设计师"]);
+  });
 });

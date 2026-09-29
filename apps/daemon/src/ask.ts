@@ -81,6 +81,18 @@ export function askAnswerText(answer: AskAnswer): string {
   return [...answer.selected, ...(answer.custom ? [answer.custom] : [])].join("\n");
 }
 
+/**
+ * Your answer as the lines a transcript reads under the question: what you picked, then your own
+ * words. The organizer reads it apart from the question, since the answer is yours and the question
+ * is the Bot's.
+ */
+export function askAnswerLines(answer: AskAnswer): string {
+  const lines: string[] = [];
+  if (answer.selected.length > 0) lines.push(`用户选了：${answer.selected.join("、")}`);
+  if (answer.custom) lines.push(`${answer.selected.length > 0 ? "用户补充" : "用户回答"}：${answer.custom}`);
+  return lines.join("\n");
+}
+
 /** The stored column, read back. A row that does not parse reads as no choices. */
 export function readAskSpec(raw: string | null | undefined): AskSpec | null {
   if (!raw) return null;
@@ -117,10 +129,7 @@ export function askTranscriptText(message: Pick<Message, "body" | "ask" | "ask_a
       .join(" / ");
     lines.push(`${spec.multi_select ? "选项（可多选）" : "选项（单选）"}：${choices}`);
   }
-  const answer = message.ask_answer;
-  if (answer) {
-    if (answer.selected.length > 0) lines.push(`用户选了：${answer.selected.join("、")}`);
-    if (answer.custom) lines.push(`${answer.selected.length > 0 ? "用户补充" : "用户回答"}：${answer.custom}`);
-  }
+  const answer = message.ask_answer ? askAnswerLines(message.ask_answer) : "";
+  if (answer) lines.push(answer);
   return lines.join("\n");
 }

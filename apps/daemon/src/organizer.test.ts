@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,6 +10,7 @@ import { JUDGEMENT_SYSTEM } from "./prompts/judgement";
 import { ORGANIZER_SYSTEM, type OrganizerPayload } from "./prompts/organizer";
 import { memoryKeyStore } from "./secrets";
 import { PLAN_MAP_FILE, Store, TICKET_FILE } from "./store";
+import { PLAN_NUDGES_UNANSWERED_MAX } from "./engine/plan-watch";
 import { createTurnEngine } from "./turn-engine";
 import {
   createOrganizer,
@@ -85,6 +86,7 @@ function planNudges(store: InstanceType<typeof Store>, taskId: string): Array<{ 
 async function harness(
   answer: Answer,
   script: (messages: ChatMessage[]) => CompletionOk | Promise<CompletionOk> = () => say("初稿在 draft.md"),
+  options: { planLeftQuietMs?: number } = {},
 ) {
   const root = mkdtempSync(join(tmpdir(), "organizer-"));
   const store = new Store({ endpointKey: memoryKeyStore() });
@@ -97,6 +99,7 @@ async function harness(
   const engine = createTurnEngine({
     store,
     settleQuietMs: 20,
+    planLeftQuietMs: options.planLeftQuietMs ?? 30,
     publish(event) {
       events.push(event);
       if (event.event === "turn.upsert" && event.status === "completed") for (const wake of waiters.splice(0)) wake();
@@ -202,6 +205,9 @@ test("a user line is filed before its turn opens: the turn works in the ticket d
   expect(h.store.listSpecRevisions(plan.id)[0]).toMatchObject({ revision: 2, actor: "app", source_turn_id: turn!.id, source_message_id: null });
   expect(readFileSync(join(h.root, plan.dir, PLAN_MAP_FILE), "utf8")).toContain("| 01 | 初稿 | 待验收 | Writer |");
   expect(h.events.filter((event) => event.event === "ticket.upsert").map((event) => (event as { status: string }).status)).toEqual(["doing", "review"]);
+  // A job handed over with nothing left in its progress waits for you: nobody is called back.
+  await Bun.sleep(60);
+  expect(h.store.db.query("SELECT COUNT(*) AS n FROM check_backs WHERE kind = 'plan_nudge'").get()).toEqual({ n: 0 });
 
   // A follow-up is filed under the same plan and ticket, and its turn works in the same folder.
   const follow = h.store.insertMessage({ sessionId: session, kind: "user", author: "user", body: "再改一版" });
@@ -764,8 +770,8 @@ test("a turn filed under a ticket moves it to doing when it starts writing and t
   expect(readFileSync(join(h.root, plan.dir, PLAN_MAP_FILE), "utf8")).toContain("| 01 | 初稿 | 待验收 | Writer |");
 });
 
-/** The organizer alone, over a store, answering each call with the next of `answers`. */
-function bareOrganizer(answers: Array<JudgeResult | Error>) {
+/** The organizer alone, over a store, answering each call with the next of `answers`; a function answers when the call is made. */
+function bareOrganizer(answers: Array<JudgeResult | Error | (() => JudgeResult)>) {
   const store = new Store();
   const requests: JudgeRequest[] = [];
   const lines: string[] = [];
@@ -778,7 +784,7 @@ function bareOrganizer(answers: Array<JudgeResult | Error>) {
       const next = answers.shift();
       if (!next) throw new Error("no answer scripted");
       if (next instanceof Error) throw next;
-      return next;
+      return typeof next === "function" ? next() : next;
     },
   } as unknown as CompletionsClient;
   const organizer = createOrganizer({
@@ -843,6 +849,95 @@ test("a filing that comes to nothing files nothing and says why: cut off, unread
   for (const text of h.lines) expect(text).toMatch(/^\[organizer\] filing message /);
 });
 
+/**
+ * A plan with a version the organizer wrote — the rule 不要口语, ticket 01 写出第一版 — and after it the
+ * Writer handing a draft over: something to settle, and not a word from you since.
+ */
+function quietPlan(store: Store) {
+  const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+  const session = writer.direct_session.id;
+  const spec = {
+    kind: "周报",
+    goal: "写一份周报",
+    acceptance: ["交到 report.md"],
+    rules: ["不要口语"],
+    process: [],
+    progress: { done: [], open: ["初稿"], blocked: [] },
+    status: "active" as const,
+  };
+  const plan = store.openTask({ sessionId: session, title: "写一份周报", spec });
+  const ticket = store.createTicket({ taskId: plan.id, title: "初稿", spec: "写出第一版", status: "doing", worker: writer.bot.id });
+  const opener = store.insertMessage({ sessionId: session, kind: "user", author: "user", body: "写一份周报" });
+  const turn = store.createTurn({ sessionId: session, botId: writer.bot.id, triggerMessageId: opener.id, taskId: plan.id, ticketId: ticket.id });
+  store.recordSpecRevision({ taskId: plan.id, spec, actor: "app" });
+  store.insertMessage({ sessionId: session, turnId: turn.id, kind: "bot", author: writer.bot.id, body: "初稿在 draft.md，审稿先冻结", paths: [`${ticket.dir}/draft.md`] });
+  store.setTurnStatus(turn.id, "completed");
+  return { session, plan, ticket, spec };
+}
+
+function planSpecOf(store: Store, taskId: string): { goal: string; acceptance: string[]; rules: string[]; progress: { done: string[] } } {
+  return JSON.parse(store.getTask(taskId).spec!);
+}
+
+test("a settle with nothing new from you since the last version files the handover but keeps Done when, the rules and what each ticket is for, and says so", async () => {
+  const answers: Array<JudgeResult | Error | (() => JudgeResult)> = [];
+  const h = bareOrganizer(answers);
+  const { session, plan, ticket, spec } = quietPlan(h.store);
+  // The Writer's own caution, written up as the plan's rule, Done when and the ticket's description.
+  answers.push(
+    judged(
+      JSON.stringify({
+        decision: "continue",
+        plan: { ...spec, acceptance: [...spec.acceptance, "审稿解冻前不能当作终稿"], rules: ["只推进初稿，审稿冻结"], progress: { done: ["初稿"], open: [], blocked: [] } },
+        tickets: [{ id: ticket.id, spec: "已交初稿，不再重试", status: "review" }],
+      }),
+    ),
+  );
+  expect(await h.organizer.settlePlan(plan.id)).toBe(true);
+  const seen = JSON.parse(String(h.requests[0]!.messages[1]!.content)) as OrganizerPayload;
+  expect(seen.since_last_revision.user_spoke).toBe(false);
+  expect(planSpecOf(h.store, plan.id)).toMatchObject({ acceptance: ["交到 report.md"], rules: ["不要口语"], progress: { done: ["初稿"] } });
+  expect(h.store.getTicket(ticket.id)).toMatchObject({ spec: "写出第一版", status: "review" });
+  const quiet = `[organizer] plan ${plan.id}: nothing new from the user since the last version;`;
+  expect(h.lines).toEqual([`${quiet} kept Done when as it was`, `${quiet} kept the rules as they were`, `${quiet} kept ticket 01's spec`]);
+
+  // You speak — a line not filed anywhere yet — and the next settle may write your word into the rules.
+  h.store.insertMessage({ sessionId: session, kind: "user", author: "user", body: "标题别太长" });
+  answers.push(judged(JSON.stringify({ decision: "continue", plan: { ...planSpecOf(h.store, plan.id), rules: ["不要口语", "标题别太长"] }, tickets: [] })));
+  expect(await h.organizer.settlePlan(plan.id)).toBe(true);
+  expect((JSON.parse(String(h.requests[1]!.messages[1]!.content)) as OrganizerPayload).since_last_revision.user_spoke).toBe(true);
+  expect(planSpecOf(h.store, plan.id).rules).toEqual(["不要口语", "标题别太长"]);
+  expect(h.lines).toHaveLength(3);
+});
+
+test("a line of yours that lands while a settle is out does not free its answer: the organizer never saw it", async () => {
+  const answers: Array<JudgeResult | Error | (() => JudgeResult)> = [];
+  const h = bareOrganizer(answers);
+  const { session, plan, spec } = quietPlan(h.store);
+  answers.push(() => {
+    h.store.insertMessage({ sessionId: session, kind: "user", author: "user", body: "先把初稿做好" });
+    return judged(JSON.stringify({ decision: "continue", plan: { ...spec, rules: ["不要口语", "审稿冻结"] }, tickets: [] }));
+  });
+  expect(await h.organizer.settlePlan(plan.id)).toBe(true);
+  expect(planSpecOf(h.store, plan.id).rules).toEqual(["不要口语"]);
+  expect(h.lines).toEqual([`[organizer] plan ${plan.id}: nothing new from the user since the last version; kept the rules as they were`]);
+});
+
+test("a settle whose plan you changed while it was out files nothing", async () => {
+  const answers: Array<JudgeResult | Error | (() => JudgeResult)> = [];
+  const h = bareOrganizer(answers);
+  const { plan, spec } = quietPlan(h.store);
+  answers.push(() => {
+    h.store.setPlanSpecByUser(plan.id, { ...spec, rules: ["不要口语", "标题别太长"] });
+    return judged(JSON.stringify({ decision: "continue", plan: { ...spec, rules: ["不要口语", "审稿冻结"], progress: { done: ["初稿"], open: [], blocked: [] } }, tickets: [] }));
+  });
+  expect(await h.organizer.settlePlan(plan.id)).toBe(false);
+  expect(planSpecOf(h.store, plan.id)).toMatchObject({ rules: ["不要口语", "标题别太长"], progress: { done: [] } });
+  expect(h.store.listSpecRevisions(plan.id)[0]).toMatchObject({ revision: 2, actor: "user" });
+  // Nothing was filed, so nothing is said to have been kept.
+  expect(h.lines).toEqual([`[organizer] plan ${plan.id}: the plan changed while it was being settled; nothing filed`]);
+});
+
 test("the organizer is shown the newest of what happened, oldest first", () => {
   // With no revision yet, "since" is the plan's start; taking the oldest rows froze the window at
   // the plan's first hour, and the line you just sent never reached the organizer.
@@ -862,4 +957,243 @@ test("the organizer is shown the newest of what happened, oldest first", () => {
   }
   expect(store.taskMessagesSince(plan.id, "", 2).map((row) => row.body)).toEqual(["第三句", "第四句"]);
   expect(store.taskMessagesSince(plan.id, "", 10).map((row) => row.body)).toEqual(bodies);
+});
+
+describe("a group plan with everything handed over while its progress still lists work", () => {
+  /**
+   * 初稿 awaits review with the Writer and 排版 is done by the Lead, while the plan's progress still
+   * has 定稿 to do. Every settle after that tries to reword 初稿, which a settle with nothing new from
+   * you may not do, and hands 排版 to the other Bot: tickets change, nothing more is handed over.
+   */
+  function handedOver(payload: OrganizerPayload): string {
+    const plan = payload.current_plan;
+    if (!plan) {
+      return JSON.stringify({
+        decision: "new",
+        plan: {
+          kind: "周报",
+          goal: "写一份周报",
+          acceptance: ["交到 report.md"],
+          progress: { done: ["初稿", "排版"], open: ["定稿还没做"], blocked: [] },
+        },
+        tickets: [
+          { id: "new-1", title: "初稿", spec: "写出第一版", status: "review", worker: "Writer" },
+          { id: "new-2", title: "排版", spec: "排好版", status: "done", worker: "Lead" },
+        ],
+        message_ticket: null,
+      });
+    }
+    return JSON.stringify({
+      decision: "continue",
+      plan: plan.spec,
+      tickets: [
+        { id: plan.tickets[0]!.id, spec: `第 ${plan.revision} 版说明` },
+        { id: plan.tickets[1]!.id, worker: plan.revision % 2 === 0 ? "Writer" : "Lead" },
+      ],
+    });
+  }
+
+  async function inTheGroup(answer: Answer = handedOver, options: { planLeftQuietMs?: number } = {}) {
+    const h = await harness(answer, undefined, options);
+    const lead = h.store.createBot({ name: "Lead", duties: "coordinate", boundaries: "stay" });
+    const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const group = h.store.createGroup({ name: "周报组", members: [lead.bot.id, writer.bot.id] });
+    const trigger = h.store.insertMessage({ sessionId: group.id, kind: "user", author: "user", body: "@Lead 安排周报" });
+    await h.engine.handleInboundMessage(trigger, { fromUser: true });
+    const nudges = () =>
+      h.store.db
+        .query<{ id: string; bot_id: string; ticket_id: string | null; fired_turn_id: string | null; note: string; created_at: string }, []>(
+          "SELECT id, bot_id, ticket_id, fired_turn_id, note, created_at FROM check_backs WHERE kind = 'plan_nudge' ORDER BY created_at ASC, rowid ASC",
+        )
+        .all();
+    const stalled = () => h.store.listMainMessages(group.id, 80).filter((m) => m.kind === "system" && m.body.startsWith("这件事停下了"));
+    const notice = (nudgeId: string) =>
+      h.store.db
+        .query<{ kind: string; fail_kind: string | null; message_id: string | null }, [string]>(
+          "SELECT kind, fail_kind, message_id FROM notifications WHERE semantic_key = ?",
+        )
+        .get(`stalled:${nudgeId}`);
+    return { h, lead: lead.bot, writer: writer.bot, group, nudges, stalled, notice };
+  }
+
+  test("once it has been quiet a while, the Bot that spoke last is called back into the plan's folder; a ticket changing without moving is no move, so you are told once", async () => {
+    const { h, lead, group, nudges, stalled, notice } = await inTheGroup();
+    await until(() => nudges().length === 1 && nudges()[0]!.fired_turn_id !== null);
+    const plan = h.store.sessionCurrentTask(group.id)!;
+    const [draft, layout] = h.store.listTickets(plan.id);
+    const nudge = nudges()[0]!;
+    // Nobody is picked for a ticket: the Bot the plan stopped on takes stock, in the plan's folder.
+    expect(nudge).toMatchObject({ bot_id: lead.id, ticket_id: null });
+    expect(nudge.note).toStartWith("规划静下来一阵了：没有待做或进行中的任务");
+    expect(nudge.note).toContain("自己交的也不自己判");
+    expect(nudge.note).toContain("待验收：01《初稿》（待验收，Writer）。");
+    // What is left is the organizer's words: the situation shows them, the Bot's reminder does not repeat them.
+    expect(nudge.note).not.toContain("定稿还没做");
+    const woken = h.store.getTurn(nudge.fired_turn_id!);
+    expect(woken).toMatchObject({ bot_id: lead.id, task_id: plan.id, ticket_id: null });
+    expect(h.store.getMessage(woken.trigger_message_id).body).toStartWith("回看：规划静下来一阵了");
+    await until(() => h.seen.some((messages) => messages.some((m) => textOf(m).includes("回看：规划静下来一阵了"))));
+    const heard = h.seen.find((messages) => messages.some((m) => textOf(m).includes("回看：规划静下来一阵了")))!;
+    expect(textOf(heard.find((m) => m.role === "user" && textOf(m).startsWith(SITUATION_HEADING))!)).toContain("待做 定稿还没做");
+
+    // The settle after the call-back handed nothing over, so the session says so, once.
+    await until(() => stalled().length === 1);
+    const line = stalled()[0]!;
+    expect(line.body).toStartWith("这件事停下了：没有待做或进行中的任务，进展里还记着没做完或卡住的：定稿还没做。");
+    expect(line.body).toContain("已经叫过Lead一次，之后没有任务交出或收口");
+    expect(notice(nudge.id)).toMatchObject({ kind: "failure", fail_kind: "stalled_plan", message_id: line.id });
+    // With nothing new from you the settle kept 初稿's spec; 排版 did change after the call-back, just not where it stands.
+    expect(h.store.getTicket(draft!.id)).toMatchObject({ status: "review", spec: "写出第一版" });
+    expect(h.store.getTicket(layout!.id).status).toBe("done");
+    expect(h.store.getTicket(layout!.id).updated_at > nudge.created_at).toBe(true);
+    await Bun.sleep(200);
+    expect(nudges()).toHaveLength(1);
+    expect(stalled()).toHaveLength(1);
+  });
+
+  test("waits until the plan and its session have both been quiet: a line of yours meanwhile moves the time", async () => {
+    const quiet = 500;
+    const { h, group, nudges } = await inTheGroup(handedOver, { planLeftQuietMs: quiet });
+    await until(() => {
+      const plan = h.store.sessionCurrentTask(group.id);
+      return plan !== null && h.store.currentRevision(plan.id) >= 2;
+    });
+    const plan = h.store.sessionCurrentTask(group.id)!;
+    const quietFrom = Date.parse(h.store.taskLastActivityAt(plan.id));
+    await Bun.sleep(100);
+    // You say something that opens no turn: you are still in the conversation.
+    const aside = h.store.insertMessage({ sessionId: group.id, kind: "user", author: "user", body: "我先看看" });
+    expect(Date.parse(aside.created_at)).toBeLessThan(quietFrom + quiet);
+    expect(nudges()).toHaveLength(0);
+    await until(() => nudges().length === 1, 5000);
+    expect(Date.parse(nudges()[0]!.created_at)).toBeGreaterThanOrEqual(Date.parse(aside.created_at) + quiet);
+  });
+
+  test("in your direct with a Bot nobody is called back: its last word already went to you", async () => {
+    const h = await harness(handedOver);
+    h.store.createBot({ name: "Lead", duties: "coordinate", boundaries: "stay" });
+    const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const session = writer.direct_session.id;
+    const trigger = h.store.insertMessage({ sessionId: session, kind: "user", author: "user", body: "安排周报" });
+    const done = h.completed();
+    await h.engine.handleInboundMessage(trigger, { fromUser: true });
+    await done;
+    const plan = h.store.sessionCurrentTask(session)!;
+    await until(() => h.store.currentRevision(plan.id) >= 2);
+    await Bun.sleep(150);
+    expect(h.store.listTickets(plan.id).map((ticket) => ticket.status)).toEqual(["review", "done"]);
+    expect(h.store.getTask(plan.id).spec).toContain("定稿还没做");
+    expect(h.store.db.query("SELECT COUNT(*) AS n FROM check_backs WHERE kind = 'plan_nudge'").get()).toEqual({ n: 0 });
+    expect(h.store.listMainMessages(session, 20).some((m) => m.body.startsWith("这件事停下了"))).toBe(false);
+  });
+
+  test("a group plan of one handed-over ticket is a one-shot job waiting for you: nobody is called back", async () => {
+    const { h, group, nudges, stalled } = await inTheGroup((payload) => {
+      const plan = payload.current_plan;
+      if (plan) return JSON.stringify({ decision: "continue", plan: plan.spec, tickets: [] });
+      return JSON.stringify({
+        decision: "new",
+        plan: { goal: "写一份周报", progress: { done: ["初稿"], open: ["等定稿意见"], blocked: [] } },
+        tickets: [{ id: "new-1", title: "初稿", spec: "写出第一版", status: "review", worker: "Writer" }],
+        message_ticket: null,
+      });
+    });
+    await until(() => {
+      const plan = h.store.sessionCurrentTask(group.id);
+      return plan !== null && h.store.currentRevision(plan.id) >= 2;
+    });
+    await Bun.sleep(150);
+    expect(nudges()).toHaveLength(0);
+    expect(stalled()).toHaveLength(0);
+  });
+
+  test("work the record files as held up counts as left: a Bot's own freeze is called back too", async () => {
+    const { h, lead, group, nudges, stalled } = await inTheGroup((payload) => {
+      const plan = payload.current_plan;
+      if (plan) return JSON.stringify({ decision: "continue", plan: plan.spec, tickets: [] });
+      return JSON.stringify({
+        decision: "new",
+        plan: { goal: "写一份周报", progress: { done: ["初稿", "排版"], open: [], blocked: ["定稿：Lead 自己冻结了，等它解冻"] } },
+        tickets: [
+          { id: "new-1", title: "初稿", spec: "写出第一版", status: "review", worker: "Writer" },
+          { id: "new-2", title: "排版", spec: "排好版", status: "done", worker: "Lead" },
+        ],
+        message_ticket: null,
+      });
+    });
+    await until(() => stalled().length === 1);
+    const plan = h.store.sessionCurrentTask(group.id)!;
+    expect(nudges()).toHaveLength(1);
+    expect(nudges()[0]).toMatchObject({ bot_id: lead.id, ticket_id: null });
+    expect(nudges()[0]!.note).toContain("卡住的，想清楚你们自己定的暂停、冻结还该不该停");
+    expect(stalled()[0]!.body).toContain("定稿：Lead 自己冻结了，等它解冻");
+    expect(h.store.getTask(plan.id).status).toBe("active");
+  });
+
+  test("a parked ticket does not make a plan of two: one handed over and one parked calls nobody back", async () => {
+    const { h, group, nudges, stalled } = await inTheGroup((payload) => {
+      const plan = payload.current_plan;
+      if (plan) return JSON.stringify({ decision: "continue", plan: plan.spec, tickets: [] });
+      return JSON.stringify({
+        decision: "new",
+        plan: { goal: "写一份周报", progress: { done: ["初稿"], open: ["定稿还没做"], blocked: [] } },
+        tickets: [
+          { id: "new-1", title: "初稿", spec: "写出第一版", status: "review", worker: "Writer" },
+          { id: "new-2", title: "配图", spec: "不要了", status: "parked", worker: null },
+        ],
+        message_ticket: null,
+      });
+    });
+    await until(() => {
+      const plan = h.store.sessionCurrentTask(group.id);
+      return plan !== null && h.store.currentRevision(plan.id) >= 2;
+    });
+    await Bun.sleep(150);
+    expect(nudges()).toHaveLength(0);
+    expect(stalled()).toHaveLength(0);
+  });
+
+  test("when the Bot to call back already has an appointment here for another plan, the plan is looked at again once it is gone", async () => {
+    const { h, lead, writer, group } = await inTheGroup(handedOver, { planLeftQuietMs: 60 });
+    // Lead holds an appointment in this group for a job that lives in another session.
+    const elsewhere = h.store.createGroup({ name: "月报组", members: [lead.id, writer.id] });
+    const other = h.store.openTask({ sessionId: elsewhere.id, title: "月报" });
+    const appointment = h.store.bookPlanNudge({ botId: lead.id, sessionId: group.id, taskId: other.id, ticketId: null, note: "看月报" });
+    const plan = () => h.store.sessionCurrentTask(group.id);
+    const callBacks = () =>
+      h.store.db
+        .query<{ bot_id: string }, [string]>("SELECT bot_id FROM check_backs WHERE kind = 'plan_nudge' AND task_id = ?")
+        .all(plan()?.id ?? "");
+    await until(() => plan() !== null && h.store.currentRevision(plan()!.id) >= 2);
+    await Bun.sleep(300);
+    // Booking would have voided Lead's appointment: the watch waits instead of dropping the plan.
+    expect(callBacks()).toHaveLength(0);
+    expect(h.store.pendingCheckBack(lead.id, group.id)?.id).toBe(appointment.id);
+    h.store.voidCheckBacks({ botId: lead.id, sessionId: group.id });
+    await until(() => callBacks().length === 1);
+    expect(callBacks()[0]!.bot_id).toBe(lead.id);
+  });
+
+  test(`while you say nothing, a plan is called back at most ${PLAN_NUDGES_UNANSWERED_MAX} times, even when every call-back hands something over`, async () => {
+    // Each settle opens one more ticket already awaiting review: a move every time.
+    const { h, lead, nudges, stalled, notice } = await inTheGroup((payload) => {
+      const plan = payload.current_plan;
+      if (!plan) return handedOver(payload);
+      return JSON.stringify({
+        decision: "continue",
+        plan: plan.spec,
+        tickets: [{ id: "new-1", title: `第 ${plan.revision} 份`, spec: "交了", status: "review", worker: "Writer" }],
+      });
+    });
+    await until(() => stalled().length === 1, 8000);
+    expect(nudges()).toHaveLength(PLAN_NUDGES_UNANSWERED_MAX);
+    expect(nudges().every((nudge) => nudge.bot_id === lead.id && nudge.ticket_id === null)).toBe(true);
+    const line = stalled()[0]!;
+    expect(line.body).toStartWith("这件事停下了：没有待做或进行中的任务");
+    expect(line.body).toContain(`你上次在这件事里说话之后已经叫回 ${PLAN_NUDGES_UNANSWERED_MAX} 次，最近一次叫的是Lead，不再叫了。`);
+    expect(notice(nudges().at(-1)!.id)).toMatchObject({ kind: "failure", fail_kind: "stalled_plan", message_id: line.id });
+    await Bun.sleep(200);
+    expect(nudges()).toHaveLength(PLAN_NUDGES_UNANSWERED_MAX);
+    expect(stalled()).toHaveLength(1);
+  });
 });

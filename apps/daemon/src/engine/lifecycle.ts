@@ -68,6 +68,7 @@ export type LifecycleDeps = {
   clearChainTimers: Chains["clearTimers"];
   clearDirectTimers: () => void;
   clearOrganizerTimers: () => void;
+  clearPlanTimers: () => void;
   inspectForTurn: Tools["inspectForTurn"];
   executeTools: Tools["executeTools"];
   closingCheck: Closing["closingCheck"];
@@ -137,6 +138,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     clearChainTimers,
     clearDirectTimers,
     clearOrganizerTimers,
+    clearPlanTimers,
     inspectForTurn,
     executeTools,
     closingCheck,
@@ -419,6 +421,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     clearChainTimers();
     clearDirectTimers();
     clearOrganizerTimers();
+    clearPlanTimers();
     while (tasks.size > 0) {
       for (const id of [...lives.keys()]) abortLive(id);
       await Promise.allSettled([...tasks]);

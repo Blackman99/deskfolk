@@ -25,7 +25,7 @@ import {
   type TicketStatus,
   type TurnStatus,
 } from "@real-bot/protocol";
-import { askTranscriptText, readAskAnswer, readAskSpec } from "../ask";
+import { askAnswerLines, askTranscriptText, readAskAnswer, readAskSpec } from "../ask";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { takeCodePoints } from "../text";
@@ -81,8 +81,11 @@ export const BRIEF_MAX = 4000;
 
 const TITLE_MAX = 40;
 const SLUG_MAX = 12;
-/** Path separators, the Windows-reserved set, and control characters. */
-const UNSAFE = /[\\/:*?"<>|\u0000-\u001f\u007f]/;
+/**
+ * Path separators, the Windows-reserved set, control characters, and `@`: a folder is cited in
+ * every message that hands over a file inside it, and an `@` there would read as a mention.
+ */
+const UNSAFE = /[\\/:*?"<>|@\u0000-\u001f\u007f]/;
 
 export function taskTitle(body: string): string {
   return takeCodePoints(body.replace(/\s+/g, " ").trim(), TITLE_MAX).text;
@@ -91,7 +94,8 @@ export function taskTitle(body: string): string {
 /**
  * `work/导出季度报表-7f3k`. CJK is kept as-is because the workspace is APFS, not a URL. The id
  * suffix is what actually keeps two plans with the same opening words apart. Plans from before
- * this carry a date prefix; they keep it.
+ * this carry a date prefix, and some an `@` from the request that opened them; they keep both, and
+ * the mention parser skips an `@` in a link to them and one glued to the `-`, `/` or ASCII word before it.
  */
 export function taskDirName(input: { title: string; id: string; suffixLength?: number }): string {
   const parts: string[] = [];
@@ -282,23 +286,25 @@ export function taskArtifactsSince(
 
 /**
  * What was said about this plan after `since`: its own messages, plus the user's lines in the
- * session it lives in, which may not carry the plan yet. The newest `limit`, listed oldest first —
- * taking the oldest left a plan with no revision yet showing the organizer its first hour forever.
+ * session it lives in that are not filed anywhere yet (a filing still out, or one that failed). A
+ * line of that session filed under another plan is that plan's, not this one's. The newest
+ * `limit`, listed oldest first — taking the oldest left a plan with no revision yet showing the
+ * organizer its first hour forever.
  */
 export function taskMessagesSince(
   ctx: StoreContext,
   taskId: string,
   since: string,
   limit = 30,
-): Array<{ id: string; author: string; kind: string; body: string; ticket_id: string | null; created_at: string }> {
+): Array<{ id: string; author: string; kind: string; body: string; answer: string | null; ticket_id: string | null; created_at: string }> {
   const task = getTask(ctx, taskId);
-  // A question you answered since counts as new, and reads with its choices and your answer: the
-  // answer is written onto the question, not posted as a message of yours.
+  // A question you answered since counts as new, and reads with its choices; your answer comes
+  // apart from it, as yours: it is written onto the Bot's question, not posted as a line of yours.
   return ctx.db
     .query<MessageRow, [string, string | null, string, string, number]>(
       `SELECT * FROM (
          SELECT id, author, kind, body, ticket_id, created_at, ask_spec, ask_answer FROM messages
-         WHERE (task_id = ? OR (session_id = ? AND kind = 'user'))
+         WHERE (task_id = ? OR (session_id = ? AND kind = 'user' AND task_id IS NULL))
            AND (created_at > ? OR (kind = 'ask' AND json_extract(ask_answer, '$.answered_at') > ?))
            AND kind IN ('user', 'bot', 'ask', 'system')
            AND hidden_from_bots = 0
@@ -308,25 +314,120 @@ export function taskMessagesSince(
        ) ORDER BY created_at ASC, id ASC`,
     )
     .all(taskId, task.session_id, since, since, limit)
-    .map((row) => ({
-      id: row.id,
-      author: row.author,
-      kind: row.kind,
-      body: row.kind === "ask"
-        ? askTranscriptText({ body: row.body, ask: readAskSpec(row.ask_spec), ask_answer: readAskAnswer(row.ask_answer) })
-        : row.body,
-      ticket_id: row.ticket_id ?? null,
-      created_at: row.created_at,
-    }));
+    .map((row) => {
+      const answer = row.kind === "ask" ? readAskAnswer(row.ask_answer) : null;
+      return {
+        id: row.id,
+        author: row.author,
+        kind: row.kind,
+        body: row.kind === "ask" ? askTranscriptText({ body: row.body, ask: readAskSpec(row.ask_spec), ask_answer: null }) : row.body,
+        answer: answer ? askAnswerLines(answer) : null,
+        ticket_id: row.ticket_id ?? null,
+        created_at: row.created_at,
+      };
+    });
+}
+
+/** One thing you said about a plan: a line you sent, or your answer to one of its Bots' questions. */
+export type UserLine = {
+  id: string;
+  via: "message" | "answer";
+  /** When you said it: an answer is dated when you answered, not when the Bot asked. */
+  at: string;
+  body: string;
+  /** The start of the question an answer answers; null for a line you sent. */
+  asked: string | null;
+};
+
+/** As much of the question behind an answer as {@link taskUserLines} reads, one past what the organizer shows. */
+const USER_LINE_ASKED_MAX = 121;
+
+type UserLineParams = [number, string, string, string | null, string, number, string];
+
+/**
+ * The set {@link taskUserLines} reads, each row dated when it was said. Bodies are cut in the query,
+ * so a pasted chapter costs no more than a short line.
+ */
+function userLinesSql(): string {
+  return `SELECT id, 'message' AS via, created_at AS at, substr(body, 1, ?) AS body, NULL AS ask_answer, NULL AS asked
+          FROM messages
+          WHERE kind = 'user' AND author = ?
+            AND (task_id = ? OR (task_id IS NULL AND session_id = ? AND created_at >= ?))
+          UNION ALL
+          SELECT id, 'answer' AS via, json_extract(ask_answer, '$.answered_at') AS at, '' AS body, ask_answer, substr(body, 1, ?) AS asked
+          FROM messages
+          WHERE kind = 'ask' AND task_id = ? AND ask_answer IS NOT NULL`;
+}
+
+function userLineParams(task: Task, bodyMax: number, askedMax: number): UserLineParams {
+  return [bodyMax, USER_MEMBER, task.id, task.session_id, task.created_at, askedMax, task.id];
 }
 
 /**
- * When the user last said something filed under this plan; null when they never have. The plan
- * reconcile's nudge budget resets from here rather than from the plan's own start, so a plan that
- * has been going for weeks does not carry a stretched-out allowance from its first day.
+ * Everything you said about this plan, oldest first: your lines filed under it — or said in its
+ * session while it was open and never filed anywhere, which is what a filing that failed leaves —
+ * and your answers to its Bots' questions, dated when you answered. The organizer holds the plan's
+ * rules against these, so an instruction older than its window of recent lines still counts.
+ *
+ * Only the first `earliest` and the newest `newest` come back, each body cut at `bodyMax` code
+ * points; `total` says how many there are.
+ */
+export function taskUserLines(
+  ctx: StoreContext,
+  taskId: string,
+  opts: { earliest?: number; newest?: number; bodyMax?: number } = {},
+): { lines: UserLine[]; total: number } {
+  const task = getTask(ctx, taskId);
+  const params = userLineParams(task, opts.bodyMax ?? 301, USER_LINE_ASKED_MAX);
+  type Row = { id: string; via: "message" | "answer"; at: string; body: string; ask_answer: string | null; asked: string | null };
+  const read = (order: "ASC" | "DESC", limit: number): Row[] =>
+    limit > 0
+      ? ctx.db
+          .query<Row, [...UserLineParams, number]>(`SELECT * FROM (${userLinesSql()}) ORDER BY at ${order}, id ${order} LIMIT ?`)
+          .all(...params, limit)
+      : [];
+  const byId = new Map<string, Row>();
+  for (const row of [...read("ASC", opts.earliest ?? 4), ...read("DESC", opts.newest ?? 200)]) byId.set(row.id, row);
+  const total = ctx.db.query<{ n: number }, UserLineParams>(`SELECT COUNT(*) AS n FROM (${userLinesSql()})`).get(...params)?.n ?? 0;
+  const lines = [...byId.values()]
+    .sort((a, b) => (a.at === b.at ? (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) : a.at < b.at ? -1 : 1))
+    .map((row): UserLine => {
+      if (row.via === "message") return { id: row.id, via: "message", at: row.at, body: row.body, asked: null };
+      const answer = readAskAnswer(row.ask_answer);
+      return { id: row.id, via: "answer", at: row.at, body: answer ? askAnswerLines(answer) : "", asked: row.asked ?? "" };
+    });
+  return { lines, total };
+}
+
+/**
+ * Whether you said anything about this plan after `since`, in the same set {@link taskUserLines}
+ * reads. A settle reads it before it is sent, so the organizer and the app go by the same fact.
+ */
+export function userSpokeSince(ctx: StoreContext, taskId: string, since: string): boolean {
+  const task = getTask(ctx, taskId);
+  return Boolean(
+    ctx.db
+      .query<{ one: number }, [...UserLineParams, string]>(`SELECT 1 AS one FROM (${userLinesSql()}) WHERE at > ? LIMIT 1`)
+      .get(...userLineParams(task, 1, 1), since),
+  );
+}
+
+/**
+ * When the user last said something in this plan: a line filed under it, or an answer to one of
+ * its Bots' questions, dated when they answered; null when they never have. The plan reconcile's
+ * nudge budget resets from here rather than from the plan's own start, so a plan that has been
+ * going for weeks does not carry a stretched-out allowance from its first day.
  */
 export function lastUserLineAt(ctx: StoreContext, taskId: string): string | null {
-  const row = ctx.db.query<{ at: string | null }, [string]>(`SELECT MAX(created_at) AS at FROM messages WHERE task_id = ? AND kind = 'user'`).get(taskId);
+  const row = ctx.db
+    .query<{ at: string | null }, [string, string]>(
+      `SELECT MAX(at) AS at FROM (
+         SELECT created_at AS at FROM messages WHERE task_id = ? AND kind = 'user'
+         UNION ALL
+         SELECT json_extract(ask_answer, '$.answered_at') FROM messages WHERE task_id = ? AND kind = 'ask' AND ask_answer IS NOT NULL
+       )`,
+    )
+    .get(taskId, taskId);
   return row?.at ?? null;
 }
 
