@@ -11,6 +11,20 @@ export type StagedAttachment = {
 };
 
 /**
+ * A file or folder already in the workspace, dragged in from the file tree. It goes out as its
+ * path: nothing is uploaded or copied.
+ */
+export type StagedWorkspacePath = {
+  id: string;
+  path: string;
+  name: string;
+  isDir: boolean;
+  isImage: boolean;
+  /** The Mac's small copy of a picture, once it has arrived. */
+  previewUrl: string | null;
+};
+
+/**
  * One open conversation's own state.
  *
  * Not one pane's: two panes showing the same conversation share a view, so the draft you started
@@ -50,6 +64,8 @@ export class SessionView {
   suggestAbort: AbortController | null = null;
   /** Files waiting to go out with the next message here. */
   stagedAttachments = $state<StagedAttachment[]>([]);
+  /** Workspace files and folders dragged in from the tree, going out with it by path. */
+  stagedPaths = $state<StagedWorkspacePath[]>([]);
   /** A send, an answer, an approval or a continue from here is in flight. Other conversations are not held up by it. */
   sending = $state(false);
   /**

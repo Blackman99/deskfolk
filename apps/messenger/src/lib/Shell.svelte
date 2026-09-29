@@ -10,6 +10,7 @@
 	import { composerLocked } from './chat/composer-mode.ts';
 	import { copyFor } from './copy.ts';
 	import ImageCopy from './ImageCopy.svelte';
+	import WorkspaceDragGhost from './WorkspaceDragGhost.svelte';
 	import { dangerCopy, shouldDropConfirm } from './overlays/danger-confirm.ts';
 	import { ShellDangerConfirm } from './overlays/danger-confirm.svelte.ts';
 	import { findAttachmentById, findAttachmentByPath, siblingsForPath } from './overlays/artifact-lookup.ts';
@@ -1288,6 +1289,7 @@
 	<Onboarding {runtime} bind:holding={onboardingHeld} onDismiss={() => (dismissedOnboarding = true)} />
 {:else}
 <ImageCopy {t} />
+<WorkspaceDragGhost />
 {#if searchOpen}
 	<GlobalSearch bind:this={searchDialog} {runtime} {t} opener={searchOpener} onClose={closeGlobalSearch} onSelect={selectSearchHit} />
 {/if}

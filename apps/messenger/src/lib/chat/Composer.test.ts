@@ -5,6 +5,7 @@ import { copyFor } from "../copy.ts";
 import { aBot, aBotDirect, aDirect, aTurn, fakeRuntime } from "../test-fixtures.ts";
 import { reactive } from "../test-reactive.svelte.ts";
 import { render } from "../test-render.ts";
+import { pressWorkspacePaths, type WorkspaceDragItem } from "../workspace-drag.svelte.ts";
 import Composer from "./Composer.svelte";
 
 const t = copyFor("zh");
@@ -550,4 +551,150 @@ test("a send still on its way shows on the button, and an upload shows how far i
   expect(action().getAttribute("aria-label")).toBe(t.composer.send);
   expect(sizes()[0]).not.toContain("%");
   view.close();
+});
+
+/** A tree row somewhere else on screen, and the drag from it to wherever `under` says the pointer is. */
+function treeRow(items: WorkspaceDragItem[]) {
+  const el = document.createElement("button");
+  document.body.append(el);
+  el.addEventListener("pointerdown", (event) => pressWorkspacePaths(event, { items: () => items, label: () => "rows" }));
+  const pointer = (type: string, x: number, y: number) =>
+    new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, pointerId: 1, button: 0, pointerType: "mouse" });
+  return {
+    press(under: () => Element | null) {
+      document.elementFromPoint = under;
+      el.dispatchEvent(pointer("pointerdown", 10, 10));
+      window.dispatchEvent(pointer("pointermove", 200, 300));
+      flushSync();
+    },
+    release() {
+      window.dispatchEvent(pointer("pointerup", 200, 300));
+      flushSync();
+    },
+    remove: () => el.remove(),
+  };
+}
+
+test("files dragged in from the tree wait as references, and go out by path with nothing uploaded", async () => {
+  const selected = aDirect();
+  const runtime = reactive(fakeRuntime({ bots: [aBot({ id: "bot-1" })], sessions: [selected] }));
+  runtime.selectedId = selected.id;
+  runtime.draft = "";
+  const thumbs: Array<[string, string | undefined]> = [];
+  runtime.client = {
+    getWorkspaceFileBlob: async (path: string, _progress: unknown, options?: { size?: string }) => {
+      thumbs.push([path, options?.size]);
+      return new Blob(["png"], { type: "image/png" });
+    },
+  } as never;
+  const sent: Array<[File[], string[]]> = [];
+  const view = render(Composer, {
+    runtime,
+    t,
+    selected,
+    onSend: async (files: File[], paths: string[]) => {
+      sent.push([files, paths]);
+      return true;
+    },
+    onPickPrompt: () => {},
+  });
+  const originalCreate = URL.createObjectURL;
+  const originalRevoke = URL.revokeObjectURL;
+  const revoked: string[] = [];
+  URL.createObjectURL = (() => "blob:thumb") as typeof URL.createObjectURL;
+  URL.revokeObjectURL = ((url: string) => revoked.push(url)) as typeof URL.revokeObjectURL;
+  const elementFromPoint = document.elementFromPoint;
+  const tree = treeRow([
+    { path: "docs/brief.md", isDir: false },
+    { path: "shots/a.png", isDir: false },
+    { path: "shots", isDir: true },
+  ]);
+  const settle = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    flushSync();
+  };
+  try {
+    const card = view.host.querySelector(".composer-card") as HTMLElement;
+    const action = view.host.querySelector(".composer-action") as HTMLButtonElement;
+    expect(action.disabled).toBe(true);
+
+    // On its way, the card says it would take it; under the pointer, it says what a drop does.
+    tree.press(() => document.body);
+    expect(card.classList.contains("is-drop-ready")).toBe(true);
+    expect(card.classList.contains("is-drop-over")).toBe(false);
+    tree.release();
+    expect(card.classList.contains("is-drop-ready")).toBe(false);
+    expect(view.host.querySelectorAll(".is-workspace-ref")).toHaveLength(0);
+
+    tree.press(() => view.host.querySelector(".composer-input"));
+    expect(card.classList.contains("is-drop-over")).toBe(true);
+    expect(view.host.querySelector(".composer-drop-hint")?.textContent).toBe(t.composer.dropWorkspaceItems);
+    tree.release();
+    await settle();
+    const chips = () => [...view.host.querySelectorAll<HTMLElement>(".is-workspace-ref")];
+    expect(chips().map((chip) => [chip.querySelector(".attachment-name")?.textContent, chip.querySelector(".attachment-size")?.textContent])).toEqual([
+      ["brief.md", "docs/brief.md"],
+      ["a.png", "shots/a.png"],
+      ["shots", "shots"],
+    ]);
+    // Only the picture asks the Mac for anything: its small copy.
+    expect(thumbs).toEqual([["shots/a.png", "thumb"]]);
+    expect(chips()[1]!.querySelector("img")?.getAttribute("src")).toBe("blob:thumb");
+    expect(view.host.querySelector(".composer-drop-hint")).toBeNull();
+
+    // The same rows again add nothing; one taken back stays out.
+    tree.press(() => card);
+    tree.release();
+    // The click a release fires is the drag's; what comes after it is yours.
+    await settle();
+    expect(chips()).toHaveLength(3);
+    (chips()[2]!.querySelector(".attachment-delete-btn") as HTMLButtonElement).click();
+    flushSync();
+    expect(chips()).toHaveLength(2);
+
+    // No words needed: the references are something to send.
+    expect(action.disabled).toBe(false);
+    action.click();
+    await settle();
+    expect(sent).toEqual([[[], ["docs/brief.md", "shots/a.png"]]]);
+    expect(chips()).toHaveLength(0);
+    expect(revoked).toEqual(["blob:thumb"]);
+  } finally {
+    tree.remove();
+    document.elementFromPoint = elementFromPoint;
+    URL.createObjectURL = originalCreate;
+    URL.revokeObjectURL = originalRevoke;
+    view.close();
+  }
+});
+
+test("the file conversation, a locked composer and one already sending take nothing from the tree", () => {
+  const fileDrop = aDirect({
+    id: FILE_DROP_SESSION_ID,
+    participants: [{ member: USER_MEMBER, joined_at: "2026-09-19T00:00:00.000Z", left_at: null }],
+  });
+  const botBot = aBotDirect();
+  const direct = aDirect();
+  const runtime = reactive(
+    fakeRuntime({ bots: [aBot({ id: "bot-1" }), aBot({ id: "bot-2" })], sessions: [fileDrop, botBot, direct] }),
+  );
+  const elementFromPoint = document.elementFromPoint;
+  const tree = treeRow([{ path: "docs/brief.md", isDir: false }]);
+  try {
+    for (const selected of [fileDrop, botBot, direct]) {
+      runtime.selectedId = selected.id;
+      if (selected === direct) runtime.sessionView(direct.id).sending = true;
+      const view = render(Composer, { runtime, t, selected, onSend: async () => true, onPickPrompt: () => {} });
+      const card = view.host.querySelector(".composer-card") as HTMLElement;
+      tree.press(() => card);
+      expect(card.classList.contains("is-drop-ready")).toBe(false);
+      expect(view.host.querySelector(".composer-drop-hint")).toBeNull();
+      tree.release();
+      expect(runtime.sessionView(selected.id).stagedPaths).toEqual([]);
+      view.close();
+    }
+  } finally {
+    tree.remove();
+    document.elementFromPoint = elementFromPoint;
+  }
 });

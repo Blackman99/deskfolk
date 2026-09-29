@@ -392,6 +392,8 @@ export class LocalApi {
       fork?: boolean;
       askId?: string | null;
       attachments?: File[];
+      /** Files already in the workspace, attached by path. */
+      paths?: string[];
       parentId?: string | null;
       requestId?: string;
       /** Not heard here: fetch reports no upload progress, and loopback takes a file at once. */
@@ -400,12 +402,15 @@ export class LocalApi {
   ): Promise<Message> {
     const parentId = opts.parentId ?? null;
     const path = `/v1/sessions/${sessionId}/messages`;
+    const paths = opts.paths?.length ? opts.paths : null;
     if (opts.attachments && opts.attachments.length > 0) {
       const form = new FormData();
       form.append("body", body);
       if (opts.fork) form.append("fork", "true");
       if (opts.askId) form.append("ask_id", opts.askId);
       if (parentId) form.append("parent_id", parentId);
+      // One field: the daemon refuses a multipart field that repeats.
+      if (paths) form.append("paths", JSON.stringify(paths));
       for (const file of opts.attachments) {
         form.append("files", file, file.name);
       }
@@ -416,6 +421,7 @@ export class LocalApi {
       parent_id: parentId,
       fork: opts.fork ?? false,
       ask_id: opts.askId ?? null,
+      ...(paths ? { paths } : {}),
     }, undefined, {}, false, null, opts.requestId);
   }
 

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { isPrimaryModifier } from '../keymap.ts';
+	import { pressWorkspacePaths } from '../workspace-drag.svelte.ts';
 	import { treeRange, visibleTreePaths, type ArtifactTreeNode } from './artifact-tree.ts';
 	import FileIcon from './FileIcon.svelte';
 	import { fileIconFor } from './file-icon.ts';
@@ -17,6 +18,11 @@
 		onContextMenu?: (node: ArtifactTreeNode, event: MouseEvent, picked: ArtifactTreeNode[]) => void;
 		/** ⌘⌫ on mac, Ctrl+⌫ or plain Delete elsewhere, on a focused row, with the rows it applies to. */
 		onTrash?: (picked: ArtifactTreeNode[]) => void;
+		/**
+		 * Rows can be dragged onto a composer, to go out with the next message by path. What the
+		 * chip under the pointer says for more than one; one row shows its own name.
+		 */
+		dragLabel?: (count: number) => string;
 		lazyDirs?: boolean;
 		loadedDirs?: ReadonlySet<string>;
 		onExpandDir?: (path: string) => void;
@@ -33,7 +39,7 @@
 	}
 
 	let {
-		nodes, selected, label, onSelect, onContextMenu, onTrash, lazyDirs = false, loadedDirs, onExpandDir, truncatedLabel,
+		nodes, selected, label, onSelect, onContextMenu, onTrash, dragLabel, lazyDirs = false, loadedDirs, onExpandDir, truncatedLabel,
 		loadingDirs, failedDirs, loading = false, failed = false,
 		loadingLabel, failedLabel, emptyLabel, retryLabel, onRetry,
 	}: Props = $props();
@@ -114,6 +120,16 @@
 		onContextMenu(node, event, targets);
 	}
 
+	/** A press that may become a drag: of everything highlighted when this row is, else of this row. */
+	function onRowPointerDown(node: ArtifactTreeNode, event: PointerEvent): void {
+		const many = dragLabel;
+		if (!many) return;
+		pressWorkspacePaths(event, {
+			items: () => targetsFor(node).map((row) => ({ path: row.path, isDir: row.kind === 'dir' })),
+			label: (items) => (items.length === 1 ? (byPath.get(items[0]!.path)?.name ?? items[0]!.path) : many(items.length)),
+		});
+	}
+
 	function onKeydown(event: KeyboardEvent): void {
 		if (event.key === 'Escape' && livePicked.length) {
 			event.preventDefault();
@@ -191,6 +207,7 @@
 				// Shift-click picks rows; it must not also select the text between them.
 				if (event.shiftKey) event.preventDefault();
 			}}
+			onpointerdown={(event) => onRowPointerDown(node, event)}
 			onclick={(event) => onRowClick(node, event)}
 			oncontextmenu={(event) => onRowContextMenu(node, event)}
 		>

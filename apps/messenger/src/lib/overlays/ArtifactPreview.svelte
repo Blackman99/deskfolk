@@ -1411,6 +1411,7 @@
 				onSelect={selectNode}
 				onContextMenu={openTreeMenu}
 				onTrash={canTrash ? askTrash : undefined}
+				dragLabel={t.stream.dragItems}
 				lazyDirs={mode === 'workspace'}
 				{loadedDirs}
 				onExpandDir={(path) => void loadWorkspaceDir(path)}

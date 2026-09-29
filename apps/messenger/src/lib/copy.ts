@@ -749,6 +749,8 @@ const zh = {
     artifactOpenUnavailable: "开发态浏览器里请下载；系统打开只在 App 窗里。",
     artifactResize: "拖动调整预览宽度",
     artifactTree: "引用的文件",
+    /** The chip under the pointer while several rows are dragged out of the tree. */
+    dragItems: (count: number) => `${count} 项`,
     artifactTreeLoading: "正在加载文件列表…",
     artifactTreeFailed: "文件列表加载失败。",
     artifactTreeEmpty: "暂无引用的文件。",
@@ -912,6 +914,10 @@ const zh = {
     waitingHint: "回复结束后可发送 · Shift+Enter 换行",
     attach: "添加附件",
     removeAttachment: "移除附件",
+    /** On a file dragged in from the workspace tree: it goes out as its path. */
+    workspaceRef: "工作区里的原文件，发出时不复制",
+    /** Over the composer while files from the tree are dragged onto it. */
+    dropWorkspaceItems: "松开即附上 · 不复制",
     removeMention: "移除提及",
     /** The ✨ beside send. Each press is one model call on the spend ledger. */
     suggest: "建议下一步（调用一次模型）",
@@ -2102,6 +2108,7 @@ const en: CopyShape<typeof zh> = {
     artifactOpenUnavailable: "In the browser, download instead. Open with system is only in the app window.",
     artifactResize: "Drag to resize preview",
     artifactTree: "Cited files",
+    dragItems: (count: number) => `${count} items`,
     artifactTreeLoading: "Loading files…",
     artifactTreeFailed: "Could not load files.",
     artifactTreeEmpty: "No cited files yet.",
@@ -2263,6 +2270,8 @@ const en: CopyShape<typeof zh> = {
     waitingHint: "Send after the reply ends · Shift+Enter for newline",
     attach: "Add attachment",
     removeAttachment: "Remove attachment",
+    workspaceRef: "The file in the workspace itself; nothing is copied",
+    dropWorkspaceItems: "Drop to attach · nothing is copied",
     removeMention: "Remove mention",
     suggest: "Suggest what to send next (one model call)",
     suggestStop: "Stop drafting suggestions",

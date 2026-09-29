@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { USER_MEMBER, type Bot, type Message, type SessionSummary } from '@real-bot/protocol';
-	import { formatFileSize } from './attachments.ts';
+	import { formatFileSize, isImageFileName } from './attachments.ts';
 	import { avatarSrc, botAvatarColor } from '../avatar.ts';
 	import { composerAction, composerLocked, lockedReason } from './composer-mode.ts';
 	import { insertComposerNewline } from './composer-editor.ts';
@@ -36,16 +36,19 @@
 	import { quotePreview, quotedBotName } from './quote-reply.ts';
 	import { rosterLetter } from '../sidebar/roster-letter.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
-	import type { StagedAttachment } from '../session-view.svelte.ts';
+	import type { SessionView, StagedAttachment, StagedWorkspacePath } from '../session-view.svelte.ts';
 	import { isLiveStatus } from './transcript.ts';
 	import { isOutside } from '../click-outside.ts';
+	import { workspaceDrag, workspaceDropTarget, type WorkspaceDragItem } from '../workspace-drag.svelte.ts';
+	import FileIcon from '../overlays/FileIcon.svelte';
+	import { fileIconFor } from '../overlays/file-icon.ts';
 
 	type Props = {
 		runtime: MessengerRuntime;
 		t: Copy;
 		selected: SessionSummary | null;
 		/** The stage owns scrolling, so sending goes back through it. */
-		onSend: (files: File[]) => Promise<boolean>;
+		onSend: (files: File[], paths: string[]) => Promise<boolean>;
 		/** A starter chip or a suggestion fills the draft; the mirror effect puts it in the editor. */
 		onPickPrompt: (prompt: string) => void;
 		/** The stage owns stick-to-bottom; this only draws the jump control on the card. */
@@ -112,6 +115,8 @@
 	function stageAttachments(next: StagedAttachment[]): void {
 		if (view) view.stagedAttachments = next;
 	}
+	/** Dragged in from the file tree, and staged the same way. */
+	const pendingPaths = $derived(view?.stagedPaths ?? []);
 
 	let fileInputEl = $state<HTMLInputElement | null>(null);
 
@@ -144,7 +149,9 @@
 	);
 
 	/** Something to send: text, or files staged without any. */
-	const hasContent = $derived(Boolean(view?.draft.trim()) || pendingAttachments.length > 0);
+	const hasContent = $derived(
+		Boolean(view?.draft.trim()) || pendingAttachments.length > 0 || pendingPaths.length > 0
+	);
 
 	const primaryAction = $derived(composerAction({
 		connected,
@@ -481,6 +488,63 @@
 		fileInputEl?.click();
 	}
 
+	/**
+	 * Whether a drag out of the file tree lands here now. The file conversation takes files from
+	 * elsewhere, not what is already in the workspace; a locked or sending composer takes nothing.
+	 */
+	function takesWorkspaceItems(): boolean {
+		return Boolean(selected && view) && !fileDrop && !lockedComposer && connected && !view?.sending;
+	}
+
+	let cardEl = $state<HTMLElement | null>(null);
+	const treeDrag = $derived(workspaceDrag.current);
+	/** A drag from the tree is on its way and would land here: the card says it can take it. */
+	const dropReady = $derived(Boolean(treeDrag) && takesWorkspaceItems());
+	const dropOver = $derived(Boolean(treeDrag && cardEl && treeDrag.over === cardEl));
+
+	function stageWorkspaceItems(items: WorkspaceDragItem[]): void {
+		const target = view;
+		if (!target) return;
+		const staged = new Set(target.stagedPaths.map((row) => row.path));
+		const next: StagedWorkspacePath[] = [];
+		for (const item of items) {
+			if (staged.has(item.path)) continue;
+			staged.add(item.path);
+			const name = item.path.split('/').pop() || item.path;
+			const id = Math.random().toString(36).slice(2) + Date.now().toString(36);
+			next.push({ id, path: item.path, name, isDir: item.isDir, isImage: !item.isDir && isImageFileName(name), previewUrl: null });
+		}
+		if (next.length === 0) return;
+		target.stagedPaths = [...target.stagedPaths, ...next];
+		for (const row of next) if (row.isImage) void loadPathPreview(target, row.id, row.path);
+		editorEl?.focus();
+	}
+
+	/** The Mac's 256 px copy of a picture, as for one a message names by its path. */
+	async function loadPathPreview(target: SessionView, id: string, path: string): Promise<void> {
+		const client = runtime.client;
+		if (!client) return;
+		let url: string;
+		try {
+			url = URL.createObjectURL(await client.getWorkspaceFileBlob(path, undefined, { background: true, size: 'thumb' }));
+		} catch {
+			return;
+		}
+		// Taken back or sent while it loaded.
+		if (!target.stagedPaths.some((row) => row.id === id)) {
+			URL.revokeObjectURL(url);
+			return;
+		}
+		target.stagedPaths = target.stagedPaths.map((row) => (row.id === id ? { ...row, previewUrl: url } : row));
+	}
+
+	function removePendingPath(id: string): void {
+		if (!view) return;
+		const target = view.stagedPaths.find((row) => row.id === id);
+		if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+		view.stagedPaths = view.stagedPaths.filter((row) => row.id !== id);
+	}
+
 	function onFileDragOver(ev: DragEvent): void {
 		if (!fileDrop || lockedComposer || !connected || view?.sending) return;
 		if (!ev.dataTransfer?.types.includes('Files')) return;
@@ -669,12 +733,14 @@
 		if (primaryAction.kind !== 'send' || primaryAction.disabled || !view) return;
 		const target = view;
 		const staged = [...pendingAttachments];
-		if (!(await onSend(staged.map((a) => a.file)))) return;
-		for (const a of staged) {
+		const stagedPaths = [...pendingPaths];
+		if (!(await onSend(staged.map((a) => a.file), stagedPaths.map((row) => row.path)))) return;
+		for (const a of [...staged, ...stagedPaths]) {
 			if (a.previewUrl) URL.revokeObjectURL(a.previewUrl);
 		}
-		const sent = new Set(staged.map((a) => a.id));
+		const sent = new Set([...staged, ...stagedPaths].map((a) => a.id));
 		target.stagedAttachments = target.stagedAttachments.filter((a) => !sent.has(a.id));
+		target.stagedPaths = target.stagedPaths.filter((row) => !sent.has(row.id));
 		if (editorEl && view === target) editorEl.innerHTML = '';
 	}
 	let composerEl = $state<HTMLElement | null>(null);
@@ -780,9 +846,13 @@
 <div class="composer-card-wrap">
 <div class="composer-frost-shell composer-card-shell">
 <div
+	bind:this={cardEl}
 	class="composer-card"
 	class:is-locked={lockedComposer}
+	class:is-drop-ready={dropReady}
+	class:is-drop-over={dropOver}
 	role="presentation"
+	use:workspaceDropTarget={{ accepts: takesWorkspaceItems, drop: stageWorkspaceItems }}
 	onclick={(e) => {
 		const target = e.target as HTMLElement | null;
 		if (selected && !lockedComposer && target && !target.closest('button, input, [contenteditable="true"]')) {
@@ -814,7 +884,11 @@
 		</div>
 	{/if}
 
-	{#if pendingAttachments.length > 0}
+	{#if dropOver}
+		<div class="composer-drop-hint" aria-hidden="true">{t.composer.dropWorkspaceItems}</div>
+	{/if}
+
+	{#if pendingAttachments.length > 0 || pendingPaths.length > 0}
 		<div class="composer-attachments-bar">
 			{#each pendingAttachments as att (att.id)}
 				{@const uploaded = uploadedPercent(att.file)}
@@ -837,6 +911,31 @@
 						aria-label="Remove attachment {att.name}"
 						disabled={view?.sending}
 						onclick={() => removePendingAttachment(att.id)}
+					>
+						<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+					</button>
+				</div>
+			{/each}
+			{#each pendingPaths as ref (ref.id)}
+				<div class="composer-attachment-item is-workspace-ref" class:is-img={Boolean(ref.previewUrl)} title="{ref.path} · {t.composer.workspaceRef}">
+					{#if ref.previewUrl}
+						<img src={ref.previewUrl} alt={ref.name} class="attachment-preview-img" />
+					{:else}
+						<div class="attachment-file-icon">
+							<FileIcon icon={fileIconFor(ref.path, { isDir: ref.isDir })} size={16} />
+						</div>
+					{/if}
+					<div class="attachment-meta flex flex-col min-w-0 flex-1">
+						<span class="attachment-name text-12 font-medium text-ink overflow-hidden text-ellipsis whitespace-nowrap">{ref.name}</span>
+						<span class="attachment-size mono text-10 text-muted overflow-hidden text-ellipsis whitespace-nowrap">{ref.path}</span>
+					</div>
+					<button
+						type="button"
+						class="attachment-delete-btn"
+						title={t.composer.removeAttachment}
+						aria-label="{t.composer.removeAttachment} {ref.name}"
+						disabled={view?.sending}
+						onclick={() => removePendingPath(ref.id)}
 					>
 						<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
 					</button>
@@ -1213,6 +1312,32 @@
 	.composer-card:focus-within {
 		border-color: var(--accent-border);
 		box-shadow: 0 0 0 3px var(--accent-glow), var(--shadow-md);
+	}
+
+	/* A drag out of the file tree is on its way: the card says it would take it, and more so under the pointer. */
+	.composer-card.is-drop-ready {
+		border-color: var(--accent-border);
+		border-style: dashed;
+	}
+
+	.composer-card.is-drop-over {
+		border-style: solid;
+		box-shadow: 0 0 0 3px var(--accent-glow), var(--shadow-md);
+	}
+
+	.composer-drop-hint {
+		position: absolute;
+		inset: 0;
+		z-index: 3;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: inherit;
+		background: color-mix(in srgb, var(--input-bg) 82%, transparent);
+		color: var(--accent);
+		font-size: 13px;
+		font-weight: 600;
+		pointer-events: none;
 	}
 
 	.composer-card.is-locked {

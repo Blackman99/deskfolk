@@ -1761,14 +1761,15 @@ export class MessengerRuntime {
    * a pane always names its own: the selected conversation is whichever pane has the keyboard.
    * True once the Mac has the message; the composer keeps what it staged until then.
    */
-  async send(opts?: { attachments?: File[]; sessionId?: string }): Promise<boolean> {
+  async send(opts?: { attachments?: File[]; paths?: string[]; sessionId?: string }): Promise<boolean> {
     const api = this.api;
     const id = opts?.sessionId ?? this.selectedId;
     const view = this.viewFor(id);
     if (!view) return false;
     const body = view.draft.trim();
     const hasAttachments = Boolean(opts?.attachments && opts.attachments.length > 0);
-    if (!api || !id || (!body && !hasAttachments) || view.sending) return false;
+    const hasPaths = Boolean(opts?.paths && opts.paths.length > 0);
+    if (!api || !id || (!body && !hasAttachments && !hasPaths) || view.sending) return false;
     const kept = this.draftReconnect;
     if (kept && !kept.confirm && kept.sessionId === id) return false;
     const parentId = view.replyingToId;
@@ -1778,6 +1779,7 @@ export class MessengerRuntime {
     try {
       const message = await api.postMessage(id, body, {
         attachments: opts?.attachments,
+        ...(hasPaths ? { paths: opts?.paths } : {}),
         parentId,
         ...(hasAttachments ? { onUploadProgress: (progress: FileProgress) => { view.upload = { files, loaded: progress.loaded }; } } : {}),
       });

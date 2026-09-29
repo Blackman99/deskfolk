@@ -1316,6 +1316,28 @@ test("a send from one conversation goes to it and holds up only it, whichever is
   expect(runtime.sessionView("direct-1").draft).toBe("to the direct");
 });
 
+test("workspace paths go out with the message, and are something to send without words", async () => {
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+  const bodies: unknown[] = [];
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    const path = String(url);
+    if (init?.method === "POST" && path.includes("/messages")) {
+      bodies.push(init.body instanceof FormData ? Object.fromEntries(init.body) : JSON.parse(String(init.body)));
+      return Response.json(aMessage({ id: `sent-${bodies.length}`, session_id: "direct-1" }));
+    }
+    return Response.json({ items: [] });
+  }) as typeof fetch;
+  runtime.sessionView("direct-1").draft = "";
+  expect(await runtime.send({ sessionId: "direct-1" })).toBe(false);
+  expect(await runtime.send({ sessionId: "direct-1", paths: ["docs/brief.md"] })).toBe(true);
+  runtime.sessionView("direct-1").draft = "and this";
+  const file = new File(["x"], "note.txt", { type: "text/plain" });
+  expect(await runtime.send({ sessionId: "direct-1", attachments: [file], paths: ["shots/a.png"] })).toBe(true);
+  expect(bodies[0]).toEqual({ body: "", parent_id: null, fork: false, ask_id: null, paths: ["docs/brief.md"] });
+  expect(bodies[1]).toMatchObject({ body: "and this", paths: JSON.stringify(["shots/a.png"]) });
+});
+
 test("clicking into a conversation keeps the reply aimed there and its chips, and drafts nothing", async () => {
   const { runtime } = await connected();
   await until(() => runtime.connection === "connected");

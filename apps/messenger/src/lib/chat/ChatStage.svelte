@@ -734,9 +734,13 @@
 	}
 
 	/** The composer hands the files over; scrolling to the new message is the stage's job. */
-	async function sendFromComposer(files: File[]): Promise<boolean> {
+	async function sendFromComposer(files: File[], paths: string[] = []): Promise<boolean> {
 		stickToBottom = true;
-		const sent = await runtime.send({ attachments: files.length > 0 ? files : undefined, sessionId: selected?.id });
+		const sent = await runtime.send({
+			attachments: files.length > 0 ? files : undefined,
+			paths: paths.length > 0 ? paths : undefined,
+			sessionId: selected?.id
+		});
 		await tick();
 		scrollToBottom(false);
 		return sent;

@@ -106,6 +106,21 @@ test("remote attachments declare hashes instead of inventing a second file machi
   ]);
 });
 
+test("workspace paths go along as a plain list beside the files", async () => {
+  const calls: RemoteRequest[] = [];
+  const api = new RemoteApi(enrollment, {
+    rpc: async (request) => {
+      calls.push(request);
+      return { v: 1, id: request.id, status: 201, body: { id: "msg" } };
+    },
+  });
+  await api.postMessage("01ARZ3NDEKTSV4RRFFQ69G5FAY", "", { paths: ["docs/brief.md", "shots"] });
+  await api.postMessage("01ARZ3NDEKTSV4RRFFQ69G5FAY", "hi");
+  const posts = calls.filter((row) => row.path.endsWith("/messages"));
+  expect(posts[0]?.body?.paths).toEqual(["docs/brief.md", "shots"]);
+  expect(posts[1]?.body && "paths" in posts[1].body).toBe(false);
+});
+
 test("remote file GET reports start then the completed blob size", async () => {
   const api = new RemoteApi(enrollment, {
     rpc: async (request) => ({ v: 1, id: request.id, status: 200, body: new Blob(["hello"]) }),

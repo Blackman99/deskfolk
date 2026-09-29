@@ -523,7 +523,7 @@ export class RemoteApi {
     return (await this.get<ListPage<SearchHit>>(`/v1/search?q=${encodeURIComponent(q)}`)).items;
   }
   async postMessage(sessionId: string, body: string, opts: {
-    fork?: boolean; askId?: string | null; attachments?: File[]; parentId?: string | null; requestId?: string;
+    fork?: boolean; askId?: string | null; attachments?: File[]; paths?: string[]; parentId?: string | null; requestId?: string;
     /** The attachments' bytes as they leave, all files together. */
     onUploadProgress?: FileProgressHandler;
   } = {}): Promise<Message> {
@@ -534,6 +534,7 @@ export class RemoteApi {
       fork: opts.fork ?? false,
       ask_id: opts.askId ?? null,
       ...(files.length ? { files: files.map(({ filename, size, sha256 }) => ({ filename, size, sha256 })) } : {}),
+      ...(opts.paths?.length ? { paths: opts.paths } : {}),
     }, undefined, {}, false, null, opts.requestId, files, opts.onUploadProgress);
     if (files.length) this.sent.remember(opts.attachments!.map((file, i) => ({ file, sha256: files[i]!.sha256 })), message?.attachments);
     return message;
