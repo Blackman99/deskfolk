@@ -200,6 +200,27 @@ describe("进度询问", () => {
     expect(note.body).toContain("现在没有人在做。");
   });
 
+  test("a turn held up on you and a booked check-back are named, not counted as working", async () => {
+    const h = await harness(newPlanAnswer("研究员"));
+    const researcher = h.store.createBot({ name: "研究员", duties: "查资料", boundaries: "" });
+    const session = researcher.direct_session.id;
+    const trigger = h.store.insertMessage({ sessionId: session, kind: "user", author: USER_MEMBER, body: "调研三个分发渠道" });
+    await h.engine.handleInboundMessage(trigger, { fromUser: true });
+    const turn = await until(() => h.store.listLiveTurns({ sessionId: session })[0]);
+    h.store.scheduleCheckBack({ botId: researcher.bot.id, sessionId: session, turnId: turn.id, note: "核对 Writer 有没有交初稿", afterMinutes: 30 });
+    h.store.insertApproval({ turnId: turn.id, messageId: null, kind_key: "outside-read", summary: "读取 ~/Downloads/渠道报价.pdf", target: "/Users/x/Downloads/渠道报价.pdf" });
+    h.store.db.run(`UPDATE turns SET status = 'waiting_approval' WHERE id = ?`, [turn.id]);
+
+    const status = h.store.insertMessage({ sessionId: session, kind: "user", author: USER_MEMBER, body: "怎么样了" });
+    await h.engine.handleInboundMessage(status, { fromUser: true });
+    const note = await until(() => h.store.listMessages(session).items.find((m) => m.kind === "system" && m.body.includes("等你处理")));
+    expect(note.body).toContain("- 研究员 · 批准：读取 ~/Downloads/渠道报价.pdf");
+    expect(note.body).not.toContain("正在做");
+    expect(note.body).not.toContain("现在没有人在做");
+    expect(note.body).toContain("约好回来看");
+    expect(note.body).toMatch(/- 研究员 · (29|30) 分钟后 · 核对 Writer 有没有交初稿/);
+  });
+
   test("a non-status line takes the normal path: an unmentioned continuation calls the organizer", async () => {
     const h = await harness(newPlanAnswer("视频导演"));
     const director = h.store.createBot({ name: "视频导演", duties: "剪辑", boundaries: "" }).bot;

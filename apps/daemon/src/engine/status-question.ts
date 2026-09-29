@@ -15,6 +15,8 @@ import { sessionLabel } from "../context";
 import {
   statusQuestionBody,
   type StatusArtifactLine,
+  type StatusCheckBackLine,
+  type StatusWaitingLine,
   type StatusTicketLine,
   type StatusWorkingLine,
 } from "../prompts";
@@ -46,6 +48,10 @@ const WORKING_LINES_MAX = 8;
 const TICKET_LINES_MAX = 12;
 const ARTIFACT_LINES_MAX = 3;
 const FAILING_CHECK_LINES_MAX = 3;
+const WAITING_LINES_MAX = 4;
+const CHECK_BACK_LINES_MAX = 3;
+/** Code points of an approval summary, a question or a check-back note the status line quotes. */
+const WAITING_TEXT_MAX = 80;
 
 export function createStatusQuestion(deps: StatusQuestionDeps): StatusQuestionEngine {
   const { store, publishMessage, reconcilePlan, admission } = deps;
@@ -129,7 +135,28 @@ export function createStatusQuestion(deps: StatusQuestionDeps): StatusQuestionEn
     const now = Date.now();
 
     const liveOnPlan = store.listLiveTurns().filter((turn) => turn.task_id === taskId);
-    const working: StatusWorkingLine[] = liveOnPlan.slice(0, WORKING_LINES_MAX).map((turn) => {
+    const heldOnYou = liveOnPlan.filter((turn) => turn.status === "waiting_approval" || turn.status === "waiting_ask");
+    const pendingApprovals = heldOnYou.length > 0 ? store.listApprovals("pending") : [];
+    const waiting: StatusWaitingLine[] = heldOnYou.slice(0, WAITING_LINES_MAX).map((turn) => {
+      let text = "";
+      if (turn.status === "waiting_approval") {
+        text = pendingApprovals.find((approval) => approval.turn_id === turn.id)?.summary ?? "";
+      } else if (turn.pending_ask_id) {
+        try {
+          text = store.getMessage(turn.pending_ask_id).body;
+        } catch {
+          text = "";
+        }
+      }
+      return {
+        bot: botName(turn.bot_id),
+        kind: turn.status === "waiting_approval" ? "approval" : "ask",
+        text: takeCodePoints(text.replace(/\s+/g, " ").trim(), WAITING_TEXT_MAX).text,
+        elsewhere: turn.session_id !== message.session_id ? sessionLabel(store, turn.session_id, null, locale) : null,
+      };
+    });
+    const running = liveOnPlan.filter((turn) => turn.status === "running");
+    const working: StatusWorkingLine[] = running.slice(0, WORKING_LINES_MAX).map((turn) => {
       const runs = store.turnRuns(turn.id);
       const lastRun = runs.length > 0 ? runs[runs.length - 1]! : null;
       return {
@@ -178,6 +205,15 @@ export function createStatusQuestion(deps: StatusQuestionDeps): StatusQuestionEn
       if (after && after.id !== before?.id) nudgedBot = botName(after.bot_id);
     }
 
+    const checkBacks: StatusCheckBackLine[] = store
+      .pendingPlanCheckBacks(taskId)
+      .slice(0, CHECK_BACK_LINES_MAX)
+      .map((row) => ({
+        bot: botName(row.bot_id),
+        inMinutes: Math.max(0, Math.round((Date.parse(row.due_at) - now) / 60_000)),
+        note: takeCodePoints((row.note ?? "").replace(/\s+/g, " ").trim(), WAITING_TEXT_MAX).text,
+      }));
+
     let idleMinutes: number | null = null;
     if (working.length === 0) {
       const at = lastMovedAt(taskId);
@@ -192,6 +228,8 @@ export function createStatusQuestion(deps: StatusQuestionDeps): StatusQuestionEn
       checks: { passed, total: allChecks.length, failing },
       idleMinutes,
       nudgedBot,
+      waiting,
+      checkBacks,
     });
 
     const author = mostRecentPlanBot(taskId) ?? USER_MEMBER;

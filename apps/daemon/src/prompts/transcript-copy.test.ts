@@ -176,3 +176,36 @@ test("under a minute ago reads as just now", () => {
   expect(agoOf(12, "zh")).toBe("12 分钟前");
   expect(agoOf(340, "en")).toBe("6 h ago");
 });
+
+test("waiting on you comes first, and check-backs say when", () => {
+  const body = statusQuestionBody("zh", {
+    plan: { title: "渠道调研", status: "active" },
+    working: [],
+    tickets: [],
+    artifacts: [],
+    checks: { passed: 0, total: 0, failing: [] },
+    idleMinutes: 5,
+    nudgedBot: null,
+    waiting: [
+      { bot: "研究员", kind: "approval", text: "读取 ~/Downloads/报价.pdf", elsewhere: null },
+      { bot: "撰稿", kind: "ask", text: "目标读者是投资人还是用户？", elsewhere: "群「调研组」" },
+    ],
+    checkBacks: [{ bot: "审稿", inMinutes: 0, note: "看初稿" }],
+  });
+  expect(body.split("\n").slice(0, 4)).toEqual([
+    "这件事：渠道调研（进行中）",
+    "等你处理",
+    "- 研究员 · 批准：读取 ~/Downloads/报价.pdf",
+    "- 撰稿 · 回答：目标读者是投资人还是用户？ · 在「群「调研组」」",
+  ]);
+  expect(body).not.toContain("现在没有人在做");
+  expect(body).toContain("- 审稿 · 马上 · 看初稿");
+  const en = statusQuestionBody("en", {
+    plan: { title: "Channels", status: "active" }, working: [], tickets: [], artifacts: [],
+    checks: { passed: 0, total: 0, failing: [] }, idleMinutes: 5, nudgedBot: null,
+    waiting: [{ bot: "Researcher", kind: "approval", text: "read ~/Downloads/quote.pdf", elsewhere: null }],
+    checkBacks: [{ bot: "Editor", inMinutes: 125, note: "check the draft" }],
+  });
+  expect(en).toContain("Waiting on you\n- Researcher · approve: read ~/Downloads/quote.pdf");
+  expect(en).toContain("- Editor · in 2 h · check the draft");
+});

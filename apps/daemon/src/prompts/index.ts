@@ -31,6 +31,8 @@ export type {
   FailKind,
   OpenTicketLine,
   StatusArtifactLine,
+  StatusCheckBackLine,
+  StatusWaitingLine,
   StatusCheckSummary,
   StatusTicketLine,
   StatusWorkingLine,

@@ -277,6 +277,11 @@ function statusArtifactLine(locale: Locale, artifact: StatusArtifactLine): strin
  * keeps, so it costs no model call and cannot say anything a Bot did not actually do. Nothing here
  * wakes anyone — it is posted as a `system` line and left out of every Bot's context window.
  */
+/** A turn of the plan held up on you: an approval card or a question it asked. */
+export type StatusWaitingLine = { bot: string; kind: "approval" | "ask"; text: string; elsewhere: string | null };
+/** A check-back a Bot booked in this plan and that has not rung yet. */
+export type StatusCheckBackLine = { bot: string; inMinutes: number; note: string };
+
 export function statusQuestionBody(
   locale: Locale,
   input: {
@@ -292,6 +297,10 @@ export function statusQuestionBody(
     idleMinutes: number | null;
     /** The Bot `reconcilePlan` just called back to a quiet plan, when it booked one. */
     nudgedBot: string | null;
+    /** Turns of this plan waiting on you; they are not in `working`. */
+    waiting?: readonly StatusWaitingLine[];
+    /** Check-backs booked in this plan, not rung yet. */
+    checkBacks?: readonly StatusCheckBackLine[];
   },
 ): string {
   const en = locale === "en";
@@ -301,10 +310,21 @@ export function statusQuestionBody(
       ? `Plan: ${input.plan.title} (${STATUS_PLAN_LABEL[input.plan.status].en})`
       : `这件事：${input.plan.title}（${STATUS_PLAN_LABEL[input.plan.status].zh}）`,
   );
+  const waiting = input.waiting ?? [];
+  if (waiting.length > 0) {
+    // First: in a job of several Bots, what most often holds everything up is you.
+    lines.push(en ? "Waiting on you" : "等你处理");
+    for (const line of waiting) {
+      const what =
+        line.kind === "approval" ? (en ? `approve: ${line.text}` : `批准：${line.text}`) : en ? `answer: ${line.text}` : `回答：${line.text}`;
+      const where = line.elsewhere ? (en ? ` · in ${line.elsewhere}` : ` · 在「${line.elsewhere}」`) : "";
+      lines.push(`- ${line.bot} · ${what}${where}`);
+    }
+  }
   if (input.working.length > 0) {
     lines.push(en ? "Working now" : "正在做");
     for (const line of input.working) lines.push(`- ${statusWorkingLine(locale, line)}`);
-  } else {
+  } else if (waiting.length === 0) {
     lines.push(en ? "Nobody is working on it right now." : "现在没有人在做。");
     if (input.idleMinutes !== null) {
       lines.push(en ? `It last moved ${agoOf(input.idleMinutes, "en")}.` : `最近一次动静：${agoOf(input.idleMinutes, "zh")}。`);
@@ -313,6 +333,14 @@ export function statusQuestionBody(
   if (input.tickets.length > 0) {
     lines.push(en ? "Tickets" : "任务");
     for (const ticket of input.tickets) lines.push(`- ${statusTicketLine(locale, ticket)}`);
+  }
+  const checkBacks = input.checkBacks ?? [];
+  if (checkBacks.length > 0) {
+    lines.push(en ? "Coming back" : "约好回来看");
+    for (const line of checkBacks) {
+      const when = line.inMinutes < 1 ? (en ? "any moment" : "马上") : en ? `in ${spanOf(line.inMinutes, "en")}` : `${spanOf(line.inMinutes, "zh")}后`;
+      lines.push(en ? `- ${line.bot} · ${when} · ${line.note}` : `- ${line.bot} · ${when} · ${line.note}`);
+    }
   }
   if (input.artifacts.length > 0) {
     lines.push(en ? "Recently delivered" : "最近交出");
