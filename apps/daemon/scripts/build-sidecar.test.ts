@@ -65,9 +65,9 @@ test("the bundle ships the daemon through the native resources, not as a sidecar
 
 test("the release matrix packages every macOS triple the build script knows", () => {
   const workflow = readFileSync(join(import.meta.dir, "../../../.github/workflows/release.yml"), "utf8");
-  // release.yml only ever packaged macOS: a tagged release ships a signed/notarized .app. The
-  // Windows triples above exist for `tauri dev` and for `windows.yml`'s unsigned nsis build, which
-  // goes through `build:native` (apps/desktop/scripts/build-native.ts), not this release matrix.
+  // This matrix packages the macOS .app (signed/notarized when the secrets are set). The Windows
+  // installer comes from release.yml's own `publish-windows` job, which, like `windows.yml`, builds
+  // it through `build:native` (apps/desktop/scripts/build-native.ts), not this matrix.
   const macTriples = Object.keys(BUN_TARGETS).filter((triple) => triple.endsWith("-apple-darwin"));
   expect(macTriples).toEqual(["aarch64-apple-darwin", "x86_64-apple-darwin"]);
   for (const triple of macTriples) {

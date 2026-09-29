@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, beforeAll, expect, test } from "bun:test";
 import type {
   RuntimeSnapshot,
   SessionSnapshot,
@@ -91,6 +91,13 @@ afterEach(async () => {
   globalThis.WebSocket = OriginalSocket;
   while (fixtureCloses.length) await fixtureCloses.pop()!();
 });
+
+// The first credentialFixture would pay for loading the daemon, which on a cold Windows runner
+// outlasts a test's 5 s; load it once here instead.
+beforeAll(async () => {
+  await import(new URL("../../../daemon/src/store/index.ts", import.meta.url).href);
+  await import(new URL("../../../daemon/src/local-api.ts", import.meta.url).href);
+}, 60_000);
 
 async function credentialFixture(heldPath = "/v1/providers") {
   // Load the actual daemon at runtime across the packages' different TS library targets.

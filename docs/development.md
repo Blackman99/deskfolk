@@ -539,7 +539,7 @@ Store 的 `ctx.commit`、`Store.transaction` 和回执共用 `Transactions.run`�
 | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) | `main` 推送、PR | `pnpm test`、`pnpm typecheck`、remote/browser、信使与落地页 build、真实 Caddy edge；macOS 上 desktop script tests/typecheck、Swift 凭据 fixture 与 `cargo test` |
 | [`.github/workflows/pages.yml`](../.github/workflows/pages.yml) | `main` 推送 | 构建 `apps/landing` 并部署 GitHub Pages |
 | [`.github/workflows/release.yml`](../.github/workflows/release.yml) | 推送 `v*` 标签，或手动 | 再跑验证（macOS 上的全套，加 `windows.yml` 的 Windows 单元检查）后打 macOS `.dmg` / `.app` 和 Windows NSIS 安装包（`Deskfolk_<版本>_x64-setup.exe`），发布到同一个 GitHub **prerelease**；配了 Developer ID secrets 时签名并公证，没配时 ad-hoc 签名；配了 `WINDOWS_SIGN_COMMAND` 时 Windows 包也签名，没配时不签 |
-| [`.github/workflows/windows.yml`](../.github/workflows/windows.yml) | `windows-compat` 推送、手动，或被 `release.yml` 调用 | Windows 单元检查（daemon 测试只做参考），另打一个未签名 NSIS 包作为 Actions artifact；被发布调用时只跑检查 |
+| [`.github/workflows/windows.yml`](../.github/workflows/windows.yml) | `main` 推送、PR、手动，或被 `release.yml` 调用 | Windows 单元检查（daemon 测试只做参考），另打一个未签名 NSIS 包作为 Actions artifact；被发布调用时只跑检查 |
 
 落地页本地预览：`pnpm --filter @real-bot/landing dev`（5174）。Pages 构建会设 `BASE_PATH=/<仓库名>`，适配 `https://<owner>.github.io/<repo>/`。仓库链接集中在 `apps/landing/src/lib/site.ts`。
 

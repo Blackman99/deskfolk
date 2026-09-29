@@ -1,12 +1,13 @@
 name: Windows
 
-# Experimental: builds and tests the Windows preview described in docs/development.md. Runs on
-# this branch's own pushes (not yet on `main`, `pull_request`) so it doesn't block work that has
-# nothing to do with Windows, on demand via workflow_dispatch, and from release.yml as the
-# Windows half of its verification (with `skip-bundle`, since the release packages for itself).
+# Builds and tests the Windows preview described in docs/development.md. Runs beside ci.yml on
+# pushes to `main` and on pull requests, so a change that breaks Windows shows up before it
+# merges; on demand via workflow_dispatch; and from release.yml as the Windows half of its
+# verification (with `skip-bundle`, since the release packages for itself).
 on:
   push:
-    branches: [windows-compat]
+    branches: [main]
+  pull_request:
   workflow_dispatch:
   workflow_call:
     inputs:
