@@ -1,9 +1,9 @@
 <p align="center">
-  <a href="https://blackman99.github.io/deskfolk/media/deskfolk-zh.mp4">
-    <img alt="观看 Deskfolk 演示（1:49）：从首次配置到一群 Bot 交出一套发布物料，再到它的流程图、你自己的终端和手机" src="docs/assets/promo-zh.jpg">
+  <a href="https://blackman99.github.io/deskfolk/media/deskfolk-promo-zh.mp4">
+    <img alt="观看 Deskfolk 宣传片（1:26）：Bot 说「做完了」，应用来核对：没跑过的「测试通过」被退回，说了「随后」就得约好回看，停在半路有人去追，验收检查自己跑" src="docs/assets/promo-zh.jpg">
   </a>
   <br>
-  <sub>另有 <a href="https://blackman99.github.io/deskfolk/media/deskfolk-en.mp4">English</a> 版</sub>
+  <sub>另有 <a href="https://blackman99.github.io/deskfolk/media/deskfolk-promo-en.mp4">English</a> 版</sub>
 </p>
 
 <h1 align="center">Deskfolk</h1>

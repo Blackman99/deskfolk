@@ -1,9 +1,9 @@
 <p align="center">
-  <a href="https://blackman99.github.io/deskfolk/media/deskfolk-en.mp4">
-    <img alt="Watch the Deskfolk demo (1:43): from first setup to a group of Bots delivering a launch kit, with its flow board, your own terminal and your phone" src="docs/assets/promo-en.jpg">
+  <a href="https://blackman99.github.io/deskfolk/media/deskfolk-promo-en.mp4">
+    <img alt="Watch the Deskfolk film (1:26): Bots say &quot;done&quot;, the app checks: an untested claim goes back, a promised follow-up gets booked, a stalled plan gets chased, and the acceptance checks run on their own" src="docs/assets/promo-en.jpg">
   </a>
   <br>
-  <sub>Also in <a href="https://blackman99.github.io/deskfolk/media/deskfolk-zh.mp4">中文</a></sub>
+  <sub>Also in <a href="https://blackman99.github.io/deskfolk/media/deskfolk-promo-zh.mp4">中文</a></sub>
 </p>
 
 <h1 align="center">Deskfolk</h1>

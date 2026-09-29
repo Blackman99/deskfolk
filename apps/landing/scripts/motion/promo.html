@@ -1,0 +1,940 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>Deskfolk promo</title>
+<!--
+  The motion promo linked from the README (see docs/development.md). The brand mark's circles are the cast:
+  white discs are the Bots, the amber disc is Deskfolk, which never talks and only checks. Amber is kept for
+  the app's own actions, mint for what is verified. Every frame is a pure function of time: seek(t) lays the
+  whole stage out for t, CUES lists the sound events, render.mjs captures the frames and audio.py scores them.
+  ?lang=zh|en picks the copy. Fonts are the system's SF Pro Rounded and SF Mono, served by render.mjs.
+-->
+<style>
+@font-face{font-family:"Folk Rounded";src:url(fonts/SFNSRounded.ttf) format("truetype");font-weight:100 1000;}
+@font-face{font-family:"Folk Mono";src:url(fonts/SFNSMono.ttf) format("truetype");font-weight:300 900;}
+:root{
+  --field:#0f6776; --deep:#0a4a55; --deeper:#07353d;
+  --paper:#ffffff; --ink:#0b2e35; --ink2:#557277;
+  --amber:#f0ab3d; --amber-ink:#402803;
+  --mint:#a3ecd5; --mint-ink:#063d31;
+  --mist:rgba(255,255,255,.66); --line:rgba(255,255,255,.34);
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:#000;overflow:hidden}
+#stage{position:relative;width:1920px;height:1080px;overflow:hidden;background:var(--field);color:#fff;
+  font-family:"Folk Rounded","PingFang SC",sans-serif;-webkit-font-smoothing:antialiased;}
+.scene{position:absolute;inset:0;display:none}
+.a{position:absolute;left:0;top:0;will-change:transform,opacity}
+.layer{position:absolute;left:0;top:0;overflow:visible}
+#vignette{position:absolute;inset:0;pointer-events:none;z-index:40;
+  background:radial-gradient(ellipse 85% 80% at 50% 46%,rgba(0,0,0,0) 60%,rgba(0,20,26,.24) 100%)}
+#black{position:absolute;inset:0;background:#000;z-index:60;opacity:0}
+
+.disc{border-radius:50%}
+.white{background:#fff}
+.amberbg{background:var(--amber)}
+.ringed{box-shadow:0 0 0 7px var(--field)}
+.pulse{border-radius:50%;border:4px solid #fff}
+.pulse.mintp{border-color:var(--mint)}
+.pulse.amberp{border-color:var(--amber);border-width:5px}
+.ring{border-radius:50%;border:5px solid var(--amber)}
+.ring.mintring{border-color:var(--mint)}
+
+.super{position:absolute;left:160px;bottom:112px;z-index:30}
+.super .line{overflow:hidden;padding:6px 0 10px}
+.super .line span{display:block;white-space:nowrap}
+.super .main span,.super .line.big span{font-size:68px;font-weight:600;letter-spacing:.5px;line-height:1.18}
+.super .sub span{font-size:38px;font-weight:500;color:var(--mist);line-height:1.2}
+.super .line.big span{font-weight:600;color:#fff;letter-spacing:.5px;line-height:1.18}
+.en .super .line.big span{font-size:62px;letter-spacing:0}
+.s0 .bubble{font-size:40px;padding:24px 34px;border-radius:34px}
+.en .super .main span{font-size:62px;letter-spacing:0}
+
+.bubble{background:#fff;color:var(--ink);font-size:34px;font-weight:500;line-height:1;padding:21px 30px;
+  border-radius:30px;white-space:nowrap;box-shadow:0 14px 34px rgba(3,38,46,.28);display:flex;align-items:center;gap:12px}
+.bubble svg{flex:none}
+.stampwrap{position:absolute;left:50%;bottom:calc(100% + 14px);transform:translateX(-50%);width:0;height:0}
+.stampwrap>div{position:absolute;left:0;bottom:0;white-space:nowrap}
+.tag{background:var(--amber);color:var(--amber-ink);font-size:26px;font-weight:600;padding:11px 18px;border-radius:12px;line-height:1}
+.receipt{background:var(--mint);color:var(--mint-ink);font-size:26px;font-weight:600;padding:11px 18px;border-radius:12px;line-height:1}
+.mono{font-family:"Folk Mono",ui-monospace,monospace}
+
+.name{font-size:32px;font-weight:700;white-space:nowrap}
+.role{font-size:25px;font-weight:500;color:var(--mist);white-space:nowrap}
+.alabel{font-size:28px;font-weight:700;color:var(--amber);white-space:nowrap}
+.youring{width:124px;height:124px;border-radius:50%;border:5px solid #fff;display:flex;align-items:center;justify-content:center;
+  font-size:40px;font-weight:600;font-family:"PingFang SC","Folk Rounded",sans-serif}
+.en .youring{font-family:"Folk Rounded";font-size:34px}
+.wordmark{font-size:128px;font-weight:700;letter-spacing:-2px;white-space:nowrap}
+.tagline{font-size:46px;font-weight:500;color:var(--mist);white-space:nowrap}
+.maskwrap{overflow:hidden;padding:8px 20px 14px}
+.maskwrap>span{display:block}
+
+.doc{background:#fff;color:var(--ink);font-family:"Folk Mono",monospace;font-size:22px;padding:10px 16px 10px 14px;border-radius:10px;
+  display:flex;gap:10px;align-items:center;white-space:nowrap;box-shadow:0 8px 20px rgba(3,38,46,.25)}
+.docb{font-family:"Folk Mono",monospace;font-size:30px}
+.term{width:560px;background:var(--deeper);border-radius:20px;padding:24px 30px;font-family:"Folk Mono",monospace;font-size:27px;
+  line-height:1.55;color:#e6f3f4;box-shadow:0 14px 34px rgba(0,20,26,.3)}
+.term .dim{color:var(--mist)}
+.term .ok{color:var(--mint)}
+.term div{min-height:1.55em;white-space:pre}
+.clockchip{background:#fff;color:var(--ink);font-size:28px;font-weight:600;padding:14px 26px 14px 16px;border-radius:999px;
+  display:flex;align-items:center;gap:14px;white-space:nowrap;box-shadow:0 12px 30px rgba(3,38,46,.28)}
+
+.card{width:330px;height:190px;background:#fff;color:var(--ink);border-radius:24px;padding:24px 26px;display:flex;flex-direction:column;
+  justify-content:space-between;box-shadow:0 14px 34px rgba(3,38,46,.26)}
+.card .top{display:flex;align-items:center;gap:14px;font-size:32px;font-weight:600;white-space:nowrap}
+.en .card .top{font-size:28px}
+.num{width:38px;height:38px;border-radius:50%;background:#e1eef0;color:var(--ink);font-size:21px;font-weight:700;display:flex;
+  align-items:center;justify-content:center;flex:none}
+.card .bot{display:flex;align-items:center;justify-content:space-between;position:relative;height:44px}
+.st{font-size:24px;font-weight:600;padding:9px 16px;border-radius:10px;line-height:1;white-space:nowrap;position:absolute;left:0;top:4px}
+.st.done{background:#d6f5ea;color:var(--mint-ink)}
+.st.doing{background:#dcecef;color:var(--ink)}
+.st.todo{background:#eef2f3;color:var(--ink2)}
+.st.review{background:#fff;color:var(--ink);box-shadow:inset 0 0 0 2.5px var(--field)}
+.av{width:44px;height:44px;border-radius:50%;background:var(--field);color:#fff;font-size:22px;font-weight:700;display:flex;
+  align-items:center;justify-content:center;position:absolute;right:0;top:0}
+.timer{display:flex;align-items:center;gap:16px;font-size:30px;font-weight:600;color:var(--mist);white-space:nowrap}
+.nudge{background:var(--amber);color:var(--amber-ink);font-size:27px;font-weight:600;padding:14px 22px;border-radius:16px;white-space:nowrap}
+
+.panel{width:1040px;height:520px;background:var(--deeper);border-radius:30px;box-shadow:0 18px 40px rgba(0,20,26,.3)}
+.ph{position:absolute;left:52px;top:36px;font-size:34px;font-weight:600;white-space:nowrap}
+.pc{position:absolute;right:52px;top:40px;font-size:30px;font-weight:600;color:var(--mist);white-space:nowrap}
+.row{position:absolute;left:0;width:1040px;height:92px}
+.row .ic{position:absolute;left:52px;top:24px;width:44px;height:44px}
+.row .ic svg{position:absolute;left:0;top:0;width:44px;height:44px}
+.row .kind{position:absolute;left:124px;top:28px;font-size:28px;font-weight:500;color:var(--mist);white-space:nowrap}
+.row .target{position:absolute;left:300px;top:26px;font-size:29px;color:#fff;white-space:nowrap}
+.en .row .target{left:320px}
+.row .res{position:absolute;right:52px;top:28px;font-size:27px;color:var(--mint);white-space:nowrap}
+.row .detail{position:absolute;left:300px;top:74px;font-size:25px;font-weight:600;white-space:nowrap}
+.en .row .detail{left:320px}
+.sep{position:absolute;left:52px;right:52px;height:2px;background:rgba(255,255,255,.08)}
+
+.node{height:62px;background:#fff;color:var(--ink);border-radius:16px;padding:0 20px 0 12px;display:flex;align-items:center;gap:12px;
+  font-size:23px;font-weight:600;white-space:nowrap;box-shadow:0 10px 24px rgba(3,38,46,.24)}
+.node .mini{width:38px;height:38px;border-radius:50%;background:var(--field);color:#fff;font-size:19px;font-weight:700;display:flex;
+  align-items:center;justify-content:center;flex:none;font-family:"Folk Rounded","PingFang SC"}
+.node .mini.you{background:#fff;box-shadow:inset 0 0 0 3px var(--field);color:var(--ink);font-size:17px;font-family:"PingFang SC","Folk Rounded"}
+.node.app{background:var(--amber);color:var(--amber-ink);height:48px;padding:0 18px;border-radius:24px;font-size:22px}
+.node.fin{background:var(--mint);color:var(--mint-ink)}
+.node.fin .mini{background:var(--mint-ink)}
+.detailcard{width:620px;background:#fff;color:var(--ink);border-radius:24px;padding:22px 30px 20px;box-shadow:0 18px 40px rgba(3,38,46,.3)}
+.detailcard .hd{display:flex;align-items:center;gap:14px;font-size:28px;font-weight:700;margin-bottom:12px;white-space:nowrap}
+.detailcard .kv{display:grid;grid-template-columns:100px 1fr;row-gap:6px;font-size:23px;white-space:nowrap}
+.detailcard .k{color:var(--ink2);font-weight:500}
+.detailcard .v{font-weight:600}
+.en .detailcard .kv{grid-template-columns:130px 1fr}
+
+.itemlabel{font-size:27px;font-weight:600;color:#fff;white-space:nowrap}
+.endpoint{width:300px;height:140px;border-radius:24px;background:var(--deeper);display:flex;flex-direction:column;align-items:center;
+  justify-content:center;font-size:30px;font-weight:600;line-height:1.35;white-space:nowrap}
+.dialog{width:640px;background:#fff;color:var(--ink);border-radius:26px;padding:30px 34px;box-shadow:0 24px 60px rgba(0,22,28,.45)}
+.dialog .hd{display:flex;align-items:center;gap:16px;font-size:34px;font-weight:700;white-space:nowrap}
+.dialog .host{margin-top:20px;background:#edf4f5;border-radius:12px;padding:14px 18px;font-size:28px;color:var(--ink2);font-family:"Folk Mono",monospace}
+.dialog .btns{margin-top:26px;display:flex;justify-content:flex-end;gap:16px}
+.dialog .btn{font-size:27px;font-weight:600;padding:14px 32px;border-radius:14px;white-space:nowrap}
+.dialog .deny{box-shadow:inset 0 0 0 2.5px #c8d7da;color:var(--ink2)}
+.dialog .allow{background:var(--field);color:#fff}
+.pillbox{position:absolute;left:340px;top:330px;width:1240px;display:flex;flex-wrap:wrap;justify-content:center;gap:28px 26px}
+.en .pillbox{left:440px;width:1040px;top:300px}
+.pill{border:3px solid rgba(255,255,255,.88);border-radius:999px;padding:20px 38px;font-size:38px;font-weight:600;white-space:nowrap;will-change:transform,opacity}
+.endline{font-size:30px;font-weight:500;color:var(--mist);white-space:nowrap}
+.url{font-size:34px;font-weight:600;white-space:nowrap}
+</style>
+</head>
+<body>
+<div id="stage"><div id="vignette"></div><div id="black"></div></div>
+<script>
+const STR = {
+zh: {
+  claims: ['测试全部通过。', '结论随后发你。', '已经做完了。'],
+  s0a: 'AI 说「做完了」，', s0b: '你还得自己查一遍。',
+  tagline: '交给一组 Bot，盯到交付。',
+  names: [['Iris', '调研'], ['Theo', '文案'], ['Kai', '工程']],
+  you: '你',
+  goal: '下周上线：落地页和发布文案，带测试。',
+  docs: ['调研.md', '文案.md'],
+  s2a: '一组 Bot，各管一段，彼此交接。',
+  s2b: '交到你手上之前，应用先看一眼。',
+  c1: '测试全部通过。', c1tag: '这一轮没跑过命令', c1rec: '已运行 pnpm test，退出码 0',
+  s3: '说「测过了」，就得这一轮真跑过。',
+  c2: '文案随后发你。', c2tag: '没约回看，也没交给谁', c2clock: '20 分钟后回看：核对三版标题', c2doc: '发布文案.md',
+  s4: '说「随后」，就得约好什么时候回来。',
+  tickets: [['调研竞品', '已完成', 'done', 'I'], ['发布文案', '已完成', 'done', 'T'], ['落地页', '进行中', 'doing', 'K'], ['上线自查', '待做', 'todo', 'K']],
+  review: '待验收',
+  quiet: n => `已静 ${n} 秒`,
+  nudge: '还有 2 个任务没收口，先看 ③',
+  s5a: '都停下了，事还没做完。', s5b: '停在半路，应用去追。', s5c: '追过还没动静，就通知你。',
+  checksTitle: '验收检查',
+  checks: [['文件存在', 'work/落地页/index.html', ''], ['包含文字', '「立即下载」', ''], ['命令', 'pnpm test', '退出码 0'], ['接缝', '三版文案说法一致', '']],
+  seamFail: '第 2 版把 Alpha 写成了正式版', seamPass: '三版说法一致',
+  pass: (n, m) => `${n}/${m} 通过`,
+  callback: '叫回 Theo：接缝没过',
+  s6a: '验收，交给应用自己跑。', s6b: '检查由你来定，Bot 改不了。',
+  graph: { n1: '下周上线…', n2: '调研竞品', n3: '文案随后给', a1: '回看', n4: '交出文案', n5: '做落地页', a2: '追一次', n6: '交出 index.html', a3: '验收 4/4', n7: '做完了' },
+  detail: { head: 'Kai 的第 3 轮', rows: [['交出', 'index.html'], ['任务', '③ 落地页'], ['模型', '快模型，低思考'], ['理由', '只改一段样式']] },
+  s7: '谁叫醒了谁，每一步都查得到。',
+  items: ['Bot 和守护进程', '工作区', '钥匙串'], endpoint: ['你配置的', '模型端点'],
+  ask: 'Kai 想访问网络', host: 'registry.npmjs.org', deny: '拒绝', allow: '批准',
+  s8a: '跑在你自己的电脑上。', s8b: '越出工作区、连网之前，先问你。',
+  also: ['分屏工作台', '你自己的终端', '在交付物上批注', '按模型看花费', '每日日程', '手机上接着用'],
+  endLine: '开源免费，macOS 可用，Windows 预览中',
+},
+en: {
+  claims: ['All tests pass.', "I'll send the findings later.", "It's done."],
+  s0a: 'AI says “done.”', s0b: 'You still have to check.',
+  tagline: 'Hand it to Bots that see it through.',
+  names: [['Iris', 'Research'], ['Theo', 'Copy'], ['Kai', 'Engineering']],
+  you: 'You',
+  goal: 'Ship next week: landing page and launch copy, with tests.',
+  docs: ['research.md', 'copy.md'],
+  s2a: 'A team of Bots, each owning a part.',
+  s2b: 'Before anything reaches you, the app takes a look.',
+  c1: 'All tests pass.', c1tag: 'No command ran this turn', c1rec: 'Ran pnpm test, exit 0',
+  s3: 'Says “tested”? Then it ran this turn.',
+  c2: "I'll send the copy later.", c2tag: 'No check-back, no handoff', c2clock: 'Check back in 20 min: review 3 headlines', c2doc: 'launch-copy.md',
+  s4: 'Says “later”? Then it books a time to come back.',
+  tickets: [['Research rivals', 'Done', 'done', 'I'], ['Launch copy', 'Done', 'done', 'T'], ['Landing page', 'In progress', 'doing', 'K'], ['Launch check', 'To do', 'todo', 'K']],
+  review: 'In review',
+  quiet: n => `Quiet for ${n} s`,
+  nudge: '2 tickets still open. Start with ③',
+  s5a: "Everyone went quiet. The job isn't done.", s5b: 'Stalled halfway? The app follows up.', s5c: 'Still nothing? It lets you know.',
+  checksTitle: 'Acceptance checks',
+  checks: [['File exists', 'work/landing/index.html', ''], ['Contains', '“Download now”', ''], ['Command', 'pnpm test', 'exit 0'], ['Seams', '3 copy versions agree', '']],
+  seamFail: 'Version 2 calls the alpha “stable”', seamPass: 'All 3 versions agree',
+  pass: (n, m) => `${n}/${m} passed`,
+  callback: 'Called Theo back: seams failed',
+  s6a: 'The app runs the acceptance checks itself.', s6b: "You set the checks. Bots can't edit them.",
+  graph: { n1: 'Ship next week…', n2: 'Research rivals', n3: 'Copy later', a1: 'Check-back', n4: 'Delivers copy', n5: 'Landing page', a2: 'Follow-up', n6: 'Ships index.html', a3: 'Checks 4/4', n7: 'Done' },
+  detail: { head: "Kai's turn 3", rows: [['Delivered', 'index.html'], ['Ticket', '③ Landing page'], ['Model', 'fast, low thinking'], ['Why', 'one small style change']] },
+  s7: 'Who woke whom, every step on record.',
+  items: ['Bots and daemon', 'Workspace', 'Keychain'], endpoint: ['Your model', 'endpoint'],
+  ask: 'Kai wants network access', host: 'registry.npmjs.org', deny: 'Deny', allow: 'Allow',
+  s8a: 'Runs on your own computer.', s8b: 'Leaving the workspace or going online? It asks first.',
+  also: ['Split-pane workbench', 'Your own terminal', 'Annotate deliverables', 'Spend by model', 'Daily routines', 'Continue on your phone'],
+  endLine: 'Open source and free. macOS now, Windows in preview.',
+},
+};
+
+const LANG = new URLSearchParams(location.search).get('lang') === 'en' ? 'en' : 'zh';
+document.documentElement.lang = LANG;
+const T = STR[LANG];
+const stage = document.getElementById('stage');
+stage.classList.add(LANG);
+const URL_TEXT = 'github.com/Blackman99/deskfolk';
+const DURATION = 86;
+
+// ---------- math ----------
+const clamp = (x, a = 0, b = 1) => (x < a ? a : x > b ? b : x);
+const lerp = (a, b, p) => a + (b - a) * p;
+const E = {
+  lin: p => p,
+  out: p => 1 - (1 - p) ** 3,
+  out5: p => 1 - (1 - p) ** 5,
+  in: p => p ** 3,
+  in2: p => p * p,
+  io: p => (p < 0.5 ? 4 * p ** 3 : 1 - (-2 * p + 2) ** 3 / 2),
+  back: p => { const c1 = 1.9, c3 = c1 + 1; return 1 + c3 * (p - 1) ** 3 + c1 * (p - 1) ** 2; },
+  spring: p => (p >= 1 ? 1 : 1 - Math.exp(-6.5 * p) * Math.cos(12 * p)),
+};
+const P = (t, t0, t1, e = E.out) => e(clamp((t - t0) / (t1 - t0)));
+function kf(t, fr) {
+  if (t <= fr[0][0]) return fr[0][1];
+  for (let i = 0; i < fr.length - 1; i++) {
+    const [t0, v0] = fr[i], [t1, v1, e] = fr[i + 1];
+    if (t < t1) return lerp(v0, v1, (e || E.io)((t - t0) / (t1 - t0)));
+  }
+  return fr[fr.length - 1][1];
+}
+
+// ---------- dom ----------
+function el(parent, cls = '', html = '', tag = 'div') {
+  const e = document.createElement(tag);
+  e.className = 'a ' + cls;
+  if (html) e.innerHTML = html;
+  parent.appendChild(e);
+  return e;
+}
+function size(e, d) { e.style.width = e.style.height = d + 'px'; }
+function put(e, x, y, s = 1, o = 1, r = 0, ax = '-50%', ay = '-50%') {
+  if (o <= 0.001 || s <= 0.001) { e.style.visibility = 'hidden'; e.style.opacity = 0; return; }
+  e.style.visibility = 'visible';
+  e.style.opacity = o;
+  e.style.transform = `translate(${x.toFixed(2)}px,${y.toFixed(2)}px) translate(${ax},${ay}) scale(${s.toFixed(4)}) rotate(${r.toFixed(2)}deg)`;
+}
+const NS = 'http://www.w3.org/2000/svg';
+function sv(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function layer(root) { return sv('svg', { width: 1920, height: 1080, viewBox: '0 0 1920 1080', class: 'layer' }, root); }
+function stroke(svg, d, color = 'rgba(255,255,255,.34)', w = 3, extra = {}) {
+  return sv('path', { d, fill: 'none', stroke: color, 'stroke-width': w, 'stroke-linecap': 'round', pathLength: 1, 'stroke-dasharray': '1 1', 'stroke-dashoffset': 1, ...extra }, svg);
+}
+function draw(path, p, o = 1) { path.setAttribute('stroke-dashoffset', (1 - p).toFixed(4)); path.style.opacity = p > 0 ? o : 0; }
+
+function Super(root, lines) {
+  const w = document.createElement('div');
+  w.className = 'super';
+  root.appendChild(w);
+  const spans = lines.map((txt, i) => {
+    const d = document.createElement('div');
+    d.className = 'line ' + (i ? 'sub' : 'main');
+    const s = document.createElement('span');
+    s.innerHTML = txt;
+    d.appendChild(s);
+    w.appendChild(d);
+    return s;
+  });
+  return { w, spans };
+}
+function showSuper(sp, t, ins, out) {
+  const q = out != null ? P(t, out, out + 0.35, E.in2) : 0;
+  sp.w.style.display = t < ins[0] - 0.01 || (out != null && t > out + 0.4) ? 'none' : 'block';
+  sp.spans.forEach((s, i) => {
+    const p = P(t, ins[i], ins[i] + 0.55, E.out5);
+    s.style.transform = `translateY(${((1 - p) * 110).toFixed(2)}%)`;
+    s.style.opacity = (1 - q).toFixed(3);
+  });
+}
+function stamp(t, t0) {
+  if (t < t0) return { s: 0, o: 0, r: 0 };
+  const p = P(t, t0, t0 + 0.26, E.out);
+  return { s: lerp(1.8, 1, p), o: clamp((t - t0) / 0.06), r: lerp(-12, -3, p) };
+}
+function setStamp(e, st, fade = 1) {
+  if (st.o * fade <= 0.001) { e.style.visibility = 'hidden'; return; }
+  e.style.visibility = 'visible';
+  e.style.opacity = st.o * fade;
+  e.style.transform = `translate(-50%,0) scale(${st.s.toFixed(4)}) rotate(${st.r.toFixed(2)}deg)`;
+}
+function pulse(e, x, y, t, times, base = 1, spread = 0.9, dur = 0.75, alpha = 0.75) {
+  let best = null;
+  for (const t0 of times) if (t >= t0 && t < t0 + dur) best = t0;
+  if (best == null) { e.style.visibility = 'hidden'; return; }
+  const p = (t - best) / dur;
+  put(e, x, y, base * (1 + spread * E.out(p)), alpha * (1 - p));
+}
+const breath = (t, ph = 0) => 1 + 0.022 * Math.sin(t * Math.PI * 0.8 + ph);
+function typed(txt, t, t0, cps) {
+  const chars = Array.from(txt);
+  const n = Math.floor(clamp((t - t0) * cps, 0, chars.length));
+  return chars.slice(0, n).join('');
+}
+
+// ---------- icons ----------
+const ICON_DOC = '<svg width="22" height="26" viewBox="0 0 22 26"><path d="M3.5 1.5h9.5l6 6v16a1 1 0 0 1-1 1h-14.5a1 1 0 0 1-1-1v-21a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><path d="M13 1.5v6h6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></svg>';
+const ICON_CLOCK = '<svg class="clk" width="48" height="48" viewBox="0 0 48 48"><circle cx="24" cy="24" r="20" fill="none" stroke="#0b2e35" stroke-width="3.6"/><line class="hh" x1="24" y1="24" x2="24" y2="14" stroke="#0b2e35" stroke-width="3.8" stroke-linecap="round"/><line class="mh" x1="24" y1="24" x2="24" y2="9" stroke="#0f6776" stroke-width="3" stroke-linecap="round"/><circle cx="24" cy="24" r="2.6" fill="#0b2e35"/></svg>';
+const ICON_SPIN = '<svg class="spin" viewBox="0 0 44 44"><circle cx="22" cy="22" r="18" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="4"/><path d="M22 4a18 18 0 0 1 18 18" fill="none" stroke="#f0ab3d" stroke-width="4" stroke-linecap="round"/></svg>';
+const ICON_OK = '<svg class="ok" viewBox="0 0 44 44"><circle cx="22" cy="22" r="22" fill="#a3ecd5"/><path d="M13 22.5l6 6 12-13" stroke="#063d31" stroke-width="4.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const ICON_BAD = '<svg class="bad" viewBox="0 0 44 44"><circle cx="22" cy="22" r="22" fill="#f0ab3d"/><path d="M22 11v14" stroke="#402803" stroke-width="4.5" stroke-linecap="round"/><circle cx="22" cy="32" r="2.9" fill="#402803"/></svg>';
+const ICON_CURSOR = '<svg width="44" height="60" viewBox="0 0 44 60"><path d="M5 4 L5 45 L15.5 35 L23 52 L30.5 48.8 L23 32 L37.5 32 Z" fill="#0b1b1f" stroke="#fff" stroke-width="3.2" stroke-linejoin="round"/></svg>';
+const ICON_FOLDER = '<svg width="120" height="96" viewBox="0 0 120 96"><path d="M8 20a8 8 0 0 1 8-8h28l10 12h50a8 8 0 0 1 8 8v48a8 8 0 0 1-8 8H16a8 8 0 0 1-8-8z" fill="none" stroke="#fff" stroke-width="5" stroke-linejoin="round"/></svg>';
+const ICON_KEY = '<svg width="120" height="96" viewBox="0 0 120 96"><circle cx="38" cy="48" r="20" fill="none" stroke="#fff" stroke-width="5"/><circle cx="38" cy="48" r="6" fill="#fff"/><path d="M58 48h46M92 48v14M80 48v10" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/></svg>';
+
+// ---------- scenes ----------
+const scenes = [];
+const CUES = [];
+function cue(t, k, opt = {}) { CUES.push({ t: +t.toFixed(3), k, ...opt }); }
+function scene(t0, t1, build, update) {
+  const root = document.createElement('div');
+  root.className = 'scene';
+  stage.insertBefore(root, document.getElementById('vignette'));
+  scenes.push({ t0, t1, root, build, update, ctx: null });
+}
+
+// S0 cold open -------------------------------------------------------------
+scene(0, 8.55, root => {
+  root.classList.add('s0');
+  const bot = el(root, 'disc white'); size(bot, 180);
+  const bubbles = T.claims.map(tx => el(root, 'bubble', tx));
+  const sup = Super(root, [T.s0a, T.s0b]);
+  sup.w.children[1].classList.add('big');
+  const amber = el(root, 'disc amberbg'); size(amber, 96);
+  return { bot, bubbles, sup, amber };
+}, (t, c) => {
+  const at = [0.8, 1.8, 2.8];
+  put(c.bot, 600, 440, P(t, 0.1, 0.8, E.spring) * breath(t));
+  let n = 0;
+  for (let j = 0; j < 3; j++) n += P(t, at[j], at[j] + 0.4, E.out);
+  c.bubbles.forEach((b, i) => {
+    const s = P(t, at[i], at[i] + 0.5, E.spring);
+    const y = 440 + 110 * (i - (n - 1) / 2);
+    put(b, 736, y, s, 1, 0, '0%', '-50%');
+  });
+  showSuper(c.sup, t, [4.0, 4.9], 7.3);
+  // the amber dot shows up, looks, then floods the screen
+  const ap = P(t, 6.5, 6.95, E.spring);
+  const hop = -26 * Math.sin(Math.PI * clamp((t - 7.0) / 0.32));
+  const grow = P(t, 7.5, 8.5, E.in);
+  put(c.amber, 1480, 440 + hop, ap * lerp(1, 37.5, grow));
+});
+[0.8, 1.8, 2.8].forEach((t, i) => cue(t, 'pop', { p: i, x: 900 }));
+cue(6.5, 'pop', { p: 4, x: 1480 });
+cue(7.0, 'hop', { x: 1480 });
+cue(7.5, 'riser', { d: 1.0 });
+cue(8.5, 'impact');
+
+// S1-S4: title, team, two claims (one continuous stage) ---------------------
+const X = { iris: 320, theo: 580, kai: 840, w: 1230, you: 1600 }, RY = 440, LY = 300;
+scene(8.45, 42.55, root => {
+  const svg = layer(root);
+  const link1 = stroke(svg, `M ${X.iris + 62} ${RY} L ${X.theo - 62} ${RY}`);
+  const link2 = stroke(svg, `M ${X.theo + 62} ${RY} L ${X.kai - 62} ${RY}`);
+  const route = stroke(svg, `M ${X.kai + 62} ${RY} L ${X.you - 62} ${RY}`, 'rgba(255,255,255,.22)', 3);
+  const bots = T.names.map(([n, r]) => {
+    const pl = el(root, 'pulse'); size(pl, 124);
+    const d = el(root, 'disc white'); size(d, 124);
+    return { d, pl, nm: el(root, 'name', n), rl: el(root, 'role', r) };
+  });
+  const you = el(root, 'youring', T.you);
+  const youPulse = el(root, 'pulse mintp'); size(youPulse, 124);
+  const scan = el(root, 'ring'); size(scan, 96);
+  const flash = el(root, 'ring mintring'); size(flash, 96);
+  const amber = el(root, 'disc amberbg ringed'); size(amber, 96);
+  const alabel = el(root, 'alabel', 'Deskfolk');
+  const word = el(root, 'maskwrap', '<span class="wordmark">Deskfolk</span>');
+  const tagl = el(root, 'maskwrap', `<span class="tagline">${T.tagline}</span>`);
+  const goal = el(root, 'bubble', T.goal);
+  const docs = T.docs.map(d => el(root, 'doc', ICON_DOC + d));
+  const mk = (txt, tag, rec) => {
+    const b = el(root, 'bubble', txt);
+    const w = document.createElement('div'); w.className = 'stampwrap'; b.appendChild(w);
+    const tg = document.createElement('div'); tg.className = 'tag'; tg.textContent = tag; w.appendChild(tg);
+    let rc = null;
+    if (rec) { rc = document.createElement('div'); rc.className = 'receipt'; rc.textContent = rec; w.appendChild(rc); }
+    return { b, tg, rc };
+  };
+  const b1 = mk(T.c1, T.c1tag, T.c1rec);
+  const b2 = mk(T.c2, T.c2tag, null);
+  const term = el(root, 'term', '<div class="l1"></div><div class="l2 ok"></div><div class="l3 dim"></div>');
+  const clock = el(root, 'clockchip', ICON_CLOCK + `<span>${T.c2clock}</span>`);
+  const doc3 = el(root, 'bubble docb', ICON_DOC + T.c2doc);
+  const sups = [Super(root, [T.s2a]), Super(root, [T.s2b]), Super(root, [T.s3]), Super(root, [T.s4])];
+  return { link1, link2, route, bots, you, youPulse, scan, flash, amber, alabel, word, tagl, goal, docs, b1, b2, term, clock, doc3, sups,
+    tl: term.querySelectorAll('div'), hh: clock.querySelector('.hh'), mh: clock.querySelector('.mh') };
+}, (t, c, root) => {
+  root.style.opacity = 1 - P(t, 42.1, 42.5, E.lin);
+  const bx = [X.iris, X.theo, X.kai];
+
+  // --- title: amber contracts, white rolls in, then the logo unfolds into the cast
+  const LOGO_W = 868, LOGO_A = 1052, LOGO_Y = 430;
+  const split = [0, 1, 2].map(i => P(t, 12.5 + i * 0.07, 13.3 + i * 0.07, E.io));
+  const roll = P(t, 9.0, 9.6, E.out);
+  c.bots.forEach((b, i) => {
+    const sp = split[i];
+    const tx = lerp(lerp(-240, LOGO_W, roll), bx[i], sp);
+    const ty = lerp(LOGO_Y, RY, sp);
+    const s = lerp(2.258, 1, sp) * (sp > 0.99 ? breath(t, i * 1.7) : 1);
+    put(b.d, tx, ty, s, t < 9.0 ? 0 : 1);
+    const lo = P(t, 13.3 + i * 0.08, 13.8 + i * 0.08, E.out);
+    put(b.nm, bx[i], RY + 102 + (1 - lo) * 14, 1, lo);
+    put(b.rl, bx[i], RY + 142 + (1 - lo) * 14, 1, lo);
+  });
+  // amber position: flood -> logo -> watcher, plus hops
+  let ax, ay, as;
+  if (t < 12.5) {
+    const p = P(t, 8.5, 9.3, E.io);
+    ax = lerp(1480, LOGO_A, p) + 16 * Math.sin(Math.PI * clamp((t - 9.5) / 0.3)); ay = lerp(440, LOGO_Y, p); as = lerp(37.5, 2.917, p);
+  } else {
+    const p = P(t, 12.5, 13.25, E.io);
+    ax = lerp(LOGO_A, X.w, p); ay = lerp(LOGO_Y, RY, p); as = lerp(2.917, 1, p);
+  }
+  const HOPS = [[19.5, 19.72, 26], [23.6, 24.8, 50], [28.55, 29.0, 50], [33.8, 34.8, 50], [39.85, 40.25, 50]];
+  let hop = 0;
+  for (const [u, d, h] of HOPS) hop += h * (P(t, u, u + 0.2, E.out) - P(t, d, d + 0.34, E.back));
+  put(c.amber, ax, ay - hop, as);
+  put(c.alabel, X.w, RY + 86 + (1 - P(t, 19.6, 20.1)) * 12, 1, P(t, 19.6, 20.1));
+  // scan & pass rings
+  const ring = (e, t0, dur, grow) => {
+    const p = clamp((t - t0) / dur);
+    if (t < t0 || p >= 1) { e.style.visibility = 'hidden'; return; }
+    put(e, X.w, RY - hop, 1 + grow * E.out(p), 0.9 * (1 - p));
+  };
+  if (t < 30) ring(c.scan, 23.85, 0.65, 4.6); else ring(c.scan, 34.05, 0.65, 4.6);
+  if (t < 35) ring(c.flash, 28.75, 0.55, 2.2); else ring(c.flash, 40.05, 0.55, 2.2);
+
+  // wordmark + tagline
+  const wo = 1 - P(t, 12.2, 12.55, E.lin);
+  const wp = P(t, 9.9, 10.5, E.out5), tp = P(t, 10.6, 11.2, E.out5);
+  put(c.word, 960, 648, 1, wo);
+  c.word.firstChild.style.transform = `translateY(${(1 - wp) * 110}%)`;
+  put(c.tagl, 960, 748, 1, wo);
+  c.tagl.firstChild.style.transform = `translateY(${(1 - tp) * 110}%)`;
+
+  // you ring
+  const yp = P(t, 13.6, 14.1, E.spring);
+  const youBump = 1 + 0.12 * Math.sin(Math.PI * clamp((t - 30.1) / 0.3)) + 0.12 * Math.sin(Math.PI * clamp((t - 41.1) / 0.3));
+  put(c.you, X.you, RY, yp * youBump);
+  pulse(c.youPulse, X.you, RY, t, [30.15, 41.15], 1, 0.8, 0.8);
+
+  // links and route
+  draw(c.link1, P(t, 15.0, 15.5, E.io));
+  draw(c.link2, P(t, 15.2, 15.7, E.io));
+  draw(c.route, P(t, 19.7, 20.3, E.io));
+
+  // bot pulses
+  const PULSES = [[16.0, 16.3], [17.3, 17.55, 17.8, 32.3, 32.55, 35.85, 38.6, 38.85, 54.0], [18.8, 22.35, 26.0]];
+  c.bots.forEach((b, i) => pulse(b.pl, bx[i], RY, t, PULSES[i]));
+
+  // goal bubble: from you to above the team
+  {
+    const p = P(t, 14.1, 15.0, E.io);
+    const s = P(t, 14.0, 14.35, E.out) * lerp(0.35, 1, p) * (1 - 0.1 * P(t, 21.0, 21.4));
+    put(c.goal, lerp(X.you, 600, p), lerp(RY - 40, 262, p), s, 1 - P(t, 21.0, 21.4, E.lin));
+  }
+  // handoff docs
+  const hand = (e, t0, x0, x1) => {
+    const p = clamp((t - t0) / 0.8);
+    if (t < t0 || p >= 1) { e.style.visibility = 'hidden'; return; }
+    const e2 = E.io(p);
+    const s = Math.min(P(t, t0, t0 + 0.15), 1 - P(t, t0 + 0.65, t0 + 0.8, E.in2));
+    put(e, lerp(x0, x1, e2), RY - 100 * Math.sin(Math.PI * e2), s, 1);
+  };
+  hand(c.docs[0], 16.5, X.iris, X.theo);
+  hand(c.docs[1], 18.0, X.theo, X.kai);
+
+  // claim 1: Kai says tests pass
+  {
+    const s0 = P(t, 22.5, 22.95, E.spring);
+    const x = kf(t, [[23.0, X.kai], [23.7, X.w, E.io], [25.0, X.w], [25.75, X.kai, E.back], [28.0, X.kai], [28.65, X.w, E.io], [28.95, X.w], [29.6, X.you, E.io]]);
+    const land = P(t, 29.6, 30.15, E.in2);
+    const shake = t > 24.5 && t < 24.9 ? 7 * Math.sin((t - 24.5) * 60) * (1 - (t - 24.5) / 0.4) : 0;
+    put(c.b1.b, x + shake, lerp(LY, RY, land), s0 * (1 - 0.8 * land), 1 - P(t, 29.95, 30.15, E.lin));
+    setStamp(c.b1.tg, stamp(t, 24.5), 1 - P(t, 27.25, 27.45, E.lin));
+    setStamp(c.b1.rc, stamp(t, 27.5));
+    const ts = P(t, 26.0, 26.35, E.back);
+    put(c.term, X.kai, 712, lerp(0.9, 1, ts), t < 26.0 ? 0 : clamp((t - 26.0) / 0.12) * (1 - P(t, 30.6, 31.0, E.lin)));
+    const blink = Math.floor(t * 3) % 2 ? '' : '▍';
+    const cmd = '$ pnpm test';
+    const typedCmd = typed(cmd, t, 26.2, 16);
+    c.tl[0].textContent = typedCmd + (t < 27.0 ? blink : '');
+    c.tl[1].textContent = t >= 27.0 ? '✓ 42 passed  (1.8s)' : '';
+    c.tl[2].textContent = t >= 27.25 ? '  exit 0' : '';
+  }
+  // claim 2: Theo says "later"
+  {
+    const s0 = P(t, 32.5, 32.95, E.spring);
+    const x = kf(t, [[33.0, X.theo], [33.85, X.w, E.io], [35.0, X.w], [35.85, X.theo, E.back]]);
+    const shake = t > 34.5 && t < 34.9 ? 7 * Math.sin((t - 34.5) * 60) * (1 - (t - 34.5) / 0.4) : 0;
+    put(c.b2.b, x + shake, LY, s0, 1 - P(t, 36.2, 36.6, E.lin));
+    setStamp(c.b2.tg, stamp(t, 34.5));
+    const cs = P(t, 36.0, 36.4, E.spring);
+    const wig = t > 38.5 && t < 39.2 ? 7 * Math.sin((t - 38.5) * 70) * (1 - (t - 38.5) / 0.7) : 0;
+    put(c.clock, X.theo + 20, 712, cs, 1 - P(t, 41.3, 41.7, E.lin), wig);
+    const spin = P(t, 36.5, 38.5, E.io);
+    c.mh.setAttribute('transform', `rotate(${(spin * 360 * 4).toFixed(2)} 24 24)`);
+    c.hh.setAttribute('transform', `rotate(${(spin * 120).toFixed(2)} 24 24)`);
+    const ds = P(t, 39.0, 39.4, E.spring);
+    const dx = kf(t, [[39.2, X.theo], [39.85, X.w, E.io], [40.2, X.w], [40.85, X.you, E.io]]);
+    const land = P(t, 40.85, 41.3, E.in2);
+    put(c.doc3, dx, lerp(LY, RY, land), ds * (1 - 0.8 * land), 1 - P(t, 41.1, 41.3, E.lin));
+  }
+
+  showSuper(c.sups[0], t, [13.0], 18.9);
+  showSuper(c.sups[1], t, [19.3], 21.9);
+  showSuper(c.sups[2], t, [22.6], 31.7);
+  showSuper(c.sups[3], t, [32.6], 41.8);
+});
+// cues for the continuous stage
+cue(9.05, 'whoosh', { x: 400, d: 0.6 });
+cue(9.55, 'land', { x: 868 });
+cue(9.9, 'swell', { d: 1.2 });
+cue(12.5, 'split');
+[0, 1, 2].forEach(i => cue(13.3 + i * 0.08, 'pop', { p: i, x: [320, 580, 840][i] }));
+cue(13.65, 'pop', { p: 3, x: 1600 });
+cue(14.0, 'pop', { p: 2, x: 1600 });
+cue(14.15, 'whoosh', { x: 1100, d: 0.8 });
+cue(16.5, 'slide', { x: 450 });
+cue(17.3, 'pop', { p: 1, x: 580 });
+cue(18.0, 'slide', { x: 710 });
+cue(18.8, 'pop', { p: 2, x: 840 });
+cue(19.5, 'hop', { x: 1230 });
+// claim 1
+cue(22.5, 'pop', { p: 2, x: 840 });
+cue(23.0, 'whoosh', { x: 1030, d: 0.7 });
+cue(23.6, 'hop', { x: 1230 });
+cue(23.85, 'scan', { x: 1230 });
+cue(24.5, 'stamp', { x: 1230 });
+cue(25.0, 'whoosh', { x: 1030, d: 0.7 });
+Array.from('$ pnpm test').forEach((ch, i) => { if (ch !== ' ') cue(26.2 + i / 16, 'type', { x: 840, i }); });
+cue(27.0, 'blip', { x: 840 });
+cue(27.5, 'stamp', { x: 840, p: 1 });
+cue(28.0, 'whoosh', { x: 1030, d: 0.65 });
+cue(28.6, 'hop', { x: 1230 });
+cue(28.75, 'ok', { x: 1230 });
+cue(29.35, 'whoosh', { x: 1420, d: 0.6 });
+cue(30.1, 'receive', { x: 1600 });
+// claim 2
+cue(32.5, 'pop', { p: 1, x: 580 });
+cue(33.0, 'whoosh', { x: 900, d: 0.85 });
+cue(33.8, 'hop', { x: 1230 });
+cue(34.05, 'scan', { x: 1230 });
+cue(34.5, 'stamp', { x: 1230 });
+cue(35.0, 'whoosh', { x: 900, d: 0.85 });
+cue(36.0, 'pop', { p: 1, x: 580 });
+for (let k = 0; k < 16; k++) { const u = k / 16; cue(36.5 + 2 * (u < 0.5 ? Math.cbrt(u / 4) : 1 - Math.cbrt((1 - u) / 4)), 'tick', { x: 580 }); }
+cue(38.5, 'ring', { x: 580 });
+cue(39.0, 'pop', { p: 1, x: 580 });
+cue(39.2, 'whoosh', { x: 900, d: 0.65 });
+cue(39.85, 'hop', { x: 1230 });
+cue(40.05, 'ok', { x: 1230 });
+cue(40.4, 'whoosh', { x: 1420, d: 0.6 });
+cue(41.1, 'receive', { x: 1600 });
+
+// S5 stall ---------------------------------------------------------------
+const CX = [330, 750, 1170, 1590], CY = 430;
+scene(42.4, 50.6, root => {
+  const svg = layer(root);
+  const links = [0, 1, 2].map(i => stroke(svg, `M ${CX[i] + 165} ${CY} L ${CX[i + 1] - 165} ${CY}`, 'rgba(255,255,255,.34)', 3));
+  const cards = T.tickets.map(([title, st, cls, who], i) => {
+    const c = el(root, 'card', `<div class="top"><div class="num">${i + 1}</div>${title}</div><div class="bot"><div class="st ${cls}">${st}</div>${i === 2 ? `<div class="st review">${T.review}</div>` : ''}<div class="av">${who}</div></div>`);
+    return c;
+  });
+  const timer = el(root, 'timer', '<svg width="56" height="56" viewBox="0 0 56 56"><circle cx="28" cy="28" r="23" fill="none" stroke="rgba(255,255,255,.18)" stroke-width="5"/><circle class="tr" cx="28" cy="28" r="23" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" pathLength="1" stroke-dasharray="1 1" stroke-dashoffset="1" transform="rotate(-90 28 28)"/></svg><span></span>');
+  const amber = el(root, 'disc amberbg ringed'); size(amber, 96);
+  const apulse = el(root, 'pulse amberp'); size(apulse, 96);
+  const nudge = el(root, 'nudge', T.nudge);
+  const file = el(root, 'doc', ICON_DOC + 'index.html');
+  const sa = Super(root, [T.s5a]), sb = Super(root, [T.s5b, T.s5c]);
+  return { links, cards, timer, tr: timer.querySelector('.tr'), tspan: timer.querySelector('span'), amber, apulse, nudge, file, sa, sb,
+    avs: cards.map(c => c.querySelector('.av')), sts: cards[2].querySelectorAll('.st') };
+}, (t, c, root) => {
+  root.style.opacity = P(t, 42.4, 42.6, E.lin) * (1 - P(t, 50.1, 50.5, E.lin));
+  c.cards.forEach((e, i) => put(e, CX[i], CY + (1 - P(t, 42.6 + i * 0.14, 43.1 + i * 0.14)) * 40, 1, P(t, 42.6 + i * 0.14, 42.9 + i * 0.14, E.lin)));
+  c.links.forEach((l, i) => draw(l, P(t, 43.0 + i * 0.12, 43.4 + i * 0.12, E.io)));
+  // quiet: avatars dim, timer counts to 30
+  const quiet = P(t, 43.6, 44.2, E.io);
+  const wake = P(t, 47.0, 47.3, E.out);
+  c.avs.forEach((a, i) => {
+    const dim = i >= 2 ? quiet * (1 - wake) : quiet;
+    a.style.opacity = (1 - 0.6 * dim).toFixed(3);
+    a.style.transform = i === 2 ? `scale(${(1 + 0.25 * Math.sin(Math.PI * clamp((t - 47.0) / 0.35))).toFixed(3)})` : '';
+  });
+  const tp = P(t, 43.6, 45.9, E.lin);
+  const to = P(t, 43.5, 43.8, E.lin) * (1 - P(t, 49.6, 50.0, E.lin));
+  put(c.timer, 1500, 214, 1, to, 0, '0%', '-50%');
+  c.tr.setAttribute('stroke-dashoffset', (1 - tp).toFixed(4));
+  c.tr.setAttribute('stroke', tp >= 1 ? '#f0ab3d' : '#fff');
+  c.tspan.textContent = T.quiet(Math.round(tp * 30));
+  // amber rolls in and lands on card 3
+  const rx = kf(t, [[46.0, 2060], [46.5, CX[2], E.out]]);
+  const ry = 300 - 18 * Math.sin(Math.PI * clamp((t - 46.5) / 0.22));
+  put(c.amber, rx, ry, 1, t < 46.0 ? 0 : 1, (rx - 2060) * 0.3);
+  pulse(c.apulse, CX[2], CY, t, [46.55], 1.9, 2.4, 0.8, 0.9);
+  const np = P(t, 46.7, 47.05, E.spring);
+  put(c.nudge, CX[2], 206 + (1 - np) * 30, np, 1);
+  // card 3 status: in progress -> in review, with its file
+  const sw = P(t, 47.5, 47.8, E.out);
+  c.sts[0].style.opacity = (1 - sw).toFixed(3);
+  c.sts[1].style.opacity = sw.toFixed(3);
+  c.sts[1].style.transform = `scale(${lerp(1.3, 1, sw).toFixed(3)})`;
+  put(c.file, CX[2], CY + 140, P(t, 47.6, 48.0, E.spring), 1);
+  showSuper(c.sa, t, [43.2], 45.9);
+  showSuper(c.sb, t, [46.2, 47.4], 50.0);
+});
+[0, 1, 2, 3].forEach(i => cue(42.6 + i * 0.14, 'card', { p: i, x: CX[i] }));
+cue(43.6, 'hush');
+for (let k = 0; k < 5; k++) cue(43.9 + k * 0.5, 'tick', { x: 1500, soft: 1 });
+cue(45.9, 'blip', { x: 1500, p: -1 });
+cue(46.0, 'roll', { x: 1600, d: 0.5 });
+cue(46.5, 'land', { x: 1170 });
+cue(46.55, 'nudge', { x: 1170 });
+cue(47.0, 'wake', { x: 1170 });
+cue(47.5, 'ok', { x: 1170, p: -1 });
+
+// S6 acceptance checks ------------------------------------------------------
+const ROWY = [150, 242, 334, 426];
+scene(50.4, 60.6, root => {
+  const panel = el(root, 'panel');
+  const ph = el(panel, 'ph', T.checksTitle); ph.classList.remove('a');
+  const pc = el(panel, 'pc', ''); pc.classList.remove('a');
+  const rows = T.checks.map(([kind, target, res], i) => {
+    const r = document.createElement('div'); r.className = 'row'; r.style.top = ROWY[i] - 46 + 'px'; panel.appendChild(r);
+    r.innerHTML = `<div class="ic">${ICON_SPIN}${ICON_OK}${i === 3 ? ICON_BAD : ''}</div><div class="kind">${kind}</div><div class="target mono">${target}</div><div class="res mono">${res}</div>${i === 3 ? `<div class="detail"></div>` : ''}`;
+    if (i < 3) { const s = document.createElement('div'); s.className = 'sep'; s.style.top = ROWY[i] + 46 + 'px'; panel.appendChild(s); }
+    return { r, spin: r.querySelector('.spin'), ok: r.querySelector('.ok'), bad: r.querySelector('.bad'), res: r.querySelector('.res'), detail: r.querySelector('.detail') };
+  });
+  const svg = layer(root);
+  const orbit = sv('circle', { cx: 0, cy: 0, r: 150, fill: 'none', stroke: '#f0ab3d', 'stroke-width': 4, 'stroke-dasharray': '6 16', 'stroke-linecap': 'round' }, svg);
+  const amber = el(root, 'disc amberbg ringed'); size(amber, 96);
+  const apulse = el(root, 'pulse amberp'); size(apulse, 96);
+  const call = el(root, 'nudge', T.callback);
+  const theo = el(root, 'disc white'); size(theo, 124);
+  const tpl = el(root, 'pulse'); size(tpl, 124);
+  const tname = el(root, 'name', 'Theo');
+  const sup = Super(root, [T.s6a, T.s6b]);
+  return { panel, pc, rows, orbit, amber, apulse, call, theo, tpl, tname, sup };
+}, (t, c, root) => {
+  root.style.opacity = P(t, 50.4, 50.6, E.lin) * (1 - P(t, 60.1, 60.5, E.lin));
+  const pp = P(t, 50.5, 51.0, E.out);
+  put(c.panel, 680, 440, lerp(0.96, 1, pp), pp);
+  const RES = [51.5, 52.0, 52.5, 53.5];
+  let passed = 0;
+  c.rows.forEach((r, i) => {
+    r.r.style.opacity = P(t, 50.7 + i * 0.12, 51.0 + i * 0.12, E.lin).toFixed(3);
+    const rerun = i === 3 && t >= 55.9 && t < 56.5;
+    const failed = i === 3 && t >= RES[3] && t < 55.9;
+    const done = t >= RES[i] && !(i === 3 && t < 56.5);
+    const spinning = t < RES[i] || rerun;
+    r.spin.style.opacity = spinning ? 1 : 0;
+    r.spin.style.transform = `rotate(${(t * 420) % 360}deg)`;
+    const okT = i === 3 ? 56.5 : RES[i];
+    const okp = P(t, okT, okT + 0.3, E.back);
+    r.ok.style.opacity = done ? 1 : 0;
+    r.ok.style.transform = `scale(${done ? okp : 0})`;
+    if (r.bad) {
+      const bp = P(t, RES[3], RES[3] + 0.3, E.back);
+      r.bad.style.opacity = failed ? 1 : 0;
+      r.bad.style.transform = `scale(${bp})`;
+      r.detail.textContent = t < 56.5 ? T.seamFail : T.seamPass;
+      r.detail.style.color = t < 56.5 ? '#f0ab3d' : '#a3ecd5';
+      r.detail.style.opacity = (t < 56.5 ? P(t, RES[3] + 0.1, RES[3] + 0.4, E.lin) * (1 - P(t, 55.9, 56.1, E.lin)) : P(t, 56.55, 56.85, E.lin)).toFixed(3);
+    }
+    r.res.style.opacity = done ? 1 : 0;
+    if (done) passed++;
+  });
+  c.pc.textContent = T.pass(passed, 4);
+  c.pc.style.color = passed === 4 ? '#a3ecd5' : 'rgba(255,255,255,.66)';
+  // the watcher runs them
+  const running = (t > 50.9 && t < 53.6) || (t > 55.85 && t < 56.55);
+  const aS = 2.3 * P(t, 50.6, 51.1, E.spring);
+  const AX = 1560, AY = 400;
+  put(c.amber, AX, AY, aS);
+  c.orbit.setAttribute('cx', AX); c.orbit.setAttribute('cy', AY);
+  c.orbit.setAttribute('transform', `rotate(${(t * 90) % 360} ${AX} ${AY})`);
+  c.orbit.style.opacity = running ? 0.9 : 0;
+  pulse(c.apulse, AX, AY, t, [51.5, 52.0, 52.5, 53.5, 56.5], 2.3, 0.5, 0.5, 0.8);
+  const cp = P(t, 54.0, 54.35, E.spring);
+  put(c.call, AX, 590, cp, 1 - P(t, 56.3, 56.6, E.lin));
+  const th = P(t, 54.3, 54.7, E.spring);
+  put(c.theo, AX - 40, 740, th * 0.7 * breath(t), 1 - P(t, 57.2, 57.6, E.lin));
+  put(c.tname, AX + 66, 740, 1, P(t, 54.5, 54.8, E.lin) * (1 - P(t, 57.2, 57.6, E.lin)), 0, '0%', '-50%');
+  pulse(c.tpl, AX - 40, 740, t, [54.8, 55.3], 0.7);
+  showSuper(c.sup, t, [50.7, 57.0], 60.0);
+});
+[51.5, 52.0, 52.5].forEach((tt, i) => cue(tt, 'ok', { p: i, x: 400 }));
+cue(53.5, 'warn', { x: 400 });
+cue(54.0, 'nudge', { x: 1560 });
+cue(54.3, 'pop', { p: 1, x: 1520 });
+cue(56.5, 'chord', { x: 400 });
+
+// S7 flow graph -------------------------------------------------------------
+const LANE = { you: 206, I: 322, T: 438, K: 554 };
+const G = [
+  ['n1', 285, LANE.you, 'you'], ['n2', 505, LANE.I, 'I'], ['n3', 735, LANE.T, 'T'], ['a1', 915, LANE.T, 'app'],
+  ['n4', 1080, LANE.T, 'T'], ['n5', 1275, LANE.K, 'K'], ['a2', 1440, LANE.K, 'app'], ['n6', 1640, LANE.K, 'K'],
+  ['a3', 1640, 380, 'app'], ['n7', 1640, LANE.you, 'fin'],
+];
+const GE = [['n1', 'n2'], ['n2', 'n3'], ['n3', 'a1'], ['a1', 'n4'], ['n4', 'n5'], ['n5', 'a2'], ['a2', 'n6'], ['n6', 'a3'], ['a3', 'n7']];
+scene(60.4, 66.6, root => {
+  const cam = el(root, ''); cam.style.width = '1920px'; cam.style.height = '1080px'; cam.style.transformOrigin = '50% 40%';
+  const svg = layer(cam);
+  const nodes = {};
+  for (const [id, x, y, who] of G) {
+    let inner;
+    if (who === 'app') inner = T.graph[id];
+    else if (who === 'you') inner = `<div class="mini you">${T.you}</div>${T.graph[id]}`;
+    else if (who === 'fin') inner = `<div class="mini">✓</div>${T.graph[id]}`;
+    else inner = `<div class="mini">${who}</div>${T.graph[id]}`;
+    nodes[id] = { e: el(cam, 'node' + (who === 'app' ? ' app' : who === 'fin' ? ' fin' : ''), inner), x, y };
+  }
+  const edges = GE.map(([a, b]) => ({ a, b, path: stroke(svg, 'M0 0', nodes[a].e.classList.contains('app') ? 'rgba(240,171,61,.95)' : 'rgba(255,255,255,.5)', 3.2) }));
+  const conn = stroke(svg, 'M0 0', 'rgba(255,255,255,.6)', 3);
+  const card = el(cam, 'detailcard', `<div class="hd"><div class="av" style="position:static">K</div>${T.detail.head}</div><div class="kv">${T.detail.rows.map(([k, v]) => `<div class="k">${k}</div><div class="v">${v}</div>`).join('')}</div>`);
+  const sup = Super(root, [T.s7]);
+  return { cam, nodes, edges, conn, card, sup, layoutDone: false };
+}, (t, c, root) => {
+  if (!c.layoutDone) {
+    for (const k in c.nodes) c.nodes[k].w = c.nodes[k].e.offsetWidth, c.nodes[k].h = c.nodes[k].e.offsetHeight;
+    // same-lane neighbours are chained by their measured widths, then the whole graph is fitted into the frame
+    const N = c.nodes, GAP = 44;
+    const after = (a, b, gap = GAP) => { N[b].x = N[a].x + N[a].w / 2 + gap + N[b].w / 2; };
+    after('n3', 'a1'); after('a1', 'n4');
+    N.n5.x = Math.max(N.n5.x, N.n4.x + N.n4.w / 2 + 50 + N.n5.w / 2);
+    after('n5', 'a2'); after('a2', 'n6');
+    N.a3.x = N.n7.x = N.n6.x;
+    let lo = Infinity, hi = -Infinity;
+    for (const k in N) { lo = Math.min(lo, N[k].x - N[k].w / 2); hi = Math.max(hi, N[k].x + N[k].w / 2); }
+    const fit = Math.min(1, 1600 / (hi - lo)), shift = 160 + (1600 - (hi - lo) * fit) / 2 - lo * fit;
+    c.fit = { s: fit, x: shift };
+    for (const ed of c.edges) {
+      const A = c.nodes[ed.a], B = c.nodes[ed.b];
+      let d;
+      if (Math.abs(A.x - B.x) < 40) { // vertical
+        const y0 = A.y - A.h / 2, y1 = B.y + B.h / 2;
+        d = `M ${A.x} ${y0} L ${B.x} ${y1}`;
+      } else {
+        const x0 = A.x + A.w / 2, x1 = B.x - B.w / 2, mx = (x0 + x1) / 2;
+        d = `M ${x0} ${A.y} C ${mx} ${A.y} ${mx} ${B.y} ${x1} ${B.y}`;
+      }
+      ed.path.setAttribute('d', d);
+    }
+    const n6 = c.nodes.n6;
+    c.conn.setAttribute('d', `M ${n6.x - 60} ${n6.y + n6.h / 2} L ${n6.x - 60} 612`);
+    c.layoutDone = true;
+  }
+  root.style.opacity = P(t, 60.4, 60.6, E.lin) * (1 - P(t, 66.1, 66.5, E.lin));
+  const zoom = lerp(1.0, 1.035, P(t, 60.5, 66.5, E.lin));
+  c.cam.style.transform = `translate(960px,420px) scale(${zoom.toFixed(4)}) translate(-960px,-420px) translate(${c.fit.x.toFixed(2)}px,0) scale(${c.fit.s.toFixed(4)})`;
+  c.cam.style.transformOrigin = '0 0';
+  const T0 = 60.75, DT = 0.34;
+  const popAt = { n1: 60.55 };
+  c.edges.forEach((ed, i) => { const s = T0 + i * DT; draw(ed.path, P(t, s, s + DT, E.io)); popAt[ed.b] = s + DT * 0.85; });
+  for (const k in c.nodes) {
+    const n = c.nodes[k];
+    const p = P(t, popAt[k], popAt[k] + 0.35, E.spring);
+    const hi = k === 'n6' ? 1 + 0.08 * Math.sin(Math.PI * clamp((t - 63.95) / 0.35)) : 1;
+    put(n.e, n.x, n.y, p * hi, p > 0 ? 1 : 0);
+  }
+  draw(c.conn, P(t, 64.05, 64.35, E.io));
+  const cp = P(t, 64.25, 64.7, E.spring);
+  put(c.card, Math.min(c.nodes.n6.x - 200, (1760 - c.fit.x) / c.fit.s - 310), 612, cp, cp > 0 ? 1 : 0, 0, '-50%', '0%');
+  showSuper(c.sup, t, [60.7], 66.0);
+});
+GE.forEach((_, i) => cue(60.75 + i * 0.34 + 0.29, 'node', { p: i, x: G[i + 1][1] }));
+cue(60.55, 'node', { p: -1, x: 285 });
+cue(64.25, 'pop', { p: 3, x: 1330 });
+
+// S8 local ------------------------------------------------------------------
+scene(66.4, 74.6, root => {
+  const svg = layer(root);
+  const screen = stroke(svg, 'M 388 170 H 1132 A 28 28 0 0 1 1160 198 V 642 A 28 28 0 0 1 1132 670 H 388 A 28 28 0 0 1 360 642 V 198 A 28 28 0 0 1 388 170 Z', '#fff', 5);
+  const base = stroke(svg, 'M 300 684 H 1220 Q 1220 706 1196 710 H 324 Q 300 706 300 684 Z', '#fff', 5);
+  const wire = stroke(svg, 'M 1172 420 H 1406', 'rgba(255,255,255,.55)', 3);
+  const dots = [0, 1, 2, 3].map(i => el(root, 'disc ' + (i === 3 ? 'amberbg' : 'white')));
+  dots.forEach(d => size(d, 34));
+  const icons = [el(root, '', ICON_FOLDER), el(root, '', ICON_KEY)];
+  const labels = T.items.map(x => el(root, 'itemlabel', x));
+  const endpoint = el(root, 'endpoint', `<div>${T.endpoint[0]}</div><div>${T.endpoint[1]}</div>`);
+  const packets = [0, 1, 2, 3].map(() => { const p = el(root, 'disc white'); size(p, 14); return p; });
+  const dialog = el(root, 'dialog', `<div class="hd"><div class="av" style="position:static">K</div>${T.ask}</div><div class="host">${T.host}</div><div class="btns"><div class="btn deny">${T.deny}</div><div class="btn allow">${T.allow}</div></div>`);
+  const cursor = el(root, '', ICON_CURSOR);
+  const sup = Super(root, [T.s8a, T.s8b]);
+  return { screen, base, wire, dots, icons, labels, endpoint, packets, dialog, allow: dialog.querySelector('.allow'), cursor, sup, lay: null };
+}, (t, c, root) => {
+  if (!c.lay) {
+    // allow-button centre, relative to the dialog centre (dialog is laid out at scale 1)
+    const d = c.dialog, a = c.allow;
+    c.lay = { ax: a.offsetLeft + a.offsetWidth / 2 - d.offsetWidth / 2, ay: a.offsetTop + a.offsetHeight / 2 - d.offsetHeight / 2 };
+  }
+  root.style.opacity = P(t, 66.4, 66.6, E.lin) * (1 - P(t, 74.1, 74.5, E.lin));
+  draw(c.screen, P(t, 66.6, 67.5, E.io));
+  draw(c.base, P(t, 67.1, 67.6, E.io));
+  const IX = [560, 760, 960], IY = 392;
+  const cast = [[-27, -20], [9, -20], [-27, 16], [9, 16]];
+  c.dots.forEach((d, i) => put(d, IX[0] + cast[i][0] + 9, IY + cast[i][1] + 2, P(t, 67.6 + i * 0.06, 68.0 + i * 0.06, E.spring)));
+  c.icons.forEach((e, i) => put(e, IX[i + 1], IY, P(t, 67.8 + i * 0.12, 68.2 + i * 0.12, E.spring)));
+  c.labels.forEach((e, i) => put(e, IX[i], IY + 96, 1, P(t, 68.0 + i * 0.1, 68.4 + i * 0.1, E.lin)));
+  draw(c.wire, P(t, 68.4, 68.9, E.io));
+  put(c.endpoint, 1560, 420, P(t, 68.7, 69.1, E.spring));
+  c.packets.forEach((p, i) => {
+    const t0 = 69.0 + i * 0.35, u = clamp((t - t0) / 0.7);
+    const back = i % 2 === 1;
+    const x = back ? lerp(1400, 1180, E.io(u)) : lerp(1180, 1400, E.io(u));
+    put(p, x, 420, 1, t >= t0 && u < 1 ? Math.sin(Math.PI * u) : 0);
+    p.style.background = back ? '#a3ecd5' : '#fff';
+  });
+  // approval
+  const dp = P(t, 70.5, 70.9, E.spring);
+  const dq = P(t, 72.35, 72.65, E.in2);
+  put(c.dialog, 760, 420, dp * (1 - 0.08 * dq), dp > 0 ? 1 - dq : 0);
+  const press = t >= 72.0 && t < 72.25;
+  c.allow.style.background = press ? '#0a4a55' : '#0f6776';
+  c.allow.style.transform = press ? 'scale(.95)' : '';
+  const cx = kf(t, [[70.9, 1320], [71.8, 760 + c.lay.ax, E.io]]);
+  const cy = kf(t, [[70.9, 900], [71.8, 420 + c.lay.ay, E.io]]);
+  const co = P(t, 70.8, 71.0, E.lin) * (1 - P(t, 72.6, 72.9, E.lin));
+  put(c.cursor, cx - 5, cy - 4, press ? 0.9 : 1, co, 0, '0%', '0%');
+  showSuper(c.sup, t, [66.8, 70.6], 74.0);
+});
+cue(66.6, 'draw', { d: 1.0 });
+cue(67.6, 'pop', { p: 0, x: 560 }); cue(67.8, 'pop', { p: 1, x: 760 }); cue(67.92, 'pop', { p: 2, x: 960 });
+cue(68.7, 'pop', { p: 3, x: 1560 });
+[0, 1, 2, 3].forEach(i => cue(69.0 + i * 0.35, 'packet', { x: 1290, p: i }));
+cue(70.5, 'dialog', { x: 760 });
+cue(72.0, 'click', { x: 900 });
+cue(72.35, 'ok', { x: 760, p: 1 });
+
+// S9 other features --------------------------------------------------------
+scene(74.4, 78.6, root => {
+  const box = document.createElement('div'); box.className = 'pillbox'; root.appendChild(box);
+  const pills = T.also.map(x => { const p = document.createElement('div'); p.className = 'pill'; p.textContent = x; box.appendChild(p); return p; });
+  return { pills, lay: null };
+}, (t, c, root) => {
+  if (!c.lay) {
+    c.lay = c.pills.map(p => { const r = p.getBoundingClientRect(), s = stage.getBoundingClientRect(); return { x: r.left - s.left + r.width / 2, y: r.top - s.top + r.height / 2 }; });
+  }
+  root.style.opacity = P(t, 74.4, 74.6, E.lin);
+  c.pills.forEach((p, i) => {
+    const t0 = 74.5 + i * 0.5;
+    const s = P(t, t0, t0 + 0.4, E.spring);
+    const g = P(t, 77.5 + i * 0.03, 78.2 + i * 0.03, E.in);
+    const dx = (960 - c.lay[i].x) * g, dy = (450 - c.lay[i].y) * g;
+    p.style.opacity = (t < t0 ? 0 : 1 - g * 0.6).toFixed(3);
+    p.style.transform = `translate(${dx.toFixed(2)}px,${dy.toFixed(2)}px) scale(${(s * (1 - 0.92 * g)).toFixed(4)})`;
+  });
+});
+T.also.forEach((_, i) => cue(74.5 + i * 0.5, 'pill', { p: i, x: 960 }));
+cue(77.5, 'riser', { d: 1.0 });
+
+// S10 end card ---------------------------------------------------------------
+scene(78.1, 86.01, root => {
+  const white = el(root, 'disc white'); size(white, 220);
+  const amber = el(root, 'disc amberbg'); size(amber, 220);
+  amber.style.boxShadow = '0 0 0 16px var(--field)';
+  const word = el(root, 'maskwrap', '<span class="wordmark" style="font-size:112px">Deskfolk</span>');
+  const tagl = el(root, 'maskwrap', `<span class="tagline">${T.tagline}</span>`);
+  const endl = el(root, 'endline', T.endLine);
+  const url = el(root, 'url', URL_TEXT);
+  return { white, amber, word, tagl, endl, url };
+}, (t, c) => {
+  const LY2 = 372;
+  const wp = P(t, 78.1, 78.6, E.out);
+  put(c.white, lerp(960, 888, P(t, 78.3, 78.8, E.io)), lerp(450, LY2, P(t, 78.2, 78.7, E.io)), wp);
+  const fall = P(t, 78.0, 78.5, E.in2);
+  const squash = t > 78.5 ? 1 - 0.06 * Math.sin(Math.PI * clamp((t - 78.5) / 0.25)) : 1;
+  put(c.amber, 1032, lerp(-160, LY2, fall), squash, t < 78.1 ? 0 : 1);
+  const w1 = P(t, 79.1, 79.7, E.out5), w2 = P(t, 79.7, 80.3, E.out5);
+  put(c.word, 960, 584, 1, 1); c.word.firstChild.style.transform = `translateY(${(1 - w1) * 110}%)`;
+  put(c.tagl, 960, 680, 1, 1); c.tagl.firstChild.style.transform = `translateY(${(1 - w2) * 110}%)`;
+  put(c.endl, 960, 858, 1, P(t, 80.4, 80.9, E.lin));
+  put(c.url, 960, 912, 1, P(t, 80.7, 81.2, E.lin));
+  document.getElementById('black').style.opacity = P(t, 85.0, 86.0, E.lin);
+});
+cue(78.5, 'impact', { big: 1 });
+cue(79.1, 'swell', { d: 1.4 });
+
+// ---------- runtime ----------
+function seek(t) {
+  for (const s of scenes) {
+    const on = t >= s.t0 && t < s.t1;
+    s.root.style.display = on ? 'block' : 'none';
+    if (on) s.update(t, s.ctx, s.root);
+  }
+  if (t < 85) document.getElementById('black').style.opacity = 0;
+}
+window.ready = (async () => {
+  await Promise.all([
+    document.fonts.load('600 40px "Folk Rounded"'), document.fonts.load('700 40px "Folk Rounded"'),
+    document.fonts.load('400 30px "Folk Mono"'),
+  ]);
+  for (const s of scenes) { s.root.style.display = 'block'; s.ctx = s.build(s.root); }
+  // first update of each scene measures its layout while visible
+  for (const s of scenes) s.update(s.t0 + 0.001, s.ctx, s.root);
+  for (const s of scenes) s.root.style.display = 'none';
+  seek(0);
+  return true;
+})();
+window.seek = seek;
+window.DURATION = DURATION;
+window.CUES = CUES;
+window.LANG = LANG;
+</script>
+</body>
+</html>
