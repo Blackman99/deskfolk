@@ -11,8 +11,12 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { envLookup, WINDOWS_ENV_PASSTHROUGH } from "./platform";
 
-/** Everything else in the daemon's own env stays behind; a shell only gets these, when present. */
-const POSIX_ENV_WHITELIST = [
+/**
+ * Everything else in the daemon's own env stays behind; a shell only gets these, when present.
+ * Exported so `acceptance-eval.ts` can build a command check's env from the same whitelist, minus
+ * `SSH_AUTH_SOCK` — a check runs unsupervised, with nobody watching what it reaches for.
+ */
+export const ENV_WHITELIST = [
   "PATH", "HOME", "USER", "LOGNAME", "TMPDIR", "SSH_AUTH_SOCK",
   "__CF_USER_TEXT_ENCODING", "LANG", "LC_ALL", "LC_CTYPE",
 ] as const;
@@ -67,7 +71,7 @@ export function terminalEnv(source: Record<string, string | undefined>, options:
   // On win32, node/PowerShell/cmd need far more than the narrow POSIX whitelist just to run at
   // all — see WINDOWS_ENV_PASSTHROUGH — and env var names there are case-insensitive.
   const whitelist: readonly string[] =
-    platform === "win32" ? [...POSIX_ENV_WHITELIST, ...WINDOWS_ENV_PASSTHROUGH] : POSIX_ENV_WHITELIST;
+    platform === "win32" ? [...ENV_WHITELIST, ...WINDOWS_ENV_PASSTHROUGH] : ENV_WHITELIST;
   const env: Record<string, string> = {};
   for (const key of whitelist) {
     const value = envLookup(source, key, platform);

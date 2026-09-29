@@ -82,6 +82,9 @@ export function routineFireBody(locale: Locale, title: string, instruction: stri
 /** One ticket of a plan that is still to do or in progress, as a plan call-back names it. */
 export type OpenTicketLine = { seq: number; title: string; status: "todo" | "doing"; worker: string | null };
 
+/** One failing acceptance check, as a plan call-back or a stalled notice names it. */
+export type FailingCheckLine = { item: string; what: string; detail: string; output: string | null };
+
 function ticketLine(locale: Locale, ticket: OpenTicketLine, withWorker = true): string {
   const number = String(ticket.seq).padStart(2, "0");
   if (locale === "en") {
@@ -94,29 +97,90 @@ function ticketLine(locale: Locale, ticket: OpenTicketLine, withWorker = true): 
   return `${number}《${ticket.title}》（${state}${who}）`;
 }
 
+/** Code points of a failing check's captured output a nudge or a stalled notice keeps — the tail, not the head. */
+const FAILING_CHECK_OUTPUT_MAX = 400;
+
+function tailCodePoints(text: string, limit: number): string {
+  const chars = [...text];
+  return chars.length > limit ? `…${chars.slice(-(limit - 1)).join("")}` : text;
+}
+
+function failingCheckLines(locale: Locale, failing: readonly FailingCheckLine[]): string {
+  return failing
+    .map((check) => {
+      const output = check.output ? tailCodePoints(check.output, FAILING_CHECK_OUTPUT_MAX) : "";
+      return locale === "en"
+        ? `- "${check.item}" — ${check.what}: ${check.detail}${output ? `\n  ${output}` : ""}`
+        : `- 「${check.item}」——${check.what}：${check.detail}${output ? `\n  ${output}` : ""}`;
+    })
+    .join("\n");
+}
+
 /**
  * The note the app calls a Bot back to a quiet plan with, behind the check-back mark: which
  * tickets are still open, which one is this Bot's, and what a useful answer is — finish and hand
- * it over, or say where it is stuck; a ticket that is someone else's goes to them by name.
+ * it over, or say where it is stuck; a ticket that is someone else's goes to them by name. Failing
+ * checks (the app's own evidence, run on this machine) are named too, with the guidance to fix the
+ * deliverable rather than the check.
  */
-export function planNudgeNote(locale: Locale, input: { open: readonly OpenTicketLine[]; mine: OpenTicketLine | null }): string {
-  const list = input.open.map((ticket) => ticketLine(locale, ticket));
-  if (locale === "en") {
-    const yours = input.mine ? ` Yours is ${ticketLine(locale, input.mine, false)}.` : "";
-    return `The plan has gone quiet with tickets still open: ${list.join("; ")}.${yours} Finish it and hand it over — with how to start it, if it is something to run — or say plainly where it is stuck and what you need from whom. A ticket that is someone else's: name them.`;
+export function planNudgeNote(
+  locale: Locale,
+  input: { open: readonly OpenTicketLine[]; mine: OpenTicketLine | null; failing?: readonly FailingCheckLine[] },
+): string {
+  const en = locale === "en";
+  const failing = input.failing ?? [];
+  const parts: string[] = [];
+  if (input.open.length > 0) {
+    const list = input.open.map((ticket) => ticketLine(locale, ticket));
+    const yours = input.mine ? (en ? ` Yours is ${ticketLine(locale, input.mine, false)}.` : `其中 ${ticketLine(locale, input.mine, false)} 是你的。`) : "";
+    parts.push(
+      en
+        ? `The plan has gone quiet with tickets still open: ${list.join("; ")}.${yours} Finish it and hand it over — with how to start it, if it is something to run — or say plainly where it is stuck and what you need from whom. A ticket that is someone else's: name them.`
+        : `规划静下来了，还有任务没收口：${list.join("；")}。${yours}接着做完并交出（要运行的东西附上启动方式），做不了就直说卡在哪、需要谁做什么；属于别人的任务点名交给对方。`,
+    );
   }
-  const yours = input.mine ? `其中 ${ticketLine(locale, input.mine, false)} 是你的。` : "";
-  return `规划静下来了，还有任务没收口：${list.join("；")}。${yours}接着做完并交出（要运行的东西附上启动方式），做不了就直说卡在哪、需要谁做什么；属于别人的任务点名交给对方。`;
+  if (failing.length > 0) {
+    parts.push(
+      en
+        ? `There are also failing acceptance checks (the app ran these itself, on this machine):\n${failingCheckLines(locale, failing)}\nFix the deliverable, not the check: do not weaken a test, loosen an assertion, or delete what is being checked just to pass it; run the same command yourself to confirm before you hand it over again. If a check itself looks wrong, say so plainly — the user changes it on the flow board.`
+        : `还有验收检查没过（应用自己在本机跑的）：\n${failingCheckLines(locale, failing)}\n修交付物，不是改检查：别为了过检查去改测试、放宽断言或删掉被检查的内容；自己跑一遍同一条命令确认再交出。觉得检查本身写错了就直说，由用户在流程图里改。`,
+    );
+  }
+  return parts.join("\n\n");
 }
 
 /**
  * The line the plan's session gets when a call-back brought nothing new: the plan has stopped with
- * tickets open, and picking it up is now yours. A system line, so it wakes nobody.
+ * tickets open, or its checks still failing, and picking it up is now yours. A system line, so it
+ * wakes nobody.
  */
-export function stalledPlanBody(locale: Locale, input: { open: readonly OpenTicketLine[]; called: string }): string {
-  const list = input.open.map((ticket) => ticketLine(locale, ticket));
-  if (locale === "en") {
-    return `This plan has stopped with ${input.open.length} ticket${input.open.length === 1 ? "" : "s"} still open: ${list.join("; ")}. ${input.called} was called back once and nothing new was handed over since. To carry on, @ whoever should pick it up; or mark the tickets on the flow board.`;
+export function stalledPlanBody(
+  locale: Locale,
+  input: { open: readonly OpenTicketLine[]; called: string; failing?: readonly FailingCheckLine[] },
+): string {
+  const en = locale === "en";
+  const failing = input.failing ?? [];
+  const parts: string[] = [];
+  if (input.open.length > 0) {
+    const list = input.open.map((ticket) => ticketLine(locale, ticket));
+    parts.push(
+      en
+        ? `This plan has stopped with ${input.open.length} ticket${input.open.length === 1 ? "" : "s"} still open: ${list.join("; ")}. ${input.called} was called back once and nothing new was handed over since. To carry on, @ whoever should pick it up; or mark the tickets on the flow board.`
+        : `这件事停下了，还有 ${input.open.length} 个任务没收口：${list.join("；")}。已经叫过${input.called}一次，之后没有新的交付。要继续就 @ 该接手的 Bot，或者在流程图里改任务状态。`,
+    );
+  } else {
+    parts.push(
+      en
+        ? `This plan has stopped: ${input.called} was called back once over its failing checks, and nothing changed since. To carry on, @ whoever should pick it up; or change the checks on the flow board.`
+        : `这件事停下了：为验收检查没过叫过${input.called}一次，之后没有变化。要继续就 @ 该接手的 Bot，或者在流程图里改检查。`,
+    );
   }
-  return `这件事停下了，还有 ${input.open.length} 个任务没收口：${list.join("；")}。已经叫过${input.called}一次，之后没有新的交付。要继续就 @ 该接手的 Bot，或者在流程图里改任务状态。`;
+  if (failing.length > 0) {
+    parts.push(
+      en
+        ? `Still failing (the app ran these itself, on this machine):\n${failingCheckLines(locale, failing)}`
+        : `还没过的验收检查（应用自己在本机跑的）：\n${failingCheckLines(locale, failing)}`,
+    );
+  }
+  return parts.join("\n\n");
 }

@@ -33,6 +33,11 @@ function oneLine(value: unknown, limit: number): string {
   return takeCodePoints(value.replace(/\s+/g, " ").trim(), limit).text;
 }
 
+/** One spec line, cleaned and clipped the same way `acceptance` / `rules` / `process` entries are. */
+export function normalizeSpecLine(value: unknown): string {
+  return oneLine(value, SPEC_ITEM_MAX);
+}
+
 function lines(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   const out: string[] = [];

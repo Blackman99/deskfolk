@@ -94,12 +94,35 @@ export function classifyShell(
 
 function commandStaysInside(workspace: string, command: string, cwdAbs: string, host: PathHost): boolean {
   for (const token of visiblePathTokens(command)) {
-    if (isExecutablePrefix(token, host.platform) || isHarmlessDevice(token, host.platform)) continue;
+    if (isExecutablePrefix(token, host.platform) || isHarmlessDevice(token, host.platform) || namesNoRootEntry(token, host)) {
+      continue;
+    }
     const candidate =
       token.startsWith("/") || token.startsWith("~") ? token : joinRaw(cwdAbs, token);
     if (classifyPath(workspace, candidate, host).zone === "outside") return false;
   }
   return true;
+}
+
+/**
+ * An absolute path whose first name is not an entry of `/` on this machine: an HTML closing tag
+ * in a script's string (`</h1>`), a `//` comment, a regex such as `/\s+/g`. Reading it fails,
+ * and nothing can create it — `/` belongs to root, on the sealed system volume — so the command
+ * cannot reach anything there. On 2026-09-28 almost half the approval cards in a benchmark run
+ * were these, inside `python3 -c` and `node -e` scripts that only touched workspace files.
+ * `/` itself and anything under an entry that exists (`/etc`, `/tmp`, `/Users`) still count.
+ * POSIX only: Windows commands go through {@link winCommandStaysInside}.
+ */
+export function namesNoRootEntry(path: string, host: PathHost = nodePathHost): boolean {
+  if (!path.startsWith("/")) return false;
+  const first = path.split("/").find((part) => part.length > 0);
+  if (!first) return false;
+  try {
+    host.lstat(`/${first}`);
+    return false;
+  } catch {
+    return true;
+  }
 }
 
 /** The null device, the standard streams and the random sources hold nothing of the user's. */

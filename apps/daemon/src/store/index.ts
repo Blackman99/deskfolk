@@ -11,6 +11,7 @@ import { defaultAppDataDir, providerKeychainName, mcpAuthKeychainName, type Clie
 import { installChangeJournal, committedEvents } from "./events";
 import { Transactions } from "./transactions";
 import { Receipts } from "./receipts";
+import * as acceptanceChecks from "./acceptance-checks";
 import * as credentials from "./credentials";
 import * as files from "./files";
 import { Database } from "bun:sqlite";
@@ -51,11 +52,30 @@ import * as turns from "./turns";
 export { HttpError } from "../errors";
 export { isReservedTaskPath, localDate, BRIEF_MAX, PLAN_MAP_FILE, RESERVED_SUBDIRS, TICKET_FILE, WORK_ROOT } from "./tasks";
 export type { Task, PlanSpec, PlanStatus } from "./tasks";
-export { normalizePlanSpec, parsePlanSpec, emptyPlanSpec, PLAN_STATUSES } from "./plan-shape";
+export { normalizePlanSpec, parsePlanSpec, emptyPlanSpec, normalizeSpecLine, PLAN_STATUSES } from "./plan-shape";
+export {
+  CHECKS_MAX,
+  ORGANIZER_NEW_CHECKS_MAX,
+  CHECK_RUNS_KEPT,
+  CHECK_OUTPUT_MAX,
+  CHECK_DETAIL_MAX,
+  CHECK_TIMEOUT_DEFAULT_SEC,
+  CHECK_TIMEOUT_MIN_SEC,
+  CHECK_TIMEOUT_MAX_SEC,
+  CHECK_ITEM_MAX,
+  CHECK_COMMAND_MAX,
+  CHECK_PATTERN_MAX,
+  CHECK_EXPECT_STDOUT_MAX,
+  CHECK_PATH_MAX,
+  CHECK_KINDS,
+  checkDefinitionKey,
+  checkNeverRanSinceDefinition,
+} from "./acceptance-checks";
+export type { CheckDefinition, OrganizerCheckInput } from "./acceptance-checks";
 export { TICKET_STATUSES, TICKETS_MAX, TICKET_SPEC_MAX, TICKET_TITLE_MAX, isTicketStatus } from "./tickets";
 export { ORGANIZER_NEW_TICKETS_MAX } from "./plan-spec";
 export type { OrganizerResult, OrganizerTicketInput, SpecRevisionRow } from "./plan-spec";
-export { CHECK_BACK_MAX_MINUTES, CHECK_BACK_MIN_MINUTES, CHECK_BACK_NOTE_MAX } from "./check-backs";
+export { CHECK_BACK_MAX_MINUTES, CHECK_BACK_MIN_MINUTES, CHECK_BACK_NOTE_MAX, PLAN_NUDGE_NOTE_MAX } from "./check-backs";
 export type { CheckBack, QuietDirect } from "./check-backs";
 export type { EndpointKeyStore, StoreOptions } from "./shared";
 export type { AttachmentInput } from "./messages";
@@ -229,6 +249,7 @@ export class Store {
   readonly listEnabledMemories = this.bind(memories.listEnabledMemories);
   readonly getMemory = this.bind(memories.getMemory);
   readonly findMemoryBySubject = this.bind(memories.findMemoryBySubject);
+  readonly sessionMemoriesSince = this.bind(memories.sessionMemoriesSince);
   readonly rememberMemory = this.bind(memories.rememberMemory);
   readonly patchMemory = this.bind(memories.patchMemory);
   readonly deleteMemory = this.bind(memories.deleteMemory);
@@ -271,6 +292,7 @@ export class Store {
   readonly taskSummary = this.bind(tasks.taskSummary);
   readonly taskLastActivityAt = this.bind(tasks.taskLastActivityAt);
   readonly resolveTurnTask = this.bind(tasks.resolveTurnTask);
+  readonly lastUserLineAt = this.bind(tasks.lastUserLineAt);
 
   // Tickets and plan specs ---------------------------------------------------------------
   readonly createTicket = this.bind(tickets.createTicket);
@@ -293,6 +315,21 @@ export class Store {
   readonly applyOrganizerResult = this.bind(planSpec.applyOrganizerResult);
   readonly taskDetail = this.bind(planSpec.taskDetail);
 
+  // Acceptance checks (可执行验收) ----------------------------------------------------------
+  readonly getCheck = this.bind(acceptanceChecks.getCheck);
+  readonly getCheckRun = this.bind(acceptanceChecks.getCheckRun);
+  readonly listChecks = this.bind(acceptanceChecks.listChecks);
+  readonly normalizeCheckInput = this.bind(acceptanceChecks.normalizeCheckInput);
+  readonly createCheckByUser = this.bind(acceptanceChecks.createCheckByUser);
+  readonly patchCheckByUser = this.bind(acceptanceChecks.patchCheckByUser);
+  readonly removeCheckByUser = this.bind(acceptanceChecks.removeCheckByUser);
+  readonly checkStale = this.bind(acceptanceChecks.checkStale);
+  readonly beginCheckRun = this.bind(acceptanceChecks.beginCheckRun);
+  readonly finishCheckRun = this.bind(acceptanceChecks.finishCheckRun);
+  readonly recoverInterruptedCheckRuns = this.bind(acceptanceChecks.recoverInterruptedCheckRuns);
+  readonly rebindCheckItems = this.bind(acceptanceChecks.rebindCheckItems);
+  readonly commandSeenInPlan = this.bind(acceptanceChecks.commandSeenInPlan);
+
   // Check-backs ----------------------------------------------------------------------------
   readonly scheduleCheckBack = this.bind(checkBacks.scheduleCheckBack);
   readonly bookReportBack = this.bind(checkBacks.bookReportBack);
@@ -302,6 +339,7 @@ export class Store {
   readonly listPendingCheckBacks = this.bind(checkBacks.listPendingCheckBacks);
   readonly bookPlanNudge = this.bind(checkBacks.bookPlanNudge);
   readonly lastPlanNudge = this.bind(checkBacks.lastPlanNudge);
+  readonly planNudgesSince = this.bind(checkBacks.planNudgesSince);
   readonly pendingPlanCheckBacks = this.bind(checkBacks.pendingPlanCheckBacks);
   readonly dueCheckBacks = this.bind(checkBacks.dueCheckBacks);
   readonly claimCheckBack = this.bind(checkBacks.claimCheckBack);
@@ -409,7 +447,9 @@ export class Store {
   readonly collectRouteFeedback = this.bind(routing.collectRouteFeedback);
   readonly forgetBotRoutes = this.bind(routing.forgetBotRoutes);
   readonly openChain = this.bind(routing.openChain);
+  readonly unreviewedChainOf = this.bind(routing.unreviewedChainOf);
   readonly staleOpenChains = this.bind(routing.staleOpenChains);
+  readonly recentOpenChains = this.bind(routing.recentOpenChains);
   readonly chainForReview = this.bind(routing.chainForReview);
   readonly recordRouteReview = this.bind(routing.recordRouteReview);
   readonly recentRouteReviews = this.bind(routing.recentRouteReviews);

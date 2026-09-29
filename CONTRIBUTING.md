@@ -10,7 +10,13 @@ Deskfolk 处于 **WIP** 阶段。欢迎中文或英文的问题报告、兼容�
 - 漏洞通过 [SECURITY.md](SECURITY.md) 的私密方式报告，不使用公开 Bug 模板。
 - 涉及架构、权限边界、持久化或产品方向的大改动，先讨论问题和方案，避免直接提交大规模重写。
 
-当前重点是本地协作、开放模型 / MCP 接入、agent 决策与反馈、通过对话管理应用。将尚未实现的目标与已验证行为分开说明。
+当前重点是核心循环的完成率：一组 Bot 能不能把一件事做到交付，用 `eval:golden-path` 的数字说话（见[路线图](ROADMAP.md)）。将尚未实现的目标与已验证行为分开说明。
+
+## 外围功能只维护
+
+核心完成率公布并过线之前，下面这些只收 bug 修复和跟着核心改动的适配，不收新功能或扩面：远程访问、办公文件预览、批注、工作台的浮动与拖拽分割、日程、花费视图、全局搜索、落地页。想加的先开 Issue 说明它怎么帮核心循环做完一件事。
+
+改核心循环（参与判断、整理跳、规划与任务、回看与对账、收尾自检、选路与复盘、轮次引擎）的 PR 附一次黄金路径基准的对照：改之前和改之后同一模型、同一组班各跑一遍，贴 `eval:golden-path:combine` 的表。说不清数字的改动先按实验处理。
 
 ## 开发环境
 
@@ -51,11 +57,16 @@ pnpm --filter @real-bot/messenger build
 
 1. 保持改动聚焦，说明解决的问题、范围和限制。
 2. 遵循现有 TypeScript / Svelte / Rust 风格，注释只解释必要约束。
-3. 同步更新受影响的文档。项目范围、用法和限制变化时，保持 `README.md` 与 `README.zh.md` 内容一致；领域语言和路线图同理，`CONTEXT.md`、`ROADMAP.md` 改了要同步到英文版 `CONTEXT.en.md`、`ROADMAP.en.md`（官网英文页读它们）。
+3. 同步更新受影响的文档。项目范围、用法和限制变化时，保持 `README.md` 与 `README.zh.md` 内容一致；领域语言和路线图同理，`CONTEXT.md`、`ROADMAP.md` 改了要同步到英文版 `CONTEXT.en.md`、`ROADMAP.en.md`（官网英文页读它们）。`CONTEXT.md` 只放词条的定义；长词条的行为细节在 `docs/behavior.md` / `docs/behavior.en.md`，改行为时两边一起改。
 4. 面向用户的功能、修复或不兼容变更记入 [CHANGELOG.md](CHANGELOG.md) 的 `Unreleased`（并在 [CHANGELOG.zh.md](CHANGELOG.zh.md) 同步记录），不要提前宣称发布。
 5. 新引入或改编第三方代码时保留许可证与版权声明，必要时更新 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 6. 提交前检查文件清单，排除密钥、运行数据、日志、个人路径、截图中的隐私和临时产物。
 7. PR 中附验证结果及未完成项；建议使用 `docs:`、`fix:`、`feat:` 等清晰的提交前缀，不附自动生成署名。
+8. 一条工作流一个分支（本机并行开发时用 `git worktree`），小步合入，CI 绿了再合；不要在同一个工作区里攒一大坨跨主题的改动再事后拆。
+
+## 发布节奏
+
+快照版本（`v*` 标签）只在两种情况下发：核心完成率的数字有变化，或者修了用户看得到的问题。纯内部重构、文档和外围小改动攒到下一次再发。
 
 提交贡献表示你有权提供这些内容，并同意按本项目 [MIT License](LICENSE) 提供贡献；第三方原有声明继续适用。
 
@@ -76,6 +87,8 @@ pnpm --filter @real-bot/messenger build
 
 Deskfolk is WIP. Issues and pull requests in Chinese or English are welcome. Keep changes focused, discuss major architectural or security changes first, and provide reproducible, redacted reports. Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
 
+Until the core completion rate is published and good enough, peripheral features (remote access, Office previews, annotations, floating/drag-split panes, routines, the spend view, global search, the landing page) take bug fixes only. Changes to the core loop come with a before/after golden-path benchmark table (`eval:golden-path:combine`). One branch (or worktree) per stream of work, small merges, green CI; cut a snapshot release only when the completion numbers move or a user-visible problem is fixed.
+
 Run all four verification commands above before submitting a PR; also build the landing page when those files change. GitHub Actions repeats those checks on pull requests and `main`, but does not replace local UI or native macOS verification. Exercise behavior changes end to end, including shared state and edge cases; check desktop and narrow viewports for layout changes and the native macOS app for desktop integration. Documentation-only changes need link, command, and factual checks rather than UI interaction.
 
-Keep both READMEs aligned (`README.md` and `README.zh.md`), and likewise the glossary and roadmap with their English editions (`CONTEXT.md` / `CONTEXT.en.md`, `ROADMAP.md` / `ROADMAP.en.md`), document user-facing changes under `Unreleased` in `CHANGELOG.md` (and `CHANGELOG.zh.md`), retain third-party notices, and exclude secrets and local artifacts. Contributions are submitted under MIT. `.scratch/` is local-only; share necessary designs and verification in Issues, PRs, or `docs/`. `REAL_BOT_DATA_DIR` isolates data files, not Keychain secrets or the API port. Before making the repository public, maintainers must review the files and any history, scan for secrets, check asset licenses, and enable GitHub private vulnerability reporting.
+Keep both READMEs aligned (`README.md` and `README.zh.md`), and likewise the glossary and roadmap with their English editions (`CONTEXT.md` / `CONTEXT.en.md`, `ROADMAP.md` / `ROADMAP.en.md`; the glossary holds definitions, the behaviour behind the long terms lives in `docs/behavior.md` / `docs/behavior.en.md`), document user-facing changes under `Unreleased` in `CHANGELOG.md` (and `CHANGELOG.zh.md`), retain third-party notices, and exclude secrets and local artifacts. Contributions are submitted under MIT. `.scratch/` is local-only; share necessary designs and verification in Issues, PRs, or `docs/`. `REAL_BOT_DATA_DIR` isolates data files, not Keychain secrets or the API port. Before making the repository public, maintainers must review the files and any history, scan for secrets, check asset licenses, and enable GitHub private vulnerability reporting.

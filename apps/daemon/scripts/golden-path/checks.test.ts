@@ -14,7 +14,7 @@ describe("checks", () => {
 
   test("a content check wants every substring and match, and none of the forbidden ones", () => {
     const check = { path: "index.html", contains: ["29"], matches: ["<META[^>]*viewport"], not_matches: ["<script[^>]*\\ssrc="] };
-    expect(checkFileText('<meta name="viewport"> 29 美元', check)).toEqual({ name: "index.html content", ok: true, detail: "ok" });
+    expect(checkFileText('<meta name="viewport"> 29 美元', check)).toEqual({ name: "index.html content", ok: true, detail: "ok", kind: "content" });
     const bad = checkFileText('<script src="https://cdn.example/x.js"></script>', check);
     expect(bad.ok).toBe(false);
     expect(bad.detail).toContain('missing "29"');
@@ -24,7 +24,7 @@ describe("checks", () => {
 
   test("a verify result reports the exit code, a stdout difference and the stderr that explains it", () => {
     const step = { cwd: "tool", command: ["bun", "test"], expect_exit: 0, expect_stdout: "ok", timeout_sec: 5 };
-    expect(verifyResult(step, { exit: 0, stdout: "ok\n", stderr: "", timedOut: false })).toEqual({ name: "(cd tool) bun test", ok: true, detail: "exit 0" });
+    expect(verifyResult(step, { exit: 0, stdout: "ok\n", stderr: "", timedOut: false })).toEqual({ name: "(cd tool) bun test", ok: true, detail: "exit 0", kind: "verify" });
     const failed = verifyResult(step, { exit: 1, stdout: "nope", stderr: "1 fail", timedOut: false });
     expect(failed.ok).toBe(false);
     expect(failed.detail).toContain("exit 1, expected 0");
@@ -79,14 +79,14 @@ describe("checks", () => {
         ],
       }).tasks[0]!;
       const results = runChecks(task, root);
-      expect(results.map((result) => [result.name, result.ok, result.detail])).toEqual([
-        ["report.md delivered", true, "10 bytes"],
-        ["empty.md delivered", false, "empty"],
-        ["missing.md delivered", false, "missing"],
-        ["report.md content", true, "ok"],
-        ["(cd tool) bun hello.ts there", true, "exit 0"],
-        ["(cd nowhere) bun x.ts", false, "no nowhere/ to run in"],
-        ["bun tool/absent.ts no-such.csv", false, "tool/absent.ts is missing"],
+      expect(results.map((result) => [result.name, result.ok, result.detail, result.kind])).toEqual([
+        ["report.md delivered", true, "10 bytes", "deliverable"],
+        ["empty.md delivered", false, "empty", "deliverable"],
+        ["missing.md delivered", false, "missing", "deliverable"],
+        ["report.md content", true, "ok", "content"],
+        ["(cd tool) bun hello.ts there", true, "exit 0", "verify"],
+        ["(cd nowhere) bun x.ts", false, "no nowhere/ to run in", "verify"],
+        ["bun tool/absent.ts no-such.csv", false, "tool/absent.ts is missing", "verify"],
       ]);
     });
   });

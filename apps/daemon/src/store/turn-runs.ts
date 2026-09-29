@@ -23,6 +23,8 @@ export type TurnRun = {
   ok: number;
   /** The tool error's code when it failed without an exit code (a timeout, a refusal). */
   error: string | null;
+  /** Where a `shell` command actually ran, workspace-relative. Null for MCP calls. */
+  cwd: string | null;
   created_at: string;
 };
 
@@ -32,7 +34,17 @@ export const TURN_RUN_COMMAND_MAX = 300;
 
 export function recordTurnRun(
   ctx: StoreContext,
-  input: { turnId: string; tool: string; command: string; exitCode: number | null; ok: boolean; error?: string | null; now?: Date },
+  input: {
+    turnId: string;
+    tool: string;
+    command: string;
+    exitCode: number | null;
+    ok: boolean;
+    error?: string | null;
+    /** Workspace-relative cwd the shell actually ran in; ignored for anything but `shell`. */
+    cwd?: string | null;
+    now?: Date;
+  },
 ): void {
   const turn = ctx.db
     .query<{ session_id: string; task_id: string | null; ticket_id: string | null; bot_id: string }, [string]>(
@@ -48,9 +60,10 @@ export function recordTurnRun(
   // behind the spec revision it followed would drop out of "since the last version".
   const at = input.now ?? new Date(isoNow());
   const command = takeCodePoints(input.command.replace(/\s+/g, " ").trim(), TURN_RUN_COMMAND_MAX).text;
+  const cwd = input.tool === "shell" && typeof input.cwd === "string" && input.cwd.trim() ? input.cwd.trim() : null;
   ctx.db.run(
-    `INSERT INTO turn_runs (id, turn_id, session_id, task_id, ticket_id, bot_id, tool, command, exit_code, ok, error, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO turn_runs (id, turn_id, session_id, task_id, ticket_id, bot_id, tool, command, exit_code, ok, error, cwd, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       ulid(at.getTime()),
       input.turnId,
@@ -63,6 +76,7 @@ export function recordTurnRun(
       input.exitCode,
       input.ok ? 1 : 0,
       input.error ?? null,
+      cwd,
       at.toISOString(),
     ],
   );
@@ -79,7 +93,7 @@ export function turnRuns(ctx: StoreContext, turnId: string, limit = TURN_RUNS_PE
 export function taskRunsSince(ctx: StoreContext, taskId: string, since: string, limit: number): TurnRun[] {
   return ctx.db
     .query<TurnRun, [string, string, number]>(
-      `SELECT id, turn_id, session_id, task_id, ticket_id, bot_id, tool, command, exit_code, ok, error, created_at FROM (
+      `SELECT id, turn_id, session_id, task_id, ticket_id, bot_id, tool, command, exit_code, ok, error, cwd, created_at FROM (
          SELECT rowid AS seq_, * FROM turn_runs WHERE task_id = ? AND created_at > ? ORDER BY created_at DESC, rowid DESC LIMIT ?
        ) ORDER BY created_at ASC, seq_ ASC`,
     )

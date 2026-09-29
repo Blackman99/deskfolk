@@ -15,6 +15,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, 
 import { tmpdir } from "node:os";
 import { basename, join, relative } from "node:path";
 import { USER_MEMBER, type Approval, type Message } from "@real-bot/protocol";
+import { ablationLabel, ablationList, type Ablation } from "../../src/ablation";
 import { deliveryExcerpt } from "../../src/closing-check";
 import type { CompletionsClient } from "../../src/completions";
 import { stateDbPath } from "../../src/descriptor";
@@ -27,11 +28,23 @@ import { judgeCoverage, lastBotWords } from "../goal-coverage-judge";
 import { runChecks } from "./checks";
 import { htmlForJudge, isAppFile, judgedFiles } from "./deliveries";
 import { countInterventions, endedStalled, STALLED_PLAN, type Interventions } from "./interventions";
-import { isCompleted, type RunOutcome, type RunResult, type RunStats } from "./report";
+import {
+  ablationLeaks,
+  classifyFailure,
+  failureDetail,
+  isCompleted,
+  spendBucket,
+  type ProductCheckStats,
+  type RunOutcome,
+  type RunResult,
+  type RunStats,
+  type SpendBucketStats,
+} from "./report";
 import { settleVerdict, type PlanSettleState, type SettleSnapshot, type SettleTiming } from "./settle";
 import { seedDir, type GoldenTask, type LoadedTaskSet, type Setup } from "./tasks";
 
-export const TIMING: SettleTiming = {
+/** Base timing; `runOnce` spreads this with `settleFiles` set from the run's ablation. */
+export const TIMING: Omit<SettleTiming, "settleFiles"> = {
   quietMs: 15_000,
   stableMs: 5_000,
   settleQuietMs: SETTLE_QUIET_MS,
@@ -203,6 +216,7 @@ async function snapshot(store: Store, api: Api, state: Pump & { fingerprint: str
     .query<{ due_at: string }, []>(`SELECT due_at FROM check_backs WHERE fired_at IS NULL AND voided_at IS NULL`)
     .all()
     .map((row) => Date.parse(row.due_at));
+  const runningChecks = scalar<number>(store, `SELECT COUNT(*) AS v FROM acceptance_check_runs WHERE finished_at IS NULL`) ?? 0;
   const lastActivity = scalar<string>(
     store,
     `SELECT MAX(at) AS v FROM (
@@ -210,6 +224,7 @@ async function snapshot(store: Store, api: Api, state: Pump & { fingerprint: str
        UNION ALL SELECT MAX(created_at) FROM messages
        UNION ALL SELECT MAX(created_at) FROM spend
        UNION ALL SELECT MAX(MAX(created_at, COALESCE(fired_at, ''), COALESCE(voided_at, ''))) FROM check_backs
+       UNION ALL SELECT MAX(COALESCE(finished_at, started_at)) FROM acceptance_check_runs
      )`,
   );
   const fingerprint = [
@@ -222,6 +237,7 @@ async function snapshot(store: Store, api: Api, state: Pump & { fingerprint: str
     ),
     live.length,
     pendingJudgements,
+    scalar<number>(store, `SELECT COUNT(*) AS v FROM acceptance_check_runs`) ?? 0,
   ].join("|");
   if (fingerprint !== state.fingerprint) {
     state.fingerprint = fingerprint;
@@ -248,6 +264,7 @@ async function snapshot(store: Store, api: Api, state: Pump & { fingerprint: str
     blockedTurns: live.filter((turn) => state.blockedTurns.has(turn.id)).length,
     pendingJudgements,
     checkBackDueMs,
+    runningChecks,
     lastActivityMs: ms(lastActivity) ?? now,
     stableSinceMs: state.stableSince,
     plans,
@@ -273,7 +290,7 @@ function coordinatorGroup(store: Store, botId: string): { id: string; name: stri
 type Waited = { outcome: RunOutcome; detail: string | null; endedAtMs: number };
 
 type Team =
-  | { ok: true; startedAtMs: number; groupId: string; taskMessageId: string; teamMs: number | null }
+  | { ok: true; startedAtMs: number; sessionId: string; sessionKind: "group" | "direct"; taskMessageId: string; teamMs: number | null }
   | { ok: false; startedAtMs: number; waited: Waited };
 
 async function formTeam(
@@ -282,9 +299,18 @@ async function formTeam(
   state: Pump & { fingerprint: string; stableSince: number },
   task: GoldenTask,
   setup: Setup,
+  timing: SettleTiming,
   opts: RunOptions,
   label: string,
 ): Promise<Team> {
+  if (setup === "solo") {
+    const solo = task.setups.solo!;
+    const created = await api<{ bot: { id: string }; direct_session: { id: string } }>("POST", "/v1/bots", solo.bot);
+    const startedAtMs = Date.now();
+    const posted = await api<{ id: string }>("POST", `/v1/sessions/${created.direct_session.id}/messages`, { body: solo.message });
+    opts.log(`[${label}] direct with ${solo.bot.name}; task posted`);
+    return { ok: true, startedAtMs, sessionId: created.direct_session.id, sessionKind: "direct", taskMessageId: posted.id, teamMs: null };
+  }
   if (setup === "manual") {
     const ids: string[] = [];
     for (const profile of task.setups.manual.bots) {
@@ -294,7 +320,7 @@ async function formTeam(
     const startedAtMs = Date.now();
     const posted = await api<{ id: string }>("POST", `/v1/sessions/${group.id}/messages`, { body: task.message });
     opts.log(`[${label}] group ${task.setups.manual.group} with ${task.setups.manual.bots.map((b) => b.name).join(", ")}; task posted`);
-    return { ok: true, startedAtMs, groupId: group.id, taskMessageId: posted.id, teamMs: null };
+    return { ok: true, startedAtMs, sessionId: group.id, sessionKind: "group", taskMessageId: posted.id, teamMs: null };
   }
   const lead = await api<{ bot: { id: string }; direct_session: { id: string } }>("POST", "/v1/bots", task.setups.coordinator.bot);
   const startedAtMs = Date.now();
@@ -316,10 +342,10 @@ async function formTeam(
       const posted = await api<{ id: string }>("POST", `/v1/sessions/${group.id}/messages`, { body: task.message });
       const teamMs = Date.now() - startedAtMs;
       opts.log(`[${label}] ${task.setups.coordinator.bot.name} opened ${group.name ?? group.id} in ${Math.round(teamMs / 1000)}s; task posted`);
-      return { ok: true, startedAtMs, groupId: group.id, taskMessageId: posted.id, teamMs };
+      return { ok: true, startedAtMs, sessionId: group.id, sessionKind: "group", taskMessageId: posted.id, teamMs };
     }
     if (!group) {
-      const verdict = settleVerdict(snap, TIMING);
+      const verdict = settleVerdict(snap, timing);
       if (verdict.state !== "busy") {
         return { ok: false, startedAtMs, waited: { outcome: "setup_failed", detail: `${task.setups.coordinator.bot.name} settled without opening a group it is in`, endedAtMs: snap.lastActivityMs } };
       }
@@ -336,6 +362,7 @@ async function waitSettled(
   api: Api,
   state: Pump & { fingerprint: string; stableSince: number },
   deadlineMs: number,
+  timing: SettleTiming,
   opts: RunOptions,
   label: string,
 ): Promise<Waited> {
@@ -344,7 +371,7 @@ async function waitSettled(
     if (opts.aborted()) return { outcome: "aborted", detail: "interrupted", endedAtMs: Date.now() };
     await pump(handle.store, api, state, opts, label);
     const snap = await snapshot(handle.store, api, state, deadlineMs);
-    const verdict = settleVerdict(snap, TIMING);
+    const verdict = settleVerdict(snap, timing);
     if (verdict.state === "settled") return { outcome: "settled", detail: null, endedAtMs: snap.lastActivityMs };
     if (verdict.state === "blocked") return { outcome: "blocked_on_user", detail: verdict.waitingOn.join("; "), endedAtMs: snap.lastActivityMs };
     if (snap.nowMs >= deadlineMs) return { outcome: "timeout", detail: `still ${verdict.waitingOn.join("; ")}`, endedAtMs: deadlineMs };
@@ -378,15 +405,28 @@ function nameOf(store: Store, id: string | null): string | null {
   }
 }
 
-function collect(store: Store, groupId: string | null, taskMessageId: string | null, workspace: string): Collected {
-  let planId: string | null = null;
-  if (taskMessageId) {
-    try {
-      planId = store.getMessage(taskMessageId).task_id ?? null;
-    } catch {
-      planId = null;
-    }
+/**
+ * The plan the task message was filed under. Usually the message's own `task_id`; when the
+ * organizer filed it onto a turn instead of stamping the message directly, the first turn this
+ * message triggered that does carry a `task_id` is the same plan.
+ */
+function planIdFor(store: Store, taskMessageId: string | null): string | null {
+  if (!taskMessageId) return null;
+  try {
+    const direct = store.getMessage(taskMessageId).task_id ?? null;
+    if (direct) return direct;
+  } catch {
+    // stale message id: fall through to the turns fallback below
   }
+  return scalar<string>(
+    store,
+    `SELECT task_id AS v FROM turns WHERE trigger_message_id = ? AND task_id IS NOT NULL ORDER BY created_at LIMIT 1`,
+    taskMessageId,
+  );
+}
+
+function collect(store: Store, sessionId: string | null, taskMessageId: string | null, workspace: string): Collected {
+  const planId = planIdFor(store, taskMessageId);
   let plan: RunResult["plan"] = null;
   let stalled = false;
   let cited: string[] = [];
@@ -408,22 +448,24 @@ function collect(store: Store, groupId: string | null, taskMessageId: string | n
       .map((row) => row.created_at);
     stalled = endedStalled(stalls, scalar<string>(store, `SELECT MAX(updated_at) AS v FROM turns WHERE task_id = ?`, planId));
     cited = store.taskArtifacts(planId, (path) => existsSync(join(workspace, path))).map((row) => row.path);
-  } else if (groupId) {
+  } else if (sessionId) {
     cited = store.db
       .query<{ path: string }, [string]>(
         `SELECT DISTINCT a.workspace_relpath AS path FROM attachments a JOIN messages m ON m.id = a.message_id WHERE m.session_id = ?`,
       )
-      .all(groupId)
+      .all(sessionId)
       .map((row) => row.path);
   }
-  const group = groupId ? store.db.query<{ name: string | null }, [string]>(`SELECT name FROM sessions WHERE id = ?`).get(groupId) : null;
-  const speakers = groupId
+  const session = sessionId
+    ? store.db.query<{ name: string | null; kind: string }, [string]>(`SELECT name, kind FROM sessions WHERE id = ?`).get(sessionId)
+    : null;
+  const speakers = sessionId
     ? Object.fromEntries(
         store.db
           .query<{ author: string; n: number }, [string]>(
             `SELECT author, COUNT(*) AS n FROM messages WHERE session_id = ? AND kind = 'bot' GROUP BY author ORDER BY n DESC`,
           )
-          .all(groupId)
+          .all(sessionId)
           .map((row) => [nameOf(store, row.author) ?? row.author, row.n]),
       )
     : {};
@@ -447,11 +489,65 @@ function collect(store: Store, groupId: string | null, taskMessageId: string | n
     )
     .get();
   const ticks = spend && (spend.reported !== null || spend.estimated !== null) ? (spend.reported ?? 0) + (spend.estimated ?? 0) : null;
+  const spendByKindRows = store.db
+    .query<
+      { kind: string; thinking_level: string | null; n: number; input: number | null; output: number | null; reported: number | null; estimated: number | null },
+      []
+    >(
+      `SELECT kind, thinking_level, COUNT(*) AS n, SUM(input_tokens) AS input, SUM(output_tokens) AS output,
+              SUM(cost_usd_ticks) AS reported, SUM(estimated_cost_usd_ticks) AS estimated
+       FROM spend GROUP BY kind, thinking_level`,
+    )
+    .all();
+  const spendByKind: Record<string, SpendBucketStats> = {};
+  for (const row of spendByKindRows) {
+    const bucket = spendBucket(row.kind, row.thinking_level);
+    const acc = spendByKind[bucket] ?? { rows: 0, input_tokens: 0, output_tokens: 0, cost_usd: null };
+    acc.rows += row.n;
+    acc.input_tokens += row.input ?? 0;
+    acc.output_tokens += row.output ?? 0;
+    const rowTicks = row.reported !== null || row.estimated !== null ? (row.reported ?? 0) + (row.estimated ?? 0) : null;
+    if (rowTicks !== null) acc.cost_usd = (acc.cost_usd ?? 0) + rowTicks / 1e10;
+    spendByKind[bucket] = acc;
+  }
+  let thinkingLevels: Record<string, number> = {};
+  try {
+    thinkingLevels = Object.fromEntries(
+      store.db
+        .query<{ thinking_level: string | null; n: number }, []>(`SELECT thinking_level, COUNT(*) AS n FROM turn_route_decisions GROUP BY thinking_level`)
+        .all()
+        .map((row) => [row.thinking_level ?? "null", row.n]),
+    );
+  } catch {
+    thinkingLevels = {};
+  }
+  // The plan's acceptance checks (可执行验收) as they stand at the end of the run: each one's last
+  // finished outcome, and where it came from.
+  let productChecks: ProductCheckStats | undefined;
+  if (planId) {
+    const checks = store.listChecks(planId);
+    productChecks = { total: checks.length, pass: 0, fail: 0, blocked: 0, error: 0, organizer: 0, user: 0 };
+    for (const check of checks) {
+      if (check.source === "organizer") productChecks.organizer += 1;
+      else productChecks.user += 1;
+      const outcome = check.last_run?.outcome;
+      if (outcome === "pass") productChecks.pass += 1;
+      else if (outcome === "fail") productChecks.fail += 1;
+      else if (outcome === "blocked") productChecks.blocked += 1;
+      else if (outcome === "error") productChecks.error += 1;
+    }
+  }
   return {
     plan,
     planId,
     endedStalled: stalled,
-    team: { group_id: groupId, group_name: group?.name ?? null, bots: store.listBots().map((bot) => bot.name), speakers },
+    team: {
+      group_id: sessionId,
+      group_name: session?.name ?? null,
+      bots: store.listBots().map((bot) => bot.name),
+      speakers,
+      session_kind: (session?.kind as "group" | "direct" | undefined) ?? null,
+    },
     interventions,
     stats: {
       turns: scalar<number>(store, `SELECT COUNT(*) AS v FROM turns`) ?? 0,
@@ -465,9 +561,12 @@ function collect(store: Store, groupId: string | null, taskMessageId: string | n
       cost_usd: ticks === null ? null : ticks / 1e10,
       judge_input_tokens: null,
       judge_output_tokens: null,
+      spend_by_kind: spendByKind,
+      thinking_levels: thinkingLevels,
+      product_checks: productChecks,
     },
     cited,
-    finalMessages: planId ? lastBotWords(store, { taskId: planId }) : groupId ? lastBotWords(store, { sessionId: groupId }) : [],
+    finalMessages: planId ? lastBotWords(store, { taskId: planId }) : sessionId ? lastBotWords(store, { sessionId }) : [],
     pendingCheckBacks: scalar<number>(store, `SELECT COUNT(*) AS v FROM check_backs WHERE fired_at IS NULL AND voided_at IS NULL`) ?? 0,
   };
 }
@@ -534,19 +633,25 @@ const EMPTY_STATS: RunStats = {
   cost_usd: null,
   judge_input_tokens: null,
   judge_output_tokens: null,
+  spend_by_kind: {},
+  thinking_levels: {},
 };
 
 export async function runOnce(input: {
   loaded: LoadedTaskSet;
   task: GoldenTask;
   setup: Setup;
+  ablation: Ablation;
   index: number;
   outDir: string;
   opts: RunOptions;
 }): Promise<RunResult> {
-  const { loaded, task, setup, index, outDir, opts } = input;
-  const label = `${task.id}/${setup}#${index}`;
-  const runDir = join(outDir, "runs", `${task.id}--${setup}--${index}`);
+  const { loaded, task, setup, ablation, index, outDir, opts } = input;
+  // Existing layout when nothing is ablated (`runs/<task>--<setup>--<n>`); ablated runs get the
+  // label folded in before the run number (`runs/<task>--<setup>--<label>--<n>`).
+  const ablationSuffix = ablationLabel(ablation) === "none" ? "" : `--${ablationLabel(ablation)}`;
+  const label = `${task.id}/${setup}${ablationSuffix}#${index}`;
+  const runDir = join(outDir, "runs", `${task.id}--${setup}${ablationSuffix}--${index}`);
   const dataDir = join(runDir, "data");
   mkdirSync(dataDir, { recursive: true });
   const scratch = mkdtempSync(join(tmpdir(), "deskfolk-golden-path-"));
@@ -561,25 +666,28 @@ export async function runOnce(input: {
   let teamMs: number | null = null;
   let collected: Collected | null = null;
   let handle: RuntimeHandle | null = null;
+  // `organize-settle` off: a plan counts as settled once its timer and grace pass, without
+  // waiting on an `organize` row or the organizer's own timeout (settle.ts's `settleFiles`).
+  const timing: SettleTiming = { ...TIMING, settleFiles: !ablation.has("organize-settle") };
   try {
     // Scheduler on: it is what fires the check-backs Bots book, and seeing a job through relies on them.
-    handle = await startRuntime({ dataDir, bind: "127.0.0.1:0", endpointKey: memoryKeyStore(), schedule: true, supervisor: "none" });
+    handle = await startRuntime({ dataDir, bind: "127.0.0.1:0", endpointKey: memoryKeyStore(), schedule: true, supervisor: "none", ablation });
     const api = apiFor(handle);
     await configure(api, workspace, opts);
     const state = { handled: new Set<string>(), blockedTurns: new Set<string>(), fingerprint: "", stableSince: Date.now() };
-    const team = await formTeam(handle, api, state, task, setup, opts, label);
+    const team = await formTeam(handle, api, state, task, setup, timing, opts, label);
     startedAtMs = team.startedAtMs;
-    let groupId: string | null = null;
+    let sessionId: string | null = null;
     let taskMessageId: string | null = null;
     if (!team.ok) {
       ({ outcome, detail, endedAtMs } = team.waited);
     } else {
-      groupId = team.groupId;
+      sessionId = team.sessionId;
       taskMessageId = team.taskMessageId;
       teamMs = team.teamMs;
-      ({ outcome, detail, endedAtMs } = await waitSettled(handle, api, state, startedAtMs + opts.timeoutMs, opts, label));
+      ({ outcome, detail, endedAtMs } = await waitSettled(handle, api, state, startedAtMs + opts.timeoutMs, timing, opts, label));
     }
-    collected = collect(handle.store, groupId, taskMessageId, workspace);
+    collected = collect(handle.store, sessionId, taskMessageId, workspace);
     if (outcome === "settled" && collected.endedStalled) {
       outcome = "blocked_on_user";
       detail = "the app told you the plan stopped with tickets open, and nothing moved after";
@@ -590,6 +698,18 @@ export async function runOnce(input: {
     endedAtMs = Date.now();
     opts.log(`[${label}] error: ${detail}`);
   } finally {
+    if (handle) {
+      try {
+        // A run that hit its deadline mid-tool-call (a foreground `python3 -m http.server`, say)
+        // leaves a live turn `stop()`'s own drainLives() would otherwise wait out — it only aborts
+        // once nothing new is submitted, not on command. `/v1/runtime/quit` is the app's own route
+        // for a clean shutdown: it aborts every live turn immediately, the same way quitting the
+        // real app does, before `stop()` closes the runtime around it.
+        await apiFor(handle)("POST", "/v1/runtime/quit");
+      } catch {
+        // best-effort: nothing was live, or the runtime never got far enough to answer
+      }
+    }
     try {
       await handle?.stop();
     } catch (error) {
@@ -623,6 +743,7 @@ export async function runOnce(input: {
   };
   const checksOk = checks.every((check) => check.ok);
   const score = verdict?.score ?? null;
+  const ablated = ablationList(ablation);
   const result: RunResult = {
     task: task.id,
     title: task.title,
@@ -633,7 +754,7 @@ export async function runOnce(input: {
     completed: false,
     wall_ms: Math.max(0, endedAtMs - startedAtMs),
     team_ms: teamMs,
-    team: collected?.team ?? { group_id: null, group_name: null, bots: [], speakers: {} },
+    team: collected?.team ?? { group_id: null, group_name: null, bots: [], speakers: {}, session_kind: null },
     plan: collected?.plan ?? null,
     coverage: verdict?.coverage ?? null,
     score,
@@ -646,7 +767,15 @@ export async function runOnce(input: {
     pending_check_backs: collected?.pendingCheckBacks ?? 0,
     run_dir: relative(outDir, runDir),
     key_leak: keyLeak,
+    ended_stalled: collected?.endedStalled ?? false,
+    ablation: ablationLabel(ablation),
+    ablated,
+    ablation_leaks: ablationLeaks(ablated, stats.spend_by_kind),
+    failure: null,
+    failure_detail: null,
   };
   result.completed = isCompleted(result, opts.minPass);
+  result.failure = classifyFailure(result, opts.minPass);
+  result.failure_detail = failureDetail(result, result.failure);
   return result;
 }

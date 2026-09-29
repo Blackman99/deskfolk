@@ -1,9 +1,29 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { ClientEvent } from "@real-bot/protocol";
 import { Store } from ".";
 import { HttpError } from "../errors";
 import { normalizePlanSpec, parsePlanSpec, SPEC_GOAL_MAX, SPEC_ITEM_MAX, SPEC_LIST_MAX, type PlanSpec } from "./plan-shape";
 import { ORGANIZER_NEW_TICKETS_MAX, type OrganizerResult } from "./plan-spec";
+
+/** Like `fixture`, but with a real workspace directory so checks can be created. */
+function checksFixture() {
+  const root = mkdtempSync(join(tmpdir(), "plan-spec-checks-"));
+  const store = new Store();
+  store.patchSettingsSync({ workspace_path: root });
+  const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "none" });
+  return {
+    store,
+    bot: writer.bot,
+    session: writer.direct_session,
+    close: () => {
+      store.close();
+      rmSync(root, { recursive: true, force: true });
+    },
+  };
+}
 
 function fixture() {
   const store = new Store();
@@ -425,6 +445,80 @@ describe("what one organizer run changes", () => {
     expect(closed.heldOpenBy).toEqual([]);
     expect(closed.task.status).toBe("done");
     store.close();
+  });
+
+  test("a plan called done stays active while an active check has failed, or has never run since its definition; it goes through once the check passes", () => {
+    const f = checksFixture();
+    const plan = f.store.applyOrganizerResult({
+      sessionId: f.session.id,
+      current: null,
+      result: result({ decision: "new" }),
+      source: { messageId: null, turnId: null, messageBody: "写一份周报" },
+    }).task;
+    const failing = f.store.createCheckByUser(plan.id, { item: "交到 report.md", kind: "exists", path: "report.md" });
+    const run = f.store.beginCheckRun(failing.id, "user");
+    f.store.finishCheckRun(run.id, { outcome: "fail", exitCode: null, detail: "文件不在", output: null });
+
+    // Failed: held open, and it is not "awaiting evidence" — there is already a verdict, just not
+    // a passing one.
+    const heldByFailure = f.store.applyOrganizerResult({
+      sessionId: f.session.id,
+      current: f.store.getTask(plan.id),
+      result: result({ spec: spec({ status: "done" }) }),
+      source: { messageId: null, turnId: null, messageBody: "" },
+    });
+    expect(heldByFailure.heldByChecks.map((c) => c.id)).toEqual([failing.id]);
+    expect(heldByFailure.awaitingEvidence).toBe(false);
+    expect(heldByFailure.task.status).toBe("active");
+
+    // The same check now passes: `done` goes through, held by nothing.
+    const passed = f.store.beginCheckRun(failing.id, "user");
+    f.store.finishCheckRun(passed.id, { outcome: "pass", exitCode: null, detail: "ok", output: null });
+    const closed = f.store.applyOrganizerResult({
+      sessionId: f.session.id,
+      current: f.store.getTask(plan.id),
+      result: result({ spec: spec({ status: "done" }) }),
+      source: { messageId: null, turnId: null, messageBody: "" },
+    });
+    expect(closed.heldByChecks).toEqual([]);
+    expect(closed.task.status).toBe("done");
+    f.close();
+  });
+
+  test("a plan called done stays active for a check that never ran; `awaitingEvidence` is true only when every holding check is like that", () => {
+    const f = checksFixture();
+    const plan = f.store.applyOrganizerResult({
+      sessionId: f.session.id,
+      current: null,
+      result: result({ decision: "new" }),
+      source: { messageId: null, turnId: null, messageBody: "写一份周报" },
+    }).task;
+    const neverRun = f.store.createCheckByUser(plan.id, { item: "交到 report.md", kind: "exists", path: "report.md" });
+
+    const held = f.store.applyOrganizerResult({
+      sessionId: f.session.id,
+      current: f.store.getTask(plan.id),
+      result: result({ spec: spec({ status: "done" }) }),
+      source: { messageId: null, turnId: null, messageBody: "" },
+    });
+    expect(held.heldByChecks.map((c) => c.id)).toEqual([neverRun.id]);
+    expect(held.awaitingEvidence).toBe(true);
+    expect(held.task.status).toBe("active");
+
+    // A second, failing check alongside it: still held, but no longer purely "awaiting evidence" —
+    // one of the two has an actual verdict against it.
+    const failing = f.store.createCheckByUser(plan.id, { item: "第二条", kind: "exists", path: "b.md" });
+    const run = f.store.beginCheckRun(failing.id, "user");
+    f.store.finishCheckRun(run.id, { outcome: "fail", exitCode: null, detail: "文件不在", output: null });
+    const mixedHeld = f.store.applyOrganizerResult({
+      sessionId: f.session.id,
+      current: f.store.getTask(plan.id),
+      result: result({ spec: spec({ status: "done" }) }),
+      source: { messageId: null, turnId: null, messageBody: "" },
+    });
+    expect(mixedHeld.heldByChecks.map((c) => c.id).sort()).toEqual([failing.id, neverRun.id].sort());
+    expect(mixedHeld.awaitingEvidence).toBe(false);
+    f.close();
   });
 
   test("raises plan and ticket events as it goes, and a cleared session takes them away", () => {

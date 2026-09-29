@@ -309,6 +309,97 @@ export type TicketArtifactRef = { path: string; message_id: string; attachment_i
 
 export type TicketWithArtifacts = Ticket & { artifacts: TicketArtifactRef[] };
 
+/** How a check proves its acceptance line: a file on disk, or a command the app runs itself. */
+export type AcceptanceCheckKind = "exists" | "contains" | "matches" | "command";
+
+/**
+ * `pass`/`fail` are evidence either way. `blocked` (outside the workspace, or none set) and
+ * `error` (the check itself is broken — a bad regex, a file too large, a spawn failure) are
+ * neither: they hold nothing open and prove nothing done.
+ */
+export type AcceptanceCheckOutcome = "pass" | "fail" | "blocked" | "error";
+
+/** Who may turn a command into a check: only the app, on the user's own words or a run it already saw. */
+export type AcceptanceCheckSource = "organizer" | "user";
+
+/** Why a run happened: filing the plan, the user's own click, or a definition just (re)created. */
+export type AcceptanceCheckRunCause = "settle" | "user" | "edit";
+
+/** One run of one check: started, and — once it finishes — what came of it. */
+export type AcceptanceCheckRun = {
+  id: string;
+  check_id: string;
+  task_id: string;
+  cause: AcceptanceCheckRunCause;
+  started_at: string;
+  finished_at: string | null;
+  outcome: AcceptanceCheckOutcome | null;
+  exit_code: number | null;
+  detail: string;
+  /** Tail of what the check produced; null when it has none (a file check, or nothing captured). */
+  output: string | null;
+};
+
+/**
+ * An executable acceptance check (可执行验收): the app's own proof that one acceptance line holds,
+ * run on this Mac, never on the Bot's say-so. `item` is the acceptance line it proves; a check
+ * whose line no longer matches the plan's spec still runs and still counts, shown as an orphan.
+ */
+export type AcceptanceCheck = {
+  id: string;
+  task_id: string;
+  ticket_id: string | null;
+  item: string;
+  kind: AcceptanceCheckKind;
+  /** `exists` / `contains` / `matches`: the file, workspace-root relative. */
+  path: string | null;
+  /** `contains`: the needle. `matches`: the regex source (flags `mi`). */
+  pattern: string | null;
+  negate: boolean;
+  /** `command`: the shell command, run with `/bin/sh -c`. */
+  command: string | null;
+  /** `command`: workspace-relative; null defaults to the ticket's dir, else the plan's. */
+  cwd: string | null;
+  expect_exit: number | null;
+  expect_stdout: string | null;
+  timeout_sec: number | null;
+  source: AcceptanceCheckSource;
+  created_at: string;
+  updated_at: string;
+  /** When this definition took effect; a redefinition bumps it and drops the runs before it. */
+  defined_at: string;
+  /** The first time this definition passed; null until it has, reset on redefinition. */
+  first_passed_at: string | null;
+  last_run: AcceptanceCheckRun | null;
+  /** A run is in flight right now. */
+  running: boolean;
+};
+
+/** `POST /v1/tasks/:id/checks` and the writable fields of `PATCH /v1/checks/:id`. */
+export type AcceptanceCheckInput = {
+  item: string;
+  ticket_id?: string | null;
+  kind: AcceptanceCheckKind;
+  path?: string | null;
+  pattern?: string | null;
+  negate?: boolean;
+  command?: string | null;
+  cwd?: string | null;
+  expect_exit?: number | null;
+  expect_stdout?: string | null;
+  timeout_sec?: number | null;
+};
+
+export type PatchAcceptanceCheckRequest = Partial<AcceptanceCheckInput> & {
+  /** The check's `updated_at` you edited from; a mismatch is refused. */
+  if_revision?: string;
+};
+
+/** `POST /v1/tasks/:id/checks/run`: one check, or every active check when absent. */
+export type RunAcceptanceChecksRequest = {
+  check_id?: string;
+};
+
 /** One version of a plan's spec, with the tickets as they stood after it. */
 export type TaskSpecRevision = {
   id: string;
@@ -411,6 +502,8 @@ export type TaskDetail = SessionTaskSummary & {
   revision_actor: "app" | "user" | null;
   routine_id: string | null;
   tickets: TicketWithArtifacts[];
+  /** Active acceptance checks; absent from a daemon that predates them. */
+  checks?: AcceptanceCheck[];
 };
 
 export type PatchTaskSpecRequest = {

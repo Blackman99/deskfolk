@@ -31,7 +31,7 @@ export type FireDeps = {
     botId: string,
     trigger: Message,
     entry: Omit<InboxEntry, "message">,
-    opts?: { taskId?: string | null; ticketId?: string | null },
+    opts?: { taskId?: string | null; ticketId?: string | null; otherwise?: "redirect" | "fork" },
   ) => Turn;
   /** Late-bound: lifecycle.ts is built after this module. */
   attachLive: (turn: Turn, carry?: string | null) => void;
@@ -93,15 +93,21 @@ export function createFire(deps: FireDeps): Fire {
       return { claimed, session, trigger };
     });
     if (!result) return null;
-    const fork = result.session.kind === "group" ? false : store.isPresent(result.session.id, USER_MEMBER);
+    const withYou = result.session.kind !== "group" && store.isPresent(result.session.id, USER_MEMBER);
     const lands = {
       taskId: result.claimed.task_id,
       // Back in the ticket's folder it was booked from, not the plan's: an explicit plan takes
       // only the ticket it is given.
       ticketId: result.claimed.task_id ? result.claimed.ticket_id : null,
     };
-    // In a group, or a direct without you, a Bot already working there hears its reminder in that
-    // turn; otherwise it opens one, a fork beside your own in a direct with you.
+    // A Bot already working there hears its reminder in that turn. A direct with you forks a turn
+    // per message of yours, so you can ask two things at once; a reminder about another job forks
+    // there the same way, but one about the job a turn of this Bot is already doing is heard in it —
+    // a second turn beside it would do that job twice and write the same files.
+    const onIt =
+      lands.taskId !== null &&
+      store.listLiveTurns({ sessionId: result.session.id, botId: result.claimed.bot_id }).some((live) => live.task_id === lands.taskId);
+    const fork = withYou && !onIt;
     const turn = fork
       ? startTurn(result.session.id, result.claimed.bot_id, result.trigger, "fork", lands)
       : hearOrStart(
@@ -109,7 +115,7 @@ export function createFire(deps: FireDeps): Fire {
           result.claimed.bot_id,
           result.trigger,
           { item: { author: "", body: result.claimed.note, checkBack: true }, checkBack: lands },
-          lands,
+          { ...lands, otherwise: withYou ? "fork" : "redirect" },
         );
     store.markCheckBackFired(id, turn.id);
     return turn;

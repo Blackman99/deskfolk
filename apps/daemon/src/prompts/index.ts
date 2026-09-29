@@ -25,6 +25,6 @@ export {
   unknownMentionBody,
   completionFailBody,
 } from "./transcript-copy";
-export type { FailKind, OpenTicketLine } from "./transcript-copy";
+export type { FailingCheckLine, FailKind, OpenTicketLine } from "./transcript-copy";
 export type { ChatTool } from "./tool-schema";
 export { builtinTools, COLLAB_TOOL_NAMES } from "./builtin-tools";

@@ -528,6 +528,67 @@ describe("assembleTurnMessages", () => {
     expect(body).toBe(`这是这件事的第一轮（规划「hello」）。\n本轮工作目录：${store.getTask(turn.task_id!).dir}/`);
     store.close();
   });
+
+  test("the plan's acceptance checks — the app's own evidence — show under the situation block, run and unrun alike", () => {
+    const root = mkdtempSync(join(tmpdir(), "context-checks-"));
+    const store = new Store();
+    store.patchSettingsSync({ workspace_path: root });
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const session = writer.direct_session.id;
+    const plan = store.openTask({
+      sessionId: session,
+      title: "写周报",
+      spec: {
+        kind: "周报",
+        goal: "写一份周报",
+        acceptance: ["交到 report.md"],
+        rules: [],
+        process: [],
+        progress: { done: [], open: [], blocked: [] },
+        status: "active",
+      },
+    });
+    const failing = store.createCheckByUser(plan.id, { item: "交到 report.md", kind: "exists", path: "report.md" });
+    const run = store.beginCheckRun(failing.id, "user");
+    store.finishCheckRun(run.id, { outcome: "fail", exitCode: null, detail: "文件不在", output: null });
+    store.createCheckByUser(plan.id, { item: "跑测试", kind: "command", command: "bun test" });
+
+    const trigger = store.insertMessage({ sessionId: session, kind: "user", author: USER_MEMBER, body: "写一份周报" });
+    const turn = store.createTurn({ sessionId: session, botId: writer.bot.id, triggerMessageId: trigger.id, taskId: plan.id });
+    const messages = assembleTurnMessages(store, {
+      sessionId: session,
+      botId: writer.bot.id,
+      turnId: turn.id,
+      triggerMessageId: trigger.id,
+      locale: "zh",
+      interrupt: false,
+      loop: [],
+    });
+    const situation = String(messages.find((m) => typeof m.content === "string" && m.content.includes(SITUATION_HEADING))?.content);
+    expect(situation).toContain("验收检查（应用在本机自己跑）：");
+    expect(situation).toContain("「交到 report.md」文件存在：report.md：不通过（文件不在；0 分钟前）");
+    expect(situation).toContain("「跑测试」命令：bun test：未跑");
+
+    // English carries the same evidence, in English.
+    store.patchSettingsSync({ locale: "en" });
+    const en = String(
+      assembleTurnMessages(store, {
+        sessionId: session,
+        botId: writer.bot.id,
+        turnId: turn.id,
+        triggerMessageId: trigger.id,
+        locale: "en",
+        interrupt: false,
+        loop: [],
+      }).find((m) => typeof m.content === "string" && m.content.includes(SITUATION_HEADING))?.content,
+    );
+    expect(en).toContain("Acceptance checks (the app runs these itself, on this machine):");
+    expect(en).toContain(`"交到 report.md" File exists: report.md: fail (文件不在; 0min ago)`);
+    expect(en).toContain(`"跑测试" Command: bun test: not run yet`);
+
+    store.close();
+    rmSync(root, { recursive: true, force: true });
+  });
 });
 
 describe("assembleJudgementUser", () => {
@@ -731,14 +792,35 @@ describe("memory in the turn context", () => {
     store.close();
   });
 
-  /** The cut takes newest-first; the survivors render by subject so the text stays put. */
-  test("memories render in subject order, not in the order they were written", () => {
+  /**
+   * The cut takes newest-first; the survivors render oldest-written first, so a new memory lands
+   * at the end and two that disagree read in the order they were written.
+   */
+  test("memories render in the order they were last written, newest last", () => {
     const store = new Store();
     const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
-    store.rememberMemory({ bot_id: writer.bot.id, subject: "zebra", body: "written first" });
-    store.rememberMemory({ bot_id: writer.bot.id, subject: "alpha", body: "written second" });
-    const system = systemFor(store, writer.bot.id, writer.direct_session.id);
+    store.rememberMemory({ bot_id: writer.bot.id, subject: "alpha", body: "written first" });
+    store.rememberMemory({ bot_id: writer.bot.id, subject: "zebra", body: "written second" });
+    store.rememberMemory({ bot_id: writer.bot.id, subject: "middle", body: "written third" });
+    let system = systemFor(store, writer.bot.id, writer.direct_session.id);
     expect(system.indexOf("## alpha")).toBeLessThan(system.indexOf("## zebra"));
+    expect(system.indexOf("## zebra")).toBeLessThan(system.indexOf("## middle"));
+    // Rewriting one moves it to the end: it is now the newest conclusion.
+    store.rememberMemory({ bot_id: writer.bot.id, subject: "alpha", body: "rewritten" });
+    system = systemFor(store, writer.bot.id, writer.direct_session.id);
+    expect(system.indexOf("## middle")).toBeLessThan(system.indexOf("## alpha"));
+    store.close();
+  });
+
+  test("a memory's age counts from its last write, not from when it was first stored", () => {
+    const store = new Store();
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const memory = store.rememberMemory({ bot_id: writer.bot.id, subject: "发布口径", body: "先发 beta" });
+    const old = new Date(Date.now() - 30 * 86_400_000).toISOString();
+    store.db.run(`UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?`, [old, old, memory.id]);
+    expect(systemFor(store, writer.bot.id, writer.direct_session.id)).toContain("记于4 周前");
+    store.rememberMemory({ bot_id: writer.bot.id, subject: "发布口径", body: "直接发正式版" });
+    expect(systemFor(store, writer.bot.id, writer.direct_session.id)).toContain("记于今天");
     store.close();
   });
 

@@ -16,7 +16,9 @@ import { COLLAB_TOOL_NAMES } from "../prompts";
 import type { TurnAdmission } from "../quiesce";
 import { sessionUpsertFields } from "../session-events";
 import { isReservedTaskPath, type Store } from "../store";
+import { TOOL_FAILURES_KEPT } from "../store/routing";
 import { mergeCitedPaths, writtenPathFromToolData } from "../artifact-paths";
+import { takeCodePoints } from "../text";
 import { toolTargetOf } from "../tool-activity";
 import { serializeToolResult } from "../tool-results";
 import type { WakeWatch } from "../wake";
@@ -28,6 +30,10 @@ import type { Live } from "./types";
 
 /** Tools that are the work itself, not looking around: a turn using one is working on its ticket. */
 const WORKING_TOOLS = new Set(["write_file", "delete_file", "shell"]);
+
+/** How much of a failed call's target and error the learning hop reads: enough to name it. */
+const FAILURE_TARGET_MAX = 160;
+const FAILURE_ERROR_MAX = 240;
 
 export type ToolsDeps = {
   store: Store;
@@ -263,10 +269,7 @@ export function createTools(deps: ToolsDeps): Tools {
         const payload = resolved.ok
           ? { ok: true, data: admitPicture(live, pictures, resolved) }
           : { ok: false, error: resolved.error };
-        if (!resolved.ok) {
-          live.toolErrors += 1;
-          live.failedCalls.add(fingerprint);
-        }
+        if (!resolved.ok) noteFailure(live, call.name, args, fingerprint, resolved.error);
         live.loop.push({
           role: "tool",
           tool_call_id: call.id,
@@ -287,8 +290,7 @@ export function createTools(deps: ToolsDeps): Tools {
         : { ok: false, error: result.error };
       // A closing-check bounce is a nudge, not a tool that failed: the review must not read it as one.
       if (!result.ok && result.error?.code !== "closing_check") {
-        live.toolErrors += 1;
-        live.failedCalls.add(fingerprint);
+        noteFailure(live, call.name, args, fingerprint, result.error);
       }
       live.loop.push({
         role: "tool",
@@ -299,6 +301,38 @@ export function createTools(deps: ToolsDeps): Tools {
     if (spoke) return "spoke";
     attachPictures(live.loop, pictures, live.locale);
     return posted ? "more" : "noop";
+  }
+
+  /**
+   * Counts a failed call, and keeps the first few distinct ones for the learning hop once the
+   * chain closes: which tool, on what, and what it said. The same call failing again is counted,
+   * not kept twice.
+   */
+  function noteFailure(
+    live: Live,
+    name: string,
+    args: Record<string, unknown>,
+    fingerprint: string,
+    error: ToolResult["error"],
+  ): void {
+    live.toolErrors += 1;
+    const repeat = live.failedCalls.has(fingerprint);
+    live.failedCalls.add(fingerprint);
+    if (repeat || live.failures.length >= TOOL_FAILURES_KEPT) return;
+    let shown: string | null = toolTargetOf(name, args) ?? (typeof args.command === "string" ? args.command : null);
+    if (shown === null && live.mcpTools.has(name)) {
+      try {
+        shown = JSON.stringify(args);
+      } catch {
+        shown = null;
+      }
+    }
+    const line = (text: string, max: number): string => takeCodePoints(text.replace(/\s+/g, " ").trim(), max).text;
+    live.failures.push({
+      tool: name,
+      target: shown ? line(shown, FAILURE_TARGET_MAX) : null,
+      error: line(`${error?.code ?? "failed"}: ${error?.message ?? ""}`, FAILURE_ERROR_MAX),
+    });
   }
 
   /**
@@ -330,6 +364,7 @@ export function createTools(deps: ToolsDeps): Tools {
         exitCode: typeof result.data?.exit_code === "number" ? result.data.exit_code : null,
         ok: result.ok,
         error: result.ok ? null : (result.error?.message ?? result.error?.code ?? null),
+        cwd: name === "shell" ? (typeof args.cwd === "string" ? args.cwd : (live.workDir ?? null)) : null,
       });
     } catch {
       // the record is evidence, not the work; the call already happened

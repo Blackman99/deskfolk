@@ -28,14 +28,25 @@ export type CoverageVerdict = {
   usage: MappedUsage | null;
 };
 
-export async function judgeCoverage(input: {
+/**
+ * How many times the judge is asked when its answer does not parse. One benchmark batch lost three
+ * of 42 runs to a single unreadable verdict each, on deliveries whose deterministic checks all
+ * passed; a second ask costs one call and keeps a formatting slip from reading as "not judged".
+ */
+export const COVERAGE_JUDGE_ATTEMPTS = 2;
+/** How much of an unreadable answer the error keeps, so the next failure shows what came back. */
+const RAW_EXCERPT = 200;
+
+type JudgeInput = {
   client: CompletionsClient;
   baseUrl: string;
   apiKey: string;
   model: string;
   timeoutMs: number;
   payload: CoveragePayload;
-}): Promise<CoverageVerdict> {
+};
+
+async function judgeOnce(input: JudgeInput): Promise<CoverageVerdict & { raw: string | null }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), input.timeoutMs * 3);
   let raw: string | null = null;
@@ -64,8 +75,32 @@ export async function judgeCoverage(input: {
     clearTimeout(timer);
   }
   const coverage = !error && raw ? parseGoalCoverage(raw) : null;
-  if (!coverage && !error) error = "the judge did not answer in the expected shape";
-  return { coverage, score: coverage ? coverageScore(coverage) : null, error, usage };
+  if (!coverage && !error) {
+    const excerpt = (raw ?? "").replace(/\s+/g, " ").trim().slice(0, RAW_EXCERPT);
+    error = `the judge did not answer in the expected shape${excerpt ? `: ${excerpt}` : " (empty answer)"}`;
+  }
+  return { coverage, score: coverage ? coverageScore(coverage) : null, error, usage, raw };
+}
+
+/** Asks the judge; an answer that does not parse is asked again once. Usage adds up over the asks. */
+export async function judgeCoverage(input: JudgeInput): Promise<CoverageVerdict> {
+  let last: Awaited<ReturnType<typeof judgeOnce>> | null = null;
+  let input_tokens = 0;
+  let output_tokens = 0;
+  let counted = false;
+  for (let attempt = 0; attempt < COVERAGE_JUDGE_ATTEMPTS; attempt += 1) {
+    last = await judgeOnce(input);
+    if (last.usage) {
+      counted = true;
+      input_tokens += last.usage.input_tokens ?? 0;
+      output_tokens += last.usage.output_tokens ?? 0;
+    }
+    // Only an unreadable answer is worth a second ask; a failed or cut-off call is not a slip.
+    if (last.coverage || !last.error?.startsWith("the judge did not answer in the expected shape")) break;
+  }
+  const verdict = last!;
+  const usage = counted && verdict.usage ? { ...verdict.usage, input_tokens, output_tokens } : verdict.usage;
+  return { coverage: verdict.coverage, score: verdict.score, error: verdict.error, usage };
 }
 
 /** The last few Bot messages of a job (by plan) or of a session, oldest first, authors by name. */

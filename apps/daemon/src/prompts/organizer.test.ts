@@ -1,10 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { Store, type PlanSpec } from "../store";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { CHECKS_MAX, Store, type PlanSpec } from "../store";
 import {
   ORGANIZER_BODY_LIMIT,
   ORGANIZER_TICKETS_LIMIT,
   ORGANIZER_TRACE_LIMIT,
   organizerPayload,
+  parseOrganizerChecks,
   parseOrganizerResult,
 } from "./organizer";
 
@@ -32,6 +36,8 @@ function fixture() {
 describe("what the organizer reads", () => {
   test("a message run: the line, the current plan with its tickets, what happened since the last version, the session's earlier plans, kinds, and precedents", async () => {
     const { store, writer, reviewer, group } = fixture();
+    const root = mkdtempSync(join(tmpdir(), "organizer-payload-"));
+    store.patchSettingsSync({ workspace_path: root });
     // An earlier plan of this session that saw a turn, and a finished one of the same kind elsewhere.
     const earlier = store.openTask({ sessionId: group.id, title: "订会议室", spec: spec({ kind: "会议室", goal: "订会议室" }) });
     const booking = store.postMessage(group.id, { body: "订会议室" });
@@ -55,8 +61,12 @@ describe("what the organizer reads", () => {
     const opener = store.postMessage(group.id, { body: "写一份周报，交到 report.md" });
     const turn = store.createTurn({ sessionId: group.id, botId: writer.id, triggerMessageId: opener.id, taskId: plan.id, ticketId: ticket.id });
     store.insertMessage({ sessionId: group.id, turnId: turn.id, kind: "bot", author: writer.id, body: "初稿在 draft.md", paths: [`${ticket.dir}/draft.md`, `${ticket.dir}/tool-results/x.json`] });
-    store.recordTurnRun({ turnId: turn.id, tool: "shell", command: "bun   test\n", exitCode: 1, ok: true });
+    store.recordTurnRun({ turnId: turn.id, tool: "shell", command: "bun   test\n", exitCode: 1, ok: true, cwd: ticket.dir });
     store.recordTurnRun({ turnId: turn.id, tool: "shell", command: "sleep 999", exitCode: null, ok: false, error: "command timed out after 600s and was killed" });
+    // A check the app ran itself, ahead of what a Bot says: the payload carries its result too.
+    const check = store.createCheckByUser(plan.id, { item: "交到 report.md", ticket_id: ticket.id, kind: "command", command: "true" });
+    const run = store.beginCheckRun(check.id, "user");
+    store.finishCheckRun(run.id, { outcome: "fail", exitCode: 1, detail: "退出码 1，应为 0", output: "boom" });
     const message = store.postMessage(group.id, { body: `${"改".repeat(ORGANIZER_BODY_LIMIT * 2)}再改一版` });
 
     const payload = organizerPayload(store, { mode: "message", sessionId: group.id, message, current: store.getTask(plan.id), trace: Array.from({ length: ORGANIZER_TRACE_LIMIT + 3 }, (_, i) => `step ${i}`) });
@@ -67,10 +77,23 @@ describe("what the organizer reads", () => {
     expect([...payload.message!.body]).toHaveLength(ORGANIZER_BODY_LIMIT * 2);
     expect(payload.current_plan).toMatchObject({ id: plan.id, kind: "周报", status: "active", brief: "写一份周报，交到 report.md", revision: 1, spec: spec() });
     expect(payload.current_plan!.tickets).toMatchObject([{ id: ticket.id, seq: 1, title: "初稿", status: "doing", worker: "Writer", artifacts: 1, files: [`${ticket.dir}/draft.md`] }]);
-    // What was run, not what was said: the organizer can hold "tests pass" against an exit code.
+    // What was run, not what was said: the organizer can hold "tests pass" against an exit code —
+    // and where it actually ran, so a proposed command check can copy the same cwd.
     expect(payload.since_last_revision.commands).toEqual([
-      { by: "Writer", ticket: 1, command: "bun test", exit_code: 1, ok: true },
-      { by: "Writer", ticket: 1, command: "sleep 999", exit_code: null, ok: false, error: "command timed out after 600s and was killed" },
+      { by: "Writer", ticket: 1, command: "bun test", cwd: ticket.dir, exit_code: 1, ok: true },
+      { by: "Writer", ticket: 1, command: "sleep 999", cwd: null, exit_code: null, ok: false, error: "command timed out after 600s and was killed" },
+    ]);
+    // The plan's own checks — the app's evidence, ahead of a Bot's own say-so.
+    expect(payload.current_plan!.checks).toEqual([
+      {
+        id: check.id,
+        item: "交到 report.md",
+        kind: "command",
+        what: "命令：true",
+        source: "user",
+        ticket: 1,
+        last: { outcome: "fail", detail: "退出码 1，应为 0", at: expect.any(String), output: "boom" },
+      },
     ]);
     expect([...payload.current_plan!.tickets[0]!.spec].length).toBeLessThan(400);
     expect(payload.since_last_revision.messages.map((row) => [row.author, row.kind])).toEqual([
@@ -88,6 +111,7 @@ describe("what the organizer reads", () => {
     expect(payload.precedents).toEqual([{ goal: "写上周的周报", process: ["Writer 写，Reviewer 审"], rules: ["不要口语"], outcome: ["交了 report.md"] }]);
     void reviewer;
     store.close();
+    rmSync(root, { recursive: true, force: true });
   });
 
   test("a settle run has no line; a session without a plan has nothing to continue", () => {
@@ -234,5 +258,74 @@ describe("what the organizer answered", () => {
       expect("status" in ticket && ticket.status === undefined).toBe(false);
       expect("worker" in ticket && ticket.worker === undefined).toBe(false);
     }
+  });
+});
+
+describe("parseOrganizerChecks", () => {
+  const existing = new Set(["01ARZ3NDEKTSV4RRFFQ69G5FD1"]);
+
+  test("drops anything that is not an object, and an id that is neither a known check nor new-N", () => {
+    expect(parseOrganizerChecks(null, existing)).toEqual([]);
+    expect(parseOrganizerChecks("nope", existing)).toEqual([]);
+    expect(parseOrganizerChecks([42, "x", null, ["nested"]], existing)).toEqual([]);
+    expect(parseOrganizerChecks([{ id: "01ARZ3NDEKTSV4RRFFQ69G5FD9", item: "别的" }], existing)).toEqual([]);
+    expect(parseOrganizerChecks([{ id: "not-an-id", item: "别的" }], existing)).toEqual([]);
+    expect(parseOrganizerChecks([{ item: "没写 id" }], existing)).toEqual([]);
+  });
+
+  test("a new-N proposal keeps only well-typed fields; a bad kind or a wrong-typed field is left out, not the whole entry", () => {
+    const parsed = parseOrganizerChecks(
+      [
+        {
+          id: "new-1",
+          item: "  交到 report.md  ",
+          kind: "command",
+          command: "bun test",
+          cwd: "work/写周报-ab12",
+          ticket: "01ARZ3NDEKTSV4RRFFQ69G5FT1",
+          expect_exit: 0,
+          timeout_sec: 30,
+        },
+        { id: "new-2", item: "坏 kind", kind: "verify", path: 42, negate: "yes", expect_exit: "0" },
+      ],
+      existing,
+    );
+    expect(parsed).toEqual([
+      {
+        id: "new-1",
+        item: "交到 report.md",
+        kind: "command",
+        command: "bun test",
+        cwd: "work/写周报-ab12",
+        ticket: "01ARZ3NDEKTSV4RRFFQ69G5FT1",
+        expect_exit: 0,
+        timeout_sec: 30,
+      },
+      { id: "new-2", item: "坏 kind" },
+    ]);
+  });
+
+  test("remove only on an existing check the payload showed; a new-N cannot be removed, and other fields on a remove are ignored", () => {
+    expect(parseOrganizerChecks([{ id: "01ARZ3NDEKTSV4RRFFQ69G5FD1", remove: true, item: "ignored" }], existing)).toEqual([
+      { id: "01ARZ3NDEKTSV4RRFFQ69G5FD1", remove: true },
+    ]);
+    expect(parseOrganizerChecks([{ id: "new-1", remove: true }], existing)).toEqual([]);
+    // remove must be exactly true
+    expect(parseOrganizerChecks([{ id: "01ARZ3NDEKTSV4RRFFQ69G5FD1", remove: "yes", item: "改一下" }], existing)).toEqual([
+      { id: "01ARZ3NDEKTSV4RRFFQ69G5FD1", item: "改一下" },
+    ]);
+  });
+
+  test("ticket is null, a string, or left out — each means something different and is kept apart", () => {
+    expect(parseOrganizerChecks([{ id: "01ARZ3NDEKTSV4RRFFQ69G5FD1", ticket: null }], existing)).toEqual([{ id: "01ARZ3NDEKTSV4RRFFQ69G5FD1", ticket: null }]);
+    expect(parseOrganizerChecks([{ id: "01ARZ3NDEKTSV4RRFFQ69G5FD1", ticket: "new-2" }], existing)).toEqual([
+      { id: "01ARZ3NDEKTSV4RRFFQ69G5FD1", ticket: "new-2" },
+    ]);
+    expect(parseOrganizerChecks([{ id: "01ARZ3NDEKTSV4RRFFQ69G5FD1" }], existing)).toEqual([{ id: "01ARZ3NDEKTSV4RRFFQ69G5FD1" }]);
+  });
+
+  test("caps the list at CHECKS_MAX entries", () => {
+    const many = Array.from({ length: CHECKS_MAX + 5 }, (_, i) => ({ id: `new-${i + 1}`, item: `检查 ${i + 1}` }));
+    expect(parseOrganizerChecks(many, existing)).toHaveLength(CHECKS_MAX);
   });
 });

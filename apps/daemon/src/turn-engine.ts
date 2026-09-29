@@ -6,9 +6,11 @@ import {
   type PendingJudgement,
   type Turn,
 } from "@real-bot/protocol";
+import { ablationList, NO_ABLATION, type Ablation } from "./ablation";
 import { parseAskAnswer } from "./ask";
 import { createCompletionsClient, type CompletionsClient } from "./completions";
 import { createChains } from "./engine/chains";
+import { createPlanChecks } from "./engine/checks";
 import { createClosing } from "./engine/closing";
 import { createComposer } from "./engine/composer";
 import { createCore } from "./engine/core";
@@ -43,6 +45,8 @@ export type TurnEngine = {
   settlePlan: (taskId: string) => Promise<boolean>;
   /** Rewrites a plan's `map.md` and its tickets' `ticket.md` from what the store holds. */
   renderPlanMirrors: (taskId: string) => void;
+  /** Runs a plan's acceptance checks (all of them, or just `checkIds`) and rewrites its mirrors once done. */
+  runPlanChecks: (taskId: string, opts?: { cause?: "settle" | "user" | "edit"; checkIds?: string[] }) => Promise<void>;
   assertAskPending: (askId: string, sessionId: string) => void;
   /**
    * Records your answer on the question and lets its turn go on. Choices are checked against the
@@ -92,6 +96,10 @@ export type TurnEngineOptions = {
   settleQuietMs?: number;
   /** How long a Bot↔Bot direct stays quiet after its last turn before its opener is called back. Tests shorten it. */
   directQuietMs?: number;
+  /** How long a Bot's chain stays quiet after its last turn before it is reviewed. Tests shorten it. */
+  chainQuietMs?: number;
+  /** Side-calls switched off for a benchmark (see `ablation.ts`). The daemon never sets it. */
+  ablation?: Ablation;
 };
 
 /** Long enough to still be debugging last week's turn, short enough not to hoard. */
@@ -115,6 +123,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     options.completions ??
     createCompletionsClient({ ...(options.sleep ? { clock: { sleep: options.sleep } } : {}), wake });
   const mcp = options.mcp;
+  const ablation = options.ablation ?? NO_ABLATION;
+  if (ablation.size > 0) console.error(`[ablation] off: ${ablationList(ablation).join(", ")}`);
 
   const core = createCore({
     store,
@@ -130,6 +140,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     completions,
     recordResponseSpend: spend.recordResponseSpend,
     spendOwner: spend.spendOwner,
+    ablation,
   });
 
   const organizer = createOrganizer({
@@ -151,6 +162,21 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     draining: () => Boolean(options.admission?.draining),
     settleQuietMs: options.settleQuietMs,
     onQuiet: (taskId) => planWatch.reconcilePlan(taskId),
+    // Late-bound: `checks` is built after `organizer`, since it renders through
+    // `organizer.renderMirrors`. Neither method is called until the engine is fully wired.
+    checks: {
+      beforeSettle: (taskId) => checks.beforeSettle(taskId),
+      afterSettle: (taskId) => checks.afterSettle(taskId),
+    },
+    ablation,
+  });
+
+  const checks = createPlanChecks({
+    store,
+    admission: options.admission,
+    wake,
+    renderMirrors: organizer.renderMirrors,
+    ablation,
   });
 
   const chains = createChains({
@@ -164,6 +190,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     routingTarget: routing.routingTarget,
     recordResponseSpend: spend.recordResponseSpend,
     spendOwner: spend.spendOwner,
+    ablation,
+    quietMs: options.chainQuietMs,
   });
 
   const directReport = createDirectReport({
@@ -171,6 +199,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     admission: options.admission,
     directQuietMs: options.directQuietMs,
     fireCheckBack: (id, now) => fire.fireCheckBack(id, now),
+    ablation,
   });
 
   const composer = createComposer({
@@ -193,6 +222,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     spendOwner: spend.spendOwner,
     executionOf: (live) => lifecycle.executionOf(live),
     observeTicket: (turnId, botId, seen) => planWatch.observeTicket(turnId, botId, seen),
+    ablation,
   });
 
   const participation = createParticipation({
@@ -209,6 +239,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     recordResponseSpend: spend.recordResponseSpend,
     startTurn: (...args) => lifecycle.startTurn(...args),
     hearOrStart: (...args) => lifecycle.hearOrStart(...args),
+    ablation,
   });
 
   const tools = createTools({
@@ -247,6 +278,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     publishMessage: core.publishMessage,
     renderMirrors: organizer.renderMirrors,
     fireCheckBack: fire.fireCheckBack,
+    ablation,
   });
 
   const lifecycle = createLifecycle({
@@ -272,7 +304,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     callOf: spend.callOf,
     recordSpend: spend.recordSpend,
     closeChain: chains.closeChain,
-    touchChain: chains.touchChain,
+    holdChain: chains.holdChain,
+    chainTurnEnded: chains.turnEnded,
     clearChainTimers: chains.clearTimers,
     clearDirectTimers: directReport.clearTimers,
     clearOrganizerTimers: organizer.clearTimers,
@@ -367,6 +400,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     },
     renderPlanMirrors(taskId) {
       organizer.renderMirrors(taskId);
+    },
+    runPlanChecks(taskId, opts) {
+      return checks.run(taskId, { cause: opts?.cause ?? "user", checkIds: opts?.checkIds });
     },
     sweepStaleChains: chains.sweepStaleChains,
     executionOf(turnId) {
@@ -470,6 +506,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       chains.clearTimers();
       directReport.clearTimers();
       organizer.clearTimers();
+      checks.abortAll();
       for (const id of [...core.lives.keys()]) lifecycle.abortLive(id);
     },
     unsettledTurnIds() {
@@ -492,6 +529,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     },
     suggestComposer: composer.suggestComposer,
     async close() {
+      checks.abortAll();
       await lifecycle.drainLives();
       for (const pending of [...participation.pendingJudges.values()]) participation.dropPendingJudgement(pending, true);
       await mcp?.close();

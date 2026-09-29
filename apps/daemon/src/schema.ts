@@ -436,11 +436,58 @@ CREATE TABLE IF NOT EXISTS turn_runs (
   exit_code INTEGER,
   ok INTEGER NOT NULL,
   error TEXT,
+  -- Where the shell actually ran, workspace-relative; null for MCP calls and for runs from before
+  -- this column. commandSeenInPlan reads it to tell an acceptance check's command apart from one
+  -- that only looks the same but ran somewhere else.
+  cwd TEXT,
   created_at TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS turn_runs_turn ON turn_runs (turn_id, created_at);
 CREATE INDEX IF NOT EXISTS turn_runs_task ON turn_runs (task_id, created_at);
+
+-- An executable acceptance check (可执行验收): the app's own proof that one acceptance line holds,
+-- run on this Mac. Bots never write these — the organizer may only turn a command into a check
+-- when a turn of this plan already ran it, or the user wrote it themselves (enforced in the store).
+CREATE TABLE IF NOT EXISTS acceptance_checks (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES tasks (id) ON DELETE CASCADE,
+  ticket_id TEXT REFERENCES tickets (id) ON DELETE SET NULL,
+  item TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('exists', 'contains', 'matches', 'command')),
+  path TEXT,
+  pattern TEXT,
+  negate INTEGER NOT NULL DEFAULT 0,
+  command TEXT,
+  cwd TEXT,
+  expect_exit INTEGER,
+  expect_stdout TEXT,
+  timeout_sec INTEGER,
+  source TEXT NOT NULL CHECK (source IN ('organizer', 'user')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  defined_at TEXT NOT NULL,
+  first_passed_at TEXT,
+  removed_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS acceptance_checks_task ON acceptance_checks (task_id, removed_at, created_at);
+
+CREATE TABLE IF NOT EXISTS acceptance_check_runs (
+  id TEXT PRIMARY KEY,
+  check_id TEXT NOT NULL REFERENCES acceptance_checks (id) ON DELETE CASCADE,
+  task_id TEXT NOT NULL REFERENCES tasks (id) ON DELETE CASCADE,
+  cause TEXT NOT NULL CHECK (cause IN ('settle', 'user', 'edit')),
+  started_at TEXT NOT NULL,
+  finished_at TEXT,
+  outcome TEXT CHECK (outcome IS NULL OR outcome IN ('pass', 'fail', 'blocked', 'error')),
+  exit_code INTEGER,
+  detail TEXT NOT NULL DEFAULT '',
+  output TEXT
+);
+
+CREATE INDEX IF NOT EXISTS acceptance_check_runs_check ON acceptance_check_runs (check_id, started_at);
+CREATE INDEX IF NOT EXISTS acceptance_check_runs_open ON acceptance_check_runs (task_id) WHERE finished_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS turn_route_decisions (
   turn_id TEXT PRIMARY KEY REFERENCES turns (id),
@@ -465,7 +512,9 @@ CREATE TABLE IF NOT EXISTS turn_route_decisions (
   tool_calls INTEGER,
   tool_errors INTEGER,
   repeated_failures INTEGER,
-  files_written INTEGER
+  files_written INTEGER,
+  -- The first few failed calls as JSON [{tool, target, error}], for the learning hop to name.
+  tool_failures TEXT
 );
 
 CREATE INDEX IF NOT EXISTS turn_route_decisions_session

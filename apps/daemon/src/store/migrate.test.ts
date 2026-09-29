@@ -162,6 +162,19 @@ describe("a database an earlier build created", () => {
         expect(reopened.getTask(turn.task_id!)).toMatchObject({ status: "active", spec: null, routine_id: null });
         const ticket = reopened.createTicket({ taskId: turn.task_id!, title: "初稿", spec: "", status: "todo", worker: null });
         expect(reopened.listTickets(turn.task_id!).map((row) => row.id)).toEqual([ticket.id]);
+        // Acceptance checks: the two tables come up (fresh tables, so SCHEMA_SQL alone brings them),
+        // and `turn_runs` — which already existed — picked up its new `cwd` column.
+        const checkTables = reopened.db
+          .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('acceptance_checks', 'acceptance_check_runs') ORDER BY name")
+          .all()
+          .map((row) => row.name);
+        expect(checkTables).toEqual(["acceptance_check_runs", "acceptance_checks"]);
+        const turnRunCols = reopened.db.query<{ name: string }, []>("PRAGMA table_info(turn_runs)").all().map((row) => row.name);
+        expect(turnRunCols).toContain("cwd");
+        expect(reopened.listChecks(turn.task_id!)).toEqual([]);
+        reopened.patchSettingsSync({ workspace_path: join(dir, "workspace") });
+        const check = reopened.createCheckByUser(turn.task_id!, { item: "交出 report.md", kind: "exists", path: "report.md" });
+        expect(reopened.listChecks(turn.task_id!)).toEqual([check]);
         const kept = reopened.listSpend({});
         expect(kept).toHaveLength(2);
         const turnRow = kept.find((row) => row.turn_id !== null)!;

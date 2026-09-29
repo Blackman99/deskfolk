@@ -28,7 +28,7 @@ import type { TurnAdmission } from "../quiesce";
 import { isoNow } from "../ids";
 import type { TurnExecution } from "../store/routing";
 import type { Store } from "../store";
-import { checkInNote, lastHopNote, turnPace } from "../turn-pace";
+import { checkInNote, emptyReplyNote, lastHopNote, turnPace } from "../turn-pace";
 import { heardNote, recentToolCalls, redirectCarryNote, type HeardItem } from "../turn-inbox";
 import type { WakeWatch } from "../wake";
 import type { Chains } from "./chains";
@@ -63,7 +63,8 @@ export type LifecycleDeps = {
   callOf: SpendTracker["callOf"];
   recordSpend: SpendTracker["recordSpend"];
   closeChain: Chains["closeChain"];
-  touchChain: Chains["touchChain"];
+  holdChain: Chains["holdChain"];
+  chainTurnEnded: Chains["turnEnded"];
   clearChainTimers: Chains["clearTimers"];
   clearDirectTimers: () => void;
   clearOrganizerTimers: () => void;
@@ -94,7 +95,7 @@ export type Lifecycle = {
     botId: string,
     trigger: Message,
     entry: Omit<InboxEntry, "message">,
-    opts?: { taskId?: string | null; ticketId?: string | null },
+    opts?: { taskId?: string | null; ticketId?: string | null; otherwise?: "redirect" | "fork" },
   ) => Turn;
   hearAcross: (message: Message) => Turn[];
   attachLive: (turn: Turn, carry?: string | null) => void;
@@ -131,7 +132,8 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     callOf,
     recordSpend,
     closeChain,
-    touchChain,
+    holdChain,
+    chainTurnEnded,
     clearChainTimers,
     clearDirectTimers,
     clearOrganizerTimers,
@@ -230,13 +232,17 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     botId: string,
     trigger: Message,
     entry: Omit<InboxEntry, "message">,
-    opts: { taskId?: string | null; ticketId?: string | null } = {},
+    /** `otherwise`: how a turn opens when none here can hear it; a direct with you forks, never cuts one of yours off. */
+    opts: { taskId?: string | null; ticketId?: string | null; otherwise?: "redirect" | "fork" } = {},
   ): Turn {
-    for (const current of store.listLiveTurns({ sessionId, botId })) {
+    // A group turn hears lines about other jobs too; the tag says which one this is about. With
+    // more than one turn here, the one already on that job hears it.
+    const about = entry.checkBack ?? { taskId: trigger.task_id ?? null, ticketId: trigger.ticket_id ?? null };
+    const rows = store.listLiveTurns({ sessionId, botId });
+    const onJob = rows.filter((row) => about.taskId !== null && row.task_id === about.taskId);
+    for (const current of [...onJob, ...rows.filter((row) => !onJob.includes(row))]) {
       const live = lives.get(current.id);
       if (!live || live.abort.signal.aborted) continue;
-      // A group turn hears lines about other jobs too; the tag says which one this is about.
-      const about = entry.checkBack ?? { taskId: trigger.task_id ?? null, ticketId: trigger.ticket_id ?? null };
       const tag = planTagger(
         store,
         { taskId: current.task_id ?? null, ticketId: current.ticket_id ?? null },
@@ -245,7 +251,8 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       live.inbox.push({ ...entry, item: { ...entry.item, tag: tag || undefined }, message: trigger });
       return current;
     }
-    return startTurn(sessionId, botId, trigger, "redirect", opts);
+    const { otherwise = "redirect", ...lands } = opts;
+    return startTurn(sessionId, botId, trigger, otherwise, lands);
   }
 
   /**
@@ -351,6 +358,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       toolErrors: 0,
       repeatedFailures: 0,
       failedCalls: new Set(),
+      failures: [],
     };
     store.afterCommit(() => {
       lives.set(turn.id, live);
@@ -373,6 +381,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
           } finally {
             lives.delete(turn.id);
             reopenForUnheard(turn, live);
+            chainTurnEnded(turn.id);
           }
         }
       };
@@ -468,7 +477,8 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     } catch {
       // route row is best-effort; the completion still carries the chosen fields
     }
-    if (sessionId) touchChain(sessionId, botId);
+    // The chain's quiet clock waits while this turn runs; its end starts it (`chainTurnEnded`).
+    if (sessionId) holdChain(sessionId, botId);
     const drop = (): void => {
       lives.delete(turnId);
     };
@@ -631,6 +641,13 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
         continue;
       }
 
+      // Nothing at all came back: ask once for the next step rather than end the turn silently
+      // (see emptyReplyNote). The empty answer itself is not kept in the loop.
+      if (!result.content.trim() && !live.emptyNudged) {
+        live.emptyNudged = true;
+        live.loop.push({ role: "user", content: emptyReplyNote(live.locale) });
+        continue;
+      }
       live.loop.push({ role: "assistant", content: result.content });
       const closer = isNoWorkCloser(result.content);
       const rawBody = closer ? "" : result.content;
@@ -679,6 +696,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       toolErrors: live.toolErrors,
       repeatedFailures: live.repeatedFailures,
       filesWritten: live.writtenPaths.length,
+      failures: live.failures,
     };
   }
 

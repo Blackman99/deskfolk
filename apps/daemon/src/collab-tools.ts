@@ -774,21 +774,46 @@ function deleteSkill(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
   return { ok: true, data: { id: current.skill.id }, emitted: [{ kind: "skill_removed", id: current.skill.id }] };
 }
 
+/** How far back a new subject is shown the memories its session already produced. */
+const SAME_SESSION_MEMORY_MS = 24 * 60 * 60_000;
+
 /**
  * The Bot never passes bot_id or the source ids: they come off the turn, so a Bot can neither
  * write into another Bot's memory nor forge where a memory came from.
+ *
+ * A new subject comes back with the Bot's other memories from the same session in the last day.
+ * Seen live: one Bot stored five successive versions of one layout preference in an hour, each
+ * under a new subject, and every later turn read all five at once. The list is only shown; which
+ * of them the new one replaces is the Bot's call.
  */
 function remember(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
   const origin = turnOrigin(ctx);
+  const subject = requireString(args.subject, "subject");
+  const existed = ctx.store.findMemoryBySubject(ctx.botId, subject) !== null;
   const memory = ctx.store.rememberMemory({
     bot_id: ctx.botId,
-    subject: requireString(args.subject, "subject"),
+    subject,
     body: requireString(args.body, "body"),
     source_session_id: origin?.sessionId ?? ctx.sessionId,
     source_message_id: origin?.messageId ?? null,
     learned_chain_id: ctx.learnedChainId ?? null,
   });
-  return { ok: true, data: serializeMemory(memory), emitted: [{ kind: "memory", memory }] };
+  const data = serializeMemory(memory);
+  const earlier =
+    existed || !memory.source_session_id
+      ? []
+      : ctx.store.sessionMemoriesSince({
+          botId: ctx.botId,
+          sessionId: memory.source_session_id,
+          since: new Date(Date.now() - SAME_SESSION_MEMORY_MS).toISOString(),
+          exceptId: memory.id,
+        });
+  if (earlier.length > 0) {
+    data.same_session = earlier.map(serializeMemory);
+    data.note =
+      "You also wrote these from this session in the last day. If the memory you just wrote revises one of them, forget the older one; if it is about something else, leave them.";
+  }
+  return { ok: true, data, emitted: [{ kind: "memory", memory }] };
 }
 
 function forget(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {

@@ -51,6 +51,8 @@ import type {
   SyncFrame,
   ThinkingLevel,
   Turn,
+  AcceptanceCheckInput,
+  PatchAcceptanceCheckRequest,
   TaskArtifacts,
   TaskDetail,
   TaskSpecRevision,
@@ -561,6 +563,29 @@ export class RemoteApi {
   /** Your edit of one ticket: only the fields sent change. */
   async patchTicket(ticketId: string, body: PatchTicketRequest): Promise<Ticket> {
     return this.patch<Ticket>(`/v1/tickets/${encodeURIComponent(ticketId)}`, body);
+  }
+  /** Adds an acceptance check that proves one line of the plan; the plan comes back whole with it. */
+  async createCheck(taskId: string, body: AcceptanceCheckInput): Promise<TaskDetail> {
+    return this.post<TaskDetail>(`/v1/tasks/${encodeURIComponent(taskId)}/checks`, body);
+  }
+  /** Your edit of one check: redefining it drops its past runs and starts a fresh one. */
+  async patchCheck(checkId: string, body: PatchAcceptanceCheckRequest): Promise<TaskDetail> {
+    return this.patch<TaskDetail>(`/v1/checks/${encodeURIComponent(checkId)}`, body);
+  }
+  /** Tombstones a check; its past runs stay so their history still reads. */
+  async deleteCheck(checkId: string, revision?: string): Promise<TaskDetail> {
+    return this.request<TaskDetail>(
+      "DELETE",
+      `/v1/checks/${encodeURIComponent(checkId)}`,
+      revision === undefined ? {} : { if_revision: revision },
+    );
+  }
+  /** Runs one check, or every active check of the plan when none is named. */
+  async runChecks(taskId: string, checkId?: string): Promise<TaskDetail> {
+    return this.post<TaskDetail>(
+      `/v1/tasks/${encodeURIComponent(taskId)}/checks/run`,
+      checkId ? { check_id: checkId } : {},
+    );
   }
 
   /** The jobs this session took part in, newest activity first. */

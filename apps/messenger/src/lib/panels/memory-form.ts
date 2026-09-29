@@ -47,11 +47,12 @@ export function mapMemoryError(status: number, t: Copy): MemoryFieldErrors {
 }
 
 /**
- * How old a memory reads. The buckets match the ones the daemon renders into the prompt, so the
- * pane and the Bot agree on whether a conclusion is fresh or stale.
+ * How old a memory reads, counted from its last write. The buckets and the timestamp match the
+ * ones the daemon renders into the prompt, so the pane and the Bot agree on whether a conclusion
+ * is fresh or stale.
  */
-export function memoryAgeLabel(createdAt: string, t: Copy, now: Date = new Date()): string {
-  const days = Math.floor((now.getTime() - new Date(createdAt).getTime()) / 86_400_000);
+export function memoryAgeLabel(writtenAt: string, t: Copy, now: Date = new Date()): string {
+  const days = Math.floor((now.getTime() - new Date(writtenAt).getTime()) / 86_400_000);
   if (!Number.isFinite(days) || days <= 0) return t.sidebar.memoryAgeToday;
   if (days < 7) return t.sidebar.memoryAgeThisWeek;
   const weeks = Math.floor(days / 7);

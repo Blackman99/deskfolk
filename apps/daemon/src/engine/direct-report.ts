@@ -7,6 +7,7 @@
  * that one report.
  */
 import type { Turn } from "@real-bot/protocol";
+import { NO_ABLATION, type Ablation } from "../ablation";
 import { reportBackNote } from "../prompts";
 import type { TurnAdmission } from "../quiesce";
 import type { CheckBack, Store } from "../store";
@@ -18,6 +19,8 @@ export type DirectReportDeps = {
   directQuietMs?: number;
   /** Late-bound: fire.ts is built after this module. */
   fireCheckBack: (id: string, now?: Date) => Turn | null;
+  /** Benchmark switches (see `ablation.ts`): `direct-report` never calls an opener back. */
+  ablation?: Ablation;
 };
 
 export type DirectReport = {
@@ -28,6 +31,7 @@ export type DirectReport = {
 
 export function createDirectReport(deps: DirectReportDeps): DirectReport {
   const { store, admission, fireCheckBack } = deps;
+  const ablation = deps.ablation ?? NO_ABLATION;
 
   /** Long enough for the other side's turn to open, short enough that the report still reads as news. */
   const DIRECT_QUIET_MS = deps.directQuietMs ?? 10_000;
@@ -39,6 +43,7 @@ export function createDirectReport(deps: DirectReportDeps): DirectReport {
    * report on. The clock lives in this process, so a restart inside the window drops that report.
    */
   function noteDirectTurnEnded(turn: Turn): void {
+    if (ablation.has("direct-report")) return;
     let session;
     try {
       session = store.getSession(turn.session_id);

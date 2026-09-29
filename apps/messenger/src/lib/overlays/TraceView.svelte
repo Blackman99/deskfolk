@@ -21,8 +21,10 @@
 	import TicketList from './TicketList.svelte';
 	import TraceCard from './TraceCard.svelte';
 	import TraceJobSwitcher from './TraceJobSwitcher.svelte';
+	import TraceMinimap, { type MinimapTone } from './TraceMinimap.svelte';
 	import TraceRound from './TraceRound.svelte';
 	import TraceRouteDetail from './TraceRouteDetail.svelte';
+	import { loadTraceMinimap, saveTraceMinimap } from './trace-minimap.ts';
 	import { loadTraceSide, saveTraceSide, type TraceSide } from './trace-side.ts';
 	import {
 		actorFace,
@@ -143,6 +145,8 @@
 	 */
 	let side = $state<TraceSide>(loadTraceSide());
 	let segment = $state<'spec' | 'trace' | 'tickets'>('trace');
+	/** The minimap in the corner, until you put it away; per-browser, like the side panel. */
+	let minimapShown = $state(loadTraceMinimap());
 	/** The card whose model choice is unfolded under it. One at a time. */
 	let openRoute = $state<string | null>(null);
 	/** Which kind of model trouble the board is lighting up, if any. */
@@ -410,6 +414,21 @@
 		}
 		canvas.stopGlide();
 		canvas.view = { ...canvas.view, x: canvas.view.x + (after - before) / 2 };
+	}
+
+	function toggleMinimap(): void {
+		minimapShown = !minimapShown;
+		saveTraceMinimap(minimapShown);
+	}
+
+	/** A card on the minimap stands out the way it does on the board. */
+	function minimapToneOf(node: TaskTraceNode): MinimapTone {
+		const litKind = highlightOf(node, lighting);
+		const ticketLight = ticketLightOf(node);
+		if (litKind === 'lit') return lighting === 'blamed' ? 'blamed' : 'lit';
+		if (ticketLight === 'lit') return 'lit';
+		if (litKind === 'dim' || ticketLight === 'dim') return 'dim';
+		return focusedTurn === node.turn_id ? 'focus' : null;
 	}
 
 	function toggleHighlight(kind: RouteHighlight): void {
@@ -806,6 +825,19 @@
 							<rect x="7" y="8" width="10" height="8" rx="1.5"></rect>
 						</svg>
 					</button>
+					<button
+						type="button"
+						class="trace-zoom-minimap"
+						aria-label={minimapShown ? t.trace.minimapHide : t.trace.minimapShow}
+						title={minimapShown ? t.trace.minimapHide : t.trace.minimapShow}
+						aria-pressed={minimapShown}
+						onclick={toggleMinimap}
+					>
+						<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<rect x="3" y="3" width="18" height="18" rx="2"></rect>
+							<rect x="12" y="12" width="6" height="6" rx="1"></rect>
+						</svg>
+					</button>
 				</div>
 			</div>
 		{/if}
@@ -889,6 +921,20 @@
 					</div>
 				{/if}
 		</div>
+		{#if minimapShown && flow && flow.rounds.length > 0 && !failed && !(loading && !trace)}
+			<!-- Over the corner, above the zoom: the board's ways around sit together. -->
+			<div class="trace-minimap-dock">
+				<TraceMinimap
+					{flow}
+					view={canvas.view}
+					viewport={canvas.viewportSize}
+					toneOf={minimapToneOf}
+					hint={t.trace.minimapHint}
+					onCentre={(point, glide) => canvas.centreOn(point, glide)}
+					onWheel={canvas.onWheel}
+				/>
+			</div>
+		{/if}
 		</div>
 		{#if detail}
 			<!--
@@ -1382,10 +1428,26 @@
 		background: var(--line);
 	}
 
-	.trace-zoom-fit {
+	.trace-zoom-fit,
+	.trace-zoom-minimap {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
+	}
+
+	.trace-zoom button.trace-zoom-minimap[aria-pressed='true'] {
+		color: var(--accent);
+	}
+
+	/*
+	 * Over the canvas's bottom-right corner, just above the zoom pill: the tools' own padding, the
+	 * pill's 30px and a gap. Not inside the tools strip, whose height is what fitting keeps clear.
+	 */
+	.trace-minimap-dock {
+		position: absolute;
+		z-index: 1;
+		right: 10px;
+		bottom: 46px;
 	}
 
 	/* A canvas the size dagre measured, with the cards placed on it and the edges beneath. */

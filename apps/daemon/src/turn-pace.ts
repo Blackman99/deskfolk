@@ -37,6 +37,19 @@ export function checkInNote(locale: Locale, hops: number): string {
     : `（应用提示）这一轮已经连续调用工具 ${hops} 跳，还没有交出任何结果。如果卡住了、在绕圈，或者在等工具给不了的东西，现在就停下：不要再调工具，直接回复做完了什么、卡在哪、需要谁做什么。如果确实在推进，就继续做，不用回应这条。到 ${TURN_HOP_LIMIT} 跳会收起工具。`;
 }
 
+/**
+ * An empty answer — no words, no tool call — is the model dropping the thread, not a choice to
+ * stay quiet: a Bot with nothing to add says so, and that closer is dropped anyway. On 2026-09-28
+ * Gemini through an OpenAI-compatible proxy ended two turns in a row that way (a normal stop, zero
+ * output tokens) right after reading the sources, so the report was never written and each turn
+ * completed with nothing to show. The loop asks once for the next step instead.
+ */
+export function emptyReplyNote(locale: Locale): string {
+  return locale === "en"
+    ? "(App note) Your last reply was empty: no text and no tool call. The job is not accounted for yet. Carry on with the next step (write the files that are due), or reply directly with what is done and where it is stuck. If there is really nothing for you to add, reply 'no new work'."
+    : "（应用提示）你刚才的回复是空的：没有文字，也没有调用工具。这件事还没交代完：接着做下一步（该写的文件写出来），或者直接回复做完了什么、卡在哪。确实没有要补充的，就回复「无新工作」。";
+}
+
 export function lastHopNote(locale: Locale): string {
   return locale === "en"
     ? `(App note) This turn has reached ${TURN_HOP_LIMIT} tool calls and its tools have been taken away. Reply now, directly: what is done, what is not, where it is stuck and what you need from whom to finish. This reply ends the turn.`

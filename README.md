@@ -27,7 +27,8 @@
 
 ## Why you can hand it over
 
-- **It checks before handing over.** Before a Bot hands you files, the files and its wrap-up are checked against the plan's spec, or against what you first asked for until the app has written one; anything missing gets done, or the Bot says who has it, why it was left out or when it will be done. A "tests pass" or "verified in the browser" has to match a command it actually ran, or it goes back to run it or to say it was not verified.
+- **It checks before handing over.** Before a Bot hands you files, the app checks three definite things: whether the job's acceptance checks pass (see the next point), whether a "results to follow" is backed by a check-back or a named handoff, and whether a "tests pass" or "verified" is backed by a command that turn actually ran; if one is missing, it goes back to be fixed, accounted for, or marked as not verified.
+- **The done-when can be checked by the app itself.** Lines of a plan's done-when that a machine can decide (a file exists, contains something, matches a pattern, a command succeeds) can carry a check the daemon runs on your Mac, with the result on the flow board. While a check fails, the organizer will not call the job done, and when it stops, the app calls a Bot back once with the failing checks. You add checks; the organizer can also turn a command the job actually ran successfully into one; Bots cannot write them.
 - **A job that stalls gets noticed.** Tickets on the flow board move with the work; when a job goes quiet with tickets still open, the app calls the Bot on it back once, and tells you if nothing moves.
 - **It shows its work.** Every plan is a flow: the app files each message you send into a plan and its tickets, keeps the goal, the done-when and your rules as the plan's spec, and draws the work as a card per turn by who woke whom, carrying the files that turn handed over, the ticket it worked in, and the model it ran on and why. You can open the direct chats Bots have with each other, too.
 - **It asks before risky moves.** New endpoints or MCP servers, access outside the workspace and outbound network wait for your approval. What waits on you is marked on the conversation list, with macOS banners and a Dock badge. Stop ends a running turn in a direct chat at any time.
@@ -37,6 +38,27 @@
 
 - **For** solo developers, technical individuals and small studios who can set up a model endpoint and API key themselves, with a job that needs a few roles and several file-producing steps: a research report, a launch kit, a small tool with tests and a start command.
 - **Not yet for** several people sharing one setup, Linux, work that has to carry on while the Mac sleeps, or anyone who would rather not bring their own model endpoint. Windows is an experimental preview: build from source or grab an unsigned installer from CI — see [Get it](#get-it).
+
+## Measured
+
+Results of the golden-path benchmark on the current code, 2026-09-29. Three fixed jobs: a research report, launch copy with a single-file landing page, and a command-line tool with tests. Each job runs unattended until it settles, with every approval denied. A judge model (claude-sonnet-4-6) grades it item by item against the task set's fixed done-when, plus deterministic checks on the delivered files, their content and commands. A job counts as done at 80% coverage with every check passing.
+
+| Model | Team | Done | Cost per run | Approval cards per run |
+|---|---|---|---|---|
+| gemini-3.8-flash-high | three role Bots in a group | 9/9 | $0.55 | 0.3 |
+| gemini-3.8-flash-high | one Bot on its own | 9/9 | $0.37 | 0.4 |
+| grk-4.7-build-fast | three role Bots in a group | 6/6 | $2.31 | 2.8 |
+| grk-4.7-build-fast | one Bot on its own | 4/6 | $0.74 | 0.8 |
+
+grk on its own missed twice. One run timed out trying to check the landing page in a browser (Bots have no browser tool). In the other, the judge's answer could not be parsed, although the deliverable checks had all passed.
+
+How to read it:
+- One Bot can do these three kinds of job; a team of three does not finish them more often, and costs 1.5–3 times as much.
+- In the 2026-09-28 baseline (45 runs) the gemini team finished only 7 of 9. The model sometimes sent back an empty reply, which ended the turn silently; that is fixed.
+- Switching off the turn loop's side-calls (organizer, closing check, model pick, chain review, judgement, call-backs) finished no fewer jobs in 78 ablation runs, and switching all of them off was the fastest and cheapest; see [ADR 0037](docs/adr/0037-cut-the-core-loop-by-the-benchmark.md).
+- The samples are small (6–9 runs per cell), so only large differences show, and they speak only for these three small kinds of job. Long jobs that stall halfway, large groups and choosing between several models are not covered yet.
+
+How to run it and read the results: [Development · golden-path benchmark](docs/development.md#黄金路径基准).
 
 ## What it does
 

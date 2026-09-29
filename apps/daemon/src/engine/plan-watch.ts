@@ -6,8 +6,10 @@
  * nothing. `observeTicket` is the other half: moving a ticket forward on what a turn was seen
  * doing, so there is something here to watch in the first place.
  */
-import { USER_MEMBER, type Locale, type Message, type Turn } from "@real-bot/protocol";
-import { planNudgeNote, stalledPlanBody, type OpenTicketLine } from "../prompts";
+import { USER_MEMBER, type AcceptanceCheck, type Locale, type Message, type Ticket, type Turn } from "@real-bot/protocol";
+import { NO_ABLATION, type Ablation } from "../ablation";
+import { describeCheck } from "../acceptance-eval";
+import { planNudgeNote, stalledPlanBody, type FailingCheckLine, type OpenTicketLine } from "../prompts";
 import type { TurnAdmission } from "../quiesce";
 import type { CheckBack, Store } from "../store";
 
@@ -18,6 +20,8 @@ export type PlanWatchDeps = {
   /** Rewrites a plan's `map.md` and its tickets' `ticket.md` from what the store holds. */
   renderMirrors: (taskId: string) => void;
   fireCheckBack: (id: string, now?: Date) => Turn | null;
+  /** Benchmark switches (see `ablation.ts`): `plan-nudge` never calls a Bot back or says the plan stopped. */
+  ablation?: Ablation;
 };
 
 export type PlanWatch = {
@@ -27,6 +31,7 @@ export type PlanWatch = {
 
 export function createPlanWatch(deps: PlanWatchDeps): PlanWatch {
   const { store, admission, publishMessage, renderMirrors, fireCheckBack } = deps;
+  const ablation = deps.ablation ?? NO_ABLATION;
 
   function isAwake(botId: string): boolean {
     try {
@@ -46,12 +51,13 @@ export function createPlanWatch(deps: PlanWatchDeps): PlanWatch {
     return rows.find((row) => present.has(row.author) && isAwake(row.author))?.author ?? null;
   }
 
-  /** The plan stopped with tickets open after a call-back: a line in the session and one notification, once per call-back. */
+  /** The plan stopped — tickets open, checks failing, or both — after a call-back: a line in the session and one notification, once per call-back. */
   function tellStalled(
     sessionId: string,
     taskId: string,
     nudge: CheckBack,
     open: readonly OpenTicketLine[],
+    failing: readonly FailingCheckLine[],
     called: string,
     locale: Locale,
   ): void {
@@ -62,7 +68,7 @@ export function createPlanWatch(deps: PlanWatchDeps): PlanWatch {
         sessionId,
         kind: "system",
         author: nudge.bot_id,
-        body: stalledPlanBody(locale, { open, called }),
+        body: stalledPlanBody(locale, { open, called, failing }),
       });
       store.db.run(`UPDATE messages SET task_id = ? WHERE id = ?`, [taskId, note.id]);
       if (store.isPresent(sessionId, USER_MEMBER)) {
@@ -80,18 +86,31 @@ export function createPlanWatch(deps: PlanWatchDeps): PlanWatch {
     publishMessage(note);
   }
 
+  function failingCheckLine(check: AcceptanceCheck, locale: Locale): FailingCheckLine {
+    return { item: check.item, what: describeCheck(check, locale), detail: check.last_run?.detail ?? "", output: check.last_run?.output ?? null };
+  }
+
+  /** A ticket whose worker is present and awake, or null. */
+  function workerOf(ticket: Ticket | null | undefined, present: ReadonlySet<string>): string | null {
+    return ticket?.worker && present.has(ticket.worker) && isAwake(ticket.worker) ? ticket.worker : null;
+  }
+
   /**
    * A plan that went quiet — no live turn, no appointment pending in it — while tickets are still
-   * to do or in progress has stopped short, and nothing else would wake anyone: every Bot closed
-   * its turn thinking its part was done. The app calls one Bot back, the one on the first open
-   * ticket (else whoever spoke last in the plan), with the open tickets. If a call-back came and no
-   * ticket has moved to review or done since, it does not call again: it tells you, once, in the
-   * session and as a notification. Each further call-back needs a ticket to have closed, so they
-   * run out with the tickets; two Bots must not bounce on a plan nobody can move. Only plans in a
-   * session you are in: you are who the last word goes to.
+   * to do or in progress, or a check the app ran itself is still failing, has stopped short and
+   * nothing else would wake anyone: every Bot closed its turn thinking its part was done. The app
+   * calls one Bot back — the one on the first open ticket; failing that, the worker of a failing
+   * check's own ticket, or of the ticket whose folder the check's path or command runs in; failing
+   * that, the worker of the most recently handed-over ticket; failing that, whoever spoke last —
+   * with the open tickets and up to three failing checks. If a call-back came and neither a ticket
+   * closed nor a check that predates it passed for the first time since, it does not call again: it
+   * tells you, once, in the session and as a notification. A hard budget — nudges since the user's
+   * own last line here, against tickets plus checks — stops it even short of that, so two Bots (or
+   * a Bot and a check that will not pass) cannot bounce a plan forever. Only plans in a session you
+   * are in: you are who the last word goes to.
    */
   function reconcilePlan(taskId: string): void {
-    if (admission?.draining) return;
+    if (admission?.draining || ablation.has("plan-nudge")) return;
     let task: ReturnType<Store["getTask"]>;
     try {
       task = store.getTask(taskId);
@@ -108,7 +127,9 @@ export function createPlanWatch(deps: PlanWatchDeps): PlanWatch {
       if (store.pendingPlanCheckBacks(taskId).length > 0) return;
       const tickets = store.listTickets(taskId);
       const open = tickets.filter((ticket) => ticket.status === "todo" || ticket.status === "doing");
-      if (open.length === 0) return;
+      const checks = store.listChecks(taskId);
+      const failing = checks.filter((check) => check.last_run?.outcome === "fail");
+      if (open.length === 0 && failing.length === 0) return;
       const present = new Set(store.presentBotIds(sessionId));
       const nameOf = (id: string | null): string | null => {
         if (!id) return null;
@@ -125,25 +146,57 @@ export function createPlanWatch(deps: PlanWatchDeps): PlanWatch {
         worker: nameOf(ticket.worker),
       }));
       const locale = store.settingsCached().locale;
+      const failingLines = failing.slice(0, 3).map((check) => failingCheckLine(check, locale));
       const last = store.lastPlanNudge(taskId);
       if (last) {
         const since = last.created_at;
         const moved = tickets.some((ticket) => ticket.updated_at > since && (ticket.status === "review" || ticket.status === "done"));
-        if (!moved) {
-          tellStalled(sessionId, taskId, last, lines, nameOf(last.bot_id) ?? "", locale);
+        const firstPassed = checks.some((check) => check.first_passed_at && check.defined_at < since && check.first_passed_at > since);
+        if (!moved && !firstPassed) {
+          tellStalled(sessionId, taskId, last, lines, failingLines, nameOf(last.bot_id) ?? "", locale);
           return;
         }
       }
-      const target = open.find((ticket) => ticket.worker && present.has(ticket.worker) && isAwake(ticket.worker));
-      const botId = target?.worker ?? lastSpeaker(taskId, present);
+      const since = store.lastUserLineAt(taskId) ?? task.created_at;
+      if (store.planNudgesSince(taskId, since) >= tickets.length + checks.length) {
+        if (last) tellStalled(sessionId, taskId, last, lines, failingLines, nameOf(last.bot_id) ?? "", locale);
+        return;
+      }
+
+      // Target: the first open ticket's worker; else a failing check's own ticket, or the ticket
+      // whose folder its path or cwd sits under; else the most recently handed-over ticket; else
+      // whoever spoke last.
+      let target: Ticket | null = open.find((ticket) => workerOf(ticket, present)) ?? null;
+      if (!target) {
+        for (const check of failing) {
+          const own = check.ticket_id ? (tickets.find((ticket) => ticket.id === check.ticket_id) ?? null) : null;
+          if (workerOf(own, present)) {
+            target = own;
+            break;
+          }
+          const place = check.kind === "command" ? check.cwd : check.path;
+          const under = place ? (tickets.find((ticket) => place === ticket.dir || place.startsWith(`${ticket.dir}/`)) ?? null) : null;
+          if (workerOf(under, present)) {
+            target = under;
+            break;
+          }
+        }
+      }
+      if (!target) {
+        const handedOver = tickets
+          .filter((ticket) => ticket.status === "review" || ticket.status === "done")
+          .sort((a, b) => (a.updated_at < b.updated_at ? 1 : a.updated_at > b.updated_at ? -1 : 0));
+        target = handedOver.find((ticket) => workerOf(ticket, present)) ?? null;
+      }
+      const botId = workerOf(target, present) ?? lastSpeaker(taskId, present);
       if (!botId) return;
-      const mine = target ? lines[open.indexOf(target)]! : null;
+      const mine = target ? (lines.find((line) => line.seq === target!.seq) ?? null) : null;
       booked = store.bookPlanNudge({
         botId,
         sessionId,
         taskId,
         ticketId: target?.id ?? null,
-        note: planNudgeNote(locale, { open: lines, mine }),
+        note: planNudgeNote(locale, { open: lines, mine, failing: failingLines }),
       });
     } catch (error) {
       console.error(`[plan ${taskId}] reconcile failed`, error);

@@ -10,8 +10,10 @@ import {
   type PatchProviderRequest,
   type CreateRoutineRequest,
   type PatchRoutineRequest,
+  type PatchAcceptanceCheckRequest,
   type PatchTaskSpecRequest,
   type PatchTicketRequest,
+  type RunAcceptanceChecksRequest,
   type CreateBotRequest,
   type PatchBotRequest,
   type RuntimeResponse,
@@ -32,6 +34,7 @@ import {
 } from "@real-bot/protocol";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import type { Ablation } from "./ablation";
 import { attachmentMime } from "./artifact-mime";
 import { emptyResponse, fromError, jsonResponse, matchPath, readBearer, readJson, responseRecord } from "./http";
 import { corsHeaders, originDecision } from "./origin";
@@ -105,6 +108,8 @@ export type LocalApiOptions = {
   dataDir?: string;
   /** How workspace files reach the Trash; the Mac's own Trash when absent. */
   trash?: TrashMover;
+  /** Side-calls switched off for a benchmark (see `ablation.ts`); ignored when `engine` is given. */
+  ablation?: Ablation;
 };
 
 export type LocalApi = {
@@ -295,6 +300,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
       mcp,
       admission: options.admission,
       streams,
+      ablation: options.ablation,
     });
 
   const scheduler =
@@ -1329,6 +1335,50 @@ function dispatch(
     return jsonResponse(store.taskDetail(task.id, store.citedPathExists), 200, null);
   }
 
+  // Acceptance checks (可执行验收). Every route renders mirrors synchronously (they only touch
+  // what is already committed); the run itself — a file read or a spawned command — is kicked off
+  // from `store.afterCommit` so it starts after, and never inside, the write transaction.
+  params = matchPath(path, "/v1/tasks/:id/checks");
+  if (params && method === "POST") {
+    const check = store.createCheckByUser(params.id!, input.body ?? {});
+    engine.renderPlanMirrors(check.task_id);
+    store.afterCommit(() => {
+      void engine.runPlanChecks(check.task_id, { cause: "edit", checkIds: [check.id] }).catch(() => undefined);
+    });
+    return jsonResponse(store.taskDetail(check.task_id, store.citedPathExists), 201, null);
+  }
+
+  params = matchPath(path, "/v1/checks/:id");
+  if (params && method === "PATCH") {
+    const body = (input.body ?? {}) as PatchAcceptanceCheckRequest;
+    const check = store.patchCheckByUser(params.id!, body, body.if_revision);
+    engine.renderPlanMirrors(check.task_id);
+    // A redefinition (defined_at just bumped to updated_at) is what earns a fresh run; renaming
+    // the line it proves, or moving it to another ticket, changes nothing a run would answer.
+    if (check.defined_at === check.updated_at) {
+      store.afterCommit(() => {
+        void engine.runPlanChecks(check.task_id, { cause: "edit", checkIds: [check.id] }).catch(() => undefined);
+      });
+    }
+    return jsonResponse(store.taskDetail(check.task_id, store.citedPathExists), 200, null);
+  }
+  if (params && method === "DELETE") {
+    const before = store.getCheck(params.id!);
+    store.removeCheckByUser(params.id!);
+    engine.renderPlanMirrors(before.task_id);
+    return jsonResponse(store.taskDetail(before.task_id, store.citedPathExists), 200, null);
+  }
+
+  params = matchPath(path, "/v1/tasks/:id/checks/run");
+  if (params && method === "POST") {
+    const body = (input.body ?? {}) as RunAcceptanceChecksRequest;
+    const task = store.getTask(params.id!);
+    store.afterCommit(() => {
+      void engine.runPlanChecks(task.id, { cause: "user", checkIds: body.check_id ? [body.check_id] : undefined }).catch(() => undefined);
+    });
+    return jsonResponse(store.taskDetail(task.id, store.citedPathExists), 202, null);
+  }
+
   params = matchPath(path, "/v1/tickets/:id");
   if (params && method === "PATCH") {
     const body = (input.body ?? {}) as PatchTicketRequest;
@@ -2096,7 +2146,7 @@ function checkRevision(store: Store, request: Request, url: URL, body: Record<st
     if (!Number.isInteger(revision) || revision !== store.settingsCached().settings_rev) throw new HttpError(409, "conflict", "settings revision changed");
   } else {
     const parts = url.pathname.split("/");
-    const tables: Record<string, string> = { bots: "bots", skills: "skills", memories: "memories", routines: "routines", providers: "providers", "mcp-servers": "mcp_servers", sessions: "sessions", annotations: "annotations" };
+    const tables: Record<string, string> = { bots: "bots", skills: "skills", memories: "memories", routines: "routines", providers: "providers", "mcp-servers": "mcp_servers", sessions: "sessions", annotations: "annotations", checks: "acceptance_checks" };
     const table = parts[2] === "allow-rules" && destructive ? "allow_rules" : tables[parts[2] ?? ""];
     if (!table || !parts[3]) return;
     const revisionColumn = table === "allow_rules" ? "created_at" : "updated_at";

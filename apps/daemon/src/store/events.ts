@@ -59,6 +59,15 @@ export function installChangeJournal(ctx: StoreContext): void {
         BEGIN INSERT INTO event_changes VALUES ('${entity}', ${id}, 'UPDATE', NULL); END`);
     }
   }
+  // Acceptance checks have no event of their own: a change to either table is a change to the
+  // plan that holds it, so `TaskDetail.checks` carries it through the plan's own `task.upsert`.
+  for (const table of ["acceptance_checks", "acceptance_check_runs"]) {
+    for (const op of ["INSERT", "UPDATE", "DELETE"]) {
+      const row = op === "DELETE" ? "OLD" : "NEW";
+      ctx.db.exec(`CREATE TEMP TRIGGER event_${table}_${op} AFTER ${op} ON main.${table}
+        BEGIN INSERT INTO event_changes VALUES ('tasks', ${row}.task_id, 'UPDATE', ${row}.task_id); END`);
+    }
+  }
 }
 
 export function committedEvents(ctx: StoreContext): ClientEvent[] {

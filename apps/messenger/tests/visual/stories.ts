@@ -821,7 +821,8 @@ const defs: Record<StoryName, Story> = {
 		component: SettingsModal as never,
 		props: settingsProps(),
 		afterMount: (host: HTMLElement) => {
-			settingsTab(4)(host);
+			// general, preferences, models, mcp, notifications, about: About is the sixth tab.
+			settingsTab(5)(host);
 			(globalThis as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {
 				invoke: async () => null
 			};

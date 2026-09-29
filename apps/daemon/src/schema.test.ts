@@ -29,6 +29,8 @@ describe("schema", () => {
     expect(SCHEMA_SQL).toContain("permit TEXT");
     expect(deliveryCols).toContain("permit");
     expect(names).toEqual([
+      "acceptance_check_runs",
+      "acceptance_checks",
       "allow_rules",
       "annotations",
       "approvals",
@@ -1047,15 +1049,14 @@ describe("schema", () => {
     store.setTurnStatus(cold.turn.id, "completed");
 
     // Age them: two went quiet a while ago, one is older than the daemon will dig for.
-    store.db.run(`UPDATE turn_route_decisions SET created_at = ? WHERE turn_id IN (?, ?)`, [
+    store.db.run(`UPDATE turn_route_decisions SET created_at = ?, finished_at = ? WHERE turn_id IN (?, ?)`, [
+      quiet,
       quiet,
       open.turn.id,
       done.turn.id,
     ]);
-    store.db.run(`UPDATE turn_route_decisions SET created_at = ? WHERE turn_id = ?`, [
-      new Date(Date.now() - 48 * 60 * 60_000).toISOString(),
-      cold.turn.id,
-    ]);
+    const old = new Date(Date.now() - 48 * 60 * 60_000).toISOString();
+    store.db.run(`UPDATE turn_route_decisions SET created_at = ?, finished_at = ? WHERE turn_id = ?`, [old, old, cold.turn.id]);
     store.recordRouteReview({
       botId: writer.bot.id,
       chainId: done.turn.id,
@@ -1083,6 +1084,17 @@ describe("schema", () => {
         notBefore: floor,
       }),
     ).not.toContain(fresh.turn.id);
+
+    // Nor is one whose turn started long ago but only just ended: the clock runs from the end.
+    const long = decidedTurn(store, session, writer.bot.id);
+    store.setTurnStatus(long.turn.id, "completed");
+    store.db.run(`UPDATE turn_route_decisions SET created_at = ? WHERE turn_id = ?`, [quiet, long.turn.id]);
+    expect(
+      store.staleOpenChains({
+        quietBefore: new Date(Date.now() - 3 * 60_000).toISOString(),
+        notBefore: floor,
+      }),
+    ).not.toContain(long.turn.id);
     store.close();
   });
 

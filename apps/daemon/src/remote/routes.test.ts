@@ -70,6 +70,40 @@ test("plans and tickets: reads are whitelisted, a spec edit carries the whole sp
   bad({ v: 1, id, method: "GET", path: "/v1/spend", query: { kind: "organise" } });
 });
 
+test("acceptance checks: create needs item and kind, a patch needs more than just if_revision, run and delete take a bare or revisioned body", () => {
+  const ok = (request: RemoteRequest) => expect(() => validateBusiness(request)).not.toThrow();
+  const bad = (request: RemoteRequest) => expect(() => validateBusiness(request)).toThrow();
+
+  const create = (body: Record<string, unknown>): RemoteRequest => ({ v: 1, id, method: "POST", path: `/v1/tasks/${id}/checks`, body });
+  ok(create({ item: "交到 report.md", kind: "exists", path: "report.md" }));
+  ok(create({ item: "跑测试", kind: "command", command: "bun test", cwd: "work/x", expect_exit: 0, expect_stdout: "ok", timeout_sec: 60 }));
+  ok(create({ item: "x", kind: "matches", path: "a.md", pattern: "^ok$", negate: true }));
+  bad(create({ kind: "exists", path: "report.md" }));
+  bad(create({ item: "交到 report.md" }));
+  bad(create({ item: "x", kind: "verify" }));
+  bad(create({ item: "x", kind: "exists", path: "report.md", extra: 1 }));
+  bad(create({ item: "x", kind: "command", command: "bun test", timeout_sec: 1.5 }));
+  bad(create({ item: "x", kind: "exists", ticket_id: "bob" }));
+
+  const patch = (body: Record<string, unknown>): RemoteRequest => ({ v: 1, id, method: "PATCH", path: `/v1/checks/${id}`, body });
+  ok(patch({ item: "换个说法", if_revision: "2026-09-24T08:30:00.000Z" }));
+  ok(patch({ negate: true }));
+  ok(patch({ ticket_id: null }));
+  bad(patch({ if_revision: "2026-09-24T08:30:00.000Z" }));
+  bad(patch({ kind: "verify" }));
+  bad(patch({ if_revision: 3 }));
+
+  const del = (body: Record<string, unknown>): RemoteRequest => ({ v: 1, id, method: "DELETE", path: `/v1/checks/${id}`, body });
+  ok(del({}));
+  ok(del({ if_revision: "2026-09-24T08:30:00.000Z" }));
+  bad(del({ if_revision: 3 }));
+
+  const run = (body: Record<string, unknown>): RemoteRequest => ({ v: 1, id, method: "POST", path: `/v1/tasks/${id}/checks/run`, body });
+  ok(run({}));
+  ok(run({ check_id: id }));
+  bad(run({ check_id: "bob" }));
+});
+
 test("an answer to a question: choices by label and text of your own, nothing else", () => {
   const answer = (body: Record<string, unknown>): RemoteRequest => ({ v: 1, id, method: "POST", path: `/v1/messages/${id}/answer`, body });
   expect(() => validateBusiness(answer({ selected: ["A", "B"], custom: "and why" }))).not.toThrow();

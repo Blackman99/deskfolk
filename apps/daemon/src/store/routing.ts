@@ -13,7 +13,8 @@
  *
  * Closing a turn also writes how the work went — hops, tool calls, tool errors, repeated
  * failures, files written. Those counts are null when the process stopped before it could count,
- * and a review treats null as unknown rather than as a clean run.
+ * and a review treats null as unknown rather than as a clean run. The first few failed calls are
+ * kept as well, tool, target and error, so the learning hop can name what went wrong.
  */
 import { USER_MEMBER, type RouteFeedback, type RouteOutcome, type RouteRecord, type RouteReviewEffect, type ThinkingLevel } from "@real-bot/protocol";
 import { isoNow, ulid } from "../ids";
@@ -44,6 +45,7 @@ type DecisionRow = {
   tool_errors: number | null;
   repeated_failures: number | null;
   files_written: number | null;
+  tool_failures: string | null;
 };
 
 type FeedbackRow = {
@@ -151,6 +153,24 @@ export function openChain(
 }
 
 /**
+ * The unreviewed chain a turn belongs to, if it has one. The engine asks when the turn ends: that
+ * starts the chain's quiet clock, or, when a newer chain has taken its place, has it reviewed.
+ */
+export function unreviewedChainOf(
+  ctx: StoreContext,
+  turnId: string,
+): { chainId: string; sessionId: string; botId: string } | null {
+  const row = ctx.db
+    .query<{ chain_id: string; session_id: string; bot_id: string }, [string]>(
+      `SELECT d.chain_id, d.session_id, d.bot_id FROM turn_route_decisions d
+       WHERE d.turn_id = ? AND d.chain_id IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM route_reviews r WHERE r.chain_id = d.chain_id)`,
+    )
+    .get(turnId);
+  return row ? { chainId: row.chain_id, sessionId: row.session_id, botId: row.bot_id } : null;
+}
+
+/**
  * Chains left open by a daemon that stopped before their quiet timer fired. The timers live in
  * memory, so a restart would otherwise leave a correction chain unreviewed until the user happens
  * to change the subject. `notBefore` bounds how far back a restart digs: a chain nobody has touched
@@ -160,9 +180,11 @@ export function staleOpenChains(
   ctx: StoreContext,
   input: { quietBefore: string; notBefore: string; limit?: number },
 ): string[] {
+  // Quiet since the last thing that happened on it: a turn ending counts, not only one starting.
   return ctx.db
     .query<{ chain_id: string }, [string, string, string, number]>(
-      `SELECT d.chain_id AS chain_id, MAX(COALESCE(f.created_at, d.created_at)) AS last_at
+      `SELECT d.chain_id AS chain_id,
+         MAX(MAX(COALESCE(d.finished_at, d.created_at), COALESCE(f.created_at, d.created_at))) AS last_at
        FROM turn_route_decisions d
        LEFT JOIN route_feedback f ON f.turn_id = d.turn_id
        WHERE d.chain_id IS NOT NULL
@@ -177,6 +199,38 @@ export function staleOpenChains(
     .map((row) => row.chain_id);
 }
 
+/**
+ * Chains a restart finds open but not quiet yet: a turn the restart interrupted counts as having
+ * just ended, and you may have spoken moments before. Their timers died with the last process.
+ */
+export function recentOpenChains(
+  ctx: StoreContext,
+  input: { quietBefore: string; notBefore: string; limit?: number },
+): { chainId: string; sessionId: string; botId: string }[] {
+  return ctx.db
+    .query<{ chain_id: string; session_id: string; bot_id: string }, [string, string, number]>(
+      `SELECT d.chain_id AS chain_id, MIN(d.session_id) AS session_id, MIN(d.bot_id) AS bot_id,
+         MAX(MAX(COALESCE(d.finished_at, d.created_at), COALESCE(f.created_at, d.created_at))) AS last_at
+       FROM turn_route_decisions d
+       LEFT JOIN route_feedback f ON f.turn_id = d.turn_id
+       WHERE d.chain_id IS NOT NULL
+         AND d.created_at >= ?
+         AND NOT EXISTS (SELECT 1 FROM route_reviews r WHERE r.chain_id = d.chain_id)
+       GROUP BY d.chain_id
+       HAVING last_at >= ?
+       ORDER BY last_at DESC
+       LIMIT ?`,
+    )
+    .all(input.notBefore, input.quietBefore, input.limit ?? 20)
+    .map((row) => ({ chainId: row.chain_id, sessionId: row.session_id, botId: row.bot_id }));
+}
+
+/** One failed tool call, as the learning hop reads it: which tool, on what, and what it said. */
+export type ToolFailure = { tool: string; target: string | null; error: string };
+
+/** A turn keeps its first few distinct failures, and a chain hands the learning hop no more. */
+export const TOOL_FAILURES_KEPT = 6;
+
 /** Counts the engine kept while the turn ran. Absent means the process never got to count. */
 export type TurnExecution = {
   hops: number;
@@ -184,6 +238,7 @@ export type TurnExecution = {
   toolErrors: number;
   repeatedFailures: number;
   filesWritten: number;
+  failures?: readonly ToolFailure[];
 };
 
 /**
@@ -207,7 +262,8 @@ export function finishTurnRoute(
   ctx.db.run(
     `UPDATE turn_route_decisions
      SET outcome = ?, fail_kind = ?, finished_at = ?,
-         hops = ?, tool_calls = ?, tool_errors = ?, repeated_failures = ?, files_written = ?
+         hops = ?, tool_calls = ?, tool_errors = ?, repeated_failures = ?, files_written = ?,
+         tool_failures = ?
      WHERE turn_id = ? AND outcome IS NULL`,
     [
       outcome,
@@ -218,6 +274,7 @@ export function finishTurnRoute(
       execution?.toolErrors ?? null,
       execution?.repeatedFailures ?? null,
       execution?.filesWritten ?? null,
+      execution ? JSON.stringify((execution.failures ?? []).slice(0, TOOL_FAILURES_KEPT)) : null,
       turnId,
     ],
   );
@@ -737,6 +794,10 @@ export type ChainForReview = {
   outcome: string;
   reply: string;
   followUps: string[];
+  /** A turn of the chain is still running: it is not done, and there is nothing yet to review. */
+  live: boolean;
+  /** The chain's first few distinct failed calls, oldest first. */
+  failures: ToolFailure[];
   /** Summed across the chain. Null when any turn was never counted. */
   execution: {
     hops: number | null;
@@ -781,6 +842,12 @@ export function chainForReview(ctx: StoreContext, chainId: string): ChainForRevi
       `SELECT SUM(cost_usd_ticks) AS cost FROM spend WHERE turn_id IN (${placeholders}) AND kind = 'turn'`,
     )
     .get(...turnIds);
+  const live = ctx.db
+    .query<{ n: number }, string[]>(
+      `SELECT COUNT(*) AS n FROM turns
+       WHERE id IN (${placeholders}) AND status IN ('running', 'waiting_approval', 'waiting_ask')`,
+    )
+    .get(...turnIds);
   return {
     chainId,
     botId: head.bot_id,
@@ -793,8 +860,43 @@ export function chainForReview(ctx: StoreContext, chainId: string): ChainForRevi
     outcome: head.outcome ?? "running",
     reply: reply?.body ?? "",
     followUps: followUps.map((row) => row.body),
+    live: (live?.n ?? 0) > 0,
+    failures: chainFailures(rows),
     execution: executionOf(rows, spend?.cost ?? null),
   };
+}
+
+/** Each turn's kept failures in order, the same call failing the same way said once. */
+function chainFailures(rows: readonly DecisionRow[]): ToolFailure[] {
+  const seen = new Set<string>();
+  const out: ToolFailure[] = [];
+  for (const row of rows) {
+    for (const failure of parseFailures(row.tool_failures)) {
+      const key = `${failure.tool}\n${failure.target ?? ""}\n${failure.error}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(failure);
+      if (out.length >= TOOL_FAILURES_KEPT) return out;
+    }
+  }
+  return out;
+}
+
+function parseFailures(text: string | null): ToolFailure[] {
+  if (!text) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  return parsed.flatMap((item): ToolFailure[] => {
+    if (!item || typeof item !== "object") return [];
+    const { tool, target, error } = item as Record<string, unknown>;
+    if (typeof tool !== "string" || typeof error !== "string") return [];
+    return [{ tool, target: typeof target === "string" ? target : null, error }];
+  });
 }
 
 /** Sums the counted columns. One uncounted turn makes the sum unknown rather than a partial zero. */

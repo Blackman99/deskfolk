@@ -18,7 +18,9 @@
  */
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { USER_MEMBER, type Message, type ThinkingLevel, type Ticket, type Turn } from "@real-bot/protocol";
+import { USER_MEMBER, type AcceptanceCheck, type AcceptanceCheckOutcome, type Message, type ThinkingLevel, type Ticket, type Turn } from "@real-bot/protocol";
+import { NO_ABLATION, type Ablation } from "./ablation";
+import { describeCheck } from "./acceptance-eval";
 import type { CompletionsClient, MappedUsage } from "./completions";
 import { atomicWrite } from "./file-integrity";
 import { ORGANIZER_SYSTEM, organizerPayload, parseOrganizerResult } from "./prompts/organizer";
@@ -50,6 +52,17 @@ export type OrganizerDeps = {
    * engine checks whether the plan stopped with tickets open (see the turn engine's reconcile).
    */
   onQuiet?: (taskId: string) => void;
+  /**
+   * The plan's acceptance checks, run around its settle: stale ones before (so the settle sees
+   * their result), unrun ones after (so a check the settle itself just added still gets a run this
+   * stretch). Absent skips both — tests that do not care about checks, mainly.
+   */
+  checks?: {
+    beforeSettle: (taskId: string) => Promise<void>;
+    afterSettle: (taskId: string) => Promise<void>;
+  };
+  /** Benchmark switches (see `ablation.ts`): `organize-message` / `organize-settle` skip that call. */
+  ablation?: Ablation;
 };
 
 export type Organizer = {
@@ -57,8 +70,13 @@ export type Organizer = {
   organizeMessage(message: Message): Promise<{ taskId: string | null; ticketId: string | null }>;
   /** A turn reached a terminal state: its plan is filed once it has been quiet for a moment. */
   noteTurnEnded(turn: Turn): void;
-  /** Files a plan now, if nothing is running in it and something happened since the last version. */
-  settlePlan(taskId: string): Promise<boolean>;
+  /**
+   * Files a plan now, if nothing is running in it and something happened since the last version.
+   * `evidence: true` skips that "something happened" guard and drops the answer's own `checks` —
+   * it exists only to give a `done` held open for lack of a check run a fresh look once that run
+   * has landed (see `quietStretch`), never to let the organizer touch checks a second time.
+   */
+  settlePlan(taskId: string, opts?: { evidence?: boolean }): Promise<boolean>;
   renderMirrors(taskId: string): void;
   clearTimers(): void;
 };
@@ -89,6 +107,14 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
   const inFlight = new Set<string>();
   const chains = new Map<string, Promise<unknown>>();
   const log = deps.log ?? ((line: string) => console.error(line));
+  const ablation = deps.ablation ?? NO_ABLATION;
+  /**
+   * Plans a filing held `done` open only for lack of a run yet on some check (never a failed one):
+   * the quiet stretch that set this runs the check once more (`afterSettle`) and, once, files the
+   * plan again so the organizer's `done` gets a fresh look at real evidence instead of waiting for
+   * the next thing to happen in the plan.
+   */
+  const awaitingEvidence = new Set<string>();
   /**
    * Set when the engine clears the timers (draining, quitting, closing): a settle still in flight
    * must not call back into an engine that is going away. The next turn end clears it, since a
@@ -176,6 +202,7 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
       recentPlanIds: new Set(store.sessionRecentTasks(input.sessionId).map((task) => task.id)),
       elsewherePlanIds: new Set(input.mode === "message" ? store.elsewherePlans(input.sessionId).map((task) => task.id) : []),
       roster: store.listBots().map((bot) => ({ id: bot.id, name: bot.name })),
+      existingCheckIds: new Set(input.current ? store.listChecks(input.current.id).map((check) => check.id) : []),
     });
     if (!parsed) log(`[organizer] filing ${what}: the answer did not read as a plan, nothing filed`);
     return parsed;
@@ -205,7 +232,7 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
   async function organizeOne(message: Message): Promise<{ taskId: string | null; ticketId: string | null }> {
     const current = store.sessionCurrentTask(message.session_id);
     const fallback = { taskId: current?.id ?? null, ticketId: null };
-    if (deps.draining() || !shouldFile(message)) return fallback;
+    if (deps.draining() || ablation.has("organize-message") || !shouldFile(message)) return fallback;
     const parsed = await call({ mode: "message", sessionId: message.session_id, message, current });
     if (!parsed) return fallback;
     let applied;
@@ -223,6 +250,8 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
       return fallback;
     }
     noteHeldOpen(applied.task.id, applied.heldOpenBy);
+    if (applied.awaitingEvidence) awaitingEvidence.add(applied.task.id);
+    else awaitingEvidence.delete(applied.task.id);
     renderMirrors(applied.task.id);
     return { taskId: applied.task.id, ticketId: applied.messageTicketId };
   }
@@ -244,8 +273,9 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     }
   }
 
-  async function settlePlan(taskId: string): Promise<boolean> {
-    if (deps.draining() || inFlight.has(taskId)) return false;
+  async function settlePlan(taskId: string, opts?: { evidence?: boolean }): Promise<boolean> {
+    // Off, the quiet timer still runs and `onQuiet` still reconciles the plan: only the filing is skipped.
+    if (deps.draining() || ablation.has("organize-settle") || inFlight.has(taskId)) return false;
     let task: Task;
     try {
       task = store.getTask(taskId);
@@ -255,7 +285,9 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     if (!task.session_id) return false;
     if (store.taskLiveTurnCount(taskId) > 0) return false;
     const since = store.lastSpecRevisionAt(taskId);
-    if (store.taskMessagesSince(taskId, since, 1).length === 0 && store.taskArtifactsSince(taskId, since, 1).length === 0) {
+    // The evidence follow-up settle has nothing new to file since the last revision by design — the
+    // checks `afterSettle` just ran are the only thing that changed — so it skips this guard.
+    if (!opts?.evidence && store.taskMessagesSince(taskId, since, 1).length === 0 && store.taskArtifactsSince(taskId, since, 1).length === 0) {
       return false;
     }
     inFlight.add(taskId);
@@ -265,16 +297,21 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
       const lastTurn = store.db
         .query<{ id: string }, [string]>(`SELECT id FROM turns WHERE task_id = ? ORDER BY updated_at DESC, id DESC LIMIT 1`)
         .get(taskId);
+      // The evidence settle is only for re-reading checks that just ran; it must not also let this
+      // pass add, edit or remove checks of its own — that would never stop giving itself one more look.
+      const result = opts?.evidence ? { ...parsed, checks: undefined } : parsed;
       try {
         const applied = store.transaction(() =>
           store.applyOrganizerResult({
             sessionId: task.session_id!,
             current: task,
-            result: { ...parsed, decision: "continue", resumePlanId: null, messageTicket: null },
+            result: { ...result, decision: "continue", resumePlanId: null, messageTicket: null },
             source: { messageId: null, turnId: lastTurn?.id ?? null, messageBody: "" },
           }),
         );
         noteHeldOpen(taskId, applied.heldOpenBy);
+        if (applied.awaitingEvidence) awaitingEvidence.add(taskId);
+        else awaitingEvidence.delete(taskId);
       } catch (error) {
         log(`[organizer] could not apply the settling of ${taskId}: ${error instanceof Error ? error.message : String(error)}`);
         return false;
@@ -286,6 +323,26 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     }
   }
 
+  /**
+   * A plan's quiet stretch: its stale checks before the settle (so the settle's own read of the
+   * plan sees their result), the settle itself, then whatever check still has no run this stretch
+   * (an organizer-added one, mainly) after it. If that settle held a `done` open only because some
+   * check had never run — and `afterSettle` just ran it — one more settle gives the organizer a
+   * fresh look at the result, so a plan does not sit open until something else happens to it; at
+   * most one of these per stretch, and it never lets the organizer touch checks a second time.
+   * `onQuiet` (the reconcile) runs whether or not any of this filed or found anything — that call
+   * is `noteTurnEnded`'s own, below.
+   */
+  async function quietStretch(taskId: string): Promise<void> {
+    await deps.checks?.beforeSettle(taskId);
+    if (stopped || deps.draining()) return;
+    await settlePlan(taskId);
+    if (stopped || deps.draining()) return;
+    await deps.checks?.afterSettle(taskId);
+    if (stopped || deps.draining()) return;
+    if (awaitingEvidence.delete(taskId)) await settlePlan(taskId, { evidence: true });
+  }
+
   function noteTurnEnded(turn: Turn): void {
     if (!turn.task_id || deps.draining()) return;
     if (turn.status === "running" || turn.status === "waiting_ask" || turn.status === "waiting_approval") return;
@@ -295,7 +352,7 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     if (existing) clearTimeout(existing);
     const timer = setTimeout(() => {
       settleTimers.delete(taskId);
-      void settlePlan(taskId)
+      void quietStretch(taskId)
         .catch((error) => console.error(`[organizer] settling ${taskId} failed`, error))
         .then(() => {
           if (!stopped && !deps.draining()) deps.onQuiet?.(taskId);
@@ -318,11 +375,12 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     const spec = parsePlanSpec(task.spec);
     if (!spec) return;
     const tickets = store.listTickets(taskId);
+    const checks = store.listChecks(taskId);
     const planDir = classifyPath(root, task.dir);
     if (planDir.zone !== "inside") return;
     try {
       mkdirSync(planDir.abs, { recursive: true });
-      atomicWrite(join(planDir.abs, PLAN_MAP_FILE), renderPlanMap(task, spec, tickets, nameOf));
+      atomicWrite(join(planDir.abs, PLAN_MAP_FILE), renderPlanMap(task, spec, tickets, checks, nameOf));
     } catch (error) {
       console.error(`[organizer] could not write ${task.dir}/${PLAN_MAP_FILE}`, error);
     }
@@ -331,7 +389,7 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
       if (dir.zone !== "inside") continue;
       try {
         mkdirSync(dir.abs, { recursive: true });
-        atomicWrite(join(dir.abs, TICKET_FILE), renderTicketFile(task, spec, ticket, nameOf));
+        atomicWrite(join(dir.abs, TICKET_FILE), renderTicketFile(task, spec, ticket, checks, nameOf));
       } catch (error) {
         console.error(`[organizer] could not write ${ticket.dir}/${TICKET_FILE}`, error);
       }
@@ -350,6 +408,9 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
 
 const PLAN_STATUS_ZH: Record<PlanSpec["status"], string> = { active: "进行中", done: "已完成", parked: "搁置" };
 const TICKET_STATUS_ZH: Record<Ticket["status"], string> = { todo: "待做", doing: "进行中", review: "待验收", done: "已完成", parked: "搁置" };
+const CHECK_OUTCOME_ZH: Record<AcceptanceCheckOutcome, string> = { pass: "通过", fail: "不通过", blocked: "受阻", error: "出错" };
+/** The line under the 验收 section that holds checks whose item no longer matches any acceptance line. */
+const ORPHAN_CHECKS_LABEL = "「其他验收检查」";
 
 function bullets(items: readonly string[]): string {
   return items.length > 0 ? items.map((item) => `- ${item}`).join("\n") : "- （无）";
@@ -359,8 +420,56 @@ function number(seq: number): string {
   return String(seq).padStart(2, "0");
 }
 
+function checkStatusZh(check: AcceptanceCheck): string {
+  if (check.running) return "运行中";
+  if (!check.last_run) return "未跑";
+  return CHECK_OUTCOME_ZH[check.last_run.outcome ?? "error"];
+}
+
+function checkLine(check: AcceptanceCheck): string {
+  return `  - [${checkStatusZh(check)}] ${describeCheck(check, "zh")}`;
+}
+
+/**
+ * The 验收 section: each line from `spec.acceptance`, with the checks proving it indented under
+ * it; a check whose `item` matches none of those lines — the plan's spec moved out from under it —
+ * still runs and still counts, so it is shown too, grouped under {@link ORPHAN_CHECKS_LABEL}
+ * instead of silently dropped.
+ */
+function acceptanceSection(spec: PlanSpec, checks: readonly AcceptanceCheck[]): string {
+  const known = new Set(spec.acceptance);
+  const byItem = new Map<string, AcceptanceCheck[]>();
+  const orphans: AcceptanceCheck[] = [];
+  for (const check of checks) {
+    if (!known.has(check.item)) {
+      orphans.push(check);
+      continue;
+    }
+    const list = byItem.get(check.item) ?? [];
+    list.push(check);
+    byItem.set(check.item, list);
+  }
+  if (spec.acceptance.length === 0 && orphans.length === 0) return "- （无）";
+  const lines: string[] = [];
+  for (const item of spec.acceptance) {
+    lines.push(`- ${item}`);
+    for (const check of byItem.get(item) ?? []) lines.push(checkLine(check));
+  }
+  if (orphans.length > 0) {
+    lines.push(`- ${ORPHAN_CHECKS_LABEL}`);
+    for (const check of orphans) lines.push(checkLine(check));
+  }
+  return lines.join("\n");
+}
+
 /** `map.md`: the plan's spec and its ticket index, as the app last organized them. */
-export function renderPlanMap(task: Task, spec: PlanSpec, tickets: readonly Ticket[], nameOf: (id: string) => string): string {
+export function renderPlanMap(
+  task: Task,
+  spec: PlanSpec,
+  tickets: readonly Ticket[],
+  checks: readonly AcceptanceCheck[],
+  nameOf: (id: string) => string,
+): string {
   const rows = tickets.map((ticket) => {
     const who = ticket.worker ? nameOf(ticket.worker) : "";
     const rel = ticket.dir.startsWith(`${task.dir}/`) ? ticket.dir.slice(task.dir.length + 1) : ticket.dir;
@@ -375,7 +484,7 @@ export function renderPlanMap(task: Task, spec: PlanSpec, tickets: readonly Tick
     ...(task.brief ? [`- 开头的要求：${task.brief.replace(/\s+/g, " ").trim()}`] : []),
     "",
     "## 验收",
-    bullets(spec.acceptance),
+    acceptanceSection(spec, checks),
     "",
     "## 规则",
     bullets(spec.rules),
@@ -398,7 +507,13 @@ export function renderPlanMap(task: Task, spec: PlanSpec, tickets: readonly Tick
 }
 
 /** `ticket.md`: one ticket, with the plan's acceptance and rules it is measured against. */
-export function renderTicketFile(task: Task, spec: PlanSpec, ticket: Ticket, nameOf: (id: string) => string): string {
+export function renderTicketFile(
+  task: Task,
+  spec: PlanSpec,
+  ticket: Ticket,
+  checks: readonly AcceptanceCheck[],
+  nameOf: (id: string) => string,
+): string {
   return [
     `# ${number(ticket.seq)} ${ticket.title}`,
     "",
@@ -411,7 +526,7 @@ export function renderTicketFile(task: Task, spec: PlanSpec, ticket: Ticket, nam
     ticket.spec.trim() || "（还没写）",
     "",
     "## 规划的验收",
-    bullets(spec.acceptance),
+    acceptanceSection(spec, checks),
     "",
     "## 规划的规则",
     bullets(spec.rules),

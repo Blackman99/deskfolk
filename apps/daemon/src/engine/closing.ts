@@ -1,11 +1,15 @@
 /**
  * A delivery to the user goes out only after one look at what the job asked for. The closing check
  * runs once per turn, when a message that cites workspace files — or says the work is still going
- * — is about to reach a session the user is in; it fails open on anything but a clear miss, since
- * the call is a courtesy, not a gate. `publishCitedBotMessage` and `completeSilent` are the two
- * ways a turn's reply actually reaches the transcript, closing check already run.
+ * — is about to reach a session the user is in; it fails open on anything it cannot prove. Since
+ * 2026-09-28 (ADR 0036, `docs/adr/0036-acceptance-checks-run-by-the-daemon.md`) that proof is
+ * deterministic: the app's own acceptance checks, a booked check-back or an @-mention for an
+ * unbacked promise, and `turn_runs` for an unverified claim — see `closing-check.ts`'s header for
+ * why the old model-judged version was dropped. `publishCitedBotMessage` and `completeSilent` are
+ * the two ways a turn's reply actually reaches the transcript, closing check already run.
  */
-import { attachmentLinePaths, USER_MEMBER, type Message, type Turn } from "@real-bot/protocol";
+import { attachmentLinePaths, USER_MEMBER, type AcceptanceCheck, type Locale, type Message, type Turn } from "@real-bot/protocol";
+import { NO_ABLATION, type Ablation } from "../ablation";
 import {
   extractWorkspacePathsFromBody,
   linkifyWorkspacePaths,
@@ -14,15 +18,15 @@ import {
 } from "../artifact-paths";
 import { pathExists } from "../collab-tools";
 import {
-  CLOSING_CHECK_MAX_TOKENS,
-  CLOSING_CHECK_SYSTEM,
-  CLOSING_CHECK_TIMEOUT_MS,
-  closingCheckNote,
-  closingCheckPayload,
-  parseClosingCheck,
+  claimsVerification,
+  closingNote,
+  describeFailingCheck,
+  FAILING_CHECKS_LIMIT,
   promisesLaterWork,
 } from "../closing-check";
 import type { CompletionsClient } from "../completions";
+import { evaluateFileCheck } from "../acceptance-eval";
+import { parseMentions } from "../mentions";
 import { isNoWorkCloser } from "../no-work";
 import type { TurnAdmission } from "../quiesce";
 import type { TurnExecution } from "../store/routing";
@@ -44,6 +48,8 @@ export type ClosingDeps = {
   executionOf: (live: Live | undefined) => TurnExecution | null;
   /** Late-bound: plan-watch.ts is built after this module. */
   observeTicket: (turnId: string, botId: string, seen: "working" | "delivered") => void;
+  /** Benchmark switches (see `ablation.ts`): `closing-check` lets every delivery through unchecked. */
+  ablation?: Ablation;
 };
 
 export type Closing = {
@@ -64,15 +70,74 @@ export type Closing = {
 };
 
 export function createClosing(deps: ClosingDeps): Closing {
-  const { store, completions, admission, lives, active, publishTurn, publishMessage, recordResponseSpend, spendOwner, executionOf, observeTicket } = deps;
+  const { store, admission, lives, active, publishTurn, publishMessage, executionOf, observeTicket } = deps;
+  const ablation = deps.ablation ?? NO_ABLATION;
+
+  /**
+   * This turn's plan checks that fail right now, named the way the note lists them, oldest-defined
+   * first, capped at {@link FAILING_CHECKS_LIMIT}. File-kind checks (`exists`/`contains`/`matches`)
+   * are re-evaluated in memory with `evaluateFileCheck` — a Bot that just fixed the file is not
+   * bounced on a stale result, and no run is recorded for this look. Command checks read the
+   * latest stored run instead (the app never re-spawns a command on a Bot's behalf); one is
+   * skipped when this turn already ran the exact same command successfully.
+   */
+  async function failingCheckLines(taskId: string, turnId: string, locale: Locale): Promise<string[]> {
+    let checks: AcceptanceCheck[];
+    try {
+      checks = store.listChecks(taskId);
+    } catch {
+      return [];
+    }
+    if (checks.length === 0) return [];
+    let runs: ReturnType<Store["turnRuns"]> = [];
+    try {
+      runs = store.turnRuns(turnId);
+    } catch {
+      runs = [];
+    }
+    const ranOkThisTurn = (command: string): boolean => {
+      const normalized = command.replace(/\s+/g, " ").trim();
+      return runs.some(
+        (run) => run.tool === "shell" && run.ok === 1 && run.exit_code === 0 && run.command.replace(/\s+/g, " ").trim() === normalized,
+      );
+    };
+    const root = store.workspacePath();
+    const lines: string[] = [];
+    for (const check of checks) {
+      if (lines.length >= FAILING_CHECKS_LIMIT) break;
+      if (check.kind === "command") {
+        if (!check.command || ranOkThisTurn(check.command)) continue;
+        const lastRun = check.last_run;
+        if (!lastRun || lastRun.outcome !== "fail") continue;
+        lines.push(describeFailingCheck(check, locale, lastRun.detail));
+        continue;
+      }
+      if (!root) continue;
+      const verdict = await evaluateFileCheck(root, check, locale);
+      if (verdict.outcome !== "fail") continue;
+      lines.push(describeFailingCheck(check, locale, verdict.detail));
+    }
+    return lines;
+  }
+
+  /** Whether the body @-mentions a real Bot by name, or `@everyone` — either counts as "handed to someone". */
+  function mentionsSomeone(body: string): boolean {
+    let roster: Array<{ name: string }> = [];
+    try {
+      roster = store.listBots();
+    } catch {
+      roster = [];
+    }
+    const parsed = parseMentions(body, roster.map((bot) => bot.name));
+    return parsed.everyone || parsed.mentions.length > 0;
+  }
 
   /**
    * Runs the closing check once per turn, when a delivery — a message that cites workspace files,
    * or one that says the work is still going — is about to reach a session the user is in. Returns
-   * the note to hand back when something in the job's opening request is neither delivered nor
-   * accounted for, else null. Fails open: no job, no brief, no default model, draining, a refused
-   * call or an unreadable verdict all mean "let it through". The call is billed to the turn, on
-   * the default model it ran on.
+   * the note to hand back when the app's own evidence contradicts the reply, else null. Fails
+   * open: no task, draining, the user not present, or the turn going inactive mid-check all mean
+   * "let it through" — this is a courtesy, not a gate.
    */
   async function closingCheck(
     turnId: string,
@@ -80,9 +145,12 @@ export function createClosing(deps: ClosingDeps): Closing {
     turn: Turn,
     input: { body: string; paths: string[]; sessionId: string },
   ): Promise<string | null> {
+    if (ablation.has("closing-check")) return null;
     if (live.closingChecked) return null;
-    if (input.paths.length === 0 && !promisesLaterWork(input.body)) return null;
-    if (!live.routing || admission?.draining) return null;
+    const isDelivery = input.paths.length > 0;
+    const isPromise = promisesLaterWork(input.body);
+    if (!isDelivery && !isPromise) return null;
+    if (admission?.draining) return null;
     let userPresent = false;
     try {
       userPresent = store.isPresent(input.sessionId, USER_MEMBER);
@@ -93,47 +161,33 @@ export function createClosing(deps: ClosingDeps): Closing {
     const taskId = store.taskOfTurn(turnId);
     if (!taskId) return null;
     live.closingChecked = true;
-    const payload = closingCheckPayload(store, {
-      taskId,
-      ticketId: store.ticketOfTurn(turnId),
-      turnId,
-      botId: turn.bot_id,
-      sessionId: turn.session_id,
-      reply: input.body,
-      paths: input.paths,
-      locale: live.locale,
-    });
-    if (!payload) return null;
-    let result;
-    try {
-      result = await completions.judge({
-        baseUrl: live.routing.baseUrl,
-        apiKey: live.routing.apiKey,
-        model: live.routing.model,
-        messages: [
-          { role: "system", content: CLOSING_CHECK_SYSTEM },
-          { role: "user", content: JSON.stringify(payload) },
-        ],
-        signal: live.abort.signal,
-        timeoutMs: CLOSING_CHECK_TIMEOUT_MS,
-        maxTokens: CLOSING_CHECK_MAX_TOKENS,
-      });
-    } catch {
-      return null;
-    }
-    recordResponseSpend({
-      kind: "turn",
-      owner: spendOwner(turn.session_id, turn.bot_id),
-      turnId,
-      target: live.routing,
-      usage: result.usage,
-      responded: result.failKind === null || result.failKind === "incomplete",
-    });
+
+    const failingChecks = isDelivery ? await failingCheckLines(taskId, turnId, live.locale) : [];
     if (!active(turnId, live)) return null;
-    if (result.failKind && result.failKind !== "incomplete") return null;
-    const items = parseClosingCheck(result.content ?? "");
-    if (!items || items.length === 0) return null;
-    return closingCheckNote(live.locale, items);
+
+    let unbackedPromise = false;
+    if (isPromise) {
+      let booked: unknown = null;
+      try {
+        booked = store.pendingCheckBack(turn.bot_id, input.sessionId);
+      } catch {
+        booked = null;
+      }
+      unbackedPromise = !booked && !mentionsSomeone(input.body);
+    }
+
+    let unverifiedClaim = false;
+    if (claimsVerification(input.body)) {
+      let ranThisTurn = 0;
+      try {
+        ranThisTurn = store.turnRuns(turnId).length;
+      } catch {
+        ranThisTurn = 0;
+      }
+      unverifiedClaim = ranThisTurn === 0;
+    }
+
+    return closingNote(live.locale, { failingChecks, unbackedPromise, unverifiedClaim });
   }
 
   /** The closing check for a `send_message`: the body and paths as the tool would resolve them. */

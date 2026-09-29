@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { ClientEvent } from "@real-bot/protocol";
 import type { ChatMessage, CompletionOk, CompletionsClient, JudgeRequest, JudgeResult } from "./completions";
 import { SITUATION_HEADING } from "./context";
+import { createPlanWatch } from "./engine/plan-watch";
 import { JUDGEMENT_SYSTEM } from "./prompts/judgement";
 import { ORGANIZER_SYSTEM, type OrganizerPayload } from "./prompts/organizer";
 import { memoryKeyStore } from "./secrets";
@@ -44,6 +45,42 @@ const closes: Array<() => Promise<void>> = [];
 afterEach(async () => {
   while (closes.length) await closes.pop()!();
 });
+
+/** `createPlanWatch` alone, over a real store: reconcile's nudge/stall/budget logic tested synchronously, without a real turn or timer. */
+function barePlanWatch() {
+  const store = new Store();
+  const published: string[] = [];
+  const fired: string[] = [];
+  const planWatch = createPlanWatch({
+    store,
+    admission: undefined,
+    publishMessage: (message) => published.push(message.body),
+    renderMirrors: () => {},
+    fireCheckBack: (id) => {
+      fired.push(id);
+      // The real engine wakes a turn on the check-back, which claims it; a plan with one still
+      // pending is left alone by the next reconcile (`pendingPlanCheckBacks`), so this fake must
+      // claim it too or every call after the first would silently no-op.
+      store.claimCheckBack(id);
+      return null;
+    },
+  });
+  const root = mkdtempSync(join(tmpdir(), "plan-watch-"));
+  store.patchSettingsSync({ workspace_path: root });
+  closes.push(async () => {
+    store.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+  return { store, planWatch, published, fired };
+}
+
+function planNudges(store: InstanceType<typeof Store>, taskId: string): Array<{ id: string; bot_id: string; note: string; created_at: string }> {
+  return store.db
+    .query<{ id: string; bot_id: string; note: string; created_at: string }, [string]>(
+      `SELECT id, bot_id, note, created_at FROM check_backs WHERE task_id = ? AND kind = 'plan_nudge' ORDER BY created_at ASC, rowid ASC`,
+    )
+    .all(taskId);
+}
 
 async function harness(
   answer: Answer,
@@ -175,6 +212,143 @@ test("a user line is filed before its turn opens: the turn works in the ticket d
   expect(h.store.getMessage(follow.id)).toMatchObject({ task_id: plan.id, ticket_id: ticket.id });
   expect(h.turnOf(follow.id)[0]).toMatchObject({ task_id: plan.id, ticket_id: ticket.id });
   expect(h.store.sessionTasks(session)).toHaveLength(1);
+});
+
+test("a quiet plan runs its stale checks before the settle payload is built, and a check run through the engine (cause edit) publishes task.upsert with its result", async () => {
+  const state: { checkId: string | null; sawRunBeforeSettlePayload: boolean | null } = { checkId: null, sawRunBeforeSettlePayload: null };
+  let h: Awaited<ReturnType<typeof harness>>;
+  h = await harness((payload) => {
+    if (payload.mode === "settle" && state.checkId && state.sawRunBeforeSettlePayload === null) {
+      // The whole point of the ordering: by the time the settle call is even built, `beforeSettle`
+      // — awaited first in `quietStretch` — has already run the check and closed its run.
+      state.sawRunBeforeSettlePayload = h.store.getCheck(state.checkId).last_run !== null;
+    }
+    if (payload.mode === "message" && !payload.current_plan) {
+      return JSON.stringify({
+        decision: "new",
+        plan: { kind: "周报", goal: "写一份周报", acceptance: ["交到 report.md"], rules: [] },
+        tickets: [{ id: "new-1", title: "初稿", spec: "写出第一版", status: "doing", worker: "Writer" }],
+        message_ticket: "new-1",
+      });
+    }
+    if (payload.mode === "settle") {
+      return JSON.stringify({ decision: "continue", plan: payload.current_plan!.spec, tickets: [] });
+    }
+    return JSON.stringify({ decision: "continue", plan: payload.current_plan!.spec, tickets: [] });
+  });
+  const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+  const session = writer.direct_session.id;
+  const trigger = h.store.insertMessage({ sessionId: session, kind: "user", author: "user", body: "写一份周报，交到 report.md" });
+  const first = h.completed();
+  await h.engine.handleInboundMessage(trigger, { fromUser: true });
+  await first;
+
+  const plan = h.store.sessionCurrentTask(session)!;
+  // Created right after the turn ends and well inside the 20 ms quiet window: a check with no run
+  // yet, on a file that is not there, so `checkStale` reads the plan as needing a run first.
+  state.checkId = h.store.createCheckByUser(plan.id, { item: "交到 report.md", kind: "exists", path: "report.md" }).id;
+  expect(h.store.checkStale(plan.id)).toBe(true);
+
+  await until(() => h.organized.some((payload) => payload.mode === "settle"));
+  expect(state.sawRunBeforeSettlePayload).toBe(true);
+  expect(h.store.getCheck(state.checkId)!.last_run).toMatchObject({ outcome: "fail", cause: "settle" });
+
+  // A second check, run directly through the engine the way the `POST /v1/checks` route does
+  // (cause `edit`), publishes a `task.upsert` that carries its result.
+  h.events.length = 0;
+  const other = h.store.createCheckByUser(plan.id, { item: "另一条", kind: "command", command: "true" });
+  await h.engine.runPlanChecks(plan.id, { cause: "edit", checkIds: [other.id] });
+  expect(h.store.getCheck(other.id).last_run).toMatchObject({ outcome: "pass", cause: "edit" });
+  const upserts = h.events.filter((event) => event.event === "task.upsert") as Array<{ checks?: Array<{ id: string; last_run: { outcome: string } | null }> }>;
+  expect(upserts.length).toBeGreaterThan(0);
+  const withResult = upserts.at(-1)!.checks?.find((row) => row.id === other.id);
+  expect(withResult?.last_run).toMatchObject({ outcome: "pass" });
+});
+
+test("an organizer-added check runs after the settle, holding a `done` open; exactly one evidence settle follows and lets it through once the check has passed", async () => {
+  let ticketId: string | null = null;
+  let hop = 0;
+  const h = await harness((payload) => {
+    if (payload.mode === "message" && !payload.current_plan) {
+      return JSON.stringify({
+        decision: "new",
+        plan: { kind: "周报", goal: "写一份周报", acceptance: ["交到 report.md"] },
+        tickets: [{ id: "new-1", title: "初稿", spec: "", status: "doing", worker: "Writer" }],
+        message_ticket: "new-1",
+      });
+    }
+    // Every settle call — the regular one, and the evidence follow-up after the check runs — says
+    // the same thing: done, with the check it proposed. The evidence call's `checks` is ignored by
+    // the engine regardless, so returning it again here is harmless.
+    if (payload.mode === "settle") {
+      ticketId = payload.current_plan!.tickets[0]!.id;
+      return JSON.stringify({
+        decision: "continue",
+        plan: { ...payload.current_plan!.spec, status: "done" },
+        tickets: [{ id: ticketId, status: "done" }],
+        // Copied with the same cwd the Bot's own run used (`commandSeenInPlan` matches on both).
+        checks: [{ id: "new-1", item: "交到 report.md", kind: "command", command: "true", cwd: "." }],
+      });
+    }
+    return JSON.stringify({ decision: "continue", plan: payload.current_plan!.spec, tickets: [] });
+  }, () => {
+    hop += 1;
+    return hop === 1 ? call("shell", { command: "true", cwd: "." }) : say("初稿在 draft.md");
+  });
+  const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+  const session = writer.direct_session.id;
+  const trigger = h.store.insertMessage({ sessionId: session, kind: "user", author: "user", body: "写一份周报，交到 report.md" });
+  const first = h.completed();
+  await h.engine.handleInboundMessage(trigger, { fromUser: true });
+  await first;
+  const plan = h.store.sessionCurrentTask(session)!;
+
+  // The first settle: `done`, plus a brand-new check nobody has run yet — so `done` is held open,
+  // for lack of evidence alone (not a failure), and the check runs once `afterSettle` catches it.
+  await until(() => h.store.listChecks(plan.id).length === 1);
+  const [check] = h.store.listChecks(plan.id);
+  expect(check).toMatchObject({ source: "organizer", command: "true" });
+  await until(() => h.store.getCheck(check!.id).last_run !== null);
+  expect(h.store.getCheck(check!.id).last_run).toMatchObject({ outcome: "pass", cause: "settle" });
+
+  // Exactly one evidence settle follows, and it is the one that lets `done` through.
+  await until(() => h.store.getTask(plan.id).status === "done");
+  expect(h.organized.filter((payload) => payload.mode === "settle")).toHaveLength(2);
+  await Bun.sleep(80);
+  expect(h.organized.filter((payload) => payload.mode === "settle")).toHaveLength(2);
+  expect(h.store.getTicket(ticketId!).status).toBe("done");
+});
+
+test("a command the organizer invents out of thin air — nobody ran it, nobody typed it — is dropped, not proposed as a check", async () => {
+  const h = await harness((payload) => {
+    if (payload.mode === "message" && !payload.current_plan) {
+      return JSON.stringify({
+        decision: "new",
+        plan: { kind: "周报", goal: "写一份周报", acceptance: ["交到 report.md"] },
+        tickets: [{ id: "new-1", title: "初稿", spec: "", status: "doing", worker: "Writer" }],
+        message_ticket: "new-1",
+      });
+    }
+    if (payload.mode === "settle") {
+      return JSON.stringify({
+        decision: "continue",
+        plan: payload.current_plan!.spec,
+        tickets: [],
+        checks: [{ id: "new-1", item: "交到 report.md", kind: "command", command: "rm -rf build" }],
+      });
+    }
+    return JSON.stringify({ decision: "continue", plan: payload.current_plan!.spec, tickets: [] });
+  });
+  const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+  const session = writer.direct_session.id;
+  const trigger = h.store.insertMessage({ sessionId: session, kind: "user", author: "user", body: "写一份周报，交到 report.md" });
+  const first = h.completed();
+  await h.engine.handleInboundMessage(trigger, { fromUser: true });
+  await first;
+  const plan = h.store.sessionCurrentTask(session)!;
+  await until(() => h.organized.some((payload) => payload.mode === "settle"));
+  await Bun.sleep(80);
+  expect(h.store.listChecks(plan.id)).toEqual([]);
 });
 
 test("an organizer that answers nothing usable, or is down, changes nothing: the turn opens in a plan without a spec", async () => {
@@ -433,6 +607,123 @@ test("a plan that goes quiet with tickets open calls one Bot back; when nothing 
   expect(nudges()).toHaveLength(1);
   expect(h.store.listMainMessages(group.id, 30).filter((m) => m.body.startsWith("这件事停下了"))).toHaveLength(1);
   expect(h.store.getTicket(review!.id).status).toBe("todo");
+});
+
+test("a failing check alone (no open ticket) still calls its ticket's worker back, and the note carries the check's own output tail", () => {
+  const { store, planWatch, fired } = barePlanWatch();
+  const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+  const session = writer.direct_session.id;
+  const plan = store.openTask({ sessionId: session, title: "写周报" });
+  // Handed over already (not "open"): only the failing check is left to reconcile about.
+  const ticket = store.createTicket({ taskId: plan.id, title: "初稿", status: "done", worker: writer.bot.id });
+  const check = store.createCheckByUser(plan.id, { item: "交到 report.md", ticket_id: ticket.id, kind: "command", command: "false" });
+  const run = store.beginCheckRun(check.id, "user");
+  store.finishCheckRun(run.id, { outcome: "fail", exitCode: 1, detail: "退出码 1，应为 0", output: "boom\nnot ok" });
+
+  planWatch.reconcilePlan(plan.id);
+  expect(fired).toHaveLength(1);
+  const [nudge] = planNudges(store, plan.id);
+  expect(nudge).toMatchObject({ bot_id: writer.bot.id });
+  expect(nudge!.note).toContain("还有验收检查没过（应用自己在本机跑的）");
+  expect(nudge!.note).toContain("「交到 report.md」——命令：false：退出码 1，应为 0");
+  expect(nudge!.note).toContain("boom");
+  expect(nudge!.note).toContain("修交付物，不是改检查");
+});
+
+test("no ticket open and no check failing: nothing to reconcile", () => {
+  const { store, planWatch, fired } = barePlanWatch();
+  const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+  const plan = store.openTask({ sessionId: writer.direct_session.id, title: "写周报" });
+  store.createTicket({ taskId: plan.id, title: "初稿", status: "done", worker: writer.bot.id });
+  planWatch.reconcilePlan(plan.id);
+  expect(fired).toHaveLength(0);
+});
+
+test(
+  "a first pass since a check's definition lets one more nudge through instead of a stall; a later fail-then-pass (first_passed_at already set) does not",
+  () => {
+    const { store, planWatch, fired, published } = barePlanWatch();
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const session = writer.direct_session.id;
+    const plan = store.openTask({ sessionId: session, title: "写周报" });
+    // A ticket that never moves, so only the check's own history decides moved/firstPassed each cycle.
+    const ticket = store.createTicket({ taskId: plan.id, title: "初稿", status: "doing", worker: writer.bot.id });
+    const check = store.createCheckByUser(plan.id, { item: "交到 report.md", ticket_id: ticket.id, kind: "command", command: "false" });
+    const fail = (detail: string) => {
+      const run = store.beginCheckRun(check.id, "user");
+      store.finishCheckRun(run.id, { outcome: "fail", exitCode: 1, detail, output: null });
+    };
+    const pass = () => {
+      const run = store.beginCheckRun(check.id, "user");
+      store.finishCheckRun(run.id, { outcome: "pass", exitCode: 0, detail: "ok", output: null });
+    };
+
+    fail("第一次不过");
+    planWatch.reconcilePlan(plan.id); // nudge 1: no `last` yet, always fires.
+    expect(fired).toHaveLength(1);
+
+    planWatch.reconcilePlan(plan.id); // nothing moved, the check never passed since nudge 1: stalled once.
+    expect(fired).toHaveLength(1);
+    expect(published).toHaveLength(1);
+    expect(published[0]).toContain("这件事停下了");
+    expect(published[0]).toContain("第一次不过");
+
+    // Stalled again changes nothing: the notice is deduped by the nudge's own id.
+    planWatch.reconcilePlan(plan.id);
+    expect(published).toHaveLength(1);
+
+    // The check passes for the first time since it was defined — after nudge 1 — while the ticket
+    // still has not moved: that alone lets exactly one more nudge through, not another stall.
+    pass();
+    planWatch.reconcilePlan(plan.id);
+    expect(fired).toHaveLength(2);
+    expect(published).toHaveLength(1);
+
+    // A fail right after nudge 2 has nothing new since nudge 2 either (the earlier pass predates
+    // it): stalled immediately, this time under nudge 2's own notice.
+    fail("又不过了");
+    planWatch.reconcilePlan(plan.id);
+    expect(fired).toHaveLength(2);
+    expect(published).toHaveLength(2);
+    expect(published[1]).toContain("这件事停下了");
+
+    // Passing again does not help: `first_passed_at` only ever stamps once, so this is not a
+    // *first* pass since nudge 2 either — it does not count as progress, and the same notice (now
+    // already sent) is all reconcile has to say; no third nudge, no third message.
+    pass();
+    planWatch.reconcilePlan(plan.id);
+    expect(fired).toHaveLength(2);
+    expect(published).toHaveLength(2);
+  },
+);
+
+test("a hard budget (tickets + checks, since the user's own last line) stops the reconcile even when a ticket keeps moving", () => {
+  const { store, planWatch, fired, published } = barePlanWatch();
+  const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+  const session = writer.direct_session.id;
+  const plan = store.openTask({ sessionId: session, title: "写周报" });
+  const ticket = store.createTicket({ taskId: plan.id, title: "初稿", status: "doing", worker: writer.bot.id });
+  const check = store.createCheckByUser(plan.id, { item: "交到 report.md", ticket_id: ticket.id, kind: "command", command: "false" });
+  const run = store.beginCheckRun(check.id, "user");
+  store.finishCheckRun(run.id, { outcome: "fail", exitCode: 1, detail: "不通过", output: null });
+  // Budget = tickets.length (1) + checks.length (1) = 2.
+  let t = Date.now();
+  const markReviewed = () => {
+    t += 60_000;
+    store.db.run(`UPDATE tickets SET status = 'review', updated_at = ? WHERE id = ?`, [new Date(t).toISOString(), ticket.id]);
+  };
+
+  planWatch.reconcilePlan(plan.id); // nudge 1: no `last` yet, always fires.
+  expect(fired).toHaveLength(1);
+  markReviewed();
+  planWatch.reconcilePlan(plan.id); // moved since nudge 1, and only 1 nudge booked so far (< budget 2): nudge 2.
+  expect(fired).toHaveLength(2);
+  markReviewed();
+  planWatch.reconcilePlan(plan.id); // moved since nudge 2 too, but the budget (2 nudges) is already spent: stalled instead.
+  expect(fired).toHaveLength(2);
+  expect(planNudges(store, plan.id)).toHaveLength(2);
+  expect(published).toHaveLength(1);
+  expect(published[0]).toContain("这件事停下了");
 });
 
 test("a turn filed under a ticket moves it to doing when it starts writing and to review when it hands the files over", async () => {

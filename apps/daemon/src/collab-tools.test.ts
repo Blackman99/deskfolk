@@ -935,6 +935,43 @@ describe("memory tools", () => {
     store.close();
   });
 
+  /**
+   * A preference revised in one conversation kept coming back under a new subject. A new subject
+   * is shown what the same session already produced; an overwrite or another session is not.
+   */
+  test("a new subject lists the Bot's other memories from the same session", async () => {
+    const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const designer = store.createBot({ name: "Designer", duties: "draw", boundaries: "stay" });
+    const group = store.createGroup({ name: "日报", members: [writer.bot.id, designer.bot.id] });
+    const inGroup = await turnCtx(store, writer.bot.id, group.id);
+    const first = await runCollabTool(inGroup, "remember", { subject: "日报海报版式", body: "单屏新闻感" });
+    expect(first.data?.same_session).toBeUndefined();
+    await runCollabTool(await turnCtx(store, writer.bot.id, writer.direct_session.id), "remember", {
+      subject: "用户的时区",
+      body: "UTC+8",
+    });
+
+    const second = await runCollabTool(await turnCtx(store, writer.bot.id, group.id), "remember", {
+      subject: "日报海报排版规范",
+      body: "五条 banner 错落",
+    });
+    expect(second.ok).toBe(true);
+    const listed = second.data?.same_session as Array<{ subject: string }>;
+    expect(listed.map((row) => row.subject)).toEqual(["日报海报版式"]);
+    expect(String(second.data?.note)).toContain("forget the older one");
+
+    // Rewriting an existing subject is already the revision: nothing to point at.
+    const rewrite = await runCollabTool(inGroup, "remember", { subject: "日报海报版式", body: "双栏" });
+    expect(rewrite.data?.same_session).toBeUndefined();
+
+    // A day later the session's old memories are no longer this conversation's.
+    store.db.run(`UPDATE memories SET updated_at = ?`, [new Date(Date.now() - 25 * 60 * 60_000).toISOString()]);
+    const later = await runCollabTool(inGroup, "remember", { subject: "日报配色", body: "深色" });
+    expect(later.data?.same_session).toBeUndefined();
+    store.close();
+  });
+
   test("forget resolves by subject and refuses another Bot's memory", async () => {
     const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
     const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });

@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
 import { flushSync } from "svelte";
-import type { PlanSpec, TaskDetail, TaskSpecRevision } from "@real-bot/protocol";
+import type { AcceptanceCheck, PlanSpec, TaskDetail, TaskSpecRevision } from "@real-bot/protocol";
 import PlanSpecPanel from "./PlanSpecPanel.svelte";
 import { copyFor } from "../copy.ts";
-import { click, fill, render } from "../test-render.ts";
+import { buttonByText, click, fill, render } from "../test-render.ts";
 import { reactive } from "../test-reactive.svelte.ts";
 import { specWithLines } from "./plan-board.ts";
 
@@ -61,6 +61,40 @@ function aRevision(over: Partial<TaskSpecRevision> = {}): TaskSpecRevision {
   };
 }
 
+function aCheck(over: Partial<AcceptanceCheck> = {}): AcceptanceCheck {
+  return {
+    id: "check-1",
+    task_id: "task-1",
+    ticket_id: null,
+    item: "有对比表",
+    kind: "exists",
+    path: "report.md",
+    pattern: null,
+    negate: false,
+    command: null,
+    cwd: null,
+    expect_exit: null,
+    expect_stdout: null,
+    timeout_sec: null,
+    source: "user",
+    created_at: "2026-09-24T08:00:00.000Z",
+    updated_at: "2026-09-24T08:00:00.000Z",
+    defined_at: "2026-09-24T08:00:00.000Z",
+    first_passed_at: null,
+    last_run: null,
+    running: false,
+    ...over,
+  };
+}
+
+function selectValue(el: Element | null | undefined, value: string): void {
+  if (!el) throw new Error("selectValue: no element");
+  const select = el as HTMLSelectElement;
+  select.value = value;
+  select.dispatchEvent(new Event("change", { bubbles: true }));
+  flushSync();
+}
+
 async function until(host: HTMLElement, selector: string): Promise<Element> {
   for (let i = 0; i < 20; i += 1) {
     const found = host.querySelector(selector);
@@ -89,6 +123,10 @@ function open(over: {
   api?: Partial<{
     patchTaskSpec: (taskId: string, body: unknown) => Promise<TaskDetail>;
     taskSpecRevisions: (taskId: string) => Promise<TaskSpecRevision[]>;
+    createCheck: (taskId: string, body: unknown) => Promise<TaskDetail>;
+    patchCheck: (checkId: string, body: unknown) => Promise<TaskDetail>;
+    deleteCheck: (checkId: string, revision?: string) => Promise<TaskDetail>;
+    runChecks: (taskId: string, checkId?: string) => Promise<TaskDetail>;
   }> | null;
 } = {}) {
   const saved: TaskDetail[] = [];
@@ -96,6 +134,10 @@ function open(over: {
   const jumps: Array<[string, string]> = [];
   const patchCalls: Array<{ taskId: string; body: unknown }> = [];
   const revisionCalls: string[] = [];
+  const createCheckCalls: Array<{ taskId: string; body: unknown }> = [];
+  const patchCheckCalls: Array<{ checkId: string; body: unknown }> = [];
+  const deleteCheckCalls: Array<{ checkId: string; revision?: string }> = [];
+  const runChecksCalls: Array<{ taskId: string; checkId?: string }> = [];
 
   const api =
     over.api === null
@@ -111,6 +153,26 @@ function open(over: {
             if (over.api?.taskSpecRevisions) return over.api.taskSpecRevisions(taskId);
             return [];
           },
+          createCheck: async (taskId: string, body: unknown) => {
+            createCheckCalls.push({ taskId, body });
+            if (over.api?.createCheck) return over.api.createCheck(taskId, body);
+            return aDetail({ checks: [aCheck()] });
+          },
+          patchCheck: async (checkId: string, body: unknown) => {
+            patchCheckCalls.push({ checkId, body });
+            if (over.api?.patchCheck) return over.api.patchCheck(checkId, body);
+            return aDetail({ checks: [aCheck()] });
+          },
+          deleteCheck: async (checkId: string, revision?: string) => {
+            deleteCheckCalls.push({ checkId, revision });
+            if (over.api?.deleteCheck) return over.api.deleteCheck(checkId, revision);
+            return aDetail({ checks: [] });
+          },
+          runChecks: async (taskId: string, checkId?: string) => {
+            runChecksCalls.push({ taskId, checkId });
+            if (over.api?.runChecks) return over.api.runChecks(taskId, checkId);
+            return aDetail({ checks: [aCheck({ running: true })] });
+          },
         };
 
   const props = reactive({
@@ -123,7 +185,19 @@ function open(over: {
   });
 
   const view = render(PlanSpecPanel, props as never);
-  return { ...view, props, saved, conflicts, jumps, patchCalls, revisionCalls };
+  return {
+    ...view,
+    props,
+    saved,
+    conflicts,
+    jumps,
+    patchCalls,
+    revisionCalls,
+    createCheckCalls,
+    patchCheckCalls,
+    deleteCheckCalls,
+    runChecksCalls,
+  };
 }
 
 test("renders the goal and every spec list, in order", () => {
@@ -319,3 +393,145 @@ test("without an api the panel is read-only: no edit buttons, no history toggle"
   view.close();
 });
 
+
+test("acceptance checks: pills render after each line's text, the head chip counts all active checks, and orphans land in their own sub-block", () => {
+  const passRun = { id: "r1", check_id: "c1", task_id: "task-1", cause: "settle" as const, started_at: "2026-09-24T08:00:00.000Z", finished_at: "2026-09-24T08:00:01.000Z", outcome: "pass" as const, exit_code: 0, detail: "ok", output: null };
+  const failRun = { ...passRun, id: "r2", check_id: "c2", outcome: "fail" as const, exit_code: 1, detail: "no" };
+  const passCheck = aCheck({ id: "c1", item: "有对比表", last_run: passRun });
+  const failCheck = aCheck({ id: "c2", item: "有结论", last_run: failRun });
+  const orphan = aCheck({ id: "c3", item: "旧的一条", last_run: null });
+  const view = open({ detail: aDetail({ checks: [passCheck, failCheck, orphan] }) });
+  const acceptance = listBlock(view.host, t.plan.spec.acceptance);
+  const items = [...acceptance.querySelectorAll("li")];
+  expect(items[0]?.querySelector(".check-pill.is-pass")).not.toBeNull();
+  expect(items[1]?.querySelector(".check-pill.is-fail")).not.toBeNull();
+  expect(acceptance.querySelector(".plan-spec-checks-summary")?.textContent).toBe(t.plan.checks.summary(1, 3));
+  const orphans = acceptance.querySelector(".plan-spec-checks-orphans")!;
+  expect(orphans.querySelector(".plan-spec-checks-orphans-title")?.textContent).toBe(t.plan.checks.orphansTitle);
+  expect(orphans.querySelector(".check-pill.is-none")).not.toBeNull();
+  view.close();
+});
+
+test("跑检查 runs every active check for the plan and disables while the request is in flight", async () => {
+  let resolveRun: ((detail: TaskDetail) => void) | undefined;
+  const view = open({
+    detail: aDetail({ checks: [aCheck()] }),
+    api: { runChecks: () => new Promise<TaskDetail>((resolve) => { resolveRun = resolve; }) },
+  });
+  const acceptance = listBlock(view.host, t.plan.spec.acceptance);
+  const runBtn = acceptance.querySelector<HTMLButtonElement>(".plan-spec-checks-run-btn")!;
+  click(runBtn);
+  expect(view.runChecksCalls).toEqual([{ taskId: "task-1", checkId: undefined }]);
+  expect(runBtn.disabled).toBe(true);
+  resolveRun?.(aDetail({ checks: [aCheck({ running: true })] }));
+  await settle();
+  expect(view.saved).toHaveLength(1);
+  view.close();
+});
+
+test("+ 检查 opens the form; saving posts createCheck with the drafted input for the chosen line and kind", async () => {
+  const view = open();
+  const acceptance = listBlock(view.host, t.plan.spec.acceptance);
+  click(acceptance.querySelector<HTMLButtonElement>(".plan-spec-checks-add-btn"));
+  const form = acceptance.querySelector(".check-form")!;
+  selectValue(form.querySelector("select"), "有结论");
+  click(buttonByText(form, t.plan.checks.kindContains));
+  const inputs = () => [...form.querySelectorAll<HTMLInputElement>(".check-form-input")];
+  fill(inputs()[0], "report.md");
+  fill(inputs()[1], "sources/");
+  click(buttonByText(form, t.plan.save));
+  await settle();
+  expect(view.createCheckCalls).toEqual([
+    {
+      taskId: "task-1",
+      body: {
+        item: "有结论",
+        kind: "contains",
+        path: "report.md",
+        pattern: "sources/",
+        negate: false,
+        command: null,
+        cwd: null,
+        expect_exit: null,
+        expect_stdout: null,
+        timeout_sec: null,
+      },
+    },
+  ]);
+  expect(view.saved).toHaveLength(1);
+  view.close();
+});
+
+test("the form maps 422 codes and a 409 to copy, and passes through invalid_args' own message", async () => {
+  async function tryCreate(err: { status: number; code: string; message: string }): Promise<string | null> {
+    const view = open({ api: { createCheck: async () => { throw err; } } });
+    const acceptance = listBlock(view.host, t.plan.spec.acceptance);
+    click(acceptance.querySelector<HTMLButtonElement>(".plan-spec-checks-add-btn"));
+    const form = acceptance.querySelector(".check-form")!;
+    fill(form.querySelector(".check-form-input"), "report.md");
+    click(buttonByText(form, t.plan.save));
+    await settle();
+    const message = form.querySelector(".field-error")?.textContent ?? null;
+    view.close();
+    return message;
+  }
+  expect(await tryCreate({ status: 422, code: "outside_workspace", message: "x" })).toBe(t.plan.checks.outsideWorkspace);
+  expect(await tryCreate({ status: 422, code: "too_many_checks", message: "x" })).toBe(t.plan.checks.tooManyChecks);
+  expect(await tryCreate({ status: 422, code: "invalid_args", message: "item 太长了" })).toBe("item 太长了");
+  expect(await tryCreate({ status: 409, code: "check_gone", message: "x" })).toBe(t.plan.checks.checkGone);
+});
+
+test("a check row expands to show its description, source and actions; editing patches, deleting asks to confirm", async () => {
+  const check = aCheck({ id: "c1", item: "有对比表", source: "organizer" });
+  const view = open({ detail: aDetail({ checks: [check] }) });
+  const acceptance = listBlock(view.host, t.plan.spec.acceptance);
+  click(acceptance.querySelector(".check-pill"));
+  expect(acceptance.querySelector(".check-desc")?.textContent).toBe("report.md 存在且不为空");
+  expect(acceptance.querySelector(".check-meta")?.textContent).toContain(t.plan.checks.sourceOrganizer);
+  expect(acceptance.querySelector(".check-meta")?.textContent).toContain(t.plan.checks.neverRun);
+
+  const checkActions = acceptance.querySelector(".check-actions")!;
+  click(buttonByText(checkActions, t.plan.edit));
+  const form = acceptance.querySelector(".check-form")!;
+  fill(form.querySelector(".check-form-input"), "other.md");
+  click(buttonByText(form, t.plan.save));
+  await settle();
+  expect(view.patchCheckCalls).toEqual([
+    {
+      checkId: "c1",
+      body: {
+        item: "有对比表",
+        kind: "exists",
+        path: "other.md",
+        pattern: null,
+        negate: false,
+        command: null,
+        cwd: null,
+        expect_exit: null,
+        expect_stdout: null,
+        timeout_sec: null,
+        if_revision: check.updated_at,
+      },
+    },
+  ]);
+  expect(view.saved).toHaveLength(1);
+
+  click(buttonByText(acceptance, t.plan.checks.remove));
+  click(buttonByText(acceptance, t.plan.checks.confirmRemove));
+  await settle();
+  expect(view.deleteCheckCalls).toEqual([{ checkId: "c1", revision: check.updated_at }]);
+  expect(view.saved).toHaveLength(2);
+  view.close();
+});
+
+test("without an api, check pills still show but their actions and the run/add buttons are hidden", () => {
+  const view = open({ api: null, detail: aDetail({ checks: [aCheck()] }) });
+  const acceptance = listBlock(view.host, t.plan.spec.acceptance);
+  expect(acceptance.querySelector(".check-pill")).not.toBeNull();
+  expect(acceptance.querySelector(".plan-spec-checks-add-btn")).toBeNull();
+  expect(acceptance.querySelector(".plan-spec-checks-run-btn")).toBeNull();
+  click(acceptance.querySelector(".check-pill"));
+  expect(acceptance.querySelector(".check-desc")).not.toBeNull();
+  expect(acceptance.querySelector(".check-actions")).toBeNull();
+  view.close();
+});

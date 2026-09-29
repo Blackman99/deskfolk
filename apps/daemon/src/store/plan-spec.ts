@@ -4,9 +4,10 @@
  * user — so the board can show how the goal moved. The organizer's ticket list is applied here
  * too, in one transaction with the spec, so a plan is never half-updated.
  */
-import type { TaskDetail, TaskSpecRevision, Ticket, TicketStatus } from "@real-bot/protocol";
+import type { AcceptanceCheck, TaskDetail, TaskSpecRevision, Ticket, TicketStatus } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
+import { applyOrganizerChecks, checkNeverRanSinceDefinition, checksHoldingPlanOpen, listChecks, rebindCheckItems, type OrganizerCheckInput } from "./acceptance-checks";
 import { normalizePlanSpec, parsePlanSpec, type PlanSpec } from "./plan-shape";
 import { type StoreContext } from "./shared";
 import {
@@ -135,13 +136,15 @@ export function setPlanSpecByUser(
   raw: unknown,
   ifRevision?: unknown,
 ): { task: Task; revision: SpecRevisionRow } {
-  getTask(ctx, taskId);
+  const before = getTask(ctx, taskId);
   const spec = normalizePlanSpec(raw);
   if (!spec) throw new HttpError(422, "invalid_args", "spec needs a goal");
+  const beforeAcceptance = parsePlanSpec(before.spec)?.acceptance ?? [];
   return ctx.db.transaction(() => {
     assertRevision(ctx, taskId, ifRevision);
     const now = isoNow();
     const task = setTaskSpec(ctx, taskId, spec, now);
+    rebindCheckItems(ctx, taskId, beforeAcceptance, spec.acceptance, now);
     const revision = recordSpecRevision(ctx, { taskId, spec, actor: "user", now });
     return { task, revision };
   })();
@@ -193,6 +196,11 @@ export type OrganizerResult = {
   tickets: OrganizerTicketInput[];
   /** Which ticket the message that prompted this run is about: an id, a `new-N`, or null. */
   messageTicket: string | null;
+  /**
+   * Acceptance checks this run proposes, edits or removes. Applied only when this run lands on the
+   * current plan or opens a new one (a `resume` or `join` never touches another plan's checks).
+   */
+  checks?: OrganizerCheckInput[];
 };
 
 /**
@@ -237,6 +245,10 @@ export function applyOrganizerResult(
   created: number;
   /** Tickets that kept a plan the organizer called done open; empty when it was not called done or nothing was left. */
   heldOpenBy: Ticket[];
+  /** Checks that kept a plan the organizer called done open: failed, or never run since their definition. */
+  heldByChecks: AcceptanceCheck[];
+  /** `heldByChecks` is not empty and every one of them is holding it open only for lack of a run yet — none has failed. */
+  awaitingEvidence: boolean;
 } {
   const at = input.now ?? new Date();
   const now = at.toISOString();
@@ -271,6 +283,12 @@ export function applyOrganizerResult(
         now: at,
       });
     }
+    // Checks and rebinding read the spec as it stood before this run touches it: `target` was
+    // fetched fresh above (resume/join) or is `input.current` (continue), never yet written to.
+    const beforeAcceptance = parsePlanSpec(target.spec)?.acceptance ?? [];
+    // A resumed or joined plan is someone else's spec history to revise, not this run's own checks
+    // to write: the organizer only touches checks on the plan it is continuing or opening.
+    const appliesChecks = result.decision === "continue" || result.decision === "new";
 
     const existing = listTickets(ctx, target.id);
     const byId = new Map(existing.map((ticket) => [ticket.id, ticket]));
@@ -317,8 +335,16 @@ export function applyOrganizerResult(
       }
     }
 
+    if (appliesChecks && result.checks?.length) {
+      applyOrganizerChecks(ctx, { task: target, entries: result.checks, placeholders, now: at });
+    }
+    // A line dropped from the plan should not silently take its check with it: a check whose item
+    // was one of the old acceptance lines follows a rewording to the same position.
+    rebindCheckItems(ctx, target.id, beforeAcceptance, result.spec.acceptance, now);
+
     const heldOpenBy = result.spec.status === "done" ? ticketsHoldingPlanOpen(listTickets(ctx, target.id)) : [];
-    const spec: PlanSpec = heldOpenBy.length > 0 ? { ...result.spec, status: "active" } : result.spec;
+    const heldByChecks = result.spec.status === "done" ? checksHoldingPlanOpen(ctx, target.id) : [];
+    const spec: PlanSpec = heldOpenBy.length > 0 || heldByChecks.length > 0 ? { ...result.spec, status: "active" } : result.spec;
     const task = setTaskSpec(ctx, target.id, spec, now);
     const revision = recordSpecRevision(ctx, {
       taskId: task.id,
@@ -339,7 +365,8 @@ export function applyOrganizerResult(
     if (input.source.messageId) {
       ctx.db.run(`UPDATE messages SET task_id = ?, ticket_id = ? WHERE id = ?`, [task.id, messageTicketId, input.source.messageId]);
     }
-    return { task, tickets: listTickets(ctx, task.id), messageTicketId, revision, created, heldOpenBy };
+    const awaitingEvidence = heldByChecks.length > 0 && heldByChecks.every((check) => checkNeverRanSinceDefinition(check));
+    return { task, tickets: listTickets(ctx, task.id), messageTicketId, revision, created, heldOpenBy, heldByChecks, awaitingEvidence };
   })();
 }
 
@@ -360,6 +387,7 @@ export function taskDetail(ctx: StoreContext, taskId: string, present: (path: st
     revision: latest?.revision ?? 0,
     revision_actor: latest?.actor ?? null,
     routine_id: task.routine_id,
+    checks: listChecks(ctx, taskId),
     tickets: listTickets(ctx, taskId).map((ticket) => ({
       ...ticket,
       artifacts: ticketArtifacts(ctx, ticket.id, present).map((row) => ({

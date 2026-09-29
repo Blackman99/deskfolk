@@ -222,7 +222,7 @@
 					</div>
 					<p class="memory-body">{memory.body}</p>
 					<div class="memory-origin">
-						<span class="memory-age-badge">{memoryAgeLabel(memory.created_at, t)}</span>
+						<span class="memory-age-badge">{memoryAgeLabel(memory.updated_at, t)}</span>
 						{#if origin.kind === 'session'}
 							<span aria-hidden="true" class="origin-dot">·</span>
 							<button
@@ -363,7 +363,7 @@
 					<div class="memory-form-card memory-origin-card">
 						<div class="memory-card-header">
 							<span class="memory-field-label">形成来源与更新</span>
-							<span class="memory-age-text">{memoryAgeLabel(editingMemory.created_at, t)}</span>
+							<span class="memory-age-text">{memoryAgeLabel(editingMemory.updated_at, t)}</span>
 						</div>
 						<div class="memory-origin-details">
 							{#if origin.kind === 'session'}
