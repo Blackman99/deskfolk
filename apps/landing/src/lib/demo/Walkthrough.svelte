@@ -44,7 +44,7 @@
   const media = (s: string, file: string) => `${base}/media/walkthrough/${s}/${file}`;
 
   /** The full film is the README's: 1920×1080, the English one recorded dark and the Chinese one light. */
-  const FILM_GROUND: Record<Lang, string> = { zh: '#eef2f6', en: '#0d1219' };
+  const FILM_GROUND: Record<Lang, string> = { zh: '#eef1f2', en: '#0f1416' };
   /** The step whose clip the stage is showing, for the enlarged view. */
   const onStage = $derived(shown > 0 && shown === scene ? shown : 0);
   /** The step the enlarged view holds; set as it opens, so a later theme change cannot swap it. */
@@ -223,7 +223,7 @@
         <span>{t.hero.wipNote}</span>
         <span class="version mono">v{version}</span>
       </p>
-      <h1 class="serif">
+      <h1 class="display">
         {#each t.hero.headlineLines as line, i}{#if i > 0}<br />{/if}<span>{line}</span>{/each}
       </h1>
       <p class="sub">{t.hero.subhead}</p>
@@ -345,14 +345,14 @@
     <!-- Steps -->
     <div class="steps">
       <header class="demo-head">
-        <h2 class="serif">{t.demo.heading}</h2>
+        <h2 class="display">{t.demo.heading}</h2>
         <p>{t.demo.intro}</p>
       </header>
       {#each t.demo.steps as step, i}
         <article class="step" data-scene={i + 1} class:on={scene === i + 1}>
           <button type="button" class="step-link" onclick={() => jumpTo(i + 1)}>
-            <span class="num serif" aria-hidden="true">{pad(i + 1)}</span>
-            <h3 class="serif">{step.title}</h3>
+            <span class="num display" aria-hidden="true">{pad(i + 1)}</span>
+            <h3 class="display">{step.title}</h3>
           </button>
           <p>{step.body}</p>
           {#if step.link}
@@ -415,7 +415,7 @@
     align-items: center;
     gap: 10px;
     margin: 0;
-    font-size: 13.5px;
+    font-size: 14px;
     color: var(--ink-2);
   }
 
@@ -431,7 +431,7 @@
     font-size: 12px;
     color: var(--ink-3);
     border: 1px solid var(--line);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     padding: 1px 7px;
   }
 
@@ -474,7 +474,7 @@
 
   .trust h2 {
     margin: 0 0 8px;
-    font-size: 12.5px;
+    font-size: 13px;
     font-weight: 650;
     letter-spacing: 0.02em;
     color: var(--teal);
@@ -528,9 +528,9 @@
     max-width: 100%;
     padding: 8px 8px 8px 14px;
     border: 1px solid var(--line);
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     background: var(--paper);
-    font-size: 13.5px;
+    font-size: 14px;
   }
 
   .run-label {
@@ -539,7 +539,7 @@
 
   .run code {
     color: var(--teal-2);
-    font-size: 13.5px;
+    font-size: 14px;
   }
 
   .hints {
@@ -637,7 +637,7 @@
     position: relative;
     width: 100%;
     overflow: hidden;
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     box-shadow: var(--shadow-window);
     background: var(--app-bg);
   }
@@ -689,11 +689,11 @@
     gap: 6px;
     min-height: 28px;
     padding: 0 11px;
-    border-radius: 999px;
-    background: rgba(15, 23, 42, 0.72);
+    border-radius: var(--radius-full);
+    background: rgba(18, 28, 32, 0.72);
     color: #fff;
     font: inherit;
-    font-size: 12.5px;
+    font-size: 13px;
     font-weight: 600;
     font-variant-numeric: tabular-nums;
     box-shadow: 0 6px 18px -8px rgba(0, 0, 0, 0.5);
@@ -728,9 +728,9 @@
     gap: 6px;
     min-height: 28px;
     padding: 0 11px;
-    border-radius: 999px;
-    background: rgba(15, 23, 42, 0.72);
-    font-size: 12.5px;
+    border-radius: var(--radius-full);
+    background: rgba(18, 28, 32, 0.72);
+    font-size: 13px;
     font-weight: 600;
     box-shadow: 0 6px 18px -8px rgba(0, 0, 0, 0.5);
     transition: background-color 160ms ease;
@@ -738,7 +738,7 @@
 
   .enlarge:hover .enlarge-pill,
   .enlarge:focus-visible .enlarge-pill {
-    background: rgba(15, 23, 42, 0.9);
+    background: rgba(18, 28, 32, 0.9);
   }
 
   /* The full film, over the first screen's still. */
@@ -754,8 +754,8 @@
     min-height: 48px;
     padding: 0 18px 0 6px;
     border: 0;
-    border-radius: 999px;
-    background: rgba(15, 23, 42, 0.8);
+    border-radius: var(--radius-full);
+    background: rgba(18, 28, 32, 0.8);
     color: #fff;
     font: inherit;
     font-size: 15px;
@@ -767,7 +767,7 @@
   }
 
   .watch:hover {
-    background: rgba(15, 23, 42, 0.92);
+    background: rgba(18, 28, 32, 0.92);
   }
 
   .watch-icon {
@@ -778,7 +778,7 @@
     height: 36px;
     border-radius: 50%;
     background: #fff;
-    color: #0f172a;
+    color: #121c20;
     transition: transform 160ms ease;
   }
 
@@ -798,13 +798,13 @@
   }
 
   .replay:hover {
-    background: rgba(15, 23, 42, 0.88);
+    background: rgba(18, 28, 32, 0.88);
   }
 
   .caption {
     margin: 0;
     min-height: 1.5em;
-    font-size: 13.5px;
+    font-size: 14px;
     line-height: 1.5;
     color: var(--ink);
     padding-left: 12px;
@@ -832,11 +832,11 @@
     min-height: 32px;
     padding: 0 10px;
     border: 1px solid var(--line);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     background: var(--paper);
     color: var(--ink-3);
     font: inherit;
-    font-size: 12.5px;
+    font-size: 13px;
     cursor: pointer;
     transition: background-color 200ms ease, color 200ms ease, border-color 200ms ease;
   }

@@ -24,7 +24,7 @@
 
   {#each groups as group}
     <section class="group" id={group.group} aria-labelledby="{group.group}-heading">
-      <h2 id="{group.group}-heading" class="serif">{t.docs.navGroup[group.group]}</h2>
+      <h2 id="{group.group}-heading" class="display">{t.docs.navGroup[group.group]}</h2>
       <div class="cards">
         {#each group.pages as key}
           <a class="card" href="{base}/{lang}{docsPath(key)}">
@@ -73,7 +73,7 @@
     gap: 4px;
     padding: 14px 16px;
     border: 1px solid var(--line);
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     background: var(--paper);
     color: var(--ink);
     text-decoration: none;
@@ -89,7 +89,7 @@
 
   .title {
     font-weight: 650;
-    font-size: 15.5px;
+    font-size: 16px;
   }
 
   .blurb {
@@ -103,7 +103,7 @@
   }
 
   .card.topic .title {
-    font-size: 14.5px;
+    font-size: 15px;
   }
 
   .card.topic .blurb {

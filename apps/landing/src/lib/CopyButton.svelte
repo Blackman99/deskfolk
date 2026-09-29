@@ -25,13 +25,13 @@
 <style>
   .copy {
     font: inherit;
-    font-size: 12.5px;
+    font-size: 13px;
     font-weight: 600;
     min-height: 32px;
     color: var(--ink-2);
     background: var(--ground);
     border: 1px solid var(--line);
-    border-radius: 7px;
+    border-radius: var(--radius-sm);
     padding: 4px 10px;
     cursor: pointer;
     white-space: nowrap;

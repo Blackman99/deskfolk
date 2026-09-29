@@ -231,7 +231,7 @@
     color: var(--ink);
     background: var(--paper);
     border: 1px solid var(--line);
-    border-radius: 9px;
+    border-radius: var(--radius-md);
     padding: 8px 34px 8px 32px;
     min-height: 38px;
     outline: none;
@@ -261,7 +261,7 @@
     font-size: 11px;
     color: var(--ink-3);
     border: 1px solid var(--line);
-    border-radius: 5px;
+    border-radius: var(--radius-sm);
     padding: 0 5px;
     line-height: 17px;
     pointer-events: none;
@@ -275,7 +275,7 @@
     font-size: 16px;
     min-height: 46px;
     padding-left: 38px;
-    border-radius: 11px;
+    border-radius: var(--radius-md);
   }
 
   .large .icon {
@@ -292,7 +292,7 @@
     overflow-y: auto;
     background: var(--paper);
     border: 1px solid var(--line);
-    border-radius: 11px;
+    border-radius: var(--radius-md);
     box-shadow: 0 12px 32px rgb(0 0 0 / 0.14);
     padding: 6px;
   }
@@ -304,7 +304,7 @@
   .note {
     margin: 0;
     padding: 12px;
-    font-size: 13.5px;
+    font-size: 14px;
     color: var(--ink-3);
   }
 
@@ -319,7 +319,7 @@
     flex-direction: column;
     gap: 2px;
     padding: 8px 10px;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     color: var(--ink);
     text-decoration: none;
   }
@@ -329,7 +329,7 @@
   }
 
   .where {
-    font-size: 11.5px;
+    font-size: 12px;
     color: var(--ink-3);
   }
 
@@ -340,7 +340,7 @@
   }
 
   .snippet {
-    font-size: 12.5px;
+    font-size: 13px;
     color: var(--ink-2);
     line-height: 1.5;
     overflow: hidden;
@@ -353,7 +353,7 @@
   mark {
     background: var(--mustard-tint);
     color: inherit;
-    border-radius: 3px;
+    border-radius: var(--radius-xs);
     padding: 0 1px;
   }
 </style>

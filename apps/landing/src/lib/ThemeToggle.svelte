@@ -45,7 +45,7 @@
     padding: 3px;
     gap: 2px;
     border: 1px solid var(--line);
-    border-radius: 9px;
+    border-radius: var(--radius-md);
     background: var(--paper);
   }
 
@@ -56,7 +56,7 @@
     width: 28px;
     height: 26px;
     border: 0;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     background: transparent;
     color: var(--ink-3);
     cursor: pointer;

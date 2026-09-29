@@ -32,7 +32,7 @@
   </article>
 
   <section class="index" aria-labelledby="topic-index">
-    <h2 id="topic-index" class="serif">{t.docs.manifestoIndexHeading}</h2>
+    <h2 id="topic-index" class="display">{t.docs.manifestoIndexHeading}</h2>
     <p class="lead">{t.docs.manifestoIndexLead}</p>
     <div class="cards">
       {#each data.index as entry}
@@ -80,7 +80,7 @@
   .card {
     padding: 16px 18px 14px;
     border: 1px solid var(--line);
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     background: var(--paper);
     scroll-margin-top: calc(var(--nav-h) + 16px);
   }
@@ -116,7 +116,7 @@
   }
 
   .term-name {
-    font-size: 12.5px;
+    font-size: 13px;
     color: var(--ink-3);
     text-decoration: none;
   }

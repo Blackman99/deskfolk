@@ -38,9 +38,16 @@ const speeds = new Map(
     .map((pair) => pair.split('=').map(Number) as [number, number])
 );
 
-/** Where the stage's top-right corner is on the 1920×1080 film page (see /film/<lang>/live). */
+/** Where the stage's top-right corner is on the 1920×1080 film page (see /film/<lang>/live), in CSS px. */
 const STAGE_RIGHT = 390 + 1480;
 const STAGE_TOP = 77;
+/** The recording's device pixels per CSS pixel (live.ts --scale); badges and their place follow it. */
+const SCALE =
+  Number(
+    execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width', '-of', 'csv=p=0', path.join(outDir, `${tag}.silent.mp4`)])
+      .toString()
+      .trim()
+  ) / 1920;
 
 const timeline = JSON.parse(readFileSync(path.join(outDir, `${tag}.timeline.json`), 'utf-8')) as Timeline;
 const cues = JSON.parse(readFileSync(path.join(outDir, `${tag}.cues.json`), 'utf-8')) as Cue[];
@@ -95,11 +102,11 @@ async function badges(): Promise<Map<number, string>> {
   const shown = [...new Set(plan.filter((p) => p.factor > 1.2).map((p) => Math.round(p.factor)))];
   if (!shown.length) return files;
   const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width: 400, height: 120 } });
+  const page = await browser.newPage({ viewport: { width: 400, height: 120 }, deviceScaleFactor: SCALE });
   for (const f of shown) {
     await page.setContent(`<html><body style="margin:0;background:transparent">
       <div id="b" style="display:inline-flex;align-items:center;gap:10px;padding:10px 18px;border-radius:999px;
-        background:rgba(15,23,42,.78);color:#fff;font:600 24px -apple-system,BlinkMacSystemFont,'SF Pro Text',sans-serif;
+        background:rgba(18,28,32,.78);color:#fff;font:600 24px -apple-system,BlinkMacSystemFont,'SF Pro Text',sans-serif;
         box-shadow:0 8px 24px -8px rgba(0,0,0,.4)">
         <svg width="26" height="18" viewBox="0 0 26 18"><path d="M1 1l11 8-11 8zM13 1l11 8-11 8z" fill="#fff"/></svg>${f}×
       </div></body></html>`);
@@ -127,7 +134,7 @@ async function main() {
       .filter((p) => p.factor > 1.2 && Math.round(p.factor) === f)
       .map((p) => `between(t,${((p.at * bar) / 1000 + 0.3).toFixed(2)},${(((p.at + p.newLength) * bar) / 1000 - 0.3).toFixed(2)})`)
       .join('+');
-    parts.push(`[${last}][${n}:v]overlay=x=${STAGE_RIGHT - 24}-w:y=${STAGE_TOP + 22}:enable='${spans}'[o${n}]`);
+    parts.push(`[${last}][${n}:v]overlay=x=${Math.round((STAGE_RIGHT - 24) * SCALE)}-w:y=${Math.round((STAGE_TOP + 22) * SCALE)}:enable='${spans}'[o${n}]`);
     last = `o${n}`;
     n++;
   }

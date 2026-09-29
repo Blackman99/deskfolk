@@ -103,7 +103,7 @@
     width: 14px;
     height: 14px;
     border: 1.5px solid currentColor;
-    border-radius: 4px;
+    border-radius: var(--radius-xs);
     display: grid;
     place-items: center;
   }

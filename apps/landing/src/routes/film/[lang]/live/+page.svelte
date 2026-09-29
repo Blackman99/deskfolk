@@ -382,7 +382,7 @@
   }
 
   .brand-name {
-    font-family: var(--font-serif);
+    font-family: var(--font-display);
     font-weight: 700;
     letter-spacing: -0.01em;
   }
@@ -445,7 +445,7 @@
 
   h1 {
     margin: 0;
-    font-family: var(--font-serif);
+    font-family: var(--font-display);
     font-size: 62px;
     white-space: nowrap;
     font-weight: 700;
@@ -538,7 +538,7 @@
 
   h2 {
     margin: 10px 0 0;
-    font-family: var(--font-serif);
+    font-family: var(--font-display);
     font-size: 34px;
     font-weight: 700;
     line-height: 1.26;
@@ -690,7 +690,7 @@
     padding: 5px;
     border-radius: 10px;
     background: rgba(255, 255, 255, 0.92);
-    box-shadow: 0 16px 36px -10px rgba(15, 23, 42, 0.35);
+    box-shadow: 0 16px 36px -10px rgba(18, 28, 32, 0.35);
     font-size: 14px;
     color: #111827;
     opacity: 0;
@@ -733,7 +733,7 @@
     padding: 12px 14px;
     border-radius: 16px;
     background: rgba(255, 255, 255, 0.9);
-    box-shadow: 0 18px 40px -12px rgba(15, 23, 42, 0.35);
+    box-shadow: 0 18px 40px -12px rgba(18, 28, 32, 0.35);
     opacity: 0;
     transform: translateX(80px);
     transition:
@@ -804,7 +804,7 @@
     border-radius: 22px;
     background: rgba(255, 255, 255, 0.45);
     backdrop-filter: blur(20px);
-    box-shadow: 0 10px 26px -12px rgba(15, 23, 42, 0.3);
+    box-shadow: 0 10px 26px -12px rgba(18, 28, 32, 0.3);
   }
 
   .dk-app {
@@ -1067,7 +1067,7 @@
   }
 
   .cursor path {
-    fill: #0f172a;
+    fill: #121c20;
     stroke: #ffffff;
   }
 
@@ -1101,7 +1101,7 @@
     width: 24px;
     height: 24px;
     border-radius: 50%;
-    background: rgba(15, 23, 42, 0.22);
+    background: rgba(18, 28, 32, 0.22);
     border: 1.5px solid rgba(255, 255, 255, 0.8);
   }
 
@@ -1152,7 +1152,7 @@
 
   .trust-item {
     margin: 0;
-    font-family: var(--font-serif);
+    font-family: var(--font-display);
     font-size: 60px;
     font-weight: 700;
     line-height: 1.4;
@@ -1202,7 +1202,7 @@
 
   .end-headline {
     margin: 34px 0 0;
-    font-family: var(--font-serif);
+    font-family: var(--font-display);
     font-size: 42px;
     font-weight: 700;
     color: var(--ink-2);
@@ -1218,9 +1218,9 @@
   .pill {
     font-size: 26px;
     font-weight: 600;
-    color: var(--paper);
+    color: var(--on-teal);
     background: var(--teal);
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     padding: 16px 36px;
   }
 

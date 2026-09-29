@@ -91,7 +91,7 @@
 
   .brand-name,
   h1 {
-    font-family: var(--font-serif);
+    font-family: var(--font-display);
     font-weight: 700;
     letter-spacing: -0.01em;
   }
@@ -107,7 +107,7 @@
     color: var(--mustard-ink);
     background: var(--mustard-tint);
     border: 1px solid var(--mustard-line);
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     padding: 3px 12px;
   }
 
@@ -149,7 +149,7 @@
     top: 90px;
     width: 800px;
     height: 500px;
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     box-shadow: var(--shadow-window);
     object-fit: cover;
   }

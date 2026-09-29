@@ -248,7 +248,7 @@
           </span>
         {/if}
       </div>
-      <h1 class="serif">{copy.title}</h1>
+      <h1 class="display">{copy.title}</h1>
       <p>{description}</p>
     </header>
 
@@ -323,7 +323,7 @@
 
   .rail-mobile details {
     border: 1px solid var(--line);
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     background: var(--paper);
     padding: 10px 14px;
   }
@@ -374,7 +374,7 @@
 
   .group {
     margin: 16px 0 6px;
-    font-size: 11.5px;
+    font-size: 12px;
     font-weight: 650;
     letter-spacing: 0.04em;
     color: var(--ink-3);
@@ -395,7 +395,7 @@
     display: block;
     padding: 6px 10px;
     margin: 1px 0;
-    border-radius: 7px;
+    border-radius: var(--radius-sm);
     color: var(--ink-2);
     text-decoration: none;
     line-height: 1.35;
@@ -416,7 +416,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
-    font-size: 13.5px;
+    font-size: 14px;
     color: var(--ink-3);
     margin-bottom: 22px;
   }
@@ -462,11 +462,11 @@
 
   .tag {
     display: inline-block;
-    font-size: 12.5px;
+    font-size: 13px;
     color: var(--teal-ink, var(--teal-2));
     background: var(--teal-tint);
     border: 1px solid var(--teal-line);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     padding: 2px 8px;
   }
 
@@ -513,7 +513,7 @@
     padding: 4px 0;
     color: var(--ink-2);
     text-decoration: none;
-    font-size: 13.5px;
+    font-size: 14px;
     line-height: 1.45;
   }
 
@@ -534,7 +534,7 @@
   .toc-inline {
     margin: 20px 0 8px;
     border: 1px solid var(--line);
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     background: var(--paper);
     padding: 10px 14px;
   }
@@ -545,7 +545,7 @@
 
   .toc-title {
     margin: 0 0 6px;
-    font-size: 12.5px;
+    font-size: 13px;
     font-weight: 650;
     color: var(--ink-3);
   }
@@ -571,7 +571,7 @@
     flex: 1 1 12rem;
     padding: 14px 16px;
     border: 1px solid var(--line);
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     background: var(--paper);
     text-decoration: none;
     color: var(--ink);
@@ -589,7 +589,7 @@
   }
 
   .dir {
-    font-size: 12.5px;
+    font-size: 13px;
     color: var(--ink-3);
   }
 
@@ -635,7 +635,7 @@
   :global(.markdown-body details.behavior) {
     margin: 0.9rem 0 1.1rem;
     border: 1px solid var(--line);
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     background: var(--paper);
     scroll-margin-top: calc(var(--nav-h) + 16px);
   }

@@ -269,7 +269,7 @@ const zh: Dict = {
   film: {
     watch: '播放完整视频',
     watchHint: '或者直接看完整视频',
-    duration: '1:49',
+    duration: '1:51',
     title: 'Deskfolk 完整演示',
     description: '从首次配置到一群 Bot 交出一套发布物料，再到它的流程图、你自己的终端和手机。',
     close: '关闭'
@@ -569,7 +569,7 @@ const en: Dict = {
   film: {
     watch: 'Play the full video',
     watchHint: 'or watch the full video',
-    duration: '1:43',
+    duration: '1:45',
     title: 'Deskfolk, the full demo',
     description: 'From first setup to a group of Bots delivering a launch kit, with its flow board, your own terminal and your phone.',
     close: 'Close'

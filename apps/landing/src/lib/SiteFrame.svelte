@@ -55,7 +55,7 @@
     <div class="page nav-inner">
       <a class="brand" href="{base}/{lang}">
         <span class="brand-mark"><Logo size={26} /></span>
-        <span class="brand-name serif">Deskfolk</span>
+        <span class="brand-name display">Deskfolk</span>
         <span class="brand-wip">{t.nav.wip}</span>
       </a>
 
@@ -113,7 +113,7 @@
   <footer class="foot">
     <div class="page foot-inner">
       <div class="foot-brand">
-        <span class="foot-id"><Logo size={22} /><span class="brand-name serif">Deskfolk</span></span>
+        <span class="foot-id"><Logo size={22} /><span class="brand-name display">Deskfolk</span></span>
         <p>{t.footer.tagline}</p>
         <p class="fine">{t.footer.mit}</p>
       </div>
@@ -188,12 +188,12 @@
   .brand-wip {
     display: none;
     white-space: nowrap;
-    font-size: 11.5px;
+    font-size: 12px;
     font-weight: 600;
     color: var(--mustard-ink);
     background: var(--mustard-tint);
     border: 1px solid var(--mustard-line);
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     padding: 1px 8px;
     line-height: 1.6;
   }
@@ -201,7 +201,7 @@
   .links {
     display: none;
     gap: 26px;
-    font-size: 14.5px;
+    font-size: 15px;
   }
 
   .links a {
@@ -229,11 +229,11 @@
     min-height: 34px;
     padding: 0 10px;
     white-space: nowrap;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     border: 1px solid var(--line);
     background: var(--paper);
     color: var(--ink);
-    font-size: 13.5px;
+    font-size: 14px;
     font-weight: 600;
     text-decoration: none;
   }
@@ -258,7 +258,7 @@
     justify-content: center;
     width: 36px;
     min-height: 34px;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     border: 1px solid var(--line);
     background: var(--paper);
     color: var(--ink);

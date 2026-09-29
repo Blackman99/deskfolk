@@ -18,7 +18,7 @@
 <SiteFrame {lang}>
   <section class="page oops">
     <p class="code mono">{page.status}</p>
-    <h1 class="serif">{missing ? t.error.notFound : t.error.generic}</h1>
+    <h1 class="display">{missing ? t.error.notFound : t.error.generic}</h1>
     <p class="body">{missing ? t.error.body : page.error?.message}</p>
     <div class="actions">
       <a class="btn btn-primary" href="{base}/{lang}">{t.error.home}</a>

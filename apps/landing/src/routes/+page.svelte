@@ -27,7 +27,7 @@
     justify-content: center;
     gap: 12px;
     color: var(--ink-2);
-    font-family: var(--font-serif);
+    font-family: var(--font-display);
     font-size: 1.1rem;
   }
 

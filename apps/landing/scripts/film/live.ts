@@ -45,6 +45,9 @@ const { values: opts, positionals } = parseArgs({
     daemon: { type: 'string' },
     // The demo messenger's port, when another session's Vite already holds the default.
     'messenger-port': { type: 'string', default: '5217' },
+    // Device pixels per CSS pixel on the film page. At 2 the homepage clips stay sharp on a
+    // high-density screen, where a 1× recording is shown enlarged twice over.
+    scale: { type: 'string', default: '2' },
     until: { type: 'string' }
   }
 });
@@ -65,6 +68,7 @@ const demoHome = path.join(DEMO_ROOT, 'home');
 const dataDir = path.join(DEMO_ROOT, 'data');
 const LOGO = '/Users/Shared/dawn-brand/logo.png';
 const MESSENGER_PORT = Number(opts['messenger-port']);
+const SCALE = Number(opts.scale) || 1;
 const LANDING_PORT = 5288;
 const DESKTOP = { width: 1600, height: 1000 };
 const PHONE = { width: 390, height: 844 };
@@ -203,7 +207,7 @@ async function main() {
   log(`demo daemon :${desc.port}, messenger ${appUrl}, logs ${logDir}`);
 
   try {
-    if (mode === 'film') await film(browser, appUrl, api);
+    if (mode === 'film') await film(appUrl, api);
     else await plain(browser, appUrl, api);
   } finally {
     const tape = await fetch('http://127.0.0.1:8000/__tape').then((r) => r.json()).catch(() => null);
@@ -315,9 +319,23 @@ async function plain(browser: Browser, appUrl: string, api: Api) {
 }
 
 /** The replay on the film page: camera, cursor, bar-aligned parts, recorded, then scored. */
-async function film(browser: Browser, appUrl: string, api: Api) {
+async function film(appUrl: string, api: Api) {
   const landing = await startLanding();
-  const context = await browser.newContext({ viewport: { width: 1920, height: 1080 }, colorScheme: theme, locale: lang === 'zh' ? 'zh-CN' : 'en-US' });
+  // A browser of its own: Chrome's screencast only delivers device pixels when the display itself is
+  // high-density, which emulating deviceScaleFactor does not make it. The logo the story hands over
+  // stays drawn at 1× in the other one, so the commands' output matches the tape.
+  const browser = await chromium.launch({
+    channel: 'chrome',
+    headless: !opts.headed,
+    args: SCALE === 1 ? [] : [`--force-device-scale-factor=${SCALE}`]
+  });
+  closers.push(() => browser.close());
+  const context = await browser.newContext({
+    viewport: { width: 1920, height: 1080 },
+    deviceScaleFactor: SCALE,
+    colorScheme: theme,
+    locale: lang === 'zh' ? 'zh-CN' : 'en-US'
+  });
   const page = await context.newPage();
   page.on('pageerror', (e) => log(`page error: ${e.message}`));
   await page.goto(`${landing}/film/${lang}/live?theme=${theme}&app=${encodeURIComponent(appUrl)}`);
@@ -340,7 +358,7 @@ async function film(browser: Browser, appUrl: string, api: Api) {
   };
   const tag = `deskfolk-live-${lang}-${theme}`;
   const silentPath = path.join(outDir, `${tag}.silent.mp4`);
-  await recorder.start(silentPath, 1920, 1080);
+  await recorder.start(silentPath, 1920, 1080, SCALE);
   let timeline;
   try {
     await run.intro();
@@ -350,7 +368,8 @@ async function film(browser: Browser, appUrl: string, api: Api) {
     if (lost) throw new Error(`the ${lost} frame reloaded mid-recording (run the replay once to settle Vite's dependency cache)`);
   } catch (e) {
     await page.screenshot({ path: path.join(logDir, 'failure.png') }).catch(() => {});
-    await recorder.stop().catch(() => {});
+    const partial = await recorder.stop().catch(() => null);
+    if (partial) log(`stopped after ${partial.seconds.toFixed(1)} s, screencast ${partial.screencastFps.toFixed(1)} fps`);
     throw e;
   }
   const stats = await recorder.stop();

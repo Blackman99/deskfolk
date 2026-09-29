@@ -21,7 +21,7 @@
 <section class="boundaries" id="boundaries">
   <div class="page">
     <header class="sec-head">
-      <h2 class="serif">{t.boundaries.heading}</h2>
+      <h2 class="display">{t.boundaries.heading}</h2>
       <p>{t.boundaries.intro}</p>
     </header>
 
@@ -34,7 +34,7 @@
       </div>
       {#each t.boundaries.rows as row}
         <div class="ledger-row" role="row">
-          <span class="dim serif" role="rowheader">{row.dim}</span>
+          <span class="dim display" role="rowheader">{row.dim}</span>
           <span class="col live" role="cell"><b>{t.boundaries.colLive}</b>{row.live}</span>
           <span class="col wip" role="cell"><b>{t.boundaries.colWip}</b>{row.wip}</span>
           <span class="col avoid" role="cell"><b>{t.boundaries.colAvoid}</b>{row.avoid}</span>
@@ -51,7 +51,7 @@
 <section class="quickstart" id="quickstart">
   <div class="page qs-grid">
     <div class="qs-copy">
-      <h2 class="serif">{t.quickstart.heading}</h2>
+      <h2 class="display">{t.quickstart.heading}</h2>
       <p>{t.quickstart.intro}</p>
       <p class="req">{t.quickstart.requirements}</p>
       <ol class="first-run">
@@ -72,7 +72,7 @@
     <div class="qs-side">
       <div class="download">
         <div class="dl-head">
-          <h3 class="serif">{t.quickstart.download.title}</h3>
+          <h3 class="display">{t.quickstart.download.title}</h3>
           <span class="version mono">v{version}</span>
         </div>
         <p>{t.quickstart.download.body}</p>
@@ -165,7 +165,7 @@
 
   .col b {
     display: block;
-    font-size: 12.5px;
+    font-size: 13px;
     font-weight: 650;
     margin-bottom: 2px;
   }
@@ -179,7 +179,7 @@
 
   .footnote {
     margin: 18px 0 0;
-    font-size: 13.5px;
+    font-size: 14px;
     color: var(--ink-3);
   }
 
@@ -255,7 +255,7 @@
   }
 
   .req {
-    font-size: 14.5px;
+    font-size: 15px;
     color: var(--ink-3);
   }
 
@@ -273,7 +273,7 @@
   }
 
   .first-run li::marker {
-    font-family: var(--font-serif);
+    font-family: var(--font-display);
     color: var(--teal);
   }
 
@@ -294,7 +294,7 @@
   .download {
     padding: 22px 24px;
     border: 1px solid var(--line);
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     background: var(--paper);
     display: flex;
     flex-direction: column;
@@ -317,10 +317,10 @@
   }
 
   .version {
-    font-size: 12.5px;
+    font-size: 13px;
     color: var(--ink-3);
     border: 1px solid var(--line);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     padding: 2px 8px;
   }
 
@@ -352,10 +352,10 @@
   .dl-note {
     margin: 0;
     padding: 10px 12px;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     background: var(--ground);
     border: 1px solid var(--line);
-    font-size: 12.5px;
+    font-size: 13px;
     line-height: 1.5;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
@@ -367,10 +367,11 @@
     margin-top: 4px;
   }
 
+  /* Always dark, in the app's dark greys: the terminal pane as it looks there. */
   .terminal {
-    border-radius: 12px;
-    background: #0f172a;
-    color: #e2e8f0;
+    border-radius: var(--radius-lg);
+    background: #12181b;
+    color: #dfe6e8;
     border: 1px solid rgba(255, 255, 255, 0.08);
     box-shadow: var(--shadow-float);
     overflow: hidden;
@@ -381,7 +382,7 @@
     align-items: center;
     gap: 7px;
     padding: 12px 14px;
-    background: #182236;
+    background: #192125;
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   }
 
@@ -393,12 +394,12 @@
   .term-title {
     margin-left: 8px;
     font-size: 12px;
-    color: #94a3b8;
+    color: #95a2a8;
     flex: 1;
   }
 
   .term-copy :global(.copy) {
-    color: #cbd5e1;
+    color: #c5cfd3;
     background: rgba(255, 255, 255, 0.06);
     border-color: rgba(255, 255, 255, 0.14);
   }
@@ -411,13 +412,13 @@
   pre {
     margin: 0;
     padding: 18px 20px 22px;
-    font-size: 13.5px;
+    font-size: 14px;
     line-height: 1.8;
     overflow-x: auto;
   }
 
-  pre .c { color: #7c8a9e; }
-  pre .p { color: #5ebbcc; }
+  pre .c { color: #7f8d93; }
+  pre .p { color: #45b0c3; }
 
   @media (min-width: 900px) {
     .qs-grid {

@@ -344,14 +344,21 @@ export class Recorder {
     this.page = page;
   }
 
-  async start(file: string, width: number, height: number) {
+  /** `width` × `height` in CSS pixels; `scale` is the page's device pixel ratio, and the frames are that much larger. */
+  async start(file: string, width: number, height: number, scale = 1) {
     this.cdp = await this.page.context().newCDPSession(this.page);
     this.cdp.on('Page.screencastFrame', (ev: { data: string; sessionId: number }) => {
       this.latest = Buffer.from(ev.data, 'base64');
       this.frames++;
       void this.cdp!.send('Page.screencastFrameAck', { sessionId: ev.sessionId }).catch(() => {});
     });
-    await this.cdp.send('Page.startScreencast', { format: 'jpeg', quality: 92, maxWidth: width, maxHeight: height, everyNthFrame: 1 });
+    await this.cdp.send('Page.startScreencast', {
+      format: 'jpeg',
+      quality: 92,
+      maxWidth: Math.round(width * scale),
+      maxHeight: Math.round(height * scale),
+      everyNthFrame: 1
+    });
     while (!this.latest) await new Promise((r) => setTimeout(r, 20));
     this.ffmpeg = spawn(
       'ffmpeg',

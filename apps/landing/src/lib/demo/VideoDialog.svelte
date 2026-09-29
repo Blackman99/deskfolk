@@ -70,7 +70,7 @@
   <div class="frame">
     <header class="head">
       <div class="head-copy">
-        <h2 id="{id}-title" class="serif">
+        <h2 id="{id}-title" class="display">
           {title}
           {#if badge}<span class="badge mono">{badge}</span>{/if}
         </h2>
@@ -161,13 +161,13 @@
     font-weight: 500;
     color: rgba(255, 255, 255, 0.72);
     border: 1px solid rgba(255, 255, 255, 0.24);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     padding: 1px 7px;
   }
 
   .head p {
     margin: 4px 0 0;
-    font-size: 13.5px;
+    font-size: 14px;
     line-height: 1.55;
     color: rgba(255, 255, 255, 0.72);
   }
@@ -181,7 +181,7 @@
     height: 38px;
     padding: 0;
     border: 1px solid rgba(255, 255, 255, 0.18);
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     background: rgba(255, 255, 255, 0.08);
     color: #fff;
     cursor: pointer;
@@ -197,7 +197,7 @@
     display: block;
     width: 100%;
     aspect-ratio: var(--ar);
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     box-shadow: 0 30px 80px -24px rgba(0, 0, 0, 0.7);
   }
 
