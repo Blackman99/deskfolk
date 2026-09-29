@@ -32,12 +32,12 @@
 - **停在半路有人管。** 流程图上的任务跟着实际进展变；一件事静下来却还有任务没做完，应用先叫一次那个任务上的 Bot，还没动静就告诉你。问一句「怎么样了」，应用直接回你有什么在等你、谁在做、做到哪、谁约了回来看、检查过没过，几个 Bot 分头在做也一样，不叫醒也不打断正在干活的 Bot。
 - **做了什么都看得见。** 一个规划一张流程图：你发的每条消息由应用归到规划和任务，目标、验收和你定的规则记成规划要点；经过按谁叫醒了谁画出来，一轮一张卡片，交出的文件、干的任务、用的模型和理由都挂在卡片上。Bot 之间的私聊你也能打开看。
 - **危险动作先问你。** 新建端点或 MCP、工作区外读写和出站网络都要你批准；等你的事标在会话列表上，配合 macOS 横幅和 Dock 角标。私聊里进行中的一轮随时能 Stop。
-- **执行和文件在你的 Mac 上。** 窗口、守护进程、会话和共享工作区都在本机，密钥进钥匙串。模型和 MCP 服务器由你接：任意 OpenAI 兼容端点都行，每一轮的上下文发给你配置的那个端点。
+- **执行和文件在你自己的电脑上。** 窗口、守护进程、会话和共享工作区都在本机，密钥进钥匙串（Windows 上是凭据管理器）。模型和 MCP 服务器由你接：任意 OpenAI 兼容端点都行，每一轮的上下文发给你配置的那个端点。
 
 ## 适合谁
 
 - **适合**：会自己配模型端点和 API key 的独立开发者、技术型个人和小工作室，手上有一件要几个角色分工、分几步交出文件的活，比如一份调研报告、一套发布物料、一个带测试和启动说明的小工具。
-- **暂不适合**：几个人共用一套、要 Linux、要 Mac 睡眠时也接着干活，或者不想自己接模型端点。Windows 有一条刚起步的实验性预览：从源码构建，或用 CI 打出的未签名安装包——见下方「获取」。
+- **暂不适合**：几个人共用一套、要 Linux、要 Mac 睡眠时也接着干活，或者不想自己接模型端点。Windows 有一条刚起步的实验性预览：每个 Release 都带未签名安装包，有些功能还没有——见下方「获取」。
 
 ## 实测
 
@@ -75,11 +75,11 @@ grk 单干没做完的两次：一次为了在浏览器里核对落地页而超�
 
 ## 获取
 
-macOS 13（Ventura）或更新版本，支持 Apple 芯片与 Intel。Windows 有一条刚起步的实验性预览（从源码构建，或用 CI 打出的安装包，见下文）；Linux 暂不支持。
+macOS 13（Ventura）或更新版本，支持 Apple 芯片与 Intel。Windows x64 有一条刚起步的实验性预览（见下文）；Linux 暂不支持。
 
-- **下载**：[Releases](https://github.com/Blackman99/deskfolk/releases/latest) 提供未签名的 `.dmg`，不用另装别的。首次打开被 Gatekeeper 拦截时，右键选「打开」，或执行 `xattr -dr com.apple.quarantine "/Applications/Deskfolk.app"`（[Gatekeeper FAQ](docs/gatekeeper.zh.md)）。
-- **更新**：有新版本时，桌面侧栏底部带文字的「设置」上出现小红点，在 设置 → 关于 里下载并安装。外观在 设置 → 基础偏好 → 外观。
-- **从源码启动**（Node 22+、pnpm 12.3.4、Bun 1.2+、Rust、Xcode Command Line Tools）：
+- **下载**：[Releases](https://github.com/Blackman99/deskfolk/releases/latest) 提供未签名的 `.dmg`，不用另装别的。首次打开被 Gatekeeper 拦截时，右键选「打开」，或执行 `xattr -dr com.apple.quarantine "/Applications/Deskfolk.app"`（[Gatekeeper FAQ](docs/gatekeeper.zh.md)）。Windows 上运行同一个 Release 里的 `Deskfolk_<版本>_x64-setup.exe`：按当前用户安装，不要管理员权限；安装包没签名，SmartScreen 会提示未知发布者，点「更多信息」→「仍要运行」。
+- **更新**：有新版本时，桌面侧栏底部带文字的「设置」上出现小红点，在 设置 → 关于 里下载并安装（Windows 上暂时是「关于」跳到浏览器下载）。外观在 设置 → 基础偏好 → 外观。
+- **在 macOS 上从源码启动**（Node 22+、pnpm 12.3.4、Bun 1.2+、Rust、Xcode Command Line Tools）：
 
 ```bash
 git clone https://github.com/Blackman99/deskfolk.git
@@ -88,7 +88,8 @@ pnpm install
 pnpm dev
 ```
 
-- **Windows（实验性预览）：** 同样 `git clone` / `pnpm install` / `pnpm dev`，用 Rust 的 MSVC 工具链加 Visual Studio Build Tools（勾选 "Desktop development with C++"）代替 Xcode，另外先跑一次 `cargo build --manifest-path apps/conpty-helper/Cargo.toml` 编终端 helper。本地打安装包用 `pnpm --filter @real-bot/desktop tauri build --bundles nsis`；[`windows.yml`](.github/workflows/windows.yml) 这条 GitHub Actions 工作流也会把一份未签名的 NSIS 安装包传成 artifact（没签名，SmartScreen 会提示未知发布者）。远控/手机配对、独立运行时、应用内下载安装更新、桌面通知和图片缩略图这些还没有——完整清单和前置条件见[开发说明](docs/development.md)。
+- **在 Windows 上从源码启动：** 同样 `git clone` / `pnpm install` / `pnpm dev`，用 Rust 的 MSVC 工具链加 Visual Studio Build Tools（勾选 "Desktop development with C++"）代替 Xcode，另外先跑一次 `cargo build --manifest-path apps/conpty-helper/Cargo.toml` 编终端 helper。建议也装上 Git for Windows：Bot 的 shell 工具找得到 Git Bash 就在里面跑命令，找不到才用 PowerShell。本地打安装包用 `pnpm --filter @real-bot/desktop tauri build --bundles nsis`。
+- **Windows 上还没有的：** 远控和手机配对、独立运行时、应用内下载安装更新、桌面通知与角标、图片缩略图。数据在 `%LOCALAPPDATA%\real-bot`，密钥在 Windows 凭据管理器；前置条件和细节见[开发说明](docs/development.md#windows实验性)。
 
 拿源码版干要跑几个小时的活（比如多镜头视频）时，用 `pnpm dev:steady` 代替 `pnpm dev`：守护进程不会因为改代码或 `git pull` 重启，进行中的轮次不会被打断。
 
@@ -96,7 +97,7 @@ pnpm dev
 
 ## 状态
 
-Alpha，macOS 是主要目标，功能和数据格式在那边也仍会变化。Windows 是刚起步的实验性预览，还有不少毛边和缺失功能（见上文「获取」）。Linux 暂不支持。远程访问是默认关闭的原型：日常功能和 Web Push 已在 Android Chrome 真机上走通；iOS 主屏幕和 WebAuthn 用户验证还没做真机验收，独立安全复核也没有通过；安装的应用就能配对：Mac 的远控身份存在一个私有文件里而不是钥匙串，每台设备用触控 ID 批准（[ADR 0033](docs/adr/0033-remote-credentials-in-a-file.md)）。
+Alpha，macOS 是主要目标，功能和数据格式在那边也仍会变化。Windows 是刚起步的实验性预览，还有不少毛边和缺失功能（见上文「获取」）。Linux 暂不支持。远程访问（目前只在 macOS 上）是默认关闭的原型：日常功能和 Web Push 已在 Android Chrome 真机上走通；iOS 主屏幕和 WebAuthn 用户验证还没做真机验收，独立安全复核也没有通过；安装的应用就能配对：Mac 的远控身份存在一个私有文件里而不是钥匙串，每台设备用触控 ID 批准（[ADR 0033](docs/adr/0033-remote-credentials-in-a-file.md)）。
 
 [哪些已接入、哪些不做](https://blackman99.github.io/deskfolk/zh#boundaries) · [路线图](ROADMAP.md) · [领域语言](CONTEXT.md) · [中继部署](docs/deploy-remote.md)
 

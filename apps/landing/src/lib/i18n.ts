@@ -159,8 +159,8 @@ const zh: Dict = {
       { label: '做了什么都看得见。', body: '一件事一张流程图：谁叫醒了谁、每轮交出哪些文件、用了哪个模型、为什么。' },
       { label: '危险动作先问你。', body: '会话和文件在本机，模型调用走你接入的端点；工作区外读写、出站网络、新工具要你批准。' }
     ],
-    wipNote: 'Alpha 版本：macOS 未签名快照，功能与数据结构仍会变化。',
-    ctaPrimary: '下载 Alpha（macOS）',
+    wipNote: 'Alpha 版本：macOS 未签名快照，Windows 为实验性预览；功能与数据结构仍会变化。',
+    ctaPrimary: '下载 Alpha',
     ctaSecondary: '从源码启动',
     runLabel: '本机运行',
     runCommand: 'pnpm install && pnpm dev',
@@ -263,7 +263,7 @@ const zh: Dict = {
     rows: [
       {
         dim: '运行时底座',
-        live: 'macOS 桌面窗、常驻守护进程、本地共享工作区、SQLite 持久化；关窗不停，你自己的终端会话也由守护进程持有',
+        live: 'macOS 桌面窗（Windows 为实验性预览）、常驻守护进程、本地共享工作区、SQLite 持久化；关窗不停，你自己的终端会话也由守护进程持有',
         wip: '复杂真实场景下的长期稳定性验证',
         avoid: '云电脑、云端计费、多用户 SaaS'
       },
@@ -287,7 +287,7 @@ const zh: Dict = {
       },
       {
         dim: '安全与权限',
-        live: '危险动作批准卡、钥匙串存密钥、Always allow 规则、私聊 Stop',
+        live: '危险动作批准卡、密钥进钥匙串（Windows 上是凭据管理器）、Always allow 规则、私聊 Stop',
         wip: '更细粒度的 MCP 权限治理',
         avoid: '把 Bot 当安全沙箱、假装已具备完全自主权限'
       },
@@ -308,8 +308,8 @@ const zh: Dict = {
   },
   quickstart: {
     heading: '下载，或从源码启动',
-    intro: 'MIT 协议开源。Alpha 快照只有 macOS 且未签名；Windows 与 Linux 不在支持范围。',
-    requirements: '需要 macOS、Node.js 22+、pnpm 12.3.4、Bun 1.2+、Rust / Cargo，以及 Tauri 的 macOS 前置依赖（含 Xcode Command Line Tools）。',
+    intro: 'MIT 协议开源。Alpha 快照未签名：macOS 是主要平台；Windows 是实验性预览，还没有远程访问、桌面通知和应用内安装更新；Linux 暂不支持。',
+    requirements: '需要 Node.js 22+、pnpm 12.3.4、Bun 1.2+、Rust / Cargo。macOS 上另装 Tauri 的 macOS 前置依赖（含 Xcode Command Line Tools）；Windows 上用 Rust 的 MSVC 工具链和 Visual Studio Build Tools（勾选 C++ 桌面开发），再先编一次终端 helper，见开发说明。',
     step1: '克隆并安装依赖',
     step2: '并行启动守护进程与桌面窗',
     firstRun: [
@@ -320,7 +320,7 @@ const zh: Dict = {
     ],
     download: {
       title: '下载 Alpha 快照',
-      body: '最新 GitHub Release 提供 Apple 芯片与 Intel 两种 .dmg。构建未签名：首次打开若被 Gatekeeper 拦截，右键选「打开」，或在终端执行（完整 FAQ：docs/gatekeeper.zh.md；昂贵动作仍会先问你）：',
+      body: '最新 GitHub Release 提供 Apple 芯片与 Intel 两种 .dmg，以及 Windows 预览版安装包 Deskfolk_<版本>_x64-setup.exe。构建都未签名：Windows 上 SmartScreen 会提示未知发布者，点「更多信息」→「仍要运行」；Mac 上首次打开若被 Gatekeeper 拦截，右键选「打开」，或在终端执行（完整 FAQ：docs/gatekeeper.zh.md；昂贵动作仍会先问你）：',
       link: '前往最新 Release',
       note: 'xattr -dr com.apple.quarantine "/Applications/Deskfolk.app"'
     },
@@ -330,14 +330,14 @@ const zh: Dict = {
     linkRemote: '远程访问'
   },
   footer: {
-    tagline: '本机 macOS 上的单人 agent 协作应用。',
+    tagline: '在你自己电脑上运行的单人 agent 协作应用：macOS，以及 Windows 预览版。',
     mit: 'MIT 协议开源。与 xAI / Grok 无官方附属关系。',
     contributors: 'Deskfolk Contributors'
   },
   seo: {
     title: 'Deskfolk — 交给一组 Bot，盯到交付',
     description:
-      'macOS 本机的 AI 团队：几个 Bot 分工交接，把一份调研报告、一套发布物料或一个小工具做到交付。交付前按验收自查，停在半路会被追，说「测试通过」要有跑过的命令作证，每一步都画在流程图上。会话和文件在本机，模型端点和 MCP 工具由你接入，危险动作先等你批准。面向会自己配模型端点的独立开发者与小工作室。MIT 开源，Alpha 阶段。',
+      'macOS 本机的 AI 团队（Windows 为预览版）：几个 Bot 分工交接，把一份调研报告、一套发布物料或一个小工具做到交付。交付前按验收自查，停在半路会被追，说「测试通过」要有跑过的命令作证，每一步都画在流程图上。会话和文件在本机，模型端点和 MCP 工具由你接入，危险动作先等你批准。面向会自己配模型端点的独立开发者与小工作室。MIT 开源，Alpha 阶段。',
     imageAlt: 'Deskfolk：一个窗口里并排着群聊、流程图、生成的预告片和终端'
   },
   docs: {
@@ -405,8 +405,8 @@ const en: Dict = {
       { label: 'It shows its work.', body: 'A flow per job: who woke whom, what each turn handed over, which model and why.' },
       { label: 'It asks first.', body: 'Local files, models on endpoints you add; outside access and new tools need your OK.' }
     ],
-    wipNote: 'Alpha: unsigned macOS snapshot. Features and data structures may still change.',
-    ctaPrimary: 'Download alpha (macOS)',
+    wipNote: 'Alpha: unsigned macOS snapshot, with Windows as an experimental preview. Features and data structures may still change.',
+    ctaPrimary: 'Download alpha',
     ctaSecondary: 'Run from source',
     runLabel: 'Runs locally',
     runCommand: 'pnpm install && pnpm dev',
@@ -509,7 +509,7 @@ const en: Dict = {
     rows: [
       {
         dim: 'Runtime',
-        live: 'macOS window, resident daemon, local shared workspace, SQLite state; closing the window stops nothing, and the daemon holds your own terminal sessions too',
+        live: 'macOS window (Windows as an experimental preview), resident daemon, local shared workspace, SQLite state; closing the window stops nothing, and the daemon holds your own terminal sessions too',
         wip: 'Long-running stability in complex real-world scenarios',
         avoid: 'Cloud VMs, cloud billing, multi-user SaaS'
       },
@@ -533,7 +533,7 @@ const en: Dict = {
       },
       {
         dim: 'Safety and permissions',
-        live: 'Approval cards for dangerous actions, Keychain secrets, Always allow rules, Stop in direct chats',
+        live: 'Approval cards for dangerous actions, secrets in the Keychain (Credential Manager on Windows), Always allow rules, Stop in direct chats',
         wip: 'Finer-grained MCP permission policies',
         avoid: 'Treating bots as security sandboxes, pretending full autonomy is safe'
       },
@@ -554,8 +554,8 @@ const en: Dict = {
   },
   quickstart: {
     heading: 'Download, or run from source',
-    intro: 'Open source under MIT. The alpha snapshot is macOS only and unsigned; Windows and Linux are out of scope.',
-    requirements: 'Requires macOS, Node.js 22+, pnpm 12.3.4, Bun 1.2+, Rust / Cargo and the Tauri macOS prerequisites (including Xcode Command Line Tools).',
+    intro: 'Open source under MIT. The alpha snapshot is unsigned: macOS is the primary platform; Windows is an experimental preview, without remote access, desktop notifications or in-app update install yet; Linux is not supported.',
+    requirements: 'Requires Node.js 22+, pnpm 12.3.4, Bun 1.2+ and Rust / Cargo. On macOS, add the Tauri macOS prerequisites (including Xcode Command Line Tools); on Windows, Rust\'s MSVC toolchain and Visual Studio Build Tools (Desktop development with C++), plus a one-time build of the terminal helper — see the development guide.',
     step1: 'Clone and install',
     step2: 'Start the daemon and the desktop window in parallel',
     firstRun: [
@@ -566,7 +566,7 @@ const en: Dict = {
     ],
     download: {
       title: 'Download the alpha snapshot',
-      body: 'The latest GitHub Release ships .dmg files for Apple silicon and Intel. The build is unsigned: if Gatekeeper blocks the first launch, right-click and choose Open, or run (full FAQ: docs/gatekeeper.md; expensive actions still ask first):',
+      body: 'The latest GitHub Release ships .dmg files for Apple silicon and Intel, and a Windows preview installer, Deskfolk_<version>_x64-setup.exe. Neither is signed: on Windows, SmartScreen warns about an unknown publisher (More info → Run anyway); on a Mac, if Gatekeeper blocks the first launch, right-click and choose Open, or run (full FAQ: docs/gatekeeper.md; expensive actions still ask first):',
       link: 'Go to the latest release',
       note: 'xattr -dr com.apple.quarantine "/Applications/Deskfolk.app"'
     },
@@ -576,14 +576,14 @@ const en: Dict = {
     linkRemote: 'Remote access'
   },
   footer: {
-    tagline: 'A single-user agent collaboration app for your Mac.',
+    tagline: 'A single-user agent collaboration app that runs on your own computer: macOS, and Windows in preview.',
     mit: 'Open source under MIT. Not affiliated with xAI / Grok.',
     contributors: 'Deskfolk Contributors'
   },
   seo: {
     title: 'Deskfolk — Hand it to Bots that see it through',
     description:
-      'A local AI team for macOS: Bots split the work and hand it on until a research report, a launch kit or a small tool is delivered. Deliveries are checked against the done-when, stalled jobs get chased, a "tests pass" needs a command that actually ran, and every step is drawn on a flow board. Chats and files stay on your Mac; you plug in the model endpoints and MCP tools, and risky actions wait for your approval. For solo developers and small studios who bring their own model endpoint. MIT, alpha.',
+      'A local AI team for macOS (Windows in preview): Bots split the work and hand it on until a research report, a launch kit or a small tool is delivered. Deliveries are checked against the done-when, stalled jobs get chased, a "tests pass" needs a command that actually ran, and every step is drawn on a flow board. Chats and files stay on your Mac; you plug in the model endpoints and MCP tools, and risky actions wait for your approval. For solo developers and small studios who bring their own model endpoint. MIT, alpha.',
     imageAlt: 'Deskfolk: a group chat, its flow, the teaser the team made and a terminal side by side in one window'
   },
   docs: {

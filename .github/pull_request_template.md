@@ -23,7 +23,7 @@ Record actual results; explain any check that was not run.
 - [ ] `pnpm --filter @real-bot/landing build` when landing-page files change, or not applicable / 改落地页时已构建，或不适用
 - [ ] UI changes exercised end to end, including shared state and edge cases, or not applicable / 已完成 UI 端到端、共享状态与边界验证，或不适用
 - [ ] Layout changes checked at desktop and narrow viewports, or not applicable / 已检查桌面与窄屏布局，或不适用
-- [ ] Native macOS behavior checked when affected, or not applicable / 已检查相关原生行为，或不适用
+- [ ] Native desktop behavior checked when affected (macOS; Windows for Windows-only paths), or not applicable / 已检查相关原生行为（macOS；改 Windows 专属路径时在 Windows 上），或不适用
 
 Describe interactions, results, and remaining verification gaps. Screenshots supplement behavior checks; redact private data.
 

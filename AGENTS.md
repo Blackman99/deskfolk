@@ -1,6 +1,6 @@
 # Deskfolk
 
-本机 macOS 上的单人 agent 协作应用。术语见 [`CONTEXT.md`](CONTEXT.md)。
+本机单人 agent 协作应用，macOS 为主；Windows 是实验性预览，差异和缺口见 [`docs/development.md`](docs/development.md) 的「Windows（实验性）」。术语见 [`CONTEXT.md`](CONTEXT.md)。
 
 开发态：`pnpm install` 然后 `pnpm dev`（并行守护进程 + Tauri 窗；信使由窗拉起）。`pnpm test` / `pnpm typecheck`。细节见 [`docs/development.md`](docs/development.md)。贡献规范见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
 

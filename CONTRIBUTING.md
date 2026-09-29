@@ -5,7 +5,7 @@ Deskfolk 处于 **WIP** 阶段。欢迎中文或英文的问题报告、兼容�
 ## 提问题或建议
 
 - 在项目托管仓库的 Issues 中先查找相同问题，再使用对应模板。
-- Bug 报告应包含 macOS 版本、工具链版本、源码版本、最小复现、期望与实际结果。模型或 MCP 相关问题还应说明接口类型和模型 / 工具名称。
+- Bug 报告应包含操作系统（macOS / Windows）版本、工具链版本、源码版本、最小复现、期望与实际结果。模型或 MCP 相关问题还应说明接口类型和模型 / 工具名称。
 - 日志、截图、对话与工具输出在公开前必须脱敏。不要上传 API key、Authorization、本机 token、真实对话数据库或未脱敏的工作区文件。
 - 漏洞通过 [SECURITY.md](SECURITY.md) 的私密方式报告，不使用公开 Bug 模板。
 - 涉及架构、权限边界、持久化或产品方向的大改动，先讨论问题和方案，避免直接提交大规模重写。
@@ -29,7 +29,7 @@ pnpm dev
 
 运行细节见[开发说明](docs/development.md)，领域术语见 [CONTEXT.md](CONTEXT.md)。依赖与脚本以各包的 `package.json`、`Cargo.toml` 和锁文件为准。包中的 `private: true` 用于防止意外发布到 npm，不影响源码采用 MIT 开源。
 
-使用独立、可丢弃的测试工作区；如需隔离本机数据库与接口描述文件，可使用 `REAL_BOT_DATA_DIR`，但它不隔离 macOS 钥匙串中的凭据，也不改变本机 API 端口。避免让多个实例同时争用同一端口或真实数据。
+使用独立、可丢弃的测试工作区；如需隔离本机数据库与接口描述文件，可使用 `REAL_BOT_DATA_DIR`，但它不隔离 macOS 钥匙串（Windows 上是凭据管理器）中的凭据，也不改变本机 API 端口。避免让多个实例同时争用同一端口或真实数据。
 
 ## 验证要求
 
@@ -44,12 +44,12 @@ pnpm --filter @real-bot/messenger build
 
 守护进程和终端 helper 不是 sidecar（`externalBin` 为空）：它们由 `build:native` 编进应用资源目录 `native/`，`src-tauri/build.rs` 只在 release profile 才校验这些文件存在（Windows 要 `real-bot-daemon.exe` / `real-bot-pty.exe`，macOS 另加 Swift helper 和凭据库）；debug profile（包括单独跑 `cargo test`）没有 `native/` 就自动建一个空目录，不需要先手动编。
 
-改信使样式时另跑 `pnpm --filter @real-bot/messenger test:visual`（本机视觉基线，见[开发说明](docs/development.md)）。改落地页时另跑 `pnpm --filter @real-bot/landing build`。GitHub Actions 的 CI 工作流会在 PR 与 `main` 上跑上述检查（含落地页 build 与 macOS `cargo test`），不能代替本机 UI 或原生桌面验证。快照发布与 Pages 见[开发说明](docs/development.md#ci落地页与快照发布)。
+改信使样式时另跑 `pnpm --filter @real-bot/messenger test:visual`（本机视觉基线，见[开发说明](docs/development.md)）。改落地页时另跑 `pnpm --filter @real-bot/landing build`。GitHub Actions 的 CI 工作流会在 PR 与 `main` 上跑上述检查（含落地页 build 与 macOS `cargo test`），不能代替本机 UI 或原生桌面验证。Windows 的检查（`windows.yml`）不在 PR 与 `main` 上自动跑，只在发版时由 `release.yml` 调用；改到 Windows 专属的代码时在 Actions 里手动触发一次。快照发布与 Pages 见[开发说明](docs/development.md#ci落地页与快照发布)。
 
 - 为行为变更增加相应测试；避免测试依赖个人凭据或付费真实服务。信使的组件也能测，和纯函数同一个 `pnpm test`，写法见[开发说明·信使组件测试](docs/development.md)。
 - 修改 UI、客户端状态或页面数据时，在运行中的应用或浏览器中完成实际点击、输入、提交和导航验证，覆盖共享该状态的其他界面、错误态和边界情况。
 - 修改布局或样式时检查桌面和窄屏视口；这项检查不代表支持移动端应用。
-- 涉及托盘、退出、监督与登录启动时，额外在 macOS 桌面窗口验证，浏览器不能代替原生行为检查。
+- 涉及托盘、退出、监督与登录启动时，额外在 macOS 桌面窗口验证，浏览器不能代替原生行为检查。改到 Windows 专属的路径（ConPTY 终端、Job Object、安装包钩子、凭据管理器、回收站）时在 Windows 上验证；没条件验证就在 PR 里写明。
 - 截图只能补充验证，不能代替实际交互。纯文档修改检查链接、命令与事实一致性。
 - 明确记录实际通过的检查与未验证的项目；不要把假模型测试写成真实模型端到端验收。
 
@@ -89,6 +89,6 @@ Deskfolk is WIP. Issues and pull requests in Chinese or English are welcome. Kee
 
 Until the core completion rate is published and good enough, peripheral features (remote access, Office previews, annotations, floating/drag-split panes, routines, the spend view, global search, the landing page) take bug fixes only. Changes to the core loop come with a before/after golden-path benchmark table (`eval:golden-path:combine`). One branch (or worktree) per stream of work, small merges, green CI; cut a snapshot release only when the completion numbers move or a user-visible problem is fixed.
 
-Run all four verification commands above before submitting a PR; also build the landing page when those files change. GitHub Actions repeats those checks on pull requests and `main`, but does not replace local UI or native macOS verification. Exercise behavior changes end to end, including shared state and edge cases; check desktop and narrow viewports for layout changes and the native macOS app for desktop integration. Documentation-only changes need link, command, and factual checks rather than UI interaction.
+Run all four verification commands above before submitting a PR; also build the landing page when those files change. GitHub Actions repeats those checks on pull requests and `main`, but does not replace local UI or native macOS verification; the Windows checks (`windows.yml`) run only from a release or when started by hand, so start them when you touch Windows-only code. Exercise behavior changes end to end, including shared state and edge cases; check desktop and narrow viewports for layout changes and the native macOS app for desktop integration (and a Windows machine for Windows-only paths, or say in the PR that they are unverified). Documentation-only changes need link, command, and factual checks rather than UI interaction.
 
-Keep both READMEs aligned (`README.md` and `README.zh.md`), and likewise the glossary and roadmap with their English editions (`CONTEXT.md` / `CONTEXT.en.md`, `ROADMAP.md` / `ROADMAP.en.md`; the glossary holds definitions, the behaviour behind the long terms lives in `docs/behavior.md` / `docs/behavior.en.md`), document user-facing changes under `Unreleased` in `CHANGELOG.md` (and `CHANGELOG.zh.md`), retain third-party notices, and exclude secrets and local artifacts. Contributions are submitted under MIT. `.scratch/` is local-only; share necessary designs and verification in Issues, PRs, or `docs/`. `REAL_BOT_DATA_DIR` isolates data files, not Keychain secrets or the API port. Before making the repository public, maintainers must review the files and any history, scan for secrets, check asset licenses, and enable GitHub private vulnerability reporting.
+Keep both READMEs aligned (`README.md` and `README.zh.md`), and likewise the glossary and roadmap with their English editions (`CONTEXT.md` / `CONTEXT.en.md`, `ROADMAP.md` / `ROADMAP.en.md`; the glossary holds definitions, the behaviour behind the long terms lives in `docs/behavior.md` / `docs/behavior.en.md`), document user-facing changes under `Unreleased` in `CHANGELOG.md` (and `CHANGELOG.zh.md`), retain third-party notices, and exclude secrets and local artifacts. Contributions are submitted under MIT. `.scratch/` is local-only; share necessary designs and verification in Issues, PRs, or `docs/`. `REAL_BOT_DATA_DIR` isolates data files, not Keychain / Credential Manager secrets or the API port. Before making the repository public, maintainers must review the files and any history, scan for secrets, check asset licenses, and enable GitHub private vulnerability reporting.

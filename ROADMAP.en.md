@@ -96,7 +96,7 @@ For the steps to deploy the relay, connect the Mac and pair a phone, see the [re
 
 - Local, single-person use; not a multi-user SaaS, and not a cloud virtual machine.
 - Bots share the workspace and tools; there is no permission isolation between Bots.
-- Running and verification currently target macOS; there is no delivery commitment for cross-platform support or signed installers.
+- Running and verification currently target macOS first. Windows is an experimental preview, without remote access, the independent runtime, in-app update install or desktop notifications yet; there is no delivery commitment for Linux or signed installers.
 - Remote access is an experimental prototype, off by default; there is no cloud relay run by the project.
 - There is no commitment yet to a stable API, database compatibility or production readiness.
 

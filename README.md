@@ -32,12 +32,12 @@
 - **A job that stalls gets noticed.** Tickets on the flow board move with the work; when a job goes quiet with tickets still open, the app calls the Bot on it back once, and tells you if nothing moves. Ask "how's it going" and the app itself tells you what is waiting on you, who is on it, how far it got, who is coming back to check and whether the checks pass, however many Bots split the work, without waking or interrupting a Bot at work.
 - **It shows its work.** Every plan is a flow: the app files each message you send into a plan and its tickets, keeps the goal, the done-when and your rules as the plan's spec, and draws the work as a card per turn by who woke whom, carrying the files that turn handed over, the ticket it worked in, and the model it ran on and why. You can open the direct chats Bots have with each other, too.
 - **It asks before risky moves.** New endpoints or MCP servers, access outside the workspace and outbound network wait for your approval. What waits on you is marked on the conversation list, with macOS banners and a Dock badge. Stop ends a running turn in a direct chat at any time.
-- **The work and the files stay on your Mac.** Window, daemon, sessions and the shared workspace are local, and keys go to Keychain. You bring the models and MCP servers: any OpenAI-compatible endpoint works, and each turn's context goes to the endpoint you configured.
+- **The work and the files stay on your computer.** Window, daemon, sessions and the shared workspace are local, and keys go to the Keychain (Credential Manager on Windows). You bring the models and MCP servers: any OpenAI-compatible endpoint works, and each turn's context goes to the endpoint you configured.
 
 ## Who it's for
 
 - **For** solo developers, technical individuals and small studios who can set up a model endpoint and API key themselves, with a job that needs a few roles and several file-producing steps: a research report, a launch kit, a small tool with tests and a start command.
-- **Not yet for** several people sharing one setup, Linux, work that has to carry on while the Mac sleeps, or anyone who would rather not bring their own model endpoint. Windows is an experimental preview: build from source or grab an unsigned installer from CI — see [Get it](#get-it).
+- **Not yet for** several people sharing one setup, Linux, work that has to carry on while the Mac sleeps, or anyone who would rather not bring their own model endpoint. Windows is an experimental preview: each release carries an unsigned installer, and some features are not there yet — see [Get it](#get-it).
 
 ## Measured
 
@@ -75,11 +75,11 @@ How to run it and read the results: [Development · golden-path benchmark](docs/
 
 ## Get it
 
-macOS 13 (Ventura) or later, Apple silicon or Intel. Windows is an experimental preview (build from source, or a CI installer artifact — see below); Linux is not yet supported.
+macOS 13 (Ventura) or later, Apple silicon or Intel. Windows x64 is an experimental preview (see below); Linux is not yet supported.
 
-- **Download** the latest unsigned `.dmg` from [Releases](https://github.com/Blackman99/deskfolk/releases/latest); nothing else to install. If Gatekeeper blocks the first launch, right-click → Open, or run `xattr -dr com.apple.quarantine "/Applications/Deskfolk.app"` ([Gatekeeper FAQ](docs/gatekeeper.md)).
-- **Updates** show as a dot on the labeled **Settings** entry at the bottom of the desktop sidebar; Settings → About downloads and installs them. Appearance is in Settings → Preferences → Appearance.
-- **From source** (Node 22+, pnpm 12.3.4, Bun 1.2+, Rust, Xcode Command Line Tools):
+- **Download** the latest unsigned `.dmg` from [Releases](https://github.com/Blackman99/deskfolk/releases/latest); nothing else to install. If Gatekeeper blocks the first launch, right-click → Open, or run `xattr -dr com.apple.quarantine "/Applications/Deskfolk.app"` ([Gatekeeper FAQ](docs/gatekeeper.md)). On Windows, run `Deskfolk_<version>_x64-setup.exe` from the same release: it installs for the current user without admin rights, and as it is unsigned, SmartScreen warns about an unknown publisher (More info → Run anyway).
+- **Updates** show as a dot on the labeled **Settings** entry at the bottom of the desktop sidebar; Settings → About downloads and installs them (on Windows, About opens the download in the browser for now). Appearance is in Settings → Preferences → Appearance.
+- **From source** on macOS (Node 22+, pnpm 12.3.4, Bun 1.2+, Rust, Xcode Command Line Tools):
 
 ```bash
 git clone https://github.com/Blackman99/deskfolk.git
@@ -88,7 +88,8 @@ pnpm install
 pnpm dev
 ```
 
-- **Windows (experimental preview):** same `git clone` / `pnpm install` / `pnpm dev`, with Rust's MSVC toolchain and Visual Studio Build Tools ("Desktop development with C++") standing in for Xcode, plus a one-time `cargo build --manifest-path apps/conpty-helper/Cargo.toml` for the terminal helper. To build an installer locally, `pnpm --filter @real-bot/desktop tauri build --bundles nsis`; the [`windows.yml`](.github/workflows/windows.yml) GitHub Actions workflow also uploads an unsigned NSIS installer as a run artifact (SmartScreen will warn — it's not signed). Remote access/phone pairing, the independent runtime, in-app update install, desktop notifications and image downscaling aren't there yet — see the [development guide](docs/development.md) for the full list and prerequisites.
+- **From source on Windows:** the same `git clone` / `pnpm install` / `pnpm dev`, with Rust's MSVC toolchain and Visual Studio Build Tools ("Desktop development with C++") in place of Xcode, plus a one-time `cargo build --manifest-path apps/conpty-helper/Cargo.toml` for the terminal helper. Install Git for Windows as well: Bots' shell tool runs commands in Git Bash when it finds one, and in PowerShell otherwise. `pnpm --filter @real-bot/desktop tauri build --bundles nsis` builds the installer locally.
+- **Not on Windows yet:** remote access and phone pairing, the independent runtime, installing an update inside the app, desktop notifications and the badge, and image thumbnails. Data lives in `%LOCALAPPDATA%\real-bot` and keys in Windows Credential Manager; prerequisites and details are in the [development guide](docs/development.md#windows实验性).
 
 For long jobs on a source build (a multi-shot video, say), run `pnpm dev:steady` instead of `pnpm dev`: the daemon does not restart when the code changes or you `git pull`, so turns in progress are not interrupted.
 
@@ -96,7 +97,7 @@ First run: the setup wizard walks you through picking a workspace folder, adding
 
 ## Status
 
-Alpha; macOS is the primary target and features and data formats may still change there too. Windows is a fresh, experimental preview — expect rough edges and missing features (see [Get it](#get-it)). Linux is not yet supported. Remote access is a default-off prototype. Everyday use and Web Push work on a real Android phone in Chrome; the iOS home screen and WebAuthn user verification have not been checked on real devices, and the independent security review has not passed. The installed app can pair: it keeps the Mac's remote identity in a private file rather than the Keychain and approves each device with Touch ID ([ADR 0033](docs/adr/0033-remote-credentials-in-a-file.md)).
+Alpha; macOS is the primary target and features and data formats may still change there too. Windows is a fresh, experimental preview — expect rough edges and missing features (see [Get it](#get-it)). Linux is not yet supported. Remote access is a default-off prototype, on macOS only. Everyday use and Web Push work on a real Android phone in Chrome; the iOS home screen and WebAuthn user verification have not been checked on real devices, and the independent security review has not passed. The installed app can pair: it keeps the Mac's remote identity in a private file rather than the Keychain and approves each device with Touch ID ([ADR 0033](docs/adr/0033-remote-credentials-in-a-file.md)).
 
 [What is live and what is not](https://blackman99.github.io/deskfolk/en#boundaries) · [Roadmap](ROADMAP.en.md) · [Domain language](CONTEXT.en.md) · [Relay deployment](docs/deploy-remote.md)
 

@@ -23,7 +23,7 @@ Deskfolk 仍在开发中。请先搜索重复问题；日志、截图和对话�
 ## Environment / 环境
 
 - Source version or commit / 源码版本或提交：
-- macOS version / macOS 版本：
+- OS and version (macOS / Windows) / 操作系统与版本（macOS / Windows）：
 - Node / pnpm / Bun / Rust versions / 工具链版本：
 - Desktop app or browser / 桌面窗或浏览器：
 - Model and API compatibility, if relevant / 模型名称与接口类型（如相关）：
