@@ -13,6 +13,10 @@ const enTrashWord = isWindows ? "Recycle Bin" : "Trash";
 const enTrashOwner = isWindows ? "the" : "the Mac’s";
 /** The OS name itself, where a string names it directly rather than something it owns. */
 const osName = isWindows ? "Windows" : "macOS";
+/** The machine routines run on, where a routine hint names it: the Mac there, a plain computer on Windows. */
+// The Chinese word carries the spaces that set a Latin name off from the characters around it.
+const zhHost = isWindows ? "电脑" : " Mac ";
+const enHost = isWindows ? "computer" : "Mac";
 
 /** Locked in 设置里「壳不是囚笼」写哪一句. Do not paraphrase. */
 export const JAIL_COPY = {
@@ -33,8 +37,8 @@ const zh = {
     time: "时间（24 小时制）", weekdays: "星期", days: { mon: "周一", tue: "周二", wed: "周三", thu: "周四", fri: "周五", sat: "周六", sun: "周日" },
     daysShort: { mon: "一", tue: "二", wed: "三", thu: "四", fri: "五", sat: "六", sun: "日" },
     workdays: "工作日", weekend: "周末", allDays: "全选", daySeparator: "、",
-    zone: "按执行 Mac 的本地时区运行，不按此浏览器的时区换算。",
-    availability: "执行 Mac 需醒着且运行时可用；恢复时只补最近一次，不逐次补跑。归档 Bot 不执行日程。",
+    zone: `按执行${zhHost}的本地时区运行，不按此浏览器的时区换算。`,
+    availability: `执行${zhHost}需醒着且运行时可用；恢复时只补最近一次，不逐次补跑。归档 Bot 不执行日程。`,
     enabled: "启用", active: "已启用", paused: "已暂停", pause: "暂停", resume: "恢复", save: "保存日程", cancel: "取消", busy: "正在保存…",
     remove: "删除日程", deleteBody: "删除后不会再触发此日程；已开始的任务不会因此停止。", confirm: "确认删除",
     nameRequired: "请填写标题。", timeInvalid: "请输入有效的 HH:MM 时间（00:00–23:59）。", daysRequired: "每周日程至少选择一天。",
@@ -50,8 +54,8 @@ const zh = {
     open: "日程图",
     empty: "名册上还没有日程。",
     phoneReadOnly: "这里可以看。改时间请到桌面拖动，或打开 Bot 的日程。",
-    projectionHint: "格子是规则展开，不是每次运行的记录。标出的应跑点只在这台 Mac 上可信。",
-    lastFiredHostOnly: "应跑点标记只在执行 Mac 上显示。格子上的钟点就是那台 Mac 的本地时间。",
+    projectionHint: `格子是规则展开，不是每次运行的记录。标出的应跑点只在这台${zhHost}上可信。`,
+    lastFiredHostOnly: `应跑点标记只在执行${zhHost}上显示。格子上的钟点就是那台${zhHost}的本地时间。`,
     detail: "日程详情",
     lastFired: "这是最近一次应跑点。",
     noInstruction: "没有任务指令。",
@@ -1385,8 +1389,8 @@ const en: CopyShape<typeof zh> = {
     time: "Time (24-hour)", weekdays: "Weekdays", days: { mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun" },
     daysShort: { mon: "Mo", tue: "Tu", wed: "We", thu: "Th", fri: "Fr", sat: "Sa", sun: "Su" },
     workdays: "Workdays", weekend: "Weekend", allDays: "All", daySeparator: ", ",
-    zone: "Runs in the execution Mac’s local time zone, not this browser’s time zone.",
-    availability: "The Mac must be awake with the runtime available. On recovery, only the latest missed occurrence is caught up. Archived Bots do not run routines.",
+    zone: `Runs in the execution ${enHost}’s local time zone, not this browser’s time zone.`,
+    availability: `The ${enHost} must be awake with the runtime available. On recovery, only the latest missed occurrence is caught up. Archived Bots do not run routines.`,
     enabled: "Enabled", active: "Enabled", paused: "Paused", pause: "Pause", resume: "Resume", save: "Save routine", cancel: "Cancel", busy: "Saving…",
     remove: "Delete routine", deleteBody: "This routine will no longer trigger. Deleting it does not stop work already started.", confirm: "Confirm delete",
     nameRequired: "Enter a title.", timeInvalid: "Enter a valid HH:MM time (00:00–23:59).", daysRequired: "Choose at least one weekday.",
@@ -1402,8 +1406,8 @@ const en: CopyShape<typeof zh> = {
     open: "Routine calendar",
     empty: "No routines on the roster yet.",
     phoneReadOnly: "You can look here. To change a time, drag it on the desktop, or open the Bot’s routines.",
-    projectionHint: "A block is the rule unfolded, not a record of each run. A marked due time is only trustworthy on this Mac.",
-    lastFiredHostOnly: "Due marks show only on the execution Mac. The clock on a block is that Mac’s local time.",
+    projectionHint: `A block is the rule unfolded, not a record of each run. A marked due time is only trustworthy on this ${enHost}.`,
+    lastFiredHostOnly: `Due marks show only on the execution ${enHost}. The clock on a block is that ${enHost}’s local time.`,
     detail: "Routine",
     lastFired: "This is the latest time it was due.",
     noInstruction: "No task instruction.",

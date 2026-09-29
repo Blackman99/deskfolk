@@ -70,7 +70,7 @@ How to run it and read the results: [Development · golden-path benchmark](docs/
 - **Global search.** Open Search from the sidebar or folded rail, or press ⌘K (Ctrl+K). Filter conversations, messages, files and routines in a keyboard-friendly dialog; phones use a full-screen view. In the editor or terminal, use ⌘⇧K (Ctrl+Shift+K). Rail icons explain themselves on hover or keyboard focus.
 - **Your own terminal.** Shells held by the daemon keep running when the window closes; a Bot's commands scroll under its message while they run, and before it starts writing, its "Thinking" line names the file it is reading or the command it is running, and opens into every step the turn has taken.
 - **Spend by model, conversation and Bot.** Track turn, decision and feedback calls; reported amounts and estimates stay separate — [spend and billing rates](docs/spend.md).
-- **Routines.** Bots start work daily or weekly on the Mac's clock — [how routines work](docs/routines.md).
+- **Routines.** Bots start work daily or weekly on the local clock of the computer they run on — [how routines work](docs/routines.md).
 - **From your phone — experimental, off by default.** Reach your Mac through a relay you run yourself, end-to-end encrypted — [remote access](docs/remote-access.md).
 
 ## Get it

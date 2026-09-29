@@ -6,6 +6,8 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+- The routine editor and the routine calendar no longer say on Windows that routines run on "the Mac": the time-zone and availability hints, the due marks and the note under the calendar name the computer that runs them, and read as before on a Mac. The routines guide, the README and the roadmap say the same.
+
 - The promo films in the README and on the website, the Open Graph image and the GitHub social preview no longer present Deskfolk as Mac-only. The films' end card still showed an earlier tagline and a "Download alpha (macOS)" button; it now carries the current tagline, "Download alpha" and "alpha for macOS and Windows (preview)". In the films and on the website's walkthrough, the key step says the key goes to the system's credential store and the phone step is "Away from your computer"; the walkthrough's steps give Ctrl+S next to ⌘S, remember the layout "on this computer", and mark banners, the Dock badge and remote access as macOS only for now. The footer tagline, which the Open Graph image also carries, reads "A single-user agent collaboration app for macOS, with a Windows preview".
 
 ## 0.1.0-rc.12 — 2026-09-29

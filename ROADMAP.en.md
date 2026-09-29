@@ -24,7 +24,7 @@ Groundwork in place:
 - One flow board per job: the groups, directs and Bot↔Bot directs that share a work dir are drawn on the same board by who woke whom, one card per turn, with the files handed over attached to the cards.
 - A desktop pane workbench: the main area splits freely across and down, each pane holds a set of tabs, and a tab holds a session (together with its one preview and flow board), a terminal, the routine calendar or the workspace; the arrangement is remembered only on this Mac, and narrow screens and phones still show one screen at a time.
 - Your own terminal sessions: held by the daemon, they keep running when the window closes, and after you quit and reopen they come back to the same directory and screen; a command a Bot runs scrolls under its message bubble while it runs and folds into one line when it finishes.
-- Daily / weekly routines: wake a Bot at a set time by the local clock of the Mac that runs it; the routine calendar lays out every routine in one week view.
+- Daily / weekly routines: wake a Bot at a set time by the local clock of the computer that runs it; the routine calendar lays out every routine in one week view.
 - What waits on you is marked on the session list: there is no notifications page; a macOS banner opens straight into that session, the Dock badge counts only what you have not seen and what is still waiting on you, and you can set quiet hours.
 
 Next:
