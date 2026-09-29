@@ -12,7 +12,7 @@ import { createCompletionsClient, type CompletionsClient } from "./completions";
 import { createChains } from "./engine/chains";
 import { createPlanChecks } from "./engine/checks";
 import { createClosing } from "./engine/closing";
-import { createContinuityJudge } from "./engine/continuity-judge";
+import { createSeamsJudge } from "./engine/seams-judge";
 import { createComposer } from "./engine/composer";
 import { createCore } from "./engine/core";
 import { createDirectReport } from "./engine/direct-report";
@@ -173,7 +173,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     ablation,
   });
 
-  const continuityJudge = createContinuityJudge({
+  const seamsJudge = createSeamsJudge({
     completions,
     async routing() {
       const creds = await routing.credentials().catch(() => null);
@@ -187,7 +187,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     admission: options.admission,
     wake,
     renderMirrors: organizer.renderMirrors,
-    judgeContinuity: continuityJudge,
+    judgeContinuity: seamsJudge,
     ablation,
   });
 

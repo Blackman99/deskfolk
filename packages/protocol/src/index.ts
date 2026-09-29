@@ -311,10 +311,11 @@ export type TicketWithArtifacts = Ticket & { artifacts: TicketArtifactRef[] };
 
 /**
  * How a check proves its acceptance line: a file on disk, a command the app runs itself, or —
- * `continuity` — a vision model comparing the frame before and after every cut of a multi-shot
- * video against the plan's own rules (style, faces, left/right, spatial layout, motion, missing
- * transitions, repeated content). The only kind that asks a model anything; every other kind is
- * pure evaluation.
+ * `continuity`, labelled 衔接一致 / "Seams" in the UI (the stored value stays `continuity`) — a
+ * judge comparing adjacent parts of a deliverable several Bots made piecemeal (chapters, shots,
+ * images, slides) against the plan's own rules and a fixed checklist (style, terms and names,
+ * numbers and units, spatial/left-right consistency, missing transitions, repeated content). The
+ * only kind that asks a model anything; every other kind is pure evaluation.
  */
 export type AcceptanceCheckKind = "exists" | "contains" | "matches" | "command" | "continuity";
 
@@ -359,7 +360,9 @@ export type AcceptanceCheck = {
   kind: AcceptanceCheckKind;
   /**
    * `exists` / `contains` / `matches`: the file, workspace-root relative. `continuity`: the
-   * deliverable video, workspace-root relative and optionally a glob (the newest match runs).
+   * deliverable, workspace-root relative — one file split into parts (a video by scene detection, a
+   * Markdown/HTML file by its headings), or a glob whose matches are the ordered parts (natural
+   * sort), or, for a single re-cut video master with no list command, the newest match.
    */
   path: string | null;
   /** `contains`: the needle. `matches`: the regex source (flags `mi`). */
@@ -367,8 +370,8 @@ export type AcceptanceCheck = {
   negate: boolean;
   /**
    * `command`: the shell command, run with `/bin/sh -c`. `continuity`: optional — a command whose
-   * stdout lists the ordered shot files, one per line, so cuts are found between them instead of
-   * by scene detection.
+   * stdout lists the ordered part files, one per line, so seams are found between them instead of
+   * by scene detection or a glob.
    */
   command: string | null;
   /** `command` / `continuity`: workspace-relative; null defaults to the ticket's dir, else the plan's. */

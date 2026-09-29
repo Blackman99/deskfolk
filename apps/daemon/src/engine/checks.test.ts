@@ -1,10 +1,10 @@
 /**
- * `createPlanChecks` itself: the injection point the task doc asks for ("`judgeContinuity(images,
+ * `createPlanChecks` itself: the injection point the task doc asks for ("`judgeContinuity(evidence,
  * rules) => Promise<...>` injected into `createPlanChecks` so tests fake it") is exercised through
  * `evaluate`'s `opts.continuity`, not the judge directly — the judge is `acceptance-eval`'s and
- * `continuity-check`'s to test. What belongs here is the runner's own behavior: a `continuity`
- * check shares the same daemon-wide exclusive queue a `command` check does, and it is handed its
- * plan's dir, rules and session — the deps `continuity-check.ts` cannot get any other way.
+ * `seams-check`'s to test. What belongs here is the runner's own behavior: a `continuity` (衔接
+ * 一致 / "Seams") check shares the same daemon-wide exclusive queue a `command` check does, and it
+ * is handed its plan's dir, rules and session — the deps `seams-check.ts` cannot get any other way.
  */
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";

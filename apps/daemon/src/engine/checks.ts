@@ -7,9 +7,9 @@
  * test` checks does not turn into several at once fighting over the same CPU.
  */
 import type { AcceptanceCheck, Locale } from "@real-bot/protocol";
-import { evaluateCheck, type CheckVerdict, type ContinuityEvalDeps } from "../acceptance-eval";
+import { evaluateCheck, type CheckVerdict, type SeamsEvalDeps } from "../acceptance-eval";
 import { NO_ABLATION, type Ablation } from "../ablation";
-import type { JudgeContinuity } from "../continuity-check";
+import type { JudgeSeams } from "../seams-check";
 import type { TurnAdmission } from "../quiesce";
 import { parsePlanSpec, type Store, type Task } from "../store";
 import type { WakeWatch } from "../wake";
@@ -17,7 +17,7 @@ import type { WakeWatch } from "../wake";
 export type CheckEvaluator = (
   root: string | null,
   check: AcceptanceCheck,
-  opts: { signal?: AbortSignal; wake?: WakeWatch; locale?: Locale; continuity?: ContinuityEvalDeps },
+  opts: { signal?: AbortSignal; wake?: WakeWatch; locale?: Locale; continuity?: SeamsEvalDeps },
 ) => Promise<CheckVerdict>;
 
 export type PlanChecksDeps = {
@@ -30,11 +30,12 @@ export type PlanChecksDeps = {
   /** Injectable for tests; defaults to the real `evaluateCheck`. */
   evaluate?: CheckEvaluator;
   /**
-   * The vision model a `continuity` check asks. The daemon wires the default endpoint's default
-   * model (see `engine/continuity-judge.ts`); a suite that never creates a `continuity` check can
-   * leave this out — the default throws, which reads as that check's own `error` outcome.
+   * The judge a `continuity` (衔接一致 / "Seams") check asks. The daemon wires the default
+   * endpoint's default model (see `engine/seams-judge.ts`); a suite that never creates a
+   * `continuity` check can leave this out — the default throws, which reads as that check's own
+   * `error` outcome.
    */
-  judgeContinuity?: JudgeContinuity;
+  judgeContinuity?: JudgeSeams;
   /** Benchmark switches (see `ablation.ts`): `acceptance-checks` makes every method here a no-op. */
   ablation?: Ablation;
 };
@@ -64,7 +65,7 @@ export function createPlanChecks(deps: PlanChecksDeps): PlanChecks {
   const log = deps.log ?? ((line: string) => console.error(line));
   const evaluate = deps.evaluate ?? evaluateCheck;
   const ablation = deps.ablation ?? NO_ABLATION;
-  const judgeContinuity: JudgeContinuity =
+  const judgeContinuity: JudgeSeams =
     deps.judgeContinuity ??
     (async () => {
       throw new Error("continuity checks are not wired up here");
@@ -99,7 +100,7 @@ export function createPlanChecks(deps: PlanChecksDeps): PlanChecks {
     const resolved: AcceptanceCheck = check.kind === "command" ? { ...check, cwd: effectiveCwd(check) } : check;
     const locale = store.settingsCached().locale;
     if (check.kind === "continuity") {
-      const continuity: ContinuityEvalDeps = {
+      const continuity: SeamsEvalDeps = {
         planDir: task.dir,
         rules: parsePlanSpec(task.spec)?.rules ?? [],
         sessionId: task.session_id,

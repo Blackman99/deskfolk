@@ -65,9 +65,9 @@ export const WORK_ROOT = "work";
 
 /**
  * Reserved subdirs inside a plan or ticket dir. Nothing written here is ever cited as an artifact.
- * `checks/` holds a `continuity` acceptance check's boundary pair images
- * (`checks/<check id>/NN_pair.jpg`), overwritten each run — evidence for the check, not a
- * deliverable.
+ * `checks/` holds a `continuity` (衔接一致 / "Seams") acceptance check's seam pair images
+ * (`checks/<check id>/NN_pair.jpg`, video or image evidence only — a text check writes nothing
+ * here), overwritten each run — evidence for the check, not a deliverable.
  */
 export const RESERVED_SUBDIRS = ["tool-results", "scratch", "checks"] as const;
 

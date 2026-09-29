@@ -343,8 +343,8 @@ export function normalizeCheckInput(ctx: StoreContext, task: Task, raw: unknown,
     }
     if (classified.kind !== "jailed") throw new HttpError(422, "outside_workspace", "command must stay inside the workspace");
   } else if (kind === "continuity") {
-    // At least one of path (the deliverable video, a glob allowed) or command (lists the ordered
-    // shot files) — the same two ways a Bot's own shell would find the cut points.
+    // At least one of path (the deliverable, a glob or a single file to split allowed) or command
+    // (lists the ordered part files) — the same two ways a Bot's own shell would find the parts.
     if (!path && !command) throw new HttpError(422, "invalid_args", "path or command is required for a continuity check");
     if (path) {
       if (!root) throw new HttpError(422, "outside_workspace", "no workspace is open");
@@ -618,8 +618,9 @@ export function commandSeenInPlan(ctx: StoreContext, taskId: string, command: st
  * Whether `path` (a `continuity` check's deliverable, possibly a glob) names a file this plan's
  * messages actually cited — the same safety rule `commandSeenInPlan` gives commands, applied to a
  * path instead: the organizer can point a check at evidence that already exists, never invent one.
- * A glob counts when it would match at least one cited file; an exact path counts when cited
- * itself.
+ * A glob counts when it would match at least one cited file (whether that glob later resolves to
+ * the newest match or to the whole ordered part list makes no difference here); an exact path
+ * counts when cited itself.
  */
 export function pathSeenInPlan(ctx: StoreContext, taskId: string, path: string): boolean {
   const trimmed = path.trim();

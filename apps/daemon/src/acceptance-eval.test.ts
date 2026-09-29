@@ -90,13 +90,13 @@ describe("describeCheck", () => {
     expect(describeCheck(check({ kind: "contains", path: "a.md", pattern: "ok", negate: true }), "zh")).toContain("不包含");
     expect(describeCheck(check({ kind: "matches", path: "a.md", pattern: "^ok$" }), "en")).toBe('a.md matches /^ok$/');
     expect(describeCheck(check({ kind: "command", command: "bun test", cwd: "work/x" }), "en")).toBe("Command: bun test (in work/x)");
-    expect(describeCheck(check({ kind: "continuity", path: "renders/ep01_MASTER.mp4" }), "zh")).toBe("检查 renders/ep01_MASTER.mp4 每个剪切点前后的连贯");
-    expect(describeCheck(check({ kind: "continuity", path: "renders/ep01_MASTER.mp4" }), "en")).toBe("Checks continuity around every cut of renders/ep01_MASTER.mp4");
+    expect(describeCheck(check({ kind: "continuity", path: "renders/ep01_MASTER.mp4" }), "zh")).toBe("检查 renders/ep01_MASTER.mp4 各部分之间是否衔接一致");
+    expect(describeCheck(check({ kind: "continuity", path: "renders/ep01_MASTER.mp4" }), "en")).toBe("Checks the parts of renders/ep01_MASTER.mp4 fit together");
     expect(describeCheck(check({ kind: "continuity", command: "grep -o 'shots/[^\"]*.mp4' stitch.py" }), "zh")).toContain(
-      "按 `grep -o 'shots/[^\"]*.mp4' stitch.py` 列出的镜头顺序检查镜头交界连贯",
+      "检查 `grep -o 'shots/[^\"]*.mp4' stitch.py` 列出的各部分之间是否衔接一致",
     );
     expect(describeCheck(check({ kind: "continuity", command: "cat list.txt", cwd: "work/x" }), "en")).toBe(
-      "Checks shot-boundary continuity in the order listed by `cat list.txt` (in work/x)",
+      "Checks the parts listed by `cat list.txt` (in work/x) fit together",
     );
   });
 });

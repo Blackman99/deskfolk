@@ -699,4 +699,27 @@ describe("applyOrganizerChecks (via store.applyOrganizerResult)", () => {
     expect(f.store.listChecks(f.plan.id).map((c) => c.item).sort()).toEqual(["引用过的视频", "跑过的命令"].sort());
     f.close();
   });
+
+  test("a continuity check's path evidence rule is modality-general: a glob over cited chapter files lands too, not only videos", () => {
+    const f = fixture();
+    const said = f.store.postMessage(f.session.id, { body: "看这版报告" });
+    f.store.db.run(`UPDATE messages SET task_id = ? WHERE id = ?`, [f.plan.id, said.id]);
+    f.store.db.run(
+      `INSERT INTO attachments (id, message_id, workspace_relpath, original_filename, created_at) VALUES (?, ?, ?, ?, ?)`,
+      [ulid(), said.id, "chapters/02-detail.md", "02-detail.md", new Date().toISOString()],
+    );
+    f.store.applyOrganizerResult({
+      sessionId: f.session.id,
+      current: f.store.getTask(f.plan.id),
+      result: organizerResult({
+        checks: [
+          { id: "new-1", item: "凭空编的章节", kind: "continuity", path: "chapters/*_nobody_cited.md" },
+          { id: "new-2", item: "引用过的章节", kind: "continuity", path: "chapters/*.md" },
+        ],
+      }),
+      source: { messageId: null, turnId: null, messageBody: "" },
+    });
+    expect(f.store.listChecks(f.plan.id).map((c) => c.item)).toEqual(["引用过的章节"]);
+    f.close();
+  });
 });

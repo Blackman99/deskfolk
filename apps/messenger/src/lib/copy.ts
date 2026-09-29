@@ -1152,7 +1152,7 @@ const zh = {
       kindContains: "包含文字",
       kindMatches: "匹配正则",
       kindCommand: "运行命令",
-      kindContinuity: "镜头连贯",
+      kindContinuity: "衔接一致",
       pathLabel: "文件路径",
       patternLabel: "文字",
       patternLabelRegex: "正则",
@@ -1166,13 +1166,13 @@ const zh = {
       expectStdoutLabel: "期望输出",
       expectStdoutHint: "留空则不比对退出码之外的输出",
       timeoutLabel: "超时（秒）",
-      continuityPathLabel: "视频（可用 * 匹配最新的一个）",
-      continuityCommandLabel: "列出镜头顺序的命令（可选）",
+      continuityPathLabel: "各部分（文件、通配或一份按标题切分的文档）",
+      continuityCommandLabel: "列出各部分顺序的命令（可选）",
       itemRequired: "选一条验收",
       pathRequired: "填文件路径",
       patternRequired: "填文字或正则",
       commandRequired: "填命令",
-      pathOrCommandRequired: "填视频路径或列出镜头顺序的命令",
+      pathOrCommandRequired: "填各部分的路径、通配，或列出各部分顺序的命令",
       expectExitInvalid: "退出码要是整数",
       timeoutInvalid: "超时要是 1–600 的整数",
       createFailed: "没能加上这条检查。",
@@ -1190,8 +1190,8 @@ const zh = {
         cwd ? `在 ${cwd} 运行 \`${command}\`，期望退出码 ${expectExit}` : `运行 \`${command}\`，期望退出码 ${expectExit}`,
       describeContinuity: (path: string, command: string, cwd: string | null) =>
         command
-          ? `按 \`${command}\`${cwd ? `（在 ${cwd}）` : ""} 列出的镜头顺序检查镜头交界连贯`
-          : `检查 ${path} 每个剪切点前后的连贯`
+          ? `检查 \`${command}\`${cwd ? `（在 ${cwd}）` : ""} 列出的各部分之间是否衔接一致`
+          : `检查 ${path} 各部分之间是否衔接一致`
     },
     empty: "（无）",
     edit: "改",
@@ -2498,7 +2498,7 @@ const en: CopyShape<typeof zh> = {
       kindContains: "Contains text",
       kindMatches: "Matches regex",
       kindCommand: "Runs a command",
-      kindContinuity: "Shot continuity",
+      kindContinuity: "Seams",
       pathLabel: "File path",
       patternLabel: "Text",
       patternLabelRegex: "Regex",
@@ -2512,13 +2512,13 @@ const en: CopyShape<typeof zh> = {
       expectStdoutLabel: "Expected output",
       expectStdoutHint: "Leave blank to skip comparing output beyond the exit code",
       timeoutLabel: "Timeout (seconds)",
-      continuityPathLabel: "Video (use * to match the newest one)",
-      continuityCommandLabel: "Command that lists the shot order (optional)",
+      continuityPathLabel: "Parts (a file, a glob, or a document split by headings)",
+      continuityCommandLabel: "Command that lists the part order (optional)",
       itemRequired: "Pick a line",
       pathRequired: "Enter a file path",
       patternRequired: "Enter text or a regex",
       commandRequired: "Enter a command",
-      pathOrCommandRequired: "Enter a video path or a command that lists the shot order",
+      pathOrCommandRequired: "Enter a path or glob for the parts, or a command that lists their order",
       expectExitInvalid: "Exit code must be an integer",
       timeoutInvalid: "Timeout must be an integer from 1 to 600",
       createFailed: "Couldn’t add that check.",
@@ -2536,8 +2536,8 @@ const en: CopyShape<typeof zh> = {
         cwd ? `Runs \`${command}\` in ${cwd}, expecting exit code ${expectExit}` : `Runs \`${command}\`, expecting exit code ${expectExit}`,
       describeContinuity: (path: string, command: string, cwd: string | null) =>
         command
-          ? `Checks shot-boundary continuity in the order listed by \`${command}\`${cwd ? ` (in ${cwd})` : ""}`
-          : `Checks continuity around every cut of ${path}`
+          ? `Checks the parts listed by \`${command}\`${cwd ? ` (in ${cwd})` : ""} fit together`
+          : `Checks the parts of ${path} fit together`
     },
     empty: "(none)",
     edit: "Edit",

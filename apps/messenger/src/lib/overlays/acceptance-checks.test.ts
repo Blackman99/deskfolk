@@ -160,13 +160,13 @@ test("describeCheck: command, with and without a cwd", () => {
   expect(describeCheck(noCwd, en)).toBe("Runs `bun test`, expecting exit code 1");
 });
 
-test("describeCheck: continuity, by path or by command", () => {
+test("describeCheck: continuity (衔接一致 / Seams), by path or by command", () => {
   const byPath = aCheck({ kind: "continuity", path: "renders/ep01_MASTER.mp4", command: null, cwd: null });
-  expect(describeCheck(byPath, zh)).toBe("检查 renders/ep01_MASTER.mp4 每个剪切点前后的连贯");
-  expect(describeCheck(byPath, en)).toBe("Checks continuity around every cut of renders/ep01_MASTER.mp4");
+  expect(describeCheck(byPath, zh)).toBe("检查 renders/ep01_MASTER.mp4 各部分之间是否衔接一致");
+  expect(describeCheck(byPath, en)).toBe("Checks the parts of renders/ep01_MASTER.mp4 fit together");
   const byCommand = aCheck({ kind: "continuity", path: null, command: "grep -o 'shots/.*\\.mp4' stitch.py", cwd: "work/x" });
-  expect(describeCheck(byCommand, zh)).toBe("按 `grep -o 'shots/.*\\.mp4' stitch.py`（在 work/x） 列出的镜头顺序检查镜头交界连贯");
-  expect(describeCheck(byCommand, en)).toBe("Checks shot-boundary continuity in the order listed by `grep -o 'shots/.*\\.mp4' stitch.py` (in work/x)");
+  expect(describeCheck(byCommand, zh)).toBe("检查 `grep -o 'shots/.*\\.mp4' stitch.py`（在 work/x） 列出的各部分之间是否衔接一致");
+  expect(describeCheck(byCommand, en)).toBe("Checks the parts listed by `grep -o 'shots/.*\\.mp4' stitch.py` (in work/x) fit together");
 });
 
 test("emptyDraft preselects the given item, else the plan's first acceptance line", () => {
