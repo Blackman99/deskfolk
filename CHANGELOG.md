@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+(none)
+
+## 0.1.0-rc.12 — 2026-09-29
+
+Unsigned macOS rc, now with an experimental unsigned Windows installer beside the `.dmg`s. This is not a supported signed installer; Gatekeeper or SmartScreen may block it. Prefer running from source.
+
 - The status line leads with what is waiting on you — an action a Bot needs you to approve, a question it asked — and lists the check-backs Bots have booked in the job and when they come due. In a job split across several Bots and sessions, what holds everything up is most often one of those, not a Bot that stopped.
 
 - Deskfolk starts to run on Windows, as an experimental preview that has so far run on one Windows machine (Windows Server 2022), not yet on Windows 10 or 11. From source it is the same `pnpm install` / `pnpm dev`, with Rust's MSVC toolchain and the Visual Studio C++ build tools in place of Xcode and a one-time build of the terminal helper; releases carry an NSIS installer (`Deskfolk_<version>_x64-setup.exe`), unsigned until the repository sets `WINDOWS_SIGN_COMMAND` (SmartScreen warns about the unknown publisher). The window finds its runtime (data lives in `%LOCALAPPDATA%\real-bot`), setup takes a `C:\…` or `\\server\share` workspace, and Bots read, write and list files there. Their shell tool runs commands in Git Bash when Git for Windows is installed and in PowerShell otherwise (`REAL_BOT_TOOL_SHELL` picks another), and the prompt tells the model which one it has. A command that reaches outside the workspace asks first, as on the Mac: on Windows that includes `C:\…` and `C:/…`, `..\`, `%USERPROFILE%` and `$env:…`, another drive and a network share. Terminals run in a new ConPTY helper (PowerShell by default), and closing one ends everything started in it. Stdio MCP servers launched through `npx` go through `cmd.exe` with every argument escaped, links open in the default browser, Show in File Explorer and Move to Recycle Bin stand in for Finder and the Trash, shortcut labels read Ctrl instead of ⌘, and the terminal's copy, paste, find and clear are Ctrl+Shift+C/V/F/K so that Ctrl+C and Ctrl+K still reach the shell. Not on Windows yet: remote access and phone pairing, the independent runtime, installing an update inside the app (About opens the download in the browser), desktop notifications and the badge, and image thumbnails. Keys are kept in Windows Credential Manager. Setup and known gaps are in the [development guide](docs/development.md).

@@ -6,6 +6,12 @@
 
 ## Unreleased
 
+（无）
+
+## 0.1.0-rc.12 — 2026-09-29
+
+未签名的 macOS rc，这一版起 `.dmg` 旁边多了一个实验性、同样未签名的 Windows 安装包。不是受支持的签名安装包；Gatekeeper 或 SmartScreen 可能拦截。优先从源码运行。
+
 - 进度行先写有什么在等你——某个 Bot 要你批准的动作、它问你的问题——再列出这件事里 Bot 约好的回看和多久后到点。几个 Bot 分在几个会话里做一件事时，卡住整件事的往往是这些，而不是哪个 Bot 停了。
 
 - Deskfolk 开始能在 Windows 上跑了，目前是实验性预览，到现在只在一台 Windows 机器（Windows Server 2022）上跑过，还没在 Windows 10 或 11 上验过。从源码运行同样是 `pnpm install` / `pnpm dev`，把 Xcode 换成 Rust 的 MSVC 工具链和 Visual Studio 的 C++ 生成工具，再先编一次终端 helper；发布包里带一份 NSIS 安装包（`Deskfolk_<版本>_x64-setup.exe`），仓库配上 `WINDOWS_SIGN_COMMAND` 之前不签名（SmartScreen 会提示未知发布者）。窗口能找到运行时（数据在 `%LOCALAPPDATA%\real-bot`），启动向导接受 `C:\…` 或 `\\server\share` 这样的工作区，Bot 能在里面读、写、列文件。Bot 的 shell 工具装了 Git for Windows 时在 Git Bash 里跑命令，否则用 PowerShell（`REAL_BOT_TOOL_SHELL` 可以另指），提示词会告诉模型用的是哪一个。伸到工作区外面的命令和在 Mac 上一样先问你：在 Windows 上这包括 `C:\…` 和 `C:/…`、`..\`、`%USERPROFILE%` 和 `$env:…`、别的盘和网络共享。终端跑在新的 ConPTY helper 里（默认 PowerShell），关掉终端会把在里面起的进程一起结束。经 `npx` 启动的 stdio MCP 服务器走 `cmd.exe`，每个参数都做了转义；链接在默认浏览器里打开；「在文件资源管理器中显示」和「移到回收站」代替访达和废纸篓；快捷键标签显示 Ctrl 而不是 ⌘；终端的复制、粘贴、查找、清屏是 Ctrl+Shift+C/V/F/K，Ctrl+C 和 Ctrl+K 照旧交给 shell。Windows 上暂时没有：远程访问和手机配对、独立运行时、在应用里安装更新（「关于」会在浏览器里打开下载）、桌面通知和角标、图片缩略图。密钥存在 Windows 凭据管理器里。前置条件和已知缺口见[开发说明](docs/development.md)。
