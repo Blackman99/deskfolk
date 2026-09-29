@@ -155,6 +155,19 @@ test("on Windows the card says remote access is not there yet instead of offerin
   close();
 });
 
+test("the connect form folds away how to deploy a relay, with commands to copy and the full guide", () => {
+  const { host, close } = open(null, { remoteStatus: { state: "off", diagnostic: null, devices: 0 } });
+  const guide = host.querySelector<HTMLDetailsElement>("[data-testid=remote-connect] [data-testid=relay-guide]");
+  expect(guide?.open).toBe(false);
+  expect(guide?.querySelector("summary")?.textContent).toContain("Deploy one on your own server");
+  expect(guide?.querySelector("[data-testid=relay-guide-prepare]")?.textContent).toContain("git clone https://github.com/Blackman99/deskfolk.git");
+  expect(guide?.querySelector("[data-testid=relay-guide-env]")?.textContent).toContain("RELAY_PAIRING_ENABLED=1");
+  expect(guide?.querySelector("[data-testid=relay-guide-up]")?.textContent).toContain("up -d --build");
+  expect(guide?.querySelector("[data-testid=relay-guide-pairingOff]")?.textContent).toContain("RELAY_PAIRING_ENABLED=0");
+  expect(guide?.textContent).toContain("Full deployment guide");
+  close();
+});
+
 function fill(host: Element, selector: string, value: string) {
   const input = host.querySelector<HTMLInputElement>(selector)!;
   input.value = value;

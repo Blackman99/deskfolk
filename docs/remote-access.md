@@ -27,24 +27,30 @@ Changing the workspace folder, pointing the Mac at a relay and approving a new d
 
 ## Before you start
 
-- A Linux server you control, with Docker Compose, ports 80 and 443 free, and a domain name pointing at it (this guide uses `relay.example.com`).
+- A Linux server you control, with Docker Compose (plus git and openssl, which it almost certainly has), ports 80 and 443 free, and a domain name pointing at it (this guide uses `relay.example.com`).
 - Deskfolk on the Mac: the installed app, or a source checkout (the [Run from source](../README.md) requirements, and Bun on the path).
 - A phone with a current browser. For Web Push, iOS needs 16.4 or later with the page added to the Home Screen.
 
 ## 1. Deploy the relay
 
-On the server, in a checkout of this repository:
+Run these steps on the server as root (`sudo -i` first if you are not).
 
-**Make the one-time bootstrap token.** It is what lets your Mac, and only your Mac, register with this relay. Write it straight into a private file outside the checkout; do not print it, paste it into a chat or put it on a command line.
+**Fetch the code, create the data directories and make the one-time bootstrap token.** The token is what lets your Mac, and only your Mac, register with this relay, so it goes straight into a private file outside the checkout; do not print it, paste it into a chat or put it on a command line. The relay container runs as UID 1000, so both data directories and the token file belong to it, mode 0700 / 0600; ideally the data directories sit on a filesystem with a 1 GiB quota.
 
 ```sh
-umask 077
-node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("base64url"))' > /srv/deskfolk-relay/bootstrap
+git clone https://github.com/Blackman99/deskfolk.git && cd deskfolk
+install -d -m 0700 /srv/deskfolk-relay
+install -d -m 0700 -o 1000 -g 1000 /srv/deskfolk-relay/state /srv/deskfolk-relay/caddy
+(umask 077 && openssl rand -base64 32 | tr '+/' '-_' | tr -d '=\n' > /srv/deskfolk-relay/bootstrap)
+chown 1000:1000 /srv/deskfolk-relay/bootstrap
 ```
 
-**Write a private env file**, also outside the checkout. The two data directories must already exist, owned by UID 1000 with mode 0700 — ideally on a filesystem with a 1 GiB quota.
+If the token file does not belong to UID 1000, the relay cannot read it and exits at start (its log says only `startup_failed`), and Caddy, which waits for the relay to be healthy, never starts either.
+
+**Write a private env file**, also outside the checkout. Put in your own domain and email and a `RELAY_ID` you will recognize, then run:
 
 ```sh
+cat > /srv/deskfolk-relay/remote.env <<'EOF'
 RELAY_ID=my-relay
 RELAY_DOMAIN=relay.example.com
 ACME_EMAIL=you@example.com
@@ -54,11 +60,12 @@ RELAY_BOOTSTRAP_FILE=/srv/deskfolk-relay/bootstrap
 RELAY_ENABLED=1
 RELAY_PAIRING_ENABLED=1
 REMOTE_BIND_IP=0.0.0.0
+EOF
 ```
 
 `RELAY_ENABLED` and `RELAY_PAIRING_ENABLED` default to off; the relay admits nothing without the first, and bootstrap and pairing need the second. Caddy publishes 80/443 on `127.0.0.1` only unless you set `REMOTE_BIND_IP`; opening it to the internet is exactly the step the unpassed security gates cover, so do it knowingly.
 
-**Build, start and check:**
+**From the checkout, build, start and check** (the first build takes a few minutes):
 
 ```sh
 docker compose --env-file /srv/deskfolk-relay/remote.env -f deploy/remote/compose.yaml config --quiet
@@ -74,7 +81,7 @@ Every variable, limit and recovery rule is in [self-hosted deployment](deploy-re
 
 ## 2. Point the Mac at the relay
 
-In the app, open **Settings → General → Remote (experimental)**. Until the Mac is registered, the card asks for the relay:
+In the app, open **Settings → General → Remote (experimental)**. Until the Mac is registered, the card asks for the relay (its folded **No relay yet?** section holds the step 1 commands, ready to copy):
 
 - **Relay address** — `https://relay.example.com`, the domain from step 1.
 - **Relay ID** — the `RELAY_ID` from the env file.
@@ -101,7 +108,12 @@ bun apps/daemon/scripts/dev-remote.ts status
 4. The Mac shows the device's name and its fingerprint. Compare it with the phone, then choose **Approve this device** and pass the Touch ID sheet, or enter your login password; the sheet names the device and its full fingerprint. Dismissing it pairs nothing and leaves the approve button there. (From source, the stand-in approves without a sheet.)
 5. The phone opens the chat list. Add the page to the Home Screen so it opens like an app.
 6. On the phone, in **Settings → Remote (experimental)**, choose **Register user verification on this device** if you want the maintenance actions.
-7. Turn pairing off again: set `RELAY_PAIRING_ENABLED=0` and run the `up -d` command once more. Paired devices keep working; turn it back on only to pair another.
+7. Turn pairing off again by running these two lines in the server's checkout. Paired devices keep working; set it back to `1` and run `up -d` again only to pair another.
+
+   ```sh
+   sed -i 's/^RELAY_PAIRING_ENABLED=1$/RELAY_PAIRING_ENABLED=0/' /srv/deskfolk-relay/remote.env
+   docker compose --env-file /srv/deskfolk-relay/remote.env -f deploy/remote/compose.yaml up -d
+   ```
 
 To drop a device, use **Remove device** in the Mac's list of connected devices, and pass the same sheet. The relay forgets its key at once and its link closes.
 

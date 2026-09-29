@@ -27,24 +27,30 @@
 
 ## 开始之前
 
-- 一台你能控制的 Linux 服务器：装好 Docker Compose，80 和 443 端口空着，有一个指向它的域名（下文用 `relay.example.com`）。
+- 一台你能控制的 Linux 服务器：装好 Docker Compose（还要 git 和 openssl，一般都自带），80 和 443 端口空着，有一个指向它的域名（下文用 `relay.example.com`）。
 - Mac 上的 Deskfolk：安装的应用，或者源码检出（满足[从源码启动](../README.zh.md)的要求，`bun` 在 PATH 上）。
 - 一部浏览器够新的手机。要用 Web Push 的话，iOS 需要 16.4 以上，并把页面添加到主屏幕。
 
 ## 1. 部署中继
 
-在服务器上，进到本仓库的检出目录：
+下面几步都以 root 在服务器上执行（不是 root 就先 `sudo -i`）。
 
-**生成一次性 bootstrap 令牌。**有了它，你的 Mac、也只有你的 Mac 能在这个中继上登记。直接写进检出目录之外的私有文件；别打印出来，别贴进聊天，也别放在命令行参数里。
+**取代码、建数据目录、生成一次性 bootstrap 令牌。**令牌让你的 Mac、也只有你的 Mac 能在这个中继上登记，所以直接写进检出目录之外的私有文件；别打印出来，别贴进聊天，也别放在命令行参数里。中继容器以 UID 1000 运行，两个数据目录和令牌文件都要归它，权限 0700 / 0600；数据目录最好放在限额 1 GiB 的文件系统上。
 
 ```sh
-umask 077
-node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("base64url"))' > /srv/deskfolk-relay/bootstrap
+git clone https://github.com/Blackman99/deskfolk.git && cd deskfolk
+install -d -m 0700 /srv/deskfolk-relay
+install -d -m 0700 -o 1000 -g 1000 /srv/deskfolk-relay/state /srv/deskfolk-relay/caddy
+(umask 077 && openssl rand -base64 32 | tr '+/' '-_' | tr -d '=\n' > /srv/deskfolk-relay/bootstrap)
+chown 1000:1000 /srv/deskfolk-relay/bootstrap
 ```
 
-**写一份私有 env 文件**，同样放在检出目录之外。两个数据目录要事先建好，属主 UID 1000、权限 0700，最好放在限额 1 GiB 的文件系统上。
+令牌文件不归 UID 1000 时中继读不到它，一启动就退出（日志里只有 `startup_failed`），Caddy 等不到它健康也起不来。
+
+**写一份私有 env 文件**，同样放在检出目录之外。先把域名、邮箱换成你的，`RELAY_ID` 起一个自己认得的名字，再执行：
 
 ```sh
+cat > /srv/deskfolk-relay/remote.env <<'EOF'
 RELAY_ID=my-relay
 RELAY_DOMAIN=relay.example.com
 ACME_EMAIL=you@example.com
@@ -54,11 +60,12 @@ RELAY_BOOTSTRAP_FILE=/srv/deskfolk-relay/bootstrap
 RELAY_ENABLED=1
 RELAY_PAIRING_ENABLED=1
 REMOTE_BIND_IP=0.0.0.0
+EOF
 ```
 
 `RELAY_ENABLED` 和 `RELAY_PAIRING_ENABLED` 默认都关：没有前者中继什么都不放进来，bootstrap 和配对还要后者。不设 `REMOTE_BIND_IP` 时 Caddy 只在 `127.0.0.1` 上发布 80/443；把它开到公网，正是那几道还没通过的安全门要管的一步，想清楚再开。
 
-**构建、启动、自检：**
+**在检出目录里构建、启动、自检**（第一次构建要几分钟）：
 
 ```sh
 docker compose --env-file /srv/deskfolk-relay/remote.env -f deploy/remote/compose.yaml config --quiet
@@ -74,7 +81,7 @@ Caddy 会为你的域名申请证书。现在打开 `https://relay.example.com`�
 
 ## 2. 让 Mac 连上中继
 
-在应用里打开 **设置 → 通用 → 远控（实验性）**。这台 Mac 还没登记时，卡片会要三样东西：
+在应用里打开 **设置 → 通用 → 远控（实验性）**。这台 Mac 还没登记时，卡片会要三样东西（卡片上「还没有中继？」一栏折叠着第 1 步的这些命令，可以直接复制）：
 
 - **中继地址**——`https://relay.example.com`，第 1 步里的域名。
 - **中继 ID**——env 文件里的 `RELAY_ID`。
@@ -101,7 +108,12 @@ bun apps/daemon/scripts/dev-remote.ts status
 4. Mac 上显示这台设备的名字和它的指纹。和手机上的对一下，再点 **批准这台设备**，然后过触控 ID（或输入登录密码）；确认框上写着设备名和完整指纹。关掉确认框不会配对任何东西，批准按钮也还在。（源码态由顶替者直接批准，不弹框。）
 5. 手机进入会话列表。把页面添加到主屏幕，以后像应用一样打开。
 6. 需要维护操作的话，在手机上 **设置 → 远控（实验性）** 里点 **登记本设备用户验证**。
-7. 把配对关回去：`RELAY_PAIRING_ENABLED=0`，再执行一次上面的 `up -d`。已配对的设备照常能用；要配下一台时再打开。
+7. 把配对关回去：在服务器的检出目录里执行下面两行。已配对的设备照常能用；要配下一台时把它改回 `1`，再 `up -d` 一次。
+
+   ```sh
+   sed -i 's/^RELAY_PAIRING_ENABLED=1$/RELAY_PAIRING_ENABLED=0/' /srv/deskfolk-relay/remote.env
+   docker compose --env-file /srv/deskfolk-relay/remote.env -f deploy/remote/compose.yaml up -d
+   ```
 
 要去掉一台设备，在 Mac 的「已连接设备」列表里点 **移除设备**，同样过一次确认框。中继立刻忘掉它的公钥，它的链路随即断开。
 

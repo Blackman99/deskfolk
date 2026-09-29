@@ -50,6 +50,7 @@
 		type IndependentStatus
 	} from './independent-runtime.ts';
 	import NotificationSettings from './NotificationSettings.svelte';
+	import RelayGuide from './RelayGuide.svelte';
 
 	type SettingsTab = 'general' | 'preferences' | 'models' | 'mcp' | 'notifications' | 'about';
 
@@ -949,6 +950,7 @@
 								{#if relayConnectable}
 									<form class="relay-connect" data-testid="remote-connect" onsubmit={connectRelay}>
 										<p class="pairing-invite-text">{t.remote.hostConnectIntro}</p>
+										<RelayGuide {t} {locale} />
 										<fieldset class="relay-connect-fields" disabled={runtime.hostSetupBusy}>
 											<div class="modal-section">
 												<label for="relay-connect-origin">{t.remote.hostConnectOrigin}</label>
