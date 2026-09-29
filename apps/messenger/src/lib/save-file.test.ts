@@ -62,6 +62,24 @@ test("a sheet refused for want of a tap asks for another tap and downloads nothi
   expect(downloads).toHaveLength(0);
 });
 
+/** Only a picture needs the sheet; a download needs no tap of its own, so it survives any wait. */
+test("a touch device downloads a file that is not a picture, never opening the sheet", async () => {
+  const shared = withShareSheet(() => Promise.reject(new DOMException("no gesture", "NotAllowedError")));
+  const downloads = catchDownloads();
+  expect(await saveFile(new Blob(["[Script Info]"], { type: "text/plain" }), "subs.ass", true)).toBe("saved");
+  expect(await saveFile(new Blob(["%PDF"], { type: "application/pdf" }), "report.pdf", true)).toBe("saved");
+  expect(shared).toHaveLength(0);
+  expect(downloads.map((download) => download.download)).toEqual(["subs.ass", "report.pdf"]);
+});
+
+test("a picture that came without a type is still known by its name", async () => {
+  const shared = withShareSheet(async () => {});
+  const downloads = catchDownloads();
+  expect(await saveFile(new Blob([new Uint8Array([1])]), "frame.jpg", true)).toBe("saved");
+  expect(shared).toHaveLength(1);
+  expect(downloads).toHaveLength(0);
+});
+
 test("a file the sheet cannot take is downloaded", async () => {
   const shared = withShareSheet(async () => {}, false);
   const downloads = catchDownloads();

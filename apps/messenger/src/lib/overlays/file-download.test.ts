@@ -122,29 +122,59 @@ test("a file that is gone says so and offers nothing to download", async () => {
   view.close();
 });
 
-test("when the share sheet wants a fresh tap, the next tap hands over the bytes already here", async () => {
+/** A phone whose share sheet takes any file, and turns a picture away while `spent`. */
+function phoneShareSheet(): { shared: string[]; spend: () => void } {
   window.matchMedia = ((query: string) => ({ matches: query === "(pointer: coarse)" })) as never;
-  let spent = true;
+  let spent = false;
   const shared: string[] = [];
   Object.defineProperty(navigator, "canShare", { configurable: true, value: () => true });
   Object.defineProperty(navigator, "share", { configurable: true, value: async (data: ShareData) => {
     if (spent) { spent = false; throw new DOMException("tap spent", "NotAllowedError"); }
     shared.push(data.files![0]!.name);
   } });
+  return { shared, spend: () => { spent = true; } };
+}
+
+test("on the phone a file that is not a picture downloads in one tap, however long its bytes took", async () => {
+  const phone = phoneShareSheet();
+  phone.spend();
+  const names = catchDownloads();
   let reads = 0;
   const view = render(ArtifactPreview, { attachment: null, relpath: "subs.ass", siblings: [], workspacePath: null, t,
-    api: { kind: "remote", getWorkspaceFileBlob: async () => { reads++; return new Blob(["[Script Info]"]); } } as never,
+    api: { kind: "remote", getWorkspaceFileBlob: async () => { reads++; return new Blob(["[Script Info]"], { type: "text/plain" }); } } as never,
     onClose: () => {}, onSelect: () => {},
   });
   await settle();
   downloadButton(view.host)!.click();
   await settle(); await settle();
-  expect(view.host.textContent).toContain(t.stream.artifactDownloadTapAgain);
-  downloadButton(view.host)!.click();
-  await settle(); await settle();
   expect(reads).toBe(1);
-  expect(shared).toEqual(["subs.ass"]);
-  expect(view.host.textContent).not.toContain(t.stream.artifactDownloadTapAgain);
+  expect(names).toEqual(["subs.ass"]);
+  expect(phone.shared).toEqual([]);
+  expect(view.host.textContent).not.toContain(t.stream.imageSaveTapAgain);
+  expect(view.host.querySelector(".is-ready")).toBeNull();
+  view.close();
+});
+
+test("when the share sheet wants a fresh tap for a picture, the next tap hands over the bytes already here", async () => {
+  const phone = phoneShareSheet();
+  phone.spend();
+  const names = catchDownloads();
+  const sizes: Array<string | undefined> = [];
+  const view = render(ArtifactPreview, { attachment: null, relpath: "frames/C06_frame_end.png", siblings: [], workspacePath: null, t,
+    api: { kind: "remote", getWorkspaceFileBlob: async (_path: string, _progress: unknown, options?: { size?: string }) => { sizes.push(options?.size); return new Blob(["png"], { type: "image/png" }); } } as never,
+    onClose: () => {}, onSelect: () => {},
+  });
+  await settle(); await settle();
+  headDownload(view.host)!.click();
+  await settle(); await settle();
+  expect(view.host.textContent).toContain(t.stream.imageSaveTapAgain);
+  headDownload(view.host)!.click();
+  await settle(); await settle();
+  // The scaled copy for the view, then the original once.
+  expect(sizes).toEqual(["preview", undefined]);
+  expect(phone.shared).toEqual(["C06_frame_end.png"]);
+  expect(names).toEqual([]);
+  expect(view.host.textContent).not.toContain(t.stream.imageSaveTapAgain);
   view.close();
 });
 

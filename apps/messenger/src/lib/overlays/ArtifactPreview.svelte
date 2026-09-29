@@ -1296,7 +1296,7 @@
 	{/if}
 	{#if downloadNote}
 		<p class="muted artifact-download-note" role="status">
-			{downloadNote === 'tap' ? t.stream.artifactDownloadTapAgain : t.stream.artifactDownloadFailed}
+			{downloadNote === 'tap' ? t.stream.imageSaveTapAgain : t.stream.artifactDownloadFailed}
 		</p>
 	{/if}
 	{#if showAnnotToggle || showAnnotMode || annotHint !== null || showSourceToggle || canDownload}

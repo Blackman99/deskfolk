@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	/** How a download ended when it did not end in the file: the share sheet wants a fresh tap, or it failed. */
+	/** How a download ended when it did not end in the file: the share sheet wants a fresh tap for a picture, or it failed. */
 	export type FileDownloadNote = 'tap' | 'failed' | null;
 </script>
 
@@ -7,8 +7,8 @@
 	/**
 	 * Download for a file seen remotely. Its bytes cross only when asked for, unless the whole file
 	 * is already here, and leaving the file cancels them, as it cancels a preview's read. On a phone
-	 * the file goes to the share sheet when it takes that type, and otherwise to the browser's
-	 * downloads (see `saveFile`).
+	 * a picture goes to the share sheet when it takes that type, and every other file to the
+	 * browser's downloads in the same tap (see `saveFile`).
 	 */
 	import { onDestroy } from 'svelte';
 	import type { Copy } from '../copy.ts';
@@ -50,7 +50,7 @@
 
 	let busy = $state(false);
 	let progress = $state<FileProgress | null>(null);
-	/** Bytes the share sheet turned away because the tap was spent: the next tap hands them over. */
+	/** A picture the share sheet turned away because the tap was spent: the next tap hands it over. */
 	let held: Blob | null = null;
 	const abort = new AbortController();
 	onDestroy(() => abort.abort());
@@ -121,7 +121,7 @@
 	</button>
 	{#if note && !quiet}
 		<p class="file-download-note" class:is-compact={variant === 'compact'} role="status">
-			{note === 'tap' ? t.stream.artifactDownloadTapAgain : t.stream.artifactDownloadFailed}
+			{note === 'tap' ? t.stream.imageSaveTapAgain : t.stream.artifactDownloadFailed}
 		</p>
 	{/if}
 {/if}

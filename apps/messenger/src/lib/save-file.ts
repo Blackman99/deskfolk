@@ -1,6 +1,9 @@
+import { isRasterImageName } from "./overlays/artifacts.ts";
+
 /**
- * How a save ended. `needs-tap`: the share sheet refused because the tap that asked for it is
- * spent (the bytes took too long to arrive); the bytes are here now, so the next tap goes through.
+ * How a save ended. `needs-tap`: the share sheet refused a picture because the tap that asked for
+ * it is spent (the bytes took too long to arrive); the bytes are here now, so the next tap goes
+ * through. Any other file never ends this way.
  */
 export type SaveOutcome = "saved" | "cancelled" | "needs-tap";
 
@@ -9,16 +12,23 @@ export function prefersShareSheet(): boolean {
   return typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
 }
 
+/** A picture, by its type, or by its name when the bytes came without one. */
+function isPicture(blob: Blob, name: string): boolean {
+  return blob.type.startsWith("image/") || isRasterImageName(name);
+}
+
 /**
- * Hand one file to the person. On a touch device the share sheet, when it takes files: it is the
- * only way a page reaches the photo library (its Save Image), and iOS silently ignores a
- * `download` link on a blob. Everywhere else, a download.
+ * Hand one file to the person. A picture on a touch device goes to the share sheet, when it takes
+ * it: that is the only way a page reaches the photo library (its Save Image), and iOS silently
+ * ignores a `download` link on a blob picture. Every other file, and everything off a touch
+ * device, is a download, which needs no tap of its own and so goes through however long the
+ * bytes took to arrive.
  *
  * The share sheet only opens during a tap. Called after an await that outlived the tap, it throws
  * NotAllowedError; that is `needs-tap`, not a failure, and nothing is downloaded in its place.
  */
 export async function saveFile(blob: Blob, name: string, share = prefersShareSheet()): Promise<SaveOutcome> {
-  if (share && typeof navigator.share === "function") {
+  if (share && isPicture(blob, name) && typeof navigator.share === "function") {
     const file = new File([blob], name, { type: blob.type });
     if (navigator.canShare?.({ files: [file] })) {
       try {
