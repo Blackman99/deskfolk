@@ -833,6 +833,11 @@ export type PostMessageRequest = {
   parent_id?: string | null;
   fork?: boolean;
   ask_id?: string | null;
+  /**
+   * Files already in the workspace, attached as they are (no copy into `inbox/`). Multipart
+   * carries the list as one JSON-encoded field.
+   */
+  paths?: string[];
 };
 
 export type MemberRequest = {

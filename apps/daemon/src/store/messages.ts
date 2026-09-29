@@ -96,14 +96,37 @@ export function listMessages(
 export function postMessage(
   ctx: StoreContext,
   sessionId: string,
-  input: { body: string; parent_id?: string | null; attachments?: AttachmentInput[] },
+  input: { body: string; parent_id?: string | null; attachments?: AttachmentInput[]; paths?: string[] },
 ): Message {
   // Refuse before staging: a post that is not allowed must not put its files anywhere, even briefly.
   assertUserMayPost(ctx, sessionId);
+  const paths = workspaceRefs(ctx, input.paths ?? []);
   const nested = ctx.db.inTransaction;
   if (!nested) prepareAttachments(ctx, input.attachments ?? []);
-  try { return ctx.tx.run(() => postMessageRows(ctx, sessionId, input)); }
+  try { return ctx.tx.run(() => postMessageRows(ctx, sessionId, { ...input, paths })); }
   finally { if (!nested) for (const att of input.attachments ?? []) if (att.staged) discardFile(ctx, att.staged); }
+}
+
+/**
+ * Files you point at that are already in the workspace — dragged in from the file tree. They go
+ * on the message as they are, the way a Bot's handed-over files do: no copy, nothing in `inbox/`.
+ * Only a path inside the workspace is taken, and it is stored the way the workspace spells it.
+ */
+function workspaceRefs(ctx: StoreContext, inputs: readonly string[]): string[] {
+  if (inputs.length === 0) return [];
+  const root = workspacePath(ctx);
+  if (!root) throw new HttpError(422, "invalid_args", "there is no workspace to point into");
+  const paths: string[] = [];
+  for (const input of inputs) {
+    let rel: string | null = null;
+    try {
+      const classified = classifyPath(root, input);
+      if (classified.zone === "inside" && classified.rel !== ".") rel = classified.rel;
+    } catch { /* unreadable reads as outside */ }
+    if (rel === null) throw new HttpError(422, "invalid_args", "path is outside the workspace");
+    if (!paths.includes(rel)) paths.push(rel);
+  }
+  return paths;
 }
 
 /**
@@ -117,7 +140,7 @@ export function assertUserMayPost(ctx: StoreContext, sessionId: string): void {
   }
 }
 
-function postMessageRows(ctx: StoreContext, sessionId: string, input: { body: string; parent_id?: string | null; attachments?: AttachmentInput[] }): Message {
+function postMessageRows(ctx: StoreContext, sessionId: string, input: { body: string; parent_id?: string | null; attachments?: AttachmentInput[]; paths: string[] }): Message {
   assertUserMayPost(ctx, sessionId);
   const parentId = input.parent_id ?? null;
   const parent = parentId ? requireMainParent(ctx, sessionId, parentId) : null;
@@ -146,6 +169,7 @@ function postMessageRows(ctx: StoreContext, sessionId: string, input: { body: st
       );
     }
   }
+  if (input.paths.length > 0) insertPathAttachments(ctx, id, input.paths, isoNow());
 
   touchSession(ctx, sessionId, now);
   return hydrateMessage(ctx, ctx.db.query<MessageRow, [string]>(`SELECT * FROM messages WHERE id = ?`).get(id)!);

@@ -1187,22 +1187,26 @@ function dispatch(
     if (Array.isArray(body.files) && body.files.length && !fileInputs.length) {
       throw new HttpError(422, "invalid_args", "remote file bytes must arrive on type 0x05");
     }
+    const paths = messagePaths(body.paths);
 
     const sessionId = params.id!;
     const fileDrop = sessionId === FILE_DROP_SESSION_ID;
     if (askId) {
       if (fileDrop) throw new HttpError(422, "invalid_args", "the file drop does not answer asks");
-      if (fileInputs.length > 0) throw new HttpError(422, "invalid_args", "an answer carries no files");
+      if (fileInputs.length > 0 || paths.length > 0) throw new HttpError(422, "invalid_args", "an answer carries no files");
       // Clients from before `POST /v1/messages/:id/answer` still answer this way. The text is
       // written onto the question as your own answer, and no message of yours is posted.
       const answered = store.transaction(() => engine.replyAsk(askId, sessionId, { custom: bodyText }));
       return jsonResponse(answered, 201, null);
     }
+    // The file drop is where files arrive on the Mac; what is already in the workspace has no reason to go there.
+    if (fileDrop && paths.length > 0) throw new HttpError(422, "invalid_args", "the file drop takes files, not workspace paths");
     options.admission?.assertNew();
     const message = store.transaction(() => store.postMessage(sessionId, {
       body: bodyText,
       parent_id: parentId,
       attachments: fileInputs.length > 0 ? fileInputs : undefined,
+      paths: paths.length > 0 ? paths : undefined,
     }));
     publish({ event: "message.created", occurred_at: occurred(), ...message });
     // A file dropped here is already in inbox/. Nothing is woken.
@@ -2085,6 +2089,19 @@ function publishBotModelChanges(
     if (previous?.model === bot.model && previous.provider_id === bot.provider_id) continue;
     publish({ event: "bot.upsert", occurred_at: at, ...bot, deleted_at: null });
   }
+}
+
+/** Workspace paths a posted message points at. Multipart carries them as one JSON-encoded field. */
+function messagePaths(value: unknown): string[] {
+  if (value === undefined || value === null) return [];
+  let list: unknown = value;
+  if (typeof value === "string") {
+    try { list = JSON.parse(value); } catch { list = null; }
+  }
+  if (!Array.isArray(list) || !list.every((item) => typeof item === "string" && item.length > 0)) {
+    throw new HttpError(422, "invalid_args", "paths must be a list of workspace paths");
+  }
+  return list;
 }
 
 type ParsedMutation = {

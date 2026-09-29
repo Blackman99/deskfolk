@@ -112,3 +112,12 @@ test("an answer to a question: choices by label and text of your own, nothing el
   expect(() => validateBusiness(answer({ selected: [1] }))).toThrow();
   expect(() => validateBusiness(answer({ custom: "x", body: "x" }))).toThrow();
 });
+
+test("a posted message may point at workspace paths, as a list of non-empty strings", () => {
+  const post = (body: Record<string, unknown>): RemoteRequest => ({ v: 1, id, method: "POST", path: `/v1/sessions/${id}/messages`, body });
+  expect(() => validateBusiness(post({ body: "", paths: ["docs/brief.md", "shots"] }))).not.toThrow();
+  expect(() => validateBusiness(post({ body: "", paths: [] }))).not.toThrow();
+  expect(() => validateBusiness(post({ body: "", paths: "docs/brief.md" }))).toThrow();
+  expect(() => validateBusiness(post({ body: "", paths: [""] }))).toThrow();
+  expect(() => validateBusiness(post({ body: "", paths: ["x".repeat(4097)] }))).toThrow();
+});

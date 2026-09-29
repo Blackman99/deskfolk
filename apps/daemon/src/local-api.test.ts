@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FILE_DROP_SESSION_ID, LOCAL_API_NAME } from "@real-bot/protocol";
@@ -1435,6 +1435,71 @@ describe("empty roster and settings", () => {
     });
     expect(again.status).toBe(422);
     expect(h.store.getTurn(turn.id).status).toBe("interrupted");
+  });
+
+  test("workspace paths ride on a message as they are: no copy, nothing in inbox", async () => {
+    const h = await start();
+    const ws = realpathSync(mkdtempSync(join(tmpdir(), "real-bot-ref-ws-")));
+    mkdirSync(join(ws, "docs"));
+    mkdirSync(join(ws, "shots"));
+    writeFileSync(join(ws, "docs", "brief.md"), "# brief");
+    writeFileSync(join(ws, "shots", "a.png"), noisePng(4, 4));
+    await fetch(`${h.origin}/v1/settings`, {
+      method: "PATCH",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ workspace_path: ws }),
+    });
+    const { direct_session: session } = h.store.createBot({ name: "Reader", duties: "read", boundaries: "stay" });
+    const post = (body: BodyInit, json = true) => fetch(`${h.origin}/v1/sessions/${session.id}/messages`, {
+      method: "POST",
+      headers: auth(h, json ? { "Content-Type": "application/json" } : {}),
+      body,
+    });
+    type Posted = { attachments: Array<{ workspace_relpath: string; original_filename: string; exists: boolean; is_dir: boolean }> };
+
+    const posted = await post(JSON.stringify({ body: "看看这两个", paths: ["docs/brief.md", "./shots/a.png", "docs/brief.md", "shots"] }));
+    expect(posted.status).toBe(201);
+    const message = (await posted.json()) as Posted;
+    expect(message.attachments.map((row) => [row.workspace_relpath, row.original_filename, row.exists, row.is_dir])).toEqual([
+      ["docs/brief.md", "brief.md", true, false],
+      ["shots/a.png", "a.png", true, false],
+      ["shots", "shots", true, true],
+    ]);
+    expect(existsSync(join(ws, "inbox"))).toBe(false);
+
+    // Beside uploaded files, multipart carries the list as one JSON field.
+    const form = new FormData();
+    form.append("body", "");
+    form.append("files", new File([new Uint8Array([1, 2])], "note.txt", { type: "text/plain" }));
+    form.append("paths", JSON.stringify(["docs/brief.md"]));
+    const mixed = await post(form, false);
+    expect(mixed.status).toBe(201);
+    const both = (await mixed.json()) as Posted;
+    expect(both.attachments.map((row) => row.workspace_relpath)).toEqual([expect.stringMatching(/^inbox\//), "docs/brief.md"]);
+
+    const before = h.store.listMessages(session.id).items.length;
+    for (const paths of [["../outside.txt"], ["/etc/hosts"], ["."], [""], "docs/brief.md", [3]]) {
+      expect((await post(JSON.stringify({ body: "x", paths }))).status).toBe(422);
+    }
+    expect(h.store.listMessages(session.id).items.length).toBe(before);
+    const dropped = await fetch(`${h.origin}/v1/sessions/${FILE_DROP_SESSION_ID}/messages`, {
+      method: "POST",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ body: "", paths: ["docs/brief.md"] }),
+    });
+    expect(dropped.status).toBe(422);
+  });
+
+  test("workspace paths need a workspace to point into", async () => {
+    const h = await start();
+    const { direct_session: session } = h.store.createBot({ name: "Reader", duties: "read", boundaries: "stay" });
+    const posted = await fetch(`${h.origin}/v1/sessions/${session.id}/messages`, {
+      method: "POST",
+      headers: auth(h, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ body: "x", paths: ["docs/brief.md"] }),
+    });
+    expect(posted.status).toBe(422);
+    expect(h.store.listMessages(session.id).items).toEqual([]);
   });
 
   test("posting multipart/form-data with attachments saves to inbox and serves content", async () => {
