@@ -89,6 +89,31 @@ describe("spend ledger", () => {
     store.close();
   });
 
+  test("acceptance_check spend: a continuity check's vision calls need no turn/judgement id, are owned by the plan's session, and land under category 'other'", () => {
+    const store = open();
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "none" });
+    const provider = store.createProviderSync({ name: "Vision", base_url: "https://vision.invalid", models: ["seer"] });
+    const plan = store.openTask({ sessionId: writer.direct_session.id, title: "拼装样片" });
+    const row = store.insertSpend({
+      kind: "acceptance_check",
+      sessionId: plan.session_id!,
+      botId: null,
+      providerId: provider.id,
+      model: "seer",
+      inputTokens: 500,
+      outputTokens: 40,
+    });
+    expect(row.kind).toBe("acceptance_check");
+    expect(row.turn_id).toBeNull();
+    expect(row.judgement_id).toBeNull();
+    expect(row.bot_id).toBeNull();
+    expect(row.session_name).toBe("Writer");
+    const summary = store.spendSummary({});
+    const other = summary.categories.find((cat) => cat.category === "other")!;
+    expect(other.kinds.find((k) => k.kind === "acceptance_check")!.calls).toBe(1);
+    store.close();
+  });
+
   test("setting, changing or clearing a model's rates re-prices its unreported rows in one event", () => {
     const store = open();
     const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "none" });

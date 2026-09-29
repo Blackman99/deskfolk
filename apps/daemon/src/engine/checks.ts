@@ -7,16 +7,17 @@
  * test` checks does not turn into several at once fighting over the same CPU.
  */
 import type { AcceptanceCheck, Locale } from "@real-bot/protocol";
-import { evaluateCheck, type CheckVerdict } from "../acceptance-eval";
+import { evaluateCheck, type CheckVerdict, type ContinuityEvalDeps } from "../acceptance-eval";
 import { NO_ABLATION, type Ablation } from "../ablation";
+import type { JudgeContinuity } from "../continuity-check";
 import type { TurnAdmission } from "../quiesce";
-import type { Store } from "../store";
+import { parsePlanSpec, type Store, type Task } from "../store";
 import type { WakeWatch } from "../wake";
 
 export type CheckEvaluator = (
   root: string | null,
   check: AcceptanceCheck,
-  opts: { signal?: AbortSignal; wake?: WakeWatch; locale?: Locale },
+  opts: { signal?: AbortSignal; wake?: WakeWatch; locale?: Locale; continuity?: ContinuityEvalDeps },
 ) => Promise<CheckVerdict>;
 
 export type PlanChecksDeps = {
@@ -28,6 +29,12 @@ export type PlanChecksDeps = {
   log?: (line: string) => void;
   /** Injectable for tests; defaults to the real `evaluateCheck`. */
   evaluate?: CheckEvaluator;
+  /**
+   * The vision model a `continuity` check asks. The daemon wires the default endpoint's default
+   * model (see `engine/continuity-judge.ts`); a suite that never creates a `continuity` check can
+   * leave this out — the default throws, which reads as that check's own `error` outcome.
+   */
+  judgeContinuity?: JudgeContinuity;
   /** Benchmark switches (see `ablation.ts`): `acceptance-checks` makes every method here a no-op. */
   ablation?: Ablation;
 };
@@ -57,6 +64,11 @@ export function createPlanChecks(deps: PlanChecksDeps): PlanChecks {
   const log = deps.log ?? ((line: string) => console.error(line));
   const evaluate = deps.evaluate ?? evaluateCheck;
   const ablation = deps.ablation ?? NO_ABLATION;
+  const judgeContinuity: JudgeContinuity =
+    deps.judgeContinuity ??
+    (async () => {
+      throw new Error("continuity checks are not wired up here");
+    });
 
   const inFlight = new Map<string, Promise<void>>();
   const rerun = new Map<string, RunOptions>();
@@ -83,9 +95,20 @@ export function createPlanChecks(deps: PlanChecksDeps): PlanChecks {
     return check.cwd ?? ".";
   }
 
-  async function evaluateOne(check: AcceptanceCheck, root: string | null, signal: AbortSignal): Promise<CheckVerdict> {
+  async function evaluateOne(check: AcceptanceCheck, root: string | null, signal: AbortSignal, task: Task): Promise<CheckVerdict> {
     const resolved: AcceptanceCheck = check.kind === "command" ? { ...check, cwd: effectiveCwd(check) } : check;
     const locale = store.settingsCached().locale;
+    if (check.kind === "continuity") {
+      const continuity: ContinuityEvalDeps = {
+        planDir: task.dir,
+        rules: parsePlanSpec(task.spec)?.rules ?? [],
+        sessionId: task.session_id,
+        judge: judgeContinuity,
+      };
+      // Continuity checks spawn ffmpeg and ask a vision model — heavier than any other kind — so
+      // they share the same daemon-wide exclusive queue a `command` check's `bun test` would.
+      return exclusiveCommand(() => evaluate(root, resolved, { signal, wake, locale, continuity }));
+    }
     if (check.kind === "command") return exclusiveCommand(() => evaluate(root, resolved, { signal, wake, locale }));
     return evaluate(root, resolved, { signal, wake, locale });
   }
@@ -140,7 +163,7 @@ export function createPlanChecks(deps: PlanChecksDeps): PlanChecks {
         ran = true;
         let verdict: CheckVerdict;
         try {
-          verdict = await evaluateOne(check, root, controller.signal);
+          verdict = await evaluateOne(check, root, controller.signal, task);
         } catch (error) {
           verdict = { outcome: "error", exitCode: null, detail: error instanceof Error ? error.message : "check failed", output: null };
         }

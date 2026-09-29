@@ -13,6 +13,7 @@ import { spawn } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { AcceptanceCheck, AcceptanceCheckOutcome, Locale } from "@real-bot/protocol";
+import { runContinuityCheck, type JudgeContinuity } from "./continuity-check";
 import { ENV_WHITELIST } from "./terminal-env";
 import { classifyPath, classifyShell } from "./workspace-paths";
 import type { WakeWatch } from "./wake";
@@ -343,14 +344,40 @@ export async function runCommandCheck(
   return { outcome, exitCode: result.exitCode, detail, output };
 }
 
+/** What a `continuity` check needs beyond the check row itself: only the engine (which holds the store) has these. */
+export type ContinuityEvalDeps = {
+  /** The plan dir, workspace-relative — where the boundary pair images land, under its `checks/` subdir. */
+  planDir: string;
+  /** The plan's own rules (`spec.rules`), sent to the judge alongside the fixed checklist. */
+  rules: readonly string[];
+  /** The plan's session, for the judge call's spend attribution. */
+  sessionId: string | null;
+  /** Injectable: the real implementation calls the default endpoint's default model; tests fake it. */
+  judge: JudgeContinuity;
+};
+
 /** Dispatches on `check.kind`. `root` is the workspace's absolute path; null means no workspace is open. */
 export async function evaluateCheck(
   root: string | null,
   check: AcceptanceCheck,
-  opts: { signal?: AbortSignal; wake?: WakeWatch; env?: Record<string, string>; locale?: Locale } = {},
+  opts: { signal?: AbortSignal; wake?: WakeWatch; env?: Record<string, string>; locale?: Locale; continuity?: ContinuityEvalDeps } = {},
 ): Promise<CheckVerdict> {
   if (!root) return { outcome: "blocked", exitCode: null, detail: sayer(opts.locale ?? "zh")("没有打开工作区", "no workspace is open"), output: null };
   if (check.kind === "command") return runCommandCheck(root, check, opts);
+  if (check.kind === "continuity") {
+    if (!opts.continuity) {
+      return { outcome: "error", exitCode: null, detail: sayer(opts.locale ?? "zh")("连贯检查没有接上判定模型", "continuity checks are not wired up here"), output: null };
+    }
+    return runContinuityCheck(root, check, {
+      judge: opts.continuity.judge,
+      rules: opts.continuity.rules,
+      planDir: opts.continuity.planDir,
+      sessionId: opts.continuity.sessionId,
+      locale: opts.locale,
+      signal: opts.signal,
+      env: opts.env,
+    });
+  }
   return evaluateFileCheck(root, check, opts.locale);
 }
 
@@ -370,6 +397,15 @@ export function describeCheck(
     return zh
       ? `${check.path ?? ""} ${check.negate ? "不" : ""}匹配 /${check.pattern ?? ""}/`
       : `${check.path ?? ""} ${check.negate ? "does not match" : "matches"} /${check.pattern ?? ""}/`;
+  }
+  if (check.kind === "continuity") {
+    if (check.command) {
+      const where = check.cwd ? (zh ? `（在 ${check.cwd}）` : ` (in ${check.cwd})`) : "";
+      return zh
+        ? `按 \`${check.command}\`${where} 列出的镜头顺序检查镜头交界连贯`
+        : `Checks shot-boundary continuity in the order listed by \`${check.command}\`${where}`;
+    }
+    return zh ? `检查 ${check.path ?? ""} 每个剪切点前后的连贯` : `Checks continuity around every cut of ${check.path ?? ""}`;
   }
   const where = check.cwd ? (zh ? `（在 ${check.cwd}）` : ` (in ${check.cwd})`) : "";
   return zh ? `命令：${check.command ?? ""}${where}` : `Command: ${check.command ?? ""}${where}`;

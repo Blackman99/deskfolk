@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { ClientEvent } from "@real-bot/protocol";
 import { Store } from ".";
 import { HttpError } from "../errors";
+import { ulid } from "../ids";
 import { CHECKS_MAX, CHECK_RUNS_KEPT, ORGANIZER_NEW_CHECKS_MAX, checkDefinitionKey } from "./acceptance-checks";
 import type { OrganizerResult } from "./plan-spec";
 
@@ -149,6 +150,35 @@ describe("normalizeCheckInput / createCheckByUser: 422s", () => {
       refused(() => f.store.createCheckByUser(f.plan.id, { item: "超额", kind: "exists", path: "over.md" })),
     ).toMatchObject({ status: 422, code: "too_many_checks" });
     expect(f.store.listChecks(f.plan.id)).toHaveLength(CHECKS_MAX);
+    f.close();
+  });
+
+  test("continuity needs at least a path or a command", () => {
+    const f = fixture();
+    expect(
+      refused(() => f.store.createCheckByUser(f.plan.id, { item: "镜头连贯", kind: "continuity" })),
+    ).toMatchObject({ status: 422, code: "invalid_args" });
+    f.close();
+  });
+
+  test("continuity's path is jail-checked, glob included", () => {
+    const f = fixture();
+    expect(
+      refused(() => f.store.createCheckByUser(f.plan.id, { item: "镜头连贯", kind: "continuity", path: "../../etc/passwd" })),
+    ).toMatchObject({ status: 422, code: "outside_workspace" });
+    expect(
+      refused(() => f.store.createCheckByUser(f.plan.id, { item: "镜头连贯", kind: "continuity", path: "../outside/*_MASTER.mp4" })),
+    ).toMatchObject({ status: 422, code: "outside_workspace" });
+    const check = f.store.createCheckByUser(f.plan.id, { item: "镜头连贯", kind: "continuity", path: "renders/*_MASTER.mp4" });
+    expect(check).toMatchObject({ kind: "continuity", path: "renders/*_MASTER.mp4" });
+    f.close();
+  });
+
+  test("continuity's command is jail-checked the same way a command check's is", () => {
+    const f = fixture();
+    expect(
+      refused(() => f.store.createCheckByUser(f.plan.id, { item: "镜头连贯", kind: "continuity", command: "cat /etc/passwd" })),
+    ).toMatchObject({ status: 422, code: "outside_workspace" });
     f.close();
   });
 });
@@ -411,6 +441,23 @@ describe("commandSeenInPlan", () => {
   });
 });
 
+describe("pathSeenInPlan", () => {
+  test("exact match, glob match, and misses", () => {
+    const f = fixture();
+    const said = f.store.postMessage(f.session.id, { body: "看这个" });
+    f.store.db.run(`UPDATE messages SET task_id = ? WHERE id = ?`, [f.plan.id, said.id]);
+    f.store.db.run(
+      `INSERT INTO attachments (id, message_id, workspace_relpath, original_filename, created_at) VALUES (?, ?, ?, ?, ?)`,
+      [ulid(), said.id, "renders/ep01_MASTER_V2.mp4", "ep01_MASTER_V2.mp4", new Date().toISOString()],
+    );
+    expect(f.store.pathSeenInPlan(f.plan.id, "renders/ep01_MASTER_V2.mp4")).toBe(true);
+    expect(f.store.pathSeenInPlan(f.plan.id, "renders/*_MASTER_V2.mp4")).toBe(true);
+    expect(f.store.pathSeenInPlan(f.plan.id, "renders/*_REEDIT_MASTER.mp4")).toBe(false);
+    expect(f.store.pathSeenInPlan(f.plan.id, "elsewhere/ep01_MASTER_V2.mp4")).toBe(false);
+    f.close();
+  });
+});
+
 describe("cascade", () => {
   test("deleting the plan drops its checks and runs", () => {
     const f = fixture();
@@ -622,6 +669,34 @@ describe("applyOrganizerChecks (via store.applyOrganizerResult)", () => {
       source: { messageId: null, turnId: null, messageBody: "" },
     });
     expect(f.store.listChecks(f.plan.id).map((c) => c.item)).toEqual(["真跑过的"]);
+    f.close();
+  });
+
+  test("a continuity check needs the same evidence a command check does: a cited path or a run command lands, an invented one is dropped", () => {
+    const f = fixture();
+    const said = f.store.postMessage(f.session.id, { body: "看这版" });
+    f.store.db.run(`UPDATE messages SET task_id = ? WHERE id = ?`, [f.plan.id, said.id]);
+    f.store.db.run(
+      `INSERT INTO attachments (id, message_id, workspace_relpath, original_filename, created_at) VALUES (?, ?, ?, ?, ?)`,
+      [ulid(), said.id, "renders/ep01_MASTER_V2.mp4", "ep01_MASTER_V2.mp4", new Date().toISOString()],
+    );
+    const trigger = f.store.postMessage(f.session.id, { body: "go" });
+    const turn = f.store.createTurn({ sessionId: f.session.id, botId: f.bot.id, triggerMessageId: trigger.id });
+    f.store.db.run(`UPDATE turns SET task_id = ? WHERE id = ?`, [f.plan.id, turn.id]);
+    f.store.recordTurnRun({ turnId: turn.id, tool: "shell", command: "grep -o 'shots/[^\"]*\\.mp4' stitch.py", exitCode: 0, ok: true, cwd: f.plan.dir });
+    f.store.applyOrganizerResult({
+      sessionId: f.session.id,
+      current: f.store.getTask(f.plan.id),
+      result: organizerResult({
+        checks: [
+          { id: "new-1", item: "凭空编的视频", kind: "continuity", path: "nobody/cited_this.mp4" },
+          { id: "new-2", item: "引用过的视频", kind: "continuity", path: "renders/*_MASTER_V2.mp4" },
+          { id: "new-3", item: "跑过的命令", kind: "continuity", command: "grep -o 'shots/[^\"]*\\.mp4' stitch.py", cwd: f.plan.dir },
+        ],
+      }),
+      source: { messageId: null, turnId: null, messageBody: "" },
+    });
+    expect(f.store.listChecks(f.plan.id).map((c) => c.item).sort()).toEqual(["引用过的视频", "跑过的命令"].sort());
     f.close();
   });
 });

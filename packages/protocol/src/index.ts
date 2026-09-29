@@ -309,8 +309,14 @@ export type TicketArtifactRef = { path: string; message_id: string; attachment_i
 
 export type TicketWithArtifacts = Ticket & { artifacts: TicketArtifactRef[] };
 
-/** How a check proves its acceptance line: a file on disk, or a command the app runs itself. */
-export type AcceptanceCheckKind = "exists" | "contains" | "matches" | "command";
+/**
+ * How a check proves its acceptance line: a file on disk, a command the app runs itself, or —
+ * `continuity` — a vision model comparing the frame before and after every cut of a multi-shot
+ * video against the plan's own rules (style, faces, left/right, spatial layout, motion, missing
+ * transitions, repeated content). The only kind that asks a model anything; every other kind is
+ * pure evaluation.
+ */
+export type AcceptanceCheckKind = "exists" | "contains" | "matches" | "command" | "continuity";
 
 /**
  * `pass`/`fail` are evidence either way. `blocked` (outside the workspace, or none set) and
@@ -351,14 +357,21 @@ export type AcceptanceCheck = {
   ticket_id: string | null;
   item: string;
   kind: AcceptanceCheckKind;
-  /** `exists` / `contains` / `matches`: the file, workspace-root relative. */
+  /**
+   * `exists` / `contains` / `matches`: the file, workspace-root relative. `continuity`: the
+   * deliverable video, workspace-root relative and optionally a glob (the newest match runs).
+   */
   path: string | null;
   /** `contains`: the needle. `matches`: the regex source (flags `mi`). */
   pattern: string | null;
   negate: boolean;
-  /** `command`: the shell command, run with `/bin/sh -c`. */
+  /**
+   * `command`: the shell command, run with `/bin/sh -c`. `continuity`: optional — a command whose
+   * stdout lists the ordered shot files, one per line, so cuts are found between them instead of
+   * by scene detection.
+   */
   command: string | null;
-  /** `command`: workspace-relative; null defaults to the ticket's dir, else the plan's. */
+  /** `command` / `continuity`: workspace-relative; null defaults to the ticket's dir, else the plan's. */
   cwd: string | null;
   expect_exit: number | null;
   expect_stdout: string | null;
@@ -1004,12 +1017,13 @@ export type SpendKind =
   | "route_review"
   | "route_learn"
   | "composer_suggest"
-  | "organize";
+  | "organize"
+  | "acceptance_check";
 
 /**
  * How the view groups kinds. Decision is the pick before a turn and the organizer's filing of
- * a message; feedback is the review plus the learning hop; a composer suggestion belongs to
- * neither and is "other".
+ * a message; feedback is the review plus the learning hop; a composer suggestion and a
+ * `continuity` acceptance check's vision calls belong to neither and are "other".
  */
 export type SpendCategory = "turn" | "judgement" | "decision" | "feedback" | "other";
 
@@ -1021,6 +1035,7 @@ export const SPEND_CATEGORY_OF: Record<SpendKind, SpendCategory> = {
   route_learn: "feedback",
   composer_suggest: "other",
   organize: "decision",
+  acceptance_check: "other",
 };
 
 /**

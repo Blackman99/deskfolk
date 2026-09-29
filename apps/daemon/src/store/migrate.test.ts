@@ -243,4 +243,96 @@ describe("a database an earlier build created", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  test("acceptance_checks widens for 'continuity' without losing existing checks or their runs, and a continuity check then inserts", () => {
+    const dir = mkdtempSync(join(tmpdir(), "real-bot-migrate-"));
+    const file = join(dir, "state.sqlite");
+    try {
+      const old = new Database(file, { create: true, strict: true });
+      old.exec(readFileSync(join(FIXTURES, "schema-pre-continuity-checks.sql"), "utf8"));
+      const now = "2026-01-01T00:00:00.000Z";
+      const botId = ulid();
+      const sessionId = ulid();
+      const messageId = ulid();
+      const taskId = ulid();
+      const checkId = ulid();
+      const orphanCheckId = ulid();
+      const runId = ulid();
+      const openRunId = ulid();
+      old.run(`INSERT INTO bots (id, name, duties, boundaries, created_at, updated_at) VALUES (?, 'Writer', 'write', 'none', ?, ?)`, [botId, now, now]);
+      old.run(`INSERT INTO sessions (id, kind, name, created_at, updated_at) VALUES (?, 'direct', NULL, ?, ?)`, [sessionId, now, now]);
+      old.run(
+        `INSERT INTO session_participants (session_id, member, joined_at, left_at) VALUES (?, 'user', ?, NULL), (?, ?, ?, NULL)`,
+        [sessionId, now, sessionId, botId, now],
+      );
+      old.run(`INSERT INTO messages (id, session_id, kind, author, body, created_at) VALUES (?, ?, 'user', 'user', 'hello', ?)`, [messageId, sessionId, now]);
+      old.run(`INSERT INTO tasks (id, session_id, title, dir, brief, status, created_at) VALUES (?, ?, '写周报', 'work/x', 'hello', 'active', ?)`, [
+        taskId,
+        sessionId,
+        now,
+      ]);
+      old.run(
+        `INSERT INTO acceptance_checks
+           (id, task_id, ticket_id, item, kind, path, pattern, negate, command, cwd, expect_exit, expect_stdout, timeout_sec, source, created_at, updated_at, defined_at, first_passed_at, removed_at)
+         VALUES (?, ?, NULL, '交出 report.md', 'exists', 'report.md', NULL, 0, NULL, NULL, NULL, NULL, NULL, 'user', ?, ?, ?, ?, NULL)`,
+        [checkId, taskId, now, now, now, now],
+      );
+      old.run(
+        `INSERT INTO acceptance_check_runs (id, check_id, task_id, cause, started_at, finished_at, outcome, exit_code, detail, output)
+         VALUES (?, ?, ?, 'user', ?, ?, 'pass', NULL, 'ok', NULL)`,
+        [runId, checkId, taskId, now, now],
+      );
+      // A run still open when the old build stopped — the boot-time recovery sweep, not this
+      // migration, is what closes these; the migration must still carry it across untouched.
+      old.run(
+        `INSERT INTO acceptance_check_runs (id, check_id, task_id, cause, started_at, finished_at, outcome, exit_code, detail, output)
+         VALUES (?, ?, ?, 'settle', ?, NULL, NULL, NULL, '', NULL)`,
+        [openRunId, checkId, taskId, now],
+      );
+      // A tombstoned check: gone from `listChecks`, but its own row and its run must still survive
+      // the rebuild (the FK from acceptance_check_runs must not have cascaded on the DROP).
+      const orphanRunId = ulid();
+      old.run(
+        `INSERT INTO acceptance_checks
+           (id, task_id, ticket_id, item, kind, path, pattern, negate, command, cwd, expect_exit, expect_stdout, timeout_sec, source, created_at, updated_at, defined_at, first_passed_at, removed_at)
+         VALUES (?, ?, NULL, '以前的检查', 'command', NULL, NULL, 0, 'true', NULL, 0, NULL, NULL, 'user', ?, ?, ?, NULL, ?)`,
+        [orphanCheckId, taskId, now, now, now, now],
+      );
+      old.run(
+        `INSERT INTO acceptance_check_runs (id, check_id, task_id, cause, started_at, finished_at, outcome, exit_code, detail, output)
+         VALUES (?, ?, ?, 'user', ?, ?, 'fail', 1, 'no', NULL)`,
+        [orphanRunId, orphanCheckId, taskId, now, now],
+      );
+      const shape = old.query<{ sql: string }, []>(`SELECT sql FROM sqlite_master WHERE name = 'acceptance_checks'`).get()!.sql;
+      expect(shape).not.toContain("'continuity'");
+      old.close();
+
+      const store = new Store({ filename: file });
+      const widened = store.db.query<{ sql: string }, []>(`SELECT sql FROM sqlite_master WHERE name = 'acceptance_checks'`).get()!.sql;
+      expect(widened).toContain("'continuity'");
+      // Every row and every run of both checks survived, untouched.
+      expect(store.getCheck(checkId)).toMatchObject({ item: "交出 report.md", kind: "exists", last_run: { outcome: "pass" } });
+      const runs = store.db.query<{ id: string }, [string]>(`SELECT id FROM acceptance_check_runs WHERE check_id = ? ORDER BY started_at, rowid`).all(checkId);
+      expect(runs.map((row) => row.id)).toEqual([runId, openRunId]);
+      const orphanRuns = store.db
+        .query<{ id: string }, [string]>(`SELECT id FROM acceptance_check_runs WHERE check_id = ?`)
+        .all(orphanCheckId);
+      expect(orphanRuns.map((row) => row.id)).toEqual([orphanRunId]);
+      // The FK is still live: deleting the plan still cascades to both checks and both their runs.
+      store.db.run(`DELETE FROM tasks WHERE id = ?`, [taskId]);
+      expect(store.db.query(`SELECT id FROM acceptance_checks WHERE id = ?`).get(checkId)).toBeNull();
+      expect(store.db.query(`SELECT id FROM acceptance_check_runs WHERE check_id = ?`).get(checkId)).toBeNull();
+      store.close();
+
+      // Reopening is idempotent: the widen guard reads "already has 'continuity'" and skips the rebuild.
+      const reopened = new Store({ filename: file });
+      reopened.patchSettingsSync({ workspace_path: join(dir, "workspace") });
+      const plan = reopened.openTask({ sessionId, title: "新的一件事" });
+      const continuityCheck = reopened.createCheckByUser(plan.id, { item: "镜头连贯", kind: "continuity", command: "true" });
+      expect(continuityCheck.kind).toBe("continuity");
+      reopened.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

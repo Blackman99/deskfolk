@@ -1,4 +1,9 @@
-export const SCHEMA_SQL = `
+-- The schema as it shipped before the continuity acceptance check: acceptance_checks.kind only
+-- had exists/contains/matches/command, and spend.kind had no acceptance_check. A test opens a
+-- database built from this file with the current Store and expects it to come up, its rows and
+-- runs intact, and a continuity check to insert cleanly afterwards.
+-- Do not edit: it is a record of a shape that exists on real machines, not a live schema.
+
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS remote_host (
@@ -454,7 +459,7 @@ CREATE TABLE IF NOT EXISTS acceptance_checks (
   task_id TEXT NOT NULL REFERENCES tasks (id) ON DELETE CASCADE,
   ticket_id TEXT REFERENCES tickets (id) ON DELETE SET NULL,
   item TEXT NOT NULL,
-  kind TEXT NOT NULL CHECK (kind IN ('exists', 'contains', 'matches', 'command', 'continuity')),
+  kind TEXT NOT NULL CHECK (kind IN ('exists', 'contains', 'matches', 'command')),
   path TEXT,
   pattern TEXT,
   negate INTEGER NOT NULL DEFAULT 0,
@@ -585,7 +590,7 @@ CREATE TABLE IF NOT EXISTS spend (
   turn_id TEXT,
   judgement_id TEXT,
   kind TEXT NOT NULL CHECK (
-    kind IN ('turn', 'judgement', 'route_pick', 'route_review', 'route_learn', 'composer_suggest', 'organize', 'acceptance_check')
+    kind IN ('turn', 'judgement', 'route_pick', 'route_review', 'route_learn', 'composer_suggest', 'organize')
   ),
   chain_id TEXT,
   provider_id TEXT,
@@ -611,7 +616,6 @@ CREATE TABLE IF NOT EXISTS spend (
     OR (kind = 'route_learn' AND chain_id IS NOT NULL)
     OR kind = 'composer_suggest'
     OR kind = 'organize'
-    OR kind = 'acceptance_check'
   )
 );
 
@@ -731,4 +735,3 @@ CREATE TABLE IF NOT EXISTS notification_delivery_items (
   notification_id TEXT NOT NULL REFERENCES notifications (id) ON DELETE CASCADE,
   PRIMARY KEY (delivery_id, notification_id)
 );
-`;

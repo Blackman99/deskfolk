@@ -329,6 +329,7 @@ export class Store {
   readonly recoverInterruptedCheckRuns = this.bind(acceptanceChecks.recoverInterruptedCheckRuns);
   readonly rebindCheckItems = this.bind(acceptanceChecks.rebindCheckItems);
   readonly commandSeenInPlan = this.bind(acceptanceChecks.commandSeenInPlan);
+  readonly pathSeenInPlan = this.bind(acceptanceChecks.pathSeenInPlan);
 
   // Check-backs ----------------------------------------------------------------------------
   readonly scheduleCheckBack = this.bind(checkBacks.scheduleCheckBack);

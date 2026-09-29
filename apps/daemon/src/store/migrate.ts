@@ -218,6 +218,7 @@ export function migrateSchema(db: Database): void {
   migratePlans(db);
   migrateBotThinkingPins(db);
   migrateSpendLedger(db);
+  migrateAcceptanceCheckKinds(db);
   migrateAnnotations(db);
   migrateAskChoices(db);
   if (!tables.includes("terminals")) {
@@ -655,9 +656,14 @@ function migrateSpendLedger(db: Database): void {
     .all()
     .map((row) => row.name);
   // The kinds are a CHECK, which SQLite cannot widen in place: a ledger from before the organizer
-  // is rebuilt the same way the pre-ledger table was.
+  // (or, later, before acceptance checks could spend) is rebuilt the same way the pre-ledger table was.
   const shape = db.query<{ sql: string }, []>(`SELECT sql FROM sqlite_master WHERE name = 'spend'`).get()?.sql ?? "";
-  if (cols.includes("kind") && SPEND_LEDGER_COLUMNS.every((name) => cols.includes(name)) && shape.includes("'organize'")) {
+  if (
+    cols.includes("kind") &&
+    SPEND_LEDGER_COLUMNS.every((name) => cols.includes(name)) &&
+    shape.includes("'organize'") &&
+    shape.includes("'acceptance_check'")
+  ) {
     createSpendIndexes(db);
     return;
   }
@@ -674,7 +680,7 @@ function migrateSpendLedger(db: Database): void {
         turn_id TEXT,
         judgement_id TEXT,
         kind TEXT NOT NULL CHECK (
-          kind IN ('turn', 'judgement', 'route_pick', 'route_review', 'route_learn', 'composer_suggest', 'organize')
+          kind IN ('turn', 'judgement', 'route_pick', 'route_review', 'route_learn', 'composer_suggest', 'organize', 'acceptance_check')
         ),
         chain_id TEXT,
         provider_id TEXT,
@@ -700,6 +706,7 @@ function migrateSpendLedger(db: Database): void {
           OR (kind = 'route_learn' AND chain_id IS NOT NULL)
           OR kind = 'composer_suggest'
           OR kind = 'organize'
+          OR kind = 'acceptance_check'
         )
       )
     `);
@@ -771,6 +778,69 @@ function createSpendIndexes(db: Database): void {
   db.run(`CREATE INDEX IF NOT EXISTS spend_session_created ON spend (session_id, created_at)`);
   db.run(`CREATE INDEX IF NOT EXISTS spend_model_created ON spend (model, created_at)`);
   db.run(`CREATE INDEX IF NOT EXISTS spend_kind_created ON spend (kind, created_at)`);
+}
+
+/**
+ * `acceptance_checks.kind` gained `continuity` (a vision model comparing the frame before and
+ * after every cut of a multi-shot video). Its CHECK is a fixed `IN (...)` list, which SQLite
+ * cannot widen with `ALTER TABLE`, so the table is rebuilt following SQLite's own 12-step
+ * procedure for changing a table's schema in ways `ALTER TABLE` cannot: foreign keys off before
+ * the transaction (so dropping the old table does not cascade-delete `acceptance_check_runs`,
+ * which references it `ON DELETE CASCADE`), copy every row into a same-named replacement inside
+ * one transaction, recreate the index, `PRAGMA foreign_key_check` before committing, foreign keys
+ * back on after. `acceptance_check_runs` itself is never touched — it is not part of what
+ * changed, and it keeps referencing `acceptance_checks` by name across the rename.
+ */
+function migrateAcceptanceCheckKinds(db: Database): void {
+  const shape = db.query<{ sql: string }, []>(`SELECT sql FROM sqlite_master WHERE name = 'acceptance_checks'`).get()?.sql ?? "";
+  if (!shape || shape.includes("'continuity'")) return;
+  db.run(`PRAGMA foreign_keys = OFF`);
+  try {
+    db.transaction(() => {
+      db.run(`
+        CREATE TABLE acceptance_checks_new (
+          id TEXT PRIMARY KEY,
+          task_id TEXT NOT NULL REFERENCES tasks (id) ON DELETE CASCADE,
+          ticket_id TEXT REFERENCES tickets (id) ON DELETE SET NULL,
+          item TEXT NOT NULL,
+          kind TEXT NOT NULL CHECK (kind IN ('exists', 'contains', 'matches', 'command', 'continuity')),
+          path TEXT,
+          pattern TEXT,
+          negate INTEGER NOT NULL DEFAULT 0,
+          command TEXT,
+          cwd TEXT,
+          expect_exit INTEGER,
+          expect_stdout TEXT,
+          timeout_sec INTEGER,
+          source TEXT NOT NULL CHECK (source IN ('organizer', 'user')),
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          defined_at TEXT NOT NULL,
+          first_passed_at TEXT,
+          removed_at TEXT
+        )
+      `);
+      db.run(`
+        INSERT INTO acceptance_checks_new (
+          id, task_id, ticket_id, item, kind, path, pattern, negate, command, cwd,
+          expect_exit, expect_stdout, timeout_sec, source, created_at, updated_at,
+          defined_at, first_passed_at, removed_at
+        )
+        SELECT
+          id, task_id, ticket_id, item, kind, path, pattern, negate, command, cwd,
+          expect_exit, expect_stdout, timeout_sec, source, created_at, updated_at,
+          defined_at, first_passed_at, removed_at
+        FROM acceptance_checks
+      `);
+      db.run(`DROP TABLE acceptance_checks`);
+      db.run(`ALTER TABLE acceptance_checks_new RENAME TO acceptance_checks`);
+      db.run(`CREATE INDEX IF NOT EXISTS acceptance_checks_task ON acceptance_checks (task_id, removed_at, created_at)`);
+      const violations = db.query<{ table: string }, []>(`PRAGMA foreign_key_check(acceptance_checks)`).all();
+      if (violations.length > 0) throw new Error("acceptance_checks migration broke a foreign key");
+    })();
+  } finally {
+    db.run(`PRAGMA foreign_keys = ON`);
+  }
 }
 
 /** A batch of annotations sent into your direct records the Bot↔Bot message it came from. */

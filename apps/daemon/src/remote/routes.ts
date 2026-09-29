@@ -84,7 +84,7 @@ get("workspace/tree", { path: string }); get("workspace/file", { path: string, s
 get("host/tree", { path: string });
 get("events/catchup", { event_instance_id: v => typeof v === "string" && /^[0-9a-f]{32}$/.test(v), after_seq: v => typeof v === "string" && /^(0|[1-9][0-9]*)$/.test(v) && Number.isSafeInteger(Number(v)) }, ["event_instance_id", "after_seq"]);
 get("approvals", { status: one("pending") });
-const spendKind: Check = one("turn", "judgement", "route_pick", "route_review", "route_learn", "composer_suggest", "organize");
+const spendKind: Check = one("turn", "judgement", "route_pick", "route_review", "route_learn", "composer_suggest", "organize", "acceptance_check");
 // Remote query values are strings. Repeated local `kind` params arrive here as one comma-separated value.
 const spendKinds: Check = (value) => typeof value === "string" && value.split(",").every((kind) => kind.length > 0 && spendKind(kind)) && value.split(",").length <= 7;
 const isoTime: Check = (value) => {

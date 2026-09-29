@@ -40,6 +40,7 @@ export function describeCheck(check: Pick<AcceptanceCheck, "kind" | "path" | "pa
   if (check.kind === "exists") return c.describeExists(check.path ?? "");
   if (check.kind === "contains") return c.describeContains(check.path ?? "", check.pattern ?? "", check.negate);
   if (check.kind === "matches") return c.describeMatches(check.path ?? "", check.pattern ?? "", check.negate);
+  if (check.kind === "continuity") return c.describeContinuity(check.path ?? "", check.command ?? "", check.cwd);
   return c.describeCommand(check.command ?? "", check.cwd, check.expect_exit ?? 0);
 }
 
@@ -97,6 +98,8 @@ export type CheckDraftErrors = {
   command?: true;
   expectExit?: true;
   timeoutSec?: true;
+  /** `continuity` only: neither a video path nor a command was given. */
+  pathOrCommand?: true;
 };
 
 function parseOptionalInt(text: string): { ok: true; value: number | null } | { ok: false } {
@@ -124,6 +127,7 @@ export function draftToInput(draft: CheckDraft): { errors: CheckDraftErrors; inp
   if (needsPath && !path) errors.path = true;
   if (needsPattern && !pattern) errors.pattern = true;
   if (draft.kind === "command" && !command) errors.command = true;
+  if (draft.kind === "continuity" && !path && !command) errors.pathOrCommand = true;
 
   let expectExit: number | null = null;
   if (draft.kind === "command") {
@@ -145,11 +149,11 @@ export function draftToInput(draft: CheckDraft): { errors: CheckDraftErrors; inp
   const input: AcceptanceCheckInput = {
     item,
     kind: draft.kind,
-    path: needsPath ? path : null,
+    path: needsPath ? path : draft.kind === "continuity" ? path || null : null,
     pattern: needsPattern ? pattern : null,
     negate: needsPattern ? draft.negate : false,
-    command: draft.kind === "command" ? command : null,
-    cwd: draft.kind === "command" && draft.cwd.trim() ? draft.cwd.trim() : null,
+    command: draft.kind === "command" || draft.kind === "continuity" ? command || null : null,
+    cwd: (draft.kind === "command" || draft.kind === "continuity") && draft.cwd.trim() ? draft.cwd.trim() : null,
     expect_exit: draft.kind === "command" ? expectExit : null,
     expect_stdout: draft.kind === "command" && draft.expectStdout.trim() ? draft.expectStdout.trim() : null,
     timeout_sec: timeoutSec,

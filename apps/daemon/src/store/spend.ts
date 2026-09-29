@@ -29,6 +29,7 @@ const KINDS: readonly SpendKind[] = [
   "route_learn",
   "composer_suggest",
   "organize",
+  "acceptance_check",
 ];
 const CATEGORIES: readonly SpendCategory[] = ["turn", "judgement", "decision", "feedback", "other"];
 const GROUP_BY = new Set<NonNullable<SpendSummaryQuery["group_by"]>>(["model", "session", "bot", "kind", "day"]);

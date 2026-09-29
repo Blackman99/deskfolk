@@ -112,7 +112,7 @@ test("a day query groups by day in the given zone, and a dimension query names t
 
 test("feedback expands to the review and the learning hop, and nothing else", () => {
   expect(kindsOfCategory("feedback").sort()).toEqual(["route_learn", "route_review"]);
-  expect(kindsOfCategory("other")).toEqual(["composer_suggest"]);
+  expect(kindsOfCategory("other").sort()).toEqual(["acceptance_check", "composer_suggest"]);
 });
 
 test("the view remembers its range and dimension, and ignores a stored value it does not know", () => {

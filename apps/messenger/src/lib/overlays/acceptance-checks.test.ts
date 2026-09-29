@@ -160,6 +160,15 @@ test("describeCheck: command, with and without a cwd", () => {
   expect(describeCheck(noCwd, en)).toBe("Runs `bun test`, expecting exit code 1");
 });
 
+test("describeCheck: continuity, by path or by command", () => {
+  const byPath = aCheck({ kind: "continuity", path: "renders/ep01_MASTER.mp4", command: null, cwd: null });
+  expect(describeCheck(byPath, zh)).toBe("检查 renders/ep01_MASTER.mp4 每个剪切点前后的连贯");
+  expect(describeCheck(byPath, en)).toBe("Checks continuity around every cut of renders/ep01_MASTER.mp4");
+  const byCommand = aCheck({ kind: "continuity", path: null, command: "grep -o 'shots/.*\\.mp4' stitch.py", cwd: "work/x" });
+  expect(describeCheck(byCommand, zh)).toBe("按 `grep -o 'shots/.*\\.mp4' stitch.py`（在 work/x） 列出的镜头顺序检查镜头交界连贯");
+  expect(describeCheck(byCommand, en)).toBe("Checks shot-boundary continuity in the order listed by `grep -o 'shots/.*\\.mp4' stitch.py` (in work/x)");
+});
+
 test("emptyDraft preselects the given item, else the plan's first acceptance line", () => {
   const draft = emptyDraft(aDetail(), "有结论");
   expect(draft.item).toBe("有结论");
@@ -270,6 +279,40 @@ test("draftToInput: command needs a command, parses expect_exit and timeout, dro
 
   expect(draftToInput(aDraft({ kind: "command", command: "" })).errors).toEqual({ command: true });
   expect(draftToInput(aDraft({ kind: "command", command: "bun test", expectExit: "abc" })).errors).toEqual({ expectExit: true });
+});
+
+test("draftToInput: continuity needs a path or a command, and sends whichever was filled in", () => {
+  const byPath = draftToInput(aDraft({ kind: "continuity", path: "renders/*_MASTER.mp4", command: "" }));
+  expect(byPath.errors).toEqual({});
+  expect(byPath.input).toEqual({
+    item: "有对比表",
+    kind: "continuity",
+    path: "renders/*_MASTER.mp4",
+    pattern: null,
+    negate: false,
+    command: null,
+    cwd: null,
+    expect_exit: null,
+    expect_stdout: null,
+    timeout_sec: null,
+  });
+
+  const byCommand = draftToInput(aDraft({ kind: "continuity", path: "", command: "cat list.txt", cwd: "work/x" }));
+  expect(byCommand.errors).toEqual({});
+  expect(byCommand.input).toEqual({
+    item: "有对比表",
+    kind: "continuity",
+    path: null,
+    pattern: null,
+    negate: false,
+    command: "cat list.txt",
+    cwd: "work/x",
+    expect_exit: null,
+    expect_stdout: null,
+    timeout_sec: null,
+  });
+
+  expect(draftToInput(aDraft({ kind: "continuity", path: "", command: "" })).errors).toEqual({ pathOrCommand: true });
 });
 
 test("draftToInput: timeout must be a blank or an integer from 1 to 600", () => {

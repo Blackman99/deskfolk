@@ -2000,7 +2000,7 @@ function dispatch(
   return jsonResponse({ error: { code: "not_found", message: "not found" } }, 404, null);
 }
 
-const SPEND_KINDS = new Set<SpendKind>(["turn", "judgement", "route_pick", "route_review", "route_learn", "composer_suggest", "organize"]);
+const SPEND_KINDS = new Set<SpendKind>(["turn", "judgement", "route_pick", "route_review", "route_learn", "composer_suggest", "organize", "acceptance_check"]);
 const ULID = /^[0-9A-HJKMNP-TV-Z]{26}$/;
 
 /** Shared by the summary and the detail page. An empty `bot_id` or `model` means the null group. */

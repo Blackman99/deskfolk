@@ -18,7 +18,7 @@
 
 	let { api, detail, t, editing, initialItem = '', onSaved, onCancel }: Props = $props();
 
-	const KINDS: readonly AcceptanceCheckKind[] = ['exists', 'contains', 'matches', 'command'];
+	const KINDS: readonly AcceptanceCheckKind[] = ['exists', 'contains', 'matches', 'command', 'continuity'];
 
 	let draft = $state(editing ? draftFromCheck(editing) : emptyDraft(detail, initialItem));
 	let errors = $state<ReturnType<typeof draftToInput>['errors']>({});
@@ -37,6 +37,7 @@
 		if (kind === 'exists') return t.plan.checks.kindExists;
 		if (kind === 'contains') return t.plan.checks.kindContains;
 		if (kind === 'matches') return t.plan.checks.kindMatches;
+		if (kind === 'continuity') return t.plan.checks.kindContinuity;
 		return t.plan.checks.kindCommand;
 	}
 
@@ -178,6 +179,22 @@
 		</label>
 	{/if}
 
+	{#if draft.kind === 'continuity'}
+		<label class="check-form-field">
+			<span class="check-form-label">{t.plan.checks.continuityPathLabel}</span>
+			<input class="check-form-input mono" type="text" bind:value={draft.path} disabled={saving} />
+		</label>
+		<label class="check-form-field">
+			<span class="check-form-label">{t.plan.checks.continuityCommandLabel}</span>
+			<input class="check-form-input mono" type="text" bind:value={draft.command} disabled={saving} />
+		</label>
+		<label class="check-form-field">
+			<span class="check-form-label">{t.plan.checks.cwdLabel}</span>
+			<input class="check-form-input mono" type="text" placeholder={t.plan.checks.cwdPlaceholder} bind:value={draft.cwd} disabled={saving} />
+		</label>
+		{#if errors.pathOrCommand}<p class="field-error" role="alert">{t.plan.checks.pathOrCommandRequired}</p>{/if}
+	{/if}
+
 	{#if saveError}<p class="field-error" role="alert">{saveError}</p>{/if}
 
 	<div class="check-form-actions">
@@ -264,7 +281,10 @@
 		color: var(--accent);
 	}
 
-	.check-kind-btn.is-active {
+	/* After the hover rule: a tap leaves the pointer (and on touch, a sticky :hover) on the chosen
+	   button, and hover's accent text would vanish into the accent fill. */
+	.check-kind-btn.is-active,
+	.check-kind-btn.is-active:hover:not(:disabled) {
 		border-color: var(--accent);
 		background: var(--accent);
 		color: #ffffff;

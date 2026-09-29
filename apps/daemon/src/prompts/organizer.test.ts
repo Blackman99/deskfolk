@@ -305,6 +305,15 @@ describe("parseOrganizerChecks", () => {
     ]);
   });
 
+  test("kind continuity parses through like any other kind", () => {
+    expect(
+      parseOrganizerChecks(
+        [{ id: "new-1", item: "镜头连贯", kind: "continuity", path: "renders/ep01_MASTER.mp4", command: "grep -o 'shots/.*.mp4' stitch.py" }],
+        existing,
+      ),
+    ).toEqual([{ id: "new-1", item: "镜头连贯", kind: "continuity", path: "renders/ep01_MASTER.mp4", command: "grep -o 'shots/.*.mp4' stitch.py" }]);
+  });
+
   test("remove only on an existing check the payload showed; a new-N cannot be removed, and other fields on a remove are ignored", () => {
     expect(parseOrganizerChecks([{ id: "01ARZ3NDEKTSV4RRFFQ69G5FD1", remove: true, item: "ignored" }], existing)).toEqual([
       { id: "01ARZ3NDEKTSV4RRFFQ69G5FD1", remove: true },

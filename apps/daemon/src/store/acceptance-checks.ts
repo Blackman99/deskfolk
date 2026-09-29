@@ -11,6 +11,7 @@
  */
 import type { AcceptanceCheck, AcceptanceCheckKind, AcceptanceCheckOutcome, AcceptanceCheckRun, AcceptanceCheckRunCause } from "@real-bot/protocol";
 import { HttpError } from "../errors";
+import { globToRegExp } from "../glob";
 import { isoNow, ulid } from "../ids";
 import { takeCodePoints } from "../text";
 import { normalizeSpecLine } from "./plan-shape";
@@ -19,7 +20,7 @@ import { getTask, type Task } from "./tasks";
 import { TURN_RUN_COMMAND_MAX } from "./turn-runs";
 import { classifyPath, classifyShell } from "../workspace-paths";
 
-export const CHECK_KINDS: readonly AcceptanceCheckKind[] = ["exists", "contains", "matches", "command"];
+export const CHECK_KINDS: readonly AcceptanceCheckKind[] = ["exists", "contains", "matches", "command", "continuity"];
 
 /** At most `limit` code points total, ellipsis included — a failing command's tail explains it, not its head. */
 function tailCodePoints(text: string, limit: number): string {
@@ -341,6 +342,33 @@ export function normalizeCheckInput(ctx: StoreContext, task: Task, raw: unknown,
       throw new HttpError(422, "outside_workspace", "command must stay inside the workspace");
     }
     if (classified.kind !== "jailed") throw new HttpError(422, "outside_workspace", "command must stay inside the workspace");
+  } else if (kind === "continuity") {
+    // At least one of path (the deliverable video, a glob allowed) or command (lists the ordered
+    // shot files) — the same two ways a Bot's own shell would find the cut points.
+    if (!path && !command) throw new HttpError(422, "invalid_args", "path or command is required for a continuity check");
+    if (path) {
+      if (!root) throw new HttpError(422, "outside_workspace", "no workspace is open");
+      // classifyPath walks the path segment by segment and only needs the ones that exist to stat
+      // — a wildcard segment simply never exists, so the walk still jails everything up to it.
+      let classified;
+      try {
+        classified = classifyPath(root, path);
+      } catch {
+        throw new HttpError(422, "outside_workspace", "path must stay inside the workspace");
+      }
+      if (classified.zone !== "inside") throw new HttpError(422, "outside_workspace", "path must stay inside the workspace");
+    }
+    if (command) {
+      if (!root) throw new HttpError(422, "outside_workspace", "no workspace is open");
+      const effectiveCwd = cwd ?? ".";
+      let classified;
+      try {
+        classified = classifyShell(root, command, effectiveCwd);
+      } catch {
+        throw new HttpError(422, "outside_workspace", "command must stay inside the workspace");
+      }
+      if (classified.kind !== "jailed") throw new HttpError(422, "outside_workspace", "command must stay inside the workspace");
+    }
   } else {
     cwd = null;
   }
@@ -350,13 +378,13 @@ export function normalizeCheckInput(ctx: StoreContext, task: Task, raw: unknown,
     ticket_id: ticketId,
     kind,
     path: kind === "command" ? null : path,
-    pattern: kind === "exists" || kind === "command" ? null : pattern,
+    pattern: kind === "exists" || kind === "command" || kind === "continuity" ? null : pattern,
     negate: kind === "contains" || kind === "matches" ? negate : false,
-    command: kind === "command" ? command : null,
+    command: kind === "command" || kind === "continuity" ? command : null,
     cwd,
     expect_exit: kind === "command" ? expectExit : null,
     expect_stdout: kind === "command" ? expectStdout : null,
-    timeout_sec: kind === "command" ? timeoutSec : null,
+    timeout_sec: kind === "command" || kind === "continuity" ? timeoutSec : null,
   };
 }
 
@@ -587,6 +615,25 @@ export function commandSeenInPlan(ctx: StoreContext, taskId: string, command: st
 }
 
 /**
+ * Whether `path` (a `continuity` check's deliverable, possibly a glob) names a file this plan's
+ * messages actually cited — the same safety rule `commandSeenInPlan` gives commands, applied to a
+ * path instead: the organizer can point a check at evidence that already exists, never invent one.
+ * A glob counts when it would match at least one cited file; an exact path counts when cited
+ * itself.
+ */
+export function pathSeenInPlan(ctx: StoreContext, taskId: string, path: string): boolean {
+  const trimmed = path.trim();
+  if (!trimmed) return false;
+  const regex = globToRegExp(trimmed);
+  const cited = ctx.db
+    .query<{ path: string }, [string]>(
+      `SELECT DISTINCT a.workspace_relpath AS path FROM attachments a JOIN messages m ON m.id = a.message_id WHERE m.task_id = ?`,
+    )
+    .all(taskId);
+  return cited.some((row) => row.path === trimmed || regex.test(row.path));
+}
+
+/**
  * A check the organizer may write into an answer's top-level `checks` array (see
  * `prompts/organizer.ts`). `id` is either an existing organizer check's id or `new-N`; every other
  * field is optional and, for an existing check, absent means "leave as it is" — the same shape
@@ -654,6 +701,18 @@ function definitionTombstonedByUser(ctx: StoreContext, taskId: string, key: stri
  * (`normalizeCheckInput`) or a command with no evidence in this plan (`commandSeenInPlan`). Caps:
  * {@link ORGANIZER_NEW_CHECKS_MAX} new checks per run, {@link CHECKS_MAX} active per plan.
  */
+/**
+ * The organizer's safety rule for a `continuity` check, mirroring `command`'s: a proposed `path`
+ * must match a file this plan already cited (`pathSeenInPlan`, glob included), or a proposed
+ * `command` must be one a turn of this plan already ran (`commandSeenInPlan`) — a check never
+ * points at evidence the app cannot already vouch for.
+ */
+function continuityCheckSeenInPlan(ctx: StoreContext, taskId: string, fields: Pick<NormalizedCheck, "path" | "command" | "cwd">): boolean {
+  if (fields.path && pathSeenInPlan(ctx, taskId, fields.path)) return true;
+  if (fields.command && commandSeenInPlan(ctx, taskId, fields.command, fields.cwd)) return true;
+  return false;
+}
+
 export function applyOrganizerChecks(
   ctx: StoreContext,
   input: { task: Task; entries: readonly OrganizerCheckInput[]; placeholders: ReadonlyMap<string, string>; now: Date },
@@ -683,6 +742,7 @@ export function applyOrganizerChecks(
         continue;
       }
       if (fields.kind === "command" && fields.command && !commandSeenInPlan(ctx, input.task.id, fields.command, fields.cwd)) continue;
+      if (fields.kind === "continuity" && !continuityCheckSeenInPlan(ctx, input.task.id, fields)) continue;
       const before = checkDefinitionKey(rowDefinition(row));
       const after = checkDefinitionKey(fields);
       const redefined = before !== after;
@@ -723,6 +783,7 @@ export function applyOrganizerChecks(
       continue;
     }
     if (fields.kind === "command" && fields.command && !commandSeenInPlan(ctx, input.task.id, fields.command, fields.cwd)) continue;
+    if (fields.kind === "continuity" && !continuityCheckSeenInPlan(ctx, input.task.id, fields)) continue;
     const key = checkDefinitionKey(fields);
     if (definitionActiveElsewhere(ctx, input.task.id, key) || definitionTombstonedByUser(ctx, input.task.id, key)) continue;
     const newId = ulid(input.now.getTime());

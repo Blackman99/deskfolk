@@ -63,8 +63,13 @@ export type Task = {
 /** The reserved root every work dir lives under, so the workspace top level stays the user's. */
 export const WORK_ROOT = "work";
 
-/** Reserved subdirs inside a plan or ticket dir. Nothing written here is ever cited as an artifact. */
-export const RESERVED_SUBDIRS = ["tool-results", "scratch"] as const;
+/**
+ * Reserved subdirs inside a plan or ticket dir. Nothing written here is ever cited as an artifact.
+ * `checks/` holds a `continuity` acceptance check's boundary pair images
+ * (`checks/<check id>/NN_pair.jpg`), overwritten each run — evidence for the check, not a
+ * deliverable.
+ */
+export const RESERVED_SUBDIRS = ["tool-results", "scratch", "checks"] as const;
 
 /** The app-rendered mirror of a plan's spec and ticket index, at the plan dir's root. */
 export const PLAN_MAP_FILE = "map.md";
