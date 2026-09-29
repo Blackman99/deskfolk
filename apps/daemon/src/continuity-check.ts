@@ -73,7 +73,7 @@ const CHECKLIST_ZH = [
   "空间方位（例如门在通道正面还是侧面）与背景光源",
   "运动与视线方向",
   "动作衔接（缺的过渡动作要点名）",
-  "内容重复",
+  "内容重复：后一镜是否在重演前一镜已经发生过的动作（两帧看不出来就不要判）",
 ];
 const CHECKLIST_EN = [
   "art style and rendering",
@@ -81,7 +81,7 @@ const CHECKLIST_EN = [
   "spatial layout (e.g. whether a door faces the corridor or sits to its side) and background lighting",
   "motion and gaze direction",
   "missing action beats between shots (name what transition is missing)",
-  "repeated content",
+  "repeated content: whether the next shot replays an action the previous one already showed (do not flag it when the two frames cannot tell)",
 ];
 
 function say(locale: Locale): (zh: string, en: string) => string {
@@ -99,6 +99,7 @@ export function continuityJudgePrompt(item: string, rules: readonly string[], lo
       `你在核对一部多镜头视频每个剪切点前后的连贯性，为这条验收作证：${item}`,
       `这个规划定过的规则：\n${rulesText}`,
       `每张图是一个剪切点前后两帧拼接而成（左边是剪切前，右边是剪切后）。逐条对照检查：\n${checklistText}`,
+      `两帧几乎一样是好事：那是首尾帧对上了、镜头接得无缝，不是问题，也不算内容重复。只有看得出的不一致才写进 issues。`,
       `只输出 JSON，不要 markdown 围栏，不要前言后语：{"pairs":[{"n":1,"ok":true,"issues":[]}]}。n 是图的序号，ok 是这一处是否连贯，issues 是具体问题的一句话列表（连贯时给空数组）。`,
     ].join("\n\n");
   }
@@ -107,6 +108,7 @@ export function continuityJudgePrompt(item: string, rules: readonly string[], lo
     `You are checking shot-to-shot continuity across every cut of a multi-shot video, to prove this acceptance line: ${item}`,
     `Rules this plan has settled on:\n${rulesText}`,
     `Each image is the frame just before and just after one cut, side by side (left is before, right is after). Check each of the following:\n${checklistText}`,
+    `Two nearly identical frames are good news: the last and first frames line up and the cut is seamless. That is not a problem and not repeated content. Only put visible inconsistencies in issues.`,
     `Answer with JSON only, no markdown fences, no preamble: {"pairs":[{"n":1,"ok":true,"issues":[]}]}. n is the image's number, ok is whether that cut holds together, issues is a list of one-line problems (an empty array when it is fine).`,
   ].join("\n\n");
 }
@@ -477,7 +479,8 @@ export async function runContinuityCheck(
     const verdict = verdictByN.get(n);
     const ok = verdict?.ok === true;
     const issues = verdict?.issues ?? [];
-    const issueText = issues.join(t("、", ", "));
+    // A model writes each issue as a sentence; drop its full stop before joining, or 「。、」 appears.
+    const issueText = issues.map((issue) => issue.replace(/[。．.]+$/u, "")).join(t("；", "; "));
     if (!ok) failing.push(`${boundary.label} ${issueText || t("没说明具体问题", "no specific issue given")}`);
     lines.push(`${boundary.label} ${pairPaths[i]} ${ok ? t("连贯", "ok") : issueText || t("不连贯", "not ok")}`);
   }

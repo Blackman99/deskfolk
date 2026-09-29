@@ -212,6 +212,20 @@ describe.skipIf(!FFMPEG)("runContinuityCheck: real ffmpeg, ordered shot list", (
     }
   });
 
+  test("several issues on one cut join without a doubled full stop", async () => {
+    const root = shotListFixture();
+    try {
+      const { judge } = fakeJudge(() => '{"pairs":[{"n":1,"ok":true,"issues":[]},{"n":2,"ok":false,"issues":["门从侧面跳到正面。","缺少转身过渡。"]}]}');
+      const check = baseCheck({ id: "chkJoin", command });
+      const result = await runContinuityCheck(root, check, { judge, rules: [], planDir: "work/ep01", sessionId: null });
+      expect(result.output).toContain("门从侧面跳到正面；缺少转身过渡");
+      expect(result.output).not.toContain("。、");
+      expect(result.output).not.toContain("。；");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("unparsable judge answer is retried once, then the check errors", async () => {
     const root = shotListFixture();
     try {
@@ -325,5 +339,15 @@ describe.skipIf(!FFMPEG)("runContinuityCheck: scene-detection fallback on a sing
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe("continuityJudgePrompt: matching frames are a seamless cut", () => {
+  test("says so in both languages, and asks for repetition only when the frames show it", () => {
+    const zh = continuityJudgePrompt("镜头连贯", ["义肢在左手"], "zh");
+    expect(zh).toContain("两帧几乎一样是好事");
+    expect(zh).toContain("两帧看不出来就不要判");
+    const en = continuityJudgePrompt("shots hold together", [], "en");
+    expect(en).toContain("Two nearly identical frames are good news");
   });
 });
