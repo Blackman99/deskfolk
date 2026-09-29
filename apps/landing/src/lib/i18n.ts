@@ -62,6 +62,8 @@ export type Dict = {
     railLabel: string;
     /** What the first screen's still shows, for screen readers. */
     stillLabel: string;
+    /** On a step whose clip has not played yet on this visit (reduced motion, autoplay refused). */
+    play: string;
     replay: string;
     /** Opens the step's clip bigger than the stage. */
     enlarge: string;
@@ -194,6 +196,7 @@ const zh: Dict = {
       '右侧是 Deskfolk 的真实界面，随你的滚动一步步播放。画面录自一个从空状态启动的演示实例：Bot 的回复来自真实模型，海报和预告片由经 MCP 接入的生图、生视频工具生成。耗时长的步骤加速播放，右下角标着倍速；只有收进托盘那一步的桌面、横幅和 Dock 是合成的。',
     railLabel: '演示进度',
     stillLabel: 'Deskfolk 窗口：左边是群聊「发布」，下面是这件事的流程图，右边是生成的预告片，再往下是终端',
+    play: '播放这一步',
     replay: '从头播放',
     enlarge: '放大看这一步',
     steps: [
@@ -494,6 +497,7 @@ const en: Dict = {
       'On the right is the real Deskfolk app, playing step by step as you scroll. It was recorded on a demo instance that started empty: the Bots answer with real models, and the poster and teaser come from image and video tools connected over MCP. Long steps play sped up, with the speed in the corner; only the desktop, banner and Dock in the tray step are composed.',
     railLabel: 'Walkthrough progress',
     stillLabel: 'The Deskfolk window: the Launch group on the left with its flow below, the generated teaser on the right with a terminal below',
+    play: 'Play this step',
     replay: 'Play from the start',
     enlarge: 'Enlarge this step',
     steps: [

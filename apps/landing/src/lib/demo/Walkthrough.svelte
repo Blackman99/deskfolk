@@ -36,6 +36,11 @@
   const videos: (HTMLVideoElement | undefined)[] = $state([]);
   /** Clips given their source: the current step and the next, and any loaded before. */
   const wanted = new SvelteSet<number>();
+  /**
+   * Steps whose clip has started playing on this visit. The rest wait on a frame without having
+   * moved (reduced motion, autoplay refused), so their button offers to play, not to replay.
+   */
+  const played = new SvelteSet<number>();
 
   const set = $derived(`${lang}-${dark ? 'dark' : 'light'}`);
   const steps = $derived(SETS[set]?.steps ?? []);
@@ -116,6 +121,7 @@
     v.currentTime = 0;
     v.play().then(
       () => {
+        played.add(n);
         if (scene !== n) return;
         shown = n;
         playing = true;
@@ -314,8 +320,13 @@
               {/if}
             {:else}
               <button type="button" class="replay" onclick={replay}>
-                <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3.2 8a4.8 4.8 0 1 0 1.4-3.4M3.2 2.6v2.6h2.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
-                {t.demo.replay}
+                {#if played.has(scene)}
+                  <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3.2 8a4.8 4.8 0 1 0 1.4-3.4M3.2 2.6v2.6h2.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                  {t.demo.replay}
+                {:else}
+                  <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><path d="M4 2.2v11.6L13.6 8z" fill="currentColor" /></svg>
+                  {t.demo.play}
+                {/if}
               </button>
             {/if}
           {/if}
