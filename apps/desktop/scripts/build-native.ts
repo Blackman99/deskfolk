@@ -161,15 +161,36 @@ async function buildDarwin(root: string, triple: string, output: string): Promis
   console.log(`Native resources built in ${dirname(output)}/native; remote credentials remain disabled (G-pack not verified).`);
 }
 
+/**
+ * The argv that signs one Windows binary with `command`, spelled the way Tauri's own
+ * `bundle.windows.signCommand` string is: split on single spaces, `%1` standing for the file. One
+ * value then signs everything — Tauri the app exe and the installer, this script the daemon and
+ * the pty helper, which Tauri ships as plain resources and never signs itself.
+ */
+export function windowsSignArgv(command: string, file: string): string[] {
+  const argv = command.split(" ").filter(Boolean).map((arg) => arg.replaceAll("%1", file));
+  if (argv.length === 0 || !command.includes("%1")) {
+    throw new Error("REAL_BOT_WINDOWS_SIGN_COMMAND must name a command with %1 where the file goes");
+  }
+  return argv;
+}
+
 async function buildWindows(root: string, triple: string, output: string): Promise<void> {
-  const { args: daemonArgs } = daemonBuildPlan(triple, output);
+  const { args: daemonArgs, outfile: daemon } = daemonBuildPlan(triple, output);
   await run(root, daemonArgs);
 
   const conpty = conptyBuildPlan(triple, output);
   await run(root, conpty.args);
   await copyFile(resolve(root, conpty.builtPath), conpty.destPath);
 
-  console.log(`Native resources built in ${dirname(output)}/native (unsigned: Windows has no codesign equivalent here).`);
+  // The release workflow sets this only when signing is configured; see release.yml.
+  const sign = process.env.REAL_BOT_WINDOWS_SIGN_COMMAND?.trim();
+  if (sign) {
+    for (const file of [daemon, conpty.destPath]) await run(root, windowsSignArgv(sign, file));
+    console.log(`Native resources built and signed in ${dirname(output)}/native.`);
+  } else {
+    console.log(`Native resources built in ${dirname(output)}/native (unsigned: no REAL_BOT_WINDOWS_SIGN_COMMAND).`);
+  }
 }
 
 if (import.meta.main) {

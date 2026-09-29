@@ -9,6 +9,8 @@ import {
   WB_KEY_RESIZE_PX,
   applyCommand,
   isTypingTarget,
+  matchesCloseTab,
+  matchesSidebarToggle,
   matchWorkbenchKey,
   sashTowards,
   type CommandContext,
@@ -86,6 +88,34 @@ test("ordinary typing is left alone", () => {
   expect(matchWorkbenchKey(key({ key: "ArrowRight", metaKey: true }))).toBeNull();
   // Closing the window is a native menu item, answered from the Rust side, not guessed at here.
   expect(matchWorkbenchKey(key({ key: "w", metaKey: true }))).toBeNull();
+});
+
+test("off the Mac the page closes the tab on Ctrl+W, and a terminal keeps it for the shell", () => {
+  const terminal = { closest: (selector: string) => (selector === ".xterm" ? {} : null) } as never;
+  const composer = { closest: () => null } as never;
+  expect(matchesCloseTab(key({ key: "w", ctrlKey: true, target: composer }), "windows")).toBe(true);
+  expect(matchesCloseTab(key({ key: "w", ctrlKey: true, target: terminal }), "windows")).toBe(false);
+  expect(matchesCloseTab(key({ key: "W", ctrlKey: true, shiftKey: true, target: terminal }), "windows")).toBe(true);
+  expect(matchesCloseTab(key({ key: "W", ctrlKey: true, shiftKey: true, target: composer }), "windows")).toBe(true);
+  // The Mac's ⌘W belongs to the native menu, which does see it.
+  expect(matchesCloseTab(key({ key: "w", metaKey: true, target: composer }), "mac")).toBe(false);
+  expect(matchesCloseTab(key({ key: "w", ctrlKey: true, target: composer }), "mac")).toBe(false);
+  // AltGr (Ctrl+Alt) is typing.
+  expect(matchesCloseTab(key({ key: "w", ctrlKey: true, altKey: true, target: composer }), "windows")).toBe(false);
+});
+
+test("the sidebar folds on the platform's own modifier, and a Windows terminal keeps Ctrl+B", () => {
+  const terminal = { closest: (selector: string) => (selector === ".xterm" ? {} : null) } as never;
+  const composer = { closest: () => null } as never;
+  expect(matchesSidebarToggle(key({ key: "b", metaKey: true, target: composer }), "mac")).toBe(true);
+  expect(matchesSidebarToggle(key({ key: "b", metaKey: true, target: terminal }), "mac")).toBe(true);
+  // ⌃B is the shell's on a Mac.
+  expect(matchesSidebarToggle(key({ key: "b", ctrlKey: true, target: terminal }), "mac")).toBe(false);
+  expect(matchesSidebarToggle(key({ key: "B", ctrlKey: true, target: composer }), "windows")).toBe(true);
+  expect(matchesSidebarToggle(key({ key: "b", ctrlKey: true, target: terminal }), "windows")).toBe(false);
+  expect(matchesSidebarToggle(key({ key: "b", ctrlKey: true, shiftKey: true, target: composer }), "windows")).toBe(false);
+  // AltGr is typing, not a shortcut.
+  expect(matchesSidebarToggle(key({ key: "b", ctrlKey: true, altKey: true, target: composer }), "windows")).toBe(false);
 });
 
 // ------------------------------------------------------------------ applying

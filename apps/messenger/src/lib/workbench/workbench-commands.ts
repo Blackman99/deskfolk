@@ -9,7 +9,8 @@ import type { Axis, MinSizeLookup, NodeId, PaneMin, Rect, WorkbenchLayout } from
 import { canSplit, computeGeometry, neighbourLeaf, type Direction, type LayoutGeometry } from "./layout-geometry.ts";
 import { activateTab, closeLeaf, closeTab, findPath, focusLeaf, leafById } from "./layout-tree.ts";
 import { beginSashDrag, equalise, resizeSash } from "./layout-resize.ts";
-import { isAltGraph } from "../keymap.ts";
+import { isAltGraph, isPrimaryModifier } from "../keymap.ts";
+import { desktopPlatform, type DesktopPlatform } from "../platform.ts";
 
 /**
  * Where a keystroke belongs to whatever has focus rather than to the workbench.
@@ -23,6 +24,34 @@ export const TYPING_TARGETS =
 export function isTypingTarget(target: EventTarget | null): boolean {
   const element = target as HTMLElement | null;
   return Boolean(element?.closest?.(TYPING_TARGETS));
+}
+
+/**
+ * ⌘B / Ctrl+B folds the sidebar from anywhere, typing included — the composer is plain text, so
+ * no bold is missed. Only with this platform's own modifier, so ⌃B still reaches a shell on the
+ * Mac, and never from inside a terminal off the Mac, where Ctrl+B is readline's back-a-character
+ * and tmux's prefix.
+ */
+export function matchesSidebarToggle(
+  event: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey" | "target"> & { getModifierState?: (key: string) => boolean },
+  platform: DesktopPlatform = desktopPlatform(),
+): boolean {
+  if (event.shiftKey || event.altKey || event.key.toLowerCase() !== "b" || !isPrimaryModifier(event, platform)) return false;
+  return platform === "mac" || !(event.target as Element | null)?.closest?.(".xterm");
+}
+
+/**
+ * Ctrl+W off the Mac: close the tab in front of you. On the Mac ⌘W is the native menu's, but
+ * WebView2 keeps keystrokes away from the window's menu while the page has focus, so on Windows
+ * the page answers it the way the menu item would. A terminal keeps Ctrl+W (readline's delete a
+ * word back), and Ctrl+Shift+W closes the tab from anywhere, as in Windows Terminal.
+ */
+export function matchesCloseTab(
+  event: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey" | "target"> & { getModifierState?: (key: string) => boolean },
+  platform: DesktopPlatform = desktopPlatform(),
+): boolean {
+  if (platform === "mac" || event.metaKey || event.altKey || !event.ctrlKey || isAltGraph(event) || event.key.toLowerCase() !== "w") return false;
+  return event.shiftKey || !(event.target as Element | null)?.closest?.(".xterm");
 }
 
 /** How far a keyboard nudge moves a divider. The accessible equivalent of dragging one. */
@@ -67,8 +96,9 @@ const ARROWS: Record<string, Direction> = {
 /**
  * The command a keystroke means, or null when it is not ours.
  *
- * `⌘W` is deliberately absent: closing the window is a native menu item, so it is answered from
- * the Rust side and routed in rather than guessed at here.
+ * `⌘W` is deliberately absent: closing a tab is a native menu item, so on the Mac it is answered
+ * from the Rust side and routed in rather than guessed at here ({@link matchesCloseTab} is the
+ * page's own answer off the Mac).
  */
 export function matchWorkbenchKey(event: KeyboardEvent): WorkbenchCommand | null {
   if (isTypingTarget(event.target)) return null;

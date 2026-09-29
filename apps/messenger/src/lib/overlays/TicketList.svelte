@@ -631,7 +631,12 @@
 		line-clamp: 2;
 		-webkit-box-orient: vertical;
 		overflow: hidden;
-		padding: 3px 6px;
+		/*
+		 * The top and bottom inset is a transparent border, not padding: overflow clips at the
+		 * padding edge, so bottom padding would show the top of the third line under the clamp.
+		 */
+		padding: 0 6px;
+		border-block: 3px solid transparent;
 		border-radius: 4px;
 		background: var(--line-subtle);
 	}

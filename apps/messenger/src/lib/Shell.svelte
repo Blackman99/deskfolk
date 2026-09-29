@@ -87,7 +87,8 @@
 	import { paneMin } from './workbench/pane-mins.ts';
 	import { contentOfTab, contentToParams } from './workbench/pane-content.ts';
 	import { closeChatSide, settingsSide, toggleChatSide } from './workbench/pane-open.ts';
-	import { isTypingTarget, matchWorkbenchKey } from './workbench/workbench-commands.ts';
+	import { isTypingTarget, matchesCloseTab, matchesSidebarToggle, matchWorkbenchKey } from './workbench/workbench-commands.ts';
+	import { isTauri } from './tauri.ts';
 	import { activateTab, focusLeaf, replaceTabParams } from './workbench/layout-tree.ts';
 	import type { TabAction, WorkbenchTab } from './workbench/layout-types.ts';
 	import { ShellWorkbench } from './workbench/shell-workbench.svelte.ts';
@@ -1171,10 +1172,16 @@
 			toggleWorkspaceExplorer();
 			return;
 		}
-		// From anywhere, typing included: the composer is plain text, so its own ⌘B (bold) is not missed.
-		if (wide && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'b') {
+		// From anywhere, typing included, but not out of a terminal off the Mac (see matchesSidebarToggle).
+		if (wide && matchesSidebarToggle(e)) {
 			e.preventDefault();
 			toggleSidebar();
+			return;
+		}
+		// Off the Mac the window's menu never sees Ctrl+W while the page has focus; see matchesCloseTab.
+		if (wide && isTauri() && matchesCloseTab(e)) {
+			e.preventDefault();
+			workbench.runMenuCommand('pane-close-tab');
 			return;
 		}
 		// After the Escape chain and ⌘O, so neither can be taken out from under them.

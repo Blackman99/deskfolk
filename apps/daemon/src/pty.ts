@@ -77,9 +77,22 @@ function frame(type: number, payload: Uint8Array): Uint8Array {
 }
 
 /**
+ * PowerShell's counterpart of the zsh `precmd` hook in `terminal-env.ts`: it wraps whatever
+ * `prompt` the person's profile left in place, so every prompt first reports the working
+ * directory as OSC 7 (`file://<computer>/C:/…`, or `file://<server>/<share>/…` on a share) for
+ * `terminal-cwd.ts` to read back. It rides in on `-NoExit -Command` rather than as a `.ps1`,
+ * because Windows' default execution policy runs no script file at all and a command-line
+ * string is not subject to it; the profile still loads first. Single quotes only, so nothing in
+ * it needs escaping on its way through the pty helper's command line. (`$host` is PowerShell's
+ * own, hence `$hostName`.)
+ */
+export const POWERSHELL_CWD_HOOK = String.raw`$global:__DeskfolkPrompt = $function:prompt; function global:prompt { $here = $ExecutionContext.SessionState.Path.CurrentLocation; if ($here.Provider.Name -eq 'FileSystem') { $path = $here.ProviderPath; if ($path.StartsWith('\\')) { $parts = $path.Substring(2).Split('\'); $hostName = $parts[0]; $parts = $parts | Select-Object -Skip 1 } else { $hostName = $env:COMPUTERNAME; $parts = $path.Split('\') }; $url = ($parts | Where-Object { $_ } | ForEach-Object { [Uri]::EscapeDataString($_) }) -join '/'; [Console]::Write([char]27 + ']7;file://' + $hostName + '/' + $url + [char]7) }; if ($global:__DeskfolkPrompt) { & $global:__DeskfolkPrompt } else { 'PS ' + $here + '> ' } }`;
+
+/**
  * The shell a person expects. On macOS/Linux, started as a login shell: launchd hands the daemon
  * a bare PATH. On win32 there is no such thing as a login shell and no `$SHELL` to read — `pwsh.exe`
- * if it is on PATH, else the Windows PowerShell that always ships, with `-NoLogo` only.
+ * if it is on PATH, else the Windows PowerShell that always ships, with `-NoLogo` and the
+ * {@link POWERSHELL_CWD_HOOK}.
  */
 export function shellCommand(
   env: Record<string, string | undefined> = process.env,
@@ -87,7 +100,7 @@ export function shellCommand(
   which: (name: string) => string | null = (name) => Bun.which(name, { PATH: env.PATH }) ?? null,
 ): string[] {
   if (platform === "win32") {
-    return [resolvePowerShell(env, platform, which), "-NoLogo"];
+    return [resolvePowerShell(env, platform, which), "-NoLogo", "-NoExit", "-Command", POWERSHELL_CWD_HOOK];
   }
   return [env.SHELL && env.SHELL.startsWith("/") ? env.SHELL : "/bin/zsh", "-l"];
 }

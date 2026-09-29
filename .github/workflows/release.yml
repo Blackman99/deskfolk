@@ -51,6 +51,13 @@ jobs:
       - name: Build messenger
         run: pnpm --filter @real-bot/messenger build
 
+  # The Windows half of the verification: windows.yml's unit checks, without its own installer.
+  verify-windows:
+    name: Verify on Windows
+    uses: ./.github/workflows/windows.yml
+    with:
+      skip-bundle: true
+
   publish:
     name: Package macOS snapshot
     needs: verify
@@ -155,3 +162,95 @@ jobs:
           generateReleaseNotes: false
           uploadUpdaterJson: false
           args: --target ${{ matrix.triple }}
+
+  # Same release, same tag: tauri-action finds the one the macOS jobs create (or creates it first)
+  # and adds Deskfolk_<version>_x64-setup.exe, the asset the Windows update check looks for. A
+  # release without it is no update for Windows at all, so a failed Windows job only holds back
+  # Windows users; it never points them at a page with nothing to install.
+  publish-windows:
+    name: Package Windows installer
+    needs: [verify, verify-windows]
+    permissions:
+      contents: write
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            apps/conpty-helper -> target
+            apps/desktop/src-tauri -> target
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Code signing turns on once WINDOWS_SIGN_COMMAND is set: a command in the form of Tauri's
+      # `bundle.windows.signCommand` string, `%1` standing for the file. Tauri signs the app and
+      # the installer with it; build-native signs the daemon and the pty helper with the same
+      # value. Without it the installer stays unsigned, and SmartScreen warns on first run.
+      # trusted-signing-cli (Azure Trusted Signing) is installed when the command names it, and
+      # reads its credentials from the AZURE_* secrets passed to the build below.
+      - name: Windows signing (when configured)
+        env:
+          SIGN_COMMAND: ${{ secrets.WINDOWS_SIGN_COMMAND }}
+        run: |
+          if [ -z "$SIGN_COMMAND" ]; then
+            echo "No WINDOWS_SIGN_COMMAND secret: this installer stays unsigned."
+            exit 0
+          fi
+          case "$SIGN_COMMAND" in
+            trusted-signing-cli\ *) cargo install trusted-signing-cli --locked ;;
+          esac
+          # Forward slashes (cygpath -m): tauri-action splits `args` itself and backslashes would not survive.
+          export CONFIG="$(cygpath -m "$RUNNER_TEMP/tauri-windows-signing.json")"
+          bun -e 'await Bun.write(process.env.CONFIG, JSON.stringify({ bundle: { windows: { signCommand: process.env.SIGN_COMMAND } } }))'
+          {
+            echo "REAL_BOT_WINDOWS_SIGN_COMMAND=$SIGN_COMMAND"
+            echo "TAURI_SIGNING_ARGS=--config $CONFIG"
+          } >> "$GITHUB_ENV"
+
+      - name: Release notes from CHANGELOG
+        id: notes
+        run: |
+          {
+            echo 'body<<RELEASE_NOTES_EOF'
+            bun apps/desktop/scripts/release-notes.ts
+            echo
+            echo RELEASE_NOTES_EOF
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        with:
+          projectPath: apps/desktop
+          tauriScript: pnpm tauri
+          tagName: v__VERSION__
+          releaseName: Deskfolk v__VERSION__
+          releaseBody: ${{ steps.notes.outputs.body }}
+          releaseDraft: false
+          prerelease: true
+          generateReleaseNotes: false
+          uploadUpdaterJson: false
+          args: --bundles nsis ${{ env.TAURI_SIGNING_ARGS }}

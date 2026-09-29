@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { DEFAULT_COLS, Pty, PtyUnavailable, SHUTDOWN_GRACE_MS, ptyHelperPath, shellCommand } from "./pty";
+import { DEFAULT_COLS, POWERSHELL_CWD_HOOK, Pty, PtyUnavailable, SHUTDOWN_GRACE_MS, ptyHelperPath, shellCommand } from "./pty";
 import { CwdTracker } from "./terminal-cwd";
 import { ensureZshIntegration, terminalEnv } from "./terminal-env";
 
@@ -74,16 +75,37 @@ test("ptyHelperPath on win32 throws when nothing is found", () => {
   expect(() => ptyHelperPath({}, "win32", () => false)).toThrow(PtyUnavailable);
 });
 
-test("shellCommand on win32 prefers pwsh.exe on PATH, with -NoLogo only", () => {
+test("shellCommand on win32 prefers pwsh.exe on PATH, with -NoLogo and the cwd hook", () => {
   const which = (name: string) => (name === "pwsh.exe" ? "C:\\tools\\pwsh\\pwsh.exe" : null);
-  expect(shellCommand({}, "win32", which)).toEqual(["C:\\tools\\pwsh\\pwsh.exe", "-NoLogo"]);
+  expect(shellCommand({}, "win32", which)).toEqual(["C:\\tools\\pwsh\\pwsh.exe", "-NoLogo", "-NoExit", "-Command", POWERSHELL_CWD_HOOK]);
 });
 
 test("shellCommand on win32 falls back to the bundled Windows PowerShell", () => {
   expect(shellCommand({ SystemRoot: "C:\\Windows" }, "win32", () => null)).toEqual([
     "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
     "-NoLogo",
+    "-NoExit",
+    "-Command",
+    POWERSHELL_CWD_HOOK,
   ]);
+});
+
+test("the PowerShell cwd hook has no double quote for the pty helper's command line to mangle", () => {
+  expect(POWERSHELL_CWD_HOOK).not.toContain('"');
+});
+
+// The hook's real output, read back by the same tracker a terminal session uses.
+test.skipIf(!onWindows)("the PowerShell cwd hook reports each prompt's folder as OSC 7", () => {
+  const folder = mkdtempSync(join(tmpdir(), "real-bot-pwsh-cwd 空格-"));
+  try {
+    const run = spawnSync("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", `${POWERSHELL_CWD_HOOK}; Set-Location -LiteralPath $env:TARGET; prompt | Out-Null`], {
+      env: { ...process.env, TARGET: folder },
+    });
+    expect(run.status).toBe(0);
+    expect(new CwdTracker({ platform: "win32" }).feed(run.stdout)).toBe(realpathSync.native(folder));
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
 });
 
 test("a missing helper is reported, not guessed at", () => {

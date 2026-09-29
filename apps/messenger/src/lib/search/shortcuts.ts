@@ -1,10 +1,16 @@
 import { formatShortcut } from "../keymap.ts";
+import { desktopPlatform, type DesktopPlatform } from "../platform.ts";
 
-/** Editors keep their unmodified K binding; Shift makes this the app-wide search command. */
-export function matchesSearchShortcut(event: KeyboardEvent): boolean {
+/**
+ * Editors keep their unmodified K binding; Shift makes this the app-wide search command — from
+ * anywhere but a terminal off the Mac, where Ctrl+Shift+K is the terminal's own clear
+ * (`windowsTerminalShortcut`), beside its Ctrl+Shift+C, V and F.
+ */
+export function matchesSearchShortcut(event: KeyboardEvent, platform: DesktopPlatform = desktopPlatform()): boolean {
   if (event.isComposing || event.altKey || !(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "k") return false;
   const target = event.target as Element | null;
-  return event.shiftKey || !target?.closest?.('.xterm, .monaco-editor');
+  if (!event.shiftKey) return !target?.closest?.('.xterm, .monaco-editor');
+  return !(platform !== "mac" && event.ctrlKey && !event.metaKey && target?.closest?.(".xterm"));
 }
 
 export function searchShortcutLabel(global = false): string {

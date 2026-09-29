@@ -5,7 +5,18 @@ import {
   daemonBuildPlan,
   familyFor,
   resolveTriple,
+  windowsSignArgv,
 } from "./build-native.ts";
+
+test("a Windows sign command is read the way Tauri's signCommand string is: spaces, and %1 for the file", () => {
+  const file = "C:\\repo\\apps\\desktop\\src-tauri\\native\\real-bot-daemon.exe";
+  expect(windowsSignArgv("trusted-signing-cli -e https://eus.codesigning.azure.net -a acct -c profile -d Deskfolk %1", file)).toEqual([
+    "trusted-signing-cli", "-e", "https://eus.codesigning.azure.net", "-a", "acct", "-c", "profile", "-d", "Deskfolk", file,
+  ]);
+  expect(windowsSignArgv("signtool sign /fd sha256  /f:%1", file)).toEqual(["signtool", "sign", "/fd", "sha256", `/f:${file}`]);
+  expect(() => windowsSignArgv("signtool sign", file)).toThrow();
+  expect(() => windowsSignArgv("   ", file)).toThrow();
+});
 
 const nativeDir = "/repo/apps/desktop/src-tauri/native";
 

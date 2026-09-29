@@ -269,9 +269,15 @@ pnpm dev
 pnpm --filter @real-bot/desktop tauri build --bundles nsis
 ```
 
-CI（`.github/workflows/windows.yml`）在 `windows-latest` 上跑一遍单元测试，另起一个任务打同一个未签名 NSIS 安装包，作为 Actions artifact 上传（`deskfolk-windows-x64-nsis`）。这个包不签名也不公证，SmartScreen 大概率会提示「未知发布者」。
+本机打包前先停掉 `pnpm dev`：信使的 Vite 开发服务器监视着 `apps/messenger/build`，Windows 上被监视的目录删不掉，打包会在清空它那一步报 `ENOTEMPTY`。
 
-还没有的：远控接线与手机配对、独立运行时（macOS 的 LaunchAgent 那一套）、应用内下载安装更新（发现新版仍只能跳浏览器手动下载）、桌面通知与图标角标、图片缩略图（依赖 macOS 系统的 `sips`）。密钥（端点 API key、MCP 凭据）改存 Windows 凭据管理器（Credential Manager），不是 macOS 钥匙串。
+CI（`.github/workflows/windows.yml`）在 `windows-latest` 上跑一遍单元测试，另起一个任务打同一个未签名 NSIS 安装包，作为 Actions artifact 上传（`deskfolk-windows-x64-nsis`）。推 `v*` 标签时，`release.yml` 先调它跑同一套检查，再把安装包传到和 macOS 同一个 Release 里。更新检查只把带着本平台安装包（Windows 上是 `_x64-setup.exe`）的 Release 当作新版，所以只有 macOS 包的 Release 不会让 Windows 用户看到一个装不了的「有更新」。
+
+签名：仓库配了 `WINDOWS_SIGN_COMMAND` secret 才签。它的写法和 Tauri 的 `bundle.windows.signCommand` 字符串一样，按空格切开、`%1` 代表要签的文件，例如 Azure Trusted Signing 的 `trusted-signing-cli -e https://<区域>.codesigning.azure.net -a <账户> -c <证书配置> -d Deskfolk %1`（命令以 `trusted-signing-cli` 开头时发布流程会先装上它，凭据放在 `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` / `AZURE_TENANT_ID` secrets）。Tauri 用它签应用和安装包，`build-native` 用同一个值签资源目录里的 `real-bot-daemon.exe` 和 `real-bot-pty.exe`（本地设 `REAL_BOT_WINDOWS_SIGN_COMMAND` 也一样）。没配时不签名，SmartScreen 大概率会提示「未知发布者」。
+
+安装与升级：安装包按当前用户安装（不要管理员）。窗口开着时，守护进程和它起的终端都在窗口的 Job Object 里，安装程序关窗口时它们一起结束；`src-tauri/installer-hooks.nsh` 在没有窗口、只剩上次留下的守护进程或 pty helper 时先把它们停掉，否则占着的 exe 覆盖不了。
+
+还没有的：远控接线与手机配对、独立运行时（macOS 的 LaunchAgent 那一套）、应用内下载安装更新（发现新版仍只能跳浏览器手动下载）、桌面通知与图标角标、图片缩略图（依赖 macOS 系统的 `sips`；发给模型的图片不受影响，Windows 上用 GDI+ 缩小）。密钥（端点 API key、MCP 凭据）改存 Windows 凭据管理器（Credential Manager），不是 macOS 钥匙串。
 
 ## 命令
 
@@ -500,7 +506,8 @@ Store 的 `ctx.commit`、`Store.transaction` 和回执共用 `Transactions.run`�
 |---|---|---|
 | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) | `main` 推送、PR | `pnpm test`、`pnpm typecheck`、remote/browser、信使与落地页 build、真实 Caddy edge；macOS 上 desktop script tests/typecheck、Swift 凭据 fixture 与 `cargo test` |
 | [`.github/workflows/pages.yml`](../.github/workflows/pages.yml) | `main` 推送 | 构建 `apps/landing` 并部署 GitHub Pages |
-| [`.github/workflows/release.yml`](../.github/workflows/release.yml) | 推送 `v*` 标签，或手动 | 再跑验证后打 macOS `.dmg` / `.app`，发布为 GitHub **prerelease**；配了 Developer ID secrets 时签名并公证，没配时 ad-hoc 签名 |
+| [`.github/workflows/release.yml`](../.github/workflows/release.yml) | 推送 `v*` 标签，或手动 | 再跑验证（macOS 上的全套，加 `windows.yml` 的 Windows 单元检查）后打 macOS `.dmg` / `.app` 和 Windows NSIS 安装包（`Deskfolk_<版本>_x64-setup.exe`），发布到同一个 GitHub **prerelease**；配了 Developer ID secrets 时签名并公证，没配时 ad-hoc 签名；配了 `WINDOWS_SIGN_COMMAND` 时 Windows 包也签名，没配时不签 |
+| [`.github/workflows/windows.yml`](../.github/workflows/windows.yml) | `windows-compat` 推送、手动，或被 `release.yml` 调用 | Windows 单元检查（daemon 测试只做参考），另打一个未签名 NSIS 包作为 Actions artifact；被发布调用时只跑检查 |
 
 落地页本地预览：`pnpm --filter @real-bot/landing dev`（5174）。Pages 构建会设 `BASE_PATH=/<仓库名>`，适配 `https://<owner>.github.io/<repo>/`。仓库链接集中在 `apps/landing/src/lib/site.ts`。
 

@@ -3,7 +3,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, realpathSync, rmSync, sy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HttpError } from "./errors";
-import { trashWorkspacePaths, windowsTrashArgv, windowsTrashBatches, type TrashMover } from "./workspace-trash";
+import { WINDOWS_NO_RECYCLE_BIN, trashWorkspacePaths, windowsTrashArgv, windowsTrashBatches, type TrashMover } from "./workspace-trash";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -94,6 +94,21 @@ test("nothing outside the workspace, and never the workspace itself", async () =
   expect(existsSync(join(outside, "keep.md"))).toBe(true);
 });
 
+test("on Windows a backslash is a separator too, and drives, shares and streams are refused", async () => {
+  const root = workspace();
+  const move = fakeTrash();
+  for (const path of ["docs/..\\..\\x", "..\\x", "docs\\..\\..\\x", "C:x", "C:\\Windows\\win.ini", "\\\\server\\share\\x", "\\x", "report.md:hidden"]) {
+    const refused = await trashWorkspacePaths(root, [path], move, "win32").then(() => null, (error: unknown) => error);
+    expect({ path, refused: refused instanceof HttpError }).toEqual({ path, refused: true });
+    expect((refused as HttpError).status).toBe(422);
+  }
+  expect(move.asked).toHaveLength(0);
+  // A backslash path inside the workspace still names the file.
+  const result = await trashWorkspacePaths(root, ["docs\\brief.md"], move, "win32");
+  expect(result.failed).toEqual([]);
+  expect(move.asked).toHaveLength(1);
+});
+
 describe("windowsTrashArgv (command construction only — never executed here)", () => {
   test("runs PowerShell non-interactively with a fixed script, no profile", () => {
     const argv = windowsTrashArgv("C:\\Program Files\\PowerShell\\7\\pwsh.exe");
@@ -103,13 +118,15 @@ describe("windowsTrashArgv (command construction only — never executed here)",
     expect(argv).toContain("-Command");
   });
 
-  test("the script uses Microsoft.VisualBasic.FileIO.FileSystem with the Recycle Bin option", () => {
+  test("the script recycles through IFileOperation and refuses an item Windows would destroy", () => {
     const script = windowsTrashArgv("pwsh.exe").at(-1)!;
-    expect(script).toContain("Microsoft.VisualBasic.FileIO.FileSystem");
-    expect(script).toContain("RecycleOption]::SendToRecycleBin");
-    expect(script).toContain("UIOption]::OnlyErrorDialogs");
-    expect(script).toContain("DeleteFile");
-    expect(script).toContain("DeleteDirectory");
+    expect(script).toContain("IFileOperation");
+    // FOFX_RECYCLEONDELETE with every prompt off, and the sink that turns "would nuke" into a refusal.
+    expect(script).toContain("0x00080000");
+    expect(script).toContain("TSF_DELETE_RECYCLE_IF_POSSIBLE = 0x80");
+    expect(script).toContain("return E_ABORT;");
+    expect(script).toContain("ApartmentState.STA");
+    expect(script).toContain(WINDOWS_NO_RECYCLE_BIN);
     // The paths travel through the environment, never spliced into the script text.
     expect(script).toContain("$env:REAL_BOT_TRASH_PATHS");
     expect(script).toContain("[Console]::OutputEncoding = [System.Text.Encoding]::UTF8");

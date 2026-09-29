@@ -130,14 +130,43 @@ pub fn pick_windows_installer(assets: &[Asset], arch: Option<&str>) -> Option<St
         .map(|asset| asset.browser_download_url.clone())
 }
 
+/// Which installer this platform takes from a release.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InstallerKind {
+    /// `Deskfolk_<ver>_<arch>.dmg` (macOS), matched by [`pick_dmg`].
+    Dmg,
+    /// `Deskfolk_<ver>_<arch>-setup.exe` (Windows NSIS), matched by [`pick_windows_installer`].
+    NsisSetup,
+}
+
+impl InstallerKind {
+    pub fn for_this_platform() -> Self {
+        if cfg!(windows) {
+            Self::NsisSetup
+        } else {
+            Self::Dmg
+        }
+    }
+
+    fn pick(self, assets: &[Asset], arch: Option<&str>) -> Option<String> {
+        match self {
+            Self::Dmg => pick_dmg(assets, arch),
+            Self::NsisSetup => pick_windows_installer(assets, arch),
+        }
+    }
+}
+
 /// Choose the best release for the current version. Skips drafts and releases
 /// with unparsable tags. A stable current version (no prerelease identifiers)
 /// only considers non-prerelease releases; a prerelease current version
-/// considers all releases. Picks the max semver among the remaining
-/// candidates.
+/// considers all releases. With a known `arch`, a release counts only once it
+/// carries `installer` for that arch: a macOS-only release is no update for
+/// Windows (and one whose assets are still uploading is none for anyone yet).
+/// Picks the max semver among the remaining candidates.
 pub fn pick_update(
     current: &semver::Version,
     releases: &[Release],
+    installer: InstallerKind,
     arch: Option<&str>,
 ) -> UpdateCheck {
     let stable_only = current.pre.is_empty();
@@ -145,6 +174,7 @@ pub fn pick_update(
         .iter()
         .filter(|release| !release.draft)
         .filter(|release| !stable_only || !release.prerelease)
+        .filter(|release| arch.is_none() || installer.pick(&release.assets, arch).is_some())
         .filter_map(|release| parse_tag(&release.tag_name).map(|version| (version, release)))
         .max_by(|(a, _), (b, _)| a.cmp(b));
 
@@ -160,12 +190,10 @@ pub fn pick_update(
         },
         Some((version, release)) => {
             let update_available = version > *current;
-            let picked = if cfg!(windows) {
-                pick_windows_installer(&release.assets, arch)
-            } else {
-                pick_dmg(&release.assets, arch)
-            };
-            let download_url = picked.or_else(|| Some(release.html_url.clone()));
+            // Only an unknown arch gets here without an installer; it gets the release page.
+            let download_url = installer
+                .pick(&release.assets, arch)
+                .or_else(|| Some(release.html_url.clone()));
             UpdateCheck {
                 current: current.to_string(),
                 latest: Some(version.to_string()),
@@ -193,17 +221,17 @@ pub fn is_allowed_release_url(url: &str) -> bool {
 
 /// The proxy to use for `host`. The conventional environment variables come
 /// first: `HTTPS_PROXY` wins over `ALL_PROXY`, and `NO_PROXY` takes the host
-/// out. With neither set, `system` supplies the `scutil --proxy` dump and the
-/// system's own setting decides.
+/// out. With neither set, `system` answers with the system's own setting for
+/// `host` ([`system_proxy_for`]).
 ///
 /// GitHub is reachable only through a proxy on plenty of machines, and neither
 /// the check nor the download can ask the user for one. A shell launch carries
-/// the variables; a copy opened from Finder or at login carries none, and there
-/// the setting the browser follows is the only one there is.
+/// the variables; a copy opened from Finder, the Start menu or at login carries
+/// none, and there the setting the browser follows is the only one there is.
 pub fn proxy_for(
     host: &str,
     read: impl Fn(&str) -> Option<String>,
-    system: impl FnOnce() -> Option<String>,
+    system: impl FnOnce(&str) -> Option<String>,
 ) -> Option<String> {
     let value = |name: &str| {
         read(name)
@@ -216,7 +244,182 @@ pub fn proxy_for(
     }
     value("HTTPS_PROXY")
         .or_else(|| value("ALL_PROXY"))
-        .or_else(|| system().and_then(|dump| proxy_from_scutil(host, &dump)))
+        .or_else(|| system(host))
+}
+
+/// The proxy the system itself would use for `host`: `scutil --proxy` on
+/// macOS, Internet Settings in the registry on Windows. `None` elsewhere, or
+/// when nothing is set.
+fn system_proxy_for(host: &str) -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        system_proxy_dump().and_then(|dump| proxy_from_scutil(host, &dump))
+    }
+    #[cfg(windows)]
+    {
+        let enabled = internet_settings::dword("ProxyEnable")? != 0;
+        let server = internet_settings::string("ProxyServer")?;
+        let overrides = internet_settings::string("ProxyOverride").unwrap_or_default();
+        proxy_from_windows_settings(host, enabled, &server, &overrides)
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
+    {
+        let _ = host;
+        None
+    }
+}
+
+/// The proxy Windows would use for `host`, from the current user's Internet
+/// Settings: the "Use a proxy server" switch in Settings → Network → Proxy,
+/// which browsers follow and proxy apps flip when they turn on "system proxy".
+/// `server` is `host:port` for every protocol, or per protocol as
+/// `http=host:port;https=host:port;socks=host:port`, where `https` is the one
+/// that counts and a lone `http` entry serves it too. `overrides` is the
+/// `;`-separated bypass list, `*` wildcards and all, where `<local>` means any
+/// name without a dot. A PAC script or a SOCKS-only setup gives `None` — this
+/// build evaluates neither.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn proxy_from_windows_settings(
+    host: &str,
+    enabled: bool,
+    server: &str,
+    overrides: &str,
+) -> Option<String> {
+    if !enabled {
+        return None;
+    }
+    let server = server.trim();
+    let address = if server.contains('=') {
+        let entry = |scheme: &str| {
+            server.split(';').find_map(|entry| {
+                let (name, address) = entry.split_once('=')?;
+                (name.trim().eq_ignore_ascii_case(scheme)).then(|| address.trim())
+            })
+        };
+        entry("https").or_else(|| entry("http"))?
+    } else {
+        server
+    };
+    if address.is_empty() || windows_bypasses_proxy(host, overrides) {
+        return None;
+    }
+    let lower = address.to_ascii_lowercase();
+    if lower.starts_with("http://") || lower.starts_with("https://") {
+        Some(address.to_string())
+    } else if lower.contains("://") {
+        None
+    } else {
+        Some(format!("http://{address}"))
+    }
+}
+
+/// Does a Windows `ProxyOverride` list cover this host? Entries are
+/// case-insensitive globs over the whole host (`*.corp.example`, `10.*`);
+/// `<local>` covers any name without a dot.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn windows_bypasses_proxy(host: &str, overrides: &str) -> bool {
+    let host = host.trim().trim_end_matches('.').to_ascii_lowercase();
+    overrides.split(';').any(|entry| {
+        let entry = entry.trim().to_ascii_lowercase();
+        if entry == "<local>" {
+            return !host.contains('.');
+        }
+        !entry.is_empty() && glob_matches(&entry, &host)
+    })
+}
+
+/// `*` matches any run of characters, everything else only itself.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn glob_matches(pattern: &str, text: &str) -> bool {
+    let parts: Vec<&str> = pattern.split('*').collect();
+    if parts.len() == 1 {
+        return pattern == text;
+    }
+    let (first, last) = (parts[0], parts[parts.len() - 1]);
+    if !text.starts_with(first) || text.len() < first.len() + last.len() || !text.ends_with(last) {
+        return false;
+    }
+    let mut rest = &text[first.len()..text.len() - last.len()];
+    for middle in &parts[1..parts.len() - 1] {
+        match rest.find(middle) {
+            Some(at) => rest = &rest[at + middle.len()..],
+            None => return false,
+        }
+    }
+    true
+}
+
+/// `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`, read
+/// value by value.
+#[cfg(windows)]
+mod internet_settings {
+    use windows_sys::Win32::System::Registry::{
+        RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RRF_RT_REG_SZ,
+    };
+
+    const KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Internet Settings";
+
+    fn wide(s: &str) -> Vec<u16> {
+        s.encode_utf16().chain(std::iter::once(0)).collect()
+    }
+
+    pub fn dword(name: &str) -> Option<u32> {
+        let (key, value) = (wide(KEY), wide(name));
+        let mut data = 0u32;
+        let mut size = std::mem::size_of::<u32>() as u32;
+        // SAFETY: NUL-terminated UTF-16 key and value names, and a u32 buffer
+        // whose size is passed alongside it.
+        let status = unsafe {
+            RegGetValueW(
+                HKEY_CURRENT_USER,
+                key.as_ptr(),
+                value.as_ptr(),
+                RRF_RT_REG_DWORD,
+                std::ptr::null_mut(),
+                (&mut data as *mut u32).cast(),
+                &mut size,
+            )
+        };
+        (status == 0).then_some(data)
+    }
+
+    pub fn string(name: &str) -> Option<String> {
+        let (key, value) = (wide(KEY), wide(name));
+        let mut size = 0u32;
+        // SAFETY: as above; a null buffer asks only for the size in bytes.
+        let status = unsafe {
+            RegGetValueW(
+                HKEY_CURRENT_USER,
+                key.as_ptr(),
+                value.as_ptr(),
+                RRF_RT_REG_SZ,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &mut size,
+            )
+        };
+        if status != 0 || size == 0 {
+            return None;
+        }
+        let mut buf = vec![0u16; (size as usize).div_ceil(2)];
+        // SAFETY: `buf` holds `size` bytes; RRF_RT_REG_SZ NUL-terminates it.
+        let status = unsafe {
+            RegGetValueW(
+                HKEY_CURRENT_USER,
+                key.as_ptr(),
+                value.as_ptr(),
+                RRF_RT_REG_SZ,
+                std::ptr::null_mut(),
+                buf.as_mut_ptr().cast(),
+                &mut size,
+            )
+        };
+        if status != 0 {
+            return None;
+        }
+        let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+        Some(String::from_utf16_lossy(&buf[..len]))
+    }
 }
 
 /// The proxy macOS would use for `host`, read from `scutil --proxy`: the
@@ -225,6 +428,7 @@ pub fn proxy_for(
 /// the host out the way `NO_PROXY` does. Only the top-level dictionary counts;
 /// `__SCOPED__` holds per-interface copies. A PAC file or a SOCKS-only setup
 /// gives `None` — this build evaluates neither.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub fn proxy_from_scutil(host: &str, dump: &str) -> Option<String> {
     let mut depth = 0usize;
     let mut in_exceptions = false;
@@ -268,23 +472,17 @@ pub fn proxy_from_scutil(host: &str, dump: &str) -> Option<String> {
     Some(format!("http://{server}:{port}"))
 }
 
-/// The system's proxy settings as `scutil --proxy` prints them; `None` off
-/// macOS or when it can't run.
+/// The system's proxy settings as `scutil --proxy` prints them; `None` when
+/// it can't run.
+#[cfg(target_os = "macos")]
 fn system_proxy_dump() -> Option<String> {
-    #[cfg(target_os = "macos")]
-    {
-        let out = std::process::Command::new("/usr/sbin/scutil")
-            .arg("--proxy")
-            .output()
-            .ok()?;
-        out.status
-            .success()
-            .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        None
-    }
+    let out = std::process::Command::new("/usr/sbin/scutil")
+        .arg("--proxy")
+        .output()
+        .ok()?;
+    out.status
+        .success()
+        .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
 /// Does `NO_PROXY` cover this host? `*` covers everything, and an entry
@@ -319,7 +517,7 @@ pub fn with_proxy(builder: ureq::AgentBuilder, url: &str) -> ureq::AgentBuilder 
     let Some(proxy) = proxy_for(
         url_host(url),
         |name| std::env::var(name).ok(),
-        system_proxy_dump,
+        system_proxy_for,
     ) else {
         return builder;
     };
@@ -456,7 +654,7 @@ mod tests {
     fn prerelease_current_sees_prereleases_and_stable() {
         let current = version("0.1.0-alpha.3");
         let releases = vec![release("v0.1.0-alpha.4", false, true), release("v0.1.0", false, false)];
-        let check = pick_update(&current, &releases, None);
+        let check = pick_update(&current, &releases, InstallerKind::Dmg, None);
         assert_eq!(check.latest.as_deref(), Some("0.1.0"));
         assert!(check.update_available);
     }
@@ -465,7 +663,7 @@ mod tests {
     fn stable_current_ignores_prereleases() {
         let current = version("0.1.0");
         let releases = vec![release("v0.2.0-alpha.1", false, true)];
-        let check = pick_update(&current, &releases, None);
+        let check = pick_update(&current, &releases, InstallerKind::Dmg, None);
         assert_eq!(check.latest, None);
         assert!(!check.update_available);
     }
@@ -477,14 +675,14 @@ mod tests {
             release("v0.1.0-alpha.3", false, true),
             release("v0.1.0-alpha.10", false, true),
         ];
-        let check = pick_update(&current, &releases, None);
+        let check = pick_update(&current, &releases, InstallerKind::Dmg, None);
         assert_eq!(check.latest.as_deref(), Some("0.1.0-alpha.10"));
 
         let releases2 = vec![
             release("v0.1.0-alpha.10", false, true),
             release("v0.1.0-beta.1", false, true),
         ];
-        let check2 = pick_update(&current, &releases2, None);
+        let check2 = pick_update(&current, &releases2, InstallerKind::Dmg, None);
         assert_eq!(check2.latest.as_deref(), Some("0.1.0-beta.1"));
     }
 
@@ -496,7 +694,7 @@ mod tests {
             release("garbage", false, false),
             release("v0.1.0-alpha.2", false, true),
         ];
-        let check = pick_update(&current, &releases, None);
+        let check = pick_update(&current, &releases, InstallerKind::Dmg, None);
         assert_eq!(check.latest.as_deref(), Some("0.1.0-alpha.2"));
     }
 
@@ -504,21 +702,20 @@ mod tests {
     fn equal_or_older_latest_is_not_an_update() {
         let current = version("0.1.0");
         let releases = vec![release("v0.1.0", false, false)];
-        let check = pick_update(&current, &releases, None);
+        let check = pick_update(&current, &releases, InstallerKind::Dmg, None);
         assert_eq!(check.latest.as_deref(), Some("0.1.0"));
         assert!(!check.update_available);
 
         let releases_older = vec![release("v0.0.9", false, false)];
-        let check_older = pick_update(&current, &releases_older, None);
+        let check_older = pick_update(&current, &releases_older, InstallerKind::Dmg, None);
         assert_eq!(check_older.latest.as_deref(), Some("0.0.9"));
         assert!(!check_older.update_available);
     }
 
-    // pick_update looks for the NSIS installer on Windows; picks_windows_installer_by_arch_suffix
-    // covers that side.
+    // The installer kind is passed in, so this runs the same on every host; the Windows side is
+    // each_platform_takes_the_newest_release_that_carries_its_installer below.
     #[test]
-    #[cfg(not(windows))]
-    fn picks_arch_dmg_and_falls_back_to_release_page() {
+    fn picks_arch_dmg_and_skips_a_release_without_one() {
         let current = version("0.1.0");
         let mut r = release("v0.2.0", false, false);
         r.assets = vec![
@@ -533,31 +730,61 @@ mod tests {
         ];
         let releases = vec![r];
 
-        let aarch64 = pick_update(&current, &releases, Some("aarch64"));
+        let aarch64 = pick_update(&current, &releases, InstallerKind::Dmg, Some("aarch64"));
         assert_eq!(
             aarch64.download_url.as_deref(),
             Some("https://github.com/Blackman99/deskfolk/releases/download/v0.2.0/Deskfolk_0.2.0_aarch64.dmg")
         );
 
-        let x64 = pick_update(&current, &releases, Some("x64"));
+        let x64 = pick_update(&current, &releases, InstallerKind::Dmg, Some("x64"));
         assert_eq!(
             x64.download_url.as_deref(),
             Some("https://github.com/Blackman99/deskfolk/releases/download/v0.2.0/Deskfolk_0.2.0_x64.dmg")
         );
 
-        let none_arch = pick_update(&current, &releases, None);
+        let none_arch = pick_update(&current, &releases, InstallerKind::Dmg, None);
         assert_eq!(
             none_arch.download_url.as_deref(),
             Some("https://github.com/Blackman99/deskfolk/releases/tag/v0.2.0")
         );
 
+        // No `.dmg` for this arch (yet): not an update at all, rather than a release page
+        // with nothing on it to install.
         let mut r2 = release("v0.3.0", false, false);
         r2.assets = vec![];
         let releases_missing = vec![r2];
-        let missing_asset = pick_update(&current, &releases_missing, Some("aarch64"));
+        let missing_asset = pick_update(&current, &releases_missing, InstallerKind::Dmg, Some("aarch64"));
+        assert_eq!(missing_asset.latest, None);
+        assert!(!missing_asset.update_available);
+    }
+
+    #[test]
+    fn each_platform_takes_the_newest_release_that_carries_its_installer() {
+        let asset = |name: &str| Asset {
+            name: name.into(),
+            browser_download_url: format!("https://github.com/Blackman99/deskfolk/releases/download/{name}"),
+        };
+        let mut both = release("v0.2.0", false, false);
+        both.assets = vec![asset("Deskfolk_0.2.0_x64.dmg"), asset("Deskfolk_0.2.0_x64-setup.exe")];
+        let mut mac_only = release("v0.3.0", false, false);
+        mac_only.assets = vec![asset("Deskfolk_0.3.0_x64.dmg")];
+        let mut windows_only = release("v0.2.5", false, false);
+        windows_only.assets = vec![asset("Deskfolk_0.2.5_x64-setup.exe")];
+        let releases = vec![both, mac_only, windows_only];
+        let current = version("0.1.0");
+
+        let windows = pick_update(&current, &releases, InstallerKind::NsisSetup, Some("x64"));
+        assert_eq!(windows.latest.as_deref(), Some("0.2.5"));
         assert_eq!(
-            missing_asset.download_url.as_deref(),
-            Some("https://github.com/Blackman99/deskfolk/releases/tag/v0.3.0")
+            windows.download_url.as_deref(),
+            Some("https://github.com/Blackman99/deskfolk/releases/download/Deskfolk_0.2.5_x64-setup.exe")
+        );
+
+        let mac = pick_update(&current, &releases, InstallerKind::Dmg, Some("x64"));
+        assert_eq!(mac.latest.as_deref(), Some("0.3.0"));
+        assert_eq!(
+            mac.download_url.as_deref(),
+            Some("https://github.com/Blackman99/deskfolk/releases/download/Deskfolk_0.3.0_x64.dmg")
         );
     }
 
@@ -596,7 +823,7 @@ mod tests {
     fn the_release_body_travels_with_the_check_and_blank_bodies_do_not() {
         let mut newer = release("v0.2.0", false, false);
         newer.body = Some("### Messenger\n\n- 一条更新说明。\n".into());
-        let check = pick_update(&version("0.1.0"), &[newer], Some("aarch64"));
+        let check = pick_update(&version("0.1.0"), &[newer], InstallerKind::Dmg, None);
         assert!(check.update_available);
         assert_eq!(
             check.notes.as_deref(),
@@ -606,11 +833,11 @@ mod tests {
         let mut blank = release("v0.2.0", false, false);
         blank.body = Some("   \n".into());
         assert_eq!(
-            pick_update(&version("0.1.0"), &[blank], Some("aarch64")).notes,
+            pick_update(&version("0.1.0"), &[blank], InstallerKind::Dmg, None).notes,
             None
         );
 
-        assert_eq!(pick_update(&version("0.1.0"), &[], Some("aarch64")).notes, None);
+        assert_eq!(pick_update(&version("0.1.0"), &[], InstallerKind::Dmg, None).notes, None);
     }
 
     fn env(pairs: Vec<(&'static str, &'static str)>) -> impl Fn(&str) -> Option<String> {
@@ -647,7 +874,7 @@ mod tests {
 
     #[test]
     fn proxy_comes_from_the_environment_unless_no_proxy_covers_the_host() {
-        let from_env = |host: &str, read| proxy_for(host, read, || None);
+        let from_env = |host: &str, read| proxy_for(host, read, |_| None);
         assert_eq!(
             from_env("github.com", env(vec![("HTTPS_PROXY", "http://127.0.0.1:12334")])),
             Some("http://127.0.0.1:12334".to_string())
@@ -684,7 +911,7 @@ mod tests {
     /// networks where github.com only answers through one.
     #[test]
     fn without_variables_the_system_proxy_is_used() {
-        let system = || Some(SCUTIL_PROXY_ON.to_string());
+        let system = |host: &str| proxy_from_scutil(host, SCUTIL_PROXY_ON);
         assert_eq!(
             proxy_for("github.com", env(vec![]), system),
             Some("http://127.0.0.1:12334".to_string())
@@ -707,7 +934,7 @@ mod tests {
             proxy_for(
                 "github.com",
                 env(vec![("HTTPS_PROXY", "http://a:1")]),
-                || -> Option<String> { panic!("read scutil although HTTPS_PROXY is set") }
+                |_: &str| -> Option<String> { panic!("read the system proxy although HTTPS_PROXY is set") }
             ),
             Some("http://a:1".to_string())
         );
@@ -742,6 +969,37 @@ mod tests {
 ";
         assert_eq!(proxy_from_scutil("github.com", scoped), None);
         assert_eq!(proxy_from_scutil("github.com", ""), None);
+    }
+
+    /// What Clash for Windows / v2rayN write when their "system proxy" is on,
+    /// and the bypass list Windows ships with.
+    #[test]
+    fn windows_internet_settings_proxy_is_the_https_one_unless_bypassed() {
+        let overrides = "localhost;127.*;10.*;172.16.*;192.168.*;*.corp.example;<local>";
+        let win = |host: &str, enabled: bool, server: &str| {
+            proxy_from_windows_settings(host, enabled, server, overrides)
+        };
+        let proxy = Some("http://127.0.0.1:7890".to_string());
+        assert_eq!(win("github.com", true, "127.0.0.1:7890"), proxy);
+        assert_eq!(win("github.com", false, "127.0.0.1:7890"), None);
+        assert_eq!(win("github.com", true, ""), None);
+        // Per protocol: https wins, http serves when it is the only one, socks alone is none.
+        assert_eq!(
+            win("github.com", true, "http=127.0.0.1:1;https=127.0.0.1:7890;socks=127.0.0.1:7891"),
+            proxy
+        );
+        assert_eq!(win("github.com", true, "http=127.0.0.1:7890"), proxy);
+        assert_eq!(win("github.com", true, "socks=127.0.0.1:7891"), None);
+        // A scheme already on the address is kept; a non-HTTP one is not a proxy ureq can use.
+        assert_eq!(win("github.com", true, "http://127.0.0.1:7890"), proxy);
+        assert_eq!(win("github.com", true, "socks5://127.0.0.1:7891"), None);
+        // The bypass list: exact names, wildcards on either side, and <local> for dotless names.
+        assert_eq!(win("localhost", true, "127.0.0.1:7890"), None);
+        assert_eq!(win("192.168.1.20", true, "127.0.0.1:7890"), None);
+        assert_eq!(win("build.corp.example", true, "127.0.0.1:7890"), None);
+        assert_eq!(win("printer", true, "127.0.0.1:7890"), None);
+        assert_eq!(win("GitHub.com.", true, "127.0.0.1:7890"), proxy);
+        assert_eq!(win("corp.example.github.com", true, "127.0.0.1:7890"), proxy);
     }
 
     #[test]

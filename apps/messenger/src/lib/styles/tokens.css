@@ -53,10 +53,10 @@
   --card-line: #fcd34d;
   --thread: #f8fafc;
 
-  /* Typography */
-  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC",
-    "Hiragino Sans GB", "Noto Sans SC", system-ui, sans-serif;
-  --mono: "SF Mono", Monaco, Menlo, Consolas, "Liberation Mono", ui-monospace, monospace;
+  /* Typography: macOS then Windows; Latin faces before CJK so Latin never renders in a CJK face's Latin glyphs */
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+  --mono: "SF Mono", Monaco, Menlo, "Cascadia Mono", Consolas, "Liberation Mono", ui-monospace, monospace;
 
   /* Radius & Elevation */
   --radius-sm: 6px;

@@ -175,28 +175,14 @@ export class ShellWorkbench {
     });
 
     /**
-     * The native menu owns its accelerators, so a command picked there is handed to the page
-     * rather than guessed at by it. ⌘W closes the tab in front of you and, once there is nothing
-     * left to close, asks the window to hide — which is what 关窗 has always meant.
+     * The native menu owns its accelerators on the Mac, so a command picked there is handed to the
+     * page rather than guessed at by it (on Windows the page catches Ctrl+W itself and comes here
+     * too — see `matchesCloseTab`).
      */
     $effect(() => {
       if (!this.getWide()) return;
-      const runtime = this.getRuntime();
       return listenToWindow("pane-command", (id) => {
-        if (id === "pane-reset") {
-          this.commitLayout(freshLayout(this.freshPaneId()));
-          return;
-        }
-        if (id === "view-spend") {
-          runtime.openSpend();
-          return;
-        }
-        if (id === "pane-close-tab" && allLeaves(this.layout).every((leaf) => leaf.tabs.length === 0)) {
-          void hideDesktopWindow();
-          return;
-        }
-        const command = typeof id === "string" ? MENU_COMMANDS[id] : undefined;
-        if (command) this.runWorkbenchCommand(command);
+        if (typeof id === "string") this.runMenuCommand(id);
       });
     });
 
@@ -381,6 +367,27 @@ export class ShellWorkbench {
     if (terminalId) params.terminalId = terminalId;
     if (cwd) params.cwd = cwd;
     this.commitLayout(replaceTabParams(this.layout, leafId, tabId, params));
+  };
+
+  /**
+   * A command by its native-menu id. Closing a tab closes the one in front of you and, once there
+   * is nothing left to close, asks the window to hide — which is what 关窗 has always meant.
+   */
+  runMenuCommand = (id: string): void => {
+    if (id === "pane-reset") {
+      this.commitLayout(freshLayout(this.freshPaneId()));
+      return;
+    }
+    if (id === "view-spend") {
+      this.getRuntime().openSpend();
+      return;
+    }
+    if (id === "pane-close-tab" && allLeaves(this.layout).every((leaf) => leaf.tabs.length === 0)) {
+      void hideDesktopWindow();
+      return;
+    }
+    const command = MENU_COMMANDS[id];
+    if (command) this.runWorkbenchCommand(command);
   };
 
   runWorkbenchCommand = (command: WorkbenchCommand): void => {

@@ -167,7 +167,10 @@ fn open_workspace_path(path: String, reveal: bool) -> Result<(), String> {
     }
     #[cfg(windows)]
     {
-        if reveal {
+        // ShellExecute's "open" runs an .exe, .bat, .js or .lnk, and a file a Bot wrote carries
+        // no mark-of-the-web for SmartScreen to stop. A type Windows itself rates dangerous is
+        // shown in Explorer instead, where running it is the person's own double-click.
+        if reveal || (target.is_file() && windows_is_dangerous_type(target)) {
             windows_reveal_in_explorer(&path)
         } else {
             windows_shell_open(&path)
@@ -178,6 +181,24 @@ fn open_workspace_path(path: String, reveal: bool) -> Result<(), String> {
         let _ = reveal;
         Err("open with system is only on macOS".into())
     }
+}
+
+/// Does Windows rate this file's type a security risk to open — executables,
+/// scripts, shortcuts, installers (`AssocIsDangerous`, the list Explorer and
+/// Attachment Manager use)? A file with no extension opens the "Open with"
+/// picker, which runs nothing.
+#[cfg(windows)]
+fn windows_is_dangerous_type(path: &std::path::Path) -> bool {
+    use windows_sys::Win32::UI::Shell::AssocIsDangerous;
+    let Some(ext) = path.extension() else {
+        return false;
+    };
+    let assoc: Vec<u16> = format!(".{}", ext.to_string_lossy())
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+    // SAFETY: a NUL-terminated UTF-16 buffer that outlives the call.
+    unsafe { AssocIsDangerous(assoc.as_ptr()) != 0 }
 }
 
 /// `explorer.exe /select,"<path>"`, which highlights the file/folder in a
@@ -270,7 +291,12 @@ async fn check_for_update(app: AppHandle, force: bool) -> Result<UpdateCheck, St
 
     let result = tauri::async_runtime::spawn_blocking(move || -> Result<UpdateCheck, String> {
         let releases = updates::fetch_releases(&url, &user_agent)?;
-        Ok(updates::pick_update(&current, &releases, arch))
+        Ok(updates::pick_update(
+            &current,
+            &releases,
+            updates::InstallerKind::for_this_platform(),
+            arch,
+        ))
     })
     .await
     .map_err(|e| e.to_string())??;
@@ -746,10 +772,35 @@ fn send_pane_command(app: &AppHandle, id: &str) {
     }
 }
 
+/// A menu item with a shortcut. On the Mac the menu answers the shortcut. On Windows WebView2
+/// keeps keystrokes away from the window's menu while the page has focus, so the page answers
+/// the ones it has (Ctrl+\, Ctrl+Shift+\ and Ctrl+W, in the messenger's workbench keys) and the
+/// menu only shows them, after a tab the way Win32 menus do: registering them as well would run a
+/// command twice whenever focus is outside the page.
+fn shortcut_item(
+    app: &AppHandle,
+    id: &str,
+    label: &str,
+    shortcut: &str,
+) -> tauri::Result<MenuItem<tauri::Wry>> {
+    if cfg!(target_os = "macos") {
+        MenuItem::with_id(app, id, label, true, Some(shortcut))
+    } else {
+        let hint = shortcut.replace("CmdOrCtrl", "Ctrl");
+        MenuItem::with_id(app, id, format!("{label}\t{hint}"), true, None::<&str>)
+    }
+}
+
 fn install_menus(app: &AppHandle) -> tauri::Result<()> {
     let about = PredefinedMenuItem::about(app, None, None)?;
     let sep = PredefinedMenuItem::separator(app)?;
-    let quit = MenuItem::with_id(app, "quit", "退出 Deskfolk", true, Some("CmdOrCtrl+Q"))?;
+    // Windows has no Ctrl+Q convention, and in a terminal it is XON; Alt+F4 and the tray cover it.
+    let quit_shortcut = if cfg!(target_os = "macos") {
+        Some("CmdOrCtrl+Q")
+    } else {
+        None
+    };
+    let quit = MenuItem::with_id(app, "quit", "退出 Deskfolk", true, quit_shortcut)?;
     // On Windows this menu renders as the window's own in-window menu bar,
     // which has no concept of hiding the app (or "other" apps) the way the
     // macOS app menu does, so those two items are dropped there.
@@ -787,8 +838,8 @@ fn install_menus(app: &AppHandle) -> tauri::Result<()> {
         &[
             &MenuItem::with_id(app, "view-spend", "花费", true, None::<&str>)?,
             &PredefinedMenuItem::separator(app)?,
-            &MenuItem::with_id(app, "pane-split-right", "向右分割", true, Some("CmdOrCtrl+\\"))?,
-            &MenuItem::with_id(app, "pane-split-down", "向下分割", true, Some("CmdOrCtrl+Shift+\\"))?,
+            &shortcut_item(app, "pane-split-right", "向右分割", "CmdOrCtrl+\\")?,
+            &shortcut_item(app, "pane-split-down", "向下分割", "CmdOrCtrl+Shift+\\")?,
             &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, "pane-close", "关闭窗格", true, None::<&str>)?,
             &MenuItem::with_id(app, "pane-equalise", "平分", true, None::<&str>)?,
@@ -805,7 +856,7 @@ fn install_menus(app: &AppHandle) -> tauri::Result<()> {
         &[
             &PredefinedMenuItem::minimize(app, None)?,
             &PredefinedMenuItem::separator(app)?,
-            &MenuItem::with_id(app, "pane-close-tab", "关闭标签页", true, Some("CmdOrCtrl+W"))?,
+            &shortcut_item(app, "pane-close-tab", "关闭标签页", "CmdOrCtrl+W")?,
         ],
     )?;
     app.set_menu(Menu::with_items(app, &[&app_menu, &edit, &view, &window])?)?;
@@ -1408,6 +1459,18 @@ fn descriptor_quit_fallback() -> QuitPlan {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn opening_a_type_windows_rates_dangerous_reveals_it_instead() {
+        use std::path::Path;
+        for risky in ["setup.exe", "run.BAT", "a.cmd", "x.ps1", "y.js", "z.vbs", "go.lnk", "i.msi", "h.hta"] {
+            assert!(windows_is_dangerous_type(Path::new(risky)), "{risky}");
+        }
+        for plain in ["notes.md", "report.pdf", "shot.png", "data.csv", "page.html", "Makefile"] {
+            assert!(!windows_is_dangerous_type(Path::new(plain)), "{plain}");
+        }
+    }
 
     fn test_state() -> Mutex<AppState> {
         Mutex::new(AppState {

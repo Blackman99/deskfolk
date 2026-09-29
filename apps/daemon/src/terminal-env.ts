@@ -91,8 +91,9 @@ export function terminalEnv(source: Record<string, string | undefined>, options:
 
   // A daemon started from launchd has neither LANG nor LC_ALL at all; left alone, a shell falls
   // back to POSIX and mangles anything non-ASCII. Derive what Terminal.app would show instead of
-  // forcing the same locale on every machine.
-  if (source.LANG === undefined && source.LC_ALL === undefined) {
+  // forcing the same locale on every machine. Windows keeps its locale in the user's settings,
+  // not LANG, and an injected en_US there would only switch git and friends to English.
+  if (platform !== "win32" && source.LANG === undefined && source.LC_ALL === undefined) {
     env.LANG = deriveLang(options.systemLocale, options.localeAvailable ?? defaultLocaleAvailable);
   }
 
@@ -108,6 +109,7 @@ let cachedSystemLocale: string | null | undefined;
 
 /** `defaults read -g AppleLocale`, cached: it does not change over the life of the process. */
 export function macSystemLocale(): string | null {
+  if (process.platform !== "darwin") return null;
   if (cachedSystemLocale === undefined) {
     try {
       const result = Bun.spawnSync(["defaults", "read", "-g", "AppleLocale"]);

@@ -7,7 +7,7 @@ import { ensureZshIntegration, macSystemLocale, terminalEnv } from "./terminal-e
 test("only the whitelist passes through, never the rest of the daemon's own env", () => {
   const env = terminalEnv(
     { PATH: "/bin", HOME: "/Users/x", ANTHROPIC_API_KEY: "sk-secret", REAL_BOT_TOKEN: "topsecret" },
-    { shell: "/bin/bash" },
+    { shell: "/bin/bash", platform: "darwin" },
   );
   expect(env.PATH).toBe("/bin");
   expect(env.HOME).toBe("/Users/x");
@@ -22,21 +22,21 @@ test("PATH falls back when the source has none", () => {
 });
 
 test("USER and LOGNAME fall back to the given username, but only when absent", () => {
-  const withoutUser = terminalEnv({}, { shell: "/bin/zsh", username: "dongsheng" });
+  const withoutUser = terminalEnv({}, { shell: "/bin/zsh", platform: "darwin", username: "dongsheng" });
   expect(withoutUser.USER).toBe("dongsheng");
   expect(withoutUser.LOGNAME).toBe("dongsheng");
 
-  const withUser = terminalEnv({ USER: "someoneelse", LOGNAME: "someoneelse" }, { shell: "/bin/zsh", username: "dongsheng" });
+  const withUser = terminalEnv({ USER: "someoneelse", LOGNAME: "someoneelse" }, { shell: "/bin/zsh", platform: "darwin", username: "dongsheng" });
   expect(withUser.USER).toBe("someoneelse");
   expect(withUser.LOGNAME).toBe("someoneelse");
 
-  const neither = terminalEnv({}, { shell: "/bin/zsh" });
+  const neither = terminalEnv({}, { shell: "/bin/zsh", platform: "darwin" });
   expect(neither.USER).toBeUndefined();
   expect(neither.LOGNAME).toBeUndefined();
 });
 
 test("sets a real TERM and identifies itself, the way Terminal.app does", () => {
-  const env = terminalEnv({}, { shell: "/bin/bash" });
+  const env = terminalEnv({}, { shell: "/bin/bash", platform: "darwin" });
   expect(env.SHELL).toBe("/bin/bash");
   expect(env.TERM).toBe("xterm-256color");
   expect(env.COLORTERM).toBe("truecolor");
@@ -44,57 +44,57 @@ test("sets a real TERM and identifies itself, the way Terminal.app does", () => 
 });
 
 test("LANG/LC_ALL already in the source are left alone", () => {
-  const lang = terminalEnv({ LANG: "fr_FR.UTF-8" }, { shell: "/bin/zsh", systemLocale: "zh_CN" });
+  const lang = terminalEnv({ LANG: "fr_FR.UTF-8" }, { shell: "/bin/zsh", platform: "darwin", systemLocale: "zh_CN" });
   expect(lang.LANG).toBe("fr_FR.UTF-8");
 
-  const lcAll = terminalEnv({ LC_ALL: "fr_FR.UTF-8" }, { shell: "/bin/zsh", systemLocale: "zh_CN" });
+  const lcAll = terminalEnv({ LC_ALL: "fr_FR.UTF-8" }, { shell: "/bin/zsh", platform: "darwin", systemLocale: "zh_CN" });
   expect(lcAll.LANG).toBeUndefined();
   expect(lcAll.LC_ALL).toBe("fr_FR.UTF-8");
 });
 
 test("LANG is derived from the system locale when neither is in the source", () => {
-  const env = terminalEnv({}, { shell: "/bin/zsh", systemLocale: "zh_CN", localeAvailable: (name) => name === "zh_CN" });
+  const env = terminalEnv({}, { shell: "/bin/zsh", platform: "darwin", systemLocale: "zh_CN", localeAvailable: (name) => name === "zh_CN" });
   expect(env.LANG).toBe("zh_CN.UTF-8");
 });
 
 test("an unavailable locale falls back to en_US.UTF-8", () => {
-  const env = terminalEnv({}, { shell: "/bin/zsh", systemLocale: "zh_CN", localeAvailable: () => false });
+  const env = terminalEnv({}, { shell: "/bin/zsh", platform: "darwin", systemLocale: "zh_CN", localeAvailable: () => false });
   expect(env.LANG).toBe("en_US.UTF-8");
 });
 
 test("no system locale at all falls back to en_US.UTF-8", () => {
-  const env = terminalEnv({}, { shell: "/bin/zsh", systemLocale: null, localeAvailable: () => true });
+  const env = terminalEnv({}, { shell: "/bin/zsh", platform: "darwin", systemLocale: null, localeAvailable: () => true });
   expect(env.LANG).toBe("en_US.UTF-8");
 });
 
 test("a currency/variant suffix is dropped before the locale is looked up", () => {
   let seen: string | undefined;
-  terminalEnv({}, { shell: "/bin/zsh", systemLocale: "en_CN@currency=JPY", localeAvailable: (name) => { seen = name; return true; } });
+  terminalEnv({}, { shell: "/bin/zsh", platform: "darwin", systemLocale: "en_CN@currency=JPY", localeAvailable: (name) => { seen = name; return true; } });
   expect(seen).toBe("en_CN");
 });
 
 test("a script subtag between language and region is dropped", () => {
   let seen: string | undefined;
-  terminalEnv({}, { shell: "/bin/zsh", systemLocale: "zh-Hans_CN", localeAvailable: (name) => { seen = name; return true; } });
+  terminalEnv({}, { shell: "/bin/zsh", platform: "darwin", systemLocale: "zh-Hans_CN", localeAvailable: (name) => { seen = name; return true; } });
   expect(seen).toBe("zh_CN");
 });
 
 test("zsh gets ZDOTDIR pointed at the integration dir, other shells do not", () => {
-  const zsh = terminalEnv({}, { shell: "/bin/zsh", zshIntegrationDir: "/data/shell-integration/zsh" });
+  const zsh = terminalEnv({}, { shell: "/bin/zsh", platform: "darwin", zshIntegrationDir: "/data/shell-integration/zsh" });
   expect(zsh.ZDOTDIR).toBe("/data/shell-integration/zsh");
 
-  const bash = terminalEnv({}, { shell: "/bin/bash", zshIntegrationDir: "/data/shell-integration/zsh" });
+  const bash = terminalEnv({}, { shell: "/bin/bash", platform: "darwin", zshIntegrationDir: "/data/shell-integration/zsh" });
   expect(bash.ZDOTDIR).toBeUndefined();
 
-  const noDir = terminalEnv({}, { shell: "/bin/zsh", zshIntegrationDir: null });
+  const noDir = terminalEnv({}, { shell: "/bin/zsh", platform: "darwin", zshIntegrationDir: null });
   expect(noDir.ZDOTDIR).toBeUndefined();
 });
 
 test("the user's own ZDOTDIR is preserved under REAL_BOT_ZSH_ZDOTDIR only when they had one", () => {
-  const hadOne = terminalEnv({ ZDOTDIR: "/Users/x/.config/zsh" }, { shell: "/bin/zsh", zshIntegrationDir: "/data/shell-integration/zsh" });
+  const hadOne = terminalEnv({ ZDOTDIR: "/Users/x/.config/zsh" }, { shell: "/bin/zsh", platform: "darwin", zshIntegrationDir: "/data/shell-integration/zsh" });
   expect(hadOne.REAL_BOT_ZSH_ZDOTDIR).toBe("/Users/x/.config/zsh");
 
-  const hadNone = terminalEnv({}, { shell: "/bin/zsh", zshIntegrationDir: "/data/shell-integration/zsh" });
+  const hadNone = terminalEnv({}, { shell: "/bin/zsh", platform: "darwin", zshIntegrationDir: "/data/shell-integration/zsh" });
   expect(hadNone.REAL_BOT_ZSH_ZDOTDIR).toBeUndefined();
 });
 
@@ -179,6 +179,12 @@ test("darwin/linux are unaffected by the win32 passthrough list", () => {
   const env = terminalEnv({ SystemRoot: "C:\\Windows", PATH: "/bin" }, { shell: "/bin/zsh", platform: "darwin" });
   expect(env.SystemRoot).toBeUndefined();
   expect(env.PATH).toBe("/bin");
+});
+
+test("win32 gets no injected LANG: its locale lives in the user's settings, not the env", () => {
+  const env = terminalEnv({}, { shell: "pwsh.exe", platform: "win32", systemLocale: "zh_CN", localeAvailable: () => true });
+  expect(env.LANG).toBeUndefined();
+  expect(terminalEnv({ LANG: "zh_CN.UTF-8" }, { shell: "pwsh.exe", platform: "win32" }).LANG).toBe("zh_CN.UTF-8");
 });
 
 test("macSystemLocale is cached: repeated calls return the same value without re-spawning", () => {
