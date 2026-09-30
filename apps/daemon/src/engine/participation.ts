@@ -23,6 +23,7 @@ import type { TurnAdmission } from "../quiesce";
 import { sessionUpsertFields } from "../session-events";
 import type { Store } from "../store";
 import type { HeardItem } from "../turn-inbox";
+import { mayWake, wakeOn, type WakeCause } from "./control";
 import type { Routing } from "./routing";
 import type { SpendTracker } from "./spend";
 import type { Creds, InboxEntry } from "./types";
@@ -39,22 +40,22 @@ export type ParticipationDeps = {
   callOf: SpendTracker["callOf"];
   spendOwner: SpendTracker["spendOwner"];
   recordResponseSpend: SpendTracker["recordResponseSpend"];
-  /** Late-bound: lifecycle.ts is built after this module. */
+  /** Late-bound: lifecycle.ts is built after this module. Null when a hold turns the wake away. */
   startTurn: (
     sessionId: string,
     botId: string,
     trigger: Message,
     mode: "redirect" | "fork",
-    opts?: { routineId?: string | null; routineDueAt?: string | null; taskId?: string | null; ticketId?: string | null },
-  ) => Turn;
-  /** Late-bound: lifecycle.ts is built after this module. */
+    opts: { cause: WakeCause; routineId?: string | null; routineDueAt?: string | null; taskId?: string | null; ticketId?: string | null },
+  ) => Turn | null;
+  /** Late-bound: lifecycle.ts is built after this module. Null when a hold turns the wake away. */
   hearOrStart: (
     sessionId: string,
     botId: string,
     trigger: Message,
     entry: Omit<InboxEntry, "message">,
-    opts?: { taskId?: string | null; ticketId?: string | null },
-  ) => Turn;
+    opts: { cause: WakeCause; taskId?: string | null; ticketId?: string | null },
+  ) => Turn | null;
   /** Benchmark switches (see `ablation.ts`): `judgement` has every Bot join without a call. */
   ablation?: Ablation;
 };
@@ -172,9 +173,10 @@ export function createParticipation(deps: ParticipationDeps): Participation {
       // Your new message forks by default. With no user in the room, a Bot's next message is
       // heard inside the other Bot's live turn instead of cloning or ending it — as in a group.
       const fork = opts.fork !== undefined ? opts.fork : store.isPresent(session.id, USER_MEMBER);
-      if (fork) startTurn(session.id, target, message, "fork");
-      else if (!opts.fromUser && message.kind === "bot") hearOrStart(session.id, target, message, { item: inboxItem(message) });
-      else startTurn(session.id, target, message, "redirect");
+      const cause = causeOf(message);
+      if (fork) startTurn(session.id, target, message, "fork", { cause });
+      else if (!opts.fromUser && message.kind === "bot") hearOrStart(session.id, target, message, { item: inboxItem(message) }, { cause });
+      else startTurn(session.id, target, message, "redirect", { cause });
       return;
     }
 
@@ -214,21 +216,22 @@ export function createParticipation(deps: ParticipationDeps): Participation {
     }
 
     const hasMention = parsed.everyone || mentionedIds.length > 0;
+    const cause = causeOf(message);
     const opened = new Set<string>();
     if (opts.fromUser && !hasMention) {
       const focused = store.listLiveTurns({ sessionId: session.id })[0];
       if (focused) {
         const fork = opts.fork !== undefined ? opts.fork : true;
-        startTurn(session.id, focused.bot_id, message, fork ? "fork" : "redirect");
+        startTurn(session.id, focused.bot_id, message, fork ? "fork" : "redirect", { cause });
         opened.add(focused.bot_id);
       }
     }
 
     for (const botId of mandatory) {
       // A Bot naming a Bot that is mid-task is heard in that task; your line still turns it around.
-      if (opts.fork === true) startTurn(session.id, botId, message, "fork");
-      else if (!opts.fromUser && message.kind === "bot") hearOrStart(session.id, botId, message, { item: inboxItem(message) });
-      else startTurn(session.id, botId, message, "redirect");
+      if (opts.fork === true) startTurn(session.id, botId, message, "fork", { cause });
+      else if (!opts.fromUser && message.kind === "bot") hearOrStart(session.id, botId, message, { item: inboxItem(message) }, { cause });
+      else startTurn(session.id, botId, message, "redirect", { cause });
       opened.add(botId);
     }
 
@@ -237,8 +240,13 @@ export function createParticipation(deps: ParticipationDeps): Participation {
     // named set. Bot text with no @ stays silent. Quote-replies still participate.
     if (!(opts.fromUser && !hasMention)) return;
 
+    // A Bot a hold covers could only be turned away after its judgement, so it is not asked.
     const judges = present.filter(
-      (id) => id !== message.author && !opened.has(id) && !mandatory.has(id),
+      (id) =>
+        id !== message.author &&
+        !opened.has(id) &&
+        !mandatory.has(id) &&
+        mayWake(store, wakeOn(store, cause, { sessionId: session.id, botId: id, trigger: message })),
     );
     const pendingByBot = new Map<string, PendingJudgement>();
     for (const botId of judges) {
@@ -271,6 +279,11 @@ export function createParticipation(deps: ParticipationDeps): Participation {
     } catch {
       return false;
     }
+  }
+
+  /** Your line, or a Bot's: what the work log says woke a Bot when a hold turns the wake away. */
+  function causeOf(message: Message): WakeCause {
+    return message.kind === "user" ? "user_line" : "mention";
   }
 
   function inboxItem(message: Message): HeardItem {
@@ -345,7 +358,7 @@ export function createParticipation(deps: ParticipationDeps): Participation {
         } catch {
           return;
         }
-        startTurn(message.session_id, botId, message, "redirect");
+        startTurn(message.session_id, botId, message, "redirect", { cause: causeOf(message) });
         finish(row);
         publish({ event: "judgement.created", occurred_at: occurred(), ...row });
         return;
@@ -459,7 +472,7 @@ export function createParticipation(deps: ParticipationDeps): Participation {
         usage: result.usage,
         responded: result.failKind === null || result.failKind === "incomplete",
       });
-      if (decision === "join") startTurn(message.session_id, botId, message, "redirect");
+      if (decision === "join") startTurn(message.session_id, botId, message, "redirect", { cause: causeOf(message) });
       finish(row);
       publish({ event: "judgement.created", occurred_at: occurred(), ...row });
     } finally {

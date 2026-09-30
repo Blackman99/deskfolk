@@ -15,6 +15,7 @@ import { settingsCached } from "./settings";
 import { listSkills, withLearning as skillWithLearning } from "./skills";
 import { toBot, type BotRow, type StoreContext } from "./shared";
 import { getTurn } from "./turns";
+import { getHold } from "./holds";
 import { GATE_SETTING_KEYS } from "./schema-gate";
 
 type Change = { entity: string; id: string; op: string; session_id: string | null };
@@ -22,7 +23,7 @@ type Change = { entity: string; id: string; op: string; session_id: string | nul
 /** TEMP triggers follow nested domain writes and roll back with the business transaction. */
 export function installChangeJournal(ctx: StoreContext): void {
   ctx.db.exec(`CREATE TEMP TABLE event_changes (entity TEXT, id TEXT, op TEXT, session_id TEXT)`);
-  const tables = ["settings", "bots", "sessions", "messages", "turns", "approvals", "mcp_servers", "providers", "skills", "memories", "routines", "allow_rules", "spend", "judgements", "notifications", "annotations", "tasks", "tickets"];
+  const tables = ["settings", "bots", "sessions", "messages", "turns", "approvals", "mcp_servers", "providers", "skills", "memories", "routines", "allow_rules", "spend", "judgements", "notifications", "annotations", "tasks", "tickets", "holds"];
   for (const table of tables) {
     for (const op of ["INSERT", "UPDATE", "DELETE"]) {
       if (table === "spend" && op === "UPDATE") continue;
@@ -192,6 +193,11 @@ export function committedEvents(ctx: StoreContext): ClientEvent[] {
         } else {
           out.push({ event: "task.removed", occurred_at, id });
         }
+        break;
+      }
+      case "holds": {
+        // Never deleted, so a change is always one to publish.
+        if (ctx.db.query("SELECT 1 FROM holds WHERE id = ?").get(id)) out.push({ event: "hold.upsert", occurred_at, ...getHold(ctx, id) });
         break;
       }
       case "tickets": {

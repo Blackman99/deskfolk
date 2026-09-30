@@ -8,6 +8,7 @@ import type { AcceptanceCheck, TaskDetail, TaskSpecRevision, Ticket, TicketStatu
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { applyOrganizerChecks, checkNeverRanSinceDefinition, checksHoldingPlanOpen, listChecks, rebindCheckItems, type OrganizerCheckInput } from "./acceptance-checks";
+import { planHeldBy, setPlanStatusByUser } from "./holds";
 import { normalizePlanSpec, parsePlanSpec, type PlanSpec } from "./plan-shape";
 import { type StoreContext } from "./shared";
 import {
@@ -33,6 +34,8 @@ export type SpecRevisionRow = {
   source_turn_id: string | null;
   actor: "app" | "user";
   created_at: string;
+  /** `hold`: written by a hold parking or restoring the plan, not by a filing (store/holds.ts). */
+  cause: "hold" | null;
 };
 
 export function currentRevision(ctx: StoreContext, taskId: string): number {
@@ -42,10 +45,14 @@ export function currentRevision(ctx: StoreContext, taskId: string): number {
   return row?.n ?? 0;
 }
 
-/** When the spec last changed, else when the plan was opened: the organizer reads what came after. */
+/**
+ * When the spec was last filed — by the organizer or by you — else when the plan was opened: the
+ * organizer reads what came after. A version a hold wrote files nothing, so it does not count: the
+ * lines before the stop are still to be read.
+ */
 export function lastSpecRevisionAt(ctx: StoreContext, taskId: string): string {
   const row = ctx.db
-    .query<{ at: string | null }, [string]>(`SELECT MAX(created_at) AS at FROM task_spec_revisions WHERE task_id = ?`)
+    .query<{ at: string | null }, [string]>(`SELECT MAX(created_at) AS at FROM task_spec_revisions WHERE task_id = ? AND cause IS NULL`)
     .get(taskId);
   return row?.at ?? getTask(ctx, taskId).created_at;
 }
@@ -72,6 +79,7 @@ function toRevision(ctx: StoreContext, row: SpecRevisionRow): TaskSpecRevision {
     source_turn_id: row.source_turn_id,
     session_id: sessionId,
     created_at: row.created_at,
+    cause: row.cause,
   };
 }
 
@@ -94,6 +102,7 @@ export function recordSpecRevision(
     sourceMessageId?: string | null;
     sourceTurnId?: string | null;
     actor: "app" | "user";
+    cause?: "hold" | null;
     now?: string;
   },
 ): SpecRevisionRow {
@@ -102,8 +111,8 @@ export function recordSpecRevision(
   const revision = currentRevision(ctx, input.taskId) + 1;
   ctx.db.run(
     `INSERT INTO task_spec_revisions
-       (id, task_id, revision, spec, tickets_snapshot, source_message_id, source_turn_id, actor, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, task_id, revision, spec, tickets_snapshot, source_message_id, source_turn_id, actor, created_at, cause)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       input.taskId,
@@ -114,6 +123,7 @@ export function recordSpecRevision(
       input.sourceTurnId ?? null,
       input.actor,
       now,
+      input.cause ?? null,
     ],
   );
   return ctx.db.query<SpecRevisionRow, [string]>(`SELECT * FROM task_spec_revisions WHERE id = ?`).get(id)!;
@@ -129,7 +139,11 @@ function assertRevision(ctx: StoreContext, taskId: string, ifRevision: unknown):
   }
 }
 
-/** Your edit of the spec: validated like the organizer's, recorded as yours. */
+/**
+ * Your edit of the spec: validated like the organizer's, recorded as yours. A status other than
+ * the one the plan shows is you stopping, resuming or accepting it, which holds carry once they are
+ * on (`setPlanStatusByUser`); an edit that only sends back the status it was shown is none of those.
+ */
 export function setPlanSpecByUser(
   ctx: StoreContext,
   taskId: string,
@@ -143,6 +157,7 @@ export function setPlanSpecByUser(
   return ctx.db.transaction(() => {
     assertRevision(ctx, taskId, ifRevision);
     const now = isoNow();
+    setPlanStatusByUser(ctx, before, spec.status, now);
     const task = setTaskSpec(ctx, taskId, spec, now);
     rebindCheckItems(ctx, taskId, beforeAcceptance, spec.acceptance, now);
     const revision = recordSpecRevision(ctx, { taskId, spec, actor: "user", now });
@@ -480,6 +495,7 @@ export function taskDetail(ctx: StoreContext, taskId: string, present: (path: st
     revision_actor: latest?.actor ?? null,
     routine_id: task.routine_id,
     checks: listChecks(ctx, taskId),
+    held_by: planHeldBy(ctx, taskId),
     tickets: listTickets(ctx, taskId).map((ticket) => ({
       ...ticket,
       artifacts: ticketArtifacts(ctx, ticket.id, present).map((row) => ({

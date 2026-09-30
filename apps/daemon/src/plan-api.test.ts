@@ -179,3 +179,43 @@ test("acceptance checks: too many active checks is refused, and an unknown plan 
   expect(over.status).toBe(422);
   expect((await h.call("POST", "/v1/tasks/01ARZ3NDEKTSV4RRFFQ69G5FAV/checks", { item: "x", kind: "exists", path: "a.md" })).status).toBe(404);
 });
+
+test("holds: made from a button once they are on, listed, lifted; a plan parked by hand is held and says by what", async () => {
+  const h = await harness();
+  const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+  const plan = h.store.openTask({ sessionId: writer.direct_session.id, title: "写周报", spec });
+
+  const off = await h.call("POST", "/v1/holds", { scope: "bot", scope_id: writer.bot.id });
+  expect(off.status).toBe(409);
+  expect(off.json).toMatchObject({ error: { code: "holds_unavailable" } });
+  h.store.raiseEngineLevel(null);
+
+  const made = await h.call("POST", "/v1/holds", { scope: "bot", scope_id: writer.bot.id });
+  expect(made.status).toBe(201);
+  expect(made.json).toMatchObject({ scope: "bot", scope_id: writer.bot.id, source: "user_button", action: "pause", lifted_at: null });
+  expect((await h.call("POST", "/v1/holds", { scope: "bot" })).status).toBe(422);
+  expect((await h.call("GET", "/v1/holds")).json).toMatchObject({ items: [{ id: made.json.id }] });
+  expect((await h.call("GET", "/v1/holds?status=later")).status).toBe(422);
+  expect((await h.call("GET", `/v1/holds/${made.json.id}`)).json).toMatchObject({ id: made.json.id });
+
+  const lifted = await h.call("POST", `/v1/holds/${made.json.id}/lift`, {});
+  expect(lifted.status).toBe(200);
+  expect(lifted.json).toMatchObject({ id: made.json.id, lifted_by: "user_button" });
+  expect((await h.call("GET", "/v1/holds")).json).toEqual({ items: [] });
+  expect((await h.call("GET", "/v1/holds?status=all")).json).toMatchObject({ items: [{ id: made.json.id }] });
+
+  // The old way to stop a plan, setting it to parked, is a hold on it now; setting it back lifts that.
+  const parked = await h.call("PATCH", `/v1/tasks/${plan.id}/spec`, { spec: { ...spec, status: "parked" } });
+  expect(parked.json).toMatchObject({ status: "parked", held_by: [{ scope: "plan", scope_id: plan.id }] });
+  // The version the hold wrote as it parked the plan says so, beside yours.
+  expect((await h.call("GET", `/v1/tasks/${plan.id}/spec-revisions`)).json).toMatchObject({
+    items: [
+      { actor: "user", cause: null, spec: { status: "parked" } },
+      { actor: "app", cause: "hold", spec: { status: "parked" } },
+    ],
+  });
+  const everything = await h.call("POST", "/v1/holds", { scope: "global" });
+  const resumed = await h.call("PATCH", `/v1/tasks/${plan.id}/spec`, { spec: { ...spec, status: "active" } });
+  // A hold on everything leaves the status as it is, and is why nothing runs in the plan.
+  expect(resumed.json).toMatchObject({ status: "active", held_by: [{ id: everything.json.id, scope: "global" }] });
+});

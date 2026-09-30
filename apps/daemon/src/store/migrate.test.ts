@@ -179,6 +179,26 @@ describe("a database an earlier build created", () => {
           reopened.db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM messages WHERE hidden_from_bots != 0").get()!.n,
         ).toBe(0);
         expect(reopened.listChecks(turn.task_id!)).toEqual([]);
+        // Holds (ADR 0040 P2): a new table the schema brings up, and the wait columns on check_backs.
+        const checkBackCols = reopened.db.query<{ name: string }, []>("PRAGMA table_info(check_backs)").all().map((row) => row.name);
+        expect(checkBackCols).toEqual(expect.arrayContaining(["cause", "wait_spec", "suspended_at", "dedupe_key", "attempts"]));
+        // A plan version a hold wrote says so, so the organizer reads past it.
+        const revisionCols = reopened.db.query<{ name: string }, []>("PRAGMA table_info(task_spec_revisions)").all().map((row) => row.name);
+        expect(revisionCols).toContain("cause");
+        expect(reopened.listHolds()).toEqual([]);
+        expect(reopened.db.query("SELECT * FROM held_scopes").all()).toEqual([]);
+        // The turn row's mode, and the triggers that read it (I2), which a trigger naming a column
+        // the table lacks would break every turn written through; the work log, empty.
+        const turnCols = reopened.db.query<{ name: string }, []>("PRAGMA table_info(turns)").all().map((row) => row.name);
+        expect(turnCols).toContain("mode");
+        const triggers = reopened.db
+          .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'turns' ORDER BY name")
+          .all()
+          .map((row) => row.name);
+        expect(triggers).toEqual(["turns_held_insert", "turns_held_update"]);
+        expect(reopened.listWorkEvents()).toEqual([]);
+        // Opening an older database raises neither the engine level nor the floor by itself.
+        expect(reopened.capabilities().engine_level).toBe(0);
         reopened.patchSettingsSync({ workspace_path: join(dir, "workspace") });
         const check = reopened.createCheckByUser(turn.task_id!, { item: "交出 report.md", kind: "exists", path: "report.md" });
         expect(reopened.listChecks(turn.task_id!)).toEqual([check]);

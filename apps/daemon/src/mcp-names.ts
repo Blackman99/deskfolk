@@ -4,6 +4,8 @@ export type McpListedTool = {
   name: string;
   description?: string;
   inputSchema?: unknown;
+  /** The server marked it `readOnlyHint`: it changes nothing, so a hold lets a turn call it (ADR 0040 I3). */
+  readOnly?: boolean;
 };
 
 export type McpServerTools = {
@@ -19,6 +21,7 @@ export type MappedMcpTool = {
   modelName: string;
   description: string;
   inputSchema: Record<string, unknown>;
+  readOnly: boolean;
 };
 
 export function sanitizeMcpToken(value: string): string {
@@ -61,6 +64,7 @@ export function mapMcpTools(servers: McpServerTools[], takenNames: Set<string>):
         modelName,
         description: typeof tool.description === "string" ? tool.description : "",
         inputSchema: asObjectSchema(tool.inputSchema),
+        readOnly: tool.readOnly === true,
       });
     }
   }

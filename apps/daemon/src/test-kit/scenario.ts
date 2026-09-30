@@ -67,7 +67,7 @@ import { ROUTE_LEARN_SYSTEM, ROUTE_PICK_SYSTEM, ROUTE_REVIEW_SYSTEM } from "../p
 import { TurnAdmission } from "../quiesce";
 import { startScheduler, type Scheduler } from "../scheduler";
 import { memoryKeyStore } from "../secrets";
-import { Store } from "../store";
+import { Store, type WorkEvent } from "../store";
 import type { TurnRun } from "../store/turn-runs";
 import { createTurnEngine, type TurnEngine } from "../turn-engine";
 import type { WakeWatch } from "../wake";
@@ -102,12 +102,13 @@ const NO_SIDE_EFFECT: ReadonlySet<string> = new Set([
 
 /**
  * Error codes a call comes back with when it was turned away before it did anything: you denied
- * it, its arguments did not validate, the runtime was draining, or a static guard (the recursive
- * search guard, ADR 0040 P1) turned it away outright. The engine announces a call as started
- * before any of these, so they have to be taken out again — by the result the engine reports as
+ * it, its arguments did not validate, the runtime was draining, a static guard (the recursive
+ * search guard, ADR 0040 P1) turned it away outright, or a hold did (ADR 0040 I3; a call that
+ * waited on your approval is refused only once you give it). The engine announces a call as
+ * started before these, so they have to be taken out again — by the result the engine reports as
  * the call exits, which a refused call on a turn's last hop has too.
  */
-const REFUSED: ReadonlySet<string> = new Set(["denied", "invalid_args", "draining", "refused"]);
+const REFUSED: ReadonlySet<string> = new Set(["denied", "invalid_args", "draining", "refused", "held"]);
 
 // ── Replies ─────────────────────────────────────────────────────────────────────────────────────
 
@@ -376,6 +377,8 @@ export type Scenario = {
   turns: (bot: BotRef) => Turn[];
   /** A Bot's `turn_runs` rows (shell commands and MCP calls), oldest first. */
   runs: (bot: BotRef) => TurnRun[];
+  /** The wakes a hold turned away (`wake.suppressed` in the work log), oldest first, a Bot's only when given. */
+  suppressedWakes: (bot?: BotRef) => WorkEvent[];
 
   /**
    * Takes the daemon down and boots a new one on the same file (needs `durable`): `clean` as a quit
@@ -1061,6 +1064,10 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
       return store.db
         .query<TurnRun, [string]>(`SELECT * FROM turn_runs WHERE bot_id = ? ORDER BY created_at, rowid`)
         .all(botOf(bot).id);
+    },
+    suppressedWakes(bot) {
+      const id = bot === undefined ? null : botOf(bot).id;
+      return store.listWorkEvents({ kind: "wake.suppressed" }).filter((row) => id === null || row.bot_id === id);
     },
 
     async restart({ clean }) {

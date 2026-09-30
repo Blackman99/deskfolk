@@ -456,6 +456,12 @@ export type TaskSpecRevision = {
   /** The session that message is in, so the board can jump to it. */
   session_id: string | null;
   created_at: string;
+  /**
+   * `hold`: a hold of yours parked the plan, or lifting it put the plan back (ADR 0040); not a
+   * filing by the organizer or you, though `actor` says app. Null for every other version; absent
+   * from a daemon older than holds.
+   */
+  cause?: "hold" | null;
 };
 
 export type TicketCounts = Record<TicketStatus, number>;
@@ -546,6 +552,74 @@ export type TaskDetail = SessionTaskSummary & {
   tickets: TicketWithArtifacts[];
   /** Active acceptance checks; absent from a daemon that predates them. */
   checks?: AcceptanceCheck[];
+  /**
+   * The holds in force over the plan as a whole — every Bot, as opposed to one Bot's work in it —
+   * oldest first: yours on the plan, on the conversation it belongs to, or on everything. A global
+   * one leaves `status` as it was, so this is how a client tells a plan nothing runs in. It is as of
+   * when the plan was read: a hold that changes nothing on the plan's row — one on everything, say —
+   * sends only `hold.upsert` when it is made and when it is lifted, so a client that shows this
+   * reads the plan again on that event. Absent from a daemon that predates holds.
+   */
+  held_by?: Hold[];
+};
+
+/**
+ * What a hold (叫停) covers. `bot_plan`'s `scope_id` is `<bot id>:<plan id>`; `global`'s is null.
+ * A hold on a plan or a conversation also reads as that plan being parked (ADR 0040).
+ */
+export type HoldScope = "global" | "bot" | "session" | "plan" | "ticket" | "bot_plan" | "turn";
+
+/** Something a hold covers besides its own scope, fixed when it was made (a Bot's handoffs, say). */
+export type HoldTarget = { scope: Exclude<HoldScope, "global">; id: string };
+
+/**
+ * What a hold changed, for the confirmation you get and for putting things back when it is lifted.
+ * Only ever added to.
+ */
+export type HoldEffect = {
+  /**
+   * Plans the hold set to parked, with what lifting it puts back: in progress, done, or `aside` —
+   * a plan a newer one had moved out of its conversation's current slot (parked in its status, in
+   * progress in its spec), which goes back to just that.
+   */
+  parked_plans?: Array<{ task_id: string; prior: "active" | "done" | "aside" }>;
+  /** Check-backs set aside while it holds; they come back when it is lifted. */
+  suspended_check_backs?: string[];
+  /** On lifting: the plans put back, and the check-backs pending again. */
+  restored_plans?: string[];
+  resumed_check_backs?: string[];
+};
+
+/** Your stop, written down as state: nothing it covers starts or wakes until you lift it. */
+export type Hold = {
+  id: string;
+  scope: HoldScope;
+  scope_id: string | null;
+  /** `cancel` is a stop that also asks whether to drop the job. */
+  action: "pause" | "cancel";
+  /** Whether it reaches the work a Bot handed on, as well as the Bot's own. */
+  cascade: boolean;
+  /** `legacy`: a plan parked before holds existed, taken over as one. */
+  source: "user_text" | "user_button" | "legacy" | "migration";
+  source_message_id: string | null;
+  /** Set on the hold a Stop makes: your next line in that job lifts it. */
+  lift_on_next_user_message: boolean;
+  targets: HoldTarget[];
+  effect: HoldEffect;
+  created_at: string;
+  lifted_at: string | null;
+  lifted_by: "user_text" | "user_button" | null;
+  lifted_message_id: string | null;
+};
+
+/** `POST /v1/holds`: a stop you make from a button or a menu. */
+export type CreateHoldRequest = {
+  scope: HoldScope;
+  /** Omitted or null only for `global`. */
+  scope_id?: string | null;
+  action?: "pause" | "cancel";
+  cascade?: boolean;
+  lift_on_next_user_message?: boolean;
 };
 
 export type PatchTaskSpecRequest = {
@@ -753,9 +827,17 @@ export type Turn = {
   pending_ask_id?: string | null;
   routine_id?: string | null;
   routine_due_at?: string | null;
+  /** What the turn may do (ADR 0040); null on turns an older build opened. */
+  mode?: TurnMode | null;
 };
 
-export type MessageKind = "user" | "bot" | "ask" | "approval" | "profile_change" | "system";
+/**
+ * `work`: an ordinary turn. `readonly`: the one kind a hold lets open, the turn a line of yours
+ * opens to answer you, with nothing that has an effect. `desk`: a later phase's.
+ */
+export type TurnMode = "work" | "desk" | "readonly";
+
+export type MessageKind ="user" | "bot" | "ask" | "approval" | "profile_change" | "system";
 
 export type Attachment = {
   id: string;
@@ -1653,7 +1735,9 @@ export type ClientEvent =
   | ({ event: "task.upsert"; occurred_at: string } & TaskDetail)
   | { event: "task.removed"; occurred_at: string; id: string }
   | ({ event: "ticket.upsert"; occurred_at: string } & Ticket)
-  | { event: "ticket.removed"; occurred_at: string; id: string; task_id: string };
+  | { event: "ticket.removed"; occurred_at: string; id: string; task_id: string }
+  // A hold was made, lifted, or recorded more of what it did. Holds are never deleted.
+  | ({ event: "hold.upsert"; occurred_at: string } & Hold);
 
 /**
  * Longest crop `base64` a remote annotation request may carry. A remote request is one logical

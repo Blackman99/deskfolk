@@ -39,6 +39,7 @@ describe("schema", () => {
       "check_backs",
       "file_commits",
       "file_stages",
+      "holds",
       "judgements",
       "live_procs",
       "mcp_servers",
@@ -85,6 +86,7 @@ describe("schema", () => {
       "turn_route_decisions",
       "turn_runs",
       "turns",
+      "work_events",
     ]);
     store.close();
   });

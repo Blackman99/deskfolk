@@ -11,6 +11,7 @@ import {
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { notCheckBackLine, voidCheckBacks } from "./check-backs";
+import { forgetHoldLines, holdPlansLeavingSession } from "./holds";
 import { hydrateMessage, listMessages } from "./messages";
 import { dropUnreferencedTasks } from "./tasks";
 import { getSessionNotificationPreference, markNotificationsReadThroughMessage } from "./notifications";
@@ -271,6 +272,8 @@ export function deleteSession(ctx: StoreContext, id: string): void {
       `UPDATE profile_revisions SET message_id = NULL WHERE message_id IN (SELECT id FROM messages WHERE session_id = ?)`,
       [id],
     );
+    // A stop outlives the history it was said in; only the line it points at goes (ADR 0040).
+    forgetHoldLines(ctx, id);
     // Annotations hang on this session's messages from either end: sent here, or about a delivery here.
     ctx.db.run(`DELETE FROM annotations WHERE session_id = ? OR target_session_id = ?`, [id, id]);
     ctx.db.run(
@@ -308,6 +311,9 @@ export function deleteSession(ctx: StoreContext, id: string): void {
     // handoff carried into another session outlives it and just loses the session link, the way
     // an origin does — the folder on disk is the user's either way.
     dropUnreferencedTasks(ctx, id);
+    // A hold on this conversation stops reaching its plans once they no longer name it; the ones it
+    // parks each keep a hold of their own (ADR 0040).
+    holdPlansLeavingSession(ctx, id);
     ctx.db.run(`UPDATE tasks SET session_id = NULL WHERE session_id = ?`, [id]);
     ctx.db.run(
       `UPDATE sessions SET origin_session_id = NULL, origin_message_id = NULL WHERE origin_session_id = ?`,
@@ -331,6 +337,8 @@ export function clearSessionMessages(ctx: StoreContext, id: string): void {
       `UPDATE profile_revisions SET message_id = NULL WHERE message_id IN (SELECT id FROM messages WHERE session_id = ?)`,
       [id],
     );
+    // A stop outlives the history it was said in; only the line it points at goes (ADR 0040).
+    forgetHoldLines(ctx, id);
     // Annotations hang on this session's messages from either end: sent here, or about a delivery here.
     ctx.db.run(`DELETE FROM annotations WHERE session_id = ? OR target_session_id = ?`, [id, id]);
     ctx.db.run(

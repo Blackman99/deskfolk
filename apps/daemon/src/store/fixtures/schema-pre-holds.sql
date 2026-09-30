@@ -1,4 +1,7 @@
-export const SCHEMA_SQL = `
+-- The schema as it shipped before holds (ADR 0040 P2): no holds table, and check_backs without
+-- cause, wait_spec, suspended_at, dedupe_key and attempts. A test opens a database built from this
+-- file with the current Store and expects it to come up and catch up.
+-- Do not edit: it is a record of a shape that exists on real machines, not a live schema.
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS remote_host (
@@ -233,8 +236,6 @@ CREATE TABLE IF NOT EXISTS task_spec_revisions (
   source_turn_id TEXT,
   actor TEXT NOT NULL CHECK (actor IN ('app', 'user')),
   created_at TEXT NOT NULL,
-  -- NULL for a filing (the organizer's or yours); 'hold' for a hold parking or restoring the plan.
-  cause TEXT CHECK (cause IS NULL OR cause IN ('hold')),
   UNIQUE (task_id, revision)
 );
 
@@ -315,11 +316,7 @@ CREATE TABLE IF NOT EXISTS turns (
   routine_due_at TEXT,
   last_activity_at TEXT NOT NULL,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  -- What the turn may do (ADR 0040): 'work', or 'readonly' for the one kind a hold lets open, the
-  -- turn a line of yours opens to answer you; 'desk' is a later phase's. Null on rows an older build
-  -- wrote. The hold triggers on this table (store/holds.ts) read it.
-  mode TEXT CHECK (mode IS NULL OR mode IN ('work', 'desk', 'readonly'))
+  updated_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS judgements (
@@ -383,80 +380,11 @@ CREATE TABLE IF NOT EXISTS check_backs (
   voided_at TEXT,
   -- Null for one the Bot booked itself; 'plan_nudge' for the app's call-back on a plan that went
   -- quiet with work still left.
-  kind TEXT,
-  -- Why it wakes someone: 'self' (the Bot's own booking), 'delegation' (a Bot↔Bot direct went
-  -- quiet), 'supervisor' (the app calling a plan back); ADR 0040 names the rest. Null on rows from
-  -- before the column.
-  cause TEXT,
-  -- What an event wait waits for (a job, a reply); null for a wait on the clock, the only kind yet.
-  wait_spec TEXT,
-  -- Set while a hold covers it. voided_at is written with it, so a build that knows nothing of
-  -- holds reads the row as cancelled and never fires it; lifting the hold clears both.
-  suspended_at TEXT,
-  -- What a new booking replaces: '<bot id>:<session id>', one pending per Bot per session.
-  dedupe_key TEXT,
-  attempts INTEGER NOT NULL DEFAULT 0
+  kind TEXT
 );
 
 CREATE INDEX IF NOT EXISTS check_backs_pending
   ON check_backs (due_at) WHERE fired_at IS NULL AND voided_at IS NULL;
-
--- A hold (叫停, ADR 0040): your stop as state. Nothing it covers starts or wakes, and only you lift
--- it (lifted_by has no value but yours). Never deleted, and no foreign keys: it outlives a cleared
--- or deleted conversation, which only nulls the message ids. targets is what it covers besides its
--- own scope, fixed when it was made, as [{scope, id}]; effect is what it changed, only added to.
-CREATE TABLE IF NOT EXISTS holds (
-  id TEXT PRIMARY KEY,
-  scope TEXT NOT NULL CHECK (scope IN ('global', 'bot', 'session', 'plan', 'ticket', 'bot_plan', 'turn')),
-  -- Null only for global; bot_plan's is '<bot id>:<plan id>'.
-  scope_id TEXT,
-  action TEXT NOT NULL DEFAULT 'pause' CHECK (action IN ('pause', 'cancel')),
-  cascade INTEGER NOT NULL DEFAULT 1,
-  source TEXT NOT NULL CHECK (source IN ('user_text', 'user_button', 'legacy', 'migration')),
-  source_message_id TEXT,
-  lift_on_next_user_message INTEGER NOT NULL DEFAULT 0,
-  targets TEXT NOT NULL DEFAULT '[]',
-  effect TEXT NOT NULL DEFAULT '{}',
-  created_at TEXT NOT NULL,
-  lifted_at TEXT,
-  lifted_by TEXT CHECK (lifted_by IN ('user_text', 'user_button')),
-  lifted_message_id TEXT,
-  CHECK ((scope = 'global') = (scope_id IS NULL)),
-  CHECK ((lifted_at IS NULL) = (lifted_by IS NULL))
-);
-
-CREATE INDEX IF NOT EXISTS holds_in_force ON holds (scope, scope_id) WHERE lifted_at IS NULL;
-
--- Every scope a hold in force covers, one row each: its own, then each of its targets. The one
--- place "is this held?" is answered, by the store and by triggers alike.
-CREATE VIEW IF NOT EXISTS held_scopes AS
-  SELECT id AS hold_id, scope, scope_id FROM holds WHERE lifted_at IS NULL
-  UNION ALL
-  SELECT h.id, json_extract(t.value, '$.scope'), json_extract(t.value, '$.id')
-  FROM holds h, json_each(h.targets) t
-  WHERE h.lifted_at IS NULL;
-
--- What happened to the work (ADR 0040), one row per event, only ever appended, and ordered by seq,
--- never by at: the store's clock runs ahead of the wall's in bursts. So far one kind,
--- 'wake.suppressed': a wake a hold turned away, payload {cause, holds}. Kept when a conversation's
--- history is cleared or it is deleted; no foreign keys.
-CREATE TABLE IF NOT EXISTS work_events (
-  seq INTEGER PRIMARY KEY AUTOINCREMENT,
-  at TEXT NOT NULL,
-  kind TEXT NOT NULL,
-  -- Who did it: 'app' for the engine's own gates.
-  actor TEXT NOT NULL,
-  bot_id TEXT,
-  task_id TEXT,
-  ticket_id TEXT,
-  part_key TEXT,
-  work_item_id TEXT,
-  turn_id TEXT,
-  session_id TEXT,
-  payload TEXT NOT NULL DEFAULT '{}'
-);
-
-CREATE INDEX IF NOT EXISTS work_events_kind ON work_events (kind, seq);
 
 CREATE TABLE IF NOT EXISTS skills (
   id TEXT PRIMARY KEY,
@@ -872,4 +800,3 @@ CREATE TABLE IF NOT EXISTS notification_delivery_items (
   notification_id TEXT NOT NULL REFERENCES notifications (id) ON DELETE CASCADE,
   PRIMARY KEY (delivery_id, notification_id)
 );
-`;

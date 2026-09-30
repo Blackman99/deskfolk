@@ -14,6 +14,7 @@ import { createPlanChecks } from "./engine/checks";
 import { createClosing } from "./engine/closing";
 import { createSeamsJudge } from "./engine/seams-judge";
 import { createComposer } from "./engine/composer";
+import { HELD_CALL, mayAct } from "./engine/control";
 import { createCore } from "./engine/core";
 import { createDirectReport } from "./engine/direct-report";
 import { createFire } from "./engine/fire";
@@ -485,6 +486,11 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         void core.trackTurn(row.turn_id, (async () => {
           try {
             if (!core.active(row.turn_id, live)) return;
+            // A stop of yours made while the card waited: the call it was for does not run (I3).
+            if (!mayAct(store, row.turn_id)) {
+              pending.waiter({ ok: false, error: { code: "held", message: HELD_CALL }, emitted: [] });
+              return;
+            }
             const result = await pending.run({ api_key: apiKey });
             if (core.active(row.turn_id, live)) pending.waiter(result);
           } catch (error) {

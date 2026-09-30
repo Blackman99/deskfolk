@@ -314,8 +314,8 @@ describe("which job a line is about", () => {
 
   test("a judgement on your line about a job going on elsewhere knows who has it there, and whether that is itself", async () => {
     const { store, writer, reviewer, group, handoff } = await room();
-    store.createTurn({ sessionId: group.id, botId: writer.id, triggerMessageId: handoff.id });
-    const plan = store.taskOfTurn(store.listLiveTurns({ sessionId: group.id })[0]!.id)!;
+    const writing = store.createTurn({ sessionId: group.id, botId: writer.id, triggerMessageId: handoff.id });
+    const plan = store.taskOfTurn(writing.id)!;
     const other = store.createGroup({ name: "周会", members: [writer.id, reviewer.id] });
     const line = store.insertMessage({ sessionId: other.id, kind: "user", author: USER_MEMBER, body: "周报里别用表格" });
     store.db.run(`UPDATE messages SET task_id = ? WHERE id = ?`, [plan, line.id]);
@@ -326,6 +326,11 @@ describe("which job a line is about", () => {
       }).plan;
     expect(judge(writer.id)).toMatchObject({ live_elsewhere: [{ bot: "you", where: "群「Brief」" }], you_heard_elsewhere: true });
     expect(judge(reviewer.id)).toMatchObject({ live_elsewhere: [{ bot: "Writer", where: "群「Brief」" }], you_heard_elsewhere: false });
+    // A turn a hold covers is not at work on the job, and heard nothing: Stop on the Writer's turn
+    // there leaves it out.
+    store.raiseEngineLevel(null);
+    store.createHold({ scope: "turn", scopeId: writing.id, source: "user_button" });
+    expect(judge(writer.id)).toMatchObject({ live_elsewhere: [], you_heard_elsewhere: false });
     store.close();
   });
 

@@ -6,6 +6,7 @@
 import type { Database } from "bun:sqlite";
 import { sortThinkingLevels, THINKING_LEVELS } from "@real-bot/protocol";
 import { isoNow, ulid } from "../ids";
+import { HELD_TURN_TRIGGERS } from "./holds";
 import { idSuffix, localDate, slugify, taskTitle, WORK_ROOT } from "./tasks";
 import { parseStoredCatalog } from "../models";
 import { pickThinkingLevel } from "../route-decision";
@@ -13,6 +14,11 @@ import { pickThinkingLevel } from "../route-decision";
 export function migrateSchema(db: Database): void {
   const turnCols = db.query<{ name: string }, []>("PRAGMA table_info(turns)").all();
   if (!turnCols.some((column) => column.name === "partial_text")) db.run("ALTER TABLE turns ADD COLUMN partial_text TEXT");
+  // First, before anything below writes a turn: the hold triggers read it, and a trigger naming a
+  // column the table lacks fails every write it fires on.
+  if (!turnCols.some((column) => column.name === "mode")) {
+    db.run("ALTER TABLE turns ADD COLUMN mode TEXT CHECK (mode IS NULL OR mode IN ('work', 'desk', 'readonly'))");
+  }
   // `acceptance_checks`/`acceptance_check_runs` are new tables, so SCHEMA_SQL's own
   // `CREATE TABLE IF NOT EXISTS` brings them up (and indexes) on an old database too. `turn_runs`
   // already existed, so its new column needs the same guarded ALTER every other one here gets.
@@ -248,6 +254,11 @@ export function migrateSchema(db: Database): void {
     db.run(`CREATE INDEX IF NOT EXISTS remote_push_subs_hash ON remote_push_subs(endpoint_hash)`);
   }
   migrateNotifications(db);
+  // Made again on every open rather than if missing, so the triggers are always this build's own.
+  for (const trigger of HELD_TURN_TRIGGERS) {
+    db.run(`DROP TRIGGER IF EXISTS ${trigger.name}`);
+    db.run(trigger.sql);
+  }
 }
 
 /**
@@ -363,6 +374,9 @@ function migratePlans(db: Database): void {
       UNIQUE (task_id, revision)
     )
   `);
+  // ADR 0040 P2: a version a hold wrote when it parked or restored the plan, which files nothing.
+  const revisionCols = db.query<{ name: string }, []>(`PRAGMA table_info(task_spec_revisions)`).all().map((row) => row.name);
+  if (!revisionCols.includes("cause")) db.run(`ALTER TABLE task_spec_revisions ADD COLUMN cause TEXT CHECK (cause IS NULL OR cause IN ('hold'))`);
   const turnCols = db.query<{ name: string }, []>(`PRAGMA table_info(turns)`).all().map((row) => row.name);
   if (!turnCols.includes("ticket_id")) db.run(`ALTER TABLE turns ADD COLUMN ticket_id TEXT REFERENCES tickets (id)`);
   db.run(`CREATE INDEX IF NOT EXISTS turns_ticket ON turns (ticket_id, last_activity_at)`);
@@ -388,6 +402,17 @@ function migratePlans(db: Database): void {
     );
   }
   if (checkBackCols.length > 0 && !checkBackCols.includes("kind")) db.run(`ALTER TABLE check_backs ADD COLUMN kind TEXT`);
+  // The wait columns of ADR 0040 P2, all empty on the rows that predate them: a pending one keeps
+  // its (Bot, session) replacement through bot_id and session_id, which is what dedupe_key says.
+  for (const [column, type] of [
+    ["cause", "TEXT"],
+    ["wait_spec", "TEXT"],
+    ["suspended_at", "TEXT"],
+    ["dedupe_key", "TEXT"],
+    ["attempts", "INTEGER NOT NULL DEFAULT 0"],
+  ] as const) {
+    if (checkBackCols.length > 0 && !checkBackCols.includes(column)) db.run(`ALTER TABLE check_backs ADD COLUMN ${column} ${type}`);
+  }
 }
 
 function migrateNotifications(db: Database): void {

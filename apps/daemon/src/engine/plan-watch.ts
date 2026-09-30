@@ -13,6 +13,7 @@ import { describeCheck } from "../acceptance-eval";
 import { planLeftNote, planNudgeNote, stalledPlanBody, type FailingCheckLine, type OpenTicketLine } from "../prompts";
 import type { TurnAdmission } from "../quiesce";
 import { parsePlanSpec, type CheckBack, type Store, type Task } from "../store";
+import { mayWake } from "./control";
 
 export type PlanWatchDeps = {
   store: Store;
@@ -193,7 +194,9 @@ export function createPlanWatch(deps: PlanWatchDeps): PlanWatch {
    * the plan, one call-back per ticket and check, and never more than
    * {@link PLAN_NUDGES_UNANSWERED_MAX}. Otherwise it tells you, once, in the session and as a
    * notification: two Bots (or a Bot and a check that will not pass) must not bounce a plan nobody
-   * can move. Only plans in a session you are in: you are who the last word goes to.
+   * can move. Only plans in a session you are in: you are who the last word goes to. A Bot a hold
+   * covers is not called back at all, and nobody is called in its place: the call-back is recorded
+   * as a wake the hold turned away, and books nothing.
    */
   function reconcilePlan(taskId: string): void {
     clearTimeout(leftTimers.get(taskId));
@@ -291,6 +294,7 @@ export function createPlanWatch(deps: PlanWatchDeps): PlanWatch {
         }
         const botId = workerOf(target, present) ?? lastSpeaker(taskId, present);
         if (!botId) return;
+        if (!mayWake(store, { cause: "plan_nudge", botId, sessionId, taskId, ticketId: target?.id ?? null })) return;
         const mine = target ? (lines.find((line) => line.seq === target!.seq) ?? null) : null;
         booked = store.bookPlanNudge({
           botId,
@@ -304,6 +308,7 @@ export function createPlanWatch(deps: PlanWatchDeps): PlanWatch {
         // has the latest picture and hands the rest on by name itself.
         const botId = lastSpeaker(taskId, present);
         if (!botId) return;
+        if (!mayWake(store, { cause: "plan_nudge", botId, sessionId, taskId })) return;
         // Booking would void the appointment it already has here, which is for another plan (one in
         // this plan stops the watch above). That one's turn settles its own plan, not this one: look
         // again once it has come due and the quiet after it has run out.

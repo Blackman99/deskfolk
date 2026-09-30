@@ -1,8 +1,9 @@
 /**
  * The version gate (ADR 0040): an old binary must never guess at a database a newer one wrote in
  * ways this one does not understand. `SCHEMA_LEVEL` is this build's own rung on that ladder;
- * `schema_min_compatible`, raised only by a migration whose new semantics an older binary would
- * misread (ADR 0040's class B migrations), is the floor a database requires. The gate has to run
+ * `schema_min_compatible` is the floor a database requires, raised with the engine level that
+ * starts writing what an older binary would misread (ADR 0040's class B semantics; see
+ * {@link raiseEngineLevel}), not by the migration that adds the columns. The gate has to run
  * *before* `SCHEMA_SQL` touches the database, not after: `SCHEMA_SQL` does more than add tables and
  * columns (it also creates indexes and seeds rows against tables it assumes still have today's
  * shape), and a database whose floor this build cannot meet may already have dropped a column or
@@ -17,8 +18,35 @@
  */
 import type { Database } from "bun:sqlite";
 
-/** Bumped only alongside a migration that a database written under it would misread. Still 0: ADR 0040 P0 only ships the gate read. */
-export const SCHEMA_LEVEL = 0;
+/**
+ * Bumped with each engine level that raises the floor, to that floor: what a database at that
+ * level holds is what a build below it would misread.
+ * - 0: ADR 0040 P0, the gate read alone.
+ * - 1: ADR 0040 P2's holds (叫停). A database at engine level 1 can hold a stop that a build
+ *   without holds would not honor — it would wake a held Bot, and put a plan the hold parked back
+ *   in progress — and check-backs set aside under one, which such a build reads as cancelled and
+ *   never brings back. The new check_backs columns and the holds table itself, empty, are nothing
+ *   an older build misreads, so the floor goes up with the engine level that starts writing holds
+ *   ({@link raiseEngineLevel}), not with the migration that adds them.
+ */
+export const SCHEMA_LEVEL = 1;
+
+/**
+ * The engine levels this build runs, in the only order they turn on (ADR 0040: one integer for the
+ * whole rollout instead of a switch per feature). `holds`: ADR 0040 P2's control plane.
+ */
+export const ENGINE_LEVELS = { holds: 1 } as const;
+export const ENGINE_LEVEL = ENGINE_LEVELS.holds;
+
+/** The floor a database needs once it runs at each engine level: whatever an older build would misread there. */
+const FLOOR_AT_LEVEL: Readonly<Record<number, number>> = { 1: 1 };
+
+/**
+ * The last release without the gate read. A copy of it (or of anything before it) opens any
+ * database whatever its floor says, so no level that raises a floor may turn on while one shares
+ * this database.
+ */
+export const LAST_RELEASE_WITHOUT_GATE = "0.1.0-rc.12";
 
 export class SchemaTooNewError extends Error {
   constructor(readonly required: number | "unreadable", readonly supported: number) {
@@ -63,11 +91,68 @@ export function assertSchemaGate(db: Database): void {
   if (required > SCHEMA_LEVEL) throw new SchemaTooNewError(required, SCHEMA_LEVEL);
 }
 
-/** 0 until a later ADR 0040 phase's rollout raises it (only forward, only in order). */
+/** 0 until {@link raiseEngineLevel} raises it (only forward, only in order). */
 export function readEngineLevel(db: Database): number {
   const raw = readSetting(db, "engine_level");
   const value = raw ? Number(raw) : 0;
   return Number.isFinite(value) ? value : 0;
+}
+
+/**
+ * An installed app that shares this database, as far as the daemon can tell: the version its
+ * bundle gives (empty when that could not be read), or, where there is no telling what is
+ * installed, why not — for the log.
+ */
+export type SharedInstall = { version: string } | { unseen: string };
+
+export type EngineLevelRaise = {
+  /** Where the database stands afterwards. */
+  level: number;
+  raised: boolean;
+  /** Why it stayed below {@link ENGINE_LEVEL}: an older app that shares this database. Null when nothing held it back. */
+  refused: string | null;
+};
+
+/**
+ * Takes the database up to this build's engine level, a level at a time, raising the floor each
+ * level needs in the same write. It turns a level on only when nothing that could open this
+ * database afterwards would misread it (ADR 0040's two conditions): this build reads the gate, so
+ * the one thing left to rule out is an installed app that does not, or does but predates the
+ * level, and would open the same data folder — the app and a source run share it. `installed` is
+ * that app: null when no installed app shares the database (a packaged daemon is the installed
+ * app; a source run on a data folder of its own has none). One whose version could not be read,
+ * or that there is no telling about, counts as too old. An app that has the gate but not the level
+ * refuses the database once the floor goes up and says to update, which is the gate doing its
+ * job; one from before the gate would not, so that is the case refused here.
+ */
+export function raiseEngineLevel(db: Database, installed: SharedInstall | null): EngineLevelRaise {
+  const from = readEngineLevel(db);
+  if (from >= ENGINE_LEVEL) return { level: from, raised: false, refused: null };
+  if (installed !== null && !("version" in installed && newerThan(installed.version, LAST_RELEASE_WITHOUT_GATE))) {
+    const why =
+      "version" in installed
+        ? `the installed app (${installed.version || "version unreadable"}) does not read the version gate — update it to a release after ${LAST_RELEASE_WITHOUT_GATE} first`
+        : `${installed.unseen}, and one from before the version gate would open this data folder anyway — set REAL_BOT_DATA_DIR to a folder of its own to let it go up`;
+    return { level: from, raised: false, refused: `engine level stays at ${from}: ${why}` };
+  }
+  db.transaction(() => {
+    let floor = Number(readSetting(db, "schema_min_compatible") ?? 0);
+    for (let level = from + 1; level <= ENGINE_LEVEL; level += 1) {
+      floor = Math.max(Number.isFinite(floor) ? floor : 0, FLOOR_AT_LEVEL[level] ?? 0);
+      writeSetting(db, "engine_level", String(level));
+    }
+    if (floor > 0) writeSetting(db, "schema_min_compatible", String(floor));
+  })();
+  return { level: ENGINE_LEVEL, raised: true, refused: null };
+}
+
+function newerThan(version: string, than: string): boolean {
+  try {
+    return Bun.semver.order(version, than) > 0;
+  } catch {
+    // Not a version this build can compare: assume the worst, as the gate does with an unreadable floor.
+    return false;
+  }
 }
 
 /**

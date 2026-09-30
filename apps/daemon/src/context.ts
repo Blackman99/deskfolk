@@ -259,9 +259,9 @@ export type PlanFacts = {
   /** Where the plan was opened, when that is not this session. */
   home: string | null;
   /**
-   * Turns working in this plan right now in other sessions: who, and where. `heard` marks the ones
-   * that were already live when the trigger — your line filed in this plan, here — came in, and so
-   * got it in their inbox.
+   * Turns working in this plan right now in other sessions: who, and where. A turn a hold covers is
+   * not working, and is left out. `heard` marks the ones that were already live when the trigger —
+   * your line filed in this plan, here — came in, and so got it in their inbox.
    */
   elsewhere: Array<{ bot: string; self: boolean; where: string; heard: boolean }>;
   /** This Bot's other live turns, on other plans: where, which plan, which ticket. */
@@ -395,7 +395,8 @@ export function planFacts(
     }
   }
   // Mirrors `hearAcross`: your line filed in this plan went into the inbox of every turn on it
-  // elsewhere that was live when it came in. A turn that opened later never got it.
+  // elsewhere that was live when it came in and that no hold covered. A turn that opened later never
+  // got it. One a hold covers now is left out whether it got it or not: it can act on nothing.
   let spokenAt: string | null = null;
   if (input.triggerMessageId) {
     try {
@@ -410,6 +411,7 @@ export function planFacts(
   const live = store.listLiveTurns();
   const elsewhere = live
     .filter((turn) => turn.task_id === input.taskId && turn.session_id !== input.sessionId && turn.id !== input.turnId)
+    .filter((turn) => store.turnHeldBy(turn.id).length === 0)
     .slice(0, ELSEWHERE_LINES)
     .map((turn) => ({
       bot: botDisplayName(store, turn.bot_id),

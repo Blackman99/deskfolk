@@ -1,5 +1,5 @@
 import type { McpHeader, McpServer, McpTransport } from "@real-bot/protocol";
-import { mappedMcpChatTools, mapMcpTools, type MappedMcpTool } from "./mcp-names";
+import { mappedMcpChatTools, mapMcpTools, type MappedMcpTool, type McpListedTool } from "./mcp-names";
 import { killProcessTree, pickEnv, WINDOWS_ENV_PASSTHROUGH } from "./platform";
 import type { ChatTool, McpPromptGuide } from "./prompts";
 
@@ -25,7 +25,7 @@ export type McpServerSpec = {
 type McpSession = {
   dead: boolean;
   onDead(hook: () => void): void;
-  listTools(): Promise<Array<{ name: string; description?: string; inputSchema?: unknown }>>;
+  listTools(): Promise<McpListedTool[]>;
   callTool(
     name: string,
     args: Record<string, unknown>,
@@ -190,6 +190,7 @@ export function createMcpHost(options: McpHostOptions): McpHost {
           modelName: tool.modelName,
           description: tool.description,
           toolName: tool.toolName,
+          readOnly: tool.readOnly,
         })),
       });
     }
@@ -201,7 +202,7 @@ export function createMcpHost(options: McpHostOptions): McpHost {
     const listed: Array<{
       id: string;
       name: string;
-      tools: Array<{ name: string; description?: string; inputSchema?: unknown }>;
+      tools: McpListedTool[];
     }> = [];
     for (const server of enabledServers()) {
       if (closed) break;
@@ -592,7 +593,7 @@ class StdioSession {
     });
   }
 
-  async listTools(): Promise<Array<{ name: string; description?: string; inputSchema?: unknown }>> {
+  async listTools(): Promise<McpListedTool[]> {
     return listMcpTools((params) => this.request("tools/list", params));
   }
 
@@ -796,7 +797,7 @@ class HttpSession implements McpSession {
     return readInstructions(result);
   }
 
-  async listTools(): Promise<Array<{ name: string; description?: string; inputSchema?: unknown }>> {
+  async listTools(): Promise<McpListedTool[]> {
     return listMcpTools((params, signal) => this.request("tools/list", params, signal, this.era));
   }
 
@@ -945,8 +946,8 @@ async function listMcpTools(
     params: Record<string, unknown>,
     signal?: AbortSignal,
   ) => Promise<Record<string, unknown>>,
-): Promise<Array<{ name: string; description?: string; inputSchema?: unknown }>> {
-  const tools: Array<{ name: string; description?: string; inputSchema?: unknown }> = [];
+): Promise<McpListedTool[]> {
+  const tools: McpListedTool[] = [];
   let cursor: unknown;
   for (let page = 0; page < 64; page++) {
     const params: Record<string, unknown> = {};
@@ -955,12 +956,13 @@ async function listMcpTools(
     const batch = Array.isArray(result.tools) ? result.tools : [];
     for (const item of batch) {
       if (!item || typeof item !== "object") continue;
-      const tool = item as { name?: unknown; description?: unknown; inputSchema?: unknown };
+      const tool = item as { name?: unknown; description?: unknown; inputSchema?: unknown; annotations?: { readOnlyHint?: unknown } };
       if (typeof tool.name !== "string") continue;
       tools.push({
         name: tool.name,
         description: typeof tool.description === "string" ? tool.description : undefined,
         inputSchema: tool.inputSchema,
+        readOnly: tool.annotations?.readOnlyHint === true,
       });
     }
     if (typeof result.nextCursor !== "string" || result.nextCursor.length === 0) break;

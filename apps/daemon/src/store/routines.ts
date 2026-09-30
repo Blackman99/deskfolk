@@ -159,11 +159,11 @@ export function getRoutine(ctx: StoreContext, id: string): Routine {
 }
 
 /**
- * If this routine is due and the cursor is behind that due, stamp
- * `last_fired_for_due_at` and return the claimed row. Concurrent ticks
- * lose the compare-and-set and skip.
+ * The due time a routine would fire for now, without claiming it: null when it is off, its Bot is
+ * gone or archived, or it already fired for its latest due time. Only the latest counts, so a
+ * routine that could not fire for a while fires once, for the most recent one.
  */
-export function claimRoutineDue(ctx: StoreContext, id: string, now: Date = new Date()): Routine | null {
+export function routineDue(ctx: StoreContext, id: string, now: Date = new Date()): { routine: Routine; dueAt: string } | null {
   const row = ctx.db.query<RoutineRow, [string]>(`SELECT * FROM routines WHERE id = ?`).get(id);
   if (!row || row.enabled !== 1) return null;
   const bot = ctx.db.query<BotRow, [string]>(`SELECT * FROM bots WHERE id = ?`).get(row.bot_id);
@@ -175,7 +175,19 @@ export function claimRoutineDue(ctx: StoreContext, id: string, now: Date = new D
   if (!due) return null;
   const dueAt = dueIso(due);
   if (row.last_fired_for_due_at && row.last_fired_for_due_at >= dueAt) return null;
-  const stamped = nextRevision(row.updated_at);
+  return { routine, dueAt };
+}
+
+/**
+ * If this routine is due and the cursor is behind that due, stamp
+ * `last_fired_for_due_at` and return the claimed row. Concurrent ticks
+ * lose the compare-and-set and skip.
+ */
+export function claimRoutineDue(ctx: StoreContext, id: string, now: Date = new Date()): Routine | null {
+  const due = routineDue(ctx, id, now);
+  if (!due) return null;
+  const { dueAt } = due;
+  const stamped = nextRevision(due.routine.updated_at);
   const claimed = ctx.db.query(
     `UPDATE routines SET last_fired_for_due_at = ?, updated_at = ?
      WHERE id = ? AND enabled = 1

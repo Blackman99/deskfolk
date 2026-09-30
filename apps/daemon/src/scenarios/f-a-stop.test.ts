@@ -17,8 +17,9 @@
  * - ADR 0040 P1 (a Stop no longer ends in a settle, so nothing calls the plan back): the fourth.
  * - ADR 0040 P4c (a line in a Bot↔Bot thread wakes nobody): the last, for when nobody is held.
  *
- * P2 records every wake a hold turns away; its record does not exist yet, so the check that each
- * wake here is on it is P2's to add.
+ * P2 records every wake a hold turns away as `wake.suppressed` in the work log (`suppressedWakes()`,
+ * each wake path's own test in wake-gate.test.ts). The lines here make no hold until the stop line
+ * does, so the check that each wake here is on that record goes in with it.
  *
  * Today one kind of acknowledgement already wakes nobody: in a Bot↔Bot direct, a bare remark
  * answering a bare remark, when neither turn behind the two lines ran a command or an MCP tool

@@ -6,13 +6,15 @@
  * daemon wakes it in the same session with that note as the trigger, and the turn inherits the
  * job's work dir through the turn that made the appointment. One pending check-back per Bot per
  * session — making another replaces it, so a Bot cannot pile up wake-ups. Stop on the turn that
- * made it, clearing or deleting the session, and deleting the Bot all void it. Nothing here opens
- * a turn; the engine does that when the scheduler finds a due row.
+ * made it, clearing or deleting the session, and deleting the Bot all void it. A hold over it only
+ * sets it aside until the hold is lifted (store/holds.ts). Nothing here opens a turn; the engine
+ * does that when the scheduler finds a due row.
  */
 import { USER_MEMBER } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { takeCodePoints } from "../text";
+import { suspendHeldCheckBacks } from "./holds";
 import { aliveBot, isPresent, sessionRow, type StoreContext } from "./shared";
 
 export type CheckBack = {
@@ -35,7 +37,22 @@ export type CheckBack = {
   voided_at: string | null;
   /** Null when the Bot booked it; `plan_nudge` when the app called a Bot back to a quiet plan. */
   kind: string | null;
+  /** Why it wakes someone (see {@link CheckBackCause}); null on rows from before the column. */
+  cause: CheckBackCause | null;
+  /** What an event wait waits for; null for a wait on the clock, the only kind so far. */
+  wait_spec: string | null;
+  /** Set while a hold covers it; `voided_at` is set with it, and both clear when the hold is lifted. */
+  suspended_at: string | null;
+  /** What a new booking replaces; null on rows from before the column, which bot_id and session_id stand in for. */
+  dedupe_key: string | null;
+  attempts: number;
 };
+
+/**
+ * Why a check-back wakes someone (ADR 0040): the Bot's own booking, a Bot↔Bot direct gone quiet,
+ * the app calling a plan back. The waits of later phases add their own.
+ */
+export type CheckBackCause = "self" | "delegation" | "supervisor";
 
 export const CHECK_BACK_MIN_MINUTES = 1;
 /** A week: long enough for "look again after the weekend", short enough to still be this job. */
@@ -83,6 +100,7 @@ export function scheduleCheckBack(
     note,
     at,
     due: new Date(at.getTime() + minutes * 60_000),
+    cause: "self",
   });
 }
 
@@ -102,7 +120,7 @@ export function bookReportBack(
     throw new HttpError(422, "not_a_member", "not in that session");
   }
   const at = input.now ?? new Date();
-  return insertCheckBack(ctx, { ...input, note: input.note.replace(/\s+/g, " ").trim(), at, due: at }).row;
+  return insertCheckBack(ctx, { ...input, note: input.note.replace(/\s+/g, " ").trim(), at, due: at, cause: "delegation" }).row;
 }
 
 /**
@@ -135,6 +153,7 @@ export function bookPlanNudge(
     due: at,
     lineage: { task_id: input.taskId, ticket_id: input.ticketId },
     kind: PLAN_NUDGE,
+    cause: "supervisor",
   }).row;
 }
 
@@ -180,6 +199,7 @@ function insertCheckBack(
     /** Where the woken turn lands when no turn says so. */
     lineage?: { task_id: string | null; ticket_id: string | null };
     kind?: string | null;
+    cause: CheckBackCause;
   },
 ): { row: CheckBack; replaced: boolean } {
   const now = input.at.toISOString();
@@ -196,20 +216,24 @@ function insertCheckBack(
       : null);
   let replaced = false;
   ctx.db.transaction(() => {
+    // The key is still the Bot and the session, and every row, old ones included, carries those
+    // two; one set aside by a hold is replaced as well — the new booking is the one the Bot meant.
     const voided = ctx.db
       .query<{ id: string }, [string, string, string]>(
-        `UPDATE check_backs SET voided_at = ?
-         WHERE bot_id = ? AND session_id = ? AND fired_at IS NULL AND voided_at IS NULL
+        `UPDATE check_backs SET voided_at = ?, suspended_at = NULL
+         WHERE bot_id = ? AND session_id = ? AND fired_at IS NULL AND (voided_at IS NULL OR suspended_at IS NOT NULL)
          RETURNING id`,
       )
       .all(now, input.botId, input.sessionId);
     replaced = voided.length > 0;
     ctx.db.run(
       `INSERT INTO check_backs
-         (id, bot_id, session_id, turn_id, task_id, ticket_id, note, due_at, created_at, fired_at, fired_turn_id, voided_at, kind)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?)`,
-      [id, input.botId, input.sessionId, input.turnId, lineage?.task_id ?? null, lineage?.ticket_id ?? null, takeCodePoints(input.note, input.kind === PLAN_NUDGE ? PLAN_NUDGE_NOTE_MAX : CHECK_BACK_NOTE_MAX).text, due, now, input.kind ?? null],
+         (id, bot_id, session_id, turn_id, task_id, ticket_id, note, due_at, created_at, fired_at, fired_turn_id, voided_at, kind, cause, dedupe_key)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?)`,
+      [id, input.botId, input.sessionId, input.turnId, lineage?.task_id ?? null, lineage?.ticket_id ?? null, takeCodePoints(input.note, input.kind === PLAN_NUDGE ? PLAN_NUDGE_NOTE_MAX : CHECK_BACK_NOTE_MAX).text, due, now, input.kind ?? null, input.cause, `${input.botId}:${input.sessionId}`],
     );
+    // Booked where a hold is in force, it waits for the lift like the ones the hold found.
+    suspendHeldCheckBacks(ctx, now, [id]);
   })();
   return { row: getCheckBack(ctx, id), replaced };
 }
@@ -277,6 +301,33 @@ export function claimCheckBack(ctx: StoreContext, id: string, now: Date = new Da
 
 export function markCheckBackFired(ctx: StoreContext, id: string, turnId: string): void {
   ctx.db.run(`UPDATE check_backs SET fired_turn_id = ? WHERE id = ?`, [turnId, id]);
+}
+
+/**
+ * Gives back an appointment a live turn heard (its line, `messageId`) but ended without reading,
+ * when a hold turned away the turn that would have read it: pending again, and set aside at once
+ * if a hold covers it, so the lift brings it back like any other. It keeps its line, which wakes
+ * the Bot again when it fires. One whose Bot has booked another in that conversation since stays
+ * spent: the newer booking is the one it meant. Returns whether it was given back.
+ */
+export function returnUnreadCheckBack(ctx: StoreContext, messageId: string, now: string): boolean {
+  return ctx.db.transaction(() => {
+    const row = ctx.db
+      .query<{ id: string }, [string]>(
+        `UPDATE check_backs SET fired_at = NULL, fired_turn_id = NULL
+         WHERE message_id = ? AND fired_at IS NOT NULL AND voided_at IS NULL
+           AND NOT EXISTS (
+             SELECT 1 FROM check_backs other
+             WHERE other.id <> check_backs.id AND other.bot_id = check_backs.bot_id
+               AND other.session_id = check_backs.session_id AND other.fired_at IS NULL
+               AND (other.voided_at IS NULL OR other.suspended_at IS NOT NULL))
+         RETURNING id`,
+      )
+      .get(messageId);
+    if (!row) return false;
+    suspendHeldCheckBacks(ctx, now, [row.id]);
+    return true;
+  })();
 }
 
 /** Written in the transaction that inserts the line, so the commit's events already leave it out. */
@@ -374,7 +425,8 @@ export function quietDirect(ctx: StoreContext, directId: string): QuietDirect | 
 
 /**
  * Cancels pending appointments: the turn that made them was stopped, the session they were for is
- * cleared or gone, or the Bot is. Returns how many were still pending.
+ * cleared or gone, or the Bot is. One a hold set aside is cancelled for good too, so lifting the
+ * hold does not bring it back. Returns how many were still pending or set aside.
  */
 export function voidCheckBacks(
   ctx: StoreContext,
@@ -398,8 +450,8 @@ export function voidCheckBacks(
   if (conditions.length === 0) return 0;
   return ctx.db
     .query<{ id: string }, string[]>(
-      `UPDATE check_backs SET voided_at = ?
-       WHERE fired_at IS NULL AND voided_at IS NULL AND ${conditions.join(" AND ")}
+      `UPDATE check_backs SET voided_at = ?, suspended_at = NULL
+       WHERE fired_at IS NULL AND (voided_at IS NULL OR suspended_at IS NOT NULL) AND ${conditions.join(" AND ")}
        RETURNING id`,
     )
     .all(...params).length;

@@ -6,9 +6,11 @@ import {
   type Message,
   type RouteOutcome,
   type Turn,
+  type TurnMode,
 } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
+import { isHeldAbort } from "./holds";
 import { getMessage } from "./messages";
 import {
   createNotification,
@@ -18,7 +20,7 @@ import { finishTurnRoute, type TurnExecution } from "./routing";
 import { isPresent } from "./sessions";
 import { annotationTaskOfMessage } from "./annotations";
 import { voidCheckBacks } from "./check-backs";
-import { resolveTurnTask } from "./tasks";
+import { findTurnTask, resolveTurnTask } from "./tasks";
 import {
   aliveBot,
   isLive,
@@ -47,6 +49,8 @@ export function createTurn(
     taskId?: string | null;
     /** The ticket it works in, when the caller knows; otherwise inherited from the trigger. */
     ticketId?: string | null;
+    /** What it may do; a working turn unless said otherwise (see `turns.mode`). */
+    mode?: TurnMode;
   },
 ): Turn {
   sessionRow(ctx, input.sessionId);
@@ -54,34 +58,33 @@ export function createTurn(
   const trigger = messageRow(ctx, input.triggerMessageId);
   const now = isoNow();
   const id = ulid();
-  // A batch of annotations continues the plan and ticket that delivered this Bot's artifact.
-  const annotated = input.taskId ? null : annotationTaskOfMessage(ctx, trigger.id, input.botId);
-  const { taskId, ticketId, handedTicketId } = resolveTurnTask(ctx, {
-    sessionId: input.sessionId,
-    botId: input.botId,
-    trigger,
-    taskId: input.taskId ?? annotated?.taskId ?? null,
-    ticketId: input.ticketId ?? annotated?.ticketId ?? null,
-  });
+  // Where it lands and the row itself go in together: a hold that refuses the row (I2) takes back
+  // a plan the landing opened for it, too.
   ctx.db.transaction(() => {
-    ctx.db.run(
-      `INSERT INTO turns
-        (id, session_id, bot_id, status, trigger_message_id, task_id, ticket_id, routine_id, routine_due_at, last_activity_at, created_at, updated_at)
-       VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        id,
-        input.sessionId,
-        input.botId,
-        input.triggerMessageId,
-        taskId,
-        ticketId,
-        input.routineId ?? null,
-        input.routineDueAt ?? null,
-        now,
-        now,
-        now,
-      ],
-    );
+    const { taskId, ticketId, handedTicketId } = resolveTurnTask(ctx, landingInput(ctx, { ...input, trigger }));
+    try {
+      ctx.db.run(
+        `INSERT INTO turns
+          (id, session_id, bot_id, status, trigger_message_id, task_id, ticket_id, routine_id, routine_due_at, last_activity_at, created_at, updated_at, mode)
+         VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          input.sessionId,
+          input.botId,
+          input.triggerMessageId,
+          taskId,
+          ticketId,
+          input.routineId ?? null,
+          input.routineDueAt ?? null,
+          now,
+          now,
+          now,
+          input.mode ?? "work",
+        ],
+      );
+    } catch (error) {
+      throw heldError(error);
+    }
     // The trigger belongs to the plan it opened, so the user's own message carries the anchor too —
     // with the ticket it came with, not the one this Bot happens to be on: one line can wake a team.
     ctx.db.run(
@@ -90,6 +93,40 @@ export function createTurn(
     );
   })();
   return getTurn(ctx, id);
+}
+
+/**
+ * The plan and ticket a turn opened on this trigger would land in, read without changing anything
+ * — what a wake is about before anything opens, so the holds can be asked first. A null plan: the
+ * turn would open a new one.
+ */
+export function turnLanding(
+  ctx: StoreContext,
+  input: { sessionId: string; botId: string; trigger: Message; taskId?: string | null; ticketId?: string | null },
+): { taskId: string | null; ticketId: string | null } {
+  const { taskId, ticketId } = findTurnTask(ctx, landingInput(ctx, input));
+  return { taskId, ticketId };
+}
+
+function landingInput(
+  ctx: StoreContext,
+  input: { sessionId: string; botId: string; trigger: Parameters<typeof resolveTurnTask>[1]["trigger"] & { id: string }; taskId?: string | null; ticketId?: string | null },
+): Parameters<typeof resolveTurnTask>[1] {
+  // A batch of annotations continues the plan and ticket that delivered this Bot's artifact.
+  const annotated = input.taskId ? null : annotationTaskOfMessage(ctx, input.trigger.id, input.botId);
+  return {
+    sessionId: input.sessionId,
+    botId: input.botId,
+    trigger: input.trigger,
+    taskId: input.taskId ?? annotated?.taskId ?? null,
+    ticketId: input.ticketId ?? annotated?.ticketId ?? null,
+  };
+}
+
+/** The database refusing a turn a hold covers (I2), as the API says it; anything else as it came. */
+function heldError(error: unknown): unknown {
+  if (!isHeldAbort(error)) return error;
+  return new HttpError(409, "held", "a stop of yours covers this: nothing opens here until you lift it");
 }
 
 export function getTurn(ctx: StoreContext, id: string): Turn {
@@ -368,12 +405,16 @@ export function claimInterruptContinue(ctx: StoreContext, messageId: string): Tu
         `SELECT task_id, ticket_id FROM turns WHERE id = ?`,
       )
       .get(cut.id);
-    ctx.db.run(
-      `INSERT INTO turns
-        (id, session_id, bot_id, status, trigger_message_id, task_id, ticket_id, last_activity_at, created_at, updated_at)
-       VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?, ?)`,
-      [id, note.session_id, cut.bot_id, note.id, lineage?.task_id ?? null, lineage?.ticket_id ?? null, now, now, now],
-    );
+    try {
+      ctx.db.run(
+        `INSERT INTO turns
+          (id, session_id, bot_id, status, trigger_message_id, task_id, ticket_id, last_activity_at, created_at, updated_at, mode)
+         VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, 'work')`,
+        [id, note.session_id, cut.bot_id, note.id, lineage?.task_id ?? null, lineage?.ticket_id ?? null, now, now, now],
+      );
+    } catch (error) {
+      throw heldError(error);
+    }
     const updated = ctx.db.query<{ id: string }, [string, string]>(
       `UPDATE messages SET source_turn_id = ? WHERE id = ? AND source_turn_id IS NULL RETURNING id`,
     ).get(id, note.id);

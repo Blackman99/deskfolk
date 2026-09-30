@@ -1157,6 +1157,14 @@ test("remote oversize text PUT keeps too_large on the Noise body", () => {
   expect(remoteError("too_large").error.code).toBe("too_large");
 });
 
+test("a Continue a stop of yours covers keeps held on the Noise body, so the phone can say why", () => {
+  expect(remoteError("held").error.code).toBe("held");
+});
+
+test("a stop made before the engine level has holds keeps holds_unavailable on the Noise body", () => {
+  expect(remoteError("holds_unavailable").error.code).toBe("holds_unavailable");
+});
+
 test("host browse lists directories, rejects other homes, and returns typed permission errors", async () => {
   const f = await fixture(), d = await f.pair(), c = await f.connect(d);
   mkdirSync(join(f.root, "keep"));

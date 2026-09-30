@@ -42,6 +42,8 @@ const tools = media
         name: "check_video",
         description: "Check a video generation job and return its result",
         inputSchema: { type: "object", properties: { job_id: { type: "string" } }, required: ["job_id"] },
+        // Looking a job up changes nothing, which is what lets a stopped Bot still check on one.
+        annotations: { readOnlyHint: true },
       },
     ]
   : github

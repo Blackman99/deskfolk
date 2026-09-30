@@ -385,6 +385,26 @@ describe("local API runtime", () => {
     ).toBe(true);
   });
 
+  test("start takes a database of its own up to holds, and a plan stopped the old way becomes one", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "real-bot-"));
+    dirs.push(dataDir);
+    chmodSync(dataDir, 0o700);
+    const filename = join(dataDir, "state.sqlite");
+    const keys = memoryKeyStore();
+    const prep = new Store({ filename, endpointKey: keys });
+    const writer = prep.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const plan = prep.openTask({ sessionId: writer.direct_session.id, title: "写周报" });
+    prep.setTaskSpec(plan.id, { kind: null, goal: "写周报", acceptance: [], rules: [], process: [], progress: { done: [], open: [], blocked: [] }, status: "parked" });
+    expect(prep.capabilities().engine_level).toBe(0);
+    prep.close();
+
+    // A data folder of its own: no installed app opens it, so nothing holds the level back.
+    const rt = await startRuntime({ dataDir, bind: "127.0.0.1:0", endpointKey: keys });
+    handles.push(rt);
+    expect(rt.store.capabilities()).toMatchObject({ engine_level: 1, features: ["holds"] });
+    expect(rt.store.listHolds({ inForce: true })).toMatchObject([{ scope: "plan", scope_id: plan.id, source: "legacy" }]);
+  });
+
   test.skipIf(process.platform === "win32")("start stops a command an earlier run left running", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "real-bot-"));
     dirs.push(dataDir);

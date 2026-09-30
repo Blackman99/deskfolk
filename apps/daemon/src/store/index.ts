@@ -21,6 +21,7 @@ import * as annotations from "./annotations";
 import * as approvals from "./approvals";
 import * as bots from "./bots";
 import * as checkBacks from "./check-backs";
+import * as holds from "./holds";
 import * as judgements from "./judgements";
 import * as liveProcs from "./live-procs";
 import * as mcp from "./mcp";
@@ -32,7 +33,7 @@ import * as organizerRuns from "./organizer-runs";
 import * as providers from "./providers";
 import * as routines from "./routines";
 import * as routing from "./routing";
-import { assertSchemaGate, markCleanShutdown, readAndResetShutdownFlag, readEngineLevel, SCHEMA_LEVEL } from "./schema-gate";
+import { assertSchemaGate, ENGINE_LEVELS, markCleanShutdown, raiseEngineLevel, readAndResetShutdownFlag, readEngineLevel, SCHEMA_LEVEL, type SharedInstall } from "./schema-gate";
 import * as search from "./search";
 import * as sessions from "./sessions";
 import * as settings from "./settings";
@@ -52,6 +53,7 @@ import * as terminals from "./terminals";
 import * as tickets from "./tickets";
 import * as turnRuns from "./turn-runs";
 import * as turns from "./turns";
+import * as workEvents from "./work-events";
 
 export { HttpError } from "../errors";
 export { isReservedTaskPath, localDate, BRIEF_MAX, PLAN_MAP_FILE, RESERVED_SUBDIRS, TICKET_FILE, WORK_ROOT } from "./tasks";
@@ -80,7 +82,9 @@ export { TICKET_STATUSES, TICKETS_MAX, TICKET_SPEC_MAX, TICKET_TITLE_MAX, isTick
 export { ORGANIZER_NEW_TICKETS_MAX, titleKey } from "./plan-spec";
 export type { OrganizerResult, OrganizerTicketInput, SpecRevisionRow } from "./plan-spec";
 export { CHECK_BACK_MAX_MINUTES, CHECK_BACK_MIN_MINUTES, CHECK_BACK_NOTE_MAX, PLAN_NUDGE_NOTE_MAX } from "./check-backs";
-export type { CheckBack, QuietDirect } from "./check-backs";
+export type { CheckBack, CheckBackCause, QuietDirect } from "./check-backs";
+export { botPlanScopeId, HOLD_SCOPES, heldBy, heldSql } from "./holds";
+export type { HeldSubject } from "./holds";
 export type { EndpointKeyStore, StoreOptions } from "./shared";
 export type { AttachmentInput } from "./messages";
 export type { FileCommit, LiveFile } from "./files";
@@ -88,6 +92,7 @@ export type { DecideRouteInput } from "./routing";
 export type { TurnRun } from "./turn-runs";
 export { TURN_RUNS_PER_TURN } from "./turn-runs";
 export type { LiveProc } from "./live-procs";
+export type { WorkEvent } from "./work-events";
 
 type Bound<F> = F extends (ctx: StoreContext, ...args: infer A) => infer R ? (...args: A) => R : never;
 
@@ -187,11 +192,20 @@ export class Store {
   readonly patchSettingsSync = this.bind(settings.patchSettingsSync);
   /** `GET /v1/capabilities`: what this build's engine understands, so a phone page (or a messenger
    * built from a newer source tree) can show only what the daemon it is actually talking to supports. */
-  readonly capabilities = (): CapabilitiesResponse => ({
-    schema_level: SCHEMA_LEVEL,
-    engine_level: readEngineLevel(this.db),
-    features: [],
-  });
+  readonly capabilities = (): CapabilitiesResponse => {
+    const level = readEngineLevel(this.db);
+    return {
+      schema_level: SCHEMA_LEVEL,
+      engine_level: level,
+      features: (Object.keys(ENGINE_LEVELS) as Array<keyof typeof ENGINE_LEVELS>).filter((feature) => level >= ENGINE_LEVELS[feature]),
+    };
+  };
+  /**
+   * At boot: takes the database up to this build's engine level unless an installed app that
+   * shares it would misread that (`installed`: what is known of it, null when none shares it; see
+   * `raiseEngineLevel`).
+   */
+  readonly raiseEngineLevel = (installed: SharedInstall | null) => raiseEngineLevel(this.db, installed);
   /** Called once, on the way out of a deliberate stop — never on a crash (see `schema-gate.ts`). */
   readonly recordCleanShutdown = (): void => markCleanShutdown(this.db);
   readonly createProviderSync = this.bind(providers.createProviderSync);
@@ -307,6 +321,7 @@ export class Store {
   readonly deleteRoutine = this.bind(routines.deleteRoutine);
   readonly getRoutine = this.bind(routines.getRoutine);
   readonly claimRoutineDue = this.bind(routines.claimRoutineDue);
+  readonly routineDue = this.bind(routines.routineDue);
 
   // Work dirs ------------------------------------------------------------------------------
   readonly getTask = this.bind(tasks.getTask);
@@ -394,8 +409,24 @@ export class Store {
   readonly dueCheckBacks = this.bind(checkBacks.dueCheckBacks);
   readonly claimCheckBack = this.bind(checkBacks.claimCheckBack);
   readonly markCheckBackFired = this.bind(checkBacks.markCheckBackFired);
+  readonly returnUnreadCheckBack = this.bind(checkBacks.returnUnreadCheckBack);
   readonly recordCheckBackLine = this.bind(checkBacks.recordCheckBackLine);
   readonly voidCheckBacks = this.bind(checkBacks.voidCheckBacks);
+
+  // Holds (叫停) ----------------------------------------------------------------------------
+  readonly createHold = this.bind(holds.createHold);
+  readonly liftHold = this.bind(holds.liftHold);
+  readonly getHold = this.bind(holds.getHold);
+  readonly listHolds = this.bind(holds.listHolds);
+  readonly holdsCovering = this.bind(holds.holdsCovering);
+  readonly turnHeldBy = this.bind(holds.turnHeldBy);
+  readonly suspendHeldCheckBacks = this.bind(holds.suspendHeldCheckBacks);
+  readonly addHoldEffect = this.bind(holds.addEffect);
+  readonly reconcileHolds = this.bind(holds.reconcileHolds);
+
+  // Work log -------------------------------------------------------------------------------
+  readonly recordWorkEvent = this.bind(workEvents.recordWorkEvent);
+  readonly listWorkEvents = this.bind(workEvents.listWorkEvents);
 
   // Sessions -------------------------------------------------------------------------------
   readonly ensureFileDropSession = this.bind(sessions.ensureFileDropSession);
@@ -460,6 +491,7 @@ export class Store {
 
   // Turns, approvals, interrupts -----------------------------------------------------------
   readonly createTurn = this.bind(turns.createTurn);
+  readonly turnLanding = this.bind(turns.turnLanding);
   readonly getTurn = this.bind(turns.getTurn);
   readonly listLiveTurns = this.bind(turns.listLiveTurns);
   readonly setTurnStatus = this.bind(turns.setTurnStatus);

@@ -8,6 +8,7 @@ const codes = new Set([
   "client_upgrade_required", "key_mismatch", "endpoint_conflict", "endpoint_gone",
   "push_disabled", "push_pending", "no_subscription", "push_contact_required", "gateway_unavailable",
   "rate_limited", "capability_unavailable", "not_enabled", "recovery_required",
+  "held", "holds_unavailable",
 ]);
 export function remoteError(code: unknown): { error: { code: string; message: string } } {
   return { error: { code: typeof code === "string" && codes.has(code) ? code : "rejected", message: "remote request rejected" } };

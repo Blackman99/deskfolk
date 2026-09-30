@@ -5,10 +5,13 @@
  * open (or join) a turn the same way a mention would.
  */
 import { USER_MEMBER, type ClientEvent, type Message, type Turn } from "@real-bot/protocol";
+import { isoNow } from "../ids";
 import { checkBackNoteBody, routineFireBody } from "../prompts";
 import type { TurnAdmission } from "../quiesce";
 import { sessionUpsertFields } from "../session-events";
-import { localDate, type Store } from "../store";
+import { localDate, type CheckBack, type Store } from "../store";
+import { PLAN_NUDGE } from "../store/check-backs";
+import { heldWake, mayWake, type WakeCause } from "./control";
 import type { InboxEntry } from "./types";
 
 export type FireDeps = {
@@ -17,22 +20,22 @@ export type FireDeps = {
   occurred: () => string;
   publishMessage: (message: Message) => void;
   admission: TurnAdmission | undefined;
-  /** Late-bound: lifecycle.ts is built after this module. */
+  /** Late-bound: lifecycle.ts is built after this module. Null when a hold turns the wake away. */
   startTurn: (
     sessionId: string,
     botId: string,
     trigger: Message,
     mode: "redirect" | "fork",
-    opts?: { routineId?: string | null; routineDueAt?: string | null; taskId?: string | null; ticketId?: string | null },
-  ) => Turn;
-  /** Late-bound: lifecycle.ts is built after this module. */
+    opts: { cause: WakeCause; routineId?: string | null; routineDueAt?: string | null; taskId?: string | null; ticketId?: string | null },
+  ) => Turn | null;
+  /** Late-bound: lifecycle.ts is built after this module. Null when a hold turns the wake away. */
   hearOrStart: (
     sessionId: string,
     botId: string,
     trigger: Message,
     entry: Omit<InboxEntry, "message">,
-    opts?: { taskId?: string | null; ticketId?: string | null; otherwise?: "redirect" | "fork" },
-  ) => Turn;
+    opts: { cause: WakeCause; taskId?: string | null; ticketId?: string | null; otherwise?: "redirect" | "fork" },
+  ) => Turn | null;
   /** Late-bound: lifecycle.ts is built after this module. */
   attachLive: (turn: Turn, carry?: string | null) => void;
 };
@@ -44,9 +47,13 @@ export type Fire = {
    * job the appointment was made in: in a group the Bot's live turn there is retuned like a mention
    * would, in a direct a new turn forks like a message from the user. Nothing fires while draining;
    * a Bot since archived or gone from the session just has its appointment consumed, since there is
-   * nobody to wake.
+   * nobody to wake. One a hold covers is set aside until the hold is lifted, and posts nothing.
    */
   fireCheckBack: (id: string, now?: Date) => Turn | null;
+  /**
+   * Fires a routine that is due. One a hold covers stays unclaimed, so once the hold is lifted it
+   * fires once, for its latest due time; the wake it would have been is recorded once per due time.
+   */
   fireRoutine: (routineId: string, now?: Date) => Turn | null;
 };
 
@@ -55,6 +62,7 @@ export function createFire(deps: FireDeps): Fire {
 
   function fireCheckBack(id: string, now: Date = new Date()): Turn | null {
     if (admission?.draining) return null;
+    if (setAsideIfHeld(id)) return null;
     const result = store.transaction(() => {
       const claimed = store.claimCheckBack(id, now);
       if (!claimed) return null;
@@ -80,14 +88,17 @@ export function createFire(deps: FireDeps): Fire {
         }
       }
       // Hung on the turn that booked it, so the trace draws the Bot waking itself, and the woken
-      // turn inherits the job the way a handoff does even before `taskId` says so.
-      const trigger = store.insertMessage({
-        sessionId: session.id,
-        turnId: bookedBy,
-        kind: "system",
-        author: claimed.bot_id,
-        body: checkBackNoteBody(store.settingsCached().locale, claimed.note),
-      });
+      // turn inherits the job the way a handoff does even before `taskId` says so. One given back
+      // after a turn heard it and ended unread wakes the Bot with the line it was heard with.
+      const trigger =
+        lineOf(claimed) ??
+        store.insertMessage({
+          sessionId: session.id,
+          turnId: bookedBy,
+          kind: "system",
+          author: claimed.bot_id,
+          body: checkBackNoteBody(store.settingsCached().locale, claimed.note),
+        });
       // The Bot's reminder to itself: the turn reads it, the conversation never shows it.
       store.recordCheckBackLine(claimed.id, trigger.id);
       return { claimed, session, trigger };
@@ -108,21 +119,83 @@ export function createFire(deps: FireDeps): Fire {
       lands.taskId !== null &&
       store.listLiveTurns({ sessionId: result.session.id, botId: result.claimed.bot_id }).some((live) => live.task_id === lands.taskId);
     const fork = withYou && !onIt;
+    const cause = causeOf(result.claimed);
     const turn = fork
-      ? startTurn(result.session.id, result.claimed.bot_id, result.trigger, "fork", lands)
+      ? startTurn(result.session.id, result.claimed.bot_id, result.trigger, "fork", { cause, ...lands })
       : hearOrStart(
           result.session.id,
           result.claimed.bot_id,
           result.trigger,
           { item: { author: "", body: result.claimed.note, checkBack: true }, checkBack: lands },
-          { ...lands, otherwise: withYou ? "fork" : "redirect" },
+          { cause, ...lands, otherwise: withYou ? "fork" : "redirect" },
         );
+    // Turned away here only by a hold the appointment's own row does not name — on the plan its turn
+    // would land in when the row names none, say. The appointment is spent, as if it had fired.
+    if (!turn) return null;
     store.markCheckBackFired(id, turn.id);
     return turn;
   }
 
+  /**
+   * A pending appointment a hold covers is set aside for the lift, the way the hold set aside the
+   * ones it found when it was made, instead of firing: nothing is posted and nobody wakes. True when
+   * it was.
+   */
+  function setAsideIfHeld(id: string): boolean {
+    let row: CheckBack;
+    try {
+      row = store.getCheckBack(id);
+    } catch {
+      return false;
+    }
+    if (row.fired_at || row.voided_at) return false;
+    const wake = {
+      cause: causeOf(row),
+      botId: row.bot_id,
+      sessionId: row.session_id,
+      taskId: row.task_id,
+      ticketId: row.ticket_id,
+      turnId: row.turn_id,
+    };
+    if (mayWake(store, wake)) return false;
+    store.suspendHeldCheckBacks(isoNow(), [id]);
+    return true;
+  }
+
+  function lineOf(row: CheckBack): Message | null {
+    if (!row.message_id) return null;
+    try {
+      return store.getMessage(row.message_id);
+    } catch {
+      return null;
+    }
+  }
+
+  function causeOf(row: CheckBack): WakeCause {
+    if (row.kind === PLAN_NUDGE) return "plan_nudge";
+    return row.cause === "delegation" ? "report_back" : "check_back";
+  }
+
   function fireRoutine(routineId: string, now: Date = new Date()): Turn | null {
     admission?.assertNew();
+    let botId: string;
+    try {
+      botId = store.getRoutine(routineId).bot_id;
+    } catch {
+      return null;
+    }
+    const wake = {
+      cause: "routine" as const,
+      botId,
+      sessionId: store.findDirectSession(USER_MEMBER, botId)?.id ?? null,
+      taskId: store.routineTask(routineId)?.id ?? null,
+    };
+    if (heldWake(store, wake).length > 0) {
+      // Only a due time is a wake, asked about on every tick until the lift; it stays unclaimed.
+      const due = store.routineDue(routineId, now);
+      if (due) mayWake(store, wake, { once: `routine:${routineId}:${due.dueAt}` });
+      return null;
+    }
     const result = store.transaction(() => {
       const claimed = store.claimRoutineDue(routineId, now);
       if (!claimed) return null;

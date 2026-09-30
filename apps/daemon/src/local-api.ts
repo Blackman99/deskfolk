@@ -12,6 +12,7 @@ import {
   type PatchRoutineRequest,
   type PatchAcceptanceCheckRequest,
   type PatchTaskSpecRequest,
+  type CreateHoldRequest,
   type PatchTicketRequest,
   type RunAcceptanceChecksRequest,
   type CreateBotRequest,
@@ -1413,6 +1414,35 @@ function dispatch(
   params = matchPath(path, "/v1/tasks/:id");
   if (params && method === "GET") {
     return jsonResponse(store.taskDetail(params.id!, store.citedPathExists), 200, null);
+  }
+
+  // Holds (叫停, ADR 0040): a stop you make from a button or a menu, and your lift of one. These
+  // write the stop down, with the plans it parks and the check-backs it sets aside; a turn already
+  // running is not ended here.
+  if (method === "GET" && path === "/v1/holds") {
+    const status = url.searchParams.get("status") ?? "active";
+    if (status !== "active" && status !== "all") throw new HttpError(422, "invalid_args", "status must be active or all");
+    return jsonResponse({ items: store.listHolds({ inForce: status === "active" }) }, 200, null);
+  }
+  if (method === "POST" && path === "/v1/holds") {
+    const body = (input.body ?? {}) as Partial<CreateHoldRequest>;
+    const hold = store.createHold({
+      scope: body.scope,
+      scopeId: body.scope_id,
+      action: body.action,
+      cascade: body.cascade,
+      liftOnNextUserMessage: body.lift_on_next_user_message,
+      source: "user_button",
+    });
+    return jsonResponse(hold, 201, null);
+  }
+  params = matchPath(path, "/v1/holds/:id/lift");
+  if (params && method === "POST") {
+    return jsonResponse(store.liftHold(params.id!, { by: "user_button" }), 200, null);
+  }
+  params = matchPath(path, "/v1/holds/:id");
+  if (params && method === "GET") {
+    return jsonResponse(store.getHold(params.id!), 200, null);
   }
 
   params = matchPath(path, "/v1/sessions/:id/judgements");

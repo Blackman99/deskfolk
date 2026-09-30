@@ -127,6 +127,24 @@ test("a phone can read capabilities: bare GET is whitelisted, a query is not", (
   expect(() => validateBusiness({ v: 1, id, method: "GET", path: "/v1/capabilities", query: { engine_level: "1" } })).toThrow();
 });
 
+test("a phone can list, make and lift holds, with nothing past their fields", () => {
+  const ok = (request: Omit<RemoteRequest, "v" | "id">) => validateBusiness({ v: 1, id, ...request });
+  expect(() => ok({ method: "GET", path: "/v1/holds" })).not.toThrow();
+  expect(() => ok({ method: "GET", path: "/v1/holds", query: { status: "all" } })).not.toThrow();
+  expect(() => ok({ method: "GET", path: "/v1/holds", query: { status: "lifted" } })).toThrow();
+  expect(() => ok({ method: "GET", path: `/v1/holds/${id}` })).not.toThrow();
+  expect(() => ok({ method: "POST", path: "/v1/holds", body: { scope: "global", scope_id: null } })).not.toThrow();
+  expect(() => ok({ method: "POST", path: "/v1/holds", body: { scope: "bot_plan", scope_id: `${id}:${id}`, lift_on_next_user_message: true } })).not.toThrow();
+  expect(() => ok({ method: "POST", path: "/v1/holds", body: { scope: "plan", scope_id: id, action: "cancel", cascade: false } })).not.toThrow();
+  expect(() => ok({ method: "POST", path: "/v1/holds", body: { scope_id: id } })).toThrow();
+  expect(() => ok({ method: "POST", path: "/v1/holds", body: { scope: "everyone", scope_id: id } })).toThrow();
+  expect(() => ok({ method: "POST", path: "/v1/holds", body: { scope: "bot", scope_id: "not-an-id" } })).toThrow();
+  // Where a stop came from is the app's to record, never the caller's to claim.
+  expect(() => ok({ method: "POST", path: "/v1/holds", body: { scope: "bot", scope_id: id, source: "legacy" } })).toThrow();
+  expect(() => ok({ method: "POST", path: `/v1/holds/${id}/lift`, body: {} })).not.toThrow();
+  expect(() => ok({ method: "POST", path: `/v1/holds/${id}/lift`, body: { by: "organizer" } })).toThrow();
+});
+
 test("the organizer's own debug trail is never on the remote whitelist, task_id or not", () => {
   expect(() => validateBusiness({ v: 1, id, method: "GET", path: "/v1/debug/organizer-runs" })).toThrow();
   expect(() => validateBusiness({ v: 1, id, method: "GET", path: "/v1/debug/organizer-runs", query: { task_id: id } })).toThrow();

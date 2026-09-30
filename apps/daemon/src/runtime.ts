@@ -1,5 +1,6 @@
 import { LOCAL_API_BIND, LOCAL_API_NAME } from "@real-bot/protocol";
 import {
+  defaultDataDir,
   descriptorPath,
   ensureDataDir,
   mintLocalToken,
@@ -21,6 +22,8 @@ import { RuntimeLifecycle } from "./lifecycle";
 import { recoverLifecycle } from "./remote/lifecycle";
 import { restartAvailable, runtimeVersion, type MaintenanceControl } from "./remote/maint";
 import { stopOrphanProcs } from "./live-procs";
+import { sharedInstalledVersion } from "./installed-app";
+import { isCompiledBinary } from "./platform";
 import { logStartup } from "./startup-log";
 
 type SocketData = { authed: boolean };
@@ -229,17 +232,26 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
       filename: stateDbPath(options.dataDir),
       endpointKey: options.endpointKey ?? bunKeyStore,
     });
+    const bootLog = (line: string) => {
+      console.error(line);
+      logStartup(options.dataDir, line);
+    };
+    // ADR 0040's engine level goes up only once no installed app that shares this data folder
+    // would misread what the next level writes; until then the daemon runs the level it is at.
+    const engine = store.raiseEngineLevel(
+      sharedInstalledVersion({ dataDir: options.dataDir, defaultDataDir: defaultDataDir(), compiled: isCompiledBinary(import.meta.path) }),
+    );
+    if (engine.refused) bootLog(engine.refused);
+    // Plans parked before holds existed become holds, and whatever a hold covers is held again.
+    const held = store.reconcileHolds();
+    if (held.imported.length > 0) bootLog(`took over ${held.imported.length} parked plan(s) as holds: ${held.imported.join(", ")}`);
+    if (held.reparked.length > 0) bootLog(`parked again under their holds: ${held.reparked.join(", ")}`);
     store.recoverInterruptedTurns();
     store.recoverInterruptedCheckRuns();
     // Commands the previous run's turns started may still be running (a render writing into the
     // workspace, say); their turns were just marked interrupted, so nothing is left to want them.
     // Not awaited: a group gets 3 s between SIGTERM and SIGKILL, and boot does not wait on that.
-    void stopOrphanProcs(store, {
-      log: (line) => {
-        console.error(line);
-        logStartup(options.dataDir, line);
-      },
-    }).catch(() => {});
+    void stopOrphanProcs(store, { log: bootLog }).catch(() => {});
     recoverLifecycle(store);
     // Remote credentials live in a file (ADR 0033). The compiled daemon always uses it and confirms
     // through its window; source runs only with REAL_BOT_DEV_REMOTE=1, confirming by stand-in.

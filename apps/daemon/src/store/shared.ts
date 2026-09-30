@@ -207,6 +207,7 @@ export type TurnRow = {
   last_activity_at: string;
   created_at: string;
   updated_at: string;
+  mode?: Turn["mode"];
 };
 
 export type SettingRow = { key: string; value: string };
@@ -413,6 +414,7 @@ export function toTurn(row: TurnRow): Turn {
     pending_ask_id: row.pending_ask_id ?? null,
     routine_id: row.routine_id ?? null,
     routine_due_at: row.routine_due_at ?? null,
+    mode: row.mode ?? null,
   };
 }
 

@@ -137,8 +137,11 @@ export type McpPromptGuide = {
   instructions: string | null;
   /** Roster-level note written by you or a Bot; rendered first and outranks `instructions`. */
   usageNote?: string | null;
-  /** `toolName` is the server's own name for it, for the line a watcher sees while it runs. */
-  tools: Array<{ modelName: string; description: string; toolName?: string }>;
+  /**
+   * `toolName` is the server's own name for it, for the line a watcher sees while it runs;
+   * `readOnly`, that the server marked it as changing nothing (see `McpListedTool`).
+   */
+  tools: Array<{ modelName: string; description: string; toolName?: string; readOnly?: boolean }>;
 };
 
 export type SkillPromptEntry = {

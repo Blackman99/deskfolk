@@ -21,6 +21,7 @@ import {
 import { pathExists } from "../collab-tools";
 import type { CompletionsClient } from "../completions";
 import { assembleTurnMessages, planTagger, sessionLabel, type PlanRef } from "../context";
+import { HttpError } from "../errors";
 import { continueNote, hopLimits, isRetriedFailure, replyFailure, retryNote } from "../hop-limits";
 import { completionFailBody, builtinTools, type FailKind } from "../prompts";
 import { isNoWorkCloser } from "../no-work";
@@ -34,6 +35,7 @@ import { heardNote, recentToolCalls, redirectCarryNote, type HeardItem } from ".
 import type { WakeWatch } from "../wake";
 import type { Chains } from "./chains";
 import type { Closing } from "./closing";
+import { mayWake, wakeOn, type WakeCause } from "./control";
 import type { Participation } from "./participation";
 import type { PlanWatch } from "./plan-watch";
 import type { Routing } from "./routing";
@@ -80,25 +82,28 @@ export type LifecycleDeps = {
 };
 
 export type Lifecycle = {
+  /** Null when a hold turns the wake away (see engine/control.ts). */
   startTurn: (
     sessionId: string,
     botId: string,
     trigger: Message,
     mode: "redirect" | "fork",
-    opts?: {
+    opts: {
+      cause: WakeCause;
       routineId?: string | null;
       routineDueAt?: string | null;
       taskId?: string | null;
       ticketId?: string | null;
     },
-  ) => Turn;
+  ) => Turn | null;
+  /** Null when a hold turns the wake away. */
   hearOrStart: (
     sessionId: string,
     botId: string,
     trigger: Message,
     entry: Omit<InboxEntry, "message">,
-    opts?: { taskId?: string | null; ticketId?: string | null; otherwise?: "redirect" | "fork" },
-  ) => Turn;
+    opts: { cause: WakeCause; taskId?: string | null; ticketId?: string | null; otherwise?: "redirect" | "fork" },
+  ) => Turn | null;
   hearAcross: (message: Message) => Turn[];
   attachLive: (turn: Turn, carry?: string | null) => void;
   continueFromInterrupt: (messageId: string) => Turn;
@@ -163,17 +168,25 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     trigger: Message,
     mode: "redirect" | "fork",
     opts: {
+      /** What wakes the Bot, for the work log when a hold turns it away. */
+      cause: WakeCause;
       routineId?: string | null;
       routineDueAt?: string | null;
       /** The plan this turn continues outright, when the trigger cannot say (a check-back's note, a routine). */
       taskId?: string | null;
       ticketId?: string | null;
-    } = {},
-  ): Turn {
+    },
+  ): Turn | null {
     admission?.assertNew();
+    // Before a live turn is redirected for it: a wake a hold turns away changes nothing.
+    if (!mayWake(store, wakeOn(store, opts.cause, { sessionId, botId, trigger, taskId: opts.taskId, ticketId: opts.ticketId }))) {
+      return null;
+    }
     let carry: { written: string[]; recent: string[]; unread: HeardItem[]; previous: PlanRef | null } | null = null;
     if (mode === "redirect") {
-      const livesForBot = store.listLiveTurns({ sessionId, botId });
+      // A turn a hold covers is left to the hold, and the new one opens beside it: redirecting it
+      // would carry its work, and lines the hold kept from it, into a turn the hold does not cover.
+      const livesForBot = store.listLiveTurns({ sessionId, botId }).filter((row) => store.turnHeldBy(row.id).length === 0);
       let sessionKind: string | null = null;
       try {
         sessionKind = store.getSession(sessionId).kind;
@@ -227,7 +240,8 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
   /**
    * A Bot's line for a Bot that is already working in this session is heard inside that turn
    * rather than ending it: it waits in the turn's inbox for the next hop. Only when there is no
-   * live turn here that this process runs does a new one open. Returns the turn that got it.
+   * live turn here that this process runs, and that no hold covers, does a new one open. Returns
+   * the turn that got it; null when a hold turns it away, heard or not.
    */
   function hearOrStart(
     sessionId: string,
@@ -235,8 +249,11 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     trigger: Message,
     entry: Omit<InboxEntry, "message">,
     /** `otherwise`: how a turn opens when none here can hear it; a direct with you forks, never cuts one of yours off. */
-    opts: { taskId?: string | null; ticketId?: string | null; otherwise?: "redirect" | "fork" } = {},
-  ): Turn {
+    opts: { cause: WakeCause; taskId?: string | null; ticketId?: string | null; otherwise?: "redirect" | "fork" },
+  ): Turn | null {
+    const { otherwise = "redirect", cause, ...lands } = opts;
+    // Asked once, of the plan the line would open a turn in: a line a hold turns away is not heard either.
+    if (!mayWake(store, wakeOn(store, cause, { sessionId, botId, trigger, ...lands }))) return null;
     // A group turn hears lines about other jobs too; the tag says which one this is about. With
     // more than one turn here, the one already on that job hears it.
     const about = entry.checkBack ?? { taskId: trigger.task_id ?? null, ticketId: trigger.ticket_id ?? null };
@@ -245,6 +262,9 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     for (const current of [...onJob, ...rows.filter((row) => !onJob.includes(row))]) {
       const live = lives.get(current.id);
       if (!live || live.abort.signal.aborted) continue;
+      // A held turn hears nothing new, not even about work beside the hold: it could not act on the
+      // line, and the line would be spent there instead of opening a turn that can.
+      if (store.turnHeldBy(current.id).length > 0) continue;
       const tag = planTagger(
         store,
         { taskId: current.task_id ?? null, ticketId: current.ticket_id ?? null },
@@ -253,16 +273,15 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       live.inbox.push({ ...entry, item: { ...entry.item, tag: tag || undefined }, message: trigger });
       return current;
     }
-    const { otherwise = "redirect", ...lands } = opts;
-    return startTurn(sessionId, botId, trigger, otherwise, lands);
+    return startTurn(sessionId, botId, trigger, otherwise, { cause, ...lands });
   }
 
   /**
    * Your line, once filed under a plan, reaches every turn working in that plan in another session:
    * you tell a Bot in your direct what to change about the job it is doing in a group, and the
    * group's turns on that job — its own and its teammates' — read it on their next hop without being
-   * interrupted. Turns in the line's own session already have it in their transcript. Returns the
-   * turns that got it.
+   * interrupted. Turns in the line's own session already have it in their transcript, and a turn a
+   * hold covers does not get it. Returns the turns that got it.
    */
   function hearAcross(message: Message): Turn[] {
     if (!message.task_id) return [];
@@ -282,6 +301,15 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       if (current.task_id !== message.task_id || current.session_id === message.session_id) continue;
       const live = lives.get(current.id);
       if (!live || live.abort.signal.aborted) continue;
+      const wake = {
+        cause: "heard_across" as const,
+        botId: current.bot_id,
+        sessionId: current.session_id,
+        taskId: current.task_id ?? null,
+        ticketId: current.ticket_id ?? null,
+        turnId: current.id,
+      };
+      if (!mayWake(store, wake)) continue;
       const tag = planTagger(store, { taskId: current.task_id ?? null, ticketId: current.ticket_id ?? null }, locale)({
         taskId: message.task_id,
         ticketId: message.ticket_id ?? null,
@@ -303,6 +331,13 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
    * this: Stop means leave it, a redirect already carried them over, an interruption is yours to
    * pick up.
    */
+  /**
+   * A turn that ended with lines it never read opens one more, on the newest of them. Each line is
+   * put to the holds on its own (ADR 0040): one about held work is a wake turned away, recorded as
+   * such, and stays in the transcript for after the lift — an appointment among them is given back
+   * to fire then — while the turn opens on the newest line about unheld work, and only those ride
+   * along into it.
+   */
   function reopenForUnheard(turn: Turn, live: Live): void {
     if (live.inbox.length === 0 || admission?.draining) return;
     // A line heard from another session was answered there; it opens nothing here.
@@ -316,16 +351,33 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       return;
     }
     if (status !== "completed") return;
-    const last = pending[pending.length - 1]!;
+    const lands = (entry: InboxEntry) => (entry.checkBack ? { taskId: entry.checkBack.taskId, ticketId: entry.checkBack.ticketId } : {});
+    const turnedAway = new Set(
+      pending.filter(
+        (entry) => !mayWake(store, wakeOn(store, "unheard", { sessionId: turn.session_id, botId: turn.bot_id, trigger: entry.message, ...lands(entry) })),
+      ),
+    );
+    // The newest appointment a hold turned away fires again on the lift, or on the next tick if no
+    // hold covers its own row.
+    const giveBack = () => {
+      const booked = [...pending].reverse().find((entry) => entry.checkBack && turnedAway.has(entry));
+      if (booked) store.returnUnreadCheckBack(booked.message.id, isoNow());
+    };
+    const unheld = pending.filter((entry) => !turnedAway.has(entry));
+    const last = unheld.at(-1);
+    if (!last) return giveBack();
     try {
       const reopened = hearOrStart(
         turn.session_id,
         turn.bot_id,
         last.message,
         { item: last.item, ...(last.checkBack ? { checkBack: last.checkBack } : {}) },
-        last.checkBack ? { taskId: last.checkBack.taskId, ticketId: last.checkBack.ticketId } : {},
+        { cause: "unheard", ...lands(last) },
       );
-      for (const entry of pending.slice(0, -1)) {
+      if (!reopened) for (const entry of unheld) turnedAway.add(entry);
+      giveBack();
+      if (!reopened) return;
+      for (const entry of unheld.slice(0, -1)) {
         if (!entry.checkBack) continue;
         // an earlier check-back line is its own reminder; it rides along in the new turn's inbox
         lives.get(reopened.id)?.inbox.unshift(entry);
@@ -405,8 +457,31 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     }
   }
 
+  /**
+   * Continue on an interrupted or failed turn: a new turn on the same job, from the line it left. A
+   * hold over that job answers 409 `held` instead, so the button can ask whether to lift it; the
+   * database refuses the row too (I2), since this path writes it without `createTurn`.
+   */
   function continueFromInterrupt(messageId: string): Turn {
     admission?.assertNew();
+    const note = store.getMessage(messageId);
+    let cut: Turn | null = null;
+    try {
+      cut = note.turn_id ? store.getTurn(note.turn_id) : null;
+    } catch {
+      // no turn to continue: the claim below says so
+    }
+    const wake = {
+      cause: "continue" as const,
+      botId: cut?.bot_id ?? note.author,
+      sessionId: note.session_id,
+      taskId: cut?.task_id ?? null,
+      ticketId: cut?.ticket_id ?? null,
+      turnId: note.turn_id,
+    };
+    if (!mayWake(store, wake)) {
+      throw new HttpError(409, "held", "a stop of yours covers this job: lift it before continuing");
+    }
     const turn = store.claimInterruptContinue(messageId);
     attachLive(turn);
     return turn;
@@ -551,7 +626,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       const tools = pace === "last" ? [] : [...builtinTools(target.locale), ...listed.tools];
       live.toolNames = new Set(tools.map((tool) => tool.function.name));
       live.mcpTools = new Map(listed.guides.flatMap((guide) =>
-        guide.tools.map((tool) => [tool.modelName, { server: guide.name, tool: tool.toolName ?? tool.modelName }] as const)));
+        guide.tools.map((tool) => [tool.modelName, { server: guide.name, tool: tool.toolName ?? tool.modelName, readOnly: tool.readOnly === true }] as const)));
       live.partial = "";
       publishTurn(current, "");
       let result;

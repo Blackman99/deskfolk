@@ -30,6 +30,7 @@ import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { takeCodePoints } from "../text";
 import { notCheckBackLine } from "./check-backs";
+import { holdNamesPlanSql, noteHeldPlansMovedAside, parkHeldPlans, planStatusUnderHolds } from "./holds";
 import { parsePlanSpec, type PlanSpec, type PlanStatus } from "./plan-shape";
 import { sessionRow, type MessageRow, type StoreContext } from "./shared";
 
@@ -456,12 +457,17 @@ export function openTask(
   ctx.db.transaction(() => {
     if (!input.routineId) {
       // One current plan per session: the new one takes over, and the one it displaces is parked
-      // unless it was already done. A resume can bring it back.
-      ctx.db.run(
-        `UPDATE tasks SET closed_at = ?, status = CASE WHEN status = 'active' THEN 'parked' ELSE status END
-         WHERE session_id = ? AND closed_at IS NULL AND routine_id IS NULL`,
-        [now, input.sessionId],
-      );
+      // unless it was already done. A resume can bring it back. One a hold parks goes back to
+      // moved aside when the hold is lifted (ADR 0040).
+      const displaced = ctx.db
+        .query<{ id: string }, [string, string]>(
+          `UPDATE tasks SET closed_at = ?, status = CASE WHEN status = 'active' THEN 'parked' ELSE status END
+           WHERE session_id = ? AND closed_at IS NULL AND routine_id IS NULL
+           RETURNING id`,
+        )
+        .all(now, input.sessionId)
+        .map((row) => row.id);
+      noteHeldPlansMovedAside(ctx, displaced);
     }
     ctx.db.run(
       `INSERT INTO tasks (id, session_id, title, dir, brief, kind, spec, status, spec_updated_at, routine_id, created_at, closed_at)
@@ -480,24 +486,31 @@ export function openTask(
         now,
       ],
     );
+    // A plan opened in a conversation you stopped is stopped with it (ADR 0040).
+    parkHeldPlans(ctx, id);
   })();
   return getTask(ctx, id);
 }
 
 /**
  * Writes what the organizer or the user decided the plan is. Done and parked take the plan out of
- * the current slot; active puts it back when nothing else has taken the slot meanwhile.
+ * the current slot; active puts it back when nothing else has taken the slot meanwhile. While a
+ * hold on the plan or its conversation is in force, the plan stays parked whatever the writer asks
+ * for short of done (ADR 0040). Parked written to it then is only the status the writer was shown —
+ * the organizer builds on that spec — so it leaves the slot alone: the plan was stopped, not put
+ * aside for another.
  */
 export function setTaskSpec(ctx: StoreContext, taskId: string, spec: PlanSpec, now: string = isoNow()): Task {
   const task = getTask(ctx, taskId);
   ctx.db.transaction(() => {
+    const { status, held } = planStatusUnderHolds(ctx, taskId, spec.status);
     ctx.db.run(
       `UPDATE tasks SET spec = ?, kind = ?, status = ?, spec_updated_at = ? WHERE id = ?`,
-      [JSON.stringify(spec), spec.kind, spec.status, now, taskId],
+      [JSON.stringify({ ...spec, status }), spec.kind, status, now, taskId],
     );
-    if (spec.status !== "active") {
+    if (spec.status === "done" || (spec.status === "parked" && !held)) {
       ctx.db.run(`UPDATE tasks SET closed_at = COALESCE(closed_at, ?) WHERE id = ?`, [now, taskId]);
-    } else if (task.closed_at && task.session_id && !task.routine_id) {
+    } else if (spec.status === "active" && task.closed_at && task.session_id && !task.routine_id) {
       const current = sessionCurrentTask(ctx, task.session_id);
       if (!current) ctx.db.run(`UPDATE tasks SET closed_at = NULL WHERE id = ?`, [taskId]);
     }
@@ -559,8 +572,8 @@ export function closeTask(ctx: StoreContext, id: string): void {
 }
 
 /**
- * Plans no surviving turn or message of this session belongs to, once those rows are gone: their
- * revisions and tickets first, since both reference the plan.
+ * Plans no surviving turn or message of this session belongs to, and no hold names, once those
+ * rows are gone: their revisions and tickets first, since both reference the plan.
  */
 export function dropUnreferencedTasks(ctx: StoreContext, sessionId: string): void {
   const gone = ctx.db
@@ -568,7 +581,8 @@ export function dropUnreferencedTasks(ctx: StoreContext, sessionId: string): voi
       `SELECT id FROM tasks
        WHERE session_id = ?
          AND NOT EXISTS (SELECT 1 FROM turns WHERE turns.task_id = tasks.id)
-         AND NOT EXISTS (SELECT 1 FROM messages WHERE messages.task_id = tasks.id)`,
+         AND NOT EXISTS (SELECT 1 FROM messages WHERE messages.task_id = tasks.id)
+         AND NOT ${holdNamesPlanSql("tasks.id")}`,
     )
     .all(sessionId)
     .map((row) => row.id);
@@ -1000,9 +1014,32 @@ export function resolveTurnTask(
   /** The ticket the trigger itself carried, before the woken Bot's own one was preferred. */
   handedTicketId: string | null;
 } {
-  const at = input.now ?? new Date();
+  const found = findTurnTask(ctx, input);
+  if (found.taskId !== null) {
+    if (input.taskId) keepClosedTaskFiles(ctx, input.taskId);
+    return { ...found, taskId: found.taskId };
+  }
+  return {
+    taskId: openTask(ctx, {
+      sessionId: input.sessionId,
+      title: input.trigger.body,
+      brief: input.trigger.body,
+      now: input.now ?? new Date(),
+    }).id,
+    ticketId: null,
+    handedTicketId: null,
+  };
+}
+
+/**
+ * Where {@link resolveTurnTask} would land a turn, read without changing anything: a null plan
+ * where it would open a new one. What a wake is about before anything opens, for the holds.
+ */
+export function findTurnTask(
+  ctx: StoreContext,
+  input: Omit<Parameters<typeof resolveTurnTask>[1], "now">,
+): { taskId: string | null; ticketId: string | null; handedTicketId: string | null } {
   if (input.taskId) {
-    keepClosedTaskFiles(ctx, input.taskId);
     return { taskId: input.taskId, ticketId: input.ticketId ?? null, handedTicketId: input.ticketId ?? null };
   }
   const own = (taskId: string, ticketId: string | null) => ({
@@ -1024,16 +1061,7 @@ export function resolveTurnTask(
   }
   const current = sessionCurrentTask(ctx, input.sessionId);
   if (current) return own(current.id, null);
-  return {
-    taskId: openTask(ctx, {
-      sessionId: input.sessionId,
-      title: input.trigger.body,
-      brief: input.trigger.body,
-      now: at,
-    }).id,
-    ticketId: null,
-    handedTicketId: null,
-  };
+  return { taskId: null, ticketId: null, handedTicketId: null };
 }
 
 /**
@@ -1075,12 +1103,17 @@ export function reopenTask(ctx: StoreContext, id: string, sessionId: string): vo
     return;
   }
   ctx.db.transaction(() => {
-    ctx.db.run(
-      `UPDATE tasks SET closed_at = ?, status = CASE WHEN status = 'active' THEN 'parked' ELSE status END
-       WHERE session_id = ? AND closed_at IS NULL AND routine_id IS NULL AND id != ?`,
-      [now, sessionId, id],
-    );
-    ctx.db.run(`UPDATE tasks SET closed_at = NULL, status = 'active' WHERE id = ?`, [id]);
+    const displaced = ctx.db
+      .query<{ id: string }, [string, string, string]>(
+        `UPDATE tasks SET closed_at = ?, status = CASE WHEN status = 'active' THEN 'parked' ELSE status END
+         WHERE session_id = ? AND closed_at IS NULL AND routine_id IS NULL AND id != ?
+         RETURNING id`,
+      )
+      .all(now, sessionId, id)
+      .map((row) => row.id);
+    noteHeldPlansMovedAside(ctx, displaced);
+    // Filed back into the conversation's slot; a hold over it still keeps it parked.
+    ctx.db.run(`UPDATE tasks SET closed_at = NULL, status = ? WHERE id = ?`, [planStatusUnderHolds(ctx, id, "active").status, id]);
   })();
 }
 

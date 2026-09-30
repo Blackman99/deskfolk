@@ -1,6 +1,7 @@
 /**
  * The version gate: a database a newer build already raised the floor on refuses to open under an
- * older one, `engine_level` defaults to 0 until some future phase raises it, and the shutdown flag
+ * older one, `engine_level` defaults to 0 until the boot raises it — and only while no installed
+ * app sharing the database predates the gate — taking the floor up with it, and the shutdown flag
  * starts optimistic (nothing to blame on a first-ever boot) and turns pessimistic the moment a
  * database is opened, waiting for `recordCleanShutdown` to prove the run that follows was orderly.
  */
@@ -10,7 +11,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from ".";
-import { SCHEMA_LEVEL, SchemaTooNewError } from "./schema-gate";
+import { ENGINE_LEVEL, LAST_RELEASE_WITHOUT_GATE, SCHEMA_LEVEL, SchemaTooNewError } from "./schema-gate";
 
 const dirs: string[] = [];
 
@@ -169,5 +170,41 @@ describe("schema gate", () => {
     // This run's own flag is already reset to crash, in case it never gets to record its own exit.
     expect(second.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'last_shutdown'").get()?.value).toBe("crash");
     second.close();
+  });
+
+  test("the engine level goes up, floor and all, when no installed app shares the database", () => {
+    const file = tempFile();
+    const store = new Store({ filename: file });
+    expect(store.raiseEngineLevel(null)).toEqual({ level: ENGINE_LEVEL, raised: true, refused: null });
+    expect(store.capabilities()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds"] });
+    // Already there: nothing to do, and the gate settings stay out of the change journal.
+    const events: string[] = [];
+    store.onCommit((event) => events.push(event.event));
+    expect(store.raiseEngineLevel(null)).toEqual({ level: ENGINE_LEVEL, raised: false, refused: null });
+    store.transaction(() => {});
+    expect(events).toEqual([]);
+    store.close();
+    const floor = new Database(file, { readonly: true });
+    expect(floor.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'schema_min_compatible'").get()?.value).toBe(String(SCHEMA_LEVEL));
+    floor.close();
+  });
+
+  test("an installed app from before the gate, or one whose version cannot be read, holds the level where it is", () => {
+    const store = new Store();
+    for (const version of ["0.1.0-rc.11", LAST_RELEASE_WITHOUT_GATE, "", "not a version"]) {
+      const raise = store.raiseEngineLevel({ version });
+      expect(raise).toMatchObject({ level: 0, raised: false });
+      expect(raise.refused).toContain("update it");
+    }
+    // Where there is no telling what is installed, the log says that rather than blame an app.
+    const unseen = store.raiseEngineLevel({ unseen: "a source run cannot tell which app is installed on win32" });
+    expect(unseen).toMatchObject({ level: 0, raised: false });
+    expect(unseen.refused).toContain("cannot tell which app is installed on win32");
+    expect(unseen.refused).toContain("REAL_BOT_DATA_DIR");
+    expect(unseen.refused).not.toContain("update it");
+    expect(store.db.query("SELECT 1 FROM settings WHERE key IN ('engine_level', 'schema_min_compatible')").all()).toEqual([]);
+    // One that reads the gate refuses the raised floor itself, and says to update.
+    expect(store.raiseEngineLevel({ version: "0.1.0-rc.13" })).toMatchObject({ level: ENGINE_LEVEL, raised: true });
+    store.close();
   });
 });

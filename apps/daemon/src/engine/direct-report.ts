@@ -11,6 +11,7 @@ import { NO_ABLATION, type Ablation } from "../ablation";
 import { reportBackNote } from "../prompts";
 import type { TurnAdmission } from "../quiesce";
 import type { CheckBack, Store } from "../store";
+import { mayWake } from "./control";
 
 export type DirectReportDeps = {
   store: Store;
@@ -68,22 +69,42 @@ export function createDirectReport(deps: DirectReportDeps): DirectReport {
    * where the work came from. When the direct has gone quiet — no live turn, no check-back pending
    * in it — its opener is woken back there with what the direct came to, once per stretch of new
    * lines. A direct that a report-back itself opened, and that the other Bot never answered, stays
-   * put: that opener has been back once already, and two Bots must not bounce on silence.
+   * put: that opener has been back once already, and two Bots must not bounce on silence. A hold
+   * over the opener books the report-back set aside, so the opener hears it once the hold is
+   * lifted. One over the other Bot's work there books nothing: that work is what the opener would
+   * hear about, and once it goes on after the lift, its next turn there leaves the direct quiet
+   * again, which calls the opener back then.
    */
   function reportBackIfQuiet(directId: string, lastTurnId: string): void {
     if (admission?.draining) return;
     let booked: CheckBack;
+    let held: boolean;
     try {
       if (store.listLiveTurns({ sessionId: directId }).length > 0) return;
       if (store.listPendingCheckBacks(directId).length > 0) return;
       const quiet = store.quietDirect(directId);
       if (!quiet?.latest) return;
       if (quiet.openedFromReportBack && !quiet.peerSpoke) return;
+      // Asked of the opener and of the peer's work in the direct, which is what it would be told about.
+      const job = store.getTurn(lastTurnId);
+      const on = { taskId: job.task_id ?? null, ticketId: job.ticket_id ?? null };
+      const peerWork = { botId: quiet.peerId, sessionId: directId, ...on, turnId: lastTurnId };
+      const wake = {
+        cause: "report_back" as const,
+        botId: quiet.openerId,
+        sessionId: quiet.originSessionId,
+        ...on,
+        turnId: lastTurnId,
+        by: peerWork,
+      };
+      held = !mayWake(store, wake);
+      if (held && store.holdsCovering(peerWork).length > 0) return;
       const note = reportBackNote(store.settingsCached().locale, {
         peer: store.getBot(quiet.peerId).name,
         last: { mine: quiet.latest.author === quiet.openerId, body: quiet.latest.body },
         peerSpoke: quiet.peerSpoke,
       });
+      // Held over the opener only: booked where the hold covers it, it is set aside for the lift.
       booked = store.bookReportBack({
         botId: quiet.openerId,
         sessionId: quiet.originSessionId,
@@ -94,6 +115,7 @@ export function createDirectReport(deps: DirectReportDeps): DirectReport {
       // the direct, its origin or a Bot went away meanwhile; there is nobody to report to
       return;
     }
+    if (held) return;
     try {
       fireCheckBack(booked.id);
     } catch {

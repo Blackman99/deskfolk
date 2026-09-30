@@ -25,11 +25,33 @@ import type { WakeWatch } from "../wake";
 import { classifyPath } from "../workspace-paths";
 import { isWorkspaceTool, runWorkspaceTool, type ShellStream } from "../workspace-tools";
 import type { Closing } from "./closing";
+import { HELD_CALL, mayAct } from "./control";
 import type { Participation } from "./participation";
 import type { Live } from "./types";
 
 /** Tools that are the work itself, not looking around: a turn using one is working on its ticket. */
 const WORKING_TOOLS = new Set(["write_file", "delete_file", "shell"]);
+
+/**
+ * Calls that change nothing, which a turn a hold covers still makes (ADR 0040 I3): reading the
+ * workspace, the roster and the catalogs, and ending the turn. An MCP tool is one when its server
+ * marks it read-only in the tool list the hop was given, read afresh every hop rather than kept,
+ * so a server that stops saying so is believed at once. Every other call has an effect and is
+ * refused under a hold.
+ */
+const NO_EFFECT_TOOLS: ReadonlySet<string> = new Set([
+  "read_file",
+  "list_dir",
+  "list_bots",
+  "list_sessions",
+  "list_routines",
+  "list_skills",
+  "read_skill",
+  "list_endpoints",
+  "list_mcp_servers",
+  "list_annotations",
+  "end_turn",
+]);
 
 /** How much of a failed call's target and error the learning hop reads: enough to name it. */
 const FAILURE_TARGET_MAX = 160;
@@ -118,7 +140,9 @@ export function createTools(deps: ToolsDeps): Tools {
     for (const call of calls) {
       if (!active(turnId, live)) return "wait";
       live.toolCalls += 1;
-      if (!live.ticketWorking && (WORKING_TOOLS.has(call.name) || live.mcpTools.has(call.name))) {
+      // I3: under a hold a call with an effect does not run, nor the closing check a message gets first.
+      let held = hasEffect(live, call.name) && !mayAct(store, turnId);
+      if (!held && !live.ticketWorking && (WORKING_TOOLS.has(call.name) || live.mcpTools.has(call.name))) {
         live.ticketWorking = true;
         observeTicket(turnId, turn.bot_id, "working");
       }
@@ -141,10 +165,14 @@ export function createTools(deps: ToolsDeps): Tools {
       const startedAt = Date.now();
       // A delivery about to be posted gets the closing check first; a bounce comes back to the
       // Bot as this call's result, and the tool itself does not run.
-      const bounce = call.name === "send_message" ? await closingCheckForSend(turnId, live, turn, args) : null;
+      const bounce = !held && call.name === "send_message" ? await closingCheckForSend(turnId, live, turn, args) : null;
       if (!active(turnId, live)) return "wait";
+      // Asked again right before it runs: a hold made while the closing check was out stops it too.
+      if (!held && call.name === "send_message") held = !mayAct(store, turnId);
       let result: ToolResult;
-      if (bounce) {
+      if (held) {
+        result = { ok: false, error: { code: "held", message: HELD_CALL }, emitted: [] };
+      } else if (bounce) {
         result = { ok: false, error: { code: "closing_check", message: bounce }, emitted: [] };
       } else {
         const target = toolTargetOf(call.name, args);
@@ -274,7 +302,7 @@ export function createTools(deps: ToolsDeps): Tools {
         const payload = resolved.ok
           ? { ok: true, data: admitPicture(live, pictures, resolved) }
           : { ok: false, error: resolved.error };
-        if (!resolved.ok) noteFailure(live, call.name, args, fingerprint, resolved.error);
+        if (!resolved.ok && resolved.error?.code !== "held") noteFailure(live, call.name, args, fingerprint, resolved.error);
         live.loop.push({
           role: "tool",
           tool_call_id: call.id,
@@ -294,8 +322,9 @@ export function createTools(deps: ToolsDeps): Tools {
       const payload = result.ok
         ? { ok: true, data: admitPicture(live, pictures, result) }
         : { ok: false, error: result.error };
-      // A closing-check bounce is a nudge, not a tool that failed: the review must not read it as one.
-      if (!result.ok && result.error?.code !== "closing_check") {
+      // A closing-check bounce is a nudge and a call a hold refused never ran: neither is a tool that
+      // failed, and the review must not read them as one.
+      if (!result.ok && result.error?.code !== "closing_check" && result.error?.code !== "held") {
         noteFailure(live, call.name, args, fingerprint, result.error);
       }
       live.loop.push({
@@ -309,6 +338,11 @@ export function createTools(deps: ToolsDeps): Tools {
     if (ended) return "noop";
     attachPictures(live.loop, pictures, live.locale);
     return posted ? "more" : "noop";
+  }
+
+  function hasEffect(live: Live, name: string): boolean {
+    if (NO_EFFECT_TOOLS.has(name)) return false;
+    return live.mcpTools.get(name)?.readOnly !== true;
   }
 
   /**
