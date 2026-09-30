@@ -12,7 +12,7 @@ import { isoNow } from "../ids";
 import { attachPictures, fitsHop, pictureResultNote, type LoopPicture } from "../loop-pictures";
 import type { McpHost } from "../mcp-host";
 import { inlineWorkspaceRefs } from "../mcp-workspace-refs";
-import { COLLAB_TOOL_NAMES } from "../prompts";
+import { COLLAB_TOOL_NAMES, type ChatTool, type McpPromptGuide } from "../prompts";
 import type { TurnAdmission } from "../quiesce";
 import { sessionUpsertFields } from "../session-events";
 import { isReservedTaskPath, type Store } from "../store";
@@ -52,6 +52,15 @@ const NO_EFFECT_TOOLS: ReadonlySet<string> = new Set([
   "list_annotations",
   "end_turn",
 ]);
+
+/**
+ * The tools a read-only turn is given: those that change nothing, and the MCP tools their server
+ * marks read-only in this hop's list.
+ */
+export function readOnlyTools(tools: readonly ChatTool[], guides: readonly McpPromptGuide[]): ChatTool[] {
+  const readOnlyMcp = new Set(guides.flatMap((guide) => guide.tools.filter((tool) => tool.readOnly === true).map((tool) => tool.modelName)));
+  return tools.filter((tool) => NO_EFFECT_TOOLS.has(tool.function.name) || readOnlyMcp.has(tool.function.name));
+}
 
 /** How much of a failed call's target and error the learning hop reads: enough to name it. */
 const FAILURE_TARGET_MAX = 160;

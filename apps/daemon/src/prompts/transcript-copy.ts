@@ -359,6 +359,8 @@ export function statusQuestionBody(
     waiting?: readonly StatusWaitingLine[];
     /** Check-backs booked in this plan, not rung yet. */
     checkBacks?: readonly StatusCheckBackLine[];
+    /** Your stops over the plan or its Bots, and what was found running under one and ended, a line each (control-copy.ts). */
+    held?: readonly string[];
   },
 ): string {
   const en = locale === "en";
@@ -368,6 +370,7 @@ export function statusQuestionBody(
       ? `Plan: ${input.plan.title} (${STATUS_PLAN_LABEL[input.plan.status].en})`
       : `这件事：${input.plan.title}（${STATUS_PLAN_LABEL[input.plan.status].zh}）`,
   );
+  lines.push(...(input.held ?? []));
   const waiting = input.waiting ?? [];
   if (waiting.length > 0) {
     // First: in a job of several Bots, what most often holds everything up is you.

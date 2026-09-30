@@ -189,6 +189,8 @@ export type MessageRow = {
   message_seq?: number;
   /** Set on the app's own 进度询问 status line: kept out of every Bot's context and the organizer's payload. */
   hidden_from_bots?: number;
+  /** JSON `MessageControl`: what the app made of your stops on this line. */
+  control?: string | null;
   created_at: string;
 };
 

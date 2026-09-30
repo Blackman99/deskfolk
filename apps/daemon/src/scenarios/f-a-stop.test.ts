@@ -13,13 +13,16 @@
  * The target is ADR 0040's control plane: a stop is a hold only you lift, every way of starting or
  * waking a turn and every call with an effect checks it, and the app itself — not a model turn —
  * says what was stopped. Each test names the phase that flips it to a plain `test`:
- * - ADR 0040 P2 (holds, the wake and tool gates, the stop receipt): the first three.
+ * - ADR 0040 P2 (holds, the wake and tool gates, the stop line carried out and its receipt): the
+ *   first three, which run with holds on (`holds: true`), as a daemon does once no installed app
+ *   older than the version gate shares its database.
  * - ADR 0040 P1 (a Stop no longer ends in a settle, so nothing calls the plan back): the fourth.
  * - ADR 0040 P4c (a line in a Bot↔Bot thread wakes nobody): the last, for when nobody is held.
  *
- * P2 records every wake a hold turns away as `wake.suppressed` in the work log (`suppressedWakes()`,
- * each wake path's own test in wake-gate.test.ts). The lines here make no hold until the stop line
- * does, so the check that each wake here is on that record goes in with it.
+ * Every wake a hold turns away is on the work log as `wake.suppressed` (`suppressedWakes()`, each
+ * wake path's own test in wake-gate.test.ts); the first and third tests check the ones here. The
+ * look at the export is not among them: the stop set it aside when it was made, so it never comes
+ * due while the hold stands.
  *
  * Today one kind of acknowledgement already wakes nobody: in a Bot↔Bot direct, a bare remark
  * answering a bare remark, when neither turn behind the two lines ran a command or an MCP tool
@@ -83,8 +86,8 @@ async function atWork(h: Scenario) {
 }
 
 // ADR 0040 P2.
-test.failing("a stop said in the director's direct ends its work in both Bot↔Bot directs at once, and the app says what it stopped", async () => {
-  const h = await scenario({ media: true });
+test("a stop said in the director's direct ends its work in both Bot↔Bot directs at once, and the app says what it stopped", async () => {
+  const h = await scenario({ media: true, holds: true });
   const t = await atWork(h);
   const dm = h.direct(t.director);
   // What the direct said at 10:41, four seconds after Shot 11 went for review.
@@ -118,11 +121,16 @@ test.failing("a stop said in the director's direct ends its work in both Bot↔B
   expect(after.map(({ kind }) => kind)).toEqual(["system"]);
   expect(after[0]!.body).toContain("EP01");
   expect(after[0]!.body).toContain("回响纪元");
+  // 审片员's line is the one wake the hold turned away, and it is on the record.
+  const [hold] = h.store.listHolds();
+  expect(h.suppressedWakes(t.director).map((row) => ({ cause: row.payload.cause, holds: row.payload.holds }))).toEqual([
+    { cause: "mention", holds: [hold!.id] },
+  ]);
 });
 
 // ADR 0040 P2.
-test.failing("told it has not stopped, the app checks what is running and answers, with no model call", async () => {
-  const h = await scenario({ media: true });
+test("told it has not stopped, the app checks what is running and answers, with no model call", async () => {
+  const h = await scenario({ media: true, holds: true });
   const t = await atWork(h);
   const dm = h.direct(t.director);
   h.postUser(dm, "你手头的生成停一下");
@@ -143,8 +151,8 @@ test.failing("told it has not stopped, the app checks what is running and answer
 });
 
 // ADR 0040 P2.
-test.failing("the reviewer told to stop all its work opens no turn and runs nothing, and a held Bot's line wakes nobody", async () => {
-  const h = await scenario({ media: true });
+test("the reviewer told to stop all its work opens no turn and runs nothing, and a held Bot's line wakes nobody", async () => {
+  const h = await scenario({ media: true, holds: true });
   const t = await atWork(h);
   h.postUser(h.direct(t.director), "你手头的生成停一下");
   await h.routed();
@@ -162,6 +170,10 @@ test.failing("the reviewer told to stop all its work opens no turn and runs noth
 
   expect(h.sideEffectCalls(t.reviewer, stop).map(({ name, args }) => ({ name, args }))).toEqual([]);
   expect(h.turns(t.reviewer).filter((turn) => turn.created_at > stop.created_at)).toEqual([]);
+  // The acknowledgement was turned away by both stops, the reviewer's own and the director's behind the line.
+  expect(h.suppressedWakes(t.reviewer).map((row) => ({ cause: row.payload.cause, holds: [...(row.payload.holds as string[])].sort() }))).toEqual([
+    { cause: "mention", holds: h.store.listHolds().map((hold) => hold.id).sort() },
+  ]);
 });
 
 // ADR 0040 P1.

@@ -1,0 +1,872 @@
+/**
+ * Your stops and go-ons carried out (ADR 0040 P2, engine/stop.ts): a line that is only a stop makes
+ * holds and ends the work they cover at once, with no model call; the app's receipt says what
+ * happened, from the holds' own record; a go on lifts them and opens the stopped work again on a
+ * note; a line that only might be control is delivered as usual, carrying the buttons; Stop on a
+ * turn's card holds that Bot's work in the plan until you next speak about it, keeping the
+ * appointments it made for then instead of cancelling them. Fixture F-a
+ * (scenarios/f-a-stop.test.ts) replays the incident; these pin each piece.
+ */
+import { afterEach, describe, expect, test } from "bun:test";
+import type { CompletionResult } from "./completions";
+import type { Hold } from "@real-bot/protocol";
+import { openPlan, planSpec, videoTeam } from "./scenarios/video-team";
+import { call, checkBack, createScenario, endTurn, requestText, say, sendMessage, shell, tool, type Scenario, type ScenarioOptions } from "./test-kit/scenario";
+
+const open: Scenario[] = [];
+afterEach(async () => {
+  while (open.length) await open.pop()!.close();
+});
+
+async function scenario(options: ScenarioOptions = { holds: true }): Promise<Scenario> {
+  const h = await createScenario(options);
+  open.push(h);
+  return h;
+}
+
+/** A turn of `bot` in `session` stuck in a hop that never answers, after `before` (booking a look back, say). */
+async function atWork(h: Scenario, bot: { id: string }, session: string, open: () => void, before: CompletionResult[] = []) {
+  let mid = false;
+  h.script(bot, session).reply(...before, () => {
+    mid = true;
+    return new Promise<CompletionResult>(() => {});
+  });
+  open();
+  await h.waitFor(() => mid, { what: "the turn to be mid-hop" });
+  return h.store.listLiveTurns({ sessionId: session, botId: bot.id })[0]!;
+}
+
+/** The lines after `line` in `session`, as kind and body. */
+function after(h: Scenario, session: string, line: { created_at: string }) {
+  return h.messages(session).filter((message) => message.created_at > line.created_at);
+}
+
+function holds(h: Scenario): Hold[] {
+  return h.store.listHolds().reverse();
+}
+
+describe("a stop line", () => {
+  test("makes a hold of yours, ends every turn it covers, sets its appointments aside and says so, with no model call", async () => {
+    const h = await scenario();
+    const { director, reviewer, room } = videoTeam(h);
+    const ep01 = openPlan(h, room, "EP01", planSpec("EP01 动画成片"));
+    const thread = h.botDirect(director, reviewer);
+    const turn = await atWork(h, director, thread, () => h.postBot(reviewer, thread, "EP01 母带重新拼一遍", { taskId: ep01.id }), [
+      call(checkBack(5, "看母带导出好没有"), shell("printf cut > EP01_MASTER.mp4")),
+    ]);
+    const dm = h.direct(director);
+
+    const startedAt = Date.now();
+    const stop = h.postUser(dm, "你手头的生成停一下");
+    await h.routed();
+    await h.waitIdle();
+
+    const [hold] = holds(h);
+    expect(hold).toMatchObject({ scope: "bot", scope_id: director.id, source: "user_text", source_message_id: stop.id, lifted_at: null });
+    expect(h.store.getTurn(turn.id).status).toBe("stopped");
+    // ADR 0040 benchmark S asks for quiet within ten seconds; here it is one write.
+    expect(Date.now() - startedAt).toBeLessThan(10_000);
+    // What it was doing when it stopped, for the receipt and for going on later.
+    expect(hold!.effect.stopped_turns).toEqual([
+      {
+        turn_id: turn.id,
+        bot_id: director.id,
+        session_id: thread,
+        task_id: ep01.id,
+        ticket_id: null,
+        written: [expect.stringMatching(/EP01_MASTER\.mp4$/)],
+        recent: ["check_back", "shell printf cut > EP01_MASTER.mp4"],
+      },
+    ]);
+    const booked = h.store.getCheckBack(hold!.effect.suspended_check_backs![0]!);
+    expect(booked.turn_id).toBe(turn.id);
+    expect(booked.suspended_at).not.toBeNull();
+    expect(hold!.effect.still_running).toEqual([]);
+    // No filing, no turn, no model call for the line.
+    expect(h.judgeCalls().filter((row) => row.at > stop.created_at)).toEqual([]);
+    expect(h.hops().filter((hop) => hop.sessionId === dm)).toEqual([]);
+    // The receipt: the app's line, kept from the Bots, from the hold's record.
+    const [receipt] = after(h, dm, stop);
+    expect(receipt).toMatchObject({ kind: "system", author: director.id });
+    expect(receipt!.control).toEqual({ kind: "receipt", verb: "stop", hold_ids: [hold!.id], offer: ["undo", "stop_all"], scopes: [{ scope: "bot", id: director.id }] });
+    expect(receipt!.body).toContain("已停下视频导演的全部工作");
+    expect(receipt!.body).toContain("你手头的生成停一下");
+    expect(receipt!.body).toContain("EP01");
+    expect(receipt!.body).toContain("最后一步：shell printf cut > EP01_MASTER.mp4");
+    expect(receipt!.body).toContain("挂起 1 个回看");
+    expect(receipt!.body).toContain("此刻在跑：无");
+    expect(h.store.listMainMessages(dm, 20).map((message) => message.id)).not.toContain(receipt!.id);
+    expect(h.store.listWorkEvents({ kind: "control.hold" }).map((row) => row.payload)).toEqual([
+      { hold: hold!.id, scope: "bot", scope_id: director.id, source: "user_text", stopped: [turn.id] },
+    ]);
+  });
+
+  test("reaches the work the Bot handed on and has not had back, not the other Bot's own work", async () => {
+    const h = await scenario();
+    const { director, reviewer } = videoTeam(h);
+    const dm = h.direct(director);
+    const thread = h.botDirect(director, reviewer);
+    let reviewing = false;
+    h.script(reviewer, thread).reply(() => {
+      reviewing = true;
+      return new Promise<CompletionResult>(() => {});
+    });
+    // 视频导演 hands Shot 11 to 审片员 from your direct; 审片员 is at it in their direct.
+    h.script(director, dm).reply(call(sendMessage("Shot 11 请审", { session_id: thread })));
+    h.postUser(dm, "把 Shot 11 交给审片员");
+    await h.waitFor(() => reviewing, { what: "审片员 to be reviewing" });
+    const handedOn = h.store.listLiveTurns({ botId: reviewer.id })[0]!;
+    // Meanwhile 审片员 does something of yours in its own direct.
+    const own = await atWork(h, reviewer, h.direct(reviewer), () => h.postUser(h.direct(reviewer), "整理一下审片记录"));
+
+    const stop = h.postUser(dm, "停下你所有的工作");
+    await h.routed();
+
+    const [hold] = holds(h);
+    expect(hold!.targets).toEqual([{ scope: "turn", id: handedOn.id }]);
+    expect(h.store.getTurn(handedOn.id).status).toBe("stopped");
+    expect(h.store.getTurn(own.id).status).toBe("running");
+    expect(after(h, dm, stop)[0]!.body).toContain("审片员");
+  });
+
+  test("said to a group with nobody named holds the group: its plans park, its turns end wherever they run", async () => {
+    const h = await scenario();
+    const { director, reviewer, writer, room } = videoTeam(h);
+    const ep01 = openPlan(h, room, "EP01", planSpec("EP01 动画成片"));
+    const thread = h.botDirect(director, reviewer);
+    const onPlan = await atWork(h, director, thread, () => h.postBot(reviewer, thread, "EP01 母带重新拼一遍", { taskId: ep01.id }));
+    const inRoom = await atWork(h, writer, room, () => h.postUser(room, "@编剧分镜师 第三场改成夜景"));
+
+    const stop = h.postUser(room, "大家先停一下");
+    await h.routed();
+
+    const [hold] = holds(h);
+    expect(hold).toMatchObject({ scope: "session", scope_id: room });
+    expect(h.store.getTask(ep01.id).status).toBe("parked");
+    expect([onPlan, inRoom].map((turn) => h.store.getTurn(turn.id).status)).toEqual(["stopped", "stopped"]);
+    const receipt = after(h, room, stop).find((message) => message.kind === "system")!;
+    expect(receipt.body).toContain("已停下这里的工作");
+    expect(receipt.body).toContain("搁置：EP01");
+  });
+
+  test("「你」 in a group, answering a Bot's line, holds that Bot and the group: two holds, one receipt", async () => {
+    const h = await scenario();
+    const { director, room } = videoTeam(h);
+    const line = h.postBot(director, room, "Shot 11 交了");
+    await h.waitIdle();
+
+    const stop = h.postUser(room, "你停下", { parentId: line.id });
+    await h.routed();
+
+    expect(holds(h).map(({ scope, scope_id }) => ({ scope, scope_id }))).toEqual([
+      { scope: "bot", scope_id: director.id },
+      { scope: "session", scope_id: room },
+    ]);
+    const receipts = after(h, room, stop).filter((message) => message.kind === "system");
+    expect(receipts.map((message) => message.control?.kind)).toEqual(["receipt"]);
+    expect(receipts[0]!.body).toContain("视频导演的全部工作、这里的工作");
+  });
+
+  test("before the engine level brings holds, goes where any line goes", async () => {
+    const h = await scenario({});
+    const { director } = videoTeam(h);
+    const dm = h.direct(director);
+    h.script(director, dm).reply(say("好的，停了"));
+
+    h.postUser(dm, "停下你所有的工作");
+    await h.waitIdle();
+
+    expect(holds(h)).toEqual([]);
+    expect(h.turns(director).map(({ mode }) => mode)).toEqual(["work"]);
+  });
+});
+
+describe("a go on", () => {
+  test("lifts the stop and opens each stopped turn again on a note with your words and where it was", async () => {
+    const h = await scenario();
+    const { director, reviewer, room } = videoTeam(h);
+    const ep01 = openPlan(h, room, "EP01", planSpec("EP01 动画成片"));
+    const thread = h.botDirect(director, reviewer);
+    const turn = await atWork(h, director, thread, () => h.postBot(reviewer, thread, "EP01 母带重新拼一遍", { taskId: ep01.id }), [
+      call(checkBack(30, "看母带导出好没有"), shell("printf cut > EP01_MASTER.mp4")),
+    ]);
+    const dm = h.direct(director);
+    h.postUser(dm, "你手头的生成停一下");
+    await h.routed();
+    h.script(director, thread).reply(say("看过了，母带还在"));
+
+    const go = h.postUser(dm, "继续");
+    await h.waitIdle();
+
+    const [hold] = holds(h);
+    expect(hold).toMatchObject({ lifted_by: "user_text", lifted_message_id: go.id });
+    // The stopped work opens again in its own direct, on the same plan, on a note.
+    const [resumed] = h.turns(director).filter((row) => row.created_at > go.created_at);
+    expect(resumed).toMatchObject({ session_id: thread, task_id: ep01.id, mode: "work" });
+    expect(hold!.effect.resumed_turns).toEqual([resumed!.id]);
+    const note = h.store.getMessage(resumed!.trigger_message_id);
+    expect(note).toMatchObject({ kind: "system", author: director.id, turn_id: turn.id });
+    expect(note.body).toContain("「继续」");
+    expect(note.body).toContain("规划「EP01」");
+    expect(note.body).toContain("shell printf cut > EP01_MASTER.mp4");
+    for (const push of ["接着干", "接着推进", "接着做"]) expect(note.body).not.toContain(push);
+    expect(requestText(h.hops(director).find((hop) => hop.turnId === resumed!.id)!.request)).toContain("「继续」");
+    // Its appointment is back on the clock.
+    expect(h.store.getCheckBack(hold!.effect.suspended_check_backs![0]!)).toMatchObject({ suspended_at: null, voided_at: null });
+    // The line itself is not filed (the plan is, once the turn it opened ends); the receipt says what came back.
+    expect(h.judgeCalls("organizer").filter((row) => row.at > go.created_at && row.sessionId === dm)).toEqual([]);
+    const receipt = after(h, dm, go).find((message) => message.kind === "system")!;
+    expect(receipt.control).toMatchObject({ kind: "receipt", verb: "continue", hold_ids: [hold!.id], offer: [] });
+    expect(receipt.body).toContain("已解除叫停：视频导演的全部工作");
+    expect(receipt.body).toContain("1 段被停下的工作带着一条说明重新开始");
+    expect(receipt.body).toContain("1 个回看恢复");
+  });
+
+  test("to a Bot lifts a stop on its work in one plan too, and that work opens again", async () => {
+    const h = await scenario();
+    const { director, reviewer, room } = videoTeam(h);
+    const ep01 = openPlan(h, room, "EP01", planSpec("EP01 动画成片"));
+    const thread = h.botDirect(director, reviewer);
+    await atWork(h, director, thread, () => h.postBot(reviewer, thread, "EP01 母带重新拼一遍", { taskId: ep01.id }));
+    const hold = h.engine.createHold({ scope: "bot_plan", scopeId: `${director.id}:${ep01.id}` });
+    h.script(director, thread).reply(say("母带接着拼"));
+
+    const go = h.postUser(h.direct(director), "继续");
+    await h.waitIdle();
+
+    expect(h.store.getHold(hold.id)).toMatchObject({ lifted_by: "user_text", lifted_message_id: go.id });
+    expect(h.turns(director).filter((row) => row.created_at > go.created_at).map(({ session_id, task_id }) => ({ session_id, task_id }))).toEqual([
+      { session_id: thread, task_id: ep01.id },
+    ]);
+  });
+
+  test("with nothing held is an ordinary line: the Bot gets it", async () => {
+    const h = await scenario();
+    const { director } = videoTeam(h);
+    const dm = h.direct(director);
+    h.script(director, dm).reply(say("好，接下来做第四镜"));
+
+    h.postUser(dm, "继续");
+    await h.waitIdle();
+
+    expect(h.turns(director).map(({ mode }) => mode)).toEqual(["work"]);
+    expect(h.messages(dm).at(-1)!.body).toBe("好，接下来做第四镜");
+  });
+
+  test("a stop on everything is lifted by a go on that names everything, as its receipt says", async () => {
+    const h = await scenario();
+    const { room } = videoTeam(h);
+    const stop = h.postUser(room, "所有Bot停下");
+    await h.routed();
+    const receipt = after(h, room, stop).find((message) => message.kind === "system")!;
+    expect(receipt.body).toContain("已停下所有 Bot 的工作");
+    expect(receipt.body).toContain("日程也暂停");
+    expect(receipt.body).toContain("说「所有 Bot 继续」就解除");
+
+    h.postUser(room, "所有 Bot 继续");
+    await h.routed();
+
+    expect(holds(h).map(({ scope, lifted_by }) => ({ scope, lifted_by }))).toEqual([{ scope: "global", lifted_by: "user_text" }]);
+  });
+
+  test("that lifts a stop on a Bot also lifts your Stop on the job it is about, and that work opens again on the same note", async () => {
+    const h = await scenario();
+    const { director } = videoTeam(h);
+    const dm = h.direct(director);
+    const plan = openPlan(h, dm, "片头", planSpec("片头动画"));
+    const turn = await atWork(h, director, dm, () => h.postUser(dm, "做片头"), [call(shell("printf a > intro.mp4"))]);
+    h.engine.stop(turn.id, { button: true });
+    h.postUser(dm, "停下你所有的工作");
+    await h.waitIdle();
+    const [pressed, said] = holds(h);
+    h.script(director, dm).reply(say("片头接着渲染"));
+
+    const go = h.postUser(dm, "继续");
+    await h.waitIdle();
+
+    expect([pressed, said].map((hold) => h.store.getHold(hold!.id).lifted_message_id)).toEqual([go.id, go.id]);
+    const [resumed] = h.turns(director).filter((row) => row.created_at > go.created_at);
+    expect(resumed).toMatchObject({ session_id: dm, task_id: plan.id });
+    const note = h.store.getMessage(resumed!.trigger_message_id);
+    expect(note).toMatchObject({ kind: "system", turn_id: turn.id });
+    expect(note.body).toContain("「继续」");
+    expect(note.body).toContain("shell printf a > intro.mp4");
+  });
+
+  test("under a hold it does not lift says so and offers the buttons, and opens nothing", async () => {
+    const h = await scenario();
+    const { director, room } = videoTeam(h);
+    h.postUser(room, "所有Bot停下");
+    await h.routed();
+    const dm = h.direct(director);
+
+    const go = h.postUser(dm, "继续");
+    await h.waitIdle();
+
+    expect(holds(h).map(({ scope, lifted_at }) => ({ scope, lifted_at }))).toEqual([{ scope: "global", lifted_at: null }]);
+    expect(h.turns(director)).toEqual([]);
+    const [answer] = after(h, dm, go);
+    expect(answer!.control).toMatchObject({ kind: "status", offer: ["continue_only", "continue_all"] });
+    expect(answer!.body).toContain("所有 Bot 的工作");
+  });
+
+  test("naming one Bot in a group stopped as a whole lifts nothing and restarts nobody: the group's stop stands, with the buttons", async () => {
+    const h = await scenario();
+    const { director, writer, room } = videoTeam(h);
+    const shooting = await atWork(h, director, room, () => h.postUser(room, "@视频导演 出第三镜"));
+    const writing = await atWork(h, writer, room, () => h.postUser(room, "@编剧分镜师 第三场改成夜景"));
+    h.postUser(room, "大家先停一下");
+    await h.routed();
+    const [group] = holds(h);
+
+    const go = h.postUser(room, "@视频导演 继续");
+    await h.waitIdle();
+
+    expect(h.store.getHold(group!.id).lifted_at).toBeNull();
+    expect(h.turns(director).map((row) => row.id)).toEqual([shooting.id]);
+    expect(h.turns(writer).map((row) => row.id)).toEqual([writing.id]);
+    const answer = after(h, room, go).find((message) => message.kind === "system")!;
+    expect(answer.control).toMatchObject({ kind: "status", hold_ids: [group!.id], offer: ["continue_only", "continue_all"] });
+    expect(answer.body).toContain("这里的工作");
+  });
+
+  test("「@X 继续」 in a group where you stopped the job lifts nothing and restarts nobody: the job's stop stands, with the buttons", async () => {
+    const h = await scenario();
+    const { director, room } = videoTeam(h);
+    const ep01 = openPlan(h, room, "EP01", planSpec("EP01 动画成片"));
+    const working = await atWork(h, director, room, () => h.postUser(room, "@视频导演 EP01 出第三镜"));
+    h.postUser(room, "这件事停一下");
+    await h.routed();
+    const [onPlan] = holds(h);
+    expect(onPlan).toMatchObject({ scope: "plan", scope_id: ep01.id });
+
+    const go = h.postUser(room, "@视频导演 继续");
+    await h.waitIdle();
+
+    expect(h.store.getHold(onPlan!.id).lifted_at).toBeNull();
+    expect(h.turns(director).map((row) => row.id)).toEqual([working.id]);
+    const answer = after(h, room, go).find((message) => message.kind === "system")!;
+    expect(answer.control).toMatchObject({ kind: "status", hold_ids: [onPlan!.id], offer: ["continue_only", "continue_all"] });
+    expect(answer.body).toContain("「EP01」这件事");
+  });
+
+  test("「@X 继续」 after 「你停下」 in a group lifts X's own stop and leaves the group's, with the buttons", async () => {
+    const h = await scenario();
+    const { director, room } = videoTeam(h);
+    const line = h.postBot(director, room, "Shot 11 交了");
+    await h.waitIdle();
+    h.postUser(room, "你停下", { parentId: line.id });
+    await h.routed();
+    const [own, group] = holds(h);
+
+    const go = h.postUser(room, "@视频导演 继续");
+    await h.waitIdle();
+
+    expect(h.store.getHold(own!.id).lifted_message_id).toBe(go.id);
+    expect(h.store.getHold(group!.id).lifted_at).toBeNull();
+    const receipt = after(h, room, go).find((message) => message.kind === "system")!;
+    expect(receipt.control).toMatchObject({ kind: "receipt", verb: "continue", hold_ids: [own!.id], offer: ["continue_only", "continue_all"] });
+    expect(receipt.body).toContain("仍在叫停中：这里的工作");
+  });
+
+  test("opens stopped work in a group inside the turn the Bot already has there, not a second one beside it", async () => {
+    const h = await scenario();
+    const { director, reviewer, writer, room } = videoTeam(h);
+    const ep01 = openPlan(h, room, "EP01", planSpec("EP01 动画成片"));
+    const ep02 = openPlan(h, h.direct(writer), "EP02", planSpec("EP02 动画成片"));
+    const stopped = await atWork(h, director, room, () => h.postBot(reviewer, room, "@视频导演 EP01 母带重新拼一遍", { taskId: ep01.id }));
+    const hold = h.engine.createHold({ scope: "plan", scopeId: ep01.id });
+    let mid = false;
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => (release = resolve));
+    h.script(director, room).reply(
+      async () => {
+        mid = true;
+        await released;
+        return call(tool("list_dir", { path: "." }));
+      },
+      say("EP02 分镜收到，EP01 母带我接着拼"),
+    );
+    h.postBot(writer, room, "@视频导演 EP02 分镜好了", { taskId: ep02.id });
+    await h.waitFor(() => mid, { what: "视频导演 to be at EP02" });
+    const working = h.store.listLiveTurns({ sessionId: room, botId: director.id })[0]!;
+
+    h.engine.liftHold(hold.id);
+    expect(h.store.listLiveTurns({ sessionId: room, botId: director.id }).map((row) => row.id)).toEqual([working.id]);
+    release();
+    await h.waitIdle();
+
+    expect(h.turns(director).map((row) => row.id)).toEqual([stopped.id, working.id]);
+    expect(h.store.getHold(hold.id).effect.resumed_turns).toEqual([working.id]);
+    const [, second] = h.hops(director).filter((hop) => hop.turnId === working.id);
+    expect(requestText(second!.request)).toContain("用户叫停了这件工作，现在解除了");
+  });
+
+  test("opens stopped work beside a read-only turn still answering you there, not inside it", async () => {
+    const h = await scenario();
+    const { director, reviewer, room } = videoTeam(h);
+    const ep01 = openPlan(h, room, "EP01", planSpec("EP01 动画成片"));
+    await atWork(h, director, room, () => h.postBot(reviewer, room, "@视频导演 EP01 母带重新拼一遍", { taskId: ep01.id }));
+    h.postUser(room, "@视频导演 停下");
+    await h.routed();
+    const [hold] = holds(h);
+    const answering = await atWork(h, director, room, () => h.postUser(room, "@视频导演 现在什么情况"));
+    expect(answering.mode).toBe("readonly");
+    h.script(director, room).reply(say("EP01 母带接着拼"));
+
+    h.postUser(room, "@视频导演 继续");
+    await h.routed();
+
+    const [resumed] = h.store.getHold(hold!.id).effect.resumed_turns!;
+    expect(resumed).not.toBe(answering.id);
+    expect(h.store.getTurn(resumed!)).toMatchObject({ session_id: room, task_id: ep01.id, mode: "work" });
+    expect(h.store.getTurn(answering.id).status).toBe("running");
+  });
+
+  test("work still under another stop is handed to one that opens it again when lifted, not to a Stop's", async () => {
+    const h = await scenario();
+    const { director, reviewer, room } = videoTeam(h);
+    const ep01 = openPlan(h, room, "EP01", planSpec("EP01 动画成片"));
+    const thread = h.botDirect(director, reviewer);
+    const turn = await atWork(h, director, thread, () => h.postBot(reviewer, thread, "EP01 母带重新拼一遍", { taskId: ep01.id }));
+    const dm = h.direct(director);
+    h.postUser(dm, "停下你所有的工作");
+    await h.routed();
+    const onPlan = h.engine.createHold({ scope: "plan", scopeId: ep01.id });
+    const likeStop = h.engine.createHold({ scope: "bot_plan", scopeId: `${director.id}:${ep01.id}`, liftOnNextUserMessage: true });
+
+    h.postUser(dm, "继续");
+    await h.routed();
+
+    expect(h.store.getHold(onPlan.id).effect.held_over!.map((row) => row.turn_id)).toEqual([turn.id]);
+    expect(h.store.getHold(likeStop.id).effect.held_over).toBeUndefined();
+    h.script(director, thread).reply(call(endTurn()));
+    h.engine.liftHold(likeStop.id);
+    h.engine.liftHold(onPlan.id);
+    await h.waitIdle();
+    expect(h.turns(director).filter((row) => row.id !== turn.id).map(({ session_id, task_id }) => ({ session_id, task_id }))).toEqual([
+      { session_id: thread, task_id: ep01.id },
+    ]);
+  });
+});
+
+describe("asking whether it stopped", () => {
+  test("「怎么还在跑？」 with nothing held answers from what runs and offers a stop", async () => {
+    const h = await scenario();
+    const { director, reviewer, room } = videoTeam(h);
+    const ep01 = openPlan(h, room, "EP01", planSpec("EP01 动画成片"));
+    const thread = h.botDirect(director, reviewer);
+    await atWork(h, director, thread, () => h.postBot(reviewer, thread, "EP01 母带重新拼一遍", { taskId: ep01.id }));
+    const dm = h.direct(director);
+
+    const ask = h.postUser(dm, "怎么还在跑？");
+    await h.routed();
+
+    expect(holds(h)).toEqual([]);
+    const [answer] = after(h, dm, ask);
+    expect(answer!.control).toMatchObject({ kind: "status", hold_ids: [], offer: ["stop"] });
+    expect(answer!.body).toContain("视频导演：没有被叫停");
+    expect(answer!.body).toContain("此刻在跑：EP01");
+    expect(h.judgeCalls().filter((row) => row.at > ask.created_at)).toEqual([]);
+  });
+
+  test.each([
+    ["「能停么」 asks whether it can stop: the answer offers the button and stops nothing", "能停么", ["stop"]],
+    ["「怎么能停」 asks about a stop: the answer offers nothing and stops nothing", "怎么能停", []],
+  ])("%s", async (_, words, offer) => {
+    const h = await scenario();
+    const { director, reviewer, room } = videoTeam(h);
+    const ep01 = openPlan(h, room, "EP01", planSpec("EP01 动画成片"));
+    const thread = h.botDirect(director, reviewer);
+    const working = await atWork(h, director, thread, () => h.postBot(reviewer, thread, "EP01 母带重新拼一遍", { taskId: ep01.id }));
+    const dm = h.direct(director);
+
+    const ask = h.postUser(dm, words);
+    await h.routed();
+
+    expect(holds(h)).toEqual([]);
+    expect(h.store.getTurn(working.id).status).toBe("running");
+    expect(h.turns(director).map((row) => row.id)).toEqual([working.id]);
+    const [answer] = after(h, dm, ask);
+    expect(answer!.control).toMatchObject({ kind: "status", hold_ids: [], offer });
+    expect(answer!.body).toContain("此刻在跑：EP01");
+  });
+
+  test("「你没停」 under a hold ends what still runs under it, records the violation and answers", async () => {
+    const h = await scenario();
+    const { director, reviewer, room } = videoTeam(h);
+    const ep01 = openPlan(h, room, "EP01", planSpec("EP01 动画成片"));
+    const thread = h.botDirect(director, reviewer);
+    const turn = await atWork(h, director, thread, () => h.postBot(reviewer, thread, "EP01 母带重新拼一遍", { taskId: ep01.id }));
+    // A hold written with nothing ending what it covers: the case the check is there for.
+    const hold = h.store.createHold({ scope: "bot", scopeId: director.id, source: "user_button" });
+    const dm = h.direct(director);
+
+    const told = h.postUser(dm, "你没停");
+    await h.routed();
+
+    expect(h.store.getTurn(turn.id).status).toBe("stopped");
+    expect(h.store.getHold(hold.id).effect.violations).toEqual([turn.id]);
+    expect(h.store.listWorkEvents({ kind: "hold.violation" }).map((row) => ({ turn: row.turn_id, hold: row.payload.hold }))).toEqual([
+      { turn: turn.id, hold: hold.id },
+    ]);
+    const [answer] = after(h, dm, told);
+    expect(answer!.body).toContain("视频导演：叫停中");
+    expect(answer!.body).toContain("刚才发现叫停下还有在跑的，已停下：EP01");
+    expect(answer!.body).toContain("此刻在跑：无");
+  });
+});
+
+describe("a status question under a stop", () => {
+  test("「还在做吗」 to a held Bot with no plan to report on gets where the stop stands, not a turn", async () => {
+    const h = await scenario();
+    const { director } = videoTeam(h);
+    const dm = h.direct(director);
+    h.postUser(dm, "停下你所有的工作");
+    await h.routed();
+
+    const ask = h.postUser(dm, "还在做吗");
+    await h.waitIdle();
+
+    expect(h.turns(director)).toEqual([]);
+    expect(h.judgeCalls().filter((row) => row.at > ask.created_at)).toEqual([]);
+    const [answer] = after(h, dm, ask);
+    expect(answer!.control).toMatchObject({ kind: "status" });
+    expect(answer!.body).toContain("视频导演：叫停中");
+  });
+
+  test("「还在做吗」 about a plan names the stops over it, after ending anything still running under one", async () => {
+    const h = await scenario();
+    const { director, reviewer, room } = videoTeam(h);
+    const ep01 = openPlan(h, room, "EP01", planSpec("EP01 动画成片"));
+    const thread = h.botDirect(director, reviewer);
+    const turn = await atWork(h, director, thread, () => h.postBot(reviewer, thread, "EP01 母带重新拼一遍", { taskId: ep01.id }));
+    const hold = h.store.createHold({ scope: "bot", scopeId: director.id, source: "user_button" });
+
+    const ask = h.postUser(room, "还在做吗");
+    await h.routed();
+
+    expect(h.store.getTurn(turn.id).status).toBe("stopped");
+    expect(h.store.getHold(hold.id).effect.violations).toEqual([turn.id]);
+    const [answer] = after(h, room, ask);
+    expect(answer!.body).toContain("这件事：EP01");
+    expect(answer!.body).toContain("叫停：视频导演的全部工作");
+    expect(answer!.body).toContain("刚才发现叫停下还有在跑的，已停下");
+    expect(answer!.body).toContain("现在没有人在做");
+  });
+});
+
+describe("a line that only might be control", () => {
+  test("goes to the Bot as usual, marked with the buttons it might have meant", async () => {
+    const h = await scenario();
+    const { director } = videoTeam(h);
+    const dm = h.direct(director);
+    h.script(director, dm).reply(say("好，第三镜换夜景"));
+
+    const line = h.postUser(dm, "先停，把第三镜换成夜景");
+    await h.waitIdle();
+
+    expect(holds(h)).toEqual([]);
+    expect(h.store.getMessage(line.id).control).toEqual({ kind: "possible_control", offer: ["stop"], scopes: [{ scope: "bot", id: director.id }] });
+    expect(h.turns(director).map(({ mode }) => mode)).toEqual(["work"]);
+  });
+
+  test("「算了」 alone stops and drops nothing: it asks which, and the Bot still gets it", async () => {
+    const h = await scenario();
+    const { director } = videoTeam(h);
+    const dm = h.direct(director);
+    h.script(director, dm).reply(say("好"));
+
+    const line = h.postUser(dm, "算了");
+    await h.waitIdle();
+
+    expect(holds(h)).toEqual([]);
+    expect(h.store.getMessage(line.id).control).toMatchObject({ kind: "possible_control", offer: ["stop", "cancel"] });
+    expect(h.turns(director)).toHaveLength(1);
+  });
+});
+
+describe("a read-only turn", () => {
+  test("opened under a hold on the Bot's work in one plan still changes nothing, and its answer wakes nobody", async () => {
+    const h = await scenario();
+    const { director, reviewer, room } = videoTeam(h);
+    const ep01 = openPlan(h, room, "EP01", planSpec("EP01 动画成片"));
+    h.engine.createHold({ scope: "bot_plan", scopeId: `${director.id}:${ep01.id}` });
+    h.script(director, room).reply(call(shell("printf x > a.txt")), say("@审片员 EP01 停着，你先别审"));
+
+    h.postUser(room, "@视频导演 EP01 现在什么情况");
+    await h.waitIdle();
+
+    // Bound to no plan, so the hold does not cover it; it is read-only all the same, and 审片员,
+    // whom the hold does not cover either, is not woken by it.
+    expect(h.turns(director).map(({ mode, task_id }) => ({ mode, task_id }))).toEqual([{ mode: "readonly", task_id: null }]);
+    expect(h.toolCalls(director, "shell").map((row) => row.result)).toEqual([{ ok: false, error: "held" }]);
+    expect(h.messages(room).at(-1)!.body).toBe("@审片员 EP01 停着，你先别审");
+    expect(h.turns(reviewer)).toEqual([]);
+  });
+
+  test("answering you in a group is not cut off by a Bot's line for that Bot: the new turn opens beside it", async () => {
+    const h = await scenario();
+    const { director, reviewer, writer, room } = videoTeam(h);
+    const ep01 = openPlan(h, room, "EP01", planSpec("EP01 动画成片"));
+    const ep02 = openPlan(h, h.direct(writer), "EP02", planSpec("EP02 动画成片"));
+    h.engine.createHold({ scope: "bot_plan", scopeId: `${director.id}:${ep01.id}` });
+    const answering = await atWork(h, director, room, () => h.postUser(room, "@视频导演 EP01 现在什么情况"));
+    expect(answering.mode).toBe("readonly");
+    h.script(director, room).reply(say("EP02 分镜收到"));
+
+    h.postBot(reviewer, room, "@视频导演 EP02 分镜请看", { taskId: ep02.id });
+    await h.waitFor(() => h.turns(director).length > 1, { what: "a turn on EP02" });
+
+    expect(h.store.getTurn(answering.id).status).toBe("running");
+    expect(h.turns(director).filter((row) => row.id !== answering.id).map(({ mode, task_id }) => ({ mode, task_id }))).toEqual([{ mode: "work", task_id: ep02.id }]);
+  });
+});
+
+describe("Stop on a turn's card", () => {
+  test("holds that Bot's work in the plan, keeps its appointment, and your next line about the plan lifts it", async () => {
+    const h = await scenario();
+    const { director } = videoTeam(h);
+    const dm = h.direct(director);
+    const plan = openPlan(h, dm, "片头", planSpec("片头动画"));
+    const turn = await atWork(h, director, dm, () => h.postUser(dm, "做片头"), [call(checkBack(30, "看片头渲染"), shell("printf a > intro.mp4"))]);
+    expect(turn.task_id).toBe(plan.id);
+
+    const stopped = h.engine.stop(turn.id, { button: true })!;
+    await h.waitIdle();
+
+    expect(stopped.status).toBe("stopped");
+    const [hold] = holds(h);
+    expect(hold).toMatchObject({ scope: "bot_plan", scope_id: `${director.id}:${plan.id}`, source: "user_button", lift_on_next_user_message: true });
+    // The appointment it made waits for the lift instead of being cancelled.
+    const booked = h.store.getCheckBack(hold!.effect.suspended_check_backs![0]!);
+    expect(booked.suspended_at).not.toBeNull();
+    const receipt = h.messages(dm).filter((message) => message.kind === "system").at(-1)!;
+    expect(receipt.body).toContain("你在这件事上再说话，它就接着往下");
+
+    h.script(director, dm).reply(say("好，换成慢速"));
+    const next = h.postUser(dm, "片头改成慢速");
+    await h.waitIdle();
+
+    expect(h.store.getHold(hold!.id)).toMatchObject({ lifted_by: "user_text", lifted_message_id: next.id });
+    expect(h.store.getCheckBack(booked.id)).toMatchObject({ suspended_at: null, voided_at: null });
+    // Your line is what it goes on from: one turn on it, no note of the app's.
+    const opened = h.turns(director).filter((row) => row.created_at > next.created_at);
+    expect(opened.map((row) => h.store.getMessage(row.trigger_message_id).id)).toEqual([next.id]);
+  });
+
+  test.each(["继续", "这件事继续"])("「%s」 after it is your next line about the job: the hold goes and the Bot goes on from it", async (words) => {
+    const h = await scenario();
+    const { director } = videoTeam(h);
+    const dm = h.direct(director);
+    openPlan(h, dm, "片头", planSpec("片头动画"));
+    const turn = await atWork(h, director, dm, () => h.postUser(dm, "做片头"));
+    h.engine.stop(turn.id, { button: true });
+    await h.waitIdle();
+    const [hold] = holds(h);
+    h.script(director, dm).reply(say("好，接着渲染片头"));
+
+    const go = h.postUser(dm, words);
+    await h.waitIdle();
+
+    expect(h.store.getHold(hold!.id)).toMatchObject({ lifted_by: "user_text", lifted_message_id: go.id });
+    const opened = h.turns(director).filter((row) => row.created_at > go.created_at);
+    expect(opened.map(({ trigger_message_id, mode }) => ({ trigger_message_id, mode }))).toEqual([{ trigger_message_id: go.id, mode: "work" }]);
+    expect(h.messages(dm).at(-1)!.body).toBe("好，接着渲染片头");
+    // Not carried out as a go on: no receipt of the app's.
+    expect(after(h, dm, go).filter((message) => message.kind === "system")).toEqual([]);
+  });
+
+  test.each([
+    ["in its direct", "继续"],
+    ["in a group", "@视频导演 继续"],
+  ])("pressed on a job in a direct between Bots, 「继续」 to that Bot %s lifts it and opens that work again on a note", async (_, words) => {
+    const h = await scenario();
+    const { director, reviewer, room } = videoTeam(h);
+    const ep01 = openPlan(h, h.direct(reviewer), "EP01", planSpec("EP01 动画成片"));
+    const thread = h.botDirect(director, reviewer);
+    const turn = await atWork(h, director, thread, () => h.postBot(reviewer, thread, "EP01 母带重新拼一遍", { taskId: ep01.id }), [
+      call(shell("printf cut > EP01_MASTER.mp4")),
+    ]);
+    h.engine.stop(turn.id, { button: true });
+    await h.waitIdle();
+    const [hold] = holds(h);
+    h.script(director, thread).reply(say("母带接着拼"));
+    const where = words === "继续" ? h.direct(director) : room;
+
+    const go = h.postUser(where, words);
+    await h.waitIdle();
+
+    expect(h.store.getHold(hold!.id)).toMatchObject({ lifted_by: "user_text", lifted_message_id: go.id });
+    // The work opens again where it was, on the note with your words; nothing opens on the line itself.
+    const opened = h.turns(director).filter((row) => row.created_at > go.created_at);
+    expect(opened.map(({ session_id, task_id, mode }) => ({ session_id, task_id, mode }))).toEqual([{ session_id: thread, task_id: ep01.id, mode: "work" }]);
+    const note = h.store.getMessage(opened[0]!.trigger_message_id);
+    expect(note).toMatchObject({ kind: "system", turn_id: turn.id });
+    expect(note.body).toContain(`「${words}」`);
+    expect(note.body).toContain("shell printf cut > EP01_MASTER.mp4");
+    const receipt = after(h, where, go).find((message) => message.kind === "system")!;
+    expect(receipt.control).toMatchObject({ kind: "receipt", verb: "continue", hold_ids: [hold!.id], offer: [] });
+  });
+
+  test.each([
+    ["in the room", "所有Bot继续"],
+    ["in its direct", "所有Bot继续"],
+    ["in the room", "全都继续"],
+  ])("pressed on a job in a direct between Bots, a go on that names everything %s (「%s」) lifts it and opens that work again on a note", async (place, words) => {
+    const h = await scenario();
+    const { director, reviewer, writer, room } = videoTeam(h);
+    const ep01 = openPlan(h, h.direct(reviewer), "EP01", planSpec("EP01 动画成片"));
+    const thread = h.botDirect(director, reviewer);
+    const turn = await atWork(h, director, thread, () => h.postBot(reviewer, thread, "EP01 母带重新拼一遍", { taskId: ep01.id }), [
+      call(shell("printf cut > EP01_MASTER.mp4")),
+    ]);
+    h.engine.stop(turn.id, { button: true });
+    await h.waitIdle();
+    const [hold] = holds(h);
+    h.script(director, thread).reply(say("母带接着拼"));
+    const where = place === "in the room" ? room : h.direct(director);
+
+    const go = h.postUser(where, words);
+    await h.waitIdle();
+
+    expect(h.store.getHold(hold!.id)).toMatchObject({ lifted_by: "user_text", lifted_message_id: go.id });
+    // The work opens again where it was, on the note with your words; nothing opens on the line itself.
+    const opened = h.turns(director).filter((row) => row.created_at > go.created_at);
+    expect(opened.map(({ session_id, task_id, mode }) => ({ session_id, task_id, mode }))).toEqual([{ session_id: thread, task_id: ep01.id, mode: "work" }]);
+    expect([director, reviewer, writer].flatMap((bot) => h.turns(bot)).filter((row) => row.trigger_message_id === go.id)).toEqual([]);
+    const note = h.store.getMessage(opened[0]!.trigger_message_id);
+    expect(note).toMatchObject({ kind: "system", turn_id: turn.id });
+    expect(note.body).toContain(`「${words}」`);
+    expect(note.body).toContain("shell printf cut > EP01_MASTER.mp4");
+    const receipt = after(h, where, go).find((message) => message.kind === "system")!;
+    expect(receipt.control).toMatchObject({ kind: "receipt", verb: "continue", hold_ids: [hold!.id], offer: [] });
+  });
+
+  test("「@X 继续」 lifts and opens again X's Stops only, not another Bot's on the plan the line lands on", async () => {
+    const h = await scenario();
+    const { director, reviewer, writer, room } = videoTeam(h);
+    const ep01 = openPlan(h, room, "EP01", planSpec("EP01 动画成片"));
+    const ep02 = openPlan(h, h.direct(writer), "EP02", planSpec("EP02 动画成片"));
+    const reviewing = h.botDirect(reviewer, writer);
+    const review = await atWork(h, reviewer, reviewing, () => h.postBot(writer, reviewing, "EP01 第三镜审一下", { taskId: ep01.id }));
+    const thread = h.botDirect(director, writer);
+    const cut = await atWork(h, director, thread, () => h.postBot(writer, thread, "EP02 母带重新拼一遍", { taskId: ep02.id }), [
+      call(shell("printf cut > EP02_MASTER.mp4")),
+    ]);
+    h.engine.stop(review.id, { button: true });
+    h.engine.stop(cut.id, { button: true });
+    await h.waitIdle();
+    const [onReview, onCut] = holds(h);
+    expect([onReview!.scope_id, onCut!.scope_id]).toEqual([`${reviewer.id}:${ep01.id}`, `${director.id}:${ep02.id}`]);
+    h.script(director, thread).reply(say("EP02 母带接着拼"));
+
+    const go = h.postUser(room, "@视频导演 继续");
+    await h.waitIdle();
+
+    expect(h.store.getHold(onCut!.id)).toMatchObject({ lifted_by: "user_text", lifted_message_id: go.id });
+    expect(h.store.getHold(onReview!.id).lifted_at).toBeNull();
+    // 视频导演's work opens again where it was; 审片员 stays stopped until you speak to it about EP01.
+    expect(h.turns(director).filter((row) => row.created_at > go.created_at).map(({ session_id, task_id }) => ({ session_id, task_id }))).toEqual([
+      { session_id: thread, task_id: ep02.id },
+    ]);
+    expect(h.turns(reviewer).filter((row) => row.created_at > go.created_at)).toEqual([]);
+    const receipt = after(h, room, go).find((message) => message.kind === "system")!;
+    expect(receipt.control).toMatchObject({ kind: "receipt", verb: "continue", hold_ids: [onCut!.id] });
+  });
+
+  test("a line you sent just before pressing it, still being filed when it landed, does not lift it", async () => {
+    const h = await scenario();
+    const { director } = videoTeam(h);
+    const dm = h.direct(director);
+    openPlan(h, dm, "片头", planSpec("片头动画"));
+    const turn = await atWork(h, director, dm, () => h.postUser(dm, "做片头"));
+    let filing = false;
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => (release = resolve));
+    h.judge("organizer", { session: dm }).reply(async () => {
+      filing = true;
+      await released;
+      return "";
+    });
+    h.script(director, dm).reply(say("片头停着，标题等你说了再加"));
+    const earlier = h.postUser(dm, "片头加个标题");
+    await h.waitFor(() => filing, { what: "the line to be filing" });
+
+    h.engine.stop(turn.id, { button: true });
+    release();
+    await h.waitIdle();
+
+    const [hold] = holds(h);
+    expect(hold!.lifted_at).toBeNull();
+    // It still gets an answer, from a turn the Stop leaves read-only.
+    expect(h.turns(director).filter((row) => row.trigger_message_id === earlier.id).map(({ mode }) => mode)).toEqual(["readonly"]);
+  });
+
+  test("refuses a turn already over and a group's turn, as before holds, and makes no hold for either", async () => {
+    const h = await scenario();
+    const { director, room } = videoTeam(h);
+    const dm = h.direct(director);
+    h.script(director, dm).reply(say("好"));
+    h.postUser(dm, "做片头");
+    await h.waitIdle();
+    const [done] = h.turns(director);
+    const inRoom = await atWork(h, director, room, () => h.postUser(room, "@视频导演 做片尾"));
+
+    expect(() => h.engine.stop(done!.id, { button: true })).toThrow("turn is not in progress");
+    expect(() => h.engine.stop(inRoom.id, { button: true })).toThrow("group turns cannot be stopped");
+    expect(holds(h)).toEqual([]);
+  });
+
+  test("before holds are on, only ends the turn and cancels its appointment", async () => {
+    const h = await scenario({});
+    const { director } = videoTeam(h);
+    const dm = h.direct(director);
+    const turn = await atWork(h, director, dm, () => h.postUser(dm, "做片头"), [call(checkBack(30, "看片头渲染"))]);
+
+    h.engine.stop(turn.id, { button: true });
+    await h.waitIdle();
+
+    expect(holds(h)).toEqual([]);
+    expect(h.store.pendingCheckBack(director.id, dm)).toBeNull();
+  });
+});
+
+describe("a hold from the menu", () => {
+  test("ends what it covers, and lifting it opens that work again", async () => {
+    const h = await scenario();
+    const { director, reviewer, room } = videoTeam(h);
+    const ep01 = openPlan(h, room, "EP01", planSpec("EP01 动画成片"));
+    const thread = h.botDirect(director, reviewer);
+    const turn = await atWork(h, director, thread, () => h.postBot(reviewer, thread, "EP01 母带重新拼一遍", { taskId: ep01.id }));
+
+    const hold = h.engine.createHold({ scope: "plan", scopeId: ep01.id });
+
+    expect(h.store.getTurn(turn.id).status).toBe("stopped");
+    expect(hold.effect.stopped_turns!.map((row) => row.turn_id)).toEqual([turn.id]);
+    expect(hold.effect.parked_plans).toEqual([{ task_id: ep01.id, prior: "active" }]);
+
+    h.script(director, thread).reply(call(endTurn()));
+    h.engine.liftHold(hold.id);
+    await h.waitIdle();
+
+    expect(h.store.getTask(ep01.id).status).toBe("active");
+    const resumed = h.turns(director).filter((row) => row.id !== turn.id);
+    expect(resumed.map(({ session_id, task_id }) => ({ session_id, task_id }))).toEqual([{ session_id: thread, task_id: ep01.id }]);
+    expect(h.store.getMessage(resumed[0]!.trigger_message_id).body).toContain("用户叫停了这件工作，现在解除了。");
+  });
+
+  test("a plan parked from the board ends the turns working in it", async () => {
+    const h = await scenario();
+    const { director, reviewer, room } = videoTeam(h);
+    const ep01 = openPlan(h, room, "EP01", planSpec("EP01 动画成片"));
+    const thread = h.botDirect(director, reviewer);
+    const turn = await atWork(h, director, thread, () => h.postBot(reviewer, thread, "EP01 母带重新拼一遍", { taskId: ep01.id }));
+
+    h.store.setPlanSpecByUser(ep01.id, planSpec("EP01 动画成片", { status: "parked" }));
+    h.engine.enforceHolds();
+
+    expect(h.store.getTurn(turn.id).status).toBe("stopped");
+    expect(holds(h)[0]!.effect.stopped_turns!.map((row) => row.turn_id)).toEqual([turn.id]);
+  });
+});

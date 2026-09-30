@@ -68,6 +68,7 @@ export const TERM_GROUPS: Record<ManifestoTopic, readonly string[]> = {
     'Ask',
     'Stop',
     'Hold',
+    'Control line',
     'Status question',
     'Plan',
     'Ticket',

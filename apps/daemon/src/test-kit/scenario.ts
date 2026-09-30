@@ -307,6 +307,11 @@ export type ScenarioOptions = {
   ablation?: Ablation;
   /** Keeps the store in a file instead of memory, so `restart()` can boot a second engine on it. */
   durable?: boolean;
+  /**
+   * Takes the engine level up to holds (ADR 0040 P2), as a daemon does at boot once no installed
+   * app older than the version gate shares its database; a store starts below it.
+   */
+  holds?: boolean;
 };
 
 export type Scenario = {
@@ -469,6 +474,7 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
     endpoint_default_model: "scenario",
     ...(options.locale ? { locale: options.locale } : {}),
   });
+  if (options.holds) store.raiseEngineLevel(null);
 
   // The Mac never sleeps in a scenario; a shell's timeout still has to fire, so it keeps real time.
   const wake: WakeWatch = {

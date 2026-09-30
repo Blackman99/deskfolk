@@ -949,7 +949,7 @@ function dispatch(
         "SELECT t.status, s.kind FROM turns t JOIN sessions s ON s.id = t.session_id WHERE t.id = ?").get(body.turn_id);
       if (!current || (current.kind === "direct" && !["running", "waiting_approval", "waiting_ask"].includes(current.status))) return emptyResponse(204, null);
     }
-    const turn = engine.stop(body.turn_id);
+    const turn = engine.stop(body.turn_id, { button: true });
     if (!turn) return emptyResponse(204, null);
     return jsonResponse(turn, 200, null);
   }
@@ -1351,6 +1351,8 @@ function dispatch(
   if (params && method === "PATCH") {
     const body = (input.body ?? {}) as PatchTaskSpecRequest;
     const { task } = store.setPlanSpecByUser(params.id!, body.spec, body.if_revision);
+    // Parking a plan here is a hold on it (ADR 0040): what runs in it ends as with any other.
+    engine.enforceHolds();
     engine.renderPlanMirrors(task.id);
     return jsonResponse(store.taskDetail(task.id, store.citedPathExists), 200, null);
   }
@@ -1417,8 +1419,8 @@ function dispatch(
   }
 
   // Holds (叫停, ADR 0040): a stop you make from a button or a menu, and your lift of one. These
-  // write the stop down, with the plans it parks and the check-backs it sets aside; a turn already
-  // running is not ended here.
+  // write the stop down, with the plans it parks and the check-backs it sets aside, and end the
+  // turns it covers; a lift opens again the work the hold ended.
   if (method === "GET" && path === "/v1/holds") {
     const status = url.searchParams.get("status") ?? "active";
     if (status !== "active" && status !== "all") throw new HttpError(422, "invalid_args", "status must be active or all");
@@ -1426,19 +1428,18 @@ function dispatch(
   }
   if (method === "POST" && path === "/v1/holds") {
     const body = (input.body ?? {}) as Partial<CreateHoldRequest>;
-    const hold = store.createHold({
+    const hold = engine.createHold({
       scope: body.scope,
       scopeId: body.scope_id,
       action: body.action,
       cascade: body.cascade,
       liftOnNextUserMessage: body.lift_on_next_user_message,
-      source: "user_button",
     });
     return jsonResponse(hold, 201, null);
   }
   params = matchPath(path, "/v1/holds/:id/lift");
   if (params && method === "POST") {
-    return jsonResponse(store.liftHold(params.id!, { by: "user_button" }), 200, null);
+    return jsonResponse(engine.liftHold(params.id!), 200, null);
   }
   params = matchPath(path, "/v1/holds/:id");
   if (params && method === "GET") {

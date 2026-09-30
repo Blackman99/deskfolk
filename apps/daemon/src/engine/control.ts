@@ -22,6 +22,7 @@ import type { Store } from "../store";
  *   calling its opener back, the app calling a quiet plan's Bot back.
  * - `routine`: a routine's schedule.
  * - `continue`: your Continue on an interrupted turn.
+ * - `resume`: work a stop of yours ended, going on once you lift it (engine/stop.ts).
  */
 export type WakeCause =
   | "user_line"
@@ -32,7 +33,8 @@ export type WakeCause =
   | "report_back"
   | "plan_nudge"
   | "routine"
-  | "continue";
+  | "continue"
+  | "resume";
 
 export type Wake = {
   cause: WakeCause;
@@ -119,11 +121,16 @@ export const HELD_CALL = "The user stopped this work: calls that change anything
 
 /**
  * I3: whether a turn may make a call with an effect now. A hold over the turn — its Bot, its
- * conversation, its plan or ticket, or the turn itself — says no; a read-only turn a hold let open
- * is covered by that hold like any other, so it can only read. I3's other half, the work still
- * being this turn's to do, needs work items and comes with them (ADR 0040 P4b).
+ * conversation, its plan or ticket, or the turn itself — says no; a read-only turn never may, held
+ * or not: it is bound to no plan, so the hold that let it open need not cover it. I3's other half,
+ * the work still being this turn's to do, needs work items and comes with them (ADR 0040 P4b).
  */
 export function mayAct(store: Store, turnId: string): boolean {
+  try {
+    if (store.getTurn(turnId).mode === "readonly") return false;
+  } catch {
+    // a turn that is gone is held by nothing; the call's own checks turn it away
+  }
   return store.turnHeldBy(turnId).length === 0;
 }
 

@@ -2,6 +2,7 @@ import {
   USER_MEMBER,
   type ClientEvent,
   type ComposerSuggestion,
+  type Hold,
   type Message,
   type PendingJudgement,
   type Turn,
@@ -24,6 +25,7 @@ import { createPlanWatch } from "./engine/plan-watch";
 import { createRouting } from "./engine/routing";
 import { createSpend } from "./engine/spend";
 import { createStatusQuestion } from "./engine/status-question";
+import { createStop, type HoldRequest } from "./engine/stop";
 import { createTools } from "./engine/tools";
 import { HttpError } from "./errors";
 import { isoNow } from "./ids";
@@ -62,7 +64,19 @@ export type TurnEngine = {
     scope?: string,
     apiKey?: string,
   ) => unknown;
-  stop: (turnId?: string, opts?: { allowGroup?: boolean }) => Turn | null;
+  /**
+   * Ends a live turn. `button`: your Stop on its card, which from the engine level that brings holds
+   * is a hold on this Bot's work in the plan that your next line about it lifts (ADR 0040 P2), so
+   * the Bot goes on from what you say; without it — a conversation cleared, deleted or archived —
+   * the turn only ends.
+   */
+  stop: (turnId?: string, opts?: { allowGroup?: boolean; button?: boolean }) => Turn | null;
+  /** `POST /v1/holds`: a stop of yours from a button or a menu, and the live turns it covers ended. */
+  createHold: (input: HoldRequest) => Hold;
+  /** `POST /v1/holds/:id/lift`: your lift, and the work the hold ended opened again. */
+  liftHold: (id: string) => Hold;
+  /** Ends every live turn a hold covers, after a write that may have made one (a plan parked on the board). */
+  enforceHolds: () => void;
   continueFromInterrupt: (messageId: string) => Turn;
   abortAll: () => void;
   /** Includes interrupted runners and approved effects that have not settled yet. */
@@ -308,6 +322,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     store,
     publishMessage: core.publishMessage,
     admission: options.admission,
+    // Late-bound: `stops` is built after lifecycle; a status question only arrives once it is.
+    heldLines: (taskId) => stops.heldLines(taskId),
   });
 
   const lifecycle = createLifecycle({
@@ -346,6 +362,18 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     completeSilent: closing.completeSilent,
     observeTicket: planWatch.observeTicket,
     handleParticipation: participation.handleParticipation,
+  });
+
+  const stops = createStop({
+    store,
+    publishMessage: core.publishMessage,
+    publishTurn: core.publishTurn,
+    admission: options.admission,
+    lives: core.lives,
+    executionOf: lifecycle.executionOf,
+    abortLive: lifecycle.abortLive,
+    startTurn: lifecycle.startTurn,
+    hearOrStart: lifecycle.hearOrStart,
   });
 
   /**
@@ -394,6 +422,10 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       // redirect a turn over it. The message is already stored and published; this only decides
       // what happens next.
       if (fromUser && statusQuestion.handle(message)) return;
+      // 控制句: a line that is only a stop or a go on is carried out here and goes nowhere else — no
+      // filing, no turn, no model call (ADR 0040 P2). A line that only might be one is marked with
+      // the buttons and goes on below like any other.
+      if (fromUser && stops.handleLine(message)) return;
       // Filing takes a model call, and the Bots it holds back show as thinking under the message
       // meanwhile, in the transcript and the list alike. Each row gives way once its turn or
       // judgement has started, so the Bot never blinks out in between.
@@ -421,6 +453,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
           } catch {
             filed = message;
           }
+          // A Stop you pressed on this job goes once you say something more about it, before the
+          // line wakes anyone: what you say next is what the Bot goes on from.
+          stops.liftOnYourLine(filed);
           // The job's turns in other sessions hear it before any turn opens here, so the one that
           // opens can be told they already have it.
           lifecycle.hearAcross(filed);
@@ -531,8 +566,14 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       return answered;
     },
     stop(turnId, opts) {
+      // Your Stop names its turn, or it is the latest one live (the menu bar's, with no window open).
+      const pressed = opts?.button ? (turnId ?? store.latestStoppableTurn({ allowGroup: opts.allowGroup })) : null;
+      if (pressed) {
+        const held = stops.stopByButton(pressed, { allowGroup: opts?.allowGroup });
+        if (held) return held;
+      }
       const turn = store.stopTurn(turnId, {
-        ...opts,
+        allowGroup: opts?.allowGroup,
         execution: turnId ? lifecycle.executionOf(core.lives.get(turnId)) : null,
       });
       if (turn) {
@@ -541,6 +582,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       }
       return turn;
     },
+    createHold: stops.hold,
+    liftHold: stops.lift,
+    enforceHolds: stops.enforce,
     continueFromInterrupt: lifecycle.continueFromInterrupt,
     abortAll() {
       chains.clearTimers();

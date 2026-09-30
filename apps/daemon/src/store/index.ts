@@ -479,6 +479,7 @@ export class Store {
   readonly assertUserMayPost = this.bind(messages.assertUserMayPost);
   readonly insertMessage = this.bind(messages.insertMessage);
   readonly getMessage = this.bind(messages.getMessage);
+  readonly setMessageControl = this.bind(messages.setMessageControl);
   readonly recordAskAnswer = this.bind(messages.recordAskAnswer);
   readonly listMainMessages = this.bind(messages.listMainMessages);
   readonly listThreadMessages = this.bind(messages.listThreadMessages);
@@ -499,6 +500,7 @@ export class Store {
   readonly setTurnPartial = this.bind(turns.setTurnPartial);
   readonly redirectTurn = this.bind(turns.redirectTurn);
   readonly stopTurn = this.bind(turns.stopTurn);
+  readonly latestStoppableTurn = this.bind(turns.latestStoppableTurn);
   readonly interruptRunningTurns = this.bind(turns.interruptRunningTurns);
   readonly interruptTurnRecord = this.bind(turns.interruptTurnRecord);
   readonly voidPendingTurnActions = this.bind(turns.voidPendingTurnActions);

@@ -35,12 +35,12 @@ import { heardNote, recentToolCalls, redirectCarryNote, type HeardItem } from ".
 import type { WakeWatch } from "../wake";
 import type { Chains } from "./chains";
 import type { Closing } from "./closing";
-import { mayWake, wakeOn, type WakeCause } from "./control";
+import { heldWake, mayWake, wakeOn, type WakeCause } from "./control";
 import type { Participation } from "./participation";
 import type { PlanWatch } from "./plan-watch";
 import type { Routing } from "./routing";
 import type { SpendTracker } from "./spend";
-import type { Tools } from "./tools";
+import { readOnlyTools, type Tools } from "./tools";
 import type { InboxEntry, Live } from "./types";
 
 export type LifecycleDeps = {
@@ -178,15 +178,24 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     },
   ): Turn | null {
     admission?.assertNew();
-    // Before a live turn is redirected for it: a wake a hold turns away changes nothing.
-    if (!mayWake(store, wakeOn(store, opts.cause, { sessionId, botId, trigger, taskId: opts.taskId, ticketId: opts.ticketId }))) {
-      return null;
+    const wake = wakeOn(store, opts.cause, { sessionId, botId, trigger, taskId: opts.taskId, ticketId: opts.ticketId });
+    // Your line to a Bot a hold covers still gets an answer: a read-only turn beside whatever it
+    // was doing, which can read and reply and nothing else (ADR 0040 I2's one exemption).
+    if (opts.cause === "user_line" && trigger.kind === "user" && heldWake(store, wake).length > 0) {
+      const readOnly = store.createTurn({ sessionId, botId, triggerMessageId: trigger.id, mode: "readonly" });
+      attachLive(readOnly);
+      return readOnly;
     }
+    // Before a live turn is redirected for it: a wake a hold turns away changes nothing.
+    if (!mayWake(store, wake)) return null;
     let carry: { written: string[]; recent: string[]; unread: HeardItem[]; previous: PlanRef | null } | null = null;
     if (mode === "redirect") {
       // A turn a hold covers is left to the hold, and the new one opens beside it: redirecting it
       // would carry its work, and lines the hold kept from it, into a turn the hold does not cover.
-      const livesForBot = store.listLiveTurns({ sessionId, botId }).filter((row) => store.turnHeldBy(row.id).length === 0);
+      // A read-only turn answering you is left to finish its answer, beside the new one.
+      const livesForBot = store
+        .listLiveTurns({ sessionId, botId })
+        .filter((row) => row.mode !== "readonly" && store.turnHeldBy(row.id).length === 0);
       let sessionKind: string | null = null;
       try {
         sessionKind = store.getSession(sessionId).kind;
@@ -263,8 +272,9 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       const live = lives.get(current.id);
       if (!live || live.abort.signal.aborted) continue;
       // A held turn hears nothing new, not even about work beside the hold: it could not act on the
-      // line, and the line would be spent there instead of opening a turn that can.
-      if (store.turnHeldBy(current.id).length > 0) continue;
+      // line, and the line would be spent there instead of opening a turn that can. Nor does a
+      // read-only turn answering you, which can act on nothing.
+      if (current.mode === "readonly" || store.turnHeldBy(current.id).length > 0) continue;
       const tag = planTagger(
         store,
         { taskId: current.task_id ?? null, ticketId: current.ticket_id ?? null },
@@ -623,7 +633,9 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
         loop: live.loop,
         mcpGuides: listed.guides,
       });
-      const tools = pace === "last" ? [] : [...builtinTools(target.locale), ...listed.tools];
+      const offered = pace === "last" ? [] : [...builtinTools(target.locale), ...listed.tools];
+      // A read-only turn is not shown what it may not call (ADR 0040 I3); the gate refuses them anyway.
+      const tools = current.mode === "readonly" ? readOnlyTools(offered, listed.guides) : offered;
       live.toolNames = new Set(tools.map((tool) => tool.function.name));
       live.mcpTools = new Map(listed.guides.flatMap((guide) =>
         guide.tools.map((tool) => [tool.modelName, { server: guide.name, tool: tool.toolName ?? tool.modelName, readOnly: tool.readOnly === true }] as const)));
@@ -778,8 +790,9 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       lives.delete(turnId);
       publishTurn(completed, null);
       // A closing reply goes out the way send_message would: in a group it wakes whoever it
-      // names, in a Bot↔Bot direct the other Bot. A you↔Bot direct has no one else to wake.
-      if (message && !live.parentId) {
+      // names, in a Bot↔Bot direct the other Bot. A you↔Bot direct has no one else to wake. A
+      // read-only turn's answer is for you and wakes nobody (ADR 0040 I2's exemption goes no further).
+      if (message && !live.parentId && current.mode !== "readonly") {
         void track(handleParticipation(message, { fromUser: false }));
       }
       return;

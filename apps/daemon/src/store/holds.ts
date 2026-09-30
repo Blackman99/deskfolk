@@ -447,9 +447,9 @@ export function holdPlansLeavingSession(ctx: StoreContext, sessionId: string, no
  * covers is parked and set aside again, in case a write between missed it. Returns the plans taken
  * over and the ones parked again.
  *
- * Until a stop you say makes a hold itself (a later step of ADR 0040 P2), a plan the organizer
- * parks after a stop line is only parked, and becomes a hold at the next boot: before that a
- * resume can still put it back in progress, after it only you can.
+ * A stop you say makes a hold itself (engine/stop.ts). A plan the organizer still parks on a line
+ * that only reads like one is only parked, and becomes a hold at the next boot: before that a resume
+ * can still put it back in progress, after it only you can.
  */
 export function reconcileHolds(ctx: StoreContext, now: string = isoNow()): { imported: string[]; reparked: string[] } {
   if (readEngineLevel(ctx.db) < ENGINE_LEVELS.holds) return { imported: [], reparked: [] };
@@ -519,7 +519,7 @@ export function forgetHoldLines(ctx: StoreContext, sessionId: string): void {
 
 /**
  * Adds to what a hold changed. Lists grow; a plan's way back replaces the one noted before it.
- * Exported for the stop sequence, which adds the turns it ended.
+ * The stop sequence (engine/stop.ts) adds the turns it ended and what it found beside them.
  */
 export function addEffect(ctx: StoreContext, id: string, patch: HoldEffect): void {
   const effect = getHold(ctx, id).effect as Record<string, unknown>;

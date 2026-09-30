@@ -227,6 +227,7 @@ export function migrateSchema(db: Database): void {
   migrateAcceptanceCheckKinds(db);
   migrateAnnotations(db);
   migrateAskChoices(db);
+  migrateMessageControl(db);
   if (!tables.includes("terminals")) {
     db.run(`
       CREATE TABLE IF NOT EXISTS terminals (
@@ -889,6 +890,15 @@ function migrateAskChoices(db: Database): void {
   const cols = db.query<{ name: string }, []>("PRAGMA table_info(messages)").all().map((row) => row.name);
   if (!cols.includes("ask_spec")) db.run("ALTER TABLE messages ADD COLUMN ask_spec TEXT");
   if (!cols.includes("ask_answer")) db.run("ALTER TABLE messages ADD COLUMN ask_answer TEXT");
+}
+
+/**
+ * What the app made of your stops on a line (`MessageControl`, ADR 0040 P2): the hint on a line of
+ * yours it did not act on, the receipt or status answer it wrote itself. Null on every other line.
+ */
+function migrateMessageControl(db: Database): void {
+  const cols = db.query<{ name: string }, []>("PRAGMA table_info(messages)").all().map((row) => row.name);
+  if (!cols.includes("control")) db.run("ALTER TABLE messages ADD COLUMN control TEXT");
 }
 
 function migrateBotThinkingPins(db: Database): void {

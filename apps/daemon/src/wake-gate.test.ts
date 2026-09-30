@@ -4,8 +4,8 @@
  * nothing is heard, anything booked is set aside for the lift, and the work log has a
  * `wake.suppressed` row naming the cause and the hold. The paths, and where each one wakes a Bot:
  *
- * 1. your line in a direct: the other side (participation, startTurn)
- * 2. your line in a group: the Bots it names, and the ones that would judge it (participation)
+ * 1. your line in a direct: the other side (participation, startTurn) — it opens a read-only turn instead
+ * 2. your line in a group: the Bots it names (a read-only turn each), and the ones that would judge it (participation)
  * 3. a Bot's line in a Bot↔Bot direct or naming a Bot in a group (participation, hearOrStart)
  * 4. a held Bot's own line, waking somebody else (the same, through the line's author)
  * 5. a Bot's line for a Bot at work there, heard in its live turn (hearOrStart)
@@ -17,7 +17,9 @@
  * 11. a routine's schedule (scheduler → fireRoutine)
  * 12. Continue on an interrupted turn (continueFromInterrupt)
  *
- * A status question wakes nobody at all, held or not (ADR 0040 P1), so it has no row here.
+ * A status question wakes nobody at all, held or not (ADR 0040 P1), so it has no row here. Your
+ * own line to a held Bot is not turned away but answered: it opens a read-only turn, which can read
+ * and reply and nothing else (I2's one exemption), so it has no row either.
  */
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { join } from "node:path";
@@ -69,21 +71,30 @@ async function midHop(h: Scenario, bot: { id: string }, session: string, then: C
 }
 
 describe("a hold turns every wake away, and says so in the work log", () => {
-  test("1. your line in a held Bot's direct opens no turn", async () => {
+  test("1. your line in a held Bot's direct opens only a read-only turn: it reads and answers, and does nothing else", async () => {
     const h = await scenario();
     const { director } = videoTeam(h);
     const dm = h.direct(director);
-    const stop = hold(h, "bot", director.id);
+    hold(h, "bot", director.id);
+    h.script(director, dm).reply(call(shell("ls"), tool("list_dir", { path: "." })), say("停着呢，恢复后换夜景"));
 
     h.postUser(dm, "第三镜换成夜景");
     await h.waitIdle();
 
-    expect(h.turns(director)).toEqual([]);
-    expect(h.hops(director)).toEqual([]);
-    expect(suppressed(h, director)).toEqual([{ cause: "user_line", holds: [stop.id] }]);
+    expect(h.turns(director).map(({ mode, status }) => ({ mode, status }))).toEqual([{ mode: "readonly", status: "completed" }]);
+    // It is shown only what changes nothing, and told why; what it calls anyway is refused.
+    const offered = (h.hops(director)[0]!.request.tools as Array<{ function: { name: string } }>).map((row) => row.function.name);
+    expect(offered).toContain("list_dir");
+    expect(offered).not.toContain("shell");
+    expect(offered).not.toContain("send_message");
+    expect(requestText(h.hops(director)[0]!.request)).toContain("这一段只能回答");
+    expect(h.sideEffectCalls(director)).toEqual([]);
+    expect(h.toolCalls(director, "shell").map((row) => row.result)).toEqual([{ ok: false, error: "held" }]);
+    expect(h.messages(dm).at(-1)!.body).toBe("停着呢，恢复后换夜景");
+    expect(suppressed(h, director)).toEqual([]);
   });
 
-  test("2. your line in a group opens nothing for a held Bot it names, nor asks a held Bot to judge it", async () => {
+  test("2. your line in a group opens only a read-only turn for a held Bot it names, and a held Bot is not asked to judge it", async () => {
     const h = await scenario();
     const { director, reviewer, writer, room } = videoTeam(h);
     const stop = hold(h, "bot", director.id);
@@ -93,13 +104,10 @@ describe("a hold turns every wake away, and says so in the work log", () => {
     h.postUser(room, "大家看看第三镜");
     await h.waitIdle();
 
-    expect(h.turns(director)).toEqual([]);
+    expect(h.turns(director).map(({ mode }) => mode)).toEqual(["readonly"]);
     // The others were asked whether the second line was theirs; the held one was not.
     expect(h.judgeCalls("judgement").map((row) => row.botId).sort()).toEqual([reviewer.id, writer.id].sort());
-    expect(suppressed(h, director)).toEqual([
-      { cause: "user_line", holds: [stop.id] },
-      { cause: "user_line", holds: [stop.id] },
-    ]);
+    expect(suppressed(h, director)).toEqual([{ cause: "user_line", holds: [stop.id] }]);
   });
 
   test("3. a Bot's line in a Bot↔Bot direct, or naming a held Bot in a group, opens no turn", async () => {
@@ -180,12 +188,16 @@ describe("a hold turns every wake away, and says so in the work log", () => {
     await h.waitIdle();
 
     expect(h.store.getMessage(line.id).task_id).toBe(ep01.id);
-    expect(h.turns(director).map((turn) => turn.id)).toEqual([threadTurn!.id]);
-    expect(requestText(h.hops(director)[1]!.request)).not.toContain(HEARD);
-    expect(requestText(h.hops(director)[1]!.request)).not.toContain("片尾字幕换成白色");
+    // In your direct the line is answered by a read-only turn; the working one never hears it.
+    expect(h.turns(director).map(({ id, mode }) => ({ id, mode }))).toEqual([
+      { id: threadTurn!.id, mode: "work" },
+      { id: expect.any(String), mode: "readonly" },
+    ]);
+    const second = h.hops(director).filter((hop) => hop.turnId === threadTurn!.id)[1]!;
+    expect(requestText(second.request)).not.toContain(HEARD);
+    expect(requestText(second.request)).not.toContain("片尾字幕换成白色");
     expect(h.suppressedWakes(director).map((row) => ({ cause: row.payload.cause, turn: row.turn_id, holds: row.payload.holds }))).toEqual([
       { cause: "heard_across", turn: threadTurn!.id, holds: [stop.id] },
-      { cause: "user_line", turn: null, holds: [stop.id] },
     ]);
   });
 

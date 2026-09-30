@@ -250,7 +250,10 @@ CREATE TABLE IF NOT EXISTS messages (
   task_id TEXT REFERENCES tasks (id),
   ticket_id TEXT REFERENCES tickets (id),
   message_seq INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  -- JSON MessageControl (ADR 0040 P2): what the app made of your stops on this line — the buttons
+  -- on a line of yours it did not act on, or its own receipt or status answer. Null on every other line.
+  control TEXT
 );
 
 CREATE TABLE IF NOT EXISTS attachments (

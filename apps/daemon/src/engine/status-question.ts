@@ -33,6 +33,11 @@ export type StatusQuestionDeps = {
   store: Store;
   publishMessage: (message: Message) => void;
   admission?: TurnAdmission;
+  /**
+   * Your stops over the plan and its Bots, as lines for the answer, once anything still running
+   * under one has been ended (engine/stop.ts; ADR 0040 P2). Absent, the answer names none.
+   */
+  heldLines?: (taskId: string) => string[];
 };
 
 export type StatusQuestionEngine = {
@@ -52,7 +57,7 @@ const CHECK_BACK_LINES_MAX = 3;
 const WAITING_TEXT_MAX = 80;
 
 export function createStatusQuestion(deps: StatusQuestionDeps): StatusQuestionEngine {
-  const { store, publishMessage, admission } = deps;
+  const { store, publishMessage, admission, heldLines } = deps;
 
   /** The session's current plan, else the plan of its most recent turn; null when it has neither. */
   function planIdFor(sessionId: string): string | null {
@@ -131,6 +136,8 @@ export function createStatusQuestion(deps: StatusQuestionDeps): StatusQuestionEn
 
     const locale = store.settingsCached().locale;
     const now = Date.now();
+    // First, so that what it finds running under a stop, and ends, is not reported as at work.
+    const held = heldLines?.(taskId) ?? [];
 
     const liveOnPlan = store.listLiveTurns().filter((turn) => turn.task_id === taskId);
     const heldOnYou = liveOnPlan.filter((turn) => turn.status === "waiting_approval" || turn.status === "waiting_ask");
@@ -215,6 +222,7 @@ export function createStatusQuestion(deps: StatusQuestionDeps): StatusQuestionEn
       idleMinutes,
       waiting,
       checkBacks,
+      held,
     });
 
     const author = mostRecentPlanBot(taskId) ?? USER_MEMBER;

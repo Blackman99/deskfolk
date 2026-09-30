@@ -59,9 +59,13 @@ export function createTurn(
   const now = isoNow();
   const id = ulid();
   // Where it lands and the row itself go in together: a hold that refuses the row (I2) takes back
-  // a plan the landing opened for it, too.
+  // a plan the landing opened for it, too. A read-only turn lands on no plan and files nothing: it
+  // answers you, it does not work on the job, and binding it to one later is refused (I2).
+  const readOnly = input.mode === "readonly";
   ctx.db.transaction(() => {
-    const { taskId, ticketId, handedTicketId } = resolveTurnTask(ctx, landingInput(ctx, { ...input, trigger }));
+    const { taskId, ticketId, handedTicketId } = readOnly
+      ? { taskId: null, ticketId: null, handedTicketId: null }
+      : resolveTurnTask(ctx, landingInput(ctx, { ...input, trigger }));
     try {
       ctx.db.run(
         `INSERT INTO turns
@@ -87,6 +91,7 @@ export function createTurn(
     }
     // The trigger belongs to the plan it opened, so the user's own message carries the anchor too —
     // with the ticket it came with, not the one this Bot happens to be on: one line can wake a team.
+    if (readOnly) return;
     ctx.db.run(
       `UPDATE messages SET task_id = COALESCE(task_id, ?), ticket_id = COALESCE(ticket_id, ?) WHERE id = ?`,
       [taskId, handedTicketId, trigger.id],
@@ -259,23 +264,18 @@ export function recoverInterruptedTurns(ctx: StoreContext): void {
 export function stopTurn(
   ctx: StoreContext,
   turnId?: string,
-  opts: { allowGroup?: boolean; execution?: TurnExecution | null } = {},
+  opts: {
+    allowGroup?: boolean;
+    execution?: TurnExecution | null;
+    /**
+     * A hold of yours ended it: the appointments it made are set aside by that hold, to come back
+     * when it is lifted, rather than cancelled (ADR 0040).
+     */
+    keepCheckBacks?: boolean;
+  } = {},
 ): Turn | null {
-  const row = turnId
-    ? ctx.db.query<TurnRow, [string]>(`SELECT * FROM turns WHERE id = ?`).get(turnId)
-    : ctx.db
-        .query<TurnRow, []>(
-          opts.allowGroup
-            ? `SELECT * FROM turns
-               WHERE status IN ('running', 'waiting_approval', 'waiting_ask')
-               ORDER BY last_activity_at DESC LIMIT 1`
-            : `SELECT t.* FROM turns t
-               JOIN sessions s ON s.id = t.session_id
-               WHERE t.status IN ('running', 'waiting_approval', 'waiting_ask')
-                 AND s.kind = 'direct'
-               ORDER BY t.last_activity_at DESC LIMIT 1`,
-        )
-        .get();
+  const id = turnId ?? latestStoppableTurn(ctx, opts);
+  const row = id ? ctx.db.query<TurnRow, [string]>(`SELECT * FROM turns WHERE id = ?`).get(id) : null;
   if (!row) {
     if (turnId) throw new HttpError(404, "not_found", "turn not found");
     return null;
@@ -295,11 +295,33 @@ export function stopTurn(
   ctx.db.transaction(() => {
     voidPendingTurnActions(ctx, row.id, "stopped", now);
     // Stop means "not this"; an appointment this turn made to come back would undo it later.
-    voidCheckBacks(ctx, { turnId: row.id }, now);
+    if (!opts.keepCheckBacks) voidCheckBacks(ctx, { turnId: row.id }, now);
     ctx.db.run(`UPDATE turns SET status = 'stopped', updated_at = ? WHERE id = ?`, [now, row.id]);
     finishTurnRoute(ctx, row.id, "stopped", null, opts.execution ?? null);
   })();
   return { ...row, status: "stopped", updated_at: now, partial_text: null };
+}
+
+/**
+ * The turn a Stop with no turn named ends: the live one that did something last, in a direct unless
+ * `allowGroup`. Null when there is none.
+ */
+export function latestStoppableTurn(ctx: StoreContext, opts: { allowGroup?: boolean } = {}): string | null {
+  return (
+    ctx.db
+      .query<{ id: string }, []>(
+        opts.allowGroup
+          ? `SELECT id FROM turns
+             WHERE status IN ('running', 'waiting_approval', 'waiting_ask')
+             ORDER BY last_activity_at DESC LIMIT 1`
+          : `SELECT t.id FROM turns t
+             JOIN sessions s ON s.id = t.session_id
+             WHERE t.status IN ('running', 'waiting_approval', 'waiting_ask')
+               AND s.kind = 'direct'
+             ORDER BY t.last_activity_at DESC LIMIT 1`,
+      )
+      .get()?.id ?? null
+  );
 }
 
 export function interruptTurnRecord(

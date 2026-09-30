@@ -588,6 +588,31 @@ export type HoldEffect = {
   /** On lifting: the plans put back, and the check-backs pending again. */
   restored_plans?: string[];
   resumed_check_backs?: string[];
+  /** Turns the hold ended, with what each was doing when it did: what the receipt lists, and what goes on once it is lifted. */
+  stopped_turns?: HeldTurn[];
+  /** Turns another hold ended that this one still covered when that one was lifted: they go on when this one is. */
+  held_over?: HeldTurn[];
+  /** On lifting: the stopped turns that went on, each in a new turn opened with a note. */
+  resumed_turns?: string[];
+  /** Turns of other Bots working in the same plans when the hold was made, which it does not cover. */
+  working_beside?: Array<{ turn_id: string; bot_id: string; task_id: string | null; ticket_id: string | null }>;
+  /** Turns it covers still running once it had ended what it covers; empty unless something went wrong. */
+  still_running?: string[];
+  /** Turns found running under it later, when you said the work had not stopped, and ended then. */
+  violations?: string[];
+};
+
+/** A turn a hold ended: where it ran, on what, and what it had done so far. */
+export type HeldTurn = {
+  turn_id: string;
+  bot_id: string;
+  session_id: string;
+  task_id: string | null;
+  ticket_id: string | null;
+  /** Files it wrote, newest last. */
+  written: string[];
+  /** Its last few tool calls, oldest first, the last one what it was doing when it was stopped. */
+  recent: string[];
 };
 
 /** Your stop, written down as state: nothing it covers starts or wakes until you lift it. */
@@ -884,7 +909,36 @@ export type Message = {
   message_seq?: number;
   attachments: Attachment[];
   reactions: Reaction[];
+  /** What the app read or did about your stops on this line (ADR 0040 P2); absent on every other line. */
+  control?: MessageControl;
 };
+
+/**
+ * A button a line about your stops offers:
+ * - `stop` / `continue`: make the stop, or lift what covers, `scopes`.
+ * - `cancel`: stop, then ask whether to drop the job.
+ * - `undo`: lift the holds a receipt is about.
+ * - `stop_all`: stop every Bot.
+ * - `continue_only`: let the Bots in `scopes` go on while a wider hold (on the group, on everything) stays for the rest.
+ * - `continue_all`: lift that wider hold too.
+ */
+export type ControlOffer = "stop" | "continue" | "cancel" | "undo" | "stop_all" | "continue_only" | "continue_all";
+
+/** What a stop or a go on is about, in the terms a hold is made in. */
+export type ControlScope = { scope: "global"; id: null } | { scope: "bot" | "session" | "plan"; id: string };
+
+/**
+ * On one of your lines or the app's, what the app made of your stops (ADR 0040 P2):
+ * - `possible_control`, on your line: it reads like a stop or a go on but has more in it, so nothing
+ *   was done about it; the Bots got it as any line, and the buttons do what it may have meant.
+ * - `receipt`, on the app's line: what a stop or a go on of yours did, from the holds' own record.
+ * - `status`, on the app's line: where your stops stand when you asked (「停了吗」「你没停」) or
+ *   said go on while a wider hold still covers the Bot.
+ */
+export type MessageControl =
+  | { kind: "possible_control"; offer: ControlOffer[]; scopes: ControlScope[] }
+  | { kind: "receipt"; verb: "stop" | "continue"; hold_ids: string[]; offer: ControlOffer[]; scopes: ControlScope[] }
+  | { kind: "status"; hold_ids: string[]; offer: ControlOffer[]; scopes: ControlScope[] };
 
 /** One choice a Bot offers on a question. Labels are unique within the question. */
 export type AskOption = {

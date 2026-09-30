@@ -6,7 +6,7 @@ import { describeCheck } from "./acceptance-eval";
 import { annotationContext } from "./annotation-context";
 import { askTranscriptText } from "./ask";
 import { loopPictureSpend, pictureMime } from "./loop-pictures";
-import { turnSystemPrompt, type McpPromptGuide, type MemoryPromptEntry } from "./prompts";
+import { readOnlyLine, saidOf, turnSystemPrompt, type McpPromptGuide, type MemoryPromptEntry, type SaidLine } from "./prompts";
 import {
   COMPOSER_SUGGEST_BODY,
   COMPOSER_SUGGEST_RECENT,
@@ -727,8 +727,10 @@ function situationUserMessage(
     ? planFacts(store, { taskId, ticketId, turnId, triggerMessageId, botId: selfBotId, sessionId, locale })
     : null;
   const job = facts ? planLines(facts, locale) : [];
+  // A read-only turn opens on the stop over it and what it may do, before anything else (ADR 0040).
+  const held = readOnlyHeld(store, turnId, locale);
   if (sessionKind !== "group") {
-    const lines = [...job, ...dirLines];
+    const lines = [...held, ...job, ...dirLines];
     return lines.length > 0 ? { role: "user", content: `${SITUATION_HEADING}\n\n${lines.join("\n")}` } : null;
   }
   let trigger: Message;
@@ -771,9 +773,32 @@ function situationUserMessage(
       : group.latest_user
         ? `用户最近一条：${group.latest_user}`
         : "用户最近一条：（无）";
-  const lines = [membersLine, seatLine, wakerLine, latestLine, ...job];
+  const lines = [...held, membersLine, seatLine, wakerLine, latestLine, ...job];
   lines.push(...dirLines);
   return { role: "user", content: `${SITUATION_HEADING}\n\n${lines.join("\n")}` };
+}
+
+/** For a read-only turn, the line naming the stop over it — the newest you said, if you said one; else nothing. */
+function readOnlyHeld(store: Store, turnId: string, locale: Locale): string[] {
+  let mode;
+  try {
+    mode = store.getTurn(turnId).mode;
+  } catch {
+    return [];
+  }
+  if (mode !== "readonly") return [];
+  const holds = store.turnHeldBy(turnId);
+  let said: SaidLine = null;
+  for (const hold of [...holds].reverse()) {
+    if (!hold.source_message_id) continue;
+    try {
+      said = saidOf(store.getMessage(hold.source_message_id));
+      break;
+    } catch {
+      // that line was cleared; an older stop may still name one
+    }
+  }
+  return [readOnlyLine(locale, said)];
 }
 
 /**

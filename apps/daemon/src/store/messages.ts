@@ -7,6 +7,7 @@ import {
   type AskSpec,
   type Attachment,
   type Message,
+  type MessageControl,
   type Reaction,
 } from "@real-bot/protocol";
 import { attachmentMime } from "../artifact-mime";
@@ -190,6 +191,8 @@ export function insertMessage(
     ask?: AskSpec | null;
     /** Set on a 进度询问 status line: kept out of every Bot's context window and the organizer's payload. */
     hiddenFromBots?: boolean;
+    /** On the app's receipt or status answer about your stops. */
+    control?: MessageControl | null;
   },
 ): Message {
   sessionRow(ctx, input.sessionId);
@@ -211,8 +214,8 @@ export function insertMessage(
         .get(input.turnId)
     : null;
   ctx.db.run(
-    `INSERT INTO messages (id, session_id, turn_id, parent_id, kind, author, body, source_turn_id, task_id, ticket_id, ask_spec, hidden_from_bots, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO messages (id, session_id, turn_id, parent_id, kind, author, body, source_turn_id, task_id, ticket_id, ask_spec, hidden_from_bots, control, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       input.sessionId,
@@ -226,6 +229,7 @@ export function insertMessage(
       lineage?.ticket_id ?? null,
       input.kind === "ask" && input.ask ? JSON.stringify(input.ask) : null,
       input.hiddenFromBots ? 1 : 0,
+      input.control ? JSON.stringify(input.control) : null,
       now,
     ],
   );
@@ -494,9 +498,18 @@ export function hydrateMessage(ctx: StoreContext, row: MessageRow): Message {
   const reactions = ctx.db
     .query<Reaction, [string]>(`SELECT * FROM reactions WHERE message_id = ?`)
     .all(row.id);
-  const { ask_spec, ask_answer, hidden_from_bots: _hiddenFromBots, ...rest } = row;
-  if (row.kind !== "ask") return { ...rest, attachments, reactions };
-  return { ...rest, ask: readAskSpec(ask_spec), ask_answer: readAskAnswer(ask_answer), attachments, reactions };
+  const { ask_spec, ask_answer, hidden_from_bots: _hiddenFromBots, control, ...rest } = row;
+  // Only a line the app read or wrote about your stops carries one, so every other line reads as before.
+  const withControl = control ? { control: JSON.parse(control) as MessageControl } : {};
+  if (row.kind !== "ask") return { ...rest, ...withControl, attachments, reactions };
+  return { ...rest, ...withControl, ask: readAskSpec(ask_spec), ask_answer: readAskAnswer(ask_answer), attachments, reactions };
+}
+
+/** Marks a line with what the app made of your stops on it (`MessageControl`), and returns it as it now reads. */
+export function setMessageControl(ctx: StoreContext, id: string, control: MessageControl): Message {
+  messageRow(ctx, id);
+  ctx.db.run(`UPDATE messages SET control = ? WHERE id = ?`, [JSON.stringify(control), id]);
+  return getMessage(ctx, id);
 }
 
 /**

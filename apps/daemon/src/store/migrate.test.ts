@@ -187,6 +187,9 @@ describe("a database an earlier build created", () => {
         expect(revisionCols).toContain("cause");
         expect(reopened.listHolds()).toEqual([]);
         expect(reopened.db.query("SELECT * FROM held_scopes").all()).toEqual([]);
+        // What the app made of your stops on a line; no line from before carries one.
+        expect(messageCols).toContain("control");
+        expect(reopened.db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM messages WHERE control IS NOT NULL").get()!.n).toBe(0);
         // The turn row's mode, and the triggers that read it (I2), which a trigger naming a column
         // the table lacks would break every turn written through; the work log, empty.
         const turnCols = reopened.db.query<{ name: string }, []>("PRAGMA table_info(turns)").all().map((row) => row.name);
