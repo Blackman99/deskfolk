@@ -191,6 +191,8 @@ export type MessageRow = {
   hidden_from_bots?: number;
   /** JSON `MessageControl`: what the app made of your stops on this line. */
   control?: string | null;
+  /** 1 on a line only the Bot it wakes reads: the note stopped work opens again on (ADR 0041). */
+  bot_only?: number;
   created_at: string;
 };
 

@@ -19,7 +19,7 @@ import { classifyBotMessage } from "../notification-policy";
 import { classifyPath } from "../workspace-paths";
 import { prepareFile, commitPreparedFile, discardFile, type FileCommit } from "./files";
 import { getBot, listBots } from "./bots";
-import { notCheckBackLine } from "./check-backs";
+import { notBotOnlyLine } from "./check-backs";
 import { createNotification } from "./notifications";
 import {
   clampLimit,
@@ -59,7 +59,7 @@ export function listMessages(
     ? ctx.db
         .query<MessageRow, [string, string, string, string, number]>(
           `SELECT * FROM messages
-           WHERE session_id = ? AND kind != 'profile_change' AND ${notCheckBackLine()}
+           WHERE session_id = ? AND kind != 'profile_change' AND ${notBotOnlyLine()}
              AND (created_at < ? OR (created_at = ? AND id < ?))
            ORDER BY created_at DESC, id DESC
            LIMIT ?`,
@@ -68,7 +68,7 @@ export function listMessages(
     : ctx.db
         .query<MessageRow, [string, number]>(
           `SELECT * FROM messages
-           WHERE session_id = ? AND kind != 'profile_change' AND ${notCheckBackLine()}
+           WHERE session_id = ? AND kind != 'profile_change' AND ${notBotOnlyLine()}
            ORDER BY created_at DESC, id DESC LIMIT ?`,
         )
         .all(sessionId, limit + 1);
@@ -193,6 +193,11 @@ export function insertMessage(
     hiddenFromBots?: boolean;
     /** On the app's receipt or status answer about your stops. */
     control?: MessageControl | null;
+    /**
+     * A line only the Bot it wakes reads, like a check-back's own line: the note stopped work opens
+     * again on once you lift the stop (ADR 0041). Nothing lists it but the woken turn's context.
+     */
+    botOnly?: boolean;
   },
 ): Message {
   sessionRow(ctx, input.sessionId);
@@ -214,8 +219,8 @@ export function insertMessage(
         .get(input.turnId)
     : null;
   ctx.db.run(
-    `INSERT INTO messages (id, session_id, turn_id, parent_id, kind, author, body, source_turn_id, task_id, ticket_id, ask_spec, hidden_from_bots, control, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO messages (id, session_id, turn_id, parent_id, kind, author, body, source_turn_id, task_id, ticket_id, ask_spec, hidden_from_bots, control, bot_only, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       input.sessionId,
@@ -230,6 +235,7 @@ export function insertMessage(
       input.kind === "ask" && input.ask ? JSON.stringify(input.ask) : null,
       input.hiddenFromBots ? 1 : 0,
       input.control ? JSON.stringify(input.control) : null,
+      input.botOnly ? 1 : 0,
       now,
     ],
   );
@@ -318,7 +324,7 @@ export function listMainMessages(ctx: StoreContext, sessionId: string, limit: nu
   const rows = ctx.db
     .query<MessageRow, [string, number]>(
       `SELECT * FROM messages
-       WHERE session_id = ? AND kind != 'profile_change' AND hidden_from_bots = 0 AND ${notCheckBackLine()}
+       WHERE session_id = ? AND kind != 'profile_change' AND hidden_from_bots = 0 AND ${notBotOnlyLine()}
        ORDER BY created_at DESC, rowid DESC
        LIMIT ?`,
     )
@@ -498,7 +504,7 @@ export function hydrateMessage(ctx: StoreContext, row: MessageRow): Message {
   const reactions = ctx.db
     .query<Reaction, [string]>(`SELECT * FROM reactions WHERE message_id = ?`)
     .all(row.id);
-  const { ask_spec, ask_answer, hidden_from_bots: _hiddenFromBots, control, ...rest } = row;
+  const { ask_spec, ask_answer, hidden_from_bots: _hiddenFromBots, bot_only: _botOnly, control, ...rest } = row;
   // Only a line the app read or wrote about your stops carries one, so every other line reads as before.
   const withControl = control ? { control: JSON.parse(control) as MessageControl } : {};
   if (row.kind !== "ask") return { ...rest, ...withControl, attachments, reactions };

@@ -29,6 +29,58 @@ test("the app's receipt carries its buttons, and a press goes to the daemon for 
   }
 });
 
+test("the app's own lines read as the app's: its mark and name over them, no Bot's face or name, and they keep their buttons", () => {
+  const session = aGroup();
+  const receipt: MessageControl = { kind: "receipt", verb: "stop", hold_ids: ["hold-1"], offer: ["undo"], scopes: [{ scope: "bot", id: "bot-1" }] };
+  const status: MessageControl = { kind: "status", hold_ids: [], offer: ["stop"], scopes: [{ scope: "bot", id: "bot-1" }] };
+  const restart: MessageControl = { kind: "restart", cause: "dev", notes: [], offer: ["resume", "leave"] };
+  const lines = [
+    aMessage({ id: "receipt", session_id: session.id, kind: "system", author: "bot-1", body: "已停下视频导演的全部工作。", control: receipt, created_at: "2026-09-30T08:00:00.000Z" }),
+    aMessage({ id: "status", session_id: session.id, kind: "system", author: "bot-1", body: "视频导演：没停。", control: status, created_at: "2026-09-30T08:01:00.000Z" }),
+    aMessage({ id: "notice", session_id: session.id, kind: "system", author: "bot-1", body: "开发版守护进程重新启动了，这里的工作中断了。", control: restart, created_at: "2026-09-30T08:02:00.000Z" }),
+    // The 「中断」 a Bot's turn leaves is still that Bot's line.
+    aMessage({ id: "cut", session_id: session.id, kind: "system", author: "bot-1", body: "中断", turn_id: "turn-cut", created_at: "2026-09-30T08:03:00.000Z" }),
+  ];
+  const { host, close } = stage(session, { messages: lines, holds: [aHold()], holdsOn: true });
+  try {
+    for (const id of ["receipt", "status", "notice"]) {
+      const row = host.querySelector(`[data-message-id="${id}"]`)!;
+      expect(row.querySelector(".app-avatar .brand-mark")).not.toBeNull();
+      expect(row.querySelector(".bot-avatar")).toBeNull();
+      expect(row.querySelector(".msg-header .sender-name")?.textContent?.trim()).toBe("Deskfolk");
+      expect(row.querySelector(".msg-header .app-badge")?.textContent).toBe("应用");
+      expect(row.querySelector(".msg-header .bot-badge")).toBeNull();
+      expect(row.querySelector(".msg-header")?.textContent).not.toContain("视频导演");
+      expect(row.querySelector("article.msg")?.getAttribute("aria-label")).toBe("来自 Deskfolk 应用的消息");
+      expect(row.querySelectorAll(".control-btn").length).toBeGreaterThan(0);
+    }
+    const cut = host.querySelector('[data-message-id="cut"]')!;
+    expect(cut.querySelector(".app-avatar")).toBeNull();
+    expect(cut.querySelector(".bot-avatar")).not.toBeNull();
+    expect(cut.querySelector(".msg-header .sender-name")?.textContent?.trim()).toBe("视频导演");
+    expect(cut.querySelector(".msg-header .bot-badge")?.textContent).toBe("Bot");
+    expect(cut.querySelector("article.msg")?.hasAttribute("aria-label")).toBe(false);
+  } finally {
+    close();
+  }
+});
+
+test("in your direct, where no line carries a face, the app's receipt still says it is the app's", () => {
+  const session = aDirect();
+  const control: MessageControl = { kind: "receipt", verb: "continue", hold_ids: ["hold-1"], offer: [], scopes: [{ scope: "bot", id: "bot-1" }] };
+  const receipt = aMessage({ id: "receipt", session_id: session.id, kind: "system", author: "bot-1", body: "已解除叫停：视频导演的全部工作。", control });
+  const { host, close } = stage(session, { messages: [receipt], holdsOn: true });
+  try {
+    const row = host.querySelector('[data-message-id="receipt"]')!;
+    expect(row.querySelector(".avatar-col")).toBeNull();
+    expect(row.querySelector(".msg-header .sender-name")?.textContent?.trim()).toBe("Deskfolk");
+    expect(row.querySelector(".msg-header .bot-badge")).toBeNull();
+    expect(row.querySelector("article.msg")?.getAttribute("aria-label")).toBe("来自 Deskfolk 应用的消息");
+  } finally {
+    close();
+  }
+});
+
 test("your line that might have meant a stop asks under it, on its side", () => {
   const session = aDirect();
   const line = aMessage({ id: "line", session_id: session.id, body: "先停，把第三镜换成夜景", control: { kind: "possible_control", offer: ["stop"], scopes: [{ scope: "bot", id: "bot-1" }] } });

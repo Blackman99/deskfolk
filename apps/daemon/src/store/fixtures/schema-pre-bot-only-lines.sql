@@ -1,4 +1,8 @@
-export const SCHEMA_SQL = `
+-- The schema as it shipped before the Bot-only line mark (ADR 0041): messages without bot_only, so
+-- the note stopped work opens again on, once you lift the stop, was a line of the conversation. A
+-- test opens a database built from this file with the current Store and expects it to come up, catch
+-- up, and find the notes already there.
+-- Do not edit: it is a record of a shape that exists on real machines, not a live schema.
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS remote_host (
@@ -253,11 +257,7 @@ CREATE TABLE IF NOT EXISTS messages (
   created_at TEXT NOT NULL,
   -- JSON MessageControl (ADR 0040 P2): what the app made of your stops on this line — the buttons
   -- on a line of yours it did not act on, or its own receipt or status answer. Null on every other line.
-  control TEXT,
-  -- 1 on a line only the Bot it wakes reads (ADR 0041): the note stopped work opens again on once
-  -- you lift the stop. The conversation, search, unread and every other transcript leave it out,
-  -- as they do a check-back's own line (store/check-backs.ts, notBotOnlyLine).
-  bot_only INTEGER NOT NULL DEFAULT 0
+  control TEXT
 );
 
 CREATE TABLE IF NOT EXISTS attachments (
@@ -882,4 +882,3 @@ CREATE TABLE IF NOT EXISTS notification_delivery_items (
   notification_id TEXT NOT NULL REFERENCES notifications (id) ON DELETE CASCADE,
   PRIMARY KEY (delivery_id, notification_id)
 );
-`;

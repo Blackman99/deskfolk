@@ -899,6 +899,16 @@ function migrateAskChoices(db: Database): void {
 function migrateMessageControl(db: Database): void {
   const cols = db.query<{ name: string }, []>("PRAGMA table_info(messages)").all().map((row) => row.name);
   if (!cols.includes("control")) db.run("ALTER TABLE messages ADD COLUMN control TEXT");
+  // The note stopped work opens again on once you lift the stop is for the Bot it wakes, not a line
+  // of the conversation (ADR 0041). Notes written before the column are found by how the note opens,
+  // a line only `resumeNote` writes.
+  if (!cols.includes("bot_only")) {
+    db.run("ALTER TABLE messages ADD COLUMN bot_only INTEGER NOT NULL DEFAULT 0");
+    db.run(
+      `UPDATE messages SET bot_only = 1
+       WHERE kind = 'system' AND (body LIKE '（应用提示）用户叫停了这件工作，现在解除了%' OR body LIKE '(App note) The user had stopped this work and has now lifted the stop%')`,
+    );
+  }
 }
 
 function migrateBotThinkingPins(db: Database): void {

@@ -2,7 +2,7 @@ import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { USER_MEMBER, type SearchHit } from "@real-bot/protocol";
 import { listBots } from "./bots";
-import { notCheckBackLine } from "./check-backs";
+import { notBotOnlyLine } from "./check-backs";
 import { listRoutines } from "./routines";
 import { listParticipants, listSessions } from "./sessions";
 import { requireNonEmpty, sessionRow, sessionSearchTitle, workspacePath, type StoreContext } from "./shared";
@@ -64,7 +64,7 @@ export function search(ctx: StoreContext, q: string): SearchHit[] {
   const messages = ctx.db
     .query<{ id: string; session_id: string; parent_id: string | null; body: string; answer: string | null }, []>(
       `SELECT id, session_id, parent_id, body, json_extract(ask_answer, '$.custom') AS answer
-       FROM messages WHERE kind != 'profile_change' AND ${notCheckBackLine()}`,
+       FROM messages WHERE kind != 'profile_change' AND ${notBotOnlyLine()}`,
     )
     .all()
     .filter((m) => m.body.toLowerCase().includes(needle) || Boolean(m.answer?.toLowerCase().includes(needle)))

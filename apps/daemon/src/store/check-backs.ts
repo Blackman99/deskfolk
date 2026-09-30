@@ -336,17 +336,24 @@ export function recordCheckBackLine(ctx: StoreContext, id: string, messageId: st
 }
 
 /**
- * The line a check-back wakes its Bot with is the Bot's note to itself, like a reminder on a
- * phone: the woken turn reads it as its trigger and the flow board draws the wake, but the
- * conversation, other Bots' transcripts, the organizer, search and unread counts leave it out.
- * `column` is the message id column of the query this goes into.
+ * A line only the Bot it wakes reads. The line a check-back wakes its Bot with is the Bot's note to
+ * itself, like a reminder on a phone (`check_backs.message_id`); the note stopped work opens again
+ * on once you lift the stop is the app's note to that Bot (`messages.bot_only`, ADR 0041). The woken
+ * turn reads it as its trigger (a turn the Bot already has there hears it instead) and the flow
+ * board draws the wake, but the conversation, other Bots' transcripts, the organizer, search,
+ * unread counts, the last-message preview and the event stream leave it out. `table` is the alias
+ * the query this goes into gives `messages`, when it gives one.
  */
-export function notCheckBackLine(column = "id"): string {
-  return `${column} NOT IN (SELECT cb.message_id FROM check_backs cb WHERE cb.message_id IS NOT NULL)`;
+export function notBotOnlyLine(table?: string): string {
+  const prefix = table ? `${table}.` : "";
+  return `${prefix}bot_only = 0 AND ${prefix}id NOT IN (SELECT cb.message_id FROM check_backs cb WHERE cb.message_id IS NOT NULL)`;
 }
 
-export function isCheckBackLine(ctx: StoreContext, messageId: string): boolean {
-  return Boolean(ctx.db.query(`SELECT 1 FROM check_backs WHERE message_id = ?`).get(messageId));
+export function isBotOnlyLine(ctx: StoreContext, messageId: string): boolean {
+  return Boolean(
+    ctx.db.query(`SELECT 1 FROM messages WHERE id = ? AND bot_only = 1`).get(messageId) ??
+      ctx.db.query(`SELECT 1 FROM check_backs WHERE message_id = ?`).get(messageId),
+  );
 }
 
 /** What a quiet Bot↔Bot direct would report back with, read when its quiet clock runs out. */
@@ -400,7 +407,7 @@ export function quietDirect(ctx: StoreContext, directId: string): QuietDirect | 
          ORDER BY cb.created_at DESC LIMIT 1`,
       )
       .get(opener, direct.origin_session_id, directId)?.created_at ?? "";
-  const fresh = `session_id = ? AND kind IN ('bot', 'system') AND created_at > ? AND ${notCheckBackLine()}`;
+  const fresh = `session_id = ? AND kind IN ('bot', 'system') AND created_at > ? AND ${notBotOnlyLine()}`;
   const latest =
     ctx.db
       .query<{ author: string; body: string }, [string, string]>(

@@ -1,6 +1,6 @@
 import type { ClientEvent, Judgement, Spend, Ticket } from "@real-bot/protocol";
 import { listApprovals, listAllowRules } from "./approvals";
-import { isCheckBackLine } from "./check-backs";
+import { isBotOnlyLine } from "./check-backs";
 import { taskDetail } from "./plan-spec";
 import { listCredentialOperations } from "./credentials";
 import { listMcpServers } from "./mcp";
@@ -115,7 +115,7 @@ export function committedEvents(ctx: StoreContext): ClientEvent[] {
         break;
       }
       case "messages": {
-        if (ctx.db.query("SELECT id FROM messages WHERE id = ?").get(id) && !isCheckBackLine(ctx, id)) {
+        if (ctx.db.query("SELECT id FROM messages WHERE id = ?").get(id) && !isBotOnlyLine(ctx, id)) {
           const inserted = changes.some((change) => change.entity === "messages" && change.id === id && change.op === "INSERT");
           out.push({ event: inserted ? "message.created" : "message.upsert", occurred_at, ...getMessage(ctx, id) });
         }

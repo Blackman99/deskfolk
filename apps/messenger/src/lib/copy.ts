@@ -949,6 +949,10 @@ const zh = {
   },
   chat: {
     botBadge: "Bot",
+    /** Over the app's own lines — a receipt for your stop, its answer about your stops, a restart notice — in place of a Bot's name. */
+    appName: "Deskfolk",
+    appBadge: "应用",
+    appLineLabel: "来自 Deskfolk 应用的消息",
     today: "今天",
     yesterday: "昨天",
     copyMessage: "复制内容",
@@ -2381,6 +2385,9 @@ const en: CopyShape<typeof zh> = {
   },
   chat: {
     botBadge: "Bot",
+    appName: "Deskfolk",
+    appBadge: "App",
+    appLineLabel: "Message from the Deskfolk app",
     today: "Today",
     yesterday: "Yesterday",
     copyMessage: "Copy message",

@@ -11,6 +11,7 @@ import {
   formatMessageTime,
   groupReactions,
   groupTranscript,
+  isAppLine,
   isDifferentDay,
   isContinuableNote,
   isInterruptNote,
@@ -435,6 +436,16 @@ describe("chat-view helpers", () => {
       expect(groups[0].items[0].type).toBe("message");
       expect(groups[0].items[1].type).toBe("streaming");
     });
+  });
+
+  test("isAppLine is the app's own receipt, status answer or restart notice, not your marked line or a Bot's note", () => {
+    const receipt = { kind: "receipt", verb: "stop", hold_ids: ["h"], offer: ["undo"], scopes: [] } as const;
+    expect(isAppLine({ kind: "system", control: receipt })).toBe(true);
+    expect(isAppLine({ kind: "system", control: { kind: "status", hold_ids: [], offer: ["stop"], scopes: [] } })).toBe(true);
+    expect(isAppLine({ kind: "system", control: { kind: "restart", cause: "dev", notes: [], offer: ["resume", "leave"] } })).toBe(true);
+    // Your own line the app marked stays yours; the 「中断」 a Bot's turn leaves stays that Bot's.
+    expect(isAppLine({ kind: "user", control: { kind: "possible_control", offer: ["stop"], scopes: [] } })).toBe(false);
+    expect(isAppLine({ kind: "system", control: undefined })).toBe(false);
   });
 
   test("isInterruptNote matches only the locked 中断 body", () => {

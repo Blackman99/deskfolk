@@ -230,6 +230,53 @@ describe("a go on", () => {
     expect(receipt.body).toContain("1 个回看恢复");
   });
 
+  test("the note the stopped work opens again on is for that Bot alone: the turn it wakes reads it, nothing else shows it", async () => {
+    const h = await scenario();
+    const { director, reviewer, room } = videoTeam(h);
+    const ep01 = openPlan(h, room, "EP01", planSpec("EP01 动画成片"));
+    const thread = h.botDirect(director, reviewer);
+    const turn = await atWork(h, director, thread, () => h.postBot(reviewer, thread, "EP01 母带重新拼一遍", { taskId: ep01.id }), [
+      call(shell("printf cut > EP01_MASTER.mp4")),
+    ]);
+    const dm = h.direct(director);
+    h.postUser(dm, "你手头的生成停一下");
+    await h.routed();
+    const committed: ClientEvent[] = [];
+    const unsubscribe = h.store.onCommit((event) => committed.push(event));
+    const published = h.events.length;
+    // The work opens again and stays mid-hop, so the note is still the newest line in its direct.
+    let woke = null as string | null;
+    h.script(director, thread).reply(({ request }) => {
+      woke = requestText(request);
+      return new Promise<CompletionResult>(() => {});
+    });
+
+    const go = h.postUser(dm, "继续");
+    await h.waitFor(() => woke !== null, { what: "the stopped work to open again" });
+    unsubscribe();
+
+    const [resumed] = h.turns(director).filter((row) => row.created_at > go.created_at);
+    const note = h.store.getMessage(resumed!.trigger_message_id);
+    expect(note).toMatchObject({ kind: "system", author: director.id, turn_id: turn.id });
+    // The turn it wakes reads it, as what woke it.
+    expect(woke).toContain("（本轮触发）\n（应用提示）用户叫停了这件工作，现在解除了（原话：「继续」）。");
+    // Nothing else does: the conversation and the phone, the other Bot's transcript, the organizer,
+    // search, the unread badge, the list's last line and the event stream leave it out, as they
+    // leave out a check-back's own line.
+    expect(h.store.listMessages(thread).items.map((message) => message.id)).not.toContain(note.id);
+    expect(h.store.listMainMessages(thread, 20).map((message) => message.id)).not.toContain(note.id);
+    expect(h.store.taskMessagesSince(ep01.id, "1970-01-01T00:00:00.000Z").map((message) => message.id)).not.toContain(note.id);
+    expect(h.store.search("用户叫停了这件工作").map((hit) => hit.id)).not.toContain(note.id);
+    expect(h.store.unreadCount(thread)).toBe(h.store.listMessages(thread).items.filter((message) => message.author !== "user").length);
+    expect(h.store.listSessions().find((session) => session.id === thread)?.last_message?.id).not.toBe(note.id);
+    const shown = [...h.events.slice(published), ...committed];
+    expect(shown.some((event) => (event.event === "message.created" || event.event === "message.upsert") && event.id === note.id)).toBe(false);
+    // What you see is the go on's receipt.
+    expect(after(h, dm, go).map((message) => message.control?.kind)).toEqual(["receipt"]);
+    // The flow board still draws the work waking again from the turn the stop ended.
+    expect(h.store.taskTrace(ep01.id).nodes.find((node) => node.turn_id === resumed!.id)?.woken_by_turn_id).toBe(turn.id);
+  });
+
   test("to a Bot lifts a stop on its work in one plan too, and that work opens again", async () => {
     const h = await scenario();
     const { director, reviewer, room } = videoTeam(h);
@@ -299,6 +346,9 @@ describe("a go on", () => {
     expect(note).toMatchObject({ kind: "system", turn_id: turn.id });
     expect(note.body).toContain("「继续」");
     expect(note.body).toContain("shell printf a > intro.mp4");
+    // In your direct too the note is the Bot's to read, not a line of the conversation.
+    expect(requestText(h.hops(director).find((hop) => hop.turnId === resumed!.id)!.request)).toContain("用户叫停了这件工作，现在解除了");
+    expect(h.store.listMessages(dm).items.map((message) => message.id)).not.toContain(note.id);
   });
 
   test("under a hold it does not lift says so and offers the buttons, and opens nothing", async () => {
@@ -408,6 +458,9 @@ describe("a go on", () => {
     expect(h.store.getHold(hold.id).effect.resumed_turns).toEqual([working.id]);
     const [, second] = h.hops(director).filter((hop) => hop.turnId === working.id);
     expect(requestText(second!.request)).toContain("用户叫停了这件工作，现在解除了");
+    // Heard, not shown: the group and the other Bots there never see the note.
+    expect(h.store.listMessages(room).items.some((message) => message.body.includes("用户叫停了这件工作"))).toBe(false);
+    expect(h.store.listMainMessages(room, 40).some((message) => message.body.includes("用户叫停了这件工作"))).toBe(false);
   });
 
   test("opens stopped work beside a read-only turn still answering you there, not inside it", async () => {

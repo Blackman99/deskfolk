@@ -10,7 +10,7 @@ import {
 } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
-import { notCheckBackLine, voidCheckBacks } from "./check-backs";
+import { notBotOnlyLine, voidCheckBacks } from "./check-backs";
 import { forgetHoldLines, holdPlansLeavingSession } from "./holds";
 import { hydrateMessage, listMessages } from "./messages";
 import { dropUnreferencedTasks } from "./tasks";
@@ -80,7 +80,7 @@ export function listSessions(ctx: StoreContext): SessionSummary[] {
       `SELECT * FROM (
          SELECT *, ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY created_at DESC, id DESC) as rn
          FROM messages
-         WHERE kind != 'profile_change' AND ${notCheckBackLine()}
+         WHERE kind != 'profile_change' AND ${notBotOnlyLine()}
        ) WHERE rn = 1`,
     )
     .all();
@@ -598,7 +598,7 @@ export function unreadCount(ctx: StoreContext, sessionId: string): number {
        JOIN sessions s ON s.id = m.session_id
        WHERE m.session_id = ?
          AND m.kind != 'profile_change'
-         AND ${notCheckBackLine("m.id")}
+         AND ${notBotOnlyLine("m")}
          AND m.author != ?
          AND (
            (s.read_through_seq > 0 AND m.message_seq > s.read_through_seq)
@@ -616,7 +616,7 @@ export function unreadCountsBySession(ctx: StoreContext): Map<string, number> {
        FROM messages m
        JOIN sessions s ON s.id = m.session_id
        WHERE m.kind != 'profile_change'
-         AND ${notCheckBackLine("m.id")}
+         AND ${notBotOnlyLine("m")}
          AND m.author != ?
          AND (
            (s.read_through_seq > 0 AND m.message_seq > s.read_through_seq)

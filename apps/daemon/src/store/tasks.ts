@@ -29,7 +29,7 @@ import { askAnswerLines, askTranscriptText, readAskAnswer, readAskSpec } from ".
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { takeCodePoints } from "../text";
-import { notCheckBackLine } from "./check-backs";
+import { notBotOnlyLine } from "./check-backs";
 import { holdNamesPlanSql, noteHeldPlansMovedAside, parkHeldPlans, planStatusUnderHolds } from "./holds";
 import { parsePlanSpec, type PlanSpec, type PlanStatus } from "./plan-shape";
 import { sessionRow, type MessageRow, type StoreContext } from "./shared";
@@ -309,7 +309,7 @@ export function taskMessagesSince(
            AND (created_at > ? OR (kind = 'ask' AND json_extract(ask_answer, '$.answered_at') > ?))
            AND kind IN ('user', 'bot', 'ask', 'system')
            AND hidden_from_bots = 0
-           AND ${notCheckBackLine()}
+           AND ${notBotOnlyLine()}
          ORDER BY created_at DESC, id DESC
          LIMIT ?
        ) ORDER BY created_at ASC, id ASC`,

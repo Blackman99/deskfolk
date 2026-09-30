@@ -18,6 +18,7 @@
 	import { indexBotDmsByOrigin } from './bot-dm-entries.ts';
 	import SessionAvatar from '../SessionAvatar.svelte';
 	import EmptyState from '../EmptyState.svelte';
+	import BrandMark from '../BrandMark.svelte';
 	import {
 		approvalForMessage,
 		approvalNeedsSecret,
@@ -36,6 +37,7 @@
 		formatMessageTime,
 		groupReactions,
 		groupTranscript,
+		isAppLine,
 		isDifferentDay,
 		isInterruptNote,
 		isUnreachableNote,
@@ -1237,6 +1239,7 @@
 					})}
 					{@const isUnreachable = isUnreachableNote(singleMsg.message)}
 					{@const isInterrupt = isInterruptNote(singleMsg.message)}
+					{@const appLine = isAppLine(singleMsg.message)}
 					{@const continueHint = isInterrupt
 						? t.stream.continueInterruptHint
 						: isUnreachable
@@ -1255,7 +1258,11 @@
 					>
 						{#if showMessageAvatars}
 					<div class="avatar-col">
-							{#if sysBot}
+							{#if appLine}
+								<div class="app-avatar" aria-hidden="true">
+									<BrandMark size={20} />
+								</div>
+							{:else if sysBot}
 								<button
 									type="button"
 									class="bot-avatar is-clickable"
@@ -1278,7 +1285,10 @@
 						{/if}
 						<div class="msg-content">
 							<div class="msg-header">
-								{#if sysBot}
+								{#if appLine}
+									<span class="sender-name">{t.chat.appName}</span>
+									<span class="app-badge">{t.chat.appBadge}</span>
+								{:else if sysBot}
 									<button
 										type="button"
 										class="sender-name is-clickable"
@@ -1290,7 +1300,9 @@
 								{:else}
 									<span class="sender-name">{who(singleMsg.message)}</span>
 								{/if}
-								<span class="bot-badge">{t.chat.botBadge}</span>
+								{#if !appLine}
+									<span class="bot-badge">{t.chat.botBadge}</span>
+								{/if}
 								<span class="msg-time mono" title={formatFullTimestamp(singleMsg.message.created_at)}>
 									{formatMessageTime(singleMsg.message.created_at)}
 								</span>
@@ -1300,8 +1312,9 @@
 								class:has-continue={showContinue}
 								class:is-unreachable={isUnreachable}
 								class:is-interrupt={isInterrupt}
+								aria-label={appLine ? t.chat.appLineLabel : undefined}
 							>
-								<div class="who">{who(singleMsg.message)}</div>
+								<div class="who">{appLine ? t.chat.appName : who(singleMsg.message)}</div>
 								<div class="system-msg-content flex items-center gap-2">
 									{#if isUnreachable}
 										<span class="system-msg-icon is-unreachable" aria-hidden="true">
@@ -2161,8 +2174,26 @@
 		outline-offset: 2px;
 	}
 
+	/*
+	 * The app's own line sits under the mark instead of a Bot's face (the mark is the one place its
+	 * mustard belongs), on the pane like your portrait, so a receipt never reads as the Bot talking.
+	 */
+	.app-avatar {
+		width: 32px;
+		height: 32px;
+		border-radius: 50%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: var(--pane);
+		border: 1px solid var(--line);
+		box-shadow: var(--shadow-xs);
+		user-select: none;
+	}
+
 	/* A quiet tag beside the name: the accent is kept for what you can act on. */
-	.bot-badge {
+	.bot-badge,
+	.app-badge {
 		font-size: 10px;
 		font-weight: 600;
 		padding: 1px 5px;
@@ -2987,6 +3018,7 @@
 		}
 
 		.msg-header .bot-badge,
+		.msg-header .app-badge,
 		.msg-header .segment-count-badge,
 		.msg-header .duration-badge,
 		.msg-header .msg-time,

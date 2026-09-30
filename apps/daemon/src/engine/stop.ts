@@ -614,7 +614,6 @@ export function createStop(deps: StopDeps): Stop {
       return { receipt, resumed };
     });
     publishMessage(receipt);
-    for (const row of resumed) publishMessage(row.line);
     return true;
   }
 
@@ -677,8 +676,8 @@ export function createStop(deps: StopDeps): Stop {
     lifted: Hold[],
     said: SaidLine,
     opts: { stops: boolean; leave?: (record: HeldTurn) => boolean },
-  ): Array<{ record: HeldTurn; line: Message; turn: Turn }> {
-    const resumed: Array<{ record: HeldTurn; line: Message; turn: Turn }> = [];
+  ): Array<{ record: HeldTurn; turn: Turn }> {
+    const resumed: Array<{ record: HeldTurn; turn: Turn }> = [];
     const seen = new Set<string>();
     for (const hold of lifted) {
       if (hold.lift_on_next_user_message && !opts.stops) continue;
@@ -699,17 +698,22 @@ export function createStop(deps: StopDeps): Stop {
           continue;
         }
         if (opts.leave?.(record)) continue;
-        const opened = resume(record, said);
-        if (!opened) continue;
-        store.addHoldEffect(hold.id, { resumed_turns: [opened.turn.id] });
-        resumed.push({ record, ...opened });
+        const turn = resume(record, said);
+        if (!turn) continue;
+        store.addHoldEffect(hold.id, { resumed_turns: [turn.id] });
+        resumed.push({ record, turn });
       }
     }
     return resumed;
   }
 
-  /** One stopped turn's work, opened again on a note in the conversation it ran in. */
-  function resume(record: HeldTurn, said: SaidLine): { line: Message; turn: Turn } | null {
+  /**
+   * One stopped turn's work, opened again on a note in the conversation it ran in. The note is the
+   * app telling that Bot, not a line of the conversation: like a check-back's own line, only the turn
+   * it wakes or is heard in reads it (`botOnly`), and the flow board still draws the wake from the
+   * stopped turn. Nothing publishes it; you see the go on's receipt instead.
+   */
+  function resume(record: HeldTurn, said: SaidLine): Turn | null {
     if (admission?.draining) return null;
     let session: Session;
     try {
@@ -729,6 +733,7 @@ export function createStop(deps: StopDeps): Stop {
       kind: "system",
       author: record.bot_id,
       body: resumeNote(locale(), { said, plan: planTag(record.task_id, record.ticket_id), written: record.written, recent: record.recent }),
+      botOnly: true,
     });
     const lands = { taskId: record.task_id, ticketId: record.task_id ? record.ticket_id : null };
     // In a direct with you, beside whatever the Bot took up there meanwhile, as a line of yours
@@ -744,20 +749,18 @@ export function createStop(deps: StopDeps): Stop {
           { item: { author: locale() === "en" ? "App" : "应用", body: line.body, checkBack: false } },
           { cause: "resume", ...lands, otherwise: "fork" },
         );
-    return turn ? { line, turn } : null;
+    return turn;
   }
 
   function lift(id: string): Hold {
-    const { hold, resumed } = store.transaction(() => {
+    return store.transaction(() => {
       // Lifting one already lifted changes nothing, and opens nothing again.
-      if (store.getHold(id).lifted_at) return { hold: store.getHold(id), resumed: [] };
+      if (store.getHold(id).lifted_at) return store.getHold(id);
       const lifted = store.liftHold(id, { by: "user_button" });
-      const resumed = resumeLifted([lifted], null, { stops: false });
+      resumeLifted([lifted], null, { stops: false });
       store.recordWorkEvent({ kind: "control.lift", actor: "user", payload: { hold: id, by: "user_button" } });
-      return { hold: store.getHold(id), resumed };
+      return store.getHold(id);
     });
-    for (const row of resumed) publishMessage(row.line);
-    return hold;
   }
 
   function liftOnYourLine(message: Message): void {
@@ -1047,16 +1050,15 @@ export function createStop(deps: StopDeps): Stop {
     const toLift = holdIds.map((id) => store.getHold(id)).filter((hold) => !hold.lifted_at);
     const lines = new Set(toLift.flatMap((hold) => (hold.source === "user_text" && hold.source_message_id ? [hold.source_message_id] : [])));
     const heard = new Set([...lines].map(messageSession).filter((id): id is string => id !== null && directWithYou(id)));
-    const { lifted, resumed } = store.transaction(() => {
+    const lifted = store.transaction(() => {
       pressed();
       const lifted = toLift.map((hold) => store.liftHold(hold.id, { by: "user_button" }));
       for (const hold of lifted) {
         store.recordWorkEvent({ kind: "control.lift", actor: "user", sessionId: message.session_id, payload: { hold: hold.id, by: "user_button", undo: true } });
       }
-      const resumed = resumeLifted(lifted, null, { stops: true, leave: (record) => heard.has(record.session_id) });
-      return { lifted: lifted.map((hold) => store.getHold(hold.id)), resumed };
+      resumeLifted(lifted, null, { stops: true, leave: (record) => heard.has(record.session_id) });
+      return lifted.map((hold) => store.getHold(hold.id));
     });
-    for (const row of resumed) publishMessage(row.line);
     for (const id of lines) {
       try {
         redeliver(store.getMessage(id));
@@ -1085,10 +1087,9 @@ export function createStop(deps: StopDeps): Stop {
       const resumed = resumeLifted(lifted, null, { stops: false });
       const scopes = wide.map((hold) => ({ scope: "bot" as const, id: hold.scope_id! }));
       const line = continueReceiptLine(message.session_id, scopes, lifted, resumed, made.map((hold) => store.getHold(hold.id)));
-      return { made, lifted: lifted.map((hold) => store.getHold(hold.id)), resumed, line };
+      return { made, lifted: lifted.map((hold) => store.getHold(hold.id)), line };
     });
     publishMessage(result.line);
-    for (const row of result.resumed) publishMessage(row.line);
     return { made: result.made.map((hold) => store.getHold(hold.id)), lifted: result.lifted };
   }
 
@@ -1114,10 +1115,9 @@ export function createStop(deps: StopDeps): Stop {
       }
       const resumed = resumeLifted(lifted, null, { stops: true });
       const line = continueReceiptLine(here, scopes, lifted, resumed, made.map((hold) => store.getHold(hold.id)));
-      return { made, lifted: lifted.map((hold) => store.getHold(hold.id)), resumed, line };
+      return { made, lifted: lifted.map((hold) => store.getHold(hold.id)), line };
     });
     publishMessage(result.line);
-    for (const row of result.resumed) publishMessage(row.line);
     return { made: result.made.map((hold) => store.getHold(hold.id)), lifted: result.lifted };
   }
 

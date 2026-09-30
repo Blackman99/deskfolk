@@ -190,6 +190,9 @@ describe("a database an earlier build created", () => {
         // What the app made of your stops on a line; no line from before carries one.
         expect(messageCols).toContain("control");
         expect(reopened.db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM messages WHERE control IS NOT NULL").get()!.n).toBe(0);
+        // The Bot-only mark (ADR 0041): none of the lines from before is a note for a Bot alone.
+        expect(messageCols).toContain("bot_only");
+        expect(reopened.db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM messages WHERE bot_only != 0").get()!.n).toBe(0);
         // The turn row's mode, and the triggers that read it (I2), which a trigger naming a column
         // the table lacks would break every turn written through; the work log, empty.
         const turnCols = reopened.db.query<{ name: string }, []>("PRAGMA table_info(turns)").all().map((row) => row.name);
@@ -224,6 +227,48 @@ describe("a database an earlier build created", () => {
       }
     });
   }
+
+  test("the notes stopped work opened again on before the Bot-only mark leave the conversation, and nothing else does", () => {
+    const dir = mkdtempSync(join(tmpdir(), "real-bot-migrate-"));
+    const file = join(dir, "state.sqlite");
+    try {
+      const old = new Database(file, { create: true, strict: true });
+      old.exec(readFileSync(join(FIXTURES, "schema-pre-bot-only-lines.sql"), "utf8"));
+      const now = "2026-09-30T08:00:00.000Z";
+      const botId = ulid();
+      const sessionId = ulid();
+      old.run(`INSERT INTO bots (id, name, duties, boundaries, created_at, updated_at) VALUES (?, 'Writer', 'write', 'none', ?, ?)`, [botId, now, now]);
+      old.run(`INSERT INTO sessions (id, kind, name, created_at, updated_at) VALUES (?, 'direct', NULL, ?, ?)`, [sessionId, now, now]);
+      old.run(
+        `INSERT INTO session_participants (session_id, member, joined_at, left_at) VALUES (?, 'user', ?, NULL), (?, ?, ?, NULL)`,
+        [sessionId, now, sessionId, botId, now],
+      );
+      const lines = {
+        zh: "（应用提示）用户叫停了这件工作，现在解除了（原话：「继续」）。\n叫停期间这里说过的话都在上面的转录里。",
+        en: "(App note) The user had stopped this work and has now lifted the stop.\nWhat was said here while it was stopped is in the transcript above.",
+        receipt: "已解除叫停：Writer 的全部工作。",
+        quoted: "用户叫停了这件工作，现在解除了——这是我转述的",
+      };
+      const ids: Record<string, string> = {};
+      for (const [name, body] of Object.entries(lines)) {
+        ids[name] = ulid();
+        const kind = name === "quoted" ? "bot" : "system";
+        old.run(`INSERT INTO messages (id, session_id, kind, author, body, created_at) VALUES (?, ?, ?, ?, ?, ?)`, [ids[name]!, sessionId, kind, botId, body, now]);
+      }
+      old.close();
+
+      const store = new Store({ filename: file });
+      const flagged = store.db
+        .query<{ id: string }, []>("SELECT id FROM messages WHERE bot_only = 1 ORDER BY id")
+        .all()
+        .map((row) => row.id);
+      expect(flagged).toEqual([ids.zh!, ids.en!].sort());
+      expect(store.listMessages(sessionId).items.map((message) => message.id).sort()).toEqual([ids.receipt!, ids.quoted!].sort());
+      store.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 
   test("a failed spend rebuild rolls back and the next open still copies the old rows", () => {
     const dir = mkdtempSync(join(tmpdir(), "real-bot-migrate-"));
