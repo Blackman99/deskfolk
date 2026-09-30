@@ -223,6 +223,17 @@ export type EndpointModel = {
   pricing?: ModelPricing;
   thinking_levels: ThinkingLevel[];
   strengths: string[];
+  /** Output token cap each turn hop sends as `max_tokens`, reasoning included; absent uses the daemon's default. */
+  max_output?: number;
+  /** Measured streaming speed, 10th percentile, in tokens per second; sizes how long one hop may stream. */
+  stream_tps_p10?: number;
+  /**
+   * Whether raising the thinking level actually buys more reasoning past a tool loop's first two
+   * hops (the model-probe's measure: none vs high, hop ≥3 reasoning-token share); absent means
+   * unmeasured. Stored only for now — P5's escalation ladder reads it before deciding whether to
+   * raise a model's thinking level or skip straight to the next model.
+   */
+  reasoning_effective?: boolean;
 };
 
 export type EndpointModelInput = string | {
@@ -231,6 +242,10 @@ export type EndpointModelInput = string | {
   pricing?: ModelPricing;
   thinking_levels?: ThinkingLevel[];
   strengths?: string[];
+  /** Left out, a saved entry keeps the value it had; null clears it. */
+  max_output?: number | null;
+  stream_tps_p10?: number | null;
+  reasoning_effective?: boolean | null;
 };
 
 /** One name from an endpoint `GET /models`, plus thinking levels that object advertised. */

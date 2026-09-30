@@ -68,7 +68,8 @@ Optional:
   --judge-model <name>    goal-coverage judge model (default: --model)
   --api-key-env <NAME>    env var holding the key (default REAL_BOT_EVAL_API_KEY)
   --tasks <file>          task set (default apps/daemon/eval/golden-path/tasks.json)
-  --only <id,…>           only these task ids
+  --only <id,…>           only these task ids (also the only way to run a task marked "extra" —
+                          left out of the default selection, e.g. the L/S/R/G benchmark families)
   --setup <which>         manual | coordinator | solo | both | all, comma-separated (default both)
   --ablate <spec>         repeatable: a side-call switch or group to turn off, comma/+ separated
                           (none | organizer | calls | nudges | bare | organize-message |
@@ -298,6 +299,11 @@ async function main(): Promise<number> {
       if (task.setups.coordinator) parts.push(`    coordinator: ${task.setups.coordinator.bot.name} hires them`);
       if (task.setups.solo) parts.push(`    solo: ${task.setups.solo.bot.name} alone in your direct`);
       parts.push(`    delivers: ${task.deliverables.join(", ")}; ${task.checks.length} content check(s), ${task.verify.length} command(s) run afterwards`);
+      if (task.mcp) parts.push(`    mcp: media fixture, video_polls=${task.mcp.video_polls}`);
+      if (task.script.length > 0) {
+        const labelled = task.script.filter((step) => step.expect_plan !== null).length;
+        parts.push(`    script: ${task.script.length} step(s)${labelled ? `, ${labelled} labelled (attribution)` : ""}`);
+      }
       process.stdout.write(`${parts.join("\n")}\n`);
     }
     const showAblations = opts.ablations.length > 1 || opts.ablations.some((a) => ablationLabel(a) !== "none");

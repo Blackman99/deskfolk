@@ -137,6 +137,10 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     store,
     publish,
     noteTurnEnded: (turn) => organizer.noteTurnEnded(turn),
+    noteTurnStopped: (turn) => {
+      organizer.noteTurnStopped(turn);
+      if (turn.task_id) planWatch.forgetPlan(turn.task_id);
+    },
     noteDirectTurnEnded: (turn) => directReport.noteDirectTurnEnded(turn),
   });
 
@@ -302,7 +306,6 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   const statusQuestion = createStatusQuestion({
     store,
     publishMessage: core.publishMessage,
-    reconcilePlan: planWatch.reconcilePlan,
     admission: options.admission,
   });
 

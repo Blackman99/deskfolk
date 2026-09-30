@@ -14,6 +14,8 @@
     "eval:goal-coverage": "bun scripts/goal-coverage-eval.ts",
     "eval:golden-path": "bun scripts/golden-path-eval.ts",
     "eval:golden-path:combine": "bun scripts/golden-path-combine.ts",
+    "eval:protocol-probe": "bun scripts/protocol-probe.ts",
+    "eval:model-probe": "bun scripts/model-probe.ts",
     "compile": "bun build --compile --no-compile-autoload-dotenv --no-compile-autoload-bunfig --no-compile-autoload-tsconfig --no-compile-autoload-package-json src/main.ts --outfile dist/real-bot-daemon",
     "build:sidecar": "bun scripts/build-sidecar.ts",
     "check:db": "bun scripts/check-db.ts"

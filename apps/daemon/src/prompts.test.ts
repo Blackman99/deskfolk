@@ -62,6 +62,19 @@ describe("prompts", () => {
     expect(text.endsWith("区内。")).toBe(true);
   });
 
+  // ADR 0040 P1: this sentence used to say that a request to continue, or pointing out something
+  // a prior turn left unresolved, counts as new work on its own — which read as license to keep
+  // going past a stop. Pinned here so it cannot quietly come back.
+  test("does not say a request to continue counts as new work on its own", () => {
+    const profile = { name: "Writer", duties: "draft", boundaries: "stay", interrupt: false };
+    const zh = turnSystemPrompt({ ...profile, locale: "zh" });
+    expect(zh).not.toContain("就是新的待办");
+    expect(zh).toContain("上一轮的失败说明不等于任务已完成");
+    const en = turnSystemPrompt({ ...profile, locale: "en" });
+    expect(en.toLowerCase()).not.toContain("is new work");
+    expect(en).toContain("A prior failure report does not mean the task is complete");
+  });
+
   test("both locales tell the Bot to handle annotations one by one", () => {
     const profile = { name: "Writer", duties: "draft", boundaries: "stay", interrupt: false };
     const zh = turnSystemPrompt({ ...profile, locale: "zh" });

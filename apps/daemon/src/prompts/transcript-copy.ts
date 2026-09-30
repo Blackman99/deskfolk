@@ -13,6 +13,10 @@ export const FAIL_REASON = {
   refused: { zh: "端点拒绝了这次补全", en: "Endpoint refused this completion" },
   endpoint_error: { zh: "端点出错", en: "Endpoint error" },
   incomplete: { zh: "回复不完整", en: "Incomplete reply" },
+  repeat: { zh: "回复一直在重复同一句", en: "The reply kept repeating itself" },
+  declined: { zh: "模型拒答了", en: "The model declined to answer" },
+  truncated: { zh: "回复写到输出上限，接着写还是没写完", en: "The reply hit the output limit, even after carrying on" },
+  overtime: { zh: "回复写了太久，超过了时间上限", en: "The reply ran past its time limit" },
   no_model: { zh: "没有可用的模型", en: "No model is configured" },
   stuck: { zh: "卡住了，很久没有任何进展", en: "It stopped making progress" },
   crashed: { zh: "运行时出错", en: "The runtime errored" },
@@ -55,7 +59,7 @@ function excerptOf(text: string, max: number): string {
 
 /**
  * The note a quiet Bot↔Bot direct calls its opener back with, behind the check-back mark: who it
- * was with, the last word when the other Bot said anything, and to report before moving on.
+ * was with, the last word when the other Bot said anything, and to report how it came out.
  */
 export function reportBackNote(
   locale: Locale,
@@ -70,10 +74,10 @@ export function reportBackNote(
   const excerpt = excerptOf(input.last.body, REPORT_BACK_EXCERPT);
   if (en) {
     const whose = input.last.mine ? "yours" : `${input.peer}'s`;
-    return `Your direct with ${input.peer} has gone quiet; the last word was ${whose}: "${excerpt}". Report here how it came out, then carry on with the next step.`;
+    return `Your direct with ${input.peer} has gone quiet; the last word was ${whose}: "${excerpt}". Report here how it came out.`;
   }
   const who = input.last.mine ? "你" : input.peer;
-  return `你和${input.peer}的私聊静下来了，最后一条是${who}说的：「${excerpt}」。先在这里交代这次私聊的结果，再接着推进下一步。`;
+  return `你和${input.peer}的私聊静下来了，最后一条是${who}说的：「${excerpt}」。在这里交代这次私聊的结果。`;
 }
 
 /**
@@ -144,8 +148,8 @@ export function planNudgeNote(
     const yours = input.mine ? (en ? ` Yours is ${ticketLine(locale, input.mine, false)}.` : `其中 ${ticketLine(locale, input.mine, false)} 是你的。`) : "";
     parts.push(
       en
-        ? `The plan has gone quiet with tickets still open: ${list.join("; ")}.${yours} Finish it and hand it over — with how to start it, if it is something to run — or say plainly where it is stuck and what you need from whom. A ticket that is someone else's: name them.`
-        : `规划静下来了，还有任务没收口：${list.join("；")}。${yours}接着做完并交出（要运行的东西附上启动方式），做不了就直说卡在哪、需要谁做什么；属于别人的任务点名交给对方。`,
+        ? `The plan has gone quiet with tickets still open: ${list.join("; ")}.${yours} A useful answer is either handing it over — with how to start it, if it is something to run — or saying plainly where it is stuck and what you need from whom. A ticket that is someone else's: name them.`
+        : `规划静下来了，还有任务没收口：${list.join("；")}。${yours}有用的回应是做完并交出（要运行的东西附上启动方式），或者直说卡在哪、需要谁做什么；属于别人的任务点名交给对方。`,
     );
   }
   if (failing.length > 0) {
@@ -173,10 +177,10 @@ export function planLeftNote(locale: Locale, input: { review: readonly OpenTicke
   const more = input.review.length - shown.length;
   if (locale === "en") {
     const review = shown.length > 0 ? ` Awaiting review: ${shown.join("; ")}${more > 0 ? `; ${more} more` : ""}.` : "";
-    return `The plan has been quiet for a while with nothing to do or in progress, yet Progress in your situation still lists work not done or held up. Move it on: check each ticket awaiting review against its acceptance and give the commands you ran and what they showed; do not pass anyone's work for them, nor your own; hand what is not done yet to a Bot who can take it, by name, or carry on with it yourself; for what is held up, decide whether a pause or freeze the Bots set for themselves still stands, and if it does not, carry on; ask the user what needs the user's decision or what only the user can give. If none of that is possible, say plainly where it is stuck and what you need from whom.${review}`;
+    return `The plan has been quiet for a while with nothing to do or in progress, yet Progress in your situation still lists work not done or held up. What's useful next: check each ticket awaiting review against its acceptance and give the commands you ran and what they showed; do not pass anyone's work for them, nor your own; hand what is not done yet to a Bot who can take it, by name; for what is held up, the situation records who set that pause or freeze; ask the user what needs the user's decision or what only the user can give. If none of that is possible, say plainly where it is stuck and what you need from whom.${review}`;
   }
   const review = shown.length > 0 ? `待验收：${shown.join("；")}${more > 0 ? `；还有 ${more} 个` : ""}。` : "";
-  return `规划静下来一阵了：没有待做或进行中的任务，局面「进展」里却还记着没做完或卡住的。接着推进：待验收的照它的验收核对，附上跑过的命令和结果，不替别人宣布通过，自己交的也不自己判；还没做的，点名交给接得了的 Bot，或者自己接着做；卡住的，想清楚你们自己定的暂停、冻结还该不该停，不该停就接着做；要用户拿主意、或只有用户给得了的，直接问用户。哪样都做不了，就直说卡在哪、需要谁做什么。${review}`;
+  return `规划静下来一阵了：没有待做或进行中的任务，局面「进展」里却还记着没做完或卡住的。接下来：待验收的照它的验收核对，附上跑过的命令和结果，不替别人宣布通过，自己交的也不自己判；还没做的，点名交给接得了的 Bot；卡住的，局面里记着谁定的暂停或冻结；要用户拿主意、或只有用户给得了的，直接问用户。哪样都做不了，就直说卡在哪、需要谁做什么。${review}`;
 }
 
 /** Items of the plan's progress a stalled line quotes, and how long each may run. */
@@ -351,8 +355,6 @@ export function statusQuestionBody(
     checks: StatusCheckSummary;
     /** Minutes since the plan last moved; read only when `working` is empty. */
     idleMinutes: number | null;
-    /** The Bot `reconcilePlan` just called back to a quiet plan, when it booked one. */
-    nudgedBot: string | null;
     /** Turns of this plan waiting on you; they are not in `working`. */
     waiting?: readonly StatusWaitingLine[];
     /** Check-backs booked in this plan, not rung yet. */
@@ -410,9 +412,6 @@ export function statusQuestionBody(
     for (const failing of input.checks.failing) {
       lines.push(en ? `"${failing.item}": ${failing.detail}` : `「${failing.item}」：${failing.detail}`);
     }
-  }
-  if (input.nudgedBot) {
-    lines.push(en ? `${input.nudgedBot} has been nudged to carry on.` : `已叫 ${input.nudgedBot} 接着做。`);
   }
   return lines.join("\n");
 }

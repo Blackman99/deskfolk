@@ -21,6 +21,7 @@ import {
 import { pathExists } from "../collab-tools";
 import type { CompletionsClient } from "../completions";
 import { assembleTurnMessages, planTagger, sessionLabel, type PlanRef } from "../context";
+import { continueNote, hopLimits, isRetriedFailure, replyFailure, retryNote } from "../hop-limits";
 import { completionFailBody, builtinTools, type FailKind } from "../prompts";
 import { isNoWorkCloser } from "../no-work";
 import type { McpHost } from "../mcp-host";
@@ -149,13 +150,12 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
   } = deps;
 
   /**
-   * Nothing in a hop may legitimately go this long without touching the turn: a completion is
-   * bounded by the client's first-byte and idle timers, a shell by its own timeout, an MCP call by
-   * its idle cap, and both ends of every tool call touch the row. Past this the turn is wedged.
+   * Nothing in a hop may legitimately go this long without touching the turn: a shell is bounded by
+   * its own timeout, an MCP call by its idle cap, and both ends of every tool call touch the row.
+   * Past this the turn is wedged. A completion in flight is not measured here: its own time limit
+   * bounds it (hop-limits.ts), and on a slow model that can be longer than this.
    */
   const STALE_TURN_MS = 20 * 60_000;
-  /** How often a still-streaming hop bothers the row; small next to {@link STALE_TURN_MS}. */
-  const TOUCH_EVERY_MS = 30_000;
 
   function startTurn(
     sessionId: string,
@@ -459,6 +459,9 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       return;
     }
     const target = routed.target;
+    const limits = hopLimits(
+      store.catalogEntries().find((row) => row.providerId === target.providerId && row.name === target.model),
+    );
     live.routing = routingTarget(creds);
     live.locale = target.locale;
     let sessionId: string | null = null;
@@ -552,9 +555,10 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       live.partial = "";
       publishTurn(current, "");
       let result;
-      // A reply long enough to outlast the stale sweep is still a reply, so tokens count as
-      // progress too — cheaply, since this runs per chunk.
-      let touchedAt = Date.now();
+      // Tokens no longer count as progress: a hop that streamed one sentence for 17 minutes looked
+      // alive the whole time. The stream's own time limit bounds it instead, and the stale sweep
+      // leaves the turn alone while it runs.
+      live.streaming = true;
       try {
         result = await completions.complete({
           baseUrl: target.baseUrl,
@@ -564,12 +568,8 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
           messages,
           tools,
           signal: live.abort.signal,
-          onToken() {
-            const at = Date.now();
-            if (at - touchedAt < TOUCH_EVERY_MS) return;
-            touchedAt = at;
-            store.touchTurn(turnId);
-          },
+          maxTokens: limits.maxTokens,
+          wallMs: limits.wallMs,
           onEvent(chunk) {
             if (!active(turnId, live)) return;
             const choices = chunk.choices;
@@ -599,6 +599,8 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
           return;
         }
         throw error;
+      } finally {
+        live.streaming = false;
       }
       recordSpend("turn", current.id, result.usage, result.missingReason, callOf(target), turnOwner);
       if (live.abort.signal.aborted) {
@@ -614,6 +616,8 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
         drop();
         return;
       }
+      // The sweep measures from here again, now that the stream no longer holds it off.
+      store.touchTurn(turnId);
 
       if (result.hadChoices && live.interrupt && !live.burned) {
         live.burned = true;
@@ -621,9 +625,29 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       }
 
       if (!result.ok) {
-        failTurn(turnId, result.failKind);
+        if (retryOrFail(turnId, live, result.failKind)) continue;
         return;
       }
+      const failure = replyFailure(result);
+      if (failure) {
+        if (retryOrFail(turnId, live, failure)) continue;
+        return;
+      }
+      live.retried = false;
+
+      // Cut off at the output cap without looping: one more hop carries on from it. Nothing of the
+      // cut reply is posted; cut again in a row, the turn fails.
+      if (result.finishReason === "length" && result.toolCalls.length === 0) {
+        if (live.continued) {
+          failTurn(turnId, "truncated");
+          return;
+        }
+        live.continued = true;
+        if (result.content.trim()) live.loop.push({ role: "assistant", content: result.content });
+        live.loop.push({ role: "user", content: continueNote(live.locale, result.toolArgsCut === true) });
+        continue;
+      }
+      live.continued = false;
 
       if (result.toolCalls.length > 0) {
         live.loop.push({
@@ -711,6 +735,23 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     }
   }
 
+  /**
+   * A hop that loops, is a canned refusal, arrives in half or runs past its time limit failed; it
+   * is not a reply (ADR 0040 P1). None of it is posted or kept in the loop, so it wakes nobody. The
+   * same model gets one more go with a note, and failing again in a row ends the turn with a failure
+   * line in the session. The endpoint failing outright ends the turn at once: the client has already
+   * asked again. True when the hop goes again.
+   */
+  function retryOrFail(turnId: string, live: Live, kind: FailKind): boolean {
+    if (isRetriedFailure(kind) && !live.retried) {
+      live.retried = true;
+      live.loop.push({ role: "user", content: retryNote(live.locale, kind) });
+      return true;
+    }
+    failTurn(turnId, kind);
+    return false;
+  }
+
   function failTurn(turnId: string, kind: FailKind): void {
     const live = lives.get(turnId);
     const current = store.getTurn(turnId);
@@ -754,6 +795,8 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     for (const turn of store.listLiveTurns()) {
       // waiting_approval and waiting_ask are waiting on you, so they never go stale.
       if (turn.status !== "running") continue;
+      // A completion in flight has its own time limit, which the client enforces.
+      if (lives.get(turn.id)?.streaming) continue;
       // A shut lid froze the turn along with everything else; that is not a turn getting nowhere.
       const last = Date.parse(turn.last_activity_at);
       const idle = at.getTime() - last - wake.sleptBetween(last, at.getTime());

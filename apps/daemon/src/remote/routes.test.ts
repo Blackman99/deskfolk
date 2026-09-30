@@ -131,3 +131,12 @@ test("the organizer's own debug trail is never on the remote whitelist, task_id 
   expect(() => validateBusiness({ v: 1, id, method: "GET", path: "/v1/debug/organizer-runs" })).toThrow();
   expect(() => validateBusiness({ v: 1, id, method: "GET", path: "/v1/debug/organizer-runs", query: { task_id: id } })).toThrow();
 });
+
+test("a model entry may carry its output cap, measured speed and reasoning verdict, or null to clear one", () => {
+  const save = (models: unknown[]): RemoteRequest => ({ v: 1, id, method: "POST", path: "/v1/providers", body: { name: "p", base_url: "https://x", models } });
+  expect(() => validateBusiness(save([{ name: "grok", max_output: 32_768, stream_tps_p10: 42.5, reasoning_effective: false }]))).not.toThrow();
+  expect(() => validateBusiness(save([{ name: "grok", max_output: null, stream_tps_p10: null, reasoning_effective: null }]))).not.toThrow();
+  for (const bad of [{ max_output: 0 }, { max_output: 1.5 }, { max_output: "32k" }, { stream_tps_p10: -1 }, { reasoning_effective: "yes" }]) {
+    expect(() => validateBusiness(save([{ name: "grok", ...bad }]))).toThrow();
+  }
+});

@@ -43,6 +43,18 @@ export type GoldenTask = {
   deliverables: string[];
   checks: FileCheck[];
   verify: VerifyStep[];
+  /** Timed follow-up lines; empty for the office tasks, non-empty for the S/R/G-shaped tasks (cross-stop, repeat-note, big-room). */
+  script: ScriptStep[];
+  /** Set for L: the runner registers a delayed-completion media MCP server before posting the task. */
+  mcp: TaskMcp | null;
+  /**
+   * True for a task that must be named explicitly (via `--only`, or a `--tasks` file of its own) to
+   * run: the default (no `--only`) selection leaves it out. The L/S/R/G benchmark families are
+   * `extra` — they widen the default paid sweep with a roster `--setup all` can't fully use (no
+   * `setups.solo`), so they stay opt-in the same way the issue that added them always meant to run
+   * them (`--only long-mission,cross-stop,repeat-note,big-room`).
+   */
+  extra: boolean;
   setups: {
     manual: { group: string; bots: BotProfile[] };
     coordinator: { bot: BotProfile; message: string };
@@ -50,6 +62,34 @@ export type GoldenTask = {
     solo?: { bot: BotProfile; message: string };
   };
 };
+
+/**
+ * A follow-up line the runner posts on its own, timed off the run's clock or off the first file the
+ * team hands over — the L/S/R/G benchmark families need one (a stop mid-job, the same complaint
+ * again, an unrelated new ask or a line that just continues the kickoff job) without a human typing
+ * it. `after` decides when; `target` decides which session it lands in.
+ */
+export type ScriptTrigger = { kind: "seconds"; after_s: number } | { kind: "first_delivery" };
+export type ScriptTarget = { kind: "group" } | { kind: "coordinator" } | { kind: "bot_direct"; bot: string };
+export type ScriptStep = {
+  id: string;
+  after: ScriptTrigger;
+  target: ScriptTarget;
+  body: string;
+  /** Which Bot this line is expected to wake — informational, read back for the run log from the
+   *  turns it triggered and the judgements that joined it. Which Bot answers is participation, not
+   *  attribution, so it is not what G scores (see `expect_plan`). */
+  expect_bot: string | null;
+  /**
+   * G's real labelled attribution: whether this line should end up filed on the plan the task line
+   * itself opened ("kickoff") or split into a different one ("new"). Scored against
+   * `messages.task_id` after the run — see `attribution.ts`.
+   */
+  expect_plan: "kickoff" | "new" | null;
+};
+
+/** L's fake async job: `mcp-fixture.ts --media --video-polls=N` registered as an MCP server. */
+export type TaskMcp = { video_polls: number };
 
 export type TaskSet = { version: 1; tasks: GoldenTask[] };
 
@@ -145,6 +185,73 @@ function verifyStep(value: unknown, where: string): VerifyStep {
   return { cwd: workspacePath(row.cwd ?? ".", `${where}.cwd`, { dot: true }), command, expect_exit: exit, expect_stdout: stdout, timeout_sec: timeout };
 }
 
+function scriptTrigger(value: unknown, where: string): ScriptTrigger {
+  const row = record(value, where);
+  if (row.kind === "seconds") {
+    const s = row.after_s;
+    if (typeof s !== "number" || !Number.isFinite(s) || s < 0) fail(`${where}.after_s`, "must be a non-negative number of seconds");
+    return { kind: "seconds", after_s: s };
+  }
+  if (row.kind === "first_delivery") return { kind: "first_delivery" };
+  fail(`${where}.kind`, "must be seconds or first_delivery");
+}
+
+/**
+ * `bot_direct` names one of `setups.manual.bots`. The runner looks that name's direct-with-you
+ * session up once the team has formed (`resolveBotDirects`), so the step fires under `manual` and
+ * `coordinator` alike, whoever created the Bot; it is skipped, with a log line, only when no Bot of
+ * that name exists by then.
+ */
+function scriptTarget(value: unknown, where: string, botNames: ReadonlySet<string>): ScriptTarget {
+  const row = record(value, where);
+  if (row.kind === "group") return { kind: "group" };
+  if (row.kind === "coordinator") return { kind: "coordinator" };
+  if (row.kind === "bot_direct") {
+    const name = text(row.bot, `${where}.bot`).trim();
+    if (!botNames.has(name)) fail(`${where}.bot`, `${name} is not one of setups.manual.bots`);
+    return { kind: "bot_direct", bot: name };
+  }
+  fail(`${where}.kind`, "must be group, coordinator or bot_direct");
+}
+
+function scriptStep(value: unknown, where: string, botNames: ReadonlySet<string>): ScriptStep {
+  const row = record(value, where);
+  const id = text(row.id, `${where}.id`).trim();
+  const body = text(row.body, `${where}.body`);
+  if (mentionsSomeone(body)) fail(`${where}.body`, "must not @ anyone: nobody is told who does which step");
+  let expectBot: string | null = null;
+  if (row.expect_bot !== undefined && row.expect_bot !== null) {
+    expectBot = text(row.expect_bot, `${where}.expect_bot`).trim();
+    if (!botNames.has(expectBot)) fail(`${where}.expect_bot`, `${expectBot} is not one of setups.manual.bots`);
+  }
+  let expectPlan: "kickoff" | "new" | null = null;
+  if (row.expect_plan !== undefined && row.expect_plan !== null) {
+    if (row.expect_plan !== "kickoff" && row.expect_plan !== "new") fail(`${where}.expect_plan`, "must be kickoff or new");
+    expectPlan = row.expect_plan;
+  }
+  return {
+    id,
+    after: scriptTrigger(row.after, `${where}.after`),
+    target: scriptTarget(row.target, `${where}.target`, botNames),
+    body,
+    expect_bot: expectBot,
+    expect_plan: expectPlan,
+  };
+}
+
+function optionalBool(value: unknown, where: string): boolean {
+  if (value === undefined) return false;
+  if (typeof value !== "boolean") fail(where, "must be a boolean");
+  return value;
+}
+
+function taskMcp(value: unknown, where: string): TaskMcp {
+  const row = record(value, where);
+  const polls = row.video_polls;
+  if (typeof polls !== "number" || !Number.isInteger(polls) || polls < 0) fail(`${where}.video_polls`, "must be a non-negative integer");
+  return { video_polls: polls };
+}
+
 function task(value: unknown, where: string): GoldenTask {
   const row = record(value, where);
   const id = text(row.id, `${where}.id`).trim();
@@ -174,6 +281,15 @@ function task(value: unknown, where: string): GoldenTask {
     solo = { bot: soloBot, message: soloMessage };
   }
   const brief = workspacePath(row.brief ?? "brief.md", `${where}.brief`, { dot: false });
+  const script = (Array.isArray(row.script) ? row.script : row.script === undefined ? [] : fail(`${where}.script`, "must be an array")).map(
+    (item, i) => scriptStep(item, `${where}.script[${i}]`, names),
+  );
+  const stepIds = new Set<string>();
+  for (const [i, step] of script.entries()) {
+    if (stepIds.has(step.id)) fail(`${where}.script[${i}].id`, `${step.id} is used twice`);
+    stepIds.add(step.id);
+  }
+  const mcp = row.mcp === undefined || row.mcp === null ? null : taskMcp(row.mcp, `${where}.mcp`);
   return {
     id,
     title: text(row.title, `${where}.title`).trim(),
@@ -192,6 +308,9 @@ function task(value: unknown, where: string): GoldenTask {
     verify: (Array.isArray(row.verify) ? row.verify : row.verify === undefined ? [] : fail(`${where}.verify`, "must be an array")).map(
       (item, i) => verifyStep(item, `${where}.verify[${i}]`),
     ),
+    script,
+    mcp,
+    extra: optionalBool(row.extra, `${where}.extra`),
     setups: {
       manual: { group: text(manual.group, `${where}.setups.manual.group`).trim(), bots },
       coordinator: { bot: lead, message: leadMessage },
@@ -213,9 +332,13 @@ export function parseTaskSet(raw: unknown): TaskSet {
   return { version: 1, tasks };
 }
 
-/** The tasks `--only` names, in the set's order; an unknown id is an error, not an empty run. */
+/**
+ * The tasks `--only` names, in the set's order; an unknown id is an error, not an empty run. With
+ * no `--only`, every task except one marked `extra` (see `GoldenTask.extra`) — naming one by id is
+ * how you ask for it.
+ */
 export function selectTasks(set: TaskSet, only: readonly string[] | null): GoldenTask[] {
-  if (!only || only.length === 0) return set.tasks;
+  if (!only || only.length === 0) return set.tasks.filter((task) => !task.extra);
   const known = new Set(set.tasks.map((item) => item.id));
   const unknown = only.filter((id) => !known.has(id));
   if (unknown.length > 0) throw new TaskSetError(`unknown task id(s): ${unknown.join(", ")} (known: ${[...known].join(", ")})`);

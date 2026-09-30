@@ -55,6 +55,8 @@ function run(overrides: Partial<RunResult> = {}): RunResult {
     ablation,
     ablated: [],
     ablation_leaks: [],
+    attribution: null,
+    script: { fired: [], skipped: [], unfired: [] },
     failure: null,
     failure_detail: null,
     ...overrides,

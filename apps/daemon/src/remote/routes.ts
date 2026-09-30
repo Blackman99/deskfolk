@@ -14,7 +14,9 @@ const object = (fields: Fields, required: string[] = []): Check => v => !!v && t
   Object.entries(v).every(([k, value]) => Object.hasOwn(fields, k) && fields[k](value)) && required.every(k => Object.hasOwn(v, k));
 const rate: Check = v => typeof v === "number" && Number.isFinite(v) && v >= 0;
 const pricing = object({ input: rate, output: rate, cached_input: rate }, ["input", "output"]);
-const models = list(v => string(v) || object({ name: string, price: nullable(v => typeof v === "number" && Number.isFinite(v)), pricing, thinking_levels: list(string), strengths: list(string) }, ["name"])(v));
+const positive: Check = v => typeof v === "number" && Number.isFinite(v) && v > 0;
+const models = list(v => string(v) || object({ name: string, price: nullable(v => typeof v === "number" && Number.isFinite(v)), pricing, thinking_levels: list(string), strengths: list(string),
+  max_output: nullable(v => positive(v) && Number.isInteger(v)), stream_tps_p10: nullable(positive), reasoning_effective: nullable(bool) }, ["name"])(v));
 const schedule: Check = v => object({ kind: one("daily"), time: string }, ["kind", "time"])(v) ||
   object({ kind: one("weekly"), time: string, weekdays: list(string) }, ["kind", "time", "weekdays"])(v);
 const bot = { name: string, duties: string, boundaries: string, avatar: nullable(string), model: nullable(string), provider_id: nullable(id), thinking_level: nullable(string) };

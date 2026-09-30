@@ -271,9 +271,9 @@ export type OrganizerResult = {
   raw?: { decision: string; resumePlanId: string | null; joinPlanId: string | null; messageTicket: string | null };
   /**
    * Why `decision` is not the decision `raw` wrote: a resume/join with no target, or one that no
-   * longer qualified once the candidate set was re-read after the call returned (the race ADR 0040
-   * P1 fixes), a decision word that is none of the four, or anything but continue from a settle.
-   * Null when the written decision is the one that applies.
+   * longer qualified once the candidate set was re-read after the call returned (the organizer then
+   * files nothing, ADR 0040 P1), a decision word that is none of the four, or anything but continue
+   * from a settle. Null when the written decision is the one that applies.
    */
   downgradeReason?: string | null;
 };
@@ -296,6 +296,15 @@ const NEW_TICKET = /^new-\d+$/;
 /** How a ticket's title is matched: a `new-N` whose title is an existing ticket's is that ticket. */
 export function titleKey(title: string): string {
   return title.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+/**
+ * A resume or join whose plan stopped being one this session can go to between the answer being
+ * read and applied. The answer was written for that plan, so continuing the current one with it,
+ * or opening a plan when there is none, would file a copy of the job (ADR 0040 P1): nothing lands.
+ */
+function targetGone(decision: "resume" | "join", planId: string): HttpError {
+  return new HttpError(409, "conflict", `the plan this ${decision} names (${planId}) is no longer one this line can go to`);
 }
 
 /**
@@ -342,19 +351,17 @@ export function applyOrganizerResult(
     let target: Task | null = null;
     if (result.decision === "resume" && result.resumePlanId) {
       const candidates = sessionRecentTasks(ctx, input.sessionId);
-      if (candidates.some((task) => task.id === result.resumePlanId)) {
-        reopenTask(ctx, result.resumePlanId, input.sessionId);
-        target = getTask(ctx, result.resumePlanId);
-      }
+      if (!candidates.some((task) => task.id === result.resumePlanId)) throw targetGone("resume", result.resumePlanId);
+      reopenTask(ctx, result.resumePlanId, input.sessionId);
+      target = getTask(ctx, result.resumePlanId);
     }
     // A job going on elsewhere takes the line without becoming this session's plan: its own
     // session keeps it, and this session's current plan stays where it was.
     if (result.decision === "join" && result.joinPlanId) {
       const candidates = elsewherePlans(ctx, input.sessionId);
-      if (candidates.some((task) => task.id === result.joinPlanId)) {
-        reopenTask(ctx, result.joinPlanId, input.sessionId);
-        target = getTask(ctx, result.joinPlanId);
-      }
+      if (!candidates.some((task) => task.id === result.joinPlanId)) throw targetGone("join", result.joinPlanId);
+      reopenTask(ctx, result.joinPlanId, input.sessionId);
+      target = getTask(ctx, result.joinPlanId);
     }
     if (!target && result.decision !== "new") target = input.current;
     if (!target) {

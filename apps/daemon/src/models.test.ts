@@ -11,6 +11,7 @@ import {
   parseStoredModels,
   resolveCompletionModel,
   resolveCompletionTarget,
+  serializeCatalog,
   unionProviderModels,
 } from "./models";
 import {
@@ -63,6 +64,77 @@ describe("endpoint model names", () => {
       },
     ]);
     expect(() => normalizeModelCatalog([{ name: "bad", thinking_levels: ["high!"] }])).toThrow(HttpError);
+  });
+
+  test("catalog objects carry an output cap and a measured speed, stored and read back", () => {
+    const [row] = normalizeModelCatalog([{ name: "grok", max_output: 60_000, stream_tps_p10: 42.5 }]);
+    expect(row).toMatchObject({ name: "grok", max_output: 60_000, stream_tps_p10: 42.5 });
+    expect(parseStoredCatalog(serializeCatalog([row!]))).toEqual([row!]);
+    expect(normalizeModelCatalog(["plain"])[0]).not.toHaveProperty("max_output");
+    for (const bad of [{ max_output: 0 }, { max_output: 1.5 }, { max_output: "32k" }, { stream_tps_p10: -1 }]) {
+      expect(() => normalizeModelCatalog([{ name: "grok", ...bad }])).toThrow(HttpError);
+    }
+  });
+
+  test("a list saved again keeps what it does not state of the cap and speed, and a null clears one", () => {
+    const before = normalizeModelCatalog([
+      { name: "grok", max_output: 60_000, stream_tps_p10: 40 },
+      { name: "gemini", max_output: 8_000 },
+      { name: "slow", max_output: 4_000, stream_tps_p10: 12 },
+      "bare",
+    ]);
+    const next = normalizeModelCatalog(
+      [{ name: "grok", price: 2 }, { name: "gemini", max_output: 16_000 }, { name: "slow", max_output: null, stream_tps_p10: null }, "bare", "new"],
+      before,
+    );
+    expect(next.map(({ name, max_output, stream_tps_p10 }) => ({ name, max_output, stream_tps_p10 }))).toEqual([
+      { name: "grok", max_output: 60_000, stream_tps_p10: 40 },
+      { name: "gemini", max_output: 16_000, stream_tps_p10: undefined },
+      { name: "slow", max_output: undefined, stream_tps_p10: undefined },
+      { name: "bare", max_output: undefined, stream_tps_p10: undefined },
+      { name: "new", max_output: undefined, stream_tps_p10: undefined },
+    ]);
+    expect(next[2]).not.toHaveProperty("max_output");
+  });
+
+  test("a bad measured value in the stored list drops only itself, not the model", () => {
+    const stored = JSON.stringify([
+      { name: "grok", max_output: 0, stream_tps_p10: 40 },
+      { name: "gemini", stream_tps_p10: "40" },
+      { name: "flash", max_output: 1.5 },
+      { name: "ok", max_output: 8_000 },
+    ]);
+    expect(parseStoredCatalog(stored).map(({ name, max_output, stream_tps_p10 }) => ({ name, max_output, stream_tps_p10 }))).toEqual([
+      { name: "grok", max_output: undefined, stream_tps_p10: 40 },
+      { name: "gemini", max_output: undefined, stream_tps_p10: undefined },
+      { name: "flash", max_output: undefined, stream_tps_p10: undefined },
+      { name: "ok", max_output: 8_000, stream_tps_p10: undefined },
+    ]);
+    // Sent through the API, the same values are refused.
+    expect(() => normalizeModelCatalog([{ name: "grok", max_output: 0 }])).toThrow(HttpError);
+  });
+
+  test("reasoning_effective (model-probe's --write) round-trips, is kept across a save that leaves it out, and null clears it", () => {
+    const [row] = normalizeModelCatalog([{ name: "grok", reasoning_effective: false }]);
+    expect(row).toMatchObject({ name: "grok", reasoning_effective: false });
+    expect(parseStoredCatalog(serializeCatalog([row!]))).toEqual([row!]);
+    expect(normalizeModelCatalog(["plain"])[0]).not.toHaveProperty("reasoning_effective");
+    expect(() => normalizeModelCatalog([{ name: "grok", reasoning_effective: "true" }])).toThrow(HttpError);
+
+    const before = normalizeModelCatalog([{ name: "grok", reasoning_effective: false }, { name: "gemini", reasoning_effective: true }]);
+    const next = normalizeModelCatalog([{ name: "grok", price: 2 }, { name: "gemini", reasoning_effective: null }], before);
+    expect(next.map(({ name, reasoning_effective }) => ({ name, reasoning_effective }))).toEqual([
+      { name: "grok", reasoning_effective: false },
+      { name: "gemini", reasoning_effective: undefined },
+    ]);
+    expect(next[1]).not.toHaveProperty("reasoning_effective");
+
+    // A bad stored value (loose read) drops only itself, not the model; sent through the API it is refused.
+    const stored = JSON.stringify([{ name: "grok", reasoning_effective: "false" }, { name: "ok", reasoning_effective: true }]);
+    expect(parseStoredCatalog(stored).map(({ name, reasoning_effective }) => ({ name, reasoning_effective }))).toEqual([
+      { name: "grok", reasoning_effective: undefined },
+      { name: "ok", reasoning_effective: true },
+    ]);
   });
 
   test("catalog objects carry price, thinking levels, and strengths", () => {

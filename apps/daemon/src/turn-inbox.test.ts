@@ -20,6 +20,16 @@ describe("what a heard line says about itself", () => {
     expect(note).toContain('\n【user, in your direct with the user】〔plan "report"〕keep the title short\n');
   });
 
+  // ADR 0040 P1: heardNote used to tell the Bot to carry on and not stop working to
+  // reply; pinned here so a later edit cannot quietly bring either clause back.
+  test("never tells the Bot to carry on or to not stop for a reply", () => {
+    const zh = heardNote("zh", [{ author: "Researcher", body: "接口好了", checkBack: false }]);
+    for (const phrase of ["接着干", "不要为了回复停下"]) expect(zh).not.toContain(phrase);
+    const en = heardNote("en", [{ author: "Researcher", body: "the API is ready", checkBack: false }]);
+    expect(en.toLowerCase()).not.toContain("carry on");
+    expect(en).not.toContain("do not stop the work in hand");
+  });
+
   test("a redirect says which job the old turn was on, and unread lines keep their tags", () => {
     const zh = redirectCarryNote("zh", {
       written: ["draft.md"],

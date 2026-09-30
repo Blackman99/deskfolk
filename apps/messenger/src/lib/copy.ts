@@ -1092,6 +1092,10 @@ const zh = {
       refused: "端点拒绝了这次补全",
       endpoint_error: "端点出错",
       incomplete: "回复不完整",
+      repeat: "回复一直在重复同一句",
+      declined: "模型拒答了",
+      truncated: "回复写到输出上限，接着写还是没写完",
+      overtime: "回复写了太久，超过了时间上限",
       no_model: "没有可用的模型",
       stuck: "卡住了，很久没有任何进展",
       crashed: "运行时出错"
@@ -2457,6 +2461,10 @@ const en: CopyShape<typeof zh> = {
       refused: "Endpoint refused this completion",
       endpoint_error: "Endpoint error",
       incomplete: "Incomplete reply",
+      repeat: "The reply kept repeating itself",
+      declined: "The model declined to answer",
+      truncated: "The reply hit the output limit, even after carrying on",
+      overtime: "The reply ran past its time limit",
       no_model: "No model is configured",
       stuck: "It stopped making progress",
       crashed: "The runtime errored"

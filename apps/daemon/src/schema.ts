@@ -446,6 +446,34 @@ CREATE TABLE IF NOT EXISTS turn_runs (
 CREATE INDEX IF NOT EXISTS turn_runs_turn ON turn_runs (turn_id, created_at);
 CREATE INDEX IF NOT EXISTS turn_runs_task ON turn_runs (task_id, created_at);
 
+-- A command a turn's shell started and that has not exited yet (ADR 0040 I10). The row goes in as
+-- soon as the spawn returns a pid and comes out when that process exits, so it is on disk however
+-- the daemon dies; the next boot kills the process group of every row another boot left, but only
+-- after the OS confirms the pid still started at proc_start_time, since pids are reused, and that
+-- the daemon which wrote the row is gone. turn_runs could not do this: it is written after a call
+-- ends and caps out per turn. No foreign keys: a row goes when its process exits, never with a
+-- cleared or deleted session.
+CREATE TABLE IF NOT EXISTS live_procs (
+  boot_id TEXT NOT NULL,
+  pid INTEGER NOT NULL,
+  -- The group Stop and the boot cleanup signal; null on win32, which has none (the tree is walked).
+  pgid INTEGER,
+  turn_id TEXT,
+  tool_call_id TEXT,
+  command TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  -- How the OS itself reports the start (ps lstart, /proc starttime, the Windows start time);
+  -- filled in moments after the spawn, and null when the process was gone before it could be read.
+  proc_start_time TEXT,
+  platform TEXT NOT NULL,
+  -- The daemon that wrote the row, and its start as the OS reports it (read with proc_start_time,
+  -- null until then). A daemon started on a copy of this file sees the live daemon's rows under a
+  -- boot id not its own; these say that their daemon is still running and the rows are not its.
+  daemon_pid INTEGER NOT NULL,
+  daemon_start_time TEXT,
+  PRIMARY KEY (boot_id, pid)
+);
+
 -- An executable acceptance check (可执行验收): the app's own proof that one acceptance line holds,
 -- run on this Mac. Bots never write these — the organizer may only turn a command into a check
 -- when a turn of this plan already ran it, or the user wrote it themselves (enforced in the store).

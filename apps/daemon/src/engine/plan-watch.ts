@@ -33,6 +33,8 @@ export type PlanWatchDeps = {
 export type PlanWatch = {
   reconcilePlan: (taskId: string) => void;
   observeTicket: (turnId: string, botId: string, seen: "working" | "delivered") => void;
+  /** A turn of the plan was stopped: the plan is not looked at again once its quiet runs out. */
+  forgetPlan: (taskId: string) => void;
   clearTimers: () => void;
 };
 
@@ -339,10 +341,15 @@ export function createPlanWatch(deps: PlanWatchDeps): PlanWatch {
     }
   }
 
+  function forgetPlan(taskId: string): void {
+    clearTimeout(leftTimers.get(taskId));
+    leftTimers.delete(taskId);
+  }
+
   function clearTimers(): void {
     for (const timer of leftTimers.values()) clearTimeout(timer);
     leftTimers.clear();
   }
 
-  return { reconcilePlan, observeTicket, clearTimers };
+  return { reconcilePlan, observeTicket, forgetPlan, clearTimers };
 }

@@ -406,8 +406,8 @@ describe("what the organizer answered", () => {
     expect(lost).toMatchObject({ decision: "continue", resumePlanId: null, raw: { decision: "resume", resumePlanId: "01ARZ3NDEKTSV4RRFFQ69G5FB9" } });
     expect(lost.downgradeReason).toContain("01ARZ3NDEKTSV4RRFFQ69G5FB9");
     // Downgrades that never named a qualifying target say so too, instead of passing as continue.
-    expect(read({ decision: "resume" }).downgradeReason).toBe("resume named no resume_plan_id; decision fell back to continue");
-    expect(read({ decision: "join", join_plan_id: null }).downgradeReason).toBe("join named no join_plan_id; decision fell back to continue");
+    expect(read({ decision: "resume" }).downgradeReason).toBe("resume named no resume_plan_id");
+    expect(read({ decision: "join", join_plan_id: null }).downgradeReason).toBe("join named no join_plan_id");
     expect(read({ decision: "Later" })).toMatchObject({ decision: "continue", raw: { decision: "later" } });
     expect(read({ decision: "Later" }).downgradeReason).toContain('"later"');
     const settled = read({ decision: "resume", resume_plan_id: "01ARZ3NDEKTSV4RRFFQ69G5FB1", message_ticket: "new-1" }, "settle");

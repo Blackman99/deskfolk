@@ -126,7 +126,7 @@ export function patchProviderSync(ctx: StoreContext, id: string, patch: PatchPro
   const before = parseStoredCatalog(current.models);
   let catalog = before;
   if (patch.models !== undefined) {
-    catalog = normalizeModelCatalog(patch.models);
+    catalog = normalizeModelCatalog(patch.models, before);
   }
   const repriced = catalog
     .filter((item) => !samePricing(item.pricing, before.find((old) => old.name === item.name)?.pricing))

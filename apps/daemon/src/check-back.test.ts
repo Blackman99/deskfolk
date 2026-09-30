@@ -242,7 +242,7 @@ test("a Bot↔Bot direct that goes quiet calls its opener back to the group it c
       session_id: group.id,
       kind: "system",
       author: writer.id,
-      body: "回看：你和Reviewer的私聊静下来了，最后一条是Reviewer说的：「第一镜通过」。先在这里交代这次私聊的结果，再接着推进下一步。",
+      body: "回看：你和Reviewer的私聊静下来了，最后一条是Reviewer说的：「第一镜通过」。在这里交代这次私聊的结果。",
     });
     // Hung on the direct's last turn, so the flow board draws the wake back across; same job.
     expect(h.store.getTurn(line.turn_id!).session_id).toBe(direct.id);

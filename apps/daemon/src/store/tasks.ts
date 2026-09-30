@@ -967,11 +967,12 @@ function oneLine(body: string): string {
 /**
  * Which plan and ticket a turn about to be opened belongs to.
  *
- * Named outright (a check-back, a batch of annotations) wins. A trigger some turn produced carries
- * that turn's plan and ticket: handoff, mention, a judgement that joined, a Bot↔Bot direct, the
- * interrupt note. A user message the organizer already filed carries its own stamp. Otherwise the
- * turn joins the session's current plan, and only when there is none does it open one — no clock
- * ever closes a plan; the organizer does.
+ * Named outright (a check-back, a batch of annotations) wins, and opening the turn leaves that
+ * plan's status and the session's current plan as they are (see {@link keepClosedTaskFiles}). A
+ * trigger some turn produced carries that turn's plan and ticket: handoff, mention, a judgement
+ * that joined, a Bot↔Bot direct, the interrupt note. A user message the organizer already filed
+ * carries its own stamp. Otherwise the turn joins the session's current plan, and only when there
+ * is none does it open one — no clock ever closes a plan; the organizer does.
  *
  * Within the plan, a woken Bot that is on exactly one open ticket there works in that one rather
  * than in whatever ticket woke it: a handoff from the PM's ticket to the frontend engineer is the
@@ -1001,7 +1002,7 @@ export function resolveTurnTask(
 } {
   const at = input.now ?? new Date();
   if (input.taskId) {
-    reopenTask(ctx, input.taskId, input.sessionId);
+    keepClosedTaskFiles(ctx, input.taskId);
     return { taskId: input.taskId, ticketId: input.ticketId ?? null, handedTicketId: input.ticketId ?? null };
   }
   const own = (taskId: string, ticketId: string | null) => ({
@@ -1057,13 +1058,13 @@ export function ownOpenTicket(ctx: StoreContext, taskId: string, botId: string, 
 }
 
 /**
- * Put a plan back in front for a turn that continues it. In the plan's own session it stops being
- * closed and is active again, and that session's other current plan is parked the way it would be
- * when a new one opens — one current plan per session. A turn in another session (a batch on a
- * routed Bot↔Bot delivery wakes a turn in your direct with that Bot) works in the plan through its
- * own id and reopens nothing. A routine's standing plan is never the current one, so it is left as
- * it is. A closed plan only has its closing moved to now, so the tool-results sweep leaves the
- * turn's files.
+ * Put a plan back in front when the organizer files a line of yours into it, a resume or a join.
+ * In the plan's own session it stops being closed and is active again, and that session's other
+ * current plan is parked the way it would be when a new one opens — one current plan per session.
+ * A line in another session (a join: you tell a Bot in your direct about the job it is on in a
+ * group) files into the plan through its id and reopens nothing. A routine's standing plan is never
+ * the current one, so it is left as it is. A closed plan only has its closing moved to now, so the
+ * tool-results sweep leaves the files of the turns that follow.
  */
 export function reopenTask(ctx: StoreContext, id: string, sessionId: string): void {
   const task = getTask(ctx, id);
@@ -1081,6 +1082,17 @@ export function reopenTask(ctx: StoreContext, id: string, sessionId: string): vo
     );
     ctx.db.run(`UPDATE tasks SET closed_at = NULL, status = 'active' WHERE id = ?`, [id]);
   })();
+}
+
+/**
+ * A turn named into a plan outright (a check-back, a batch of annotations, a call-back) works in
+ * it without changing it: opening a turn never moves a plan's status or makes it the session's
+ * current one (ADR 0040 P1). It used to reopen the plan, so a check-back into a plan you had
+ * parked put it back in progress. A closed plan only has its closing moved to now, so the
+ * tool-results sweep leaves this turn's files.
+ */
+export function keepClosedTaskFiles(ctx: StoreContext, id: string): void {
+  if (getTask(ctx, id).closed_at) ctx.db.run(`UPDATE tasks SET closed_at = ? WHERE id = ?`, [isoNow(), id]);
 }
 
 function uniqueDir(ctx: StoreContext, input: { title: string; id: string }): string {

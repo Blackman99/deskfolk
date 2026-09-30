@@ -13,7 +13,7 @@
 import { Database } from "bun:sqlite";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join, relative } from "node:path";
+import { basename, join, relative, resolve } from "node:path";
 import { USER_MEMBER, type Approval, type Message } from "@real-bot/protocol";
 import { ablationLabel, ablationList, type Ablation } from "../../src/ablation";
 import { deliveryExcerpt } from "../../src/closing-check";
@@ -25,6 +25,7 @@ import { startRuntime, type RuntimeHandle } from "../../src/runtime";
 import { memoryKeyStore } from "../../src/secrets";
 import type { Store } from "../../src/store";
 import { judgeCoverage, lastBotWords } from "../goal-coverage-judge";
+import { scoreAttribution, type AttributionResult } from "./attribution";
 import { runChecks } from "./checks";
 import { htmlForJudge, isAppFile, judgedFiles } from "./deliveries";
 import { countInterventions, endedStalled, STALLED_PLAN, type Interventions } from "./interventions";
@@ -40,8 +41,12 @@ import {
   type RunStats,
   type SpendBucketStats,
 } from "./report";
+import { dueSteps, resolveBotDirects, scriptClock, scriptDueBeforeDeadline } from "./script";
 import { settleVerdict, type PlanSettleState, type SettleSnapshot, type SettleTiming } from "./settle";
-import { seedDir, type GoldenTask, type LoadedTaskSet, type Setup } from "./tasks";
+import { seedDir, type GoldenTask, type LoadedTaskSet, type ScriptStep, type Setup } from "./tasks";
+
+/** `mcp-fixture.ts` lives beside the engine, not beside this script. */
+const MCP_FIXTURE = resolve(import.meta.dir, "..", "..", "src", "mcp-fixture.ts");
 
 /** Base timing; `runOnce` spreads this with `settleFiles` set from the run's ablation. */
 export const TIMING: Omit<SettleTiming, "settleFiles"> = {
@@ -128,6 +133,19 @@ function fileContains(dir: string, needle: string): boolean {
     }
   }
   return false;
+}
+
+/** L: a media MCP server whose jobs take `video_polls` checks to complete, registered before the task is posted. */
+async function registerMcp(api: Api, task: GoldenTask, opts: RunOptions): Promise<void> {
+  if (!task.mcp) return;
+  await api("POST", "/v1/mcp-servers", {
+    name: "media",
+    transport: "stdio",
+    command: process.execPath,
+    args: [MCP_FIXTURE, "--media", `--video-polls=${task.mcp.video_polls}`],
+    enabled: true,
+  });
+  opts.log(`[${task.id}] registered the media MCP fixture (video_polls=${task.mcp.video_polls})`);
 }
 
 async function configure(api: Api, workspace: string, opts: RunOptions): Promise<void> {
@@ -290,7 +308,22 @@ function coordinatorGroup(store: Store, botId: string): { id: string; name: stri
 type Waited = { outcome: RunOutcome; detail: string | null; endedAtMs: number };
 
 type Team =
-  | { ok: true; startedAtMs: number; sessionId: string; sessionKind: "group" | "direct"; taskMessageId: string; teamMs: number | null }
+  | {
+      ok: true;
+      startedAtMs: number;
+      /**
+       * When the task line itself was posted: the script's clock zero (see `fireDueScriptSteps`).
+       * A step's `after_s` counts from here, never from `startedAtMs`, which under `coordinator`
+       * comes before the team formed (up to `TEAM_BUDGET_MS` earlier).
+       */
+      taskPostedAtMs: number;
+      sessionId: string;
+      sessionKind: "group" | "direct";
+      taskMessageId: string;
+      teamMs: number | null;
+      /** The coordinator's own direct-with-you session, for a `coordinator` script target. Set only by that setup. */
+      coordinatorDirectId: string | null;
+    }
   | { ok: false; startedAtMs: number; waited: Waited };
 
 async function formTeam(
@@ -309,18 +342,37 @@ async function formTeam(
     const startedAtMs = Date.now();
     const posted = await api<{ id: string }>("POST", `/v1/sessions/${created.direct_session.id}/messages`, { body: solo.message });
     opts.log(`[${label}] direct with ${solo.bot.name}; task posted`);
-    return { ok: true, startedAtMs, sessionId: created.direct_session.id, sessionKind: "direct", taskMessageId: posted.id, teamMs: null };
+    return {
+      ok: true,
+      startedAtMs,
+      taskPostedAtMs: startedAtMs,
+      sessionId: created.direct_session.id,
+      sessionKind: "direct",
+      taskMessageId: posted.id,
+      teamMs: null,
+      coordinatorDirectId: null,
+    };
   }
   if (setup === "manual") {
     const ids: string[] = [];
     for (const profile of task.setups.manual.bots) {
-      ids.push((await api<{ bot: { id: string } }>("POST", "/v1/bots", profile)).bot.id);
+      const created = await api<{ bot: { id: string }; direct_session: { id: string } }>("POST", "/v1/bots", profile);
+      ids.push(created.bot.id);
     }
     const group = await api<{ id: string }>("POST", "/v1/sessions", { name: task.setups.manual.group, members: ids });
     const startedAtMs = Date.now();
     const posted = await api<{ id: string }>("POST", `/v1/sessions/${group.id}/messages`, { body: task.message });
     opts.log(`[${label}] group ${task.setups.manual.group} with ${task.setups.manual.bots.map((b) => b.name).join(", ")}; task posted`);
-    return { ok: true, startedAtMs, sessionId: group.id, sessionKind: "group", taskMessageId: posted.id, teamMs: null };
+    return {
+      ok: true,
+      startedAtMs,
+      taskPostedAtMs: startedAtMs,
+      sessionId: group.id,
+      sessionKind: "group",
+      taskMessageId: posted.id,
+      teamMs: null,
+      coordinatorDirectId: null,
+    };
   }
   const lead = await api<{ bot: { id: string }; direct_session: { id: string } }>("POST", "/v1/bots", task.setups.coordinator.bot);
   const startedAtMs = Date.now();
@@ -340,9 +392,19 @@ async function formTeam(
       snap.nowMs - snap.lastActivityMs >= TEAM_QUIET_MS;
     if (group && (quiet || snap.nowMs >= teamDeadlineMs)) {
       const posted = await api<{ id: string }>("POST", `/v1/sessions/${group.id}/messages`, { body: task.message });
-      const teamMs = Date.now() - startedAtMs;
+      const taskPostedAtMs = Date.now();
+      const teamMs = taskPostedAtMs - startedAtMs;
       opts.log(`[${label}] ${task.setups.coordinator.bot.name} opened ${group.name ?? group.id} in ${Math.round(teamMs / 1000)}s; task posted`);
-      return { ok: true, startedAtMs, sessionId: group.id, sessionKind: "group", taskMessageId: posted.id, teamMs };
+      return {
+        ok: true,
+        startedAtMs,
+        taskPostedAtMs,
+        sessionId: group.id,
+        sessionKind: "group",
+        taskMessageId: posted.id,
+        teamMs,
+        coordinatorDirectId: lead.direct_session.id,
+      };
     }
     if (!group) {
       const verdict = settleVerdict(snap, timing);
@@ -357,6 +419,58 @@ async function formTeam(
   }
 }
 
+/** A task's script steps in flight for one run: what has fired, what was skipped (no session for
+ *  its target under this run's setup), and each posted line's message id (for G's attribution, read
+ *  back once the run ends). */
+type ScriptRunner = {
+  task: GoldenTask;
+  team: Extract<Team, { ok: true }>;
+  workspace: string;
+  seeded: ReadonlySet<string>;
+  fired: Set<string>;
+  skipped: Set<string>;
+  posted: Array<{ step: ScriptStep; messageId: string }>;
+  /** Named Bots' direct-with-you session, resolved from the store right after the team formed — see `resolveBotDirects`. */
+  botDirects: Record<string, string>;
+};
+
+/**
+ * Posts whatever of the task's script is due. `first_delivery` costs a workspace listing, so it is
+ * only taken when a step is still waiting on it. A step with no session for its target under this
+ * run's setup (a `bot_direct` naming a Bot `resolveBotDirects` never found, say) is skipped, not
+ * retried: the run's log names it, `runner.skipped` records it for the final `RunResult.script`
+ * stats, and it never counts toward G's attribution since it never posted.
+ */
+async function fireDueScriptSteps(api: Api, runner: ScriptRunner, nowMs: number, opts: RunOptions, label: string): Promise<void> {
+  const pending = runner.task.script.filter((step) => !runner.fired.has(step.id));
+  if (pending.length === 0) return;
+  const needsFirstDelivery = pending.some((step) => step.after.kind === "first_delivery");
+  const { elapsedMs, firstDeliverySeen } = scriptClock({
+    taskPostedAtMs: runner.team.taskPostedAtMs,
+    nowMs,
+    seeded: runner.seeded,
+    listing: needsFirstDelivery ? listFiles(runner.workspace) : [],
+    needsFirstDelivery,
+  });
+  for (const step of dueSteps(pending, runner.fired, elapsedMs, firstDeliverySeen)) {
+    runner.fired.add(step.id);
+    const sessionId =
+      step.target.kind === "group"
+        ? runner.team.sessionId
+        : step.target.kind === "coordinator"
+          ? runner.team.coordinatorDirectId
+          : (runner.botDirects[step.target.bot] ?? null);
+    if (!sessionId) {
+      runner.skipped.add(step.id);
+      opts.log(`[${label}] script step ${step.id} skipped: no session for target ${JSON.stringify(step.target)} under this setup`);
+      continue;
+    }
+    const posted = await api<{ id: string }>("POST", `/v1/sessions/${sessionId}/messages`, { body: step.body });
+    runner.posted.push({ step, messageId: posted.id });
+    opts.log(`[${label}] script step ${step.id} posted at +${Math.round(elapsedMs / 1000)}s`);
+  }
+}
+
 async function waitSettled(
   handle: RuntimeHandle,
   api: Api,
@@ -365,20 +479,27 @@ async function waitSettled(
   timing: SettleTiming,
   opts: RunOptions,
   label: string,
+  runner: ScriptRunner | null,
 ): Promise<Waited> {
   let lastProgress = Date.now();
   for (;;) {
     if (opts.aborted()) return { outcome: "aborted", detail: "interrupted", endedAtMs: Date.now() };
     await pump(handle.store, api, state, opts, label);
+    if (runner) await fireDueScriptSteps(api, runner, Date.now(), opts, label);
     const snap = await snapshot(handle.store, api, state, deadlineMs);
     const verdict = settleVerdict(snap, timing);
-    if (verdict.state === "settled") return { outcome: "settled", detail: null, endedAtMs: snap.lastActivityMs };
+    // A run must not settle out from under a script that still has something due: without this, a
+    // task that goes quiet early (repeat-note settling around 50s, say) would return before its
+    // +90s/+150s lines ever got a chance to fire, silently truncating the script.
+    const pendingStep = runner ? scriptDueBeforeDeadline(runner.task.script, runner.fired, runner.team.taskPostedAtMs, deadlineMs) : null;
+    if (verdict.state === "settled" && !pendingStep) return { outcome: "settled", detail: null, endedAtMs: snap.lastActivityMs };
     if (verdict.state === "blocked") return { outcome: "blocked_on_user", detail: verdict.waitingOn.join("; "), endedAtMs: snap.lastActivityMs };
     if (snap.nowMs >= deadlineMs) return { outcome: "timeout", detail: `still ${verdict.waitingOn.join("; ")}`, endedAtMs: deadlineMs };
     if (snap.nowMs - lastProgress >= PROGRESS_MS) {
       lastProgress = snap.nowMs;
       const turns = scalar<number>(handle.store, `SELECT COUNT(*) AS v FROM turns`) ?? 0;
-      opts.log(`[${label}] ${Math.round((snap.nowMs - (deadlineMs - opts.timeoutMs)) / 1000)}s: ${turns} turn(s) so far; waiting on ${verdict.waitingOn.join("; ")}`);
+      const waitingOn = verdict.state === "settled" && pendingStep ? [`script step ${pendingStep.id} still due`] : verdict.waitingOn;
+      opts.log(`[${label}] ${Math.round((snap.nowMs - (deadlineMs - opts.timeoutMs)) / 1000)}s: ${turns} turn(s) so far; waiting on ${waitingOn.join("; ")}`);
     }
     await Bun.sleep(POLL_MS);
   }
@@ -396,6 +517,30 @@ type Collected = {
   pendingCheckBacks: number;
 };
 
+/**
+ * Which Bots ended up on this scripted line, by name — informational (see `attribution.ts`'s doc
+ * comment for why this is not what G scores), read from both a turn this line triggered and a
+ * `judgements` row that joined it into an already-running turn (which opens no new turn row, so
+ * `trigger_message_id` alone misses it).
+ */
+function triggeredBots(store: Store, messageId: string): string[] {
+  const triggered = store.db.query<{ bot_id: string }, [string]>(`SELECT DISTINCT bot_id FROM turns WHERE trigger_message_id = ?`).all(messageId);
+  const joined = store.db
+    .query<{ bot_id: string }, [string]>(`SELECT DISTINCT bot_id FROM judgements WHERE message_id = ? AND decision = 'join'`)
+    .all(messageId);
+  const ids = [...new Set([...triggered, ...joined].map((row) => row.bot_id))];
+  return ids.map((id) => nameOf(store, id)).filter((name): name is string => name !== null);
+}
+
+/** The plan a posted line's message ended up filed under, once the run ends — null when it never got one (see `attribution.ts`'s doc comment). */
+function messageTaskId(store: Store, messageId: string): string | null {
+  try {
+    return store.getMessage(messageId).task_id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function nameOf(store: Store, id: string | null): string | null {
   if (!id) return null;
   try {
@@ -406,9 +551,9 @@ function nameOf(store: Store, id: string | null): string | null {
 }
 
 /**
- * The plan the task message was filed under. Usually the message's own `task_id`; when the
- * organizer filed it onto a turn instead of stamping the message directly, the first turn this
- * message triggered that does carry a `task_id` is the same plan.
+ * The plan the task message was filed under: the message's own `task_id` (the organizer's filing,
+ * or else the first turn that opened on it; see `attribution.ts`), and failing that the first turn
+ * it triggered that carries a `task_id`.
  */
 function planIdFor(store: Store, taskMessageId: string | null): string | null {
   if (!taskMessageId) return null;
@@ -665,6 +810,8 @@ export async function runOnce(input: {
   let endedAtMs = startedAtMs;
   let teamMs: number | null = null;
   let collected: Collected | null = null;
+  let attribution: AttributionResult | null = null;
+  let runner: ScriptRunner | null = null;
   let handle: RuntimeHandle | null = null;
   // `organize-settle` off: a plan counts as settled once its timer and grace pass, without
   // waiting on an `organize` row or the organizer's own timeout (settle.ts's `settleFiles`).
@@ -674,6 +821,7 @@ export async function runOnce(input: {
     handle = await startRuntime({ dataDir, bind: "127.0.0.1:0", endpointKey: memoryKeyStore(), schedule: true, supervisor: "none", ablation });
     const api = apiFor(handle);
     await configure(api, workspace, opts);
+    await registerMcp(api, task, opts);
     const state = { handled: new Set<string>(), blockedTurns: new Set<string>(), fingerprint: "", stableSince: Date.now() };
     const team = await formTeam(handle, api, state, task, setup, timing, opts, label);
     startedAtMs = team.startedAtMs;
@@ -685,7 +833,29 @@ export async function runOnce(input: {
       sessionId = team.sessionId;
       taskMessageId = team.taskMessageId;
       teamMs = team.teamMs;
-      ({ outcome, detail, endedAtMs } = await waitSettled(handle, api, state, startedAtMs + opts.timeoutMs, timing, opts, label));
+      if (task.script.length > 0) {
+        // Looked up by name once the team has formed, so a `bot_direct` step resolves under any
+        // setup, whoever created the Bot (see `resolveBotDirects`).
+        const botDirects = resolveBotDirects(handle.store, task.setups.manual.bots.map((bot) => bot.name));
+        runner = { task, team, workspace, seeded, fired: new Set(), skipped: new Set(), posted: [], botDirects };
+      }
+      ({ outcome, detail, endedAtMs } = await waitSettled(handle, api, state, startedAtMs + opts.timeoutMs, timing, opts, label, runner));
+      const labelled = (runner?.posted ?? []).filter(
+        (row): row is { step: ScriptStep & { expect_plan: "kickoff" | "new" }; messageId: string } => row.step.expect_plan !== null,
+      );
+      if (labelled.length > 0) {
+        const store = handle.store;
+        const kickoffTaskId = planIdFor(store, taskMessageId);
+        attribution = scoreAttribution(
+          labelled.map(({ step, messageId }) => ({
+            step_id: step.id,
+            expect_plan: step.expect_plan,
+            actual_task_id: messageTaskId(store, messageId),
+            kickoff_task_id: kickoffTaskId,
+            actual_bots: triggeredBots(store, messageId),
+          })),
+        );
+      }
     }
     collected = collect(handle.store, sessionId, taskMessageId, workspace);
     if (outcome === "settled" && collected.endedStalled) {
@@ -771,6 +941,15 @@ export async function runOnce(input: {
     ablation: ablationLabel(ablation),
     ablated,
     ablation_leaks: ablationLeaks(ablated, stats.spend_by_kind),
+    attribution,
+    // A step that came due is in `fired` (posted) or `skipped` (no session for its target); every
+    // other id is `unfired`: the team never formed, the deadline came first (see
+    // `scriptDueBeforeDeadline`), or a `first_delivery` step's delivery never came. See `ScriptStats`.
+    script: {
+      fired: (runner?.posted ?? []).map((row) => row.step.id),
+      skipped: [...(runner?.skipped ?? [])],
+      unfired: task.script.map((step) => step.id).filter((id) => !(runner?.fired.has(id) ?? false)),
+    },
     failure: null,
     failure_detail: null,
   };

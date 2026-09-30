@@ -4,6 +4,8 @@ import {
   agoOf,
   PLAN_LEFT_REVIEW_MAX,
   planLeftNote,
+  planNudgeNote,
+  reportBackNote,
   spanOf,
   STALLED_LEFT_ITEM_MAX,
   STALLED_LEFT_ITEMS,
@@ -36,7 +38,6 @@ describe("statusQuestionBody", () => {
       ],
       checks: { passed: 1, total: 2, failing: [{ item: "成片能在本机播放", detail: "文件不在" }] },
       idleMinutes: null,
-      nudgedBot: null,
     });
     expect(body).toBe(
       [
@@ -77,7 +78,6 @@ describe("statusQuestionBody", () => {
       artifacts: [{ path: "work/cut-the-trailer-7f3k/02-first-cut/draft.mp4", author: "Director", minutesAgo: 12 }],
       checks: { passed: 1, total: 2, failing: [{ item: "the cut plays locally", detail: "file is missing" }] },
       idleMinutes: null,
-      nudgedBot: null,
     });
     expect(body).toBe(
       [
@@ -105,7 +105,6 @@ describe("statusQuestionBody", () => {
       artifacts: [],
       checks: { passed: 0, total: 0, failing: [] },
       idleMinutes: 45,
-      nudgedBot: null,
     });
     expect(body).toBe(["这件事：写周报（进行中）", "现在没有人在做。", "最近一次动静：45 分钟前。"].join("\n"));
   });
@@ -118,14 +117,13 @@ describe("statusQuestionBody", () => {
       artifacts: [],
       checks: { passed: 0, total: 0, failing: [] },
       idleMinutes: null,
-      nudgedBot: null,
     });
     expect(body).toBe(
       ["这件事：写周报（进行中）", "正在做", "- 文案 · 已经 3 分钟 · 最近一步：还在想 · 在「群「视频组」」"].join("\n"),
     );
   });
 
-  test("a booked nudge is named at the end", () => {
+  test("nobody working with a ticket still to do: the ticket is listed last, and nobody is said to be called back", () => {
     const body = statusQuestionBody("zh", {
       plan: { title: "写周报", status: "active" },
       working: [],
@@ -133,17 +131,9 @@ describe("statusQuestionBody", () => {
       artifacts: [],
       checks: { passed: 0, total: 0, failing: [] },
       idleMinutes: 90,
-      nudgedBot: "文案",
     });
     expect(body).toBe(
-      [
-        "这件事：写周报（进行中）",
-        "现在没有人在做。",
-        "最近一次动静：2 小时前。",
-        "任务",
-        "- 01《初稿》待做（还没人接）",
-        "已叫 文案 接着做。",
-      ].join("\n"),
+      ["这件事：写周报（进行中）", "现在没有人在做。", "最近一次动静：2 小时前。", "任务", "- 01《初稿》待做（还没人接）"].join("\n"),
     );
   });
 
@@ -156,7 +146,6 @@ describe("statusQuestionBody", () => {
         artifacts: [],
         checks: { passed: 0, total: 0, failing: [] },
         idleMinutes: null,
-        nudgedBot: null,
       }),
     ).toContain("（已完成）");
     expect(
@@ -167,7 +156,6 @@ describe("statusQuestionBody", () => {
         artifacts: [],
         checks: { passed: 0, total: 0, failing: [] },
         idleMinutes: null,
-        nudgedBot: null,
       }),
     ).toContain("(parked)");
   });
@@ -196,7 +184,6 @@ test("waiting on you comes first, and check-backs say when", () => {
     artifacts: [],
     checks: { passed: 0, total: 0, failing: [] },
     idleMinutes: 5,
-    nudgedBot: null,
     waiting: [
       { bot: "研究员", kind: "approval", text: "读取 ~/Downloads/报价.pdf", elsewhere: null },
       { bot: "撰稿", kind: "ask", text: "目标读者是投资人还是用户？", elsewhere: "群「调研组」" },
@@ -213,7 +200,7 @@ test("waiting on you comes first, and check-backs say when", () => {
   expect(body).toContain("- 审稿 · 马上 · 看初稿");
   const en = statusQuestionBody("en", {
     plan: { title: "Channels", status: "active" }, working: [], tickets: [], artifacts: [],
-    checks: { passed: 0, total: 0, failing: [] }, idleMinutes: 5, nudgedBot: null,
+    checks: { passed: 0, total: 0, failing: [] }, idleMinutes: 5,
     waiting: [{ bot: "Researcher", kind: "approval", text: "read ~/Downloads/quote.pdf", elsewhere: null }],
     checkBacks: [{ bot: "Editor", inMinutes: 125, note: "check the draft" }],
   });
@@ -233,7 +220,7 @@ function awaiting(count: number, titleLength = 80): OpenTicketLine[] {
 describe("calling a Bot back to a plan with everything handed over", () => {
   test("says what to do first and lists the tickets awaiting review last, a few of them, with the rest counted", () => {
     const zh = planLeftNote("zh", { review: awaiting(8) });
-    expect(zh).toStartWith("规划静下来一阵了：没有待做或进行中的任务，局面「进展」里却还记着没做完或卡住的。接着推进：");
+    expect(zh).toStartWith("规划静下来一阵了：没有待做或进行中的任务，局面「进展」里却还记着没做完或卡住的。接下来：");
     expect(zh.indexOf("自己交的也不自己判")).toBeLessThan(zh.indexOf("待验收："));
     expect(zh).toContain(`06《6${"稿".repeat(79)}》（待验收，Writer）`);
     expect(zh).not.toContain("07《");
@@ -288,5 +275,42 @@ describe("the line a plan that stopped leaves for you", () => {
     expect(zh).not.toContain("已经叫过Lead一次");
     const en = stalledPlanBody("en", { open: [{ seq: 1, title: "初稿", status: "doing", worker: "Writer" }], left: [], called: "Writer", capped: 5 });
     expect(en).toContain("Bots have been called back 5 times since you last spoke in this plan, most recently Writer; there will be no more.");
+  });
+});
+
+/**
+ * ADR 0040 P1: reportBackNote, planNudgeNote and planLeftNote used to tell the Bot to carry on;
+ * they were changed to state facts instead. This pins that down so a later edit cannot quietly
+ * bring an instruction to carry on back into any of them.
+ */
+describe("wake notes never invite carrying on", () => {
+  function assertNeutral(text: string, locale: "zh" | "en"): void {
+    if (locale === "en") {
+      expect(text.toLowerCase()).not.toContain("carry on");
+    } else {
+      for (const phrase of ["接着干", "接着推进", "接着做"]) expect(text).not.toContain(phrase);
+    }
+  }
+
+  test("reportBackNote", () => {
+    const spoke = { peer: "审片员", last: { mine: false, body: "剪完了" }, peerSpoke: true };
+    const quiet = { peer: "审片员", last: null, peerSpoke: false };
+    assertNeutral(reportBackNote("zh", spoke), "zh");
+    assertNeutral(reportBackNote("zh", quiet), "zh");
+    assertNeutral(reportBackNote("en", { ...spoke, peer: "Reviewer" }), "en");
+    assertNeutral(reportBackNote("en", { ...quiet, peer: "Reviewer" }), "en");
+  });
+
+  test("planNudgeNote", () => {
+    const open: OpenTicketLine[] = [{ seq: 1, title: "初稿", status: "doing", worker: "Writer" }];
+    assertNeutral(planNudgeNote("zh", { open, mine: open[0]! }), "zh");
+    assertNeutral(planNudgeNote("en", { open, mine: open[0]! }), "en");
+  });
+
+  test("planLeftNote", () => {
+    assertNeutral(planLeftNote("zh", { review: awaiting(2) }), "zh");
+    assertNeutral(planLeftNote("zh", { review: [] }), "zh");
+    assertNeutral(planLeftNote("en", { review: awaiting(2) }), "en");
+    assertNeutral(planLeftNote("en", { review: [] }), "en");
   });
 });

@@ -180,6 +180,39 @@ describe("work dirs follow the work", () => {
     store.close();
   });
 
+  test("a turn named into a plan outright works in it and changes no plan: a parked one stays parked, the current one stays current", () => {
+    // A check-back into a plan you had parked used to put it back in progress, and make it the
+    // session's current plan over the one you had moved on to (ADR 0040 P1).
+    const { store, bot, session } = fixture();
+    const done = store.openTask({ sessionId: session.id, title: "上周的周报" });
+    store.closeTask(done.id);
+    store.db.run(`UPDATE tasks SET closed_at = ? WHERE id = ?`, ["2026-09-01T00:00:00.000Z", done.id]);
+    const parked = store.openTask({ sessionId: session.id, title: "做一部短片" });
+    const booked = store.createTurn({ sessionId: session.id, botId: bot.id, triggerMessageId: store.postMessage(session.id, { body: "做一部短片" }).id, taskId: parked.id });
+    store.setTurnStatus(booked.id, "completed");
+    const current = store.openTask({ sessionId: session.id, title: "订会议室" });
+    expect(store.getTask(parked.id).status).toBe("parked");
+    expect(store.sessionCurrentTask(session.id)?.id).toBe(current.id);
+    const closedAt = store.getTask(parked.id).closed_at!;
+
+    Bun.sleepSync(2);
+    const reminder = store.insertMessage({ sessionId: session.id, turnId: booked.id, kind: "system", author: bot.id, body: "回看：看成片导出好没有" });
+    const woken = store.createTurn({ sessionId: session.id, botId: bot.id, triggerMessageId: reminder.id, taskId: parked.id });
+    expect(woken.task_id).toBe(parked.id);
+    expect(store.getTask(parked.id).status).toBe("parked");
+    expect(store.sessionCurrentTask(session.id)?.id).toBe(current.id);
+    expect(store.getTask(current.id)).toMatchObject({ status: "active", closed_at: null });
+    // Only its closing moves to now, so the tool-results sweep leaves this turn's files.
+    expect(store.getTask(parked.id).closed_at! > closedAt).toBe(true);
+    // A plan that was done stays done too, and one still open keeps no closing.
+    store.createTurn({ sessionId: session.id, botId: bot.id, triggerMessageId: reminder.id, taskId: done.id });
+    expect(store.getTask(done.id).status).toBe("done");
+    expect(store.getTask(done.id).closed_at! > "2026-09-01T00:00:00.000Z").toBe(true);
+    store.createTurn({ sessionId: session.id, botId: bot.id, triggerMessageId: reminder.id, taskId: current.id });
+    expect(store.getTask(current.id).closed_at).toBeNull();
+    store.close();
+  });
+
   test("a routine has one standing plan that never takes the session's current slot, and each fire is a ticket of it", () => {
     const { store, bot, session } = fixture();
     const first = store.postMessage(session.id, { body: "导出季度报表" });
@@ -202,7 +235,7 @@ describe("work dirs follow the work", () => {
     expect(store.turnWorkDir(two.id)).toBe(ticket.dir);
     expect(store.turnPlanDir(two.id)).toBe(standing.dir);
     // A message this turn produces is filed under the ticket, and naming the standing plan outright
-    // (which reopens a user's plan) still leaves the session's current plan alone.
+    // leaves the session's current plan alone.
     const note = store.insertMessage({ sessionId: session.id, turnId: two.id, kind: "bot", author: bot.id, body: "汇总好了" });
     expect(store.getMessage(note.id).ticket_id).toBe(ticket.id);
     expect(store.sessionCurrentTask(session.id)?.id).toBe(one.task_id!);

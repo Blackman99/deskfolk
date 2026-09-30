@@ -9,6 +9,7 @@ import {
   formatSummary,
   isCompleted,
   productChecksOf,
+  scriptOf,
   spendBucket,
   type RunOutcome,
   type RunResult,
@@ -70,6 +71,8 @@ function run(overrides: Partial<RunResult> = {}): RunResult {
     ablation: "none",
     ablated: [],
     ablation_leaks: [],
+    attribution: null,
+    script: { fired: [], skipped: [], unfired: [] },
     failure: null,
     failure_detail: null,
     ...overrides,
@@ -193,6 +196,14 @@ describe("productChecksOf", () => {
   });
 });
 
+describe("scriptOf", () => {
+  test("reads the run's own script stats; a run written before the field existed reads as all empty", () => {
+    const withScript = run({ script: { fired: ["a"], skipped: ["b"], unfired: ["c"] } });
+    expect(scriptOf(withScript)).toEqual({ fired: ["a"], skipped: ["b"], unfired: ["c"] });
+    expect(scriptOf(run())).toEqual({ fired: [], skipped: [], unfired: [] });
+  });
+});
+
 describe("aggregate", () => {
   test("rates and means by setup and by task; aborted runs count nowhere but in the outcomes", () => {
     const runs = [
@@ -309,9 +320,19 @@ describe("summary", () => {
     expect(text).toContain("⚠️ 消融没生效：route-pick 关了，但仍有 2 行 route_pick 花费");
   });
 
+  test("a script that did not fire everything warns with the step ids; a fully-fired script says nothing", () => {
+    const truncated = run({ script: { fired: ["a"], skipped: ["b"], unfired: ["c", "d"] } });
+    const text = formatSummary({ meta: META, aggregate: aggregate([truncated]), runs: [truncated] });
+    expect(text).toContain("⚠️ 脚本没发全：已发 1；跳过 1（b）；没发出 2（c、d）");
+
+    const complete = run({ script: { fired: ["a", "b"], skipped: [], unfired: [] } });
+    const text2 = formatSummary({ meta: META, aggregate: aggregate([complete]), runs: [complete] });
+    expect(text2).not.toContain("脚本没发全");
+  });
+
   test("old-shape run objects (missing every field this file added) do not crash aggregate or formatSummary", () => {
     const old = JSON.parse(JSON.stringify(run())) as Record<string, unknown>;
-    for (const key of ["ablation", "ablated", "ablation_leaks", "failure", "failure_detail", "ended_stalled"]) delete old[key];
+    for (const key of ["ablation", "ablated", "ablation_leaks", "failure", "failure_detail", "ended_stalled", "script"]) delete old[key];
     delete (old.team as Record<string, unknown>).session_kind;
     delete (old.stats as Record<string, unknown>).spend_by_kind;
     delete (old.stats as Record<string, unknown>).thinking_levels;

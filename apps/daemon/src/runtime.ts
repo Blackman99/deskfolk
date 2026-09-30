@@ -20,6 +20,8 @@ import { shippedRemoteNative } from "./remote/file-native";
 import { RuntimeLifecycle } from "./lifecycle";
 import { recoverLifecycle } from "./remote/lifecycle";
 import { restartAvailable, runtimeVersion, type MaintenanceControl } from "./remote/maint";
+import { stopOrphanProcs } from "./live-procs";
+import { logStartup } from "./startup-log";
 
 type SocketData = { authed: boolean };
 
@@ -229,6 +231,15 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
     });
     store.recoverInterruptedTurns();
     store.recoverInterruptedCheckRuns();
+    // Commands the previous run's turns started may still be running (a render writing into the
+    // workspace, say); their turns were just marked interrupted, so nothing is left to want them.
+    // Not awaited: a group gets 3 s between SIGTERM and SIGKILL, and boot does not wait on that.
+    void stopOrphanProcs(store, {
+      log: (line) => {
+        console.error(line);
+        logStartup(options.dataDir, line);
+      },
+    }).catch(() => {});
     recoverLifecycle(store);
     // Remote credentials live in a file (ADR 0033). The compiled daemon always uses it and confirms
     // through its window; source runs only with REAL_BOT_DEV_REMOTE=1, confirming by stand-in.

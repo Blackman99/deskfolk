@@ -210,12 +210,12 @@ describe("sending a batch over HTTP", () => {
     expect(result.annotations.map((x) => x.status)).toEqual(["open", "open"]);
     expect(result.annotations.every((x) => x.message_id === result.message.id)).toBe(true);
 
-    // The Bot woke, and its turn ran in the delivery's work dir, reopened.
+    // The Bot woke, and its turn ran in the delivery's work dir, which it works in without reopening.
     await until(() => h.requests.length >= 1);
     const woken = h.store.db.query<{ id: string; task_id: string }, [string]>("SELECT id, task_id FROM turns WHERE trigger_message_id = ?").get(result.message.id);
     expect(woken?.task_id).toBe(turn.task_id!);
     await until(() => h.store.getTurn(woken!.id).status === "completed");
-    expect(h.store.getTask(turn.task_id!).closed_at).toBeNull();
+    expect(h.store.getTask(turn.task_id!).closed_at).not.toBeNull();
     // The Bot saw both annotations with the tools to handle them, and resolved each one.
     expect(String(JSON.stringify(h.requests[0]!.messages))).toContain("[批注 1/2 · id=");
     expect(h.requests[0]!.tools.map((tool) => (tool as { function: { name: string } }).function.name)).toEqual(expect.arrayContaining(["list_annotations", "resolve_annotation"]));
@@ -223,7 +223,8 @@ describe("sending a batch over HTTP", () => {
     // Resolving names a file but writes nothing: the closing reply hands nothing over.
     const closing = h.store.listMainMessages(direct, 20).find((m) => m.kind === "bot" && m.body === "收到，改好了。");
     expect(closing?.attachments).toEqual([]);
-    expect(h.store.getTask(otherTurn.task_id!).closed_at).not.toBeNull();
+    // The session's newer job stays its current one.
+    expect(h.store.sessionCurrentTask(direct)?.id).toBe(otherTurn.task_id!);
   });
 
   test("refuses a mixed or oversized batch as a whole, and replays the same request id", async () => {

@@ -9,7 +9,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";
@@ -295,6 +295,41 @@ describe("workspace tools", () => {
     );
     expect(got.ok).toBe(false);
     expect(got.error?.message).toContain("timed out");
+    close();
+  });
+
+  /**
+   * ADR 0040 P1, fixture F-g: the 2026-09-28 incident (a `grep -r` under $HOME hit the shell's
+   * timeout) went through the ordinary outside-workspace approval flow first, and once that was
+   * granted it walked the whole home folder. Now it never reaches that flow at all.
+   *
+   * POSIX only, like the guard itself (`toolShell().kind === "sh"`, which win32 never returns).
+   */
+  test.skipIf(process.platform === "win32")(
+    "a recursive search of the home folder is refused before it runs, with no approval card",
+    async () => {
+      const { store, close } = await storeWithWorkspace();
+      const got = await runWorkspaceTool({ store, signal: new AbortController().signal }, "shell", {
+        command: `grep -r "x" ${homedir()}`,
+      });
+      expect(got.ok).toBe(false);
+      expect(got.error?.code).toBe("refused");
+      expect(got.waitApproval).toBeUndefined();
+      close();
+    },
+  );
+
+  // A short shellTimeoutMs bounds what a regression here could do: without it, a guard that
+  // stopped firing would let this really walk the machine's home folder for up to SHELL_TIMEOUT_MS.
+  test.skipIf(process.platform === "win32")("the refusal holds even with an always-allow rule for unconstrained shells", async () => {
+    const { store, close } = await storeWithWorkspace();
+    store.createAllowRule("unconstrained-shell", "*");
+    const got = await runWorkspaceTool({ store, signal: new AbortController().signal, shellTimeoutMs: 150 }, "shell", {
+      command: `cd ~ && grep -r "x" .`,
+    });
+    expect(got.ok).toBe(false);
+    expect(got.error?.code).toBe("refused");
+    expect(got.waitApproval).toBeUndefined();
     close();
   });
 

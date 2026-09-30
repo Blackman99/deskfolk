@@ -16,11 +16,13 @@ import * as credentials from "./credentials";
 import * as files from "./files";
 import { Database } from "bun:sqlite";
 import { SCHEMA_SQL } from "../schema";
+import { ulid } from "../ids";
 import * as annotations from "./annotations";
 import * as approvals from "./approvals";
 import * as bots from "./bots";
 import * as checkBacks from "./check-backs";
 import * as judgements from "./judgements";
+import * as liveProcs from "./live-procs";
 import * as mcp from "./mcp";
 import * as memories from "./memories";
 import * as messages from "./messages";
@@ -85,6 +87,7 @@ export type { FileCommit, LiveFile } from "./files";
 export type { DecideRouteInput } from "./routing";
 export type { TurnRun } from "./turn-runs";
 export { TURN_RUNS_PER_TURN } from "./turn-runs";
+export type { LiveProc } from "./live-procs";
 
 type Bound<F> = F extends (ctx: StoreContext, ...args: infer A) => infer R ? (...args: A) => R : never;
 
@@ -93,6 +96,13 @@ export class Store {
   readonly receipts: Receipts;
   /** How the previous run ended, read once at boot before this run's own flag is set to `crash` (see `schema-gate.ts`). */
   readonly previousShutdown: "clean" | "crash";
+  /**
+   * This open of the database, for `live_procs`: a row with any other boot id was written by
+   * another run (ADR 0040 I10). Usually that run is gone and what the row names is an orphan, but a
+   * daemon opened on a copy of a live database sees the live daemon's rows too, so each row also
+   * says which daemon process wrote it.
+   */
+  readonly bootId = ulid();
   private readonly ctx: StoreContext;
   private readonly listeners = new Set<(event: ClientEvent) => void>();
   private journalReady = false;
@@ -425,6 +435,12 @@ export class Store {
   readonly listKeptTerminals = this.bind(terminals.listKeptTerminals);
   readonly rememberTerminal = this.bind(terminals.rememberTerminal);
   readonly forgetTerminal = this.bind(terminals.forgetTerminal);
+
+  // Commands still running, by boot; see live-procs.ts for why ------------------------------
+  readonly registerLiveProc = this.bind(liveProcs.registerLiveProc);
+  readonly noteLiveProcStart = this.bind(liveProcs.noteLiveProcStart);
+  readonly forgetLiveProc = this.bind(liveProcs.forgetLiveProc);
+  readonly liveProcsFromOtherBoots = this.bind(liveProcs.liveProcsFromOtherBoots);
 
   // Transcript -----------------------------------------------------------------------------
   readonly listMessages = this.bind(messages.listMessages);

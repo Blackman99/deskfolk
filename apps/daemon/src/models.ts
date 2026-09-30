@@ -77,14 +77,18 @@ export function parseStoredAvailableModels(raw: string | null | undefined): stri
   }
 }
 
-export function normalizeModelCatalog(value: unknown): EndpointModel[] {
+/**
+ * A model list as sent. With `before`, the list it replaces, an entry that leaves out its output cap
+ * or measured speed keeps the one it had, and an explicit null clears it.
+ */
+export function normalizeModelCatalog(value: unknown, before: readonly EndpointModel[] = []): EndpointModel[] {
   if (!Array.isArray(value)) {
     throw new HttpError(422, "invalid_args", "endpoint_models must be an array of strings");
   }
   const out: EndpointModel[] = [];
   const seen = new Set<string>();
   for (const item of value) {
-    const row = parseCatalogItemStrict(item);
+    const row = keepMeasured(parseCatalogItemStrict(item), item, before);
     if (seen.has(row.name)) continue;
     seen.add(row.name);
     out.push(row);
@@ -211,13 +215,18 @@ export function resolveCompletionTarget(
 
 function parseCatalogItemLoose(item: unknown): EndpointModel | null {
   try {
-    return parseCatalogItemStrict(item);
+    return parseCatalogItemStrict(item, true);
   } catch {
     return null;
   }
 }
 
-function parseCatalogItemStrict(item: unknown): EndpointModel {
+/**
+ * `skipBadMeasured` reads a stored list: a probe writes the output cap and measured speed into it
+ * directly, so a bad value there is dropped on its own instead of taking the model, and every Bot
+ * pinned to it, out of the list.
+ */
+function parseCatalogItemStrict(item: unknown, skipBadMeasured = false): EndpointModel {
   if (typeof item === "string") {
     const name = item.trim();
     if (name.length === 0) {
@@ -237,12 +246,59 @@ function parseCatalogItemStrict(item: unknown): EndpointModel {
     throw new HttpError(422, "invalid_args", "endpoint_models cannot include empty names");
   }
   const pricing = normalizePricing(rec.pricing);
+  const measured = (value: unknown, field: string, integer: boolean) => {
+    try {
+      return normalizePositive(value, field, integer);
+    } catch (error) {
+      if (skipBadMeasured) return undefined;
+      throw error;
+    }
+  };
+  const maxOutput = measured(rec.max_output, "max_output", true);
+  const tps = measured(rec.stream_tps_p10, "stream_tps_p10", false);
+  let reasoningEffective: boolean | undefined;
+  if (rec.reasoning_effective !== undefined && rec.reasoning_effective !== null) {
+    if (typeof rec.reasoning_effective !== "boolean") {
+      if (!skipBadMeasured) throw new HttpError(422, "invalid_args", "reasoning_effective must be a boolean");
+    } else {
+      reasoningEffective = rec.reasoning_effective;
+    }
+  }
   return {
     name,
     ...(pricing ? { pricing } : {}),
     price: normalizePrice(rec.price),
     thinking_levels: normalizeThinkingLevels(rec.thinking_levels),
     strengths: normalizeStrengths(rec.strengths),
+    ...(maxOutput !== undefined ? { max_output: maxOutput } : {}),
+    ...(tps !== undefined ? { stream_tps_p10: tps } : {}),
+    ...(reasoningEffective !== undefined ? { reasoning_effective: reasoningEffective } : {}),
+  };
+}
+
+/** A model's output cap (a token count) or measured streaming speed; absent or null leaves it unset. */
+function normalizePositive(value: unknown, field: string, integer: boolean): number | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0 || (integer && !Number.isInteger(value))) {
+    throw new HttpError(422, "invalid_args", `${field} must be a positive ${integer ? "integer" : "number"}`);
+  }
+  return value;
+}
+
+/**
+ * An entry saved again keeps its output cap and measured speed when the entry as sent (`item`)
+ * leaves them out. The settings form rebuilds every entry from its fields and has none for these, so
+ * saving a price there would otherwise drop what a probe measured. A null sent for one clears it.
+ */
+function keepMeasured(row: EndpointModel, item: unknown, before: readonly EndpointModel[]): EndpointModel {
+  const old = before.find((entry) => entry.name === row.name);
+  if (!old) return row;
+  const sent = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+  return {
+    ...row,
+    ...(sent.max_output === undefined && old.max_output !== undefined ? { max_output: old.max_output } : {}),
+    ...(sent.stream_tps_p10 === undefined && old.stream_tps_p10 !== undefined ? { stream_tps_p10: old.stream_tps_p10 } : {}),
+    ...(sent.reasoning_effective === undefined && old.reasoning_effective !== undefined ? { reasoning_effective: old.reasoning_effective } : {}),
   };
 }
 
@@ -262,6 +318,9 @@ function serializeItem(row: EndpointModel): Record<string, unknown> {
     ...(row.pricing ? { pricing: row.pricing } : {}),
     thinking_levels: row.thinking_levels,
     strengths: row.strengths,
+    ...(row.max_output !== undefined ? { max_output: row.max_output } : {}),
+    ...(row.stream_tps_p10 !== undefined ? { stream_tps_p10: row.stream_tps_p10 } : {}),
+    ...(row.reasoning_effective !== undefined ? { reasoning_effective: row.reasoning_effective } : {}),
   };
 }
 

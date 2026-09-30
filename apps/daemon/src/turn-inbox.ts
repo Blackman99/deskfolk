@@ -58,15 +58,15 @@ export function heardNote(locale: Locale, items: readonly HeardItem[]): string {
   const lines = items.map((item) => heardLine(item, en));
   if (en) {
     return [
-      "(App note) While you were working, this came in for you. Your turn was not interrupted; carry on.",
+      "(App note) While you were working, this came in for you. Your turn was not interrupted.",
       ...lines,
-      "Decide whether it bears on what you are doing: if it does, take it into account and keep going. Anything that needs an answer can be answered in this turn's hand-over; do not stop the work in hand just to reply.",
+      "Decide whether it bears on what you are doing: if it does, take it into account. Anything that needs an answer can be answered in this turn's hand-over.",
     ].join("\n");
   }
   return [
-    "（应用提示）你这一轮干活时有人找你。这一轮没有被打断，接着干。",
+    "（应用提示）你这一轮干活时有人找你。这一轮没有被打断。",
     ...lines,
-    "先判断它和你手上的活有没有关系：有关就把它考虑进去接着做；需要回应的，在这一轮交付时一起回应，不要为了回复停下手上的活。",
+    "判断它和你手上的活有没有关系：有关就考虑进去；需要回应的，在这一轮交付时一起回应。",
   ].join("\n");
 }
 

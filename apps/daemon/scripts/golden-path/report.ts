@@ -15,6 +15,7 @@
  */
 import type { SideCall } from "../../src/ablation";
 import { formatCoverageReport, type GoalCoverage } from "../../src/goal-coverage-eval";
+import type { AttributionResult } from "./attribution";
 import type { CheckResult } from "./checks";
 import type { Interventions } from "./interventions";
 import type { Setup } from "./tasks";
@@ -31,6 +32,18 @@ export type SpendBucketStats = { rows: number; input_tokens: number; output_toke
  * these), and how many came from the organizer versus the user.
  */
 export type ProductCheckStats = { total: number; pass: number; fail: number; blocked: number; error: number; organizer: number; user: number };
+
+/**
+ * What became of a task's script steps (the S/R/G benchmark families' scripted follow-up lines):
+ * `fired` posted, `skipped` came due but had no session to post into under this run's setup (a
+ * `bot_direct` naming a Bot the run never found, say), `unfired` never came due at all: the team
+ * never formed, the run's own deadline (`startedAtMs + timeoutMs`, fixed before a `coordinator`
+ * run's team formation eats into it) passed before a `seconds` step's due time did, or a
+ * `first_delivery` step's delivery never came (the run settled, or ran out of time, before the team
+ * wrote a first new file). The three are disjoint and together name every id in the task's `script`
+ * exactly once; empty on a task with no script.
+ */
+export type ScriptStats = { fired: string[]; skipped: string[]; unfired: string[] };
 
 export type RunStats = {
   turns: number;
@@ -109,6 +122,10 @@ export type RunResult = {
   ablated: SideCall[];
   /** Rows that turned up in `spend` for a call this run's ablation switched off (see `ablationLeaks`). */
   ablation_leaks: string[];
+  /** G's labelled attribution over the task's script steps that named an `expect_plan`: whether each line ended up filed on the plan it was labelled for (the kickoff plan, or a new one) — not which Bot's turn it woke, see `attribution.ts`. Null when the task's script named no `expect_plan` (every non-G task, and a G run with no script steps fired). */
+  attribution: AttributionResult | null;
+  /** What became of the task's script steps this run — see `ScriptStats`. `{ fired: [], skipped: [], unfired: [] }` for a task with no script. */
+  script: ScriptStats;
   /** Why this run did not count as completed; null exactly when it did. */
   failure: FailureKind | null;
   /** What the failure was, e.g. which check failed or the coverage score. */
@@ -211,6 +228,16 @@ export function productChecksOf(run: RunResult): ProductCheckStats {
 
 export function leaksOf(run: RunResult): readonly string[] {
   return run.ablation_leaks ?? [];
+}
+
+export function attributionOf(run: RunResult): AttributionResult | null {
+  return run.attribution ?? null;
+}
+
+const EMPTY_SCRIPT_STATS: ScriptStats = { fired: [], skipped: [], unfired: [] };
+
+export function scriptOf(run: RunResult): ScriptStats {
+  return run.script ?? EMPTY_SCRIPT_STATS;
 }
 
 export function endedStalledOf(run: RunResult): boolean {
@@ -471,6 +498,26 @@ export function formatSummary(input: { meta: SummaryMeta; aggregate: Aggregate; 
     lines.push(`- 交出的文件：${run.files.written.length ? run.files.written.map((path) => `\`${path}\``).join("、") : "没有"}`);
     if (run.pending_check_backs) lines.push(`- 还约着 ${run.pending_check_backs} 次回看（在截止之后）`);
     if (run.setup === "solo" && run.team.bots.length > 1) lines.push(`- ⚠️ 单干时另建了 Bot（${run.team.bots.join("、")}）`);
+    const script = scriptOf(run);
+    if (script.skipped.length > 0 || script.unfired.length > 0) {
+      const parts = [`已发 ${script.fired.length}`];
+      if (script.skipped.length) parts.push(`跳过 ${script.skipped.length}（${script.skipped.join("、")}）`);
+      if (script.unfired.length) parts.push(`没发出 ${script.unfired.length}（${script.unfired.join("、")}）`);
+      lines.push(`- ⚠️ 脚本没发全：${parts.join("；")}`);
+    }
+    const attribution = attributionOf(run);
+    if (attribution) {
+      const planLabel = (id: string | null, kickoffId: string | null) => (id === null ? "没有归属" : id === kickoffId ? "发起的规划" : "另一个规划");
+      const misses = attribution.rows
+        .filter((row) => !row.hit)
+        .map((row) => {
+          const expect = row.expect_plan === "kickoff" ? "发起的规划" : "新规划";
+          const actual = planLabel(row.actual_task_id, row.kickoff_task_id);
+          const bots = row.actual_bots.length ? `；接住的：${row.actual_bots.join("、")}` : "";
+          return `${row.step_id}→期望归到${expect}，实际${actual}${bots}`;
+        });
+      lines.push(`- 归属（G）：${attribution.hits} / ${attribution.total} 命中${misses.length ? `；未命中：${misses.join("；")}` : ""}`);
+    }
     const leaks = leaksOf(run);
     if (leaks.length > 0) lines.push(`- ⚠️ 消融没生效：${leaks.join("；")}`);
     if (run.key_leak) lines.push("- ⚠️ 密钥出现在保留的数据里");

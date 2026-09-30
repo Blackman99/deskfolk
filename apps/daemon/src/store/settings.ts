@@ -159,7 +159,12 @@ export function patchSettingsSync(ctx: StoreContext, patch: SettingsPatch | Reco
     if ("endpoint_base_url" in patch) {
       providerPatch.base_url = resolveEndpointUrl(patch.endpoint_base_url);
     }
-    if ("endpoint_models" in patch) providerPatch.models = normalizeModelCatalog(patch.endpoint_models);
+    if ("endpoint_models" in patch) {
+      // Checked here and passed on as sent, so that a null on a model's measured field still
+      // clears it (models.ts).
+      normalizeModelCatalog(patch.endpoint_models);
+      providerPatch.models = patch.endpoint_models as PatchProviderRequest["models"];
+    }
     if ("endpoint_default_model" in patch) {
       providerPatch.default_model = typeof patch.endpoint_default_model === "string"
         ? patch.endpoint_default_model

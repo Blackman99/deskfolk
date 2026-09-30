@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createCompletionsClient } from "./completions";
+import { continueNote } from "./hop-limits";
 import { ORGANIZER_SYSTEM } from "./prompts/organizer";
 import { ROUTE_LEARN_SYSTEM, ROUTE_PICK_SYSTEM, ROUTE_REVIEW_SYSTEM } from "./prompts/routing";
 import { createLocalApi } from "./local-api";
@@ -2195,37 +2196,39 @@ describe("turn engine on the local API", () => {
     sub.close();
   });
 
-  test("a mid-stream stall with usable text still inserts the bot reply", async () => {
+  test("a mid-stream stall posts none of the half reply: the hop is asked for again", async () => {
     const encoder = new TextEncoder();
     let hang: ((reason?: unknown) => void) | null = null;
-    const fixture = await startFixture(
-      () =>
-        new Response(
-          new ReadableStream({
-            pull(controller) {
-              if (!(controller as { sent?: boolean }).sent) {
-                (controller as { sent?: boolean }).sent = true;
-                controller.enqueue(
-                  encoder.encode(
-                    `data: ${JSON.stringify({
-                      id: "chatcmpl-1",
-                      choices: [{ index: 0, delta: { role: "assistant", content: "partial but usable" }, finish_reason: null }],
-                    })}\n\n`,
-                  ),
-                );
-                return;
-              }
-              return new Promise((_, reject) => {
-                hang = reject;
-              });
-            },
-            cancel() {
-              hang?.(new Error("cancelled"));
-            },
-          }),
-          { headers: { "Content-Type": "text/event-stream" } },
-        ),
-    );
+    let asked = 0;
+    const fixture = await startFixture(() => {
+      asked += 1;
+      if (asked > 1) return sse(textChunks("the whole reply"));
+      return new Response(
+        new ReadableStream({
+          pull(controller) {
+            if (!(controller as { sent?: boolean }).sent) {
+              (controller as { sent?: boolean }).sent = true;
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({
+                    id: "chatcmpl-1",
+                    choices: [{ index: 0, delta: { role: "assistant", content: "half a" }, finish_reason: null }],
+                  })}\n\n`,
+                ),
+              );
+              return;
+            }
+            return new Promise((_, reject) => {
+              hang = reject;
+            });
+          },
+          cancel() {
+            hang?.(new Error("cancelled"));
+          },
+        }),
+        { headers: { "Content-Type": "text/event-stream" } },
+      );
+    });
     const h = await startApi(undefined, {
       completions: createCompletionsClient({
         clock: { firstByteMs: 80, idleMs: 40 },
@@ -2241,10 +2244,42 @@ describe("turn engine on the local API", () => {
     const botMsg = await waitFor(
       sub.events,
       (e) => e.event === "message.created" && e.kind === "bot" && e.author === botId,
+      4000,
     );
-    expect(botMsg.body).toBe("partial but usable");
+    expect(botMsg.body).toBe("the whole reply");
     await waitFor(sub.events, (e) => e.event === "turn.upsert" && e.status === "completed");
+    expect(asked).toBe(2);
     expect(sub.events.some((e) => e.event === "message.created" && e.kind === "system")).toBe(false);
+    sub.close();
+  });
+
+  test("a proxy passing Gemini's own finish reasons through: MAX_TOKENS carries on, STOP is the reply", async () => {
+    const asked: Array<Record<string, unknown>> = [];
+    const ending = (finish: string, text: string) => [
+      { id: "chatcmpl-1", choices: [{ index: 0, delta: { role: "assistant", content: text }, finish_reason: null }] },
+      { id: "chatcmpl-1", choices: [{ index: 0, delta: {}, finish_reason: finish }] },
+    ];
+    const fixture = await startFixture(({ body }) => {
+      asked.push(body);
+      return sse(asked.length === 1 ? ending("MAX_TOKENS", "第一部分写到这里") : ending("STOP", "写完了。"));
+    });
+    const h = await startApi();
+    const { botId, sessionId } = await createWriter(h, fixture.origin);
+    const sub = await subscribe(h);
+    await fetch(`${h.origin}/v1/sessions/${sessionId}/messages`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ body: "go" }),
+    });
+    const botMsg = await waitFor(sub.events, (e) => e.event === "message.created" && e.kind === "bot" && e.author === botId);
+    expect(botMsg.body).toBe("写完了。");
+    await waitFor(sub.events, (e) => e.event === "turn.upsert" && e.status === "completed");
+    // One continuation hop, which read the cut part and the note; the cut part itself was never posted.
+    expect(asked.length).toBe(2);
+    const messages = asked[1]!.messages as Array<{ role: string; content: string }>;
+    expect(messages.at(-2)).toEqual({ role: "assistant", content: "第一部分写到这里" });
+    expect([continueNote("zh", false), continueNote("en", false)]).toContain(messages.at(-1)!.content);
+    expect(sub.events.some((e) => e.event === "message.created" && String(e.body).includes("第一部分"))).toBe(false);
     sub.close();
   });
 

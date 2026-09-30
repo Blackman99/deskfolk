@@ -50,7 +50,7 @@ function verifyName(step: VerifyStep): string {
 
 export function verifyResult(step: VerifyStep, run: { exit: number | null; stdout: string; stderr: string; timedOut: boolean }): CheckResult {
   const name = verifyName(step);
-  if (run.timedOut) return { name, ok: false, detail: `timed out after ${step.timeout_sec}s` };
+  if (run.timedOut) return { name, ok: false, detail: `timed out after ${step.timeout_sec}s`, kind: "verify" };
   const problems: string[] = [];
   if (run.exit !== step.expect_exit) problems.push(`exit ${run.exit ?? "none"}, expected ${step.expect_exit}`);
   if (step.expect_stdout !== null && normalizeOutput(run.stdout) !== normalizeOutput(step.expect_stdout)) {

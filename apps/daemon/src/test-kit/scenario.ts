@@ -21,11 +21,13 @@
  * it moved. `advance(ms)` makes time pass by ageing what the scheduler compares against the wall
  * clock — every check-back still to come falls due `ms` sooner and every running turn's last
  * activity is `ms` older — then ticks. A check-back booked after an advance comes due its full
- * `after_minutes` later, a turn stuck across the advance is swept, a fresh one is not. Nothing else
- * is aged: messages, plans and ended turns keep their stamps, so what compares those with the wall
- * clock (a chain's age, a memory's, a plan's quiet) does not see the advance. Routines fire at a
- * time of day and do not follow it either; a scenario that needs one fires it with
- * `engine.fireRoutine(id, at)`.
+ * `after_minutes` later, a turn stuck across the advance is swept, a fresh one is not. A hop whose
+ * handler is still out is not swept but runs out of time: once advances take it past the hop's
+ * `wallMs` it is answered `overtime`, as the completions client ends such an attempt (ADR 0040 P1).
+ * Nothing else is aged: messages, plans and ended turns keep their stamps, so what compares those
+ * with the wall clock (a chain's age, a memory's, a plan's quiet) does not see the advance.
+ * Routines fire at a time of day and do not follow it either; a scenario that needs one fires it
+ * with `engine.fireRoutine(id, at)`.
  *
  * The engine's quiet timers (settle, a Bot↔Bot direct's report, chain review, a plan left with
  * work) are real `setTimeout`s, injected short, and `advance` cannot move them. `waitIdle` waits out
@@ -33,6 +35,12 @@
  * watch, when the Bot it would call back already has an appointment in that session for another
  * plan, looks again only once that one is due plus the quiet, in real time. `waitIdle` returns
  * while that look is pending, so "no call-back happened" proves nothing in that case.
+ *
+ * `durable: true` keeps the store in a file, so `restart()` can take the daemon down and bring a
+ * second engine up on what it left, the way `runtime.ts` boots. A clean restart goes through the
+ * same shutdown steps as a quit. A crash writes nothing more: the next boot reads a copy of the file
+ * taken at that instant, and the dying engine is taken down on the original. The Bots' scripts and
+ * every record carry across; the media server is a new process, so its job counters start over.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -94,11 +102,12 @@ const NO_SIDE_EFFECT: ReadonlySet<string> = new Set([
 
 /**
  * Error codes a call comes back with when it was turned away before it did anything: you denied
- * it, its arguments did not validate, or the runtime was draining. The engine announces a call as
- * started before any of these, so they have to be taken out again — by the result the engine
- * reports as the call exits, which a refused call on a turn's last hop has too.
+ * it, its arguments did not validate, the runtime was draining, or a static guard (the recursive
+ * search guard, ADR 0040 P1) turned it away outright. The engine announces a call as started
+ * before any of these, so they have to be taken out again — by the result the engine reports as
+ * the call exits, which a refused call on a turn's last hop has too.
  */
-const REFUSED: ReadonlySet<string> = new Set(["denied", "invalid_args", "draining"]);
+const REFUSED: ReadonlySet<string> = new Set(["denied", "invalid_args", "draining", "refused"]);
 
 // ── Replies ─────────────────────────────────────────────────────────────────────────────────────
 
@@ -235,6 +244,8 @@ export type HopRecord = {
   matchedBy: "signal" | "only" | "trigger" | "ambiguous" | null;
   /** False when nothing was scripted for it and the harness answered `end_turn`. */
   scripted: boolean;
+  /** What the hop sent: system prompt, transcript and the turn's loop so far (see `requestText`). */
+  request: CompletionRequest;
   reply: CompletionResult;
   at: string;
 };
@@ -293,12 +304,15 @@ export type ScenarioOptions = {
   media?: boolean | { videoPolls?: number };
   locale?: "zh" | "en";
   ablation?: Ablation;
+  /** Keeps the store in a file instead of memory, so `restart()` can boot a second engine on it. */
+  durable?: boolean;
 };
 
 export type Scenario = {
-  store: Store;
-  engine: TurnEngine;
-  admission: TurnAdmission;
+  /** The running daemon's store, engine and admission: after `restart()`, the new ones. */
+  readonly store: Store;
+  readonly engine: TurnEngine;
+  readonly admission: TurnAdmission;
   /** The workspace root, a fresh temp dir removed on `close()`. */
   root: string;
   /** Everything the engine published, in order. */
@@ -318,6 +332,18 @@ export type Scenario = {
 
   /** Posts your line the way the local API does, and returns it; what it wakes runs in the background. */
   postUser: (session: SessionRef, body: string, opts?: { parentId?: string; fork?: boolean }) => Message;
+  /**
+   * Posts a line in a Bot's name, the way a handoff or a Bot↔Bot opener lands, filed under a plan
+   * (and ticket) when given, and routes it as a Bot's line; what it wakes runs in the background.
+   * No turn wrote it: `turn_id` and `source_turn_id` are null, which no Bot's line in the app is.
+   * What reads the turn behind a line treats it differently: the nod rule of a Bot↔Bot direct
+   * (`isNodToANod`) never takes it, or an answer to it, for a nod; and its notification has no
+   * turn, so in a group, where only a line your own line woke notifies you, it raises none. A
+   * scenario that depends on either has a Bot's turn send the line with `send_message`.
+   */
+  postBot: (bot: BotRef, session: SessionRef, body: string, opts?: { taskId?: string | null; ticketId?: string | null }) => Message;
+  /** Resolves once every line posted so far has been routed: filed, and every turn it opens started. */
+  routed: () => Promise<void>;
   /**
    * Resolves once nothing is running and nothing is in flight, and it has stayed that way longer
    * than the longest quiet timer. A turn waiting on an ask or an approval counts as quiet. Past
@@ -351,6 +377,11 @@ export type Scenario = {
   /** A Bot's `turn_runs` rows (shell commands and MCP calls), oldest first. */
   runs: (bot: BotRef) => TurnRun[];
 
+  /**
+   * Takes the daemon down and boots a new one on the same file (needs `durable`): `clean` as a quit
+   * does, otherwise a crash (see the module header). The new engine's scheduler has ticked once.
+   */
+  restart: (opts: { clean: boolean }) => Promise<void>;
   close: () => Promise<void>;
 };
 
@@ -370,6 +401,11 @@ function textOf(content: CompletionRequest["messages"][number]["content"]): stri
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   return content.map((part) => (part.type === "text" ? part.text : "")).join("\n");
+}
+
+/** Every message of a hop's request as plain text, in order: what the model read on that hop. */
+export function requestText(request: CompletionRequest): string {
+  return request.messages.map((message) => textOf(message.content)).join("\n");
 }
 
 function judgeKindOf(request: JudgeRequest): JudgeKind {
@@ -416,7 +452,12 @@ function untilAborted<T>(value: T | Promise<T>, signal: AbortSignal, aborted: ()
 
 export async function createScenario(options: ScenarioOptions = {}): Promise<Scenario> {
   const root = mkdtempSync(join(tmpdir(), "scenario-"));
-  const store = new Store({ endpointKey: memoryKeyStore() });
+  // Kept apart from the workspace: a file-backed store keeps its inbox beside the database.
+  const dbDir = options.durable ? mkdtempSync(join(tmpdir(), "scenario-db-")) : null;
+  let dbFile = dbDir ? join(dbDir, "state.sqlite") : null;
+  // One key store for every store this scenario opens, as the keychain outlives a restart.
+  const keys = memoryKeyStore();
+  let store = new Store({ ...(dbFile ? { filename: dbFile } : {}), endpointKey: keys });
   await store.patchSettings({
     workspace_path: root,
     endpoint_base_url: "http://127.0.0.1:1/v1",
@@ -459,10 +500,15 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
   const signalTurns = new WeakMap<AbortSignal, { turnId: string; botId: string; sessionId: string }>();
   const mappedTurns = new Set<string>();
   const hopsByTurn = new Map<string, number>();
-  const inbound = new Set<Promise<unknown>>();
+  /** Lines still being routed by the running engine; a restart starts a fresh set. */
+  let inbound = new Set<Promise<unknown>>();
   const failures: unknown[] = [];
   let inflight = 0;
   let callSeq = 0;
+  /** How far `advance` has moved time so far, in ms. */
+  let advanced = 0;
+  /** Hops whose handler is still out, and how far `advanced` may go before their time limit runs out. */
+  const outstanding = new Set<{ until: number; expire: () => void }>();
 
   function botOf(ref: BotRef): Bot {
     if (typeof ref !== "string") return store.getBot(ref.id);
@@ -568,6 +614,29 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
     return null;
   }
 
+  /**
+   * A handler's answer, or `overtime` once `advance` has taken the hop past its `wallMs`: the
+   * completions client ends an attempt that streams that long, and the stale sweep leaves a hop in
+   * flight to it.
+   */
+  function withinLimit(value: CompletionResult | Promise<CompletionResult>, wallMs: number | undefined): CompletionResult | Promise<CompletionResult> {
+    if (!(value instanceof Promise) || !wallMs) return value;
+    return new Promise<CompletionResult>((resolve, reject) => {
+      const entry = { until: advanced + wallMs, expire: () => resolve(failed("overtime")) };
+      outstanding.add(entry);
+      value.then(
+        (result) => {
+          outstanding.delete(entry);
+          resolve(result);
+        },
+        (error: unknown) => {
+          outstanding.delete(entry);
+          reject(error);
+        },
+      );
+    });
+  }
+
   /** A step's answer, copied so a reply queued twice gets fresh call ids, with ids filled in. */
   function withIds(result: CompletionResult): CompletionResult {
     if (!result.ok || result.toolCalls.length === 0) return result;
@@ -597,11 +666,15 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
         const answered = step === null
           ? fallback
           : typeof step === "function"
-            ? await untilAborted(step({ bot: bot!, sessionId, turn, hop, request, results }), request.signal, () => failed())
+            ? await untilAborted(
+                withinLimit(step({ bot: bot!, sessionId, turn, hop, request, results }), request.wallMs),
+                request.signal,
+                () => failed(),
+              )
             : step;
         const reply = withIds(answered);
         const at = isoNow();
-        hopLog.push({ botId: bot?.id ?? null, sessionId, turnId: turn?.id ?? null, hop, matchedBy, scripted: step !== null, reply, at });
+        hopLog.push({ botId: bot?.id ?? null, sessionId, turnId: turn?.id ?? null, hop, matchedBy, scripted: step !== null, request, reply, at });
         if (bot && reply.ok) {
           for (const row of reply.toolCalls) {
             let args: Record<string, unknown> = {};
@@ -660,7 +733,6 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
     },
   };
 
-  let mcp: McpHost | undefined;
   if (options.media) {
     const polls = typeof options.media === "object" ? (options.media.videoPolls ?? 0) : 0;
     store.createMcpServerSync({
@@ -669,14 +741,17 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
       args: [MCP_FIXTURE, "--media", ...(polls > 0 ? [`--video-polls=${polls}`] : [])],
       enabled: true,
     });
+  }
+
+  /** The daemon's own MCP host over the media server; only `call` is wrapped, to log what reached the server and for whom. */
+  function mediaHost(): McpHost {
     const host = createMcpHost({
       listServers: () => store.listMcpServers(),
       authFor: (id) => store.mcpAuth(id),
       builtinNames: COLLAB_TOOL_NAMES,
       shutdownWaitMs: 200,
     });
-    // The host is the daemon's own; only `call` is wrapped, to log what reached the server and for whom.
-    mcp = {
+    return {
       ...host,
       async call(modelName, args, signal) {
         const owner = signal ? signalTurns.get(signal) : undefined;
@@ -701,47 +776,56 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
     };
   }
 
-  const admission = new TurnAdmission();
-  const engine = createTurnEngine({
-    store,
-    publish(event) {
-      events.push(event);
-      if (event.event === "turn.tool" && event.phase === "started") {
-        const record = callsById.get(event.id);
-        if (record && !record.dispatchedAt) {
-          record.dispatchedAt = isoNow();
-          startedByTurn.set(event.turn_id, record);
+  function buildEngine(host: McpHost | undefined, gate: TurnAdmission): TurnEngine {
+    return createTurnEngine({
+      store,
+      publish(event) {
+        events.push(event);
+        if (event.event === "turn.tool" && event.phase === "started") {
+          const record = callsById.get(event.id);
+          if (record && !record.dispatchedAt) {
+            record.dispatchedAt = isoNow();
+            startedByTurn.set(event.turn_id, record);
+          }
+        } else if (event.event === "turn.tool" && event.phase === "exited" && event.ok !== undefined) {
+          const record = callsById.get(event.id);
+          if (record && !record.result) record.result = { ok: event.ok, error: event.error_code ?? null };
+        } else if (event.event === "approval.upsert") {
+          // A card goes up right after the call that asked for it, before the turn starts another.
+          const record = approvalCalls.get(event.id) ?? (event.status === "pending" ? startedByTurn.get(event.turn_id) : undefined);
+          if (record) {
+            record.approval = event.status;
+            approvalCalls.set(event.id, record);
+          }
         }
-      } else if (event.event === "turn.tool" && event.phase === "exited" && event.ok !== undefined) {
-        const record = callsById.get(event.id);
-        if (record && !record.result) record.result = { ok: event.ok, error: event.error_code ?? null };
-      } else if (event.event === "approval.upsert") {
-        // A card goes up right after the call that asked for it, before the turn starts another.
-        const record = approvalCalls.get(event.id) ?? (event.status === "pending" ? startedByTurn.get(event.turn_id) : undefined);
-        if (record) {
-          record.approval = event.status;
-          approvalCalls.set(event.id, record);
-        }
-      }
-    },
-    completions,
-    mcp,
-    admission,
-    wake,
-    settleQuietMs,
-    directQuietMs,
-    chainQuietMs,
-    planLeftQuietMs,
-    ...(options.ablation ? { ablation: options.ablation } : {}),
-  });
+      },
+      completions,
+      mcp: host,
+      admission: gate,
+      wake,
+      settleQuietMs,
+      directQuietMs,
+      chainQuietMs,
+      planLeftQuietMs,
+      ...(options.ablation ? { ablation: options.ablation } : {}),
+    });
+  }
+
   // Ticks only when told to, unless the scenario asked for a real interval: an interval longer
   // than any scenario runs stands in for "never" (setInterval treats anything past 2^31-1 as 1).
-  const scheduler: Scheduler = startScheduler({
-    store,
-    engine,
-    intervalMs: options.tickMs ?? 2 ** 31 - 1,
-    wake,
-  });
+  function buildScheduler(): Scheduler {
+    return startScheduler({
+      store,
+      engine,
+      intervalMs: options.tickMs ?? 2 ** 31 - 1,
+      wake,
+    });
+  }
+
+  let mcp = options.media ? mediaHost() : undefined;
+  let admission = new TurnAdmission();
+  let engine = buildEngine(mcp, admission);
+  let scheduler = buildScheduler();
 
   /**
    * Time passing, for what the scheduler reads: appointments still to come fall due `ms` sooner,
@@ -763,7 +847,7 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
 
   function busy(): string | null {
     if (inflight > 0) return `${inflight} model or MCP call(s) in flight`;
-    if (inbound.size > 0) return `${inbound.size} line(s) of yours still being routed`;
+    if (inbound.size > 0) return `${inbound.size} line(s) still being routed`;
     const running = store.listLiveTurns().filter((turn) => turn.status === "running");
     if (running.length > 0) return `running turns: ${running.map((turn) => `${botOf({ id: turn.bot_id }).name}@${turn.id}`).join(", ")}`;
     // A turn parked on your answer or approval has a runner waiting on you, not on the engine.
@@ -785,10 +869,43 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
     if (failures.length > 0) throw failures[0];
   }
 
+  /** Routes a stored line through the running engine; a line the engine fails on fails the scenario. */
+  function route(message: Message, opts: { fork?: boolean; fromUser: boolean }): void {
+    const routed = engine.handleInboundMessage(message, opts);
+    // A line the crashed engine was still routing belongs to that process, not to this one.
+    const routing = inbound;
+    routing.add(routed);
+    routed.then(
+      () => routing.delete(routed),
+      (error: unknown) => {
+        if (routing.delete(routed) && routing === inbound) failures.push(error);
+      },
+    );
+  }
+
+  /** What `runtime.ts` does with a store it has just opened, before and after the engine exists. */
+  function boot(filename: string): void {
+    store = new Store({ filename, endpointKey: keys });
+    store.recoverInterruptedTurns();
+    store.recoverInterruptedCheckRuns();
+    inbound = new Set();
+    mcp = options.media ? mediaHost() : undefined;
+    admission = new TurnAdmission();
+    engine = buildEngine(mcp, admission);
+    scheduler = buildScheduler();
+    engine.sweepStaleChains();
+  }
+
   const scenario: Scenario = {
-    store,
-    engine,
-    admission,
+    get store() {
+      return store;
+    },
+    get engine() {
+      return engine;
+    },
+    get admission() {
+      return admission;
+    },
     root,
     events,
 
@@ -836,16 +953,29 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
       const sessionId = sessionIdOf(session);
       const message = store.transaction(() => store.postMessage(sessionId, { body, parent_id: opts?.parentId ?? null }));
       events.push({ event: "message.created", occurred_at: new Date().toISOString(), ...message });
-      const routed = engine.handleInboundMessage(message, { fork: opts?.fork, fromUser: true });
-      inbound.add(routed);
-      routed.then(
-        () => inbound.delete(routed),
-        (error: unknown) => {
-          inbound.delete(routed);
-          failures.push(error);
-        },
-      );
+      route(message, { fork: opts?.fork, fromUser: true });
       return message;
+    },
+    postBot(bot, session, body, opts) {
+      admission.assertNew();
+      const author = botOf(bot).id;
+      const sessionId = sessionIdOf(session);
+      const message = store.transaction(() => {
+        const inserted = store.insertMessage({ sessionId, kind: "bot", author, body });
+        if (!opts?.taskId) return inserted;
+        store.db.run(`UPDATE messages SET task_id = ?, ticket_id = ? WHERE id = ?`, [opts.taskId, opts.ticketId ?? null, inserted.id]);
+        return store.getMessage(inserted.id);
+      });
+      events.push({ event: "message.created", occurred_at: new Date().toISOString(), ...message });
+      route(message, { fromUser: false });
+      return message;
+    },
+    async routed() {
+      while (inbound.size > 0) {
+        await Promise.allSettled([...inbound]);
+        rethrow();
+      }
+      rethrow();
     },
     async waitIdle(opts) {
       const deadline = Date.now() + (opts?.timeoutMs ?? IDLE_TIMEOUT_MS);
@@ -873,6 +1003,12 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
       scheduler.tick();
     },
     advance(ms) {
+      advanced += ms;
+      for (const entry of [...outstanding]) {
+        if (advanced < entry.until) continue;
+        outstanding.delete(entry);
+        entry.expire();
+      }
       age(ms);
       scheduler.tick();
     },
@@ -927,12 +1063,34 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
         .all(botOf(bot).id);
     },
 
+    async restart({ clean }) {
+      if (!dbFile || !dbDir) throw new Error("restart() needs createScenario({ durable: true })");
+      scheduler.stop();
+      let reopen = dbFile;
+      if (clean) {
+        // runtime.ts's stop(): the flag first, then the engine drains, then what is still live is interrupted.
+        store.recordCleanShutdown();
+        await engine.close();
+        store.interruptRunningTurns((turnId) => engine.executionOf(turnId));
+        store.close();
+      } else {
+        // Nothing the dying process does from here on reaches the disk the next boot reads.
+        reopen = join(dbDir, `crash-${crypto.randomUUID()}.sqlite`);
+        store.db.run(`VACUUM INTO ?`, [reopen]);
+        engine.abortAll();
+        await engine.close();
+        store.close();
+      }
+      dbFile = reopen;
+      boot(reopen);
+    },
     async close() {
       scheduler.stop();
       engine.abortAll();
       await engine.close();
       store.close();
       rmSync(root, { recursive: true, force: true });
+      if (dbDir) rmSync(dbDir, { recursive: true, force: true });
     },
   };
   return scenario;

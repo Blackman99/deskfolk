@@ -107,8 +107,13 @@ export type OrganizerDeps = {
 export type Organizer = {
   /** Files a user message; resolves to where the turns it opens should land. Never rejects. */
   organizeMessage(message: Message): Promise<{ taskId: string | null; ticketId: string | null }>;
-  /** A turn reached a terminal state: its plan is filed once it has been quiet for a moment. */
+  /** A turn reached a terminal state other than a Stop: its plan is filed once it has been quiet for a moment. */
   noteTurnEnded(turn: Turn): void;
+  /**
+   * A turn was stopped: the settle an earlier turn of its plan armed is dropped, and a quiet
+   * stretch of that plan already under way calls nobody back when it ends. Other plans keep theirs.
+   */
+  noteTurnStopped(turn: Turn): void;
   /**
    * Files a plan now, if nothing is running in it and something happened since the last version.
    * `evidence: true` skips that "something happened" guard and drops the answer's own `checks` —
@@ -173,6 +178,12 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
    * cancelled drain carries on.
    */
   let stopped = false;
+  /**
+   * How many Stops each plan has seen. A quiet stretch notes the count when it starts and calls
+   * `onQuiet` only if no Stop came since: the call-back after it would put stopped work back in
+   * progress (ADR 0040 P1).
+   */
+  const stopsSeen = new Map<string, number>();
 
   function traceLines(taskId: string): string[] {
     try {
@@ -288,8 +299,8 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
       return null;
     }
     // Read once, right before validating the answer against them, so the run row can show whether
-    // they had shifted since the payload was built (the resume/join race ADR 0040 P1 fixes: a
-    // target that stops qualifying while the call is out falls back to continue).
+    // they had shifted since the payload was built (the resume/join race: a target that stops
+    // qualifying while the call is out files nothing, see `organizeOne`).
     const recentPlanIds = new Set(store.sessionRecentTasks(input.sessionId).map((task) => task.id));
     const elsewherePlanIds = new Set(input.mode === "message" ? store.elsewherePlans(input.sessionId).map((task) => task.id) : []);
     const existingCheckIds = new Set(input.current ? store.listChecks(input.current.id).map((check) => check.id) : []);
@@ -384,6 +395,23 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     const outcome = await call({ mode: "message", sessionId: message.session_id, message, current });
     if (!outcome) return fallback;
     const { parsed, pending } = outcome;
+    // A resume or join whose plan is not one this line can go to by the time the answer is read —
+    // most often the job it joins ended while the call was out — was written for that plan: its
+    // goal and tickets are that plan's. Continuing with them would write them over the current
+    // plan, or, with none, open a copy of the job nobody asked for (ADR 0040 P1). The line keeps
+    // the filing it has. One that names the plan this session is on is a continue in other words
+    // (neither candidate set lists the current plan): its goal and tickets are this plan's, so it
+    // lands as the continue it was read as.
+    const rawTarget = parsed.raw?.decision === "resume" ? parsed.raw.resumePlanId : parsed.raw?.decision === "join" ? parsed.raw.joinPlanId : null;
+    const namesCurrent = rawTarget !== null && rawTarget === current?.id;
+    const lost =
+      parsed.raw && (parsed.raw.decision === "resume" || parsed.raw.decision === "join") && parsed.decision !== parsed.raw.decision && !namesCurrent;
+    if (lost) {
+      const reason = parsed.downgradeReason ?? `${parsed.raw!.decision} named no plan it can go to`;
+      log(`[organizer] filing message ${message.id}: ${reason}, nothing filed`);
+      finishOrganizerRun(store, pending, { applied: false, rejectReason: reason, held: null, appliedTaskId: null, appliedTicketId: null });
+      return fallback;
+    }
     // 「你私聊里的没停」 once came back as 「私聊里这件还没停，接着做完」 and put a stopped video
     // job back to work: a line asking to stop never reopens a parked plan, whatever the answer says.
     const reopened = parkedPlanReopened(parsed, current);
@@ -568,14 +596,23 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     if (existing) clearTimeout(existing);
     const timer = setTimeout(() => {
       settleTimers.delete(taskId);
+      const stops = stopsSeen.get(taskId) ?? 0;
       void quietStretch(taskId)
         .catch((error) => console.error(`[organizer] settling ${taskId} failed`, error))
         .then(() => {
-          if (!stopped && !deps.draining()) deps.onQuiet?.(taskId);
+          if (!stopped && !deps.draining() && (stopsSeen.get(taskId) ?? 0) === stops) deps.onQuiet?.(taskId);
         });
     }, deps.settleQuietMs ?? SETTLE_QUIET_MS);
     timer.unref?.();
     settleTimers.set(taskId, timer);
+  }
+
+  function noteTurnStopped(turn: Turn): void {
+    if (!turn.task_id) return;
+    const taskId = turn.task_id;
+    clearTimeout(settleTimers.get(taskId));
+    settleTimers.delete(taskId);
+    stopsSeen.set(taskId, (stopsSeen.get(taskId) ?? 0) + 1);
   }
 
   function renderMirrors(taskId: string): void {
@@ -619,7 +656,7 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     settleTimers.clear();
   }
 
-  return { organizeMessage, noteTurnEnded, settlePlan, renderMirrors, clearTimers };
+  return { organizeMessage, noteTurnEnded, noteTurnStopped, settlePlan, renderMirrors, clearTimers };
 }
 
 const PLAN_STATUS_ZH: Record<PlanSpec["status"], string> = { active: "进行中", done: "已完成", parked: "搁置" };

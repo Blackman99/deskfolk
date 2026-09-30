@@ -528,13 +528,17 @@ test("the model choice log covers every fail kind the daemon can record", () => 
   expect(Object.keys(COPY.zh.routes.failReason).sort()).toEqual([
     "busy",
     "crashed",
+    "declined",
     "endpoint_error",
     "first_byte",
     "incomplete",
     "no_model",
+    "overtime",
     "refused",
+    "repeat",
     "stalled",
     "stuck",
+    "truncated",
     "unreachable",
   ]);
   expect(COPY.zh.routes.failReason.refused).toBe("端点拒绝了这次补全");
@@ -543,6 +547,8 @@ test("the model choice log covers every fail kind the daemon can record", () => 
   expect(COPY.en.routes.failReason.incomplete).toBe("Incomplete reply");
   expect(COPY.zh.routes.failReason.stuck).toBe("卡住了，很久没有任何进展");
   expect(COPY.en.routes.failReason.crashed).toBe("The runtime errored");
+  expect(COPY.zh.routes.failReason.repeat).toBe("回复一直在重复同一句");
+  expect(COPY.en.routes.failReason.overtime).toBe("The reply ran past its time limit");
 });
 
 function assertSameShape(a: unknown, b: unknown, path: string): void {

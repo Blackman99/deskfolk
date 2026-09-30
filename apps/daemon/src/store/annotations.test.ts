@@ -348,11 +348,20 @@ describe("the turn a batch wakes", () => {
     const { message } = w.store.sendAnnotations({ session_id: w.direct, body: "", annotation_ids: [a.id] });
     // Named outright, the plan wins over the session's current one.
     expect(w.store.resolveTurnTask({ sessionId: w.direct, trigger: message, taskId: w.delivery.task_id, now: later })).toMatchObject({ taskId: w.delivery.task_id });
+    // Closed long ago, so a closing that is recent afterwards can only be the turn opening's doing.
+    const longAgo = "2026-01-01T00:00:00.000Z";
+    w.store.db.run("UPDATE tasks SET closed_at = ? WHERE id = ?", [longAgo, w.delivery.task_id]);
+    const opened = Date.now();
     const turn = w.store.createTurn({ sessionId: w.direct, botId: w.bot.id, triggerMessageId: message.id });
     expect(turn.task_id).toBe(w.delivery.task_id);
-    // Reopened, and the session's other open job closed: one open dir per session.
-    expect(w.store.getTask(w.delivery.task_id).closed_at).toBeNull();
-    expect(w.store.getTask(unrelated.task_id!).closed_at).not.toBeNull();
+    // Worked in, not reopened: opening a turn changes no plan (ADR 0040 P1). Its closing moved to
+    // now, so the sweep leaves the turn's files, and the session's other job is still its current one.
+    const closedAt = w.store.getTask(w.delivery.task_id).closed_at;
+    expect(closedAt).not.toBeNull();
+    expect(closedAt).not.toBe(longAgo);
+    expect(Date.parse(closedAt!)).toBeGreaterThanOrEqual(opened - 1_000);
+    expect(w.store.getTask(unrelated.task_id!).closed_at).toBeNull();
+    expect(w.store.sessionCurrentTask(w.direct)?.id).toBe(unrelated.task_id!);
   });
 
   test("a batch over two of one Bot's jobs runs in the newest delivery's job, the one the message sits in", () => {

@@ -262,7 +262,7 @@ describe("what one organizer run changes", () => {
     store.close();
   });
 
-  test("resumes only a plan this session had before, else continues; new parks the current one", () => {
+  test("resumes only a plan this session had before, else files nothing; new parks the current one", () => {
     const { store, session } = fixture();
     const a = store.postMessage(session.id, { body: "写周报" });
     const planA = store.applyOrganizerResult({
@@ -282,17 +282,26 @@ describe("what one organizer run changes", () => {
     expect(store.getTask(planA.id)).toMatchObject({ status: "parked" });
     expect(store.sessionCurrentTask(session.id)?.id).toBe(planB.id);
 
-    // A resume of a plan that is not this session's recent history is a continue.
+    // A resume of a plan that is not this session's recent history files nothing: the answer was
+    // written for that plan, and continuing with it would write its goal over this one.
     const other = store.createBot({ name: "Other", duties: "x", boundaries: "y" });
     const elsewhere = store.openTask({ sessionId: other.direct_session.id, title: "别处的事" });
     const c = store.postMessage(session.id, { body: "回到那件事" });
-    const stayed = store.applyOrganizerResult({
-      sessionId: session.id,
-      current: store.sessionCurrentTask(session.id),
-      result: result({ decision: "resume", resumePlanId: elsewhere.id, spec: spec({ kind: "会议室", goal: "订会议室" }) }),
-      source: { messageId: c.id, turnId: null, messageBody: c.body },
-    });
-    expect(stayed.task.id).toBe(planB.id);
+    const revisions = store.listSpecRevisions(planB.id).length;
+    expect(
+      refused(() =>
+        store.applyOrganizerResult({
+          sessionId: session.id,
+          current: store.sessionCurrentTask(session.id),
+          result: result({ decision: "resume", resumePlanId: elsewhere.id, spec: spec({ goal: "别处的事" }) }),
+          source: { messageId: c.id, turnId: null, messageBody: c.body },
+        }),
+      ),
+    ).toBe(409);
+    expect(store.sessionCurrentTask(session.id)?.id).toBe(planB.id);
+    expect(parsePlanSpec(store.getTask(planB.id).spec)?.goal).toBe("订会议室");
+    expect(store.listSpecRevisions(planB.id)).toHaveLength(revisions);
+    expect(store.getMessage(c.id).task_id).toBeNull();
 
     const d = store.postMessage(session.id, { body: "周报接着写" });
     const resumed = store.applyOrganizerResult({
@@ -343,20 +352,29 @@ describe("what one organizer run changes", () => {
     store.close();
   });
 
-  test("join only takes a plan the Bots here are on elsewhere; anything else is a continue", () => {
+  test("join only takes a plan the Bots here are on elsewhere; anything else files nothing and opens no plan", () => {
     const { store, session, bot, reviewer } = fixture();
     const other = store.createBot({ name: "Other", duties: "x", boundaries: "y" });
     const theirs = store.openTask({ sessionId: other.direct_session.id, title: "别人的事" });
     store.createTicket({ taskId: theirs.id, title: "别人的任务", status: "doing", worker: other.bot.id });
     const mine = store.openTask({ sessionId: session.id, title: "订会议室" });
     const line = store.postMessage(session.id, { body: "那件事怎么样了" });
-    const stayed = store.applyOrganizerResult({
-      sessionId: session.id,
-      current: mine,
-      result: result({ decision: "join", joinPlanId: theirs.id }),
-      source: { messageId: line.id, turnId: null, messageBody: line.body },
-    });
-    expect(stayed.task.id).toBe(mine.id);
+    const join = (current: typeof mine | null) =>
+      refused(() =>
+        store.applyOrganizerResult({
+          sessionId: session.id,
+          current,
+          result: result({ decision: "join", joinPlanId: theirs.id }),
+          source: { messageId: line.id, turnId: null, messageBody: line.body },
+        }),
+      );
+    const plans = () => store.db.query<{ n: number }, []>(`SELECT COUNT(*) AS n FROM tasks`).get()!.n;
+    const before = plans();
+    expect(join(mine)).toBe(409);
+    // With no current plan either: the copy of the job a continue on nothing once opened.
+    expect(join(null)).toBe(409);
+    expect(plans()).toBe(before);
+    expect(store.getMessage(line.id).task_id).toBeNull();
 
     // What counts: an open ticket of a Bot here in an active plan, or its live turn in another session.
     const group = store.createGroup({ name: "周报组", members: [bot.id, reviewer.id] });

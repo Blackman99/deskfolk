@@ -5,6 +5,7 @@ import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
 import { LOCAL_API_BIND, LOCAL_API_NAME } from "@real-bot/protocol";
 import { stateDbPath } from "./descriptor";
+import { recordLiveProc } from "./live-procs";
 import { startRuntime, type RuntimeHandle } from "./runtime";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";
@@ -383,4 +384,36 @@ describe("local API runtime", () => {
       rt.store.listMainMessages(writer.direct_session.id, 20).some((m) => m.body === "中断"),
     ).toBe(true);
   });
+
+  test.skipIf(process.platform === "win32")("start stops a command an earlier run left running", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "real-bot-"));
+    dirs.push(dataDir);
+    chmodSync(dataDir, 0o700);
+    const filename = join(dataDir, "state.sqlite");
+    const keys = memoryKeyStore();
+    const prep = new Store({ filename, endpointKey: keys });
+    // Recorded the way a Bot's `shell` does it, by a run that then ended without stopping it. That
+    // run was this same process, as it is after a `bun --watch` restart.
+    const leftover = Bun.spawn(["sleep", "30"], { detached: true, stdin: "ignore", stdout: "ignore", stderr: "ignore" });
+    try {
+      recordLiveProc(prep, leftover, { pgid: leftover.pid, command: "render" });
+      const noted = () =>
+        prep.db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM live_procs WHERE daemon_start_time IS NOT NULL").get()!.n;
+      for (let i = 0; i < 150 && noted() === 0; i++) await Bun.sleep(20);
+      expect(noted()).toBe(1);
+      prep.close();
+
+      const rt = await startRuntime({ dataDir, bind: "127.0.0.1:0", endpointKey: keys });
+      handles.push(rt);
+      const ended = await Promise.race([leftover.exited.then(() => true), Bun.sleep(3_000).then(() => false)]);
+      expect(ended).toBe(true);
+      expect(leftover.signalCode).toBe("SIGTERM");
+      // The row goes once the group has had its grace, SIGKILL included.
+      const left = () => rt.store.db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM live_procs").get()!.n;
+      for (let i = 0; i < 60 && left() > 0; i++) await Bun.sleep(100);
+      expect(left()).toBe(0);
+    } finally {
+      leftover.kill("SIGKILL");
+    }
+  }, 15_000);
 });

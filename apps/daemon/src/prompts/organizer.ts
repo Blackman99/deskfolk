@@ -564,11 +564,12 @@ export function parseOrganizerResult(
         resumePlanId = rawResumePlanId;
       } else {
         // A target the payload offered can stop qualifying by the time the call returns and this set
-        // is re-read. Until ADR 0040 P1 fixes that race, the fallback to continue can still open a
-        // new plan when the session has none; the reason is what keeps it from happening silently.
+        // is re-read. The decision reads continue only because it has to be one of the four: the
+        // organizer files nothing for such an answer (ADR 0040 P1), and the reason says why. A
+        // target that is the session's current plan (never a candidate) is filed as that continue.
         downgradeReason = rawResumePlanId
-          ? `named resume target ${rawResumePlanId} is not (or no longer) a recent plan of this session; decision fell back to continue`
-          : "resume named no resume_plan_id; decision fell back to continue";
+          ? `named resume target ${rawResumePlanId} is not (or no longer) a recent plan of this session`
+          : "resume named no resume_plan_id";
       }
     } else if (decisionRaw === "join") {
       if (rawJoinPlanId && ctx.elsewherePlanIds?.has(rawJoinPlanId)) {
@@ -576,8 +577,8 @@ export function parseOrganizerResult(
         joinPlanId = rawJoinPlanId;
       } else {
         downgradeReason = rawJoinPlanId
-          ? `named join target ${rawJoinPlanId} is not (or no longer) a job the Bots here are on elsewhere; decision fell back to continue`
-          : "join named no join_plan_id; decision fell back to continue";
+          ? `named join target ${rawJoinPlanId} is not (or no longer) a job the Bots here are on elsewhere`
+          : "join named no join_plan_id";
       }
     } else if (decisionRaw && decisionRaw !== "continue") {
       downgradeReason = `decision "${decisionRaw}" is not one of continue, new, resume, join; fell back to continue`;

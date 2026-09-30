@@ -69,6 +69,12 @@ export type Live = {
   lastHopNoted?: boolean;
   /** An empty reply was answered with one note; the next empty one ends the turn as it would. */
   emptyNudged?: boolean;
+  /** A completion is in flight. Its own time limit bounds it, so the stale sweep leaves the turn alone meanwhile. */
+  streaming?: boolean;
+  /** The last hop failed and went again with a note (hop-limits.ts); failing again in a row ends the turn. */
+  retried?: boolean;
+  /** The last reply was cut off at the output cap and the turn carried on from it; cut again in a row, it fails. */
+  continued?: boolean;
   toolCalls: number;
   toolErrors: number;
   /** Failed calls whose name and arguments match an earlier failure in this turn. */

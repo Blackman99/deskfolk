@@ -54,7 +54,17 @@ describe("task set", () => {
     expect(task.rules).toEqual([]);
     expect(task.checks).toEqual([]);
     expect(task.verify).toEqual([]);
+    expect(task.extra).toBe(false);
     expect(task.setups.manual.bots.map((bot) => bot.name)).toEqual(["Writer", "Reviewer"]);
+  });
+
+  test("extra defaults to false, must be a boolean, and marks a task the default (no --only) selection skips", () => {
+    expect(parseOne({ extra: true }).extra).toBe(true);
+    rejects({ extra: "yes" }, "must be a boolean");
+    const set = parseTaskSet({ version: 1, tasks: [minimalTask(), minimalTask({ id: "wide", extra: true })] });
+    expect(selectTasks(set, null).map((task) => task.id)).toEqual(["demo"]);
+    expect(selectTasks(set, ["wide"]).map((task) => task.id)).toEqual(["wide"]);
+    expect(selectTasks(set, ["demo", "wide"]).map((task) => task.id)).toEqual(["demo", "wide"]);
   });
 
   test("a verify step defaults to the workspace root, exit 0, no stdout comparison and two minutes", () => {
@@ -168,6 +178,88 @@ describe("task set", () => {
     expect(() => requireSetups([withSolo, withoutSolo], ["solo"])).toThrow("b has no setups.solo");
     expect(() => requireSetups([withoutSolo], ["manual"])).not.toThrow();
   });
+
+  describe("script steps and the mcp fixture (L/S/R/G)", () => {
+    test("a minimal task has no script and no mcp", () => {
+      const task = parseOne();
+      expect(task.script).toEqual([]);
+      expect(task.mcp).toBeNull();
+    });
+
+    test("a seconds-triggered line into the group, and one into a named Bot's direct", () => {
+      const task = parseOne({
+        script: [
+          { id: "stop", after: { kind: "seconds", after_s: 90 }, target: { kind: "bot_direct", bot: "Writer" }, body: "先停一下。" },
+          { id: "again", after: { kind: "first_delivery" }, target: { kind: "group" }, body: "还是不对。", expect_bot: "Reviewer" },
+        ],
+      });
+      expect(task.script).toEqual([
+        { id: "stop", after: { kind: "seconds", after_s: 90 }, target: { kind: "bot_direct", bot: "Writer" }, body: "先停一下。", expect_bot: null, expect_plan: null },
+        { id: "again", after: { kind: "first_delivery" }, target: { kind: "group" }, body: "还是不对。", expect_bot: "Reviewer", expect_plan: null },
+      ]);
+    });
+
+    test("expect_plan must be kickoff or new, and defaults to null", () => {
+      const task = parseOne({
+        script: [{ id: "s1", after: { kind: "seconds", after_s: 0 }, target: { kind: "group" }, body: "另一件事。", expect_plan: "new" }],
+      });
+      expect(task.script[0]!.expect_plan).toBe("new");
+      rejects(
+        { script: [{ id: "s1", after: { kind: "seconds", after_s: 0 }, target: { kind: "group" }, body: "x", expect_plan: "resume" }] },
+        "must be kickoff or new",
+      );
+    });
+
+    test("a coordinator-targeted line needs no bot name", () => {
+      const task = parseOne({
+        script: [{ id: "s1", after: { kind: "seconds", after_s: 0 }, target: { kind: "coordinator" }, body: "先别开工。" }],
+      });
+      expect(task.script[0]!.target).toEqual({ kind: "coordinator" });
+    });
+
+    test("a script step must not @ anyone, same rule as the task line", () => {
+      rejects(
+        { script: [{ id: "s1", after: { kind: "seconds", after_s: 0 }, target: { kind: "group" }, body: "@Writer 再看看" }] },
+        "must not @ anyone",
+      );
+    });
+
+    test("a bot_direct target and an expect_bot must both name a Bot from setups.manual.bots", () => {
+      rejects(
+        { script: [{ id: "s1", after: { kind: "seconds", after_s: 0 }, target: { kind: "bot_direct", bot: "Nobody" }, body: "停" }] },
+        "Nobody is not one of setups.manual.bots",
+      );
+      rejects(
+        { script: [{ id: "s1", after: { kind: "seconds", after_s: 0 }, target: { kind: "group" }, body: "还是不对", expect_bot: "Nobody" }] },
+        "Nobody is not one of setups.manual.bots",
+      );
+    });
+
+    test("a step id used twice is rejected, like a task id", () => {
+      rejects(
+        {
+          script: [
+            { id: "s1", after: { kind: "seconds", after_s: 0 }, target: { kind: "group" }, body: "一" },
+            { id: "s1", after: { kind: "seconds", after_s: 30 }, target: { kind: "group" }, body: "二" },
+          ],
+        },
+        "s1 is used twice",
+      );
+    });
+
+    test("after.kind and target.kind are checked, and after_s must be non-negative", () => {
+      rejects({ script: [{ id: "s1", after: { kind: "eventually" }, target: { kind: "group" }, body: "x" }] }, "seconds or first_delivery");
+      rejects({ script: [{ id: "s1", after: { kind: "seconds", after_s: -1 }, target: { kind: "group" }, body: "x" }] }, "non-negative");
+      rejects({ script: [{ id: "s1", after: { kind: "seconds", after_s: 0 }, target: { kind: "elsewhere" }, body: "x" }] }, "group, coordinator or bot_direct");
+    });
+
+    test("L's mcp config: a non-negative integer video_polls, absent by default", () => {
+      const task = parseOne({ mcp: { video_polls: 3 } });
+      expect(task.mcp).toEqual({ video_polls: 3 });
+      rejects({ mcp: { video_polls: -1 } }, "non-negative integer");
+      rejects({ mcp: { video_polls: 1.5 } }, "non-negative integer");
+    });
+  });
 });
 
 /** The reference `tally`: what the small-tool brief asks for, to check the fixture's own answers. */
@@ -183,14 +275,21 @@ function tally(csv: string, month: string | null): string {
   return [...rows.map(([name, value]) => `${name}\t${value.toFixed(2)}`), `TOTAL\t${total.toFixed(2)}`].join("\n") + "\n";
 }
 
+/** The original three: small, no-network office jobs with a working solo setup too. The L/S/R/G
+ * benchmark families are `manual`/`coordinator`-only: their script steps and G's labels name Bots
+ * from `setups.manual.bots`, a roster a lone generalist does not have. */
+const OFFICE_TASKS = ["research", "launch-kit", "small-tool"];
+/** Each new family's Bot count: L and S/R pair up, G needs a room. */
+const MANUAL_BOT_COUNTS: Record<string, number> = { "long-mission": 2, "cross-stop": 2, "repeat-note": 2, "big-room": 8 };
+
 describe("the shipped task set", () => {
   const loaded = loadTaskSet(SHIPPED);
 
   test("loads, with a seed folder and brief for every task", () => {
-    expect(loaded.set.tasks.map((task) => task.id)).toEqual(["research", "launch-kit", "small-tool"]);
+    expect(loaded.set.tasks.map((task) => task.id)).toEqual(["research", "launch-kit", "small-tool", "long-mission", "cross-stop", "repeat-note", "big-room"]);
     for (const task of loaded.set.tasks) {
       expect(readFileSync(join(seedDir(loaded, task), task.brief), "utf8").length).toBeGreaterThan(100);
-      expect(task.setups.manual.bots.length).toBe(3);
+      expect(task.setups.manual.bots.length).toBe(OFFICE_TASKS.includes(task.id) ? 3 : MANUAL_BOT_COUNTS[task.id]);
     }
   });
 
@@ -200,13 +299,78 @@ describe("the shipped task set", () => {
     }
   });
 
-  test("every shipped task has a solo setup that works alone: no 大家, boundaries forbid hiring", () => {
-    for (const task of loaded.set.tasks) {
+  test("every office task has a solo setup that works alone: no 大家, boundaries forbid hiring", () => {
+    for (const task of loaded.set.tasks.filter((task) => OFFICE_TASKS.includes(task.id))) {
       const solo = task.setups.solo;
       expect(solo).toBeDefined();
       expect(solo!.message).not.toContain("大家");
       expect(solo!.bot.boundaries).toContain("不建其他 Bot");
     }
+  });
+
+  test("L/S/R/G carry no solo setup: script steps and G's attribution assume a known manual roster", () => {
+    for (const task of loaded.set.tasks.filter((task) => !OFFICE_TASKS.includes(task.id))) expect(task.setups.solo).toBeUndefined();
+  });
+
+  test("L/S/R/G are `extra`: the default (no --only) selection is just the three office tasks, so --setup all no longer trips on their missing solo setup", () => {
+    for (const task of loaded.set.tasks) expect(task.extra).toBe(!OFFICE_TASKS.includes(task.id));
+    const defaultSelection = selectTasks(loaded.set, null);
+    expect(defaultSelection.map((task) => task.id)).toEqual(OFFICE_TASKS);
+    expect(() => requireSetups(defaultSelection, ["manual", "coordinator", "solo"])).not.toThrow();
+    // Naming one by id still runs it, with whatever setups it actually has.
+    expect(() => requireSetups(selectTasks(loaded.set, ["long-mission"]), ["solo"])).toThrow("long-mission has no setups.solo");
+  });
+
+  test("L's mcp config and the media MCP fixture line up: video_polls is set, no other task carries mcp", () => {
+    for (const task of loaded.set.tasks) expect(task.mcp).toEqual(task.id === "long-mission" ? { video_polls: 2 } : null);
+  });
+
+  test("S stops a Bot and later resumes it, both in its own roster; R repeats the same rule 3 times", () => {
+    const stop = loaded.set.tasks.find((task) => task.id === "cross-stop")!;
+    expect(stop.script).toHaveLength(2);
+    expect(stop.script.every((step) => step.target.kind === "bot_direct" && step.target.bot === "Writer")).toBe(true);
+    expect(stop.script.every((step) => step.expect_bot === null && step.expect_plan === null)).toBe(true);
+    // The resume comes after the stop, so a compliant Writer that actually paused still gets a
+    // chance to finish the checklist, not just a Writer that never paused in the first place.
+    expect(stop.script[1]!.after).toEqual({ kind: "seconds", after_s: expect.any(Number) });
+    if (stop.script[0]!.after.kind === "seconds" && stop.script[1]!.after.kind === "seconds") {
+      expect(stop.script[1]!.after.after_s).toBeGreaterThan(stop.script[0]!.after.after_s);
+    }
+
+    const repeat = loaded.set.tasks.find((task) => task.id === "repeat-note")!;
+    expect(repeat.script).toHaveLength(3);
+    expect(repeat.script.every((step) => step.target.kind === "group" && step.expect_bot === null && step.expect_plan === null)).toBe(true);
+  });
+
+  test("G (big-room) labels both a line that continues the kickoff job and lines that are unrelated new asks — a filer that always opens a new plan must not score 100%", () => {
+    const room = loaded.set.tasks.find((task) => task.id === "big-room")!;
+    expect(room.script.length).toBeGreaterThanOrEqual(4);
+    const roomBots = new Set(room.setups.manual.bots.map((bot) => bot.name));
+    const byPlan = { kickoff: room.script.filter((step) => step.expect_plan === "kickoff"), new: room.script.filter((step) => step.expect_plan === "new") };
+    // Both labels are actually present: this is what tells the new-request heuristic's accuracy
+    // apart from a filer that always (or never) opens a new plan.
+    expect(byPlan.kickoff.length).toBeGreaterThanOrEqual(1);
+    expect(byPlan.new.length).toBeGreaterThanOrEqual(1);
+    expect(byPlan.kickoff.length + byPlan.new.length).toBe(room.script.length);
+    for (const step of byPlan.new) {
+      expect(step.expect_bot).not.toBeNull();
+      expect(roomBots.has(step.expect_bot!)).toBe(true);
+    }
+    // Each label is unambiguous from the line alone: a kickoff line names the kickoff's own file,
+    // and a new ask neither names it nor asks for release notes or an update's write-up.
+    for (const step of byPlan.kickoff) expect(step.body).toContain("notes.md");
+    for (const step of byPlan.new) expect(step.body).not.toMatch(/notes\.md|发布说明|更新.*说明|CHANGES/);
+  });
+
+  test("G's release notes are checked against the seed's own change list, version included", () => {
+    const room = loaded.set.tasks.find((task) => task.id === "big-room")!;
+    const changes = readFileSync(join(seedDir(loaded, room), "CHANGES.md"), "utf8");
+    const [notes] = room.checks;
+    expect(notes!.path).toBe("notes.md");
+    expect(notes!.contains).toContain("2.4.0");
+    for (const needle of notes!.contains) expect(changes).toContain(needle);
+    // Nothing the scripted new asks bring up is in the change list, so the notes have no reason to carry it.
+    for (const topic of ["登录", "流水线", "导出", "上手指南"]) expect(changes).not.toContain(topic);
   });
 
   test("the small tool's expected outputs are what the sample CSV really sums to, and the brief says the same", () => {

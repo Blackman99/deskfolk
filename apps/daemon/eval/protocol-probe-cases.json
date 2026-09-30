@@ -1,0 +1,40 @@
+{
+  "cases": [
+    {
+      "id": "quick-finish",
+      "situation": "You just finished writing the whole file the user asked for; there is nothing left to do this turn and nobody is waiting on a deliverable from you right now.",
+      "offered": ["end_turn", "submit", "work_on"],
+      "expect": "end_turn"
+    },
+    {
+      "id": "deliver-now",
+      "situation": "You finished the report the user asked for and it is ready for your teammate to review.",
+      "offered": ["end_turn", "submit", "work_on"],
+      "expect": "submit"
+    },
+    {
+      "id": "mid-task",
+      "situation": "You are partway through a five-step job; you just finished step 2 of 5 and are about to start step 3 next turn.",
+      "offered": ["end_turn", "work_on"],
+      "expect": "work_on"
+    },
+    {
+      "id": "blocked-on-teammate",
+      "situation": "You asked a teammate a question a few messages ago and are still waiting on their answer; there is nothing more you can do until they reply.",
+      "offered": ["end_turn", "work_on"],
+      "expect": "end_turn"
+    },
+    {
+      "id": "approved-handoff",
+      "situation": "Your teammate just approved the draft you sent them; it is ready to hand over as the finished piece.",
+      "offered": ["submit", "work_on"],
+      "expect": "submit"
+    },
+    {
+      "id": "long-job-checkpoint",
+      "situation": "You are generating a batch of ten images one at a time; you just finished image 4 of 10 and have six more to go.",
+      "offered": ["end_turn", "submit", "work_on"],
+      "expect": "work_on"
+    }
+  ]
+}

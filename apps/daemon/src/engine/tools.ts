@@ -67,7 +67,7 @@ export type Tools = {
     live: Live,
     name: string,
     args: Record<string, unknown>,
-    streamId?: string,
+    callId?: string,
   ) => Promise<ToolResult>;
   inspectForTurn: (turnId: string, live: Live, server: McpServer) => Promise<McpServer | null>;
   publishEmitted: (turnId: string, live: Live, emitted: ToolResult["emitted"]) => Promise<void>;
@@ -138,7 +138,6 @@ export function createTools(deps: ToolsDeps): Tools {
       store.touchTurn(turnId);
       // Bracket the execution so a watcher can tell "still running" from "finished": the
       // announce event only says the model asked for it.
-      const streamId = `${turnId}:${call.id}`;
       const startedAt = Date.now();
       // A delivery about to be posted gets the closing check first; a bounce comes back to the
       // Bot as this call's result, and the tool itself does not run.
@@ -154,7 +153,7 @@ export function createTools(deps: ToolsDeps): Tools {
           name: call.name, arguments: call.arguments, phase: "started",
           ...(target ? { target } : {}),
           ...(mcpTool ? { mcp_server: mcpTool.server, mcp_tool: mcpTool.tool } : {}) });
-        result = await dispatchTool(turn, live, call.name, args, streamId);
+        result = await dispatchTool(turn, live, call.name, args, call.id);
         publish({ event: "turn.tool", occurred_at: occurred(), turn_id: turnId, id: call.id,
           name: call.name, phase: "exited", duration_ms: Date.now() - startedAt,
           exit_code: typeof result.data?.exit_code === "number" ? result.data.exit_code : null,
@@ -406,12 +405,14 @@ export function createTools(deps: ToolsDeps): Tools {
     live: Live,
     name: string,
     args: Record<string, unknown>,
-    streamId?: string,
+    callId?: string,
   ): Promise<ToolResult> {
     if (isWorkspaceTool(name) || COLLAB_TOOL_NAMES.includes(name)) {
+      const streamId = callId ? `${turn.id}:${callId}` : undefined;
       return isWorkspaceTool(name)
         ? await runWorkspaceTool(
-            { store, signal: live.abort.signal, workDir: live.workDir, stream: streams, streamId, wake },
+            { store, signal: live.abort.signal, workDir: live.workDir, stream: streams, streamId, wake,
+              turnId: turn.id, toolCallId: callId },
             name,
             args,
           )

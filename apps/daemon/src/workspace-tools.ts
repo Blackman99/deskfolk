@@ -12,6 +12,8 @@ import type { ToolResult } from "./collab-tools";
 import { atomicWrite, withFileLock } from "./file-integrity";
 import { HttpError } from "./errors";
 import { killProcessTree, toolShell } from "./platform";
+import { recordLiveProc, signalGroup, stopGroup } from "./live-procs";
+import { recursiveSearchGuard, searchGuardMessage } from "./search-guard";
 import { isReservedTaskPath, type Store } from "./store";
 import { skipName } from "./workspace-browse";
 import { classifyPath, classifyShell } from "./workspace-paths";
@@ -68,6 +70,11 @@ export type WorkspaceToolCtx = {
   stream?: ShellStream;
   /** This call's stream id, `<turn_id>:<tool_call_id>`. Without it nothing is streamed. */
   streamId?: string;
+  /** Whose command a `shell` spawn is, for its `live_procs` row. */
+  turnId?: string;
+  toolCallId?: string;
+  /** Overrides the 3 s a stop leaves between SIGTERM and SIGKILL (`GROUP_STOP_GRACE_MS`); tests use a short one. */
+  stopGraceMs?: number;
   /** With it the shell timeout counts only time the Mac was awake; a shut lid froze the command too. */
   wake?: WakeWatch;
 };
@@ -285,6 +292,12 @@ async function runShell(
   // `C:\x`, PowerShell's is `C:\c\x`.
   const shell = toolShell();
   const classified = classifyShell(root, command, cwd, undefined, shell.kind);
+  // Ahead of approval and of any always-allow rule (ADR 0040 P1, fixture F-g): a recursive search
+  // rooted at the whole home folder or at `/` is refused before it runs, not after it is granted.
+  if (shell.kind === "sh") {
+    const hit = recursiveSearchGuard(root, command, classified.cwdAbs);
+    if (hit) return fail("refused", searchGuardMessage(hit));
+  }
   // The work dir is created here rather than up front: a turn that only talks should not leave an
   // empty folder behind, but a cwd that does not exist fails the spawn.
   if (!explicitCwd && ctx.workDir && classified.kind === "jailed") {
@@ -311,24 +324,39 @@ async function runShell(
   const streaming = Boolean(ctx.stream && ctx.streamId);
   if (streaming) ctx.stream!.open(ctx.streamId!, COMMAND_STREAM_BYTES);
   try {
+    const posix = process.platform !== "win32";
     const proc = Bun.spawn(shell.argv(command), {
       cwd: classified.cwdAbs,
       stdin: "ignore",
       stdout: "pipe",
       stderr: "pipe",
+      // A process group of its own, so a stop or the timeout reaches everything the command
+      // started, not just the shell (ADR 0040 I10): `sh -c "… ffmpeg …"` used to stop only the sh
+      // and leave the ffmpeg under it writing. win32 has no groups; killProcessTree walks the tree.
+      detached: posix,
     });
-    // On win32, SIGTERM/SIGKILL only ever reach the shell itself; a `cmd → npx → node` chain it
-    // started would outlive it. killProcessTree walks the whole tree there. POSIX is unchanged.
+    const pgid = posix ? proc.pid : null;
+    const killNow = () => {
+      if (pgid === null) killProcessTree(proc.pid);
+      else signalGroup(pgid, "SIGKILL");
+    };
+    try {
+      recordLiveProc(ctx.store, proc, { pgid, turnId: ctx.turnId, toolCallId: ctx.toolCallId, command });
+    } catch {
+      // Off the record, nothing could stop it after a crash; it does not get to run.
+      killNow();
+      return fail("failed", "shell failed");
+    }
+    // A stop returns at once rather than when the pipes drain: whatever is still in the group has
+    // its SIGKILL coming, and the turn being stopped should not wait on it.
+    let interrupted = () => {};
+    const stopped = new Promise<"interrupted">((resolve) => {
+      interrupted = () => resolve("interrupted");
+    });
     const abort = () => {
-      if (process.platform === "win32") {
-        killProcessTree(proc.pid);
-        return;
-      }
-      try {
-        proc.kill("SIGTERM");
-      } catch {
-        // already exited
-      }
+      if (pgid === null) killProcessTree(proc.pid);
+      else void stopGroup(pgid, ctx.stopGraceMs);
+      interrupted();
     };
     if (ctx.signal.aborted) {
       abort();
@@ -341,15 +369,7 @@ async function runShell(
     // open for as long as it lives, so reading them to the end is not something to wait on.
     const expired = new Promise<"timeout">((resolve) => {
       const kill = () => {
-        if (process.platform === "win32") {
-          killProcessTree(proc.pid);
-        } else {
-          try {
-            proc.kill("SIGKILL");
-          } catch {
-            // already exited
-          }
-        }
+        killNow();
         resolve("timeout");
       };
       if (ctx.wake) {
@@ -373,10 +393,11 @@ async function runShell(
     const settled = await Promise.race([
       Promise.all([drain(proc.stdout), drain(proc.stderr), proc.exited]),
       expired,
+      stopped,
     ]);
     cancelTimeout();
     ctx.signal.removeEventListener("abort", abort);
-    if (ctx.signal.aborted) return fail("failed", "interrupted");
+    if (settled === "interrupted" || ctx.signal.aborted) return fail("failed", "interrupted");
     if (settled === "timeout") {
       return fail("failed", `command timed out after ${Math.round(timeoutMs / 1000)}s and was killed`);
     }

@@ -2,8 +2,9 @@
  * The engine's shared plumbing: the maps that hold every live turn and its in-flight work, the
  * small helpers that track a detached promise until it settles, and the three `publish*` calls
  * every other module reaches for. `publishTurn` is where a turn's end is noticed — the organizer
- * and a Bot↔Bot direct's quiet clock both learn about it here, so those two are passed in as
- * callbacks: they are built after core, once routing, spend and the direct-report module exist.
+ * (a Stop included, separately), the plan watch and a Bot↔Bot direct's quiet clock all learn about
+ * it here, so those are passed in as callbacks: they are built after core, once routing, spend and
+ * the direct-report module exist.
  */
 import type { ClientEvent, Message, Spend, Turn } from "@real-bot/protocol";
 import type { Store } from "../store";
@@ -12,8 +13,10 @@ import type { Live } from "./types";
 export type CoreDeps = {
   store: Store;
   publish: (event: ClientEvent) => void;
-  /** A turn reached a terminal state: its plan is filed once it has been quiet for a moment. */
+  /** A turn reached a terminal state other than a Stop: its plan is filed once it has been quiet for a moment. */
   noteTurnEnded: (turn: Turn) => void;
+  /** A turn was stopped: whatever its plan had pending to file it or call a Bot back is dropped. */
+  noteTurnStopped: (turn: Turn) => void;
   /** A turn ending in a Bot↔Bot direct restarts that direct's quiet clock. */
   noteDirectTurnEnded: (turn: Turn) => void;
 };
@@ -32,7 +35,7 @@ export type Core = {
 };
 
 export function createCore(deps: CoreDeps): Core {
-  const { store, publish, noteTurnEnded, noteDirectTurnEnded } = deps;
+  const { store, publish, noteTurnEnded, noteTurnStopped, noteDirectTurnEnded } = deps;
   const lives = new Map<string, Live>();
   const tasks = new Set<Promise<unknown>>();
   const turnTasks = new Map<string, Set<Promise<unknown>>>();
@@ -68,8 +71,13 @@ export function createCore(deps: CoreDeps): Core {
     store.setTurnPartial(turn.id, partial);
     publish({ event: "turn.upsert", occurred_at: occurred(), ...turn, partial_text: partial });
     // Every way a turn ends passes through here, so this is where its plan learns to file itself.
+    // Except a Stop: the settle it started once put the stopped work back in progress, and the
+    // call-back after it had the Bot carry on (ADR 0040 P1). A Stop also drops the settle and the
+    // look-again an earlier turn of the plan left pending, for the same reason. The direct's clock
+    // still hears it, since a Stop there cancels the report the clock would have made.
     if (turn.status !== "running" && turn.status !== "waiting_ask" && turn.status !== "waiting_approval") {
-      noteTurnEnded(turn);
+      if (turn.status === "stopped") noteTurnStopped(turn);
+      else noteTurnEnded(turn);
       noteDirectTurnEnded(turn);
     }
   }

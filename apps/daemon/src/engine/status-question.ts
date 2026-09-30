@@ -9,6 +9,10 @@
  * its live turn ended and a new one started — so asking for status interrupted the work. In a
  * direct it forks a second turn beside the busy one instead. The fix is to answer the question
  * from the plan's own rows and never touch a live turn at all.
+ *
+ * Nor does it call a quiet plan back. It used to, when nothing was running and tickets were open,
+ * so asking where a job you had stopped stood set it going again (ADR 0040 P1): a question only
+ * asks.
  */
 import { USER_MEMBER, type Message } from "@real-bot/protocol";
 import { sessionLabel } from "../context";
@@ -28,12 +32,6 @@ import { takeCodePoints } from "../text";
 export type StatusQuestionDeps = {
   store: Store;
   publishMessage: (message: Message) => void;
-  /**
-   * `planWatch.reconcilePlan`: called when nothing is running on the plan and it still has open
-   * tickets or failing checks, so the question itself gets the job moving again. It has its own
-   * anti-loop budget and may decide to do nothing.
-   */
-  reconcilePlan: (taskId: string) => void;
   admission?: TurnAdmission;
 };
 
@@ -54,7 +52,7 @@ const CHECK_BACK_LINES_MAX = 3;
 const WAITING_TEXT_MAX = 80;
 
 export function createStatusQuestion(deps: StatusQuestionDeps): StatusQuestionEngine {
-  const { store, publishMessage, reconcilePlan, admission } = deps;
+  const { store, publishMessage, admission } = deps;
 
   /** The session's current plan, else the plan of its most recent turn; null when it has neither. */
   function planIdFor(sessionId: string): string | null {
@@ -193,18 +191,6 @@ export function createStatusQuestion(deps: StatusQuestionDeps): StatusQuestionEn
       .slice(0, FAILING_CHECK_LINES_MAX)
       .map((check) => ({ item: check.item, detail: check.last_run?.detail ?? "" }));
 
-    const openTickets = allTickets.filter((ticket) => ticket.status === "todo" || ticket.status === "doing");
-
-    // Nothing is running and there is still open work: call the plan reconcile right away, so the
-    // question itself gets the job moving. `reconcilePlan` has its own budget and may decline.
-    let nudgedBot: string | null = null;
-    if (liveOnPlan.length === 0 && (openTickets.length > 0 || failingChecks.length > 0)) {
-      const before = store.lastPlanNudge(taskId);
-      reconcilePlan(taskId);
-      const after = store.lastPlanNudge(taskId);
-      if (after && after.id !== before?.id) nudgedBot = botName(after.bot_id);
-    }
-
     const checkBacks: StatusCheckBackLine[] = store
       .pendingPlanCheckBacks(taskId)
       .slice(0, CHECK_BACK_LINES_MAX)
@@ -227,7 +213,6 @@ export function createStatusQuestion(deps: StatusQuestionDeps): StatusQuestionEn
       artifacts,
       checks: { passed, total: allChecks.length, failing },
       idleMinutes,
-      nudgedBot,
       waiting,
       checkBacks,
     });

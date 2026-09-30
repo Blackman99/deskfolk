@@ -9,7 +9,7 @@ import { createPlanWatch } from "./engine/plan-watch";
 import { JUDGEMENT_SYSTEM } from "./prompts/judgement";
 import { ORGANIZER_SYSTEM, type OrganizerPayload } from "./prompts/organizer";
 import { memoryKeyStore } from "./secrets";
-import { PLAN_MAP_FILE, Store, TICKET_FILE } from "./store";
+import { parsePlanSpec, PLAN_MAP_FILE, Store, TICKET_FILE } from "./store";
 import { PLAN_NUDGES_UNANSWERED_MAX } from "./engine/plan-watch";
 import { createTurnEngine } from "./turn-engine";
 import {
@@ -49,7 +49,7 @@ afterEach(async () => {
 });
 
 /** `createPlanWatch` alone, over a real store: reconcile's nudge/stall/budget logic tested synchronously, without a real turn or timer. */
-function barePlanWatch() {
+function barePlanWatch(options: { planLeftQuietMs?: number } = {}) {
   const store = new Store();
   const published: string[] = [];
   const fired: string[] = [];
@@ -66,6 +66,7 @@ function barePlanWatch() {
       store.claimCheckBack(id);
       return null;
     },
+    planLeftQuietMs: options.planLeftQuietMs,
   });
   const root = mkdtempSync(join(tmpdir(), "plan-watch-"));
   store.patchSettingsSync({ workspace_path: root });
@@ -87,7 +88,7 @@ function planNudges(store: InstanceType<typeof Store>, taskId: string): Array<{ 
 async function harness(
   answer: Answer,
   script: (messages: ChatMessage[]) => CompletionOk | Promise<CompletionOk> = () => say("初稿在 draft.md"),
-  options: { planLeftQuietMs?: number } = {},
+  options: { planLeftQuietMs?: number; settleQuietMs?: number } = {},
 ) {
   const root = mkdtempSync(join(tmpdir(), "organizer-"));
   const store = new Store({ endpointKey: memoryKeyStore() });
@@ -99,7 +100,7 @@ async function harness(
   store.onCommit((event) => events.push(event));
   const engine = createTurnEngine({
     store,
-    settleQuietMs: 20,
+    settleQuietMs: options.settleQuietMs ?? 20,
     planLeftQuietMs: options.planLeftQuietMs ?? 30,
     publish(event) {
       events.push(event);
@@ -616,6 +617,72 @@ test("a plan that goes quiet with tickets open calls one Bot back; when nothing 
   expect(h.store.getTicket(review!.id).status).toBe("todo");
 });
 
+test("a Stop is not a plan going quiet: nothing is settled and nobody is called back", async () => {
+  // On 09-29 two Stops ended a plan's turns, the settle that followed put its shot back in progress,
+  // and the call-back after it had the Bot submit that shot (ADR 0040 P1).
+  const hop = Promise.withResolvers<CompletionOk>();
+  let hops = 0;
+  const h = await harness(twoTickets, () => {
+    hops += 1;
+    return hop.promise;
+  });
+  const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+  h.store.createBot({ name: "Reviewer", duties: "review", boundaries: "stay" });
+  const direct = writer.direct_session.id;
+  const trigger = h.store.insertMessage({ sessionId: direct, kind: "user", author: "user", body: "写一份周报" });
+  await h.engine.handleInboundMessage(trigger, { fromUser: true });
+  await until(() => hops === 1);
+  const [turn] = h.turnOf(trigger.id);
+  const plan = h.store.getTask(turn!.task_id!);
+  expect(h.store.listTickets(plan.id).map((ticket) => ticket.status)).toEqual(["doing", "todo"]);
+
+  h.engine.stop(turn!.id);
+  hop.resolve(say("初稿在 draft.md"));
+  // Well past the 20 ms settle quiet, and the 30 ms before a plan is looked at again.
+  await Bun.sleep(200);
+
+  expect(h.organized.map((payload) => payload.mode)).toEqual(["message"]);
+  expect(planNudges(h.store, plan.id)).toEqual([]);
+  expect(h.store.db.query(`SELECT id FROM turns WHERE id != ?`).all(turn!.id)).toEqual([]);
+  expect(hops).toBe(1);
+});
+
+test("a Stop drops the settle an earlier turn of its plan left pending; another plan's settle still runs", async () => {
+  const held = Promise.withResolvers<CompletionOk>();
+  const h = await harness(twoTickets, (messages) => (messages.some((m) => textOf(m).includes("再加一段")) ? held.promise : say("初稿在 draft.md")), {
+    settleQuietMs: 300,
+  });
+  const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+  const reviewer = h.store.createBot({ name: "Reviewer", duties: "review", boundaries: "stay" });
+  const direct = writer.direct_session.id;
+  const other = reviewer.direct_session.id;
+  // One plan in each direct, each with a turn that completed: each arms its settle.
+  for (const session of [direct, other]) {
+    const done = h.completed();
+    await h.engine.handleInboundMessage(h.store.insertMessage({ sessionId: session, kind: "user", author: "user", body: "写一份周报" }), { fromUser: true });
+    await done;
+  }
+  const plan = h.store.sessionCurrentTask(direct)!;
+  const elsewhere = h.store.sessionCurrentTask(other)!;
+  expect(plan.id).not.toBe(elsewhere.id);
+
+  // Inside the quiet, another turn of the first plan opens and is stopped.
+  const line = h.store.insertMessage({ sessionId: direct, kind: "user", author: "user", body: "再加一段" });
+  await h.engine.handleInboundMessage(line, { fromUser: true });
+  await until(() => h.seen.some((messages) => messages.some((m) => textOf(m).includes("再加一段"))));
+  const [turn] = h.turnOf(line.id);
+  expect(turn!.task_id).toBe(plan.id);
+  h.engine.stop(turn!.id);
+  held.resolve(say("加好了"));
+  await Bun.sleep(600);
+
+  const settled = h.organized.filter((payload) => payload.mode === "settle").map((payload) => payload.current_plan?.id);
+  expect(settled).toContain(elsewhere.id);
+  expect(settled).not.toContain(plan.id);
+  expect(planNudges(h.store, plan.id)).toEqual([]);
+  expect(h.store.db.query("SELECT COUNT(*) AS n FROM turns WHERE session_id = ?").get(direct)).toEqual({ n: 2 });
+});
+
 test("a failing check alone (no open ticket) still calls its ticket's worker back, and the note carries the check's own output tail", () => {
   const { store, planWatch, fired } = barePlanWatch();
   const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
@@ -635,6 +702,31 @@ test("a failing check alone (no open ticket) still calls its ticket's worker bac
   expect(nudge!.note).toContain("「交到 report.md」——命令：false：退出码 1，应为 0");
   expect(nudge!.note).toContain("boom");
   expect(nudge!.note).toContain("修交付物，不是改检查");
+});
+
+test("forgetting a plan drops only its look-again: another plan waiting out its quiet is still looked at", async () => {
+  const { store, planWatch, fired } = barePlanWatch({ planLeftQuietMs: 80 });
+  const lead = store.createBot({ name: "Lead", duties: "coordinate", boundaries: "stay" });
+  const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+  // Two group plans with everything handed over while their progress still lists work.
+  const plans = ["周报", "月报"].map((title) => {
+    const group = store.createGroup({ name: `${title}组`, members: [lead.bot.id, writer.bot.id] });
+    const plan = store.openTask({ sessionId: group.id, title });
+    store.setPlanSpecByUser(plan.id, { goal: title, progress: { done: ["初稿", "排版"], open: ["定稿还没做"], blocked: [] } });
+    store.createTicket({ taskId: plan.id, title: "初稿", status: "review", worker: writer.bot.id });
+    store.createTicket({ taskId: plan.id, title: "排版", status: "done", worker: lead.bot.id });
+    const said = store.insertMessage({ sessionId: group.id, kind: "bot", author: lead.bot.id, body: "排好了" });
+    store.db.run("UPDATE messages SET task_id = ? WHERE id = ?", [plan.id, said.id]);
+    return plan;
+  });
+  // Both are too fresh to call anyone back yet, so each waits out its quiet.
+  for (const plan of plans) planWatch.reconcilePlan(plan.id);
+  expect(fired).toEqual([]);
+  planWatch.forgetPlan(plans[0]!.id);
+  await until(() => fired.length > 0);
+  await Bun.sleep(150);
+  expect(planNudges(store, plans[0]!.id)).toEqual([]);
+  expect(planNudges(store, plans[1]!.id)).toHaveLength(1);
 });
 
 test("no ticket open and no check failing: nothing to reconcile", () => {
@@ -927,12 +1019,13 @@ test("every organizer call writes a run row — the raw answer, what it could pi
   expect(runs.every((run) => run.spend_id === null)).toBe(true);
 });
 
-test("a join target that stops qualifying while the call is out is downgraded, not silently dropped", async () => {
+test("a join target that stops qualifying while the call is out files nothing and opens no plan", async () => {
   // The payload offers `elsewhere` as a job Writer is on here; before the answer is even parsed,
   // its ticket moves off Writer's desk, so the candidate set re-read at parse time no longer has
-  // it — the race ADR 0040 P1 fixes. `parseOrganizerResult` falls back to continue, and with no
-  // current plan in this session that still opens a new one; only the raw `candidates_apply` names
-  // `elsewhere` as what the model actually asked for, and `downgrade_reason` says why it lost it.
+  // it. That answer was written for `elsewhere`: with no current plan in this session, continuing
+  // with it once opened a copy of that job (ADR 0040 P1). The line keeps the filing it had, none;
+  // the raw `candidates_apply` names `elsewhere` as what the model asked for, and the run says why
+  // it did not land.
   const answers: Array<JudgeResult | (() => JudgeResult)> = [];
   const h = bareOrganizer(answers);
   const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
@@ -946,15 +1039,65 @@ test("a join target that stops qualifying while the call is out is downgraded, n
     h.store.db.run("UPDATE tickets SET status = 'done' WHERE id = ?", [ticket.id]);
     return judged(JSON.stringify({ decision: "join", join_plan_id: elsewhere.id, plan: { goal: "别的事" }, tickets: [] }));
   });
-  const landed = await h.organizer.organizeMessage(line);
-  expect(landed.taskId).not.toBe(elsewhere.id);
+  expect(await h.organizer.organizeMessage(line)).toEqual({ taskId: null, ticketId: null });
+  expect(h.store.db.query(`SELECT id FROM tasks WHERE session_id = ?`).all(session)).toEqual([]);
+  expect(h.store.getMessage(line.id).task_id).toBeNull();
+  const reason = `named join target ${elsewhere.id} is not (or no longer) a job the Bots here are on elsewhere`;
+  expect(h.lines).toEqual([`[organizer] filing message ${line.id}: ${reason}, nothing filed`]);
   const run = h.store.organizerRunsForTask(elsewhere.id)[0]!;
-  expect(run.decision).toBe("continue");
-  expect(run.applied_task_id).not.toBe(elsewhere.id);
+  expect(run).toMatchObject({ applied: false, reject_reason: reason, downgrade_reason: reason, applied_task_id: null });
   expect(run.candidates_apply).toMatchObject({ decision: "join", join_plan_id: elsewhere.id });
   expect(run.candidates_payload.elsewhere_plan_ids).toContain(elsewhere.id);
   expect(run.candidates_at_parse?.elsewhere_plan_ids).not.toContain(elsewhere.id);
-  expect(run.downgrade_reason).toContain(elsewhere.id);
+});
+
+test("a resume whose target stops qualifying leaves the current plan as it was, not written over with that plan's goal", async () => {
+  const answers: Array<JudgeResult | (() => JudgeResult)> = [];
+  const h = bareOrganizer(answers);
+  const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+  const session = writer.direct_session.id;
+  const older = h.store.openTask({ sessionId: session, title: "写周报" });
+  const current = h.store.openTask({ sessionId: session, title: "订会议室" });
+  h.store.setPlanSpecByUser(current.id, { goal: "订会议室" });
+  const revisions = h.store.listSpecRevisions(current.id).length;
+  const line = h.store.insertMessage({ sessionId: session, kind: "user", author: "user", body: "周报接着写" });
+  const elsewhere = h.store.createBot({ name: "Other", duties: "other", boundaries: "stay" }).direct_session.id;
+  answers.push(() => {
+    // The older plan leaves this session's recent history while the call is out.
+    h.store.db.run("UPDATE tasks SET session_id = ? WHERE id = ?", [elsewhere, older.id]);
+    return judged(JSON.stringify({ decision: "resume", resume_plan_id: older.id, plan: { goal: "写周报" }, tickets: [{ id: "new-1", title: "初稿" }] }));
+  });
+  expect(await h.organizer.organizeMessage(line)).toEqual({ taskId: current.id, ticketId: null });
+  expect(parsePlanSpec(h.store.getTask(current.id).spec)?.goal).toBe("订会议室");
+  expect(h.store.listSpecRevisions(current.id)).toHaveLength(revisions);
+  expect(h.store.listTickets(current.id)).toEqual([]);
+  expect(h.store.getMessage(line.id).task_id).toBeNull();
+  expect(h.store.organizerRunsForTask(current.id)[0]).toMatchObject({ applied: false, decision: "continue" });
+});
+
+test("a resume or join that names the session's own current plan is filed there as a continue, not refused", async () => {
+  const answers: JudgeResult[] = [];
+  const h = bareOrganizer(answers);
+  const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+  const session = writer.direct_session.id;
+  const current = h.store.openTask({ sessionId: session, title: "订会议室" });
+  h.store.setPlanSpecByUser(current.id, { goal: "订会议室" });
+  for (const [decision, field] of [
+    ["resume", "resume_plan_id"],
+    ["join", "join_plan_id"],
+  ] as const) {
+    const line = h.store.insertMessage({ sessionId: session, kind: "user", author: "user", body: `会议室要能坐十个人（${decision}）` });
+    answers.push(
+      judged(JSON.stringify({ decision, [field]: current.id, plan: { goal: "订会议室", rules: [`能坐十个人（${decision}）`] }, tickets: [] })),
+    );
+    expect(await h.organizer.organizeMessage(line)).toEqual({ taskId: current.id, ticketId: null });
+    expect(h.store.getMessage(line.id).task_id).toBe(current.id);
+    expect(parsePlanSpec(h.store.getTask(current.id).spec)?.rules).toContain(`能坐十个人（${decision}）`);
+    // The run says what was named and that it landed as the continue it was read as.
+    const run = h.store.organizerRunsForTask(current.id)[0]!;
+    expect(run).toMatchObject({ applied: true, decision: "continue", reject_reason: null, applied_task_id: current.id });
+    expect(run.candidates_apply).toMatchObject({ decision, [field]: current.id });
+  }
 });
 
 test("a line asking to stop never puts a parked plan back to work; one that says to go on does", async () => {
@@ -1190,8 +1333,11 @@ describe("a group plan with everything handed over while its progress still list
     });
   }
 
-  async function inTheGroup(answer: Answer = handedOver, options: { planLeftQuietMs?: number } = {}) {
-    const h = await harness(answer, undefined, options);
+  async function inTheGroup(
+    answer: Answer = handedOver,
+    options: { planLeftQuietMs?: number; script?: (messages: ChatMessage[]) => CompletionOk | Promise<CompletionOk> } = {},
+  ) {
+    const h = await harness(answer, options.script, options);
     const lead = h.store.createBot({ name: "Lead", duties: "coordinate", boundaries: "stay" });
     const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
     const group = h.store.createGroup({ name: "周报组", members: [lead.bot.id, writer.bot.id] });
@@ -1266,6 +1412,34 @@ describe("a group plan with everything handed over while its progress still list
     expect(Date.parse(nudges()[0]!.created_at)).toBeGreaterThanOrEqual(Date.parse(aside.created_at) + quiet);
   });
 
+  test("a Stop on one of its turns drops the look-again the plan was waiting out", async () => {
+    const quiet = 400;
+    const held = Promise.withResolvers<CompletionOk>();
+    const { h, group, writer, nudges } = await inTheGroup(handedOver, {
+      planLeftQuietMs: quiet,
+      script: (messages) => (messages.some((m) => textOf(m).includes("看一眼初稿")) ? held.promise : say("初稿在 draft.md")),
+    });
+    await until(() => {
+      const plan = h.store.sessionCurrentTask(group.id);
+      return plan !== null && h.store.currentRevision(plan.id) >= 2;
+    });
+    const plan = h.store.sessionCurrentTask(group.id)!;
+    // The settle's reconcile found work left and is waiting out the quiet. A turn of the plan opens
+    // meanwhile, and is stopped.
+    await Bun.sleep(30);
+    expect(nudges()).toHaveLength(0);
+    const line = h.store.insertMessage({ sessionId: group.id, kind: "user", author: "user", body: "@Writer 看一眼初稿" });
+    await h.engine.handleInboundMessage(line, { fromUser: true });
+    await until(() => h.seen.some((messages) => messages.some((m) => textOf(m).includes("看一眼初稿"))));
+    const [turn] = h.turnOf(line.id);
+    expect(turn).toMatchObject({ task_id: plan.id });
+    expect(h.store.getTurn(turn!.id).bot_id).toBe(writer.id);
+    h.engine.stop(turn!.id, { allowGroup: true });
+    held.resolve(say("看过了"));
+    await Bun.sleep(quiet + 400);
+    expect(nudges()).toHaveLength(0);
+  });
+
   test("in your direct with a Bot nobody is called back: its last word already went to you", async () => {
     const h = await harness(handedOver);
     h.store.createBot({ name: "Lead", duties: "coordinate", boundaries: "stay" });
@@ -1322,7 +1496,7 @@ describe("a group plan with everything handed over while its progress still list
     const plan = h.store.sessionCurrentTask(group.id)!;
     expect(nudges()).toHaveLength(1);
     expect(nudges()[0]).toMatchObject({ bot_id: lead.id, ticket_id: null });
-    expect(nudges()[0]!.note).toContain("卡住的，想清楚你们自己定的暂停、冻结还该不该停");
+    expect(nudges()[0]!.note).toContain("卡住的，局面里记着谁定的暂停或冻结");
     expect(stalled()[0]!.body).toContain("定稿：Lead 自己冻结了，等它解冻");
     expect(h.store.getTask(plan.id).status).toBe("active");
   });

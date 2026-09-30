@@ -178,26 +178,24 @@ describe("进度询问", () => {
     expect(h.store.getTurn(live.id).status).toBe("running");
   });
 
-  test("nothing running and an open ticket: reconcile books a nudge, and the status line names the Bot", async () => {
-    const h = await harness(newPlanAnswer("文案", "todo"), () => say("初稿在 draft.md"));
+  test("nothing running and a ticket still to do: the question answers and calls nobody back", async () => {
+    // It used to call the plan back here, so asking about a job you had stopped set it going again.
+    const h = await harness(newPlanAnswer("文案"));
     const writer = h.store.createBot({ name: "文案", duties: "写", boundaries: "" });
     const session = writer.direct_session.id;
-
-    const trigger = h.store.insertMessage({ sessionId: session, kind: "user", author: USER_MEMBER, body: "写一份周报" });
-    await h.engine.handleInboundMessage(trigger, { fromUser: true });
-    const plan = await until(() => h.store.sessionCurrentTask(session));
-    // The turn's single hop replies and stops; nothing is left running.
-    await until(() => h.store.listLiveTurns({ sessionId: session }).length === 0);
-    expect(h.store.getTicket(h.store.listTickets(plan!.id)[0]!.id).status).toBe("todo");
+    const plan = h.store.openTask({ sessionId: session, title: "写一份周报" });
+    h.store.createTicket({ taskId: plan.id, title: "初稿", status: "todo", worker: writer.bot.id });
 
     const status = h.store.insertMessage({ sessionId: session, kind: "user", author: USER_MEMBER, body: "进度呢" });
     await h.engine.handleInboundMessage(status, { fromUser: true });
 
-    const note = await until(() =>
-      h.store.listMessages(session).items.find((m) => m.kind === "system" && m.body.includes("已叫")),
-    );
-    expect(note.body).toContain("已叫 文案 接着做。");
+    const note = h.store.listMessages(session).items.find((m) => m.kind === "system")!;
     expect(note.body).toContain("现在没有人在做。");
+    expect(note.body).toContain("- 01《初稿》待做");
+    expect(note.body).not.toContain("已叫");
+    expect(h.store.lastPlanNudge(plan.id)).toBeNull();
+    expect(h.store.db.query(`SELECT id FROM turns`).all()).toEqual([]);
+    expect(h.seen).toEqual([]);
   });
 
   test("a turn held up on you and a booked check-back are named, not counted as working", async () => {

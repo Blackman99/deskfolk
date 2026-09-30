@@ -78,8 +78,8 @@ export const WINDOWS_ENV_PASSTHROUGH = [
 ] as const;
 
 /**
- * A hard, unconditional stop for a process. POSIX call sites keep signalling the child directly
- * (SIGTERM/SIGKILL only ever reached that one process, which is what they already relied on) and
+ * A hard, unconditional stop for a process. POSIX call sites signal on their own (the pty and the
+ * MCP host their one child, a Bot's `shell` its whole process group — see `live-procs.ts`) and
  * only reach for this on win32, where there is no signal delivery at all: a `cmd → npx → node`
  * chain would otherwise outlive the parent that `taskkill /T` walks down to find.
  */

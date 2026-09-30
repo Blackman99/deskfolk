@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CompletionResult } from "../completions";
-import { call, checkBack, createScenario, endTurn, media, say, tool, writeFile, type Scenario, type ScenarioOptions } from "./scenario";
+import { call, checkBack, createScenario, endTurn, media, requestText, say, shell, tool, writeFile, type Scenario, type ScenarioOptions } from "./scenario";
 
 const open: Scenario[] = [];
 afterEach(async () => {
@@ -202,22 +202,31 @@ test("two check-backs in a row each come due their full wait after the turn that
   expect(h.unscripted()).toEqual([]);
 });
 
-test("a turn stuck across an advance past the stall limit is swept", async () => {
+test("a hop still out across an advance past its time limit runs out, goes again once, then fails the turn", async () => {
   const h = await scenario();
   const [alpha] = h.createBots("Alpha");
   const dm = h.direct(alpha!);
-  let asked = false;
-  h.script(alpha!, dm).reply(() => {
-    asked = true;
+  let asked = 0;
+  const hang = (): Promise<CompletionResult> => {
+    asked += 1;
     return new Promise<CompletionResult>(() => {});
-  });
+  };
+  h.script(alpha!, dm).reply(hang, hang);
 
   h.postUser(dm, "慢慢想");
-  await h.waitFor(() => asked, { what: "the first hop" });
-  h.advance(21 * 60_000);
+  await h.waitFor(() => asked === 1, { what: "the first hop" });
+  // Nine minutes in, the hop is inside its ten-minute limit, and the sweep leaves a hop in flight alone.
+  h.advance(9 * 60_000);
+  expect(h.turns(alpha!).map((turn) => turn.status)).toEqual(["running"]);
+  h.advance(2 * 60_000);
+  await h.waitFor(() => asked === 2, { what: "the retry" });
+  h.advance(11 * 60_000);
   await h.waitIdle();
 
-  expect(h.turns(alpha!).map((turn) => turn.status)).toEqual(["interrupted"]);
+  const [turn] = h.turns(alpha!);
+  expect(turn!.status).toBe("completed");
+  expect(h.hops(alpha!).map((hop) => (hop.reply.ok ? "ok" : hop.reply.failKind))).toEqual(["overtime", "overtime"]);
+  expect(h.messages(dm).filter((m) => m.kind === "system").map((m) => m.body)).toEqual(["这一轮没写完：回复写了太久，超过了时间上限"]);
 });
 
 test("a turn started after a long advance is not taken for stuck", async () => {
@@ -327,4 +336,105 @@ test("a call refused on a turn's last hop is still not a side effect, with no la
     { ran: true, result: { ok: false, error: "invalid_args" } },
   ]);
   expect(h.sideEffectCalls(alpha!)).toEqual([]);
+});
+
+test("a Bot's line is filed under the plan it names and heard by the other Bot of a Bot↔Bot direct", async () => {
+  const h = await scenario();
+  const [alpha, beta] = h.createBots("Alpha", "Beta");
+  const room = h.group("剪辑组", [alpha!, beta!]);
+  const plan = h.store.openTask({ sessionId: room, title: "短片" });
+  const thread = h.botDirect(alpha!, beta!);
+  h.script(beta!, thread).reply(call(endTurn()));
+
+  const line = h.postBot(alpha!, thread, "短片的第二段交给你", { taskId: plan.id });
+  await h.routed();
+  expect(h.turns(beta!).map((turn) => ({ session: turn.session_id, task: turn.task_id, trigger: turn.trigger_message_id }))).toEqual([
+    { session: thread, task: plan.id, trigger: line.id },
+  ]);
+  await h.waitIdle();
+
+  expect(h.store.getMessage(line.id)).toMatchObject({ kind: "bot", author: alpha!.id, task_id: plan.id });
+  // What the hop read is kept with it.
+  expect(requestText(h.hops(beta!)[0]!.request)).toContain("短片的第二段交给你");
+  expect(h.unscripted()).toEqual([]);
+});
+
+/** A turn of Alpha's whose first hop never answers, so it is still running when the daemon goes down. */
+async function hungTurn(h: Scenario): Promise<{ dm: string; turnId: string }> {
+  const [alpha] = h.createBots("Alpha");
+  const dm = h.direct(alpha!);
+  let asked = false;
+  h.script(alpha!, dm).reply(() => {
+    asked = true;
+    return new Promise<CompletionResult>(() => {});
+  }, say("接着来"));
+  h.postUser(dm, "慢慢想");
+  await h.waitFor(() => asked, { what: "the first hop" });
+  return { dm, turnId: h.turns(alpha!)[0]!.id };
+}
+
+test("after a crash the next boot reads it as one, interrupts what was running, and a new engine answers", async () => {
+  const h = await scenario({ durable: true });
+  const { dm, turnId } = await hungTurn(h);
+  const before = h.store;
+
+  await h.restart({ clean: false });
+
+  expect(h.store).not.toBe(before);
+  expect(h.store.previousShutdown).toBe("crash");
+  expect(h.store.getTurn(turnId).status).toBe("interrupted");
+  await h.waitIdle();
+  h.postUser(dm, "还在吗");
+  await h.waitIdle();
+  expect(botLines(h, dm)).toEqual(["接着来"]);
+});
+
+test("after a clean restart the next boot reads it as clean, and the turn the quit cut off is interrupted", async () => {
+  const h = await scenario({ durable: true });
+  const { turnId } = await hungTurn(h);
+
+  await h.restart({ clean: true });
+
+  expect(h.store.previousShutdown).toBe("clean");
+  expect(h.store.getTurn(turnId).status).toBe("interrupted");
+  await h.waitIdle();
+});
+
+/**
+ * A turn of Alpha's with a command still running when the daemon goes down. Whichever engine takes
+ * the turn down records the command as cut off: a write made after the restart began. The command
+ * is kept short only for a host whose `/bin/sh` does not exec its single command: there the kill
+ * reaches just the shell, the command keeps the pipes open, and the restart waits for it to end.
+ * Where `/bin/sh` execs it, the kill ends the command itself and its length does not matter.
+ */
+async function runningCommand(h: Scenario) {
+  const [alpha] = h.createBots("Alpha");
+  const dm = h.direct(alpha!);
+  h.script(alpha!, dm).reply(call(shell("sleep 2")));
+  h.postUser(dm, "跑一下");
+  await h.waitFor(() => h.toolCalls(alpha!, "shell").some((row) => row.dispatchedAt !== null), { what: "the command to start" });
+  return alpha!;
+}
+
+test("after a crash the next boot sees nothing the dying engine wrote on its way down", async () => {
+  const h = await scenario({ durable: true });
+  const alpha = await runningCommand(h);
+
+  await h.restart({ clean: false });
+
+  expect(h.runs(alpha).map(({ command }) => command)).toEqual([]);
+  await h.waitIdle();
+});
+
+test("after a clean restart the next boot sees what the engine wrote as it drained", async () => {
+  const h = await scenario({ durable: true });
+  const alpha = await runningCommand(h);
+
+  await h.restart({ clean: true });
+
+  // The same write as in the crash above, which is what makes that test's empty list mean something.
+  expect(h.runs(alpha).map(({ command, ok, error }) => ({ command, ok, error }))).toEqual([
+    { command: "sleep 2", ok: 0, error: "interrupted" },
+  ]);
+  await h.waitIdle();
 });
