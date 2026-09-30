@@ -1602,11 +1602,12 @@ export class MessengerRuntime {
     }
   }
 
-  async deleteSession(id: string): Promise<ApiError | null> {
+  /** `eraseQuotes` erases what you said in the group as well; without it that is kept (ADR 0040). */
+  async deleteSession(id: string, opts: { eraseQuotes?: boolean } = {}): Promise<ApiError | null> {
     const api = this.api;
     if (!api) return null;
     try {
-      await api.deleteSession(id);
+      await api.deleteSession(id, opts);
       if (this.api !== api) return null;
       const view = this.views.get(id);
       if (view) view.focusedTurnId = null;
@@ -1620,11 +1621,12 @@ export class MessengerRuntime {
     }
   }
 
-  async clearSessionHistory(id: string): Promise<ApiError | null> {
+  /** `eraseQuotes` erases what you said here as well; without it that is kept (ADR 0040). */
+  async clearSessionHistory(id: string, opts: { eraseQuotes?: boolean } = {}): Promise<ApiError | null> {
     const api = this.api;
     if (!api) return null;
     try {
-      await api.clearSessionHistory(id);
+      await api.clearSessionHistory(id, opts);
       if (this.api !== api) return null;
       // That conversation's own view, whether or not it is the one in front.
       const view = this.views.get(id);

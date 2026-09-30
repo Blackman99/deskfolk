@@ -71,7 +71,7 @@ add("POST", "holds", { scope: one("global", "bot", "session", "plan", "ticket", 
   action: one("pause", "cancel"), cascade: bool, lift_on_next_user_message: bool, session_id: nullable(id) }, ["scope"]);
 add("POST", "holds/:id/lift", {});
 // A button on a line about your stops (a receipt's undo, 「全部停下」 from the phone's menu is a hold above).
-add("POST", "messages/:id/control", { action: one("stop", "continue", "cancel", "undo", "stop_all", "stop_plan", "only_plan", "continue_only", "continue_all", "resume", "leave"), task_id: id }, ["action"]);
+add("POST", "messages/:id/control", { action: one("stop", "continue", "cancel", "undo", "stop_all", "stop_plan", "only_plan", "continue_only", "continue_all", "resume", "leave", "confirm_check", "remove_check"), task_id: id }, ["action"]);
 add("PATCH", "tickets/:id", { title: string, spec: string, status: ticketStatus, worker: nullable(id), if_revision: specRevision }, [], true);
 const checkKind: Check = one("exists", "contains", "matches", "command");
 const checkInput = {
@@ -90,6 +90,8 @@ const checkInput = {
 add("POST", "tasks/:id/checks", checkInput, ["item", "kind"]);
 add("PATCH", "checks/:id", { ...checkInput, ...revision }, [], true);
 add("DELETE", "checks/:id", revision);
+// A check from your words, put in force (ADR 0040 P3).
+add("POST", "checks/:id/confirm", {});
 add("POST", "tasks/:id/checks/run", { check_id: nullable(id) });
 get("workspace/tree", { path: string }); get("workspace/file", { path: string, size: one("thumb", "preview"), range: string }, ["path"]);
 get("host/tree", { path: string });
@@ -152,7 +154,8 @@ add("POST", "annotations/send", { session_id: id, body: string, annotation_ids: 
 add("PATCH", "annotations/:id", { body: string, anchor, crop, content_sha256: v => typeof v === "string" && /^[0-9a-f]{64}$/.test(v), status: one("open", "resolved"), ...revision }, [], true);
 add("DELETE", "annotations/:id", revision);
 add("POST", "sessions/:id/read", { through_message_id: id });
-add("POST", "sessions/:id/(archive|restore|clear)", revision); add("POST", "bots/:id/(archive|restore)", revision);
+add("POST", "sessions/:id/(archive|restore)", revision); add("POST", "bots/:id/(archive|restore)", revision);
+add("POST", "sessions/:id/clear", { ...revision, erase_quotes: bool });
 add("POST", "approvals/:id/resolve", { action: one("allow_once", "deny", "always_allow"), scope: string, api_key: string }, ["action"]);
 add("POST", "credential-operations/:id/resolve", { action: one("repair", "cancel"), value: string }, ["action"]);
 add("POST", "notifications/read", { ids: list(id), through_ordinal: v => typeof v === "number" && Number.isInteger(v) && v >= 0, filter: one("all") });
@@ -167,8 +170,9 @@ add("PATCH", "settings", { endpoint_base_url: string, endpoint_api_key: string, 
   if_revision: v => typeof v === "number" && Number.isSafeInteger(v) && v >= 0 }, [], true);
 for (const [name, fields] of Object.entries({ bots: bot, providers: provider, "mcp-servers": mcp, skills: skill, routines: routine,
   memories: { subject: string, body: string, enabled: bool }, sessions: { name: string } } as Record<string, Fields>)) add("PATCH", `${name}/:id`, { ...fields, ...revision }, [], true);
-add("DELETE", "(bots|sessions|providers|mcp-servers|skills|memories|routines|allow-rules)/:id", revision);
-add("DELETE", "sessions/:id/messages", revision);
+add("DELETE", "sessions/:id", { ...revision, erase_quotes: bool });
+add("DELETE", "(bots|providers|mcp-servers|skills|memories|routines|allow-rules)/:id", revision);
+add("DELETE", "sessions/:id/messages", { ...revision, erase_quotes: bool });
 add("DELETE", "sessions/:id/members", { ...revision, bot_id: id }, ["bot_id"]);
 for (const method of ["PUT", "DELETE"] as const) add(method, "messages/:id/reactions", { emoji: string }, ["emoji"]);
 add("POST", "messages/:id/answer", { selected: list(string), custom: nullable(string) });

@@ -6,6 +6,7 @@ import type { ClientEvent, Routine, Turn } from "@real-bot/protocol";
 import type { CompletionOk, CompletionResult, CompletionsClient, ToolCall } from "./completions";
 import type { McpHost } from "./mcp-host";
 import { ORGANIZER_SYSTEM } from "./prompts/organizer";
+import { SCRIBE_SYSTEM } from "./prompts/scribe";
 import { Quiesce, TurnAdmission } from "./quiesce";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";
@@ -63,10 +64,10 @@ async function harness(options: { mcp?: McpHost; complete?: CompletionsClient["c
         return requests.length === 1 ? first.promise : answer();
       },
       async judge(request) {
-        // The organizer runs before every user message opens turns; these tests are about the turns,
-        // so it answers nothing and the message joins the current plan.
-        const organizer = request.messages[0]?.role === "system" && request.messages[0].content === ORGANIZER_SYSTEM;
-        if (organizer || !options.judge) return { content: "{}", toolCalls: [], hadToolCalls: false, usage: null, failKind: null };
+        // The organizer runs before every user message opens turns, and the scribe after; these tests
+        // are about the turns, so both answer nothing and the message joins the current plan.
+        const system = request.messages[0]?.role === "system" ? request.messages[0].content : null;
+        if (system === ORGANIZER_SYSTEM || system === SCRIBE_SYSTEM || !options.judge) return { content: "{}", toolCalls: [], hadToolCalls: false, usage: null, failKind: null };
         return options.judge(request);
       },
     },

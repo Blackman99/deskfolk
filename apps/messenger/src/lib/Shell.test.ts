@@ -132,6 +132,33 @@ for (const kind of ['bot', 'group', 'provider'] as const) for (const confirmB of
   });
 }
 
+test('clearing a group history erases what you said there only when you tick the box in the confirm', async () => {
+  const bots = [aBot({ id: 'a', name: 'Alpha' }), aBot({ id: 'b', name: 'Beta' })];
+  const runtime = reactive(fakeRuntime({
+    bots,
+    sessions: [aGroup({ id: 'g1', name: 'Crew' })],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+  }));
+  runtime.closeSessionSettings = () => { runtime.sessionSettingsOpen = false; };
+  flushSync(() => { runtime.selectedId = 'g1'; runtime.sessionSettingsOpen = true; });
+  const { host, close } = render(Shell, { runtime }); cleanups.push(close);
+  const t = copyFor('en');
+  for (const tick of [false, true]) {
+    click(host.querySelector('.danger-zone-card .btn-history-clear'));
+    const dialog = host.querySelector('dialog[open]')!;
+    expect(dialog.textContent).toContain(t.detail.eraseQuotes);
+    const box = dialog.querySelector<HTMLInputElement>('.confirm-option input')!;
+    expect(box.checked).toBe(false);
+    if (tick) { click(box); flushSync(); expect(box.checked).toBe(true); }
+    click(dialog.querySelector('.deny')); await settle();
+    expect(host.querySelector('dialog')).toBeNull();
+  }
+  expect(runtime.calls.filter((call) => call.name === 'clearSessionHistory').map((call) => call.args)).toEqual([
+    ['g1', { eraseQuotes: false }],
+    ['g1', { eraseQuotes: true }],
+  ]);
+});
+
 test('OS and SW notification intents wait for unsaved preview cancel, save, or discard', async () => {
   const bots = [aBot({ id: 'bot-1', name: 'Writer' })];
   const sessions = [

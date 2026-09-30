@@ -8,16 +8,17 @@
  * 视频导演, told it 「按用户要求接着做 Shot 12」, and at 11:09 视频导演 repeated the made-up rule
  * word for word.
  *
- * Target, from ADR 0040 P3 (your words, the requirement ledger), which flips this to a plain `test`:
- * a rule is a line of yours. Nothing a model writes becomes one, and a filing never drops one of
- * yours; the plan keeps both, and gains nothing you did not say. Today any filing after a line of
- * yours may rewrite the list as it likes.
+ * Target, from ADR 0040 P3 (your words, the requirement ledger): a rule is a line of yours. Nothing
+ * a model writes becomes one, and a filing never drops one of yours; the plan keeps both, and gains
+ * nothing you did not say. The organizer's rules are no longer taken at all, message or settle, and
+ * what you ask goes to the ledger only through the scribe, which reads your lines, never a Bot's,
+ * and keeps only words it can find in them.
  *
  * Here the made-up rule comes from the settle after 审片员's relay rather than from the filing of
  * your line: from P2 on, a line like 「你私聊里的没停」 is taken as control and never reaches a
- * filing, while a settle after a line of yours rewrites rules until P3. So your 10:53 line is stored
- * under the plan as the organizer filed it then, not posted, only for the settle to know you spoke.
- * The two rules are set on the board, so the ledger has them without a scribe to script.
+ * filing, or the scribe (the second test). So your 10:53 line is stored under the plan as the
+ * organizer filed it then, not posted, only for the settle to know you spoke. The two rules are set
+ * on the board.
  */
 import { afterEach, expect, test } from "bun:test";
 import { call, createScenario, endTurn, type Scenario } from "../test-kit/scenario";
@@ -30,7 +31,7 @@ afterEach(async () => {
 
 const YOURS = ["题材必须是未来世界", "时长超过 2 分钟"];
 
-test.failing("a settle that answers with a rule of its own neither adds it nor drops yours", async () => {
+test("a settle that answers with a rule of its own neither adds it nor drops yours", async () => {
   const h = await createScenario();
   open.push(h);
   const { director, reviewer, room } = videoTeam(h);
@@ -54,4 +55,24 @@ test.failing("a settle that answers with a rule of its own neither adds it nor d
 
   expect(rulesOf(h, echo.id)).toEqual(expect.arrayContaining(YOURS));
   expect(rulesOf(h, echo.id).filter((rule) => rule.includes("接着做"))).toEqual([]);
+  // A Bot's relay is nobody's requirement: the scribe never reads it.
+  expect(h.judgeCalls("scribe")).toEqual([]);
+  expect(h.store.listRequirements()).toEqual([]);
+});
+
+test("under holds your 「你私聊里的没停」 is answered by the app and reaches neither the organizer nor the scribe", async () => {
+  const h = await createScenario({ holds: true });
+  open.push(h);
+  const { director, room } = videoTeam(h);
+  const goal = "未来世界短片《回响纪元》";
+  const echo = openPlan(h, room, "回响纪元", planSpec(goal));
+  h.store.setPlanSpecByUser(echo.id, planSpec(goal, { rules: YOURS }));
+
+  h.postUser(h.direct(director), "你私聊里的没停");
+  await h.waitIdle();
+
+  expect(h.judgeCalls("organizer")).toEqual([]);
+  expect(h.judgeCalls("scribe")).toEqual([]);
+  expect(h.store.listRequirements()).toEqual([]);
+  expect(rulesOf(h, echo.id)).toEqual(YOURS);
 });

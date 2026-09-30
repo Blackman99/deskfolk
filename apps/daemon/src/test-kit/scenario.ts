@@ -65,6 +65,7 @@ import { createMcpHost, type McpCallResult, type McpHost } from "../mcp-host";
 import { COLLAB_TOOL_NAMES, COMPOSER_SUGGEST_SYSTEM, JUDGEMENT_SYSTEM, type FailKind } from "../prompts";
 import { ORGANIZER_SYSTEM, ORGANIZER_SYSTEM_UNDER_HOLDS } from "../prompts/organizer";
 import { ROUTE_LEARN_SYSTEM, ROUTE_PICK_SYSTEM, ROUTE_REVIEW_SYSTEM } from "../prompts/routing";
+import { SCRIBE_SYSTEM } from "../prompts/scribe";
 import { TurnAdmission } from "../quiesce";
 import { startScheduler, type Scheduler } from "../scheduler";
 import { memoryKeyStore } from "../secrets";
@@ -211,7 +212,7 @@ export type HopContext = {
 
 export type ToolOutcome = { id: string; name: string; ok: boolean | null; error: string | null; content: string };
 
-export type JudgeKind = "organizer" | "judgement" | "route_pick" | "route_review" | "route_learn" | "composer" | "other";
+export type JudgeKind = "organizer" | "scribe" | "judgement" | "route_pick" | "route_review" | "route_learn" | "composer" | "other";
 
 /** What a scripted side-call is told: its kind, the parsed payload, and whose it is when that shows. */
 export type JudgeContext = {
@@ -221,7 +222,7 @@ export type JudgeContext = {
   payload: unknown;
   /** A judgement's Bot, from `payload.you.name`; null for the other kinds. */
   bot: Bot | null;
-  /** From `payload.session.id` (organizer, judgement); null when the payload names none. */
+  /** From `payload.session.id` (organizer, judgement, scribe); null when the payload names none. */
   sessionId: string | null;
 };
 
@@ -422,6 +423,7 @@ export function requestText(request: CompletionRequest): string {
 function judgeKindOf(request: JudgeRequest): JudgeKind {
   const system = textOf(request.messages.find((m) => m.role === "system")?.content ?? "");
   if (system === ORGANIZER_SYSTEM || system === ORGANIZER_SYSTEM_UNDER_HOLDS) return "organizer";
+  if (system === SCRIBE_SYSTEM) return "scribe";
   if (system === JUDGEMENT_SYSTEM) return "judgement";
   if (system === ROUTE_PICK_SYSTEM) return "route_pick";
   if (system === ROUTE_REVIEW_SYSTEM) return "route_review";
@@ -874,6 +876,9 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
     if (unsettled.length > 0) return `unsettled turns: ${unsettled.join(", ")}`;
     const pending = engine.pendingJudgements();
     if (pending.length > 0) return `${pending.length} pending judgement(s)`;
+    // An acceptance check the app is running (a file read, a command, ffprobe) is not a model call.
+    const checking = store.db.query<{ n: number }, []>(`SELECT COUNT(*) AS n FROM acceptance_check_runs WHERE finished_at IS NULL`).get()!.n;
+    if (checking > 0) return `${checking} acceptance check run(s) in flight`;
     return null;
   }
 

@@ -38,25 +38,14 @@ function fixture() {
 describe("createPlanChecks: continuity", () => {
   test("a continuity check shares the command check's exclusive queue, and gets its plan's dir/rules/session", async () => {
     const f = fixture();
-    f.store.applyOrganizerResult({
-      sessionId: f.planB.session_id!,
-      current: f.store.getTask(f.planB.id),
-      result: {
-        decision: "continue",
-        resumePlanId: null,
-        spec: {
-          kind: "样片",
-          goal: "拼装样片",
-          acceptance: ["镜头连贯"],
-          rules: ["义肢在左手"],
-          process: [],
-          progress: { done: [], open: [], blocked: [] },
-          status: "active",
-        },
-        tickets: [],
-        messageTicket: null,
-      },
-      source: { messageId: null, turnId: null, messageBody: "" },
+    f.store.setPlanSpecByUser(f.planB.id, {
+      kind: "样片",
+      goal: "拼装样片",
+      acceptance: ["镜头连贯"],
+      rules: ["义肢在左手"],
+      process: [],
+      progress: { done: [], open: [], blocked: [] },
+      status: "active",
     });
 
     const order: string[] = [];

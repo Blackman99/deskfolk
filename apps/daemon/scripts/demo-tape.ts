@@ -85,6 +85,7 @@ const SIDE_CALLS: [string, string][] = [
   ["你正在做一次判断", "judge"],
   ["你在为一条刚到的消息挑模型", "route"],
   ["你在替这个会话整理", "organizer"],
+  ["你是书记员", "scribe"],
   ["你在替一个 Bot 做收尾自检", "closing"],
   ["你在复盘一次模型选择", "review"],
   ["你在替这个 Bot 记下一条", "learn"],
@@ -116,6 +117,8 @@ function classify(body: ChatBody): string {
   if (kind === "judge") return `judge:${payload.you?.name ?? "?"}`;
   if (kind === "route" || kind === "review") return `${kind}:${payload.bot?.name ?? "?"}`;
   if (kind === "organizer") return `organizer:${payload.mode ?? "?"}:${payload.session?.name ?? "?"}`;
+  // The scribe runs after each line's turns have started, so it is matched by the line it reads.
+  if (kind === "scribe") return `scribe:${digest(normalize(String(payload.said?.body ?? "")))}`;
   // Bots can finish in either order, so a closing check is matched by the reply it checks.
   if (kind === "closing") return `closing:${digest(normalize(String(payload.reply ?? "")))}`;
   return kind;

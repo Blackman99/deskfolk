@@ -11,7 +11,7 @@
 		specWithLines,
 		type SpecListField
 	} from './plan-board.ts';
-	import { checkSummary, checksForLine, orphanChecks } from './acceptance-checks.ts';
+	import { checkSummary, checksForLine, derivedChecks, orphanChecks } from './acceptance-checks.ts';
 	import AcceptanceCheckRow from './AcceptanceCheckRow.svelte';
 	import AcceptanceCheckForm from './AcceptanceCheckForm.svelte';
 
@@ -52,6 +52,7 @@
 	const checks = $derived(detail.checks ?? []);
 	const acceptanceLines = $derived(detail.spec?.acceptance ?? []);
 	const orphanedChecks = $derived(orphanChecks(checks, acceptanceLines));
+	const fromYourWords = $derived(derivedChecks(checks));
 	const checksTotal = $derived(checkSummary(checks));
 	const anyCheckRunning = $derived(checks.some((check) => check.running));
 
@@ -335,6 +336,15 @@
 								</ul>
 							{:else}
 								<p class="plan-spec-empty-line">{t.plan.empty}</p>
+							{/if}
+
+							{#if field === 'acceptance' && fromYourWords.length > 0}
+								<div class="plan-spec-checks-orphans">
+									<span class="plan-spec-checks-orphans-title">{t.plan.checks.derivedTitle}</span>
+									<ul class="plan-spec-ul">
+										{#each fromYourWords as check (check.id)}<li>{check.item}<span class="plan-spec-checks-pills"><AcceptanceCheckRow {api} {detail} {check} {t} onSaved={checkSaved} /></span></li>{/each}
+									</ul>
+								</div>
 							{/if}
 
 							{#if field === 'acceptance' && orphanedChecks.length > 0}

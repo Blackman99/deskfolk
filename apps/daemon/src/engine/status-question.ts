@@ -26,7 +26,7 @@ import {
 } from "../prompts";
 import type { TurnAdmission } from "../quiesce";
 import { isStatusQuestion } from "../status-question";
-import type { Store } from "../store";
+import { derivedNotGate, type Store } from "../store";
 import { takeCodePoints } from "../text";
 
 export type StatusQuestionDeps = {
@@ -193,7 +193,8 @@ export function createStatusQuestion(deps: StatusQuestionDeps): StatusQuestionEn
       };
     });
 
-    const allChecks = store.listChecks(taskId);
+    // A check from your words with no file yet is neither passed nor failed, so it is not counted.
+    const allChecks = store.listChecks(taskId).filter((check) => !derivedNotGate(check));
     const passed = allChecks.filter((check) => check.last_run?.outcome === "pass").length;
     const failingChecks = allChecks.filter((check) => check.last_run?.outcome === "fail");
     const failing = failingChecks

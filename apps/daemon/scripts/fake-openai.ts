@@ -8,12 +8,13 @@
  * Routes:
  *   GET  /v1/models                 — one model, `fixture`, with thinking levels.
  *   POST /v1/chat/completions       — `stream: false` (judgement, route pick, suggestions) answers `{}`,
- *                                     except the organizer, which gets a fixed plan (see `organize`), a
- *                                     judgement with a queued answer, and the goal-coverage judge, which
- *                                     gets a verdict (see `coverage`); `stream: true` answers by the
- *                                     rules below, as SSE.
+ *                                     except the organizer, which gets a fixed plan (see `organize`), the
+ *                                     scribe, which gets a queued patch or an empty one, a judgement with
+ *                                     a queued answer, and the goal-coverage judge, which gets a verdict
+ *                                     (see `coverage`); `stream: true` answers by the rules below, as SSE.
  *   POST /__next  { reply }         — queue one scripted reply: `{ content }` or `{ tool_calls: [{ name, arguments }] }`.
  *   POST /__next  { organizer }     — queue one organizer answer (a JSON string, or an object to stringify).
+ *   POST /__next  { scribe }        — queue one scribe answer, `{ adds, raises, supersedes }` (a JSON string, or an object).
  *   POST /__next  { judgement }     — queue one participation judgement: "join", "pass", or `{ decision, reason }`.
  *                                     Without one a judgement still answers `{}`, which reads as a pass.
  *   POST /__next  { coverage }      — queue one goal-coverage verdict (a JSON string, or an object to stringify).
@@ -33,6 +34,7 @@ type Scripted = { content?: string; tool_calls?: Array<{ name: string; arguments
 const port = Number(process.env.REAL_BOT_FAKE_PORT ?? 17917);
 const queue: Scripted[] = [];
 const organizerQueue: string[] = [];
+const scribeQueue: string[] = [];
 const judgementQueue: string[] = [];
 const coverageQueue: string[] = [];
 const log: Array<{ at: string; stream: boolean; tools: string[]; last: string; images: number }> = [];
@@ -62,6 +64,10 @@ function systemStarts(messages: ChatMessage[], opening: string): boolean {
 
 function isOrganizerCall(messages: ChatMessage[]): boolean {
   return systemStarts(messages, "你在替这个会话整理「规划」和「任务」");
+}
+
+function isScribeCall(messages: ChatMessage[]): boolean {
+  return systemStarts(messages, "你是书记员");
 }
 
 function isJudgementCall(messages: ChatMessage[]): boolean {
@@ -195,17 +201,25 @@ const server = Bun.serve({
       const body = (await request.json()) as {
         reply?: Scripted;
         organizer?: string | Record<string, unknown>;
+        scribe?: string | Record<string, unknown>;
         judgement?: string | Record<string, unknown>;
         coverage?: string | Record<string, unknown>;
       };
       if (body.reply) queue.push(body.reply);
       if (body.organizer !== undefined) organizerQueue.push(typeof body.organizer === "string" ? body.organizer : JSON.stringify(body.organizer));
+      if (body.scribe !== undefined) scribeQueue.push(typeof body.scribe === "string" ? body.scribe : JSON.stringify(body.scribe));
       if (body.judgement !== undefined) {
         const verdict = body.judgement === "join" || body.judgement === "pass" ? { decision: body.judgement, reason: "scripted" } : body.judgement;
         judgementQueue.push(typeof verdict === "string" ? verdict : JSON.stringify(verdict));
       }
       if (body.coverage !== undefined) coverageQueue.push(typeof body.coverage === "string" ? body.coverage : JSON.stringify(body.coverage));
-      return Response.json({ queued: queue.length, organizer: organizerQueue.length, judgement: judgementQueue.length, coverage: coverageQueue.length });
+      return Response.json({
+        queued: queue.length,
+        organizer: organizerQueue.length,
+        scribe: scribeQueue.length,
+        judgement: judgementQueue.length,
+        coverage: coverageQueue.length,
+      });
     }
     if (request.method === "POST" && url.pathname === "/v1/chat/completions") {
       const body = (await request.json()) as { messages?: ChatMessage[]; stream?: boolean; tools?: Array<{ function?: { name?: string } }> };
@@ -221,11 +235,13 @@ const server = Bun.serve({
       if (!body.stream) {
         const content = isOrganizerCall(messages)
           ? organize(messages)
-          : isJudgementCall(messages)
-            ? (judgementQueue.shift() ?? "{}")
-            : isCoverageCall(messages)
-              ? coverage(messages)
-              : "{}";
+          : isScribeCall(messages)
+            ? (scribeQueue.shift() ?? '{"adds": [], "raises": [], "supersedes": []}')
+            : isJudgementCall(messages)
+              ? (judgementQueue.shift() ?? "{}")
+              : isCoverageCall(messages)
+                ? coverage(messages)
+                : "{}";
         return Response.json({ choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }], usage: { prompt_tokens: 10, completion_tokens: 1, total_tokens: 11 } });
       }
       return streamed(decide(messages));

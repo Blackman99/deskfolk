@@ -30,6 +30,7 @@ import type { ChatMessage, CompletionOk, JudgeResult } from "./completions";
 import { createLocalApi } from "./local-api";
 import { JUDGEMENT_SYSTEM } from "./prompts/judgement";
 import { ORGANIZER_SYSTEM, type OrganizerPayload } from "./prompts/organizer";
+import { SCRIBE_SYSTEM } from "./prompts/scribe";
 import { ROUTE_LEARN_SYSTEM, ROUTE_PICK_SYSTEM, ROUTE_REVIEW_SYSTEM } from "./prompts/routing";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";
@@ -171,6 +172,10 @@ function engineHarness(opts: {
         if (system === ROUTE_LEARN_SYSTEM) {
           calls.push("route-learn");
           return judged(handlers.routeLearn ? handlers.routeLearn() : "{}");
+        }
+        if (system === SCRIBE_SYSTEM) {
+          calls.push("scribe");
+          return judged('{"adds": [], "raises": [], "supersedes": []}');
         }
         calls.push(`unknown:${String(system)}`);
         return judged('{"decision":"join","reason":"fixture"}');
@@ -756,4 +761,27 @@ describe("local-api.ts: threads ablation into the engine it builds", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+});
+
+// ---------------------------------------------------------------------------------------------
+// scribe
+// ---------------------------------------------------------------------------------------------
+
+describe("scribe", () => {
+  for (const off of [false, true]) {
+    test(`scribe ${off ? "off: the line is filed and its turn runs, with no scribe call" : "on: the filed line is noted once"}`, async () => {
+      const h = engineHarness({ ablation: off ? new Set(["scribe"]) : undefined });
+      await h.settle();
+      const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+      // Posted as the local API posts it, so the line is kept as your words for the scribe to read.
+      const trigger = h.store.transaction(() => h.store.postMessage(writer.direct_session.id, { body: "写一份周报" }));
+      const done = h.completed();
+      await h.engine.handleInboundMessage(trigger, { fromUser: true });
+      await done;
+      if (!off) await until(() => h.calls.includes("scribe"));
+      await Bun.sleep(30);
+      expect(h.calls.filter((call) => call === "scribe")).toHaveLength(off ? 0 : 1);
+      expect(h.calls).toContain("organizer");
+    });
+  }
 });

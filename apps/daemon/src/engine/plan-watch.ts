@@ -12,7 +12,7 @@ import { NO_ABLATION, type Ablation } from "../ablation";
 import { describeCheck } from "../acceptance-eval";
 import { planLeftNote, planNudgeNote, stalledPlanBody, type FailingCheckLine, type OpenTicketLine } from "../prompts";
 import type { TurnAdmission } from "../quiesce";
-import { parsePlanSpec, type CheckBack, type Store, type Task } from "../store";
+import { derivedNotGate, parsePlanSpec, type CheckBack, type Store, type Task } from "../store";
 import { mayWake } from "./control";
 
 export type PlanWatchDeps = {
@@ -34,7 +34,10 @@ export type PlanWatchDeps = {
 export type PlanWatch = {
   reconcilePlan: (taskId: string) => void;
   observeTicket: (turnId: string, botId: string, seen: "working" | "delivered") => void;
-  /** A turn of the plan was stopped: the plan is not looked at again once its quiet runs out. */
+  /**
+   * A turn of the plan was stopped, or the plan was set aside with its conversation's history: the
+   * plan is not looked at again once its quiet runs out.
+   */
   forgetPlan: (taskId: string) => void;
   clearTimers: () => void;
 };
@@ -211,14 +214,16 @@ export function createPlanWatch(deps: PlanWatchDeps): PlanWatch {
     }
     let booked: CheckBack | null = null;
     try {
-      if (!task.session_id || task.routine_id || task.status !== "active") return;
+      // A plan set aside with its conversation's history (ADR 0040) is nobody's to call back into.
+      if (!task.session_id || task.routine_id || task.status !== "active" || task.dormant_since) return;
       const sessionId = task.session_id;
       if (!store.isPresent(sessionId, USER_MEMBER)) return;
       if (store.taskLiveTurnCount(taskId) > 0) return;
       if (store.pendingPlanCheckBacks(taskId).length > 0) return;
       const tickets = store.listTickets(taskId);
       const open = tickets.filter((ticket) => ticket.status === "todo" || ticket.status === "doing");
-      const checks = store.listChecks(taskId);
+      // A check from your words you have not confirmed is measured for information: it calls nobody back.
+      const checks = store.listChecks(taskId).filter((check) => !derivedNotGate(check));
       const failing = checks.filter((check) => check.last_run?.outcome === "fail");
       const left = open.length > 0 || failing.length > 0 ? [] : workLeft(task, sessionId, tickets);
       if (open.length === 0 && failing.length === 0) {

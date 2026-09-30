@@ -199,7 +199,12 @@ CREATE TABLE IF NOT EXISTS tasks (
   spec_updated_at TEXT,
   routine_id TEXT REFERENCES routines (id) ON DELETE SET NULL,
   created_at TEXT NOT NULL,
-  closed_at TEXT
+  closed_at TEXT,
+  -- Set aside rather than ended (休眠, ADR 0040): clearing or deleting the conversation it lives in
+  -- does this now instead of closing it. closed_at is written with it, so an older build reads the
+  -- plan as closed; whatever puts the plan back in its conversation's slot clears closed_at, and
+  -- the trigger tasks_dormant_ends (store/tasks.ts) clears this with it, whoever wrote it.
+  dormant_since TEXT
 );
 
 CREATE INDEX IF NOT EXISTS tasks_session_open
@@ -449,6 +454,22 @@ CREATE VIEW IF NOT EXISTS held_scopes AS
 -- payload {hold, scope, scope_id, source, stopped}; 'control.lift', a hold lifted, payload {hold, by}
 -- (plus next_line, undo or narrowed_to where that is how); 'hold.violation', a turn still running
 -- under a hold and ended there, payload {hold}; 'daemon.restart', one per boot, payload {cause, cut}.
+-- The ledger's (ADR 0040 P3): 'requirement.add', payload {requirement, scope, scope_id, source_kind,
+-- status}; 'requirement.raise', payload {requirement, quote}; 'requirement.purge', your purge, payload
+-- {requirements}, the one row the trigger requirements_purge_only lets a requirement be deleted
+-- under; 'requirement.rescope', entries moved to another scope, payload {requirements, scope,
+-- scope_id, cause} (for now only a deleted conversation's project entries, to a null scope_id);
+-- 'quotes.erased', payload {quotes, waived}; 'plan.dormant', a
+-- plan set aside because its conversation was cleared or deleted, payload {cause}. The scribe's
+-- (scribe.ts): 'scribe.answer', each answer as it came back, payload {quote, model, fail, raw};
+-- 'scribe.rejected', an item of it dropped, payload {quote, item, index, reason, requirement}.
+-- Checks from your words (store/derived-checks.ts): 'check.derived', one offered, or a gate turned
+-- back into an offer because the words you confirmed it on were erased, payload {check, quote,
+-- dimension, measure, change: proposed | demoted}; 'check.confirmed', one you confirmed (a card's
+-- button or the board), payload {check, dimension, removed, quote} naming the check your choice took
+-- away and the words it stood on then; 'check.bound', one pointed at the job's final deliverable,
+-- payload {check, path, glob}; 'check.dropped', one the app took away because the words it stood on
+-- were erased or filed elsewhere, or a later number replaced the offer, payload {check, quote}.
 -- Kept when a conversation's history is cleared or it is deleted; no foreign keys.
 CREATE TABLE IF NOT EXISTS work_events (
   seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -467,6 +488,89 @@ CREATE TABLE IF NOT EXISTS work_events (
 );
 
 CREATE INDEX IF NOT EXISTS work_events_kind ON work_events (kind, seq);
+
+-- Your words (原话, ADR 0040): a copy of each line you send, each answer you give a Bot's question,
+-- each annotation you send and each line you write on the board, taken in the same write as the
+-- thing itself. Clearing a conversation deletes its transcript, not these: only the id of what went
+-- is nulled (message_id, and session_id as well when the conversation itself is deleted). Erasing
+-- one empties body and sets redacted_at; no row is ever deleted. No foreign keys.
+CREATE TABLE IF NOT EXISTS user_quotes (
+  id TEXT PRIMARY KEY,
+  -- Your line; the question an answer is written on; the message a batch of annotations went out
+  -- as. Null for the board.
+  message_id TEXT,
+  session_id TEXT,
+  -- The plan and ticket it is about. A line you send is filed after it lands: the trigger
+  -- user_quotes_follow_filing (store/quotes.ts) copies the line's filing here when it is written.
+  task_id TEXT,
+  ticket_id TEXT,
+  -- One part of a ticket; parts come in a later phase, so null for now.
+  part_key TEXT,
+  via TEXT NOT NULL CHECK (via IN ('message', 'ask_answer', 'annotation', 'board')),
+  -- As it came, at most QUOTE_MAX code points: a longer one keeps its head and tail.
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  redacted_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS user_quotes_task ON user_quotes (task_id, created_at);
+CREATE INDEX IF NOT EXISTS user_quotes_message ON user_quotes (message_id);
+CREATE INDEX IF NOT EXISTS user_quotes_session ON user_quotes (session_id);
+
+-- The requirements ledger (需求台账, ADR 0040): what you asked of the work, each entry standing on
+-- words of yours in user_quotes. Only ever added to, and never deleted but by your purge, which the
+-- trigger requirements_purge_only (store/requirements.ts) checks for (I4). Kept whole when a
+-- conversation is cleared; deleting the conversation nulls a project entry's scope_id. No foreign
+-- keys: a plan that goes does not take its requirements, or the transaction, with it.
+CREATE TABLE IF NOT EXISTS requirements (
+  id TEXT PRIMARY KEY,
+  scope TEXT NOT NULL CHECK (scope IN ('part', 'ticket', 'plan', 'project', 'standing')),
+  -- The part, ticket or plan it holds for; for project, the conversation the plan lives in (a
+  -- project is that conversation), null once it is deleted; for standing, null (domain says where).
+  scope_id TEXT,
+  domain TEXT,
+  -- Your words, at most 300 code points out of one user_quotes body; empty once you erase them.
+  quote TEXT NOT NULL,
+  -- A Bot's restatement, shown beside your words, never instead of them.
+  restated TEXT,
+  category TEXT,
+  polarity TEXT NOT NULL DEFAULT 'must' CHECK (polarity IN ('must', 'must_not')),
+  -- A number you gave: duration, resolution, aspect or fps, and its value as JSON, as the fixed
+  -- rules of quote-dimensions.ts read the words: a later, different number for it is proposed as
+  -- its replacement whatever category the scribe gives, the same number again only raises it.
+  dimension TEXT,
+  value TEXT,
+  source_kind TEXT NOT NULL CHECK (source_kind IN ('message', 'ask_answer', 'annotation', 'board', 'accepted_suggestion', 'legacy')),
+  source_quote_id TEXT,
+  status TEXT NOT NULL CHECK (status IN ('proposed', 'open', 'superseded', 'waived', 'not_requirement', 'unverified')),
+  -- A replacement names the entry it replaces, and is proposed until you take it up; a superseded
+  -- entry names what replaced it (the trigger requirements_superseded_by_later holds that
+  -- replacement to later words of yours). No writer supersedes an entry yet: nothing leaves the
+  -- open set without you (I9).
+  supersedes TEXT,
+  superseded_by TEXT,
+  times_raised INTEGER NOT NULL DEFAULT 1,
+  last_raised_at TEXT NOT NULL,
+  -- 'user', 'app', or the writer that proposed it: 'scribe', or 'capture' for the fallback capture of
+  -- a complaint the scribe filed nothing for.
+  added_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS requirements_scope ON requirements (scope, scope_id, status);
+CREATE INDEX IF NOT EXISTS requirements_source_quote ON requirements (source_quote_id);
+
+-- Each time words of yours raised an entry, the first time included.
+CREATE TABLE IF NOT EXISTS requirement_mentions (
+  id TEXT PRIMARY KEY,
+  requirement_id TEXT NOT NULL,
+  quote_id TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS requirement_mentions_requirement ON requirement_mentions (requirement_id);
+CREATE INDEX IF NOT EXISTS requirement_mentions_quote ON requirement_mentions (quote_id);
 
 CREATE TABLE IF NOT EXISTS skills (
   id TEXT PRIMARY KEY,
@@ -562,11 +666,16 @@ CREATE TABLE IF NOT EXISTS live_procs (
 -- An executable acceptance check (可执行验收): the app's own proof that one acceptance line holds,
 -- run on this Mac. Bots never write these — the organizer may only turn a command into a check
 -- when a turn of this plan already ran it, or the user wrote it themselves (enforced in the store).
+-- The app also makes some from numbers in your words (origin 'derived', store/derived-checks.ts,
+-- ADR 0040 P3). Its CHECK lists stay as they are until the last phase: what they cannot hold goes
+-- in the new columns, and the old ones get the nearest value an older build understands.
 CREATE TABLE IF NOT EXISTS acceptance_checks (
   id TEXT PRIMARY KEY,
   task_id TEXT NOT NULL REFERENCES tasks (id) ON DELETE CASCADE,
   ticket_id TEXT REFERENCES tickets (id) ON DELETE SET NULL,
   item TEXT NOT NULL,
+  -- A measure check (a video's running time, resolution, aspect or frame rate) is 'exists' here,
+  -- with measure set: an older build checks that the file is there, and this one measures it.
   kind TEXT NOT NULL CHECK (kind IN ('exists', 'contains', 'matches', 'command', 'continuity')),
   path TEXT,
   pattern TEXT,
@@ -576,12 +685,26 @@ CREATE TABLE IF NOT EXISTS acceptance_checks (
   expect_exit INTEGER,
   expect_stdout TEXT,
   timeout_sec INTEGER,
+  -- 'user' for a derived check too: your words are what it stands on (origin says the rest).
   source TEXT NOT NULL CHECK (source IN ('organizer', 'user')),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   defined_at TEXT NOT NULL,
   first_passed_at TEXT,
-  removed_at TEXT
+  removed_at TEXT,
+  -- 'derived' for a check the app read from your words; null for the rest (read source then).
+  origin TEXT,
+  -- A derived check's range, as JSON (protocol CheckMeasure); its kind reads as measure.
+  measure TEXT,
+  -- The quote (user_quotes) the number was read from, the latest words to give it.
+  quote_id TEXT,
+  -- How a derived check found the file it measures (path): 'glob', the job's final deliverable by
+  -- its name, bind_glob saying which name. Null while none is delivered: it never runs then.
+  bind_kind TEXT,
+  bind_glob TEXT,
+  -- A derived check's standing: 'proposed' (offered to you; measured, never a gate) or 'active' (a
+  -- gate, which only your confirm makes). Null reads as proposed.
+  derived_state TEXT
 );
 
 CREATE INDEX IF NOT EXISTS acceptance_checks_task ON acceptance_checks (task_id, removed_at, created_at);

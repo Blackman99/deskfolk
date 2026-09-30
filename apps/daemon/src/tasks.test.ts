@@ -243,7 +243,7 @@ describe("work dirs follow the work", () => {
     store.close();
   });
 
-  test("deleting a group drops its own dirs and unhooks the one a handoff carried away", () => {
+  test("deleting a group and erasing what you said there drops its own dirs and unhooks the one a handoff carried away", () => {
     const { store, bot, session } = fixture();
     const reviewer = store.createBot({ name: "Reviewer", duties: "review", boundaries: "none" });
     const group = store.createGroup({ name: "Brief", members: [bot.id, reviewer.bot.id] });
@@ -278,13 +278,14 @@ describe("work dirs follow the work", () => {
     });
     expect(elsewhere.task_id).toBe(carrier.task_id!);
 
-    store.deleteSession(group.id);
+    // Kept, your opening line would keep its plan (ADR 0040; see store/quotes.test.ts).
+    store.deleteSession(group.id, { eraseQuotes: true });
     expect(() => store.getTask(own.task_id!)).toThrow();
     expect(store.getTask(carrier.task_id!).session_id).toBeNull();
     store.close();
   });
 
-  test("clearing history closes the dirs that session held", () => {
+  test("clearing history closes the dirs that session held, setting their plans aside", () => {
     const { store, bot, session } = fixture();
     const reviewer = store.createBot({ name: "Reviewer", duties: "review", boundaries: "none" });
     const trigger = store.postMessage(session.id, { body: "导出季度报表" });
@@ -304,6 +305,7 @@ describe("work dirs follow the work", () => {
 
     store.clearSessionMessages(session.id);
     expect(store.getTask(turn.task_id!).closed_at).toBeString();
+    expect(store.getTask(turn.task_id!).dormant_since).toBe(store.getTask(turn.task_id!).closed_at);
     store.close();
   });
 

@@ -68,6 +68,8 @@ describe("schema", () => {
       "remote_transition",
       "request_meta",
       "request_receipts",
+      "requirement_mentions",
+      "requirements",
       "route_feedback",
       "route_learned",
       "route_learnings",
@@ -86,6 +88,7 @@ describe("schema", () => {
       "turn_route_decisions",
       "turn_runs",
       "turns",
+      "user_quotes",
       "work_events",
     ]);
     store.close();

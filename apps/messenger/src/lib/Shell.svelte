@@ -1780,6 +1780,8 @@
 			{t}
 			onDismiss={() => danger.dismissDangerConfirm()}
 			busy={Boolean(danger.dangerConfirm?.running)}
+			optionChecked={danger.dangerConfirm?.eraseQuotes ?? false}
+			onOptionChange={(checked) => danger.setDangerOption(checked)}
 			onConfirm={() => void danger.confirmDanger()}
 		/>
 	{/if}

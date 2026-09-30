@@ -22,6 +22,11 @@ export type DangerCopy = {
   body: string;
   confirm: string;
   cancel: string;
+  /**
+   * A box to tick before confirming, off by default. Clearing a history or deleting a group keeps
+   * what you said there (ADR 0040); this is where you ask for it to be erased as well.
+   */
+  option?: string;
 };
 
 /**
@@ -78,6 +83,7 @@ export function dangerCopy(kind: DangerKind, t: Copy): DangerCopy {
         body: t.detail.deleteGroupBody,
         confirm: t.detail.confirmDeleteGroup,
         cancel: t.detail.cancel,
+        option: t.detail.eraseQuotes,
       };
     case "history":
       return {
@@ -85,6 +91,7 @@ export function dangerCopy(kind: DangerKind, t: Copy): DangerCopy {
         body: t.detail.clearHistoryBody,
         confirm: t.detail.confirmClearHistory,
         cancel: t.detail.cancel,
+        option: t.detail.eraseQuotes,
       };
     case "skill":
       return {

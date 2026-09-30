@@ -10,6 +10,7 @@ import { isoNow, ulid } from "../ids";
 import { applyOrganizerChecks, checkNeverRanSinceDefinition, checksHoldingPlanOpen, listChecks, rebindCheckItems, type OrganizerCheckInput } from "./acceptance-checks";
 import { planHeldBy, setPlanStatusByUser } from "./holds";
 import { normalizePlanSpec, parsePlanSpec, type PlanSpec } from "./plan-shape";
+import { changedWords, recordQuote } from "./quotes";
 import { type StoreContext } from "./shared";
 import {
   elsewherePlans,
@@ -20,6 +21,7 @@ import {
   setTaskSpec,
   taskLastActivityAt,
   taskSummary,
+  wakeDormantPlan,
   type Task,
 } from "./tasks";
 import { createTicket, isTicketStatus, listTickets, patchTicket, ticketArtifacts, TICKETS_MAX } from "./tickets";
@@ -153,14 +155,26 @@ export function setPlanSpecByUser(
   const before = getTask(ctx, taskId);
   const spec = normalizePlanSpec(raw);
   if (!spec) throw new HttpError(422, "invalid_args", "spec needs a goal");
-  const beforeAcceptance = parsePlanSpec(before.spec)?.acceptance ?? [];
+  const beforeSpec = parsePlanSpec(before.spec);
+  const beforeAcceptance = beforeSpec?.acceptance ?? [];
   return ctx.db.transaction(() => {
     assertRevision(ctx, taskId, ifRevision);
     const now = isoNow();
     setPlanStatusByUser(ctx, before, spec.status, now);
+    // Editing a plan set aside is taking it up again (ADR 0040), whatever the edit was.
+    wakeDormantPlan(ctx, taskId);
     const task = setTaskSpec(ctx, taskId, spec, now);
     rebindCheckItems(ctx, taskId, beforeAcceptance, spec.acceptance, now);
     const revision = recordSpecRevision(ctx, { taskId, spec, actor: "user", now });
+    // What you wrote on the board is your words too (ADR 0040): the clauses of the goal you changed
+    // (not the rest of it, which may be the organizer's words you only kept), and each Done-when
+    // line and rule you brought in. The rest was already there.
+    const typed = [
+      ...(spec.goal !== (beforeSpec?.goal ?? "") ? [changedWords(beforeSpec?.goal ?? "", spec.goal)] : []),
+      ...spec.acceptance.filter((line) => !beforeAcceptance.includes(line)),
+      ...spec.rules.filter((rule) => !(beforeSpec?.rules ?? []).includes(rule)),
+    ];
+    for (const body of typed) recordQuote(ctx, { via: "board", body, taskId, now });
     return { task, revision };
   })();
 }
@@ -180,6 +194,9 @@ export function patchTicketByUser(
     const changed =
       ticket.title !== before.title || ticket.spec !== before.spec || ticket.status !== before.status || ticket.worker !== before.worker;
     if (!changed) return { ticket, revision: null };
+    wakeDormantPlan(ctx, ticket.task_id);
+    // The clauses of a description you changed on the board are your words about that ticket (ADR 0040).
+    if (ticket.spec !== before.spec) recordQuote(ctx, { via: "board", body: changedWords(before.spec, ticket.spec), taskId: ticket.task_id, ticketId });
     const task = getTask(ctx, before.task_id);
     const spec = parsePlanSpec(task.spec);
     const revision = spec ? recordSpecRevision(ctx, { taskId: task.id, spec, actor: "user" }) : null;
@@ -323,6 +340,18 @@ function targetGone(decision: "resume" | "join", planId: string): HttpError {
 }
 
 /**
+ * The organizer's spec as it lands on a plan that stood at `before` (null for one it opens): its
+ * rules and Done when are not taken (ADR 0040 P3). What you ask of the work is kept from your own
+ * words — the requirements ledger, which the scribe writes a patch at a time (scribe.ts) — and no
+ * model's answer may rewrite it as a whole any more; on the plan, those two lists stay as they are:
+ * what you wrote on the board, and whatever a filing before this left. The goal, the process, the
+ * progress and the status are still filed.
+ */
+function filedSpec(spec: PlanSpec, before: PlanSpec | null): PlanSpec {
+  return { ...spec, acceptance: before?.acceptance ?? [], rules: before?.rules ?? [] };
+}
+
+/**
  * What one organizer run changes, in one transaction: the plan it lands on, the spec, the tickets
  * (existing ones by id, new ones opened, absent ones untouched), and the stamp on the message it
  * was about. Returns what the engine needs to open turns in the right place.
@@ -386,13 +415,14 @@ export function applyOrganizerResult(
         title: result.spec.goal || body,
         brief: body || result.spec.goal,
         kind: result.spec.kind,
-        spec: result.spec,
+        spec: filedSpec(result.spec, null),
         now: at,
       });
     }
-    // Checks and rebinding read the spec as it stood before this run touches it: `target` was
-    // fetched fresh above (resume/join) or is `input.current` (continue), never yet written to.
-    const beforeAcceptance = parsePlanSpec(target.spec)?.acceptance ?? [];
+    // Read here, before this run touches the plan, and not from `input.current`: that copy was taken
+    // before the call went out, and a rule you typed on the board while it was out is in the plan,
+    // not in the copy (a line's filing carries no `ifRevision` to refuse the answer over it).
+    const filed = filedSpec(result.spec, parsePlanSpec(getTask(ctx, target.id).spec));
     // A resumed or joined plan is someone else's spec history to revise, not this run's own checks
     // to write: the organizer only touches checks on the plan it is continuing or opening.
     const appliesChecks = result.decision === "continue" || result.decision === "new";
@@ -445,13 +475,10 @@ export function applyOrganizerResult(
     if (appliesChecks && result.checks?.length) {
       applyOrganizerChecks(ctx, { task: target, entries: result.checks, placeholders, now: at });
     }
-    // A line dropped from the plan should not silently take its check with it: a check whose item
-    // was one of the old acceptance lines follows a rewording to the same position.
-    rebindCheckItems(ctx, target.id, beforeAcceptance, result.spec.acceptance, now);
 
-    const heldOpenBy = result.spec.status === "done" ? ticketsHoldingPlanOpen(listTickets(ctx, target.id)) : [];
-    const heldByChecks = result.spec.status === "done" ? checksHoldingPlanOpen(ctx, target.id) : [];
-    const spec: PlanSpec = heldOpenBy.length > 0 || heldByChecks.length > 0 ? { ...result.spec, status: "active" } : result.spec;
+    const heldOpenBy = filed.status === "done" ? ticketsHoldingPlanOpen(listTickets(ctx, target.id)) : [];
+    const heldByChecks = filed.status === "done" ? checksHoldingPlanOpen(ctx, target.id) : [];
+    const spec: PlanSpec = heldOpenBy.length > 0 || heldByChecks.length > 0 ? { ...filed, status: "active" } : filed;
     const task = setTaskSpec(ctx, target.id, spec, now);
     const revision = recordSpecRevision(ctx, {
       taskId: task.id,

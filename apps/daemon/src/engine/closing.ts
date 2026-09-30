@@ -26,11 +26,12 @@ import {
 } from "../closing-check";
 import type { CompletionsClient } from "../completions";
 import { evaluateFileCheck } from "../acceptance-eval";
+import { runMeasureCheck } from "../measure-check";
 import { parseMentions } from "../mentions";
 import { isNoWorkCloser } from "../no-work";
 import type { TurnAdmission } from "../quiesce";
 import type { TurnExecution } from "../store/routing";
-import type { Store } from "../store";
+import { derivedNotGate, type Store } from "../store";
 import type { SpendTracker } from "./spend";
 import type { Live } from "./types";
 
@@ -77,9 +78,10 @@ export function createClosing(deps: ClosingDeps): Closing {
    * This turn's plan checks that fail right now, named the way the note lists them, oldest-defined
    * first, capped at {@link FAILING_CHECKS_LIMIT}. File-kind checks (`exists`/`contains`/`matches`)
    * are re-evaluated in memory with `evaluateFileCheck` — a Bot that just fixed the file is not
-   * bounced on a stale result, and no run is recorded for this look. Command checks read the
-   * latest stored run instead (the app never re-spawns a command on a Bot's behalf); one is
-   * skipped when this turn already ran the exact same command successfully.
+   * bounced on a stale result, and no run is recorded for this look — and so is a `measure` (one
+   * ffprobe call). Command checks read the latest stored run instead (the app never re-spawns a
+   * command on a Bot's behalf); one is skipped when this turn already ran the exact same command
+   * successfully. A check from your words with no file bound yet is skipped: it gates nothing.
    */
   async function failingCheckLines(taskId: string, turnId: string, locale: Locale): Promise<string[]> {
     let checks: AcceptanceCheck[];
@@ -105,6 +107,7 @@ export function createClosing(deps: ClosingDeps): Closing {
     const lines: string[] = [];
     for (const check of checks) {
       if (lines.length >= FAILING_CHECKS_LIMIT) break;
+      if (derivedNotGate(check)) continue;
       if (check.kind === "command") {
         if (!check.command || ranOkThisTurn(check.command)) continue;
         const lastRun = check.last_run;
@@ -113,7 +116,7 @@ export function createClosing(deps: ClosingDeps): Closing {
         continue;
       }
       if (!root) continue;
-      const verdict = await evaluateFileCheck(root, check, locale);
+      const verdict = check.kind === "measure" ? await runMeasureCheck(root, check, { locale }) : await evaluateFileCheck(root, check, locale);
       if (verdict.outcome !== "fail") continue;
       lines.push(describeFailingCheck(check, locale, verdict.detail));
     }

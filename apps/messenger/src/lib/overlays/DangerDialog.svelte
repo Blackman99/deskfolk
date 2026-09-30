@@ -4,14 +4,17 @@
 	import { backdropClick } from '../click-outside.ts';
 
 	type Props = {
-		copy: { title: string; body: string; confirm: string; cancel: string };
+		copy: { title: string; body: string; confirm: string; cancel: string; option?: string };
 		t: Copy;
 		onDismiss: () => void;
 		onConfirm: () => void;
 		busy?: boolean;
+		/** Whether the copy's `option` box is ticked; the caller keeps it, so confirming reads it there. */
+		optionChecked?: boolean;
+		onOptionChange?: (checked: boolean) => void;
 	};
 
-	let { copy, t, onDismiss, onConfirm, busy = false }: Props = $props();
+	let { copy, t, onDismiss, onConfirm, busy = false, optionChecked = false, onOptionChange }: Props = $props();
 	let dialogEl = $state<HTMLDialogElement>();
 	/** A click outside dismisses the confirm; a text-selection drag that starts inside never does. */
 	const confirmBackdrop = backdropClick();
@@ -40,8 +43,8 @@
 			event.stopPropagation();
 			dismiss();
 		} else if (event.key === 'Tab' && dialogEl) {
-			const buttons = [...dialogEl.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
-			const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+			const buttons = [...dialogEl.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled)')];
+			const index = buttons.indexOf(document.activeElement as HTMLElement);
 			event.preventDefault();
 			event.stopPropagation();
 			const next = event.shiftKey ? (index <= 0 ? buttons.length - 1 : index - 1) : (index + 1) % buttons.length;
@@ -73,6 +76,17 @@
 		</div>
 		<div class="modal-body">
 			<p id="danger-confirm-body" class="confirm-copy">{copy.body}</p>
+			{#if copy.option}
+				<label class="confirm-option">
+					<input
+						type="checkbox"
+						checked={optionChecked}
+						disabled={busy}
+						onchange={(event) => onOptionChange?.(event.currentTarget.checked)}
+					/>
+					<span>{copy.option}</span>
+				</label>
+			{/if}
 		</div>
 		<div class="modal-foot actions">
 			<button type="button" disabled={busy} onclick={dismiss}>{copy.cancel}</button>
@@ -86,4 +100,6 @@
 	dialog.confirm-backdrop::backdrop { background: transparent; }
 	.confirm-dialog button { min-width: 44px; min-height: 44px; }
 	.confirm-dialog .modal-close { width: 44px; height: 44px; }
+	.confirm-option { display: flex; align-items: center; gap: 8px; min-height: 44px; margin-top: 8px; font-size: 13px; color: var(--ink-secondary); cursor: pointer; }
+	.confirm-option input { margin: 0; flex: none; width: 13px; height: 13px; accent-color: var(--accent); cursor: pointer; }
 </style>

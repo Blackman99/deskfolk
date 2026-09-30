@@ -33,6 +33,7 @@ import { notBotOnlyLine } from "./check-backs";
 import { holdNamesPlanSql, noteHeldPlansMovedAside, parkHeldPlans, planStatusUnderHolds } from "./holds";
 import { parsePlanSpec, type PlanSpec, type PlanStatus } from "./plan-shape";
 import { sessionRow, type MessageRow, type StoreContext } from "./shared";
+import { recordWorkEvent } from "./work-events";
 
 export type { PlanSpec, PlanStatus } from "./plan-shape";
 
@@ -59,6 +60,12 @@ export type Task = {
   created_at: string;
   /** Set once the plan is no longer its session's current one. */
   closed_at: string | null;
+  /**
+   * Set when the plan was set aside rather than ended (休眠, ADR 0040): its conversation was cleared
+   * or deleted. `closed_at` is set with it; putting the plan back in its conversation's slot clears
+   * both (the trigger in {@link DORMANT_PLAN_TRIGGERS}).
+   */
+  dormant_since: string | null;
 };
 
 /** The reserved root every work dir lives under, so the workspace top level stays the user's. */
@@ -572,8 +579,11 @@ export function closeTask(ctx: StoreContext, id: string): void {
 }
 
 /**
- * Plans no surviving turn or message of this session belongs to, and no hold names, once those
- * rows are gone: their revisions and tickets first, since both reference the plan.
+ * Plans no surviving turn or message of this session belongs to, no hold names, and no quote of
+ * yours or requirement is about, once those rows are gone: their revisions and tickets first, since
+ * both reference the plan. Your words keep the plan they are about (ADR 0040), so the ledger and the
+ * checks drawn from them still have a plan to hold for; words you erased keep nothing, and only
+ * lose the plan's id along with it.
  */
 export function dropUnreferencedTasks(ctx: StoreContext, sessionId: string): void {
   const gone = ctx.db
@@ -582,16 +592,88 @@ export function dropUnreferencedTasks(ctx: StoreContext, sessionId: string): voi
        WHERE session_id = ?
          AND NOT EXISTS (SELECT 1 FROM turns WHERE turns.task_id = tasks.id)
          AND NOT EXISTS (SELECT 1 FROM messages WHERE messages.task_id = tasks.id)
-         AND NOT ${holdNamesPlanSql("tasks.id")}`,
+         AND NOT ${holdNamesPlanSql("tasks.id")}
+         AND NOT EXISTS (SELECT 1 FROM user_quotes q WHERE q.task_id = tasks.id AND q.redacted_at IS NULL)
+         AND NOT EXISTS (SELECT 1 FROM requirements r
+           WHERE (r.scope = 'plan' AND r.scope_id = tasks.id)
+              OR (r.scope = 'ticket' AND r.scope_id IN (SELECT id FROM tickets WHERE tickets.task_id = tasks.id)))`,
     )
     .all(sessionId)
     .map((row) => row.id);
   for (const id of gone) {
+    ctx.db.run(`UPDATE user_quotes SET task_id = NULL, ticket_id = NULL WHERE task_id = ?`, [id]);
     ctx.db.run(`DELETE FROM task_spec_revisions WHERE task_id = ?`, [id]);
     ctx.db.run(`DELETE FROM tickets WHERE task_id = ?`, [id]);
     ctx.db.run(`DELETE FROM tasks WHERE id = ?`, [id]);
   }
 }
+
+/**
+ * Sets aside (休眠) the plans this conversation holds, when it is cleared or deleted: they are not
+ * ended, since what you asked of them is kept, and one can be taken up again.
+ * `closed_at` is written with it, so a build that knows nothing of dormancy reads each as closed,
+ * as it did when clearing closed them. A routine's standing plan is only closed, as before: its
+ * routine goes on firing into it. Each plan set aside goes into the work log.
+ */
+export function setPlansDormant(ctx: StoreContext, sessionId: string, cause: "cleared" | "deleted", now: string = isoNow()): string[] {
+  const dormant = ctx.db
+    .query<{ id: string }, [string, string]>(
+      `UPDATE tasks SET dormant_since = ?1, closed_at = COALESCE(closed_at, ?1)
+       WHERE session_id = ?2 AND routine_id IS NULL AND dormant_since IS NULL
+       RETURNING id`,
+    )
+    .all(now, sessionId)
+    .map((row) => row.id);
+  ctx.db.run(`UPDATE tasks SET closed_at = COALESCE(closed_at, ?) WHERE session_id = ? AND routine_id IS NOT NULL`, [now, sessionId]);
+  for (const id of dormant) {
+    recordWorkEvent(ctx, { kind: "plan.dormant", actor: "user", taskId: id, sessionId, payload: { cause } });
+  }
+  return dormant;
+}
+
+/**
+ * You took up a plan that was set aside by editing it on the board — its points or one of its
+ * tickets, whatever you changed: it is no longer dormant. It stays out of its conversation's slot
+ * unless the edit itself puts it back there (a save in progress while nothing else holds the slot,
+ * `setTaskSpec`). The one board write that leaves it asleep is a check's, which is about the proof,
+ * not the plan.
+ */
+export function wakeDormantPlan(ctx: StoreContext, id: string): void {
+  ctx.db.run(`UPDATE tasks SET dormant_since = NULL WHERE id = ? AND dormant_since IS NOT NULL`, [id]);
+}
+
+/**
+ * A plan put back in its conversation's slot — filed back into, resumed, its hold lifted — is no
+ * longer set aside. Every such write clears `closed_at`, so the database ends dormancy there itself,
+ * whoever writes it: an older build sharing the database included. So does a line of yours filed
+ * under it from anywhere (below). Made again on every open by the migration, after the columns they
+ * read.
+ */
+export const DORMANT_PLAN_TRIGGERS: ReadonlyArray<{ name: string; sql: string }> = [
+  {
+    name: "tasks_dormant_ends",
+    sql: `CREATE TRIGGER tasks_dormant_ends AFTER UPDATE OF closed_at ON tasks
+      WHEN NEW.closed_at IS NULL AND NEW.dormant_since IS NOT NULL
+      BEGIN UPDATE tasks SET dormant_since = NULL WHERE id = NEW.id; END`,
+  },
+  // A line of yours, or an answer you gave, filed under a plan set aside is you taking it up again,
+  // from whichever conversation: a line in another one (a join) files into the plan without putting
+  // it back in its own conversation's slot, so its closing stays and only the dormancy ends. Read
+  // off the quote, which follows the line's filing whoever writes it (QUOTE_TRIGGERS) and is filed
+  // as the question for an answer. The board's own words are left to the board's writes.
+  {
+    name: "tasks_dormant_ends_on_your_line",
+    sql: `CREATE TRIGGER tasks_dormant_ends_on_your_line AFTER INSERT ON user_quotes
+      WHEN NEW.task_id IS NOT NULL AND NEW.redacted_at IS NULL AND NEW.via IN ('message', 'ask_answer')
+      BEGIN UPDATE tasks SET dormant_since = NULL WHERE id = NEW.task_id AND dormant_since IS NOT NULL; END`,
+  },
+  {
+    name: "tasks_dormant_ends_on_your_line_filed",
+    sql: `CREATE TRIGGER tasks_dormant_ends_on_your_line_filed AFTER UPDATE OF task_id ON user_quotes
+      WHEN NEW.task_id IS NOT NULL AND NEW.task_id IS NOT OLD.task_id AND NEW.redacted_at IS NULL AND NEW.via IN ('message', 'ask_answer')
+      BEGIN UPDATE tasks SET dormant_since = NULL WHERE id = NEW.task_id AND dormant_since IS NOT NULL; END`,
+  },
+];
 
 /** One line on a card. A paragraph would turn the board into the transcript it points at. */
 const SUMMARY_MAX = 80;

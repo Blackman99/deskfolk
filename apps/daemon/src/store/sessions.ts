@@ -13,7 +13,9 @@ import { isoNow, ulid } from "../ids";
 import { notBotOnlyLine, voidCheckBacks } from "./check-backs";
 import { forgetHoldLines, holdPlansLeavingSession } from "./holds";
 import { hydrateMessage, listMessages } from "./messages";
-import { dropUnreferencedTasks } from "./tasks";
+import { eraseQuotes, forgetQuoteSources, quoteIdsOfSession } from "./quotes";
+import { forgetRequirementsSession } from "./requirements";
+import { dropUnreferencedTasks, setPlansDormant } from "./tasks";
 import { getSessionNotificationPreference, markNotificationsReadThroughMessage } from "./notifications";
 
 export { isPresent } from "./shared";
@@ -259,7 +261,13 @@ export function restoreSession(ctx: StoreContext, id: string): SessionDetail {
   return getSession(ctx, id);
 }
 
-export function deleteSession(ctx: StoreContext, id: string): void {
+/**
+ * Deletes a group. What you said there is kept, as clearing keeps it (ADR 0040): the quotes lose the
+ * lines and the place they point at, the plans it held are set aside, and a requirement of the whole
+ * conversation keeps standing with no conversation to name. `eraseQuotes` erases what you said
+ * there as well. Returns the plans set aside, for the engine to drop what it had pending for them.
+ */
+export function deleteSession(ctx: StoreContext, id: string, opts: { eraseQuotes?: boolean } = {}): string[] {
   const session = sessionRow(ctx, id);
   if (id === FILE_DROP_SESSION_ID) {
     throw new HttpError(422, "invalid_args", "the file drop cannot be deleted");
@@ -267,13 +275,16 @@ export function deleteSession(ctx: StoreContext, id: string): void {
   if (session.kind !== "group") {
     throw new HttpError(422, "invalid_args", "only groups can be deleted");
   }
-  ctx.db.transaction(() => {
+  const now = isoNow();
+  return ctx.db.transaction(() => {
     ctx.db.run(
       `UPDATE profile_revisions SET message_id = NULL WHERE message_id IN (SELECT id FROM messages WHERE session_id = ?)`,
       [id],
     );
     // A stop outlives the history it was said in; only the line it points at goes (ADR 0040).
     forgetHoldLines(ctx, id);
+    if (opts.eraseQuotes) eraseQuotes(ctx, quoteIdsOfSession(ctx, id), now);
+    forgetQuoteSources(ctx, id, { sessionGone: true });
     // Annotations hang on this session's messages from either end: sent here, or about a delivery here.
     ctx.db.run(`DELETE FROM annotations WHERE session_id = ? OR target_session_id = ?`, [id, id]);
     ctx.db.run(
@@ -311,10 +322,12 @@ export function deleteSession(ctx: StoreContext, id: string): void {
     // handoff carried into another session outlives it and just loses the session link, the way
     // an origin does — the folder on disk is the user's either way.
     dropUnreferencedTasks(ctx, id);
+    const dormant = setPlansDormant(ctx, id, "deleted", now);
     // A hold on this conversation stops reaching its plans once they no longer name it; the ones it
     // parks each keep a hold of their own (ADR 0040).
     holdPlansLeavingSession(ctx, id);
     ctx.db.run(`UPDATE tasks SET session_id = NULL WHERE session_id = ?`, [id]);
+    forgetRequirementsSession(ctx, id, now);
     ctx.db.run(
       `UPDATE sessions SET origin_session_id = NULL, origin_message_id = NULL WHERE origin_session_id = ?`,
       [id],
@@ -326,19 +339,28 @@ export function deleteSession(ctx: StoreContext, id: string): void {
     );
     ctx.db.run(`DELETE FROM session_participants WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM sessions WHERE id = ?`, [id]);
+    return dormant;
   })();
 }
 
-export function clearSessionMessages(ctx: StoreContext, id: string): void {
+/**
+ * Clears a conversation's history. What you said here is kept apart from it (ADR 0040): the quotes
+ * lose only the line they point at, the requirements stand as they were, and the plans it held are
+ * set aside, not ended. `eraseQuotes` erases what you said here as well. Returns the plans set
+ * aside, for the engine to drop what it had pending for them.
+ */
+export function clearSessionMessages(ctx: StoreContext, id: string, opts: { eraseQuotes?: boolean } = {}): string[] {
   sessionRow(ctx, id);
   const now = isoNow();
-  ctx.db.transaction(() => {
+  return ctx.db.transaction(() => {
     ctx.db.run(
       `UPDATE profile_revisions SET message_id = NULL WHERE message_id IN (SELECT id FROM messages WHERE session_id = ?)`,
       [id],
     );
     // A stop outlives the history it was said in; only the line it points at goes (ADR 0040).
     forgetHoldLines(ctx, id);
+    if (opts.eraseQuotes) eraseQuotes(ctx, quoteIdsOfSession(ctx, id), now);
+    forgetQuoteSources(ctx, id, { sessionGone: false });
     // Annotations hang on this session's messages from either end: sent here, or about a delivery here.
     ctx.db.run(`DELETE FROM annotations WHERE session_id = ? OR target_session_id = ?`, [id, id]);
     ctx.db.run(
@@ -371,16 +393,14 @@ export function clearSessionMessages(ctx: StoreContext, id: string): void {
     voidCheckBacks(ctx, { sessionId: id }, now);
     ctx.db.run(`DELETE FROM turns WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM messages WHERE session_id = ?`, [id]);
-    // Clearing history ends the plans it held: dirs nothing else belongs to go, the rest close.
+    // Dirs nothing else belongs to go; the plans left are set aside, not ended.
     dropUnreferencedTasks(ctx, id);
-    ctx.db.run(
-      `UPDATE tasks SET closed_at = COALESCE(closed_at, ?) WHERE session_id = ?`,
-      [now, id],
-    );
+    const dormant = setPlansDormant(ctx, id, "cleared", now);
     // The directs this session spawned keep their source; only the message to jump to is gone.
     ctx.db.run(`UPDATE sessions SET origin_message_id = NULL WHERE origin_session_id = ?`, [id]);
     ctx.db.run(`UPDATE memories SET source_message_id = NULL WHERE source_session_id = ?`, [id]);
     ctx.db.run(`UPDATE sessions SET last_read_at = ?, updated_at = ? WHERE id = ?`, [now, now, id]);
+    return dormant;
   })();
 }
 

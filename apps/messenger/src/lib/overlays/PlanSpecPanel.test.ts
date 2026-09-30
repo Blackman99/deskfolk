@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { flushSync } from "svelte";
-import type { AcceptanceCheck, PlanSpec, TaskDetail, TaskSpecRevision } from "@real-bot/protocol";
+import type { AcceptanceCheck, AcceptanceCheckRun, PlanSpec, TaskDetail, TaskSpecRevision } from "@real-bot/protocol";
 import PlanSpecPanel from "./PlanSpecPanel.svelte";
 import { copyFor } from "../copy.ts";
 import { buttonByText, click, fill, render } from "../test-render.ts";
@@ -57,6 +57,22 @@ function aRevision(over: Partial<TaskSpecRevision> = {}): TaskSpecRevision {
     source_turn_id: "t1",
     session_id: "group-1",
     created_at: "2026-09-23T00:00:00.000Z",
+    ...over,
+  };
+}
+
+function aRun(over: Partial<AcceptanceCheckRun> = {}): AcceptanceCheckRun {
+  return {
+    id: "run-1",
+    check_id: "check-1",
+    task_id: "task-1",
+    cause: "settle",
+    started_at: "2026-09-24T08:00:00.000Z",
+    finished_at: "2026-09-24T08:00:01.000Z",
+    outcome: "pass",
+    exit_code: 0,
+    detail: "ok",
+    output: null,
     ...over,
   };
 }
@@ -127,6 +143,7 @@ function open(over: {
     patchCheck: (checkId: string, body: unknown) => Promise<TaskDetail>;
     deleteCheck: (checkId: string, revision?: string) => Promise<TaskDetail>;
     runChecks: (taskId: string, checkId?: string) => Promise<TaskDetail>;
+    confirmCheck: (checkId: string) => Promise<TaskDetail>;
   }> | null;
 } = {}) {
   const saved: TaskDetail[] = [];
@@ -138,6 +155,7 @@ function open(over: {
   const patchCheckCalls: Array<{ checkId: string; body: unknown }> = [];
   const deleteCheckCalls: Array<{ checkId: string; revision?: string }> = [];
   const runChecksCalls: Array<{ taskId: string; checkId?: string }> = [];
+  const confirmCheckCalls: string[] = [];
 
   const api =
     over.api === null
@@ -173,6 +191,11 @@ function open(over: {
             if (over.api?.runChecks) return over.api.runChecks(taskId, checkId);
             return aDetail({ checks: [aCheck({ running: true })] });
           },
+          confirmCheck: async (checkId: string) => {
+            confirmCheckCalls.push(checkId);
+            if (over.api?.confirmCheck) return over.api.confirmCheck(checkId);
+            return aDetail({ checks: [] });
+          },
         };
 
   const props = reactive({
@@ -197,6 +220,7 @@ function open(over: {
     patchCheckCalls,
     deleteCheckCalls,
     runChecksCalls,
+    confirmCheckCalls,
   };
 }
 
@@ -423,6 +447,74 @@ test("acceptance checks: pills render after each line's text, the head chip coun
   const orphans = acceptance.querySelector(".plan-spec-checks-orphans")!;
   expect(orphans.querySelector(".plan-spec-checks-orphans-title")?.textContent).toBe(t.plan.checks.orphansTitle);
   expect(orphans.querySelector(".check-pill.is-none")).not.toBeNull();
+  view.close();
+});
+
+test("checks from your words sit in their own sub-block under your words; unbound, they cannot be rerun, and none is edited here", () => {
+  const unbound = aCheck({
+    id: "c9",
+    item: "时长约 2 分钟",
+    kind: "measure",
+    path: null,
+    origin: "derived",
+    measure: { dimension: "duration", min: 108, max: 132 },
+    bind_kind: null,
+    bind_glob: null,
+  });
+  const view = open({ detail: aDetail({ checks: [aCheck({ id: "c1", item: "有对比表" }), unbound] }) });
+  const acceptance = listBlock(view.host, t.plan.spec.acceptance);
+  const blocks = [...acceptance.querySelectorAll(".plan-spec-checks-orphans")];
+  expect(blocks.map((block) => block.querySelector(".plan-spec-checks-orphans-title")?.textContent)).toEqual([t.plan.checks.derivedTitle]);
+  const words = blocks[0]!.querySelector("li")!;
+  expect(words.textContent).toContain("时长约 2 分钟");
+  expect(words.querySelector(".check-pill.is-unbound")?.textContent).toContain(t.plan.checks.status.unbound);
+  // Not bound, it counts toward nothing yet.
+  expect(acceptance.querySelector(".plan-spec-checks-summary")?.textContent).toBe(t.plan.checks.summary(0, 1));
+
+  click(words.querySelector<HTMLButtonElement>(".check-pill"));
+  expect(words.querySelector(".check-desc")?.textContent).toContain("时长 108–132 秒");
+  expect(words.querySelector(".check-meta")?.textContent).toContain(t.plan.checks.sourceDerived);
+  expect(buttonByText(words, t.plan.checks.rerun).disabled).toBe(true);
+  expect([...words.querySelectorAll("button")].some((button) => button.textContent === t.plan.edit)).toBe(false);
+  expect(buttonByText(words, t.plan.checks.remove)).not.toBeNull();
+  view.close();
+});
+
+test("a check from your words you have not confirmed shows its result as information and is yours to confirm; it counts toward nothing", async () => {
+  const derived = (over: Partial<AcceptanceCheck>) =>
+    aCheck({
+      kind: "measure",
+      origin: "derived",
+      path: "EP01_MASTER.mp4",
+      bind_kind: "glob",
+      bind_glob: "*MASTER*",
+      measure: { dimension: "duration", min: 108, max: 132 },
+      ...over,
+    });
+  const gate = derived({ id: "c8", item: "时长约 2 分钟", derived_state: "active", last_run: aRun({ outcome: "pass" }) });
+  const offer = derived({
+    id: "c9",
+    item: "时长 3 分钟",
+    derived_state: "proposed",
+    measure: { dimension: "duration", min: 162, max: 198 },
+    last_run: aRun({ outcome: "fail", detail: "107.00 秒，要时长 162–198 秒" }),
+  });
+  const confirmed = aDetail({ checks: [{ ...offer, derived_state: "active" }] });
+  const view = open({ detail: aDetail({ checks: [aCheck({ id: "c1", item: "有对比表" }), gate, offer] }), api: { confirmCheck: async () => confirmed } });
+  const acceptance = listBlock(view.host, t.plan.spec.acceptance);
+  const [inForce, offered] = [...acceptance.querySelectorAll(".plan-spec-checks-orphans li")];
+  expect(inForce!.querySelector(".check-pill.is-pass")).not.toBeNull();
+  expect(offered!.querySelector(".check-pill.is-proposed")?.textContent).toContain(`${t.plan.checks.status.proposed} · ${t.plan.checks.status.fail}`);
+  // The offer counts toward nothing; the gate does.
+  expect(acceptance.querySelector(".plan-spec-checks-summary")?.textContent).toBe(t.plan.checks.summary(1, 2));
+
+  click(offered!.querySelector<HTMLButtonElement>(".check-pill"));
+  expect(offered!.querySelector(".check-state")?.textContent).toBe("未确认的检查：107.00 秒，你说的是时长 3 分钟（待你确认）");
+  expect(buttonByText(offered!, t.plan.checks.rerun).disabled).toBe(false);
+  click(buttonByText(offered!, t.plan.checks.confirm));
+  await settle();
+  expect(view.confirmCheckCalls).toEqual(["c9"]);
+  expect(view.saved).toEqual([confirmed]);
   view.close();
 });
 

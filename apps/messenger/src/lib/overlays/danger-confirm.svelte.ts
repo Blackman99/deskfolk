@@ -32,6 +32,11 @@ export type DangerConfirm = {
   providerId?: string;
   /** Drawer/settings confirms go when that surface closes. A sidebar menu confirm does not. */
   source?: DangerSource;
+  /**
+   * A group / history confirm's box to erase what you said there as well (ADR 0040), off until you
+   * tick it. Read when the confirm runs, not when it opens.
+   */
+  eraseQuotes?: boolean;
 };
 
 export type ShellDangerConfirmDeps = {
@@ -101,6 +106,11 @@ export class ShellDangerConfirm {
     }
   }
 
+  /** Ticks or clears the open confirm's box, if it has one. */
+  setDangerOption(checked: boolean): void {
+    if (this.dangerConfirm && !this.dangerConfirm.running) this.dangerConfirm.eraseQuotes = checked;
+  }
+
   /** Drop the confirm only when it is one of these kinds, as the per-flag resets used to. */
   clearDanger(...kinds: DangerKind[]): void {
     if (this.dangerConfirm && kinds.includes(this.dangerConfirm.kind)) this.dangerConfirm = null;
@@ -147,13 +157,13 @@ export class ShellDangerConfirm {
   openDeleteGroupConfirm(sessionId?: string, source: DangerSource = "drawer"): void {
     const id = sessionId ?? this.getSelected()?.id ?? null;
     if (!id) return;
-    this.dangerConfirm = { kind: "group", run: () => this.deleteGroupSession(id), sessionId: id, source };
+    this.dangerConfirm = { kind: "group", run: () => this.deleteGroupSession(id), sessionId: id, source, eraseQuotes: false };
   }
 
   openClearHistoryConfirm(sessionId?: string, source: DangerSource = "drawer"): void {
     const id = sessionId ?? this.getSelected()?.id ?? null;
     if (!id) return;
-    this.dangerConfirm = { kind: "history", run: () => this.clearGroupHistory(id), sessionId: id, source };
+    this.dangerConfirm = { kind: "history", run: () => this.clearGroupHistory(id), sessionId: id, source, eraseQuotes: false };
   }
 
   private async deleteProfile(botId: string): Promise<void> {
@@ -182,7 +192,7 @@ export class ShellDangerConfirm {
     const pending = this.dangerConfirm;
     if (this.getGroupDetail().sessionId === sessionId) this.getGroupDetail().failed = false;
     const runtime = this.getRuntime();
-    const error = await runtime.deleteSession(sessionId);
+    const error = await runtime.deleteSession(sessionId, { eraseQuotes: pending?.eraseQuotes === true });
     if (this.dangerConfirm !== pending) return;
     if (error) {
       if (this.getGroupDetail().sessionId === sessionId) this.getGroupDetail().failed = true;
@@ -195,7 +205,7 @@ export class ShellDangerConfirm {
   private async clearGroupHistory(sessionId: string): Promise<void> {
     const pending = this.dangerConfirm;
     if (this.getGroupDetail().sessionId === sessionId) this.getGroupDetail().failed = false;
-    const error = await this.getRuntime().clearSessionHistory(sessionId);
+    const error = await this.getRuntime().clearSessionHistory(sessionId, { eraseQuotes: pending?.eraseQuotes === true });
     if (this.dangerConfirm !== pending) return;
     if (error) {
       if (this.getGroupDetail().sessionId === sessionId) this.getGroupDetail().failed = true;

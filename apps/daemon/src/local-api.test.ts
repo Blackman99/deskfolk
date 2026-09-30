@@ -1417,6 +1417,67 @@ describe("empty roster and settings", () => {
     expect(getGroup.status).toBe(404);
   });
 
+  test("clearing or deleting a conversation keeps what you said unless erase_quotes asks otherwise", async () => {
+    const h = await start();
+    const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "none" });
+    const editor = h.store.createBot({ name: "Editor", duties: "edit", boundaries: "none" });
+    const group = h.store.createGroup({ name: "Team", members: [writer.bot.id, editor.bot.id] });
+    const direct = writer.direct_session.id;
+    const post = (session: string, body: string) =>
+      fetch(`${h.origin}/v1/sessions/${session}/messages`, { method: "POST", headers: auth(h, { "Content-Type": "application/json" }), body: JSON.stringify({ body }) });
+    const send = (method: string, path: string, body?: unknown) =>
+      fetch(`${h.origin}${path}`, { method, headers: auth(h, { "Content-Type": "application/json" }), body: body === undefined ? undefined : JSON.stringify(body) });
+    const words = (session: string) => h.store.listQuotes({ sessionId: session }).map((quote) => [quote.body, quote.message_id === null]);
+
+    await post(direct, "片长两分钟左右");
+    expect((await send("POST", `/v1/sessions/${direct}/clear`)).status).toBe(204);
+    expect(words(direct)).toEqual([["片长两分钟左右", true]]);
+
+    await post(direct, "机械臂是左手");
+    // A wrong value is refused before anything is cleared.
+    expect((await send("POST", `/v1/sessions/${direct}/clear`, { erase_quotes: "yes" })).status).toBe(422);
+    expect(h.store.listMessages(direct).items.map((message) => message.body)).toContain("机械臂是左手");
+    expect((await send("DELETE", `/v1/sessions/${direct}/messages`, { erase_quotes: true })).status).toBe(204);
+    expect(words(direct)).toEqual([["", true], ["", true]]);
+
+    await post(group.id, "背景要连贯");
+    const [kept] = h.store.listQuotes({ sessionId: group.id });
+    expect((await send("DELETE", `/v1/sessions/${group.id}`, {})).status).toBe(204);
+    expect(h.store.listQuotes().find((quote) => quote.id === kept!.id)).toMatchObject({ body: "背景要连贯", session_id: null, message_id: null });
+  });
+
+  test("erasing what you said takes the checks made from it with it, at once", async () => {
+    const h = await start();
+    const { bot, direct_session: direct } = h.store.createBot({ name: "视频导演", duties: "出片", boundaries: "none" });
+    const reviewer = h.store.createBot({ name: "审片员", duties: "审片", boundaries: "none" });
+    const group = h.store.createGroup({ name: "片组", members: [bot.id, reviewer.bot.id] });
+    const send = (method: string, path: string, body?: unknown) =>
+      fetch(`${h.origin}${path}`, { method, headers: auth(h, { "Content-Type": "application/json" }), body: body === undefined ? undefined : JSON.stringify(body) });
+    /** A line of yours in `session` that opens a plan, and the check it gives. */
+    const planFrom = (session: string) => {
+      const line = h.store.postMessage(session, { body: "片长约2分钟" });
+      const turn = h.store.createTurn({ sessionId: session, botId: bot.id, triggerMessageId: line.id });
+      h.store.setTurnStatus(turn.id, "completed");
+      h.store.syncDerivedChecks(turn.task_id!);
+      // Something else of yours keeps the plan when the conversation's words go.
+      h.store.addRequirement({ scope: "plan", scopeId: turn.task_id!, quote: "机械臂是左手", sourceKind: "board", addedBy: "user" });
+      return () => h.store.listChecks(turn.task_id!).filter((check) => check.origin === "derived");
+    };
+
+    const inDirect = planFrom(direct.id);
+    expect(inDirect()).toHaveLength(1);
+    // Cleared with your words kept, the check stays; erased with them, it goes without waiting for the plan's next line.
+    expect((await send("POST", `/v1/sessions/${direct.id}/clear`)).status).toBe(204);
+    expect(inDirect()).toHaveLength(1);
+    expect((await send("DELETE", `/v1/sessions/${direct.id}/messages`, { erase_quotes: true })).status).toBe(204);
+    expect(inDirect()).toEqual([]);
+
+    const inGroup = planFrom(group.id);
+    expect(inGroup()).toHaveLength(1);
+    expect((await send("DELETE", `/v1/sessions/${group.id}`, { erase_quotes: true })).status).toBe(204);
+    expect(inGroup()).toEqual([]);
+  });
+
   test("POST /v1/sessions/:id/archive and /v1/sessions/:id/restore", async () => {
     const h = await start();
     const b1 = h.store.createBot({ name: "Worker1", duties: "d", boundaries: "b" });

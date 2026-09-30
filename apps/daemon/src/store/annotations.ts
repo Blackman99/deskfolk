@@ -35,6 +35,7 @@ import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { getBot, listBots } from "./bots";
 import { hydrateMessage, resolveAttachmentLocation } from "./messages";
+import { recordQuote } from "./quotes";
 import { createDirect } from "./sessions";
 import { isPresent, messageRow, requireString, sessionRow, touchSession, workspacePath, type MessageRow, type StoreContext } from "./shared";
 import { taskOfTurn } from "./tasks";
@@ -535,6 +536,15 @@ function sendAnnotationsRows(ctx: StoreContext, input: SendAnnotationsRequest): 
   );
   for (const row of rows) {
     ctx.db.run(`UPDATE annotations SET status = 'open', message_id = ?, updated_at = ? WHERE id = ?`, [id, now, row.id]);
+  }
+  // Your words are kept in the same write (ADR 0040): what you added to the batch, as a line of
+  // yours, and each annotation under the plan and ticket of the delivery it is about.
+  if (summary) recordQuote(ctx, { via: "message", body, messageId: id, sessionId, taskId, now });
+  for (const row of rows) {
+    const lineage = row.target_turn_id
+      ? ctx.db.query<{ task_id: string | null; ticket_id: string | null }, [string]>(`SELECT task_id, ticket_id FROM turns WHERE id = ?`).get(row.target_turn_id)
+      : null;
+    recordQuote(ctx, { via: "annotation", body: row.body, messageId: id, sessionId, taskId: lineage?.task_id, ticketId: lineage?.ticket_id, now });
   }
   touchSession(ctx, sessionId, now);
   const probe = new FileProbe(ctx);

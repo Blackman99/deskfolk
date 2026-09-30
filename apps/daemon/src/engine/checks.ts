@@ -128,7 +128,9 @@ export function createPlanChecks(deps: PlanChecksDeps): PlanChecks {
     } catch {
       return;
     }
-    let targets = checks;
+    // A check from your words with no file to measure yet has nothing to run on; one you have not
+    // confirmed is measured all the same, its result shown and never a block (ADR 0040 P3).
+    let targets = checks.filter((check) => !(check.origin === "derived" && !check.bind_kind));
     if (opts.checkIds?.length) {
       const want = new Set(opts.checkIds);
       targets = targets.filter((check) => want.has(check.id));

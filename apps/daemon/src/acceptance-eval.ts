@@ -13,6 +13,8 @@ import { spawn } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { AcceptanceCheck, AcceptanceCheckOutcome, Locale } from "@real-bot/protocol";
+import { measureLabel, unboundNote } from "./derived-checks";
+import { runMeasureCheck } from "./measure-check";
 import { runSeamsCheck, type JudgeSeams } from "./seams-check";
 import { ENV_WHITELIST } from "./terminal-env";
 import { classifyPath, classifyShell } from "./workspace-paths";
@@ -364,6 +366,7 @@ export async function evaluateCheck(
 ): Promise<CheckVerdict> {
   if (!root) return { outcome: "blocked", exitCode: null, detail: sayer(opts.locale ?? "zh")("没有打开工作区", "no workspace is open"), output: null };
   if (check.kind === "command") return runCommandCheck(root, check, opts);
+  if (check.kind === "measure") return runMeasureCheck(root, check, opts);
   if (check.kind === "continuity") {
     if (!opts.continuity) {
       return { outcome: "error", exitCode: null, detail: sayer(opts.locale ?? "zh")("衔接检查没有接上判定模型", "seams checks are not wired up here"), output: null };
@@ -383,10 +386,15 @@ export async function evaluateCheck(
 
 /** One line describing what a check verifies, for the plan's mirror files. */
 export function describeCheck(
-  check: Pick<AcceptanceCheck, "kind" | "path" | "pattern" | "negate" | "command" | "cwd">,
+  check: Pick<AcceptanceCheck, "kind" | "path" | "pattern" | "negate" | "command" | "cwd" | "measure">,
   locale: Locale,
 ): string {
   const zh = locale === "zh";
+  if (check.kind === "measure") {
+    const what = check.measure ? measureLabel(check.measure, locale) : "";
+    if (!check.path) return zh ? `${what}（${unboundNote(locale)}）` : `${what} (${unboundNote(locale)})`;
+    return zh ? `${what}：${check.path}` : `${what}: ${check.path}`;
+  }
   if (check.kind === "exists") return zh ? `文件存在：${check.path ?? ""}` : `File exists: ${check.path ?? ""}`;
   if (check.kind === "contains") {
     return zh

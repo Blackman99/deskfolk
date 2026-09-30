@@ -101,6 +101,40 @@ test('Tab and Shift+Tab wrap within confirmation controls and teardown restores 
   close(); expect(document.activeElement).toBe(opener); opener.remove();
 });
 
+test("an option box shows only when the copy has one, reports each tick, and waits while busy", () => {
+  const plain = render(DangerDialog, { copy, t, onDismiss: () => {}, onConfirm: () => {} });
+  expect(plain.host.querySelector('input[type="checkbox"]')).toBeNull();
+  plain.close();
+
+  const ticks: boolean[] = [];
+  let confirmed = 0;
+  const withOption = { ...copy, option: "同时抹掉在这里说过的话" };
+  const { host, close } = render(DangerDialog, { copy: withOption, t, onDismiss: () => {}, onConfirm: () => confirmed++, onOptionChange: (checked: boolean) => ticks.push(checked) });
+  const box = host.querySelector<HTMLInputElement>('.confirm-option input[type="checkbox"]')!;
+  expect(host.querySelector('.confirm-option')!.textContent).toContain("同时抹掉在这里说过的话");
+  // Off until you tick it.
+  expect(box.checked).toBe(false);
+  click(box);
+  expect(ticks).toEqual([true]);
+  expect(confirmed).toBe(0);
+  // Tab reaches the box between ✕ and the buttons.
+  const dialog = host.querySelector('dialog')!;
+  const order = [host.querySelector('.modal-close'), box, buttonByText(host, "取消"), host.querySelector('.deny')];
+  (order[0] as HTMLElement).focus();
+  for (let i = 1; i <= 4; i++) {
+    document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(order[i % 4]);
+  }
+  close();
+  expect(dialog.isConnected).toBe(false);
+
+  const busy = render(DangerDialog, { copy: withOption, t, busy: true, optionChecked: true, onDismiss: () => {}, onConfirm: () => {} });
+  const held = busy.host.querySelector<HTMLInputElement>('.confirm-option input')!;
+  expect(held.checked).toBe(true);
+  expect(held.disabled).toBe(true);
+  busy.close();
+});
+
 test('nested native modal restores focus in its parent without closing that overlay', () => {
   const parent = document.createElement('dialog');
   const opener = document.createElement('button'); parent.append(opener); document.body.append(parent); parent.showModal(); opener.focus();

@@ -284,6 +284,38 @@ describe("sending a batch", () => {
     expect(w.store.sendAnnotations({ session_id: w.direct, body: "", annotation_ids: [b.id] }).message.body).toBe(`@${w.bot.name}`);
   });
 
+  test("keeps your words in the same write: what you added as a line of yours, each annotation under its delivery's plan", () => {
+    const w = world();
+    const asked = w.store.postMessage(w.direct, { body: "再写个摘要" });
+    const other = w.store.createTurn({ sessionId: w.direct, botId: w.bot.id, triggerMessageId: asked.id, taskId: w.store.openTask({ sessionId: w.direct, title: "摘要" }).id });
+    const summary = w.store.insertMessage({ sessionId: w.direct, turnId: other.id, kind: "bot", author: w.bot.id, body: "摘要 report.md", paths: ["report.md"] });
+    const a = draft(w);
+    const b = draft(w, { target_message_id: summary.id, body: "摘要太长" });
+    const { message } = w.store.sendAnnotations({ session_id: w.direct, body: "两处请改", annotation_ids: [a.id, b.id] });
+    const kept = w.store.listQuotes({ messageId: message.id });
+    expect(kept.map((q) => [q.via, q.body, q.task_id])).toEqual([
+      ["message", `@${w.bot.name} 两处请改`, other.task_id!],
+      ["annotation", "这段太长了", w.delivery.task_id],
+      ["annotation", "摘要太长", other.task_id!],
+    ]);
+    // With nothing added, the line only names the Bot: no words of yours in it.
+    const c = draft(w, { body: "标题呢" });
+    const bare = w.store.sendAnnotations({ session_id: w.direct, body: "", annotation_ids: [c.id] }).message;
+    const alone = w.store.listQuotes({ messageId: bare.id });
+    expect(alone.map((q) => [q.via, q.body])).toEqual([["annotation", "标题呢"]]);
+
+    // Clearing takes the annotations along (below); what you wrote in them stays (ADR 0040).
+    const ids = [...kept, ...alone].map((q) => q.id);
+    w.store.clearSessionMessages(w.direct);
+    expect(w.store.listAnnotations()).toHaveLength(0);
+    expect(w.store.listQuotes({ sessionId: w.direct }).filter((q) => ids.includes(q.id)).map((q) => [q.body, q.message_id])).toEqual([
+      [`@${w.bot.name} 两处请改`, null],
+      ["这段太长了", null],
+      ["摘要太长", null],
+      ["标题呢", null],
+    ]);
+  });
+
   test("a delivery that is itself a reply is quoted through its root", () => {
     const w = world();
     const root = w.store.postMessage(w.direct, { body: "起个头" });

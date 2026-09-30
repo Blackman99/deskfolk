@@ -4,10 +4,13 @@
  * Runs once per open, before the store hands out any row.
  */
 import type { Database } from "bun:sqlite";
-import { sortThinkingLevels, THINKING_LEVELS, type MessageControl } from "@real-bot/protocol";
+import { FILE_DROP_SESSION_ID, sortThinkingLevels, THINKING_LEVELS, type MessageControl } from "@real-bot/protocol";
+import { askAnswerText, readAskAnswer } from "../ask";
 import { isoNow, ulid } from "../ids";
 import { HELD_TURN_TRIGGERS } from "./holds";
-import { idSuffix, localDate, slugify, taskTitle, WORK_ROOT } from "./tasks";
+import { clipQuote, QUOTE_TRIGGERS } from "./quotes";
+import { REQUIREMENT_TRIGGERS } from "./requirements";
+import { DORMANT_PLAN_TRIGGERS, idSuffix, localDate, slugify, taskTitle, WORK_ROOT } from "./tasks";
 import { parseStoredCatalog } from "../models";
 import { pickThinkingLevel } from "../route-decision";
 
@@ -225,6 +228,7 @@ export function migrateSchema(db: Database): void {
   migrateBotThinkingPins(db);
   migrateSpendLedger(db);
   migrateAcceptanceCheckKinds(db);
+  migrateDerivedChecks(db);
   migrateAnnotations(db);
   migrateAskChoices(db);
   migrateMessageControl(db);
@@ -255,8 +259,10 @@ export function migrateSchema(db: Database): void {
     db.run(`CREATE INDEX IF NOT EXISTS remote_push_subs_hash ON remote_push_subs(endpoint_hash)`);
   }
   migrateNotifications(db);
+  backfillQuotes(db);
   // Made again on every open rather than if missing, so the triggers are always this build's own.
-  for (const trigger of HELD_TURN_TRIGGERS) {
+  // Last, after every column they read (tasks.dormant_since comes in migratePlans).
+  for (const trigger of [...HELD_TURN_TRIGGERS, ...QUOTE_TRIGGERS, ...REQUIREMENT_TRIGGERS, ...DORMANT_PLAN_TRIGGERS]) {
     db.run(`DROP TRIGGER IF EXISTS ${trigger.name}`);
     db.run(trigger.sql);
   }
@@ -342,6 +348,8 @@ function migratePlans(db: Database): void {
   if (!before.includes("routine_id")) {
     db.run(`ALTER TABLE tasks ADD COLUMN routine_id TEXT REFERENCES routines (id) ON DELETE SET NULL`);
   }
+  // ADR 0040 P3: a plan set aside rather than ended. Plans closed before it stay merely closed.
+  if (!before.includes("dormant_since")) db.run(`ALTER TABLE tasks ADD COLUMN dormant_since TEXT`);
   db.run(`CREATE INDEX IF NOT EXISTS tasks_routine ON tasks (routine_id)`);
   db.run(`
     CREATE TABLE IF NOT EXISTS tickets (
@@ -869,6 +877,19 @@ function migrateAcceptanceCheckKinds(db: Database): void {
   }
 }
 
+/**
+ * Checks from your words (ADR 0040 P3) carry where they came from, what they measure, the words,
+ * the file they are bound to and whether they are only offered or in force, all in new nullable
+ * columns. After the kind rebuild above, which
+ * copies only the columns it knows.
+ */
+function migrateDerivedChecks(db: Database): void {
+  const cols = db.query<{ name: string }, []>("PRAGMA table_info(acceptance_checks)").all().map((row) => row.name);
+  for (const column of ["origin", "measure", "quote_id", "bind_kind", "bind_glob", "derived_state"]) {
+    if (!cols.includes(column)) db.run(`ALTER TABLE acceptance_checks ADD COLUMN ${column} TEXT`);
+  }
+}
+
 /** A batch of annotations sent into your direct records the Bot↔Bot message it came from. */
 function migrateAnnotations(db: Database): void {
   const cols = db.query<{ name: string }, []>("PRAGMA table_info(messages)").all().map((row) => row.name);
@@ -890,6 +911,65 @@ function migrateAskChoices(db: Database): void {
   const cols = db.query<{ name: string }, []>("PRAGMA table_info(messages)").all().map((row) => row.name);
   if (!cols.includes("ask_spec")) db.run("ALTER TABLE messages ADD COLUMN ask_spec TEXT");
   if (!cols.includes("ask_answer")) db.run("ALTER TABLE messages ADD COLUMN ask_answer TEXT");
+}
+
+/**
+ * Your words were only in the transcript before ADR 0040 P3. The first open that finds none kept
+ * copies what the transcript still holds — your lines, your answers to questions, the annotations
+ * you sent — filed as the lines are, so the plans already under way have them too. From then on each
+ * is kept as it lands (store/quotes.ts) and none is ever deleted, so this never runs twice; lines an
+ * older build writes while it shares the database are not caught up later.
+ */
+function backfillQuotes(db: Database): void {
+  if (db.query("SELECT 1 FROM user_quotes LIMIT 1").get()) return;
+  type Row = { message_id: string; session_id: string; task_id: string | null; ticket_id: string | null; body: string; at: string };
+  // A cached query, not a prepared statement: an unfinalized one keeps the file open after close.
+  const keep = db.query(
+    `INSERT INTO user_quotes (id, message_id, session_id, task_id, ticket_id, via, body, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+  const copy = (via: "message" | "ask_answer" | "annotation", row: Row) => {
+    if (row.body.trim()) keep.run(ulid(Date.parse(row.at)), row.message_id, row.session_id, row.task_id, row.ticket_id, via, clipQuote(row.body), row.at);
+  };
+  // A batch of annotations went out as a line naming the Bots it is for, then whatever you added;
+  // with nothing added, the line holds no words of yours (sending one now keeps none either).
+  const names = db.query<{ name: string }, []>("SELECT name FROM bots").all().map((row) => row.name).sort((a, b) => b.length - a.length);
+  const onlyNames = (body: string): boolean => {
+    let rest = body.trim();
+    for (;;) {
+      const name = names.find((n) => rest.startsWith(`@${n}`));
+      if (!name) return rest === "";
+      rest = rest.slice(name.length + 1).trim();
+    }
+  };
+  db.transaction(() => {
+    const lines = db
+      .query<Row & { batch: number }, [string]>(
+        `SELECT id AS message_id, session_id, task_id, ticket_id, body, created_at AS at,
+                EXISTS (SELECT 1 FROM annotations a WHERE a.message_id = messages.id) AS batch
+         FROM messages WHERE kind = 'user' AND session_id != ? ORDER BY created_at ASC, rowid ASC`,
+      )
+      .all(FILE_DROP_SESSION_ID);
+    for (const row of lines) if (!(row.batch && onlyNames(row.body))) copy("message", row);
+    const answers = db
+      .query<Omit<Row, "body" | "at"> & { ask_answer: string }, []>(
+        `SELECT id AS message_id, session_id, task_id, ticket_id, ask_answer FROM messages
+         WHERE kind = 'ask' AND ask_answer IS NOT NULL ORDER BY created_at ASC, rowid ASC`,
+      )
+      .all();
+    for (const row of answers) {
+      const answer = readAskAnswer(row.ask_answer);
+      if (answer) copy("ask_answer", { ...row, body: askAnswerText(answer), at: answer.answered_at });
+    }
+    // Each under the plan of the delivery it is about, as sending one files it now.
+    const annotations = db
+      .query<Row, []>(
+        `SELECT a.message_id, a.session_id, t.task_id, t.ticket_id, a.body, m.created_at AS at
+         FROM annotations a JOIN messages m ON m.id = a.message_id LEFT JOIN turns t ON t.id = a.target_turn_id
+         WHERE a.status != 'draft' ORDER BY m.created_at ASC, a.rowid ASC`,
+      )
+      .all();
+    for (const row of annotations) copy("annotation", row);
+  })();
 }
 
 /**

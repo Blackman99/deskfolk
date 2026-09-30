@@ -1051,6 +1051,12 @@ const zh = {
     continueAll: "全部继续",
     resume: "继续",
     leave: "不续",
+    removeChecks: (count: number) => (count === 1 ? "删掉这条检查" : `删掉这 ${count} 条检查`),
+    confirmCheck: "确认",
+    editCheck: "改",
+    declineCheck: "不要",
+    useNewCheck: "用新的",
+    keepOldCheck: "留原来的",
     acted: {
       stop: "已停下",
       continue: "已继续",
@@ -1062,7 +1068,10 @@ const zh = {
       continue_only: "已只让它继续",
       continue_all: "已全部继续",
       resume: "已继续",
-      leave: "先放着"
+      leave: "先放着",
+      confirm_check: "已确认",
+      edit_check: "",
+      remove_check: "已删掉"
     },
     partlyResumed: (continued: number, held: number) => `${continued} 轮接着做了，${held} 轮还被叫停扣着，解除后再按「继续」`,
     spent: "已解除",
@@ -1231,10 +1240,16 @@ const zh = {
       summary: (pass: number, total: number) => `检查 ${pass}/${total} 通过`,
       none: "还没有检查",
       orphansTitle: "对不上验收条目的检查",
+      derivedTitle: "按你的话加的检查",
       editHint: "改写一条验收时它的检查会跟着这一条；删掉的条目的检查会移到「对不上验收条目的检查」。",
-      status: { pass: "通过", fail: "没过", running: "跑着", blocked: "拦下", error: "出错", none: "没跑过" },
+      status: { pass: "通过", fail: "没过", running: "跑着", blocked: "拦下", error: "出错", none: "没跑过", unbound: "未绑定", proposed: "待确认" },
       sourceOrganizer: "整理跳加的",
       sourceUser: "你加的",
+      sourceDerived: "按你的话加的：要改就说改成多少",
+      stateProposed: "你确认之后它才拦东西；交付了就先量给你看。",
+      unconfirmed: (got: string, said: string) => `未确认的检查：${got}，你说的是${said}（待你确认）`,
+      confirm: "确认",
+      confirmFailed: "没能确认。",
       lastRun: "上次跑",
       neverRun: "还没跑过",
       rerun: "重跑",
@@ -1286,7 +1301,19 @@ const zh = {
       describeContinuity: (path: string, command: string, cwd: string | null) =>
         command
           ? `检查 \`${command}\`${cwd ? `（在 ${cwd}）` : ""} 列出的各部分之间是否衔接一致`
-          : `检查 ${path} 各部分之间是否衔接一致`
+          : `检查 ${path} 各部分之间是否衔接一致`,
+      measure: {
+        duration: (range: string) => `时长 ${range} 秒`,
+        resolution: (range: string) => `短边 ${range} 像素`,
+        fps: (range: string) => `帧率 ${range}`,
+        aspect: (ratio: string) => `画幅 ${ratio}`,
+        portrait: "竖屏（高大于宽）",
+        landscape: "横屏（宽大于高）",
+        atLeast: (value: string) => `至少 ${value}`,
+        atMost: (value: string) => `不超过 ${value}`
+      },
+      describeMeasure: (what: string, path: string | null) =>
+        path ? `${what}：${path}` : `${what}；交付最终成品（文件名带 MASTER 或 final 的视频，或放在 deliverables/ 下）后才开始检查`
     },
     empty: "（无）",
     edit: "改",
@@ -1340,10 +1367,11 @@ const zh = {
     members: "成员",
     saveFailed: "没能保存。",
     clearHistory: "清空历史",
-    clearHistoryBody: "清空后，本会话的消息、轮次和判断都去掉。会话还在。进行中的轮会 Stop。",
+    clearHistoryBody: "清空后，本会话的消息、轮次和判断都去掉。会话还在。进行中的轮会 Stop。你在这里说过的话另存着，不跟着清掉；这里的事只是休眠。",
     confirmClearHistory: "确认清空",
     deleteGroup: "删除群聊",
-    deleteGroupBody: "删除后，这个群和里面的消息、轮次都去掉。名册上的 Bot 还在。",
+    deleteGroupBody: "删除后，这个群和里面的消息、轮次都去掉。名册上的 Bot 还在。你在群里说过的话另存着，不跟着删掉。",
+    eraseQuotes: "同时抹掉在这里说过的话",
     confirmDeleteGroup: "确认删除",
     cancel: "取消",
   },
@@ -2482,6 +2510,12 @@ const en: CopyShape<typeof zh> = {
     continueAll: "All go on",
     resume: "Continue",
     leave: "Leave it",
+    removeChecks: (count: number) => (count === 1 ? "Remove this check" : `Remove these ${count} checks`),
+    confirmCheck: "Confirm",
+    editCheck: "Change",
+    declineCheck: "No",
+    useNewCheck: "Use the new one",
+    keepOldCheck: "Keep the old one",
     acted: {
       stop: "Stopped",
       continue: "Going on",
@@ -2493,7 +2527,10 @@ const en: CopyShape<typeof zh> = {
       continue_only: "Only that one goes on",
       continue_all: "All going on",
       resume: "Going on",
-      leave: "Left as it is"
+      leave: "Left as it is",
+      confirm_check: "Confirmed",
+      edit_check: "",
+      remove_check: "Removed"
     },
     partlyResumed: (continued: number, held: number) => `${continued} going on; ${held} still held by a stop — lift it, then Continue again`,
     spent: "Lifted",
@@ -2663,10 +2700,16 @@ const en: CopyShape<typeof zh> = {
       summary: (pass: number, total: number) => `${pass}/${total} checks pass`,
       none: "No checks yet",
       orphansTitle: "Checks that don’t match a line",
+      derivedTitle: "Checks from what you said",
       editHint: "Rewording a line keeps its checks; a deleted line’s checks move to “Checks that don’t match a line”.",
-      status: { pass: "Pass", fail: "Fail", running: "Running", blocked: "Blocked", error: "Error", none: "Never run" },
+      status: { pass: "Pass", fail: "Fail", running: "Running", blocked: "Blocked", error: "Error", none: "Never run", unbound: "Not bound", proposed: "To confirm" },
       sourceOrganizer: "Added by the organizer",
       sourceUser: "Added by you",
+      sourceDerived: "From what you said: to change it, say what to make it",
+      stateProposed: "It holds nothing back until you confirm it; once there is a delivery, it is measured for you to see.",
+      unconfirmed: (got: string, said: string) => `Unconfirmed check: ${got}; you said ${said} (waiting for your confirm)`,
+      confirm: "Confirm",
+      confirmFailed: "Could not confirm.",
       lastRun: "Last run",
       neverRun: "Never run",
       rerun: "Rerun",
@@ -2718,7 +2761,19 @@ const en: CopyShape<typeof zh> = {
       describeContinuity: (path: string, command: string, cwd: string | null) =>
         command
           ? `Checks the parts listed by \`${command}\`${cwd ? ` (in ${cwd})` : ""} fit together`
-          : `Checks the parts of ${path} fit together`
+          : `Checks the parts of ${path} fit together`,
+      measure: {
+        duration: (range: string) => `Running time ${range} s`,
+        resolution: (range: string) => `Short side ${range} px`,
+        fps: (range: string) => `Frame rate ${range} fps`,
+        aspect: (ratio: string) => `Aspect ${ratio}`,
+        portrait: "Portrait (taller than wide)",
+        landscape: "Landscape (wider than tall)",
+        atLeast: (value: string) => `at least ${value}`,
+        atMost: (value: string) => `at most ${value}`
+      },
+      describeMeasure: (what: string, path: string | null) =>
+        path ? `${what}: ${path}` : `${what}; checked once the final cut is delivered (a video named *MASTER* or *final*, or under deliverables/)`
     },
     empty: "(none)",
     edit: "Edit",
@@ -2771,10 +2826,11 @@ const en: CopyShape<typeof zh> = {
     members: "Members",
     saveFailed: "Couldn’t save.",
     clearHistory: "Clear history",
-    clearHistoryBody: "This removes the session’s messages, turns, and judgements. The session stays. Live turns are stopped.",
+    clearHistoryBody: "This removes the session’s messages, turns, and judgements. The session stays. Live turns are stopped. What you said here is kept apart and stays; the jobs here are only set aside.",
     confirmClearHistory: "Confirm clear",
     deleteGroup: "Delete group",
-    deleteGroupBody: "This removes the group and its messages and turns. Bots on the roster stay.",
+    deleteGroupBody: "This removes the group and its messages and turns. Bots on the roster stay. What you said in the group is kept apart and stays.",
+    eraseQuotes: "Also erase what you said here",
     confirmDeleteGroup: "Confirm delete",
     cancel: "Cancel",
   },

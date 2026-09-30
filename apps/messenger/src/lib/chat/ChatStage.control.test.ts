@@ -157,3 +157,29 @@ test("a restart notice carries 继续 and 不续, and the 「中断」 line it n
     after.close();
   }
 });
+
+test("a check offered from your words: 确认 and 不要 go to the daemon, 改 starts your line with its words and sends nothing", async () => {
+  const session = aDirect();
+  const control: MessageControl = {
+    kind: "check",
+    event: "proposed",
+    check_ids: ["check-1"],
+    offer: ["confirm_check", "edit_check", "remove_check"],
+    replacing: null,
+    edit_draft: "片长改成 ",
+  };
+  const card = aMessage({ id: "card", session_id: session.id, kind: "system", author: "bot-1", body: "按你的话加检查：时长 108–132 秒？", control });
+  const { host, runtime, close } = stage(session, { messages: [card], holdsOn: false });
+  try {
+    const row = host.querySelector('[data-message-id="card"]')! as HTMLElement;
+    expect([...row.querySelectorAll(".control-btn")].map((button) => button.textContent?.trim())).toEqual(["确认", "改", "不要"]);
+    click(buttonByText(row, "改"));
+    expect(runtime.sessionView(session.id).draft).toBe("片长改成 ");
+    // The row takes one press at a time.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    click(buttonByText(row, "确认"));
+    expect(runtime.calls.filter((call) => call.name === "controlAction").map((call) => call.args)).toEqual([["card", "confirm_check", undefined]]);
+  } finally {
+    close();
+  }
+});

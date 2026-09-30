@@ -1290,11 +1290,16 @@ function dispatch(
   }
   if (params && method === "DELETE") {
     store.getSession(params.id!);
+    const eraseQuotes = eraseQuotesOption(input.body);
     const liveTurns = store.listLiveTurns({ sessionId: params.id! });
     for (const t of liveTurns) {
       engine.stop(t.id, { allowGroup: true });
     }
-    store.clearSessionMessages(params.id!);
+    const quoted = eraseQuotes ? plansQuotedIn(store, params.id!) : [];
+    const dormant = store.clearSessionMessages(params.id!, { eraseQuotes });
+    // Its plans are set aside: what was pending for them would fire into the cleared conversation.
+    store.afterCommit(() => engine.forgetPlans(dormant));
+    for (const taskId of quoted) store.afterCommit(() => engine.syncDerivedChecks(taskId));
     publish({ event: "session.cleared", occurred_at: occurred(), id: params.id! });
     return emptyResponse(204, null);
   }
@@ -1302,11 +1307,16 @@ function dispatch(
   params = matchPath(path, "/v1/sessions/:id/clear");
   if (params && method === "POST") {
     store.getSession(params.id!);
+    const eraseQuotes = eraseQuotesOption(input.body);
     const liveTurns = store.listLiveTurns({ sessionId: params.id! });
     for (const t of liveTurns) {
       engine.stop(t.id, { allowGroup: true });
     }
-    store.clearSessionMessages(params.id!);
+    const quoted = eraseQuotes ? plansQuotedIn(store, params.id!) : [];
+    const dormant = store.clearSessionMessages(params.id!, { eraseQuotes });
+    // Its plans are set aside: what was pending for them would fire into the cleared conversation.
+    store.afterCommit(() => engine.forgetPlans(dormant));
+    for (const taskId of quoted) store.afterCommit(() => engine.syncDerivedChecks(taskId));
     publish({ event: "session.cleared", occurred_at: occurred(), id: params.id! });
     return emptyResponse(204, null);
   }
@@ -1418,6 +1428,8 @@ function dispatch(
     // Parking a plan here is a hold on it (ADR 0040): what runs in it ends as with any other.
     engine.enforceHolds();
     engine.renderPlanMirrors(task.id);
+    // A number in the lines you typed becomes a check like one you said (ADR 0040 P3).
+    store.afterCommit(() => engine.syncDerivedChecks(task.id));
     return jsonResponse(store.taskDetail(task.id, store.citedPathExists), 200, null);
   }
 
@@ -1452,7 +1464,19 @@ function dispatch(
     const before = store.getCheck(params.id!);
     store.removeCheckByUser(params.id!);
     engine.renderPlanMirrors(before.task_id);
+    // One from your words: turning down a replacement puts the check it would replace back in force.
+    if (before.origin === "derived") store.afterCommit(() => engine.syncDerivedChecks(before.task_id));
     return jsonResponse(store.taskDetail(before.task_id, store.citedPathExists), 200, null);
+  }
+
+  // A check from your words, confirmed on the board (ADR 0040 P3): in force from now, run at once
+  // when it has a file; a replacement takes the place of the check it replaces.
+  params = matchPath(path, "/v1/checks/:id/confirm");
+  if (params && method === "POST") {
+    const check = store.getCheck(params.id!);
+    if (check.origin !== "derived") throw new HttpError(422, "invalid_args", "only a check from your words is confirmed");
+    engine.confirmDerivedCheck(check.id);
+    return jsonResponse(store.taskDetail(check.task_id, store.citedPathExists), 200, null);
   }
 
   params = matchPath(path, "/v1/tasks/:id/checks/run");
@@ -1474,6 +1498,7 @@ function dispatch(
       body.if_revision,
     );
     engine.renderPlanMirrors(ticket.task_id);
+    store.afterCommit(() => engine.syncDerivedChecks(ticket.task_id));
     return jsonResponse(ticket, 200, null);
   }
 
@@ -1812,11 +1837,15 @@ function dispatch(
     if (session.kind !== "group") {
       throw new HttpError(422, "invalid_args", "only groups can be deleted");
     }
+    const eraseQuotes = eraseQuotesOption(input.body);
     const liveTurns = store.listLiveTurns({ sessionId: params.id! });
     for (const t of liveTurns) {
       engine.stop(t.id, { allowGroup: true });
     }
-    store.deleteSession(params.id!);
+    const quoted = eraseQuotes ? plansQuotedIn(store, params.id!) : [];
+    const dormant = store.deleteSession(params.id!, { eraseQuotes });
+    store.afterCommit(() => engine.forgetPlans(dormant));
+    for (const taskId of quoted) store.afterCommit(() => engine.syncDerivedChecks(taskId));
     publish({
       event: "session.removed",
       occurred_at: occurred(),
@@ -2221,6 +2250,24 @@ function messagePaths(value: unknown): string[] {
     throw new HttpError(422, "invalid_args", "paths must be a list of workspace paths");
   }
   return list;
+}
+
+/**
+ * `erase_quotes` on clearing or deleting a conversation (`ClearSessionRequest`): erase what you said
+ * there as well. Without it your words are kept apart from the transcript (ADR 0040).
+ */
+function eraseQuotesOption(body: Record<string, unknown>): boolean {
+  const value = body.erase_quotes ?? false;
+  if (typeof value !== "boolean") throw new HttpError(422, "invalid_args", "erase_quotes must be a boolean");
+  return value;
+}
+
+/**
+ * The plans your words in this conversation were filed under: erasing those words takes the checks
+ * made from them (ADR 0040 P3) with them, which only a sync of each plan does.
+ */
+function plansQuotedIn(store: Store, sessionId: string): string[] {
+  return [...new Set(store.listQuotes({ sessionId }).flatMap((quote) => (quote.task_id ? [quote.task_id] : [])))];
 }
 
 type ParsedMutation = {

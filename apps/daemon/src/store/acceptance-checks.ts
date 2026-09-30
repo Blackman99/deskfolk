@@ -7,9 +7,11 @@
  * Bots never write these (no tool). The user can create, redefine, remove and run one by hand;
  * pinning a check's source to `user` this way is what keeps a later organizer run from touching it.
  * Removing one is a tombstone (`removed_at`), never a delete: a run's history should still explain
- * itself after the check it proved is gone.
+ * itself after the check it proved is gone. The app makes some itself, from numbers in your words
+ * (`derived-checks.ts`); until one is in force and bound to the file it measures it never runs and
+ * holds nothing open.
  */
-import type { AcceptanceCheck, AcceptanceCheckKind, AcceptanceCheckOutcome, AcceptanceCheckRun, AcceptanceCheckRunCause } from "@real-bot/protocol";
+import type { AcceptanceCheck, AcceptanceCheckKind, AcceptanceCheckOutcome, AcceptanceCheckRun, AcceptanceCheckRunCause, CheckMeasure } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { globToRegExp } from "../glob";
 import { isoNow, ulid } from "../ids";
@@ -20,6 +22,7 @@ import { getTask, type Task } from "./tasks";
 import { TURN_RUN_COMMAND_MAX } from "./turn-runs";
 import { classifyPath, classifyShell } from "../workspace-paths";
 
+/** The kinds a check can be made or redefined as; `measure` only ever comes from your words. */
 export const CHECK_KINDS: readonly AcceptanceCheckKind[] = ["exists", "contains", "matches", "command", "continuity"];
 
 /** At most `limit` code points total, ellipsis included — a failing command's tail explains it, not its head. */
@@ -67,7 +70,15 @@ type AcceptanceCheckRow = {
   defined_at: string;
   first_passed_at: string | null;
   removed_at: string | null;
+  origin: "derived" | null;
+  measure: string | null;
+  quote_id: string | null;
+  bind_kind: "glob" | null;
+  bind_glob: string | null;
+  derived_state: "proposed" | "active" | null;
 };
+
+export type { AcceptanceCheckRow };
 
 type AcceptanceCheckRunRow = {
   id: string;
@@ -93,6 +104,8 @@ export type CheckDefinition = {
   expect_exit: number | null;
   expect_stdout: string | null;
   timeout_sec: number | null;
+  /** A derived check's range (JSON); null on every check you or the organizer made. */
+  measure?: string | null;
 };
 
 /**
@@ -112,6 +125,7 @@ export function checkDefinitionKey(input: CheckDefinition): string {
     input.expect_exit ?? null,
     input.expect_stdout ?? null,
     input.timeout_sec ?? null,
+    input.measure ?? null,
   ]);
 }
 
@@ -126,6 +140,7 @@ function rowDefinition(row: AcceptanceCheckRow): CheckDefinition {
     expect_exit: row.expect_exit,
     expect_stdout: row.expect_stdout,
     timeout_sec: row.timeout_sec,
+    measure: row.measure,
   };
 }
 
@@ -180,14 +195,25 @@ function isRunning(ctx: StoreContext, checkId: string): boolean {
   );
 }
 
+/**
+ * A check from your words that is no gate (ADR 0040 P3): only offered to you, set aside by a later
+ * number of yours, or in force with no file to measure yet. It never runs, holds nothing open and
+ * proves nothing.
+ */
+export function derivedNotGate(check: { origin?: string | null; bind_kind?: string | null; derived_state?: string | null }): boolean {
+  return check.origin === "derived" && (check.derived_state !== "active" || !check.bind_kind);
+}
+
 function toAcceptanceCheck(ctx: StoreContext, row: AcceptanceCheckRow): AcceptanceCheck {
   const last = lastFinishedRun(ctx, row.id);
+  const measure = row.measure ? (JSON.parse(row.measure) as CheckMeasure) : null;
   return {
     id: row.id,
     task_id: row.task_id,
     ticket_id: row.ticket_id,
     item: row.item,
-    kind: row.kind,
+    // A measure is stored as the nearest kind an older build understands (schema.ts).
+    kind: measure ? "measure" : row.kind,
     path: row.path,
     pattern: row.pattern,
     negate: Boolean(row.negate),
@@ -197,6 +223,11 @@ function toAcceptanceCheck(ctx: StoreContext, row: AcceptanceCheckRow): Acceptan
     expect_stdout: row.expect_stdout,
     timeout_sec: row.timeout_sec,
     source: row.source,
+    origin: row.origin ?? row.source,
+    measure,
+    bind_kind: row.bind_kind,
+    bind_glob: row.bind_glob,
+    derived_state: row.origin === "derived" ? (row.derived_state ?? "proposed") : null,
     created_at: row.created_at,
     updated_at: row.updated_at,
     defined_at: row.defined_at,
@@ -388,8 +419,15 @@ export function normalizeCheckInput(ctx: StoreContext, task: Task, raw: unknown,
   };
 }
 
+/**
+ * Active checks toward {@link CHECKS_MAX}. Checks from your words (ADR 0040 P3) are not counted:
+ * they are at most one per dimension, made from what you said rather than asked for, and a plan
+ * full of typed checks must not refuse the one your 「约 2 分钟」 gives, nor lose room to it.
+ */
 function activeCount(ctx: StoreContext, taskId: string): number {
-  const row = ctx.db.query<{ n: number }, [string]>(`SELECT COUNT(*) AS n FROM acceptance_checks WHERE task_id = ? AND removed_at IS NULL`).get(taskId);
+  const row = ctx.db
+    .query<{ n: number }, [string]>(`SELECT COUNT(*) AS n FROM acceptance_checks WHERE task_id = ? AND removed_at IS NULL AND origin IS NOT 'derived'`)
+    .get(taskId);
   return row?.n ?? 0;
 }
 
@@ -435,6 +473,8 @@ export function createCheckByUser(ctx: StoreContext, taskId: string, raw: unknow
 export function patchCheckByUser(ctx: StoreContext, checkId: string, raw: unknown, ifRevision?: unknown, now: Date = new Date(isoNow())): AcceptanceCheck {
   const row = checkRow(ctx, checkId);
   if (row.removed_at !== null) throw new HttpError(409, "check_gone", "this check was removed");
+  // Its number is yours: a new one in your words offers a new one, and confirming or removing it is always there.
+  if (row.origin === "derived") throw new HttpError(422, "derived_check", "a check read from your words changes when you give a new number; it can be confirmed or removed");
   if (ifRevision !== undefined && ifRevision !== null) {
     if (typeof ifRevision !== "string" || ifRevision !== row.updated_at) {
       throw new HttpError(409, "conflict", "check revision changed");
@@ -490,7 +530,7 @@ export function removeCheckByUser(ctx: StoreContext, checkId: string, now: Date 
  * plan's checks are worth running again before it settles.
  */
 export function checkStale(ctx: StoreContext, taskId: string): boolean {
-  const checks = activeCheckRows(ctx, taskId);
+  const checks = activeCheckRows(ctx, taskId).filter((row) => !derivedNotGate(row));
   if (checks.length === 0) return false;
   for (const check of checks) {
     const since = ctx.db
@@ -823,8 +863,9 @@ export function checkNeverRanSinceDefinition(check: Pick<AcceptanceCheck, "defin
 /**
  * Active checks that would keep a plan the organizer called `done` open: ones that failed, or that
  * have not run since their current definition — the same evidence a `done` ticket needs, applied to
- * checks. Used by `applyOrganizerResult` alongside `ticketsHoldingPlanOpen`.
+ * checks. Used by `applyOrganizerResult` alongside `ticketsHoldingPlanOpen`. A check from your words
+ * that is no gate is not one: only offered, set aside, or with no file bound yet (ADR 0040 P3).
  */
 export function checksHoldingPlanOpen(ctx: StoreContext, taskId: string): AcceptanceCheck[] {
-  return listChecks(ctx, taskId).filter((check) => checkNeverRanSinceDefinition(check) || check.last_run?.outcome === "fail");
+  return listChecks(ctx, taskId).filter((check) => !derivedNotGate(check) && (checkNeverRanSinceDefinition(check) || check.last_run?.outcome === "fail"));
 }

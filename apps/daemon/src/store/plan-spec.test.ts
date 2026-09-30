@@ -160,6 +160,62 @@ describe("your edit of a plan", () => {
 });
 
 describe("what one organizer run changes", () => {
+  test("never the rules or Done when: a plan keeps the ones it has, one it opens starts with none, and the rest is filed", () => {
+    const { store, session } = fixture();
+    const opener = store.postMessage(session.id, { body: "写周报，交到 report.md，不要口语" });
+    const opened = store.applyOrganizerResult({
+      sessionId: session.id,
+      current: null,
+      result: result({ decision: "new", spec: spec({ rules: ["不要口语"], process: ["Writer 写"] }) }),
+      source: { messageId: opener.id, turnId: null, messageBody: opener.body },
+    });
+    expect(parsePlanSpec(opened.task.spec)).toMatchObject({ goal: "写一份周报", acceptance: [], rules: [], process: ["Writer 写"] });
+    // What you write on the board stays, whatever a later filing answers.
+    store.setPlanSpecByUser(opened.task.id, spec({ acceptance: ["交到 report.md"], rules: ["不要口语", "标题别太长"], process: ["Writer 写"] }));
+    const follow = store.postMessage(session.id, { body: "加一节下周计划" });
+    const filed = store.applyOrganizerResult({
+      sessionId: session.id,
+      current: store.sessionCurrentTask(session.id),
+      result: result({ spec: spec({ goal: "写一份带下周计划的周报", acceptance: [], rules: ["用户要求接着做完"], progress: { done: [], open: ["下周计划"], blocked: [] } }) }),
+      source: { messageId: follow.id, turnId: null, messageBody: follow.body },
+    });
+    expect(parsePlanSpec(filed.task.spec)).toMatchObject({
+      goal: "写一份带下周计划的周报",
+      acceptance: ["交到 report.md"],
+      rules: ["不要口语", "标题别太长"],
+      progress: { open: ["下周计划"] },
+    });
+    store.close();
+  });
+
+  test("keeps a rule you typed on the board while the call was out, though the run was built on the plan as it stood before", () => {
+    const { store, session } = fixture();
+    const opener = store.postMessage(session.id, { body: "写周报" });
+    const opened = store.applyOrganizerResult({
+      sessionId: session.id,
+      current: null,
+      result: result({ decision: "new", spec: spec() }),
+      source: { messageId: opener.id, turnId: null, messageBody: opener.body },
+    });
+    // The organizer takes its copy of the plan, and the call goes out.
+    const before = store.sessionCurrentTask(session.id)!;
+    const line = store.postMessage(session.id, { body: "加一节下周计划" });
+    store.setPlanSpecByUser(opened.task.id, spec({ acceptance: ["交到 report.md"], rules: ["标题别太长"] }));
+    // The answer lands on that copy; a line's filing carries no revision to refuse it by.
+    const filed = store.applyOrganizerResult({
+      sessionId: session.id,
+      current: before,
+      result: result({ spec: spec({ acceptance: [], progress: { done: [], open: ["下周计划"], blocked: [] } }) }),
+      source: { messageId: line.id, turnId: null, messageBody: line.body },
+    });
+    expect(parsePlanSpec(filed.task.spec)).toMatchObject({
+      acceptance: ["交到 report.md"],
+      rules: ["标题别太长"],
+      progress: { open: ["下周计划"] },
+    });
+    store.close();
+  });
+
   test("with no current plan, opens one from the message, files the tickets, and stamps the message", () => {
     const { store, session, bot } = fixture();
     const message = store.postMessage(session.id, { body: "帮我写一份周报，交到 report.md" });
@@ -179,7 +235,8 @@ describe("what one organizer run changes", () => {
     expect(applied.created).toBe(2);
     expect(applied.task).toMatchObject({ session_id: session.id, title: "写一份周报", brief: message.body, kind: "周报", status: "active" });
     expect(applied.task.dir).toMatch(/^work\/写一份周报-[0-9a-z]{4}$/);
-    expect(parsePlanSpec(applied.task.spec)).toEqual(spec());
+    // Everything but its Done when: that is no longer the organizer's to write (ADR 0040 P3).
+    expect(parsePlanSpec(applied.task.spec)).toEqual(spec({ acceptance: [] }));
     expect(applied.tickets.map((row) => [row.seq, row.title, row.status, row.worker])).toEqual([
       [1, "初稿", "doing", bot.id],
       [2, "配图", "todo", null],
@@ -257,7 +314,7 @@ describe("what one organizer run changes", () => {
     expect(second.tickets.some((row) => row.title === "谁的")).toBe(false);
     expect(second.messageTicketId).toBe(existing.id);
     expect(store.getMessage(follow.id)).toMatchObject({ task_id: first.task.id, ticket_id: existing.id });
-    expect(parsePlanSpec(second.task.spec)?.rules).toEqual(["先给 Reviewer 过一遍"]);
+    expect(parsePlanSpec(second.task.spec)?.rules).toEqual([]);
     expect(second.revision.revision).toBe(2);
     store.close();
   });
@@ -343,7 +400,7 @@ describe("what one organizer run changes", () => {
       source: { messageId: aside.id, turnId: null, messageBody: aside.body },
     });
     expect(joined.task.id).toBe(report.id);
-    expect(parsePlanSpec(store.getTask(report.id).spec)?.rules).toEqual(["不要口语", "标题别太长"]);
+    expect(parsePlanSpec(store.getTask(report.id).spec)?.rules).toEqual(["不要口语"]);
     expect(store.getMessage(aside.id)).toMatchObject({ task_id: report.id, ticket_id: draft.id });
     // The group keeps its job and this direct keeps its own.
     expect(store.getTask(report.id)).toMatchObject({ session_id: group.id, status: "active", closed_at: null });
@@ -558,7 +615,7 @@ describe("what one organizer run changes", () => {
     f.close();
   });
 
-  test("raises plan and ticket events as it goes, and a cleared session takes them away", () => {
+  test("raises plan and ticket events as it goes; a cleared session sets the plan aside, and takes it away with your words", () => {
     const { store, session, bot } = fixture();
     const seen: ClientEvent[] = [];
     store.onCommit((event) => seen.push(event));
@@ -579,7 +636,15 @@ describe("what one organizer run changes", () => {
     store.patchTicket(applied.tickets[0]!.id, { status: "doing" });
     expect(seen).toEqual([]);
 
+    // What you said about it is kept (ADR 0040), so the plan stays, set aside and closed for the board.
     store.clearSessionMessages(session.id);
+    expect(seen.filter((event) => event.event === "task.removed" || event.event === "ticket.removed")).toEqual([]);
+    expect(seen.filter((event) => event.event === "task.upsert")).toMatchObject([{ id: applied.task.id, closed_at: expect.any(String) }]);
+    expect(store.getTask(applied.task.id).dormant_since).toBeString();
+
+    // Erased with it, nothing keeps the plan any more.
+    seen.length = 0;
+    store.clearSessionMessages(session.id, { eraseQuotes: true });
     expect(seen.filter((event) => event.event === "ticket.removed")).toMatchObject([{ id: applied.tickets[0]!.id, task_id: applied.task.id }]);
     expect(seen.filter((event) => event.event === "task.removed")).toMatchObject([{ id: applied.task.id }]);
     expect(store.listTickets(applied.task.id)).toEqual([]);
@@ -610,7 +675,7 @@ describe("what one organizer run changes", () => {
       routine_id: null,
       ticket_counts: { todo: 0, doing: 1, review: 0, done: 0, parked: 0 },
     });
-    expect(detail.spec).toEqual(spec());
+    expect(detail.spec).toEqual(spec({ acceptance: [] }));
     expect(detail.tickets).toHaveLength(1);
     expect(detail.tickets[0]!.artifacts).toMatchObject([{ path: `${ticket.dir}/draft.md`, exists: true }]);
     store.close();

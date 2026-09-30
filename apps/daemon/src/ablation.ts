@@ -15,6 +15,7 @@
 export const SIDE_CALLS = [
   "organize-message",
   "organize-settle",
+  "scribe",
   "closing-check",
   "route-pick",
   "review",
@@ -34,7 +35,7 @@ export type AblationGroup = "organizer" | "calls" | "nudges" | "bare";
 
 export const ABLATION_GROUPS: Record<AblationGroup, readonly SideCall[]> = {
   organizer: ["organize-message", "organize-settle"],
-  calls: ["organize-message", "organize-settle", "closing-check", "route-pick", "review", "learning", "judgement"],
+  calls: ["organize-message", "organize-settle", "scribe", "closing-check", "route-pick", "review", "learning", "judgement"],
   nudges: ["plan-nudge", "direct-report"],
   bare: SIDE_CALLS,
 };

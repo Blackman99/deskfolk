@@ -102,3 +102,38 @@ test("a restart notice offers to go on or leave it, whatever stops are in force,
   expect(controlBar({ ...notice, acted: ["resume"] }, [], names, t)).toEqual({ state: "done", note: "已继续" });
   expect(controlBar({ ...notice, acted: ["leave"] }, [], names, t)).toEqual({ state: "done", note: "先放着" });
 });
+
+test("the app's line offering a check from your words: 确认 / 改 / 不要, and for a replacement 用新的 / 留原来的", () => {
+  const offer: MessageControl = {
+    kind: "check",
+    event: "proposed",
+    check_ids: ["check-1"],
+    offer: ["confirm_check", "edit_check", "remove_check"],
+    replacing: null,
+    edit_draft: "片长改成 ",
+  };
+  expect(controlBar(offer, [], names, t)).toEqual({
+    state: "ask",
+    prompt: null,
+    buttons: [
+      { action: "confirm_check", label: "确认", primary: true },
+      { action: "edit_check", label: "改", primary: false },
+      { action: "remove_check", label: "不要", primary: false },
+    ],
+  });
+  expect(controlBar({ ...offer, replacing: "check-0" }, [], names, t)).toMatchObject({
+    buttons: [{ label: "用新的" }, { label: "改" }, { label: "留原来的" }],
+  });
+  expect(controlBar(offer, [], names, copyFor("en").control)).toMatchObject({ buttons: [{ label: "Confirm" }, { label: "Change" }, { label: "No" }] });
+  // No words to start a line with, no 改.
+  expect(controlBar({ ...offer, edit_draft: undefined }, [], names, t)).toMatchObject({ buttons: [{ label: "确认" }, { label: "不要" }] });
+  expect(controlBar({ ...offer, acted: ["confirm_check"] }, [], names, t)).toEqual({ state: "done", note: "已确认" });
+  expect(controlBar({ ...offer, acted: ["remove_check"] }, [], names, t)).toEqual({ state: "done", note: "已删掉" });
+});
+
+test("the app's line about checks in force offers to remove them, and says so once pressed", () => {
+  const line: MessageControl = { kind: "check", event: "active", check_ids: ["check-1", "check-2"], offer: ["remove_check"] };
+  expect(controlBar(line, [], names, t)).toEqual({ state: "ask", prompt: null, buttons: [{ action: "remove_check", label: "删掉这 2 条检查", primary: false }] });
+  expect(controlBar({ ...line, check_ids: ["check-1"] }, [], names, copyFor("en").control)).toMatchObject({ buttons: [{ label: "Remove this check" }] });
+  expect(controlBar({ ...line, acted: ["remove_check"] }, [], names, t)).toEqual({ state: "done", note: "已删掉" });
+});

@@ -1,5 +1,6 @@
 import type {
   AnswerAskRequest,
+  ClearSessionRequest,
   ControlActionRequest,
   ControlActionResult,
   CreateHoldRequest,
@@ -114,6 +115,14 @@ type PendingRequest = {
   terminal?: boolean;
   credential?: { operationId: string; instance: string; seq: number };
 };
+
+/**
+ * A clear's or a group delete's body. `erase_quotes` goes only when set, so the request reads the
+ * same as before to a daemon older than kept words (ADR 0040).
+ */
+function clearBody(opts: { eraseQuotes?: boolean }): ClearSessionRequest {
+  return opts.eraseQuotes ? { erase_quotes: true } : {};
+}
 
 function requestId(): string {
   const alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
@@ -335,12 +344,14 @@ export class LocalApi {
     return this.post<SessionDetail>(`/v1/sessions/${id}/restore`);
   }
 
-  async deleteSession(id: string): Promise<void> {
-    await this.request<void>("DELETE", `/v1/sessions/${id}`);
+  /** `eraseQuotes` erases what you said in the group as well (`ClearSessionRequest`). */
+  async deleteSession(id: string, opts: { eraseQuotes?: boolean } = {}): Promise<void> {
+    await this.request<void>("DELETE", `/v1/sessions/${id}`, clearBody(opts));
   }
 
-  async clearSessionHistory(id: string): Promise<void> {
-    await this.post<void>(`/v1/sessions/${id}/clear`, {});
+  /** `eraseQuotes` erases what you said here as well (`ClearSessionRequest`). */
+  async clearSessionHistory(id: string, opts: { eraseQuotes?: boolean } = {}): Promise<void> {
+    await this.post<void>(`/v1/sessions/${id}/clear`, clearBody(opts));
   }
 
   async messages(
@@ -477,6 +488,11 @@ export class LocalApi {
       `/v1/checks/${encodeURIComponent(checkId)}`,
       revision === undefined ? undefined : { if_revision: revision },
     );
+  }
+
+  /** Puts a check from your words in force (ADR 0040 P3); a replacement takes the place of the check it replaces. */
+  async confirmCheck(checkId: string): Promise<TaskDetail> {
+    return this.post<TaskDetail>(`/v1/checks/${encodeURIComponent(checkId)}/confirm`, {});
   }
 
   /** Runs one check, or every active check of the plan when none is named. */

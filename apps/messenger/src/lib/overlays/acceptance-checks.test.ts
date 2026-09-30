@@ -5,7 +5,10 @@ import {
   badgeOf,
   checkSummary,
   checksForLine,
+  derivedChecks,
   describeCheck,
+  isGate,
+  unconfirmedResult,
   draftFromCheck,
   draftToInput,
   emptyDraft,
@@ -321,4 +324,51 @@ test("draftToInput: timeout must be a blank or an integer from 1 to 600", () => 
   expect(draftToInput(aDraft({ timeoutSec: "0" })).errors).toEqual({ timeoutSec: true });
   expect(draftToInput(aDraft({ timeoutSec: "601" })).errors).toEqual({ timeoutSec: true });
   expect(draftToInput(aDraft({ timeoutSec: "abc" })).errors).toEqual({ timeoutSec: true });
+});
+
+/** A check the app read from your words (ADR 0040 P3): bound to the master once one is delivered. */
+function fromYourWords(over: Partial<AcceptanceCheck> = {}): AcceptanceCheck {
+  return aCheck({
+    id: "check-9",
+    item: "时长约 2 分钟",
+    kind: "measure",
+    path: null,
+    origin: "derived",
+    measure: { dimension: "duration", min: 108, max: 132 },
+    bind_kind: null,
+    bind_glob: null,
+    ...over,
+  });
+}
+
+test("a check from your words: not bound until a master is delivered, listed apart, and not counted until it can run", () => {
+  const unbound = fromYourWords();
+  const bound = fromYourWords({ id: "check-10", path: "EP01_MASTER.mp4", bind_kind: "glob", bind_glob: "*MASTER*", last_run: aRun({ outcome: "fail" }) });
+  expect(badgeOf(unbound)).toBe("unbound");
+  expect(badgeOf(bound)).toBe("fail");
+  const checks = [aCheck(), unbound, bound];
+  expect(derivedChecks(checks).map((check) => check.id)).toEqual(["check-9", "check-10"]);
+  expect(orphanChecks(checks, ["有对比表"])).toEqual([]);
+  expect(checksForLine([fromYourWords({ item: "有对比表" })], "有对比表")).toEqual([]);
+  expect(checkSummary(checks)).toEqual({ pass: 0, total: 2 });
+});
+
+test("a check from your words you have not confirmed shows so, with its result as information, and counts toward nothing", () => {
+  const offer = fromYourWords({ id: "check-11", derived_state: "proposed", path: "EP01_MASTER.mp4", bind_kind: "glob" });
+  const measured = fromYourWords({ id: "check-12", derived_state: "proposed", path: "EP01_MASTER.mp4", bind_kind: "glob", last_run: aRun({ outcome: "fail", detail: "107.00 秒，要时长 108–132 秒" }) });
+  const gate = fromYourWords({ id: "check-13", derived_state: "active", path: "EP01_MASTER.mp4", bind_kind: "glob", last_run: aRun({ outcome: "pass" }) });
+  expect([offer, measured, gate].map(badgeOf)).toEqual(["proposed", "proposed", "pass"]);
+  expect([offer, measured, gate].map(isGate)).toEqual([false, false, true]);
+  expect(checkSummary([aCheck(), offer, measured, gate])).toEqual({ pass: 1, total: 2 });
+  expect(unconfirmedResult(measured, zh)).toBe("未确认的检查：107.00 秒，你说的是时长约 2 分钟（待你确认）");
+  expect(unconfirmedResult(offer, zh)).toBeNull();
+  // A daemon from before offers: a bound check from your words was a gate.
+  expect(isGate(fromYourWords({ path: "a.mp4", bind_kind: "glob" }))).toBe(true);
+});
+
+test("describeCheck: a measure says its range, and what it looks at or waits for", () => {
+  expect(describeCheck(fromYourWords(), zh)).toBe("时长 108–132 秒；交付最终成品（文件名带 MASTER 或 final 的视频，或放在 deliverables/ 下）后才开始检查");
+  expect(describeCheck(fromYourWords({ path: "EP01_MASTER.mp4", bind_kind: "glob" }), en)).toBe("Running time 108–132 s: EP01_MASTER.mp4");
+  expect(describeCheck(fromYourWords({ measure: { dimension: "resolution", min: 1080, max: null }, path: "a.mp4" }), zh)).toBe("短边 至少 1080 像素：a.mp4");
+  expect(describeCheck(fromYourWords({ measure: { dimension: "aspect", ratio: "portrait" }, path: "a.mp4" }), en)).toBe("Portrait (taller than wide): a.mp4");
 });

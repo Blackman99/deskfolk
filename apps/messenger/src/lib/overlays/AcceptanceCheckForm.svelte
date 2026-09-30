@@ -1,8 +1,8 @@
 <script lang="ts">
-	import type { AcceptanceCheck, AcceptanceCheckKind, TaskDetail } from '@real-bot/protocol';
+	import type { AcceptanceCheck, TaskDetail } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
-	import { draftToInput, emptyDraft, draftFromCheck } from './acceptance-checks.ts';
+	import { draftToInput, emptyDraft, draftFromCheck, type EditableCheckKind } from './acceptance-checks.ts';
 
 	interface Props {
 		api: MessengerApi;
@@ -18,7 +18,7 @@
 
 	let { api, detail, t, editing, initialItem = '', onSaved, onCancel }: Props = $props();
 
-	const KINDS: readonly AcceptanceCheckKind[] = ['exists', 'contains', 'matches', 'command', 'continuity'];
+	const KINDS: readonly EditableCheckKind[] = ['exists', 'contains', 'matches', 'command', 'continuity'];
 
 	let draft = $state(editing ? draftFromCheck(editing) : emptyDraft(detail, initialItem));
 	let errors = $state<ReturnType<typeof draftToInput>['errors']>({});
@@ -33,7 +33,7 @@
 		return lines;
 	});
 
-	function kindLabel(kind: AcceptanceCheckKind): string {
+	function kindLabel(kind: EditableCheckKind): string {
 		if (kind === 'exists') return t.plan.checks.kindExists;
 		if (kind === 'contains') return t.plan.checks.kindContains;
 		if (kind === 'matches') return t.plan.checks.kindMatches;
@@ -41,7 +41,7 @@
 		return t.plan.checks.kindCommand;
 	}
 
-	function selectKind(kind: AcceptanceCheckKind): void {
+	function selectKind(kind: EditableCheckKind): void {
 		if (saving) return;
 		draft.kind = kind;
 		errors = {};

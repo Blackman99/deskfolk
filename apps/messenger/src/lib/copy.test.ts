@@ -246,23 +246,25 @@ test("profile / archive / delete chrome is the locked 43 sentences on top, strea
   expect(COPY.zh.detail.clearHistory).toBe("清空历史");
   expect(COPY.en.detail.clearHistory).toBe("Clear history");
   expect(COPY.zh.detail.clearHistoryBody).toBe(
-    "清空后，本会话的消息、轮次和判断都去掉。会话还在。进行中的轮会 Stop。",
+    "清空后，本会话的消息、轮次和判断都去掉。会话还在。进行中的轮会 Stop。你在这里说过的话另存着，不跟着清掉；这里的事只是休眠。",
   );
   expect(COPY.en.detail.clearHistoryBody).toBe(
-    "This removes the session’s messages, turns, and judgements. The session stays. Live turns are stopped.",
+    "This removes the session’s messages, turns, and judgements. The session stays. Live turns are stopped. What you said here is kept apart and stays; the jobs here are only set aside.",
   );
   expect(COPY.zh.detail.confirmClearHistory).toBe("确认清空");
   expect(COPY.en.detail.confirmClearHistory).toBe("Confirm clear");
   expect(COPY.zh.detail.deleteGroup).toBe("删除群聊");
   expect(COPY.en.detail.deleteGroup).toBe("Delete group");
   expect(COPY.zh.detail.deleteGroupBody).toBe(
-    "删除后，这个群和里面的消息、轮次都去掉。名册上的 Bot 还在。",
+    "删除后，这个群和里面的消息、轮次都去掉。名册上的 Bot 还在。你在群里说过的话另存着，不跟着删掉。",
   );
   expect(COPY.en.detail.deleteGroupBody).toBe(
-    "This removes the group and its messages and turns. Bots on the roster stay.",
+    "This removes the group and its messages and turns. Bots on the roster stay. What you said in the group is kept apart and stays.",
   );
   expect(COPY.zh.detail.confirmDeleteGroup).toBe("确认删除");
   expect(COPY.en.detail.confirmDeleteGroup).toBe("Confirm delete");
+  expect(COPY.zh.detail.eraseQuotes).toBe("同时抹掉在这里说过的话");
+  expect(COPY.en.detail.eraseQuotes).toBe("Also erase what you said here");
   expect(COPY.zh.detail.cancel).toBe("取消");
   expect(COPY.en.detail.cancel).toBe("Cancel");
 });

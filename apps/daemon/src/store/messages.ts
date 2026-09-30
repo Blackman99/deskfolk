@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, realpathSync, statSync } from "node:fs";
 import { basename, extname, join, posix, win32 } from "node:path";
 import {
+  FILE_DROP_SESSION_ID,
   USER_MEMBER,
   isHiddenTranscriptKind,
   type AskAnswer,
@@ -11,7 +12,7 @@ import {
   type Reaction,
 } from "@real-bot/protocol";
 import { attachmentMime } from "../artifact-mime";
-import { readAskAnswer, readAskSpec } from "../ask";
+import { askAnswerText, readAskAnswer, readAskSpec } from "../ask";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { ensureReplyMention } from "../mentions";
@@ -21,6 +22,7 @@ import { prepareFile, commitPreparedFile, discardFile, type FileCommit } from ".
 import { getBot, listBots } from "./bots";
 import { notBotOnlyLine } from "./check-backs";
 import { createNotification } from "./notifications";
+import { recordQuote } from "./quotes";
 import {
   clampLimit,
   cursorId,
@@ -153,6 +155,9 @@ function postMessageRows(ctx: StoreContext, sessionId: string, input: { body: st
      VALUES (?, ?, NULL, ?, 'user', ?, ?, NULL, ?)`,
     [id, sessionId, parentId, USER_MEMBER, body, now],
   );
+  // Your words are kept in the same write (ADR 0040), and outlive the transcript. The file drop has
+  // no Bot, so nothing said there is asked of anyone.
+  if (sessionId !== FILE_DROP_SESSION_ID) recordQuote(ctx, { via: "message", body, messageId: id, sessionId, now });
 
   if (input.attachments && input.attachments.length > 0) {
     for (const att of input.attachments) {
@@ -527,6 +532,16 @@ export function recordAskAnswer(ctx: StoreContext, askId: string, answer: AskAns
   if (row.kind !== "ask") throw new HttpError(422, "invalid_args", "only a question takes an answer");
   if (row.ask_answer) throw new HttpError(422, "invalid_args", "ask is no longer pending");
   ctx.db.run(`UPDATE messages SET ask_answer = ? WHERE id = ?`, [JSON.stringify(answer), askId]);
+  // Kept apart from the question, which clearing the conversation deletes (ADR 0040).
+  recordQuote(ctx, {
+    via: "ask_answer",
+    body: askAnswerText(answer),
+    messageId: askId,
+    sessionId: row.session_id,
+    taskId: row.task_id,
+    ticketId: row.ticket_id,
+    now: answer.answered_at,
+  });
   touchSession(ctx, row.session_id, answer.answered_at);
   return getMessage(ctx, askId);
 }

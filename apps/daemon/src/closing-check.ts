@@ -100,7 +100,7 @@ export const FAILING_CHECKS_LIMIT = 3;
  * detail (file kinds) or the latest stored run's detail (command kind) — the caller decides which.
  */
 export function describeFailingCheck(
-  check: Pick<AcceptanceCheck, "item" | "kind" | "path" | "pattern" | "negate" | "command" | "cwd">,
+  check: Pick<AcceptanceCheck, "item" | "kind" | "path" | "pattern" | "negate" | "command" | "cwd" | "measure">,
   locale: Locale,
   detail: string,
 ): string {

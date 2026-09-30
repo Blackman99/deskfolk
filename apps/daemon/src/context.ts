@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { USER_MEMBER, type AcceptanceCheckOutcome, type Attachment, type Locale, type Message, type PlanStatus, type TicketStatus } from "@real-bot/protocol";
 import type { ChatContentPart, ChatMessage } from "./completions";
 import { describeCheck } from "./acceptance-eval";
+import { unconfirmedNote } from "./derived-checks";
 import { annotationContext } from "./annotation-context";
 import { askTranscriptText } from "./ask";
 import { loopPictureSpend, pictureMime } from "./loop-pictures";
@@ -225,6 +226,11 @@ export type PlanCheckFact = {
   detail: string;
   /** Minutes since its last run; null alongside `outcome` when it has never run. */
   ageMinutes: number | null;
+  /**
+   * A check from the user's words not confirmed yet (ADR 0040 P3): what the cut measured against it
+   * and that it waits for them, in place of an outcome. Null on every other check.
+   */
+  unconfirmed?: string | null;
 };
 
 export type PlanFacts = {
@@ -349,6 +355,7 @@ export function planFacts(
         outcome: last?.outcome ?? null,
         detail: last?.detail ?? "",
         ageMinutes: at ? Math.max(0, Math.round((now.getTime() - Date.parse(at)) / 60_000)) : null,
+        unconfirmed: check.origin === "derived" && check.derived_state !== "active" ? unconfirmedNote(check, input.locale) : null,
       };
     });
   let ticket: PlanFacts["ticket"] = null;
@@ -504,6 +511,8 @@ const CHECK_OUTCOME_LABEL: Record<AcceptanceCheckOutcome, { zh: string; en: stri
 /** 「item」what：outcome（detail；N 分钟前）— or, unrun, just 「item」what：未跑. */
 function checkLine(check: PlanCheckFact, locale: Locale): string {
   const en = locale === "en";
+  // Information for the reviewer, never a block: the user has not confirmed it.
+  if (check.unconfirmed) return en ? `"${check.item}" ${check.unconfirmed}` : `「${check.item}」${check.unconfirmed}`;
   if (!check.outcome || check.ageMinutes === null) {
     return en ? `"${check.item}" ${check.what}: not run yet` : `「${check.item}」${check.what}：未跑`;
   }

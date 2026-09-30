@@ -25,7 +25,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { MessageControl } from "@real-bot/protocol";
 import { Store } from ".";
-import { ulid } from "../ids";
+import { isoNow, ulid } from "../ids";
 import { migrateSchema } from "./migrate";
 
 const FIXTURES = join(dirname(import.meta.path), "fixtures");
@@ -299,6 +299,62 @@ describe("a database an earlier build created", () => {
         .map((row) => row.id);
       expect(flagged).toEqual([ids.zh!, ids.en!].sort());
       expect(store.listMessages(sessionId).items.map((message) => message.id).sort()).toEqual([ids.receipt!, ids.quoted!].sort());
+      store.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a database from before your words were kept gets what its transcript still holds, once, and the ledger's triggers", () => {
+    const dir = mkdtempSync(join(tmpdir(), "real-bot-migrate-"));
+    const file = join(dir, "state.sqlite");
+    try {
+      const old = new Database(file, { create: true, strict: true });
+      old.exec(readFileSync(join(FIXTURES, "schema-pre-quotes.sql"), "utf8"));
+      old.close();
+      // The shape comes up with the column and the triggers the ledger reads.
+      let store = new Store({ filename: file });
+      expect(store.db.query<{ name: string }, []>("PRAGMA table_info(tasks)").all().map((row) => row.name)).toContain("dormant_since");
+      const triggers = store.db.query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'trigger' ORDER BY name").all().map((row) => row.name);
+      expect(triggers).toEqual(
+        expect.arrayContaining(["requirements_purge_only", "requirements_superseded_by_later", "tasks_dormant_ends", "user_quotes_follow_filing"]),
+      );
+      // So does the checks table, with what a check from your words keeps (ADR 0040 P3).
+      expect(store.db.query<{ name: string }, []>("PRAGMA table_info(acceptance_checks)").all().map((row) => row.name)).toEqual(
+        expect.arrayContaining(["origin", "measure", "quote_id", "bind_kind", "bind_glob"]),
+      );
+
+      // A transcript as a build before quotes left it: the same rows, and no quote of any of them.
+      const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "none" });
+      const direct = writer.direct_session.id;
+      const line = store.postMessage(direct, { body: "写一份周报，别超过一页" });
+      const turn = store.createTurn({ sessionId: direct, botId: writer.bot.id, triggerMessageId: line.id });
+      const ask = store.insertMessage({ sessionId: direct, turnId: turn.id, kind: "ask", author: writer.bot.id, body: "发给谁？" });
+      store.recordAskAnswer(ask.id, { selected: [], custom: "老板", answered_at: isoNow() });
+      const delivery = store.insertMessage({ sessionId: direct, turnId: turn.id, kind: "bot", author: writer.bot.id, body: "写好了" });
+      store.setTurnStatus(turn.id, "completed");
+      // A batch of one annotation sent with nothing added: the line only names the Bot.
+      const batch = store.insertMessage({ sessionId: direct, kind: "user", author: "user", body: "@Writer" });
+      store.db.run(
+        `INSERT INTO annotations (id, status, relpath, anchor_kind, anchor, content_sha256, target_message_id, target_session_id, target_turn_id, bot_id, session_id, message_id, body, created_at, updated_at)
+         VALUES (?, 'open', 'report.md', 'text_range', '{}', ?, ?, ?, ?, ?, ?, ?, '第二段太长', ?, ?)`,
+        [ulid(), "0".repeat(64), delivery.id, direct, turn.id, writer.bot.id, direct, batch.id, batch.created_at, batch.created_at],
+      );
+      store.db.run("DELETE FROM user_quotes");
+      store.close();
+
+      store = new Store({ filename: file });
+      const kept = () => store.listQuotes().map((quote) => [quote.via, quote.body, quote.message_id, quote.task_id]);
+      expect(kept()).toEqual([
+        ["message", "写一份周报，别超过一页", line.id, turn.task_id!],
+        ["ask_answer", "老板", ask.id, turn.task_id!],
+        ["annotation", "第二段太长", batch.id, turn.task_id!],
+      ]);
+      store.close();
+
+      // Kept from here on, so the next open copies nothing again.
+      store = new Store({ filename: file });
+      expect(kept()).toHaveLength(3);
       store.close();
     } finally {
       rmSync(dir, { recursive: true, force: true });

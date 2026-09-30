@@ -19,6 +19,7 @@ import { createSeamsJudge } from "./engine/seams-judge";
 import { createComposer } from "./engine/composer";
 import { HELD_CALL, mayAct } from "./engine/control";
 import { createCore } from "./engine/core";
+import { createDerivedChecks } from "./engine/derived-checks";
 import { createDirectReport } from "./engine/direct-report";
 import { createFire } from "./engine/fire";
 import { createLifecycle } from "./engine/lifecycle";
@@ -34,6 +35,7 @@ import { HttpError } from "./errors";
 import { isoNow } from "./ids";
 import type { McpHost } from "./mcp-host";
 import { createOrganizer } from "./organizer";
+import { createScribe } from "./scribe";
 import type { TurnAdmission } from "./quiesce";
 import type { Store } from "./store";
 import type { TurnExecution } from "./store/routing";
@@ -56,6 +58,16 @@ export type TurnEngine = {
   renderPlanMirrors: (taskId: string) => void;
   /** Runs a plan's acceptance checks (all of them, or just `checkIds`) and rewrites its mirrors once done. */
   runPlanChecks: (taskId: string, opts?: { cause?: "settle" | "user" | "edit"; checkIds?: string[] }) => Promise<void>;
+  /** Brings a plan's checks from your words in line after you changed its words, or one of them, on the board (ADR 0040 P3). */
+  syncDerivedChecks: (taskId: string) => void;
+  /** Puts a check from your words in force on your word from the board, runs it if it has a file, and syncs its plan. */
+  confirmDerivedCheck: (checkId: string) => void;
+  /**
+   * These plans were set aside with their conversation's history, cleared or deleted (ADR 0040):
+   * the settle and the look-again pending for each are dropped, so nothing fires into a cleared
+   * conversation.
+   */
+  forgetPlans: (taskIds: readonly string[]) => void;
   assertAskPending: (askId: string, sessionId: string) => void;
   /**
    * Records your answer on the question and lets its turn go on. Choices are checked against the
@@ -162,10 +174,15 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   const core = createCore({
     store,
     publish,
-    noteTurnEnded: (turn) => organizer.noteTurnEnded(turn),
+    noteTurnEnded: (turn) => {
+      organizer.noteTurnEnded(turn);
+      derivedChecks.noteTurnEnded(turn);
+    },
     noteTurnStopped: (turn) => {
       organizer.noteTurnStopped(turn);
       if (turn.task_id) planWatch.forgetPlan(turn.task_id);
+      // Measuring what was delivered before the stop wakes nobody.
+      derivedChecks.noteTurnEnded(turn);
     },
     noteDirectTurnEnded: (turn) => directReport.noteDirectTurnEnded(turn),
   });
@@ -208,6 +225,21 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     ablation,
   });
 
+  const scribe = createScribe({
+    store,
+    completions,
+    async routing() {
+      const creds = await routing.credentials().catch(() => null);
+      return creds ? routing.routingTarget(creds) : null;
+    },
+    // Billed with the organizer's calls: both keep the job in order, and no Bot asked for either.
+    recordSpend({ sessionId, target, usage, responded }) {
+      spend.recordResponseSpend({ kind: "organize", owner: spend.spendOwner(sessionId, null), target: spend.callOf(target), usage, responded });
+    },
+    draining: () => Boolean(options.admission?.draining),
+    ablation,
+  });
+
   const seamsJudge = createSeamsJudge({
     completions,
     async routing() {
@@ -224,6 +256,14 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     renderMirrors: organizer.renderMirrors,
     judgeContinuity: seamsJudge,
     ablation,
+  });
+
+  const derivedChecks = createDerivedChecks({
+    store,
+    publishMessage: core.publishMessage,
+    run: (taskId, checkIds) => checks.run(taskId, { cause: "edit", checkIds }),
+    track: core.track,
+    renderMirrors: organizer.renderMirrors,
   });
 
   const chains = createChains({
@@ -448,6 +488,10 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       // the buttons and goes on below like any other. One sent on again after you undid its stop
       // skips both readings: you said it was neither.
       if (fromUser && !opts?.ordinary && stops.handleLine(message)) return;
+      // Read as the line arrives: whether its job had handed something over, which is what a
+      // complaint is judged by if the scribe files nothing for it. Its filing, or a turn it wakes,
+      // may send that ticket back to doing over the complaint before the scribe gets to it.
+      const handedOver = fromUser ? scribe.handedOverAt(message.body) : null;
       // Filing takes a model call, and the Bots it holds back show as thinking under the message
       // meanwhile, in the transcript and the list alike. Each row gives way once its turn or
       // judgement has started, so the Bot never blinks out in between.
@@ -485,6 +529,10 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         await core.track(participation.handleParticipation(filed, { fromUser, fork: opts?.fork, opened: handOver }));
       } finally {
         handOver();
+        // Once the line is filed and has woken whom it wakes: the ledger never holds a turn back.
+        if (fromUser) void core.track(scribe.noteLine(message.id, handedOver));
+        // Its numbers become checks as soon as it is filed, whatever the scribe makes of it.
+        if (fromUser) derivedChecks.noteLine(message.id);
       }
     },
     settlePlan(taskId) {
@@ -495,6 +543,14 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     },
     runPlanChecks(taskId, opts) {
       return checks.run(taskId, { cause: opts?.cause ?? "user", checkIds: opts?.checkIds });
+    },
+    syncDerivedChecks: derivedChecks.sync,
+    confirmDerivedCheck: derivedChecks.confirm,
+    forgetPlans(taskIds) {
+      for (const taskId of taskIds) {
+        organizer.forgetPlan(taskId);
+        planWatch.forgetPlan(taskId);
+      }
     },
     sweepStaleChains: chains.sweepStaleChains,
     executionOf(turnId) {
@@ -584,6 +640,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       store.afterCommit(() => {
         live.ask = undefined;
         waiter(answer);
+        void core.track(scribe.noteAnswer(askId));
+        derivedChecks.noteLine(askId);
       });
       return answered;
     },
@@ -607,9 +665,12 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     createHold: stops.hold,
     liftHold: stops.lift,
     control(messageId, input) {
-      // A restart notice's buttons work at any engine level; every other line's are about stops.
+      // A restart notice's buttons, and those on a line about checks from your words, work at any
+      // engine level; every other line's are about stops.
       const message = store.getMessage(messageId);
-      return message.control?.kind === "restart" ? restart.act(message, input) : stops.act(messageId, input);
+      if (message.control?.kind === "restart") return restart.act(message, input);
+      if (message.control?.kind === "check") return derivedChecks.act(message, input);
+      return stops.act(messageId, input);
     },
     announceRestart: restart.announce,
     enforceHolds: stops.enforce,
@@ -620,6 +681,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       chains.clearTimers();
       directReport.clearTimers();
       organizer.clearTimers();
+      scribe.stop();
       checks.abortAll();
       planWatch.clearTimers();
       for (const id of [...core.lives.keys()]) lifecycle.abortLive(id);
@@ -628,6 +690,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       return [...core.turnTasks.keys()];
     },
     async drain() {
+      scribe.stop();
       await lifecycle.drainLives();
     },
     partialText(turnId) {
@@ -646,6 +709,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     async close() {
       store.noteTurnsCutByShutdown();
       checks.abortAll();
+      scribe.stop();
       await lifecycle.drainLives();
       for (const pending of [...participation.pendingJudges.values()]) participation.dropPendingJudgement(pending, true);
       await mcp?.close();

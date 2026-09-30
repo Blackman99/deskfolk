@@ -68,7 +68,8 @@ test("a plan is read whole, its spec and tickets are edited under a revision gua
 
   const detail = await h.call("GET", `/v1/tasks/${plan.id}`);
   expect(detail.status).toBe(200);
-  expect(detail.json).toMatchObject({ id: plan.id, goal: "写一份周报", kind: "周报", status: "active", brief: "写一份周报", revision: 1, revision_actor: "app", spec, tickets: [{ id: ticket.id, artifacts: [] }] });
+  // The organizer's Done when does not land (ADR 0040 P3); the rest of its spec does.
+  expect(detail.json).toMatchObject({ id: plan.id, goal: "写一份周报", kind: "周报", status: "active", brief: "写一份周报", revision: 1, revision_actor: "app", spec: { ...spec, acceptance: [] }, tickets: [{ id: ticket.id, artifacts: [] }] });
   expect((await h.call("GET", `/v1/tasks/${plan.id}/tickets`)).json).toMatchObject({ items: [{ id: ticket.id, status: "doing", worker: writer.bot.id }] });
   expect((await h.call("GET", `/v1/tasks/${plan.id}/spec-revisions`)).json).toMatchObject({
     items: [{ revision: 1, actor: "app", source_message_id: opener.id, session_id: session, tickets_snapshot: [{ id: ticket.id }] }],
@@ -121,6 +122,8 @@ test("acceptance checks: create, patch, run, delete, mirrors, and TaskDetail.che
     source: { messageId: opener.id, turnId: null, messageBody: opener.body },
   });
   const plan = applied.task;
+  // Done when is yours to write on the board; the organizer's does not land (ADR 0040 P3).
+  h.store.setPlanSpecByUser(plan.id, spec);
 
   // 422: an unknown kind is refused.
   expect((await h.call("POST", `/v1/tasks/${plan.id}/checks`, { item: "x", kind: "verify" })).status).toBe(422);

@@ -85,7 +85,17 @@ test("dangerCopy matches the session delete / clear strings", () => {
     body: t.detail.deleteGroupBody,
     confirm: t.detail.confirmDeleteGroup,
     cancel: t.detail.cancel,
+    option: t.detail.eraseQuotes,
   });
   expect(dangerCopy("bot", t).confirm).toBe(t.sidebar.confirmDelete);
   expect(dangerCopy("history", t).confirm).toBe(t.detail.confirmClearHistory);
+});
+
+test("clearing a history or deleting a group offers to erase what you said there; nothing else does", () => {
+  for (const locale of ["zh", "en"] as const) {
+    const t = copyFor(locale);
+    expect(dangerCopy("history", t).option).toBe(t.detail.eraseQuotes);
+    expect(dangerCopy("group", t).option).toBe(t.detail.eraseQuotes);
+    for (const kind of ["bot", "skill", "memory", "provider"] as const) expect(dangerCopy(kind, t).option).toBeUndefined();
+  }
 });

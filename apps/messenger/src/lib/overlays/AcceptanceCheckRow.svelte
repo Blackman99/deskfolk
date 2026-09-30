@@ -3,7 +3,7 @@
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
 	import { formatFullTimestamp, formatMessageTime } from '../chat/chat-view.ts';
-	import { badgeOf, describeCheck, type CheckBadge } from './acceptance-checks.ts';
+	import { badgeOf, derivedStateOf, describeCheck, isDerived, isUnbound, unconfirmedResult, type CheckBadge } from './acceptance-checks.ts';
 	import AcceptanceCheckForm from './AcceptanceCheckForm.svelte';
 	import DangerDialog from './DangerDialog.svelte';
 
@@ -26,6 +26,19 @@
 	let actionError = $state<string | null>(null);
 
 	const badge = $derived(badgeOf(check));
+	// From your words (ADR 0040 P3): a new number of yours changes it, so there is nothing to edit
+	// here; an offer is yours to confirm, measured meanwhile so you see what the cut does against it.
+	const fromWords = $derived(isDerived(check));
+	const standing = $derived(derivedStateOf(check));
+	const runnable = $derived(!isUnbound(check));
+	const result = $derived(standing === 'proposed' ? unconfirmedResult(check, t) : null);
+	// An offer's pill says it waits for you, and what the cut measured against it.
+	const pillLabel = $derived.by(() => {
+		const outcome = check.last_run?.outcome;
+		const base = t.plan.checks.status[badge];
+		return badge === 'proposed' && (outcome === 'pass' || outcome === 'fail') ? `${base} · ${t.plan.checks.status[outcome]}` : base;
+	});
+	let confirming = $state(false);
 
 	const GLYPH: Record<CheckBadge, string> = {
 		pass: '✓',
@@ -34,6 +47,8 @@
 		blocked: '!',
 		error: '!',
 		none: '○',
+		unbound: '◌',
+		proposed: '?',
 	};
 
 	function errorStatus(err: unknown): number | undefined {
@@ -59,6 +74,19 @@
 			actionError = t.plan.checks.runFailed;
 		} finally {
 			busy = false;
+		}
+	}
+
+	async function confirm(): Promise<void> {
+		if (!api || confirming) return;
+		confirming = true;
+		actionError = null;
+		try {
+			onSaved(await api.confirmCheck(check.id));
+		} catch (err) {
+			actionError = errorStatus(err) === 409 ? t.plan.checks.checkGone : t.plan.checks.confirmFailed;
+		} finally {
+			confirming = false;
 		}
 	}
 
@@ -106,7 +134,7 @@
 		onclick={toggle}
 	>
 		<span class="check-pill-glyph" aria-hidden="true">{GLYPH[badge]}</span>
-		<span class="check-pill-label">{t.plan.checks.status[badge]}</span>
+		<span class="check-pill-label">{pillLabel}</span>
 	</button>
 
 	{#if expanded}
@@ -116,7 +144,7 @@
 			{:else}
 				<p class="check-desc">{describeCheck(check, t)}</p>
 				<p class="check-meta">
-					<span>{check.source === 'organizer' ? t.plan.checks.sourceOrganizer : t.plan.checks.sourceUser}</span>
+					<span>{fromWords ? t.plan.checks.sourceDerived : check.source === 'organizer' ? t.plan.checks.sourceOrganizer : t.plan.checks.sourceUser}</span>
 					<span class="check-dot" aria-hidden="true">·</span>
 					{#if check.last_run}
 						<span title={formatFullTimestamp(check.last_run.started_at)}>{t.plan.checks.lastRun}：{formatMessageTime(check.last_run.started_at)}</span>
@@ -124,13 +152,17 @@
 						<span>{t.plan.checks.neverRun}</span>
 					{/if}
 				</p>
+				{#if result}<p class="check-state is-result">{result}</p>{:else if standing === 'proposed'}<p class="check-state">{t.plan.checks.stateProposed}</p>{/if}
 				{#if check.last_run?.detail}<p class="check-run-detail">{check.last_run.detail}</p>{/if}
 				{#if check.last_run?.output}<pre class="check-output mono">{check.last_run.output}</pre>{/if}
 				{#if actionError}<p class="field-error" role="alert">{actionError}</p>{/if}
 				{#if api}
 					<span class="check-actions">
-						<button type="button" onclick={rerun} disabled={busy || check.running}>{t.plan.checks.rerun}</button>
-						<button type="button" onclick={startEdit} disabled={busy}>{t.plan.edit}</button>
+						{#if standing === 'proposed'}
+							<button type="button" class="check-confirm" onclick={() => void confirm()} disabled={busy || confirming}>{t.plan.checks.confirm}</button>
+						{/if}
+						<button type="button" onclick={rerun} disabled={busy || check.running || !runnable}>{t.plan.checks.rerun}</button>
+						{#if !fromWords}<button type="button" onclick={startEdit} disabled={busy}>{t.plan.edit}</button>{/if}
 						<button type="button" class="check-remove" onclick={askRemove} disabled={busy}>{t.plan.checks.remove}</button>
 					</span>
 				{/if}
@@ -215,8 +247,31 @@
 		color: var(--warn-text);
 	}
 
-	.check-pill.is-none {
+	.check-pill.is-none,
+	.check-pill.is-unbound {
 		color: var(--muted-light);
+	}
+
+	.check-pill.is-unbound,
+	.check-pill.is-proposed {
+		border-style: dashed;
+	}
+
+	.check-pill.is-proposed {
+		color: var(--accent);
+		border-color: var(--accent-border);
+	}
+
+	.check-state {
+		margin: 0;
+		font-size: 11px;
+		color: var(--muted);
+		line-height: 1.4;
+		overflow-wrap: anywhere;
+	}
+
+	.check-state.is-result {
+		color: var(--ink-secondary);
 	}
 
 	.check-detail {
@@ -295,6 +350,12 @@
 	}
 
 	.check-actions button:hover:not(:disabled) {
+		border-color: var(--accent-border);
+		background: var(--accent-tint);
+		color: var(--accent);
+	}
+
+	.check-actions .check-confirm {
 		border-color: var(--accent-border);
 		background: var(--accent-tint);
 		color: var(--accent);

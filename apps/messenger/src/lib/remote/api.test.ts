@@ -519,6 +519,40 @@ function annotationMac(rows: Annotation[]) {
   return { sent, rpc, held };
 }
 
+test("clearing a history or deleting a group asks to erase your words only when you ticked it", async () => {
+  const sent: RemoteRequest[] = [];
+  const api = new RemoteApi(enrollment, {
+    rpc: async (request) => {
+      sent.push(request);
+      return { v: 1, id: request.id, status: 204 } satisfies RemoteResponse;
+    },
+  });
+  const session = "01ARZ3NDEKTSV4RRFFQ69G5FC6";
+  await api.clearSessionHistory(session);
+  await api.clearSessionHistory(session, { eraseQuotes: true });
+  await api.deleteSession(session);
+  await api.deleteSession(session, { eraseQuotes: true });
+  // Unticked, the request is the one a Mac older than kept words also takes (its whitelist has no such field).
+  expect(sent.map((request) => [request.method, request.body])).toEqual([
+    ["POST", {}],
+    ["POST", { erase_quotes: true }],
+    ["DELETE", {}],
+    ["DELETE", { erase_quotes: true }],
+  ]);
+});
+
+test("confirming a check from your words from the phone is the one route the Mac takes for it, with nothing in the body", async () => {
+  const sent: RemoteRequest[] = [];
+  const api = new RemoteApi(enrollment, {
+    rpc: async (request) => {
+      sent.push(request);
+      return { v: 1, id: request.id, status: 200, body: { id: "task" } } satisfies RemoteResponse;
+    },
+  });
+  await api.confirmCheck("01ARZ3NDEKTSV4RRFFQ69G5FC6");
+  expect(sent.map((request) => [request.method, request.path, request.body])).toEqual([["POST", "/v1/checks/01ARZ3NDEKTSV4RRFFQ69G5FC6/confirm", {}]]);
+});
+
 test("rows the phone only listed are resolved, reopened and deleted with the revision they came with", async () => {
   // A quiet session: no sync event ever carried these rows, the list is all the phone has seen.
   const open = annotationRow(annotationA, "2026-09-24T08:30:00.000Z", "open");

@@ -8,22 +8,25 @@
  * the file.
  *
  * Target, in two steps:
- * - ADR 0040 P3 (checks derived from your words) flips the first test: 「约2分钟」 becomes a
- *   running-time check of 108–132 s the moment it is said, bound to the master once a `*MASTER*`
- *   video is delivered; it runs, and fails on 107.00 s.
+ * - ADR 0040 P3 (checks derived from your words), done: 「约2分钟」 is offered as a running-time
+ *   check of 108–132 s the moment it is filed, and offered again, 「你已经说了 2 次」, when you say it
+ *   that afternoon. Bound to the master once a `*MASTER*` video is delivered, it is measured and shown
+ *   failing at 107.00 s — information, not yet a block: your words alone never make a gate. One
+ *   click on 确认 does, and the gate then fails the 107-second master. Your complaint about it,
+ *   「上一版 107 秒太短了」, names 107 seconds too, and changes nothing.
  * - ADR 0040 P4e (structured reviews) flips the second: 审片员's approval is refused while that
- *   check fails, and the refusal says why.
+ *   check fails, and the refusal says why. Until then a text 「PASSED」 is all it takes.
  *
- * Today no check exists, and a text 「PASSED」 is all it takes. The 107-second master is made with
- * ffmpeg when it is installed; without it the first test still fails for want of a check, but P3
- * will need the file to flip it.
+ * The 107-second master is made with ffmpeg, and the check reads it with ffprobe: where they are not
+ * installed the first test is skipped, since there is no file to deliver or to measure.
  */
 import { afterEach, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { checkEnv } from "../acceptance-eval";
 import { resolveFfmpegBins } from "../seams-check";
+import { derivedNotGate, PLAN_MAP_FILE } from "../store";
 import { call, createScenario, say, sendMessage, shell, tool, type Scenario, type ToolOutcome } from "../test-kit/scenario";
 import { planSpec, videoTeam } from "./video-team";
 
@@ -69,19 +72,60 @@ async function theMaster(h: Scenario, reviewing: Array<ReturnType<typeof call> |
   h.postUser(room, "@视频导演 做一集 EP01 动画成片，片长约2分钟");
   await h.waitIdle();
   const [plan] = h.store.sessionTasks(room);
+  // The afternoon's line is filed under the same plan.
+  h.judge("organizer", { session: room }).reply({ decision: "continue", plan: planSpec("EP01 动画成片：BEACON ZERO 第一集"), tickets: [] });
   h.postUser(room, "片长 2 分钟左右，别超太多");
   await h.waitIdle();
-  return { planId: plan!.id, replies };
+  return { planId: plan!.id, replies, director };
 }
 
-test.failing("your 「约2分钟」 becomes a check that runs on the master and fails it at 107 s", async () => {
+test.skipIf(!FFMPEG)("your 「约2分钟」 is offered, offered again when said twice, shown failing the 107 s master, and fails it as a gate after one confirm", async () => {
   const h = await createScenario();
   open.push(h);
-  const { planId } = await theMaster(h, []);
+  const { planId, director } = await theMaster(h, []);
+  const room = h.store.getTask(planId).session_id!;
+  const cards = () => h.store.listMessages(room, { limit: 100 }).items.reverse().filter((message) => message.control?.kind === "check");
+  const holding = () => h.store.listChecks(planId).filter((check) => !derivedNotGate(check) && check.last_run?.outcome === "fail").map((check) => check.id);
 
-  const yours = h.store.listChecks(planId).filter((check) => check.source === "user");
-  expect(yours.map((check) => check.last_run?.outcome ?? null)).toEqual(["fail"]);
-  expect(yours[0]!.last_run!.detail).toContain("107");
+  // Read from your words, not written by anyone: 10% either way of two minutes, bound to the master
+  // and measured there — failing at 107 s — but only offered.
+  const [yours] = h.store.listChecks(planId);
+  expect(yours).toMatchObject({
+    origin: "derived",
+    source: "user",
+    kind: "measure",
+    measure: { dimension: "duration", min: 108, max: 132 },
+    derived_state: "proposed",
+    bind_glob: "*MASTER*",
+    last_run: { outcome: "fail", detail: "107.00 秒，要时长 108–132 秒" },
+  });
+  expect(yours!.path).toEndWith("EP01_MASTER.mp4");
+  // The card after your first line, and again after your second, saying how often you said it.
+  expect(cards().map((message) => (message.control?.kind === "check" ? [message.control.event, message.control.check_ids] : null))).toEqual([
+    ["proposed", [yours!.id]],
+    ["proposed", [yours!.id]],
+  ]);
+  expect(cards()[1]!.body).toStartWith("你已经说了 2 次。按你的话加检查：时长 108–132 秒？");
+  // Shown to the Bots as an unconfirmed check that fails, and holding nothing back.
+  expect(readFileSync(join(h.root, h.store.getTask(planId).dir, PLAN_MAP_FILE), "utf8")).toContain("[未确认，不通过]");
+  expect(holding()).toEqual([]);
+
+  // One click on 确认: a gate, measured again, failing the 107-second master and holding the job open.
+  h.engine.control(cards()[1]!.id, { action: "confirm_check" });
+  await h.waitIdle();
+  expect(h.store.listChecks(planId)).toMatchObject([{ id: yours!.id, derived_state: "active", last_run: { outcome: "fail", detail: "107.00 秒，要时长 108–132 秒" } }]);
+  expect(holding()).toEqual([yours!.id]);
+
+  // Your complaint about that master gives 107 seconds as well. Complaints never touch a check, so
+  // it still asks for 108–132 s, is still in force and still fails the master it failed.
+  h.script(director, room).reply(say("好，我重剪"));
+  h.postUser(room, "@视频导演 上一版 107 秒太短了");
+  await h.waitIdle();
+  expect(h.store.listQuotes({ taskId: planId }).map((quote) => quote.body)).toContain("@视频导演 上一版 107 秒太短了");
+  const [after] = h.store.listChecks(planId);
+  expect(after).toMatchObject({ id: yours!.id, measure: { dimension: "duration", min: 108, max: 132 }, derived_state: "active" });
+  expect(h.store.listChecks(planId)).toHaveLength(1);
+  expect(after!.last_run).toMatchObject({ outcome: "fail", detail: "107.00 秒，要时长 108–132 秒" });
 });
 
 test.failing("an approval over the failing check is refused, and says why", async () => {

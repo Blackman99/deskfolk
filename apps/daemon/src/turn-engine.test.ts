@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { createCompletionsClient } from "./completions";
 import { continueNote } from "./hop-limits";
 import { ORGANIZER_SYSTEM } from "./prompts/organizer";
+import { SCRIBE_SYSTEM } from "./prompts/scribe";
 import { ROUTE_LEARN_SYSTEM, ROUTE_PICK_SYSTEM, ROUTE_REVIEW_SYSTEM } from "./prompts/routing";
 import { createLocalApi } from "./local-api";
 import { runCollabTool } from "./collab-tools";
@@ -77,7 +78,7 @@ function routingAnswer(content: string): Response {
   return Response.json({ choices: [{ message: { role: "assistant", content } }] });
 }
 
-/** True for the daemon's own short calls: picking a model, reviewing a chain, learning from it. */
+/** True for the daemon's own short calls: picking a model, reviewing a chain, learning from it, filing, noting requirements. */
 function isRoutingCall(body: Record<string, unknown>): boolean {
   const messages = body.messages as Array<{ role?: string; content?: string }> | undefined;
   const system = messages?.find((row) => row.role === "system")?.content ?? "";
@@ -85,7 +86,8 @@ function isRoutingCall(body: Record<string, unknown>): boolean {
     system === ROUTE_PICK_SYSTEM ||
     system === ROUTE_REVIEW_SYSTEM ||
     system === ROUTE_LEARN_SYSTEM ||
-    system === ORGANIZER_SYSTEM
+    system === ORGANIZER_SYSTEM ||
+    system === SCRIBE_SYSTEM
   );
 }
 
@@ -4517,12 +4519,16 @@ describe("spend ledger for routing and composer calls", () => {
     ageChain(h.store, 16 * 60_000);
     h.engine.sweepStaleChains();
     await waitFor(sub.events, () => calls.includes(ROUTE_LEARN_SYSTEM), 4000);
+    // The scribe notes each line after its turn has started; a drain would drop one still queued.
+    await waitFor(sub.events, () => h.store.listWorkEvents({ kind: "scribe.answer" }).length === 3, 4000);
     await h.engine.drain();
 
     const all = ledger(h.store);
-    // Each of the three user messages was organized first, on the default model, owned by nobody.
+    // Each of the three user messages was organized first and noted by the scribe after (billed the
+    // same way), on the default model, owned by nobody.
     const organized = all.filter((row) => row.kind === "organize");
-    expect(organized).toHaveLength(3);
+    expect(organized).toHaveLength(6);
+    expect(calls.filter((call) => call === SCRIBE_SYSTEM)).toHaveLength(3);
     for (const row of organized) {
       expect(row).toMatchObject({ session_id: body.direct_session.id, bot_id: null, turn_id: null, model: "cheap-chat", thinking_level: null });
       expect(row.input_tokens).not.toBeNull();
@@ -4586,10 +4592,11 @@ describe("spend ledger for routing and composer calls", () => {
     await waitFor(sub.events, (event) => event.event === "turn.upsert" && event.status === "completed");
     ageChain(h.store, 16 * 60_000);
     h.engine.sweepStaleChains();
+    await waitFor(sub.events, () => h.store.listWorkEvents({ kind: "scribe.answer" }).length === 1, 4000);
     await h.engine.drain();
-    expect(calls.filter((call) => call !== ORGANIZER_SYSTEM)).toEqual([ROUTE_PICK_SYSTEM]);
+    expect(calls.filter((call) => call !== ORGANIZER_SYSTEM && call !== SCRIBE_SYSTEM)).toEqual([ROUTE_PICK_SYSTEM]);
     const rows = ledger(h.store);
-    expect(rows.map((row) => row.kind).sort()).toEqual(["organize", "route_pick", "turn"]);
+    expect(rows.map((row) => row.kind).sort()).toEqual(["organize", "organize", "route_pick", "turn"]);
     expect(h.store.listSessionReviews(body.direct_session.id)[0]).toMatchObject({ fault: "none" });
     sub.close();
   });
@@ -4628,13 +4635,15 @@ describe("spend ledger for routing and composer calls", () => {
       body: JSON.stringify({ body: "please implement a TypeScript function that parses the AST" }),
     });
     await waitFor(sub.events, (event) => event.event === "turn.upsert" && event.status === "completed");
+    await waitFor(sub.events, () => h.store.listWorkEvents({ kind: "scribe.answer" }).length === 1, 4000);
     await h.engine.drain();
-    // The pin covers the Bot's own calls; the organizer still runs once, on the default model.
-    expect(calls).toEqual([ORGANIZER_SYSTEM]);
+    // The pin covers the Bot's own calls; the organizer and the scribe still run once each, on the
+    // default model.
+    expect(calls).toEqual([ORGANIZER_SYSTEM, SCRIBE_SYSTEM]);
     const rows = ledger(h.store);
-    expect(rows.map((row) => row.kind)).toEqual(["organize", "turn"]);
-    expect(rows[0]).toMatchObject({ model: "cheap-chat", bot_id: null });
-    expect(rows[1]).toMatchObject({ model: "code-pro", thinking_level: "high", bot_id: body.bot.id });
+    expect(rows.map((row) => row.kind).sort()).toEqual(["organize", "organize", "turn"]);
+    expect(rows.filter((row) => row.kind === "organize")).toMatchObject([{ model: "cheap-chat", bot_id: null }, { model: "cheap-chat", bot_id: null }]);
+    expect(rows.find((row) => row.kind === "turn")).toMatchObject({ model: "code-pro", thinking_level: "high", bot_id: body.bot.id });
     sub.close();
   });
 

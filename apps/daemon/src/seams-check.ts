@@ -324,7 +324,8 @@ export function naturalCompare(a: string, b: string): number {
 
 type ProcessResult = { code: number | null; stdout: string; stderr: string };
 
-function runProcess(
+/** One program run to its end (or killed at `timeoutMs` / on `signal`), its output kept; also ffprobe for `measure-check.ts`. */
+export function runProcess(
   bin: string,
   args: string[],
   opts: { cwd: string; env: Record<string, string>; timeoutMs: number; signal?: AbortSignal },

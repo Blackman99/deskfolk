@@ -9,6 +9,7 @@
  */
 import { USER_MEMBER, type AcceptanceCheckKind, type Message, type Ticket, type TicketStatus } from "@real-bot/protocol";
 import { describeCheck } from "../acceptance-eval";
+import { DERIVED_CHECKS_MAX } from "../derived-checks";
 import { sessionLabel } from "../context";
 import { extractJsonObject } from "../route-agent";
 import {
@@ -398,8 +399,9 @@ export function organizerPayload(
               artifacts: artifactCounts.get(ticket.id) ?? 0,
               files: ticketFiles.get(ticket.id) ?? [],
             })),
+          // The checks from your words are not counted toward CHECKS_MAX, so there is room for them too.
           checks: store.listChecks(current.id)
-            .slice(0, CHECKS_MAX)
+            .slice(0, CHECKS_MAX + DERIVED_CHECKS_MAX)
             .map((check) => ({
               id: check.id,
               item: check.item,

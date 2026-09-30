@@ -552,6 +552,10 @@ describe("assembleTurnMessages", () => {
     const run = store.beginCheckRun(failing.id, "user");
     store.finishCheckRun(run.id, { outcome: "fail", exitCode: null, detail: "文件不在", output: null });
     store.createCheckByUser(plan.id, { item: "跑测试", kind: "command", command: "bun test" });
+    // One from your words, not confirmed and with nothing delivered to measure yet: it says both.
+    const said = store.postMessage(session, { body: "配个片子，约 90 秒" });
+    store.db.run(`UPDATE messages SET task_id = ? WHERE id = ?`, [plan.id, said.id]);
+    store.syncDerivedChecks(plan.id);
 
     const trigger = store.insertMessage({ sessionId: session, kind: "user", author: USER_MEMBER, body: "写一份周报" });
     const turn = store.createTurn({ sessionId: session, botId: writer.bot.id, triggerMessageId: trigger.id, taskId: plan.id });
@@ -568,6 +572,7 @@ describe("assembleTurnMessages", () => {
     expect(situation).toContain("验收检查（应用在本机自己跑）：");
     expect(situation).toContain("「交到 report.md」文件存在：report.md：不通过（文件不在；0 分钟前）");
     expect(situation).toContain("「跑测试」命令：bun test：未跑");
+    expect(situation).toContain("「时长约 90 秒」未确认的检查：用户说的是时长约 90 秒，还没有交付可量（待用户确认）");
 
     // English carries the same evidence, in English.
     store.patchSettingsSync({ locale: "en" });

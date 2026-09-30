@@ -38,6 +38,24 @@ export function controlBar(control: MessageControl | undefined, holds: readonly 
   if (!control) return { state: "none" };
   const acted = control.acted ?? [];
   if (acted.length > 0) return { state: "done", note: t.acted[acted[acted.length - 1]!] };
+  // The app's line about checks from your words (ADR 0040 P3): an offer to confirm, change (your
+  // composer, `edit_draft`) or turn down — for a replacement, use the new number or keep the old —
+  // or checks in force to remove. Stops play no part.
+  if (control.kind === "check") {
+    const count = control.check_ids.length;
+    const replacing = Boolean(control.replacing);
+    const buttons = control.offer.flatMap((action): ControlButton[] => {
+      if (count === 0) return [];
+      if (action === "confirm_check") return [{ action, label: replacing ? t.useNewCheck : t.confirmCheck, primary: true }];
+      if (action === "edit_check" && control.edit_draft) return [{ action, label: t.editCheck, primary: false }];
+      if (action === "remove_check") {
+        const label = control.event === "proposed" ? (replacing ? t.keepOldCheck : t.declineCheck) : t.removeChecks(count);
+        return [{ action, label, primary: false }];
+      }
+      return [];
+    });
+    return buttons.length > 0 ? { state: "ask", prompt: null, buttons } : { state: "none" };
+  }
   // A restart notice (ADR 0041): go on with what the restart cut off, or leave it. Stops play no part.
   if (control.kind === "restart") {
     const buttons = control.offer.flatMap((action): ControlButton[] => {

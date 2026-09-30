@@ -1,5 +1,6 @@
 import type {
   AnswerAskRequest,
+  ClearSessionRequest,
   ControlActionRequest,
   ControlActionResult,
   CreateHoldRequest,
@@ -208,6 +209,10 @@ function split(path: string): { path: string; query?: Record<string, string> } {
     query[key] = value;
   });
   return { path: path.slice(0, i), query: Object.keys(query).length ? query : undefined };
+}
+
+function eraseQuotesField(opts: { eraseQuotes?: boolean }): ClearSessionRequest {
+  return opts.eraseQuotes ? { erase_quotes: true } : {};
 }
 
 function jsonBody(body: unknown): Record<string, unknown> | undefined {
@@ -493,11 +498,15 @@ export class RemoteApi {
   async restoreSession(id: string): Promise<SessionDetail> {
     return this.post<SessionDetail>(`/v1/sessions/${id}/restore`, this.revisionBody("sessions", id));
   }
-  async deleteSession(id: string): Promise<void> {
-    await this.request<void>("DELETE", `/v1/sessions/${id}`, this.revisionBody("sessions", id));
+  /**
+   * `eraseQuotes` erases what you said there as well (`ClearSessionRequest`). Sent only when set: a
+   * Mac daemon older than kept words has no such field on its whitelist and would refuse the request.
+   */
+  async deleteSession(id: string, opts: { eraseQuotes?: boolean } = {}): Promise<void> {
+    await this.request<void>("DELETE", `/v1/sessions/${id}`, { ...this.revisionBody("sessions", id), ...eraseQuotesField(opts) });
   }
-  async clearSessionHistory(id: string): Promise<void> {
-    await this.post<void>(`/v1/sessions/${id}/clear`, this.revisionBody("sessions", id));
+  async clearSessionHistory(id: string, opts: { eraseQuotes?: boolean } = {}): Promise<void> {
+    await this.post<void>(`/v1/sessions/${id}/clear`, { ...this.revisionBody("sessions", id), ...eraseQuotesField(opts) });
   }
   async messages(sessionId: string, opts: { cursor?: string | null; limit?: number } = {}): Promise<ListPage<Message>> {
     const params = new URLSearchParams();
@@ -585,6 +594,11 @@ export class RemoteApi {
       revision === undefined ? {} : { if_revision: revision },
     );
   }
+  /** Puts a check from your words in force (ADR 0040 P3); a replacement takes the place of the check it replaces. */
+  async confirmCheck(checkId: string): Promise<TaskDetail> {
+    return this.post<TaskDetail>(`/v1/checks/${encodeURIComponent(checkId)}/confirm`, {});
+  }
+
   /** Runs one check, or every active check of the plan when none is named. */
   async runChecks(taskId: string, checkId?: string): Promise<TaskDetail> {
     return this.post<TaskDetail>(

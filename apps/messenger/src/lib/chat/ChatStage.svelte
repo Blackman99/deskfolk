@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
 	import { USER_MEMBER, type Attachment, type Bot, type Message, type SessionSummary, type Turn,
-		type Annotation,
+		type Annotation, type ControlOffer,
 	} from '@real-bot/protocol';
 	import Composer from './Composer.svelte';
 	import MessageAttachments from './MessageAttachments.svelte';
@@ -748,6 +748,20 @@
 		void tick().then(() => composer?.focus());
 	}
 
+	/**
+	 * A button under the app's line. 改 on a check offered from your words (ADR 0040 P3) is yours to
+	 * say: it starts your line with the words the daemon gave (「片长改成 」) and sends nothing, so the
+	 * number you type is what the check stands on. Every other button goes to the daemon.
+	 */
+	function pressControl(message: Message, action: ControlOffer, taskId?: string): Promise<unknown> {
+		if (action === 'edit_check') {
+			const draft = message.control?.kind === 'check' ? message.control.edit_draft : undefined;
+			if (draft) pickStarterPrompt(draft);
+			return Promise.resolve(null);
+		}
+		return runtime.controlAction(message.id, action, taskId);
+	}
+
 	/** The composer hands the files over; scrolling to the new message is the stage's job. */
 	async function sendFromComposer(files: File[], paths: string[] = []): Promise<boolean> {
 		stickToBottom = true;
@@ -1340,7 +1354,7 @@
 										botName={botNameOf}
 										{t}
 										disabled={!connected}
-										onAct={(action, taskId) => runtime.controlAction(singleMsg.message.id, action, taskId)}
+										onAct={(action, taskId) => pressControl(singleMsg.message, action, taskId)}
 									/>
 								{/if}
 								{#if showContinue}

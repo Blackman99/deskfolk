@@ -351,9 +351,11 @@ export type TicketWithArtifacts = Ticket & { artifacts: TicketArtifactRef[] };
  * judge comparing adjacent parts of a deliverable several Bots made piecemeal (chapters, shots,
  * images, slides) against the plan's own rules and a fixed checklist (style, terms and names,
  * numbers and units, spatial/left-right consistency, missing transitions, repeated content). The
- * only kind that asks a model anything; every other kind is pure evaluation.
+ * only kind that asks a model anything; every other kind is pure evaluation. `measure` is a video's
+ * running time, resolution, aspect or frame rate, read with ffprobe against a range taken from
+ * your words (`origin: "derived"`, ADR 0040 P3); only the app makes one, so it is not an input kind.
  */
-export type AcceptanceCheckKind = "exists" | "contains" | "matches" | "command" | "continuity";
+export type AcceptanceCheckKind = "exists" | "contains" | "matches" | "command" | "continuity" | "measure";
 
 /**
  * `pass`/`fail` are evidence either way. `blocked` (outside the workspace, or none set) and
@@ -364,6 +366,25 @@ export type AcceptanceCheckOutcome = "pass" | "fail" | "blocked" | "error";
 
 /** Who may turn a command into a check: only the app, on the user's own words or a run it already saw. */
 export type AcceptanceCheckSource = "organizer" | "user";
+
+/**
+ * Where a check came from: the organizer, you by hand, or `derived` — read by the app from a number
+ * in your words about the job (ADR 0040 P3). A derived check's `source` is `user`: your words are
+ * what it stands on, and the organizer never touches it.
+ */
+export type AcceptanceCheckOrigin = "derived" | "organizer" | "user";
+
+/** Where a check from your words stands: offered to you, or a gate you confirmed. */
+export type DerivedCheckState = "proposed" | "active";
+
+/**
+ * What a `measure` check reads off a video, and the range it must fall in; a null end is open.
+ * `duration` in seconds, `resolution` in lines of the picture's short side, `fps` in frames a
+ * second. `aspect` is a ratio ("16:9", "2.35:1"), met within 1%, or `portrait` / `landscape`.
+ */
+export type CheckMeasure =
+  | { dimension: "duration" | "resolution" | "fps"; min: number | null; max: number | null }
+  | { dimension: "aspect"; ratio: string };
 
 /** Why a run happened: filing the plan, the user's own click, or a definition just (re)created. */
 export type AcceptanceCheckRunCause = "settle" | "user" | "edit";
@@ -416,6 +437,23 @@ export type AcceptanceCheck = {
   expect_stdout: string | null;
   timeout_sec: number | null;
   source: AcceptanceCheckSource;
+  /** Absent from a daemon older than checks from your words; read it as `source` then. */
+  origin?: AcceptanceCheckOrigin;
+  /** `measure`: what it reads and the range; null on every other kind. */
+  measure?: CheckMeasure | null;
+  /**
+   * How a derived check found the file it looks at (`path`): `glob`, the job's final deliverable by
+   * its name (`bind_glob`: `*MASTER*`, `*final*` or `deliverables/**`). Null while it has found
+   * none: then it has never run, holds nothing open and proves nothing, shown as not bound yet.
+   */
+  bind_kind?: "glob" | null;
+  bind_glob?: string | null;
+  /**
+   * A derived check's standing (ADR 0040 P3): `proposed`, offered to you — measured once it has a
+   * file, its result shown, holding nothing back; `active`, a gate, which only your confirm makes.
+   * Null on every other check.
+   */
+  derived_state?: DerivedCheckState | null;
   created_at: string;
   updated_at: string;
   /** When this definition took effect; a redefinition bumps it and drops the runs before it. */
@@ -431,7 +469,7 @@ export type AcceptanceCheck = {
 export type AcceptanceCheckInput = {
   item: string;
   ticket_id?: string | null;
-  kind: AcceptanceCheckKind;
+  kind: Exclude<AcceptanceCheckKind, "measure">;
   path?: string | null;
   pattern?: string | null;
   negate?: boolean;
@@ -946,6 +984,12 @@ export type Message = {
  * - `continue_only`: let the Bots in `scopes` go on while a wider hold (on the group, on everything) stays for the rest.
  * - `continue_all`: lift that wider hold too.
  * - `resume` / `leave`: on a restart notice, go on with the work the restart cut off, or leave it as it is.
+ * - `confirm_check`: on the app's line offering a check from your words, put it in force (for a
+ *   replacement, in place of the check it would replace).
+ * - `edit_check`: on the same line, start a line of your own giving the number instead; the
+ *   messenger handles it (`MessageControl.edit_draft`), it is never sent.
+ * - `remove_check`: on the app's line about checks from your words, remove those checks (for a
+ *   replacement, turn it down and keep the check in force).
  */
 export type ControlOffer =
   | "stop"
@@ -958,7 +1002,10 @@ export type ControlOffer =
   | "continue_only"
   | "continue_all"
   | "resume"
-  | "leave";
+  | "leave"
+  | "confirm_check"
+  | "edit_check"
+  | "remove_check";
 
 /**
  * Why the daemon started again (ADR 0041): `dev` for a development run (`bun --watch` restarts it
@@ -983,6 +1030,10 @@ export type ControlPlanOffer = { offer: "stop_plan" | "only_plan"; task_id: stri
  *   (「怎么样了」), which offers nothing and names no hold.
  * - `restart`, on the app's line after a restart (ADR 0041): a job the restart cut off. `notes` are
  *   the 「中断」 lines of its turns; 继续 (`resume`) continues each the way its own Continue would.
+ * - `check`, on the app's line (ADR 0040 P3): a check from your words offered to you (`proposed`;
+ *   `replacing` names the check in force it would replace, `times` how many separate lines of
+ *   yours have said it when that is two or more), or checks you confirmed that found the job's
+ *   final deliverable (`bound`). `edit_draft` is what its 改 puts in your composer.
  * `acted` lists the buttons you pressed on it, in order; absent until you press one.
  */
 export type MessageControl =
@@ -1000,7 +1051,17 @@ export type MessageControl =
       acted?: ControlOffer[];
     }
   | { kind: "status"; hold_ids: string[]; offer: ControlOffer[]; scopes: ControlScope[]; acted?: ControlOffer[] }
-  | { kind: "restart"; cause: RestartCause; notes: string[]; offer: ControlOffer[]; acted?: ControlOffer[] };
+  | { kind: "restart"; cause: RestartCause; notes: string[]; offer: ControlOffer[]; acted?: ControlOffer[] }
+  | {
+      kind: "check";
+      event: "proposed" | "bound";
+      check_ids: string[];
+      offer: ControlOffer[];
+      replacing?: string | null;
+      times?: number;
+      edit_draft?: string;
+      acted?: ControlOffer[];
+    };
 
 /**
  * `POST /v1/messages/:id/control`: a button on a line `control` marks. `action` is one the line
@@ -1064,6 +1125,17 @@ export type SessionDetail = Session & {
 export type CreateGroupRequest = {
   name: string;
   members: string[];
+};
+
+/**
+ * `POST /v1/sessions/:id/clear` (and `DELETE /v1/sessions/:id/messages`) and `DELETE /v1/sessions/:id`.
+ * The transcript goes either way; what you said there is kept apart from it unless `erase_quotes`
+ * erases it too (ADR 0040). A daemon older than kept words deletes it with the transcript, and its
+ * remote whitelist refuses the field: the clients send it only when you ticked the box, so an
+ * unticked clear reads the same to every daemon.
+ */
+export type ClearSessionRequest = {
+  erase_quotes?: boolean;
 };
 
 export type PostMessageRequest = {

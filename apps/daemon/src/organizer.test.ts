@@ -188,11 +188,12 @@ test("a user line is filed before its turn opens: the turn works in the ticket d
   expect(h.store.turnWorkDir(turn!.id)).toBe(ticket.dir);
   expect(h.store.listMainMessages(session, 10).find((m) => m.body === "初稿在 draft.md")).toMatchObject({ task_id: plan.id, ticket_id: ticket.id });
 
-  // What the Bot saw: the plan's spec, its own ticket, and the folder it works in.
+  // What the Bot saw: the plan's spec, its own ticket, and the folder it works in. Not the
+  // organizer's Done when or rules: those no longer land (ADR 0040 P3).
   const situation = textOf(h.seen[0]!.find((m) => m.role === "user" && textOf(m).startsWith(SITUATION_HEADING))!);
   expect(situation).toContain("规划「写一份周报」：写一份周报（周报，进行中）");
-  expect(situation).toContain("验收：交到 report.md");
-  expect(situation).toContain("规则：不要口语");
+  expect(situation).not.toContain("验收：");
+  expect(situation).not.toContain("规则：");
   expect(situation).toContain("本轮任务：01 初稿");
   expect(situation).toContain(`本轮任务目录：${ticket.dir}/（规划目录：${plan.dir}/）`);
 
@@ -525,8 +526,10 @@ test("a line in your direct about the job a Bot is doing in a group is filed the
   expect(h.turnOf(aside.id)[0]).toMatchObject({ task_id: plan.id, ticket_id: ticket.id });
   expect(h.store.sessionCurrentTask(group.id)?.id).toBe(plan.id);
   expect(h.store.getTask(plan.id).session_id).toBe(group.id);
+  // Filed without the rules its answer wrote: those are no longer the organizer's (ADR 0040 P3).
   const parsed = JSON.parse(h.store.getTask(plan.id).spec!) as { rules: string[] };
-  expect(parsed.rules).toEqual(["不要口语", "标题别太长"]);
+  expect(parsed.rules).toEqual([]);
+  expect(h.store.listSpecRevisions(plan.id)[0]).toMatchObject({ source_message_id: aside.id });
 
   // The group turn read it on its next hop, from where it was said.
   expect(heard()).toContain("你这一轮干活时有人找你");
@@ -1092,7 +1095,7 @@ test("a resume or join that names the session's own current plan is filed there 
     );
     expect(await h.organizer.organizeMessage(line)).toEqual({ taskId: current.id, ticketId: null });
     expect(h.store.getMessage(line.id).task_id).toBe(current.id);
-    expect(parsePlanSpec(h.store.getTask(current.id).spec)?.rules).toContain(`能坐十个人（${decision}）`);
+    expect(h.store.listSpecRevisions(current.id)[0]).toMatchObject({ source_message_id: line.id });
     // The run says what was named and that it landed as the continue it was read as.
     const run = h.store.organizerRunsForTask(current.id)[0]!;
     expect(run).toMatchObject({ applied: true, decision: "continue", reject_reason: null, applied_task_id: current.id });
@@ -1207,7 +1210,7 @@ test("under holds the organizer is told nothing about stopping, and a hold, not 
   expect(ORGANIZER_SYSTEM).toContain("- 叫停：");
   expect(h.lines).toEqual([]);
   expect(h.store.getTask(plan.id).status).toBe("parked");
-  expect(JSON.parse(h.store.getTask(plan.id).spec!)).toMatchObject({ status: "parked", rules: ["第三镜是夜景"] });
+  expect(JSON.parse(h.store.getTask(plan.id).spec!)).toMatchObject({ status: "parked" });
   expect(h.store.organizerRunsForTask(plan.id)[0]).toMatchObject({ applied: true, reject_reason: null, applied_task_id: plan.id });
 });
 
@@ -1293,12 +1296,13 @@ test("a settle with nothing new from you since the last version files the handov
   const quiet = `[organizer] plan ${plan.id}: nothing new from the user since the last version;`;
   expect(h.lines).toEqual([`${quiet} kept Done when as it was`, `${quiet} kept the rules as they were`, `${quiet} kept ticket 01's spec`]);
 
-  // You speak — a line not filed anywhere yet — and the next settle may write your word into the rules.
+  // You speak — a line not filed anywhere yet — and the next settle knows it; the rules still stay,
+  // since they are no longer the organizer's to write at all (ADR 0040 P3).
   h.store.insertMessage({ sessionId: session, kind: "user", author: "user", body: "标题别太长" });
   answers.push(judged(JSON.stringify({ decision: "continue", plan: { ...planSpecOf(h.store, plan.id), rules: ["不要口语", "标题别太长"] }, tickets: [] })));
   expect(await h.organizer.settlePlan(plan.id)).toBe(true);
   expect((JSON.parse(String(h.requests[1]!.messages[1]!.content)) as OrganizerPayload).since_last_revision.user_spoke).toBe(true);
-  expect(planSpecOf(h.store, plan.id).rules).toEqual(["不要口语", "标题别太长"]);
+  expect(planSpecOf(h.store, plan.id).rules).toEqual(["不要口语"]);
   expect(h.lines).toHaveLength(3);
 });
 

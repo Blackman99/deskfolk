@@ -4,39 +4,118 @@
  * it is the arithmetic and shaping `PlanSpecPanel.svelte`, `AcceptanceCheckRow.svelte` and
  * `AcceptanceCheckForm.svelte` lean on, kept testable on its own the way `plan-board.ts` is.
  */
-import type { AcceptanceCheck, AcceptanceCheckKind, AcceptanceCheckInput, TaskDetail } from "@real-bot/protocol";
+import type { AcceptanceCheck, AcceptanceCheckInput, CheckMeasure, DerivedCheckState, TaskDetail } from "@real-bot/protocol";
 import type { Copy } from "../copy.ts";
 
-/** How a check's pill reads: the outcome of its last finished run, or that it is running or has never run. */
-export type CheckBadge = "pass" | "fail" | "running" | "blocked" | "error" | "none";
+/** The kinds a check can be made or edited as here; a `measure` only comes from your words. */
+export type EditableCheckKind = AcceptanceCheckInput["kind"];
+
+/**
+ * How a check's pill reads: the outcome of its last finished run, or that it is running or has
+ * never run — or, for a check from your words, that it is only offered to you (`proposed`: measured
+ * all the same, its result shown beside it, never a block), or has found no delivered file yet.
+ */
+export type CheckBadge = "pass" | "fail" | "running" | "blocked" | "error" | "none" | "unbound" | "proposed";
+
+/** Read from your words (ADR 0040 P3): it changes when you say a new number, not in the editor. */
+export function isDerived(check: Pick<AcceptanceCheck, "origin">): boolean {
+  return check.origin === "derived";
+}
+
+/** A check from your words with no delivered file bound yet: it never runs and holds nothing back. */
+export function isUnbound(check: Pick<AcceptanceCheck, "origin" | "bind_kind">): boolean {
+  return isDerived(check) && !check.bind_kind;
+}
+
+/**
+ * Where a check from your words stands: offered, or in force because you confirmed it (ADR 0040
+ * P3); null for every other check. A daemon from before offers read as in force.
+ */
+export function derivedStateOf(check: Pick<AcceptanceCheck, "origin" | "derived_state">): DerivedCheckState | null {
+  return isDerived(check) ? (check.derived_state ?? "active") : null;
+}
+
+/** A check that counts: every one you or the organizer made, and one from your words only in force and bound. */
+export function isGate(check: Pick<AcceptanceCheck, "origin" | "bind_kind" | "derived_state">): boolean {
+  return !isDerived(check) || (derivedStateOf(check) === "active" && !isUnbound(check));
+}
 
 /** A check in flight outranks its last verdict; absent a last run, it simply has not run yet. */
 export function badgeOf(check: AcceptanceCheck): CheckBadge {
   if (check.running) return "running";
+  if (derivedStateOf(check) === "proposed") return "proposed";
+  if (isUnbound(check)) return "unbound";
   const outcome = check.last_run?.outcome;
   if (outcome === "pass" || outcome === "fail" || outcome === "blocked" || outcome === "error") return outcome;
   return "none";
 }
 
-/** The checks filed under one acceptance line, in the order they were created. */
+/** The checks filed under one acceptance line, in the order they were created; those from your words are listed apart. */
 export function checksForLine(checks: readonly AcceptanceCheck[], line: string): AcceptanceCheck[] {
-  return checks.filter((check) => check.item === line);
+  return checks.filter((check) => check.item === line && !isDerived(check));
 }
 
-/** Checks whose line no longer matches any of the plan's current acceptance lines — still run, still count. */
+/**
+ * Checks whose line no longer matches any of the plan's current acceptance lines — still run, still
+ * count. Checks from your words are listed on their own (`derivedChecks`), whatever their line.
+ */
 export function orphanChecks(checks: readonly AcceptanceCheck[], acceptanceLines: readonly string[]): AcceptanceCheck[] {
   const lines = new Set(acceptanceLines);
-  return checks.filter((check) => !lines.has(check.item));
+  return checks.filter((check) => !lines.has(check.item) && !isDerived(check));
 }
 
-/** How many of the plan's active checks last passed, out of how many there are. */
+/** The checks the app read from your words, each under the words it took ("时长约 2 分钟"). */
+export function derivedChecks(checks: readonly AcceptanceCheck[]): AcceptanceCheck[] {
+  return checks.filter(isDerived);
+}
+
+/** How many of the plan's checks last passed, out of how many count: an offer or an unbound one does not yet. */
 export function checkSummary(checks: readonly AcceptanceCheck[]): { pass: number; total: number } {
-  return { pass: checks.filter((check) => check.last_run?.outcome === "pass").length, total: checks.length };
+  const counted = checks.filter(isGate);
+  return { pass: counted.filter((check) => check.last_run?.outcome === "pass").length, total: counted.length };
+}
+
+/**
+ * An offer's result, as information: 「未确认的检查：107.00 秒，你说的是时长约 2 分钟（待你确认）」.
+ * Null until it has been measured to a pass or a fail.
+ */
+export function unconfirmedResult(check: Pick<AcceptanceCheck, "item" | "last_run">, t: Copy): string | null {
+  const outcome = check.last_run?.outcome;
+  if (outcome !== "pass" && outcome !== "fail") return null;
+  return t.plan.checks.unconfirmed(check.last_run!.detail.replace(/，要.*$|; needs .*$/, ""), check.item);
+}
+
+function formatNumber(value: number): string {
+  return String(Math.round(value * 100) / 100);
+}
+
+/** What a measure asks, in the reader's words: 「时长 108–132 秒」, "Short side at least 1080 px". */
+export function describeMeasure(measure: CheckMeasure, t: Copy): string {
+  const m = t.plan.checks.measure;
+  if (measure.dimension === "aspect") {
+    if (measure.ratio === "portrait") return m.portrait;
+    if (measure.ratio === "landscape") return m.landscape;
+    return m.aspect(measure.ratio);
+  }
+  const { min, max } = measure;
+  const range =
+    min !== null && max !== null
+      ? min === max
+        ? formatNumber(min)
+        : `${formatNumber(min)}–${formatNumber(max)}`
+      : min !== null
+        ? m.atLeast(formatNumber(min))
+        : m.atMost(formatNumber(max ?? 0));
+  return measure.dimension === "duration" ? m.duration(range) : measure.dimension === "resolution" ? m.resolution(range) : m.fps(range);
 }
 
 /** A plain-language sentence for what a check proves, in the reader's own words. */
-export function describeCheck(check: Pick<AcceptanceCheck, "kind" | "path" | "pattern" | "negate" | "command" | "cwd" | "expect_exit">, t: Copy): string {
+export function describeCheck(
+  check: Pick<AcceptanceCheck, "kind" | "path" | "pattern" | "negate" | "command" | "cwd" | "expect_exit" | "measure">,
+  t: Copy,
+): string {
   const c = t.plan.checks;
+  if (check.kind === "measure") return c.describeMeasure(check.measure ? describeMeasure(check.measure, t) : "", check.path);
   if (check.kind === "exists") return c.describeExists(check.path ?? "");
   if (check.kind === "contains") return c.describeContains(check.path ?? "", check.pattern ?? "", check.negate);
   if (check.kind === "matches") return c.describeMatches(check.path ?? "", check.pattern ?? "", check.negate);
@@ -47,7 +126,7 @@ export function describeCheck(check: Pick<AcceptanceCheck, "kind" | "path" | "pa
 /** The form's editable state: strings throughout, so every input can bind directly without parsing on each keystroke. */
 export type CheckDraft = {
   item: string;
-  kind: AcceptanceCheckKind;
+  kind: EditableCheckKind;
   path: string;
   pattern: string;
   negate: boolean;
@@ -74,11 +153,11 @@ export function emptyDraft(detail: TaskDetail, item: string): CheckDraft {
   };
 }
 
-/** A draft prefilled from an existing check, for the "改" (edit) action. */
+/** A draft prefilled from an existing check, for the "改" (edit) action; never offered on a `measure`. */
 export function draftFromCheck(check: AcceptanceCheck): CheckDraft {
   return {
     item: check.item,
-    kind: check.kind,
+    kind: check.kind === "measure" ? "exists" : check.kind,
     path: check.path ?? "",
     pattern: check.pattern ?? "",
     negate: check.negate,

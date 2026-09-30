@@ -9,6 +9,9 @@
  * a moment, a second call files what was handed over: ticket states, workers, progress. A settle
  * has no line of yours to go on: when you have said nothing since the last version it only files
  * the handover, and the goal, Done when, rules and what each ticket is for stay as they were.
+ * Neither call writes the rules or Done when any more (ADR 0040 P3): whatever the answer says, a
+ * plan keeps its own (`filedSpec` in store/plan-spec.ts), and what you ask is noted by the scribe
+ * (scribe.ts) into the requirements ledger.
  *
  * It fails open. No default model, a refused call, an unreadable answer, a store that refuses the
  * change: the plan stays as it was and turns open where they would have anyway, and the log says
@@ -27,7 +30,7 @@ import type { CompletionsClient, MappedUsage } from "./completions";
 import { HttpError } from "./errors";
 import { atomicWrite } from "./file-integrity";
 import { holdSettle, ORGANIZER_SYSTEM, ORGANIZER_SYSTEM_UNDER_HOLDS, organizerPayload, parseOrganizerResult } from "./prompts/organizer";
-import { parsePlanSpec, PLAN_MAP_FILE, TICKET_FILE, type OrganizerResult, type PlanSpec, type Store, type Task } from "./store";
+import { derivedNotGate, parsePlanSpec, PLAN_MAP_FILE, TICKET_FILE, type OrganizerResult, type PlanSpec, type Store, type Task } from "./store";
 import { ENGINE_LEVELS } from "./store/schema-gate";
 import { classifyPath } from "./workspace-paths";
 
@@ -123,6 +126,11 @@ export type Organizer = {
    */
   settlePlan(taskId: string, opts?: { evidence?: boolean }): Promise<boolean>;
   renderMirrors(taskId: string): void;
+  /**
+   * The plan was set aside (its conversation cleared or deleted, ADR 0040): the settle its last turn
+   * armed is dropped, and a quiet stretch of it already under way calls nobody back when it ends.
+   */
+  forgetPlan(taskId: string): void;
   clearTimers(): void;
 };
 
@@ -193,6 +201,15 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
    * progress (ADR 0040 P1).
    */
   const stopsSeen = new Map<string, number>();
+
+  /** Set aside with its conversation's history (ADR 0040), or gone: either way nothing is filed into it. */
+  function isDormant(taskId: string): boolean {
+    try {
+      return Boolean(store.getTask(taskId).dormant_since);
+    } catch {
+      return true;
+    }
+  }
 
   function traceLines(taskId: string): string[] {
     try {
@@ -495,7 +512,8 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     } catch {
       return false;
     }
-    if (!task.session_id) return false;
+    // Set aside with its conversation's history (ADR 0040): nothing is filed until something of yours wakes it.
+    if (!task.session_id || task.dormant_since) return false;
     if (store.taskLiveTurnCount(taskId) > 0) return false;
     const since = store.lastSpecRevisionAt(taskId);
     // The evidence follow-up settle has nothing new to file since the last revision by design — the
@@ -523,6 +541,13 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
       let held: string[] | null = null;
       let appliedTaskId: string | null = null;
       try {
+        // Its conversation was cleared or deleted while the call was out: the answer is about a plan
+        // that has been set aside since, and filing it would write into it as if nothing happened.
+        if (isDormant(taskId)) {
+          log(`[organizer] plan ${taskId}: set aside while it was being settled; nothing filed`);
+          rejectReason = "the plan was set aside while it was being settled";
+          return false;
+        }
         const lastTurn = store.db
           .query<{ id: string }, [string]>(`SELECT id FROM turns WHERE task_id = ? ORDER BY updated_at DESC, id DESC LIMIT 1`)
           .get(taskId);
@@ -592,6 +617,7 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
    * is `noteTurnEnded`'s own, below.
    */
   async function quietStretch(taskId: string): Promise<void> {
+    if (isDormant(taskId)) return;
     await deps.checks?.beforeSettle(taskId);
     if (stopped || deps.draining()) return;
     await settlePlan(taskId);
@@ -626,6 +652,14 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     const taskId = turn.task_id;
     clearTimeout(settleTimers.get(taskId));
     settleTimers.delete(taskId);
+    stopsSeen.set(taskId, (stopsSeen.get(taskId) ?? 0) + 1);
+  }
+
+  function forgetPlan(taskId: string): void {
+    clearTimeout(settleTimers.get(taskId));
+    settleTimers.delete(taskId);
+    awaitingEvidence.delete(taskId);
+    // A stretch already under way reaches `onQuiet` only while this count is what it saw.
     stopsSeen.set(taskId, (stopsSeen.get(taskId) ?? 0) + 1);
   }
 
@@ -670,7 +704,7 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     settleTimers.clear();
   }
 
-  return { organizeMessage, noteTurnEnded, noteTurnStopped, settlePlan, renderMirrors, clearTimers };
+  return { organizeMessage, noteTurnEnded, noteTurnStopped, settlePlan, renderMirrors, forgetPlan, clearTimers };
 }
 
 const PLAN_STATUS_ZH: Record<PlanSpec["status"], string> = { active: "进行中", done: "已完成", parked: "搁置" };
@@ -689,6 +723,9 @@ function number(seq: number): string {
 
 function checkStatusZh(check: AcceptanceCheck): string {
   if (check.running) return "运行中";
+  // Not confirmed yet: measured for information, holds nothing back.
+  if (check.origin === "derived" && check.derived_state !== "active") return check.last_run ? `未确认，${CHECK_OUTCOME_ZH[check.last_run.outcome ?? "error"]}` : "未确认";
+  if (derivedNotGate(check)) return "未绑定";
   if (!check.last_run) return "未跑";
   return CHECK_OUTCOME_ZH[check.last_run.outcome ?? "error"];
 }

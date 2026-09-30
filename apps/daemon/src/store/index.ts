@@ -31,8 +31,12 @@ import { migrateSchema } from "./migrate";
 import * as notifications from "./notifications";
 import * as organizerRuns from "./organizer-runs";
 import * as providers from "./providers";
+import * as quotes from "./quotes";
+import * as requirements from "./requirements";
 import * as routines from "./routines";
 import * as routing from "./routing";
+import * as scribePatch from "./scribe-patch";
+import * as derivedChecks from "./derived-checks";
 import {
   acceptOlderApp,
   assertSchemaGate,
@@ -89,8 +93,11 @@ export {
   CHECK_KINDS,
   checkDefinitionKey,
   checkNeverRanSinceDefinition,
+  derivedNotGate,
 } from "./acceptance-checks";
 export type { CheckDefinition, OrganizerCheckInput } from "./acceptance-checks";
+export { derivedChanged } from "./derived-checks";
+export type { DerivedChecksChange } from "./derived-checks";
 export { TICKET_STATUSES, TICKETS_MAX, TICKET_SPEC_MAX, TICKET_TITLE_MAX, isTicketStatus } from "./tickets";
 export { ORGANIZER_NEW_TICKETS_MAX, titleKey } from "./plan-spec";
 export type { OrganizerResult, OrganizerTicketInput, SpecRevisionRow } from "./plan-spec";
@@ -106,6 +113,12 @@ export type { TurnRun } from "./turn-runs";
 export { TURN_RUNS_PER_TURN } from "./turn-runs";
 export type { LiveProc } from "./live-procs";
 export type { WorkEvent } from "./work-events";
+export { QUOTE_MAX } from "./quotes";
+export type { QuoteVia, UserQuote } from "./quotes";
+export { REQUIREMENT_PURGE_ABORT, REQUIREMENT_QUOTE_MAX, REQUIREMENT_SUPERSEDE_ABORT } from "./requirements";
+export type { Requirement, RequirementScope, RequirementSourceKind, RequirementStatus } from "./requirements";
+export { CAPTURE_WRITER, SCRIBE_QUOTE_MIN, SCRIBE_WRITER } from "./scribe-patch";
+export type { ScribeOutcome, ScribePatch } from "./scribe-patch";
 
 type Bound<F> = F extends (ctx: StoreContext, ...args: infer A) => infer R ? (...args: A) => R : never;
 
@@ -428,6 +441,8 @@ export class Store {
   readonly rebindCheckItems = this.bind(acceptanceChecks.rebindCheckItems);
   readonly commandSeenInPlan = this.bind(acceptanceChecks.commandSeenInPlan);
   readonly pathSeenInPlan = this.bind(acceptanceChecks.pathSeenInPlan);
+  readonly syncDerivedChecks = this.bind(derivedChecks.syncDerivedChecks);
+  readonly confirmDerivedCheck = this.bind(derivedChecks.confirmDerivedCheck);
 
   // Check-backs ----------------------------------------------------------------------------
   readonly scheduleCheckBack = this.bind(checkBacks.scheduleCheckBack);
@@ -462,6 +477,21 @@ export class Store {
   // Work log -------------------------------------------------------------------------------
   readonly recordWorkEvent = this.bind(workEvents.recordWorkEvent);
   readonly listWorkEvents = this.bind(workEvents.listWorkEvents);
+
+  // Your words and the requirements ledger (ADR 0040) ---------------------------------------
+  readonly listQuotes = this.bind(quotes.listQuotes);
+  readonly getQuote = this.bind(quotes.getQuote);
+  readonly quoteOfMessage = this.bind(quotes.quoteOfMessage);
+  readonly addRequirement = this.bind(requirements.addRequirement);
+  readonly raiseRequirement = this.bind(requirements.raiseRequirement);
+  readonly getRequirement = this.bind(requirements.getRequirement);
+  readonly listRequirements = this.bind(requirements.listRequirements);
+  readonly requirementMentions = this.bind(requirements.requirementMentions);
+  readonly purgeRequirements = this.bind(requirements.purgeRequirements);
+  readonly openRequirementsFor = this.bind(requirements.openRequirementsFor);
+  readonly applyScribePatch = this.bind(scribePatch.applyScribePatch);
+  readonly captureComplaint = this.bind(scribePatch.captureComplaint);
+  readonly plansHandedOver = this.bind(scribePatch.plansHandedOver);
 
   // Sessions -------------------------------------------------------------------------------
   readonly ensureFileDropSession = this.bind(sessions.ensureFileDropSession);

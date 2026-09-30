@@ -160,10 +160,30 @@ test("a phone can press a button on a line about your stops, one it names, nothi
   // A restart notice's 继续 and 不续 (ADR 0041).
   expect(() => ok({ method: "POST", path: `/v1/messages/${id}/control`, body: { action: "resume" } })).not.toThrow();
   expect(() => ok({ method: "POST", path: `/v1/messages/${id}/control`, body: { action: "leave" } })).not.toThrow();
+  // The app's line about checks from your words (ADR 0040 P3).
+  expect(() => ok({ method: "POST", path: `/v1/messages/${id}/control`, body: { action: "remove_check" } })).not.toThrow();
+  expect(() => ok({ method: "POST", path: `/v1/messages/${id}/control`, body: { action: "confirm_check" } })).not.toThrow();
+  // 改 is the messenger's own: it fills your composer and is never sent.
+  expect(() => ok({ method: "POST", path: `/v1/messages/${id}/control`, body: { action: "edit_check" } })).toThrow();
+  expect(() => ok({ method: "POST", path: `/v1/checks/${id}/confirm`, body: {} })).not.toThrow();
+  expect(() => ok({ method: "POST", path: `/v1/checks/${id}/confirm`, body: { measure: { dimension: "duration", min: 1, max: 2 } } })).toThrow();
   expect(() => ok({ method: "POST", path: `/v1/messages/${id}/control`, body: {} })).toThrow();
   expect(() => ok({ method: "POST", path: `/v1/messages/${id}/control`, body: { action: "lift_everything" } })).toThrow();
   expect(() => ok({ method: "POST", path: `/v1/messages/${id}/control`, body: { action: "stop_plan", task_id: "EP01" } })).toThrow();
   expect(() => ok({ method: "POST", path: `/v1/messages/${id}/control`, body: { action: "stop", source: "user_text" } })).toThrow();
+});
+
+test("a phone clearing or deleting a conversation may erase what you said there too, and say nothing else", () => {
+  const ok = (request: Omit<RemoteRequest, "v" | "id">) => validateBusiness({ v: 1, id, ...request });
+  for (const [method, path] of [["POST", `/v1/sessions/${id}/clear`], ["DELETE", `/v1/sessions/${id}`], ["DELETE", `/v1/sessions/${id}/messages`]] as const) {
+    expect(() => ok({ method, path, body: { if_revision: "r" } })).not.toThrow();
+    expect(() => ok({ method, path, body: { if_revision: "r", erase_quotes: true } })).not.toThrow();
+    expect(() => ok({ method, path, body: { erase_quotes: "yes" } })).toThrow();
+    expect(() => ok({ method, path, body: { erase_messages: true } })).toThrow();
+  }
+  // Only conversations: a Bot or an endpoint takes no such field.
+  expect(() => ok({ method: "DELETE", path: `/v1/bots/${id}`, body: { if_revision: "r", erase_quotes: true } })).toThrow();
+  expect(() => ok({ method: "POST", path: `/v1/sessions/${id}/archive`, body: { if_revision: "r", erase_quotes: true } })).toThrow();
 });
 
 test("the organizer's own debug trail is never on the remote whitelist, task_id or not", () => {
