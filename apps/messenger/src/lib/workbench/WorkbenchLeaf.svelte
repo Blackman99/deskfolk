@@ -534,11 +534,6 @@
 		 * enough to not be worth a menu landing in the wrong place.
 		 */
 	}
-	/* Along the top, not the bottom: the bottom is where the tab joins the content, and a line
-	   there would cut the join the flares exist to make. */
-	.wb-leaf.is-focused .wb-tab.is-active {
-		box-shadow: inset 0 2px 0 0 var(--accent);
-	}
 	/*
 	 * Drawn as a layer over the content, not as the pane's own outline or border: the strip and
 	 * the chat header both paint a background right up to the pane's edge, and an outline on the
