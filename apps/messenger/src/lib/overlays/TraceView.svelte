@@ -999,6 +999,9 @@
 	 * The title row — and on a narrow host the tabs under it — above the picture, and nothing else:
 	 * the spec lives beside the board or in a tab now, not in a block that pushed the board down.
 	 * The block clips nothing, so the plan picker drops out over the board instead of being cut off.
+	 * It is the pane's colour, as a conversation's header is: in a workbench pane the active tab
+	 * joins whatever is right under it, and a darker title row left that tab a lighter chip
+	 * floating over it. The line below still sets the title apart from the board.
 	 */
 	.trace-top {
 		position: relative;
@@ -1007,7 +1010,7 @@
 		display: flex;
 		flex-direction: column;
 		border-bottom: 1px solid var(--line);
-		background: var(--sidebar-bg);
+		background: var(--pane);
 	}
 
 	.trace-header-end {

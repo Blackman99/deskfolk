@@ -549,9 +549,10 @@
 		pointer-events: none;
 	}
 	/*
-	 * The strip reads the way a browser's does: it sits a shade below the content, and the active
-	 * tab is the same colour as the content with its bottom corners flaring outward, so the two
-	 * are one surface. The tabs that are not active stay on the strip, recessed.
+	 * The strip reads the way a browser's does: it sits a step below the content (`--tab-strip`,
+	 * deeper than the ground), and the active tab is the same colour as the content with its bottom
+	 * corners flaring outward, so the two are one surface. The tabs that are not active stay on the
+	 * strip, recessed, their labels a notch dimmer.
 	 */
 	/*
 	 * The strip is the pane's full width with no padding of its own — the 4px sides are the end
@@ -565,7 +566,7 @@
 		gap: 0;
 		height: 32px;
 		padding: 0;
-		background: var(--bg);
+		background: var(--tab-strip);
 		flex: 0 0 auto;
 		position: relative;
 		z-index: 1;
@@ -607,7 +608,7 @@
 	 */
 	.wb-tab {
 		/* What the tab is painted, for a label that rings its picture in the same colour. */
-		--wb-tab-surface: var(--bg);
+		--wb-tab-surface: var(--tab-strip);
 		position: relative;
 		display: flex;
 		align-items: center;
@@ -625,7 +626,7 @@
 		top: 8px;
 		bottom: 8px;
 		width: 1px;
-		background: var(--line);
+		background: var(--tab-divider);
 	}
 	.wb-tab:last-child::after,
 	.wb-tab:hover::after,
@@ -693,7 +694,7 @@
 		padding: 0 4px 0 0;
 		height: 100%;
 		font-size: 12px;
-		color: var(--muted);
+		color: var(--tab-idle-ink);
 		background: none;
 		cursor: default;
 	}

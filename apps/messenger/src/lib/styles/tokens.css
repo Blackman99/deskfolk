@@ -15,6 +15,14 @@
   --line: #e0e6e8;
   --line-subtle: #eff3f4;
   --line-hover: #c9d3d6;
+  /*
+   * A pane's tab strip sits a full step below the content, deeper than `--bg`, so the active tab
+   * (`--pane`) stands clear of the tabs that are not; one step was too close to tell apart. The
+   * idle label keeps 4.5:1 on it, and the divider is dark enough to show on it.
+   */
+  --tab-strip: #e1e6e8;
+  --tab-idle-ink: #5a676e;
+  --tab-divider: #c9d3d6;
 
   /* Accent & Interactive */
   --accent: #146a7c;
@@ -202,6 +210,11 @@ body.dark,
   --line: #2e393e;
   --line-subtle: #1f282c;
   --line-hover: #3d4a50;
+  /* Near black, and the idle label a notch under `--muted`: the pane is only a little lighter
+     than the ground here, so the strip has to go down to leave the active tab a gap. */
+  --tab-strip: #090c0e;
+  --tab-idle-ink: #7a878d;
+  --tab-divider: #2e393e;
 
   /* Accent & Interactive */
   --accent: #45b0c3;
