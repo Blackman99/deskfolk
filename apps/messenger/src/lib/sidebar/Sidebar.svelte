@@ -137,7 +137,10 @@
 	let viewingArchived = $state(false);
 
 	let phone = $state(false);
-	/** The footer row. Its labels hide once the three of them no longer fit beside each other. */
+	/**
+	 * The footer row. Its labels hide once the three of them no longer fit beside each other; a
+	 * list under 240px drops them in CSS even when they would fit.
+	 */
 	let footEl = $state<HTMLElement | null>(null);
 	let footCompact = $state(false);
 	$effect(() => {
@@ -147,10 +150,19 @@
 		// state here would rerun this effect the moment the words hide, and forget the width.
 		let labelWidth = 0;
 		let compact = false;
+		// The buttons, the gaps between them and the padding at both ends. Not scrollWidth: that only
+		// grows once a button crosses the edge, so words that have eaten the end padding still "fit".
+		const rowWidth = () => {
+			const style = getComputedStyle(foot);
+			const buttons = [...foot.children];
+			const gaps = (parseFloat(style.columnGap) || 0) * Math.max(0, buttons.length - 1);
+			const padding = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0);
+			return buttons.reduce((sum, button) => sum + button.getBoundingClientRect().width, gaps + padding);
+		};
 		const measure = () => {
 			const room = foot.clientWidth;
 			if (!compact) {
-				labelWidth = foot.scrollWidth;
+				labelWidth = rowWidth();
 				compact = labelWidth > room + 1;
 			} else if (labelWidth > 0 && labelWidth <= room + 1) {
 				compact = false;
@@ -1663,7 +1675,12 @@
 		opacity: 0.65;
 	}
 
-	@container sidebar-footer (max-width: 270px) {
+	/*
+	 * A list under 300px tightens the row. Up to there the roomy one has to fit: written out in
+	 * English it is 295px wide, and switching any earlier left a band where it overflowed into
+	 * icons while a narrower list still showed the words.
+	 */
+	@container sidebar-footer (max-width: 283px) {
 		.foot-action {
 			padding-inline: 4px;
 			gap: 4px;
@@ -1674,8 +1691,23 @@
 		}
 	}
 
-	/* Three labels no longer fit, so the words go and the icons stay. */
-	.foot.is-compact .foot-label {
+	/*
+	 * Icons only. Under 240px the words would stand shoulder to shoulder even where they still fit
+	 * (Chinese fits down to the 200px minimum), and at any width once the three no longer fit.
+	 */
+	@container sidebar-footer (max-width: 223px) {
+		.foot-label,
+		.tools-chevron {
+			display: none;
+		}
+
+		.foot-action {
+			padding-inline: 8px;
+		}
+	}
+
+	.foot.is-compact .foot-label,
+	.foot.is-compact .tools-chevron {
 		display: none;
 	}
 

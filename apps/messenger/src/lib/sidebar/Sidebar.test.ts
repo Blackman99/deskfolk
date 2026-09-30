@@ -316,9 +316,7 @@ test("a narrow desktop footer keeps the icons and drops the words", () => {
   let width = 180;
   const widthOf = (el: HTMLElement) => (el.classList.contains("foot") ? width : 0);
   const realClient = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
-  const realScroll = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollWidth");
   Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get() { return widthOf(this as HTMLElement) || realClient?.get?.call(this) || 0; } });
-  Object.defineProperty(HTMLElement.prototype, "scrollWidth", { configurable: true, get() { return (this as HTMLElement).classList.contains("foot") ? ((this as HTMLElement).classList.contains("is-compact") ? 120 : 240) : realScroll?.get?.call(this) || 0; } });
   globalThis.ResizeObserver = class {
     constructor(private callback: ResizeObserverCallback) {}
     observe(el: Element) { observers.push({ el: el as HTMLElement, callback: this.callback }); }
@@ -327,10 +325,20 @@ test("a narrow desktop footer keeps the icons and drops the words", () => {
   } as unknown as typeof ResizeObserver;
   const { host, close } = open([], null, true);
   const foot = host.querySelector<HTMLElement>(".foot")!;
+  // Written out, the row is 3 × 80 + 2 × 4 gaps + 2 × 8 padding = 264px.
+  foot.style.padding = "6px 8px";
+  foot.style.columnGap = "4px";
   const labels = () => [...foot.querySelectorAll<HTMLElement>(".foot-label")];
   const buttons = () => [...foot.querySelectorAll<HTMLButtonElement>(".foot-action")];
+  // A button is 80px wide with its word and 34px without.
+  for (const button of buttons()) {
+    button.getBoundingClientRect = () => {
+      const width = foot.classList.contains("is-compact") ? 34 : 80;
+      return { x: 0, y: 0, top: 0, left: 0, right: width, bottom: 36, width, height: 36, toJSON() {} } as DOMRect;
+    };
+  }
   try {
-    const measure = () => observers.at(-1)?.callback([] as unknown as ResizeObserverEntry[], {} as ResizeObserver);
+    const measure = () => observers.find((observer) => observer.el === foot)?.callback([] as unknown as ResizeObserverEntry[], {} as ResizeObserver);
     measure();
     flushSync();
     expect(foot.classList.contains("is-compact")).toBe(true);
@@ -346,14 +354,26 @@ test("a narrow desktop footer keeps the icons and drops the words", () => {
     measure();
     flushSync();
     expect(foot.classList.contains("is-compact")).toBe(true);
+    width = 300;
+    measure();
+    flushSync();
+    expect(foot.classList.contains("is-compact")).toBe(false);
+    width = 180;
+    measure();
+    flushSync();
+    expect(foot.classList.contains("is-compact")).toBe(true);
+    // The buttons would clear the edge here, but only by eating the padding at the end.
     width = 260;
+    measure();
+    flushSync();
+    expect(foot.classList.contains("is-compact")).toBe(true);
+    width = 264;
     measure();
     flushSync();
     expect(foot.classList.contains("is-compact")).toBe(false);
     expect(labels()).toHaveLength(3);
   } finally {
     if (realClient) Object.defineProperty(HTMLElement.prototype, "clientWidth", realClient);
-    if (realScroll) Object.defineProperty(HTMLElement.prototype, "scrollWidth", realScroll);
     globalThis.ResizeObserver = OriginalObserver;
     close();
   }
