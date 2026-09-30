@@ -14,7 +14,7 @@
  * so asking where a job you had stopped stood set it going again (ADR 0040 P1): a question only
  * asks.
  */
-import { USER_MEMBER, type Message } from "@real-bot/protocol";
+import { USER_MEMBER, type Message, type MessageControl } from "@real-bot/protocol";
 import { sessionLabel } from "../context";
 import {
   statusQuestionBody,
@@ -55,6 +55,8 @@ const WAITING_LINES_MAX = 4;
 const CHECK_BACK_LINES_MAX = 3;
 /** Code points of an approval summary, a question or a check-back note the status line quotes. */
 const WAITING_TEXT_MAX = 80;
+/** The mark on the status line: the app's status answer, with no buttons. */
+const STATUS_ANSWER: MessageControl = { kind: "status", hold_ids: [], offer: [], scopes: [] };
 
 export function createStatusQuestion(deps: StatusQuestionDeps): StatusQuestionEngine {
   const { store, publishMessage, admission, heldLines } = deps;
@@ -233,6 +235,9 @@ export function createStatusQuestion(deps: StatusQuestionDeps): StatusQuestionEn
         author,
         body,
         hiddenFromBots: true,
+        // The app answering you, like its answer to 「停了吗」, so it shows as the app's line and
+        // not as the Bot it is filed under talking (ADR 0041). Nothing on it to press.
+        control: STATUS_ANSWER,
       });
       store.db.run(`UPDATE messages SET task_id = ? WHERE id = ?`, [taskId, inserted.id]);
       return inserted;

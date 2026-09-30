@@ -381,9 +381,9 @@ export function groupTranscript(
 
 /**
  * A line the app wrote itself (ADR 0040 P2, ADR 0041): the receipt for a stop or a go on of yours,
- * its answer about your stops, a restart notice. The daemon files it under the Bot whose work it is
- * about, but it is not that Bot speaking, so it shows as the app's. Your own line the app marked as
- * maybe meaning a stop (`possible_control`) stays yours.
+ * its answer about your stops or about where a job stands (进度询问), a restart notice. The daemon
+ * files it under the Bot whose work it is about, but it is not that Bot speaking, so it shows as the
+ * app's. Your own line the app marked as maybe meaning a stop (`possible_control`) stays yours.
  */
 export function isAppLine(message: Pick<Message, "kind" | "control">): boolean {
   return message.kind === "system" && Boolean(message.control) && message.control?.kind !== "possible_control";

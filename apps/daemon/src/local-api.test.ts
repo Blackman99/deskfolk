@@ -4,29 +4,37 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FILE_DROP_SESSION_ID, LOCAL_API_NAME } from "@real-bot/protocol";
 import { ulid } from "./ids";
-import { createLocalApi } from "./local-api";
+import { createLocalApi, type LocalApi } from "./local-api";
 import { memoryKeyStore } from "./secrets";
 import { noisePng } from "./test-images";
 import { warmDisplayAvatar } from "./avatar-display";
 import { Store } from "./store";
-import { SCHEMA_LEVEL } from "./store/schema-gate";
+import { ENGINE_LEVEL, SCHEMA_LEVEL, type SharedInstall } from "./store/schema-gate";
 import type { TrashMover } from "./workspace-trash";
 
 type Harness = {
   origin: string;
   token: string;
   store: Store;
+  api: LocalApi;
   close: () => Promise<void>;
 };
 
 const harnesses: Harness[] = [];
 
 async function start(
-  opts: { token?: string; key?: string | null; onQuit?: () => void; trash?: TrashMover } = {},
+  opts: {
+    token?: string;
+    key?: string | null;
+    onQuit?: () => void;
+    trash?: TrashMover;
+    installedApp?: () => SharedInstall | null;
+    log?: (line: string) => void;
+  } = {},
 ): Promise<Harness> {
   const token = opts.token ?? "test-token";
   const store = new Store({ endpointKey: memoryKeyStore(opts.key ?? null) });
-  const api = createLocalApi({ store, token, onQuit: opts.onQuit, schedule: false, trash: opts.trash });
+  const api = createLocalApi({ store, token, onQuit: opts.onQuit, schedule: false, trash: opts.trash, installedApp: opts.installedApp, log: opts.log });
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
@@ -37,6 +45,7 @@ async function start(
     origin: `http://${server.hostname}:${server.port}`,
     token,
     store,
+    api,
     close: async () => {
       api.scheduler?.stop();
       await api.engine.close();
@@ -319,6 +328,77 @@ describe("empty roster and settings", () => {
     const res = await fetch(`${h.origin}/v1/capabilities`, { headers: auth(h) });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: 0, features: [] });
+  });
+
+  test("POST capabilities/raise needs accept_older_app: true, then takes the level past the older installed app at once", async () => {
+    const logged: string[] = [];
+    const installed = { version: "0.1.0-rc.11" };
+    const h = await start({ installedApp: () => installed, log: (line) => logged.push(line) });
+    // Boot found the installed app from before the gate and kept the level where it was.
+    expect(h.store.catchUpEngineLevel(installed)[0]).toContain("engine level stays at 0");
+    // A plan stopped the old way, which holds take over once they are on.
+    const bot = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const stopped = h.store.openTask({ sessionId: bot.direct_session.id, title: "写周报", spec: { kind: "文案", goal: "写周报", acceptance: [], rules: [], process: [], progress: { done: [], open: [], blocked: [] }, status: "parked" } });
+    const raise = (body: unknown) =>
+      fetch(`${h.origin}/v1/capabilities/raise`, { method: "POST", headers: auth(h, { "Content-Type": "application/json" }), body: body === undefined ? undefined : JSON.stringify(body) });
+
+    for (const body of [undefined, {}, { accept_older_app: false }, { accept_older_app: "true" }, { accept_older_app: true, by: "phone" }]) {
+      const refused = await raise(body);
+      expect(refused.status).toBe(400);
+      expect(((await refused.json()) as { error: { code: string } }).error.code).toBe("invalid_args");
+    }
+    expect(h.store.capabilities().engine_level).toBe(0);
+    expect(h.store.engineGateOptIn()).toBeNull();
+    expect(logged).toEqual([]);
+
+    const frames: string[] = [];
+    h.api.subscribeSync((frame) => frames.push(frame.type));
+    const accepted = await raise({ accept_older_app: true });
+    expect(accepted.status).toBe(200);
+    expect(await accepted.json()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds"] });
+    expect(h.store.engineGateOptIn()?.by).toBe("api");
+    // Open windows take a fresh snapshot, which now carries the holds that show the stop menus.
+    expect(frames).toContain("resnapshot");
+    const snapshot = (await (await fetch(`${h.origin}/v1/snapshot`, { headers: auth(h) })).json()) as { holds?: unknown[] };
+    expect(snapshot.holds).toHaveLength(1);
+    // Now, not at the next start: holds are on, and the plan stopped the old way is one.
+    expect(h.store.listHolds({ inForce: true }).map((hold) => [hold.scope_id, hold.source])).toEqual([[stopped.id, "legacy"]]);
+    expect(logged[0]).toContain("past the installed app (0.1.0-rc.11)");
+    expect(logged[0]).toContain("(api, ");
+    expect(logged[1]).toContain(`took over 1 parked plan(s) as holds: ${stopped.id}`);
+  });
+
+  test("DELETE capabilities/raise takes the opt-in back and leaves the level where it is", async () => {
+    const h = await start({ installedApp: () => ({ version: "0.1.0-rc.11" }) });
+    const post = await fetch(`${h.origin}/v1/capabilities/raise`, { method: "POST", headers: auth(h), body: JSON.stringify({ accept_older_app: true, by: "script" }) });
+    expect(((await post.json()) as { engine_level: number }).engine_level).toBe(ENGINE_LEVEL);
+    expect(h.store.engineGateOptIn()?.by).toBe("script");
+    const frames: string[] = [];
+    h.api.subscribeSync((frame) => frames.push(frame.type));
+    const withdrawn = await fetch(`${h.origin}/v1/capabilities/raise`, { method: "DELETE", headers: auth(h) });
+    expect(withdrawn.status).toBe(200);
+    expect(await withdrawn.json()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds"] });
+    expect(h.store.engineGateOptIn()).toBeNull();
+    expect(h.store.catchUpEngineLevel({ version: "0.1.0-rc.11" })).toEqual([]);
+    expect(h.store.capabilities().engine_level).toBe(ENGINE_LEVEL);
+    // Nothing a window shows changed.
+    expect(frames).not.toContain("resnapshot");
+  });
+
+  test("capabilities/raise is local only: the token guards it, and the dispatch a phone reaches never serves it", async () => {
+    const h = await start({ installedApp: () => ({ version: "0.1.0-rc.11" }) });
+    const body = JSON.stringify({ accept_older_app: true });
+    expect((await fetch(`${h.origin}/v1/capabilities/raise`, { method: "POST", body })).status).toBe(401);
+    for (const method of ["POST", "DELETE"]) {
+      const remote = await h.api.dispatchBusiness(
+        new Request("http://remote.invalid/v1/capabilities/raise", { method, body: method === "POST" ? body : undefined }),
+        { deviceId: "paired-device", requestId: ulid() },
+      ).catch((error: unknown) => error);
+      expect(remote).toBeInstanceOf(Error);
+      expect((remote as { status?: number }).status).toBe(404);
+    }
+    expect(h.store.engineGateOptIn()).toBeNull();
+    expect(h.store.capabilities().engine_level).toBe(0);
   });
 
   test("GET debug organizer-runs reads a plan's runs, newest first, and requires a task_id", async () => {

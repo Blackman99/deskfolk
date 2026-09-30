@@ -4,6 +4,7 @@ import {
   LOCAL_API_NAME,
   REACTION_EMOJI,
   USER_MEMBER,
+  type CapabilitiesResponse,
   type ClientEvent,
   type CreateProviderRequest,
   type HealthResponse,
@@ -55,6 +56,7 @@ import { createTurnEngine, type TurnEngine } from "./turn-engine";
 import { probeEndpointModels } from "./probe-models";
 import type { FileCommit } from "./store/files";
 import type { RouteLearningRow, RouteReviewRow } from "./store/routing";
+import { ENGINE_LEVEL, type SharedInstall } from "./store/schema-gate";
 import { ulid } from "./ids";
 import { requestDigest, normalizeFiles, validateRequestPath, type NormalizedFile, type CanonicalEncoder } from "./request-digest";
 import { type RequestScope, type KeyOperation } from "./store/receipts";
@@ -118,6 +120,14 @@ export type LocalApiOptions = {
    * the daemon was down can wake a Bot.
    */
   beforeScheduler?: (engine: TurnEngine) => void;
+  /**
+   * The installed app that shares this database, as boot reads it for the engine level
+   * (`raiseEngineLevel`); null or absent when none does. `POST /v1/capabilities/raise` names it in
+   * the log line when a developer's opt-in lets the level past it.
+   */
+  installedApp?: () => SharedInstall | null;
+  /** Where that route writes what it did: daemon.log, as boot does. */
+  log?: (line: string) => void;
 };
 
 export type LocalApi = {
@@ -341,8 +351,14 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
     validateRequestPath(url.pathname + url.search);
     // /v1/debug is never on the remote whitelist either (remote/routes.ts); excluded here too, the
     // same way /v1/runtime is, so a call that somehow reached dispatchBusiness still 404s instead
-    // of reading it.
-    if (!url.pathname.startsWith("/v1/") || url.pathname.startsWith("/v1/runtime") || url.pathname.startsWith("/v1/debug")) {
+    // of reading it. So is a developer's raise of the engine level past an older installed app
+    // (ADR 0041): that is for whoever sits at this Mac, never for a phone.
+    if (
+      !url.pathname.startsWith("/v1/") ||
+      url.pathname.startsWith("/v1/runtime") ||
+      url.pathname.startsWith("/v1/debug") ||
+      url.pathname.startsWith("/v1/capabilities/")
+    ) {
       throw new HttpError(404, "not_found", "not a business endpoint");
     }
     if (!["POST", "PATCH", "PUT", "DELETE"].includes(request.method)) {
@@ -654,6 +670,38 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
     return dispatch(request, url, options, publish, engine, mcp, { body: request.method === "POST" ? await readJson(request) as Record<string, unknown> : {}, files: [], multipart: false }, scope, notificationScheduler, presence);
   }
 
+  /**
+   * `POST /v1/capabilities/raise { accept_older_app: true }` records the opt-in (`by` says whether
+   * `scripts/engine-level.ts` sent it) and takes the level up now; `DELETE` takes the opt-in back,
+   * which never lowers the level. Either answers with the capabilities as they now stand.
+   */
+  async function engineLevelRoute(request: Request): Promise<CapabilitiesResponse> {
+    const { store } = options;
+    if (request.method === "DELETE") {
+      store.withdrawOlderAppOptIn();
+      options.log?.(`took back the developer's opt-in past an older installed app; engine level stays at ${store.capabilities().engine_level}`);
+      return store.capabilities();
+    }
+    const body = (await readJson(request)) as Record<string, unknown> | null;
+    if (!body || typeof body !== "object" || body.accept_older_app !== true) {
+      throw new HttpError(400, "invalid_args", "accept_older_app: true is required: the installed app, opened without this daemon running, would not honor holds");
+    }
+    if (body.by !== undefined && body.by !== "api" && body.by !== "script") throw new HttpError(400, "invalid_args", "by must be api or script");
+    store.acceptOlderApp(body.by === "script" ? "script" : "api");
+    const before = store.capabilities().engine_level;
+    // Already at the top: only the opt-in is recorded. Catching up again would take over plans the
+    // organizer parked since boot as holds mid-run, which is the next boot's job.
+    if (before >= ENGINE_LEVEL) return store.capabilities();
+    for (const line of store.catchUpEngineLevel(options.installedApp?.() ?? null)) options.log?.(line);
+    if (store.capabilities().engine_level > before) {
+      // Plans taken over as holds end whatever still runs in them, as any new hold does.
+      engine.enforceHolds();
+      // The snapshot now carries `holds`, which is what shows the stop menus; no event says so.
+      events.resnapshot();
+    }
+    return store.capabilities();
+  }
+
   async function handle(request: Request, server: Bun.Server<SocketData>): Promise<Response | undefined> {
     const origin = request.headers.get("Origin");
     const originState = originDecision(origin);
@@ -740,6 +788,12 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
         await options.lifecycle?.writeStopLatch();
         options.onRuntimeStop?.();
         return emptyResponse(204, origin);
+      }
+      // Local only, like the routes above, and never through the business dispatch a phone reaches
+      // (ADR 0041): a developer's word that this data folder may go up past an older installed app,
+      // carried out now, the way boot would carry it out, instead of at the next start.
+      if (path === "/v1/capabilities/raise" && (request.method === "POST" || request.method === "DELETE")) {
+        return jsonResponse(await engineLevelRoute(request), 200, origin);
       }
       // Quit stops the processes. The rows stay, so the next start puts each shell back where it was.
       if (request.method === "POST" && path === "/v1/runtime/quit") terminals.shutdown();

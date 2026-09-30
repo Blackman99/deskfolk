@@ -33,7 +33,20 @@ import * as organizerRuns from "./organizer-runs";
 import * as providers from "./providers";
 import * as routines from "./routines";
 import * as routing from "./routing";
-import { assertSchemaGate, ENGINE_LEVELS, markCleanShutdown, raiseEngineLevel, readAndResetShutdownFlag, readEngineLevel, SCHEMA_LEVEL, type SharedInstall } from "./schema-gate";
+import {
+  acceptOlderApp,
+  assertSchemaGate,
+  capabilitiesOf,
+  ENGINE_LEVELS,
+  markCleanShutdown,
+  raiseEngineLevel,
+  readAndResetShutdownFlag,
+  readEngineGateOptIn,
+  readEngineLevel,
+  withdrawOlderAppOptIn,
+  type EngineGateOptIn,
+  type SharedInstall,
+} from "./schema-gate";
 import * as search from "./search";
 import * as sessions from "./sessions";
 import * as settings from "./settings";
@@ -199,20 +212,32 @@ export class Store {
   readonly patchSettingsSync = this.bind(settings.patchSettingsSync);
   /** `GET /v1/capabilities`: what this build's engine understands, so a phone page (or a messenger
    * built from a newer source tree) can show only what the daemon it is actually talking to supports. */
-  readonly capabilities = (): CapabilitiesResponse => {
-    const level = readEngineLevel(this.db);
-    return {
-      schema_level: SCHEMA_LEVEL,
-      engine_level: level,
-      features: (Object.keys(ENGINE_LEVELS) as Array<keyof typeof ENGINE_LEVELS>).filter((feature) => level >= ENGINE_LEVELS[feature]),
-    };
-  };
+  readonly capabilities = (): CapabilitiesResponse => capabilitiesOf(this.db);
   /**
    * At boot: takes the database up to this build's engine level unless an installed app that
    * shares it would misread that (`installed`: what is known of it, null when none shares it; see
    * `raiseEngineLevel`).
    */
   readonly raiseEngineLevel = (installed: SharedInstall | null) => raiseEngineLevel(this.db, installed);
+  /**
+   * The engine level as far up as `installed` lets it go (`raiseEngineLevel`), then the plans
+   * parked before holds existed taken over as holds and whatever a hold covers held again
+   * (`reconcileHolds`): at boot, and when a developer accepts an older installed app while the
+   * daemon runs (`POST /v1/capabilities/raise`). Returns what daemon.log should say about it.
+   */
+  readonly catchUpEngineLevel = (installed: SharedInstall | null): string[] => {
+    const raise = this.raiseEngineLevel(installed);
+    const lines = [raise.refused, raise.accepted].filter((line): line is string => line !== null);
+    const held = this.reconcileHolds();
+    if (held.imported.length > 0) lines.push(`took over ${held.imported.length} parked plan(s) as holds: ${held.imported.join(", ")}`);
+    if (held.reparked.length > 0) lines.push(`parked again under their holds: ${held.reparked.join(", ")}`);
+    return lines;
+  };
+  /** The developer's opt-in past an older installed app (ADR 0041; see `acceptOlderApp`). */
+  readonly acceptOlderApp = (by: EngineGateOptIn["by"]): EngineGateOptIn => acceptOlderApp(this.db, by);
+  /** Takes it back; the engine level stays where it is. */
+  readonly withdrawOlderAppOptIn = (): void => withdrawOlderAppOptIn(this.db);
+  readonly engineGateOptIn = (): EngineGateOptIn | null => readEngineGateOptIn(this.db);
   /** Called once, on the way out of a deliberate stop — never on a crash (see `schema-gate.ts`). */
   readonly recordCleanShutdown = (): void => markCleanShutdown(this.db);
   readonly createProviderSync = this.bind(providers.createProviderSync);

@@ -259,15 +259,12 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
       logStartup(options.dataDir, line);
     };
     // ADR 0040's engine level goes up only once no installed app that shares this data folder
-    // would misread what the next level writes; until then the daemon runs the level it is at.
-    const engine = store.raiseEngineLevel(
-      sharedInstalledVersion({ dataDir: options.dataDir, defaultDataDir: defaultDataDir(), compiled: isCompiledBinary(import.meta.path) }),
-    );
-    if (engine.refused) bootLog(engine.refused);
-    // Plans parked before holds existed become holds, and whatever a hold covers is held again.
-    const held = store.reconcileHolds();
-    if (held.imported.length > 0) bootLog(`took over ${held.imported.length} parked plan(s) as holds: ${held.imported.join(", ")}`);
-    if (held.reparked.length > 0) bootLog(`parked again under their holds: ${held.reparked.join(", ")}`);
+    // would misread what the next level writes, or a developer accepted one that would (ADR 0041);
+    // until then the daemon runs the level it is at. Plans parked before holds existed become
+    // holds, and whatever a hold covers is held again.
+    const installedApp = () =>
+      sharedInstalledVersion({ dataDir: options.dataDir, defaultDataDir: defaultDataDir(), compiled: isCompiledBinary(import.meta.path) });
+    for (const line of store.catchUpEngineLevel(installedApp())) bootLog(line);
     store.recoverInterruptedTurns();
     store.recoverInterruptedCheckRuns();
     // Commands the previous run's turns started may still be running (a render writing into the
@@ -296,6 +293,8 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
       completions: options.completions,
       schedule: options.schedule,
       ablation: options.ablation,
+      installedApp,
+      log: bootLog,
       // Before the scheduler's first tick, a line for each job the restart cut off where you will
       // see it (ADR 0041), so a check-back that fell due meanwhile does not wake its Bot first.
       beforeScheduler: (engine) => {

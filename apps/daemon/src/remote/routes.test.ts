@@ -127,6 +127,11 @@ test("a phone can read capabilities: bare GET is whitelisted, a query is not", (
   expect(() => validateBusiness({ v: 1, id, method: "GET", path: "/v1/capabilities", query: { engine_level: "1" } })).toThrow();
 });
 
+test("a phone cannot raise the engine level past an older installed app, nor take that back: it is the Mac's own", () => {
+  expect(() => validateBusiness({ v: 1, id, method: "POST", path: "/v1/capabilities/raise", body: { accept_older_app: true } })).toThrow();
+  expect(() => validateBusiness({ v: 1, id, method: "DELETE", path: "/v1/capabilities/raise" })).toThrow();
+});
+
 test("a phone can list, make and lift holds, with nothing past their fields", () => {
   const ok = (request: Omit<RemoteRequest, "v" | "id">) => validateBusiness({ v: 1, id, ...request });
   expect(() => ok({ method: "GET", path: "/v1/holds" })).not.toThrow();

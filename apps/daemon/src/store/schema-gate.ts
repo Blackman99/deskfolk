@@ -17,6 +17,7 @@
  * database.
  */
 import type { Database } from "bun:sqlite";
+import type { CapabilitiesResponse } from "@real-bot/protocol";
 
 /**
  * Bumped with each engine level that raises the floor, to that floor: what a database at that
@@ -63,8 +64,10 @@ export class SchemaTooNewError extends Error {
  * edits, so the change journal (`events.ts`) leaves them out: `markCleanShutdown` writes one at the
  * top of every stop, and journalling it would make the next transaction publish a
  * `settings.changed` that changes nothing to every client, in the middle of shutting down.
+ * `engine_gate_optin` is a developer's word about the database ({@link acceptOlderApp}), no more a
+ * setting than the level it lets go up.
  */
-export const GATE_SETTING_KEYS = ["schema_min_compatible", "engine_level", "last_shutdown"] as const;
+export const GATE_SETTING_KEYS = ["schema_min_compatible", "engine_level", "last_shutdown", "engine_gate_optin"] as const;
 
 function readSetting(db: Database, key: string): string | null {
   return db.query<{ value: string }, [string]>("SELECT value FROM settings WHERE key = ?").get(key)?.value ?? null;
@@ -98,6 +101,64 @@ export function readEngineLevel(db: Database): number {
   return Number.isFinite(value) ? value : 0;
 }
 
+/** `GET /v1/capabilities`: this build's rung, the database's engine level, and the features that level has on. */
+export function capabilitiesOf(db: Database): CapabilitiesResponse {
+  const level = readEngineLevel(db);
+  return {
+    schema_level: SCHEMA_LEVEL,
+    engine_level: level,
+    features: (Object.keys(ENGINE_LEVELS) as Array<keyof typeof ENGINE_LEVELS>).filter((feature) => level >= ENGINE_LEVELS[feature]),
+  };
+}
+
+/**
+ * A developer's word that this database may go up past an installed app older than the gate
+ * (ADR 0041): when, and whether it came through the local API (`POST /v1/capabilities/raise`) or
+ * `scripts/engine-level.ts` writing it with no daemon running.
+ */
+export type EngineGateOptIn = {
+  at: string;
+  by: "api" | "script";
+  /** The engine level the developer accepted, which is all it lets past an older app: a later level asks again. */
+  level: number;
+};
+
+/** The standing opt-in, or null when there is none (or it does not read as one, which counts the same). */
+export function readEngineGateOptIn(db: Database): EngineGateOptIn | null {
+  const raw = readSetting(db, "engine_gate_optin");
+  if (raw === null) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<EngineGateOptIn>;
+    if (typeof parsed.at !== "string" || (parsed.by !== "api" && parsed.by !== "script")) return null;
+    return { at: parsed.at, by: parsed.by, level: typeof parsed.level === "number" && Number.isInteger(parsed.level) ? parsed.level : 1 };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Records that the engine level may go up although an installed app that shares this data folder
+ * predates the gate, or its version cannot be read: on a developer's own machine, running a source
+ * build on the data folder they use every day, holds (and the levels after them) would otherwise
+ * stay off until a release with the gate is installed. The cost is theirs to accept: that app, opened
+ * without this daemon running, would not honor a hold. It only lets {@link raiseEngineLevel} past
+ * that app; it raises nothing itself.
+ */
+export function acceptOlderApp(db: Database, by: EngineGateOptIn["by"], at: string = new Date().toISOString()): EngineGateOptIn {
+  const optIn = { at, by, level: ENGINE_LEVEL };
+  writeSetting(db, "engine_gate_optin", JSON.stringify(optIn));
+  return optIn;
+}
+
+/**
+ * Takes the opt-in back. The level stays where it is — it only ever goes forward, and a database
+ * already written at a level is read at that level whatever lets the next one go up — so this only
+ * means an older installed app holds back the next level a later build brings.
+ */
+export function withdrawOlderAppOptIn(db: Database): void {
+  db.run("DELETE FROM settings WHERE key = 'engine_gate_optin'");
+}
+
 /**
  * An installed app that shares this database, as far as the daemon can tell: the version its
  * bundle gives (empty when that could not be read), or, where there is no telling what is
@@ -111,7 +172,12 @@ export type EngineLevelRaise = {
   raised: boolean;
   /** Why it stayed below {@link ENGINE_LEVEL}: an older app that shares this database. Null when nothing held it back. */
   refused: string | null;
+  /** What let it past such an app: the developer's opt-in ({@link acceptOlderApp}), for the log. Null when it was not needed. */
+  accepted: string | null;
 };
+
+/** How a developer lets the level past an older installed app, named in the refusal so the log says what to do. */
+const ACCEPT_HINT = "or, developing on this data folder, accept that with `bun apps/daemon/scripts/engine-level.ts --accept-older-app`";
 
 /**
  * Takes the database up to this build's engine level, a level at a time, raising the floor each
@@ -123,27 +189,47 @@ export type EngineLevelRaise = {
  * app; a source run on a data folder of its own has none). One whose version could not be read,
  * or that there is no telling about, counts as too old. An app that has the gate but not the level
  * refuses the database once the floor goes up and says to update, which is the gate doing its
- * job; one from before the gate would not, so that is the case refused here.
+ * job; one from before the gate would not, so that is the case refused here — unless a developer
+ * accepted that for this database ({@link acceptOlderApp}, ADR 0041).
  */
 export function raiseEngineLevel(db: Database, installed: SharedInstall | null): EngineLevelRaise {
   const from = readEngineLevel(db);
-  if (from >= ENGINE_LEVEL) return { level: from, raised: false, refused: null };
+  if (from >= ENGINE_LEVEL) return { level: from, raised: false, refused: null, accepted: null };
+  let accepted: string | null = null;
+  let target: number = ENGINE_LEVEL;
   if (installed !== null && !("version" in installed && newerThan(installed.version, LAST_RELEASE_WITHOUT_GATE))) {
-    const why =
+    const optIn = readEngineGateOptIn(db);
+    if (optIn === null) {
+      const why =
+        "version" in installed
+          ? `the installed app (${installed.version || "version unreadable"}) does not read the version gate — update it to a release after ${LAST_RELEASE_WITHOUT_GATE} first, ${ACCEPT_HINT}`
+          : `${installed.unseen}, and one from before the version gate would open this data folder anyway — set REAL_BOT_DATA_DIR to a folder of its own to let it go up, ${ACCEPT_HINT}`;
+      return { level: from, raised: false, refused: `engine level stays at ${from}: ${why}`, accepted: null };
+    }
+    if (optIn.level <= from) {
+      return {
+        level: from,
+        raised: false,
+        refused: `engine level stays at ${from}: the developer's opt-in past an older installed app covers level ${optIn.level}, and this build brings ${ENGINE_LEVEL} — accept again for it, ${ACCEPT_HINT.replace(/^or, /, "")}`,
+        accepted: null,
+      };
+    }
+    target = Math.min(ENGINE_LEVEL, optIn.level);
+    const past =
       "version" in installed
-        ? `the installed app (${installed.version || "version unreadable"}) does not read the version gate — update it to a release after ${LAST_RELEASE_WITHOUT_GATE} first`
-        : `${installed.unseen}, and one from before the version gate would open this data folder anyway — set REAL_BOT_DATA_DIR to a folder of its own to let it go up`;
-    return { level: from, raised: false, refused: `engine level stays at ${from}: ${why}` };
+        ? `the installed app (${installed.version || "version unreadable"}), which does not read the version gate`
+        : `whatever app is installed (${installed.unseen})`;
+    accepted = `engine level ${from} → ${target} past ${past}: a developer accepted that for this data folder (${optIn.by}, ${optIn.at}); an app from before the gate, opened without this daemon running, would not honor holds`;
   }
   db.transaction(() => {
     let floor = Number(readSetting(db, "schema_min_compatible") ?? 0);
-    for (let level = from + 1; level <= ENGINE_LEVEL; level += 1) {
+    for (let level = from + 1; level <= target; level += 1) {
       floor = Math.max(Number.isFinite(floor) ? floor : 0, FLOOR_AT_LEVEL[level] ?? 0);
       writeSetting(db, "engine_level", String(level));
     }
     if (floor > 0) writeSetting(db, "schema_min_compatible", String(floor));
   })();
-  return { level: ENGINE_LEVEL, raised: true, refused: null };
+  return { level: target, raised: true, refused: null, accepted };
 }
 
 function newerThan(version: string, than: string): boolean {

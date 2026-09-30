@@ -117,6 +117,16 @@ export type CapabilitiesResponse = {
   features: string[];
 };
 
+/**
+ * `POST /v1/capabilities/raise`, local only (never on the remote whitelist): a developer's word that
+ * this data folder's engine level may go up although an installed app that shares it predates the
+ * version gate, which would not honor what the level writes if opened without this daemon (ADR
+ * 0041). Recorded, then carried out at once; answered with `CapabilitiesResponse`. `by` is
+ * `script` from `apps/daemon/scripts/engine-level.ts`, `api` otherwise. `DELETE` on the same path
+ * takes the word back and leaves the level where it is.
+ */
+export type RaiseEngineLevelRequest = { accept_older_app: true; by?: "api" | "script" };
+
 export type LocalApiDescriptor = {
   pid: number;
   port: number;
@@ -918,7 +928,10 @@ export type Message = {
   message_seq?: number;
   attachments: Attachment[];
   reactions: Reaction[];
-  /** What the app read or did about your stops on this line (ADR 0040 P2), or the restart it tells of (ADR 0041); absent on every other line. */
+  /**
+   * What the app read or did about your stops on this line (ADR 0040 P2), the restart it tells of
+   * (ADR 0041), or that the line is its answer to a status question; absent on every other line.
+   */
   control?: MessageControl;
 };
 
@@ -966,7 +979,8 @@ export type ControlPlanOffer = { offer: "stop_plan" | "only_plan"; task_id: stri
  *   was done about it; the Bots got it as any line, and the buttons do what it may have meant.
  * - `receipt`, on the app's line: what a stop or a go on of yours did, from the holds' own record.
  * - `status`, on the app's line: where your stops stand when you asked (「停了吗」「你没停」) or
- *   said go on while a wider hold still covers the Bot.
+ *   said go on while a wider hold still covers the Bot; also its answer to a status question
+ *   (「怎么样了」), which offers nothing and names no hold.
  * - `restart`, on the app's line after a restart (ADR 0041): a job the restart cut off. `notes` are
  *   the 「中断」 lines of its turns; 继续 (`resume`) continues each the way its own Continue would.
  * `acted` lists the buttons you pressed on it, in order; absent until you press one.

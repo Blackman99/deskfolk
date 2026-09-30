@@ -65,6 +65,27 @@ test("the app's own lines read as the app's: its mark and name over them, no Bot
   }
 });
 
+test("the app's answer to 「怎么样了」 reads as the app's too, with no buttons, even before stops exist", () => {
+  const session = aGroup();
+  const control: MessageControl = { kind: "status", hold_ids: [], offer: [], scopes: [] };
+  const progress = aMessage({ id: "progress", session_id: session.id, kind: "system", author: "bot-1", body: "这件事：剪出预告片（进行中）\n正在做：\n- 视频导演 · 3 分钟", control });
+  const { host, close } = stage(session, { messages: [progress], holdsOn: false });
+  try {
+    const row = host.querySelector('[data-message-id="progress"]')!;
+    expect(row.querySelector(".app-avatar .brand-mark")).not.toBeNull();
+    expect(row.querySelector(".bot-avatar")).toBeNull();
+    expect(row.querySelector(".msg-header .sender-name")?.textContent?.trim()).toBe("Deskfolk");
+    expect(row.querySelector(".msg-header .app-badge")?.textContent).toBe("应用");
+    expect(row.querySelector(".msg-header .bot-badge")).toBeNull();
+    expect(row.querySelector(".msg-header")?.textContent).not.toContain("视频导演");
+    expect(row.querySelector("article.msg")?.getAttribute("aria-label")).toBe("来自 Deskfolk 应用的消息");
+    expect(row.querySelector(".body")?.textContent).toContain("这件事：剪出预告片");
+    expect(row.querySelector(".control-actions")).toBeNull();
+  } finally {
+    close();
+  }
+});
+
 test("in your direct, where no line carries a face, the app's receipt still says it is the app's", () => {
   const session = aDirect();
   const control: MessageControl = { kind: "receipt", verb: "continue", hold_ids: ["hold-1"], offer: [], scopes: [{ scope: "bot", id: "bot-1" }] };

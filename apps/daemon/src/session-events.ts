@@ -38,11 +38,7 @@ export class EventStream {
     };
     const bytes = Buffer.byteLength(JSON.stringify(frame));
     if (this.ring.length >= this.limits.count || this.bytes + bytes > this.limits.bytes || this.seq === Number.MAX_SAFE_INTEGER) {
-      this.instance = randomBytes(16).toString("hex");
-      this.seq = 0;
-      this.bytes = 0;
-      this.ring = [];
-      this.send({ type: "resnapshot", ...this.cursor() });
+      this.resnapshot();
       frame = { ...frame, event_instance_id: this.instance, seq: 1 };
     }
     if (bytes > this.limits.bytes) return;
@@ -50,6 +46,18 @@ export class EventStream {
     this.bytes += bytes;
     this.ring.push({ frame, bytes });
     this.send(frame);
+  }
+
+  /**
+   * Starts the stream over, so every client takes a fresh snapshot: the ring ran out, or the
+   * snapshot changed in a way no event carries (the engine level went up, and `holds` is in it now).
+   */
+  resnapshot(): void {
+    this.instance = randomBytes(16).toString("hex");
+    this.seq = 0;
+    this.bytes = 0;
+    this.ring = [];
+    this.send({ type: "resnapshot", ...this.cursor() });
   }
 
   catchup(cursor: EventCursor): CatchupResponse {

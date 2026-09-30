@@ -4,7 +4,7 @@
  * Runs once per open, before the store hands out any row.
  */
 import type { Database } from "bun:sqlite";
-import { sortThinkingLevels, THINKING_LEVELS } from "@real-bot/protocol";
+import { sortThinkingLevels, THINKING_LEVELS, type MessageControl } from "@real-bot/protocol";
 import { isoNow, ulid } from "../ids";
 import { HELD_TURN_TRIGGERS } from "./holds";
 import { idSuffix, localDate, slugify, taskTitle, WORK_ROOT } from "./tasks";
@@ -909,6 +909,16 @@ function migrateMessageControl(db: Database): void {
        WHERE kind = 'system' AND (body LIKE '（应用提示）用户叫停了这件工作，现在解除了%' OR body LIKE '(App note) The user had stopped this work and has now lifted the stop%')`,
     );
   }
+  // The app's answer to a 进度询问 is marked as its status answer, so it shows as the app's line
+  // (ADR 0041). Before the mark it was the one line kept from the Bots that carried no control —
+  // every other one is a receipt, a status answer about your stops or a restart notice, which always
+  // had one; the answer is also the only such line filed under a plan. Every open, not once: an
+  // installed app from before the mark that shares this data folder keeps writing them unmarked.
+  const statusAnswer: MessageControl = { kind: "status", hold_ids: [], offer: [], scopes: [] };
+  db.run(
+    `UPDATE messages SET control = ? WHERE kind = 'system' AND hidden_from_bots = 1 AND control IS NULL AND task_id IS NOT NULL`,
+    [JSON.stringify(statusAnswer)],
+  );
 }
 
 function migrateBotThinkingPins(db: Database): void {

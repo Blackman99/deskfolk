@@ -158,6 +158,11 @@ describe("进度询问", () => {
     expect(note.body).toContain("正在做");
     expect(note.body).toContain("视频导演");
     expect(note.body).toContain("任务 01《剪辑初稿》");
+    // The app answering, not the Bot it is filed under: marked as the app's status answer, with
+    // nothing to press — at engine level 0 too, where no stop exists yet.
+    expect(h.store.capabilities().engine_level).toBe(0);
+    expect(note.author).toBe(director.id);
+    expect(note.control).toEqual({ kind: "status", hold_ids: [], offer: [], scopes: [] });
   });
 
   test("direct: a status question does not fork a second turn beside the busy one", async () => {

@@ -23,6 +23,7 @@ import { Database } from "bun:sqlite";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import type { MessageControl } from "@real-bot/protocol";
 import { Store } from ".";
 import { ulid } from "../ids";
 import { migrateSchema } from "./migrate";
@@ -227,6 +228,40 @@ describe("a database an earlier build created", () => {
       }
     });
   }
+
+  test("a status line written before the mark reads as the app's status answer, and no other line changes", () => {
+    const dir = mkdtempSync(join(tmpdir(), "real-bot-migrate-"));
+    const file = join(dir, "state.sqlite");
+    try {
+      const seed = new Store({ filename: file });
+      const bot = seed.createBot({ name: "Writer", duties: "write", boundaries: "none" });
+      const session = bot.direct_session.id;
+      const receipt: MessageControl = { kind: "receipt", verb: "stop", hold_ids: [], offer: ["undo"], scopes: [] };
+      const lines = {
+        // What a build from before the mark (an installed app, say) wrote for a 进度询问.
+        status: seed.insertMessage({ sessionId: session, kind: "system", author: bot.bot.id, body: "这件事：写周报（进行中）", hiddenFromBots: true }),
+        // A hidden line with no control that is not filed under a plan is not a status answer.
+        other: seed.insertMessage({ sessionId: session, kind: "system", author: bot.bot.id, body: "别的应用行", hiddenFromBots: true }),
+        receipt: seed.insertMessage({ sessionId: session, kind: "system", author: bot.bot.id, body: "已停下 Writer 的全部工作。", hiddenFromBots: true, control: receipt }),
+        cut: seed.insertMessage({ sessionId: session, kind: "system", author: bot.bot.id, body: "中断" }),
+        reply: seed.insertMessage({ sessionId: session, kind: "bot", author: bot.bot.id, body: "好的" }),
+      };
+      // The answer is filed under the plan it reports on, as status-question.ts writes it.
+      const plan = seed.openTask({ sessionId: session, title: "写周报" });
+      seed.db.run("UPDATE messages SET task_id = ? WHERE id = ?", [plan.id, lines.status.id]);
+      seed.close();
+
+      const store = new Store({ filename: file });
+      expect(store.getMessage(lines.status.id).control).toEqual({ kind: "status", hold_ids: [], offer: [], scopes: [] });
+      expect(store.getMessage(lines.other.id).control).toBeUndefined();
+      expect(store.getMessage(lines.receipt.id).control).toEqual(receipt);
+      expect(store.getMessage(lines.cut.id).control).toBeUndefined();
+      expect(store.getMessage(lines.reply.id).control).toBeUndefined();
+      store.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 
   test("the notes stopped work opened again on before the Bot-only mark leave the conversation, and nothing else does", () => {
     const dir = mkdtempSync(join(tmpdir(), "real-bot-migrate-"));

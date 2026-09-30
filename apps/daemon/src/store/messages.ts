@@ -191,7 +191,7 @@ export function insertMessage(
     ask?: AskSpec | null;
     /** Set on a 进度询问 status line: kept out of every Bot's context window and the organizer's payload. */
     hiddenFromBots?: boolean;
-    /** On the app's receipt or status answer about your stops. */
+    /** On the app's receipt, its status answer about your stops, or its answer to a 进度询问. */
     control?: MessageControl | null;
     /**
      * A line only the Bot it wakes reads, like a check-back's own line: the note stopped work opens
