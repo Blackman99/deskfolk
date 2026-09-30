@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Database } from "bun:sqlite";
@@ -8,6 +8,7 @@ import { stateDbPath } from "./descriptor";
 import { recordLiveProc } from "./live-procs";
 import { startRuntime, type RuntimeHandle } from "./runtime";
 import { memoryKeyStore } from "./secrets";
+import { startupLogPath } from "./startup-log";
 import { Store } from "./store";
 
 const handles: RuntimeHandle[] = [];
@@ -383,6 +384,84 @@ describe("local API runtime", () => {
     expect(
       rt.store.listMainMessages(writer.direct_session.id, 20).some((m) => m.body === "中断"),
     ).toBe(true);
+  });
+
+  /**
+   * A data folder whose last run died with Writer's turn running in its direct; `prepare` adds to
+   * the database before it closes. The runs below are pinned to a plain one, so `bun test --watch`
+   * or `REAL_BOT_DEV=1` does not turn the crash into a development restart.
+   */
+  function crashedMidTurn(prepare: (store: Store, direct: string, botId: string) => void = () => {}) {
+    const dataDir = mkdtempSync(join(tmpdir(), "real-bot-"));
+    dirs.push(dataDir);
+    chmodSync(dataDir, 0o700);
+    const keys = memoryKeyStore();
+    const prep = new Store({ filename: join(dataDir, "state.sqlite"), endpointKey: keys });
+    const writer = prep.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const direct = writer.direct_session.id;
+    const trigger = prep.postMessage(direct, { body: "go" });
+    const turn = prep.createTurn({ sessionId: direct, botId: writer.bot.id, triggerMessageId: trigger.id });
+    prepare(prep, direct, writer.bot.id);
+    prep.close();
+    const plain = { execArgv: [], env: {} };
+    return { dataDir, keys, direct, turn, run: plain };
+  }
+
+  /** Every line in a conversation, the ones kept from the Bots included, in the order written. */
+  function linesIn(rt: RuntimeHandle, sessionId: string) {
+    return rt.store.db
+      .query<{ id: string }, [string]>("SELECT id FROM messages WHERE session_id = ? ORDER BY rowid")
+      .all(sessionId)
+      .map((row) => rt.store.getMessage(row.id));
+  }
+
+  test("start tells you, where the job belongs, what the crash before it cut off", async () => {
+    const { dataDir, keys, direct, turn, run } = crashedMidTurn();
+
+    const rt = await startRuntime({ dataDir, bind: "127.0.0.1:0", endpointKey: keys, run });
+    handles.push(rt);
+
+    const lines = linesIn(rt, direct);
+    const note = lines.find((m) => m.body === "中断")!;
+    expect(lines.filter((m) => m.control?.kind === "restart").map((m) => m.control)).toEqual([
+      { kind: "restart", cause: "crash", notes: [note.id], offer: ["resume", "leave"] },
+    ]);
+    expect(rt.store.listWorkEvents({ kind: "daemon.restart" }).map((row) => row.payload)).toEqual([{ cause: "crash", cut: [turn.id] }]);
+  });
+
+  test("start tells what the restart cut off before a check-back that fell due meanwhile can wake its Bot", async () => {
+    const { dataDir, keys, direct, run } = crashedMidTurn((store, sessionId, botId) => {
+      store.scheduleCheckBack({ botId, sessionId, turnId: null, note: "看看渲染好了没有", afterMinutes: 1, now: new Date(Date.now() - 10 * 60_000) });
+    });
+    const offline = async () => {
+      throw new Error("offline");
+    };
+
+    const rt = await startRuntime({ dataDir, bind: "127.0.0.1:0", endpointKey: keys, run, completions: { complete: offline, judge: offline } });
+    handles.push(rt);
+
+    const lines = linesIn(rt, direct);
+    const notice = lines.findIndex((m) => m.control?.kind === "restart");
+    const woke = lines.findIndex((m) => m.body.includes("看看渲染好了没有"));
+    // The scheduler's first tick, at start, fired the check-back; the notice was already there.
+    expect(woke).toBeGreaterThan(-1);
+    expect(notice).toBeGreaterThan(-1);
+    expect(notice).toBeLessThan(woke);
+  });
+
+  test("a restart notice that cannot be written is logged, and the daemon starts all the same", async () => {
+    const { dataDir, keys, direct, turn, run } = crashedMidTurn((store) => {
+      store.db.run(`CREATE TRIGGER no_restart_record BEFORE INSERT ON work_events WHEN NEW.kind = 'daemon.restart' BEGIN SELECT RAISE(ABORT, 'disk said no'); END`);
+    });
+
+    const rt = await startRuntime({ dataDir, bind: "127.0.0.1:0", endpointKey: keys, run });
+    handles.push(rt);
+
+    expect((await fetch(`${rt.origin}/v1/health`)).status).toBe(200);
+    expect(readFileSync(startupLogPath(dataDir), "utf8")).toContain("could not tell what the restart cut off: disk said no");
+    // The turn keeps its own 「中断」 line and notification to go on from.
+    expect(linesIn(rt, direct).map((m) => (m.control?.kind === "restart" ? "notice" : m.body))).toEqual(["go", "中断"]);
+    expect(rt.store.db.query<{ action_state: string }, [string]>(`SELECT action_state FROM notifications WHERE semantic_key = ?`).get(`interrupted:${turn.id}`)).toEqual({ action_state: "open" });
   });
 
   test("start takes a database of its own up to holds, and a plan stopped the old way becomes one", async () => {

@@ -1672,6 +1672,10 @@
 				onClose={() => runtime.closeTrace()}
 				onJump={jumpFromTracePage}
 				onOpenArtifact={openArtifactPath}
+				holds={snapshot.holdsOn ? snapshot.holds : null}
+				onStop={(choice) => runtime.stopScope(choice.scope, choice.id, runtime.traceSessionId || selected.id)}
+				onLift={(hold) => runtime.liftHold(hold.id)}
+				controlsDisabled={runtime.connection !== 'connected'}
 				onTask={(id) => {
 					if (runtime.traceTaskId !== id) runtime.traceTaskId = id;
 				}}

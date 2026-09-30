@@ -53,13 +53,25 @@ type HoldRow = {
   lifted_at: string | null;
   lifted_by: Hold["lifted_by"];
   lifted_message_id: string | null;
+  plan_title?: string | null;
 };
+
+/**
+ * A hold row as clients read it: its columns, and the title of the plan it names, so a list of
+ * your stops can say which job without reading the plan.
+ */
+const HOLD_COLUMNS = `h.*, (SELECT title FROM tasks WHERE id = CASE h.scope
+    WHEN 'plan' THEN h.scope_id
+    WHEN 'bot_plan' THEN substr(h.scope_id, instr(h.scope_id, ':') + 1)
+    WHEN 'ticket' THEN (SELECT task_id FROM tickets WHERE id = h.scope_id)
+  END) AS plan_title`;
 
 type ParkedPlan = NonNullable<HoldEffect["parked_plans"]>[number];
 
 function toHold(row: HoldRow): Hold {
   return {
     ...row,
+    plan_title: row.plan_title ?? null,
     cascade: row.cascade === 1,
     lift_on_next_user_message: row.lift_on_next_user_message === 1,
     targets: JSON.parse(row.targets) as HoldTarget[],
@@ -111,7 +123,7 @@ const CHECK_BACK: HeldSubject = {
 };
 
 export function getHold(ctx: StoreContext, id: string): Hold {
-  const row = ctx.db.query<HoldRow, [string]>(`SELECT * FROM holds WHERE id = ?`).get(id);
+  const row = ctx.db.query<HoldRow, [string]>(`SELECT ${HOLD_COLUMNS} FROM holds h WHERE h.id = ?`).get(id);
   if (!row) throw new HttpError(404, "not_found", "hold not found");
   return toHold(row);
 }
@@ -120,7 +132,7 @@ export function getHold(ctx: StoreContext, id: string): Hold {
 export function listHolds(ctx: StoreContext, opts: { inForce?: boolean; limit?: number } = {}): Hold[] {
   return ctx.db
     .query<HoldRow, [number]>(
-      `SELECT * FROM holds ${opts.inForce ? "WHERE lifted_at IS NULL" : ""} ORDER BY created_at DESC, id DESC LIMIT ?`,
+      `SELECT ${HOLD_COLUMNS} FROM holds h ${opts.inForce ? "WHERE h.lifted_at IS NULL" : ""} ORDER BY h.created_at DESC, h.id DESC LIMIT ?`,
     )
     .all(opts.limit ?? 200)
     .map(toHold);
@@ -133,7 +145,7 @@ export function holdsCovering(
 ): Hold[] {
   return ctx.db
     .query<HoldRow, Record<string, string | null>>(
-      `SELECT h.* FROM holds h WHERE h.lifted_at IS NULL
+      `SELECT ${HOLD_COLUMNS} FROM holds h WHERE h.lifted_at IS NULL
          AND EXISTS (SELECT 1 FROM held_scopes hs WHERE hs.hold_id = h.id AND ${heldBy(PARAMS)})
        ORDER BY h.created_at ASC, h.id ASC`,
     )
@@ -315,6 +327,20 @@ export function liftHold(ctx: StoreContext, id: string, input: { by: unknown; me
     if (restored.length > 0 || resumed.length > 0) addEffect(ctx, id, { restored_plans: restored, resumed_check_backs: resumed });
     return getHold(ctx, id);
   })();
+}
+
+/**
+ * Records holds in force as stops you mean to drop the job with (`action` cancel): the 作废 button
+ * on a stop's receipt. Nothing else about them changes — they still hold what they held, and lifting
+ * one reopens the job. Returns the holds as they now read; one already lifted is left as it was.
+ */
+export function cancelHolds(ctx: StoreContext, ids: readonly string[]): Hold[] {
+  return ctx.db.transaction(() =>
+    ids.map((id) => {
+      ctx.db.run(`UPDATE holds SET action = 'cancel' WHERE id = ? AND lifted_at IS NULL AND action != 'cancel'`, [id]);
+      return getHold(ctx, id);
+    }),
+  )();
 }
 
 /**
@@ -567,7 +593,7 @@ function parksSql(task: string): string {
 function parkingHolds(ctx: StoreContext, taskId: string): Hold[] {
   return ctx.db
     .query<HoldRow, Record<string, string>>(
-      `SELECT h.* FROM holds h WHERE h.lifted_at IS NULL
+      `SELECT ${HOLD_COLUMNS} FROM holds h WHERE h.lifted_at IS NULL
          AND EXISTS (SELECT 1 FROM held_scopes hs WHERE hs.hold_id = h.id AND ${parks("$task")})
        ORDER BY h.created_at DESC, h.id DESC`,
     )

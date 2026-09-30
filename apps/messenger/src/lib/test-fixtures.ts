@@ -4,6 +4,7 @@ import type {
   Approval,
   Attachment,
   Bot,
+  Hold,
   McpServer,
   Memory,
   Message,
@@ -179,6 +180,28 @@ export function aTurn(over: Partial<Turn> = {}): Turn {
     updated_at: "2026-09-19T02:00:01.000Z",
     ...over,
   } as Turn;
+}
+
+/** A stop of yours in force: on one Bot, from a button, unless told otherwise. */
+export function aHold(over: Partial<Hold> = {}): Hold {
+  return {
+    id: "hold-1",
+    scope: "bot",
+    scope_id: "bot-1",
+    action: "pause",
+    cascade: true,
+    source: "user_button",
+    source_message_id: null,
+    lift_on_next_user_message: false,
+    targets: [],
+    effect: {},
+    created_at: "2026-09-19T02:10:00.000Z",
+    lifted_at: null,
+    lifted_by: null,
+    lifted_message_id: null,
+    plan_title: null,
+    ...over,
+  };
 }
 
 export function anApproval(over: Partial<Approval> = {}): Approval {
@@ -401,6 +424,9 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     send: record("send"),
     sendAsk: record("sendAsk"),
     stopTurn: record("stopTurn"),
+    stopScope: record("stopScope"),
+    liftHold: record("liftHold"),
+    controlAction: record("controlAction"),
     continueInterrupt: record("continueInterrupt"),
     resolveApproval: record("resolveApproval"),
     toggleReaction: record("toggleReaction"),

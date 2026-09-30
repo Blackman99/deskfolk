@@ -2,9 +2,11 @@ import {
   USER_MEMBER,
   type ClientEvent,
   type ComposerSuggestion,
+  type ControlActionResult,
   type Hold,
   type Message,
   type PendingJudgement,
+  type RestartCause,
   type Turn,
 } from "@real-bot/protocol";
 import { ablationList, NO_ABLATION, type Ablation } from "./ablation";
@@ -22,6 +24,7 @@ import { createFire } from "./engine/fire";
 import { createLifecycle } from "./engine/lifecycle";
 import { createParticipation } from "./engine/participation";
 import { createPlanWatch } from "./engine/plan-watch";
+import { createRestart, type RestartSummary } from "./engine/restart";
 import { createRouting } from "./engine/routing";
 import { createSpend } from "./engine/spend";
 import { createStatusQuestion } from "./engine/status-question";
@@ -41,7 +44,8 @@ import type { ShellStream } from "./workspace-tools";
 export type TurnEngine = {
   handleInboundMessage: (
     message: Message,
-    opts?: { fork?: boolean; fromUser?: boolean },
+    /** `ordinary`: a line of yours sent on again as any line, not read for a stop or a go on (a stop you undid). */
+    opts?: { fork?: boolean; fromUser?: boolean; ordinary?: boolean },
   ) => Promise<void>;
   fireRoutine: (routineId: string, now?: Date) => Turn | null;
   /** Wakes a Bot at a check-back it booked; null when it was voided, already fired, or nobody to wake. */
@@ -75,6 +79,13 @@ export type TurnEngine = {
   createHold: (input: HoldRequest) => Hold;
   /** `POST /v1/holds/:id/lift`: your lift, and the work the hold ended opened again. */
   liftHold: (id: string) => Hold;
+  /**
+   * `POST /v1/messages/:id/control`: a button on a line about your stops (undo, widen, narrow, go
+   * on), or on a restart notice (继续, 不续).
+   */
+  control: (messageId: string, input: { action: unknown; taskId?: unknown }) => ControlActionResult;
+  /** Called once at boot, after recovery: a line per job the restart cut off, in the conversation it belongs to where you are (ADR 0041). */
+  announceRestart: (cause: RestartCause) => RestartSummary;
   /** Ends every live turn a hold covers, after a write that may have made one (a plan parked on the board). */
   enforceHolds: () => void;
   continueFromInterrupt: (messageId: string) => Turn;
@@ -374,6 +385,16 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     abortLive: lifecycle.abortLive,
     startTurn: lifecycle.startTurn,
     hearOrStart: lifecycle.hearOrStart,
+    // Late-bound: a button that sends a line on only arrives once the engine below exists. Sent
+    // once the button's own write is in, the way a new line of yours is.
+    redeliver: (message) => store.afterCommit(() => void core.track(engine.handleInboundMessage(message, { fromUser: true, ordinary: true }))),
+    wakes: participation.botsToWake,
+  });
+
+  const restart = createRestart({
+    store,
+    publishMessage: core.publishMessage,
+    continueFromInterrupt: lifecycle.continueFromInterrupt,
   });
 
   /**
@@ -414,18 +435,19 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     }
   }
 
-  return {
+  const engine: TurnEngine = {
     async handleInboundMessage(message, opts) {
       const fromUser = opts?.fromUser ?? message.author === USER_MEMBER;
       // 进度询问: a status question about a plan this session has one to report on is answered from
       // the store's own rows, right here — before anything below would organize, judge, wake or
       // redirect a turn over it. The message is already stored and published; this only decides
       // what happens next.
-      if (fromUser && statusQuestion.handle(message)) return;
+      if (fromUser && !opts?.ordinary && statusQuestion.handle(message)) return;
       // 控制句: a line that is only a stop or a go on is carried out here and goes nowhere else — no
       // filing, no turn, no model call (ADR 0040 P2). A line that only might be one is marked with
-      // the buttons and goes on below like any other.
-      if (fromUser && stops.handleLine(message)) return;
+      // the buttons and goes on below like any other. One sent on again after you undid its stop
+      // skips both readings: you said it was neither.
+      if (fromUser && !opts?.ordinary && stops.handleLine(message)) return;
       // Filing takes a model call, and the Bots it holds back show as thinking under the message
       // meanwhile, in the transcript and the list alike. Each row gives way once its turn or
       // judgement has started, so the Bot never blinks out in between.
@@ -453,8 +475,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
           } catch {
             filed = message;
           }
-          // A Stop you pressed on this job goes once you say something more about it, before the
-          // line wakes anyone: what you say next is what the Bot goes on from.
+          // A Stop you pressed on this job goes once you say something more about it to that Bot,
+          // before the line wakes anyone: what you say next is what the Bot goes on from.
           stops.liftOnYourLine(filed);
           // The job's turns in other sessions hear it before any turn opens here, so the one that
           // opens can be told they already have it.
@@ -569,7 +591,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       // Your Stop names its turn, or it is the latest one live (the menu bar's, with no window open).
       const pressed = opts?.button ? (turnId ?? store.latestStoppableTurn({ allowGroup: opts.allowGroup })) : null;
       if (pressed) {
-        const held = stops.stopByButton(pressed, { allowGroup: opts?.allowGroup });
+        const held = stops.stopByButton(pressed);
         if (held) return held;
       }
       const turn = store.stopTurn(turnId, {
@@ -584,9 +606,17 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     },
     createHold: stops.hold,
     liftHold: stops.lift,
+    control(messageId, input) {
+      // A restart notice's buttons work at any engine level; every other line's are about stops.
+      const message = store.getMessage(messageId);
+      return message.control?.kind === "restart" ? restart.act(message, input) : stops.act(messageId, input);
+    },
+    announceRestart: restart.announce,
     enforceHolds: stops.enforce,
     continueFromInterrupt: lifecycle.continueFromInterrupt,
     abortAll() {
+      // Only a shutdown or a forced drain ends every turn at once: the next boot says what it cut off.
+      store.noteTurnsCutByShutdown();
       chains.clearTimers();
       directReport.clearTimers();
       organizer.clearTimers();
@@ -614,10 +644,12 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     },
     suggestComposer: composer.suggestComposer,
     async close() {
+      store.noteTurnsCutByShutdown();
       checks.abortAll();
       await lifecycle.drainLives();
       for (const pending of [...participation.pendingJudges.values()]) participation.dropPendingJudgement(pending, true);
       await mcp?.close();
     },
   };
+  return engine;
 }

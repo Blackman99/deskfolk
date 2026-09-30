@@ -257,8 +257,112 @@ export function clearInterruptPending(ctx: StoreContext, botId: string): void {
   writePendingInterrupts(ctx, set);
 }
 
-export function recoverInterruptedTurns(ctx: StoreContext): void {
+/**
+ * Boot recovery: every turn the last run left live is interrupted. `previousRun` is that run's id
+ * (`Store.previousBootId`), under which what it left live is remembered as cut off by its end.
+ */
+export function recoverInterruptedTurns(ctx: StoreContext, previousRun: string | null = null): void {
+  // What a crash or a restart in place left live was cut off by it, the same as what a quit ends.
+  noteTurnsCutByShutdown(ctx, previousRun);
   interruptRunningTurns(ctx);
+}
+
+/**
+ * Settings key: the turns a shutdown found live, kept for the next boot to say where each job
+ * stopped (ADR 0041), as `{run, at, turns}`: the id of the run whose end cut them off, when that
+ * was first noted, and the turn ids. Taken, and so emptied, once at boot.
+ */
+const CUT_BY_SHUTDOWN_KEY = "_cut_by_shutdown";
+/** Settings key: the id of the run that last opened the database (`Store.bootId`). */
+const LAST_RUN_KEY = "_last_run";
+
+type CutRecord = { run: string | null; at: string; turns: string[] };
+
+/**
+ * At open: the id of the run that opened the database before this one, replaced by `run`'s own.
+ * Null on a database no run of this build has opened yet.
+ */
+export function swapLastRun(ctx: StoreContext, run: string): string | null {
+  const previous = ctx.db.query<SettingRow, [string]>(`SELECT key, value FROM settings WHERE key = ?`).get(LAST_RUN_KEY)?.value ?? null;
+  setSetting(ctx, LAST_RUN_KEY, run);
+  return previous;
+}
+
+function readCutRecord(ctx: StoreContext): CutRecord | null {
+  const raw = ctx.db.query<SettingRow, [string]>(`SELECT key, value FROM settings WHERE key = ?`).get(CUT_BY_SHUTDOWN_KEY)?.value;
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<CutRecord> | null;
+    if (!parsed || typeof parsed !== "object" || typeof parsed.at !== "string" || !Array.isArray(parsed.turns)) return null;
+    if (parsed.run !== null && typeof parsed.run !== "string") return null;
+    return { run: parsed.run, at: parsed.at, turns: parsed.turns.filter((id): id is string => typeof id === "string") };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether a record still tells of `run`'s end: written for that run, with no turn started since.
+ * A record another run left — one that opened the database and ended before taking it — is not
+ * this boot's to tell of. An installed copy too old to know the record never writes its run id, so
+ * the turns it started meanwhile are how its run shows.
+ */
+function cutRecordIsOf(ctx: StoreContext, record: CutRecord, run: string | null): boolean {
+  if (record.run !== run) return false;
+  return !ctx.db.query(`SELECT 1 FROM turns WHERE created_at > ? LIMIT 1`).get(record.at);
+}
+
+/**
+ * Remembers every live turn as cut off by the end of `run` now under way. Called where the daemon
+ * starts ending every turn at once — the engine's `abortAll` and `close`, and boot recovery for
+ * what a crash or a restart in place left live — before any of them ends: a turn that has ended
+ * is not live to be found. A turn a stuck-turn sweep ends mid-run is not a restart's, so this is
+ * not written where a single turn is interrupted. Adds to a record of the same run's end (a drain,
+ * then the close); one left by any other run is replaced.
+ */
+export function noteTurnsCutByShutdown(ctx: StoreContext, run: string | null): void {
+  const live = ctx.db
+    .query<{ id: string }, []>(`SELECT id FROM turns WHERE status IN ('running', 'waiting_approval', 'waiting_ask')`)
+    .all();
+  if (live.length === 0) return;
+  const kept = readCutRecord(ctx);
+  const carried = kept && cutRecordIsOf(ctx, kept, run) ? kept : null;
+  const cut = new Set(carried?.turns ?? []);
+  for (const row of live) cut.add(row.id);
+  const record: CutRecord = { run, at: carried?.at ?? isoNow(), turns: [...cut] };
+  setSetting(ctx, CUT_BY_SHUTDOWN_KEY, JSON.stringify(record));
+}
+
+/** A drain you called off ended its turns without a restart to account for, so they are forgotten. */
+export function forgetTurnsCutByShutdown(ctx: StoreContext): void {
+  ctx.db.run(`DELETE FROM settings WHERE key = ?`, [CUT_BY_SHUTDOWN_KEY]);
+}
+
+/**
+ * What the end of `previousRun` (the run this boot follows) cut off, taken once at boot after
+ * recovery: each turn it remembered that is still interrupted, with the 「中断」 line its Continue
+ * goes from, not yet continued. A turn that finished, was stopped or was continued since is not
+ * cut off any more. A record of some other run's end is stale (see `cutRecordIsOf`): announced now
+ * it would tell of an old shutdown under this restart's cause, so nothing is taken from it, and its
+ * turns keep their own 「中断」 lines and notifications. Empties the record either way.
+ */
+export function takeTurnsCutByRestart(ctx: StoreContext, previousRun: string | null): Array<{ turn: Turn; note: Message }> {
+  const record = readCutRecord(ctx);
+  forgetTurnsCutByShutdown(ctx);
+  if (!record || !cutRecordIsOf(ctx, record, previousRun)) return [];
+  const cut: Array<{ turn: Turn; note: Message }> = [];
+  for (const id of record.turns) {
+    const row = ctx.db.query<TurnRow, [string]>(`SELECT * FROM turns WHERE id = ?`).get(id);
+    if (!row || row.status !== "interrupted") continue;
+    const note = ctx.db
+      .query<{ id: string }, [string, string]>(
+        `SELECT id FROM messages WHERE turn_id = ? AND kind = 'system' AND body = ? AND source_turn_id IS NULL
+         ORDER BY created_at DESC, id DESC LIMIT 1`,
+      )
+      .get(id, INTERRUPT_NOTE_BODY);
+    if (note) cut.push({ turn: toTurn(row), note: getMessage(ctx, note.id) });
+  }
+  return cut;
 }
 
 export function stopTurn(

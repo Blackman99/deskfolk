@@ -356,6 +356,20 @@ test("history loads lazily on first open and jump calls onJump", async () => {
   view.close();
 });
 
+test("a version a stop of yours wrote says so, in the history and as the latest", async () => {
+  const view = open({
+    detail: aDetail({ revision_actor: "app", revision_cause: "hold" }),
+    api: { taskSpecRevisions: async () => [aRevision({ revision: 3, cause: "hold" }), aRevision({ id: "rev-2", revision: 2, actor: "user", cause: null })] },
+  });
+  expect(view.host.querySelector(".plan-spec-actor")?.textContent).toBe("叫停改的");
+  click(view.host.querySelector(".plan-spec-history-toggle"));
+  await until(view.host, ".plan-spec-revision");
+  const actors = [...view.host.querySelectorAll(".plan-spec-revision-actor")];
+  expect(actors.map((actor) => actor.textContent)).toEqual(["叫停改的", "你改的"]);
+  expect(actors[0]!.classList.contains("is-hold")).toBe(true);
+  view.close();
+});
+
 test("an empty history says so", async () => {
   const view = open({ api: { taskSpecRevisions: async () => [] } });
   click(view.host.querySelector(".plan-spec-history-toggle"));

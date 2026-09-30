@@ -38,7 +38,7 @@ export type {
   StatusTicketLine,
   StatusWorkingLine,
 } from "./transcript-copy";
-export { clockOf, continueReceiptBody, controlStatusBody, heldLines, readOnlyLine, resumeNote, saidOf, stopReceiptBody } from "./control-copy";
+export { clockOf, continueReceiptBody, controlStatusBody, heldLines, readOnlyLine, restartNoticeBody, resumeNote, saidOf, stopReceiptBody } from "./control-copy";
 export type { ControlTurnLine, SaidLine } from "./control-copy";
 export type { ChatTool } from "./tool-schema";
 export { builtinTools, COLLAB_TOOL_NAMES } from "./builtin-tools";

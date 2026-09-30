@@ -4,7 +4,7 @@ import { flushSync, tick } from "svelte";
 import { copyFor } from "../copy.ts";
 import { aBot, aBotDirect, aDirect, aTurn, fakeRuntime } from "../test-fixtures.ts";
 import { reactive } from "../test-reactive.svelte.ts";
-import { render } from "../test-render.ts";
+import { buttonByText, click, render } from "../test-render.ts";
 import { pressWorkspacePaths, type WorkspaceDragItem } from "../workspace-drag.svelte.ts";
 import Composer from "./Composer.svelte";
 
@@ -696,5 +696,34 @@ test("the file conversation, a locked composer and one already sending take noth
   } finally {
     tree.remove();
     document.elementFromPoint = elementFromPoint;
+  }
+});
+
+test("the stop menu sits beside the Stop button while the Bot works anywhere, and stops the chosen scope from here", async () => {
+  // A drag test above leaves its release's click to be swallowed until the next macrotask.
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const selected = aDirect();
+  const turns = [aTurn({ session_id: "botbot-1", bot_id: "bot-1", task_id: "task-1" })];
+  const runtime = reactive(fakeRuntime({ bots: [aBot({ id: "bot-1", name: "视频导演" })], sessions: [selected], turns, holdsOn: true }));
+  runtime.selectedId = selected.id;
+  const { host, close } = render(Composer, { runtime, t, selected, onSend: async () => true, onPickPrompt: () => {} });
+  try {
+    click(host.querySelector(".stop-menu-trigger"));
+    expect([...host.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent)).toEqual(["停下视频导演的全部工作", "停下这件事", "停下所有 Bot"]);
+    click(buttonByText(host, "停下这件事"));
+    expect(runtime.calls.filter((call) => call.name === "stopScope").map((call) => call.args)).toEqual([["plan", "task-1", selected.id]]);
+  } finally {
+    close();
+  }
+});
+
+test("no stop menu before the daemon has stops, nor while nobody it names is at work", () => {
+  const selected = aDirect();
+  for (const over of [{ turns: [aTurn({ session_id: selected.id })], holdsOn: false }, { turns: [], holdsOn: true }]) {
+    const runtime = reactive(fakeRuntime({ bots: [aBot({ id: "bot-1" })], sessions: [selected], ...over }));
+    runtime.selectedId = selected.id;
+    const { host, close } = render(Composer, { runtime, t, selected, onSend: async () => true, onPickPrompt: () => {} });
+    expect(host.querySelector(".stop-menu-trigger")).toBeNull();
+    close();
   }
 });

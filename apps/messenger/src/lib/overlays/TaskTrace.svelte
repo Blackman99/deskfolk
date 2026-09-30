@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Attachment, Bot, Provider, SessionSummary } from '@real-bot/protocol';
+	import type { Attachment, Bot, Hold, Provider, SessionSummary } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
 	import { pageSlide } from '../mobile-page-slide.ts';
@@ -39,6 +39,10 @@
 			taskId?: string | null,
 			siblings?: Attachment[] | null
 		) => void;
+		holds?: readonly Hold[] | null;
+		onStop?: (choice: import('../chat/stop-menu.ts').StopChoice) => Promise<unknown> | void;
+		onLift?: (hold: Hold) => Promise<unknown> | void;
+		controlsDisabled?: boolean;
 	}
 
 	let {
@@ -59,7 +63,11 @@
 		onClose,
 		onJump,
 		onTask,
-		onOpenArtifact
+		onOpenArtifact,
+		holds = null,
+		onStop,
+		onLift,
+		controlsDisabled = false
 	}: Props = $props();
 
 </script>
@@ -92,6 +100,10 @@
 		{onJump}
 		{onTask}
 		{onOpenArtifact}
+		{holds}
+		{onStop}
+		{onLift}
+		{controlsDisabled}
 	/>
 </div>
 

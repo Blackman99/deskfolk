@@ -28,6 +28,16 @@ import {
 } from "../store";
 import { takeCodePoints } from "../text";
 
+/**
+ * The organizer's own part in stopping, from before stops were holds (the 09-29 fix): a line asking
+ * to stop parks the plan, one saying the work has not stopped keeps it parked, and only a go on puts
+ * it back. It is left out once the engine level brings holds (ADR 0041): from then on the app
+ * carries out a stop line itself and a line with more in it is never a stop, so a plan the organizer
+ * parked on its own reading would be a stop nobody made, one no button lists or lifts. Below that
+ * level it is still what keeps a stop line from putting a parked plan back to work.
+ */
+const ORGANIZER_STOP_RULE = `- 叫停：用户叫停（停下、停掉、暂停、先别做、不要再生成……）就把这件事标 parked，rules 里写一句「用户叫停，没说继续之前不再做」。用户说「你没停」「还在进行」「私聊里的没停」「怎么还在做」，是在催 Bot 真的停下，不是让接着做：保持或改成 parked，不要写「接着做完」「不要搁置」这类规则。已经 parked 的事，只有用户明说继续、接着做、恢复，才改回 active；settle 时不要把 parked 改回 active。`;
+
 export const ORGANIZER_SYSTEM = `你在替这个会话整理「规划」和「任务」，不是回答用户，也不能发言。没有工具，不能读工作区。
 
 规划是一个会话里正在推进的一件事，有要点：kind（类别，用来找先例）、goal（现在到底要做什么）、acceptance（怎么算完成）、rules（用户自己定的口径、约束、改善意见）、process（这件事定下来的做法、谁负责哪段；Bot 自己定的做法和限制也写在这里，写明是谁定的）、progress（done / open / blocked）、status（active / done / parked）。任务是规划下能独立交付的一块：title、spec（要交出什么、怎么算完成）、status（todo / doing / review / done / parked）、worker（谁负责，写 Bot 名字：建任务时按分工先填，之后按 trace 里实际在做的人改；没人就 null）。
@@ -43,7 +53,7 @@ export const ORGANIZER_SYSTEM = `你在替这个会话整理「规划」和「�
 - rules 只收用户自己的话：message、user_lines、messages 里 from 是 user 的话和 answer、rules_user_typed。可以精简，不能加用户没说的意思；提问、催进度、「继续」本身不是规则；回答只是选了下一步先做什么的，写进 process 或 progress。
 - Bot 说的决定和给自己定的限制不是规则，也不写进 goal、acceptance 或任务 spec，分三种放：Bot 自己决定的暂停、冻结、不再重试、只做一部分，写进 process 并写明是谁定的，因此停着的写进 progress.blocked，写清等什么能解开；要用户给的东西（授权、密钥、确认花钱）才能往下做的，写进 progress.blocked，写清要用户做什么；做法上的约束（不覆盖原文件、交付放哪个目录），写进 process。
 - 用户新说的话和已有规则冲突或盖过它时，改写或删掉那条旧的，不要把新的并列追加：用户说过「只做第一部分」、现在说「第二部分也做」，就改成「第一、第二部分都做」。用户说「继续推进」「不要停下来」「尽可能做好」时，Bot 自己决定的暂停、冻结、不再重试、只做一部分都撤掉，不管写在 rules、process、progress、acceptance 还是任务 spec 里，因此停着的挪回 progress.open，因此搁置的任务改回 todo；等用户给东西的那种，用户给了才撤（「不用考虑金额」撤掉因为花钱停着的）；做法上的约束不撤。
-- 叫停：用户叫停（停下、停掉、暂停、先别做、不要再生成……）就把这件事标 parked，rules 里写一句「用户叫停，没说继续之前不再做」。用户说「你没停」「还在进行」「私聊里的没停」「怎么还在做」，是在催 Bot 真的停下，不是让接着做：保持或改成 parked，不要写「接着做完」「不要搁置」这类规则。已经 parked 的事，只有用户明说继续、接着做、恢复，才改回 active；settle 时不要把 parked 改回 active。
+${ORGANIZER_STOP_RULE}
 - mode 是 message、user_lines_omitted 是 0 时：current_plan 里在用户的话和 rules_user_typed 里都找不到出处的规则、acceptance 里 Bot 自己加的限制（acceptance_user_typed 里的不动），按上面三种挪走；goal 只剩 Bot 眼下推进的一块、比用户要的窄时，按用户的话放回去（goal_user_typed 是 true 的不动）；spec_user_typed 不是 true 的任务 spec 写成了进展流水或禁令的，改回要交出什么。user_lines_omitted 大于 0 时不做这一步。
 - join 时看不到那件事的 user_lines：只按这句改它的要点，它已有的规则不挪。
 - settle 且 user_spoke 是 false 时：goal、acceptance、rules 原样照抄，已有任务的 spec 不改，规划不改成 parked；只记交出了什么、进展到哪、谁在做、做法和因此卡住的事。改了前面这几项，应用也会退回。
@@ -54,6 +64,9 @@ export const ORGANIZER_SYSTEM = `你在替这个会话整理「规划」和「�
 - plan.status 标 done 时，每个任务也要在这次答案里标成 done 或 parked；还有待做或进行中的任务，这件事就没做完。
 - message_ticket：mode 是 message 时，这条消息在说哪个任务；一句泛泛的话或问进度就 null。settle 时 null。
 - 一切都写短：goal 一句话，列表每条一句。`;
+
+/** The organizer's system once holds are on: the same, with nothing about stopping (see {@link ORGANIZER_STOP_RULE}). */
+export const ORGANIZER_SYSTEM_UNDER_HOLDS = ORGANIZER_SYSTEM.replace(`${ORGANIZER_STOP_RULE}\n`, "");
 
 export const ORGANIZER_MESSAGES_LIMIT = 30;
 export const ORGANIZER_BODY_LIMIT = 600;

@@ -119,6 +119,15 @@
 		saveError = null;
 	}
 
+	/**
+	 * Who wrote a version: you, the app's filing, or a stop of yours parking the plan or putting it
+	 * back — the app wrote that one too, but it is no filing and says so.
+	 */
+	function actorLabel(actor: 'app' | 'user' | null, cause: 'hold' | null | undefined): string {
+		if (cause === 'hold') return t.plan.byHold;
+		return actor === 'user' ? t.plan.byUser : t.plan.byApp;
+	}
+
 	function errorStatus(err: unknown): number | undefined {
 		if (err && typeof err === 'object' && 'status' in err) {
 			const status = (err as { status?: unknown }).status;
@@ -403,7 +412,7 @@
 		<div class="plan-spec-foot-meta">
 			<span class="plan-spec-rev mono">{t.plan.revision(detail.revision)}</span>
 			<span class="plan-spec-dot" aria-hidden="true">·</span>
-			<span class="plan-spec-actor">{detail.revision_actor === 'user' ? t.plan.byUser : t.plan.byApp}</span>
+			<span class="plan-spec-actor">{actorLabel(detail.revision_actor, detail.revision_cause)}</span>
 			{#if detail.spec_updated_at}
 				<span class="plan-spec-dot" aria-hidden="true">·</span>
 				<span class="plan-spec-time" title={formatFullTimestamp(detail.spec_updated_at)}>
@@ -441,7 +450,7 @@
 						<div class="plan-spec-revision">
 							<div class="plan-spec-revision-header">
 								<span class="plan-spec-revision-n mono">{t.plan.revision(rev.revision)}</span>
-								<span class="plan-spec-revision-actor">{rev.actor === 'user' ? t.plan.byUser : t.plan.byApp}</span>
+								<span class="plan-spec-revision-actor" class:is-hold={rev.cause === 'hold'}>{actorLabel(rev.actor, rev.cause)}</span>
 								<span class="plan-spec-revision-time" title={formatFullTimestamp(rev.created_at)}>
 									{formatMessageTime(rev.created_at)}
 								</span>
@@ -1057,6 +1066,11 @@
 	.plan-spec-revision-actor {
 		color: var(--ink-secondary);
 		font-weight: 500;
+	}
+
+	/* Written by a stop, not by anyone's edit: quieter than the versions someone wrote. */
+	.plan-spec-revision-actor.is-hold {
+		color: var(--muted);
 	}
 
 	.plan-spec-revision-time {

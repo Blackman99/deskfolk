@@ -1,0 +1,172 @@
+import { expect, test } from "bun:test";
+import { flushSync, tick } from "svelte";
+import { copyFor } from "../copy.ts";
+import { aBot, aDirect, aGroup, aHold, fakeRuntime } from "../test-fixtures.ts";
+import type { Snapshot } from "../snapshot.ts";
+import { reactive } from "../test-reactive.svelte.ts";
+import { buttonByText, click, render } from "../test-render.ts";
+import Sidebar from "./Sidebar.svelte";
+
+const t = copyFor("zh");
+
+function open(over: Partial<Snapshot>, refusal: unknown = null) {
+  // Recorded outside the runtime: reading `runtime.calls` between two presses would freeze it
+  // through the reactive proxy.
+  const pressed: unknown[][] = [];
+  const record = (name: string) => (...args: unknown[]) => {
+    pressed.push([name, ...args]);
+    return Promise.resolve(refusal);
+  };
+  const runtime = reactive(
+    fakeRuntime(
+      {
+        bots: [aBot({ id: "bot-1", name: "视频导演" }), aBot({ id: "bot-2", name: "审片员" })],
+        sessions: [aGroup({ id: "sess-1", name: "视频组" }), aDirect({ id: "direct-1" }), aDirect({ id: "direct-2", participants: [{ member: "user", joined_at: "2026-09-19T00:00:00.000Z", left_at: null }, { member: "bot-2", joined_at: "2026-09-19T00:00:00.000Z", left_at: null }] })],
+        ...over,
+      },
+      { stopScope: record("stopScope"), liftHold: record("liftHold") },
+    ),
+  );
+  const view = render(Sidebar, {
+    runtime,
+    t,
+    selected: null,
+    pinnedSessionIds: [],
+    workspaceOpen: false,
+    contextMenuSessionId: null,
+    onOpenContextMenu: () => {},
+    onToggleWorkspace: () => {},
+    onOpenRoutines: () => {},
+    onOpenSpend: () => {},
+    onNewTerminal: () => {},
+    onOpenSettings: () => {},
+    onCreateBot: () => {},
+    onCreateGroup: () => {},
+    onOpenSearch: () => {},
+  });
+  return { ...view, runtime, pressed };
+}
+
+test("your stops in force sit above the list, each with its lift; a plan parked before stops existed is not among them", () => {
+  const holds = [
+    aHold({ id: "h-plan", scope: "plan", scope_id: "task-1", plan_title: "EP01", source: "user_text" }),
+    aHold({ id: "h-bot", scope: "bot", scope_id: "bot-1", action: "cancel" }),
+    aHold({ id: "h-old", scope: "plan", scope_id: "task-2", source: "legacy" }),
+  ];
+  const { host, pressed, close } = open({ holds, holdsOn: true });
+  try {
+    const rows = [...host.querySelectorAll(".holds-row")];
+    expect(rows.map((row) => row.querySelector(".holds-label")?.textContent)).toEqual(["「EP01」这件事", "视频导演的全部工作"]);
+    expect(rows[1]!.querySelector(".holds-tag")?.textContent).toBe("作废");
+    click(rows[0]!.querySelector(".holds-lift"));
+    expect(pressed).toEqual([["liftHold", "h-plan"]]);
+  } finally {
+    close();
+  }
+});
+
+test("a direct whose Bot you stopped, and a group you stopped, say so where their last line would be", () => {
+  const { host, close } = open({ holds: [aHold({ scope: "bot", scope_id: "bot-1" }), aHold({ id: "h-2", scope: "session", scope_id: "sess-1" })], holdsOn: true });
+  try {
+    const held = [...host.querySelectorAll(".row-status.is-held")].map((status) => status.closest(".row")?.querySelector(".t")?.textContent);
+    expect(held.sort()).toEqual(["视频导演", "视频组"]);
+    expect(host.querySelector(".row-status.is-held .row-status-text")?.textContent).toBe("已叫停");
+  } finally {
+    close();
+  }
+});
+
+test("the tools menu stops everything, and while everything is stopped lets it all go on", () => {
+  const { host, runtime, pressed, close } = open({ holdsOn: true });
+  try {
+    click(host.querySelector(".tools-entry"));
+    click(buttonByText(host, "全部停下"));
+    expect(pressed).toEqual([["stopScope", "global", null, null]]);
+    runtime.snapshot = { ...runtime.snapshot, holds: [aHold({ id: "h-all", scope: "global", scope_id: null })] };
+    click(host.querySelector(".tools-entry"));
+    click(buttonByText(host, "全部继续"));
+    expect(pressed.at(-1)).toEqual(["liftHold", "h-all"]);
+  } finally {
+    close();
+  }
+});
+
+test("a stop or a lift the daemon refuses is said above the list, and on the row it was for", async () => {
+  const { host, close } = open({ holdsOn: true, holds: [aHold({ id: "h-bot", scope: "bot", scope_id: "bot-1" })] }, { status: 422 });
+  try {
+    click(host.querySelector(".tools-entry"));
+    click(buttonByText(host, "全部停下"));
+    await tick();
+    flushSync();
+    expect(host.querySelector(".holds-failed")?.textContent).toBe("没做成，再试一次");
+    click(host.querySelector(".holds-lift"));
+    await tick();
+    flushSync();
+    expect(host.querySelector(".holds-row .holds-error")?.textContent).toBe("没做成，再试一次");
+  } finally {
+    close();
+  }
+});
+
+test("the tools menu's refusal goes once everything is stopped or let go some other way", async () => {
+  const { host, runtime, close } = open({ holdsOn: true }, { status: 422 });
+  try {
+    click(host.querySelector(".tools-entry"));
+    click(buttonByText(host, "全部停下"));
+    await tick();
+    flushSync();
+    expect(host.querySelector(".holds-failed")).not.toBeNull();
+    // Stopped from the menu bar meanwhile: the note would no longer be true.
+    runtime.snapshot = { ...runtime.snapshot, holds: [aHold({ id: "h-all", scope: "global", scope_id: null })] };
+    flushSync();
+    expect(host.querySelector(".holds-failed")).toBeNull();
+    // And lifted again: back where the refused press left things, but nobody pressed again.
+    runtime.snapshot = { ...runtime.snapshot, holds: [] };
+    flushSync();
+    expect(host.querySelector(".holds-failed")).toBeNull();
+    runtime.snapshot = { ...runtime.snapshot, holds: [aHold({ id: "h-all", scope: "global", scope_id: null })] };
+    flushSync();
+
+    click(host.querySelector(".tools-entry"));
+    click(buttonByText(host, "全部继续"));
+    await tick();
+    flushSync();
+    expect(host.querySelector(".holds-failed")).not.toBeNull();
+    // Lifted from its row, or from the menu bar.
+    runtime.snapshot = { ...runtime.snapshot, holds: [] };
+    flushSync();
+    expect(host.querySelector(".holds-failed")).toBeNull();
+    runtime.snapshot = { ...runtime.snapshot, holds: [aHold({ id: "h-all", scope: "global", scope_id: null })] };
+    flushSync();
+    expect(host.querySelector(".holds-failed")).toBeNull();
+  } finally {
+    close();
+  }
+});
+
+test("with the daemon out of reach the tools menu's stop is shown but cannot be pressed", () => {
+  const { host, runtime, pressed, close } = open({ holdsOn: true });
+  try {
+    runtime.connection = "disconnected";
+    flushSync();
+    click(host.querySelector(".tools-entry"));
+    const item = host.querySelector<HTMLButtonElement>(".tools-menu-everything");
+    expect(item?.disabled).toBe(true);
+    click(item);
+    expect(pressed).toEqual([]);
+  } finally {
+    close();
+  }
+});
+
+test("before the daemon has stops there is no bar, no marks and no stop in the tools menu", () => {
+  const { host, close } = open({ holds: [aHold()], holdsOn: false });
+  try {
+    expect(host.querySelector(".holds")).toBeNull();
+    expect(host.querySelector(".row-status.is-held")).toBeNull();
+    click(host.querySelector(".tools-entry"));
+    expect(host.querySelector(".tools-menu-everything")).toBeNull();
+  } finally {
+    close();
+  }
+});

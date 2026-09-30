@@ -7,7 +7,7 @@ import type { ChatMessage, CompletionOk, CompletionsClient, JudgeRequest, JudgeR
 import { SITUATION_HEADING } from "./context";
 import { createPlanWatch } from "./engine/plan-watch";
 import { JUDGEMENT_SYSTEM } from "./prompts/judgement";
-import { ORGANIZER_SYSTEM, type OrganizerPayload } from "./prompts/organizer";
+import { ORGANIZER_SYSTEM, ORGANIZER_SYSTEM_UNDER_HOLDS, type OrganizerPayload } from "./prompts/organizer";
 import { memoryKeyStore } from "./secrets";
 import { parsePlanSpec, PLAN_MAP_FILE, Store, TICKET_FILE } from "./store";
 import { PLAN_NUDGES_UNANSWERED_MAX } from "./engine/plan-watch";
@@ -1103,6 +1103,7 @@ test("a resume or join that names the session's own current plan is filed there 
 test("a line asking to stop never puts a parked plan back to work; one that says to go on does", async () => {
   // The live case: 「你私聊里的没停」 came back as 「私聊里这件还没停，不要搁置，接着做完」, the
   // plan went active again and the video Bots rendered two more shots after being told to stop.
+  // Below the engine level that brings holds (a store starts there) this veto is all there is.
   const reopen = (planId: string) =>
     judged(
       JSON.stringify({
@@ -1157,6 +1158,7 @@ test("a line asking to stop never puts a parked plan back to work; one that says
 });
 
 test("a settle files what the Bots handed over in a parked plan but leaves it parked", async () => {
+  // Below the holds level; under holds the hold does it (next tests).
   const answers: JudgeResult[] = [];
   const h = bareOrganizer(answers);
   const director = h.store.createBot({ name: "Director", duties: "direct", boundaries: "stay" });
@@ -1178,6 +1180,56 @@ test("a settle files what the Bots handed over in a parked plan but leaves it pa
   expect(run).toMatchObject({ mode: "settle", message_id: null, applied: true, reject_reason: null, applied_task_id: plan.id, decision: "continue" });
   // It landed, but not all of it: the row says which part was held back, in the log line's words.
   expect(run.held).toEqual(["the settle called it active; kept parked"]);
+});
+
+test("under holds the organizer is told nothing about stopping, and a hold, not a refused filing, keeps a stopped plan parked", async () => {
+  const answers: JudgeResult[] = [];
+  const h = bareOrganizer(answers);
+  h.store.raiseEngineLevel(null);
+  const director = h.store.createBot({ name: "Director", duties: "direct", boundaries: "stay" });
+  const session = director.direct_session.id;
+  const plan = h.store.openTask({ sessionId: session, title: "做一部短片" });
+  // Parked from the board: from the holds level on, that is a stop of yours on the plan.
+  h.store.setPlanSpecByUser(plan.id, { goal: "做一部短片", status: "parked" });
+  expect(h.store.holdsCovering({ taskId: plan.id })).toMatchObject([{ scope: "plan", scope_id: plan.id }]);
+  // A line with a stop in it and more reaches the organizer (a pure stop line never does); its
+  // answer puts the plan back in progress, as the 09-29 one did.
+  const line = h.store.insertMessage({ sessionId: session, kind: "user", author: "user", body: "你私聊里的没停，第三镜换成夜景" });
+  answers.push(
+    judged(JSON.stringify({ decision: "resume", resume_plan_id: plan.id, plan: { goal: "做一部短片", rules: ["第三镜是夜景"], status: "active" }, tickets: [] })),
+  );
+
+  expect(await h.organizer.organizeMessage(line)).toMatchObject({ taskId: plan.id });
+
+  const system = String(h.requests[0]!.messages[0]!.content);
+  expect(system).toBe(ORGANIZER_SYSTEM_UNDER_HOLDS);
+  expect(system).not.toContain("叫停");
+  expect(ORGANIZER_SYSTEM).toContain("- 叫停：");
+  expect(h.lines).toEqual([]);
+  expect(h.store.getTask(plan.id).status).toBe("parked");
+  expect(JSON.parse(h.store.getTask(plan.id).spec!)).toMatchObject({ status: "parked", rules: ["第三镜是夜景"] });
+  expect(h.store.organizerRunsForTask(plan.id)[0]).toMatchObject({ applied: true, reject_reason: null, applied_task_id: plan.id });
+});
+
+test("under holds a settle that calls a stopped plan active files everything, and the hold keeps it parked", async () => {
+  const answers: JudgeResult[] = [];
+  const h = bareOrganizer(answers);
+  h.store.raiseEngineLevel(null);
+  const director = h.store.createBot({ name: "Director", duties: "direct", boundaries: "stay" });
+  const session = director.direct_session.id;
+  const plan = h.store.openTask({ sessionId: session, title: "做一部短片" });
+  h.store.setPlanSpecByUser(plan.id, { goal: "做一部短片", status: "parked" });
+  const handed = h.store.insertMessage({ sessionId: session, kind: "bot", author: director.bot.id, body: "Shot 12 交在 shots/shot_12.mp4" });
+  h.store.db.run("UPDATE messages SET task_id = ?, created_at = ? WHERE id = ?", [plan.id, new Date(Date.now() + 1000).toISOString(), handed.id]);
+  answers.push(
+    judged(JSON.stringify({ decision: "continue", plan: { goal: "做一部短片", progress: { done: ["Shot 12 已交"] }, status: "active" }, tickets: [] })),
+  );
+
+  expect(await h.organizer.settlePlan(plan.id)).toBe(true);
+  expect(h.store.getTask(plan.id).status).toBe("parked");
+  expect(JSON.parse(h.store.getTask(plan.id).spec!)).toMatchObject({ status: "parked", progress: { done: ["Shot 12 已交"] } });
+  expect(h.lines).toEqual([]);
+  expect(h.store.organizerRunsForTask(plan.id)[0]).toMatchObject({ mode: "settle", applied: true, held: null });
 });
 
 test("stop lines are told from lines that say to go on", () => {

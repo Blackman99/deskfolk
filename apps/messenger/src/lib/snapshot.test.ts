@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { applyEvent, emptySnapshot } from "./snapshot.ts";
+import { aHold } from "./test-fixtures.ts";
+import { applyEvent, emptySnapshot, fromRuntimeSnapshot } from "./snapshot.ts";
 
 test("settings.changed replaces the GET-shaped settings, never a key", () => {
   const next = applyEvent(emptySnapshot(), {
@@ -855,4 +856,19 @@ test("memory.upsert replaces by id and keeps the newest first", () => {
 
   const gone = applyEvent(corrected, { event: "memory.removed", occurred_at: "t4", id: "m-1" });
   expect(gone.memories.map((m) => m.id)).toEqual(["m-2"]);
+});
+
+test("holds: the snapshot says whether stops can be made, and hold.upsert keeps the list of those in force", () => {
+  const base = { event_instance_id: "a".repeat(32), watermark_seq: 0, settings: emptySnapshot().settings, bots: [], sessions: [], approvals: [], mcpServers: [], providers: [], skills: [], memories: [], routines: [], allowRules: [] };
+  expect(fromRuntimeSnapshot(base)).toMatchObject({ holds: [], holdsOn: false });
+  const older = aHold({ id: "hold-0" });
+  let snapshot = fromRuntimeSnapshot({ ...base, holds: [older] });
+  expect(snapshot).toMatchObject({ holds: [older], holdsOn: true });
+  const made = aHold({ id: "hold-1", scope: "global", scope_id: null });
+  snapshot = applyEvent(snapshot, { event: "hold.upsert", occurred_at: "now", ...made });
+  expect(snapshot.holds.map((hold) => hold.id)).toEqual(["hold-1", "hold-0"]);
+  snapshot = applyEvent(snapshot, { event: "hold.upsert", occurred_at: "now", ...made, action: "cancel" });
+  expect(snapshot.holds[0]!.action).toBe("cancel");
+  snapshot = applyEvent(snapshot, { event: "hold.upsert", occurred_at: "now", ...older, lifted_at: "2026-09-19T03:00:00.000Z" });
+  expect(snapshot.holds.map((hold) => hold.id)).toEqual(["hold-1"]);
 });

@@ -26,8 +26,9 @@ import { describeCheck } from "./acceptance-eval";
 import type { CompletionsClient, MappedUsage } from "./completions";
 import { HttpError } from "./errors";
 import { atomicWrite } from "./file-integrity";
-import { holdSettle, ORGANIZER_SYSTEM, organizerPayload, parseOrganizerResult } from "./prompts/organizer";
+import { holdSettle, ORGANIZER_SYSTEM, ORGANIZER_SYSTEM_UNDER_HOLDS, organizerPayload, parseOrganizerResult } from "./prompts/organizer";
 import { parsePlanSpec, PLAN_MAP_FILE, TICKET_FILE, type OrganizerResult, type PlanSpec, type Store, type Task } from "./store";
+import { ENGINE_LEVELS } from "./store/schema-gate";
 import { classifyPath } from "./workspace-paths";
 
 /**
@@ -152,7 +153,9 @@ const GO_ON_CUE = /继续|接着|恢复|重新开始|往下做|别停|不要停|
  * A line that asks the Bots to stop, or tells them they have not stopped (「停下你所有的工作」
  * 「私聊里的也停掉」「你私聊里的没停」). One that also says to go on (「停了的接着做」「不要停」)
  * does not, and neither does 「别再 / 不要再 + what」: that is a requirement
- * (「别再用冻帧补时长」), not a stop.
+ * (「别再用冻帧补时长」), not a stop. Only read below the engine level that brings holds; from
+ * there the control-line reader (control-line.ts) decides what a stop is, and a hold, not the
+ * organizer, keeps a stopped plan parked (ADR 0041).
  */
 export function asksToStop(body: string): boolean {
   return STOP_CUE.test(body) && !GO_ON_CUE.test(body);
@@ -165,6 +168,12 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
   const chains = new Map<string, Promise<unknown>>();
   const log = deps.log ?? ((line: string) => console.error(line));
   const ablation = deps.ablation ?? NO_ABLATION;
+  /**
+   * Holds are on (ADR 0041): a stop is the app's to carry out and a hold's to keep, so the organizer
+   * is told nothing about stopping and its answers are not second-guessed for it. Below that level
+   * the organizer's own stop handling from before holds is all there is.
+   */
+  const holdsOn = (): boolean => store.capabilities().engine_level >= ENGINE_LEVELS.holds;
   /**
    * Plans a filing held `done` open only for lack of a run yet on some check (never a failed one):
    * the quiet stretch that set this runs the check once more (`afterSettle`) and, once, files the
@@ -249,7 +258,7 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
         apiKey: routing.apiKey,
         model: routing.model,
         messages: [
-          { role: "system", content: ORGANIZER_SYSTEM },
+          { role: "system", content: holdsOn() ? ORGANIZER_SYSTEM_UNDER_HOLDS : ORGANIZER_SYSTEM },
           { role: "user", content: JSON.stringify(payload) },
         ],
         signal: new AbortController().signal,
@@ -414,7 +423,11 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     }
     // 「你私聊里的没停」 once came back as 「私聊里这件还没停，接着做完」 and put a stopped video
     // job back to work: a line asking to stop never reopens a parked plan, whatever the answer says.
-    const reopened = parkedPlanReopened(parsed, current);
+    // Under holds this guard is off. Only a pure control line, one the control reader takes and
+    // answers itself (a stop, a go-on, a status question), is kept from the organizer; a mixed one —
+    // 「你私聊里的没停，第三镜换成夜景」 — still reaches it and is filed, and the hold, not this guard,
+    // keeps a stopped plan parked.
+    const reopened = holdsOn() ? null : parkedPlanReopened(parsed, current);
     if (reopened && asksToStop(message.body)) {
       log(`[organizer] filing message ${message.id}: a line asking to stop would have reopened parked plan ${reopened}, nothing filed`);
       finishOrganizerRun(store, pending, {
@@ -514,7 +527,8 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
           .query<{ id: string }, [string]>(`SELECT id FROM turns WHERE task_id = ? ORDER BY updated_at DESC, id DESC LIMIT 1`)
           .get(taskId);
         // A settle files what the Bots handed over; putting a parked plan back to work is yours to say.
-        const reopens = task.status === "parked" && parsed.spec.status === "active";
+        // Under holds, a hold keeps the plan you stopped parked whatever the settle says.
+        const reopens = !holdsOn() && task.status === "parked" && parsed.spec.status === "active";
         if (reopens) log(`[organizer] plan ${taskId}: the settle called it active; kept parked`);
         const kept = reopens ? { ...parsed, spec: { ...parsed.spec, status: "parked" as const } } : parsed;
         // The evidence settle is only for re-reading checks that just ran; it must not also let this

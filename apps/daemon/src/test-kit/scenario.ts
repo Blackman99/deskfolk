@@ -59,10 +59,11 @@ import type {
   ToolCall,
 } from "../completions";
 import { TRIGGER_FLAG } from "../context";
+import { classifyRestart } from "../engine/restart";
 import { isoNow } from "../ids";
 import { createMcpHost, type McpCallResult, type McpHost } from "../mcp-host";
 import { COLLAB_TOOL_NAMES, COMPOSER_SUGGEST_SYSTEM, JUDGEMENT_SYSTEM, type FailKind } from "../prompts";
-import { ORGANIZER_SYSTEM } from "../prompts/organizer";
+import { ORGANIZER_SYSTEM, ORGANIZER_SYSTEM_UNDER_HOLDS } from "../prompts/organizer";
 import { ROUTE_LEARN_SYSTEM, ROUTE_PICK_SYSTEM, ROUTE_REVIEW_SYSTEM } from "../prompts/routing";
 import { TurnAdmission } from "../quiesce";
 import { startScheduler, type Scheduler } from "../scheduler";
@@ -387,9 +388,11 @@ export type Scenario = {
 
   /**
    * Takes the daemon down and boots a new one on the same file (needs `durable`): `clean` as a quit
-   * does, otherwise a crash (see the module header). The new engine's scheduler has ticked once.
+   * does, otherwise a crash (see the module header). `dev`: the new daemon runs the way `bun --watch`
+   * does, so the restart reads as a development one. The new engine has said what the restart cut
+   * off (ADR 0041), and its scheduler has ticked once.
    */
-  restart: (opts: { clean: boolean }) => Promise<void>;
+  restart: (opts: { clean: boolean; dev?: boolean }) => Promise<void>;
   close: () => Promise<void>;
 };
 
@@ -418,7 +421,7 @@ export function requestText(request: CompletionRequest): string {
 
 function judgeKindOf(request: JudgeRequest): JudgeKind {
   const system = textOf(request.messages.find((m) => m.role === "system")?.content ?? "");
-  if (system === ORGANIZER_SYSTEM) return "organizer";
+  if (system === ORGANIZER_SYSTEM || system === ORGANIZER_SYSTEM_UNDER_HOLDS) return "organizer";
   if (system === JUDGEMENT_SYSTEM) return "judgement";
   if (system === ROUTE_PICK_SYSTEM) return "route_pick";
   if (system === ROUTE_REVIEW_SYSTEM) return "route_review";
@@ -893,7 +896,7 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
   }
 
   /** What `runtime.ts` does with a store it has just opened, before and after the engine exists. */
-  function boot(filename: string): void {
+  function boot(filename: string, dev: boolean): void {
     store = new Store({ filename, endpointKey: keys });
     store.recoverInterruptedTurns();
     store.recoverInterruptedCheckRuns();
@@ -901,6 +904,7 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
     mcp = options.media ? mediaHost() : undefined;
     admission = new TurnAdmission();
     engine = buildEngine(mcp, admission);
+    engine.announceRestart(classifyRestart(store.previousShutdown, { execArgv: dev ? ["--watch"] : [], env: {} }));
     scheduler = buildScheduler();
     engine.sweepStaleChains();
   }
@@ -1076,7 +1080,7 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
       return store.listWorkEvents({ kind: "wake.suppressed" }).filter((row) => id === null || row.bot_id === id);
     },
 
-    async restart({ clean }) {
+    async restart({ clean, dev = false }) {
       if (!dbFile || !dbDir) throw new Error("restart() needs createScenario({ durable: true })");
       scheduler.stop();
       let reopen = dbFile;
@@ -1095,7 +1099,7 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
         store.close();
       }
       dbFile = reopen;
-      boot(reopen);
+      boot(reopen, dev);
     },
     async close() {
       scheduler.stop();

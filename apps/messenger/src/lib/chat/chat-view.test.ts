@@ -16,6 +16,7 @@ import {
   isInterruptNote,
   isUnreachableNote,
   itemGroupInfo,
+  restartAnnounced,
 } from "./chat-view.ts";
 import type { TranscriptItem } from "./transcript.ts";
 
@@ -490,6 +491,17 @@ describe("chat-view helpers", () => {
         },
       ]),
     ).toBe(false);
+  });
+
+  test("a restart notice that has not been answered stands for the Continue of the 「中断」 lines it names", () => {
+    const note = { id: "cut-1", kind: "system" as const, body: "中断", author: "bot-1", turn_id: "turn-cut", source_turn_id: null as string | null };
+    const notice = { control: { kind: "restart" as const, cause: "dev" as const, notes: ["cut-1", "cut-2"], offer: ["resume" as const, "leave" as const] } };
+    const announced = restartAnnounced([{ control: undefined }, notice]);
+    expect([...announced]).toEqual(["cut-1", "cut-2"]);
+    expect(canContinueInterrupt(note, [], { announced })).toBe(false);
+    // After 不续 (or 继续) the notice asks nothing more, and the line's own Continue is back.
+    expect([...restartAnnounced([{ control: { ...notice.control, acted: ["leave" as const] } }])]).toEqual([]);
+    expect(canContinueInterrupt(note, [], { announced: new Set() })).toBe(true);
   });
 
   test("canContinueInterrupt supports unreachable failures with completed turns", () => {

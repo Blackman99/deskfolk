@@ -10,6 +10,7 @@ import {
   type Bot,
   type ClientEvent,
   type CredentialOperation,
+  type Hold,
   type Judgement,
   type McpServer,
   type Memory,
@@ -42,6 +43,10 @@ export type Snapshot = {
   searchHits: SearchHit[];
   /** Annotations pulled for each conversation opened and each file previewed, then followed by events. */
   annotations: Annotation[];
+  /** Your stops in force, newest first: the list and the board mark what they hold. */
+  holds: Hold[];
+  /** Whether stops can be made here: the daemon has reached holds (its snapshot lists them). */
+  holdsOn: boolean;
 };
 
 export function emptySnapshot(): Snapshot {
@@ -75,6 +80,8 @@ export function emptySnapshot(): Snapshot {
     approvals: [],
     searchHits: [],
     annotations: [],
+    holds: [],
+    holdsOn: false,
   };
 }
 
@@ -84,6 +91,8 @@ export function fromRuntimeSnapshot(snapshot: RuntimeSnapshot): Snapshot {
     messages: snapshot.sessions.flatMap((session) => session.last_message ? [session.last_message] : []),
     turns: snapshot.sessions.flatMap((session) => session.live_turns ?? []),
     pendingJudgements: snapshot.sessions.flatMap((session) => session.pending_judgements ?? []),
+    holds: snapshot.holds ?? [],
+    holdsOn: snapshot.holds !== undefined,
   };
 }
 
@@ -338,6 +347,14 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
         ...snapshot,
         skills: snapshot.skills.filter((s) => s.id !== event.id),
       };
+    }
+    case "hold.upsert": {
+      // Lifted is gone from the list; a new one goes first, as the snapshot orders them.
+      const { event: _e, occurred_at: _at, ...hold } = event;
+      const rest = snapshot.holds.filter((row) => row.id !== hold.id);
+      if (hold.lifted_at) return { ...snapshot, holds: rest, holdsOn: true };
+      const known = snapshot.holds.some((row) => row.id === hold.id);
+      return { ...snapshot, holds: known ? snapshot.holds.map((row) => (row.id === hold.id ? hold : row)) : [hold, ...rest], holdsOn: true };
     }
     case "reaction.changed": {
       return {

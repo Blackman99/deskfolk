@@ -1,11 +1,11 @@
 /**
  * What the app itself says about your stops (ADR 0040 P2): the receipt for a stop or a go on it
  * carried out, its answer when you ask whether things stopped or say they have not, the note a
- * Bot's work goes on with after a lift, and the line a read-only turn opens on. Every word of it
- * comes from what the holds recorded and what the store says is running — no model writes any of
- * it, so it cannot claim a stop that did not happen.
+ * Bot's work goes on with after a lift, and the line a read-only turn opens on; and after a restart,
+ * what it cut off (ADR 0041). Every word of it comes from what the holds recorded and what the store
+ * says is running — no model writes any of it, so it cannot claim a stop that did not happen.
  */
-import type { Locale } from "@real-bot/protocol";
+import type { Locale, RestartCause } from "@real-bot/protocol";
 
 /** Your line, as a receipt quotes it: when you said it (wall-clock hour and minute) and what. Null for a button. */
 export type SaidLine = { at: string; body: string } | null;
@@ -274,4 +274,29 @@ export function readOnlyLine(locale: Locale, said: SaidLine): string {
   }
   const source = said ? `（用户 ${said.at} 说的${quoted(locale, said)}）` : "";
   return `用户已叫停这件工作${source}，这一段只能回答：可以读文件、回复用户，改不了任何东西，也叫不动别人。`;
+}
+
+/**
+ * After a restart, one job it cut off (ADR 0041): why the daemon started again, each turn that
+ * stopped and where, and what happens now — nothing goes on until you press a button, since which
+ * restarts may pick work up on their own is the supervisor's to decide (ADR 0040 P4c).
+ */
+export function restartNoticeBody(
+  locale: Locale,
+  input: {
+    cause: RestartCause;
+    /** The plan the turns were on, as a title; null for turns on no plan. */
+    plan: string | null;
+    turns: readonly ControlTurnLine[];
+  },
+): string {
+  const en = locale === "en";
+  const why = en
+    ? { clean: "The daemon was stopped and has started again", crash: "The daemon quit unexpectedly and has started again", dev: "The development daemon has restarted" }[input.cause]
+    : { clean: "守护进程停下后重新启动了", crash: "守护进程意外退出后重新启动了", dev: "开发版守护进程重新启动了" }[input.cause];
+  const what = input.plan ? (en ? `the plan "${input.plan}" was cut off` : `「${input.plan}」这件事中断了`) : en ? "the work here was cut off" : "这里的工作中断了";
+  const turns = input.turns.map((line) => turnLine(locale, line)).join(en ? "; " : "；");
+  return en
+    ? `${why}; ${what}: ${turns}.\nNothing picks up on its own: Continue picks each up from where it stopped; Leave it keeps it as it is.`
+    : `${why}，${what}：${turns}。\n不会自己接着做：点「继续」从断的地方接着做，点「不续」就先放着。`;
 }

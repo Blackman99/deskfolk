@@ -1,7 +1,7 @@
 import { afterEach, expect, mock, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { flushSync } from "svelte";
-import { USER_MEMBER, type RouteRecord, type SessionTaskSummary, type TaskDetail, type TaskTrace } from "@real-bot/protocol";
+import { USER_MEMBER, type Hold, type RouteRecord, type SessionTaskSummary, type TaskDetail, type TaskTrace } from "@real-bot/protocol";
 
 mock.module("monaco-editor-css", () => ({}));
 mock.module("monaco-editor/esm/vs/platform/hover/browser/hover.css", () => ({}));
@@ -12,7 +12,7 @@ import { copyFor } from "../copy.ts";
 import { forgetTraceMinimap, loadTraceMinimap } from "./trace-minimap.ts";
 import { forgetTraceSide, loadTraceSide } from "./trace-side.ts";
 import { forgetKeptBoards } from "./task-trace.ts";
-import { aBot, aDirect, aGroup } from "../test-fixtures.ts";
+import { aBot, aDirect, aGroup, aHold } from "../test-fixtures.ts";
 import { buttonByText, click, render } from "../test-render.ts";
 import { reactive } from "../test-reactive.svelte.ts";
 
@@ -1492,4 +1492,77 @@ test("a viewport too small to spare a corner draws no minimap", async () => {
   } finally {
     HTMLElement.prototype.getBoundingClientRect = rect;
   }
+});
+
+test("the board shows your stops over its job, lifts one, and its stop menu stops the job or every Bot", async () => {
+  const view = open({ pane: true });
+  await until(view.host, ".trace-meta");
+  const stops: unknown[] = [];
+  const lifts: string[] = [];
+  const props = view.props as unknown as { holds: Hold[] | null; onStop: (choice: unknown) => void; onLift: (hold: Hold) => unknown };
+  props.onStop = (choice) => void stops.push(choice);
+  props.onLift = (hold) => void lifts.push(hold.id);
+  props.holds = [];
+  flushSync();
+  click(view.host.querySelector(".stop-menu-trigger"));
+  expect([...view.host.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent)).toEqual(["停下这件事《先出分镜的草图和配乐》", "停下所有 Bot"]);
+  click(buttonByText(view.host, "停下这件事《先出分镜的草图和配乐》"));
+  expect(stops).toEqual([{ scope: "plan", id: "task-1" }]);
+
+  props.holds = [
+    aHold({ id: "h-1", scope: "plan", scope_id: "task-1", plan_title: "先出分镜" }),
+    aHold({ id: "h-2", scope: "bot", scope_id: "bot-1" }),
+    aHold({ id: "h-3", scope: "bot_plan", scope_id: "bot-2:task-1", plan_title: "先出分镜", lift_on_next_user_message: true }),
+    aHold({ id: "h-4", scope: "plan", scope_id: "task-2", plan_title: "上周的排期" }),
+  ];
+  flushSync();
+  // A stop on one Bot's whole work, or on another job, is not this board's.
+  expect([...view.host.querySelectorAll(".trace-hold-label")].map((label) => label.textContent)).toEqual(["「先出分镜」这件事", "分镜师在「先出分镜」上的工作"]);
+  click(view.host.querySelector(".trace-hold-lift"));
+  expect(lifts).toEqual(["h-1"]);
+  expect(view.host.querySelector(".trace-hold-error")).toBeNull();
+  // A refused lift says so on its chip, where the time was.
+  props.onLift = async () => ({ status: 409 });
+  flushSync();
+  click(view.host.querySelector(".trace-hold-lift"));
+  await Promise.resolve();
+  flushSync();
+  expect(view.host.querySelector(".trace-hold-error")?.textContent).toBe("没做成，再试一次");
+  click(view.host.querySelector(".stop-menu-trigger"));
+  expect([...view.host.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent)).toEqual(["停下所有 Bot"]);
+  view.close();
+});
+
+test("with the daemon out of reach the board's stop menu and lifts show but cannot be pressed", async () => {
+  const view = open({ pane: true });
+  await until(view.host, ".trace-meta");
+  const pressed: unknown[] = [];
+  const props = view.props as unknown as { holds: Hold[] | null; onStop: (choice: unknown) => void; onLift: (hold: Hold) => unknown; controlsDisabled: boolean };
+  props.onStop = (choice) => void pressed.push(choice);
+  props.onLift = (hold) => void pressed.push(hold.id);
+  props.holds = [aHold({ id: "h-3", scope: "bot_plan", scope_id: "bot-2:task-1", plan_title: "先出分镜" })];
+  props.controlsDisabled = true;
+  flushSync();
+  const trigger = view.host.querySelector<HTMLButtonElement>(".stop-menu-trigger");
+  const lift = view.host.querySelector<HTMLButtonElement>(".trace-hold-lift");
+  expect(trigger?.disabled).toBe(true);
+  expect(lift?.disabled).toBe(true);
+  click(trigger);
+  click(lift);
+  expect(view.host.querySelector('[role="menuitem"]')).toBeNull();
+  expect(pressed).toEqual([]);
+  // Back in reach: both work again.
+  props.controlsDisabled = false;
+  flushSync();
+  click(view.host.querySelector(".trace-hold-lift"));
+  expect(pressed).toEqual(["h-3"]);
+  view.close();
+});
+
+test("before the daemon has stops the board offers none", async () => {
+  const view = open({ pane: true });
+  await until(view.host, ".trace-meta");
+  expect(view.host.querySelector(".stop-menu-trigger")).toBeNull();
+  expect(view.host.querySelector(".trace-holds")).toBeNull();
+  view.close();
 });

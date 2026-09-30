@@ -1,5 +1,9 @@
 import type {
   AnswerAskRequest,
+  ControlActionRequest,
+  ControlActionResult,
+  CreateHoldRequest,
+  Hold,
   CatchupResponse,
   EventCursor,
   StreamFrame,
@@ -709,6 +713,18 @@ export class RemoteApi {
   }
   async stop(turnId?: string): Promise<void> {
     await this.post("/v1/turns/stop", turnId ? { turn_id: turnId } : {});
+  }
+  /** A stop you chose from a menu; with `session_id`, its receipt goes to that conversation. */
+  async createHold(body: CreateHoldRequest): Promise<Hold> {
+    return this.post<Hold>("/v1/holds", body);
+  }
+  /** Your lift of one stop; the work it ended opens again. */
+  async liftHold(holdId: string): Promise<Hold> {
+    return this.post<Hold>(`/v1/holds/${encodeURIComponent(holdId)}/lift`, {});
+  }
+  /** A button on a line about your stops: a receipt's undo, widen, narrow, or go on. */
+  async controlAction(messageId: string, body: ControlActionRequest): Promise<ControlActionResult> {
+    return this.post<ControlActionResult>(`/v1/messages/${encodeURIComponent(messageId)}/control`, body);
   }
   async continueInterrupt(messageId: string): Promise<Turn> {
     return this.post<Turn>("/v1/turns/continue", { message_id: messageId });

@@ -12,6 +12,7 @@
 	import AskCard from './AskCard.svelte';
 	import CommandActivity from './CommandActivity.svelte';
 	import BotDmEntry from './BotDmEntry.svelte';
+	import ControlActions from './ControlActions.svelte';
 	import AnnotationCards from '../annotations/AnnotationCards.svelte';
 	import { annotationsByMessage } from '../annotations/model.ts';
 	import { indexBotDmsByOrigin } from './bot-dm-entries.ts';
@@ -37,7 +38,8 @@
 		groupTranscript,
 		isDifferentDay,
 		isInterruptNote,
-		isUnreachableNote
+		isUnreachableNote,
+		restartAnnounced
 	} from './chat-view.ts';
 	import { composerLocked } from './composer-mode.ts';
 	import type { Copy } from '../copy.ts';
@@ -285,6 +287,11 @@
 		}
 		return null;
 	});
+
+	/** 「中断」 lines a restart notice here offers 继续 for; they do not offer their own as well. */
+	const announced = $derived(
+		restartAnnounced(stream.flatMap((item) => (item.type === 'message' ? [item.message] : [])))
+	);
 
 	/** Quote targets and "what came before" for the rows on screen, indexed once per message list. */
 	const messageLookup = $derived(buildMessageLookup(snapshot.messages));
@@ -604,6 +611,11 @@
 	function streamingLabel(turn: Turn): string {
 		const step = runtime.stepOf(turn.id);
 		return step?.running ? stepText(describeStep(step, t.chat.activity, nowMs)) : t.stream.streaming;
+	}
+
+	/** A Bot's name for the buttons under a line about your stops. */
+	function botNameOf(id: string): string {
+		return botsById.get(id)?.name ?? t.top.deleted;
 	}
 
 	function who(message: Message): string {
@@ -1220,7 +1232,8 @@
 					{@const showContinue = canContinueInterrupt(singleMsg.message, snapshot.turns, {
 						locked: lockedComposer,
 						readOnly: selectedKind === 'bot-bot',
-						hasLiveTurnForBot: liveTurnsHere.some((turn) => turn.bot_id === singleMsg.message.author)
+						hasLiveTurnForBot: liveTurnsHere.some((turn) => turn.bot_id === singleMsg.message.author),
+						announced
 					})}
 					{@const isUnreachable = isUnreachableNote(singleMsg.message)}
 					{@const isInterrupt = isInterruptNote(singleMsg.message)}
@@ -1307,6 +1320,16 @@
 									{/if}
 									<span class="body">{singleMsg.message.body}</span>
 								</div>
+								{#if singleMsg.message.control}
+									<ControlActions
+										control={singleMsg.message.control}
+										holds={snapshot.holds}
+										botName={botNameOf}
+										{t}
+										disabled={!connected}
+										onAct={(action, taskId) => runtime.controlAction(singleMsg.message.id, action, taskId)}
+									/>
+								{/if}
 								{#if showContinue}
 									<div class="system-msg-actions">
 										<button
@@ -1459,6 +1482,17 @@
 												/>
 											{/if}
 										</article>
+										{#if item.message.control?.kind === 'possible_control' && !lockedComposer}
+											<ControlActions
+												control={item.message.control}
+												holds={snapshot.holds}
+												botName={botNameOf}
+												{t}
+												align="end"
+												disabled={!connected}
+												onAct={(action, taskId) => runtime.controlAction(item.message.id, action, taskId)}
+											/>
+										{/if}
 										{#if rxGroups.length > 0}
 											<div class="rx-row is-right flex flex-wrap gap-2 mt-2">
 												{#each rxGroups as rx}
@@ -1598,12 +1632,12 @@
 										{streamingLabel(single.turn)}
 									</span>
 									<span class="duration-badge mono live">⏱️ {liveElapsed}</span>
-									{#if selected?.kind !== 'group'}
+									{#if selected?.kind !== 'group' || snapshot.holdsOn}
 										<button
 											type="button"
 											class="btn-mini-stop"
 											title={t.composer.stop}
-											onclick={() => void runtime.stopTurn(selected?.id)}
+											onclick={() => void runtime.stopTurn(selected?.id, single.turn.id)}
 										>
 											<span class="stop-icon-mini">■</span>
 											<span>{t.composer.stop}</span>
@@ -1655,12 +1689,12 @@
 													{streamingLabel(item.turn)}
 												</span>
 												<span class="duration-badge mono live">⏱️ {liveElapsed}</span>
-												{#if selected?.kind !== 'group'}
+												{#if selected?.kind !== 'group' || snapshot.holdsOn}
 													<button
 														type="button"
 														class="btn-mini-stop"
 														title={t.composer.stop}
-														onclick={() => void runtime.stopTurn(selected?.id)}
+														onclick={() => void runtime.stopTurn(selected?.id, item.turn.id)}
 													>
 														<span class="stop-icon-mini">■</span>
 														<span>{t.composer.stop}</span>

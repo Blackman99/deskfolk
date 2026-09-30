@@ -482,8 +482,8 @@ export function taskDetail(ctx: StoreContext, taskId: string, present: (path: st
   const task = getTask(ctx, taskId);
   const summary = taskSummary(ctx, task, taskLastActivityAt(ctx, taskId));
   const latest = ctx.db
-    .query<{ revision: number; actor: "app" | "user" }, [string]>(
-      `SELECT revision, actor FROM task_spec_revisions WHERE task_id = ? ORDER BY revision DESC LIMIT 1`,
+    .query<{ revision: number; actor: "app" | "user"; cause: "hold" | null }, [string]>(
+      `SELECT revision, actor, cause FROM task_spec_revisions WHERE task_id = ? ORDER BY revision DESC LIMIT 1`,
     )
     .get(taskId);
   return {
@@ -493,6 +493,7 @@ export function taskDetail(ctx: StoreContext, taskId: string, present: (path: st
     spec_updated_at: task.spec_updated_at,
     revision: latest?.revision ?? 0,
     revision_actor: latest?.actor ?? null,
+    revision_cause: latest?.cause ?? null,
     routine_id: task.routine_id,
     checks: listChecks(ctx, taskId),
     held_by: planHeldBy(ctx, taskId),

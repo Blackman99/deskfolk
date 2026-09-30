@@ -548,6 +548,8 @@ export type TaskDetail = SessionTaskSummary & {
   /** How many versions the spec has had; zero before the organizer first ran. */
   revision: number;
   revision_actor: "app" | "user" | null;
+  /** The latest version's `cause`: `hold` when a hold of yours wrote it. Absent from a daemon older than holds. */
+  revision_cause?: "hold" | null;
   routine_id: string | null;
   tickets: TicketWithArtifacts[];
   /** Active acceptance checks; absent from a daemon that predates them. */
@@ -635,6 +637,11 @@ export type Hold = {
   lifted_at: string | null;
   lifted_by: "user_text" | "user_button" | null;
   lifted_message_id: string | null;
+  /**
+   * The title of the plan a hold on a plan, on one Bot's work in a plan, or on a ticket names, as it
+   * reads now; null for any other scope. Absent from a daemon that predates it.
+   */
+  plan_title?: string | null;
 };
 
 /** `POST /v1/holds`: a stop you make from a button or a menu. */
@@ -645,6 +652,8 @@ export type CreateHoldRequest = {
   action?: "pause" | "cancel";
   cascade?: boolean;
   lift_on_next_user_message?: boolean;
+  /** The conversation you made it from (a stop menu there): the app's receipt goes there when you are in it. */
+  session_id?: string | null;
 };
 
 export type PatchTaskSpecRequest = {
@@ -909,36 +918,89 @@ export type Message = {
   message_seq?: number;
   attachments: Attachment[];
   reactions: Reaction[];
-  /** What the app read or did about your stops on this line (ADR 0040 P2); absent on every other line. */
+  /** What the app read or did about your stops on this line (ADR 0040 P2), or the restart it tells of (ADR 0041); absent on every other line. */
   control?: MessageControl;
 };
 
 /**
- * A button a line about your stops offers:
+ * A button a line about your stops, or a restart notice, offers:
  * - `stop` / `continue`: make the stop, or lift what covers, `scopes`.
- * - `cancel`: stop, then ask whether to drop the job.
- * - `undo`: lift the holds a receipt is about.
+ * - `cancel`: stop, recorded as a stop you mean to drop the job with (`Hold.action` cancel); lifting it reopens the job.
+ * - `undo`: lift the holds a receipt is about; a line of yours read as a stop then reaches the Bots as any line.
  * - `stop_all`: stop every Bot.
+ * - `stop_plan`: stop the plan a receipt names too, the other Bots' work in it included (`MessageControl.plans`).
+ * - `only_plan`: narrow a stop on a Bot to its work in the plan the receipt names; the rest of its work goes on.
  * - `continue_only`: let the Bots in `scopes` go on while a wider hold (on the group, on everything) stays for the rest.
  * - `continue_all`: lift that wider hold too.
+ * - `resume` / `leave`: on a restart notice, go on with the work the restart cut off, or leave it as it is.
  */
-export type ControlOffer = "stop" | "continue" | "cancel" | "undo" | "stop_all" | "continue_only" | "continue_all";
+export type ControlOffer =
+  | "stop"
+  | "continue"
+  | "cancel"
+  | "undo"
+  | "stop_all"
+  | "stop_plan"
+  | "only_plan"
+  | "continue_only"
+  | "continue_all"
+  | "resume"
+  | "leave";
+
+/**
+ * Why the daemon started again (ADR 0041): `dev` for a development run (`bun --watch` restarts it
+ * on every save), whatever ended the last one; otherwise `clean` after a deliberate stop (quit,
+ * update, a restart you asked for), `crash` after any other end.
+ */
+export type RestartCause = "clean" | "crash" | "dev";
 
 /** What a stop or a go on is about, in the terms a hold is made in. */
 export type ControlScope = { scope: "global"; id: null } | { scope: "bot" | "session" | "plan"; id: string };
 
+/** A button that names a plan: 「一起停下《…》」 (`stop_plan`) or 「只停《…》」 (`only_plan`). */
+export type ControlPlanOffer = { offer: "stop_plan" | "only_plan"; task_id: string; title: string };
+
 /**
- * On one of your lines or the app's, what the app made of your stops (ADR 0040 P2):
+ * On one of your lines or the app's, what the app made of your stops or of a restart (ADR 0040 P2, ADR 0041):
  * - `possible_control`, on your line: it reads like a stop or a go on but has more in it, so nothing
  *   was done about it; the Bots got it as any line, and the buttons do what it may have meant.
  * - `receipt`, on the app's line: what a stop or a go on of yours did, from the holds' own record.
  * - `status`, on the app's line: where your stops stand when you asked (「停了吗」「你没停」) or
  *   said go on while a wider hold still covers the Bot.
+ * - `restart`, on the app's line after a restart (ADR 0041): a job the restart cut off. `notes` are
+ *   the 「中断」 lines of its turns; 继续 (`resume`) continues each the way its own Continue would.
+ * `acted` lists the buttons you pressed on it, in order; absent until you press one.
  */
 export type MessageControl =
-  | { kind: "possible_control"; offer: ControlOffer[]; scopes: ControlScope[] }
-  | { kind: "receipt"; verb: "stop" | "continue"; hold_ids: string[]; offer: ControlOffer[]; scopes: ControlScope[] }
-  | { kind: "status"; hold_ids: string[]; offer: ControlOffer[]; scopes: ControlScope[] };
+  | { kind: "possible_control"; offer: ControlOffer[]; scopes: ControlScope[]; acted?: ControlOffer[] }
+  | {
+      kind: "receipt";
+      verb: "stop" | "continue";
+      hold_ids: string[];
+      offer: ControlOffer[];
+      scopes: ControlScope[];
+      /** The buttons that name a plan; absent when there are none. */
+      plans?: ControlPlanOffer[];
+      /** On a go on's receipt: the holds still over what it named, which `continue_only` / `continue_all` are about. */
+      held_ids?: string[];
+      acted?: ControlOffer[];
+    }
+  | { kind: "status"; hold_ids: string[]; offer: ControlOffer[]; scopes: ControlScope[]; acted?: ControlOffer[] }
+  | { kind: "restart"; cause: RestartCause; notes: string[]; offer: ControlOffer[]; acted?: ControlOffer[] };
+
+/**
+ * `POST /v1/messages/:id/control`: a button on a line `control` marks. `action` is one the line
+ * offers; `task_id` names the plan for `stop_plan` / `only_plan`. The line's `acted` records it, so
+ * pressing one again does nothing more.
+ */
+export type ControlActionRequest = { action: ControlOffer; task_id?: string };
+
+/**
+ * What a control button did: the holds it made, and those it lifted. `partial` only on a restart
+ * notice's 继续 that a stop of yours kept from some of its turns: how many went on and how many
+ * that stop still holds. The notice is then left unanswered, so 继续 takes the rest after the lift.
+ */
+export type ControlActionResult = { made: Hold[]; lifted: Hold[]; partial?: { continued: number; held: number } };
 
 /** One choice a Bot offers on a question. Labels are unique within the question. */
 export type AskOption = {
@@ -1542,6 +1604,11 @@ export type RuntimeSnapshot = EventCursor & {
   notificationSummary?: import("./notifications.ts").NotificationSummary;
   notificationPolicy?: import("./notifications.ts").NotificationPolicy;
   notificationCapabilities?: import("./notifications.ts").NotificationCapabilities;
+  /**
+   * The holds in force, newest first; `hold.upsert` keeps them current. Absent from a daemon that
+   * predates holds or has not reached their engine level, so a client offers stops only when it is here.
+   */
+  holds?: Hold[];
 };
 
 export type SessionSnapshot = EventCursor & {

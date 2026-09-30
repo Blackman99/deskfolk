@@ -317,6 +317,10 @@
 				onTask={traceTask}
 				onOpenArtifact={(relpath, att, messageId, forceTree, taskId, siblings) =>
 					onOpenArtifact(relpath, att, messageId, forceTree, taskId, siblings, content.sessionId)}
+				holds={snapshot.holdsOn ? snapshot.holds : null}
+				onStop={(choice) => runtime.stopScope(choice.scope, choice.id, content.sessionId)}
+				onLift={(hold) => runtime.liftHold(hold.id)}
+				controlsDisabled={runtime.connection !== 'connected'}
 			/>
 		{/await}
 	{/key}

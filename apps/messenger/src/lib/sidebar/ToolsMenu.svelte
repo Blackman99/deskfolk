@@ -5,7 +5,8 @@
 	import { spendCopyFor } from '../spend/spend-copy.ts';
 
 	/**
-	 * The 工具 popover: routines, spend, a terminal, and — after a line — the archived sessions. One
+	 * The 工具 popover: routines, spend, a terminal, and — after a line — the archived sessions and,
+	 * once the daemon has stops, 「全部停下」 (「全部继续」 while everything is stopped). One
 	 * menu for every button that opens it: the list's footer, the phone's search row, and the rail
 	 * the list folds into. The button stays with its owner; this hangs off it, walks with the arrow
 	 * keys, closes on Escape, Tab or a click elsewhere, and hands focus back to the button.
@@ -32,6 +33,11 @@
 		onOpenSpend: () => void;
 		onOpenTerminal: () => void;
 		onOpenArchived: () => void;
+		/** Stop every Bot, or lift a stop on everything; null where the daemon has no stops. */
+		everything?: 'stop' | 'go-on' | null;
+		/** Shown but not pressable: with the daemon out of reach it could not be carried out. */
+		everythingDisabled?: boolean;
+		onEverything?: () => void;
 	};
 
 	let {
@@ -47,7 +53,10 @@
 		onOpenRoutines,
 		onOpenSpend,
 		onOpenTerminal,
-		onOpenArchived
+		onOpenArchived,
+		everything = null,
+		everythingDisabled = false,
+		onEverything
 	}: Props = $props();
 
 	const spendCopy = $derived(spendCopyFor(locale));
@@ -207,6 +216,16 @@
 				<span class="tools-menu-badge">{archivedCount}</span>
 			{/if}
 		</button>
+		{#if everything && onEverything}
+			<button type="button" class="tools-menu-item tools-menu-everything" role="menuitem" disabled={everythingDisabled} onclick={() => choose(onEverything)}>
+				{#if everything === 'stop'}
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
+				{:else}
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="7 4 20 12 7 20 7 4"></polygon></svg>
+				{/if}
+				<span>{everything === 'stop' ? t.control.stopEverything : t.control.goOnEverything}</span>
+			</button>
+		{/if}
 	</div>
 {/if}
 
@@ -244,10 +263,15 @@
 		cursor: pointer;
 	}
 
-	.tools-menu-item:hover,
+	.tools-menu-item:hover:not(:disabled),
 	.tools-menu-item:focus-visible {
 		background: var(--line-subtle);
 		outline: none;
+	}
+
+	.tools-menu-item:disabled {
+		opacity: 0.5;
+		cursor: default;
 	}
 
 	.tools-menu-item svg {

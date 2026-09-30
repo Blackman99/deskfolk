@@ -2,6 +2,7 @@
 	import {
 		type Attachment,
 		type Bot,
+		type Hold,
 		type PlanStatus,
 		type Provider,
 		type SessionSummary,
@@ -17,6 +18,10 @@
 	import type { MessengerApi } from '../messenger-api.ts';
 	import { classifySession, youBotPeer } from '../sidebar/session-groups.ts';
 	import { sessionTitle } from '../sidebar/session-title.ts';
+	import { holdLabel } from '../sidebar/holds-list.ts';
+	import { formatMessageTime } from '../chat/chat-view.ts';
+	import StopMenu from '../chat/StopMenu.svelte';
+	import { planStopItems, type StopChoice } from '../chat/stop-menu.ts';
 	import PlanSpecPanel from './PlanSpecPanel.svelte';
 	import TicketList from './TicketList.svelte';
 	import TraceCard from './TraceCard.svelte';
@@ -90,6 +95,14 @@
 		onJump: (sessionId: string, messageId: string) => void;
 		/** The job actually on screen, so the address follows the switcher. */
 		onTask?: (taskId: string) => void;
+		/** Your stops in force; null where the daemon has none, and the board then offers no stop. */
+		holds?: readonly Hold[] | null;
+		/** A choice from the board's stop menu: this job, or every Bot. Resolves to a refusal to show, or nothing. */
+		onStop?: (choice: StopChoice) => Promise<unknown> | void;
+		/** Resolves to a refusal to show, or nothing. */
+		onLift?: (hold: Hold) => Promise<unknown> | void;
+		/** The daemon is out of reach: the stop menu and the lifts show but cannot be pressed. */
+		controlsDisabled?: boolean;
 		onOpenArtifact?: (
 			relpath: string,
 			att?: Attachment,
@@ -119,7 +132,11 @@
 		onClose,
 		onJump,
 		onTask,
-		onOpenArtifact
+		onOpenArtifact,
+		holds = null,
+		onStop,
+		onLift,
+		controlsDisabled = false
 	}: Props = $props();
 
 	let jobs = $state<SessionTaskSummary[]>([]);
@@ -374,6 +391,41 @@
 	const segmentShown = $derived(!detail || (segment === 'tickets' && !hasTickets) ? 'trace' : segment);
 	const planStatus = $derived<PlanStatus>(detail?.status ?? (trace?.closed_at ? 'done' : 'active'));
 	const heading = $derived(trace ? `${t.trace.title} · ${planTitle(detail ?? trace)}` : t.trace.title);
+	/**
+	 * Your stops over the job on the board: on it, on a Bot's work in it, on the conversation it
+	 * belongs to, on everything. Read from the live list, so a stop made anywhere shows at once.
+	 */
+	const boardHolds = $derived.by(() => {
+		if (!holds || !currentId) return [];
+		const home = detail?.session_id ?? trace?.session_id ?? null;
+		return holds.filter(
+			(hold) =>
+				hold.scope === 'global' ||
+				(hold.scope === 'plan' && hold.scope_id === currentId) ||
+				(hold.scope === 'bot_plan' && hold.scope_id?.endsWith(`:${currentId}`)) ||
+				(hold.scope === 'session' && home !== null && hold.scope_id === home)
+		);
+	});
+	const stopItems = $derived(
+		holds && currentId && onStop ? planStopItems({ taskId: currentId, title: trace ? planTitle(detail ?? trace) : null, holds, t: t.control }) : []
+	);
+
+	/** The stop whose lift was refused, said on its chip until you try again. */
+	let liftFailed = $state<string | null>(null);
+
+	async function liftFromBoard(hold: Hold): Promise<void> {
+		if (!onLift) return;
+		liftFailed = null;
+		try {
+			if (await onLift(hold)) liftFailed = hold.id;
+		} catch {
+			liftFailed = hold.id;
+		}
+	}
+
+	function holdText(hold: Hold): string {
+		return holdLabel(hold, { bots: botsById, sessions: sessionsById, roster: { deleted: deletedLabel, archived: deletedLabel }, t: t.control });
+	}
 
 	/** The ticket a card worked in, as `01`; nothing on your own card and on turns filed under none. */
 	function ticketOf(node: TaskTraceNode): Ticket | null {
@@ -706,9 +758,30 @@
 						{#if trace.session_id} · {placeOf({ session_id: trace.session_id })}{/if}
 						 · <span class="mono">{trace.dir}</span>
 					</span>
+					{#if boardHolds.length > 0}
+						<ul class="trace-holds" aria-label={t.control.holdsTitle}>
+							{#each boardHolds as hold (hold.id)}
+								<li class="trace-hold" title={hold.lift_on_next_user_message ? t.control.liftOnNext : undefined}>
+									<svg aria-hidden="true" width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect></svg>
+									<span class="trace-hold-label">{holdText(hold)}</span>
+									{#if liftFailed === hold.id}
+										<span class="trace-hold-error" role="status">{t.control.failed}</span>
+									{:else}
+										<span class="trace-hold-time mono">{formatMessageTime(hold.created_at)}</span>
+									{/if}
+									{#if onLift}
+										<button type="button" class="trace-hold-lift" disabled={controlsDisabled} onclick={() => void liftFromBoard(hold)}>{t.control.lift}</button>
+									{/if}
+								</li>
+							{/each}
+						</ul>
+					{/if}
 				{/if}
 			</div>
 			<div class="trace-header-end">
+				{#if stopItems.length > 0 && onStop}
+					<StopMenu items={stopItems} {t} placement="below" size="sm" label={t.control.stop} disabled={controlsDisabled} onPick={(item) => onStop(item.choice)} />
+				{/if}
 				{#if detail}
 					<!-- Only a wide host shows these: there the spec and the tickets open beside the board. -->
 					<div class="trace-side-toggles">
@@ -1247,6 +1320,75 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	/* Your stops over this job, under its title: grey, since stopping was your call, not a fault. */
+	.trace-holds {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px 6px;
+		margin: 4px 0 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	.trace-hold {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		max-width: 100%;
+		min-height: 22px;
+		padding: 0 4px 0 7px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-full);
+		background: var(--chip);
+		color: var(--ink-secondary);
+		font-size: 11px;
+	}
+
+	.trace-hold-label {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	/* The label gives way on a narrow board; the time, a refusal and the lift keep their line. */
+	.trace-hold-time,
+	.trace-hold-error,
+	.trace-hold-lift {
+		flex-shrink: 0;
+		white-space: nowrap;
+	}
+
+	.trace-hold-time {
+		color: var(--muted);
+	}
+
+	.trace-hold-error {
+		color: var(--danger-text);
+	}
+
+	.trace-hold-lift {
+		padding: 1px 7px;
+		border: 1px solid var(--accent-border);
+		border-radius: var(--radius-full);
+		background: var(--pane);
+		color: var(--accent);
+		font-size: 11px;
+		font-weight: 500;
+		cursor: pointer;
+	}
+
+	.trace-hold-lift:hover:not(:disabled) {
+		background: var(--accent);
+		border-color: var(--accent);
+		color: var(--on-accent);
+	}
+
+	.trace-hold-lift:disabled {
+		opacity: 0.5;
+		cursor: default;
 	}
 
 	.trace-filter {

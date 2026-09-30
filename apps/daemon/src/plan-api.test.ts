@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { TaskDetail, Ticket } from "@real-bot/protocol";
+import type { Hold, TaskDetail, Ticket } from "@real-bot/protocol";
 import { createLocalApi } from "./local-api";
 import { memoryKeyStore } from "./secrets";
 import { PLAN_MAP_FILE, Store, TICKET_FILE, type PlanSpec } from "./store";
@@ -218,4 +218,29 @@ test("holds: made from a button once they are on, listed, lifted; a plan parked 
   const resumed = await h.call("PATCH", `/v1/tasks/${plan.id}/spec`, { spec: { ...spec, status: "active" } });
   // A hold on everything leaves the status as it is, and is why nothing runs in the plan.
   expect(resumed.json).toMatchObject({ status: "active", held_by: [{ id: everything.json.id, scope: "global" }] });
+});
+
+test("holds as a list of your stops reads them: in the snapshot, naming the plan, and the plan's latest version says a hold wrote it", async () => {
+  const h = await harness();
+  const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+  const plan = h.store.openTask({ sessionId: writer.direct_session.id, title: "写周报", spec });
+  // Before holds are on the snapshot has no list at all, so a client offers no stops.
+  expect((await h.call("GET", "/v1/snapshot")).json).not.toHaveProperty("holds");
+  h.store.raiseEngineLevel(null);
+
+  const onPlan = (await h.call("POST", "/v1/holds", { scope: "plan", scope_id: plan.id })).json as unknown as Hold;
+  const onBot = (await h.call("POST", "/v1/holds", { scope: "bot", scope_id: writer.bot.id })).json as unknown as Hold;
+  expect(onPlan.plan_title).toBe("写周报");
+  expect(onBot.plan_title).toBeNull();
+  const heldNow = async () => ((await h.call("GET", "/v1/snapshot")).json as { holds?: Hold[] }).holds?.map((row) => row.id);
+  expect(await heldNow()).toEqual([onBot.id, onPlan.id]);
+  expect((await h.call("GET", `/v1/tasks/${plan.id}`)).json).toMatchObject({ revision_actor: "app", revision_cause: "hold" });
+
+  await h.call("POST", `/v1/holds/${onBot.id}/lift`, {});
+  expect(await heldNow()).toEqual([onPlan.id]);
+
+  // A button press goes through its own route; a line with no buttons, or none at all, is refused.
+  const line = h.store.insertMessage({ sessionId: writer.direct_session.id, kind: "user", author: "user", body: "做周报" });
+  expect((await h.call("POST", `/v1/messages/${line.id}/control`, { action: "stop" })).status).toBe(422);
+  expect((await h.call("POST", "/v1/messages/01ARZ3NDEKTSV4RRFFQ69G5FAV/control", { action: "stop" })).status).toBe(404);
 });

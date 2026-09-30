@@ -72,6 +72,9 @@ export class Quiesce {
   cancel(): DrainState {
     clearInterval(this.timer);
     this.timer = undefined;
+    // A forced drain called off: the turns it ended were not cut off by a restart, and the next
+    // boot must not say they were.
+    if (this.forced) this.store.forgetTurnsCutByShutdown();
     this.scheduler?.resume();
     this.admission.resume();
     this.phase = "running";

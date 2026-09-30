@@ -12,6 +12,7 @@ import {
   type PatchRoutineRequest,
   type PatchAcceptanceCheckRequest,
   type PatchTaskSpecRequest,
+  type ControlActionRequest,
   type CreateHoldRequest,
   type PatchTicketRequest,
   type RunAcceptanceChecksRequest,
@@ -111,6 +112,12 @@ export type LocalApiOptions = {
   trash?: TrashMover;
   /** Side-calls switched off for a benchmark (see `ablation.ts`); ignored when `engine` is given. */
   ablation?: Ablation;
+  /**
+   * Runs once the engine is up and before the scheduler starts, whose first tick is immediate: boot
+   * tells you what a restart cut off (ADR 0041) before a check-back or routine that fell due while
+   * the daemon was down can wake a Bot.
+   */
+  beforeScheduler?: (engine: TurnEngine) => void;
 };
 
 export type LocalApi = {
@@ -304,6 +311,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
       ablation: options.ablation,
     });
 
+  options.beforeScheduler?.(engine);
   const scheduler =
     options.schedule === false
       ? null
@@ -947,7 +955,9 @@ function dispatch(
     if (scope?.requireRevision && body.turn_id) {
       const current = store.db.query<{ status: string; kind: string }, [string]>(
         "SELECT t.status, s.kind FROM turns t JOIN sessions s ON s.id = t.session_id WHERE t.id = ?").get(body.turn_id);
-      if (!current || (current.kind === "direct" && !["running", "waiting_approval", "waiting_ask"].includes(current.status))) return emptyResponse(204, null);
+      // A retried Stop finds its turn over: done, whichever kind of conversation it was in, now
+      // that a group's turn can be stopped too.
+      if (!current || !["running", "waiting_approval", "waiting_ask"].includes(current.status)) return emptyResponse(204, null);
     }
     const turn = engine.stop(body.turn_id, { button: true });
     if (!turn) return emptyResponse(204, null);
@@ -1434,6 +1444,7 @@ function dispatch(
       action: body.action,
       cascade: body.cascade,
       liftOnNextUserMessage: body.lift_on_next_user_message,
+      sessionId: body.session_id,
     });
     return jsonResponse(hold, 201, null);
   }
@@ -1768,6 +1779,14 @@ function dispatch(
     const ask = store.getMessage(params.id!);
     const answered = store.transaction(() => engine.replyAsk(ask.id, ask.session_id, { selected: body.selected, custom: body.custom }));
     return jsonResponse(answered, 200, null);
+  }
+
+  // A button on a line about your stops: the app's receipt or status answer, or your line it marked
+  // as maybe meaning one. The line says which buttons it offers; the engine refuses any other.
+  params = matchPath(path, "/v1/messages/:id/control");
+  if (params && method === "POST") {
+    const body = (input.body ?? {}) as Partial<ControlActionRequest>;
+    return jsonResponse(engine.control(params.id!, { action: body.action, taskId: body.task_id }), 200, null);
   }
 
   params = matchPath(path, "/v1/messages/:id/reactions");

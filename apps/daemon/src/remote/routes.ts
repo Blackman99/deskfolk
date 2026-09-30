@@ -68,8 +68,10 @@ get("holds", { status: one("active", "all") });
 get("holds/:id");
 const holdScopeId: Check = v => typeof v === "string" && /^[0-9A-HJKMNP-TV-Z]{26}(?::[0-9A-HJKMNP-TV-Z]{26})?$/.test(v);
 add("POST", "holds", { scope: one("global", "bot", "session", "plan", "ticket", "bot_plan", "turn"), scope_id: nullable(holdScopeId),
-  action: one("pause", "cancel"), cascade: bool, lift_on_next_user_message: bool }, ["scope"]);
+  action: one("pause", "cancel"), cascade: bool, lift_on_next_user_message: bool, session_id: nullable(id) }, ["scope"]);
 add("POST", "holds/:id/lift", {});
+// A button on a line about your stops (a receipt's undo, 「全部停下」 from the phone's menu is a hold above).
+add("POST", "messages/:id/control", { action: one("stop", "continue", "cancel", "undo", "stop_all", "stop_plan", "only_plan", "continue_only", "continue_all", "resume", "leave"), task_id: id }, ["action"]);
 add("PATCH", "tickets/:id", { title: string, spec: string, status: ticketStatus, worker: nullable(id), if_revision: specRevision }, [], true);
 const checkKind: Check = one("exists", "contains", "matches", "command");
 const checkInput = {

@@ -42,6 +42,8 @@
 	import { workspaceDrag, workspaceDropTarget, type WorkspaceDragItem } from '../workspace-drag.svelte.ts';
 	import FileIcon from '../overlays/FileIcon.svelte';
 	import { fileIconFor } from '../overlays/file-icon.ts';
+	import StopMenu from './StopMenu.svelte';
+	import { conversationStopItems, type StopMenuItem } from './stop-menu.ts';
 
 	type Props = {
 		runtime: MessengerRuntime;
@@ -133,6 +135,23 @@
 	let mentionPopupEl = $state<HTMLDivElement | null>(null);
 
 	const lockedComposer = $derived(composerLocked(selected, botsById));
+	/**
+	 * What else can be stopped from here, beside the Stop button: this Bot wherever it works, this
+	 * job, every Bot (ADR 0040 P2). Only once the daemon has stops, and only while someone it names
+	 * is at work — a group, too, where Send stays the main button.
+	 */
+	const stopItems = $derived(
+		selected && snapshot.holdsOn && !lockedComposer
+			? conversationStopItems({ session: selected, turns: snapshot.turns, bots: botsById, holds: snapshot.holds, t: t.control, deleted: t.top.deleted })
+			: []
+	);
+
+	/** A refusal comes back for the menu to say. */
+	function pickStop(item: StopMenuItem): Promise<unknown> | void {
+		if (!selected) return;
+		return runtime.stopScope(item.choice.scope, item.choice.id, selected.id);
+	}
+
 	const lockedNotice = $derived.by(() => {
 		const reason = lockedReason(selected, botsById);
 		if (reason === 'archived') return t.chat.groupLockedNotice;
@@ -1014,6 +1033,9 @@
 					<svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14a2 2 0 0 0 1.44 1.44l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"></path><path d="M20 3v4"></path><path d="M22 5h-4"></path></svg>
 				{/if}
 			</button>
+		{/if}
+		{#if stopItems.length > 0}
+			<StopMenu items={stopItems} {t} disabled={!connected} onPick={pickStop} />
 		{/if}
 		<button
 			type="button"

@@ -41,7 +41,7 @@ async function cuttingTheMaster(h: Scenario) {
   return { director, room, ep01 };
 }
 
-test.failing("after a crash, the plan's session says within a tick that the job was cut off", async () => {
+test("after a crash, the plan's session says within a tick that the job was cut off", async () => {
   const h = await createScenario({ durable: true, media: true });
   open.push(h);
   const { room } = await cuttingTheMaster(h);

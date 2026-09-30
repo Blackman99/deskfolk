@@ -15,6 +15,8 @@ import {
   type ProbeModelsResponse,
   type ResolveApprovalRequest,
   type ComposerSuggestion,
+  type ControlActionResult,
+  type ControlOffer,
   type SearchHit,
   type SessionDetail,
   type SettingsPatch,
@@ -2058,23 +2060,69 @@ export class MessengerRuntime {
     }
   }
 
-  /** Stop the turn a conversation is on — the one named, or the selected one. */
-  async stopTurn(sessionId?: string): Promise<void> {
+  /**
+   * Stop the turn a conversation is on — the one named, or the selected one. In a group, where
+   * several Bots may be at work, the Stop on one Bot's reply names that turn.
+   */
+  async stopTurn(sessionId?: string, turnId?: string): Promise<void> {
     const api = this.api;
     if (!api || this.connection !== "connected") return;
     const id = sessionId ?? this.selectedId;
     const session = this.snapshot.sessions.find((row) => row.id === id);
-    const turnId = stopTarget(
-      this.snapshot.turns,
-      id,
-      this.viewFor(id)?.focusedTurnId ?? null,
-      session?.kind ?? null,
-    );
-    if (!turnId) return;
+    const target =
+      turnId ??
+      stopTarget(
+        this.snapshot.turns,
+        id,
+        this.viewFor(id)?.focusedTurnId ?? null,
+        session?.kind ?? null,
+      );
+    if (!target) return;
     try {
-      await api.stop(turnId);
+      await api.stop(target);
     } catch {
       if (this.api === api) this.markDisconnected();
+    }
+  }
+
+  /**
+   * A stop chosen from a menu: everything, one Bot, a conversation or a plan. The receipt goes to
+   * the conversation it was chosen in, when one is named. A refusal comes back to show; a dropped
+   * link marks the connection.
+   */
+  async stopScope(scope: "global" | "bot" | "session" | "plan", scopeId: string | null, sessionId?: string | null): Promise<ApiError | null> {
+    return this.controlCall((api) => api.createHold({ scope, scope_id: scopeId, ...(sessionId ? { session_id: sessionId } : {}) }));
+  }
+
+  /** Your lift of one stop, from the list of them or the board. */
+  async liftHold(holdId: string): Promise<ApiError | null> {
+    return this.controlCall((api) => api.liftHold(holdId));
+  }
+
+  /** A button on a line about your stops; `taskId` names the plan a widen or narrow button is about. */
+  /**
+   * A button on a line's control row. Resolves to a refusal to show; to `{ partial }` when a
+   * restart notice's 继续 went on with some of its turns and a stop of yours holds the rest; or null.
+   */
+  async controlAction(messageId: string, action: ControlOffer, taskId?: string): Promise<ApiError | { partial: NonNullable<ControlActionResult["partial"]> } | null> {
+    const answer: { partial?: ControlActionResult["partial"] } = {};
+    const refused = await this.controlCall(async (api) => {
+      answer.partial = (await api.controlAction(messageId, taskId ? { action, task_id: taskId } : { action })).partial;
+    });
+    return refused ?? (answer.partial ? { partial: answer.partial } : null);
+  }
+
+  private async controlCall(call: (api: MessengerApi) => Promise<unknown>): Promise<ApiError | null> {
+    const api = this.api;
+    if (!api || this.connection !== "connected") return null;
+    try {
+      await call(api);
+      return null;
+    } catch (error) {
+      if (this.api !== api) return null;
+      if (error instanceof ApiError && error.status >= 400 && error.status < 500) return error;
+      this.markDisconnected();
+      return null;
     }
   }
 
@@ -2775,6 +2823,10 @@ export class MessengerRuntime {
     if ((event.event === "ticket.upsert" || event.event === "ticket.removed") && this.boardShows(event.task_id)) {
       this.traceReload += 1;
     }
+    // A stop made or lifted can park a plan, put it back, or hold it without touching its row (one
+    // on everything): a board on screen reads its plan again, so its next edit is from the version
+    // the stop wrote and not refused as stale.
+    if (event.event === "hold.upsert" && (this.traceOpen || this.traceWatchers.size > 0)) this.traceReload += 1;
     if (event.event === "message.created") {
       // Drafted for what was there before, in front or not; ✨ drafts again for what is there now.
       // An upsert is a reaction, an edit or an answer to a row already there: the talk has not moved.

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { SessionSummary } from '@real-bot/protocol';
+	import type { Hold, SessionSummary } from '@real-bot/protocol';
 	import SessionAvatar from '../SessionAvatar.svelte';
 	import BrandMark from '../BrandMark.svelte';
 	import EmptyState from '../EmptyState.svelte';
@@ -8,7 +8,7 @@
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { groupSessions, isFileDropSession, isSessionArchived, youBotPeer } from './session-groups.ts';
 	import { BOT_DM_VISIBLE, recentBotDms, resolveBotDmOrigin } from './bot-dm-source.ts';
-	import { botWorkStatus, sidebarStatus } from './session-status.ts';
+	import { botWorkStatus, sidebarStatus, type SessionStatusResult } from './session-status.ts';
 	import { loadWorkingOnly, onlyWorking, saveWorkingOnly, workingOrUnreadIds } from './working-only.ts';
 	import { sessionTitle } from './session-title.ts';
 	import { latestPreview } from '../chat/transcript.ts';
@@ -17,6 +17,8 @@
 	import { plainPreview } from './preview-text.ts';
 	import { updateChecker } from '../update-checker.svelte.ts';
 	import ToolsMenu from './ToolsMenu.svelte';
+	import HoldsBar from './HoldsBar.svelte';
+	import { holdLabel, listedHolds, sessionHeld } from './holds-list.ts';
 	import { searchShortcutLabel } from '../search/shortcuts.ts';
 	import { formatShortcut } from '../keymap.ts';
 
@@ -212,7 +214,7 @@
 	}
 
 	function statusOf(session: SessionSummary) {
-		return sidebarStatus(
+		const status = sidebarStatus(
 			session,
 			snapshot.turns,
 			snapshot.approvals,
@@ -220,6 +222,43 @@
 			snapshot.pendingJudgements,
 			snapshot.messages
 		);
+		// A stop of yours on the group or the Bot speaks where the last line would, like any state.
+		if (status.kind === 'idle' && sessionHeld(session, myHolds)) return { kind: 'held', label: t.control.rowHeld, isBusy: false } satisfies SessionStatusResult;
+		return status;
+	}
+
+	/** Your stops in force, for the bar above the list and the rows they hold. */
+	const myHolds = $derived(snapshot.holdsOn ? listedHolds(snapshot.holds) : []);
+	const everythingHeld = $derived(snapshot.holds.filter((hold) => hold.scope === 'global'));
+
+	function labelOf(hold: Hold): string {
+		return holdLabel(hold, { bots: botsById, sessions: sessionsById, roster: rosterLabels, t: t.control });
+	}
+
+	/** The stops on everything as they stand, which 「全部停下」 or 「全部继续」 acts on. */
+	const everythingNow = $derived(everythingHeld.map((hold) => hold.id).join(' '));
+	/**
+	 * 「全部停下」 or 「全部继续」 was refused, with the stops on everything as they stood then: the
+	 * bar above the list says so until the next press, or until everything is stopped or let go some
+	 * other way (the menu bar, a row's lift, a stop menu), when the note would no longer be true.
+	 */
+	let everythingRefused = $state<string | null>(null);
+	const everythingFailed = $derived(everythingRefused === everythingNow);
+	// Forgotten as soon as the stops move on, so a later return to how they stood (stopped
+	// elsewhere, then lifted) does not bring back a refusal nobody has pressed again for.
+	$effect.pre(() => {
+		if (everythingRefused !== null && everythingRefused !== everythingNow) everythingRefused = null;
+	});
+
+	/** 「全部停下」 from the tools menu, or, while everything is stopped, lifting that. */
+	async function everything(): Promise<void> {
+		const over = everythingNow;
+		everythingRefused = null;
+		const refused =
+			everythingHeld.length > 0
+				? await Promise.all(everythingHeld.map((hold) => runtime.liftHold(hold.id)))
+				: [await runtime.stopScope('global', null, runtime.selectedId)];
+		everythingRefused = refused.some(Boolean) ? over : null;
 	}
 
 	function botStatusOf(botId: string) {
@@ -390,6 +429,7 @@
 			</div>
 			{#if phone && !viewingArchived}{@render workingFilter()}{/if}
 		</div>
+		<HoldsBar holds={myHolds} label={labelOf} {t} disabled={runtime.connection !== 'connected'} failed={everythingFailed} onLift={(hold) => runtime.liftHold(hold.id)} />
 	{/if}
 	<div class="groups">
 		{#if viewingArchived}
@@ -672,6 +712,9 @@
 		{onOpenSpend}
 		onOpenTerminal={() => (phone ? runtime.openTerminal() : onNewTerminal())}
 		onOpenArchived={() => (viewingArchived = true)}
+		everything={snapshot.holdsOn ? (everythingHeld.length > 0 ? 'go-on' : 'stop') : null}
+		everythingDisabled={runtime.connection !== 'connected'}
+		onEverything={() => void everything()}
 	/>
 </aside>
 
@@ -1540,6 +1583,16 @@
 	.row-status.is-waiting_ask .row-status-text {
 		color: var(--purple-text);
 		font-weight: 600;
+	}
+
+	/* Stopped by you: not a state that needs a look, so it stays grey; the square says which. */
+	.row-status.is-held .row-status-dot {
+		background: var(--muted);
+		border-radius: 1px;
+	}
+
+	.row-status.is-held .row-status-text {
+		color: var(--muted);
 	}
 
 	.row-status.is-failed .row-status-dot,

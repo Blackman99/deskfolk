@@ -108,6 +108,12 @@ export class Store {
    * says which daemon process wrote it.
    */
   readonly bootId = ulid();
+  /**
+   * The `bootId` of the run that opened this database before this one, read at open and replaced
+   * by this run's: a shutdown's record of the turns it cut off is told only by the boot after it
+   * (ADR 0041). Null on a database no run of this build has opened.
+   */
+  readonly previousBootId: string | null;
   private readonly ctx: StoreContext;
   private readonly listeners = new Set<(event: ClientEvent) => void>();
   private journalReady = false;
@@ -156,6 +162,7 @@ export class Store {
       legacy: { copiedKey: false },
       commit: (write) => this.commit(write),
     };
+    this.previousBootId = turns.swapLastRun(this.ctx, this.bootId);
     this.receipts = new Receipts(this.db, this.ctx.tx, this.ctx.keys, () => files.recoverFiles(this.ctx));
     files.recoverFiles(this.ctx);
     settings.ensureLegacyProviderRow(this.ctx);
@@ -268,6 +275,8 @@ export class Store {
       skills: skills.listSkills(this.ctx).map((skill) => skills.withLearning(this.ctx, skill)),
       memories: memories.listMemories(this.ctx).map((memory) => memories.withLearning(this.ctx, memory)),
       routines: this.listRoutines(), allowRules: this.listAllowRules(),
+      // Only once holds are on: a client reads the field's presence as "stops can be made here".
+      ...(readEngineLevel(this.db) >= ENGINE_LEVELS.holds ? { holds: holds.listHolds(this.ctx, { inForce: true }) } : {}),
       notificationSummary: notifications.getNotificationSummary(this.ctx),
       notificationPolicy: notifications.getNotificationPolicy(this.ctx),
     };
@@ -416,6 +425,7 @@ export class Store {
   // Holds (叫停) ----------------------------------------------------------------------------
   readonly createHold = this.bind(holds.createHold);
   readonly liftHold = this.bind(holds.liftHold);
+  readonly cancelHolds = this.bind(holds.cancelHolds);
   readonly getHold = this.bind(holds.getHold);
   readonly listHolds = this.bind(holds.listHolds);
   readonly holdsCovering = this.bind(holds.holdsCovering);
@@ -508,7 +518,13 @@ export class Store {
   readonly pendingInterrupt = this.bind(turns.pendingInterrupt);
   readonly markInterruptPending = this.bind(turns.markInterruptPending);
   readonly clearInterruptPending = this.bind(turns.clearInterruptPending);
-  readonly recoverInterruptedTurns = this.bind(turns.recoverInterruptedTurns);
+  /** Boot recovery; what the last run left live is remembered as cut off by its end. */
+  readonly recoverInterruptedTurns = (): void => turns.recoverInterruptedTurns(this.ctx, this.previousBootId);
+  /** Remembers every live turn as cut off by this run's end, now under way. */
+  readonly noteTurnsCutByShutdown = (): void => turns.noteTurnsCutByShutdown(this.ctx, this.bootId);
+  readonly forgetTurnsCutByShutdown = this.bind(turns.forgetTurnsCutByShutdown);
+  /** At boot: what the end of the run before this one cut off (a record left by any other run is stale). */
+  readonly takeTurnsCutByRestart = () => turns.takeTurnsCutByRestart(this.ctx, this.previousBootId);
   readonly insertApproval = this.bind(approvals.insertApproval);
   readonly getApproval = this.bind(approvals.getApproval);
   readonly listApprovals = this.bind(approvals.listApprovals);

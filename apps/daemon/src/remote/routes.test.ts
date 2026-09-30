@@ -143,6 +143,22 @@ test("a phone can list, make and lift holds, with nothing past their fields", ()
   expect(() => ok({ method: "POST", path: "/v1/holds", body: { scope: "bot", scope_id: id, source: "legacy" } })).toThrow();
   expect(() => ok({ method: "POST", path: `/v1/holds/${id}/lift`, body: {} })).not.toThrow();
   expect(() => ok({ method: "POST", path: `/v1/holds/${id}/lift`, body: { by: "organizer" } })).toThrow();
+  // The phone's stop menu names the conversation it was in, for the receipt.
+  expect(() => ok({ method: "POST", path: "/v1/holds", body: { scope: "global", session_id: id } })).not.toThrow();
+  expect(() => ok({ method: "POST", path: "/v1/holds", body: { scope: "global", session_id: "here" } })).toThrow();
+});
+
+test("a phone can press a button on a line about your stops, one it names, nothing else", () => {
+  const ok = (request: Omit<RemoteRequest, "v" | "id">) => validateBusiness({ v: 1, id, ...request });
+  expect(() => ok({ method: "POST", path: `/v1/messages/${id}/control`, body: { action: "undo" } })).not.toThrow();
+  expect(() => ok({ method: "POST", path: `/v1/messages/${id}/control`, body: { action: "only_plan", task_id: id } })).not.toThrow();
+  // A restart notice's 继续 and 不续 (ADR 0041).
+  expect(() => ok({ method: "POST", path: `/v1/messages/${id}/control`, body: { action: "resume" } })).not.toThrow();
+  expect(() => ok({ method: "POST", path: `/v1/messages/${id}/control`, body: { action: "leave" } })).not.toThrow();
+  expect(() => ok({ method: "POST", path: `/v1/messages/${id}/control`, body: {} })).toThrow();
+  expect(() => ok({ method: "POST", path: `/v1/messages/${id}/control`, body: { action: "lift_everything" } })).toThrow();
+  expect(() => ok({ method: "POST", path: `/v1/messages/${id}/control`, body: { action: "stop_plan", task_id: "EP01" } })).toThrow();
+  expect(() => ok({ method: "POST", path: `/v1/messages/${id}/control`, body: { action: "stop", source: "user_text" } })).toThrow();
 });
 
 test("the organizer's own debug trail is never on the remote whitelist, task_id or not", () => {

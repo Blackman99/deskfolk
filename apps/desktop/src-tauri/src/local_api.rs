@@ -1,4 +1,4 @@
-//! Read the daemon's runtime descriptor and call health / quit / stop.
+//! Read the daemon's runtime descriptor and call health / quit / stop everything.
 //! Never log the token or Authorization header.
 
 use serde::Deserialize;
@@ -251,15 +251,22 @@ pub(crate) fn parse_drain(value: serde_json::Value) -> Option<DrainStatus> {
     })
 }
 
+/// The menu bar's 全部停下: a stop of yours on every Bot (ADR 0040 P2). A daemon that has no stops
+/// yet refuses it (409), and the menu bar then stops the latest live turn in a direct, as before.
 pub fn post_stop(endpoint: &Endpoint) -> bool {
-    let url = format!("{}/v1/turns/stop", endpoint.origin);
+    post_json(endpoint, "/v1/holds", r#"{"scope":"global"}"#)
+        || post_json(endpoint, "/v1/turns/stop", "{}")
+}
+
+fn post_json(endpoint: &Endpoint, path: &str, body: &str) -> bool {
+    let url = format!("{}{}", endpoint.origin, path);
     match agent()
         .post(&url)
         .set("Authorization", &format!("Bearer {}", endpoint.token))
         .set("Content-Type", "application/json")
-        .send_string("{}")
+        .send_string(body)
     {
-        Ok(resp) => resp.status() == 204 || resp.status() == 200,
+        Ok(resp) => (200..300).contains(&resp.status()),
         Err(_) => false,
     }
 }
@@ -368,6 +375,78 @@ mod tests {
     #[test]
     fn unreachable_health_is_down() {
         assert_eq!(probe_bind(1), Probe::Down);
+    }
+
+    /// A daemon on a loopback port that answers each request with the next status, and reports the
+    /// request lines it saw.
+    fn answering(statuses: Vec<u16>) -> (Endpoint, std::thread::JoinHandle<Vec<String>>) {
+        use std::io::{BufRead, BufReader, Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let seen = std::thread::spawn(move || {
+            let mut lines = Vec::new();
+            for status in statuses {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut first = String::new();
+                reader.read_line(&mut first).unwrap();
+                let mut length = 0usize;
+                loop {
+                    let mut header = String::new();
+                    reader.read_line(&mut header).unwrap();
+                    if header == "\r\n" || header.is_empty() {
+                        break;
+                    }
+                    if let Some(value) = header.to_ascii_lowercase().strip_prefix("content-length:")
+                    {
+                        length = value.trim().parse().unwrap_or(0);
+                    }
+                }
+                let mut body = vec![0u8; length];
+                reader.read_exact(&mut body).unwrap();
+                lines.push(format!(
+                    "{} {}",
+                    first.trim(),
+                    String::from_utf8_lossy(&body)
+                ));
+                write!(
+                    stream,
+                    "HTTP/1.1 {status} X\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                )
+                .unwrap();
+            }
+            lines
+        });
+        (
+            Endpoint {
+                origin: format!("http://127.0.0.1:{port}"),
+                token: "t".into(),
+            },
+            seen,
+        )
+    }
+
+    #[test]
+    fn menu_bar_stop_is_a_stop_on_everything() {
+        let (endpoint, seen) = answering(vec![201]);
+        assert!(post_stop(&endpoint));
+        assert_eq!(
+            seen.join().unwrap(),
+            vec![r#"POST /v1/holds HTTP/1.1 {"scope":"global"}"#.to_string()]
+        );
+    }
+
+    #[test]
+    fn menu_bar_stop_falls_back_to_the_latest_turn_on_a_daemon_without_stops() {
+        let (endpoint, seen) = answering(vec![409, 204]);
+        assert!(post_stop(&endpoint));
+        assert_eq!(
+            seen.join().unwrap(),
+            vec![
+                r#"POST /v1/holds HTTP/1.1 {"scope":"global"}"#.to_string(),
+                "POST /v1/turns/stop HTTP/1.1 {}".to_string(),
+            ]
+        );
     }
 
     #[test]

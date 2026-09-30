@@ -440,9 +440,12 @@ CREATE VIEW IF NOT EXISTS held_scopes AS
   WHERE h.lifted_at IS NULL;
 
 -- What happened to the work (ADR 0040), one row per event, only ever appended, and ordered by seq,
--- never by at: the store's clock runs ahead of the wall's in bursts. So far one kind,
--- 'wake.suppressed': a wake a hold turned away, payload {cause, holds}. Kept when a conversation's
--- history is cleared or it is deleted; no foreign keys.
+-- never by at: the store's clock runs ahead of the wall's in bursts. The kinds so far (ADR 0041):
+-- 'wake.suppressed', a wake a hold turned away, payload {cause, holds}; 'control.hold', a hold made,
+-- payload {hold, scope, scope_id, source, stopped}; 'control.lift', a hold lifted, payload {hold, by}
+-- (plus next_line, undo or narrowed_to where that is how); 'hold.violation', a turn still running
+-- under a hold and ended there, payload {hold}; 'daemon.restart', one per boot, payload {cause, cut}.
+-- Kept when a conversation's history is cleared or it is deleted; no foreign keys.
 CREATE TABLE IF NOT EXISTS work_events (
   seq INTEGER PRIMARY KEY AUTOINCREMENT,
   at TEXT NOT NULL,

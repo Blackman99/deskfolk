@@ -17,10 +17,12 @@ export { isContinuableNote, isInterruptNote, isUnreachableNote };
 export function canContinueInterrupt(
   message: Pick<Message, "id" | "kind" | "body" | "author" | "turn_id" | "source_turn_id">,
   turns: readonly Turn[],
-  opts: { locked?: boolean; readOnly?: boolean; hasLiveTurnForBot?: boolean } = {},
+  opts: { locked?: boolean; readOnly?: boolean; hasLiveTurnForBot?: boolean; announced?: ReadonlySet<string> } = {},
 ): boolean {
   if (!isContinuableNote(message) || !message.turn_id) return false;
   if (message.source_turn_id) return false;
+  // A restart notice here already offers 继续 for it (and for the rest of its job): one button, not two.
+  if (opts.announced?.has(message.id)) return false;
   // A Bot↔Bot chat has no composer, so Continue is how that chat picks up. Anywhere else a
   // locked composer means there is nobody to hand the next turn to.
   if (opts.locked && !opts.readOnly) return false;
@@ -377,3 +379,16 @@ export function groupTranscript(
   return groups;
 }
 
+/**
+ * The 「中断」 lines a restart notice among `messages` still offers to continue (ADR 0041): until
+ * you press one of its buttons it stands for their own Continue. After 不续, each line's own
+ * Continue is back.
+ */
+export function restartAnnounced(messages: readonly Pick<Message, "control">[]): Set<string> {
+  const notes = new Set<string>();
+  for (const message of messages) {
+    const control = message.control;
+    if (control?.kind === "restart" && !(control.acted ?? []).length) for (const id of control.notes) notes.add(id);
+  }
+  return notes;
+}

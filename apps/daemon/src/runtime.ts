@@ -23,8 +23,10 @@ import { recoverLifecycle } from "./remote/lifecycle";
 import { restartAvailable, runtimeVersion, type MaintenanceControl } from "./remote/maint";
 import { stopOrphanProcs } from "./live-procs";
 import { sharedInstalledVersion } from "./installed-app";
+import { classifyRestart, type RestartSummary, type RunShape } from "./engine/restart";
 import { isCompiledBinary } from "./platform";
 import { logStartup } from "./startup-log";
+import type { TurnEngine } from "./turn-engine";
 
 type SocketData = { authed: boolean };
 
@@ -43,6 +45,12 @@ export type RuntimeOptions = {
   onRuntimeStop?: () => void;
   /** Side-calls switched off for a benchmark (see `ablation.ts`). `main.ts` never sets it. */
   ablation?: Ablation;
+  /**
+   * How this process was started, which tells a development run's restart apart (ADR 0041). The
+   * process's own when absent; tests pin it, so `bun test --watch` or `REAL_BOT_DEV=1` does not
+   * change what they read.
+   */
+  run?: RunShape;
 };
 
 export type RuntimeHandle = {
@@ -75,6 +83,20 @@ function parseBind(bind: string): { host: string; port: number } {
     throw new Error(`invalid bind: ${bind}`);
   }
   return { host, port };
+}
+
+/**
+ * Tells you what the restart cut off (ADR 0041). Never the reason a start fails: a throw here is
+ * logged and the daemon comes up all the same, and each cut-off turn keeps its own 「中断」 line
+ * and notification to go on from.
+ */
+function announceRestart(engine: TurnEngine, previous: "clean" | "crash", run: RunShape, log: (line: string) => void): RestartSummary | null {
+  try {
+    return engine.announceRestart(classifyRestart(previous, run));
+  } catch (error) {
+    log(`could not tell what the restart cut off: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
 }
 
 function originFor(host: string, port: number): string {
@@ -260,6 +282,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
     // packaged daemon keeps the sealed provider, whose status tells the settings card as much.
     const shipped = dev || process.platform === "win32" ? undefined : shippedRemoteNative(options.dataDir);
     const devPairing = dev ? devPairingDispatch(dev.native) : undefined;
+    const previousShutdown = store.previousShutdown;
     api = createLocalApi({
       store,
       token,
@@ -273,6 +296,12 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
       completions: options.completions,
       schedule: options.schedule,
       ablation: options.ablation,
+      // Before the scheduler's first tick, a line for each job the restart cut off where you will
+      // see it (ADR 0041), so a check-back that fell due meanwhile does not wake its Bot first.
+      beforeScheduler: (engine) => {
+        const told = announceRestart(engine, previousShutdown, options.run ?? { execArgv: process.execArgv, env: process.env }, bootLog);
+        if (told && told.turns > 0) bootLog(`started again after a ${told.cause} end: ${told.turns} turn(s) in ${told.jobs} job(s) were cut off, told where each belongs`);
+      },
       remoteStatus: () => remote?.status() ?? { state: "off", diagnostic: null, devices: 0 },
       onQuit: () => {
         options.onQuit?.();
