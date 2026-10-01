@@ -58,14 +58,16 @@ async function toldTwice(h: Scenario, secondPlan?: (room: string) => string) {
   return { director };
 }
 
-test.failing("told twice in two directs about the same plan, the director renders each shot once", async () => {
-  const h = await createScenario({ media: true });
+test("told twice in two directs about the same plan, the director renders each shot once", async () => {
+  const h = await createScenario({ media: true, workItems: true });
   open.push(h);
   const { director } = await toldTwice(h);
 
   expect({ C07: submitsOf(h, "C07"), C08: submitsOf(h, "C08") }).toEqual({ C07: 1, C08: 1 });
-  // One turn did the job; the second line was heard in it.
-  expect(h.turns(director)).toHaveLength(1);
+  // The second line was heard by the turn already on the plan. A later look-back, once the plan
+  // goes quiet with a ticket still open, is a turn of its own and is not counted here.
+  const redo = h.turns(director).filter((turn) => !h.store.getMessage(turn.trigger_message_id).body.startsWith("回看："));
+  expect(redo).toHaveLength(1);
 });
 
 test.failing("filed under another plan, the second submit of the same shot gets the first job back", async () => {

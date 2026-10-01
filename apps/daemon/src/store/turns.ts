@@ -11,6 +11,8 @@ import {
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { isHeldAbort } from "./holds";
+import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
+import { findOrCreateWorkItem } from "./work-items";
 import { releaseEndedInbox } from "./inbox";
 import { getMessage } from "./messages";
 import {
@@ -68,10 +70,15 @@ export function createTurn(
       ? { taskId: null, ticketId: null, handedTicketId: null }
       : resolveTurnTask(ctx, landingInput(ctx, { ...input, trigger }));
     try {
+      // Work items bind a turn once the engine level has them (ADR 0040 P4b). Below it a turn is
+      // what it was: the one-live indexes only look at rows that carry one.
+      const workItemId = readEngineLevel(ctx.db) >= ENGINE_LEVELS.work_items && !readOnly
+        ? findOrCreateWorkItem(ctx, { botId: input.botId, sessionId: input.sessionId, taskId, ticketId }).id
+        : null;
       ctx.db.run(
         `INSERT INTO turns
-          (id, session_id, bot_id, status, trigger_message_id, task_id, ticket_id, routine_id, routine_due_at, last_activity_at, created_at, updated_at, mode)
-         VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (id, session_id, bot_id, status, trigger_message_id, task_id, ticket_id, routine_id, routine_due_at, last_activity_at, created_at, updated_at, mode, work_item_id)
+         VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id,
           input.sessionId,
@@ -85,6 +92,7 @@ export function createTurn(
           now,
           now,
           input.mode ?? "work",
+          workItemId,
         ],
       );
     } catch (error) {

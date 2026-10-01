@@ -29,18 +29,20 @@ import type { CapabilitiesResponse } from "@real-bot/protocol";
  *   never brings back. The new check_backs columns and the holds table itself, empty, are nothing
  *   an older build misreads, so the floor goes up with the engine level that starts writing holds
  *   ({@link raiseEngineLevel}), not with the migration that adds them.
+ * - 2: ADR 0040 P4b's work items. A database at engine level 2 keeps one live turn per Bot per
+ *   plan, which a build without work items would not: it would open a second turn on the same job.
  */
-export const SCHEMA_LEVEL = 1;
+export const SCHEMA_LEVEL = 2;
 
 /**
  * The engine levels this build runs, in the only order they turn on (ADR 0040: one integer for the
  * whole rollout instead of a switch per feature). `holds`: ADR 0040 P2's control plane.
  */
-export const ENGINE_LEVELS = { holds: 1 } as const;
-export const ENGINE_LEVEL = ENGINE_LEVELS.holds;
+export const ENGINE_LEVELS = { holds: 1, work_items: 2 } as const;
+export const ENGINE_LEVEL = ENGINE_LEVELS.work_items;
 
 /** The floor a database needs once it runs at each engine level: whatever an older build would misread there. */
-const FLOOR_AT_LEVEL: Readonly<Record<number, number>> = { 1: 1 };
+const FLOOR_AT_LEVEL: Readonly<Record<number, number>> = { 1: 1, 2: 2 };
 
 /**
  * The last release without the gate read. A copy of it (or of anything before it) opens any

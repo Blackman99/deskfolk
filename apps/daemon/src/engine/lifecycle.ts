@@ -29,6 +29,7 @@ import type { McpHost } from "../mcp-host";
 import type { TurnAdmission } from "../quiesce";
 import { isoNow } from "../ids";
 import type { TurnExecution } from "../store/routing";
+import { ENGINE_LEVELS } from "../store/schema-gate";
 import type { Store } from "../store";
 import { checkInNote, emptyReplyNote, lastHopNote, turnPace } from "../turn-pace";
 import { inboxLabel } from "../store";
@@ -190,6 +191,19 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     }
     // Before a live turn is redirected for it: a wake a hold turns away changes nothing.
     if (!mayWake(store, wake)) return null;
+    // One live turn per Bot per plan (ADR 0040 I1b): a second line about a plan this Bot is already
+    // working on, in any conversation, is heard by that turn instead of opening another.
+    if (store.capabilities().engine_level >= ENGINE_LEVELS.work_items) {
+      const landing = store.turnLanding({ sessionId, botId, trigger, taskId: opts.taskId, ticketId: opts.ticketId });
+      if (landing.taskId) {
+        const onPlan = store.listLiveTurns({ botId }).find((row) => row.task_id === landing.taskId && row.mode !== "readonly");
+        const live = onPlan ? lives.get(onPlan.id) : undefined;
+        if (onPlan && live && !live.abort.signal.aborted && store.turnHeldBy(onPlan.id).length === 0) {
+          hearIn(onPlan, live, trigger, { item: { author: "", body: trigger.body, checkBack: false } }, landing);
+          return onPlan;
+        }
+      }
+    }
     let carry: { written: string[]; recent: string[]; unread: HeardItem[]; previous: PlanRef | null } | null = null;
     if (mode === "redirect") {
       // A turn a hold covers is left to the hold, and the new one opens beside it: redirecting it
@@ -249,6 +263,36 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
   }
 
   /**
+   * Puts a line into a live turn's inbox: tagged with the plan it is about, and with where it was
+   * said when that is another conversation.
+   */
+  function hearIn(
+    turn: Turn,
+    live: Live,
+    trigger: Message,
+    entry: Omit<InboxEntry, "message">,
+    about: { taskId: string | null; ticketId: string | null },
+  ): void {
+    const locale = store.settingsCached().locale;
+    const tag = planTagger(store, { taskId: turn.task_id ?? null, ticketId: turn.ticket_id ?? null }, locale)(about);
+    const where = trigger.session_id === turn.session_id ? entry.item.where : sessionLabel(store, trigger.session_id, turn.bot_id, locale) ?? undefined;
+    let author = entry.item.author || trigger.author;
+    if (!entry.item.author) {
+      try {
+        author = trigger.author === USER_MEMBER ? "user" : store.getBot(trigger.author).name;
+      } catch {
+        author = trigger.author;
+      }
+    }
+    live.inbox.push(recordHeard(store, turn, {
+      ...entry,
+      item: { ...entry.item, author, tag: tag || undefined, where },
+      message: trigger,
+      ...(trigger.session_id === turn.session_id ? {} : { elsewhere: true }),
+    }));
+  }
+
+  /**
    * A Bot's line for a Bot that is already working in this session is heard inside that turn
    * rather than ending it: it waits in the turn's inbox for the next hop. Only when there is no
    * live turn here that this process runs, and that no hold covers, does a new one open. Returns
@@ -265,9 +309,19 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     const { otherwise = "redirect", cause, ...lands } = opts;
     // Asked once, of the plan the line would open a turn in: a line a hold turns away is not heard either.
     if (!mayWake(store, wakeOn(store, cause, { sessionId, botId, trigger, ...lands }))) return null;
+    // One live turn per Bot per plan (ADR 0040 I1b), whichever conversation the line came in: the
+    // turn already on that plan hears it.
+    const about = entry.checkBack ?? { taskId: lands.taskId ?? trigger.task_id ?? null, ticketId: lands.ticketId ?? trigger.ticket_id ?? null };
+    if (store.capabilities().engine_level >= ENGINE_LEVELS.work_items && about.taskId) {
+      const onPlan = store.listLiveTurns({ botId }).find((row) => row.task_id === about.taskId && row.mode !== "readonly");
+      const living = onPlan ? lives.get(onPlan.id) : undefined;
+      if (onPlan && living && !living.abort.signal.aborted && store.turnHeldBy(onPlan.id).length === 0) {
+        hearIn(onPlan, living, trigger, entry, about);
+        return onPlan;
+      }
+    }
     // A group turn hears lines about other jobs too; the tag says which one this is about. With
     // more than one turn here, the one already on that job hears it.
-    const about = entry.checkBack ?? { taskId: trigger.task_id ?? null, ticketId: trigger.ticket_id ?? null };
     const rows = store.listLiveTurns({ sessionId, botId });
     const onJob = rows.filter((row) => about.taskId !== null && row.task_id === about.taskId);
     for (const current of [...onJob, ...rows.filter((row) => !onJob.includes(row))]) {

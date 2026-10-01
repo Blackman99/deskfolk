@@ -314,6 +314,8 @@ export type ScenarioOptions = {
    * app older than the version gate shares its database; a store starts below it.
    */
   holds?: boolean;
+  /** Takes the engine level up to work items (ADR 0040 P4b), which includes holds. */
+  workItems?: boolean;
 };
 
 export type Scenario = {
@@ -479,7 +481,7 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
     endpoint_default_model: "scenario",
     ...(options.locale ? { locale: options.locale } : {}),
   });
-  if (options.holds) store.raiseEngineLevel(null);
+  if (options.holds || options.workItems) store.raiseEngineLevel(null);
 
   // The Mac never sleeps in a scenario; a shell's timeout still has to fire, so it keeps real time.
   const wake: WakeWatch = {

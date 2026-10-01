@@ -92,6 +92,7 @@ describe("schema", () => {
       "turns",
       "user_quotes",
       "work_events",
+      "work_items",
     ]);
     store.close();
   });

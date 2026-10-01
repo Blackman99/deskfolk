@@ -23,6 +23,7 @@ import * as bots from "./bots";
 import * as checkBacks from "./check-backs";
 import * as holds from "./holds";
 import * as inbox from "./inbox";
+import * as workItems from "./work-items";
 import * as judgements from "./judgements";
 import * as liveProcs from "./live-procs";
 import * as mcp from "./mcp";
@@ -494,6 +495,10 @@ export class Store {
   readonly holdInboxItems = this.bind(inbox.holdInboxItems);
   readonly supersedeInboxItems = this.bind(inbox.supersedeInboxItems);
   readonly disposeInboxItems = this.bind(inbox.disposeInboxItems);
+
+  // Work items (ADR 0040 P4b) -------------------------------------------------------------
+  readonly findOrCreateWorkItem = this.bind(workItems.findOrCreateWorkItem);
+  readonly closeWorkItemIfIdle = this.bind(workItems.closeWorkItemIfIdle);
 
   // Work log -------------------------------------------------------------------------------
   readonly recordWorkEvent = this.bind(workEvents.recordWorkEvent);

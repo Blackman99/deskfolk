@@ -62,9 +62,9 @@ describe("making a hold", () => {
       code: "holds_unavailable",
     });
     expect(store.capabilities()).toMatchObject({ engine_level: 0, features: [] });
-    expect(store.raiseEngineLevel(null)).toEqual({ level: 1, raised: true, refused: null, accepted: null });
-    expect(store.capabilities()).toMatchObject({ engine_level: 1, features: ["holds"] });
-    expect(store.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'schema_min_compatible'").get()?.value).toBe("1");
+    expect(store.raiseEngineLevel(null)).toEqual({ level: 2, raised: true, refused: null, accepted: null });
+    expect(store.capabilities()).toMatchObject({ engine_level: 2, features: ["holds", "work_items"] });
+    expect(store.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'schema_min_compatible'").get()?.value).toBe("2");
     const hold = store.createHold({ scope: "bot", scopeId: director.id, source: "user_button" });
     expect(hold).toMatchObject({ scope: "bot", scope_id: director.id, action: "pause", cascade: true, source: "user_button", lifted_at: null, targets: [] });
     store.close();

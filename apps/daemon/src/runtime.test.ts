@@ -480,7 +480,7 @@ describe("local API runtime", () => {
     // A data folder of its own: no installed app opens it, so nothing holds the level back.
     const rt = await startRuntime({ dataDir, bind: "127.0.0.1:0", endpointKey: keys });
     handles.push(rt);
-    expect(rt.store.capabilities()).toMatchObject({ engine_level: 1, features: ["holds"] });
+    expect(rt.store.capabilities()).toMatchObject({ engine_level: 2, features: ["holds", "work_items"] });
     expect(rt.store.listHolds({ inForce: true })).toMatchObject([{ scope: "plan", scope_id: plan.id, source: "legacy" }]);
   });
 

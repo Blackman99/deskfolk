@@ -81,7 +81,7 @@ test("--clear with no daemon running takes the opt-in back and leaves the level 
   const { out, io: streams } = io();
   expect(await run(["--clear", "--data-dir", dir], streams)).toBe(0);
   expect(optInRow(dir)).toBeNull();
-  expect(JSON.parse(out[1]!)).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds"] });
+  expect(JSON.parse(out[1]!)).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds", "work_items"] });
 });
 
 test("a data folder with no database yet is left alone", async () => {
@@ -107,7 +107,7 @@ test("with a daemon running it asks that daemon, which raises at once", async ()
   const accepted = io();
   expect(await run(["--accept-older-app", "--data-dir", dir], accepted.io)).toBe(0);
   expect(accepted.out[0]).toContain("raised the engine level now");
-  expect(JSON.parse(accepted.out[1]!)).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds"] });
+  expect(JSON.parse(accepted.out[1]!)).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds", "work_items"] });
   expect(store.engineGateOptIn()?.by).toBe("script");
 
   const cleared = io();

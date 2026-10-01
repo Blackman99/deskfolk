@@ -331,8 +331,15 @@ CREATE TABLE IF NOT EXISTS turns (
   -- What the turn may do (ADR 0040): 'work', or 'readonly' for the one kind a hold lets open, the
   -- turn a line of yours opens to answer you; 'desk' is a later phase's. Null on rows an older build
   -- wrote. The hold triggers on this table (store/holds.ts) read it.
-  mode TEXT CHECK (mode IS NULL OR mode IN ('work', 'desk', 'readonly'))
+  mode TEXT CHECK (mode IS NULL OR mode IN ('work', 'desk', 'readonly')),
+  -- The work item this turn runs (ADR 0040 P4b). Null on rows from before work items, and on a
+  -- database whose engine level has not reached them: the one-live indexes below only look at rows
+  -- that have one.
+  work_item_id TEXT
 );
+
+-- The two one-live indexes (ADR 0040 I1, I1b) are created in migrate.ts, after an older database
+-- has been given the work_item_id column: creating them here would fail that open.
 
 CREATE TABLE IF NOT EXISTS judgements (
   id TEXT PRIMARY KEY,
@@ -648,6 +655,28 @@ CREATE INDEX IF NOT EXISTS inbox_items_waiting ON inbox_items (bot_id, session_i
 CREATE INDEX IF NOT EXISTS inbox_items_turn ON inbox_items (turn_id, state);
 CREATE INDEX IF NOT EXISTS inbox_items_delivered ON inbox_items (delivered_turn_id, state);
 CREATE INDEX IF NOT EXISTS inbox_items_message ON inbox_items (message_id);
+
+-- One piece of work a Bot has on (ADR 0040 P4b): a Bot on a plan, or, with no plan, a Bot in a
+-- conversation (its desk). A turn belongs to one. Closed rows stay, so the same piece of work
+-- opened again is a new row.
+CREATE TABLE IF NOT EXISTS work_items (
+  id TEXT PRIMARY KEY,
+  bot_id TEXT NOT NULL,
+  task_id TEXT,
+  ticket_id TEXT,
+  home_session_id TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'own' CHECK (role IN ('own', 'review', 'assist', 'lead', 'desk')),
+  state TEXT NOT NULL CHECK (state IN ('idle', 'queued', 'running', 'waiting', 'blocked', 'needs_attention', 'closed')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  closed_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS work_items_one_open_per_plan
+  ON work_items (bot_id, task_id, IFNULL(ticket_id, ''))
+  WHERE task_id IS NOT NULL AND state <> 'closed';
+CREATE UNIQUE INDEX IF NOT EXISTS work_items_one_open_desk
+  ON work_items (bot_id, home_session_id)
+  WHERE task_id IS NULL AND state <> 'closed';
 
 CREATE TABLE IF NOT EXISTS skills (
   id TEXT PRIMARY KEY,
