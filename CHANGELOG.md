@@ -6,6 +6,8 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+- Fixed startup when upgrading a database from before work directories. The runtime now adds the turn's plan-attribution column before creating the work-item uniqueness index, preventing a missing `task_id` error. Existing data is preserved, and reopening remains safe.
+
 - A line of yours no longer waits on the organizer. Both models called the tool they were offered on the first try in all 6 cases of the protocol probe, a bounce rate of 0 against the 10% gate. The line is filed from the rows when they say where it belongs, and left unfiled when they do not; the turn opens either way, and no plan is opened in silence. The organizer's pass after a plan goes quiet stays, and only files the handover.
 
 - A Bot works two jobs at once, and a third waits: the conversation says where in line it stands, and it starts once one in hand finishes. A line that names a part, such as the first three shots, is filed from the rows onto the job it matches, and a plan a cleared conversation set aside is not a candidate. work_on binds the turn to another job, or opens one from a line of yours. A line moves with PATCH /v1/messages/:id/attribution, and its inbox item moves with it. In a group with a confirmed lead, a line that names nobody goes to the lead.

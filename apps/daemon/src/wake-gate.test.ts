@@ -26,6 +26,7 @@ import { join } from "node:path";
 import { existsSync } from "node:fs";
 import type { CompletionResult } from "./completions";
 import { HttpError } from "./errors";
+import { ENGINE_LEVELS } from "./store/schema-gate";
 import type { Hold, HoldScope } from "@real-bot/protocol";
 import { openPlan, planSpec, videoTeam } from "./scenarios/video-team";
 import { heardNote } from "./turn-inbox";
@@ -44,7 +45,11 @@ async function scenario(options?: Parameters<typeof createScenario>[0]): Promise
 
 /** A hold of yours, from a button; holds come on with the engine level (tests start below it). */
 function hold(h: Scenario, scope: HoldScope, scopeId: string | null): Hold {
-  h.store.raiseEngineLevel(null);
+  if (h.store.capabilities().engine_level < ENGINE_LEVELS.holds) {
+    for (const key of ["engine_level", "schema_min_compatible"]) {
+      h.store.db.run("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [key, String(ENGINE_LEVELS.holds)]);
+    }
+  }
   return h.store.createHold({ scope, scopeId, source: "user_button" });
 }
 

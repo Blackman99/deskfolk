@@ -198,6 +198,16 @@ describe("a database an earlier build created", () => {
         // the table lacks would break every turn written through; the work log, empty.
         const turnCols = reopened.db.query<{ name: string }, []>("PRAGMA table_info(turns)").all().map((row) => row.name);
         expect(turnCols).toContain("mode");
+        // The one-live indexes (ADR 0040 I1, I1b). Both name columns an older shape lacks
+        // (work_item_id, and for I1b also task_id), so they have to come up from the migration
+        // rather than SCHEMA_SQL, including on a second open.
+        const oneLive = reopened.db
+          .query<{ name: string }, []>(
+            "SELECT name FROM sqlite_master WHERE type = 'index' AND name IN ('turns_one_live_per_item', 'turns_one_live_per_bot_plan') ORDER BY name",
+          )
+          .all()
+          .map((row) => row.name);
+        expect(oneLive).toEqual(["turns_one_live_per_bot_plan", "turns_one_live_per_item"]);
         const triggers = reopened.db
           .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'turns' ORDER BY name")
           .all()

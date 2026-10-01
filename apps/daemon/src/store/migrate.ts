@@ -29,12 +29,9 @@ export function migrateSchema(db: Database): void {
   if (!turnCols.some((column) => column.name === "work_item_id")) {
     db.run("ALTER TABLE turns ADD COLUMN work_item_id TEXT");
   }
-  // One live segment per work item, and one per Bot per plan (ADR 0040 I1, I1b). A row from before
-  // work items has none, so neither index touches it. Created here, after the column exists.
+  // I1 only needs work_item_id. I1b also needs task_id, added later in migrateRouteTables.
   db.run(`CREATE UNIQUE INDEX IF NOT EXISTS turns_one_live_per_item ON turns (work_item_id)
     WHERE work_item_id IS NOT NULL AND status IN ('running', 'waiting_approval', 'waiting_ask')`);
-  db.run(`CREATE UNIQUE INDEX IF NOT EXISTS turns_one_live_per_bot_plan ON turns (bot_id, task_id)
-    WHERE work_item_id IS NOT NULL AND task_id IS NOT NULL AND status IN ('running', 'waiting_approval', 'waiting_ask')`);
   // `acceptance_checks`/`acceptance_check_runs` are new tables, so SCHEMA_SQL's own
   // `CREATE TABLE IF NOT EXISTS` brings them up (and indexes) on an old database too. `turn_runs`
   // already existed, so its new column needs the same guarded ALTER every other one here gets.
@@ -1195,6 +1192,9 @@ function migrateRouteTables(db: Database, tables: string[]): void {
   if (!turnCols.includes("task_id")) {
     db.run(`ALTER TABLE turns ADD COLUMN task_id TEXT`);
   }
+  // I1b needs both columns; pre-work-dir databases get task_id here.
+  db.run(`CREATE UNIQUE INDEX IF NOT EXISTS turns_one_live_per_bot_plan ON turns (bot_id, task_id)
+    WHERE work_item_id IS NOT NULL AND task_id IS NOT NULL AND status IN ('running', 'waiting_approval', 'waiting_ask')`);
   const messageTaskCols = db
     .query<{ name: string }, []>(`PRAGMA table_info(messages)`)
     .all()

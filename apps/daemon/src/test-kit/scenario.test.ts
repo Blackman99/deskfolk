@@ -19,6 +19,16 @@ async function scenario(options?: ScenarioOptions): Promise<Scenario> {
 const botLines = (h: Scenario, session: string): string[] =>
   h.messages(session).filter((m) => m.kind === "bot").map((m) => m.body);
 
+test("holds and work-items fixtures select their own engine level", async () => {
+  const legacy = await scenario();
+  const held = await scenario({ holds: true });
+  const working = await scenario({ workItems: true });
+  const both = await scenario({ holds: true, workItems: true });
+  expect([legacy, held, working, both].map((h) => h.store.capabilities().engine_level)).toEqual([0, 1, 2, 2]);
+  expect(held.store.capabilities().features).toEqual(["holds"]);
+  expect(working.store.capabilities().features).toEqual(["holds", "work_items"]);
+});
+
 test("one Bot working in two sessions at once gets each session's own reply", async () => {
   const h = await scenario();
   const [alpha, beta] = h.createBots("Alpha", "Beta");

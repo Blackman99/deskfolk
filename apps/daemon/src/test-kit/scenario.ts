@@ -70,6 +70,7 @@ import { TurnAdmission } from "../quiesce";
 import { startScheduler, type Scheduler } from "../scheduler";
 import { memoryKeyStore } from "../secrets";
 import { Store, type WorkEvent } from "../store";
+import { ENGINE_LEVELS } from "../store/schema-gate";
 import type { TurnRun } from "../store/turn-runs";
 import { createTurnEngine, type TurnEngine } from "../turn-engine";
 import type { WakeWatch } from "../wake";
@@ -481,7 +482,13 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
     endpoint_default_model: "scenario",
     ...(options.locale ? { locale: options.locale } : {}),
   });
-  if (options.holds || options.workItems) store.raiseEngineLevel(null);
+  if (options.workItems) store.raiseEngineLevel(null);
+  else if (options.holds) {
+    // Holds fixtures pin P2; later levels change the filing and wake paths they exercise.
+    for (const key of ["engine_level", "schema_min_compatible"]) {
+      store.db.run("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [key, String(ENGINE_LEVELS.holds)]);
+    }
+  }
 
   // The Mac never sleeps in a scenario; a shell's timeout still has to fire, so it keeps real time.
   const wake: WakeWatch = {

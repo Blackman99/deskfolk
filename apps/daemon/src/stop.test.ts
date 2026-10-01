@@ -463,6 +463,44 @@ describe("a go on", () => {
     expect(h.store.listMainMessages(room, 40).some((message) => message.body.includes("用户叫停了这件工作"))).toBe(false);
   });
 
+  test("with work items, a lift resumes the stopped plan beside the Bot's other plan in the group", async () => {
+    const h = await scenario({ workItems: true });
+    const { director, reviewer, writer, room } = videoTeam(h);
+    const ep01 = openPlan(h, room, "EP01", planSpec("EP01 动画成片"));
+    const ep02 = openPlan(h, h.direct(writer), "EP02", planSpec("EP02 动画成片"));
+    const stopped = await atWork(h, director, room, () => h.postBot(reviewer, room, "@视频导演 EP01 母带重新拼一遍", { taskId: ep01.id }));
+    const hold = h.engine.createHold({ scope: "plan", scopeId: ep01.id });
+    let entered = false;
+    const release = Promise.withResolvers<void>();
+    h.script(director, room).handle(async ({ turn }) => {
+      if (turn!.task_id === ep02.id) {
+        entered = true;
+        await release.promise;
+        return say("EP02 分镜收到");
+      }
+      expect(turn!.task_id).toBe(ep01.id);
+      await release.promise;
+      return say("EP01 母带接着拼");
+    });
+    h.postBot(writer, room, "@视频导演 EP02 分镜好了", { taskId: ep02.id });
+    await h.waitFor(() => entered, { what: "the Bot to be on EP02" });
+    const working = h.store.listLiveTurns({ sessionId: room, botId: director.id })[0]!;
+
+    h.engine.liftHold(hold.id);
+    const live = h.store.listLiveTurns({ sessionId: room, botId: director.id });
+    expect(live.map((turn) => turn.task_id).sort()).toEqual([ep01.id, ep02.id].sort());
+    const resumed = live.find((turn) => turn.task_id === ep01.id)!;
+    expect(h.store.getHold(hold.id).effect.resumed_turns).toEqual([resumed.id]);
+    expect(resumed.id).not.toBe(working.id);
+    release.resolve();
+    await h.waitIdle();
+    expect(h.store.getTurn(stopped.id).status).toBe("stopped");
+    expect(h.store.getTurn(resumed.id).status).toBe("completed");
+    expect(h.store.getTurn(working.id).status).toBe("completed");
+    expect(h.hops(director).find((hop) => hop.turnId === resumed.id)!.request.messages.map((message) => message.content).join("\n")).toContain("用户叫停了这件工作，现在解除了");
+    expect(h.store.listMainMessages(room, 40).some((message) => message.body.includes("用户叫停了这件工作"))).toBe(false);
+  });
+
   test("opens stopped work beside a read-only turn still answering you there, not inside it", async () => {
     const h = await scenario();
     const { director, reviewer, room } = videoTeam(h);
