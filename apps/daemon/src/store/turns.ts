@@ -66,13 +66,19 @@ export function createTurn(
   // answers you, it does not work on the job, and binding it to one later is refused (I2).
   const readOnly = input.mode === "readonly";
   ctx.db.transaction(() => {
+    // No plan is opened in silence once work items are on (ADR 0040 P4b): a line the rows cannot
+    // place stays unfiled, and the turn works without one until work_on or a later line places it.
+    const landing = landingInput(ctx, { ...input, trigger });
+    const found = findTurnTask(ctx, landing);
     const { taskId, ticketId, handedTicketId } = readOnly
       ? { taskId: null, ticketId: null, handedTicketId: null }
-      : resolveTurnTask(ctx, landingInput(ctx, { ...input, trigger }));
+      : found.taskId === null && readEngineLevel(ctx.db) >= ENGINE_LEVELS.work_items
+        ? { taskId: null, ticketId: null, handedTicketId: null }
+        : resolveTurnTask(ctx, landing);
     try {
       // Work items bind a turn once the engine level has them (ADR 0040 P4b). Below it a turn is
       // what it was: the one-live indexes only look at rows that carry one.
-      const workItemId = readEngineLevel(ctx.db) >= ENGINE_LEVELS.work_items && !readOnly
+      const workItemId = readEngineLevel(ctx.db) >= ENGINE_LEVELS.work_items && !readOnly && taskId
         ? findOrCreateWorkItem(ctx, { botId: input.botId, sessionId: input.sessionId, taskId, ticketId }).id
         : null;
       ctx.db.run(

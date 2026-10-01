@@ -532,8 +532,11 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
             if (owner) chains.touchChain(message.session_id, owner);
           }
           // Filed before any turn opens, so the turns it opens know their plan and ticket from
-          // their first hop. The message itself is already published; only the Bots wait.
-          await core.track(organizer.organizeMessage(message));
+          // their first hop. Once work items are on, the rows file the line and the organizer's
+          // message-time call is gone (ADR 0040 P4b): it held every turn up for a guess.
+          if (store.capabilities().engine_level < ENGINE_LEVELS.work_items) {
+            await core.track(organizer.organizeMessage(message));
+          }
           // Read back with its stamp: a judgement weighs the plan the line was filed in.
           try {
             filed = store.getMessage(message.id);
