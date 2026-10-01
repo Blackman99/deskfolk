@@ -1905,6 +1905,15 @@ function dispatch(
     return jsonResponse(engine.control(params.id!, { action: body.action, taskId: body.task_id }), 200, null);
   }
 
+  // Move a line to another job (ADR 0040 §8.5). The inbox items it already reached move with it.
+  params = matchPath(path, "/v1/messages/:id/attribution");
+  if (params && method === "PATCH") {
+    const body = (input.body ?? {}) as { plan_id?: string; ticket_id?: string | null };
+    if (!body.plan_id) throw new HttpError(422, "invalid_args", "plan_id is required");
+    const moved = store.refileMessage(params.id!, { taskId: body.plan_id, ticketId: body.ticket_id ?? null });
+    return jsonResponse(moved, 200, null);
+  }
+
   params = matchPath(path, "/v1/messages/:id/reactions");
   if (params && (method === "PUT" || method === "DELETE")) {
     const body = (input.body) as { emoji?: string };

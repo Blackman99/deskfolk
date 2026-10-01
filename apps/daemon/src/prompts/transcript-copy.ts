@@ -188,11 +188,12 @@ export const STALLED_LEFT_ITEMS = 3;
 export const STALLED_LEFT_ITEM_MAX = 60;
 
 /**
- * The line the plan's session gets when the app stops calling Bots back: the plan has stopped with
+ * The review the notification quotes when the app stops calling Bots back: the plan has stopped with
  * tickets open, its checks still failing, or everything handed over while its progress still lists
  * work not done or held up, and picking it up is now yours. `capped` is how many call-backs went out
  * since you last said something in the plan when that budget is what stopped the next one;
- * otherwise the last call-back moved nothing. A system line, so it wakes nobody.
+ * otherwise the last call-back moved nothing. Kept on a line only the woken turn would read, so the
+ * conversation never shows it and it wakes nobody.
  */
 export function stalledPlanBody(
   locale: Locale,

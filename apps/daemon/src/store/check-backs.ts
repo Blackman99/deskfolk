@@ -356,6 +356,60 @@ export function isBotOnlyLine(ctx: StoreContext, messageId: string): boolean {
   );
 }
 
+/**
+ * The text a reply repeats, so a plan call-back that only says again what this Bot already said in
+ * the same session and plan can end without posting it. Markdown dressing comes off, the way a chat
+ * list reads a line, and whitespace collapses: two translations that differ by a bullet or a blank
+ * line are the same answer. A path, a link and a code fence stay in, so a reply that names a new
+ * file is not the same answer.
+ */
+export function repeatKey(body: string): string {
+  return body
+    .replace(/```[\s\S]*?```/g, (block) => block.replace(/\s+/g, " "))
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+    .replace(/^\s{0,3}>\s?/gm, "")
+    .replace(/^\s{0,3}([-*+]|\d+[.)])\s+/gm, "")
+    .replace(/`([^`]*)`/g, "$1")
+    .replace(/(\*\*|__)(.*?)\1/g, "$2")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Whether a turn the app's plan call-back woke is about to post a reply this Bot already posted in
+ * the same session and plan. The call-back exists to move a ticket that is still open; saying the
+ * same thing again moves nothing, and the conversation should not show it twice. `planNudge` is
+ * what the turn was opened as: the appointment is marked fired only after the reply can go out, so
+ * the row cannot say it yet. A reply with nothing left once the dressing comes off says nothing, so
+ * it is not a repeat. The turn's own messages, and the line that woke it, do not count.
+ */
+export function repeatsPlanAnswer(
+  ctx: StoreContext,
+  input: { turnId: string; sessionId: string; author: string; body: string; planNudge: boolean },
+): boolean {
+  if (!input.planNudge) return false;
+  const key = repeatKey(input.body);
+  if (!key) return false;
+  const turn = ctx.db
+    .query<{ task_id: string | null; trigger_message_id: string }, [string]>(
+      `SELECT task_id, trigger_message_id FROM turns WHERE id = ?`,
+    )
+    .get(input.turnId);
+  if (!turn?.task_id) return false;
+  const rows = ctx.db
+    .query<{ body: string }, [string, string, string, string, string]>(
+      `SELECT body FROM messages
+       WHERE session_id = ? AND author = ? AND kind = 'bot' AND task_id = ?
+         AND (turn_id IS NULL OR turn_id != ?) AND id != ?
+       ORDER BY created_at DESC, rowid DESC
+       LIMIT 40`,
+    )
+    .all(input.sessionId, input.author, turn.task_id, input.turnId, turn.trigger_message_id);
+  return rows.some((row) => repeatKey(row.body) === key);
+}
+
 /** What a quiet Bot↔Bot direct would report back with, read when its quiet clock runs out. */
 export type QuietDirect = {
   /** Where the direct came from, which is where its opener reports. */

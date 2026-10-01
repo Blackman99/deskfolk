@@ -22,6 +22,10 @@ export function migrateSchema(db: Database): void {
   if (!turnCols.some((column) => column.name === "mode")) {
     db.run("ALTER TABLE turns ADD COLUMN mode TEXT CHECK (mode IS NULL OR mode IN ('work', 'desk', 'readonly'))");
   }
+  const participantCols = db.query<{ name: string }, []>("PRAGMA table_info(session_participants)").all();
+  if (participantCols.length > 0 && !participantCols.some((column) => column.name === "is_lead")) {
+    db.run("ALTER TABLE session_participants ADD COLUMN is_lead INTEGER NOT NULL DEFAULT 0");
+  }
   if (!turnCols.some((column) => column.name === "work_item_id")) {
     db.run("ALTER TABLE turns ADD COLUMN work_item_id TEXT");
   }

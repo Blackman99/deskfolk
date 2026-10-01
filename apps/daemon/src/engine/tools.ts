@@ -496,6 +496,7 @@ export function createTools(deps: ToolsDeps): Tools {
               workDir: live.workDir,
               planDir: live.planDir,
               mentionWarned: live.mentionWarned,
+              planNudge: live.planNudge,
               availableToolNames: live.toolNames,
               admission,
               signal: live.abort.signal,

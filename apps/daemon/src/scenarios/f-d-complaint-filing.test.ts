@@ -92,8 +92,8 @@ async function theMorning(h: Scenario) {
   return { reviewer, reviewerDm, echo, firstThree, complaint, read };
 }
 
-test.failing("the complaint is filed under the film and reaches the turn at work on it", async () => {
-  const h = await createScenario();
+test("the complaint is filed under the film and reaches the turn at work on it", async () => {
+  const h = await createScenario({ workItems: true });
   open.push(h);
   const { reviewer, reviewerDm, echo, complaint, read } = await theMorning(h);
 

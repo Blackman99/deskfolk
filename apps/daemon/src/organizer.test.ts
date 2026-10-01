@@ -51,12 +51,10 @@ afterEach(async () => {
 /** `createPlanWatch` alone, over a real store: reconcile's nudge/stall/budget logic tested synchronously, without a real turn or timer. */
 function barePlanWatch(options: { planLeftQuietMs?: number } = {}) {
   const store = new Store();
-  const published: string[] = [];
   const fired: string[] = [];
   const planWatch = createPlanWatch({
     store,
     admission: undefined,
-    publishMessage: (message) => published.push(message.body),
     renderMirrors: () => {},
     fireCheckBack: (id) => {
       fired.push(id);
@@ -74,7 +72,30 @@ function barePlanWatch(options: { planLeftQuietMs?: number } = {}) {
     store.close();
     rmSync(root, { recursive: true, force: true });
   });
-  return { store, planWatch, published, fired };
+  /** The review a stalled plan keeps for its notification. The conversation never lists it. */
+  const stalledNote = (taskId: string) =>
+    store.db
+      .query<{ body: string }, [string]>(
+        `SELECT m.body AS body FROM notifications n
+         JOIN messages m ON m.id = n.message_id
+         WHERE n.fail_kind = 'stalled_plan' AND m.task_id = ?
+         ORDER BY n.created_at ASC, n.rowid ASC`,
+      )
+      .all(taskId)
+      .map((row) => row.body);
+  return { store, planWatch, stalledNote, fired };
+}
+
+/** The review a stalled plan keeps for its notification, in the order it was written. The conversation never lists it. */
+function stalledReviews(store: InstanceType<typeof Store>, sessionId: string): Array<{ id: string; body: string; bot_only: number }> {
+  return store.db
+    .query<{ id: string; body: string; bot_only: number }, [string]>(
+      `SELECT m.id AS id, m.body AS body, m.bot_only AS bot_only
+       FROM notifications n JOIN messages m ON m.id = n.message_id
+       WHERE n.fail_kind = 'stalled_plan' AND n.session_id = ?
+       ORDER BY n.created_at ASC, n.rowid ASC`,
+    )
+    .all(sessionId);
 }
 
 function planNudges(store: InstanceType<typeof Store>, taskId: string): Array<{ id: string; bot_id: string; note: string; created_at: string }> {
@@ -582,7 +603,8 @@ function twoTickets(payload: OrganizerPayload): string {
 }
 
 test("a plan that goes quiet with tickets open calls one Bot back; when nothing moves after that, you are told once", async () => {
-  const h = await harness(twoTickets);
+  // The call-back says something the first turn did not, so this test is about the call-back itself.
+  const h = await harness(twoTickets, (messages) => say(messages.some((m) => textOf(m).includes("还有任务没收口")) ? "还差最后一节。" : "初稿在 draft.md"));
   const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
   const reviewer = h.store.createBot({ name: "Reviewer", duties: "review", boundaries: "stay" });
   const group = h.store.createGroup({ name: "周报组", members: [writer.bot.id, reviewer.bot.id] });
@@ -607,10 +629,11 @@ test("a plan that goes quiet with tickets open calls one Bot back; when nothing 
   expect(woken).toMatchObject({ bot_id: writer.bot.id, task_id: plan.id, ticket_id: draft!.id });
   expect(h.store.getMessage(woken.trigger_message_id).body).toStartWith("回看：规划静下来了");
 
-  // The call-back handed nothing over and no ticket moved: the session says so, and you get one notification.
-  await until(() => h.store.listMainMessages(group.id, 20).some((m) => m.kind === "system" && m.body.startsWith("这件事停下了")));
-  const stalled = h.store.listMainMessages(group.id, 20).find((m) => m.body.startsWith("这件事停下了"))!;
+  // The call-back handed nothing over and no ticket moved: you get one notification, and the conversation stays quiet.
+  await until(() => stalledReviews(h.store, group.id).length === 1);
+  const stalled = stalledReviews(h.store, group.id)[0]!;
   expect(stalled.body).toContain("已经叫过Writer一次");
+  expect(stalled.bot_only).toBe(1);
   const notice = h.store.db
     .query<{ kind: string; fail_kind: string | null; message_id: string | null }, [string]>(
       "SELECT kind, fail_kind, message_id FROM notifications WHERE semantic_key = ?",
@@ -619,8 +642,28 @@ test("a plan that goes quiet with tickets open calls one Bot back; when nothing 
   expect(notice).toMatchObject({ kind: "failure", fail_kind: "stalled_plan", message_id: stalled.id });
   await Bun.sleep(150);
   expect(nudges()).toHaveLength(1);
-  expect(h.store.listMainMessages(group.id, 30).filter((m) => m.body.startsWith("这件事停下了"))).toHaveLength(1);
+  expect(stalledReviews(h.store, group.id)).toHaveLength(1);
+  expect(h.store.listMainMessages(group.id, 30).some((m) => m.body.startsWith("这件事停下了"))).toBe(false);
   expect(h.store.getTicket(review!.id).status).toBe("todo");
+});
+
+test("a plan call-back that repeats the answer already given posts nothing, and you are told once", async () => {
+  const h = await harness(twoTickets, () => say("Has anyone started using Gemini 4 yet? How is it?"));
+  const writer = h.store.createBot({ name: "专业翻译官", duties: "translate", boundaries: "stay" });
+  const session = writer.direct_session.id;
+  const trigger = h.store.insertMessage({ sessionId: session, kind: "user", author: "user", body: "翻译：有人用上 Gemini 4 了吗，感觉怎么样" });
+  await h.engine.handleInboundMessage(trigger, { fromUser: true });
+
+  const answers = () => h.store.listMainMessages(session, 20).filter((m) => m.kind === "bot");
+  await until(() => answers().length === 1);
+  // The call-back says the same thing again. The conversation keeps the one answer.
+  await until(() => stalledReviews(h.store, session).length === 1);
+  expect(answers().map((m) => m.body)).toEqual(["Has anyone started using Gemini 4 yet? How is it?"]);
+  const review = stalledReviews(h.store, session)[0]!;
+  expect(review.body).toContain("这件事停下了");
+  expect(review.bot_only).toBe(1);
+  expect(h.store.listMessages(session, { limit: 20 }).items.some((m) => m.body.includes("这件事停下了"))).toBe(false);
+  expect(h.store.db.query("SELECT COUNT(*) AS n FROM check_backs WHERE kind = 'plan_nudge'").get()).toEqual({ n: 1 });
 });
 
 test("a Stop is not a plan going quiet: nothing is settled and nobody is called back", async () => {
@@ -747,7 +790,7 @@ test("no ticket open and no check failing: nothing to reconcile", () => {
 test(
   "a first pass since a check's definition lets one more nudge through instead of a stall; a later fail-then-pass (first_passed_at already set) does not",
   () => {
-    const { store, planWatch, fired, published } = barePlanWatch();
+    const { store, planWatch, fired, stalledNote } = barePlanWatch();
     const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
     const session = writer.direct_session.id;
     const plan = store.openTask({ sessionId: session, title: "写周报" });
@@ -769,28 +812,30 @@ test(
 
     planWatch.reconcilePlan(plan.id); // nothing moved, the check never passed since nudge 1: stalled once.
     expect(fired).toHaveLength(1);
-    expect(published).toHaveLength(1);
-    expect(published[0]).toContain("这件事停下了");
-    expect(published[0]).toContain("第一次不过");
+    expect(stalledNote(plan.id)).toHaveLength(1);
+    expect(stalledNote(plan.id)[0]).toContain("这件事停下了");
+    expect(stalledNote(plan.id)[0]).toContain("第一次不过");
+    // The review is the app's own note: the conversation never lists it.
+    expect(store.listMessages(session, { limit: 20 }).items.some((m) => m.body.includes("这件事停下了"))).toBe(false);
 
     // Stalled again changes nothing: the notice is deduped by the nudge's own id.
     planWatch.reconcilePlan(plan.id);
-    expect(published).toHaveLength(1);
+    expect(stalledNote(plan.id)).toHaveLength(1);
 
     // The check passes for the first time since it was defined — after nudge 1 — while the ticket
     // still has not moved: that alone lets exactly one more nudge through, not another stall.
     pass();
     planWatch.reconcilePlan(plan.id);
     expect(fired).toHaveLength(2);
-    expect(published).toHaveLength(1);
+    expect(stalledNote(plan.id)).toHaveLength(1);
 
     // A fail right after nudge 2 has nothing new since nudge 2 either (the earlier pass predates
     // it): stalled immediately, this time under nudge 2's own notice.
     fail("又不过了");
     planWatch.reconcilePlan(plan.id);
     expect(fired).toHaveLength(2);
-    expect(published).toHaveLength(2);
-    expect(published[1]).toContain("这件事停下了");
+    expect(stalledNote(plan.id)).toHaveLength(2);
+    expect(stalledNote(plan.id)[1]).toContain("这件事停下了");
 
     // Passing again does not help: `first_passed_at` only ever stamps once, so this is not a
     // *first* pass since nudge 2 either — it does not count as progress, and the same notice (now
@@ -798,12 +843,12 @@ test(
     pass();
     planWatch.reconcilePlan(plan.id);
     expect(fired).toHaveLength(2);
-    expect(published).toHaveLength(2);
+    expect(stalledNote(plan.id)).toHaveLength(2);
   },
 );
 
 test("a hard budget (tickets + checks, since the user's own last line) stops the reconcile even when a ticket keeps moving", () => {
-  const { store, planWatch, fired, published } = barePlanWatch();
+  const { store, planWatch, fired, stalledNote } = barePlanWatch();
   const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
   const session = writer.direct_session.id;
   const plan = store.openTask({ sessionId: session, title: "写周报" });
@@ -827,8 +872,9 @@ test("a hard budget (tickets + checks, since the user's own last line) stops the
   planWatch.reconcilePlan(plan.id); // moved since nudge 2 too, but the budget (2 nudges) is already spent: stalled instead.
   expect(fired).toHaveLength(2);
   expect(planNudges(store, plan.id)).toHaveLength(2);
-  expect(published).toHaveLength(1);
-  expect(published[0]).toContain("这件事停下了");
+  expect(stalledNote(plan.id)).toHaveLength(1);
+  expect(stalledNote(plan.id)[0]).toContain("这件事停下了");
+  expect(store.listMessages(session, { limit: 20 }).items.some((m) => m.body.includes("这件事停下了"))).toBe(false);
 });
 
 test("a turn filed under a ticket moves it to doing when it starts writing and to review when it hands the files over", async () => {
@@ -1390,7 +1436,15 @@ describe("a group plan with everything handed over while its progress still list
     answer: Answer = handedOver,
     options: { planLeftQuietMs?: number; script?: (messages: ChatMessage[]) => CompletionOk | Promise<CompletionOk> } = {},
   ) {
-    const h = await harness(answer, options.script, options);
+    // A call-back that repeats the answer already given is dropped, so the fixture says something
+    // else once it is woken by one. The tests here are about the call-back itself.
+    // The call-back's own line is hidden from the transcript, so the system prompt is what shows the wake.
+    let calls = 0;
+    const script = options.script ?? ((messages: ChatMessage[]) => {
+      calls += 1;
+      return say(messages.some((message) => textOf(message).includes("待验收的照它的验收核对")) ? `还差第 ${calls} 节。` : "初稿在 draft.md");
+    });
+    const h = await harness(answer, script, options);
     const lead = h.store.createBot({ name: "Lead", duties: "coordinate", boundaries: "stay" });
     const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
     const group = h.store.createGroup({ name: "周报组", members: [lead.bot.id, writer.bot.id] });
@@ -1402,7 +1456,7 @@ describe("a group plan with everything handed over while its progress still list
           "SELECT id, bot_id, ticket_id, fired_turn_id, note, created_at FROM check_backs WHERE kind = 'plan_nudge' ORDER BY created_at ASC, rowid ASC",
         )
         .all();
-    const stalled = () => h.store.listMainMessages(group.id, 80).filter((m) => m.kind === "system" && m.body.startsWith("这件事停下了"));
+    const stalled = () => stalledReviews(h.store, group.id);
     const notice = (nudgeId: string) =>
       h.store.db
         .query<{ kind: string; fail_kind: string | null; message_id: string | null }, [string]>(
@@ -1432,12 +1486,13 @@ describe("a group plan with everything handed over while its progress still list
     const heard = h.seen.find((messages) => messages.some((m) => textOf(m).includes("回看：规划静下来一阵了")))!;
     expect(textOf(heard.find((m) => m.role === "user" && textOf(m).startsWith(SITUATION_HEADING))!)).toContain("待做 定稿还没做");
 
-    // The settle after the call-back handed nothing over, so the session says so, once.
+    // The settle after the call-back handed nothing over, so you are told once, and the conversation stays quiet.
     await until(() => stalled().length === 1);
     const line = stalled()[0]!;
     expect(line.body).toStartWith("这件事停下了：没有待做或进行中的任务，进展里还记着没做完或卡住的：定稿还没做。");
     expect(line.body).toContain("已经叫过Lead一次，之后没有任务交出或收口");
     expect(notice(nudge.id)).toMatchObject({ kind: "failure", fail_kind: "stalled_plan", message_id: line.id });
+    expect(h.store.listMainMessages(group.id, 40).some((m) => m.body.startsWith("这件事停下了"))).toBe(false);
     // The settle kept 初稿's spec; 排版 did change after the call-back, just not where it stands.
     expect(h.store.getTicket(draft!.id)).toMatchObject({ status: "review", spec: "写出第一版" });
     expect(h.store.getTicket(layout!.id).status).toBe("done");
@@ -1470,7 +1525,10 @@ describe("a group plan with everything handed over while its progress still list
     const held = Promise.withResolvers<CompletionOk>();
     const { h, group, writer, nudges } = await inTheGroup(handedOver, {
       planLeftQuietMs: quiet,
-      script: (messages) => (messages.some((m) => textOf(m).includes("看一眼初稿")) ? held.promise : say("初稿在 draft.md")),
+      script: (messages) =>
+        messages.some((m) => textOf(m).includes("看一眼初稿"))
+          ? held.promise
+          : say(messages.some((m) => textOf(m).includes("待验收的照它的验收核对")) ? "还差最后一节。" : "初稿在 draft.md"),
     });
     await until(() => {
       const plan = h.store.sessionCurrentTask(group.id);
@@ -1508,7 +1566,7 @@ describe("a group plan with everything handed over while its progress still list
     expect(h.store.listTickets(plan.id).map((ticket) => ticket.status)).toEqual(["review", "done"]);
     expect(h.store.getTask(plan.id).spec).toContain("定稿还没做");
     expect(h.store.db.query("SELECT COUNT(*) AS n FROM check_backs WHERE kind = 'plan_nudge'").get()).toEqual({ n: 0 });
-    expect(h.store.listMainMessages(session, 20).some((m) => m.body.startsWith("这件事停下了"))).toBe(false);
+    expect(stalledReviews(h.store, session)).toHaveLength(0);
   });
 
   test("a group plan of one handed-over ticket is a one-shot job waiting for you: nobody is called back", async () => {
@@ -1600,7 +1658,7 @@ describe("a group plan with everything handed over while its progress still list
 
   test(`while you say nothing, a plan is called back at most ${PLAN_NUDGES_UNANSWERED_MAX} times, even when every call-back hands something over`, async () => {
     // Each settle opens one more ticket already awaiting review: a move every time.
-    const { h, lead, nudges, stalled, notice } = await inTheGroup((payload) => {
+    const { h, group, lead, nudges, stalled, notice } = await inTheGroup((payload) => {
       const plan = payload.current_plan;
       if (!plan) return handedOver(payload);
       return JSON.stringify({
@@ -1616,6 +1674,7 @@ describe("a group plan with everything handed over while its progress still list
     expect(line.body).toStartWith("这件事停下了：没有待做或进行中的任务");
     expect(line.body).toContain(`你上次在这件事里说话之后已经叫回 ${PLAN_NUDGES_UNANSWERED_MAX} 次，最近一次叫的是Lead，不再叫了。`);
     expect(notice(nudges().at(-1)!.id)).toMatchObject({ kind: "failure", fail_kind: "stalled_plan", message_id: line.id });
+    expect(h.store.listMainMessages(group.id, 80).some((m) => m.body.startsWith("这件事停下了"))).toBe(false);
     await Bun.sleep(200);
     expect(nudges()).toHaveLength(PLAN_NUDGES_UNANSWERED_MAX);
     expect(stalled()).toHaveLength(1);

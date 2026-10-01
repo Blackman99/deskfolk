@@ -104,6 +104,8 @@ export type ToolCtx = {
   planDir?: string | null;
   /** Unknown `@token`s already rejected once this turn; a resend with them goes through. Absent = always reject. */
   mentionWarned?: Set<string>;
+  /** This turn was opened by the app's plan call-back, so a reply repeating one already given is dropped. */
+  planNudge?: boolean;
   /** Names in this hop's tools array (built-in + `mcp_…`). Absent = skip the stale-name check in read_skill. */
   availableToolNames?: ReadonlySet<string>;
   admission?: TurnAdmission;
@@ -141,6 +143,8 @@ export async function runCollabTool(
         return askUser(ctx, args);
       case "check_back":
         return checkBack(ctx, args);
+      case "work_on":
+        return workOn(ctx, args);
       case "end_turn":
         // The engine ends the turn once the hop's calls are done (see executeTools). What the Bot
         // says it did with each line it read is recorded now, on those inbox rows (ADR 0040 P4a).
@@ -233,6 +237,15 @@ async function mutateConfiguration<T>(ctx: ToolCtx, work: () => T): Promise<T> {
 function sendMessage(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
   const body = requireString(args.body, "body");
   if (isNoWorkCloser(body)) {
+    return { ok: true, data: { skipped: true, reason: "no_new_work" }, emitted: [] };
+  }
+  // A plan call-back that only says again what this Bot already said here moves nothing. The turn
+  // ends as if it had nothing new to say, and the plan watch then tells you the plan stopped.
+  if (
+    (ctx.writtenPaths?.length ?? 0) === 0 &&
+    !(optionalStringArray(args.paths, "paths") ?? []).length &&
+    ctx.store.repeatsPlanAnswer({ turnId: ctx.turnId, sessionId: optionalString(args.session_id) ?? ctx.sessionId, author: ctx.botId, body, planNudge: ctx.planNudge === true })
+  ) {
     return { ok: true, data: { skipped: true, reason: "no_new_work" }, emitted: [] };
   }
   const sessionId = optionalString(args.session_id) ?? ctx.sessionId;
@@ -610,6 +623,38 @@ function askUser(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
     return fail("not_a_member", "the user is not in this session; ask where they are");
   }
   return { ok: true, data: {}, waitAsk: { question, spec }, emitted: [] };
+}
+
+/**
+ * Binds this turn to a job (ADR 0040 P4b): an existing one by id, or a new one opened from a line
+ * of the user's the Bot quotes. A job this Bot is already working on takes the line instead, and
+ * this turn ends.
+ */
+function workOn(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
+  const plan = args.plan;
+  const fresh = plan && typeof plan === "object" && !Array.isArray(plan) ? (plan as Record<string, unknown>).new : null;
+  let taskId: string | null = null;
+  if (typeof plan === "string") {
+    taskId = plan;
+  } else if (fresh && typeof fresh === "object") {
+    const made = fresh as Record<string, unknown>;
+    const quoteId = typeof made.quote_message_id === "string" ? made.quote_message_id : null;
+    const quote = quoteId ? ctx.store.getMessage(quoteId) : null;
+    if (!quote || quote.kind !== "user") return fail("invalid_args", "work_on({new}) quotes a line of the user's");
+    const title = typeof made.title === "string" && made.title.trim() ? made.title.trim() : quote.body;
+    taskId = ctx.store.openTask({ sessionId: ctx.sessionId, title, brief: quote.body }).id;
+  }
+  if (!taskId) return fail("invalid_args", "plan is a job id or {new:{title, quote_message_id}}");
+  const turn = ctx.store.getTurn(ctx.turnId);
+  const busy = ctx.store.listLiveTurns({ botId: ctx.botId }).find((row) => row.id !== ctx.turnId && row.task_id === taskId);
+  if (busy) {
+    ctx.store.setTurnStatus(ctx.turnId, "completed");
+    return { ok: true, data: { merged: true, turn_id: busy.id }, emitted: [] };
+  }
+  ctx.store.db.run(`UPDATE turns SET task_id = ?, work_item_id = NULL, updated_at = ? WHERE id = ?`, [taskId, new Date().toISOString(), turn.id]);
+  const item = ctx.store.findOrCreateWorkItem({ botId: ctx.botId, sessionId: ctx.sessionId, taskId, ticketId: null });
+  ctx.store.db.run(`UPDATE turns SET work_item_id = ? WHERE id = ?`, [item.id, turn.id]);
+  return { ok: true, data: { task_id: taskId, work_item_id: item.id }, emitted: [] };
 }
 
 /**

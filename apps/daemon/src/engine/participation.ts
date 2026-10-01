@@ -22,6 +22,7 @@ import { JUDGEMENT_MAX_TOKENS, JUDGEMENT_SYSTEM, unknownMentionBody } from "../p
 import type { TurnAdmission } from "../quiesce";
 import { sessionUpsertFields } from "../session-events";
 import type { Store } from "../store";
+import { ENGINE_LEVELS } from "../store/schema-gate";
 import type { HeardItem } from "../turn-inbox";
 import { mayWake, wakeOn, type WakeCause } from "./control";
 import type { Routing } from "./routing";
@@ -223,7 +224,9 @@ export function createParticipation(deps: ParticipationDeps): Participation {
     const cause = causeOf(message);
     const opened = new Set<string>();
     if (opts.fromUser && !hasMention) {
-      const focused = store.listLiveTurns({ sessionId: session.id })[0];
+      // A confirmed lead takes an unaddressed line (ADR 0040 D22); otherwise the Bot already at work.
+      const lead = store.capabilities().engine_level >= ENGINE_LEVELS.work_items ? groupLead(session.id) : null;
+      const focused = lead ? { bot_id: lead } : store.listLiveTurns({ sessionId: session.id })[0];
       if (focused) {
         const fork = opts.fork !== undefined ? opts.fork : true;
         startTurn(session.id, focused.bot_id, message, fork ? "fork" : "redirect", { cause });
@@ -232,6 +235,19 @@ export function createParticipation(deps: ParticipationDeps): Participation {
     }
 
     for (const botId of mandatory) {
+      // At its limit of jobs, the named Bot waits rather than opening another (ADR 0040 P4b).
+      if (store.capabilities().engine_level >= ENGINE_LEVELS.work_items) {
+        const place = store.workItemQueuePlace({ botId, taskId: message.task_id ?? null });
+        if (place !== null && !store.listLiveTurns({ botId }).some((turn) => turn.task_id === message.task_id)) {
+          const note = store.insertMessage({
+            sessionId: session.id, kind: "system", author: botId,
+            body: `排在第 ${place} 位。手上的一件做完就轮到这件。`, hiddenFromBots: true,
+          });
+          publishMessage(note);
+          opened.add(botId);
+          continue;
+        }
+      }
       // A Bot naming a Bot that is mid-task is heard in that task; your line still turns it around.
       if (opts.fork === true) startTurn(session.id, botId, message, "fork", { cause });
       else if (!opts.fromUser && message.kind === "bot") hearOrStart(session.id, botId, message, { item: inboxItem(message) }, { cause });
@@ -286,6 +302,15 @@ export function createParticipation(deps: ParticipationDeps): Participation {
   }
 
   /** Your line, or a Bot's: what the work log says woke a Bot when a hold turns the wake away. */
+  /** The Bot confirmed as this group's lead, when one is. */
+  function groupLead(sessionId: string): string | null {
+    return store.db
+      .query<{ member: string }, [string]>(
+        `SELECT member FROM session_participants WHERE session_id = ? AND left_at IS NULL AND is_lead = 1 LIMIT 1`,
+      )
+      .get(sessionId)?.member ?? null;
+  }
+
   function causeOf(message: Message): WakeCause {
     return message.kind === "user" ? "user_line" : "mention";
   }

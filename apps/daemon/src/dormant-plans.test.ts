@@ -158,7 +158,6 @@ describe("nothing is filed into a plan set aside", () => {
     const planWatch = createPlanWatch({
       store,
       admission: undefined,
-      publishMessage: () => {},
       renderMirrors: () => {},
       fireCheckBack: (id) => {
         fired.push(id);

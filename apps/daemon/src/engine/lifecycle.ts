@@ -204,6 +204,24 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
         }
       }
     }
+    // Already at its limit of jobs: this one waits, and the conversation says where in line it is.
+    if (store.capabilities().engine_level >= ENGINE_LEVELS.work_items) {
+      const landing = store.turnLanding({ sessionId, botId, trigger, taskId: opts.taskId, ticketId: opts.ticketId });
+      const place = store.workItemQueuePlace({ botId, taskId: landing.taskId });
+      if (place !== null) {
+        const note = store.insertMessage({
+          sessionId,
+          kind: "system",
+          author: botId,
+          body: store.settingsCached().locale === "en"
+            ? `Queued, at position ${place}. It starts once one of the jobs in hand finishes.`
+            : `排在第 ${place} 位。手上的一件做完就轮到这件。`,
+          hiddenFromBots: true,
+        });
+        publishMessage(note);
+        return null;
+      }
+    }
     let carry: { written: string[]; recent: string[]; unread: HeardItem[]; previous: PlanRef | null } | null = null;
     if (mode === "redirect") {
       // A turn a hold covers is left to the hold, and the new one opens beside it: redirecting it
@@ -258,7 +276,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
         : "";
       note = redirectCarryNote(locale, { ...carry, previous: previous || undefined });
     }
-    attachLive(turn, note);
+    attachLive(turn, note, { planNudge: opts.cause === "plan_nudge" });
     return turn;
   }
 
@@ -324,7 +342,10 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     // more than one turn here, the one already on that job hears it.
     const rows = store.listLiveTurns({ sessionId, botId });
     const onJob = rows.filter((row) => about.taskId !== null && row.task_id === about.taskId);
-    for (const current of [...onJob, ...rows.filter((row) => !onJob.includes(row))]) {
+    // A line about one job is not heard by a turn on another once work items are on: that turn
+    // would do the wrong job, and the line queues or opens its own instead.
+    const hearable = store.capabilities().engine_level >= ENGINE_LEVELS.work_items && about.taskId ? onJob : [...onJob, ...rows.filter((row) => !onJob.includes(row))];
+    for (const current of hearable) {
       const live = lives.get(current.id);
       if (!live || live.abort.signal.aborted) continue;
       // A held turn hears nothing new, not even about work beside the hold: it could not act on the
@@ -453,7 +474,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     }
   }
 
-  function attachLive(turn: Turn, carry: string | null = null): void {
+  function attachLive(turn: Turn, carry: string | null = null, opts: { planNudge?: boolean } = {}): void {
     const live: Live = {
       abort: new AbortController(),
       loop: carry ? [{ role: "user", content: carry }] : [],
@@ -471,6 +492,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       spoke: false,
       drainRejection: false,
       closingChecked: false,
+      planNudge: opts.planNudge,
       routing: null,
       locale: "zh",
       hops: 0,

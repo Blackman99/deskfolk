@@ -23,6 +23,7 @@ import * as bots from "./bots";
 import * as checkBacks from "./check-backs";
 import * as holds from "./holds";
 import * as inbox from "./inbox";
+import * as filing from "./filing";
 import * as workItems from "./work-items";
 import * as judgements from "./judgements";
 import * as liveProcs from "./live-procs";
@@ -104,7 +105,7 @@ export type { DerivedChecksChange } from "./derived-checks";
 export { TICKET_STATUSES, TICKETS_MAX, TICKET_SPEC_MAX, TICKET_TITLE_MAX, isTicketStatus } from "./tickets";
 export { ORGANIZER_NEW_TICKETS_MAX, titleKey } from "./plan-spec";
 export type { OrganizerResult, OrganizerTicketInput, SpecRevisionRow } from "./plan-spec";
-export { CHECK_BACK_MAX_MINUTES, CHECK_BACK_MIN_MINUTES, CHECK_BACK_NOTE_MAX, PLAN_NUDGE_NOTE_MAX } from "./check-backs";
+export { CHECK_BACK_MAX_MINUTES, CHECK_BACK_MIN_MINUTES, CHECK_BACK_NOTE_MAX, PLAN_NUDGE_NOTE_MAX, repeatsPlanAnswer } from "./check-backs";
 export type { CheckBack, CheckBackCause, QuietDirect } from "./check-backs";
 export { botPlanScopeId, HOLD_SCOPES, heldBy, heldSql } from "./holds";
 export type { HeldSubject } from "./holds";
@@ -469,6 +470,7 @@ export class Store {
   readonly markCheckBackFired = this.bind(checkBacks.markCheckBackFired);
   readonly returnUnreadCheckBack = this.bind(checkBacks.returnUnreadCheckBack);
   readonly recordCheckBackLine = this.bind(checkBacks.recordCheckBackLine);
+  readonly repeatsPlanAnswer = this.bind(checkBacks.repeatsPlanAnswer);
   readonly voidCheckBacks = this.bind(checkBacks.voidCheckBacks);
 
   // Holds (叫停) ----------------------------------------------------------------------------
@@ -498,6 +500,9 @@ export class Store {
 
   // Work items (ADR 0040 P4b) -------------------------------------------------------------
   readonly findOrCreateWorkItem = this.bind(workItems.findOrCreateWorkItem);
+  readonly workItemQueuePlace = this.bind(workItems.queuePlace);
+  readonly fileLine = this.bind(filing.fileLine);
+  readonly refileMessage = this.bind(filing.refileMessage);
   readonly closeWorkItemIfIdle = this.bind(workItems.closeWorkItemIfIdle);
 
   // Work log -------------------------------------------------------------------------------

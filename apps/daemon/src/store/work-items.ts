@@ -44,6 +44,29 @@ export function findOrCreateWorkItem(
     .get(ulid(Date.parse(now)), input.botId, input.taskId, input.ticketId, input.sessionId, now, now)!;
 }
 
+/** How many jobs one Bot works at once before the next one waits (ADR 0040 P4b). A desk turn is extra. */
+export const PARALLEL_LIMIT = 2;
+
+/**
+ * Where a new turn for this Bot would stand in line: how many of its turns are already working on
+ * other jobs. A turn on the same plan is not a queue, it is heard by that turn. Null when it can
+ * start now.
+ */
+export function queuePlace(
+  ctx: StoreContext,
+  input: { botId: string; taskId: string | null },
+): number | null {
+  const working = ctx.db
+    .query<{ task_id: string | null }, [string]>(
+      `SELECT task_id FROM turns
+       WHERE bot_id = ? AND status IN ('running', 'waiting_approval', 'waiting_ask')
+         AND IFNULL(mode, 'work') NOT IN ('readonly', 'desk')`,
+    )
+    .all(input.botId);
+  if (working.some((row) => row.task_id === input.taskId)) return null;
+  return working.length >= PARALLEL_LIMIT ? working.length - PARALLEL_LIMIT + 1 : null;
+}
+
 /** Marks a work item closed once no live turn still runs it. */
 export function closeWorkItemIfIdle(ctx: StoreContext, id: string | null): void {
   if (!id) return;

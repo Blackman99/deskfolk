@@ -54,6 +54,12 @@ export type Live = {
   drainRejection: boolean;
   /** The closing check ran (or was skipped for good) this turn; it never runs twice. */
   closingChecked: boolean;
+  /**
+   * The app's plan call-back opened this turn. A reply that only says again what this Bot already
+   * said in the plan is dropped: the call-back exists to move a ticket, and the same answer moves
+   * nothing. A turn that only heard the call-back keeps this unset, so its own work still posts.
+   */
+  planNudge?: boolean;
   /** The default endpoint's default model, for the closing check; null when none is configured. */
   routing: {
     baseUrl: string;

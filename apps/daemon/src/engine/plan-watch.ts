@@ -7,7 +7,7 @@
  * stretch of ticket movement, and says so, once, when a call-back changed nothing. `observeTicket` is the other half: moving a ticket forward on what a turn was
  * seen doing, so there is something here to watch in the first place.
  */
-import { USER_MEMBER, type AcceptanceCheck, type Locale, type Message, type Ticket, type Turn } from "@real-bot/protocol";
+import { USER_MEMBER, type AcceptanceCheck, type Locale, type Ticket, type Turn } from "@real-bot/protocol";
 import { NO_ABLATION, type Ablation } from "../ablation";
 import { describeCheck } from "../acceptance-eval";
 import { planLeftNote, planNudgeNote, stalledPlanBody, type FailingCheckLine, type OpenTicketLine } from "../prompts";
@@ -18,7 +18,6 @@ import { mayWake } from "./control";
 export type PlanWatchDeps = {
   store: Store;
   admission: TurnAdmission | undefined;
-  publishMessage: (message: Message) => void;
   /** Rewrites a plan's `map.md` and its tickets' `ticket.md` from what the store holds. */
   renderMirrors: (taskId: string) => void;
   fireCheckBack: (id: string, now?: Date) => Turn | null;
@@ -51,7 +50,7 @@ export type PlanWatch = {
 export const PLAN_NUDGES_UNANSWERED_MAX = 5;
 
 export function createPlanWatch(deps: PlanWatchDeps): PlanWatch {
-  const { store, admission, publishMessage, renderMirrors, fireCheckBack } = deps;
+  const { store, admission, renderMirrors, fireCheckBack } = deps;
   const ablation = deps.ablation ?? NO_ABLATION;
 
   /**
@@ -123,9 +122,11 @@ export function createPlanWatch(deps: PlanWatchDeps): PlanWatch {
 
   /**
    * The plan stopped — tickets open, checks failing, or work its record still lists — after a
-   * call-back: a line in the session and one notification, once per call-back. `capped` is how many
-   * call-backs went out since you last said something in the plan, when that budget, not a
-   * call-back that moved nothing, is what stopped the next one.
+   * call-back: one notification, once per call-back, and nothing in the conversation. The review is
+   * the app's own bookkeeping; the flow board already shows the tickets, and a line under the Bot
+   * reads as the Bot reporting on itself. `capped` is how many call-backs went out since you last
+   * said something in the plan, when that budget, not a call-back that moved nothing, is what
+   * stopped the next one.
    */
   function tellStalled(
     sessionId: string,
@@ -142,12 +143,15 @@ export function createPlanWatch(deps: PlanWatchDeps): PlanWatch {
   ): void {
     const key = `stalled:${nudge.id}`;
     if (store.db.query(`SELECT 1 FROM notifications WHERE semantic_key = ?`).get(key)) return;
-    const note = store.transaction(() => {
+    store.transaction(() => {
+      // Kept so the notification can quote it. A line only the woken turn would read: the
+      // conversation, search and unread leave it out, and nothing publishes it.
       const note = store.insertMessage({
         sessionId,
         kind: "system",
         author: nudge.bot_id,
         body: stalledPlanBody(locale, { ...work, called }),
+        botOnly: true,
       });
       store.db.run(`UPDATE messages SET task_id = ? WHERE id = ?`, [taskId, note.id]);
       if (store.isPresent(sessionId, USER_MEMBER)) {
@@ -160,9 +164,7 @@ export function createPlanWatch(deps: PlanWatchDeps): PlanWatch {
           fail_kind: "stalled_plan",
         });
       }
-      return note;
     });
-    publishMessage(note);
   }
 
   function failingCheckLine(check: AcceptanceCheck, locale: Locale): FailingCheckLine {
@@ -195,9 +197,9 @@ export function createPlanWatch(deps: PlanWatchDeps): PlanWatch {
    * not; rewording a ticket that sits in review is no move) or a check that predates it has passed
    * for the first time. A hard budget stops it even short of that: since you last said something in
    * the plan, one call-back per ticket and check, and never more than
-   * {@link PLAN_NUDGES_UNANSWERED_MAX}. Otherwise it tells you, once, in the session and as a
-   * notification: two Bots (or a Bot and a check that will not pass) must not bounce a plan nobody
-   * can move. Only plans in a session you are in: you are who the last word goes to. A Bot a hold
+   * {@link PLAN_NUDGES_UNANSWERED_MAX}. Otherwise it tells you once, as a notification and not as a
+   * line in the session: two Bots (or a Bot and a check that will not pass) must not bounce a plan
+   * nobody can move. Only plans in a session you are in: you are who the last word goes to. A Bot a hold
    * covers is not called back at all, and nobody is called in its place: the call-back is recorded
    * as a wake the hold turned away, and books nothing.
    */

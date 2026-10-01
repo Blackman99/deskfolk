@@ -204,6 +204,18 @@ export const CHECK_BACK: ToolDef = {
   required: ["after_minutes", "note"],
 };
 
+export const WORK_ON: ToolDef = {
+  name: "work_on",
+  description: {
+    zh: "把这一轮改挂到一件事上。plan 传那件事的 id，或者 {new:{title, quote_message_id}} 按你引用的那句用户原话新开一件。这件事已经有别的一轮在做时，这句会并进那一轮，本轮结束。",
+    en: "Bind this turn to a job. plan is that job's id, or {new:{title, quote_message_id}} to open one from a line of the user's you quote. When the job already has a turn of yours, this line joins it and this turn ends.",
+  },
+  properties: {
+    plan: { type: "object", description: { zh: "一件事的 id，或 {new:{title, quote_message_id}}。", en: "A job's id, or {new:{title, quote_message_id}}." } },
+  },
+  required: ["plan"],
+};
+
 export const END_TURN: ToolDef = {
   name: "end_turn",
   description: {

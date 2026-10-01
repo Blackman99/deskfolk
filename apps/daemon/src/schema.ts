@@ -184,6 +184,8 @@ CREATE TABLE IF NOT EXISTS session_participants (
   member TEXT NOT NULL,
   joined_at TEXT NOT NULL,
   left_at TEXT,
+  -- The group's lead (ADR 0040 D22): an unaddressed line goes to them. Null until you confirm one.
+  is_lead INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (session_id, member)
 );
 

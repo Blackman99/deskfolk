@@ -240,6 +240,14 @@ export function createClosing(deps: ClosingDeps): Closing {
     const body = resolveBodyPathsToWorkDir(rawBody, live.workDir, (relpath) => pathExists(store, relpath));
     const linked = linkifyWorkspacePaths(body, live.writtenPaths);
     if (!linked.trim() && live.writtenPaths.length === 0) return null;
+    // A plan call-back that only says again what this Bot already said here moves nothing. The
+    // turn ends without the second copy; the plan watch then tells you the plan stopped.
+    if (
+      live.writtenPaths.length === 0 &&
+      store.repeatsPlanAnswer({ turnId, sessionId: turn.session_id, author: turn.bot_id, body: linked, planNudge: live.planNudge === true })
+    ) {
+      return null;
+    }
     const message = store.insertMessage({
       sessionId: turn.session_id,
       turnId,

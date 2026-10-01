@@ -39,6 +39,7 @@ import { createOrganizer } from "./organizer";
 import { createScribe } from "./scribe";
 import type { TurnAdmission } from "./quiesce";
 import type { Store } from "./store";
+import { ENGINE_LEVELS } from "./store/schema-gate";
 import type { TurnExecution } from "./store/routing";
 import { dropToolResults } from "./tool-results";
 import { processWake, type WakeWatch } from "./wake";
@@ -383,7 +384,6 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   const planWatch = createPlanWatch({
     store,
     admission: options.admission,
-    publishMessage: core.publishMessage,
     renderMirrors: organizer.renderMirrors,
     fireCheckBack: fire.fireCheckBack,
     ablation,
@@ -539,6 +539,20 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
             filed = store.getMessage(message.id);
           } catch {
             filed = message;
+          }
+          // The rows decide where a line belongs when they can (ADR 0040 P4b), over the organizer's
+          // filing: a dormant plan is not a candidate, so a complaint lands on the job still live.
+          if (store.capabilities().engine_level >= ENGINE_LEVELS.work_items) {
+            const filing = store.fileLine({ sessionId: message.session_id, body: message.body });
+            const group = filing ? store.getTask(filing.taskId).session_id : null;
+            if (filing && group) {
+              store.db.run(`UPDATE messages SET task_id = ?, ticket_id = ? WHERE id = ?`, [filing.taskId, filing.ticketId, message.id]);
+              try {
+                filed = store.getMessage(message.id);
+              } catch {
+                filed = message;
+              }
+            }
           }
           // A Stop you pressed on this job goes once you say something more about it to that Bot,
           // before the line wakes anyone: what you say next is what the Bot goes on from.
