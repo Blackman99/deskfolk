@@ -8,8 +8,10 @@ import { isoNow, ulid } from "../ids";
 import { queueInboxItem, type InboxItem, type InboxKind, type InboxSource } from "./inbox";
 import { getMessage, insertMessage } from "./messages";
 import { heldSql } from "./holds";
+import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import { settingsCached } from "./settings";
 import type { StoreContext } from "./shared";
+import { recordWorkEvent } from "./work-events";
 
 export type WorkItem = {
   id: string;
@@ -180,6 +182,25 @@ export function prepareQueuedTrigger(ctx: StoreContext, id: string): Message | n
 /** The running mark follows the committed admission, never overwriting closed or waiting work. */
 export function markWorkRunning(ctx: StoreContext, id: string): void {
   ctx.db.run("UPDATE work_items SET state = 'running', updated_at = ? WHERE id = ? AND state = 'queued'", [isoNow(), id]);
+}
+
+/**
+ * A job's segment was cut off — interrupted, or failed past its retry — rather than ended (§2.6
+ * running → needs_attention). From the supervisor's level (ADR 0045) its work item needs
+ * attention, which the supervisor picks up from; below it, and for work on no plan, nothing
+ * changes. Another live segment on the item (there is none, by I1) would leave it alone.
+ */
+export function markSegmentCutOff(ctx: StoreContext, turnId: string, reason: string): void {
+  if (readEngineLevel(ctx.db) < ENGINE_LEVELS.supervision) return;
+  const turn = ctx.db.query<{ work_item_id: string | null; task_id: string | null; ticket_id: string | null; bot_id: string; session_id: string }, [string]>(
+    "SELECT work_item_id, task_id, ticket_id, bot_id, session_id FROM turns WHERE id = ?").get(turnId);
+  if (!turn?.work_item_id || !turn.task_id) return;
+  const changed = ctx.db.query<{ id: string }, [string, string, string]>(`UPDATE work_items SET state = 'needs_attention', updated_at = ?
+    WHERE id = ? AND state IN ('running', 'queued', 'idle')
+      AND NOT EXISTS (SELECT 1 FROM turns t WHERE t.work_item_id = work_items.id AND t.id <> ?3
+        AND t.status IN ('running', 'waiting_approval', 'waiting_ask')) RETURNING id`).get(isoNow(), turn.work_item_id, turnId);
+  if (changed) recordWorkEvent(ctx, { kind: "work.needs_attention", actor: "app", botId: turn.bot_id, taskId: turn.task_id,
+    ticketId: turn.ticket_id, turnId, sessionId: turn.session_id, payload: { work_item_id: turn.work_item_id, reason } });
 }
 
 /** Marks a work item closed once no live turn still runs it. */

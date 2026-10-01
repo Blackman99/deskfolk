@@ -1,4 +1,4 @@
-import type { ClientEvent, Judgement, Spend, Ticket } from "@real-bot/protocol";
+import type { ClientEvent, Judgement, Spend } from "@real-bot/protocol";
 import { listApprovals, listAllowRules } from "./approvals";
 import { isBotOnlyLine } from "./check-backs";
 import { taskDetail } from "./plan-spec";
@@ -19,6 +19,7 @@ import { getHold } from "./holds";
 import { GATE_SETTING_KEYS } from "./schema-gate";
 import { groupLeadState } from "./group-leads";
 import { getDelegationView } from "./delegation-view";
+import { toTicket, type TicketRow } from "./tickets";
 
 type Change = { entity: string; id: string; op: string; session_id: string | null };
 
@@ -290,11 +291,11 @@ export function committedEvents(ctx: StoreContext): ClientEvent[] {
         break;
       }
       case "tickets": {
-        const row = ctx.db.query<Ticket, [string]>("SELECT * FROM tickets WHERE id = ?").get(id);
+        const row = ctx.db.query<TicketRow, [string]>("SELECT * FROM tickets WHERE id = ?").get(id);
         const change = unique.get(`tickets:${id}`);
         out.push(
           row
-            ? { event: "ticket.upsert", occurred_at, ...row }
+            ? { event: "ticket.upsert", occurred_at, ...toTicket(row) }
             : { event: "ticket.removed", occurred_at, id, task_id: change?.session_id ?? "" },
         );
         break;

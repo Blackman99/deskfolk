@@ -248,6 +248,17 @@ function insertCheckBack(
   return { row: getCheckBack(ctx, id), replaced };
 }
 
+/**
+ * From the supervisor's level (ADR 0045) the app's own call-backs of the levels before — a plan
+ * nudge, a report-back to the opener of a quiet Bot↔Bot direct — are the supervisor's to make, so
+ * one still pending from before is voided instead of firing. True when it was one of those.
+ */
+export function voidRetiredCallBack(ctx: StoreContext, id: string, now: string = isoNow()): boolean {
+  if (readEngineLevel(ctx.db) < ENGINE_LEVELS.supervision) return false;
+  return ctx.db.query(`UPDATE check_backs SET voided_at = ?, suspended_at = NULL
+    WHERE id = ? AND fired_at IS NULL AND (kind = ? OR (kind IS NULL AND cause = 'delegation')) RETURNING id`).get(now, id, PLAN_NUDGE) !== null;
+}
+
 export function getCheckBack(ctx: StoreContext, id: string): CheckBack {
   const row = ctx.db.query<CheckBack, [string]>(`SELECT * FROM check_backs WHERE id = ?`).get(id);
   if (!row) throw new HttpError(404, "not_found", "check-back not found");

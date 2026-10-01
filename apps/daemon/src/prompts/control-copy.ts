@@ -277,9 +277,49 @@ export function readOnlyLine(locale: Locale, said: SaidLine): string {
 }
 
 /**
+ * How a job a restart cut off goes on (ADR 0045), as its notice says it. Below the supervisor's
+ * level there is none: nothing goes on until you press a button.
+ * - `now`: the daemon stopped cleanly, so it picks up at once.
+ * - `after_stable`: after a crash or a development restart, once the daemon has run for a minute.
+ * - `dev_burst`: a development daemon that restarted more than once within five minutes waits for you.
+ * - `held`: a stop of yours covers it; it goes on after the lift.
+ * - `unknown_effect`: its last external call has no known outcome, so it waits for you.
+ * - `waits`: work on no plan, which the supervisor does not pick up.
+ */
+export type RestartArrangement = "now" | "after_stable" | "dev_burst" | "held" | "unknown_effect" | "waits";
+
+/** One arrangement as the notice's last line says it. */
+function arrangementLine(locale: Locale, arrangement: RestartArrangement | null): string {
+  const en = locale === "en";
+  switch (arrangement) {
+    case "now":
+      return en ? "It stopped cleanly, so it picks up from where it stopped now." : "这次是正常停下，现在就从断的地方自动接着做。";
+    case "after_stable":
+      return en
+        ? "Once the daemon has run steadily for a minute it picks up once on its own; Continue goes on now, Leave it keeps it as it is."
+        : "守护进程稳定运行 1 分钟后会自动接着做一次；点「继续」现在就接着做，点「不续」就先放着。";
+    case "dev_burst":
+      return en
+        ? "The development daemon restarted more than once within five minutes, so nothing picks up on its own: Continue picks each up from where it stopped; Leave it keeps it as it is."
+        : "开发版守护进程 5 分钟内重启了不止一次，不会自己接着做：点「继续」从断的地方接着做，点「不续」就先放着。";
+    case "held":
+      return en ? "A stop of yours covers it; it picks up once you lift the stop." : "你的叫停还覆盖着它，解除叫停之后再接着做。";
+    case "unknown_effect":
+      return en
+        ? "Its last external call has no known outcome, so nothing picks up on its own, to avoid submitting it twice: check whether that step went through, then press Continue; Leave it keeps it as it is."
+        : "最后一步是结果不明的外部调用，为免重复提交不会自己接着做：先确认那一步有没有生效，再点「继续」；点「不续」就先放着。";
+    default:
+      return en
+        ? "Nothing picks up on its own: Continue picks each up from where it stopped; Leave it keeps it as it is."
+        : "不会自己接着做：点「继续」从断的地方接着做，点「不续」就先放着。";
+  }
+}
+
+/**
  * After a restart, one job it cut off (ADR 0041): why the daemon started again, each turn that
- * stopped and where, and what happens now — nothing goes on until you press a button, since which
- * restarts may pick work up on their own is the supervisor's to decide (ADR 0040 P4c).
+ * stopped and where, and what happens now. Below the supervisor's level nothing goes on until you
+ * press a button; from it each turn's `arrangement` (ADR 0045) says whether it picks up on its own,
+ * and when — turns with different arrangements are named with theirs.
  */
 export function restartNoticeBody(
   locale: Locale,
@@ -287,7 +327,7 @@ export function restartNoticeBody(
     cause: RestartCause;
     /** The plan the turns were on, as a title; null for turns on no plan. */
     plan: string | null;
-    turns: readonly ControlTurnLine[];
+    turns: ReadonlyArray<ControlTurnLine & { arrangement?: RestartArrangement | null }>;
   },
 ): string {
   const en = locale === "en";
@@ -296,7 +336,49 @@ export function restartNoticeBody(
     : { clean: "守护进程停下后重新启动了", crash: "守护进程意外退出后重新启动了", dev: "开发版守护进程重新启动了" }[input.cause];
   const what = input.plan ? (en ? `the plan "${input.plan}" was cut off` : `「${input.plan}」这件事中断了`) : en ? "the work here was cut off" : "这里的工作中断了";
   const turns = input.turns.map((line) => turnLine(locale, line)).join(en ? "; " : "；");
-  return en
-    ? `${why}; ${what}: ${turns}.\nNothing picks up on its own: Continue picks each up from where it stopped; Leave it keeps it as it is.`
-    : `${why}，${what}：${turns}。\n不会自己接着做：点「继续」从断的地方接着做，点「不续」就先放着。`;
+  const groups = new Map<RestartArrangement | null, string[]>();
+  for (const line of input.turns) {
+    const key = line.arrangement ?? null;
+    groups.set(key, [...(groups.get(key) ?? []), line.bot ?? (en ? "the Bot" : "这个 Bot")]);
+  }
+  const next = groups.size <= 1
+    ? arrangementLine(locale, [...groups.keys()][0] ?? null)
+    : [...groups].map(([arrangement, bots]) => `${joinList(locale, bots)}${en ? ": " : "："}${arrangementLine(locale, arrangement)}`).join("\n");
+  return en ? `${why}; ${what}: ${turns}.\n${next}` : `${why}，${what}：${turns}。\n${next}`;
+}
+
+/**
+ * The supervisor's line about a job it will not move on its own any more (ADR 0045), in a
+ * conversation you are in: a ticket it called back twice with no progress since (`stalled`), work it
+ * picked up three times within the hour (`retry_budget`), or work whose last external call has no
+ * known outcome (`unknown_effect`). Facts only, then what you can do.
+ */
+export function supervisorNoticeBody(
+  locale: Locale,
+  input: {
+    code: "stalled" | "retry_budget" | "unknown_effect";
+    /** The job as the line names it: 任务 03《…》 or 规划「…」. */
+    job: string;
+    bot: string;
+    /** `stalled`: how many times it was called back. `retry_budget`: how many times it picked up. */
+    count?: number;
+    /** `unknown_effect`: the call whose outcome is unknown. */
+    tool?: string | null;
+  },
+): string {
+  const en = locale === "en";
+  switch (input.code) {
+    case "stalled":
+      return en
+        ? `This has stopped: ${input.job} — ${input.bot} was called back ${input.count ?? 2} times and nothing moved since (no stage change, delivery, first passing check or new artifact). To carry on, @ ${input.bot} or whoever should pick it up, or change the ticket on the flow board.`
+        : `这件事停下了：${input.job}已经叫醒${input.bot} ${input.count ?? 2} 次，之后没有新的进展（阶段变化、交付、第一次通过的检查或新产物都没有）。要继续就 @ ${input.bot}或该接手的 Bot，或者在流程图里改这张任务。`;
+    case "retry_budget":
+      return en
+        ? `${input.job} was picked up again ${input.count ?? 3} times within the hour and still did not get going, so it is not picked up automatically any more. To carry on, press Continue on its last segment, or @ ${input.bot}.`
+        : `${input.job}一小时内已经自动接着做了 ${input.count ?? 3} 次，还是没接上，不再自动接着做。要继续就点那一段的「继续」，或者 @ ${input.bot}。`;
+    case "unknown_effect":
+      return en
+        ? `${input.job}: the last external call of ${input.bot}'s segment${input.tool ? ` (${input.tool})` : ""} has no known outcome, so it is not picked up automatically, to avoid submitting it twice. Check whether that step went through, then press Continue on that segment, or @ ${input.bot}.`
+        : `${input.job}：${input.bot}上一段的外部调用${input.tool ? `（${input.tool}）` : ""}结果不明，为免重复提交不自动接着做。先确认那一步有没有生效，再点那一段的「继续」，或者 @ ${input.bot}。`;
+  }
 }

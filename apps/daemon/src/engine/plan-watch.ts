@@ -1,5 +1,6 @@
 /**
- * Watching a plan for work nobody is moving. A plan that went quiet — no live turn, no appointment
+ * Watching a plan for work nobody is moving — below the supervisor's level (ADR 0045), whose
+ * call-backs replace this one from that level on; `observeTicket` stays at every level. A plan that went quiet — no live turn, no appointment
  * pending in it — has stopped short while tickets are still to do or in progress, or, in a group
  * plan of several tickets, once everything is handed over while its progress still lists work not
  * done or held up; or while a check the app ran itself is still failing. Nothing else would wake
@@ -13,6 +14,7 @@ import { describeCheck } from "../acceptance-eval";
 import { planLeftNote, planNudgeNote, stalledPlanBody, type FailingCheckLine, type OpenTicketLine } from "../prompts";
 import type { TurnAdmission } from "../quiesce";
 import { derivedNotGate, parsePlanSpec, type CheckBack, type Store, type Task } from "../store";
+import { ENGINE_LEVELS } from "../store/schema-gate";
 import { mayWake } from "./control";
 
 export type PlanWatchDeps = {
@@ -209,6 +211,8 @@ export function createPlanWatch(deps: PlanWatchDeps): PlanWatch {
     if (admission?.draining || ablation.has("plan-nudge")) return;
     let task: ReturnType<Store["getTask"]>;
     try {
+      // From the supervisor's level its call-backs, kept in the database, replace this one (ADR 0045).
+      if (store.capabilities().engine_level >= ENGINE_LEVELS.supervision) return;
       task = store.getTask(taskId);
     } catch {
       // the plan, or the store, went away while it was quiet

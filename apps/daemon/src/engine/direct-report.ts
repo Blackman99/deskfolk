@@ -4,13 +4,14 @@
  * where it started with what the direct came to — once per stretch of new lines, and never against
  * a direct that a report-back itself opened and the other Bot never answered, since two Bots must
  * not bounce on silence. The quiet clock lives in this process: a restart inside the window drops
- * that one report.
+ * that one report. Below the supervisor's level only (ADR 0045).
  */
 import type { Turn } from "@real-bot/protocol";
 import { NO_ABLATION, type Ablation } from "../ablation";
 import { reportBackNote } from "../prompts";
 import type { TurnAdmission } from "../quiesce";
 import type { CheckBack, Store } from "../store";
+import { ENGINE_LEVELS } from "../store/schema-gate";
 import { mayWake } from "./control";
 
 export type DirectReportDeps = {
@@ -47,6 +48,8 @@ export function createDirectReport(deps: DirectReportDeps): DirectReport {
     if (ablation.has("direct-report")) return;
     let session;
     try {
+      // From the supervisor's level a request's reply, or the supervisor, brings the opener back (ADR 0045).
+      if (store.capabilities().engine_level >= ENGINE_LEVELS.supervision) return;
       session = store.getSession(turn.session_id);
     } catch {
       return;
@@ -80,6 +83,7 @@ export function createDirectReport(deps: DirectReportDeps): DirectReport {
     let booked: CheckBack;
     let held: boolean;
     try {
+      if (store.capabilities().engine_level >= ENGINE_LEVELS.supervision) return;
       if (store.listLiveTurns({ sessionId: directId }).length > 0) return;
       if (store.listPendingCheckBacks(directId).length > 0) return;
       const quiet = store.quietDirect(directId);

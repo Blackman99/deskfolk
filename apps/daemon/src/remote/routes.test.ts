@@ -64,6 +64,11 @@ test("plans and tickets: reads are whitelisted, a spec edit carries the whole sp
   bad(ticketEdit({ status: "later" }));
   bad(ticketEdit({ assignee: id }));
   bad(ticketEdit({ worker: "bob" }));
+  // The tickets it waits for (ADR 0045): ids only, as a list.
+  ok(ticketEdit({ depends_on: [id] }));
+  ok(ticketEdit({ depends_on: [] }));
+  bad(ticketEdit({ depends_on: id }));
+  bad(ticketEdit({ depends_on: ["shot 3"] }));
   bad(ticketEdit({ if_revision: 1 }));
 
   ok({ v: 1, id, method: "GET", path: "/v1/spend", query: { kind: "organize" } });

@@ -336,6 +336,14 @@ export type Ticket = {
   status: TicketStatus;
   /** The Bot observed working on it, as a record, not an assignment. */
   worker: string | null;
+  /**
+   * Who the supervisor calls back to it (ADR 0045): the worker, written alongside it; for a ticket
+   * older than the supervisor with no worker, the Bot with the most turns on it. Absent from a
+   * daemon before that level.
+   */
+  owner_bot_id?: string | null;
+  /** Tickets of the same plan this one waits for (ADR 0045); absent from a daemon before that level. */
+  depends_on?: string[];
   created_at: string;
   updated_at: string;
   closed_at: string | null;
@@ -789,6 +797,11 @@ export type PatchTicketRequest = {
   spec?: string;
   status?: TicketStatus;
   worker?: string | null;
+  /**
+   * The tickets of the same plan this one waits for, replacing the list (ADR 0045): the supervisor
+   * calls nobody back to it until they are done, and a stop over one of them stops it too.
+   */
+  depends_on?: string[];
   if_revision?: number;
 };
 
@@ -1198,6 +1211,44 @@ export type ControlScope = { scope: "global"; id: null } | { scope: "bot" | "ses
 export type ControlPlanOffer = { offer: "stop_plan" | "only_plan"; task_id: string; title: string };
 
 /**
+ * A Bot's question from a job it ended as blocked (`end_turn({reason:"blocked", needs_from_user})`,
+ * ADR 0045): a card that outlives the segment, answered with `POST /v1/messages/:id/work-answer`
+ * rather than a button. `answer` is written once, with the request id that wrote it; answering
+ * queues the job's work again and lifts none of your stops.
+ */
+export type WorkQuestionControl = {
+  kind: "work_question";
+  work_item_id: string;
+  task_id: string;
+  ticket_id: string | null;
+  question: string;
+  offer: [];
+  /** This card has its own answer endpoint; this shared optional field is never written here. */
+  acted?: ControlOffer[];
+  answer?: { body: string; at: string; user_action_id: string; inbox_seq: number };
+};
+
+export type WorkAnswerRequest = { body: string };
+export type WorkAnswerResult = { message: Message; work_item_id: string; inbox_state: "queued" | "held"; answered: boolean };
+
+/** What the supervisor's line says (ADR 0045): a ticket it stopped calling back, a job past its automatic retries, or one whose last external call has no known outcome. */
+export type SupervisorNoticeCode = "stalled" | "retry_budget" | "unknown_effect";
+
+/**
+ * The supervisor's line in a conversation you are in (ADR 0045): facts about a job it will not move
+ * on its own any more. It offers no buttons; @ the Bot, its 「继续」 or the board are how it goes on.
+ */
+export type SupervisorControl = {
+  kind: "supervisor";
+  code: SupervisorNoticeCode;
+  task_id: string | null;
+  ticket_id: string | null;
+  work_item_id: string | null;
+  offer: [];
+  acted?: ControlOffer[];
+};
+
+/**
  * On one of your lines or the app's, what the app made of your stops or of a restart (ADR 0040 P2, ADR 0041):
  * - `possible_control`, on your line: it reads like a stop or a go on but has more in it, so nothing
  *   was done about it; the Bots got it as any line, and the buttons do what it may have meant.
@@ -1216,9 +1267,13 @@ export type ControlPlanOffer = { offer: "stop_plan" | "only_plan"; task_id: stri
  *   more `domain` plans of the conversation, suggested to hold for every plan of `domain` (`standing`;
  *   the body quotes their words, and when the category's entries are in different words it names
  *   one entry alone).
+ * - `work_question` ({@link WorkQuestionControl}) and `supervisor` ({@link SupervisorControl}), on
+ *   lines the supervisor level writes (ADR 0045).
  * `acted` lists the buttons you pressed on it, in order; absent until you press one.
  */
 export type MessageControl =
+  | WorkQuestionControl
+  | SupervisorControl
   | { kind: "possible_control"; offer: ControlOffer[]; scopes: ControlScope[]; acted?: ControlOffer[] }
   | {
       kind: "receipt";

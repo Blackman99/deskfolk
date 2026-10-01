@@ -10,6 +10,7 @@
 	import { desktopPlatform } from '../platform.ts';
 	import ReplyingIndicator from './ReplyingIndicator.svelte';
 	import AskCard from './AskCard.svelte';
+	import WorkQuestionCard from './WorkQuestionCard.svelte';
 	import CommandActivity from './CommandActivity.svelte';
 	import BotDmEntry from './BotDmEntry.svelte';
 	import ControlActions from './ControlActions.svelte';
@@ -104,9 +105,17 @@
 	const selectedKind = $derived(selected ? classifySession(selected) : null);
 	const fileDrop = $derived(selected ? isFileDropSession(selected) : false);
 	const stageSessionId = $derived(selected?.id ?? null);
+	// Scalar keys refresh context when a durable question arrives, not on answer updates/tokens.
+	const workQuestionContextKey = $derived(snapshot.messages
+		.filter((row) => row.session_id === stageSessionId && row.control?.kind === 'work_question')
+		.map((row) => `${row.id}:${row.control?.kind === 'work_question' ? row.control.task_id : ''}`).join('|'));
 	$effect(() => {
 		const id = stageSessionId;
-		if (id && connected && !fileDrop) void untrack(() => runtime.loadAttributionPlans(id));
+		const questions = workQuestionContextKey;
+		if (id && connected && !fileDrop) void untrack(() => {
+			const question = questions ? snapshot.messages.find((row) => row.session_id === id && row.control?.kind === 'work_question') : undefined;
+			void runtime.loadAttributionPlans(id, question?.id);
+		});
 	});
 	// Stable scalar dependencies: streaming tokens/session.upsert do not re-read the thread.
 	$effect(() => {
@@ -1297,7 +1306,7 @@
 				{#if singleMsg.type === 'message'}
 					{@const sysBot = botsById.get(singleMsg.message.author)}
 					{@const pal = botAvatarColor(singleMsg.message.author)}
-					{@const showContinue = canContinueInterrupt(singleMsg.message, snapshot.turns, {
+					{@const showContinue = singleMsg.message.control?.kind !== 'work_question' && canContinueInterrupt(singleMsg.message, snapshot.turns, {
 						locked: lockedComposer,
 						readOnly: selectedKind === 'bot-bot',
 						hasLiveTurnForBot: liveTurnsHere.some((turn) => turn.bot_id === singleMsg.message.author),
@@ -1381,6 +1390,20 @@
 								aria-label={appLine ? t.chat.appLineLabel : undefined}
 							>
 								<div class="who">{appLine ? t.chat.appName : who(singleMsg.message)}</div>
+								{#if singleMsg.message.control?.kind === 'work_question'}
+									{@const question = singleMsg.message.control}
+									{@const plan = runtime.attributionPlans[singleMsg.message.session_id]?.find((row) => row.id === question.task_id)}
+									<WorkQuestionCard
+										control={question}
+										botName={sysBot?.name ?? singleMsg.message.author}
+										planName={plan?.title ?? question.task_id}
+										ticketName={question.ticket_id ? (plan?.tickets.find((row) => row.id === question.ticket_id)?.title ?? question.ticket_id) : null}
+										{t}
+										disabled={!connected || lockedComposer}
+										readOnly={selectedKind === 'bot-bot' || Boolean(selected?.archived_at)}
+										onAnswer={(body) => runtime.answerWorkQuestion(singleMsg.message.id, body)}
+									/>
+								{:else}
 								<div class="system-msg-content flex items-center gap-2">
 									{#if isUnreachable}
 										<span class="system-msg-icon is-unreachable" aria-hidden="true">
@@ -1408,6 +1431,7 @@
 										disabled={!connected}
 										onAct={(action, taskId) => pressControl(singleMsg.message, action, taskId)}
 									/>
+								{/if}
 								{/if}
 								{#if showContinue}
 									<div class="system-msg-actions">

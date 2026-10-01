@@ -40,6 +40,12 @@ export type Live = {
   partial: string;
   parentId: string | null;
   writtenPaths: string[];
+  /**
+   * Every file the turn wrote, cited or not, for the supervisor's progress (ADR 0045): hashed when
+   * the turn ends, a new content hash in the job's folder is progress. `writtenPaths` forgets what
+   * a message has cited; this does not.
+   */
+  producedPaths?: string[];
   /** The plan dir this turn belongs to, for what is reserved at either level; null on turns from before work dirs. */
   planDir: string | null;
   /** This turn's work dir — its ticket's when it has one — looked up once: neither can change under a live turn. */

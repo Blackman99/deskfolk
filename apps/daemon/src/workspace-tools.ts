@@ -73,6 +73,8 @@ export type WorkspaceToolCtx = {
   /** Whose command a `shell` spawn is, for its `live_procs` row. */
   turnId?: string;
   toolCallId?: string;
+  /** Durable host evidence immediately before a write/delete/spawn, including approved callbacks. */
+  onEffectStart?: (tool: "write_file" | "delete_file" | "shell") => void;
   /** Overrides the 3 s a stop leaves between SIGTERM and SIGKILL (`GROUP_STOP_GRACE_MS`); tests use a short one. */
   stopGraceMs?: number;
   /** With it the shell timeout counts only time the Mac was awake; a shut lid froze the command too. */
@@ -112,7 +114,8 @@ export async function runWorkspaceTool(
       case "list_dir":
         return listDir(root, args, opts, ctx);
       case "shell":
-        return runShell(root, args, opts, ctx);
+        // Awaited here, so a refusal it throws before it spawns (its effect evidence, say) is a tool error.
+        return await runShell(root, args, opts, ctx);
       default:
         return fail("failed", `unknown tool: ${name}`);
     }
@@ -198,8 +201,9 @@ function writeFile(
   }
   if (ctx.signal.aborted) return fail("failed", "interrupted");
   const abs = classified.abs;
+  if (existsAsDir(abs)) return fail("failed", "path is a directory");
+  ctx.onEffectStart?.("write_file");
   try {
-    if (existsAsDir(abs)) return fail("failed", "path is a directory");
     mkdirSync(dirname(abs), { recursive: true });
     atomicWrite(abs, content);
     return ok({ path: replyPath(classified) });
@@ -233,6 +237,8 @@ function deleteFile(
   try {
     return withFileLock(classified.abs, () => {
       const st = lstatSync(classified.abs);
+      if (st.isDirectory() && readdirSync(classified.abs).length > 0 && !recursive) return fail("failed", "directory is not empty");
+      ctx.onEffectStart?.("delete_file");
       if (st.isDirectory()) {
         const empty = readdirSync(classified.abs).length === 0;
         if (!empty && !recursive) return fail("failed", "directory is not empty");
@@ -243,6 +249,8 @@ function deleteFile(
       return ok({ path: replyPath(classified) });
     });
   } catch (error) {
+    // Its effect evidence refused it (held, already started): said as that, nothing was deleted.
+    if (error instanceof HttpError) return fail(error.code, error.message);
     if (isNotFound(error)) return fail("not_found", "path not found");
     return fail("failed", "delete failed");
   }
@@ -322,6 +330,7 @@ async function runShell(
   if (ctx.signal.aborted) return fail("failed", "interrupted");
   const before = snapshotWorkDir(root, ctx.workDir);
   const streaming = Boolean(ctx.stream && ctx.streamId);
+  ctx.onEffectStart?.("shell");
   if (streaming) ctx.stream!.open(ctx.streamId!, COMMAND_STREAM_BYTES);
   try {
     const posix = process.platform !== "win32";

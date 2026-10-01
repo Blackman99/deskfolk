@@ -12,7 +12,7 @@ import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { isHeldAbort } from "./holds";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
-import { findOrCreateWorkItem, queuePlace, queueWork } from "./work-items";
+import { findOrCreateWorkItem, markSegmentCutOff, queuePlace, queueWork } from "./work-items";
 import { planCandidates } from "./filing";
 import { releaseEndedInbox } from "./inbox";
 import { getMessage } from "./messages";
@@ -490,6 +490,7 @@ export function interruptTurnRecord(
 
     markInterruptPending(ctx, row.bot_id);
     finishTurnRoute(ctx, row.id, "interrupted", null, execution);
+    markSegmentCutOff(ctx, row.id, "interrupted");
 
     if (isPresent(ctx, row.session_id, USER_MEMBER)) {
       createNotification(ctx, {

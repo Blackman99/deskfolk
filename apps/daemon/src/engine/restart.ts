@@ -10,13 +10,15 @@
  * Why it started again is read from how this run is started and how the last one ended: `dev` for a
  * development run whatever the last one wrote, else `clean` after a deliberate stop
  * (`settings.last_shutdown`), else `crash`.
- * Nothing goes on by itself yet: which restarts may pick work up on their own, and how often, is
- * the supervisor's (ADR 0040 P4c), and until it can check whether the last call's side effect went
- * through, going on unasked could submit a paid render twice. So every cause waits for your button;
- * the cause is recorded and said.
+ * Below the supervisor's level nothing goes on by itself: every cause waits for your button, and the
+ * cause is recorded and said. From it (ADR 0045) the supervisor picks up the plan work a restart cut
+ * off by the cause — at once after a clean stop, after a minute of steady running after a crash or a
+ * development restart, and never on its own after development restarts in a burst, nor when the last
+ * step was an external call with no known outcome (store/supervisor.ts) — and the notice says which.
  */
 import { USER_MEMBER, type ControlActionResult, type Message, type RestartCause, type Session, type Turn } from "@real-bot/protocol";
 import { HttpError } from "../errors";
+import { ENGINE_LEVELS } from "../store/schema-gate";
 import { restartNoticeBody, type ControlTurnLine } from "../prompts";
 import type { Store } from "../store";
 
@@ -71,7 +73,13 @@ export function createRestart(deps: RestartDeps): Restart {
 
   function announce(cause: RestartCause): RestartSummary {
     const cut = store.takeTurnsCutByRestart();
-    store.recordWorkEvent({ kind: "daemon.restart", actor: "app", payload: { cause, cut: cut.map((row) => row.turn.id) } });
+    // Every boot, cut or not: the supervisor reads its development-restart window off these.
+    store.recordWorkEvent({ kind: "daemon.restart", actor: "app", payload: { cause, cut: cut.map((row) => row.turn.id), boot_id: store.bootId } });
+    const supervised = store.capabilities().engine_level >= ENGINE_LEVELS.supervision;
+    const arrangements = new Map(
+      (supervised ? store.recordSupervisorRestart({ bootId: store.bootId, cause, interruptedTurnIds: cut.map((row) => row.turn.id) }) : [])
+        .map((row) => [row.turnId, row.arrangement] as const),
+    );
     // One line per job and place: a plan's turns go to the plan's conversation, turns on no plan to
     // wherever each is told, so the turns of one plan cut in three directs make one line.
     const jobs = new Map<string, { where: string; plan: string | null; cut: typeof cut }>();
@@ -95,7 +103,7 @@ export function createRestart(deps: RestartDeps): Restart {
           body: restartNoticeBody(locale(), {
             cause,
             plan: job.plan ? planTitle(job.plan) : null,
-            turns: job.cut.map((row) => turnLine(row.turn, job.where)),
+            turns: job.cut.map((row) => ({ ...turnLine(row.turn, job.where), ...(supervised ? { arrangement: arrangements.get(row.turn.id) ?? "waits" } : {}) })),
           }),
           // For you: a Bot reading "the daemon restarted, the job was cut off" would take it as a cue.
           hiddenFromBots: true,

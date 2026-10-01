@@ -103,6 +103,12 @@ test("a restart notice offers to go on or leave it, whatever stops are in force,
   expect(controlBar({ ...notice, acted: ["leave"] }, [], names, t)).toEqual({ state: "done", note: "先放着" });
 });
 
+test("the supervisor's line about a job it stopped moving offers nothing to press", () => {
+  const line: MessageControl = { kind: "supervisor", code: "stalled", task_id: "task-1", ticket_id: "ticket-1", work_item_id: "work-1", offer: [] };
+  expect(controlBar(line, [], names, t)).toEqual({ state: "none" });
+  expect(controlBar({ ...line, code: "unknown_effect" }, [aHold({ scope: "global", scope_id: null })], names, t)).toEqual({ state: "none" });
+});
+
 test("the app's line offering a check from your words: 确认 / 改 / 不要, and for a replacement 用新的 / 留原来的", () => {
   const offer: MessageControl = {
     kind: "check",

@@ -95,8 +95,15 @@ test("a plan is read whole, its spec and tickets are edited under a revision gua
   expect((await h.call("PATCH", `/v1/tickets/${ticket.id}`, { status: "later" })).status).toBe(422);
   expect((await h.call("PATCH", `/v1/tickets/${ticket.id}`, { title: "x", if_revision: 1 })).status).toBe(409);
   expect((await h.call("PATCH", "/v1/tickets/01ARZ3NDEKTSV4RRFFQ69G5FAV", { status: "done" })).status).toBe(404);
+  // The tickets it waits for (ADR 0045): only others of its plan, and never in a loop.
+  const second = h.store.createTicket({ taskId: plan.id, title: "终稿" });
+  const waits = await h.call("PATCH", `/v1/tickets/${second.id}`, { depends_on: [ticket.id] });
+  expect(waits.status).toBe(200);
+  expect(waits.json).toMatchObject({ id: second.id, depends_on: [ticket.id] });
+  expect((await h.call("PATCH", `/v1/tickets/${ticket.id}`, { depends_on: [second.id] })).status).toBe(422);
+  expect((await h.call("PATCH", `/v1/tickets/${ticket.id}`, { depends_on: [ticket.id] })).status).toBe(422);
   expect(readFileSync(join(h.root, ticket.dir, TICKET_FILE), "utf8")).toContain("- 状态：已完成");
-  expect(h.store.listSpecRevisions(plan.id).map((row) => [row.revision, row.actor])).toEqual([[3, "user"], [2, "user"], [1, "app"]]);
+  expect(h.store.listSpecRevisions(plan.id).map((row) => [row.revision, row.actor])).toEqual([[4, "user"], [3, "user"], [2, "user"], [1, "app"]]);
 });
 
 /** Polls until `fn` returns truthy or the timeout passes, for a check run kicked off after commit. */

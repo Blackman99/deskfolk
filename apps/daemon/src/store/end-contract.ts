@@ -140,7 +140,7 @@ function implicitCandidates(ctx: StoreContext, turn: Actor): ImplicitSubmissionC
 }
 
 /** Trusted domain writers emit these only for the progress facts in §5.3, not for prose edits. */
-const PROGRESS_KINDS = ["ticket.stage_changed", "part.stage_changed", "submission.created", "review.recorded", "check.first_passed", "artifact.changed"];
+export const PROGRESS_KINDS = ["ticket.stage_changed", "part.stage_changed", "submission.created", "review.recorded", "check.first_passed", "artifact.changed"];
 
 function stageSnapshot(ctx: StoreContext, turn: Actor): string {
   const tickets = ctx.db.query<{ id: string; status: string }, [string | null, string | null]>(

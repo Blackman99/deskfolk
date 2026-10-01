@@ -82,6 +82,7 @@ import { createAnnotation, listAnnotations, patchAnnotation, sendAnnotations, ty
 import { parseStreamFrame, parseToolFrame } from "./ephemeral-frames.ts";
 import { validAttributionPayload } from "./attribution-wire.ts";
 import { validDelegationPayload } from "./delegation-wire.ts";
+import { validWorkQuestionPayload } from "./work-question-wire.ts";
 import type { LocalEndpoint } from "./discovery.ts";
 import { ApiError, rememberBlobEtag, rememberBlobOriginalSize } from "./api.ts";
 import { readResponseBlob, type FileLoadOptions, type FileProgressHandler } from "./file-progress.ts";
@@ -887,7 +888,7 @@ export class LocalApi {
       if (!frame || typeof frame !== "object" || typeof frame.event_instance_id !== "string" || !/^[0-9a-f]{32}$/.test(frame.event_instance_id)) return null;
       if (frame.type === "event") {
         if (!Number.isSafeInteger(frame.seq) || frame.seq < 1 || !frame.payload || typeof frame.payload.event !== "string") return null;
-        if (frame.payload.event === "turn.token" || frame.payload.event === "turn.tool" || !validAttributionPayload(frame.payload) || !validDelegationPayload(frame.payload)) return null;
+        if (frame.payload.event === "turn.token" || frame.payload.event === "turn.tool" || !validAttributionPayload(frame.payload) || !validDelegationPayload(frame.payload) || !validWorkQuestionPayload(frame.payload)) return null;
         return frame;
       }
       if ((frame.type === "ready" || frame.type === "resnapshot") && Number.isSafeInteger(frame.watermark_seq) && frame.watermark_seq >= 0) return frame;

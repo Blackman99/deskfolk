@@ -13,6 +13,8 @@ import {
   type Message,
   type Turn,
 } from "@real-bot/protocol";
+import { statSync } from "node:fs";
+import { join } from "node:path";
 import {
   extractWorkspacePathsFromBody,
   mergeCitedPaths,
@@ -45,6 +47,10 @@ import type { Routing } from "./routing";
 import type { SpendTracker } from "./spend";
 import { readOnlyTools, type Tools } from "./tools";
 import type { InboxEntry, Live } from "./types";
+
+/** How many of a segment's written files are hashed for progress, newest first, and up to what size each. */
+const ARTIFACTS_HASHED_MAX = 50;
+const ARTIFACT_HASH_BYTES_MAX = 2 * 1024 ** 3;
 
 export type LifecycleDeps = {
   store: Store;
@@ -210,9 +216,11 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       const landing = store.turnLanding({ sessionId, botId, trigger, taskId: opts.taskId, ticketId: opts.ticketId });
       const place = store.workItemQueuePlace({ botId, taskId: landing.taskId });
       if (place !== null) {
+        // In line: yours first, then results and the supervisor's wakes, then a Bot's own appointments (§5.3.1).
         const queued = store.queueWork({ botId, sessionId, taskId: landing.taskId, ticketId: landing.ticketId,
           messageId: trigger.id, author: trigger.author, body: trigger.body,
-          source: trigger.kind === "user" ? "user" : "system", kind: "change", priority: trigger.kind === "user" ? 1 : 3 });
+          source: trigger.kind === "user" ? "user" : "system", kind: "change",
+          priority: trigger.kind === "user" ? 1 : opts.cause === "check_back" || opts.cause === "routine" ? 4 : 3 });
         if (queued.message) publishMessage(queued.message);
         return null;
       }
@@ -555,17 +563,58 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
             // waits for the next turn here (ADR 0040 P4a).
             try {
               store.releaseTurnInbox(turn.id);
+              if (store.capabilities().engine_level >= ENGINE_LEVELS.supervision) {
+                for (const pending of store.pendingToolExecutions({ turnId: turn.id })) {
+                  store.finishToolExecution({ turnId: turn.id, toolCallId: pending.tool_call_id, outcome: "unknown", errorCode: "segment_ended" });
+                }
+              }
             } catch {
               // the store is already gone with the turn
             }
             reopenForUnheard(turn, live);
             chainTurnEnded(turn.id);
             dispatchQueued();
+            await noteArtifacts(turn, live);
           }
         }
       };
       void trackTurn(turn.id, run()).catch((error) => console.error("turn cleanup failed", error));
     });
+  }
+
+  /**
+   * What the segment wrote into its job's folder, by content hash, for the supervisor's progress
+   * (ADR 0045): read once the turn is over, streamed so a large render does not stall the daemon,
+   * and recorded only where the hash is new. A file too large or gone by then is left out.
+   */
+  async function noteArtifacts(turn: Turn, live: Live): Promise<void> {
+    const paths = (live.producedPaths ?? []).slice(-ARTIFACTS_HASHED_MAX);
+    if (paths.length === 0 || !turn.task_id) return;
+    let root: string | null;
+    try {
+      if (store.capabilities().engine_level < ENGINE_LEVELS.supervision) return;
+      root = store.workspacePath();
+    } catch {
+      return; // the store closed with the daemon
+    }
+    if (!root) return;
+    const artifacts: Array<{ path: string; sha256: string }> = [];
+    for (const path of paths) {
+      try {
+        const file = Bun.file(join(root, path));
+        if (file.size > ARTIFACT_HASH_BYTES_MAX || !statSync(join(root, path)).isFile()) continue;
+        const hasher = new Bun.CryptoHasher("sha256");
+        for await (const chunk of file.stream()) hasher.update(chunk);
+        artifacts.push({ path, sha256: hasher.digest("hex") });
+      } catch {
+        // gone, or not readable: nothing to say about it
+      }
+    }
+    try {
+      if (artifacts.length > 0) store.recordArtifactProgress({ turnId: turn.id, artifacts });
+    } catch (error) {
+      console.error(`[turn ${turn.id}] could not record its artifacts`, error);
+    }
   }
 
   /**
@@ -1010,6 +1059,8 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       });
       store.voidPendingTurnActions(turnId, "turn_failed", now);
       store.finishTurnRoute(turnId, "failed", kind, executionOf(live));
+      // From the supervisor's level the job needs attention; its 「继续」 line is this failure line.
+      store.markSegmentCutOff(turnId, kind);
       if (store.isPresent(current.session_id, USER_MEMBER)) {
         store.createNotification({
           semantic_key: `failure:${turnId}`,

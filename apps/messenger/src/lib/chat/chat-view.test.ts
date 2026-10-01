@@ -443,6 +443,8 @@ describe("chat-view helpers", () => {
     expect(isAppLine({ kind: "system", control: receipt })).toBe(true);
     expect(isAppLine({ kind: "system", control: { kind: "status", hold_ids: [], offer: ["stop"], scopes: [] } })).toBe(true);
     expect(isAppLine({ kind: "system", control: { kind: "restart", cause: "dev", notes: [], offer: ["resume", "leave"] } })).toBe(true);
+    // The supervisor's line about a job it will not move on its own (ADR 0045) is the app's too.
+    expect(isAppLine({ kind: "system", control: { kind: "supervisor", code: "retry_budget", task_id: "t", ticket_id: null, work_item_id: "w", offer: [] } })).toBe(true);
     // Its answer to 「怎么样了」: a status answer with nothing to press.
     expect(isAppLine({ kind: "system", control: { kind: "status", hold_ids: [], offer: [], scopes: [] } })).toBe(true);
     // Your own line the app marked stays yours; the 「中断」 a Bot's turn leaves stays that Bot's.

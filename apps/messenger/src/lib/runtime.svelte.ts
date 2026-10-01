@@ -37,6 +37,7 @@ import {
   type PatchMessageAttributionRequest,
   type GroupLeadState,
   type DelegationView,
+  type WorkAnswerResult,
 } from "@real-bot/protocol";
 import { ApiError, probeHealth } from "./api.ts";
 import type { AttributionPlan } from "./chat/attribution.ts";
@@ -1538,7 +1539,7 @@ export class MessengerRuntime {
   /** Manual choices include untouched and dormant plans, not just routing candidates. */
   async loadAttributionPlans(sessionId: string, messageId?: string): Promise<void> {
     const api = this.api;
-    const message = messageId ?? this.snapshot.messages.find((row) => row.session_id === sessionId && (row.kind === "user" || row.kind === "bot"))?.id;
+    const message = messageId ?? this.snapshot.messages.find((row) => row.session_id === sessionId && (row.kind === "user" || row.kind === "bot" || row.control?.kind === "work_question"))?.id;
     if (!api || this.connection !== "connected" || !message) return;
     const seq = (this.attributionLoadSeq.get(sessionId) ?? 0) + 1;
     this.attributionLoadSeq.set(sessionId, seq);
@@ -1556,23 +1557,51 @@ export class MessengerRuntime {
   }
 
   private readonly attributionRevision = new Map<string, number>();
+  private messageSnapshotRevision = 0;
+  private messageInvalidationSeq = 0;
+  private readonly messageSessionInvalidated = new Map<string, number>();
 
   /** Refile only after an acknowledged write; a refusal never changes the shown selection. */
   async patchMessageAttribution(id: string, filings: PatchMessageAttributionRequest["filings"]): Promise<ApiError | null> {
     const api = this.api;
     if (!api || this.connection !== "connected") return new ApiError(0, "disconnected", "Attribution not saved");
     const revision = this.attributionRevision.get(id) ?? 0;
+    const snapshotRevision = this.messageSnapshotRevision;
+    const invalidationSeq = this.messageInvalidationSeq;
     try {
       const message = await api.patch<Message>(`/v1/messages/${encodeURIComponent(id)}/attribution`, { filings });
       if (this.api !== api) return new ApiError(0, "disconnected", "Attribution result unconfirmed");
       // The sequenced stream is newer than an in-flight, unsequenced HTTP response.
-      if ((this.attributionRevision.get(id) ?? 0) === revision) {
+      if ((this.attributionRevision.get(id) ?? 0) === revision && this.messageSnapshotRevision === snapshotRevision &&
+          (this.messageSessionInvalidated.get(message.session_id) ?? 0) <= invalidationSeq) {
         this.snapshot = applyEvent(this.snapshot, { ...message, event: "message.upsert", occurred_at: new Date().toISOString() });
       }
       this.traceReload += 1;
       return null;
     } catch (error) {
       return this.sheetFailure(error, api) ?? new ApiError(0, "disconnected", "Attribution result unconfirmed");
+    }
+  }
+
+  /** A durable question belongs to ended work, not a live legacy ask. Never lift a hold here. */
+  async answerWorkQuestion(id: string, body: string): Promise<WorkAnswerResult | ApiError> {
+    const api = this.api;
+    if (!api || this.connection !== "connected") return new ApiError(0, "disconnected", "Answer not saved");
+    if (!body.trim()) return new ApiError(422, "invalid", "Enter an answer");
+    const revision = this.attributionRevision.get(id) ?? 0;
+    const snapshotRevision = this.messageSnapshotRevision;
+    const invalidationSeq = this.messageInvalidationSeq;
+    try {
+      // Generic post owns the canonical receipt and reuses its request id on an explicit retry.
+      const result = await api.post<WorkAnswerResult>(`/v1/messages/${encodeURIComponent(id)}/work-answer`, { body });
+      if (this.api !== api) return new ApiError(0, "disconnected", "Answer result unconfirmed");
+      if ((this.attributionRevision.get(id) ?? 0) === revision && this.messageSnapshotRevision === snapshotRevision &&
+          (this.messageSessionInvalidated.get(result.message.session_id) ?? 0) <= invalidationSeq) {
+        this.snapshot = applyEvent(this.snapshot, { ...result.message, event: "message.upsert", occurred_at: new Date().toISOString() });
+      }
+      return result;
+    } catch (error) {
+      return this.sheetFailure(error, api) ?? new ApiError(0, "disconnected", "Answer result unconfirmed");
     }
   }
 
@@ -2588,6 +2617,7 @@ export class MessengerRuntime {
     this.delegationLoading = {};
     this.delegationLoadError = {};
     this.delegationUnsupported = {};
+    this.messageSnapshotRevision++;
     this.snapshot = fromRuntimeSnapshot(snapshot);
     this.remoteStatus = snapshot.remoteStatus ?? null;
     if (snapshot.notificationCapabilities) {
@@ -2920,6 +2950,8 @@ export class MessengerRuntime {
     }
     if (this.api) this.reconcilePendingMutation(this.api);
     if (event.event === "session.cleared" || event.event === "session.removed") {
+      // Late message-write receipts cannot resurrect history erased by a newer event.
+      this.messageSessionInvalidated.set(event.id, ++this.messageInvalidationSeq);
       // Only that conversation's reads are invalidated; another pane's are none of its business.
       const gone = this.views.get(event.id);
       if (gone) {

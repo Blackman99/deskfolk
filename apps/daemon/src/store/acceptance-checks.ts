@@ -20,6 +20,7 @@ import { normalizeSpecLine } from "./plan-shape";
 import { workspacePath, type StoreContext } from "./shared";
 import { getTask, type Task } from "./tasks";
 import { TURN_RUN_COMMAND_MAX } from "./turn-runs";
+import { recordWorkEvent } from "./work-events";
 import { classifyPath, classifyShell } from "../workspace-paths";
 
 /** The kinds a check can be made or redefined as; `measure` only ever comes from your words. */
@@ -591,10 +592,35 @@ export function finishCheckRun(
     );
     if (verdict.outcome === "pass") {
       ctx.db.run(`UPDATE acceptance_checks SET first_passed_at = COALESCE(first_passed_at, ?) WHERE id = ? AND removed_at IS NULL`, [at, run.check_id]);
+      noteFirstPass(ctx, run.check_id);
     }
     pruneCheckRuns(ctx, run.check_id);
   })();
   return getCheckRun(ctx, runId);
+}
+
+/**
+ * The work log's `check.first_passed` (the supervisor's progress, ADR 0045 / §5.3): the first pass
+ * of a check since it was last defined — for a check a model judges (`continuity`), the first time
+ * it passes twice in a row, so a verdict that flips back does not count as progress. Once per definition.
+ */
+function noteFirstPass(ctx: StoreContext, checkId: string): void {
+  const check = ctx.db.query<{ task_id: string; ticket_id: string | null; kind: string; defined_at: string }, [string]>(
+    "SELECT task_id, ticket_id, kind, defined_at FROM acceptance_checks WHERE id = ? AND removed_at IS NULL").get(checkId);
+  if (!check) return;
+  if (ctx.db.query(`SELECT 1 FROM work_events WHERE kind = 'check.first_passed' AND json_extract(payload, '$.check_id') = ?
+    AND json_extract(payload, '$.defined_at') = ?`).get(checkId, check.defined_at)) return;
+  const recent = ctx.db.query<{ outcome: string | null }, [string, string]>(`SELECT outcome FROM acceptance_check_runs
+    WHERE check_id = ? AND finished_at IS NOT NULL AND started_at >= ? ORDER BY finished_at DESC, rowid DESC LIMIT 2`).all(checkId, check.defined_at);
+  let passes = 0;
+  for (const row of recent) {
+    if (row.outcome !== "pass") break;
+    passes += 1;
+  }
+  const judged = check.kind === "continuity";
+  if (judged && passes < 2) return;
+  recordWorkEvent(ctx, { kind: "check.first_passed", actor: "app", taskId: check.task_id, ticketId: check.ticket_id,
+    payload: { check_id: checkId, defined_at: check.defined_at, source: judged ? "model" : "app", consecutive_passes: passes } });
 }
 
 /**

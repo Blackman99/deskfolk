@@ -11,6 +11,8 @@ import { HELD_TURN_TRIGGERS } from "./holds";
 import { migrateFiling } from "./filing-migration";
 import { migrateDelegations } from "./delegation-migration";
 import { migrateEndReasons } from "./end-reason-migration";
+import { migrateSupervisor } from "./supervisor-migration";
+import { migrateToolExecutions } from "./tool-execution-migration";
 import { clipQuote, QUOTE_TRIGGERS } from "./quotes";
 import { REQUIREMENT_TRIGGERS } from "./requirements";
 import { DORMANT_PLAN_TRIGGERS, idSuffix, localDate, slugify, taskTitle, WORK_ROOT } from "./tasks";
@@ -278,6 +280,8 @@ export function migrateSchema(db: Database): void {
   migrateFiling(db);
   migrateDelegations(db);
   migrateEndReasons(db);
+  migrateSupervisor(db);
+  migrateToolExecutions(db);
   // Made again on every open rather than if missing, so the triggers are always this build's own.
   // Last, after every column they read (tasks.dormant_since comes in migratePlans).
   for (const trigger of [...HELD_TURN_TRIGGERS, ...QUOTE_TRIGGERS, ...REQUIREMENT_TRIGGERS, ...DORMANT_PLAN_TRIGGERS]) {

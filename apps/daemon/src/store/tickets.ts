@@ -23,6 +23,27 @@ export const TICKET_SPEC_MAX = 2000;
 export const TICKETS_MAX = 40;
 const TICKET_SLUG_MAX = 24;
 
+/** How many other tickets one may wait for; a plan holds {@link TICKETS_MAX} at most. */
+export const TICKET_DEPENDS_MAX = TICKETS_MAX - 1;
+
+/** A `tickets` row as stored: `depends_on` is its JSON text. */
+export type TicketRow = Omit<Ticket, "depends_on"> & { depends_on: string };
+
+/** A stored row as the API gives it: `depends_on` a list (a row an older build wrote reads as none). */
+export function toTicket(row: TicketRow): Ticket {
+  return { ...row, depends_on: ticketDependencies(row.depends_on) };
+}
+
+/** The ids in a stored `depends_on`; text that is not a list of strings reads as none. */
+export function ticketDependencies(raw: string | null | undefined): string[] {
+  try {
+    const parsed = JSON.parse(raw ?? "[]") as unknown;
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 export function isTicketStatus(value: unknown): value is TicketStatus {
   return typeof value === "string" && (TICKET_STATUSES as readonly string[]).includes(value);
 }
@@ -74,24 +95,57 @@ export function createTicket(
   if (seq > TICKETS_MAX) throw new HttpError(422, "invalid_args", `a plan holds at most ${TICKETS_MAX} tickets`);
   const dir = ticketDirName(task.dir, seq, title);
   const closedAt = status === "done" || status === "parked" ? now : null;
+  // The owner is written alongside the worker (ADR 0045): whoever is on it is who is called back to it.
   ctx.db.run(
-    `INSERT INTO tickets (id, task_id, seq, title, slug, dir, spec, status, worker, created_at, updated_at, closed_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, task.id, seq, title, dir.slice(dir.lastIndexOf("/") + 1), dir, spec, status, input.worker ?? null, now, now, closedAt],
+    `INSERT INTO tickets (id, task_id, seq, title, slug, dir, spec, status, worker, owner_bot_id, created_at, updated_at, closed_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, task.id, seq, title, dir.slice(dir.lastIndexOf("/") + 1), dir, spec, status, input.worker ?? null, input.worker ?? null, now, now, closedAt],
   );
+  if (status !== "todo") {
+    recordWorkEvent(ctx, { kind: "ticket.stage_changed", actor: "app", taskId: task.id, ticketId: id,
+      payload: { before: null, after: status, source: "created" } });
+  }
   return getTicket(ctx, id);
 }
 
 export function getTicket(ctx: StoreContext, id: string): Ticket {
-  const row = ctx.db.query<Ticket, [string]>(`SELECT * FROM tickets WHERE id = ?`).get(id);
+  const row = ctx.db.query<TicketRow, [string]>(`SELECT * FROM tickets WHERE id = ?`).get(id);
   if (!row) throw new HttpError(404, "not_found", "ticket not found");
-  return row;
+  return toTicket(row);
 }
 
 export function listTickets(ctx: StoreContext, taskId: string): Ticket[] {
   return ctx.db
-    .query<Ticket, [string]>(`SELECT * FROM tickets WHERE task_id = ? ORDER BY seq ASC`)
-    .all(taskId);
+    .query<TicketRow, [string]>(`SELECT * FROM tickets WHERE task_id = ? ORDER BY seq ASC`)
+    .all(taskId)
+    .map(toTicket);
+}
+
+/**
+ * A ticket's dependencies as you set them (ADR 0045): other tickets of its plan, each once, none of
+ * them itself, and no loop back to it through theirs.
+ */
+function cleanDependencies(ctx: StoreContext, ticket: Pick<Ticket, "id" | "task_id">, value: unknown): string[] {
+  if (!Array.isArray(value) || value.some((id) => typeof id !== "string" || !id.trim())) {
+    throw new HttpError(422, "invalid_args", "depends_on must be a list of ticket ids");
+  }
+  const ids = [...new Set(value as string[])];
+  if (ids.length > TICKET_DEPENDS_MAX) throw new HttpError(422, "invalid_args", `a ticket waits for at most ${TICKET_DEPENDS_MAX} others`);
+  if (ids.includes(ticket.id)) throw new HttpError(422, "invalid_args", "a ticket cannot wait for itself");
+  const plan = new Map(ctx.db.query<{ id: string; depends_on: string }, [string]>("SELECT id, depends_on FROM tickets WHERE task_id = ?")
+    .all(ticket.task_id).map((row) => [row.id, ticketDependencies(row.depends_on)] as const));
+  for (const id of ids) if (!plan.has(id)) throw new HttpError(422, "invalid_args", "depends_on names only tickets of the same plan");
+  // Walks what the named tickets wait for, transitively: reaching this one would be a loop.
+  const seen = new Set<string>();
+  const stack = [...ids];
+  while (stack.length > 0) {
+    const id = stack.pop()!;
+    if (id === ticket.id) throw new HttpError(422, "invalid_args", "depends_on would make the tickets wait for each other");
+    if (seen.has(id)) continue;
+    seen.add(id);
+    stack.push(...(plan.get(id) ?? []));
+  }
+  return ids;
 }
 
 /**
@@ -102,8 +156,15 @@ export function listTickets(ctx: StoreContext, taskId: string): Ticket[] {
 export function patchTicket(
   ctx: StoreContext,
   id: string,
-  patch: { title?: unknown; spec?: unknown; status?: unknown; worker?: string | null },
-  opts: { now?: Date } = {},
+  patch: { title?: unknown; spec?: unknown; status?: unknown; worker?: string | null; dependsOn?: unknown },
+  opts: {
+    now?: Date;
+    /**
+     * Who moved its stage, for the work log's `ticket.stage_changed` (the supervisor's progress,
+     * ADR 0045): the board, the organizer, or a turn seen working on it.
+     */
+    stage?: { source: "user" | "organizer" | "observed_work"; botId?: string | null; turnId?: string | null; workItemId?: string | null };
+  } = {},
 ): Ticket {
   const current = getTicket(ctx, id);
   const next = {
@@ -111,18 +172,27 @@ export function patchTicket(
     spec: patch.spec !== undefined ? cleanSpec(patch.spec) : current.spec,
     status: cleanStatus(patch.status, current.status),
     worker: patch.worker !== undefined ? patch.worker : current.worker,
+    dependsOn: patch.dependsOn !== undefined ? cleanDependencies(ctx, current, patch.dependsOn) : (current.depends_on ?? []),
   };
+  const dependsChanged = JSON.stringify(next.dependsOn) !== JSON.stringify(current.depends_on ?? []);
   const changed =
-    next.title !== current.title || next.spec !== current.spec || next.status !== current.status || next.worker !== current.worker;
+    next.title !== current.title || next.spec !== current.spec || next.status !== current.status || next.worker !== current.worker || dependsChanged;
   if (!changed) return current;
   const now = (opts.now ?? new Date()).toISOString();
   const closing = next.status === "done" || next.status === "parked";
   ctx.db.run(
-    `UPDATE tickets SET title = ?, spec = ?, status = ?, worker = ?, updated_at = ?,
+    `UPDATE tickets SET title = ?, spec = ?, status = ?, worker = ?, depends_on = ?, updated_at = ?,
+       owner_bot_id = CASE WHEN ? THEN ? ELSE owner_bot_id END,
        closed_at = CASE WHEN ? THEN COALESCE(closed_at, ?) ELSE NULL END
      WHERE id = ?`,
-    [next.title, next.spec, next.status, next.worker, now, closing ? 1 : 0, now, id],
+    [next.title, next.spec, next.status, next.worker, JSON.stringify(next.dependsOn), now,
+      next.worker !== current.worker ? 1 : 0, next.worker, closing ? 1 : 0, now, id],
   );
+  if (next.status !== current.status) {
+    recordWorkEvent(ctx, { kind: "ticket.stage_changed", actor: opts.stage?.source === "user" ? "user" : "app",
+      botId: opts.stage?.botId ?? null, taskId: current.task_id, ticketId: id, turnId: opts.stage?.turnId ?? null,
+      payload: { work_item_id: opts.stage?.workItemId ?? null, before: current.status, after: next.status, source: opts.stage?.source ?? "organizer" } });
+  }
   return getTicket(ctx, id);
 }
 
@@ -138,7 +208,7 @@ export function observeTicketWork(
   ctx: StoreContext,
   input: { ticketId: string; botId: string; turnId?: string; seen: "working" | "delivered"; now?: Date },
 ): Ticket | null {
-  const row = ctx.db.query<Ticket, [string]>(`SELECT * FROM tickets WHERE id = ?`).get(input.ticketId);
+  const row = ctx.db.query<TicketRow, [string]>(`SELECT * FROM tickets WHERE id = ?`).get(input.ticketId);
   if (!row) return null;
   const moves: Partial<Record<TicketStatus, TicketStatus>> =
     input.seen === "working" ? { todo: "doing" } : { todo: "review", doing: "review" };
@@ -146,16 +216,12 @@ export function observeTicketWork(
   const worker = row.worker ?? input.botId;
   if (!status && worker === row.worker) return null;
   return ctx.commit(() => {
-    const next = patchTicket(ctx, row.id, { status: status ?? row.status, worker }, { now: input.now });
-    if (status && input.turnId) {
-      const turn = ctx.db.query<{ bot_id: string; task_id: string | null; ticket_id: string | null; work_item_id: string | null }, [string]>(
-        "SELECT bot_id, task_id, ticket_id, work_item_id FROM turns WHERE id = ?").get(input.turnId);
-      if (turn?.bot_id === input.botId && turn.task_id === row.task_id && turn.ticket_id === row.id) {
-        recordWorkEvent(ctx, { kind: "ticket.stage_changed", actor: "app", botId: input.botId, taskId: row.task_id, ticketId: row.id,
-          turnId: input.turnId, payload: { work_item_id: turn.work_item_id, before: row.status, after: status, source: "observed_work" } });
-      }
-    }
-    return next;
+    // The move is the turn's own only when that turn is on exactly this ticket; else it is still a move.
+    const turn = input.turnId ? ctx.db.query<{ bot_id: string; task_id: string | null; ticket_id: string | null; work_item_id: string | null }, [string]>(
+      "SELECT bot_id, task_id, ticket_id, work_item_id FROM turns WHERE id = ?").get(input.turnId) : null;
+    const own = turn?.bot_id === input.botId && turn.task_id === row.task_id && turn.ticket_id === row.id;
+    return patchTicket(ctx, row.id, { status: status ?? row.status, worker }, { now: input.now,
+      stage: { source: "observed_work", botId: input.botId, turnId: own ? input.turnId ?? null : null, workItemId: own ? turn!.work_item_id : null } });
   });
 }
 

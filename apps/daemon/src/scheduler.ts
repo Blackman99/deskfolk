@@ -32,6 +32,13 @@ export function startScheduler(options: SchedulerOptions): Scheduler {
     } catch {
       // a closed store must not stall the routines below
     }
+    // The supervisor (ADR 0045) before the appointments below: its state is all in the database,
+    // so a tick it misses is made up by the next.
+    try {
+      options.engine.supervise(at);
+    } catch (error) {
+      console.error("[supervisor] tick failed", error);
+    }
     // With the lid shut macOS wakes itself for a few seconds at a time, often before Wi-Fi is back;
     // a routine fired then fails as unreachable in three seconds and its catch-up is spent.
     if (!wake.settled(at.getTime())) return;

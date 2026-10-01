@@ -1,4 +1,5 @@
 import { DELEGATIONS_SQL } from "./store/delegation-migration";
+import { TOOL_EXECUTIONS_SQL } from "./store/tool-execution-migration";
 
 export const SCHEMA_SQL = `
 PRAGMA foreign_keys = ON;
@@ -230,6 +231,9 @@ CREATE TABLE IF NOT EXISTS tickets (
   spec TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL CHECK (status IN ('todo', 'doing', 'review', 'done', 'parked')),
   worker TEXT,
+  -- Additive P4c ownership/dependencies; later stages own reviewer and submission transitions.
+  owner_bot_id TEXT,
+  depends_on TEXT NOT NULL DEFAULT '[]',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   closed_at TEXT,
@@ -746,6 +750,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS work_items_one_open_desk
   WHERE task_id IS NULL AND state <> 'closed';
 
 ${DELEGATIONS_SQL}
+${TOOL_EXECUTIONS_SQL}
 
 CREATE TABLE IF NOT EXISTS skills (
   id TEXT PRIMARY KEY,

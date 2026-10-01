@@ -79,7 +79,7 @@ add("POST", "holds", { scope: one("global", "bot", "session", "plan", "ticket", 
 add("POST", "holds/:id/lift", {});
 // A button on a line about your stops (a receipt's undo, 「全部停下」 from the phone's menu is a hold above).
 add("POST", "messages/:id/control", { action: one("stop", "continue", "cancel", "undo", "stop_all", "stop_plan", "only_plan", "continue_only", "continue_all", "resume", "leave", "confirm_check", "remove_check", "confirm_requirements", "make_standing", "keep_project", "undo_plan", "merge_plan"), task_id: id }, ["action"]);
-add("PATCH", "tickets/:id", { title: string, spec: string, status: ticketStatus, worker: nullable(id), if_revision: specRevision }, [], true);
+add("PATCH", "tickets/:id", { title: string, spec: string, status: ticketStatus, worker: nullable(id), depends_on: list(id), if_revision: specRevision }, [], true);
 const checkKind: Check = one("exists", "contains", "matches", "command");
 const checkInput = {
   item: string,
@@ -187,6 +187,7 @@ add("DELETE", "sessions/:id/messages", { ...revision, erase_quotes: bool });
 add("DELETE", "sessions/:id/members", { ...revision, bot_id: id }, ["bot_id"]);
 for (const method of ["PUT", "DELETE"] as const) add(method, "messages/:id/reactions", { emoji: string }, ["emoji"]);
 add("POST", "messages/:id/answer", { selected: list(string), custom: nullable(string) });
+add("POST", "messages/:id/work-answer", { body: v => typeof v === "string" && Boolean(v.trim()) }, ["body"]);
 add("PUT", "workspace/file", { path: string, content: string }, ["path", "content"]);
 // Into the Mac's Trash, where Finder can put it back — never an unlink.
 add("POST", "workspace/trash", { paths: list(string) }, ["paths"]);

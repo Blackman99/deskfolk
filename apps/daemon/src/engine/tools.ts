@@ -9,6 +9,7 @@ import { askAnswerText } from "../ask";
 import { runCollabTool, type ToolResult } from "../collab-tools";
 import type { ToolCall } from "../completions";
 import { isoNow } from "../ids";
+import { HttpError } from "../errors";
 import { attachPictures, fitsHop, pictureResultNote, type LoopPicture } from "../loop-pictures";
 import type { McpHost } from "../mcp-host";
 import { inlineWorkspaceRefs } from "../mcp-workspace-refs";
@@ -118,6 +119,24 @@ export type Tools = {
 export function createTools(deps: ToolsDeps): Tools {
   const { store, publish, publishMessage, publishTurn, occurred, wake, mcp, admission, streams, lives, active, track, closingCheckForSend, handleParticipation, fireRoutine, observeTicket, betweenCalls } = deps;
 
+  /**
+   * How a call with an effect came out, on its ledger row (ADR 0045), before its result is heard.
+   * A refusal sent nothing. An MCP call that failed after it was sent, a call cut off by an abort,
+   * or one that timed out may or may not have taken effect: unknown, which keeps the supervisor
+   * from picking the work up on its own. A local tool's ordinary failure is just a failure.
+   */
+  function finishEffectEvidence(turnId: string, live: Live, name: string, callId: string, result: ToolResult): void {
+    if (store.capabilities().engine_level < ENGINE_LEVELS.supervision || result.waitApproval || result.waitAsk) return;
+    const execution = store.getToolExecution({ turnId, toolCallId: callId });
+    if (!execution || execution.finished_at || result.error?.code === "repeated_effect") return;
+    const code = result.error?.code;
+    const refused = Boolean(code && ["denied", "invalid_args", "held", "refused", "not_a_member", "draining", "no_work_authority"].includes(code));
+    const uncertain = live.abort.signal.aborted || (!result.ok && !refused && live.mcpTools.has(name))
+      || Boolean(code && ["timeout", "unreachable", "interrupted", "crashed"].includes(code));
+    store.finishToolExecution({ turnId, toolCallId: callId,
+      outcome: result.ok ? "succeeded" : refused ? "refused" : uncertain ? "unknown" : "failed", errorCode: code });
+  }
+
   function noteWrittenPaths(live: Live, toolName: string, result: ToolResult): void {
     if (!result.ok) return;
     // `shell` now reports the files it left in the work dir; everything else among the workspace
@@ -136,6 +155,7 @@ export function createTools(deps: ToolsDeps): Tools {
       if (live.planDir && isReservedTaskPath(live.planDir, classified.rel)) continue;
       if (live.workDir && isReservedTaskPath(live.workDir, classified.rel)) continue;
       live.writtenPaths = mergeCitedPaths(live.writtenPaths, [classified.rel]);
+      live.producedPaths = mergeCitedPaths(live.producedPaths ?? [], [classified.rel]);
     }
   }
 
@@ -225,6 +245,7 @@ export function createTools(deps: ToolsDeps): Tools {
           ...(target ? { target } : {}),
           ...(mcpTool ? { mcp_server: mcpTool.server, mcp_tool: mcpTool.tool } : {}) });
         result = await dispatchTool(turn, live, call.name, args, call.id);
+        finishEffectEvidence(turnId, live, call.name, call.id, result);
         publish({ event: "turn.tool", occurred_at: occurred(), turn_id: turnId, id: call.id,
           name: call.name, phase: "exited", duration_ms: Date.now() - startedAt,
           exit_code: typeof result.data?.exit_code === "number" ? result.data.exit_code : null,
@@ -336,6 +357,7 @@ export function createTools(deps: ToolsDeps): Tools {
         publish({ event: "approval.upsert", occurred_at: occurred(), ...approval });
         publishTurn(waiting, null);
         let resolved = await pending;
+        if (resolved !== null) finishEffectEvidence(turnId, live, call.name, call.id, resolved);
         if (resolved == null || !active(turnId, live)) return "wait";
         recordRun(turnId, live, call.name, args, resolved);
         await publishEmitted(turnId, live, resolved.emitted);
@@ -526,7 +548,12 @@ export function createTools(deps: ToolsDeps): Tools {
       return isWorkspaceTool(name)
         ? await runWorkspaceTool(
             { store, signal: live.abort.signal, workDir: live.workDir, stream: streams, streamId, wake,
-              turnId: turn.id, toolCallId: callId },
+              turnId: turn.id, toolCallId: callId,
+               onEffectStart: callId && store.capabilities().engine_level >= ENGINE_LEVELS.supervision
+                 ? (tool) => {
+                   const started = store.beginToolExecution({ turnId: turn.id, toolCallId: callId, tool, sideEffect: true });
+                   if (!started.begun) throw new HttpError(409, "repeated_effect", "this call already has durable execution evidence; it was not run again");
+                 } : undefined },
             name,
             args,
           )
@@ -557,6 +584,10 @@ export function createTools(deps: ToolsDeps): Tools {
     const outgoing = inlineWorkspaceRefs(args, store.workspacePath());
     if (!outgoing.ok) {
       return { ok: false, error: { code: "invalid_args", message: outgoing.message }, emitted: [] };
+    }
+    if (callId && live.mcpTools.get(name)?.readOnly !== true && store.capabilities().engine_level >= ENGINE_LEVELS.supervision) {
+      const started = store.beginToolExecution({ turnId: turn.id, toolCallId: callId, tool: name, sideEffect: true });
+      if (!started.begun) return { ok: false, error: { code: "repeated_effect", message: "this remote call already started; no duplicate submission was sent" }, emitted: [] };
     }
     const called = await mcp.call(name, outgoing.args, live.abort.signal);
     if (called.ok) return { ok: true, data: called.data, emitted: [] };

@@ -183,6 +183,64 @@ export function planLeftNote(locale: Locale, input: { review: readonly OpenTicke
   return `规划静下来一阵了：没有待做或进行中的任务，局面「进展」里却还记着没做完或卡住的。接下来：待验收的照它的验收核对，附上跑过的命令和结果，不替别人宣布通过，自己交的也不自己判；还没做的，点名交给接得了的 Bot；卡住的，局面里记着谁定的暂停或冻结；要用户拿主意、或只有用户给得了的，直接问用户。哪样都做不了，就直说卡在哪、需要谁做什么。${review}`;
 }
 
+/** A ticket or a plan as the supervisor's lines name it (ADR 0045): 任务 03《Shot 11》, or 规划「EP01」. */
+export function supervisorJobLabel(locale: Locale, input: { plan: string; ticket: { seq: number; title: string } | null }): string {
+  if (input.ticket) {
+    const number = String(input.ticket.seq).padStart(2, "0");
+    return locale === "en" ? `ticket ${number} "${input.ticket.title}"` : `任务 ${number}《${input.ticket.title}》`;
+  }
+  return locale === "en" ? `the plan "${input.plan}"` : `规划「${input.plan}」`;
+}
+
+/**
+ * The line the supervisor wakes a Bot with (ADR 0045), read only by the turn it opens: what is
+ * true of the job now, and the same choice the ending contract offers — go on, or end the turn
+ * saying who it waits for or what blocks it. No pressure, no guess about why it went quiet.
+ * - `orphan`: a ticket whose ball is with this Bot (its owner, the plan's lead, or the recipient of
+ *   an open request) has had no live segment, wait or queued line for `quietMinutes`.
+ * - `wait_invalid`: what it was waiting for is gone (the request was cancelled, or the other side's
+ *   work closed).
+ * - `resume`: its last segment did not end properly (`reason`), and this is automatic pick-up number
+ *   `attempt` of at most three an hour.
+ */
+export function supervisorWakeNote(
+  locale: Locale,
+  input:
+    | { kind: "orphan"; job: string; role: "owner" | "lead" | "delegation"; ask?: string | null; quietMinutes: number }
+    | { kind: "wait_invalid"; job: string }
+    | { kind: "resume"; job: string; reason: "interrupted" | "failed" | "contract_budget" | "lost_segment"; lastStep: string | null; attempt: number },
+): string {
+  const en = locale === "en";
+  const choice = en
+    ? "Carry on, or call end_turn saying who you are waiting for or what blocks you."
+    : "接着做，或者用 end_turn 说明在等谁、卡在哪。";
+  if (input.kind === "orphan") {
+    const role = input.role === "owner"
+      ? (en ? "You own it." : "你是它的负责人。")
+      : input.role === "lead"
+        ? (en ? "It has no owner the app can call, and you lead the plan." : "它没有能叫到的负责人，你是这件事的负责人。")
+        : (en ? `You still owe a reply to a request on it${input.ask ? `: "${input.ask}"` : ""}.` : `你还欠这张任务上一个委派的回复${input.ask ? `：「${input.ask}」` : ""}。`);
+    return en
+      ? `(App) ${input.job} is still open, and for ${input.quietMinutes} minutes nothing has been working on it: no live segment, no wait, no queued line. ${role} ${choice}`
+      : `（应用）${input.job}还没收口，已经 ${input.quietMinutes} 分钟没有进行中的执行段、等待或排着的收件。${role}${choice}`;
+  }
+  if (input.kind === "wait_invalid") {
+    return en
+      ? `(App) What you were waiting for on ${input.job} is gone: the request was cancelled or the other side's work closed, so that wait no longer stands. Look at where things are now. ${choice}`
+      : `（应用）你在${input.job}上等的东西已经不在了：委派被取消，或者对方的工作已经关闭，这一等不再成立。先看看现在的局面，${choice}`;
+  }
+  const reason = {
+    interrupted: { zh: "被中断了", en: "was interrupted" },
+    failed: { zh: "没写完就失败了", en: "failed before it finished" },
+    contract_budget: { zh: "两次没能按结束的约定收尾", en: "twice failed to end the way the ending contract asks" },
+    lost_segment: { zh: "没有正常结束", en: "did not end properly" },
+  }[input.reason];
+  const step = input.lastStep ? (en ? ` Its last step: ${input.lastStep}.` : `最后一步：${input.lastStep}。`) : "";
+  return en
+    ? `(App) Your last segment on ${input.job} ${reason.en}.${step} This is automatic pick-up ${input.attempt} of at most 3 an hour. Do not repeat an external call whose outcome you do not know; check it first. ${choice}`
+    : `（应用）你在${input.job}上的上一段${reason.zh}。${step}这是第 ${input.attempt} 次自动接着做（每小时最多 3 次）。结果不明的外部调用不要重做，先核实。${choice}`;
+}
+
 /** Items of the plan's progress a stalled line quotes, and how long each may run. */
 export const STALLED_LEFT_ITEMS = 3;
 export const STALLED_LEFT_ITEM_MAX = 60;

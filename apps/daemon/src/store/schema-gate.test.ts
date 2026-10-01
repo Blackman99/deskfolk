@@ -177,7 +177,7 @@ describe("schema gate", () => {
     const file = tempFile();
     const store = new Store({ filename: file });
     expect(store.raiseEngineLevel(null)).toEqual({ level: ENGINE_LEVEL, raised: true, refused: null, accepted: null });
-    expect(store.capabilities()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds", "work_items", "delegation"] });
+    expect(store.capabilities()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds", "work_items", "delegation", "supervision"] });
     // Already there: nothing to do, and the gate settings stay out of the change journal.
     const events: string[] = [];
     store.onCommit((event) => events.push(event.event));
@@ -234,7 +234,7 @@ describe("schema gate", () => {
       expect(raise.accepted).toContain("would not honor holds");
       if ("version" in installed) expect(raise.accepted).toContain(`the installed app (${installed.version || "version unreadable"})`);
       else expect(raise.accepted).toContain(installed.unseen);
-      expect(store.capabilities()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds", "work_items", "delegation"] });
+      expect(store.capabilities()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds", "work_items", "delegation", "supervision"] });
       store.close();
     }
   });
@@ -268,7 +268,7 @@ describe("schema gate", () => {
     // there is nothing to refuse and nothing to take back.
     const next = new Store({ filename: file });
     expect(next.raiseEngineLevel({ version: "0.1.0-rc.11" })).toEqual({ level: ENGINE_LEVEL, raised: false, refused: null, accepted: null });
-    expect(next.capabilities()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds", "work_items", "delegation"] });
+    expect(next.capabilities()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds", "work_items", "delegation", "supervision"] });
     expect(next.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'schema_min_compatible'").get()?.value).toBe(String(SCHEMA_LEVEL));
     next.close();
   });
@@ -289,5 +289,25 @@ test("a developer's opt-in lets the level past an older app only up to the level
   const raised = raiseEngineLevel(db, old);
   expect(raised).toMatchObject({ level: ENGINE_LEVEL, raised: true, refused: null });
   expect(readEngineLevel(db)).toBe(ENGINE_LEVEL);
+  db.close();
+});
+
+test("an opt-in accepted for the delegation level does not carry the database into the supervisor's level", () => {
+  const db = new Database(":memory:");
+  db.run("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  // Where an earlier build left a developer's database: at delegation, floor 3, the opt-in it accepted.
+  db.run("INSERT INTO settings (key, value) VALUES ('engine_level', '3'), ('schema_min_compatible', '3'), ('engine_gate_optin', ?)",
+    [JSON.stringify({ at: "2026-09-30T00:00:00.000Z", by: "script", level: 3 })]);
+  const old = { version: "0.1.0-rc.11" };
+  const refused = raiseEngineLevel(db, old);
+  expect(refused).toMatchObject({ level: 3, raised: false, accepted: null });
+  expect(refused.refused).toContain("covers level 3");
+  expect(refused.refused).toContain(`this build brings ${ENGINE_LEVEL}`);
+  expect(readEngineLevel(db)).toBe(3);
+  expect(db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'schema_min_compatible'").get()?.value).toBe("3");
+  acceptOlderApp(db, "script");
+  expect(raiseEngineLevel(db, old)).toMatchObject({ level: ENGINE_LEVEL, raised: true, refused: null });
+  expect(readEngineLevel(db)).toBe(ENGINE_LEVEL);
+  expect(db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'schema_min_compatible'").get()?.value).toBe(String(SCHEMA_LEVEL));
   db.close();
 });

@@ -6,6 +6,7 @@ import type {
 } from "@real-bot/protocol";
 import { MessengerRuntime } from "./runtime.svelte.ts";
 import { LocalApi } from "./local-api.ts";
+import { ApiError } from "./api.ts";
 import { emptySnapshot } from "./snapshot.ts";
 import { aBot, aDirect, aMessage, aRoutine, aTurn } from "./test-fixtures.ts";
 import { flushSync } from "svelte";
@@ -1539,6 +1540,58 @@ test("annotations: a batch that lands in another conversation takes you there, a
   });
   expect(landed.focusedTurnId).toBe("turn-batch");
   expect(landed.pendingFocusTrigger).toBeNull();
+});
+
+test("a work answer from a superseded connection cannot backfill a reconnect snapshot", async () => {
+  const { runtime, initial } = await connected();
+  await until(() => runtime.connection === "connected");
+  const control = { kind: "work_question" as const, work_item_id: "work-1", task_id: "plan-1", ticket_id: null, question: "哪一版？", offer: [] as [] };
+  const message = aMessage({ kind: "system", author: "bot-1", control });
+  runtime.snapshot.messages = [message];
+  const response = deferred<Response>();
+  globalThis.fetch = (async () => response.promise) as typeof fetch;
+  const saving = runtime.answerWorkQuestion(message.id, "old answer");
+  await Promise.resolve();
+  await reconnect(runtime, initial);
+  response.resolve(Response.json({ message, work_item_id: "work-1", inbox_state: "queued", answered: true }));
+  expect(await saving).toBeInstanceOf(ApiError);
+  expect(runtime.snapshot.messages).toEqual([]);
+  expect(runtime.connection).toBe("connected");
+});
+
+for (const event of ["session.cleared", "session.removed"] as const) test(`a late work-answer receipt cannot resurrect its question after ${event}`, async () => {
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+  const control = { kind: "work_question" as const, work_item_id: "work-1", task_id: "plan-1", ticket_id: null, question: "哪一版？", offer: [] as [] };
+  const message = aMessage({ kind: "system", author: "bot-1", control });
+  runtime.snapshot.messages = [message];
+  const response = deferred<Response>();
+  globalThis.fetch = (async () => response.promise) as typeof fetch;
+  const saving = runtime.answerWorkQuestion(message.id, " saved\n🦊 ");
+  await Promise.resolve();
+  Socket.current.frame({ type: "event", event_instance_id: instance, seq: 1, payload: { event, id: message.session_id, occurred_at: "2026-10-01T02:00:01Z" } });
+  expect(runtime.snapshot.messages).toEqual([]);
+  response.resolve(Response.json({ message: { ...message, control: { ...control, answer: { body: " saved\n🦊 ", at: "2026-10-01T02:00:00Z", user_action_id: "old", inbox_seq: 9 } } }, work_item_id: "work-1", inbox_state: "queued", answered: true }));
+  await saving;
+  expect(runtime.snapshot.messages).toEqual([]);
+});
+
+test("a late work-answer HTTP receipt cannot erase a newer sequenced answer", async () => {
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+  const control = { kind: "work_question" as const, work_item_id: "work-1", task_id: "plan-1", ticket_id: null, question: "哪一版？", offer: [] as [] };
+  const message = aMessage({ kind: "system", author: "bot-1", control });
+  runtime.snapshot.messages = [message];
+  const response = deferred<Response>();
+  globalThis.fetch = (async () => response.promise) as typeof fetch;
+  const saving = runtime.answerWorkQuestion(message.id, "HTTP 的旧答案");
+  await Promise.resolve();
+  const latest = { ...message, control: { ...control, answer: { body: "另一台设备保存的答案\n🦊", at: "2026-10-01T02:00:01Z", user_action_id: "action-new", inbox_seq: 11 } } };
+  Socket.current.frame({ type: "event", event_instance_id: instance, seq: 1, payload: { ...latest, event: "message.upsert", occurred_at: "2026-10-01T02:00:01Z" } });
+  expect(runtime.snapshot.messages).toEqual([latest]);
+  response.resolve(Response.json({ message, work_item_id: "work-1", inbox_state: "queued", answered: true }));
+  await saving;
+  expect(runtime.snapshot.messages).toEqual([latest]);
 });
 
 test("a late attribution PATCH response cannot rewind a newer sequenced correction", async () => {

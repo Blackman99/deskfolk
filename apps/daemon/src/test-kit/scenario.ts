@@ -319,6 +319,8 @@ export type ScenarioOptions = {
   workItems?: boolean;
   /** Activates P4c's durable delegation and end-contract engine on this fixture only. */
   delegation?: boolean;
+  /** Takes the engine level up to P4c's supervisor (ADR 0045), which includes delegation. */
+  supervision?: boolean;
 };
 
 export type Scenario = {
@@ -365,8 +367,8 @@ export type Scenario = {
   waitIdle: (opts?: { timeoutMs?: number }) => Promise<void>;
   /** Polls until `predicate` holds; for acting in the middle of a turn. */
   waitFor: (predicate: () => boolean, opts?: { timeoutMs?: number; what?: string }) => Promise<void>;
-  /** One scheduler tick, now. */
-  tick: () => void;
+  /** One scheduler tick, now or at `at` (what the supervisor and due appointments are read against). */
+  tick: (at?: Date) => void;
   /** Lets `ms` pass for check-backs and running turns (see the module header), then ticks. */
   advance: (ms: number) => void;
 
@@ -486,7 +488,7 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
   });
   // Phase fixtures pin their own level rather than taking the database up to this build's: later
   // levels change the filing, wake and ending paths they exercise.
-  const pinned = options.delegation ? ENGINE_LEVELS.delegation : options.workItems ? ENGINE_LEVELS.work_items : options.holds ? ENGINE_LEVELS.holds : 0;
+  const pinned = options.supervision ? ENGINE_LEVELS.supervision : options.delegation ? ENGINE_LEVELS.delegation : options.workItems ? ENGINE_LEVELS.work_items : options.holds ? ENGINE_LEVELS.holds : 0;
   if (pinned > 0) {
     for (const key of ["engine_level", "schema_min_compatible"]) {
       store.db.run("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [key, String(pinned)]);
@@ -1029,8 +1031,8 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
         await Bun.sleep(POLL_MS);
       }
     },
-    tick() {
-      scheduler.tick();
+    tick(at) {
+      scheduler.tick(at);
     },
     advance(ms) {
       advanced += ms;

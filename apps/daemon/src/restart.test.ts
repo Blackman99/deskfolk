@@ -110,7 +110,7 @@ describe("after a restart", () => {
     const note = h.messages(thread).find((message) => message.body === "中断")!;
     expect(notice!.control).toMatchObject({ notes: [note.id] });
     expect(note.turn_id).toBe(turn.id);
-    expect(h.store.listWorkEvents({ kind: "daemon.restart" }).map((row) => row.payload)).toEqual([{ cause: "dev", cut: [turn.id] }]);
+    expect(h.store.listWorkEvents({ kind: "daemon.restart" }).map((row) => row.payload)).toEqual([{ cause: "dev", cut: [turn.id], boot_id: expect.any(String) }]);
     expect(turnsAfter(h, director, downAt)).toEqual([]);
   });
 
@@ -337,8 +337,8 @@ describe("after a restart", () => {
 
     expect(notices(h, room)).toHaveLength(1);
     expect(h.store.listWorkEvents({ kind: "daemon.restart" }).map((row) => row.payload)).toEqual([
-      { cause: "crash", cut: [expect.any(String)] },
-      { cause: "dev", cut: [] },
+      { cause: "crash", cut: [expect.any(String)], boot_id: expect.any(String) },
+      { cause: "dev", cut: [], boot_id: expect.any(String) },
     ]);
   });
 

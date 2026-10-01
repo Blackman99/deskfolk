@@ -30,6 +30,9 @@ import * as delegations from "./delegations";
 import * as workOn from "./work-on";
 import * as peerNotes from "./peer-notes";
 import * as endContract from "./end-contract";
+import * as supervisor from "./supervisor";
+import * as toolExecutions from "./tool-executions";
+import * as workQuestions from "./work-questions";
 import * as workItems from "./work-items";
 import * as judgements from "./judgements";
 import * as liveProcs from "./live-procs";
@@ -468,6 +471,7 @@ export class Store {
   readonly pendingCheckBack = this.bind(checkBacks.pendingCheckBack);
   readonly listPendingCheckBacks = this.bind(checkBacks.listPendingCheckBacks);
   readonly bookPlanNudge = this.bind(checkBacks.bookPlanNudge);
+  readonly voidRetiredCallBack = this.bind(checkBacks.voidRetiredCallBack);
   readonly lastPlanNudge = this.bind(checkBacks.lastPlanNudge);
   readonly planNudgesSince = this.bind(checkBacks.planNudgesSince);
   readonly pendingPlanCheckBacks = this.bind(checkBacks.pendingPlanCheckBacks);
@@ -501,6 +505,7 @@ export class Store {
   readonly releaseTurnInbox = this.bind(inbox.releaseTurnInbox);
   readonly releaseEndedInbox = this.bind(inbox.releaseEndedInbox);
   readonly holdInboxItems = this.bind(inbox.holdInboxItems);
+  readonly refreshHeldInbox = this.bind(inbox.refreshHeldInbox);
   readonly supersedeInboxItems = this.bind(inbox.supersedeInboxItems);
   readonly disposeInboxItems = this.bind(inbox.disposeInboxItems);
 
@@ -512,6 +517,7 @@ export class Store {
   readonly dispatchableWork = this.bind(workItems.dispatchableWork);
   readonly prepareQueuedTrigger = this.bind(workItems.prepareQueuedTrigger);
   readonly markWorkRunning = this.bind(workItems.markWorkRunning);
+  readonly markSegmentCutOff = this.bind(workItems.markSegmentCutOff);
   readonly isPlanRunnable = this.bind(workItems.isPlanRunnable);
   readonly hasWorkAuthority = this.bind(workItems.hasWorkAuthority);
   readonly fileLine = this.bind(filing.fileLine);
@@ -527,6 +533,19 @@ export class Store {
   readonly markNeedsAttention = this.bind(desk.markNeedsAttention);
   readonly markWorkDirectoryUsed = this.bind(desk.markWorkDirectoryUsed);
   readonly finishWork = this.bind(endContract.finishWork);
+  readonly createWorkQuestion = this.bind(workQuestions.createWorkQuestion);
+  readonly answerWorkQuestion = this.bind(workQuestions.answerWorkQuestion);
+  readonly beginToolExecution = this.bind(toolExecutions.beginToolExecution);
+  readonly finishToolExecution = this.bind(toolExecutions.finishToolExecution);
+  readonly getToolExecution = this.bind(toolExecutions.getToolExecution);
+  readonly pendingToolExecutions = this.bind(toolExecutions.pendingToolExecutions);
+  readonly executionRecoveryFacts = this.bind(toolExecutions.executionRecoveryFacts);
+  readonly ballHolder = this.bind(supervisor.ballHolder);
+  readonly planLead = this.bind(supervisor.planLead);
+  readonly supervisorTick = this.bind(supervisor.supervisorTick);
+  readonly recordSupervisorRestart = this.bind(supervisor.recordSupervisorRestart);
+  readonly settleRestartNotices = this.bind(supervisor.settleRestartNotices);
+  readonly recordArtifactProgress = this.bind(supervisor.recordArtifactProgress);
   readonly recordPeerNote = this.bind(peerNotes.recordPeerNote);
   readonly progressMessagesSent = this.bind(peerNotes.progressMessagesSent);
   readonly uncitedTurnPaths = this.bind(peerNotes.uncitedTurnPaths);

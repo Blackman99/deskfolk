@@ -1530,7 +1530,7 @@ function dispatch(
     const body = (input.body ?? {}) as PatchTicketRequest;
     const { ticket } = store.patchTicketByUser(
       params.id!,
-      { title: body.title, spec: body.spec, status: body.status, worker: body.worker },
+      { title: body.title, spec: body.spec, status: body.status, worker: body.worker, dependsOn: body.depends_on },
       body.if_revision,
     );
     engine.renderPlanMirrors(ticket.task_id);
@@ -1912,6 +1912,19 @@ function dispatch(
     publish({ event: "group_lead.changed", occurred_at: occurred(), ...state });
     publish({ event: "session.upsert", occurred_at: occurred(), ...sessionUpsertFields(store.getSession(params.id!)) });
     return jsonResponse(state, 200, null);
+  }
+
+  // A blocked work question survives its ended segment; answering does not lift stops or resolve approvals.
+  params = matchPath(path, "/v1/messages/:id/work-answer");
+  if (params && method === "POST") {
+    const body = input.body;
+    if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some((key) => key !== "body")
+      || typeof (body as { body?: unknown }).body !== "string" || !(body as { body: string }).body.trim()) {
+      throw new HttpError(422, "invalid_args", "a non-empty answer body is required");
+    }
+    const answered = store.answerWorkQuestion(params.id!, { body: (body as { body: string }).body, userActionId: scope?.requestId ?? ulid() });
+    if (answered.answered) store.afterCommit(() => engine.dispatchQueuedWork());
+    return jsonResponse(answered, 200, null);
   }
 
   // Your answer to a Bot's question is written onto the question: choices it offered, text of your

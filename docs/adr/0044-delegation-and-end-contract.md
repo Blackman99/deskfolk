@@ -1,6 +1,6 @@
 # 显式委派、事件等待与结束契约 / Explicit delegation, event waits and ending contracts
 
-Status: partially implemented — P4c round-1 checkpoint, not accepted as the full phase. Supervisor 24c and the remaining ending/submission safeguards are pending.
+Status: partially implemented — P4c round-1 checkpoint, not accepted as the full phase. The supervisor (24c) is now [ADR 0045](0045-supervisor.md), at engine level 4; implicit submission and the remaining ending safeguards are still pending.
 
 [ADR 0040](0040-agent-kernel-the-job-owns-state.md) 的 P4c 要让交出去的活由工作项记着，而不是靠两个人私聊最后一句或内存里「静下来十秒」的计时器猜是否交回。09-29 的回执空转证明普通发言不应自动派工；重启丢回报和任务无人接球说明结束不能只看模型是否停笔。本轮先接入显式委派和结束事实，记录剩余缺口，不把部分开关当成完整持续推进。
 
@@ -31,10 +31,10 @@ The domain function and engine integration validate an exact live binding and ho
 
 **本轮不接受为已完成的项 / Not accepted as complete:**
 
-- **24b / I5**：I5 的 3 级 INSERT/每次 UPDATE 库触发器已接入：绑定工作项的 completed/stopped/interrupted/redirected 必须有非空白 end_reason，不限枚举；0–2 级豁免，历史终态一次以 status 补空缺，不覆盖已有显式原因。blocked 返回的 needs_from_user 目前仍只显示系统通知，不是持久可回答 ask 卡。旧收尾自检正则仍被调用，claimsVerification 保留与推广到私聊还需按最终接入核对。I5 triggers are implemented at level 3, with nonblank reasons, legacy exemption and one-time historical backfill; the persistent blocked-question card and regex removal remain pending.
+- **24b / I5**：I5 的 3 级 INSERT/每次 UPDATE 库触发器已接入：绑定工作项的 completed/stopped/interrupted/redirected 必须有非空白 end_reason，不限枚举；0–2 级豁免，历史终态一次以 status 补空缺，不覆盖已有显式原因。3 级 blocked 返回的 needs_from_user 只显示一行文字；持久可回答的提问卡在 4 级（[ADR 0045](0045-supervisor.md) 第 9 条）。旧收尾自检正则仍被调用，claimsVerification 保留与推广到私聊还需按最终接入核对。I5 triggers are implemented at level 3, with nonblank reasons, legacy exemption and one-time historical backfill; the persistent blocked-question card arrives at level 4 (ADR 0045); regex removal remains pending.
 - **隐式交付 / Implicit submission**：`implicitSubmission.implemented=false`。只有本段引用、任务目录下非保留产物的候选元数据，没有核对文件存在/新哈希、运行绑定检查、保存 origin=implicit submission 或推进 submitted/approved。这条设计要求不能降成「交了路径就是交付」。Citation metadata is a seam, not implicit submission; the approved existence/hash/check/stored-submission contract remains required.
-- **24c / Supervisor**：未实现持球者推导、孤儿任务 2/10 分钟阈值、进展周期叫醒预算、周期 I6 waiting 核对、needs_attention 每小时恢复次数、owner/lead 迁移、按 clean/crash/dev 自动续跑。排队派发/答案叫回已有不等于监督器完成。Ball-holder supervision and restart policy are still pending, not inferred from queue dispatch or answer wakes.
-- **旧推进退场 / Legacy retirement**：3 级仍有 settle、plan-watch/plan_nudge、report_back、收尾正则及兼容 hear 路径；真实测试仍可能出现旧的额外静默叫回。应在监督器接替后关闭这些激活/计时路径，而不是在文档里宣称全部已经删除。Old advancement remains live, including possible extra callbacks; its removal must be implemented and verified.
+- **24c / Supervisor**：已在 4 级实现，见 [ADR 0045](0045-supervisor.md)：持球者推导、没人推的任务 2/10 分钟门槛与每个进展周期 2 次叫回、周期 I6 核对、needs_attention 每小时最多 3 次续跑、owner 迁移与读出的负责人、按 clean/crash/dev 续跑和结果不明的外部调用守卫。3 级没有这些。Implemented at level 4 (ADR 0045); level 3 has none of it.
+- **旧推进退场 / Legacy retirement**：4 级不再运行 plan-watch/plan_nudge 与 report_back，之前订下未触发的在触发时作废（ADR 0045 第 10 条）；3 级仍有它们。settle、收尾正则及兼容 hear 路径各级都还在，物理删除留给 P6。At level 4 the plan call-back and report-back no longer run; settle, closing regexes and the hear paths remain at every level until P6.
 - **后续阶段 / Later phases**：P4d 外部作业轮询/去重，P4e submit/review/approved 与分件返工，P5 模型策略/学习没有交付声明。Existing fields or low-level submission validation do not activate later phases.
 
 ## 部分取代与取舍 / Partial supersession and trade-offs
@@ -43,9 +43,9 @@ The domain function and engine integration validate an exact live binding and ho
 
 Within the level-3 explicit-delegation path, this partially supersedes ADR 0020's fresh direct per trigger and ADR 0028's terminal sends/timer-only waiting, retaining user read-only access, quotes and work-item constraints. Legacy levels remain supported.
 
-[ADR 0039](0039-plans-with-work-left-are-called-back.md) 的规划叫回**尚未被监督器取代**，是待完成的取代关系；不能只因为 ADR 0040 把它排在 P4c 就写成已发生。现有 ADR 不在本轮改写，最终接替时再补双方说明。[ADR 0043](0043-work-items-and-attribution.md) 的 P4b 是历史边界，当前 3 级是在它上面增量切换，不把历史的未实现句子当当前领域定义。
+[ADR 0039](0039-plans-with-work-left-are-called-back.md) 的规划叫回在 3 级**没有**被取代；4 级起由监督器取代（[ADR 0045](0045-supervisor.md)），双方都已注明。[ADR 0043](0043-work-items-and-attribution.md) 的 P4b 是历史边界，当前 3 级是在它上面增量切换，不把历史的未实现句子当当前领域定义。
 
-ADR 0039's plan callbacks are **not yet superseded by a supervisor**. That supersession and reciprocal existing-ADR notices wait for actual cutover. ADR 0043 records the historical P4b boundary; level 3 is an incremental switch on top of it, not retroactive rewriting of history.
+ADR 0039's plan callbacks are not superseded at level 3; from level 4 the supervisor (ADR 0045) supersedes them, noted on both sides. ADR 0043 records the historical P4b boundary; level 3 is an incremental switch on top of it, not retroactive rewriting of history.
 
 把普通通知与工作请求分开能消掉「收到→收到」的即时叫醒环，代价是 Bot 必须显式声明期待结果，且失败/取消/被叫停也要留持久事实。只接入回答型交回让本轮闭环窄而可验证；其余期待保留为义务，不能凭一句模型收尾自动算交付。剩余监督器和交付工作仍按原 spec 验收，不以这份部分 ADR 代替。
 

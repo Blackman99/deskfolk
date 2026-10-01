@@ -25,7 +25,7 @@ import {
   wakeDormantPlan,
   type Task,
 } from "./tasks";
-import { createTicket, isTicketStatus, listTickets, patchTicket, ticketArtifacts, TICKETS_MAX } from "./tickets";
+import { createTicket, isTicketStatus, listTickets, patchTicket, ticketArtifacts, ticketDependencies, TICKETS_MAX, type TicketRow } from "./tickets";
 
 export type SpecRevisionRow = {
   id: string;
@@ -193,16 +193,17 @@ export function setPlanSpecByUser(
 export function patchTicketByUser(
   ctx: StoreContext,
   ticketId: string,
-  patch: { title?: unknown; spec?: unknown; status?: unknown; worker?: string | null },
+  patch: { title?: unknown; spec?: unknown; status?: unknown; worker?: string | null; dependsOn?: unknown },
   ifRevision?: unknown,
 ): { ticket: Ticket; revision: SpecRevisionRow | null } {
   return ctx.db.transaction(() => {
-    const before = ctx.db.query<Ticket, [string]>(`SELECT * FROM tickets WHERE id = ?`).get(ticketId);
+    const before = ctx.db.query<TicketRow, [string]>(`SELECT * FROM tickets WHERE id = ?`).get(ticketId);
     if (!before) throw new HttpError(404, "not_found", "ticket not found");
     assertRevision(ctx, before.task_id, ifRevision);
-    const ticket = patchTicket(ctx, ticketId, patch);
+    const ticket = patchTicket(ctx, ticketId, patch, { stage: { source: "user" } });
     const changed =
-      ticket.title !== before.title || ticket.spec !== before.spec || ticket.status !== before.status || ticket.worker !== before.worker;
+      ticket.title !== before.title || ticket.spec !== before.spec || ticket.status !== before.status || ticket.worker !== before.worker
+      || JSON.stringify(ticket.depends_on ?? []) !== JSON.stringify(ticketDependencies(before.depends_on));
     if (!changed) return { ticket, revision: null };
     wakeDormantPlan(ctx, ticket.task_id);
     // The clauses of a description you changed on the board are your words about that ticket (ADR 0040).

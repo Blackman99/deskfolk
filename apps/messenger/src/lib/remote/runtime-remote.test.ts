@@ -7,7 +7,7 @@ import { emptySnapshot } from "../snapshot.ts";
 import { RemoteApi, type DurablePendingRequest } from "./api.ts";
 import { useEnrollmentDriver, type StoredEnrollment } from "./idb.ts";
 import { enrollment as liveEnrollment, fakeHost, serveRemote } from "./test-host.ts";
-import { aBot } from "../test-fixtures.ts";
+import { aBot, aDirect, aMessage } from "../test-fixtures.ts";
 
 const keys = generateIdentity();
 const pub = identityPublic(keys);
@@ -302,6 +302,35 @@ test("a phone back on the same Mac replays what it missed instead of the snapsho
   expect(second.map((row) => row.path)).not.toContain("/v1/snapshot");
   expect(second.find((row) => row.path === "/v1/events/catchup")?.query).toEqual({ event_instance_id: INSTANCE, after_seq: "1" });
   expect(runtime.snapshot.bots.map((bot) => bot.name).sort()).toEqual(["B", "C"]);
+});
+
+test("phone catchup installs the persisted work answer after sleep without a live ask or another answer POST", async () => {
+  const message = aMessage({ kind: "system", author: "bot-1", turn_id: "ended-turn", control: { kind: "work_question", work_item_id: "work-1", task_id: "plan-1", ticket_id: null, question: "哪一版？", offer: [] } });
+  const answered = { ...message, control: { kind: "work_question" as const, work_item_id: "work-1", task_id: "plan-1", ticket_id: null, question: "哪一版？", offer: [] as [], answer: { body: " 第二版\n🦊 ", at: "2026-10-01T02:00:00Z", user_action_id: "saved-action", inbox_seq: 9 } } };
+  const calls: RemoteRequest[] = [];
+  const remote = serveRemote({
+    ready: (link) => ({ event_instance_id: INSTANCE, watermark_seq: link === 0 ? 0 : 1 }),
+    answer: (request) => {
+      calls.push(request);
+      if (request.path === "/v1/snapshot") return { v: 1, id: request.id, status: 200, body: { ...emptySnapshot(), sessions: [aDirect({ last_message: message })], messages: [message], event_instance_id: INSTANCE, watermark_seq: 0 } };
+      if (request.path === "/v1/events/catchup") return { v: 1, id: request.id, status: 200, body: { event_instance_id: INSTANCE, watermark_seq: 1, resnapshot: false, events: [{ type: "event", event_instance_id: INSTANCE, seq: 1, payload: { ...answered, event: "message.upsert", occurred_at: "2026-10-01T02:00:00Z" } }] } };
+      return hostAnswers(request);
+    },
+  });
+  restores.push(remote.restore);
+  useEnrollmentDriver({ get: () => Promise.resolve(liveEnrollment), set: () => Promise.resolve() });
+  const runtime = new MessengerRuntime(); runtimes.push(runtime);
+  const reconnect = Reflect.get(runtime, "tickRemote");
+  await reconnect.call(runtime);
+  expect(runtime.snapshot.messages).toEqual([message]);
+  remote.sockets[0]!.drop();
+  await reconnect.call(runtime);
+  expect(runtime.snapshot.messages).toEqual([answered]);
+  expect(runtime.snapshot.sessions[0]?.last_message).toEqual(answered);
+  expect(runtime.snapshot.turns).toEqual([]);
+  expect(calls.filter((row) => row.path === "/v1/events/catchup")).toHaveLength(1);
+  expect(calls.filter((row) => row.path === "/v1/snapshot")).toHaveLength(1);
+  expect(calls.filter((row) => row.method === "POST" && row.path.startsWith("/v1/"))).toEqual([]);
 });
 
 /** A restarted Mac is another event instance: there is nothing to replay, so the snapshot it is. */

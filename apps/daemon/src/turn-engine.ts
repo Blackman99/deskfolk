@@ -118,6 +118,14 @@ export type TurnEngine = {
   sweepToolResults: (now?: Date) => void;
   /** Closes turns that stopped making progress; called on every scheduler tick. */
   sweepStalledTurns: (now?: Date) => void;
+  /** Starts queued work that may start now (a durable answer queued it, say); nothing else. */
+  dispatchQueuedWork: () => void;
+  /**
+   * One supervisor tick (ADR 0045), from the scheduler's: the store's repairs, pick-ups and
+   * call-backs, then the segments it continues and the queue it dispatches. Off below the
+   * supervisor's level and while draining.
+   */
+  supervise: (now?: Date) => void;
   suggestComposer: (sessionId: string, signal?: AbortSignal, guard?: () => void) => Promise<ComposerSuggestion[]>;
   drain: () => Promise<void>;
   close: () => Promise<void>;
@@ -611,6 +619,27 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       return lifecycle.executionOf(core.lives.get(turnId));
     },
     sweepToolResults,
+    dispatchQueuedWork: lifecycle.dispatchQueued,
+    supervise(at = new Date()) {
+      if (store.capabilities().engine_level < ENGINE_LEVELS.supervision || options.admission?.draining) return;
+      const tick = store.supervisorTick({ now: at.toISOString() });
+      for (const message of tick.messages) core.publishMessage(message);
+      // A segment cut off picks up from its own 「中断」 or failure line, as its Continue would:
+      // same conversation, same stops, the line marked continued.
+      const continued: string[] = [];
+      for (const wake of tick.wakes) {
+        if (!wake.noteId) continue;
+        try {
+          lifecycle.continueFromInterrupt(wake.noteId);
+          continued.push(wake.noteId);
+        } catch (error) {
+          store.recordWorkEvent({ kind: "supervisor.pickup_refused", actor: "app", botId: wake.botId, taskId: wake.taskId, ticketId: wake.ticketId,
+            payload: { work_item_id: wake.workItemId, note_id: wake.noteId, code: error instanceof HttpError ? error.code : "error" } });
+        }
+      }
+      if (continued.length > 0) for (const message of store.settleRestartNotices(continued)) core.publishMessage(message);
+      lifecycle.dispatchQueued();
+    },
     sweepStalledTurns(at) {
       lifecycle.sweepStalledTurns(at);
       lifecycle.dispatchQueued();

@@ -427,7 +427,7 @@ describe("local API runtime", () => {
     expect(lines.filter((m) => m.control?.kind === "restart").map((m) => m.control)).toEqual([
       { kind: "restart", cause: "crash", notes: [note.id], offer: ["resume", "leave"] },
     ]);
-    expect(rt.store.listWorkEvents({ kind: "daemon.restart" }).map((row) => row.payload)).toEqual([{ cause: "crash", cut: [turn.id] }]);
+    expect(rt.store.listWorkEvents({ kind: "daemon.restart" }).map((row) => row.payload)).toEqual([{ cause: "crash", cut: [turn.id], boot_id: expect.any(String) }]);
   });
 
   test("start tells what the restart cut off before a check-back that fell due meanwhile can wake its Bot", async () => {
@@ -482,7 +482,7 @@ describe("local API runtime", () => {
     const rt = await startRuntime({ dataDir, bind: "127.0.0.1:0", endpointKey: keys });
     handles.push(rt);
     expect(rt.store.capabilities()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL,
-      features: ["holds", "work_items", "delegation"] });
+      features: ["holds", "work_items", "delegation", "supervision"] });
     expect(rt.store.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'schema_min_compatible'").get()?.value).toBe(String(SCHEMA_LEVEL));
     expect(rt.store.listHolds({ inForce: true })).toMatchObject([{ scope: "plan", scope_id: plan.id, source: "legacy" }]);
   });

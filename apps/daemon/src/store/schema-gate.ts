@@ -33,18 +33,26 @@ import type { CapabilitiesResponse } from "@real-bot/protocol";
  *   plan, which a build without work items would not: it would open a second turn on the same job.
  * - 3: P4c's event waits and explicit delegations. Old binaries treat thread chatter as a wake,
  *   replace waits by conversation, and cannot satisfy the durable end contract safely.
+ * - 4: P4c's supervisor (ADR 0045). A database at engine level 4 keeps its call-backs, retries and
+ *   restart resumes as supervisor records, a blocked job's question as a durable card waiting on
+ *   your answer, and side-effect evidence in `tool_executions`. A level-3 build would run the
+ *   retired plan call-back and report-back timers on top of those records (two wakes for one
+ *   stall), leave a blocked job with nothing to answer, and resume work without checking whether
+ *   its last external call went through.
  */
-export const SCHEMA_LEVEL = 3;
+export const SCHEMA_LEVEL = 4;
 
 /**
  * The engine levels this build runs, in the only order they turn on (ADR 0040: one integer for the
- * whole rollout instead of a switch per feature). `holds`: ADR 0040 P2's control plane.
+ * whole rollout instead of a switch per feature). `holds`: ADR 0040 P2's control plane;
+ * `work_items`: P4b; `delegation`: P4c's delegations and end contract (ADR 0044); `supervision`:
+ * P4c's supervisor, durable blocked questions and the effect ledger (ADR 0045).
  */
-export const ENGINE_LEVELS = { holds: 1, work_items: 2, delegation: 3 } as const;
-export const ENGINE_LEVEL = ENGINE_LEVELS.delegation;
+export const ENGINE_LEVELS = { holds: 1, work_items: 2, delegation: 3, supervision: 4 } as const;
+export const ENGINE_LEVEL = ENGINE_LEVELS.supervision;
 
 /** The floor a database needs once it runs at each engine level: whatever an older build would misread there. */
-const FLOOR_AT_LEVEL: Readonly<Record<number, number>> = { 1: 1, 2: 2, 3: 3 };
+const FLOOR_AT_LEVEL: Readonly<Record<number, number>> = { 1: 1, 2: 2, 3: 3, 4: 4 };
 
 /**
  * The last release without the gate read. A copy of it (or of anything before it) opens any
@@ -232,6 +240,12 @@ export function raiseEngineLevel(db: Database, installed: SharedInstall | null):
       writeSetting(db, "engine_level", String(level));
     }
     if (floor > 0) writeSetting(db, "schema_min_compatible", String(floor));
+    // When it went up, in the work log: the supervisor watches work from its own level's raise on,
+    // and leaves what was already quiet before it (ADR 0045). A bare settings table has no log.
+    if (db.query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'work_events'").get()) {
+      db.run("INSERT INTO work_events (at, kind, actor, payload) VALUES (?, 'engine.level_raised', 'app', ?)",
+        [new Date().toISOString(), JSON.stringify({ from, to: target })]);
+    }
   })();
   return { level: target, raised: true, refused: null, accepted };
 }

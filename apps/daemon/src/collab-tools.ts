@@ -40,6 +40,7 @@ import type { KeyOperation } from "./store/receipts";
 import type { TurnAdmission } from "./quiesce";
 import { normalizeModelCatalog } from "./models";
 import { type Store } from "./store";
+import { ENGINE_LEVELS } from "./store/schema-gate";
 import {
   extractWorkspacePathsFromBody,
   linkifyWorkspacePaths,
@@ -685,14 +686,18 @@ function workOn(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
  * once the hop's other calls are done; the dispositions are recorded here, on the inbox rows.
  */
 function endTurn(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
-  if (ctx.store.capabilities().engine_level >= 3) {
+  if (ctx.store.capabilities().engine_level >= ENGINE_LEVELS.delegation) {
     const finished = ctx.store.finishWork({ turnId: ctx.turnId, reason: args.reason, note: args.note,
       needsFromUser: args.needs_from_user, answer: args.answer, inbox: args.inbox });
     if (finished.bounce) return { ok: false, error: { code: finished.code ?? "end_contract", message: finished.bounce }, emitted: [] };
     const emitted: ToolResult["emitted"] = [];
     if (finished.notice || finished.ask) {
-      const message = ctx.store.insertMessage({ sessionId: ctx.sessionId, turnId: ctx.turnId, kind: "system", author: ctx.botId,
-        body: finished.ask?.body ?? finished.notice!.body, hiddenFromBots: true });
+      // From the supervisor's level a blocked job's question is a card that outlives the segment,
+      // answered where you are (ADR 0045); below it, a line saying what the Bot needs from you.
+      const message = finished.ask && ctx.store.capabilities().engine_level >= ENGINE_LEVELS.supervision
+        ? ctx.store.createWorkQuestion({ turnId: ctx.turnId, body: finished.ask.body })
+        : ctx.store.insertMessage({ sessionId: ctx.sessionId, turnId: ctx.turnId, kind: "system", author: ctx.botId,
+            body: finished.ask?.body ?? finished.notice!.body, hiddenFromBots: true });
       emitted.push({ kind: "message", message });
     }
     return { ok: true, data: { ended: finished.ended, reason: finished.endReason, state: finished.state,
