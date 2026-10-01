@@ -666,6 +666,38 @@ test("a plan call-back that repeats the answer already given posts nothing, and 
   expect(h.store.db.query("SELECT COUNT(*) AS n FROM check_backs WHERE kind = 'plan_nudge'").get()).toEqual({ n: 1 });
 });
 
+const firstTranslation = `Make a sci-fi short-film video, longer than 5 minutes.
+
+备选：
+- Produce a science-fiction short video with a runtime of more than 5 minutes.
+- Create a sci-fi short drama video that must run longer than five minutes.`;
+const repeatedTranslation = `Make a sci-fi short-film video that runs longer than 5 minutes.
+
+备选：
+- Produce a science-fiction short video with a runtime of more than 5 minutes.
+- Create a sci-fi short drama video that must be longer than five minutes.`;
+
+for (const via of ["reply", "send_message"] as const) for (const cited of [false, true]) {
+  test(`a plan call-back with only small wording changes keeps one translation (${via}, cited=${cited})`, async () => {
+    const suffix = cited ? "\n参考：`reference.md`" : "";
+    const h = await harness(twoTickets, (messages) => {
+      const recalled = messages.some((m) => textOf(m).includes("还有任务没收口"));
+      if (!recalled) return say(firstTranslation + suffix);
+      return via === "reply" ? say(repeatedTranslation + suffix) : call("send_message", { body: repeatedTranslation + suffix });
+    });
+    const writer = h.store.createBot({ name: "专业翻译官", duties: "translate", boundaries: "stay" });
+    const session = writer.direct_session.id;
+    const trigger = h.store.insertMessage({ sessionId: session, kind: "user", author: "user", body: "翻译：\n制作一个科幻短剧视频，要求时长大于 5 分钟" });
+    await h.engine.handleInboundMessage(trigger, { fromUser: true });
+
+    await until(() => stalledReviews(h.store, session).length === 1);
+    const answers = h.store.listMainMessages(session, 20).filter((m) => m.kind === "bot");
+    expect(answers.map((m) => m.body)).toEqual([firstTranslation + (cited ? "\n参考：[reference.md](reference.md)" : "")]);
+    expect(new Set(h.events.flatMap((e) => e.event === "message.created" && e.kind === "bot" ? [e.id] : [])).size).toBe(1);
+    expect(planNudges(h.store, h.store.sessionCurrentTask(session)!.id)).toHaveLength(1);
+  });
+}
+
 test("a Stop is not a plan going quiet: nothing is settled and nobody is called back", async () => {
   // On 09-29 two Stops ended a plan's turns, the settle that followed put its shot back in progress,
   // and the call-back after it had the Bot submit that shot (ADR 0040 P1).

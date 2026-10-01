@@ -10,7 +10,7 @@
  * sets it aside until the hold is lifted (store/holds.ts). Nothing here opens a turn; the engine
  * does that when the scheduler finds a due row.
  */
-import { USER_MEMBER } from "@real-bot/protocol";
+import { looksLikeWorkspacePath, USER_MEMBER } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { takeCodePoints } from "../text";
@@ -366,8 +366,7 @@ export function isBotOnlyLine(ctx: StoreContext, messageId: string): boolean {
 export function repeatKey(body: string): string {
   return body
     .replace(/```[\s\S]*?```/g, (block) => block.replace(/\s+/g, " "))
-    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/!?\[([^\]]*)\]\(([^)]*)\)/g, "$1 $2")
     .replace(/^\s{0,3}#{1,6}\s+/gm, "")
     .replace(/^\s{0,3}>\s?/gm, "")
     .replace(/^\s{0,3}([-*+]|\d+[.)])\s+/gm, "")
@@ -375,6 +374,25 @@ export function repeatKey(body: string): string {
     .replace(/(\*\*|__)(.*?)\1/g, "$2")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+// Compare only light prose edits. Numbers, negations and content words stay; literals must match.
+function samePlanAnswer(previous: string, body: string): boolean {
+  const key = repeatKey(body);
+  if (repeatKey(previous) === key) return true;
+  const literals = (text: string) => JSON.stringify([
+    text.match(/```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]+`|!?\[[^\]]*\]\([^)]*\)|https?:\/\/[^\s)]+|@[\p{L}\p{N}_-]+|\d+(?:[.:/-]\d+)*|[?？]/gu) ?? [],
+    text.split(/\s+/).filter(looksLikeWorkspacePath),
+  ]);
+  if (literals(previous) !== literals(body)) return false;
+  const proseWords = (text: string) => repeatKey(text)
+    .toLowerCase()
+    .replace(/\bthat runs?\s+(?=(?:longer|shorter)\b)/g, "")
+    .replace(/\b(?:runs?|be)\s+(?=(?:longer|shorter)\b)/g, "")
+    .match(/[\p{L}\p{N}]+|[<>=+%]/gu)
+    ?.filter((word) => !["a", "an", "the"].includes(word)) ?? [];
+  const words = proseWords(body);
+  return words.length >= 12 && JSON.stringify(proseWords(previous)) === JSON.stringify(words);
 }
 
 /**
@@ -407,7 +425,7 @@ export function repeatsPlanAnswer(
        LIMIT 40`,
     )
     .all(input.sessionId, input.author, turn.task_id, input.turnId, turn.trigger_message_id);
-  return rows.some((row) => repeatKey(row.body) === key);
+  return rows.some((row) => samePlanAnswer(row.body, input.body));
 }
 
 /** What a quiet Bot↔Bot direct would report back with, read when its quiet clock runs out. */

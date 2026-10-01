@@ -17,6 +17,61 @@ function fixture() {
   return { store, writer: writer.bot, reviewer: reviewer.bot, group, trigger, turn };
 }
 
+describe("plan call-back reply deduplication", () => {
+  const translation = `Make a sci-fi short-film video, longer than 5 minutes.
+
+备选：
+- Produce a science-fiction short video with a runtime of more than 5 minutes.
+- Create a sci-fi short drama video that must run longer than five minutes.`;
+  const reworded = translation.replace("video, longer", "video that runs longer").replace("must run longer", "must be longer");
+
+  function repeats(previous: string, body: string, planNudge = true, outside?: "plan" | "session" | "author") {
+    const { store, writer, reviewer, group, trigger, turn } = fixture();
+    try {
+      const message = store.insertMessage({ sessionId: group.id, turnId: turn.id, kind: "bot", author: writer.id, body: previous });
+      store.setTurnStatus(turn.id, "completed");
+      const recalled = store.createTurn({ sessionId: group.id, botId: writer.id, triggerMessageId: trigger.id });
+      if (outside === "plan") store.db.run("UPDATE messages SET task_id = NULL WHERE id = ?", [message.id]);
+      return store.repeatsPlanAnswer({ turnId: recalled.id, sessionId: outside === "session" ? "elsewhere" : group.id, author: outside === "author" ? reviewer.id : writer.id, body, planNudge });
+    } finally {
+      store.close();
+    }
+  }
+
+  test("recognizes the screenshot's light prose changes and Markdown-only changes", () => {
+    expect(repeats(translation, reworded)).toBe(true);
+    expect(repeats(translation, translation.replace("Make a", "**Make** a").replace(/^- /gm, "* "))).toBe(true);
+  });
+
+  test("leaves new content, changed numbers, negation, questions and short answers intact", () => {
+    for (const body of [
+      reworded + "\nUse a cinematic tone.",
+      reworded.replace("5 minutes", "6 minutes"),
+      reworded.replace("more than", "less than"),
+      reworded.replace("must be", "must not be"),
+      reworded.replace("longer than 5 minutes.", "longer than 5 minutes?"),
+    ]) expect(repeats(translation, body)).toBe(false);
+    expect(repeats("The answer is ready.", "The answer was ready.")).toBe(false);
+    expect(repeats(translation + "\nSend the video that failed review back to the editor.", reworded + "\nSend the video failed review back to the editor.")).toBe(false);
+    expect(repeats(translation + "\nThis should be ready for the next review.", reworded + "\nThis should ready for the next review.")).toBe(false);
+  });
+
+  test("preserves new link destinations, file paths, code and mentions", () => {
+    for (const [before, after] of [
+      ["\n[成片](deliverables/first.mp4)", "\n[成片](deliverables/second.mp4)"],
+      ["\n[参考](https://example.com/first)", "\n[参考](https://example.com/second)"],
+      ["\n附件：deliverables/first.mp4", "\n附件：deliverables/second.mp4"],
+      ["\n`const value = 1`", "\n`const value = 2`"],
+      ["\n@Writer", "\n@Reviewer"],
+    ]) expect(repeats(translation + before, reworded + after)).toBe(false);
+  });
+
+  test("only compares this Bot's answers in this session and plan on an app call-back", () => {
+    expect(repeats(translation, reworded, false)).toBe(false);
+    for (const outside of ["plan", "session", "author"] as const) expect(repeats(translation, reworded, true, outside)).toBe(false);
+  });
+});
+
 describe("booking a check-back", () => {
   test("lands on the turn's job, due after the minutes asked for, and is the Bot's one pending appointment", () => {
     const { store, writer, group, turn } = fixture();

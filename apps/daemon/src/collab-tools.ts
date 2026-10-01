@@ -239,15 +239,6 @@ function sendMessage(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
   if (isNoWorkCloser(body)) {
     return { ok: true, data: { skipped: true, reason: "no_new_work" }, emitted: [] };
   }
-  // A plan call-back that only says again what this Bot already said here moves nothing. The turn
-  // ends as if it had nothing new to say, and the plan watch then tells you the plan stopped.
-  if (
-    (ctx.writtenPaths?.length ?? 0) === 0 &&
-    !(optionalStringArray(args.paths, "paths") ?? []).length &&
-    ctx.store.repeatsPlanAnswer({ turnId: ctx.turnId, sessionId: optionalString(args.session_id) ?? ctx.sessionId, author: ctx.botId, body, planNudge: ctx.planNudge === true })
-  ) {
-    return { ok: true, data: { skipped: true, reason: "no_new_work" }, emitted: [] };
-  }
   const sessionId = optionalString(args.session_id) ?? ctx.sessionId;
   const parentId = optionalString(args.parent_id);
   if (!ctx.store.isPresent(sessionId, ctx.botId)) {
@@ -268,6 +259,14 @@ function sendMessage(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
   );
   const resolved = resolveCitedPaths(ctx.store, cited);
   const linked = linkifyWorkspacePaths(corrected, resolved.paths);
+  // Stored replies have their file paths linked; compare the same body on both sending paths.
+  if (
+    (ctx.writtenPaths?.length ?? 0) === 0 &&
+    !(optionalStringArray(args.paths, "paths") ?? []).length &&
+    ctx.store.repeatsPlanAnswer({ turnId: ctx.turnId, sessionId, author: ctx.botId, body: linked, planNudge: ctx.planNudge === true })
+  ) {
+    return { ok: true, data: { skipped: true, reason: "no_new_work" }, emitted: [] };
+  }
   const parsed = parseMentions(linked, roster.map((b) => b.name), { lenient: presentNames });
   const emitted: ToolResult["emitted"] = [];
   if (ctx.admission?.draining && (sessionId !== ctx.sessionId || parsed.everyone || parsed.mentions.some(name => name !== selfName))) {
