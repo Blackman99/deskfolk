@@ -71,7 +71,7 @@ add("POST", "holds", { scope: one("global", "bot", "session", "plan", "ticket", 
   action: one("pause", "cancel"), cascade: bool, lift_on_next_user_message: bool, session_id: nullable(id) }, ["scope"]);
 add("POST", "holds/:id/lift", {});
 // A button on a line about your stops (a receipt's undo, 「全部停下」 from the phone's menu is a hold above).
-add("POST", "messages/:id/control", { action: one("stop", "continue", "cancel", "undo", "stop_all", "stop_plan", "only_plan", "continue_only", "continue_all", "resume", "leave", "confirm_check", "remove_check"), task_id: id }, ["action"]);
+add("POST", "messages/:id/control", { action: one("stop", "continue", "cancel", "undo", "stop_all", "stop_plan", "only_plan", "continue_only", "continue_all", "resume", "leave", "confirm_check", "remove_check", "confirm_requirements", "make_standing", "keep_project"), task_id: id }, ["action"]);
 add("PATCH", "tickets/:id", { title: string, spec: string, status: ticketStatus, worker: nullable(id), if_revision: specRevision }, [], true);
 const checkKind: Check = one("exists", "contains", "matches", "command");
 const checkInput = {
@@ -92,14 +92,18 @@ add("PATCH", "checks/:id", { ...checkInput, ...revision }, [], true);
 add("DELETE", "checks/:id", revision);
 // A check from your words, put in force (ADR 0040 P3).
 add("POST", "checks/:id/confirm", {});
+// An entry of the requirements ledger, from the plan's board (ADR 0040 P3).
+add("POST", "requirements/:id/action", { action: one("confirm", "reject", "waive", "not_here", "here_again", "whole_project"), task_id: id }, ["action", "task_id"]);
 add("POST", "tasks/:id/checks/run", { check_id: nullable(id) });
 get("workspace/tree", { path: string }); get("workspace/file", { path: string, size: one("thumb", "preview"), range: string }, ["path"]);
 get("host/tree", { path: string });
 get("events/catchup", { event_instance_id: v => typeof v === "string" && /^[0-9a-f]{32}$/.test(v), after_seq: v => typeof v === "string" && /^(0|[1-9][0-9]*)$/.test(v) && Number.isSafeInteger(Number(v)) }, ["event_instance_id", "after_seq"]);
 get("approvals", { status: one("pending") });
-const spendKind: Check = one("turn", "judgement", "route_pick", "route_review", "route_learn", "composer_suggest", "organize", "acceptance_check");
+// The kinds, and the purposes split out of them (ADR 0042): a `kind` filter names lines.
+const SPEND_LINES = ["turn", "judgement", "route_pick", "route_review", "route_learn", "composer_suggest", "organize", "acceptance_check", "scribe", "vision", "reflect"];
+const spendKind: Check = one(...SPEND_LINES);
 // Remote query values are strings. Repeated local `kind` params arrive here as one comma-separated value.
-const spendKinds: Check = (value) => typeof value === "string" && value.split(",").every((kind) => kind.length > 0 && spendKind(kind)) && value.split(",").length <= 7;
+const spendKinds: Check = (value) => typeof value === "string" && value.split(",").every((kind) => kind.length > 0 && spendKind(kind)) && value.split(",").length <= SPEND_LINES.length;
 const isoTime: Check = (value) => {
   if (typeof value !== "string") return false;
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z$/.exec(value);

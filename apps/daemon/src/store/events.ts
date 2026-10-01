@@ -72,6 +72,25 @@ export function installChangeJournal(ctx: StoreContext): void {
         BEGIN INSERT INTO event_changes VALUES ('tasks', ${row}.task_id, 'UPDATE', ${row}.task_id); END`);
     }
   }
+  // The requirements ledger has no event of its own either (ADR 0040 P3): an entry changing is a
+  // change to the boards that show it — the plan it was said in, the plan or ticket it holds for,
+  // and for one of a whole conversation, that conversation's open plans — carried by `task.upsert`
+  // in `TaskDetail.requirements`. A standing entry reaches the others when they are next read.
+  for (const op of ["INSERT", "UPDATE"]) {
+    ctx.db.exec(`CREATE TEMP TRIGGER event_requirements_${op} AFTER ${op} ON main.requirements
+      BEGIN
+        INSERT INTO event_changes SELECT 'tasks', id, 'UPDATE', id FROM main.tasks
+        WHERE id = NEW.origin_task_id
+          OR (NEW.scope = 'plan' AND id = NEW.scope_id)
+          OR (NEW.scope = 'ticket' AND id = (SELECT task_id FROM main.tickets WHERE tickets.id = NEW.scope_id))
+          OR (NEW.scope = 'project' AND session_id = NEW.scope_id AND closed_at IS NULL);
+      END`);
+  }
+  for (const op of ["INSERT", "DELETE"]) {
+    const row = op === "DELETE" ? "OLD" : "NEW";
+    ctx.db.exec(`CREATE TEMP TRIGGER event_requirement_exclusions_${op} AFTER ${op} ON main.requirement_exclusions
+      BEGIN INSERT INTO event_changes VALUES ('tasks', ${row}.task_id, 'UPDATE', ${row}.task_id); END`);
+  }
 }
 
 export function committedEvents(ctx: StoreContext): ClientEvent[] {

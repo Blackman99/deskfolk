@@ -272,7 +272,8 @@ async function snapshot(store: Store, api: Api, state: Pump & { fingerprint: str
         id: plan.id,
         lastTurnEndMs: ms(scalar<string>(store, `SELECT MAX(updated_at) AS v FROM turns WHERE task_id = ? AND status NOT IN ${LIVE}`, plan.id)),
         needsFiling: store.taskMessagesSince(plan.id, since, 1).length > 0 || store.taskArtifactsSince(plan.id, since, 1).length > 0,
-        organizedAtMs: ms(scalar<string>(store, `SELECT MAX(created_at) AS v FROM spend WHERE kind = 'organize' AND session_id = ?`, plan.session_id)),
+        // The organizer's own rows: the scribe bills as `organize` too, with its own purpose (ADR 0042).
+        organizedAtMs: ms(scalar<string>(store, `SELECT MAX(created_at) AS v FROM spend WHERE kind = 'organize' AND purpose IS NULL AND session_id = ?`, plan.session_id)),
       };
     });
   return {
@@ -636,17 +637,17 @@ function collect(store: Store, sessionId: string | null, taskMessageId: string |
   const ticks = spend && (spend.reported !== null || spend.estimated !== null) ? (spend.reported ?? 0) + (spend.estimated ?? 0) : null;
   const spendByKindRows = store.db
     .query<
-      { kind: string; thinking_level: string | null; n: number; input: number | null; output: number | null; reported: number | null; estimated: number | null },
+      { kind: string; thinking_level: string | null; purpose: string | null; n: number; input: number | null; output: number | null; reported: number | null; estimated: number | null },
       []
     >(
-      `SELECT kind, thinking_level, COUNT(*) AS n, SUM(input_tokens) AS input, SUM(output_tokens) AS output,
+      `SELECT kind, thinking_level, purpose, COUNT(*) AS n, SUM(input_tokens) AS input, SUM(output_tokens) AS output,
               SUM(cost_usd_ticks) AS reported, SUM(estimated_cost_usd_ticks) AS estimated
-       FROM spend GROUP BY kind, thinking_level`,
+       FROM spend GROUP BY kind, thinking_level, purpose`,
     )
     .all();
   const spendByKind: Record<string, SpendBucketStats> = {};
   for (const row of spendByKindRows) {
-    const bucket = spendBucket(row.kind, row.thinking_level);
+    const bucket = spendBucket(row.kind, row.thinking_level, row.purpose);
     const acc = spendByKind[bucket] ?? { rows: 0, input_tokens: 0, output_tokens: 0, cost_usd: null };
     acc.rows += row.n;
     acc.input_tokens += row.input ?? 0;

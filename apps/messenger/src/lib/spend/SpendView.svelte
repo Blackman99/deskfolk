@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
-	import { SPEND_CATEGORY_OF } from '@real-bot/protocol';
+	import { SPEND_CATEGORY_OF, spendLineOf } from '@real-bot/protocol';
 	import SpendTrend from './SpendTrend.svelte';
-	import type { SpendDetail, SpendGroup, SpendKind, SpendSummary, SpendTotals } from '@real-bot/protocol';
+	import type { SpendDetail, SpendGroup, SpendLine, SpendSummary, SpendTotals } from '@real-bot/protocol';
 	import type { MessengerApi } from '../messenger-api.ts';
 	import { formatTokens, formatUsd } from '../spend-format.ts';
 	import { spendCopyFor, type SpendCopy } from './spend-copy.ts';
@@ -87,6 +87,12 @@
 	let ready = $state(false);
 	let drill = $state<SpendDrill>({});
 	let expanded = $state<Record<string, boolean>>({});
+	/**
+	 * Every line a summary from this daemon has listed. A category chip asks for a purpose only once
+	 * one has (`kindsOfCategory`), and still does after a kind drill narrows the summary on screen.
+	 */
+	let listedLines = new Set<SpendLine>();
+	let listedBy: MessengerApi | null = null;
 
 	let summary = $state<SpendSummary | null>(null);
 	let days = $state<SpendGroup[]>([]);
@@ -168,6 +174,11 @@
 		])
 			.then(([sum, trend, page]) => {
 				if (token !== requestSeq || disposed) return;
+				if (current !== listedBy) {
+					listedBy = current;
+					listedLines = new Set();
+				}
+				for (const row of sum.categories) for (const line of row.kinds) listedLines.add(line.kind);
 				summary = sum;
 				days = trend.groups;
 				details = page.items;
@@ -386,10 +397,10 @@
 	}
 
 	function drillCategory(category: SpendGroup['categories'][number]['category']): void {
-		drill = { ...drill, kind: kindsOfCategory(category) };
+		drill = { ...drill, kind: kindsOfCategory(category, listedLines) };
 	}
 
-	function drillKind(kind: SpendKind): void {
+	function drillKind(kind: SpendLine): void {
 		drill = { ...drill, kind: [kind] };
 	}
 
@@ -953,7 +964,7 @@
 											</time>
 										</td>
 										<td class="detail-kind">
-											<span class="kind-label is-{categoryOf[row.kind]}">{copy.kind[row.kind]}</span>
+											<span class="kind-label is-{categoryOf[spendLineOf(row)]}">{copy.kind[spendLineOf(row)]}</span>
 										</td>
 										<td class="detail-owner">
 											<div class="owner-session">

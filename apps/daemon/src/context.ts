@@ -1,9 +1,19 @@
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { USER_MEMBER, type AcceptanceCheckOutcome, type Attachment, type Locale, type Message, type PlanStatus, type TicketStatus } from "@real-bot/protocol";
+import {
+  USER_MEMBER,
+  type AcceptanceCheck,
+  type AcceptanceCheckOutcome,
+  type Attachment,
+  type Locale,
+  type Message,
+  type PlanStatus,
+  type TicketStatus,
+} from "@real-bot/protocol";
 import type { ChatContentPart, ChatMessage } from "./completions";
 import { describeCheck } from "./acceptance-eval";
-import { unconfirmedNote } from "./derived-checks";
+import { measureLabel, measureOf, sameAsk, unconfirmedNote } from "./derived-checks";
+import type { DimensionValue } from "./quote-dimensions";
 import { annotationContext } from "./annotation-context";
 import { askTranscriptText } from "./ask";
 import { loopPictureSpend, pictureMime } from "./loop-pictures";
@@ -215,7 +225,34 @@ export type PlanTicketFact = {
   artifacts: string[];
 };
 
-export type PlanPrecedent = { goal: string; process: string[]; rules: string[]; outcome: string[] };
+/** One thing the user said in the job, as the quote layer shows it: when, where, and the words. */
+export type QuoteFact = { at: string; where: string; body: string };
+
+/**
+ * What the user said in the job (ADR 0040 P3), kept apart from the transcript: the first few lines,
+ * which say what the job is, and the latest, which say where it stands, with how many between.
+ */
+export type QuoteLayer = { head: QuoteFact[]; tail: QuoteFact[]; omitted: number };
+
+/** One entry of the requirements ledger bearing on the job, as the situation block lists it. */
+export type RequirementFact = {
+  seq: number;
+  quote: string;
+  restated: string | null;
+  times: number;
+  /** In how many plans the user said it. */
+  plans: number;
+  status: "open" | "proposed" | "unverified";
+  /** How near it holds to this turn: its ticket 0, the plan 1, another ticket 2, the conversation 3, standing 4. */
+  nearness: number;
+  lastRaisedAt: string;
+  /** Where it holds, in words, and the plan it came from when that is another. */
+  appliesTo: string;
+  /** The check from the user's words on the same number and bound, and whether it is in force. */
+  check: string | null;
+  /** A proposed replacement: the entry it would replace, which stays in force until the user chooses. */
+  replaces: { seq: number; quote: string } | null;
+};
 
 export type PlanCheckFact = {
   item: string;
@@ -252,8 +289,10 @@ export type PlanFacts = {
   checks: PlanCheckFact[];
   /** The ticket this turn works in, when it has one. */
   ticket: { id: string; seq: number; title: string; status: TicketStatus; spec: string; dir: string } | null;
-  /** Finished plans of the same kind, newest first: how this kind of thing went last time. */
-  precedents: PlanPrecedent[];
+  /** What the user said in the job; null when nothing is kept, and on the first turn, whose trigger is the request. */
+  quotes: QuoteLayer | null;
+  /** The requirements ledger's entries bearing on the job, less those the user set not to hold for it. */
+  requirements: RequirementFact[];
   /** Workspace paths the plan's messages cited and that still exist, newest cited first. */
   artifacts: string[];
   /** One line per earlier turn: who, and their last word or the question they are waiting on. */
@@ -283,8 +322,21 @@ export const OTHER_WORK_LINES = 3;
 export const PLAN_TICKET_LINES = 20;
 /** Checks the situation block lists; matches the store's own cap on active checks per plan. */
 export const PLAN_CHECK_LINES = 10;
-/** Finished plans of the same kind the block recounts. */
-export const PLAN_PRECEDENTS_LIMIT = 3;
+/** The user's first and latest lines the quote layer carries (ADR 0040 P3). */
+export const QUOTE_LAYER_HEAD = 4;
+export const QUOTE_LAYER_TAIL = 6;
+/** How much of one line of the user's the quote layer quotes. */
+export const QUOTE_LAYER_BODY = 400;
+/**
+ * Requirements said once that the block lists besides those said twice or more, which are always
+ * all there: at most this many lines, and this many code points between them.
+ */
+export const REQUIREMENT_LINES = 20;
+export const REQUIREMENT_BUDGET = 2000;
+/** Proposed entries, and old unverified rules, the block lists, each. */
+export const REQUIREMENT_ASIDE_LINES = 10;
+/** How much of an entry's words one line of the block quotes. */
+const REQUIREMENT_QUOTE_LINE = 200;
 /** Files named on one ticket's line. */
 const TICKET_ARTIFACT_LINES = 3;
 
@@ -292,11 +344,12 @@ const TICKET_ORDER: Record<TicketStatus, number> = { doing: 0, review: 1, todo: 
 
 /**
  * What a plan looks like from outside the transcript window: what it is for as the organizer last
- * understood it, its rules and acceptance, its tickets and their state, what has been handed over,
- * who did what, and how the same kind of plan went before. Every line is read back from rows the
- * store already keeps; nothing here is summarised by a model at read time, so it costs no call and
- * cannot drift from the record. A handoff, a mention, a Bot↔Bot direct and a check-back all land in
- * the same plan, which is how the goal follows the work across sessions.
+ * understood it, what the user said in it and asked of it (their words and the requirements
+ * ledger, ADR 0040 P3), its tickets and their state, what has been handed over and who did what.
+ * Every line is read back from rows the store already keeps; nothing here is summarised by a model
+ * at read time, so it costs no call and cannot drift from the record. A handoff, a mention, a
+ * Bot↔Bot direct, a check-back and a routine all land in the same plan, which is how the goal and
+ * the user's words follow the work across sessions.
  */
 export function planFacts(
   store: Store,
@@ -343,8 +396,8 @@ export function planFacts(
       artifacts: byTicket.get(ticket.id) ?? [],
     }))
     .sort((a, b) => TICKET_ORDER[a.status] - TICKET_ORDER[b.status] || a.seq - b.seq);
-  const checks: PlanCheckFact[] = store
-    .listChecks(input.taskId)
+  const allChecks = store.listChecks(input.taskId);
+  const checks: PlanCheckFact[] = allChecks
     .slice(0, PLAN_CHECK_LINES)
     .map((check) => {
       const last = check.last_run;
@@ -367,14 +420,6 @@ export function planFacts(
       ticket = null;
     }
   }
-  const precedents: PlanPrecedent[] = [];
-  if (spec?.kind) {
-    for (const earlier of store.precedentTasks(spec.kind, input.taskId, PLAN_PRECEDENTS_LIMIT)) {
-      const done = parsePlanSpec(earlier.spec);
-      if (!done) continue;
-      precedents.push({ goal: done.goal, process: done.process, rules: done.rules, outcome: done.progress.done });
-    }
-  }
   const en = input.locale === "en";
   const places = new Map<string, string>();
   const where = (sessionId: string): string => {
@@ -383,6 +428,21 @@ export function planFacts(
     }
     return places.get(sessionId)!;
   };
+  // A turn a stop holds reads what the user said and asked as it stood when the stop was made: what
+  // came since is for after the lift, not for a turn that may not act on it (ADR 0040 I3), and
+  // reading it there would hand a held Bot a fresh instruction all the same.
+  const heldSince = input.turnId
+    ? store.turnHeldBy(input.turnId).reduce<string | null>((at, hold) => (at === null || hold.created_at < at ? hold.created_at : at), null)
+    : null;
+  const quotes = firstTurn ? null : quoteLayer(store, input.taskId, where, input.locale, heldSince);
+  const requirements = requirementFacts(store, {
+    taskId: input.taskId,
+    ticketId: input.ticketId ?? null,
+    tickets,
+    checks: allChecks,
+    locale: input.locale,
+    heldSince,
+  });
   const trace: string[] = [];
   if (!firstTurn) {
     const nodes = store
@@ -467,7 +527,8 @@ export function planFacts(
     tickets,
     checks,
     ticket,
-    precedents,
+    quotes,
+    requirements,
     artifacts,
     trace,
     check_back,
@@ -476,6 +537,122 @@ export function planFacts(
     elsewhere,
     other_work,
   };
+}
+
+/** When a line was said, in this machine's time: 「09-28 12:02」. */
+function quoteTime(iso: string): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return iso;
+  const two = (n: number) => String(n).padStart(2, "0");
+  return `${two(at.getMonth() + 1)}-${two(at.getDate())} ${two(at.getHours())}:${two(at.getMinutes())}`;
+}
+
+/**
+ * The quote layer (ADR 0040 P3): the user's first {@link QUOTE_LAYER_HEAD} and latest
+ * {@link QUOTE_LAYER_TAIL} lines filed under the plan, from wherever they were said — a group, a
+ * direct, an answer to a question, an annotation, the board — and kept when a transcript is
+ * cleared, so a Bot in a Bot↔Bot direct, a check-back or a routine reads them as one in the group
+ * does. Erased words are left out, and so, for a turn a stop holds, is anything said after the
+ * stop (`heldSince`).
+ */
+function quoteLayer(store: Store, taskId: string, where: (sessionId: string) => string, locale: Locale, heldSince: string | null): QuoteLayer | null {
+  const en = locale === "en";
+  const said = store
+    .listQuotes({ taskId })
+    .filter((quote) => !quote.redacted_at && quote.body.trim() && (heldSince === null || quote.created_at <= heldSince));
+  if (said.length === 0) return null;
+  const fact = (quote: (typeof said)[number]): QuoteFact => {
+    const place = quote.session_id ? where(quote.session_id) : en ? "a deleted session" : "已删除的会话";
+    const label =
+      quote.via === "board"
+        ? en ? "on the board" : "在流程图写"
+        : quote.via === "ask_answer"
+          ? en ? `answering a question in ${place}` : `在${place}回答提问`
+          : quote.via === "annotation"
+            ? en ? `annotation in ${place}` : `在${place}批注`
+            : en ? `in ${place}` : `在${place}`;
+    return { at: quoteTime(quote.created_at), where: label, body: oneLineClip(quote.body, QUOTE_LAYER_BODY) };
+  };
+  if (said.length <= QUOTE_LAYER_HEAD + QUOTE_LAYER_TAIL) return { head: said.map(fact), tail: [], omitted: 0 };
+  return {
+    head: said.slice(0, QUOTE_LAYER_HEAD).map(fact),
+    tail: said.slice(-QUOTE_LAYER_TAIL).map(fact),
+    omitted: said.length - QUOTE_LAYER_HEAD - QUOTE_LAYER_TAIL,
+  };
+}
+
+/**
+ * The requirements ledger's entries bearing on the plan (ADR 0040 P3), as the block lists them:
+ * where each holds relative to this turn, where it came from when another plan set it, and the
+ * check from the user's words on the same number when there is one. Entries the user set not to
+ * hold for this plan are left out, and so, for a turn a stop holds, are those written after the
+ * stop (`heldSince`).
+ */
+function requirementFacts(
+  store: Store,
+  input: { taskId: string; ticketId: string | null; tickets: PlanTicketFact[]; checks: AcceptanceCheck[]; locale: Locale; heldSince: string | null },
+): RequirementFact[] {
+  const en = input.locale === "en";
+  const since = input.heldSince;
+  const newer = new Set(
+    since === null
+      ? []
+      : store
+          .requirementsBearingOn(input.taskId, ["open", "proposed", "unverified"])
+          .filter((entry) => entry.created_at > since)
+          .map((entry) => entry.id),
+  );
+  return store
+    .planRequirements(input.taskId)
+    .filter((entry) => !entry.excluded && !newer.has(entry.id))
+    .map((entry) => {
+      let nearness = 1;
+      let place = en ? "this job" : "这件事";
+      if (entry.scope === "ticket" || entry.scope === "part") {
+        const ticket = input.tickets.find((row) => row.id === entry.ticket_id);
+        nearness = entry.ticket_id === input.ticketId ? 0 : 2;
+        const number = ticket ? String(ticket.seq).padStart(2, "0") : null;
+        place = number
+          ? en ? `ticket ${number} ${oneLineClip(ticket!.title, PLAN_TAG_TITLE_MAX)}` : `任务 ${number} ${oneLineClip(ticket!.title, PLAN_TAG_TITLE_MAX)}`
+          : en ? "one ticket" : "一个任务";
+      } else if (entry.scope === "project") {
+        nearness = 3;
+        place = en ? "every job in this conversation" : "这个会话的每件事";
+      } else if (entry.scope === "standing") {
+        nearness = 4;
+        place = entry.domain ? (en ? `standing (${entry.domain})` : `常设（${entry.domain}）`) : en ? "standing" : "常设";
+      }
+      if (entry.inherited_from) {
+        const from = oneLineClip(entry.inherited_from.title, PLAN_TAG_TITLE_MAX);
+        place += en ? ` (inherited from "${from}")` : `（继承自「${from}」）`;
+      }
+      // The check from the user's words on this very number (the same number and bound), not merely
+      // on the same dimension: an offer for a newer number belongs to the entry saying that one.
+      const asked = entry.dimension && entry.value ? measureOf({ dimension: entry.dimension, ...(entry.value as object) } as DimensionValue) : null;
+      const same = asked
+        ? input.checks
+            .filter((check) => check.origin === "derived" && check.measure && sameAsk(check.measure, asked))
+            .sort((a, b) => Number(b.derived_state === "active") - Number(a.derived_state === "active"))[0]
+        : undefined;
+      const check = same?.measure
+        ? `${measureLabel(same.measure, input.locale)}${
+            same.derived_state === "active" ? (en ? " (in force)" : "（生效）") : en ? " (waiting for the user to confirm)" : "（待用户确认）"
+          }`
+        : null;
+      return {
+        seq: entry.seq,
+        quote: oneLineClip(entry.quote, REQUIREMENT_QUOTE_LINE),
+        restated: entry.restated ? oneLineClip(entry.restated, REQUIREMENT_QUOTE_LINE) : null,
+        times: entry.times_raised,
+        plans: entry.plans_raised,
+        status: entry.status,
+        nearness,
+        lastRaisedAt: entry.last_raised_at,
+        appliesTo: place,
+        check,
+        replaces: entry.supersedes ? { seq: entry.supersedes.seq, quote: oneLineClip(entry.supersedes.quote, REQUIREMENT_QUOTE_LINE) } : null,
+      };
+    });
 }
 
 const PLAN_STATUS_LABEL: Record<PlanStatus, { zh: string; en: string }> = {
@@ -566,8 +743,6 @@ export function planLines(facts: PlanFacts, locale: Locale): string[] {
         ? `Plan "${facts.title}": ${facts.goal} (${tags.join(", ")})`
         : `规划「${facts.title}」：${facts.goal}（${tags.join("，")}）`,
     );
-    if (facts.acceptance.length > 0) lines.push(`${en ? "Acceptance: " : "验收："}${facts.acceptance.join(sep)}`);
-    if (facts.rules.length > 0) lines.push(`${en ? "Rules: " : "规则："}${facts.rules.join(sep)}`);
     if (facts.process.length > 0) lines.push(`${en ? "Process: " : "流程与分工："}${facts.process.join(sep)}`);
     if (facts.progress) {
       const parts: string[] = [];
@@ -587,6 +762,10 @@ export function planLines(facts: PlanFacts, locale: Locale): string[] {
         : `这件事最初的要求（规划「${facts.title}」）：${facts.brief}`,
     );
   }
+  // The user's own words and what they asked, before anything the app or a Bot made of them. The
+  // plan's rules and Done-when lines are in the ledger now, typed on the board or taken in as old rules.
+  if (facts.quotes) lines.push(quoteLines(facts.quotes, locale));
+  lines.push(...requirementLines(facts.requirements, locale));
   if (facts.checks.length > 0) {
     const rows = facts.checks.map((check) => `- ${checkLine(check, locale)}`);
     lines.push(`${en ? "Acceptance checks (the app runs these itself, on this machine):" : "验收检查（应用在本机自己跑）："}\n${rows.join("\n")}`);
@@ -631,16 +810,6 @@ export function planLines(facts: PlanFacts, locale: Locale): string[] {
       : `本轮任务：${number} ${facts.ticket.title}（${TICKET_STATUS_LABEL[facts.ticket.status].zh}）`;
     lines.push(facts.ticket.spec ? `${head}${en ? " — " : "——"}${oneLineClip(facts.ticket.spec, 600)}` : head);
   }
-  if (facts.precedents.length > 0) {
-    const rows = facts.precedents.map((earlier) => {
-      const bits: string[] = [];
-      if (earlier.process.length > 0) bits.push(`${en ? "process: " : "流程 "}${earlier.process.join(en ? ", " : "、")}`);
-      if (earlier.rules.length > 0) bits.push(`${en ? "rules: " : "规则 "}${earlier.rules.join(en ? ", " : "、")}`);
-      if (earlier.outcome.length > 0) bits.push(`${en ? "outcome: " : "结局 "}${earlier.outcome.join(en ? ", " : "、")}`);
-      return en ? `- "${earlier.goal}": ${bits.join("; ") || "(no notes)"}` : `- 「${earlier.goal}」：${bits.join("；") || "（没有记录）"}`;
-    });
-    lines.push(`${en ? "Precedents (finished plans of this kind):" : "先例（同类做完的）："}\n${rows.join("\n")}`);
-  }
   if (facts.artifacts.length > 0) {
     lines.push(
       en ? `Handed over so far: ${facts.artifacts.join(", ")}` : `这件事已交出：${facts.artifacts.join("、")}`,
@@ -656,6 +825,89 @@ export function planLines(facts: PlanFacts, locale: Locale): string[] {
         : `你约的回看：${facts.check_back.in_minutes} 分钟后（${facts.check_back.note}）`,
     );
   }
+  return lines;
+}
+
+/** The quote layer as block text: the first lines, how many between, the latest. */
+function quoteLines(layer: QuoteLayer, locale: Locale): string {
+  const en = locale === "en";
+  const row = (quote: QuoteFact) => (en ? `- ${quote.at} ${quote.where}: ${quote.body}` : `- ${quote.at} ${quote.where}：${quote.body}`);
+  const rows = layer.head.map(row);
+  if (layer.omitted > 0) rows.push(en ? `- … ${layer.omitted} more in between` : `- …中间还有 ${layer.omitted} 条`);
+  rows.push(...layer.tail.map(row));
+  const head = layer.omitted > 0
+    ? en
+      ? `What the user said in this job (verbatim; the first ${QUOTE_LAYER_HEAD} and the latest ${QUOTE_LAYER_TAIL}):`
+      : `用户在这件事里的话（原文，最早 ${QUOTE_LAYER_HEAD} 条和最新 ${QUOTE_LAYER_TAIL} 条）：`
+    : en
+      ? "What the user said in this job (verbatim):"
+      : "用户在这件事里的话（原文）：";
+  return `${head}\n${rows.join("\n")}`;
+}
+
+/** R-31｜「words」（转述：…）｜用户已说 7 次（跨 3 个规划）｜适用：…｜挂检查：… */
+function requirementLine(entry: RequirementFact, locale: Locale): string {
+  const en = locale === "en";
+  const bits = [en ? `R-${entry.seq} | "${entry.quote}"` : `R-${entry.seq}｜「${entry.quote}」`];
+  if (entry.restated) bits[0] += en ? ` (restated: ${entry.restated})` : `（转述：${entry.restated}）`;
+  if (entry.replaces) bits.push(en ? `would replace R-${entry.replaces.seq} "${entry.replaces.quote}"` : `要取代 R-${entry.replaces.seq}「${entry.replaces.quote}」`);
+  if (entry.times >= 2) {
+    const across = entry.plans >= 2 ? (en ? ` (across ${entry.plans} plans)` : `（跨 ${entry.plans} 个规划）`) : "";
+    bits.push(en ? `the user said it ${entry.times} times${across}` : `用户已说 ${entry.times} 次${across}`);
+  }
+  bits.push(en ? `holds for: ${entry.appliesTo}` : `适用：${entry.appliesTo}`);
+  if (entry.check) bits.push(en ? `check: ${entry.check}` : `挂检查：${entry.check}`);
+  return bits.join(en ? " | " : "｜");
+}
+
+/**
+ * The requirements section (ADR 0040 P3): the entries in force, nearest to this turn first and then
+ * the most often and most recently said, every one said twice or more and the rest up to
+ * {@link REQUIREMENT_LINES} lines and {@link REQUIREMENT_BUDGET} code points; then the proposed ones
+ * and the old unverified rules, each in a section of its own, since neither is a requirement yet.
+ */
+function requirementLines(entries: RequirementFact[], locale: Locale): string[] {
+  const en = locale === "en";
+  const more = (n: number) => (en ? `- … and ${n} more` : `- …还有 ${n} 条`);
+  const order = (a: RequirementFact, b: RequirementFact) =>
+    a.nearness - b.nearness || b.times - a.times || (a.lastRaisedAt < b.lastRaisedAt ? 1 : a.lastRaisedAt > b.lastRaisedAt ? -1 : 0) || a.seq - b.seq;
+  const lines: string[] = [];
+  const open = entries.filter((entry) => entry.status === "open").sort(order);
+  if (open.length > 0) {
+    const rows: string[] = [];
+    let once = 0;
+    let spent = 0;
+    let left = 0;
+    for (const entry of open) {
+      const row = `- ${requirementLine(entry, locale)}`;
+      if (entry.times >= 2) {
+        rows.push(row);
+        continue;
+      }
+      const cost = codePointCount(row);
+      if (once < REQUIREMENT_LINES && spent + cost <= REQUIREMENT_BUDGET) {
+        rows.push(row);
+        once += 1;
+        spent += cost;
+      } else {
+        left += 1;
+      }
+    }
+    if (left > 0) rows.push(more(left));
+    lines.push(`${en ? "User requirements (nearest first):" : "用户要求（按适用范围由近到远）："}\n${rows.join("\n")}`);
+  }
+  const aside = (status: RequirementFact["status"], head: string): void => {
+    const listed = entries.filter((entry) => entry.status === status).sort(order);
+    if (listed.length === 0) return;
+    const rows = listed.slice(0, REQUIREMENT_ASIDE_LINES).map((entry) => `- ${requirementLine(entry, locale)}`);
+    if (listed.length > REQUIREMENT_ASIDE_LINES) rows.push(more(listed.length - REQUIREMENT_ASIDE_LINES));
+    lines.push(`${head}\n${rows.join("\n")}`);
+  };
+  aside(
+    "proposed",
+    en ? "Waiting for the user to confirm (not in force; do not act on these as requirements):" : "待用户确认的取代或建议（还没生效，不要当要求执行）：",
+  );
+  aside("unverified", en ? "Old rules (source unverified; for reference only):" : "旧规则（出处未核实，只作参考）：");
   return lines;
 }
 

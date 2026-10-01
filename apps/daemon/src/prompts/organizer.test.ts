@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { isoNow } from "../ids";
 import { CHECKS_MAX, Store, type OrganizerResult, type PlanSpec } from "../store";
 import {
-  holdSettle,
   ORGANIZER_BODY_LIMIT,
+  ORGANIZER_SYSTEM,
   ORGANIZER_MESSAGES_LIMIT,
   ORGANIZER_TICKETS_LIMIT,
   ORGANIZER_TRACE_LIMIT,
@@ -43,7 +43,7 @@ function fixture() {
 }
 
 describe("what the organizer reads", () => {
-  test("a message run: the line, the current plan with its tickets, what happened since the last version, the session's earlier plans, kinds, and precedents", async () => {
+  test("a message run: the line, the current plan with its tickets, what happened since the last version, the session's earlier plans and kinds, and no precedents", async () => {
     const { store, writer, reviewer, group } = fixture();
     const root = mkdtempSync(join(tmpdir(), "organizer-payload-"));
     store.patchSettingsSync({ workspace_path: root });
@@ -117,7 +117,10 @@ describe("what the organizer reads", () => {
     // The session's earlier plans, without the current one and without the routine's standing plan.
     expect(payload.recent_plans.map((row) => [row.id, row.goal, row.status])).toEqual([[earlier.id, "订会议室", "parked"]]);
     expect(payload.kinds.sort()).toEqual(["会议室", "周报", "日报"]);
-    expect(payload.precedents).toEqual([{ goal: "写上周的周报", process: ["Writer 写，Reviewer 审"], rules: ["不要口语"], outcome: ["交了 report.md"] }]);
+    // A finished plan of the same kind is no longer read (ADR 0042): what carries over between jobs
+    // is the requirements ledger's, inherited within the conversation.
+    expect(payload).not.toHaveProperty("precedents");
+    expect(JSON.stringify(payload)).not.toContain("写上周的周报");
     void reviewer;
     store.close();
     rmSync(root, { recursive: true, force: true });
@@ -127,7 +130,7 @@ describe("what the organizer reads", () => {
     const { store, group } = fixture();
     const empty = organizerPayload(store, { mode: "message", sessionId: group.id, message: store.postMessage(group.id, { body: "你好" }), current: null });
     expect(empty.current_plan).toBeNull();
-    expect(empty.since_last_revision).toEqual({ messages: [], user_spoke: true, artifacts: [], trace: [], commands: [] });
+    expect(empty.since_last_revision).toEqual({ messages: [], artifacts: [], trace: [], commands: [] });
     expect(empty.recent_plans).toEqual([]);
     expect(empty.elsewhere_plans).toEqual([]);
     const plan = store.openTask({ sessionId: group.id, title: "写周报", spec: spec() });
@@ -136,9 +139,6 @@ describe("what the organizer reads", () => {
     expect(settle.message).toBeNull();
     expect(settle.current_plan?.id).toBe(plan.id);
     expect(settle.elsewhere_plans).toEqual([]);
-    // A settle is told what the app read before the call: whether you said anything since.
-    expect(settle.since_last_revision.user_spoke).toBe(false);
-    expect(organizerPayload(store, { mode: "settle", sessionId: group.id, message: null, current: plan, userSpoke: true }).since_last_revision.user_spoke).toBe(true);
     store.close();
   });
 
@@ -208,7 +208,6 @@ describe("what the organizer reads", () => {
     // The question is the Bot's, with its choices; what you picked and wrote is yours.
     expect(messages[3]).toMatchObject({ id: ask.id, body: "发给谁？ 选项（单选）：团队 / 老板", answer: "用户选了：老板 用户补充：抄送财务" });
     expect(messages.slice(0, 3).some((row) => "answer" in row)).toBe(false);
-    expect(payload.since_last_revision.user_spoke).toBe(true);
     store.close();
   });
 
@@ -308,36 +307,33 @@ describe("what the organizer reads", () => {
     store.close();
   });
 
-  test("the rules and ticket descriptions you typed on the board are marked as yours, however many tickets you moved since", () => {
+  test("the ticket descriptions you typed on the board are marked as yours, however many tickets you moved since", () => {
     const { store, writer, group } = fixture();
     const plan = store.openTask({ sessionId: group.id, title: "写周报", spec: spec() });
     const draft = store.createTicket({ taskId: plan.id, title: "初稿", spec: "写出第一版", status: "todo" });
-    const file = (rules: string[], tickets: OrganizerResult["tickets"] = []) =>
+    const file = (tickets: OrganizerResult["tickets"] = []) =>
       store.applyOrganizerResult({
         sessionId: group.id,
         current: store.getTask(plan.id),
-        result: { decision: "continue", resumePlanId: null, spec: spec({ rules }), tickets, messageTicket: null },
+        result: { decision: "continue", resumePlanId: null, spec: spec(), tickets, messageTicket: null },
         source: { messageId: null, turnId: null, messageBody: "" },
       });
     const typed = () => organizerPayload(store, { mode: "settle", sessionId: group.id, message: null, current: store.getTask(plan.id) }).current_plan!;
-    file(["不要口语"]);
-    store.setPlanSpecByUser(plan.id, spec({ rules: ["不要口语", "标题别太长"] }));
-    // Every drag on the board is a revision of yours too; none of them pushes your rule out.
+    file();
+    // Every drag on the board is a revision of yours too; none of them makes a description yours.
     for (let i = 0; i < 12; i += 1) store.patchTicketByUser(draft.id, { status: i % 2 === 0 ? "doing" : "todo", worker: writer.id });
-    file(["不要口语", "标题别太长", "配图冻结"]);
-    expect(typed().rules_user_typed).toEqual(["标题别太长"]);
+    file();
     expect(typed().tickets[0]).not.toHaveProperty("spec_user_typed");
 
     store.patchTicketByUser(draft.id, { spec: "写出第一版，附上数据来源" });
     expect(typed().tickets[0]).toMatchObject({ spec: "写出第一版，附上数据来源", spec_user_typed: true });
     // Once the organizer rewrites it, it is no longer the description you wrote.
-    file(["不要口语", "标题别太长"], [{ id: draft.id, spec: "写出第一版和第二版" }]);
+    file([{ id: draft.id, spec: "写出第一版和第二版" }]);
     expect(typed().tickets[0]).not.toHaveProperty("spec_user_typed");
-    expect(typed().rules_user_typed).toEqual(["标题别太长"]);
     store.close();
   });
 
-  test("the goal and the Done when lines you typed on the board are marked as yours until the organizer changes them", () => {
+  test("the goal you typed on the board is marked as yours until the organizer changes it; the rules and Done when are not the organizer's to write, so it is not told which are yours", () => {
     const { store, group } = fixture();
     const plan = store.openTask({ sessionId: group.id, title: "写周报", spec: spec() });
     const file = (over: Partial<PlanSpec>) =>
@@ -349,16 +345,33 @@ describe("what the organizer reads", () => {
       });
     const typed = () => organizerPayload(store, { mode: "message", sessionId: group.id, message: null, current: store.getTask(plan.id) }).current_plan!;
     file({});
-    expect(typed()).toMatchObject({ goal_user_typed: false, acceptance_user_typed: [] });
+    expect(typed().goal_user_typed).toBe(false);
 
     store.setPlanSpecByUser(plan.id, spec({ goal: "只写第一周的周报", acceptance: ["交到 report.md", "不超过一页"] }));
     // The organizer files something else and keeps what you typed: still yours.
-    file({ goal: "只写第一周的周报", acceptance: ["交到 report.md", "不超过一页"], rules: ["不要口语"] });
-    expect(typed()).toMatchObject({ goal_user_typed: true, acceptance_user_typed: ["不超过一页"] });
+    file({ goal: "只写第一周的周报" });
+    expect(typed().goal_user_typed).toBe(true);
+    expect(typed()).not.toHaveProperty("acceptance_user_typed");
+    expect(typed()).not.toHaveProperty("rules_user_typed");
+    expect(typed().spec?.acceptance).toEqual(["交到 report.md", "不超过一页"]);
 
-    file({ goal: "写一份周报", acceptance: ["交到 report.md", "不超过一页"] });
-    expect(typed()).toMatchObject({ goal_user_typed: false, acceptance_user_typed: ["不超过一页"] });
+    file({ goal: "写一份周报" });
+    expect(typed().goal_user_typed).toBe(false);
     store.close();
+  });
+
+  test("the prompt asks for no rules, Done when or precedents, and a settle for the handover only", () => {
+    // The answer format has no slot for either list; the rest of the prompt only reads them.
+    const format = ORGANIZER_SYSTEM.slice(ORGANIZER_SYSTEM.indexOf('{"decision"'), ORGANIZER_SYSTEM.indexOf("策略："));
+    expect(format).toContain('"plan": {"kind": "…", "goal": "…", "process"');
+    expect(format).not.toContain('"acceptance"');
+    expect(format).not.toContain('"rules"');
+    expect(ORGANIZER_SYSTEM).toContain("只由用户在流程图上写，你只读不写");
+    expect(ORGANIZER_SYSTEM).not.toContain("先例");
+    expect(ORGANIZER_SYSTEM).not.toContain("precedents");
+    expect(ORGANIZER_SYSTEM).not.toContain("user_spoke");
+    expect(ORGANIZER_SYSTEM).not.toContain("_user_typed 里");
+    expect(ORGANIZER_SYSTEM).toContain("settle 时只记交接");
   });
 });
 
@@ -560,95 +573,5 @@ describe("parseOrganizerChecks", () => {
   test("caps the list at CHECKS_MAX entries", () => {
     const many = Array.from({ length: CHECKS_MAX + 5 }, (_, i) => ({ id: `new-${i + 1}`, item: `检查 ${i + 1}` }));
     expect(parseOrganizerChecks(many, existing)).toHaveLength(CHECKS_MAX);
-  });
-});
-
-describe("what a settle may change when you have said nothing since the last version", () => {
-  function answer(over: Partial<OrganizerResult> = {}): OrganizerResult {
-    return { decision: "continue", resumePlanId: null, spec: spec(), tickets: [], messageTicket: null, ...over };
-  }
-
-  function board() {
-    const { store, writer, group } = fixture();
-    const plan = store.openTask({ sessionId: group.id, title: "写周报", spec: spec() });
-    const draft = store.createTicket({ taskId: plan.id, title: "初稿", spec: "写出第一版，交到 draft.md", status: "doing", worker: writer.id });
-    const art = store.createTicket({ taskId: plan.id, title: "配图", status: "todo" });
-    return { store, writer, plan, draft, art, tickets: () => store.listTickets(plan.id) };
-  }
-
-  test("the goal, Done when and rules stay exactly as they were, and the plan is not parked; process and progress land", () => {
-    const { store, tickets } = board();
-    const before = spec({ rules: ["不要口语", "标题别太长"] });
-    const changed = spec({
-      goal: "只写周报的第一段",
-      acceptance: ["交到 report.md", "审稿解冻前不能当作终稿"],
-      rules: ["不要口语，只推进初稿，审稿冻结"],
-      process: ["Writer 决定先冻结审稿"],
-      progress: { done: ["初稿"], open: [], blocked: ["审稿：等 Writer 解冻"] },
-      status: "parked",
-    });
-    const quiet = { before, tickets: tickets(), userSpoke: false };
-    const { result, held } = holdSettle(answer({ spec: changed }), quiet);
-    expect(result.spec).toEqual({ ...changed, goal: before.goal, acceptance: before.acceptance, rules: before.rules, status: "active" });
-    expect(held).toEqual(["kept the goal as it was", "kept Done when as it was", "kept the rules as they were", "did not park the plan"]);
-    // A rule added on its own, or one dropped on its own, is held all the same: neither rests on a word of yours.
-    expect(holdSettle(answer({ spec: { ...before, rules: [...before.rules, "审稿冻结"] } }), quiet).result.spec.rules).toEqual(before.rules);
-    expect(holdSettle(answer({ spec: { ...before, rules: ["不要口语"] } }), quiet).result.spec.rules).toEqual(before.rules);
-    // A plan you parked stays parked, a plan called done is done, and an unchanged answer holds nothing.
-    const parked = { ...before, status: "parked" as const };
-    expect(holdSettle(answer({ spec: parked }), { ...quiet, before: parked }).result.spec.status).toBe("parked");
-    expect(holdSettle(answer({ spec: { ...before, status: "done" } }), quiet).result.spec.status).toBe("done");
-    expect(holdSettle(answer({ spec: before }), quiet).held).toEqual([]);
-    store.close();
-  });
-
-  test("an existing ticket keeps the description it has; an empty one may be filled, a new ticket opens with its own, and status and worker still move", () => {
-    const { store, writer, plan, draft, art, tickets } = board();
-    const quiet = { before: spec(), tickets: tickets(), userSpoke: false };
-    const { result, held } = holdSettle(
-      answer({
-        tickets: [
-          { id: draft.id, spec: "已交初稿，不再重试", status: "review", worker: writer.id },
-          { id: art.id, spec: "每段配一张图" },
-          { id: "new-1", title: "排版", spec: "排成 A4", status: "todo" },
-        ],
-      }),
-      quiet,
-    );
-    expect(result.tickets).toEqual([
-      { id: draft.id, spec: "", status: "review", worker: writer.id },
-      { id: art.id, spec: "每段配一张图" },
-      { id: "new-1", title: "排版", spec: "排成 A4", status: "todo" },
-    ]);
-    expect(held).toEqual(["kept ticket 01's spec"]);
-    // A new-N named like an existing ticket is that ticket, the way the store will read it.
-    const renamed = holdSettle(answer({ tickets: [{ id: "new-1", title: "初稿", spec: "只改标题" }] }), quiet);
-    expect(renamed.result.tickets).toEqual([{ id: "new-1", title: "初稿", spec: "" }]);
-    expect(renamed.held).toEqual(["kept ticket 01's spec"]);
-    // So is one named like a ticket the same answer renamed first.
-    const retitled = holdSettle(
-      answer({ tickets: [{ id: draft.id, title: "终稿", spec: "" }, { id: "new-1", title: "终稿", spec: "不再重试，只等解冻" }] }),
-      quiet,
-    );
-    expect(retitled.result.tickets).toEqual([{ id: draft.id, title: "终稿", spec: "" }, { id: "new-1", title: "终稿", spec: "" }]);
-    expect(retitled.held).toEqual(["kept ticket 01's spec"]);
-    // Echoing the one-line preview it was shown is no rewrite: blanked so the description is not cut short, and not logged.
-    const long = store.createTicket({ taskId: plan.id, title: "长说明", spec: `第一段\n\n${"细".repeat(400)}` });
-    const echoed = holdSettle(answer({ tickets: [{ id: long.id, spec: ticketSpecPreview(long.spec) }] }), { ...quiet, tickets: tickets() });
-    expect(echoed.result.tickets).toEqual([{ id: long.id, spec: "" }]);
-    expect(echoed.held).toEqual([]);
-    store.close();
-  });
-
-  test("after a line of yours a settle changes what it likes; a plan with no version yet gets no rules", () => {
-    const { store, draft, tickets } = board();
-    const changed = answer({ spec: spec({ goal: "写两份周报", rules: ["不要口语", "标题别太长"] }), tickets: [{ id: draft.id, spec: "写两版" }] });
-    const spoke = holdSettle(changed, { before: spec(), tickets: tickets(), userSpoke: true });
-    expect(spoke.result).toBe(changed);
-    expect(spoke.held).toEqual([]);
-    const first = holdSettle(answer({ spec: spec({ goal: "写周报初稿", rules: ["审稿冻结"] }) }), { before: null, tickets: [], userSpoke: false });
-    expect(first.result.spec).toMatchObject({ goal: "写周报初稿", rules: [] });
-    expect(first.held).toEqual(["kept the rules as they were"]);
-    store.close();
   });
 });

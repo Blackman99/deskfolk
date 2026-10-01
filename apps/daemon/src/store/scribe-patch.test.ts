@@ -36,7 +36,9 @@ function fixture() {
       offered: store.openRequirementsFor(planId, 60).map((row) => row.id),
       patch: { adds: [], raises: [], supersedes: [], ...patch },
     });
-  return { store, direct, planId, say, entry, apply };
+  /** The director's turn called a video tool: what makes the plan video work. */
+  const video = () => store.recordTurnRun({ turnId: turn.id, tool: "mcp__seedance__generate_video", command: "镜头 1", exitCode: 0, ok: true });
+  return { store, direct, planId, say, entry, apply, video };
 }
 
 describe("an item is checked against your line", () => {
@@ -124,6 +126,83 @@ describe("an item is checked against your line", () => {
     expect(store.getRequirement(arm.id).times_raised).toBe(2);
     expect(outcome.added).toHaveLength(SCRIBE_ADDS_MAX);
     expect(store.listWorkEvents({ kind: "scribe.rejected" }).map((row) => row.payload.reason)).toEqual(["duplicate", "duplicate", "too_many", "too_many"]);
+    store.close();
+  });
+
+  test("your words again for an entry you set not to hold for this plan: it holds here again, said once more, not a second entry", () => {
+    const { store, direct, planId, say, apply } = fixture();
+    const first = say("每次过门都要有过渡镜头");
+    const transition = store.addRequirement({ scope: "project", scopeId: direct, quote: "每次过门都要有过渡镜头", category: "转场", sourceKind: "message", sourceQuoteId: first.id, addedBy: "scribe" });
+    store.setRequirementHere(transition.id, { taskId: planId, holds: false });
+    const quote = say("每次过门都要有过渡镜头，这件也一样");
+    const outcome = apply(quote, { adds: [{ quote: "每次过门都要有过渡镜头", category: "转场", scope_hint: "plan" }] });
+    expect(outcome).toMatchObject({ added: [], raised: [transition.id] });
+    expect(store.listRequirements()).toHaveLength(1);
+    expect(store.getRequirement(transition.id).times_raised).toBe(2);
+    expect(store.planRequirements(planId)).toMatchObject([{ id: transition.id, excluded: false }]);
+    expect(store.listWorkEvents({ kind: "requirement.here_again" })).toMatchObject([
+      { actor: "scribe", task_id: planId, payload: { requirement: transition.id, task: planId, quote: quote.id } },
+    ]);
+    store.close();
+  });
+
+  test("in a video job, a requirement about how the work is made holds for the whole conversation, unless it names a part or one ticket", () => {
+    const { store, direct, planId, say, apply, video } = fixture();
+    video();
+    const ticket = store.createTicket({ taskId: planId, title: "C09" });
+    const quote = say("背景要前后连贯，C09 背景要干净，字体统一用黑体，片尾加二维码");
+    const outcome = apply(quote, {
+      adds: [
+        { quote: "背景要前后连贯", category: "背景连贯", scope_hint: "plan" },
+        { quote: "C09 背景要干净", category: "背景连贯", scope_hint: "plan" },
+        { quote: "字体统一用黑体", category: "字幕", scope_hint: "ticket", targets: [ticket.id] },
+        { quote: "片尾加二维码", category: "片尾", scope_hint: "plan" },
+      ],
+    });
+    expect(outcome.added.map((id) => store.getRequirement(id)).map((entry) => [entry.quote, entry.scope, entry.scope_id])).toEqual([
+      ["背景要前后连贯", "project", direct],
+      ["C09 背景要干净", "plan", planId],
+      ["字体统一用黑体", "ticket", ticket.id],
+      ["片尾加二维码", "plan", planId],
+    ]);
+    store.close();
+  });
+
+  test("in a job that is no video work, a line that sounds like craft stays with the job; one you say every job should keep to still holds for all", () => {
+    const { store, direct, planId, say, apply } = fixture();
+    const quote = say("段落之间要有过渡，以后每份报告都用这个模板");
+    const outcome = apply(quote, {
+      adds: [
+        { quote: "段落之间要有过渡", category: "过渡", scope_hint: "plan" },
+        { quote: "以后每份报告都用这个模板", category: "模板", scope_hint: "project" },
+      ],
+    });
+    expect(outcome.added.map((id) => store.getRequirement(id)).map((entry) => [entry.quote, entry.scope, entry.scope_id])).toEqual([
+      ["段落之间要有过渡", "plan", planId],
+      ["以后每份报告都用这个模板", "project", direct],
+    ]);
+    store.close();
+  });
+
+  test("a line for the whole plan with a ticket's words is an entry of its own the next plan inherits; a ticket's line raises only that ticket's", () => {
+    const { store, direct, planId, say, apply, video } = fixture();
+    video();
+    const [c09, c10] = ["C09", "C10"].map((title) => store.createTicket({ taskId: planId, title }));
+    const shot = apply(say("背景要连贯", c09!.id), { adds: [{ quote: "背景要连贯", category: "背景连贯", scope_hint: "ticket" }] }).added[0]!;
+    expect(store.getRequirement(shot)).toMatchObject({ scope: "ticket", scope_id: c09!.id });
+    // The same ticket again: said again. Another ticket: that ticket's own.
+    expect(apply(say("背景要连贯", c09!.id), { adds: [{ quote: "背景要连贯", category: "背景连贯", scope_hint: "ticket" }] })).toMatchObject({ added: [], raised: [shot] });
+    const other = apply(say("背景要连贯", c10!.id), { adds: [{ quote: "背景要连贯", category: "背景连贯", scope_hint: "ticket" }] }).added[0]!;
+    expect(store.getRequirement(other)).toMatchObject({ scope: "ticket", scope_id: c10!.id });
+
+    // Later, for the whole film: the conversation's own entry, not a third raise of C09's.
+    const outcome = apply(say("所有镜头都是，背景要连贯"), { adds: [{ quote: "背景要连贯", category: "背景连贯", scope_hint: "plan" }] });
+    expect(outcome.raised).toEqual([]);
+    const [wide] = outcome.added.map((id) => store.getRequirement(id));
+    expect(wide).toMatchObject({ scope: "project", scope_id: direct, quote: "背景要连贯" });
+    expect(store.getRequirement(shot).times_raised).toBe(2);
+    const next = store.openTask({ sessionId: direct, title: "EP02 动画成片" });
+    expect(store.planRequirements(next.id).map((entry) => entry.id)).toEqual([wide!.id]);
     store.close();
   });
 
@@ -279,6 +358,19 @@ describe("a change", () => {
     expect(store.getRequirement(outcome.proposed[0]!)).toMatchObject({ status: "proposed", supersedes: transition.id, category: "转场", restated: "过门直接硬切" });
     expect([arm, transition].map((row) => store.getRequirement(row.id).status)).toEqual(["open", "open"]);
     expect(store.listWorkEvents({ kind: "scribe.rejected" }).map((row) => row.payload.reason)).toEqual(["other_category", "duplicate"]);
+    store.close();
+  });
+
+  test("beside an entry with no category to tell by (typed on the board, an old rule), a change is proposed", () => {
+    const { store, planId, say, apply } = fixture();
+    const typed = say("机械臂必须是左手");
+    const arm = store.addRequirement({ scope: "plan", scopeId: planId, quote: "机械臂必须是左手", sourceKind: "board", sourceQuoteId: typed.id, addedBy: "user" });
+    const quote = say("机械臂改成右手");
+    const outcome = apply(quote, { supersedes: [{ requirement_id: arm.id, quote: "机械臂改成右手", restated: "机械臂是右手", category: "角色设定" }] });
+    expect(outcome.proposed).toHaveLength(1);
+    expect(store.getRequirement(outcome.proposed[0]!)).toMatchObject({ status: "proposed", supersedes: arm.id, category: null, quote: "机械臂改成右手" });
+    expect(store.getRequirement(arm.id).status).toBe("open");
+    expect(store.listWorkEvents({ kind: "scribe.rejected" })).toEqual([]);
     store.close();
   });
 
@@ -473,5 +565,6 @@ describe("I9: the open entries never shrink", () => {
     // The runs reach every kind of outcome, numbers proposed against entries of another category among them.
     if (process.env.I9_COUNTS) console.log("I9", JSON.stringify(counts));
     for (const count of Object.values(counts)) expect(count).toBeGreaterThan(0);
-  });
+    // 1,500 answers, each a write whose plan's board is read back for its event: seconds, not the default five.
+  }, 30_000);
 });

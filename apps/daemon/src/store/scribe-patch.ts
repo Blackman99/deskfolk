@@ -8,14 +8,16 @@
  * proposed replacement beside the entry, which stays open until you choose. A change to a number
  * you gave (the line gives one other number for the entry's dimension) is proposed whatever
  * category the scribe named; the same number again only raises the entry; any other change is
- * proposed only beside an entry of the same category, and one aimed at another category is
- * dropped. So whatever the scribe answers, every entry open before it is open after it (I9).
+ * proposed only beside an entry of the same category, or one with no category to tell by (a line
+ * you typed on the board, an old rule), and one aimed at another category is dropped. So whatever
+ * the scribe answers, every entry open before it is open after it (I9).
  *
  * The fallback capture is here too: a line that complains about a job that has already delivered,
  * which the scribe filed nothing for, is kept whole as a proposed entry, so a complaint is not lost
  * to a model that failed or saw nothing in it.
  */
 import { soundsLikeComplaint } from "../complaint-words";
+import { conversationWide } from "../craft-words";
 import { dimensionValueJson, readDimensionSpans, readDimensions } from "../quote-dimensions";
 import { findWords, quoteWords } from "../quote-words";
 import { takeCodePoints } from "../text";
@@ -23,11 +25,13 @@ import type { UserQuote } from "./quotes";
 import {
   addRequirement,
   getRequirement,
-  listRequirements,
   newNumberFor,
+  planDomains,
   raiseRequirement,
   repeatsNumber,
   REQUIREMENT_QUOTE_MAX,
+  requirementsBearingOn,
+  setRequirementHere,
   type Requirement,
   type RequirementScope,
   type RequirementSourceKind,
@@ -92,6 +96,15 @@ function text(value: unknown, max: number): string | null {
 
 function sameCategory(a: string | null, b: string | null): boolean {
   return !!a && !!b && a.normalize("NFKC").toLowerCase() === b.normalize("NFKC").toLowerCase();
+}
+
+/**
+ * Whether a change the scribe gives may be proposed beside `entry` by category: the category it
+ * named is the entry's, or the entry has none (typed on the board, or an old rule taken in), so
+ * nothing tells that the change is about something else. A proposal takes nothing out of force.
+ */
+function mayReplaceByCategory(named: string | null, entry: Requirement): boolean {
+  return entry.category === null || sameCategory(named, entry.category);
 }
 
 function sourceKindOf(quote: UserQuote): RequirementSourceKind {
@@ -164,9 +177,9 @@ export function applyScribePatch(
       }
       // A new number for the entry's dimension («约 2 分钟» → «改成 3 分钟»): proposed whatever
       // category the scribe named, since the number says what it replaces. Anything else only
-      // beside an entry of the same category.
+      // beside an entry of the same category, or of none.
       const number = newNumberFor(entry, words);
-      if (!number && !sameCategory(text(item.category, CATEGORY_MAX), entry.category)) return reject("supersede", index, "other_category", entry.id);
+      if (!number && !mayReplaceByCategory(text(item.category, CATEGORY_MAX), entry)) return reject("supersede", index, "other_category", entry.id);
       if (!number && tooShort(words)) return reject("supersede", index, "quote_too_short", entry.id);
       if (proposedFor.has(entry.id)) return reject("supersede", index, "duplicate", entry.id);
       proposedFor.add(entry.id);
@@ -200,6 +213,11 @@ export function applyScribePatch(
     });
 
     let adds = 0;
+    // Read once and kept up to date as entries are added: the adds of one answer are weighed against each other too.
+    const openHere = requirementsBearingOn(ctx, taskId, ["open"]);
+    // The conversation-wide default is for video work (ADR 0042): 「段落之间要有过渡」 in a report is that report's.
+    let video: boolean | undefined;
+    const isVideo = (): boolean => (video ??= planDomains(ctx, taskId).includes("video"));
     patch.adds.forEach((raw, index) => {
       const item = asRecord(raw);
       const said = item ? text(item.quote, Number.MAX_SAFE_INTEGER) : null;
@@ -208,13 +226,31 @@ export function applyScribePatch(
       if (!words) return reject("add", index, "quote_not_in_line");
       if (tooShort(words)) return reject("add", index, "quote_too_short");
       if (adds >= SCRIBE_ADDS_MAX) return reject("add", index, "too_many");
-      const { scope, scopeId } = addScope(item, { ticketIds, ticketId: quote.ticket_id, taskId, sessionId: task.session_id });
-      // The same words already stand as an open entry here: said again, not a second entry. (A
-      // proposal does not count: it is about replacing another entry, not this one.)
+      const category = text(item.category, CATEGORY_MAX);
+      const { scope, scopeId } = addScope(item, {
+        ticketIds,
+        ticketId: quote.ticket_id,
+        taskId,
+        sessionId: task.session_id,
+        wide: conversationWide(category, words) && isVideo(),
+      });
+      // The same words already stand as an open entry bearing on the plan that holds at least as
+      // far as the new one would: said again, not a second entry. (A proposal does not count: it
+      // is about replacing another entry, not this one.) A ticket's entry counts only for an
+      // addition to that same ticket: one for the plan or the conversation raising it would leave
+      // the words held for one piece of the work, and the next plan would inherit nothing. One you
+      // set not to hold for this plan holds here again: you have just said its very words in it,
+      // and a second entry beside it would put those words twice before every other plan of the
+      // conversation.
       const key = quoteWords(words);
-      const same = listRequirements(ctx, { scope, scopeId, status: "open" }).find((row) => quoteWords(row.quote) === key);
+      const reaches = (row: Requirement): boolean => row.scope !== "ticket" || (scope === "ticket" && row.scope_id === scopeId);
+      const same = openHere.find((row) => reaches(row) && quoteWords(row.quote) === key);
       if (same) {
         if (raisedIds.has(same.id) || outcome.added.includes(same.id)) return reject("add", index, "duplicate", same.id);
+        if (same.excluded) {
+          setRequirementHere(ctx, same.id, { taskId, holds: true, actor: SCRIBE_WRITER, quoteId: quote.id });
+          same.excluded = false;
+        }
         return raise(same.id);
       }
       adds += 1;
@@ -223,12 +259,13 @@ export function applyScribePatch(
         scopeId,
         quote: words,
         restated: text(item.restated, REQUIREMENT_QUOTE_MAX),
-        category: text(item.category, CATEGORY_MAX),
+        category,
         polarity: item.polarity === "must_not" ? "must_not" : "must",
         sourceKind,
         sourceQuoteId: quote.id,
         addedBy: SCRIBE_WRITER,
       });
+      openHere.push({ ...entry, excluded: false });
       outcome.added.push(entry.id);
     });
     return outcome;
@@ -237,19 +274,23 @@ export function applyScribePatch(
 
 /**
  * Where a new entry holds: a ticket when the scribe names exactly one of this plan's tickets (or the
- * line was filed under one and it names none), the conversation the plan lives in — the project —
- * when it says every job there should keep to it, else the plan.
+ * line was filed under one and it names none); the conversation the plan lives in — the project —
+ * when it says every job there should keep to it, or, in a video job, when it is about how the work
+ * is made, how it looks or sounds, or what stays the same across a series (`wide`, craft-words.ts:
+ * 背景连贯, 过门要有过渡, 色调偏冷, 左手) and not said of one ticket, so the next job there has it
+ * from the start (ADR 0042); else the plan.
  */
 function addScope(
   item: Record<string, unknown>,
-  at: { ticketIds: ReadonlySet<string>; ticketId: string | null; taskId: string; sessionId: string | null },
+  at: { ticketIds: ReadonlySet<string>; ticketId: string | null; taskId: string; sessionId: string | null; wide: boolean },
 ): { scope: RequirementScope; scopeId: string } {
   if (item.scope_hint === "ticket") {
     const named = Array.isArray(item.targets) ? [...new Set(item.targets.filter((id): id is string => typeof id === "string" && at.ticketIds.has(id)))] : [];
     if (named.length === 1) return { scope: "ticket", scopeId: named[0]! };
     if (named.length === 0 && at.ticketId && at.ticketIds.has(at.ticketId)) return { scope: "ticket", scopeId: at.ticketId };
   }
-  if (item.scope_hint === "project" && at.sessionId) return { scope: "project", scopeId: at.sessionId };
+  const wide = item.scope_hint === "project" || (at.wide && item.scope_hint !== "ticket");
+  if (wide && at.sessionId) return { scope: "project", scopeId: at.sessionId };
   return { scope: "plan", scopeId: at.taskId };
 }
 

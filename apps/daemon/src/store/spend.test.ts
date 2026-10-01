@@ -114,6 +114,48 @@ describe("spend ledger", () => {
     store.close();
   });
 
+  test("a purpose splits its calls out of the kind they bill as: in the rows, the categories, each grouping and the kind filter", () => {
+    const store = open();
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "none" });
+    const session = writer.direct_session.id;
+    const bill = (kind: "organize" | "acceptance_check", purpose: "scribe" | "vision" | null, outputTokens: number) =>
+      store.insertSpend({ kind, purpose, sessionId: session, botId: null, model: "fast", inputTokens: 10, outputTokens });
+    bill("organize", null, 1);
+    const scribe = bill("organize", "scribe", 2);
+    bill("organize", "scribe", 4);
+    bill("acceptance_check", "vision", 8);
+    bill("acceptance_check", null, 16);
+    expect(scribe).toMatchObject({ kind: "organize", purpose: "scribe" });
+    expect(store.listSpend({}).map((row) => row.purpose)).toEqual([null, "scribe", "scribe", "vision", null]);
+    // A purpose belongs to one kind; the older kind CHECK is untouched, so the row keeps the nearest old value.
+    expect(() => bill("acceptance_check", "scribe", 1)).toThrow("spend purpose does not belong to that kind");
+
+    const categories = store.spendSummary({}).categories;
+    const line = (category: string, kind: string) => categories.find((cat) => cat.category === category)!.kinds.find((row) => row.kind === kind);
+    expect(line("decision", "organize")!.output_tokens).toBe(1);
+    expect(line("other", "scribe")!.output_tokens).toBe(6);
+    expect(line("other", "vision")!.output_tokens).toBe(8);
+    expect(line("other", "acceptance_check")!.output_tokens).toBe(16);
+    // A purpose nothing was billed with yet is no line at all; a kind always is.
+    expect(line("feedback", "reflect")).toBeUndefined();
+    expect(line("feedback", "route_learn")!.calls).toBe(0);
+    expect(line("decision", "scribe")).toBeUndefined();
+
+    // A kind names its rows without a purpose; a purpose its own rows; both together are either.
+    const output = (kind: SpendSummaryQuery["kind"]) => store.spendSummary({ kind }).totals.output_tokens;
+    expect(output(["organize"])).toBe(1);
+    expect(output(["scribe"])).toBe(6);
+    expect(output(["organize", "scribe"])).toBe(7);
+    expect(output(["composer_suggest", "acceptance_check", "scribe", "vision"])).toBe(30);
+    expect(store.spendPage({ kind: ["vision"] }).items.map((row) => row.output_tokens)).toEqual([8]);
+    // Grouped by kind, a purpose is its own group; a day's categories split it the same way.
+    const byKind = store.spendSummary({ group_by: "kind" }).groups.map((group) => [group.id, group.output_tokens]);
+    expect(byKind).toEqual([["acceptance_check", 16], ["organize", 1], ["scribe", 6], ["vision", 8]]);
+    const day = store.spendSummary({ group_by: "day", tz: "UTC" }).groups[0]!;
+    expect(day.categories.find((cat) => cat.category === "other")!.output_tokens).toBe(30);
+    store.close();
+  });
+
   test("setting, changing or clearing a model's rates re-prices its unreported rows in one event", () => {
     const store = open();
     const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "none" });

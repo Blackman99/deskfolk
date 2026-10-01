@@ -266,8 +266,8 @@ describe("what one organizer run changes", () => {
     });
     const since = store.lastSpecRevisionAt(applied.task.id);
     expect(since > store.getMessage(message.id).created_at).toBe(true);
-    // So the settle after it does not take that line for something you said since.
-    expect(store.userSpokeSince(applied.task.id, since)).toBe(false);
+    // So the settle after it does not take that line for something that happened since.
+    expect(store.taskMessagesSince(applied.task.id, since, 1)).toEqual([]);
     store.close();
   });
 
@@ -498,6 +498,145 @@ describe("what one organizer run changes", () => {
     });
     expect(settled.tickets[0]).toMatchObject({ title: "初稿", spec: "写第一版", status: "review", worker: bot.id });
     expect(settled.tickets[1]).toMatchObject({ title: "审稿", spec: "Reviewer 过一遍", status: "todo", worker: reviewer.id });
+    store.close();
+  });
+
+  test("a settle files the handover only: the goal and kind stay, it parks nothing, and an existing ticket keeps its title and the description it has", () => {
+    const { store, session, bot } = fixture();
+    const opener = store.postMessage(session.id, { body: "写周报" });
+    const plan = store.applyOrganizerResult({
+      sessionId: session.id,
+      current: null,
+      result: result({
+        decision: "new",
+        tickets: [
+          { id: "new-1", title: "初稿", spec: "写出第一版，交到 draft.md", status: "doing", worker: bot.id },
+          { id: "new-2", title: "配图", spec: "", status: "todo" },
+          { id: "new-3", title: "长说明", spec: `第一段\n\n${"细".repeat(400)}`, status: "todo" },
+        ],
+      }),
+      source: { messageId: opener.id, turnId: null, messageBody: opener.body },
+    });
+    const [draft, art, long] = plan.tickets;
+    // A coordinator's caution written up as the job's goal and its tickets' descriptions, and the
+    // plan set aside: none of it was said by you, and a settle has no line of yours to go on.
+    const settled = store.applyOrganizerResult({
+      sessionId: session.id,
+      current: store.getTask(plan.task.id),
+      result: result({
+        spec: spec({
+          kind: "周报初稿",
+          goal: "只写周报的第一段",
+          acceptance: ["审稿解冻前不能当作终稿"],
+          rules: ["只推进初稿，审稿冻结"],
+          process: ["Writer 决定先冻结审稿"],
+          progress: { done: ["初稿"], open: [], blocked: ["审稿：等 Writer 解冻"] },
+          status: "parked",
+        }),
+        tickets: [
+          { id: draft!.id, title: "初稿（冻结）", spec: "已交初稿，不再重试", status: "review", worker: bot.id },
+          { id: art!.id, spec: "每段配一张图" },
+          // The one-line preview it was shown, echoed back: no rewrite, so nothing to say.
+          { id: long!.id, spec: `第一段 ${"细".repeat(200)}` },
+          // A new-N named like an existing ticket is that ticket: it moves, and keeps its description.
+          { id: "new-1", title: "初稿", spec: "只改说明", status: "review" },
+          { id: "new-2", title: "排版", spec: "排成 A4", status: "todo" },
+        ],
+      }),
+      source: { messageId: null, turnId: null, messageBody: "" },
+      settle: true,
+    });
+    expect(parsePlanSpec(settled.task.spec)).toEqual({
+      ...spec(),
+      process: ["Writer 决定先冻结审稿"],
+      progress: { done: ["初稿"], open: [], blocked: ["审稿：等 Writer 解冻"] },
+      // Not the board's to lose either: a settle never writes Done when.
+      acceptance: [],
+    });
+    expect(settled.task.status).toBe("active");
+    expect(settled.tickets.map((ticket) => [ticket.title, ticket.spec, ticket.status])).toEqual([
+      ["初稿", "写出第一版，交到 draft.md", "review"],
+      ["配图", "每段配一张图", "todo"],
+      ["长说明", long!.spec, "todo"],
+      ["排版", "排成 A4", "todo"],
+    ]);
+    expect(settled.kept).toEqual([
+      "kept the goal as it was",
+      "did not park the plan",
+      "kept ticket 01's title",
+      "kept ticket 01's spec",
+      "kept ticket 01's spec",
+    ]);
+    store.close();
+  });
+
+  test("a settle may still give a plan with no spec yet its goal and call it done, but parks it no more than any other", () => {
+    const { store, session, bot } = fixture();
+    // A plan a turn opened while the line's filing failed: no spec at all.
+    const plan = store.openTask({ sessionId: session.id, title: "写周报" });
+    const ticket = store.createTicket({ taskId: plan.id, title: "初稿", spec: "写出第一版", status: "doing", worker: bot.id });
+    const first = store.applyOrganizerResult({
+      sessionId: session.id,
+      current: store.getTask(plan.id),
+      result: result({ spec: spec({ goal: "写一份周报", rules: ["审稿冻结"], status: "parked" }) }),
+      source: { messageId: null, turnId: null, messageBody: "" },
+      settle: true,
+    });
+    expect(parsePlanSpec(first.task.spec)).toMatchObject({ goal: "写一份周报", acceptance: [], rules: [], status: "active" });
+    expect(first.task.status).toBe("active");
+    expect(first.kept).toEqual(["did not park the plan"]);
+    const done = store.applyOrganizerResult({
+      sessionId: session.id,
+      current: store.getTask(plan.id),
+      result: result({ spec: spec({ goal: "写一份周报", status: "done" }), tickets: [{ id: ticket.id, spec: "", status: "done" }] }),
+      source: { messageId: null, turnId: null, messageBody: "" },
+      settle: true,
+    });
+    expect(done.task.status).toBe("done");
+    expect(done.kept).toEqual([]);
+    store.close();
+  });
+
+  test("a settle leaves a plan a newer one displaced parked, though its spec still reads active", () => {
+    const { store, session } = fixture();
+    const older = store.openTask({ sessionId: session.id, title: "写周报", spec: spec() });
+    store.openTask({ sessionId: session.id, title: "做海报", spec: spec({ goal: "做一张海报" }) });
+    expect(store.getTask(older.id).status).toBe("parked");
+    const settled = store.applyOrganizerResult({
+      sessionId: session.id,
+      current: store.getTask(older.id),
+      result: result({ spec: spec({ status: "parked" }) }),
+      source: { messageId: null, turnId: null, messageBody: "" },
+      settle: true,
+    });
+    expect(settled.task.status).toBe("parked");
+    expect(settled.kept).toEqual([]);
+    store.close();
+  });
+
+  test("a settle that renames a ticket and then names it by the new title files one ticket, not two", () => {
+    const { store, session, bot } = fixture();
+    const opener = store.postMessage(session.id, { body: "写周报" });
+    const plan = store.applyOrganizerResult({
+      sessionId: session.id,
+      current: null,
+      result: result({ decision: "new", tickets: [{ id: "new-1", title: "初稿", spec: "写出第一版", status: "doing", worker: bot.id }] }),
+      source: { messageId: opener.id, turnId: null, messageBody: opener.body },
+    });
+    const settled = store.applyOrganizerResult({
+      sessionId: session.id,
+      current: store.getTask(plan.task.id),
+      result: result({
+        tickets: [
+          { id: plan.tickets[0]!.id, title: "终稿", spec: "", status: "doing" },
+          { id: "new-1", title: "终稿", spec: "", status: "review", worker: bot.id },
+        ],
+      }),
+      source: { messageId: null, turnId: null, messageBody: "" },
+      settle: true,
+    });
+    expect(settled.created).toBe(0);
+    expect(settled.tickets.map((ticket) => [ticket.title, ticket.status])).toEqual([["初稿", "review"]]);
     store.close();
   });
 

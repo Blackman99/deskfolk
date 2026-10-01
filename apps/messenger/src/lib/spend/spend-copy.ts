@@ -1,5 +1,5 @@
 /** Spend view strings. `zh` is the default, `en` the other. */
-import type { Locale, SpendCategory, SpendKind } from "@real-bot/protocol";
+import type { Locale, SpendCategory, SpendLine } from "@real-bot/protocol";
 
 export type SpendCopy = {
   subtitle: string;
@@ -57,7 +57,8 @@ export type SpendCopy = {
   expand: string;
   collapse: string;
   category: Record<SpendCategory, string>;
-  kind: Record<SpendKind, string>;
+  /** Every line of the breakdown: the kinds, and the purposes split out of them. */
+  kind: Record<SpendLine, string>;
   trend: string;
   metricTokens: string;
   metricMoney: string;
@@ -148,6 +149,9 @@ const zh: SpendCopy = {
     composer_suggest: "输入建议",
     organize: "整理",
     acceptance_check: "验收检查",
+    scribe: "书记员",
+    vision: "看图判断",
+    reflect: "反思",
   },
   trend: "按日趋势",
   metricTokens: "Token",
@@ -239,6 +243,9 @@ const en: SpendCopy = {
     composer_suggest: "Composer suggestion",
     organize: "Organizer",
     acceptance_check: "Acceptance check",
+    scribe: "Scribe",
+    vision: "Picture judgement",
+    reflect: "Reflection",
   },
   trend: "Daily trend",
   metricTokens: "Tokens",

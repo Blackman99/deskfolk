@@ -115,6 +115,8 @@ describe("spendBucket", () => {
     expect(spendBucket("judgement", null)).toBe("judgement");
     expect(spendBucket("route_pick", "low")).toBe("route_pick");
     expect(spendBucket("organize", null)).toBe("organize");
+    // The scribe bills as the organizer's kind with a purpose of its own, and is counted apart.
+    expect(spendBucket("organize", null, "scribe")).toBe("scribe");
   });
 });
 

@@ -16,6 +16,7 @@ import {
   type ControlActionRequest,
   type CreateHoldRequest,
   type PatchTicketRequest,
+  type RequirementActionRequest,
   type RunAcceptanceChecksRequest,
   type CreateBotRequest,
   type PatchBotRequest,
@@ -26,7 +27,8 @@ import {
   type SessionSummary,
   type NotificationFilter,
   type SpendFilter,
-  type SpendKind,
+  type SpendLine,
+  SPEND_CATEGORY_OF,
   type StreamFrame,
   type ToolFrame,
   type AnnotationFilter,
@@ -1479,6 +1481,37 @@ function dispatch(
     return jsonResponse(store.taskDetail(check.task_id, store.citedPathExists), 200, null);
   }
 
+  // An entry of the requirements ledger, from the plan's board (ADR 0040 P3): each action only
+  // where it applies (a 409 when the entry has moved on), and the plan's board comes back.
+  params = matchPath(path, "/v1/requirements/:id/action");
+  if (params && method === "POST") {
+    const body = (input.body ?? {}) as Partial<RequirementActionRequest>;
+    const taskId = typeof body.task_id === "string" ? body.task_id : "";
+    const task = store.getTask(taskId);
+    const id = params.id!;
+    switch (body.action) {
+      case "confirm":
+        store.confirmRequirement(id, { taskId: task.id });
+        break;
+      case "reject":
+        store.rejectRequirement(id, { taskId: task.id });
+        break;
+      case "waive":
+        store.waiveRequirement(id, { taskId: task.id });
+        break;
+      case "not_here":
+      case "here_again":
+        store.setRequirementHere(id, { taskId: task.id, holds: body.action === "here_again" });
+        break;
+      case "whole_project":
+        store.widenRequirement(id, { to: "project", taskId: task.id });
+        break;
+      default:
+        throw new HttpError(422, "invalid_args", "action must be confirm, reject, waive, not_here, here_again or whole_project");
+    }
+    return jsonResponse(store.taskDetail(task.id, store.citedPathExists), 200, null);
+  }
+
   params = matchPath(path, "/v1/tasks/:id/checks/run");
   if (params && method === "POST") {
     const body = (input.body ?? {}) as RunAcceptanceChecksRequest;
@@ -2152,7 +2185,8 @@ function dispatch(
   return jsonResponse({ error: { code: "not_found", message: "not found" } }, 404, null);
 }
 
-const SPEND_KINDS = new Set<SpendKind>(["turn", "judgement", "route_pick", "route_review", "route_learn", "composer_suggest", "organize", "acceptance_check"]);
+/** A `kind` filter names lines: the kinds, and the purposes split out of them (ADR 0042). */
+const SPEND_LINES = new Set<SpendLine>(Object.keys(SPEND_CATEGORY_OF) as SpendLine[]);
 const ULID = /^[0-9A-HJKMNP-TV-Z]{26}$/;
 
 /** Shared by the summary and the detail page. An empty `bot_id` or `model` means the null group. */
@@ -2166,10 +2200,10 @@ function spendFilterFrom(url: URL): SpendFilter {
     url.searchParams.getAll("kind").flatMap((kind) => kind.split(",")).map((kind) => kind.trim()).filter((kind) => kind.length > 0),
   )];
   if (unique.length > 0) {
-    if (unique.some((kind) => !SPEND_KINDS.has(kind as SpendKind))) {
+    if (unique.some((kind) => !SPEND_LINES.has(kind as SpendLine))) {
       throw new HttpError(422, "invalid_args", "kind is not a spend kind");
     }
-    filter.kind = unique as SpendKind[];
+    filter.kind = unique as SpendLine[];
   }
   if (url.searchParams.has("bot_id")) {
     const botId = url.searchParams.get("bot_id") ?? "";

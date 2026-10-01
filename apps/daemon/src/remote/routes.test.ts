@@ -68,6 +68,10 @@ test("plans and tickets: reads are whitelisted, a spec edit carries the whole sp
 
   ok({ v: 1, id, method: "GET", path: "/v1/spend", query: { kind: "organize" } });
   bad({ v: 1, id, method: "GET", path: "/v1/spend", query: { kind: "organise" } });
+  // A purpose split out of its kind is a line of its own (ADR 0042); a category's whole list fits.
+  ok({ v: 1, id, method: "GET", path: "/v1/spend/summary", query: { kind: "composer_suggest,acceptance_check,scribe,vision" } });
+  ok({ v: 1, id, method: "GET", path: "/v1/spend", query: { kind: "turn,judgement,route_pick,route_review,route_learn,composer_suggest,organize,acceptance_check,scribe,vision,reflect" } });
+  bad({ v: 1, id, method: "GET", path: "/v1/spend", query: { kind: "scribe,scribe,scribe,scribe,scribe,scribe,scribe,scribe,scribe,scribe,scribe,scribe" } });
 });
 
 test("acceptance checks: create needs item and kind, a patch needs more than just if_revision, run and delete take a bare or revisioned body", () => {
@@ -167,10 +171,25 @@ test("a phone can press a button on a line about your stops, one it names, nothi
   expect(() => ok({ method: "POST", path: `/v1/messages/${id}/control`, body: { action: "edit_check" } })).toThrow();
   expect(() => ok({ method: "POST", path: `/v1/checks/${id}/confirm`, body: {} })).not.toThrow();
   expect(() => ok({ method: "POST", path: `/v1/checks/${id}/confirm`, body: { measure: { dimension: "duration", min: 1, max: 2 } } })).toThrow();
+  // The app's lines about the requirements ledger (ADR 0040 P3); 逐条看 opens the board and is never sent.
+  for (const action of ["confirm_requirements", "make_standing", "keep_project"]) {
+    expect(() => ok({ method: "POST", path: `/v1/messages/${id}/control`, body: { action } })).not.toThrow();
+  }
+  expect(() => ok({ method: "POST", path: `/v1/messages/${id}/control`, body: { action: "review_requirements" } })).toThrow();
   expect(() => ok({ method: "POST", path: `/v1/messages/${id}/control`, body: {} })).toThrow();
   expect(() => ok({ method: "POST", path: `/v1/messages/${id}/control`, body: { action: "lift_everything" } })).toThrow();
   expect(() => ok({ method: "POST", path: `/v1/messages/${id}/control`, body: { action: "stop_plan", task_id: "EP01" } })).toThrow();
   expect(() => ok({ method: "POST", path: `/v1/messages/${id}/control`, body: { action: "stop", source: "user_text" } })).toThrow();
+});
+
+test("a phone can act on an entry of the requirements ledger from the board, naming the plan", () => {
+  const ok = (request: Omit<RemoteRequest, "v" | "id">) => validateBusiness({ v: 1, id, ...request });
+  for (const action of ["confirm", "reject", "waive", "not_here", "here_again", "whole_project"]) {
+    expect(() => ok({ method: "POST", path: `/v1/requirements/${id}/action`, body: { action, task_id: id } })).not.toThrow();
+  }
+  expect(() => ok({ method: "POST", path: `/v1/requirements/${id}/action`, body: { action: "confirm" } })).toThrow();
+  expect(() => ok({ method: "POST", path: `/v1/requirements/${id}/action`, body: { action: "purge", task_id: id } })).toThrow();
+  expect(() => ok({ method: "POST", path: `/v1/requirements/${id}/action`, body: { action: "waive", task_id: id, quote: "x" } })).toThrow();
 });
 
 test("a phone clearing or deleting a conversation may erase what you said there too, and say nothing else", () => {

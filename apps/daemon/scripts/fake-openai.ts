@@ -124,7 +124,8 @@ function organize(messages: ChatMessage[]): string {
     const goal = (message?.body ?? "验证").split("\n")[0]!.slice(0, 60);
     return JSON.stringify({
       decision: "new",
-      plan: { kind: "验证", goal, acceptance: ["交出一个文件"], rules: ["不要真人"], process: [`${worker ?? "Bot"} 做，用户验收`], progress: { done: [], open: ["初稿"], blocked: [] }, status: "active" },
+      // No rules or Done when: the organizer no longer writes them (ADR 0042), and the store drops any.
+      plan: { kind: "验证", goal, process: [`${worker ?? "Bot"} 做，用户验收`], progress: { done: [], open: ["初稿"], blocked: [] }, status: "active" },
       tickets: [{ id: "new-1", title: "初稿", spec: "先交第一版", status: "doing", worker }],
       message_ticket: "new-1",
     });

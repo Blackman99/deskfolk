@@ -60,7 +60,7 @@
 | P0 | 回放夹具、基线、可观测性、版本闸读取 |
 | P1 | 止血：输出上限与失败形状、Stop 不再触发整理和叫回、问进度不再顺带叫回、开轮不再改规划状态、修掉悄悄新开规划的竞态、按进程组杀、中性化叫醒文案、全盘递归搜索守卫 |
 | P2 | 控制面：叫停、叫醒闸、控制句、回执、重启分类（[ADR 0041](0041-control-plane-holds-and-restarts.md)） |
-| P3 | 原话、需求台账、从原话派生检查（读出的数只出提议卡片，再说一次就带着次数再出；提议对上文件照样量、结果给你和审查者看，但不拦；只有你点「确认」才成为门禁；生效的检查从不自己变，后来说成目标的不同数只出替换卡片，旧的照样生效，直到你选）、投影板面 |
+| P3 | 原话、需求台账、从原话派生检查（读出的数只出提议卡片，再说一次就带着次数再出；提议对上文件照样量、结果给你和审查者看，但不拦；只有你点「确认」才成为门禁；生效的检查从不自己变，后来说成目标的不同数只出替换卡片，旧的照样生效，直到你选）、投影板面、整理跳不再写规则和验收、settle 只记交接、花费按用途细分（[ADR 0042](0042-requirements-ledger.md)） |
 | P4 | 分五步，每一步单独发布：P4a 收件箱落库 → P4b 工作项与归属 → P4c 委派、结束契约与监督器 → P4d 外部作业 → P4e 交付、审查与分件 |
 | P5 | 模型选择与学习 |
 | P6 | 收缩 |
@@ -94,11 +94,12 @@
   - [ADR 0031](0031-heard-in-the-live-turn-and-plans-closed-on-evidence.md) 的「不让 Bot 报任务号」：P4 起由 Bot 声明、应用校验。
   - [ADR 0039](0039-plans-with-work-left-are-called-back.md) 的规划叫回：P4 起由监督器按持球者叫醒取代。
   - [ADR 0018](0018-per-bot-route-learning.md)、[0019](0019-agent-routing-and-review.md)、[0024](0024-route-execution-and-learning-hop.md) 的选路和复盘：P5 删除。
-  - [ADR 0030](0030-plans-tickets-and-organizer.md) 的整理跳：P1 起 Stop 结束的轮不引起整理，还取消这个规划已经排着的整理和叫回前的再看，P3 起不再写规则和验收（连同 [ADR 0031](0031-heard-in-the-live-turn-and-plans-closed-on-evidence.md) 要做出能用的东西时写进验收的那条「照着启动方式能在本机跑起来」），P4 删除。
+  - [ADR 0030](0030-plans-tickets-and-organizer.md) 的整理跳：P1 起 Stop 结束的轮不引起整理，还取消这个规划已经排着的整理和叫回前的再看，P3 起不再写规则和验收（连同 [ADR 0031](0031-heard-in-the-live-turn-and-plans-closed-on-evidence.md) 要做出能用的东西时写进验收的那条「照着启动方式能在本机跑起来」），settle 只记交接，先例删除（换成原话层和需求台账，工艺类要求由同一会话的新规划继承），P4 删除。
+  - [ADR 0038](0038-rules-are-only-your-words.md) 守「规则只收你的话」的办法（提示词、`user_lines`、`holdSettle`）：P3 起整理跳不写规则，`holdSettle` 删除，你的要求记在库核对引文的需求台账里（[ADR 0042](0042-requirements-ledger.md)）。
   - [ADR 0025](0025-annotations-are-anchored-quote-replies.md) 的「批注叫醒时把关了的那件事重新打开」：P1 起开轮从不改规划的状态，只把关了的规划的关闭时间挪到现在。
   - [ADR 0032](0032-every-line-says-which-job-and-reaches-its-turns.md) 的「对不上候选的 resume、join 当 continue」：P1 起什么都不落。
 
-  各阶段落地时再写各自的 ADR，并回头在被取代的 ADR 里注明：P2 是 [ADR 0041](0041-control-plane-holds-and-restarts.md)，连同它和本文的出入。
+  各阶段落地时再写各自的 ADR，并回头在被取代的 ADR 里注明：P2 是 [ADR 0041](0041-control-plane-holds-and-restarts.md)，P3 是 [ADR 0042](0042-requirements-ledger.md)，连同它们和本文的出入。
 - **先铺夹具再改。** 每一起事故先在测试里复现，改完的阶段把它翻绿。文档里写了、代码没实现，是之前一次次排查走偏的原因。
 - **省钱不是目的。** 旁路调用每天大约省 8–12 美元，大头仍是轮次本身。真正的收益是开轮前的等待从约 33 秒降到约 0.1 秒，以及少出事。
 

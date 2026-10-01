@@ -195,6 +195,8 @@ describe("a hold turns every wake away, and says so in the work log", () => {
     ]);
     const second = h.hops(director).filter((hop) => hop.turnId === threadTurn!.id)[1]!;
     expect(requestText(second.request)).not.toContain(HEARD);
+    // Not even in the quote layer of its situation (ADR 0040 P3), which every other turn on EP01
+    // reads it in: a held turn reads what you said as it stood when the stop was made.
     expect(requestText(second.request)).not.toContain("片尾字幕换成白色");
     expect(h.suppressedWakes(director).map((row) => ({ cause: row.payload.cause, turn: row.turn_id, holds: row.payload.holds }))).toEqual([
       { cause: "heard_across", turn: threadTurn!.id, holds: [stop.id] },

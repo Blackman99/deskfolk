@@ -9,13 +9,13 @@ export type PlanStatus = "active" | "done" | "parked";
 export const PLAN_STATUSES: readonly PlanStatus[] = ["active", "done", "parked"];
 
 export type PlanSpec = {
-  /** A short label for finding precedents: plans of the same kind. */
+  /** A short label for what kind of job this is, which the organizer reuses across plans. */
   kind: string | null;
   /** What the plan is for now, as the organizer last understood it. */
   goal: string;
-  /** What counts as done. */
+  /** What counts as done: lines you write on the board (the organizer no longer writes them, ADR 0042). */
   acceptance: string[];
-  /** Standing constraints and the user's stated preferences. */
+  /** Standing constraints and the user's stated preferences, written the same way. */
   rules: string[];
   /** How the team decided to go about it, and who does which part. */
   process: string[];

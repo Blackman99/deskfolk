@@ -63,6 +63,7 @@ import type {
   TaskTrace,
   Ticket,
   PatchTaskSpecRequest,
+  RequirementActionRequest,
   PatchTicketRequest,
   SessionTaskSummary,
   WorkspaceTrashResult,
@@ -493,6 +494,15 @@ export class LocalApi {
   /** Puts a check from your words in force (ADR 0040 P3); a replacement takes the place of the check it replaces. */
   async confirmCheck(checkId: string): Promise<TaskDetail> {
     return this.post<TaskDetail>(`/v1/checks/${encodeURIComponent(checkId)}/confirm`, {});
+  }
+
+  /**
+   * Your choice on an entry of the requirements ledger, from the plan's board (ADR 0040 P3): take it
+   * up, turn it down, let it go, set it not to hold for this plan (or back), or make it hold for the
+   * whole conversation. The plan it was shown on comes back whole.
+   */
+  async requirementAction(requirementId: string, body: RequirementActionRequest): Promise<TaskDetail> {
+    return this.post<TaskDetail>(`/v1/requirements/${encodeURIComponent(requirementId)}/action`, body);
   }
 
   /** Runs one check, or every active check of the plan when none is named. */

@@ -68,6 +68,7 @@ describe("schema", () => {
       "remote_transition",
       "request_meta",
       "request_receipts",
+      "requirement_exclusions",
       "requirement_mentions",
       "requirements",
       "route_feedback",

@@ -5,7 +5,8 @@
  * seam evidence, or one call for the whole-set digest; a text-only or digest call never attaches an
  * `image_url` part, so it never actually requires the model to have vision. Every call bills the
  * ledger as `acceptance_check`, owned by the plan's session, never a Bot — `createPlanChecks` only
- * calls this with a `sessionId` when the plan still has one.
+ * calls this with a `sessionId` when the plan still has one. A call that sends frames is a judgement
+ * of pictures and carries the `vision` purpose, so the spend view shows it apart (ADR 0042).
  */
 import type { Locale } from "@real-bot/protocol";
 import type { ChatContentPart, CompletionsClient } from "../completions";
@@ -59,6 +60,7 @@ export function createSeamsJudge(deps: SeamsJudgeDeps): JudgeSeams {
       try {
         deps.spend.recordResponseSpend({
           kind: "acceptance_check",
+          purpose: mode === "image" ? "vision" : null,
           owner: deps.spend.spendOwner(sessionId, null),
           target: deps.spend.callOf(target),
           usage: result.usage,

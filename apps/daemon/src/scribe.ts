@@ -38,6 +38,8 @@ export type ScribeDeps = {
   log?: (line: string) => void;
   /** Benchmark switches (see `ablation.ts`): `scribe` makes no call, as if it had failed. */
   ablation?: Ablation;
+  /** What landed from one line's answer, once it is in the ledger. */
+  onFiled?: (quote: UserQuote, outcome: ScribeOutcome) => void;
 };
 
 /** Which plans had handed something over when a line was said (see `plansHandedOver`); null when the line is no complaint. */
@@ -167,7 +169,8 @@ export function createScribe(deps: ScribeDeps): Scribe {
     const now = store.getQuote(quote.id);
     if (!now || now.redacted_at || now.task_id !== quote.task_id) return;
     const outcome = store.applyScribePatch({ quote: now, offered: offered.map((entry) => entry.id), patch });
-    if (!landed(outcome)) capture(now, handedOver);
+    if (!landed(outcome)) return capture(now, handedOver);
+    deps.onFiled?.(now, outcome);
   }
 
   return {

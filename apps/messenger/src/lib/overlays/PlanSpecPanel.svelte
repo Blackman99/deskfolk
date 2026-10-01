@@ -14,6 +14,7 @@
 	import { checkSummary, checksForLine, derivedChecks, orphanChecks } from './acceptance-checks.ts';
 	import AcceptanceCheckRow from './AcceptanceCheckRow.svelte';
 	import AcceptanceCheckForm from './AcceptanceCheckForm.svelte';
+	import PlanRequirements from './PlanRequirements.svelte';
 
 	interface Props {
 		api: MessengerApi | null;
@@ -263,6 +264,11 @@
 					<div class="plan-spec-goal-text">{spec.goal}</div>
 				{/if}
 			</div>
+
+			<!-- What you asked for: the requirements ledger, the list the Bots read too (ADR 0040 P3). -->
+			{#if detail.requirements}
+				<PlanRequirements {api} {detail} {t} {onSaved} {onJump} />
+			{/if}
 
 			<!-- Section: Guidelines (Acceptance, Rules, Process) -->
 			<div class="plan-spec-section is-guidelines">

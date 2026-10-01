@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import type { SpendLine } from "@real-bot/protocol";
 import {
   addDays,
   calendarDate,
@@ -110,9 +111,19 @@ test("a day query groups by day in the given zone, and a dimension query names t
   expect(summaryQueryOf(window, drill, "bot", zone).group_by).toBe("bot");
 });
 
-test("feedback expands to the review and the learning hop, and nothing else", () => {
-  expect(kindsOfCategory("feedback").sort()).toEqual(["route_learn", "route_review"]);
-  expect(kindsOfCategory("other").sort()).toEqual(["acceptance_check", "composer_suggest"]);
+test("a category chip asks for its kinds and the purposes split out of other kinds, and nothing else", () => {
+  const listed = new Set<SpendLine>(["scribe", "vision", "reflect", "organize"]);
+  expect(kindsOfCategory("feedback", listed).sort()).toEqual(["reflect", "route_learn", "route_review"]);
+  // The scribe bills as `organize` but is no decision; a judgement of pictures bills as an acceptance check.
+  expect(kindsOfCategory("other", listed).sort()).toEqual(["acceptance_check", "composer_suggest", "scribe", "vision"]);
+  expect(kindsOfCategory("decision", listed).sort()).toEqual(["organize", "route_pick"]);
+});
+
+test("a category chip names a purpose only once a summary listed it, which an older daemon never does", () => {
+  // An older daemon answers a filter naming `scribe`, `vision` or `reflect` with a 422.
+  expect(kindsOfCategory("other", new Set()).sort()).toEqual(["acceptance_check", "composer_suggest"]);
+  expect(kindsOfCategory("feedback", new Set()).sort()).toEqual(["route_learn", "route_review"]);
+  expect(kindsOfCategory("other", new Set<SpendLine>(["scribe"])).sort()).toEqual(["acceptance_check", "composer_suggest", "scribe"]);
 });
 
 test("the view remembers its range and dimension, and ignores a stored value it does not know", () => {

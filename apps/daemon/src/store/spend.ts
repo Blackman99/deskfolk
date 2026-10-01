@@ -1,5 +1,6 @@
 import {
   SPEND_CATEGORY_OF,
+  SPEND_PURPOSE_KIND,
   type Spend,
   type SpendCategory,
   type SpendCategorySummary,
@@ -8,7 +9,9 @@ import {
   type SpendGroup,
   type SpendKind,
   type SpendKindSummary,
+  type SpendLine,
   type SpendPage,
+  type SpendPurpose,
   type SpendSummary,
   type SpendSummaryQuery,
   type SpendTotals,
@@ -31,12 +34,19 @@ const KINDS: readonly SpendKind[] = [
   "organize",
   "acceptance_check",
 ];
+const PURPOSES = Object.keys(SPEND_PURPOSE_KIND) as SpendPurpose[];
+/** The view's breakdown: every kind, then each purpose split out of the kind it bills as. */
+const LINES: readonly SpendLine[] = [...KINDS, ...PURPOSES];
+/** A row's line in SQL: its purpose where it has one, else its kind (`spendLineOf`). */
+const LINE_SQL = "COALESCE(spend.purpose, spend.kind)";
 const CATEGORIES: readonly SpendCategory[] = ["turn", "judgement", "decision", "feedback", "other"];
 const GROUP_BY = new Set<NonNullable<SpendSummaryQuery["group_by"]>>(["model", "session", "bot", "kind", "day"]);
 
 /** What a caller hands the ledger. Kind is required; the store does not infer it from which id is set. */
 export type SpendInput = {
   kind: SpendKind;
+  /** What the call was for, where its kind is shared; it must be a purpose of that kind (ADR 0042). */
+  purpose?: SpendPurpose | null;
   sessionId: string;
   /** Frozen display title. Omitted means the store reads the session as it is now. */
   sessionName?: string | null;
@@ -86,6 +96,10 @@ export function insertSpend(ctx: StoreContext, input: SpendInput): Spend {
   if (!KINDS.includes(input.kind)) {
     throw new HttpError(422, "invalid_args", "spend kind is required");
   }
+  const purpose = input.purpose ?? null;
+  if (purpose !== null && SPEND_PURPOSE_KIND[purpose] !== input.kind) {
+    throw new HttpError(422, "invalid_args", "spend purpose does not belong to that kind");
+  }
   const sessionId = input.sessionId;
   const botId = input.botId ?? null;
   const providerId = emptyToNull(input.providerId);
@@ -115,6 +129,7 @@ export function insertSpend(ctx: StoreContext, input: SpendInput): Spend {
     turn_id: input.turnId ?? null,
     judgement_id: input.judgementId ?? null,
     kind: input.kind,
+    purpose,
     chain_id: input.chainId ?? null,
     provider_id: providerId,
     provider_name: input.providerName !== undefined ? input.providerName : providerName(ctx, providerId),
@@ -132,11 +147,11 @@ export function insertSpend(ctx: StoreContext, input: SpendInput): Spend {
   };
   ctx.db.run(
     `INSERT INTO spend (
-       id, session_id, session_name, bot_id, bot_name, turn_id, judgement_id, kind, chain_id,
+       id, session_id, session_name, bot_id, bot_name, turn_id, judgement_id, kind, purpose, chain_id,
        provider_id, provider_name, model, thinking_level,
        input_tokens, output_tokens, total_tokens, cached_tokens, reasoning_tokens,
        cost_usd_ticks, estimated_cost_usd_ticks, missing_reason, created_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       row.id,
       row.session_id,
@@ -146,6 +161,7 @@ export function insertSpend(ctx: StoreContext, input: SpendInput): Spend {
       row.turn_id,
       row.judgement_id,
       row.kind,
+      purpose,
       row.chain_id,
       row.provider_id,
       row.provider_name,
@@ -180,7 +196,8 @@ type AggregateRow = SumRow & {
   provider_id: string | null;
   provider_name: string | null;
   model: string | null;
-  kind: SpendKind;
+  /** The line (`LINE_SQL`), not the bare kind. */
+  kind: SpendLine;
 };
 
 export function spendSummary(ctx: StoreContext, query: SpendSummaryQuery): SpendSummary {
@@ -241,7 +258,7 @@ export function spendPage(
 }
 
 const SPEND_COLUMNS = `spend.id, spend.session_id, spend.session_name, spend.bot_id, spend.bot_name,
-  spend.turn_id, spend.judgement_id, spend.kind, spend.chain_id, spend.provider_id, spend.provider_name,
+  spend.turn_id, spend.judgement_id, spend.kind, spend.purpose, spend.chain_id, spend.provider_id, spend.provider_name,
   spend.model, spend.thinking_level, spend.input_tokens, spend.output_tokens, spend.total_tokens,
   spend.cached_tokens, spend.reasoning_tokens, spend.cost_usd_ticks, spend.estimated_cost_usd_ticks,
   spend.missing_reason, spend.created_at`;
@@ -260,8 +277,14 @@ function spendWhere(filter: SpendFilter): { where: string; args: SqlValue[] } {
     args.push(filter.to);
   }
   if (filter.kind && filter.kind.length > 0) {
-    clauses.push(`spend.kind IN (${filter.kind.map(() => "?").join(", ")})`);
-    args.push(...filter.kind);
+    // A line: a purpose is its own rows; a kind is its rows that carry no purpose.
+    const purposes = filter.kind.filter((line): line is SpendPurpose => (PURPOSES as readonly string[]).includes(line));
+    const kinds = filter.kind.filter((line) => !(PURPOSES as readonly string[]).includes(line));
+    const either: string[] = [];
+    if (kinds.length > 0) either.push(`(spend.purpose IS NULL AND spend.kind IN (${kinds.map(() => "?").join(", ")}))`);
+    if (purposes.length > 0) either.push(`spend.purpose IN (${purposes.map(() => "?").join(", ")})`);
+    clauses.push(either.length > 1 ? `(${either.join(" OR ")})` : either[0]!);
+    args.push(...kinds, ...purposes);
   }
   if (filter.bot_id !== undefined) {
     if (filter.bot_id === null) clauses.push("spend.bot_id IS NULL");
@@ -314,9 +337,9 @@ function sumQuery(ctx: StoreContext, where: string) {
   return ctx.db.query<SumRow, SqlValue[]>(`SELECT ${SUMS} FROM spend${where}`);
 }
 
-function kindSums(ctx: StoreContext, where: string, args: SqlValue[]): Map<SpendKind, SumRow> {
-  const rows = ctx.db.query<SumRow & { kind: SpendKind }, SqlValue[]>(
-    `SELECT spend.kind AS kind, ${SUMS} FROM spend${where} GROUP BY spend.kind`,
+function kindSums(ctx: StoreContext, where: string, args: SqlValue[]): Map<SpendLine, SumRow> {
+  const rows = ctx.db.query<SumRow & { kind: SpendLine }, SqlValue[]>(
+    `SELECT ${LINE_SQL} AS kind, ${SUMS} FROM spend${where} GROUP BY ${LINE_SQL}`,
   ).all(...args);
   return new Map(rows.map((row) => [row.kind, totalsOf(row)]));
 }
@@ -331,12 +354,12 @@ function groupsOf(
   if (groupBy === "day") return dayGroups(ctx, where, args, zone);
   const { select, group, join } = groupSql(groupBy);
   const rows = ctx.db.query<AggregateRow, SqlValue[]>(
-    `SELECT ${select}, spend.kind AS kind, ${SUMS}
+    `SELECT ${select}, ${LINE_SQL} AS kind, ${SUMS}
      FROM spend${join}
      ${where}
-     GROUP BY ${group}, spend.kind`,
+     GROUP BY ${group}, ${LINE_SQL}`,
   ).all(...args);
-  const buckets = new Map<string, { label: Omit<SpendGroup, keyof SpendTotals | "categories">; kinds: Map<SpendKind, SumRow> }>();
+  const buckets = new Map<string, { label: Omit<SpendGroup, keyof SpendTotals | "categories">; kinds: Map<SpendLine, SumRow> }>();
   for (const row of rows) {
     const label = labelOf(row, groupBy);
     const key = `${label.id ?? ""}\u0000${label.provider_id ?? ""}\u0000${label.model ?? ""}`;
@@ -429,9 +452,9 @@ function groupSql(groupBy: Exclude<NonNullable<SpendSummaryQuery["group_by"]>, "
     };
   }
   return {
-    select: `spend.kind AS group_id, spend.kind AS group_name, 0 AS deleted,
+    select: `${LINE_SQL} AS group_id, ${LINE_SQL} AS group_name, 0 AS deleted,
       NULL AS provider_id, NULL AS provider_name, NULL AS model`,
-    group: `spend.kind`,
+    group: LINE_SQL,
     join: "",
   };
 }
@@ -447,16 +470,16 @@ function dayGroups(ctx: StoreContext, where: string, args: SqlValue[], zone: str
   ).get(...args);
   if (!bounds?.first_at || !bounds.last_at) return [];
   const spans = offsetSpans(bounds.first_at, bounds.last_at, zone);
-  const buckets = new Map<string, Map<SpendKind, SumRow>>();
+  const buckets = new Map<string, Map<SpendLine, SumRow>>();
   for (const span of spans) {
     const link = where ? " AND" : " WHERE";
     const rows = ctx.db.query<AggregateRow, SqlValue[]>(
       `SELECT strftime('%Y-%m-%d', spend.created_at, ?) AS group_id,
               strftime('%Y-%m-%d', spend.created_at, ?) AS group_name,
               0 AS deleted, NULL AS provider_id, NULL AS provider_name, NULL AS model,
-              spend.kind AS kind, ${SUMS}
+              ${LINE_SQL} AS kind, ${SUMS}
        FROM spend${where}${link} spend.created_at >= ? AND spend.created_at < ?
-       GROUP BY strftime('%Y-%m-%d', spend.created_at, ?), spend.kind`,
+       GROUP BY strftime('%Y-%m-%d', spend.created_at, ?), ${LINE_SQL}`,
     ).all(span.modifier, span.modifier, ...args, span.from, span.to, span.modifier);
     for (const row of rows) {
       if (row.group_id) addKind(buckets, row.group_id, row.kind, totalsOf(row));
@@ -546,7 +569,7 @@ function offsetAt(zone: string, instant: number): number {
   return Math.round((asUtc - second) / 1000);
 }
 
-function addKind(into: Map<string, Map<SpendKind, SumRow>>, day: string, kind: SpendKind, totals: SumRow): void {
+function addKind(into: Map<string, Map<SpendLine, SumRow>>, day: string, kind: SpendLine, totals: SumRow): void {
   let kinds = into.get(day);
   if (!kinds) {
     kinds = new Map();
@@ -575,9 +598,14 @@ function offsetFormat(zone: string): Intl.DateTimeFormat {
   return format;
 }
 
-function categoriesFrom(byKind: Map<SpendKind, SumRow>): SpendCategorySummary[] {
+/**
+ * Every kind of the category, called or not, and a purpose only once something was billed with it:
+ * a line for a use the app does not make yet (a reflection) would only be a zero to explain.
+ */
+function categoriesFrom(byKind: Map<SpendLine, SumRow>): SpendCategorySummary[] {
   return CATEGORIES.map((category) => {
-    const kinds = KINDS.filter((kind) => SPEND_CATEGORY_OF[kind] === category).map((kind) => ({
+    const listed = LINES.filter((kind) => SPEND_CATEGORY_OF[kind] === category && ((KINDS as readonly string[]).includes(kind) || byKind.has(kind)));
+    const kinds = listed.map((kind) => ({
       kind,
       ...(byKind.get(kind) ?? emptyTotals()),
     }));

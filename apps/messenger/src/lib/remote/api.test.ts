@@ -553,6 +553,20 @@ test("confirming a check from your words from the phone is the one route the Mac
   expect(sent.map((request) => [request.method, request.path, request.body])).toEqual([["POST", "/v1/checks/01ARZ3NDEKTSV4RRFFQ69G5FC6/confirm", {}]]);
 });
 
+test("an entry of the requirements ledger is acted on from the phone's board by its own route, naming the plan", async () => {
+  const sent: RemoteRequest[] = [];
+  const api = new RemoteApi(enrollment, {
+    rpc: async (request) => {
+      sent.push(request);
+      return { v: 1, id: request.id, status: 200, body: { id: "task" } } satisfies RemoteResponse;
+    },
+  });
+  await api.requirementAction("01ARZ3NDEKTSV4RRFFQ69G5FC6", { action: "not_here", task_id: "01ARZ3NDEKTSV4RRFFQ69G5FC7" });
+  expect(sent.map((request) => [request.method, request.path, request.body])).toEqual([
+    ["POST", "/v1/requirements/01ARZ3NDEKTSV4RRFFQ69G5FC6/action", { action: "not_here", task_id: "01ARZ3NDEKTSV4RRFFQ69G5FC7" }],
+  ]);
+});
+
 test("rows the phone only listed are resolved, reopened and deleted with the revision they came with", async () => {
   // A quiet session: no sync event ever carried these rows, the list is all the phone has seen.
   const open = annotationRow(annotationA, "2026-09-24T08:30:00.000Z", "open");

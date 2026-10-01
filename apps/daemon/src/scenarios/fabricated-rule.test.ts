@@ -18,7 +18,7 @@
  * your line: from P2 on, a line like 「你私聊里的没停」 is taken as control and never reaches a
  * filing, or the scribe (the second test). So your 10:53 line is stored under the plan as the
  * organizer filed it then, not posted, only for the settle to know you spoke. The two rules are set
- * on the board.
+ * on the board, which writes them into the ledger as yours.
  */
 import { afterEach, expect, test } from "bun:test";
 import { call, createScenario, endTurn, type Scenario } from "../test-kit/scenario";
@@ -55,9 +55,10 @@ test("a settle that answers with a rule of its own neither adds it nor drops you
 
   expect(rulesOf(h, echo.id)).toEqual(expect.arrayContaining(YOURS));
   expect(rulesOf(h, echo.id).filter((rule) => rule.includes("接着做"))).toEqual([]);
-  // A Bot's relay is nobody's requirement: the scribe never reads it.
+  // A Bot's relay is nobody's requirement: the scribe never reads it. The ledger holds your two,
+  // written in as you typed them on the board, and nothing else.
   expect(h.judgeCalls("scribe")).toEqual([]);
-  expect(h.store.listRequirements()).toEqual([]);
+  expect(h.store.listRequirements().map((entry) => [entry.quote, entry.source_kind, entry.status])).toEqual(YOURS.map((rule) => [rule, "board", "open"]));
 });
 
 test("under holds your 「你私聊里的没停」 is answered by the app and reaches neither the organizer nor the scribe", async () => {
@@ -73,6 +74,6 @@ test("under holds your 「你私聊里的没停」 is answered by the app and re
 
   expect(h.judgeCalls("organizer")).toEqual([]);
   expect(h.judgeCalls("scribe")).toEqual([]);
-  expect(h.store.listRequirements()).toEqual([]);
+  expect(h.store.listRequirements().map((entry) => entry.quote)).toEqual(YOURS);
   expect(rulesOf(h, echo.id)).toEqual(YOURS);
 });

@@ -222,6 +222,10 @@ describe("a database an earlier build created", () => {
         expect(judgementRow.kind).toBe("judgement");
         expect(judgementRow.model).toBeNull();
         expect(judgementRow.provider_id).toBeNull();
+        // What a call was for (ADR 0042): the rows already there have none, a new scribe row does.
+        expect(kept.map((row) => row.purpose)).toEqual([null, null]);
+        expect(() => reopened.db.run("UPDATE spend SET purpose = 'nonsense'")).toThrow();
+        expect(reopened.insertSpend({ kind: "organize", purpose: "scribe", sessionId: writer.direct_session.id, botId: null }).purpose).toBe("scribe");
         reopened.close();
       } finally {
         rmSync(dir, { recursive: true, force: true });
@@ -299,6 +303,48 @@ describe("a database an earlier build created", () => {
         .map((row) => row.id);
       expect(flagged).toEqual([ids.zh!, ids.en!].sort());
       expect(store.listMessages(sessionId).items.map((message) => message.id).sort()).toEqual([ids.receipt!, ids.quoted!].sort());
+      store.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a ledger from before numbers and origins gets both, and every plan's old rules are taken in once", () => {
+    const dir = mkdtempSync(join(tmpdir(), "real-bot-migrate-"));
+    const file = join(dir, "state.sqlite");
+    try {
+      let store = new Store({ filename: file });
+      const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "none" });
+      const direct = writer.direct_session.id;
+      const line = store.postMessage(direct, { body: "写一份周报，别超过一页" });
+      const plan = store.createTurn({ sessionId: direct, botId: writer.bot.id, triggerMessageId: line.id }).task_id!;
+      const quote = store.quoteOfMessage(line.id, "message")!;
+      const said = store.addRequirement({ scope: "project", scopeId: direct, quote: "别超过一页", sourceKind: "message", sourceQuoteId: quote.id, addedBy: "scribe" });
+      const typed = store.addRequirement({ scope: "plan", scopeId: plan, quote: "用表格", sourceKind: "board", addedBy: "user" });
+      // The organizer's lines, before the ledger took them in.
+      store.db.run(`UPDATE tasks SET spec = ? WHERE id = ?`, [
+        JSON.stringify({ kind: null, goal: "周报", acceptance: [], rules: ["每周五交"], process: [], progress: { done: [], open: [], blocked: [] }, status: "active" }),
+        plan,
+      ]);
+      store.close();
+      const old = new Database(file, { strict: true });
+      old.run("ALTER TABLE requirements DROP COLUMN seq");
+      old.run("ALTER TABLE requirements DROP COLUMN origin_task_id");
+      old.run("DROP TABLE requirement_exclusions");
+      old.run("DELETE FROM settings WHERE key = 'requirements_imported'");
+      old.close();
+
+      store = new Store({ filename: file });
+      expect(store.db.query<{ name: string }, []>("PRAGMA table_info(requirements)").all().map((row) => row.name)).toEqual(expect.arrayContaining(["seq", "origin_task_id"]));
+      expect(store.db.query("SELECT 1 FROM sqlite_master WHERE name = 'requirement_exclusions'").get()).not.toBeNull();
+      expect(store.listRequirements().map((entry) => [entry.id, entry.seq, entry.origin_task_id, entry.status])).toEqual([
+        [said.id, 1, plan, "open"],
+        [typed.id, 2, plan, "open"],
+        [expect.any(String), 3, plan, "unverified"],
+      ]);
+      store.close();
+      store = new Store({ filename: file });
+      expect(store.listRequirements()).toHaveLength(3);
       store.close();
     } finally {
       rmSync(dir, { recursive: true, force: true });

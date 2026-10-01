@@ -1,0 +1,470 @@
+/**
+ * The requirements ledger as one plan sees it (ADR 0040 P3): the entries bearing on it, with how
+ * often and in how many plans you said each, where the words were said and what it inherits from
+ * the rest of its conversation; the board's rules and Done-when lines written into the ledger as
+ * you edit them; the old rules of every plan taken in once; and what the app's cards about entries
+ * are due to say. The situation block every turn opens on and the board both read from here, so a
+ * Bot and you see the same list.
+ */
+import type { PlanRequirement } from "@real-bot/protocol";
+import { conversationWide, craftRequirement } from "../craft-words";
+import { isoNow } from "../ids";
+import { quoteWords } from "../quote-words";
+import { takeCodePoints } from "../text";
+import { userWrittenSpec } from "./plan-spec";
+import { parsePlanSpec } from "./plan-shape";
+import {
+  addRequirement,
+  confirmRequirement,
+  getRequirement,
+  getRequirementOrNull,
+  IMPORT_WRITER,
+  planDomains,
+  raiseRequirement,
+  rejectRequirement,
+  REQUIREMENT_QUOTE_MAX,
+  requirementsBearingOn,
+  setRequirementHere,
+  waiveRequirement,
+  type BearingRequirement,
+  type Requirement,
+} from "./requirements";
+import { setSetting, type StoreContext } from "./shared";
+import { recordWorkEvent } from "./work-events";
+
+/** The settings key that says the old rules have been taken into the ledger, once. */
+export const LEGACY_IMPORTED_KEY = "requirements_imported";
+
+type QuoteRef = { via: "message" | "ask_answer" | "annotation" | "board"; session_id: string | null; message_id: string | null; at: string };
+
+/**
+ * Every entry bearing on the plan that is in force, proposed or old and unverified, as the board
+ * shows it and the situation block reads it: each with how many plans the words raising it were
+ * said in, where its own words were said, the plan it was first said in when that is another, and
+ * whether you set it not to hold here. Oldest first.
+ */
+export function planRequirements(ctx: StoreContext, taskId: string): PlanRequirement[] {
+  const entries = requirementsBearingOn(ctx, taskId, ["open", "proposed", "unverified"]);
+  if (entries.length === 0) return [];
+  const ids = JSON.stringify(entries.map((entry) => entry.id));
+  const plans = new Map(
+    ctx.db
+      .query<{ id: string; n: number }, [string]>(
+        `SELECT rid AS id, COUNT(DISTINCT t) AS n FROM (
+           SELECT m.requirement_id AS rid, q.task_id AS t FROM requirement_mentions m JOIN user_quotes q ON q.id = m.quote_id
+           WHERE m.requirement_id IN (SELECT value FROM json_each(?1)) AND q.task_id IS NOT NULL
+           UNION SELECT id, origin_task_id FROM requirements WHERE id IN (SELECT value FROM json_each(?1)) AND origin_task_id IS NOT NULL)
+         GROUP BY rid`,
+      )
+      .all(ids)
+      .map((row) => [row.id, row.n]),
+  );
+  const sources = new Map(
+    ctx.db
+      .query<QuoteRef & { id: string }, [string]>(
+        `SELECT r.id, q.via, q.session_id, q.message_id, q.created_at AS at
+         FROM requirements r JOIN user_quotes q ON q.id = r.source_quote_id
+         WHERE r.id IN (SELECT value FROM json_each(?1))`,
+      )
+      .all(ids)
+      .map(({ id, ...ref }) => [id, ref]),
+  );
+  const titles = new Map<string, string | null>();
+  const titleOf = (id: string): string | null => {
+    if (!titles.has(id)) titles.set(id, ctx.db.query<{ title: string }, [string]>(`SELECT title FROM tasks WHERE id = ?`).get(id)?.title ?? null);
+    return titles.get(id)!;
+  };
+  const byId = new Map(entries.map((entry) => [entry.id, entry]));
+  const replaced = (id: string | null): PlanRequirement["supersedes"] => {
+    if (!id) return null;
+    const entry = byId.get(id) ?? ctx.db.query<Requirement, [string]>(`SELECT * FROM requirements WHERE id = ?`).get(id);
+    return entry ? { id: entry.id, seq: entry.seq, quote: entry.quote } : null;
+  };
+  return entries.map((entry) => {
+    const inherited = entry.origin_task_id && entry.origin_task_id !== taskId ? titleOf(entry.origin_task_id) : null;
+    return {
+      id: entry.id,
+      seq: entry.seq,
+      quote: entry.quote,
+      restated: entry.restated,
+      category: entry.category,
+      polarity: entry.polarity,
+      dimension: entry.dimension,
+      value: entry.value,
+      status: entry.status as PlanRequirement["status"],
+      scope: entry.scope,
+      ticket_id: entry.scope === "ticket" ? entry.scope_id : null,
+      domain: entry.domain,
+      times_raised: entry.times_raised,
+      plans_raised: Math.max(1, plans.get(entry.id) ?? 0),
+      last_raised_at: entry.last_raised_at,
+      source_kind: entry.source_kind,
+      source: sources.get(entry.id) ?? null,
+      added_by: entry.added_by,
+      inherited_from: inherited !== null && entry.origin_task_id ? { task_id: entry.origin_task_id, title: inherited } : null,
+      excluded: entry.excluded,
+      supersedes: replaced(entry.supersedes),
+    };
+  });
+}
+
+/** Whether two lines are the same words, as the ledger compares them. */
+function sameWords(a: string, b: string): boolean {
+  const key = quoteWords(a);
+  return key !== "" && key === quoteWords(b);
+}
+
+/**
+ * Whether a plan other than `taskId` still holds an entry that holds beyond one plan (one of the
+ * whole conversation's, or a standing one) by those words, so that taking the line out of this
+ * plan sets the entry aside here rather than letting it go: a plan that has not set it aside and
+ * has the line on its board (rules or Done when), raised it by words of yours filed under it (not
+ * erased), or is the plan it was first said in; or you widened it yourself (对这个会话都适用, 升为
+ * 常设), which says it holds for the other plans by your own click.
+ */
+function heldElsewhere(ctx: StoreContext, entry: Requirement, taskId: string, line: string): boolean {
+  const widenedByYou = ctx.db
+    .query(
+      `SELECT 1 FROM work_events w, json_each(w.payload, '$.requirements') r
+       WHERE w.kind = 'requirement.rescope' AND w.actor = 'user' AND r.value = ?1
+         AND json_extract(w.payload, '$.cause') IN ('whole_project', 'standing') LIMIT 1`,
+    )
+    .get(entry.id);
+  if (widenedByYou) return true;
+  const aside = new Set(
+    ctx.db
+      .query<{ task_id: string }, [string]>(`SELECT task_id FROM requirement_exclusions WHERE requirement_id = ?`)
+      .all(entry.id)
+      .map((row) => row.task_id),
+  );
+  aside.add(taskId);
+  const holders = new Set(
+    ctx.db
+      .query<{ t: string }, [string]>(
+        `SELECT q.task_id AS t FROM requirement_mentions m JOIN user_quotes q ON q.id = m.quote_id
+         WHERE m.requirement_id = ?1 AND q.task_id IS NOT NULL AND q.redacted_at IS NULL
+         UNION SELECT origin_task_id FROM requirements WHERE id = ?1 AND origin_task_id IN (SELECT id FROM tasks)`,
+      )
+      .all(entry.id)
+      .map((row) => row.t),
+  );
+  if ([...holders].some((plan) => !aside.has(plan))) return true;
+  // Another plan's board with the line: the conversation's plans for one of the conversation's, any for a standing one.
+  const boards =
+    entry.scope === "project"
+      ? ctx.db.query<{ id: string; spec: string }, [string | null]>(`SELECT id, spec FROM tasks WHERE session_id = ? AND spec IS NOT NULL`).all(entry.scope_id)
+      : ctx.db.query<{ id: string; spec: string }, []>(`SELECT id, spec FROM tasks WHERE spec IS NOT NULL`).all();
+  return boards.some((plan) => {
+    if (aside.has(plan.id)) return false;
+    const spec = parsePlanSpec(plan.spec);
+    return !!spec && [...spec.rules, ...spec.acceptance].some((other) => sameWords(other, line));
+  });
+}
+
+/**
+ * Your edit of a plan's rules or Done-when lines on the board, as ledger operations (ADR 0042),
+ * inside the edit's own write, each naming the plan's version your edit made (`action`) in the work
+ * log. Each line you brought in is an entry of the plan standing on the board quote kept of it
+ * (`quoteOf`) — or, when the same words already bear on the plan as a whole (its own, its
+ * conversation's or a standing entry; a ticket's holds for less than a line of the plan), that
+ * entry said again: taken up if it was only proposed or an old rule nobody found your words for,
+ * and holding here again if you had set it aside for this plan. Each line you took out lets go of
+ * every entry with those words that holds here, whichever plan it came from. One of the plan's own
+ * is waived when in force and rejected when it was only an old rule. One of the whole
+ * conversation's, or a standing one, is set not to hold for this plan only while another plan
+ * still holds those words ({@link heldElsewhere}: the line on its board, your words raising it
+ * there, or it was first said there) — the one entry an old rule several plans of the conversation
+ * shared was taken in as, or a line of yours here that only said another plan's entry again. When
+ * no other plan does, the line you took out was its last hold, and it goes the same way as one of
+ * the plan's own: a later plan of the conversation would otherwise inherit, or be asked about, a
+ * line you took off the only board that had it.
+ */
+export function boardLedgerOps(
+  ctx: StoreContext,
+  input: { taskId: string; added: readonly string[]; removed: readonly string[]; quoteOf: (line: string) => string | null; action: string },
+): void {
+  const { taskId, action } = input;
+  const bearing = (): BearingRequirement[] => requirementsBearingOn(ctx, taskId, ["open", "proposed", "unverified"]);
+  // Held beyond this plan: every plan of the conversation, or every plan of a kind.
+  const wider = (entry: Requirement): boolean => entry.scope === "project" || entry.scope === "standing";
+  for (const line of input.removed) {
+    for (const entry of bearing()) {
+      if (entry.excluded || entry.status === "proposed" || !sameWords(entry.quote, line)) continue;
+      if (entry.scope !== "plan" && !wider(entry)) continue;
+      if (wider(entry) && heldElsewhere(ctx, entry, taskId, line)) setRequirementHere(ctx, entry.id, { taskId, holds: false, action });
+      else if (entry.status === "open") waiveRequirement(ctx, entry.id, { taskId, action });
+      else rejectRequirement(ctx, entry.id, { taskId, action });
+    }
+  }
+  for (const line of input.added) {
+    const quoteId = input.quoteOf(line);
+    // A proposed replacement is about another entry, not these words standing alone.
+    const matches = bearing().filter(
+      (entry) => (entry.scope === "plan" || wider(entry)) && !(entry.status === "proposed" && entry.supersedes) && sameWords(entry.quote, line),
+    );
+    const same = matches.find((entry) => entry.status === "open" && !entry.excluded) ?? matches[0];
+    if (same) {
+      if (same.excluded) setRequirementHere(ctx, same.id, { taskId, holds: true, action });
+      if (same.status !== "open") confirmRequirement(ctx, same.id, { taskId, action });
+      if (quoteId) raiseRequirement(ctx, same.id, { quoteId, actor: "user", action });
+      continue;
+    }
+    addRequirement(ctx, {
+      scope: "plan",
+      scopeId: taskId,
+      quote: line,
+      sourceKind: "board",
+      sourceQuoteId: quoteId,
+      addedBy: "user",
+      originTaskId: taskId,
+      action,
+    });
+  }
+}
+
+/**
+ * The rules and Done-when lines every plan had before the ledger, taken into it once (ADR 0040 P3),
+ * at the first open of a build that has it. What you typed on the board is in force, standing on
+ * the board quote kept of it when there is one; a line found in your own words about the plan is in
+ * force standing on them (`legacy`, verified); anything else — the organizer's lines — is an old
+ * rule nobody found your words for (`unverified`): shown for reference, never in force, until you
+ * say it is yours. In a video job (`planDomains`), a line about how the work is made, a choice of
+ * how it looks or sounds, or what stays the same across a series (craft-words.ts) holds for the
+ * plan's whole conversation, as a new one would; the rest, and every line of other work, for its
+ * plan. A line whose words the plan already bears as a whole (taken in for it, or for its
+ * conversation from another plan) is taken in once. Verified lines go first, so an old rule two
+ * plans of one conversation share is in force once rather than also unverified. Returns what was
+ * taken in.
+ */
+export function importLegacyRules(ctx: StoreContext): string[] {
+  if (ctx.db.query(`SELECT 1 FROM settings WHERE key = ?`).get(LEGACY_IMPORTED_KEY)) return [];
+  return ctx.db.transaction(() => {
+    type Line = { taskId: string; sessionId: string | null; text: string; board: boolean; quoteId: string | null };
+    const verified: Line[] = [];
+    const unverified: Line[] = [];
+    const plans = ctx.db
+      .query<{ id: string; session_id: string | null; spec: string }, []>(
+        `SELECT id, session_id, spec FROM tasks WHERE spec IS NOT NULL ORDER BY created_at ASC, rowid ASC`,
+      )
+      .all();
+    for (const plan of plans) {
+      const spec = parsePlanSpec(plan.spec);
+      if (!spec) continue;
+      const lines = [...new Set([...spec.rules, ...spec.acceptance].map((line) => line.trim()).filter(Boolean))];
+      if (lines.length === 0) continue;
+      const typed = userWrittenSpec(ctx, plan.id);
+      const quotes = ctx.db
+        .query<{ id: string; via: string; body: string }, [string]>(
+          `SELECT id, via, body FROM user_quotes WHERE task_id = ? AND redacted_at IS NULL ORDER BY created_at ASC, rowid ASC`,
+        )
+        .all(plan.id)
+        .map((quote) => ({ ...quote, words: quoteWords(quote.body) }));
+      for (const text of lines) {
+        const words = quoteWords(takeCodePoints(text, REQUIREMENT_QUOTE_MAX).text);
+        const board = typed.rules.includes(text) || typed.acceptance.includes(text);
+        const said = words ? quotes.find((quote) => (board ? quote.via === "board" && quote.words === words : quote.words.includes(words))) : undefined;
+        const line = { taskId: plan.id, sessionId: plan.session_id, text, board, quoteId: said?.id ?? null };
+        (board || said ? verified : unverified).push(line);
+      }
+    }
+    const taken: string[] = [];
+    const video = new Map<string, boolean>();
+    const isVideo = (taskId: string): boolean => {
+      if (!video.has(taskId)) video.set(taskId, planDomains(ctx, taskId).includes("video"));
+      return video.get(taskId)!;
+    };
+    const take = (line: Line, status: "open" | "unverified"): void => {
+      const project = line.sessionId !== null && conversationWide(null, line.text) && isVideo(line.taskId);
+      const scope = project ? "project" : "plan";
+      const scopeId = project ? line.sessionId! : line.taskId;
+      // The same words already taken in for this plan, or for its whole conversation (a ticket's hold for less).
+      const same = requirementsBearingOn(ctx, line.taskId, ["open", "proposed", "unverified"]).find(
+        (entry) => entry.scope !== "ticket" && sameWords(entry.quote, line.text),
+      );
+      if (same) {
+        if (line.quoteId && same.status === "open") raiseRequirement(ctx, same.id, { quoteId: line.quoteId, actor: IMPORT_WRITER });
+        return;
+      }
+      const entry = addRequirement(ctx, {
+        scope,
+        scopeId,
+        quote: line.text,
+        sourceKind: line.board ? "board" : "legacy",
+        sourceQuoteId: line.quoteId,
+        addedBy: IMPORT_WRITER,
+        status,
+        originTaskId: line.taskId,
+      });
+      taken.push(entry.id);
+    };
+    for (const line of verified) take(line, "open");
+    for (const line of unverified) take(line, "unverified");
+    if (taken.length > 0) recordWorkEvent(ctx, { kind: "requirement.import", actor: IMPORT_WRITER, payload: { requirements: taken } });
+    setSetting(ctx, LEGACY_IMPORTED_KEY, isoNow());
+    return taken;
+  })();
+}
+
+/**
+ * The cards about entries the app has already put up, by kind: what it has said, it does not say
+ * again. `each` marks a standing card that asked about one entry of its category alone.
+ */
+function carded(ctx: StoreContext, card: "legacy" | "standing"): Array<{ requirements: string[]; category: string | null; each: boolean }> {
+  return ctx.db
+    .query<{ payload: string }, [string]>(
+      `SELECT payload FROM work_events WHERE kind = 'requirement.card' AND json_extract(payload, '$.card') = ? ORDER BY seq ASC`,
+    )
+    .all(card)
+    .map((row) => {
+      const payload = JSON.parse(row.payload) as { requirements?: string[]; category?: string | null; each?: boolean };
+      return { requirements: payload.requirements ?? [], category: payload.category ?? null, each: payload.each === true };
+    });
+}
+
+/**
+ * The old rules bearing on the plan that nobody found your words for and no card has asked you
+ * about yet: what the app's 「这些是你说的吗」 line is due to name, the first time a line of yours
+ * lands in the plan. Empty when there are none.
+ */
+export function legacyCardDue(ctx: StoreContext, taskId: string): string[] {
+  const asked = new Set(carded(ctx, "legacy").flatMap((card) => card.requirements));
+  return requirementsBearingOn(ctx, taskId, ["unverified"])
+    .filter((entry) => !entry.excluded && entry.added_by === IMPORT_WRITER && !asked.has(entry.id))
+    .map((entry) => entry.id);
+}
+
+/** Categories compare folded, as the scribe's do. */
+function categoryKey(category: string | null): string {
+  return category ? category.normalize("NFKC").toLowerCase().trim() : "";
+}
+
+/** The conversation a plan lives in; null for one that belongs to none (or is gone). */
+function sessionOf(ctx: StoreContext, taskId: string): string | null {
+  return ctx.db.query<{ session_id: string | null }, [string]>(`SELECT session_id FROM tasks WHERE id = ?`).get(taskId)?.session_id ?? null;
+}
+
+/**
+ * Whether an entry is one the standing suggestion in a conversation may name, and 升为常设 widen:
+ * in force, not standing yet, of `category`, about how the work is made (craft-words.ts — a
+ * choice of look or sound such as 色调偏冷, a series' constants, a running time, anything naming
+ * one part are not), and held by that conversation or one of its plans. Never a ticket's, which is
+ * about one piece of the work, nor one of another conversation, which you said about other work.
+ */
+function standingCandidate(ctx: StoreContext, entry: Requirement, at: { sessionId: string; category: string }): boolean {
+  const key = categoryKey(entry.category);
+  if (entry.status !== "open" || !key || key !== categoryKey(at.category) || !craftRequirement(entry.category, entry.quote)) return false;
+  if (entry.scope === "project") return entry.scope_id === at.sessionId;
+  return entry.scope === "plan" && sessionOf(ctx, entry.scope_id!) === at.sessionId;
+}
+
+/** The standing card due after a filing: which entries it would widen, in how many plans you said them, and their words. */
+export type StandingSuggestion = {
+  category: string;
+  domain: string;
+  requirements: string[];
+  plans: number;
+  /** Each entry's own words, once per wording: what the card shows, so 升为常设 is pressed knowing what it widens. */
+  quotes: string[];
+  /** The card asks about one entry alone: the category's entries say different things. */
+  each: boolean;
+};
+
+/**
+ * Whether entries of one category just raised or added (`touched`) are now craft requirements you
+ * have raised in two or more video jobs of this plan's conversation (ADR 0042): the words raising
+ * them counted by the plan they were said in, and a plan counted only once it is video work by what
+ * was done in it (`planDomains`), this one included. Then the app suggests they hold for every
+ * video job (`standing`), once per category — but only when the category's entries all say the
+ * same words. Entries of one category in other words may ask for different things (「背景要连贯」
+ * and 「每场换一个背景」 under one label: a scribe's label is no proof they agree), and one click
+ * would make them all standing at once; then the card asks about one entry alone, one you just
+ * said again that you have said in two or more such jobs itself, once per entry. The card due, or
+ * null.
+ */
+export function standingSuggestion(ctx: StoreContext, taskId: string, touched: readonly string[]): StandingSuggestion | null {
+  const sessionId = sessionOf(ctx, taskId);
+  const domain = sessionId && touched.length > 0 ? planDomains(ctx, taskId)[0] : undefined;
+  if (!sessionId || !domain) return null;
+  const cards = carded(ctx, "standing");
+  const suggested = new Set(cards.filter((card) => !card.each).map((card) => categoryKey(card.category)));
+  const asked = new Set(cards.flatMap((card) => card.requirements));
+  /** In how many video plans of the conversation words of yours raised these entries (or first said them). */
+  const plansOf = (ids: readonly string[]): number =>
+    ctx.db
+      .query<{ t: string }, [string, string]>(
+        `SELECT DISTINCT t FROM (
+           SELECT q.task_id AS t FROM requirement_mentions m JOIN user_quotes q ON q.id = m.quote_id
+           WHERE m.requirement_id IN (SELECT value FROM json_each(?1)) AND q.task_id IS NOT NULL
+           UNION SELECT origin_task_id FROM requirements WHERE id IN (SELECT value FROM json_each(?1)) AND origin_task_id IS NOT NULL)
+         WHERE t IN (SELECT id FROM tasks WHERE session_id = ?2)`,
+      )
+      .all(JSON.stringify(ids), sessionId)
+      .filter((plan) => planDomains(ctx, plan.t).includes(domain)).length;
+  const tried = new Set<string>();
+  for (const id of touched) {
+    const entry = getRequirementOrNull(ctx, id);
+    const key = categoryKey(entry?.category ?? null);
+    if (!entry || !key || tried.has(key) || suggested.has(key)) continue;
+    const at = { sessionId, category: entry.category! };
+    if (!standingCandidate(ctx, entry, at)) continue;
+    tried.add(key);
+    const entries = ctx.db
+      .query<{ id: string }, [string]>(
+        `SELECT id FROM requirements WHERE status = 'open' AND (
+           (scope = 'project' AND scope_id = ?1) OR (scope = 'plan' AND scope_id IN (SELECT id FROM tasks WHERE session_id = ?1)))
+         ORDER BY created_at ASC, rowid ASC`,
+      )
+      .all(sessionId)
+      .map((row) => getRequirement(ctx, row.id))
+      .filter((candidate) => standingCandidate(ctx, candidate, at));
+    const wordings = new Map<string, string>();
+    for (const candidate of entries) if (!wordings.has(quoteWords(candidate.quote))) wordings.set(quoteWords(candidate.quote), candidate.quote);
+    if (wordings.size === 1) {
+      const ids = entries.map((candidate) => candidate.id);
+      if (ids.every((candidate) => asked.has(candidate))) continue;
+      const plans = plansOf(ids);
+      if (plans >= 2) return { category: entry.category!, domain, requirements: ids, plans, quotes: [...wordings.values()], each: false };
+      continue;
+    }
+    // Other words in the category: each entry you just said again, on its own.
+    for (const own of entries) {
+      if (!touched.includes(own.id) || asked.has(own.id)) continue;
+      const plans = plansOf([own.id]);
+      if (plans >= 2) return { category: entry.category!, domain, requirements: [own.id], plans, quotes: [own.quote], each: true };
+    }
+  }
+  return null;
+}
+
+/**
+ * Whether 升为常设 on a standing suggestion made for this plan still widens this entry: the card
+ * named it, and it is one such a card may name now ({@link standingSuggestion}'s own test).
+ */
+export function mayMakeStanding(ctx: StoreContext, id: string, card: { taskId: string; category: string | null }): boolean {
+  const sessionId = sessionOf(ctx, card.taskId);
+  const entry = getRequirementOrNull(ctx, id);
+  if (!sessionId || !entry || !card.category) return false;
+  return standingCandidate(ctx, entry, { sessionId, category: card.category });
+}
+
+/**
+ * A line of the app's about entries went up: named in the work log, so it is not put up again
+ * (`each`: a standing card about one entry alone, which leaves its category's own card unasked).
+ */
+export function recordRequirementCard(
+  ctx: StoreContext,
+  input: { card: "legacy" | "standing"; requirements: readonly string[]; category?: string | null; each?: boolean; messageId: string; taskId: string },
+): void {
+  recordWorkEvent(ctx, {
+    kind: "requirement.card",
+    actor: "app",
+    taskId: input.taskId,
+    payload: {
+      card: input.card,
+      requirements: input.requirements,
+      category: input.category ?? null,
+      ...(input.each ? { each: true } : {}),
+      message: input.messageId,
+    },
+  });
+}

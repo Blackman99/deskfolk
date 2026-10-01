@@ -7,11 +7,11 @@
  * stamped with the answer, so every turn it opens — a mention, a judgement that joined, a fork —
  * lands in the same plan and ticket. Once a plan's turns have all ended and it has been quiet for
  * a moment, a second call files what was handed over: ticket states, workers, progress. A settle
- * has no line of yours to go on: when you have said nothing since the last version it only files
- * the handover, and the goal, Done when, rules and what each ticket is for stay as they were.
- * Neither call writes the rules or Done when any more (ADR 0040 P3): whatever the answer says, a
- * plan keeps its own (`filedSpec` in store/plan-spec.ts), and what you ask is noted by the scribe
- * (scribe.ts) into the requirements ledger.
+ * only ever files that handover: the goal and what each ticket is for stay as they were, whatever
+ * it answers. It has no line of yours to go on; yours are filed, and noted by the scribe, when you
+ * say them. Neither call writes the rules or Done when any more (ADR 0042): whatever the answer
+ * says, a plan keeps its own (`filedSpec` in store/plan-spec.ts), and what you ask is noted by the
+ * scribe (scribe.ts) into the requirements ledger.
  *
  * It fails open. No default model, a refused call, an unreadable answer, a store that refuses the
  * change: the plan stays as it was and turns open where they would have anyway, and the log says
@@ -29,7 +29,7 @@ import { describeCheck } from "./acceptance-eval";
 import type { CompletionsClient, MappedUsage } from "./completions";
 import { HttpError } from "./errors";
 import { atomicWrite } from "./file-integrity";
-import { holdSettle, ORGANIZER_SYSTEM, ORGANIZER_SYSTEM_UNDER_HOLDS, organizerPayload, parseOrganizerResult } from "./prompts/organizer";
+import { ORGANIZER_SYSTEM, ORGANIZER_SYSTEM_UNDER_HOLDS, organizerPayload, parseOrganizerResult } from "./prompts/organizer";
 import { derivedNotGate, parsePlanSpec, PLAN_MAP_FILE, TICKET_FILE, type OrganizerResult, type PlanSpec, type Store, type Task } from "./store";
 import { ENGINE_LEVELS } from "./store/schema-gate";
 import { classifyPath } from "./workspace-paths";
@@ -242,8 +242,6 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     sessionId: string;
     message: Message | null;
     current: Task | null;
-    /** A settle's reading of whether you said anything since the last version. */
-    userSpoke?: boolean;
   }): Promise<{ parsed: OrganizerResult; pending: PendingOrganizerRun } | null> {
     const routing = await deps.routing();
     if (!routing || deps.draining()) return null;
@@ -253,7 +251,6 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
       message: input.message,
       current: input.current,
       trace: input.current ? traceLines(input.current.id) : [],
-      userSpoke: input.userSpoke,
     });
     // Which filing this was, for the line that says why it came to nothing.
     const what = input.mode === "message" ? `message ${input.message?.id}` : `plan ${input.current?.id}`;
@@ -521,18 +518,15 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     if (!opts?.evidence && store.taskMessagesSince(taskId, since, 1).length === 0 && store.taskArtifactsSince(taskId, since, 1).length === 0) {
       return false;
     }
-    // Read before the call, so the organizer is told what the app will hold it to: the version it
-    // builds on, and whether you said anything since. A line of yours that lands while the call is
-    // out has not been seen by it, and does not free its answer.
+    // Read before the call: the version it builds on. A line or an edit of yours that lands while the
+    // call is out moves the plan past it, and the answer is then not filed.
     const revision = store.currentRevision(taskId);
-    const before = parsePlanSpec(task.spec);
-    const userSpoke = store.userSpokeSince(taskId, before ? since : "");
     inFlight.add(taskId);
     try {
-      const outcome = await call({ mode: "settle", sessionId: task.session_id, message: null, current: task, userSpoke });
+      const outcome = await call({ mode: "settle", sessionId: task.session_id, message: null, current: task });
       if (!outcome) return false;
       const { parsed, pending } = outcome;
-      // Everything from here on can throw (the lastTurn lookup, holdSettle, the apply itself), and
+      // Everything from here on can throw (the lastTurn lookup, the apply itself), and
       // every path — success or failure — must finish this pending row exactly once: a throw that
       // slipped past `finishOrganizerRun` left it stuck open, and a second write onto an already-
       // finished row would leave two contradictory ones for the same call (there is no update path).
@@ -559,26 +553,22 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
         // The evidence settle is only for re-reading checks that just ran; it must not also let this
         // pass add, edit or remove checks of its own — that would never stop giving itself one more look.
         const answer = opts?.evidence ? { ...kept, checks: undefined } : kept;
-        const { result, held: heldFromSettle } = holdSettle(
-          { ...answer, decision: "continue", resumePlanId: null, messageTicket: null },
-          { before, tickets: store.listTickets(taskId), userSpoke },
-        );
+        // Only the handover lands, whatever the answer says (ADR 0042): the store keeps the goal,
+        // a plan it would park and each ticket's title and description, and says what it kept.
         const applied = store.transaction(() =>
           store.applyOrganizerResult({
             sessionId: task.session_id!,
             current: task,
-            result,
+            result: { ...answer, decision: "continue", resumePlanId: null, messageTicket: null },
             source: { messageId: null, turnId: lastTurn?.id ?? null, messageBody: "" },
             ifRevision: revision,
+            settle: true,
           }),
         );
-        for (const what of heldFromSettle) log(`[organizer] plan ${taskId}: nothing new from the user since the last version; ${what}`);
+        const handover = applied.kept.map((what) => `a settle files only the handover; ${what}`);
+        for (const note of handover) log(`[organizer] plan ${taskId}: ${note}`);
         const ticketHeldNotes = noteHeldOpen(taskId, applied.heldOpenBy);
-        const notes = [
-          ...(reopens ? ["the settle called it active; kept parked"] : []),
-          ...heldFromSettle.map((what) => `nothing new from the user since the last version; ${what}`),
-          ...ticketHeldNotes,
-        ];
+        const notes = [...(reopens ? ["the settle called it active; kept parked"] : []), ...handover, ...ticketHeldNotes];
         held = notes.length > 0 ? notes : null;
         if (applied.awaitingEvidence) awaitingEvidence.add(taskId);
         else awaitingEvidence.delete(taskId);

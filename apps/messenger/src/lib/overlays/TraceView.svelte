@@ -19,7 +19,7 @@
 	import { classifySession, youBotPeer } from '../sidebar/session-groups.ts';
 	import { sessionTitle } from '../sidebar/session-title.ts';
 	import { holdLabel } from '../sidebar/holds-list.ts';
-	import { formatMessageTime } from '../chat/chat-view.ts';
+	import { formatFullTimestamp, formatMessageTime } from '../chat/chat-view.ts';
 	import StopMenu from '../chat/StopMenu.svelte';
 	import { planStopItems, type StopChoice } from '../chat/stop-menu.ts';
 	import PlanSpecPanel from './PlanSpecPanel.svelte';
@@ -40,6 +40,7 @@
 		ticketArtifactAttachments,
 		totalTicketCount
 	} from './plan-board.ts';
+	import { lastChangeLabel } from './plan-requirements.ts';
 	import { routeCardRow, type RouteLogRow } from './route-log.ts';
 	import { TraceCanvas } from './trace-canvas.svelte.ts';
 	import {
@@ -390,6 +391,13 @@
 	const sideShown = $derived<TraceSide>(!detail || (side === 'tickets' && !hasTickets) ? null : side);
 	const segmentShown = $derived(!detail || (segment === 'tickets' && !hasTickets) ? 'trace' : segment);
 	const planStatus = $derived<PlanStatus>(detail?.status ?? (trace?.closed_at ? 'done' : 'active'));
+	/** 「上次变化 X 前」 ages while the board is open, so the clock it reads ticks now and then. */
+	let nowMs = $state(Date.now());
+	$effect(() => {
+		const timer = setInterval(() => (nowMs = Date.now()), 30_000);
+		return () => clearInterval(timer);
+	});
+	const changeLine = $derived(detail ? lastChangeLabel(detail, nowMs, t.plan) : null);
 	const heading = $derived(trace ? `${t.trace.title} · ${planTitle(detail ?? trace)}` : t.trace.title);
 	/**
 	 * Your stops over the job on the board: on it, on a Bot's work in it, on the conversation it
@@ -751,6 +759,9 @@
 				{#if trace}
 					<span class="trace-meta">
 						<span class="plan-status is-{planStatus}">{t.plan.status[planStatus]}</span>
+						{#if detail?.dormant_since}
+							<span class="plan-status is-dormant" title={t.plan.dormantHint}>{t.plan.dormant}</span>
+						{/if}
 						{#if detail?.kind} · {detail.kind}{/if}
 						{#if detail && totalTicketCount(detail.ticket_counts) > 0}
 							 · {t.plan.ticketCounts(openTicketCount(detail.ticket_counts), totalTicketCount(detail.ticket_counts))}
@@ -758,6 +769,9 @@
 						{#if trace.session_id} · {placeOf({ session_id: trace.session_id })}{/if}
 						 · <span class="mono">{trace.dir}</span>
 					</span>
+					{#if changeLine}
+						<span class="trace-change" title={detail?.last_change ? formatFullTimestamp(detail.last_change.at) : undefined}>{changeLine}</span>
+					{/if}
 					{#if boardHolds.length > 0}
 						<ul class="trace-holds" aria-label={t.control.holdsTitle}>
 							{#each boardHolds as hold (hold.id)}
@@ -1119,6 +1133,14 @@
 		color: var(--ok-text);
 	}
 
+	/* Set aside, not a status of its own: quieter than any, a dashed outline with no fill. */
+	.plan-status.is-dormant {
+		border-style: dashed;
+		border-color: var(--line-hover);
+		background: transparent;
+		color: var(--muted);
+	}
+
 	/* Beside the board: the spec, the tickets, or neither. Pressed is open; press again to put it away. */
 	.trace-side-toggles {
 		display: flex;
@@ -1316,6 +1338,15 @@
 
 	.trace-meta {
 		font-size: 12px;
+		color: var(--muted);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	/* When the job last moved and what moved: freshness, not status, so as quiet as the meta line. */
+	.trace-change {
+		font-size: 11px;
 		color: var(--muted);
 		overflow: hidden;
 		text-overflow: ellipsis;

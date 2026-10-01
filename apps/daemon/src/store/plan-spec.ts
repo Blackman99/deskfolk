@@ -9,9 +9,10 @@ import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { applyOrganizerChecks, checkNeverRanSinceDefinition, checksHoldingPlanOpen, listChecks, rebindCheckItems, type OrganizerCheckInput } from "./acceptance-checks";
 import { planHeldBy, setPlanStatusByUser } from "./holds";
+import { boardLedgerOps, planRequirements } from "./plan-requirements";
 import { normalizePlanSpec, parsePlanSpec, type PlanSpec } from "./plan-shape";
 import { changedWords, recordQuote } from "./quotes";
-import { type StoreContext } from "./shared";
+import { settingsMap, type StoreContext } from "./shared";
 import {
   elsewherePlans,
   getTask,
@@ -169,12 +170,21 @@ export function setPlanSpecByUser(
     // What you wrote on the board is your words too (ADR 0040): the clauses of the goal you changed
     // (not the rest of it, which may be the organizer's words you only kept), and each Done-when
     // line and rule you brought in. The rest was already there.
-    const typed = [
-      ...(spec.goal !== (beforeSpec?.goal ?? "") ? [changedWords(beforeSpec?.goal ?? "", spec.goal)] : []),
-      ...spec.acceptance.filter((line) => !beforeAcceptance.includes(line)),
-      ...spec.rules.filter((rule) => !(beforeSpec?.rules ?? []).includes(rule)),
-    ];
-    for (const body of typed) recordQuote(ctx, { via: "board", body, taskId, now });
+    if (spec.goal !== (beforeSpec?.goal ?? "")) recordQuote(ctx, { via: "board", body: changedWords(beforeSpec?.goal ?? "", spec.goal), taskId, now });
+    const beforeLines = [...beforeAcceptance, ...(beforeSpec?.rules ?? [])];
+    const afterLines = [...spec.acceptance, ...spec.rules];
+    const added = [...new Set(afterLines.filter((line) => !beforeLines.includes(line)))];
+    const quoted = new Map<string, string | null>();
+    for (const line of added) quoted.set(line, recordQuote(ctx, { via: "board", body: line, taskId, now })?.id ?? null);
+    // And each such line is an entry of the requirements ledger, and each line taken out lets go
+    // of the entry it was, with this version named as your action (ADR 0040 P3).
+    boardLedgerOps(ctx, {
+      taskId,
+      added,
+      removed: [...new Set(beforeLines.filter((line) => !afterLines.includes(line)))],
+      quoteOf: (line) => quoted.get(line) ?? null,
+      action: revision.id,
+    });
     return { task, revision };
   })();
 }
@@ -207,10 +217,10 @@ export function patchTicketByUser(
 /**
  * What of a plan as it stands you typed on the board yourself: the goal if you set it last, the Done
  * when lines and rules your edits brought in, and the tickets whose description you wrote last. Read
- * from every revision, not the latest few,
- * since every drag of a ticket on the board is a revision of yours too. The organizer counts these
- * as your words, the same as a line you sent, so a rule you typed is never taken for one a Bot made
- * up.
+ * from every revision, not the latest few, since every drag of a ticket on the board is a revision
+ * of yours too. The organizer leaves the goal and descriptions you typed alone; the one-time import
+ * into the requirements ledger takes the rules and Done when lines you typed as yours
+ * (`importLegacyRules`).
  */
 export function userWrittenSpec(
   ctx: StoreContext,
@@ -341,14 +351,40 @@ function targetGone(decision: "resume" | "join", planId: string): HttpError {
 
 /**
  * The organizer's spec as it lands on a plan that stood at `before` (null for one it opens): its
- * rules and Done when are not taken (ADR 0040 P3). What you ask of the work is kept from your own
+ * rules and Done when are not taken (ADR 0042). What you ask of the work is kept from your own
  * words — the requirements ledger, which the scribe writes a patch at a time (scribe.ts) — and no
  * model's answer may rewrite it as a whole any more; on the plan, those two lists stay as they are:
- * what you wrote on the board, and whatever a filing before this left. The goal, the process, the
- * progress and the status are still filed.
+ * what you wrote on the board, and whatever a filing before this left. The prompt no longer asks
+ * for them either; this is what holds whatever an answer says.
+ *
+ * A settle takes less still: it files the handover, what the Bots did since, and never what the job
+ * is for. The goal and kind stay as they were (a plan with no spec yet takes the answer's, or it
+ * would never get one) and the plan is not parked by it; the process, the progress and a plan called
+ * done still land. `kept` says what the answer asked for and did not get, for the log.
+ *
+ * `standing` is the plan's status as it is now, the task's own: a plan with no spec yet has one too,
+ * and a plan a newer one displaced was parked without its spec being written again.
  */
-function filedSpec(spec: PlanSpec, before: PlanSpec | null): PlanSpec {
-  return { ...spec, acceptance: before?.acceptance ?? [], rules: before?.rules ?? [] };
+function filedSpec(
+  spec: PlanSpec,
+  before: PlanSpec | null,
+  settle: boolean,
+  kept: string[],
+  standing: PlanSpec["status"] = before?.status ?? "active",
+): PlanSpec {
+  const filed = { ...spec, acceptance: before?.acceptance ?? [], rules: before?.rules ?? [] };
+  if (!settle) return filed;
+  const status = spec.status === "parked" && standing !== "parked" ? standing : spec.status;
+  if (before && spec.goal !== before.goal) kept.push("kept the goal as it was");
+  if (status !== spec.status) kept.push("did not park the plan");
+  if (!before) return { ...filed, status };
+  return { ...filed, kind: before.kind ?? spec.kind, goal: before.goal, status };
+}
+
+/** Whether a ticket description in an answer only repeats the one it has, or the one-line preview of it the organizer was shown. */
+function echoesSpec(answer: string, stored: string): boolean {
+  const flat = (text: string) => text.replace(/\s+/g, " ").trim();
+  return flat(stored).startsWith(flat(answer));
 }
 
 /**
@@ -370,6 +406,8 @@ export function applyOrganizerResult(
      * edit of yours landed while the call was out), nothing is applied: the answer would undo it.
      */
     ifRevision?: number;
+    /** A settle: only the handover lands (see {@link filedSpec}); an existing ticket keeps its title and any description it has. */
+    settle?: boolean;
   },
 ): {
   task: Task;
@@ -383,6 +421,8 @@ export function applyOrganizerResult(
   heldByChecks: AcceptanceCheck[];
   /** `heldByChecks` is not empty and every one of them is holding it open only for lack of a run yet — none has failed. */
   awaitingEvidence: boolean;
+  /** What a settle's answer asked for and did not get (the goal, a park, a ticket's title or description), one line each. */
+  kept: string[];
 } {
   // On the store's clock, like the lines it files: that clock runs ahead of the wall clock when it
   // is busy, and a version stamped by the wall clock could read as older than the line that made it,
@@ -415,14 +455,17 @@ export function applyOrganizerResult(
         title: result.spec.goal || body,
         brief: body || result.spec.goal,
         kind: result.spec.kind,
-        spec: filedSpec(result.spec, null),
+        spec: filedSpec(result.spec, null, false, []),
         now: at,
       });
     }
+    const settle = input.settle === true;
+    const kept: string[] = [];
     // Read here, before this run touches the plan, and not from `input.current`: that copy was taken
     // before the call went out, and a rule you typed on the board while it was out is in the plan,
     // not in the copy (a line's filing carries no `ifRevision` to refuse the answer over it).
-    const filed = filedSpec(result.spec, parsePlanSpec(getTask(ctx, target.id).spec));
+    const standing = getTask(ctx, target.id);
+    const filed = filedSpec(result.spec, parsePlanSpec(standing.spec), settle, kept, standing.status);
     // A resumed or joined plan is someone else's spec history to revise, not this run's own checks
     // to write: the organizer only touches checks on the plan it is continuing or opening.
     const appliesChecks = result.decision === "continue" || result.decision === "new";
@@ -436,16 +479,32 @@ export function applyOrganizerResult(
       const known =
         byId.get(entry.id) ?? (NEW_TICKET.test(entry.id) && entry.title ? byTitle.get(titleKey(entry.title)) : undefined);
       if (known) {
+        // A settle files where the ticket stands and who is on it, never what it is for: a title
+        // and a description it already has stay (an empty one may still be filled).
+        const described = settle && Boolean(known.spec.trim());
+        if (settle) {
+          const number = String(known.seq).padStart(2, "0");
+          if (entry.title && titleKey(entry.title) !== titleKey(known.title)) kept.push(`kept ticket ${number}'s title`);
+          if (described && entry.spec && !echoesSpec(entry.spec, known.spec)) kept.push(`kept ticket ${number}'s spec`);
+        }
         try {
           // What the organizer left out says nothing about the ticket: an empty spec does not
           // erase one, and a missing title, status or worker keeps what is there.
           const next = patchTicket(
             ctx,
             known.id,
-            { title: entry.title, spec: entry.spec || undefined, status: entry.status, worker: entry.worker },
+            {
+              title: settle ? undefined : entry.title,
+              spec: described ? undefined : entry.spec || undefined,
+              status: entry.status,
+              worker: entry.worker,
+            },
             { now: at },
           );
           byTitle.set(titleKey(next.title), next);
+          // The settle kept the old title, but the answer goes on calling the ticket by the new one:
+          // a new-N of that name later in it is still this ticket, not a second one.
+          if (settle && entry.title) byTitle.set(titleKey(entry.title), next);
           if (NEW_TICKET.test(entry.id)) placeholders.set(entry.id, known.id);
         } catch {
           // an entry the store refuses is dropped; the rest of the run still applies
@@ -500,7 +559,7 @@ export function applyOrganizerResult(
       ctx.db.run(`UPDATE messages SET task_id = ?, ticket_id = ? WHERE id = ?`, [task.id, messageTicketId, input.source.messageId]);
     }
     const awaitingEvidence = heldByChecks.length > 0 && heldByChecks.every((check) => checkNeverRanSinceDefinition(check));
-    return { task, tickets: listTickets(ctx, task.id), messageTicketId, revision, created, heldOpenBy, heldByChecks, awaitingEvidence };
+    return { task, tickets: listTickets(ctx, task.id), messageTicketId, revision, created, heldOpenBy, heldByChecks, awaitingEvidence, kept };
   })();
 }
 
@@ -524,6 +583,8 @@ export function taskDetail(ctx: StoreContext, taskId: string, present: (path: st
     routine_id: task.routine_id,
     checks: listChecks(ctx, taskId),
     held_by: planHeldBy(ctx, taskId),
+    requirements: planRequirements(ctx, taskId),
+    last_change: planLastChange(ctx, taskId),
     tickets: listTickets(ctx, taskId).map((ticket) => ({
       ...ticket,
       artifacts: ticketArtifacts(ctx, ticket.id, present).map((row) => ({
@@ -534,6 +595,106 @@ export function taskDetail(ctx: StoreContext, taskId: string, present: (path: st
       })),
     })),
   };
+}
+
+const TICKET_STATUS_WORD: Record<TicketStatus, { zh: string; en: string }> = {
+  todo: { zh: "待做", en: "to do" },
+  doing: { zh: "进行中", en: "doing" },
+  review: { zh: "待验收", en: "review" },
+  done: { zh: "已完成", en: "done" },
+  parked: { zh: "搁置", en: "parked" },
+};
+
+const OUTCOME_WORD: Record<string, { zh: string; en: string }> = {
+  pass: { zh: "通过", en: "passed" },
+  fail: { zh: "没过", en: "failed" },
+  blocked: { zh: "受阻", en: "blocked" },
+  error: { zh: "出错", en: "errored" },
+};
+
+const REQUIREMENT_EVENT_WORD: Record<string, { zh: (n: string) => string; en: (n: string) => string }> = {
+  "requirement.add": { zh: (n) => `记下要求 ${n}`, en: (n) => `${n} written down` },
+  "requirement.raise": { zh: (n) => `要求 ${n} 又说了一次`, en: (n) => `${n} said again` },
+  "requirement.confirm": { zh: (n) => `你确认了 ${n}`, en: (n) => `you confirmed ${n}` },
+  "requirement.reject": { zh: (n) => `你说 ${n} 不是要求`, en: (n) => `you said ${n} is no requirement` },
+  "requirement.waive": { zh: (n) => `${n} 不再适用`, en: (n) => `${n} no longer holds` },
+  "requirement.not_here": { zh: (n) => `${n} 不适用这件事`, en: (n) => `${n} set not to hold here` },
+  "requirement.here_again": { zh: (n) => `${n} 又适用这件事`, en: (n) => `${n} holds here again` },
+  "requirement.rescope": { zh: (n) => `${n} 适用得更广了`, en: (n) => `${n} holds more widely` },
+};
+
+/**
+ * When the plan last changed, and what the change was, for the board's head (「上次变化 30 秒前
+ * （…）」): the newest of its latest version, a ticket moving, a check's run, a turn in it, and a
+ * change to its requirements, in the app's language. Read from rows already kept; nothing is
+ * written to say it.
+ */
+export function planLastChange(ctx: StoreContext, taskId: string): { at: string; what: string } | null {
+  const en = settingsMap(ctx).get("locale") === "en";
+  const word = (pair: { zh: string; en: string }): string => (en ? pair.en : pair.zh);
+  const seen: Array<{ at: string; what: string }> = [];
+  const version = ctx.db
+    .query<{ created_at: string; actor: string; cause: string | null }, [string]>(
+      `SELECT created_at, actor, cause FROM task_spec_revisions WHERE task_id = ? ORDER BY revision DESC LIMIT 1`,
+    )
+    .get(taskId);
+  if (version) {
+    const what = version.cause === "hold"
+      ? word({ zh: "叫停改了它的状态", en: "a stop changed its status" })
+      : version.actor === "user"
+        ? word({ zh: "你改了要点", en: "you edited the plan" })
+        : word({ zh: "要点整理了一版", en: "the plan was filed again" });
+    seen.push({ at: version.created_at, what });
+  }
+  const ticket = ctx.db
+    .query<{ seq: number; title: string; status: TicketStatus; updated_at: string }, [string]>(
+      `SELECT seq, title, status, updated_at FROM tickets WHERE task_id = ? ORDER BY updated_at DESC LIMIT 1`,
+    )
+    .get(taskId);
+  if (ticket) {
+    const number = String(ticket.seq).padStart(2, "0");
+    seen.push({
+      at: ticket.updated_at,
+      what: en ? `ticket ${number} "${ticket.title}": ${TICKET_STATUS_WORD[ticket.status].en}` : `任务 ${number}《${ticket.title}》：${TICKET_STATUS_WORD[ticket.status].zh}`,
+    });
+  }
+  const run = ctx.db
+    .query<{ item: string; outcome: string | null; finished_at: string }, [string]>(
+      `SELECT c.item, r.outcome, r.finished_at FROM acceptance_check_runs r JOIN acceptance_checks c ON c.id = r.check_id
+       WHERE r.task_id = ? AND r.finished_at IS NOT NULL ORDER BY r.finished_at DESC LIMIT 1`,
+    )
+    .get(taskId);
+  if (run?.outcome) {
+    const outcome = word(OUTCOME_WORD[run.outcome] ?? { zh: run.outcome, en: run.outcome });
+    seen.push({ at: run.finished_at, what: en ? `check "${run.item}" ${outcome}` : `检查「${run.item}」${outcome}` });
+  }
+  const turn = ctx.db
+    .query<{ name: string | null; status: string; last_activity_at: string }, [string]>(
+      `SELECT b.name, t.status, t.last_activity_at FROM turns t LEFT JOIN bots b ON b.id = t.bot_id
+       WHERE t.task_id = ? ORDER BY t.last_activity_at DESC LIMIT 1`,
+    )
+    .get(taskId);
+  if (turn) {
+    const who = turn.name ?? "?";
+    seen.push({
+      at: turn.last_activity_at,
+      what: turn.status === "running" ? (en ? `${who} at work` : `${who} 正在做`) : en ? `${who}'s turn ended` : `${who} 的一轮结束了`,
+    });
+  }
+  const ledger = ctx.db
+    .query<{ at: string; kind: string; payload: string }, [string]>(
+      `SELECT at, kind, payload FROM work_events WHERE task_id = ? AND kind LIKE 'requirement.%' ORDER BY seq DESC LIMIT 1`,
+    )
+    .get(taskId);
+  const phrase = ledger ? REQUIREMENT_EVENT_WORD[ledger.kind] : undefined;
+  if (ledger && phrase) {
+    const payload = JSON.parse(ledger.payload) as { requirement?: string; requirements?: string[] };
+    const id = payload.requirement ?? payload.requirements?.[0];
+    const seq = id ? ctx.db.query<{ seq: number | null }, [string]>(`SELECT seq FROM requirements WHERE id = ?`).get(id)?.seq : null;
+    const name = seq ? `R-${seq}` : en ? "a requirement" : "一条要求";
+    seen.push({ at: ledger.at, what: en ? phrase.en(name) : phrase.zh(name) });
+  }
+  return seen.reduce<{ at: string; what: string } | null>((latest, change) => (!latest || change.at > latest.at ? change : latest), null);
 }
 
 export function isTicketStatusValue(value: unknown): value is TicketStatus {

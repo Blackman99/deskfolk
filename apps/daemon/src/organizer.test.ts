@@ -1274,49 +1274,43 @@ function planSpecOf(store: Store, taskId: string): { goal: string; acceptance: s
   return JSON.parse(store.getTask(taskId).spec!);
 }
 
-test("a settle with nothing new from you since the last version files the handover but keeps Done when, the rules and what each ticket is for, and says so", async () => {
+test("a settle files the handover and keeps the goal, Done when, the rules and what each ticket is for, whether or not you spoke since, and says so", async () => {
   const answers: Array<JudgeResult | Error | (() => JudgeResult)> = [];
   const h = bareOrganizer(answers);
   const { session, plan, ticket, spec } = quietPlan(h.store);
-  // The Writer's own caution, written up as the plan's rule, Done when and the ticket's description.
+  // The Writer's own caution, written up as the plan's goal, rule, Done when and the ticket's description.
   answers.push(
     judged(
       JSON.stringify({
         decision: "continue",
-        plan: { ...spec, acceptance: [...spec.acceptance, "审稿解冻前不能当作终稿"], rules: ["只推进初稿，审稿冻结"], progress: { done: ["初稿"], open: [], blocked: [] } },
+        plan: {
+          ...spec,
+          goal: "只写周报初稿",
+          acceptance: [...spec.acceptance, "审稿解冻前不能当作终稿"],
+          rules: ["只推进初稿，审稿冻结"],
+          progress: { done: ["初稿"], open: [], blocked: [] },
+        },
         tickets: [{ id: ticket.id, spec: "已交初稿，不再重试", status: "review" }],
       }),
     ),
   );
   expect(await h.organizer.settlePlan(plan.id)).toBe(true);
-  const seen = JSON.parse(String(h.requests[0]!.messages[1]!.content)) as OrganizerPayload;
-  expect(seen.since_last_revision.user_spoke).toBe(false);
-  expect(planSpecOf(h.store, plan.id)).toMatchObject({ acceptance: ["交到 report.md"], rules: ["不要口语"], progress: { done: ["初稿"] } });
+  // The settle is told nothing about whether you spoke: it files the handover either way (ADR 0042).
+  const seen = JSON.parse(String(h.requests[0]!.messages[1]!.content)) as Record<string, Record<string, unknown>>;
+  expect(seen.since_last_revision).not.toHaveProperty("user_spoke");
+  expect(planSpecOf(h.store, plan.id)).toMatchObject({ goal: "写一份周报", acceptance: ["交到 report.md"], rules: ["不要口语"], progress: { done: ["初稿"] } });
   expect(h.store.getTicket(ticket.id)).toMatchObject({ spec: "写出第一版", status: "review" });
-  const quiet = `[organizer] plan ${plan.id}: nothing new from the user since the last version;`;
-  expect(h.lines).toEqual([`${quiet} kept Done when as it was`, `${quiet} kept the rules as they were`, `${quiet} kept ticket 01's spec`]);
+  const kept = `[organizer] plan ${plan.id}: a settle files only the handover;`;
+  expect(h.lines).toEqual([`${kept} kept the goal as it was`, `${kept} kept ticket 01's spec`]);
+  expect(h.store.organizerRunsForTask(plan.id)[0]!.held).toEqual(["a settle files only the handover; kept the goal as it was", "a settle files only the handover; kept ticket 01's spec"]);
 
-  // You speak — a line not filed anywhere yet — and the next settle knows it; the rules still stay,
-  // since they are no longer the organizer's to write at all (ADR 0040 P3).
-  h.store.insertMessage({ sessionId: session, kind: "user", author: "user", body: "标题别太长" });
-  answers.push(judged(JSON.stringify({ decision: "continue", plan: { ...planSpecOf(h.store, plan.id), rules: ["不要口语", "标题别太长"] }, tickets: [] })));
+  // You speak — a line not filed anywhere yet — and the next settle still files only what was handed
+  // over: your line was filed and noted when you said it.
+  h.store.insertMessage({ sessionId: session, kind: "user", author: "user", body: "标题别太长，改成写两份" });
+  answers.push(judged(JSON.stringify({ decision: "continue", plan: { ...planSpecOf(h.store, plan.id), goal: "写两份周报", rules: ["不要口语", "标题别太长"] }, tickets: [] })));
   expect(await h.organizer.settlePlan(plan.id)).toBe(true);
-  expect((JSON.parse(String(h.requests[1]!.messages[1]!.content)) as OrganizerPayload).since_last_revision.user_spoke).toBe(true);
-  expect(planSpecOf(h.store, plan.id).rules).toEqual(["不要口语"]);
+  expect(planSpecOf(h.store, plan.id)).toMatchObject({ goal: "写一份周报", rules: ["不要口语"] });
   expect(h.lines).toHaveLength(3);
-});
-
-test("a line of yours that lands while a settle is out does not free its answer: the organizer never saw it", async () => {
-  const answers: Array<JudgeResult | Error | (() => JudgeResult)> = [];
-  const h = bareOrganizer(answers);
-  const { session, plan, spec } = quietPlan(h.store);
-  answers.push(() => {
-    h.store.insertMessage({ sessionId: session, kind: "user", author: "user", body: "先把初稿做好" });
-    return judged(JSON.stringify({ decision: "continue", plan: { ...spec, rules: ["不要口语", "审稿冻结"] }, tickets: [] }));
-  });
-  expect(await h.organizer.settlePlan(plan.id)).toBe(true);
-  expect(planSpecOf(h.store, plan.id).rules).toEqual(["不要口语"]);
-  expect(h.lines).toEqual([`[organizer] plan ${plan.id}: nothing new from the user since the last version; kept the rules as they were`]);
 });
 
 test("a settle whose plan you changed while it was out files nothing", async () => {
@@ -1358,8 +1352,8 @@ test("the organizer is shown the newest of what happened, oldest first", () => {
 describe("a group plan with everything handed over while its progress still lists work", () => {
   /**
    * 初稿 awaits review with the Writer and 排版 is done by the Lead, while the plan's progress still
-   * has 定稿 to do. Every settle after that tries to reword 初稿, which a settle with nothing new from
-   * you may not do, and hands 排版 to the other Bot: tickets change, nothing more is handed over.
+   * has 定稿 to do. Every settle after that tries to reword 初稿, which a settle may not do, and hands
+   * 排版 to the other Bot: tickets change, nothing more is handed over.
    */
   function handedOver(payload: OrganizerPayload): string {
     const plan = payload.current_plan;
@@ -1441,7 +1435,7 @@ describe("a group plan with everything handed over while its progress still list
     expect(line.body).toStartWith("这件事停下了：没有待做或进行中的任务，进展里还记着没做完或卡住的：定稿还没做。");
     expect(line.body).toContain("已经叫过Lead一次，之后没有任务交出或收口");
     expect(notice(nudge.id)).toMatchObject({ kind: "failure", fail_kind: "stalled_plan", message_id: line.id });
-    // With nothing new from you the settle kept 初稿's spec; 排版 did change after the call-back, just not where it stands.
+    // The settle kept 初稿's spec; 排版 did change after the call-back, just not where it stands.
     expect(h.store.getTicket(draft!.id)).toMatchObject({ status: "review", spec: "写出第一版" });
     expect(h.store.getTicket(layout!.id).status).toBe("done");
     expect(h.store.getTicket(layout!.id).updated_at > nudge.created_at).toBe(true);

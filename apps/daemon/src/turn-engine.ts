@@ -20,6 +20,7 @@ import { createComposer } from "./engine/composer";
 import { HELD_CALL, mayAct } from "./engine/control";
 import { createCore } from "./engine/core";
 import { createDerivedChecks } from "./engine/derived-checks";
+import { createRequirementCards } from "./engine/requirement-cards";
 import { createDirectReport } from "./engine/direct-report";
 import { createFire } from "./engine/fire";
 import { createLifecycle } from "./engine/lifecycle";
@@ -225,6 +226,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     ablation,
   });
 
+  const requirementCards = createRequirementCards({ store, publishMessage: core.publishMessage });
+
   const scribe = createScribe({
     store,
     completions,
@@ -232,11 +235,21 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       const creds = await routing.credentials().catch(() => null);
       return creds ? routing.routingTarget(creds) : null;
     },
-    // Billed with the organizer's calls: both keep the job in order, and no Bot asked for either.
+    // Billed as the organizer's kind (no Bot asked for either), with its own purpose so the spend
+    // view shows it apart (ADR 0042).
     recordSpend({ sessionId, target, usage, responded }) {
-      spend.recordResponseSpend({ kind: "organize", owner: spend.spendOwner(sessionId, null), target: spend.callOf(target), usage, responded });
+      spend.recordResponseSpend({
+        kind: "organize",
+        purpose: "scribe",
+        owner: spend.spendOwner(sessionId, null),
+        target: spend.callOf(target),
+        usage,
+        responded,
+      });
     },
     draining: () => Boolean(options.admission?.draining),
+    // Entries it wrote down or raised may now be ones you asked for in two plans (ADR 0040 P3).
+    onFiled: (quote, outcome) => requirementCards.noteFiled(quote, [...outcome.added, ...outcome.raised]),
     ablation,
   });
 
@@ -533,6 +546,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         if (fromUser) void core.track(scribe.noteLine(message.id, handedOver));
         // Its numbers become checks as soon as it is filed, whatever the scribe makes of it.
         if (fromUser) derivedChecks.noteLine(message.id);
+        // Old rules of its plan that nobody found your words for are asked about, once.
+        if (fromUser) requirementCards.noteLine(message.id);
       }
     },
     settlePlan(taskId) {
@@ -642,6 +657,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         waiter(answer);
         void core.track(scribe.noteAnswer(askId));
         derivedChecks.noteLine(askId);
+        requirementCards.noteLine(askId);
       });
       return answered;
     },
@@ -665,11 +681,12 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     createHold: stops.hold,
     liftHold: stops.lift,
     control(messageId, input) {
-      // A restart notice's buttons, and those on a line about checks from your words, work at any
-      // engine level; every other line's are about stops.
+      // A restart notice's buttons, and those on a line about checks from your words or about the
+      // requirements ledger, work at any engine level; every other line's are about stops.
       const message = store.getMessage(messageId);
       if (message.control?.kind === "restart") return restart.act(message, input);
       if (message.control?.kind === "check") return derivedChecks.act(message, input);
+      if (message.control?.kind === "requirement") return requirementCards.act(message, input);
       return stops.act(messageId, input);
     },
     announceRestart: restart.announce,

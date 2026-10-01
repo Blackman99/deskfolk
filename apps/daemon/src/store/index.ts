@@ -33,6 +33,7 @@ import * as organizerRuns from "./organizer-runs";
 import * as providers from "./providers";
 import * as quotes from "./quotes";
 import * as requirements from "./requirements";
+import * as planRequirements from "./plan-requirements";
 import * as routines from "./routines";
 import * as routing from "./routing";
 import * as scribePatch from "./scribe-patch";
@@ -115,8 +116,9 @@ export type { LiveProc } from "./live-procs";
 export type { WorkEvent } from "./work-events";
 export { QUOTE_MAX } from "./quotes";
 export type { QuoteVia, UserQuote } from "./quotes";
-export { REQUIREMENT_PURGE_ABORT, REQUIREMENT_QUOTE_MAX, REQUIREMENT_SUPERSEDE_ABORT } from "./requirements";
-export type { Requirement, RequirementScope, RequirementSourceKind, RequirementStatus } from "./requirements";
+export { IMPORT_WRITER, REQUIREMENT_PURGE_ABORT, REQUIREMENT_QUOTE_MAX, REQUIREMENT_SUPERSEDE_ABORT } from "./requirements";
+export type { BearingRequirement, Requirement, RequirementScope, RequirementSourceKind, RequirementStatus } from "./requirements";
+export { LEGACY_IMPORTED_KEY } from "./plan-requirements";
 export { CAPTURE_WRITER, SCRIBE_QUOTE_MIN, SCRIBE_WRITER } from "./scribe-patch";
 export type { ScribeOutcome, ScribePatch } from "./scribe-patch";
 
@@ -195,6 +197,8 @@ export class Store {
     sessions.ensureFileDropSession(this.ctx);
     // Ledgers from before estimates followed the configured rates still hold what was priced at insert.
     this.commit(() => spend.repriceSpend(this.ctx, providers.catalogEntries(this.ctx)));
+    // The rules plans had before the requirements ledger go into it, once (ADR 0040 P3).
+    this.commit(() => planRequirements.importLegacyRules(this.ctx));
     installChangeJournal(this.ctx);
     this.journalReady = true;
   }
@@ -388,11 +392,9 @@ export class Store {
   readonly taskArtifactsSince = this.bind(tasks.taskArtifactsSince);
   readonly taskMessagesSince = this.bind(tasks.taskMessagesSince);
   readonly taskUserLines = this.bind(tasks.taskUserLines);
-  readonly userSpokeSince = this.bind(tasks.userSpokeSince);
   readonly setTaskSpec = this.bind(tasks.setTaskSpec);
   readonly routineTask = this.bind(tasks.routineTask);
   readonly distinctTaskKinds = this.bind(tasks.distinctTaskKinds);
-  readonly precedentTasks = this.bind(tasks.precedentTasks);
   readonly turnPlanDir = this.bind(tasks.turnPlanDir);
   readonly taskSummary = this.bind(tasks.taskSummary);
   readonly taskLastActivityAt = this.bind(tasks.taskLastActivityAt);
@@ -489,6 +491,19 @@ export class Store {
   readonly requirementMentions = this.bind(requirements.requirementMentions);
   readonly purgeRequirements = this.bind(requirements.purgeRequirements);
   readonly openRequirementsFor = this.bind(requirements.openRequirementsFor);
+  readonly requirementsBearingOn = this.bind(requirements.requirementsBearingOn);
+  readonly planDomains = this.bind(requirements.planDomains);
+  readonly confirmRequirement = this.bind(requirements.confirmRequirement);
+  readonly rejectRequirement = this.bind(requirements.rejectRequirement);
+  readonly waiveRequirement = this.bind(requirements.waiveRequirement);
+  readonly widenRequirement = this.bind(requirements.widenRequirement);
+  readonly setRequirementHere = this.bind(requirements.setRequirementHere);
+  readonly planRequirements = this.bind(planRequirements.planRequirements);
+  readonly importLegacyRules = this.bind(planRequirements.importLegacyRules);
+  readonly legacyCardDue = this.bind(planRequirements.legacyCardDue);
+  readonly standingSuggestion = this.bind(planRequirements.standingSuggestion);
+  readonly mayMakeStanding = this.bind(planRequirements.mayMakeStanding);
+  readonly recordRequirementCard = this.bind(planRequirements.recordRequirementCard);
   readonly applyScribePatch = this.bind(scribePatch.applyScribePatch);
   readonly captureComplaint = this.bind(scribePatch.captureComplaint);
   readonly plansHandedOver = this.bind(scribePatch.plansHandedOver);

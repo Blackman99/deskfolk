@@ -7,7 +7,7 @@
  * bill and no reply to account for.
  */
 import type { MappedUsage } from "../completions";
-import type { Spend, SpendKind } from "@real-bot/protocol";
+import type { Spend, SpendKind, SpendPurpose } from "@real-bot/protocol";
 import type { Store } from "../store";
 import type { CallTarget, SpendOwner } from "./types";
 
@@ -22,6 +22,8 @@ export type SpendTracker = {
   usageHasDigits: (usage: MappedUsage | null) => boolean;
   recordResponseSpend: (input: {
     kind: SpendKind;
+    /** What the call was for, where its kind is shared (ADR 0042). */
+    purpose?: SpendPurpose | null;
     owner: SpendOwner;
     turnId?: string | null;
     judgementId?: string | null;
@@ -40,6 +42,7 @@ export type SpendTracker = {
   ) => void;
   writeSpend: (input: {
     kind: SpendKind;
+    purpose?: SpendPurpose | null;
     owner: SpendOwner;
     turnId: string | null;
     judgementId: string | null;
@@ -117,6 +120,7 @@ export function createSpend(deps: SpendDeps): SpendTracker {
    */
   function recordResponseSpend(input: {
     kind: SpendKind;
+    purpose?: SpendPurpose | null;
     owner: SpendOwner;
     turnId?: string | null;
     judgementId?: string | null;
@@ -129,6 +133,7 @@ export function createSpend(deps: SpendDeps): SpendTracker {
     if (!hasDigits && !input.responded) return null;
     return writeSpend({
       kind: input.kind,
+      purpose: input.purpose ?? null,
       owner: input.owner,
       turnId: input.turnId ?? null,
       judgementId: input.judgementId ?? null,
@@ -163,6 +168,7 @@ export function createSpend(deps: SpendDeps): SpendTracker {
 
   function writeSpend(input: {
     kind: SpendKind;
+    purpose?: SpendPurpose | null;
     owner: SpendOwner;
     turnId: string | null;
     judgementId: string | null;
@@ -173,6 +179,7 @@ export function createSpend(deps: SpendDeps): SpendTracker {
   }): Spend {
     const row = store.insertSpend({
       kind: input.kind,
+      purpose: input.purpose ?? null,
       sessionId: input.owner.sessionId,
       sessionName: input.owner.sessionName,
       botId: input.owner.botId,

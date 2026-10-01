@@ -3,9 +3,9 @@
  *
  * The `tasks` table is the plan; the name is the one it shipped with, when a job was only a work
  * dir. A plan is the thing a conversation is pushing forward: it keeps the request that opened it
- * (`brief`), the spec the organizer maintains (`spec`: goal, acceptance, rules, process, progress),
- * a kind for finding precedents, a status, and a folder under `work/`. Tickets (任务) nest under it
- * (`store/tickets.ts`), each with its own folder inside the plan's.
+ * (`brief`), the spec the organizer maintains (`spec`: goal, process, progress, and the acceptance
+ * and rules you write on the board), a kind label, a status, and a folder under `work/`. Tickets
+ * (任务) nest under it (`store/tickets.ts`), each with its own folder inside the plan's.
  *
  * It is still not a scheduler entity: no assignee, no steps, no plan DAG. Its identity is the turn
  * tree — a handoff arrives as a message some turn produced, so the woken turn inherits that turn's
@@ -49,7 +49,7 @@ export type Task = {
    * whose first turn no longer exists.
    */
   brief: string | null;
-  /** The organizer's label for what kind of plan this is; precedents are plans of the same kind. */
+  /** The organizer's label for what kind of plan this is, shown in its mirror files. */
   kind: string | null;
   /** The spec as JSON; read it with {@link parsePlanSpec}. Null until the organizer first ran. */
   spec: string | null;
@@ -375,7 +375,7 @@ function userLineParams(task: Task, bodyMax: number, askedMax: number): UserLine
  * Everything you said about this plan, oldest first: your lines filed under it — or said in its
  * session while it was open and never filed anywhere, which is what a filing that failed leaves —
  * and your answers to its Bots' questions, dated when you answered. The organizer holds the plan's
- * rules against these, so an instruction older than its window of recent lines still counts.
+ * goal against these, so what you asked for older than its window of recent lines still counts.
  *
  * Only the first `earliest` and the newest `newest` come back, each body cut at `bodyMax` code
  * points; `total` says how many there are.
@@ -405,19 +405,6 @@ export function taskUserLines(
       return { id: row.id, via: "answer", at: row.at, body: answer ? askAnswerLines(answer) : "", asked: row.asked ?? "" };
     });
   return { lines, total };
-}
-
-/**
- * Whether you said anything about this plan after `since`, in the same set {@link taskUserLines}
- * reads. A settle reads it before it is sent, so the organizer and the app go by the same fact.
- */
-export function userSpokeSince(ctx: StoreContext, taskId: string, since: string): boolean {
-  const task = getTask(ctx, taskId);
-  return Boolean(
-    ctx.db
-      .query<{ one: number }, [...UserLineParams, string]>(`SELECT 1 AS one FROM (${userLinesSql()}) WHERE at > ? LIMIT 1`)
-      .get(...userLineParams(task, 1, 1), since),
-  );
 }
 
 /**
@@ -543,18 +530,6 @@ export function distinctTaskKinds(ctx: StoreContext, limit = 50): string[] {
     )
     .all(limit)
     .map((row) => row.kind);
-}
-
-/** Plans of the same kind that were finished, newest first, roster-wide: what "last time" looked like. */
-export function precedentTasks(ctx: StoreContext, kind: string, excludeTaskId: string | null, limit = 3): Task[] {
-  return ctx.db
-    .query<Task, [string, string, number]>(
-      `SELECT * FROM tasks
-       WHERE kind = ? AND status = 'done' AND spec IS NOT NULL AND id != ?
-       ORDER BY COALESCE(spec_updated_at, created_at) DESC, id DESC
-       LIMIT ?`,
-    )
-    .all(kind, excludeTaskId ?? "", limit);
 }
 
 /**
@@ -954,6 +929,7 @@ export function taskSummary(ctx: StoreContext, task: Task, lastActivityAt: strin
     kind: task.kind,
     status: task.status,
     ticket_counts: counts ?? ticketCountsFor(ctx, [task.id]).get(task.id) ?? emptyTicketCounts(),
+    dormant_since: task.dormant_since ?? null,
   };
 }
 

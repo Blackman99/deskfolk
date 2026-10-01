@@ -58,7 +58,7 @@ export type RunStats = {
   cost_usd: number | null;
   judge_input_tokens: number | null;
   judge_output_tokens: number | null;
-  /** `spend` grouped by `spendBucket(kind, thinking_level)`. */
+  /** `spend` grouped by `spendBucket(kind, thinking_level, purpose)`. */
   spend_by_kind: Record<string, SpendBucketStats>;
   /** `turn_route_decisions.thinking_level` histogram; empty when the column could not be read. */
   thinking_levels: Record<string, number>;
@@ -136,8 +136,13 @@ export function isCompleted(run: Pick<RunResult, "outcome" | "score" | "checks_o
   return run.outcome === "settled" && run.score !== null && run.score >= minPass && run.checks_ok;
 }
 
-/** `spend.kind = 'turn'` splits into an ordinary turn and the closing check (a turn-shaped call with no thinking level). */
-export function spendBucket(kind: string, thinkingLevel: string | null): string {
+/**
+ * `spend.kind = 'turn'` splits into an ordinary turn and the closing check (a turn-shaped call with
+ * no thinking level); a row with a purpose (the scribe, a picture judgement; ADR 0042) is its own
+ * bucket, so `organize` stays the organizer's own calls.
+ */
+export function spendBucket(kind: string, thinkingLevel: string | null, purpose: string | null = null): string {
+  if (purpose) return purpose;
   if (kind === "turn") return thinkingLevel === null ? "closing_check" : "turn";
   return kind;
 }

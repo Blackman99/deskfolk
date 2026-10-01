@@ -1,6 +1,6 @@
 /** What the spend view asks the daemon for. Range and dimension persist; drill filters do not. */
-import type { SpendCategory, SpendFilter, SpendKind, SpendSummaryQuery } from "@real-bot/protocol";
-import { SPEND_CATEGORY_OF } from "@real-bot/protocol";
+import type { SpendCategory, SpendFilter, SpendLine, SpendSummaryQuery } from "@real-bot/protocol";
+import { SPEND_CATEGORY_OF, SPEND_PURPOSE_KIND } from "@real-bot/protocol";
 
 export const SPEND_STORAGE_KEY = "deskfolk.spend.view";
 export const SPEND_PAGE_SIZE = 50;
@@ -31,7 +31,7 @@ export type SpendDrill = {
   /** Null is the unassigned-bot group, which is not the same as "any bot". */
   botId?: string | null;
   botLabel?: string;
-  kind?: SpendKind[];
+  kind?: SpendLine[];
 };
 
 export type SpendViewState = {
@@ -177,9 +177,16 @@ function boundedWindow(startDay: string, endDay: string, timeZone: string): Spen
   return { from: from.toISOString(), to: to.toISOString() };
 }
 
-/** Kinds a category chip stands for. A single kind already picked stays that kind. */
-export function kindsOfCategory(category: SpendCategory): SpendKind[] {
-  return (Object.keys(SPEND_CATEGORY_OF) as SpendKind[]).filter((kind) => SPEND_CATEGORY_OF[kind] === category);
+/**
+ * Lines a category chip stands for: every kind of it, and a purpose split out of another kind only
+ * once a summary from this daemon has listed it (`listed`). A daemon older than ADR 0042 never lists
+ * one and refuses a filter that names one; a newer one lists a purpose as soon as something was
+ * billed with it, so one it has not listed has no rows to leave out.
+ */
+export function kindsOfCategory(category: SpendCategory, listed: ReadonlySet<SpendLine>): SpendLine[] {
+  return (Object.keys(SPEND_CATEGORY_OF) as SpendLine[]).filter(
+    (line) => SPEND_CATEGORY_OF[line] === category && (!(line in SPEND_PURPOSE_KIND) || listed.has(line)),
+  );
 }
 
 export function spendFilterOf(window: SpendWindow, drill: SpendDrill): SpendFilter {

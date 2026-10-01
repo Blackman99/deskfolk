@@ -183,3 +183,28 @@ test("a check offered from your words: 确认 and 不要 go to the daemon, 改 s
     close();
   }
 });
+
+test("old rules asked about by the app: 逐条看 opens the plan's board and sends nothing, 都是 goes to the daemon", async () => {
+  const session = aGroup();
+  const control: MessageControl = {
+    kind: "requirement",
+    event: "legacy",
+    requirement_ids: ["r1"],
+    task_id: "task-ep01",
+    offer: ["confirm_requirements", "review_requirements"],
+  };
+  const card = aMessage({ id: "card", session_id: session.id, kind: "system", author: "user", body: "这些是你说的吗？", control });
+  const { host, runtime, close } = stage(session, { messages: [card], holdsOn: false });
+  try {
+    const row = host.querySelector('[data-message-id="card"]')! as HTMLElement;
+    expect([...row.querySelectorAll(".control-btn")].map((button) => button.textContent?.trim())).toEqual(["都是", "逐条看"]);
+    click(buttonByText(row, "逐条看"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    click(buttonByText(row, "都是"));
+    // Read once both presses are in: reading the calls freezes them.
+    expect(runtime.calls.filter((call) => call.name === "openTrace").map((call) => call.args)).toEqual([["task-ep01"]]);
+    expect(runtime.calls.filter((call) => call.name === "controlAction").map((call) => call.args)).toEqual([["card", "confirm_requirements", undefined]]);
+  } finally {
+    close();
+  }
+});

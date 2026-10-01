@@ -751,12 +751,17 @@
 	/**
 	 * A button under the app's line. 改 on a check offered from your words (ADR 0040 P3) is yours to
 	 * say: it starts your line with the words the daemon gave (「片长改成 」) and sends nothing, so the
-	 * number you type is what the check stands on. Every other button goes to the daemon.
+	 * number you type is what the check stands on. 逐条看 on old rules opens the plan's board, where
+	 * each has its own buttons. Every other button goes to the daemon.
 	 */
 	function pressControl(message: Message, action: ControlOffer, taskId?: string): Promise<unknown> {
 		if (action === 'edit_check') {
 			const draft = message.control?.kind === 'check' ? message.control.edit_draft : undefined;
 			if (draft) pickStarterPrompt(draft);
+			return Promise.resolve(null);
+		}
+		if (action === 'review_requirements') {
+			if (message.control?.kind === 'requirement') runtime.openTrace(message.control.task_id);
 			return Promise.resolve(null);
 		}
 		return runtime.controlAction(message.id, action, taskId);

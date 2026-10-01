@@ -227,6 +227,7 @@ export function migrateSchema(db: Database): void {
   migratePlans(db);
   migrateBotThinkingPins(db);
   migrateSpendLedger(db);
+  migrateSpendPurpose(db);
   migrateAcceptanceCheckKinds(db);
   migrateDerivedChecks(db);
   migrateAnnotations(db);
@@ -260,6 +261,7 @@ export function migrateSchema(db: Database): void {
   }
   migrateNotifications(db);
   backfillQuotes(db);
+  migrateRequirements(db);
   // Made again on every open rather than if missing, so the triggers are always this build's own.
   // Last, after every column they read (tasks.dormant_since comes in migratePlans).
   for (const trigger of [...HELD_TURN_TRIGGERS, ...QUOTE_TRIGGERS, ...REQUIREMENT_TRIGGERS, ...DORMANT_PLAN_TRIGGERS]) {
@@ -806,6 +808,18 @@ function migrateSpendLedger(db: Database): void {
   })();
 }
 
+/**
+ * What a call was for, where two uses share a kind (ADR 0042): a nullable column with its own
+ * CHECK, added after the ledger rebuild above, which copies only the columns it knows. The rows
+ * already there have none: before the scribe, every `organize` row was the organizer's.
+ */
+function migrateSpendPurpose(db: Database): void {
+  const cols = db.query<{ name: string }, []>("PRAGMA table_info(spend)").all().map((row) => row.name);
+  if (!cols.includes("purpose")) {
+    db.run(`ALTER TABLE spend ADD COLUMN purpose TEXT CHECK (purpose IS NULL OR purpose IN ('scribe', 'vision', 'reflect'))`);
+  }
+}
+
 function createSpendIndexes(db: Database): void {
   db.run(`CREATE INDEX IF NOT EXISTS spend_created ON spend (created_at, id)`);
   db.run(`CREATE INDEX IF NOT EXISTS spend_bot_created ON spend (bot_id, created_at)`);
@@ -970,6 +984,33 @@ function backfillQuotes(db: Database): void {
       .all();
     for (const row of annotations) copy("annotation", row);
   })();
+}
+
+/**
+ * The ledger's number (R-N) and the plan an entry's words were said about (ADR 0040 P3), for
+ * entries written before either: numbered in the order they were written, and the plan read from
+ * the words they stand on, else from where they hold.
+ */
+function migrateRequirements(db: Database): void {
+  const cols = db.query<{ name: string }, []>("PRAGMA table_info(requirements)").all().map((row) => row.name);
+  if (!cols.includes("seq")) db.run("ALTER TABLE requirements ADD COLUMN seq INTEGER");
+  if (!cols.includes("origin_task_id")) db.run("ALTER TABLE requirements ADD COLUMN origin_task_id TEXT");
+  const unnumbered = db
+    .query<{ id: string }, []>("SELECT id FROM requirements WHERE seq IS NULL ORDER BY created_at ASC, rowid ASC")
+    .all();
+  if (unnumbered.length > 0) {
+    db.transaction(() => {
+      let next = (db.query<{ n: number | null }, []>("SELECT MAX(seq) AS n FROM requirements").get()?.n ?? 0) + 1;
+      for (const row of unnumbered) db.run("UPDATE requirements SET seq = ? WHERE id = ?", [next++, row.id]);
+    })();
+  }
+  db.run(
+    `UPDATE requirements SET origin_task_id = COALESCE(
+       (SELECT task_id FROM user_quotes WHERE id = requirements.source_quote_id),
+       CASE WHEN scope = 'plan' THEN scope_id END,
+       CASE WHEN scope = 'ticket' THEN (SELECT task_id FROM tickets WHERE id = requirements.scope_id) END)
+     WHERE origin_task_id IS NULL`,
+  );
 }
 
 /**

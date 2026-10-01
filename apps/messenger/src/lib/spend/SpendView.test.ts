@@ -390,6 +390,117 @@ test("a detail row opens its trigger, and more pages append", async () => {
   }
 });
 
+test("the scribe's calls are a line of their own: listed under other, named on their row, and drilled alone", async () => {
+  const { api, calls } = fakeApi();
+  const view = render(SpendView, {
+    api: api as never,
+    locale: "zh",
+    timeZone: "Asia/Shanghai",
+    storage: storage(),
+    revision: 0,
+    onOpenSession: () => {},
+    onOpenTrigger: () => {},
+  });
+  const reply = () => {
+    for (const call of calls.filter((pending) => !pending.settled)) {
+      call.settled = true;
+      if (call.path.startsWith("summary:")) {
+        const summary = summaryFor(call.path === "summary:day" ? "day" : "model", [modelGroup]);
+        // Billed as `organize` with the scribe's purpose, it is its own line under "other" (ADR 0042).
+        summary.categories.find((row) => row.category === "other")!.kinds = [
+          { ...totals({ calls: 1, total_tokens: 20 }), kind: "composer_suggest" },
+          { ...totals({ calls: 2, total_tokens: 60 }), kind: "scribe" },
+        ];
+        call.resolve(summary);
+      } else {
+        call.resolve({ items: [detail({ id: "row-s", kind: "organize", purpose: "scribe", turn_id: null, bot_id: null, bot_name: null })], next: null });
+      }
+    }
+  };
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    reply();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const other = [...view.host.querySelectorAll(".category-item")].find((item) => item.textContent?.includes(copy.category.other))!;
+    click(other.querySelector(`button[aria-label="${copy.expand}"]`));
+    expect(other.textContent).toContain(copy.kind.scribe);
+    click(button(other as HTMLElement, copy.kind.scribe));
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    expect(calls.filter((call) => !call.settled).every((call) => (call.query.kind as string[]).join() === "scribe")).toBe(true);
+    reply();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    openDetails(view.host);
+    const label = view.host.querySelector(".detail-table .kind-label")!;
+    expect(label.textContent).toBe(copy.kind.scribe);
+    expect(label.classList.contains("is-other")).toBe(true);
+  } finally {
+    view.close();
+  }
+});
+
+/** The category row's own button, the one that narrows the view to that category. */
+function categoryChip(host: HTMLElement, label: string): HTMLButtonElement {
+  const found = [...host.querySelectorAll(".category-name")].find((candidate) => candidate.textContent?.trim() === label);
+  if (!found) throw new Error(`no category ${label}`);
+  return found as HTMLButtonElement;
+}
+
+/** The lines each request still waiting asks for, sorted, one entry per distinct set. */
+function linesAsked(calls: Call[]): string[] {
+  const asked = calls.filter((call) => !call.settled).map((call) => [...((call.query.kind as string[] | undefined) ?? [])].sort().join());
+  return [...new Set(asked)];
+}
+
+test("a category chip names no purpose to a daemon whose summaries never listed one", async () => {
+  // An older Mac lists no purpose and answers a filter naming `scribe`, `vision` or `reflect` with a
+  // 422, which would leave the page on its error box; a newer one with nothing billed by them looks the same.
+  const { host, calls, close } = await mount();
+  try {
+    click(categoryChip(host, copy.category.other));
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    expect(linesAsked(calls)).toEqual(["acceptance_check,composer_suggest"]);
+    answer(calls);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    click(categoryChip(host, copy.category.feedback));
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    expect(linesAsked(calls)).toEqual(["route_learn,route_review"]);
+  } finally {
+    close();
+  }
+});
+
+test("a category chip still names a purpose a summary listed after a kind drill hides it", async () => {
+  const { api, calls } = fakeApi();
+  const view = render(SpendView, { api: api as never, locale: "zh", timeZone: "Asia/Shanghai", storage: storage() });
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    for (const call of calls.filter((pending) => !pending.settled)) {
+      call.settled = true;
+      if (call.path.startsWith("summary:")) {
+        const summary = summaryFor(call.path === "summary:day" ? "day" : "model", [modelGroup]);
+        summary.categories.find((row) => row.category === "other")!.kinds = [
+          { ...totals({ calls: 1, total_tokens: 20 }), kind: "composer_suggest" },
+          { ...totals({ calls: 2, total_tokens: 60 }), kind: "scribe" },
+        ];
+        call.resolve(summary);
+      } else call.resolve({ items: [detail()], next: null });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const other = [...view.host.querySelectorAll(".category-item")].find((item) => item.textContent?.includes(copy.category.other))!;
+    click(other.querySelector(`button[aria-label="${copy.expand}"]`));
+    click(button(other as HTMLElement, copy.kind.composer_suggest));
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    // Narrowed to the composer's suggestions, the next summary has no scribe line to list.
+    answer(calls);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    click(categoryChip(view.host, copy.category.other));
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    expect(linesAsked(calls)).toEqual(["acceptance_check,composer_suggest,scribe"]);
+  } finally {
+    view.close();
+  }
+});
+
 test("a spend revision reloads, and a custom range is what gets asked for", async () => {
   const props = reactive({ revision: 0 });
   const { api, calls } = fakeApi();

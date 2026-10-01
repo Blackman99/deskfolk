@@ -4384,6 +4384,7 @@ describe("a Bot↔Bot direct", () => {
 
 type LedgerRow = {
   kind: string;
+  purpose: string | null;
   session_id: string;
   session_name: string | null;
   bot_id: string | null;
@@ -4524,11 +4525,12 @@ describe("spend ledger for routing and composer calls", () => {
     await h.engine.drain();
 
     const all = ledger(h.store);
-    // Each of the three user messages was organized first and noted by the scribe after (billed the
-    // same way), on the default model, owned by nobody.
+    // Each of the three user messages was organized first and noted by the scribe after (billed as
+    // the same kind, the scribe's with its own purpose), on the default model, owned by nobody.
     const organized = all.filter((row) => row.kind === "organize");
     expect(organized).toHaveLength(6);
     expect(calls.filter((call) => call === SCRIBE_SYSTEM)).toHaveLength(3);
+    expect(organized.map((row) => row.purpose ?? "organizer").sort()).toEqual(["organizer", "organizer", "organizer", "scribe", "scribe", "scribe"]);
     for (const row of organized) {
       expect(row).toMatchObject({ session_id: body.direct_session.id, bot_id: null, turn_id: null, model: "cheap-chat", thinking_level: null });
       expect(row.input_tokens).not.toBeNull();

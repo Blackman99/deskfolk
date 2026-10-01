@@ -137,3 +137,34 @@ test("the app's line about checks in force offers to remove them, and says so on
   expect(controlBar({ ...line, check_ids: ["check-1"] }, [], names, copyFor("en").control)).toMatchObject({ buttons: [{ label: "Remove this check" }] });
   expect(controlBar({ ...line, acted: ["remove_check"] }, [], names, t)).toEqual({ state: "done", note: "已删掉" });
 });
+
+test("the app's lines about the requirements ledger: 都是 / 逐条看 for old rules, 升为常设 / 不用 for a standing suggestion", () => {
+  const legacy: MessageControl = {
+    kind: "requirement",
+    event: "legacy",
+    requirement_ids: ["r1", "r2"],
+    task_id: "task-1",
+    offer: ["confirm_requirements", "review_requirements"],
+  };
+  expect(controlBar(legacy, [], names, t)).toEqual({
+    state: "ask",
+    prompt: null,
+    buttons: [
+      { action: "confirm_requirements", label: "都是", primary: true },
+      { action: "review_requirements", label: "逐条看", primary: false },
+    ],
+  });
+  expect(controlBar({ ...legacy, acted: ["confirm_requirements"] }, [], names, t)).toEqual({ state: "done", note: "已确认都是你说的" });
+  const standing: MessageControl = {
+    kind: "requirement",
+    event: "standing",
+    requirement_ids: ["r3"],
+    task_id: "task-1",
+    category: "背景连贯",
+    domain: "video",
+    offer: ["make_standing", "keep_project"],
+  };
+  expect(controlBar(standing, [], names, copyFor("en").control)).toMatchObject({ buttons: [{ label: "Make it standing" }, { label: "Not now" }] });
+  expect(controlBar({ ...standing, acted: ["keep_project"] }, [], names, t)).toEqual({ state: "done", note: "先不升" });
+  expect(controlBar({ ...standing, requirement_ids: [] }, [], names, t)).toEqual({ state: "none" });
+});

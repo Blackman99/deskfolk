@@ -56,6 +56,21 @@ export function controlBar(control: MessageControl | undefined, holds: readonly 
     });
     return buttons.length > 0 ? { state: "ask", prompt: null, buttons } : { state: "none" };
   }
+  // The app's line about the requirements ledger (ADR 0040 P3): old rules to confirm as yours or go
+  // through on the board (the messenger opens it, `review_requirements`), or requirements to make
+  // standing. Stops play no part.
+  if (control.kind === "requirement") {
+    const count = control.requirement_ids.length;
+    const buttons = control.offer.flatMap((action): ControlButton[] => {
+      if (count === 0) return [];
+      if (action === "confirm_requirements") return [{ action, label: t.confirmRequirements, primary: true }];
+      if (action === "review_requirements") return [{ action, label: t.reviewRequirements, primary: false }];
+      if (action === "make_standing") return [{ action, label: t.makeStanding, primary: true }];
+      if (action === "keep_project") return [{ action, label: t.keepProject, primary: false }];
+      return [];
+    });
+    return buttons.length > 0 ? { state: "ask", prompt: null, buttons } : { state: "none" };
+  }
   // A restart notice (ADR 0041): go on with what the restart cut off, or leave it. Stops play no part.
   if (control.kind === "restart") {
     const buttons = control.offer.flatMap((action): ControlButton[] => {

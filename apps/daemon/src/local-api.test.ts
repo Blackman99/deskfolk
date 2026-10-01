@@ -1446,6 +1446,27 @@ describe("empty roster and settings", () => {
     expect(h.store.listQuotes().find((quote) => quote.id === kept!.id)).toMatchObject({ body: "背景要连贯", session_id: null, message_id: null });
   });
 
+  test("the board acts on an entry of the requirements ledger and gets the plan back; a moved-on entry is a 409", async () => {
+    const h = await start();
+    const { bot, direct_session: direct } = h.store.createBot({ name: "视频导演", duties: "出片", boundaries: "none" });
+    const line = h.store.postMessage(direct.id, { body: "做 EP01" });
+    const plan = h.store.createTurn({ sessionId: direct.id, botId: bot.id, triggerMessageId: line.id }).task_id!;
+    const old = h.store.addRequirement({ scope: "plan", scopeId: plan, quote: "标题别太长", sourceKind: "legacy", addedBy: "import", status: "unverified" });
+    const act = (id: string, body: unknown) =>
+      fetch(`${h.origin}/v1/requirements/${id}/action`, { method: "POST", headers: auth(h, { "Content-Type": "application/json" }), body: JSON.stringify(body) });
+
+    const confirmed = await act(old.id, { action: "confirm", task_id: plan });
+    expect(confirmed.status).toBe(200);
+    expect(((await confirmed.json()) as { requirements: Array<{ id: string; status: string }> }).requirements).toMatchObject([{ id: old.id, status: "open" }]);
+    expect((await act(old.id, { action: "reject", task_id: plan })).status).toBe(409);
+    const widened = await act(old.id, { action: "whole_project", task_id: plan });
+    expect(((await widened.json()) as { requirements: Array<{ scope: string }> }).requirements).toMatchObject([{ scope: "project" }]);
+    expect((await act(old.id, { action: "purge", task_id: plan })).status).toBe(422);
+    expect((await act(old.id, { action: "waive" })).status).toBe(404);
+    expect((await act(old.id, { action: "waive", task_id: plan })).status).toBe(200);
+    expect(h.store.getRequirement(old.id).status).toBe("waived");
+  });
+
   test("erasing what you said takes the checks made from it with it, at once", async () => {
     const h = await start();
     const { bot, direct_session: direct } = h.store.createBot({ name: "视频导演", duties: "出片", boundaries: "none" });
@@ -2207,6 +2228,13 @@ test("spend summary and detail pages filter, page, and stay out of the snapshot"
   expect((await noMillis.json() as { items: unknown[] }).items).toHaveLength(0);
   expect((await get("/v1/spend/summary?tz=Not/AZone")).status).toBe(422);
   expect((await get("/v1/spend?limit=0")).status).toBe(422);
+  // A purpose is a line of its own (ADR 0042): the scribe's call is not the organizer's.
+  h.store.insertSpend({ kind: "organize", purpose: "scribe", sessionId: created.direct_session.id, botId: null, model: "fast", inputTokens: 5, outputTokens: 1 });
+  const lines = await (await get("/v1/spend/summary?group_by=kind&tz=UTC&kind=scribe&kind=organize")).json() as { groups: Array<{ id: string; calls: number }> };
+  expect(lines.groups.map((row) => [row.id, row.calls])).toEqual([["scribe", 1]]);
+  const scribed = await (await get("/v1/spend?kind=scribe")).json() as { items: Array<{ kind: string; purpose: string | null }> };
+  expect(scribed.items).toMatchObject([{ kind: "organize", purpose: "scribe" }]);
+  expect((await get("/v1/spend?kind=scribble")).status).toBe(422);
   const snapshot = await (await get("/v1/snapshot")).json() as Record<string, unknown>;
   expect("spend" in snapshot).toBe(false);
 });

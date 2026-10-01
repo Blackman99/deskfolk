@@ -310,12 +310,12 @@ export type TicketStatus = "todo" | "doing" | "review" | "done" | "parked";
  * app's reading of the conversation, revised as it goes; you can edit it, and each version is kept.
  */
 export type PlanSpec = {
-  /** A short label for finding precedents: plans of the same kind. */
+  /** A short label for what kind of job this is, which the organizer reuses across plans. */
   kind: string | null;
   goal: string;
-  /** What counts as done. */
+  /** What counts as done: lines you write on the board (the organizer no longer writes them, ADR 0042). */
   acceptance: string[];
-  /** Standing constraints and the preferences you stated. */
+  /** Standing constraints and the preferences you stated, written the same way. */
   rules: string[];
   /** How the team goes about it, and who does which part. */
   process: string[];
@@ -586,6 +586,71 @@ export type SessionTaskSummary = {
   kind: string | null;
   status: PlanStatus;
   ticket_counts: TicketCounts;
+  /**
+   * Set while the plan is set aside because its conversation was cleared or deleted (ADR 0040):
+   * nothing files or calls back in it until it wakes. Absent from a daemon older than dormancy.
+   */
+  dormant_since?: string | null;
+};
+
+/**
+ * Where an entry of the requirements ledger (需求台账, ADR 0040 P3) holds: one ticket, the plan, the
+ * conversation the plan lives in and every plan in it (`project`), or every plan of a kind of work
+ * (`standing`, `domain` saying which).
+ */
+export type RequirementScope = "part" | "ticket" | "plan" | "project" | "standing";
+
+/**
+ * What the board may do to an entry (`POST /v1/requirements/:id/action`), each only where it applies:
+ * - `confirm`: a proposed entry or an old rule nobody found your words for is yours — in force from
+ *   now; a proposed replacement takes the place of the entry it replaces.
+ * - `reject`: it is not a requirement of yours.
+ * - `waive`: an entry in force no longer holds.
+ * - `not_here` / `here_again`: an entry this plan inherits does not hold for it, or holds again.
+ * - `whole_project`: an entry of this plan holds for every plan of its conversation from now on.
+ */
+export type RequirementAction = "confirm" | "reject" | "waive" | "not_here" | "here_again" | "whole_project";
+
+/** `POST /v1/requirements/:id/action`: the plan the board shows it on. Returns that plan's `TaskDetail`. */
+export type RequirementActionRequest = { action: RequirementAction; task_id: string };
+
+/**
+ * One entry of the ledger as a plan's board shows it: your words, a Bot's restatement beside them,
+ * how many times and in how many plans you said it, where it holds, where the words were said.
+ */
+export type PlanRequirement = {
+  id: string;
+  /** The ledger's own number, R-N, the same wherever the entry shows. */
+  seq: number;
+  quote: string;
+  restated: string | null;
+  category: string | null;
+  polarity: "must" | "must_not";
+  /** A number you gave (`duration`, `resolution`, `aspect` or `fps`), as the app read it from the words; null otherwise. */
+  dimension: string | null;
+  /** That number and its bound, as the app keeps it; null with `dimension`. */
+  value: unknown;
+  /** `unverified`: an old rule the app found none of your words for, shown for reference only. */
+  status: "open" | "proposed" | "unverified";
+  scope: RequirementScope;
+  /** The ticket a ticket entry holds for; null otherwise. */
+  ticket_id: string | null;
+  domain: string | null;
+  times_raised: number;
+  /** In how many plans the words raising it were said. */
+  plans_raised: number;
+  last_raised_at: string;
+  source_kind: "message" | "ask_answer" | "annotation" | "board" | "accepted_suggestion" | "legacy";
+  /** The words it stands on and where they were said; `message_id` is null once the transcript is cleared. */
+  source: { via: "message" | "ask_answer" | "annotation" | "board"; session_id: string | null; message_id: string | null; at: string } | null;
+  /** Who wrote it down: `user`, `scribe`, `capture` (a complaint kept whole), `import` (an old rule). */
+  added_by: string;
+  /** The plan it was first said in, when that is another one: this plan inherits it. */
+  inherited_from: { task_id: string; title: string } | null;
+  /** You said it does not hold for this plan. */
+  excluded: boolean;
+  /** A proposed replacement: the entry it would replace, which stays in force until you choose. */
+  supersedes: { id: string; seq: number; quote: string } | null;
 };
 
 /** One plan as the board reads it: the switcher row plus its spec, revision and tickets. */
@@ -611,6 +676,14 @@ export type TaskDetail = SessionTaskSummary & {
    * reads the plan again on that event. Absent from a daemon that predates holds.
    */
   held_by?: Hold[];
+  /**
+   * The requirements ledger as it bears on this plan (ADR 0040 P3): its own entries, its tickets',
+   * the ones it inherits from its conversation and the standing ones, in force, proposed or old
+   * and unverified. Absent from a daemon older than the ledger.
+   */
+  requirements?: PlanRequirement[];
+  /** When the plan last changed and what changed, in the app's language. Absent from an older daemon. */
+  last_change?: { at: string; what: string } | null;
 };
 
 /**
@@ -990,6 +1063,12 @@ export type Message = {
  *   messenger handles it (`MessageControl.edit_draft`), it is never sent.
  * - `remove_check`: on the app's line about checks from your words, remove those checks (for a
  *   replacement, turn it down and keep the check in force).
+ * - `confirm_requirements`: on the app's line about old rules it found none of your words for,
+ *   they are all yours: in force from now.
+ * - `review_requirements`: on the same line, go through them one by one on the plan's board; the
+ *   messenger handles it (opens the board), it is never sent.
+ * - `make_standing` / `keep_project`: on the app's line suggesting that requirements you raised in
+ *   two or more plans hold for every plan of that kind of work, do so, or leave them where they are.
  */
 export type ControlOffer =
   | "stop"
@@ -1005,7 +1084,11 @@ export type ControlOffer =
   | "leave"
   | "confirm_check"
   | "edit_check"
-  | "remove_check";
+  | "remove_check"
+  | "confirm_requirements"
+  | "review_requirements"
+  | "make_standing"
+  | "keep_project";
 
 /**
  * Why the daemon started again (ADR 0041): `dev` for a development run (`bun --watch` restarts it
@@ -1034,6 +1117,11 @@ export type ControlPlanOffer = { offer: "stop_plan" | "only_plan"; task_id: stri
  *   `replacing` names the check in force it would replace, `times` how many separate lines of
  *   yours have said it when that is two or more), or checks you confirmed that found the job's
  *   final deliverable (`bound`). `edit_draft` is what its 改 puts in your composer.
+ * - `requirement`, on the app's line (ADR 0040 P3): old rules of the plan `task_id` with none of your
+ *   words found for them (`legacy`), or craft requirements of one `category` you raised in two or
+ *   more `domain` plans of the conversation, suggested to hold for every plan of `domain` (`standing`;
+ *   the body quotes their words, and when the category's entries are in different words it names
+ *   one entry alone).
  * `acted` lists the buttons you pressed on it, in order; absent until you press one.
  */
 export type MessageControl =
@@ -1060,6 +1148,16 @@ export type MessageControl =
       replacing?: string | null;
       times?: number;
       edit_draft?: string;
+      acted?: ControlOffer[];
+    }
+  | {
+      kind: "requirement";
+      event: "legacy" | "standing";
+      requirement_ids: string[];
+      task_id: string;
+      category?: string;
+      domain?: string;
+      offer: ControlOffer[];
       acted?: ControlOffer[];
     };
 
@@ -1339,13 +1437,34 @@ export type SpendKind =
   | "acceptance_check";
 
 /**
- * How the view groups kinds. Decision is the pick before a turn and the organizer's filing of
- * a message; feedback is the review plus the learning hop; a composer suggestion and a
- * `continuity` acceptance check's vision calls belong to neither and are "other".
+ * What a call was for, where its kind is shared (ADR 0042): the scribe bills as `organize`, a
+ * judgement of pictures (a `continuity` check looking at frames) as `acceptance_check`, and a
+ * reflection, once there is one, as `organize`. The kind stays the nearest old value, so an older
+ * build still reads the row; every other row has no purpose.
+ */
+export type SpendPurpose = "scribe" | "vision" | "reflect";
+
+export const SPEND_PURPOSE_KIND: Record<SpendPurpose, SpendKind> = {
+  scribe: "organize",
+  vision: "acceptance_check",
+  reflect: "organize",
+};
+
+/** One line of the view's breakdown: a kind, or a purpose split out of the kind it bills as. */
+export type SpendLine = SpendKind | SpendPurpose;
+
+export function spendLineOf(row: { kind: SpendKind; purpose?: SpendPurpose | null }): SpendLine {
+  return row.purpose ?? row.kind;
+}
+
+/**
+ * How the view groups lines. Decision is the pick before a turn and the organizer's filing of
+ * a message; feedback is the review, the learning hop and a reflection; a composer suggestion,
+ * the scribe and an acceptance check's calls belong to neither and are "other".
  */
 export type SpendCategory = "turn" | "judgement" | "decision" | "feedback" | "other";
 
-export const SPEND_CATEGORY_OF: Record<SpendKind, SpendCategory> = {
+export const SPEND_CATEGORY_OF: Record<SpendLine, SpendCategory> = {
   turn: "turn",
   judgement: "judgement",
   route_pick: "decision",
@@ -1354,16 +1473,21 @@ export const SPEND_CATEGORY_OF: Record<SpendKind, SpendCategory> = {
   composer_suggest: "other",
   organize: "decision",
   acceptance_check: "other",
+  scribe: "other",
+  vision: "other",
+  reflect: "feedback",
 };
 
 /**
  * Filters for the ledger. An absent field means "any". `bot_id` and `model` use `null` for the
- * unassigned / unrecorded group. `to` is exclusive.
+ * unassigned / unrecorded group. `to` is exclusive. A `kind` entry is a line: a purpose names
+ * the rows of that purpose, a kind the rows of that kind that have none (`organize` is the
+ * organizer's own calls, not the scribe's).
  */
 export type SpendFilter = {
   from?: string;
   to?: string;
-  kind?: SpendKind[];
+  kind?: SpendLine[];
   bot_id?: string | null;
   session_id?: string;
   model?: string | null;
@@ -1397,7 +1521,8 @@ export type SpendTotals = {
   missing_usage_calls: number;
 };
 
-export type SpendKindSummary = SpendTotals & { kind: SpendKind };
+/** One line's totals; `kind` is the line (a purpose where the row has one). */
+export type SpendKindSummary = SpendTotals & { kind: SpendLine };
 
 export type SpendCategorySummary = SpendTotals & {
   category: SpendCategory;
@@ -1437,6 +1562,8 @@ export type Spend = {
   turn_id: string | null;
   judgement_id: string | null;
   kind: SpendKind;
+  /** Absent from a daemon older than ADR 0042. */
+  purpose?: SpendPurpose | null;
   chain_id: string | null;
   provider_id: string | null;
   provider_name: string | null;

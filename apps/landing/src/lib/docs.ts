@@ -77,7 +77,6 @@ export const TERM_GROUPS: Record<ManifestoTopic, readonly string[]> = {
     'Scribe',
     'Organizer',
     'Organizer run log',
-    'Precedent',
     'Check-back',
     'Closing check',
     'Acceptance check',

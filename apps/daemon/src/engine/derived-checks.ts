@@ -36,19 +36,19 @@ export type DerivedChecks = {
   act: (message: Message, input: { action: unknown }) => ControlActionResult;
 };
 
+/** Who a line of the app's is filed under: the Bot in a direct, else you (it shows as the app's either way). */
+export function appLineAuthor(store: Store, sessionId: string): string {
+  try {
+    if (store.getSession(sessionId).kind === "direct") return store.presentBotIds(sessionId)[0] ?? USER_MEMBER;
+  } catch {
+    // gone; nothing is said there
+  }
+  return USER_MEMBER;
+}
+
 export function createDerivedChecks(deps: DerivedChecksDeps): DerivedChecks {
   const { store, publishMessage, run, track, renderMirrors } = deps;
   const log = deps.log ?? ((line: string) => console.error(line));
-
-  /** Who a line of the app's is filed under: the Bot in a direct, else you (it shows as the app's either way). */
-  function authorIn(sessionId: string): string {
-    try {
-      if (store.getSession(sessionId).kind === "direct") return store.presentBotIds(sessionId)[0] ?? USER_MEMBER;
-    } catch {
-      // gone; nothing is said there
-    }
-    return USER_MEMBER;
-  }
 
   /**
    * The app's lines about a sync, in the plan's conversation when you are in it: one per check
@@ -71,7 +71,7 @@ export function createDerivedChecks(deps: DerivedChecksDeps): DerivedChecks {
         store.insertMessage({
           sessionId: sessionId!,
           kind: "system",
-          author: authorIn(sessionId!),
+          author: appLineAuthor(store, sessionId!),
           body,
           // For you: the Bots read the checks themselves in the plan's situation.
           hiddenFromBots: true,

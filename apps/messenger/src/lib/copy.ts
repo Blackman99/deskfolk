@@ -1057,6 +1057,10 @@ const zh = {
     declineCheck: "不要",
     useNewCheck: "用新的",
     keepOldCheck: "留原来的",
+    confirmRequirements: "都是",
+    reviewRequirements: "逐条看",
+    makeStanding: "升为常设",
+    keepProject: "不用",
     acted: {
       stop: "已停下",
       continue: "已继续",
@@ -1071,7 +1075,11 @@ const zh = {
       leave: "先放着",
       confirm_check: "已确认",
       edit_check: "",
-      remove_check: "已删掉"
+      remove_check: "已删掉",
+      confirm_requirements: "已确认都是你说的",
+      review_requirements: "",
+      make_standing: "已升为常设",
+      keep_project: "先不升"
     },
     partlyResumed: (continued: number, held: number) => `${continued} 轮接着做了，${held} 轮还被叫停扣着，解除后再按「继续」`,
     spent: "已解除",
@@ -1344,7 +1352,53 @@ const zh = {
     showSpec: "在旁边看要点",
     hideSpec: "收起要点",
     showTickets: "在旁边看任务",
-    hideTickets: "收起任务"
+    hideTickets: "收起任务",
+    dormant: "休眠",
+    dormantHint: "会话被清空或删除后先放一边；你再说到它或在流程图上改它就醒来",
+    lastChange: (ago: string, what: string) => `上次变化 ${ago}（${what}）`,
+    ago: {
+      now: "刚刚",
+      minute: (n: number) => `${n} 分钟前`,
+      hour: (n: number) => `${n} 小时前`,
+      day: (n: number) => `${n} 天前`
+    },
+    requirements: {
+      title: "你的要求",
+      hint: "每条都站在你说过的原话上；Bot 的局面里就是这张单子。",
+      none: "还没记下要求。",
+      inherited: (title: string, count: number) => `继承自「${title}」的 ${count} 条`,
+      proposed: "待你确认",
+      proposedHint: "还没生效；你确认了才算。",
+      unverified: "旧规则（出处未核实）",
+      unverifiedHint: "只作参考，不拦东西；是你说的就确认。",
+      excluded: "不适用这件事的",
+      said: (n: number) => `已说 ${n} 次`,
+      saidAcross: (n: number, plans: number) => `已说 ${n} 次（跨 ${plans} 件事）`,
+      restated: (text: string) => `转述：${text}`,
+      replaces: (seq: number, quote: string) => `要取代 R-${seq}「${quote}」`,
+      scope: {
+        ticket: (label: string) => `适用：任务 ${label}`,
+        plan: "适用：这件事",
+        project: "适用：这个会话的每件事",
+        standing: (domain: string | null) => (domain === "video" ? "适用：每个视频" : domain ? `适用：常设（${domain}）` : "适用：常设")
+      },
+      source: {
+        message: "你说的",
+        ask_answer: "你的回答",
+        annotation: "你的批注",
+        board: "你在流程图写的",
+        legacy: "旧规则",
+        capture: "你的原话，整句记下"
+      },
+      jump: "看原话",
+      confirm: "确认",
+      reject: "不是要求",
+      waive: "不再适用",
+      notHere: "不适用这件事",
+      hereAgain: "恢复",
+      wholeProject: "对这个会话都适用",
+      failed: "没做成，再试一次。"
+    }
   },
   detail: {
     titleGroup: "群组设置",
@@ -2516,6 +2570,10 @@ const en: CopyShape<typeof zh> = {
     declineCheck: "No",
     useNewCheck: "Use the new one",
     keepOldCheck: "Keep the old one",
+    confirmRequirements: "All mine",
+    reviewRequirements: "Go through them",
+    makeStanding: "Make it standing",
+    keepProject: "Not now",
     acted: {
       stop: "Stopped",
       continue: "Going on",
@@ -2530,7 +2588,11 @@ const en: CopyShape<typeof zh> = {
       leave: "Left as it is",
       confirm_check: "Confirmed",
       edit_check: "",
-      remove_check: "Removed"
+      remove_check: "Removed",
+      confirm_requirements: "Confirmed as yours",
+      review_requirements: "",
+      make_standing: "Made standing",
+      keep_project: "Left as it is"
     },
     partlyResumed: (continued: number, held: number) => `${continued} going on; ${held} still held by a stop — lift it, then Continue again`,
     spent: "Lifted",
@@ -2803,7 +2865,53 @@ const en: CopyShape<typeof zh> = {
     showSpec: "Show the plan alongside",
     hideSpec: "Hide the plan",
     showTickets: "Show tickets alongside",
-    hideTickets: "Hide tickets"
+    hideTickets: "Hide tickets",
+    dormant: "Dormant",
+    dormantHint: "Set aside when its conversation was cleared or deleted; it wakes when you mention it again or edit it on the board",
+    lastChange: (ago: string, what: string) => `Last change ${ago} (${what})`,
+    ago: {
+      now: "just now",
+      minute: (n: number) => `${n} min ago`,
+      hour: (n: number) => `${n} h ago`,
+      day: (n: number) => `${n} d ago`
+    },
+    requirements: {
+      title: "What you asked for",
+      hint: "Each stands on words you said; this is the list the Bots read in their situation.",
+      none: "Nothing written down yet.",
+      inherited: (title: string, count: number) => `${count} inherited from “${title}”`,
+      proposed: "Waiting for you",
+      proposedHint: "Not in force until you confirm.",
+      unverified: "Old rules (source unverified)",
+      unverifiedHint: "For reference only, holding nothing back; confirm the ones you said.",
+      excluded: "Not for this job",
+      said: (n: number) => `said ${n} times`,
+      saidAcross: (n: number, plans: number) => `said ${n} times (across ${plans} jobs)`,
+      restated: (text: string) => `Restated: ${text}`,
+      replaces: (seq: number, quote: string) => `would replace R-${seq} “${quote}”`,
+      scope: {
+        ticket: (label: string) => `For ticket ${label}`,
+        plan: "For this job",
+        project: "For every job in this conversation",
+        standing: (domain: string | null) => (domain === "video" ? "For every video job" : domain ? `Standing (${domain})` : "Standing")
+      },
+      source: {
+        message: "You said",
+        ask_answer: "Your answer",
+        annotation: "Your annotation",
+        board: "You wrote on the board",
+        legacy: "Old rule",
+        capture: "Your words, kept whole"
+      },
+      jump: "See the words",
+      confirm: "Confirm",
+      reject: "Not a requirement",
+      waive: "No longer holds",
+      notHere: "Not for this job",
+      hereAgain: "Restore",
+      wholeProject: "For the whole conversation",
+      failed: "That did not work; try again."
+    }
   },
   detail: {
     titleGroup: "Group settings",

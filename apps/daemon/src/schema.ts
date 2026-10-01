@@ -458,7 +458,19 @@ CREATE VIEW IF NOT EXISTS held_scopes AS
 -- status}; 'requirement.raise', payload {requirement, quote}; 'requirement.purge', your purge, payload
 -- {requirements}, the one row the trigger requirements_purge_only lets a requirement be deleted
 -- under; 'requirement.rescope', entries moved to another scope, payload {requirements, scope,
--- scope_id, cause} (for now only a deleted conversation's project entries, to a null scope_id);
+-- scope_id, cause} (a deleted conversation's project entries, to a null scope_id; or yours on the
+-- board or a card: cause whole_project or standing);
+-- 'requirement.confirm', a proposed entry or an old rule you took up (a replacement also marks the
+-- entry it replaces superseded), payload {requirement, task, replaced}; 'requirement.reject', one you
+-- said is no requirement, payload {requirement, task}; 'requirement.waive', one in force you let go
+-- (on the board, or by taking its line off the plan), payload {requirement, task};
+-- 'requirement.not_here' / 'requirement.here_again', an entry a plan inherits set not to hold for it,
+-- or back, payload {requirement, task} (and quote, when the scribe read your words in the plan as
+-- it again, actor scribe). Each of these written by your edit of a plan's rules or Done when on the
+-- board also names the plan's version that edit made, as action. 'requirement.import', the old
+-- rules and Done-when lines of every plan taken into the ledger once, payload {requirements};
+-- 'requirement.card', a line of the app's about entries, payload {card: legacy | standing,
+-- requirements, category, message, each (a standing card about one entry alone, when present)}.
 -- 'quotes.erased', payload {quotes, waived}; 'plan.dormant', a
 -- plan set aside because its conversation was cleared or deleted, payload {cause}. The scribe's
 -- (scribe.ts): 'scribe.answer', each answer as it came back, payload {quote, model, fail, raw};
@@ -488,6 +500,9 @@ CREATE TABLE IF NOT EXISTS work_events (
 );
 
 CREATE INDEX IF NOT EXISTS work_events_kind ON work_events (kind, seq);
+-- One plan's own events, newest first: its board's 「上次变化」 reads the latest change to its
+-- requirements on every read of the plan.
+CREATE INDEX IF NOT EXISTS work_events_task ON work_events (task_id, seq);
 
 -- Your words (原话, ADR 0040): a copy of each line you send, each answer you give a Bot's question,
 -- each annotation you send and each line you write on the board, taken in the same write as the
@@ -551,15 +566,30 @@ CREATE TABLE IF NOT EXISTS requirements (
   superseded_by TEXT,
   times_raised INTEGER NOT NULL DEFAULT 1,
   last_raised_at TEXT NOT NULL,
-  -- 'user', 'app', or the writer that proposed it: 'scribe', or 'capture' for the fallback capture of
-  -- a complaint the scribe filed nothing for.
+  -- 'user', 'app', or the writer that proposed it: 'scribe', 'capture' for the fallback capture of
+  -- a complaint the scribe filed nothing for, 'import' for an old rule taken into the ledger.
   added_by TEXT NOT NULL,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  -- The ledger's own number (R-N), one more than the highest so far; how an entry is named in the
+  -- Bots' situation and on the board.
+  seq INTEGER,
+  -- The plan the words were said about, whatever the scope: an entry of the conversation or a
+  -- standing one reads as inherited in every other plan.
+  origin_task_id TEXT
 );
 
 CREATE INDEX IF NOT EXISTS requirements_scope ON requirements (scope, scope_id, status);
 CREATE INDEX IF NOT EXISTS requirements_source_quote ON requirements (source_quote_id);
+
+-- An entry a plan inherits (of its conversation, or standing) that you said does not hold for it
+-- (不适用这件事). The entry itself is untouched: every other plan still has it.
+CREATE TABLE IF NOT EXISTS requirement_exclusions (
+  requirement_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (requirement_id, task_id)
+);
 
 -- Each time words of yours raised an entry, the first time included.
 CREATE TABLE IF NOT EXISTS requirement_mentions (
@@ -823,6 +853,9 @@ CREATE TABLE IF NOT EXISTS spend (
   kind TEXT NOT NULL CHECK (
     kind IN ('turn', 'judgement', 'route_pick', 'route_review', 'route_learn', 'composer_suggest', 'organize', 'acceptance_check')
   ),
+  -- What the call was for where the kind is shared (ADR 0042): the scribe and a reflection bill
+  -- as organize, a judgement of pictures as acceptance_check. Added by migrate.ts on older ledgers.
+  purpose TEXT CHECK (purpose IS NULL OR purpose IN ('scribe', 'vision', 'reflect')),
   chain_id TEXT,
   provider_id TEXT,
   provider_name TEXT,
