@@ -172,7 +172,7 @@ describe("the read-only turn a line of yours opens is the one a hold lets throug
 
   test("a turn a hold names itself, as Stop on it does, is not moved onto another plan in place", () => {
     const { store, director, dm, plan, line } = fixture();
-    const stopped = store.createTurn({ sessionId: dm.id, botId: director.id, triggerMessageId: line(dm.id, "user").id });
+    const stopped = store.createTurn({ sessionId: dm.id, botId: director.id, triggerMessageId: line(dm.id, "user").id, taskId: plan.id });
     store.createHold({ scope: "turn", scopeId: stopped.id, source: "user_button" });
     expect(() => store.db.run(`UPDATE turns SET task_id = ? WHERE id = ?`, [plan.id, stopped.id])).toThrow("held");
     expect(() => store.db.run(`UPDATE turns SET mode = 'readonly' WHERE id = ?`, [stopped.id])).toThrow("held");

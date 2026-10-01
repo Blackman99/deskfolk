@@ -75,7 +75,9 @@ test("an unaddressed line in a group goes to its lead", async () => {
   });
   h.postUser(room, "这版再看一眼");
   await h.routed();
+  await h.waitFor(() => said.length > 0);
   expect(said).toEqual(["reviewer"]);
+  expect(h.judgeCalls("judgement")).toHaveLength(0);
   await h.close();
 });
 

@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { flushSync, tick } from "svelte";
 import type { MessageControl } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
 import { aBot, aDirect, aGroup, aHold, aMessage, aTurn, fakeRuntime } from "../test-fixtures.ts";
@@ -7,6 +8,25 @@ import { buttonByText, click, render } from "../test-render.ts";
 import ChatStage from "./ChatStage.svelte";
 
 const t = copyFor("zh");
+
+test("the real chat renders a new-plan receipt and passes the confirmed merge target to runtime", async () => {
+  const session = aGroup();
+  const control: MessageControl = { kind: "plan_opened", task_id: "new-job", turn_id: "opening", quote_message_id: "quote",
+    merge_targets: [{ task_id: "ep01", title: "EP01" }], offer: ["undo_plan", "merge_plan"] };
+  const card = aMessage({ id: "plan-card", session_id: session.id, kind: "system", author: "bot-1", body: "新开：Report", control });
+  const h = stage(session, { messages: [card], holdsOn: true });
+  try {
+    const row = h.host.querySelector<HTMLElement>('[data-message-id="plan-card"]')!;
+    expect(row.textContent).toContain("新开：Report");
+    expect(row.querySelector(".app-avatar")).not.toBeNull();
+    click(buttonByText(row, "并入…")); flushSync();
+    const select = row.querySelector("select")!;
+    select.value = "ep01"; select.dispatchEvent(new Event("change", { bubbles: true })); flushSync();
+    click(buttonByText(row, "确认并入")); await tick(); flushSync();
+    expect(h.runtime.calls.filter((call) => call.name === "controlAction").map((call) => call.args))
+      .toEqual([["plan-card", "merge_plan", "ep01"]]);
+  } finally { h.close(); }
+});
 
 function stage(session: ReturnType<typeof aDirect>, over: Parameters<typeof fakeRuntime>[0]) {
   const runtime = reactive(fakeRuntime({ bots: [aBot({ id: "bot-1", name: "视频导演" }), aBot({ id: "bot-2", name: "审片员" })], sessions: [session], ...over }, { selectedId: session.id }));

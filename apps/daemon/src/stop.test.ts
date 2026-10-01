@@ -18,7 +18,8 @@ afterEach(async () => {
   while (open.length) await open.pop()!.close();
 });
 
-async function scenario(options: ScenarioOptions = { holds: true }): Promise<Scenario> {
+// These control-plane regressions pin P4b (level 2), where a line no named job claims opens a desk.
+async function scenario(options: ScenarioOptions = { workItems: true }): Promise<Scenario> {
   const h = await createScenario(options);
   open.push(h);
   return h;
@@ -304,7 +305,8 @@ describe("a go on", () => {
     h.postUser(dm, "继续");
     await h.waitIdle();
 
-    expect(h.turns(director).map(({ mode }) => mode)).toEqual(["work"]);
+    // No existing job was named: an ordinary line starts a read-only desk, not a fabricated plan.
+    expect(h.turns(director).map(({ mode, task_id }) => ({ mode, task_id }))).toEqual([{ mode: "desk", task_id: null }]);
     expect(h.messages(dm).at(-1)!.body).toBe("好，接下来做第四镜");
   });
 
@@ -398,7 +400,11 @@ describe("a go on", () => {
     const [onPlan] = holds(h);
     expect(onPlan).toMatchObject({ scope: "plan", scope_id: ep01.id });
 
-    const go = h.postUser(room, "@视频导演 继续");
+    // The control plane runs before ordinary filing. Capture the explicit UI job choice before
+    // admission rather than relying on the old conversation-current-plan fallback.
+    const go = h.store.postMessage(room, { body: "@视频导演 继续" });
+    h.store.fileMessage(go.id, { explicit: [{ taskId: ep01.id }] });
+    await h.engine.handleInboundMessage(h.store.getMessage(go.id), { fromUser: true });
     await h.waitIdle();
 
     expect(h.store.getHold(onPlan!.id).lifted_at).toBeNull();
@@ -427,7 +433,7 @@ describe("a go on", () => {
     expect(receipt.body).toContain("仍在叫停中：这里的工作");
   });
 
-  test("opens stopped work in a group inside the turn the Bot already has there, not a second one beside it", async () => {
+  test("opens a stopped job beside a different job in the same group without giving its note to that other job", async () => {
     const h = await scenario();
     const { director, reviewer, writer, room } = videoTeam(h);
     const ep01 = openPlan(h, room, "EP01", planSpec("EP01 动画成片"));
@@ -450,14 +456,18 @@ describe("a go on", () => {
     const working = h.store.listLiveTurns({ sessionId: room, botId: director.id })[0]!;
 
     h.engine.liftHold(hold.id);
-    expect(h.store.listLiveTurns({ sessionId: room, botId: director.id }).map((row) => row.id)).toEqual([working.id]);
+    const live = h.store.listLiveTurns({ sessionId: room, botId: director.id });
+    expect(live.map((row) => row.task_id).sort()).toEqual([ep01.id, ep02.id].sort());
+    const resumed = live.find((row) => row.task_id === ep01.id)!;
+    expect(resumed.id).not.toBe(working.id);
     release();
     await h.waitIdle();
 
-    expect(h.turns(director).map((row) => row.id)).toEqual([stopped.id, working.id]);
-    expect(h.store.getHold(hold.id).effect.resumed_turns).toEqual([working.id]);
-    const [, second] = h.hops(director).filter((hop) => hop.turnId === working.id);
-    expect(requestText(second!.request)).toContain("用户叫停了这件工作，现在解除了");
+    expect(h.turns(director).map((row) => row.id)).toEqual([stopped.id, working.id, resumed.id]);
+    expect(h.store.getHold(hold.id).effect.resumed_turns).toEqual([resumed.id]);
+    const resumedHops = h.hops(director).filter((hop) => hop.turnId === resumed.id);
+    expect(resumedHops.some((hop) => requestText(hop.request).includes("用户叫停了这件工作，现在解除了"))).toBe(true);
+    expect(h.hops(director).filter((hop) => hop.turnId === working.id).some((hop) => requestText(hop.request).includes("用户叫停了这件工作，现在解除了"))).toBe(false);
     // Heard, not shown: the group and the other Bots there never see the note.
     expect(h.store.listMessages(room).items.some((message) => message.body.includes("用户叫停了这件工作"))).toBe(false);
     expect(h.store.listMainMessages(room, 40).some((message) => message.body.includes("用户叫停了这件工作"))).toBe(false);
@@ -667,7 +677,7 @@ describe("a line that only might be control", () => {
 
     expect(holds(h)).toEqual([]);
     expect(h.store.getMessage(line.id).control).toEqual({ kind: "possible_control", offer: ["stop"], scopes: [{ scope: "bot", id: director.id }] });
-    expect(h.turns(director).map(({ mode }) => mode)).toEqual(["work"]);
+    expect(h.turns(director).map(({ mode, task_id }) => ({ mode, task_id }))).toEqual([{ mode: "desk", task_id: null }]);
   });
 
   test("「算了」 alone stops and drops nothing: it asks which, and the Bot still gets it", async () => {
@@ -758,14 +768,16 @@ describe("Stop on a turn's card", () => {
     const h = await scenario();
     const { director } = videoTeam(h);
     const dm = h.direct(director);
-    openPlan(h, dm, "片头", planSpec("片头动画"));
+    const plan = openPlan(h, dm, "片头", planSpec("片头动画"));
     const turn = await atWork(h, director, dm, () => h.postUser(dm, "做片头"));
     h.engine.stop(turn.id, { button: true });
     await h.waitIdle();
     const [hold] = holds(h);
     h.script(director, dm).reply(say("好，接着渲染片头"));
 
-    const go = h.postUser(dm, words);
+    const go = h.store.postMessage(dm, { body: words });
+    h.store.fileMessage(go.id, { explicit: [{ taskId: plan.id }] });
+    await h.engine.handleInboundMessage(h.store.getMessage(go.id), { fromUser: true });
     await h.waitIdle();
 
     expect(h.store.getHold(hold!.id)).toMatchObject({ lifted_by: "user_text", lifted_message_id: go.id });
@@ -874,26 +886,19 @@ describe("Stop on a turn's card", () => {
     expect(receipt.control).toMatchObject({ kind: "receipt", verb: "continue", hold_ids: [onCut!.id] });
   });
 
-  test("a line you sent just before pressing it, still being filed when it landed, does not lift it", async () => {
+  test("a line received before Stop but admitted afterwards does not lift it", async () => {
     const h = await scenario();
     const { director } = videoTeam(h);
     const dm = h.direct(director);
-    openPlan(h, dm, "片头", planSpec("片头动画"));
+    const plan = openPlan(h, dm, "片头", planSpec("片头动画"));
     const turn = await atWork(h, director, dm, () => h.postUser(dm, "做片头"));
-    let filing = false;
-    let release!: () => void;
-    const released = new Promise<void>((resolve) => (release = resolve));
-    h.judge("organizer", { session: dm }).reply(async () => {
-      filing = true;
-      await released;
-      return "";
-    });
+    // Receipt and admission are separate seams. Capture the original line and its explicit job
+    // before Stop, then admit it afterwards: no organizer or fake timing dependency remains.
+    const earlier = h.store.postMessage(dm, { body: "片头加个标题" });
+    h.store.fileMessage(earlier.id, { explicit: [{ taskId: plan.id }] });
     h.script(director, dm).reply(say("片头停着，标题等你说了再加"));
-    const earlier = h.postUser(dm, "片头加个标题");
-    await h.waitFor(() => filing, { what: "the line to be filing" });
-
     h.engine.stop(turn.id, { button: true });
-    release();
+    await h.engine.handleInboundMessage(h.store.getMessage(earlier.id), { fromUser: true });
     await h.waitIdle();
 
     const [hold] = holds(h);
@@ -1041,8 +1046,7 @@ describe("buttons on the app's lines about your stops", () => {
     const receipt = receiptAfter(h, dm, stop);
     const [hold] = holds(h);
 
-    h.script(director, thread).reply(call(endTurn()));
-    h.script(director, dm).reply(say("好的，接着拼"));
+    h.script(director, thread).reply(call(tool("list_dir", { path: "." })), say("好的，接着拼"));
     const result = h.engine.control(receipt.id, { action: "undo" });
     await h.waitIdle();
 
@@ -1051,13 +1055,21 @@ describe("buttons on the app's lines about your stops", () => {
     // The thread work opens again on the note, as any lift opens it.
     const reopened = h.turns(director).filter((row) => row.session_id === thread && row.id !== turn.id);
     expect(reopened).toHaveLength(1);
-    // Your line was never a stop: it reaches the Bot as the line it was.
-    expect(h.turns(director).filter((row) => row.trigger_message_id === stop.id).map(({ mode }) => mode)).toEqual(["work"]);
+    // Your line was never a stop. I1b delivers it to that job's already resumed segment, rather
+    // than opening another segment in the direct: assert it was actually read, not merely queued.
+    const delivered = h.store.db.query<{ delivered_turn_id: string; state: string }, [string]>(
+      "SELECT delivered_turn_id, state FROM inbox_items WHERE message_id = ? AND source = 'user' ORDER BY seq",
+    ).all(stop.id);
+    expect(delivered).toEqual([{ delivered_turn_id: reopened[0]!.id, state: expect.any(String) }]);
+    expect(delivered[0]!.delivered_turn_id).toBe(reopened[0]!.id);
+    expect(delivered[0]!.state).not.toBe("queued");
+    expect(h.hops(director).filter((hop) => hop.turnId === reopened[0]!.id).some((hop) => requestText(hop.request).includes(stop.body))).toBe(true);
     expect(h.store.getMessage(receipt.id).control).toMatchObject({ acted: ["undo"] });
 
     expect(h.engine.control(receipt.id, { action: "undo" })).toEqual({ made: [], lifted: [] });
     await h.waitIdle();
-    expect(h.turns(director).filter((row) => row.trigger_message_id === stop.id)).toHaveLength(1);
+    expect(h.store.db.query("SELECT seq FROM inbox_items WHERE message_id = ? AND source = 'user'").all(stop.id)).toHaveLength(1);
+    expect(h.turns(director).filter((row) => row.session_id === thread && row.id !== turn.id)).toHaveLength(1);
   });
 
   test("undo of a stop said where the Bot was working sends your line on there, without opening that work again beside it", async () => {

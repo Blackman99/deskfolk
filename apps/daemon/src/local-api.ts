@@ -72,6 +72,8 @@ import { listWorkspaceDir, locateWorkspaceFile, writeWorkspaceFile } from "./wor
 import { trashWorkspacePaths, type TrashMover } from "./workspace-trash";
 import { listHostDir } from "./host-paths";
 import { PresenceManager, NotificationDeliveryScheduler } from "./notifications";
+import { confirmGroupLead, groupLeadState } from "./store/group-leads";
+import { attributionOptions } from "./store/attribution-options";
 
 const AUTH_TIMEOUT_MS = 5_000;
 const REACTIONS = new Set<string>(REACTION_EMOJI);
@@ -1887,6 +1889,24 @@ function dispatch(
     return emptyResponse(204, null);
   }
 
+  // A suggestion based on real handoffs is read-only; assigning it needs your explicit click (D22).
+  params = matchPath(path, "/v1/sessions/:id/lead");
+  if (params && method === "GET") return jsonResponse(groupLeadState(store, params.id!), 200, null);
+  if (params && method === "PUT") {
+    const body = input.body;
+    if (!body || typeof body !== "object" || Array.isArray(body)
+      || Object.keys(body).some((key) => key !== "bot_id" && key !== "confirmed")
+      || (body as { confirmed?: unknown }).confirmed !== true
+      || !Object.hasOwn(body, "bot_id")
+      || ((body as { bot_id?: unknown }).bot_id !== null && typeof (body as { bot_id?: unknown }).bot_id !== "string")) {
+      throw new HttpError(422, "invalid_args", "bot_id and confirmed: true are required");
+    }
+    const state = confirmGroupLead(store, params.id!, (body as { bot_id: string | null }).bot_id);
+    publish({ event: "group_lead.changed", occurred_at: occurred(), ...state });
+    publish({ event: "session.upsert", occurred_at: occurred(), ...sessionUpsertFields(store.getSession(params.id!)) });
+    return jsonResponse(state, 200, null);
+  }
+
   // Your answer to a Bot's question is written onto the question: choices it offered, text of your
   // own, or both. A draining daemon still takes it, like any reply a waiting turn needs to finish.
   params = matchPath(path, "/v1/messages/:id/answer");
@@ -1902,15 +1922,46 @@ function dispatch(
   params = matchPath(path, "/v1/messages/:id/control");
   if (params && method === "POST") {
     const body = (input.body ?? {}) as Partial<ControlActionRequest>;
+    if (store.getMessage(params.id!).control?.kind === "plan_opened") {
+      if (!input.body || typeof input.body !== "object" || Array.isArray(input.body)
+        || Object.keys(input.body).some((key) => key !== "action" && key !== "task_id")) {
+        throw new HttpError(422, "invalid_args", "a new-plan button takes only action and an optional target task_id");
+      }
+      return jsonResponse(store.actNewPlanCard(params.id!, { action: body.action, taskId: body.task_id,
+        userActionId: scope?.requestId ?? ulid() }, (taskId) => engine.createHold({
+        scope: "plan", scopeId: taskId, action: "cancel", cascade: true, liftOnNextUserMessage: false,
+      })), 200, null);
+    }
     return jsonResponse(engine.control(params.id!, { action: body.action, taskId: body.task_id }), 200, null);
   }
 
   // Move a line to another job (ADR 0040 §8.5). The inbox items it already reached move with it.
   params = matchPath(path, "/v1/messages/:id/attribution");
+  if (params && method === "GET") return jsonResponse(attributionOptions(store, params.id!), 200, null);
   if (params && method === "PATCH") {
-    const body = (input.body ?? {}) as { plan_id?: string; ticket_id?: string | null };
-    if (!body.plan_id) throw new HttpError(422, "invalid_args", "plan_id is required");
-    const moved = store.refileMessage(params.id!, { taskId: body.plan_id, ticketId: body.ticket_id ?? null });
+    const body = input.body;
+    if (!body || typeof body !== "object" || Array.isArray(body)) throw new HttpError(422, "invalid_args", "an attribution object is required");
+    const multi = Object.hasOwn(body, "filings");
+    if (multi && Object.keys(body).length !== 1) throw new HttpError(422, "invalid_args", "choose filings or one plan_id");
+    const targets = multi ? (body as { filings: unknown }).filings : [body];
+    if (!Array.isArray(targets) || targets.length > 100) throw new HttpError(422, "invalid_args", "filings must be a list of at most 100 targets");
+    const filings = targets.map((target) => {
+      if (!target || typeof target !== "object" || Array.isArray(target)
+        || Object.keys(target).some((key) => !["plan_id", "ticket_id", "part_key"].includes(key))) {
+        throw new HttpError(422, "invalid_args", "invalid attribution target");
+      }
+      const { plan_id, ticket_id, part_key } = target as { plan_id?: unknown; ticket_id?: unknown; part_key?: unknown };
+      if (typeof plan_id !== "string" || !plan_id
+        || (ticket_id !== undefined && ticket_id !== null && (typeof ticket_id !== "string" || !ticket_id))
+        || (part_key !== undefined && part_key !== null && (typeof part_key !== "string" || !part_key || part_key.length > 200))) {
+        throw new HttpError(422, "invalid_args", "plan_id, ticket_id and part_key must name a target");
+      }
+      return { taskId: plan_id, ticketId: ticket_id as string | null | undefined, partKey: part_key as string | null | undefined };
+    });
+    store.getMessage(params.id!);
+    const moved = store.refileMessage(params.id!, { filings, userActionId: scope?.requestId ?? ulid() });
+    publish({ event: "attribution.changed", occurred_at: occurred(), message_id: moved.id, session_id: moved.session_id,
+      filing_state: moved.filing_state ?? (filings.length ? "filed" : "none"), filings: moved.filings ?? [] });
     return jsonResponse(moved, 200, null);
   }
 

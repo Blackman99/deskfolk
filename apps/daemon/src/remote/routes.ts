@@ -46,6 +46,12 @@ get("annotations", { relpath: v => typeof v === "string" && v.length <= 4096, se
 get("annotations/:id"); get("annotations/:id/crop");
 get("tasks/:id/(trace|tickets|spec-revisions)");
 get("sessions/:id/tasks");
+get("sessions/:id/lead");
+get("messages/:id/attribution");
+add("PUT", "sessions/:id/lead", { bot_id: nullable(id), confirmed: one(true) }, ["bot_id", "confirmed"]);
+const partKey: Check = v => typeof v === "string" && v.length > 0 && v.length <= 200;
+const attribution = { plan_id: id, ticket_id: nullable(id), part_key: nullable(partKey) };
+add("PATCH", "messages/:id/attribution", { ...attribution, filings: v => Array.isArray(v) && v.length <= 100 && v.every(object(attribution, ["plan_id"])) });
 const planStatus: Check = one("active", "done", "parked");
 const ticketStatus: Check = one("todo", "doing", "review", "done", "parked");
 const specLines: Check = list((v) => typeof v === "string" && v.length <= 400);
@@ -71,7 +77,7 @@ add("POST", "holds", { scope: one("global", "bot", "session", "plan", "ticket", 
   action: one("pause", "cancel"), cascade: bool, lift_on_next_user_message: bool, session_id: nullable(id) }, ["scope"]);
 add("POST", "holds/:id/lift", {});
 // A button on a line about your stops (a receipt's undo, 「全部停下」 from the phone's menu is a hold above).
-add("POST", "messages/:id/control", { action: one("stop", "continue", "cancel", "undo", "stop_all", "stop_plan", "only_plan", "continue_only", "continue_all", "resume", "leave", "confirm_check", "remove_check", "confirm_requirements", "make_standing", "keep_project"), task_id: id }, ["action"]);
+add("POST", "messages/:id/control", { action: one("stop", "continue", "cancel", "undo", "stop_all", "stop_plan", "only_plan", "continue_only", "continue_all", "resume", "leave", "confirm_check", "remove_check", "confirm_requirements", "make_standing", "keep_project", "undo_plan", "merge_plan"), task_id: id }, ["action"]);
 add("PATCH", "tickets/:id", { title: string, spec: string, status: ticketStatus, worker: nullable(id), if_revision: specRevision }, [], true);
 const checkKind: Check = one("exists", "contains", "matches", "command");
 const checkInput = {
@@ -216,6 +222,13 @@ export function validateBusiness(request: RemoteRequest): void {
       (route.patch && !Object.keys(request.body ?? {}).some(k => k !== "if_revision")) ||
       (request.ifMatch !== undefined && !(request.method === "PUT" && request.path === "/v1/workspace/file"))) {
       throw new HttpError(422, "invalid_args", "invalid remote properties");
+    }
+    if (request.method === "PATCH" && /^\/v1\/messages\/[^/]+\/attribution$/.test(request.path)) {
+      const body = request.body ?? {};
+      const multi = Object.hasOwn(body, "filings");
+      if ((multi && Object.keys(body).length !== 1) || (!multi && !Object.hasOwn(body, "plan_id"))) {
+        throw new HttpError(422, "invalid_args", "choose filings or one plan_id");
+      }
     }
     if (/^\/v1\/credential-operations\//.test(request.path) && request.body?.action === "repair" && !request.body.value) throw new HttpError(422, "invalid_args", "credential value required");
   } catch (error) {

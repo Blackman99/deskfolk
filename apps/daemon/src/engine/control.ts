@@ -8,6 +8,7 @@
  */
 import type { Hold, Message } from "@real-bot/protocol";
 import type { Store } from "../store";
+import { ENGINE_LEVELS } from "../store/schema-gate";
 
 /**
  * What would have woken the Bot, as the work log records it:
@@ -72,6 +73,11 @@ export function heldWake(store: Store, wake: Wake): Hold[] {
  */
 export function mayWake(store: Store, wake: Wake, opts: { once?: string } = {}): boolean {
   const holds = heldWake(store, wake);
+  if (store.capabilities().engine_level >= ENGINE_LEVELS.work_items && wake.taskId && !store.isPlanRunnable(wake.taskId)) {
+    store.recordWorkEvent({ kind: "wake.suppressed", actor: "app", botId: wake.botId, taskId: wake.taskId,
+      sessionId: wake.sessionId, turnId: wake.turnId ?? null, payload: { cause: wake.cause, holds: holds.map((hold) => hold.id), reason: "plan_not_runnable" } });
+    return false;
+  }
   if (holds.length === 0) return true;
   if (opts.once && suppressedAlready(store, wake.botId, opts.once)) return false;
   store.recordWorkEvent({
@@ -127,7 +133,9 @@ export const HELD_CALL = "The user stopped this work: calls that change anything
  */
 export function mayAct(store: Store, turnId: string): boolean {
   try {
-    if (store.getTurn(turnId).mode === "readonly") return false;
+    const turn = store.getTurn(turnId);
+    if (turn.mode === "readonly") return false;
+    if (turn.task_id && store.capabilities().engine_level >= ENGINE_LEVELS.work_items && !store.isPlanRunnable(turn.task_id)) return false;
   } catch {
     // a turn that is gone is held by nothing; the call's own checks turn it away
   }

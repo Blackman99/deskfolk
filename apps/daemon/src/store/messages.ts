@@ -40,6 +40,7 @@ import {
   type StoreContext,
 } from "./shared";
 import { taskOfTurn } from "./tasks";
+import { filingsOfMessage } from "./filing";
 
 export type AttachmentInput = {
   originalFilename: string;
@@ -510,7 +511,12 @@ export function hydrateMessage(ctx: StoreContext, row: MessageRow): Message {
   const reactions = ctx.db
     .query<Reaction, [string]>(`SELECT * FROM reactions WHERE message_id = ?`)
     .all(row.id);
-  const { ask_spec, ask_answer, hidden_from_bots: _hiddenFromBots, bot_only: _botOnly, control, ...rest } = row;
+  const { ask_spec, ask_answer, hidden_from_bots: _hiddenFromBots, bot_only: _botOnly, control,
+    filing_state, filing_candidates: _candidates, ...base } = row;
+  const rest = { ...base, ...(filing_state ? { filing_state, filings: filingsOfMessage(ctx, row.id).map((filing) => ({
+    task_id: filing.taskId, ticket_id: filing.ticketId, part_key: filing.partKey,
+    filed_by: filing.filedBy, strength: filing.strength, is_primary: filing.isPrimary,
+  })) } : {}) };
   // Only a line the app read or wrote about your stops carries one, so every other line reads as before.
   const withControl = control ? { control: JSON.parse(control) as MessageControl } : {};
   if (row.kind === "user") {

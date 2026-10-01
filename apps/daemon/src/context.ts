@@ -988,6 +988,28 @@ function situationUserMessage(
     ? planFacts(store, { taskId, ticketId, turnId, triggerMessageId, botId: selfBotId, sessionId, locale })
     : null;
   const job = facts ? planLines(facts, locale) : [];
+  if (store.getTurn(turnId).mode === "desk") {
+    const candidates = store.deskCandidateIds(turnId).map((id) => {
+      try {
+        const plan = store.planCandidateEvidence(id);
+        const activity = locale === "en" ? `Last activity: ${plan.lastActivityAt}` : `最后活动：${plan.lastActivityAt}`;
+        const files = plan.recentArtifacts.length ? (locale === "en" ? `Recent artifacts: ${plan.recentArtifacts.join(", ")}` : `最近产物：${plan.recentArtifacts.join("、")}`) : "";
+        const quote = plan.lastUserQuote ? (locale === "en" ? `Latest user words: ${oneLineClip(plan.lastUserQuote, 300)}` : `最近用户原话：${oneLineClip(plan.lastUserQuote, 300)}`) : "";
+        return [ `${plan.id} · ${plan.title}`, activity, files, quote ].filter(Boolean).join(" · ");
+      } catch { return `${id} · ${locale === "en" ? "no longer available" : "已不可用"}`; }
+    });
+    job.push(locale === "en"
+      ? "Desk segment: read and reply before choosing a job; work_on selects only the captured candidates below."
+      : "桌面段：先读与回答，work_on 只可选本轮已列出的候选。",
+      ...candidates.map((line) => `- ${line}`));
+    if (candidates.length === 1) job.push(locale === "en"
+      ? "The first effect defaults to that job; if unrelated, use work_on({new}) and quote the user first."
+      : "第一次副作用默认归到这件事；不相干就先 work_on({new}) 引用用户原话。" );
+    else if (candidates.length === 0) job.push(locale === "en"
+      ? "No captured candidates: a user's first effect opens one visible job and a produce ticket."
+      : "没有候选：用户请求的第一次副作用会可见地新开一件事与产出任务。" );
+    else job.push(locale === "en" ? "Choose with work_on before any effect; an ambiguous effect is refused." : "先 work_on 选定再动手；未选归属的副作用会被拒绝。");
+  }
   // A read-only turn opens on the stop over it and what it may do, before anything else (ADR 0040).
   const held = readOnlyHeld(store, turnId, locale);
   if (sessionKind !== "group") {

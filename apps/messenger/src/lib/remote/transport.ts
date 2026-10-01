@@ -26,6 +26,7 @@ import { inflateSync } from "fflate";
 import { ApiError } from "../api.ts";
 import type { FileProgressHandler } from "../file-progress.ts";
 import type { StoredEnrollment } from "./idb.ts";
+import { validAttributionPayload } from "../attribution-wire.ts";
 
 export type TransportHooks = {
   fetch?: typeof fetch;
@@ -470,6 +471,7 @@ export class RemoteTransport {
   private emit(value: unknown): void {
     const frame = value as ProtocolSyncFrame | StreamFrame | ToolFrame;
     if (!frame || typeof frame !== "object") return;
+    if (frame.type === "event" && !validAttributionPayload(frame.payload)) return;
     for (const listener of this.events) listener(frame);
   }
 

@@ -108,6 +108,7 @@ export type Lifecycle = {
     opts: { cause: WakeCause; taskId?: string | null; ticketId?: string | null; otherwise?: "redirect" | "fork" },
   ) => Turn | null;
   hearAcross: (message: Message) => Turn[];
+  dispatchQueued: () => void;
   attachLive: (turn: Turn, carry?: string | null) => void;
   continueFromInterrupt: (messageId: string) => Turn;
   abortLive: (turnId: string) => void;
@@ -209,19 +210,16 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       const landing = store.turnLanding({ sessionId, botId, trigger, taskId: opts.taskId, ticketId: opts.ticketId });
       const place = store.workItemQueuePlace({ botId, taskId: landing.taskId });
       if (place !== null) {
-        const note = store.insertMessage({
-          sessionId,
-          kind: "system",
-          author: botId,
-          body: store.settingsCached().locale === "en"
-            ? `Queued, at position ${place}. It starts once one of the jobs in hand finishes.`
-            : `排在第 ${place} 位。手上的一件做完就轮到这件。`,
-          hiddenFromBots: true,
-        });
-        publishMessage(note);
+        const queued = store.queueWork({ botId, sessionId, taskId: landing.taskId, ticketId: landing.ticketId,
+          messageId: trigger.id, author: trigger.author, body: trigger.body,
+          source: trigger.kind === "user" ? "user" : "system", kind: "change", priority: trigger.kind === "user" ? 1 : 3 });
+        if (queued.message) publishMessage(queued.message);
         return null;
       }
     }
+    // Deterministic work is never redirected into a different job. Same-job lines were merged
+    // above; another job has its own segment, subject to the parallel limit.
+    if (store.capabilities().engine_level >= ENGINE_LEVELS.work_items) mode = "fork";
     let carry: { written: string[]; recent: string[]; unread: HeardItem[]; previous: PlanRef | null } | null = null;
     if (mode === "redirect") {
       // A turn a hold covers is left to the hold, and the new one opens beside it: redirecting it
@@ -278,6 +276,31 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     }
     attachLive(turn, note, { planNudge: opts.cause === "plan_nudge" });
     return turn;
+  }
+
+  let dispatching = false;
+  let closing = false;
+  function dispatchQueued(): void {
+    if (closing || dispatching || admission?.draining || store.capabilities().engine_level < ENGINE_LEVELS.work_items) return;
+    dispatching = true;
+    try {
+      const queued = store.dispatchableWork();
+      for (const item of queued) {
+        if (store.workItemQueuePlace({ botId: item.bot_id, taskId: item.task_id }) !== null) continue;
+        if (store.listLiveTurns({ botId: item.bot_id }).some((turn) => turn.task_id === item.task_id && turn.mode !== "readonly")) continue;
+        if (store.holdsCovering({ botId: item.bot_id, sessionId: item.home_session_id, taskId: item.task_id, ticketId: item.ticket_id }).length) continue;
+        try {
+          store.transaction(() => {
+            const trigger = store.prepareQueuedTrigger(item.id);
+            if (!trigger) return;
+            const turn = startTurn(item.home_session_id, item.bot_id, trigger, "fork", { cause: "unheard", taskId: item.task_id, ticketId: item.ticket_id });
+            if (turn) store.markWorkRunning(item.id);
+          });
+        } catch (error) {
+          console.error(`[queue ${item.id}] could not dispatch`, error);
+        }
+      }
+    } finally { dispatching = false; }
   }
 
   /**
@@ -344,7 +367,9 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     const onJob = rows.filter((row) => about.taskId !== null && row.task_id === about.taskId);
     // A line about one job is not heard by a turn on another once work items are on: that turn
     // would do the wrong job, and the line queues or opens its own instead.
-    const hearable = store.capabilities().engine_level >= ENGINE_LEVELS.work_items && about.taskId ? onJob : [...onJob, ...rows.filter((row) => !onJob.includes(row))];
+    const hearable = store.capabilities().engine_level >= ENGINE_LEVELS.work_items
+      ? (about.taskId ? onJob : rows.filter((row) => row.mode === "desk"))
+      : [...onJob, ...rows.filter((row) => !onJob.includes(row))];
     for (const current of hearable) {
       const live = lives.get(current.id);
       if (!live || live.abort.signal.aborted) continue;
@@ -475,6 +500,10 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
   }
 
   function attachLive(turn: Turn, carry: string | null = null, opts: { planNudge?: boolean } = {}): void {
+    if (turn.status !== "running") { publishTurn(turn); return; }
+    if (store.capabilities().engine_level >= ENGINE_LEVELS.work_items && turn.mode !== "readonly") {
+      store.adoptWaitingInbox({ botId: turn.bot_id, sessionId: turn.session_id, turnId: turn.id });
+    }
     const live: Live = {
       abort: new AbortController(),
       loop: carry ? [{ role: "user", content: carry }] : [],
@@ -531,6 +560,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
             }
             reopenForUnheard(turn, live);
             chainTurnEnded(turn.id);
+            dispatchQueued();
           }
         }
       };
@@ -588,6 +618,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
   }
 
   async function drainLives(): Promise<void> {
+    closing = true;
     clearChainTimers();
     clearDirectTimers();
     clearOrganizerTimers();
@@ -700,6 +731,20 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       } else if (pace === "last" && !live.lastHopNoted) {
         live.lastHopNoted = true;
         live.loop.push({ role: "user", content: lastHopNote(target.locale) });
+      }
+      // The rows are authoritative: merges, corrections and recovery can queue mail without
+      // touching this process's cache. Refresh at the boundary before delivering any item.
+      const cached = new Set(live.inbox.flatMap((entry) => entry.seq === undefined ? [] : [entry.seq]));
+      const queued = store.queuedForTurn(turnId);
+      const stillQueued = new Set(queued.map((item) => item.seq));
+      live.inbox = live.inbox.filter((entry) => entry.seq === undefined || stillQueued.has(entry.seq));
+      for (const item of queued) {
+        if (cached.has(item.seq)) continue;
+        let message: Message;
+        try { message = item.message_id ? store.getMessage(item.message_id) : store.getMessage(current.trigger_message_id); }
+        catch { continue; }
+        live.inbox.push({ seq: item.seq, message, item: { author: item.author, body: item.body_snapshot,
+          checkBack: item.source === "timer", ...(item.said_in ? { where: item.said_in } : {}) } });
       }
       // What was said to this Bot since the last hop, read out now: the turn goes on with it.
       // What was said to this Bot since the last hop. The tool loop delivers at the end of a hop, so
@@ -999,6 +1044,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     startTurn,
     hearOrStart,
     hearAcross,
+    dispatchQueued,
     attachLive,
     continueFromInterrupt,
     abortLive,

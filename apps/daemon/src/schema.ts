@@ -1,3 +1,5 @@
+import { DELEGATIONS_SQL } from "./store/delegation-migration";
+
 export const SCHEMA_SQL = `
 PRAGMA foreign_keys = ON;
 
@@ -130,6 +132,7 @@ CREATE TABLE IF NOT EXISTS bots (
   name TEXT NOT NULL,
   duties TEXT NOT NULL,
   boundaries TEXT NOT NULL,
+  parallel_limit INTEGER DEFAULT 2,
   avatar TEXT,
   model TEXT,
   provider_id TEXT,
@@ -164,6 +167,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   archived_at TEXT,
   origin_session_id TEXT,
   origin_message_id TEXT,
+  thread_task_id TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -198,6 +202,10 @@ CREATE TABLE IF NOT EXISTS tasks (
   kind TEXT,
   spec TEXT,
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'done', 'parked')),
+  -- Additive P4b plan state; null on legacy writers, read through status until P4e maps all fields.
+  stage TEXT CHECK (stage IS NULL OR stage IN ('active', 'delivered', 'accepted', 'abandoned')),
+  delivered_at TEXT,
+  lead_bot_id TEXT,
   spec_updated_at TEXT,
   routine_id TEXT REFERENCES routines (id) ON DELETE SET NULL,
   created_at TEXT NOT NULL,
@@ -229,6 +237,21 @@ CREATE TABLE IF NOT EXISTS tickets (
 );
 
 CREATE INDEX IF NOT EXISTS tickets_task_status ON tickets (task_id, status, seq);
+
+-- P4b only reads identity/source for attribution. P4e owns stage transitions and submission fields.
+CREATE TABLE IF NOT EXISTS ticket_parts (
+  id TEXT PRIMARY KEY,
+  ticket_id TEXT NOT NULL REFERENCES tickets (id) ON DELETE CASCADE,
+  key TEXT NOT NULL,
+  title TEXT NOT NULL,
+  declared_by TEXT NOT NULL CHECK (declared_by IN ('plan_items', 'filename', 'user')),
+  stage TEXT NOT NULL DEFAULT 'todo' CHECK (stage IN ('todo', 'in_progress', 'submitted', 'approved', 'rework', 'blocked', 'waived')),
+  owner_bot_id TEXT,
+  current_artifact TEXT,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  fail_streak TEXT NOT NULL DEFAULT '{}',
+  UNIQUE (ticket_id, key)
+);
 
 CREATE TABLE IF NOT EXISTS task_spec_revisions (
   id TEXT PRIMARY KEY,
@@ -264,8 +287,27 @@ CREATE TABLE IF NOT EXISTS messages (
   -- 1 on a line only the Bot it wakes reads (ADR 0041): the note stopped work opens again on once
   -- you lift the stop. The conversation, search, unread and every other transcript leave it out,
   -- as they do a check-back's own line (store/check-backs.ts, notBotOnlyLine).
-  bot_only INTEGER NOT NULL DEFAULT 0
+  bot_only INTEGER NOT NULL DEFAULT 0,
+  filing_state TEXT CHECK (filing_state IS NULL OR filing_state IN ('filed', 'undetermined', 'none')),
+  -- Candidate ids fixed when this message was filed, never recomputed when applying a model answer.
+  filing_candidates TEXT
 );
+
+CREATE TABLE IF NOT EXISTS message_filings (
+  message_id TEXT NOT NULL REFERENCES messages (id) ON DELETE CASCADE,
+  task_id TEXT NOT NULL,
+  ticket_id TEXT,
+  part_key TEXT,
+  filed_by TEXT NOT NULL,
+  strength TEXT NOT NULL CHECK (strength IN ('locked', 'default', 'bot', 'user')),
+  is_primary INTEGER NOT NULL CHECK (is_primary IN (0, 1)),
+  created_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS message_filings_target
+  ON message_filings (message_id, task_id, IFNULL(ticket_id, ''), IFNULL(part_key, ''));
+CREATE UNIQUE INDEX IF NOT EXISTS message_filings_primary
+  ON message_filings (message_id) WHERE is_primary = 1;
+CREATE INDEX IF NOT EXISTS message_filings_plan ON message_filings (task_id, message_id);
 
 CREATE TABLE IF NOT EXISTS attachments (
   id TEXT PRIMARY KEY,
@@ -337,7 +379,11 @@ CREATE TABLE IF NOT EXISTS turns (
   -- The work item this turn runs (ADR 0040 P4b). Null on rows from before work items, and on a
   -- database whose engine level has not reached them: the one-live indexes below only look at rows
   -- that have one.
-  work_item_id TEXT
+  work_item_id TEXT,
+  filing_candidates TEXT,
+  filing_bounces INTEGER NOT NULL DEFAULT 0,
+  work_dir_changes INTEGER NOT NULL DEFAULT 0,
+  end_reason TEXT
 );
 
 -- The two one-live indexes (ADR 0040 I1, I1b) are created in migrate.ts, after an older database
@@ -390,6 +436,7 @@ CREATE TABLE IF NOT EXISTS routines (
 
 CREATE TABLE IF NOT EXISTS check_backs (
   id TEXT PRIMARY KEY,
+  work_item_id TEXT,
   bot_id TEXT NOT NULL,
   session_id TEXT NOT NULL,
   turn_id TEXT,
@@ -541,6 +588,18 @@ CREATE INDEX IF NOT EXISTS user_quotes_task ON user_quotes (task_id, created_at)
 CREATE INDEX IF NOT EXISTS user_quotes_message ON user_quotes (message_id);
 CREATE INDEX IF NOT EXISTS user_quotes_session ON user_quotes (session_id);
 
+-- All target links of original words survive a cleared transcript; legacy quote columns project
+-- just the primary filing. No source-message FK: erasing a quote keeps its identity, not its words.
+CREATE TABLE IF NOT EXISTS user_quote_filings (
+  quote_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  ticket_id TEXT,
+  part_key TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS user_quote_filings_target
+  ON user_quote_filings (quote_id, task_id, IFNULL(ticket_id, ''), IFNULL(part_key, ''));
+CREATE INDEX IF NOT EXISTS user_quote_filings_plan ON user_quote_filings (task_id, quote_id);
+
 -- The requirements ledger (需求台账, ADR 0040): what you asked of the work, each entry standing on
 -- words of yours in user_quotes. Only ever added to, and never deleted but by your purge, which the
 -- trigger requirements_purge_only (store/requirements.ts) checks for (I4). Kept whole when a
@@ -629,6 +688,9 @@ CREATE TABLE IF NOT EXISTS inbox_items (
   -- The turn it was queued for, kept after that turn ends: an item still waiting then is the Bot's
   -- next turn's in session_id.
   turn_id TEXT,
+  -- Durable origin, distinct from the segment that reads it: adopting a result cannot erase a hold
+  -- on the segment that delegated the work.
+  source_turn_id TEXT,
   -- The job it is about: the line's own plan and ticket, else those of the turn it was queued for.
   task_id TEXT,
   ticket_id TEXT,
@@ -667,6 +729,9 @@ CREATE TABLE IF NOT EXISTS work_items (
   task_id TEXT,
   ticket_id TEXT,
   home_session_id TEXT NOT NULL,
+  thread_session_id TEXT,
+  waiting_on TEXT,
+  delegated_by TEXT,
   role TEXT NOT NULL DEFAULT 'own' CHECK (role IN ('own', 'review', 'assist', 'lead', 'desk')),
   state TEXT NOT NULL CHECK (state IN ('idle', 'queued', 'running', 'waiting', 'blocked', 'needs_attention', 'closed')),
   created_at TEXT NOT NULL,
@@ -679,6 +744,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS work_items_one_open_per_plan
 CREATE UNIQUE INDEX IF NOT EXISTS work_items_one_open_desk
   ON work_items (bot_id, home_session_id)
   WHERE task_id IS NULL AND state <> 'closed';
+
+${DELEGATIONS_SQL}
 
 CREATE TABLE IF NOT EXISTS skills (
   id TEXT PRIMARY KEY,

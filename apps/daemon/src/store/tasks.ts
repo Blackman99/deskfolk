@@ -34,6 +34,7 @@ import { holdNamesPlanSql, noteHeldPlansMovedAside, parkHeldPlans, planStatusUnd
 import { parsePlanSpec, type PlanSpec, type PlanStatus } from "./plan-shape";
 import { sessionRow, type MessageRow, type StoreContext } from "./shared";
 import { recordWorkEvent } from "./work-events";
+import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 
 export type { PlanSpec, PlanStatus } from "./plan-shape";
 
@@ -449,7 +450,9 @@ export function openTask(
   const kind = spec?.kind ?? input.kind ?? null;
   const status: PlanStatus = spec?.status ?? "active";
   ctx.db.transaction(() => {
-    if (!input.routineId) {
+    if (!input.routineId && readEngineLevel(ctx.db) < ENGINE_LEVELS.work_items) {
+      // The legacy current slot is kept only below the work-item engine. Multiple live jobs
+      // remain live in the deterministic engine; dormancy has its own evidence-based rules.
       // One current plan per session: the new one takes over, and the one it displaces is parked
       // unless it was already done. A resume can bring it back. One a hold parks goes back to
       // moved aside when the hold is lifted (ADR 0040).
@@ -569,6 +572,11 @@ export function dropUnreferencedTasks(ctx: StoreContext, sessionId: string): voi
          AND NOT EXISTS (SELECT 1 FROM messages WHERE messages.task_id = tasks.id)
          AND NOT ${holdNamesPlanSql("tasks.id")}
          AND NOT EXISTS (SELECT 1 FROM user_quotes q WHERE q.task_id = tasks.id AND q.redacted_at IS NULL)
+         AND NOT EXISTS (SELECT 1 FROM user_quote_filings f JOIN user_quotes q ON q.id = f.quote_id
+           WHERE f.task_id = tasks.id AND q.redacted_at IS NULL)
+         AND NOT EXISTS (SELECT 1 FROM work_items w WHERE w.task_id = tasks.id AND w.state <> 'closed')
+         AND NOT EXISTS (SELECT 1 FROM delegations d WHERE d.task_id = tasks.id)
+         AND NOT EXISTS (SELECT 1 FROM inbox_items i WHERE i.task_id = tasks.id AND i.state IN ('queued', 'held'))
          AND NOT EXISTS (SELECT 1 FROM requirements r
            WHERE (r.scope = 'plan' AND r.scope_id = tasks.id)
               OR (r.scope = 'ticket' AND r.scope_id IN (SELECT id FROM tickets WHERE tickets.task_id = tasks.id)))`,

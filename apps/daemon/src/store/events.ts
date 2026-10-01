@@ -17,6 +17,7 @@ import { toBot, type BotRow, type StoreContext } from "./shared";
 import { getTurn } from "./turns";
 import { getHold } from "./holds";
 import { GATE_SETTING_KEYS } from "./schema-gate";
+import { groupLeadState } from "./group-leads";
 
 type Change = { entity: string; id: string; op: string; session_id: string | null };
 
@@ -91,6 +92,31 @@ export function installChangeJournal(ctx: StoreContext): void {
     ctx.db.exec(`CREATE TEMP TRIGGER event_requirement_exclusions_${op} AFTER ${op} ON main.requirement_exclusions
       BEGIN INSERT INTO event_changes VALUES ('tasks', ${row}.task_id, 'UPDATE', ${row}.task_id); END`);
   }
+  // Confirmation eligibility changes independently of the flag: a departed/archived/deleted Bot
+  // must disappear from every client's cached confirmation, without a noisy reload per message.
+  ctx.db.exec(`CREATE TEMP TRIGGER event_group_lead_participant_UPDATE AFTER UPDATE ON main.session_participants
+    WHEN OLD.is_lead <> NEW.is_lead OR (OLD.is_lead = 1 AND OLD.left_at IS NOT NEW.left_at)
+    BEGIN INSERT INTO event_changes VALUES ('group_lead', NEW.session_id, 'UPDATE', NEW.session_id); END`);
+  ctx.db.exec(`CREATE TEMP TRIGGER event_group_lead_participant_DELETE AFTER DELETE ON main.session_participants
+    WHEN OLD.is_lead = 1
+    BEGIN INSERT INTO event_changes VALUES ('group_lead', OLD.session_id, 'UPDATE', OLD.session_id); END`);
+  ctx.db.exec(`CREATE TEMP TRIGGER event_group_lead_bot_UPDATE AFTER UPDATE ON main.bots
+    WHEN OLD.deleted_at IS NOT NEW.deleted_at OR OLD.archived_at IS NOT NEW.archived_at
+    BEGIN INSERT INTO event_changes SELECT 'group_lead', session_id, 'UPDATE', session_id
+      FROM main.session_participants WHERE member = NEW.id AND is_lead = 1; END`);
+  ctx.db.exec(`CREATE TEMP TRIGGER event_group_lead_INSERT AFTER INSERT ON main.work_events
+    WHEN NEW.kind = 'group_lead.confirmed' AND NEW.session_id IS NOT NULL
+    BEGIN INSERT INTO event_changes VALUES ('group_lead', NEW.session_id, 'UPDATE', NEW.session_id); END`);
+  // Corrections are projected at commit from the authoritative message, including remote catch-up.
+  ctx.db.exec(`CREATE TEMP TRIGGER event_work_attribution_INSERT AFTER INSERT ON main.work_events
+    WHEN NEW.kind = 'attribution.changed'
+    BEGIN
+      INSERT INTO event_changes VALUES ('attribution', json_extract(NEW.payload, '$.message'), 'UPDATE', NEW.session_id);
+      INSERT INTO event_changes SELECT 'tasks', json_extract(value, '$.taskId'), 'UPDATE', NULL
+        FROM json_each(NEW.payload, '$.before') WHERE json_extract(value, '$.taskId') IS NOT NULL;
+      INSERT INTO event_changes SELECT 'tasks', json_extract(value, '$.taskId'), 'UPDATE', NULL
+        FROM json_each(NEW.payload, '$.after') WHERE json_extract(value, '$.taskId') IS NOT NULL;
+    END`);
   // Nor has the inbox (ADR 0040 P4a): where a line of yours stands in a working Bot's inbox is part
   // of the line (`Message.delivery`), so each change to it is a `message.upsert` of that line.
   for (const op of ["INSERT", "UPDATE"]) {
@@ -138,6 +164,20 @@ export function committedEvents(ctx: StoreContext): ClientEvent[] {
       case "sessions": {
         const row = sessions.find((s) => s.id === id);
         out.push(row ? { event: "session.upsert", occurred_at, ...row } : { event: "session.removed", occurred_at, id });
+        break;
+      }
+      case "group_lead": {
+        if (sessions.some((session) => session.id === id && session.kind === "group")) {
+          out.push({ event: "group_lead.changed", occurred_at, ...groupLeadState(ctx, id) });
+        }
+        break;
+      }
+      case "attribution": {
+        if (ctx.db.query("SELECT id FROM messages WHERE id = ?").get(id) && !isBotOnlyLine(ctx, id)) {
+          const message = getMessage(ctx, id);
+          out.push({ event: "attribution.changed", occurred_at, message_id: id, session_id: message.session_id,
+            filing_state: message.filing_state ?? "none", filings: message.filings ?? [] });
+        }
         break;
       }
       case "messages": {

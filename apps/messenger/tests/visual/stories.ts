@@ -974,7 +974,27 @@ function onboardingValidationRuntime() {
 	return runtime;
 }
 
+function ticket23dStoryRuntime() {
+  const session = aGroup();
+  const runtime = reactive(fakeRuntime({ bots: [aBot({ name: '导演' }), aBot({ id: 'bot-2', name: '审片员' })], sessions: [session], turns: [], messages: [
+    aMessage({ id: 'filing-user', body: '请修改前两镜，并准备海报。', filing_state: 'filed', filings: [{ task_id: 'plan-a', ticket_id: 'ticket-a', part_key: 'Shot 01' }] }),
+    aMessage({ id: 'filing-bot', kind: 'bot', author: 'bot-1', body: '我先确认这句话应该归到哪件事。', filing_state: 'undetermined', filings: [] }),
+  ] }, { selectedId: session.id, patchMessageAttribution: () => new Error('fixture save refused') }));
+  runtime.groupLeads = { [session.id]: { session_id: session.id, confirmed_bot_id: null, suggestion: { bot_id: 'bot-1', handoffs: 8, since: '2026-09-12T00:00:00Z' } } };
+  runtime.attributionPlans = { [session.id]: [
+    { id: 'plan-a', title: 'EP01', tickets: [{ id: 'ticket-a', title: '剪辑' }] },
+    { id: 'plan-b', title: '海报', tickets: [] },
+  ] };
+  return runtime;
+}
+
 export const rc11Stories = {
+  'ticket23d': {
+    component: ChatStage as never,
+    props: { runtime: ticket23dStoryRuntime(), t, selected: aGroup(), onOpenProfile: () => {}, onOpenArtifact: () => {}, onCreateBot: () => {} },
+    width: 900, height: 1100,
+    afterMount(host: HTMLElement) { document.body.style.width = '100vw'; document.body.style.height = '100dvh'; host.style.width = '100vw'; host.style.height = '100dvh'; },
+  },
 	'onboarding-validation': {
 		component: Shell as never,
 		props: { runtime: onboardingValidationRuntime() },

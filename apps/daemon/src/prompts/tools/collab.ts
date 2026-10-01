@@ -211,7 +211,9 @@ export const WORK_ON: ToolDef = {
     en: "Bind this turn to a job. plan is that job's id, or {new:{title, quote_message_id}} to open one from a line of the user's you quote. When the job already has a turn of yours, this line joins it and this turn ends.",
   },
   properties: {
-    plan: { type: "object", description: { zh: "一件事的 id，或 {new:{title, quote_message_id}}。", en: "A job's id, or {new:{title, quote_message_id}}." } },
+    plan: { type: ["string", "object"], description: { zh: "候选里的一件事 id，或 {new:{title, quote_message_id}}；引文必须来自这一轮的用户消息。", en: "A captured candidate's id, or {new:{title,quote_message_id}} quoting a user line in this turn's conversation." } },
+    ticket: { type: ["string", "object"], description: { zh: "这件事的任务 id，或 {new:{title,deliverable}}。", en: "A ticket in that job, or {new:{title,deliverable}}." } },
+    also: { type: "array", items: { type: "string" }, description: { zh: "这句同时涉及的自己的其他工作项 id；只可选本轮候选。", en: "Your other work-item ids this line also concerns; only captured candidates are allowed." } },
   },
   required: ["plan"],
 };

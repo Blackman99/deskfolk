@@ -13,6 +13,8 @@
 	import CommandActivity from './CommandActivity.svelte';
 	import BotDmEntry from './BotDmEntry.svelte';
 	import ControlActions from './ControlActions.svelte';
+	import MessageAttribution from './MessageAttribution.svelte';
+	import GroupLeadCard from './GroupLeadCard.svelte';
 	import AnnotationCards from '../annotations/AnnotationCards.svelte';
 	import { annotationsByMessage } from '../annotations/model.ts';
 	import { indexBotDmsByOrigin } from './bot-dm-entries.ts';
@@ -100,6 +102,11 @@
 	const connected = $derived(runtime.connection === 'connected');
 	const selectedKind = $derived(selected ? classifySession(selected) : null);
 	const fileDrop = $derived(selected ? isFileDropSession(selected) : false);
+	const stageSessionId = $derived(selected?.id ?? null);
+	$effect(() => {
+		const id = stageSessionId;
+		if (id && connected && !fileDrop) void untrack(() => runtime.loadAttributionPlans(id));
+	});
 	const showMessageAvatars = $derived(selectedKind !== 'you-bot');
 	const selectedPeer = $derived(selected ? youBotPeer(selected) : null);
 	const selectedPeerBot = $derived(selectedPeer ? (botsById.get(selectedPeer) ?? null) : null);
@@ -122,6 +129,10 @@
 		indexBotDmsByOrigin(snapshot.sessions, selected?.id ?? null, snapshot.turns, botsById)
 	);
 	const groupPresent = $derived(selected ? presentBotIds(selected) : []);
+	$effect(() => {
+		const id = stageSessionId;
+		if (id && selectedKind === 'group' && connected) void untrack(() => runtime.loadGroupLead(id));
+	});
 	// Keyed by the message that carries them; a separate collection, so a batch's cards never
 	// touch the memoized message wrappers.
 	const annotationIndex = $derived(annotationsByMessage(snapshot.annotations));
@@ -983,6 +994,20 @@
 		}}
 	>
 		<div class="stream-inner" bind:this={streamInner}>
+	{#if selected && selectedKind === 'group' && !runtime.groupLeadUnsupported[selected.id]}
+		{#key selected.id}
+			<GroupLeadCard
+				leadState={runtime.groupLeads[selected.id] ?? null}
+				bots={snapshot.bots.filter((bot) => groupPresent.includes(bot.id) && !bot.archived_at)}
+				{t}
+				disabled={!connected || lockedComposer}
+				loading={runtime.groupLeadLoading[selected.id] ?? false}
+				loadError={runtime.groupLeadLoadError[selected.id] ?? false}
+				onReload={() => runtime.loadGroupLead(selected.id)}
+				onConfirm={(botId) => runtime.confirmGroupLead(selected.id, botId)}
+			/>
+		{/key}
+	{/if}
 	{#if !selected}
 		<EmptyState title={t.top.pickSession} hint={t.top.pickSessionHint} />
 	{:else if stream.length === 0 && view?.historyLoading}
@@ -1514,6 +1539,17 @@
 												/>
 											{/if}
 										</article>
+										{#if !fileDrop && !item.message.control}
+											<MessageAttribution
+												message={item.message} {t}
+												plans={runtime.attributionPlans[item.message.session_id] ?? []}
+												loading={runtime.attributionLoading[item.message.session_id] ?? false}
+												loadError={runtime.attributionLoadError[item.message.session_id] ?? false}
+												disabled={!connected || lockedComposer}
+												onLoad={() => runtime.loadAttributionPlans(item.message.session_id, item.message.id)}
+												onSave={(filings) => runtime.patchMessageAttribution(item.message.id, filings)}
+											/>
+										{/if}
 										{#if item.message.control?.kind === 'possible_control' && !lockedComposer}
 											<ControlActions
 												control={item.message.control}
@@ -1848,6 +1884,17 @@
 												/>
 											{/if}
 										</article>
+										{#if !fileDrop && item.message.kind === 'bot' && !item.message.control}
+											<MessageAttribution
+												message={item.message} {t}
+												plans={runtime.attributionPlans[item.message.session_id] ?? []}
+												loading={runtime.attributionLoading[item.message.session_id] ?? false}
+												loadError={runtime.attributionLoadError[item.message.session_id] ?? false}
+												disabled={!connected || lockedComposer}
+												onLoad={() => runtime.loadAttributionPlans(item.message.session_id, item.message.id)}
+												onSave={(filings) => runtime.patchMessageAttribution(item.message.id, filings)}
+											/>
+										{/if}
 										{#if rxGroups.length > 0}
 											<div class="rx-row flex flex-wrap gap-2 mt-2">
 												{#each rxGroups as rx}

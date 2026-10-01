@@ -154,7 +154,7 @@ function repoRelative(href: string, dir: string): string | null {
 /** The README section the site's home page carries as its download / run-from-source block. */
 const README_QUICKSTART = new Set(['get-it', '获取']);
 
-function sanitizeOptions(lang: Lang, targets: LinkTargets, dir = ''): sanitizeHtml.IOptions {
+function sanitizeOptions(lang: Lang, targets: LinkTargets, dir = '', behaviorFragments = false): sanitizeHtml.IOptions {
   return {
     allowedTags: [
       'p', 'br', 'strong', 'em', 'del', 's', 'code', 'pre', 'a', 'img',
@@ -194,7 +194,11 @@ function sanitizeOptions(lang: Lang, targets: LinkTargets, dir = ''): sanitizeHt
         const pathPart = hashIdx >= 0 ? href.slice(0, hashIdx) : href;
         const hash = hashIdx >= 0 ? href.slice(hashIdx + 1) : '';
 
-        if (/(^|\/)ROADMAP(\.en)?\.md$/.test(pathPart)) {
+        // An inlined behavior section lost its source heading; its fragments now belong to
+        // the canonical folded details, which may live on another glossary topic page.
+        if (behaviorFragments && !pathPart && targets.behavior[hash]) {
+          href = withBase(`/${lang}${targets.behavior[hash]}`);
+        } else if (/(^|\/)ROADMAP(\.en)?\.md$/.test(pathPart)) {
           href = withBase(`/${lang}/roadmap`) + (hash ? `#${hash}` : '');
         } else if (/(^|\/)CONTEXT(\.en)?\.md$/.test(pathPart)) {
           href = contextHref(lang, hash || undefined, targets);
@@ -258,10 +262,11 @@ function renderMarkdown(
   toc: TocEntry[],
   targets: LinkTargets,
   headingId?: (text: string, depth: number) => string | undefined,
-  dir = ''
+  dir = '',
+  behaviorFragments = false
 ): string {
   const rawHtml = createMarked(lang, toc, headingId).parse(raw) as string;
-  return boxCodeBlocks(sanitizeHtml(rawHtml, sanitizeOptions(lang, targets, dir)));
+  return boxCodeBlocks(sanitizeHtml(rawHtml, sanitizeOptions(lang, targets, dir, behaviorFragments)));
 }
 
 function stripLeadingH1(markdown: string): string {
@@ -378,8 +383,10 @@ export function getManifestoHub(lang: Lang): {
 
 /** A term's behavior details, folded under its body and above its avoid line. */
 function withBehavior(termHtml: string, id: string, bodyHtml: string, lang: Lang): string {
+  // Keep shared pre-P4b organizer URLs alongside its canonical term/details anchors.
+  const legacyAnchor = id === 'organizer' ? '<span id="organizer" aria-hidden="true"></span>' : '';
   const details =
-    `<details class="behavior" id="${behaviorAnchorId(id)}">` +
+    legacyAnchor + `<details class="behavior" id="${behaviorAnchorId(id)}">` +
     `<summary>${DICT[lang].docs.behaviorSummary}</summary>\n${bodyHtml}</details>\n`;
   const avoidAt = termHtml.lastIndexOf('<p class="avoid">');
   return avoidAt >= 0 ? termHtml.slice(0, avoidAt) + details + termHtml.slice(avoidAt) : termHtml + details;
@@ -399,7 +406,7 @@ export function getManifestoTopic(topic: ManifestoTopic, lang: Lang): DocsDocume
     const detailsId = behaviorId(term);
     const details = detailsId ? behavior.get(detailsId) : undefined;
     if (!detailsId || !details) return html;
-    const bodyHtml = renderMarkdown(details, lang, [], targets, undefined, 'docs');
+    const bodyHtml = renderMarkdown(details, lang, [], targets, undefined, 'docs', true);
     return withBehavior(html, detailsId, bodyHtml, lang);
   });
   const ids = new Set(toc.map((e) => e.id));

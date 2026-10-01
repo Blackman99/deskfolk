@@ -13,7 +13,7 @@
 import { INBOX_DISPOSITIONS, type InboxDisposition, type InboxState, type MessageDelivery } from "@real-bot/protocol";
 import { isoNow, ulid } from "../ids";
 import { takeCodePoints } from "../text";
-import { heldSql, type HeldSubject } from "./holds";
+import { heldSql, turnHeldBy, type HeldSubject } from "./holds";
 import type { StoreContext } from "./shared";
 
 export type InboxSource = "user" | "annotation" | "delegation" | "delegation_reply" | "review" | "job" | "timer" | "system" | "peer_note";
@@ -26,6 +26,7 @@ export type InboxItem = {
   work_item_id: string | null;
   session_id: string | null;
   turn_id: string | null;
+  source_turn_id: string | null;
   task_id: string | null;
   ticket_id: string | null;
   message_id: string | null;
@@ -61,6 +62,9 @@ const INBOX: HeldSubject = {
   ticket: "inbox_items.ticket_id",
   turn: "inbox_items.turn_id",
 };
+// The routing turn changes on adoption; the durable origin never does. Either stop still holds
+// the item, so moving a delegation result to the next segment cannot bypass the original stop.
+const INBOX_HELD = `(${heldSql(INBOX)} OR ${heldSql({ ...INBOX, turn: "inbox_items.source_turn_id" })})`;
 
 /**
  * An item's id as the Bot reads it and writes it back in `end_turn`: a letter for who it is from —
@@ -88,7 +92,10 @@ export function queueInboxItem(
   input: {
     botId: string;
     sessionId: string;
-    turnId: string;
+    turnId: string | null;
+    sourceTurnId?: string | null;
+    workItemId?: string | null;
+    wakes?: boolean;
     taskId: string | null;
     ticketId: string | null;
     messageId: string | null;
@@ -103,11 +110,18 @@ export function queueInboxItem(
   },
 ): InboxItem {
   const now = input.now ?? isoNow();
+  if (input.messageId) {
+    const existing = ctx.db.query<InboxItem, Array<string | null>>(`SELECT * FROM inbox_items WHERE bot_id = ?
+      AND message_id = ? AND turn_id IS ? AND task_id IS ? AND ticket_id IS ? AND source = ?
+      AND state IN ('queued','held','delivered') ORDER BY seq LIMIT 1`).get(input.botId, input.messageId,
+        input.turnId, input.taskId, input.ticketId, input.source);
+    if (existing) return existing;
+  }
   return ctx.db
     .query<InboxItem, Array<string | number | null>>(
       `INSERT INTO inbox_items (id, bot_id, session_id, turn_id, task_id, ticket_id, message_id, author, body_snapshot, said_in,
-         source, kind, priority, state, possible_control, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?) RETURNING *`,
+         source, kind, priority, state, possible_control, created_at, work_item_id, wakes, source_turn_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?) RETURNING *`,
     )
     .get(
       ulid(Date.parse(now)),
@@ -125,6 +139,9 @@ export function queueInboxItem(
       input.priority,
       input.possibleControl ? 1 : 0,
       now,
+      input.workItemId ?? null,
+      input.wakes === false ? 0 : 1,
+      input.sourceTurnId ?? null,
     )!;
 }
 
@@ -150,8 +167,11 @@ export function adoptWaitingInbox(ctx: StoreContext, input: { botId: string; ses
     refreshHeldInbox(ctx, { botId: input.botId, sessionId: input.sessionId });
     return ctx.db
       .query<InboxItem, [string, string, string, string]>(
-        `UPDATE inbox_items SET turn_id = ?
-         WHERE bot_id = ? AND session_id = ? AND state = 'queued' AND turn_id IS NOT ? AND ${NOT_IN_LIVE_TURN}
+        `UPDATE inbox_items SET turn_id = ?1,
+            work_item_id = COALESCE(work_item_id, (SELECT work_item_id FROM turns WHERE id = ?1))
+         WHERE bot_id = ?2 AND state = 'queued' AND turn_id IS NOT ?4 AND ${NOT_IN_LIVE_TURN}
+            AND (work_item_id = (SELECT work_item_id FROM turns WHERE id = ?1)
+              OR (work_item_id IS NULL AND session_id = ?3 AND task_id IS (SELECT task_id FROM turns WHERE id = ?1)))
          RETURNING *`,
       )
       .all(input.turnId, input.botId, input.sessionId, input.turnId)
@@ -167,10 +187,17 @@ export function deliverInboxItems(ctx: StoreContext, seqs: readonly number[], tu
   if (seqs.length === 0) return { delivered: [], held: [] };
   const list = JSON.stringify(seqs);
   return ctx.db.transaction(() => {
+    // The segment the caller is delivering into is checked too, not just the item's stored route.
+    // Bind held rows to that attempted destination so a refresh cannot immediately clear its hold.
+    if (turnHeldBy(ctx, turnId).length > 0) {
+      const held = ctx.db.query<InboxItem, [string, string]>(`UPDATE inbox_items SET state = 'held', turn_id = ?
+        WHERE seq IN (SELECT value FROM json_each(?)) AND state = 'queued' RETURNING *`).all(turnId, list);
+      return { delivered: [], held: held.sort((a, b) => a.seq - b.seq) };
+    }
     const held = ctx.db
       .query<InboxItem, [string]>(
         `UPDATE inbox_items SET state = 'held'
-         WHERE seq IN (SELECT value FROM json_each(?)) AND state = 'queued' AND ${heldSql(INBOX)} RETURNING *`,
+         WHERE seq IN (SELECT value FROM json_each(?)) AND state = 'queued' AND ${INBOX_HELD} RETURNING *`,
       )
       .all(list);
     const delivered = ctx.db
@@ -194,7 +221,16 @@ export function releaseTurnInbox(ctx: StoreContext, turnId: string, now: string 
       `UPDATE inbox_items SET state = 'unacked', disposed_at = ? WHERE delivered_turn_id = ? AND state = 'delivered' AND ${YOURS}`,
       [now, turnId],
     );
-    ctx.db.run(`UPDATE inbox_items SET state = 'held' WHERE turn_id = ? AND state = 'queued' AND ${heldSql(INBOX)}`, [turnId]);
+    ctx.db.run(`UPDATE inbox_items SET state = 'held' WHERE turn_id = ? AND state = 'queued' AND ${INBOX_HELD}`, [turnId]);
+    ctx.db.run(`UPDATE inbox_items SET work_item_id = (SELECT t.work_item_id FROM turns t WHERE t.id = inbox_items.turn_id)
+      WHERE turn_id = ? AND work_item_id IS NULL AND state IN ('queued','held')`, [turnId]);
+    // A final hop can receive durable mail without ever refreshing its live cache. Make that
+    // authoritative unread work dispatchable once its last segment is terminal.
+    ctx.db.run(`UPDATE work_items SET state = 'queued', updated_at = ? WHERE id IN (
+      SELECT COALESCE(i.work_item_id, t.work_item_id) FROM inbox_items i JOIN turns t ON t.id = i.turn_id
+      WHERE i.turn_id = ? AND i.state = 'queued' AND i.wakes = 1)
+      AND state NOT IN ('closed','waiting','blocked','needs_attention')
+      AND NOT EXISTS (SELECT 1 FROM turns t WHERE t.work_item_id = work_items.id AND t.status IN ${LIVE})`, [now, turnId]);
     return ctx.db.query<InboxItem, [string]>(`SELECT * FROM inbox_items WHERE turn_id = ? AND state = 'queued' ORDER BY seq`).all(turnId);
   })();
 }
@@ -243,8 +279,8 @@ export function supersedeInboxItems(ctx: StoreContext, seqs: readonly number[], 
 export function refreshHeldInbox(ctx: StoreContext, only: { botId?: string; sessionId?: string } = {}): void {
   const scope = [only.botId ? `AND inbox_items.bot_id = $bot` : "", only.sessionId ? `AND inbox_items.session_id = $session` : ""].join(" ");
   const params = { ...(only.botId ? { bot: only.botId } : {}), ...(only.sessionId ? { session: only.sessionId } : {}) } as Record<string, string>;
-  ctx.db.query(`UPDATE inbox_items SET state = 'held' WHERE state = 'queued' AND ${NOT_IN_LIVE_TURN} ${scope} AND ${heldSql(INBOX)}`).run(params);
-  ctx.db.query(`UPDATE inbox_items SET state = 'queued' WHERE state = 'held' ${scope} AND NOT ${heldSql(INBOX)}`).run(params);
+  ctx.db.query(`UPDATE inbox_items SET state = 'held' WHERE state = 'queued' AND ${NOT_IN_LIVE_TURN} ${scope} AND ${INBOX_HELD}`).run(params);
+  ctx.db.query(`UPDATE inbox_items SET state = 'queued' WHERE state = 'held' ${scope} AND NOT ${INBOX_HELD}`).run(params);
 }
 
 /**

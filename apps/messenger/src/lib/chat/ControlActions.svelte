@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { ControlOffer, Hold, MessageControl } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
+	import NewPlanActions from './NewPlanActions.svelte';
 	import { controlBar, partialOf, type ControlButton, type RestartPartial } from './control-actions.ts';
 
 	/**
@@ -56,7 +57,9 @@
 	}
 </script>
 
-{#if bar.state === 'ask'}
+{#if control?.kind === 'plan_opened'}
+	<NewPlanActions {control} {t} {disabled} {onAct} />
+{:else if bar.state === 'ask'}
 	<div class="control-actions" class:is-end={align === 'end'} role="group" aria-label={t.control.menu}>
 		{#if bar.prompt}
 			<span class="control-prompt">{bar.prompt}</span>

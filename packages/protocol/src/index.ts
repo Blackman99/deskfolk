@@ -912,6 +912,15 @@ export type CreateBotResponse = {
 
 export type SessionKind = "direct" | "group";
 
+/** Evidence proposes a group lead; only a user's explicit confirmation assigns one. */
+export type GroupLeadState = {
+  session_id: string;
+  confirmed_bot_id: string | null;
+  suggestion: { bot_id: string; handoffs: number; since: string } | null;
+};
+
+export type ConfirmGroupLeadRequest = { bot_id: string | null; confirmed: true };
+
 export type SessionParticipant = {
   member: typeof USER_MEMBER | string;
   joined_at: string;
@@ -975,6 +984,9 @@ export type Turn = {
   task_id?: string | null;
   /** The ticket this turn works in, whose folder is its default cwd. */
   ticket_id?: string | null;
+  /** The durable unit this segment executes; absent on older daemons' turns. */
+  work_item_id?: string | null;
+  end_reason?: string | null;
   last_activity_at: string;
   created_at: string;
   updated_at: string;
@@ -1013,6 +1025,22 @@ export type Reaction = {
   created_at: string;
 };
 
+export type FilingState = "filed" | "undetermined" | "none";
+
+/** A message can belong to more than one plan; task_id remains the primary legacy projection. */
+export type MessageFiling = {
+  task_id: string;
+  ticket_id: string | null;
+  part_key: string | null;
+  filed_by?: string;
+  strength?: "locked" | "default" | "bot" | "user";
+  is_primary?: boolean;
+};
+
+export type PatchMessageAttributionRequest = {
+  filings: Array<{ plan_id: string; ticket_id?: string | null; part_key?: string | null }>;
+};
+
 export type Message = {
   id: string;
   session_id: string;
@@ -1026,6 +1054,9 @@ export type Message = {
   task_id?: string | null;
   /** The ticket it was filed under, when the organizer or its turn said so. */
   ticket_id?: string | null;
+  /** Explicitly unfiled (none), awaiting a choice, or filed to the targets below. */
+  filing_state?: FilingState;
+  filings?: MessageFiling[];
   /**
    * A batch of annotations on an artifact from a Bot↔Bot direct lands in your direct with that
    * Bot, with no parent to quote; this points back at the message the artifact came from.
@@ -1107,6 +1138,9 @@ export type MessageDelivery = {
  *   messenger handles it (opens the board), it is never sent.
  * - `make_standing` / `keep_project`: on the app's line suggesting that requirements you raised in
  *   two or more plans hold for every plan of that kind of work, do so, or leave them where they are.
+ * - `undo_plan` / `merge_plan`: after user confirmation, stop and abandon a newly opened job;
+ *   merge refiles only the card's quoted message into the selected existing job, never its turns or files.
+ *   Neither action lifts holds or reverses effects already started.
  */
 export type ControlOffer =
   | "stop"
@@ -1126,7 +1160,9 @@ export type ControlOffer =
   | "confirm_requirements"
   | "review_requirements"
   | "make_standing"
-  | "keep_project";
+  | "keep_project"
+  | "undo_plan"
+  | "merge_plan";
 
 /**
  * Why the daemon started again (ADR 0041): `dev` for a development run (`bun --watch` restarts it
@@ -1197,11 +1233,26 @@ export type MessageControl =
       domain?: string;
       offer: ControlOffer[];
       acted?: ControlOffer[];
+    }
+  | {
+      /** Visible receipt for a newly opened job; actions stop it, never undo past external effects. */
+      kind: "plan_opened";
+      task_id: string;
+      turn_id: string;
+      quote_message_id: string;
+      /** Existing jobs in the same project when the card was made; revalidated on a press. */
+      merge_targets: Array<{ task_id: string; title: string }>;
+      offer: ControlOffer[];
+      acted?: ControlOffer[];
+      /** What was retained when stopped. An attempted effect may have failed or still be settling. */
+      retained_effects?: string[];
+      merged_into?: string;
+      user_action_id?: string;
     };
 
 /**
  * `POST /v1/messages/:id/control`: a button on a line `control` marks. `action` is one the line
- * offers; `task_id` names the plan for `stop_plan` / `only_plan`. The line's `acted` records it, so
+ * offers; `task_id` names the plan for `stop_plan` / `only_plan` / `merge_plan`. The line's `acted` records it, so
  * pressing one again does nothing more.
  */
 export type ControlActionRequest = { action: ControlOffer; task_id?: string };
@@ -2032,9 +2083,11 @@ export type ClientEvent =
   | ({ event: "settings.changed"; occurred_at: string } & Settings)
   | ({ event: "bot.upsert"; occurred_at: string } & Bot & { deleted_at: string | null })
   | ({ event: "session.upsert"; occurred_at: string } & SessionSummary)
+  | ({ event: "group_lead.changed"; occurred_at: string } & GroupLeadState)
   | { event: "session.removed"; occurred_at: string; id: string }
   | { event: "session.cleared"; occurred_at: string; id: string }
   | ({ event: "message.created" | "message.upsert"; occurred_at: string } & Message)
+  | { event: "attribution.changed"; occurred_at: string; message_id: string; session_id: string; filing_state: FilingState; filings: MessageFiling[] }
   | ({ event: "turn.upsert"; occurred_at: string } & Turn)
   | { event: "turn.token"; occurred_at: string; turn_id: string; session_id: string; text: string }
   | {

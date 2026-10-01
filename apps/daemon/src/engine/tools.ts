@@ -156,6 +156,13 @@ export function createTools(deps: ToolsDeps): Tools {
     const pictures: LoopPicture[] = [];
     for (const call of calls) {
       if (!active(turnId, live)) return "wait";
+      const rejected = store.filingBudget(turnId);
+      if (ended || rejected >= 2) {
+        live.loop.push({ role: "tool", tool_call_id: call.id, content: serializeToolResult({ ok: false,
+          error: { code: "segment_ended", message: "this segment ended before this call could run" } }, store.workspacePath(), live.workDir) });
+        posted = true;
+        continue;
+      }
       if (betweenCalls && live.toolCalls > 0) await betweenCalls(turnId);
       if (!active(turnId, live)) return "wait";
       // Between calls: a line of yours that asks for a change postpones the calls still waiting.
@@ -352,7 +359,7 @@ export function createTools(deps: ToolsDeps): Tools {
         spoke = true;
         live.spoke = true;
       }
-      if (call.name === "end_turn" && result.ok) ended = true;
+      if ((result.ok && call.name === "end_turn") || result.data?.ended === true) ended = true;
       if (!skipped) posted = true;
       const payload = result.ok
         ? { ok: true, data: admitPicture(live, pictures, result) }
@@ -367,6 +374,10 @@ export function createTools(deps: ToolsDeps): Tools {
         tool_call_id: call.id,
         content: serializeToolResult(payload, store.workspacePath(), workDir),
       });
+    }
+    if (store.filingBudget(turnId) >= 2) {
+      publishMessage(store.markNeedsAttention(turnId, live.locale));
+      return "noop";
     }
     if (spoke) return "spoke";
     // end_turn: the Bot has nothing to say, so the turn ends here with no message.
@@ -476,6 +487,39 @@ export function createTools(deps: ToolsDeps): Tools {
     args: Record<string, unknown>,
     callId?: string,
   ): Promise<ToolResult> {
+    // Desk segments may read and reply, but choosing a job precedes the first external effect.
+    turn = store.getTurn(turn.id);
+    const deskAllowed = NO_EFFECT_TOOLS.has(name) || name === "send_message" || name === "ask_user" || name === "work_on" || live.mcpTools.get(name)?.readOnly === true;
+    if (turn.mode === "desk" && !deskAllowed) {
+      const candidates = store.deskCandidateIds(turn.id);
+      if (candidates.length > 1) {
+        store.noteFilingBounce(turn.id);
+        return { ok: false, error: { code: "needs_filing", message: `Choose a job with work_on before this call: ${candidates.join(", ")}` }, emitted: [] };
+      }
+      const trigger = store.originalUserRequest(turn.id) ?? store.getMessage(turn.trigger_message_id);
+      if (candidates.length === 0 && trigger.kind !== "user") {
+        return { ok: false, error: { code: "needs_filing", message: "Only a user request can open a new job; choose a candidate with work_on" }, emitted: [] };
+      }
+      const bound = await runCollabTool({ store, botId: turn.bot_id, sessionId: turn.session_id, turnId: turn.id,
+        parentId: live.parentId, signal: live.abort.signal, admission }, "work_on", {
+        plan: candidates[0] ?? { new: { title: trigger.body, quote_message_id: trigger.id } },
+      });
+      if (!bound.ok || bound.data?.merged) return bound;
+      await publishEmitted(turn.id, live, bound.emitted);
+      if (bound.data?.queued) return { ok: false, data: { ended: true, queued: true },
+        error: { code: "queued", message: "this job is queued; the effect waits for a working slot" }, emitted: [] };
+      turn = store.getTurn(turn.id);
+    }
+    live.planDir = store.turnPlanDir(turn.id);
+    live.workDir = store.turnWorkDir(turn.id);
+    if (hasEffect(live, name) && name !== "work_on" && name !== "send_message" && name !== "ask_user") {
+      // Binding may have changed which hold applies; check the target immediately before acting.
+      if (!mayAct(store, turn.id)) return { ok: false, error: { code: "held", message: HELD_CALL }, emitted: [] };
+      if (turn.task_id) store.markWorkDirectoryUsed(turn.id);
+      if (name === "write_file" || name === "delete_file" || name === "shell" || live.mcpTools.has(name)) {
+        store.recordNewPlanEffectStarted({ turnId: turn.id, tool: name, toolCallId: callId });
+      }
+    }
     if (isWorkspaceTool(name) || COLLAB_TOOL_NAMES.includes(name)) {
       const streamId = callId ? `${turn.id}:${callId}` : undefined;
       return isWorkspaceTool(name)

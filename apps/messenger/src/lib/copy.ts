@@ -31,6 +31,17 @@ type CopyShape<T> = T extends (...args: infer A) => string
     : string;
 
 const zh = {
+  groupLead: {
+    title: "群负责人", confirmed: (name: string) => `已确认负责人：${name}`, unconfirmed: "还没有确认负责人；未点名的消息仍按参与判断。",
+    suggested: (name: string, count: number) => `建议 ${name}：近 7 天有 ${count} 次交接。`, suggestionHint: "只是建议，你确认后才生效。暂不设只收起本次建议，不改负责人。",
+    decline: "暂不设", confirmSuggestion: (name: string) => `确认 ${name}`, choose: "选择群内 Bot", confirm: "确认负责人", clear: "清除负责人",
+    failed: "未能保存，负责人未改。你的选择已保留。", loading: "正在载入负责人…", loadFailed: "未能载入负责人。", retry: "重试",
+  },
+  attribution: {
+    filed: (name: string) => `归到：${name}`, undetermined: "未归属", change: "改", choose: "选", separator: "、",
+    editor: "修改消息归属", hint: "可选一个或多个规划；任务和分件可留空。分件请填写已有分件的键，不会创建分件。", ticket: "任务", part: "分件", wholePlan: "整个规划", optional: "可选", addFiling: "再选一个任务或分件", removeFiling: "移除这项归属",
+    unfile: "移除归属", cancel: "取消", save: "保存", saving: "正在保存…", failed: "未能保存，归属未改。你的选择已保留。", loading: "正在载入规划…", loadFailed: "未能载入规划。", retry: "重试", noPlans: "这个会话还没有可选的规划。",
+  },
   routines: {
     title: "日程", add: "新建日程", edit: "编辑日程", empty: "这个 Bot 还没有日程。",
     emptyHint: "日程到点会叫它自己开工。",
@@ -1061,6 +1072,16 @@ const zh = {
     reviewRequirements: "逐条看",
     makeStanding: "升为常设",
     keepProject: "不用",
+    undoPlan: "撤销",
+    mergePlan: "并入…",
+    confirmUndoPlan: "确认撤销",
+    confirmMergePlan: "确认并入",
+    cancelPlanAction: "返回",
+    planUndoWarning: "先停下并作废这件新开的事。保留文件、原话和需求；已开始的外部操作不会撤回。",
+    planMergeWarning: "只改归引用的这句原话和对应需求；新开的事会停下并作废，文件和执行历史留在原处。不会解除已有叫停。",
+    planMergeTarget: "并入哪件事",
+    noMergeTargets: "没有可并入的同项目规划",
+    planRetained: "已停下并作废；文件、原话和执行历史已保留，已开始的操作没有撤回。",
     acted: {
       stop: "已停下",
       continue: "已继续",
@@ -1079,7 +1100,9 @@ const zh = {
       confirm_requirements: "已确认都是你说的",
       review_requirements: "",
       make_standing: "已升为常设",
-      keep_project: "先不升"
+      keep_project: "先不升",
+      undo_plan: "新开的事已停下并作废",
+      merge_plan: "原话已改归，新开的事已停下并作废"
     },
     partlyResumed: (continued: number, held: number) => `${continued} 轮接着做了，${held} 轮还被叫停扣着，解除后再按「继续」`,
     spent: "已解除",
@@ -1557,6 +1580,17 @@ const zh = {
 };
 
 const en: CopyShape<typeof zh> = {
+  groupLead: {
+    title: "Group lead", confirmed: (name: string) => `Confirmed lead: ${name}`, unconfirmed: "No confirmed lead; unaddressed messages still use participation judgement.",
+    suggested: (name: string, count: number) => `Suggested: ${name}, with ${count} handoffs in the last 7 days.`, suggestionHint: "Only a suggestion, effective after you confirm. Not now dismisses this suggestion without changing the lead.",
+    decline: "Not now", confirmSuggestion: (name: string) => `Confirm ${name}`, choose: "Choose a Bot in this group", confirm: "Confirm lead", clear: "Clear lead",
+    failed: "Could not save; lead unchanged. Your selection is preserved.", loading: "Loading group lead…", loadFailed: "Could not load group lead.", retry: "Retry",
+  },
+  attribution: {
+    filed: (name: string) => `Filed under: ${name}`, undetermined: "Unfiled", change: "Change", choose: "Choose", separator: ", ",
+    editor: "Change message attribution", hint: "Select one or more plans; ticket and part are optional. Use an existing part key; this does not create parts.", ticket: "Ticket", part: "Part", wholePlan: "Whole plan", optional: "Optional", addFiling: "Add another ticket or part", removeFiling: "Remove filing",
+    unfile: "Remove attribution", cancel: "Cancel", save: "Save", saving: "Saving…", failed: "Could not save; attribution unchanged. Your selection is preserved.", loading: "Loading plans…", loadFailed: "Could not load plans.", retry: "Retry", noPlans: "This conversation has no plans to choose from yet.",
+  },
   routines: {
     title: "Routines", add: "Add routine", edit: "Edit routine", empty: "This Bot has no routines yet.",
     emptyHint: "A routine wakes it at the set time to start on its own.",
@@ -2574,6 +2608,16 @@ const en: CopyShape<typeof zh> = {
     reviewRequirements: "Go through them",
     makeStanding: "Make it standing",
     keepProject: "Not now",
+    undoPlan: "Undo",
+    mergePlan: "Merge into…",
+    confirmUndoPlan: "Confirm undo",
+    confirmMergePlan: "Confirm merge",
+    cancelPlanAction: "Back",
+    planUndoWarning: "Stop and abandon this newly opened job. Keep its files, your words and requirements; external actions already started are not reversed.",
+    planMergeWarning: "Refile only the quoted message and its requirements. Stop and abandon the new job; leave its files and execution history in place. Existing stops stay in force.",
+    planMergeTarget: "Merge into which job",
+    noMergeTargets: "No existing jobs in this project",
+    planRetained: "Stopped and abandoned; files, your words and execution history retained. Actions already started are not reversed.",
     acted: {
       stop: "Stopped",
       continue: "Going on",
@@ -2592,7 +2636,9 @@ const en: CopyShape<typeof zh> = {
       confirm_requirements: "Confirmed as yours",
       review_requirements: "",
       make_standing: "Made standing",
-      keep_project: "Left as it is"
+      keep_project: "Left as it is",
+      undo_plan: "New job stopped and abandoned",
+      merge_plan: "Message refiled; new job stopped and abandoned"
     },
     partlyResumed: (continued: number, held: number) => `${continued} going on; ${held} still held by a stop — lift it, then Continue again`,
     spent: "Lifted",

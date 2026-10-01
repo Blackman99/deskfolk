@@ -33,8 +33,12 @@ import {
   type AnnotationFilter,
   type CreateAnnotationRequest,
   type PatchAnnotationRequest,
+  type Message,
+  type PatchMessageAttributionRequest,
+  type GroupLeadState,
 } from "@real-bot/protocol";
 import { ApiError, probeHealth } from "./api.ts";
+import type { AttributionPlan } from "./chat/attribution.ts";
 import type { FileProgress } from "./file-progress.ts";
 import { CommandActivity } from "./chat/command-activity.ts";
 import { TurnActivity, type ToolStep } from "./chat/turn-activity.ts";
@@ -1428,6 +1432,107 @@ export class MessengerRuntime {
     }
   }
 
+  groupLeads = $state<Record<string, GroupLeadState>>({});
+  groupLeadLoading = $state<Record<string, boolean>>({});
+  groupLeadLoadError = $state<Record<string, boolean>>({});
+  groupLeadUnsupported = $state<Record<string, boolean>>({});
+  private readonly groupLeadSeq = new Map<string, number>();
+  private readonly groupLeadWrites = new Map<string, number>();
+  private readonly groupLeadPending = new Set<string>();
+  private readonly groupLeadRevision = new Map<string, number>();
+
+  /** Reading evidence never confirms a leader. A PUT can supersede an older GET. */
+  async loadGroupLead(sessionId: string): Promise<void> {
+    const api = this.api;
+    if (!api || this.connection !== "connected" || this.groupLeadPending.has(sessionId)) return;
+    const seq = (this.groupLeadSeq.get(sessionId) ?? 0) + 1;
+    this.groupLeadSeq.set(sessionId, seq);
+    this.groupLeadLoading = { ...this.groupLeadLoading, [sessionId]: true };
+    this.groupLeadLoadError = { ...this.groupLeadLoadError, [sessionId]: false };
+    try {
+      const state = await api.get<GroupLeadState>(`/v1/sessions/${encodeURIComponent(sessionId)}/lead`);
+      if (this.api === api && this.groupLeadSeq.get(sessionId) === seq) {
+        this.groupLeads = { ...this.groupLeads, [sessionId]: state };
+        this.groupLeadUnsupported = { ...this.groupLeadUnsupported, [sessionId]: false };
+      }
+    } catch (error) {
+      if (this.api === api && this.groupLeadSeq.get(sessionId) === seq) {
+        const unsupported = error instanceof ApiError && error.status === 404;
+        this.groupLeadUnsupported = { ...this.groupLeadUnsupported, [sessionId]: unsupported };
+        this.groupLeadLoadError = { ...this.groupLeadLoadError, [sessionId]: !unsupported };
+      }
+    } finally {
+      if (this.groupLeadSeq.get(sessionId) === seq) this.groupLeadLoading = { ...this.groupLeadLoading, [sessionId]: false };
+    }
+  }
+
+  async confirmGroupLead(sessionId: string, botId: string | null): Promise<ApiError | null> {
+    const api = this.api;
+    if (!api || this.connection !== "connected") return new ApiError(0, "disconnected", "Group lead not saved");
+    const revision = this.groupLeadRevision.get(sessionId) ?? 0;
+    const seq = (this.groupLeadWrites.get(sessionId) ?? 0) + 1;
+    this.groupLeadWrites.set(sessionId, seq);
+    this.groupLeadPending.add(sessionId);
+    this.groupLeadSeq.set(sessionId, (this.groupLeadSeq.get(sessionId) ?? 0) + 1);
+    this.groupLeadLoading = { ...this.groupLeadLoading, [sessionId]: false };
+    try {
+      const state = await api.put<GroupLeadState>(`/v1/sessions/${encodeURIComponent(sessionId)}/lead`, { bot_id: botId, confirmed: true });
+      if (this.api !== api || this.groupLeadWrites.get(sessionId) !== seq) return new ApiError(0, "disconnected", "Group lead result unconfirmed");
+      if ((this.groupLeadRevision.get(sessionId) ?? 0) === revision) this.groupLeads = { ...this.groupLeads, [sessionId]: state };
+      return null;
+    } catch (error) {
+      return this.sheetFailure(error, api) ?? new ApiError(0, "disconnected", "Group lead result unconfirmed");
+    } finally {
+      if (this.groupLeadWrites.get(sessionId) === seq) this.groupLeadPending.delete(sessionId);
+    }
+  }
+
+  attributionPlans = $state<Record<string, AttributionPlan[]>>({});
+  attributionLoading = $state<Record<string, boolean>>({});
+  attributionLoadError = $state<Record<string, boolean>>({});
+  private readonly attributionLoadSeq = new Map<string, number>();
+
+  /** Manual choices include untouched and dormant plans, not just routing candidates. */
+  async loadAttributionPlans(sessionId: string, messageId?: string): Promise<void> {
+    const api = this.api;
+    const message = messageId ?? this.snapshot.messages.find((row) => row.session_id === sessionId && (row.kind === "user" || row.kind === "bot"))?.id;
+    if (!api || this.connection !== "connected" || !message) return;
+    const seq = (this.attributionLoadSeq.get(sessionId) ?? 0) + 1;
+    this.attributionLoadSeq.set(sessionId, seq);
+    this.attributionLoading = { ...this.attributionLoading, [sessionId]: true };
+    this.attributionLoadError = { ...this.attributionLoadError, [sessionId]: false };
+    try {
+      const { items: plans } = await api.get<{ items: AttributionPlan[] }>(`/v1/messages/${encodeURIComponent(message)}/attribution`);
+      if (this.api !== api || this.attributionLoadSeq.get(sessionId) !== seq) return;
+      this.attributionPlans = { ...this.attributionPlans, [sessionId]: plans };
+    } catch {
+      if (this.api === api && this.attributionLoadSeq.get(sessionId) === seq) this.attributionLoadError = { ...this.attributionLoadError, [sessionId]: true };
+    } finally {
+      if (this.attributionLoadSeq.get(sessionId) === seq) this.attributionLoading = { ...this.attributionLoading, [sessionId]: false };
+    }
+  }
+
+  private readonly attributionRevision = new Map<string, number>();
+
+  /** Refile only after an acknowledged write; a refusal never changes the shown selection. */
+  async patchMessageAttribution(id: string, filings: PatchMessageAttributionRequest["filings"]): Promise<ApiError | null> {
+    const api = this.api;
+    if (!api || this.connection !== "connected") return new ApiError(0, "disconnected", "Attribution not saved");
+    const revision = this.attributionRevision.get(id) ?? 0;
+    try {
+      const message = await api.patch<Message>(`/v1/messages/${encodeURIComponent(id)}/attribution`, { filings });
+      if (this.api !== api) return new ApiError(0, "disconnected", "Attribution result unconfirmed");
+      // The sequenced stream is newer than an in-flight, unsequenced HTTP response.
+      if ((this.attributionRevision.get(id) ?? 0) === revision) {
+        this.snapshot = applyEvent(this.snapshot, { ...message, event: "message.upsert", occurred_at: new Date().toISOString() });
+      }
+      this.traceReload += 1;
+      return null;
+    } catch (error) {
+      return this.sheetFailure(error, api) ?? new ApiError(0, "disconnected", "Attribution result unconfirmed");
+    }
+  }
+
   async patchAnnotation(id: string, patch: PatchAnnotationRequest): Promise<ApiError | null> {
     const api = this.api;
     if (!api) return null;
@@ -2786,6 +2891,23 @@ export class MessengerRuntime {
       }
       // Nothing will read it again; a draft for a conversation that is gone is not kept.
       this.views.delete(event.id);
+    }
+    if (event.event === "group_lead.changed") {
+      const { event: _event, occurred_at: _at, ...state } = event;
+      this.groupLeadRevision.set(state.session_id, (this.groupLeadRevision.get(state.session_id) ?? 0) + 1);
+      this.groupLeadSeq.set(state.session_id, (this.groupLeadSeq.get(state.session_id) ?? 0) + 1);
+      this.groupLeads = { ...this.groupLeads, [state.session_id]: state };
+      this.groupLeadLoading = { ...this.groupLeadLoading, [state.session_id]: false };
+      this.groupLeadUnsupported = { ...this.groupLeadUnsupported, [state.session_id]: false };
+      this.groupLeadLoadError = { ...this.groupLeadLoadError, [state.session_id]: false };
+    }
+    if (event.event === "attribution.changed" || event.event === "message.upsert") {
+      const id = event.event === "attribution.changed" ? event.message_id : event.id;
+      this.attributionRevision.set(id, (this.attributionRevision.get(id) ?? 0) + 1);
+      if (event.event === "attribution.changed") {
+        this.traceReload += 1;
+        if (this.attributionPlans[event.session_id]) void this.loadAttributionPlans(event.session_id);
+      }
     }
     let next = applyEvent(this.snapshot, event);
     this.snapshot = next;

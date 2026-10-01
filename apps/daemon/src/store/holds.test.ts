@@ -28,9 +28,12 @@ function result(over: Partial<OrganizerResult> = {}): OrganizerResult {
 }
 
 /** 视频导演 and 审片员 in a group with a plan and a ticket, and a direct of their own on it. Holds are on. */
-function fixture(opts: { holdsOn?: boolean } = {}) {
+function fixture(opts: { holdsOn?: boolean; legacySlot?: boolean } = {}) {
   const store = new Store();
   if (opts.holdsOn !== false) store.raiseEngineLevel(null);
+  // P2 compatibility cases deliberately exercise the old one-current-plan slot; P4b permits
+  // multiple non-dormant plans and therefore no longer moves one aside merely by opening another.
+  if (opts.legacySlot) store.db.run("UPDATE settings SET value = '1' WHERE key = 'engine_level'");
   const director = store.createBot({ name: "视频导演", duties: "出片", boundaries: "none" });
   const reviewer = store.createBot({ name: "审片员", duties: "审片", boundaries: "none" });
   const room = store.createGroup({ name: "片场", members: [director.bot.id, reviewer.bot.id] });
@@ -244,8 +247,8 @@ describe("a hold over a plan reads as the plan parked", () => {
     store.close();
   });
 
-  test("a plan a newer one moved aside reads parked in its spec too, and lifting moves it aside again", () => {
-    const { store, room, plan } = fixture();
+  test("a legacy plan a newer one moved aside reads parked in its spec too, and lifting moves it aside again", () => {
+    const { store, room, plan } = fixture({ legacySlot: true });
     const newer = store.openTask({ sessionId: room.id, title: "预告片", spec: spec({ goal: "预告片" }) });
     // Moved aside: parked in the column, still in progress in its spec.
     expect(store.getTask(plan.id).status).toBe("parked");
@@ -307,9 +310,9 @@ describe("a hold over a plan reads as the plan parked", () => {
     store.close();
   });
 
-  test("a plan a newer one moves aside while a hold parks it goes back moved aside, under a plan hold or a conversation's", () => {
+  test("a legacy plan a newer one moves aside while a hold parks it goes back moved aside, under a plan hold or a conversation's", () => {
     for (const scope of ["plan", "session"] as const) {
-      const { store, plan, room } = fixture();
+      const { store, plan, room } = fixture({ legacySlot: true });
       const hold = store.createHold({ scope, scopeId: scope === "plan" ? plan.id : room.id, source: "user_button" });
       const newer = store.openTask({ sessionId: room.id, title: "预告片", spec: spec({ goal: "预告片" }) });
       expect(store.getHold(hold.id).effect.parked_plans).toContainEqual({ task_id: plan.id, prior: "aside" });
@@ -470,9 +473,9 @@ describe("a hold outlives the history it was said in", () => {
     store.close();
   });
 
-  test("deleting the conversation gives each plan its hold parks a hold of its own", () => {
+  test("deleting a legacy conversation gives each plan its hold parks a hold of its own", () => {
     // The group's plans outlive the group: the Bot↔Bot direct worked on the one, talked about the other.
-    const { store, room, plan, thread } = fixture();
+    const { store, room, plan, thread } = fixture({ legacySlot: true });
     const onRoom = store.createHold({ scope: "session", scopeId: room.id, source: "user_button" });
     const aside = store.openTask({ sessionId: room.id, title: "预告片", spec: spec({ goal: "预告片" }) });
     store.db.run(`UPDATE messages SET task_id = ? WHERE session_id = ?`, [aside.id, thread.id]);
@@ -546,8 +549,8 @@ describe("setting a plan's status by hand, the way it was done before holds", ()
     store.close();
   });
 
-  test("parking a plan a newer one moved aside is a hold on it too", () => {
-    const { store, room, plan } = fixture();
+  test("parking a legacy plan a newer one moved aside is a hold on it too", () => {
+    const { store, room, plan } = fixture({ legacySlot: true });
     store.openTask({ sessionId: room.id, title: "预告片" });
     // What the board shows and sends back is the spec's status, in progress here.
     store.setPlanSpecByUser(plan.id, spec({ status: "parked" }));

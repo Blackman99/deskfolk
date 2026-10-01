@@ -182,6 +182,14 @@ test("a phone can press a button on a line about your stops, one it names, nothi
   expect(() => ok({ method: "POST", path: `/v1/messages/${id}/control`, body: { action: "stop", source: "user_text" } })).toThrow();
 });
 
+test("a phone can confirm new-plan undo or quoted-message merge without forging action provenance", () => {
+  const ok = (body: Record<string, unknown>) => validateBusiness({ v: 1, id, method: "POST", path: `/v1/messages/${id}/control`, body });
+  expect(() => ok({ action: "undo_plan" })).not.toThrow();
+  expect(() => ok({ action: "merge_plan", task_id: id })).not.toThrow();
+  expect(() => ok({ action: "merge_plan", task_id: "EP01" })).toThrow();
+  expect(() => ok({ action: "undo_plan", user_action_id: id })).toThrow();
+});
+
 test("a phone can act on an entry of the requirements ledger from the board, naming the plan", () => {
   const ok = (request: Omit<RemoteRequest, "v" | "id">) => validateBusiness({ v: 1, id, ...request });
   for (const action of ["confirm", "reject", "waive", "not_here", "here_again", "whole_project"]) {

@@ -179,9 +179,10 @@ export function createParticipation(deps: ParticipationDeps): Participation {
       const working = store.listLiveTurns({ sessionId: session.id, botId: target }).some((turn) => turn.mode !== "readonly");
       const fork = opts.fork !== undefined ? opts.fork : withYou && !working;
       const cause = causeOf(message);
-      if (fork) startTurn(session.id, target, message, "fork", { cause });
-      else if (working || (!opts.fromUser && message.kind === "bot")) hearOrStart(session.id, target, message, { item: inboxItem(message) }, { cause });
-      else startTurn(session.id, target, message, "redirect", { cause });
+      const attribution = store.capabilities().engine_level >= ENGINE_LEVELS.work_items ? { taskId: message.task_id ?? null, ticketId: message.ticket_id ?? null } : {};
+      if (fork) startTurn(session.id, target, message, "fork", { cause, ...attribution });
+      else if (working || (!opts.fromUser && message.kind === "bot")) hearOrStart(session.id, target, message, { item: inboxItem(message) }, { cause, ...attribution });
+      else startTurn(session.id, target, message, "redirect", { cause, ...attribution });
       return;
     }
 
@@ -224,34 +225,30 @@ export function createParticipation(deps: ParticipationDeps): Participation {
     const cause = causeOf(message);
     const opened = new Set<string>();
     if (opts.fromUser && !hasMention) {
-      // A confirmed lead takes an unaddressed line (ADR 0040 D22); otherwise the Bot already at work.
-      const lead = store.capabilities().engine_level >= ENGINE_LEVELS.work_items ? groupLead(session.id) : null;
+      // A plan's lead takes precedence; a user-confirmed group lead removes the legacy judge call.
+      const planLead = message.task_id ? store.db.query<{ lead_bot_id: string | null }, [string]>(
+        "SELECT lead_bot_id FROM tasks WHERE id = ?",).get(message.task_id)?.lead_bot_id : null;
+      const lead = store.capabilities().engine_level >= ENGINE_LEVELS.work_items
+        ? (planLead && store.isPresent(session.id, planLead) ? planLead : groupLead(session.id)) : null;
       const focused = lead ? { bot_id: lead } : store.listLiveTurns({ sessionId: session.id })[0];
       if (focused) {
         const fork = opts.fork !== undefined ? opts.fork : true;
-        startTurn(session.id, focused.bot_id, message, fork ? "fork" : "redirect", { cause });
+        startTurn(session.id, focused.bot_id, message, fork ? "fork" : "redirect", { cause,
+          ...(store.capabilities().engine_level >= ENGINE_LEVELS.work_items ? { taskId: message.task_id ?? null, ticketId: message.ticket_id ?? null } : {}) });
         opened.add(focused.bot_id);
+      }
+      if (lead) {
+        opts.opened?.();
+        return;
       }
     }
 
     for (const botId of mandatory) {
-      // At its limit of jobs, the named Bot waits rather than opening another (ADR 0040 P4b).
-      if (store.capabilities().engine_level >= ENGINE_LEVELS.work_items) {
-        const place = store.workItemQueuePlace({ botId, taskId: message.task_id ?? null });
-        if (place !== null && !store.listLiveTurns({ botId }).some((turn) => turn.task_id === message.task_id)) {
-          const note = store.insertMessage({
-            sessionId: session.id, kind: "system", author: botId,
-            body: `排在第 ${place} 位。手上的一件做完就轮到这件。`, hiddenFromBots: true,
-          });
-          publishMessage(note);
-          opened.add(botId);
-          continue;
-        }
-      }
       // A Bot naming a Bot that is mid-task is heard in that task; your line still turns it around.
-      if (opts.fork === true) startTurn(session.id, botId, message, "fork", { cause });
-      else if (!opts.fromUser && message.kind === "bot") hearOrStart(session.id, botId, message, { item: inboxItem(message) }, { cause });
-      else startTurn(session.id, botId, message, "redirect", { cause });
+      const attribution = store.capabilities().engine_level >= ENGINE_LEVELS.work_items ? { taskId: message.task_id ?? null, ticketId: message.ticket_id ?? null } : {};
+      if (opts.fork === true) startTurn(session.id, botId, message, "fork", { cause, ...attribution });
+      else if (!opts.fromUser && message.kind === "bot") hearOrStart(session.id, botId, message, { item: inboxItem(message) }, { cause, ...attribution });
+      else startTurn(session.id, botId, message, "redirect", { cause, ...attribution });
       opened.add(botId);
     }
 
@@ -306,7 +303,8 @@ export function createParticipation(deps: ParticipationDeps): Participation {
   function groupLead(sessionId: string): string | null {
     return store.db
       .query<{ member: string }, [string]>(
-        `SELECT member FROM session_participants WHERE session_id = ? AND left_at IS NULL AND is_lead = 1 LIMIT 1`,
+        `SELECT p.member FROM session_participants p JOIN bots b ON b.id = p.member
+         WHERE p.session_id = ? AND p.left_at IS NULL AND p.is_lead = 1 AND b.deleted_at IS NULL AND b.archived_at IS NULL LIMIT 1`,
       )
       .get(sessionId)?.member ?? null;
   }

@@ -948,7 +948,7 @@ export function createStop(deps: StopDeps): Stop {
     if (!control) throw new HttpError(422, "invalid_args", "this line has no control buttons");
     // A restart notice's buttons are the engine's restart module's (engine/restart.ts), a line about
     // checks from your words the derived-checks module's (engine/derived-checks.ts).
-    if (control.kind === "restart" || control.kind === "check" || control.kind === "requirement") {
+    if (control.kind === "restart" || control.kind === "check" || control.kind === "requirement" || control.kind === "plan_opened") {
       throw new HttpError(422, "invalid_args", "this line's buttons are not about your stops");
     }
     const action = input.action as ControlOffer;
@@ -1041,6 +1041,8 @@ export function createStop(deps: StopDeps): Stop {
       case "review_requirements":
       case "make_standing":
       case "keep_project":
+      case "undo_plan":
+      case "merge_plan":
         // Only a restart notice or a line about checks or requirements offers these, all turned away above.
         throw new HttpError(422, "invalid_args", "this line does not offer that button");
     }

@@ -143,8 +143,11 @@ export async function runCollabTool(
         return askUser(ctx, args);
       case "check_back":
         return checkBack(ctx, args);
-      case "work_on":
-        return workOn(ctx, args);
+      case "work_on": {
+        const result = workOn(ctx, args);
+        if (!result.ok && ["invalid_candidate", "invalid_args", "locked_attribution"].includes(result.error?.code ?? "")) ctx.store.noteFilingBounce(ctx.turnId);
+        return result;
+      }
       case "end_turn":
         // The engine ends the turn once the hop's calls are done (see executeTools). What the Bot
         // says it did with each line it read is recorded now, on those inbox rows (ADR 0040 P4a).
@@ -195,6 +198,9 @@ export async function runCollabTool(
         return fail("failed", `unknown tool: ${name}`);
     }
   } catch (error) {
+    if (name === "work_on" && error instanceof HttpError && ["invalid_candidate", "invalid_args", "locked_attribution", "not_found"].includes(error.code)) {
+      ctx.store.noteFilingBounce(ctx.turnId);
+    }
     if (error instanceof HttpError) return fail(error.code, error.message);
     return fail("failed", "tool failed");
   }
@@ -630,30 +636,13 @@ function askUser(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
  * this turn ends.
  */
 function workOn(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
-  const plan = args.plan;
-  const fresh = plan && typeof plan === "object" && !Array.isArray(plan) ? (plan as Record<string, unknown>).new : null;
-  let taskId: string | null = null;
-  if (typeof plan === "string") {
-    taskId = plan;
-  } else if (fresh && typeof fresh === "object") {
-    const made = fresh as Record<string, unknown>;
-    const quoteId = typeof made.quote_message_id === "string" ? made.quote_message_id : null;
-    const quote = quoteId ? ctx.store.getMessage(quoteId) : null;
-    if (!quote || quote.kind !== "user") return fail("invalid_args", "work_on({new}) quotes a line of the user's");
-    const title = typeof made.title === "string" && made.title.trim() ? made.title.trim() : quote.body;
-    taskId = ctx.store.openTask({ sessionId: ctx.sessionId, title, brief: quote.body }).id;
-  }
-  if (!taskId) return fail("invalid_args", "plan is a job id or {new:{title, quote_message_id}}");
-  const turn = ctx.store.getTurn(ctx.turnId);
-  const busy = ctx.store.listLiveTurns({ botId: ctx.botId }).find((row) => row.id !== ctx.turnId && row.task_id === taskId);
-  if (busy) {
-    ctx.store.setTurnStatus(ctx.turnId, "completed");
-    return { ok: true, data: { merged: true, turn_id: busy.id }, emitted: [] };
-  }
-  ctx.store.db.run(`UPDATE turns SET task_id = ?, work_item_id = NULL, updated_at = ? WHERE id = ?`, [taskId, new Date().toISOString(), turn.id]);
-  const item = ctx.store.findOrCreateWorkItem({ botId: ctx.botId, sessionId: ctx.sessionId, taskId, ticketId: null });
-  ctx.store.db.run(`UPDATE turns SET work_item_id = ? WHERE id = ?`, [item.id, turn.id]);
-  return { ok: true, data: { task_id: taskId, work_item_id: item.id }, emitted: [] };
+  const selected = ctx.store.workOn({ turnId: ctx.turnId, plan: args.plan, ticket: args.ticket,
+    also: args.also, writtenPaths: ctx.writtenPaths });
+  const data: Record<string, unknown> = selected.mergedInto
+    ? { merged: true, ended: true, turn_id: selected.mergedInto }
+    : { task_id: selected.taskId, ticket_id: selected.ticketId, work_item_id: selected.workItemId,
+        ...(selected.ended ? { ended: true } : {}), ...(selected.queued ? { queued: true } : {}) };
+  return { ok: true, data, emitted: selected.messages.map((message) => ({ kind: "message", message })) };
 }
 
 /**

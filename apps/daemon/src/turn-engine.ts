@@ -546,16 +546,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
           // The rows decide where a line belongs when they can (ADR 0040 P4b), over the organizer's
           // filing: a dormant plan is not a candidate, so a complaint lands on the job still live.
           if (store.capabilities().engine_level >= ENGINE_LEVELS.work_items) {
-            const filing = store.fileLine({ sessionId: message.session_id, body: message.body });
-            const group = filing ? store.getTask(filing.taskId).session_id : null;
-            if (filing && group) {
-              store.db.run(`UPDATE messages SET task_id = ?, ticket_id = ? WHERE id = ?`, [filing.taskId, filing.ticketId, message.id]);
-              try {
-                filed = store.getMessage(message.id);
-              } catch {
-                filed = message;
-              }
-            }
+            store.updatePlanDormancy();
+            store.fileMessage(message.id);
+            filed = store.getMessage(message.id);
           }
           // A Stop you pressed on this job goes once you say something more about it to that Bot,
           // before the line wakes anyone: what you say next is what the Bot goes on from.
@@ -564,7 +557,16 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
           // opens can be told they already have it.
           lifecycle.hearAcross(filed);
         }
-        await core.track(participation.handleParticipation(filed, { fromUser, fork: opts?.fork, opened: handOver }));
+        const targets = store.capabilities().engine_level >= ENGINE_LEVELS.work_items ? store.filingsOfMessage(filed.id) : [];
+        if (targets.length > 1) {
+          for (const target of targets) {
+            const onJob = { ...filed, task_id: target.taskId, ticket_id: target.ticketId };
+            if (fromUser) lifecycle.hearAcross(onJob);
+            await core.track(participation.handleParticipation(onJob, { fromUser, fork: opts?.fork, opened: handOver }));
+          }
+        } else {
+          await core.track(participation.handleParticipation(filed, { fromUser, fork: opts?.fork, opened: handOver }));
+        }
       } finally {
         handOver();
         // Once the line is filed and has woken whom it wakes: the ledger never holds a turn back.
@@ -597,7 +599,10 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       return lifecycle.executionOf(core.lives.get(turnId));
     },
     sweepToolResults,
-    sweepStalledTurns: lifecycle.sweepStalledTurns,
+    sweepStalledTurns(at) {
+      lifecycle.sweepStalledTurns(at);
+      lifecycle.dispatchQueued();
+    },
     fireRoutine: fire.fireRoutine,
     fireCheckBack: fire.fireCheckBack,
     assertAskPending,

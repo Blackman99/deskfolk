@@ -35,7 +35,7 @@ export function partialOf(value: unknown): RestartPartial | null {
  * was done.
  */
 export function controlBar(control: MessageControl | undefined, holds: readonly Hold[], names: Names, t: Copy["control"]): ControlBar {
-  if (!control) return { state: "none" };
+  if (!control || control.kind === "plan_opened") return { state: "none" }; // NewPlanActions owns its confirmation/target picker.
   const acted = control.acted ?? [];
   if (acted.length > 0) return { state: "done", note: t.acted[acted[acted.length - 1]!] };
   // The app's line about checks from your words (ADR 0040 P3): an offer to confirm, change (your

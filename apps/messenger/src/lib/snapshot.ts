@@ -178,6 +178,18 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
         pendingJudgements: snapshot.pendingJudgements.filter((j) => j.session_id !== event.id),
       };
     }
+    case "attribution.changed": {
+      const primary = event.filings.find((filing) => filing.is_primary) ?? event.filings[0];
+      const update = (message: Message): Message => message.id === event.message_id && message.session_id === event.session_id
+        ? { ...message, filing_state: event.filing_state, filings: event.filings, task_id: primary?.task_id ?? null, ticket_id: primary?.ticket_id ?? null }
+        : message;
+      return {
+        ...snapshot,
+        messages: snapshot.messages.map(update),
+        sessions: snapshot.sessions.map((session) => session.last_message?.id === event.message_id
+          ? { ...session, last_message: update(session.last_message) } : session),
+      };
+    }
     case "message.upsert": {
       const { event: _e, occurred_at: _at, ...message } = event;
       if (isHiddenTranscriptKind(message.kind)) return snapshot;

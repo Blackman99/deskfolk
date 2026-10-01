@@ -24,6 +24,10 @@ import * as checkBacks from "./check-backs";
 import * as holds from "./holds";
 import * as inbox from "./inbox";
 import * as filing from "./filing";
+import * as desk from "./desk";
+import * as newPlanCards from "./new-plan-cards";
+import * as delegations from "./delegations";
+import * as workOn from "./work-on";
 import * as workItems from "./work-items";
 import * as judgements from "./judgements";
 import * as liveProcs from "./live-procs";
@@ -500,9 +504,40 @@ export class Store {
 
   // Work items (ADR 0040 P4b) -------------------------------------------------------------
   readonly findOrCreateWorkItem = this.bind(workItems.findOrCreateWorkItem);
+  readonly workOn = this.bind(workOn.workOn);
   readonly workItemQueuePlace = this.bind(workItems.queuePlace);
+  readonly queueWork = this.bind(workItems.queueWork);
+  readonly dispatchableWork = this.bind(workItems.dispatchableWork);
+  readonly prepareQueuedTrigger = this.bind(workItems.prepareQueuedTrigger);
+  readonly markWorkRunning = this.bind(workItems.markWorkRunning);
+  readonly isPlanRunnable = this.bind(workItems.isPlanRunnable);
   readonly fileLine = this.bind(filing.fileLine);
-  readonly refileMessage = this.bind(filing.refileMessage);
+  readonly fileMessage = this.bind(filing.fileMessage);
+  readonly planCandidates = this.bind(filing.planCandidates);
+  readonly planCandidateEvidence = this.bind(filing.candidateOf);
+  readonly filingsOfMessage = this.bind(filing.filingsOfMessage);
+  readonly deskCandidateIds = this.bind(desk.deskCandidateIds);
+  readonly assertDeskCandidate = this.bind(desk.assertDeskCandidate);
+  readonly noteFilingBounce = this.bind(desk.noteFilingBounce);
+  readonly filingBudget = this.bind(desk.filingBudget);
+  readonly originalUserRequest = this.bind(desk.originalUserRequest);
+  readonly markNeedsAttention = this.bind(desk.markNeedsAttention);
+  readonly markWorkDirectoryUsed = this.bind(desk.markWorkDirectoryUsed);
+  readonly delegateWork = this.bind(delegations.delegateWork);
+  readonly getDelegation = this.bind(delegations.getDelegation);
+  readonly listDelegations = this.bind(delegations.listDelegations);
+  readonly getDelegationWait = this.bind(delegations.getDelegationWait);
+  readonly replyDelegation = this.bind(delegations.replyDelegation);
+  readonly cancelDelegation = this.bind(delegations.cancelDelegation);
+  readonly createNewPlanCard = this.bind(newPlanCards.createNewPlanCard);
+  readonly recordNewPlanEffectStarted = this.bind(newPlanCards.recordNewPlanEffectStarted);
+  readonly actNewPlanCard = this.bind(newPlanCards.actNewPlanCard);
+  readonly refileMessage = (messageId: string, input: filing.RefileMessageInput) => this.transaction(() => {
+    filing.refileMessage(this.ctx, messageId, input);
+    return messages.getMessage(this.ctx, messageId);
+  });
+  readonly updatePlanDormancy = this.bind(filing.updatePlanDormancy);
+  readonly resumePlan = this.bind(filing.resumePlan);
   readonly closeWorkItemIfIdle = this.bind(workItems.closeWorkItemIfIdle);
 
   // Work log -------------------------------------------------------------------------------

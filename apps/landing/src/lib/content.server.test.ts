@@ -68,6 +68,48 @@ test('a term folds in its behavior details instead of linking to GitHub', () => 
   expect(getManifestoTopic('collaboration', 'zh').contentHtml).toContain('<summary>行为细节</summary>');
 });
 
+test('P4b terms share collaboration anchors and paired behavior without implementation in definitions', () => {
+  for (const lang of ['zh', 'en'] as const) {
+    const doc = getManifestoTopic('collaboration', lang);
+    for (const key of ['work-item', 'desk-segment', 'attribution', 'group-lead']) {
+      expect(doc.toc.some((entry) => entry.id === `term-${key}`)).toBe(true);
+      expect(doc.contentHtml.split(`id="behavior-${key}"`).length - 1).toBe(1);
+      expect(doc.contentHtml).not.toContain(`href="#${key}"`);
+      expect(getTermTargets()[`term-${key}`]).toBe('/manifesto/collaboration');
+    }
+    expect(doc.contentHtml.split('id="behavior-turn"').length - 1).toBe(1);
+    expect(doc.contentHtml).toContain(`href="/${lang}/manifesto/collaboration#behavior-work-item"`);
+    expect(doc.contentHtml).toContain(`href="/${lang}/manifesto/collaboration#behavior-attribution"`);
+    expect(doc.contentHtml).toContain(`href="/${lang}/manifesto/collaboration#behavior-desk-segment"`);
+    const plan = doc.contentHtml.slice(doc.contentHtml.indexOf('id="term-plan"'));
+    const definition = plan.slice(0, plan.indexOf('<details class="behavior"'));
+    expect(definition).not.toContain('task_id');
+    expect(doc.contentHtml).toContain('engine_level');
+  }
+});
+
+test('folded glossary fragments resolve and legacy organizer URLs retain their destination', () => {
+  for (const lang of ['zh', 'en'] as const) {
+    const pages = MANIFESTO_TOPICS.map((topic) => {
+      const html = getManifestoTopic(topic, lang).contentHtml;
+      return { topic, html, ids: new Set([...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1])) };
+    });
+    for (const { html, ids } of pages) {
+      const missing = [...html.matchAll(/href="#([^"]+)"/g)]
+        .map((match) => decodeURIComponent(match[1]))
+        .filter((id) => !ids.has(id));
+      expect(missing).toEqual([]);
+      for (const [, topic, hash] of html.matchAll(new RegExp(`href="/${lang}/manifesto/([a-z-]+)#([^"]+)"`, 'g'))) {
+        expect(pages.find((page) => page.topic === topic)?.ids.has(decodeURIComponent(hash))).toBe(true);
+      }
+    }
+    const collaboration = getManifestoTopic('collaboration', lang).contentHtml;
+    expect(collaboration).toContain('id="organizer"');
+    expect(collaboration).toContain('id="behavior-organizer"');
+    expect(collaboration).toContain('id="term-organizer"');
+  }
+});
+
 test('roadmap still has a heading toc', () => {
   const doc = getDocumentContent('roadmap', 'zh');
   expect(doc.title).toBe('Roadmap');

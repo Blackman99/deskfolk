@@ -1540,3 +1540,39 @@ test("annotations: a batch that lands in another conversation takes you there, a
   expect(landed.focusedTurnId).toBe("turn-batch");
   expect(landed.pendingFocusTrigger).toBeNull();
 });
+
+test("a late attribution PATCH response cannot rewind a newer sequenced correction", async () => {
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+  const message = aMessage({ session_id: "direct-1", filing_state: "undetermined", filings: [] });
+  runtime.snapshot.messages = [message];
+  const response = deferred<Response>();
+  globalThis.fetch = (async () => response.promise) as typeof fetch;
+  const saving = runtime.patchMessageAttribution(message.id, [{ plan_id: "plan-a" }]);
+  await Promise.resolve();
+  Socket.current.frame({ type: "event", event_instance_id: instance, seq: 1, payload: {
+    event: "attribution.changed", occurred_at: "newer", message_id: message.id, session_id: message.session_id,
+    filing_state: "filed", filings: [{ task_id: "plan-b", ticket_id: null, part_key: null }],
+  } });
+  expect(runtime.snapshot.messages[0]?.task_id).toBe("plan-b");
+  response.resolve(Response.json({ ...message, task_id: "plan-a", filing_state: "filed", filings: [{ task_id: "plan-a", ticket_id: null, part_key: null }] }));
+  expect(await saving).toBeNull();
+  expect(runtime.snapshot.messages[0]?.task_id).toBe("plan-b");
+});
+
+test("a newer sequenced group lead change updates the open card and survives a late confirmation response", async () => {
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+  runtime.groupLeads = { "group-1": { session_id: "group-1", confirmed_bot_id: null, suggestion: null } };
+  const response = deferred<Response>();
+  globalThis.fetch = (async () => response.promise) as typeof fetch;
+  const saving = runtime.confirmGroupLead("group-1", "bot-1");
+  await Promise.resolve();
+  Socket.current.frame({ type: "event", event_instance_id: instance, seq: 1, payload: {
+    event: "group_lead.changed", occurred_at: "newer", session_id: "group-1", confirmed_bot_id: "bot-2", suggestion: null,
+  } });
+  expect(runtime.groupLeads["group-1"]?.confirmed_bot_id).toBe("bot-2");
+  response.resolve(Response.json({ session_id: "group-1", confirmed_bot_id: "bot-1", suggestion: null }));
+  expect(await saving).toBeNull();
+  expect(runtime.groupLeads["group-1"]?.confirmed_bot_id).toBe("bot-2");
+});

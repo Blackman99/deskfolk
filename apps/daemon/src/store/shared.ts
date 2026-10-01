@@ -182,6 +182,8 @@ export type MessageRow = {
   ticket_id?: string | null;
   /** Set on an annotation batch routed into your direct: the Bot↔Bot message it points back at. */
   annotation_source_message_id?: string | null;
+  filing_state?: "filed" | "undetermined" | "none" | null;
+  filing_candidates?: string | null;
   /** JSON `AskSpec` on a question that offered choices. */
   ask_spec?: string | null;
   /** JSON `AskAnswer` once you answered the question. */

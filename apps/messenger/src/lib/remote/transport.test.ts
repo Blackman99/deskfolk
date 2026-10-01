@@ -111,6 +111,23 @@ test("bytes still leaving the send buffer are not silence", async () => {
   expect(dropped).toBe(true);
 });
 
+test("an encrypted attribution event keeps its targets, while a malformed projection reaches no listener", async () => {
+  const relay = fakeHost();
+  const transport = transportFor(relay.socket);
+  await transport.connect();
+  const seen: unknown[] = [];
+  transport.subscribe((frame) => { seen.push(frame); });
+  const payload = { event: "attribution.changed", occurred_at: "now", message_id: "m", session_id: "s", filing_state: "filed",
+    filings: [{ task_id: "plan", ticket_id: null, part_key: null }] };
+  relay.event({ type: "event", event_instance_id: "a".repeat(32), seq: 1, payload });
+  await Bun.sleep(0);
+  expect(seen).toHaveLength(1);
+  expect(seen[0]).toMatchObject({ payload });
+  relay.event({ type: "event", event_instance_id: "a".repeat(32), seq: 2, payload: { ...payload, filings: [{ task_id: 3 }] } });
+  await Bun.sleep(0);
+  expect(seen).toHaveLength(1);
+});
+
 const uploadId = "01ARZ3NDEKTSV4RRFFQ69G5FB0";
 
 /** A file of `size` bytes, the POST that declares it, and the Mac's answer opening its stream. */

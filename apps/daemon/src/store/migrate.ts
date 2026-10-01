@@ -8,6 +8,8 @@ import { FILE_DROP_SESSION_ID, sortThinkingLevels, THINKING_LEVELS, type Message
 import { askAnswerText, readAskAnswer } from "../ask";
 import { isoNow, ulid } from "../ids";
 import { HELD_TURN_TRIGGERS } from "./holds";
+import { migrateFiling } from "./filing-migration";
+import { migrateDelegations } from "./delegation-migration";
 import { clipQuote, QUOTE_TRIGGERS } from "./quotes";
 import { REQUIREMENT_TRIGGERS } from "./requirements";
 import { DORMANT_PLAN_TRIGGERS, idSuffix, localDate, slugify, taskTitle, WORK_ROOT } from "./tasks";
@@ -272,6 +274,8 @@ export function migrateSchema(db: Database): void {
   migrateNotifications(db);
   backfillQuotes(db);
   migrateRequirements(db);
+  migrateFiling(db);
+  migrateDelegations(db);
   // Made again on every open rather than if missing, so the triggers are always this build's own.
   // Last, after every column they read (tasks.dormant_since comes in migratePlans).
   for (const trigger of [...HELD_TURN_TRIGGERS, ...QUOTE_TRIGGERS, ...REQUIREMENT_TRIGGERS, ...DORMANT_PLAN_TRIGGERS]) {

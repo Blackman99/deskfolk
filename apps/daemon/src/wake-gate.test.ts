@@ -175,9 +175,11 @@ describe("a hold turns every wake away, and says so in the work log", () => {
   });
 
   test("6. your line filed under a plan does not reach a held Bot's turn on it in another conversation", async () => {
-    const h = await scenario();
+    const h = await scenario({ workItems: true });
     const { director, reviewer, room } = videoTeam(h);
     const ep01 = openPlan(h, room, "EP01", planSpec("EP01 动画成片"));
+    // With work items on, the rows file this line without the organizer: EP01 has real work underway.
+    h.store.createTicket({ taskId: ep01.id, title: "母带", status: "doing", worker: director.id });
     const thread = h.botDirect(director, reviewer);
     const go = await midHop(h, director, thread, [call(tool("list_dir", { path: "." })), say("在做")], () => {
       h.postBot(reviewer, thread, "EP01 母带按新的转场重新拼一遍", { taskId: ep01.id });
@@ -185,7 +187,6 @@ describe("a hold turns every wake away, and says so in the work log", () => {
     const [threadTurn] = h.turns(director);
     const stop = hold(h, "bot", director.id);
     const dm = h.direct(director);
-    h.judge("organizer", { session: dm }).reply({ decision: "join", join_plan_id: ep01.id, plan: planSpec("EP01 动画成片"), tickets: [], message_ticket: null });
 
     const line = h.postUser(dm, "EP01 片尾字幕换成白色");
     await h.routed();
@@ -203,9 +204,14 @@ describe("a hold turns every wake away, and says so in the work log", () => {
     // Not even in the quote layer of its situation (ADR 0040 P3), which every other turn on EP01
     // reads it in: a held turn reads what you said as it stood when the stop was made.
     expect(requestText(second.request)).not.toContain("片尾字幕换成白色");
-    expect(h.suppressedWakes(director).map((row) => ({ cause: row.payload.cause, turn: row.turn_id, holds: row.payload.holds }))).toEqual([
+    const wakes = h.suppressedWakes(director).map((row) => ({ cause: row.payload.cause, turn: row.turn_id, holds: row.payload.holds }));
+    expect(wakes.filter((row) => row.cause === "heard_across")).toEqual([
       { cause: "heard_across", turn: threadTurn!.id, holds: [stop.id] },
     ]);
+    // The real open ticket can also prompt a plan call-back; that wake must obey the same hold.
+    for (const wake of wakes.filter((row) => row.cause !== "heard_across")) {
+      expect(wake).toEqual({ cause: "plan_nudge", turn: null, holds: [stop.id] });
+    }
   });
 
   test("7. a turn that ends with a line unread opens no turn for it under a hold", async () => {

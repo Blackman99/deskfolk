@@ -12,7 +12,8 @@ import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { isHeldAbort } from "./holds";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
-import { findOrCreateWorkItem } from "./work-items";
+import { findOrCreateWorkItem, queuePlace, queueWork } from "./work-items";
+import { planCandidates } from "./filing";
 import { releaseEndedInbox } from "./inbox";
 import { getMessage } from "./messages";
 import {
@@ -69,16 +70,20 @@ export function createTurn(
     // No plan is opened in silence once work items are on (ADR 0040 P4b): a line the rows cannot
     // place stays unfiled, and the turn works without one until work_on or a later line places it.
     const landing = landingInput(ctx, { ...input, trigger });
-    const found = findTurnTask(ctx, landing);
+    const workItems = readEngineLevel(ctx.db) >= ENGINE_LEVELS.work_items;
+    // In the deterministic engine neither the current slot nor the waker's ticket decides work.
+    const explicitTask = landing.taskId ?? trigger.task_id ?? null;
+    const explicitTicket = landing.ticketId ?? trigger.ticket_id ?? null;
     const { taskId, ticketId, handedTicketId } = readOnly
       ? { taskId: null, ticketId: null, handedTicketId: null }
-      : found.taskId === null && readEngineLevel(ctx.db) >= ENGINE_LEVELS.work_items
-        ? { taskId: null, ticketId: null, handedTicketId: null }
+      : workItems
+        ? { taskId: explicitTask, ticketId: explicitTicket, handedTicketId: explicitTicket }
         : resolveTurnTask(ctx, landing);
+    const mode = readOnly ? "readonly" : workItems && !taskId ? "desk" : input.mode ?? "work";
     try {
       // Work items bind a turn once the engine level has them (ADR 0040 P4b). Below it a turn is
       // what it was: the one-live indexes only look at rows that carry one.
-      const workItemId = readEngineLevel(ctx.db) >= ENGINE_LEVELS.work_items && !readOnly && taskId
+      const workItemId = readEngineLevel(ctx.db) >= ENGINE_LEVELS.work_items && !readOnly
         ? findOrCreateWorkItem(ctx, { botId: input.botId, sessionId: input.sessionId, taskId, ticketId }).id
         : null;
       ctx.db.run(
@@ -97,12 +102,18 @@ export function createTurn(
           now,
           now,
           now,
-          input.mode ?? "work",
+          mode,
           workItemId,
         ],
       );
     } catch (error) {
       throw heldError(error);
+    }
+    // Capture once at admission: a later plan must not silently become a desk turn's candidate.
+    if (readEngineLevel(ctx.db) >= ENGINE_LEVELS.work_items && !readOnly) {
+      const candidates = planCandidates(ctx, { sessionId: input.sessionId, botId: input.botId }).map((plan) => plan.id);
+      if (taskId && !candidates.includes(taskId)) candidates.unshift(taskId);
+      ctx.db.run(`UPDATE turns SET filing_candidates = ? WHERE id = ?`, [JSON.stringify(candidates), id]);
     }
     // The trigger belongs to the plan it opened, so the user's own message carries the anchor too —
     // with the ticket it came with, not the one this Bot happens to be on: one line can wake a team.
@@ -124,7 +135,11 @@ export function turnLanding(
   ctx: StoreContext,
   input: { sessionId: string; botId: string; trigger: Message; taskId?: string | null; ticketId?: string | null },
 ): { taskId: string | null; ticketId: string | null } {
-  const { taskId, ticketId } = findTurnTask(ctx, landingInput(ctx, input));
+  const landing = landingInput(ctx, input);
+  if (readEngineLevel(ctx.db) >= ENGINE_LEVELS.work_items) {
+    return { taskId: landing.taskId ?? input.trigger.task_id ?? null, ticketId: landing.ticketId ?? input.trigger.ticket_id ?? null };
+  }
+  const { taskId, ticketId } = findTurnTask(ctx, landing);
   return { taskId, ticketId };
 }
 
@@ -544,20 +559,34 @@ export function claimInterruptContinue(ctx: StoreContext, messageId: string): Tu
   const id = ulid();
   ctx.db.transaction(() => {
     const lineage = ctx.db
-      .query<{ task_id: string | null; ticket_id: string | null }, [string]>(
-        `SELECT task_id, ticket_id FROM turns WHERE id = ?`,
+      .query<{ task_id: string | null; ticket_id: string | null; work_item_id: string | null; mode: TurnMode | null; filing_candidates: string | null; work_dir_changes: number }, [string]>(
+        `SELECT task_id, ticket_id, work_item_id, mode, filing_candidates, work_dir_changes FROM turns WHERE id = ?`,
       )
       .get(cut.id);
+    const deterministic = readEngineLevel(ctx.db) >= ENGINE_LEVELS.work_items;
+    if (deterministic && lineage?.task_id && listLiveTurns(ctx, { botId: cut.bot_id }).some((turn) =>
+      turn.task_id === lineage.task_id && turn.mode !== 'readonly')) {
+      throw new HttpError(409, "already_working", "this Bot already has a live segment on this job");
+    }
+    const queues = deterministic && lineage?.mode !== "desk" && lineage?.mode !== "readonly"
+      && queuePlace(ctx, { botId: cut.bot_id, taskId: lineage?.task_id ?? null }) !== null;
+    const workItem = deterministic && lineage?.mode !== "readonly"
+      ? findOrCreateWorkItem(ctx, { botId: cut.bot_id, sessionId: note.session_id, taskId: lineage?.task_id ?? null, ticketId: lineage?.ticket_id ?? null })
+      : null;
     try {
       ctx.db.run(
         `INSERT INTO turns
-          (id, session_id, bot_id, status, trigger_message_id, task_id, ticket_id, last_activity_at, created_at, updated_at, mode)
-         VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, 'work')`,
-        [id, note.session_id, cut.bot_id, note.id, lineage?.task_id ?? null, lineage?.ticket_id ?? null, now, now, now],
+          (id, session_id, bot_id, status, trigger_message_id, task_id, ticket_id, last_activity_at, created_at, updated_at,
+            mode, work_item_id, filing_candidates, work_dir_changes, end_reason)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, note.session_id, cut.bot_id, queues ? "completed" : "running", note.id, lineage?.task_id ?? null, lineage?.ticket_id ?? null, now, now, now,
+          lineage?.mode ?? "work", workItem?.id ?? null, lineage?.filing_candidates ?? null, lineage?.work_dir_changes ?? 0, queues ? "queued" : null],
       );
     } catch (error) {
       throw heldError(error);
     }
+    if (queues) queueWork(ctx, { botId: cut.bot_id, sessionId: note.session_id, taskId: lineage?.task_id ?? null,
+      ticketId: lineage?.ticket_id ?? null, messageId: note.id, author: note.author, body: note.body, source: "system", kind: "wake", priority: 1 });
     const updated = ctx.db.query<{ id: string }, [string, string]>(
       `UPDATE messages SET source_turn_id = ? WHERE id = ? AND source_turn_id IS NULL RETURNING id`,
     ).get(id, note.id);
