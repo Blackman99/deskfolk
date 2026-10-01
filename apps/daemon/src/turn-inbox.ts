@@ -53,20 +53,34 @@ function heardLine(item: HeardItem, en: boolean): string {
  * turn goes on, and that an answer can wait for the turn's own hand-over: a reply sent now would
  * end the turn and drop the work in hand.
  */
-export function heardNote(locale: Locale, items: readonly HeardItem[]): string {
+/** One heard line as the note names it, with its inbox id when the row has one (`[U12 …]`). */
+function heardEntry(item: HeardItem, en: boolean, label?: string): string {
+  const line = heardLine(item, en);
+  return label ? line.replace(/^【/, `[${label} `).replace("】", "] ") : line;
+}
+
+/**
+ * The user line the loop gets at the start of the hop after something was heard, and between tool
+ * calls when a line of yours arrived mid-hop. It names each line by its inbox id, and asks the Bot
+ * to say what it did with each one in `end_turn`.
+ */
+export function heardNote(locale: Locale, items: readonly (HeardItem & { label?: string })[]): string {
   const en = locale === "en";
-  const lines = items.map((item) => heardLine(item, en));
+  const lines = items.map((item) => heardEntry(item, en, item.label));
+  const deal = en
+    ? "Say what you did with each line of the user's, by its id, in end_turn's inbox: adopted, answered, declined (say why), or deferred."
+    : "用户的话逐条处置：照改 / 已回答 / 不采纳并说明理由（写进 end_turn 的 inbox，带上每条的 id）。";
   if (en) {
     return [
-      "(App note) While you were working, this came in for you. Your turn was not interrupted.",
+      `(App note) ${items.length} line${items.length === 1 ? "" : "s"} came in. This turn was not interrupted.`,
       ...lines,
-      "Decide whether it bears on what you are doing: if it does, take it into account. Anything that needs an answer can be answered in this turn's hand-over.",
+      deal,
     ].join("\n");
   }
   return [
-    "（应用提示）你这一轮干活时有人找你。这一轮没有被打断。",
+    `（应用提示）收件 ${items.length} 条（这一段没有被打断）：`,
     ...lines,
-    "判断它和你手上的活有没有关系：有关就考虑进去；需要回应的，在这一轮交付时一起回应。",
+    deal,
   ].join("\n");
 }
 

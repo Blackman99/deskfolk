@@ -47,6 +47,11 @@ export type Snapshot = {
   holds: Hold[];
   /** Whether stops can be made here: the daemon has reached holds (its snapshot lists them). */
   holdsOn: boolean;
+  /**
+   * Whether a line of yours in a direct reaches the working Bot at its next step (ADR 0040 P4a):
+   * the composer stays open. False for a daemon that would cut the turn off instead.
+   */
+  turnInbox: boolean;
 };
 
 export function emptySnapshot(): Snapshot {
@@ -82,6 +87,7 @@ export function emptySnapshot(): Snapshot {
     annotations: [],
     holds: [],
     holdsOn: false,
+    turnInbox: false,
   };
 }
 
@@ -93,6 +99,7 @@ export function fromRuntimeSnapshot(snapshot: RuntimeSnapshot): Snapshot {
     pendingJudgements: snapshot.sessions.flatMap((session) => session.pending_judgements ?? []),
     holds: snapshot.holds ?? [],
     holdsOn: snapshot.holds !== undefined,
+    turnInbox: snapshot.turnInbox === true,
   };
 }
 

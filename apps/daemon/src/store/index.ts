@@ -22,6 +22,7 @@ import * as approvals from "./approvals";
 import * as bots from "./bots";
 import * as checkBacks from "./check-backs";
 import * as holds from "./holds";
+import * as inbox from "./inbox";
 import * as judgements from "./judgements";
 import * as liveProcs from "./live-procs";
 import * as mcp from "./mcp";
@@ -116,6 +117,8 @@ export type { LiveProc } from "./live-procs";
 export type { WorkEvent } from "./work-events";
 export { QUOTE_MAX } from "./quotes";
 export type { QuoteVia, UserQuote } from "./quotes";
+export { inboxLabel, inboxSeqOf } from "./inbox";
+export type { InboxItem, InboxKind, InboxSource } from "./inbox";
 export { IMPORT_WRITER, REQUIREMENT_PURGE_ABORT, REQUIREMENT_QUOTE_MAX, REQUIREMENT_SUPERSEDE_ABORT } from "./requirements";
 export type { BearingRequirement, Requirement, RequirementScope, RequirementSourceKind, RequirementStatus } from "./requirements";
 export { LEGACY_IMPORTED_KEY } from "./plan-requirements";
@@ -319,6 +322,9 @@ export class Store {
       routines: this.listRoutines(), allowRules: this.listAllowRules(),
       // Only once holds are on: a client reads the field's presence as "stops can be made here".
       ...(readEngineLevel(this.db) >= ENGINE_LEVELS.holds ? { holds: holds.listHolds(this.ctx, { inForce: true }) } : {}),
+      // A line of yours in a direct reaches the working Bot at its next step, so the composer stays
+      // open (ADR 0040 P4a). A client reads the field's presence as that.
+      turnInbox: true as const,
       notificationSummary: notifications.getNotificationSummary(this.ctx),
       notificationPolicy: notifications.getNotificationPolicy(this.ctx),
     };
@@ -475,6 +481,19 @@ export class Store {
   readonly suspendHeldCheckBacks = this.bind(holds.suspendHeldCheckBacks);
   readonly addHoldEffect = this.bind(holds.addEffect);
   readonly reconcileHolds = this.bind(holds.reconcileHolds);
+
+  // A working Bot's inbox (ADR 0040 P4a) ------------------------------------------------------
+  readonly queueInboxItem = this.bind(inbox.queueInboxItem);
+  readonly getInboxItem = this.bind(inbox.getInboxItem);
+  readonly turnInbox = this.bind(inbox.turnInbox);
+  readonly adoptWaitingInbox = this.bind(inbox.adoptWaitingInbox);
+  readonly deliverInboxItems = this.bind(inbox.deliverInboxItems);
+  readonly queuedForTurn = this.bind(inbox.queuedForTurn);
+  readonly releaseTurnInbox = this.bind(inbox.releaseTurnInbox);
+  readonly releaseEndedInbox = this.bind(inbox.releaseEndedInbox);
+  readonly holdInboxItems = this.bind(inbox.holdInboxItems);
+  readonly supersedeInboxItems = this.bind(inbox.supersedeInboxItems);
+  readonly disposeInboxItems = this.bind(inbox.disposeInboxItems);
 
   // Work log -------------------------------------------------------------------------------
   readonly recordWorkEvent = this.bind(workEvents.recordWorkEvent);

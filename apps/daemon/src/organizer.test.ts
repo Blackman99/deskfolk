@@ -497,6 +497,9 @@ async function reportInTheGroup(secondHop: "tool" | "done") {
   const ticket = h.store.listTickets(plan.id)[0]!;
   const groupTurn = h.turnOf(go.id)[0]!;
 
+  // Said once the direct has no live turn of its own: a line said while one works there is heard by
+  // that turn (ADR 0040 P4a) instead of opening the turn this test follows.
+  await until(() => h.store.listLiveTurns({ sessionId: writer.direct_session.id }).length === 0);
   const aside = h.store.insertMessage({ sessionId: writer.direct_session.id, kind: "user", author: "user", body: "周报标题别太长" });
   await h.engine.handleInboundMessage(aside, { fromUser: true });
   await until(() => directSituation !== "");
@@ -532,8 +535,8 @@ test("a line in your direct about the job a Bot is doing in a group is filed the
   expect(h.store.listSpecRevisions(plan.id)[0]).toMatchObject({ source_message_id: aside.id });
 
   // The group turn read it on its next hop, from where it was said.
-  expect(heard()).toContain("你这一轮干活时有人找你");
-  expect(heard()).toContain("【user，在你和用户的私聊里】周报标题别太长");
+  expect(heard()).toContain("收件");
+  expect(heard()).toContain("[U1 user，在你和用户的私聊里] 周报标题别太长");
   expect(h.turnOf(aside.id)).toHaveLength(1);
   expect(h.store.getTurn(groupTurn.id).status).toBe("completed");
 

@@ -106,6 +106,17 @@ test("no live turn is idle regardless of the fork switch", () => {
   expect(composerMode(false, true)).toBe("idle");
 });
 
+test("a direct stays open while a Bot works once the daemon hears lines mid-turn", () => {
+  expect(composerAction({ ...ready, hasLiveTurn: true, turnInbox: true })).toEqual({
+    kind: "send", disabled: false,
+  });
+  expect(composerAction({ ...ready, hasLiveTurn: true, turnInbox: true, hasContent: false })).toEqual({
+    kind: "send", disabled: true,
+  });
+  // A daemon without the inbox still offers only Stop, so a line cannot cut the turn off unseen.
+  expect(composerAction({ ...ready, hasLiveTurn: true }).kind).toBe("stop");
+});
+
 test("a live turn redirects unless the fork switch is on", () => {
   expect(composerMode(true, false)).toBe("redirect");
   expect(composerMode(true, true)).toBe("fork");

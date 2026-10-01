@@ -25,10 +25,13 @@
  *   edit refused instead of sending back the status the hold just changed.
  * - A pending check-back it covers is set aside: `suspended_at`, with `voided_at` beside it so an
  *   older build reads it as cancelled. Lifting the last hold over it brings it back.
+ * - An inbox item waiting for the Bot's next turn that it covers is held (store/inbox.ts); lifting
+ *   the last hold over it puts it back in line, for the next turn of that Bot there to read.
  */
 import type { Hold, HoldEffect, HoldScope, HoldTarget, PlanStatus } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
+import { refreshHeldInbox } from "./inbox";
 import { parsePlanSpec } from "./plan-shape";
 import { recordSpecRevision } from "./plan-spec";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
@@ -282,6 +285,7 @@ export function createHold(
     parkHeldPlans(ctx, undefined, now);
     const suspended = suspendHeldCheckBacks(ctx, now);
     if (suspended.length > 0) addEffect(ctx, id, { suspended_check_backs: suspended });
+    refreshHeldInbox(ctx);
     return getHold(ctx, id);
   })();
 }
@@ -325,6 +329,7 @@ export function liftHold(ctx: StoreContext, id: string, input: { by: unknown; me
     }
     const resumed = resumeUnheldCheckBacks(ctx);
     if (restored.length > 0 || resumed.length > 0) addEffect(ctx, id, { restored_plans: restored, resumed_check_backs: resumed });
+    refreshHeldInbox(ctx);
     return getHold(ctx, id);
   })();
 }

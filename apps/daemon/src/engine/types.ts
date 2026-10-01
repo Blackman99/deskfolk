@@ -12,6 +12,8 @@ import type { HeardItem } from "../turn-inbox";
 
 /** A line a live turn has not read yet: a Bot naming it, or its own check-back coming due. */
 export type InboxEntry = {
+  /** The `inbox_items` row, once the line is persisted (ADR 0040 P4a). */
+  seq?: number;
   item: HeardItem;
   message: Message;
   /** Set for a check-back: where the turn it would have opened lands, should it need opening. */

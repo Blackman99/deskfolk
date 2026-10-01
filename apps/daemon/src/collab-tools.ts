@@ -142,8 +142,9 @@ export async function runCollabTool(
       case "check_back":
         return checkBack(ctx, args);
       case "end_turn":
-        // The engine ends the turn once the hop's calls are done (see executeTools).
-        return { ok: true, data: { ended: true }, emitted: [] };
+        // The engine ends the turn once the hop's calls are done (see executeTools). What the Bot
+        // says it did with each line it read is recorded now, on those inbox rows (ADR 0040 P4a).
+        return endTurn(ctx, args);
       case "list_routines":
         return listRoutines(ctx, args);
       case "create_routine":
@@ -609,6 +610,15 @@ function askUser(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
     return fail("not_a_member", "the user is not in this session; ask where they are");
   }
   return { ok: true, data: {}, waitAsk: { question, spec }, emitted: [] };
+}
+
+/**
+ * The Bot says the turn is over, and what it did with each line it read. The engine ends the turn
+ * once the hop's other calls are done; the dispositions are recorded here, on the inbox rows.
+ */
+function endTurn(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
+  const { recorded, notRecorded } = ctx.store.disposeInboxItems(ctx.turnId, args.inbox);
+  return { ok: true, data: { ended: true, inbox: { recorded, not_recorded: notRecorded } }, emitted: [] };
 }
 
 /**

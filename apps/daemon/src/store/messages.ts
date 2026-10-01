@@ -21,6 +21,7 @@ import { classifyPath } from "../workspace-paths";
 import { prepareFile, commitPreparedFile, discardFile, type FileCommit } from "./files";
 import { getBot, listBots } from "./bots";
 import { notBotOnlyLine } from "./check-backs";
+import { messageDelivery } from "./inbox";
 import { createNotification } from "./notifications";
 import { recordQuote } from "./quotes";
 import {
@@ -512,6 +513,11 @@ export function hydrateMessage(ctx: StoreContext, row: MessageRow): Message {
   const { ask_spec, ask_answer, hidden_from_bots: _hiddenFromBots, bot_only: _botOnly, control, ...rest } = row;
   // Only a line the app read or wrote about your stops carries one, so every other line reads as before.
   const withControl = control ? { control: JSON.parse(control) as MessageControl } : {};
+  if (row.kind === "user") {
+    // A line of yours that reached a Bot while it worked says where it stands in that turn's inbox.
+    const delivery = messageDelivery(ctx, row.id, row.session_id);
+    return { ...rest, ...withControl, ...(delivery ? { delivery } : {}), attachments, reactions };
+  }
   if (row.kind !== "ask") return { ...rest, ...withControl, attachments, reactions };
   return { ...rest, ...withControl, ask: readAskSpec(ask_spec), ask_answer: readAskAnswer(ask_answer), attachments, reactions };
 }

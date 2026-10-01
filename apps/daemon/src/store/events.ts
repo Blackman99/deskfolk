@@ -91,6 +91,13 @@ export function installChangeJournal(ctx: StoreContext): void {
     ctx.db.exec(`CREATE TEMP TRIGGER event_requirement_exclusions_${op} AFTER ${op} ON main.requirement_exclusions
       BEGIN INSERT INTO event_changes VALUES ('tasks', ${row}.task_id, 'UPDATE', ${row}.task_id); END`);
   }
+  // Nor has the inbox (ADR 0040 P4a): where a line of yours stands in a working Bot's inbox is part
+  // of the line (`Message.delivery`), so each change to it is a `message.upsert` of that line.
+  for (const op of ["INSERT", "UPDATE"]) {
+    ctx.db.exec(`CREATE TEMP TRIGGER event_inbox_items_${op} AFTER ${op} ON main.inbox_items
+      WHEN NEW.message_id IS NOT NULL AND NEW.source IN ('user', 'annotation')
+      BEGIN INSERT INTO event_changes VALUES ('messages', NEW.message_id, 'UPDATE', NULL); END`);
+  }
 }
 
 export function committedEvents(ctx: StoreContext): ClientEvent[] {

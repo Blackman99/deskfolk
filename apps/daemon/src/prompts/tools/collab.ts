@@ -207,8 +207,16 @@ export const CHECK_BACK: ToolDef = {
 export const END_TURN: ToolDef = {
   name: "end_turn",
   description: {
-    zh: "结束本轮，不发任何消息。没有新东西要说时用它：对方只是回执、确认或说已对齐，你手里没有对方没见过的新东西，或者只剩「收到」「已对齐」「不再回复」「本轮不发消息」这类话。不要把这类话写成回复或 send_message：那会发出一条消息，在 Bot↔Bot 私聊里还会叫醒对方，两边就这样来回空转。本轮写入的文件照常挂出。它在这一跳的其它工具之后生效，本轮随即结束。",
-    en: "End this turn without posting anything. Use it when there is nothing new to say: the other side only acknowledged, confirmed or said you are aligned, you hold nothing they have not seen, or all that is left is \"got it\", \"aligned\", \"no further reply\" or \"not posting this turn\". Do not write such words as a reply or a send_message: that posts a message, and in a Bot↔Bot direct it wakes the other Bot, so the two of you bounce acknowledgments forever. Files written this turn are still cited. It takes effect after this hop's other tool calls, and the turn ends there.",
+    zh: "结束本轮，不发任何消息。没有新东西要说时用它：对方只是回执、确认或说已对齐，你手里没有对方没见过的新东西，或者只剩「收到」「已对齐」「不再回复」「本轮不发消息」这类话。不要把这类话写成回复或 send_message：那会发出一条消息，在 Bot↔Bot 私聊里还会叫醒对方，两边就这样来回空转。本轮写入的文件照常挂出。这一轮读到的用户的话要在 inbox 里逐条写明处置：adopted 照改、answered 已回答、declined 不采纳（note 写理由）、deferred 稍后再做。它在这一跳的其它工具之后生效，本轮随即结束。",
+    en: "End this turn without posting anything. Use it when there is nothing new to say: the other side only acknowledged, confirmed or said you are aligned, you hold nothing they have not seen, or all that is left is \"got it\", \"aligned\", \"no further reply\" or \"not posting this turn\". Do not write such words as a reply or a send_message: that posts a message, and in a Bot↔Bot direct it wakes the other Bot, so the two of you bounce acknowledgments forever. Files written this turn are still cited. For each line of the user's this turn read, say in inbox what you did with it: adopted, answered, declined (say why in note), or deferred. It takes effect after this hop's other tool calls, and the turn ends there.",
   },
-  properties: {},
+  properties: {
+    inbox: {
+      type: "array",
+      description: {
+        zh: "这一轮读到的用户的话，每条一项：id 是收件提示里的编号（如 U12），disposition 是 adopted、answered、declined、deferred 之一，note 是一句说明，不采纳时必填。",
+        en: "Each line of the user's this turn read: id is the label in the inbox note (U12), disposition is adopted, answered, declined or deferred, and note is one line, required when declining.",
+      },
+    },
+  },
 };

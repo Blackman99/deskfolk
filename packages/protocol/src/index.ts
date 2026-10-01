@@ -1044,6 +1044,44 @@ export type Message = {
    * (ADR 0041), or that the line is its answer to a status question; absent on every other line.
    */
   control?: MessageControl;
+  /**
+   * On a line of yours that reached a Bot while it worked (ADR 0040 P4a): where it stands in that
+   * turn's inbox. Absent on every other line, and from a daemon that predates the inbox.
+   */
+  delivery?: MessageDelivery;
+};
+
+/**
+ * Where an inbox item stands (ADR 0040 P4a). `queued`: waiting for the turn's next step. `held`: a
+ * stop of yours covers it; it waits for the lift. `delivered`: the turn read it, at `hop`. Then what
+ * the Bot said it did with it — `adopted`, `answered`, `declined`, `deferred` — or `unacked` when
+ * the turn ended without saying. `merged` and `superseded` are the app's: taken up some other way.
+ */
+export type InboxState =
+  | "queued"
+  | "held"
+  | "delivered"
+  | "adopted"
+  | "answered"
+  | "declined"
+  | "deferred"
+  | "unacked"
+  | "merged"
+  | "superseded";
+
+/** What a Bot says it did with a line of yours, in `end_turn`'s `inbox`. */
+export type InboxDisposition = "adopted" | "answered" | "declined" | "deferred";
+
+export const INBOX_DISPOSITIONS: readonly InboxDisposition[] = ["adopted", "answered", "declined", "deferred"];
+
+/** A line of yours in a working Bot's inbox, as the line shows it: 已送达 → 第 N 跳读到 → 采纳 / 不采纳. */
+export type MessageDelivery = {
+  bot_id: string;
+  state: InboxState;
+  /** The step of the turn that read it; null until one did. */
+  hop: number | null;
+  /** The Bot's word with what it did: why it declined, say. */
+  note: string | null;
 };
 
 /**
@@ -1822,6 +1860,12 @@ export type RuntimeSnapshot = EventCursor & {
    * predates holds or has not reached their engine level, so a client offers stops only when it is here.
    */
   holds?: Hold[];
+  /**
+   * Present from a daemon whose working Bot hears a line of yours in a direct at its next step
+   * (ADR 0040 P4a). Absent from an older one, where that line would cut the turn off, so a client
+   * keeps the direct's composer to Stop while the Bot works.
+   */
+  turnInbox?: true;
 };
 
 export type SessionSnapshot = EventCursor & {

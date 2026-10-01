@@ -368,7 +368,7 @@ test("in a direct with you, a check-back about the job the Bot is already doing 
     // The live turn reads the reminder at its next hop, and finishes without anything opened beside it.
     h.release();
     await until(() => h.store.getTurn(live.id).status === "completed");
-    const heard = h.seen.at(-1)!.find((m) => m.role === "user" && textOf(m).includes("你这一轮干活时有人找你"));
+    const heard = h.seen.at(-1)!.find((m) => m.role === "user" && textOf(m).includes("收件"));
     expect(heard && textOf(heard)).toContain("看 02 的新渲染出来没有");
     await Bun.sleep(50);
     expect(h.store.listLiveTurns()).toEqual([]);
@@ -394,7 +394,7 @@ test("in a direct with you, a check-back about another job still opens its own t
     h.release();
     await until(() => h.store.getTurn(live.id).status === "completed");
     // The system prompt names the heard line too, so only the loop's own user lines count.
-    expect(h.seen.some((messages) => messages.some((m) => m.role === "user" && textOf(m).includes("你这一轮干活时有人找你")))).toBe(false);
+    expect(h.seen.some((messages) => messages.some((m) => m.role === "user" && textOf(m).includes("收件")))).toBe(false);
   } finally {
     await h.cleanup();
   }

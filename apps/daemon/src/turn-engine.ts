@@ -146,6 +146,8 @@ export type TurnEngineOptions = {
    * session, stay quiet before the Bot that spoke last in it is called back. Tests shorten it.
    */
   planLeftQuietMs?: number;
+  /** A test waits here, between one tool call returning and the next being looked at. */
+  betweenCalls?: (turnId: string, live: { inbox: Array<{ seq?: number; item: { author: string; body: string; checkBack: boolean }; message: import("@real-bot/protocol").Message }> }) => Promise<void> | void;
 };
 
 /** Long enough to still be debugging last week's turn, short enough not to hoard. */
@@ -359,6 +361,12 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     handleParticipation: participation.handleParticipation,
     fireRoutine: (routineId, now) => fire.fireRoutine(routineId, now),
     observeTicket: (turnId, botId, seen) => planWatch.observeTicket(turnId, botId, seen),
+    betweenCalls: options.betweenCalls
+      ? async (turnId) => {
+          const live = core.lives.get(turnId);
+          if (live) await options.betweenCalls!(turnId, live);
+        }
+      : undefined,
   });
 
   const fire = createFire({

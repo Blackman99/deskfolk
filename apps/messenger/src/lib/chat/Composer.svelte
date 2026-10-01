@@ -184,6 +184,7 @@
 		busy: view?.sending ?? false,
 		hasContent,
 		sessionKind: fileDrop ? 'file-drop' : (selected?.kind ?? null),
+		turnInbox: snapshot.turnInbox,
 	}));
 
 	/**

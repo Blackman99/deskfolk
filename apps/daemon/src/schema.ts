@@ -602,6 +602,53 @@ CREATE TABLE IF NOT EXISTS requirement_mentions (
 CREATE INDEX IF NOT EXISTS requirement_mentions_requirement ON requirement_mentions (requirement_id);
 CREATE INDEX IF NOT EXISTS requirement_mentions_quote ON requirement_mentions (quote_id);
 
+-- A working Bot's inbox (收件, ADR 0040 P4a): each line said to a Bot while a turn of its works —
+-- a line of yours in your direct with it, a Bot naming it, its own check-back coming due, the note
+-- a go on of yours sends, your line about its job said in another conversation — from the moment it
+-- arrives to what the Bot said it did with it. The live turn's in-memory list is only a copy of its
+-- queued rows. body_snapshot keeps the words, so clearing a conversation, which nulls message_id and
+-- the turn ids, leaves a queued or held item whole. No foreign keys.
+CREATE TABLE IF NOT EXISTS inbox_items (
+  seq INTEGER PRIMARY KEY AUTOINCREMENT,
+  id TEXT NOT NULL UNIQUE,
+  bot_id TEXT NOT NULL,
+  -- Work items come in a later phase; null for now.
+  work_item_id TEXT,
+  -- Where it is heard: the conversation of the turn it was queued for; null once that conversation
+  -- is deleted.
+  session_id TEXT,
+  -- The turn it was queued for, kept after that turn ends: an item still waiting then is the Bot's
+  -- next turn's in session_id.
+  turn_id TEXT,
+  -- The job it is about: the line's own plan and ticket, else those of the turn it was queued for.
+  task_id TEXT,
+  ticket_id TEXT,
+  message_id TEXT,
+  -- Who said it as the note names them: 'user' for you, a Bot's name, '' for a check-back.
+  author TEXT NOT NULL,
+  body_snapshot TEXT NOT NULL,
+  -- Where it was said, when that is another conversation than session_id, as the hearing Bot calls it.
+  said_in TEXT,
+  source TEXT NOT NULL CHECK (source IN ('user', 'annotation', 'delegation', 'delegation_reply', 'review', 'job', 'timer', 'system', 'peer_note')),
+  kind TEXT NOT NULL CHECK (kind IN ('change', 'question', 'info', 'result', 'wake', 'control_note')),
+  -- 1 yours, 2 a hand-back or a review, 3 everything else.
+  priority INTEGER NOT NULL,
+  -- 0: read only when the Bot next wakes, never waking it; nothing writes 0 yet.
+  wakes INTEGER NOT NULL DEFAULT 1,
+  state TEXT NOT NULL CHECK (state IN ('queued', 'held', 'delivered', 'adopted', 'answered', 'declined', 'deferred', 'unacked', 'merged', 'superseded')),
+  possible_control INTEGER NOT NULL DEFAULT 0,
+  delivered_turn_id TEXT,
+  delivered_hop INTEGER,
+  disposition_note TEXT,
+  created_at TEXT NOT NULL,
+  disposed_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS inbox_items_waiting ON inbox_items (bot_id, session_id, state);
+CREATE INDEX IF NOT EXISTS inbox_items_turn ON inbox_items (turn_id, state);
+CREATE INDEX IF NOT EXISTS inbox_items_delivered ON inbox_items (delivered_turn_id, state);
+CREATE INDEX IF NOT EXISTS inbox_items_message ON inbox_items (message_id);
+
 CREATE TABLE IF NOT EXISTS skills (
   id TEXT PRIMARY KEY,
   bot_id TEXT NOT NULL REFERENCES bots (id),

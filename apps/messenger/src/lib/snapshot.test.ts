@@ -860,7 +860,8 @@ test("memory.upsert replaces by id and keeps the newest first", () => {
 
 test("holds: the snapshot says whether stops can be made, and hold.upsert keeps the list of those in force", () => {
   const base = { event_instance_id: "a".repeat(32), watermark_seq: 0, settings: emptySnapshot().settings, bots: [], sessions: [], approvals: [], mcpServers: [], providers: [], skills: [], memories: [], routines: [], allowRules: [] };
-  expect(fromRuntimeSnapshot(base)).toMatchObject({ holds: [], holdsOn: false });
+  expect(fromRuntimeSnapshot(base)).toMatchObject({ holds: [], holdsOn: false, turnInbox: false });
+  expect(fromRuntimeSnapshot({ ...base, turnInbox: true }).turnInbox).toBe(true);
   const older = aHold({ id: "hold-0" });
   let snapshot = fromRuntimeSnapshot({ ...base, holds: [older] });
   expect(snapshot).toMatchObject({ holds: [older], holdsOn: true });

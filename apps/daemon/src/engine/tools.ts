@@ -85,6 +85,8 @@ export type ToolsDeps = {
   fireRoutine: (routineId: string, now?: Date) => Turn | null;
   /** Late-bound: plan-watch.ts is built after this module. */
   observeTicket: (turnId: string, botId: string, seen: "working" | "delivered") => void;
+  /** A test waits here, between one call returning and the next being looked at. */
+  betweenCalls?: (turnId: string) => Promise<void> | void;
 };
 
 export type Tools = {
@@ -113,7 +115,7 @@ export type Tools = {
 };
 
 export function createTools(deps: ToolsDeps): Tools {
-  const { store, publish, publishMessage, publishTurn, occurred, wake, mcp, admission, streams, lives, active, track, closingCheckForSend, handleParticipation, fireRoutine, observeTicket } = deps;
+  const { store, publish, publishMessage, publishTurn, occurred, wake, mcp, admission, streams, lives, active, track, closingCheckForSend, handleParticipation, fireRoutine, observeTicket, betweenCalls } = deps;
 
   function noteWrittenPaths(live: Live, toolName: string, result: ToolResult): void {
     if (!result.ok) return;
@@ -144,10 +146,34 @@ export function createTools(deps: ToolsDeps): Tools {
     let posted = false;
     let spoke = false;
     let ended = false;
+    // A line of yours that arrived as a change while this hop's calls run: the calls still waiting
+    // do not run, and come back as deferred so the next hop can read the line and call again.
+    // Only a line that arrived after a call in this hop has run counts. One already queued at the
+    // start is read at the top of the next hop; deferring for it would defer every hop.
+    const queuedAtStart = new Set(store.queuedForTurn(turnId).map((row) => row.seq));
+    let deferRest = false;
     // What read_file found this hop; shown after all the hop's tool results (see loop-pictures.ts).
     const pictures: LoopPicture[] = [];
     for (const call of calls) {
       if (!active(turnId, live)) return "wait";
+      if (betweenCalls && live.toolCalls > 0) await betweenCalls(turnId);
+      if (!active(turnId, live)) return "wait";
+      // Between calls: a line of yours that asks for a change postpones the calls still waiting.
+      // A question is read at the next hop and postpones nothing (ADR 0040 P4a).
+      if (store.queuedForTurn(turnId).some((row) => row.priority === 1 && row.kind === "change" && !queuedAtStart.has(row.seq))) deferRest = true;
+      if (deferRest) {
+        live.loop.push({
+          role: "tool",
+          tool_call_id: call.id,
+          content: serializeToolResult(
+            { ok: false, error: { code: "deferred_for_inbox", message: "a line came in; this call waits for the next step" } },
+            store.workspacePath(),
+            workDir,
+          ),
+        });
+        posted = true;
+        continue;
+      }
       live.toolCalls += 1;
       // I3: under a hold a call with an effect does not run, nor the closing check a message gets first.
       let held = hasEffect(live, call.name) && !mayAct(store, turnId);

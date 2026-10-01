@@ -170,12 +170,16 @@ export function createParticipation(deps: ParticipationDeps): Participation {
       const target = bots.find((id) => id !== message.author);
       if (!target) return;
       if (!opts.fromUser && message.kind === "bot" && isNodToANod(message)) return;
-      // Your new message forks by default. With no user in the room, a Bot's next message is
-      // heard inside the other Bot's live turn instead of cloning or ending it — as in a group.
-      const fork = opts.fork !== undefined ? opts.fork : store.isPresent(session.id, USER_MEMBER);
+      // Your new message forks by default, so you can ask two things at once. While the Bot is
+      // already working, a line of yours goes into that turn's inbox instead of cutting it off
+      // (ADR 0040 P4a): the composer stays open, and the turn reads it at its next step. With no
+      // user in the room, a Bot's next message is heard the same way.
+      const withYou = store.isPresent(session.id, USER_MEMBER);
+      const working = store.listLiveTurns({ sessionId: session.id, botId: target }).some((turn) => turn.mode !== "readonly");
+      const fork = opts.fork !== undefined ? opts.fork : withYou && !working;
       const cause = causeOf(message);
       if (fork) startTurn(session.id, target, message, "fork", { cause });
-      else if (!opts.fromUser && message.kind === "bot") hearOrStart(session.id, target, message, { item: inboxItem(message) }, { cause });
+      else if (working || (!opts.fromUser && message.kind === "bot")) hearOrStart(session.id, target, message, { item: inboxItem(message) }, { cause });
       else startTurn(session.id, target, message, "redirect", { cause });
       return;
     }

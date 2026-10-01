@@ -12,6 +12,7 @@ import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { notBotOnlyLine, voidCheckBacks } from "./check-backs";
 import { forgetHoldLines, holdPlansLeavingSession } from "./holds";
+import { forgetInboxSources } from "./inbox";
 import { hydrateMessage, listMessages } from "./messages";
 import { eraseQuotes, forgetQuoteSources, quoteIdsOfSession } from "./quotes";
 import { forgetRequirementsSession } from "./requirements";
@@ -285,6 +286,8 @@ export function deleteSession(ctx: StoreContext, id: string, opts: { eraseQuotes
     forgetHoldLines(ctx, id);
     if (opts.eraseQuotes) eraseQuotes(ctx, quoteIdsOfSession(ctx, id), now);
     forgetQuoteSources(ctx, id, { sessionGone: true });
+    // What waited to be heard here never will be; the rest of the inbox keeps its words (ADR 0040 P4a).
+    forgetInboxSources(ctx, id, { sessionGone: true }, now);
     // Annotations hang on this session's messages from either end: sent here, or about a delivery here.
     ctx.db.run(`DELETE FROM annotations WHERE session_id = ? OR target_session_id = ?`, [id, id]);
     ctx.db.run(
@@ -361,6 +364,8 @@ export function clearSessionMessages(ctx: StoreContext, id: string, opts: { eras
     forgetHoldLines(ctx, id);
     if (opts.eraseQuotes) eraseQuotes(ctx, quoteIdsOfSession(ctx, id), now);
     forgetQuoteSources(ctx, id, { sessionGone: false });
+    // A line still waiting for the Bot's next turn here keeps its words: the next turn reads it (ADR 0040 P4a).
+    forgetInboxSources(ctx, id, { sessionGone: false }, now);
     // Annotations hang on this session's messages from either end: sent here, or about a delivery here.
     ctx.db.run(`DELETE FROM annotations WHERE session_id = ? OR target_session_id = ?`, [id, id]);
     ctx.db.run(

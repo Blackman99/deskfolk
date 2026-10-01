@@ -31,7 +31,9 @@ import { isoNow } from "../ids";
 import type { TurnExecution } from "../store/routing";
 import type { Store } from "../store";
 import { checkInNote, emptyReplyNote, lastHopNote, turnPace } from "../turn-pace";
+import { inboxLabel } from "../store";
 import { heardNote, recentToolCalls, redirectCarryNote, type HeardItem } from "../turn-inbox";
+import { recordHeard } from "./inbox-record";
 import type { WakeWatch } from "../wake";
 import type { Chains } from "./chains";
 import type { Closing } from "./closing";
@@ -280,7 +282,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
         { taskId: current.task_id ?? null, ticketId: current.ticket_id ?? null },
         store.settingsCached().locale,
       )(about);
-      live.inbox.push({ ...entry, item: { ...entry.item, tag: tag || undefined }, message: trigger });
+      live.inbox.push(recordHeard(store, current, { ...entry, item: { ...entry.item, tag: tag || undefined }, message: trigger }));
       return current;
     }
     return startTurn(sessionId, botId, trigger, otherwise, { cause, ...lands });
@@ -325,11 +327,11 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
         ticketId: message.ticket_id ?? null,
       });
       const where = sessionLabel(store, message.session_id, current.bot_id, locale) ?? undefined;
-      live.inbox.push({
+      live.inbox.push(recordHeard(store, current, {
         item: { author, body, checkBack: false, tag: tag || undefined, where },
         message,
         elsewhere: true,
-      });
+      }));
       got.push(current);
     }
     return got;
@@ -444,6 +446,13 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
             }
           } finally {
             lives.delete(turn.id);
+            // Lines of yours this turn read and never answered for are unacked; what it never read
+            // waits for the next turn here (ADR 0040 P4a).
+            try {
+              store.releaseTurnInbox(turn.id);
+            } catch {
+              // the store is already gone with the turn
+            }
             reopenForUnheard(turn, live);
             chainTurnEnded(turn.id);
           }
@@ -617,9 +626,21 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
         live.loop.push({ role: "user", content: lastHopNote(target.locale) });
       }
       // What was said to this Bot since the last hop, read out now: the turn goes on with it.
+      // What was said to this Bot since the last hop. The tool loop delivers at the end of a hop, so
+      // this only reads what arrived with no hop between — before the first one, or while a hop waited.
       if (live.inbox.length > 0) {
         const heard = live.inbox.splice(0);
-        live.loop.push({ role: "user", content: heardNote(target.locale, heard.map((entry) => entry.item)) });
+        const seqs = heard.flatMap((entry) => (entry.seq === undefined ? [] : [entry.seq]));
+        const { delivered } = seqs.length > 0 ? store.deliverInboxItems(seqs, turnId, live.hops) : { delivered: [] };
+        const kept = new Set(delivered.map((row) => row.seq));
+        const shown = heard.filter((entry) => entry.seq === undefined || kept.has(entry.seq));
+        if (shown.length > 0) {
+          const labels = new Map(delivered.map((row) => [row.seq, inboxLabel(row)]));
+          live.loop.push({
+            role: "user",
+            content: heardNote(target.locale, shown.map((entry) => ({ ...entry.item, ...(entry.seq !== undefined ? { label: labels.get(entry.seq) } : {}) }))),
+          });
+        }
       }
       const listed = mcp ? await mcp.listForTurn() : { tools: [], guides: [] };
       if (!active(turnId, live)) return;

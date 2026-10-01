@@ -426,7 +426,7 @@ describe("turn engine on the local API", () => {
     sub.close();
   });
 
-  test("an explicit fork: false user message in the same direct redirects the live turn", async () => {
+  test("an explicit fork: false user message in the same direct is heard by the live turn", async () => {
     let n = 0;
     let releaseFirst = () => {};
     const firstHeld = new Promise<void>((resolve) => {
@@ -468,30 +468,17 @@ describe("turn engine on the local API", () => {
       headers: auth(h),
       body: JSON.stringify({ body: "two", fork: false }),
     });
-    await waitFor(
-      sub.events,
-      (e) => e.event === "turn.upsert" && e.id === first.id && e.status === "redirected",
-    );
-    const second = await waitFor(
-      sub.events,
-      (e) =>
-        e.event === "turn.upsert" &&
-        e.status === "running" &&
-        e.bot_id === botId &&
-        e.id !== first.id,
-    );
-    await waitFor(
-      sub.events,
-      (e) => e.event === "message.created" && e.kind === "bot" && e.body === "second",
-    );
-    await waitFor(
-      sub.events,
-      (e) => e.event === "turn.upsert" && e.id === second.id && e.status === "completed",
-    );
-    expect(sub.events.some((e) => e.event === "message.created" && e.kind === "bot" && e.body === "first")).toBe(
-      false,
-    );
+    // A line of yours while the Bot works is heard by that turn (ADR 0040 P4a), not a redirect.
     releaseFirst();
+    await waitFor(
+      sub.events,
+      (e) => e.event === "message.created" && e.kind === "bot" && e.body === "first",
+    );
+    await waitFor(
+      sub.events,
+      (e) => e.event === "turn.upsert" && e.id === first.id && e.status === "completed",
+    );
+    expect(sub.events.some((e) => e.event === "turn.upsert" && e.status === "redirected")).toBe(false);
     sub.close();
   });
 
@@ -1368,8 +1355,8 @@ describe("turn engine on the local API", () => {
       (e) => e.event === "message.created" && e.kind === "bot" && e.body === "heard the handoff" && e.author === writer.id,
     );
     expect(said.turn_id).toBe(first.id);
-    expect(heardNote).toContain("你这一轮干活时有人找你");
-    expect(heardNote).toContain("【Researcher】〔规划「另一件事」〕@Writer take this");
+    expect(heardNote).toContain("收件 1 条（这一段没有被打断）");
+    expect(heardNote).toContain("[B1 Researcher] 〔规划「另一件事」〕@Writer take this");
     await waitFor(sub.events, (e) => e.event === "turn.upsert" && e.id === first.id && e.status === "completed");
     expect(sub.events.some((e) => e.event === "turn.upsert" && e.bot_id === writer.id && e.status === "redirected")).toBe(false);
     expect(new Set(sub.events.filter((e) => e.event === "turn.upsert" && e.bot_id === writer.id).map((e) => String(e.id)))).toEqual(new Set([String(first.id)]));

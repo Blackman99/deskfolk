@@ -19,6 +19,11 @@ export function composerAction(state: {
   busy: boolean;
   hasContent: boolean;
   sessionKind?: SessionKind | "file-drop" | null;
+  /**
+   * The daemon hears a line of yours in a direct at the working Bot's next step (ADR 0040 P4a), so
+   * the box stays open and Stop is its own control. Absent, a direct with a live turn offers only Stop.
+   */
+  turnInbox?: boolean;
 }): ComposerAction {
   const group = state.sessionKind === "group";
   if (state.sessionKind === "file-drop") {
@@ -27,7 +32,7 @@ export function composerAction(state: {
       disabled: !state.connected || !state.hasSession || state.busy || !state.hasContent,
     };
   }
-  if (state.hasSession && state.hasLiveTurn && !group) {
+  if (state.hasSession && state.hasLiveTurn && !group && !state.turnInbox) {
     return { kind: "stop", disabled: !state.connected };
   }
   return {

@@ -31,7 +31,7 @@ describe("prompts", () => {
     expect(text).toContain("本轮没有新工作");
     expect(text).toContain("主转录里不要留痕迹");
     expect(text).toContain("会让对方必须下场（对方正在干活时不会被打断，它下一跳就会读到你这句）");
-    expect(text).toContain("你这一轮干活时有人找你");
+    expect(text).toContain("收件");
     // Claims are held against what was run, and something to run comes with how to start it.
     expect(text).toContain("说做过的必须真做过");
     expect(text).toContain("写「未验证」和原因");
@@ -339,7 +339,7 @@ describe("prompts", () => {
   test("a Bot with nothing to say ends the turn with end_turn instead of a sign-off line", () => {
     for (const locale of ["zh", "en"] as const) {
       const end = builtinTools(locale).find((t) => t.function.name === "end_turn")!;
-      expect(end.function.parameters.properties).toEqual({});
+      expect(Object.keys(end.function.parameters.properties ?? {})).toEqual(["inbox"]);
       expect(end.function.description).toContain(locale === "zh" ? "结束本轮，不发任何消息" : "End this turn without posting anything");
       expect(end.function.description).toContain(locale === "zh" ? "在 Bot↔Bot 私聊里还会叫醒对方" : "in a Bot↔Bot direct it wakes the other Bot");
     }

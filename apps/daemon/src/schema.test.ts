@@ -40,6 +40,7 @@ describe("schema", () => {
       "file_commits",
       "file_stages",
       "holds",
+      "inbox_items",
       "judgements",
       "live_procs",
       "mcp_servers",

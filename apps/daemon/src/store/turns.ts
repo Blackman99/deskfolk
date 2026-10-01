@@ -11,6 +11,7 @@ import {
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { isHeldAbort } from "./holds";
+import { releaseEndedInbox } from "./inbox";
 import { getMessage } from "./messages";
 import {
   createNotification,
@@ -265,6 +266,8 @@ export function recoverInterruptedTurns(ctx: StoreContext, previousRun: string |
   // What a crash or a restart in place left live was cut off by it, the same as what a quit ends.
   noteTurnsCutByShutdown(ctx, previousRun);
   interruptRunningTurns(ctx);
+  // Those turns read lines and never answered for them; with the turns over, the lines are unacked.
+  releaseEndedInbox(ctx);
 }
 
 /**
