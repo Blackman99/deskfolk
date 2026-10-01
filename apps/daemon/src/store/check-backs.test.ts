@@ -72,6 +72,107 @@ describe("plan call-back reply deduplication", () => {
   });
 });
 
+test("real delegation waits never appear in clock-due appointments", () => {
+  const { store, writer, reviewer, group, turn } = fixture();
+  try {
+    store.db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('engine_level', '3')");
+    store.setTurnStatus(turn.id, "completed");
+    const source = store.createTurn({ sessionId: group.id, botId: writer.id, triggerMessageId: turn.trigger_message_id, taskId: turn.task_id });
+    const delegated = store.delegateWork({ fromTurnId: source.id, toBotId: reviewer.id, ask: "等真实交回", expects: "answer", now: "2026-09-29T08:00:00.000Z" });
+    expect(store.dueCheckBacks(new Date("2026-10-06T08:00:00.000Z"))).toEqual([]);
+    expect(store.getCheckBack(delegated.wait!.id)).toMatchObject({ fired_at: null, voided_at: null });
+  } finally { store.close(); }
+});
+
+test("booking or replacing a timer never voids a real delegation wait at any engine level", () => {
+  for (const level of [0, 1, 2, 3]) {
+    const { store, writer, reviewer, group, turn } = fixture();
+    try {
+      store.db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('engine_level', '3')");
+      store.setTurnStatus(turn.id, "completed");
+      const source = store.createTurn({ sessionId: group.id, botId: writer.id, triggerMessageId: turn.trigger_message_id, taskId: turn.task_id });
+      const delegated = store.delegateWork({ fromTurnId: source.id, toBotId: reviewer.id, ask: "等交回", expects: "answer", now: "2026-09-29T08:00:00.000Z" });
+      store.db.run("UPDATE settings SET value = ? WHERE key = 'engine_level'", [String(level)]);
+      const first = store.scheduleCheckBack({ botId: writer.id, sessionId: group.id, turnId: source.id, note: "其他回看", afterMinutes: 5, now: new Date("2026-09-29T08:01:00.000Z") });
+      expect(first.replaced).toBe(false);
+      const second = store.scheduleCheckBack({ botId: writer.id, sessionId: group.id, turnId: source.id, note: "替换回看", afterMinutes: 5, now: new Date("2026-09-29T08:02:00.000Z") });
+      expect(second.replaced).toBe(true);
+      expect(store.getCheckBack(first.row.id).voided_at).toBe("2026-09-29T08:02:00.000Z");
+      expect(store.getCheckBack(delegated.wait!.id)).toMatchObject({ fired_at: null, voided_at: null, suspended_at: null });
+      expect(store.dueCheckBacks(new Date("2026-10-06T08:00:00.000Z")).map((row) => row.id)).toEqual([second.row.id]);
+    } finally { store.close(); }
+  }
+});
+
+test("engine 3 timers replace only the exact work across sessions while levels 0–2 keep the legacy session slot", () => {
+  for (const level of [0, 1, 2, 3]) {
+    const { store, writer, reviewer, group, turn } = fixture();
+    try {
+      store.db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('engine_level', ?)", [String(level)]);
+      const planA = store.openTask({ sessionId: group.id, title: "任务甲" });
+      const planB = store.openTask({ sessionId: group.id, title: "任务乙" });
+      const ticketA = store.createTicket({ taskId: planA.id, title: "甲分件" });
+      const siblingA = store.createTicket({ taskId: planA.id, title: "甲其他分件" });
+      store.setTurnStatus(turn.id, "completed");
+      const sourceA = store.createTurn({ sessionId: group.id, botId: writer.id, triggerMessageId: turn.trigger_message_id, taskId: planA.id, ticketId: ticketA.id });
+      const first = store.scheduleCheckBack({ botId: writer.id, sessionId: group.id, turnId: sourceA.id, note: "甲", afterMinutes: 5, now: new Date("2026-09-29T08:00:00.000Z") });
+      store.setTurnStatus(sourceA.id, "completed");
+      const sourceB = store.createTurn({ sessionId: group.id, botId: writer.id, triggerMessageId: turn.trigger_message_id, taskId: planB.id });
+      const other = store.scheduleCheckBack({ botId: writer.id, sessionId: group.id, turnId: sourceB.id, note: "乙", afterMinutes: 5, now: new Date("2026-09-29T08:01:00.000Z") });
+      expect(other.replaced).toBe(level < 3);
+      expect(store.getCheckBack(first.row.id).voided_at).toBe(level < 3 ? "2026-09-29T08:01:00.000Z" : null);
+      store.setTurnStatus(sourceB.id, "completed");
+      const siblingTurn = store.createTurn({ sessionId: group.id, botId: writer.id, triggerMessageId: turn.trigger_message_id, taskId: planA.id, ticketId: siblingA.id });
+      const sibling = store.scheduleCheckBack({ botId: writer.id, sessionId: group.id, turnId: siblingTurn.id, note: "甲另一个任务", afterMinutes: 5 });
+      expect(sibling.replaced).toBe(level < 3);
+      store.setTurnStatus(siblingTurn.id, "completed");
+      const direct = store.findDirectSession(USER_MEMBER, writer.id)!;
+      const trigger = store.postMessage(direct.id, { body: "继续甲" });
+      const continuing = store.createTurn({ sessionId: direct.id, botId: writer.id, triggerMessageId: trigger.id, taskId: planA.id, ticketId: ticketA.id });
+      const repeated = store.scheduleCheckBack({ botId: writer.id, sessionId: direct.id, turnId: continuing.id, note: "甲的新回看", afterMinutes: 10 });
+      expect(repeated.replaced).toBe(level >= 3);
+      if (level >= 3) {
+        expect(first.row.work_item_id).toBeString();
+        expect(repeated.row.work_item_id).toBe(first.row.work_item_id);
+        expect(repeated.row.dedupe_key).toBe(first.row.dedupe_key);
+        expect(store.getCheckBack(other.row.id).voided_at).toBeNull();
+        expect(store.getCheckBack(sibling.row.id).voided_at).toBeNull();
+      }
+      void reviewer;
+    } finally { store.close(); }
+  }
+});
+
+test("engine 3 returns an unread fired timer even if another job in the same conversation has booked", () => {
+  const { store, writer, group, turn } = fixture();
+  try {
+    store.db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('engine_level', '3')");
+    store.setTurnStatus(turn.id, "completed");
+    const a = store.createTurn({ sessionId: group.id, botId: writer.id, triggerMessageId: turn.trigger_message_id, taskId: turn.task_id });
+    const first = store.scheduleCheckBack({ botId: writer.id, sessionId: group.id, turnId: a.id, note: "未读的回看", afterMinutes: 5, now: new Date("2026-09-29T08:00:00.000Z") });
+    store.claimCheckBack(first.row.id, new Date("2026-09-29T08:05:00.000Z"));
+    const line = store.insertMessage({ sessionId: group.id, kind: "system", author: writer.id, body: "回看：未读的回看" });
+    store.recordCheckBackLine(first.row.id, line.id);
+    const otherPlan = store.openTask({ sessionId: group.id, title: "另一个规划" });
+    const b = store.createTurn({ sessionId: group.id, botId: writer.id, triggerMessageId: turn.trigger_message_id, taskId: otherPlan.id });
+    store.scheduleCheckBack({ botId: writer.id, sessionId: group.id, turnId: b.id, note: "另一规划", afterMinutes: 5 });
+    expect(store.returnUnreadCheckBack(line.id, "2026-09-29T08:06:00.000Z")).toBe(true);
+    expect(store.getCheckBack(first.row.id)).toMatchObject({ fired_at: null, voided_at: null });
+  } finally { store.close(); }
+});
+
+test("engine 3 timer lineage refuses a turn owned by a different Bot before replacing any wait", () => {
+  const { store, writer, reviewer, group, turn } = fixture();
+  try {
+    store.db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('engine_level', '3')");
+    const their = store.createTurn({ sessionId: group.id, botId: reviewer.id, triggerMessageId: turn.trigger_message_id, taskId: turn.task_id });
+    const first = store.scheduleCheckBack({ botId: writer.id, sessionId: group.id, turnId: turn.id, note: "保留原来的回看", afterMinutes: 5 });
+    expect(() => store.scheduleCheckBack({ botId: writer.id, sessionId: group.id, turnId: their.id, note: "冒用其他工作", afterMinutes: 5 })).toThrow("turn");
+    expect(store.getCheckBack(first.row.id).voided_at).toBeNull();
+    expect(store.listPendingCheckBacks(group.id)).toHaveLength(1);
+  } finally { store.close(); }
+});
+
 describe("booking a check-back", () => {
   test("lands on the turn's job, due after the minutes asked for, and is the Bot's one pending appointment", () => {
     const { store, writer, group, turn } = fixture();

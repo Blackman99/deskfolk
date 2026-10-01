@@ -31,6 +31,13 @@ type CopyShape<T> = T extends (...args: infer A) => string
     : string;
 
 const zh = {
+  delegation: {
+    title: "委派记录", request: "委派：", result: "交回：", waitingSuffix: "（等结果）", heldSuffix: "（被叫停）",
+    waiting: (name: string) => `等待：${name}交回结果`, held: "等待已挂起：被叫停",
+    open: "未交回", replied: "已交回", cancelled: "已取消", since: "开始等待", due: "约定时间",
+    expects: { deliverable: "交付", review: "审查", answer: "答复" },
+    loadFailed: "未能载入委派记录。", retry: "重试",
+  },
   groupLead: {
     title: "群负责人", confirmed: (name: string) => `已确认负责人：${name}`, unconfirmed: "还没有确认负责人；未点名的消息仍按参与判断。",
     suggested: (name: string, count: number) => `建议 ${name}：近 7 天有 ${count} 次交接。`, suggestionHint: "只是建议，你确认后才生效。暂不设只收起本次建议，不改负责人。",
@@ -1580,6 +1587,13 @@ const zh = {
 };
 
 const en: CopyShape<typeof zh> = {
+  delegation: {
+    title: "Delegation records", request: "Delegated: ", result: "Returned: ", waitingSuffix: " (waiting for result)", heldSuffix: " (held)",
+    waiting: (name: string) => `Waiting: result from ${name}`, held: "Wait suspended: held",
+    open: "Open", replied: "Replied", cancelled: "Cancelled", since: "Waiting since", due: "Due",
+    expects: { deliverable: "Deliverable", review: "Review", answer: "Answer" },
+    loadFailed: "Could not load delegation records.", retry: "Retry",
+  },
   groupLead: {
     title: "Group lead", confirmed: (name: string) => `Confirmed lead: ${name}`, unconfirmed: "No confirmed lead; unaddressed messages still use participation judgement.",
     suggested: (name: string, count: number) => `Suggested: ${name}, with ${count} handoffs in the last 7 days.`, suggestionHint: "Only a suggestion, effective after you confirm. Not now dismisses this suggestion without changing the lead.",

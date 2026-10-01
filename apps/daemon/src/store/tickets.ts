@@ -9,6 +9,7 @@
 import type { Ticket, TicketStatus } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
+import { recordWorkEvent } from "./work-events";
 import { takeCodePoints } from "../text";
 import { type StoreContext } from "./shared";
 import { getTask, isReservedTaskPath, slugify, taskTitle } from "./tasks";
@@ -135,7 +136,7 @@ export function patchTicket(
  */
 export function observeTicketWork(
   ctx: StoreContext,
-  input: { ticketId: string; botId: string; seen: "working" | "delivered"; now?: Date },
+  input: { ticketId: string; botId: string; turnId?: string; seen: "working" | "delivered"; now?: Date },
 ): Ticket | null {
   const row = ctx.db.query<Ticket, [string]>(`SELECT * FROM tickets WHERE id = ?`).get(input.ticketId);
   if (!row) return null;
@@ -144,7 +145,18 @@ export function observeTicketWork(
   const status = moves[row.status];
   const worker = row.worker ?? input.botId;
   if (!status && worker === row.worker) return null;
-  return patchTicket(ctx, row.id, { status: status ?? row.status, worker }, { now: input.now });
+  return ctx.commit(() => {
+    const next = patchTicket(ctx, row.id, { status: status ?? row.status, worker }, { now: input.now });
+    if (status && input.turnId) {
+      const turn = ctx.db.query<{ bot_id: string; task_id: string | null; ticket_id: string | null; work_item_id: string | null }, [string]>(
+        "SELECT bot_id, task_id, ticket_id, work_item_id FROM turns WHERE id = ?").get(input.turnId);
+      if (turn?.bot_id === input.botId && turn.task_id === row.task_id && turn.ticket_id === row.id) {
+        recordWorkEvent(ctx, { kind: "ticket.stage_changed", actor: "app", botId: input.botId, taskId: row.task_id, ticketId: row.id,
+          turnId: input.turnId, payload: { work_item_id: turn.work_item_id, before: row.status, after: status, source: "observed_work" } });
+      }
+    }
+    return next;
+  });
 }
 
 export function ticketOfTurn(ctx: StoreContext, turnId: string): string | null {

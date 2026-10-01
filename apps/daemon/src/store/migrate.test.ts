@@ -212,7 +212,7 @@ describe("a database an earlier build created", () => {
           .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'turns' ORDER BY name")
           .all()
           .map((row) => row.name);
-        expect(triggers).toEqual(["turns_held_insert", "turns_held_update"]);
+        expect(triggers).toEqual(["turns_end_reason_insert", "turns_end_reason_update", "turns_held_insert", "turns_held_update"]);
         expect(reopened.listWorkEvents()).toEqual([]);
         // Opening an older database raises neither the engine level nor the floor by itself.
         expect(reopened.capabilities().engine_level).toBe(0);

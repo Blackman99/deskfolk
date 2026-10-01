@@ -226,8 +226,12 @@ export function createClosing(deps: ClosingDeps): Closing {
       return;
     }
     const current = store.getTurn(turnId);
-    if (live && !live.spoke && live.writtenPaths.length > 0) {
+    const remaining = live ? store.uncitedTurnPaths(turnId, live.writtenPaths) : [];
+    if (live && remaining.length > 0) {
+      const paths = live.writtenPaths;
+      live.writtenPaths = remaining;
       publishCitedBotMessage(current, live, turnId, "");
+      live.writtenPaths = paths;
     }
     if (live?.spoke && live.writtenPaths.length > 0) observeTicket(turnId, current.bot_id, "delivered");
     const completed = store.setTurnStatus(turnId, "completed", executionOf(live));

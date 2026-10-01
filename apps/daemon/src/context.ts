@@ -182,6 +182,7 @@ export function assembleTurnMessages(
   const connectedMcp = new Set((input.mcpGuides ?? []).map((guide) => guide.name.toLowerCase()));
   const system = turnSystemPrompt({
     locale: input.locale,
+    engineLevel: store.capabilities().engine_level,
     name: bot.name,
     duties: bot.duties,
     boundaries: bot.boundaries,

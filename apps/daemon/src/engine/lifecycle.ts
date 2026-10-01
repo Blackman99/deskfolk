@@ -775,7 +775,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
         loop: live.loop,
         mcpGuides: listed.guides,
       });
-      const offered = pace === "last" ? [] : [...builtinTools(target.locale), ...listed.tools];
+      const offered = pace === "last" ? [] : [...builtinTools(target.locale, store.capabilities().engine_level), ...listed.tools];
       // A read-only turn is not shown what it may not call (ADR 0040 I3); the gate refuses them anyway.
       const tools = current.mode === "readonly" ? readOnlyTools(offered, listed.guides) : offered;
       live.toolNames = new Set(tools.map((tool) => tool.function.name));
@@ -925,6 +925,17 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       if (bounce) {
         live.loop.push({ role: "user", content: bounce });
         continue;
+      }
+      if (store.capabilities().engine_level >= ENGINE_LEVELS.delegation) {
+        const finished = store.finishWork({ turnId, reason: "done" }, { pureText: true });
+        if (finished.bounce) {
+          live.loop.push({ role: "user", content: finished.bounce });
+          continue;
+        }
+        if (finished.notice || finished.ask) {
+          publishMessage(store.insertMessage({ sessionId: current.session_id, turnId, kind: "system", author: current.bot_id,
+            body: finished.ask?.body ?? finished.notice!.body, hiddenFromBots: true }));
+        }
       }
       const message = publishCitedBotMessage(current, live, turnId, rawBody);
       if (message && live.writtenPaths.length > 0) observeTicket(turnId, current.bot_id, "delivered");

@@ -88,6 +88,19 @@ test('P4b terms share collaboration anchors and paired behavior without implemen
   }
 });
 
+test('partial P4c delegation has paired canonical details without implying submission or supervision', () => {
+  for (const lang of ['zh', 'en'] as const) {
+    const doc = getManifestoTopic('collaboration', lang);
+    expect(doc.toc.some((entry) => entry.id === 'term-delegation')).toBe(true);
+    expect(doc.contentHtml.split('id="behavior-delegation"').length - 1).toBe(1);
+    expect(getTermTargets()['term-delegation']).toBe('/manifesto/collaboration');
+    expect(doc.contentHtml).toContain('delegation_wait');
+    expect(doc.contentHtml).toContain('implicitSubmission.implemented=false');
+    const direct = getManifestoTopic('conversations', lang).contentHtml;
+    expect(direct.split('id="behavior-direct"').length - 1).toBe(1);
+  }
+});
+
 test('folded glossary fragments resolve and legacy organizer URLs retain their destination', () => {
   for (const lang of ['zh', 'en'] as const) {
     const pages = MANIFESTO_TOPICS.map((topic) => {

@@ -346,7 +346,7 @@ export function createPlanWatch(deps: PlanWatchDeps): PlanWatch {
     try {
       const ticketId = store.ticketOfTurn(turnId);
       if (!ticketId) return;
-      const moved = store.observeTicketWork({ ticketId, botId, seen });
+      const moved = store.observeTicketWork({ ticketId, botId, turnId, seen });
       if (moved) renderMirrors(moved.task_id);
     } catch {
       // a ticket or turn gone meanwhile has nothing left to move

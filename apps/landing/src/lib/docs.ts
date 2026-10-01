@@ -58,6 +58,7 @@ export const TERM_GROUPS: Record<ManifestoTopic, readonly string[]> = {
   conversations: ['Group', 'Direct', 'Session', 'Origin', 'Thread', 'Reaction', 'Judgement log'],
   collaboration: [
     'Handoff',
+    'Delegation',
     'Participation',
     'Judgement',
     'Mention',

@@ -57,7 +57,7 @@ test("with no daemon running it writes the opt-in without opening a Store, and t
   expect(out[0]).toContain("the next start raises the engine level");
   // Written, not raised: the capabilities it prints are the database's as it stands.
   expect(JSON.parse(out[1]!)).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: 0, features: [] });
-  expect(JSON.parse(optInRow(dir)!)).toMatchObject({ by: "script" });
+  expect(JSON.parse(optInRow(dir)!)).toMatchObject({ by: "script", level: ENGINE_LEVEL });
 
   const next = new Store({ filename: stateDbPath(dir) });
   // The script never opened a Store, so the clean stop before it still reads as clean.
@@ -68,6 +68,25 @@ test("with no daemon running it writes the opt-in without opening a Store, and t
   expect(lines[0]).toContain("(script, ");
   expect(next.capabilities().engine_level).toBe(ENGINE_LEVEL);
   next.close();
+});
+
+test.each([1, 2])("an opt-in accepting only historical engine level %s cannot authorize the current level past an older installed app", (acceptedLevel) => {
+  const dir = dataFolder();
+  const db = new Database(stateDbPath(dir));
+  db.run("INSERT INTO settings (key, value) VALUES ('engine_gate_optin', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    [JSON.stringify({ at: '2026-01-01T00:00:00.000Z', by: 'script', level: acceptedLevel })]);
+  db.run("INSERT INTO settings (key, value) VALUES ('engine_level', ?), ('schema_min_compatible', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [String(acceptedLevel), String(acceptedLevel)]);
+  db.close();
+  const next = new Store({ filename: stateDbPath(dir) });
+  try {
+    const refused = next.raiseEngineLevel({ version: '0.1.0-rc.11' });
+    expect(refused.raised).toBe(false);
+    expect(refused.level).toBe(acceptedLevel);
+    expect(refused.refused).not.toBeNull();
+    expect(next.capabilities().engine_level).toBe(acceptedLevel);
+    expect(next.engineGateOptIn()?.level).toBe(acceptedLevel);
+    expect(next.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'schema_min_compatible'").get()?.value).toBe(String(acceptedLevel));
+  } finally { next.close(); }
 });
 
 test("--clear with no daemon running takes the opt-in back and leaves the level where it is", async () => {
@@ -81,7 +100,7 @@ test("--clear with no daemon running takes the opt-in back and leaves the level 
   const { out, io: streams } = io();
   expect(await run(["--clear", "--data-dir", dir], streams)).toBe(0);
   expect(optInRow(dir)).toBeNull();
-  expect(JSON.parse(out[1]!)).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds", "work_items"] });
+  expect(JSON.parse(out[1]!)).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds", "work_items", "delegation"] });
 });
 
 test("a data folder with no database yet is left alone", async () => {
@@ -107,7 +126,7 @@ test("with a daemon running it asks that daemon, which raises at once", async ()
   const accepted = io();
   expect(await run(["--accept-older-app", "--data-dir", dir], accepted.io)).toBe(0);
   expect(accepted.out[0]).toContain("raised the engine level now");
-  expect(JSON.parse(accepted.out[1]!)).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds", "work_items"] });
+  expect(JSON.parse(accepted.out[1]!)).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds", "work_items", "delegation"] });
   expect(store.engineGateOptIn()?.by).toBe("script");
 
   const cleared = io();

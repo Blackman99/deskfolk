@@ -415,6 +415,7 @@ export function createStop(deps: StopDeps): Stop {
    */
   function handedOn(scope: HoldScope, scopeId: string | null): HoldTarget[] {
     if (scope === "global" || scopeId === null) return [];
+    if (store.capabilities().engine_level >= ENGINE_LEVELS.delegation) return store.delegationCascadeTargets({ scope, id: scopeId });
     const candidates = store.db
       .query<{ id: string }, []>(
         `SELECT id FROM turns WHERE status IN ('running', 'waiting_approval', 'waiting_ask')

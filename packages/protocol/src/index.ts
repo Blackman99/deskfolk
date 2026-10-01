@@ -921,6 +921,26 @@ export type GroupLeadState = {
 
 export type ConfirmGroupLeadRequest = { bot_id: string | null; confirmed: true };
 
+/** The durable handoff projected for the plan and its existing Bot↔Bot direct, not guessed from prose. */
+export type DelegationView = {
+  id: string;
+  task_id: string;
+  ticket_id: string | null;
+  thread_session_id: string;
+  from_bot_id: string;
+  to_bot_id: string;
+  ask: string;
+  expects: "deliverable" | "review" | "answer";
+  status: "open" | "replied" | "cancelled";
+  part_keys: string[];
+  requirement_ids: string[];
+  created_at: string;
+  request_message_id: string | null;
+  result_message_id: string | null;
+  reply: { body: string; created_at: string; ref: string | null } | null;
+  wait: { state: "waiting" | "held"; since: string; due_at: string | null } | null;
+};
+
 export type SessionParticipant = {
   member: typeof USER_MEMBER | string;
   joined_at: string;
@@ -2084,6 +2104,7 @@ export type ClientEvent =
   | ({ event: "bot.upsert"; occurred_at: string } & Bot & { deleted_at: string | null })
   | ({ event: "session.upsert"; occurred_at: string } & SessionSummary)
   | ({ event: "group_lead.changed"; occurred_at: string } & GroupLeadState)
+  | ({ event: "delegation.changed"; occurred_at: string } & DelegationView)
   | { event: "session.removed"; occurred_at: string; id: string }
   | { event: "session.cleared"; occurred_at: string; id: string }
   | ({ event: "message.created" | "message.upsert"; occurred_at: string } & Message)

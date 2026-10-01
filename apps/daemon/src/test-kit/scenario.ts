@@ -167,7 +167,7 @@ export function checkBack(afterMinutes: number, note: string): ScriptedCall {
 }
 
 export function endTurn(): ScriptedCall {
-  return tool("end_turn");
+  return tool("end_turn", { reason: "nothing_new" });
 }
 
 /** A tool of the media server: `submit_video`, `check_video` or `generate_image`. */
@@ -317,6 +317,8 @@ export type ScenarioOptions = {
   holds?: boolean;
   /** Takes the engine level up to work items (ADR 0040 P4b), which includes holds. */
   workItems?: boolean;
+  /** Activates P4c's durable delegation and end-contract engine on this fixture only. */
+  delegation?: boolean;
 };
 
 export type Scenario = {
@@ -482,11 +484,12 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
     endpoint_default_model: "scenario",
     ...(options.locale ? { locale: options.locale } : {}),
   });
-  if (options.workItems) store.raiseEngineLevel(null);
-  else if (options.holds) {
-    // Holds fixtures pin P2; later levels change the filing and wake paths they exercise.
+  // Phase fixtures pin their own level rather than taking the database up to this build's: later
+  // levels change the filing, wake and ending paths they exercise.
+  const pinned = options.delegation ? ENGINE_LEVELS.delegation : options.workItems ? ENGINE_LEVELS.work_items : options.holds ? ENGINE_LEVELS.holds : 0;
+  if (pinned > 0) {
     for (const key of ["engine_level", "schema_min_compatible"]) {
-      store.db.run("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [key, String(ENGINE_LEVELS.holds)]);
+      store.db.run("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [key, String(pinned)]);
     }
   }
 

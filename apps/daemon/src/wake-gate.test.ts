@@ -43,7 +43,8 @@ async function scenario(options?: Parameters<typeof createScenario>[0]): Promise
   return h;
 }
 
-/** A hold of yours, from a button; holds come on with the engine level (tests start below it). */
+/** Legacy phase 0–2 wake paths: raising holds mid-turn must not activate P4c end contracts
+ * against the pre-work-item segment, or replace peer wakes/report-back with delegations. */
 function hold(h: Scenario, scope: HoldScope, scopeId: string | null): Hold {
   if (h.store.capabilities().engine_level < ENGINE_LEVELS.holds) {
     for (const key of ["engine_level", "schema_min_compatible"]) {
@@ -75,7 +76,25 @@ async function midHop(h: Scenario, bot: { id: string }, session: string, then: C
   return go;
 }
 
-describe("a hold turns every wake away, and says so in the work log", () => {
+test("current P4c peer notes have wakes=0 and neither wake a held Bot nor lift its hold", async () => {
+  const h = await scenario({ delegation: true });
+  const { director, reviewer, room } = videoTeam(h);
+  const plan = openPlan(h, room, 'Current job', planSpec('Current job'));
+  const thread = h.botDirect(director, reviewer);
+  h.store.db.run('UPDATE sessions SET thread_task_id = ? WHERE id = ?', [plan.id, thread]);
+  const stop = h.store.createHold({ scope: 'bot', scopeId: director.id, source: 'user_button' });
+  const before = h.turns(director).length;
+  const note = h.postBot(reviewer, thread, '@视频导演 这是无需唤醒的进度说明', { taskId: plan.id });
+  await h.routed();
+  await h.waitIdle();
+  expect(h.store.capabilities().engine_level).toBe(ENGINE_LEVELS.delegation);
+  expect(h.turns(director)).toHaveLength(before);
+  expect(h.store.db.query<{ wakes: number; state: string }, [string]>("SELECT wakes, state FROM inbox_items WHERE message_id = ? AND source = 'peer_note'").all(note.id)).toEqual([{ wakes: 0, state: 'held' }]);
+  expect(h.store.getHold(stop.id).lifted_at).toBeNull();
+  expect(h.sideEffectCalls(director)).toEqual([]);
+});
+
+describe("legacy phase 0–2 holds turn every old wake away, and say so in the work log", () => {
   test("1. your line in a held Bot's direct opens only a read-only turn: it reads and answers, and does nothing else", async () => {
     const h = await scenario();
     const { director } = videoTeam(h);

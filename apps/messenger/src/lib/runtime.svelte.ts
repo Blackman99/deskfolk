@@ -36,6 +36,7 @@ import {
   type Message,
   type PatchMessageAttributionRequest,
   type GroupLeadState,
+  type DelegationView,
 } from "@real-bot/protocol";
 import { ApiError, probeHealth } from "./api.ts";
 import type { AttributionPlan } from "./chat/attribution.ts";
@@ -1432,6 +1433,48 @@ export class MessengerRuntime {
     }
   }
 
+  delegationLoading = $state<Record<string, boolean>>({});
+  delegationLoadError = $state<Record<string, boolean>>({});
+  delegationUnsupported = $state<Record<string, boolean>>({});
+  private readonly delegationReadSeq = new Map<string, number>();
+  private delegationEventSeq = 0;
+  private readonly delegationEventRevisions = new Map<string, number>();
+  /** Full snapshots omit thread collections: visible panes re-read once per installation. */
+  delegationSnapshotEpoch = $state(0);
+
+  /** These are persisted views, never inferred from a Bot's text. */
+  async loadDelegations(sessionId: string): Promise<void> {
+    const api = this.api;
+    if (!api || this.connection !== "connected") return;
+    const seq = (this.delegationReadSeq.get(sessionId) ?? 0) + 1;
+    this.delegationReadSeq.set(sessionId, seq);
+    const epoch = this.delegationSnapshotEpoch;
+    const eventSeq = this.delegationEventSeq;
+    const changed = (id: string) => (this.delegationEventRevisions.get(id) ?? 0) > eventSeq;
+    const current = () => this.api === api && this.delegationReadSeq.get(sessionId) === seq && this.delegationSnapshotEpoch === epoch;
+    this.delegationLoading = { ...this.delegationLoading, [sessionId]: true };
+    this.delegationLoadError = { ...this.delegationLoadError, [sessionId]: false };
+    try {
+      const { items } = await api.get<{ items: DelegationView[] }>(`/v1/sessions/${encodeURIComponent(sessionId)}/delegations`);
+      if (!current()) return;
+      // Events received during this unsequenced GET win; untouched siblings still hydrate.
+      // A subsequent read can refresh linked IDs and history-cleared projections.
+      this.snapshot = { ...this.snapshot, delegations: [
+        ...this.snapshot.delegations.filter((row) => row.thread_session_id !== sessionId || changed(row.id)),
+        ...items.filter((row) => row.thread_session_id === sessionId && !changed(row.id)),
+      ] };
+      this.delegationUnsupported = { ...this.delegationUnsupported, [sessionId]: false };
+    } catch (error) {
+      if (!current()) return;
+      if (this.snapshot.delegations.some((row) => row.thread_session_id === sessionId && changed(row.id))) return;
+      const unsupported = error instanceof ApiError && error.status === 404;
+      this.delegationUnsupported = { ...this.delegationUnsupported, [sessionId]: unsupported };
+      this.delegationLoadError = { ...this.delegationLoadError, [sessionId]: !unsupported };
+    } finally {
+      if (current()) this.delegationLoading = { ...this.delegationLoading, [sessionId]: false };
+    }
+  }
+
   groupLeads = $state<Record<string, GroupLeadState>>({});
   groupLeadLoading = $state<Record<string, boolean>>({});
   groupLeadLoadError = $state<Record<string, boolean>>({});
@@ -2539,6 +2582,12 @@ export class MessengerRuntime {
     if (api instanceof RemoteApi) api.observeSnapshot(snapshot);
     const frames = sync.install(snapshot);
     if (!frames) throw new Error("event gap during snapshot");
+    this.delegationSnapshotEpoch++;
+    this.delegationEventRevisions.clear();
+    this.delegationReadSeq.clear();
+    this.delegationLoading = {};
+    this.delegationLoadError = {};
+    this.delegationUnsupported = {};
     this.snapshot = fromRuntimeSnapshot(snapshot);
     this.remoteStatus = snapshot.remoteStatus ?? null;
     if (snapshot.notificationCapabilities) {
@@ -2892,6 +2941,11 @@ export class MessengerRuntime {
       // Nothing will read it again; a draft for a conversation that is gone is not kept.
       this.views.delete(event.id);
     }
+    if (event.event === "delegation.changed") {
+      this.delegationEventRevisions.set(event.id, ++this.delegationEventSeq);
+      this.delegationUnsupported = { ...this.delegationUnsupported, [event.thread_session_id]: false };
+      this.delegationLoadError = { ...this.delegationLoadError, [event.thread_session_id]: false };
+    }
     if (event.event === "group_lead.changed") {
       const { event: _event, occurred_at: _at, ...state } = event;
       this.groupLeadRevision.set(state.session_id, (this.groupLeadRevision.get(state.session_id) ?? 0) + 1);
@@ -3001,6 +3055,8 @@ export class MessengerRuntime {
     this.sync?.close();
     this.sync = null;
     this.sessionLoad = Promise.resolve();
+    this.delegationReadSeq.clear();
+    this.delegationLoading = {};
     this.searchSeq++;
     this.searchHits = [];
     this.searchLoading = false;

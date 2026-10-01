@@ -4,8 +4,9 @@
  * It is not a routine (it fires once and is not on the calendar) and not a scheduler entity (no
  * step, no assignee, no plan). The Bot writes down when to come back and what to verify; the
  * daemon wakes it in the same session with that note as the trigger, and the turn inherits the
- * job's work dir through the turn that made the appointment. One pending check-back per Bot per
- * session — making another replaces it, so a Bot cannot pile up wake-ups. Stop on the turn that
+ * job's work dir through the turn that made the appointment. Before P4c, one pending timer per Bot
+ * per session; from P4c, one cause per exact work/job, so unrelated jobs cannot cancel each other's
+ * waits. Real delegation event waits are never clock appointments or timer replacements. Stop on the turn that
  * made it, clearing or deleting the session, and deleting the Bot all void it. A hold over it only
  * sets it aside until the hold is lifted (store/holds.ts). Nothing here opens a turn; the engine
  * does that when the scheduler finds a due row.
@@ -15,10 +16,12 @@ import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { takeCodePoints } from "../text";
 import { suspendHeldCheckBacks } from "./holds";
+import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import { aliveBot, isPresent, sessionRow, type StoreContext } from "./shared";
 
 export type CheckBack = {
   id: string;
+  work_item_id: string | null;
   bot_id: string;
   session_id: string;
   /** The turn that made the appointment. Its row may be gone by the time the check-back fires. */
@@ -205,32 +208,39 @@ function insertCheckBack(
   const now = input.at.toISOString();
   const due = input.due.toISOString();
   const id = ulid(input.at.getTime());
-  const lineage =
-    input.lineage ??
-    (input.turnId
-      ? ctx.db
-          .query<{ task_id: string | null; ticket_id: string | null }, [string]>(
-            `SELECT task_id, ticket_id FROM turns WHERE id = ?`,
-          )
-          .get(input.turnId)
-      : null);
+  const turn = input.turnId ? ctx.db.query<{ bot_id: string; work_item_id: string | null; task_id: string | null; ticket_id: string | null }, [string]>(
+    "SELECT bot_id, work_item_id, task_id, ticket_id FROM turns WHERE id = ?").get(input.turnId) : null;
+  const lineage = input.lineage ?? turn;
+  const scoped = readEngineLevel(ctx.db) >= ENGINE_LEVELS.delegation;
+  if (scoped && input.turnId && (!turn || turn.bot_id !== input.botId)) {
+    throw new HttpError(422, "invalid_args", "check-back turn must belong to the booking Bot");
+  }
+  const workItemId = scoped ? turn?.work_item_id ?? null : null;
+  const dedupeKey = scoped
+    ? `${input.cause}:${workItemId ? `work:${workItemId}` : lineage?.task_id
+      ? `job:${input.botId}:${lineage.task_id}:${lineage.ticket_id ?? ""}` : `desk:${input.botId}:${input.sessionId}`}`
+    : `${input.botId}:${input.sessionId}`;
   let replaced = false;
   ctx.db.transaction(() => {
-    // The key is still the Bot and the session, and every row, old ones included, carries those
-    // two; one set aside by a hold is replaced as well — the new booking is the one the Bot meant.
+    // Below P4c keep the old Bot/session slot. At P4c one cause on one exact work/job replaces
+    // only itself; legacy rows are narrowed by their stored lineage, not by a session-wide guess.
     const voided = ctx.db
-      .query<{ id: string }, [string, string, string]>(
-        `UPDATE check_backs SET voided_at = ?, suspended_at = NULL
-         WHERE bot_id = ? AND session_id = ? AND fired_at IS NULL AND (voided_at IS NULL OR suspended_at IS NOT NULL)
+      .query<{ id: string }, Array<string | number | null>>(
+        `UPDATE check_backs SET voided_at = ?1, suspended_at = NULL
+         WHERE bot_id = ?2 AND kind IS NOT 'delegation_wait' AND fired_at IS NULL AND (voided_at IS NULL OR suspended_at IS NOT NULL)
+           AND ((?3 = 0 AND session_id = ?4) OR (?3 = 1 AND (dedupe_key = ?5 OR (
+             (dedupe_key IS NULL OR dedupe_key = bot_id || ':' || session_id)
+             AND COALESCE(cause, 'self') = ?6 AND task_id IS ?7 AND ticket_id IS ?8
+             AND (?7 IS NOT NULL OR session_id = ?4)))))
          RETURNING id`,
       )
-      .all(now, input.botId, input.sessionId);
+      .all(now, input.botId, scoped ? 1 : 0, input.sessionId, dedupeKey, input.cause, lineage?.task_id ?? null, lineage?.ticket_id ?? null);
     replaced = voided.length > 0;
     ctx.db.run(
       `INSERT INTO check_backs
-         (id, bot_id, session_id, turn_id, task_id, ticket_id, note, due_at, created_at, fired_at, fired_turn_id, voided_at, kind, cause, dedupe_key)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?)`,
-      [id, input.botId, input.sessionId, input.turnId, lineage?.task_id ?? null, lineage?.ticket_id ?? null, takeCodePoints(input.note, input.kind === PLAN_NUDGE ? PLAN_NUDGE_NOTE_MAX : CHECK_BACK_NOTE_MAX).text, due, now, input.kind ?? null, input.cause, `${input.botId}:${input.sessionId}`],
+         (id, bot_id, session_id, turn_id, task_id, ticket_id, note, due_at, created_at, fired_at, fired_turn_id, voided_at, kind, cause, dedupe_key, work_item_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?, ?)`,
+      [id, input.botId, input.sessionId, input.turnId, lineage?.task_id ?? null, lineage?.ticket_id ?? null, takeCodePoints(input.note, input.kind === PLAN_NUDGE ? PLAN_NUDGE_NOTE_MAX : CHECK_BACK_NOTE_MAX).text, due, now, input.kind ?? null, input.cause, dedupeKey, workItemId],
     );
     // Booked where a hold is in force, it waits for the lift like the ones the hold found.
     suspendHeldCheckBacks(ctx, now, [id]);
@@ -277,7 +287,7 @@ export function dueCheckBacks(ctx: StoreContext, now: Date = new Date()): CheckB
   return ctx.db
     .query<CheckBack, [string]>(
       `SELECT * FROM check_backs
-       WHERE fired_at IS NULL AND voided_at IS NULL AND due_at <= ?
+       WHERE fired_at IS NULL AND voided_at IS NULL AND kind IS NOT 'delegation_wait' AND due_at <= ?
        ORDER BY due_at ASC, id ASC`,
     )
     .all(now.toISOString());
@@ -311,6 +321,15 @@ export function markCheckBackFired(ctx: StoreContext, id: string, turnId: string
  * spent: the newer booking is the one it meant. Returns whether it was given back.
  */
 export function returnUnreadCheckBack(ctx: StoreContext, messageId: string, now: string): boolean {
+  const sameWait = readEngineLevel(ctx.db) >= ENGINE_LEVELS.delegation
+    ? `(other.dedupe_key = check_backs.dedupe_key OR (
+        (other.dedupe_key IS NULL OR other.dedupe_key = other.bot_id || ':' || other.session_id)
+        AND (check_backs.dedupe_key IS NULL OR check_backs.dedupe_key = check_backs.bot_id || ':' || check_backs.session_id)
+        AND other.kind IS NOT 'delegation_wait' AND check_backs.kind IS NOT 'delegation_wait'
+        AND COALESCE(other.cause, 'self') = COALESCE(check_backs.cause, 'self')
+        AND other.task_id IS check_backs.task_id AND other.ticket_id IS check_backs.ticket_id
+        AND (check_backs.task_id IS NOT NULL OR other.session_id = check_backs.session_id)))`
+    : `other.session_id = check_backs.session_id AND other.kind IS NOT 'delegation_wait'`;
   return ctx.db.transaction(() => {
     const row = ctx.db
       .query<{ id: string }, [string]>(
@@ -319,7 +338,7 @@ export function returnUnreadCheckBack(ctx: StoreContext, messageId: string, now:
            AND NOT EXISTS (
              SELECT 1 FROM check_backs other
              WHERE other.id <> check_backs.id AND other.bot_id = check_backs.bot_id
-               AND other.session_id = check_backs.session_id AND other.fired_at IS NULL
+               AND ${sameWait} AND other.fired_at IS NULL
                AND (other.voided_at IS NULL OR other.suspended_at IS NOT NULL))
          RETURNING id`,
       )

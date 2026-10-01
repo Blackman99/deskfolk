@@ -134,7 +134,13 @@ export async function runCollabTool(
       case "create_group":
         return createGroup(ctx, args);
       case "create_direct":
+        if (ctx.store.capabilities().engine_level >= 3) return fail("use_delegate", "to ask a teammate to work, use delegate");
         return createDirect(ctx, args);
+      case "delegate": {
+        const delegated = delegate(ctx, args);
+        if (!delegated.ok && ["invalid_args", "not_found"].includes(delegated.error?.code ?? "")) ctx.store.noteFilingBounce(ctx.turnId);
+        return delegated;
+      }
       case "add_member":
         return addMember(ctx, args);
       case "remove_member":
@@ -198,7 +204,7 @@ export async function runCollabTool(
         return fail("failed", `unknown tool: ${name}`);
     }
   } catch (error) {
-    if (name === "work_on" && error instanceof HttpError && ["invalid_candidate", "invalid_args", "locked_attribution", "not_found"].includes(error.code)) {
+    if (["work_on", "delegate", "end_turn"].includes(name) && error instanceof HttpError && ["invalid_candidate", "invalid_args", "locked_attribution", "not_found"].includes(error.code)) {
       ctx.store.noteFilingBounce(ctx.turnId);
     }
     if (error instanceof HttpError) return fail(error.code, error.message);
@@ -251,6 +257,10 @@ function sendMessage(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
     return fail("not_a_member", "you are not in that session");
   }
   const session = ctx.store.getSession(sessionId);
+  if (ctx.store.capabilities().engine_level >= 3 && ctx.store.isPresent(sessionId, "user") && !parentId
+    && ctx.store.progressMessagesSent(ctx.turnId) >= 3) {
+    return fail("progress_limit", "this segment already posted three progress lines; continue the work without another progress post");
+  }
   const roster = ctx.store.listBots();
   const selfName = roster.find((b) => b.id === ctx.botId)?.name;
   const presentNames = presentMemberNames(ctx.store, sessionId, roster);
@@ -275,6 +285,15 @@ function sendMessage(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
   }
   const parsed = parseMentions(linked, roster.map((b) => b.name), { lenient: presentNames });
   const emitted: ToolResult["emitted"] = [];
+  if (ctx.store.capabilities().engine_level >= 3 && session.kind === "direct" && !ctx.store.isPresent(sessionId, "user")) {
+    const absent = parsed.mentions.some((name) => {
+      const bot = roster.find((candidate) => candidate.name === name);
+      return !bot || !ctx.store.isPresent(sessionId, bot.id);
+    });
+    if (absent || parsed.everyone || parsed.unresolved.some((name) => name !== "everyone")) {
+      return fail("use_delegate", "要它动手用 delegate / To ask another teammate to work, use delegate.");
+    }
+  }
   if (ctx.admission?.draining && (sessionId !== ctx.sessionId || parsed.everyone || parsed.mentions.some(name => name !== selfName))) {
     return fail("draining", "new handoffs and child turns are paused; finish this turn without delegation");
   }
@@ -635,6 +654,22 @@ function askUser(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
  * of the user's the Bot quotes. A job this Bot is already working on takes the line instead, and
  * this turn ends.
  */
+function delegate(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
+  if (ctx.store.capabilities().engine_level < 3) return fail("delegation_unavailable", "durable delegation is not enabled at this engine level");
+  ctx.admission?.assertNew();
+  const to = requireString(args.to, "to");
+  const bot = ctx.store.listBots().find((candidate) => candidate.id === to || candidate.name === to);
+  if (!bot) return fail("invalid_args", "delegate to a present Bot by id or exact name");
+  const delegated = ctx.store.delegateWork({ fromTurnId: ctx.turnId, toBotId: bot.id,
+    ask: requireString(args.ask, "ask"), expects: args.expects as "deliverable" | "review" | "answer",
+    ...(args.ticket === undefined ? {} : { ticketId: requireString(args.ticket, "ticket") }),
+    partKeys: optionalStringArray(args.parts, "parts"), requirementIds: optionalStringArray(args.requirement_ids, "requirement_ids"),
+    ...(args.continue === undefined ? {} : { continue: args.continue as boolean }) });
+  return { ok: true, data: { delegation_id: delegated.delegation.id, thread_session_id: delegated.delegation.thread_session_id,
+    work_item_id: delegated.delegation.to_work_item_id, waiting: !!delegated.wait, ended: !!delegated.wait },
+    emitted: [{ kind: "session", session: ctx.store.getSession(delegated.delegation.thread_session_id) }] };
+}
+
 function workOn(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
   const selected = ctx.store.workOn({ turnId: ctx.turnId, plan: args.plan, ticket: args.ticket,
     also: args.also, writtenPaths: ctx.writtenPaths });
@@ -650,6 +685,19 @@ function workOn(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
  * once the hop's other calls are done; the dispositions are recorded here, on the inbox rows.
  */
 function endTurn(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
+  if (ctx.store.capabilities().engine_level >= 3) {
+    const finished = ctx.store.finishWork({ turnId: ctx.turnId, reason: args.reason, note: args.note,
+      needsFromUser: args.needs_from_user, answer: args.answer, inbox: args.inbox });
+    if (finished.bounce) return { ok: false, error: { code: finished.code ?? "end_contract", message: finished.bounce }, emitted: [] };
+    const emitted: ToolResult["emitted"] = [];
+    if (finished.notice || finished.ask) {
+      const message = ctx.store.insertMessage({ sessionId: ctx.sessionId, turnId: ctx.turnId, kind: "system", author: ctx.botId,
+        body: finished.ask?.body ?? finished.notice!.body, hiddenFromBots: true });
+      emitted.push({ kind: "message", message });
+    }
+    return { ok: true, data: { ended: finished.ended, reason: finished.endReason, state: finished.state,
+      inbox: { recorded: finished.dispositions.recorded, not_recorded: finished.dispositions.notRecorded } }, emitted };
+  }
   const { recorded, notRecorded } = ctx.store.disposeInboxItems(ctx.turnId, args.inbox);
   return { ok: true, data: { ended: true, inbox: { recorded, not_recorded: notRecorded } }, emitted: [] };
 }

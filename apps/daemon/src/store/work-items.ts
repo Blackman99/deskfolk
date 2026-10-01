@@ -123,6 +123,14 @@ export function queueWork(ctx: StoreContext, input: QueueWorkInput): {
   });
 }
 
+/** I3 lease half: a live actor owns exactly one open matching work item. */
+export function hasWorkAuthority(ctx: StoreContext, turnId: string): boolean {
+  return ctx.db.query<{ id: string }, [string]>(`SELECT t.id FROM turns t JOIN bots b ON b.id = t.bot_id
+    JOIN work_items w ON w.id = t.work_item_id AND w.bot_id = t.bot_id AND w.task_id IS t.task_id AND w.ticket_id IS t.ticket_id
+    WHERE t.id = ? AND t.status = 'running' AND t.mode <> 'readonly'
+      AND b.deleted_at IS NULL AND b.archived_at IS NULL AND w.state <> 'closed'`).get(turnId) !== null;
+}
+
 /** A lift only removes a stop; it cannot reopen a terminal or dormant plan. */
 export function isPlanRunnable(ctx: StoreContext, taskId: string): boolean {
   return ctx.db.query<{ id: string }, [string]>(`SELECT id FROM tasks WHERE id = ? AND dormant_since IS NULL

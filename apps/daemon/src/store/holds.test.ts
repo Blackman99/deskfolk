@@ -30,7 +30,11 @@ function result(over: Partial<OrganizerResult> = {}): OrganizerResult {
 /** 视频导演 and 审片员 in a group with a plan and a ticket, and a direct of their own on it. Holds are on. */
 function fixture(opts: { holdsOn?: boolean; legacySlot?: boolean } = {}) {
   const store = new Store();
-  if (opts.holdsOn !== false) store.raiseEngineLevel(null);
+  if (opts.holdsOn !== false) {
+    store.raiseEngineLevel(null);
+    // The existing P2/P4b hold contract keeps its compatibility timer slot below P4c.
+    store.db.run("UPDATE settings SET value = '2' WHERE key = 'engine_level'");
+  }
   // P2 compatibility cases deliberately exercise the old one-current-plan slot; P4b permits
   // multiple non-dormant plans and therefore no longer moves one aside merely by opening another.
   if (opts.legacySlot) store.db.run("UPDATE settings SET value = '1' WHERE key = 'engine_level'");
@@ -46,6 +50,46 @@ function fixture(opts: { holdsOn?: boolean; legacySlot?: boolean } = {}) {
   const turn = store.createTurn({ sessionId: thread.id, botId: director.bot.id, triggerMessageId: opener.id, taskId: plan.id, ticketId: shot.id });
   return { store, director: director.bot, reviewer: reviewer.bot, direct: director.direct_session, room, plan, shot, thread, turn };
 }
+
+test("engine 3 lifting one job's hold restores its delegation wait beside another job's timer", () => {
+  const { store, director, reviewer, room, plan, turn } = fixture();
+  try {
+    store.db.run("UPDATE settings SET value = '3' WHERE key = 'engine_level'");
+    const delegated = store.delegateWork({ fromTurnId: turn.id, toBotId: reviewer.id, ask: "等真实审查", expects: "answer", now: "2026-09-29T08:00:00.000Z" });
+    const otherPlan = store.openTask({ sessionId: room.id, title: "另一个规划" });
+    const otherTrigger = store.postMessage(room.id, { body: "另一个规划回看" });
+    const other = store.createTurn({ sessionId: room.id, botId: director.id, triggerMessageId: otherTrigger.id, taskId: otherPlan.id });
+    const timer = store.scheduleCheckBack({ botId: director.id, sessionId: delegated.wait!.session_id, turnId: other.id, note: "其他规划", afterMinutes: 5 });
+    const hold = store.createHold({ scope: "plan", scopeId: plan.id, source: "user_button", now: "2026-09-29T08:01:00.000Z" });
+    expect(store.getCheckBack(delegated.wait!.id).suspended_at).toBe("2026-09-29T08:01:00.000Z");
+    store.liftHold(hold.id, { by: "user_button", now: "2026-09-29T08:02:00.000Z" });
+    expect(store.getCheckBack(delegated.wait!.id)).toMatchObject({ suspended_at: null, voided_at: null, fired_at: null });
+    expect(store.getCheckBack(timer.row.id)).toMatchObject({ suspended_at: null, voided_at: null });
+  } finally { store.close(); }
+});
+
+test("engine 3 resumption preserves an unrelated timer but suppresses a true same-key replacement", () => {
+  const { store, director, room, plan, turn } = fixture();
+  try {
+    store.db.run("UPDATE settings SET value = '3' WHERE key = 'engine_level'");
+    const first = store.scheduleCheckBack({ botId: director.id, sessionId: room.id, turnId: turn.id, note: "被叫停的回看", afterMinutes: 5 });
+    const hold = store.createHold({ scope: "plan", scopeId: plan.id, source: "user_button" });
+    const otherPlan = store.openTask({ sessionId: room.id, title: "独立规划" });
+    const otherTrigger = store.postMessage(room.id, { body: "别的事" });
+    const otherTurn = store.createTurn({ sessionId: room.id, botId: director.id, triggerMessageId: otherTrigger.id, taskId: otherPlan.id });
+    const other = store.scheduleCheckBack({ botId: director.id, sessionId: room.id, turnId: otherTurn.id, note: "另一件事", afterMinutes: 5 });
+    store.liftHold(hold.id, { by: "user_button" });
+    expect(store.getCheckBack(first.row.id)).toMatchObject({ suspended_at: null, voided_at: null });
+    expect(store.getCheckBack(other.row.id).voided_at).toBeNull();
+    const again = store.createHold({ scope: "plan", scopeId: plan.id, source: "user_button" });
+    store.db.run(`INSERT INTO check_backs (id, bot_id, session_id, task_id, ticket_id, note, due_at, created_at, cause, dedupe_key)
+      VALUES ('same-key-replacement', ?, ?, ?, ?, '已替代', '2026-09-29', '2026-09-29', 'self', ?)`,
+      [director.id, room.id, plan.id, first.row.ticket_id, first.row.dedupe_key]);
+    store.liftHold(again.id, { by: "user_button" });
+    expect(store.getCheckBack(first.row.id).suspended_at).toBeNull();
+    expect(store.getCheckBack(first.row.id).voided_at).not.toBeNull();
+  } finally { store.close(); }
+});
 
 function refusal(work: () => unknown): { status: number; code: string } | null {
   try {
@@ -65,9 +109,9 @@ describe("making a hold", () => {
       code: "holds_unavailable",
     });
     expect(store.capabilities()).toMatchObject({ engine_level: 0, features: [] });
-    expect(store.raiseEngineLevel(null)).toEqual({ level: 2, raised: true, refused: null, accepted: null });
-    expect(store.capabilities()).toMatchObject({ engine_level: 2, features: ["holds", "work_items"] });
-    expect(store.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'schema_min_compatible'").get()?.value).toBe("2");
+    expect(store.raiseEngineLevel(null)).toEqual({ level: 3, raised: true, refused: null, accepted: null });
+    expect(store.capabilities()).toMatchObject({ engine_level: 3, features: ["holds", "work_items", "delegation"] });
+    expect(store.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'schema_min_compatible'").get()?.value).toBe("3");
     const hold = store.createHold({ scope: "bot", scopeId: director.id, source: "user_button" });
     expect(hold).toMatchObject({ scope: "bot", scope_id: director.id, action: "pause", cascade: true, source: "user_button", lifted_at: null, targets: [] });
     store.close();

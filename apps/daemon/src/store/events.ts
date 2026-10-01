@@ -18,6 +18,7 @@ import { getTurn } from "./turns";
 import { getHold } from "./holds";
 import { GATE_SETTING_KEYS } from "./schema-gate";
 import { groupLeadState } from "./group-leads";
+import { getDelegationView } from "./delegation-view";
 
 type Change = { entity: string; id: string; op: string; session_id: string | null };
 
@@ -92,6 +93,23 @@ export function installChangeJournal(ctx: StoreContext): void {
     ctx.db.exec(`CREATE TEMP TRIGGER event_requirement_exclusions_${op} AFTER ${op} ON main.requirement_exclusions
       BEGIN INSERT INTO event_changes VALUES ('tasks', ${row}.task_id, 'UPDATE', ${row}.task_id); END`);
   }
+  // Handoffs and their event waits change independently of the thread's ordinary transcript.
+  for (const op of ["INSERT", "UPDATE"]) {
+    ctx.db.exec(`CREATE TEMP TRIGGER event_delegations_${op} AFTER ${op} ON main.delegations
+      BEGIN
+        INSERT INTO event_changes VALUES ('delegation', NEW.id, '${op}', NEW.thread_session_id);
+        INSERT INTO event_changes VALUES ('tasks', NEW.task_id, 'UPDATE', NULL);
+        INSERT INTO event_changes VALUES ('sessions', NEW.thread_session_id, 'UPDATE', NEW.thread_session_id);
+      END`);
+    ctx.db.exec(`CREATE TEMP TRIGGER event_delegation_wait_${op} AFTER ${op} ON main.check_backs
+      WHEN NEW.kind = 'delegation_wait'
+      BEGIN INSERT INTO event_changes SELECT 'delegation', id, 'UPDATE', thread_session_id FROM main.delegations
+        WHERE id = json_extract(NEW.wait_spec, '$.ref'); END`);
+    ctx.db.exec(`CREATE TEMP TRIGGER event_delegation_inbox_${op} AFTER ${op} ON main.inbox_items
+      WHEN NEW.source IN ('delegation', 'delegation_reply')
+      BEGIN INSERT INTO event_changes SELECT 'delegation', id, 'UPDATE', thread_session_id FROM main.delegations
+        WHERE request_inbox_seq = NEW.seq OR result_inbox_seq = NEW.seq; END`);
+  }
   // Confirmation eligibility changes independently of the flag: a departed/archived/deleted Bot
   // must disappear from every client's cached confirmation, without a noisy reload per message.
   ctx.db.exec(`CREATE TEMP TRIGGER event_group_lead_participant_UPDATE AFTER UPDATE ON main.session_participants
@@ -164,6 +182,11 @@ export function committedEvents(ctx: StoreContext): ClientEvent[] {
       case "sessions": {
         const row = sessions.find((s) => s.id === id);
         out.push(row ? { event: "session.upsert", occurred_at, ...row } : { event: "session.removed", occurred_at, id });
+        break;
+      }
+      case "delegation": {
+        const delegation = getDelegationView(ctx, id);
+        if (delegation) out.push({ event: "delegation.changed", occurred_at, ...delegation });
         break;
       }
       case "group_lead": {

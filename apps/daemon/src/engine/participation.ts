@@ -170,6 +170,11 @@ export function createParticipation(deps: ParticipationDeps): Participation {
       const bots = store.presentBotIds(session.id);
       const target = bots.find((id) => id !== message.author);
       if (!target) return;
+      if (!opts.fromUser && message.kind === "bot" && store.capabilities().engine_level >= ENGINE_LEVELS.delegation
+        && !store.isPresent(session.id, USER_MEMBER)) {
+        store.recordPeerNote(message, target);
+        return;
+      }
       if (!opts.fromUser && message.kind === "bot" && isNodToANod(message)) return;
       // Your new message forks by default, so you can ask two things at once. While the Bot is
       // already working, a line of yours goes into that turn's inbox instead of cutting it off

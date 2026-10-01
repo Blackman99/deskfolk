@@ -10,6 +10,7 @@ import { startRuntime, type RuntimeHandle } from "./runtime";
 import { memoryKeyStore } from "./secrets";
 import { startupLogPath } from "./startup-log";
 import { Store } from "./store";
+import { ENGINE_LEVEL, SCHEMA_LEVEL } from "./store/schema-gate";
 
 const handles: RuntimeHandle[] = [];
 const dirs: string[] = [];
@@ -464,7 +465,7 @@ describe("local API runtime", () => {
     expect(rt.store.db.query<{ action_state: string }, [string]>(`SELECT action_state FROM notifications WHERE semantic_key = ?`).get(`interrupted:${turn.id}`)).toEqual({ action_state: "open" });
   });
 
-  test("start takes a database of its own up to holds, and a plan stopped the old way becomes one", async () => {
+  test("start takes its database to the current engine and schema floor, retaining a legacy plan's hold", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "real-bot-"));
     dirs.push(dataDir);
     chmodSync(dataDir, 0o700);
@@ -480,7 +481,9 @@ describe("local API runtime", () => {
     // A data folder of its own: no installed app opens it, so nothing holds the level back.
     const rt = await startRuntime({ dataDir, bind: "127.0.0.1:0", endpointKey: keys });
     handles.push(rt);
-    expect(rt.store.capabilities()).toMatchObject({ engine_level: 2, features: ["holds", "work_items"] });
+    expect(rt.store.capabilities()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL,
+      features: ["holds", "work_items", "delegation"] });
+    expect(rt.store.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'schema_min_compatible'").get()?.value).toBe(String(SCHEMA_LEVEL));
     expect(rt.store.listHolds({ inForce: true })).toMatchObject([{ scope: "plan", scope_id: plan.id, source: "legacy" }]);
   });
 

@@ -18,7 +18,8 @@ afterEach(async () => {
   while (open.length) await open.pop()!.close();
 });
 
-// These control-plane regressions pin P4b (level 2), where a line no named job claims opens a desk.
+// These control-plane regressions pin P4b (level 2): P4c delegation and end contracts are
+// exercised separately in delegation-engine.test.ts, not silently enabled by future bumps.
 async function scenario(options: ScenarioOptions = { workItems: true }): Promise<Scenario> {
   const h = await createScenario(options);
   open.push(h);

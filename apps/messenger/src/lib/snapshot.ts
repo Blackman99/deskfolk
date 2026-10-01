@@ -10,6 +10,7 @@ import {
   type Bot,
   type ClientEvent,
   type CredentialOperation,
+  type DelegationView,
   type Hold,
   type Judgement,
   type McpServer,
@@ -43,6 +44,8 @@ export type Snapshot = {
   searchHits: SearchHit[];
   /** Annotations pulled for each conversation opened and each file previewed, then followed by events. */
   annotations: Annotation[];
+  /** Durable delegations fetched for opened peer threads, then followed by sequenced events. */
+  delegations: DelegationView[];
   /** Your stops in force, newest first: the list and the board mark what they hold. */
   holds: Hold[];
   /** Whether stops can be made here: the daemon has reached holds (its snapshot lists them). */
@@ -85,6 +88,7 @@ export function emptySnapshot(): Snapshot {
     approvals: [],
     searchHits: [],
     annotations: [],
+    delegations: [],
     holds: [],
     holdsOn: false,
     turnInbox: false,
@@ -106,6 +110,10 @@ export function fromRuntimeSnapshot(snapshot: RuntimeSnapshot): Snapshot {
 export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
   switch (event.event) {
     case "credential_operations.changed": return { ...snapshot, credentialOperations: event.items };
+    case "delegation.changed": {
+      const { event: _event, occurred_at: _at, ...row } = event;
+      return { ...snapshot, delegations: upsert(snapshot.delegations, row) };
+    }
     case "settings.changed": {
       const { event: _e, occurred_at: _at, ...settings } = event;
       return { ...snapshot, settings };

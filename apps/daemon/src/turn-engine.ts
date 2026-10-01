@@ -496,6 +496,18 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     }
   }
 
+  // A committed authority revocation must also cancel an already-running completion/tool,
+  // not merely prevent its next hop. The journal publishes only after the transaction commits.
+  const stopAuthorityWatch = store.onCommit((event) => {
+    if (event.event === "bot.upsert" && (event.archived_at || event.deleted_at)) {
+      for (const turnId of [...core.lives.keys()]) {
+        try { if (store.getTurn(turnId).bot_id === event.id) lifecycle.abortLive(turnId); } catch { lifecycle.abortLive(turnId); }
+      }
+    } else if (event.event === "turn.upsert" && !["running", "waiting_ask", "waiting_approval"].includes(event.status)) {
+      if (event.end_reason === "bot_archived" || event.end_reason === "bot_deleted") lifecycle.abortLive(event.id);
+    }
+  });
+
   const engine: TurnEngine = {
     async handleInboundMessage(message, opts) {
       const fromUser = opts?.fromUser ?? message.author === USER_MEMBER;
@@ -754,6 +766,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     },
     suggestComposer: composer.suggestComposer,
     async close() {
+      stopAuthorityWatch();
       store.noteTurnsCutByShutdown();
       checks.abortAll();
       scribe.stop();

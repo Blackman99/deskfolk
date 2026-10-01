@@ -135,6 +135,7 @@ export function mayAct(store: Store, turnId: string): boolean {
   try {
     const turn = store.getTurn(turnId);
     if (turn.mode === "readonly") return false;
+    if (store.capabilities().engine_level >= ENGINE_LEVELS.work_items && !store.hasWorkAuthority(turnId)) return false;
     if (turn.task_id && store.capabilities().engine_level >= ENGINE_LEVELS.work_items && !store.isPlanRunnable(turn.task_id)) return false;
   } catch {
     // a turn that is gone is held by nothing; the call's own checks turn it away

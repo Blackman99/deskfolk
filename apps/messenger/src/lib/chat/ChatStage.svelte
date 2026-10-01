@@ -15,6 +15,7 @@
 	import ControlActions from './ControlActions.svelte';
 	import MessageAttribution from './MessageAttribution.svelte';
 	import GroupLeadCard from './GroupLeadCard.svelte';
+	import DelegationRecords from './DelegationRecords.svelte';
 	import AnnotationCards from '../annotations/AnnotationCards.svelte';
 	import { annotationsByMessage } from '../annotations/model.ts';
 	import { indexBotDmsByOrigin } from './bot-dm-entries.ts';
@@ -107,6 +108,16 @@
 		const id = stageSessionId;
 		if (id && connected && !fileDrop) void untrack(() => runtime.loadAttributionPlans(id));
 	});
+	// Stable scalar dependencies: streaming tokens/session.upsert do not re-read the thread.
+	$effect(() => {
+		const id = stageSessionId;
+		void runtime.delegationSnapshotEpoch;
+		if (id && selectedKind === 'bot-bot' && connected) void untrack(() => runtime.loadDelegations(id));
+	});
+	const delegations = $derived(selectedKind === 'bot-bot'
+		? snapshot.delegations.filter((row) => row.thread_session_id === stageSessionId) : []);
+	const linkedDelegationMessages = $derived(new Set(delegations.flatMap((row) =>
+		[row.request_message_id, row.result_message_id].filter((id): id is string => id !== null))));
 	const showMessageAvatars = $derived(selectedKind !== 'you-bot');
 	const selectedPeer = $derived(selected ? youBotPeer(selected) : null);
 	const selectedPeerBot = $derived(selectedPeer ? (botsById.get(selectedPeer) ?? null) : null);
@@ -283,7 +294,7 @@
 					snapshot.turns,
 					selected.id,
 					snapshot.pendingJudgements,
-				)
+				).filter((item) => item.type !== 'message' || !linkedDelegationMessages.has(item.message.id))
 			: []
 	);
 
@@ -1008,6 +1019,17 @@
 			/>
 		{/key}
 	{/if}
+	{#if selected && selectedKind === 'bot-bot' && !runtime.delegationUnsupported[selected.id]}
+		<DelegationRecords records={delegations} {botsById} {t}
+			onOpenArtifact={(path, messageId) => onOpenArtifact(path, undefined, messageId)} />
+		{#if runtime.delegationLoadError[selected.id]}
+			<div class="delegation-load-error" role="status">
+				{t.delegation.loadFailed}
+				<button type="button" class="btn-xs" disabled={!connected || runtime.delegationLoading[selected.id]}
+					onclick={() => void runtime.loadDelegations(selected.id)}>{t.delegation.retry}</button>
+			</div>
+		{/if}
+	{/if}
 	{#if !selected}
 		<EmptyState title={t.top.pickSession} hint={t.top.pickSessionHint} />
 	{:else if stream.length === 0 && view?.historyLoading}
@@ -1019,7 +1041,7 @@
 			</svg>
 			<p class="muted">{t.stream.loadingHistory}</p>
 		</div>
-	{:else if stream.length === 0}
+	{:else if stream.length === 0 && delegations.length === 0}
 		<div class="empty-chat-welcome m-auto flex flex-col items-center text-center py-16 px-10 max-w-[460px]">
 			{#if fileDrop}
 				<div class="empty-icon" aria-hidden="true">

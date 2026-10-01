@@ -17,6 +17,7 @@ import type { TurnAdmission } from "../quiesce";
 import { sessionUpsertFields } from "../session-events";
 import { isReservedTaskPath, type Store } from "../store";
 import { TOOL_FAILURES_KEPT } from "../store/routing";
+import { ENGINE_LEVELS } from "../store/schema-gate";
 import { mergeCitedPaths, writtenPathFromToolData } from "../artifact-paths";
 import { takeCodePoints } from "../text";
 import { toolTargetOf } from "../tool-activity";
@@ -359,7 +360,7 @@ export function createTools(deps: ToolsDeps): Tools {
         spoke = true;
         live.spoke = true;
       }
-      if ((result.ok && call.name === "end_turn") || result.data?.ended === true) ended = true;
+      if ((result.ok && call.name === "end_turn" && store.capabilities().engine_level < ENGINE_LEVELS.delegation) || result.data?.ended === true) ended = true;
       if (!skipped) posted = true;
       const payload = result.ok
         ? { ok: true, data: admitPicture(live, pictures, result) }
@@ -379,7 +380,7 @@ export function createTools(deps: ToolsDeps): Tools {
       publishMessage(store.markNeedsAttention(turnId, live.locale));
       return "noop";
     }
-    if (spoke) return "spoke";
+    if (spoke && store.capabilities().engine_level < ENGINE_LEVELS.delegation) return "spoke";
     // end_turn: the Bot has nothing to say, so the turn ends here with no message.
     if (ended) return "noop";
     attachPictures(live.loop, pictures, live.locale);

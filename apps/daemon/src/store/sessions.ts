@@ -11,6 +11,7 @@ import {
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { notBotOnlyLine, voidCheckBacks } from "./check-backs";
+import { cancelDelegationsForSession } from "./delegations";
 import { forgetHoldLines, holdPlansLeavingSession } from "./holds";
 import { forgetInboxSources } from "./inbox";
 import { hydrateMessage, listMessages } from "./messages";
@@ -250,8 +251,11 @@ export function archiveSession(ctx: StoreContext, id: string): SessionDetail {
   const session = sessionRow(ctx, id);
   if (session.archived_at) return getSession(ctx, id);
   const now = isoNow();
-  ctx.db.run(`UPDATE sessions SET archived_at = ?, updated_at = ? WHERE id = ?`, [now, now, id]);
-  return getSession(ctx, id);
+  return ctx.commit(() => {
+    cancelDelegationsForSession(ctx, { sessionId: id, now });
+    ctx.db.run(`UPDATE sessions SET archived_at = ?, updated_at = ? WHERE id = ?`, [now, now, id]);
+    return getSession(ctx, id);
+  });
 }
 
 export function restoreSession(ctx: StoreContext, id: string): SessionDetail {
@@ -278,6 +282,7 @@ export function deleteSession(ctx: StoreContext, id: string, opts: { eraseQuotes
   }
   const now = isoNow();
   return ctx.db.transaction(() => {
+    cancelDelegationsForSession(ctx, { sessionId: id, now });
     ctx.db.run(
       `UPDATE profile_revisions SET message_id = NULL WHERE message_id IN (SELECT id FROM messages WHERE session_id = ?)`,
       [id],
@@ -356,6 +361,7 @@ export function clearSessionMessages(ctx: StoreContext, id: string, opts: { eras
   sessionRow(ctx, id);
   const now = isoNow();
   return ctx.db.transaction(() => {
+    cancelDelegationsForSession(ctx, { sessionId: id, now });
     ctx.db.run(
       `UPDATE profile_revisions SET message_id = NULL WHERE message_id IN (SELECT id FROM messages WHERE session_id = ?)`,
       [id],

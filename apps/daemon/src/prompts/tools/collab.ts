@@ -218,6 +218,24 @@ export const WORK_ON: ToolDef = {
   required: ["plan"],
 };
 
+export const DELEGATE: ToolDef = {
+  name: "delegate",
+  description: {
+    zh: "把当前规划的一件工作委派给在场的 Bot，明确要交付物、审查或回答。应用复用两位 Bot 在这件事的线程，持久等它交回；普通线程发言不叫醒。默认本段结束等待，continue:true 才接着干独立工作。",
+    en: "Delegate work on this plan to an eligible Bot, stating whether you expect a deliverable, review or answer. The app reuses your pair's plan thread and durably waits for the result. Plain thread messages do not wake anyone. This segment waits by default; continue:true keeps doing independent work.",
+  },
+  properties: {
+    to: { type: "string", description: { zh: "在场 Bot 的 id 或完整名字。", en: "An eligible Bot's id or exact full name." } },
+    ask: { type: "string", description: { zh: "明确的新工作，不是回执或催促。", en: "The specific new work, not an acknowledgment or reminder." } },
+    expects: { type: "string", enum: ["deliverable", "review", "answer"], description: { zh: "期待交付物、审查结论或回答。", en: "Expected deliverable, review or answer." } },
+    ticket: { type: "string", description: { zh: "同一规划的任务 id，省略沿用本任务。", en: "A ticket in this plan; defaults to this turn's ticket." } },
+    parts: { type: "array", items: { type: "string" }, description: { zh: "该任务的分件编号。", en: "Part keys belonging to the ticket." } },
+    requirement_ids: { type: "array", items: { type: "string" }, description: { zh: "适用且生效的需求 id。", en: "Applicable in-force requirement ids." } },
+    continue: { type: "boolean", description: { zh: "默认等交回，true 才接着做独立工作。", en: "Wait for the result by default; true continues independent work." } },
+  },
+  required: ["to", "ask", "expects"],
+};
+
 export const END_TURN: ToolDef = {
   name: "end_turn",
   description: {

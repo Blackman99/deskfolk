@@ -46,6 +46,7 @@ get("annotations", { relpath: v => typeof v === "string" && v.length <= 4096, se
 get("annotations/:id"); get("annotations/:id/crop");
 get("tasks/:id/(trace|tickets|spec-revisions)");
 get("sessions/:id/tasks");
+get("(tasks|sessions)/:id/delegations");
 get("sessions/:id/lead");
 get("messages/:id/attribution");
 add("PUT", "sessions/:id/lead", { bot_id: nullable(id), confirmed: one(true) }, ["bot_id", "confirmed"]);

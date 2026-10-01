@@ -112,8 +112,23 @@ const TIMEOUT_SENTENCE_WIN_ZH = "要常驻的进程限时或放后台运行：Po
 const TIMEOUT_SENTENCE_EN = "start a long-running process with a time limit such as `timeout 30 npm run dev` and check it with a separate command, so the shell does not hang on it.";
 const TIMEOUT_SENTENCE_WIN_EN = "start a long-running process with a time limit or in the background: PowerShell has no `timeout` wrapper, so use `Start-Process` or a background job and set a time limit appropriate to it, then check it with a separate command, so the shell does not hang on it.";
 
-function systemText(locale: Locale, shell: ToolShellKind): string {
+function systemText(locale: Locale, shell: ToolShellKind, engineLevel = 0): string {
   let text = locale === "en" ? SYSTEM_EN : SYSTEM_ZH;
+  if (engineLevel >= 3) {
+    text = text.replace(locale === "en" ? "send_message ends this turn, and so does a reply without tool calls:" : "send_message 会结束本轮，不调工具的回复也一样：",
+      locale === "en" ? "send_message reports progress without ending the segment; end_turn supplies an explicit ending reason:" : "send_message 只发进度，不结束执行段；end_turn 明确声明结束原因：");
+    text = text.replace(locale === "en" ? "@Name in the body forces that teammate to take the floor" : "正文里的 @Name 会让对方必须下场",
+      locale === "en" ? "In a group, @Name wakes that teammate; in a Bot pair's thread, use delegate for new work rather than @" : "群里 @Name 叫醒队友；Bot 对线程里要它动手用 delegate，不用 @");
+    text = text.replace(locale === "en" ? "In a Bot↔Bot direct every line you post wakes the other Bot:" : "Bot↔Bot 私聊里你发的每句话都会叫醒对方：",
+      locale === "en" ? "Plain words in a Bot pair's thread never wake the other Bot:" : "Bot 对线程里普通发言从不叫醒对方：");
+    const oldWait = locale === "en" ? "After a handoff, or while waiting for a result you do not control," : "交接出去、或在等一个不由你掌控的结果时，";
+    text = text.split("\n\n").map((paragraph) => paragraph.startsWith(oldWait)
+      ? (locale === "en" ? "Use delegate for another Bot's work. The app keeps a real delegation wait; an answer is returned with end_turn(reason:'answered',answer:...). A timer check_back is for an independent later check and cannot replace a delegation wait." : "队友的工作用 delegate 委派，应用持久等它交回；回答用 end_turn(reason:'answered',answer:...)。check_back 定时回看用于独立的稍后检查，不会替代委派等待。")
+      : paragraph).join("\n\n");
+    text += locale === "en"
+      ? "\n\nWork-item contract: end_turn requires reason done/answered/nothing_new/blocked/gave_up. blocked needs needs_from_user; gave_up needs note. Give dispositions for every user inbox item. You may post at most three progress lines, then continue working. Do not use prose to claim an unfinished ticket is complete."
+      : "\n\n工作项结束契约：end_turn 的 reason 是 done/answered/nothing_new/blocked/gave_up。blocked 必须写 needs_from_user，gave_up 必须写 note。用户收件逐条处置；每段最多三条进度话，然后接着干。不能用纯文字把没交出的任务当成完成。";
+  }
   if (shell !== "sh") {
     // Git Bash (win32) and PowerShell both classify host absolute paths as native Windows paths
     // (workspace-relative paths stay `/`); only PowerShell also lacks a `timeout` command (Git Bash ships GNU coreutils').
@@ -171,6 +186,7 @@ export function turnSystemPrompt(input: {
   mcpGuides?: McpPromptGuide[];
   /** Which shell backs the `shell` tool. Defaults to this daemon's own `toolShell().kind`. */
   shell?: ToolShellKind;
+  engineLevel?: number;
 }): string {
   const profile =
     input.locale === "en"
@@ -178,7 +194,7 @@ export function turnSystemPrompt(input: {
       : `# 人设\n\n## 名字\n\n${input.name}\n\n## 职责\n\n${input.duties}\n\n## 边界\n\n${input.boundaries}`;
   const skills = formatSkillCatalog(input.locale, input.skills ?? []);
   const shell = input.shell ?? toolShell().kind;
-  const system = input.locale === "en" ? `# System\n\n${systemText("en", shell)}` : `# 系统指令\n\n${systemText("zh", shell)}`;
+  const system = input.locale === "en" ? `# System\n\n${systemText("en", shell, input.engineLevel ?? 0)}` : `# 系统指令\n\n${systemText("zh", shell, input.engineLevel ?? 0)}`;
   const mcp = formatMcpGuides(input.locale, input.mcpGuides ?? []);
   const memory = formatMemoryDigest(input.locale, input.memories ?? []);
   const parts = [profile];

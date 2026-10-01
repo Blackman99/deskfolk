@@ -16,6 +16,7 @@ import {
   resolveIncomingThinkingLevel,
 } from "./providers";
 import { voidCheckBacks } from "./check-backs";
+import { cancelDelegationsForBot } from "./delegations";
 import { forgetBotMemories } from "./memories";
 import { bumpCleanupRevision } from "./notifications";
 import { forgetBotRoutes } from "./routing";
@@ -155,11 +156,16 @@ export function patchBot(
 }
 
 export function archiveBot(ctx: StoreContext, id: string): Bot {
-  const row = aliveBot(ctx, id);
-  if (row.archived_at) return toBot(row);
-  const now = isoNow();
-  ctx.db.run(`UPDATE bots SET archived_at = ?, updated_at = ? WHERE id = ?`, [now, now, id]);
-  return getBot(ctx, id);
+  return ctx.commit(() => {
+    const row = aliveBot(ctx, id);
+    if (row.archived_at) return toBot(row);
+    const now = isoNow();
+    cancelDelegationsForBot(ctx, { botId: id, now });
+    ctx.db.run("UPDATE turns SET status = 'interrupted', end_reason = 'bot_archived', updated_at = ? WHERE bot_id = ? AND status IN ('running','waiting_ask','waiting_approval')", [now, id]);
+    ctx.db.run(`UPDATE bots SET archived_at = ?, updated_at = ? WHERE id = ?`, [now, now, id]);
+    ctx.db.run("UPDATE work_items SET state = 'closed', closed_at = ?, updated_at = ? WHERE bot_id = ? AND state <> 'closed'", [now, now, id]);
+    return getBot(ctx, id);
+  });
 }
 
 export function restoreBot(ctx: StoreContext, id: string): Bot {
@@ -174,6 +180,9 @@ export function deleteBot(ctx: StoreContext, id: string): void {
   aliveBot(ctx, id);
   const now = isoNow();
   ctx.db.transaction(() => {
+    cancelDelegationsForBot(ctx, { botId: id, now });
+    ctx.db.run("UPDATE turns SET status = 'interrupted', end_reason = 'bot_deleted', updated_at = ? WHERE bot_id = ? AND status IN ('running','waiting_ask','waiting_approval')", [now, id]);
+    ctx.db.run("UPDATE work_items SET state = 'closed', closed_at = ?, updated_at = ? WHERE bot_id = ? AND state <> 'closed'", [now, now, id]);
     ctx.db.run(`UPDATE bots SET deleted_at = ?, updated_at = ? WHERE id = ?`, [now, now, id]);
     ctx.db.run(
       `DELETE FROM notifications

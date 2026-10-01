@@ -74,6 +74,7 @@ import { listHostDir } from "./host-paths";
 import { PresenceManager, NotificationDeliveryScheduler } from "./notifications";
 import { confirmGroupLead, groupLeadState } from "./store/group-leads";
 import { attributionOptions } from "./store/attribution-options";
+import { delegationViews } from "./store/delegation-view";
 
 const AUTH_TIMEOUT_MS = 5_000;
 const REACTIONS = new Set<string>(REACTION_EMOJI);
@@ -1888,6 +1889,12 @@ function dispatch(
     });
     return emptyResponse(204, null);
   }
+
+  // Structured handoffs remain readable in their plan and ordinary direct after any segment ends.
+  params = matchPath(path, "/v1/tasks/:id/delegations");
+  if (params && method === "GET") return jsonResponse(delegationViews(store, { taskId: params.id! }), 200, null);
+  params = matchPath(path, "/v1/sessions/:id/delegations");
+  if (params && method === "GET") return jsonResponse(delegationViews(store, { sessionId: params.id! }), 200, null);
 
   // A suggestion based on real handoffs is read-only; assigning it needs your explicit click (D22).
   params = matchPath(path, "/v1/sessions/:id/lead");

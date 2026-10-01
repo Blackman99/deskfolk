@@ -3,12 +3,14 @@
  * a quiet-thread timer. Writers do not open/end turns or call a model; the engine consumes their
  * returned inbox items and ends a segment when `wait` is present.
  */
+import type { HoldScope, HoldTarget } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
-import { holdsCovering } from "./holds";
+import { HOLD_SCOPES, holdsCovering } from "./holds";
 import { holdInboxItems, queueInboxItem, refreshHeldInbox, supersedeInboxItems, type InboxItem } from "./inbox";
-import { aliveBot, isPresent, requireNonEmpty, type StoreContext } from "./shared";
+import { aliveBot, isPresent, requireNonEmpty, sessionRow, type StoreContext } from "./shared";
 import { requirementsBearingOn } from "./requirements";
+import type { WorkItem } from "./work-items";
 
 export type Delegation = {
   id: string;
@@ -137,7 +139,9 @@ function resultInbox(ctx: StoreContext, delegation: Delegation): InboxItem | nul
   return delegation.result_inbox_seq === null ? null : ctx.db.query<InboxItem, [number]>("SELECT * FROM inbox_items WHERE seq = ?").get(delegation.result_inbox_seq) ?? null;
 }
 
-function resolve(ctx: StoreContext, delegation: Delegation, from: Actor, input: { answer: string; replyRef: string; now: string; status: "replied" | "cancelled" }): InboxItem {
+function resolve(ctx: StoreContext, delegation: Delegation, from: Pick<Actor, "bot_id">, input: {
+  answer: string; replyRef: string; now: string; status: "replied" | "cancelled"; wakes?: boolean;
+}): InboxItem {
   const sender = ctx.db.query<{ bot_id: string; home_session_id: string; ticket_id: string | null }, [string]>(
     "SELECT bot_id, home_session_id, ticket_id FROM work_items WHERE id = ?").get(delegation.from_work_item_id);
   if (!sender) throw new HttpError(422, "invalid_args", "delegating work item no longer exists");
@@ -147,15 +151,19 @@ function resolve(ctx: StoreContext, delegation: Delegation, from: Actor, input: 
     sourceTurnId: delegation.from_turn_id,
     workItemId: delegation.from_work_item_id, taskId: delegation.task_id, ticketId: sender.ticket_id,
     messageId: null, author: from.bot_id, body: input.answer, saidIn: delegation.thread_session_id,
-    source: "delegation_reply", kind: "result", priority: 2, now: input.now });
+    source: "delegation_reply", kind: "result", priority: 2, wakes: input.wakes, now: input.now });
   ctx.db.run("UPDATE delegations SET status = ?, reply_ref = ?, result_inbox_seq = ? WHERE id = ? AND status = 'open'",
     [input.status, input.replyRef, queued.seq, delegation.id]);
   if (delegation.request_inbox_seq !== null) supersedeInboxItems(ctx, [delegation.request_inbox_seq], input.now);
   ctx.db.run("UPDATE check_backs SET voided_at = ?, suspended_at = NULL WHERE dedupe_key = ? AND kind = 'delegation_wait' AND fired_at IS NULL",
     [input.now, `delegation:${delegation.id}`]);
-  ctx.db.run(`UPDATE work_items SET state = 'queued', waiting_on = NULL, updated_at = ? WHERE id = ? AND state = 'waiting'
+  ctx.db.run(`UPDATE work_items SET state = ?, waiting_on = NULL, updated_at = ? WHERE id = ? AND state = 'waiting'
     AND json_extract(waiting_on, '$.kind') = 'delegation' AND json_extract(waiting_on, '$.ref') = ?`,
-    [input.now, delegation.from_work_item_id, delegation.id]);
+    [input.wakes === false ? 'idle' : 'queued', input.now, delegation.from_work_item_id, delegation.id]);
+  if (input.wakes !== false && !live) {
+    ctx.db.run("UPDATE work_items SET state = 'queued', updated_at = ? WHERE id = ? AND state = 'idle'",
+      [input.now, delegation.from_work_item_id]);
+  }
   refreshHeldInbox(ctx, { botId: sender.bot_id });
   const held = [delegation.from_turn_id, live?.id ?? null].some((turnId) => holdsCovering(ctx, {
     botId: sender.bot_id, sessionId: sender.home_session_id, taskId: delegation.task_id, ticketId: sender.ticket_id, turnId,
@@ -216,6 +224,125 @@ export function cancelDelegation(ctx: StoreContext, input: {
   });
 }
 
+/** Open durable edges, not delegated_by, define a cascade snapshot; reused work can have many parents. */
+export function delegationDescendants(ctx: StoreContext, fromWorkItemIds: string[]): WorkItem[] {
+  const roots = identifiers(fromWorkItemIds, "fromWorkItemIds");
+  if (!roots.length) return [];
+  return ctx.db.query<WorkItem, [string]>(`WITH RECURSIVE
+    valid_edges AS (
+      SELECT d.from_work_item_id AS parent, d.to_work_item_id AS child FROM delegations d
+      JOIN work_items source ON source.id = d.from_work_item_id
+      JOIN work_items target ON target.id = d.to_work_item_id
+      WHERE d.status = 'open' AND target.state <> 'closed'
+        AND source.task_id = d.task_id AND target.task_id = d.task_id
+        AND target.bot_id = d.to_bot_id AND target.ticket_id IS d.ticket_id
+        AND (d.ticket_id IS NULL OR EXISTS (SELECT 1 FROM tickets ticket WHERE ticket.id = d.ticket_id AND ticket.task_id = d.task_id))
+    ), reachable(id) AS (
+      SELECT id FROM work_items WHERE id IN (SELECT value FROM json_each(?1))
+      UNION
+      SELECT edge.child FROM valid_edges edge JOIN reachable parent ON parent.id = edge.parent
+    )
+    SELECT work.* FROM reachable JOIN work_items work ON work.id = reachable.id
+    WHERE work.id NOT IN (SELECT value FROM json_each(?1))
+    ORDER BY work.created_at, work.id`).all(JSON.stringify(roots));
+}
+
+/** Extra targets for a hold's fixed snapshot; the base scope itself is already covered by Control. */
+export function delegationCascadeTargets(ctx: StoreContext, subject: { scope: HoldScope; id: string | null }): HoldTarget[] {
+  if (!HOLD_SCOPES.includes(subject.scope)) throw new HttpError(422, "invalid_args", "invalid hold scope");
+  if (subject.scope === 'global') {
+    if (subject.id !== null) throw new HttpError(422, "invalid_args", "a global hold has no id");
+    return [];
+  }
+  const id = requireNonEmpty("id", subject.id);
+  let predicate: string;
+  let params: string[];
+  switch (subject.scope) {
+    case 'bot':
+      aliveBot(ctx, id);
+      predicate = 'w.bot_id = ?1'; params = [id]; break;
+    case 'bot_plan': {
+      const separator = id.indexOf(':');
+      const botId = id.slice(0, separator); const taskId = id.slice(separator + 1);
+      if (separator <= 0 || !taskId) throw new HttpError(422, "invalid_args", "bot_plan id must name Bot and plan");
+      aliveBot(ctx, botId);
+      if (!ctx.db.query('SELECT 1 FROM tasks WHERE id = ?').get(taskId)) throw new HttpError(404, 'not_found', 'plan not found');
+      predicate = 'w.bot_id = ?1 AND w.task_id = ?2'; params = [botId, taskId]; break;
+    }
+    case 'session':
+      sessionRow(ctx, id);
+      predicate = `w.home_session_id = ?1 OR w.thread_session_id = ?1 OR EXISTS (SELECT 1 FROM tasks t WHERE t.id = w.task_id AND t.session_id = ?1)`;
+      params = [id]; break;
+    case 'plan':
+      if (!ctx.db.query('SELECT 1 FROM tasks WHERE id = ?').get(id)) throw new HttpError(404, 'not_found', 'plan not found');
+      predicate = 'w.task_id = ?1'; params = [id]; break;
+    case 'ticket':
+      if (!ctx.db.query('SELECT 1 FROM tickets WHERE id = ?').get(id)) throw new HttpError(404, 'not_found', 'ticket not found');
+      predicate = 'w.ticket_id = ?1'; params = [id]; break;
+    case 'turn': {
+      const turn = ctx.db.query<{ work_item_id: string | null }, [string]>('SELECT work_item_id FROM turns WHERE id = ?').get(id);
+      if (!turn) throw new HttpError(404, 'not_found', 'turn not found');
+      if (!turn.work_item_id) return [];
+      predicate = 'w.id = ?1'; params = [turn.work_item_id]; break;
+    }
+  }
+  const roots = ctx.db.query<WorkItem, string[]>(`SELECT w.* FROM work_items w WHERE (${predicate})`).all(...params);
+  const rootIds = new Set(roots.map((root) => root.id));
+  const targets = new Map<string, HoldTarget>();
+  for (const work of delegationDescendants(ctx, [...rootIds])) {
+    if (work.task_id) targets.set(`${work.bot_id}:${work.task_id}`, { scope: 'bot_plan', id: `${work.bot_id}:${work.task_id}` });
+  }
+  return [...targets.values()];
+}
+
+export type DelegationCancellation = { delegations: Delegation[]; inbox: InboxItem[] };
+
+/** Called by the deterministic archive/delete write, before the Bot's rows or membership change. */
+export function cancelDelegationsForBot(ctx: StoreContext, input: { botId: string; now?: string }): DelegationCancellation {
+  return ctx.commit(() => {
+    aliveBot(ctx, input.botId);
+    const now = clock(input.now);
+    const affected = ctx.db.query<DelegationRow, [string]>(`SELECT d.* FROM delegations d
+      JOIN work_items source ON source.id = d.from_work_item_id
+      WHERE d.status = 'open' AND (d.to_bot_id = ?1 OR source.bot_id = ?1) ORDER BY d.created_at, d.rowid`).all(input.botId).map(toDelegation);
+    const result: DelegationCancellation = { delegations: [], inbox: [] };
+    for (const delegation of affected) {
+      const sender = ctx.db.query<{ bot_id: string; state: string; archived_at: string | null; deleted_at: string | null }, [string]>(
+        `SELECT w.bot_id, w.state, b.archived_at, b.deleted_at FROM work_items w JOIN bots b ON b.id = w.bot_id WHERE w.id = ?`).get(delegation.from_work_item_id);
+      const wakes = !!sender && sender.bot_id !== input.botId && sender.state !== 'closed' && !sender.archived_at && !sender.deleted_at;
+      const inbox = resolve(ctx, delegation, { bot_id: input.botId }, { answer: `Delegation cancelled: Bot archived (${input.botId}) — ${delegation.ask}`,
+        replyRef: `bot_archived:${input.botId}`, now, status: 'cancelled', wakes });
+      result.delegations.push(getDelegation(ctx, delegation.id));
+      result.inbox.push(inbox);
+    }
+    return result;
+  });
+}
+
+/** Clearing/deleting a context records cancellation but deliberately schedules no new execution. */
+export function cancelDelegationsForSession(ctx: StoreContext, input: { sessionId: string; now?: string }): DelegationCancellation {
+  return ctx.commit(() => {
+    sessionRow(ctx, input.sessionId);
+    const now = clock(input.now);
+    const affected = ctx.db.query<DelegationRow, [string]>(`SELECT d.* FROM delegations d
+      LEFT JOIN work_items source ON source.id = d.from_work_item_id
+      LEFT JOIN work_items target ON target.id = d.to_work_item_id
+      LEFT JOIN tasks plan ON plan.id = d.task_id
+      LEFT JOIN turns origin ON origin.id = d.from_turn_id
+      WHERE d.status = 'open' AND (d.thread_session_id = ?1 OR source.home_session_id = ?1
+        OR target.home_session_id = ?1 OR plan.session_id = ?1 OR origin.session_id = ?1)
+      ORDER BY d.created_at, d.rowid`).all(input.sessionId).map(toDelegation);
+    const result: DelegationCancellation = { delegations: [], inbox: [] };
+    for (const delegation of affected) {
+      const inbox = resolve(ctx, delegation, { bot_id: "app" }, { answer: `Delegation cancelled: conversation cleared — ${delegation.ask}`,
+        replyRef: `session_cleared:${input.sessionId}`, now, status: 'cancelled', wakes: false });
+      result.delegations.push(getDelegation(ctx, delegation.id));
+      result.inbox.push(inbox);
+    }
+    return result;
+  });
+}
+
 export function delegateWork(ctx: StoreContext, input: {
   fromTurnId: string; toBotId: string; ask: string; expects: Delegation["expects"];
   ticketId?: string | null; partKeys?: string[]; requirementIds?: string[]; continue?: boolean; now?: string;
@@ -255,10 +382,14 @@ export function delegateWork(ctx: StoreContext, input: {
     ctx.db.run(`INSERT INTO delegations (id, task_id, ticket_id, from_work_item_id, from_turn_id, to_bot_id, to_work_item_id, thread_session_id, ask, expects, part_keys, requirement_ids, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [id, from.task_id, ticketId, from.work_item_id, from.id, target.id, recipient.id, threadId, ask, input.expects,
         JSON.stringify(partKeys), JSON.stringify(requirementIds), now]);
-    const inbox = queueInboxItem(ctx, { botId: target.id, sessionId: threadId, turnId: null, workItemId: recipient.id,
+    const recipientLive = ctx.db.query<{ id: string; session_id: string }, [string]>(`SELECT id, session_id FROM turns
+      WHERE work_item_id = ? AND status IN ('running', 'waiting_ask', 'waiting_approval') ORDER BY created_at LIMIT 1`).get(recipient.id);
+    const inbox = queueInboxItem(ctx, { botId: target.id, sessionId: threadId, turnId: recipientLive?.id ?? null, workItemId: recipient.id,
       taskId: from.task_id, ticketId, messageId: null, author: from.bot_id, body: ask, source: "delegation", kind: "change", priority: 3, now });
     ctx.db.run("UPDATE delegations SET request_inbox_seq = ? WHERE id = ?", [inbox.seq, id]);
     refreshHeldInbox(ctx, { botId: target.id });
+    if (recipientLive && holdsCovering(ctx, { botId: target.id, sessionId: recipientLive.session_id,
+      taskId: from.task_id, ticketId, turnId: recipientLive.id }).length > 0) holdInboxItems(ctx, [inbox.seq]);
     if (input.continue !== true) {
       ctx.db.run(`INSERT INTO check_backs (id, work_item_id, bot_id, session_id, turn_id, task_id, ticket_id, note, due_at, created_at, kind, cause, wait_spec, dedupe_key)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'delegation_wait', 'delegation', ?, ?)`, [ulid(Date.parse(now)), from.work_item_id,

@@ -528,11 +528,20 @@ export function suspendHeldCheckBacks(ctx: StoreContext, now: string, ids?: stri
  */
 export function resumeUnheldCheckBacks(ctx: StoreContext): string[] {
   const unheld = `suspended_at IS NOT NULL AND fired_at IS NULL AND NOT ${heldSql(CHECK_BACK)}`;
+  const sameWait = readEngineLevel(ctx.db) >= ENGINE_LEVELS.delegation
+    ? `(other.dedupe_key = check_backs.dedupe_key OR (
+        (other.dedupe_key IS NULL OR other.dedupe_key = other.bot_id || ':' || other.session_id)
+        AND (check_backs.dedupe_key IS NULL OR check_backs.dedupe_key = check_backs.bot_id || ':' || check_backs.session_id)
+        AND other.kind IS NOT 'delegation_wait' AND check_backs.kind IS NOT 'delegation_wait'
+        AND COALESCE(other.cause, 'self') = COALESCE(check_backs.cause, 'self')
+        AND other.task_id IS check_backs.task_id AND other.ticket_id IS check_backs.ticket_id
+        AND (check_backs.task_id IS NOT NULL OR other.session_id = check_backs.session_id)))`
+    : `other.session_id = check_backs.session_id`;
   ctx.db.run(
     `UPDATE check_backs SET suspended_at = NULL
      WHERE ${unheld} AND EXISTS (
        SELECT 1 FROM check_backs other
-       WHERE other.bot_id = check_backs.bot_id AND other.session_id = check_backs.session_id
+       WHERE other.bot_id = check_backs.bot_id AND ${sameWait}
          AND other.fired_at IS NULL AND other.voided_at IS NULL)`,
   );
   return ctx.db

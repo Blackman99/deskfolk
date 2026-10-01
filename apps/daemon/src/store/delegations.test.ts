@@ -353,6 +353,179 @@ test("invalid continuation or timestamp is rejected before creating work or wait
   expect(delegations.listDelegations(f.ctx)).toEqual([]);
 });
 
+test("archiving a recipient cancels its incoming hand-offs atomically and wakes the original sender once under holds", () => {
+  const f = fixture();
+  const opened = delegations.delegateWork(f.ctx, { fromTurnId: f.turn.id, toBotId: f.to.id, ask: "尚未返回的工作", expects: "answer", now: NOW });
+  f.store.setTurnStatus(f.turn.id, "completed");
+  const hold = createHold(f.ctx, { scope: "bot", scopeId: f.from.id, source: "user_button", now: NOW });
+  const result = delegations.cancelDelegationsForBot(f.ctx, { botId: f.to.id, now: "2026-09-29T08:01:00.000Z" });
+  expect(result.delegations).toMatchObject([{ id: opened.delegation.id, status: "cancelled", reply_ref: `bot_archived:${f.to.id}` }]);
+  expect(result.inbox).toMatchObject([{ bot_id: f.from.id, work_item_id: opened.delegation.from_work_item_id,
+    source: "delegation_reply", priority: 2, wakes: 1, state: "held", source_turn_id: f.turn.id }]);
+  expect(delegations.getDelegationWait(f.ctx, opened.delegation.id)).toMatchObject({ fired_at: null, suspended_at: null, voided_at: "2026-09-29T08:01:00.000Z" });
+  expect(f.store.getInboxItem(opened.inbox.seq)?.state).toBe("superseded");
+  expect(delegations.cancelDelegationsForBot(f.ctx, { botId: f.to.id })).toEqual({ delegations: [], inbox: [] });
+  liftHold(f.ctx, hold.id, { by: "user_button" });
+  expect(f.store.getInboxItem(result.inbox[0]!.seq)?.state).toBe("queued");
+});
+
+test("archiving a delegator also cancels its outgoing requests without waking the archived Bot or another request", () => {
+  const f = fixture();
+  const first = delegations.delegateWork(f.ctx, { fromTurnId: f.turn.id, toBotId: f.to.id, ask: "归档前派出去的工作", expects: "answer", now: NOW });
+  const toTurn = recipientTurn(f, first.delegation);
+  const reverse = delegations.delegateWork(f.ctx, { fromTurnId: toTurn.id, toBotId: f.from.id, ask: "等导演答复", expects: "answer", now: NOW });
+  const result = delegations.cancelDelegationsForBot(f.ctx, { botId: f.from.id, now: "2026-09-29T08:01:00.000Z" });
+  expect(result.delegations.map((row) => row.id).sort()).toEqual([first.delegation.id, reverse.delegation.id].sort());
+  expect(result.inbox.find((row) => row.bot_id === f.from.id)?.wakes).toBe(0);
+  expect(result.inbox.find((row) => row.bot_id === f.to.id)?.wakes).toBe(1);
+  expect(delegations.getDelegationWait(f.ctx, first.delegation.id)?.voided_at).toBe("2026-09-29T08:01:00.000Z");
+  expect(delegations.getDelegationWait(f.ctx, reverse.delegation.id)?.voided_at).toBe("2026-09-29T08:01:00.000Z");
+});
+
+test("clearing a delegation thread cancels its requests with durable priority-2 results but never wakes either Bot", () => {
+  const f = fixture();
+  const opened = delegations.delegateWork(f.ctx, { fromTurnId: f.turn.id, toBotId: f.to.id, ask: "即将清空的委派", expects: "answer", now: NOW });
+  const result = delegations.cancelDelegationsForSession(f.ctx, { sessionId: opened.delegation.thread_session_id, now: "2026-09-29T08:01:00.000Z" });
+  expect(result.delegations).toMatchObject([{ id: opened.delegation.id, status: "cancelled", reply_ref: `session_cleared:${opened.delegation.thread_session_id}` }]);
+  expect(result.inbox).toMatchObject([{ priority: 2, wakes: 0, work_item_id: opened.delegation.from_work_item_id }]);
+  expect(f.store.getInboxItem(opened.inbox.seq)?.state).toBe("superseded");
+  expect(delegations.getDelegationWait(f.ctx, opened.delegation.id)).toMatchObject({ voided_at: "2026-09-29T08:01:00.000Z", suspended_at: null });
+  expect(delegations.cancelDelegationsForSession(f.ctx, { sessionId: opened.delegation.thread_session_id })).toEqual({ delegations: [], inbox: [] });
+});
+
+test("clearing the original home cancels only its durable hand-offs and leaves unrelated plans open", () => {
+  const f = fixture();
+  const first = delegations.delegateWork(f.ctx, { fromTurnId: f.turn.id, toBotId: f.to.id, ask: "将被清空的规划", expects: "answer", now: NOW });
+  const otherRoom = f.store.createGroup({ name: "另一个会话", members: [f.from.id, f.to.id] });
+  const otherPlan = f.store.openTask({ sessionId: otherRoom.id, title: "其他规划" });
+  const otherMessage = f.store.postMessage(otherRoom.id, { body: "别的事" });
+  const otherTurn = f.store.createTurn({ sessionId: otherRoom.id, botId: f.from.id, triggerMessageId: otherMessage.id, taskId: otherPlan.id });
+  const other = delegations.delegateWork(f.ctx, { fromTurnId: otherTurn.id, toBotId: f.to.id, ask: "不能误取消", expects: "answer", now: NOW });
+  const result = delegations.cancelDelegationsForSession(f.ctx, { sessionId: f.room.id, now: "2026-09-29T08:01:00.000Z" });
+  expect(result.delegations.map((row) => row.id)).toEqual([first.delegation.id]);
+  expect(result.inbox[0]?.wakes).toBe(0);
+  expect(delegations.getDelegation(f.ctx, other.delegation.id).status).toBe("open");
+});
+
+test("delegation descendants follow durable reused-work edges and stop safely at cycles and closed work", () => {
+  const f = fixture();
+  const third = f.store.createBot({ name: "制片", duties: "统筹", boundaries: "none" }).bot;
+  f.store.db.run("INSERT INTO session_participants (session_id, member, joined_at) VALUES (?, ?, ?)", [f.room.id, third.id, NOW]);
+  const input = { ask: "继续委派", expects: "answer" as const, continue: true, now: NOW };
+  const aToB = delegations.delegateWork(f.ctx, { ...input, fromTurnId: f.turn.id, toBotId: f.to.id });
+  const bTurn = recipientTurn(f, aToB.delegation);
+  const bToC = delegations.delegateWork(f.ctx, { ...input, fromTurnId: bTurn.id, toBotId: third.id });
+  const cMessage = f.store.insertMessage({ sessionId: bToC.delegation.thread_session_id, kind: "system", author: "app", body: "继续" });
+  const cTurn = f.store.createTurn({ sessionId: bToC.delegation.thread_session_id, botId: third.id, triggerMessageId: cMessage.id, taskId: f.plan.id, ticketId: f.ticket.id });
+  const cToB = delegations.delegateWork(f.ctx, { ...input, fromTurnId: cTurn.id, toBotId: f.to.id });
+  expect(cToB.delegation.to_work_item_id).toBe(aToB.delegation.to_work_item_id);
+  const descendants = delegations.delegationDescendants(f.ctx, [bToC.delegation.to_work_item_id]);
+  expect(descendants.map((work) => work.id)).toEqual([aToB.delegation.to_work_item_id]);
+  expect(descendants[0]).toMatchObject({ bot_id: f.to.id, task_id: f.plan.id, ticket_id: f.ticket.id });
+  expect(delegations.delegationDescendants(f.ctx, [aToB.delegation.from_work_item_id]).map((work) => work.id).sort()).toEqual([aToB.delegation.to_work_item_id, bToC.delegation.to_work_item_id].sort());
+  expect(delegations.delegationDescendants(f.ctx, ["missing", "missing"])).toEqual([]);
+  delegations.cancelDelegation(f.ctx, { delegationId: cToB.delegation.id, fromTurnId: cTurn.id });
+  expect(delegations.delegationDescendants(f.ctx, [bToC.delegation.to_work_item_id])).toEqual([]);
+  f.store.db.run("UPDATE work_items SET state = 'closed' WHERE id = ?", [bToC.delegation.to_work_item_id]);
+  expect(delegations.delegationDescendants(f.ctx, [aToB.delegation.from_work_item_id]).map((work) => work.id)).toEqual([aToB.delegation.to_work_item_id]);
+});
+
+test("lifecycle cancellation rolls back all affected hand-offs if result persistence fails", () => {
+  const f = fixture();
+  const first = delegations.delegateWork(f.ctx, { fromTurnId: f.turn.id, toBotId: f.to.id, ask: "第一条", expects: "answer", continue: true, now: NOW });
+  const second = delegations.delegateWork(f.ctx, { fromTurnId: f.turn.id, toBotId: f.to.id, ask: "第二条", expects: "answer", now: NOW });
+  f.store.db.exec(`CREATE TRIGGER reject_lifecycle_result BEFORE INSERT ON inbox_items
+    WHEN NEW.source = 'delegation_reply' AND NEW.body_snapshot LIKE '%第二条%'
+    BEGIN SELECT RAISE(ABORT, 'injected-result-failure'); END`);
+  expect(() => delegations.cancelDelegationsForBot(f.ctx, { botId: f.to.id, now: "2026-09-29T08:01:00.000Z" })).toThrow("injected-result-failure");
+  expect(delegations.getDelegation(f.ctx, first.delegation.id).status).toBe("open");
+  expect(delegations.getDelegation(f.ctx, second.delegation.id).status).toBe("open");
+  expect(f.store.getInboxItem(first.inbox.seq)?.state).toBe("queued");
+  expect(delegations.getDelegationWait(f.ctx, second.delegation.id)?.voided_at).toBeNull();
+  expect(f.store.db.query("SELECT 1 FROM inbox_items WHERE source = 'delegation_reply'").get()).toBeNull();
+});
+
+test("malformed descendants input is refused and cross-plan edge corruption never widens the cascade", () => {
+  const f = fixture();
+  const opened = delegations.delegateWork(f.ctx, { fromTurnId: f.turn.id, toBotId: f.to.id, ask: "有效边", expects: "answer", now: NOW });
+  const malformed: string[] = JSON.parse('[7]');
+  expect(() => delegations.delegationDescendants(f.ctx, malformed)).toThrow("fromWorkItemIds");
+  const otherPlan = f.store.openTask({ sessionId: f.room.id, title: "不相关规划" });
+  f.store.db.run("UPDATE delegations SET task_id = ? WHERE id = ?", [otherPlan.id, opened.delegation.id]);
+  expect(delegations.delegationDescendants(f.ctx, [opened.delegation.from_work_item_id])).toEqual([]);
+});
+
+test("cascade scope snapshots include waiting roots and only durable descendants, not another Bot's unrelated work", () => {
+  const f = fixture();
+  const delegated = delegations.delegateWork(f.ctx, { fromTurnId: f.turn.id, toBotId: f.to.id, ask: "连带停的工作", expects: "answer", now: NOW });
+  f.store.setTurnStatus(f.turn.id, "completed");
+  const unrelated = f.store.openTask({ sessionId: f.room.id, title: "另一件事" });
+  const message = f.store.postMessage(f.room.id, { body: "另一件事" });
+  f.store.createTurn({ sessionId: f.room.id, botId: f.to.id, triggerMessageId: message.id, taskId: unrelated.id });
+  const expected = [{ scope: "bot_plan" as const, id: `${f.to.id}:${f.plan.id}` }];
+  for (const subject of [{ scope: "bot", id: f.from.id }, { scope: "bot_plan", id: `${f.from.id}:${f.plan.id}` },
+    { scope: "turn", id: f.turn.id }]) {
+    const input: Parameters<typeof delegations.delegationCascadeTargets>[1] = JSON.parse(JSON.stringify(subject));
+    expect(delegations.delegationCascadeTargets(f.ctx, input)).toEqual(expected);
+  }
+  expect(delegations.delegationCascadeTargets(f.ctx, { scope: "global", id: null })).toEqual([]);
+  expect(delegations.delegationCascadeTargets(f.ctx, { scope: "ticket", id: f.ticket.id })).toEqual([]);
+  expect(delegations.delegationCascadeTargets(f.ctx, { scope: "plan", id: f.plan.id })).toEqual([]);
+  expect(delegations.delegationCascadeTargets(f.ctx, { scope: "session", id: f.room.id })).toEqual([]);
+  expect(() => delegations.delegationCascadeTargets(f.ctx, { scope: "bot_plan", id: `${f.from.id}:missing` })).toThrow();
+  expect(() => delegations.delegationCascadeTargets(f.ctx, { scope: "turn", id: "missing" })).toThrow();
+  expect(delegations.getDelegation(f.ctx, delegated.delegation.id).status).toBe("open");
+});
+
+test("cascade targets retain an ended closed source's open edges across tickets and deduplicate downstream Bot-plan scopes", () => {
+  const f = fixture();
+  const sibling = f.store.createTicket({ taskId: f.plan.id, title: "下游任务" });
+  const input = { fromTurnId: f.turn.id, toBotId: f.to.id, ask: "下游协作", expects: "answer" as const, continue: true, now: NOW };
+  const first = delegations.delegateWork(f.ctx, input);
+  delegations.delegateWork(f.ctx, { ...input, ticketId: sibling.id });
+  f.store.setTurnStatus(f.turn.id, "completed");
+  f.store.db.run("UPDATE work_items SET state = 'closed' WHERE id = ?", [first.delegation.from_work_item_id]);
+  const expected = [{ scope: "bot_plan" as const, id: `${f.to.id}:${f.plan.id}` }];
+  expect(delegations.delegationCascadeTargets(f.ctx, { scope: "turn", id: f.turn.id })).toEqual(expected);
+  expect(delegations.delegationCascadeTargets(f.ctx, { scope: "ticket", id: f.ticket.id })).toEqual(expected);
+  expect(delegations.delegationCascadeTargets(f.ctx, { scope: "bot_plan", id: `${f.from.id}:${f.plan.id}` })).toEqual(expected);
+});
+
+test("delegating to already-live exact work reaches its current boundary inbox without reopening its segment", () => {
+  const f = fixture();
+  const trigger = f.store.postMessage(f.room.id, { body: "审片已有任务" });
+  const current = f.store.createTurn({ sessionId: f.room.id, botId: f.to.id, triggerMessageId: trigger.id, taskId: f.plan.id, ticketId: f.ticket.id });
+  const request = delegations.delegateWork(f.ctx, { fromTurnId: f.turn.id, toBotId: f.to.id, ask: "现有工作里追加检查", expects: "answer", continue: true, now: NOW });
+  expect(request.inbox.turn_id).toBe(current.id);
+  expect(f.store.queuedForTurn(current.id)).toMatchObject([{ seq: request.inbox.seq, work_item_id: request.delegation.to_work_item_id }]);
+  expect(f.store.db.query("SELECT state FROM work_items WHERE id = ?").get(request.delegation.to_work_item_id)).toEqual({ state: "running" });
+  expect(f.store.listLiveTurns({ botId: f.to.id })).toHaveLength(1);
+  const sibling = f.store.createTicket({ taskId: f.plan.id, title: "待下一段的其他任务" });
+  const different = delegations.delegateWork(f.ctx, { fromTurnId: f.turn.id, toBotId: f.to.id, ticketId: sibling.id, ask: "别的任务不能投错段", expects: "answer", continue: true, now: NOW });
+  expect(different.inbox.turn_id).toBeNull();
+  const hold = createHold(f.ctx, { scope: "turn", scopeId: current.id, source: "user_button", cascade: false, now: NOW });
+  const held = delegations.delegateWork(f.ctx, { fromTurnId: f.turn.id, toBotId: f.to.id, ask: "不能越过接收段叫停", expects: "answer", continue: true, now: NOW });
+  expect(held.inbox).toMatchObject({ state: "held", turn_id: current.id });
+  expect(f.store.deliverInboxItems([held.inbox.seq], current.id, 1).delivered).toEqual([]);
+  liftHold(f.ctx, hold.id, { by: "user_button" });
+});
+
+test("a continue:true delegation result queues its idle sender for dispatch after an answered segment", () => {
+  const f = fixture();
+  const opened = delegations.delegateWork(f.ctx, { fromTurnId: f.turn.id, toBotId: f.to.id, ask: "稍后交回答案", expects: "answer", continue: true, now: NOW });
+  expect(opened.wait).toBeNull();
+  const ended = f.store.finishWork({ turnId: f.turn.id, reason: "answered" });
+  expect(ended).toMatchObject({ ended: true, state: "idle" });
+  f.store.setTurnStatus(f.turn.id, "completed");
+  const helper = recipientTurn(f, opened.delegation);
+  const result = delegations.replyDelegation(f.ctx, { delegationId: opened.delegation.id, fromTurnId: helper.id, answer: "稍后的答案", now: "2026-09-29T08:01:00.000Z" });
+  expect(result.inbox).toMatchObject({ priority: 2, wakes: 1, work_item_id: opened.delegation.from_work_item_id });
+  expect(f.store.dispatchableWork().map((work) => work.id)).toContain(opened.delegation.from_work_item_id);
+  expect(f.store.db.query("SELECT state FROM work_items WHERE id = ?").get(opened.delegation.from_work_item_id)).toEqual({ state: "queued" });
+  expect(delegations.replyDelegation(f.ctx, { delegationId: opened.delegation.id, fromTurnId: helper.id, answer: "重复答案" }).replied).toBe(false);
+  expect(f.store.db.query("SELECT count(*) AS n FROM inbox_items WHERE source = 'delegation_reply'").get()).toEqual({ n: 1 });
+});
+
 test("an unresolved delegation is an event wait, never a clock claim even after a week", () => {
   const { ctx, to, turn } = fixture();
   const result = delegations.delegateWork(ctx, { fromTurnId: turn.id, toBotId: to.id, ask: "等审查", expects: "review", now: NOW });

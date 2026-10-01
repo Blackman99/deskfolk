@@ -198,8 +198,9 @@ export function setTurnStatus(
   if (!row) throw new HttpError(404, "not_found", "turn not found");
   const now = isoNow();
   ctx.db.run(
-    `UPDATE turns SET status = ?, last_activity_at = ?, updated_at = ? WHERE id = ?`,
-    [status, now, now, id],
+    `UPDATE turns SET status = ?, end_reason = CASE WHEN ? IN ('completed','stopped','interrupted','redirected')
+      THEN COALESCE(NULLIF(TRIM(end_reason), ''), ?) ELSE end_reason END, last_activity_at = ?, updated_at = ? WHERE id = ?`,
+    [status, status, status, now, now, id],
   );
   const outcome = outcomeFor(status);
   if (outcome) finishTurnRoute(ctx, id, outcome, null, execution);
@@ -263,7 +264,7 @@ export function redirectTurn(ctx: StoreContext, id: string, execution: TurnExecu
   ctx.db.transaction(() => {
     voidPendingTurnActions(ctx, id, "redirected", now);
     ctx.db.run(
-      `UPDATE turns SET status = 'redirected', last_activity_at = ?, updated_at = ? WHERE id = ?`,
+      `UPDATE turns SET status = 'redirected', end_reason = 'redirected', last_activity_at = ?, updated_at = ? WHERE id = ?`,
       [now, now, id],
     );
     finishTurnRoute(ctx, id, "redirected", null, execution);
@@ -432,10 +433,10 @@ export function stopTurn(
     voidPendingTurnActions(ctx, row.id, "stopped", now);
     // Stop means "not this"; an appointment this turn made to come back would undo it later.
     if (!opts.keepCheckBacks) voidCheckBacks(ctx, { turnId: row.id }, now);
-    ctx.db.run(`UPDATE turns SET status = 'stopped', updated_at = ? WHERE id = ?`, [now, row.id]);
+    ctx.db.run(`UPDATE turns SET status = 'stopped', end_reason = 'stopped', updated_at = ? WHERE id = ?`, [now, row.id]);
     finishTurnRoute(ctx, row.id, "stopped", null, opts.execution ?? null);
   })();
-  return { ...row, status: "stopped", updated_at: now, partial_text: null };
+  return { ...getTurn(ctx, row.id), partial_text: null };
 }
 
 /**
@@ -475,7 +476,7 @@ export function interruptTurnRecord(
   ctx.db.transaction(() => {
     voidPendingTurnActions(ctx, turnId, "interrupted", now);
     ctx.db.run(
-      `UPDATE turns SET status = 'interrupted', updated_at = ? WHERE id = ?`,
+      `UPDATE turns SET status = 'interrupted', end_reason = 'interrupted', updated_at = ? WHERE id = ?`,
       [now, turnId],
     );
 
