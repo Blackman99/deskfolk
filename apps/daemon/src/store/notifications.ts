@@ -20,6 +20,7 @@ import {
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { renderNotificationDisplay } from "../notification-policy";
+import { notBotOnlyLine } from "./check-backs";
 import type { StoreContext } from "./shared";
 import { USER_MEMBER } from "@real-bot/protocol";
 
@@ -246,6 +247,12 @@ export function markNotificationsReadBatch(
   bumpCleanupRevision(ctx);
 }
 
+/**
+ * Reading through a line reads what the conversation shows up to it, and also the notes it does not
+ * list (a stalled plan's review, `messages.bot_only`) that sit after it with no listed line in
+ * between: there is nothing more on screen to scroll to, so a notification about one would
+ * otherwise wait for the next line anyone writes, and hold the Dock badge up until then.
+ */
 export function markNotificationsReadThroughMessage(
   ctx: StoreContext,
   sessionId: string,
@@ -254,13 +261,16 @@ export function markNotificationsReadThroughMessage(
 ): void {
   ctx.db.run(
     `UPDATE notifications
-     SET read_at = COALESCE(read_at, ?), revision = revision + 1
+     SET read_at = COALESCE(read_at, MAX(?, created_at)), revision = revision + 1
      WHERE session_id = ?
        AND message_id IN (
-         SELECT id FROM messages WHERE session_id = ? AND message_seq <= ?
+         SELECT id FROM messages WHERE session_id = ? AND message_seq < COALESCE(
+           (SELECT MIN(v.message_seq) FROM messages v
+            WHERE v.session_id = ? AND v.message_seq > ? AND v.kind != 'profile_change' AND ${notBotOnlyLine("v")}),
+           9007199254740991)
        )
        AND read_at IS NULL`,
-    [readAt, sessionId, sessionId, messageSeq],
+    [readAt, sessionId, sessionId, sessionId, messageSeq],
   );
   bumpCleanupRevision(ctx);
 }

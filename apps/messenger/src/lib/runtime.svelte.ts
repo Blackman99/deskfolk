@@ -2207,8 +2207,12 @@ export class MessengerRuntime {
    * pane that reads the snapshot — the file tree beside the chat, the workspace — was rebuilt each
    * time. A read is sent once per message, and again only if it failed.
    */
-  async submitBoundedRead(sessionId: string, messageId: string): Promise<void> {
-    return this.notificationCenter.submitBoundedRead(sessionId, messageId);
+  async submitBoundedRead(sessionId: string, messageId: string, noticeMark: number = 0): Promise<void> {
+    return this.notificationCenter.submitBoundedRead(sessionId, messageId, noticeMark);
+  }
+
+  noticeMark(sessionId: string): number {
+    return this.notificationCenter.noticeMark(sessionId);
   }
 
   setupTabChannel(): void {

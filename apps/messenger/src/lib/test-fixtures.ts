@@ -360,6 +360,10 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     enableDeviceNotifications: record("enableDeviceNotifications", true),
     disableDeviceNotifications: record("disableDeviceNotifications", true),
     submitBoundedRead: record("submitBoundedRead"),
+    noticeMarks: {} as Record<string, number>,
+    noticeMark(this: { noticeMarks: Record<string, number> }, sessionId: string) {
+      return this.noticeMarks[sessionId] ?? 0;
+    },
     getAskDraft: () => undefined,
     setAskDraft: record("setAskDraft"),
     clearAskDraft: record("clearAskDraft"),

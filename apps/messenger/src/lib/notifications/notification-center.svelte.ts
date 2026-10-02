@@ -105,6 +105,13 @@ export class NotificationCenter {
    * second one's read landed on the first one's slot and was swallowed.
    */
   private readonly boundedReadSent = new Map<string, string>();
+  /**
+   * The newest unread notification each conversation has been told about, by ordinal. A note the
+   * conversation does not list (a stalled plan's review) has a notification and no line, so the
+   * page's read of the last line is all there is to read it by; this is what lets that read be
+   * sent again once, after the notification lands.
+   */
+  private noticeMarks = $state<Record<string, number>>({});
   private notificationIntentHandler: ((intent: { sessionId?: string | null; messageId?: string | null; openInbox: boolean }) => void) | null = null;
 
   constructor(private readonly host: NotificationCenterHost) {}
@@ -636,11 +643,12 @@ export class NotificationCenter {
    * pane that reads the snapshot — the file tree beside the chat, the workspace — was rebuilt each
    * time. A read is sent once per message, and again only if it failed.
    */
-  async submitBoundedRead(sessionId: string, messageId: string): Promise<void> {
+  async submitBoundedRead(sessionId: string, messageId: string, noticeMark: number = 0): Promise<void> {
     const api = this.host.api;
     if (!api || this.host.connection !== "connected" || this.host.selectedId !== sessionId) return;
-    if (this.boundedReadSent.get(sessionId) === messageId) return;
-    this.boundedReadSent.set(sessionId, messageId);
+    const sent = `${messageId}#${noticeMark}`;
+    if (this.boundedReadSent.get(sessionId) === sent) return;
+    this.boundedReadSent.set(sessionId, sent);
     try {
       const detail = await api.markSessionReadThrough(sessionId, messageId);
       if (this.host.api !== api) return;
@@ -661,7 +669,7 @@ export class NotificationCenter {
       };
     } catch {
       // Bounded read failure is non-fatal, but the next attempt must be allowed through.
-      if (this.boundedReadSent.get(sessionId) === messageId) this.boundedReadSent.delete(sessionId);
+      if (this.boundedReadSent.get(sessionId) === sent) this.boundedReadSent.delete(sessionId);
     }
   }
 
@@ -710,6 +718,11 @@ export class NotificationCenter {
     }
   }
 
+  /** See `noticeMarks`. Read inside an effect, it re-runs it when a new notification lands. */
+  noticeMark(sessionId: string): number {
+    return this.noticeMarks[sessionId] ?? 0;
+  }
+
   /** `resetConnection` clears reads sent on the connection it is replacing; this is that clear. */
   clearBoundedReads(): void {
     this.boundedReadSent.clear();
@@ -717,6 +730,10 @@ export class NotificationCenter {
 
   /** `ingest`'s `notification.upsert` branch, kept here so the badge sync goes with the write. */
   applyNotificationUpsert(item: NotificationItem): void {
+    const sessionId = item.session_id;
+    if (sessionId && !item.read_at && item.ordinal > (this.noticeMarks[sessionId] ?? 0)) {
+      this.noticeMarks = { ...this.noticeMarks, [sessionId]: item.ordinal };
+    }
     this.notificationInboxState = upsertInboxItem(this.notificationInboxState, item);
     this.syncAppBadge();
   }

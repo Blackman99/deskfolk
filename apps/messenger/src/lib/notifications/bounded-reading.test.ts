@@ -56,3 +56,43 @@ test("submitBoundedRead updates session unread count in snapshot", async () => {
   await runtime.submitBoundedRead("s1", "m3");
   expect(runtime.snapshot.sessions.find((s) => s.id === "s1")?.unread_count).toBe(0);
 });
+
+test("a notification that lands in a conversation already read lets the read go once more", async () => {
+  const runtime = new MessengerRuntime();
+  runtime.connection = "connected";
+  runtime.selectedId = "s1";
+  runtime.snapshot = {
+    ...runtime.snapshot,
+    sessions: [{ id: "s1", unread_count: 0, last_read_at: "t0" } as any],
+  };
+  const sent: string[] = [];
+  (runtime as any).api = {
+    markSessionReadThrough: async (sId: string, mId: string) => {
+      sent.push(mId);
+      return { id: sId, unread_count: 0, last_read_at: "t0" };
+    },
+  };
+  const notice = (ordinal: number, readAt: string | null, sessionId = "s1") =>
+    ({ id: `n${ordinal}`, ordinal, session_id: sessionId, read_at: readAt, kind: "failure", action_state: "open" }) as any;
+  const read = () => runtime.submitBoundedRead("s1", "m3", runtime.noticeMark("s1"));
+
+  await read();
+  await read();
+  // Nothing new on screen: the same read is not sent again.
+  expect(sent).toEqual(["m3"]);
+
+  // A note the conversation does not list gets a notification of its own; nothing else changes
+  // for the page, so this is the only way it learns there is something left to read.
+  (runtime as any).notificationCenter.applyNotificationUpsert(notice(7, null));
+  expect(runtime.noticeMark("s1")).toBe(7);
+  await read();
+  await read();
+  expect(sent).toEqual(["m3", "m3"]);
+
+  // One that is born read, or belongs to another conversation, changes nothing here.
+  (runtime as any).notificationCenter.applyNotificationUpsert(notice(8, "t1"));
+  (runtime as any).notificationCenter.applyNotificationUpsert(notice(9, null, "s2"));
+  expect(runtime.noticeMark("s1")).toBe(7);
+  await read();
+  expect(sent).toEqual(["m3", "m3"]);
+});

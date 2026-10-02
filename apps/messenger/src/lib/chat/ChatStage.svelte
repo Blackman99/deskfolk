@@ -453,6 +453,9 @@
 		// Each visible pane times its own read, whichever of them has the keyboard.
 		const sId = selected?.id ?? null;
 		const lastMsgId = lastMessageId;
+		// A note the conversation does not list has a notification and no line: its arrival is
+		// what lets the read of the last line go once more, and read it.
+		const noticeMark = sId ? runtime.noticeMark(sId) : 0;
 		void windowFocused;
 		void windowVisible;
 		if (!sId || !lastMsgId) return;
@@ -482,7 +485,7 @@
 				}
 			}
 			if (selected?.id === sId && lastMsgId) {
-				void runtime.submitBoundedRead(sId, lastMsgId);
+				void runtime.submitBoundedRead(sId, lastMsgId, noticeMark);
 			}
 			readTimer = null;
 		}, TRANSCRIPT_VISIBLE_MS);

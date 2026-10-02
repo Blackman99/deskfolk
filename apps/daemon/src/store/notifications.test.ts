@@ -132,6 +132,44 @@ describe("store notifications", () => {
     }
   });
 
+  it("reading through a line also reads a notification whose note the conversation does not list, up to the next line it does", () => {
+    const store = new Store();
+    try {
+      const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "none" });
+      const session = writer.direct_session.id;
+      const say = (body: string) =>
+        store.insertMessage({ sessionId: session, kind: "bot", author: writer.bot.id, body });
+      // What a stalled plan keeps for its notification: the app's own note, not listed.
+      const note = (body: string) =>
+        store.insertMessage({ sessionId: session, kind: "system", author: writer.bot.id, body, botOnly: true });
+      const noticeOn = (key: string, messageId: string) =>
+        store.createNotification({
+          semantic_key: key,
+          kind: "failure",
+          session_id: session,
+          message_id: messageId,
+          action_state: "open",
+          fail_kind: "stalled_plan",
+        });
+
+      const first = say("初稿在 draft.md");
+      const sameGap = noticeOn("stalled:a", note("这件事停下了").id);
+      const second = say("还差最后一节");
+      const laterGap = noticeOn("stalled:b", note("这件事又停下了").id);
+
+      // The note after the line you read, with nothing listed in between, is read with it.
+      store.markSessionRead(session, { through_message_id: first.id });
+      expect(store.getNotification(sameGap.id)?.read_at).toBeTruthy();
+      // The one after a later line you have not read is not.
+      expect(store.getNotification(laterGap.id)?.read_at).toBeNull();
+
+      store.markSessionRead(session, { through_message_id: second.id });
+      expect(store.getNotification(laterGap.id)?.read_at).toBeTruthy();
+    } finally {
+      store.close();
+    }
+  });
+
   it("paginates notifications with cursor", () => {
     const store = new Store();
     try {

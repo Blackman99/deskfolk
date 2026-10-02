@@ -66,7 +66,7 @@ test("a snapshot that brings no new message does not re-send the read", async ()
     };
     await settle();
     expect(reads().length).toBe(2);
-    expect(reads().at(-1)?.args).toEqual([session.id, "m2"]);
+    expect(reads().at(-1)?.args).toEqual([session.id, "m2", 0]);
   } finally {
     restoreTimers();
     close();
@@ -96,7 +96,45 @@ test("a pane that is on screen but not selected reads its own conversation", asy
   });
   try {
     await settle();
-    expect(reads().map((call) => call.args)).toEqual([[session.id, "m1"]]);
+    expect(reads().map((call) => call.args)).toEqual([[session.id, "m1", 0]]);
+  } finally {
+    restoreTimers();
+    close();
+  }
+});
+
+/**
+ * A stalled plan's review is a note the conversation does not list, so its notification is not
+ * reachable by reading a newer line. The page learns of it from the notification, and reads the
+ * last line once more — once, not again for every snapshot after it.
+ */
+test("a notification landing in the conversation on screen sends the read once more", async () => {
+  const session = aDirect();
+  const messages = [aMessage({ id: "m1", session_id: session.id, body: "hi" })];
+  const stubbed = fakeRuntime({ bots: [aBot()], sessions: [session], messages }, { selectedId: session.id });
+  const calls = stubbed.calls;
+  const reads = () => calls.filter((call) => call.name === "submitBoundedRead");
+  const runtime = reactive(stubbed);
+  const restoreTimers = hurryTimers();
+  const { close } = render(ChatStage, {
+    runtime,
+    t,
+    selected: session,
+    onOpenProfile: () => {},
+    onOpenArtifact: () => {},
+    onCreateBot: () => {},
+  });
+  try {
+    await settle();
+    expect(reads().map((call) => call.args)).toEqual([[session.id, "m1", 0]]);
+
+    (runtime as unknown as { noticeMarks: Record<string, number> }).noticeMarks = { [session.id]: 7 };
+    await settle();
+    expect(reads().map((call) => call.args)).toEqual([[session.id, "m1", 0], [session.id, "m1", 7]]);
+
+    runtime.snapshot = { ...runtime.snapshot, sessions: [...runtime.snapshot.sessions] };
+    await settle();
+    expect(reads()).toHaveLength(2);
   } finally {
     restoreTimers();
     close();
