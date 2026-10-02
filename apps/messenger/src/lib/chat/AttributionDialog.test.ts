@@ -17,7 +17,8 @@ function open(message: ReturnType<typeof aMessage>, over: Record<string, unknown
   const saved: unknown[] = [];
   const state = { closed: 0, loads: 0, refuse: false };
   const view = render(AttributionDialog, {
-    message, plans, t: copyFor("zh"), inConversation: new Set(["plan-a", "plan-b"]),
+    message, plans, t: copyFor("zh"),
+    lastUsed: new Map([["plan-a", "2026-10-02T03:00:00.000Z"], ["plan-b", "2026-10-02T01:00:00.000Z"]]),
     onLoad: async () => { state.loads += 1; },
     onSave: async (filings: unknown) => { saved.push(filings); return state.refuse ? new Error("not saved") : null; },
     onClose: () => { state.closed += 1; },
@@ -37,10 +38,12 @@ test("opening loads the list; what is chosen is on top, this conversation's jobs
   const { host, state, titles, checkbox, close } = open(filed([{ task_id: "plan-b" }]));
   try {
     expect(state.loads).toBe(1);
-    expect(host.querySelector("h2")?.textContent).toBe("这句话归到哪件事");
+    expect(host.querySelector("h2")?.textContent).toBe("归到哪件事");
     expect(titles("h3")).toEqual(["已选", "这个会话里的"]);
     expect(checkbox("plan-b")!.checked).toBe(true);
     expect(titles(".plan-row .plan-title")).toEqual(["海报", "EP01"]);
+    // This conversation's jobs say when they were last used, and how many tickets they have.
+    expect(titles(".plan-row .plan-meta")[1]).toMatch(/^最近用过 .+ · 2 个任务$/);
     expect(checkbox("plan-c")).toBeNull();
     click(buttonByText(host, "显示其他 1 件"));
     expect(titles("h3")).toEqual(["已选", "这个会话里的", "其他事情（1）"]);
@@ -74,6 +77,8 @@ test("choosing is a click on a row; a job with tickets then offers one, and a pa
     expect(host.querySelector('select[aria-label="任务 · EP01"]')).not.toBeNull();
     expect(host.querySelector('input[aria-label="分件 · EP01"]')).toBeNull();
     select("任务 · EP01", "ticket-a");
+    expect(host.querySelector('input[aria-label="分件 · EP01"]')).toBeNull();
+    click(buttonByText(host, "指定分件"));
     fill(host.querySelector('input[aria-label="分件 · EP01"]'), "Shot 01–03");
     click(checkbox("plan-b"));
     click(buttonByText(host, "保存"));
@@ -125,10 +130,13 @@ test("Save waits for a change, and 「不归到任何事」 is a change that sav
 test("another filing in the same job takes its own ticket and part, and removing one keeps the other", async () => {
   const { host, saved, settle, close } = open(filed([{ task_id: "plan-a", ticket_id: "ticket-a", part_key: "Shot 01" }]), { t: copyFor("en") });
   try {
-    click(buttonByText(host, "Add another ticket or part"));
+    click(buttonByText(host, "Add another ticket"));
     const tickets = host.querySelectorAll<HTMLSelectElement>('select[aria-label="Ticket · EP01"]');
     expect(tickets).toHaveLength(2);
     tickets[1]!.value = "ticket-b"; tickets[1]!.dispatchEvent(new Event("change", { bubbles: true })); flushSync();
+    // The first filing already has a part, so its field shows; the new one asks for it.
+    expect(host.querySelectorAll('input[aria-label="Part · EP01"]')).toHaveLength(1);
+    click(buttonByText(host, "Set a part"));
     const parts = host.querySelectorAll('input[aria-label="Part · EP01"]');
     expect(parts).toHaveLength(2);
     fill(parts[1], "Shot 02");
@@ -138,7 +146,7 @@ test("another filing in the same job takes its own ticket and part, and removing
   } finally { close(); }
   const again = open(filed([{ task_id: "plan-a", ticket_id: "ticket-a", part_key: "Shot 01" }, { task_id: "plan-a", ticket_id: "ticket-b", part_key: "Shot 02" }]), { t: copyFor("en") });
   try {
-    click(buttonByText(again.host, "Remove this filing"));
+    click(buttonByText(again.host, "Remove this one"));
     click(buttonByText(again.host, "Save"));
     await again.settle();
     expect(again.saved[0]).toEqual([{ plan_id: "plan-a", ticket_id: "ticket-b", part_key: "Shot 02" }]);
@@ -150,8 +158,9 @@ for (const newTicket of ["", "ticket-b"]) {
     const { host, saved, select, settle, close } = open(filed([{ task_id: "plan-a", ticket_id: "ticket-a", part_key: "Shot 01" }]));
     try {
       select("任务 · EP01", newTicket);
-      expect(host.querySelector<HTMLInputElement>('input[aria-label="分件 · EP01"]')?.value ?? "").toBe("");
-      expect(Boolean(host.querySelector('input[aria-label="分件 · EP01"]'))).toBe(Boolean(newTicket));
+      // The old part is dropped with the old ticket, and a new one is only asked for on request.
+      expect(host.querySelector('input[aria-label="分件 · EP01"]')).toBeNull();
+      expect(Boolean(host.querySelector("button.link") && [...host.querySelectorAll("button.link")].some((b) => b.textContent?.trim() === "指定分件"))).toBe(Boolean(newTicket));
       click(buttonByText(host, "保存"));
       await settle();
       expect(saved[0]).toEqual(newTicket ? [{ plan_id: "plan-a", ticket_id: newTicket }] : [{ plan_id: "plan-a" }]);
@@ -188,5 +197,46 @@ test("disconnected, nothing can be changed", () => {
     expect(host.querySelector("fieldset")?.disabled).toBe(true);
     expect(buttonByText(host, "保存").disabled).toBe(true);
     expect(checkbox("plan-a")).not.toBeNull();
+  } finally { close(); }
+});
+
+test("it names the line being filed, shortened, so a dialog reached from a menu still says which", () => {
+  const long = "请把第三镜换成夜景，".repeat(30);
+  const { host, close } = open(Object.assign(filed([{ task_id: "plan-a" }]), { body: `  ${long}\n\n 谢谢  ` }));
+  try {
+    const quote = host.querySelector(".attribution-context .quote")!.textContent!;
+    expect(quote.startsWith("请把第三镜换成夜景，")).toBe(true);
+    expect(quote.endsWith("…")).toBe(true);
+    expect(quote.length).toBeLessThanOrEqual(151);
+    expect(quote).not.toContain("\n");
+  } finally { close(); }
+  const empty = open(Object.assign(filed([]), { body: "" }));
+  try {
+    expect(empty.host.querySelector(".attribution-context .quote")?.textContent).toBe("（没有文字）");
+  } finally { empty.close(); }
+});
+
+test("Enter on a search takes the first match and clears the search; Arrow Down goes to the list; Enter on an empty search still saves", async () => {
+  const { host, saved, checkbox, settle, close } = open(filed([]));
+  try {
+    const search = host.querySelector<HTMLInputElement>('input[type="search"]')!;
+    fill(search, "你好");
+    const enter = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    search.dispatchEvent(enter);
+    flushSync();
+    expect(enter.defaultPrevented).toBe(true);
+    expect(checkbox("plan-c")!.checked).toBe(true);
+    expect(search.value).toBe("");
+    fill(search, "zzz");
+    const none = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    search.dispatchEvent(none);
+    expect(none.defaultPrevented).toBe(true);
+    expect(host.querySelectorAll(".chosen-plan")).toHaveLength(1);
+    fill(search, "");
+    search.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(host.querySelector(".plan-row input"));
+    click(buttonByText(host, "保存"));
+    await settle();
+    expect(saved[0]).toEqual([{ plan_id: "plan-c" }]);
   } finally { close(); }
 });

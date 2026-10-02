@@ -3,21 +3,25 @@
   import { backdropClick } from '../click-outside.ts';
   import type { Copy } from '../copy.ts';
   import { pageSlide } from '../mobile-page-slide.ts';
+  import { formatListTime } from '../sidebar/list-time.ts';
   import { messageFilings, rankPlans, type AttributedMessage, type AttributionInput, type AttributionPlan } from './attribution.ts';
 
   /**
-   * Changing what a message is filed under. The daemon offers every job in the workspace, so the
-   * list is cut to where you are: what is chosen on top, then the jobs this conversation has used,
-   * then the rest folded behind a count — or all of them the moment you search. Choosing is one
-   * click on a row; a job with tickets then offers which one, and the part is only asked for once a
-   * ticket is. Save and Cancel stay in view however long the list is.
+   * Changing what a message is filed under. It opens on the line itself, so a dialog reached from a
+   * menu still says which line. The daemon offers every job in the workspace, so the list is cut to
+   * where you are: what is chosen on top, then the jobs this conversation has used (the latest first,
+   * with when), then the rest folded behind a count — or all of them the moment you search. Choosing
+   * is one click on a row, or Enter on the first match; the ticket is asked for only under a chosen
+   * job that has tickets, and a part only once a ticket is chosen and you ask to set one. Save and
+   * Cancel stay in view however long the list is.
    */
-  let { message, t, plans = [], inConversation, disabled = false, loading = false, loadError = false, onLoad, onSave, onClose }: {
+  let { message, t, locale = 'zh', plans = [], lastUsed, disabled = false, loading = false, loadError = false, onLoad, onSave, onClose }: {
     message: AttributedMessage;
     t: Copy;
+    locale?: 'zh' | 'en';
     plans?: readonly AttributionPlan[];
-    /** The jobs this conversation's lines are already filed under. */
-    inConversation: ReadonlySet<string>;
+    /** When each job last had a line of this conversation filed under it. */
+    lastUsed: ReadonlyMap<string, string>;
     disabled?: boolean;
     loading?: boolean;
     loadError?: boolean;
@@ -29,6 +33,10 @@
   const backdrop = backdropClick();
   // The dialog opens on one message and is kept for it: the draft starts from what it is filed under now.
   const filings = untrack(() => messageFilings(message));
+  const preview = untrack(() => {
+    const text = (message.body ?? '').replace(/\s+/g, ' ').trim();
+    return text.length > 150 ? `${text.slice(0, 150)}…` : text;
+  });
   // Keep current references even when a plan/ticket no longer appears in the loaded choices.
   const options = $derived<AttributionPlan[]>([
     ...plans,
@@ -46,10 +54,14 @@
   let showAll = $state(false);
   let pending = $state(false);
   let failed = $state(false);
+  /** Entries whose part field was asked for; one that already has a part always shows it. */
+  let askedPart = $state<number[]>([]);
   let searchEl = $state<HTMLInputElement | null>(null);
+  let bodyEl = $state<HTMLElement | null>(null);
+  const now = Date.now();
 
   const changed = $derived(JSON.stringify(draft) !== JSON.stringify(initial));
-  const ranked = $derived(rankPlans({ plans: options, chosen: draft.map((row) => row.plan_id), inConversation, query }));
+  const ranked = $derived(rankPlans({ plans: options, chosen: draft.map((row) => row.plan_id), lastUsed, query }));
   const searching = $derived(query.trim().length > 0);
   const othersShown = $derived(searching || showAll);
 
@@ -60,7 +72,16 @@
     searchEl?.focus();
   });
 
+  function meta(plan: AttributionPlan): string {
+    const used = lastUsed.get(plan.id);
+    return [
+      used ? t.attribution.usedAt(formatListTime(used, now, locale)) : '',
+      plan.tickets.length > 0 ? t.attribution.ticketCount(plan.tickets.length) : '',
+    ].filter(Boolean).join(' · ');
+  }
+
   function toggle(planId: string, checked: boolean): void {
+    askedPart = [];
     draft = checked ? [...draft, { plan_id: planId }] : draft.filter((row) => row.plan_id !== planId);
   }
 
@@ -74,6 +95,22 @@
       else delete next[field];
       return next;
     });
+    if (field === 'ticket_id') askedPart = askedPart.filter((i) => i !== index);
+  }
+
+  /** Enter on a search takes the first match, so finding a job is typing and Enter. */
+  function onSearchKey(event: KeyboardEvent): void {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      bodyEl?.querySelector<HTMLInputElement>('.plan-row input')?.focus();
+    } else if (event.key === 'Enter' && searching) {
+      event.preventDefault();
+      const first = [...ranked.here, ...ranked.others][0];
+      if (first) {
+        toggle(first.id, true);
+        query = '';
+      }
+    }
   }
 
   async function save(): Promise<void> {
@@ -95,7 +132,10 @@
 {#snippet row(plan: AttributionPlan, checked: boolean)}
   <label class="plan-row" class:is-chosen={checked}>
     <input type="checkbox" value={plan.id} {checked} onchange={(event) => toggle(plan.id, event.currentTarget.checked)} />
-    <span class="plan-title" title={plan.title}>{plan.title}</span>
+    <span class="plan-text">
+      <span class="plan-title" title={plan.title}>{plan.title}</span>
+      {#if meta(plan)}<span class="plan-meta">{meta(plan)}</span>{/if}
+    </span>
   </label>
 {/snippet}
 
@@ -119,7 +159,10 @@
       <h2 id="attribution-title">{t.attribution.title}</h2>
       <button type="button" class="modal-close" title={t.common.close} onclick={dismiss}>✕</button>
     </div>
-    <fieldset class="modal-body attribution-body" disabled={disabled || pending}>
+    <p class="attribution-context" role="note" aria-label={t.attribution.message}>
+      <span class="quote">{preview || t.attribution.noText}</span>
+    </p>
+    <fieldset bind:this={bodyEl} class="modal-body attribution-body" disabled={disabled || pending}>
       <input
         bind:this={searchEl}
         bind:value={query}
@@ -128,6 +171,7 @@
         placeholder={t.attribution.search}
         aria-label={t.attribution.search}
         autocomplete="off"
+        onkeydown={onSearchKey}
       />
       {#if loading}<p class="note" role="status">{t.attribution.loading}</p>{/if}
       {#if loadError}
@@ -152,18 +196,20 @@
                       {#each plan.tickets as ticket (ticket.id)}<option value={ticket.id}>{ticket.title}</option>{/each}
                     </select>
                   </label>
-                  {#if entry.ticket_id}
+                  {#if entry.ticket_id && (entry.part_key || askedPart.includes(index))}
                     <label>{t.attribution.part}
                       <input aria-label={`${t.attribution.part} · ${plan.title}`} value={entry.part_key ?? ''} oninput={(event) => change(index, 'part_key', event.currentTarget.value)} placeholder={t.attribution.partPlaceholder} />
                     </label>
+                  {:else if entry.ticket_id}
+                    <button type="button" class="link" onclick={() => { askedPart = [...askedPart, index]; }}>{t.attribution.addPart}</button>
                   {/if}
                   {#if draft.filter((item) => item.plan_id === plan.id).length > 1}
-                    <button type="button" class="link" onclick={() => { draft = draft.filter((_, i) => i !== index); }}>{t.attribution.removeFiling}</button>
+                    <button type="button" class="link" onclick={() => { askedPart = []; draft = draft.filter((_, i) => i !== index); }}>{t.attribution.removeFiling}</button>
                   {/if}
                 </div>
               {/if}
             {/each}
-            {#if plan.tickets.length > 0}
+            {#if plan.tickets.length > 0 && draft.filter((item) => item.plan_id === plan.id).every((item) => item.ticket_id)}
               <button type="button" class="link add" onclick={() => { draft = [...draft, { plan_id: plan.id }]; }}>{t.attribution.addFiling}</button>
             {/if}
           </div>
@@ -191,7 +237,7 @@
     </fieldset>
     <div class="attribution-foot">
       {#if failed}<span class="error" role="status">{t.attribution.failed}</span>{/if}
-      <button type="button" class="unfile" disabled={disabled || pending || draft.length === 0} onclick={() => { draft = []; }}>{t.attribution.unfile}</button>
+      <button type="button" class="unfile" disabled={disabled || pending || draft.length === 0} onclick={() => { askedPart = []; draft = []; }}>{t.attribution.unfile}</button>
       <button type="button" class="cancel" disabled={pending} onclick={dismiss}>{t.attribution.cancel}</button>
       <button type="submit" class="primary" aria-busy={pending} disabled={disabled || pending || !changed}>{pending ? t.attribution.saving : t.attribution.save}</button>
     </div>
@@ -199,19 +245,26 @@
 </div>
 
 <style>
-  .attribution-modal { width: 480px; max-width: 92vw; max-height: min(680px, 88dvh); min-height: 0; }
+  .attribution-modal { width: 520px; max-width: 92vw; max-height: min(700px, 88dvh); min-height: 0; }
+  /* Which line this is about, kept in view above the list. */
+  .attribution-context { flex: none; margin: 0; padding: 10px 20px; background: var(--sidebar-bg); border-bottom: 1px solid var(--line); font-size: var(--text-caption); line-height: 1.5; color: var(--muted); }
+  .quote { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; padding-left: 10px; border-left: 2px solid var(--line-hover, var(--line)); }
   .attribution-body { flex: 1 1 auto; min-height: 0; margin: 0; border: 0; overflow-y: auto; padding: 12px 20px 8px; display: flex; flex-direction: column; gap: 2px; }
-  .attribution-search { position: sticky; top: -12px; z-index: 1; margin: 0 0 6px; width: 100%; min-height: 34px; padding: 4px 10px; box-sizing: border-box; background: var(--pane); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius-md); font: inherit; }
-  h3 { margin: 12px 0 4px; font-size: var(--text-caption); font-weight: 600; color: var(--muted); }
+  .attribution-search { position: sticky; top: -12px; z-index: 1; margin: 0 0 6px; width: 100%; min-height: 36px; padding: 4px 12px; box-sizing: border-box; background: var(--pane); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius-md); font: inherit; }
+  h3 { margin: 14px 0 4px; font-size: var(--text-caption); font-weight: 600; color: var(--muted); }
   .note { margin: 6px 0; color: var(--muted); font-size: var(--text-caption); }
-  .plan-row { display: flex; align-items: flex-start; gap: 10px; padding: 7px 8px; border-radius: var(--radius-md); cursor: pointer; color: var(--ink-secondary); font-size: var(--text-small); line-height: 1.4; }
+  .plan-row { display: flex; align-items: flex-start; gap: 10px; padding: 8px 8px; border-radius: var(--radius-md); cursor: pointer; color: var(--ink-secondary); font-size: var(--text-small); line-height: 1.4; }
   .plan-row:hover { background: var(--row-hover); }
   .plan-row input { flex: none; margin: 3px 0 0; accent-color: var(--accent); }
-  .plan-row.is-chosen { color: var(--ink); font-weight: 600; }
-  .plan-title { min-width: 0; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
-  .chosen-plan { border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--sidebar-bg); padding: 2px 4px 6px; margin-bottom: 6px; }
-  .filing-fields { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; padding: 2px 8px 4px 32px; }
-  .filing-fields label { display: flex; flex-direction: column; gap: 3px; flex: 1 1 140px; min-width: 0; font-size: var(--text-caption); color: var(--muted); }
+  .plan-row.is-chosen { color: var(--ink); }
+  .plan-row.is-chosen:hover { background: transparent; }
+  .plan-text { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .plan-title { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+  .is-chosen .plan-title { font-weight: 600; }
+  .plan-meta { font-size: var(--text-caption); color: var(--muted); }
+  .chosen-plan { border: 1px solid var(--accent-border); border-radius: var(--radius-md); background: var(--accent-tint); padding: 2px 4px 6px; margin-bottom: 6px; }
+  .filing-fields { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 8px; padding: 2px 8px 4px 32px; }
+  .filing-fields label { display: flex; flex-direction: column; gap: 3px; flex: 1 1 160px; min-width: 0; font-size: var(--text-caption); color: var(--muted); }
   .filing-fields input, .filing-fields select { min-width: 0; width: 100%; min-height: 32px; padding: 4px 6px; background: var(--pane); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius-sm); box-sizing: border-box; font: inherit; }
   .link { background: none; border: 0; padding: 4px 8px; color: var(--accent); font: inherit; font-size: var(--text-caption); cursor: pointer; text-align: left; }
   .link:hover:not(:disabled) { text-decoration: underline; }
@@ -229,6 +282,8 @@
   .attribution-foot .error { flex: 1 0 100%; }
   .error { color: var(--danger-text); font-size: var(--text-caption); }
   @media (max-width: 680px) {
+    .attribution-context { padding: 10px 16px; }
+    .attribution-body { padding: 12px 16px 8px; }
     .attribution-foot { padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); }
     .attribution-foot .cancel { display: none; }
     .attribution-foot button { min-height: 46px; font-size: 15px; }

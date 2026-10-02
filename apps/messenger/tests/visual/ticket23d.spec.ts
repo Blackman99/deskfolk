@@ -16,7 +16,7 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
         expect(tag!.x + tag!.width).toBeLessThanOrEqual(width);
         await expect(page.locator('[data-message-id="filing-bot"] .attribution-chip')).toContainText('未归属');
         await chip.click();
-        const dialog = page.getByRole('dialog', { name: '这句话归到哪件事' });
+        const dialog = page.getByRole('dialog', { name: '归到哪件事' });
         await expect(dialog).toBeVisible();
         await dialog.getByRole('button', { name: /显示其他/ }).click();
         await dialog.getByLabel('海报', { exact: true }).check();

@@ -16,7 +16,7 @@
 	import ControlActions from './ControlActions.svelte';
 	import MessageAttribution from './MessageAttribution.svelte';
 	import AttributionDialog from './AttributionDialog.svelte';
-	import { attributable, attributionChipIds, messageFilings } from './attribution.ts';
+	import { attributable, attributionChipIds, planUsage } from './attribution.ts';
 	import DelegationRecords from './DelegationRecords.svelte';
 	import AnnotationCards from '../annotations/AnnotationCards.svelte';
 	import { annotationsByMessage } from '../annotations/model.ts';
@@ -2058,7 +2058,8 @@
 		<AttributionDialog
 			message={target} {t}
 			plans={runtime.attributionPlans[target.session_id] ?? []}
-			inConversation={new Set(snapshot.messages.filter((row) => row.session_id === target.session_id).flatMap((row) => messageFilings(row).map((filing) => filing.task_id)))}
+			{locale}
+			lastUsed={planUsage(snapshot.messages.filter((row) => row.session_id === target.session_id))}
 			disabled={!connected || lockedComposer}
 			loading={runtime.attributionLoading[target.session_id] ?? false}
 			loadError={runtime.attributionLoadError[target.session_id] ?? false}

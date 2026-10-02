@@ -50,6 +50,7 @@ for (const remote of [false, true]) {
       click(host.querySelector('input[value="plan-a"]'));
       const ticket = host.querySelector<HTMLSelectElement>('select[aria-label="Ticket · EP01"]')!;
       ticket.value = "ticket-a"; ticket.dispatchEvent(new Event("change", { bubbles: true })); flushSync();
+      click(buttonByText(host, "Set a part"));
       fill(host.querySelector('input[aria-label="Part · EP01"]'), "Shot 01");
       click(buttonByText(host, "Save"));
       await Promise.resolve(); await Promise.resolve(); flushSync();

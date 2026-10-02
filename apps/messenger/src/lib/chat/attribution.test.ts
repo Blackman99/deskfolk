@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { aMessage } from "../test-fixtures.ts";
-import { attributable, attributionChipIds, filingKey, filingLabel, filingParts, rankPlans, type AttributionPlan } from "./attribution.ts";
+import { attributable, attributionChipIds, filingKey, filingLabel, filingParts, planUsage, rankPlans, type AttributionPlan } from "./attribution.ts";
 
 const plans: AttributionPlan[] = [
   { id: "p1", title: "让审片员回复视频导演", tickets: [{ id: "t1", title: "回复视频导演" }] },
@@ -60,8 +60,23 @@ test("runs are counted per conversation, and in time order whatever the order th
   expect([...attributionChipIds(messages)].sort()).toEqual(["a1", "b1"]);
 });
 
+test("when a job was last used: the newest line filed under it, across all of a line's filings", () => {
+  const messages = [
+    filed("a", "01", [{ task_id: "p1" }, { task_id: "p2" }]),
+    filed("b", "05", [{ task_id: "p2" }]),
+    filed("c", "03", [{ task_id: "p1" }]),
+    filed("d", "09", []),
+  ];
+  expect([...planUsage(messages)].sort()).toEqual([["p1", "2026-10-02T00:00:03.000Z"], ["p2", "2026-10-02T00:00:05.000Z"]]);
+});
+
+test("the jobs this conversation used come latest-used first, whatever order the workspace lists them in", () => {
+  const lastUsed = new Map([["p4", "2026-10-02T00:00:01.000Z"], ["p2", "2026-10-02T00:00:09.000Z"], ["p3", "2026-10-02T00:00:05.000Z"]]);
+  expect(rankPlans({ plans, chosen: [], lastUsed, query: "" }).here.map((plan) => plan.id)).toEqual(["p2", "p3", "p4"]);
+});
+
 test("the list to choose from: chosen on top, then this conversation's jobs, then the rest; search reaches all of them", () => {
-  const base = { plans, inConversation: new Set(["p2"]) };
+  const base = { plans, lastUsed: new Map([["p2", "2026-10-02T00:00:01.000Z"]]) };
   const ids = (list: AttributionPlan[]) => list.map((plan) => plan.id);
   const plain = rankPlans({ ...base, chosen: ["p1"], query: "" });
   expect([ids(plain.chosen), ids(plain.here), ids(plain.others)]).toEqual([["p1"], ["p2"], ["p3", "p4"]]);

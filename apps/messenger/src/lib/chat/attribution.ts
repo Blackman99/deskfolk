@@ -70,24 +70,37 @@ function matches(plan: AttributionPlan, query: string): boolean {
   return plan.title.toLowerCase().includes(needle) || plan.tickets.some((ticket) => ticket.title.toLowerCase().includes(needle));
 }
 
+/** When each job was last used in a conversation: the newest line filed under it. */
+export function planUsage(messages: readonly AttributedMessage[]): Map<string, string> {
+  const last = new Map<string, string>();
+  for (const message of messages) {
+    for (const filing of messageFilings(message)) {
+      const seen = last.get(filing.task_id);
+      if (!seen || seen < message.created_at) last.set(filing.task_id, message.created_at);
+    }
+  }
+  return last;
+}
+
 /**
  * The plans to offer when changing a filing. The daemon lists every plan in the workspace, newest
  * first — sixty-odd, most of them other conversations' errands — so the list is cut by where you are:
- * what is chosen stays on top, then the plans this conversation has already used, then the rest,
- * which stay folded away until you search or ask for them.
+ * what is chosen stays on top, then the plans this conversation has already used, the one used last
+ * first, then the rest, which stay folded away until you search or ask for them.
  */
 export function rankPlans(input: {
   plans: readonly AttributionPlan[];
   chosen: readonly string[];
-  inConversation: ReadonlySet<string>;
+  lastUsed: ReadonlyMap<string, string>;
   query: string;
 }): { chosen: AttributionPlan[]; here: AttributionPlan[]; others: AttributionPlan[] } {
-  const { plans, query } = input;
+  const { plans, query, lastUsed } = input;
   const chosen = new Set(input.chosen);
   const rest = plans.filter((plan) => !chosen.has(plan.id) && matches(plan, query));
+  const recency = (plan: AttributionPlan) => lastUsed.get(plan.id) ?? "";
   return {
     chosen: plans.filter((plan) => chosen.has(plan.id)),
-    here: rest.filter((plan) => input.inConversation.has(plan.id)),
-    others: rest.filter((plan) => !input.inConversation.has(plan.id)),
+    here: rest.filter((plan) => lastUsed.has(plan.id)).sort((a, b) => (recency(a) < recency(b) ? 1 : recency(a) > recency(b) ? -1 : 0)),
+    others: rest.filter((plan) => !lastUsed.has(plan.id)),
   };
 }
