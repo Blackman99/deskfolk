@@ -106,7 +106,10 @@ test("all plan links of preserved original words survive clear-history", () => {
   store.createTurn({ sessionId: room, botId: bot.id, triggerMessageId: message.id, taskId: b.id });
   store.clearSessionMessages(room);
   filing.resumePlan(ctx, b.id);
-  const candidate = filing.planCandidates(ctx, { sessionId: direct, botId: bot.id }).find((c) => c.id === b.id);
+  // The clear took the Bot's segment on b with it, so from its direct b is no candidate any more
+  // (ADR 0040 §8.4); in b's own conversation it is, with its words.
+  expect(filing.planCandidates(ctx, { sessionId: direct, botId: bot.id }).some((c) => c.id === b.id)).toBe(false);
+  const candidate = filing.planCandidates(ctx, { sessionId: room, botId: bot.id }).find((c) => c.id === b.id);
   expect(candidate?.lastUserQuote).toBe('这两件都保持背景连贯');
   expect(store.listQuotes({ messageId: message.id })).toEqual([]);
 });
@@ -311,13 +314,18 @@ test("part numbering parses Chinese tens and bounded numeric ranges without unre
 
 test("defaults use signals 6 then 7 then 8, skip new-request hints, and match declared or filename parts only uniquely", () => {
   const { store, ctx, bot, direct, room } = fixture();
+  // The group's plans reach a line in the Bot's direct as its jobs: work it has open on them.
+  const mine = (taskId: string) => store.db.run(`INSERT INTO work_items (id, bot_id, task_id, home_session_id, state, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 'idle', '2026-01-01', '2026-01-01')`, [`work-${taskId}`, bot.id, taskId, room]);
   const a = store.openTask({ sessionId: room, title: "当前片" });
+  mine(a.id);
   const shots = store.createTicket({ taskId: a.id, title: "Shot 01–03", spec: "", status: "doing" });
   const simple = store.postMessage(direct, { body: "再看一遍" });
   expect(filing.fileMessage(ctx, simple.id, { botId: bot.id }).filings).toMatchObject([{ taskId: a.id, filedBy: "rule:6", strength: "default" }]);
   const newRequest = store.postMessage(direct, { body: "另外帮我写首诗" });
   expect(filing.fileMessage(ctx, newRequest.id, { botId: bot.id }).state).toBe("undetermined");
   const b = store.openTask({ sessionId: room, title: "交付片" });
+  mine(b.id);
   const oldTicket = store.createTicket({ taskId: b.id, title: "渲染结果", spec: "", status: "done" });
   store.db.run("UPDATE tasks SET stage = 'delivered', status = 'done' WHERE id = ?", [b.id]);
   const delivery = store.insertMessage({ sessionId: room, kind: "bot", author: bot.id, body: "交付" });
@@ -360,7 +368,7 @@ test("locked annotation, quote, path and bound-work signals accumulate in order 
   expect(result.filings.every((f) => f.strength === "locked")).toBe(true);
 });
 
-test("a candidate snapshot includes visible delivered work and the called bot's recent or open work, not dormant or unrelated work", () => {
+test("a candidate snapshot includes the conversation's own delivered work and the called bot's recent or open work, not dormant or unrelated work", () => {
   const { store, ctx, bot, direct, room } = fixture();
   const visible = store.openTask({ sessionId: room, title: "本群交付" });
   const local = store.openTask({ sessionId: direct, title: "私聊小活" });
@@ -372,13 +380,22 @@ test("a candidate snapshot includes visible delivered work and the called bot's 
   const open = store.openTask({ sessionId: otherBot.direct_session.id, title: "有工作项" });
   store.db.run(`INSERT INTO work_items (id, bot_id, task_id, home_session_id, state, created_at, updated_at)
     VALUES ('open-work', ?, ?, ?, 'idle', '2026-01-01', '2026-01-01')`, [bot.id, open.id, direct]);
+  // From the direct: its own plan and the Bot's open work; the group's plan the Bot is merely a
+  // member of is not one of its jobs (ADR 0040 §8.4, the 2026-10-01 audit's P3).
   const candidates = filing.planCandidates(ctx, { sessionId: direct, botId: bot.id });
-  expect(candidates.map((candidate) => candidate.id).sort()).toEqual([visible.id, local.id, open.id].sort());
-  expect(candidates.find((candidate) => candidate.id === visible.id)).toMatchObject({ title: "本群交付", dir: visible.dir, stage: "delivered" });
+  expect(candidates.map((candidate) => candidate.id).sort()).toEqual([local.id, open.id].sort());
   expect(candidates.some((candidate) => candidate.id === unrelated.id)).toBe(false);
-  const frozenIds = candidates.map((candidate) => candidate.id);
+  // In the group itself its delivered plan is a candidate.
+  expect(filing.planCandidates(ctx, { sessionId: room, botId: bot.id }).find((candidate) => candidate.id === visible.id))
+    .toMatchObject({ title: "本群交付", dir: visible.dir, stage: "delivered" });
+  // Once the Bot has worked on it within a day, it is one of its jobs from the direct too.
+  const said = store.postMessage(room, { body: "看一下交付" });
+  store.createTurn({ sessionId: room, botId: bot.id, triggerMessageId: said.id, taskId: visible.id });
+  const after = filing.planCandidates(ctx, { sessionId: direct, botId: bot.id });
+  expect(after.map((candidate) => candidate.id).sort()).toEqual([visible.id, local.id, open.id].sort());
+  const frozenIds = after.map((candidate) => candidate.id);
   store.openTask({ sessionId: direct, title: "快照之后的新事" });
-  expect(candidates.map((candidate) => candidate.id)).toEqual(frozenIds);
+  expect(after.map((candidate) => candidate.id)).toEqual(frozenIds);
 });
 
 test("UI selections authoritatively file one line under multiple plans, with only the first primary", () => {

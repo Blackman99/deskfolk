@@ -353,6 +353,17 @@ export function restartNoticeBody(
  * picked up three times within the hour (`retry_budget`), or work whose last external call has no
  * known outcome (`unknown_effect`). Facts only, then what you can do.
  */
+/**
+ * The line a job gets when a Bot ended its segment twice in a row with no progress and work still
+ * open (ADR 0044's end contract): the job waits for you as blocked. `job` names it as the
+ * supervisor's lines do (任务 03《…》 or 规划「…」).
+ */
+export function noProgressNoticeBody(locale: Locale, input: { job: string; bot: string }): string {
+  return locale === "en"
+    ? `${input.job}: ${input.bot} ended twice in a row without progress and there is still work open on it, so it waits for you. Say how to go on, or @ ${input.bot}.`
+    : `${input.job}：${input.bot}连续两次结束都没有进展，还有没做完的事，先停下等你。说一句接下来怎么做，或者 @ ${input.bot}。`;
+}
+
 export function supervisorNoticeBody(
   locale: Locale,
   input: {

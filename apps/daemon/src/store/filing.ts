@@ -9,6 +9,7 @@ import { HttpError } from "../errors";
 import type { StoreContext } from "./shared";
 import { recordWorkEvent } from "./work-events";
 import { heldSql } from "./holds";
+import { externalJobsReadable } from "./external-jobs-migration";
 
 export type Filing = { taskId: string; ticketId: string | null };
 export type FilingTarget = { taskId: string; ticketId?: string | null; partKey?: string | null };
@@ -46,19 +47,26 @@ function validTarget(ctx: StoreContext, target: FilingTarget): void {
   }
 }
 
+/**
+ * The plans a line in `sessionId` may be filed under (ADR 0040 §8.4): the conversation's own, and
+ * its main conversation's when it is a Bot↔Bot thread; from any other conversation only a plan the
+ * called Bot (`botId`; with none, the Bots in the conversation) has open work in, or worked on in
+ * the last 24 hours. Being in a group is not working on its plans: a line in your direct with a Bot
+ * is not filed under a group plan it never touched.
+ */
 export function planCandidates(ctx: StoreContext, input: { sessionId: string; botId?: string }): PlanCandidate[] {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const rows = ctx.db.query<{ id: string }, [string, string | null, string]>(`WITH visible_sessions AS (
       SELECT ?1 AS id
-      UNION SELECT there.session_id FROM session_participants here
-      JOIN session_participants there ON there.member = here.member AND there.left_at IS NULL
-      WHERE here.session_id = ?1 AND here.left_at IS NULL AND here.member <> 'user'
-        AND (?2 IS NULL OR here.member = ?2)
       UNION SELECT origin_session_id FROM sessions WHERE id = ?1 AND origin_session_id IS NOT NULL
+    ), called AS (
+      SELECT ?2 AS id WHERE ?2 IS NOT NULL
+      UNION SELECT member FROM session_participants WHERE ?2 IS NULL AND session_id = ?1 AND left_at IS NULL AND member <> 'user'
     ), candidate_ids AS (
       SELECT t.id FROM tasks t JOIN visible_sessions s ON s.id = t.session_id
-      UNION SELECT task_id FROM work_items WHERE bot_id = ?2 AND state <> 'closed' AND task_id IS NOT NULL
-      UNION SELECT task_id FROM turns WHERE bot_id = ?2 AND last_activity_at >= ?3 AND task_id IS NOT NULL
+      UNION SELECT task_id FROM work_items WHERE bot_id IN (SELECT id FROM called) AND state <> 'closed' AND task_id IS NOT NULL
+      UNION SELECT task_id FROM turns WHERE bot_id IN (SELECT id FROM called) AND last_activity_at >= ?3 AND task_id IS NOT NULL
+        AND IFNULL(mode, 'work') <> 'readonly'
     ) SELECT t.id FROM tasks t JOIN candidate_ids c ON c.id = t.id
       WHERE t.dormant_since IS NULL AND t.routine_id IS NULL
         AND COALESCE(t.stage, CASE WHEN t.status = 'done' THEN 'delivered' ELSE 'active' END) IN ('active', 'delivered')
@@ -141,6 +149,7 @@ export function fileMessage(ctx: StoreContext, messageId: string, input: FileMes
       return { filings: existing, candidates, state: message.filing_state };
     }
     const candidates = planCandidates(ctx, { sessionId: message.session_id, botId: input.botId });
+    const control = pureControl(message.control);
     const decisions: FilingDecision[] = [];
     const add = (targets: FilingTarget[], rule: number) => {
       for (const target of targets) {
@@ -148,7 +157,7 @@ export function fileMessage(ctx: StoreContext, messageId: string, input: FileMes
         if (!decisions.some((d) => targetKey(d) === targetKey(target))) decisions.push({ ...target, filedBy: `rule:${rule}`, strength: 'locked' });
       }
     };
-    if (!input.none && !message.control) {
+    if (!input.none && !control) {
       add(input.explicit ?? (message.kind === 'user' && message.filing_state === null && message.task_id
         ? [{ taskId: message.task_id, ticketId: message.ticket_id }] : []), 1);
       const annotations = ctx.db.query<{ relpath: string; target_message_id: string; target_turn_id: string | null }, [string]>(
@@ -173,15 +182,30 @@ export function fileMessage(ctx: StoreContext, messageId: string, input: FileMes
         FROM inbox_items WHERE message_id = ? AND source IN ('delegation', 'delegation_reply', 'review', 'job', 'timer') ORDER BY seq`).all(messageId);
       for (const item of boundItems) add(item.work_item_id ? workItemTarget(ctx, item.work_item_id) : item.task_id ? [{ taskId: item.task_id, ticketId: item.ticket_id }] : [], 5);
     }
-    if (!decisions.length && !input.none && !message.control && message.kind === 'user') {
+    if (!decisions.length && !input.none && !control && message.kind === 'user') {
       decisions.push(...defaultDecisions(ctx, { sessionId: message.session_id, body: message.body, candidates }));
     }
     // Explicitly referenced plans remain selectable, even when dormant or already accepted.
     for (const decision of decisions) if (!candidates.some((c) => c.id === decision.taskId)) candidates.push(candidateOf(ctx, decision.taskId));
-    const state: FilingState = decisions.length ? 'filed' : input.none || message.control ? 'none' : 'undetermined';
+    const state: FilingState = decisions.length ? 'filed' : input.none || control ? 'none' : 'undetermined';
     replaceFilings(ctx, message, decisions, state, candidates);
     return { filings: filingsOfMessage(ctx, messageId), candidates, state };
   });
+}
+
+/**
+ * A line the app wrote about your stops, a restart or a check is about no job. A line of yours only
+ * marked as maybe meaning a stop or a go on (`possible_control`, 「继续优化标题」) went on as any line
+ * and is filed as one; so is one an unreadable mark sits on.
+ */
+function pureControl(raw: string | null): boolean {
+  if (!raw) return false;
+  try {
+    const kind = (JSON.parse(raw) as { kind?: unknown } | null)?.kind;
+    return typeof kind === 'string' && kind !== 'possible_control';
+  } catch {
+    return false;
+  }
 }
 
 function targetKey(target: FilingTarget): string {
@@ -395,7 +419,8 @@ export function updatePlanDormancy(ctx: StoreContext, input: {
     const seventyTwoHours = new Date(Date.parse(now) - 72 * 60 * 60 * 1000).toISOString();
     const newPlan = input.newTaskId ? ctx.db.query<{ session_id: string | null; created_at: string }, [string]>('SELECT session_id, created_at FROM tasks WHERE id = ?').get(input.newTaskId) : null;
     if (input.newTaskId && !newPlan) throw new Error('no such new plan');
-    const externalJobs = Boolean(ctx.db.query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'external_jobs'").get());
+    // By the columns it reads, not the table's name: a draft's table of that name lacked them (ADR 0040 P4d).
+    const externalJobs = externalJobsReadable(ctx.db);
     const rows = ctx.db.query<{ id: string; session_id: string | null; created_at: string; stage: string; delivered_at: string | null; last_user: string; recent_turn: number; open_work: number; pending_job: number }, Array<string | null>>(`SELECT t.id, t.session_id, t.created_at,
       COALESCE(t.stage, CASE WHEN t.status = 'done' THEN 'delivered' ELSE 'active' END) AS stage,
       t.delivered_at, MAX(COALESCE((SELECT MAX(q.created_at) FROM user_quotes q WHERE q.task_id = t.id), t.created_at),

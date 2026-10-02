@@ -52,3 +52,13 @@ ADR 0039's plan callbacks are not superseded at level 3; from level 4 the superv
 Separating notes from requests stops immediate acknowledgment wake loops at the cost of explicit expected results and durable failure/cancellation/hold facts. Answer-only return is a narrow verifiable slice; other expectations remain obligations, never satisfied by a model's claim. Remaining supervision and submission work still require the approved specification's acceptance.
 
 具体当前行为与未完成项见[行为说明](../behavior.md#delegation) / [Behavior](../behavior.en.md#delegation)，术语见 [CONTEXT](../../CONTEXT.md) / [English glossary](../../CONTEXT.en.md)。
+
+## 2026-10-02 补记：纯文字收尾与无进展通知 / Prose endings and the no-progress notice
+
+纯文字收尾不再因为没逐条处置你的话被退回：这一段读过、没说怎么处理的用户收件都记为被这段文字回答（answered），不会两次退回后变成 needs_attention、再被监督器叫醒；`end_turn` 仍要逐条处置。连续两次无进展、仍有义务时的通知按界面语言写，点出这件事和 Bot（原来是写死的英文）。
+
+群里两个 Bot 互相点名回「收到，已对齐」的也按回执接回执处理：去掉点名后是光秃秃的回执、它那一轮正是被对方同样的回执叫醒、两轮都没跑命令时，不叫醒谁（各级别），审计里这样的对话一次跑了 20 轮。
+
+In a group, two Bots naming each other with 「收到，已对齐」 now fall under the nod-to-a-nod rule too: names aside a bare acknowledgement, its turn woken by the other's, neither turn having run a command — it wakes nobody (every level); the audit saw such an exchange run 20 turns.
+
+A prose ending no longer bounces for undisposed mail: the user mail the segment read and gave no word about is recorded as answered by the prose, rather than bouncing twice into needs_attention and a supervisor wake; `end_turn` still disposes item by item. The notice after two no-progress endings with obligations is in your interface language and names the job and the Bot (it was hard-coded English).

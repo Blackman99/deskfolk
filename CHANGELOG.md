@@ -6,6 +6,21 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Engine levels 2–4 — fixes from an audit before raising a real database
+
+- A database left with an abandoned draft's `external_jobs` table (no `task_id` or `state`) no longer fails every line you send at level 2 or above: the table is set aside when the database opens (dropped when empty, renamed `external_jobs_draft_<time>` when it holds rows), and plan dormancy reads it only when it has the columns it needs.
+- A second line on no job, sent while the Bot's desk segment in that conversation is still open — by mention, through the group lead, `@everyone`, a join judgement or a fork in your direct — is heard by that segment instead of failing on the one-segment-per-work-item rule and being lost. One the segment never read opens the next desk segment and no longer stays "queued" under the line.
+- A line that only might be a stop or a go on (「继续优化标题」, 「别停，接着写」) is filed like any other line, quote included, and reaches the segment at work on that job instead of opening a desk segment of its own.
+- Continue on an interrupted or failed segment works while the same Bot is working on another job in the same conversation (one live segment per job and the parallel limit still apply). A pick-up the supervisor cannot carry out is voided and costs none of its three an hour; the next one wakes the job by a queued line.
+- A line of yours filed under a job only after it arrived — a desk segment opening a job for it, `work_on`, your correction — now reaches the scribe, once.
+- A line in your direct with a Bot is no longer filed under a group plan the Bot never worked on: plans of other conversations are candidates only through the Bot's open work or a segment of the last 24 hours.
+- A job stopped with Stop and let go with the hold's button is called back by the supervisor once quiet, instead of being left "running" with nobody to move it. Every segment's end now settles its work item (idle on a job, closed on a desk), at level 2 too, and a boot after a crash settles what the dead process left.
+- A reply in words that answers the line you sent mid-segment ends the segment with that line answered, instead of bouncing twice, needing attention and being woken again.
+- Opening a job puts older idle jobs in that conversation to sleep (two hours without your words or work), and going up to level 2 does the same for plans parked under the one-current-plan model, so old parked plans no longer crowd the candidates.
+- A line you type while the Bot waits on your answer to its question is that answer, and the segment goes on.
+- Two Bots naming each other with "got it, aligned" in a group no longer wake each other back and forth.
+- The notice after two endings without progress is in your interface language and names the job; new jobs opened from a line that names a Bot are titled without the name.
+
 ### P4c — the supervisor (engine level 4)
 
 - Work no longer waits for you to notice it stopped. At engine level 4 (compatibility floor 4), the daemon checks every 15 seconds, from records in its database rather than timers in memory: a ticket whose owner (or the plan's lead, or a Bot that still owes a reply to a request) has had nothing moving it for 2 minutes is called back with the facts — 10 minutes when, in a conversation you are in, the Bot had the last word after yours. At most two call-backs per stretch of real progress (a ticket's stage changing, a check passing for the first time, a new file by content hash); after that the conversation gets one line, "This has stopped", and a notification. Editing a description is not progress. Plans that were already quiet when level 4 turned on are not all woken at once; they are watched again once anything happens in them.

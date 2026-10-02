@@ -212,6 +212,10 @@ export function createParticipation(deps: ParticipationDeps): Participation {
       }
     }
 
+    // Two Bots naming each other with 「收到」「已对齐」 would wake each other for ever (20 turns on
+    // 2026-10-01's audit): a nod to a nod wakes nobody here either, the names aside.
+    if (!opts.fromUser && message.kind === "bot" && isNodToANod(message)) return;
+
     const present = store.presentBotIds(session.id);
     const mentionedIds = parsed.mentions
       .map((name) => store.findBotByName(name)?.id)
@@ -291,16 +295,36 @@ export function createParticipation(deps: ParticipationDeps): Participation {
    * the opener's report-back takes it from there.
    */
   function isNodToANod(message: Message): boolean {
-    if (!message.turn_id || message.attachments.length > 0 || !isBareRemark(message.body)) return false;
+    if (!message.turn_id || message.attachments.length > 0 || !bare(message)) return false;
     try {
       if (store.turnRuns(message.turn_id).length > 0) return false;
       const trigger = store.getMessage(store.getTurn(message.turn_id).trigger_message_id);
       if (trigger.kind !== "bot" || trigger.author === message.author || !trigger.turn_id) return false;
-      if (trigger.attachments.length > 0 || !isBareRemark(trigger.body)) return false;
+      if (trigger.attachments.length > 0 || !bare(trigger)) return false;
       return store.turnRuns(trigger.turn_id).length === 0;
     } catch {
       return false;
     }
+  }
+
+  /**
+   * A bare remark (no-work.ts), read in a group without the Bots it names: 「@Beta 收到，已对齐」 is
+   * a nod there, since naming the one it answers is how a group line is addressed. A name nobody
+   * here has, or a question, still makes it more than a nod.
+   */
+  function bare(message: Message): boolean {
+    let group = false;
+    try {
+      group = store.getSession(message.session_id).kind === "group";
+    } catch {
+      return false;
+    }
+    if (!group) return isBareRemark(message.body);
+    const { parsed } = mentionsIn(message.session_id, message.body);
+    if (parsed.unresolved.length > 0) return false;
+    let rest = message.body;
+    for (const span of [...parsed.spans].sort((a, b) => b.start - a.start)) rest = `${rest.slice(0, span.start)} ${rest.slice(span.end)}`;
+    return isBareRemark(rest);
   }
 
   /** Your line, or a Bot's: what the work log says woke a Bot when a hold turns the wake away. */

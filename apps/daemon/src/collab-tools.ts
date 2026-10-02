@@ -66,6 +66,8 @@ export type ToolResult = {
   };
   /** A picture `read_file` found; the engine shows it after the hop's tool results (see loop-pictures.ts). */
   picture?: LoopPicture;
+  /** Lines of yours the call filed under a job (`work_on`), for the scribe; not shown to the model. */
+  filed?: string[];
   emitted: Array<
     | { kind: "bot"; bot: Bot; deleted_at: string | null }
     | { kind: "session"; session: SessionDetail }
@@ -678,7 +680,7 @@ function workOn(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
     ? { merged: true, ended: true, turn_id: selected.mergedInto }
     : { task_id: selected.taskId, ticket_id: selected.ticketId, work_item_id: selected.workItemId,
         ...(selected.ended ? { ended: true } : {}), ...(selected.queued ? { queued: true } : {}) };
-  return { ok: true, data, emitted: selected.messages.map((message) => ({ kind: "message", message })) };
+  return { ok: true, data, emitted: selected.messages.map((message) => ({ kind: "message", message })), filed: selected.filed };
 }
 
 /**

@@ -88,6 +88,11 @@ export type LifecycleDeps = {
   completeSilent: Closing["completeSilent"];
   observeTicket: PlanWatch["observeTicket"];
   handleParticipation: Participation["handleParticipation"];
+  /**
+   * Late-bound: the engine's `replyAsk`. A line of yours that reaches a segment waiting on your
+   * answer to its question is that answer (ADR 0040 §3.3), written as text of your own.
+   */
+  answerAsk: (askId: string, sessionId: string, custom: string) => void;
 };
 
 export type Lifecycle = {
@@ -162,6 +167,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     completeSilent,
     observeTicket,
     handleParticipation,
+    answerAsk,
   } = deps;
 
   /**
@@ -208,6 +214,16 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
         if (onPlan && live && !live.abort.signal.aborted && store.turnHeldBy(onPlan.id).length === 0) {
           hearIn(onPlan, live, trigger, { item: { author: "", body: trigger.body, checkBack: false } }, landing);
           return onPlan;
+        }
+      } else {
+        // A line on no job, for a Bot whose desk segment in this conversation is still open: that
+        // segment hears it, as in a direct. A second desk segment here would be the same work item
+        // (I1), and the refusal would lose the line. A desk this process does not run, or one being
+        // cut off, still gets the row: it reads it at its next step, or leaves it for the next one.
+        const desk = store.listLiveTurns({ sessionId, botId }).find((row) => row.mode === "desk");
+        if (desk) {
+          hearIn(desk, lives.get(desk.id), trigger, { item: { author: "", body: trigger.body, checkBack: false } }, landing);
+          return desk;
         }
       }
     }
@@ -317,11 +333,12 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
    */
   function hearIn(
     turn: Turn,
-    live: Live,
+    live: Live | undefined,
     trigger: Message,
     entry: Omit<InboxEntry, "message">,
     about: { taskId: string | null; ticketId: string | null },
   ): void {
+    if (live && answersAsk(turn, live, trigger)) return;
     const locale = store.settingsCached().locale;
     const tag = planTagger(store, { taskId: turn.task_id ?? null, ticketId: turn.ticket_id ?? null }, locale)(about);
     const where = trigger.session_id === turn.session_id ? entry.item.where : sessionLabel(store, trigger.session_id, turn.bot_id, locale) ?? undefined;
@@ -333,12 +350,33 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
         author = trigger.author;
       }
     }
-    live.inbox.push(recordHeard(store, turn, {
+    const heard = recordHeard(store, turn, {
       ...entry,
       item: { ...entry.item, author, tag: tag || undefined, where },
       message: trigger,
       ...(trigger.session_id === turn.session_id ? {} : { elsewhere: true }),
-    }));
+    });
+    if (live && !live.abort.signal.aborted) live.inbox.push(heard);
+  }
+
+  /**
+   * Your line reaching a segment that waits on your answer to its question, said where it asked:
+   * from the work items' level that line is the answer (ADR 0040 §3.3) — text of your own rather
+   * than one of its choices — and the segment goes on with it, instead of the line waiting in an
+   * inbox the waiting segment never reads. A line with files, a Bot's line, or one said elsewhere
+   * still goes to the inbox. True when it answered.
+   */
+  function answersAsk(turn: Turn, live: Live, trigger: Message): boolean {
+    if (store.capabilities().engine_level < ENGINE_LEVELS.work_items || !live.ask || live.abort.signal.aborted) return false;
+    if (trigger.kind !== "user" || trigger.author !== USER_MEMBER || trigger.attachments.length > 0 || !trigger.body.trim()) return false;
+    try {
+      const current = store.getTurn(turn.id);
+      if (current.status !== "waiting_ask" || current.session_id !== trigger.session_id) return false;
+      answerAsk(live.ask.id, trigger.session_id, trigger.body);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -385,6 +423,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       // line, and the line would be spent there instead of opening a turn that can. Nor does a
       // read-only turn answering you, which can act on nothing.
       if (current.mode === "readonly" || store.turnHeldBy(current.id).length > 0) continue;
+      if (answersAsk(current, live, trigger)) return current;
       const tag = planTagger(
         store,
         { taskId: current.task_id ?? null, ticketId: current.ticket_id ?? null },
@@ -563,6 +602,9 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
             // waits for the next turn here (ADR 0040 P4a).
             try {
               store.releaseTurnInbox(turn.id);
+              // The work it ran stops saying `running` (ADR 0040 §2.6), after its unread lines
+              // had their say: a line still waiting for it leaves the work queued instead.
+              store.settleEndedSegment(turn.id);
               if (store.capabilities().engine_level >= ENGINE_LEVELS.supervision) {
                 for (const pending of store.pendingToolExecutions({ turnId: turn.id })) {
                   store.finishToolExecution({ turnId: turn.id, toolCallId: pending.tool_call_id, outcome: "unknown", errorCode: "segment_ended" });

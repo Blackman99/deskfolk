@@ -64,3 +64,9 @@ ADR 0040 §5 wants "not stopping before done" to rest on facts in the database, 
 - **不明就不续。** 记录不到结果的外部调用宁可停下问你，也不冒重复付费的险；本地文件写入重做无害，不算。
 
 具体行为见[行为说明](../behavior.md#supervisor) / [Behavior](../behavior.en.md#supervisor)，术语见 [CONTEXT](../../CONTEXT.md) / [English glossary](../../CONTEXT.en.md)。
+
+## 2026-10-02 补记：拒绝的续跑与结束后的工作项 / Refused pick-ups and work left running
+
+续跑先记一条已触发的 `check_backs` 再让引擎照「继续」做；引擎做不成时（会话已归档、这件事已在别处做着）这条记录作废、记 `supervisor.pickup_refused`，不算尝试、不占每小时 3 次，下一拍改为排一条说明叫醒，不再从同一行续。原先同一会话里这个 Bot 在做另一件事也会被拒、白耗预算，现在 2 级起「继续」本就不按会话限（[ADR 0043](0043-work-items-and-attribution.md) 补记）。另外，I6 的那一拍也修运行中却没有活段的工作项：最后一段中断或失败的转 needs_attention，别的结束（Stop 后用按钮解除叫停、契约没看到的收尾）且没被叫停的转 idle，叫回才找得到它——之前 Stop 再按按钮解除后没人再推这件事。
+
+A pick-up records its fired `check_backs` row before the engine continues the line; when the engine cannot (conversation archived, job already under way elsewhere) the row is voided and `supervisor.pickup_refused` recorded — no attempt, none of the three an hour — and the next tick wakes the work by a queued line rather than retrying that line. Before, the same Bot working on another job in the same conversation was refused too and burned the budget; from level 2 Continue is no longer limited per conversation (ADR 0043's note). The tick's repair now also covers running work with no live segment: a last segment interrupted or failed needs attention, any other ending (a Stop lifted with its button, a closing the contract did not see) not under a stop goes idle, where the call-backs find it — before, nothing pushed such a job again.

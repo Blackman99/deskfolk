@@ -89,6 +89,8 @@ export type ToolsDeps = {
   observeTicket: (turnId: string, botId: string, seen: "working" | "delivered") => void;
   /** A test waits here, between one call returning and the next being looked at. */
   betweenCalls?: (turnId: string) => Promise<void> | void;
+  /** Late-bound: a line of yours a call filed under a job after it arrived goes to the scribe then (ADR 0040 P3). */
+  noteFiled: (messageId: string) => void;
 };
 
 export type Tools = {
@@ -117,7 +119,7 @@ export type Tools = {
 };
 
 export function createTools(deps: ToolsDeps): Tools {
-  const { store, publish, publishMessage, publishTurn, occurred, wake, mcp, admission, streams, lives, active, track, closingCheckForSend, handleParticipation, fireRoutine, observeTicket, betweenCalls } = deps;
+  const { store, publish, publishMessage, publishTurn, occurred, wake, mcp, admission, streams, lives, active, track, closingCheckForSend, handleParticipation, fireRoutine, observeTicket, betweenCalls, noteFiled } = deps;
 
   /**
    * How a call with an effect came out, on its ledger row (ADR 0045), before its result is heard.
@@ -245,6 +247,7 @@ export function createTools(deps: ToolsDeps): Tools {
           ...(target ? { target } : {}),
           ...(mcpTool ? { mcp_server: mcpTool.server, mcp_tool: mcpTool.tool } : {}) });
         result = await dispatchTool(turn, live, call.name, args, call.id);
+        for (const messageId of result.filed ?? []) noteFiled(messageId);
         finishEffectEvidence(turnId, live, call.name, call.id, result);
         publish({ event: "turn.tool", occurred_at: occurred(), turn_id: turnId, id: call.id,
           name: call.name, phase: "exited", duration_ms: Date.now() - startedAt,
@@ -527,6 +530,7 @@ export function createTools(deps: ToolsDeps): Tools {
         parentId: live.parentId, signal: live.abort.signal, admission }, "work_on", {
         plan: candidates[0] ?? { new: { title: trigger.body, quote_message_id: trigger.id } },
       });
+      for (const messageId of bound.filed ?? []) noteFiled(messageId);
       if (!bound.ok || bound.data?.merged) return bound;
       await publishEmitted(turn.id, live, bound.emitted);
       if (bound.data?.queued) return { ok: false, data: { ended: true, queued: true },

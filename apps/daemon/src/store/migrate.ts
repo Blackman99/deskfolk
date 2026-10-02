@@ -13,6 +13,7 @@ import { migrateDelegations } from "./delegation-migration";
 import { migrateEndReasons } from "./end-reason-migration";
 import { migrateSupervisor } from "./supervisor-migration";
 import { migrateToolExecutions } from "./tool-execution-migration";
+import { migrateStrayExternalJobs } from "./external-jobs-migration";
 import { clipQuote, QUOTE_TRIGGERS } from "./quotes";
 import { REQUIREMENT_TRIGGERS } from "./requirements";
 import { DORMANT_PLAN_TRIGGERS, idSuffix, localDate, slugify, taskTitle, WORK_ROOT } from "./tasks";
@@ -282,6 +283,8 @@ export function migrateSchema(db: Database): void {
   migrateEndReasons(db);
   migrateSupervisor(db);
   migrateToolExecutions(db);
+  // Before anything reads it: a draft's table of that name, without the columns readers use.
+  migrateStrayExternalJobs(db);
   // Made again on every open rather than if missing, so the triggers are always this build's own.
   // Last, after every column they read (tasks.dormant_since comes in migratePlans).
   for (const trigger of [...HELD_TURN_TRIGGERS, ...QUOTE_TRIGGERS, ...REQUIREMENT_TRIGGERS, ...DORMANT_PLAN_TRIGGERS]) {

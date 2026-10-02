@@ -518,6 +518,7 @@ export class Store {
   readonly prepareQueuedTrigger = this.bind(workItems.prepareQueuedTrigger);
   readonly markWorkRunning = this.bind(workItems.markWorkRunning);
   readonly markSegmentCutOff = this.bind(workItems.markSegmentCutOff);
+  readonly settleEndedSegment = this.bind(workItems.settleEndedSegment);
   readonly isPlanRunnable = this.bind(workItems.isPlanRunnable);
   readonly hasWorkAuthority = this.bind(workItems.hasWorkAuthority);
   readonly fileLine = this.bind(filing.fileLine);
@@ -545,6 +546,7 @@ export class Store {
   readonly supervisorTick = this.bind(supervisor.supervisorTick);
   readonly recordSupervisorRestart = this.bind(supervisor.recordSupervisorRestart);
   readonly settleRestartNotices = this.bind(supervisor.settleRestartNotices);
+  readonly refuseSupervisorPickup = this.bind(supervisor.refuseSupervisorPickup);
   readonly recordArtifactProgress = this.bind(supervisor.recordArtifactProgress);
   readonly recordPeerNote = this.bind(peerNotes.recordPeerNote);
   readonly progressMessagesSent = this.bind(peerNotes.progressMessagesSent);
@@ -578,6 +580,7 @@ export class Store {
   readonly listQuotes = this.bind(quotes.listQuotes);
   readonly getQuote = this.bind(quotes.getQuote);
   readonly quoteOfMessage = this.bind(quotes.quoteOfMessage);
+  readonly quoteScribed = this.bind(quotes.quoteScribed);
   readonly addRequirement = this.bind(requirements.addRequirement);
   readonly raiseRequirement = this.bind(requirements.raiseRequirement);
   readonly getRequirement = this.bind(requirements.getRequirement);

@@ -1980,6 +1980,8 @@ function dispatch(
     });
     store.getMessage(params.id!);
     const moved = store.refileMessage(params.id!, { filings, userActionId: scope?.requestId ?? ulid() });
+    // A line that was on no job has one now: the scribe reads it against it.
+    if (filings.length > 0) engine.noteFiled(moved.id);
     publish({ event: "attribution.changed", occurred_at: occurred(), message_id: moved.id, session_id: moved.session_id,
       filing_state: moved.filing_state ?? (filings.length ? "filed" : "none"), filings: moved.filings ?? [] });
     return jsonResponse(moved, 200, null);

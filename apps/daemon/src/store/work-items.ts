@@ -203,6 +203,44 @@ export function markSegmentCutOff(ctx: StoreContext, turnId: string, reason: str
     ticketId: turn.ticket_id, turnId, sessionId: turn.session_id, payload: { work_item_id: turn.work_item_id, reason } });
 }
 
+const LIVE_SEGMENT = "('running', 'waiting_approval', 'waiting_ask')";
+
+/**
+ * A segment ended and its work item still says `running` (ADR 0040 §2.6): at engine level 2 no end
+ * contract moves it, and at any level a Stop, an ending the contract did not see, or a lost process
+ * leaves it there — where nothing reads it as waiting for a call-back, and dormancy reads it as work
+ * still going on. With no other segment live on it, work on no plan (a desk) is closed and work on a
+ * plan is idle, from where your next line, its queue or the supervisor takes it up. A segment cut
+ * off at the supervisor's level has already left it needing attention (`markSegmentCutOff`).
+ */
+export function settleEndedSegment(ctx: StoreContext, turnId: string): void {
+  if (readEngineLevel(ctx.db) < ENGINE_LEVELS.work_items) return;
+  const turn = ctx.db.query<{ work_item_id: string | null; status: string }, [string]>("SELECT work_item_id, status FROM turns WHERE id = ?").get(turnId);
+  if (!turn?.work_item_id || ["running", "waiting_approval", "waiting_ask"].includes(turn.status)) return;
+  settleWorkItems(ctx, { workItemId: turn.work_item_id });
+}
+
+/**
+ * Every `running` work item no segment runs any more, settled as {@link settleEndedSegment} does:
+ * at boot, for what the last run left. From the supervisor's level only desks: a job there is the
+ * supervisor's to repair, by how its last segment ended (store/supervisor.ts).
+ */
+export function settleRunningWork(ctx: StoreContext): number {
+  const level = readEngineLevel(ctx.db);
+  if (level < ENGINE_LEVELS.work_items) return 0;
+  return settleWorkItems(ctx, { desksOnly: level >= ENGINE_LEVELS.supervision });
+}
+
+function settleWorkItems(ctx: StoreContext, only: { workItemId?: string; desksOnly?: boolean }): number {
+  const now = isoNow();
+  return ctx.db.query<{ id: string }, [string, string | null, number]>(`UPDATE work_items
+    SET state = CASE WHEN task_id IS NULL THEN 'closed' ELSE 'idle' END,
+      closed_at = CASE WHEN task_id IS NULL THEN ?1 ELSE closed_at END, updated_at = ?1
+    WHERE state = 'running' AND (?2 IS NULL OR id = ?2) AND (?3 = 0 OR task_id IS NULL)
+      AND NOT EXISTS (SELECT 1 FROM turns t WHERE t.work_item_id = work_items.id AND t.status IN ${LIVE_SEGMENT})
+    RETURNING id`).all(now, only.workItemId ?? null, only.desksOnly ? 1 : 0).length;
+}
+
 /** Marks a work item closed once no live turn still runs it. */
 export function closeWorkItemIfIdle(ctx: StoreContext, id: string | null): void {
   if (!id) return;

@@ -122,3 +122,13 @@ test("invalid corrections are refused atomically, including a ticket from anothe
   expect((await h.request(h.message.id, { plan_id: h.b.id, ticket_id: h.ticket.id })).status).toBe(200);
   expect((await h.request("01ARZ3NDEKTSV4RRFFQ69G5FAV", { filings: [] })).status).toBe(404);
 });
+
+test("a correction that files a line hands it to the scribe; one that unfiles it does not", async () => {
+  const h = start();
+  const noted: string[] = [];
+  h.api.engine.noteFiled = (messageId) => { noted.push(messageId); };
+  expect((await h.request(h.message.id, { filings: [] })).status).toBe(200);
+  expect(noted).toEqual([]);
+  expect((await h.request(h.message.id, { plan_id: h.a.id })).status).toBe(200);
+  expect(noted).toEqual([h.message.id]);
+});

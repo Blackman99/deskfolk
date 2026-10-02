@@ -86,6 +86,10 @@ test("work_on binds the turn to the job it names", async () => {
   const [director, reviewer] = h.createBots("视频导演", "审片员");
   const room = h.group("片场", [director!, reviewer!]);
   const film = h.store.openTask({ sessionId: room, title: "回响纪元" });
+  // The film is one of the director's jobs (work it has open from the group), so a line in its
+  // direct may be put there; a group plan it never touched is no candidate (ADR 0040 §8.4).
+  const held = h.store.findOrCreateWorkItem({ botId: director!.id, sessionId: room, taskId: film.id, ticketId: null });
+  h.store.db.run("UPDATE work_items SET state = 'idle' WHERE id = ?", [held.id]);
   h.script(director).reply(call(tool("work_on", { plan: film.id })), say("改挂了"));
   h.postUser(h.direct(director), "接着做回响纪元");
   await h.waitIdle();

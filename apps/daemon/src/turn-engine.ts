@@ -121,6 +121,11 @@ export type TurnEngine = {
   /** Starts queued work that may start now (a durable answer queued it, say); nothing else. */
   dispatchQueuedWork: () => void;
   /**
+   * A line of yours was filed under a job after it arrived (your correction of where it belongs):
+   * the scribe reads it against that job's requirements now, once per line (ADR 0040 P3).
+   */
+  noteFiled: (messageId: string) => void;
+  /**
    * One supervisor tick (ADR 0045), from the scheduler's: the store's repairs, pick-ups and
    * call-backs, then the segments it continues and the queue it dispatches. Off below the
    * supervisor's level and while draining.
@@ -376,6 +381,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
           if (live) await options.betweenCalls!(turnId, live);
         }
       : undefined,
+    noteFiled: (messageId) => noteFiled(messageId),
   });
 
   const fire = createFire({
@@ -442,6 +448,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     completeSilent: closing.completeSilent,
     observeTicket: planWatch.observeTicket,
     handleParticipation: participation.handleParticipation,
+    // Late-bound: the engine below; a line only reaches a waiting segment once it is built.
+    answerAsk: (askId, sessionId, custom) => { engine.replyAsk(askId, sessionId, { custom }); },
   });
 
   const stops = createStop({
@@ -515,6 +523,23 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       if (event.end_reason === "bot_archived" || event.end_reason === "bot_deleted") lifecycle.abortLive(event.id);
     }
   });
+
+  /**
+   * A line of yours filed under a job after the arrival path ran (a desk segment opening one for it,
+   * `work_on`, your correction): the scribe only reads a filed line, so it reads this one now. The
+   * scribe reads each line once, so a line filed when it arrived is not read again.
+   */
+  function noteFiled(messageId: string): void {
+    let body: string;
+    try {
+      const message = store.getMessage(messageId);
+      if (message.kind !== "user") return;
+      body = message.body;
+    } catch {
+      return;
+    }
+    store.afterCommit(() => void core.track(scribe.noteLine(messageId, scribe.handedOverAt(body))));
+  }
 
   const engine: TurnEngine = {
     async handleInboundMessage(message, opts) {
@@ -620,6 +645,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     },
     sweepToolResults,
     dispatchQueuedWork: lifecycle.dispatchQueued,
+    noteFiled,
     supervise(at = new Date()) {
       if (store.capabilities().engine_level < ENGINE_LEVELS.supervision || options.admission?.draining) return;
       const tick = store.supervisorTick({ now: at.toISOString() });
@@ -633,8 +659,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
           lifecycle.continueFromInterrupt(wake.noteId);
           continued.push(wake.noteId);
         } catch (error) {
-          store.recordWorkEvent({ kind: "supervisor.pickup_refused", actor: "app", botId: wake.botId, taskId: wake.taskId, ticketId: wake.ticketId,
-            payload: { work_item_id: wake.workItemId, note_id: wake.noteId, code: error instanceof HttpError ? error.code : "error" } });
+          // Refused: no attempt, so no budget spent; the next tick queues a wake instead (ADR 0045).
+          store.refuseSupervisorPickup({ checkBackId: wake.checkBackId, code: error instanceof HttpError ? error.code : "error", now: at.toISOString() });
         }
       }
       if (continued.length > 0) for (const message of store.settleRestartNotices(continued)) core.publishMessage(message);

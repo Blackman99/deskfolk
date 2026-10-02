@@ -64,7 +64,7 @@ export type SupervisorTickResult = {
   wakes: SupervisorWake[];
   /** Lines the tick wrote (its notices), for the engine to publish. */
   messages: Message[];
-  repaired: Array<{ workItemId: string; from: "waiting" | "running"; reason: "wait_invalid" | "lost_segment" }>;
+  repaired: Array<{ workItemId: string; from: "waiting" | "running"; reason: "wait_invalid" | "lost_segment" | "segment_ended" }>;
   deferred: Array<{ workItemId: string; reason: string }>;
   unsupported: readonly string[];
 };
@@ -307,7 +307,7 @@ function restartRecord(ctx: StoreContext, work: Work, segment: Segment | null): 
     }
   }
   // Picked up once already for that boot: what follows is ordinary attention.
-  if (!record || ctx.db.query(`SELECT 1 FROM check_backs WHERE work_item_id = ? AND kind = 'supervisor'
+  if (!record || ctx.db.query(`SELECT 1 FROM check_backs WHERE work_item_id = ? AND kind = 'supervisor' AND voided_at IS NULL
     AND json_extract(wait_spec, '$.boot_id') = ?`).get(work.id, record.boot_id)) return null;
   return record;
 }
@@ -429,25 +429,41 @@ function openWait(ctx: StoreContext, work: Work): boolean {
   return false;
 }
 
-/** A running item whose segment was cut off without the engine seeing it end (an older build, a crash between writes). */
+/**
+ * A running item no segment runs any more. Cut off without the engine seeing it end (an older
+ * build, a crash between writes), or failed: it needs attention. Ended any other way — a Stop whose
+ * hold you lifted with its button, an ending the end contract did not see — it is idle, so the
+ * call-backs reach it; while a stop of yours covers it, it is left as it is.
+ */
 function repairLostSegments(ctx: StoreContext, result: SupervisorTickResult, now: string): void {
   const running = ctx.db.query<Work, []>(`SELECT w.* FROM work_items w JOIN tasks p ON p.id = w.task_id
     WHERE w.state = 'running' AND ${ACTIVE_PLAN("p")}
       AND NOT EXISTS (SELECT 1 FROM turns t WHERE t.work_item_id = w.id AND t.status IN ${LIVE})`).all();
   const since = supervisingSince(ctx);
   for (const work of running) {
-    if (beforeSupervision(since, work.updated_at) || latestSegment(ctx, work.id)?.status !== "interrupted") continue;
-    ctx.db.run("UPDATE work_items SET state = 'needs_attention', updated_at = ? WHERE id = ? AND state = 'running'", [now, work.id]);
+    const segment = latestSegment(ctx, work.id);
+    if (beforeSupervision(since, work.updated_at) || !segment) continue;
+    if (segment.status === "interrupted" || (segment.status === "completed" && continuableNote(ctx, segment))) {
+      ctx.db.run("UPDATE work_items SET state = 'needs_attention', updated_at = ? WHERE id = ? AND state = 'running'", [now, work.id]);
+      ctx.db.run(`INSERT INTO work_events (at, kind, actor, bot_id, task_id, ticket_id, work_item_id, session_id, payload)
+        VALUES (?, 'supervisor.lost_segment', 'app', ?, ?, ?, ?, ?, '{}')`, [now, work.bot_id, work.task_id, work.ticket_id, work.id, work.home_session_id]);
+      result.repaired.push({ workItemId: work.id, from: "running", reason: "lost_segment" });
+      continue;
+    }
+    if (heldWork(ctx, work)) continue;
+    ctx.db.run("UPDATE work_items SET state = 'idle', updated_at = ? WHERE id = ? AND state = 'running'", [now, work.id]);
     ctx.db.run(`INSERT INTO work_events (at, kind, actor, bot_id, task_id, ticket_id, work_item_id, session_id, payload)
-      VALUES (?, 'supervisor.lost_segment', 'app', ?, ?, ?, ?, ?, '{}')`, [now, work.bot_id, work.task_id, work.ticket_id, work.id, work.home_session_id]);
-    result.repaired.push({ workItemId: work.id, from: "running", reason: "lost_segment" });
+      VALUES (?, 'supervisor.segment_ended', 'app', ?, ?, ?, ?, ?, ?)`, [now, work.bot_id, work.task_id, work.ticket_id, work.id,
+      work.home_session_id, JSON.stringify({ turn_id: segment.id, status: segment.status, end_reason: segment.end_reason })]);
+    result.repaired.push({ workItemId: work.id, from: "running", reason: "segment_ended" });
   }
 }
 
 /** Pick-ups of this item in the hour before `now`. */
 function pickupsInHour(ctx: StoreContext, workItemId: string, now: string): Array<{ id: string }> {
+  // A pick-up the engine could not carry out was voided (see {@link refuseSupervisorPickup}) and is no attempt.
   return ctx.db.query<{ id: string }, [string, string]>(`SELECT id FROM check_backs WHERE work_item_id = ? AND kind = 'supervisor'
-    AND json_extract(wait_spec, '$.reason') IN ('needs_attention', 'restart', 'wait_invalid') AND created_at > ? ORDER BY created_at, id`)
+    AND voided_at IS NULL AND json_extract(wait_spec, '$.reason') IN ('needs_attention', 'restart', 'wait_invalid') AND created_at > ? ORDER BY created_at, id`)
     .all(workItemId, new Date(Date.parse(now) - HOUR_MS).toISOString());
 }
 
@@ -517,7 +533,9 @@ function pickUpAttention(ctx: StoreContext, result: SupervisorTickResult, now: s
     const reason: "restart" | "wait_invalid" | "needs_attention" = restart ? "restart" : waitGone ? "wait_invalid" : "needs_attention";
     const detail = segment?.status === "interrupted" ? "interrupted" : segment?.end_reason === "needs_attention" ? "contract_budget"
       : continuableNote(ctx, segment) ? "failed" : "lost_segment";
-    const noteId = reason === "wait_invalid" ? null : continuableNote(ctx, segment);
+    // A line the engine could not continue from once is not tried again: the work goes on by a queued wake.
+    const note = reason === "wait_invalid" ? null : continuableNote(ctx, segment);
+    const noteId = note && !pickupRefused(ctx, work.id, note) ? note : null;
     const job = jobLabel(ctx, taskId, work.ticket_id);
     const body = reason === "wait_invalid"
       ? supervisorWakeNote(locale(ctx), { kind: "wait_invalid", job })
@@ -536,6 +554,33 @@ function pickUpAttention(ctx: StoreContext, result: SupervisorTickResult, now: s
       dedupeKey: `supervisor:pickup:${work.id}:${segment?.id ?? "none"}:${recent.length + 1}` });
     result.wakes.push({ workItemId: work.id, botId: work.bot_id, taskId, ticketId: work.ticket_id, checkBackId, inboxSeq: queued.inbox.seq, noteId: null, cause: reason });
   }
+}
+
+/** Whether a pick-up from this line was refused before (see {@link refuseSupervisorPickup}). */
+function pickupRefused(ctx: StoreContext, workItemId: string, noteId: string): boolean {
+  return Boolean(ctx.db.query(`SELECT 1 FROM check_backs WHERE work_item_id = ? AND kind = 'supervisor' AND voided_at IS NOT NULL
+    AND json_extract(wait_spec, '$.note_id') = ?`).get(workItemId, noteId));
+}
+
+/**
+ * The engine could not continue a pick-up from its 「中断」 or failure line (the conversation was
+ * archived, the job taken up some other way meanwhile): the pick-up's record is voided, so it is no
+ * attempt and counts toward no budget, and the work log says why (`supervisor.pickup_refused`). The
+ * next tick picks the work up by a queued wake instead of that line.
+ */
+export function refuseSupervisorPickup(ctx: StoreContext, input: { checkBackId: string; code: string; now?: string }): void {
+  ctx.commit(() => {
+    const now = clock(input.now);
+    const row = ctx.db.query<{ id: string; bot_id: string; task_id: string | null; ticket_id: string | null; work_item_id: string | null;
+      session_id: string; note_id: string | null }, [string]>(`SELECT id, bot_id, task_id, ticket_id, work_item_id, session_id,
+        json_extract(wait_spec, '$.note_id') AS note_id FROM check_backs WHERE id = ? AND kind = 'supervisor'`)
+      .get(requireNonEmpty("checkBackId", input.checkBackId));
+    if (!row) throw new HttpError(404, "not_found", "no such supervisor pick-up");
+    if (!ctx.db.query<{ id: string }, [string, string]>("UPDATE check_backs SET voided_at = ? WHERE id = ? AND voided_at IS NULL RETURNING id")
+      .get(now, row.id)) return;
+    recordWorkEvent(ctx, { kind: "supervisor.pickup_refused", actor: "app", botId: row.bot_id, taskId: row.task_id, ticketId: row.ticket_id,
+      sessionId: row.session_id, payload: { work_item_id: row.work_item_id, note_id: row.note_id, check_back_id: row.id, code: input.code } });
+  });
 }
 
 /**

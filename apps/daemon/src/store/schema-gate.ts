@@ -240,14 +240,41 @@ export function raiseEngineLevel(db: Database, installed: SharedInstall | null):
       writeSetting(db, "engine_level", String(level));
     }
     if (floor > 0) writeSetting(db, "schema_min_compatible", String(floor));
+    const at = new Date().toISOString();
+    if (from < ENGINE_LEVELS.work_items && target >= ENGINE_LEVELS.work_items) sleepLegacyParkedPlans(db, at);
     // When it went up, in the work log: the supervisor watches work from its own level's raise on,
     // and leaves what was already quiet before it (ADR 0045). A bare settings table has no log.
     if (db.query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'work_events'").get()) {
       db.run("INSERT INTO work_events (at, kind, actor, payload) VALUES (?, 'engine.level_raised', 'app', ?)",
-        [new Date().toISOString(), JSON.stringify({ from, to: target })]);
+        [at, JSON.stringify({ from, to: target })]);
     }
   })();
   return { level: target, raised: true, refused: null, accepted };
+}
+
+/**
+ * Below the work items' level a conversation had one current plan, and the one a new plan displaced
+ * was parked (`status = 'parked'`). From it every plan not delivered reads as active (ADR 0040 P4b),
+ * so those old parked plans would all become places a line of yours is filed, and a desk segment
+ * with more than one to choose from refuses to act. Going up to it, a parked plan nobody is working
+ * on and you have not spoken about for two hours goes dormant (§2.6), as it would have had dormancy
+ * existed when it was parked; your next line filed there, or its Continue, wakes it.
+ */
+function sleepLegacyParkedPlans(db: Database, at: string): void {
+  const columns = new Set(db.query<{ name: string }, []>("SELECT name FROM pragma_table_info('tasks')").all().map((row) => row.name));
+  if (!["status", "stage", "dormant_since", "routine_id", "closed_at"].every((column) => columns.has(column))) return;
+  const quotes = db.query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'user_quotes'").get() !== null;
+  const recent = new Date(Date.parse(at) - 2 * 60 * 60 * 1000).toISOString();
+  const asleep = db.query<{ id: string; session_id: string | null }, [string, string]>(`UPDATE tasks SET dormant_since = ?1, closed_at = COALESCE(closed_at, ?1)
+    WHERE status = 'parked' AND stage IS NULL AND dormant_since IS NULL AND routine_id IS NULL
+      AND NOT EXISTS (SELECT 1 FROM turns t WHERE t.task_id = tasks.id AND t.status IN ('running', 'waiting_approval', 'waiting_ask'))
+      ${quotes ? "AND NOT EXISTS (SELECT 1 FROM user_quotes q WHERE q.task_id = tasks.id AND q.created_at > ?2)" : "AND ?2 IS NOT NULL"}
+    RETURNING id, session_id`).all(at, recent);
+  if (asleep.length === 0 || !db.query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'work_events'").get()) return;
+  for (const plan of asleep) {
+    db.run("INSERT INTO work_events (at, kind, actor, task_id, session_id, payload) VALUES (?, 'plan.dormant', 'app', ?, ?, ?)",
+      [at, plan.id, plan.session_id, JSON.stringify({ cause: "legacy_parked" })]);
+  }
 }
 
 function newerThan(version: string, than: string): boolean {

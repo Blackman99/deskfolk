@@ -165,7 +165,7 @@ export function turnInbox(ctx: StoreContext, turnId: string): InboxItem[] {
 export function adoptWaitingInbox(ctx: StoreContext, input: { botId: string; sessionId: string; turnId: string }): InboxItem[] {
   return ctx.db.transaction(() => {
     refreshHeldInbox(ctx, { botId: input.botId, sessionId: input.sessionId });
-    return ctx.db
+    const adopted = ctx.db
       .query<InboxItem, [string, string, string, string]>(
         `UPDATE inbox_items SET turn_id = ?1,
             work_item_id = COALESCE(work_item_id, (SELECT work_item_id FROM turns WHERE id = ?1))
@@ -176,6 +176,13 @@ export function adoptWaitingInbox(ctx: StoreContext, input: { botId: string; ses
       )
       .all(input.turnId, input.botId, input.sessionId, input.turnId)
       .sort((a, b) => a.seq - b.seq);
+    // The line this turn opened on is read as its trigger: a copy of it still waiting from a turn
+    // that ended before reading it, for work this turn does not take over (a desk segment's, closed
+    // at its end), is taken up here rather than left queued where nothing reads it again.
+    ctx.db.run(`UPDATE inbox_items SET state = 'superseded', disposed_at = ?3
+      WHERE bot_id = ?2 AND state = 'queued' AND turn_id IS NOT ?1 AND ${NOT_IN_LIVE_TURN}
+        AND message_id = (SELECT trigger_message_id FROM turns WHERE id = ?1)`, [input.turnId, input.botId, isoNow()]);
+    return adopted;
   })();
 }
 

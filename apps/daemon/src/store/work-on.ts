@@ -2,11 +2,11 @@
  * work_on's durable state transition (ADR 0040 §2.8/§8.4). Tool adapters only decode this result;
  * they never write SQL or publish a card before the selection, binding and work log commit.
  */
-import type { Message } from "@real-bot/protocol";
+import { parseMentions, type Message } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow } from "../ids";
 import { assertDeskCandidate, originalUserRequest } from "./desk";
-import { fileMessage } from "./filing";
+import { fileMessage, updatePlanDormancy } from "./filing";
 import { holdsCovering } from "./holds";
 import { queueInboxItem } from "./inbox";
 import { getMessage } from "./messages";
@@ -35,10 +35,25 @@ export type WorkOnResult = {
   queued?: boolean;
   ended?: boolean;
   messages: Message[];
+  /** Your line this call filed under the job, for the scribe to read against it (ADR 0040 P3). */
+  filed: string[];
 };
 
 function object(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+/**
+ * A new job's title without the Bots it names: 「@Alpha 做一个 logo」 opens 「做一个 logo」. A title
+ * that is nothing but names keeps them.
+ */
+function planTitle(ctx: StoreContext, said: string): string {
+  const roster = ctx.db.query<{ name: string }, []>("SELECT name FROM bots WHERE deleted_at IS NULL").all().map((row) => row.name);
+  const spans = parseMentions(said, roster).spans.filter((span) => span.kind !== "unresolved");
+  let title = said;
+  for (const span of [...spans].sort((a, b) => b.start - a.start)) title = `${title.slice(0, span.start)} ${title.slice(span.end)}`;
+  title = title.replace(/\s+/g, " ").replace(/^[\s,，、:：]+/, "").trim();
+  return title || said;
 }
 
 /** Every refusal throws, so a new plan/ticket created earlier in the transaction never leaks. */
@@ -71,7 +86,9 @@ export function workOn(ctx: StoreContext, input: WorkOnInput): WorkOnResult {
         throw new HttpError(409, "work_dir_fixed", "this working segment already acted in its directory; open the other job in a separate segment");
       }
       taskId = openTask(ctx, { sessionId: quote.session_id,
-        title: typeof fresh.title === "string" && fresh.title.trim() ? fresh.title : quote.body, brief: quote.body }).id;
+        title: planTitle(ctx, typeof fresh.title === "string" && fresh.title.trim() ? fresh.title : quote.body), brief: quote.body }).id;
+      // A new job in a conversation puts its older jobs nobody is on to sleep (ADR 0040 §2.6 ②).
+      updatePlanDormancy(ctx, { newTaskId: taskId });
     } else {
       throw new HttpError(422, "invalid_args", "plan is a candidate job id or {new:{title, quote_message_id}}");
     }
@@ -112,14 +129,16 @@ export function workOn(ctx: StoreContext, input: WorkOnInput): WorkOnResult {
       throw new HttpError(409, "work_dir_fixed", "this segment's working directory is already bound");
     }
     const busy = listLiveTurns(ctx, { botId: turn.bot_id }).find((row) => row.id !== turn.id && row.task_id === taskId && row.mode !== "readonly");
-    fileMessage(ctx, quote?.id ?? trigger.id, { botId: turn.bot_id, botSelection: [{ taskId, ticketId }, ...others] });
+    const filedLine = quote ?? trigger;
+    fileMessage(ctx, filedLine.id, { botId: turn.bot_id, botSelection: [{ taskId, ticketId }, ...others] });
+    const filed = filedLine.kind === "user" ? [filedLine.id] : [];
     if (busy) {
       ctx.db.run("UPDATE turns SET end_reason = 'merged' WHERE id = ?", [turn.id]);
       queueInboxItem(ctx, { botId: turn.bot_id, sessionId: busy.session_id, turnId: busy.id, taskId, ticketId,
         messageId: trigger.id, author: trigger.author, body: trigger.body, source: trigger.author === "user" ? "user" : "system",
         kind: "change", priority: trigger.author === "user" ? 1 : 3 });
       recordWorkEvent(ctx, { kind: "work.merged", actor: turn.bot_id, taskId, turnId: turn.id, payload: { into: busy.id } });
-      return { mergedInto: busy.id, ended: true, messages: [] };
+      return { mergedInto: busy.id, ended: true, messages: [], filed };
     }
     if (queuePlace(ctx, { botId: turn.bot_id, taskId }) !== null && turn.task_id !== taskId) {
       const queued = queueWork(ctx, { botId: turn.bot_id, sessionId: turn.session_id, taskId, ticketId,
@@ -127,7 +146,7 @@ export function workOn(ctx: StoreContext, input: WorkOnInput): WorkOnResult {
       const messages = queued.message ? [queued.message] : [];
       if (fresh) messages.push(createNewPlanCard(ctx, { turnId: turn.id, taskId, quoteMessageId: quote!.id }));
       ctx.db.run("UPDATE turns SET end_reason = 'queued' WHERE id = ?", [turn.id]);
-      return { ended: true, queued: true, taskId, ticketId, workItemId: queued.workItem.id, messages };
+      return { ended: true, queued: true, taskId, ticketId, workItemId: queued.workItem.id, messages, filed };
     }
     const previousItem = turn.work_item_id;
     ctx.db.run(`UPDATE turns SET task_id = ?, ticket_id = ?, work_item_id = NULL, mode = 'work',
@@ -139,6 +158,6 @@ export function workOn(ctx: StoreContext, input: WorkOnInput): WorkOnResult {
     recordWorkEvent(ctx, { kind: fresh ? "plan.opened" : "work.bound", actor: turn.bot_id, taskId, ticketId, turnId: turn.id,
       sessionId: turn.session_id, payload: { quote_message_id: quote?.id ?? null, also: others } });
     const messages = fresh ? [createNewPlanCard(ctx, { turnId: turn.id, taskId, quoteMessageId: quote!.id })] : [];
-    return { taskId, ticketId, workItemId: item.id, messages };
+    return { taskId, ticketId, workItemId: item.id, messages, filed };
   });
 }

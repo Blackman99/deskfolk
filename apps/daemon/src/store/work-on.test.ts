@@ -91,7 +91,7 @@ test("merging keeps the busy segment's exact binding and delivers the original t
   const line = store.postMessage(sessionId, { body: 'Additional request' });
   const desk = store.createTurn({ sessionId, botId: bot.id, triggerMessageId: line.id });
   const result = domain.workOn(ctx, { turnId: desk.id, plan: plan.id, ticket: requestedTicket.id });
-  expect(result).toEqual({ mergedInto: busy.id, ended: true, messages: [] });
+  expect(result).toEqual({ mergedInto: busy.id, ended: true, messages: [], filed: [line.id] });
   expect(store.getTurn(busy.id)).toMatchObject({ task_id: plan.id, ticket_id: firstTicket.id });
   expect(store.getTurn(desk.id).end_reason).toBe('merged');
   const first = store.db.query('SELECT message_id, body_snapshot FROM inbox_items WHERE turn_id = ?').all(busy.id);

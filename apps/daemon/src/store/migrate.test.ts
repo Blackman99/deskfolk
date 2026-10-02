@@ -551,3 +551,78 @@ describe("a database an earlier build created", () => {
     }
   });
 });
+
+/**
+ * An abandoned draft of ADR 0040 P4d left an `external_jobs` table in the user's database with
+ * `id, request_id UNIQUE, args_digest, status, created_at, updated_at`. Plan dormancy only looked
+ * for the table's name before reading `task_id` and `state` from it, so at engine level 2 every line
+ * you sent failed with a SQLite error and was lost.
+ */
+describe("a stray draft external_jobs table", () => {
+  const STRAY = `CREATE TABLE external_jobs (
+    id TEXT PRIMARY KEY,
+    request_id TEXT NOT NULL UNIQUE,
+    args_digest TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`;
+
+  function withDatabase(seed: (db: Database) => void, check: (store: Store, file: string) => void): void {
+    const dir = mkdtempSync(join(tmpdir(), "real-bot-stray-jobs-"));
+    const file = join(dir, "state.sqlite");
+    try {
+      new Store({ filename: file }).close();
+      const old = new Database(file, { strict: true });
+      seed(old);
+      old.close();
+      const store = new Store({ filename: file });
+      try { check(store, file); } finally { store.close(); }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  const tables = (store: Store) => store.db.query<{ name: string }, []>(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'external_jobs%' ORDER BY name").all().map((row) => row.name);
+
+  test("an empty one is dropped at open, and a line filed at level 2 goes through", () => {
+    withDatabase((db) => db.run(STRAY), (store) => {
+      expect(tables(store)).toEqual([]);
+      store.raiseEngineLevel(null);
+      const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "none" });
+      const line = store.postMessage(writer.direct_session.id, { body: "帮我写一份测试说明" });
+      expect(() => store.updatePlanDormancy()).not.toThrow();
+      expect(store.fileMessage(line.id).state).toBe("undetermined");
+    });
+  });
+
+  test("one holding rows is renamed aside with every row, and reopening changes nothing more", () => {
+    withDatabase((db) => {
+      db.run(STRAY);
+      db.run("INSERT INTO external_jobs VALUES ('job-1', 'req-1', 'digest', 'pending', '2026-09-30', '2026-09-30')");
+    }, (store, file) => {
+      const [aside, ...rest] = tables(store);
+      expect(rest).toEqual([]);
+      expect(aside).toMatch(/^external_jobs_draft_\d{14}$/);
+      expect(store.db.query(`SELECT id, request_id, status FROM "${aside}"`).all()).toEqual([{ id: "job-1", request_id: "req-1", status: "pending" }]);
+      store.close();
+      const reopened = new Store({ filename: file });
+      expect(tables(reopened)).toEqual([aside!]);
+      reopened.close();
+    });
+  });
+
+  test("a reader checks the columns it needs, not the name, when the stray shape appears after open", () => {
+    const store = new Store();
+    try {
+      store.db.run(STRAY);
+      store.raiseEngineLevel(null);
+      const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "none" });
+      const plan = store.openTask({ sessionId: writer.direct_session.id, title: "旧事" });
+      expect(() => store.updatePlanDormancy({ newTaskId: plan.id })).not.toThrow();
+    } finally {
+      store.close();
+    }
+  });
+});

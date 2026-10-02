@@ -115,6 +115,11 @@ export function quoteOfMessage(ctx: StoreContext, messageId: string, via: "messa
     .get(messageId, via);
 }
 
+/** Whether the scribe has read this quote against a plan already: its answer is in the work log. */
+export function quoteScribed(ctx: StoreContext, quoteId: string): boolean {
+  return Boolean(ctx.db.query(`SELECT 1 FROM work_events WHERE kind = 'scribe.answer' AND json_extract(payload, '$.quote') = ? LIMIT 1`).get(quoteId));
+}
+
 /** Oldest first, narrowed by what they are about or where they came from. */
 export function listQuotes(ctx: StoreContext, filter: { taskId?: string; sessionId?: string; messageId?: string } = {}): UserQuote[] {
   return ctx.db

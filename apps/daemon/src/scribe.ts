@@ -51,7 +51,11 @@ export type Scribe = {
    * over it: what the fallback capture judges the line by, handed back to `noteLine`.
    */
   handedOverAt: (body: string) => HandedOver;
-  /** A line of yours went through filing and waking; resolves once it is in the ledger or came to nothing. Never rejects. */
+  /**
+   * A line of yours went through filing and waking; resolves once it is in the ledger or came to
+   * nothing. Never rejects. Called again when the line is filed later (a desk segment opening a job
+   * for it, `work_on`, your correction): a line read against a plan once is not read again.
+   */
   noteLine: (messageId: string, handedOver: HandedOver) => Promise<void>;
   /** You answered a Bot's question; the same, for the answer. Called as the answer lands, before the turn goes on. */
   noteAnswer: (askId: string) => Promise<void>;
@@ -67,6 +71,8 @@ export function createScribe(deps: ScribeDeps): Scribe {
   /** Bumped by `stop`, so a line queued or in flight before it writes nothing after it. */
   let generation = 0;
   const inFlight = new Set<AbortController>();
+  /** Quotes this run has read against a plan (or captured), so a later filing of the same line reads it no second time. */
+  const read = new Set<string>();
 
   function handedOverAt(body: string): HandedOver {
     return soundsLikeComplaint(body) ? store.plansHandedOver() : null;
@@ -106,6 +112,10 @@ export function createScribe(deps: ScribeDeps): Scribe {
       return;
     }
     if (deps.draining()) return;
+    // Once per line: filed when it arrived and again later, or noted twice, it is read once (its
+    // answer is in the work log as `scribe.answer`, which a restart keeps).
+    if (read.has(quote.id) || store.quoteScribed(quote.id)) return;
+    read.add(quote.id);
     if (ablation.has("scribe")) return capture(quote, handedOver);
     const routing = await deps.routing().catch(() => null);
     if (mine !== generation) return;

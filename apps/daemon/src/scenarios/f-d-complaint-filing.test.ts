@@ -11,7 +11,8 @@
  *
  * Target, in two steps:
  * - ADR 0040 P4b (deterministic attribution) flips the first test: EP01 went dormant (from P3) when
- *   the group was cleared after its last activity, so 审片员's only live candidate is the film, and
+ *   the group was cleared after its last activity, so 审片员's only live candidate is the film (the
+ *   job it reviewed Shots 01–03 in; a group plan it never worked on would be none), and
  *   「前三镜」 names its Shots 01–03. The line is filed there, 审片员 works on it there, and
  *   视频导演's running turn on the film reads it at its next step.
  * - ADR 0040 P4e (submissions, reviews and parts) flips the second: a complaint about approved work
@@ -55,6 +56,11 @@ async function theMorning(h: Scenario) {
   for (const path of shots) writeFileSync(join(h.root, path), "shot");
   const delivered = h.store.insertMessage({ sessionId: room, kind: "bot", author: director.id, body: "Shot 01–03 交付", paths: shots });
   h.store.db.run(`UPDATE messages SET task_id = ?, ticket_id = ? WHERE id = ?`, [echo.id, firstThree.id, delivered.id]);
+  // 05:58: 审片员 passed them, in a segment of its own on the film: that, not being in the group, is
+  // what makes the film one of its jobs to file a line of yours under (ADR 0040 §8.4).
+  const passed = h.store.createTurn({ sessionId: room, botId: reviewer.id, triggerMessageId: delivered.id, taskId: echo.id, ticketId: firstThree.id });
+  h.store.setTurnStatus(passed.id, "completed");
+  h.store.settleEndedSegment(passed.id);
   // 07:16:19: 视频导演 at work on the film (here in its thread with 审片员), in the middle of a hop.
   const thread = h.botDirect(director, reviewer);
   const go = Promise.withResolvers<void>();

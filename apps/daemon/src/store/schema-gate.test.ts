@@ -311,3 +311,37 @@ test("an opt-in accepted for the delegation level does not carry the database in
   expect(db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'schema_min_compatible'").get()?.value).toBe(String(SCHEMA_LEVEL));
   db.close();
 });
+
+/**
+ * Below the work items' level a plan a new one displaced was parked; from it everything not
+ * delivered reads as active (ADR 0040 P4b), so without this every old parked plan would be a place
+ * your next line could be filed, and a desk segment with more than one would refuse to act.
+ */
+test("going up to the work items' level puts old parked plans nobody is on to sleep, and no others", () => {
+  const store = new Store();
+  try {
+    store.db.run("INSERT INTO settings (key, value) VALUES ('engine_level', '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value");
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "none" });
+    const dm = writer.direct_session.id;
+    const [old, spoken, working, current] = ["旧片", "刚说过", "还在跑", "当前"].map((title) => store.openTask({ sessionId: dm, title }));
+    const long = "2026-01-01T00:00:00.000Z";
+    store.db.run("UPDATE tasks SET status = 'parked', closed_at = ? WHERE id IN (?, ?, ?)", [long, old!.id, spoken!.id, working!.id]);
+    store.db.run(`INSERT INTO user_quotes (id, session_id, task_id, via, body, created_at) VALUES ('just-now', ?, ?, 'message', '再看看', ?)`,
+      [dm, spoken!.id, new Date().toISOString()]);
+    const line = store.postMessage(dm, { body: "接着跑" });
+    const live = store.createTurn({ sessionId: dm, botId: writer.bot.id, triggerMessageId: line.id, taskId: working!.id });
+    expect(store.getTurn(live.id).status).toBe("running");
+
+    raiseEngineLevel(store.db, null);
+
+    expect([old, spoken, working, current].map((plan) => store.getTask(plan!.id).dormant_since !== null)).toEqual([true, false, false, false]);
+    expect(store.listWorkEvents({ kind: "plan.dormant" }).map((event) => [event.task_id, event.payload.cause])).toEqual([[old!.id, "legacy_parked"]]);
+    // Asleep, it is no candidate for a line; your line filed there wakes it.
+    expect(store.planCandidates({ sessionId: dm, botId: writer.bot.id }).map((plan) => plan.id)).not.toContain(old!.id);
+    const back = store.postMessage(dm, { body: "旧片也接着做" });
+    store.fileMessage(back.id, { explicit: [{ taskId: old!.id }] });
+    expect(store.getTask(old!.id).dormant_since).toBeNull();
+  } finally {
+    store.close();
+  }
+});

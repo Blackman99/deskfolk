@@ -10,6 +10,9 @@ import { recordWorkEvent } from "./work-events";
 import { disposeInboxItems, inboxLabel, turnInbox } from "./inbox";
 import { listDelegations, replyDelegation } from "./delegations";
 import { isReservedTaskPath } from "./tasks";
+import { settingsCached } from "./settings";
+import { noProgressNoticeBody } from "../prompts/control-copy";
+import { supervisorJobLabel } from "../prompts/transcript-copy";
 
 export type EndReason = "done" | "answered" | "nothing_new" | "blocked" | "gave_up";
 export type FinishWorkInput = {
@@ -207,6 +210,21 @@ function rejectEnd(ctx: StoreContext, turn: Actor, base: Pick<FinishWorkResult, 
   return { ended: false, workItemId: turn.work_item_id, ...base, code, bounce };
 }
 
+/** The no-progress line, in your language, naming the job and the Bot. */
+function noProgressNotice(ctx: StoreContext, turn: Actor): string {
+  const locale = settingsCached(ctx).locale === "en" ? "en" : "zh";
+  const plan = turn.task_id ? ctx.db.query<{ title: string }, [string]>("SELECT title FROM tasks WHERE id = ?").get(turn.task_id)?.title ?? turn.task_id : "";
+  const ticket = turn.ticket_id ? ctx.db.query<{ seq: number; title: string }, [string]>("SELECT seq, title FROM tickets WHERE id = ?").get(turn.ticket_id) ?? null : null;
+  const bot = ctx.db.query<{ name: string }, [string]>("SELECT name FROM bots WHERE id = ?").get(turn.bot_id)?.name ?? turn.bot_id;
+  return noProgressNoticeBody(locale, { job: supervisorJobLabel(locale, { plan, ticket }), bot });
+}
+
+/** The lines of yours this segment read and has not said anything about, each answered by its closing reply. */
+function answeredByReply(ctx: StoreContext, turnId: string): Array<{ id: string; disposition: "answered" }> {
+  return turnInbox(ctx, turnId).filter((mail) => mail.delivered_turn_id === turnId && mail.state === "delivered"
+    && ["user", "annotation"].includes(mail.source)).map((mail) => ({ id: inboxLabel(mail), disposition: "answered" }));
+}
+
 export function finishWork(ctx: StoreContext, input: FinishWorkInput, opts: FinishWorkOptions = {}): FinishWorkResult {
   return ctx.commit(() => {
     if (typeof input.reason !== "string" || !["done", "answered", "nothing_new", "blocked", "gave_up"].includes(input.reason)) {
@@ -228,7 +246,10 @@ export function finishWork(ctx: StoreContext, input: FinishWorkInput, opts: Fini
     const { turn, item } = actor(ctx, input.turnId, reason, previousEnd !== null);
     if (previousEnd) return (JSON.parse(previousEnd.payload) as { result: FinishWorkResult }).result;
     const implicitSubmission = implicitCandidates(ctx, turn);
-    const dispositions = disposeInboxItems(ctx, turn.id, input.inbox);
+    // A reply in words is the Bot's answer to the lines of yours it read: they are answered by it,
+    // not bounced back for a disposition a pure-text ending has no way to give (ADR 0044).
+    const inbox = opts.pureText && input.inbox === undefined ? answeredByReply(ctx, turn.id) : input.inbox;
+    const dispositions = disposeInboxItems(ctx, turn.id, inbox);
     const unacknowledgedInbox = turnInbox(ctx, turn.id).filter((mail) => mail.delivered_turn_id === turn.id
       && mail.state === "delivered" && ["user", "annotation"].includes(mail.source)).map(inboxLabel);
     if (dispositions.notRecorded.length || unacknowledgedInbox.length) {
@@ -258,7 +279,7 @@ export function finishWork(ctx: StoreContext, input: FinishWorkInput, opts: Fini
     const result = persistEnd(ctx, turn, base, endReason, state, count, {
       ...(reason === "blocked" ? { ask: { body: needsFromUser! } } : {}),
       ...(reason === "gave_up" ? { notice: { code: "gave_up" as const, body: note! } } : {}),
-      ...(count >= 2 ? { notice: { code: "no_progress" as const, body: "This work ended twice without progress and still has unfinished obligations." } } : {}),
+      ...(count >= 2 ? { notice: { code: "no_progress" as const, body: noProgressNotice(ctx, turn) } } : {}),
     });
     if (reason === "gave_up") recordWorkEvent(ctx, { kind: "quality.gave_up", actor: turn.bot_id, botId: turn.bot_id,
       taskId: turn.task_id, ticketId: turn.ticket_id, turnId: turn.id, payload: { work_item_id: turn.work_item_id, note } });

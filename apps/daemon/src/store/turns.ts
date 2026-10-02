@@ -12,7 +12,7 @@ import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { isHeldAbort } from "./holds";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
-import { findOrCreateWorkItem, markSegmentCutOff, queuePlace, queueWork } from "./work-items";
+import { findOrCreateWorkItem, markSegmentCutOff, queuePlace, queueWork, settleRunningWork } from "./work-items";
 import { planCandidates } from "./filing";
 import { releaseEndedInbox } from "./inbox";
 import { getMessage } from "./messages";
@@ -298,6 +298,8 @@ export function recoverInterruptedTurns(ctx: StoreContext, previousRun: string |
   interruptRunningTurns(ctx);
   // Those turns read lines and never answered for them; with the turns over, the lines are unacked.
   releaseEndedInbox(ctx);
+  // What they ran is not running any more (ADR 0040 §2.6).
+  settleRunningWork(ctx);
 }
 
 /**
@@ -554,7 +556,11 @@ export function claimInterruptContinue(ctx: StoreContext, messageId: string): Tu
   if (!isPresent(ctx, note.session_id, cut.bot_id)) {
     throw new HttpError(422, "invalid_args", "bot is not in this session");
   }
-  if (listLiveTurns(ctx, { sessionId: note.session_id, botId: cut.bot_id }).length > 0) {
+  const deterministic = readEngineLevel(ctx.db) >= ENGINE_LEVELS.work_items;
+  // Below the work items' level a Bot runs one turn per conversation. From it, one live segment
+  // per Bot per job (I1b) and the parallel limit's queue decide, below: continuing one job while
+  // the Bot works on another in the same conversation is two jobs, not a second turn on one.
+  if (!deterministic && listLiveTurns(ctx, { sessionId: note.session_id, botId: cut.bot_id }).length > 0) {
     throw new HttpError(422, "invalid_args", "bot already has a live turn");
   }
   const now = isoNow();
@@ -565,9 +571,9 @@ export function claimInterruptContinue(ctx: StoreContext, messageId: string): Tu
         `SELECT task_id, ticket_id, work_item_id, mode, filing_candidates, work_dir_changes FROM turns WHERE id = ?`,
       )
       .get(cut.id);
-    const deterministic = readEngineLevel(ctx.db) >= ENGINE_LEVELS.work_items;
-    if (deterministic && lineage?.task_id && listLiveTurns(ctx, { botId: cut.bot_id }).some((turn) =>
-      turn.task_id === lineage.task_id && turn.mode !== 'readonly')) {
+    const live = deterministic ? listLiveTurns(ctx, { botId: cut.bot_id }).filter((turn) => turn.mode !== "readonly") : [];
+    if (lineage?.task_id ? live.some((turn) => turn.task_id === lineage.task_id)
+      : live.some((turn) => turn.mode === "desk" && turn.session_id === note.session_id)) {
       throw new HttpError(409, "already_working", "this Bot already has a live segment on this job");
     }
     const queues = deterministic && lineage?.mode !== "desk" && lineage?.mode !== "readonly"
