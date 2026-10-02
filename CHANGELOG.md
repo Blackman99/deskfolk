@@ -9,6 +9,7 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 ### Default models instead of a per-turn pick (engine level 7, opt-in)
 
 - At engine level 7 no model call picks what a turn runs on: your pin, else the Bot's default model, else the endpoint's default, with the reason (`pin`, `default`, `endpoint_default`, `pin_unlisted`) kept on each turn's route record. Thinking levels are matched to what the model offers; a Bot pinned to an endpoint only stays on it; a pin no endpoint lists any more runs on the endpoint's default and you are told once. A Bot's default is inferred the first time it is needed from what it ran on most in the last 7 days among models still listed, at the thinking level it ran that model on most, and put to you once on a card in your direct with it (keep it, or use the endpoint's default); it is used until you answer. Level 7 leaves the compatibility floor at 6. See [ADR 0048](docs/adr/0048-default-models.md).
+- Models can be marked in the endpoint settings as taking pictures or not. From level 7, work that needs pictures (a line with a picture, or reviewing a ticket with a requirement about the picture) moves off a model marked as taking none unless you pinned it, and a picture read mid-turn is not sent to such a model; a job whose hand-overs failed twice in a row runs one thinking level higher, up to its model's top, reset once the ticket is approved — models are never switched on their own. See [ADR 0049](docs/adr/0049-capability-filter-and-escalation.md).
 
 ### External jobs (engine level 6, opt-in)
 

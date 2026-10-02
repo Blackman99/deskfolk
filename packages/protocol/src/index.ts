@@ -245,6 +245,12 @@ export type EndpointModel = {
    * raise a model's thinking level or skip straight to the next model.
    */
   reasoning_effective?: boolean;
+  /**
+   * Whether the model takes pictures as input (ADR 0049): true or false as you set it (or a probe
+   * read it); absent means not known, and is treated as able. From engine level 7 a turn that needs
+   * to see pictures only runs on a model not marked false.
+   */
+  input_image?: boolean;
 };
 
 export type EndpointModelInput = string | {
@@ -257,6 +263,7 @@ export type EndpointModelInput = string | {
   max_output?: number | null;
   stream_tps_p10?: number | null;
   reasoning_effective?: boolean | null;
+  input_image?: boolean | null;
 };
 
 /** One name from an endpoint `GET /models`, plus thinking levels that object advertised. */

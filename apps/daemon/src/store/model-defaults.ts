@@ -8,11 +8,13 @@
 import type { Database } from "bun:sqlite";
 import { USER_MEMBER, type Message, type ThinkingLevel } from "@real-bot/protocol";
 import { HttpError } from "../errors";
+import { pictureMime } from "../loop-pictures";
 import { isoNow } from "../ids";
 import { getMessage, insertMessage, setMessageControl } from "./messages";
 import { createNotification, updateNotificationActionState } from "./notifications";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import { settingsCached } from "./settings";
+import { requiredItems } from "./submissions";
 import type { StoreContext } from "./shared";
 import { recordWorkEvent } from "./work-events";
 
@@ -31,6 +33,9 @@ export function migrateModelDefaults(db: Database): void {
   const decisions = db.query<{ name: string }, []>("PRAGMA table_info(turn_route_decisions)").all().map((column) => column.name);
   // Why a turn ran on what it ran on, from level 7: pin, default, endpoint_default.
   if (decisions.length > 0 && !decisions.includes("reason_code")) db.run("ALTER TABLE turn_route_decisions ADD COLUMN reason_code TEXT");
+  // How many thinking levels up a job runs after failing in a row (ADR 0049); 0 is its own.
+  const work = db.query<{ name: string }, []>("PRAGMA table_info(work_items)").all().map((column) => column.name);
+  if (work.length > 0 && !work.includes("escalation")) db.run("ALTER TABLE work_items ADD COLUMN escalation INTEGER NOT NULL DEFAULT 0");
 }
 
 export function routingOn(ctx: StoreContext): boolean {
@@ -116,21 +121,47 @@ function placeToAsk(ctx: StoreContext, botId: string): { id: string } | null {
 }
 
 /**
- * A Bot pinned to a model no endpoint lists any more runs on the endpoint's default meanwhile; you
- * are told once per pinned name, where you and the Bot talk, to pin another or clear it.
+ * Tells you once, where you and the Bot talk, about its model: a pin no endpoint lists any more
+ * (it runs on the endpoint's default meanwhile), a pin that cannot see the pictures its work needs,
+ * or no model listed that can (ADR 0049). Once per Bot, kind and model.
  */
-export function notePinUnlisted(ctx: StoreContext, botId: string, model: string): void {
+export function noteModelOnce(ctx: StoreContext, botId: string, kind: "pin_unlisted" | "pin_no_pictures" | "no_picture_model" | "escalation_top", model: string): void {
   ctx.commit(() => {
-    if (ctx.db.query(`SELECT 1 FROM work_events WHERE kind = 'model.pin_unlisted' AND bot_id = ? AND json_extract(payload, '$.model') = ?`).get(botId, model)) return;
-    recordWorkEvent(ctx, { kind: "model.pin_unlisted", actor: "app", botId, payload: { model } });
+    if (ctx.db.query(`SELECT 1 FROM work_events WHERE kind = ? AND bot_id = ? AND json_extract(payload, '$.model') = ?`).get(`model.${kind}`, botId, model)) return;
+    recordWorkEvent(ctx, { kind: `model.${kind}`, actor: "app", botId, payload: { model } });
     const place = placeToAsk(ctx, botId);
     if (!place) return;
     const en = settingsCached(ctx).locale === "en";
     const name = ctx.db.query<{ name: string }, [string]>("SELECT name FROM bots WHERE id = ?").get(botId)?.name ?? botId;
-    insertMessage(ctx, { sessionId: place.id, kind: "system", author: USER_MEMBER, hiddenFromBots: true,
-      body: en ? `${name} is pinned to ${model}, which no endpoint lists any more: it runs on the endpoint's default until you pin another model or clear the pin.`
-        : `${name} 钉的模型 ${model} 已经不在任何端点的名单上了：在你换一个或清掉之前，它先用端点默认。` });
+    const body = kind === "pin_unlisted"
+      ? (en ? `${name} is pinned to ${model}, which no endpoint lists any more: it runs on the endpoint's default until you pin another model or clear the pin.`
+        : `${name} 钉的模型 ${model} 已经不在任何端点的名单上了：在你换一个或清掉之前，它先用端点默认。`)
+      : kind === "escalation_top"
+        ? (en ? `${name}'s work keeps failing on ${model}, already at its top thinking level: switching models is yours to decide — pin another model to it if you want one.`
+          : `${name} 这件活在 ${model} 上一直没过，思考档已经到顶：要不要换模型由你定，想换就给它钉一个。`)
+        : kind === "pin_no_pictures"
+        ? (en ? `${name} is pinned to ${model}, which is marked as taking no pictures, but its work needs pictures seen: pin a model that can, or it goes on without seeing them.`
+          : `${name} 钉的模型 ${model} 标着看不了图，可它这件活需要看图：换钉一个能看图的模型，不然它只能不看图做下去。`)
+        : (en ? `${name}'s work needs pictures seen, but every model listed is marked as taking none: it goes on with ${model}, without seeing them.`
+          : `${name} 这件活需要看图，可名单上的模型都标着看不了图：它先用 ${model} 做下去，看不到图。`);
+    insertMessage(ctx, { sessionId: place.id, kind: "system", author: USER_MEMBER, hiddenFromBots: true, body });
   });
+}
+
+/**
+ * Whether this turn's work needs pictures seen (ADR 0049): the line that opened it carries one, or
+ * the Bot reviews a ticket with a requirement about the picture. Off below level 7.
+ */
+export function turnNeedsPictures(ctx: StoreContext, turnId: string): boolean {
+  if (!routingOn(ctx)) return false;
+  const turn = ctx.db.query<{ bot_id: string; task_id: string | null; ticket_id: string | null; trigger_message_id: string }, [string]>(
+    "SELECT bot_id, task_id, ticket_id, trigger_message_id FROM turns WHERE id = ?").get(turnId);
+  if (!turn) return false;
+  const carried = ctx.db.query<{ path: string }, [string]>("SELECT workspace_relpath AS path FROM attachments WHERE message_id = ?").all(turn.trigger_message_id);
+  if (carried.some((row) => pictureMime(row.path) !== null)) return true;
+  if (!turn.task_id || !turn.ticket_id) return false;
+  const reviewer = ctx.db.query<{ reviewer_bot_id: string | null }, [string]>("SELECT reviewer_bot_id FROM tickets WHERE id = ?").get(turn.ticket_id)?.reviewer_bot_id;
+  return reviewer === turn.bot_id && requiredItems(ctx, { task_id: turn.task_id, ticket_id: turn.ticket_id }).some((item) => item.reasons.includes("visual"));
 }
 
 /** Your answer on a default-model card: confirm keeps it as the Bot's default; decline drops it, and the Bot runs on the endpoint's default. */

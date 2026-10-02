@@ -56,6 +56,8 @@ export type Live = {
   toolNames: Set<string>;
   /** The current hop's MCP tools by model-facing name: which server, its own name there, and whether it only reads. */
   mcpTools: Map<string, { server: string; tool: string; readOnly: boolean; params?: string[] }>;
+  /** What this turn runs on, once routed: whether it can be shown a picture is read from its catalog entry (ADR 0049). */
+  target?: { providerId: string; model: string };
   spoke: boolean;
   drainRejection: boolean;
   /** The closing check ran (or was skipped for good) this turn; it never runs twice. */

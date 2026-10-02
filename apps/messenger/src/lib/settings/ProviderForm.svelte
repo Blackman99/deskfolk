@@ -269,6 +269,23 @@
 				{/if}
 			</div>
 		</div>
+		<div class="attr-field attr-field-image">
+			<span class="attr-field-label">{t.settings.modelInputImage}</span>
+			<div class="chip-row flex flex-wrap items-center gap-2 min-h-11" role="radiogroup" aria-label={t.settings.modelInputImage}>
+				{#each [[true, t.settings.modelInputImageYes], [false, t.settings.modelInputImageNo], [null, t.settings.modelInputImageUnknown]] as const as [value, label] (String(value))}
+					<button
+						type="button"
+						class="btn-chip"
+						role="radio"
+						class:active={(attr.inputImage ?? null) === value}
+						aria-checked={(attr.inputImage ?? null) === value}
+						onclick={() => patchAttr(name, { ...attr, inputImage: value })}
+					>
+						{label}
+					</button>
+				{/each}
+			</div>
+		</div>
 		<div class="attr-field attr-field-strengths">
 			<span class="attr-field-label">{t.settings.modelStrengths}</span>
 			<div class="chip-row flex flex-wrap items-center gap-2 min-h-11" role="group" aria-label={t.settings.modelStrengths}>

@@ -5,7 +5,7 @@
  * there is no routing agent to ask or nothing for it to read. Everything downstream that needs a
  * target for a call — a turn, a judgement, the organizer, a chain review — goes through here.
  */
-import type { ThinkingLevel } from "@real-bot/protocol";
+import { thinkingLevelRank, type ThinkingLevel } from "@real-bot/protocol";
 import { NO_ABLATION, type Ablation } from "../ablation";
 import type { CompletionsClient } from "../completions";
 import { classifyMessage, messageSignature, pickThinkingLevel } from "../route-decision";
@@ -51,7 +51,7 @@ export type Routing = {
    * your pin, else the Bot's default (inferred from what it ran on and put to you on a card), else
    * the endpoint's default — with the reason recorded beside it.
    */
-  decideRoute: (botId: string, creds: Creds, text: string) => Routed | null;
+  decideRoute: (botId: string, creds: Creds, text: string, turnId?: string) => Routed | null;
 };
 
 export function createRouting(deps: RoutingDeps): Routing {
@@ -289,16 +289,84 @@ export function createRouting(deps: RoutingDeps): Routing {
     };
   }
 
-  function decideRoute(botId: string, creds: Creds, text: string): Routed | null {
+  function decideRoute(botId: string, creds: Creds, text: string, turnId?: string): Routed | null {
+    const base = baseRoute(botId, creds, text);
+    const routed = base && turnId ? escalate(base, botId, turnId) : base;
+    if (!base || !routed || !turnId || !store.turnNeedsPictures(turnId)) return routed;
+    // Its work needs pictures seen (ADR 0049): a model marked as taking none gives way to one that can.
+    const catalog = store.catalogEntries();
+    const sees = (providerId: string, model: string) => catalog.find((entry) => entry.providerId === providerId && entry.name === model)?.input_image;
+    if (sees(routed.target.providerId, routed.target.model) !== false) return routed;
+    // Your pin stays, stepped up or not (the base decision says whether it was one).
+    if (base.decision.reasonCode === "pin") {
+      store.noteModelOnce(botId, "pin_no_pictures", routed.target.model);
+      return routed;
+    }
+    // Within the endpoint you pinned it to, if any: past it is yours to say.
+    const listed = scopedProviders(botId, creds).flatMap((provider) => provider.models.map((model) => ({ providerId: provider.id, model })));
+    const able = listed.find((entry) => sees(entry.providerId, entry.model) === true) ?? listed.find((entry) => sees(entry.providerId, entry.model) !== false);
+    if (!able) {
+      store.noteModelOnce(botId, "no_picture_model", routed.target.model);
+      return routed;
+    }
+    const provider = creds.providers.find((row) => row.id === able.providerId)!;
+    const supported = catalog.find((entry) => entry.providerId === able.providerId && entry.name === able.model)?.thinking_levels ?? [];
+    const thinkingLevel = supported.length === 0 ? routed.target.thinkingLevel
+      : supported.find((level) => level.toLowerCase() === String(routed.target.thinkingLevel).toLowerCase()) ?? pickThinkingLevel(classifyMessage(text), supported);
+    return {
+      target: { ...routed.target, baseUrl: provider.baseUrl, apiKey: provider.apiKey, providerId: provider.id, providerName: provider.name, model: able.model, thinkingLevel },
+      decision: { ...routed.decision, model: able.model, providerId: provider.id, thinkingLevel, reasonCode: "capability_filter" },
+    };
+  }
+
+  /**
+   * A job that failed twice in a row runs a thinking level higher per step (ADR 0049), up to the top
+   * its model offers — not past a level you pinned, nor on a model measured to gain nothing from it;
+   * at the top you are told once that switching models is yours.
+   */
+  function escalate(routed: Routed, botId: string, turnId: string): Routed {
+    let workItemId: string | null = null;
+    let pinnedLevel = false;
+    try {
+      workItemId = store.getTurn(turnId).work_item_id ?? null;
+      pinnedLevel = Boolean(store.getBot(botId).thinking_level);
+    } catch {
+      return routed;
+    }
+    const steps = workItemId ? store.workEscalation(workItemId) : 0;
+    if (steps === 0 || pinnedLevel) return routed;
+    const entry = store.catalogEntries().find((row) => row.providerId === routed.target.providerId && row.name === routed.target.model);
+    const levels = [...(entry?.thinking_levels ?? [])].sort((a, b) => thinkingLevelRank(a) - thinkingLevelRank(b));
+    const current = levels.findIndex((level) => level.toLowerCase() === String(routed.target.thinkingLevel).toLowerCase());
+    const top = levels.length - 1;
+    if (entry?.reasoning_effective === false || current === -1 || current >= top) {
+      store.noteModelOnce(botId, "escalation_top", routed.target.model);
+      return routed;
+    }
+    const thinkingLevel = levels[Math.min(current + steps, top)]!;
+    return { target: { ...routed.target, thinkingLevel }, decision: { ...routed.decision, thinkingLevel, reasonCode: "escalation" } };
+  }
+
+  /** A Bot pinned to an endpoint only (no model) stays on that endpoint: its default, the fallback and a picture-taking stand-in are from its list. */
+  function scopedProviders(botId: string, creds: Creds): Creds["providers"] {
+    let bot;
+    try {
+      bot = store.getBot(botId);
+    } catch {
+      return creds.providers;
+    }
+    const scoped = bot.provider_id && !bot.model ? creds.providers.filter((provider) => provider.id === bot.provider_id) : creds.providers;
+    return scoped.length > 0 ? scoped : creds.providers;
+  }
+
+  function baseRoute(botId: string, creds: Creds, text: string): Routed | null {
     let bot;
     try {
       bot = store.getBot(botId);
     } catch {
       return null;
     }
-    // A Bot pinned to an endpoint only (no model) stays on that endpoint: its default and the fallback are from its list.
-    const scoped = bot.provider_id && !bot.model ? creds.providers.filter((provider) => provider.id === bot.provider_id) : creds.providers;
-    const providers = scoped.length > 0 ? scoped : creds.providers;
+    const providers = scopedProviders(botId, creds);
     const listed = providers.flatMap((provider) => provider.models.map((model) => ({ providerId: provider.id, model })));
     const catalog = store.catalogEntries();
     // The level the model offers: the one wanted when it has it, else the one nearest this kind of message.
@@ -329,7 +397,7 @@ export function createRouting(deps: RoutingDeps): Routing {
       if (pinned) return build(pinned.id, bot.model, bot.thinking_level, "pin");
       // Pinned to a model no endpoint lists any more: the endpoint's default meanwhile, never a default
       // inferred behind your pin; you are told once.
-      store.notePinUnlisted(botId, bot.model);
+      store.noteModelOnce(botId, "pin_unlisted", bot.model);
       return endpointDefault("pin_unlisted");
     }
     const fallback = store.ensureBotDefault(botId, listed);

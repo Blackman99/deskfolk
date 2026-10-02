@@ -508,6 +508,13 @@ export function createTools(deps: ToolsDeps): Tools {
   /** A picture's tool result, which says whether this hop had room to show it. */
   function admitPicture(live: Live, pictures: LoopPicture[], result: ToolResult): Record<string, unknown> | undefined {
     if (!result.picture) return result.data;
+    // From level 7 a model marked as taking no pictures is not sent one (ADR 0049): the Bot is told instead.
+    if (live.target && store.routingOn()
+      && store.catalogEntries().find((entry) => entry.providerId === live.target!.providerId && entry.name === live.target!.model)?.input_image === false) {
+      return { ...result.data, shown: false, note: live.locale === "en"
+        ? `The model this turn runs on (${live.target.model}) cannot see pictures, so ${result.picture.path} was not shown to you. If the work needs it seen, say so, or hand it to a Bot that can.`
+        : `这一轮用的模型（${live.target.model}）看不了图，所以 ${result.picture.path} 没给你看。这件活需要看图就说出来，或者交给能看图的 Bot。` };
+    }
     const shown = fitsHop(pictures, result.picture);
     if (shown) pictures.push(result.picture);
     return { ...result.data, shown, note: pictureResultNote(live.locale, shown) };

@@ -20,6 +20,8 @@ export type ModelAttrDraft = {
   /** Levels this name supports; never empty in a draft the form produced. */
   thinkingLevels: ThinkingLevel[];
   strengths: string[];
+  /** Whether it takes pictures (ADR 0049): true, false, or null for "not known" (clears a saved value); absent keeps what was saved. */
+  inputImage?: boolean | null;
 };
 
 export type ProviderDraft = {
@@ -252,6 +254,7 @@ export function draftFromProvider(input: {
       ...billingDraft(row.pricing),
       thinkingLevels: [...row.thinking_levels],
       strengths: [...row.strengths],
+      ...(row.input_image !== undefined ? { inputImage: row.input_image } : {}),
     };
   }
   return {
@@ -345,7 +348,7 @@ function parseProviderDraft(
       name: string;
       baseUrl: string;
       apiKey: string;
-      models: EndpointModel[];
+      models: EndpointModelInput[];
       availableModels: string[];
       defaultModel: string;
     }
@@ -367,7 +370,7 @@ function parseProviderDraft(
   if (Object.keys(errors).length > 0) {
     return { ok: false, errors };
   }
-  const models = names.map((modelName) => catalogFromAttr(modelName, draft.modelAttrs[modelName]));
+  const models = names.map((modelName) => requestItemFromAttr(modelName, draft.modelAttrs[modelName]));
   return {
     ok: true,
     name,
@@ -377,6 +380,12 @@ function parseProviderDraft(
     availableModels: uniqueNames(draft.availableModels),
     defaultModel,
   };
+}
+
+/** The entry as saved: as `catalogFromAttr` reads it, plus a null that clears "takes pictures" when set back to not known. */
+function requestItemFromAttr(name: string, attr: ModelAttrDraft | undefined): EndpointModelInput {
+  const row = catalogFromAttr(name, attr);
+  return attr?.inputImage === null ? { ...row, input_image: null } : row;
 }
 
 function catalogFromAttr(name: string, attr: ModelAttrDraft | undefined): EndpointModel {
@@ -390,6 +399,7 @@ function catalogFromAttr(name: string, attr: ModelAttrDraft | undefined): Endpoi
     ...billingCatalog(source),
     thinking_levels: levels.length > 0 ? levels : [...THINKING_LEVELS],
     strengths: uniqueTags(source.strengths),
+    ...(typeof source.inputImage === "boolean" ? { input_image: source.inputImage } : {}),
   };
 }
 
@@ -510,6 +520,7 @@ function catalogItemFromInput(item: EndpointModelInput): EndpointModel {
     ...billingDraft(item.pricing),
     thinkingLevels: [...(item.thinking_levels ?? THINKING_LEVELS)],
     strengths: [...(item.strengths ?? [])],
+    ...(typeof item.input_image === "boolean" ? { inputImage: item.input_image } : {}),
   });
 }
 
@@ -525,7 +536,8 @@ function sameCatalog(a: readonly EndpointModelInput[], b: readonly EndpointModel
       left.pricing?.output === right.pricing?.output &&
       left.pricing?.cached_input === right.pricing?.cached_input &&
       sameList(left.thinking_levels, right.thinking_levels) &&
-      sameList(left.strengths, right.strengths)
+      sameList(left.strengths, right.strengths) &&
+      left.input_image === (right.input_image ?? undefined)
     );
   });
 }

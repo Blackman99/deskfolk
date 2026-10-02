@@ -30,6 +30,7 @@ import { getMessage, insertMessage, setMessageControl } from "./messages";
 import { createNotification, updateNotificationActionState } from "./notifications";
 import { emptyPlanSpec, parsePlanSpec } from "./plan-shape";
 import { requirementsBearingOn, setRequirementHere, waiveRequirement } from "./requirements";
+import { noteHandOverFailed, resetEscalation } from "./escalation";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import { settingsCached } from "./settings";
 import { requireNonEmpty, type StoreContext } from "./shared";
@@ -600,6 +601,7 @@ function failOnGates(ctx: StoreContext, submission: Submission, checks: Submissi
   const failed = getSubmission(ctx, submission.id);
   setPartStage(ctx, failed, "rework");
   const ceiling = checkCeiling(ctx, failed, now);
+  noteHandOverFailed(ctx, submission.work_item_id, now);
   if (!tell) return;
   const lines = checkLines(checks.filter(gateFailed), locale(ctx));
   tellAfterFailure(ctx, submission, locale(ctx) === "en"
@@ -932,6 +934,7 @@ export function reviewSubmission(ctx: StoreContext, input: {
     const decided = getSubmission(ctx, submission.id);
     setPartStage(ctx, decided, "rework");
     const ceiling = checkCeiling(ctx, decided, now);
+    noteHandOverFailed(ctx, submission.work_item_id, now);
     recordWorkEvent(ctx, { kind: "review.recorded", actor: turn.bot_id, botId: turn.bot_id, taskId: submission.task_id, ticketId: submission.ticket_id,
       turnId: turn.id, payload: { submission_id: submission.id, work_item_id: submission.work_item_id, outcome, same_model: sameModel } });
     tellProducer(ctx, decided, record, now, ceiling);
@@ -951,6 +954,8 @@ function approve(ctx: StoreContext, submission: Submission, record: ReviewRecord
     "SELECT COUNT(*) AS n FROM ticket_parts WHERE ticket_id = ? AND stage NOT IN ('approved', 'waived')").get(submission.ticket_id)!.n;
   setTicketStage(ctx, { ticketId: submission.ticket_id, stage: openParts === 0 ? "approved" : "doing", source: record ? "review" : "supervisor",
     botId: record?.reviewer_bot_id ?? null, turnId: record?.turn_id ?? null, workItemId: submission.work_item_id, submissionId: submission.id, now });
+  // A job runs on its own level again once the ticket is through, not on one part of it (ADR 0049).
+  if (openParts === 0) resetEscalation(ctx, submission.work_item_id);
   if (record) {
     recordWorkEvent(ctx, { kind: "review.recorded", actor: record.reviewer_bot_id, botId: record.reviewer_bot_id, taskId: submission.task_id,
       ticketId: submission.ticket_id, turnId: record.turn_id, payload: { submission_id: submission.id, work_item_id: submission.work_item_id, outcome: "approve",
@@ -1341,6 +1346,7 @@ function rejectByUser(ctx: StoreContext, submission: Submission, now: string): S
   const decided = getSubmission(ctx, submission.id);
   setPartStage(ctx, decided, "rework");
   const ceiling = checkCeiling(ctx, decided, now);
+  noteHandOverFailed(ctx, submission.work_item_id, now);
   recordWorkEvent(ctx, { kind: "review.recorded", actor: USER_MEMBER, taskId: submission.task_id, ticketId: submission.ticket_id,
     payload: { submission_id: submission.id, work_item_id: submission.work_item_id, outcome: "reject", by: "user" } });
   const en = locale(ctx) === "en";

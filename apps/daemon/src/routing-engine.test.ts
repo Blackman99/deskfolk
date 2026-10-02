@@ -3,7 +3,9 @@
  * default (inferred from its use, asked about once), else the endpoint's — and the reason is kept.
  */
 import { afterEach, expect, test } from "bun:test";
-import { call, createScenario, endTurn, type Scenario } from "./test-kit/scenario";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { call, createScenario, endTurn, tool, type Scenario, type ToolOutcome } from "./test-kit/scenario";
 
 const open: Scenario[] = [];
 afterEach(async () => {
@@ -96,4 +98,50 @@ test("a default's thinking level is matched to what the model offers now", async
   await h.waitIdle();
   const level = h.store.db.query<{ thinking_level: string }, [string]>("SELECT thinking_level FROM turn_route_decisions WHERE bot_id = ?").get(reviewer!.id)!.thinking_level;
   expect(["none", "high"]).toContain(level);
+});
+
+/** Two models on the scenario's endpoint: `scenario` marked as taking no pictures, `seer` as taking them. */
+function twoModels(h: Scenario): string {
+  const provider = h.store.db.query<{ id: string }, []>("SELECT id FROM providers LIMIT 1").get()!.id;
+  h.store.db.run("UPDATE providers SET models = ? WHERE id = ?", [JSON.stringify([
+    { name: "scenario", price: null, thinking_levels: ["none", "high"], strengths: [], input_image: false },
+    { name: "seer", price: null, thinking_levels: ["none", "high"], strengths: [], input_image: true },
+  ]), provider]);
+  return provider;
+}
+
+test("a turn opened by a picture runs on a model that can see it; a pin that cannot is kept and you are told once", async () => {
+  const h = await createScenario({ routing: true });
+  open.push(h);
+  twoModels(h);
+  const [writer, pinned] = h.createBots({ name: "Writer", duties: "write" }, { name: "Pinned", duties: "write" });
+  writeFileSync(join(h.root, "frame.png"), Buffer.from("89504e470d0a1a0a", "hex"));
+  for (const bot of [writer!, pinned!]) {
+    const dm = h.direct(bot);
+    if (bot === pinned) h.store.db.run("UPDATE bots SET model = 'scenario' WHERE id = ?", [bot.id]);
+    h.script(bot).reply(call(endTurn()));
+    const line = h.store.transaction(() => h.store.postMessage(dm, { body: "看看这一帧", paths: ["frame.png"] }));
+    await h.engine.handleInboundMessage(line, { fromUser: true });
+    await h.waitIdle();
+  }
+  expect(reasonOf(h, writer!.id)).toEqual({ reason_code: "capability_filter", model: "seer" });
+  expect(reasonOf(h, pinned!.id)).toEqual({ reason_code: "pin", model: "scenario" });
+  expect(h.messages(h.direct(pinned!)).filter((message) => message.body.includes("看不了图"))).toHaveLength(1);
+});
+
+test("a picture read mid-turn is not sent to a model marked as taking none; the Bot is told", async () => {
+  const h = await createScenario({ routing: true });
+  open.push(h);
+  twoModels(h);
+  const [writer] = h.createBots({ name: "Writer", duties: "write" });
+  h.store.db.run("UPDATE bots SET model = 'scenario' WHERE id = ?", [writer!.id]);
+  writeFileSync(join(h.root, "frame.png"), Buffer.from("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8ffff3f0005fe02fea7d6a4a40000000049454e44ae426082", "hex"));
+  const results: ToolOutcome[] = [];
+  h.script(writer!).reply(call(tool("read_file", { path: "frame.png" })), ({ results: got }) => {
+    results.push(...got);
+    return call(endTurn());
+  });
+  h.postUser(h.direct(writer!), "读一下 frame.png");
+  await h.waitIdle();
+  expect(results[0]!.content).toContain("看不了图");
 });

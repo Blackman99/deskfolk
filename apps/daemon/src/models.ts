@@ -256,6 +256,14 @@ function parseCatalogItemStrict(item: unknown, skipBadMeasured = false): Endpoin
   };
   const maxOutput = measured(rec.max_output, "max_output", true);
   const tps = measured(rec.stream_tps_p10, "stream_tps_p10", false);
+  let inputImage: boolean | undefined;
+  if (rec.input_image !== undefined && rec.input_image !== null) {
+    if (typeof rec.input_image !== "boolean") {
+      if (!skipBadMeasured) throw new HttpError(422, "invalid_args", "input_image must be a boolean");
+    } else {
+      inputImage = rec.input_image;
+    }
+  }
   let reasoningEffective: boolean | undefined;
   if (rec.reasoning_effective !== undefined && rec.reasoning_effective !== null) {
     if (typeof rec.reasoning_effective !== "boolean") {
@@ -273,6 +281,7 @@ function parseCatalogItemStrict(item: unknown, skipBadMeasured = false): Endpoin
     ...(maxOutput !== undefined ? { max_output: maxOutput } : {}),
     ...(tps !== undefined ? { stream_tps_p10: tps } : {}),
     ...(reasoningEffective !== undefined ? { reasoning_effective: reasoningEffective } : {}),
+    ...(inputImage !== undefined ? { input_image: inputImage } : {}),
   };
 }
 
@@ -299,6 +308,7 @@ function keepMeasured(row: EndpointModel, item: unknown, before: readonly Endpoi
     ...(sent.max_output === undefined && old.max_output !== undefined ? { max_output: old.max_output } : {}),
     ...(sent.stream_tps_p10 === undefined && old.stream_tps_p10 !== undefined ? { stream_tps_p10: old.stream_tps_p10 } : {}),
     ...(sent.reasoning_effective === undefined && old.reasoning_effective !== undefined ? { reasoning_effective: old.reasoning_effective } : {}),
+    ...(sent.input_image === undefined && old.input_image !== undefined ? { input_image: old.input_image } : {}),
   };
 }
 
@@ -321,6 +331,7 @@ function serializeItem(row: EndpointModel): Record<string, unknown> {
     ...(row.max_output !== undefined ? { max_output: row.max_output } : {}),
     ...(row.stream_tps_p10 !== undefined ? { stream_tps_p10: row.stream_tps_p10 } : {}),
     ...(row.reasoning_effective !== undefined ? { reasoning_effective: row.reasoning_effective } : {}),
+    ...(row.input_image !== undefined ? { input_image: row.input_image } : {}),
   };
 }
 

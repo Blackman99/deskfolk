@@ -34,6 +34,7 @@ import * as supervisor from "./supervisor";
 import * as submissions from "./submissions";
 import * as externalJobs from "./external-jobs";
 import * as modelDefaults from "./model-defaults";
+import * as escalation from "./escalation";
 import * as toolExecutions from "./tool-executions";
 import * as workQuestions from "./work-questions";
 import * as workItems from "./work-items";
@@ -570,7 +571,9 @@ export class Store {
   readonly routingOn = this.bind(modelDefaults.routingOn);
   readonly botDefault = this.bind(modelDefaults.botDefault);
   readonly ensureBotDefault = this.bind(modelDefaults.ensureBotDefault);
-  readonly notePinUnlisted = this.bind(modelDefaults.notePinUnlisted);
+  readonly noteModelOnce = this.bind(modelDefaults.noteModelOnce);
+  readonly turnNeedsPictures = this.bind(modelDefaults.turnNeedsPictures);
+  readonly workEscalation = this.bind(escalation.workEscalation);
   readonly answerModelDefaultCard = this.bind(modelDefaults.answerModelDefaultCard);
   readonly visionRefusal = this.bind(submissions.visionRefusal);
   readonly takeUpSubmission = this.bind(submissions.takeUpSubmission);

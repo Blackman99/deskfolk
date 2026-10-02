@@ -786,12 +786,13 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     const decided = store.routingOn();
     const agent = decided ? null : await agentRoute(turnId, botId, creds, triggerBody, live.abort.signal);
     if (!active(turnId, live)) return;
-    const routed = decided ? decideRoute(botId, creds, triggerBody) : (agent?.routed ?? targetFor(botId, creds, triggerBody));
+    const routed = decided ? decideRoute(botId, creds, triggerBody, turnId) : (agent?.routed ?? targetFor(botId, creds, triggerBody));
     if (!routed) {
       failTurn(turnId, "no_model");
       return;
     }
     const target = routed.target;
+    live.target = { providerId: target.providerId, model: target.model };
     const limits = hopLimits(
       store.catalogEntries().find((row) => row.providerId === target.providerId && row.name === target.model),
     );

@@ -496,3 +496,23 @@ test("partial billing drafts cannot silently clear saved rates during auto-save"
     expect(planPatchProvider(current, draft)).toEqual({ ok: false, errors: { pricing: "invalid" } });
   }
 });
+
+test("whether a model takes pictures is carried, saved, and cleared back to not known", () => {
+  const current = {
+    name: "OpenAI",
+    base_url: "https://api.openai.com/v1",
+    models: ["gpt-4o"],
+    model_catalog: [{ ...gpt4o, input_image: true }],
+    available_models: ["gpt-4o"],
+    default_model: "gpt-4o",
+  };
+  const reopened = draftFromProvider(current);
+  expect(reopened.modelAttrs["gpt-4o"]?.inputImage).toBe(true);
+  expect(planPatchProvider(current, { ...reopened, availableModels: ["gpt-4o"] })).toEqual({ ok: true, patch: {} });
+  const none = { ...reopened, modelAttrs: { "gpt-4o": { ...reopened.modelAttrs["gpt-4o"]!, inputImage: false } } };
+  expect(planPatchProvider(current, none)).toEqual({ ok: true, patch: { models: [{ ...gpt4o, input_image: false }] } });
+  const unknown = { ...reopened, modelAttrs: { "gpt-4o": { ...reopened.modelAttrs["gpt-4o"]!, inputImage: null } } };
+  expect(planPatchProvider(current, unknown)).toEqual({ ok: true, patch: { models: [{ ...gpt4o, input_image: null }] } });
+  const unset = { ...current, model_catalog: [gpt4o] };
+  expect(planPatchProvider(unset, draftFromProvider(unset))).toEqual({ ok: true, patch: {} });
+});
