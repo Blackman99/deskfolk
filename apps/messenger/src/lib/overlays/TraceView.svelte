@@ -1054,6 +1054,7 @@
 						<TicketList
 							{api}
 							{detail}
+							{providers}
 							nodes={shown?.nodes ?? []}
 							{bots}
 							{youLabel}

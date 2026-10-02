@@ -1539,7 +1539,8 @@ function dispatch(
     const body = (input.body ?? {}) as PatchTicketRequest;
     const { ticket } = store.patchTicketByUser(
       params.id!,
-      { title: body.title, spec: body.spec, status: body.status, worker: body.worker, dependsOn: body.depends_on, reviewerBotId: body.reviewer_bot_id },
+      { title: body.title, spec: body.spec, status: body.status, worker: body.worker, dependsOn: body.depends_on, reviewerBotId: body.reviewer_bot_id,
+        modelOverride: body.model_override },
       body.if_revision,
     );
     engine.renderPlanMirrors(ticket.task_id);

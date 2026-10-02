@@ -5,6 +5,8 @@
  * and it runs on the endpoint's default. Until you answer, the inferred one is used — it is what the
  * old per-turn pick settled on most.
  */
+import type { TicketModel } from "@real-bot/protocol";
+import { ticketModel } from "./tickets";
 import type { Database } from "bun:sqlite";
 import { USER_MEMBER, type Message, type ThinkingLevel } from "@real-bot/protocol";
 import { HttpError } from "../errors";
@@ -36,6 +38,22 @@ export function migrateModelDefaults(db: Database): void {
   // How many thinking levels up a job runs after failing in a row (ADR 0049); 0 is its own.
   const work = db.query<{ name: string }, []>("PRAGMA table_info(work_items)").all().map((column) => column.name);
   if (work.length > 0 && !work.includes("escalation")) db.run("ALTER TABLE work_items ADD COLUMN escalation INTEGER NOT NULL DEFAULT 0");
+  // The model a ticket's turns run on, set on the board (level 7): JSON {provider_id, model}, or null.
+  const tickets = db.query<{ name: string }, []>("PRAGMA table_info(tickets)").all().map((column) => column.name);
+  if (tickets.length > 0 && !tickets.includes("model_override")) db.run("ALTER TABLE tickets ADD COLUMN model_override TEXT");
+}
+
+/**
+ * The model you set on this turn's ticket (level 7), if any — for its owner's turns only: whoever
+ * reviews it keeps its own model, or every review of it would be a producer's model checking itself.
+ * Before anyone owns it, any turn on it but its reviewer's.
+ */
+export function turnTicketModel(ctx: StoreContext, turnId: string): TicketModel | null {
+  if (!routingOn(ctx)) return null;
+  const raw = ctx.db.query<{ model_override: string | null }, [string]>(`SELECT k.model_override FROM turns t JOIN tickets k ON k.id = t.ticket_id
+    WHERE t.id = ? AND (t.bot_id = COALESCE(k.owner_bot_id, k.worker)
+      OR (COALESCE(k.owner_bot_id, k.worker) IS NULL AND t.bot_id IS NOT k.reviewer_bot_id))`).get(turnId)?.model_override;
+  return ticketModel(raw);
 }
 
 export function routingOn(ctx: StoreContext): boolean {
@@ -57,13 +75,15 @@ export function botDefault(ctx: StoreContext, botId: string): BotDefault {
 /**
  * What a Bot ran on most in the last {@link DEFAULT_MODEL_WINDOW_DAYS} days, among the models the
  * endpoints still list (a model since renamed or removed does not count), with the thinking level it
- * ran that model on most. Null when it ran on nothing still listed.
+ * ran that model on most. Null when it ran on nothing still listed. Turns on a model you set on their
+ * ticket do not count: that model is about the ticket, not the Bot.
  */
 export function inferredDefault(ctx: StoreContext, botId: string, listed: ReadonlyArray<{ providerId: string; model: string }>, now: string = isoNow()):
   { providerId: string; model: string; thinkingLevel: ThinkingLevel; turns: number } | null {
   const since = new Date(Date.parse(now) - DEFAULT_MODEL_WINDOW_DAYS * 24 * 60 * 60_000).toISOString();
   const rows = ctx.db.query<{ provider_id: string | null; model: string; thinking_level: string; n: number }, [string, string]>(`SELECT provider_id, model,
-    thinking_level, COUNT(*) AS n FROM turn_route_decisions WHERE bot_id = ? AND created_at > ? GROUP BY provider_id, model, thinking_level`).all(botId, since)
+    thinking_level, COUNT(*) AS n FROM turn_route_decisions WHERE bot_id = ? AND created_at > ? AND reason_code IS NOT 'ticket_override'
+    GROUP BY provider_id, model, thinking_level`).all(botId, since)
     .filter((row) => row.provider_id && listed.some((entry) => entry.providerId === row.provider_id && entry.model === row.model));
   const byModel = new Map<string, { providerId: string; model: string; turns: number; levels: Map<string, number> }>();
   for (const row of rows) {
@@ -125,7 +145,8 @@ function placeToAsk(ctx: StoreContext, botId: string): { id: string } | null {
  * (it runs on the endpoint's default meanwhile), a pin that cannot see the pictures its work needs,
  * or no model listed that can (ADR 0049). Once per Bot, kind and model.
  */
-export function noteModelOnce(ctx: StoreContext, botId: string, kind: "pin_unlisted" | "pin_no_pictures" | "no_picture_model" | "escalation_top", model: string): void {
+export function noteModelOnce(ctx: StoreContext, botId: string, kind: "pin_unlisted" | "pin_no_pictures" | "no_picture_model" | "escalation_top" | "ticket_override_unlisted" | "ticket_override_no_pictures",
+  model: string): void {
   ctx.commit(() => {
     if (ctx.db.query(`SELECT 1 FROM work_events WHERE kind = ? AND bot_id = ? AND json_extract(payload, '$.model') = ?`).get(`model.${kind}`, botId, model)) return;
     recordWorkEvent(ctx, { kind: `model.${kind}`, actor: "app", botId, payload: { model } });
@@ -133,7 +154,13 @@ export function noteModelOnce(ctx: StoreContext, botId: string, kind: "pin_unlis
     if (!place) return;
     const en = settingsCached(ctx).locale === "en";
     const name = ctx.db.query<{ name: string }, [string]>("SELECT name FROM bots WHERE id = ?").get(botId)?.name ?? botId;
-    const body = kind === "pin_unlisted"
+    const body = kind === "ticket_override_unlisted"
+      ? (en ? `The model you set on ${name}'s ticket, ${model}, is no longer listed by any endpoint: the ticket runs on ${name}'s own model until you set another one on the board.`
+        : `你给 ${name} 这张任务指定的模型 ${model} 已经不在任何端点的名单上了：在你到看板上换一个之前，这张任务先用 ${name} 自己的模型。`)
+      : kind === "ticket_override_no_pictures"
+      ? (en ? `The model you set on ${name}'s ticket, ${model}, is marked as taking no pictures, but this work needs pictures seen: set one that can on the board, or it goes on without seeing them.`
+        : `你给 ${name} 这张任务指定的模型 ${model} 标着看不了图，可这件活需要看图：到看板上换一个能看图的，不然它只能不看图做下去。`)
+      : kind === "pin_unlisted"
       ? (en ? `${name} is pinned to ${model}, which no endpoint lists any more: it runs on the endpoint's default until you pin another model or clear the pin.`
         : `${name} 钉的模型 ${model} 已经不在任何端点的名单上了：在你换一个或清掉之前，它先用端点默认。`)
       : kind === "escalation_top"

@@ -1218,6 +1218,7 @@ const zh = {
       default: "Bot 的默认模型",
       endpoint_default: "端点默认",
       pin_unlisted: "钉的模型不在名单上，先用端点默认",
+      ticket_override: "这张任务指定的",
       capability_filter: "这件活要看图，换了能看图的",
       escalation: "连着没过，提了一档思考"
     } as Record<string, string>,
@@ -1353,6 +1354,8 @@ const zh = {
     editDepends: "依赖",
     dependsHint: "这张任务要等哪些先完成（监督器不会先叫醒它）",
     dependsNone: "没有别的任务可选",
+    modelOverride: "这张任务用的模型",
+    modelOwn: "用 Bot 自己的模型",
     dependsLoop: "它已经在等这张任务，再选会成环",
     dependsParked: "它已搁置，等它就永远等不到",
     reviewer: "审查者",
@@ -2896,6 +2899,7 @@ const en: CopyShape<typeof zh> = {
       default: "The Bot's default model",
       endpoint_default: "The endpoint's default",
       pin_unlisted: "The pinned model is not listed; the endpoint's default meanwhile",
+      ticket_override: "Set on this ticket",
       capability_filter: "The work needs pictures seen; moved to a model that sees them",
       escalation: "Failed twice running; one thinking level higher"
     } as Record<string, string>,
@@ -3031,6 +3035,8 @@ const en: CopyShape<typeof zh> = {
     editDepends: "Depends on",
     dependsHint: "Which tickets this one waits for (the supervisor wakes nobody to it before they are done)",
     dependsNone: "No other ticket to choose",
+    modelOverride: "The model this ticket runs on",
+    modelOwn: "The Bot's own model",
     dependsLoop: "It already waits for this ticket; choosing it would make a loop",
     dependsParked: "It is parked; waiting for it would never end",
     reviewer: "Reviewer",

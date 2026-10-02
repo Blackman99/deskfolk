@@ -26,7 +26,7 @@ import {
   wakeDormantPlan,
   type Task,
 } from "./tasks";
-import { createTicket, isTicketStatus, listTickets, patchTicket, ticketArtifacts, ticketDependencies, TICKETS_MAX, type TicketRow } from "./tickets";
+import { createTicket, isTicketStatus, listTickets, patchTicket, ticketArtifacts, ticketDependencies, ticketModel, TICKETS_MAX, type TicketRow } from "./tickets";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import { noteBoardStatus, organizerSaysDone } from "./submissions";
 
@@ -196,7 +196,7 @@ export function setPlanSpecByUser(
 export function patchTicketByUser(
   ctx: StoreContext,
   ticketId: string,
-  patch: { title?: unknown; spec?: unknown; status?: unknown; worker?: string | null; dependsOn?: unknown; reviewerBotId?: unknown },
+  patch: { title?: unknown; spec?: unknown; status?: unknown; worker?: string | null; dependsOn?: unknown; reviewerBotId?: unknown; modelOverride?: unknown },
   ifRevision?: unknown,
 ): { ticket: Ticket; revision: SpecRevisionRow | null } {
   return ctx.db.transaction(() => {
@@ -209,7 +209,8 @@ export function patchTicketByUser(
     const changed =
       ticket.title !== before.title || ticket.spec !== before.spec || ticket.status !== before.status || ticket.worker !== before.worker
       || JSON.stringify(ticket.depends_on ?? []) !== JSON.stringify(ticketDependencies(before.depends_on))
-      || (ticket.reviewer_bot_id ?? null) !== ((before as { reviewer_bot_id?: string | null }).reviewer_bot_id ?? null);
+      || (ticket.reviewer_bot_id ?? null) !== ((before as { reviewer_bot_id?: string | null }).reviewer_bot_id ?? null)
+      || JSON.stringify(ticket.model_override ?? null) !== JSON.stringify(ticketModel(before.model_override));
     if (!changed) return { ticket, revision: null };
     wakeDormantPlan(ctx, ticket.task_id);
     // The clauses of a description you changed on the board are your words about that ticket (ADR 0040).
@@ -629,6 +630,7 @@ export function taskDetail(ctx: StoreContext, taskId: string, present: (path: st
     requirements: planRequirements(ctx, taskId),
     last_change: planLastChange(ctx, taskId),
     ...(withBall ? { supervision_on: true } : {}),
+    ...(readEngineLevel(ctx.db) >= ENGINE_LEVELS.routing ? { routing_on: true } : {}),
     ...(withStages ? { submissions_on: true, reviewer_ids: ctx.db.query<{ id: string }, [string]>(`SELECT b.id FROM bots b
       JOIN session_participants sp ON sp.member = b.id AND sp.left_at IS NULL AND sp.session_id = (SELECT session_id FROM tasks WHERE id = ?)
       WHERE b.archived_at IS NULL AND b.deleted_at IS NULL ORDER BY sp.joined_at, b.id`).all(taskId).map((row) => row.id) } : {}),

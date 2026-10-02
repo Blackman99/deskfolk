@@ -574,6 +574,7 @@ export class Store {
   readonly pendingJobNamed = this.bind(externalJobs.pendingJobNamed);
   readonly getJob = this.bind(externalJobs.getJob);
   readonly routingOn = this.bind(modelDefaults.routingOn);
+  readonly turnTicketModel = this.bind(modelDefaults.turnTicketModel);
   readonly botDefault = this.bind(modelDefaults.botDefault);
   readonly ensureBotDefault = this.bind(modelDefaults.ensureBotDefault);
   readonly noteModelOnce = this.bind(modelDefaults.noteModelOnce);

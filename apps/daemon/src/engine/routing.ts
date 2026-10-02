@@ -290,16 +290,16 @@ export function createRouting(deps: RoutingDeps): Routing {
   }
 
   function decideRoute(botId: string, creds: Creds, text: string, turnId?: string): Routed | null {
-    const base = baseRoute(botId, creds, text);
+    const base = baseRoute(botId, creds, text, turnId);
     const routed = base && turnId ? escalate(base, botId, turnId) : base;
     if (!base || !routed || !turnId || !store.turnNeedsPictures(turnId)) return routed;
     // Its work needs pictures seen (ADR 0049): a model marked as taking none gives way to one that can.
     const catalog = store.catalogEntries();
     const sees = (providerId: string, model: string) => catalog.find((entry) => entry.providerId === providerId && entry.name === model)?.input_image;
     if (sees(routed.target.providerId, routed.target.model) !== false) return routed;
-    // Your pin stays, stepped up or not (the base decision says whether it was one).
-    if (base.decision.reasonCode === "pin") {
-      store.noteModelOnce(botId, "pin_no_pictures", routed.target.model);
+    // Your pin, or the model you set on the ticket, stays, stepped up or not (the base decision says whether it was one).
+    if (base.decision.reasonCode === "pin" || base.decision.reasonCode === "ticket_override") {
+      store.noteModelOnce(botId, base.decision.reasonCode === "pin" ? "pin_no_pictures" : "ticket_override_no_pictures", routed.target.model);
       return routed;
     }
     // Within the endpoint you pinned it to, if any: past it is yours to say.
@@ -359,7 +359,7 @@ export function createRouting(deps: RoutingDeps): Routing {
     return scoped.length > 0 ? scoped : creds.providers;
   }
 
-  function baseRoute(botId: string, creds: Creds, text: string): Routed | null {
+  function baseRoute(botId: string, creds: Creds, text: string, turnId?: string): Routed | null {
     let bot;
     try {
       bot = store.getBot(botId);
@@ -390,6 +390,14 @@ export function createRouting(deps: RoutingDeps): Routing {
         defaultProviderId: creds.defaultProviderId });
       return fallback ? build(fallback.providerId, fallback.model, bot.thinking_level, reasonCode) : null;
     };
+    // The model you set on this turn's ticket comes first (ADR 0049): it is about the work, not the Bot.
+    const override = turnId ? store.turnTicketModel(turnId) : null;
+    if (override) {
+      const provider = creds.providers.find((row) => row.id === override.provider_id && row.models.includes(override.model));
+      if (provider) return build(provider.id, override.model, bot.thinking_level, "ticket_override");
+      // No endpoint lists it any more: the Bot's own model meanwhile, and you are told once.
+      store.noteModelOnce(botId, "ticket_override_unlisted", override.model);
+    }
     // Your pin decides, whatever the Bot ran on before — while an endpoint still lists it.
     if (bot.model) {
       const pinned = creds.providers.find((provider) => provider.models.includes(bot.model!) && (!bot.provider_id || provider.id === bot.provider_id))

@@ -418,6 +418,8 @@ export type Ticket = {
   stage?: TicketStage | null;
   /** The Bot that reviews its submissions (ADR 0046), set on the board; never its owner; null for none. Absent from older daemons. */
   reviewer_bot_id?: string | null;
+  /** The model its turns run on, set on the board from level 7 (ADR 0049): over the Bot's pin and default. Null for none. */
+  model_override?: TicketModel | null;
   created_at: string;
   updated_at: string;
   closed_at: string | null;
@@ -768,6 +770,8 @@ export type TaskDetail = SessionTaskSummary & {
   submissions_on?: boolean;
   /** Engine level 4 is on (ADR 0045): tickets show who has the ball, and their dependencies can be set. Absent below it. */
   supervision_on?: boolean;
+  /** Engine level 7 is on (ADR 0048): a ticket can be given the model its turns run on. Absent below it. */
+  routing_on?: boolean;
   /** From level 5: the Bots that can review this plan's tickets (in its conversation, not archived); a ticket's owner is left out on its row. */
   reviewer_ids?: string[];
   brief: string | null;
@@ -899,6 +903,9 @@ export type PatchTaskSpecRequest = {
   if_revision?: number;
 };
 
+/** A model on an endpoint, as a ticket's override names it. */
+export type TicketModel = { provider_id: string; model: string };
+
 export type PatchTicketRequest = {
   title?: string;
   spec?: string;
@@ -911,6 +918,8 @@ export type PatchTicketRequest = {
   depends_on?: string[];
   /** The Bot that reviews this ticket's submissions (ADR 0046), or null for none: not its owner. */
   reviewer_bot_id?: string | null;
+  /** The model this ticket's turns run on (level 7), or null to go back to the Bot's own. */
+  model_override?: TicketModel | null;
   if_revision?: number;
 };
 

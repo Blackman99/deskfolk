@@ -6,7 +6,7 @@
  * a turn filed under it do ({@link observeTicketWork}). Bots see them in the situation block and
  * work in the ticket dir their turn was filed under.
  */
-import type { Ticket, TicketStatus } from "@real-bot/protocol";
+import type { Ticket, TicketModel, TicketStatus } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { recordWorkEvent } from "./work-events";
@@ -27,12 +27,42 @@ const TICKET_SLUG_MAX = 24;
 /** How many other tickets one may wait for; a plan holds {@link TICKETS_MAX} at most. */
 export const TICKET_DEPENDS_MAX = TICKETS_MAX - 1;
 
-/** A `tickets` row as stored: `depends_on` is its JSON text. */
-export type TicketRow = Omit<Ticket, "depends_on"> & { depends_on: string };
+/** A `tickets` row as stored: `depends_on` and `model_override` are JSON text. */
+export type TicketRow = Omit<Ticket, "depends_on" | "model_override"> & { depends_on: string; model_override?: string | null };
 
-/** A stored row as the API gives it: `depends_on` a list (a row an older build wrote reads as none). */
+/** A stored row as the API gives it: `depends_on` a list (a row an older build wrote reads as none), `model_override` an object or null. */
 export function toTicket(row: TicketRow): Ticket {
-  return { ...row, depends_on: ticketDependencies(row.depends_on) };
+  return { ...row, depends_on: ticketDependencies(row.depends_on), model_override: ticketModel(row.model_override) };
+}
+
+/** A stored override, or null for none or one that does not read. */
+export function ticketModel(raw: string | null | undefined): TicketModel | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<TicketModel>;
+    return typeof parsed.provider_id === "string" && typeof parsed.model === "string" ? { provider_id: parsed.provider_id, model: parsed.model } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Your override as given: null, or a model an endpoint lists — only from level 7, where turns read it. */
+function cleanModelOverride(ctx: StoreContext, value: unknown): TicketModel | null {
+  if (value === null) return null;
+  if (readEngineLevel(ctx.db) < ENGINE_LEVELS.routing) throw new HttpError(409, "conflict", "a ticket's model needs engine level 7");
+  const raw = value as Partial<TicketModel> | undefined;
+  if (!raw || typeof raw !== "object" || typeof raw.provider_id !== "string" || typeof raw.model !== "string") {
+    throw new HttpError(422, "invalid_args", "model_override must be {provider_id, model} or null");
+  }
+  const provider = ctx.db.query<{ models: string }, [string]>("SELECT models FROM providers WHERE id = ?").get(raw.provider_id);
+  let names: string[] = [];
+  try {
+    names = (JSON.parse(provider?.models ?? "[]") as Array<string | { name?: string }>).map((entry) => (typeof entry === "string" ? entry : entry.name ?? ""));
+  } catch {
+    names = [];
+  }
+  if (!provider || !names.includes(raw.model)) throw new HttpError(422, "invalid_args", "model_override names no model an endpoint lists");
+  return { provider_id: raw.provider_id, model: raw.model };
 }
 
 /** The ids in a stored `depends_on`; text that is not a list of strings reads as none. */
@@ -175,7 +205,7 @@ function cleanReviewer(ctx: StoreContext, value: unknown, owner: string | null):
 export function patchTicket(
   ctx: StoreContext,
   id: string,
-  patch: { title?: unknown; spec?: unknown; status?: unknown; worker?: string | null; dependsOn?: unknown; reviewerBotId?: unknown },
+  patch: { title?: unknown; spec?: unknown; status?: unknown; worker?: string | null; dependsOn?: unknown; reviewerBotId?: unknown; modelOverride?: unknown },
   opts: {
     now?: Date;
     /**
@@ -196,6 +226,7 @@ export function patchTicket(
     reviewer: patch.reviewerBotId !== undefined
       ? cleanReviewer(ctx, patch.reviewerBotId, patch.worker !== undefined ? patch.worker : (current.owner_bot_id ?? current.worker))
       : (current.reviewer_bot_id ?? null),
+    modelOverride: patch.modelOverride !== undefined ? cleanModelOverride(ctx, patch.modelOverride) : (current.model_override ?? null),
   };
   // Whichever side moves, a ticket's owner is never its reviewer: that would cancel the review unnoticed.
   if (patch.worker !== undefined && next.worker && next.worker === next.reviewer) {
@@ -204,16 +235,17 @@ export function patchTicket(
   const dependsChanged = JSON.stringify(next.dependsOn) !== JSON.stringify(current.depends_on ?? []);
   const changed =
     next.title !== current.title || next.spec !== current.spec || next.status !== current.status || next.worker !== current.worker || dependsChanged
-    || next.reviewer !== (current.reviewer_bot_id ?? null);
+    || next.reviewer !== (current.reviewer_bot_id ?? null)
+    || JSON.stringify(next.modelOverride) !== JSON.stringify(current.model_override ?? null);
   if (!changed) return current;
   const now = (opts.now ?? new Date()).toISOString();
   const closing = next.status === "done" || next.status === "parked";
   ctx.db.run(
-    `UPDATE tickets SET title = ?, spec = ?, status = ?, worker = ?, depends_on = ?, reviewer_bot_id = ?, updated_at = ?,
+    `UPDATE tickets SET title = ?, spec = ?, status = ?, worker = ?, depends_on = ?, reviewer_bot_id = ?, model_override = ?, updated_at = ?,
        owner_bot_id = CASE WHEN ? THEN ? ELSE owner_bot_id END,
        closed_at = CASE WHEN ? THEN COALESCE(closed_at, ?) ELSE NULL END
      WHERE id = ?`,
-    [next.title, next.spec, next.status, next.worker, JSON.stringify(next.dependsOn), next.reviewer, now,
+    [next.title, next.spec, next.status, next.worker, JSON.stringify(next.dependsOn), next.reviewer, next.modelOverride ? JSON.stringify(next.modelOverride) : null, now,
       next.worker !== current.worker ? 1 : 0, next.worker, closing ? 1 : 0, now, id],
   );
   if (next.status !== current.status) {

@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A model per ticket (engine level 7, opt-in)
+
+- On the board a ticket can be given the model its turns run on, ahead of the Bot's pin and default model, for its owner's turns only (whoever reviews it keeps its own model); the picture filter leaves it alone, like a pin. It is cleared when its endpoint goes or stops listing it. See [ADR 0049](docs/adr/0049-capability-filter-and-escalation.md).
+
 ### The lead lays out tickets (engine level 5, opt-in)
 
 - The plan's lead can lay the plan out as tickets in one call (`plan_items`): titles, owners, reviewers, dependencies and parts; a title the plan already has is only filled in (an owner or reviewer already set stays), the lead is one you confirmed or stored, and a call with any invalid item changes nothing. A ticket can no longer be handed to its own reviewer, whichever field changes; a parked ticket cannot be added as a dependency, and one parked later no longer holds up the tickets waiting for it. Other Bots are told to delegate to the lead. See [ADR 0053](docs/adr/0053-plan-items.md).

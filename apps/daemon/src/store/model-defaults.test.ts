@@ -64,3 +64,11 @@ test("declining drops the default for good; a Bot with nothing listed to go on g
   const writer = f.store.createBot({ name: "编剧", duties: "写", boundaries: "none" }).bot;
   expect(f.store.ensureBotDefault(writer.id, listed)).toMatchObject({ model: null, source: null });
 });
+
+test("turns on a model you set on their ticket do not make it the Bot's default", () => {
+  const f = fixture();
+  ran(f.store, f.reviewer.id, f.dm, "gemini", "high", 3);
+  ran(f.store, f.reviewer.id, f.dm, "grok", "none", 6);
+  f.store.db.run("UPDATE turn_route_decisions SET reason_code = 'ticket_override' WHERE model = 'grok'");
+  expect(f.store.ensureBotDefault(f.reviewer.id, listed)).toMatchObject({ model: "gemini", turns: 3 });
+});

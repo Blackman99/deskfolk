@@ -73,3 +73,49 @@ test("a Bot pinned to an endpoint only looks for a picture-taking model there, n
   f.store.db.run("UPDATE bots SET provider_id = NULL WHERE id = ?", [f.bot.id]);
   expect(f.routing.decideRoute(f.bot.id, f.creds, "看图", f.turn.id)!.decision).toMatchObject({ providerId: "p-2", model: "b", reasonCode: "capability_filter" });
 });
+
+test("a model you set on the ticket comes before the Bot's pin, stays on a picture turn, and must be one an endpoint lists", () => {
+  const f = fixture([{ name: "blind", price: null, thinking_levels: ["low", "high"], strengths: [], input_image: false },
+    { name: "eyes", price: null, thinking_levels: ["low", "high"], strengths: [], input_image: true }], { picture: true });
+  f.store.db.run("UPDATE bots SET model = 'eyes' WHERE id = ?", [f.bot.id]);
+  const ticketId = f.store.getTurn(f.turn.id).ticket_id!;
+  expect(() => f.store.patchTicketByUser(ticketId, { modelOverride: { provider_id: "p-1", model: "nowhere" } })).toThrow("names no model");
+  f.store.patchTicketByUser(ticketId, { modelOverride: { provider_id: "p-1", model: "blind" } });
+  expect(f.store.getTicket(ticketId).model_override).toEqual({ provider_id: "p-1", model: "blind" });
+  expect(f.routing.decideRoute(f.bot.id, f.creds, "看图", f.turn.id)!.decision).toMatchObject({ model: "blind", reasonCode: "ticket_override" });
+  expect(noted(f)).toEqual(["model.ticket_override_no_pictures"]);
+  f.store.patchTicketByUser(ticketId, { modelOverride: null });
+  expect(f.routing.decideRoute(f.bot.id, f.creds, "看图", f.turn.id)!.decision).toMatchObject({ model: "eyes", reasonCode: "pin" });
+  f.store.db.run("UPDATE settings SET value = '6' WHERE key = 'engine_level'");
+  expect(() => f.store.patchTicketByUser(ticketId, { modelOverride: { provider_id: "p-1", model: "blind" } })).toThrow("engine level 7");
+});
+
+test("whoever reviews the ticket keeps its own model, and a model no endpoint lists any more is told once and cleared with its endpoint", async () => {
+  const f = fixture([{ name: "a", price: null, thinking_levels: ["low"], strengths: [] }, { name: "b", price: null, thinking_levels: ["low"], strengths: [] }],
+    { other: [{ name: "c", price: null, thinking_levels: ["low"], strengths: [] }] });
+  const ticketId = f.store.getTurn(f.turn.id).ticket_id!;
+  const reviewer = f.store.createBot({ name: "Checker", duties: "check", boundaries: "none" });
+  f.store.db.run("UPDATE bots SET model = 'b' WHERE id = ?", [reviewer.bot.id]);
+  f.store.patchTicketByUser(ticketId, { reviewerBotId: reviewer.bot.id, modelOverride: { provider_id: "p-2", model: "c" } });
+  const trigger = f.store.insertMessage({ sessionId: reviewer.direct_session.id, kind: "system", author: reviewer.bot.id, body: "审" });
+  const review = f.store.createTurn({ sessionId: reviewer.direct_session.id, botId: reviewer.bot.id, triggerMessageId: trigger.id, taskId: f.store.getTicket(ticketId).task_id, ticketId });
+  expect(f.routing.decideRoute(f.bot.id, f.creds, "做", f.turn.id)!.decision).toMatchObject({ model: "c", reasonCode: "ticket_override" });
+  expect(f.routing.decideRoute(reviewer.bot.id, f.creds, "审", review.id)!.decision).toMatchObject({ model: "b", reasonCode: "pin" });
+  // Before anyone owns it: any turn on it but its reviewer's.
+  f.store.db.run("UPDATE tickets SET owner_bot_id = NULL, worker = NULL WHERE id = ?", [ticketId]);
+  expect(f.routing.decideRoute(f.bot.id, f.creds, "做", f.turn.id)!.decision).toMatchObject({ model: "c", reasonCode: "ticket_override" });
+  expect(f.routing.decideRoute(reviewer.bot.id, f.creds, "审", review.id)!.decision).toMatchObject({ model: "b", reasonCode: "pin" });
+  f.store.db.run("UPDATE tickets SET owner_bot_id = ?, worker = ? WHERE id = ?", [f.bot.id, f.bot.id, ticketId]);
+  // Listed no more: the Bot's own model meanwhile, told once.
+  const unlisted = { ...f.creds, providers: f.creds.providers.filter((provider) => provider.id === "p-1") };
+  expect(f.routing.decideRoute(f.bot.id, unlisted, "做", f.turn.id)!.decision.reasonCode).not.toBe("ticket_override");
+  f.routing.decideRoute(f.bot.id, unlisted, "做", f.turn.id);
+  expect(noted(f)).toEqual(["model.ticket_override_unlisted"]);
+  // The endpoint's list no longer naming it, or the endpoint going, clears it.
+  f.store.patchTicketByUser(ticketId, { modelOverride: { provider_id: "p-1", model: "a" } });
+  f.store.patchProviderSync("p-1", { models: ["b"] });
+  expect(f.store.getTicket(ticketId).model_override).toBeNull();
+  f.store.patchTicketByUser(ticketId, { modelOverride: { provider_id: "p-2", model: "c" } });
+  await f.store.deleteProvider("p-2");
+  expect(f.store.getTicket(ticketId).model_override).toBeNull();
+});

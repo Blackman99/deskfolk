@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Bot, TaskDetail, TaskTraceNode, Ticket, TicketStatus, TicketWithArtifacts } from '@real-bot/protocol';
+	import type { Bot, Provider, TaskDetail, TaskTraceNode, Ticket, TicketStatus, TicketWithArtifacts } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
 	import Select from '../Select.svelte';
@@ -25,6 +25,8 @@
 		t: Copy;
 		/** The ticket whose cards are lit on the board; null lights nothing. */
 		selectedId: string | null;
+		/** The endpoints, for a ticket's model menu (level 7). */
+		providers?: readonly Provider[];
 		onSelect: (ticketId: string | null) => void;
 		onJump: (sessionId: string, messageId: string) => void;
 		onOpenArtifacts: (ticket: TicketWithArtifacts) => void;
@@ -41,6 +43,7 @@
 		deletedLabel,
 		t,
 		selectedId,
+		providers = [],
 		onSelect,
 		onJump,
 		onOpenArtifacts,
@@ -159,6 +162,36 @@
 		errorId = null;
 		try {
 			const result = await api.patchTicket(ticket.id, { depends_on: next, if_revision: detail.revision });
+			onPatched(result);
+		} catch (err) {
+			if (errorStatus(err) === 409) {
+				onConflict();
+			} else {
+				errorId = ticket.id;
+			}
+		} finally {
+			patchingId = null;
+		}
+	}
+
+	/** The models a ticket can be given (ADR 0049, level 7): every model an endpoint lists, named with its endpoint when there are several. */
+	const modelOptions = $derived(
+		providers.flatMap((provider) => provider.models.map((model) => ({
+			value: JSON.stringify({ provider_id: provider.id, model }),
+			label: providers.length > 1 ? `${model} · ${provider.name}` : model
+		})))
+	);
+
+	function modelValue(ticket: TicketWithArtifacts): string {
+		return ticket.model_override ? JSON.stringify({ provider_id: ticket.model_override.provider_id, model: ticket.model_override.model }) : '';
+	}
+
+	async function changeModel(ticket: TicketWithArtifacts, value: string): Promise<void> {
+		if (!api || value === modelValue(ticket)) return;
+		patchingId = ticket.id;
+		errorId = null;
+		try {
+			const result = await api.patchTicket(ticket.id, { model_override: value ? (JSON.parse(value) as { provider_id: string; model: string }) : null, if_revision: detail.revision });
 			onPatched(result);
 		} catch (err) {
 			if (errorStatus(err) === 409) {
@@ -318,38 +351,53 @@
 								<span>{t.plan.jumpToTurn}</span>
 							</button>
 						{/if}
-						{#if api && detail.submissions_on}
-							<div class="ticket-select-wrap ticket-reviewer-wrap">
-								<Select
-									value={ticket.reviewer_bot_id ?? ''}
-									options={reviewerOptions(ticket)}
-									emptyLabel={t.plan.noReviewer}
-									size="sm"
-									ariaLabel={t.plan.reviewer}
-									disabled={patchingId === ticket.id}
-									onchange={(value) => changeReviewer(ticket, value)}
-								/>
-							</div>
-						{/if}
-						{#if api && detail.supervision_on && detail.tickets.length > 1}
-							<button
-								type="button"
-								class="ticket-depends-toggle"
-								aria-expanded={dependsOpen === ticket.id}
-								title={t.plan.dependsHint}
-								onclick={() => (dependsOpen = dependsOpen === ticket.id ? null : ticket.id)}
-							>{t.plan.editDepends}</button>
-						{/if}
 						{#if api}
-							<div class="ticket-select-wrap">
-								<Select
-									value={ticket.status}
-									options={statusOptions}
-									size="sm"
-									ariaLabel={t.plan.changeStatus}
-									disabled={patchingId === ticket.id}
-									onchange={(value) => changeStatus(ticket, value)}
-								/>
+							<div class="ticket-controls">
+								{#if detail.submissions_on}
+									<div class="ticket-select-wrap ticket-reviewer-wrap">
+										<Select
+											value={ticket.reviewer_bot_id ?? ''}
+											options={reviewerOptions(ticket)}
+											emptyLabel={t.plan.noReviewer}
+											size="sm"
+											ariaLabel={t.plan.reviewer}
+											disabled={patchingId === ticket.id}
+											onchange={(value) => changeReviewer(ticket, value)}
+										/>
+									</div>
+								{/if}
+								{#if detail.routing_on && modelOptions.length > 0}
+									<div class="ticket-select-wrap ticket-model-wrap">
+										<Select
+											value={modelValue(ticket)}
+											options={modelOptions}
+											emptyLabel={t.plan.modelOwn}
+											size="sm"
+											ariaLabel={t.plan.modelOverride}
+											disabled={patchingId === ticket.id}
+											onchange={(value) => changeModel(ticket, value)}
+										/>
+									</div>
+								{/if}
+								{#if detail.supervision_on && detail.tickets.length > 1}
+									<button
+										type="button"
+										class="ticket-depends-toggle"
+										aria-expanded={dependsOpen === ticket.id}
+										title={t.plan.dependsHint}
+										onclick={() => (dependsOpen = dependsOpen === ticket.id ? null : ticket.id)}
+									>{t.plan.editDepends}</button>
+								{/if}
+								<div class="ticket-select-wrap">
+									<Select
+										value={ticket.status}
+										options={statusOptions}
+										size="sm"
+										ariaLabel={t.plan.changeStatus}
+										disabled={patchingId === ticket.id}
+										onchange={(value) => changeStatus(ticket, value)}
+									/>
+								</div>
 							</div>
 						{/if}
 					</div>
@@ -899,13 +947,26 @@
 		color: var(--accent);
 	}
 
-	.ticket-select-wrap {
+	/* The menus keep together at the right, wrapping as one group when the row is narrow. */
+	.ticket-controls {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		flex-wrap: wrap;
+		gap: 6px;
 		margin-left: auto;
+		min-width: 0;
+		max-width: 100%;
 	}
 
-	/* The reviewer's menu takes the push to the right; the status menu sits beside it. */
-	.ticket-reviewer-wrap + .ticket-select-wrap {
-		margin-left: 0;
+	.ticket-select-wrap {
+		min-width: 0;
+		max-width: 100%;
+	}
+
+	/* A long model name is cut short rather than pushing the row wider. */
+	.ticket-model-wrap :global(.real-select) {
+		max-width: 220px;
 	}
 
 	.ticket-actions :global(.real-select) {
@@ -936,9 +997,13 @@
 			padding: 10px 12px 8px;
 		}
 
+		.ticket-actions,
+		.ticket-controls {
+			gap: 8px;
+		}
+
 		.ticket-actions {
 			padding: 4px 12px 10px;
-			gap: 8px;
 		}
 
 		.ticket-artifacts,

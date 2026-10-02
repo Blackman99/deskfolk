@@ -133,6 +133,7 @@ function open(over: {
     deletedLabel: "已删除",
     t,
     selectedId: null as string | null,
+    providers: [] as never,
     onSelect: (ticketId: string | null) => {
       selected.push(ticketId);
       props.selectedId = ticketId;
@@ -402,4 +403,19 @@ test("below level 5 a ticket waiting on you is one to mark done, not an approval
   expect(options.map((option) => option.querySelector("input")!.disabled)).toEqual([false, true]);
   expect(options[1]!.title).toBe(t.plan.dependsParked);
   view.close();
+});
+
+test("from level 7 a ticket's model is set from the endpoints' models, or put back to the Bot's own", async () => {
+  const providers = [{ id: "p-1", name: "主端点", models: ["grk", "gemini"] }, { id: "p-2", name: "备用", models: ["mimo"] }] as never;
+  const view = open({ detail: aDetail({ routing_on: true, tickets: [aTicket({ model_override: { provider_id: "p-1", model: "gemini" } })] }) });
+  view.props.providers = providers;
+  flushSync();
+  const wrap = view.host.querySelector(".ticket-model-wrap");
+  expect(wrap?.textContent).toContain("gemini · 主端点");
+  view.close();
+  const below = open({ detail: aDetail({ tickets: [aTicket()] }) });
+  below.props.providers = providers;
+  flushSync();
+  expect(below.host.querySelector(".ticket-model-wrap")).toBeNull();
+  below.close();
 });

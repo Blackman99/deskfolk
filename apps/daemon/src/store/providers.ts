@@ -146,7 +146,10 @@ export function patchProviderSync(ctx: StoreContext, id: string, patch: PatchPro
   }
   const now = isoNow();
   ctx.commit(() => {
-    if (patch.models !== undefined) dropUnknownBotModelsForProvider(ctx, id, models);
+    if (patch.models !== undefined) {
+      dropUnknownBotModelsForProvider(ctx, id, models);
+      dropUnknownTicketModels(ctx, id, models);
+    }
     ctx.db.run(
       `UPDATE providers SET name = ?, base_url = ?, models = ?, available_models = ?, default_model = ?, updated_at = ? WHERE id = ?`,
       [name, baseUrl, serializeCatalog(catalog), JSON.stringify(availableModels), defaultModel, now, id],
@@ -178,6 +181,7 @@ export function deleteProviderSync(ctx: StoreContext, id: string): void {
   const now = isoNow();
   ctx.commit(() => {
     ctx.db.run(`UPDATE bots SET provider_id = NULL, updated_at = ? WHERE provider_id = ?`, [now, id]);
+    dropUnknownTicketModels(ctx, id, []);
     const deleted = ctx.db.query("DELETE FROM providers WHERE id = ? RETURNING id").get(id);
     if (!deleted) throw new HttpError(404, "not_found", "provider not found");
   });
@@ -356,6 +360,12 @@ export function dropUnknownBotModels(ctx: StoreContext, models: string[]): void 
       row.id,
     ]);
   }
+}
+
+/** A ticket's model (level 7) goes with its endpoint, or once the endpoint no longer lists it: the ticket runs on its owner's model again. */
+function dropUnknownTicketModels(ctx: StoreContext, providerId: string, models: string[]): void {
+  ctx.db.run(`UPDATE tickets SET model_override = NULL, updated_at = ? WHERE json_extract(model_override, '$.provider_id') = ?
+    AND json_extract(model_override, '$.model') NOT IN (SELECT value FROM json_each(?))`, [isoNow(), providerId, JSON.stringify(models)]);
 }
 
 export function dropUnknownBotModelsForProvider(ctx: StoreContext, providerId: string, models: string[]): void {

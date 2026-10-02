@@ -252,3 +252,11 @@ test("project skills are listed, shared, turned off and unshared remotely; nothi
   expect(() => validateBusiness({ v: 1, id, method: "PATCH", path: `/v1/shared-skills/${id}`, body: {} })).toThrow();
   expect(() => validateBusiness({ v: 1, id, method: "DELETE", path: `/v1/shared-skills/${id}` })).not.toThrow();
 });
+
+test("a ticket's model is set or cleared remotely, and nothing else rides in it", () => {
+  const patch = (body: unknown) => ({ v: 1 as const, id, method: "PATCH" as const, path: `/v1/tickets/${id}`, body: body as Record<string, unknown> });
+  expect(() => validateBusiness(patch({ model_override: { provider_id: id, model: "gemini" } }))).not.toThrow();
+  expect(() => validateBusiness(patch({ model_override: null }))).not.toThrow();
+  expect(() => validateBusiness(patch({ model_override: { provider_id: id } }))).toThrow();
+  expect(() => validateBusiness(patch({ model_override: { provider_id: id, model: "m", thinking: "high" } }))).toThrow();
+});
