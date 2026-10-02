@@ -70,7 +70,7 @@ import { TurnAdmission } from "../quiesce";
 import { startScheduler, type Scheduler } from "../scheduler";
 import { memoryKeyStore } from "../secrets";
 import { Store, type WorkEvent } from "../store";
-import { ENGINE_LEVELS } from "../store/schema-gate";
+import { ENGINE_LEVELS, SCHEMA_LEVEL } from "../store/schema-gate";
 import type { TurnRun } from "../store/turn-runs";
 import { createTurnEngine, type TurnEngine } from "../turn-engine";
 import type { WakeWatch } from "../wake";
@@ -325,6 +325,8 @@ export type ScenarioOptions = {
   submissions?: boolean;
   /** Takes the engine level up to P4d's external jobs (ADR 0047), which includes submissions. */
   jobs?: boolean;
+  /** Takes the engine level up to P5's default models instead of a per-turn pick (ADR 0048), which includes jobs. */
+  routing?: boolean;
 };
 
 export type Scenario = {
@@ -492,10 +494,12 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
   });
   // Phase fixtures pin their own level rather than taking the database up to this build's: later
   // levels change the filing, wake and ending paths they exercise.
-  const pinned = options.jobs ? ENGINE_LEVELS.jobs : options.submissions ? ENGINE_LEVELS.submissions : options.supervision ? ENGINE_LEVELS.supervision : options.delegation ? ENGINE_LEVELS.delegation : options.workItems ? ENGINE_LEVELS.work_items : options.holds ? ENGINE_LEVELS.holds : 0;
+  const pinned = options.routing ? ENGINE_LEVELS.routing : options.jobs ? ENGINE_LEVELS.jobs : options.submissions ? ENGINE_LEVELS.submissions : options.supervision ? ENGINE_LEVELS.supervision : options.delegation ? ENGINE_LEVELS.delegation : options.workItems ? ENGINE_LEVELS.work_items : options.holds ? ENGINE_LEVELS.holds : 0;
   if (pinned > 0) {
     for (const key of ["engine_level", "schema_min_compatible"]) {
-      store.db.run("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [key, String(pinned)]);
+      // A level may leave the floor where the one below set it (level 7's is 6): never above what this build reads.
+      const value = key === "schema_min_compatible" ? Math.min(pinned, SCHEMA_LEVEL) : pinned;
+      store.db.run("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [key, String(value)]);
     }
   }
 

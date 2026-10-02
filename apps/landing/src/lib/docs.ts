@@ -114,6 +114,7 @@ export const TERM_GROUPS: Record<ManifestoTopic, readonly string[]> = {
   models: [
     'Model endpoint',
     'Model',
+    'Default model',
     'Model choice log',
     'MCP',
     '向导',

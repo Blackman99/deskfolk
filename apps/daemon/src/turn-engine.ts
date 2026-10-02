@@ -439,6 +439,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     credentials: routing.credentials,
     agentRoute: routing.agentRoute,
     targetFor: routing.targetFor,
+    decideRoute: routing.decideRoute,
     routingTarget: routing.routingTarget,
     spendOwner: spend.spendOwner,
     callOf: spend.callOf,
@@ -819,6 +820,10 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       if (message.control?.kind === "review_item") return submissions.act(message, input);
       if (message.control?.kind === "rework") return submissions.answerRework(message, input);
       if (message.control?.kind === "ceiling") return submissions.answerCeiling(message, input);
+      if (message.control?.kind === "model_default") {
+        store.answerModelDefaultCard(message.id, input.action);
+        return { made: [], lifted: [] };
+      }
       return stops.act(messageId, input);
     },
     announceRestart: restart.announce,

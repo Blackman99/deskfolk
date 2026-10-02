@@ -22,6 +22,8 @@ export type RouteDecision = {
   thinkingLevel: ThinkingLevel;
   providerId: string;
   signature: string;
+  /** Why it runs on this, from engine level 7 (ADR 0048): `pin`, `default` or `endpoint_default`. */
+  reasonCode?: string;
 };
 
 export type MessageKind = "coding" | "writing" | "reasoning" | "simple" | "general";

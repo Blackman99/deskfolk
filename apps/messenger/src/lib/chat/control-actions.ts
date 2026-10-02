@@ -96,6 +96,15 @@ export function controlBar(control: MessageControl | undefined, holds: readonly 
     if (buttons.length > 0) return { state: "ask", prompt: control.result ?? null, buttons };
     return control.result ? { state: "done", note: control.result } : { state: "none" };
   }
+  // A Bot's default model, inferred from what it ran on (ADR 0048): keep it, or run on the endpoint's default.
+  if (control.kind === "model_default") {
+    const buttons = control.offer.flatMap((action): ControlButton[] => {
+      if (action === "confirm") return [{ action, label: t.keepDefaultModel, primary: true }];
+      if (action === "decline") return [{ action, label: t.useEndpointDefault, primary: false }];
+      return [];
+    });
+    return buttons.length > 0 ? { state: "ask", prompt: null, buttons } : { state: "none" };
+  }
   // A part that keeps failing hit the capability ceiling (ADR 0046): how it goes on. Stops play no part.
   if (control.kind === "ceiling") {
     const buttons = control.offer.flatMap((action): ControlButton[] => {

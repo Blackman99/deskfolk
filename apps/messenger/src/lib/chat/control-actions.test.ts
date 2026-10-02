@@ -301,3 +301,12 @@ test("a rework card asks first, then offers undo beside what it did (ADR 0046)",
   expect(controlBar({ ...card, offer: [], result: "这句话后来改归别处了。" }, [], names, t)).toEqual({ state: "done", note: "这句话后来改归别处了。" });
   expect(controlBar({ ...sent, acted: ["undo"], result: undefined }, [], names, t)).toEqual({ state: "done", note: t.acted.undo });
 });
+
+test("a default-model card offers to keep it or use the endpoint's default (ADR 0048)", () => {
+  const card: MessageControl = { kind: "model_default", bot_id: "bot-1", provider_id: "p-1", model: "gemini", thinking_level: "high", offer: ["confirm", "decline"] };
+  expect(controlBar(card, [], names, t)).toEqual({ state: "ask", prompt: null, buttons: [
+    { action: "confirm", label: t.keepDefaultModel, primary: true },
+    { action: "decline", label: t.useEndpointDefault, primary: false },
+  ] });
+  expect(controlBar({ ...card, acted: ["confirm"] }, [], names, t)).toEqual({ state: "done", note: t.acted.confirm });
+});

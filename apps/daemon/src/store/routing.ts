@@ -108,8 +108,8 @@ export function recordTurnRoute(
   ctx.db.run(
     `INSERT INTO turn_route_decisions (
        turn_id, session_id, bot_id, trigger_message_id, provider_id, model, thinking_level, signature,
-       reason, chain_id, created_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       reason, chain_id, created_at, reason_code
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(turn_id) DO NOTHING`,
     [
       input.turnId,
@@ -123,6 +123,7 @@ export function recordTurnRoute(
       input.reason?.trim() || null,
       open ?? input.turnId,
       isoNow(),
+      input.decision.reasonCode ?? null,
     ],
   );
 }

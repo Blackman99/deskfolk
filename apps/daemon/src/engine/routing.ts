@@ -8,7 +8,7 @@
 import type { ThinkingLevel } from "@real-bot/protocol";
 import { NO_ABLATION, type Ablation } from "../ablation";
 import type { CompletionsClient } from "../completions";
-import { classifyMessage, messageSignature } from "../route-decision";
+import { classifyMessage, messageSignature, pickThinkingLevel } from "../route-decision";
 import { parseRoutePick, type RoutePick } from "../route-agent";
 import { ROUTE_PICK_SYSTEM, routePickPayload } from "../prompts/routing";
 import { resolveCompletionTarget } from "../models";
@@ -46,6 +46,12 @@ export type Routing = {
    * pick; the decision is returned alongside so the caller records exactly what ran.
    */
   targetFor: (botId: string, creds: Creds, text: string) => Routed | null;
+  /**
+   * From engine level 7 (ADR 0048): what a turn runs on, by fixed rules and with no model call —
+   * your pin, else the Bot's default (inferred from what it ran on and put to you on a card), else
+   * the endpoint's default — with the reason recorded beside it.
+   */
+  decideRoute: (botId: string, creds: Creds, text: string) => Routed | null;
 };
 
 export function createRouting(deps: RoutingDeps): Routing {
@@ -283,5 +289,55 @@ export function createRouting(deps: RoutingDeps): Routing {
     };
   }
 
-  return { credentials, routingTarget, triggerOf, agentRoute, targetFor };
+  function decideRoute(botId: string, creds: Creds, text: string): Routed | null {
+    let bot;
+    try {
+      bot = store.getBot(botId);
+    } catch {
+      return null;
+    }
+    // A Bot pinned to an endpoint only (no model) stays on that endpoint: its default and the fallback are from its list.
+    const scoped = bot.provider_id && !bot.model ? creds.providers.filter((provider) => provider.id === bot.provider_id) : creds.providers;
+    const providers = scoped.length > 0 ? scoped : creds.providers;
+    const listed = providers.flatMap((provider) => provider.models.map((model) => ({ providerId: provider.id, model })));
+    const catalog = store.catalogEntries();
+    // The level the model offers: the one wanted when it has it, else the one nearest this kind of message.
+    const levelFor = (providerId: string, model: string, wanted: ThinkingLevel | null): ThinkingLevel => {
+      const supported = catalog.find((entry) => entry.providerId === providerId && entry.name === model)?.thinking_levels ?? [];
+      if (supported.length === 0) return wanted ?? "low";
+      const match = wanted ? supported.find((level) => level.toLowerCase() === wanted.toLowerCase()) : undefined;
+      return match ?? pickThinkingLevel(classifyMessage(text), supported);
+    };
+    const build = (providerId: string, model: string, wanted: ThinkingLevel | null, reasonCode: string): Routed | null => {
+      const provider = creds.providers.find((row) => row.id === providerId);
+      if (!provider) return null;
+      const thinkingLevel = levelFor(providerId, model, wanted);
+      return {
+        target: { baseUrl: provider.baseUrl, apiKey: provider.apiKey, providerId, providerName: provider.name, model, thinkingLevel, locale: creds.locale },
+        decision: { model, thinkingLevel, providerId, signature: classifyMessage(text), reasonCode },
+      };
+    };
+    const endpointDefault = (reasonCode: string): Routed | null => {
+      const fallback = resolveCompletionTarget(providers, { botModel: null, botProviderId: providers === creds.providers ? null : providers[0]!.id,
+        defaultProviderId: creds.defaultProviderId });
+      return fallback ? build(fallback.providerId, fallback.model, bot.thinking_level, reasonCode) : null;
+    };
+    // Your pin decides, whatever the Bot ran on before — while an endpoint still lists it.
+    if (bot.model) {
+      const pinned = creds.providers.find((provider) => provider.models.includes(bot.model!) && (!bot.provider_id || provider.id === bot.provider_id))
+        ?? creds.providers.find((provider) => provider.models.includes(bot.model!));
+      if (pinned) return build(pinned.id, bot.model, bot.thinking_level, "pin");
+      // Pinned to a model no endpoint lists any more: the endpoint's default meanwhile, never a default
+      // inferred behind your pin; you are told once.
+      store.notePinUnlisted(botId, bot.model);
+      return endpointDefault("pin_unlisted");
+    }
+    const fallback = store.ensureBotDefault(botId, listed);
+    if (fallback.model && fallback.providerId && listed.some((entry) => entry.providerId === fallback.providerId && entry.model === fallback.model)) {
+      return build(fallback.providerId, fallback.model, bot.thinking_level ?? fallback.thinkingLevel, "default");
+    }
+    return endpointDefault("endpoint_default");
+  }
+
+  return { credentials, routingTarget, triggerOf, agentRoute, targetFor, decideRoute };
 }

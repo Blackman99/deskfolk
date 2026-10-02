@@ -1097,6 +1097,9 @@ const zh = {
     approveSubmission: "放行",
     sendBack: "退回",
     /** On a ceiling card (ADR 0046): how a part that keeps failing goes on. */
+    /** On a card about a Bot's default model (ADR 0048). */
+    keepDefaultModel: "就用这个",
+    useEndpointDefault: "用端点默认",
     /** On a card about a line that reads as a complaint about delivered work (ADR 0046). */
     sendBackToRework: "转回返工",
     leaveIt: "不用",
@@ -1152,7 +1155,9 @@ const zh = {
       relax: "这条要求已放宽",
       accept: "已按现在的收下",
       rework: "已转回返工",
-      dismiss: "没转回返工"
+      dismiss: "没转回返工",
+      confirm: "已定为默认模型",
+      decline: "改用端点默认"
     },
     partlyResumed: (continued: number, held: number) => `${continued} 轮接着做了，${held} 轮还被叫停扣着，解除后再按「继续」`,
     spent: "已解除",
@@ -2685,6 +2690,8 @@ const en: CopyShape<typeof zh> = {
     removeItem: "No longer require it",
     approveSubmission: "Approve",
     sendBack: "Send it back",
+    keepDefaultModel: "Keep it",
+    useEndpointDefault: "Use the endpoint's default",
     sendBackToRework: "Send back to rework",
     leaveIt: "Leave it",
     anotherWay: "Another way",
@@ -2739,7 +2746,9 @@ const en: CopyShape<typeof zh> = {
       relax: "Requirement relaxed",
       accept: "Taken as it is",
       rework: "Sent back to rework",
-      dismiss: "Left as it is"
+      dismiss: "Left as it is",
+      confirm: "Kept as the default model",
+      decline: "On the endpoint's default"
     },
     partlyResumed: (continued: number, held: number) => `${continued} going on; ${held} still held by a stop — lift it, then Continue again`,
     spent: "Lifted",

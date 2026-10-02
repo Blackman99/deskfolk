@@ -70,6 +70,7 @@ export type LifecycleDeps = {
   credentials: Routing["credentials"];
   agentRoute: Routing["agentRoute"];
   targetFor: Routing["targetFor"];
+  decideRoute: Routing["decideRoute"];
   routingTarget: Routing["routingTarget"];
   spendOwner: SpendTracker["spendOwner"];
   callOf: SpendTracker["callOf"];
@@ -154,6 +155,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     credentials,
     agentRoute,
     targetFor,
+    decideRoute,
     routingTarget,
     spendOwner,
     callOf,
@@ -780,9 +782,11 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     } catch {
       triggerBody = "";
     }
-    const agent = await agentRoute(turnId, botId, creds, triggerBody, live.abort.signal);
+    // From level 7 no model picks what a turn runs on (ADR 0048): your pin, the Bot's default or the endpoint's.
+    const decided = store.routingOn();
+    const agent = decided ? null : await agentRoute(turnId, botId, creds, triggerBody, live.abort.signal);
     if (!active(turnId, live)) return;
-    const routed = agent?.routed ?? targetFor(botId, creds, triggerBody);
+    const routed = decided ? decideRoute(botId, creds, triggerBody) : (agent?.routed ?? targetFor(botId, creds, triggerBody));
     if (!routed) {
       failTurn(turnId, "no_model");
       return;

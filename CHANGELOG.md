@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Default models instead of a per-turn pick (engine level 7, opt-in)
+
+- At engine level 7 no model call picks what a turn runs on: your pin, else the Bot's default model, else the endpoint's default, with the reason (`pin`, `default`, `endpoint_default`, `pin_unlisted`) kept on each turn's route record. Thinking levels are matched to what the model offers; a Bot pinned to an endpoint only stays on it; a pin no endpoint lists any more runs on the endpoint's default and you are told once. A Bot's default is inferred the first time it is needed from what it ran on most in the last 7 days among models still listed, at the thinking level it ran that model on most, and put to you once on a card in your direct with it (keep it, or use the endpoint's default); it is used until you answer. Level 7 leaves the compatibility floor at 6. See [ADR 0048](docs/adr/0048-default-models.md).
+
 ### External jobs (engine level 6, opt-in)
 
 - Engine level 6 hands waiting on a media server's renders to the app: a paired `submit_<x>` / `check_<x>` (westlake-cpa's `submit_video` / `check_video`) is registered when submitted and polled by the daemon itself — every 30 s, 1, 2, 4, then 5 minutes, outside any turn — so a Bot's check reads the last known state without reaching the server, and the Bot that submitted it and every Bot that checked on it are woken with the result (url, duration, cost) when it is done, failed, or given up after three hours. Like level 5 it needs a developer's opt-in (`engine-level.ts --accept-older-app`, now with `--level <n>` to stop short, e.g. at 5), and raises the compatibility floor to 6.

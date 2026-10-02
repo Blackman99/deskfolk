@@ -1284,7 +1284,9 @@ export type ControlOffer =
   | "relax"
   | "accept"
   | "rework"
-  | "dismiss";
+  | "dismiss"
+  | "confirm"
+  | "decline";
 
 /**
  * Why the daemon started again (ADR 0041): `dev` for a development run (`bun --watch` restarts it
@@ -1444,6 +1446,19 @@ export type MessageControl =
       requirement_id: string | null;
       /** Why it no longer asks, when the ticket closed another way (approved, your board edit). */
       result?: string;
+      offer: ControlOffer[];
+      acted?: ControlOffer[];
+    }
+  | {
+      /**
+       * A Bot's default model, inferred from what it ran on most lately (ADR 0048, engine level 7):
+       * `confirm` keeps it, `decline` drops it so the Bot runs on the endpoint's default.
+       */
+      kind: "model_default";
+      bot_id: string;
+      provider_id: string;
+      model: string;
+      thinking_level: ThinkingLevel;
       offer: ControlOffer[];
       acted?: ControlOffer[];
     }

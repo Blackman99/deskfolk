@@ -59,8 +59,8 @@ export const SCHEMA_LEVEL = 6;
  * P4c's supervisor, durable blocked questions and the effect ledger (ADR 0045); `submissions`:
  * P4e's ticket stages, submissions and reviews (ADR 0046).
  */
-export const ENGINE_LEVELS = { holds: 1, work_items: 2, delegation: 3, supervision: 4, submissions: 5, jobs: 6 } as const;
-export const ENGINE_LEVEL = ENGINE_LEVELS.jobs;
+export const ENGINE_LEVELS = { holds: 1, work_items: 2, delegation: 3, supervision: 4, submissions: 5, jobs: 6, routing: 7 } as const;
+export const ENGINE_LEVEL = ENGINE_LEVELS.routing;
 
 /**
  * The highest level a build raises on its own, with no developer opt-in: `ENGINE_LEVEL` may sit
@@ -73,7 +73,9 @@ export const ENGINE_LEVEL = ENGINE_LEVELS.jobs;
 export const ENGINE_LEVEL_BY_DEFAULT = ENGINE_LEVELS.supervision;
 
 /** The floor a database needs once it runs at each engine level: whatever an older build would misread there. */
-const FLOOR_AT_LEVEL: Readonly<Record<number, number>> = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6 };
+// Level 7 (ADR 0048: default models instead of a per-turn pick) leaves nothing an older build would
+// misread: one just goes on picking per turn. Its floor is the level below's.
+const FLOOR_AT_LEVEL: Readonly<Record<number, number>> = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 6 };
 
 /**
  * The last release without the gate read. A copy of it (or of anything before it) opens any
