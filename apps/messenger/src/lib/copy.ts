@@ -39,10 +39,11 @@ const zh = {
     loadFailed: "未能载入委派记录。", retry: "重试",
   },
   groupLead: {
-    title: "群负责人", confirmed: (name: string) => `已确认负责人：${name}`, unconfirmed: "还没有确认负责人；未点名的消息仍按参与判断。",
-    suggested: (name: string, count: number) => `建议 ${name}：近 7 天有 ${count} 次交接。`, suggestionHint: "只是建议，你确认后才生效。暂不设只收起本次建议，不改负责人。",
-    decline: "暂不设", confirmSuggestion: (name: string) => `确认 ${name}`, choose: "选择群内 Bot", confirm: "确认负责人", clear: "清除负责人",
-    failed: "未能保存，负责人未改。你的选择已保留。", loading: "正在载入负责人…", loadFailed: "未能载入负责人。", retry: "重试",
+    title: "群负责人", badge: "负责人", badgeHint: "群里没点名的消息，优先交给这位 Bot",
+    set: "设为负责人", clear: "取消负责人",
+    confirmed: "没点名的消息优先交给负责人。", unconfirmed: "还没有负责人；没点名的消息仍按参与判断。",
+    suggested: (count: number) => `建议：近 7 天有 ${count} 次交接`,
+    failed: "未能保存，负责人未改。", loading: "正在载入负责人…", loadFailed: "未能载入负责人。", retry: "重试",
   },
   attribution: {
     filed: (name: string) => `归到：${name}`, undetermined: "未归属", change: "改", choose: "选", separator: "、",
@@ -1608,10 +1609,11 @@ const en: CopyShape<typeof zh> = {
     loadFailed: "Could not load delegation records.", retry: "Retry",
   },
   groupLead: {
-    title: "Group lead", confirmed: (name: string) => `Confirmed lead: ${name}`, unconfirmed: "No confirmed lead; unaddressed messages still use participation judgement.",
-    suggested: (name: string, count: number) => `Suggested: ${name}, with ${count} handoffs in the last 7 days.`, suggestionHint: "Only a suggestion, effective after you confirm. Not now dismisses this suggestion without changing the lead.",
-    decline: "Not now", confirmSuggestion: (name: string) => `Confirm ${name}`, choose: "Choose a Bot in this group", confirm: "Confirm lead", clear: "Clear lead",
-    failed: "Could not save; lead unchanged. Your selection is preserved.", loading: "Loading group lead…", loadFailed: "Could not load group lead.", retry: "Retry",
+    title: "Group lead", badge: "Lead", badgeHint: "Messages that name no one go to this Bot first",
+    set: "Make lead", clear: "Remove lead",
+    confirmed: "Messages that name no one go to the lead first.", unconfirmed: "No lead yet; messages that name no one still use participation judgement.",
+    suggested: (count: number) => `Suggested: ${count} handoffs in the last 7 days`,
+    failed: "Could not save; lead unchanged.", loading: "Loading group lead…", loadFailed: "Could not load group lead.", retry: "Retry",
   },
   attribution: {
     filed: (name: string) => `Filed under: ${name}`, undetermined: "Unfiled", change: "Change", choose: "Choose", separator: ", ",

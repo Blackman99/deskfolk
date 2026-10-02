@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { USER_MEMBER, type SessionSummary } from '@real-bot/protocol';
 	import Select from '../Select.svelte';
 	import SettingsSubject from './SettingsSubject.svelte';
@@ -101,6 +102,41 @@
 			return;
 		}
 		detail.pullPick = '';
+	}
+
+	/**
+	 * The lead is a property of a member, so it is set on the member's row: one click is the
+	 * confirmation (nothing here is a guess the daemon made for you), and the same button on the
+	 * current lead takes it back. The daemon's suggestion is only ever a hint on the row.
+	 */
+	const leadState = $derived(runtime.groupLeads[selected.id] ?? null);
+	const leadAvailable = $derived(selected.kind === 'group' && !runtime.groupLeadUnsupported[selected.id]);
+	const leadId = $derived(leadState?.confirmed_bot_id ?? null);
+	const leadPresent = $derived(leadId !== null && groupPresent.includes(leadId));
+	const leadSuggestion = $derived(
+		leadState?.suggestion && leadState.suggestion.bot_id !== leadId ? leadState.suggestion : null
+	);
+	let leadPending = $state(false);
+	let leadFailed = $state(false);
+	$effect(() => {
+		const id = selected.id;
+		leadFailed = false;
+		if (selected.kind === 'group' && runtime.connection === 'connected') {
+			void untrack(() => runtime.loadGroupLead(id));
+		}
+	});
+
+	async function setLead(botId: string | null): Promise<void> {
+		if (selected.kind !== 'group' || leadPending) return;
+		leadPending = true;
+		leadFailed = false;
+		try {
+			leadFailed = Boolean(await runtime.confirmGroupLead(selected.id, botId));
+		} catch {
+			leadFailed = true;
+		} finally {
+			leadPending = false;
+		}
 	}
 
 	async function removeMember(botId: string): Promise<void> {
@@ -208,12 +244,18 @@
 										>
 											{memberLabel(botId)}
 										</button>
+										{#if botId === leadId}
+											<span class="member-badge is-lead" title={t.groupLead.badgeHint}>{t.groupLead.badge}</span>
+										{/if}
 										{#if bot.model}
 											<span class="member-badge is-model mono" title={bot.model}>{bot.model}</span>
 										{/if}
 									</div>
 									{#if bot.duties}
 										<span class="member-duties-text text-12 text-muted whitespace-nowrap overflow-hidden text-ellipsis leading-[1.25]" title={bot.duties}>{bot.duties}</span>
+									{/if}
+									{#if leadSuggestion?.bot_id === botId}
+										<span class="member-suggest">{t.groupLead.suggested(leadSuggestion.handoffs)}</span>
 									{/if}
 								</div>
 							{:else}
@@ -225,20 +267,46 @@
 						</div>
 
 						{#if bot}
-							<button
-								type="button"
-								class="btn-remove-member"
-								disabled={!groupCanRemove}
-								title={!groupCanRemove ? (locale === 'zh' ? '群内至少需保留 2 个 Bot' : 'Keep at least 2 bots') : t.detail.remove}
-								onclick={() => void removeMember(botId)}
-							>
-								<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-								<span>{t.detail.remove}</span>
-							</button>
+							<div class="member-actions">
+								{#if leadAvailable && leadState && (botId === leadId || !bot.archived_at)}
+									<button
+										type="button"
+										class="btn-lead"
+										class:is-suggested={leadSuggestion?.bot_id === botId}
+										disabled={leadPending}
+										onclick={() => void setLead(botId === leadId ? null : botId)}
+									>{botId === leadId ? t.groupLead.clear : t.groupLead.set}</button>
+								{/if}
+								<button
+									type="button"
+									class="btn-remove-member"
+									disabled={!groupCanRemove}
+									title={!groupCanRemove ? (locale === 'zh' ? '群内至少需保留 2 个 Bot' : 'Keep at least 2 bots') : t.detail.remove}
+									onclick={() => void removeMember(botId)}
+								>
+									<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+									<span>{t.detail.remove}</span>
+								</button>
+							</div>
 						{/if}
 					</div>
 				{/each}
 			</div>
+
+			{#if leadAvailable}
+				{#if runtime.groupLeadLoadError[selected.id]}
+					<p class="lead-note is-error" role="status">
+						{t.groupLead.loadFailed}
+						<button type="button" class="lead-retry" disabled={leadPending} onclick={() => void runtime.loadGroupLead(selected.id)}>{t.groupLead.retry}</button>
+					</p>
+				{:else if leadFailed}
+					<p class="lead-note is-error" role="status">{t.groupLead.failed}</p>
+				{:else if leadState}
+					<p class="lead-note">{leadPresent ? t.groupLead.confirmed : t.groupLead.unconfirmed}</p>
+				{:else if runtime.groupLeadLoading[selected.id]}
+					<p class="lead-note" role="status">{t.groupLead.loading}</p>
+				{/if}
+			{/if}
 
 			{#if groupCandidates.length > 0}
 				<div class="pull-in-section">
@@ -488,10 +556,12 @@
 		gap: 2px;
 	}
 
+	/* A badge that does not fit beside the name drops under it; the name is never the part that gives. */
 	.member-name-row {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 6px;
+		gap: 2px 6px;
 		min-width: 0;
 	}
 
@@ -507,6 +577,7 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+		max-width: 100%;
 		box-shadow: none;
 		transition: color 0.15s ease;
 	}
@@ -532,6 +603,12 @@
 		border: 1px solid var(--chip-line);
 	}
 
+	.member-badge.is-lead {
+		background: var(--accent);
+		color: var(--on-accent);
+		border: 1px solid var(--accent);
+	}
+
 	.member-badge.is-model {
 		background: var(--accent-tint);
 		color: var(--accent);
@@ -545,6 +622,71 @@
 		font-size: 12px;
 		color: var(--muted);
 		font-style: italic;
+	}
+
+	.member-suggest {
+		font-size: 12px;
+		line-height: 1.25;
+		color: var(--accent);
+	}
+
+	.member-actions {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		flex-shrink: 0;
+	}
+
+	.btn-lead {
+		border: 1px solid transparent;
+		background: transparent;
+		color: var(--muted);
+		font-size: 12px;
+		font-weight: 500;
+		padding: 4px 8px;
+		border-radius: var(--radius-sm);
+		cursor: pointer;
+		white-space: nowrap;
+		transition: 0.15s ease;
+		transition-property: var(--transition-props);
+	}
+
+	.btn-lead:hover:not(:disabled) {
+		background: var(--accent-tint);
+		border-color: var(--accent-border);
+		color: var(--accent);
+	}
+
+	.btn-lead.is-suggested {
+		background: var(--accent-tint);
+		border-color: var(--accent-border);
+		color: var(--accent);
+	}
+
+	.btn-lead:disabled {
+		opacity: 0.45;
+		cursor: default;
+	}
+
+	.lead-note {
+		margin: 10px 0 0;
+		font-size: 12px;
+		line-height: 1.4;
+		color: var(--muted);
+	}
+
+	.lead-note.is-error {
+		color: var(--danger-text);
+	}
+
+	.lead-retry {
+		border: 0;
+		background: transparent;
+		padding: 0 0 0 4px;
+		color: var(--accent);
+		font: inherit;
+		cursor: pointer;
+		text-decoration: underline;
 	}
 
 	.btn-remove-member {

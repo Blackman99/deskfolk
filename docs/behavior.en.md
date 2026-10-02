@@ -163,7 +163,7 @@ At level 2 an unaddressed user line in a group goes first to that job's present 
 
 The last **7 days** of handoffs only suggest a lead: the count includes real turn-sent group messages mentioning another member (everyone included), and the first real line in a Bot↔Bot direct opened from that group. Ordinary chatter, user mentions, empty directs and subsequent discussion do not add handoffs. Only present, non-archived, non-deleted Bots qualify; no evidence or a tie at the top gives no suggestion. Only your confirmation writes `session_participants.is_lead`; no Bot has an appointment tool. You can choose another present Bot or clear it with `null`.
 
-`GET /v1/sessions/:id/lead` and `PUT /v1/sessions/:id/lead {bot_id,confirmed:true}` are local and on the remote whitelist; the group conversation shows a confirmation/suggestion card and selection. Confirmation records `group_lead.confirmed`; a new top count never replaces your lead automatically.
+`GET /v1/sessions/:id/lead` and `PUT /v1/sessions/:id/lead {bot_id,confirmed:true}` are local and on the remote whitelist; in the group's settings, each present Bot's row in the member list is the entry: one click on "Make lead" confirms it (to change, click another Bot), the current lead carries a "Lead" badge, and "Remove lead" on its row clears it; an archived Bot cannot be made lead, but can still be cleared if it is the current one. A suggestion appears only as a hint on that member's row ("Suggested: N handoffs in the last 7 days"): it takes no room in the conversation, needs no dismissing, and changes nothing until you click. Confirmation records `group_lead.confirmed`; a new top count never replaces your lead automatically.
 
 <a id="mention"></a>
 ## Mention

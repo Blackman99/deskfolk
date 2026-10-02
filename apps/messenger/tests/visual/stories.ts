@@ -982,7 +982,6 @@ function ticket23dStoryRuntime() {
     aMessage({ id: 'filing-user', body: '请修改前两镜，并准备海报。', filing_state: 'filed', filings: [{ task_id: 'plan-a', ticket_id: 'ticket-a', part_key: 'Shot 01' }] }),
     aMessage({ id: 'filing-bot', kind: 'bot', author: 'bot-1', body: '我先确认这句话应该归到哪件事。', filing_state: 'undetermined', filings: [] }),
   ] }, { selectedId: session.id, patchMessageAttribution: () => new Error('fixture save refused') }));
-  runtime.groupLeads = { [session.id]: { session_id: session.id, confirmed_bot_id: null, suggestion: { bot_id: 'bot-1', handoffs: 8, since: '2026-09-12T00:00:00Z' } } };
   runtime.attributionPlans = { [session.id]: [
     { id: 'plan-a', title: 'EP01', tickets: [{ id: 'ticket-a', title: '剪辑' }] },
     { id: 'plan-b', title: '海报', tickets: [] },

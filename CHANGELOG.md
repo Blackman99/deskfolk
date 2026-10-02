@@ -30,6 +30,8 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ### Fixes
 
+- Setting the group lead is now done on the member list instead of a card pinned above every group conversation. In the group's settings each Bot's row has one "Make lead" button (one click confirms; the lead carries a "Lead" badge and "Remove lead" clears it), replacing the card's native dropdown plus a separate confirm button. The daemon's suggestion shows as a hint on that member's row, so there is no "Not now" to press, and the conversation no longer loses a block of space to a setting you change once. The lead still takes effect only when you click; nothing sets it for you.
+
 - Fixed startup when upgrading a database from before work directories. The runtime now adds the turn's plan-attribution column before creating the work-item uniqueness index, preventing a missing `task_id` error. Existing data is preserved, and reopening remains safe.
 
 - Fixed plan call-backs posting a translation again after light rewording. Duplicate detection previously required exactly matching text after Markdown removal, so changing “video, longer” to “video that runs longer” slipped through. Both direct replies and `send_message` now recognize these small English wording changes while preserving new content, changed numbers or negations, new links, paths, code and newly delivered files. Replies triggered by ordinary user messages and existing chat history are preserved.

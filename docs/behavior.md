@@ -164,7 +164,7 @@
 
 近 **7 天**的交接记录只提出建议：数的是在执行段中真实发给另一个成员的点名交接（含全员点名），及从该群开出的 Bot↔Bot 私聊的第一条真实发言；普通闲聊、用户的点名、空私聊、后续对话不当交接数。只建议仍在场、未归档未删除的 Bot；证据为空或第一名并列就不建议。你确认才写入 `session_participants.is_lead`，Bot 没有任命工具；可重新指定在场 Bot，或用 `null` 清掉。
 
-本机和远端白名单有 `GET /v1/sessions/:id/lead`、`PUT /v1/sessions/:id/lead {bot_id,confirmed:true}`；群会话显示确认/建议卡和选择入口。确认记录 `group_lead.confirmed`，不因为统计第一名变了自动换负责人。
+本机和远端白名单有 `GET /v1/sessions/:id/lead`、`PUT /v1/sessions/:id/lead {bot_id,confirmed:true}`；群设置的成员列表里，每位在场 Bot 一行就是入口：「设为负责人」一次点击即确认（换人直接点另一位），当前负责人带「负责人」徽章，行上的「取消负责人」清掉；已归档的 Bot 不提供设置，但它若是当前负责人仍可取消。建议只作为提示出现在对应成员行（「建议：近 7 天有 N 次交接」），不占聊天流、也无需关闭；没人点它就什么都不变。确认记录 `group_lead.confirmed`，不因为统计第一名变了自动换负责人。
 
 <a id="mention"></a>
 ## 点名（Mention）

@@ -15,7 +15,6 @@
 	import BotDmEntry from './BotDmEntry.svelte';
 	import ControlActions from './ControlActions.svelte';
 	import MessageAttribution from './MessageAttribution.svelte';
-	import GroupLeadCard from './GroupLeadCard.svelte';
 	import DelegationRecords from './DelegationRecords.svelte';
 	import AnnotationCards from '../annotations/AnnotationCards.svelte';
 	import { annotationsByMessage } from '../annotations/model.ts';
@@ -148,11 +147,6 @@
 	const botDmIndex = $derived(
 		indexBotDmsByOrigin(snapshot.sessions, selected?.id ?? null, snapshot.turns, botsById)
 	);
-	const groupPresent = $derived(selected ? presentBotIds(selected) : []);
-	$effect(() => {
-		const id = stageSessionId;
-		if (id && selectedKind === 'group' && connected) void untrack(() => runtime.loadGroupLead(id));
-	});
 	// Keyed by the message that carries them; a separate collection, so a batch's cards never
 	// touch the memoized message wrappers.
 	const annotationIndex = $derived(annotationsByMessage(snapshot.annotations));
@@ -1014,20 +1008,6 @@
 		}}
 	>
 		<div class="stream-inner" bind:this={streamInner}>
-	{#if selected && selectedKind === 'group' && !runtime.groupLeadUnsupported[selected.id]}
-		{#key selected.id}
-			<GroupLeadCard
-				leadState={runtime.groupLeads[selected.id] ?? null}
-				bots={snapshot.bots.filter((bot) => groupPresent.includes(bot.id) && !bot.archived_at)}
-				{t}
-				disabled={!connected || lockedComposer}
-				loading={runtime.groupLeadLoading[selected.id] ?? false}
-				loadError={runtime.groupLeadLoadError[selected.id] ?? false}
-				onReload={() => runtime.loadGroupLead(selected.id)}
-				onConfirm={(botId) => runtime.confirmGroupLead(selected.id, botId)}
-			/>
-		{/key}
-	{/if}
 	{#if selected && selectedKind === 'bot-bot' && !runtime.delegationUnsupported[selected.id]}
 		<DelegationRecords records={delegations} {botsById} {t}
 			onOpenArtifact={(path, messageId) => onOpenArtifact(path, undefined, messageId)} />
