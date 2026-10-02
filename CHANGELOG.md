@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### The lead lays out tickets (engine level 5, opt-in)
+
+- The plan's lead can lay the plan out as tickets in one call (`plan_items`): titles, owners, reviewers, dependencies and parts; a title the plan already has is only filled in (an owner or reviewer already set stays), the lead is one you confirmed or stored, and a call with any invalid item changes nothing. A ticket can no longer be handed to its own reviewer, whichever field changes; a parked ticket cannot be added as a dependency, and one parked later no longer holds up the tickets waiting for it. Other Bots are told to delegate to the lead. See [ADR 0053](docs/adr/0053-plan-items.md).
+
 ### Who has the ball, on the board (engine level 4)
 
 - The plan board's ticket list says, under each open ticket, who has the ball (a Bot, the lead, a delegation, a reviewer, the app, or you, and for what) and which tickets it waits for; a "Depends on" button sets those dependencies.

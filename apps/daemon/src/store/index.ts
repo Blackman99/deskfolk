@@ -92,6 +92,7 @@ import * as quality from "./quality";
 import * as lessons from "./lessons";
 import * as reflection from "./reflection";
 import * as sharedSkills from "./shared-skills";
+import * as planItemsModule from "./plan-items";
 
 export { HttpError } from "../errors";
 export { isReservedTaskPath, localDate, BRIEF_MAX, PLAN_MAP_FILE, RESERVED_SUBDIRS, TICKET_FILE, WORK_ROOT } from "./tasks";
@@ -600,6 +601,7 @@ export class Store {
   readonly shareSkill = this.bind(sharedSkills.shareSkill);
   readonly setSharedSkillEnabled = this.bind(sharedSkills.setSharedSkillEnabled);
   readonly unshareSkill = this.bind(sharedSkills.unshareSkill);
+  readonly planItems = this.bind(planItemsModule.planItems);
   readonly answerModelDefaultCard = this.bind(modelDefaults.answerModelDefaultCard);
   readonly visionRefusal = this.bind(submissions.visionRefusal);
   readonly takeUpSubmission = this.bind(submissions.takeUpSubmission);

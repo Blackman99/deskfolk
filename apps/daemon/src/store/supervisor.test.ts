@@ -249,6 +249,16 @@ test("unfinished, malformed or held dependencies and an uncertain last effect ke
   }
 });
 
+test("a dependency that was parked after it was set holds nothing up: it would never be done", () => {
+  const f = fixture();
+  ended(f, "idle");
+  const before = f.store.createTicket({ taskId: f.plan.id, title: "旧前置" });
+  f.store.patchTicketByUser(f.ticket.id, { dependsOn: [before.id] });
+  f.store.db.run("UPDATE tickets SET status = 'parked' WHERE id = ?", [before.id]);
+  const tick = f.store.supervisorTick({ now: at(60 * MIN) });
+  expect(tick.wakes.filter((wake) => wake.ticketId === f.ticket.id)).toHaveLength(1);
+});
+
 // ── I6 and attention ────────────────────────────────────────────────────────────────────────────
 
 test("I6: a wait with nothing behind it is repaired and picked up at once with what happened; a real or held wait stays", () => {

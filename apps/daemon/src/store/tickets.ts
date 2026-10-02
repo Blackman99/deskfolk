@@ -136,6 +136,13 @@ function cleanDependencies(ctx: StoreContext, ticket: Pick<Ticket, "id" | "task_
   const plan = new Map(ctx.db.query<{ id: string; depends_on: string }, [string]>("SELECT id, depends_on FROM tickets WHERE task_id = ?")
     .all(ticket.task_id).map((row) => [row.id, ticketDependencies(row.depends_on)] as const));
   for (const id of ids) if (!plan.has(id)) throw new HttpError(422, "invalid_args", "depends_on names only tickets of the same plan");
+  // A parked ticket is never done: waiting for one would never end. One that was set before it was parked may stay.
+  const before = new Set(ticketDependencies(ctx.db.query<{ depends_on: string }, [string]>("SELECT depends_on FROM tickets WHERE id = ?").get(ticket.id)?.depends_on));
+  for (const id of ids) {
+    if (!before.has(id) && ctx.db.query("SELECT 1 FROM tickets WHERE id = ? AND status = 'parked'").get(id)) {
+      throw new HttpError(422, "invalid_args", "a ticket cannot wait for a parked one");
+    }
+  }
   // Walks what the named tickets wait for, transitively: reaching this one would be a loop.
   const seen = new Set<string>();
   const stack = [...ids];
@@ -185,8 +192,15 @@ export function patchTicket(
     status: cleanStatus(patch.status, current.status),
     worker: patch.worker !== undefined ? patch.worker : current.worker,
     dependsOn: patch.dependsOn !== undefined ? cleanDependencies(ctx, current, patch.dependsOn) : (current.depends_on ?? []),
-    reviewer: patch.reviewerBotId !== undefined ? cleanReviewer(ctx, patch.reviewerBotId, current.owner_bot_id ?? current.worker) : (current.reviewer_bot_id ?? null),
+    // Against the owner it will have: a call that hands the ticket to its reviewer is refused too.
+    reviewer: patch.reviewerBotId !== undefined
+      ? cleanReviewer(ctx, patch.reviewerBotId, patch.worker !== undefined ? patch.worker : (current.owner_bot_id ?? current.worker))
+      : (current.reviewer_bot_id ?? null),
   };
+  // Whichever side moves, a ticket's owner is never its reviewer: that would cancel the review unnoticed.
+  if (patch.worker !== undefined && next.worker && next.worker === next.reviewer) {
+    throw new HttpError(422, "invalid_args", "a ticket's reviewer cannot be its owner");
+  }
   const dependsChanged = JSON.stringify(next.dependsOn) !== JSON.stringify(current.depends_on ?? []);
   const changed =
     next.title !== current.title || next.spec !== current.spec || next.status !== current.status || next.worker !== current.worker || dependsChanged

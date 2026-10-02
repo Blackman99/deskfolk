@@ -277,13 +277,16 @@ function submissionHolder(ctx: StoreContext, ticket: TicketRow): BallHolder | nu
   return { kind: "app", reason: "approval", ref: open.id };
 }
 
-/** Tickets it waits for that are not done yet; a list that does not read counts as waiting. */
+/**
+ * Tickets it waits for that are not done yet; a list that does not read counts as waiting. A parked
+ * one does not hold it: set aside, it will never be done, and waiting for it would never end.
+ */
 function dependenciesPending(ctx: StoreContext, ticket: TicketRow): boolean {
   let parsed: unknown;
   try { parsed = JSON.parse(ticket.depends_on); } catch { return true; }
   if (!Array.isArray(parsed)) return true;
   return parsed.some((id) => typeof id !== "string"
-    || !ctx.db.query("SELECT 1 FROM tickets WHERE id = ? AND task_id = ? AND status = 'done'").get(id, ticket.task_id));
+    || !ctx.db.query("SELECT 1 FROM tickets WHERE id = ? AND task_id = ? AND status IN ('done', 'parked')").get(id, ticket.task_id));
 }
 
 /** A stop of yours over the work: its Bot, its plan, ticket and conversations, or any of its recent turns. */

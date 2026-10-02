@@ -126,6 +126,10 @@ export async function runCollabTool(
     switch (name) {
       case "send_message":
         return sendMessage(ctx, args);
+      case "plan_items": {
+        if (!ctx.turnId) return fail("invalid_args", "plan_items needs a turn");
+        return { ok: true, data: ctx.store.planItems({ turnId: ctx.turnId, items: args.items }), emitted: [] };
+      }
       case "create_bot":
         return await createBot(ctx, args);
       case "list_bots":

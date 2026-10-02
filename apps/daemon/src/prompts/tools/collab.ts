@@ -251,6 +251,11 @@ export const SUBMIT: ToolDef = {
         zh: "对挂检查的、或用户说过两次以上的要求，每条一项：requirement_id、claim（你做到了什么）、evidence（怎么验证的）。",
         en: "For each requirement a check stands on or the user said twice or more: requirement_id, claim (what you did) and evidence (how you checked).",
       },
+      items: {
+        type: "object",
+        properties: { requirement_id: { type: "string" }, claim: { type: "string" }, evidence: { type: "string" } },
+        required: ["requirement_id", "claim", "evidence"],
+      },
     },
     note: { type: "string", description: { zh: "给审查者的一句话。", en: "One line for the reviewer." } },
     continue: { type: "boolean", description: { zh: "true 时交完接着做本段的其它工作。", en: "true keeps this segment going after the submission." } },
@@ -272,11 +277,49 @@ export const REVIEW: ToolDef = {
         zh: "每条一项：requirement_id、verdict（pass/fail/unknown/n/a）、evidence（字符串列表：看了哪些帧、量出了什么）。",
         en: "One per requirement: requirement_id, verdict (pass, fail, unknown or n/a) and evidence (a list of strings: which frames, what you measured).",
       },
+      items: {
+        type: "object",
+        properties: {
+          requirement_id: { type: "string" },
+          verdict: { type: "string", enum: ["pass", "fail", "unknown", "n/a"] },
+          evidence: { type: "array", items: { type: "string" } },
+        },
+        required: ["requirement_id", "verdict"],
+      },
     },
     outcome: { type: "string", enum: ["approve", "reject"], description: { zh: "放行或打回。", en: "Approve or reject." } },
     note: { type: "string", description: { zh: "打回时写要改什么。", en: "What to change, when rejecting." } },
   },
   required: ["outcome"],
+};
+
+export const PLAN_ITEMS: ToolDef = {
+  name: "plan_items",
+  description: {
+    zh: "只给规划负责人（存下的或用户确认的，私聊里就是你）：一次把这件事拆成任务——每张写标题、谁做（owner，新任务必填）、谁审（reviewer，可省略，不能是做的人）、要等哪些任务先完成（depends_on，写其他任务的标题或编号），以及分件（parts，如「Shot 07」）。标题和规划里已有的任务相同时就是那张任务：只补空着的谁做、谁审（已经有人的不换，结果里 kept 会写明），依赖和分件只加不减；已完成、搁置或已通过的任务不动。全部合法才一起生效。负责人之外的 Bot 不能用：要拆活，委派给负责人。",
+    en: "For the plan's lead only (the stored one or the one the user confirmed; in a direct, you): lay the plan out as tickets in one call — each with a title, who makes it (owner, required for a new ticket), who reviews it (reviewer, optional, never the owner), which tickets it waits for (depends_on: other tickets' titles or numbers) and its parts (parts, such as \"Shot 07\"). A title the plan already has is that ticket: only an empty owner or reviewer is filled in (one already set stays, and kept says so), and dependencies and parts are only added; a ticket that is done, parked or approved is not touched. The call stands only if every item does. Other Bots cannot use it: to split work, delegate to the lead.",
+  },
+  properties: {
+    items: {
+      type: "array",
+      description: {
+        zh: "每张任务一项：title、owner（在场 Bot 的名字或 id）、reviewer、depends_on（字符串列表）、parts（字符串列表）。",
+        en: "One per ticket: title, owner (a Bot here, by name or id), reviewer, depends_on (list of strings), parts (list of strings).",
+      },
+      items: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          owner: { type: "string" },
+          reviewer: { type: "string" },
+          depends_on: { type: "array", items: { type: "string" } },
+          parts: { type: "array", items: { type: "string" } },
+        },
+        required: ["title"],
+      },
+    },
+  },
+  required: ["items"],
 };
 
 export const END_TURN: ToolDef = {
