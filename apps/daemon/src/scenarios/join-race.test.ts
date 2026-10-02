@@ -88,3 +88,12 @@ test.failing("and the line opens no plan at all", async () => {
 
   expect(planCount(h)).toBe(before);
 });
+
+// From P4b (engine level 2) the line is filed from the rows, with no organizer call to race: it opens nothing.
+test("from level 2 the line opens no plan at all", async () => {
+  const h = await createScenario({ workItems: true });
+  open.push(h);
+  const { before } = await raceTheJoin(h);
+
+  expect(planCount(h)).toBe(before);
+});

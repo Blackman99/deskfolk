@@ -236,3 +236,20 @@ test.failing("in a Bot↔Bot direct an acknowledgement wakes nobody, even with n
   const woken = h.turns(reviewer).filter((turn) => turn.session_id === thread);
   expect(woken.map((turn) => h.store.getMessage(turn.trigger_message_id).body)).toEqual([]);
 });
+
+// ADR 0040 P4c (engine level 3): a line in a Bot↔Bot direct wakes nobody — the opening as much as the
+// acknowledgement — so the loop has nothing to run on; work between Bots goes through a delegation.
+test("from level 3 a line in a Bot↔Bot direct wakes nobody, the opening or an acknowledgement", async () => {
+  const h = await scenario({ delegation: true });
+  const { director, reviewer } = videoTeam(h);
+  const thread = h.botDirect(director, reviewer);
+  const reviewerDm = h.direct(reviewer);
+  h.script(reviewer, reviewerDm).reply(call(sendMessage("用户叫停了，Shot 12 先不开", { session_id: thread }), endTurn()));
+  h.script(director, thread).reply(say("停工已对齐，Shot 12 不开。"));
+
+  h.postUser(reviewerDm, "跟视频导演说一声，Shot 12 先不开");
+  await h.waitIdle();
+
+  expect(h.messages(thread).map(({ author, body }) => ({ author, body }))).toEqual([{ author: reviewer.id, body: "用户叫停了，Shot 12 先不开" }]);
+  expect([...h.turns(director), ...h.turns(reviewer)].filter((turn) => turn.session_id === thread)).toEqual([]);
+});
