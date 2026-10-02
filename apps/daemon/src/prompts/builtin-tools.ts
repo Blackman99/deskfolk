@@ -16,6 +16,8 @@ import {
   END_TURN,
   WORK_ON,
   DELEGATE,
+  SUBMIT,
+  REVIEW,
 } from "./tools/collab";
 import { UPDATE_PROFILE, LIST_SKILLS, READ_SKILL, CREATE_SKILL, UPDATE_SKILL, DELETE_SKILL } from "./tools/profile";
 import { REMEMBER, FORGET } from "./tools/memory";
@@ -75,7 +77,8 @@ export const TOOLS: ToolDef[] = [
 ];
 
 export function builtinTools(locale: Locale, engineLevel = 0): ChatTool[] {
-  const defs = engineLevel >= 3 ? [...TOOLS.filter((tool) => tool.name !== "create_direct"), DELEGATE] : TOOLS;
+  // Level 5 (ADR 0046): work is handed over with submit and judged with review.
+  const defs = engineLevel >= 3 ? [...TOOLS.filter((tool) => tool.name !== "create_direct"), DELEGATE, ...(engineLevel >= 5 ? [SUBMIT, REVIEW] : [])] : TOOLS;
   const tools = toChatTools(defs, locale);
   if (engineLevel >= 3) {
     for (const tool of tools) {
@@ -96,4 +99,4 @@ export function builtinTools(locale: Locale, engineLevel = 0): ChatTool[] {
   return tools;
 }
 
-export const COLLAB_TOOL_NAMES = [...TOOLS.map((t) => t.name), DELEGATE.name];
+export const COLLAB_TOOL_NAMES = [...TOOLS.map((t) => t.name), DELEGATE.name, SUBMIT.name, REVIEW.name];

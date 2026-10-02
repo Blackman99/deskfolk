@@ -46,7 +46,9 @@
 - `engine_level`：线性开关，只能按顺序往上调；
 - `last_shutdown`：clean 或 crash，下次启动时按它决定怎么续跑。
 
-守护进程发现库要求的级别高于自己，就拒绝开库，并提示先更新。安装版和开发版共用同一个数据目录，所以闸的读取代码要先随一次发布铺开，之后的阶段才能把级别调上去。目前的级别：1 叫停（P2，[ADR 0041](0041-control-plane-holds-and-restarts.md)），2 工作项（P4b，[ADR 0043](0043-work-items-and-attribution.md)），3 委派与结束契约（P4c，[ADR 0044](0044-delegation-and-end-contract.md)），4 监督器（P4c，[ADR 0045](0045-supervisor.md)）；每一级启用时把 `schema_min_compatible` 抬到同一个数。开发者越过旧安装版的放行只覆盖它接受时的那一级，之后的级别要再接受一次。
+守护进程发现库要求的级别高于自己，就拒绝开库，并提示先更新。安装版和开发版共用同一个数据目录，所以闸的读取代码要先随一次发布铺开，之后的阶段才能把级别调上去。目前的级别：1 叫停（P2，[ADR 0041](0041-control-plane-holds-and-restarts.md)），2 工作项（P4b，[ADR 0043](0043-work-items-and-attribution.md)），3 委派与结束契约（P4c，[ADR 0044](0044-delegation-and-end-contract.md)），4 监督器（P4c，[ADR 0045](0045-supervisor.md)），5 交付与审查（P4e，[ADR 0046](0046-submissions-and-reviews.md)）；每一级启用时把 `schema_min_compatible` 抬到同一个数。开发者越过旧安装版的放行只覆盖它接受时的那一级，之后的级别要再接受一次。
+
+**自动抬升的上限**（`schema-gate.ts` 的 `ENGINE_LEVEL_BY_DEFAULT`，2026-10-02 第四轮评审）。`ENGINE_LEVEL` 是这次构建最高支持到哪一级，不等于它会自己抬到哪一级：高于 `ENGINE_LEVEL_BY_DEFAULT`（目前等于监督器那级，4）的级别算实验性的，还没在真实工作里跑够、审过（如今是交付与审查，5 级，见 [ADR 0046](0046-submissions-and-reviews.md)）。没有开发者认领时，`raiseEngineLevel` 不论有没有旧安装版共享数据目录、不论那个旧版本读不读闸，一律只抬到 `min(ENGINE_LEVEL, ENGINE_LEVEL_BY_DEFAULT)`——打包应用自己的数据目录、或源码跑在独立数据目录上（`installed === null`）都不例外。开发者的认领（`acceptOlderApp`：`scripts/engine-level.ts --accept-older-app`，或 `POST /v1/capabilities/raise`，两处记的都是这次构建的 `ENGINE_LEVEL`）把上限抬到 `min(ENGINE_LEVEL, max(ENGINE_LEVEL_BY_DEFAULT, optIn.level))`——认领只会把上限往上抬，早先版本记下的低级别认领（或没写级别的认领）不会把库压在默认级别以下；这条路不需要真的有旧安装版，这就是开发者显式打开一个实验级别的办法。只有在共享数据目录的安装版真的早于闸时，上限才是 `min(ENGINE_LEVEL, optIn.level)`：开发者只认领过越过那份旧版到这一级，没说过更高也安全。
 
 **迁移分三类。**
 - **A 类**（纯新增）：新表、可空新列、只看新列的索引和触发器。不提闸。

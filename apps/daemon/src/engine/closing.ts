@@ -68,6 +68,8 @@ export type Closing = {
   ) => Promise<string | null>;
   completeSilent: (turnId: string) => void;
   publishCitedBotMessage: (turn: Turn, live: Live, turnId: string, rawBody: string) => Message | null;
+  /** Posts (and publishes) a line of the segment's citing those of `paths` it has not cited yet. */
+  citePaths: (turnId: string, paths: string[]) => Message | null;
 };
 
 export function createClosing(deps: ClosingDeps): Closing {
@@ -214,6 +216,31 @@ export function createClosing(deps: ClosingDeps): Closing {
     return closingCheck(turnId, live, turn, { body: corrected, paths, sessionId });
   }
 
+  /**
+   * A line of the segment's citing those of `paths` it has not cited yet, the way its ending would
+   * (ADR 0046: what a submission hands over is cited first, so a check from your words finds it).
+   * Null when there is nothing left to cite or the turn is not live here.
+   */
+  function citePaths(turnId: string, paths: string[]): Message | null {
+    const live = lives.get(turnId);
+    if (!live) return null;
+    let current: Turn;
+    try {
+      current = store.getTurn(turnId);
+    } catch {
+      return null;
+    }
+    const remaining = store.uncitedTurnPaths(turnId, paths);
+    if (remaining.length === 0) return null;
+    const written = live.writtenPaths;
+    live.writtenPaths = remaining;
+    try {
+      return publishCitedBotMessage(current, live, turnId, "");
+    } finally {
+      live.writtenPaths = written;
+    }
+  }
+
   function completeSilent(turnId: string): void {
     const live = lives.get(turnId);
     try {
@@ -266,5 +293,5 @@ export function createClosing(deps: ClosingDeps): Closing {
     return message;
   }
 
-  return { closingCheck, closingCheckForSend, completeSilent, publishCitedBotMessage };
+  return { closingCheck, closingCheckForSend, completeSilent, publishCitedBotMessage, citePaths };
 }

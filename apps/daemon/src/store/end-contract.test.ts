@@ -15,7 +15,8 @@ afterEach(() => { for (const store of stores.splice(0)) store.close(); });
 function fixture(status: "todo" | "doing" | "review" | "done" | "parked" = "doing") {
   const store = new Store();
   stores.push(store);
-  store.db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('engine_level', '40')");
+  // Pinned to the supervisor's level: from level 5 a ticket handed over is no longer its producer's obligation (ADR 0046).
+  store.db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('engine_level', '4')");
   const bot = store.createBot({ name: "Writer", duties: "write", boundaries: "none" }).bot;
   const room = store.createDirect("user", bot.id);
   const plan = store.openTask({ sessionId: room.id, title: "Report" });

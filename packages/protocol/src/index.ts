@@ -306,6 +306,68 @@ export type PlanStatus = "active" | "done" | "parked";
 export type TicketStatus = "todo" | "doing" | "review" | "done" | "parked";
 
 /**
+ * A ticket's stage (ADR 0046, engine level 5): handed over (`submitted`), with its reviewer
+ * (`in_review`), sent back (`rework`), passed (`approved`). Only a submission's checks, a review or
+ * the app's no-reviewer approval moves it; `status` is written beside it (submitted and in_review
+ * read review, rework reads doing, approved reads done, dropped reads parked).
+ */
+export type TicketStage = "todo" | "doing" | "submitted" | "in_review" | "rework" | "approved" | "dropped";
+
+/** One hand-over of a ticket's work (ADR 0046): its files by content hash, the checks the app ran, the reviews it got. */
+export type Submission = {
+  id: string;
+  work_item_id: string | null;
+  task_id: string;
+  ticket_id: string;
+  part_keys: string[];
+  bot_id: string;
+  model: string | null;
+  turn_id: string | null;
+  /** `submit` when the Bot handed it over; `implicit` when the app did, for new files a segment cited in its ticket's folder. */
+  origin: "submit" | "implicit";
+  artifacts: Array<{ path: string; sha256: string }>;
+  claims: Array<{ requirement_id: string; claim: string; evidence: string }>;
+  note: string | null;
+  state: "checking" | "checks_failed" | "submitted" | "in_review" | "approved" | "rejected" | "superseded";
+  /** Each check the app ran on it: `gate` ones decide; the rest (your words not confirmed yet) are shown, never a block. */
+  checks: Array<{ check_id: string; item: string; gate: boolean; outcome: string; detail: string }>;
+  reviews: Array<{
+    reviewer_bot_id: string;
+    reviewer_model: string | null;
+    /** The reviewer ran on the producer's own model. */
+    same_model: boolean;
+    turn_id: string;
+    verdicts: Array<{ requirement_id: string; verdict: "pass" | "fail" | "unknown" | "n/a"; evidence: string[] }>;
+    outcome: "approve" | "reject";
+    note: string | null;
+    at: string;
+  }>;
+  /** Its approval waiting on you: the required items nothing backs, the card that asks you, the review it would complete. */
+  awaiting: {
+    requirement_ids: string[];
+    check_ids: string[];
+    message_id: string | null;
+    review: Submission["reviews"][number] | null;
+    at: string;
+  } | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/** A part of a ticket (分件, ADR 0046): one shot or piece, from the plan's items, a delivered file's name, or you. */
+export type TicketPart = {
+  id: string;
+  ticket_id: string;
+  key: string;
+  title: string;
+  declared_by: "plan_items" | "filename" | "user";
+  stage: "todo" | "in_progress" | "submitted" | "approved" | "rework" | "blocked" | "waived";
+  owner_bot_id: string | null;
+  current_artifact: string | null;
+  attempts: number;
+};
+
+/**
  * A plan's spec (要点): what the organizer last understood the plan to be. Every field is the
  * app's reading of the conversation, revised as it goes; you can edit it, and each version is kept.
  */
@@ -344,6 +406,10 @@ export type Ticket = {
   owner_bot_id?: string | null;
   /** Tickets of the same plan this one waits for (ADR 0045); absent from a daemon before that level. */
   depends_on?: string[];
+  /** Its stage (ADR 0046); null until engine level 5 moves it, and then read it before `status`. Absent from older daemons. */
+  stage?: TicketStage | null;
+  /** The Bot that reviews its submissions (ADR 0046), set on the board; never its owner; null for none. Absent from older daemons. */
+  reviewer_bot_id?: string | null;
   created_at: string;
   updated_at: string;
   closed_at: string | null;
@@ -351,7 +417,11 @@ export type Ticket = {
 
 export type TicketArtifactRef = { path: string; message_id: string; attachment_id: string; exists?: boolean };
 
-export type TicketWithArtifacts = Ticket & { artifacts: TicketArtifactRef[] };
+export type TicketWithArtifacts = Ticket & {
+  artifacts: TicketArtifactRef[];
+  /** Its parts (ADR 0046): how many there are and how many passed (「11/12 已通过」); absent from older daemons. */
+  parts?: { total: number; approved: number };
+};
 
 /**
  * How a check proves its acceptance line: a file on disk, a command the app runs itself, or —
@@ -663,6 +733,10 @@ export type PlanRequirement = {
 
 /** One plan as the board reads it: the switcher row plus its spec, revision and tickets. */
 export type TaskDetail = SessionTaskSummary & {
+  /** Engine level 5 is on (ADR 0046): tickets have stages, parts passed and a reviewer to set. Absent below it. */
+  submissions_on?: boolean;
+  /** From level 5: the Bots that can review this plan's tickets (in its conversation, not archived); a ticket's owner is left out on its row. */
+  reviewer_ids?: string[];
   brief: string | null;
   spec: PlanSpec | null;
   spec_updated_at: string | null;
@@ -802,6 +876,8 @@ export type PatchTicketRequest = {
    * calls nobody back to it until they are done, and a stop over one of them stops it too.
    */
   depends_on?: string[];
+  /** The Bot that reviews this ticket's submissions (ADR 0046), or null for none: not its owner. */
+  reviewer_bot_id?: string | null;
   if_revision?: number;
 };
 
@@ -1195,7 +1271,11 @@ export type ControlOffer =
   | "make_standing"
   | "keep_project"
   | "undo_plan"
-  | "merge_plan";
+  | "merge_plan"
+  | "confirm_item"
+  | "remove_item"
+  | "approve"
+  | "reject";
 
 /**
  * Why the daemon started again (ADR 0041): `dev` for a development run (`bun --watch` restarts it
@@ -1297,6 +1377,33 @@ export type MessageControl =
       replacing?: string | null;
       times?: number;
       edit_draft?: string;
+      acted?: ControlOffer[];
+    }
+  | {
+      /**
+       * A hand-over's approval waiting on you (ADR 0046): required items nothing backs — no passing
+       * check, a reviewer on the producer's own model or none — or, with no required items left open,
+       * an organizer's reading or an answer with no reviewer, which is never approved on its own say.
+       * `confirm_check` makes the checks from your words in `check_ids` gates, `confirm_item` says the
+       * items are met for this hand-over, `remove_item` stops requiring them in this plan; `approve`
+       * and `reject` (empty `requirement_ids`/`check_ids`) decide the submission itself.
+       */
+      kind: "review_item";
+      submission_id: string;
+      task_id: string;
+      ticket_id: string;
+      requirement_ids: string[];
+      check_ids: string[];
+      /** Whether an unconfirmed check named in `check_ids` is passing right now — a possible misread (ADR 0042): 「确认这条检查」 is then never the primary or first button. */
+      checks_passing?: boolean;
+      /**
+       * The app's own line on the card, shown in place of the button's label or beside what is left
+       * to press: what `approve` actually did (a gate failing sends it back, with its detail, rather
+       * than a bare 已放行), that it waits on a check before approving, or why the card no longer
+       * asks (a newer hand-over, your board edit).
+       */
+      result?: string;
+      offer: ControlOffer[];
       acted?: ControlOffer[];
     }
   | {

@@ -236,6 +236,49 @@ export const DELEGATE: ToolDef = {
   required: ["to", "ask", "expects"],
 };
 
+export const SUBMIT: ToolDef = {
+  name: "submit",
+  description: {
+    zh: "把本任务的成果交出去，等审查。artifacts 列出交付的文件（在本规划目录里）。应用当场跑挂在这些文件上的检查：不过就原样返回细节，任务不前进，改好再交；通过后任务进「已交付」，有审查者就排给它审，没有就由应用在检查全过时放行。默认交完本段结束；还要接着做别的分件时传 continue:true。不调也行：本段引用过的新文件会在结束时自动交一次。",
+    en: "Hand this ticket's work over for review. artifacts lists the delivered files (inside this plan's folder). The app runs the checks on them at once: if any fails you get the details back, the ticket does not move, and you fix it and submit again; if they pass the ticket is submitted, queued for its reviewer, or approved by the app when there is none and every check passed. This segment ends after submitting unless you pass continue:true to go on with other parts. Not calling it is fine too: new files this segment cited are submitted for you when it ends.",
+  },
+  properties: {
+    artifacts: { type: "array", items: { type: "string" }, description: { zh: "交付的文件路径，相对工作区或你的工作目录。", en: "The delivered files, relative to the workspace or your work dir." } },
+    parts: { type: "array", items: { type: "string" }, description: { zh: "这次交的分件编号（如 shot_07）；省略时按文件名认。", en: "Part keys this covers (shot_07); read from the file names when omitted." } },
+    claims: {
+      type: "array",
+      description: {
+        zh: "对挂检查的、或用户说过两次以上的要求，每条一项：requirement_id、claim（你做到了什么）、evidence（怎么验证的）。",
+        en: "For each requirement a check stands on or the user said twice or more: requirement_id, claim (what you did) and evidence (how you checked).",
+      },
+    },
+    note: { type: "string", description: { zh: "给审查者的一句话。", en: "One line for the reviewer." } },
+    continue: { type: "boolean", description: { zh: "true 时交完接着做本段的其它工作。", en: "true keeps this segment going after the submission." } },
+  },
+  required: ["artifacts"],
+};
+
+export const REVIEW: ToolDef = {
+  name: "review",
+  description: {
+    zh: "审查另一个 Bot 的交付并给结论，只有它推进任务（只写一句「通过」不算）。verdicts 对每条必查要求给 pass/fail/unknown/n/a 和依据：挂检查的、用户说过两次以上的、关于画面的都是必查，不能判 n/a。应用会当场重跑检查，检查不过时不能 approve；画面类判 pass 前要先用 read_file 看过这次交付的帧。没有用户写过或确认过的检查撑着这份交付时，你的 approve 要在适用的要求上带依据，而且你和做的 Bot 不是同一个模型，才直接放行；否则（还有一段话、整理跳的读法）转给用户在卡片上定，带着你的结论。不能审自己交的。",
+    en: "Judge another Bot's submission; only this moves the ticket (saying \"approved\" in words does not). verdicts gives pass, fail, unknown or n/a with evidence for each required item: anything a check stands on, anything the user said twice or more, anything about the picture — those cannot be n/a. The app reruns the checks first, and approve is refused while one fails; before passing anything about the picture, read frames of this delivery with read_file. When no check the user wrote or confirmed backs the submission, your approve stands only with evidence on a requirement that applies and on a model other than the producer's; otherwise (and always for words or the organizer's reading) it goes to the user's card with your verdict. You cannot review your own submission.",
+  },
+  properties: {
+    submission_id: { type: "string", description: { zh: "要审的交付；省略时取本任务最新一份待审的。", en: "The submission; defaults to the newest one waiting on this ticket." } },
+    verdicts: {
+      type: "array",
+      description: {
+        zh: "每条一项：requirement_id、verdict（pass/fail/unknown/n/a）、evidence（字符串列表：看了哪些帧、量出了什么）。",
+        en: "One per requirement: requirement_id, verdict (pass, fail, unknown or n/a) and evidence (a list of strings: which frames, what you measured).",
+      },
+    },
+    outcome: { type: "string", enum: ["approve", "reject"], description: { zh: "放行或打回。", en: "Approve or reject." } },
+    note: { type: "string", description: { zh: "打回时写要改什么。", en: "What to change, when rejecting." } },
+  },
+  required: ["outcome"],
+};
+
 export const END_TURN: ToolDef = {
   name: "end_turn",
   description: {

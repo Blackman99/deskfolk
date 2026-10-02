@@ -85,6 +85,7 @@ describe("schema", () => {
       "settings",
       "skills",
       "spend",
+      "submissions",
       "task_spec_revisions",
       "tasks",
       "terminals",

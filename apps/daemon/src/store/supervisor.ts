@@ -22,6 +22,7 @@ import { requireNonEmpty, type StoreContext } from "./shared";
 import { isReservedTaskPath } from "./tasks";
 import { ticketDependencies } from "./tickets";
 import { executionRecoveryFacts } from "./tool-executions";
+import { STAGE_SQL, superviseSubmissions, ticketReviewer, type Submission } from "./submissions";
 import { recordWorkEvent } from "./work-events";
 import { queueWork } from "./work-items";
 
@@ -38,13 +39,18 @@ export const RESTART_STABLE_MS = 60_000;
 /** A development restart this soon after the one before waits for your 继续. */
 export const DEV_RESTART_WINDOW_MS = 5 * 60_000;
 const HOUR_MS = 60 * 60_000;
-/** What the supervisor cannot do yet, said with every tick rather than guessed at (ADR 0045). */
+/** What the supervisor cannot do yet, said with every tick rather than guessed at (ADR 0045); reviewers come with level 5 (ADR 0046). */
 export const SUPERVISOR_UNSUPPORTED = ["external_jobs", "reviewer_assignment"] as const;
+const SUPERVISOR_UNSUPPORTED_AT_SUBMISSIONS = ["external_jobs"] as const;
 
 export type BallHolder =
   | { kind: "closed" }
   | { kind: "delegation"; botId: string; workItemId: string; delegationId: string; since: string }
   | { kind: "owner" | "lead"; botId: string; workItemId: string | null }
+  /** From level 5: the ticket's reviewer, on the submission it has to review. */
+  | { kind: "reviewer"; botId: string; workItemId: string | null; submissionId: string }
+  /** From level 5: a checked submission with no reviewer, which the supervisor approves at its next tick. */
+  | { kind: "app"; reason: "approval"; ref: string }
   | { kind: "user"; reason: "ask" | "blocked" | "held" | "held_dependency" | "review" | "unclaimed"; ref?: string };
 
 export type SupervisorWake = {
@@ -67,6 +73,10 @@ export type SupervisorTickResult = {
   repaired: Array<{ workItemId: string; from: "waiting" | "running"; reason: "wait_invalid" | "lost_segment" | "segment_ended" }>;
   deferred: Array<{ workItemId: string; reason: string }>;
   unsupported: readonly string[];
+  /** From level 5: submissions the tick took on (§5.3.7) — to their reviewer, approved, back to their producer, or waiting on you. */
+  approved: Submission[];
+  /** From level 5: gates a waiting submission needs run before it can be decided (the engine runs them; the next tick reads them). */
+  checksToRun: Array<{ taskId: string; checkIds: string[] }>;
 };
 
 type TicketRow = {
@@ -94,7 +104,7 @@ function clock(now?: string): string {
 }
 
 function emptyResult(): SupervisorTickResult {
-  return { wakes: [], messages: [], repaired: [], deferred: [], unsupported: SUPERVISOR_UNSUPPORTED };
+  return { wakes: [], messages: [], repaired: [], deferred: [], unsupported: SUPERVISOR_UNSUPPORTED, approved: [], checksToRun: [] };
 }
 
 function plan(ctx: StoreContext, id: string): PlanRow | null {
@@ -224,11 +234,37 @@ export function ballHolder(ctx: StoreContext, input: { ticketId: string }): Ball
       return { kind: "user", reason: "held_dependency", ref: id };
     }
   }
-  if (ticket.status === "review" && !failingCheck(ctx, ticket)) return { kind: "user", reason: "review", ref: ticket.id };
+  if (readEngineLevel(ctx.db) >= ENGINE_LEVELS.submissions) {
+    const handed = submissionHolder(ctx, ticket);
+    if (handed) return handed;
+  } else if (ticket.status === "review" && !failingCheck(ctx, ticket)) return { kind: "user", reason: "review", ref: ticket.id };
   if (!botId) return { kind: "user", reason: "unclaimed" };
   const work = ctx.db.query<{ id: string }, [string, string, string]>(`SELECT id FROM work_items WHERE bot_id = ? AND task_id = ?
     AND ticket_id = ? AND state <> 'closed' ORDER BY created_at LIMIT 1`).get(botId, ticket.task_id, ticket.id);
   return { kind: owner ? "owner" : "lead", botId, workItemId: work?.id ?? null };
+}
+
+/**
+ * From level 5, who holds a handed-over ticket (ADR 0046): you, when its approval waits on your
+ * answer to a card; in review, its reviewer; handed over with no reviewer, the app, until its next
+ * tick takes it on. A ticket in review from before level 5, with no submission, still awaits your
+ * review. Null when the ball is the owner's as usual (todo, doing, rework).
+ */
+function submissionHolder(ctx: StoreContext, ticket: TicketRow): BallHolder | null {
+  const stage = ctx.db.query<{ stage: string }, [string]>(`SELECT ${STAGE_SQL("t")} AS stage FROM tickets t WHERE t.id = ?`).get(ticket.id)?.stage;
+  if (stage !== "submitted" && stage !== "in_review") return null;
+  const open = ctx.db.query<{ id: string; state: string; bot_id: string; awaiting: string | null }, [string]>(`SELECT id, state, bot_id, awaiting FROM submissions
+    WHERE ticket_id = ? AND state IN ('submitted', 'in_review') ORDER BY created_at DESC, rowid DESC LIMIT 1`).get(ticket.id);
+  if (!open) return { kind: "user", reason: "review", ref: ticket.id };
+  // Its approval waits on your answer to a card: yours.
+  if (open.awaiting) return { kind: "user", reason: "review", ref: (JSON.parse(open.awaiting) as { message_id: string | null }).message_id ?? ticket.id };
+  const reviewer = ticketReviewer(ctx, ticket.id, open.bot_id);
+  if (reviewer && open.state === "in_review") {
+    const work = ctx.db.query<{ id: string }, [string, string, string]>(`SELECT id FROM work_items WHERE bot_id = ? AND task_id = ?
+      AND ticket_id = ? AND state <> 'closed' ORDER BY created_at LIMIT 1`).get(reviewer, ticket.task_id, ticket.id);
+    return { kind: "reviewer", botId: reviewer, workItemId: work?.id ?? null, submissionId: open.id };
+  }
+  return { kind: "app", reason: "approval", ref: open.id };
 }
 
 /** Tickets it waits for that are not done yet; a list that does not read counts as waiting. */
@@ -654,7 +690,7 @@ function callBackOrphans(ctx: StoreContext, result: SupervisorTickResult, now: s
   const since = supervisingSince(ctx);
   for (const ticket of tickets) {
     const holder = ballHolder(ctx, { ticketId: ticket.id });
-    if (holder.kind !== "owner" && holder.kind !== "lead" && holder.kind !== "delegation") continue;
+    if (holder.kind !== "owner" && holder.kind !== "lead" && holder.kind !== "delegation" && holder.kind !== "reviewer") continue;
     if (dependenciesPending(ctx, ticket)) continue;
     const item = holder.workItemId ? workRow(ctx, holder.workItemId) : null;
     if (item && item.state !== "idle") continue;
@@ -684,7 +720,7 @@ function callBackOrphans(ctx: StoreContext, result: SupervisorTickResult, now: s
     }
     const ask = holder.kind === "delegation"
       ? ctx.db.query<{ ask: string }, [string]>("SELECT ask FROM delegations WHERE id = ?").get(holder.delegationId)?.ask ?? null : null;
-    const body = supervisorWakeNote(locale(ctx), { kind: "orphan", job, role: holder.kind, ask,
+    const body = supervisorWakeNote(locale(ctx), { kind: "orphan", job, role: holder.kind, ask, submissionId: holder.kind === "reviewer" ? holder.submissionId : null,
       quietMinutes: Math.max(1, Math.floor((Date.parse(now) - quiet.since) / 60_000)) });
     const sessionId = item ? item.thread_session_id ?? item.home_session_id : ticket.session_id;
     const queued = queueWork(ctx, { botId: holder.botId, sessionId, taskId: ticket.task_id, ticketId: ticket.id, messageId: null, author: "app",
@@ -710,6 +746,13 @@ export function supervisorTick(ctx: StoreContext, input: { now?: string } = {}):
     repairWaits(ctx, result, now);
     repairLostSegments(ctx, result, now);
     pickUpAttention(ctx, result, now);
+    if (readEngineLevel(ctx.db) >= ENGINE_LEVELS.submissions) {
+      result.unsupported = SUPERVISOR_UNSUPPORTED_AT_SUBMISSIONS;
+      const submissions = superviseSubmissions(ctx, now);
+      result.approved = submissions.moved;
+      result.messages.push(...submissions.messages);
+      result.checksToRun = submissions.toRun;
+    }
     callBackOrphans(ctx, result, now);
     return result;
   });

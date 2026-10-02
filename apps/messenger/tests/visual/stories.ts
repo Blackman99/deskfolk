@@ -25,6 +25,7 @@ import { reactive } from '../../src/lib/test-reactive.svelte.ts';
 import { searchStoryRuntime } from './search-story.ts';
 import { delegationStory } from './delegation-story.ts';
 import { workQuestionStory } from './work-question-story.ts';
+import { ticketStagesStory } from './ticket-stages-story.ts';
 import Shell from '../../src/lib/Shell.svelte';
 import Onboarding from '../../src/lib/Onboarding.svelte';
 import DangerDialog from '../../src/lib/overlays/DangerDialog.svelte';
@@ -994,6 +995,8 @@ export const rc11Stories = {
   'work-question-en': workQuestionStory('en'),
   'ticket24a': delegationStory('zh'),
   'ticket24a-en': delegationStory('en'),
+  'ticket26a': ticketStagesStory('zh'),
+  'ticket26a-en': ticketStagesStory('en'),
   'ticket23d': {
     component: ChatStage as never,
     props: { runtime: ticket23dStoryRuntime(), t, selected: aGroup(), onOpenProfile: () => {}, onOpenArtifact: () => {}, onCreateBot: () => {} },

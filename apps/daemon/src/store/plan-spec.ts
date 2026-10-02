@@ -26,6 +26,8 @@ import {
   type Task,
 } from "./tasks";
 import { createTicket, isTicketStatus, listTickets, patchTicket, ticketArtifacts, ticketDependencies, TICKETS_MAX, type TicketRow } from "./tickets";
+import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
+import { noteBoardStatus, organizerSaysDone } from "./submissions";
 
 export type SpecRevisionRow = {
   id: string;
@@ -193,7 +195,7 @@ export function setPlanSpecByUser(
 export function patchTicketByUser(
   ctx: StoreContext,
   ticketId: string,
-  patch: { title?: unknown; spec?: unknown; status?: unknown; worker?: string | null; dependsOn?: unknown },
+  patch: { title?: unknown; spec?: unknown; status?: unknown; worker?: string | null; dependsOn?: unknown; reviewerBotId?: unknown },
   ifRevision?: unknown,
 ): { ticket: Ticket; revision: SpecRevisionRow | null } {
   return ctx.db.transaction(() => {
@@ -201,9 +203,12 @@ export function patchTicketByUser(
     if (!before) throw new HttpError(404, "not_found", "ticket not found");
     assertRevision(ctx, before.task_id, ifRevision);
     const ticket = patchTicket(ctx, ticketId, patch, { stage: { source: "user" } });
+    // From level 5 your status stands over hand-overs still waiting on it (ADR 0046).
+    if (ticket.status !== before.status) noteBoardStatus(ctx, ticketId);
     const changed =
       ticket.title !== before.title || ticket.spec !== before.spec || ticket.status !== before.status || ticket.worker !== before.worker
-      || JSON.stringify(ticket.depends_on ?? []) !== JSON.stringify(ticketDependencies(before.depends_on));
+      || JSON.stringify(ticket.depends_on ?? []) !== JSON.stringify(ticketDependencies(before.depends_on))
+      || (ticket.reviewer_bot_id ?? null) !== ((before as { reviewer_bot_id?: string | null }).reviewer_bot_id ?? null);
     if (!changed) return { ticket, revision: null };
     wakeDormantPlan(ctx, ticket.task_id);
     // The clauses of a description you changed on the board are your words about that ticket (ADR 0040).
@@ -466,7 +471,16 @@ export function applyOrganizerResult(
     // before the call went out, and a rule you typed on the board while it was out is in the plan,
     // not in the copy (a line's filing carries no `ifRevision` to refuse the answer over it).
     const standing = getTask(ctx, target.id);
-    const filed = filedSpec(result.spec, parsePlanSpec(standing.spec), settle, kept, standing.status);
+    // From level 5 only submissions, reviews and you move a ticket, and a plan is delivered when its
+    // tickets are approved (ADR 0046): the organizer's statuses for tickets it did not just open, and
+    // its "done" for the plan, are not written.
+    const stageless = readEngineLevel(ctx.db) < ENGINE_LEVELS.submissions;
+    const answered = filedSpec(result.spec, parsePlanSpec(standing.spec), settle, kept, standing.status);
+    // A plan with no ticket to approve (none, or all dropped) may still be read as done.
+    const ticketless = !ctx.db.query(`SELECT 1 FROM tickets WHERE task_id = ? AND status <> 'parked'`).get(target.id);
+    const filed = !stageless && !ticketless && answered.status === "done" && standing.status !== "done" ? { ...answered, status: standing.status } : answered;
+    // Its "done" on a ticket nothing was handed over on goes the no-reviewer way (ADR 0046).
+    const doneReadings: string[] = [];
     // A resumed or joined plan is someone else's spec history to revise, not this run's own checks
     // to write: the organizer only touches checks on the plan it is continuing or opening.
     const appliesChecks = result.decision === "continue" || result.decision === "new";
@@ -497,12 +511,13 @@ export function applyOrganizerResult(
             {
               title: settle ? undefined : entry.title,
               spec: described ? undefined : entry.spec || undefined,
-              status: entry.status,
+              status: stageless ? entry.status : undefined,
               worker: entry.worker,
             },
             { now: at },
           );
           byTitle.set(titleKey(next.title), next);
+          if (!stageless && entry.status === "done") doneReadings.push(next.id);
           // The settle kept the old title, but the answer goes on calling the ticket by the new one:
           // a new-N of that name later in it is still this ticket, not a second one.
           if (settle && entry.title) byTitle.set(titleKey(entry.title), next);
@@ -519,11 +534,12 @@ export function applyOrganizerResult(
           taskId: target.id,
           title: entry.title,
           spec: entry.spec,
-          status: entry.status ?? "todo",
+          status: stageless ? entry.status ?? "todo" : "todo",
           worker: entry.worker ?? null,
           now: at,
         });
         created += 1;
+        if (!stageless && entry.status === "done") doneReadings.push(ticket.id);
         placeholders.set(entry.id, ticket.id);
         byId.set(ticket.id, ticket);
         byTitle.set(titleKey(ticket.title), ticket);
@@ -535,6 +551,7 @@ export function applyOrganizerResult(
     if (appliesChecks && result.checks?.length) {
       applyOrganizerChecks(ctx, { task: target, entries: result.checks, placeholders, now: at });
     }
+    for (const ticketId of doneReadings) organizerSaysDone(ctx, ticketId, now);
 
     const heldOpenBy = filed.status === "done" ? ticketsHoldingPlanOpen(listTickets(ctx, target.id)) : [];
     const heldByChecks = filed.status === "done" ? checksHoldingPlanOpen(ctx, target.id) : [];
@@ -567,6 +584,7 @@ export function applyOrganizerResult(
 /** One plan as the board and the plan event read it: the switcher row plus spec, revision and tickets. */
 export function taskDetail(ctx: StoreContext, taskId: string, present: (path: string) => boolean): TaskDetail {
   const task = getTask(ctx, taskId);
+  const withStages = readEngineLevel(ctx.db) >= ENGINE_LEVELS.submissions;
   const summary = taskSummary(ctx, task, taskLastActivityAt(ctx, taskId));
   const latest = ctx.db
     .query<{ revision: number; actor: "app" | "user"; cause: "hold" | null }, [string]>(
@@ -586,8 +604,14 @@ export function taskDetail(ctx: StoreContext, taskId: string, present: (path: st
     held_by: planHeldBy(ctx, taskId),
     requirements: planRequirements(ctx, taskId),
     last_change: planLastChange(ctx, taskId),
+    ...(withStages ? { submissions_on: true, reviewer_ids: ctx.db.query<{ id: string }, [string]>(`SELECT b.id FROM bots b
+      JOIN session_participants sp ON sp.member = b.id AND sp.left_at IS NULL AND sp.session_id = (SELECT session_id FROM tasks WHERE id = ?)
+      WHERE b.archived_at IS NULL AND b.deleted_at IS NULL ORDER BY sp.joined_at, b.id`).all(taskId).map((row) => row.id) } : {}),
     tickets: listTickets(ctx, taskId).map((ticket) => ({
       ...ticket,
+      // Parts passed only mean something once submissions approve them (level 5, ADR 0046).
+      ...(withStages ? { parts: ctx.db.query<{ total: number; approved: number }, [string]>(`SELECT COUNT(*) AS total,
+        COALESCE(SUM(CASE WHEN stage = 'approved' THEN 1 ELSE 0 END), 0) AS approved FROM ticket_parts WHERE ticket_id = ? AND stage <> 'waived'`).get(ticket.id)! } : {}),
       artifacts: ticketArtifacts(ctx, ticket.id, present).map((row) => ({
         path: row.path,
         message_id: row.message_id,

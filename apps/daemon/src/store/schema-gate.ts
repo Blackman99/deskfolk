@@ -39,20 +39,37 @@ import type { CapabilitiesResponse } from "@real-bot/protocol";
  *   retired plan call-back and report-back timers on top of those records (two wakes for one
  *   stall), leave a blocked job with nothing to answer, and resume work without checking whether
  *   its last external call went through.
+ * - 5: P4e's submissions and reviews (ADR 0046). A database at engine level 5 keeps each ticket's
+ *   stage beside its status, moved only by a submission's checks, a review or the supervisor's
+ *   no-reviewer approval, and work handed over waits as a submission for its reviewer. A level-4
+ *   build would move the status alone on any file a turn cites (leaving the stage behind it, so
+ *   the board and the end contract disagree with what was checked), pass a ticket to review
+ *   without running its checks, and never ask the reviewer or approve what nobody reviews.
  */
-export const SCHEMA_LEVEL = 4;
+export const SCHEMA_LEVEL = 5;
 
 /**
  * The engine levels this build runs, in the only order they turn on (ADR 0040: one integer for the
  * whole rollout instead of a switch per feature). `holds`: ADR 0040 P2's control plane;
  * `work_items`: P4b; `delegation`: P4c's delegations and end contract (ADR 0044); `supervision`:
- * P4c's supervisor, durable blocked questions and the effect ledger (ADR 0045).
+ * P4c's supervisor, durable blocked questions and the effect ledger (ADR 0045); `submissions`:
+ * P4e's ticket stages, submissions and reviews (ADR 0046).
  */
-export const ENGINE_LEVELS = { holds: 1, work_items: 2, delegation: 3, supervision: 4 } as const;
-export const ENGINE_LEVEL = ENGINE_LEVELS.supervision;
+export const ENGINE_LEVELS = { holds: 1, work_items: 2, delegation: 3, supervision: 4, submissions: 5 } as const;
+export const ENGINE_LEVEL = ENGINE_LEVELS.submissions;
+
+/**
+ * The highest level a build raises on its own, with no developer opt-in: `ENGINE_LEVEL` may sit
+ * above this while a level is still being shaken out live (ADR 0046's submissions — not yet
+ * audited running real jobs). A level above this one is experimental and goes up only through a
+ * developer's explicit opt-in for that level ({@link acceptOlderApp}, {@link raiseEngineLevel}),
+ * whether or not an older installed app shares the database — a packaged build and a source run on
+ * a data folder of its own (`installed === null`) are not exempt.
+ */
+export const ENGINE_LEVEL_BY_DEFAULT = ENGINE_LEVELS.supervision;
 
 /** The floor a database needs once it runs at each engine level: whatever an older build would misread there. */
-const FLOOR_AT_LEVEL: Readonly<Record<number, number>> = { 1: 1, 2: 2, 3: 3, 4: 4 };
+const FLOOR_AT_LEVEL: Readonly<Record<number, number>> = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5 };
 
 /**
  * The last release without the gate read. A copy of it (or of anything before it) opens any
@@ -203,14 +220,25 @@ const ACCEPT_HINT = "or, developing on this data folder, accept that with `bun a
  * refuses the database once the floor goes up and says to update, which is the gate doing its
  * job; one from before the gate would not, so that is the case refused here — unless a developer
  * accepted that for this database ({@link acceptOlderApp}, ADR 0041).
+ *
+ * Above {@link ENGINE_LEVEL_BY_DEFAULT}, a level is experimental and never turns on by itself: with
+ * no compatibility concern (no installed app, or one that reads the gate itself) the ceiling is
+ * `min(ENGINE_LEVEL, max(ENGINE_LEVEL_BY_DEFAULT, optIn?.level ?? 0))` — an opt-in only ever raises
+ * that ceiling, never pulls it below the default, so a stale or low opt-in left over from an
+ * earlier build (back when `ENGINE_LEVEL` was lower, or an opt-in with no `level` at all) cannot
+ * hold a fresh database below where it would otherwise land. `acceptOlderApp` always records the
+ * opt-in for this build's own `ENGINE_LEVEL`, so accepting on this build reaches it exactly. On the
+ * one path where an installed app actually predates the gate, the ceiling is `min(ENGINE_LEVEL,
+ * optIn.level)` instead — exactly the level a developer accepted past that specific app, since
+ * nothing says a higher one would be safe past it too.
  */
 export function raiseEngineLevel(db: Database, installed: SharedInstall | null): EngineLevelRaise {
   const from = readEngineLevel(db);
   if (from >= ENGINE_LEVEL) return { level: from, raised: false, refused: null, accepted: null };
+  const optIn = readEngineGateOptIn(db);
   let accepted: string | null = null;
-  let target: number = ENGINE_LEVEL;
+  let target: number = Math.min(ENGINE_LEVEL, Math.max(ENGINE_LEVEL_BY_DEFAULT, optIn?.level ?? 0));
   if (installed !== null && !("version" in installed && newerThan(installed.version, LAST_RELEASE_WITHOUT_GATE))) {
-    const optIn = readEngineGateOptIn(db);
     if (optIn === null) {
       const why =
         "version" in installed
@@ -233,6 +261,7 @@ export function raiseEngineLevel(db: Database, installed: SharedInstall | null):
         : `whatever app is installed (${installed.unseen})`;
     accepted = `engine level ${from} → ${target} past ${past}: a developer accepted that for this data folder (${optIn.by}, ${optIn.at}); an app from before the gate, opened without this daemon running, would not honor holds`;
   }
+  if (target <= from) return { level: from, raised: false, refused: null, accepted: null };
   db.transaction(() => {
     let floor = Number(readSetting(db, "schema_min_compatible") ?? 0);
     for (let level = from + 1; level <= target; level += 1) {

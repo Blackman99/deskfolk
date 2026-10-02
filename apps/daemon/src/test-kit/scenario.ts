@@ -321,6 +321,8 @@ export type ScenarioOptions = {
   delegation?: boolean;
   /** Takes the engine level up to P4c's supervisor (ADR 0045), which includes delegation. */
   supervision?: boolean;
+  /** Takes the engine level up to P4e's submissions and reviews (ADR 0046), which includes the supervisor. */
+  submissions?: boolean;
 };
 
 export type Scenario = {
@@ -488,7 +490,7 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
   });
   // Phase fixtures pin their own level rather than taking the database up to this build's: later
   // levels change the filing, wake and ending paths they exercise.
-  const pinned = options.supervision ? ENGINE_LEVELS.supervision : options.delegation ? ENGINE_LEVELS.delegation : options.workItems ? ENGINE_LEVELS.work_items : options.holds ? ENGINE_LEVELS.holds : 0;
+  const pinned = options.submissions ? ENGINE_LEVELS.submissions : options.supervision ? ENGINE_LEVELS.supervision : options.delegation ? ENGINE_LEVELS.delegation : options.workItems ? ENGINE_LEVELS.work_items : options.holds ? ENGINE_LEVELS.holds : 0;
   if (pinned > 0) {
     for (const key of ["engine_level", "schema_min_compatible"]) {
       store.db.run("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [key, String(pinned)]);

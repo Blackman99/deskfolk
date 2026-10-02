@@ -10,7 +10,7 @@ import { startRuntime, type RuntimeHandle } from "./runtime";
 import { memoryKeyStore } from "./secrets";
 import { startupLogPath } from "./startup-log";
 import { Store } from "./store";
-import { ENGINE_LEVEL, SCHEMA_LEVEL } from "./store/schema-gate";
+import { ENGINE_LEVEL_BY_DEFAULT, SCHEMA_LEVEL } from "./store/schema-gate";
 
 const handles: RuntimeHandle[] = [];
 const dirs: string[] = [];
@@ -478,12 +478,13 @@ describe("local API runtime", () => {
     expect(prep.capabilities().engine_level).toBe(0);
     prep.close();
 
-    // A data folder of its own: no installed app opens it, so nothing holds the level back.
+    // A data folder of its own: no installed app opens it, so nothing holds the level back — but
+    // with no developer opt-in it still stops at the default ceiling, not this build's top level.
     const rt = await startRuntime({ dataDir, bind: "127.0.0.1:0", endpointKey: keys });
     handles.push(rt);
-    expect(rt.store.capabilities()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL,
+    expect(rt.store.capabilities()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL_BY_DEFAULT,
       features: ["holds", "work_items", "delegation", "supervision"] });
-    expect(rt.store.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'schema_min_compatible'").get()?.value).toBe(String(SCHEMA_LEVEL));
+    expect(rt.store.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'schema_min_compatible'").get()?.value).toBe(String(ENGINE_LEVEL_BY_DEFAULT));
     expect(rt.store.listHolds({ inForce: true })).toMatchObject([{ scope: "plan", scope_id: plan.id, source: "legacy" }]);
   });
 

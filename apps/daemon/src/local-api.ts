@@ -1530,7 +1530,7 @@ function dispatch(
     const body = (input.body ?? {}) as PatchTicketRequest;
     const { ticket } = store.patchTicketByUser(
       params.id!,
-      { title: body.title, spec: body.spec, status: body.status, worker: body.worker, dependsOn: body.depends_on },
+      { title: body.title, spec: body.spec, status: body.status, worker: body.worker, dependsOn: body.depends_on, reviewerBotId: body.reviewer_bot_id },
       body.if_revision,
     );
     engine.renderPlanMirrors(ticket.task_id);
@@ -1888,6 +1888,13 @@ function dispatch(
       id: params.id!,
     });
     return emptyResponse(204, null);
+  }
+
+  // A plan's hand-overs (ADR 0046): each submission, the checks the app ran on it, its reviews.
+  params = matchPath(path, "/v1/tasks/:id/submissions");
+  if (params && method === "GET") {
+    store.getTask(params.id!);
+    return jsonResponse({ items: store.listSubmissions({ taskId: params.id!, limit: 200 }) }, 200, null);
   }
 
   // Structured handoffs remain readable in their plan and ordinary direct after any segment ends.

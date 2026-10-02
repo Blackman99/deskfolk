@@ -1,5 +1,6 @@
 import { DELEGATIONS_SQL } from "./store/delegation-migration";
 import { TOOL_EXECUTIONS_SQL } from "./store/tool-execution-migration";
+import { SUBMISSIONS_SQL } from "./store/submission-migration";
 
 export const SCHEMA_SQL = `
 PRAGMA foreign_keys = ON;
@@ -234,6 +235,10 @@ CREATE TABLE IF NOT EXISTS tickets (
   -- Additive P4c ownership/dependencies; later stages own reviewer and submission transitions.
   owner_bot_id TEXT,
   depends_on TEXT NOT NULL DEFAULT '[]',
+  -- The stage (ADR 0046, engine level 5): only submissions, reviews and the supervisor move it, and
+  -- status is written beside it, mapped. Null reads as what status maps to.
+  stage TEXT CHECK (stage IS NULL OR stage IN ('todo', 'doing', 'submitted', 'in_review', 'rework', 'approved', 'dropped')),
+  reviewer_bot_id TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   closed_at TEXT,
@@ -751,6 +756,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS work_items_one_open_desk
 
 ${DELEGATIONS_SQL}
 ${TOOL_EXECUTIONS_SQL}
+${SUBMISSIONS_SQL}
 
 CREATE TABLE IF NOT EXISTS skills (
   id TEXT PRIMARY KEY,

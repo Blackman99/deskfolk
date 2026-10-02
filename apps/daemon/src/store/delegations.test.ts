@@ -159,13 +159,14 @@ test("submission replies validate durable producer lineage and reject absent sub
   const opened = delegations.delegateWork(f.ctx, { fromTurnId: f.turn.id, toBotId: f.to.id, ask: "交付", expects: "deliverable", now: NOW });
   const toTurn = recipientTurn(f, opened.delegation);
   expect(() => delegations.replyDelegation(f.ctx, { delegationId: opened.delegation.id, fromTurnId: toTurn.id, submissionId: "missing" })).toThrow("submission");
-  // P4e owns submissions. This fixture exercises only the hand-off consumer's public lineage contract.
-  f.store.db.exec(`CREATE TABLE submissions (id TEXT PRIMARY KEY, work_item_id TEXT, task_id TEXT, ticket_id TEXT,
-    bot_id TEXT, turn_id TEXT, part_keys TEXT, state TEXT)`);
-  f.store.db.run("INSERT INTO submissions VALUES ('wrong-producer', ?, ?, ?, ?, ?, '[]', 'in_review')", [opened.delegation.to_work_item_id, f.plan.id, f.ticket.id, f.from.id, toTurn.id]);
+  // Submissions are ADR 0046's; this exercises only the hand-off consumer's lineage contract over stored rows.
+  const submission = (id: string, botId: string) => f.store.db.run(`INSERT INTO submissions (id, work_item_id, task_id, ticket_id, part_keys, bot_id,
+    turn_id, origin, artifacts, state, created_at, updated_at) VALUES (?, ?, ?, ?, '[]', ?, ?, 'submit', '[]', 'in_review', ?, ?)`,
+    [id, opened.delegation.to_work_item_id, f.plan.id, f.ticket.id, botId, toTurn.id, NOW, NOW]);
+  submission("wrong-producer", f.from.id);
   expect(() => delegations.replyDelegation(f.ctx, { delegationId: opened.delegation.id, fromTurnId: toTurn.id, submissionId: "wrong-producer" })).toThrow("submission");
   expect(delegations.getDelegation(f.ctx, opened.delegation.id).status).toBe("open");
-  f.store.db.run("INSERT INTO submissions VALUES ('actual-delivery', ?, ?, ?, ?, ?, '[]', 'in_review')", [opened.delegation.to_work_item_id, f.plan.id, f.ticket.id, f.to.id, toTurn.id]);
+  submission("actual-delivery", f.to.id);
   const result = delegations.replyDelegation(f.ctx, { delegationId: opened.delegation.id, fromTurnId: toTurn.id, submissionId: "actual-delivery", now: "2026-09-29T08:01:00.000Z" });
   expect(result).toMatchObject({ replied: true, delegation: { status: "replied", reply_ref: "submission:actual-delivery" }, inbox: { priority: 2, body_snapshot: "Submission: actual-delivery" } });
 });

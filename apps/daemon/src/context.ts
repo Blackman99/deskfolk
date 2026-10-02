@@ -8,6 +8,7 @@ import {
   type Locale,
   type Message,
   type PlanStatus,
+  type TicketStage,
   type TicketStatus,
 } from "@real-bot/protocol";
 import type { ChatContentPart, ChatMessage } from "./completions";
@@ -220,6 +221,8 @@ export type PlanTicketFact = {
   seq: number;
   title: string;
   status: TicketStatus;
+  /** Its stage from engine level 5 (ADR 0046), when that says more than the status: submitted, in review, rework, approved. */
+  stage?: TicketStage | null;
   /** The Bot's display name, when one is on it. */
   worker: string | null;
   /** Up to a few of the files filed under it, newest cited first. */
@@ -289,7 +292,7 @@ export type PlanFacts = {
   /** The plan's active acceptance checks — the app's own evidence, run on this machine. */
   checks: PlanCheckFact[];
   /** The ticket this turn works in, when it has one. */
-  ticket: { id: string; seq: number; title: string; status: TicketStatus; spec: string; dir: string } | null;
+  ticket: { id: string; seq: number; title: string; status: TicketStatus; stage?: TicketStage | null; spec: string; dir: string } | null;
   /** What the user said in the job; null when nothing is kept, and on the first turn, whose trigger is the request. */
   quotes: QuoteLayer | null;
   /** The requirements ledger's entries bearing on the job, less those the user set not to hold for it. */
@@ -393,6 +396,7 @@ export function planFacts(
       seq: ticket.seq,
       title: ticket.title,
       status: ticket.status,
+      ...(ticket.stage ? { stage: ticket.stage } : {}),
       worker: ticket.worker ? botDisplayName(store, ticket.worker) : null,
       artifacts: byTicket.get(ticket.id) ?? [],
     }))
@@ -416,7 +420,7 @@ export function planFacts(
   if (input.ticketId) {
     try {
       const row = store.getTicket(input.ticketId);
-      ticket = { id: row.id, seq: row.seq, title: row.title, status: row.status, spec: row.spec, dir: row.dir };
+      ticket = { id: row.id, seq: row.seq, title: row.title, status: row.status, ...(row.stage ? { stage: row.stage } : {}), spec: row.spec, dir: row.dir };
     } catch {
       ticket = null;
     }
@@ -670,10 +674,22 @@ const TICKET_STATUS_LABEL: Record<TicketStatus, { zh: string; en: string }> = {
   parked: { zh: "搁置", en: "parked" },
 };
 
+/** The stages a status does not say (ADR 0046), named in their place. */
+const TICKET_STAGE_LABEL: Partial<Record<TicketStage, { zh: string; en: string }>> = {
+  submitted: { zh: "已交付，待审查", en: "submitted, awaiting review" },
+  in_review: { zh: "审查中", en: "in review" },
+  rework: { zh: "返工", en: "rework" },
+  approved: { zh: "已通过", en: "approved" },
+};
+
+function ticketWord(ticket: Pick<PlanTicketFact, "status" | "stage">, locale: Locale): string {
+  return (ticket.stage ? TICKET_STAGE_LABEL[ticket.stage]?.[locale] : undefined) ?? TICKET_STATUS_LABEL[ticket.status][locale];
+}
+
 function ticketLine(ticket: PlanTicketFact, locale: Locale): string {
   const en = locale === "en";
   const number = String(ticket.seq).padStart(2, "0");
-  const bits = [TICKET_STATUS_LABEL[ticket.status][locale]];
+  const bits = [ticketWord(ticket, locale)];
   if (ticket.worker) bits.push(en ? `${ticket.worker} on it` : `${ticket.worker}在做`);
   if (ticket.artifacts.length > 0) bits.push(ticket.artifacts.join(en ? ", " : "、"));
   return en ? `${number} ${ticket.title} (${bits.join("; ")})` : `${number} ${ticket.title}（${bits.join("；")}）`;
@@ -807,8 +823,8 @@ export function planLines(facts: PlanFacts, locale: Locale): string[] {
   if (facts.ticket) {
     const number = String(facts.ticket.seq).padStart(2, "0");
     const head = en
-      ? `This turn's ticket: ${number} ${facts.ticket.title} (${TICKET_STATUS_LABEL[facts.ticket.status].en})`
-      : `本轮任务：${number} ${facts.ticket.title}（${TICKET_STATUS_LABEL[facts.ticket.status].zh}）`;
+      ? `This turn's ticket: ${number} ${facts.ticket.title} (${ticketWord(facts.ticket, "en")})`
+      : `本轮任务：${number} ${facts.ticket.title}（${ticketWord(facts.ticket, "zh")}）`;
     lines.push(facts.ticket.spec ? `${head}${en ? " — " : "——"}${oneLineClip(facts.ticket.spec, 600)}` : head);
   }
   if (facts.artifacts.length > 0) {

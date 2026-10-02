@@ -166,6 +166,48 @@ test("rows render in seq order with tag, title, status, and worker", () => {
   view.close();
 });
 
+test("a stage the status does not say shows in its place, with how many of the ticket's parts passed", () => {
+  const view = open({
+    detail: aDetail({
+      tickets: [
+        aTicket({ id: "t1", seq: 1, title: "分镜", status: "review", stage: "in_review", parts: { total: 12, approved: 11 } }),
+        aTicket({ id: "t2", seq: 2, title: "母带", status: "doing", stage: "rework" }),
+        aTicket({ id: "t3", seq: 3, title: "旧任务", status: "review", stage: null, parts: { total: 0, approved: 0 } }),
+      ],
+    }),
+  });
+  const rows = [...view.host.querySelectorAll(".ticket-row")];
+  expect(rows.map((r) => r.querySelector(".ticket-status")?.textContent)).toEqual([
+    t.plan.ticketStage.in_review,
+    t.plan.ticketStage.rework,
+    t.plan.ticketStatus.review,
+  ]);
+  // The colour still follows the status the stage reads as.
+  expect(rows[1]?.querySelector(".ticket-status")?.classList.contains("is-doing")).toBe(true);
+  expect(rows.map((r) => r.querySelector(".ticket-parts")?.textContent ?? null)).toEqual(["11/12 已通过", null, null]);
+  view.close();
+});
+
+test("from level 5 a ticket's reviewer is set on its row, offering only Bots of the plan's conversation and never the Bot on it; below it there is no such menu", async () => {
+  const other = aBot({ id: "bot-2", name: "审片" });
+  const outsider = aBot({ id: "bot-3", name: "别处的" });
+  const view = open({ bots: [writer, other, outsider], detail: aDetail({ submissions_on: true, reviewer_ids: ["bot-1", "bot-2"], tickets: [aTicket({ id: "t1", worker: "bot-1", reviewer_bot_id: null })] }) });
+  const row = rowFor(view.host, "收集资料");
+  const menus = row.querySelectorAll(".real-select-trigger");
+  expect(menus).toHaveLength(2);
+  click(menus[0]);
+  const options = [...row.querySelectorAll<HTMLElement>(".real-select-option")].map((el) => el.textContent?.trim());
+  expect(options).toEqual([t.plan.noReviewer, "审片"]);
+  click([...row.querySelectorAll<HTMLElement>(".real-select-option")].find((el) => el.textContent?.includes("审片"))!);
+  await settle();
+  expect(view.patchCalls).toEqual([{ ticketId: "t1", body: { reviewer_bot_id: "bot-2", if_revision: 3 } }]);
+  view.close();
+
+  const below = open({ detail: aDetail({ tickets: [aTicket({ id: "t1" })] }) });
+  expect(rowFor(below.host, "收集资料").querySelectorAll(".real-select-trigger")).toHaveLength(1);
+  below.close();
+});
+
 test("a ticket filed with its Bot but not started yet reads as that Bot's to do, not as being done", () => {
   const view = open({
     detail: aDetail({ tickets: [aTicket({ id: "t1", seq: 1, title: "收集资料", status: "todo", worker: "bot-1" })] }),

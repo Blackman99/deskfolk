@@ -1,9 +1,13 @@
 /**
- * Lets a data folder's engine level go up although an installed app that shares it predates the
- * version gate (ADR 0041). On a developer's own Mac the installed copy is often an older release,
- * and a source run then keeps holds, and every level after them, off in the one data folder that
- * developer actually works in. Accepting that means the installed app, opened without this daemon
- * running, would not honor a hold. Taking it back never lowers the level.
+ * Lets a data folder's engine level go up past two things that otherwise hold it at
+ * `ENGINE_LEVEL_BY_DEFAULT` (`schema-gate.ts`): an installed app that shares the
+ * folder and predates the version gate (ADR 0041) — on a developer's own Mac the installed copy is
+ * often an older release, and a source run then keeps holds, and every level after them, off in the
+ * one data folder that developer actually works in — and a level above that default ceiling, which
+ * is experimental and otherwise never turns on by itself, installed app or not (as of this writing,
+ * level 5's submissions and reviews, ADR 0046). Accepting both at once is deliberate: an old
+ * installed app, opened without this daemon running, would not honor a hold, and an experimental
+ * level has not been shaken out live yet either way. Taking it back never lowers the level.
  *
  *   bun apps/daemon/scripts/engine-level.ts --accept-older-app [--data-dir <dir>]
  *   bun apps/daemon/scripts/engine-level.ts --clear [--data-dir <dir>]
@@ -14,7 +18,9 @@
  * raises at once. With none running, it writes the opt-in into the database itself, so the next
  * start raises. It never opens a `Store` for that: opening one migrates the database and marks the
  * run as a crash until it records a clean stop, which would make the next boot say it came back
- * from one. Either way it prints the capabilities as they then stand.
+ * from one. Either way it prints the capabilities as they then stand. No installed app need share
+ * the data folder at all: this is also how a developer opts into an experimental level on a data
+ * folder of its own.
  */
 import { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
@@ -22,7 +28,11 @@ import type { CapabilitiesResponse, RaiseEngineLevelRequest } from "@real-bot/pr
 import { defaultDataDir, pidAlive, readDescriptor, stateDbPath } from "../src/descriptor";
 import { acceptOlderApp, capabilitiesOf, withdrawOlderAppOptIn } from "../src/store/schema-gate";
 
-export const USAGE = "usage: bun apps/daemon/scripts/engine-level.ts (--accept-older-app | --clear) [--data-dir <dir>]";
+export const USAGE = [
+  "usage: bun apps/daemon/scripts/engine-level.ts (--accept-older-app | --clear) [--data-dir <dir>]",
+  "  --accept-older-app  let the data folder up to this build's top engine level: past an older installed app that shares it, and past the default level (an experimental one, such as level 5)",
+  "  --clear             take the opt-in back; the level never goes down",
+].join("\n");
 
 export type EngineLevelArgs = { action: "accept" | "clear"; dataDir: string };
 
@@ -99,7 +109,7 @@ function writeOptIn(args: EngineLevelArgs, io: Io): number {
     }
     if (args.action === "accept") {
       acceptOlderApp(db, "script");
-      io.print(`no daemon runs on ${args.dataDir}: wrote the opt-in, and the next start raises the engine level past an older installed app`);
+      io.print(`no daemon runs on ${args.dataDir}: wrote the opt-in, and the next start raises the engine level to this build's top level (past an older installed app, and past the default level)`);
     } else {
       withdrawOlderAppOptIn(db);
       io.print(`no daemon runs on ${args.dataDir}: took the opt-in back; the engine level stays where it is`);

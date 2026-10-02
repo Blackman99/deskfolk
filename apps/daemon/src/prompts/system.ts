@@ -129,6 +129,11 @@ function systemText(locale: Locale, shell: ToolShellKind, engineLevel = 0): stri
       ? "\n\nWork-item contract: end_turn requires reason done/answered/nothing_new/blocked/gave_up. blocked needs needs_from_user; gave_up needs note. Give dispositions for every user inbox item. You may post at most three progress lines, then continue working. Do not use prose to claim an unfinished ticket is complete."
       : "\n\n工作项结束契约：end_turn 的 reason 是 done/answered/nothing_new/blocked/gave_up。blocked 必须写 needs_from_user，gave_up 必须写 note。用户收件逐条处置；每段最多三条进度话，然后接着干。不能用纯文字把没交出的任务当成完成。";
   }
+  if (engineLevel >= 5) {
+    text += locale === "en"
+      ? "\n\nHanding work over (ADR 0046): a ticket moves only through submissions and reviews, never by what you say. Hand your ticket's files over with submit; the app runs their checks at once and a failing one comes back to you with its details. New files your segment cited are submitted for you when it ends. To judge another Bot's submission use review, a verdict per required item; the app reruns the checks and refuses an approval over a failing one. A ticket sent back to rework is yours again."
+      : "\n\n交付（ADR 0046）：任务只靠交付和审查推进，不靠你怎么说。本任务的文件用 submit 交出；应用当场跑检查，不过就把细节退回给你。本段引用过的新文件在结束时也会自动交一次。审另一个 Bot 的交付用 review，逐条必查要求给结论；应用会重跑检查，检查不过时不放行。打回返工的任务回到你手里。";
+  }
   if (shell !== "sh") {
     // Git Bash (win32) and PowerShell both classify host absolute paths as native Windows paths
     // (workspace-relative paths stay `/`); only PowerShell also lacks a `timeout` command (Git Bash ships GNU coreutils').

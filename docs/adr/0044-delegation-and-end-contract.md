@@ -1,6 +1,6 @@
 # 显式委派、事件等待与结束契约 / Explicit delegation, event waits and ending contracts
 
-Status: partially implemented — P4c round-1 checkpoint, not accepted as the full phase. The supervisor (24c) is now [ADR 0045](0045-supervisor.md), at engine level 4; implicit submission and the remaining ending safeguards are still pending.
+Status: partially implemented — P4c round-1 checkpoint, not accepted as the full phase. The supervisor (24c) is now [ADR 0045](0045-supervisor.md), at engine level 4; implicit submission came at engine level 5 with [ADR 0046](0046-submissions-and-reviews.md); the remaining ending safeguards are still pending.
 
 [ADR 0040](0040-agent-kernel-the-job-owns-state.md) 的 P4c 要让交出去的活由工作项记着，而不是靠两个人私聊最后一句或内存里「静下来十秒」的计时器猜是否交回。09-29 的回执空转证明普通发言不应自动派工；重启丢回报和任务无人接球说明结束不能只看模型是否停笔。本轮先接入显式委派和结束事实，记录剩余缺口，不把部分开关当成完整持续推进。
 
@@ -62,3 +62,9 @@ Separating notes from requests stops immediate acknowledgment wake loops at the 
 In a group, two Bots naming each other with 「收到，已对齐」 now fall under the nod-to-a-nod rule too: names aside a bare acknowledgement, its turn woken by the other's, neither turn having run a command — it wakes nobody (every level); the audit saw such an exchange run 20 turns.
 
 A prose ending no longer bounces for undisposed mail: the user mail the segment read and gave no word about is recorded as answered by the prose, rather than bouncing twice into needs_attention and a supervisor wake; `end_turn` still disposes item by item. The notice after two no-progress endings with obligations is in your interface language and names the job and the Bot (it was hard-coded English).
+
+## 2026-10-02 补记：隐式交付在 5 级落地 / Implicit submission lands at level 5
+
+上面「隐式交付」那条缺口在引擎 5 级由 [ADR 0046](0046-submissions-and-reviews.md) 补上：本段的话引用过、任务目录里内容哈希新于上次交付的文件，应用替它交一次（`origin = implicit`），跑绑定的检查，任务进 submitted 或回到 rework；`end_turn(done)` 和交出文件的纯文字收尾都先交、再按结束契约判断，结束契约对生产者的任务义务按阶段算（交出去的不再是它的）。3、4 级照旧只有候选元数据，`implicitSubmission.implemented` 仍是 false。
+
+The implicit-submission gap above is closed at engine level 5 by ADR 0046: new-hash files in the ticket's folder that the segment cited are submitted for it (`origin = implicit`), their checks run, and the ticket moves to submitted or back to rework; `end_turn(done)` and a closing reply that hands files over submit first and are weighed by the end contract after, which from level 5 counts the producer's ticket obligations by stage. Levels 3 and 4 still only carry the candidate metadata.

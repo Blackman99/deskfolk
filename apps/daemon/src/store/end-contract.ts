@@ -13,6 +13,8 @@ import { isReservedTaskPath } from "./tasks";
 import { settingsCached } from "./settings";
 import { noProgressNoticeBody } from "../prompts/control-copy";
 import { supervisorJobLabel } from "../prompts/transcript-copy";
+import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
+import { STAGE_SQL } from "./submissions";
 
 export type EndReason = "done" | "answered" | "nothing_new" | "blocked" | "gave_up";
 export type FinishWorkInput = {
@@ -96,10 +98,18 @@ function actor(ctx: StoreContext, turnId: string, reason: EndReason, replay = fa
   return { turn, item };
 }
 
+/**
+ * What the segment's work still owes. Its tickets not closed — from engine level 5 by stage: one
+ * handed over (submitted, in review) is the reviewer's or the app's to move, so only todo, doing and
+ * rework are still the producer's (ADR 0046) — its open requests either way, and its waits.
+ */
 function obligations(ctx: StoreContext, turn: Actor): EndObligations {
-  const tickets = ctx.db.query<{ id: string; status: string }, [string | null, string | null]>(
-    "SELECT id, status FROM tickets WHERE task_id = ?1 AND (?2 IS NULL OR id = ?2) AND status IN ('todo','doing','review') ORDER BY seq"
-  ).all(turn.task_id, turn.ticket_id);
+  const tickets = readEngineLevel(ctx.db) >= ENGINE_LEVELS.submissions
+    ? ctx.db.query<{ id: string; status: string }, [string | null, string | null]>(`SELECT t.id, ${STAGE_SQL("t")} AS status FROM tickets t
+      WHERE t.task_id = ?1 AND (?2 IS NULL OR t.id = ?2) AND ${STAGE_SQL("t")} IN ('todo','doing','rework') ORDER BY t.seq`).all(turn.task_id, turn.ticket_id)
+    : ctx.db.query<{ id: string; status: string }, [string | null, string | null]>(
+      "SELECT id, status FROM tickets WHERE task_id = ?1 AND (?2 IS NULL OR id = ?2) AND status IN ('todo','doing','review') ORDER BY seq"
+    ).all(turn.task_id, turn.ticket_id);
   const outgoingDelegations = ctx.db.query<{ id: string }, [string | null]>(
     "SELECT id FROM delegations WHERE from_work_item_id = ? AND status = 'open' ORDER BY rowid").all(turn.work_item_id).map((row) => row.id);
   const incomingDelegations = ctx.db.query<{ id: string }, [string | null, string]>(
@@ -140,6 +150,33 @@ function implicitCandidates(ctx: StoreContext, turn: Actor): ImplicitSubmissionC
     return true;
   });
   return { implemented: false, candidates, requires: ["exists", "new_content_hash", "bound_checks", "stored_submission"] };
+}
+
+function ticketClosed(ctx: StoreContext, ticketId: string): boolean {
+  return Boolean(ctx.db.query(`SELECT 1 FROM tickets t WHERE t.id = ? AND ${STAGE_SQL("t")} IN ('approved', 'dropped')`).get(ticketId));
+}
+
+/**
+ * A segment that handed its ticket's work over with `submit` ends with it (§5.2: submit ends the
+ * segment by default): its work goes idle — closed once the ticket is approved — unless something
+ * still holds it open: a line of yours it read and has not answered for, an open request of its
+ * own, or a wait. Then it does not end, and the Bot is told why; nothing is counted against it.
+ */
+export function endAfterSubmit(ctx: StoreContext, turnId: string): { ended: boolean; reason?: string } {
+  return ctx.commit(() => {
+    const { turn } = actor(ctx, turnId, "done");
+    const unacknowledged = turnInbox(ctx, turn.id).filter((mail) => mail.delivered_turn_id === turn.id
+      && mail.state === "delivered" && ["user", "annotation"].includes(mail.source)).map(inboxLabel);
+    if (unacknowledged.length > 0) return { ended: false, reason: `answer for the user's lines you read first (${unacknowledged.join(", ")}), then end_turn` };
+    const facts = obligations(ctx, turn);
+    if (facts.outgoingDelegations.length + facts.incomingDelegations.length + facts.waits.length > 0 || facts.tickets.length > 0) {
+      return { ended: false, reason: "this work still has open requests, waits or tickets: carry on, or end_turn saying what you wait for" };
+    }
+    const state = turn.ticket_id && ticketClosed(ctx, turn.ticket_id) ? "closed" : "idle";
+    persistEnd(ctx, turn, { obligations: facts, dispositions: { recorded: [], notRecorded: [] }, unacknowledgedInbox: [], replies: [],
+      implicitSubmission: implicitCandidates(ctx, turn) }, "done", state);
+    return { ended: true };
+  });
 }
 
 /** Trusted domain writers emit these only for the progress facts in §5.3, not for prose edits. */
@@ -272,7 +309,10 @@ export function finishWork(ctx: StoreContext, input: FinishWorkInput, opts: Fini
         `Unfinished obligations: ${[...facts.tickets.map((ticket) => ticket.id), ...facts.outgoingDelegations, ...facts.incomingDelegations, ...facts.waits].join(", ")}. Continue, or end_turn with who you await or what blocks you.`);
     }
     const endReason = reason === "done" && unfinished && !waiting ? "nothing_new" : reason;
-    const completedTicket = turn.ticket_id !== null && facts.tickets.length === 0 && !unfinished;
+    // From level 5 the work on a ticket closes only once it is approved or dropped: a hand-over can
+    // still come back to rework (§2.6 → closed).
+    const completedTicket = turn.ticket_id !== null && facts.tickets.length === 0 && !unfinished
+      && (readEngineLevel(ctx.db) < ENGINE_LEVELS.submissions || ticketClosed(ctx, turn.ticket_id));
     const count = endReason === "nothing_new" && !waiting ? noProgressCount(ctx, turn, unfinished) : 0;
     const state = reason === "blocked" || reason === "gave_up" || count >= 2 ? "blocked"
       : waiting ? "waiting" : turn.task_id === null || completedTicket ? "closed" : "idle";

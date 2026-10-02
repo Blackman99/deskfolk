@@ -10,6 +10,7 @@ import type { Ticket, TicketStatus } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { recordWorkEvent } from "./work-events";
+import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import { takeCodePoints } from "../text";
 import { type StoreContext } from "./shared";
 import { getTask, isReservedTaskPath, slugify, taskTitle } from "./tasks";
@@ -148,6 +149,17 @@ function cleanDependencies(ctx: StoreContext, ticket: Pick<Ticket, "id" | "task_
   return ids;
 }
 
+/** A ticket's reviewer as you set it (ADR 0046): a Bot that exists, is not archived and is not the ticket's owner, or null for none. */
+function cleanReviewer(ctx: StoreContext, value: unknown, owner: string | null): string | null {
+  if (value === null) return null;
+  if (typeof value !== "string" || !value.trim()) throw new HttpError(422, "invalid_args", "reviewer_bot_id must be a Bot id or null");
+  if (!ctx.db.query("SELECT 1 FROM bots WHERE id = ? AND archived_at IS NULL AND deleted_at IS NULL").get(value)) {
+    throw new HttpError(422, "invalid_args", "reviewer_bot_id names no Bot");
+  }
+  if (value === owner) throw new HttpError(422, "invalid_args", "a ticket's reviewer cannot be its owner");
+  return value;
+}
+
 /**
  * Changes only the fields given. A ticket going to done or parked is closed; one coming back is
  * reopened. `updated_at` moves only when something actually changed, so a run that repeats what
@@ -156,7 +168,7 @@ function cleanDependencies(ctx: StoreContext, ticket: Pick<Ticket, "id" | "task_
 export function patchTicket(
   ctx: StoreContext,
   id: string,
-  patch: { title?: unknown; spec?: unknown; status?: unknown; worker?: string | null; dependsOn?: unknown },
+  patch: { title?: unknown; spec?: unknown; status?: unknown; worker?: string | null; dependsOn?: unknown; reviewerBotId?: unknown },
   opts: {
     now?: Date;
     /**
@@ -173,19 +185,21 @@ export function patchTicket(
     status: cleanStatus(patch.status, current.status),
     worker: patch.worker !== undefined ? patch.worker : current.worker,
     dependsOn: patch.dependsOn !== undefined ? cleanDependencies(ctx, current, patch.dependsOn) : (current.depends_on ?? []),
+    reviewer: patch.reviewerBotId !== undefined ? cleanReviewer(ctx, patch.reviewerBotId, current.owner_bot_id ?? current.worker) : (current.reviewer_bot_id ?? null),
   };
   const dependsChanged = JSON.stringify(next.dependsOn) !== JSON.stringify(current.depends_on ?? []);
   const changed =
-    next.title !== current.title || next.spec !== current.spec || next.status !== current.status || next.worker !== current.worker || dependsChanged;
+    next.title !== current.title || next.spec !== current.spec || next.status !== current.status || next.worker !== current.worker || dependsChanged
+    || next.reviewer !== (current.reviewer_bot_id ?? null);
   if (!changed) return current;
   const now = (opts.now ?? new Date()).toISOString();
   const closing = next.status === "done" || next.status === "parked";
   ctx.db.run(
-    `UPDATE tickets SET title = ?, spec = ?, status = ?, worker = ?, depends_on = ?, updated_at = ?,
+    `UPDATE tickets SET title = ?, spec = ?, status = ?, worker = ?, depends_on = ?, reviewer_bot_id = ?, updated_at = ?,
        owner_bot_id = CASE WHEN ? THEN ? ELSE owner_bot_id END,
        closed_at = CASE WHEN ? THEN COALESCE(closed_at, ?) ELSE NULL END
      WHERE id = ?`,
-    [next.title, next.spec, next.status, next.worker, JSON.stringify(next.dependsOn), now,
+    [next.title, next.spec, next.status, next.worker, JSON.stringify(next.dependsOn), next.reviewer, now,
       next.worker !== current.worker ? 1 : 0, next.worker, closing ? 1 : 0, now, id],
   );
   if (next.status !== current.status) {
@@ -210,8 +224,11 @@ export function observeTicketWork(
 ): Ticket | null {
   const row = ctx.db.query<TicketRow, [string]>(`SELECT * FROM tickets WHERE id = ?`).get(input.ticketId);
   if (!row) return null;
+  // From engine level 5 a hand-over is a submission, whose checks move the ticket (ADR 0046): a
+  // turn handing files over no longer moves it to review here.
+  const handsOver = readEngineLevel(ctx.db) < ENGINE_LEVELS.submissions;
   const moves: Partial<Record<TicketStatus, TicketStatus>> =
-    input.seen === "working" ? { todo: "doing" } : { todo: "review", doing: "review" };
+    input.seen === "working" ? { todo: "doing" } : handsOver ? { todo: "review", doing: "review" } : {};
   const status = moves[row.status];
   const worker = row.worker ?? input.botId;
   if (!status && worker === row.worker) return null;

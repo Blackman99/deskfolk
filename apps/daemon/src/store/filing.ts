@@ -350,15 +350,26 @@ function defaultDecisions(ctx: StoreContext, input: { sessionId: string; body: s
   return [];
 }
 
-function registerFilenameParts(ctx: StoreContext, ticketId: string, path: string): void {
+/** The part numbers a file's name gives (§8.2 rule 7): `shot_07`, `C07`, `镜头7`, `第七镜`. */
+export function filenamePartNumbers(path: string): number[] {
   const filename = path.split('/').at(-1) ?? '';
-  for (const match of filename.matchAll(/(?:shot|c|镜头?)[ _-]?0*(\d{1,3})(?!\d)/gi)) {
-    const n = Number(match[1]);
-    if (n < 1) continue;
+  const found = new Set<number>();
+  for (const match of filename.matchAll(/(?<![a-z])(?:shot|c|镜头?)[ _-]?0*(\d{1,3})(?!\d)/gi)) found.add(Number(match[1]));
+  for (const match of filename.matchAll(/第?([零一二两三四五六七八九十百]+)镜|镜头?([零一二两三四五六七八九十百]+)/g)) found.add(numberOf(match[1] ?? match[2]!));
+  return [...found].filter((n) => n >= 1 && n <= 999).sort((a, b) => a - b);
+}
+
+/**
+ * The ticket's parts a file's name numbers, made when missing (declared by the file name); returns
+ * their keys. A part made this way starts with that file as its current one.
+ */
+export function registerFilenameParts(ctx: StoreContext, ticketId: string, path: string): string[] {
+  return filenamePartNumbers(path).map((n) => {
     const key = `shot_${String(n).padStart(2, '0')}`;
     ctx.db.run(`INSERT OR IGNORE INTO ticket_parts (id, ticket_id, key, title, declared_by, current_artifact)
       VALUES (?, ?, ?, ?, 'filename', ?)`, [ulid(), ticketId, key, `Shot ${String(n).padStart(2, '0')}`, path]);
-  }
+    return key;
+  });
 }
 
 /** Filename discovery only traverses candidate plans and materializes identities, not delivery stages. */

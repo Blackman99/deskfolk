@@ -1089,6 +1089,13 @@ const zh = {
     leave: "不续",
     removeChecks: (count: number) => (count === 1 ? "删掉这条检查" : `删掉这 ${count} 条检查`),
     confirmCheck: "确认",
+    /** On a card about a hand-over's required items (ADR 0046). */
+    confirmReviewCheck: "确认这条检查",
+    confirmItem: "算它做到了",
+    removeItem: "不再要这条",
+    /** On a card about a hand-over with no reviewer and nothing required (ADR 0046). */
+    approveSubmission: "放行",
+    sendBack: "退回",
     editCheck: "改",
     declineCheck: "不要",
     useNewCheck: "用新的",
@@ -1127,7 +1134,11 @@ const zh = {
       make_standing: "已升为常设",
       keep_project: "先不升",
       undo_plan: "新开的事已停下并作废",
-      merge_plan: "原话已改归，新开的事已停下并作废"
+      merge_plan: "原话已改归，新开的事已停下并作废",
+      confirm_item: "已认可做到了",
+      remove_item: "已不再要求",
+      approve: "已放行",
+      reject: "已退回"
     },
     partlyResumed: (continued: number, held: number) => `${continued} 轮接着做了，${held} 轮还被叫停扣着，解除后再按「继续」`,
     spent: "已解除",
@@ -1278,6 +1289,11 @@ const zh = {
     kind: "类别",
     status: { active: "进行中", done: "已完成", parked: "搁置" },
     ticketStatus: { todo: "待做", doing: "进行中", review: "待验收", done: "已完成", parked: "搁置" },
+    /** A stage the status alone does not say (ADR 0046): shown in its place. */
+    ticketStage: { submitted: "已交付", in_review: "审查中", rework: "返工", approved: "已通过" },
+    partsApproved: (approved: number, total: number) => `${approved}/${total} 已通过`,
+    reviewer: "审查者",
+    noReviewer: "无审查者",
     spec: {
       title: "要点",
       goal: "目标",
@@ -2650,6 +2666,11 @@ const en: CopyShape<typeof zh> = {
     leave: "Leave it",
     removeChecks: (count: number) => (count === 1 ? "Remove this check" : `Remove these ${count} checks`),
     confirmCheck: "Confirm",
+    confirmReviewCheck: "Confirm the check",
+    confirmItem: "Count it as met",
+    removeItem: "No longer require it",
+    approveSubmission: "Approve",
+    sendBack: "Send it back",
     editCheck: "Change",
     declineCheck: "No",
     useNewCheck: "Use the new one",
@@ -2688,7 +2709,11 @@ const en: CopyShape<typeof zh> = {
       make_standing: "Made standing",
       keep_project: "Left as it is",
       undo_plan: "New job stopped and abandoned",
-      merge_plan: "Message refiled; new job stopped and abandoned"
+      merge_plan: "Message refiled; new job stopped and abandoned",
+      confirm_item: "Counted as met",
+      remove_item: "No longer required",
+      approve: "Approved",
+      reject: "Sent back"
     },
     partlyResumed: (continued: number, held: number) => `${continued} going on; ${held} still held by a stop — lift it, then Continue again`,
     spent: "Lifted",
@@ -2840,6 +2865,10 @@ const en: CopyShape<typeof zh> = {
     kind: "Kind",
     status: { active: "In progress", done: "Done", parked: "Parked" },
     ticketStatus: { todo: "To do", doing: "In progress", review: "In review", done: "Done", parked: "Parked" },
+    ticketStage: { submitted: "Submitted", in_review: "In review", rework: "Rework", approved: "Approved" },
+    partsApproved: (approved: number, total: number) => `${approved}/${total} approved`,
+    reviewer: "Reviewer",
+    noReviewer: "No reviewer",
     spec: {
       title: "Plan",
       goal: "Goal",

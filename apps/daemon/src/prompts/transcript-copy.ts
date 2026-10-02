@@ -206,7 +206,7 @@ export function supervisorJobLabel(locale: Locale, input: { plan: string; ticket
 export function supervisorWakeNote(
   locale: Locale,
   input:
-    | { kind: "orphan"; job: string; role: "owner" | "lead" | "delegation"; ask?: string | null; quietMinutes: number }
+    | { kind: "orphan"; job: string; role: "owner" | "lead" | "delegation" | "reviewer"; ask?: string | null; submissionId?: string | null; quietMinutes: number }
     | { kind: "wait_invalid"; job: string }
     | { kind: "resume"; job: string; reason: "interrupted" | "failed" | "contract_budget" | "lost_segment"; lastStep: string | null; attempt: number },
 ): string {
@@ -219,6 +219,9 @@ export function supervisorWakeNote(
       ? (en ? "You own it." : "你是它的负责人。")
       : input.role === "lead"
         ? (en ? "It has no owner the app can call, and you lead the plan." : "它没有能叫到的负责人，你是这件事的负责人。")
+        : input.role === "reviewer"
+          ? (en ? `You review it, and submission ${input.submissionId ?? ""} is waiting for your review: judge it with review.`
+            : `你是它的审查者，交付 ${input.submissionId ?? ""} 在等你审：用 review 给结论。`)
         : (en ? `You still owe a reply to a request on it${input.ask ? `: "${input.ask}"` : ""}.` : `你还欠这张任务上一个委派的回复${input.ask ? `：「${input.ask}」` : ""}。`);
     return en
       ? `(App) ${input.job} is still open, and for ${input.quietMinutes} minutes nothing has been working on it: no live segment, no wait, no queued line. ${role} ${choice}`

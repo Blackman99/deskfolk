@@ -951,7 +951,7 @@ export function createStop(deps: StopDeps): Stop {
     // checks from your words the derived-checks module's (engine/derived-checks.ts). A blocked job's
     // question is answered at its own endpoint, and the supervisor's lines offer nothing (ADR 0045).
     if (control.kind === "restart" || control.kind === "check" || control.kind === "requirement" || control.kind === "plan_opened"
-      || control.kind === "work_question" || control.kind === "supervisor") {
+      || control.kind === "work_question" || control.kind === "supervisor" || control.kind === "review_item") {
       throw new HttpError(422, "invalid_args", "this line's buttons are not about your stops");
     }
     const action = input.action as ControlOffer;
@@ -1046,7 +1046,11 @@ export function createStop(deps: StopDeps): Stop {
       case "keep_project":
       case "undo_plan":
       case "merge_plan":
-        // Only a restart notice or a line about checks or requirements offers these, all turned away above.
+      case "confirm_item":
+      case "remove_item":
+      case "approve":
+      case "reject":
+        // Only a restart notice or a line about checks, requirements or a hand-over offers these, all turned away above.
         throw new HttpError(422, "invalid_args", "this line does not offer that button");
     }
   }

@@ -174,3 +174,117 @@ test("the app's lines about the requirements ledger: 都是 / 逐条看 for old 
   expect(controlBar({ ...standing, acted: ["keep_project"] }, [], names, t)).toEqual({ state: "done", note: "先不升" });
   expect(controlBar({ ...standing, requirement_ids: [] }, [], names, t)).toEqual({ state: "none" });
 });
+
+test("a card about a hand-over waiting on you: confirm the check, count it as met, or no longer require it; once pressed it says so, and a let-go card offers nothing", () => {
+  const card: MessageControl = {
+    kind: "review_item",
+    submission_id: "sub-1",
+    task_id: "task-1",
+    ticket_id: "ticket-1",
+    requirement_ids: ["r1"],
+    check_ids: ["check-1"],
+    offer: ["confirm_check", "confirm_item", "remove_item"],
+  };
+  expect(controlBar(card, [], names, t)).toEqual({
+    state: "ask",
+    prompt: null,
+    buttons: [
+      { action: "confirm_check", label: "确认这条检查", primary: true },
+      { action: "confirm_item", label: "算它做到了", primary: false },
+      { action: "remove_item", label: "不再要这条", primary: false },
+    ],
+  });
+  expect(controlBar({ ...card, check_ids: [], offer: ["confirm_item", "remove_item"] }, [], names, copyFor("en").control)).toMatchObject({
+    buttons: [{ label: "Count it as met", primary: true }, { label: "No longer require it", primary: false }],
+  });
+  expect(controlBar({ ...card, acted: ["confirm_item"] }, [], names, t)).toEqual({ state: "done", note: "已认可做到了" });
+  expect(controlBar({ ...card, offer: [], acted: [] }, [], names, t)).toEqual({ state: "none" });
+});
+
+test("ADR 0042: a misread proposal that PASSES puts 确认这条检查 last, with no button primary", () => {
+  const card: MessageControl = {
+    kind: "review_item",
+    submission_id: "sub-1",
+    task_id: "task-1",
+    ticket_id: "ticket-1",
+    requirement_ids: ["r1"],
+    check_ids: ["check-1"],
+    checks_passing: true,
+    offer: ["confirm_check", "confirm_item", "remove_item"],
+  };
+  expect(controlBar(card, [], names, t)).toEqual({
+    state: "ask",
+    prompt: null,
+    buttons: [
+      { action: "confirm_item", label: "算它做到了", primary: false },
+      { action: "remove_item", label: "不再要这条", primary: false },
+      { action: "confirm_check", label: "确认这条检查", primary: false },
+    ],
+  });
+  // A proposal that has not (yet) passed reads as usual: 确认这条检查 first and primary.
+  expect(controlBar({ ...card, checks_passing: false }, [], names, t)).toEqual({
+    state: "ask",
+    prompt: null,
+    buttons: [
+      { action: "confirm_check", label: "确认这条检查", primary: true },
+      { action: "confirm_item", label: "算它做到了", primary: false },
+      { action: "remove_item", label: "不再要这条", primary: false },
+    ],
+  });
+});
+
+test("a hand-over with no reviewer and nothing required waits on an approve/reject card (ADR 0046)", () => {
+  const card: MessageControl = {
+    kind: "review_item",
+    submission_id: "sub-2",
+    task_id: "task-1",
+    ticket_id: "ticket-1",
+    requirement_ids: [],
+    check_ids: [],
+    offer: ["approve", "reject"],
+  };
+  expect(controlBar(card, [], names, t)).toEqual({
+    state: "ask",
+    prompt: null,
+    buttons: [
+      { action: "approve", label: "放行", primary: true },
+      { action: "reject", label: "退回", primary: false },
+    ],
+  });
+  expect(controlBar({ ...card, acted: ["reject"] }, [], names, t)).toEqual({ state: "done", note: "已退回" });
+  expect(controlBar({ ...card, acted: ["approve"] }, [], names, copyFor("en").control)).toEqual({ state: "done", note: "Approved" });
+});
+
+test("pressing 放行 while a gate had not run yet shows what actually happened, not a bare 已放行 (ADR 0046)", () => {
+  const card: MessageControl = {
+    kind: "review_item",
+    submission_id: "sub-3",
+    task_id: "task-1",
+    ticket_id: "ticket-1",
+    requirement_ids: [],
+    check_ids: [],
+    offer: [],
+    acted: ["reject"],
+    result: "检查没过，已退回：「选题文件存在」：不通过",
+  };
+  expect(controlBar(card, [], names, t)).toEqual({ state: "done", note: "检查没过，已退回：「选题文件存在」：不通过" });
+  // It actually approved: the card carries no override, so the generic 已放行 label shows.
+  expect(controlBar({ ...card, acted: ["approve"], result: undefined }, [], names, t)).toEqual({ state: "done", note: "已放行" });
+});
+
+test("an approve/reject card waiting on a check shows why beside 退回; one taken over shows why with no buttons (ADR 0046)", () => {
+  const card: MessageControl = {
+    kind: "review_item",
+    submission_id: "sub-4",
+    task_id: "task-1",
+    ticket_id: "ticket-1",
+    requirement_ids: [],
+    check_ids: [],
+    offer: ["reject"],
+    result: "等检查跑完再放行…",
+  };
+  expect(controlBar(card, [], names, t)).toEqual({ state: "ask", prompt: "等检查跑完再放行…", buttons: [{ action: "reject", label: t.sendBack, primary: false }] });
+  expect(controlBar({ ...card, offer: [], result: "已被新的交付取代。" }, [], names, t)).toEqual({ state: "done", note: "已被新的交付取代。" });
+  // Nothing to press and nothing said: no row at all.
+  expect(controlBar({ ...card, offer: [], result: undefined }, [], names, t)).toEqual({ state: "none" });
+});

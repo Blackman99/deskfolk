@@ -20,6 +20,7 @@ import { createComposer } from "./engine/composer";
 import { HELD_CALL, mayAct } from "./engine/control";
 import { createCore } from "./engine/core";
 import { createDerivedChecks } from "./engine/derived-checks";
+import { createSubmissions } from "./engine/submissions";
 import { createRequirementCards } from "./engine/requirement-cards";
 import { createDirectReport } from "./engine/direct-report";
 import { createFire } from "./engine/fire";
@@ -382,6 +383,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         }
       : undefined,
     noteFiled: (messageId) => noteFiled(messageId),
+    submissions: () => submissions,
   });
 
   const fire = createFire({
@@ -450,6 +452,19 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     handleParticipation: participation.handleParticipation,
     // Late-bound: the engine below; a line only reaches a waiting segment once it is built.
     answerAsk: (askId, sessionId, custom) => { engine.replyAsk(askId, sessionId, { custom }); },
+    implicitSubmission: (turnId, opts) => submissions.implicit(turnId, opts),
+  });
+
+  // Level 5's hand-overs and reviews (ADR 0046): checks run as a settle would, through the plan's runner.
+  const submissions = createSubmissions({
+    store,
+    runChecks: (taskId, checkIds) => checks.run(taskId, { cause: "settle", checkIds }),
+    syncDerived: (taskId) => derivedChecks.sync(taskId),
+    citePaths: closing.citePaths,
+    dispatchQueued: () => lifecycle.dispatchQueued(),
+    workDir: (turnId) => core.lives.get(turnId)?.workDir ?? store.turnWorkDir(turnId),
+    publishMessage: core.publishMessage,
+    track: core.track,
   });
 
   const stops = createStop({
@@ -650,6 +665,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       if (store.capabilities().engine_level < ENGINE_LEVELS.supervision || options.admission?.draining) return;
       const tick = store.supervisorTick({ now: at.toISOString() });
       for (const message of tick.messages) core.publishMessage(message);
+      // Gates a waiting hand-over needs before it can be decided: run now, read at the next tick.
+      for (const due of tick.checksToRun ?? []) void core.track(checks.run(due.taskId, { cause: "settle", checkIds: due.checkIds }));
       // A segment cut off picks up from its own 「中断」 or failure line, as its Continue would:
       // same conversation, same stops, the line marked continued.
       const continued: string[] = [];
@@ -784,6 +801,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       if (message.control?.kind === "restart") return restart.act(message, input);
       if (message.control?.kind === "check") return derivedChecks.act(message, input);
       if (message.control?.kind === "requirement") return requirementCards.act(message, input);
+      if (message.control?.kind === "review_item") return submissions.act(message, input);
       return stops.act(messageId, input);
     },
     announceRestart: restart.announce,

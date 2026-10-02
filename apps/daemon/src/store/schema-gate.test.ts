@@ -12,7 +12,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from ".";
-import { acceptOlderApp, ENGINE_LEVEL, LAST_RELEASE_WITHOUT_GATE, raiseEngineLevel, readEngineGateOptIn, readEngineLevel, SCHEMA_LEVEL, SchemaTooNewError } from "./schema-gate";
+import { acceptOlderApp, ENGINE_LEVEL, ENGINE_LEVEL_BY_DEFAULT, LAST_RELEASE_WITHOUT_GATE, raiseEngineLevel, readEngineGateOptIn, readEngineLevel, SCHEMA_LEVEL, SchemaTooNewError } from "./schema-gate";
 
 const dirs: string[] = [];
 
@@ -173,21 +173,59 @@ describe("schema gate", () => {
     second.close();
   });
 
-  test("the engine level goes up, floor and all, when no installed app shares the database", () => {
+  test("the engine level goes up, floor and all, when no installed app shares the database — but only to the default ceiling without an opt-in", () => {
     const file = tempFile();
     const store = new Store({ filename: file });
-    expect(store.raiseEngineLevel(null)).toEqual({ level: ENGINE_LEVEL, raised: true, refused: null, accepted: null });
-    expect(store.capabilities()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds", "work_items", "delegation", "supervision"] });
+    // ENGINE_LEVEL_BY_DEFAULT: a level above it is experimental and never turns on
+    // by itself, installed app or not — including a source run on a data folder of its own.
+    expect(store.raiseEngineLevel(null)).toEqual({ level: ENGINE_LEVEL_BY_DEFAULT, raised: true, refused: null, accepted: null });
+    expect(store.capabilities()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL_BY_DEFAULT, features: ["holds", "work_items", "delegation", "supervision"] });
     // Already there: nothing to do, and the gate settings stay out of the change journal.
     const events: string[] = [];
     store.onCommit((event) => events.push(event.event));
-    expect(store.raiseEngineLevel(null)).toEqual({ level: ENGINE_LEVEL, raised: false, refused: null, accepted: null });
+    expect(store.raiseEngineLevel(null)).toEqual({ level: ENGINE_LEVEL_BY_DEFAULT, raised: false, refused: null, accepted: null });
     store.transaction(() => {});
     expect(events).toEqual([]);
     store.close();
     const floor = new Database(file, { readonly: true });
-    expect(floor.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'schema_min_compatible'").get()?.value).toBe(String(SCHEMA_LEVEL));
+    expect(floor.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'schema_min_compatible'").get()?.value).toBe(String(ENGINE_LEVEL_BY_DEFAULT));
     floor.close();
+  });
+
+  test("an opt-in raises the ceiling past the default even with no installed app sharing the database", () => {
+    const store = new Store();
+    const optIn = store.transaction(() => store.acceptOlderApp("api"));
+    expect(optIn.level).toBe(ENGINE_LEVEL);
+    expect(store.raiseEngineLevel(null)).toEqual({ level: ENGINE_LEVEL, raised: true, refused: null, accepted: null });
+    expect(store.capabilities()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds", "work_items", "delegation", "supervision", "submissions"] });
+    store.close();
+  });
+
+  test("a stale or low opt-in never pulls the ceiling below the default, with no installed app sharing the database", () => {
+    // An opt-in recorded by an earlier build, back when ENGINE_LEVEL was lower than today's
+    // default: it must not hold a fresh database below ENGINE_LEVEL_BY_DEFAULT.
+    const low = new Store();
+    low.db.run("INSERT INTO settings (key, value) VALUES ('engine_gate_optin', ?)", [JSON.stringify({ at: "2026-09-29T00:00:00Z", by: "script", level: 2 })]);
+    expect(low.raiseEngineLevel(null)).toEqual({ level: ENGINE_LEVEL_BY_DEFAULT, raised: true, refused: null, accepted: null });
+    low.close();
+
+    // An opt-in with no `level` field at all (reads as 1 via `readEngineGateOptIn`): the same.
+    const noLevel = new Store();
+    noLevel.db.run("INSERT INTO settings (key, value) VALUES ('engine_gate_optin', ?)", [JSON.stringify({ at: "2026-09-29T00:00:00Z", by: "script" })]);
+    expect(noLevel.engineGateOptIn()?.level).toBe(1);
+    expect(noLevel.raiseEngineLevel(null)).toEqual({ level: ENGINE_LEVEL_BY_DEFAULT, raised: true, refused: null, accepted: null });
+    noLevel.close();
+
+    // A database already at a level below the default, with an old opt-in for that same level:
+    // it still goes up to the default, not just stay where the stale opt-in once left it.
+    const file = tempFile();
+    const seed = new Store({ filename: file });
+    seed.db.run("INSERT INTO settings (key, value) VALUES ('engine_level', '3'), ('schema_min_compatible', '3'), ('engine_gate_optin', ?)",
+      [JSON.stringify({ at: "2026-09-29T00:00:00Z", by: "script", level: 3 })]);
+    seed.close();
+    const reopened = new Store({ filename: file });
+    expect(reopened.raiseEngineLevel(null)).toEqual({ level: ENGINE_LEVEL_BY_DEFAULT, raised: true, refused: null, accepted: null });
+    reopened.close();
   });
 
   test("an installed app from before the gate, or one whose version cannot be read, holds the level where it is", () => {
@@ -204,8 +242,9 @@ describe("schema gate", () => {
     expect(unseen.refused).toContain("REAL_BOT_DATA_DIR");
     expect(unseen.refused).not.toContain("update it");
     expect(store.db.query("SELECT 1 FROM settings WHERE key IN ('engine_level', 'schema_min_compatible')").all()).toEqual([]);
-    // One that reads the gate refuses the raised floor itself, and says to update.
-    expect(store.raiseEngineLevel({ version: "0.1.0-rc.13" })).toMatchObject({ level: ENGINE_LEVEL, raised: true });
+    // One that reads the gate refuses the raised floor itself, and says to update — but even so,
+    // with no opt-in this build still stops itself at the default ceiling, not at ENGINE_LEVEL.
+    expect(store.raiseEngineLevel({ version: "0.1.0-rc.13" })).toMatchObject({ level: ENGINE_LEVEL_BY_DEFAULT, raised: true });
     store.close();
   });
 
@@ -234,7 +273,7 @@ describe("schema gate", () => {
       expect(raise.accepted).toContain("would not honor holds");
       if ("version" in installed) expect(raise.accepted).toContain(`the installed app (${installed.version || "version unreadable"})`);
       else expect(raise.accepted).toContain(installed.unseen);
-      expect(store.capabilities()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds", "work_items", "delegation", "supervision"] });
+      expect(store.capabilities()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds", "work_items", "delegation", "supervision", "submissions"] });
       store.close();
     }
   });
@@ -268,7 +307,7 @@ describe("schema gate", () => {
     // there is nothing to refuse and nothing to take back.
     const next = new Store({ filename: file });
     expect(next.raiseEngineLevel({ version: "0.1.0-rc.11" })).toEqual({ level: ENGINE_LEVEL, raised: false, refused: null, accepted: null });
-    expect(next.capabilities()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds", "work_items", "delegation", "supervision"] });
+    expect(next.capabilities()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds", "work_items", "delegation", "supervision", "submissions"] });
     expect(next.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'schema_min_compatible'").get()?.value).toBe(String(SCHEMA_LEVEL));
     next.close();
   });

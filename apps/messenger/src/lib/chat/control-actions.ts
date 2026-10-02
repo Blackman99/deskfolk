@@ -38,6 +38,9 @@ export function controlBar(control: MessageControl | undefined, holds: readonly 
   // Dedicated cards own these, not stop actions; the supervisor's lines (ADR 0045) offer nothing.
   if (!control || control.kind === "plan_opened" || control.kind === "work_question" || control.kind === "supervisor") return { state: "none" };
   const acted = control.acted ?? [];
+  // An approve/reject card's own record of what actually happened: a gate failing sends 放行 back
+  // instead of approving it, and the card says so, not a bare 已放行.
+  if (acted.length > 0 && control.kind === "review_item" && control.result) return { state: "done", note: control.result };
   if (acted.length > 0) return { state: "done", note: t.acted[acted[acted.length - 1]!] };
   // The app's line about checks from your words (ADR 0040 P3): an offer to confirm, change (your
   // composer, `edit_draft`) or turn down — for a replacement, use the new number or keep the old —
@@ -71,6 +74,27 @@ export function controlBar(control: MessageControl | undefined, holds: readonly 
       return [];
     });
     return buttons.length > 0 ? { state: "ask", prompt: null, buttons } : { state: "none" };
+  }
+  // A hand-over's approval waiting on you (ADR 0046): confirm the check from your words, count the
+  // items as met, stop requiring them, or — a hand-over with no reviewer and nothing required —
+  // approve it or send it back. Stops play no part.
+  if (control.kind === "review_item") {
+    // A misread proposal that PASSES the wrong cut (ADR 0042) is shown, but never pre-selected:
+    // 确认这条检查 is neither primary nor the first button when that is what it would confirm.
+    const misleading = control.check_ids.length > 0 && control.checks_passing === true;
+    const order = misleading ? [...control.offer].sort((a, b) => (a === "confirm_check" ? 1 : b === "confirm_check" ? -1 : 0)) : control.offer;
+    const buttons = order.flatMap((action): ControlButton[] => {
+      if (action === "confirm_check" && control.check_ids.length > 0) return [{ action, label: t.confirmReviewCheck, primary: !misleading }];
+      if (action === "confirm_item") return [{ action, label: t.confirmItem, primary: !misleading && !control.offer.includes("confirm_check") }];
+      if (action === "remove_item") return [{ action, label: t.removeItem, primary: false }];
+      if (action === "approve") return [{ action, label: t.approveSubmission, primary: true }];
+      if (action === "reject") return [{ action, label: t.sendBack, primary: false }];
+      return [];
+    });
+    // The app's own line on the card stands beside what is left to press (waiting on a check after
+    // 放行), or alone once nothing is (taken over by a newer hand-over, your board edit, its checks).
+    if (buttons.length > 0) return { state: "ask", prompt: control.result ?? null, buttons };
+    return control.result ? { state: "done", note: control.result } : { state: "none" };
   }
   // A restart notice (ADR 0041): go on with what the restart cut off, or leave it. Stops play no part.
   if (control.kind === "restart") {

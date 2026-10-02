@@ -47,6 +47,7 @@ get("annotations/:id"); get("annotations/:id/crop");
 get("tasks/:id/(trace|tickets|spec-revisions)");
 get("sessions/:id/tasks");
 get("(tasks|sessions)/:id/delegations");
+get("tasks/:id/submissions");
 get("sessions/:id/lead");
 get("messages/:id/attribution");
 add("PUT", "sessions/:id/lead", { bot_id: nullable(id), confirmed: one(true) }, ["bot_id", "confirmed"]);
@@ -78,8 +79,8 @@ add("POST", "holds", { scope: one("global", "bot", "session", "plan", "ticket", 
   action: one("pause", "cancel"), cascade: bool, lift_on_next_user_message: bool, session_id: nullable(id) }, ["scope"]);
 add("POST", "holds/:id/lift", {});
 // A button on a line about your stops (a receipt's undo, 「全部停下」 from the phone's menu is a hold above).
-add("POST", "messages/:id/control", { action: one("stop", "continue", "cancel", "undo", "stop_all", "stop_plan", "only_plan", "continue_only", "continue_all", "resume", "leave", "confirm_check", "remove_check", "confirm_requirements", "make_standing", "keep_project", "undo_plan", "merge_plan"), task_id: id }, ["action"]);
-add("PATCH", "tickets/:id", { title: string, spec: string, status: ticketStatus, worker: nullable(id), depends_on: list(id), if_revision: specRevision }, [], true);
+add("POST", "messages/:id/control", { action: one("stop", "continue", "cancel", "undo", "stop_all", "stop_plan", "only_plan", "continue_only", "continue_all", "resume", "leave", "confirm_check", "remove_check", "confirm_requirements", "make_standing", "keep_project", "undo_plan", "merge_plan", "confirm_item", "remove_item"), task_id: id }, ["action"]);
+add("PATCH", "tickets/:id", { title: string, spec: string, status: ticketStatus, worker: nullable(id), depends_on: list(id), reviewer_bot_id: nullable(id), if_revision: specRevision }, [], true);
 const checkKind: Check = one("exists", "contains", "matches", "command");
 const checkInput = {
   item: string,

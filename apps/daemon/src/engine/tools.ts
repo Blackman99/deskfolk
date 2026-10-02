@@ -16,7 +16,7 @@ import { inlineWorkspaceRefs } from "../mcp-workspace-refs";
 import { COLLAB_TOOL_NAMES, type ChatTool, type McpPromptGuide } from "../prompts";
 import type { TurnAdmission } from "../quiesce";
 import { sessionUpsertFields } from "../session-events";
-import { isReservedTaskPath, type Store } from "../store";
+import { checkLines, isReservedTaskPath, type Store } from "../store";
 import { TOOL_FAILURES_KEPT } from "../store/routing";
 import { ENGINE_LEVELS } from "../store/schema-gate";
 import { mergeCitedPaths, writtenPathFromToolData } from "../artifact-paths";
@@ -29,6 +29,7 @@ import { isWorkspaceTool, runWorkspaceTool, type ShellStream } from "../workspac
 import type { Closing } from "./closing";
 import { HELD_CALL, mayAct } from "./control";
 import type { Participation } from "./participation";
+import type { Submissions } from "./submissions";
 import type { Live } from "./types";
 
 /** Tools that are the work itself, not looking around: a turn using one is working on its ticket. */
@@ -91,6 +92,8 @@ export type ToolsDeps = {
   betweenCalls?: (turnId: string) => Promise<void> | void;
   /** Late-bound: a line of yours a call filed under a job after it arrived goes to the scribe then (ADR 0040 P3). */
   noteFiled: (messageId: string) => void;
+  /** Late-bound: `submit`, `review` and the implicit submission before end_turn(done) (ADR 0046, engine level 5). */
+  submissions?: () => Submissions;
 };
 
 export type Tools = {
@@ -119,7 +122,7 @@ export type Tools = {
 };
 
 export function createTools(deps: ToolsDeps): Tools {
-  const { store, publish, publishMessage, publishTurn, occurred, wake, mcp, admission, streams, lives, active, track, closingCheckForSend, handleParticipation, fireRoutine, observeTicket, betweenCalls, noteFiled } = deps;
+  const { store, publish, publishMessage, publishTurn, occurred, wake, mcp, admission, streams, lives, active, track, closingCheckForSend, handleParticipation, fireRoutine, observeTicket, betweenCalls, noteFiled, submissions } = deps;
 
   /**
    * How a call with an effect came out, on its ledger row (ADR 0045), before its result is heard.
@@ -258,6 +261,7 @@ export function createTools(deps: ToolsDeps): Tools {
             ? {}
             : { ok: result.ok, ...(result.ok || !result.error ? {} : { error_code: result.error.code }) }) });
         if (!result.waitApproval) recordRun(turnId, live, call.name, args, result);
+        if (call.name === "read_file" && result.ok) noteFrameRead(turnId, args);
       }
       if (!active(turnId, live)) return "wait";
       store.touchTurn(turnId);
@@ -412,6 +416,21 @@ export function createTools(deps: ToolsDeps): Tools {
     return posted ? "more" : "noop";
   }
 
+  /**
+   * A picture read with read_file, from engine level 5: the evidence a reviewer looked at frames
+   * (ADR 0046), kept in the work log rather than among the commands a turn ran.
+   */
+  function noteFrameRead(turnId: string, args: Record<string, unknown>): void {
+    if (typeof args.path !== "string") return;
+    try {
+      const root = store.workspacePath();
+      const classified = root ? classifyPath(root, args.path) : null;
+      store.recordFrameRead({ turnId, path: classified?.zone === "inside" && classified.rel ? classified.rel : args.path });
+    } catch {
+      // evidence, not the work: the read already happened
+    }
+  }
+
   function hasEffect(live: Live, name: string): boolean {
     if (NO_EFFECT_TOOLS.has(name)) return false;
     return live.mcpTools.get(name)?.readOnly !== true;
@@ -545,6 +564,46 @@ export function createTools(deps: ToolsDeps): Tools {
       if (turn.task_id) store.markWorkDirectoryUsed(turn.id);
       if (name === "write_file" || name === "delete_file" || name === "shell" || live.mcpTools.has(name)) {
         store.recordNewPlanEffectStarted({ turnId: turn.id, tool: name, toolCallId: callId });
+      }
+    }
+    // Level 5 (ADR 0046): a hand-over and a review are the engine's, which hashes, cites and runs checks.
+    if ((name === "submit" || name === "review") && submissions) {
+      return name === "submit" ? submissions().submit(turn.id, args) : submissions().review(turn.id, args);
+    }
+    if (name === "end_turn" && args.reason === "done" && submissions && store.capabilities().engine_level >= ENGINE_LEVELS.submissions) {
+      // §5.2: an ending that says done hands over its new files first. A hand-over whose checks
+      // fail comes back instead of the ending; the same files again hand nothing over, so asking
+      // to end once more is weighed as usual.
+      let settled: Awaited<ReturnType<Submissions["implicit"]>> = null;
+      try {
+        settled = await submissions().implicit(turn.id, { cite: live.writtenPaths });
+        live.writtenPaths = store.uncitedTurnPaths(turn.id, live.writtenPaths);
+        if (!settled) {
+          // Files of a ticket someone else owns are not handed over for this Bot: it hears so once.
+          const hint = store.handOverHint({ turnId: turn.id, paths: live.producedPaths ?? [] });
+          if (hint) return { ok: false, error: { code: "not_handed_over", message: hint }, emitted: [] };
+          // No new files: the answer it ends with is what it hands over, on a ticket whose work is
+          // words — but only when the words themselves read as the deliverable (isAnswerText); a
+          // Bot that is not the ticket's producer hears so once instead of a bare obligation.
+          if (typeof args.answer === "string" && args.answer.trim()) {
+            try {
+              settled = await submissions().answer(turn.id, args.answer);
+            } catch (error) {
+              if (error instanceof HttpError) return { ok: false, error: { code: error.code, message: error.message }, emitted: [] };
+              throw error;
+            }
+            if (!settled) {
+              const wordsHint = store.answerHint({ turnId: turn.id });
+              if (wordsHint) return { ok: false, error: { code: "not_handed_over", message: wordsHint }, emitted: [] };
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`[turn ${turn.id}] could not hand its files over before ending`, error);
+      }
+      if (settled?.state === "checks_failed") {
+        const lines = checkLines(settled.failures, live.locale === "en" ? "en" : "zh");
+        return { ok: false, error: { code: "checks_failed", message: `what you handed over (submission ${settled.submission.id}) failed its checks, so the ticket did not move: ${lines.join("; ")}. Fix it, or end_turn saying what blocks you.` }, emitted: [] };
       }
     }
     if (isWorkspaceTool(name) || COLLAB_TOOL_NAMES.includes(name)) {

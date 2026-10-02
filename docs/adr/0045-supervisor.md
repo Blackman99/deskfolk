@@ -1,6 +1,6 @@
 # 监督器：持球者、没人推的任务、需要处理的工作与重启续跑 / Supervisor: ball holder, tickets nobody moves, attention and restart resume
 
-Status: implemented at engine level 4 (`ENGINE_LEVELS.supervision`), part of ADR 0040's P4c. External jobs (P4d), reviewer assignment and submitted → approved (P4e), implicit submission (24b) and the board's ball display are not part of it; see the gaps below.
+Status: implemented at engine level 4 (`ENGINE_LEVELS.supervision`), part of ADR 0040's P4c. External jobs (P4d) and the board's ball display are not part of it; reviewer assignment, submitted → approved and implicit submission came at level 5 with [ADR 0046](0046-submissions-and-reviews.md). See the gaps below.
 
 [ADR 0040](0040-agent-kernel-the-job-owns-state.md) §5 要让「没做完不停下」由库里的事实保证，而不是进程里的计时器。在这之前推进兜底有三条：[ADR 0039](0039-plans-with-work-left-are-called-back.md) 的规划叫回（`plan_nudge`，按第一个未完成任务的 worker 或最后说话的 Bot 挑人，「任务都交出、记录说还有活」时等 10 分钟的计时器在进程里）、Bot↔Bot 私聊静下来后的 report_back（10 秒计时器在进程里），以及 [ADR 0041](0041-control-plane-holds-and-restarts.md) 的重启通知（一律等你按「继续」）。重启会丢掉计时器；叫回不看谁真正持球；重启后每次都要你手动续跑，09-26 那次停了 7.6 小时。
 
@@ -42,8 +42,8 @@ ADR 0040 §5 wants "not stopping before done" to rest on facts in the database, 
 ## 缺口 / Not done
 
 - **外部作业**（P4d）：持球者不会落到轮询器；`tick.unsupported` 列出 `external_jobs`。
-- **审查者指派与 submitted → approved**（P4e，§5.3.7）：待验收的任务球在你；`reviewer_assignment` 同样列为不支持。
-- **隐式交付**（24b）：产物哈希只算进展，不生成交付。
+- **审查者指派与 submitted → approved**（P4e，§5.3.7）：4 级时待验收的任务球在你，`reviewer_assignment` 同样列为不支持。5 级由 [ADR 0046](0046-submissions-and-reviews.md) 接上：审查中的球在审查者，没有审查者的交付下一拍由应用按检查放行。
+- **隐式交付**（24b）：4 级时产物哈希只算进展，不生成交付；5 级起由 ADR 0046 生成。
 - **规划级的检查**：没绑任何任务的检查失败时，0–3 级的规划叫回会叫人，4 级的监督器按任务看，不会；绑在任务上的会让球回到 owner。规划级的放行和返工在 P4e。
 - **看板上的「球在：…」** 和依赖的编辑界面还没有；`ballHolder` 和 `depends_on` 目前只在库和 API 里。
 - **旧路径的物理删除**：settle、收尾正则、`hearOrStart`/`hearAcross`/`reopenForUnheard` 仍在，按 ADR 0040 的 P6 收缩阶段处理。

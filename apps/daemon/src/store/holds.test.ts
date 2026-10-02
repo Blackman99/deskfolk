@@ -9,6 +9,7 @@ import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { parsePlanSpec, type PlanSpec } from "./plan-shape";
 import type { OrganizerResult } from "./plan-spec";
+import { ENGINE_LEVEL_BY_DEFAULT } from "./schema-gate";
 
 function spec(over: Partial<PlanSpec> = {}): PlanSpec {
   return {
@@ -109,9 +110,9 @@ describe("making a hold", () => {
       code: "holds_unavailable",
     });
     expect(store.capabilities()).toMatchObject({ engine_level: 0, features: [] });
-    expect(store.raiseEngineLevel(null)).toEqual({ level: 4, raised: true, refused: null, accepted: null });
-    expect(store.capabilities()).toMatchObject({ engine_level: 4, features: ["holds", "work_items", "delegation", "supervision"] });
-    expect(store.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'schema_min_compatible'").get()?.value).toBe("4");
+    expect(store.raiseEngineLevel(null)).toEqual({ level: ENGINE_LEVEL_BY_DEFAULT, raised: true, refused: null, accepted: null });
+    expect(store.capabilities()).toMatchObject({ engine_level: ENGINE_LEVEL_BY_DEFAULT, features: ["holds", "work_items", "delegation", "supervision"] });
+    expect(store.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'schema_min_compatible'").get()?.value).toBe(String(ENGINE_LEVEL_BY_DEFAULT));
     const hold = store.createHold({ scope: "bot", scopeId: director.id, source: "user_button" });
     expect(hold).toMatchObject({ scope: "bot", scope_id: director.id, action: "pause", cascade: true, source: "user_button", lifted_at: null, targets: [] });
     store.close();

@@ -63,6 +63,13 @@
 		statusFilter === 'all' ? tickets : tickets.filter((tk) => tk.status === statusFilter)
 	);
 
+	/** A stage the status alone does not say (ADR 0046) shows in its place: 审查中, 返工, 已交付, 已通过. */
+	function stageLabel(ticket: TicketWithArtifacts): string {
+		const stage = ticket.stage;
+		if (stage === 'submitted' || stage === 'in_review' || stage === 'rework' || stage === 'approved') return t.plan.ticketStage[stage];
+		return t.plan.ticketStatus[ticket.status];
+	}
+
 	function select(ticketId: string): void {
 		onSelect(selectedId === ticketId ? null : ticketId);
 	}
@@ -73,6 +80,31 @@
 			return typeof status === 'number' ? status : undefined;
 		}
 		return undefined;
+	}
+
+	/** Who may review a ticket (ADR 0046, from level 5): a Bot of the plan's conversation, never the one on it. */
+	function reviewerOptions(ticket: TicketWithArtifacts): Array<{ value: string; label: string }> {
+		const owner = ticket.owner_bot_id ?? ticket.worker;
+		const able = new Set(detail.reviewer_ids ?? []);
+		return bots.filter((bot) => able.has(bot.id) && bot.id !== owner).map((bot) => ({ value: bot.id, label: bot.name }));
+	}
+
+	async function changeReviewer(ticket: TicketWithArtifacts, reviewer: string): Promise<void> {
+		if (!api || reviewer === (ticket.reviewer_bot_id ?? '')) return;
+		patchingId = ticket.id;
+		errorId = null;
+		try {
+			const result = await api.patchTicket(ticket.id, { reviewer_bot_id: reviewer || null, if_revision: detail.revision });
+			onPatched(result);
+		} catch (err) {
+			if (errorStatus(err) === 409) {
+				onConflict();
+			} else {
+				errorId = ticket.id;
+			}
+		} finally {
+			patchingId = null;
+		}
 	}
 
 	async function changeStatus(ticket: TicketWithArtifacts, status: string): Promise<void> {
@@ -161,7 +193,10 @@
 						<span class="ticket-line">
 							<span class="ticket-tag mono">{ticketTag(ticket.seq)}</span>
 							<span class="ticket-title">{ticket.title}</span>
-							<span class="ticket-status is-{ticket.status}">{t.plan.ticketStatus[ticket.status]}</span>
+							<span class="ticket-status is-{ticket.status}">{stageLabel(ticket)}</span>
+							{#if ticket.parts && ticket.parts.total > 0}
+								<span class="ticket-parts mono">{t.plan.partsApproved(ticket.parts.approved, ticket.parts.total)}</span>
+							{/if}
 						</span>
 						<span class="ticket-who">
 							{#if ticket.worker}
@@ -212,6 +247,19 @@
 								</svg>
 								<span>{t.plan.jumpToTurn}</span>
 							</button>
+						{/if}
+						{#if api && detail.submissions_on}
+							<div class="ticket-select-wrap ticket-reviewer-wrap">
+								<Select
+									value={ticket.reviewer_bot_id ?? ''}
+									options={reviewerOptions(ticket)}
+									emptyLabel={t.plan.noReviewer}
+									size="sm"
+									ariaLabel={t.plan.reviewer}
+									disabled={patchingId === ticket.id}
+									onchange={(value) => changeReviewer(ticket, value)}
+								/>
+							</div>
 						{/if}
 						{#if api}
 							<div class="ticket-select-wrap">
@@ -538,6 +586,12 @@
 		letter-spacing: -0.01em;
 	}
 
+	.ticket-parts {
+		flex: none;
+		font-size: 10.5px;
+		color: var(--muted);
+	}
+
 	.ticket-status {
 		display: inline-flex;
 		align-items: center;
@@ -683,6 +737,11 @@
 
 	.ticket-select-wrap {
 		margin-left: auto;
+	}
+
+	/* The reviewer's menu takes the push to the right; the status menu sits beside it. */
+	.ticket-reviewer-wrap + .ticket-select-wrap {
+		margin-left: 0;
 	}
 
 	.ticket-actions :global(.real-select) {

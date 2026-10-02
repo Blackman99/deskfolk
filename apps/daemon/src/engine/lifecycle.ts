@@ -34,7 +34,7 @@ import type { TurnExecution } from "../store/routing";
 import { ENGINE_LEVELS } from "../store/schema-gate";
 import type { Store } from "../store";
 import { checkInNote, emptyReplyNote, lastHopNote, turnPace } from "../turn-pace";
-import { inboxLabel } from "../store";
+import { inboxLabel, inTicketDir } from "../store";
 import { heardNote, recentToolCalls, redirectCarryNote, type HeardItem } from "../turn-inbox";
 import { recordHeard } from "./inbox-record";
 import type { WakeWatch } from "../wake";
@@ -93,6 +93,11 @@ export type LifecycleDeps = {
    * answer to its question is that answer (ADR 0040 §3.3), written as text of your own.
    */
   answerAsk: (askId: string, sessionId: string, custom: string) => void;
+  /**
+   * Late-bound: the implicit submission (ADR 0046, engine level 5) — new files the segment cited
+   * in its ticket's folder, handed over for it, checked, and moved on. Resolves once settled.
+   */
+  implicitSubmission: (turnId: string, opts?: { cite?: string[]; tell?: boolean }) => Promise<{ state: string; failures: Array<{ item: string; detail: string }> } | null>;
 };
 
 export type Lifecycle = {
@@ -168,6 +173,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     observeTicket,
     handleParticipation,
     answerAsk,
+    implicitSubmission,
   } = deps;
 
   /**
@@ -617,6 +623,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
             chainTurnEnded(turn.id);
             dispatchQueued();
             await noteArtifacts(turn, live);
+            await submitAtEnd(turn.id);
           }
         }
       };
@@ -656,6 +663,36 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       if (artifacts.length > 0) store.recordArtifactProgress({ turnId: turn.id, artifacts });
     } catch (error) {
       console.error(`[turn ${turn.id}] could not record its artifacts`, error);
+    }
+  }
+
+  /** Whether a closing reply hands over a file of the segment's ticket: one it wrote, or one its words cite. */
+  function handsOver(turn: Turn, live: Live, body: string): boolean {
+    if (!turn.ticket_id) return false;
+    let dir: string;
+    try {
+      dir = store.getTicket(turn.ticket_id).dir;
+    } catch {
+      return false;
+    }
+    return [...live.writtenPaths, ...attachmentLinePaths(body), ...extractWorkspacePathsFromBody(body)].some((path) => inTicketDir(dir, path));
+  }
+
+  /**
+   * From engine level 5, a segment that ended doing its work hands over what it cited in its
+   * ticket's folder and had not handed over yet (§5.2's implicit submission): one that ended on a
+   * send_message, a wait or a request, as much as one that said end_turn. One that ended blocked,
+   * gave up, or was cut off hands nothing over.
+   */
+  async function submitAtEnd(turnId: string): Promise<void> {
+    try {
+      if (store.capabilities().engine_level < ENGINE_LEVELS.submissions) return;
+      const ended = store.getTurn(turnId);
+      if (ended.status !== "completed" || ["blocked", "gave_up", "needs_attention"].includes(ended.end_reason ?? "")) return;
+      // The segment is over: a hand-over whose checks fail goes back to its producer as a line.
+      await implicitSubmission(turnId, { tell: true });
+    } catch (error) {
+      console.error(`[turn ${turnId}] could not hand its files over`, error);
     }
   }
 
@@ -1017,10 +1054,50 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
         live.loop.push({ role: "user", content: bounce });
         continue;
       }
+      // From level 5 a closing reply that hands files over goes out first, so what it cites is
+      // handed over (the implicit submission) before the ending is weighed (§5.2). Words alone
+      // are never inferred from a plain-text closing reply — that verbal hand-over once let
+      // "母带剪好了" approve a ticket nobody checked (ADR 0046): a ticket whose work
+      // is words closes only through an explicit `end_turn(done, answer)` (engine/tools.ts).
+      let posted: Message | null | undefined;
+      const files = store.capabilities().engine_level >= ENGINE_LEVELS.submissions && handsOver(current, live, closingBody);
+      if (files) {
+        posted = publishCitedBotMessage(current, live, turnId, rawBody);
+        const produced = live.producedPaths ?? [];
+        live.writtenPaths = [];
+        let settled: Awaited<ReturnType<typeof implicitSubmission>> = null;
+        try {
+          settled = await implicitSubmission(turnId);
+          // Files of a ticket someone else owns: not handed over for this Bot, which hears so once.
+          const hint = !settled ? store.handOverHint({ turnId, paths: produced }) : null;
+          if (hint) {
+            live.loop.push({ role: "user", content: hint });
+            if (posted && !live.parentId && current.mode !== "readonly") void track(handleParticipation(posted, { fromUser: false }));
+            continue;
+          }
+        } catch (error) {
+          console.error(`[turn ${turnId}] could not hand its files over`, error);
+        }
+        if (!active(turnId, live)) {
+          if (live.abort.signal.aborted) drop();
+          return;
+        }
+        // Handed over and sent back by its checks: the Bot hears why, and goes on (handing the same
+        // bytes over again hands nothing over, so the next ending is weighed as usual).
+        if (settled?.state === "checks_failed") {
+          const lines = settled.failures.map((check) => live.locale === "en" ? `"${check.item}": ${check.detail || "fail"}` : `「${check.item}」：${check.detail || "不通过"}`);
+          live.loop.push({ role: "user", content: live.locale === "en"
+            ? `(app) What you handed over failed its checks, so the ticket did not move: ${lines.join("; ")}. Fix it, or end_turn saying what blocks you.`
+            : `（应用）你交出的东西没过检查，任务没往前走：${lines.join("；")}。改好再交，或者用 end_turn 说明卡在哪。` });
+          if (posted && !live.parentId && current.mode !== "readonly") void track(handleParticipation(posted, { fromUser: false }));
+          continue;
+        }
+      }
       if (store.capabilities().engine_level >= ENGINE_LEVELS.delegation) {
         const finished = store.finishWork({ turnId, reason: "done" }, { pureText: true });
         if (finished.bounce) {
           live.loop.push({ role: "user", content: finished.bounce });
+          if (posted && !live.parentId && current.mode !== "readonly") void track(handleParticipation(posted, { fromUser: false }));
           continue;
         }
         if (finished.notice || finished.ask) {
@@ -1028,7 +1105,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
             body: finished.ask?.body ?? finished.notice!.body, hiddenFromBots: true }));
         }
       }
-      const message = publishCitedBotMessage(current, live, turnId, rawBody);
+      const message = posted !== undefined ? posted : publishCitedBotMessage(current, live, turnId, rawBody);
       if (message && live.writtenPaths.length > 0) observeTicket(turnId, current.bot_id, "delivered");
       const completed = store.setTurnStatus(turnId, "completed", executionOf(live));
       lives.delete(turnId);
