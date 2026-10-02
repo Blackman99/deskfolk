@@ -101,6 +101,37 @@ describe("store notifications", () => {
     }
   });
 
+  it("does not count a notification in a conversation that is left out of the session list", () => {
+    const store = new Store();
+    try {
+      const gone = store.createBot({ name: "Gone", duties: "write", boundaries: "none" });
+      const kept = store.createBot({ name: "Kept", duties: "write", boundaries: "none" });
+      store.deleteBot(gone.bot.id);
+      // Written after the delete, as a call-back already in flight would: deleting the Bot only
+      // clears what was there, and nothing can open this conversation to read it.
+      store.createNotification({
+        semantic_key: "stalled:late",
+        kind: "failure",
+        session_id: gone.direct_session.id,
+        action_state: "open",
+      });
+      store.createNotification({
+        semantic_key: "stalled:kept",
+        kind: "failure",
+        session_id: kept.direct_session.id,
+        action_state: "open",
+      });
+      store.createNotification({ semantic_key: "reply:none", kind: "reply" });
+
+      const summary = store.getNotificationSummary();
+      expect(summary.attention_count).toBe(2);
+      expect(summary.unread_count).toBe(2);
+      expect(summary.open_count).toBe(1);
+    } finally {
+      store.close();
+    }
+  });
+
   it("paginates notifications with cursor", () => {
     const store = new Store();
     try {

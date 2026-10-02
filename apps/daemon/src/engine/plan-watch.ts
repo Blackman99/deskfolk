@@ -224,6 +224,9 @@ export function createPlanWatch(deps: PlanWatchDeps): PlanWatch {
       if (!task.session_id || task.routine_id || task.status !== "active" || task.dormant_since) return;
       const sessionId = task.session_id;
       if (!store.isPresent(sessionId, USER_MEMBER)) return;
+      // A direct conversation with a deleted Bot is left out of the session list: no one to call
+      // back, and nowhere to tell you the plan stopped.
+      if (!store.isSessionReachable(sessionId)) return;
       if (store.taskLiveTurnCount(taskId) > 0) return;
       if (store.pendingPlanCheckBacks(taskId).length > 0) return;
       const tickets = store.listTickets(taskId);

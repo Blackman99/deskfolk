@@ -482,6 +482,27 @@ export function listNotifications(
 export const NEEDS_ATTENTION_SQL =
   "(read_at IS NULL OR (action_state = 'open' AND kind IN ('approval', 'ask')))";
 
+/**
+ * A notification you can get to. A direct conversation with a deleted Bot is left out of the
+ * session list (`listSessions`), so nothing in it can be opened, read or answered; deleting the Bot
+ * clears what is there, but a call-back already in flight can still write one after, and it would
+ * hold the Dock badge at 1 with no way to lift it.
+ */
+const HIDDEN_SESSIONS_SQL = `
+  SELECT sp.session_id FROM session_participants sp
+  JOIN sessions s ON s.id = sp.session_id AND s.kind = 'direct'
+  JOIN bots b ON b.id = sp.member
+  WHERE sp.left_at IS NULL AND b.deleted_at IS NOT NULL`;
+
+export const REACHABLE_NOTIFICATION_SQL = `(session_id IS NULL OR session_id NOT IN (${HIDDEN_SESSIONS_SQL}))`;
+
+/** Whether the conversation is one the session list shows, so there is somewhere to tell you something. */
+export function isSessionReachable(ctx: StoreContext, sessionId: string): boolean {
+  return !ctx.db
+    .query<{ one: number }, [string]>(`SELECT 1 AS one FROM (${HIDDEN_SESSIONS_SQL}) WHERE session_id = ?`)
+    .get(sessionId);
+}
+
 export function getNotificationSummary(ctx: StoreContext): NotificationSummary {
   const counts = ctx.db
     .query<{ unread_count: number; open_count: number; attention_count: number }, []>(`
@@ -490,6 +511,7 @@ export function getNotificationSummary(ctx: StoreContext): NotificationSummary {
         COUNT(CASE WHEN action_state = 'open' THEN 1 END) as open_count,
         COUNT(CASE WHEN ${NEEDS_ATTENTION_SQL} THEN 1 END) as attention_count
       FROM notifications
+      WHERE ${REACHABLE_NOTIFICATION_SQL}
     `)
     .get();
 

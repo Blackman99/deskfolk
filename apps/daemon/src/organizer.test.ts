@@ -810,6 +810,24 @@ test("forgetting a plan drops only its look-again: another plan waiting out its 
   expect(planNudges(store, plans[1]!.id)).toHaveLength(1);
 });
 
+test("a plan in a conversation that is left out of the session list is not called back into and tells nobody", () => {
+  const { store, planWatch, fired, stalledNote } = barePlanWatch();
+  const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+  const session = writer.direct_session.id;
+  const plan = store.openTask({ sessionId: session, title: "写周报" });
+  store.createTicket({ taskId: plan.id, title: "初稿", status: "doing", worker: writer.bot.id });
+  planWatch.reconcilePlan(plan.id); // called back once while the Bot is there
+  expect(fired).toHaveLength(1);
+
+  // The Bot is deleted, which hides its direct conversation; the next reconcile is the one that
+  // would tell you the plan stalled, into a conversation nobody can open to read it.
+  store.deleteBot(writer.bot.id);
+  planWatch.reconcilePlan(plan.id);
+  expect(fired).toHaveLength(1);
+  expect(stalledNote(plan.id)).toEqual([]);
+  expect(store.getNotificationSummary().attention_count).toBe(0);
+});
+
 test("no ticket open and no check failing: nothing to reconcile", () => {
   const { store, planWatch, fired } = barePlanWatch();
   const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });

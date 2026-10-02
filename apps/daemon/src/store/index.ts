@@ -763,6 +763,7 @@ export class Store {
   readonly acknowledgeNotification = this.bind(notifications.acknowledgeNotification);
   readonly listNotifications = this.bind(notifications.listNotifications);
   readonly getNotificationSummary = this.bind(notifications.getNotificationSummary);
+  readonly isSessionReachable = this.bind(notifications.isSessionReachable);
   readonly pruneNotificationsRetention = this.bind(notifications.pruneNotificationsRetention);
   readonly pruneNotificationDeliveriesRetention = this.bind(notifications.pruneNotificationDeliveriesRetention);
   readonly getNotificationPolicy = this.bind(notifications.getNotificationPolicy);
