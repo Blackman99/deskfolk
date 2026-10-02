@@ -65,6 +65,26 @@ test("your stops in force sit above the list, each with its lift; a plan parked 
   }
 });
 
+test("a Stop on a reply clears itself with your next line, so it is not listed; a stop that waits for you is", () => {
+  const holds = [
+    aHold({ id: "h-stop", scope: "bot_plan", scope_id: "bot-1:task-1", plan_title: "EP01", lift_on_next_user_message: true }),
+    aHold({ id: "h-turn", scope: "turn", scope_id: "turn-1", lift_on_next_user_message: true }),
+    aHold({ id: "h-menu", scope: "bot", scope_id: "bot-2" }),
+  ];
+  const { host, close } = open({ holds, holdsOn: true });
+  try {
+    expect([...host.querySelectorAll(".holds-row .holds-label")].map((label) => label.textContent)).toEqual(["审片员的全部工作"]);
+  } finally {
+    close();
+  }
+  const only = open({ holds: holds.slice(0, 2), holdsOn: true });
+  try {
+    expect(only.host.querySelector(".holds")).toBeNull();
+  } finally {
+    only.close();
+  }
+});
+
 test("a direct whose Bot you stopped, and a group you stopped, say so where their last line would be", () => {
   const { host, close } = open({ holds: [aHold({ scope: "bot", scope_id: "bot-1" }), aHold({ id: "h-2", scope: "session", scope_id: "sess-1" })], holdsOn: true });
   try {

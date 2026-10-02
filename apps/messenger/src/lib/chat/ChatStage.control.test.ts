@@ -152,6 +152,20 @@ test("a Bot's reply in a group can be stopped once the daemon has stops, and the
   }
 });
 
+test("a direct's streaming reply carries no Stop of its own: the composer holds its one", () => {
+  const session = aDirect();
+  const turns = [aTurn({ id: "turn-9", session_id: session.id, bot_id: "bot-1", partial_text: "正在审第三镜" })];
+  for (const holdsOn of [false, true]) {
+    const { host, close } = stage(session, { turns, holdsOn });
+    try {
+      expect(host.textContent).toContain("正在审第三镜");
+      expect(host.querySelector(".btn-mini-stop")).toBeNull();
+    } finally {
+      close();
+    }
+  }
+});
+
 test("a restart notice carries 继续 and 不续, and the 「中断」 line it names offers no Continue of its own until it is answered", () => {
   const session = aDirect();
   const note = aMessage({ id: "cut", session_id: session.id, kind: "system", author: "bot-1", body: "中断", turn_id: "turn-cut" });

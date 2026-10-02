@@ -30,6 +30,8 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ### Fixes
 
+- A direct with a Bot now has one Stop. Beside Send there used to be a stop menu (stop this Bot's work, this job, every Bot) and, while a reply streamed, a second Stop on the reply itself. Now the composer has a single Stop button while the Bot has a turn going, and the reply's header has none in a direct (groups keep a Stop on each Bot's reply and their stop menu). The menu's choices were stops that stay until you lift them, so after "Stop X's work" the Bot kept answering read-only and the "Stopped" banner above the conversation list never went away; the Stop button's stop clears itself with your next line to the Bot, and no longer shows in that banner, which now lists only stops that wait for you to lift them.
+
 - Setting the group lead is now done on the member list instead of a card pinned above every group conversation. In the group's settings each Bot's row has one "Make lead" button (one click confirms; the lead carries a "Lead" badge and "Remove lead" clears it), replacing the card's native dropdown plus a separate confirm button. The daemon's suggestion shows as a hint on that member's row, so there is no "Not now" to press, and the conversation no longer loses a block of space to a setting you change once. The lead still takes effect only when you click; nothing sets it for you.
 
 - Fixed startup when upgrading a database from before work directories. The runtime now adds the turn's plan-attribution column before creating the work-item uniqueness index, preventing a missing `task_id` error. Existing data is preserved, and reopening remains safe.

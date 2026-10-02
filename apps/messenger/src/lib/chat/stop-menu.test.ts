@@ -10,17 +10,15 @@ function items(session = aDirect(), turns = [aTurn({ session_id: "botbot-1", tas
   return conversationStopItems({ session, turns, bots, holds, t, deleted: "已删除" });
 }
 
-test("in a direct: its Bot wherever it works, the job its work is in, every Bot", () => {
-  expect(items().map(({ label, choice }) => ({ label, choice }))).toEqual([
-    { label: "停下视频导演的全部工作", choice: { scope: "bot", id: "bot-1" } },
-    { label: "停下这件事", choice: { scope: "plan", id: "task-1" } },
-    { label: "停下所有 Bot", choice: { scope: "global", id: null } },
-  ]);
+test("a direct has no menu, however much its Bot has going: its one Stop is the button", () => {
+  expect(items()).toEqual([]);
+  expect(items(aDirect(), [aTurn({ session_id: "sess-direct", bot_id: "bot-1", task_id: "task-1" })])).toEqual([]);
 });
 
-test("nothing to stop while its Bot is idle, and nothing in a Bot↔Bot direct", () => {
-  expect(items(aDirect(), [aTurn({ status: "completed" })])).toEqual([]);
-  expect(items(aDirect(), [aTurn({ bot_id: "bot-2" })])).toEqual([]);
+test("nothing to stop while nobody in the group is at work, and nothing in a Bot↔Bot direct", () => {
+  const group = aGroup();
+  expect(items(group, [aTurn({ session_id: group.id, status: "completed" })])).toEqual([]);
+  expect(items(group, [aTurn({ session_id: "elsewhere" })])).toEqual([]);
   expect(items(aBotDirect(), [aTurn({ session_id: "botbot-1" })])).toEqual([]);
 });
 
@@ -31,8 +29,10 @@ test("in a group: the group, then each Bot at work there", () => {
 });
 
 test("what a stop in force already covers is left out; everything stopped leaves nothing", () => {
-  expect(items(aDirect(), undefined, [aHold()]).map((item) => item.choice.scope)).toEqual(["plan", "global"]);
-  expect(items(aDirect(), undefined, [aHold({ scope: "global", scope_id: null })])).toEqual([]);
+  const group = aGroup();
+  const turns = [aTurn({ session_id: group.id, bot_id: "bot-1", task_id: "task-1" })];
+  expect(items(group, turns, [aHold()]).map((item) => item.choice.scope)).toEqual(["session", "plan", "global"]);
+  expect(items(group, turns, [aHold({ scope: "global", scope_id: null })])).toEqual([]);
 });
 
 test("the board: its job by name, and every Bot", () => {

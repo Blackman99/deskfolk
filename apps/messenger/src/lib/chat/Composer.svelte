@@ -136,12 +136,12 @@
 
 	const lockedComposer = $derived(composerLocked(selected, botsById));
 	/**
-	 * What else can be stopped from here, beside the Stop button: this Bot wherever it works, this
-	 * job, every Bot (ADR 0040 P2). Only once the daemon has stops, and only while someone it names
-	 * is at work — a group, too, where Send stays the main button.
+	 * A group's stop menu: the group, each Bot at work in it, this job, every Bot (ADR 0040 P2).
+	 * Only once the daemon has stops, and only while someone in it is at work; Send stays the main
+	 * button there. A direct has no menu — see `directStop`.
 	 */
 	const stopItems = $derived(
-		selected && snapshot.holdsOn && !lockedComposer
+		selected?.kind === 'group' && snapshot.holdsOn && !lockedComposer
 			? conversationStopItems({ session: selected, turns: snapshot.turns, bots: botsById, holds: snapshot.holds, t: t.control, deleted: t.top.deleted })
 			: []
 	);
@@ -186,6 +186,15 @@
 		sessionKind: fileDrop ? 'file-drop' : (selected?.kind ?? null),
 		turnInbox: snapshot.turnInbox,
 	}));
+
+	/**
+	 * A direct's one Stop: beside Send while its Bot has a turn going here, because the box stays open
+	 * for your next line (otherwise Stop is the main button already). It stops that turn, and your next
+	 * line to the Bot is what it goes on from.
+	 */
+	const directStop = $derived(
+		selectedKind === 'you-bot' && !lockedComposer && Boolean(liveTurn) && primaryAction.kind === 'send'
+	);
 
 	/**
 	 * A send the Mac next door answers at once shows nothing. One still on its way after this long —
@@ -1037,6 +1046,18 @@
 		{/if}
 		{#if stopItems.length > 0}
 			<StopMenu items={stopItems} {t} disabled={!connected} onPick={pickStop} />
+		{/if}
+		{#if directStop}
+			<button
+				type="button"
+				class="composer-action stop"
+				disabled={!connected}
+				aria-label={t.composer.stopGeneration}
+				title={t.composer.stopGeneration}
+				onclick={() => void runtime.stopTurn(selected?.id)}
+			>
+				<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
+			</button>
 		{/if}
 		<button
 			type="button"

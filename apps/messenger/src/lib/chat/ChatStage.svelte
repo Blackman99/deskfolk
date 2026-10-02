@@ -1726,7 +1726,7 @@
 										{streamingLabel(single.turn)}
 									</span>
 									<span class="duration-badge mono live">⏱️ {liveElapsed}</span>
-									{#if selected?.kind !== 'group' || snapshot.holdsOn}
+									{#if selected?.kind === 'group' && snapshot.holdsOn}
 										<button
 											type="button"
 											class="btn-mini-stop"
@@ -1783,7 +1783,7 @@
 													{streamingLabel(item.turn)}
 												</span>
 												<span class="duration-badge mono live">⏱️ {liveElapsed}</span>
-												{#if selected?.kind !== 'group' || snapshot.holdsOn}
+												{#if selected?.kind === 'group' && snapshot.holdsOn}
 													<button
 														type="button"
 														class="btn-mini-stop"

@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { FILE_DROP_SESSION_ID, USER_MEMBER } from "@real-bot/protocol";
 import { flushSync, tick } from "svelte";
 import { copyFor } from "../copy.ts";
-import { aBot, aBotDirect, aDirect, aTurn, fakeRuntime } from "../test-fixtures.ts";
+import { aBot, aBotDirect, aDirect, aGroup, aTurn, fakeRuntime } from "../test-fixtures.ts";
 import { reactive } from "../test-reactive.svelte.ts";
 import { buttonByText, click, render } from "../test-render.ts";
 import { pressWorkspacePaths, type WorkspaceDragItem } from "../workspace-drag.svelte.ts";
@@ -699,17 +699,56 @@ test("the file conversation, a locked composer and one already sending take noth
   }
 });
 
-test("the stop menu sits beside the Stop button while the Bot works anywhere, and stops the chosen scope from here", async () => {
+test("a direct has one Stop, beside Send while its Bot works here: it stops that turn, with no menu to pick a scope from", async () => {
   // A drag test above leaves its release's click to be swallowed until the next macrotask.
   await new Promise((resolve) => setTimeout(resolve, 0));
   const selected = aDirect();
-  const turns = [aTurn({ session_id: "botbot-1", bot_id: "bot-1", task_id: "task-1" })];
+  const turns = [aTurn({ id: "turn-7", session_id: selected.id, bot_id: "bot-1", task_id: "task-1" })];
+  const runtime = reactive(fakeRuntime({ bots: [aBot({ id: "bot-1", name: "视频导演" })], sessions: [selected], turns, holdsOn: true, turnInbox: true }));
+  runtime.selectedId = selected.id;
+  const { host, close } = render(Composer, { runtime, t, selected, onSend: async () => true, onPickPrompt: () => {} });
+  try {
+    expect(host.querySelector(".stop-menu-trigger")).toBeNull();
+    const stops = [...host.querySelectorAll<HTMLButtonElement>(".composer-action.stop")];
+    expect(stops).toHaveLength(1);
+    expect(stops[0]!.getAttribute("aria-label")).toBe(t.composer.stopGeneration);
+    expect(host.querySelector(".composer-action.send")).not.toBeNull();
+    click(stops[0]);
+    expect(runtime.calls.filter((call) => call.name === "stopTurn").map((call) => call.args)).toEqual([[selected.id]]);
+  } finally {
+    close();
+  }
+});
+
+test("a direct's Stop is never a second one: where Stop already replaces Send there is just that, and idle Bots show none", () => {
+  const selected = aDirect();
+  const working = [aTurn({ session_id: selected.id })];
+  const replacing = reactive(fakeRuntime({ bots: [aBot({ id: "bot-1" })], sessions: [selected], turns: working, holdsOn: true, turnInbox: false }));
+  replacing.selectedId = selected.id;
+  const one = render(Composer, { runtime: replacing, t, selected, onSend: async () => true, onPickPrompt: () => {} });
+  expect(one.host.querySelectorAll(".composer-action.stop")).toHaveLength(1);
+  expect(one.host.querySelector(".composer-action.send")).toBeNull();
+  one.close();
+  for (const turns of [[], [aTurn({ session_id: selected.id, status: "completed" })], [aTurn({ session_id: "elsewhere" })]]) {
+    const runtime = reactive(fakeRuntime({ bots: [aBot({ id: "bot-1" })], sessions: [selected], turns, holdsOn: true, turnInbox: true }));
+    runtime.selectedId = selected.id;
+    const none = render(Composer, { runtime, t, selected, onSend: async () => true, onPickPrompt: () => {} });
+    expect(none.host.querySelector(".composer-action.stop")).toBeNull();
+    expect(none.host.querySelector(".stop-menu-trigger")).toBeNull();
+    none.close();
+  }
+});
+
+test("a group's stop menu sits beside Send while a Bot works in it, and stops the chosen scope from here", () => {
+  const selected = aGroup();
+  const turns = [aTurn({ session_id: selected.id, bot_id: "bot-1", task_id: "task-1" })];
   const runtime = reactive(fakeRuntime({ bots: [aBot({ id: "bot-1", name: "视频导演" })], sessions: [selected], turns, holdsOn: true }));
   runtime.selectedId = selected.id;
   const { host, close } = render(Composer, { runtime, t, selected, onSend: async () => true, onPickPrompt: () => {} });
   try {
+    expect(host.querySelector(".composer-action.stop")).toBeNull();
     click(host.querySelector(".stop-menu-trigger"));
-    expect([...host.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent)).toEqual(["停下视频导演的全部工作", "停下这件事", "停下所有 Bot"]);
+    expect([...host.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent)).toEqual(["停下这个群里的工作", "停下视频导演的全部工作", "停下这件事", "停下所有 Bot"]);
     click(buttonByText(host, "停下这件事"));
     expect(runtime.calls.filter((call) => call.name === "stopScope").map((call) => call.args)).toEqual([["plan", "task-1", selected.id]]);
   } finally {
@@ -717,8 +756,8 @@ test("the stop menu sits beside the Stop button while the Bot works anywhere, an
   }
 });
 
-test("no stop menu before the daemon has stops, nor while nobody it names is at work", () => {
-  const selected = aDirect();
+test("no group stop menu before the daemon has stops, nor while nobody in it is at work", () => {
+  const selected = aGroup();
   for (const over of [{ turns: [aTurn({ session_id: selected.id })], holdsOn: false }, { turns: [], holdsOn: true }]) {
     const runtime = reactive(fakeRuntime({ bots: [aBot({ id: "bot-1" })], sessions: [selected], ...over }));
     runtime.selectedId = selected.id;
