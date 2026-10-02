@@ -530,6 +530,7 @@
 			signature: t.routes.signature,
 			failReason: t.routes.failReason,
 			thinking: t.routes.thinking,
+			reasonCode: t.routes.reasonCode,
 			unknownBot: deletedLabel
 		}
 	});
@@ -1001,7 +1002,15 @@
 									onOpenArtifacts={() => openNodeArtifacts(node)}
 								/>
 								{#if openRoute === node.turn_id && route}
-									<TraceRouteDetail {node} {route} {t} {providers} {onJump} onClose={() => (openRoute = null)} />
+									<TraceRouteDetail
+										{node}
+										{route}
+										{t}
+										{providers}
+										{onJump}
+										onClose={() => (openRoute = null)}
+										onMarkModel={api ? async (marked) => void (await api!.markTurnModel(node.turn_id, marked)) : undefined}
+									/>
 								{/if}
 							</div>
 						{/each}

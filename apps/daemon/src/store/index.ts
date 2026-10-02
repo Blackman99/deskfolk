@@ -88,6 +88,8 @@ import * as tickets from "./tickets";
 import * as turnRuns from "./turn-runs";
 import * as turns from "./turns";
 import * as workEvents from "./work-events";
+import * as quality from "./quality";
+import * as lessons from "./lessons";
 
 export { HttpError } from "../errors";
 export { isReservedTaskPath, localDate, BRIEF_MAX, PLAN_MAP_FILE, RESERVED_SUBDIRS, TICKET_FILE, WORK_ROOT } from "./tasks";
@@ -574,6 +576,16 @@ export class Store {
   readonly noteModelOnce = this.bind(modelDefaults.noteModelOnce);
   readonly turnNeedsPictures = this.bind(modelDefaults.turnNeedsPictures);
   readonly workEscalation = this.bind(escalation.workEscalation);
+  readonly learningOn = this.bind(quality.learningOn);
+  readonly listQualityEvents = this.bind(quality.listQualityEvents);
+  readonly qualityReport = this.bind(quality.qualityReport);
+  readonly markTurnModel = this.bind(quality.markTurnModel);
+  readonly turnMarkedModel = this.bind(quality.turnMarkedModel);
+  readonly checkShellLesson = this.bind(lessons.checkShellLesson);
+  readonly noteShellTimeout = this.bind(lessons.noteShellTimeout);
+  readonly listLessons = this.bind(lessons.listLessons);
+  readonly getLesson = this.bind(lessons.getLesson);
+  readonly updateLesson = this.bind(lessons.updateLesson);
   readonly answerModelDefaultCard = this.bind(modelDefaults.answerModelDefaultCard);
   readonly visionRefusal = this.bind(submissions.visionRefusal);
   readonly takeUpSubmission = this.bind(submissions.takeUpSubmission);

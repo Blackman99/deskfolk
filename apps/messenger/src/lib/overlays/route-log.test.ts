@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Bot, Provider, RouteRecord } from "@real-bot/protocol";
-import { routeLogRows, type RouteLogLabels } from "./route-log.ts";
+import { routeCardRow, routeLogRows, type RouteLogLabels } from "./route-log.ts";
 
 const LABELS: RouteLogLabels = {
   fault: { model: "模型的问题", task: "事情本身难", prompt: "需求没说清", none: "没有不满" },
@@ -299,4 +299,17 @@ test("a row carries the counted work, a retired review, and what the chain remem
   expect(row.toolErrors).toBe(2);
   expect(row.review).toMatchObject({ retired: true, effect: "followed", cleaner: false });
   expect(row.learning).toEqual({ kind: "memory", label: "重构先读现有函数" });
+});
+
+test("why it ran on a model without a pick reads as its label; a card offers marking only where the daemon says so", () => {
+  const labels = { ...LABELS, reasonCode: { pin: "你钉的", escalation: "连着没过，提了一档思考" } };
+  const [pinned, stepped, unknown, picked] = routeLogRows(
+    [record({ turn_id: "t4" }), record({ turn_id: "t3", reason_code: "other_reason" }), record({ turn_id: "t2", reason_code: "escalation" }), record({ turn_id: "t1", reason_code: "pin" })],
+    { bots: BOTS, providers: [], labels },
+  );
+  expect([pinned!.reasonLabel, stepped!.reasonLabel, unknown!.reasonLabel, picked!.reasonLabel]).toEqual(["你钉的", "连着没过，提了一档思考", "other_reason", null]);
+  expect(pinned!.markedModel).toBeNull();
+  const card = (marked_model?: boolean) => routeCardRow({ record: record(), review: null, learning: null, ...(marked_model === undefined ? {} : { marked_model }) },
+    { bots: BOTS, providers: [], labels });
+  expect([card().markedModel, card(false).markedModel, card(true).markedModel]).toEqual([null, false, true]);
 });

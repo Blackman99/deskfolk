@@ -338,6 +338,17 @@ test("attention never takes the ball from an open request's recipient", () => {
   expect(f.store.supervisorTick({ now: at(10 * MIN) }).wakes.map((wake) => wake.workItemId)).not.toContain(delegation.delegation.from_work_item_id);
 });
 
+test("from level 8 the supervisor's repair of a lost segment is filed as orchestration, the app's, not the Bot's", () => {
+  const f = fixture();
+  const turn = segment(f);
+  f.store.db.run("UPDATE settings SET value = ? WHERE key = 'engine_level'", [String(ENGINE_LEVELS.delegation)]);
+  f.store.interruptTurnRecord(turn.id);
+  f.store.db.run("UPDATE settings SET value = ? WHERE key = 'engine_level'", [String(ENGINE_LEVELS.learning)]);
+  expect(f.store.supervisorTick({ now: at(0) }).repaired).toMatchObject([{ reason: "lost_segment" }]);
+  expect(f.store.listQualityEvents().map((row) => [row.kind, row.category, row.bot_id])).toEqual([["supervisor:lost_segment", "orchestration", f.owner.id]]);
+  expect(f.store.qualityReport({ days: 1 })).toEqual([]);
+});
+
 test("a running item whose segment was interrupted unseen is repaired and picked up", () => {
   const f = fixture();
   const turn = segment(f);

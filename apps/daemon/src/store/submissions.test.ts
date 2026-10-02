@@ -383,6 +383,15 @@ test("with no reviewer the tick reads the checks as they are now — a gate fail
   void produced;
 });
 
+test("from level 8 a gate that fails at the tick, not at hand-over, is filed once as the producer's failed checks", () => {
+  const f = fixture(ENGINE_LEVELS.learning);
+  const { submission } = handedOver(f);
+  gate(f, "fail");
+  superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
+  // The check came after the hand-over: what it asks was not clear when the work was handed over.
+  expect(f.store.listQualityEvents().map((row) => [row.kind, row.category, row.bot_id, row.submission_id])).toEqual([["checks_failed", "unclear", f.producer.id, submission.id]]);
+});
+
 test("with no reviewer, a required item nothing backs asks you; dropping it on the board lets the next tick approve", () => {
   const f = fixture();
   const { submission } = handedOver(f);

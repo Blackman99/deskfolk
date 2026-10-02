@@ -31,6 +31,7 @@ import { createNotification, updateNotificationActionState } from "./notificatio
 import { emptyPlanSpec, parsePlanSpec } from "./plan-shape";
 import { requirementsBearingOn, setRequirementHere, waiveRequirement } from "./requirements";
 import { noteHandOverFailed, resetEscalation } from "./escalation";
+import { learningOn } from "./quality";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import { settingsCached } from "./settings";
 import { requireNonEmpty, type StoreContext } from "./shared";
@@ -600,6 +601,11 @@ function failOnGates(ctx: StoreContext, submission: Submission, checks: Submissi
     workItemId: submission.work_item_id, submissionId: submission.id, now });
   const failed = getSubmission(ctx, submission.id);
   setPartStage(ctx, failed, "rework");
+  // Filed here, whichever way the gate failed — at hand-over, or later on your approval (ADR 0050).
+  if (learningOn(ctx)) {
+    recordWorkEvent(ctx, { kind: "submission.gates_failed", actor: "app", botId: submission.bot_id, taskId: submission.task_id, ticketId: submission.ticket_id,
+      turnId: submission.turn_id, payload: { submission_id: submission.id, failures: checks.filter(gateFailed).map((check) => check.check_id) } });
+  }
   const ceiling = checkCeiling(ctx, failed, now);
   noteHandOverFailed(ctx, submission.work_item_id, now);
   if (!tell) return;

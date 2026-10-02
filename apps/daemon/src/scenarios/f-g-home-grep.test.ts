@@ -56,3 +56,52 @@ test.skipIf(process.platform === "win32")("a search rooted at your home folder i
   // Scoped to the workspace, the same search runs.
   expect(ran[3]).toEqual({ command: `grep -rn "BEACON ZERO" .`, approval: null, ok: true });
 });
+
+/**
+ * Since ADR 0050 (engine level 8): what the guard cannot parse — a search piped into something else —
+ * is caught after the fact instead. The first one the shell's timeout kills becomes a lesson on that
+ * kind of call; the next call of the kind in a turn is held back once, and runs only if the Bot
+ * repeats it; timing out again then turns the lesson into a block, for every Bot. A `sleep` stands
+ * in for the walk that never ends, and the timeout is cut to a fraction of a second.
+ */
+test.skipIf(process.platform === "win32")("a piped search that timed out becomes a lesson: held back once, blocked after it recurs", async () => {
+  const h = await createScenario({ learning: true, shellTimeoutMs: 400 });
+  open.push(h);
+  const [director, editor] = h.createBots("视频导演", "剪辑师");
+  const slow = (pattern: string) => `grep -rn "${pattern}" . | sleep 5`;
+  h.script(director!, h.direct(director!)).reply(
+    call(shell(slow("BEACON ZERO"))),
+    call(shell(slow("BEACON ONE"))),
+    call(shell(slow("BEACON ONE"))),
+    call(shell(`grep -rn "BEACON" .`)),
+    call(shell(`grep -rn "BEACON" notes`)),
+    say("先不搜了"),
+  );
+  h.postUser(h.direct(director!), "找一下哪里写过 BEACON ZERO 的设定");
+  await h.waitIdle();
+
+  const ran = h.toolCalls(director!, "shell").map(({ args, result }) => ({ command: args.command, error: result?.error ?? null }));
+  expect(ran).toEqual([
+    // Killed by the timeout: the lesson is learned from it.
+    { command: slow("BEACON ZERO"), error: "failed" },
+    // The same kind of call is held back once…
+    { command: slow("BEACON ONE"), error: "refused" },
+    // …and runs when the Bot repeats it, times out again,
+    { command: slow("BEACON ONE"), error: "failed" },
+    // after which that kind of call is refused, piped or not;
+    { command: `grep -rn "BEACON" .`, error: "refused" },
+    // a search narrowed to a folder below is another kind of call.
+    { command: `grep -rn "BEACON" notes`, error: null },
+  ]);
+  const lessons = h.store.listLessons();
+  expect(lessons).toHaveLength(1);
+  expect(lessons[0]).toMatchObject({ scope: "project", hook: "before_tool", action: "block", status: "active", recurrences: 1,
+    detector: { tool: "shell", signature: "grep -r@task", error: "timeout" } });
+  expect(h.store.listQualityEvents().map((row) => [row.kind, row.category]).sort()).toEqual([["lesson_recurred", "execution"], ["tool_timeout", "execution"]]);
+
+  // Shared by every Bot of the workspace, in a turn of its own.
+  h.script(editor!, h.direct(editor!)).reply(call(shell(slow("BEACON TWO"))), say("这条命令被拦了"));
+  h.postUser(h.direct(editor!), "也搜一下 BEACON TWO");
+  await h.waitIdle();
+  expect(h.toolCalls(editor!, "shell").map(({ result }) => result?.error ?? null)).toEqual(["refused"]);
+});

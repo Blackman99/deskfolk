@@ -4,6 +4,7 @@
  * there, to check afterwards and for later phases to draw from. Rows are never updated or deleted.
  */
 import { isoNow } from "../ids";
+import { projectQuality } from "./quality";
 import type { StoreContext } from "./shared";
 
 export type WorkEvent = {
@@ -56,7 +57,24 @@ export function recordWorkEvent(
       input.sessionId ?? null,
       JSON.stringify(input.payload ?? {}),
     )!;
-  return toWorkEvent(row);
+  const event = toWorkEvent(row);
+  projectWorkEvent(ctx, event);
+  return event;
+}
+
+/** From level 8 the events that say something went wrong are filed as quality events too (ADR 0050); never at the cost of the event itself. */
+function projectWorkEvent(ctx: StoreContext, event: WorkEvent): void {
+  try {
+    projectQuality(ctx, event);
+  } catch {
+    // a report row lost, not the work the event records
+  }
+}
+
+/** The same, for an event written with its own INSERT (the supervisor's carry a work item id): the row just inserted. */
+export function projectInsertedWorkEvent(ctx: StoreContext): void {
+  const row = ctx.db.query<WorkEventRow, []>("SELECT * FROM work_events WHERE seq = last_insert_rowid()").get();
+  if (row) projectWorkEvent(ctx, toWorkEvent(row));
 }
 
 /** Oldest first; `kind` narrows to one kind, `afterSeq` to what came after an event already read. */

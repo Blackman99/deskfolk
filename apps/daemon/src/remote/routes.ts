@@ -16,7 +16,7 @@ const rate: Check = v => typeof v === "number" && Number.isFinite(v) && v >= 0;
 const pricing = object({ input: rate, output: rate, cached_input: rate }, ["input", "output"]);
 const positive: Check = v => typeof v === "number" && Number.isFinite(v) && v > 0;
 const models = list(v => string(v) || object({ name: string, price: nullable(v => typeof v === "number" && Number.isFinite(v)), pricing, thinking_levels: list(string), strengths: list(string),
-  max_output: nullable(v => positive(v) && Number.isInteger(v)), stream_tps_p10: nullable(positive), reasoning_effective: nullable(bool) }, ["name"])(v));
+  max_output: nullable(v => positive(v) && Number.isInteger(v)), stream_tps_p10: nullable(positive), reasoning_effective: nullable(bool), input_image: nullable(bool) }, ["name"])(v));
 const schedule: Check = v => object({ kind: one("daily"), time: string }, ["kind", "time"])(v) ||
   object({ kind: one("weekly"), time: string, weekdays: list(string) }, ["kind", "time", "weekdays"])(v);
 const bot = { name: string, duties: string, boundaries: string, avatar: nullable(string), model: nullable(string), provider_id: nullable(id), thinking_level: nullable(string) };
@@ -37,6 +37,10 @@ function get(pattern: string, query?: Fields, queryRequired?: string[]): void { 
 get("(snapshot|settings|providers|bots|sessions|allow-rules|mcp-servers|skills|memories|routines|credential-operations|capabilities)");
 get("(providers|bots|sessions|attachments|requests|tasks)/:id");
 get("sessions/:id/(judgements|routes|composer-suggestions)");
+// ADR 0050: quality events, the report and lessons; marking a turn's trouble as the model's.
+get("quality/events", { bot_id: string, ticket_id: string, category: one("model", "pipeline", "execution", "review_miss", "unclear", "orchestration"), limit: v => typeof v === "string" && /^[1-9][0-9]{0,2}$/.test(v) });
+get("quality/report", { days: v => typeof v === "string" && /^[1-9][0-9]?$/.test(v) });
+get("lessons", { status: one("candidate", "active", "retired") });
 const pageLimit: Check = v => typeof v === "string" && /^[1-9][0-9]{0,2}$/.test(v) && Number(v) <= 200;
 get("sessions/:id/snapshot", { limit: pageLimit });
 get("sessions/:id/messages", { cursor: v => typeof v === "string" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z\|[0-9A-HJKMNP-TV-Z]{26}$/.test(v), limit: pageLimit });
@@ -151,6 +155,8 @@ add("POST", "skills", { ...skill, bot_id: id }, ["bot_id", "name", "description"
 add("POST", "routines", { ...routine, bot_id: id }, ["bot_id", "title", "instruction", "schedule"]);
 add("POST", "sessions", { name: string, members: list(id) }, ["name", "members"]);
 add("POST", "allow-rules", { kind_key: string, scope: string }, ["kind_key", "scope"]);
+add("POST", "turns/:id/mark-model"); add("DELETE", "turns/:id/mark-model");
+add("PATCH", "lessons/:id", { status: one("active", "retired"), action: one("warn", "block"), text: string }, [], true);
 add("POST", "turns/stop", { turn_id: id }, ["turn_id"]); add("POST", "turns/continue", { message_id: id }, ["message_id"]);
 add("POST", "sessions/:id/messages", { body: string, parent_id: nullable(id), ask_id: nullable(id), fork: bool, files: list(object({ filename: string, size: v => typeof v === "number" && Number.isSafeInteger(v) && v >= 0, sha256: v => typeof v === "string" && /^[0-9a-f]{64}$/.test(v) }, ["filename", "size", "sha256"])), paths: list(v => typeof v === "string" && v.length > 0 && v.length <= 4096) }, ["body"]);
 add("POST", "sessions/:id/members", { bot_id: id }, ["bot_id"]);

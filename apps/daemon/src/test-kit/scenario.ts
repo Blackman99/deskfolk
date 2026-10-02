@@ -327,6 +327,10 @@ export type ScenarioOptions = {
   jobs?: boolean;
   /** Takes the engine level up to P5's default models instead of a per-turn pick (ADR 0048), which includes jobs. */
   routing?: boolean;
+  /** Takes the engine level up to P5's quality events and lessons instead of chain reviews (ADR 0050), which includes routing. */
+  learning?: boolean;
+  /** Overrides the shell's 10-minute timeout, so a command can run into it within a test. */
+  shellTimeoutMs?: number;
 };
 
 export type Scenario = {
@@ -494,7 +498,7 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
   });
   // Phase fixtures pin their own level rather than taking the database up to this build's: later
   // levels change the filing, wake and ending paths they exercise.
-  const pinned = options.routing ? ENGINE_LEVELS.routing : options.jobs ? ENGINE_LEVELS.jobs : options.submissions ? ENGINE_LEVELS.submissions : options.supervision ? ENGINE_LEVELS.supervision : options.delegation ? ENGINE_LEVELS.delegation : options.workItems ? ENGINE_LEVELS.work_items : options.holds ? ENGINE_LEVELS.holds : 0;
+  const pinned = options.learning ? ENGINE_LEVELS.learning : options.routing ? ENGINE_LEVELS.routing : options.jobs ? ENGINE_LEVELS.jobs : options.submissions ? ENGINE_LEVELS.submissions : options.supervision ? ENGINE_LEVELS.supervision : options.delegation ? ENGINE_LEVELS.delegation : options.workItems ? ENGINE_LEVELS.work_items : options.holds ? ENGINE_LEVELS.holds : 0;
   if (pinned > 0) {
     for (const key of ["engine_level", "schema_min_compatible"]) {
       // A level may leave the floor where the one below set it (level 7's is 6): never above what this build reads.
@@ -844,6 +848,7 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
       chainQuietMs,
       planLeftQuietMs,
       ...(options.ablation ? { ablation: options.ablation } : {}),
+      ...(options.shellTimeoutMs !== undefined ? { shellTimeoutMs: options.shellTimeoutMs } : {}),
     });
   }
 

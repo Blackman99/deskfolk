@@ -1187,6 +1187,11 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       });
       store.voidPendingTurnActions(turnId, "turn_failed", now);
       store.finishTurnRoute(turnId, "failed", kind, executionOf(live));
+      // From level 8 how the turn failed is filed by its shape: a loop or a refusal is the model's (ADR 0050).
+      if (store.learningOn()) {
+        store.recordWorkEvent({ kind: "turn.failed", actor: "app", botId: current.bot_id, taskId: current.task_id, ticketId: current.ticket_id,
+          turnId, sessionId: current.session_id, payload: { fail_kind: kind } });
+      }
       // From the supervisor's level the job needs attention; its 「继续」 line is this failure line.
       store.markSegmentCutOff(turnId, kind);
       if (store.isPresent(current.session_id, USER_MEMBER)) {

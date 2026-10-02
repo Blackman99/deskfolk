@@ -6,6 +6,14 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Quality events and lessons instead of after-the-fact reviews (engine level 8, opt-in)
+
+- What went wrong is filed as a quality event by the event's own type — checks failed, rejects, send-backs, complaints and timeouts as execution; a requirement first said after a hand-over as unclear; looping, declined or cut replies as the model's; failed renders and parts at the capability ceiling as the pipeline's; overturned approvals as review misses; stalls and crashes as orchestration — each on the Bot and model it is about. A board card's model choice says why the turn ran on its model and can be marked as the model's problem. `GET /v1/quality/report` sums it per Bot × model × plan kind with the spend per approval.
+- A search that walks a tree and was killed by the timeout becomes a lesson on that kind of call for every Bot of the workspace: held back once with a warning, run when the Bot repeats it, blocked from then on if it times out again. Settings' Lessons page shows them and switches, retires or restores each.
+- Chains are no longer reviewed afterwards and replies no longer count as feedback on the model choice. See [ADR 0050](docs/adr/0050-quality-events-and-lessons.md).
+- The phone's endpoint form can save whether a model takes pictures (the remote whitelist did not accept `input_image`).
+- The home-folder search guard (every engine level) reads grep's and rg's flags the way they do: a file of patterns (`-f`, `--file`), a value glued on (`-rA3`, `rg -tmd`), a context count that may or may not follow (`-C`, `--context`) and `rg --files` no longer hide `~` or `/` as the search's root, and `grep -d recurse` (BSD's `-drecurse`, `--directories=recurse`) counts as a recursive search.
+
 ### Default models instead of a per-turn pick (engine level 7, opt-in)
 
 - At engine level 7 no model call picks what a turn runs on: your pin, else the Bot's default model, else the endpoint's default, with the reason (`pin`, `default`, `endpoint_default`, `pin_unlisted`) kept on each turn's route record. Thinking levels are matched to what the model offers; a Bot pinned to an endpoint only stays on it; a pin no endpoint lists any more runs on the endpoint's default and you are told once. A Bot's default is inferred the first time it is needed from what it ran on most in the last 7 days among models still listed, at the thinking level it ran that model on most, and put to you once on a card in your direct with it (keep it, or use the endpoint's default); it is used until you answer. Level 7 leaves the compatibility floor at 6. See [ADR 0048](docs/adr/0048-default-models.md).

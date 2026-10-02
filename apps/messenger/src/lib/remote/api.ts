@@ -1,4 +1,6 @@
 import type {
+  Lesson,
+  LessonPatch,
   AnswerAskRequest,
   ClearSessionRequest,
   ControlActionRequest,
@@ -561,6 +563,21 @@ export class RemoteApi {
   /** The turns that share a work dir, read back as one picture. Pulled when the trace opens. */
   async taskTrace(taskId: string): Promise<TaskTrace> {
     return this.get<TaskTrace>(`/v1/tasks/${encodeURIComponent(taskId)}/trace`);
+  }
+
+  /** Your 「记为模型问题」 on a board card (ADR 0050), or taking it back. */
+  async markTurnModel(turnId: string, marked: boolean): Promise<{ turn_id: string; marked: boolean }> {
+    return this.request<{ turn_id: string; marked: boolean }>(marked ? "POST" : "DELETE", `/v1/turns/${encodeURIComponent(turnId)}/mark-model`);
+  }
+
+  /** What the app learned from failures and checks itself (ADR 0050), newest first. */
+  async listLessons(): Promise<Lesson[]> {
+    return (await this.get<ListPage<Lesson>>("/v1/lessons")).items;
+  }
+
+  /** Your edit of a lesson: retire it, bring it back, warn or block, reword it. */
+  async patchLesson(id: string, patch: LessonPatch): Promise<Lesson> {
+    return this.patch<Lesson>(`/v1/lessons/${encodeURIComponent(id)}`, patch);
   }
 
   /** One plan whole: the switcher row plus its spec, revision and tickets with their artifacts. */

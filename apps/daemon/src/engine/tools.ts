@@ -72,6 +72,8 @@ const FAILURE_ERROR_MAX = 240;
 
 export type ToolsDeps = {
   store: Store;
+  /** Overrides the shell's 10-minute timeout; tests use a short one. */
+  shellTimeoutMs?: number;
   publish: (event: ClientEvent) => void;
   publishMessage: (message: Message) => void;
   publishTurn: (turn: Turn, partial?: string | null) => void;
@@ -619,6 +621,7 @@ export function createTools(deps: ToolsDeps): Tools {
       return isWorkspaceTool(name)
         ? await runWorkspaceTool(
             { store, signal: live.abort.signal, workDir: live.workDir, stream: streams, streamId, wake,
+              ...(deps.shellTimeoutMs !== undefined ? { shellTimeoutMs: deps.shellTimeoutMs } : {}),
               turnId: turn.id, toolCallId: callId,
                onEffectStart: callId && store.capabilities().engine_level >= ENGINE_LEVELS.supervision
                  ? (tool) => {

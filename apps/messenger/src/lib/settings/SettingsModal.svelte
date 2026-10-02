@@ -3,6 +3,8 @@
 	import { untrack } from 'svelte';
 	import { pageSlide } from '../mobile-page-slide.ts';
 	import McpSettings from './McpSettings.svelte';
+	import LessonsSettings from './LessonsSettings.svelte';
+	import type { Lesson } from '@real-bot/protocol';
 	import { backdropClick } from '../click-outside.ts';
 	import WorkspacePicker from './WorkspacePicker.svelte';
 	import ProviderForm from './ProviderForm.svelte';
@@ -53,7 +55,7 @@
 	import NotificationSettings from './NotificationSettings.svelte';
 	import RelayGuide from './RelayGuide.svelte';
 
-	type SettingsTab = 'general' | 'models' | 'mcp' | 'notifications' | 'remote' | 'about';
+	type SettingsTab = 'general' | 'models' | 'mcp' | 'notifications' | 'lessons' | 'remote' | 'about';
 
 	type Props = {
 		mobileSettingsDetail?: boolean;
@@ -142,6 +144,20 @@
 	}
 
 	let mcpSettings = $state<McpSettings>();
+
+	// Lessons the app learned (ADR 0050, engine level 8): the tab is there once there is one.
+	let lessons = $state<Lesson[]>([]);
+	$effect(() => {
+		const api = runtime.client;
+		if (!runtime.settingsOpen || !api || runtime.connection !== 'connected') return;
+		void api.listLessons().then(
+			(items) => {
+				if (runtime.client === api) lessons = items;
+			},
+			() => {}
+		);
+	});
+	const lessonsTabVisible = $derived(lessons.length > 0);
 	let providerForm = $state<ProviderForm>();
 	let providerDetailModel = $state<string | null>(null);
 
@@ -192,6 +208,8 @@
 					? t.settings.tabMcp
 					: tab === 'notifications'
 						? t.settings.tabNotifications
+						: tab === 'lessons'
+							? t.settings.tabLessons
 						: tab === 'remote'
 							? t.settings.tabRemote
 							: t.settings.tabAbout;
@@ -854,6 +872,22 @@
 						<span class="tab-name">{t.settings.tabNotifications}</span>
 					</button>
 
+					{#if lessonsTabVisible}
+						<button
+							type="button"
+							class="settings-tab-btn"
+							class:is-active={activeSettingsTab === 'lessons'}
+							data-settings-tab="lessons"
+							onclick={() => openSettingsTab('lessons')}
+						>
+							<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+								<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+								<path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+							</svg>
+							<span class="tab-name">{t.settings.tabLessons}</span>
+						</button>
+					{/if}
+
 					{#if remoteTabVisible}
 						<button
 							type="button"
@@ -1332,6 +1366,8 @@
 					<McpSettings bind:this={mcpSettings} {runtime} {t} {closeSettings} />
 				{:else if activeSettingsTab === 'notifications'}
 					<NotificationSettings {runtime} {t} />
+				{:else if activeSettingsTab === 'lessons' && lessonsTabVisible}
+					<LessonsSettings {lessons} {t} onPatch={(id, patch) => runtime.client!.patchLesson(id, patch)} />
 				{:else if activeSettingsTab === 'remote' && remoteTabVisible}
 					<div class="settings-tab-pane">
 						<div class="settings-card settings-card-remote">

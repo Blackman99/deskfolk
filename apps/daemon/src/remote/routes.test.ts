@@ -227,7 +227,19 @@ test("a model entry may carry its output cap, measured speed and reasoning verdi
   const save = (models: unknown[]): RemoteRequest => ({ v: 1, id, method: "POST", path: "/v1/providers", body: { name: "p", base_url: "https://x", models } });
   expect(() => validateBusiness(save([{ name: "grok", max_output: 32_768, stream_tps_p10: 42.5, reasoning_effective: false }]))).not.toThrow();
   expect(() => validateBusiness(save([{ name: "grok", max_output: null, stream_tps_p10: null, reasoning_effective: null }]))).not.toThrow();
-  for (const bad of [{ max_output: 0 }, { max_output: 1.5 }, { max_output: "32k" }, { stream_tps_p10: -1 }, { reasoning_effective: "yes" }]) {
+  expect(() => validateBusiness(save([{ name: "gemini", input_image: true }, { name: "grok", input_image: null }]))).not.toThrow();
+  for (const bad of [{ max_output: 0 }, { max_output: 1.5 }, { max_output: "32k" }, { stream_tps_p10: -1 }, { reasoning_effective: "yes" }, { input_image: "yes" }]) {
     expect(() => validateBusiness(save([{ name: "grok", ...bad }]))).toThrow();
   }
+});
+
+test("quality events, the report and lessons are readable remotely; a lesson can be retired and a turn marked", () => {
+  expect(() => validateBusiness({ v: 1, id, method: "GET", path: "/v1/quality/events", query: { category: "model", limit: "50" } })).not.toThrow();
+  expect(() => validateBusiness({ v: 1, id, method: "GET", path: "/v1/quality/events", query: { category: "blame" } })).toThrow();
+  expect(() => validateBusiness({ v: 1, id, method: "GET", path: "/v1/quality/report", query: { days: "7" } })).not.toThrow();
+  expect(() => validateBusiness({ v: 1, id, method: "GET", path: "/v1/lessons" })).not.toThrow();
+  expect(() => validateBusiness({ v: 1, id, method: "PATCH", path: `/v1/lessons/${id}`, body: { status: "retired" } })).not.toThrow();
+  expect(() => validateBusiness({ v: 1, id, method: "PATCH", path: `/v1/lessons/${id}`, body: { status: "candidate" } })).toThrow();
+  expect(() => validateBusiness({ v: 1, id, method: "POST", path: `/v1/turns/${id}/mark-model` })).not.toThrow();
+  expect(() => validateBusiness({ v: 1, id, method: "DELETE", path: `/v1/turns/${id}/mark-model` })).not.toThrow();
 });

@@ -13,7 +13,7 @@ import { atomicWrite, withFileLock } from "./file-integrity";
 import { HttpError } from "./errors";
 import { killProcessTree, toolShell } from "./platform";
 import { recordLiveProc, signalGroup, stopGroup } from "./live-procs";
-import { recursiveSearchGuard, searchGuardMessage } from "./search-guard";
+import { commandSignature, recursiveSearchGuard, searchGuardMessage } from "./search-guard";
 import { isReservedTaskPath, type Store } from "./store";
 import { skipName } from "./workspace-browse";
 import { classifyPath, classifyShell } from "./workspace-paths";
@@ -306,6 +306,24 @@ async function runShell(
     const hit = recursiveSearchGuard(root, command, classified.cwdAbs);
     if (hit) return fail("refused", searchGuardMessage(hit));
   }
+  // What the app learned from a timeout of this kind of command (ADR 0050, level 8): a warning
+  // holds it back once per turn, a block always.
+  let lesson: { signature: string; head: string; place: string; botId: string | null; overriding: string | null } | null = null;
+  if (shell.kind === "sh" && ctx.turnId && ctx.store.learningOn()) {
+    const kind = commandSignature(root, command, classified.cwdAbs, ctx.workDir ?? null);
+    // Only a search that walks a tree is learned from: a render or a build running long is not a mistake.
+    if (kind?.walks) {
+      let botId: string | null = null;
+      try {
+        botId = ctx.store.getTurn(ctx.turnId).bot_id;
+      } catch {
+        botId = null;
+      }
+      const check = ctx.store.checkShellLesson({ workspace: root, turnId: ctx.turnId, botId, signature: kind.signature });
+      if (check.refuse !== null) return fail("refused", check.refuse);
+      lesson = { signature: kind.signature, head: kind.head, place: kind.place, botId, overriding: check.overriding };
+    }
+  }
   // The work dir is created here rather than up front: a turn that only talks should not leave an
   // empty folder behind, but a cwd that does not exist fails the spawn.
   if (!explicitCwd && ctx.workDir && classified.kind === "jailed") {
@@ -408,6 +426,14 @@ async function runShell(
     ctx.signal.removeEventListener("abort", abort);
     if (settled === "interrupted" || ctx.signal.aborted) return fail("failed", "interrupted");
     if (settled === "timeout") {
+      if (lesson) {
+        try {
+          ctx.store.noteShellTimeout({ workspace: root, turnId: ctx.turnId ?? null, botId: lesson.botId, signature: lesson.signature, head: lesson.head,
+            place: lesson.place, seconds: Math.round(timeoutMs / 1000), overriding: lesson.overriding });
+        } catch {
+          // the lesson is best effort; the timeout is reported either way
+        }
+      }
       return fail("failed", `command timed out after ${Math.round(timeoutMs / 1000)}s and was killed`);
     }
     const [stdout, stderr, exit] = settled;

@@ -73,6 +73,14 @@ export function createChains(deps: ChainsDeps): Chains {
   const CHAIN_SWEEP_LIMIT = 20;
   const chainTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
+  function reviewsRetired(): boolean {
+    try {
+      return store.learningOn();
+    } catch {
+      return false;
+    }
+  }
+
   function chainFloor(): string {
     return new Date(Date.now() - CHAIN_MAX_AGE_MS).toISOString();
   }
@@ -83,7 +91,9 @@ export function createChains(deps: ChainsDeps): Chains {
    * only a confident `model` verdict is read back when picking later.
    */
   async function reviewChain(chainId: string): Promise<void> {
-    if (admission?.draining) return;
+    // From level 8 nothing reviews a chain after the fact (ADR 0050): what went wrong is a quality
+    // event filed by its type, and what the app learns is a lesson it checks itself.
+    if (admission?.draining || reviewsRetired()) return;
     let chain;
     try {
       chain = store.chainForReview(chainId);
@@ -355,6 +365,7 @@ export function createChains(deps: ChainsDeps): Chains {
   /** Closes whatever chain this Bot has open here, if any. */
   function closeChain(sessionId: string, botId: string): void {
     clearChainTimer(sessionId, botId);
+    if (reviewsRetired()) return;
     let chainId: string | null = null;
     try {
       chainId = store.openChain(sessionId, botId, chainFloor());
@@ -371,6 +382,7 @@ export function createChains(deps: ChainsDeps): Chains {
    * not quiet yet — a turn this restart interrupted has only just ended — get their clock back.
    */
   function sweepStaleChains(): void {
+    if (reviewsRetired()) return;
     const range = {
       quietBefore: new Date(Date.now() - CHAIN_QUIET_MS).toISOString(),
       notBefore: chainFloor(),
@@ -411,7 +423,7 @@ export function createChains(deps: ChainsDeps): Chains {
    * closed and only waited for the turn, so it is reviewed now.
    */
   function turnEnded(turnId: string): void {
-    if (admission?.draining) return;
+    if (admission?.draining || reviewsRetired()) return;
     let chain;
     try {
       chain = store.unreviewedChainOf(turnId);
@@ -436,7 +448,7 @@ export function createChains(deps: ChainsDeps): Chains {
   /** Restarts the quiet clock: every new word about the same thing pushes the review back. */
   function touchChain(sessionId: string, botId: string): void {
     clearChainTimer(sessionId, botId);
-    if (admission?.draining) return;
+    if (admission?.draining || reviewsRetired()) return;
     const key = chainKey(sessionId, botId);
     const timer = setTimeout(() => {
       chainTimers.delete(key);

@@ -8,6 +8,8 @@ import {
   type SessionSummary,
   type Turn,
 } from "@real-bot/protocol";
+import { forgetLessonSources } from "./lessons";
+import { forgetQualitySources } from "./quality";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { notBotOnlyLine, voidCheckBacks } from "./check-backs";
@@ -314,6 +316,9 @@ export function deleteSession(ctx: StoreContext, id: string, opts: { eraseQuotes
     // Reviews FK the turn and session; leaving them rolls the whole delete back.
     ctx.db.run(`DELETE FROM route_reviews WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM route_learnings WHERE session_id = ?`, [id]);
+    // Quality events and lessons outlive the history they came from (ADR 0050); only the links go.
+    forgetQualitySources(ctx, id);
+    forgetLessonSources(ctx, id);
     ctx.db.run(`DELETE FROM turn_route_decisions WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM turn_runs WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM judgements WHERE session_id = ?`, [id]);
@@ -393,6 +398,9 @@ export function clearSessionMessages(ctx: StoreContext, id: string, opts: { eras
     // Reviews FK the turn and session; leaving them rolls the whole clear back.
     ctx.db.run(`DELETE FROM route_reviews WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM route_learnings WHERE session_id = ?`, [id]);
+    // Quality events and lessons outlive the history they came from (ADR 0050); only the links go.
+    forgetQualitySources(ctx, id);
+    forgetLessonSources(ctx, id);
     ctx.db.run(`DELETE FROM turn_route_decisions WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM turn_runs WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM judgements WHERE session_id = ?`, [id]);

@@ -46,6 +46,7 @@ type DecisionRow = {
   repeated_failures: number | null;
   files_written: number | null;
   tool_failures: string | null;
+  reason_code?: string | null;
 };
 
 type FeedbackRow = {
@@ -1019,6 +1020,7 @@ function toRecord(row: DecisionRow, feedback: FeedbackRow[]): RouteRecord {
     tool_errors: row.tool_errors,
     repeated_failures: row.repeated_failures,
     files_written: row.files_written,
+    reason_code: row.reason_code ?? null,
     feedback: feedback.map(
       (item): RouteFeedback => ({ message_id: item.message_id, body: item.body, created_at: item.created_at }),
     ),

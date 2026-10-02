@@ -248,10 +248,28 @@ function stripRedirects(words: string[]): string[] {
   return out;
 }
 
-function isRecursiveGrepFlag(a: string): boolean {
-  if (a === "--recursive") return true;
-  if (a === "-r" || a === "-R") return true;
-  return /^-[a-zA-Z]+$/.test(a) && /[rR]/.test(a.slice(1));
+/**
+ * Whether grep is told to recurse: `-r`/`-R`/`--recursive`, or `-d recurse` / `--directories=recurse`
+ * (BSD's spelling of the same). A cluster is read getopt's way — flags up to the first one that takes
+ * a value, which takes the rest of the cluster (`-rA3`, `-drecurse`) or the next word.
+ */
+function grepRecurses(args: string[]): boolean {
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]!;
+    if (a === "--") return false;
+    if (a === "--recursive" || a === "--dereference-recursive" || a === "--directories=recurse") return true;
+    if (a === "--directories" && args[i + 1] === "recurse") return true;
+    if (!/^-[a-zA-Z]/.test(a)) continue;
+    for (let j = 1; j < a.length; j++) {
+      const letter = a[j]!;
+      if (letter === "r" || letter === "R") return true;
+      if (!GREP_VALUE_LETTERS.has(letter) && !GREP_OPTIONAL_LETTERS.has(letter)) continue;
+      const value = j < a.length - 1 ? a.slice(j + 1) : args[i + 1];
+      if (letter === "d" && value === "recurse") return true;
+      break;
+    }
+  }
+  return false;
 }
 
 function isRecursiveLsFlag(a: string): boolean {
@@ -262,7 +280,7 @@ function isRecursiveLsFlag(a: string): boolean {
 function isRecursive(tool: string, args: string[]): boolean {
   switch (tool) {
     case "grep":
-      return args.some(isRecursiveGrepFlag);
+      return grepRecurses(args);
     case "ls":
       return args.some(isRecursiveLsFlag);
     case "rg":
@@ -293,22 +311,56 @@ function isShallow(tool: string, args: string[]): boolean {
   return false;
 }
 
-/** grep/rg: the first non-flag word is the pattern (unless `-e`/`--regexp` gave one already). */
-function grepPaths(args: string[]): string[] {
+/** grep's and rg's flags that take the next word as their value: a count, a glob, a type, a file of patterns. */
+const GREP_VALUE_FLAGS = new Set(["--include", "--exclude", "--exclude-dir", "--after-context", "--before-context", "--max-count", "--file",
+  "--devices", "--directories", "--label"]);
+const RG_VALUE_FLAGS = new Set(["--glob", "--iglob", "--type", "--type-not", "--type-add", "--type-clear", "--max-count", "--max-columns", "--max-filesize",
+  "--max-depth", "--maxdepth", "--threads", "--encoding", "--replace", "--context", "--after-context", "--before-context", "--file", "--pre", "--pre-glob",
+  "--sort", "--sortr", "--colors", "--color", "--path-separator", "--ignore-file", "--context-separator", "--engine", "--dfa-size-limit", "--regex-size-limit"]);
+/** The short ones; in a cluster only the last letter can take the next word (`-rnA 3`), and one glued on (`-A3`) takes none. */
+const GREP_VALUE_LETTERS = new Set(["A", "B", "m", "f", "d", "D", "e"]);
+/**
+ * grep's context, whose number BSD grep takes only glued on (`-C2`, `--context=2`) and GNU grep also
+ * as the next word: read both ways, and a root either reading finds counts.
+ */
+const GREP_OPTIONAL_LETTERS = new Set(["C"]);
+const GREP_OPTIONAL_FLAGS = new Set(["--context"]);
+const RG_VALUE_LETTERS = new Set(["A", "B", "C", "m", "f", "g", "t", "T", "M", "j", "E", "r", "d", "e"]);
+
+/**
+ * grep/rg: the first non-flag word is the pattern, unless one came another way — `-e`/`--regexp`, a
+ * file of patterns (`-f`/`--file`), or rg's `--files`, which takes none; a flag's value is neither.
+ * A cluster of short flags is read the way getopt reads it: left to right, and the first letter that
+ * takes a value takes the rest of the cluster (`-tmd`, `-A3`), or the next word when it ends it
+ * (`-rnA 3`, `-rf pats`).
+ */
+function grepPaths(tool: string, args: string[], optionalTakesNext: boolean): string[] {
+  const longValued = tool === "rg" ? RG_VALUE_FLAGS : optionalTakesNext ? new Set([...GREP_VALUE_FLAGS, ...GREP_OPTIONAL_FLAGS]) : GREP_VALUE_FLAGS;
+  const letters = tool === "rg" ? RG_VALUE_LETTERS : optionalTakesNext ? new Set([...GREP_VALUE_LETTERS, ...GREP_OPTIONAL_LETTERS]) : GREP_VALUE_LETTERS;
   const nonFlag: string[] = [];
   let explicitPattern = false;
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!;
-    if (a === "-e" || a === "--regexp") {
-      explicitPattern = true;
-      i += 1;
+    if (a === "--") {
+      nonFlag.push(...args.slice(i + 1));
+      break;
+    }
+    if (a.startsWith("--")) {
+      const name = a.includes("=") ? a.slice(0, a.indexOf("=")) : a;
+      if (name === "--regexp" || name === "--file" || (tool === "rg" && name === "--files")) explicitPattern = true;
+      if (!a.includes("=") && (longValued.has(a) || a === "--regexp")) i += 1;
       continue;
     }
-    if (a.startsWith("--regexp=")) {
-      explicitPattern = true;
+    if (a.startsWith("-") && a.length > 1) {
+      for (let j = 1; j < a.length; j++) {
+        const letter = a[j]!;
+        if (!letters.has(letter)) continue;
+        if (letter === "e" || letter === "f") explicitPattern = true;
+        if (j === a.length - 1) i += 1;
+        break;
+      }
       continue;
     }
-    if (a.startsWith("-")) continue;
     nonFlag.push(a);
   }
   return explicitPattern ? nonFlag : nonFlag.slice(1);
@@ -339,8 +391,10 @@ function flatPaths(args: string[]): string[] {
 function searchRoots(tool: string, args: string[]): string[] {
   switch (tool) {
     case "grep":
+      // Every root either reading of an optional value finds: a guard errs toward refusing.
+      return [...new Set([...grepPaths(tool, args, true), ...grepPaths(tool, args, false)])];
     case "rg":
-      return grepPaths(args);
+      return grepPaths(tool, args, true);
     case "find":
       return findPaths(args);
     default:
@@ -389,4 +443,103 @@ function classifyRoot(workspace: string, abs: string, host: PathHost): "home" | 
 
 function stripTrailingSlash(path: string): string {
   return path.length > 1 && path.endsWith("/") ? path.slice(0, -1) : path;
+}
+
+/** Where a command ran or searched, as a lesson's signature tells places apart (ADR 0050). */
+export type CommandPlace = "home" | "device" | "workspace" | "task" | "inside" | "outside" | "unknown";
+
+/**
+ * What kind of command this is, for a failure-signature lesson (ADR 0050; only a tree walk, `walks`,
+ * is learned from): the program, `-r` when a search tool walks a tree (`-rn`, `-R` and `--recursive` are the same kind; a shallow `find` or
+ * `rg` is not), else the program's first plain word (`git log`, `python render.py`); and the place
+ * it searched or ran in — a class for the roots (home, `/`, the workspace root, the turn's own work
+ * dir, whichever task that is), the folder itself anywhere deeper (workspace-relative, or `~/…`
+ * outside it), so a search narrowed to a subfolder is a different kind of call. Quoted literals and
+ * patterns never enter it. A pipeline is read by its first stage; a command too tangled to follow
+ * keeps its program with an unknown place. `workDirRel` is the turn's work dir, workspace-relative.
+ */
+export function commandSignature(
+  workspace: string,
+  command: string,
+  cwdAbs: string,
+  workDirRel: string | null = null,
+  host: PathHost = nodePathHost,
+): { head: string; place: CommandPlace; signature: string; walks: boolean } | null {
+  const stage = firstStage(command);
+  const segments = splitChain(stage);
+  const sign = (head: string, place: CommandPlace, at = "", walks = false) => ({ head, place, walks, signature: `${head}@${place}${at ? `:${at}` : ""}` });
+  if (!segments) {
+    const words = stripWrappers(stripEnvAssignments(shellWords(stage.replace(/[`()$|;&]/g, " "))));
+    return words[0] ? sign(posix.basename(words[0]), "unknown") : null;
+  }
+  let cwd = cwdAbs;
+  for (const segment of segments) {
+    const tokens = stripWrappers(stripEnvAssignments(shellWords(segment)));
+    if (tokens.length === 0) continue;
+    const [first, ...rest] = tokens;
+    if (first === "cd") {
+      if (rest[0] === "-") return sign("cd", "unknown");
+      cwd = resolveToken(rest[0] ?? "~", cwd, host);
+      continue;
+    }
+    const program = posix.basename(first!);
+    const args = stripRedirects(rest);
+    if (RECURSIVE_TOOLS.has(program)) {
+      const walks = isRecursive(program, args) && !isShallow(program, args);
+      const roots = searchRoots(program, args);
+      // Several roots: the widest is what made it long.
+      const [place, at] = (roots.length > 0 ? roots : ["."])
+        .map((root) => placeOf(workspace, stripGlobRoot(resolveToken(root, cwd, host)), workDirRel, host))
+        .sort((a, b) => PLACE_RANK[a[0]] - PLACE_RANK[b[0]])[0]!;
+      return sign(walks ? `${program} -r` : program, place, at, walks);
+    }
+    const operand = args[0] && !args[0].startsWith("-") && /^[\w./-]{1,60}$/.test(args[0]) ? ` ${posix.basename(args[0])}` : "";
+    return sign(`${program}${operand}`, ...placeOf(workspace, cwd, workDirRel, host));
+  }
+  return null;
+}
+
+/** A pipeline's first stage: the command up to its first unquoted lone `|` (an `||` is a chain, not a pipe). */
+function firstStage(command: string): string {
+  let quote: "'" | '"' | null = null;
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i]!;
+    if (quote) {
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === "'" || ch === '"') quote = ch;
+    else if (ch === "|") {
+      if (command[i + 1] === "|") {
+        i += 1;
+        continue;
+      }
+      return command.slice(0, i);
+    }
+  }
+  return command;
+}
+
+/** Widest first: which of several search roots a lesson is about. */
+const PLACE_RANK: Record<CommandPlace, number> = { device: 0, home: 1, workspace: 2, outside: 3, task: 4, inside: 5, unknown: 6 };
+
+/** The place's class, and the folder itself when it is not one of the roots. */
+function placeOf(workspace: string, abs: string, workDirRel: string | null, host: PathHost): [CommandPlace, string] {
+  const root = classifyRoot(workspace, abs, host);
+  if (root) return [root, ""];
+  let classified;
+  try {
+    classified = classifyPath(workspace, abs, host);
+  } catch {
+    return ["unknown", ""];
+  }
+  if (classified.zone === "outside") {
+    const home = stripTrailingSlash(host.homedir());
+    return ["outside", classified.abs.startsWith(`${home}/`) ? `~/${classified.abs.slice(home.length + 1)}` : classified.abs];
+  }
+  const rel = stripTrailingSlash(classified.rel.replace(/^\.\/?/, ""));
+  if (rel === "") return ["workspace", ""];
+  const dir = workDirRel?.replace(/^\.\/?/, "").replace(/\/$/, "");
+  if (dir && rel === dir) return ["task", ""];
+  return [dir && rel.startsWith(`${dir}/`) ? "task" : "inside", rel];
 }

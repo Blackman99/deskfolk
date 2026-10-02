@@ -648,6 +648,11 @@ export type TaskTraceRoute = {
   review: RouteReview | null;
   /** What the learning hop kept for that chain, on the same turn. */
   learning: RouteLearning | null;
+  /**
+   * From engine level 8 (ADR 0050): whether you marked this turn's trouble as the model's, which
+   * files a quality event in the model category. Absent below level 8.
+   */
+  marked_model?: boolean;
 };
 
 /** A job as one picture: the turns that share its work dir, across sessions. */
@@ -2055,7 +2060,74 @@ export type RouteRecord = {
   repeated_failures: number | null;
   files_written: number | null;
   feedback: RouteFeedback[];
+  /**
+   * Why it ran on this model, from engine level 7 (ADR 0048/0049): `pin`, `default`,
+   * `endpoint_default`, `pin_unlisted`, `capability_filter` or `escalation`. Null when a per-turn pick chose.
+   */
+  reason_code?: string | null;
 };
+
+/** What went wrong with the work, filed by the event's own type (ADR 0050, engine level 8). */
+export type QualityCategory = "model" | "pipeline" | "execution" | "review_miss" | "unclear" | "orchestration";
+
+export type QualityEvent = {
+  id: string;
+  /** `checks_failed`, `review_rejected`, `user_rejected`, `complaint`, `review_miss`, `ceiling`, `failure_shape:<kind>`, `tool_timeout`, … */
+  kind: string;
+  category: QualityCategory;
+  task_id: string | null;
+  ticket_id: string | null;
+  part_key: string | null;
+  submission_id: string | null;
+  requirement_id: string | null;
+  bot_id: string | null;
+  model: string | null;
+  turn_id: string | null;
+  message_id: string | null;
+  work_event_seq: number | null;
+  detail: Record<string, unknown>;
+  created_at: string;
+};
+
+/** One row of the offline report: a Bot on a model, on one kind of plan, over the window asked for. */
+export type QualityReportRow = {
+  bot_id: string;
+  model: string | null;
+  plan_kind: string | null;
+  hand_overs: number;
+  approved: number;
+  review_rejected: number;
+  user_rejected: number;
+  checks_failed: number;
+  complaints: number;
+  failure_shapes: number;
+  review_misses: number;
+  cost_usd: number | null;
+  cost_per_approved: number | null;
+};
+
+/** A rule the app learned from a failure and checks itself (ADR 0050). */
+export type Lesson = {
+  id: string;
+  scope: "bot" | "role" | "project" | "tool" | "global";
+  scope_id: string | null;
+  hook: "before_tool" | "before_generate" | "before_submit" | "before_review";
+  detector: { tool: string; signature: string; head: string; place: string; error: string };
+  /** `warn` holds a call back once per turn; `block` refuses it. */
+  action: "warn" | "block" | "checklist" | "propose_check";
+  text: string;
+  evidence: Array<{ turn_id: string | null; at: string; seconds?: number; recurrence?: boolean }>;
+  status: "candidate" | "active" | "retired";
+  hits: number;
+  prevented: number;
+  recurrences: number;
+  created_by: string;
+  confirmed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type LessonPatch = { status?: "active" | "retired"; action?: "warn" | "block"; text?: string };
 
 /**
  * What later choices made of one review, counted locally from the rows that followed it.

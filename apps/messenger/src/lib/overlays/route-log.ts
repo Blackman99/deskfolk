@@ -25,6 +25,8 @@ export type RouteLogLabels = {
   /** Keyed by the daemon's `fail_kind`; the same wording the transcript uses. */
   failReason: Record<string, string>;
   thinking: Record<string, string>;
+  /** Why it ran on this model (`pin`, `default`, …), from engine level 7; keyed by `reason_code`. */
+  reasonCode?: Record<string, string>;
   unknownBot: string;
 };
 
@@ -52,6 +54,10 @@ export type RouteLogRow = {
   feedback: RouteFeedback[];
   /** The one line the agent gave for picking this, when an agent picked it. */
   reason: string | null;
+  /** Why it ran on this model without a pick (engine level 7): your pin, the Bot's default, … */
+  reasonLabel: string | null;
+  /** Whether you marked this turn's trouble as the model's; null where marking is not offered (below level 8). */
+  markedModel: boolean | null;
   /** The verdict on the correction chain this turn started, once it has been reviewed. */
   review: {
     faultLabel: string;
@@ -86,11 +92,12 @@ export type RouteLogInput = {
  * so they only ever arrive on that turn's card.
  */
 export function routeCardRow(route: TaskTraceRoute, input: Omit<RouteLogInput, "reviews" | "learnings">): RouteLogRow {
-  return routeLogRows([route.record], {
+  const row = routeLogRows([route.record], {
     ...input,
     reviews: route.review ? [route.review] : [],
     learnings: route.learning ? [route.learning] : [],
   })[0]!;
+  return { ...row, markedModel: route.marked_model ?? null };
 }
 
 /** One row per turn, newest first: the daemon lists records oldest-first. */
@@ -125,6 +132,8 @@ export function routeLogRows(
       hops: record.hops,
       feedback: record.feedback,
       reason: record.reason?.trim() || null,
+      reasonLabel: record.reason_code ? (labels.reasonCode?.[record.reason_code] ?? record.reason_code) : null,
+      markedModel: null,
       review: reviewFor(reviewByTurn.get(record.turn_id), labels),
       learning: record.turn_id === record.chain_id ? learningFor(record.chain_id, learningByChain) : null,
       createdAt: record.created_at,

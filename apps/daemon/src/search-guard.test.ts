@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { recursiveSearchGuard, searchGuardMessage, type SearchGuardHit } from "./search-guard";
+import { mkdirSync } from "node:fs";
+import { commandSignature, recursiveSearchGuard, searchGuardMessage, type SearchGuardHit } from "./search-guard";
 
 function tmp(): string {
   return realpathSync(mkdtempSync(join(tmpdir(), "real-bot-search-guard-")));
@@ -300,5 +301,84 @@ describe.skipIf(process.platform === "win32")("searchGuardMessage", () => {
     expect(viaCwd).toContain("drop the cd");
     const viaArg = searchGuardMessage({ tool: "grep", target: "home", root: home, via: "arg" });
     expect(viaArg).toContain("name a specific subfolder");
+  });
+});
+
+describe.skipIf(process.platform === "win32")("commandSignature", () => {
+  test("one kind of search, however its flags, quotes, pattern and pipe are written", () => {
+    const ws = tmp();
+    const sig = (command: string) => commandSignature(ws, command, ws)?.signature;
+    for (const command of [`grep -rn "BEACON ZERO" ~ | head -1`, `grep -r 'other' $HOME | wc -l`, `cd ~ && grep -R x .`, `grep --recursive -n x ${home}/`]) {
+      expect(sig(command)).toBe("grep -r@home");
+    }
+    expect(sig(`FOO=1 timeout 30 rg x /`)).toBe("rg -r@device");
+    expect(sig(`grep -rn x .`)).toBe("grep -r@workspace");
+    expect(sig(`grep -n x notes.md`)).toBe("grep@inside:notes.md");
+    expect(sig(`find . -maxdepth 2 -name "*.mp4"`)).toBe("find@workspace");
+    expect(sig(`echo $(ls)`)).toBe("echo@unknown");
+    rmSync(ws, { recursive: true, force: true });
+  });
+
+  test("the turn's work dir is a class; a folder below it or elsewhere is named, so narrowing is another kind of call", () => {
+    const ws = tmp();
+    mkdirSync(join(ws, "tasks/ep01/notes"), { recursive: true });
+    const task = join(ws, "tasks/ep01");
+    const sig = (command: string) => commandSignature(ws, command, task, "tasks/ep01")?.signature;
+    expect(sig(`grep -rn x .`)).toBe("grep -r@task");
+    expect(sig(`grep -rn x notes`)).toBe("grep -r@task:tasks/ep01/notes");
+    expect(sig(`python render.py --fast`)).toBe("python render.py@task");
+    expect(sig(`ffmpeg -i in.mp4 out.mp4`)).toBe("ffmpeg@task");
+    expect(sig(`grep -rn x ~/Projects`)).toBe("grep -r@outside:~/Projects");
+    rmSync(ws, { recursive: true, force: true });
+  });
+});
+
+describe.skipIf(process.platform === "win32")("commandSignature roots", () => {
+  test("a flag's value is neither the pattern nor the place; of several roots the widest is the place", () => {
+    const ws = tmp();
+    const sig = (command: string) => commandSignature(ws, command, ws);
+    expect(sig(`grep -rn -A 3 foo ~/Library`)?.signature).toBe("grep -r@outside:~/Library");
+    expect(sig(`grep -rnA 3 foo ~`)?.signature).toBe("grep -r@home");
+    expect(sig(`grep -rn --include '*.md' foo ~`)?.signature).toBe("grep -r@home");
+    expect(sig(`grep -r -e foo -e bar ~`)?.signature).toBe("grep -r@home");
+    expect(sig(`rg -g '*.ts' TODO src`)?.signature).toBe("rg -r@inside:src");
+    expect(sig(`rg --max-depth 3 TODO src`)?.signature).toBe("rg@inside:src");
+    expect(sig(`grep -rn foo src ~ notes`)?.signature).toBe("grep -r@home");
+    rmSync(ws, { recursive: true, force: true });
+  });
+
+  test("only a search that walks a tree is something to learn from", () => {
+    const ws = tmp();
+    const walks = (command: string) => commandSignature(ws, command, ws)?.walks;
+    expect([walks(`grep -rn x ~ | head`), walks(`find . -name x`), walks(`rg x`)]).toEqual([true, true, true]);
+    expect([walks(`grep -n x notes.md`), walks(`find . -maxdepth 2`), walks(`ffmpeg -i in.mp4 out.mp4`), walks(`bash -c 'sleep 700'`), walks(`python -m pytest`)])
+      .toEqual([false, false, false, false, false]);
+    rmSync(ws, { recursive: true, force: true });
+  });
+});
+
+describe.skipIf(process.platform === "win32")("value flags never let a home-wide search through", () => {
+  test("a file of patterns, a glued value or rg --files leaves the home folder the root, and it is refused", () => {
+    const ws = tmp();
+    for (const command of [
+      `grep -r -f pats.txt ~`, `grep -rf pats.txt ~`, `grep -rlf pats ~`, `grep -r --file pats.txt ~`, `grep -r --file=pats.txt ~`, `rg -f pats.txt ~`,
+      `rg -tmd foo ~`, `rg -ttxt foo ~`, `rg -trust foo ~`, `rg -Tmd foo ~`, `grep -rA3 foo ~`, `grep -rnA 3 foo ~`, `rg --files ~`, `grep -r -e foo ~`, `grep -refoo ~`,
+      `grep -drecurse foo ~`, `grep -d recurse foo ~`, `grep --directories=recurse foo ~`, `grep --directories recurse foo ~`, `grep -nd recurse foo ~`,
+      `grep -r --context foo ~`, `grep -r -C foo ~`, `grep -rC foo ~`, `grep -rC 2 foo ~`, `grep -r --context=2 foo ~`, `grep -rC2 foo ~`,
+    ]) {
+      expect({ command, hit: recursiveSearchGuard(ws, command, ws)?.target ?? null }).toEqual({ command, hit: "home" });
+      expect({ command, sig: commandSignature(ws, command, ws)?.place }).toEqual({ command, sig: "home" });
+    }
+    rmSync(ws, { recursive: true, force: true });
+  });
+});
+
+describe.skipIf(process.platform === "win32")("grep's directory action", () => {
+  test("-d skip or read is no tree walk; -d recurse is", () => {
+    const ws = tmp();
+    expect(recursiveSearchGuard(ws, `grep -d skip foo ~`, ws)).toBeNull();
+    expect(recursiveSearchGuard(ws, `grep -dread foo ~`, ws)).toBeNull();
+    expect(recursiveSearchGuard(ws, `grep -d recurse foo ~`, ws)?.target).toBe("home");
+    rmSync(ws, { recursive: true, force: true });
   });
 });

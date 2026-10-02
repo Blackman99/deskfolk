@@ -57,10 +57,12 @@ export const SCHEMA_LEVEL = 6;
  * whole rollout instead of a switch per feature). `holds`: ADR 0040 P2's control plane;
  * `work_items`: P4b; `delegation`: P4c's delegations and end contract (ADR 0044); `supervision`:
  * P4c's supervisor, durable blocked questions and the effect ledger (ADR 0045); `submissions`:
- * P4e's ticket stages, submissions and reviews (ADR 0046).
+ * P4e's ticket stages, submissions and reviews (ADR 0046); `jobs`: P4d's external jobs (ADR 0047);
+ * `routing`: P5's default models, capability filter and escalation (ADR 0048, 0049); `learning`:
+ * P5's quality events and lessons instead of chain reviews (ADR 0050).
  */
-export const ENGINE_LEVELS = { holds: 1, work_items: 2, delegation: 3, supervision: 4, submissions: 5, jobs: 6, routing: 7 } as const;
-export const ENGINE_LEVEL = ENGINE_LEVELS.routing;
+export const ENGINE_LEVELS = { holds: 1, work_items: 2, delegation: 3, supervision: 4, submissions: 5, jobs: 6, routing: 7, learning: 8 } as const;
+export const ENGINE_LEVEL = ENGINE_LEVELS.learning;
 
 /**
  * The highest level a build raises on its own, with no developer opt-in: `ENGINE_LEVEL` may sit
@@ -74,8 +76,10 @@ export const ENGINE_LEVEL_BY_DEFAULT = ENGINE_LEVELS.supervision;
 
 /** The floor a database needs once it runs at each engine level: whatever an older build would misread there. */
 // Level 7 (ADR 0048: default models instead of a per-turn pick) leaves nothing an older build would
-// misread: one just goes on picking per turn. Its floor is the level below's.
-const FLOOR_AT_LEVEL: Readonly<Record<number, number>> = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 6 };
+// misread: one just goes on picking per turn. Its floor is the level below's. Level 8 (ADR 0050:
+// quality events and lessons instead of chain reviews) neither: an older build ignores the two new
+// tables and goes back to reviewing chains.
+const FLOOR_AT_LEVEL: Readonly<Record<number, number>> = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 6, 8: 6 };
 
 /**
  * The last release without the gate read. A copy of it (or of anything before it) opens any

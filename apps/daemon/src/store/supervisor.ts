@@ -23,7 +23,7 @@ import { isReservedTaskPath } from "./tasks";
 import { ticketDependencies } from "./tickets";
 import { executionRecoveryFacts } from "./tool-executions";
 import { ceilingCardOf, STAGE_SQL, superviseSubmissions, ticketReviewer, type Submission } from "./submissions";
-import { recordWorkEvent } from "./work-events";
+import { projectInsertedWorkEvent, recordWorkEvent } from "./work-events";
 import { queueWork } from "./work-items";
 
 /** A ticket left with no live segment, wait or queued line this long is called back to. */
@@ -428,6 +428,7 @@ function notice(ctx: StoreContext, result: SupervisorTickResult, input: {
   ctx.db.run(`INSERT INTO work_events (at, kind, actor, bot_id, task_id, ticket_id, work_item_id, session_id, payload)
     VALUES (?, 'supervisor.notice', 'app', ?, ?, ?, ?, ?, ?)`, [input.now, input.botId, input.taskId, input.ticketId, input.workItemId,
     sessionId, JSON.stringify({ key: input.key, code: input.code, message_id: messageId })]);
+  projectInsertedWorkEvent(ctx);
 }
 
 /** The fired check-back that records one call-back or pick-up; the budgets count these. */
@@ -454,6 +455,7 @@ function repairWaits(ctx: StoreContext, result: SupervisorTickResult, now: strin
     ctx.db.run(`INSERT INTO work_events (at, kind, actor, bot_id, task_id, ticket_id, work_item_id, session_id, payload)
       VALUES (?, 'supervisor.wait_invalid', 'app', ?, ?, ?, ?, ?, ?)`, [now, work.bot_id, work.task_id, work.ticket_id, work.id,
       work.home_session_id, JSON.stringify({ waiting_on: work.waiting_on })]);
+    projectInsertedWorkEvent(ctx);
     result.repaired.push({ workItemId: work.id, from: "waiting", reason: "wait_invalid" });
   }
 }
@@ -493,6 +495,7 @@ function repairLostSegments(ctx: StoreContext, result: SupervisorTickResult, now
       ctx.db.run("UPDATE work_items SET state = 'needs_attention', updated_at = ? WHERE id = ? AND state = 'running'", [now, work.id]);
       ctx.db.run(`INSERT INTO work_events (at, kind, actor, bot_id, task_id, ticket_id, work_item_id, session_id, payload)
         VALUES (?, 'supervisor.lost_segment', 'app', ?, ?, ?, ?, ?, '{}')`, [now, work.bot_id, work.task_id, work.ticket_id, work.id, work.home_session_id]);
+      projectInsertedWorkEvent(ctx);
       result.repaired.push({ workItemId: work.id, from: "running", reason: "lost_segment" });
       continue;
     }

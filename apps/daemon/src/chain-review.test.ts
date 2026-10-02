@@ -7,6 +7,7 @@ import type { ChatMessage, CompletionOk, CompletionsClient, JudgeResult } from "
 import { ROUTE_LEARN_SYSTEM, ROUTE_REVIEW_SYSTEM } from "./prompts/routing";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";
+import { ENGINE_LEVELS } from "./store/schema-gate";
 import { createTurnEngine } from "./turn-engine";
 
 function call(name: string, args: Record<string, unknown>): CompletionOk {
@@ -186,6 +187,30 @@ test("a chain that was not quiet yet when the daemon restarted gets its clock ba
 
     await h.restart(40);
     await until(() => h.reviews().length === 1);
+  } finally {
+    await h.cleanup();
+  }
+});
+
+/**
+ * From engine level 8 (ADR 0050) nothing reviews a chain after the fact and no reply is taken as
+ * feedback on the model choice: what went wrong is a quality event filed by its type.
+ */
+test("from level 8 a quiet chain is not reviewed and a reply is not route feedback", async () => {
+  const h = harness(40);
+  try {
+    h.store.db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('engine_level', ?)", [String(ENGINE_LEVELS.learning)]);
+    const writer = await h.setup();
+    const session = writer.direct_session.id;
+    await h.send(session, "写一份周报");
+    h.release();
+    await until(() => h.completedTurns() === 1);
+    await h.send(session, "不对，笔记在 notes/ 下面");
+    await until(() => h.completedTurns() === 2);
+    await Bun.sleep(200);
+    expect(h.reviews()).toEqual([]);
+    expect(h.judged.filter((row) => row.system === ROUTE_REVIEW_SYSTEM || row.system === ROUTE_LEARN_SYSTEM)).toEqual([]);
+    expect(h.store.db.query("SELECT COUNT(*) AS n FROM route_feedback").get()).toEqual({ n: 0 });
   } finally {
     await h.cleanup();
   }

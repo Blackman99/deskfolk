@@ -12,9 +12,32 @@
 		onJump: (sessionId: string, messageId: string) => void;
 		/** The card's own toggle closes this instead: the state it opens on lives in the parent. */
 		onClose: () => void;
+		/** Your 「记为模型问题」 (engine level 8); absent where nothing can be marked. Rejects when it did not go through. */
+		onMarkModel?: (marked: boolean) => Promise<void>;
 	}
 
-	let { node, route, t, providers, onJump, onClose }: Props = $props();
+	let { node, route, t, providers, onJump, onClose, onMarkModel }: Props = $props();
+
+	// What you set here wins until the card's record catches up with it.
+	let markOverride = $state<boolean | null>(null);
+	let markBusy = $state(false);
+	let markFailed = $state(false);
+	const marked = $derived(markOverride ?? route.markedModel ?? false);
+
+	async function toggleMark(): Promise<void> {
+		if (!onMarkModel || markBusy) return;
+		const next = !marked;
+		markBusy = true;
+		markFailed = false;
+		try {
+			await onMarkModel(next);
+			markOverride = next;
+		} catch {
+			markFailed = true;
+		} finally {
+			markBusy = false;
+		}
+	}
 </script>
 
 <!-- Unfolded under its own card, the way a file is: what was picked, why, and what came of it. -->
@@ -32,6 +55,9 @@
 		<span class="trace-route-chip" title={t.routes.kindLabel}>{route.signatureLabel}</span>
 		{#if providers.length > 1 && route.providerName}
 			<span class="trace-route-chip" title={t.routes.endpoint}>{route.providerName}</span>
+		{/if}
+		{#if route.reasonLabel}
+			<span class="trace-route-chip" title={t.routes.reasonLabel}>{route.reasonLabel}</span>
 		{/if}
 	</div>
 	{#if route.durationMs !== null || (route.hops !== null && route.toolErrors !== null)}
@@ -86,6 +112,24 @@
 				<span class="trace-route-effect">{t.routes.effectUnused}</span>
 			{:else if route.review.effect === 'followed'}
 				<span class="trace-route-effect">{t.routes.effectFollowed}{route.review.cleaner ? ` · ${t.routes.effectCleaner}` : ''}</span>
+			{/if}
+		</div>
+	{/if}
+	{#if route.markedModel !== null && onMarkModel}
+		<div class="trace-route-mark">
+			<button
+				type="button"
+				class="trace-route-mark-button"
+				class:is-on={marked}
+				aria-pressed={marked}
+				title={t.routes.markModelHint}
+				disabled={markBusy}
+				onclick={toggleMark}
+			>
+				{marked ? t.routes.markedModel : t.routes.markModel}
+			</button>
+			{#if markFailed}
+				<span class="trace-route-mark-failed" role="status">{t.routes.markModelFailed}</span>
 			{/if}
 		</div>
 	{/if}
@@ -199,6 +243,38 @@
 		white-space: nowrap;
 	}
 
+	.trace-route-mark {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+	.trace-route-mark-button {
+		padding: 2px 9px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-full);
+		background: var(--pane);
+		color: var(--ink-secondary);
+		font-size: 11px;
+		cursor: pointer;
+	}
+	.trace-route-mark-button:hover:not(:disabled) {
+		border-color: var(--accent-border);
+		color: var(--accent);
+	}
+	.trace-route-mark-button.is-on {
+		border-color: var(--warn-line);
+		background: var(--warn-bg);
+		color: var(--warn-text);
+	}
+	.trace-route-mark-button:disabled {
+		cursor: default;
+		opacity: 0.6;
+	}
+	.trace-route-mark-failed {
+		font-size: 11px;
+		color: var(--danger-text);
+	}
 	.trace-route-chip.is-model {
 		border-color: var(--accent-border);
 		background: var(--accent-tint);

@@ -1,4 +1,6 @@
 import {
+  type LessonPatch,
+  type QualityCategory,
   FILE_DROP_SESSION_ID,
   LOCAL_API_BIND,
   LOCAL_API_NAME,
@@ -42,6 +44,7 @@ import { join } from "node:path";
 import type { Ablation } from "./ablation";
 import { attachmentMime } from "./artifact-mime";
 import { emptyResponse, fromError, jsonResponse, matchPath, readBearer, readJson, responseRecord } from "./http";
+import { QUALITY_CATEGORIES as QUALITY_CATEGORY_NAMES } from "./store/quality";
 import { corsHeaders, originDecision } from "./origin";
 import { EventStream, sessionUpsertFields } from "./session-events";
 import { StreamHub, type StreamRead } from "./streams";
@@ -1375,6 +1378,7 @@ function dispatch(
     const records = new Map(store.listTaskRoutes(params.id!).map((record) => [record.turn_id, record]));
     const reviews = new Map(store.listTaskReviews(params.id!).map((row) => [row.turn_id, reviewOut(store, row)]));
     const learnings = new Map(store.listTaskLearnings(params.id!).map((row) => [row.chain_id, learningOut(store, row)]));
+    const marking = store.learningOn();
     // A card's files open the preview as its tree; one deleted since must not come back there.
     const cited = new Set(trace.nodes.flatMap((node) => node.artifacts.map((file) => file.path)));
     const gone = store.transaction(() => new Set([...cited].filter((file) => !store.citedPathExists(file))));
@@ -1392,6 +1396,7 @@ function dispatch(
                   review: reviews.get(node.turn_id) ?? null,
                   // A chain is named after the turn that started it; its note belongs there.
                   learning: record.chain_id === record.turn_id ? (learnings.get(record.chain_id) ?? null) : null,
+                  ...(marking ? { marked_model: store.turnMarkedModel(node.turn_id) } : {}),
                 }
               : null,
           };
@@ -1578,6 +1583,41 @@ function dispatch(
   params = matchPath(path, "/v1/sessions/:id/judgements");
   if (params && method === "GET") {
     return jsonResponse({ items: store.listJudgements(params.id!) }, 200, null);
+  }
+
+  params = matchPath(path, "/v1/turns/:id/mark-model");
+  if (params && (method === "POST" || method === "DELETE")) {
+    return jsonResponse(store.markTurnModel(params.id!, method === "POST"), 200, null);
+  }
+
+  if (path === "/v1/quality/events" && method === "GET") {
+    const category = url.searchParams.get("category");
+    return jsonResponse({ items: store.listQualityEvents({
+      botId: url.searchParams.get("bot_id") ?? undefined,
+      ticketId: url.searchParams.get("ticket_id") ?? undefined,
+      category: category && (QUALITY_CATEGORY_NAMES as readonly string[]).includes(category) ? category as QualityCategory : undefined,
+      limit: Number(url.searchParams.get("limit") ?? 100) || 100,
+    }) }, 200, null);
+  }
+
+  if (path === "/v1/quality/report" && method === "GET") {
+    const days = Number(url.searchParams.get("days") ?? 7);
+    return jsonResponse({ items: store.qualityReport({ days: Number.isFinite(days) ? Math.min(90, Math.max(1, days)) : 7 }) }, 200, null);
+  }
+
+  if (path === "/v1/lessons" && method === "GET") {
+    const status = url.searchParams.get("status");
+    return jsonResponse({ items: store.listLessons(status === "active" || status === "retired" || status === "candidate" ? { status } : {}) }, 200, null);
+  }
+
+  params = matchPath(path, "/v1/lessons/:id");
+  if (params && method === "PATCH") {
+    const body = (input.body ?? {}) as LessonPatch;
+    return jsonResponse(store.updateLesson(params.id!, {
+      ...(body.status === "active" || body.status === "retired" ? { status: body.status } : {}),
+      ...(body.action === "warn" || body.action === "block" ? { action: body.action } : {}),
+      ...(typeof body.text === "string" ? { text: body.text } : {}),
+    }), 200, null);
   }
 
   params = matchPath(path, "/v1/sessions/:id/routes");

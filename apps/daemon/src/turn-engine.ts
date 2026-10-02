@@ -151,6 +151,8 @@ export type TurnEngineOptions = {
   streams?: ShellStream;
   /** What the process saw of macOS sleep; the daemon's own watch unless a test brings one. */
   wake?: WakeWatch;
+  /** Overrides the shell's 10-minute timeout; tests use a short one. */
+  shellTimeoutMs?: number;
   /** How long a plan stays quiet after its last turn before the organizer files it. Tests shorten it. */
   settleQuietMs?: number;
   /** How long a Bot↔Bot direct stays quiet after its last turn before its opener is called back. Tests shorten it. */
@@ -368,6 +370,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
 
   const tools = createTools({
     store,
+    ...(options.shellTimeoutMs !== undefined ? { shellTimeoutMs: options.shellTimeoutMs } : {}),
     publish,
     publishMessage: core.publishMessage,
     publishTurn: core.publishTurn,
@@ -597,7 +600,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       try {
         let filed = message;
         if (fromUser) {
-          if (store.collectRouteFeedback(message)) {
+          // From level 8 a reply is no feedback on the route it answers (ADR 0050): quality events are filed by type.
+          if (!store.learningOn() && store.collectRouteFeedback(message)) {
             const owner = store.feedbackOwner(message.id);
             if (owner) chains.touchChain(message.session_id, owner);
           }
