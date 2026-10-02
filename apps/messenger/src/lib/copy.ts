@@ -46,9 +46,12 @@ const zh = {
     failed: "未能保存，负责人未改。", loading: "正在载入负责人…", loadFailed: "未能载入负责人。", retry: "重试",
   },
   attribution: {
-    filed: (name: string) => `归到：${name}`, undetermined: "未归属", change: "改", choose: "选", separator: "、",
-    editor: "修改消息归属", hint: "可选一个或多个规划；任务和分件可留空。分件请填写已有分件的键，不会创建分件。", ticket: "任务", part: "分件", wholePlan: "整个规划", optional: "可选", addFiling: "再选一个任务或分件", removeFiling: "移除这项归属",
-    unfile: "移除归属", cancel: "取消", save: "保存", saving: "正在保存…", failed: "未能保存，归属未改。你的选择已保留。", loading: "正在载入规划…", loadFailed: "未能载入规划。", retry: "重试", noPlans: "这个会话还没有可选的规划。",
+    filed: (name: string) => `归到：${name}`, undetermined: "未归属", choose: "选择归属", chipHint: "点击修改归属", unknownPlan: "一件事", more: (count: number) => `另 ${count} 件`,
+    menuItem: "改归属…", title: "这句话归到哪件事", hint: "可以选一件，也可以选几件。",
+    search: "搜索事情或任务", chosen: "已选", here: "这个会话里的", others: (count: number) => `其他事情（${count}）`, showOthers: (count: number) => `显示其他 ${count} 件`, noMatch: "没有匹配的事情",
+    ticket: "任务", part: "分件", wholePlan: "整件事", partPlaceholder: "分件（可选），如 Shot 01", addFiling: "再选一个任务或分件", removeFiling: "移除这项归属",
+    unfile: "不归到任何事", unfiled: "这句话不归到任何事。", cancel: "取消", save: "保存", saving: "正在保存…", failed: "未能保存，归属未改。你的选择已保留。",
+    loading: "正在载入…", loadFailed: "未能载入事情列表。", retry: "重试", noPlans: "还没有可选的事情。",
   },
   routines: {
     title: "日程", add: "新建日程", edit: "编辑日程", empty: "这个 Bot 还没有日程。",
@@ -1616,9 +1619,12 @@ const en: CopyShape<typeof zh> = {
     failed: "Could not save; lead unchanged.", loading: "Loading group lead…", loadFailed: "Could not load group lead.", retry: "Retry",
   },
   attribution: {
-    filed: (name: string) => `Filed under: ${name}`, undetermined: "Unfiled", change: "Change", choose: "Choose", separator: ", ",
-    editor: "Change message attribution", hint: "Select one or more plans; ticket and part are optional. Use an existing part key; this does not create parts.", ticket: "Ticket", part: "Part", wholePlan: "Whole plan", optional: "Optional", addFiling: "Add another ticket or part", removeFiling: "Remove filing",
-    unfile: "Remove attribution", cancel: "Cancel", save: "Save", saving: "Saving…", failed: "Could not save; attribution unchanged. Your selection is preserved.", loading: "Loading plans…", loadFailed: "Could not load plans.", retry: "Retry", noPlans: "This conversation has no plans to choose from yet.",
+    filed: (name: string) => `Filed under: ${name}`, undetermined: "Unfiled", choose: "Choose", chipHint: "Click to change", unknownPlan: "A job", more: (count: number) => `+${count} more`,
+    menuItem: "Change attribution…", title: "Which job is this about?", hint: "Pick one job, or several.",
+    search: "Search jobs or tickets", chosen: "Chosen", here: "In this conversation", others: (count: number) => `Other jobs (${count})`, showOthers: (count: number) => `Show ${count} other jobs`, noMatch: "No job matches",
+    ticket: "Ticket", part: "Part", wholePlan: "Whole job", partPlaceholder: "Part (optional), e.g. Shot 01", addFiling: "Add another ticket or part", removeFiling: "Remove this filing",
+    unfile: "File under no job", unfiled: "This is not filed under any job.", cancel: "Cancel", save: "Save", saving: "Saving…", failed: "Could not save; attribution unchanged. Your selection is preserved.",
+    loading: "Loading…", loadFailed: "Could not load the list of jobs.", retry: "Retry", noPlans: "There are no jobs to choose from yet.",
   },
   routines: {
     title: "Routines", add: "Add routine", edit: "Edit routine", empty: "This Bot has no routines yet.",

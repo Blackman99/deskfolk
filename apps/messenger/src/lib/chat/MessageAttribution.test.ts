@@ -1,117 +1,76 @@
 import { expect, test } from "bun:test";
-import { flushSync } from "svelte";
 import { copyFor } from "../copy.ts";
 import { aMessage } from "../test-fixtures.ts";
-import { buttonByText, click, fill, render } from "../test-render.ts";
+import { click, render } from "../test-render.ts";
 import MessageAttribution from "./MessageAttribution.svelte";
 
 const plans = [
-  { id: "plan-a", title: "EP01", tickets: [{ id: "ticket-a", title: "剪辑" }] },
+  { id: "plan-a", title: "让审片员回复视频导演，说明未回复原因并给出审片意见。", tickets: [{ id: "ticket-a", title: "回复视频导演" }] },
   { id: "plan-b", title: "海报", tickets: [] },
 ];
+const filed = (filings: { task_id: string; ticket_id?: string | null; part_key?: string | null }[]) =>
+  Object.assign(aMessage(), { filing_state: "filed", filings: filings.map((row) => ({ ticket_id: null, part_key: null, ...row })) });
 
-test("correction selects multiple plans, optional ticket and part; failed save keeps label and draft, explicit unfile is empty filings", async () => {
-  const saved: unknown[] = [];
-  let refused = true;
-  const { host, close } = render(MessageAttribution, {
-    message: Object.assign(aMessage(), { filing_state: "filed", filings: [{ task_id: "plan-a", ticket_id: null, part_key: null }] }),
-    plans, t: copyFor("zh"),
-    onSave: async (filings: unknown) => { saved.push(filings); return refused ? new Error("not saved") : null; },
-  });
-  try {
-    expect(host.textContent).toContain("归到：EP01");
-    click(buttonByText(host, "改"));
-    click(host.querySelector('input[type="checkbox"][value="plan-b"]'));
-    const ticket = host.querySelector<HTMLSelectElement>('select[aria-label="任务 · EP01"]');
-    expect(ticket).not.toBeNull();
-    ticket!.value = "ticket-a";
-    ticket!.dispatchEvent(new Event("change", { bubbles: true }));
-    flushSync();
-    fill(host.querySelector('input[aria-label="分件 · EP01"]'), "Shot 01–03");
-    click(buttonByText(host, "保存"));
-    await Promise.resolve(); flushSync();
-    expect(saved[0]).toEqual([
-      { plan_id: "plan-a", ticket_id: "ticket-a", part_key: "Shot 01–03" },
-      { plan_id: "plan-b" },
-    ]);
-    expect(host.querySelector('[role="status"]')?.textContent).toContain("未能保存");
-    expect(host.querySelector<HTMLSelectElement>('select')?.value).toBe("ticket-a");
-    expect(host.querySelector<HTMLInputElement>('input[aria-label="分件 · EP01"]')?.value).toBe("Shot 01–03");
-    expect(host.querySelector<HTMLInputElement>('input[value="plan-b"]')?.checked).toBe(true);
-    expect(host.textContent).toContain("归到：EP01");
-    click(buttonByText(host, "移除归属"));
-    refused = false;
-    click(buttonByText(host, "保存"));
-    await Promise.resolve(); flushSync();
-    expect(saved[1]).toEqual([]);
-    expect(host.querySelector('form')).toBeNull();
-  } finally { close(); }
-});
-
-test("adding another filing within a plan permits separate parts and removes only the chosen row", async () => {
-  const saved: unknown[] = [];
-  const { host, close } = render(MessageAttribution, {
-    message: aMessage({ filing_state: "filed", filings: [{ task_id: "plan-a", ticket_id: "ticket-a", part_key: "Shot 01" }] }),
-    plans, t: copyFor("en"), onSave: async (filings: unknown) => { saved.push(filings); return null; },
-  });
-  try {
-    click(buttonByText(host, "Change"));
-    click(buttonByText(host, "Add another ticket or part"));
-    const parts = host.querySelectorAll('input[aria-label="Part · EP01"]');
-    expect(parts).toHaveLength(2);
-    const ticket = host.querySelectorAll<HTMLSelectElement>('select')[1]!;
-    ticket.value = "ticket-a"; ticket.dispatchEvent(new Event("change", { bubbles: true })); flushSync();
-    fill(parts[1], "Shot 02");
-    click(buttonByText(host, "Save")); await Promise.resolve(); flushSync();
-    expect(saved[0]).toEqual([{ plan_id: "plan-a", ticket_id: "ticket-a", part_key: "Shot 01" }, { plan_id: "plan-a", ticket_id: "ticket-a", part_key: "Shot 02" }]);
-    click(buttonByText(host, "Change"));
-    click(buttonByText(host, "Add another ticket or part"));
-    const nextTicket = host.querySelectorAll<HTMLSelectElement>('select')[1]!;
-    nextTicket.value = "ticket-a"; nextTicket.dispatchEvent(new Event("change", { bubbles: true })); flushSync();
-    fill(host.querySelectorAll('input[aria-label="Part · EP01"]')[1], "Shot 03");
-    click(host.querySelectorAll('button[aria-label="Remove filing"]')[0]);
-    click(buttonByText(host, "Save")); await Promise.resolve(); flushSync();
-    expect(saved[1]).toEqual([{ plan_id: "plan-a", ticket_id: "ticket-a", part_key: "Shot 03" }]);
-  } finally { close(); }
-});
-
-for (const newTicket of ["", "ticket-b"]) {
-  test(`changing ticket to ${newTicket || "whole plan"} clears stale part and plan-only part is disabled`, async () => {
-    const saved: unknown[] = [];
-    const { host, close } = render(MessageAttribution, {
-      message: aMessage({ filing_state: "filed", filings: [{ task_id: "plan-a", ticket_id: "ticket-a", part_key: "Shot 01" }] }),
-      plans: [{ ...plans[0]!, tickets: [...plans[0]!.tickets, { id: "ticket-b", title: "海报" }] }], t: copyFor("en"), onSave: async (filings: unknown) => { saved.push(filings); return null; },
-    });
-    try {
-      click(buttonByText(host, "Change"));
-      const ticket = host.querySelector<HTMLSelectElement>('select')!;
-      ticket.value = newTicket; ticket.dispatchEvent(new Event("change", { bubbles: true })); flushSync();
-      const part = host.querySelector<HTMLInputElement>('input[aria-label="Part · EP01"]')!;
-      expect(part.value).toBe("");
-      expect(part.disabled).toBe(!newTicket);
-      click(buttonByText(host, "Save")); await Promise.resolve(); flushSync();
-      expect(saved[0]).toEqual(newTicket ? [{ plan_id: "plan-a", ticket_id: newTicket }] : [{ plan_id: "plan-a" }]);
-    } finally { close(); }
-  });
+function open(message: ReturnType<typeof aMessage>, over: Record<string, unknown> = {}) {
+  const opened: number[] = [];
+  const view = render(MessageAttribution, { message, plans, t: copyFor("zh"), onOpen: () => { opened.push(1); }, ...over });
+  return { ...view, opened, chip: view.host.querySelector<HTMLButtonElement>(".attribution-chip")! };
 }
 
-test("multiple filings within one plan keep their distinct ticket/part rows when corrected", async () => {
-  const saved: unknown[] = [];
-  const { host, close } = render(MessageAttribution, {
-    message: aMessage({ filing_state: "filed", filings: [
-      { task_id: "plan-a", ticket_id: "ticket-a", part_key: "Shot 01" },
-      { task_id: "plan-a", ticket_id: "ticket-a", part_key: "Shot 02" },
-    ] }), plans, t: copyFor("en"), onSave: async (filings: unknown) => { saved.push(filings); return null; },
-  });
+test("a filed line is one tag: the job, the ticket after it; no editor and no second button", () => {
+  const { host, chip, opened, close } = open(filed([{ task_id: "plan-a", ticket_id: "ticket-a" }]));
   try {
-    click(buttonByText(host, "Change"));
-    const parts = host.querySelectorAll('input[aria-label="Part · EP01"]');
-    expect(parts).toHaveLength(2);
-    fill(parts[1], "Shot 03");
-    click(buttonByText(host, "Save")); await Promise.resolve(); flushSync();
-    expect(saved[0]).toEqual([
-      { plan_id: "plan-a", ticket_id: "ticket-a", part_key: "Shot 01" },
-      { plan_id: "plan-a", ticket_id: "ticket-a", part_key: "Shot 03" },
-    ]);
+    expect(chip.querySelector(".plan")?.textContent).toBe("让审片员回复视频导演，说明未回复原因并给出审片意见。");
+    expect(chip.querySelector(".detail")?.textContent).toBe("› 回复视频导演");
+    expect(chip.getAttribute("aria-label")).toBe("归到：让审片员回复视频导演，说明未回复原因并给出审片意见。 · 回复视频导演 — 点击修改归属");
+    expect(chip.title).toContain("归到：让审片员回复视频导演");
+    expect(host.querySelectorAll("button")).toHaveLength(1);
+    expect(host.querySelector("form, select, input")).toBeNull();
+    click(chip);
+    expect(opened).toHaveLength(1);
+  } finally { close(); }
+});
+
+test("several jobs show the first and how many more, and every one in the tooltip", () => {
+  const { chip, close } = open(filed([{ task_id: "plan-b" }, { task_id: "plan-a", part_key: "Shot 01–03" }]));
+  try {
+    expect(chip.querySelector(".plan")?.textContent).toBe("海报");
+    expect(chip.querySelector(".more")?.textContent).toBe("另 1 件");
+    expect(chip.title).toContain("海报 / 让审片员回复视频导演，说明未回复原因并给出审片意见。 · Shot 01–03");
+  } finally { close(); }
+});
+
+test("a part shows after the ticket, and in English the same tag reads in English", () => {
+  const { chip, close } = open(filed([{ task_id: "plan-a", ticket_id: "ticket-a", part_key: "Shot 02" }]), { t: copyFor("en") });
+  try {
+    expect(chip.querySelector(".detail")?.textContent).toBe("› 回复视频导演 · Shot 02");
+    expect(chip.getAttribute("aria-label")).toContain("Filed under:");
+    expect(chip.getAttribute("aria-label")).toContain("Click to change");
+  } finally { close(); }
+});
+
+test("a line with no filing is a dashed tag that invites a choice", () => {
+  const { chip, close } = open(Object.assign(aMessage(), { filing_state: "undetermined", filings: [] }));
+  try {
+    expect(chip.classList.contains("is-unfiled")).toBe(true);
+    expect(chip.textContent?.replace(/\s+/g, " ").trim()).toBe("未归属 · 选择归属");
+  } finally { close(); }
+});
+
+test("a job whose title has not loaded, or is gone, is 「一件事」, never its id", () => {
+  const { chip, close } = open(filed([{ task_id: "01M3XDXJS58PDYSEWTPHA0AZJJ" }]), { plans: [] });
+  try {
+    expect(chip.textContent).toContain("一件事");
+    expect(chip.textContent).not.toContain("01M3XDXJS58");
+    expect(chip.getAttribute("aria-label")).not.toContain("01M3XDXJS58");
+  } finally { close(); }
+});
+
+test("a disconnected or locked conversation shows the tag but does not open anything", () => {
+  const { chip, opened, close } = open(filed([{ task_id: "plan-b" }]), { disabled: true });
+  try {
+    expect(chip.disabled).toBe(true);
+    click(chip);
+    expect(opened).toHaveLength(0);
   } finally { close(); }
 });

@@ -15,6 +15,8 @@
 	import BotDmEntry from './BotDmEntry.svelte';
 	import ControlActions from './ControlActions.svelte';
 	import MessageAttribution from './MessageAttribution.svelte';
+	import AttributionDialog from './AttributionDialog.svelte';
+	import { attributable, attributionChipIds, messageFilings } from './attribution.ts';
 	import DelegationRecords from './DelegationRecords.svelte';
 	import AnnotationCards from '../annotations/AnnotationCards.svelte';
 	import { annotationsByMessage } from '../annotations/model.ts';
@@ -147,6 +149,11 @@
 	const botDmIndex = $derived(
 		indexBotDmsByOrigin(snapshot.sessions, selected?.id ?? null, snapshot.turns, botsById)
 	);
+	/** Which line's filing is being changed, in the dialog; its tag and its menu both open it. */
+	let attributionEditId = $state<string | null>(null);
+	const attributionTarget = $derived(attributionEditId ? (snapshot.messages.find((row) => row.id === attributionEditId) ?? null) : null);
+	/** Only the first line of a run about the same job shows its tag; the rest are still changeable from their menu. */
+	const attributionChips = $derived(attributionChipIds(snapshot.messages.filter((row) => row.session_id === selected?.id)));
 	// Keyed by the message that carries them; a separate collection, so a batch's cards never
 	// touch the memoized message wrappers.
 	const annotationIndex = $derived(annotationsByMessage(snapshot.annotations));
@@ -1565,15 +1572,12 @@
 												/>
 											{/if}
 										</article>
-										{#if !fileDrop && !item.message.control}
+										{#if !fileDrop && !item.message.control && attributionChips.has(item.message.id)}
 											<MessageAttribution
 												message={item.message} {t}
 												plans={runtime.attributionPlans[item.message.session_id] ?? []}
-												loading={runtime.attributionLoading[item.message.session_id] ?? false}
-												loadError={runtime.attributionLoadError[item.message.session_id] ?? false}
 												disabled={!connected || lockedComposer}
-												onLoad={() => runtime.loadAttributionPlans(item.message.session_id, item.message.id)}
-												onSave={(filings) => runtime.patchMessageAttribution(item.message.id, filings)}
+												onOpen={() => { attributionEditId = item.message.id; }}
 											/>
 										{/if}
 										{#if item.message.control?.kind === 'possible_control' && !lockedComposer}
@@ -1910,15 +1914,12 @@
 												/>
 											{/if}
 										</article>
-										{#if !fileDrop && item.message.kind === 'bot' && !item.message.control}
+										{#if !fileDrop && item.message.kind === 'bot' && !item.message.control && attributionChips.has(item.message.id)}
 											<MessageAttribution
 												message={item.message} {t}
 												plans={runtime.attributionPlans[item.message.session_id] ?? []}
-												loading={runtime.attributionLoading[item.message.session_id] ?? false}
-												loadError={runtime.attributionLoadError[item.message.session_id] ?? false}
 												disabled={!connected || lockedComposer}
-												onLoad={() => runtime.loadAttributionPlans(item.message.session_id, item.message.id)}
-												onSave={(filings) => runtime.patchMessageAttribution(item.message.id, filings)}
+												onOpen={() => { attributionEditId = item.message.id; }}
 											/>
 										{/if}
 										{#if rxGroups.length > 0}
@@ -2047,6 +2048,23 @@
 			onShowTrace={() => showMessageTrace(activeMenu.message)}
 			onCopyId={() => handleCopyMessageId(activeMenu.message.id)}
 			onReaction={(emoji) => void runtime.toggleReaction(activeMenu.message.id, emoji)}
+			onAttribution={!fileDrop && attributable(activeMenu.message) && connected && !lockedComposer
+				? () => { attributionEditId = activeMenu.message.id; }
+				: undefined}
+		/>
+	{/if}
+	{#if attributionTarget}
+		{@const target = attributionTarget}
+		<AttributionDialog
+			message={target} {t}
+			plans={runtime.attributionPlans[target.session_id] ?? []}
+			inConversation={new Set(snapshot.messages.filter((row) => row.session_id === target.session_id).flatMap((row) => messageFilings(row).map((filing) => filing.task_id)))}
+			disabled={!connected || lockedComposer}
+			loading={runtime.attributionLoading[target.session_id] ?? false}
+			loadError={runtime.attributionLoadError[target.session_id] ?? false}
+			onLoad={() => runtime.loadAttributionPlans(target.session_id, target.id)}
+			onSave={(filings) => runtime.patchMessageAttribution(target.id, filings)}
+			onClose={() => { attributionEditId = null; }}
 		/>
 	{/if}
 </div>

@@ -27,9 +27,11 @@ function openMessageMenu(
   message: Message,
   opts: {
     lockedComposer?: boolean;
+    attribution?: boolean;
   } = {},
 ) {
   const calls = {
+    attribution: 0,
     close: 0,
     reply: 0,
     copy: 0,
@@ -66,6 +68,7 @@ function openMessageMenu(
     onReaction: (emoji: string) => {
       calls.reaction.push(emoji);
     },
+    ...(opts.attribution ? { onAttribution: () => { calls.attribution += 1; } } : {}),
   });
 
   return { ...view, calls };
@@ -127,4 +130,15 @@ test("open file tree is disabled when message has no associated files", () => {
   const fileTreeBtn = buttonByText(host, t.chat.openAssociatedFileTree) as HTMLButtonElement;
   expect(fileTreeBtn.disabled).toBe(true);
   close();
+});
+
+test("a line that can be filed offers 「改归属…」, which opens the attribution dialog and closes the menu; a line that cannot has no such item", () => {
+  const withIt = openMessageMenu(createTestMessage(), { attribution: true });
+  click(buttonByText(withIt.host, t.attribution.menuItem));
+  expect(withIt.calls.attribution).toBe(1);
+  expect(withIt.calls.close).toBe(1);
+  withIt.close();
+  const without = openMessageMenu(createTestMessage());
+  expect([...without.host.querySelectorAll("button")].some((b) => b.textContent?.trim() === t.attribution.menuItem)).toBe(false);
+  without.close();
 });
