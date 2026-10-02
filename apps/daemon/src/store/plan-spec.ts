@@ -4,7 +4,8 @@
  * user — so the board can show how the goal moved. The organizer's ticket list is applied here
  * too, in one transaction with the spec, so a plan is never half-updated.
  */
-import type { AcceptanceCheck, TaskDetail, TaskSpecRevision, Ticket, TicketStatus } from "@real-bot/protocol";
+import { ballHolder } from "./supervisor";
+import type { AcceptanceCheck, TaskDetail, TaskSpecRevision, Ticket, TicketBall, TicketStatus } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { applyOrganizerChecks, checkNeverRanSinceDefinition, checksHoldingPlanOpen, listChecks, rebindCheckItems, type OrganizerCheckInput } from "./acceptance-checks";
@@ -582,9 +583,32 @@ export function applyOrganizerResult(
 }
 
 /** One plan as the board and the plan event read it: the switcher row plus spec, revision and tickets. */
+/** Who an open ticket waits on, in the board's words (ADR 0045); nothing for a closed one. */
+function ballOn(ctx: StoreContext, ticketId: string): { ball?: TicketBall } {
+  const holder = ballHolder(ctx, { ticketId });
+  switch (holder.kind) {
+    case "closed":
+      return {};
+    case "delegation":
+      return { ball: { kind: "delegation", bot_id: holder.botId, since: holder.since } };
+    case "owner":
+    case "lead":
+    case "reviewer":
+      return { ball: { kind: holder.kind, bot_id: holder.botId } };
+    case "app":
+      return { ball: { kind: "app", reason: holder.reason } };
+    case "user":
+      return { ball: { kind: "user", reason: holder.reason } };
+  }
+}
+
 export function taskDetail(ctx: StoreContext, taskId: string, present: (path: string) => boolean): TaskDetail {
   const task = getTask(ctx, taskId);
   const withStages = readEngineLevel(ctx.db) >= ENGINE_LEVELS.submissions;
+  // The ball only moves in a plan the supervisor looks at: active and not set aside. In a parked, done
+  // or dormant one nothing waits on anybody, so no ticket there says it does.
+  const withBall = readEngineLevel(ctx.db) >= ENGINE_LEVELS.supervision;
+  const ballMoves = withBall && task.status === "active" && !task.dormant_since;
   const summary = taskSummary(ctx, task, taskLastActivityAt(ctx, taskId));
   const latest = ctx.db
     .query<{ revision: number; actor: "app" | "user"; cause: "hold" | null }, [string]>(
@@ -604,11 +628,13 @@ export function taskDetail(ctx: StoreContext, taskId: string, present: (path: st
     held_by: planHeldBy(ctx, taskId),
     requirements: planRequirements(ctx, taskId),
     last_change: planLastChange(ctx, taskId),
+    ...(withBall ? { supervision_on: true } : {}),
     ...(withStages ? { submissions_on: true, reviewer_ids: ctx.db.query<{ id: string }, [string]>(`SELECT b.id FROM bots b
       JOIN session_participants sp ON sp.member = b.id AND sp.left_at IS NULL AND sp.session_id = (SELECT session_id FROM tasks WHERE id = ?)
       WHERE b.archived_at IS NULL AND b.deleted_at IS NULL ORDER BY sp.joined_at, b.id`).all(taskId).map((row) => row.id) } : {}),
     tickets: listTickets(ctx, taskId).map((ticket) => ({
       ...ticket,
+      ...(ballMoves ? ballOn(ctx, ticket.id) : {}),
       // Parts passed only mean something once submissions approve them (level 5, ADR 0046).
       ...(withStages ? { parts: ctx.db.query<{ total: number; approved: number }, [string]>(`SELECT COUNT(*) AS total,
         COALESCE(SUM(CASE WHEN stage = 'approved' THEN 1 ELSE 0 END), 0) AS approved FROM ticket_parts WHERE ticket_id = ? AND stage <> 'waived'`).get(ticket.id)! } : {}),

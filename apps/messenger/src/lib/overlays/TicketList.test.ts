@@ -334,3 +334,72 @@ test("without an api there is no status select, but artifacts and jump still wor
   expect(row.querySelector(".ticket-jump")).not.toBeNull();
   view.close();
 });
+
+test("from level 4 an open ticket says who has the ball and what it waits for; below it, nothing", () => {
+  const detail = aDetail({
+    supervision_on: true,
+    tickets: [
+      aTicket({ id: "t1", seq: 1, title: "收集资料", ball: { kind: "owner", bot_id: "bot-1" } }),
+      aTicket({ id: "t2", seq: 2, title: "画分镜", ball: { kind: "user", reason: "ceiling" }, depends_on: ["t1"] }),
+      aTicket({ id: "t3", seq: 3, title: "剪辑", status: "done" }),
+    ],
+  });
+  const view = open({ detail });
+  const balls = [...view.host.querySelectorAll(".ticket-row")].map((row) => row.querySelector(".ticket-ball")?.textContent?.replace(/\s+/g, " ").trim() ?? null);
+  expect(balls).toEqual([(t.plan.ball.owner as (name: string) => string)("制片"), `${t.plan.ball.ceiling} ${t.plan.dependsOn("#01")}`, null]);
+  view.close();
+  const below = open({ detail: aDetail({ tickets: [aTicket({ id: "t1" }), aTicket({ id: "t2", seq: 2 })] }) });
+  expect(below.host.querySelector(".ticket-ball")).toBeNull();
+  expect(below.host.querySelector(".ticket-depends-toggle")).toBeNull();
+  below.close();
+});
+
+test("the dependency editor sets which tickets one waits for", async () => {
+  const detail = aDetail({ supervision_on: true, tickets: [aTicket({ id: "t1", seq: 1 }), aTicket({ id: "t2", seq: 2, title: "画分镜", depends_on: [] })] });
+  const view = open({ detail });
+  const row = [...view.host.querySelectorAll(".ticket-row")][1]!;
+  click(row.querySelector(".ticket-depends-toggle"));
+  flushSync();
+  const box = row.querySelector<HTMLInputElement>(".ticket-depends-option input")!;
+  expect(row.querySelector(".ticket-depends-option")?.textContent).toContain("01 收集资料");
+  box.click();
+  await Promise.resolve();
+  expect(view.patchCalls).toEqual([{ ticketId: "t2", body: { depends_on: ["t1"], if_revision: 3 } }]);
+  view.close();
+});
+
+test("a ticket that already waits on this one cannot be chosen: it would make a loop", () => {
+  const detail = aDetail({ supervision_on: true, tickets: [aTicket({ id: "t1", seq: 1 }), aTicket({ id: "t2", seq: 2, depends_on: ["t1"] }), aTicket({ id: "t3", seq: 3, depends_on: ["t2"] })] });
+  const view = open({ detail });
+  const first = [...view.host.querySelectorAll(".ticket-row")][0]!;
+  click(first.querySelector(".ticket-depends-toggle"));
+  flushSync();
+  const options = [...first.querySelectorAll<HTMLLabelElement>(".ticket-depends-option")];
+  expect(options.map((option) => [option.textContent?.replace(/\s+/g, " ").trim(), option.querySelector("input")!.disabled])).toEqual([["02 收集资料", true], ["03 收集资料", true]]);
+  view.close();
+});
+
+test("a reviewer no longer in the plan's conversation still reads by name in its menu", () => {
+  const reviewer = aBot({ id: "bot-9", name: "审片员" });
+  const view = open({ detail: aDetail({ submissions_on: true, reviewer_ids: [], tickets: [aTicket({ reviewer_bot_id: "bot-9" })] }), bots: [writer, reviewer] });
+  expect(view.host.querySelector(".ticket-reviewer-wrap")?.textContent).toContain("审片员");
+  expect(view.host.querySelector(".ticket-reviewer-wrap")?.textContent).not.toContain("bot-9");
+  view.close();
+});
+
+test("below level 5 a ticket waiting on you is one to mark done, not an approval; a parked ticket cannot be waited for, and a loop already there can be undone", () => {
+  const review = open({ detail: aDetail({ supervision_on: true, tickets: [aTicket({ ball: { kind: "user", reason: "review" } })] }) });
+  expect(review.host.querySelector(".ticket-ball")?.textContent?.trim()).toBe(t.plan.ball.acceptance as string);
+  review.close();
+  const staged = open({ detail: aDetail({ supervision_on: true, submissions_on: true, tickets: [aTicket({ ball: { kind: "user", reason: "review" } })] }) });
+  expect(staged.host.querySelector(".ticket-ball")?.textContent?.trim()).toBe(t.plan.ball.review as string);
+  staged.close();
+  const view = open({ detail: aDetail({ supervision_on: true, tickets: [aTicket({ id: "t1", seq: 1, depends_on: ["t2"] }), aTicket({ id: "t2", seq: 2, depends_on: ["t1"] }), aTicket({ id: "t3", seq: 3, status: "parked" })] }) });
+  const first = [...view.host.querySelectorAll(".ticket-row")][0]!;
+  click(first.querySelector(".ticket-depends-toggle"));
+  flushSync();
+  const options = [...first.querySelectorAll<HTMLLabelElement>(".ticket-depends-option")];
+  expect(options.map((option) => option.querySelector("input")!.disabled)).toEqual([false, true]);
+  expect(options[1]!.title).toBe(t.plan.dependsParked);
+  view.close();
+});

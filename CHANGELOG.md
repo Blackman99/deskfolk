@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Who has the ball, on the board (engine level 4)
+
+- The plan board's ticket list says, under each open ticket, who has the ball (a Bot, the lead, a delegation, a reviewer, the app, or you, and for what) and which tickets it waits for; a "Depends on" button sets those dependencies.
+
 ### Quality events and lessons instead of after-the-fact reviews (engine level 8, opt-in)
 
 - What went wrong is filed as a quality event by the event's own type — checks failed, rejects, send-backs, complaints and timeouts as execution; a requirement first said after a hand-over as unclear; looping, declined or cut replies as the model's; failed renders and parts at the capability ceiling as the pipeline's; overturned approvals as review misses; stalls and crashes as orchestration — each on the Bot and model it is about. A board card's model choice says why the turn ran on its model and can be marked as the model's problem. `GET /v1/quality/report` sums it per Bot × model × plan kind with the spend per approval.

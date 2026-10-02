@@ -425,10 +425,25 @@ export type Ticket = {
 
 export type TicketArtifactRef = { path: string; message_id: string; attachment_id: string; exists?: boolean };
 
+/**
+ * Who has the ball on a ticket (ADR 0045), as the board shows it from engine level 4: a Bot (its
+ * owner, the plan's lead, the Bot a delegation went to, its reviewer), the app (an approval due at
+ * the next tick, a render it polls), or you (a question, something blocked, a stop, an approval, the
+ * capability ceiling, or nobody on it). `since`: when a delegation went out.
+ */
+export type TicketBall = {
+  kind: "owner" | "lead" | "delegation" | "reviewer" | "app" | "user";
+  bot_id?: string | null;
+  reason?: "approval" | "job" | "ask" | "blocked" | "held" | "held_dependency" | "review" | "ceiling" | "unclaimed";
+  since?: string;
+};
+
 export type TicketWithArtifacts = Ticket & {
   artifacts: TicketArtifactRef[];
   /** Its parts (ADR 0046): how many there are and how many passed (「11/12 已通过」); absent from older daemons. */
   parts?: { total: number; approved: number };
+  /** From level 4, an open ticket's: who it waits on now. Absent on a closed ticket and below the level. */
+  ball?: TicketBall;
 };
 
 /**
@@ -751,6 +766,8 @@ export type PlanRequirement = {
 export type TaskDetail = SessionTaskSummary & {
   /** Engine level 5 is on (ADR 0046): tickets have stages, parts passed and a reviewer to set. Absent below it. */
   submissions_on?: boolean;
+  /** Engine level 4 is on (ADR 0045): tickets show who has the ball, and their dependencies can be set. Absent below it. */
+  supervision_on?: boolean;
   /** From level 5: the Bots that can review this plan's tickets (in its conversation, not archived); a ticket's owner is left out on its row. */
   reviewer_ids?: string[];
   brief: string | null;

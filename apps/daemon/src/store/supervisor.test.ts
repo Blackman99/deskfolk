@@ -566,3 +566,27 @@ test("the migration adds the owner and dependency columns and imports owners onc
   migrateSchema(f.store.db);
   expect(f.store.db.query("SELECT owner_bot_id FROM tickets WHERE id = ?").get(historic.id)).toEqual({ owner_bot_id: null });
 });
+
+test("the board reads who has the ball on each open ticket from level 4, and nothing below it", () => {
+  const f = fixture();
+  const detail = f.store.taskDetail(f.plan.id, () => true);
+  expect(detail.supervision_on).toBe(true);
+  expect(detail.tickets.map((ticket) => ticket.ball)).toEqual([{ kind: "owner", bot_id: f.owner.id }]);
+  f.store.createHold({ scope: "ticket", scopeId: f.ticket.id, source: "user_button" });
+  expect(f.store.taskDetail(f.plan.id, () => true).tickets[0]!.ball).toEqual({ kind: "user", reason: "held" });
+  f.store.db.run("UPDATE tickets SET status = 'done' WHERE id = ?", [f.ticket.id]);
+  expect(f.store.taskDetail(f.plan.id, () => true).tickets[0]!.ball).toBeUndefined();
+  // An open ticket below level 4 shows none either.
+  f.store.db.run("UPDATE tickets SET status = 'doing' WHERE id = ?", [f.ticket.id]);
+  f.store.db.run("UPDATE settings SET value = ? WHERE key = 'engine_level'", [String(ENGINE_LEVELS.delegation)]);
+  const below = f.store.taskDetail(f.plan.id, () => true);
+  expect([below.supervision_on, below.tickets[0]!.ball]).toEqual([undefined, undefined]);
+});
+
+test("in a parked, done or dormant plan no ticket says who has the ball: nothing waits on anybody there", () => {
+  for (const set of ["UPDATE tasks SET status = 'parked' WHERE id = ?", "UPDATE tasks SET status = 'done' WHERE id = ?", "UPDATE tasks SET dormant_since = '2026-10-01T00:00:00.000Z' WHERE id = ?"]) {
+    const f = fixture();
+    f.store.db.run(set, [f.plan.id]);
+    expect(f.store.taskDetail(f.plan.id, () => true).tickets[0]!.ball).toBeUndefined();
+  }
+});

@@ -86,7 +86,13 @@
 	function reviewerOptions(ticket: TicketWithArtifacts): Array<{ value: string; label: string }> {
 		const owner = ticket.owner_bot_id ?? ticket.worker;
 		const able = new Set(detail.reviewer_ids ?? []);
-		return bots.filter((bot) => able.has(bot.id) && bot.id !== owner).map((bot) => ({ value: bot.id, label: bot.name }));
+		const options = bots.filter((bot) => able.has(bot.id) && bot.id !== owner).map((bot) => ({ value: bot.id, label: bot.name }));
+		// The one set now stays readable by name even once it left the plan's conversation.
+		const current = ticket.reviewer_bot_id;
+		if (current && !options.some((option) => option.value === current)) {
+			options.push({ value: current, label: actorName(current, botsById, youLabel, deletedLabel) });
+		}
+		return options;
 	}
 
 	async function changeReviewer(ticket: TicketWithArtifacts, reviewer: string): Promise<void> {
@@ -95,6 +101,64 @@
 		errorId = null;
 		try {
 			const result = await api.patchTicket(ticket.id, { reviewer_bot_id: reviewer || null, if_revision: detail.revision });
+			onPatched(result);
+		} catch (err) {
+			if (errorStatus(err) === 409) {
+				onConflict();
+			} else {
+				errorId = ticket.id;
+			}
+		} finally {
+			patchingId = null;
+		}
+	}
+
+	/** Who an open ticket waits on (ADR 0045, from level 4), in the board's words. */
+	function ballLabel(ticket: TicketWithArtifacts): string | null {
+		const ball = ticket.ball;
+		if (!ball) return null;
+		// Below level 5 a ticket waiting on you is one to mark done on the board, not an approval card.
+		const key = ball.kind === 'user' && ball.reason === 'review' && !detail.submissions_on ? 'acceptance'
+			: ball.kind === 'app' || ball.kind === 'user' ? (ball.reason ?? '') : ball.kind;
+		const label = t.plan.ball[key];
+		if (typeof label === 'function') return label(actorName(ball.bot_id ?? '', botsById, youLabel, deletedLabel));
+		return label ?? null;
+	}
+
+	/** The tickets this one waits for, by their tags (「#02、#03」). */
+	function dependsLabel(ticket: TicketWithArtifacts): string | null {
+		const tags = (ticket.depends_on ?? []).flatMap((id) => {
+			const other = detail.tickets.find((row) => row.id === id);
+			return other ? [`#${ticketTag(other.seq)}`] : [];
+		});
+		return tags.length > 0 ? t.plan.dependsOn(tags.join('、')) : null;
+	}
+
+	let dependsOpen = $state<string | null>(null);
+
+	/** Whether `other` already waits on `ticket`, directly or through others: choosing it would make a loop. */
+	function wouldLoop(ticket: TicketWithArtifacts, other: TicketWithArtifacts): boolean {
+		const byId = new Map(detail.tickets.map((row) => [row.id, row] as const));
+		const seen = new Set<string>();
+		const stack = [...(other.depends_on ?? [])];
+		while (stack.length > 0) {
+			const id = stack.pop()!;
+			if (id === ticket.id) return true;
+			if (seen.has(id)) continue;
+			seen.add(id);
+			stack.push(...(byId.get(id)?.depends_on ?? []));
+		}
+		return false;
+	}
+
+	async function toggleDepends(ticket: TicketWithArtifacts, otherId: string): Promise<void> {
+		if (!api) return;
+		const current = ticket.depends_on ?? [];
+		const next = current.includes(otherId) ? current.filter((id) => id !== otherId) : [...current, otherId];
+		patchingId = ticket.id;
+		errorId = null;
+		try {
+			const result = await api.patchTicket(ticket.id, { depends_on: next, if_revision: detail.revision });
 			onPatched(result);
 		} catch (err) {
 			if (errorStatus(err) === 409) {
@@ -225,6 +289,12 @@
 								{ticket.worker ? t.plan.worker(actorName(ticket.worker, botsById, youLabel, deletedLabel), ticket.status !== "todo") : t.plan.nobody}
 							</span>
 						</span>
+						{#if ballLabel(ticket) || dependsLabel(ticket)}
+							<span class="ticket-ball">
+								{#if ballLabel(ticket)}<span class="ticket-ball-holder">{ballLabel(ticket)}</span>{/if}
+								{#if dependsLabel(ticket)}<span class="ticket-depends">{dependsLabel(ticket)}</span>{/if}
+							</span>
+						{/if}
 						{#if ticket.spec}
 							<span class="ticket-spec">{ticket.spec}</span>
 						{/if}
@@ -261,6 +331,15 @@
 								/>
 							</div>
 						{/if}
+						{#if api && detail.supervision_on && detail.tickets.length > 1}
+							<button
+								type="button"
+								class="ticket-depends-toggle"
+								aria-expanded={dependsOpen === ticket.id}
+								title={t.plan.dependsHint}
+								onclick={() => (dependsOpen = dependsOpen === ticket.id ? null : ticket.id)}
+							>{t.plan.editDepends}</button>
+						{/if}
 						{#if api}
 							<div class="ticket-select-wrap">
 								<Select
@@ -274,6 +353,26 @@
 							</div>
 						{/if}
 					</div>
+					{#if dependsOpen === ticket.id}
+						<div class="ticket-depends-editor" role="group" aria-label={t.plan.dependsHint}>
+							<span class="ticket-depends-hint">{t.plan.dependsHint}</span>
+							{#each detail.tickets.filter((other) => other.id !== ticket.id) as other (other.id)}
+								{@const chosen = (ticket.depends_on ?? []).includes(other.id)}
+								{@const loops = !chosen && wouldLoop(ticket, other)}
+								{@const parked = !chosen && other.status === 'parked'}
+								<label class="ticket-depends-option" class:is-loop={loops || parked} title={loops ? t.plan.dependsLoop : parked ? t.plan.dependsParked : undefined}>
+									<input
+										type="checkbox"
+										checked={chosen}
+										disabled={patchingId === ticket.id || loops || parked}
+										onchange={() => toggleDepends(ticket, other.id)}
+									/>
+									<span class="mono">{ticketTag(other.seq)}</span>
+									<span class="ticket-depends-title">{other.title}</span>
+								</label>
+							{/each}
+						</div>
+					{/if}
 					{#if errorId === ticket.id}
 						<p class="ticket-error">{t.plan.saveFailed}</p>
 					{/if}
@@ -676,6 +775,71 @@
 		white-space: nowrap;
 		font-size: 11px;
 		color: var(--muted);
+	}
+
+	.ticket-ball {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 2px 10px;
+		font-size: 11px;
+		color: var(--muted);
+	}
+
+	.ticket-ball-holder {
+		color: var(--ink-secondary);
+	}
+
+	.ticket-depends-toggle {
+		padding: 2px 8px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-full);
+		background: var(--pane);
+		color: var(--ink-secondary);
+		font-size: 11px;
+		cursor: pointer;
+	}
+
+	.ticket-depends-toggle:hover,
+	.ticket-depends-toggle[aria-expanded='true'] {
+		border-color: var(--accent-border);
+		color: var(--accent);
+	}
+
+	.ticket-depends-editor {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		width: 100%;
+		box-sizing: border-box;
+		padding: 6px 8px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-sm);
+		background: var(--chip);
+	}
+
+	.ticket-depends-hint {
+		font-size: 11px;
+		color: var(--muted);
+	}
+
+	.ticket-depends-option {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 12px;
+		color: var(--ink-secondary);
+		min-width: 0;
+	}
+
+	.ticket-depends-option.is-loop {
+		opacity: 0.55;
+	}
+
+	.ticket-depends-title {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.ticket-spec {
