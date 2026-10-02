@@ -18,11 +18,12 @@
  * (`engine/submissions.ts`).
  */
 import { USER_MEMBER, type Message, type Ticket, type TicketStatus } from "@real-bot/protocol";
+import { clauseObjects, clausesOf } from "../complaint-words";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { derivedNotGate } from "./acceptance-checks";
 import { confirmDerivedCheck } from "./derived-checks";
-import { registerFilenameParts } from "./filing";
+import { filenamePartNumbers, partNumbers, registerFilenameParts } from "./filing";
 import { holdsCovering } from "./holds";
 import { queueInboxItem, refreshHeldInbox } from "./inbox";
 import { getMessage, insertMessage, setMessageControl } from "./messages";
@@ -67,7 +68,11 @@ export type SubmissionOrigin = "submit" | "implicit" | "answer" | "organizer";
  * else stands behind. An organizer's check still blocks when it fails, but its pass vouches for
  * nothing: it may only ask that a file exists.
  */
-export type SubmissionCheck = { check_id: string; item: string; gate: boolean; yours: boolean; outcome: string; detail: string };
+export type SubmissionCheck = {
+  check_id: string; item: string; gate: boolean; yours: boolean; outcome: string; detail: string;
+  /** Its last verdict came from a model looking at pictures: shown for reference, never a gate (from level 5, until calibrated). */
+  reference?: "vision";
+};
 
 /** A gate you wrote or confirmed that passed: what backs an approval nobody else stands behind. */
 function backs(check: SubmissionCheck): boolean {
@@ -421,6 +426,10 @@ export function prepareSubmission(ctx: StoreContext, input: {
     const claims = cleanClaims(input.claims);
     if (input.note !== undefined && input.note !== null && typeof input.note !== "string") throw new HttpError(422, "invalid_args", "note must be a string");
     const parts = submissionParts(ctx, turn.ticket_id, artifacts, input.parts);
+    const stuck = openCeiling(ctx, turn.ticket_id, [...parts.keys()]);
+    if (stuck) {
+      throw new HttpError(409, "ceiling_reached", `${stuck.part_key ? `part ${stuck.part_key}` : "this ticket"} hit the capability ceiling: the user is asked on a card how to go on (another way, another plan, a relaxed requirement, or as it is); nothing more is handed over for it until they answer`);
+    }
     const superseded = supersedeOpen(ctx, turn.ticket_id, now, "submission");
     const id = ulid(Date.parse(now));
     ctx.db.run(`INSERT INTO submissions (id, work_item_id, task_id, ticket_id, part_keys, bot_id, model, turn_id, origin, artifacts, content, claims,
@@ -462,6 +471,7 @@ function supersedeOpen(ctx: StoreContext, ticketId: string, now: string, by: "su
 export function noteBoardStatus(ctx: StoreContext, ticketId: string, now: string = isoNow()): string[] {
   if (!supervised(ctx)) return [];
   const superseded = supersedeOpen(ctx, ticketId, now, "board");
+  closeCeilingCards(ctx, ticketId, locale(ctx) === "en" ? "You changed the ticket's status on the board, so this no longer asks." : "你在看板上改了这张任务的状态，不再问了。");
   if (superseded.length > 0) {
     const ticket = stagedTicket(ctx, ticketId);
     recordWorkEvent(ctx, { kind: "submission.superseded", actor: USER_MEMBER, taskId: ticket.task_id, ticketId, payload: { submissions: superseded, by: "board" } });
@@ -503,11 +513,12 @@ export function checkResults(ctx: StoreContext, checkIds: readonly string[], sin
     const check = ctx.db.query<{ id: string; item: string; origin: string | null; bind_kind: string | null; derived_state: string | null; source: string }, [string]>(
       "SELECT id, item, origin, bind_kind, derived_state, source FROM acceptance_checks WHERE id = ? AND removed_at IS NULL").get(id);
     if (!check) return [];
-    const run = ctx.db.query<{ outcome: string | null; detail: string }, [string, string]>(`SELECT outcome, detail FROM acceptance_check_runs
-      WHERE check_id = ? AND finished_at IS NOT NULL AND started_at >= ? ORDER BY finished_at DESC, rowid DESC LIMIT 1`).get(id, since);
-    const gate = !derivedNotGate(check);
+    const run = ctx.db.query<{ outcome: string | null; detail: string; judged_by: string | null }, [string, string]>(`SELECT outcome, detail, judged_by
+      FROM acceptance_check_runs WHERE check_id = ? AND finished_at IS NOT NULL AND started_at >= ? ORDER BY finished_at DESC, rowid DESC LIMIT 1`).get(id, since);
+    const vision = run?.judged_by === "vision" && supervised(ctx);
+    const gate = !derivedNotGate(check) && !vision;
     return [{ check_id: id, item: check.item, gate, yours: gate && (check.origin === "derived" || check.source === "user"),
-      outcome: run?.outcome ?? "not_run", detail: run?.detail ?? "" }];
+      outcome: run?.outcome ?? "not_run", detail: run?.detail ?? "", ...(vision ? { reference: "vision" as const } : {}) }];
   });
 }
 
@@ -519,8 +530,8 @@ export function gateFailed(check: SubmissionCheck): boolean {
 /** One line per check in `checks`, in the Bots' language. */
 export function checkLines(checks: readonly SubmissionCheck[], lang: "zh" | "en"): string[] {
   return checks.map((check) => lang === "en"
-    ? `"${check.item}": ${check.outcome === "not_run" ? "did not run" : check.outcome}${check.detail ? ` — ${check.detail}` : ""}${check.gate ? "" : " (not confirmed by the user)"}`
-    : `「${check.item}」：${check.outcome === "not_run" ? "没跑成" : check.outcome === "fail" ? "不通过" : check.outcome === "pass" ? "通过" : check.outcome}${check.detail ? `——${check.detail}` : ""}${check.gate ? "" : "（用户还没确认）"}`);
+    ? `"${check.item}": ${check.outcome === "not_run" ? "did not run" : check.outcome}${check.detail ? ` — ${check.detail}` : ""}${check.reference ? " (judged by a model looking at pictures: for reference only)" : check.gate ? "" : " (not confirmed by the user)"}`
+    : `「${check.item}」：${check.outcome === "not_run" ? "没跑成" : check.outcome === "fail" ? "不通过" : check.outcome === "pass" ? "通过" : check.outcome}${check.detail ? `——${check.detail}` : ""}${check.reference ? "（看图判定，只作参考）" : check.gate ? "" : "（用户还没确认）"}`);
 }
 
 function inPlanSession(ctx: StoreContext, botId: string, taskId: string): boolean {
@@ -588,14 +599,37 @@ function failOnGates(ctx: StoreContext, submission: Submission, checks: Submissi
     workItemId: submission.work_item_id, submissionId: submission.id, now });
   const failed = getSubmission(ctx, submission.id);
   setPartStage(ctx, failed, "rework");
-  if (!tell || !producerIsBot(ctx, submission)) return;
+  const ceiling = checkCeiling(ctx, failed, now);
+  if (!tell) return;
+  const lines = checkLines(checks.filter(gateFailed), locale(ctx));
+  tellAfterFailure(ctx, submission, locale(ctx) === "en"
+    ? { what: `(app) Submission ${submission.id} failed its checks, so the ticket did not move: ${lines.join("; ")}.`, retry: "Fix it and hand it over again." }
+    : { what: `（应用）交付 ${submission.id} 没过检查，任务没往前走：${lines.join("；")}。`, retry: "改好再交。" }, ceiling, now);
+}
+
+/**
+ * The producer hears a failed hand-over (its checks, a review's reject, your send-back) and is woken
+ * to fix it — unless every unit it covered is now stuck at the capability ceiling: then it only hears
+ * that you are being asked how to go on, and is not woken to try again (the ball is yours).
+ */
+function tellAfterFailure(ctx: StoreContext, submission: Submission, said: { what: string; retry: string }, ceiling: CeilingOutcome, now: string): void {
+  if (!producerIsBot(ctx, submission)) return;
   const sessionId = producerSession(ctx, submission);
   if (!sessionId) return;
-  const lines = checkLines(checks.filter(gateFailed), locale(ctx));
-  queueWork(ctx, { botId: submission.bot_id, sessionId, taskId: submission.task_id, ticketId: submission.ticket_id, messageId: null, author: "app",
-    body: locale(ctx) === "en" ? `(app) Submission ${submission.id} failed its checks, so the ticket did not move: ${lines.join("; ")}. Fix it and hand it over again.`
-      : `（应用）交付 ${submission.id} 没过检查，任务没往前走：${lines.join("；")}。改好再交。`,
-    source: "review", kind: "result", priority: 2, notice: false });
+  const en = locale(ctx) === "en";
+  const stuck = ceiling.stuck.map((unit) => unit ?? (en ? "the ticket" : "这张任务"));
+  const note = stuck.length === 0 ? "" : en
+    ? ` ${stuck.join(", ")} hit the capability ceiling: the user is being asked how to go on${ceiling.all ? ", so do not hand it over again until they answer." : "; leave those until they answer."}`
+    : ` ${stuck.join("、")}到了能力天花板：应用在问用户怎么办${ceiling.all ? "，用户选之前别再交。" : "，用户选之前别动这几个。"}`;
+  if (ceiling.all) {
+    if (submission.work_item_id) {
+      queueInboxItem(ctx, { botId: submission.bot_id, sessionId, turnId: null, workItemId: submission.work_item_id, taskId: submission.task_id,
+        ticketId: submission.ticket_id, messageId: null, author: "app", body: `${said.what}${note}`, source: "review", kind: "result", priority: 2, wakes: false, now });
+    }
+  } else {
+    queueWork(ctx, { botId: submission.bot_id, sessionId, taskId: submission.task_id, ticketId: submission.ticket_id, messageId: null, author: "app",
+      body: `${said.what}${said.retry ? `${en ? " " : ""}${said.retry}` : ""}${note}`, source: "review", kind: "result", priority: 2, notice: false });
+  }
   refreshHeldInbox(ctx, { botId: submission.bot_id });
 }
 
@@ -897,9 +931,10 @@ export function reviewSubmission(ctx: StoreContext, input: {
       turnId: turn.id, workItemId: submission.work_item_id, submissionId: submission.id, now });
     const decided = getSubmission(ctx, submission.id);
     setPartStage(ctx, decided, "rework");
+    const ceiling = checkCeiling(ctx, decided, now);
     recordWorkEvent(ctx, { kind: "review.recorded", actor: turn.bot_id, botId: turn.bot_id, taskId: submission.task_id, ticketId: submission.ticket_id,
       turnId: turn.id, payload: { submission_id: submission.id, work_item_id: submission.work_item_id, outcome, same_model: sameModel } });
-    tellProducer(ctx, decided, record, now);
+    tellProducer(ctx, decided, record, now, ceiling);
     return { ok: true, submission: decided, outcome };
   });
 }
@@ -908,10 +943,14 @@ export function reviewSubmission(ctx: StoreContext, input: {
 function approve(ctx: StoreContext, submission: Submission, record: ReviewRecord | null, checks: readonly SubmissionCheck[], now: string): void {
   ctx.db.run("UPDATE submissions SET state = 'approved', reviews = ?, checks = ?, awaiting = NULL, updated_at = ? WHERE id = ?",
     [JSON.stringify(record ? [...submission.reviews, record] : submission.reviews), JSON.stringify(checks), now, submission.id]);
-  setTicketStage(ctx, { ticketId: submission.ticket_id, stage: "approved", source: record ? "review" : "supervisor", botId: record?.reviewer_bot_id ?? null,
-    turnId: record?.turn_id ?? null, workItemId: submission.work_item_id, submissionId: submission.id, now });
   const approved = getSubmission(ctx, submission.id);
   setPartStage(ctx, approved, "approved");
+  // A hand-over of some parts approves those; the ticket only once none is left open (a part stuck
+  // at the ceiling, in rework or not made yet keeps it going). One of no part is the whole ticket.
+  const openParts = submission.part_keys.length === 0 ? 0 : ctx.db.query<{ n: number }, [string]>(
+    "SELECT COUNT(*) AS n FROM ticket_parts WHERE ticket_id = ? AND stage NOT IN ('approved', 'waived')").get(submission.ticket_id)!.n;
+  setTicketStage(ctx, { ticketId: submission.ticket_id, stage: openParts === 0 ? "approved" : "doing", source: record ? "review" : "supervisor",
+    botId: record?.reviewer_bot_id ?? null, turnId: record?.turn_id ?? null, workItemId: submission.work_item_id, submissionId: submission.id, now });
   if (record) {
     recordWorkEvent(ctx, { kind: "review.recorded", actor: record.reviewer_bot_id, botId: record.reviewer_bot_id, taskId: submission.task_id,
       ticketId: submission.ticket_id, turnId: record.turn_id, payload: { submission_id: submission.id, work_item_id: submission.work_item_id, outcome: "approve",
@@ -922,11 +961,12 @@ function approve(ctx: StoreContext, submission: Submission, record: ReviewRecord
       payload: { submission_id: submission.id, work_item_id: submission.work_item_id, by: "no_reviewer" } });
   }
   if (submission.awaiting?.message_id) letGoOfCard(ctx, submission.awaiting.message_id, { reason: "approved" });
+  if (openParts === 0) closeCeilingCards(ctx, submission.ticket_id, locale(ctx) === "en" ? "The ticket was approved, so this no longer asks." : "这张任务已通过，不再问了。");
   settlePlanStage(ctx, submission.task_id, now);
 }
 
 /** A review's result in the producer's queue: a rejection wakes it to rework; an approval is read next time it wakes. */
-function tellProducer(ctx: StoreContext, submission: Submission, review: ReviewRecord, now: string): void {
+function tellProducer(ctx: StoreContext, submission: Submission, review: ReviewRecord, now: string, ceiling: CeilingOutcome = NO_CEILING): void {
   if (!producerIsBot(ctx, submission)) return;
   const work = submission.work_item_id
     ? ctx.db.query<{ id: string; state: string }, [string]>("SELECT id, state FROM work_items WHERE id = ?").get(submission.work_item_id)
@@ -935,16 +975,16 @@ function tellProducer(ctx: StoreContext, submission: Submission, review: ReviewR
   if (!sessionId) return;
   const failed = review.verdicts.filter((verdict) => verdict.verdict === "fail").map((verdict) => verdict.requirement_id);
   const en = locale(ctx) === "en";
-  const body = review.outcome === "approve"
-    ? (en ? `(app) Submission ${submission.id} passed review.` : `（应用）交付 ${submission.id} 已通过审查。`)
-    : en ? `(app) Submission ${submission.id} did not pass review${failed.length ? ` (failing: ${failed.join(", ")})` : ""}${review.note ? `: ${review.note}` : "."} Rework it and submit again.`
-      : `（应用）交付 ${submission.id} 没通过审查${failed.length ? `（不通过：${failed.join("、")}）` : ""}${review.note ? `：${review.note}` : "。"}返工后再交。`;
   if (review.outcome === "reject") {
-    queueWork(ctx, { botId: submission.bot_id, sessionId, taskId: submission.task_id, ticketId: submission.ticket_id, messageId: null,
-      author: "app", body, source: "review", kind: "result", priority: 2, notice: false });
-  } else if (work && work.state !== "closed") {
-    queueInboxItem(ctx, { botId: submission.bot_id, sessionId, turnId: null, workItemId: work.id, taskId: submission.task_id,
-      ticketId: submission.ticket_id, messageId: null, author: "app", body, source: "review", kind: "result", priority: 2, wakes: false, now });
+    tellAfterFailure(ctx, submission, en
+      ? { what: `(app) Submission ${submission.id} did not pass review${failed.length ? ` (failing: ${failed.join(", ")})` : ""}${review.note ? `: ${review.note}` : "."}`, retry: "Rework it and submit again." }
+      : { what: `（应用）交付 ${submission.id} 没通过审查${failed.length ? `（不通过：${failed.join("、")}）` : ""}${review.note ? `：${review.note}` : "。"}`, retry: "返工后再交。" }, ceiling, now);
+    return;
+  }
+  if (work && work.state !== "closed") {
+    queueInboxItem(ctx, { botId: submission.bot_id, sessionId, turnId: null, workItemId: work.id, taskId: submission.task_id, ticketId: submission.ticket_id,
+      messageId: null, author: "app", body: en ? `(app) Submission ${submission.id} passed review.` : `（应用）交付 ${submission.id} 已通过审查。`,
+      source: "review", kind: "result", priority: 2, wakes: false, now });
   }
   refreshHeldInbox(ctx, { botId: submission.bot_id });
 }
@@ -1086,7 +1126,7 @@ function askApproval(ctx: StoreContext, submission: Submission, now: string, rev
 
 /** Why a card no longer waits on you, as it then reads in place of its buttons. */
 type LetGo =
-  | { reason: "superseded"; by: "submission" | "board" }
+  | { reason: "superseded"; by: "submission" | "board" | "complaint" }
   | { reason: "checks_failed"; lines: readonly string[] }
   | { reason: "approved" | "replaced" };
 
@@ -1096,7 +1136,9 @@ function letGoLine(ctx: StoreContext, why: LetGo): string {
     case "superseded":
       return why.by === "board"
         ? (en ? "You changed the ticket's status on the board, so this hand-over no longer counts." : "你在看板上改了这张任务的状态，这份交付作废了。")
-        : (en ? "A newer hand-over replaced this one." : "已被新的交付取代。");
+        : why.by === "complaint"
+          ? (en ? "You said something is wrong with it, so it went back to rework." : "你说它有问题，转回返工了。")
+          : (en ? "A newer hand-over replaced this one." : "已被新的交付取代。");
     case "checks_failed":
       return en ? `Its checks failed, so it was sent back${why.lines.length > 0 ? `: ${why.lines.join("; ")}` : "."}`
         : `检查没过，已退回${why.lines.length > 0 ? `：${why.lines.join("；")}` : "。"}`;
@@ -1298,18 +1340,11 @@ function rejectByUser(ctx: StoreContext, submission: Submission, now: string): S
   setTicketStage(ctx, { ticketId: submission.ticket_id, stage: "rework", source: "user", turnId: null, workItemId: submission.work_item_id, submissionId: submission.id, now });
   const decided = getSubmission(ctx, submission.id);
   setPartStage(ctx, decided, "rework");
+  const ceiling = checkCeiling(ctx, decided, now);
   recordWorkEvent(ctx, { kind: "review.recorded", actor: USER_MEMBER, taskId: submission.task_id, ticketId: submission.ticket_id,
     payload: { submission_id: submission.id, work_item_id: submission.work_item_id, outcome: "reject", by: "user" } });
-  if (producerIsBot(ctx, decided)) {
-    const sessionId = producerSession(ctx, decided);
-    if (sessionId) {
-      const en = locale(ctx) === "en";
-      queueWork(ctx, { botId: decided.bot_id, sessionId, taskId: decided.task_id, ticketId: decided.ticket_id, messageId: null, author: "app",
-        body: en ? `(app) The user sent submission ${decided.id} back for rework.` : `（应用）用户把交付 ${decided.id} 退回重做了。`,
-        source: "review", kind: "result", priority: 2, notice: false });
-      refreshHeldInbox(ctx, { botId: decided.bot_id });
-    }
-  }
+  const en = locale(ctx) === "en";
+  tellAfterFailure(ctx, decided, en ? { what: `(app) The user sent submission ${decided.id} back for rework.`, retry: "" } : { what: `（应用）用户把交付 ${decided.id} 退回重做了。`, retry: "" }, ceiling, now);
   return decided;
 }
 
@@ -1338,8 +1373,10 @@ export function settlePlanStage(ctx: StoreContext, taskId: string, now: string =
     "SELECT id, origin, bind_kind, derived_state FROM acceptance_checks WHERE task_id = ? AND ticket_id IS NULL AND removed_at IS NULL").all(taskId)
     .filter((check) => !derivedNotGate(check));
   for (const gate of gates) {
-    const last = ctx.db.query<{ outcome: string | null }, [string]>(`SELECT outcome FROM acceptance_check_runs WHERE check_id = ? AND finished_at IS NOT NULL
-      ORDER BY finished_at DESC, rowid DESC LIMIT 1`).get(gate.id);
+    const last = ctx.db.query<{ outcome: string | null; judged_by: string | null }, [string]>(`SELECT outcome, judged_by FROM acceptance_check_runs
+      WHERE check_id = ? AND finished_at IS NOT NULL ORDER BY finished_at DESC, rowid DESC LIMIT 1`).get(gate.id);
+    // A verdict of pictures is only a reference (ADR 0046): it neither holds the plan back nor lets it through.
+    if (last?.judged_by === "vision") continue;
     if (last?.outcome !== "pass") return false;
   }
   const task = getTask(ctx, taskId);
@@ -1423,6 +1460,8 @@ export function organizerSaysDone(ctx: StoreContext, ticketId: string, now: stri
   const stage = ticketStage(ticket);
   if (stage === "approved" || stage === "dropped" || stage === "submitted" || stage === "in_review") return null;
   if (ctx.db.query("SELECT 1 FROM submissions WHERE ticket_id = ?").get(ticketId)) return null;
+  // Stuck at the capability ceiling: your answer on its card decides, not the organizer's reading.
+  if (ceilingCardOf(ctx, ticketId)) return null;
   const producer = ticket.owner_bot_id ?? ticket.worker;
   if (producerBusy(ctx, ticket, producer)) return null;
   const work = producer ? ctx.db.query<{ id: string }, [string, string, string]>(`SELECT id FROM work_items WHERE bot_id = ? AND task_id = ?
@@ -1453,3 +1492,522 @@ export function implicitSubmissionPaths(ctx: StoreContext, turnId: string): stri
     ORDER BY a.workspace_relpath`).all(turnId, turn.bot_id).map((row) => row.path)
     .filter((path) => inTicketDir(dir, path));
 }
+
+/** Where a complaint can still send work back: handed over, under review, or approved. */
+const REWORKABLE: readonly TicketStage[] = ["submitted", "in_review", "approved"];
+/** How much of your line a rework card or a calibration record quotes. */
+const COMPLAINT_EXCERPT_MAX = 80;
+
+type ReworkBefore = {
+  ticket_stage: TicketStage;
+  parts: Array<{ key: string; stage: string }>;
+  plan_stage: string;
+  submissions: Array<{ id: string; state: SubmissionState }>;
+};
+
+export type ReworkCardAction = "rework" | "dismiss" | "undo";
+const REWORK_CARD_ACTIONS: readonly ReworkCardAction[] = ["rework", "dismiss", "undo"];
+
+function truncate(text: string, max: number): string {
+  const points = [...text];
+  return points.length > max ? `${points.slice(0, max).join("")}…` : text;
+}
+
+/** The rework cards about one line of yours, by ticket. */
+function reworkCards(ctx: StoreContext, messageId: string): Array<{ id: string; ticket_id: string }> {
+  return ctx.db.query<{ id: string; ticket_id: string }, [string]>(`SELECT id, json_extract(control, '$.ticket_id') AS ticket_id FROM messages
+    WHERE json_extract(control, '$.kind') = 'rework' AND json_extract(control, '$.message_id') = ? ORDER BY created_at, rowid`).all(messageId);
+}
+
+/**
+ * Your complaint about work already handed over or approved (§6.6, ADR 0046), read with no model —
+ * and only ever asked about, never acted on by itself: what a word list makes of a line is a guess
+ * («收到» in a reply, «别重做了», «C07 很好，比上一版那个错乱的好多了»), so a guess costs a card, not
+ * a rework. A line of yours filed under a ticket (or some of its parts) by the rows or by you — not a
+ * Bot's pick — while that ticket is handed over, in review or approved, asks when one of its clauses
+ * objects (`clauseObjects`: a complaint word, no praise, no redo turned down), when it annotates a
+ * file, or when the scribe made a part-level entry of it. The parts asked about are those an
+ * objecting clause numbers, or every part it was filed under when an objecting clause numbers none
+ * (or the signal was not words). One card per line and ticket; on a refile, a card still asking about
+ * a ticket the line is no longer filed under stops asking. Returns the new cards.
+ */
+export function noteComplaint(ctx: StoreContext, messageId: string, input: { scribeAdded?: readonly string[]; now?: string } = {}): Message[] {
+  return ctx.commit(() => {
+    if (!supervised(ctx)) return [];
+    const message = ctx.db.query<{ id: string; kind: string; body: string }, [string]>("SELECT id, kind, body FROM messages WHERE id = ?").get(messageId);
+    if (!message || message.kind !== "user") return [];
+    const filings = ctx.db.query<{ ticket_id: string; part_key: string | null }, [string]>(`SELECT ticket_id, part_key FROM message_filings
+      WHERE message_id = ? AND ticket_id IS NOT NULL AND strength IN ('locked', 'default', 'user') ORDER BY is_primary DESC, rowid`).all(messageId);
+    const existing = reworkCards(ctx, messageId);
+    for (const card of existing) {
+      if (filings.some((filing) => filing.ticket_id === card.ticket_id)) continue;
+      const control = getMessage(ctx, card.id).control;
+      if (control?.kind === "rework" && control.offer.includes("rework") && (control.acted ?? []).length === 0) {
+        setMessageControl(ctx, card.id, { ...control, offer: [], result: locale(ctx) === "en" ? "That line was filed elsewhere since." : "这句话后来改归别处了。" });
+      }
+    }
+    const annotated = Boolean(ctx.db.query("SELECT 1 FROM annotations WHERE message_id = ? AND status <> 'draft'").get(messageId));
+    const scribed = (input.scribeAdded ?? []).length > 0
+      && Boolean(ctx.db.query("SELECT 1 FROM requirements WHERE scope = 'part' AND id IN (SELECT value FROM json_each(?))").get(JSON.stringify(input.scribeAdded)));
+    const objecting = clausesOf(message.body).filter(clauseObjects);
+    if (!annotated && !scribed && objecting.length === 0) return [];
+    // Which parts it is about: those an objecting clause numbers; all it was filed under when one
+    // numbers none, or when the signal is the annotation or the scribe's entry rather than words.
+    const numbered = objecting.map(partNumbers);
+    const general = annotated || scribed || numbered.some((numbers) => numbers.length === 0);
+    const named = new Set(numbered.flat());
+    const byTicket = new Map<string, { whole: boolean; parts: Set<string> }>();
+    for (const filing of filings) {
+      const entry = byTicket.get(filing.ticket_id) ?? { whole: false, parts: new Set<string>() };
+      if (!filing.part_key) entry.whole = true;
+      else if (general || filenamePartNumbers(filing.part_key).some((n) => named.has(n))) entry.parts.add(filing.part_key);
+      byTicket.set(filing.ticket_id, entry);
+    }
+    const now = input.now ?? isoNow();
+    const excerpt = truncate(message.body.replace(/\s+/g, " ").trim(), COMPLAINT_EXCERPT_MAX);
+    const cards: Message[] = [];
+    for (const [ticketId, about] of byTicket) {
+      if (existing.some((card) => card.ticket_id === ticketId)) continue;
+      if (!about.whole && about.parts.size === 0) continue;
+      const ticket = stagedTicket(ctx, ticketId);
+      if (!REWORKABLE.includes(ticketStage(ticket))) continue;
+      const plan = ctx.db.query<{ session_id: string | null; title: string }, [string]>("SELECT session_id, title FROM tasks WHERE id = ?").get(ticket.task_id);
+      if (!plan?.session_id) continue;
+      const partKeys = about.parts.size > 0 ? [...about.parts].sort() : [];
+      const en = locale(ctx) === "en";
+      const number = String(ticket.seq).padStart(2, "0");
+      const what = partKeys.length > 0 ? (en ? ` (${partKeys.join(", ")})` : `（${partKeys.join("、")}）`) : "";
+      const card = insertMessage(ctx, {
+        sessionId: plan.session_id, kind: "system", author: USER_MEMBER, hiddenFromBots: true,
+        body: en ? `You said "${excerpt}" — send ticket ${number} "${ticket.title}"${what} of ${plan.title} back to rework?`
+          : `你说「${excerpt}」——要把 ${plan.title} 的任务 ${number}「${ticket.title}」${what}转回返工吗？`,
+        control: { kind: "rework", task_id: ticket.task_id, ticket_id: ticketId, part_keys: partKeys, message_id: messageId, offer: ["rework", "dismiss"] },
+      });
+      createNotification(ctx, { semantic_key: `rework:${card.id}`, kind: "ask", session_id: plan.session_id, message_id: card.id, action_state: "open" });
+      recordWorkEvent(ctx, { kind: "complaint.asked", actor: "app", taskId: ticket.task_id, ticketId,
+        payload: { message_id: messageId, card_id: card.id, parts: partKeys, signal: annotated ? "annotation" : scribed ? "scribe" : "words", at: now } });
+      cards.push(card);
+    }
+    return cards;
+  });
+}
+
+/** A delivered plan your complaint reopened: active again, by the path its status always takes. */
+function reopenPlan(ctx: StoreContext, taskId: string, now: string): void {
+  const task = getTask(ctx, taskId);
+  const spec = parsePlanSpec(task.spec) ?? emptyPlanSpec(task.brief ?? task.title);
+  setTaskSpec(ctx, taskId, { ...spec, status: "active" }, now);
+  ctx.db.run("UPDATE tasks SET stage = 'active', delivered_at = NULL WHERE id = ?", [taskId]);
+  recordWorkEvent(ctx, { kind: "plan.reopened", actor: USER_MEMBER, taskId, payload: { by: "complaint" } });
+}
+
+/**
+ * Your answer on a rework card (§6.6). Rework: the parts it names (else the ticket) go back to
+ * rework, a hand-over still waiting is superseded, every review that approved the current hand-over
+ * gets a `review.miss` (once per hand-over and reviewer — the reviewer reads it in its calibration
+ * record), a delivered plan is active again, and the producer is woken with what you said; the card
+ * then offers undo. Refused when the ticket is no longer handed over, in review or approved.
+ * Dismiss: nothing moves. Undo: the ticket, its parts, the plan and the superseded hand-overs back
+ * where they were, the misses no longer counted — refused once the work has moved on (a newer
+ * hand-over, or the ticket out of rework).
+ */
+export function answerReworkCard(ctx: StoreContext, cardId: string, action: unknown): Message {
+  return ctx.commit(() => {
+    const card = getMessage(ctx, cardId);
+    const control = card.control;
+    if (control?.kind !== "rework") throw new HttpError(422, "invalid_args", "this line is not a rework card");
+    if (!REWORK_CARD_ACTIONS.includes(action as ReworkCardAction)) throw new HttpError(422, "invalid_args", "unknown action");
+    if ((control.acted ?? []).length > 0 || !control.offer.includes(action as ReworkCardAction)) throw new HttpError(409, "conflict", "this line no longer offers that");
+    const now = isoNow();
+    const en = locale(ctx) === "en";
+    if (action === "dismiss") {
+      updateNotificationActionState(ctx, `rework:${cardId}`, "resolved", "dismiss", true);
+      return setMessageControl(ctx, cardId, { ...control, acted: ["dismiss"] });
+    }
+    if (action === "undo") return undoRework(ctx, cardId, control, now);
+    const ticket = stagedTicket(ctx, control.ticket_id);
+    const stage = ticketStage(ticket);
+    // The work moved on since your line: nothing handed over or approved to send back, or a newer
+    // hand-over your line was not about. The card says so instead of acting on the wrong version.
+    const saidAt = ctx.db.query<{ created_at: string }, [string]>("SELECT created_at FROM messages WHERE id = ?").get(control.message_id)?.created_at ?? "";
+    const newer = Boolean(ctx.db.query("SELECT 1 FROM submissions WHERE ticket_id = ? AND created_at > ? AND state <> 'superseded'").get(ticket.id, saidAt));
+    if (!REWORKABLE.includes(stage) || newer) {
+      updateNotificationActionState(ctx, `rework:${cardId}`, "resolved", "moved_on", true);
+      return setMessageControl(ctx, cardId, { ...control, offer: [], result: newer
+        ? (en ? "A newer version was handed over after your line, so nothing was sent back; say it again if it is still wrong." : "这句话之后又交了新的一版，没有转回；新版还有问题就再说一次。")
+        : (en ? "It is no longer handed over or approved, so there was nothing to send back." : "它已经不在交付或通过的状态，没有可转回的。") });
+    }
+    const partKeys = control.part_keys;
+    const plan = ctx.db.query<{ session_id: string | null; stage: string | null; status: string }, [string]>(
+      "SELECT session_id, stage, status FROM tasks WHERE id = ?").get(ticket.task_id)!;
+    const planStage = plan.stage ?? (plan.status === "done" ? "delivered" : "active");
+    const parts = partKeys.length > 0
+      ? ctx.db.query<{ key: string; stage: string }, [string]>("SELECT key, stage FROM ticket_parts WHERE ticket_id = ? ORDER BY key").all(ticket.id)
+        .filter((part) => partKeys.includes(part.key))
+      : [];
+    const open = ctx.db.query<SubmissionRow, [string, string]>("SELECT * FROM submissions WHERE ticket_id = ? AND state IN (SELECT value FROM json_each(?)) ORDER BY created_at, rowid")
+      .all(ticket.id, JSON.stringify(OPEN_STATES)).map(toSubmission);
+    const before: ReworkBefore = { ticket_stage: stage, parts, plan_stage: planStage, submissions: open.map((submission) => ({ id: submission.id, state: submission.state })) };
+    // A hand-over still waiting is no longer what counts: your complaint is.
+    for (const submission of open) {
+      ctx.db.run("UPDATE submissions SET state = 'superseded', awaiting = NULL, updated_at = ? WHERE id = ?", [now, submission.id]);
+      if (submission.awaiting?.message_id) letGoOfCard(ctx, submission.awaiting.message_id, { reason: "superseded", by: "complaint" });
+    }
+    // The reviews that let the current hand-over through missed what you found.
+    const said = ctx.db.query<{ body: string }, [string]>("SELECT body FROM messages WHERE id = ?").get(control.message_id)?.body ?? "";
+    const excerpt = truncate(said.replace(/\s+/g, " ").trim(), COMPLAINT_EXCERPT_MAX);
+    const approved = ctx.db.query<SubmissionRow, [string]>("SELECT * FROM submissions WHERE ticket_id = ? AND state = 'approved' ORDER BY created_at DESC, rowid DESC")
+      .all(ticket.id).map(toSubmission)
+      .find((submission) => partKeys.length === 0 || submission.part_keys.length === 0 || submission.part_keys.some((key) => partKeys.includes(key)));
+    const misses: string[] = [];
+    for (const review of approved?.reviews ?? []) {
+      if (review.outcome !== "approve") continue;
+      const missed = ctx.db.query(`SELECT 1 FROM work_events WHERE kind = 'review.miss' AND json_extract(payload, '$.submission_id') = ?
+        AND json_extract(payload, '$.reviewer_bot_id') = ? AND json_extract(payload, '$.undone') IS NULL`).get(approved!.id, review.reviewer_bot_id);
+      if (missed) continue;
+      recordWorkEvent(ctx, { kind: "review.miss", actor: USER_MEMBER, botId: review.reviewer_bot_id, taskId: ticket.task_id, ticketId: ticket.id,
+        payload: { submission_id: approved!.id, reviewer_bot_id: review.reviewer_bot_id, reviewer_model: review.reviewer_model, same_model: review.same_model,
+          message_id: control.message_id, card_id: cardId, quote: excerpt, reviewed_at: review.at } });
+      misses.push(review.reviewer_bot_id);
+    }
+    for (const part of parts) {
+      if (part.stage === "rework" || part.stage === "waived") continue;
+      ctx.db.run("UPDATE ticket_parts SET stage = 'rework' WHERE ticket_id = ? AND key = ?", [ticket.id, part.key]);
+      recordWorkEvent(ctx, { kind: "part.stage_changed", actor: USER_MEMBER, taskId: ticket.task_id, ticketId: ticket.id,
+        payload: { part: part.key, before: part.stage, after: "rework", message_id: control.message_id } });
+    }
+    setTicketStage(ctx, { ticketId: ticket.id, stage: "rework", source: "user", now });
+    if (planStage === "delivered") reopenPlan(ctx, ticket.task_id, now);
+    // Its producer hears it and goes back to work on it.
+    const producer = ticket.owner_bot_id ?? ticket.worker;
+    let producerInbox: number | null = null;
+    if (producer && plan.session_id && ctx.db.query("SELECT 1 FROM bots WHERE id = ? AND deleted_at IS NULL").get(producer)) {
+      const what = partKeys.length > 0 ? (en ? ` (${partKeys.join(", ")})` : `（${partKeys.join("、")}）`) : "";
+      producerInbox = queueWork(ctx, { botId: producer, sessionId: plan.session_id, taskId: ticket.task_id, ticketId: ticket.id, messageId: null, author: "app",
+        body: en ? `(app) The user sent ticket "${ticket.title}"${what} back to rework, saying: "${excerpt}". Fix that and hand it over again.`
+          : `（应用）用户把任务「${ticket.title}」${what}转回返工了，用户说：「${excerpt}」。按这个改好再交。`,
+        source: "review", kind: "change", priority: 2, notice: false }).inbox.seq;
+      refreshHeldInbox(ctx, { botId: producer });
+    }
+    recordWorkEvent(ctx, { kind: "complaint.rework", actor: USER_MEMBER, taskId: ticket.task_id, ticketId: ticket.id,
+      payload: { message_id: control.message_id, card_id: cardId, parts: partKeys, before, misses, superseded: open.map((submission) => submission.id),
+        producer: producer ?? null, producer_inbox: producerInbox } });
+    updateNotificationActionState(ctx, `rework:${cardId}`, "resolved", "rework", true);
+    return setMessageControl(ctx, cardId, { ...control, offer: ["undo"], result: en ? "Sent back to rework." : "已转回返工。" });
+  });
+}
+
+function undoRework(ctx: StoreContext, cardId: string, control: Extract<Message["control"], { kind: "rework" }>, now: string): Message {
+  const event = ctx.db.query<{ at: string; payload: string }, [string]>(`SELECT at, payload FROM work_events WHERE kind = 'complaint.rework'
+    AND json_extract(payload, '$.card_id') = ? ORDER BY rowid DESC LIMIT 1`).get(cardId);
+  if (!event) throw new HttpError(409, "conflict", "there is nothing left to undo");
+  const payload = JSON.parse(event.payload) as { message_id: string; before: ReworkBefore; superseded: string[]; producer?: string | null; producer_inbox?: number | null };
+  const newer = ctx.db.query("SELECT 1 FROM submissions WHERE ticket_id = ? AND created_at > ? AND id NOT IN (SELECT value FROM json_each(?))")
+    .get(control.ticket_id, event.at, JSON.stringify(payload.superseded));
+  if (newer || ticketStage(stagedTicket(ctx, control.ticket_id)) !== "rework") {
+    throw new HttpError(409, "moved_on", "the work has moved on since: there is a newer hand-over, or the ticket is no longer in rework");
+  }
+  const before = payload.before;
+  for (const submission of before.submissions) {
+    ctx.db.run("UPDATE submissions SET state = ?, awaiting = NULL, updated_at = ? WHERE id = ? AND state = 'superseded'", [submission.state, now, submission.id]);
+  }
+  for (const part of before.parts) {
+    ctx.db.run("UPDATE ticket_parts SET stage = ? WHERE ticket_id = ? AND key = ? AND stage = 'rework'", [part.stage, control.ticket_id, part.key]);
+  }
+  setTicketStage(ctx, { ticketId: control.ticket_id, stage: before.ticket_stage, source: "user", now });
+  if (before.plan_stage === "delivered") settlePlanStage(ctx, control.task_id, now);
+  ctx.db.run(`UPDATE work_events SET payload = json_set(payload, '$.undone', ?) WHERE kind = 'review.miss'
+    AND json_extract(payload, '$.card_id') = ? AND json_extract(payload, '$.undone') IS NULL`, [now, cardId]);
+  // The producer's call to rework: dropped if it has not read it yet, else told it is taken back.
+  if (payload.producer && payload.producer_inbox !== null && payload.producer_inbox !== undefined) {
+    const item = ctx.db.query<{ state: string; work_item_id: string | null; session_id: string | null }, [number]>(
+      "SELECT state, work_item_id, session_id FROM inbox_items WHERE seq = ?").get(payload.producer_inbox);
+    if (item && (item.state === "queued" || item.state === "held")) {
+      ctx.db.run("UPDATE inbox_items SET state = 'superseded', disposition_note = 'the user undid the rework', disposed_at = ? WHERE seq = ?", [now, payload.producer_inbox]);
+    } else if (item?.work_item_id && item.session_id) {
+      const title = stagedTicket(ctx, control.ticket_id).title;
+      queueInboxItem(ctx, { botId: payload.producer, sessionId: item.session_id, turnId: null, workItemId: item.work_item_id, taskId: control.task_id,
+        ticketId: control.ticket_id, messageId: null, author: "app", source: "review", kind: "info", priority: 2, wakes: false, now,
+        body: locale(ctx) === "en" ? `(app) The user took back the rework of "${title}": it stands as before, nothing to change.`
+          : `（应用）用户撤销了任务「${title}」的返工：照旧算数，不用改了。` });
+    }
+    refreshHeldInbox(ctx, { botId: payload.producer });
+  }
+  recordWorkEvent(ctx, { kind: "complaint.rework_undone", actor: USER_MEMBER, taskId: control.task_id, ticketId: control.ticket_id,
+    payload: { message_id: payload.message_id, card_id: cardId } });
+  const { result: _done, ...rest } = control;
+  return setMessageControl(ctx, cardId, { ...rest, acted: ["undo"] });
+}
+
+/**
+ * A reviewer's calibration record (§6.5 4): the approvals of its that you overturned in this plan's
+ * conversation, newest first, each with what you said — read in its situation from then on. Empty
+ * below level 5.
+ */
+export function reviewMisses(ctx: StoreContext, input: { botId: string; sessionId: string; limit?: number }): Array<{ ticket: string; quote: string; at: string; same_model: boolean }> {
+  if (!supervised(ctx)) return [];
+  return ctx.db.query<{ payload: string; at: string; title: string }, [string, string, number]>(`SELECT e.payload, e.at, k.title FROM work_events e
+    JOIN tickets k ON k.id = e.ticket_id JOIN tasks t ON t.id = e.task_id
+    WHERE e.kind = 'review.miss' AND e.bot_id = ? AND t.session_id = ? AND json_extract(e.payload, '$.undone') IS NULL
+    ORDER BY e.at DESC, e.rowid DESC LIMIT ?`).all(input.botId, input.sessionId, input.limit ?? 5)
+    .map((row) => {
+      const payload = JSON.parse(row.payload) as { quote?: string; same_model?: boolean };
+      return { ticket: row.title, quote: payload.quote ?? "", at: row.at, same_model: Boolean(payload.same_model) };
+    });
+}
+
+
+/** The capability ceiling (§6.6): this many hand-overs in a row failing the same requirement… */
+export const CEILING_STREAK = 3;
+/** …or more hand-overs than this since you last answered about it. */
+export const CEILING_ATTEMPTS = 6;
+
+export type CeilingAction = "another_way" | "another_plan" | "relax" | "accept";
+const CEILING_ACTIONS: readonly CeilingAction[] = ["another_way", "another_plan", "relax", "accept"];
+
+/** An open ceiling card on a ticket: about one of `partKeys`, or the ticket itself. Null when none waits. */
+function openCeiling(ctx: StoreContext, ticketId: string, partKeys: readonly string[]): { id: string; part_key: string | null } | null {
+  const rows = ctx.db.query<{ id: string; part_key: string | null }, [string]>(`SELECT id, json_extract(control, '$.part_key') AS part_key FROM messages
+    WHERE json_extract(control, '$.kind') = 'ceiling' AND json_extract(control, '$.ticket_id') = ?
+      AND json_array_length(COALESCE(json_extract(control, '$.acted'), '[]')) = 0 AND json_array_length(json_extract(control, '$.offer')) > 0
+    ORDER BY created_at, rowid`).all(ticketId);
+  // A hand-over of no part would let the ticket through around a stuck part: any open card holds it.
+  if (partKeys.length === 0) return rows[0] ?? null;
+  return rows.find((row) => row.part_key === null || partKeys.includes(row.part_key)) ?? null;
+}
+
+/** An open ceiling card on a ticket, about any of it: the ball is yours while it waits. */
+export function ceilingCardOf(ctx: StoreContext, ticketId: string): string | null {
+  return ctx.db.query<{ id: string }, [string]>(`SELECT id FROM messages WHERE json_extract(control, '$.kind') = 'ceiling'
+    AND json_extract(control, '$.ticket_id') = ? AND json_array_length(COALESCE(json_extract(control, '$.acted'), '[]')) = 0
+    AND json_array_length(json_extract(control, '$.offer')) > 0 ORDER BY created_at, rowid LIMIT 1`).get(ticketId)?.id ?? null;
+}
+
+/** Since when a unit's hand-overs count towards the ceiling: your last answer about it. */
+function ceilingSince(ctx: StoreContext, ticketId: string, partKey: string | null): string {
+  return ctx.db.query<{ at: string }, [string, string]>(`SELECT at FROM work_events WHERE kind = 'ceiling.answered' AND ticket_id = ?
+    AND IFNULL(json_extract(payload, '$.part_key'), '') = ? ORDER BY at DESC, rowid DESC LIMIT 1`).get(ticketId, partKey ?? "")?.at ?? "";
+}
+
+/** The requirement of yours a check stands on, when it was read from your words; else null. */
+function requirementOfCheck(ctx: StoreContext, checkId: string): { id: string; quote: string } | null {
+  return ctx.db.query<{ id: string; quote: string }, [string]>(`SELECT r.id, r.quote FROM acceptance_checks c
+    JOIN requirements r ON r.status = 'open' AND (r.source_quote_id = c.quote_id
+      OR r.id IN (SELECT requirement_id FROM requirement_mentions WHERE quote_id = c.quote_id))
+    WHERE c.id = ? AND c.quote_id IS NOT NULL ORDER BY r.created_at LIMIT 1`).get(checkId) ?? null;
+}
+
+/** What a decided hand-over failed, keyed by the requirement it is about (a check on none: `check:<id>`), each with a label for the card. */
+function failureKeys(ctx: StoreContext, submission: Submission): Map<string, string> {
+  const keys = new Map<string, string>();
+  for (const check of submission.checks) {
+    if (!gateFailed(check) || check.outcome === "not_run") continue;
+    const requirement = requirementOfCheck(ctx, check.check_id);
+    keys.set(requirement ? requirement.id : `check:${check.check_id}`, requirement ? requirement.quote : check.item);
+  }
+  for (const review of submission.reviews) {
+    if (review.outcome !== "reject") continue;
+    for (const verdict of review.verdicts) {
+      if (verdict.verdict !== "fail") continue;
+      const quote = ctx.db.query<{ quote: string }, [string]>("SELECT quote FROM requirements WHERE id = ?").get(verdict.requirement_id)?.quote;
+      if (quote !== undefined) keys.set(verdict.requirement_id, quote);
+    }
+  }
+  return keys;
+}
+
+type CeilingHit = { reason: "streak"; key: string; label: string; times: number } | { reason: "attempts"; times: number };
+/** After a failure: the units (part keys; null for the whole ticket) now stuck at the ceiling, and whether that is every unit it covered. */
+type CeilingOutcome = { cards: Message[]; stuck: Array<string | null>; all: boolean };
+const NO_CEILING: CeilingOutcome = { cards: [], stuck: [], all: false };
+
+/**
+ * After a hand-over failed (its checks, a review, or your send-back): each of its parts — else its
+ * ticket — that has now failed the same requirement on {@link CEILING_STREAK} hand-overs in a row, or
+ * been handed over more than {@link CEILING_ATTEMPTS} times, since your last answer about it, hits the
+ * capability ceiling (§6.6): a part is blocked, nothing more is handed over for it, the ball is yours,
+ * and a card asks how to go on. Once per unit while its card waits.
+ */
+function checkCeiling(ctx: StoreContext, submission: Submission, now: string): CeilingOutcome {
+  const cards: Message[] = [];
+  const stuck: Array<string | null> = [];
+  const units: Array<string | null> = submission.part_keys.length > 0 ? submission.part_keys : [null];
+  for (const partKey of units) {
+    if (unitStuck(ctx, submission.ticket_id, partKey)) {
+      stuck.push(partKey);
+      continue;
+    }
+    const since = ceilingSince(ctx, submission.ticket_id, partKey);
+    // A part counts the hand-overs of it; the whole ticket counts only those of no part.
+    const covering = ctx.db.query<SubmissionRow, [string, string]>(`SELECT * FROM submissions WHERE ticket_id = ? AND created_at > ?
+      AND state <> 'superseded' ORDER BY created_at DESC, rowid DESC`).all(submission.ticket_id, since).map(toSubmission)
+      .filter((row) => partKey === null ? row.part_keys.length === 0 : row.part_keys.includes(partKey));
+    const decided = covering.filter((row) => row.state === "checks_failed" || row.state === "rejected" || row.state === "approved");
+    let hit: CeilingHit | null = null;
+    for (const [key, label] of decided[0] ? failureKeys(ctx, decided[0]) : new Map<string, string>()) {
+      let times = 0;
+      for (const row of decided) {
+        if (!failureKeys(ctx, row).has(key)) break;
+        times += 1;
+      }
+      if (times >= CEILING_STREAK) {
+        hit = { reason: "streak", key, label, times };
+        break;
+      }
+    }
+    const failures = decided.filter((row) => row.state !== "approved").length;
+    if (!hit && failures > CEILING_ATTEMPTS) hit = { reason: "attempts", times: failures };
+    if (!hit) continue;
+    stuck.push(partKey);
+    if (partKey) {
+      const part = ctx.db.query<{ stage: string }, [string, string]>("SELECT stage FROM ticket_parts WHERE ticket_id = ? AND key = ?").get(submission.ticket_id, partKey);
+      if (part && part.stage !== "blocked") {
+        ctx.db.run("UPDATE ticket_parts SET stage = 'blocked' WHERE ticket_id = ? AND key = ?", [submission.ticket_id, partKey]);
+        recordWorkEvent(ctx, { kind: "part.stage_changed", actor: "app", botId: submission.bot_id, taskId: submission.task_id, ticketId: submission.ticket_id,
+          payload: { part: partKey, before: part.stage, after: "blocked", submission_id: submission.id } });
+      }
+    }
+    const card = ceilingCard(ctx, submission, partKey, hit);
+    if (card) cards.push(card);
+    recordWorkEvent(ctx, { kind: "ceiling.reached", actor: "app", botId: submission.bot_id, taskId: submission.task_id, ticketId: submission.ticket_id,
+      payload: { part_key: partKey, submission_id: submission.id, card_id: card?.id ?? null, at: now, ...hit } });
+  }
+  return { cards, stuck, all: stuck.length === units.length };
+}
+
+/** Whether a unit already waits on an open ceiling card: its own, or (for a part) the whole ticket's. */
+function unitStuck(ctx: StoreContext, ticketId: string, partKey: string | null): boolean {
+  return ctx.db.query<{ part_key: string | null }, [string]>(`SELECT json_extract(control, '$.part_key') AS part_key FROM messages
+    WHERE json_extract(control, '$.kind') = 'ceiling' AND json_extract(control, '$.ticket_id') = ?
+      AND json_array_length(COALESCE(json_extract(control, '$.acted'), '[]')) = 0 AND json_array_length(json_extract(control, '$.offer')) > 0`)
+    .all(ticketId).some((row) => row.part_key === null || row.part_key === partKey);
+}
+
+/**
+ * The ceiling cards still asking about a ticket stop asking: it closed another way (approved, or
+ * your board edit). Each says why.
+ */
+function closeCeilingCards(ctx: StoreContext, ticketId: string, why: string): void {
+  const open = ctx.db.query<{ id: string }, [string]>(`SELECT id FROM messages WHERE json_extract(control, '$.kind') = 'ceiling'
+    AND json_extract(control, '$.ticket_id') = ? AND json_array_length(COALESCE(json_extract(control, '$.acted'), '[]')) = 0
+    AND json_array_length(json_extract(control, '$.offer')) > 0`).all(ticketId);
+  for (const row of open) {
+    const control = getMessage(ctx, row.id).control;
+    if (control?.kind !== "ceiling") continue;
+    setMessageControl(ctx, row.id, { ...control, offer: [], result: why });
+    updateNotificationActionState(ctx, `ceiling:${row.id}`, "resolved", "closed", true);
+  }
+}
+
+function ceilingCard(ctx: StoreContext, submission: Submission, partKey: string | null, hit: CeilingHit): Message | null {
+  const plan = ctx.db.query<{ session_id: string | null; title: string }, [string]>("SELECT session_id, title FROM tasks WHERE id = ?").get(submission.task_id);
+  if (!plan?.session_id) return null;
+  const ticket = stagedTicket(ctx, submission.ticket_id);
+  const en = locale(ctx) === "en";
+  const number = String(ticket.seq).padStart(2, "0");
+  const unit = partKey ? (en ? ` part ${partKey}` : `分件 ${partKey} `) : "";
+  const why = hit.reason === "streak"
+    ? (en ? `"${hit.label}" failed ${hit.times} hand-overs in a row` : `「${hit.label}」连续 ${hit.times} 次没过`)
+    : (en ? `${hit.times} hand-overs failed` : `已经交了 ${hit.times} 次都没过`);
+  const requirementId = hit.reason === "streak" && !hit.key.startsWith("check:") ? hit.key : null;
+  const message = insertMessage(ctx, {
+    sessionId: plan.session_id, kind: "system", author: USER_MEMBER, hiddenFromBots: true,
+    body: en
+      ? `Ticket ${number} "${ticket.title}"${unit} of ${plan.title} is stuck: ${why}. Trying again the same way is unlikely to help — how should it go on?`
+      : `${plan.title} 的任务 ${number}「${ticket.title}」${unit}卡住了：${why}，照原样再试多半还是不过。要怎么办？`,
+    control: { kind: "ceiling", task_id: submission.task_id, ticket_id: submission.ticket_id, part_key: partKey, requirement_id: requirementId,
+      offer: ["another_way", "another_plan", ...(requirementId ? ["relax" as const] : []), "accept"] },
+  });
+  createNotification(ctx, { semantic_key: `ceiling:${message.id}`, kind: "ask", session_id: plan.session_id, message_id: message.id, action_state: "open" });
+  return message;
+}
+
+/**
+ * Your answer on a ceiling card (§6.6). Another way or another plan: the unit goes back to rework,
+ * its producer is told which, and its count starts over. Relax: the requirement no longer holds for
+ * this plan (waived — your press is the confirmation), then the same. Accept: the part is approved
+ * as it is; a ticket whose every part is then approved or waived (or that has none) is approved,
+ * and the plan may be delivered.
+ */
+export function answerCeilingCard(ctx: StoreContext, messageId: string, action: unknown): Message {
+  return ctx.commit(() => {
+    const message = getMessage(ctx, messageId);
+    const control = message.control;
+    if (control?.kind !== "ceiling") throw new HttpError(422, "invalid_args", "this line is not a ceiling card");
+    if (!CEILING_ACTIONS.includes(action as CeilingAction)) throw new HttpError(422, "invalid_args", "unknown action");
+    if ((control.acted ?? []).length > 0 || !control.offer.includes(action as CeilingAction)) throw new HttpError(409, "conflict", "this line no longer offers that");
+    const chosen = action as CeilingAction;
+    const now = isoNow();
+    const ticket = stagedTicket(ctx, control.ticket_id);
+    const partKey = control.part_key;
+    if (chosen === "relax" && control.requirement_id) waiveRequirement(ctx, control.requirement_id, { taskId: control.task_id, action: messageId, now });
+    const accepted = chosen === "accept";
+    if (partKey) {
+      const stage = accepted ? "approved" : "rework";
+      const part = ctx.db.query<{ stage: string }, [string, string]>("SELECT stage FROM ticket_parts WHERE ticket_id = ? AND key = ?").get(ticket.id, partKey);
+      if (part && part.stage !== stage) {
+        ctx.db.run("UPDATE ticket_parts SET stage = ? WHERE ticket_id = ? AND key = ?", [stage, ticket.id, partKey]);
+        recordWorkEvent(ctx, { kind: "part.stage_changed", actor: USER_MEMBER, taskId: ticket.task_id, ticketId: ticket.id,
+          payload: { part: partKey, before: part.stage, after: stage, message_id: messageId } });
+      }
+    }
+    if (accepted && ctx.db.query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM ticket_parts WHERE ticket_id = ? AND stage NOT IN ('approved', 'waived')").get(ticket.id)!.n === 0) {
+      setTicketStage(ctx, { ticketId: ticket.id, stage: "approved", source: "user", now });
+      settlePlanStage(ctx, ticket.task_id, now);
+    }
+    recordWorkEvent(ctx, { kind: "ceiling.answered", actor: USER_MEMBER, taskId: ticket.task_id, ticketId: ticket.id,
+      payload: { part_key: partKey, action: chosen, requirement_id: control.requirement_id, card_id: messageId } });
+    const producer = ticket.owner_bot_id ?? ticket.worker;
+    const plan = ctx.db.query<{ session_id: string | null }, [string]>("SELECT session_id FROM tasks WHERE id = ?").get(ticket.task_id);
+    if (producer && plan?.session_id && ctx.db.query("SELECT 1 FROM bots WHERE id = ? AND deleted_at IS NULL").get(producer)) {
+      const en = locale(ctx) === "en";
+      const unit = partKey ? (en ? ` (part ${partKey})` : `（分件 ${partKey}）`) : "";
+      const said: Record<CeilingAction, string> = en
+        ? { another_way: "do it another way — a different method or tool, not the same attempt again", another_plan: "change the plan to get around the problem",
+          relax: "that requirement no longer holds for this plan", accept: "accept it as it is" }
+        : { another_way: "换一种做法——换方法或工具，别再照原样试", another_plan: "改方案，绕开这个问题", relax: "那条要求在这件事里不再要了", accept: "就用现在的" };
+      const body = en
+        ? `(app) On the ceiling card for ticket "${ticket.title}"${unit} the user chose: ${said[chosen]}.${accepted ? "" : " Go on from there and hand it over again."}`
+        : `（应用）任务「${ticket.title}」${unit}的天花板卡片上，用户选了：${said[chosen]}。${accepted ? "" : "照这个方向做完再交。"}`;
+      if (accepted) {
+        const work = ctx.db.query<{ id: string }, [string, string, string]>(`SELECT id FROM work_items WHERE bot_id = ? AND task_id = ? AND ticket_id = ?
+          AND state <> 'closed' ORDER BY created_at LIMIT 1`).get(producer, ticket.task_id, ticket.id);
+        if (work) queueInboxItem(ctx, { botId: producer, sessionId: plan.session_id, turnId: null, workItemId: work.id, taskId: ticket.task_id, ticketId: ticket.id,
+          messageId: null, author: "app", body, source: "review", kind: "result", priority: 2, wakes: false, now });
+      } else {
+        queueWork(ctx, { botId: producer, sessionId: plan.session_id, taskId: ticket.task_id, ticketId: ticket.id, messageId: null, author: "app",
+          body, source: "review", kind: "result", priority: 2, notice: false });
+      }
+      refreshHeldInbox(ctx, { botId: producer });
+    }
+    updateNotificationActionState(ctx, `ceiling:${messageId}`, "resolved", chosen, true);
+    return setMessageControl(ctx, messageId, { ...control, acted: [chosen] });
+  });
+}
+
+/** What a day of judging pictures may cost before the app stops asking (§6.5 3), in US dollars. */
+export const VISION_DAILY_CAP_USD = 5;
+const TICKS_IN_USD = 10_000_000_000;
+
+/**
+ * Why a judgement of pictures for this plan is not made now, from level 5 (§6.5 3): a stop of yours
+ * covers the plan, or today's judging of pictures has already cost {@link VISION_DAILY_CAP_USD}.
+ * Null when it may go ahead (and below level 5, where it always does).
+ */
+export function visionRefusal(ctx: StoreContext, taskId: string, now: Date = new Date()): string | null {
+  if (!supervised(ctx)) return null;
+  const en = locale(ctx) === "en";
+  const plan = ctx.db.query<{ session_id: string | null }, [string]>("SELECT session_id FROM tasks WHERE id = ?").get(taskId);
+  if (holdsCovering(ctx, { sessionId: plan?.session_id ?? null, taskId }).length > 0) {
+    return en ? "not judged while a stop of yours covers this plan" : "这件事被叫停着，没有看图判定";
+  }
+  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+  const ticks = ctx.db.query<{ ticks: number | null }, [string]>(`SELECT SUM(COALESCE(cost_usd_ticks, estimated_cost_usd_ticks, 0)) AS ticks
+    FROM spend WHERE purpose = 'vision' AND created_at >= ?`).get(dayStart)?.ticks ?? 0;
+  if (ticks >= VISION_DAILY_CAP_USD * TICKS_IN_USD) {
+    return en ? `today's judging of pictures has reached its $${VISION_DAILY_CAP_USD} cap; not judged this time`
+      : `今天看图判定的花费已到 $${VISION_DAILY_CAP_USD} 的上限，这次没判`;
+  }
+  return null;
+}
+

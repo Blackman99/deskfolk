@@ -92,6 +92,7 @@ type AcceptanceCheckRunRow = {
   exit_code: number | null;
   detail: string;
   output: string | null;
+  judged_by: "vision" | null;
 };
 
 /** The fields that define what a check proves — as opposed to `item`/`ticket_id`, which only file it. */
@@ -177,6 +178,7 @@ function toRun(row: AcceptanceCheckRunRow): AcceptanceCheckRun {
     exit_code: row.exit_code,
     detail: row.detail,
     output: row.output,
+    judged_by: row.judged_by ?? null,
   };
 }
 
@@ -575,6 +577,11 @@ function pruneCheckRuns(ctx: StoreContext, checkId: string): void {
  * Closes a run with its verdict. The first `pass` since the check's `defined_at` stamps
  * `first_passed_at`, once; every close prunes runs past {@link CHECK_RUNS_KEPT}.
  */
+/** Marks a run whose verdict came from a model looking at pictures (`judged_by = 'vision'`). */
+export function markCheckRunJudgedBy(ctx: StoreContext, runId: string, by: "vision"): void {
+  ctx.db.run("UPDATE acceptance_check_runs SET judged_by = ? WHERE id = ?", [by, runId]);
+}
+
 export function finishCheckRun(
   ctx: StoreContext,
   runId: string,

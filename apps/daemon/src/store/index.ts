@@ -458,6 +458,7 @@ export class Store {
   readonly checkStale = this.bind(acceptanceChecks.checkStale);
   readonly beginCheckRun = this.bind(acceptanceChecks.beginCheckRun);
   readonly finishCheckRun = this.bind(acceptanceChecks.finishCheckRun);
+  readonly markCheckRunJudgedBy = this.bind(acceptanceChecks.markCheckRunJudgedBy);
   readonly recoverInterruptedCheckRuns = this.bind(acceptanceChecks.recoverInterruptedCheckRuns);
   readonly rebindCheckItems = this.bind(acceptanceChecks.rebindCheckItems);
   readonly commandSeenInPlan = this.bind(acceptanceChecks.commandSeenInPlan);
@@ -549,6 +550,11 @@ export class Store {
   readonly recordFrameRead = this.bind(submissions.recordFrameRead);
   readonly requiredReviewItems = this.bind(submissions.requiredItems);
   readonly answerReviewCard = this.bind(submissions.answerReviewCard);
+  readonly noteComplaint = this.bind(submissions.noteComplaint);
+  readonly answerReworkCard = this.bind(submissions.answerReworkCard);
+  readonly reviewMisses = this.bind(submissions.reviewMisses);
+  readonly answerCeilingCard = this.bind(submissions.answerCeilingCard);
+  readonly visionRefusal = this.bind(submissions.visionRefusal);
   readonly takeUpSubmission = this.bind(submissions.takeUpSubmission);
   readonly takeUpPendingApproval = this.bind(submissions.takeUpPendingApproval);
   readonly handOverHint = this.bind(submissions.handOverHint);

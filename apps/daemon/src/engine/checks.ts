@@ -12,6 +12,7 @@ import { NO_ABLATION, type Ablation } from "../ablation";
 import type { JudgeSeams } from "../seams-check";
 import type { TurnAdmission } from "../quiesce";
 import { parsePlanSpec, type Store, type Task } from "../store";
+import { ENGINE_LEVELS } from "../store/schema-gate";
 import type { WakeWatch } from "../wake";
 
 export type CheckEvaluator = (
@@ -96,15 +97,25 @@ export function createPlanChecks(deps: PlanChecksDeps): PlanChecks {
     return check.cwd ?? ".";
   }
 
-  async function evaluateOne(check: AcceptanceCheck, root: string | null, signal: AbortSignal, task: Task): Promise<CheckVerdict> {
+  async function evaluateOne(check: AcceptanceCheck, root: string | null, signal: AbortSignal, task: Task, seen: { vision: boolean }): Promise<CheckVerdict> {
     const resolved: AcceptanceCheck = check.kind === "command" ? { ...check, cwd: effectiveCwd(check) } : check;
     const locale = store.settingsCached().locale;
     if (check.kind === "continuity") {
+      // A judgement of pictures, from level 5, is only a reference (ADR 0046): marked as such, not
+      // made under your stop or past the day's cap — the check then reads as not judged this time.
+      const judge: JudgeSeams = async (evidence, ...rest) => {
+        if (evidence.some((item) => item.kind === "image") && store.capabilities().engine_level >= ENGINE_LEVELS.submissions) {
+          seen.vision = true;
+          const refusal = store.visionRefusal(task.id);
+          if (refusal) throw new Error(refusal);
+        }
+        return judgeContinuity(evidence, ...rest);
+      };
       const continuity: SeamsEvalDeps = {
         planDir: task.dir,
         rules: parsePlanSpec(task.spec)?.rules ?? [],
         sessionId: task.session_id,
-        judge: judgeContinuity,
+        judge,
       };
       // Continuity checks spawn ffmpeg and ask a vision model — heavier than any other kind — so
       // they share the same daemon-wide exclusive queue a `command` check's `bun test` would.
@@ -165,13 +176,15 @@ export function createPlanChecks(deps: PlanChecksDeps): PlanChecks {
         }
         ran = true;
         let verdict: CheckVerdict;
+        const seen = { vision: false };
         try {
-          verdict = await evaluateOne(check, root, controller.signal, task);
+          verdict = await evaluateOne(check, root, controller.signal, task, seen);
         } catch (error) {
           verdict = { outcome: "error", exitCode: null, detail: error instanceof Error ? error.message : "check failed", output: null };
         }
         try {
           store.finishCheckRun(runId, verdict);
+          if (seen.vision) store.markCheckRunJudgedBy(runId, "vision");
         } catch (error) {
           log(`[checks] plan ${taskId}: could not close a run: ${error instanceof Error ? error.message : String(error)}`);
         }

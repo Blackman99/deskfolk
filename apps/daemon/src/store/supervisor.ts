@@ -22,7 +22,7 @@ import { requireNonEmpty, type StoreContext } from "./shared";
 import { isReservedTaskPath } from "./tasks";
 import { ticketDependencies } from "./tickets";
 import { executionRecoveryFacts } from "./tool-executions";
-import { STAGE_SQL, superviseSubmissions, ticketReviewer, type Submission } from "./submissions";
+import { ceilingCardOf, STAGE_SQL, superviseSubmissions, ticketReviewer, type Submission } from "./submissions";
 import { recordWorkEvent } from "./work-events";
 import { queueWork } from "./work-items";
 
@@ -51,7 +51,7 @@ export type BallHolder =
   | { kind: "reviewer"; botId: string; workItemId: string | null; submissionId: string }
   /** From level 5: a checked submission with no reviewer, which the supervisor approves at its next tick. */
   | { kind: "app"; reason: "approval"; ref: string }
-  | { kind: "user"; reason: "ask" | "blocked" | "held" | "held_dependency" | "review" | "unclaimed"; ref?: string };
+  | { kind: "user"; reason: "ask" | "blocked" | "held" | "held_dependency" | "review" | "ceiling" | "unclaimed"; ref?: string };
 
 export type SupervisorWake = {
   workItemId: string;
@@ -235,6 +235,9 @@ export function ballHolder(ctx: StoreContext, input: { ticketId: string }): Ball
     }
   }
   if (readEngineLevel(ctx.db) >= ENGINE_LEVELS.submissions) {
+    // It hit the capability ceiling: a card asks you how to go on, and nobody is woken for it meanwhile.
+    const ceiling = ceilingCardOf(ctx, ticket.id);
+    if (ceiling) return { kind: "user", reason: "ceiling", ref: ceiling };
     const handed = submissionHolder(ctx, ticket);
     if (handed) return handed;
   } else if (ticket.status === "review" && !failingCheck(ctx, ticket)) return { kind: "user", reason: "review", ref: ticket.id };

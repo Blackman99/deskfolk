@@ -91,3 +91,55 @@ describe("createPlanChecks: continuity", () => {
     f.close();
   });
 });
+
+describe("createPlanChecks: judging pictures from level 5", () => {
+  /** An evaluator that asks the judge about one image seam, as a seams check on video does, and passes on its answer. */
+  const looksAtPictures: CheckEvaluator = async (_root, _check, opts): Promise<CheckVerdict> => {
+    try {
+      const answer = await opts.continuity!.judge([{ kind: "image", n: 1, dataUri: "data:image/png;base64,AA==" }], [], "镜头连贯", "zh", opts.continuity!.sessionId);
+      return { outcome: "fail", exitCode: null, detail: answer, output: null };
+    } catch (error) {
+      return { outcome: "error", exitCode: null, detail: error instanceof Error ? error.message : String(error), output: null };
+    }
+  };
+  const level = (f: ReturnType<typeof fixture>, n: number) =>
+    f.store.db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('engine_level', ?)", [String(n)]);
+  const judgedBy = (f: ReturnType<typeof fixture>, checkId: string) =>
+    f.store.db.query<{ judged_by: string | null }, [string]>("SELECT judged_by FROM acceptance_check_runs WHERE check_id = ? ORDER BY rowid DESC LIMIT 1").get(checkId)?.judged_by;
+
+  test("a verdict of pictures is marked as such at level 5, and not at level 4", async () => {
+    for (const n of [4, 5]) {
+      const f = fixture();
+      level(f, n);
+      let asked = 0;
+      const checks = createPlanChecks({ store: f.store, wake: createWakeWatch(), renderMirrors: () => {}, evaluate: looksAtPictures,
+        judgeContinuity: async () => { asked += 1; return "第 1 处背景跳了"; } });
+      const check = f.store.createCheckByUser(f.planB.id, { item: "镜头连贯", kind: "continuity", path: "renders/master.mp4" });
+      await checks.run(f.planB.id, { cause: "user", checkIds: [check.id] });
+      expect(asked).toBe(1);
+      expect(judgedBy(f, check.id)).toBe(n === 5 ? "vision" : null);
+      f.close();
+    }
+  });
+
+  test("past the day's cap, or under a stop of yours, pictures are not judged at all", async () => {
+    const f = fixture();
+    level(f, 5);
+    let asked = 0;
+    const checks = createPlanChecks({ store: f.store, wake: createWakeWatch(), renderMirrors: () => {}, evaluate: looksAtPictures,
+      judgeContinuity: async () => { asked += 1; return "ok"; } });
+    const check = f.store.createCheckByUser(f.planB.id, { item: "镜头连贯", kind: "continuity", path: "renders/master.mp4" });
+    f.store.db.run(`INSERT INTO spend (id, session_id, kind, purpose, cost_usd_ticks, created_at) VALUES ('s-vision', ?, 'acceptance_check', 'vision', ?, ?)`,
+      [f.planB.session_id, 5 * 10_000_000_000, new Date().toISOString()]);
+    await checks.run(f.planB.id, { cause: "user", checkIds: [check.id] });
+    expect(asked).toBe(0);
+    expect(f.store.getCheck(check.id).last_run).toMatchObject({ outcome: "error", detail: expect.stringContaining("$5 的上限") });
+
+    f.store.db.run("DELETE FROM spend");
+    f.store.createHold({ scope: "plan", scopeId: f.planB.id, action: "cancel", source: "user_button" });
+    await checks.run(f.planB.id, { cause: "user", checkIds: [check.id] });
+    expect(asked).toBe(0);
+    expect(f.store.getCheck(check.id).last_run).toMatchObject({ outcome: "error", detail: expect.stringContaining("叫停") });
+    f.close();
+  });
+});

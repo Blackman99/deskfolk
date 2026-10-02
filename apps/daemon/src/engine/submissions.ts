@@ -61,6 +61,15 @@ export type Submissions = {
    * again), or below level 5. Throws `not_an_answer` when the text itself does not qualify.
    */
   answer: (turnId: string, text: string) => Promise<SettledSubmission | null>;
+  /**
+   * A line of yours, once filed (or refiled, or once the scribe made entries of it): a complaint
+   * about work handed over or approved sends it back to rework (§6.6). Never throws.
+   */
+  noteComplaint: (messageId: string, scribeAdded?: readonly string[]) => void;
+  /** Your answer on a rework card: send it back, leave it, or undo. */
+  answerRework: (message: Message, input: { action: unknown }) => ControlActionResult;
+  /** Your answer on a ceiling card. */
+  answerCeiling: (message: Message, input: { action: unknown }) => ControlActionResult;
 };
 
 /**
@@ -403,5 +412,26 @@ export function createSubmissions(deps: SubmissionsDeps): Submissions {
     return settle(prepared.submission);
   }
 
-  return { submit, review, implicit, act, answer };
+  function noteComplaint(messageId: string, scribeAdded?: readonly string[]): void {
+    if (!on()) return;
+    try {
+      if (store.noteComplaint(messageId, { scribeAdded }).length > 0) dispatchQueued();
+    } catch (error) {
+      log(`[submissions] line ${messageId}: could not read it as a complaint: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  function answerRework(message: Message, input: { action: unknown }): ControlActionResult {
+    store.answerReworkCard(message.id, input.action);
+    dispatchQueued();
+    return { made: [], lifted: [] };
+  }
+
+  function answerCeiling(message: Message, input: { action: unknown }): ControlActionResult {
+    store.answerCeilingCard(message.id, input.action);
+    dispatchQueued();
+    return { made: [], lifted: [] };
+  }
+
+  return { submit, review, implicit, act, answer, noteComplaint, answerRework, answerCeiling };
 }

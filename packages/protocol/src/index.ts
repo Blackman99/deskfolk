@@ -480,6 +480,8 @@ export type AcceptanceCheckRun = {
   detail: string;
   /** Tail of what the check produced; null when it has none (a file check, or nothing captured). */
   output: string | null;
+  /** `vision` when a model looking at pictures gave the verdict: from engine level 5 a reference only (ADR 0046). */
+  judged_by?: "vision" | null;
 };
 
 /**
@@ -1275,7 +1277,13 @@ export type ControlOffer =
   | "confirm_item"
   | "remove_item"
   | "approve"
-  | "reject";
+  | "reject"
+  | "another_way"
+  | "another_plan"
+  | "relax"
+  | "accept"
+  | "rework"
+  | "dismiss";
 
 /**
  * Why the daemon started again (ADR 0041): `dev` for a development run (`bun --watch` restarts it
@@ -1402,6 +1410,38 @@ export type MessageControl =
        * than a bare 已放行), that it waits on a check before approving, or why the card no longer
        * asks (a newer hand-over, your board edit).
        */
+      result?: string;
+      offer: ControlOffer[];
+      acted?: ControlOffer[];
+    }
+  | {
+      /**
+       * A line of yours that reads as a complaint about work already handed over or approved (ADR
+       * 0046, §6.6): which ticket, and which of its parts (empty: the whole ticket), and the line.
+       * `rework` sends it back (then the card offers `undo`, with `result` saying so); `dismiss` leaves it.
+       */
+      kind: "rework";
+      task_id: string;
+      ticket_id: string;
+      part_keys: string[];
+      message_id: string;
+      result?: string;
+      offer: ControlOffer[];
+      acted?: ControlOffer[];
+    }
+  | {
+      /**
+       * The capability ceiling (ADR 0046, §6.6): a part (null: the whole ticket) failed the same
+       * requirement three hand-overs in a row, or was handed over more than six times. `another_way`
+       * and `another_plan` send it back with that direction, `relax` waives `requirement_id` for the
+       * plan (offered only when there is one), `accept` takes it as it is.
+       */
+      kind: "ceiling";
+      task_id: string;
+      ticket_id: string;
+      part_key: string | null;
+      requirement_id: string | null;
+      /** Why it no longer asks, when the ticket closed another way (approved, your board edit). */
       result?: string;
       offer: ControlOffer[];
       acted?: ControlOffer[];

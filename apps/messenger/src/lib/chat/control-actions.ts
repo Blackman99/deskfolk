@@ -96,6 +96,30 @@ export function controlBar(control: MessageControl | undefined, holds: readonly 
     if (buttons.length > 0) return { state: "ask", prompt: control.result ?? null, buttons };
     return control.result ? { state: "done", note: control.result } : { state: "none" };
   }
+  // A part that keeps failing hit the capability ceiling (ADR 0046): how it goes on. Stops play no part.
+  if (control.kind === "ceiling") {
+    const buttons = control.offer.flatMap((action): ControlButton[] => {
+      if (action === "another_way") return [{ action, label: t.anotherWay, primary: true }];
+      if (action === "another_plan") return [{ action, label: t.anotherPlan, primary: false }];
+      if (action === "relax") return [{ action, label: t.relaxRequirement, primary: false }];
+      if (action === "accept") return [{ action, label: t.acceptAsIs, primary: false }];
+      return [];
+    });
+    if (buttons.length > 0) return { state: "ask", prompt: null, buttons };
+    return control.result ? { state: "done", note: control.result } : { state: "none" };
+  }
+  // A line of yours that reads as a complaint about delivered work (ADR 0046): send it back to rework
+  // or leave it; once sent back, undo. Stops play no part.
+  if (control.kind === "rework") {
+    const buttons = control.offer.flatMap((action): ControlButton[] => {
+      if (action === "rework") return [{ action, label: t.sendBackToRework, primary: true }];
+      if (action === "dismiss") return [{ action, label: t.leaveIt, primary: false }];
+      if (action === "undo") return [{ action, label: t.undo, primary: false }];
+      return [];
+    });
+    if (buttons.length > 0) return { state: "ask", prompt: control.result ?? null, buttons };
+    return control.result ? { state: "done", note: control.result } : { state: "none" };
+  }
   // A restart notice (ADR 0041): go on with what the restart cut off, or leave it. Stops play no part.
   if (control.kind === "restart") {
     const buttons = control.offer.flatMap((action): ControlButton[] => {

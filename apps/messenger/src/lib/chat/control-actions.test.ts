@@ -288,3 +288,16 @@ test("an approve/reject card waiting on a check shows why beside 退回; one tak
   // Nothing to press and nothing said: no row at all.
   expect(controlBar({ ...card, offer: [], result: undefined }, [], names, t)).toEqual({ state: "none" });
 });
+
+test("a rework card asks first, then offers undo beside what it did (ADR 0046)", () => {
+  const card: MessageControl = { kind: "rework", task_id: "task-1", ticket_id: "ticket-1", part_keys: ["C07"], message_id: "m-1", offer: ["rework", "dismiss"] };
+  expect(controlBar(card, [], names, t)).toEqual({ state: "ask", prompt: null, buttons: [
+    { action: "rework", label: t.sendBackToRework, primary: true },
+    { action: "dismiss", label: t.leaveIt, primary: false },
+  ] });
+  const sent: MessageControl = { ...card, offer: ["undo"], result: "已转回返工。" };
+  expect(controlBar(sent, [], names, t)).toEqual({ state: "ask", prompt: "已转回返工。", buttons: [{ action: "undo", label: t.undo, primary: false }] });
+  expect(controlBar({ ...card, acted: ["dismiss"] }, [], names, t)).toEqual({ state: "done", note: t.acted.dismiss });
+  expect(controlBar({ ...card, offer: [], result: "这句话后来改归别处了。" }, [], names, t)).toEqual({ state: "done", note: "这句话后来改归别处了。" });
+  expect(controlBar({ ...sent, acted: ["undo"], result: undefined }, [], names, t)).toEqual({ state: "done", note: t.acted.undo });
+});

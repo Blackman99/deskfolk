@@ -1096,6 +1096,14 @@ const zh = {
     /** On a card about a hand-over with no reviewer and nothing required (ADR 0046). */
     approveSubmission: "放行",
     sendBack: "退回",
+    /** On a ceiling card (ADR 0046): how a part that keeps failing goes on. */
+    /** On a card about a line that reads as a complaint about delivered work (ADR 0046). */
+    sendBackToRework: "转回返工",
+    leaveIt: "不用",
+    anotherWay: "换一种做法",
+    anotherPlan: "改方案绕开它",
+    relaxRequirement: "放宽这条要求",
+    acceptAsIs: "就用现在的",
     editCheck: "改",
     declineCheck: "不要",
     useNewCheck: "用新的",
@@ -1138,7 +1146,13 @@ const zh = {
       confirm_item: "已认可做到了",
       remove_item: "已不再要求",
       approve: "已放行",
-      reject: "已退回"
+      reject: "已退回",
+      another_way: "已让它换一种做法",
+      another_plan: "已让它改方案绕开",
+      relax: "这条要求已放宽",
+      accept: "已按现在的收下",
+      rework: "已转回返工",
+      dismiss: "没转回返工"
     },
     partlyResumed: (continued: number, held: number) => `${continued} 轮接着做了，${held} 轮还被叫停扣着，解除后再按「继续」`,
     spent: "已解除",
@@ -2671,6 +2685,12 @@ const en: CopyShape<typeof zh> = {
     removeItem: "No longer require it",
     approveSubmission: "Approve",
     sendBack: "Send it back",
+    sendBackToRework: "Send back to rework",
+    leaveIt: "Leave it",
+    anotherWay: "Another way",
+    anotherPlan: "Change the plan",
+    relaxRequirement: "Relax this requirement",
+    acceptAsIs: "Take it as it is",
     editCheck: "Change",
     declineCheck: "No",
     useNewCheck: "Use the new one",
@@ -2713,7 +2733,13 @@ const en: CopyShape<typeof zh> = {
       confirm_item: "Counted as met",
       remove_item: "No longer required",
       approve: "Approved",
-      reject: "Sent back"
+      reject: "Sent back",
+      another_way: "Asked for another way",
+      another_plan: "Asked to change the plan",
+      relax: "Requirement relaxed",
+      accept: "Taken as it is",
+      rework: "Sent back to rework",
+      dismiss: "Left as it is"
     },
     partlyResumed: (continued: number, held: number) => `${continued} going on; ${held} still held by a stop — lift it, then Continue again`,
     spent: "Lifted",

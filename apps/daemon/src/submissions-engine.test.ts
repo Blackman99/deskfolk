@@ -492,3 +492,64 @@ test("a card a newer hand-over or your board edit took over says so, with no but
   expect(h.store.getMessage(second!.id).control).toMatchObject({ offer: [], acted: [], result: "你在看板上改了这张任务的状态，这份交付作废了。" });
   expect(h.store.listSubmissions({ taskId: j.plan.id }).map((submission) => submission.state)).toEqual(["superseded", "superseded"]);
 });
+
+test("your complaint about approved work asks first; sent back, the producer is woken, and the reviewer reads its calibration record next time", async () => {
+  const h = await scenario();
+  const j = job(h);
+  h.store.patchTicketByUser(j.ticket.id, { reviewerBotId: j.reviewer.id });
+  h.script(j.reviewer).reply(call(tool("review", { outcome: "approve", verdicts: [] })), call(tool("end_turn", { reason: "done" })));
+  h.script(j.maker).reply(call(writeFile(`${j.ticket.dir}/board.md`, "1. 雪原\n2. 塔")), call(tool("submit", { artifacts: ["board.md"] })));
+  await ask(h, j);
+  const approval = h.messages(j.room).find((message) => message.control?.kind === "review_item")!;
+  h.engine.control(approval.id, { action: "approve" });
+  await h.waitIdle();
+  expect(stageOf(h, j.ticket.id)).toEqual({ stage: "approved", status: "done" });
+
+  // The complaint: the maker reworks and hands over again; the reviewer reads its record on the review.
+  let heard = "";
+  h.script(j.maker).reply(call(writeFile(`${j.ticket.dir}/board.md`, "1. 雪原\n2. 灯塔")), call(tool("submit", { artifacts: ["board.md"] })));
+  h.script(j.reviewer).reply(({ request }) => {
+    heard = request.messages.map((message) => (typeof message.content === "string" ? message.content : "")).join("\n");
+    return call(tool("end_turn", { reason: "done" }));
+  });
+  const line = h.store.postMessage(j.room, { body: "分镜不对，第 2 镜反了" });
+  h.store.fileMessage(line.id, { explicit: [{ taskId: j.plan.id, ticketId: j.ticket.id }] });
+  await h.engine.handleInboundMessage(h.store.getMessage(line.id), { fromUser: true });
+  await h.waitIdle();
+  const card = h.messages(j.room).find((message) => message.control?.kind === "rework")!;
+  expect(card.control).toMatchObject({ ticket_id: j.ticket.id, offer: ["rework", "dismiss"] });
+  // Asked, not acted on: still approved until you press.
+  expect(stageOf(h, j.ticket.id)).toEqual({ stage: "approved", status: "done" });
+  h.engine.control(card.id, { action: "rework" });
+  await h.waitIdle();
+  expect(h.store.getMessage(card.id).control).toMatchObject({ offer: ["undo"] });
+  expect(h.store.reviewMisses({ botId: j.reviewer.id, sessionId: j.room })).toMatchObject([{ quote: expect.stringContaining("第 2 镜反了") }]);
+  expect(heard).toContain("你的校准记录");
+  expect(heard).toContain("第 2 镜反了");
+  expect(stageOf(h, j.ticket.id).stage).toBe("in_review");
+  // The work moved on (a newer hand-over): the undo is refused.
+  expect(() => h.engine.control(card.id, { action: "undo" })).toThrow();
+});
+
+test("undo on a rework card puts the approval back when nothing moved since", async () => {
+  const h = await scenario();
+  const j = job(h);
+  h.store.createCheckByUser(j.plan.id, { item: "分镜文件存在", kind: "exists", path: `${j.ticket.dir}/board.md`, ticket_id: j.ticket.id });
+  h.script(j.maker).reply(call(writeFile(`${j.ticket.dir}/board.md`, "1. 雪原")), say("分镜好了"));
+  await ask(h, j);
+  h.tick(new Date(Date.now() + 20_000));
+  await h.waitIdle();
+  expect(stageOf(h, j.ticket.id)).toEqual({ stage: "approved", status: "done" });
+  h.script(j.maker).reply(call(tool("end_turn", { reason: "done" })));
+  const line = h.store.postMessage(j.room, { body: "分镜太短了" });
+  h.store.fileMessage(line.id, { explicit: [{ taskId: j.plan.id, ticketId: j.ticket.id }] });
+  await h.engine.handleInboundMessage(h.store.getMessage(line.id), { fromUser: true });
+  await h.waitIdle();
+  const card = h.messages(j.room).find((message) => message.control?.kind === "rework")!;
+  h.engine.control(card.id, { action: "rework" });
+  await h.waitIdle();
+  expect(stageOf(h, j.ticket.id).stage).toBe("rework");
+  h.engine.control(card.id, { action: "undo" });
+  expect(stageOf(h, j.ticket.id)).toEqual({ stage: "approved", status: "done" });
+  expect(h.store.getMessage(card.id).control).toMatchObject({ acted: ["undo"] });
+});

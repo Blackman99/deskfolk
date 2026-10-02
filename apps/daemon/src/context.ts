@@ -25,6 +25,7 @@ import {
   type ComposerSuggestPayload,
 } from "./prompts/composer-suggestions";
 import { parsePlanSpec, type PlanSpec, type Store } from "./store";
+import { ENGINE_LEVELS } from "./store/schema-gate";
 import { codePointCount, takeCodePoints } from "./text";
 import { visionImage } from "./vision-image";
 import { asFolder, classifyPath } from "./workspace-paths";
@@ -272,6 +273,8 @@ export type PlanCheckFact = {
    * and that it waits for them, in place of an outcome. Null on every other check.
    */
   unconfirmed?: string | null;
+  /** Its last verdict came from a model looking at pictures: from level 5 a reference only, never a block (ADR 0046). */
+  reference?: boolean;
 };
 
 export type PlanFacts = {
@@ -297,6 +300,11 @@ export type PlanFacts = {
   quotes: QuoteLayer | null;
   /** The requirements ledger's entries bearing on the job, less those the user set not to hold for it. */
   requirements: RequirementFact[];
+  /**
+   * This Bot's calibration record (ADR 0046, from level 5): its approvals the user overturned in the
+   * plan's conversation, newest first, with what the user said. Empty for a Bot never overturned.
+   */
+  calibration: Array<{ ticket: string; quote: string; at: string }>;
   /** Workspace paths the plan's messages cited and that still exist, newest cited first. */
   artifacts: string[];
   /** One line per earlier turn: who, and their last word or the question they are waiting on. */
@@ -414,6 +422,7 @@ export function planFacts(
         detail: last?.detail ?? "",
         ageMinutes: at ? Math.max(0, Math.round((now.getTime() - Date.parse(at)) / 60_000)) : null,
         unconfirmed: check.origin === "derived" && check.derived_state !== "active" ? unconfirmedNote(check, input.locale) : null,
+        reference: last?.judged_by === "vision" && store.capabilities().engine_level >= ENGINE_LEVELS.submissions,
       };
     });
   let ticket: PlanFacts["ticket"] = null;
@@ -534,6 +543,7 @@ export function planFacts(
     ticket,
     quotes,
     requirements,
+    calibration: task.session_id ? store.reviewMisses({ botId: input.botId, sessionId: task.session_id }) : [],
     artifacts,
     trace,
     check_back,
@@ -712,9 +722,10 @@ function checkLine(check: PlanCheckFact, locale: Locale): string {
   }
   const outcome = CHECK_OUTCOME_LABEL[check.outcome][locale];
   const age = en ? `${check.ageMinutes}min ago` : `${check.ageMinutes} 分钟前`;
+  const reference = check.reference ? (en ? " — judged by a model looking at pictures: for reference only, not a block" : "——看图判定，只作参考，不挡交付") : "";
   return en
-    ? `"${check.item}" ${check.what}: ${outcome} (${check.detail}; ${age})`
-    : `「${check.item}」${check.what}：${outcome}（${check.detail}；${age}）`;
+    ? `"${check.item}" ${check.what}: ${outcome} (${check.detail}; ${age})${reference}`
+    : `「${check.item}」${check.what}：${outcome}（${check.detail}；${age}）${reference}`;
 }
 
 /** A turn that is not simply done says so on its trace line; a completed one needs no label. */
@@ -783,6 +794,14 @@ export function planLines(facts: PlanFacts, locale: Locale): string[] {
   // plan's rules and Done-when lines are in the ledger now, typed on the board or taken in as old rules.
   if (facts.quotes) lines.push(quoteLines(facts.quotes, locale));
   lines.push(...requirementLines(facts.requirements, locale));
+  if (facts.calibration.length > 0) {
+    const rows = facts.calibration.map((miss) => en
+      ? `- "${miss.ticket}" (${quoteTime(miss.at)}): the user said "${miss.quote}"`
+      : `- 「${miss.ticket}」（${quoteTime(miss.at)}）：用户说「${miss.quote}」`);
+    lines.push(`${en
+      ? "Your calibration record — approvals of yours the user overturned here; weigh the same kind of thing harder before passing it:"
+      : "你的校准记录——你放行后被用户推翻的；再审同类问题时要更严："}\n${rows.join("\n")}`);
+  }
   if (facts.checks.length > 0) {
     const rows = facts.checks.map((check) => `- ${checkLine(check, locale)}`);
     lines.push(`${en ? "Acceptance checks (the app runs these itself, on this machine):" : "验收检查（应用在本机自己跑）："}\n${rows.join("\n")}`);

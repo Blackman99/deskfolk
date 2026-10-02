@@ -69,4 +69,6 @@ export function migrateSubmissions(db: Database): void {
   const kept = db.query<{ name: string }, []>("PRAGMA table_info(submissions)").all().map((column) => column.name);
   if (!kept.includes("awaiting")) db.run("ALTER TABLE submissions ADD COLUMN awaiting TEXT");
   if (!kept.includes("content")) db.run("ALTER TABLE submissions ADD COLUMN content TEXT");
+  const runs = db.query<{ name: string }, []>("PRAGMA table_info(acceptance_check_runs)").all().map((column) => column.name);
+  if (runs.length > 0 && !runs.includes("judged_by")) db.run("ALTER TABLE acceptance_check_runs ADD COLUMN judged_by TEXT");
 }

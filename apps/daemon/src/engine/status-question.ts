@@ -27,6 +27,7 @@ import {
 import type { TurnAdmission } from "../quiesce";
 import { isStatusQuestion } from "../status-question";
 import { derivedNotGate, type Store } from "../store";
+import { ENGINE_LEVELS } from "../store/schema-gate";
 import { takeCodePoints } from "../text";
 
 export type StatusQuestionDeps = {
@@ -194,7 +195,9 @@ export function createStatusQuestion(deps: StatusQuestionDeps): StatusQuestionEn
     });
 
     // A check from your words with no file yet is neither passed nor failed, so it is not counted.
-    const allChecks = store.listChecks(taskId).filter((check) => !derivedNotGate(check));
+    // A verdict of pictures is a reference only from level 5 (ADR 0046): it neither passes nor fails the job here.
+    const vision = store.capabilities().engine_level >= ENGINE_LEVELS.submissions;
+    const allChecks = store.listChecks(taskId).filter((check) => !derivedNotGate(check) && !(vision && check.last_run?.judged_by === "vision"));
     const passed = allChecks.filter((check) => check.last_run?.outcome === "pass").length;
     const failingChecks = allChecks.filter((check) => check.last_run?.outcome === "fail");
     const failing = failingChecks

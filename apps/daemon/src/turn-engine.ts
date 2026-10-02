@@ -266,7 +266,11 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     },
     draining: () => Boolean(options.admission?.draining),
     // Entries it wrote down or raised may now be ones you asked for in two plans (ADR 0040 P3).
-    onFiled: (quote, outcome) => requirementCards.noteFiled(quote, [...outcome.added, ...outcome.raised]),
+    onFiled: (quote, outcome) => {
+      requirementCards.noteFiled(quote, [...outcome.added, ...outcome.raised]);
+      // A part-level entry the scribe made of a line about delivered work reads as a complaint (§6.6).
+      if (quote.message_id && outcome.added.length > 0) submissions.noteComplaint(quote.message_id, outcome.added);
+    },
     ablation,
   });
 
@@ -554,6 +558,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       return;
     }
     store.afterCommit(() => void core.track(scribe.noteLine(messageId, scribe.handedOverAt(body))));
+    store.afterCommit(() => submissions.noteComplaint(messageId));
   }
 
   const engine: TurnEngine = {
@@ -609,6 +614,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
             store.updatePlanDormancy();
             store.fileMessage(message.id);
             filed = store.getMessage(message.id);
+            // A complaint about work handed over or approved sends it back before any turn opens on it.
+            submissions.noteComplaint(filed.id);
           }
           // A Stop you pressed on this job goes once you say something more about it to that Bot,
           // before the line wakes anyone: what you say next is what the Bot goes on from.
@@ -802,6 +809,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       if (message.control?.kind === "check") return derivedChecks.act(message, input);
       if (message.control?.kind === "requirement") return requirementCards.act(message, input);
       if (message.control?.kind === "review_item") return submissions.act(message, input);
+      if (message.control?.kind === "rework") return submissions.answerRework(message, input);
+      if (message.control?.kind === "ceiling") return submissions.answerCeiling(message, input);
       return stops.act(messageId, input);
     },
     announceRestart: restart.announce,

@@ -905,7 +905,10 @@ CREATE TABLE IF NOT EXISTS acceptance_check_runs (
   outcome TEXT CHECK (outcome IS NULL OR outcome IN ('pass', 'fail', 'blocked', 'error')),
   exit_code INTEGER,
   detail TEXT NOT NULL DEFAULT '',
-  output TEXT
+  output TEXT,
+  -- 'vision' when the verdict came from a model looking at pictures (a seams check on video or
+  -- images): from engine level 5 only a reference, never a gate, until it is calibrated (ADR 0046).
+  judged_by TEXT
 );
 
 CREATE INDEX IF NOT EXISTS acceptance_check_runs_check ON acceptance_check_runs (check_id, started_at);

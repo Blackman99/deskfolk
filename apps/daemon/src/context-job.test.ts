@@ -347,3 +347,25 @@ describe("which job a line is about", () => {
     store.close();
   });
 });
+
+describe("a verdict of pictures in the situation (ADR 0046)", () => {
+  test("from level 5 a vision-judged check reads as a reference, not a block; at level 4 it reads as before", () => {
+    for (const level of [4, 5]) {
+      const root = mkdtempSync(join(tmpdir(), "vision-situation-"));
+      workspaces.push(root);
+      const store = new Store();
+      store.patchSettingsSync({ workspace_path: root });
+      store.db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('engine_level', ?)", [String(level)]);
+      const bot = store.createBot({ name: "Director", duties: "cut", boundaries: "none" });
+      const plan = store.openTask({ sessionId: bot.direct_session.id, title: "EP01" });
+      const check = store.createCheckByUser(plan.id, { item: "镜头连贯", kind: "continuity", path: "renders/master.mp4" });
+      const run = store.beginCheckRun(check.id, "user");
+      store.finishCheckRun(run.id, { outcome: "fail", exitCode: null, detail: "第 3 处背景跳了", output: null });
+      store.markCheckRunJudgedBy(run.id, "vision");
+      const trigger = store.insertMessage({ sessionId: bot.direct_session.id, kind: "system", author: bot.bot.id, body: "工作" });
+      const facts = planFacts(store, { taskId: plan.id, turnId: null, triggerMessageId: trigger.id, botId: bot.bot.id, sessionId: bot.direct_session.id, locale: "zh" });
+      expect({ level, reference: facts!.checks[0]!.reference }).toEqual({ level, reference: level === 5 });
+      store.close();
+    }
+  });
+});

@@ -4,7 +4,7 @@ import { Store } from ".";
 import { filenamePartNumbers } from "./filing";
 import { ENGINE_LEVELS } from "./schema-gate";
 import { createHold, liftHold } from "./holds";
-import { superviseSubmissions, UNREVIEWED_AFTER_MS } from "./submissions";
+import { checkLines, superviseSubmissions, UNREVIEWED_AFTER_MS } from "./submissions";
 
 const stores: Store[] = [];
 afterEach(() => { for (const store of stores.splice(0)) store.close(); });
@@ -805,3 +805,326 @@ test("with no reviewer, only a passing check of yours lets a file hand-over thro
     else expect(after).toMatchObject({ state: "submitted", awaiting: { kind: "approval" } });
   }
 });
+
+/** A master approved by a reviewer on another model that gave evidence, its check of yours passing: the plan is delivered. */
+function approvedByReviewer(f: Fixture) {
+  const { produced, submission } = handedOver(f, { reviewer: true, model: "maker-model" });
+  const look = requirement(f, "R-look", { times: 1 });
+  const check = gate(f, "pass");
+  const reviewing = segment(f, f.reviewer.id);
+  onModel(f, reviewing.id, "checker-model");
+  const result = f.store.reviewSubmission({ turnId: reviewing.id, outcome: "approve", checks: f.store.submissionCheckResults([check.id], submission.created_at),
+    verdicts: [{ requirement_id: look.id, verdict: "pass", evidence: ["看过第 3 秒"] }] });
+  if (!result.ok) throw new Error(`expected an approval: ${JSON.stringify(result)}`);
+  f.store.setTurnStatus(produced.id, "completed");
+  f.store.setTurnStatus(reviewing.id, "completed");
+  return { submission, check };
+}
+
+/** A line of yours filed under the ticket (or one of its parts) by the rows, as the arrival path files it. */
+function said(f: Fixture, body: string, target: { partKey?: string; parentId?: string } = {}) {
+  const line = f.store.postMessage(f.room.id, { body, parent_id: target.parentId ?? null });
+  f.store.fileMessage(line.id, { explicit: [{ taskId: f.plan.id, ticketId: f.ticket.id, ...(target.partKey ? { partKey: target.partKey } : {}) }] });
+  return line;
+}
+
+const reworkCardsOf = (f: Fixture) => f.store.db.query<{ id: string }, []>("SELECT id FROM messages WHERE json_extract(control, '$.kind') = 'rework' ORDER BY created_at, rowid")
+  .all().map((row) => f.store.getMessage(row.id));
+
+test("a complaint about approved work only asks; sending it back reworks it, counts a miss, reopens the plan and wakes the producer — undo puts it back", () => {
+  const f = fixture();
+  approvedByReviewer(f);
+  const line = said(f, "母带太短了，不对");
+  const [card] = f.store.noteComplaint(line.id);
+  // Asked, nothing moved yet.
+  expect(card!.control).toMatchObject({ kind: "rework", ticket_id: f.ticket.id, part_keys: [], message_id: line.id, offer: ["rework", "dismiss"] });
+  expect(card!.body).toContain("母带太短了，不对");
+  expect(ticketRow(f)).toEqual({ status: "done", stage: "approved" });
+  expect(f.store.noteComplaint(line.id)).toEqual([]);
+
+  const sent = f.store.answerReworkCard(card!.id, "rework");
+  expect(sent.control).toMatchObject({ offer: ["undo"], result: "已转回返工。" });
+  expect(ticketRow(f)).toEqual({ status: "doing", stage: "rework" });
+  expect(f.store.getTask(f.plan.id).status).not.toBe("done");
+  expect(f.store.reviewMisses({ botId: f.reviewer.id, sessionId: f.room.id })).toMatchObject([{ ticket: "06 母带", quote: "母带太短了，不对" }]);
+  expect(f.store.db.query("SELECT body_snapshot AS body FROM inbox_items WHERE bot_id = ? ORDER BY seq DESC LIMIT 1").get(f.producer.id))
+    .toMatchObject({ body: expect.stringContaining("母带太短了，不对") });
+
+  const undone = f.store.answerReworkCard(card!.id, "undo");
+  expect(undone.control).toMatchObject({ acted: ["undo"] });
+  expect(ticketRow(f)).toEqual({ status: "done", stage: "approved" });
+  expect(f.store.getTask(f.plan.id)).toMatchObject({ status: "done" });
+  expect(f.store.reviewMisses({ botId: f.reviewer.id, sessionId: f.room.id })).toEqual([]);
+  expect(() => f.store.answerReworkCard(card!.id, "undo")).toThrow();
+});
+
+test("praise, a redo turned down, a reply that only acknowledges, a Bot's filing, level 4, or work still being made ask nothing", () => {
+  const f = fixture();
+  approvedByReviewer(f);
+  const delivery = f.store.insertMessage({ sessionId: f.room.id, kind: "bot", author: f.producer.id, body: "母带在这", paths: [`${f.ticket.dir}/EP01_MASTER.mp4`] });
+  for (const body of ["很好，就这样", "别重做了，就这样", "比上一版那个错乱的好多了"]) expect(f.store.noteComplaint(said(f, body).id)).toEqual([]);
+  for (const body of ["收到", "收到，谢谢", "辛苦了", "👌", "嗯", "我晚点看", "给老板看看"]) {
+    expect(f.store.noteComplaint(said(f, body, { parentId: delivery.id }).id)).toEqual([]);
+  }
+  const botFiled = f.store.postMessage(f.room.id, { body: "母带太短了，不对" });
+  f.store.db.run(`INSERT INTO message_filings (message_id, task_id, ticket_id, part_key, filed_by, strength, is_primary, created_at)
+    VALUES (?, ?, ?, NULL, 'bot:x', 'bot', 1, ?)`, [botFiled.id, f.plan.id, f.ticket.id, isoNow()]);
+  expect(f.store.noteComplaint(botFiled.id)).toEqual([]);
+  expect(reworkCardsOf(f)).toEqual([]);
+  expect(ticketRow(f).stage).toBe("approved");
+
+  const low = fixture(ENGINE_LEVELS.supervision);
+  expect(low.store.noteComplaint(said(low, "母带太短了，不对").id)).toEqual([]);
+  const doing = fixture();
+  segment(doing);
+  expect(doing.store.noteComplaint(said(doing, "母带太短了，不对").id)).toEqual([]);
+});
+
+test("only the part an objecting clause names is asked about; a question asks nothing; dismissing leaves everything as it was", () => {
+  const f = fixture();
+  const produced = segment(f);
+  const { submission } = submit(f, produced.id, [[`${f.ticket.dir}/shot_07.mp4`, HASH_A], [`${f.ticket.dir}/shot_08.mp4`, HASH_B]])!;
+  f.store.patchTicketByUser(f.ticket.id, { reviewerBotId: f.reviewer.id });
+  f.store.settleSubmissionChecks(submission.id);
+  const keys = f.store.db.query<{ key: string }, []>("SELECT key FROM ticket_parts ORDER BY key").all().map((row) => row.key);
+  /** A line filed under both parts, as one naming C07 and C08 is. */
+  const both = (body: string) => {
+    const line = f.store.postMessage(f.room.id, { body });
+    f.store.fileMessage(line.id, { explicit: keys.map((partKey) => ({ taskId: f.plan.id, ticketId: f.ticket.id, partKey })) });
+    return line;
+  };
+  const [card] = f.store.noteComplaint(both("C07 跳跃，C08 很好").id);
+  expect(card!.control).toMatchObject({ part_keys: [keys[0]] });
+  expect(f.store.answerReworkCard(card!.id, "dismiss").control).toMatchObject({ acted: ["dismiss"] });
+  expect(ticketRow(f).stage).toBe("in_review");
+  expect(f.store.getSubmission(submission.id).state).toBe("in_review");
+
+  expect(f.store.noteComplaint(both("C07 是不是太短了？").id)).toEqual([]);
+  const [asked] = f.store.noteComplaint(both("C07 好短啊").id);
+  expect(asked!.control).toMatchObject({ part_keys: [keys[0]], offer: ["rework", "dismiss"] });
+  // Sending a part in review back supersedes the hand-over, and undo brings it back.
+  f.store.answerReworkCard(asked!.id, "rework");
+  expect(f.store.db.query("SELECT key, stage FROM ticket_parts ORDER BY key").all()).toEqual([{ key: keys[0], stage: "rework" }, { key: keys[1], stage: "submitted" }]);
+  expect(f.store.getSubmission(submission.id).state).toBe("superseded");
+  f.store.answerReworkCard(asked!.id, "undo");
+  expect(f.store.getSubmission(submission.id).state).toBe("in_review");
+  expect(ticketRow(f).stage).toBe("in_review");
+});
+
+test("a part-level entry the scribe made asks without complaint words; a refiled line's card stops asking about the ticket it left", () => {
+  const f = fixture();
+  approvedByReviewer(f);
+  const line = said(f, "第三秒那里重新剪一下");
+  f.store.db.run(`INSERT INTO requirements (id, scope, scope_id, quote, source_kind, status, times_raised, last_raised_at, added_by, created_at, updated_at, origin_task_id)
+    VALUES ('R-part', 'part', ?, '第三秒重新剪', 'message', 'open', 1, '2026-01-01', 'scribe', '2026-01-01', '2026-01-01', ?)`, [f.ticket.id, f.plan.id]);
+  expect(f.store.noteComplaint(line.id, { scribeAdded: ["R-plan-only"] })).toEqual([]);
+  const [card] = f.store.noteComplaint(line.id, { scribeAdded: ["R-part"] });
+  expect(card).toBeDefined();
+  f.store.db.run("DELETE FROM message_filings WHERE message_id = ?", [line.id]);
+  f.store.noteComplaint(line.id);
+  expect(f.store.getMessage(card!.id).control).toMatchObject({ offer: [], result: "这句话后来改归别处了。" });
+  expect(() => f.store.answerReworkCard(card!.id, "rework")).toThrow();
+});
+
+test("sending back is refused once the ticket moved on, and undo once there is a newer hand-over", () => {
+  const f = fixture();
+  approvedByReviewer(f);
+  const [card] = f.store.noteComplaint(said(f, "母带太短了，不对").id);
+  f.store.answerReworkCard(card!.id, "rework");
+  const again = segment(f);
+  submit(f, again.id, [[`${f.ticket.dir}/EP01_MASTER.mp4`, HASH_B]]);
+  expect(() => f.store.answerReworkCard(card!.id, "undo")).toThrow("moved on");
+
+  const g = fixture();
+  approvedByReviewer(g);
+  const [late] = g.store.noteComplaint(said(g, "母带太短了，不对").id);
+  g.store.patchTicketByUser(g.ticket.id, { status: "doing" });
+  expect(g.store.answerReworkCard(late!.id, "rework").control).toMatchObject({ offer: [], result: "它已经不在交付或通过的状态，没有可转回的。" });
+  expect(ticketRow(g).stage).toBe("doing");
+
+  // A newer version handed over after the line: the old card does not send that one back.
+  const k = fixture();
+  const { submission, check } = approvedByReviewer(k);
+  const [old] = k.store.noteComplaint(said(k, "母带太短了，不对").id);
+  const redone = segment(k);
+  const { submission: newer } = submit(k, redone.id, [[`${k.ticket.dir}/EP01_MASTER.mp4`, HASH_B]])!;
+  run(k, check.id, "pass");
+  k.store.settleSubmissionChecks(newer.id);
+  expect(ticketRow(k).stage).toBe("in_review");
+  expect(k.store.answerReworkCard(old!.id, "rework").control).toMatchObject({ offer: [], result: expect.stringContaining("又交了新的一版") });
+  expect(k.store.getSubmission(newer.id).state).not.toBe("superseded");
+  expect(k.store.reviewMisses({ botId: k.reviewer.id, sessionId: k.room.id })).toEqual([]);
+  expect(submission.id).not.toBe(newer.id);
+});
+
+test("undoing a rework takes back the producer's call to redo it, or tells it when already read", () => {
+  const f = fixture();
+  approvedByReviewer(f);
+  const [card] = f.store.noteComplaint(said(f, "母带太短了，不对").id);
+  f.store.answerReworkCard(card!.id, "rework");
+  const call = f.store.db.query<{ seq: number; state: string }, [string]>("SELECT seq, state FROM inbox_items WHERE bot_id = ? ORDER BY seq DESC LIMIT 1").get(f.producer.id)!;
+  expect(call.state).toBe("queued");
+  f.store.answerReworkCard(card!.id, "undo");
+  expect(f.store.db.query("SELECT state FROM inbox_items WHERE seq = ?").get(call.seq)).toEqual({ state: "superseded" });
+
+  const g = fixture();
+  approvedByReviewer(g);
+  const [read] = g.store.noteComplaint(said(g, "母带太短了，不对").id);
+  g.store.answerReworkCard(read!.id, "rework");
+  g.store.db.run("UPDATE inbox_items SET state = 'delivered' WHERE bot_id = ?", [g.producer.id]);
+  g.store.answerReworkCard(read!.id, "undo");
+  expect(g.store.db.query("SELECT body_snapshot AS body, wakes FROM inbox_items WHERE bot_id = ? ORDER BY seq DESC LIMIT 1").get(g.producer.id))
+    .toEqual({ body: expect.stringContaining("撤销了任务「06 母带」的返工"), wakes: 0 });
+});
+
+/** One hand-over of shot_01 by `turnId`, judged on `checkId`'s next run: `outcome`. */
+function shotHandOver(f: Fixture, turnId: string, checkId: string, outcome: "pass" | "fail", n: number) {
+  const { submission } = submit(f, turnId, [[`${f.ticket.dir}/shot_01.mp4`, `${n}`.padStart(64, "0")]])!;
+  run(f, checkId, outcome, outcome === "fail" ? "107.00 秒，要 108–132 秒" : "");
+  return f.store.settleSubmissionChecks(submission.id);
+}
+
+const ceilingCards = (f: Fixture) => f.store.db.query<{ id: string }, []>("SELECT id FROM messages WHERE json_extract(control, '$.kind') = 'ceiling' ORDER BY created_at, rowid").all().map((row) => f.store.getMessage(row.id));
+
+test("the same check failing three hand-overs in a row blocks the part, refuses a fourth, gives you the ball and asks how to go on", () => {
+  const f = fixture();
+  const produced = segment(f);
+  const check = gate(f, "fail");
+  for (let n = 1; n <= 2; n++) expect(shotHandOver(f, produced.id, check.id, "fail", n).state).toBe("checks_failed");
+  expect(ceilingCards(f)).toEqual([]);
+  shotHandOver(f, produced.id, check.id, "fail", 3);
+  const [card] = ceilingCards(f);
+  expect(card!.control).toMatchObject({ kind: "ceiling", part_key: expect.any(String), requirement_id: null, offer: ["another_way", "another_plan", "accept"] });
+  expect(card!.body).toContain("连续 3 次没过");
+  expect(f.store.db.query("SELECT stage FROM ticket_parts").get()).toEqual({ stage: "blocked" });
+  expect(f.store.ballHolder({ ticketId: f.ticket.id })).toMatchObject({ kind: "user", reason: "ceiling", ref: card!.id });
+  expect(() => submit(f, produced.id, [[`${f.ticket.dir}/shot_01.mp4`, "9".repeat(64)]])).toThrow("capability ceiling");
+
+  // Another way: back to rework, the producer told, the count starts over — one more failure does not block again.
+  f.store.answerCeilingCard(card!.id, "another_way");
+  expect(f.store.db.query("SELECT stage FROM ticket_parts").get()).toEqual({ stage: "rework" });
+  expect(f.store.db.query("SELECT body_snapshot AS body FROM inbox_items WHERE bot_id = ? ORDER BY seq DESC LIMIT 1").get(f.producer.id)).toMatchObject({ body: expect.stringContaining("换一种做法") });
+  shotHandOver(f, produced.id, check.id, "fail", 4);
+  expect(ceilingCards(f)).toHaveLength(1);
+  expect(f.store.db.query("SELECT stage FROM ticket_parts").get()).toEqual({ stage: "rework" });
+});
+
+test("a requirement a review failed three times in a row offers to relax it; relaxing waives it for the plan", () => {
+  const f = fixture();
+  f.store.patchTicketByUser(f.ticket.id, { reviewerBotId: f.reviewer.id });
+  const nose = requirement(f, "R-nose", { times: 2 });
+  for (let n = 1; n <= 3; n++) {
+    const produced = segment(f);
+    const { submission } = submit(f, produced.id, [[`${f.ticket.dir}/shot_01.mp4`, `${n}`.padStart(64, "0")]])!;
+    f.store.settleSubmissionChecks(submission.id);
+    f.store.setTurnStatus(produced.id, "completed");
+    const reviewing = segment(f, f.reviewer.id);
+    f.store.reviewSubmission({ turnId: reviewing.id, outcome: "reject", note: "鼻头白块还在", verdicts: [{ requirement_id: nose.id, verdict: "fail", evidence: ["第 2 秒"] }] });
+    f.store.setTurnStatus(reviewing.id, "completed");
+  }
+  const [card] = ceilingCards(f);
+  expect(card!.control).toMatchObject({ requirement_id: nose.id, offer: ["another_way", "another_plan", "relax", "accept"] });
+  expect(card!.body).toContain("要求 R-nose");
+  f.store.answerCeilingCard(card!.id, "relax");
+  expect(f.store.db.query("SELECT status FROM requirements WHERE id = ?").get(nose.id)).toEqual({ status: "waived" });
+  expect(() => f.store.answerCeilingCard(card!.id, "accept")).toThrow();
+});
+
+test("more than six hand-overs of a part block it however they failed; taking it as it is approves the part, the ticket and the plan", () => {
+  const f = fixture();
+  const produced = segment(f);
+  for (let n = 1; n <= 7; n++) {
+    const check = gate(f, "fail");
+    shotHandOver(f, produced.id, check.id, "fail", n);
+    f.store.db.run("UPDATE acceptance_checks SET removed_at = ? WHERE id = ?", [isoNow(), check.id]);
+  }
+  const [card] = ceilingCards(f);
+  expect(card!.body).toContain("已经交了 7 次");
+  f.store.answerCeilingCard(card!.id, "accept");
+  expect(f.store.db.query("SELECT stage FROM ticket_parts").get()).toEqual({ stage: "approved" });
+  expect(ticketRow(f)).toEqual({ status: "done", stage: "approved" });
+  expect(f.store.getTask(f.plan.id).status).toBe("done");
+});
+
+test("a check whose last verdict came from judging pictures is a reference at level 5: it neither blocks a hand-over nor the plan", () => {
+  const f = fixture();
+  const { submission } = handedOver(f);
+  const look = gate(f, "fail");
+  f.store.db.run("UPDATE acceptance_check_runs SET judged_by = 'vision' WHERE check_id = ?", [look.id]);
+  const plain = gate(f, "pass");
+  const checks = f.store.submissionCheckResults([look.id, plain.id], submission.created_at);
+  expect(checks).toMatchObject([{ check_id: look.id, gate: false, reference: "vision", outcome: "fail" }, { check_id: plain.id, gate: true, yours: true }]);
+  expect(checkLines(checks, "zh")[0]).toContain("看图判定，只作参考");
+  superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
+  expect(f.store.getSubmission(submission.id).state).toBe("approved");
+  expect(f.store.getTask(f.plan.id).status).toBe("done");
+
+  // Level 4 is untouched: the same verdict still decides.
+  const low = fixture(ENGINE_LEVELS.supervision);
+  const lowLook = gate(low, "fail");
+  low.store.db.run("UPDATE acceptance_check_runs SET judged_by = 'vision' WHERE check_id = ?", [lowLook.id]);
+  expect(low.store.submissionCheckResults([lowLook.id], "")).toMatchObject([{ gate: true, outcome: "fail" }]);
+});
+
+test("at the ceiling the producer only hears that you are asked, and is not woken to try again", () => {
+  const f = fixture();
+  const produced = segment(f);
+  const check = gate(f, "fail");
+  for (let n = 1; n <= 3; n++) {
+    const { submission } = submit(f, produced.id, [[`${f.ticket.dir}/shot_01.mp4`, `${n}`.padStart(64, "0")]])!;
+    run(f, check.id, "fail", "107.00 秒，要 108–132 秒");
+    f.store.settleSubmissionChecks(submission.id, undefined, { tell: true });
+  }
+  const told = f.store.db.query<{ body: string; wakes: number }, [string]>("SELECT body_snapshot AS body, wakes FROM inbox_items WHERE bot_id = ? ORDER BY seq").all(f.producer.id);
+  expect(told.map((item) => item.wakes)).toEqual([1, 1, 0]);
+  expect(told.at(-1)!.body).toContain("能力天花板");
+  expect(told.at(-1)!.body).not.toContain("改好再交");
+});
+
+test("the whole ticket counts only hand-overs of no part, and only failed ones; approved parts never add up to a ceiling", () => {
+  const f = fixture();
+  const produced = segment(f);
+  for (let n = 1; n <= 7; n++) {
+    const { submission } = submit(f, produced.id, [[`${f.ticket.dir}/shot_0${n}.mp4`, `${n}`.padStart(64, "0")]])!;
+    f.store.settleSubmissionChecks(submission.id);
+    superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + n * 1_000));
+  }
+  const check = gate(f, "fail");
+  shotHandOver(f, produced.id, check.id, "fail", 99);
+  const { submission } = submit(f, produced.id, [[`${f.ticket.dir}/final.mp4`, "f".repeat(64)]])!;
+  run(f, check.id, "fail");
+  f.store.settleSubmissionChecks(submission.id);
+  expect(ceilingCards(f)).toEqual([]);
+});
+
+test("while a part is stuck, a hand-over of no part is refused, and your board edit closes its card", () => {
+  const f = fixture();
+  const produced = segment(f);
+  const check = gate(f, "fail");
+  for (let n = 1; n <= 3; n++) shotHandOver(f, produced.id, check.id, "fail", n);
+  const [card] = ceilingCards(f);
+  expect(() => submit(f, produced.id, [[`${f.ticket.dir}/final.mp4`, "f".repeat(64)]])).toThrow("capability ceiling");
+  f.store.patchTicketByUser(f.ticket.id, { status: "done" });
+  expect(f.store.getMessage(card!.id).control).toMatchObject({ offer: [], result: "你在看板上改了这张任务的状态，不再问了。" });
+  expect(() => f.store.answerCeilingCard(card!.id, "accept")).toThrow();
+  expect(f.store.ballHolder({ ticketId: f.ticket.id })).toMatchObject({ kind: "closed" });
+});
+
+test("one part approved does not approve the ticket or lift another part's ceiling", () => {
+  const f = fixture();
+  const produced = segment(f);
+  const check = gate(f, "fail");
+  for (let n = 1; n <= 3; n++) shotHandOver(f, produced.id, check.id, "fail", n);
+  const [card] = ceilingCards(f);
+  f.store.db.run("UPDATE acceptance_checks SET removed_at = ? WHERE id = ?", [isoNow(), check.id]);
+  const { submission } = submit(f, produced.id, [[`${f.ticket.dir}/shot_02.mp4`, "2".repeat(64)]])!;
+  gate(f, "pass");
+  f.store.settleSubmissionChecks(submission.id);
+  superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
+  expect(f.store.getSubmission(submission.id).state).toBe("approved");
+  expect(f.store.db.query("SELECT key, stage FROM ticket_parts ORDER BY key").all()).toEqual([{ key: "shot_01", stage: "blocked" }, { key: "shot_02", stage: "approved" }]);
+  expect(ticketRow(f).stage).toBe("doing");
+  expect(f.store.getMessage(card!.id).control).toMatchObject({ offer: ["another_way", "another_plan", "accept"] });
+  expect(() => submit(f, produced.id, [[`${f.ticket.dir}/shot_01.mp4`, "1".repeat(64)]])).toThrow("capability ceiling");
+});
+
