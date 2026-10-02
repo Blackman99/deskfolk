@@ -34,6 +34,20 @@
 	function lastSeen(lesson: Lesson): string | null {
 		return lesson.evidence.at(-1)?.at ?? null;
 	}
+
+	/** A shell lesson's kind of call; a reflection's, what it is (ADR 0051). */
+	function kindOf(lesson: Lesson): string {
+		if (lesson.detector.tool === 'shell') return lesson.detector.head;
+		if (lesson.action === 'propose_check') return t.lessons.checkProposal;
+		return t.lessons.checklistAt[lesson.hook as 'before_review' | 'before_submit' | 'before_generate'] ?? lesson.hook;
+	}
+
+	function badgeOf(lesson: Lesson): { tone: string; label: string } {
+		if (lesson.status === 'retired') return { tone: 'retired', label: t.lessons.retired };
+		if (lesson.status === 'candidate') return { tone: 'candidate', label: t.lessons.candidate };
+		if (lesson.detector.tool !== 'shell') return { tone: 'adopted', label: t.lessons.adopted };
+		return lesson.action === 'block' ? { tone: 'block', label: t.lessons.block } : { tone: 'warn', label: t.lessons.warn };
+	}
 </script>
 
 <div class="lessons-settings">
@@ -48,30 +62,43 @@
 			{#each shown as lesson (lesson.id)}
 				<li class="lesson" class:is-retired={lesson.status === 'retired'} data-lesson={lesson.id}>
 					<div class="lesson-head">
-						<code class="lesson-kind">{lesson.detector.head}</code>
-						<span class="lesson-badge is-{lesson.status === 'retired' ? 'retired' : lesson.action}">
-							{lesson.status === 'retired' ? t.lessons.retired : lesson.action === 'block' ? t.lessons.block : t.lessons.warn}
-						</span>
+						{#if lesson.detector.tool === 'shell'}
+							<code class="lesson-kind">{kindOf(lesson)}</code>
+						{:else}
+							<span class="lesson-kind">{kindOf(lesson)}</span>
+						{/if}
+						<span class="lesson-badge is-{badgeOf(lesson).tone}">{badgeOf(lesson).label}</span>
 					</div>
 					<p class="lesson-text">{lesson.text}</p>
+					{#if lesson.detector.check}
+						<p class="lesson-check">
+							<span>{t.lessons.checkKind[lesson.detector.check.kind as 'exists' | 'contains' | 'matches'] ?? lesson.detector.check.kind}</span>
+							<code>{lesson.detector.check.path ?? ''}</code>
+							{#if lesson.detector.check.pattern}<code>{lesson.detector.check.pattern}</code>{/if}
+						</p>
+					{/if}
 					<p class="lesson-stats">
-						{t.lessons.stats(lesson.hits, lesson.prevented, lesson.recurrences)}
+						{#if lesson.detector.tool === 'shell'}{t.lessons.stats(lesson.hits, lesson.prevented, lesson.recurrences)}{:else}{t.lessons.fromReflection}{/if}
 						{#if lastSeen(lesson)}
 							<span title={formatFullTimestamp(lastSeen(lesson)!)}> · {t.lessons.lastSeen(formatMessageTime(lastSeen(lesson)!))}</span>
 						{/if}
 					</p>
 					<div class="lesson-actions">
 						{#if lesson.status === 'retired'}
-							<button type="button" class="lesson-button" disabled={busy !== null} onclick={() => patch(lesson, { status: 'active' })}>{t.lessons.restore}</button>
+							{#if lesson.detector.tool === 'shell' || (lesson.action === 'checklist' && lesson.confirmed_at)}
+								<button type="button" class="lesson-button" disabled={busy !== null} onclick={() => patch(lesson, { status: 'active' })}>{t.lessons.restore}</button>
+							{/if}
 						{:else}
-							<button
-								type="button"
-								class="lesson-button"
-								disabled={busy !== null}
-								onclick={() => patch(lesson, { action: lesson.action === 'block' ? 'warn' : 'block' })}
-							>
-								{lesson.action === 'block' ? t.lessons.toWarn : t.lessons.toBlock}
-							</button>
+							{#if lesson.detector.tool === 'shell'}
+								<button
+									type="button"
+									class="lesson-button"
+									disabled={busy !== null}
+									onclick={() => patch(lesson, { action: lesson.action === 'block' ? 'warn' : 'block' })}
+								>
+									{lesson.action === 'block' ? t.lessons.toWarn : t.lessons.toBlock}
+								</button>
+							{/if}
 							<button type="button" class="lesson-button" disabled={busy !== null} onclick={() => patch(lesson, { status: 'retired' })}>{t.lessons.retire}</button>
 						{/if}
 						{#if failed === lesson.id}
@@ -174,6 +201,18 @@
 		color: var(--warn-text);
 	}
 
+	.lesson-badge.is-candidate {
+		border-color: var(--accent-border);
+		background: var(--accent-tint);
+		color: var(--accent);
+	}
+
+	.lesson-badge.is-adopted {
+		border-color: var(--ok-line);
+		background: var(--ok-bg);
+		color: var(--ok-text);
+	}
+
 	.lesson-badge.is-block {
 		border-color: var(--danger-line);
 		background: var(--danger-bg);
@@ -195,6 +234,24 @@
 	.lesson-stats {
 		font-size: 11px;
 		color: var(--muted);
+	}
+
+	.lesson-check {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 6px;
+		margin: 0;
+		font-size: 12px;
+		color: var(--muted);
+		overflow-wrap: anywhere;
+	}
+
+	.lesson-check code {
+		padding: 0 4px;
+		border-radius: var(--radius-sm);
+		background: var(--chip);
+		color: var(--ink);
 	}
 
 	.lesson-actions {

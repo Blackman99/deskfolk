@@ -1,4 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { isoNow } from "../ids";
 import { Store } from ".";
 import { filenamePartNumbers } from "./filing";
@@ -194,6 +197,21 @@ test("a failing gate sends the submission back; passing, it waits for the no-rev
   expect(asked).toMatchObject([{ source: "review", priority: 2, state: "queued" }]);
   expect(asked[0]!.body_snapshot).toContain(reviewed.submission.id);
   expect(f.store.ballHolder({ ticketId: f.ticket.id })).toMatchObject({ kind: "reviewer", botId: f.reviewer.id, submissionId: reviewed.submission.id });
+});
+
+test("a check a reflection proposed and you adopted is a gate but backs no approval, until you edit it on the board", async () => {
+  const f = fixture();
+  await f.store.patchSettings({ workspace_path: mkdtempSync(join(tmpdir(), "submission-reflection-")) });
+  const turn = segment(f);
+  const check = gate(f, "pass");
+  f.store.db.run("UPDATE acceptance_checks SET origin = 'reflection' WHERE id = ?", [check.id]);
+  const first = submit(f, turn.id, [[`${f.ticket.dir}/EP01_MASTER.mp4`, HASH_A]])!;
+  run(f, check.id, "pass");
+  expect(f.store.settleSubmissionChecks(first.submission.id).submission.checks).toMatchObject([{ check_id: check.id, gate: true, yours: false, outcome: "pass" }]);
+  f.store.patchCheckByUser(check.id, { item: "母带在" }, f.store.db.query<{ updated_at: string }, [string]>("SELECT updated_at FROM acceptance_checks WHERE id = ?").get(check.id)!.updated_at);
+  const second = submit(f, turn.id, [[`${f.ticket.dir}/EP01_MASTER.mp4`, HASH_B]])!;
+  run(f, check.id, "pass");
+  expect(f.store.settleSubmissionChecks(second.submission.id).submission.checks).toMatchObject([{ check_id: check.id, yours: true }]);
 });
 
 test("a reviewer cannot be the ticket's owner", () => {

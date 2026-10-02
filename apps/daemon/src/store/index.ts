@@ -90,6 +90,7 @@ import * as turns from "./turns";
 import * as workEvents from "./work-events";
 import * as quality from "./quality";
 import * as lessons from "./lessons";
+import * as reflection from "./reflection";
 
 export { HttpError } from "../errors";
 export { isReservedTaskPath, localDate, BRIEF_MAX, PLAN_MAP_FILE, RESERVED_SUBDIRS, TICKET_FILE, WORK_ROOT } from "./tasks";
@@ -586,6 +587,11 @@ export class Store {
   readonly listLessons = this.bind(lessons.listLessons);
   readonly getLesson = this.bind(lessons.getLesson);
   readonly updateLesson = this.bind(lessons.updateLesson);
+  readonly lessonCard = this.bind(lessons.lessonCard);
+  readonly claimDueReflection = this.bind(reflection.claimDueReflection);
+  readonly recordReflection = this.bind(reflection.recordReflection);
+  readonly answerLessonCard = this.bind(reflection.answerLessonCard);
+  readonly checklistFor = this.bind(reflection.checklistFor);
   readonly answerModelDefaultCard = this.bind(modelDefaults.answerModelDefaultCard);
   readonly visionRefusal = this.bind(submissions.visionRefusal);
   readonly takeUpSubmission = this.bind(submissions.takeUpSubmission);

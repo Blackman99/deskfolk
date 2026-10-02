@@ -144,7 +144,7 @@
 			{:else}
 				<p class="check-desc">{describeCheck(check, t)}</p>
 				<p class="check-meta">
-					<span>{fromWords ? t.plan.checks.sourceDerived : check.source === 'organizer' ? t.plan.checks.sourceOrganizer : t.plan.checks.sourceUser}</span>
+					<span>{fromWords ? t.plan.checks.sourceDerived : check.origin === 'reflection' ? t.plan.checks.sourceReflection : check.source === 'organizer' ? t.plan.checks.sourceOrganizer : t.plan.checks.sourceUser}</span>
 					<span class="check-dot" aria-hidden="true">·</span>
 					{#if check.last_run}
 						<span title={formatFullTimestamp(check.last_run.started_at)}>{t.plan.checks.lastRun}：{formatMessageTime(check.last_run.started_at)}</span>

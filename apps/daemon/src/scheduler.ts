@@ -48,6 +48,12 @@ export function startScheduler(options: SchedulerOptions): Scheduler {
     } catch (error) {
       console.error("[jobs] poll failed", error);
     }
+    // The narrowed reflection (ADR 0051): one due review miss or ceiling at a time, from level 8.
+    try {
+      options.engine.reflect(at);
+    } catch (error) {
+      console.error("[reflection] failed", error);
+    }
     for (const routine of options.store.listRoutines()) {
       try {
         options.engine.fireRoutine(routine.id, at);

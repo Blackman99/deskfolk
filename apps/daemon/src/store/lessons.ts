@@ -14,10 +14,13 @@
  * You can read every lesson, and retire it or bring it back (`updateLesson`).
  */
 import type { Database } from "bun:sqlite";
-import type { Locale } from "@real-bot/protocol";
+import type { AcceptanceCheckInput, Locale, Message } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { learningOn } from "./quality";
+import { removeCheckByUser } from "./acceptance-checks";
+import { getMessage, setMessageControl } from "./messages";
+import { updateNotificationActionState } from "./notifications";
 import { settingsCached } from "./settings";
 import type { StoreContext } from "./shared";
 import { recordWorkEvent } from "./work-events";
@@ -30,10 +33,11 @@ export type Lesson = {
   scope: "bot" | "role" | "project" | "tool" | "global";
   scope_id: string | null;
   hook: "before_tool" | "before_generate" | "before_submit" | "before_review";
-  detector: { tool: string; signature: string; head: string; place: string; error: string };
+  /** A shell lesson's kind of call; a reflection's (`tool` reflection) carries the check it proposes, and once adopted its id. */
+  detector: { tool: string; signature: string; head: string; place: string; error: string; check?: AcceptanceCheckInput; check_id?: string };
   action: LessonAction;
   text: string;
-  evidence: Array<{ turn_id: string | null; at: string; seconds?: number; recurrence?: boolean }>;
+  evidence: Array<{ turn_id: string | null; at: string; seconds?: number; recurrence?: boolean; quality_event_id?: string; ticket_id?: string }>;
   status: LessonStatus;
   hits: number;
   prevented: number;
@@ -190,14 +194,53 @@ export function noteShellTimeout(
 export function updateLesson(ctx: StoreContext, id: string, patch: { status?: "active" | "retired"; action?: "warn" | "block"; text?: string }, now: string = isoNow()): Lesson {
   const lesson = getLesson(ctx, id);
   if (!lesson) throw new HttpError(404, "not_found", "lesson not found");
+  // A reflection's proposal is adopted on its card, where an adopted check is added; here it can only
+  // be retired, or — a checklist item — brought back. Warn and block are a shell lesson's.
+  if (lesson.detector.tool !== "shell") {
+    if (patch.action !== undefined) throw new HttpError(409, "conflict", "only a lesson on a kind of call warns or blocks");
+    if (patch.status === "active" && (lesson.status === "candidate" || lesson.action !== "checklist")) {
+      throw new HttpError(409, "conflict", "a proposal is adopted on its card");
+    }
+  }
   if (patch.status === "active" && lesson.status !== "active" && lesson.scope_id && liveShellLesson(ctx, lesson.scope_id, lesson.detector.signature)) {
     throw new HttpError(409, "conflict", "another lesson on this kind of call is already active");
   }
   const text = patch.text?.trim();
+  const confirmed = lesson.detector.tool === "shell" ? now : lesson.confirmed_at;
   ctx.db.run("UPDATE lessons SET status = ?, action = ?, text = ?, confirmed_at = COALESCE(confirmed_at, ?), updated_at = ? WHERE id = ?",
-    [patch.status ?? lesson.status, patch.action ?? lesson.action, text && text.length > 0 ? text : lesson.text, now, now, id]);
+    [patch.status ?? lesson.status, patch.action ?? lesson.action, text && text.length > 0 ? text : lesson.text, confirmed, now, id]);
+  if (patch.status === "retired" && lesson.status !== "retired") settleReflection(ctx, lesson, now);
   recordWorkEvent(ctx, { kind: "lesson.edited", actor: "user", payload: { lesson_id: id, ...patch } });
   return getLesson(ctx, id)!;
+}
+
+/**
+ * Retiring a reflection's lesson in Settings: a proposal still waiting closes its card (as 不要), and
+ * an adopted check proposal takes its check off the ticket.
+ */
+function settleReflection(ctx: StoreContext, lesson: Lesson, now: string): void {
+  if (lesson.detector.tool !== "reflection") return;
+  if (lesson.status === "candidate") {
+    const card = ctx.db.query<{ id: string }, [string]>(`SELECT id FROM messages WHERE json_extract(control, '$.kind') = 'lesson'
+      AND json_extract(control, '$.lesson_id') = ? AND json_array_length(COALESCE(json_extract(control, '$.acted'), '[]')) = 0`).get(lesson.id);
+    if (card) {
+      const control = getMessage(ctx, card.id).control;
+      if (control?.kind === "lesson") setMessageControl(ctx, card.id, { ...control, acted: ["decline"] });
+      updateNotificationActionState(ctx, `lesson:${card.id}`, "resolved", "decline", true);
+    }
+  }
+  // Only while it is still the reflection's: one you edited on the board is yours, and stays.
+  const check = lesson.action === "propose_check" && lesson.detector.check_id
+    ? ctx.db.query<{ id: string }, [string]>("SELECT id FROM acceptance_checks WHERE id = ? AND origin = 'reflection' AND removed_at IS NULL").get(lesson.detector.check_id)
+    : null;
+  if (check) removeCheckByUser(ctx, check.id, new Date(now));
+}
+
+/** A reflection's card for this lesson, if there is one: what a retire in Settings settles. */
+export function lessonCard(ctx: StoreContext, lessonId: string): Message | null {
+  const row = ctx.db.query<{ id: string }, [string]>(`SELECT id FROM messages WHERE json_extract(control, '$.kind') = 'lesson'
+    AND json_extract(control, '$.lesson_id') = ?`).get(lessonId);
+  return row ? getMessage(ctx, row.id) : null;
 }
 
 /** Clearing a conversation's history keeps its lessons, without the turns they were learned from. */

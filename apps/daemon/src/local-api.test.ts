@@ -2266,3 +2266,32 @@ test("media file GETs serve ranges through workspace and attachment paths", asyn
     expect(await audio.text()).toBe("hij");
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+describe("lessons", () => {
+  test("retiring a reflection's waiting proposal in Settings closes its card for every open chat at once", async () => {
+    const h = await start();
+    h.store.db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('engine_level', '8')");
+    const maker = h.store.createBot({ name: "视频导演", duties: "出片", boundaries: "none" }).bot;
+    const reviewer = h.store.createBot({ name: "审片员", duties: "审片", boundaries: "none" }).bot;
+    const room = h.store.createGroup({ name: "Studio", members: [maker.id, reviewer.id] });
+    const plan = h.store.openTask({ sessionId: room.id, title: "EP01" });
+    const ticket = h.store.createTicket({ taskId: plan.id, title: "第七镜", worker: maker.id });
+    h.store.recordWorkEvent({ kind: "review.miss", actor: "user", botId: reviewer.id, taskId: plan.id, ticketId: ticket.id,
+      payload: { reviewer_bot_id: reviewer.id, reviewer_model: "m", message_id: null, card_id: "c1" } });
+    const { lesson, message } = h.store.recordReflection(h.store.claimDueReflection()!, { kind: "checklist", hook: "before_review", text: "逐帧比对" });
+
+    const ws = new WebSocket(`${h.origin.replace("http", "ws")}/v1/events`);
+    await new Promise<void>((resolve) => ws.addEventListener("open", () => resolve()));
+    const events: Array<Record<string, unknown>> = [];
+    ws.addEventListener("message", (ev) => events.push(JSON.parse(String(ev.data)) as Record<string, unknown>));
+    ws.send(JSON.stringify({ type: "auth", token: h.token }));
+    await Bun.sleep(20);
+    const res = await fetch(`${h.origin}/v1/lessons/${lesson!.id}`, { method: "PATCH", headers: auth(h, { "Content-Type": "application/json" }), body: JSON.stringify({ status: "retired" }) });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ id: lesson!.id, status: "retired" });
+    await Bun.sleep(50);
+    ws.close();
+    const upserts = events.filter((event) => event.event === "message.upsert" && event.id === message!.id);
+    expect(upserts.at(-1)).toMatchObject({ control: { kind: "lesson", acted: ["decline"] } });
+  });
+});

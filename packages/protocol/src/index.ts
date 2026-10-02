@@ -458,7 +458,8 @@ export type AcceptanceCheckSource = "organizer" | "user";
  * in your words about the job (ADR 0040 P3). A derived check's `source` is `user`: your words are
  * what it stands on, and the organizer never touches it.
  */
-export type AcceptanceCheckOrigin = "derived" | "organizer" | "user";
+/** `reflection`: a check a Bot's reflection proposed and you adopted (ADR 0051) — a gate, but not yours until you edit it. */
+export type AcceptanceCheckOrigin = "derived" | "organizer" | "user" | "reflection";
 
 /** Where a check from your words stands: offered to you, or a gate you confirmed. */
 export type DerivedCheckState = "proposed" | "active";
@@ -1463,6 +1464,19 @@ export type MessageControl =
     }
   | {
       /**
+       * A reflection's proposal (ADR 0051, engine level 8): a checklist item for the Bot or a check for
+       * the ticket. `confirm` adopts it, `decline` retires it; `result` says why an adopted check was not added.
+       */
+      kind: "lesson";
+      lesson_id: string;
+      task_id: string;
+      ticket_id: string;
+      result?: string;
+      offer: ControlOffer[];
+      acted?: ControlOffer[];
+    }
+  | {
+      /**
        * A Bot's default model, inferred from what it ran on most lately (ADR 0048, engine level 7):
        * `confirm` keeps it, `decline` drops it so the Bot runs on the endpoint's default.
        */
@@ -2112,11 +2126,12 @@ export type Lesson = {
   scope: "bot" | "role" | "project" | "tool" | "global";
   scope_id: string | null;
   hook: "before_tool" | "before_generate" | "before_submit" | "before_review";
-  detector: { tool: string; signature: string; head: string; place: string; error: string };
-  /** `warn` holds a call back once per turn; `block` refuses it. */
+  /** A shell lesson's kind of call (`tool` shell); a reflection's (`tool` reflection, ADR 0051) carries the check it proposes and, adopted, its id. */
+  detector: { tool: string; signature: string; head: string; place: string; error: string; check?: AcceptanceCheckInput; check_id?: string };
+  /** `warn` holds a call back once per turn; `block` refuses it; `checklist` is read in the Bot's situation; `propose_check` became a check. */
   action: "warn" | "block" | "checklist" | "propose_check";
   text: string;
-  evidence: Array<{ turn_id: string | null; at: string; seconds?: number; recurrence?: boolean }>;
+  evidence: Array<{ turn_id: string | null; at: string; seconds?: number; recurrence?: boolean; quality_event_id?: string; ticket_id?: string }>;
   status: "candidate" | "active" | "retired";
   hits: number;
   prevented: number;

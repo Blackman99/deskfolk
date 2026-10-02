@@ -41,6 +41,8 @@ export function controlBar(control: MessageControl | undefined, holds: readonly 
   // An approve/reject card's own record of what actually happened: a gate failing sends 放行 back
   // instead of approving it, and the card says so, not a bare 已放行.
   if (acted.length > 0 && control.kind === "review_item" && control.result) return { state: "done", note: control.result };
+  // A reflection's proposal (ADR 0051) says what came of it in its own words, and why a check was not added.
+  if (acted.length > 0 && control.kind === "lesson") return { state: "done", note: control.result ?? (acted.at(-1) === "confirm" ? t.lessonAdopted : t.lessonDeclined) };
   if (acted.length > 0) return { state: "done", note: t.acted[acted[acted.length - 1]!] };
   // The app's line about checks from your words (ADR 0040 P3): an offer to confirm, change (your
   // composer, `edit_draft`) or turn down — for a replacement, use the new number or keep the old —
@@ -101,6 +103,15 @@ export function controlBar(control: MessageControl | undefined, holds: readonly 
     const buttons = control.offer.flatMap((action): ControlButton[] => {
       if (action === "confirm") return [{ action, label: t.keepDefaultModel, primary: true }];
       if (action === "decline") return [{ action, label: t.useEndpointDefault, primary: false }];
+      return [];
+    });
+    return buttons.length > 0 ? { state: "ask", prompt: null, buttons } : { state: "none" };
+  }
+  // A reflection's proposal (ADR 0051): adopt it, or not. Stops play no part.
+  if (control.kind === "lesson") {
+    const buttons = control.offer.flatMap((action): ControlButton[] => {
+      if (action === "confirm") return [{ action, label: t.adoptLesson, primary: true }];
+      if (action === "decline") return [{ action, label: t.declineLesson, primary: false }];
       return [];
     });
     return buttons.length > 0 ? { state: "ask", prompt: null, buttons } : { state: "none" };

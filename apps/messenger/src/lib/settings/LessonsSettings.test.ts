@@ -63,3 +63,29 @@ test("an edit that did not go through says so and leaves the lesson as it was", 
   expect(view.host.querySelector(".lesson-badge")?.textContent?.trim()).toBe(t.lessons.warn);
   view.close();
 });
+
+test("a reflection's lesson reads as what it is and only retires; a candidate waits on its card", () => {
+  const reflected = (over: Partial<Lesson>) => lesson({ id: over.id, scope: "bot", scope_id: "b1", hook: "before_review", action: "checklist", text: "逐帧比对相邻两镜的首尾机位",
+    detector: { tool: "reflection", signature: "reflection:q1", head: "before_review", place: "", error: "review_miss" }, ...over });
+  const view = render(LessonsSettings, { lessons: [reflected({ id: "a", status: "active", confirmed_at: "2026-10-03T08:00:00.000Z" }), reflected({ id: "c", status: "candidate" }),
+    reflected({ id: "p", status: "active", action: "propose_check", confirmed_at: "2026-10-03T08:00:00.000Z" })], t, onPatch: async () => lesson() });
+  const row = (id: string) => view.host.querySelector(`[data-lesson='${id}']`)!;
+  expect(row("a").querySelector(".lesson-kind")?.textContent?.trim()).toBe(t.lessons.checklistAt.before_review);
+  expect(row("a").querySelector(".lesson-badge")?.textContent?.trim()).toBe(t.lessons.adopted);
+  expect(row("c").querySelector(".lesson-badge")?.textContent?.trim()).toBe(t.lessons.candidate);
+  expect(row("p").querySelector(".lesson-kind")?.textContent?.trim()).toBe(t.lessons.checkProposal);
+  expect([...row("a").querySelectorAll("button")].map((button) => button.textContent?.trim())).toEqual([t.lessons.retire]);
+  expect(row("a").querySelector(".lesson-stats")?.textContent).toContain(t.lessons.fromReflection);
+  view.close();
+});
+
+test("a check proposal shows the check itself: its kind, path and text", () => {
+  const proposal = lesson({ id: "p", scope: "bot", action: "propose_check", status: "candidate", text: "片名卡在字幕里",
+    detector: { tool: "reflection", signature: "reflection:q", head: "before_review", place: "", error: "review_miss",
+      check: { item: "片名卡在字幕里", kind: "contains", path: "tasks/ep01/subs.srt", pattern: "第一集" } } });
+  const view = render(LessonsSettings, { lessons: [proposal], t, onPatch: async () => proposal });
+  const check = view.host.querySelector(".lesson-check")!;
+  expect(check.textContent).toContain(t.lessons.checkKind.contains);
+  expect([...check.querySelectorAll("code")].map((code) => code.textContent)).toEqual(["tasks/ep01/subs.srt", "第一集"]);
+  view.close();
+});

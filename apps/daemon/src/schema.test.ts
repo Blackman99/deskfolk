@@ -64,6 +64,7 @@ describe("schema", () => {
       "providers",
       "quality_events",
       "reactions",
+      "reflections",
       "remote_challenges",
       "remote_devices",
       "remote_host",

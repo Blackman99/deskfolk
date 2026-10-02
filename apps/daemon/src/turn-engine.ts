@@ -39,6 +39,7 @@ import type { McpHost } from "./mcp-host";
 import { createOrganizer } from "./organizer";
 import { createScribe } from "./scribe";
 import { createJobPoller } from "./engine/jobs";
+import { createReflector } from "./engine/reflection";
 import type { TurnAdmission } from "./quiesce";
 import type { Store } from "./store";
 import { ENGINE_LEVELS } from "./store/schema-gate";
@@ -135,6 +136,8 @@ export type TurnEngine = {
   supervise: (now?: Date) => void;
   /** One round of the external-job poller (ADR 0047), from the scheduler's tick: off below level 6. */
   pollJobs: (now?: Date) => void;
+  /** Runs the next due reflection (ADR 0051, level 8), one at a time. */
+  reflect: (now?: Date) => void;
   suggestComposer: (sessionId: string, signal?: AbortSignal, guard?: () => void) => Promise<ComposerSuggestion[]>;
   drain: () => Promise<void>;
   close: () => Promise<void>;
@@ -468,6 +471,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
 
   // Level 5's hand-overs and reviews (ADR 0046): checks run as a settle would, through the plan's runner.
   const jobPoller = createJobPoller({ store, mcp, track: core.track, dispatchQueued: () => lifecycle.dispatchQueued() });
+  const reflector = createReflector({ store, completions, routing, spend, track: core.track, publishMessage: core.publishMessage });
   const submissions = createSubmissions({
     store,
     runChecks: (taskId, checkIds) => checks.run(taskId, { cause: "settle", checkIds }),
@@ -681,6 +685,10 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       if (options.admission?.draining) return;
       jobPoller.poll(at);
     },
+    reflect(at = new Date()) {
+      if (options.admission?.draining) return;
+      reflector.reflect(at);
+    },
     supervise(at = new Date()) {
       if (store.capabilities().engine_level < ENGINE_LEVELS.supervision || options.admission?.draining) return;
       const tick = store.supervisorTick({ now: at.toISOString() });
@@ -824,6 +832,20 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       if (message.control?.kind === "review_item") return submissions.act(message, input);
       if (message.control?.kind === "rework") return submissions.answerRework(message, input);
       if (message.control?.kind === "ceiling") return submissions.answerCeiling(message, input);
+      if (message.control?.kind === "lesson") {
+        const answered = store.answerLessonCard(message.id, input.action);
+        core.publishMessage(answered);
+        // An adopted check is on the board now: as when you add one there, the mirrors and a first run.
+        const checkId = answered.control?.kind === "lesson" ? store.getLesson(answered.control.lesson_id)?.detector.check_id : undefined;
+        if (checkId && answered.control?.kind === "lesson") {
+          const taskId = answered.control.task_id;
+          organizer.renderMirrors(taskId);
+          store.afterCommit(() => {
+            void checks.run(taskId, { cause: "edit", checkIds: [checkId] }).catch(() => undefined);
+          });
+        }
+        return { made: [], lifted: [] };
+      }
       if (message.control?.kind === "model_default") {
         store.answerModelDefaultCard(message.id, input.action);
         return { made: [], lifted: [] };

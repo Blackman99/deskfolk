@@ -305,6 +305,8 @@ export type PlanFacts = {
    * plan's conversation, newest first, with what the user said. Empty for a Bot never overturned.
    */
   calibration: Array<{ ticket: string; quote: string; at: string }>;
+  /** The checklist items of this Bot's you adopted from its reflections (ADR 0051, level 8), each with its moment. */
+  checklist?: Array<{ hook: "before_review" | "before_submit" | "before_generate"; text: string }>;
   /** Workspace paths the plan's messages cited and that still exist, newest cited first. */
   artifacts: string[];
   /** One line per earlier turn: who, and their last word or the question they are waiting on. */
@@ -434,6 +436,8 @@ export function planFacts(
       ticket = null;
     }
   }
+  // A Bot's own items, each marked with the moment it is for; they are few (twelve at most).
+  const checklist = store.checklistFor(input.botId, ["before_review", "before_submit", "before_generate"]);
   const en = input.locale === "en";
   const places = new Map<string, string>();
   const where = (sessionId: string): string => {
@@ -544,6 +548,7 @@ export function planFacts(
     quotes,
     requirements,
     calibration: task.session_id ? store.reviewMisses({ botId: input.botId, sessionId: task.session_id }) : [],
+    ...(checklist.length > 0 ? { checklist } : {}),
     artifacts,
     trace,
     check_back,
@@ -801,6 +806,11 @@ export function planLines(facts: PlanFacts, locale: Locale): string[] {
     lines.push(`${en
       ? "Your calibration record — approvals of yours the user overturned here; weigh the same kind of thing harder before passing it:"
       : "你的校准记录——你放行后被用户推翻的；再审同类问题时要更严："}\n${rows.join("\n")}`);
+  }
+  if (facts.checklist && facts.checklist.length > 0) {
+    const moment = { before_review: en ? "before passing it" : "放行前", before_submit: en ? "before handing it over" : "交付前", before_generate: en ? "before generating" : "生成前" };
+    const rows = facts.checklist.map((item) => `- ${moment[item.hook]}${en ? ": " : "："}${item.text}`);
+    lines.push(`${en ? "Your own checklist — from your reflections the user adopted; go through it at that moment:" : "你自己的清单——用户采用了的你的反思；到那个时机逐条过一遍："}\n${rows.join("\n")}`);
   }
   if (facts.checks.length > 0) {
     const rows = facts.checks.map((check) => `- ${checkLine(check, locale)}`);

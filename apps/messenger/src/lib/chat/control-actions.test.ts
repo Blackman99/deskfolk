@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { MessageControl } from "@real-bot/protocol";
+import type { ControlOffer, MessageControl } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
 import { aHold } from "../test-fixtures.ts";
 import { controlBar } from "./control-actions.ts";
@@ -309,4 +309,14 @@ test("a default-model card offers to keep it or use the endpoint's default (ADR 
     { action: "decline", label: t.useEndpointDefault, primary: false },
   ] });
   expect(controlBar({ ...card, acted: ["confirm"] }, [], names, t)).toEqual({ state: "done", note: t.acted.confirm });
+});
+
+test("a reflection's card offers adopting it or not, and says what came of it in its own words", () => {
+  const t = copyFor("zh").control;
+  const base = { kind: "lesson" as const, lesson_id: "l1", task_id: "p1", ticket_id: "k1", offer: ["confirm", "decline"] as ControlOffer[] };
+  expect(controlBar(base, [], { bot: () => "" }, t)).toEqual({ state: "ask", prompt: null, buttons: [
+    { action: "confirm", label: t.adoptLesson, primary: true }, { action: "decline", label: t.declineLesson, primary: false }] });
+  expect(controlBar({ ...base, acted: ["confirm"] }, [], { bot: () => "" }, t)).toEqual({ state: "done", note: t.lessonAdopted });
+  expect(controlBar({ ...base, acted: ["decline"] }, [], { bot: () => "" }, t)).toEqual({ state: "done", note: t.lessonDeclined });
+  expect(controlBar({ ...base, acted: ["confirm"], result: "检查没加上：路径不在工作区里。" }, [], { bot: () => "" }, t)).toEqual({ state: "done", note: "检查没加上：路径不在工作区里。" });
 });

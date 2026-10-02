@@ -42,6 +42,7 @@
  * taken at that instant, and the dying engine is taken down on the original. The Bots' scripts and
  * every record carry across; the media server is a new process, so its job counters start over.
  */
+import { reflectionSystem } from "../prompts/reflection";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -213,7 +214,7 @@ export type HopContext = {
 
 export type ToolOutcome = { id: string; name: string; ok: boolean | null; error: string | null; content: string };
 
-export type JudgeKind = "organizer" | "scribe" | "judgement" | "route_pick" | "route_review" | "route_learn" | "composer" | "other";
+export type JudgeKind = "organizer" | "scribe" | "judgement" | "route_pick" | "route_review" | "route_learn" | "composer" | "reflect" | "other";
 
 /** What a scripted side-call is told: its kind, the parsed payload, and whose it is when that shows. */
 export type JudgeContext = {
@@ -446,6 +447,7 @@ function judgeKindOf(request: JudgeRequest): JudgeKind {
   if (system === ROUTE_REVIEW_SYSTEM) return "route_review";
   if (system === ROUTE_LEARN_SYSTEM) return "route_learn";
   if (system === COMPOSER_SUGGEST_SYSTEM) return "composer";
+  if (system === reflectionSystem("zh") || system === reflectionSystem("en")) return "reflect";
   return "other";
 }
 

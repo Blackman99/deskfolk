@@ -71,7 +71,7 @@ type AcceptanceCheckRow = {
   defined_at: string;
   first_passed_at: string | null;
   removed_at: string | null;
-  origin: "derived" | null;
+  origin: "derived" | "reflection" | null;
   measure: string | null;
   quote_id: string | null;
   bind_kind: "glob" | null;
@@ -494,7 +494,8 @@ export function patchCheckByUser(ctx: StoreContext, checkId: string, raw: unknow
       `UPDATE acceptance_checks
          SET ticket_id = ?, item = ?, kind = ?, path = ?, pattern = ?, negate = ?, command = ?, cwd = ?,
              expect_exit = ?, expect_stdout = ?, timeout_sec = ?, source = 'user', updated_at = ?,
-             defined_at = ?, first_passed_at = ?
+             defined_at = ?, first_passed_at = ?,
+             origin = CASE WHEN origin = 'reflection' THEN NULL ELSE origin END
        WHERE id = ?`,
       [
         fields.ticket_id,

@@ -62,7 +62,7 @@ import { probeEndpointModels } from "./probe-models";
 import type { FileCommit } from "./store/files";
 import type { RouteLearningRow, RouteReviewRow } from "./store/routing";
 import { ENGINE_LEVEL, type SharedInstall } from "./store/schema-gate";
-import { ulid } from "./ids";
+import { isoNow, ulid } from "./ids";
 import { requestDigest, normalizeFiles, validateRequestPath, type NormalizedFile, type CanonicalEncoder } from "./request-digest";
 import { type RequestScope, type KeyOperation } from "./store/receipts";
 import { fileEtag } from "./file-integrity";
@@ -1613,11 +1613,18 @@ function dispatch(
   params = matchPath(path, "/v1/lessons/:id");
   if (params && method === "PATCH") {
     const body = (input.body ?? {}) as LessonPatch;
-    return jsonResponse(store.updateLesson(params.id!, {
+    const lesson = store.updateLesson(params.id!, {
       ...(body.status === "active" || body.status === "retired" ? { status: body.status } : {}),
       ...(body.action === "warn" || body.action === "block" ? { action: body.action } : {}),
       ...(typeof body.text === "string" ? { text: body.text } : {}),
-    }), 200, null);
+    });
+    // A reflection's lesson retired here settles its card, and may take its check off the board.
+    const card = lesson.detector.tool === "reflection" ? store.lessonCard(lesson.id) : null;
+    if (card) {
+      publish({ event: "message.upsert", occurred_at: isoNow(), ...card });
+      if (card.control?.kind === "lesson") engine.renderPlanMirrors(card.control.task_id);
+    }
+    return jsonResponse(lesson, 200, null);
   }
 
   params = matchPath(path, "/v1/sessions/:id/routes");

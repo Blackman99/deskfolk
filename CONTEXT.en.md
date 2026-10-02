@@ -81,7 +81,7 @@ From engine level 8, a work-log event that says something went wrong, filed by i
 _Avoid_: asking a model afterwards whether to switch models, counting a stall as the model's fault, writing quality events into memories
 
 **Lesson**:
-From engine level 8, a rule the app learned from a failure and checks itself; for now one kind: once the timeout kills a search that walks a tree, that kind of call is held back once with a warning, and blocked when a Bot insists and it times out again — for every Bot. Settings' Lessons page shows, switches and retires them. Unlike a memory, which is text a Bot reads, a lesson is enforced by the app before the call. Details: [Behavior · Quality event, Lesson](docs/behavior.en.md#learning).
+From engine level 8, a rule the app learned from a failure and checks itself, of two kinds. One: once the timeout kills a search that walks a tree, that kind of call is held back once with a warning, and blocked when a Bot insists and it times out again — for every Bot. Another comes from the narrowed reflection: after an overturned approval or a capability ceiling, the Bot involved proposes a checklist item or a check, which holds once you adopt it on its card. Settings' Lessons page shows, switches and retires them. Unlike a memory, which is text a Bot reads, a lesson on a kind of call is enforced by the app before the call; a checklist item is read in the Bot's situation, and an adopted check is run by the app. Details: [Behavior · Quality event, Lesson](docs/behavior.en.md#learning).
 _Avoid_: leaving "don't search like this" to a memory, the same kind of command timing out again and again, having a model write detectors
 
 **Work item**:

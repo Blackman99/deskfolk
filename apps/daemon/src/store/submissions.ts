@@ -519,7 +519,8 @@ export function checkResults(ctx: StoreContext, checkIds: readonly string[], sin
       FROM acceptance_check_runs WHERE check_id = ? AND finished_at IS NOT NULL AND started_at >= ? ORDER BY finished_at DESC, rowid DESC LIMIT 1`).get(id, since);
     const vision = run?.judged_by === "vision" && supervised(ctx);
     const gate = !derivedNotGate(check) && !vision;
-    return [{ check_id: id, item: check.item, gate, yours: gate && (check.origin === "derived" || check.source === "user"),
+    // A check a reflection proposed is a gate but not yours (ADR 0051): adopting a card is not writing it.
+    return [{ check_id: id, item: check.item, gate, yours: gate && (check.origin === "derived" || (check.source === "user" && check.origin !== "reflection")),
       outcome: run?.outcome ?? "not_run", detail: run?.detail ?? "", ...(vision ? { reference: "vision" as const } : {}) }];
   });
 }

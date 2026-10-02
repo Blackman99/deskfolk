@@ -1104,6 +1104,10 @@ const zh = {
     /** On a ceiling card (ADR 0046): how a part that keeps failing goes on. */
     /** On a card about a Bot's default model (ADR 0048). */
     keepDefaultModel: "就用这个",
+    adoptLesson: "采用",
+    declineLesson: "不要",
+    lessonAdopted: "已采用",
+    lessonDeclined: "没有采用",
     useEndpointDefault: "用端点默认",
     /** On a card about a line that reads as a complaint about delivered work (ADR 0046). */
     sendBackToRework: "转回返工",
@@ -1354,6 +1358,7 @@ const zh = {
       status: { pass: "通过", fail: "没过", running: "跑着", blocked: "拦下", error: "出错", none: "没跑过", unbound: "未绑定", proposed: "待确认" },
       sourceOrganizer: "整理跳加的",
       sourceUser: "你加的",
+      sourceReflection: "Bot 反思后提议、你采用的：没过会打回，但改过一次才算你写的",
       sourceDerived: "按你的话加的：要改就说改成多少",
       stateProposed: "你确认之后它才拦东西；交付了就先量给你看。",
       unconfirmed: (got: string, said: string) => `未确认的检查：${got}，你说的是${said}（待你确认）`,
@@ -1567,7 +1572,7 @@ const zh = {
   },
   lessons: {
     title: "应用记下的教训",
-    subtitle: "递归搜索跑满超时被杀后，应用把这一类调用记成教训：先警告一次，Bot 坚持再跑又超时就拦下。对所有 Bot 生效；停用后不再拦。",
+    subtitle: "递归搜索跑满超时被杀后，应用把这一类调用记成教训：先警告一次，Bot 坚持再跑又超时就拦下，对所有 Bot 生效。误放行或卡在能力天花板之后，Bot 的反思提出的清单和检查，你在卡片上采用后也列在这里。停用后不再起作用。",
     warn: "先警告",
     block: "拦下",
     retired: "已停用",
@@ -1577,7 +1582,13 @@ const zh = {
     restore: "恢复",
     failed: "没改成，再试一次",
     stats: (hits: number, prevented: number, recurrences: number) => `命中 ${hits} 次 · 拦住 ${prevented} 次 · 复犯 ${recurrences} 次`,
-    lastSeen: (time: string) => `最近一次 ${time}`
+    lastSeen: (time: string) => `最近一次 ${time}`,
+    candidate: "待你在卡片上确认",
+    adopted: "已采用",
+    checkProposal: "检查提议",
+    checklistAt: { before_review: "审查前的清单", before_submit: "交付前的清单", before_generate: "生成前的清单" },
+    fromReflection: "来自一次反思：误放行或卡在能力天花板之后",
+    checkKind: { exists: "文件存在", contains: "文件里有", matches: "文件匹配正则" }
   },
   notifications: {
     title: "通知",
@@ -2728,6 +2739,10 @@ const en: CopyShape<typeof zh> = {
     approveSubmission: "Approve",
     sendBack: "Send it back",
     keepDefaultModel: "Keep it",
+    adoptLesson: "Adopt",
+    declineLesson: "No",
+    lessonAdopted: "Adopted",
+    lessonDeclined: "Not adopted",
     useEndpointDefault: "Use the endpoint's default",
     sendBackToRework: "Send back to rework",
     leaveIt: "Leave it",
@@ -2977,6 +2992,7 @@ const en: CopyShape<typeof zh> = {
       status: { pass: "Pass", fail: "Fail", running: "Running", blocked: "Blocked", error: "Error", none: "Never run", unbound: "Not bound", proposed: "To confirm" },
       sourceOrganizer: "Added by the organizer",
       sourceUser: "Added by you",
+      sourceReflection: "Proposed by a Bot's reflection, adopted by you: failing it sends work back, but it counts as yours once you edit it",
       sourceDerived: "From what you said: to change it, say what to make it",
       stateProposed: "It holds nothing back until you confirm it; once there is a delivery, it is measured for you to see.",
       unconfirmed: (got: string, said: string) => `Unconfirmed check: ${got}; you said ${said} (waiting for your confirm)`,
@@ -3189,7 +3205,7 @@ const en: CopyShape<typeof zh> = {
   },
   lessons: {
     title: "Lessons the app learned",
-    subtitle: "When the timeout kills a search that walks a tree, the app keeps that kind of call as a lesson: a warning first, and a block once a Bot insists and it times out again. It holds for every Bot; a retired lesson stops holding calls back.",
+    subtitle: "When the timeout kills a search that walks a tree, the app keeps that kind of call as a lesson: a warning first, and a block once a Bot insists and it times out again, for every Bot. After an overturned approval or a capability ceiling, what a Bot's reflection proposes is listed here too once you adopt it on its card. A retired lesson no longer applies.",
     warn: "Warns",
     block: "Blocks",
     retired: "Retired",
@@ -3199,7 +3215,13 @@ const en: CopyShape<typeof zh> = {
     restore: "Bring back",
     failed: "Not changed; try again",
     stats: (hits: number, prevented: number, recurrences: number) => `${hits} hits · ${prevented} held back · ${recurrences} recurrences`,
-    lastSeen: (time: string) => `last ${time}`
+    lastSeen: (time: string) => `last ${time}`,
+    candidate: "Waiting on your card",
+    adopted: "Adopted",
+    checkProposal: "Check proposal",
+    checklistAt: { before_review: "Checklist before reviewing", before_submit: "Checklist before handing over", before_generate: "Checklist before generating" },
+    fromReflection: "From a reflection after an overturned approval or a capability ceiling",
+    checkKind: { exists: "File exists", contains: "File contains", matches: "File matches" }
   },
   notifications: {
     title: "Notifications",
