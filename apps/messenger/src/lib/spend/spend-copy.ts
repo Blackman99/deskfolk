@@ -1,7 +1,14 @@
 /** Spend view strings. `zh` is the default, `en` the other. */
 import type { Locale, SpendCategory, SpendLine } from "@real-bot/protocol";
 
+/** The quality report under the spend view (ADR 0050). */
+export type QualityCopy = {
+  title: string; hint: string; bot: string; model: string; kind: string; handOvers: string; approved: string; turnedBack: string;
+  complaints: string; shapes: string; misses: string; perApproved: string; deleted: string; none: string; turnedBackTitle: string;
+};
+
 export type SpendCopy = {
+  quality: QualityCopy;
   subtitle: string;
   overview: string;
   period: string;
@@ -86,6 +93,12 @@ export type SpendCopy = {
 };
 
 const zh: SpendCopy = {
+  quality: {
+    title: "质量（近 7 天）",
+    hint: "按 Bot、模型、规划类型：交付的结果，以及每个通过的交付花了多少。这里不改 Bot 跑在哪个模型上——要改，钉一个模型。",
+    bot: "Bot", model: "模型", kind: "规划类型", handOvers: "交付", approved: "通过", turnedBack: "打回", complaints: "投诉", shapes: "回复失败",
+    misses: "误放行", perApproved: "每次通过", deleted: "已删除的 Bot", none: "—", turnedBackTitle: "审查打回 · 你退回 · 检查没过",
+  },
   subtitle: "用量与调用成本",
   overview: "概览",
   period: "时间范围",
@@ -180,6 +193,12 @@ const zh: SpendCopy = {
 };
 
 const en: SpendCopy = {
+  quality: {
+    title: "Quality, last 7 days",
+    hint: "Per Bot, model and kind of plan: how hand-overs fared and what an approved one cost. Nothing here changes what a Bot runs on — pin a model for that.",
+    bot: "Bot", model: "Model", kind: "Plan kind", handOvers: "Hand-overs", approved: "Approved", turnedBack: "Turned back", complaints: "Complaints",
+    shapes: "Failed replies", misses: "Review misses", perApproved: "Per approval", deleted: "Deleted Bot", none: "—", turnedBackTitle: "By a reviewer · by you · by checks",
+  },
   subtitle: "Usage and call costs",
   overview: "Overview",
   period: "Date range",

@@ -6,6 +6,7 @@
 	import type { MessengerApi } from '../messenger-api.ts';
 	import { formatTokens, formatUsd } from '../spend-format.ts';
 	import { spendCopyFor, type SpendCopy } from './spend-copy.ts';
+	import QualityReport from './QualityReport.svelte';
 	import {
 		DEFAULT_SPEND_VIEW,
 		SPEND_PAGE_SIZE,
@@ -1027,6 +1028,7 @@
 				</section>
 			{/if}
 		{/if}
+		<QualityReport {api} {locale} {revision} />
 	</div>
 </section>
 

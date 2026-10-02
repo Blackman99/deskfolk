@@ -17,7 +17,7 @@ ADR 0040 §7.3 keeps one door open for a model in learning, and a narrow one: it
 
 - **度量类检查**（时长、画幅、帧率、冻帧）还不能由反思提议：它们现在只从你的原话里来。
 - **清单复犯**（§7.4：同一条清单又出两次同样的错，就告诉你它没管住、建议改成检查）还没做。
-- **项目级技能**（`shared_skills`）和**报表界面**：下一步。
+- **项目级技能**（`shared_skills`）和**报表界面**：见 [ADR 0052](0052-project-skills.md)。
 
 ## 取舍 / Trade-offs
 

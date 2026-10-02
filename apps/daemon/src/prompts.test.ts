@@ -161,6 +161,19 @@ describe("prompts", () => {
     expect(text).toContain("when committing");
     expect(text).toContain("先 read_skill 再按正文做");
     expect(text).not.toContain("依赖 MCP");
+    // No project skill, no word about them.
+    expect(text).not.toContain("项目共享");
+    const shared = turnSystemPrompt({
+      locale: "zh",
+      name: "Writer",
+      duties: "draft",
+      boundaries: "stay",
+      interrupt: false,
+      skills: [{ name: "commits", description: "when committing" }, { name: "镜头交界连贯性审查", description: "相邻两镜", sharedFrom: "审片员" }],
+    });
+    expect(shared).toContain("## 镜头交界连贯性审查（项目共享，来自 审片员；用 read_skill 读，不是你的，不要改）");
+    expect(shared).toContain("标着项目共享的，是用户共享给所有 Bot 的");
+    expect(shared).toContain("## commits\n");
     const withUses = turnSystemPrompt({
       locale: "zh",
       name: "Writer",

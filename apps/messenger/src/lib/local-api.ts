@@ -1,4 +1,7 @@
 import type {
+  QualityReportRow,
+  SharedSkill,
+  SharedSkillsResponse,
   Lesson,
   LessonPatch,
   AnswerAskRequest,
@@ -459,6 +462,29 @@ export class LocalApi {
   /** Your 「记为模型问题」 on a board card (ADR 0050), or taking it back. */
   async markTurnModel(turnId: string, marked: boolean): Promise<{ turn_id: string; marked: boolean }> {
     return this.request<{ turn_id: string; marked: boolean }>(marked ? "POST" : "DELETE", `/v1/turns/${encodeURIComponent(turnId)}/mark-model`);
+  }
+
+  /** The quality report (ADR 0050): per Bot × model × plan kind over the last `days`. */
+  async qualityReport(days = 7): Promise<QualityReportRow[]> {
+    return (await this.get<ListPage<QualityReportRow>>(`/v1/quality/report?days=${days}`)).items;
+  }
+
+  /** The project skills (ADR 0052), and whether sharing is on (engine level 8). */
+  async listSharedSkills(): Promise<SharedSkillsResponse> {
+    return this.get<SharedSkillsResponse>("/v1/shared-skills");
+  }
+
+  /** Your 共享 on a Bot's skill: a copy every Bot reads, or the copy brought up to date. */
+  async shareSkill(skillId: string): Promise<SharedSkill> {
+    return this.request<SharedSkill>("POST", `/v1/skills/${encodeURIComponent(skillId)}/share`);
+  }
+
+  async setSharedSkillEnabled(id: string, enabled: boolean): Promise<SharedSkill> {
+    return this.patch<SharedSkill>(`/v1/shared-skills/${encodeURIComponent(id)}`, { enabled });
+  }
+
+  async unshareSkill(id: string): Promise<void> {
+    await this.request<void>("DELETE", `/v1/shared-skills/${encodeURIComponent(id)}`);
   }
 
   /** What the app learned from failures and checks itself (ADR 0050), newest first. */

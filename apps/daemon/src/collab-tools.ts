@@ -789,7 +789,14 @@ function listSkills(ctx: ToolCtx): ToolResult {
 
 function readSkill(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
   const skill = resolveOwnSkill(ctx, args, { requireEnabled: true });
-  if (!skill.ok) return skill.error;
+  if (!skill.ok) {
+    // A project skill you shared (ADR 0052): read by name, never written by a Bot.
+    const name = optionalString(args.name);
+    const shared = name ? ctx.store.findSharedSkillByName(name) : null;
+    if (!shared) return skill.error;
+    return { ok: true, data: { name: shared.name, description: shared.description, body: shared.body, uses: shared.uses,
+      shared: true, from: shared.source_bot_name }, emitted: [] };
+  }
   const data = serializeSkill(skill.skill);
   const stale = staleMcpToolNames(skill.skill.body, ctx.availableToolNames);
   if (stale.length > 0) {

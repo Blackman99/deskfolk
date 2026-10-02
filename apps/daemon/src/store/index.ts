@@ -91,6 +91,7 @@ import * as workEvents from "./work-events";
 import * as quality from "./quality";
 import * as lessons from "./lessons";
 import * as reflection from "./reflection";
+import * as sharedSkills from "./shared-skills";
 
 export { HttpError } from "../errors";
 export { isReservedTaskPath, localDate, BRIEF_MAX, PLAN_MAP_FILE, RESERVED_SUBDIRS, TICKET_FILE, WORK_ROOT } from "./tasks";
@@ -592,6 +593,13 @@ export class Store {
   readonly recordReflection = this.bind(reflection.recordReflection);
   readonly answerLessonCard = this.bind(reflection.answerLessonCard);
   readonly checklistFor = this.bind(reflection.checklistFor);
+  readonly listSharedSkills = this.bind(sharedSkills.listSharedSkills);
+  readonly getSharedSkill = this.bind(sharedSkills.getSharedSkill);
+  readonly sharedSkillsFor = this.bind(sharedSkills.sharedSkillsFor);
+  readonly findSharedSkillByName = this.bind(sharedSkills.findSharedSkillByName);
+  readonly shareSkill = this.bind(sharedSkills.shareSkill);
+  readonly setSharedSkillEnabled = this.bind(sharedSkills.setSharedSkillEnabled);
+  readonly unshareSkill = this.bind(sharedSkills.unshareSkill);
   readonly answerModelDefaultCard = this.bind(modelDefaults.answerModelDefaultCard);
   readonly visionRefusal = this.bind(submissions.visionRefusal);
   readonly takeUpSubmission = this.bind(submissions.takeUpSubmission);

@@ -145,7 +145,7 @@ test("the report counts each Bot's hand-overs on a model, what turned them back,
   f.store.recordWorkEvent({ kind: "review.recorded", actor: f.reviewer.id, taskId: f.plan.id, ticketId: f.ticket.id, payload: { submission_id: "sub-1", outcome: "reject" } });
   f.store.db.run(`INSERT INTO spend (id, session_id, bot_id, turn_id, kind, model, cost_usd_ticks, created_at) VALUES ('sp-1', ?, ?, ?, 'turn', 'grk', 20000000000, ?)`,
     [f.dm, f.maker.id, f.turn.id, isoNow()]);
-  expect(f.store.qualityReport({ days: 7 })).toEqual([{ bot_id: f.maker.id, model: "grk", plan_kind: null, hand_overs: 2, approved: 1, review_rejected: 1,
+  expect(f.store.qualityReport({ days: 7 })).toEqual([{ bot_id: f.maker.id, bot_name: "Maker", model: "grk", plan_kind: null, hand_overs: 2, approved: 1, review_rejected: 1,
     user_rejected: 0, checks_failed: 0, complaints: 0, failure_shapes: 0, review_misses: 0, cost_usd: 2, cost_per_approved: 2 }]);
 });
 
@@ -173,4 +173,10 @@ test("a requirement is dated from your words: one you said before the hand-over 
   submission(f, "sub-1", new Date(Date.parse(isoNow()) - 30_000).toISOString(), "approved");
   f.store.addRequirement({ scope: "ticket", scopeId: f.ticket.id, quote: "片尾留三秒黑场", sourceKind: "message", sourceQuoteId: quote.id, addedBy: "scribe" });
   expect(filed(f)).toEqual([]);
+});
+
+test("below level 8 the report is empty: turn-backs and complaints are not filed there, and zeros would read as counts", () => {
+  const f = fixture(ENGINE_LEVELS.routing);
+  submission(f, "sub-1", isoNow(), "approved");
+  expect(f.store.qualityReport({ days: 7 })).toEqual([]);
 });

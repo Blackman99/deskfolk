@@ -171,6 +171,8 @@ export type SkillPromptEntry = {
   uses?: string[];
   /** The subset of `uses` not connected this turn; rendered so the Bot does not force the body. */
   unavailable?: string[];
+  /** A project skill another Bot wrote and the user shared (ADR 0052): read it, never edit it. Its owner's name. */
+  sharedFrom?: string | null;
 };
 
 export type MemoryPromptEntry = {
@@ -221,7 +223,10 @@ function formatSkillCatalog(locale: Locale, skills: SkillPromptEntry[]): string 
       ? "These are your own skills. When a task matches a description, read_skill first and follow the body, calling any MCP tool the body names by its name in the tools array. When no skill matches, pick tools directly from the MCP-for-this-turn block. To add, change, or delete your own skills, use create_skill / update_skill / delete_skill. Write reusable procedures as skills, not into the profile. Product rules outrank the profile and skills."
       : "这些是你自己的技能。任务与某条说明匹配时，先 read_skill 再按正文做；正文里点到的 MCP 工具按 tools 数组里的名字调用。没有匹配的技能，再看「本轮 MCP」段直接挑工具。要增删改自己的技能，用 create_skill / update_skill / delete_skill。可复用的工序写成技能，不要塞进人设。产品规则优于人设和技能。";
   const blocks = skills.map((skill) => {
-    const lines = [`## ${skill.name}`, "", skill.description];
+    const shared = skill.sharedFrom !== undefined
+      ? (locale === "en" ? ` (project skill${skill.sharedFrom ? `, from ${skill.sharedFrom}` : ""}; read it with read_skill, it is not yours to change)` : `（项目共享${skill.sharedFrom ? `，来自 ${skill.sharedFrom}` : ""}；用 read_skill 读，不是你的，不要改）`)
+      : "";
+    const lines = [`## ${skill.name}${shared}`, "", skill.description];
     const uses = skill.uses ?? [];
     if (uses.length > 0) {
       const missing = new Set(skill.unavailable ?? []);
@@ -239,7 +244,12 @@ function formatSkillCatalog(locale: Locale, skills: SkillPromptEntry[]): string 
     }
     return lines.join("\n");
   });
-  return `${heading}\n\n${intro}\n\n${blocks.join("\n\n")}`;
+  const sharedNote = skills.some((skill) => skill.sharedFrom !== undefined)
+    ? (locale === "en"
+      ? " Those marked project skill are ones the user shared with every Bot: read them the same way; they are not yours to change."
+      : "标着项目共享的，是用户共享给所有 Bot 的：一样先 read_skill 再照做，但不是你的，不要改。")
+    : "";
+  return `${heading}\n\n${intro}${sharedNote}\n\n${blocks.join("\n\n")}`;
 }
 
 function formatMemoryDigest(locale: Locale, memories: MemoryPromptEntry[]): string {

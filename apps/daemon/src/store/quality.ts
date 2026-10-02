@@ -286,6 +286,7 @@ const REPORTED: Record<string, "review_rejected" | "user_rejected" | "checks_fai
 
 export type QualityReportRow = {
   bot_id: string;
+  bot_name: string | null;
   model: string | null;
   plan_kind: string | null;
   hand_overs: number;
@@ -311,13 +312,16 @@ export type QualityReportRow = {
  * once you pin a model.
  */
 export function qualityReport(ctx: StoreContext, opts: { days?: number; now?: string } = {}): QualityReportRow[] {
+  // Below level 8 turn-backs, complaints and misses are not filed: zeros there would read as counts.
+  if (!learningOn(ctx)) return [];
   const since = new Date(Date.parse(opts.now ?? isoNow()) - Math.max(1, opts.days ?? 7) * 86_400_000).toISOString();
   const rows = new Map<string, QualityReportRow>();
   const row = (botId: string, model: string | null, kind: string | null): QualityReportRow => {
     const key = JSON.stringify([botId, model, kind]);
     let found = rows.get(key);
     if (!found) {
-      found = { bot_id: botId, model, plan_kind: kind, hand_overs: 0, approved: 0, review_rejected: 0, user_rejected: 0, checks_failed: 0, complaints: 0,
+      const name = ctx.db.query<{ name: string }, [string]>("SELECT name FROM bots WHERE id = ? AND deleted_at IS NULL").get(botId)?.name ?? null;
+      found = { bot_id: botId, bot_name: name, model, plan_kind: kind, hand_overs: 0, approved: 0, review_rejected: 0, user_rejected: 0, checks_failed: 0, complaints: 0,
         failure_shapes: 0, review_misses: 0, cost_usd: null, cost_per_approved: null };
       rows.set(key, found);
     }

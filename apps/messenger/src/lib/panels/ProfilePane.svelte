@@ -1,6 +1,7 @@
 <script lang="ts">
 	import MemoryCard from './MemoryCard.svelte';
 	import RoutineCard from './RoutineCard.svelte';
+	import SharedSkillsCard from './SharedSkillsCard.svelte';
 	import SettingsSubject from './SettingsSubject.svelte';
 	import { backdropClick } from '../click-outside.ts';
 	import { untrack } from 'svelte';
@@ -810,6 +811,7 @@
 		{/each}
 	</div>
 </div>
+<SharedSkillsCard api={runtime.client} botId={bot.id} skills={profileSkills} {t} />
 {:else if activeTab === 'routines'}
 <RoutineCard bind:this={routineCard} {runtime} {bot} {t} />
 {:else if activeTab === 'memory'}

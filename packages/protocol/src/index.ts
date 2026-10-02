@@ -2106,6 +2106,8 @@ export type QualityEvent = {
 /** One row of the offline report: a Bot on a model, on one kind of plan, over the window asked for. */
 export type QualityReportRow = {
   bot_id: string;
+  /** Null once the Bot is deleted. */
+  bot_name: string | null;
   model: string | null;
   plan_kind: string | null;
   hand_overs: number;
@@ -2143,6 +2145,29 @@ export type Lesson = {
 };
 
 export type LessonPatch = { status?: "active" | "retired"; action?: "warn" | "block"; text?: string };
+
+/**
+ * A project skill (ADR 0052, engine level 8): a copy of one Bot's skill you shared, read by every Bot
+ * of the workspace. `source_changed`: the owner's skill was edited since you shared it.
+ */
+export type SharedSkill = {
+  id: string;
+  name: string;
+  description: string;
+  body: string;
+  uses: string[];
+  source_skill_id: string | null;
+  source_bot_id: string | null;
+  source_bot_name: string | null;
+  enabled: boolean;
+  source_changed: boolean;
+  confirmed_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
+/** `GET /v1/shared-skills`: the project skills, and whether sharing is on (engine level 8). */
+export type SharedSkillsResponse = { items: SharedSkill[]; available: boolean };
 
 /**
  * What later choices made of one review, counted locally from the rows that followed it.

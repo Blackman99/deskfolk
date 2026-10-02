@@ -41,6 +41,7 @@ get("sessions/:id/(judgements|routes|composer-suggestions)");
 get("quality/events", { bot_id: string, ticket_id: string, category: one("model", "pipeline", "execution", "review_miss", "unclear", "orchestration"), limit: v => typeof v === "string" && /^[1-9][0-9]{0,2}$/.test(v) });
 get("quality/report", { days: v => typeof v === "string" && /^[1-9][0-9]?$/.test(v) });
 get("lessons", { status: one("candidate", "active", "retired") });
+get("shared-skills");
 const pageLimit: Check = v => typeof v === "string" && /^[1-9][0-9]{0,2}$/.test(v) && Number(v) <= 200;
 get("sessions/:id/snapshot", { limit: pageLimit });
 get("sessions/:id/messages", { cursor: v => typeof v === "string" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z\|[0-9A-HJKMNP-TV-Z]{26}$/.test(v), limit: pageLimit });
@@ -157,6 +158,7 @@ add("POST", "sessions", { name: string, members: list(id) }, ["name", "members"]
 add("POST", "allow-rules", { kind_key: string, scope: string }, ["kind_key", "scope"]);
 add("POST", "turns/:id/mark-model"); add("DELETE", "turns/:id/mark-model");
 add("PATCH", "lessons/:id", { status: one("active", "retired"), action: one("warn", "block"), text: string }, [], true);
+add("POST", "skills/:id/share"); add("PATCH", "shared-skills/:id", { enabled: bool }, ["enabled"], true); add("DELETE", "shared-skills/:id");
 add("POST", "turns/stop", { turn_id: id }, ["turn_id"]); add("POST", "turns/continue", { message_id: id }, ["message_id"]);
 add("POST", "sessions/:id/messages", { body: string, parent_id: nullable(id), ask_id: nullable(id), fork: bool, files: list(object({ filename: string, size: v => typeof v === "number" && Number.isSafeInteger(v) && v >= 0, sha256: v => typeof v === "string" && /^[0-9a-f]{64}$/.test(v) }, ["filename", "size", "sha256"])), paths: list(v => typeof v === "string" && v.length > 0 && v.length <= 4096) }, ["body"]);
 add("POST", "sessions/:id/members", { bot_id: id }, ["bot_id"]);

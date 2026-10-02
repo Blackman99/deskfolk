@@ -243,3 +243,12 @@ test("quality events, the report and lessons are readable remotely; a lesson can
   expect(() => validateBusiness({ v: 1, id, method: "POST", path: `/v1/turns/${id}/mark-model` })).not.toThrow();
   expect(() => validateBusiness({ v: 1, id, method: "DELETE", path: `/v1/turns/${id}/mark-model` })).not.toThrow();
 });
+
+test("project skills are listed, shared, turned off and unshared remotely; nothing else rides along", () => {
+  expect(() => validateBusiness({ v: 1, id, method: "GET", path: "/v1/shared-skills" })).not.toThrow();
+  expect(() => validateBusiness({ v: 1, id, method: "POST", path: `/v1/skills/${id}/share` })).not.toThrow();
+  expect(() => validateBusiness({ v: 1, id, method: "PATCH", path: `/v1/shared-skills/${id}`, body: { enabled: false } })).not.toThrow();
+  expect(() => validateBusiness({ v: 1, id, method: "PATCH", path: `/v1/shared-skills/${id}`, body: { enabled: false, body: "x" } })).toThrow();
+  expect(() => validateBusiness({ v: 1, id, method: "PATCH", path: `/v1/shared-skills/${id}`, body: {} })).toThrow();
+  expect(() => validateBusiness({ v: 1, id, method: "DELETE", path: `/v1/shared-skills/${id}` })).not.toThrow();
+});

@@ -87,6 +87,7 @@ describe("schema", () => {
       "session_participants",
       "sessions",
       "settings",
+      "shared_skills",
       "skills",
       "spend",
       "submissions",

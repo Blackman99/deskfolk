@@ -1,5 +1,6 @@
 import {
   type LessonPatch,
+  type SharedSkillsResponse,
   type QualityCategory,
   FILE_DROP_SESSION_ID,
   LOCAL_API_BIND,
@@ -1608,6 +1609,26 @@ function dispatch(
   if (path === "/v1/lessons" && method === "GET") {
     const status = url.searchParams.get("status");
     return jsonResponse({ items: store.listLessons(status === "active" || status === "retired" || status === "candidate" ? { status } : {}) }, 200, null);
+  }
+
+  if (path === "/v1/shared-skills" && method === "GET") {
+    return jsonResponse({ items: store.listSharedSkills(), available: store.learningOn() } satisfies SharedSkillsResponse, 200, null);
+  }
+
+  params = matchPath(path, "/v1/skills/:id/share");
+  if (params && method === "POST") {
+    return jsonResponse(store.shareSkill(params.id!), 200, null);
+  }
+
+  params = matchPath(path, "/v1/shared-skills/:id");
+  if (params && method === "PATCH") {
+    const body = (input.body ?? {}) as { enabled?: unknown };
+    if (typeof body.enabled !== "boolean") throw new HttpError(422, "invalid_args", "enabled is required");
+    return jsonResponse(store.setSharedSkillEnabled(params.id!, body.enabled), 200, null);
+  }
+  if (params && method === "DELETE") {
+    store.unshareSkill(params.id!);
+    return emptyResponse(204, null);
   }
 
   params = matchPath(path, "/v1/lessons/:id");

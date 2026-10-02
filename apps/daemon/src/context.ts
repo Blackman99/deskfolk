@@ -189,12 +189,22 @@ export function assembleTurnMessages(
     duties: bot.duties,
     boundaries: bot.boundaries,
     interrupt: input.interrupt,
-    skills: store.listEnabledSkills(input.botId).map((skill) => ({
-      name: skill.name,
-      description: skill.description,
-      uses: skill.uses,
-      unavailable: skill.uses.filter((name) => !connectedMcp.has(name.toLowerCase())),
-    })),
+    skills: [
+      ...store.listEnabledSkills(input.botId).map((skill) => ({
+        name: skill.name,
+        description: skill.description,
+        uses: skill.uses,
+        unavailable: skill.uses.filter((name) => !connectedMcp.has(name.toLowerCase())),
+      })),
+      // Project skills you shared (ADR 0052, level 8), less those this Bot has one of its own by the name.
+      ...store.sharedSkillsFor(input.botId).map((skill) => ({
+        name: skill.name,
+        description: skill.description,
+        uses: skill.uses,
+        unavailable: skill.uses.filter((name) => !connectedMcp.has(name.toLowerCase())),
+        sharedFrom: skill.source_bot_name,
+      })),
+    ],
     memories: memoryDigest(store, input.botId, input.locale),
     mcpGuides: input.mcpGuides,
   });

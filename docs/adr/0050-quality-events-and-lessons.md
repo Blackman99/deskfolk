@@ -28,7 +28,7 @@ ADR 0040 §7 wants what went wrong filed by the event's own type, and what is le
 
 ## 缺口 / Not done
 
-- **收窄的反思**（误放行、能力天花板 → 清单项或检查提议，你确认）：见 [ADR 0051](0051-narrowed-reflection.md)。**项目级技能**（`shared_skills`）、**报表的界面**：下一步。
+- **收窄的反思**（误放行、能力天花板 → 清单项或检查提议，你确认）：见 [ADR 0051](0051-narrowed-reflection.md)。**项目级技能**（`shared_skills`）、**报表的界面**：见 [ADR 0052](0052-project-skills.md)。
 - **记忆的契约不变**（ADR 0021/0035）；8 级起只是不再由学习调用写入。
 - **只有搜索超时这一种签名**；工具 JSON 畸形、同一工具连败三次、跑得久的渲染还没有教训。
 
