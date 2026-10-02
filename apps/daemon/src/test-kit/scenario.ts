@@ -323,6 +323,8 @@ export type ScenarioOptions = {
   supervision?: boolean;
   /** Takes the engine level up to P4e's submissions and reviews (ADR 0046), which includes the supervisor. */
   submissions?: boolean;
+  /** Takes the engine level up to P4d's external jobs (ADR 0047), which includes submissions. */
+  jobs?: boolean;
 };
 
 export type Scenario = {
@@ -490,7 +492,7 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
   });
   // Phase fixtures pin their own level rather than taking the database up to this build's: later
   // levels change the filing, wake and ending paths they exercise.
-  const pinned = options.submissions ? ENGINE_LEVELS.submissions : options.supervision ? ENGINE_LEVELS.supervision : options.delegation ? ENGINE_LEVELS.delegation : options.workItems ? ENGINE_LEVELS.work_items : options.holds ? ENGINE_LEVELS.holds : 0;
+  const pinned = options.jobs ? ENGINE_LEVELS.jobs : options.submissions ? ENGINE_LEVELS.submissions : options.supervision ? ENGINE_LEVELS.supervision : options.delegation ? ENGINE_LEVELS.delegation : options.workItems ? ENGINE_LEVELS.work_items : options.holds ? ENGINE_LEVELS.holds : 0;
   if (pinned > 0) {
     for (const key of ["engine_level", "schema_min_compatible"]) {
       store.db.run("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [key, String(pinned)]);
@@ -871,6 +873,13 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
       for (const turn of store.listLiveTurns()) {
         if (turn.status !== "running") continue;
         store.db.run(`UPDATE turns SET last_activity_at = ? WHERE id = ?`, [earlier(turn.last_activity_at), turn.id]);
+      }
+      // External jobs (ADR 0047): the next ask falls due sooner, and the job is older.
+      if (store.db.query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'external_jobs'").get()) {
+        for (const job of store.db.query<{ id: string; next_poll_at: string; created_at: string }, []>(
+          "SELECT id, next_poll_at, created_at FROM external_jobs WHERE state = 'pending'").all()) {
+          store.db.run("UPDATE external_jobs SET next_poll_at = ?, created_at = ? WHERE id = ?", [earlier(job.next_poll_at), earlier(job.created_at), job.id]);
+        }
       }
     });
   }

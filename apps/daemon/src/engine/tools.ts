@@ -16,7 +16,8 @@ import { inlineWorkspaceRefs } from "../mcp-workspace-refs";
 import { COLLAB_TOOL_NAMES, type ChatTool, type McpPromptGuide } from "../prompts";
 import type { TurnAdmission } from "../quiesce";
 import { sessionUpsertFields } from "../session-events";
-import { checkLines, isReservedTaskPath, type Store } from "../store";
+import { checkLines, isReservedTaskPath, jobArgsDigest, promptPartNumber, type Store } from "../store";
+import { checkedJobId, jobIdOf, jobPair, jobReply, jobStatusOf } from "./job-adapter";
 import { TOOL_FAILURES_KEPT } from "../store/routing";
 import { ENGINE_LEVELS } from "../store/schema-gate";
 import { mergeCitedPaths, writtenPathFromToolData } from "../artifact-paths";
@@ -648,11 +649,69 @@ export function createTools(deps: ToolsDeps): Tools {
     if (!outgoing.ok) {
       return { ok: false, error: { code: "invalid_args", message: outgoing.message }, emitted: [] };
     }
+    // External jobs (ADR 0047, from level 6): a media server's submit/check pair is the daemon's to
+    // poll. A check on a registered job reads its last known state without reaching the server; the
+    // same submit within half an hour gets the first job back; a part with a job pending, or a result
+    // not handed over yet, is not submitted again without a reason.
+    const pair = store.jobsOn() ? jobPair(name, live.mcpTools) : null;
+    const en = live.locale === "en";
+    let forwarded = outgoing.args;
+    let job: { digest: string; partNo: number | null; reason: string | null } | null = null;
+    if (pair?.kind === "check") {
+      const requestId = checkedJobId(outgoing.args);
+      const known = requestId ? store.jobForRequest(pair.server, requestId) : null;
+      if (known) {
+        if (known.state === "pending") store.addJobWaiter(known.id, { bot_id: turn.bot_id, work_item_id: turn.work_item_id ?? null, session_id: turn.session_id });
+        return { ok: true, emitted: [], data: jobReply({ [pair.idParam]: known.request_id, status: known.status_text ?? known.state, ...(known.result ? { result: known.result } : {}),
+          cached: true, app_note: known.state === "pending"
+            ? (en ? "The app polls this job itself and wakes you when it is done: no need to check again or book a check-back for it." : "应用自己在查这个作业，完成后会叫你：不用再查，也不用为它约回看。")
+            : (en ? `Finished (${known.state}); this is what the app last heard.` : `已结束（${known.state}）；这是应用最后查到的结果。`) }) };
+      }
+    }
+    if (pair?.kind === "submit") {
+      const { resubmit_reason: given, ...rest } = outgoing.args;
+      forwarded = rest;
+      const reason = typeof given === "string" && given.trim() ? given.trim() : null;
+      const digest = jobArgsDigest(pair.server, live.mcpTools.get(name)!.tool, rest);
+      const recent = store.recentJob(digest);
+      if (recent && !reason) {
+        // Still running: this Bot waits on it too, so the result wakes it as well.
+        if (recent.state === "pending") store.addJobWaiter(recent.id, { bot_id: turn.bot_id, work_item_id: turn.work_item_id ?? null, session_id: turn.session_id });
+        return { ok: true, emitted: [], data: jobReply({ [pair.idParam]: recent.request_id, status: recent.status_text ?? recent.state, deduped: true,
+          ...(recent.result ? { result: recent.result } : {}),
+          app_note: recent.state === "pending"
+            ? (en ? "The same submit already started this job in the last half hour; it was not sent again. The app wakes you when it is done."
+              : "半小时内同样的提交已经开过这个作业，没有再发一次。完成后应用会叫你。")
+            : (en ? "The same submit already ran as this job in the last half hour and has finished; this is its result. Pass resubmit_reason to render it again."
+              : "半小时内同样的提交已经跑过、已结束，这是它的结果；确实要重渲，带上 resubmit_reason。") }) };
+      }
+      const prompt = typeof rest.prompt === "string" ? rest.prompt : JSON.stringify(rest);
+      const partNo = promptPartNumber(prompt);
+      const holding = turn.ticket_id && partNo !== null && !reason ? store.partJob(turn.ticket_id, partNo) : null;
+      if (holding) {
+        return { ok: false, emitted: [], error: { code: "job_pending", message: holding.state === "pending"
+          ? `part ${partNo} already has job ${holding.request_id} running; the app polls it and wakes you when it is done. To submit it again anyway, pass resubmit_reason saying why.`
+          : `part ${partNo}'s job ${holding.request_id} is done but its result has not been handed over yet; hand it over (or say why it will not do) first. To submit again anyway, pass resubmit_reason saying why.` } };
+      }
+      job = { digest, partNo, reason };
+    }
     if (callId && live.mcpTools.get(name)?.readOnly !== true && store.capabilities().engine_level >= ENGINE_LEVELS.supervision) {
       const started = store.beginToolExecution({ turnId: turn.id, toolCallId: callId, tool: name, sideEffect: true });
       if (!started.begun) return { ok: false, error: { code: "repeated_effect", message: "this remote call already started; no duplicate submission was sent" }, emitted: [] };
     }
-    const called = await mcp.call(name, outgoing.args, live.abort.signal);
+    const called = await mcp.call(name, forwarded, live.abort.signal);
+    if (called.ok && pair?.kind === "submit" && job) {
+      const requestId = jobIdOf(called.data);
+      if (requestId) {
+        store.registerJob({ server: pair.server, submitTool: pair.submitTool, checkTool: pair.checkTool, idParam: pair.idParam, requestId, digest: job.digest,
+          taskId: turn.task_id ?? null, ticketId: turn.ticket_id ?? null, partNo: job.partNo, botId: turn.bot_id, workItemId: turn.work_item_id ?? null,
+          turnId: turn.id, sessionId: turn.session_id, statusText: jobStatusOf(called.data).statusText, resubmitReason: job.reason });
+        const note = en ? `(app) Job ${requestId} is registered: the app polls it and wakes you when it is done — no need to check on it or book a check-back.`
+          : `（应用）作业 ${requestId} 已登记：应用自己去查，完成后会叫你——不用轮询，也不用为它约回看。`;
+        const data = called.data as { content?: unknown[] } | null;
+        return { ok: true, emitted: [], data: data && Array.isArray(data.content) ? { ...data, content: [...data.content, { type: "text", text: note }] } : called.data };
+      }
+    }
     if (called.ok) return { ok: true, data: called.data, emitted: [] };
     return { ok: false, error: called.error, emitted: [] };
   }

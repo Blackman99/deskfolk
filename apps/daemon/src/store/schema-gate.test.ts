@@ -12,7 +12,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from ".";
-import { acceptOlderApp, ENGINE_LEVEL, ENGINE_LEVEL_BY_DEFAULT, LAST_RELEASE_WITHOUT_GATE, raiseEngineLevel, readEngineGateOptIn, readEngineLevel, SCHEMA_LEVEL, SchemaTooNewError } from "./schema-gate";
+import { acceptOlderApp, ENGINE_LEVEL, ENGINE_LEVELS, ENGINE_LEVEL_BY_DEFAULT, LAST_RELEASE_WITHOUT_GATE, raiseEngineLevel, readEngineGateOptIn, readEngineLevel, SCHEMA_LEVEL, SchemaTooNewError } from "./schema-gate";
 
 const dirs: string[] = [];
 
@@ -197,7 +197,7 @@ describe("schema gate", () => {
     const optIn = store.transaction(() => store.acceptOlderApp("api"));
     expect(optIn.level).toBe(ENGINE_LEVEL);
     expect(store.raiseEngineLevel(null)).toEqual({ level: ENGINE_LEVEL, raised: true, refused: null, accepted: null });
-    expect(store.capabilities()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds", "work_items", "delegation", "supervision", "submissions"] });
+    expect(store.capabilities()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds", "work_items", "delegation", "supervision", "submissions", "jobs"] });
     store.close();
   });
 
@@ -273,7 +273,7 @@ describe("schema gate", () => {
       expect(raise.accepted).toContain("would not honor holds");
       if ("version" in installed) expect(raise.accepted).toContain(`the installed app (${installed.version || "version unreadable"})`);
       else expect(raise.accepted).toContain(installed.unseen);
-      expect(store.capabilities()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds", "work_items", "delegation", "supervision", "submissions"] });
+      expect(store.capabilities()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds", "work_items", "delegation", "supervision", "submissions", "jobs"] });
       store.close();
     }
   });
@@ -307,7 +307,7 @@ describe("schema gate", () => {
     // there is nothing to refuse and nothing to take back.
     const next = new Store({ filename: file });
     expect(next.raiseEngineLevel({ version: "0.1.0-rc.11" })).toEqual({ level: ENGINE_LEVEL, raised: false, refused: null, accepted: null });
-    expect(next.capabilities()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds", "work_items", "delegation", "supervision", "submissions"] });
+    expect(next.capabilities()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds", "work_items", "delegation", "supervision", "submissions", "jobs"] });
     expect(next.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'schema_min_compatible'").get()?.value).toBe(String(SCHEMA_LEVEL));
     next.close();
   });
@@ -383,4 +383,15 @@ test("going up to the work items' level puts old parked plans nobody is on to sl
   } finally {
     store.close();
   }
+});
+
+test("an opt-in may stop short of this build's top level: level 5 without level 6's jobs", () => {
+  const store = new Store();
+  const optIn = store.transaction(() => store.acceptOlderApp("script", ENGINE_LEVELS.submissions));
+  expect(optIn.level).toBe(ENGINE_LEVELS.submissions);
+  expect(store.raiseEngineLevel(null)).toMatchObject({ level: ENGINE_LEVELS.submissions, raised: true });
+  expect(store.capabilities().features).not.toContain("jobs");
+  // Asked for past the top, it stops at the top.
+  expect(store.transaction(() => store.acceptOlderApp("api", 99)).level).toBe(ENGINE_LEVEL);
+  store.close();
 });

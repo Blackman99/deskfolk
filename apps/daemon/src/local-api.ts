@@ -692,7 +692,10 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
       throw new HttpError(400, "invalid_args", "accept_older_app: true is required: the installed app, opened without this daemon running, would not honor holds");
     }
     if (body.by !== undefined && body.by !== "api" && body.by !== "script") throw new HttpError(400, "invalid_args", "by must be api or script");
-    store.acceptOlderApp(body.by === "script" ? "script" : "api");
+    if (body.level !== undefined && (typeof body.level !== "number" || !Number.isInteger(body.level) || body.level < 1 || body.level > ENGINE_LEVEL)) {
+      throw new HttpError(400, "invalid_args", `level must be an integer from 1 to ${ENGINE_LEVEL}`);
+    }
+    store.acceptOlderApp(body.by === "script" ? "script" : "api", body.level as number | undefined);
     const before = store.capabilities().engine_level;
     // Already at the top: only the opt-in is recorded. Catching up again would take over plans the
     // organizer parked since boot as holds mid-run, which is the next boot's job.

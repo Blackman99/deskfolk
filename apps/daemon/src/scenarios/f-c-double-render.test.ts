@@ -11,11 +11,13 @@
  * - ADR 0040 P4b (work items: one live segment per Bot per plan) flips the first test: with both
  *   directs filed under EP01, the second line reaches the segment already working on it instead of
  *   opening another, and each shot is submitted once.
- * - ADR 0040 P4d (external jobs, deduplicated by their arguments) flips the second: even with the
- *   second line filed under the wrong plan, so that two segments do run, the same submit with the
- *   same arguments within half an hour gets the first job back instead of reaching the server.
+ * - ADR 0040 P4d (external jobs, deduplicated by their arguments; ADR 0047, engine level 6) flips
+ *   the second: even with the second line filed under another plan, so that two segments do run,
+ *   the same submit with the same arguments within half an hour gets the first job back instead of
+ *   reaching the server. From level 3 a Bot↔Bot line wakes nobody, so there the two lines are
+ *   yours, in the director's direct and in the group.
  *
- * Today both chains run and the server sees each shot twice.
+ * Before both, both chains ran and the server saw each shot twice.
  */
 import { afterEach, expect, test } from "bun:test";
 import { call, createScenario, endTurn, media, type Scenario } from "../test-kit/scenario";
@@ -31,13 +33,12 @@ const C08 = { prompt: "C08：仓门关闭，背景是仓内" };
 
 /**
  * 视频导演 is told to redo C07 and C08 in one direct, and while that turn is still on its first hop,
- * again in another; the second line is filed under `secondPlan` (EP01 unless given).
+ * again in another, both lines filed under EP01.
  */
-async function toldTwice(h: Scenario, secondPlan?: (room: string) => string) {
+async function toldTwice(h: Scenario) {
   const { director, reviewer, room } = videoTeam(h);
   const ep01 = openPlan(h, room, "EP01", planSpec("EP01 动画成片"));
   const redo = h.store.createTicket({ taskId: ep01.id, title: "C07、C08 重渲", status: "doing", worker: director.id });
-  const other = secondPlan?.(room) ?? null;
   const first = h.botDirect(director, reviewer);
   const second = h.botDirect(director, reviewer);
   const bothIn = Promise.withResolvers<void>();
@@ -51,7 +52,7 @@ async function toldTwice(h: Scenario, secondPlan?: (room: string) => string) {
 
   h.postBot(reviewer, first, "C07、C08 背景跳了，重渲一下", { taskId: ep01.id, ticketId: redo.id });
   await h.waitFor(() => working, { what: "the first turn on the redo" });
-  h.postBot(reviewer, second, "C05 审完了。C07、C08 也按新背景重渲", other ? { taskId: other } : { taskId: ep01.id, ticketId: redo.id });
+  h.postBot(reviewer, second, "C05 审完了。C07、C08 也按新背景重渲", { taskId: ep01.id, ticketId: redo.id });
   await h.routed();
   bothIn.resolve();
   await h.waitIdle();
@@ -70,10 +71,32 @@ test("told twice in two directs about the same plan, the director renders each s
   expect(redo).toHaveLength(1);
 });
 
-test.failing("filed under another plan, the second submit of the same shot gets the first job back", async () => {
-  const h = await createScenario({ media: true });
+test("filed under another plan, the second submit of the same shot gets the first job back", async () => {
+  // Each job its own id, the way a real server's are.
+  const h = await createScenario({ media: { videoPolls: 1 }, jobs: true });
   open.push(h);
-  await toldTwice(h, (room) => openPlan(h, room, "回响纪元", planSpec("未来世界短片《回响纪元》")).id);
+  const { director, room } = videoTeam(h);
+  const ep01 = openPlan(h, room, "EP01", planSpec("EP01 动画成片"));
+  const redo = h.store.createTicket({ taskId: ep01.id, title: "C07、C08 重渲", status: "doing", worker: director.id });
+  const other = openPlan(h, room, "回响纪元", planSpec("未来世界短片《回响纪元》"));
+  const dm = h.direct(director);
+  const told: Array<{ session: string; body: string; target: { taskId: string; ticketId?: string } }> = [
+    { session: dm, body: "C07、C08 背景跳了，重渲一下", target: { taskId: ep01.id, ticketId: redo.id } },
+    { session: room, body: "@视频导演 C05 审完了。C07、C08 也按新背景重渲", target: { taskId: other.id } },
+  ];
+  const results: string[] = [];
+  for (const { session, body, target } of told) {
+    h.script(director, session).reply(call(media("submit_video", C07)), call(media("submit_video", C08)), ({ results: got }) => {
+      results.push(...got.map((result) => result.content));
+      return call(endTurn());
+    });
+    const line = h.store.postMessage(session, { body });
+    h.store.fileMessage(line.id, { explicit: [target] });
+    await h.engine.handleInboundMessage(h.store.getMessage(line.id), { fromUser: true });
+    await h.waitIdle();
+  }
 
   expect({ C07: submitsOf(h, "C07"), C08: submitsOf(h, "C08") }).toEqual({ C07: 1, C08: 1 });
+  // The second segment was told it got the job already running, not a new one.
+  expect(results.at(-1)).toContain("deduped");
 });

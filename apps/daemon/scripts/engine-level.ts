@@ -5,7 +5,7 @@
  * often an older release, and a source run then keeps holds, and every level after them, off in the
  * one data folder that developer actually works in — and a level above that default ceiling, which
  * is experimental and otherwise never turns on by itself, installed app or not (as of this writing,
- * level 5's submissions and reviews, ADR 0046). Accepting both at once is deliberate: an old
+ * levels 5 and 6, ADR 0046 and 0047). Accepting both at once is deliberate: an old
  * installed app, opened without this daemon running, would not honor a hold, and an experimental
  * level has not been shaken out live yet either way. Taking it back never lowers the level.
  *
@@ -29,12 +29,13 @@ import { defaultDataDir, pidAlive, readDescriptor, stateDbPath } from "../src/de
 import { acceptOlderApp, capabilitiesOf, withdrawOlderAppOptIn } from "../src/store/schema-gate";
 
 export const USAGE = [
-  "usage: bun apps/daemon/scripts/engine-level.ts (--accept-older-app | --clear) [--data-dir <dir>]",
-  "  --accept-older-app  let the data folder up to this build's top engine level: past an older installed app that shares it, and past the default level (an experimental one, such as level 5)",
+  "usage: bun apps/daemon/scripts/engine-level.ts (--accept-older-app [--level <n>] | --clear) [--data-dir <dir>]",
+  "  --accept-older-app  let the data folder up to this build's top engine level: past an older installed app that shares it, and past the default level (an experimental one, such as level 5 or 6)",
+  "  --level <n>         with --accept-older-app: go only up to level n (say, 5 without 6's external jobs)",
   "  --clear             take the opt-in back; the level never goes down",
 ].join("\n");
 
-export type EngineLevelArgs = { action: "accept" | "clear"; dataDir: string };
+export type EngineLevelArgs = { action: "accept" | "clear"; dataDir: string; level?: number };
 
 /** The action and the data folder, or why the arguments do not make one. */
 export function parseArgs(argv: readonly string[], env: Record<string, string | undefined>): EngineLevelArgs | { error: string } {
@@ -44,10 +45,14 @@ export function parseArgs(argv: readonly string[], env: Record<string, string | 
   const at = argv.indexOf("--data-dir");
   const named = at === -1 ? undefined : argv[at + 1];
   if (at !== -1 && (!named || named.startsWith("--"))) return { error: USAGE };
-  const known = new Set(["--accept-older-app", "--clear", "--data-dir"]);
-  const stray = argv.find((arg, index) => !known.has(arg) && !(at !== -1 && index === at + 1));
+  const levelAt = argv.indexOf("--level");
+  const levelArg = levelAt === -1 ? undefined : argv[levelAt + 1];
+  const level = levelArg === undefined ? undefined : Number(levelArg);
+  if (levelAt !== -1 && (!accept || level === undefined || !Number.isInteger(level) || level < 1)) return { error: USAGE };
+  const known = new Set(["--accept-older-app", "--clear", "--data-dir", "--level"]);
+  const stray = argv.find((arg, index) => !known.has(arg) && !(at !== -1 && index === at + 1) && !(levelAt !== -1 && index === levelAt + 1));
   if (stray !== undefined) return { error: `unknown argument ${stray}\n${USAGE}` };
-  return { action: accept ? "accept" : "clear", dataDir: named ?? env.REAL_BOT_DATA_DIR ?? defaultDataDir() };
+  return { action: accept ? "accept" : "clear", dataDir: named ?? env.REAL_BOT_DATA_DIR ?? defaultDataDir(), ...(level !== undefined ? { level } : {}) };
 }
 
 type Io = { env: Record<string, string | undefined>; print: (line: string) => void; error: (line: string) => void };
@@ -65,7 +70,7 @@ export async function run(argv: readonly string[], io: Io): Promise<number> {
 }
 
 async function askDaemon(args: EngineLevelArgs, holder: { pid: number; port: number; token: string }, io: Io): Promise<number> {
-  const body: RaiseEngineLevelRequest = { accept_older_app: true, by: "script" };
+  const body: RaiseEngineLevelRequest = { accept_older_app: true, by: "script", ...(args.level !== undefined ? { level: args.level } : {}) };
   let response: Response;
   try {
     response = await fetch(`http://127.0.0.1:${holder.port}/v1/capabilities/raise`, {
@@ -108,7 +113,7 @@ function writeOptIn(args: EngineLevelArgs, io: Io): number {
       return 2;
     }
     if (args.action === "accept") {
-      acceptOlderApp(db, "script");
+      acceptOlderApp(db, "script", undefined, args.level);
       io.print(`no daemon runs on ${args.dataDir}: wrote the opt-in, and the next start raises the engine level to this build's top level (past an older installed app, and past the default level)`);
     } else {
       withdrawOlderAppOptIn(db);

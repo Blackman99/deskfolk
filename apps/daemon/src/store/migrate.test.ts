@@ -559,7 +559,8 @@ describe("a database an earlier build created", () => {
  * you sent failed with a SQLite error and was lost.
  */
 describe("a stray draft external_jobs table", () => {
-  const STRAY = `CREATE TABLE external_jobs (
+  // This build makes its own external_jobs at open (ADR 0047): a draft's shape takes its place first.
+  const STRAY = `DROP TABLE IF EXISTS external_jobs; CREATE TABLE external_jobs (
     id TEXT PRIMARY KEY,
     request_id TEXT NOT NULL UNIQUE,
     args_digest TEXT NOT NULL,
@@ -587,8 +588,10 @@ describe("a stray draft external_jobs table", () => {
     "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'external_jobs%' ORDER BY name").all().map((row) => row.name);
 
   test("an empty one is dropped at open, and a line filed at level 2 goes through", () => {
-    withDatabase((db) => db.run(STRAY), (store) => {
-      expect(tables(store)).toEqual([]);
+    withDatabase((db) => db.exec(STRAY), (store) => {
+      // Set aside, and this build's own in its place: with the columns its readers use.
+      expect(tables(store)).toEqual(["external_jobs"]);
+      expect(store.db.query("SELECT name FROM pragma_table_info('external_jobs') WHERE name IN ('task_id', 'state') ORDER BY name").all()).toEqual([{ name: "state" }, { name: "task_id" }]);
       store.raiseEngineLevel(null);
       const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "none" });
       const line = store.postMessage(writer.direct_session.id, { body: "帮我写一份测试说明" });
@@ -599,16 +602,17 @@ describe("a stray draft external_jobs table", () => {
 
   test("one holding rows is renamed aside with every row, and reopening changes nothing more", () => {
     withDatabase((db) => {
-      db.run(STRAY);
+      db.exec(STRAY);
       db.run("INSERT INTO external_jobs VALUES ('job-1', 'req-1', 'digest', 'pending', '2026-09-30', '2026-09-30')");
     }, (store, file) => {
-      const [aside, ...rest] = tables(store);
+      const [own, aside, ...rest] = tables(store);
       expect(rest).toEqual([]);
+      expect(own).toBe("external_jobs");
       expect(aside).toMatch(/^external_jobs_draft_\d{14}$/);
       expect(store.db.query(`SELECT id, request_id, status FROM "${aside}"`).all()).toEqual([{ id: "job-1", request_id: "req-1", status: "pending" }]);
       store.close();
       const reopened = new Store({ filename: file });
-      expect(tables(reopened)).toEqual([aside!]);
+      expect(tables(reopened)).toEqual(["external_jobs", aside!]);
       reopened.close();
     });
   });
@@ -616,7 +620,7 @@ describe("a stray draft external_jobs table", () => {
   test("a reader checks the columns it needs, not the name, when the stray shape appears after open", () => {
     const store = new Store();
     try {
-      store.db.run(STRAY);
+      store.db.exec(STRAY);
       store.raiseEngineLevel(null);
       const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "none" });
       const plan = store.openTask({ sessionId: writer.direct_session.id, title: "旧事" });

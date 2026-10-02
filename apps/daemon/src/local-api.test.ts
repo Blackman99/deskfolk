@@ -355,7 +355,7 @@ describe("empty roster and settings", () => {
     h.api.subscribeSync((frame) => frames.push(frame.type));
     const accepted = await raise({ accept_older_app: true });
     expect(accepted.status).toBe(200);
-    expect(await accepted.json()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds", "work_items", "delegation", "supervision", "submissions"] });
+    expect(await accepted.json()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds", "work_items", "delegation", "supervision", "submissions", "jobs"] });
     expect(h.store.engineGateOptIn()).toMatchObject({ by: "api", level: ENGINE_LEVEL });
     expect(h.store.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'schema_min_compatible'").get()?.value).toBe(String(SCHEMA_LEVEL));
     // Open windows take a fresh snapshot, which now carries the holds that show the stop menus.
@@ -378,7 +378,7 @@ describe("empty roster and settings", () => {
     h.api.subscribeSync((frame) => frames.push(frame.type));
     const withdrawn = await fetch(`${h.origin}/v1/capabilities/raise`, { method: "DELETE", headers: auth(h) });
     expect(withdrawn.status).toBe(200);
-    expect(await withdrawn.json()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds", "work_items", "delegation", "supervision", "submissions"] });
+    expect(await withdrawn.json()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL, features: ["holds", "work_items", "delegation", "supervision", "submissions", "jobs"] });
     expect(h.store.engineGateOptIn()).toBeNull();
     expect(h.store.catchUpEngineLevel({ version: "0.1.0-rc.11" })).toEqual([]);
     expect(h.store.capabilities().engine_level).toBe(ENGINE_LEVEL);

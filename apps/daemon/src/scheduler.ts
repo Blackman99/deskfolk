@@ -42,6 +42,12 @@ export function startScheduler(options: SchedulerOptions): Scheduler {
     // With the lid shut macOS wakes itself for a few seconds at a time, often before Wi-Fi is back;
     // a routine fired then fails as unreachable in three seconds and its catch-up is spent.
     if (!wake.settled(at.getTime())) return;
+    // External jobs (ADR 0047): the daemon asks the media server itself, once for every waiter.
+    try {
+      options.engine.pollJobs(at);
+    } catch (error) {
+      console.error("[jobs] poll failed", error);
+    }
     for (const routine of options.store.listRoutines()) {
       try {
         options.engine.fireRoutine(routine.id, at);

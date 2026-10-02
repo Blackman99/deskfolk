@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### External jobs (engine level 6, opt-in)
+
+- Engine level 6 hands waiting on a media server's renders to the app: a paired `submit_<x>` / `check_<x>` (westlake-cpa's `submit_video` / `check_video`) is registered when submitted and polled by the daemon itself — every 30 s, 1, 2, 4, then 5 minutes, outside any turn — so a Bot's check reads the last known state without reaching the server, and the Bot that submitted it and every Bot that checked on it are woken with the result (url, duration, cost) when it is done, failed, or given up after three hours. Like level 5 it needs a developer's opt-in (`engine-level.ts --accept-older-app`, now with `--level <n>` to stop short, e.g. at 5), and raises the compatibility floor to 6.
+- The same submit within half an hour gets the job already started instead of a second render, whatever plan it was filed under (incident F-c). A part with a job running, or a result not handed over yet, is not submitted again without `resubmit_reason`.
+- From level 6 a Bot's own check-back is at least 5 minutes, at most six an hour per job, and refused when it would only poll a job the app polls. While a render runs, the supervisor calls nobody back to poll it. See [ADR 0047](docs/adr/0047-external-jobs.md) and the [behavior notes](docs/behavior.en.md#external-job).
+
 ### Complaints, the capability ceiling and pictures as a reference (engine level 5)
 
 - A line of yours that complains about work already handed over or approved asks, on a card, whether to send it back to rework — it never acts by itself, since a word list will misread some lines. It reads a line filed under the ticket (or some of its parts) with a clause objecting to the work (a complaint word, no praise beside it, no redo turned down), an annotation, or a part-level entry from the scribe, and asks about the parts that clause names. Send it back, and those parts (else the ticket) go to rework, a hand-over still waiting is superseded, a delivered plan is active again, and the Bot that made it is woken with your words; Undo stays available while nothing newer has been handed over.

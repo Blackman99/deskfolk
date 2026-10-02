@@ -55,7 +55,7 @@ export type Live = {
   /** Tool names in the current hop's tools array; read_skill flags `mcp_` names a body cites that are missing. */
   toolNames: Set<string>;
   /** The current hop's MCP tools by model-facing name: which server, its own name there, and whether it only reads. */
-  mcpTools: Map<string, { server: string; tool: string; readOnly: boolean }>;
+  mcpTools: Map<string, { server: string; tool: string; readOnly: boolean; params?: string[] }>;
   spoke: boolean;
   drainRejection: boolean;
   /** The closing check ran (or was skipped for good) this turn; it never runs twice. */

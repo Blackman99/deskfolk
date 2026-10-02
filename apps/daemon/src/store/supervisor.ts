@@ -51,6 +51,8 @@ export type BallHolder =
   | { kind: "reviewer"; botId: string; workItemId: string | null; submissionId: string }
   /** From level 5: a checked submission with no reviewer, which the supervisor approves at its next tick. */
   | { kind: "app"; reason: "approval"; ref: string }
+  /** From level 6: a render the daemon polls; its result wakes whoever waits on it (ADR 0047). */
+  | { kind: "app"; reason: "job"; ref: string }
   | { kind: "user"; reason: "ask" | "blocked" | "held" | "held_dependency" | "review" | "ceiling" | "unclaimed"; ref?: string };
 
 export type SupervisorWake = {
@@ -200,8 +202,8 @@ function failingCheck(ctx: StoreContext, ticket: TicketRow): boolean {
  * Who holds the ball on a ticket (§5.1), in order: the recipient of an open request on it; your
  * answer, to a question of a turn or of a blocked job; you, when it is blocked; you, when a stop of
  * yours covers it or a ticket it waits for; you, when it awaits your review (a reviewer is P4e's);
- * else its owner, else the plan's lead, else nobody (`unclaimed`, yours). External jobs, which
- * would hand it to the job poller, arrive with P4d.
+ * else its owner, else the plan's lead, else nobody (`unclaimed`, yours). From level 6 a render still
+ * running on it is the job poller's (ADR 0047): nobody is called back to poll it.
  */
 export function ballHolder(ctx: StoreContext, input: { ticketId: string }): BallHolder {
   const ticket = ticketRow(ctx, requireNonEmpty("ticketId", input.ticketId));
@@ -240,6 +242,11 @@ export function ballHolder(ctx: StoreContext, input: { ticketId: string }): Ball
     if (ceiling) return { kind: "user", reason: "ceiling", ref: ceiling };
     const handed = submissionHolder(ctx, ticket);
     if (handed) return handed;
+    // A render still running on it: the daemon's to poll, and its result wakes the Bot (ADR 0047).
+    if (readEngineLevel(ctx.db) >= ENGINE_LEVELS.jobs) {
+      const job = ctx.db.query<{ id: string }, [string]>("SELECT id FROM external_jobs WHERE ticket_id = ? AND state = 'pending' ORDER BY created_at LIMIT 1").get(ticket.id);
+      if (job) return { kind: "app", reason: "job", ref: job.id };
+    }
   } else if (ticket.status === "review" && !failingCheck(ctx, ticket)) return { kind: "user", reason: "review", ref: ticket.id };
   if (!botId) return { kind: "user", reason: "unclaimed" };
   const work = ctx.db.query<{ id: string }, [string, string, string]>(`SELECT id FROM work_items WHERE bot_id = ? AND task_id = ?

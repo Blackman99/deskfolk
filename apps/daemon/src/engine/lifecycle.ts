@@ -907,8 +907,12 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       // A read-only turn is not shown what it may not call (ADR 0040 I3); the gate refuses them anyway.
       const tools = current.mode === "readonly" ? readOnlyTools(offered, listed.guides) : offered;
       live.toolNames = new Set(tools.map((tool) => tool.function.name));
+      // Each tool's argument names too: the external-job adapter reads which one a check takes the job's id in.
+      const params = new Map(listed.tools.map((tool) => [tool.function.name,
+        Object.keys(((tool.function.parameters ?? {}) as { properties?: Record<string, unknown> }).properties ?? {})] as const));
       live.mcpTools = new Map(listed.guides.flatMap((guide) =>
-        guide.tools.map((tool) => [tool.modelName, { server: guide.name, tool: tool.toolName ?? tool.modelName, readOnly: tool.readOnly === true }] as const)));
+        guide.tools.map((tool) => [tool.modelName, { server: guide.name, tool: tool.toolName ?? tool.modelName, readOnly: tool.readOnly === true,
+          params: params.get(tool.modelName) ?? [] }] as const)));
       live.partial = "";
       publishTurn(current, "");
       let result;

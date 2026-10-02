@@ -234,6 +234,16 @@ From level 5, another Bot judges a submission with `review({submission_id?, verd
 - **Capability ceiling**: when a hand-over fails (its checks, a review's reject, or your send-back on a card), each part it covers (else the whole ticket, counting only hand-overs of no part) that, since you last answered a ceiling card about it, has failed the same requirement three hand-overs in a row, or failed more than six hand-overs, is stuck: the part reads Blocked, nothing more is handed over for it (`submit` gets `ceiling_reached`), a hand-over of no part is refused while a part is stuck, the ball is yours, the supervisor wakes nobody for it, and the producer only hears that you are being asked; a card asks — Another way, Change the plan, Relax this requirement (only when stuck on one; pressing it is your confirmation, and the requirement no longer holds for the plan), Take it as it is. The first three send it back to rework, tell the producer what you chose and restart the count; Take it as it is approves the part, and the ticket once all its parts are approved or waived. When the ticket closes another way (approved, your board edit), a card still asking says why and loses its buttons.
 - **Pictures are a reference**: when a seams check hands pictures to a model (video frames, images), that result is a reference only — shown in a hand-over's checks as judged by a model looking at pictures, it neither blocks nor backs an approval, and a plan-wide one does not hold the plan's delivery back. No pictures are judged while a stop covers the plan, nor once today's picture judging has cost $5; that run reads as not judged. A Bot's situation and status answers label it as for reference only too. A text-only seams check is unchanged.
 
+<a id="external-job"></a>
+## External job
+
+From level 6 ([ADR 0047](adr/0047-external-jobs.md), opt-in like level 5), a media server's paired `submit_<x>` / `check_<x>` (westlake-cpa's `submit_video` / `check_video`, for one) is waited on by the app:
+
+- **Submitting**: a submit that gets an id back is registered, and the Bot reads that the app polls it and wakes it when done. The same server, tool and arguments within half an hour get the job already started (`deduped`) without reaching the server, whatever the filing. When the prompt names exactly one part number and that part has a job running, or a finished result not handed over yet, a new submit is refused (`job_pending`); to submit again anyway, `resubmit_reason` says why (kept on the job, not sent to the server).
+- **Checking**: a Bot's check on a registered job reads what the app last heard (`cached`) without reaching the server, and the Bot becomes a waiter.
+- **Polling**: on each 15-second scheduler tick the daemon asks about the jobs due, outside any turn, every 30 s, 1, 2, 4, then 5 minutes. Done or failed, the Bot that submitted it and every Bot that checked on it are woken in their own conversations with the result (url, duration, cost); one still pending after three hours is given up as lost and they are told so. While a job runs, the supervisor treats the ball as the job poller's and calls nobody back to poll it.
+- **Check-backs**: from level 6 a Bot's own check-back is at least 5 minutes, at most six an hour per job, and refused when its note names a job being polled.
+
 <a id="user-quote"></a>
 ## User quote
 

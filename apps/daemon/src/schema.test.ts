@@ -38,6 +38,7 @@ describe("schema", () => {
       "bots",
       "check_backs",
       "delegations",
+      "external_jobs",
       "file_commits",
       "file_stages",
       "holds",

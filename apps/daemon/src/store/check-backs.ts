@@ -11,6 +11,7 @@
  * sets it aside until the hold is lifted (store/holds.ts). Nothing here opens a turn; the engine
  * does that when the scheduler finds a due row.
  */
+import { jobsOn, pendingJobNamed } from "./external-jobs";
 import { looksLikeWorkspacePath, USER_MEMBER } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
@@ -96,6 +97,27 @@ export function scheduleCheckBack(
     );
   }
   const at = input.now ?? new Date();
+  // From level 6 (ADR 0047) waiting on the clock is for real waits, not polling: at least five
+  // minutes, at most six bookings an hour, and never to look in on a job the daemon already polls.
+  if (jobsOn(ctx)) {
+    if (minutes < JOB_LEVEL_CHECK_BACK_MIN_MINUTES) {
+      throw new HttpError(422, "invalid_args", `after_minutes must be at least ${JOB_LEVEL_CHECK_BACK_MIN_MINUTES}: shorter waits are polling, and the app polls jobs itself`);
+    }
+    const job = pendingJobNamed(ctx, note);
+    if (job) {
+      throw new HttpError(409, "job_polled", `the app already polls job ${job.request_id} and wakes you when it is done; no check-back is needed for it`);
+    }
+    // Per work item (bot × plan × ticket, §2.8): another job of the same Bot books on its own budget.
+    // A booking a stop of yours suspended is not counted against it.
+    const hourAgo = new Date(at.getTime() - 60 * 60_000).toISOString();
+    const work = input.turnId ? ctx.db.query<{ task_id: string | null; ticket_id: string | null }, [string]>("SELECT task_id, ticket_id FROM turns WHERE id = ?").get(input.turnId) : null;
+    const booked = ctx.db.query<{ n: number }, [string, string, string | null, string | null]>(`SELECT COUNT(*) AS n FROM check_backs WHERE bot_id = ? AND created_at > ?
+      AND task_id IS ? AND ticket_id IS ? AND (cause = 'self' OR cause IS NULL) AND kind IS NULL AND suspended_at IS NULL`)
+      .get(input.botId, hourAgo, work?.task_id ?? null, work?.ticket_id ?? null)!.n;
+    if (booked >= JOB_LEVEL_CHECK_BACKS_PER_HOUR) {
+      throw new HttpError(429, "too_many_check_backs", `you already booked ${booked} check-backs in the last hour; wait for what you are waiting on to come back instead`);
+    }
+  }
   return insertCheckBack(ctx, {
     botId: input.botId,
     sessionId: input.sessionId,
@@ -106,6 +128,10 @@ export function scheduleCheckBack(
     cause: "self",
   });
 }
+
+/** From level 6 (ADR 0047): the shortest wait a Bot may book on the clock, and how many it may book an hour. */
+export const JOB_LEVEL_CHECK_BACK_MIN_MINUTES = 5;
+export const JOB_LEVEL_CHECK_BACKS_PER_HOUR = 6;
 
 /**
  * The app's check-back for a Bot whose Bot↔Bot direct went quiet: due now, in the session the

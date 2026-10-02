@@ -125,7 +125,8 @@ export type CapabilitiesResponse = {
  * `script` from `apps/daemon/scripts/engine-level.ts`, `api` otherwise. `DELETE` on the same path
  * takes the word back and leaves the level where it is.
  */
-export type RaiseEngineLevelRequest = { accept_older_app: true; by?: "api" | "script" };
+/** `level`: how far the opt-in lets the data folder go (1 up to this build's top level, which it defaults to). */
+export type RaiseEngineLevelRequest = { accept_older_app: true; by?: "api" | "script"; level?: number };
 
 export type LocalApiDescriptor = {
   pid: number;

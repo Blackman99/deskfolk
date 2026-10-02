@@ -38,6 +38,7 @@ import { isoNow } from "./ids";
 import type { McpHost } from "./mcp-host";
 import { createOrganizer } from "./organizer";
 import { createScribe } from "./scribe";
+import { createJobPoller } from "./engine/jobs";
 import type { TurnAdmission } from "./quiesce";
 import type { Store } from "./store";
 import { ENGINE_LEVELS } from "./store/schema-gate";
@@ -132,6 +133,8 @@ export type TurnEngine = {
    * supervisor's level and while draining.
    */
   supervise: (now?: Date) => void;
+  /** One round of the external-job poller (ADR 0047), from the scheduler's tick: off below level 6. */
+  pollJobs: (now?: Date) => void;
   suggestComposer: (sessionId: string, signal?: AbortSignal, guard?: () => void) => Promise<ComposerSuggestion[]>;
   drain: () => Promise<void>;
   close: () => Promise<void>;
@@ -460,6 +463,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   });
 
   // Level 5's hand-overs and reviews (ADR 0046): checks run as a settle would, through the plan's runner.
+  const jobPoller = createJobPoller({ store, mcp, track: core.track, dispatchQueued: () => lifecycle.dispatchQueued() });
   const submissions = createSubmissions({
     store,
     runChecks: (taskId, checkIds) => checks.run(taskId, { cause: "settle", checkIds }),
@@ -668,6 +672,10 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     sweepToolResults,
     dispatchQueuedWork: lifecycle.dispatchQueued,
     noteFiled,
+    pollJobs(at = new Date()) {
+      if (options.admission?.draining) return;
+      jobPoller.poll(at);
+    },
     supervise(at = new Date()) {
       if (store.capabilities().engine_level < ENGINE_LEVELS.supervision || options.admission?.draining) return;
       const tick = store.supervisorTick({ now: at.toISOString() });

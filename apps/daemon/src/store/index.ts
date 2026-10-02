@@ -32,6 +32,7 @@ import * as peerNotes from "./peer-notes";
 import * as endContract from "./end-contract";
 import * as supervisor from "./supervisor";
 import * as submissions from "./submissions";
+import * as externalJobs from "./external-jobs";
 import * as toolExecutions from "./tool-executions";
 import * as workQuestions from "./work-questions";
 import * as workItems from "./work-items";
@@ -114,6 +115,7 @@ export { derivedChanged } from "./derived-checks";
 export type { DerivedChecksChange } from "./derived-checks";
 export { TICKET_STATUSES, TICKETS_MAX, TICKET_SPEC_MAX, TICKET_TITLE_MAX, isTicketStatus } from "./tickets";
 export { checkLines, gateFailed, inTicketDir, ticketStage, type Submission as StoredSubmission, type SubmissionCheck, type SettledSubmission, type ReviewResult } from "./submissions";
+export { jobArgsDigest, promptPartNumber, type ExternalJob, type JobState } from "./external-jobs";
 export { ORGANIZER_NEW_TICKETS_MAX, titleKey } from "./plan-spec";
 export type { OrganizerResult, OrganizerTicketInput, SpecRevisionRow } from "./plan-spec";
 export { CHECK_BACK_MAX_MINUTES, CHECK_BACK_MIN_MINUTES, CHECK_BACK_NOTE_MAX, PLAN_NUDGE_NOTE_MAX, repeatsPlanAnswer } from "./check-backs";
@@ -267,7 +269,7 @@ export class Store {
     return lines;
   };
   /** The developer's opt-in past an older installed app (ADR 0041; see `acceptOlderApp`). */
-  readonly acceptOlderApp = (by: EngineGateOptIn["by"]): EngineGateOptIn => acceptOlderApp(this.db, by);
+  readonly acceptOlderApp = (by: EngineGateOptIn["by"], level?: number): EngineGateOptIn => acceptOlderApp(this.db, by, undefined, level);
   /** Takes it back; the engine level stays where it is. */
   readonly withdrawOlderAppOptIn = (): void => withdrawOlderAppOptIn(this.db);
   readonly engineGateOptIn = (): EngineGateOptIn | null => readEngineGateOptIn(this.db);
@@ -554,6 +556,16 @@ export class Store {
   readonly answerReworkCard = this.bind(submissions.answerReworkCard);
   readonly reviewMisses = this.bind(submissions.reviewMisses);
   readonly answerCeilingCard = this.bind(submissions.answerCeilingCard);
+  readonly jobsOn = this.bind(externalJobs.jobsOn);
+  readonly recentJob = this.bind(externalJobs.recentJob);
+  readonly partJob = this.bind(externalJobs.partJob);
+  readonly registerJob = this.bind(externalJobs.registerJob);
+  readonly jobForRequest = this.bind(externalJobs.jobForRequest);
+  readonly addJobWaiter = this.bind(externalJobs.addJobWaiter);
+  readonly claimDueJobs = this.bind(externalJobs.claimDueJobs);
+  readonly recordJobPoll = this.bind(externalJobs.recordJobPoll);
+  readonly pendingJobNamed = this.bind(externalJobs.pendingJobNamed);
+  readonly getJob = this.bind(externalJobs.getJob);
   readonly visionRefusal = this.bind(submissions.visionRefusal);
   readonly takeUpSubmission = this.bind(submissions.takeUpSubmission);
   readonly takeUpPendingApproval = this.bind(submissions.takeUpPendingApproval);

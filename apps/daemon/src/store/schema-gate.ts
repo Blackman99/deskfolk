@@ -45,8 +45,12 @@ import type { CapabilitiesResponse } from "@real-bot/protocol";
  *   build would move the status alone on any file a turn cites (leaving the stage behind it, so
  *   the board and the end contract disagree with what was checked), pass a ticket to review
  *   without running its checks, and never ask the reviewer or approve what nobody reviews.
+ * - 6: P4d's external jobs (ADR 0047). A database at engine level 6 keeps the renders a media server
+ *   accepted, polled by the daemon for everyone waiting on them. A level-5 build would let each Bot
+ *   poll the server itself again, submit the same render twice, and never wake the Bots waiting on
+ *   a job when it is done — they would wait on a check-back the level-6 rules turned away.
  */
-export const SCHEMA_LEVEL = 5;
+export const SCHEMA_LEVEL = 6;
 
 /**
  * The engine levels this build runs, in the only order they turn on (ADR 0040: one integer for the
@@ -55,8 +59,8 @@ export const SCHEMA_LEVEL = 5;
  * P4c's supervisor, durable blocked questions and the effect ledger (ADR 0045); `submissions`:
  * P4e's ticket stages, submissions and reviews (ADR 0046).
  */
-export const ENGINE_LEVELS = { holds: 1, work_items: 2, delegation: 3, supervision: 4, submissions: 5 } as const;
-export const ENGINE_LEVEL = ENGINE_LEVELS.submissions;
+export const ENGINE_LEVELS = { holds: 1, work_items: 2, delegation: 3, supervision: 4, submissions: 5, jobs: 6 } as const;
+export const ENGINE_LEVEL = ENGINE_LEVELS.jobs;
 
 /**
  * The highest level a build raises on its own, with no developer opt-in: `ENGINE_LEVEL` may sit
@@ -69,7 +73,7 @@ export const ENGINE_LEVEL = ENGINE_LEVELS.submissions;
 export const ENGINE_LEVEL_BY_DEFAULT = ENGINE_LEVELS.supervision;
 
 /** The floor a database needs once it runs at each engine level: whatever an older build would misread there. */
-const FLOOR_AT_LEVEL: Readonly<Record<number, number>> = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5 };
+const FLOOR_AT_LEVEL: Readonly<Record<number, number>> = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6 };
 
 /**
  * The last release without the gate read. A copy of it (or of anything before it) opens any
@@ -173,8 +177,9 @@ export function readEngineGateOptIn(db: Database): EngineGateOptIn | null {
  * without this daemon running, would not honor a hold. It only lets {@link raiseEngineLevel} past
  * that app; it raises nothing itself.
  */
-export function acceptOlderApp(db: Database, by: EngineGateOptIn["by"], at: string = new Date().toISOString()): EngineGateOptIn {
-  const optIn = { at, by, level: ENGINE_LEVEL };
+export function acceptOlderApp(db: Database, by: EngineGateOptIn["by"], at: string = new Date().toISOString(), level: number = ENGINE_LEVEL): EngineGateOptIn {
+  // A developer may stop short of this build's top level (try level 5 without level 6's jobs).
+  const optIn = { at, by, level: Math.max(1, Math.min(ENGINE_LEVEL, Math.floor(level))) };
   writeSetting(db, "engine_gate_optin", JSON.stringify(optIn));
   return optIn;
 }
