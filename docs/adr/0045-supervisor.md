@@ -33,7 +33,7 @@ ADR 0040 §5 wants "not stopping before done" to rest on facts in the database, 
 
 8. **副作用记录 / Effect ledger** (`tool_executions`)。4 级起，`write_file`、`delete_file`、`shell` 和非只读的 MCP 调用在动手之前记一行开始（同一个调用 id 只开始一次，重复的不再执行），结束时记结果：成功、被拒（没发出去）、失败，或**不明**（中止时、MCP 调用发出后报错、超时；执行段结束时还没结束的也记成不明）。监督器只把 shell 和 MCP 的不明当作「结果不明的外部副作用」；更早的段没有记录、只有 `turn_runs` 里的 shell/MCP 运行，续跑中断的段时也按不明处理。The ledger is evidence, never a replay queue.
 
-9. **blocked 的持久提问 / Durable blocked questions.** 4 级起 `end_turn({reason:"blocked", needs_from_user})` 留下一张提问卡（`control.kind = work_question`，在这件事的会话，否则规划的会话，否则你和这个 Bot 的私聊），附一条 `ask` 通知；工作项 `waiting_on = {kind:"user"}`。`POST /v1/messages/:id/work-answer { body }`（本机和远端白名单）写下你的原话：一次，带请求 id，同一请求重发不重复；作为你的一行进这件事的收件，工作项排队、立即派发；叫停覆盖时只被扣住，不解除任何叫停。答过、过时（之后又有新的提问）、来源段还没结束、工作关闭、Bot 归档、会话归档的，一律拒绝。3 级以下照旧只发一行文字。
+9. **blocked 的持久提问 / Durable blocked questions.** 4 级起 `end_turn({reason:"blocked", needs_from_user})` 留下一张提问卡（`control.kind = work_question`，在这件事的会话，否则规划的会话，否则你和这个 Bot 的私聊），附一条 `ask` 通知；工作项 `waiting_on = {kind:"user"}`。`POST /v1/messages/:id/work-answer { body }`（本机和远端白名单）写下你的原话：一次，带请求 id，同一请求重发不重复；作为你的一行进这件事的收件，工作项排队、立即派发；叫停覆盖时只被扣住，不解除任何叫停。答过、过时（之后又有新的提问）、来源段还没结束、工作关闭、Bot 归档、会话归档的，一律拒绝。工作项离开「blocked 且等这张卡」（新的提问、别的消息叫醒后的一段结束、关闭）时，卡记下 `superseded_at`、不再给回答框，`ask` 通知作废（`voided`，`superseded`），不再撑着 Dock 角标；由库触发器 `work_question_asks_follow_work` 保证，谁改的工作项都一样，打开时补作废旧版本留下的。3 级以下照旧只发一行文字。
 
 10. **退场 / Retired at level 4.** 规划叫回（`plan-watch` 的对账和 10 分钟计时器）与 report_back（`direct-report` 的 10 秒计时器）在 4 级不再运行；之前订下、还没触发的 `plan_nudge` 和 report-back 回看在触发时作废。观察任务进展（`observeTicket`）各级都保留。0–3 级的路径原样保留。
 

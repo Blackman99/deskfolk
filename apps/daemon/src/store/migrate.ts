@@ -23,6 +23,7 @@ import { migrateSharedSkills } from "./shared-skills";
 import { clipQuote, QUOTE_TRIGGERS } from "./quotes";
 import { REQUIREMENT_TRIGGERS } from "./requirements";
 import { DORMANT_PLAN_TRIGGERS, idSuffix, localDate, slugify, taskTitle, WORK_ROOT } from "./tasks";
+import { lapseSupersededWorkQuestions, WORK_QUESTION_TRIGGERS } from "./work-questions";
 import { parseStoredCatalog } from "../models";
 import { pickThinkingLevel } from "../route-decision";
 
@@ -300,10 +301,11 @@ export function migrateSchema(db: Database): void {
   migrateSharedSkills(db);
   // Made again on every open rather than if missing, so the triggers are always this build's own.
   // Last, after every column they read (tasks.dormant_since comes in migratePlans).
-  for (const trigger of [...HELD_TURN_TRIGGERS, ...QUOTE_TRIGGERS, ...REQUIREMENT_TRIGGERS, ...DORMANT_PLAN_TRIGGERS, ...SUBMISSION_TRIGGERS]) {
+  for (const trigger of [...HELD_TURN_TRIGGERS, ...QUOTE_TRIGGERS, ...REQUIREMENT_TRIGGERS, ...DORMANT_PLAN_TRIGGERS, ...SUBMISSION_TRIGGERS, ...WORK_QUESTION_TRIGGERS]) {
     db.run(`DROP TRIGGER IF EXISTS ${trigger.name}`);
     db.run(trigger.sql);
   }
+  lapseSupersededWorkQuestions(db);
 }
 
 /**

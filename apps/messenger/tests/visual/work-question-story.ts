@@ -57,6 +57,8 @@ export function workQuestionStory(locale: 'zh' | 'en') {
       host.addEventListener('fixture-defer', () => { holdResponse = true; });
       host.addEventListener('fixture-release', () => { release?.(); });
       host.addEventListener('fixture-catchup', () => { runtime.snapshot = { ...runtime.snapshot, messages: [persisted] }; });
+      // The job went on without an answer: the daemon lapses the card and pushes the message again.
+      host.addEventListener('fixture-lapse', () => { runtime.snapshot = { ...runtime.snapshot, messages: [{ ...message, control: { ...control, superseded_at: '2026-10-03T00:36:12.583Z' } }] }; });
       // A browser reload's authoritative saved message, not transient submitted input.
       host.addEventListener('fixture-reload-answer', () => { runtime.snapshot = { ...runtime.snapshot, messages: [answeredMessage(' saved on another device\n✅ ')] }; });
     },

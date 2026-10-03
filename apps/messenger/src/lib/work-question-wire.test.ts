@@ -9,7 +9,8 @@ const parse = (next: object) => api.parseSyncFrame(JSON.stringify({ type: "event
 test("durable work-question wire accepts actual unanswered and answered metadata, not fake routing or answer shapes", () => {
   expect(parse(control)).not.toBeNull();
   expect(parse({ ...control, answer: { body: "V3", at: "now", user_action_id: "request-1", inbox_seq: 1 } })).not.toBeNull();
-  for (const patch of [{ work_item_id: null }, { task_id: 3 }, { ticket_id: [] }, { question: " " }, { offer: ["continue"] },
+  expect(parse({ ...control, superseded_at: "2026-10-03T00:36:12.583Z" })).not.toBeNull();
+  for (const patch of [{ superseded_at: " " }, { superseded_at: 3 }, { superseded_at: null },{ work_item_id: null }, { task_id: 3 }, { ticket_id: [] }, { question: " " }, { offer: ["continue"] },
     { answer: { body: "V3", at: "now", user_action_id: "request-1", inbox_seq: -1 } },
     { answer: { body: 2, at: "now", user_action_id: "request-1", inbox_seq: 1 } }]) expect(parse({ ...control, ...patch })).toBeNull();
 });

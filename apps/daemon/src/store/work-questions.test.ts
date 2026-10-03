@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { Store } from ".";
 import { createWorkQuestion, answerWorkQuestion } from "./work-questions";
+import { migrateSchema } from "./migrate";
 import { KeyCache, type StoreContext } from "./shared";
 import { Transactions } from "./transactions";
 import { ENGINE_LEVELS } from "./schema-gate";
@@ -96,4 +97,74 @@ test("closed work and transcript-erased questions cannot resurrect or accept an 
   h.store.clearSessionMessages(question.session_id);
   expect(() => answerWorkQuestion(h.ctx, question.id, { body: "Answer", userActionId: "answer" })).toThrow();
   expect(h.store.db.query("SELECT id FROM inbox_items WHERE message_id = ?").all(question.id)).toEqual([]);
+});
+
+/** Where a card's `ask` notification stands, whether the card itself says it lapsed, and what the Dock badge counts. */
+function asks(h: ReturnType<typeof fixture>, ...ids: string[]) {
+  const state = (id: string) => {
+    const ask = h.store.db.query<{ action_state: string; resolution_reason: string | null }, [string]>(
+      "SELECT action_state, resolution_reason FROM notifications WHERE semantic_key = ?").get(`work_question:${id}`)!;
+    const control = h.store.getMessage(id).control;
+    return { ...ask, lapsed: control?.kind === "work_question" && typeof control.superseded_at === "string" };
+  };
+  return { cards: ids.map(state), badge: h.store.getNotificationSummary().attention_count };
+}
+const OPEN = { action_state: "open", resolution_reason: null, lapsed: false };
+const LAPSED = { action_state: "voided", resolution_reason: "superseded", lapsed: true };
+
+/** Another line wakes the Bot on the same job, and its segment ends as `reason` says. */
+function nextSegment(h: ReturnType<typeof fixture>, end: { reason: "blocked"; needsFromUser: string } | { reason: "done" }) {
+  const trigger = h.store.postMessage(h.group.id, { body: "Any news?" });
+  const turn = h.store.createTurn({ sessionId: h.group.id, botId: h.bot.bot.id, triggerMessageId: trigger.id, taskId: h.task.id });
+  h.store.finishWork({ turnId: turn.id, ...end });
+  h.store.setTurnStatus(turn.id, "completed");
+  // Seen, as in the conversation it was asked in: only a card still waiting on you holds the badge.
+  h.store.db.run("UPDATE notifications SET read_at = COALESCE(read_at, ?)", [new Date().toISOString()]);
+  return turn;
+}
+
+test("a card nobody answered stops holding the badge and says so once its job goes on without it", () => {
+  const h = fixture();
+  h.store.finishWork({ turnId: h.turn.id, reason: "blocked", needsFromUser: "Old question" });
+  h.store.setTurnStatus(h.turn.id, "completed");
+  const old = createWorkQuestion(h.ctx, { turnId: h.turn.id, body: "Old question" });
+  h.store.db.run("UPDATE notifications SET read_at = COALESCE(read_at, ?)", [new Date().toISOString()]);
+  expect(asks(h, old.id)).toEqual({ cards: [OPEN], badge: 1 });
+
+  const blocked = nextSegment(h, { reason: "blocked", needsFromUser: "New question" });
+  const latest = createWorkQuestion(h.ctx, { turnId: blocked.id, body: "New question" });
+  expect(asks(h, old.id, latest.id)).toEqual({ cards: [LAPSED, OPEN], badge: 1 });
+  expect(() => answerWorkQuestion(h.ctx, old.id, { body: "Old answer", userActionId: "old-answer" })).toThrow("current question");
+
+  nextSegment(h, { reason: "done" });
+  expect(h.store.db.query("SELECT state FROM work_items WHERE id = ?").get(h.turn.work_item_id!)).toEqual({ state: "idle" });
+  expect(asks(h, latest.id)).toEqual({ cards: [LAPSED], badge: 0 });
+});
+
+test("an answered card stays answered when its job goes on", () => {
+  const h = fixture();
+  h.store.finishWork({ turnId: h.turn.id, reason: "blocked", needsFromUser: "Choose" });
+  h.store.setTurnStatus(h.turn.id, "completed");
+  const question = createWorkQuestion(h.ctx, { turnId: h.turn.id, body: "Choose" });
+  answerWorkQuestion(h.ctx, question.id, { body: "Version 3", userActionId: "answer-1" });
+  nextSegment(h, { reason: "done" });
+  expect(asks(h, question.id)).toEqual({ cards: [{ action_state: "resolved", resolution_reason: "answered", lapsed: false }], badge: 0 });
+});
+
+test("cards an older build left waiting after their job went on lapse when the database opens", () => {
+  const h = fixture();
+  h.store.finishWork({ turnId: h.turn.id, reason: "blocked", needsFromUser: "Old question" });
+  h.store.setTurnStatus(h.turn.id, "completed");
+  const old = createWorkQuestion(h.ctx, { turnId: h.turn.id, body: "Old question" });
+  h.store.db.run("DROP TRIGGER work_question_asks_follow_work");
+  const blocked = nextSegment(h, { reason: "blocked", needsFromUser: "New question" });
+  const latest = createWorkQuestion(h.ctx, { turnId: blocked.id, body: "New question" });
+  h.store.db.run("UPDATE notifications SET read_at = COALESCE(read_at, ?)", [new Date().toISOString()]);
+  expect(asks(h, old.id, latest.id)).toEqual({ cards: [{ ...OPEN }, OPEN], badge: 2 });
+  migrateSchema(h.store.db);
+  expect(asks(h, old.id, latest.id)).toEqual({ cards: [LAPSED, OPEN], badge: 1 });
+  const lapsedAt = h.store.getMessage(old.id).control;
+  migrateSchema(h.store.db);
+  expect(h.store.getMessage(old.id).control).toEqual(lapsedAt);
+  expect(answerWorkQuestion(h.ctx, latest.id, { body: "New answer", userActionId: "new-answer" }).answered).toBe(true);
 });

@@ -5,6 +5,7 @@
  * waits on it) nor an approval. Your answer is a line of yours in the job's inbox: it queues the
  * work again, is held like any line while a stop of yours covers the work, and lifts nothing.
  */
+import type { Database } from "bun:sqlite";
 import { USER_MEMBER, type Message, type WorkAnswerResult, type WorkQuestionControl } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow } from "../ids";
@@ -111,4 +112,48 @@ export function answerWorkQuestion(ctx: StoreContext, messageId: string, input: 
       payload: { work_item_id: work.id, message_id: message.id, user_action_id: input.userActionId, inbox_seq: inbox.seq } });
     return { message: getMessage(ctx, message.id), work_item_id: work.id, inbox_state: getInboxItem(ctx, inbox.seq)?.state === "held" ? "held" : "queued", answered: true };
   });
+}
+
+const NOW_SQL = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
+/** A card nothing can answer any more says so, in place of its answer box. */
+const LAPSE_CARDS = `UPDATE messages SET control = json_set(control, '$.superseded_at', ${NOW_SQL})
+  WHERE json_valid(control) AND json_extract(control, '$.kind') = 'work_question'
+    AND json_type(control, '$.answer') IS NULL AND json_type(control, '$.superseded_at') IS NULL`;
+/** ...and its `ask` no longer counts toward the Dock badge. */
+const VOID_SUPERSEDED_ASKS = `UPDATE notifications SET action_state = 'voided', resolution_reason = 'superseded',
+  terminal_at = COALESCE(terminal_at, ${NOW_SQL}), revision = revision + 1`;
+/** The job is still blocked on this card: `card` is an SQL expression for the card's message id. */
+const STILL_WAITING_ON = (card: string) => `EXISTS (SELECT 1 FROM work_items w WHERE w.state = 'blocked' AND json_valid(w.waiting_on)
+  AND json_extract(w.waiting_on, '$.kind') = 'user' AND json_extract(w.waiting_on, '$.ref') = ${card})`;
+
+/**
+ * A card waits on you only while its job does. Once the job goes on without your answer (another
+ * line woke the Bot and its segment ended blocked on something new, or with nothing to ask; the
+ * supervisor or a close moved it), the card takes no answer any more: it would still offer a box
+ * that refuses what you type, and its `ask` would hold the Dock badge up. Whoever moves the job, an
+ * older build sharing the database included. Answering writes the answer and resolves the `ask`
+ * before it requeues the job, so that card stays answered.
+ */
+export const WORK_QUESTION_TRIGGERS: ReadonlyArray<{ name: string; sql: string }> = [
+  {
+    name: "work_question_asks_follow_work",
+    sql: `CREATE TRIGGER work_question_asks_follow_work AFTER UPDATE OF state, waiting_on ON work_items
+      WHEN OLD.state = 'blocked' AND json_valid(OLD.waiting_on) AND json_extract(OLD.waiting_on, '$.kind') = 'user'
+        AND NOT (NEW.state = 'blocked' AND NEW.waiting_on IS OLD.waiting_on)
+      BEGIN
+        ${LAPSE_CARDS} AND id = json_extract(OLD.waiting_on, '$.ref');
+        ${VOID_SUPERSEDED_ASKS}
+        WHERE semantic_key = 'work_question:' || json_extract(OLD.waiting_on, '$.ref') AND action_state = 'open';
+        UPDATE notification_counters SET val = val + 1 WHERE name = 'cleanup_revision';
+      END`,
+  },
+];
+
+/** The cards a build without the trigger left waiting after their job went on; run on every open, after it. */
+export function lapseSupersededWorkQuestions(db: Database): void {
+  db.run(`${LAPSE_CARDS} AND control LIKE '%"work_question"%' AND NOT ${STILL_WAITING_ON("messages.id")}`);
+  const voided = db.run(`${VOID_SUPERSEDED_ASKS}
+    WHERE kind = 'ask' AND action_state = 'open' AND semantic_key LIKE 'work_question:%'
+      AND NOT ${STILL_WAITING_ON("substr(notifications.semantic_key, length('work_question:') + 1)")}`);
+  if (voided.changes) db.run("UPDATE notification_counters SET val = val + 1 WHERE name = 'cleanup_revision'");
 }

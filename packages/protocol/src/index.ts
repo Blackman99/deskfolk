@@ -1365,6 +1365,8 @@ export type WorkQuestionControl = {
   /** This card has its own answer endpoint; this shared optional field is never written here. */
   acted?: ControlOffer[];
   answer?: { body: string; at: string; user_action_id: string; inbox_seq: number };
+  /** When the job went on without an answer (a later question, a segment that ended, a close): from then on the card takes none. Never on an answered card. */
+  superseded_at?: string;
 };
 
 export type WorkAnswerRequest = { body: string };

@@ -20,9 +20,11 @@
 	let error = $state<'failed' | 'unknown' | null>(null);
 	// Receipt feedback only: the persisted message, not this result, owns the answer/body/time.
 	let held = $state(false);
+	// The job went on without an answer; the daemon refuses one from then on, so there is no box to fill.
+	const lapsed = $derived(!control.answer && Boolean(control.superseded_at));
 
 	async function submit(): Promise<void> {
-		if (pending || disabled || readOnly || control.answer || !draft.trim()) return;
+		if (pending || disabled || readOnly || control.answer || lapsed || !draft.trim()) return;
 		pending = true;
 		error = null;
 		try {
@@ -40,8 +42,8 @@
 	}
 </script>
 
-<section class="work-question-card" aria-label={t.workQuestion.title}>
-	<div class="work-question-title">{t.workQuestion.title}</div>
+<section class="work-question-card" class:is-lapsed={lapsed} aria-label={lapsed ? t.workQuestion.lapsedTitle : t.workQuestion.title}>
+	<div class="work-question-title">{lapsed ? t.workQuestion.lapsedTitle : t.workQuestion.title}</div>
 	<div class="work-question-context">{t.workQuestion.context(botName, planName, ticketName)}</div>
 	<div class="work-question-text">{control.question}</div>
 	{#if control.answer}
@@ -51,6 +53,8 @@
 			<time datetime={control.answer.at}>{formatFullTimestamp(control.answer.at)}</time>
 			<p class="work-question-note" role="status">{held ? t.workQuestion.held : t.workQuestion.saved}</p>
 		</div>
+	{:else if lapsed}
+		<p class="work-question-note" role="status">{t.workQuestion.lapsed}</p>
 	{:else if readOnly}
 		<p class="work-question-note">{t.workQuestion.readOnly}</p>
 	{:else}
@@ -73,6 +77,7 @@
 	.work-question-title { font-size: var(--text-body); font-weight: 600; }
 	.work-question-context, time { font-size: var(--text-caption); color: var(--muted); overflow-wrap: anywhere; }
 	.work-question-text, .work-question-answer { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--text-body); line-height: 1.6; }
+	.is-lapsed .work-question-title, .is-lapsed .work-question-text { color: var(--ink-secondary); }
 	.work-question-answer-label { display: grid; gap: 6px; color: var(--ink-secondary); font-size: var(--text-caption); }
 	.work-question-saved { display: grid; gap: 6px; border-top: 1px solid var(--line); padding-top: 10px; }
 	.work-question-note, .work-question-error { margin: 0; font-size: var(--text-caption); line-height: 1.5; color: var(--muted); }

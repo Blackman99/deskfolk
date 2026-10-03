@@ -10,6 +10,7 @@ export function validWorkQuestionPayload(value: unknown): boolean {
   const nonempty = (value: unknown): value is string => typeof value === "string" && Boolean(value.trim());
   if (!nonempty(row.work_item_id) || !nonempty(row.task_id) || !(row.ticket_id === null || nonempty(row.ticket_id))
     || !nonempty(row.question) || !Array.isArray(row.offer) || row.offer.length !== 0) return false;
+  if (row.superseded_at !== undefined && !nonempty(row.superseded_at)) return false;
   if (row.answer === undefined) return true;
   if (!row.answer || typeof row.answer !== "object" || Array.isArray(row.answer)) return false;
   const answer = row.answer as Record<string, unknown>;

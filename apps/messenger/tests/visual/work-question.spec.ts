@@ -49,3 +49,26 @@ for (const mode of ['desktop', 'phone'] as const) {
     expect(errors).toEqual([]);
   });
 }
+
+for (const mode of ['desktop', 'phone'] as const) {
+  test(`actual ChatStage ${mode}: a card whose job went on drops its answer box and says why`, async ({ page }, testInfo) => {
+    const phone = mode === 'phone';
+    await page.setViewportSize(phone ? { width: 390, height: 844 } : { width: 1100, height: 900 });
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await page.goto(`?story=${phone ? 'work-question-en' : 'work-question'}&theme=dark`);
+    await expect(page.locator('html')).toHaveAttribute('data-ready', 'yes');
+    const card = page.locator('[data-message-id="fixture-question"] .work-question-card');
+    await card.locator('textarea').fill('Too late');
+    await page.locator('#story').dispatchEvent('fixture-lapse');
+    await expect(card.locator('.work-question-title')).toHaveText(phone ? 'This work was waiting for your answer' : '工作曾等你回答');
+    await expect(card.locator('[role="status"]')).toHaveText(phone ? 'The work went on without this answer; this card no longer takes one.' : '这件事没等这个回答就往下走了，这张卡不再收回答。');
+    await expect(card.locator('.work-question-text')).toHaveText('片长要多少？\nWhich aspect ratio? 🦊');
+    await expect(card.locator('button,textarea')).toHaveCount(0);
+    const rect = await card.boundingBox();
+    expect(rect!.x + rect!.width).toBeLessThanOrEqual(phone ? 390 : 1100);
+    await card.screenshot({ path: testInfo.outputPath(`work-question-${mode}-lapsed.png`) });
+    expect(await page.evaluate(() => JSON.parse(document.body.dataset.workAnswerCalls!))).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+}

@@ -1073,6 +1073,8 @@ const zh = {
     failed: "回答未保存。工作可能已关闭、规划已删除或 Bot 已归档；你的草稿已保留。",
     unknown: "保存结果尚未确认；请用原回答重试，不会自动发送。",
     readOnly: "这个会话只能查看；请到有你在场的未归档会话中回答。",
+    lapsedTitle: "工作曾等你回答",
+    lapsed: "这件事没等这个回答就往下走了，这张卡不再收回答。",
   },
   control: {
     hintStop: (who: string) => `这句像是要停下${who}：`,
@@ -2772,6 +2774,8 @@ const en: CopyShape<typeof zh> = {
     failed: "Answer not saved. The work may be closed, the plan deleted, or the Bot archived; your draft is kept.",
     unknown: "The save is unconfirmed; retry the original answer explicitly. Nothing is sent automatically.",
     readOnly: "This conversation is read-only; answer in an active conversation where you are present.",
+    lapsedTitle: "This work was waiting for your answer",
+    lapsed: "The work went on without this answer; this card no longer takes one.",
   },
   control: {
     hintStop: (who: string) => `This reads like stopping ${who}:`,

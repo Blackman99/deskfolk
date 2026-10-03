@@ -50,3 +50,26 @@ test("unconfirmed receipt retains the exact draft and requires an explicit retry
     expect(calls).toEqual([" exact\n🦊 ", " exact\n🦊 "]);
   } finally { h.close(); }
 });
+
+test("a card whose job went on without an answer offers no box and says why, live and on reload", () => {
+  const props = reactive({ control, botName: "Director", planName: "Trailer", ticketName: null, t,
+    onAnswer: async (): Promise<WorkAnswerResult> => { throw new Error("a lapsed card sends nothing"); } });
+  const h = render(WorkQuestionCard, props);
+  try {
+    expect(h.host.querySelector("textarea")).not.toBeNull();
+    fill(h.host.querySelector("textarea"), "Too late");
+    props.control = { ...control, superseded_at: "2026-10-03T00:36:12.583Z" }; flushSync();
+    expect(h.host.querySelector(".work-question-title")?.textContent).toBe(t.workQuestion.lapsedTitle);
+    expect(h.host.querySelector(".work-question-text")?.textContent).toBe("选哪版？");
+    expect(h.host.querySelector('[role="status"]')?.textContent).toBe(t.workQuestion.lapsed);
+    expect(h.host.querySelector("textarea,button")).toBeNull();
+  } finally { h.close(); }
+  // An answer wins: the daemon never lapses an answered card, and the saved answer is what to show.
+  const answered: WorkQuestionControl = { ...control, superseded_at: "2026-10-03T00:36:12.583Z",
+    answer: { body: "V3", at: "2026-10-01T02:00:00Z", user_action_id: "a", inbox_seq: 1 } };
+  const saved = render(WorkQuestionCard, { control: answered, botName: "Director", planName: "Trailer", ticketName: null, t, onAnswer: async () => { throw new Error("unused"); } });
+  try {
+    expect(saved.host.querySelector(".work-question-title")?.textContent).toBe(t.workQuestion.title);
+    expect(saved.host.querySelector(".work-question-answer")?.textContent).toBe("V3");
+  } finally { saved.close(); }
+});
