@@ -177,20 +177,41 @@ function completionsUrl(baseUrl: string): string {
   return `${baseUrl.replace(/\/$/, "")}/chat/completions`;
 }
 
+/**
+ * The loop as the endpoint takes it. Text that is only whitespace is left out: Claude refuses a
+ * request holding such a text block outright ("text content blocks must contain non-whitespace
+ * text"), and a model that answers "\n\n" twice in a row put one in the loop, so the next step of
+ * the turn was refused. A user, system or tool-less assistant line with nothing in it is dropped,
+ * an assistant line with tool calls keeps them with null content, and a tool result stays as it
+ * is (it answers a call, and endpoints take an empty one).
+ */
 function toApiMessages(messages: ChatMessage[]): unknown[] {
-  return messages.map((m) => {
-    const out: Record<string, unknown> = { role: m.role, content: m.content ?? "" };
-    if (m.role === "assistant" && m.tool_calls?.length) {
-      out.tool_calls = m.tool_calls.map((c) => ({
+  const out: unknown[] = [];
+  for (const m of messages) {
+    const content = m.role === "tool" ? (m.content ?? "") : withoutBlankText(m.content);
+    const calls = m.role === "assistant" && m.tool_calls?.length ? m.tool_calls : null;
+    if (content === null && !calls && m.role !== "tool") continue;
+    const msg: Record<string, unknown> = { role: m.role, content: content ?? "" };
+    if (calls) {
+      msg.tool_calls = calls.map((c) => ({
         id: c.id,
         type: "function",
         function: { name: c.name, arguments: c.arguments },
       }));
-      if (!m.content) out.content = null;
+      if (content === null) msg.content = null;
     }
-    if (m.role === "tool") out.tool_call_id = m.tool_call_id;
-    return out;
-  });
+    if (m.role === "tool") msg.tool_call_id = m.tool_call_id;
+    out.push(msg);
+  }
+  return out;
+}
+
+/** The content with whitespace-only text dropped; null when nothing is left. */
+function withoutBlankText(content: ChatMessage["content"]): string | ChatContentPart[] | null {
+  if (content == null) return null;
+  if (typeof content === "string") return content.trim() ? content : null;
+  const parts = content.filter((part) => part.type !== "text" || part.text.trim() !== "");
+  return parts.length ? parts : null;
 }
 
 /**

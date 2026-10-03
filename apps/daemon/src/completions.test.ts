@@ -456,6 +456,46 @@ describe("output caps and failure shapes", () => {
     return { body, state };
   }
 
+  /**
+   * Claude refuses a whole request over one whitespace-only text block. A model that answered
+   * "\n\n" twice in a row left one in the loop, and the next step of the turn was refused.
+   */
+  test("whitespace-only text never reaches the endpoint, tool results and tool calls stay paired", async () => {
+    const sent: Array<{ messages: Array<Record<string, unknown>> }> = [];
+    const client = createCompletionsClient({
+      fetch: async (_url, init) => {
+        sent.push(JSON.parse(String(init?.body)) as { messages: Array<Record<string, unknown>> });
+        return sse(textSse("ok"));
+      },
+    });
+    await client.complete({
+      ...request("http://127.0.0.1/v1"),
+      messages: [
+        { role: "system", content: "rules" },
+        { role: "user", content: "go" },
+        { role: "assistant", content: "\n\n", tool_calls: [{ id: "call_1", name: "shell", arguments: "{}" }] },
+        { role: "tool", tool_call_id: "call_1", content: "" },
+        { role: "assistant", content: " \n" },
+        { role: "user", content: "\n" },
+        { role: "user", content: [{ type: "text", text: "  " }, { type: "image_url", image_url: { url: "data:image/png;base64,AA==" } }] },
+        { role: "user", content: [{ type: "text", text: " " }] },
+        { role: "user", content: "next step?" },
+      ],
+    });
+    expect(sent[0]!.messages).toEqual([
+      { role: "system", content: "rules" },
+      { role: "user", content: "go" },
+      {
+        role: "assistant",
+        content: null,
+        tool_calls: [{ id: "call_1", type: "function", function: { name: "shell", arguments: "{}" } }],
+      },
+      { role: "tool", tool_call_id: "call_1", content: "" },
+      { role: "user", content: [{ type: "image_url", image_url: { url: "data:image/png;base64,AA==" } }] },
+      { role: "user", content: "next step?" },
+    ]);
+  });
+
   test("each attempt sends the hop's max_tokens", async () => {
     const sent: Array<Record<string, unknown>> = [];
     const client = createCompletionsClient({
