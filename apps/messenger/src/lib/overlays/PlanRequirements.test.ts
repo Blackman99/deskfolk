@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { flushSync } from "svelte";
 import type { PlanRequirement, RequirementActionRequest, TaskDetail } from "@real-bot/protocol";
 import PlanRequirements from "./PlanRequirements.svelte";
 import { copyFor } from "../copy.ts";
@@ -142,4 +143,53 @@ test("nothing written down yet says so", () => {
   const view = open(aDetail([]));
   expect(view.host.querySelector(".plan-reqs-empty")?.textContent).toBe("还没记下要求。");
   expect(view.host.querySelector(".plan-reqs-count")).toBeNull();
+});
+
+test("an entry held to one ticket names it as a button when the board can show tickets; a picked ticket lights its own and dims another's", () => {
+  const detail = {
+    ...aDetail([
+      anEntry({ id: "plan", seq: 1 }),
+      anEntry({ id: "cut", seq: 2, quote: "粗剪先给我看", scope: "ticket", ticket_id: "tk-1" }),
+      anEntry({ id: "music", seq: 3, quote: "配乐要无版权", scope: "ticket", ticket_id: "tk-2" }),
+    ]),
+    tickets: [
+      { id: "tk-1", seq: 1, title: "粗剪" },
+      { id: "tk-2", seq: 2, title: "配乐" },
+    ] as never,
+  };
+  const shown: string[] = [];
+  const props = reactive({
+    api: null,
+    detail,
+    t,
+    onSaved: () => {},
+    onJump: () => {},
+    selectedTicket: null as string | null,
+    onShowTicket: (id: string) => shown.push(id),
+  });
+  const view = render(PlanRequirements, props as never);
+  const row = (id: string) => view.host.querySelector<HTMLElement>(`[data-requirement="${id}"]`)!;
+  // Over the plan: plain words. Held to a ticket: that ticket, pressable.
+  expect(row("plan").querySelector(".plan-req-ticket")).toBeNull();
+  expect(row("plan").textContent).toContain(t.plan.requirements.scope.plan);
+  const music = row("music").querySelector<HTMLButtonElement>(".plan-req-ticket")!;
+  expect(music.textContent).toBe(t.plan.requirements.scope.ticket("02 配乐"));
+  click(music);
+  expect(shown).toEqual(["tk-2"]);
+  // Nothing picked, nothing stands out.
+  expect(view.host.querySelector(".is-ticket-mine, .is-ticket-other")).toBeNull();
+  props.selectedTicket = "tk-1";
+  flushSync();
+  expect(row("cut").classList.contains("is-ticket-mine")).toBe(true);
+  expect(row("music").classList.contains("is-ticket-other")).toBe(true);
+  expect(row("plan").className).not.toContain("is-ticket");
+  view.close();
+});
+
+test("without a way to show tickets, an entry's ticket stays plain words", () => {
+  const detail = { ...aDetail([anEntry({ id: "cut", scope: "ticket", ticket_id: "tk-1" })]), tickets: [{ id: "tk-1", seq: 1, title: "粗剪" }] as never };
+  const view = render(PlanRequirements, reactive({ api: null, detail, t, onSaved: () => {}, onJump: () => {} }) as never);
+  expect(view.host.querySelector(".plan-req-ticket")).toBeNull();
+  expect(view.host.textContent).toContain(t.plan.requirements.scope.ticket("01 粗剪"));
+  view.close();
 });

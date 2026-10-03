@@ -9,6 +9,7 @@
 		requirementSource,
 		requirementTimes
 	} from './plan-requirements.ts';
+	import { requirementTicket, ticketBinding } from './plan-board.ts';
 
 	interface Props {
 		api: MessengerApi | null;
@@ -17,6 +18,10 @@
 		/** The plan comes back whole after a press; the parent replaces its copy. */
 		onSaved: (detail: TaskDetail) => void;
 		onJump: (sessionId: string, messageId: string) => void;
+		/** The ticket picked on the board: entries held to it alone stand out, those held to another dim. */
+		selectedTicket?: string | null;
+		/** An entry held to one ticket names it; pressing the name shows that ticket. Absent, the name is plain text. */
+		onShowTicket?: (ticketId: string) => void;
 	}
 
 	/**
@@ -25,7 +30,7 @@
 	 * inherits from the rest of its conversation; what waits for you; the old rules nobody found your
 	 * words for. Each press goes to the daemon and the plan comes back.
 	 */
-	let { api, detail, t, onSaved, onJump }: Props = $props();
+	let { api, detail, t, onSaved, onJump, selectedTicket = null, onShowTicket }: Props = $props();
 
 	const groups = $derived(requirementGroups(detail.requirements ?? []));
 	const total = $derived((detail.requirements ?? []).filter((entry) => !entry.excluded && entry.status === 'open').length);
@@ -58,7 +63,9 @@
 
 {#snippet row(entry: PlanRequirement)}
 	{@const times = requirementTimes(entry, t.plan.requirements)}
-	<li class="plan-req" data-requirement={entry.id}>
+	{@const ownTicket = requirementTicket(entry)}
+	{@const binding = ticketBinding(ownTicket, selectedTicket)}
+	<li class="plan-req" class:is-ticket-mine={binding === 'mine'} class:is-ticket-other={binding === 'other'} data-requirement={entry.id}>
 		<div class="plan-req-line">
 			<span class="plan-req-seq mono">R-{entry.seq}</span>
 			<span class="plan-req-quote">「{entry.quote}」</span>
@@ -76,7 +83,11 @@
 				<span>{requirementSource(entry, t.plan.requirements)}</span>
 			{/if}
 			{#if times}<span class="plan-req-times">{times}</span>{/if}
-			<span>{requirementScope(entry, detail, t.plan.requirements)}</span>
+			{#if ownTicket && onShowTicket && detail.tickets.some((ticket) => ticket.id === ownTicket)}
+				<button type="button" class="plan-req-ticket" onclick={() => onShowTicket(ownTicket)}>{requirementScope(entry, detail, t.plan.requirements)}</button>
+			{:else}
+				<span>{requirementScope(entry, detail, t.plan.requirements)}</span>
+			{/if}
 		</div>
 		{#if api}
 			{@const actions = requirementActions(entry, detail)}
@@ -285,6 +296,34 @@
 
 	.plan-req-jump:hover {
 		text-decoration: underline;
+	}
+
+	/* Where an entry held to one ticket says which: pressing it shows that ticket. */
+	.plan-req-ticket {
+		border: none;
+		background: none;
+		padding: 0;
+		color: var(--accent);
+		font: inherit;
+		text-align: left;
+		cursor: pointer;
+	}
+
+	.plan-req-ticket:hover {
+		text-decoration: underline;
+	}
+
+	/* A ticket is picked: what is held to it alone stands out, what is held to another steps back. */
+	.plan-req.is-ticket-mine {
+		margin-inline: -6px;
+		padding: 3px 6px;
+		border-radius: var(--radius-xs);
+		background: var(--accent-tint);
+		box-shadow: inset 2px 0 0 var(--accent);
+	}
+
+	.plan-req.is-ticket-other {
+		opacity: 0.45;
 	}
 
 	.plan-req-actions {

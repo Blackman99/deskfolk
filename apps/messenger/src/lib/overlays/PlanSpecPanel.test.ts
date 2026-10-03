@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { flushSync } from "svelte";
-import type { AcceptanceCheck, AcceptanceCheckRun, PlanSpec, TaskDetail, TaskSpecRevision } from "@real-bot/protocol";
+import type { AcceptanceCheck, AcceptanceCheckRun, PlanSpec, TaskDetail, TaskSpecRevision, TicketWithArtifacts } from "@real-bot/protocol";
 import PlanSpecPanel from "./PlanSpecPanel.svelte";
 import { copyFor } from "../copy.ts";
 import { buttonByText, click, fill, render } from "../test-render.ts";
@@ -639,5 +639,85 @@ test("without an api, check pills still show but their actions and the run/add b
   click(acceptance.querySelector(".check-pill"));
   expect(acceptance.querySelector(".check-desc")).not.toBeNull();
   expect(acceptance.querySelector(".check-actions")).toBeNull();
+  view.close();
+});
+
+function aTicketRow(over: Partial<TicketWithArtifacts> = {}): TicketWithArtifacts {
+  return {
+    id: "tk-1",
+    task_id: "task-1",
+    seq: 1,
+    title: "收集资料",
+    slug: "01-shou-ji",
+    dir: "work/task-1/01-shou-ji",
+    spec: "",
+    status: "doing",
+    worker: null,
+    created_at: "2026-09-20T00:00:00.000Z",
+    updated_at: "2026-09-21T00:00:00.000Z",
+    closed_at: null,
+    artifacts: [],
+    ...over,
+  };
+}
+
+test("a picked ticket heads the spec it meets; a check filed under another ticket steps back and names it; the tickets' states open the list", () => {
+  const shownTickets: string[] = [];
+  const statuses: string[] = [];
+  const detail = aDetail({
+    tickets: [aTicketRow(), aTicketRow({ id: "tk-2", seq: 2, title: "写结论", status: "todo" })],
+    ticket_counts: { todo: 1, doing: 1, review: 0, done: 0, parked: 0 },
+    checks: [aCheck({ id: "c-02", ticket_id: "tk-2" }), aCheck({ id: "c-plan", item: "有结论" })],
+  });
+  const props = reactive({
+    api: null,
+    detail,
+    t,
+    onSaved: () => {},
+    onConflict: () => {},
+    onJump: () => {},
+    selectedTicket: "tk-1" as string | null,
+    onShowTicket: (id: string) => shownTickets.push(id),
+    onClearTicket: () => {
+      props.selectedTicket = null;
+    },
+    onShowTickets: (status: string) => statuses.push(status),
+  });
+  const view = render(PlanSpecPanel, props as never);
+  const strip = view.host.querySelector(".plan-spec-focus")!;
+  expect(strip.querySelector(".plan-spec-focus-label")?.textContent).toBe(t.plan.links.focus);
+  expect(strip.querySelector(".plan-spec-ticket-ref")?.textContent).toBe("01");
+  expect(strip.querySelector(".plan-spec-focus-title")?.textContent).toBe("收集资料");
+  expect(strip.querySelector(".plan-spec-focus-hint")?.textContent).toBe(t.plan.links.focusHint);
+  // It sits above the goal: the spec is read against it.
+  expect(view.host.querySelector(".plan-spec-body")?.firstElementChild?.classList.contains("plan-spec-focus")).toBe(true);
+  const checks = [...view.host.querySelectorAll<HTMLElement>(".plan-spec-check")];
+  expect(checks.map((check) => check.querySelector(".plan-spec-ticket-ref")?.textContent ?? null)).toEqual(["02", null]);
+  expect(checks[0]?.classList.contains("is-ticket-other")).toBe(true);
+  expect(checks[1]?.className).not.toContain("is-ticket");
+  click(checks[0]?.querySelector("button.plan-spec-ticket-ref"));
+  click(strip.querySelector(".plan-spec-focus-ticket"));
+  expect(shownTickets).toEqual(["tk-2", "tk-1"]);
+  // Above the written progress, where the tickets themselves stand.
+  const states = [...view.host.querySelectorAll<HTMLButtonElement>(".plan-spec-ticket-state")];
+  expect(states.map((state) => state.textContent?.replace(/\s+/g, ""))).toEqual(["待做1", "进行中1"]);
+  expect(view.host.querySelector(".plan-spec-ticket-states + .plan-spec-section.is-progress")).not.toBeNull();
+  click(states[0]);
+  expect(statuses).toEqual(["todo"]);
+  // The strip puts the ticket down; nothing steps back any more.
+  click(strip.querySelector(".plan-spec-focus-clear"));
+  flushSync();
+  expect(view.host.querySelector(".plan-spec-focus")).toBeNull();
+  expect(view.host.querySelector(".is-ticket-other")).toBeNull();
+  view.close();
+});
+
+test("a plan without tickets has no ticket states, and a picked ticket that is not this plan's draws no strip", () => {
+  const view = render(
+    PlanSpecPanel,
+    reactive({ api: null, detail: aDetail({ ticket_counts: { todo: 0, doing: 0, review: 0, done: 0, parked: 0 } }), t, onSaved: () => {}, onConflict: () => {}, onJump: () => {}, selectedTicket: "elsewhere" }) as never,
+  );
+  expect(view.host.querySelector(".plan-spec-ticket-states")).toBeNull();
+  expect(view.host.querySelector(".plan-spec-focus")).toBeNull();
   view.close();
 });

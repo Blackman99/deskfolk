@@ -17,16 +17,20 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
         await expect(page.locator('.ticket-row .ticket-parts')).toHaveText([...parts]);
         // The stage label keeps the colour of the status it reads as.
         await expect(page.locator('.ticket-row').nth(1).locator('.ticket-status')).toHaveClass(/is-doing/);
-        // Each row has the reviewer's menu beside the status menu; the first shows its reviewer.
+        // Unpicked, a row has its status menu only and says who reviews it; picked, the reviewer's menu opens below.
+        await expect(page.locator('.ticket-row').first().locator('.real-select-trigger')).toHaveCount(1);
+        await expect(page.locator('.ticket-row').first().locator('.ticket-meta-reviewer')).toContainText('审片员');
+        await page.locator('.ticket-row').first().locator('.ticket-main').click();
         await expect(page.locator('.ticket-row').first().locator('.real-select-trigger')).toHaveCount(2);
         await expect(page.locator('.ticket-row').first().locator('.ticket-reviewer-wrap')).toContainText('审片员');
+        await page.locator('.ticket-row').nth(1).locator('.ticket-main').click();
         await page.locator('.ticket-row').nth(1).locator('.ticket-reviewer-wrap .real-select-trigger').click();
         await page.locator('.ticket-row').nth(1).locator('.real-select-option', { hasText: '审片员' }).click();
         await expect.poll(() => page.evaluate(() => JSON.parse(document.body.dataset.ticketPatches ?? '[]'))).toEqual([{ id: 't2', body: { reviewer_bot_id: 'bot-2', if_revision: 1 } }]);
         // Nothing spills sideways, at either width.
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
         expect(overflow).toBeLessThanOrEqual(0);
-        for (const row of await page.locator('.ticket-line').all()) {
+        for (const row of await page.locator('.ticket-head, .ticket-settings').all()) {
           const box = await row.boundingBox();
           expect(box!.x + box!.width).toBeLessThanOrEqual(width);
         }

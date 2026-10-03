@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### The plan and its tickets point at each other on the board
+
+- A picked ticket lists what it has to meet — the plan's Done when lines, rules and what you asked for, as every ticket does, plus the requests and checks held to it alone — and "See in the plan" opens the plan read against it: the ticket is named at the top and lines held to other tickets dim. In the plan, a request or check held to one ticket names it and shows it in the ticket list; a row above Progress counts the tickets by status and opens the list on one, so the organizer's written progress is no longer mistaken for the tickets' state.
+- A ticket card is about half as tall: its status label on the title line is the status menu, who is on it, who has the ball and what it waits for share one line, its files and latest turn are plain links, and the reviewer, model and dependency menus unfold, aligned under their labels, only under the picked ticket.
+
 ### A model ladder, and stepping up inside a turn (engine level 7, opt-in)
 
 - Settings → Models has a Model ladder card: order a few models weaker to stronger, and a job that keeps failing at its model's top thinking level moves one model up it on its next turn. Your pin and a ticket's model are never switched. See [ADR 0054](docs/adr/0054-model-ladder-and-in-turn-triggers.md).

@@ -160,8 +160,10 @@ test("rows render in seq order with tag, title, status, and worker", () => {
   const rows = [...view.host.querySelectorAll(".ticket-row")];
   expect(rows.map((r) => r.querySelector(".ticket-title")?.textContent)).toEqual(["收集资料", "画分镜"]);
   expect(rows.map((r) => r.querySelector(".ticket-tag")?.textContent)).toEqual(["01", "02"]);
-  expect(rows[0]?.querySelector(".ticket-status")?.textContent).toBe(t.plan.ticketStatus.doing);
-  expect(rows[1]?.querySelector(".ticket-status")?.textContent).toBe(t.plan.ticketStatus.review);
+  // The status is the row's own menu, its face the status.
+  expect(rows[0]?.querySelector(".ticket-status")?.textContent?.trim()).toBe(t.plan.ticketStatus.doing);
+  expect(rows[1]?.querySelector(".ticket-status")?.textContent?.trim()).toBe(t.plan.ticketStatus.review);
+  expect(rows[0]?.querySelector(".ticket-head .real-select-trigger")).not.toBeNull();
   expect(rows[0]?.querySelector(".ticket-who-text")?.textContent).toBe(t.plan.worker("制片"));
   expect(rows[1]?.querySelector(".ticket-who-text")?.textContent).toBe(t.plan.nobody);
   view.close();
@@ -178,7 +180,7 @@ test("a stage the status does not say shows in its place, with how many of the t
     }),
   });
   const rows = [...view.host.querySelectorAll(".ticket-row")];
-  expect(rows.map((r) => r.querySelector(".ticket-status")?.textContent)).toEqual([
+  expect(rows.map((r) => r.querySelector(".ticket-status")?.textContent?.trim())).toEqual([
     t.plan.ticketStage.in_review,
     t.plan.ticketStage.rework,
     t.plan.ticketStatus.review,
@@ -194,9 +196,14 @@ test("from level 5 a ticket's reviewer is set on its row, offering only Bots of 
   const outsider = aBot({ id: "bot-3", name: "别处的" });
   const view = open({ bots: [writer, other, outsider], detail: aDetail({ submissions_on: true, reviewer_ids: ["bot-1", "bot-2"], tickets: [aTicket({ id: "t1", worker: "bot-1", reviewer_bot_id: null })] }) });
   const row = rowFor(view.host, "收集资料");
+  // Unpicked, the row has its status menu only; picked, the reviewer's menu opens below it.
+  expect(row.querySelectorAll(".real-select-trigger")).toHaveLength(1);
+  click(row.querySelector(".ticket-main"));
+  flushSync();
   const menus = row.querySelectorAll(".real-select-trigger");
   expect(menus).toHaveLength(2);
-  click(menus[0]);
+  expect(row.querySelector(".ticket-settings .ticket-setting-label")?.textContent).toBe(t.plan.reviewer);
+  click(menus[1]);
   const options = [...row.querySelectorAll<HTMLElement>(".real-select-option")].map((el) => el.textContent?.trim());
   expect(options).toEqual([t.plan.noReviewer, "审片"]);
   click([...row.querySelectorAll<HTMLElement>(".real-select-option")].find((el) => el.textContent?.includes("审片"))!);
@@ -205,7 +212,10 @@ test("from level 5 a ticket's reviewer is set on its row, offering only Bots of 
   view.close();
 
   const below = open({ detail: aDetail({ tickets: [aTicket({ id: "t1" })] }) });
+  click(rowFor(below.host, "收集资料").querySelector(".ticket-main"));
+  flushSync();
   expect(rowFor(below.host, "收集资料").querySelectorAll(".real-select-trigger")).toHaveLength(1);
+  expect(below.host.querySelector(".ticket-settings")).toBeNull();
   below.close();
 });
 
@@ -346,10 +356,16 @@ test("from level 4 an open ticket says who has the ball and what it waits for; b
     ],
   });
   const view = open({ detail });
-  const balls = [...view.host.querySelectorAll(".ticket-row")].map((row) => row.querySelector(".ticket-ball")?.textContent?.replace(/\s+/g, " ").trim() ?? null);
-  expect(balls).toEqual([(t.plan.ball.owner as (name: string) => string)("制片"), `${t.plan.ball.ceiling} ${t.plan.dependsOn("#01")}`, null]);
+  const rows = [...view.host.querySelectorAll(".ticket-row")];
+  // In the line under the title, after who is on it.
+  const balls = rows.map((row) => row.querySelector(".ticket-meta .ticket-ball")?.textContent?.trim() ?? null);
+  const waits = rows.map((row) => row.querySelector(".ticket-meta .ticket-depends")?.textContent?.trim() ?? null);
+  expect(balls).toEqual([(t.plan.ball.owner as (name: string) => string)("制片"), t.plan.ball.ceiling, null]);
+  expect(waits).toEqual([null, t.plan.dependsOn("#01"), null]);
   view.close();
   const below = open({ detail: aDetail({ tickets: [aTicket({ id: "t1" }), aTicket({ id: "t2", seq: 2 })] }) });
+  click(below.host.querySelector(".ticket-main"));
+  flushSync();
   expect(below.host.querySelector(".ticket-ball")).toBeNull();
   expect(below.host.querySelector(".ticket-depends-toggle")).toBeNull();
   below.close();
@@ -359,6 +375,9 @@ test("the dependency editor sets which tickets one waits for", async () => {
   const detail = aDetail({ supervision_on: true, tickets: [aTicket({ id: "t1", seq: 1 }), aTicket({ id: "t2", seq: 2, title: "画分镜", depends_on: [] })] });
   const view = open({ detail });
   const row = [...view.host.querySelectorAll(".ticket-row")][1]!;
+  click(row.querySelector(".ticket-main"));
+  flushSync();
+  expect(row.querySelector(".ticket-depends-toggle")?.textContent?.trim()).toBe(t.plan.dependsNothing);
   click(row.querySelector(".ticket-depends-toggle"));
   flushSync();
   const box = row.querySelector<HTMLInputElement>(".ticket-depends-option input")!;
@@ -373,6 +392,8 @@ test("a ticket that already waits on this one cannot be chosen: it would make a 
   const detail = aDetail({ supervision_on: true, tickets: [aTicket({ id: "t1", seq: 1 }), aTicket({ id: "t2", seq: 2, depends_on: ["t1"] }), aTicket({ id: "t3", seq: 3, depends_on: ["t2"] })] });
   const view = open({ detail });
   const first = [...view.host.querySelectorAll(".ticket-row")][0]!;
+  click(first.querySelector(".ticket-main"));
+  flushSync();
   click(first.querySelector(".ticket-depends-toggle"));
   flushSync();
   const options = [...first.querySelectorAll<HTMLLabelElement>(".ticket-depends-option")];
@@ -383,6 +404,11 @@ test("a ticket that already waits on this one cannot be chosen: it would make a 
 test("a reviewer no longer in the plan's conversation still reads by name in its menu", () => {
   const reviewer = aBot({ id: "bot-9", name: "审片员" });
   const view = open({ detail: aDetail({ submissions_on: true, reviewer_ids: [], tickets: [aTicket({ reviewer_bot_id: "bot-9" })] }), bots: [writer, reviewer] });
+  // Unpicked, the line says who reviews it.
+  expect(view.host.querySelector(".ticket-meta .ticket-meta-reviewer")?.textContent).toBe(t.plan.reviewedBy("审片员"));
+  click(view.host.querySelector(".ticket-main"));
+  flushSync();
+  expect(view.host.querySelector(".ticket-meta-reviewer")).toBeNull();
   expect(view.host.querySelector(".ticket-reviewer-wrap")?.textContent).toContain("审片员");
   expect(view.host.querySelector(".ticket-reviewer-wrap")?.textContent).not.toContain("bot-9");
   view.close();
@@ -397,6 +423,8 @@ test("below level 5 a ticket waiting on you is one to mark done, not an approval
   staged.close();
   const view = open({ detail: aDetail({ supervision_on: true, tickets: [aTicket({ id: "t1", seq: 1, depends_on: ["t2"] }), aTicket({ id: "t2", seq: 2, depends_on: ["t1"] }), aTicket({ id: "t3", seq: 3, status: "parked" })] }) });
   const first = [...view.host.querySelectorAll(".ticket-row")][0]!;
+  click(first.querySelector(".ticket-main"));
+  flushSync();
   click(first.querySelector(".ticket-depends-toggle"));
   flushSync();
   const options = [...first.querySelectorAll<HTMLLabelElement>(".ticket-depends-option")];
@@ -410,12 +438,90 @@ test("from level 7 a ticket's model is set from the endpoints' models, or put ba
   const view = open({ detail: aDetail({ routing_on: true, tickets: [aTicket({ model_override: { provider_id: "p-1", model: "gemini" } })] }) });
   view.props.providers = providers;
   flushSync();
+  expect(view.host.querySelector(".ticket-meta .ticket-meta-model")?.textContent).toBe(t.plan.onModel("gemini"));
+  click(view.host.querySelector(".ticket-main"));
+  flushSync();
   const wrap = view.host.querySelector(".ticket-model-wrap");
   expect(wrap?.textContent).toContain("gemini · 主端点");
   view.close();
   const below = open({ detail: aDetail({ tickets: [aTicket()] }) });
   below.props.providers = providers;
   flushSync();
+  click(below.host.querySelector(".ticket-main"));
+  flushSync();
   expect(below.host.querySelector(".ticket-model-wrap")).toBeNull();
   below.close();
+});
+
+test("the picked ticket says what it meets: nothing yet on a plan with no spec, ledger or checks; its button opens the spec", () => {
+  let specOpened = 0;
+  const props = reactive({
+    api: null,
+    detail: aDetail({ tickets: [aTicket(), aTicket({ id: "ticket-2", seq: 2, title: "写结论", status: "todo" })] }),
+    nodes: [],
+    bots: [writer],
+    youLabel: "你",
+    deletedLabel: "已删除",
+    t,
+    selectedId: "ticket-1" as string | null,
+    onSelect: () => {},
+    onJump: () => {},
+    onOpenArtifacts: () => {},
+    onPatched: () => {},
+    onConflict: () => {},
+    onShowSpec: () => (specOpened += 1),
+  });
+  const view = render(TicketList, props as never);
+  expect(view.host.querySelector(".ticket-list-hint")?.textContent).toBe(t.plan.links.ticketsHint);
+  // Only the picked row says it.
+  expect(view.host.querySelectorAll(".ticket-owes")).toHaveLength(1);
+  const owes = rowFor(view.host, "收集资料").querySelector(".ticket-owes")!;
+  expect(owes.querySelector(".ticket-owes-plan")?.textContent).toBe(t.plan.links.planWideNone);
+  expect(owes.querySelector(".ticket-owes-list")).toBeNull();
+  click(owes.querySelector(".ticket-owes-spec"));
+  expect(specOpened).toBe(1);
+  view.close();
+});
+
+test("a filter set from outside narrows even a short list, and shows the bar to undo it", () => {
+  const props = reactive({
+    api: null,
+    detail: aDetail({ tickets: [aTicket(), aTicket({ id: "ticket-2", seq: 2, title: "写结论", status: "todo" })] }),
+    nodes: [],
+    bots: [writer],
+    youLabel: "你",
+    deletedLabel: "已删除",
+    t,
+    selectedId: null as string | null,
+    onSelect: () => {},
+    onJump: () => {},
+    onOpenArtifacts: () => {},
+    onPatched: () => {},
+    onConflict: () => {},
+    statusFilter: "all" as string,
+  });
+  const view = render(TicketList, props as never);
+  // Two tickets: no bar of its own.
+  expect(view.host.querySelector(".ticket-filters")).toBeNull();
+  props.statusFilter = "todo";
+  flushSync();
+  expect([...view.host.querySelectorAll(".ticket-row .ticket-title")].map((title) => title.textContent)).toEqual(["写结论"]);
+  click(view.host.querySelector(".ticket-filter-btn"));
+  flushSync();
+  expect(props.statusFilter).toBe("all");
+  expect(view.host.querySelectorAll(".ticket-row")).toHaveLength(2);
+  view.close();
+});
+
+test("the rest of the card picks the ticket as its title does, and only the picked one shows its settings", () => {
+  const detail = aDetail({ supervision_on: true, submissions_on: true, reviewer_ids: ["bot-1"], tickets: [aTicket({ id: "t1", spec: "找三种方案" }), aTicket({ id: "t2", seq: 2, title: "写结论" })] });
+  const view = open({ detail });
+  expect(view.host.querySelector(".ticket-settings")).toBeNull();
+  click(rowFor(view.host, "写结论").querySelector(".ticket-body"));
+  flushSync();
+  expect(view.selected).toEqual(["t2"]);
+  expect(view.host.querySelectorAll(".ticket-settings")).toHaveLength(1);
+  expect(rowFor(view.host, "写结论").querySelector(".ticket-settings")).not.toBeNull();
+  expect([...rowFor(view.host, "写结论").querySelectorAll(".ticket-setting-label")].map((label) => label.textContent)).toEqual([t.plan.reviewer, t.plan.editDepends]);
+  view.close();
 });

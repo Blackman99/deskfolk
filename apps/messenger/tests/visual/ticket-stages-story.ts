@@ -2,6 +2,7 @@ import type { TaskDetail, TicketWithArtifacts } from '@real-bot/protocol';
 import { aBot } from '../../src/lib/test-fixtures.ts';
 import { copyFor } from '../../src/lib/copy.ts';
 import TicketList from '../../src/lib/overlays/TicketList.svelte';
+import { reactive } from '../../src/lib/test-reactive.svelte.ts';
 
 function ticket(over: Partial<TicketWithArtifacts>): TicketWithArtifacts {
   return {
@@ -26,15 +27,17 @@ export function ticketStagesStory(locale: 'zh' | 'en') {
       ticket({ id: 't5', seq: 5, title: '字幕', status: 'todo', worker: null }),
     ],
   } as unknown as TaskDetail;
+  // Reactive, so picking a row shows its settings the way the board does.
+  const props = reactive({
+    // A synthetic API: a menu change is recorded on the page, never sent anywhere.
+    api: { patchTicket: async (id: string, body: unknown) => { document.body.dataset.ticketPatches = JSON.stringify([...JSON.parse(document.body.dataset.ticketPatches ?? '[]'), { id, body }]); return detail.tickets.find((row) => row.id === id)!; } },
+    detail, nodes: [], bots: [aBot({ id: 'bot-1', name: '视频导演' }), aBot({ id: 'bot-2', name: '审片员' })], youLabel: locale === 'en' ? 'You' : '你',
+    deletedLabel: locale === 'en' ? 'Deleted' : '已删除', t, selectedId: null as string | null,
+    onSelect: (id: string | null) => { props.selectedId = id; }, onJump: () => {}, onOpenArtifacts: () => {}, onPatched: () => {}, onConflict: () => {},
+  });
   return {
     component: TicketList as never,
-    props: {
-      // A synthetic API: a menu change is recorded on the page, never sent anywhere.
-      api: { patchTicket: async (id: string, body: unknown) => { document.body.dataset.ticketPatches = JSON.stringify([...JSON.parse(document.body.dataset.ticketPatches ?? '[]'), { id, body }]); return detail.tickets.find((row) => row.id === id)!; } },
-      detail, nodes: [], bots: [aBot({ id: 'bot-1', name: '视频导演' }), aBot({ id: 'bot-2', name: '审片员' })], youLabel: locale === 'en' ? 'You' : '你',
-      deletedLabel: locale === 'en' ? 'Deleted' : '已删除', t, selectedId: null,
-      onSelect: () => {}, onJump: () => {}, onOpenArtifacts: () => {}, onPatched: () => {}, onConflict: () => {},
-    },
+    props,
     width: 900, height: 700,
     // The list as wide as the viewport, so a phone width is checked as a phone shows it.
     afterMount(host: HTMLElement) { document.body.style.width = '100vw'; host.style.width = '100vw'; host.style.height = 'auto'; },

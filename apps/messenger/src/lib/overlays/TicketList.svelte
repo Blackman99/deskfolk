@@ -11,9 +11,12 @@
 		countsEntries,
 		latestTurnOfTicket,
 		openTicketCount,
+		ticketObligations,
 		ticketTag,
-		totalTicketCount
+		totalTicketCount,
+		type TicketObligations
 	} from './plan-board.ts';
+	import { badgeOf, describeCheck } from './acceptance-checks.ts';
 
 	interface Props {
 		api: MessengerApi | null;
@@ -32,6 +35,10 @@
 		onOpenArtifacts: (ticket: TicketWithArtifacts) => void;
 		onPatched: (ticket: Ticket) => void;
 		onConflict: () => void;
+		/** The status the list is narrowed to; the board sets it when the spec's ticket states open the list. */
+		statusFilter?: TicketStatus | 'all';
+		/** Open the spec the tickets answer to, keeping the picked ticket picked. */
+		onShowSpec?: () => void;
 	}
 
 	let {
@@ -48,7 +55,9 @@
 		onJump,
 		onOpenArtifacts,
 		onPatched,
-		onConflict
+		onConflict,
+		statusFilter = $bindable('all'),
+		onShowSpec
 	}: Props = $props();
 
 	const botsById = $derived(new Map(bots.map((bot) => [bot.id, bot] as const)));
@@ -57,7 +66,6 @@
 
 	let patchingId = $state<string | null>(null);
 	let errorId = $state<string | null>(null);
-	let statusFilter = $state<TicketStatus | 'all'>('all');
 
 	const totalTickets = $derived(totalTicketCount(detail.ticket_counts));
 	const completionPct = $derived(completionPercentage(detail.ticket_counts));
@@ -66,11 +74,30 @@
 		statusFilter === 'all' ? tickets : tickets.filter((tk) => tk.status === statusFilter)
 	);
 
+	/**
+	 * The status menu, its current entry named as the row reads (a stage in its place: 审查中, 返工), so
+	 * the menu's face is the one label the row has.
+	 */
+	function statusOptionsFor(ticket: TicketWithArtifacts): Array<{ value: string; label: string }> {
+		const current = stageLabel(ticket);
+		return statusOptions.map((option) => (option.value === ticket.status ? { ...option, label: current } : option));
+	}
+
 	/** A stage the status alone does not say (ADR 0046) shows in its place: 审查中, 返工, 已交付, 已通过. */
 	function stageLabel(ticket: TicketWithArtifacts): string {
 		const stage = ticket.stage;
 		if (stage === 'submitted' || stage === 'in_review' || stage === 'rework' || stage === 'approved') return t.plan.ticketStage[stage];
 		return t.plan.ticketStatus[ticket.status];
+	}
+
+	/** What every ticket meets from the spec, in words: 「验收 4 条、规则 13 条、你的要求 20 条」. */
+	function planWideLine(owes: TicketObligations): string {
+		const links = t.plan.links;
+		const parts: string[] = [];
+		if (owes.acceptance > 0) parts.push(links.acceptanceCount(owes.acceptance));
+		if (owes.rules > 0) parts.push(links.rulesCount(owes.rules));
+		if (owes.planRequirements > 0) parts.push(links.requirementsCount(owes.planRequirements));
+		return parts.length > 0 ? links.planWide(parts.join(links.join)) : links.planWideNone;
 	}
 
 	function select(ticketId: string): void {
@@ -128,14 +155,20 @@
 		return label ?? null;
 	}
 
-	/** The tickets this one waits for, by their tags (「#02、#03」). */
-	function dependsLabel(ticket: TicketWithArtifacts): string | null {
+	/** The tickets this one waits for, by their tags (「#02、#03」); null for none. */
+	function dependsTags(ticket: TicketWithArtifacts): string | null {
 		const tags = (ticket.depends_on ?? []).flatMap((id) => {
 			const other = detail.tickets.find((row) => row.id === id);
 			return other ? [`#${ticketTag(other.seq)}`] : [];
 		});
-		return tags.length > 0 ? t.plan.dependsOn(tags.join('、')) : null;
+		return tags.length > 0 ? tags.join('、') : null;
 	}
+
+	function dependsLabel(ticket: TicketWithArtifacts): string | null {
+		const tags = dependsTags(ticket);
+		return tags ? t.plan.dependsOn(tags) : null;
+	}
+
 
 	let dependsOpen = $state<string | null>(null);
 
@@ -180,6 +213,11 @@
 			value: JSON.stringify({ provider_id: provider.id, model }),
 			label: providers.length > 1 ? `${model} · ${provider.name}` : model
 		})))
+	);
+
+	/** The picked ticket has a menu to show below it: a reviewer (level 5), a model (level 7) or what it waits for (level 4). */
+	const hasSettings = $derived(
+		Boolean(detail.submissions_on) || (Boolean(detail.routing_on) && modelOptions.length > 0) || (Boolean(detail.supervision_on) && detail.tickets.length > 1)
 	);
 
 	function modelValue(ticket: TicketWithArtifacts): string {
@@ -247,7 +285,12 @@
 			</div>
 		{/if}
 
-		{#if tickets.length > 2}
+		{#if tickets.length > 0}
+			<p class="ticket-list-hint">{t.plan.links.ticketsHint}</p>
+		{/if}
+
+		<!-- A short list needs no filter, unless one is on: the spec's ticket states can narrow it too. -->
+		{#if tickets.length > 2 || statusFilter !== 'all'}
 			<div class="ticket-filters" role="tablist" aria-label="Filter status">
 				<button
 					type="button"
@@ -285,75 +328,135 @@
 			{#each displayedTickets as ticket (ticket.id)}
 				{@const face = actorFace(ticket.worker ?? '', botsById, youLabel, deletedLabel)}
 				{@const node = latestTurnOfTicket(nodes, ticket.id)}
-				<div class="ticket-row is-{ticket.status}" class:is-selected={ticket.id === selectedId}>
-					<button type="button" class="ticket-main" onclick={() => select(ticket.id)}>
-						<span class="ticket-line">
+				{@const picked = ticket.id === selectedId}
+				{@const ball = ballLabel(ticket)}
+				{@const waits = dependsLabel(ticket)}
+				<div class="ticket-row is-{ticket.status}" class:is-selected={picked} data-ticket-id={ticket.id}>
+					<div class="ticket-head">
+						<button type="button" class="ticket-main" aria-pressed={picked} onclick={() => select(ticket.id)}>
 							<span class="ticket-tag mono">{ticketTag(ticket.seq)}</span>
 							<span class="ticket-title">{ticket.title}</span>
-							<span class="ticket-status is-{ticket.status}">{stageLabel(ticket)}</span>
-							{#if ticket.parts && ticket.parts.total > 0}
-								<span class="ticket-parts mono">{t.plan.partsApproved(ticket.parts.approved, ticket.parts.total)}</span>
-							{/if}
-						</span>
-						<span class="ticket-who">
-							{#if ticket.worker}
-								<span
-									class="ticket-avatar"
-									style:background={face.palette?.bg}
-									style:color={face.palette?.text}
-									style:border-color={face.palette?.border}
-									aria-hidden="true"
-								>
-									{#if face.src}
-										<img src={face.src} alt="" class="ticket-avatar-img" />
-									{:else}
-										{face.letter}
-									{/if}
-								</span>
-							{:else}
-								<span class="ticket-avatar is-nobody" aria-hidden="true">
-									<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-										<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-										<circle cx="12" cy="7" r="4"></circle>
-									</svg>
-								</span>
-							{/if}
-							<span class="ticket-who-text">
-								{ticket.worker ? t.plan.worker(actorName(ticket.worker, botsById, youLabel, deletedLabel), ticket.status !== "todo") : t.plan.nobody}
-							</span>
-						</span>
-						{#if ballLabel(ticket) || dependsLabel(ticket)}
-							<span class="ticket-ball">
-								{#if ballLabel(ticket)}<span class="ticket-ball-holder">{ballLabel(ticket)}</span>{/if}
-								{#if dependsLabel(ticket)}<span class="ticket-depends">{dependsLabel(ticket)}</span>{/if}
-							</span>
+						</button>
+						{#if ticket.parts && ticket.parts.total > 0}
+							<span class="ticket-parts mono">{t.plan.partsApproved(ticket.parts.approved, ticket.parts.total)}</span>
 						{/if}
-						{#if ticket.spec}
-							<span class="ticket-spec">{ticket.spec}</span>
-						{/if}
-					</button>
-					<div class="ticket-actions">
-						{#if ticket.artifacts.length > 0}
-							<button type="button" class="ticket-artifacts" onclick={() => onOpenArtifacts(ticket)}>
-								<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-									<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-									<polyline points="14 2 14 8 20 8"></polyline>
-								</svg>
-								<span>{t.plan.artifacts(ticket.artifacts.length)}</span>
-							</button>
-						{/if}
-						{#if node}
-							<button type="button" class="ticket-jump" onclick={() => onJump(node.session_id, node.focus_message_id)}>
-								<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-									<polyline points="9 10 4 15 9 20"></polyline>
-									<path d="M20 4v7a4 4 0 0 1-4 4H4"></path>
-								</svg>
-								<span>{t.plan.jumpToTurn}</span>
-							</button>
-						{/if}
+						<!-- The status is its own menu: one place says it and changes it. -->
 						{#if api}
-							<div class="ticket-controls">
+							<Select
+								class="ticket-status is-{ticket.status}"
+								value={ticket.status}
+								options={statusOptionsFor(ticket)}
+								size="sm"
+								ariaLabel={t.plan.changeStatus}
+								disabled={patchingId === ticket.id}
+								onchange={(value) => changeStatus(ticket, value)}
+							/>
+						{:else}
+							<span class="ticket-status is-{ticket.status}">{stageLabel(ticket)}</span>
+						{/if}
+					</div>
+					<!-- The rest of the card picks it too, as the title does; the title is the control a keyboard reaches. -->
+					<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+					<div class="ticket-body" onclick={() => select(ticket.id)}>
+						<div class="ticket-meta">
+							<span class="ticket-who">
+								{#if ticket.worker}
+									<span
+										class="ticket-avatar"
+										style:background={face.palette?.bg}
+										style:color={face.palette?.text}
+										style:border-color={face.palette?.border}
+										aria-hidden="true"
+									>
+										{#if face.src}
+											<img src={face.src} alt="" class="ticket-avatar-img" />
+										{:else}
+											{face.letter}
+										{/if}
+									</span>
+								{:else}
+									<span class="ticket-avatar is-nobody" aria-hidden="true">
+										<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+											<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+											<circle cx="12" cy="7" r="4"></circle>
+										</svg>
+									</span>
+								{/if}
+								<span class="ticket-who-text">
+									{ticket.worker ? t.plan.worker(actorName(ticket.worker, botsById, youLabel, deletedLabel), ticket.status !== "todo") : t.plan.nobody}
+								</span>
+							</span>
+							{#if ball}<span class="ticket-meta-item ticket-ball">{ball}</span>{/if}
+							{#if waits}<span class="ticket-meta-item ticket-depends">{waits}</span>{/if}
+							<!-- Picked, the menus below say these; otherwise the line does, only when one is set. -->
+							{#if !picked && detail.submissions_on && ticket.reviewer_bot_id}
+								<span class="ticket-meta-item ticket-meta-reviewer">{t.plan.reviewedBy(actorName(ticket.reviewer_bot_id, botsById, youLabel, deletedLabel))}</span>
+							{/if}
+							{#if !picked && detail.routing_on && ticket.model_override}
+								<span class="ticket-meta-item ticket-meta-model mono">{t.plan.onModel(ticket.model_override.model)}</span>
+							{/if}
+						</div>
+						{#if ticket.spec}
+							<p class="ticket-spec">{ticket.spec}</p>
+						{/if}
+					</div>
+					{#if ticket.artifacts.length > 0 || node}
+						<div class="ticket-links">
+							{#if ticket.artifacts.length > 0}
+								<button type="button" class="ticket-artifacts" onclick={() => onOpenArtifacts(ticket)}>
+									<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+										<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+										<polyline points="14 2 14 8 20 8"></polyline>
+									</svg>
+									<span>{t.plan.artifacts(ticket.artifacts.length)}</span>
+								</button>
+							{/if}
+							{#if node}
+								<button type="button" class="ticket-jump" onclick={() => onJump(node.session_id, node.focus_message_id)}>
+									<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+										<polyline points="9 10 4 15 9 20"></polyline>
+										<path d="M20 4v7a4 4 0 0 1-4 4H4"></path>
+									</svg>
+									<span>{t.plan.jumpToTurn}</span>
+								</button>
+							{/if}
+						</div>
+					{/if}
+					{#if picked}
+						{@const owes = ticketObligations(detail, ticket.id)}
+						<!-- What the picked ticket answers to: the spec, as every ticket does, and what is held to it alone. -->
+						<div class="ticket-owes" role="group" aria-label={t.plan.links.heldTo}>
+							<div class="ticket-owes-head">
+								<span class="ticket-owes-title">{t.plan.links.heldTo}</span>
+								{#if onShowSpec}
+									<button type="button" class="ticket-owes-spec" onclick={onShowSpec}>
+										<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+											<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+											<polyline points="14 2 14 8 20 8"></polyline>
+										</svg>
+										<span>{t.plan.links.showSpec}</span>
+									</button>
+								{/if}
+							</div>
+							<p class="ticket-owes-plan">{planWideLine(owes)}</p>
+							{#if owes.requirements.length > 0 || owes.checks.length > 0}
+								<span class="ticket-owes-sub">{t.plan.links.onlyThis}</span>
+								<ul class="ticket-owes-list">
+									{#each owes.requirements as entry (entry.id)}
+										<li><span class="ticket-owes-seq mono">R-{entry.seq}</span><span class="ticket-owes-text">「{entry.quote}」</span></li>
+									{/each}
+									{#each owes.checks as check (check.id)}
+										{@const badge = badgeOf(check)}
+										<li><span class="ticket-owes-check is-{badge}">{t.plan.checks.status[badge]}</span><span class="ticket-owes-text">{describeCheck(check, t)}</span></li>
+									{/each}
+								</ul>
+							{/if}
+						</div>
+						{#if api && hasSettings}
+							<!-- Who reviews it, the model it runs on, what it waits for: set on the picked ticket only, label beside menu. -->
+							<div class="ticket-settings">
 								{#if detail.submissions_on}
+									<span class="ticket-setting-label">{t.plan.reviewer}</span>
 									<div class="ticket-select-wrap ticket-reviewer-wrap">
 										<Select
 											value={ticket.reviewer_bot_id ?? ''}
@@ -367,6 +470,7 @@
 									</div>
 								{/if}
 								{#if detail.routing_on && modelOptions.length > 0}
+									<span class="ticket-setting-label">{t.plan.modelShort}</span>
 									<div class="ticket-select-wrap ticket-model-wrap">
 										<Select
 											value={modelValue(ticket)}
@@ -380,27 +484,23 @@
 									</div>
 								{/if}
 								{#if detail.supervision_on && detail.tickets.length > 1}
+									<span class="ticket-setting-label">{t.plan.editDepends}</span>
 									<button
 										type="button"
 										class="ticket-depends-toggle"
 										aria-expanded={dependsOpen === ticket.id}
 										title={t.plan.dependsHint}
 										onclick={() => (dependsOpen = dependsOpen === ticket.id ? null : ticket.id)}
-									>{t.plan.editDepends}</button>
+									>
+										<span class="ticket-depends-value">{dependsTags(ticket) ?? t.plan.dependsNothing}</span>
+										<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+											<polyline points="6 9 12 15 18 9"></polyline>
+										</svg>
+									</button>
 								{/if}
-								<div class="ticket-select-wrap">
-									<Select
-										value={ticket.status}
-										options={statusOptions}
-										size="sm"
-										ariaLabel={t.plan.changeStatus}
-										disabled={patchingId === ticket.id}
-										onchange={(value) => changeStatus(ticket, value)}
-									/>
-								</div>
 							</div>
 						{/if}
-					</div>
+					{/if}
 					{#if dependsOpen === ticket.id}
 						<div class="ticket-depends-editor" role="group" aria-label={t.plan.dependsHint}>
 							<span class="ticket-depends-hint">{t.plan.dependsHint}</span>
@@ -613,6 +713,10 @@
 	}
 
 	.ticket-row {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		padding: 8px 10px 8px 9px;
 		border: 1px solid var(--line);
 		border-left: 3.5px solid var(--muted-light);
 		border-radius: var(--radius-md);
@@ -678,36 +782,31 @@
 		box-shadow: 0 0 0 1px var(--accent), var(--shadow-sm);
 	}
 
-	/* Ticket Main Button */
+	/* Title row: the title picks the ticket; the status beside it is its own menu. */
+	.ticket-head {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
+	}
+
 	.ticket-main {
 		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		gap: 5px;
-		width: 100%;
-		box-sizing: border-box;
-		padding: 9px 11px 7px;
-		overflow: hidden;
+		align-items: center;
+		gap: 6px;
+		flex: 1 1 auto;
+		min-width: 0;
+		padding: 0;
 		background: none;
 		border: none;
-		border-radius: var(--radius-md) var(--radius-md) 0 0;
 		text-align: left;
 		cursor: pointer;
 		font: inherit;
 		color: inherit;
-		transition: background 0.12s ease;
 	}
 
-	.ticket-main:hover {
-		background: rgba(18, 28, 32, 0.02);
-	}
-
-	.ticket-line {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		width: 100%;
-		min-width: 0;
+	.ticket-main:hover .ticket-title {
+		color: var(--accent);
 	}
 
 	.ticket-tag {
@@ -731,6 +830,7 @@
 		font-weight: 600;
 		color: var(--ink);
 		letter-spacing: -0.01em;
+		transition: color 0.12s ease;
 	}
 
 	.ticket-parts {
@@ -739,6 +839,7 @@
 		color: var(--muted);
 	}
 
+	/* The status, as a pill: plain text without an api, its own menu with one. */
 	.ticket-status {
 		display: inline-flex;
 		align-items: center;
@@ -748,37 +849,119 @@
 		color: var(--muted);
 	}
 
-	.ticket-status::before {
+	span.ticket-status::before,
+	.ticket-head :global(.ticket-status .real-select-trigger)::before {
 		content: "";
 		display: inline-block;
 		width: 6px;
 		height: 6px;
 		border-radius: 50%;
 		background: currentColor;
-		margin-right: 4px;
-		vertical-align: middle;
 		flex: none;
 	}
 
-	.ticket-status.is-doing {
+	span.ticket-status::before {
+		margin-right: 4px;
+	}
+
+	.ticket-head :global(.real-select.ticket-status) {
+		width: auto;
+	}
+
+	.ticket-head :global(.ticket-status .real-select-trigger) {
+		gap: 4px;
+		padding: 2px 4px 2px 7px;
+		border-color: transparent;
+		border-radius: var(--radius-full);
+		background: transparent;
+		box-shadow: none;
+		font-size: 11px;
+		font-weight: 600;
+		line-height: 16px;
+		color: inherit;
+	}
+
+	.ticket-head :global(.ticket-status .real-select-trigger:hover:not(:disabled)) {
+		border-color: var(--line);
+		background: var(--line-subtle);
+	}
+
+	.ticket-head :global(.ticket-status .real-select-value) {
+		color: inherit;
+		font-weight: 600;
+	}
+
+	.ticket-head :global(.ticket-status .real-select-arrow) {
+		color: inherit;
+		opacity: 0.7;
+	}
+
+	.ticket-head :global(.ticket-status .real-select-arrow svg) {
+		width: 11px;
+		height: 11px;
+	}
+
+	/* The menu opens under the pill, right-aligned and wide enough for its words. */
+	.ticket-head :global(.ticket-status .real-select-menu) {
+		left: auto;
+		right: 0;
+		min-width: 112px;
+	}
+
+	.ticket-status.is-doing,
+	.ticket-head :global(.ticket-status.is-doing) {
 		color: var(--accent);
 	}
 
-	.ticket-status.is-doing::before {
-		box-shadow: 0 0 0 2px var(--accent-glow);
-	}
-
-	.ticket-status.is-review {
+	.ticket-status.is-review,
+	.ticket-head :global(.ticket-status.is-review) {
 		color: var(--purple);
 	}
 
-	.ticket-status.is-done {
+	.ticket-status.is-done,
+	.ticket-head :global(.ticket-status.is-done) {
 		color: var(--ok-text);
 	}
 
 	.ticket-status.is-todo,
-	.ticket-status.is-parked {
+	.ticket-status.is-parked,
+	.ticket-head :global(.ticket-status.is-todo),
+	.ticket-head :global(.ticket-status.is-parked) {
 		color: var(--muted);
+	}
+
+	/* Who is on it, who has the ball, what it waits for: one line that wraps. The card picks the ticket too. */
+	.ticket-body {
+		display: flex;
+		flex-direction: column;
+		gap: 5px;
+		min-width: 0;
+		cursor: pointer;
+	}
+
+	.ticket-meta {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 2px 0;
+		min-width: 0;
+		font-size: 11px;
+		color: var(--muted);
+	}
+
+	.ticket-meta-item {
+		min-width: 0;
+		overflow-wrap: anywhere;
+	}
+
+	.ticket-meta-item::before {
+		content: "·";
+		margin: 0 5px;
+		color: var(--muted-light);
+	}
+
+	.ticket-ball {
+		color: var(--ink-secondary);
 	}
 
 	/* Worker line */
@@ -825,32 +1008,46 @@
 		color: var(--muted);
 	}
 
-	.ticket-ball {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 2px 10px;
-		font-size: 11px;
-		color: var(--muted);
-	}
-
-	.ticket-ball-holder {
-		color: var(--ink-secondary);
-	}
-
 	.ticket-depends-toggle {
-		padding: 2px 8px;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 6px;
+		width: 100%;
+		min-width: 0;
+		padding: 3px 8px;
 		border: 1px solid var(--line);
-		border-radius: var(--radius-full);
-		background: var(--pane);
-		color: var(--ink-secondary);
-		font-size: 11px;
+		border-radius: var(--radius-sm);
+		background: var(--input-bg);
+		color: var(--ink);
+		font: inherit;
+		font-size: 12px;
+		line-height: 18px;
+		text-align: left;
 		cursor: pointer;
+	}
+
+	.ticket-depends-toggle svg {
+		flex: none;
+		color: var(--muted);
+		transition: transform 0.2s ease;
 	}
 
 	.ticket-depends-toggle:hover,
 	.ticket-depends-toggle[aria-expanded='true'] {
 		border-color: var(--accent-border);
+	}
+
+	.ticket-depends-toggle[aria-expanded='true'] svg {
+		transform: rotate(180deg);
 		color: var(--accent);
+	}
+
+	.ticket-depends-value {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.ticket-depends-editor {
@@ -891,7 +1088,7 @@
 	}
 
 	.ticket-spec {
-		width: 100%;
+		margin: 0;
 		box-sizing: border-box;
 		font-size: 12px;
 		color: var(--ink-secondary);
@@ -912,13 +1109,13 @@
 		background: var(--line-subtle);
 	}
 
-	/* Actions */
-	.ticket-actions {
+	/* The ticket's files and its latest turn: light links, one line. */
+	.ticket-links {
 		display: flex;
-		align-items: center;
 		flex-wrap: wrap;
-		gap: 6px;
-		padding: 2px 10px 8px;
+		align-items: center;
+		gap: 2px 10px;
+		margin-left: -4px;
 	}
 
 	.ticket-artifacts,
@@ -926,95 +1123,220 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 4px;
-		border: 1px solid var(--line);
-		border-radius: var(--radius-sm);
-		background: var(--pane);
-		color: var(--ink-secondary);
+		border: none;
+		border-radius: var(--radius-xs);
+		background: none;
+		color: var(--muted);
+		font: inherit;
 		font-size: 11px;
 		font-weight: 500;
 		line-height: 1;
-		padding: 4px 7px;
+		padding: 3px 4px;
 		cursor: pointer;
-		min-height: 24px;
 		transition: 0.15s ease;
 		transition-property: var(--transition-props);
 	}
 
 	.ticket-artifacts:hover,
 	.ticket-jump:hover {
-		border-color: var(--accent-border);
 		background: var(--accent-tint);
 		color: var(--accent);
 	}
 
-	/* The menus keep together at the right, wrapping as one group when the row is narrow. */
-	.ticket-controls {
-		display: flex;
+	/* The picked ticket's settings: a short label, then its menu, in two aligned columns. */
+	.ticket-settings {
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr);
 		align-items: center;
-		justify-content: flex-end;
-		flex-wrap: wrap;
-		gap: 6px;
-		margin-left: auto;
+		gap: 5px 10px;
 		min-width: 0;
-		max-width: 100%;
+	}
+
+	.ticket-setting-label {
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--muted);
+		white-space: nowrap;
 	}
 
 	.ticket-select-wrap {
 		min-width: 0;
-		max-width: 100%;
 	}
 
-	/* A long model name is cut short rather than pushing the row wider. */
-	.ticket-model-wrap :global(.real-select) {
-		max-width: 220px;
+	.ticket-settings :global(.real-select-trigger) {
+		padding: 3px 8px;
+		font-size: 12px;
+		line-height: 18px;
+		box-shadow: none;
 	}
 
-	.ticket-actions :global(.real-select) {
-		width: auto;
-		min-width: 88px;
+	.ticket-list-hint {
+		margin: 0;
+		font-size: 11px;
+		line-height: 1.45;
+		color: var(--muted-light);
+	}
+
+	/* The picked ticket's obligations: the spec it meets with every ticket, and what is its alone. */
+	.ticket-owes {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		padding: 7px 9px;
+		border: 1px solid var(--accent-border);
+		border-radius: var(--radius-sm);
+		background: var(--accent-tint);
+		font-size: 11.5px;
+		color: var(--ink-secondary);
+		min-width: 0;
+	}
+
+	.ticket-owes-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 6px;
+	}
+
+	.ticket-owes-title {
+		font-size: 11px;
+		font-weight: 700;
+		color: var(--accent);
+	}
+
+	.ticket-owes-spec {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		border: 1px solid var(--accent-border);
+		border-radius: var(--radius-sm);
+		background: var(--pane);
+		color: var(--accent);
+		font-size: 11px;
+		font-weight: 500;
+		line-height: 1;
+		padding: 4px 7px;
+		min-height: 22px;
+		cursor: pointer;
+	}
+
+	.ticket-owes-spec:hover {
+		background: var(--accent);
+		border-color: var(--accent);
+		color: var(--on-accent);
+	}
+
+	.ticket-owes-plan {
+		margin: 0;
+		line-height: 1.45;
+		overflow-wrap: anywhere;
+	}
+
+	.ticket-owes-sub {
+		margin-top: 2px;
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--muted);
+	}
+
+	.ticket-owes-list {
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	.ticket-owes-list li {
+		display: flex;
+		align-items: baseline;
+		gap: 5px;
+		min-width: 0;
+	}
+
+	.ticket-owes-seq {
+		flex: none;
+		font-size: 10px;
+		font-weight: 700;
+		color: var(--muted);
+	}
+
+	.ticket-owes-text {
+		min-width: 0;
+		overflow-wrap: anywhere;
+	}
+
+	.ticket-owes-check {
+		flex: none;
+		padding: 0 6px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-full);
+		background: var(--chip);
+		color: var(--muted);
+		font-size: 10px;
+		font-weight: 600;
+		line-height: 15px;
+	}
+
+	.ticket-owes-check.is-pass {
+		border-color: var(--ok-line);
+		background: var(--ok-bg);
+		color: var(--ok-text);
+	}
+
+	.ticket-owes-check.is-fail {
+		border-color: var(--danger-line);
+		background: var(--danger-bg);
+		color: var(--danger-text);
+	}
+
+	.ticket-owes-check.is-blocked,
+	.ticket-owes-check.is-error {
+		border-color: var(--warn-line);
+		background: var(--warn-bg);
+		color: var(--warn-text);
 	}
 
 	.ticket-error {
 		margin: 0;
-		padding: 0 10px 6px;
 		font-size: 11px;
 		color: var(--danger-text);
 		overflow-wrap: anywhere;
 	}
 
-	/* Mobile screen adaptations */
+	/* Mobile screen adaptations: bigger targets, same layout. */
 	@media (max-width: 560px) {
 		.ticket-list {
 			padding: 10px 8px 24px;
 			gap: 8px;
 		}
 
+		.ticket-row {
+			padding: 10px 12px 10px 11px;
+		}
+
 		.ticket-title {
 			font-size: 14px;
 		}
 
-		.ticket-main {
-			padding: 10px 12px 8px;
-		}
-
-		.ticket-actions,
-		.ticket-controls {
-			gap: 8px;
-		}
-
-		.ticket-actions {
-			padding: 4px 12px 10px;
+		.ticket-head :global(.ticket-status .real-select-trigger) {
+			min-height: 30px;
+			padding: 4px 6px 4px 9px;
+			font-size: 12px;
 		}
 
 		.ticket-artifacts,
 		.ticket-jump {
 			min-height: 32px;
-			padding: 5px 9px;
+			padding: 5px 6px;
 			font-size: 12px;
 		}
 
-		.ticket-actions :global(.real-select) {
-			min-width: 96px;
+		.ticket-settings :global(.real-select-trigger),
+		.ticket-depends-toggle {
+			min-height: 34px;
+			font-size: 13px;
 		}
 	}
 </style>

@@ -1,7 +1,7 @@
 import { afterEach, expect, mock, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { flushSync } from "svelte";
-import { USER_MEMBER, type Hold, type RouteRecord, type SessionTaskSummary, type TaskDetail, type TaskTrace } from "@real-bot/protocol";
+import { USER_MEMBER, type AcceptanceCheck, type Hold, type PlanRequirement, type RouteRecord, type SessionTaskSummary, type TaskDetail, type TaskTrace } from "@real-bot/protocol";
 
 mock.module("monaco-editor-css", () => ({}));
 mock.module("monaco-editor/esm/vs/platform/hover/browser/hover.css", () => ({}));
@@ -262,6 +262,12 @@ function open(opts: {
   });
   const view = render(opts.pane ? TraceView : TaskTraceView, props as never);
   return { ...view, props, jumps, asked, settled, opened, patched, closed: () => closed };
+}
+
+/** Let a press's awaits (the panel swap, the scroll after it) run out, then flush what they changed. */
+async function settle(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  flushSync();
 }
 
 async function until(host: HTMLElement, selector: string): Promise<Element> {
@@ -940,6 +946,182 @@ test("a ticket picked in the rail lights its cards and dims the rest; Escape let
   click(view.host.querySelector(".ticket-row .ticket-jump"));
   expect(view.jumps).toEqual([["direct-1", "m3"]]);
   view.close();
+});
+
+function aRequirement(over: Partial<PlanRequirement> = {}): PlanRequirement {
+  return {
+    id: "req-plan",
+    seq: 1,
+    quote: "不要真人出镜",
+    restated: null,
+    category: null,
+    polarity: "must",
+    dimension: null,
+    value: null,
+    status: "open",
+    scope: "plan",
+    ticket_id: null,
+    domain: null,
+    times_raised: 1,
+    plans_raised: 1,
+    last_raised_at: "2026-09-22T00:00:00.000Z",
+    source_kind: "message",
+    source: null,
+    added_by: "scribe",
+    inherited_from: null,
+    excluded: false,
+    supersedes: null,
+    ...over,
+  };
+}
+
+function aTicketCheck(over: Partial<AcceptanceCheck> = {}): AcceptanceCheck {
+  return {
+    id: "check-1",
+    task_id: "task-1",
+    ticket_id: "tk-1",
+    item: "12 格草图交到 board.pdf",
+    kind: "exists",
+    path: "work/先出分镜-7f3k/01-分镜草图/board.pdf",
+    pattern: null,
+    negate: false,
+    command: null,
+    cwd: null,
+    expect_exit: null,
+    expect_stdout: null,
+    timeout_sec: null,
+    source: "user",
+    created_at: "2026-09-22T00:00:00.000Z",
+    updated_at: "2026-09-22T00:00:00.000Z",
+    defined_at: "2026-09-22T00:00:00.000Z",
+    first_passed_at: null,
+    last_run: null,
+    running: false,
+    ...over,
+  };
+}
+
+/** task-1 with what the spec holds to its tickets: one requirement over the plan, one for 02 alone, a check filed under 01. */
+function linkedDetail(): TaskDetail {
+  return detail({
+    requirements: [aRequirement(), aRequirement({ id: "req-02", seq: 2, quote: "配乐要无版权", scope: "ticket", ticket_id: "tk-2" })],
+    checks: [aTicketCheck()],
+  });
+}
+
+test("the picked ticket lists what it meets — the spec, as every ticket does, and what is its alone — and opens the spec on it", async () => {
+  forgetTraceSide();
+  const view = open({ pane: true, detail: linkedDetail() });
+  await until(view.host, ".ticket-row");
+  const shown = () => [...view.host.querySelectorAll(".trace-side .trace-side-panel")].map((panel) => panel.classList.contains("is-side-on"));
+  // The list says how its tickets stand to the spec before anything is picked.
+  expect(view.host.querySelector(".ticket-list-hint")?.textContent).toBe(t.plan.links.ticketsHint);
+  expect(view.host.querySelector(".ticket-owes")).toBeNull();
+  click(view.host.querySelector(".ticket-row .ticket-main"));
+  const owes = view.host.querySelector(".ticket-row.is-selected .ticket-owes")!;
+  const links = t.plan.links;
+  expect(owes.querySelector(".ticket-owes-plan")?.textContent).toBe(
+    links.planWide([links.acceptanceCount(1), links.rulesCount(1), links.requirementsCount(1)].join(links.join)),
+  );
+  // Held to 01 alone: its check; 02's requirement is not 01's.
+  expect(owes.querySelector(".ticket-owes-sub")?.textContent).toBe(links.onlyThis);
+  expect([...owes.querySelectorAll(".ticket-owes-list li")].map((row) => row.textContent)).toEqual([
+    `${t.plan.checks.status.none}work/先出分镜-7f3k/01-分镜草图/board.pdf 存在且不为空`,
+  ]);
+  // The spec opens in the tickets' place, still on 01: its check stands out, 02's requirement steps back.
+  click(owes.querySelector(".ticket-owes-spec"));
+  await settle();
+  expect(shown()).toEqual([true, false]);
+  expect(view.host.querySelector(".ticket-row.is-selected .ticket-tag")?.textContent).toBe("01");
+  const focusStrip = view.host.querySelector(".plan-spec-focus")!;
+  expect(focusStrip.querySelector(".plan-spec-ticket-ref")?.textContent).toBe("01");
+  expect(focusStrip.querySelector(".plan-spec-focus-title")?.textContent).toBe("分镜草图");
+  expect(view.host.querySelector(".plan-spec-check")?.classList.contains("is-ticket-mine")).toBe(true);
+  const reqClass = (id: string) => view.host.querySelector(`.plan-req[data-requirement="${id}"]`)?.className ?? "";
+  expect(reqClass("req-plan")).not.toContain("is-ticket");
+  expect(reqClass("req-02")).toContain("is-ticket-other");
+  // The board still lights 01's cards.
+  expect(view.host.querySelector(".trace-card.is-running")?.classList.contains("is-lit")).toBe(true);
+  view.close();
+  forgetTraceSide();
+});
+
+test("a line of the spec held to one ticket shows that ticket, picked, in the list; the strip lets go of it", async () => {
+  forgetTraceSide();
+  const view = open({ pane: true, detail: linkedDetail() });
+  await until(view.host, ".ticket-row");
+  const shown = () => [...view.host.querySelectorAll(".trace-side .trace-side-panel")].map((panel) => panel.classList.contains("is-side-on"));
+  click(view.host.querySelectorAll<HTMLButtonElement>(".trace-side-toggle")[0]);
+  await settle();
+  expect(shown()).toEqual([true, false]);
+  // The requirement held to 02 names it; pressing the name shows 02.
+  const scope = view.host.querySelector<HTMLButtonElement>('.plan-req[data-requirement="req-02"] .plan-req-ticket')!;
+  expect(scope.textContent).toBe(t.plan.requirements.scope.ticket("02 配乐"));
+  click(scope);
+  await settle();
+  expect(shown()).toEqual([false, true]);
+  expect(view.host.querySelector(".ticket-row.is-selected .ticket-tag")?.textContent).toBe("02");
+  // The check filed under 01 wears its number, and that shows 01.
+  click(view.host.querySelectorAll<HTMLButtonElement>(".trace-side-toggle")[0]);
+  await settle();
+  expect(view.host.querySelector(".plan-spec-check.is-ticket-other")).not.toBeNull();
+  click(view.host.querySelector(".plan-spec-check button.plan-spec-ticket-ref"));
+  await settle();
+  expect(shown()).toEqual([false, true]);
+  expect(view.host.querySelector(".ticket-row.is-selected .ticket-tag")?.textContent).toBe("01");
+  // Back on the spec, the strip puts the ticket down: nothing dims there or on the board.
+  click(view.host.querySelectorAll<HTMLButtonElement>(".trace-side-toggle")[0]);
+  await settle();
+  click(view.host.querySelector(".plan-spec-focus-clear"));
+  await settle();
+  expect(view.host.querySelector(".plan-spec-focus")).toBeNull();
+  expect(view.host.querySelector(".ticket-row.is-selected")).toBeNull();
+  expect(view.host.querySelector(".plan-spec-check.is-ticket-other, .plan-req.is-ticket-other")).toBeNull();
+  expect(view.host.querySelector(".trace-card.is-dim")).toBeNull();
+  view.close();
+  forgetTraceSide();
+});
+
+test("the spec's ticket states sit above the written progress and open the list on that status", async () => {
+  forgetTraceSide();
+  const view = open({ pane: true, detail: linkedDetail() });
+  await until(view.host, ".ticket-row");
+  click(view.host.querySelectorAll<HTMLButtonElement>(".trace-side-toggle")[0]);
+  await settle();
+  const states = [...view.host.querySelectorAll<HTMLButtonElement>(".plan-spec-ticket-state")];
+  expect(states.map((state) => state.textContent?.replace(/\s+/g, ""))).toEqual([`${t.plan.ticketStatus.todo}1`, `${t.plan.ticketStatus.doing}1`]);
+  expect(view.host.querySelector(".plan-spec-ticket-states-hint")?.textContent).toBe(t.plan.links.progressHint);
+  click(states[1]);
+  await settle();
+  expect([...view.host.querySelectorAll(".trace-side .trace-side-panel")].map((panel) => panel.classList.contains("is-side-on"))).toEqual([false, true]);
+  expect([...view.host.querySelectorAll(".ticket-row .ticket-tag")].map((tag) => tag.textContent)).toEqual(["01"]);
+  expect(view.host.querySelector(".ticket-filter-btn.is-active")?.classList.contains("is-doing")).toBe(true);
+  // A ticket shown from the spec that the filter hides brings the whole list back.
+  click(view.host.querySelectorAll<HTMLButtonElement>(".trace-side-toggle")[0]);
+  await settle();
+  click(view.host.querySelector('.plan-req[data-requirement="req-02"] .plan-req-ticket'));
+  await settle();
+  expect([...view.host.querySelectorAll(".ticket-row .ticket-tag")].map((tag) => tag.textContent)).toEqual(["01", "02"]);
+  expect(view.host.querySelector(".ticket-row.is-selected .ticket-tag")?.textContent).toBe("02");
+  view.close();
+  forgetTraceSide();
+});
+
+test("on a phone, the spec's links move between its tabs", async () => {
+  const view = open({ detail: linkedDetail() });
+  await until(view.host, ".ticket-row");
+  const tabs = () => [...view.host.querySelectorAll<HTMLButtonElement>(".trace-segments [role='tab']")];
+  click(tabs()[0]);
+  click(view.host.querySelector('.plan-req[data-requirement="req-02"] .plan-req-ticket'));
+  await settle();
+  expect(tabs().map((tab) => tab.getAttribute("aria-selected"))).toEqual(["false", "false", "true"]);
+  expect(view.host.querySelector(".ticket-row.is-selected .ticket-tag")?.textContent).toBe("02");
+  click(view.host.querySelector(".ticket-row.is-selected .ticket-owes-spec"));
+  await settle();
+  expect(tabs().map((tab) => tab.getAttribute("aria-selected"))).toEqual(["true", "false", "false"]);
+  expect(view.host.querySelector(".plan-spec-focus .plan-spec-ticket-ref")?.textContent).toBe("02");
+  view.close();
+  forgetTraceSide();
 });
 
 test("the spec and the tickets open beside the board one at a time, and a panel put away stays away", async () => {

@@ -11,6 +11,7 @@
 		type TaskTrace,
 		type TaskTraceNode,
 		type Ticket,
+		type TicketStatus,
 		type TicketWithArtifacts
 	} from '@real-bot/protocol';
 	import { onMount, tick, untrack } from 'svelte';
@@ -163,6 +164,10 @@
 	 */
 	let side = $state<TraceSide>(loadTraceSide());
 	let segment = $state<'spec' | 'trace' | 'tickets'>('trace');
+	/** The status the ticket list is narrowed to; the spec's ticket states set it when they open the list. */
+	let ticketFilter = $state<TicketStatus | 'all'>('all');
+	/** The side panels, so a ticket shown from the spec can be scrolled to. */
+	let sideEl = $state<HTMLElement>();
 	/** The minimap in the corner, until you put it away; per-browser, like the side panel. */
 	let minimapShown = $state(loadTraceMinimap());
 	/** The card whose model choice is unfolded under it. One at a time. */
@@ -476,6 +481,35 @@
 		canvas.view = { ...canvas.view, x: canvas.view.x + (after - before) / 2 };
 	}
 
+	/**
+	 * Bring the spec or the tickets up: beside the board on a wide host, as the tab on a narrow one.
+	 * Already up, it stays — unlike the toggle, which would put it away.
+	 */
+	async function revealPanel(kind: 'spec' | 'tickets'): Promise<void> {
+		segment = kind;
+		if (sideShown !== kind) await toggleSide(kind);
+	}
+
+	/**
+	 * A line of the spec held to one ticket, or the picked ticket's own strip, shows that ticket: it
+	 * is picked — its cards light on the board — and its row is brought into view in the list.
+	 */
+	async function showTicket(id: string): Promise<void> {
+		selectTicket(id);
+		const ticket = ticketsById.get(id);
+		if (ticketFilter !== 'all' && ticket?.status !== ticketFilter) ticketFilter = 'all';
+		await revealPanel('tickets');
+		await tick();
+		const row = [...(sideEl?.querySelectorAll<HTMLElement>('.ticket-row') ?? [])].find((el) => el.dataset.ticketId === id);
+		row?.scrollIntoView?.({ block: 'nearest' });
+	}
+
+	/** The spec's ticket states open the list on that status. */
+	function showTickets(status: TicketStatus | 'all'): void {
+		ticketFilter = status;
+		void revealPanel('tickets');
+	}
+
 	function toggleMinimap(): void {
 		minimapShown = !minimapShown;
 		saveTraceMinimap(minimapShown);
@@ -594,6 +628,7 @@
 				openRoute = kept?.openRoute ?? null;
 				selectedTicket = kept?.selectedTicket ?? null;
 				segment = 'trace';
+				ticketFilter = 'all';
 				foldChoice = kept?.foldChoice ?? {};
 				if (kept) {
 					notableOnly = kept.notableOnly;
@@ -1038,7 +1073,7 @@
 				survives a look at the tickets, and the window growing or shrinking across the narrow
 				width keeps them. Which one shows is the host width's business, in the styles.
 			-->
-			<aside class="trace-side">
+			<aside class="trace-side" bind:this={sideEl}>
 				<div class="trace-side-panel" class:is-side-on={sideShown === 'spec'} class:is-segment-on={segmentShown === 'spec'}>
 					<PlanSpecPanel
 						{api}
@@ -1047,6 +1082,10 @@
 						onSaved={(next) => (detail = next)}
 						onConflict={reloadPlan}
 						{onJump}
+						{selectedTicket}
+						onShowTicket={(id) => void showTicket(id)}
+						onClearTicket={() => selectTicket(null)}
+						onShowTickets={showTickets}
 					/>
 				</div>
 				{#if hasTickets}
@@ -1066,6 +1105,8 @@
 							onOpenArtifacts={openTicketArtifacts}
 							onPatched={ticketPatched}
 							onConflict={reloadPlan}
+							bind:statusFilter={ticketFilter}
+							onShowSpec={() => void revealPanel('spec')}
 						/>
 					</div>
 				{/if}

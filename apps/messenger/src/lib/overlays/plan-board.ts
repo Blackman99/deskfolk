@@ -6,9 +6,12 @@
  */
 import {
   USER_MEMBER,
+  type AcceptanceCheck,
   type Attachment,
   type Bot,
+  type PlanRequirement,
   type PlanSpec,
+  type TaskDetail,
   type TaskTraceNode,
   type TicketCounts,
   type TicketStatus,
@@ -90,6 +93,52 @@ export function latestTurnOfTicket(nodes: readonly TaskTraceNode[], ticketId: st
     }
   }
   return best;
+}
+
+/**
+ * How one item of the plan — a requirement of yours, a check — stands to the ticket in focus: held
+ * to that ticket alone (`mine`), to another ticket alone (`other`), or to the whole plan (null), and
+ * so to every ticket, the one in focus among them. Nothing is in focus: null throughout.
+ */
+export function ticketBinding(itemTicketId: string | null | undefined, focus: string | null): "mine" | "other" | null {
+  if (!focus || !itemTicketId) return null;
+  return itemTicketId === focus ? "mine" : "other";
+}
+
+/** The ticket a requirement holds for alone: a ticket's or a part's entry; null for one over the plan or wider. */
+export function requirementTicket(entry: Pick<PlanRequirement, "scope" | "ticket_id">): string | null {
+  return entry.scope === "ticket" || entry.scope === "part" ? entry.ticket_id : null;
+}
+
+/**
+ * What one ticket has to meet. Every ticket meets the plan's acceptance and rules — its `ticket.md`
+ * carries them under its own description — and your requirements in force over the plan; on top of
+ * those, the requirements and checks held to it alone. Proposed, old and excluded entries hold
+ * nothing yet, so they are not counted.
+ */
+export type TicketObligations = {
+  acceptance: number;
+  rules: number;
+  /** Your requirements in force over the whole plan, and so over this ticket. */
+  planRequirements: number;
+  /** Your requirements in force for this ticket alone. */
+  requirements: PlanRequirement[];
+  /** The checks filed under this ticket. */
+  checks: AcceptanceCheck[];
+};
+
+export function ticketObligations(
+  detail: Pick<TaskDetail, "spec" | "requirements" | "checks">,
+  ticketId: string,
+): TicketObligations {
+  const inForce = (detail.requirements ?? []).filter((entry) => entry.status === "open" && !entry.excluded);
+  return {
+    acceptance: detail.spec?.acceptance.length ?? 0,
+    rules: detail.spec?.rules.length ?? 0,
+    planRequirements: inForce.filter((entry) => requirementTicket(entry) === null).length,
+    requirements: inForce.filter((entry) => requirementTicket(entry) === ticketId).sort((a, b) => a.seq - b.seq),
+    checks: (detail.checks ?? []).filter((check) => check.ticket_id === ticketId),
+  };
 }
 
 /** A ticket's artifacts as `Attachment`s, built the way `TraceView.openNodeArtifacts` builds siblings. */

@@ -1,14 +1,17 @@
 <script lang="ts">
-	import type { TaskDetail, TaskSpecRevision } from '@real-bot/protocol';
+	import type { AcceptanceCheck, TaskDetail, TaskSpecRevision, TicketStatus } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
 	import { formatFullTimestamp, formatMessageTime } from '../chat/chat-view.ts';
 	import {
 		SPEC_LIST_FIELDS,
+		countsEntries,
 		parseSpecLines,
 		specLines,
 		specWithGoal,
 		specWithLines,
+		ticketBinding,
+		ticketTag,
 		type SpecListField
 	} from './plan-board.ts';
 	import { checkSummary, checksForLine, derivedChecks, orphanChecks } from './acceptance-checks.ts';
@@ -26,13 +29,40 @@
 		/** A 409: the parent reloads the plan. */
 		onConflict: () => void;
 		onJump: (sessionId: string, messageId: string) => void;
+		/**
+		 * The ticket picked on the board. Every ticket meets this spec; with one picked, the lines held
+		 * to it alone stand out and those held to another ticket alone step back.
+		 */
+		selectedTicket?: string | null;
+		/** Show one ticket in the tickets panel, picked: a line held to it names it. */
+		onShowTicket?: (ticketId: string) => void;
+		/** Put the picked ticket down. */
+		onClearTicket?: () => void;
+		/** Open the tickets panel, on one status or on all. */
+		onShowTickets?: (status: TicketStatus | 'all') => void;
 	}
 
 	/**
 	 * The plan's spec, whole. It used to fold itself above the board; now it opens beside the board
 	 * or in a tab of its own, so the side panel or the tab is the fold and the panel just reads.
 	 */
-	let { api, detail, t, onSaved, onConflict, onJump }: Props = $props();
+	let {
+		api,
+		detail,
+		t,
+		onSaved,
+		onConflict,
+		onJump,
+		selectedTicket = null,
+		onShowTicket,
+		onClearTicket,
+		onShowTickets
+	}: Props = $props();
+
+	const ticketsById = $derived(new Map(detail.tickets.map((ticket) => [ticket.id, ticket] as const)));
+	/** The picked ticket, while it is one of this plan's. */
+	const focusTicket = $derived(selectedTicket ? (ticketsById.get(selectedTicket) ?? null) : null);
+	const ticketStates = $derived(countsEntries(detail.ticket_counts));
 
 	type Editing = 'goal' | SpecListField;
 	let editing = $state<Editing | null>(null);
@@ -179,6 +209,27 @@
 	}
 </script>
 
+{#snippet checkItem(check: AcceptanceCheck)}
+	{@const owner = check.ticket_id ? (ticketsById.get(check.ticket_id) ?? null) : null}
+	{@const binding = ticketBinding(owner?.id, focusTicket?.id ?? null)}
+	<!-- A check filed under one ticket names it; the rest hold for the whole plan, so for every ticket. -->
+	<span class="plan-spec-check" class:is-ticket-mine={binding === 'mine'} class:is-ticket-other={binding === 'other'}>
+		{#if owner}
+			{#if onShowTicket}
+				<button
+					type="button"
+					class="plan-spec-ticket-ref mono"
+					title={t.plan.links.showTicket(`${ticketTag(owner.seq)} ${owner.title}`)}
+					onclick={() => onShowTicket(owner.id)}>{ticketTag(owner.seq)}</button
+				>
+			{:else}
+				<span class="plan-spec-ticket-ref mono" title={owner.title}>{ticketTag(owner.seq)}</span>
+			{/if}
+		{/if}
+		<AcceptanceCheckRow {api} {detail} {check} {t} onSaved={checkSaved} />
+	</span>
+{/snippet}
+
 {#snippet title()}
 	<div class="plan-spec-title-wrap">
 		<svg class="plan-spec-title-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -229,6 +280,39 @@
 			</div>
 		{:else}
 			{@const spec = detail.spec}
+			{#if focusTicket}
+				<!-- The ticket picked on the board, read against the spec it has to meet. -->
+				<div class="plan-spec-focus" role="status">
+					<div class="plan-spec-focus-line">
+						<span class="plan-spec-focus-label">{t.plan.links.focus}</span>
+						{#if onShowTicket}
+							<button
+								type="button"
+								class="plan-spec-focus-ticket"
+								title={t.plan.links.showTicket(`${ticketTag(focusTicket.seq)} ${focusTicket.title}`)}
+								onclick={() => onShowTicket(focusTicket.id)}
+							>
+								<span class="plan-spec-ticket-ref mono">{ticketTag(focusTicket.seq)}</span>
+								<span class="plan-spec-focus-title">{focusTicket.title}</span>
+							</button>
+						{:else}
+							<span class="plan-spec-focus-ticket">
+								<span class="plan-spec-ticket-ref mono">{ticketTag(focusTicket.seq)}</span>
+								<span class="plan-spec-focus-title">{focusTicket.title}</span>
+							</span>
+						{/if}
+						{#if onClearTicket}
+							<button type="button" class="plan-spec-focus-clear" aria-label={t.plan.links.clearFocus} title={t.plan.links.clearFocus} onclick={onClearTicket}>
+								<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+									<line x1="18" y1="6" x2="6" y2="18"></line>
+									<line x1="6" y1="6" x2="18" y2="18"></line>
+								</svg>
+							</button>
+						{/if}
+					</div>
+					<p class="plan-spec-focus-hint">{t.plan.links.focusHint}</p>
+				</div>
+			{/if}
 			<!-- Hero: Plan Goal -->
 			<div class="plan-spec-goal">
 				<div class="plan-spec-goal-top">
@@ -267,7 +351,7 @@
 
 			<!-- What you asked for: the requirements ledger, the list the Bots read too (ADR 0040 P3). -->
 			{#if detail.requirements}
-				<PlanRequirements {api} {detail} {t} {onSaved} {onJump} />
+				<PlanRequirements {api} {detail} {t} {onSaved} {onJump} selectedTicket={focusTicket?.id ?? null} {onShowTicket} />
 			{/if}
 
 			<!-- Section: Guidelines (Acceptance, Rules, Process) -->
@@ -338,7 +422,7 @@
 							{@const lines = specLines(spec, field)}
 							{#if lines.length > 0}
 								<ul class="plan-spec-ul">
-									{#each lines as line}<li>{line}{#if field === 'acceptance' && checksForLine(checks, line).length > 0}<span class="plan-spec-checks-pills">{#each checksForLine(checks, line) as check (check.id)}<AcceptanceCheckRow {api} {detail} {check} {t} onSaved={checkSaved} />{/each}</span>{/if}</li>{/each}
+									{#each lines as line}<li>{line}{#if field === 'acceptance' && checksForLine(checks, line).length > 0}<span class="plan-spec-checks-pills">{#each checksForLine(checks, line) as check (check.id)}{@render checkItem(check)}{/each}</span>{/if}</li>{/each}
 								</ul>
 							{:else}
 								<p class="plan-spec-empty-line">{t.plan.empty}</p>
@@ -348,7 +432,7 @@
 								<div class="plan-spec-checks-orphans">
 									<span class="plan-spec-checks-orphans-title">{t.plan.checks.derivedTitle}</span>
 									<ul class="plan-spec-ul">
-										{#each fromYourWords as check (check.id)}<li>{check.item}<span class="plan-spec-checks-pills"><AcceptanceCheckRow {api} {detail} {check} {t} onSaved={checkSaved} /></span></li>{/each}
+										{#each fromYourWords as check (check.id)}<li>{check.item}<span class="plan-spec-checks-pills">{@render checkItem(check)}</span></li>{/each}
 									</ul>
 								</div>
 							{/if}
@@ -358,7 +442,7 @@
 									<span class="plan-spec-checks-orphans-title">{t.plan.checks.orphansTitle}</span>
 									<span class="plan-spec-checks-pills">
 										{#each orphanedChecks as check (check.id)}
-											<AcceptanceCheckRow {api} {detail} {check} {t} onSaved={checkSaved} />
+											{@render checkItem(check)}
 										{/each}
 									</span>
 								</div>
@@ -371,6 +455,32 @@
 					</div>
 				{/each}
 			</div>
+
+			<!--
+				Where the tickets stand, above the organizer's written progress: the two describe the same
+				work, and the tickets' own states are the ones to go by.
+			-->
+			{#if ticketStates.length > 0}
+				<div class="plan-spec-ticket-states">
+					<div class="plan-spec-ticket-states-line">
+						<span class="plan-spec-ticket-states-label">{t.plan.links.ticketStates}</span>
+						{#each ticketStates as entry (entry.status)}
+							{#if onShowTickets}
+								<button type="button" class="plan-spec-ticket-state is-{entry.status}" onclick={() => onShowTickets(entry.status)}>
+									<span>{t.plan.ticketStatus[entry.status]}</span>
+									<span class="mono">{entry.count}</span>
+								</button>
+							{:else}
+								<span class="plan-spec-ticket-state is-{entry.status}">
+									<span>{t.plan.ticketStatus[entry.status]}</span>
+									<span class="mono">{entry.count}</span>
+								</span>
+							{/if}
+						{/each}
+					</div>
+					<p class="plan-spec-ticket-states-hint">{t.plan.links.progressHint}</p>
+				</div>
+			{/if}
 
 			<!-- Section: Progress Dashboard (Done, Open, Blocked) -->
 			<div class="plan-spec-section is-progress">
@@ -826,6 +936,212 @@
 		gap: 4px;
 		margin-left: 4px;
 		vertical-align: middle;
+	}
+
+	/* A check and, when it is filed under one ticket, that ticket's number before it. */
+	.plan-spec-check {
+		display: inline-flex;
+		align-items: flex-start;
+		gap: 4px;
+		max-width: 100%;
+		transition: opacity 0.15s ease;
+	}
+
+	.plan-spec-ticket-ref {
+		flex: none;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-xs);
+		background: var(--line-subtle);
+		color: var(--muted);
+		font-size: 10px;
+		font-weight: 700;
+		line-height: 14px;
+		padding: 2px 5px;
+	}
+
+	button.plan-spec-ticket-ref {
+		cursor: pointer;
+	}
+
+	button.plan-spec-ticket-ref:hover {
+		border-color: var(--accent-border);
+		color: var(--accent);
+	}
+
+	.plan-spec-check.is-ticket-mine .plan-spec-ticket-ref {
+		border-color: var(--accent);
+		background: var(--accent);
+		color: var(--on-accent);
+	}
+
+	.plan-spec-check.is-ticket-other {
+		opacity: 0.45;
+	}
+
+	/* The picked ticket, above the spec it has to meet. */
+	.plan-spec-focus {
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+		min-width: 0;
+		padding: 8px 10px;
+		border: 1px solid var(--accent-border);
+		border-radius: var(--radius-md);
+		background: var(--accent-tint);
+	}
+
+	.plan-spec-focus-line {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
+	}
+
+	.plan-spec-focus-label {
+		flex: none;
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--accent);
+	}
+
+	.plan-spec-focus-ticket {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		flex: 1 1 auto;
+		min-width: 0;
+		border: none;
+		background: none;
+		padding: 0;
+		font: inherit;
+		color: var(--ink);
+		text-align: left;
+	}
+
+	button.plan-spec-focus-ticket {
+		cursor: pointer;
+	}
+
+	button.plan-spec-focus-ticket:hover .plan-spec-focus-title {
+		text-decoration: underline;
+	}
+
+	.plan-spec-focus .plan-spec-ticket-ref {
+		border-color: var(--accent);
+		background: var(--accent);
+		color: var(--on-accent);
+	}
+
+	.plan-spec-focus-title {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-size: 12px;
+		font-weight: 600;
+	}
+
+	.plan-spec-focus-clear {
+		flex: none;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 22px;
+		height: 22px;
+		border: none;
+		border-radius: var(--radius-full);
+		background: none;
+		color: var(--muted);
+		cursor: pointer;
+	}
+
+	.plan-spec-focus-clear:hover {
+		background: var(--pane);
+		color: var(--ink);
+	}
+
+	.plan-spec-focus-hint {
+		margin: 0;
+		font-size: 11px;
+		color: var(--muted);
+	}
+
+	/* The tickets' own states, above the written progress that describes the same work. */
+	.plan-spec-ticket-states {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		min-width: 0;
+	}
+
+	.plan-spec-ticket-states-line {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 4px;
+		min-width: 0;
+	}
+
+	.plan-spec-ticket-states-label {
+		flex: none;
+		margin-right: 2px;
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--muted);
+	}
+
+	.plan-spec-ticket-state {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		flex: none;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-full);
+		background: var(--pane);
+		color: var(--ink-secondary);
+		font: inherit;
+		font-size: 11px;
+		line-height: 1.4;
+		padding: 1px 8px;
+	}
+
+	button.plan-spec-ticket-state {
+		cursor: pointer;
+	}
+
+	button.plan-spec-ticket-state:hover {
+		border-color: var(--accent-border);
+		color: var(--accent);
+	}
+
+	.plan-spec-ticket-state::before {
+		content: "";
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: var(--muted-light);
+	}
+
+	.plan-spec-ticket-state.is-doing::before {
+		background: var(--accent);
+	}
+
+	.plan-spec-ticket-state.is-review::before {
+		background: var(--purple);
+	}
+
+	.plan-spec-ticket-state.is-done::before {
+		background: var(--ok);
+	}
+
+	.plan-spec-ticket-state.is-parked::before {
+		background: var(--muted);
+	}
+
+	.plan-spec-ticket-states-hint {
+		margin: 0;
+		font-size: 11px;
+		color: var(--muted-light);
 	}
 
 	.plan-spec-checks-orphans {

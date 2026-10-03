@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { USER_MEMBER, type PlanSpec, type TaskTraceNode, type TicketCounts, type TicketWithArtifacts } from "@real-bot/protocol";
+import { USER_MEMBER, type AcceptanceCheck, type PlanRequirement, type PlanSpec, type TaskTraceNode, type TicketCounts, type TicketWithArtifacts } from "@real-bot/protocol";
 import { aBot } from "../test-fixtures.ts";
 import { botAvatarColor } from "../avatar.ts";
 import { rosterLetter } from "../sidebar/roster-letter.ts";
@@ -17,7 +17,10 @@ import {
   specLines,
   specWithGoal,
   specWithLines,
+  requirementTicket,
   ticketArtifactAttachments,
+  ticketBinding,
+  ticketObligations,
   ticketTag,
   totalTicketCount,
   completionPercentage,
@@ -295,4 +298,102 @@ test("actorName mirrors actorFace's naming", () => {
   expect(actorName(USER_MEMBER, new Map(), "你", "已删除")).toBe("你");
   expect(actorName("bot-1", new Map([["bot-1", bot]]), "你", "已删除")).toBe("分镜师");
   expect(actorName("bot-ghost", new Map(), "你", "已删除")).toBe("已删除");
+});
+
+function anEntry(over: Partial<PlanRequirement> = {}): PlanRequirement {
+  return {
+    id: "r1",
+    seq: 1,
+    quote: "片长约 2 分钟",
+    restated: null,
+    category: null,
+    polarity: "must",
+    dimension: null,
+    value: null,
+    status: "open",
+    scope: "plan",
+    ticket_id: null,
+    domain: null,
+    times_raised: 1,
+    plans_raised: 1,
+    last_raised_at: "2026-09-28T04:02:00.000Z",
+    source_kind: "message",
+    source: null,
+    added_by: "scribe",
+    inherited_from: null,
+    excluded: false,
+    supersedes: null,
+    ...over,
+  };
+}
+
+function aCheck(over: Partial<AcceptanceCheck> = {}): AcceptanceCheck {
+  return {
+    id: "check-1",
+    task_id: "task-1",
+    ticket_id: null,
+    item: "有对比表",
+    kind: "exists",
+    path: "report.md",
+    pattern: null,
+    negate: false,
+    command: null,
+    cwd: null,
+    expect_exit: null,
+    expect_stdout: null,
+    timeout_sec: null,
+    source: "user",
+    created_at: "2026-09-24T08:00:00.000Z",
+    updated_at: "2026-09-24T08:00:00.000Z",
+    defined_at: "2026-09-24T08:00:00.000Z",
+    first_passed_at: null,
+    last_run: null,
+    running: false,
+    ...over,
+  };
+}
+
+test("ticketBinding: an item held to the ticket in focus is its own, to another ticket is another's, to none holds for all", () => {
+  expect(ticketBinding("ticket-1", "ticket-1")).toBe("mine");
+  expect(ticketBinding("ticket-2", "ticket-1")).toBe("other");
+  expect(ticketBinding(null, "ticket-1")).toBeNull();
+  expect(ticketBinding(undefined, "ticket-1")).toBeNull();
+  // Nothing in focus: nothing stands out and nothing dims.
+  expect(ticketBinding("ticket-1", null)).toBeNull();
+});
+
+test("requirementTicket: only a ticket's or a part's entry holds for one ticket", () => {
+  expect(requirementTicket(anEntry({ scope: "ticket", ticket_id: "ticket-1" }))).toBe("ticket-1");
+  expect(requirementTicket(anEntry({ scope: "part", ticket_id: "ticket-1" }))).toBe("ticket-1");
+  expect(requirementTicket(anEntry({ scope: "plan" }))).toBeNull();
+  expect(requirementTicket(anEntry({ scope: "project", ticket_id: "ticket-1" }))).toBeNull();
+  expect(requirementTicket(anEntry({ scope: "standing" }))).toBeNull();
+});
+
+test("ticketObligations: the plan's acceptance, rules and requirements in force for every ticket, plus what is held to this one", () => {
+  const detail = {
+    spec: aSpec({ acceptance: ["a", "b"], rules: ["r"] }),
+    requirements: [
+      anEntry({ id: "plan", seq: 1 }),
+      anEntry({ id: "project", seq: 2, scope: "project", inherited_from: { task_id: "task-0", title: "前一件" } }),
+      anEntry({ id: "mine-late", seq: 9, scope: "ticket", ticket_id: "ticket-1" }),
+      anEntry({ id: "mine", seq: 4, scope: "part", ticket_id: "ticket-1" }),
+      anEntry({ id: "other", seq: 5, scope: "ticket", ticket_id: "ticket-2" }),
+      // Not in force: offered, an old rule, set not to hold here.
+      anEntry({ id: "proposed", seq: 6, status: "proposed", scope: "ticket", ticket_id: "ticket-1" }),
+      anEntry({ id: "unverified", seq: 7, status: "unverified" }),
+      anEntry({ id: "excluded", seq: 8, excluded: true }),
+    ],
+    checks: [aCheck({ id: "plan-check" }), aCheck({ id: "mine-check", ticket_id: "ticket-1" }), aCheck({ id: "other-check", ticket_id: "ticket-2" })],
+  };
+  const owes = ticketObligations(detail, "ticket-1");
+  expect(owes.acceptance).toBe(2);
+  expect(owes.rules).toBe(1);
+  expect(owes.planRequirements).toBe(2);
+  expect(owes.requirements.map((entry) => entry.id)).toEqual(["mine", "mine-late"]);
+  expect(owes.checks.map((check) => check.id)).toEqual(["mine-check"]);
+});
+
+test("ticketObligations on a plan with no spec, ledger or checks yet owes nothing", () => {
+  expect(ticketObligations({ spec: null }, "ticket-1")).toEqual({ acceptance: 0, rules: 0, planRequirements: 0, requirements: [], checks: [] });
 });
