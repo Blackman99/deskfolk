@@ -116,6 +116,7 @@ function foldOpeningTicket(ctx: StoreContext, input: { taskId: string; turnId: s
   if (touched) return null;
   // Dropped, not parked: it reads 「作废」 on the board, not as work set aside that someone is on.
   setTicketStage(ctx, { ticketId: opened, stage: "dropped", source: "supervisor", now: input.now });
+  liftToJob(ctx, input.taskId, opened);
   const turn = ctx.db.query<{ bot_id: string; session_id: string; ticket_id: string | null; work_item_id: string | null }, [string]>(
     "SELECT bot_id, session_id, ticket_id, work_item_id FROM turns WHERE id = ?").get(input.turnId);
   if (turn && turn.ticket_id === opened) {
@@ -127,6 +128,30 @@ function foldOpeningTicket(ctx: StoreContext, input: { taskId: string; turnId: s
   recordWorkEvent(ctx, { kind: "ticket.folded", actor: "app", taskId: input.taskId, ticketId: opened, turnId: input.turnId,
     payload: { into: input.laidOut } });
   return opened;
+}
+
+/**
+ * What was filed under the opening ticket stands for the whole job it opened: your line, its quote
+ * and any requirement read from it go up to the job. Left there, they held for a ticket nobody works
+ * on — on 2026-10-04's walkthrough your opening line sat under the dropped ticket in its 归到哪件事,
+ * and a requirement read from it (「每句不超过 12 个字」) would never reach the slogans.
+ */
+function liftToJob(ctx: StoreContext, taskId: string, ticketId: string): void {
+  const lines = ctx.db.query<{ message_id: string; is_primary: number }, [string, string]>(
+    "SELECT message_id, is_primary FROM message_filings WHERE task_id = ? AND ticket_id = ?").all(taskId, ticketId);
+  for (const line of lines) {
+    const already = ctx.db.query("SELECT 1 FROM message_filings WHERE message_id = ? AND task_id = ? AND ticket_id IS NULL AND part_key IS NULL")
+      .get(line.message_id, taskId);
+    if (already) {
+      ctx.db.run("DELETE FROM message_filings WHERE message_id = ? AND task_id = ? AND ticket_id = ?", [line.message_id, taskId, ticketId]);
+      if (line.is_primary) ctx.db.run("UPDATE message_filings SET is_primary = 1 WHERE message_id = ? AND task_id = ? AND ticket_id IS NULL AND part_key IS NULL", [line.message_id, taskId]);
+    } else {
+      ctx.db.run("UPDATE message_filings SET ticket_id = NULL, part_key = NULL WHERE message_id = ? AND task_id = ? AND ticket_id = ?", [line.message_id, taskId, ticketId]);
+    }
+  }
+  // Its quote follows (`user_quotes_follow_filing`).
+  ctx.db.run("UPDATE messages SET ticket_id = NULL WHERE task_id = ? AND ticket_id = ?", [taskId, ticketId]);
+  ctx.db.run("UPDATE requirements SET scope = 'plan', scope_id = ? WHERE scope = 'ticket' AND scope_id = ?", [taskId, ticketId]);
 }
 
 export function planItems(ctx: StoreContext, input: { turnId: string; items: unknown }, now: string = isoNow()): PlanItemsResult {

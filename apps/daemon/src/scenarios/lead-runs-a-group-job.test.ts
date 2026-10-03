@@ -123,3 +123,37 @@ test("a delegated hand-over ends its segment: the delegation it answers is in re
   expect(h.store.db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM submissions").get()!.n).toBe(1);
   expect(h.store.db.query<{ status: string }, []>("SELECT status FROM delegations").get()!.status).toBe("open");
 });
+
+test("what was filed under the folded opening ticket goes up to the job: your line, and a requirement read from it", async () => {
+  // Walked through on 2026-10-04: after the lead laid the job out, your opening line still sat under
+  // the dropped ticket of the job's own name in its 归到哪件事, and anything the scribe read from it
+  // held for that ticket, which nobody works on.
+  const h = await createScenario({ learning: true });
+  open.push(h);
+  const [designer, writer] = h.createBots({ name: "设计师", duties: "海报和视觉；拆活、派活、审稿" }, { name: "文案", duties: "写宣传语" });
+  const room = h.group("海报组", [designer!, writer!]);
+  confirmGroupLead(h.store, room, designer!.id);
+  h.judge("scribe", { session: room }).reply({ adds: [{ quote: "每句不超过 12 个字", category: "字数", scope_hint: "ticket" }], raises: [], supersedes: [] });
+  const stop = call(tool("end_turn", { reason: "nothing_new" }));
+  h.script(designer!).handle(async ({ turn, hop }) => {
+    // A note first, which opens the job under a ticket of its own name and files your line there.
+    if (hop === 1) return call(writeFile("work/notes.md", "海报：竖版；宣传语三句"));
+    if (hop === 2) {
+      await h.waitFor(() => h.store.db.query("SELECT 1 FROM requirements").get() !== null, { what: "the scribe read the line" });
+      return call(tool("plan_items", { items: [{ title: "三句宣传语", owner: "文案" }, { title: "竖版海报", owner: "设计师" }] }));
+    }
+    return turn ? stop : stop;
+  });
+  h.script(writer!).reply(stop);
+
+  const line = h.postUser(room, "做一张咖啡店开业海报，竖版，配三句宣传语，每句不超过 12 个字");
+  await h.waitIdle({ timeoutMs: 15_000 });
+
+  const plan = h.store.db.query<{ id: string }, []>("SELECT id FROM tasks ORDER BY created_at LIMIT 1").get()!;
+  const folded = h.store.db.query<{ id: string; status: string }, [string]>("SELECT id, status FROM tickets WHERE task_id = ? AND title LIKE '做一张%'").get(plan.id)!;
+  expect(folded.status).toBe("parked");
+  expect(h.store.db.query("SELECT task_id, ticket_id FROM message_filings WHERE message_id = ?").all(line.id)).toEqual([{ task_id: plan.id, ticket_id: null }]);
+  expect(h.store.getMessage(line.id).ticket_id).toBeNull();
+  expect(h.store.db.query("SELECT ticket_id FROM user_quotes WHERE message_id = ?").all(line.id)).toEqual([{ ticket_id: null }]);
+  expect(h.store.db.query("SELECT scope, scope_id FROM requirements").all()).toEqual([{ scope: "plan", scope_id: plan.id }]);
+});

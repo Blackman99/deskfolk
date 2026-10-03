@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Your opening line stays with the job when the lead lays it out
+
+- When a lead's layout drops the ticket a job opened with, your opening line — and a requirement read from it — now move to the whole job. They stayed under the dropped ticket, so the requirement held for a ticket nobody works on, and the attribution dialog showed your line under it.
+- The attribution dialog no longer offers dropped tickets.
+
 ### Say what to change when you send a hand-over back
 
 - 退回 on a hand-over's card asks what should change, in a box under the card (you can leave it empty). What you write goes word for word to the Bot that made it, and the card shows it. Before, the Bot was told only that you sent it back and had to guess why.

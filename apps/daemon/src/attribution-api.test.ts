@@ -108,6 +108,19 @@ test("manual correction can choose untouched or dormant plans from another conve
   expect(h.store.getMessage(h.message.id).task_id).toBeNull();
 });
 
+test("a dropped ticket is not offered, unless the line is filed there now", async () => {
+  const h = start();
+  const dropped = h.store.createTicket({ taskId: h.b.id, title: "Opening", status: "parked" });
+  const choices = async () => {
+    const response = await fetch(`${h.origin}/v1/messages/${h.message.id}/attribution`, { headers: { Authorization: "Bearer filing-test" } });
+    return ((await response.json()) as { items: Array<{ id: string; tickets: Array<{ id: string }> }> }).items.find((choice) => choice.id === h.b.id)!.tickets.map((t) => t.id);
+  };
+  expect(await choices()).toEqual([h.ticket.id]);
+  h.store.db.run("INSERT INTO message_filings (message_id, task_id, ticket_id, filed_by, strength, is_primary, created_at) VALUES (?, ?, ?, 'user', 'user', 1, ?)",
+    [h.message.id, h.b.id, dropped.id, "2026-10-04T00:00:00.000Z"]);
+  expect(await choices()).toEqual([h.ticket.id, dropped.id]);
+});
+
 test("invalid corrections are refused atomically, including a ticket from another plan", async () => {
   const h = start();
   for (const body of [null, [], {}, { filings: "all" }, { filings: [], plan_id: h.a.id },
