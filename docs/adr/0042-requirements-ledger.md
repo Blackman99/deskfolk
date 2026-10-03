@@ -67,3 +67,10 @@
 - 不让任何规则从你的话自动生成门禁，说几次都一样。
 - 不让模型改写或摘要原话；转述另存一列，原话照录。
 - 不迁移已有规划的要点：旧规则一次导入台账，要点里的规则和验收原样留着。
+
+
+## 2026-10-03 补记：手艺类由书记员标 / Craft is marked by the scribe
+
+会话级默认和「升为常设」原来按 `craft-words.ts` 的词判断一条要求是不是工艺、观感取舍或系列设定。现在书记员记条目时标一个 `nature`（craft / look / series / other），存在台账新的 `nature` 列，两处都先看它；没标的旧条目、第一次打开新版本时导入的旧规则仍按词表（[ADR 0055](0055-lines-read-by-a-model.md)）。
+
+The conversation-wide default and the standing offer judged craft, a choice of look and a series' constants by the words of `craft-words.ts`. The scribe now marks each entry's `nature` (craft / look / series / other), kept in the ledger's new `nature` column, which both go by first; older entries without one, and old rules imported on a new build, still go by the words ([ADR 0055](0055-lines-read-by-a-model.md)).

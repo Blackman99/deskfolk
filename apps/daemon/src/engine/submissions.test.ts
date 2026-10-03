@@ -7,7 +7,11 @@
  * Bots from spamming it with "好的".
  */
 import { expect, test } from "bun:test";
-import { isAnswerText } from "./submissions";
+import { botLineByWords } from "../line-reading";
+import { isAnswerText as answerText } from "./submissions";
+
+/** The check as the word lists read the words: what the app goes by when no model can read them (ADR 0055). */
+const isAnswerText = (text: string): boolean => answerText(text, botLineByWords(text));
 
 /** The review's 24 samples: acks, bare claims, promises and one question — none is the deliverable. */
 const NOT_ANSWERS = [

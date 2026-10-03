@@ -67,3 +67,10 @@
 同时补上只读段的空回答：只读段一个字没回就结束时，应用在它的位置回一条状态行（`control.unanswered` 指向你的那句话），说明它被叫停着，带「只让 X 继续」「全部继续」；按下后除了照常解除、重开被停下的轮，这个会话里没有轮因此重开的 Bot 还会由你那句话给它开一轮。
 
 The group stop menu's "Stop the work in this group", "Stop all of X's work" and "Stop this job" now make holds with `lift_on_next_user_message`, like a Stop on a card: your next line about them (any line in that group; a line to that Bot; a line landing on that plan) lifts them before it wakes anyone, and the Bots go on from it with no note. "@X continue" in the group counts: the group's or plan's hold goes and only X's stopped turns start again on a note. "Stop every Bot", the board's and tools menu's stops and a spoken "stop" still wait for you; the flag is refused on global and ticket holds. A read-only answer that ends without a word is now answered by the app with a status line (`control.unanswered`) whose go-on buttons also open the Bot's turn on your line when nothing of it starts again there.
+
+
+## 2026-10-03 补记：规则判不了的话由读句判 / What the rules cannot settle, a reading does
+
+上面「控制句由应用照办……按固定词表读，不调模型」只对规则判得了的话还成立：纯叫停、纯继续、「没停」、「算了」和问停没停的话仍当场照办，不等模型。规则判不了的——没认出控制词（「先别搞了，收手吧」），或控制词旁边还有别的话——现在由读句判（[ADR 0055](0055-lines-read-by-a-model.md)）：读成只是叫停的，按同一套范围规则（`controlScopes`）建叫停，回执上照样能撤销；只是继续的，解除能解除的；带着别的话的只挂按钮；读成不是控制的，不再挂按钮。读不了时照旧只按规则。
+
+"Control lines are carried out by the app, read by fixed word lists, no model call" above still holds for what the rules settle: a pure stop, go on, "you haven't stopped", 算了 or question about stopping is carried out at once, never waiting on a model. A line they cannot settle — no control word they know, or one beside other words — is now read by a model ([ADR 0055](0055-lines-read-by-a-model.md)): nothing but a stop makes holds over the same scopes (`controlScopes`), undoable from the receipt; nothing but a go on lifts what it can; one beside other words only carries the buttons; one read as no control carries none. When it cannot be read, the rules alone decide, as before.

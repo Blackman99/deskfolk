@@ -313,6 +313,16 @@ export function defaultThinkingLevelFor(
 }
 
 /**
+ * The lightest level a model lists, for a call the app waits on and that needs no thinking (a
+ * reading of a line, ADR 0055); null when its catalog names none, so nothing is sent.
+ */
+export function lightestThinkingLevelFor(ctx: StoreContext, model: string, providerId: string | null): ThinkingLevel | null {
+  const rows = providerId ? providerRows(ctx).filter((row) => row.id === providerId) : providerRows(ctx);
+  const levels = rows.flatMap((row) => parseStoredCatalog(row.models)).filter((entry) => entry.name === model).flatMap((entry) => entry.thinking_levels);
+  return sortThinkingLevels(levels)[0] ?? null;
+}
+
+/**
  * A pin carried across a model change follows the new model: dropped entirely when the model went
  * away, and moved to that model's default when the new one cannot honour the old level.
  */

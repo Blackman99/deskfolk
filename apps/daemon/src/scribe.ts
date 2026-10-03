@@ -16,8 +16,8 @@
  * entries would each add what the other already had.
  */
 import { NO_ABLATION, type Ablation } from "./ablation";
-import { soundsLikeComplaint } from "./complaint-words";
 import type { CompletionsClient, JudgeResult, MappedUsage } from "./completions";
+import type { UserLineReading } from "./line-reading";
 import type { OrganizerRouting } from "./organizer";
 import { parseScribeAnswer, SCRIBE_SYSTEM, scribePayload } from "./prompts/scribe";
 import { SCRIBE_WRITER, type ScribeOutcome, type Store, type Task, type UserQuote } from "./store";
@@ -40,17 +40,23 @@ export type ScribeDeps = {
   ablation?: Ablation;
   /** What landed from one line's answer, once it is in the ledger. */
   onFiled?: (quote: UserQuote, outcome: ScribeOutcome) => void;
+  /**
+   * A line of yours (or your answer), read for what it objects to (ADR 0055): what the fallback
+   * capture judges whether it is a complaint by. Absent, the word lists judge it.
+   */
+  readQuote?: (quote: UserQuote) => Promise<UserLineReading>;
 };
 
-/** Which plans had handed something over when a line was said (see `plansHandedOver`); null when the line is no complaint. */
+/** Which plans had handed something over when a line was said (see `plansHandedOver`). */
 export type HandedOver = ReadonlySet<string> | null;
 
 export type Scribe = {
   /**
    * Taken as a line of yours arrives, before its filing or a turn it wakes can send a ticket back
-   * over it: what the fallback capture judges the line by, handed back to `noteLine`.
+   * over it: what the fallback capture judges the line by, handed back to `noteLine`. Taken for
+   * every line: whether the line complains is only known once it is read.
    */
-  handedOverAt: (body: string) => HandedOver;
+  handedOverAt: () => HandedOver;
   /**
    * A line of yours went through filing and waking; resolves once it is in the ledger or came to
    * nothing. Never rejects. Called again when the line is filed later (a desk segment opening a job
@@ -74,8 +80,8 @@ export function createScribe(deps: ScribeDeps): Scribe {
   /** Quotes this run has read against a plan (or captured), so a later filing of the same line reads it no second time. */
   const read = new Set<string>();
 
-  function handedOverAt(body: string): HandedOver {
-    return soundsLikeComplaint(body) ? store.plansHandedOver() : null;
+  function handedOverAt(): HandedOver {
+    return store.plansHandedOver();
   }
 
   function enqueue(read: () => UserQuote | null, handedOver: HandedOver): Promise<void> {
@@ -94,8 +100,9 @@ export function createScribe(deps: ScribeDeps): Scribe {
   }
 
   /** The fallback capture, when the scribe filed nothing for the line. */
-  function capture(quote: UserQuote, handedOver: HandedOver): void {
-    const kept = store.captureComplaint(quote, handedOver);
+  async function capture(quote: UserQuote, handedOver: HandedOver): Promise<void> {
+    const objects = deps.readQuote ? (await deps.readQuote(quote)).objections.length > 0 : undefined;
+    const kept = store.captureComplaint(quote, handedOver, objects);
     if (kept) log(`[scribe] quote ${quote.id}: nothing filed, kept the complaint as proposed entry ${kept.id}`);
   }
 
@@ -189,7 +196,7 @@ export function createScribe(deps: ScribeDeps): Scribe {
     noteAnswer: (askId) => {
       // Read here: the turn the answer resumes has not run on yet.
       const answer = store.quoteOfMessage(askId, "ask_answer");
-      return enqueue(() => store.quoteOfMessage(askId, "ask_answer"), answer ? handedOverAt(answer.body) : null);
+      return enqueue(() => store.quoteOfMessage(askId, "ask_answer"), answer ? handedOverAt() : null);
     },
     stop() {
       generation += 1;

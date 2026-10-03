@@ -24,8 +24,8 @@ import {
   type StatusTicketLine,
   type StatusWorkingLine,
 } from "../prompts";
+import type { UserLineReading } from "../line-reading";
 import type { TurnAdmission } from "../quiesce";
-import { isStatusQuestion } from "../status-question";
 import { derivedNotGate, type Store } from "../store";
 import { ENGINE_LEVELS } from "../store/schema-gate";
 import { takeCodePoints } from "../text";
@@ -42,8 +42,11 @@ export type StatusQuestionDeps = {
 };
 
 export type StatusQuestionEngine = {
-  /** True when `message` was a status question this fully handled — the caller does nothing else with it. */
-  handle: (message: Message) => boolean;
+  /**
+   * True when `message` was a status question this fully handled — the caller does nothing else
+   * with it. Whether it only asks where the work stands is `reading`'s to say (ADR 0055).
+   */
+  handle: (message: Message, reading: UserLineReading) => boolean;
 };
 
 /** Code points of a live turn's latest command the status line quotes. */
@@ -125,9 +128,9 @@ export function createStatusQuestion(deps: StatusQuestionDeps): StatusQuestionEn
     return Math.max(0, Math.round((now - Date.parse(iso)) / 60_000));
   }
 
-  function handle(message: Message): boolean {
+  function handle(message: Message, reading: UserLineReading): boolean {
     if (admission?.draining) return false;
-    if (!isStatusQuestion(message)) return false;
+    if (!reading.statusOnly) return false;
     const taskId = planIdFor(message.session_id);
     if (!taskId) return false;
     let task;

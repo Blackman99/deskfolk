@@ -11,8 +11,8 @@ import {
   deliveryExcerpt,
   describeFailingCheck,
   FAILING_CHECKS_LIMIT,
-  promisesLaterWork,
 } from "./closing-check";
+import { promisesLaterWork } from "./later-words";
 import type { ChatMessage, CompletionOk } from "./completions";
 import { TurnAdmission } from "./quiesce";
 import { memoryKeyStore } from "./secrets";

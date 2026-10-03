@@ -5,7 +5,8 @@
  * 2026-09-28 (ADR 0036, `docs/adr/0036-acceptance-checks-run-by-the-daemon.md`) that proof is
  * deterministic: the app's own acceptance checks, a booked check-back or an @-mention for an
  * unbacked promise, and `turn_runs` for an unverified claim — see `closing-check.ts`'s header for
- * why the old model-judged version was dropped. `publishCitedBotMessage` and `completeSilent` are
+ * why the old model-judged version was dropped. What the reply says (a promise, a claim of a run)
+ * is read by the reader (ADR 0055); what it is checked against is still only the app's own rows. `publishCitedBotMessage` and `completeSilent` are
  * the two ways a turn's reply actually reaches the transcript, closing check already run.
  */
 import { attachmentLinePaths, USER_MEMBER, type AcceptanceCheck, type Locale, type Message, type Turn } from "@real-bot/protocol";
@@ -17,18 +18,12 @@ import {
   resolveBodyPathsToWorkDir,
 } from "../artifact-paths";
 import { pathExists } from "../collab-tools";
-import {
-  claimsVerification,
-  closingNote,
-  describeFailingCheck,
-  FAILING_CHECKS_LIMIT,
-  promisesLaterWork,
-} from "../closing-check";
+import { closingNote, describeFailingCheck, FAILING_CHECKS_LIMIT } from "../closing-check";
 import type { CompletionsClient } from "../completions";
 import { evaluateFileCheck } from "../acceptance-eval";
 import { runMeasureCheck } from "../measure-check";
 import { parseMentions } from "../mentions";
-import { isNoWorkCloser } from "../no-work";
+import { readBotLineByWords, readsAsNoWork, type BotLineReading } from "../line-reading";
 import type { TurnAdmission } from "../quiesce";
 import type { TurnExecution } from "../store/routing";
 import { derivedNotGate, type Store } from "../store";
@@ -51,14 +46,17 @@ export type ClosingDeps = {
   observeTicket: (turnId: string, botId: string, seen: "working" | "delivered") => void;
   /** Benchmark switches (see `ablation.ts`): `closing-check` lets every delivery through unchecked. */
   ablation?: Ablation;
+  /** A Bot's line, read for a promise of more to come and a claim of a run (ADR 0055, `reader.ts`); absent, the word lists read it. */
+  readBotLine?: (body: string, sessionId: string | null) => Promise<BotLineReading>;
 };
 
 export type Closing = {
+  /** `said`: the reply as the Bot wrote it, which is what is read (absent, `body`); `body` is it with its paths resolved. */
   closingCheck: (
     turnId: string,
     live: Live,
     turn: Turn,
-    input: { body: string; paths: string[]; sessionId: string },
+    input: { body: string; said?: string; paths: string[]; sessionId: string },
   ) => Promise<string | null>;
   closingCheckForSend: (
     turnId: string,
@@ -75,6 +73,7 @@ export type Closing = {
 export function createClosing(deps: ClosingDeps): Closing {
   const { store, admission, lives, active, publishTurn, publishMessage, executionOf, observeTicket } = deps;
   const ablation = deps.ablation ?? NO_ABLATION;
+  const readBotLine = deps.readBotLine ?? readBotLineByWords;
 
   /**
    * This turn's plan checks that fail right now, named the way the note lists them, oldest-defined
@@ -148,13 +147,10 @@ export function createClosing(deps: ClosingDeps): Closing {
     turnId: string,
     live: Live,
     turn: Turn,
-    input: { body: string; paths: string[]; sessionId: string },
+    input: { body: string; said?: string; paths: string[]; sessionId: string },
   ): Promise<string | null> {
     if (ablation.has("closing-check")) return null;
     if (live.closingChecked) return null;
-    const isDelivery = input.paths.length > 0;
-    const isPromise = promisesLaterWork(input.body);
-    if (!isDelivery && !isPromise) return null;
     if (admission?.draining) return null;
     let userPresent = false;
     try {
@@ -165,6 +161,13 @@ export function createClosing(deps: ClosingDeps): Closing {
     if (!userPresent) return null;
     const taskId = store.taskOfTurn(turnId);
     if (!taskId) return null;
+    const isDelivery = input.paths.length > 0;
+    // What the reply says (ADR 0055): whether it promises more to come, and whether it claims a run.
+    const words = input.said ?? input.body;
+    const said = words.trim() ? await readBotLine(words, input.sessionId) : null;
+    if (!active(turnId, live)) return null;
+    const isPromise = said?.later != null;
+    if (!isDelivery && !isPromise) return null;
     live.closingChecked = true;
 
     const failingChecks = isDelivery ? await failingCheckLines(taskId, turnId, live.locale) : [];
@@ -182,7 +185,7 @@ export function createClosing(deps: ClosingDeps): Closing {
     }
 
     let unverifiedClaim = false;
-    if (claimsVerification(input.body)) {
+    if (said?.claimsVerified) {
       let ranThisTurn = 0;
       try {
         ranThisTurn = store.turnRuns(turnId).length;
@@ -203,7 +206,7 @@ export function createClosing(deps: ClosingDeps): Closing {
     args: Record<string, unknown>,
   ): Promise<string | null> {
     const body = typeof args.body === "string" ? args.body : "";
-    if (!body.trim() || isNoWorkCloser(body)) return null;
+    if (await readsAsNoWork(body, (text) => readBotLine(text, turn.session_id))) return null;
     const sessionId = typeof args.session_id === "string" && args.session_id ? args.session_id : turn.session_id;
     const corrected = resolveBodyPathsToWorkDir(body, live.workDir, (relpath) => pathExists(store, relpath));
     const explicit = Array.isArray(args.paths)
@@ -213,7 +216,7 @@ export function createClosing(deps: ClosingDeps): Closing {
       [...live.writtenPaths, ...explicit],
       [...extractWorkspacePathsFromBody(corrected), ...attachmentLinePaths(corrected)],
     );
-    return closingCheck(turnId, live, turn, { body: corrected, paths, sessionId });
+    return closingCheck(turnId, live, turn, { body: corrected, said: body, paths, sessionId });
   }
 
   /**

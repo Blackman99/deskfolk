@@ -24,6 +24,7 @@ export const SIDE_CALLS = [
   "plan-nudge",
   "direct-report",
   "acceptance-checks",
+  "reader",
 ] as const;
 
 export type SideCall = (typeof SIDE_CALLS)[number];
@@ -35,7 +36,7 @@ export type AblationGroup = "organizer" | "calls" | "nudges" | "bare";
 
 export const ABLATION_GROUPS: Record<AblationGroup, readonly SideCall[]> = {
   organizer: ["organize-message", "organize-settle"],
-  calls: ["organize-message", "organize-settle", "scribe", "closing-check", "route-pick", "review", "learning", "judgement"],
+  calls: ["organize-message", "organize-settle", "scribe", "closing-check", "route-pick", "review", "learning", "judgement", "reader"],
   nudges: ["plan-nudge", "direct-report"],
   bare: SIDE_CALLS,
 };

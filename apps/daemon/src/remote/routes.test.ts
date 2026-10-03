@@ -75,8 +75,8 @@ test("plans and tickets: reads are whitelisted, a spec edit carries the whole sp
   bad({ v: 1, id, method: "GET", path: "/v1/spend", query: { kind: "organise" } });
   // A purpose split out of its kind is a line of its own (ADR 0042); a category's whole list fits.
   ok({ v: 1, id, method: "GET", path: "/v1/spend/summary", query: { kind: "composer_suggest,acceptance_check,scribe,vision" } });
-  ok({ v: 1, id, method: "GET", path: "/v1/spend", query: { kind: "turn,judgement,route_pick,route_review,route_learn,composer_suggest,organize,acceptance_check,scribe,vision,reflect" } });
-  bad({ v: 1, id, method: "GET", path: "/v1/spend", query: { kind: "scribe,scribe,scribe,scribe,scribe,scribe,scribe,scribe,scribe,scribe,scribe,scribe" } });
+  ok({ v: 1, id, method: "GET", path: "/v1/spend", query: { kind: "turn,judgement,route_pick,route_review,route_learn,composer_suggest,organize,acceptance_check,scribe,vision,reflect,reader" } });
+  bad({ v: 1, id, method: "GET", path: "/v1/spend", query: { kind: "scribe,scribe,scribe,scribe,scribe,scribe,scribe,scribe,scribe,scribe,scribe,scribe,scribe" } });
 });
 
 test("acceptance checks: create needs item and kind, a patch needs more than just if_revision, run and delete take a bare or revisioned body", () => {

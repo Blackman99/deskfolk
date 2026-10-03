@@ -413,7 +413,8 @@ test("an organizer that answers nothing usable, or is down, changes nothing: the
   await second;
   expect(h.organized).toHaveLength(2);
   expect(h.turnOf(follow.id)[0]).toMatchObject({ task_id: plan.id, ticket_id: null });
-  expect(h.store.listSpend({ session_id: session }).filter((row) => row.kind === "organize")).toHaveLength(1);
+  // (Reading each line, ADR 0055, bills apart as the reader's.)
+  expect(h.store.listSpend({ session_id: session }).filter((row) => row.kind === "organize" && row.purpose !== "reader")).toHaveLength(1);
 });
 
 test("in a group, every turn a filed line opens lands in its plan and ticket", async () => {

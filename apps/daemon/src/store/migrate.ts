@@ -859,7 +859,47 @@ function migrateSpendLedger(db: Database): void {
 function migrateSpendPurpose(db: Database): void {
   const cols = db.query<{ name: string }, []>("PRAGMA table_info(spend)").all().map((row) => row.name);
   if (!cols.includes("purpose")) {
-    db.run(`ALTER TABLE spend ADD COLUMN purpose TEXT CHECK (purpose IS NULL OR purpose IN ('scribe', 'vision', 'reflect'))`);
+    db.run(`ALTER TABLE spend ADD COLUMN purpose TEXT CHECK (purpose IS NULL OR purpose IN ('scribe', 'vision', 'reflect', 'reader'))`);
+  }
+  widenSpendPurposes(db);
+}
+
+/**
+ * `spend.purpose` gained `reader` (ADR 0055: reading a line for what the app acts on). Its CHECK is
+ * a fixed `IN (...)` list, which SQLite cannot widen with `ALTER TABLE`, so a ledger whose list
+ * lacks it is rebuilt the way `migrateNullableTaskSession` rebuilds tasks: the stored definition
+ * with the list widened, every row copied into it in one transaction, its indexes made again. The
+ * ledger has no foreign keys either way.
+ */
+function widenSpendPurposes(db: Database): void {
+  const table = db.query<{ sql: string }, []>(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'spend'`).get()?.sql;
+  if (!table) return;
+  const list = /purpose\s+TEXT\s+CHECK\s*\(\s*purpose\s+IS\s+NULL\s+OR\s+purpose\s+IN\s*\(([^)]*)\)\s*\)/i.exec(table);
+  if (!list) throw new Error("spend.purpose has a definition this migration does not know how to widen");
+  if (/'reader'/.test(list[1]!)) return;
+  const widened = table.replace(list[0], list[0].replace(list[1]!, `${list[1]!.trimEnd()}, 'reader'`));
+  // A table that was ever renamed is stored as CREATE TABLE "spend".
+  const createNew = widened.replace(/^CREATE TABLE\s+(?:"spend"|spend\b)/i, "CREATE TABLE spend_new");
+  if (createNew === widened) throw new Error("spend has a definition this migration does not know how to copy");
+  const own = db
+    .query<{ sql: string }, []>(`SELECT sql FROM sqlite_master WHERE tbl_name = 'spend' AND type IN ('index', 'trigger') AND sql IS NOT NULL`)
+    .all();
+  const columns = db
+    .query<{ name: string }, []>(`SELECT name FROM pragma_table_info('spend')`)
+    .all()
+    .map((col) => `"${col.name}"`)
+    .join(", ");
+  db.run(`PRAGMA legacy_alter_table = ON`);
+  try {
+    db.transaction(() => {
+      db.run(createNew);
+      db.run(`INSERT INTO spend_new (${columns}) SELECT ${columns} FROM spend`);
+      db.run(`DROP TABLE spend`);
+      db.run(`ALTER TABLE spend_new RENAME TO spend`);
+      for (const { sql } of own) db.run(sql);
+    })();
+  } finally {
+    db.run(`PRAGMA legacy_alter_table = OFF`);
   }
 }
 
@@ -1092,6 +1132,7 @@ function migrateRequirements(db: Database): void {
   const cols = db.query<{ name: string }, []>("PRAGMA table_info(requirements)").all().map((row) => row.name);
   if (!cols.includes("seq")) db.run("ALTER TABLE requirements ADD COLUMN seq INTEGER");
   if (!cols.includes("origin_task_id")) db.run("ALTER TABLE requirements ADD COLUMN origin_task_id TEXT");
+  if (!cols.includes("nature")) db.run("ALTER TABLE requirements ADD COLUMN nature TEXT");
   const unnumbered = db
     .query<{ id: string }, []>("SELECT id FROM requirements WHERE seq IS NULL ORDER BY created_at ASC, rowid ASC")
     .all();

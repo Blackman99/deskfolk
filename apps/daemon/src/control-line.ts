@@ -521,16 +521,30 @@ function scopesOf(input: ControlLineInput, tokens: Token[], mentions: { named: s
 
 const NONE: ControlReading = { kind: "none" };
 
-/** Reads a line of yours for stop, go on or 「没停」; see the file comment for the rules. */
-export function readControlLine(input: ControlLineInput): ControlReading {
-  const { message } = input;
-  if (message.kind !== "user" || message.body.length > MAX_BODY) return NONE;
+/** The line's words as the rules read them: its mentions, the roster names written bare, and its tokens. */
+function wordsOf(input: ControlLineInput) {
   const mentions = mentionsOf(input);
   const said = mentions.text.normalize("NFKC").toLowerCase().replace(/’/g, "'");
   const bare = bareNamesOf(said.replace(EMOJI, ""), input.roster);
   const words = readWords(squeeze(bare.text), bare.text.includes("?"));
+  return { mentions, said, bare, words, scopes: () => scopesOf(input, words.tokens, { named: [...mentions.named, ...bare.named], everyone: mentions.everyone }) };
+}
+
+/**
+ * What a stop or a go on said in this line would be about, read by the rules above whatever the
+ * line's verb: for a line a model read as one when these rules found no control word in it
+ * (ADR 0055). Who it is said to is still the line's own words and place.
+ */
+export function controlScopes(input: ControlLineInput): ControlScope[] {
+  return wordsOf(input).scopes();
+}
+
+/** Reads a line of yours for stop, go on or 「没停」; see the file comment for the rules. */
+export function readControlLine(input: ControlLineInput): ControlReading {
+  const { message } = input;
+  if (message.kind !== "user" || message.body.length > MAX_BODY) return NONE;
+  const { mentions, said, bare, words, scopes } = wordsOf(input);
   const has = (kind: Kind) => words.tokens.some((token) => token.kind === kind);
-  const scopes = () => scopesOf(input, words.tokens, { named: [...mentions.named, ...bare.named], everyone: mentions.everyone });
 
   // 1. A status question.
   if (isStatusQuestion(message)) return { kind: "status", offerStop: false, scopes: scopes() };

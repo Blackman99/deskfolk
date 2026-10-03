@@ -113,6 +113,13 @@ export type ToolCtx = {
   availableToolNames?: ReadonlySet<string>;
   admission?: TurnAdmission;
   signal?: AbortSignal;
+  /**
+   * What the call's words say, as the engine read them before it runs (ADR 0055): `noWork` for a
+   * `send_message` body that is only a no-work closer; `lastWord` for an `end_turn`, the segment's
+   * last word and the sentence in which it says the work is still going. Absent, the word lists
+   * read them here.
+   */
+  read?: { noWork?: boolean; lastWord?: { said: string; later: string | null } };
 };
 
 export async function runCollabTool(
@@ -254,7 +261,7 @@ async function mutateConfiguration<T>(ctx: ToolCtx, work: () => T): Promise<T> {
 
 function sendMessage(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
   const body = requireString(args.body, "body");
-  if (isNoWorkCloser(body)) {
+  if (ctx.read?.noWork ?? isNoWorkCloser(body)) {
     return { ok: true, data: { skipped: true, reason: "no_new_work" }, emitted: [] };
   }
   const sessionId = optionalString(args.session_id) ?? ctx.sessionId;
@@ -693,7 +700,8 @@ function workOn(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
 function endTurn(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
   if (ctx.store.capabilities().engine_level >= ENGINE_LEVELS.delegation) {
     const finished = ctx.store.finishWork({ turnId: ctx.turnId, reason: args.reason, note: args.note,
-      needsFromUser: args.needs_from_user, answer: args.answer, inbox: args.inbox });
+      needsFromUser: args.needs_from_user, answer: args.answer, inbox: args.inbox },
+      ctx.read?.lastWord ? { lastWord: ctx.read.lastWord } : {});
     if (finished.bounce) return { ok: false, error: { code: finished.code ?? "end_contract", message: finished.bounce }, emitted: [] };
     const emitted: ToolResult["emitted"] = [];
     if (finished.notice || finished.ask) {

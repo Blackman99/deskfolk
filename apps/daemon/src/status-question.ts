@@ -1,7 +1,8 @@
 /**
  * 进度询问: a user line that is only asking where a job stands ("怎么样了", "how's it going") and
- * nothing else. Pure text matching — no store, no model call — so `turn-engine.ts` can check it
- * before doing anything a real message would trigger (organizing, judging, waking a turn).
+ * nothing else. A model reads that (ADR 0055, `reader.ts`) before `turn-engine.ts` does anything a
+ * real message would trigger (organizing, judging, waking a turn); this file is the line's shape,
+ * which either reading must have, and the word lists' reading for when no model can read it.
  *
  * Deliberately conservative: a false negative just takes the normal path (the organizer and
  * participation answer as they always have); a false positive would answer a real request with a
@@ -38,19 +39,29 @@ export type StatusQuestionCandidate = Pick<
 >;
 
 /**
- * Whether `message` is only a status question: nothing to detect against but its own body — a
- * quote-reply, an @mention, an attachment or an annotation batch all mean the line is about
- * something specific, so those take the normal path even when the words would otherwise match.
+ * Whether `message` could be only a status question, by its shape: nothing to go on but its own
+ * body — a quote-reply, an @mention, an attachment or an annotation batch all mean the line is
+ * about something specific, so those take the normal path whatever the words. What the words say
+ * is a reading's (ADR 0055); this is what both readings share.
  */
-export function isStatusQuestion(message: StatusQuestionCandidate): boolean {
+export function statusQuestionShape(message: StatusQuestionCandidate): boolean {
   if (message.kind !== "user") return false;
   if (message.attachments.length > 0) return false;
   if (message.annotation_source_message_id) return false;
   if (message.parent_id) return false;
   const trimmed = message.body.trim();
   if (!trimmed) return false;
-  if (codePointCount(trimmed) > MAX_CODE_POINTS) return false;
   // A line naming a Bot is for that Bot: `@视频导演 怎么样了` takes the normal path.
-  if (trimmed.includes("@")) return false;
+  return !trimmed.includes("@");
+}
+
+/**
+ * Whether `message` is only a status question as the word lists read it: the shape above, short,
+ * and one of a closed set of phrasings. What the app goes by when no model can read the line.
+ */
+export function isStatusQuestion(message: StatusQuestionCandidate): boolean {
+  if (!statusQuestionShape(message)) return false;
+  const trimmed = message.body.trim();
+  if (codePointCount(trimmed) > MAX_CODE_POINTS) return false;
   return ZH_HOW_IS_IT.test(trimmed) || ZH_BARE_PROGRESS.test(trimmed) || EN_HOW_IS_IT.test(trimmed);
 }

@@ -1660,6 +1660,12 @@ const zh = {
     stronger: "强",
     failed: "没存上，再试一次"
   },
+  readerModel: {
+    title: "读句用的模型",
+    hint: "你和 Bot 的每句话，应用先用这个模型读一遍：是不是叫停或继续、是不是只问进度、哪里在挑已交付成果的毛病、Bot 是不是说着还在做就收尾了。你的话要等它读完才会叫醒 Bot，所以选个快的。读不了（没配、出错、超时）时退回固定词表。",
+    followDefault: (model: string | null) => (model ? `跟随默认模型（${model}）` : "跟随默认模型"),
+    failed: "没存上，再试一次"
+  },
   lessons: {
     title: "应用记下的教训",
     subtitle: "递归搜索跑满超时被杀后，应用把这一类调用记成教训：先警告一次，Bot 坚持再跑又超时就拦下，对所有 Bot 生效。误放行或卡在能力天花板之后，Bot 的反思提出的清单和检查，你在卡片上采用后也列在这里。停用后不再起作用。",
@@ -3378,6 +3384,12 @@ const en: CopyShape<typeof zh> = {
     remove: (model: string) => `Take ${model} off the ladder`,
     weaker: "Weaker",
     stronger: "Stronger",
+    failed: "Not saved; try again"
+  },
+  readerModel: {
+    title: "Model that reads lines",
+    hint: "Every line you and the Bots write is first read with this model: whether it tells the Bots to stop or go on, whether it only asks where the work stands, what it objects to in delivered work, whether a Bot is ending while saying it is still at it. Your line wakes no Bot until it is read, so pick a fast one. When it cannot read (none set, an error, too slow), the fixed word lists do.",
+    followDefault: (model: string | null) => (model ? `Follow the default model (${model})` : "Follow the default model"),
     failed: "Not saved; try again"
   },
   lessons: {

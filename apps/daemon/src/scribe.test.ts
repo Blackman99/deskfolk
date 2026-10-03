@@ -58,7 +58,7 @@ function harness(answer: (request: JudgeRequest) => JudgeResult | Promise<JudgeR
   const say = (body: string) => {
     const line = store.postMessage(direct, { body });
     store.db.run(`UPDATE messages SET task_id = ? WHERE id = ?`, [planId, line.id]);
-    return { line, noted: scribe.noteLine(line.id, scribe.handedOverAt(body)), quote: store.quoteOfMessage(line.id, "message")! };
+    return { line, noted: scribe.noteLine(line.id, scribe.handedOverAt()), quote: store.quoteOfMessage(line.id, "message")! };
   };
   const payloadOf = (request: JudgeRequest) => JSON.parse(String(request.messages[1]!.content)) as ScribePayload;
   return { store, direct, planId, shots, scribe, requests, spent, lines, say, payloadOf };

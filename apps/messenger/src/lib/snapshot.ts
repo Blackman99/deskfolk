@@ -67,6 +67,7 @@ export function emptySnapshot(): Snapshot {
       endpoint_model_catalog: [],
       endpoint_default_model: null,
       default_provider_id: null,
+      reader_model: null,
       launch_at_login: true,
       locale: "zh",
       theme: "system",

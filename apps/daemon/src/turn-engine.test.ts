@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { createCompletionsClient } from "./completions";
 import { continueNote } from "./hop-limits";
 import { ORGANIZER_SYSTEM } from "./prompts/organizer";
+import { JUDGEMENT_SYSTEM } from "./prompts/judgement";
+import { READ_BOT_LINE_SYSTEM, READ_USER_LINE_SYSTEM } from "./prompts/reader";
 import { SCRIBE_SYSTEM } from "./prompts/scribe";
 import { ROUTE_LEARN_SYSTEM, ROUTE_PICK_SYSTEM, ROUTE_REVIEW_SYSTEM } from "./prompts/routing";
 import { createLocalApi } from "./local-api";
@@ -78,7 +80,7 @@ function routingAnswer(content: string): Response {
   return Response.json({ choices: [{ message: { role: "assistant", content } }] });
 }
 
-/** True for the daemon's own short calls: picking a model, reviewing a chain, learning from it, filing, noting requirements. */
+/** True for the daemon's own short calls: picking a model, reviewing a chain, learning from it, filing, noting requirements, reading a line. */
 function isRoutingCall(body: Record<string, unknown>): boolean {
   const messages = body.messages as Array<{ role?: string; content?: string }> | undefined;
   const system = messages?.find((row) => row.role === "system")?.content ?? "";
@@ -87,7 +89,9 @@ function isRoutingCall(body: Record<string, unknown>): boolean {
     system === ROUTE_REVIEW_SYSTEM ||
     system === ROUTE_LEARN_SYSTEM ||
     system === ORGANIZER_SYSTEM ||
-    system === SCRIBE_SYSTEM
+    system === SCRIBE_SYSTEM ||
+    system === READ_USER_LINE_SYSTEM ||
+    system === READ_BOT_LINE_SYSTEM
   );
 }
 
@@ -4512,9 +4516,16 @@ describe("spend ledger for routing and composer calls", () => {
     await h.engine.drain();
 
     const all = ledger(h.store);
+    // Each of the three user messages was read before anything acted on it (ADR 0055), and the
+    // Bot's lines once per text: billed as organize with the reader's own purpose, one row a call.
+    const reads = calls.filter((call) => call === READ_USER_LINE_SYSTEM || call === READ_BOT_LINE_SYSTEM);
+    expect(calls.filter((call) => call === READ_USER_LINE_SYSTEM)).toHaveLength(3);
+    const read = all.filter((row) => row.purpose === "reader");
+    expect(read).toHaveLength(reads.length);
+    for (const row of read) expect(row).toMatchObject({ kind: "organize", session_id: body.direct_session.id, bot_id: null, turn_id: null, model: "cheap-chat" });
     // Each of the three user messages was organized first and noted by the scribe after (billed as
     // the same kind, the scribe's with its own purpose), on the default model, owned by nobody.
-    const organized = all.filter((row) => row.kind === "organize");
+    const organized = all.filter((row) => row.kind === "organize" && row.purpose !== "reader");
     expect(organized).toHaveLength(6);
     expect(calls.filter((call) => call === SCRIBE_SYSTEM)).toHaveLength(3);
     expect(organized.map((row) => row.purpose ?? "organizer").sort()).toEqual(["organizer", "organizer", "organizer", "scribe", "scribe", "scribe"]);
@@ -4583,9 +4594,11 @@ describe("spend ledger for routing and composer calls", () => {
     h.engine.sweepStaleChains();
     await waitFor(sub.events, () => h.store.listWorkEvents({ kind: "scribe.answer" }).length === 1, 4000);
     await h.engine.drain();
-    expect(calls.filter((call) => call !== ORGANIZER_SYSTEM && call !== SCRIBE_SYSTEM)).toEqual([ROUTE_PICK_SYSTEM]);
+    expect(calls.filter((call) => ![ORGANIZER_SYSTEM, SCRIBE_SYSTEM, READ_USER_LINE_SYSTEM, READ_BOT_LINE_SYSTEM].includes(call))).toEqual([ROUTE_PICK_SYSTEM]);
     const rows = ledger(h.store);
-    expect(rows.map((row) => row.kind).sort()).toEqual(["organize", "organize", "route_pick", "turn"]);
+    // Your line and the Bot's reply were each read once (ADR 0055), billed apart as the reader's.
+    expect(rows.filter((row) => row.purpose === "reader")).toHaveLength(2);
+    expect(rows.filter((row) => row.purpose !== "reader").map((row) => row.kind).sort()).toEqual(["organize", "organize", "route_pick", "turn"]);
     expect(h.store.listSessionReviews(body.direct_session.id)[0]).toMatchObject({ fault: "none" });
     sub.close();
   });
@@ -4626,12 +4639,15 @@ describe("spend ledger for routing and composer calls", () => {
     await waitFor(sub.events, (event) => event.event === "turn.upsert" && event.status === "completed");
     await waitFor(sub.events, () => h.store.listWorkEvents({ kind: "scribe.answer" }).length === 1, 4000);
     await h.engine.drain();
-    // The pin covers the Bot's own calls; the organizer and the scribe still run once each, on the
-    // default model.
-    expect(calls).toEqual([ORGANIZER_SYSTEM, SCRIBE_SYSTEM]);
+    // The pin covers the Bot's own calls; the reader, the organizer and the scribe still run once
+    // each for your line, on the default model (and the reader once more for the Bot's reply).
+    expect(calls.filter((call) => call !== READ_BOT_LINE_SYSTEM)).toEqual([READ_USER_LINE_SYSTEM, ORGANIZER_SYSTEM, SCRIBE_SYSTEM]);
     const rows = ledger(h.store);
-    expect(rows.map((row) => row.kind).sort()).toEqual(["organize", "organize", "turn"]);
-    expect(rows.filter((row) => row.kind === "organize")).toMatchObject([{ model: "cheap-chat", bot_id: null }, { model: "cheap-chat", bot_id: null }]);
+    expect(rows.filter((row) => row.purpose === "reader")).toHaveLength(2);
+    expect(rows.filter((row) => row.purpose !== "reader").map((row) => row.kind).sort()).toEqual(["organize", "organize", "turn"]);
+    // Every side-call, the readings included, runs on the default model and is nobody's Bot's.
+    expect(rows.filter((row) => row.kind === "organize")).toHaveLength(4);
+    for (const row of rows.filter((entry) => entry.kind === "organize")) expect(row).toMatchObject({ model: "cheap-chat", bot_id: null });
     expect(rows.find((row) => row.kind === "turn")).toMatchObject({ model: "code-pro", thinking_level: "high", bot_id: body.bot.id });
     sub.close();
   });
@@ -4981,7 +4997,7 @@ test("judgements record an unspecified reasoning level when the request sends no
   const group = h.store.createGroup({ name: "Judgements", members: [a.bot.id, b.bot.id] });
   await h.engine.handleInboundMessage(h.store.postMessage(group.id, { body: "Anyone?" }));
   await h.engine.drain();
-  const judged = requests.filter((request) => request.messages[0]?.content !== ORGANIZER_SYSTEM);
+  const judged = requests.filter((request) => request.messages[0]?.content === JUDGEMENT_SYSTEM);
   expect(judged).toHaveLength(2);
   expect(judged.every((request) => !("thinkingLevel" in request))).toBe(true);
   const rows = h.store.listSpend({ session_id: group.id }).filter((row) => row.kind !== "organize");

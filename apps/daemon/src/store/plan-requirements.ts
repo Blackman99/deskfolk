@@ -8,7 +8,7 @@
  */
 import type { Database } from "bun:sqlite";
 import type { PlanRequirement } from "@real-bot/protocol";
-import { conversationWide, craftRequirement } from "../craft-words";
+import { conversationWide, craftEntry } from "../craft-words";
 import { isoNow } from "../ids";
 import { quoteWords } from "../quote-words";
 import { takeCodePoints } from "../text";
@@ -346,14 +346,14 @@ function sessionOf(ctx: StoreContext, taskId: string): string | null {
 
 /**
  * Whether an entry is one the standing suggestion in a conversation may name, and 升为常设 widen:
- * in force, not standing yet, of `category`, about how the work is made (craft-words.ts — a
- * choice of look or sound such as 色调偏冷, a series' constants, a running time, anything naming
- * one part are not), and held by that conversation or one of its plans. Never a ticket's, which is
+ * in force, not standing yet, of `category`, about how the work is made (its `nature` as the scribe
+ * read it, else craft-words.ts — a choice of look or sound such as 色调偏冷, a series' constants, a
+ * running time, anything naming one part are not), and held by that conversation or one of its plans. Never a ticket's, which is
  * about one piece of the work, nor one of another conversation, which you said about other work.
  */
 function standingCandidate(ctx: StoreContext, entry: Requirement, at: { sessionId: string; category: string }): boolean {
   const key = categoryKey(entry.category);
-  if (entry.status !== "open" || !key || key !== categoryKey(at.category) || !craftRequirement(entry.category, entry.quote)) return false;
+  if (entry.status !== "open" || !key || key !== categoryKey(at.category) || !craftEntry(entry.nature, entry.category, entry.quote)) return false;
   if (entry.scope === "project") return entry.scope_id === at.sessionId;
   return entry.scope === "plan" && sessionOf(ctx, entry.scope_id!) === at.sessionId;
 }

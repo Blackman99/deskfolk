@@ -27,7 +27,7 @@ import { HttpError } from "../errors";
 import { continueNote, hopLimits, isRetriedFailure, replyFailure, retryNote } from "../hop-limits";
 import { troubleCount } from "./trouble";
 import { completionFailBody, builtinTools, type FailKind } from "../prompts";
-import { isNoWorkCloser } from "../no-work";
+import { readBotLineByWords, readsAsNoWork, type BotLineReading } from "../line-reading";
 import type { McpHost } from "../mcp-host";
 import type { TurnAdmission } from "../quiesce";
 import { isoNow } from "../ids";
@@ -87,6 +87,8 @@ export type LifecycleDeps = {
   inspectForTurn: Tools["inspectForTurn"];
   executeTools: Tools["executeTools"];
   closingCheck: Closing["closingCheck"];
+  /** A Bot's line, read for what the app acts on (ADR 0055, `reader.ts`); absent, the word lists read it. */
+  readBotLine?: (body: string, sessionId: string | null) => Promise<BotLineReading>;
   publishCitedBotMessage: Closing["publishCitedBotMessage"];
   completeSilent: Closing["completeSilent"];
   observeTicket: PlanWatch["observeTicket"];
@@ -177,6 +179,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     inspectForTurn,
     executeTools,
     closingCheck,
+    readBotLine = readBotLineByWords,
     publishCitedBotMessage,
     completeSilent,
     observeTicket,
@@ -185,6 +188,17 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     readOnlyUnanswered,
     implicitSubmission,
   } = deps;
+
+  /**
+   * The segment's last word to the user (the closing reply about to go out, else its newest
+   * message) and the sentence in which it says the work is still going, as it reads (ADR 0055):
+   * what the end contract weighs an ending against. Undefined when it said nothing.
+   */
+  async function readLastWord(turnId: string, turn: Turn, closing: string): Promise<{ said: string; later: string | null } | undefined> {
+    const said = store.segmentLastWord(turnId, closing);
+    if (!said?.trim()) return undefined;
+    return { said, later: (await readBotLine(said, turn.session_id)).later };
+  }
 
   /**
    * Nothing in a hop may legitimately go this long without touching the turn: a shell is bounded by
@@ -1061,13 +1075,18 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
         continue;
       }
       live.loop.push({ role: "assistant", content: result.content });
-      const closer = isNoWorkCloser(result.content);
+      const closer = await readsAsNoWork(result.content, (text) => readBotLine(text, current.session_id));
+      if (!active(turnId, live)) {
+        if (live.abort.signal.aborted) drop();
+        return;
+      }
       const rawBody = closer ? "" : result.content;
       // A delivery to the user goes out only after one look at what the job asked for. The note
       // comes back as a user line in the loop, and the next reply is final whatever it says.
       const closingBody = resolveBodyPathsToWorkDir(rawBody, live.workDir, (relpath) => pathExists(store, relpath));
       const bounce = await closingCheck(turnId, live, current, {
         body: closingBody,
+        said: rawBody,
         paths: mergeCitedPaths(live.writtenPaths, [
           ...attachmentLinePaths(closingBody),
           ...extractWorkspacePathsFromBody(closingBody),
@@ -1123,7 +1142,12 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       }
       let endingLine: string | null = null;
       if (store.capabilities().engine_level >= ENGINE_LEVELS.delegation) {
-        const finished = store.finishWork({ turnId, reason: "done" }, { pureText: true, closing: closingBody });
+        const lastWord = await readLastWord(turnId, current, rawBody);
+        if (!active(turnId, live)) {
+          if (live.abort.signal.aborted) drop();
+          return;
+        }
+        const finished = store.finishWork({ turnId, reason: "done" }, { pureText: true, closing: rawBody, lastWord });
         if (finished.bounce) {
           live.loop.push({ role: "user", content: finished.bounce });
           if (posted && !live.parentId && current.mode !== "readonly") void track(handleParticipation(posted, { fromUser: false }));

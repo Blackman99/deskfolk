@@ -114,7 +114,7 @@ get("host/tree", { path: string });
 get("events/catchup", { event_instance_id: v => typeof v === "string" && /^[0-9a-f]{32}$/.test(v), after_seq: v => typeof v === "string" && /^(0|[1-9][0-9]*)$/.test(v) && Number.isSafeInteger(Number(v)) }, ["event_instance_id", "after_seq"]);
 get("approvals", { status: one("pending") });
 // The kinds, and the purposes split out of them (ADR 0042): a `kind` filter names lines.
-const SPEND_LINES = ["turn", "judgement", "route_pick", "route_review", "route_learn", "composer_suggest", "organize", "acceptance_check", "scribe", "vision", "reflect"];
+const SPEND_LINES = ["turn", "judgement", "route_pick", "route_review", "route_learn", "composer_suggest", "organize", "acceptance_check", "scribe", "vision", "reflect", "reader"];
 const spendKind: Check = one(...SPEND_LINES);
 // Remote query values are strings. Repeated local `kind` params arrive here as one comma-separated value.
 const spendKinds: Check = (value) => typeof value === "string" && value.split(",").every((kind) => kind.length > 0 && spendKind(kind)) && value.split(",").length <= SPEND_LINES.length;
@@ -188,7 +188,8 @@ add("POST", "notification-presence", { instance_id: string, visible: bool, focus
 add("PATCH", "notification-policy", { categories: object({ approval: bool, ask: bool, failure: bool, interrupted: bool, reply: bool, routine_result: bool }), quiet_hours: object({ enabled: bool, start: string, end: string, time_zone: string }), if_revision: v => typeof v === "number" && Number.isInteger(v) && v >= 0 }, ["if_revision"], true);
 add("PATCH", "notification-device", { badge: bool, sound: one("system"), preview: one("generic"), if_revision: v => typeof v === "number" && Number.isInteger(v) && v >= 0 }, ["if_revision"], true);
 add("PATCH", "settings", { endpoint_base_url: string, endpoint_api_key: string, endpoint_models: models, endpoint_default_model: string,
-  default_provider_id: nullable(id), launch_at_login: bool, locale: one("en", "zh"), theme: one("system", "light", "dark"),
+  default_provider_id: nullable(id), reader_model: nullable(object({ provider_id: id, model: string }, ["provider_id", "model"])),
+  launch_at_login: bool, locale: one("en", "zh"), theme: one("system", "light", "dark"),
   if_revision: v => typeof v === "number" && Number.isSafeInteger(v) && v >= 0 }, [], true);
 for (const [name, fields] of Object.entries({ bots: bot, providers: provider, "mcp-servers": mcp, skills: skill, routines: routine,
   memories: { subject: string, body: string, enabled: bool }, sessions: { name: string } } as Record<string, Fields>)) add("PATCH", `${name}/:id`, { ...fields, ...revision }, [], true);

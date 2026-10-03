@@ -17,7 +17,7 @@
  * to a model that failed or saw nothing in it.
  */
 import { soundsLikeComplaint } from "../complaint-words";
-import { conversationWide } from "../craft-words";
+import { conversationWideEntry } from "../craft-words";
 import { dimensionValueJson, readDimensionSpans, readDimensions } from "../quote-dimensions";
 import { findWords, quoteWords } from "../quote-words";
 import { takeCodePoints } from "../text";
@@ -29,10 +29,12 @@ import {
   planDomains,
   raiseRequirement,
   repeatsNumber,
+  REQUIREMENT_NATURES,
   REQUIREMENT_QUOTE_MAX,
   requirementsBearingOn,
   setRequirementHere,
   type Requirement,
+  type RequirementNature,
   type RequirementScope,
   type RequirementSourceKind,
 } from "./requirements";
@@ -197,6 +199,7 @@ export function applyScribePatch(
         addedBy: SCRIBE_WRITER,
         status: "proposed",
         supersedes: entry.id,
+        nature: natureOf(item) ?? entry.nature,
       });
       outcome.proposed.push(proposal.id);
     });
@@ -232,7 +235,7 @@ export function applyScribePatch(
         ticketId: quote.ticket_id,
         taskId,
         sessionId: task.session_id,
-        wide: conversationWide(category, words) && isVideo(),
+        wide: conversationWideEntry(natureOf(item), category, words) && isVideo(),
       });
       // The same words already stand as an open entry bearing on the plan that holds at least as
       // far as the new one would: said again, not a second entry. (A proposal does not count: it
@@ -264,6 +267,7 @@ export function applyScribePatch(
         sourceKind,
         sourceQuoteId: quote.id,
         addedBy: SCRIBE_WRITER,
+        nature: natureOf(item),
       });
       openHere.push({ ...entry, excluded: false });
       outcome.added.push(entry.id);
@@ -272,12 +276,18 @@ export function applyScribePatch(
   })();
 }
 
+/** What the scribe read an item to be about (ADR 0055); null when it said nothing the ledger knows. */
+function natureOf(item: Record<string, unknown>): RequirementNature | null {
+  return REQUIREMENT_NATURES.includes(item.nature as RequirementNature) ? (item.nature as RequirementNature) : null;
+}
+
 /**
  * Where a new entry holds: a ticket when the scribe names exactly one of this plan's tickets (or the
  * line was filed under one and it names none); the conversation the plan lives in — the project —
  * when it says every job there should keep to it, or, in a video job, when it is about how the work
- * is made, how it looks or sounds, or what stays the same across a series (`wide`, craft-words.ts:
- * 背景连贯, 过门要有过渡, 色调偏冷, 左手) and not said of one ticket, so the next job there has it
+ * is made, how it looks or sounds, or what stays the same across a series (`wide`: the item's
+ * `nature` as the scribe read it, else craft-words.ts: 背景连贯, 过门要有过渡, 色调偏冷, 左手) and not
+ * said of one ticket, so the next job there has it
  * from the start (ADR 0042); else the plan.
  */
 function addScope(
@@ -330,14 +340,20 @@ function deliveredBefore(ctx: StoreContext, taskId: string, at: string, handedOv
 /**
  * The fallback capture: the scribe filed nothing for this line (it failed, found nothing, or every
  * item it gave was dropped), and the line complains about a job that had delivered by the time you
- * said it (`handedOver`: {@link plansHandedOver} as the line arrived). The line itself, as much as an
+ * said it (`handedOver`: {@link plansHandedOver} as the line arrived). Whether it complains is
+ * `objects`, as the line was read (ADR 0055); with no reading, the complaint words say. The line itself, as much as an
  * entry carries, becomes a proposed entry of the ticket it was filed under, else of the plan: shown
  * with the ledger, never a gate, for you to take up or mark as no requirement. Null when it does
  * not qualify.
  */
-export function captureComplaint(ctx: StoreContext, quote: UserQuote, handedOver: ReadonlySet<string> | null = null): Requirement | null {
+export function captureComplaint(
+  ctx: StoreContext,
+  quote: UserQuote,
+  handedOver: ReadonlySet<string> | null = null,
+  objects?: boolean,
+): Requirement | null {
   if (!quote.task_id || quote.redacted_at || !quote.body.trim()) return null;
-  if (!soundsLikeComplaint(quote.body) || !deliveredBefore(ctx, quote.task_id, quote.created_at, handedOver)) return null;
+  if (!(objects ?? soundsLikeComplaint(quote.body)) || !deliveredBefore(ctx, quote.task_id, quote.created_at, handedOver)) return null;
   const onTicket = quote.ticket_id !== null && listTickets(ctx, quote.task_id).some((ticket) => ticket.id === quote.ticket_id);
   return addRequirement(ctx, {
     scope: onTicket ? "ticket" : "plan",

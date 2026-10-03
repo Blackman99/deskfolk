@@ -1,10 +1,12 @@
 /**
  * Words a message uses when the work is still going: 「结论随后」, 「正在编写…」, 「接下来开始写分镜」,
- * "results to follow". A match only means "check this reply too"; the closing check
+ * "results to follow". A model reads a Bot's line for that first (ADR 0055, `reader.ts`); this list
+ * is what the app goes by when no model can, and is not to be widened to fix a miss — a miss is the
+ * reading's to fix. A match only means "check this reply too"; the closing check
  * (`closing-check.ts`) and the end contract (`store/end-contract.ts`) decide whether anything is
  * actually left hanging, so a storyboard line that happens to say 随后 costs nothing more than
- * that check. A fixed list read with no model: a work verb after 正在, or a start announced now,
- * never 正在 alone — 「埼玉正在超市买菜」 is a scene, not a promise.
+ * that check. A work verb after 正在, or a start announced now, never 正在 alone — 「埼玉正在超市买
+ * 菜」 is a scene, not a promise.
  */
 const LATER_WORK = new RegExp(
   [
@@ -18,6 +20,9 @@ const LATER_WORK = new RegExp(
   ].join("|"),
   "i",
 );
+
+/** How much of a "still going" sentence is kept: what a bounce and your line quote. */
+export const LATER_QUOTE_MAX = 60;
 
 /** Whether a message says it is still working on something it has not handed over. */
 export function promisesLaterWork(text: string): boolean {

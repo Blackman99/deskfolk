@@ -1,9 +1,9 @@
 /**
  * Whether a line of yours complains about the work: a fixed list of words for something being
- * wrong with it (太假, 不对, 跳跃, 穿帮, 反了, 太短, 重做, 作废, 从头再做, 不行, 有问题, 错乱…), read with no
- * model. The ledger's fallback capture (store/scribe-patch.ts) uses it to keep a complaint about a
- * delivered job as a proposed entry when the scribe filed nothing for it; ADR 0040's rework rule
- * for a complaint about an approved part (P4e) is meant to read the same list.
+ * wrong with it (太假, 不对, 跳跃, 穿帮, 反了, 太短, 重做, 作废, 从头再做, 不行, 有问题, 错乱…). A model
+ * reads your line for what it objects to first (ADR 0055, `reader.ts`); this list is what the app
+ * goes by when no model can — the ledger's fallback capture (store/scribe-patch.ts) and the rework
+ * card (store/submissions.ts) — and is not to be widened to fix a miss.
  *
  * It errs towards catching: what it catches is only proposed, shown to you and never a gate, while
  * a complaint it misses is lost from the ledger if the scribe missed it too.

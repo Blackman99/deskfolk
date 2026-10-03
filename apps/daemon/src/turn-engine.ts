@@ -37,11 +37,13 @@ import { HttpError } from "./errors";
 import { isoNow } from "./ids";
 import type { McpHost } from "./mcp-host";
 import { createOrganizer } from "./organizer";
+import type { UserLineReading } from "./line-reading";
+import { createReader } from "./reader";
 import { createScribe } from "./scribe";
 import { createJobPoller } from "./engine/jobs";
 import { createReflector } from "./engine/reflection";
 import type { TurnAdmission } from "./quiesce";
-import type { Store } from "./store";
+import type { Store, UserQuote } from "./store";
 import { ENGINE_LEVELS } from "./store/schema-gate";
 import type { TurnExecution } from "./store/routing";
 import { dropToolResults } from "./tool-results";
@@ -164,6 +166,8 @@ export type TurnEngineOptions = {
   chainQuietMs?: number;
   /** Side-calls switched off for a benchmark (see `ablation.ts`). The daemon never sets it. */
   ablation?: Ablation;
+  /** How long a reading of a line may take before the word lists read it instead (`reader.ts`). Tests shorten it. */
+  readerTimeoutMs?: number;
   /**
    * How long a group plan with everything handed over but work still in its progress, and its
    * session, stay quiet before the Bot that spoke last in it is called back. Tests shorten it.
@@ -253,6 +257,50 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
 
   const requirementCards = createRequirementCards({ store, publishMessage: core.publishMessage });
 
+  // 读句 (ADR 0055): what a line means, read once by the default model before the app acts on it.
+  const reader = createReader({
+    store,
+    completions,
+    // The model chosen for reading in Settings, else the default one; thinking as little as it can,
+    // since a line of yours waits on its reading.
+    async routing() {
+      const creds = await routing.credentials().catch(() => null);
+      if (!creds) return null;
+      const chosen = store.settingsCached().reader_model;
+      const provider = chosen ? creds.providers.find((row) => row.id === chosen.provider_id) : undefined;
+      const target = provider && chosen
+        ? { baseUrl: provider.baseUrl, apiKey: provider.apiKey, providerId: provider.id, providerName: provider.name, model: chosen.model, thinkingLevel: null }
+        : routing.routingTarget(creds);
+      return target && { ...target, thinkingLevel: store.lightestThinkingLevelFor(target.model, target.providerId) };
+    },
+    // Billed as the organizer's kind (no Bot asked for it), with its own purpose.
+    recordSpend({ sessionId, target, usage, responded }) {
+      spend.recordResponseSpend({
+        kind: "organize",
+        purpose: "reader",
+        owner: spend.spendOwner(sessionId, null),
+        target: spend.callOf(target),
+        usage,
+        responded,
+      });
+    },
+    draining: () => Boolean(options.admission?.draining),
+    ablation,
+    ...(options.readerTimeoutMs !== undefined ? { timeoutMs: options.readerTimeoutMs } : {}),
+  });
+
+  /** A quote of yours as the reader reads it: a line by its message, an answer on its own. */
+  function readQuote(quote: UserQuote): Promise<UserLineReading> {
+    if (quote.via === "message" && quote.message_id) {
+      try {
+        return reader.userLine(store.getMessage(quote.message_id));
+      } catch {
+        // the line went with a cleared transcript: read the words kept of it
+      }
+    }
+    return reader.userText(`quote:${quote.id}`, quote.body, quote.session_id);
+  }
+
   const scribe = createScribe({
     store,
     completions,
@@ -277,8 +325,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     onFiled: (quote, outcome) => {
       requirementCards.noteFiled(quote, [...outcome.added, ...outcome.raised]);
       // A part-level entry the scribe made of a line about delivered work reads as a complaint (§6.6).
-      if (quote.message_id && outcome.added.length > 0) submissions.noteComplaint(quote.message_id, outcome.added);
+      if (quote.message_id && outcome.added.length > 0) submissions.noteComplaint(quote.message_id, { scribeAdded: outcome.added });
     },
+    readQuote,
     ablation,
   });
 
@@ -352,6 +401,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     executionOf: (live) => lifecycle.executionOf(live),
     observeTicket: (turnId, botId, seen) => planWatch.observeTicket(turnId, botId, seen),
     ablation,
+    readBotLine: reader.botLine,
   });
 
   const participation = createParticipation({
@@ -397,6 +447,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       : undefined,
     noteFiled: (messageId) => noteFiled(messageId),
     submissions: () => submissions,
+    readBotLine: reader.botLine,
   });
 
   const fire = createFire({
@@ -460,6 +511,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     inspectForTurn: tools.inspectForTurn,
     executeTools: tools.executeTools,
     closingCheck: closing.closingCheck,
+    readBotLine: reader.botLine,
     publishCitedBotMessage: closing.publishCitedBotMessage,
     completeSilent: closing.completeSilent,
     observeTicket: planWatch.observeTicket,
@@ -483,6 +535,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     workDir: (turnId) => core.lives.get(turnId)?.workDir ?? store.turnWorkDir(turnId),
     publishMessage: core.publishMessage,
     track: core.track,
+    readUserLine: reader.userLine,
+    readBotLine: reader.botLine,
   });
 
   const stops = createStop({
@@ -563,38 +617,30 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
    * scribe reads each line once, so a line filed when it arrived is not read again.
    */
   function noteFiled(messageId: string): void {
-    let body: string;
     try {
-      const message = store.getMessage(messageId);
-      if (message.kind !== "user") return;
-      body = message.body;
+      if (store.getMessage(messageId).kind !== "user") return;
     } catch {
       return;
     }
-    store.afterCommit(() => void core.track(scribe.noteLine(messageId, scribe.handedOverAt(body))));
+    store.afterCommit(() => void core.track(scribe.noteLine(messageId, scribe.handedOverAt())));
     store.afterCommit(() => submissions.noteComplaint(messageId));
   }
 
   const engine: TurnEngine = {
     async handleInboundMessage(message, opts) {
       const fromUser = opts?.fromUser ?? message.author === USER_MEMBER;
-      // 进度询问: a status question about a plan this session has one to report on is answered from
-      // the store's own rows, right here — before anything below would organize, judge, wake or
-      // redirect a turn over it. The message is already stored and published; this only decides
-      // what happens next.
-      if (fromUser && !opts?.ordinary && statusQuestion.handle(message)) return;
-      // 控制句: a line that is only a stop or a go on is carried out here and goes nowhere else — no
-      // filing, no turn, no model call (ADR 0040 P2). A line that only might be one is marked with
-      // the buttons and goes on below like any other. One sent on again after you undid its stop
-      // skips both readings: you said it was neither.
-      if (fromUser && !opts?.ordinary && stops.handleLine(message)) return;
+      // 控制句, by the fixed rules: a line that is nothing but a stop or a go on is carried out here
+      // at once and goes nowhere else — no filing, no turn, no model call (ADR 0040 P2). One sent on
+      // again after you undid its stop skips every reading of it as control: you said it was neither.
+      const ruled = fromUser && !opts?.ordinary ? stops.ruleLine(message) : null;
+      if (ruled?.done) return;
       // Read as the line arrives: whether its job had handed something over, which is what a
       // complaint is judged by if the scribe files nothing for it. Its filing, or a turn it wakes,
       // may send that ticket back to doing over the complaint before the scribe gets to it.
-      const handedOver = fromUser ? scribe.handedOverAt(message.body) : null;
-      // Filing takes a model call, and the Bots it holds back show as thinking under the message
-      // meanwhile, in the transcript and the list alike. Each row gives way once its turn or
-      // judgement has started, so the Bot never blinks out in between.
+      const handedOver = fromUser ? scribe.handedOverAt() : null;
+      // Reading the line and filing it take model calls, and the Bots it would wake show as thinking
+      // under the message meanwhile, in the transcript and the list alike. Each row gives way once
+      // its turn or judgement has started, so the Bot never blinks out in between.
       const organizing = fromUser
         ? participation
             .botsToWake(message)
@@ -603,6 +649,19 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       const handOver = (): void => {
         for (const pending of organizing) participation.dropPendingJudgement(pending, true);
       };
+      // 读句 (ADR 0055): what the line means, read once, before anything below acts on it. A line
+      // sent on again after you undid its stop is not waited on: you said it was no control, and
+      // what else it says (a complaint) is read as its filing asks.
+      const reading = fromUser && !opts?.ordinary ? await core.track(reader.userLine(message)) : null;
+      // 进度询问: a line that only asks where a job stands, about a plan this session has one to
+      // report on, is answered from the store's own rows, right here — before anything below would
+      // organize, judge, wake or redirect a turn over it. Then the rest of 控制句: a line read as
+      // nothing but a stop or a go on is carried out like one the rules found, and one that only
+      // may have meant one carries the buttons and goes on below like any other.
+      if (reading && (statusQuestion.handle(message, reading) || (!ruled?.decided && stops.readLine(message, reading)))) {
+        handOver();
+        return;
+      }
       try {
         let filed = message;
         if (fromUser) {
@@ -629,8 +688,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
             store.updatePlanDormancy();
             store.fileMessage(message.id);
             filed = store.getMessage(message.id);
-            // A complaint about work handed over or approved sends it back before any turn opens on it.
-            submissions.noteComplaint(filed.id);
+            // A complaint about work handed over or approved asks about it before any turn opens on it.
+            submissions.noteComplaint(filed.id, reading ? { reading } : {});
           }
           // A Stop you pressed on this job goes once you say something more about it to that Bot,
           // before the line wakes anyone: what you say next is what the Bot goes on from.
@@ -864,6 +923,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       directReport.clearTimers();
       organizer.clearTimers();
       scribe.stop();
+      reader.stop();
       checks.abortAll();
       planWatch.clearTimers();
       for (const id of [...core.lives.keys()]) lifecycle.abortLive(id);
@@ -873,6 +933,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     },
     async drain() {
       scribe.stop();
+      reader.stop();
       await lifecycle.drainLives();
     },
     partialText(turnId) {
@@ -893,6 +954,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       store.noteTurnsCutByShutdown();
       checks.abortAll();
       scribe.stop();
+      reader.stop();
       await lifecycle.drainLives();
       for (const pending of [...participation.pendingJudges.values()]) participation.dropPendingJudgement(pending, true);
       await mcp?.close();

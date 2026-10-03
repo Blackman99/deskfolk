@@ -286,11 +286,20 @@ export type Settings = {
   endpoint_model_catalog: EndpointModel[];
   endpoint_default_model: string | null;
   default_provider_id: string | null;
+  /**
+   * The model that reads each line for what the app acts on (读句, ADR 0055); null follows the
+   * default endpoint's default model. Null as well once the endpoint is gone or no longer lists it;
+   * absent from a daemon older than that ADR.
+   */
+  reader_model?: ReaderModel | null;
   launch_at_login: boolean;
   locale: Locale;
   theme: Theme;
   wizard_complete: boolean;
 };
+
+/** An endpoint and one of its models, for reading lines (`Settings.reader_model`). */
+export type ReaderModel = { provider_id: string; model: string };
 
 export type WorkspaceTreeEntry = {
   name: string;
@@ -960,6 +969,8 @@ export type SettingsPatch = {
   endpoint_models?: EndpointModelInput[];
   endpoint_default_model?: string;
   default_provider_id?: string | null;
+  /** Null follows the default model again. */
+  reader_model?: ReaderModel | null;
   launch_at_login?: boolean;
   locale?: Locale;
   theme?: Theme;
@@ -1836,15 +1847,17 @@ export type SpendKind =
 /**
  * What a call was for, where its kind is shared (ADR 0042): the scribe bills as `organize`, a
  * judgement of pictures (a `continuity` check looking at frames) as `acceptance_check`, and a
- * reflection, once there is one, as `organize`. The kind stays the nearest old value, so an older
- * build still reads the row; every other row has no purpose.
+ * reflection, once there is one, as `organize`, and so does reading a line for what the app acts
+ * on (`reader`, ADR 0055). The kind stays the nearest old value, so an older build still reads the
+ * row; every other row has no purpose.
  */
-export type SpendPurpose = "scribe" | "vision" | "reflect";
+export type SpendPurpose = "scribe" | "vision" | "reflect" | "reader";
 
 export const SPEND_PURPOSE_KIND: Record<SpendPurpose, SpendKind> = {
   scribe: "organize",
   vision: "acceptance_check",
   reflect: "organize",
+  reader: "organize",
 };
 
 /** One line of the view's breakdown: a kind, or a purpose split out of the kind it bills as. */
@@ -1873,6 +1886,7 @@ export const SPEND_CATEGORY_OF: Record<SpendLine, SpendCategory> = {
   scribe: "other",
   vision: "other",
   reflect: "feedback",
+  reader: "other",
 };
 
 /**

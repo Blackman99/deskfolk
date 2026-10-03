@@ -6,7 +6,8 @@
  */
 import type { AskAnswer, ClientEvent, McpServer, Message, Turn } from "@real-bot/protocol";
 import { askAnswerText } from "../ask";
-import { runCollabTool, type ToolResult } from "../collab-tools";
+import { runCollabTool, type ToolCtx, type ToolResult } from "../collab-tools";
+import { readBotLineByWords, readsAsNoWork, type BotLineReading } from "../line-reading";
 import type { ToolCall } from "../completions";
 import { isoNow } from "../ids";
 import { HttpError } from "../errors";
@@ -99,6 +100,8 @@ export type ToolsDeps = {
   noteFiled: (messageId: string) => void;
   /** Late-bound: `submit`, `review` and the implicit submission before end_turn(done) (ADR 0046, engine level 5). */
   submissions?: () => Submissions;
+  /** A Bot's line, read for what the app acts on (ADR 0055, `reader.ts`); absent, the word lists read it. */
+  readBotLine?: (body: string, sessionId: string | null) => Promise<BotLineReading>;
 };
 
 export type Tools = {
@@ -126,8 +129,25 @@ export type Tools = {
   waitForAsk: (turnId: string, askId: string, toolCallId: string) => Promise<AskAnswer | null>;
 };
 
+/** The endings a promise of more to come is weighed for (the end contract's `promised_later`). */
+const PROMISE_WEIGHED = ["done", "answered", "nothing_new"];
+
 export function createTools(deps: ToolsDeps): Tools {
   const { store, publish, publishMessage, publishTurn, occurred, wake, mcp, admission, streams, lives, active, track, closingCheckForSend, handleParticipation, fireRoutine, observeTicket, betweenCalls, noteFiled, submissions } = deps;
+
+  /**
+   * What a collaboration call's words say, read before it runs (ADR 0055): whether a message is only
+   * a no-work closer, and for an ending the segment's last word and the sentence in which it says
+   * the work is still going. Undefined for any other call.
+   */
+  async function readForCall(turn: Turn, name: string, args: Record<string, unknown>): Promise<ToolCtx["read"]> {
+    const read = (text: string) => (deps.readBotLine ?? readBotLineByWords)(text, turn.session_id);
+    if (name === "send_message" && typeof args.body === "string") return { noWork: await readsAsNoWork(args.body, read) };
+    if (name !== "end_turn" || store.capabilities().engine_level < ENGINE_LEVELS.delegation) return undefined;
+    if (!PROMISE_WEIGHED.includes(args.reason as string) || turn.mode === "readonly") return undefined;
+    const said = store.segmentLastWord(turn.id);
+    return said?.trim() ? { lastWord: { said, later: (await read(said)).later } } : undefined;
+  }
 
   /**
    * How a call with an effect came out, on its ledger row (ADR 0045), before its result is heard.
@@ -644,6 +664,7 @@ export function createTools(deps: ToolsDeps): Tools {
         : await runCollabTool(
             {
               store,
+              read: await readForCall(turn, name, args),
               botId: turn.bot_id,
               sessionId: turn.session_id,
               turnId: turn.id,

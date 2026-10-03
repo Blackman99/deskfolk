@@ -66,6 +66,7 @@ import { createMcpHost, type McpCallResult, type McpHost } from "../mcp-host";
 import { COLLAB_TOOL_NAMES, COMPOSER_SUGGEST_SYSTEM, JUDGEMENT_SYSTEM, type FailKind } from "../prompts";
 import { ORGANIZER_SYSTEM, ORGANIZER_SYSTEM_UNDER_HOLDS } from "../prompts/organizer";
 import { ROUTE_LEARN_SYSTEM, ROUTE_PICK_SYSTEM, ROUTE_REVIEW_SYSTEM } from "../prompts/routing";
+import { READ_BOT_LINE_SYSTEM, READ_USER_LINE_SYSTEM } from "../prompts/reader";
 import { SCRIBE_SYSTEM } from "../prompts/scribe";
 import { TurnAdmission } from "../quiesce";
 import { startScheduler, type Scheduler } from "../scheduler";
@@ -214,7 +215,11 @@ export type HopContext = {
 
 export type ToolOutcome = { id: string; name: string; ok: boolean | null; error: string | null; content: string };
 
-export type JudgeKind = "organizer" | "scribe" | "judgement" | "route_pick" | "route_review" | "route_learn" | "composer" | "reflect" | "other";
+export type JudgeKind =
+  | "organizer" | "scribe" | "judgement" | "route_pick" | "route_review" | "route_learn" | "composer" | "reflect"
+  /** 读句 (ADR 0055): a line of yours, a Bot's line. Unscripted, the line is read by the word lists. */
+  | "read_user_line" | "read_bot_line"
+  | "other";
 
 /** What a scripted side-call is told: its kind, the parsed payload, and whose it is when that shows. */
 export type JudgeContext = {
@@ -448,6 +453,8 @@ function judgeKindOf(request: JudgeRequest): JudgeKind {
   if (system === ROUTE_LEARN_SYSTEM) return "route_learn";
   if (system === COMPOSER_SUGGEST_SYSTEM) return "composer";
   if (system === reflectionSystem("zh") || system === reflectionSystem("en")) return "reflect";
+  if (system === READ_USER_LINE_SYSTEM) return "read_user_line";
+  if (system === READ_BOT_LINE_SYSTEM) return "read_bot_line";
   return "other";
 }
 

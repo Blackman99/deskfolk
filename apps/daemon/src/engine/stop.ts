@@ -51,8 +51,9 @@ import {
   type Session,
   type Turn,
 } from "@real-bot/protocol";
-import { readControlLine, type ControlLineInput } from "../control-line";
+import { controlScopes, readControlLine, type ControlLineInput } from "../control-line";
 import { HttpError } from "../errors";
+import type { UserLineReading } from "../line-reading";
 import {
   clockOf,
   continueReceiptBody,
@@ -100,15 +101,28 @@ export type HoldRequest = {
   sessionId?: unknown;
 };
 
+/** What the rules made of a line of yours (see `Stop.ruleLine`). */
+export type RuledLine = { done: boolean; decided: boolean };
+const DONE: RuledLine = { done: true, decided: true };
+const OPEN: RuledLine = { done: false, decided: false };
+
 export type Stop = {
   /** Holds are on: the engine level has reached them (ADR 0040's version gate). */
   on: () => boolean;
   /**
-   * Reads a line of yours for a stop or a go on and does what it says. True when that was all the
-   * line was, and nothing else is to happen with it. A line it only marks (`possible_control`) and
-   * any other line return false and go on as usual.
+   * Reads a line of yours by the fixed rules (`control-line.ts`), before any model reads it: a line
+   * that is nothing but a stop, a go on, 「没停」, 「算了」 or a question about stopping is carried
+   * out at once. `done` when nothing else is to happen with the line; `decided` when the rules have
+   * said all there is about it as control, so `readLine` is not asked.
    */
-  handleLine: (message: Message) => boolean;
+  ruleLine: (message: Message) => RuledLine;
+  /**
+   * The rest, once the line is read (ADR 0055): a line the model read as nothing but a stop or a go
+   * on is carried out like one the rules found; one that says it beside something else carries the
+   * buttons; one that only asks where the work stands, under a stop, gets the status answer. Read by
+   * the word lists, the rules' own reading stands. True when nothing else is to happen with it.
+   */
+  readLine: (message: Message, reading: UserLineReading) => boolean;
   /**
    * Your line, once filed: a Stop's hold on the job it is about, on a Bot the line is said to, goes
    * before the line wakes anyone, so the Bot goes on from what you said; so does a group stop
@@ -173,7 +187,41 @@ export function createStop(deps: StopDeps): Stop {
 
   // ── Reading the line ──────────────────────────────────────────────────────────────────────────
 
-  function handleLine(message: Message): boolean {
+  function ruleLine(message: Message): RuledLine {
+    if (message.kind !== "user" || admission?.draining || !on()) return OPEN;
+    let session: Session;
+    try {
+      session = store.getSession(message.session_id);
+    } catch {
+      return OPEN;
+    }
+    const reading = readControlLine(lineInput(message, session));
+    switch (reading.kind) {
+      // No control word the rules know, a plain status question, or a control word in a longer
+      // line: what the line means is the reading's to say (`readLine`).
+      case "none":
+      case "possible_control":
+        return OPEN;
+      case "status":
+        if (isStatusQuestion(message)) return OPEN;
+        answerStatus(message, reading.scopes, { offerStop: reading.offerStop });
+        return DONE;
+      case "reaffirm":
+        answerStatus(message, reading.scopes, { offerStop: false });
+        return DONE;
+      case "stop":
+        stopByLine(message, reading.scopes, reading.offerCancel);
+        return DONE;
+      case "continue":
+        return { done: continueByLine(message, session, reading.scopes), decided: true };
+      case "abandon":
+        // 「算了」 alone: nothing is stopped or dropped by text; the buttons ask which you meant.
+        mark(message, ["stop", "cancel"], reading.scopes);
+        return { done: false, decided: true };
+    }
+  }
+
+  function readLine(message: Message, line: UserLineReading): boolean {
     if (message.kind !== "user" || admission?.draining || !on()) return false;
     let session: Session;
     try {
@@ -181,37 +229,55 @@ export function createStop(deps: StopDeps): Stop {
     } catch {
       return false;
     }
-    const reading = readControlLine(lineInput(message, session));
-    switch (reading.kind) {
+    const input = lineInput(message, session);
+    // Read by the word lists: the rules' own reading stands, as it always did.
+    if (line.control === null) {
+      const rules = readControlLine(input);
+      if (rules.kind === "status") return statusLine(message, rules.scopes, line);
+      if (rules.kind === "possible_control") offerButtons(message, session, rules.offer, rules.scopes);
+      return false;
+    }
+    const scopes = controlScopes(input);
+    if (line.statusOnly && line.control === "none") return statusLine(message, scopes, line);
+    switch (line.control) {
       case "none":
         return false;
-      case "status":
-        // A plain status question the plan's status answer did not take (no plan to report on)
-        // takes the path it always took, unless a stop covers what it asks about.
-        if (isStatusQuestion(message) && !reading.scopes.some((scope) => scopeHolds(scope, message).length > 0)) return false;
-        answerStatus(message, reading.scopes, { offerStop: reading.offerStop });
-        return true;
-      case "reaffirm":
-        answerStatus(message, reading.scopes, { offerStop: false });
-        return true;
       case "stop":
-        stopByLine(message, reading.scopes, reading.offerCancel);
-        return true;
-      case "continue":
-        return continueByLine(message, session, reading.scopes);
-      case "abandon":
-        // 「算了」 alone: nothing is stopped or dropped by text; the buttons ask which you meant.
-        mark(message, ["stop", "cancel"], reading.scopes);
+        if (line.controlOnly) {
+          stopByLine(message, scopes, false);
+          return true;
+        }
+        offerButtons(message, session, ["stop"], scopes);
         return false;
-      case "possible_control": {
-        // 继续 on the hint lifts your stops, so it is offered only while there is one it would
-        // lift. With none, pressing it could only answer 「没有被叫停」 and read 「已继续」 under a
-        // request that went on as any line (「继续做第二集，……」 with nothing stopped).
-        const offer = reading.offer.filter((action) => action !== "continue" || goOnLifts(message, session, reading.scopes));
-        if (offer.length > 0) mark(message, offer, reading.scopes);
+      case "go_on":
+        if (line.controlOnly) return continueByLine(message, session, scopes);
+        offerButtons(message, session, ["continue"], scopes);
         return false;
-      }
+      case "both":
+        offerButtons(message, session, ["stop", "continue"], scopes);
+        return false;
     }
+  }
+
+  /**
+   * A line that only asks where the work stands, which the plan's status answer did not take (no
+   * plan to report on): it takes the path any line takes, unless a stop covers what it asks about.
+   */
+  function statusLine(message: Message, scopes: ControlScope[], line: UserLineReading): boolean {
+    if (!line.statusOnly || !scopes.some((scope) => scopeHolds(scope, message).length > 0)) return false;
+    answerStatus(message, scopes, { offerStop: false });
+    return true;
+  }
+
+  /**
+   * The buttons on a line that may have meant a stop or a go on. 继续 on the hint lifts your stops,
+   * so it is offered only while there is one it would lift. With none, pressing it could only answer
+   * 「没有被叫停」 and read 「已继续」 under a request that went on as any line (「继续做第二集，……」
+   * with nothing stopped).
+   */
+  function offerButtons(message: Message, session: Session, verbs: ControlOffer[], scopes: ControlScope[]): void {
+    const offer = verbs.filter((action) => action !== "continue" || goOnLifts(message, session, scopes));
+    if (offer.length > 0) mark(message, offer, scopes);
   }
 
   /** Whether a go on said with `message` would lift anything now, or meet a stop that holds what it names. */
@@ -1515,6 +1581,6 @@ export function createStop(deps: StopDeps): Stop {
     return named?.scope === "bot" ? named.id : USER_MEMBER;
   }
 
-  return { on, handleLine, liftOnYourLine, unanswered, stopByButton, hold, act, lift, enforce, heldLines: heldLinesFor };
+  return { on, ruleLine, readLine, liftOnYourLine, unanswered, stopByButton, hold, act, lift, enforce, heldLines: heldLinesFor };
 }
 

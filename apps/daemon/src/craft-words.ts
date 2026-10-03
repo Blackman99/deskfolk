@@ -17,6 +17,9 @@
  *
  * Words naming one part of the work (C09, 镜头 3, 片头) are about that part: 「C09 脚穿地」 stays
  * where it was said, whatever its category.
+ *
+ * The scribe reads which of these an entry is (`nature`, ADR 0055); these lists are what the app
+ * goes by for an entry nothing read so (one the scribe gave no nature, an old rule taken in).
  */
 // What a film looks or sounds like: chosen per film or per series, so no craft on its own.
 const LOOK_ZH = "画风|色调|光影|打光|运镜|镜头语言|字幕样式|配音|音色";
@@ -53,8 +56,13 @@ const SERIES_EN = /\b(?:character design|left (?:hand|arm)|right (?:hand|arm))\b
 const NAMES_A_PART =
   /(?<![A-Za-z0-9])[A-Za-z]\d{1,3}(?!\d)|第\s*[\d一二三四五六七八九十百]+\s*(?:镜|个镜头|段|场|幕|集)|[\d一二三四五六七八九十百]+\s*号?镜(?!头)|镜头\s*\d|片头|片尾|(?<![a-z])(?:shots?|scenes?|clips?)\s*\d/i;
 
+/** Whether words name one part of the work (C09, 镜头 3, 片头): about that part, whatever else they say. */
+export function namesAPart(words: string): boolean {
+  return NAMES_A_PART.test(words.normalize("NFKC"));
+}
+
 function reads(category: string | null, words: string, zh: RegExp, en: RegExp): boolean {
-  if (NAMES_A_PART.test(words.normalize("NFKC"))) return false;
+  if (namesAPart(words)) return false;
   const said = (text: string): boolean => zh.test(text) || en.test(text);
   return (category !== null && said(category)) || said(words);
 }
@@ -70,4 +78,20 @@ export function craftRequirement(category: string | null, words: string): boolea
  */
 export function conversationWide(category: string | null, words: string): boolean {
   return craftRequirement(category, words) || reads(category, words, VALUE_ZH, VALUE_EN) || reads(category, words, SERIES_ZH, SERIES_EN);
+}
+
+/**
+ * Whether an entry holds for the plan's whole conversation by default, in a video job: as the
+ * scribe read what it is about when it did (`nature`), else by the lists above. Words naming one
+ * part never do.
+ */
+export function conversationWideEntry(nature: string | null, category: string | null, words: string): boolean {
+  if (nature === null) return conversationWide(category, words);
+  return nature !== "other" && !namesAPart(words);
+}
+
+/** Whether an entry is about how the work is made: as the scribe read it when it did, else by the lists above. */
+export function craftEntry(nature: string | null, category: string | null, words: string): boolean {
+  if (nature === null) return craftRequirement(category, words);
+  return nature === "craft" && !namesAPart(words);
 }

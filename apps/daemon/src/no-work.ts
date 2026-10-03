@@ -23,13 +23,25 @@ function plainLine(text: string): string {
     .replace(/[()（）[\]【】「」]/g, " ");
 }
 
-export function isNoWorkCloser(body: string): boolean {
+/**
+ * Whether a line could be only a no-work closer, by its shape: `empty` is one, `no` cannot be one
+ * (long, asking, naming someone, or carrying a path, link or code), `maybe` is for its words to say
+ * — a reading's (ADR 0055), or with none {@link isNoWorkCloser}'s lists.
+ */
+export function noWorkShape(body: string): "empty" | "no" | "maybe" {
   const text = body.trim();
-  if (!text) return true;
-  if ([...text].length > MAX_CLOSER_CODE_POINTS) return false;
-  if (/@[^\s@]/.test(text) || /[?？]/.test(text)) return false;
+  if (!text) return "empty";
+  if ([...text].length > MAX_CLOSER_CODE_POINTS) return "no";
+  if (/@[^\s@]/.test(text) || /[?？]/.test(text)) return "no";
   const textWithoutStatusSync = text.replace(new RegExp(STATUS_SYNC_CLAUSE, "gi"), " ");
-  if (WORK_MARKERS.test(textWithoutStatusSync)) return false;
+  return WORK_MARKERS.test(textWithoutStatusSync) ? "no" : "maybe";
+}
+
+/** Whether a line is only a no-work closer, as the word lists read it: what the app goes by when no model can. */
+export function isNoWorkCloser(body: string): boolean {
+  const shape = noWorkShape(body);
+  if (shape !== "maybe") return shape === "empty";
+  const text = body.trim();
   const plain = plainLine(text);
   const signal = new RegExp(NO_WORK_SIGNAL, "gi");
   if (!signal.test(plain)) return false;

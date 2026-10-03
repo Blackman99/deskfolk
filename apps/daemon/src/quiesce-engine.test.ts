@@ -6,6 +6,7 @@ import type { ClientEvent, Routine, Turn } from "@real-bot/protocol";
 import type { CompletionOk, CompletionResult, CompletionsClient, ToolCall } from "./completions";
 import type { McpHost } from "./mcp-host";
 import { ORGANIZER_SYSTEM } from "./prompts/organizer";
+import { READ_BOT_LINE_SYSTEM, READ_USER_LINE_SYSTEM } from "./prompts/reader";
 import { SCRIBE_SYSTEM } from "./prompts/scribe";
 import { Quiesce, TurnAdmission } from "./quiesce";
 import { memoryKeyStore } from "./secrets";
@@ -64,10 +65,12 @@ async function harness(options: { mcp?: McpHost; complete?: CompletionsClient["c
         return requests.length === 1 ? first.promise : answer();
       },
       async judge(request) {
-        // The organizer runs before every user message opens turns, and the scribe after; these tests
-        // are about the turns, so both answer nothing and the message joins the current plan.
+        // The reader and the organizer run before every user message opens turns, and the scribe
+        // after; these tests are about the turns, so all three answer nothing: the line is read by
+        // the word lists and joins the current plan.
         const system = request.messages[0]?.role === "system" ? request.messages[0].content : null;
-        if (system === ORGANIZER_SYSTEM || system === SCRIBE_SYSTEM || !options.judge) return { content: "{}", toolCalls: [], hadToolCalls: false, usage: null, failKind: null };
+        const sideCall = [ORGANIZER_SYSTEM, SCRIBE_SYSTEM, READ_USER_LINE_SYSTEM, READ_BOT_LINE_SYSTEM].includes(String(system));
+        if (sideCall || !options.judge) return { content: "{}", toolCalls: [], hadToolCalls: false, usage: null, failKind: null };
         return options.judge(request);
       },
     },

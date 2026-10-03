@@ -13,7 +13,10 @@
  * anything a run of the app's own acceptance checks did not already prove (ADR 0036,
  * `docs/adr/0036-acceptance-checks-run-by-the-daemon.md`). This file keeps the two things that
  * check covered which acceptance checks do not — an unbacked "later" and an unverified claim —
- * and drops the model call entirely.
+ * and drops the model call entirely. What a reply says (a promise of more to come, a claim of a
+ * run) is read by the reader since 2026-10-03 (ADR 0055) — one short call on the reply alone, not
+ * the brief, the deliveries and the transcript; what it is checked against is still only the app's
+ * own rows.
  *
  * A closing message that says the work is still going ("checking the 18 frames, conclusion to
  * follow") is checked too, cited files or not: the turn ends when it goes out, so "later" only
@@ -27,16 +30,14 @@ import { describeCheck } from "./acceptance-eval";
 import { takeCodePoints } from "./text";
 import { classifyPath } from "./workspace-paths";
 
-/** The words for "still going" live with the other word lists; the end contract reads them too. */
-export { promisesLaterWork } from "./later-words";
 
 /** How much of one handed-over file the check reads. */
 export const CLOSING_EXCERPT_LIMIT = 3000;
 
 /**
- * A conservative match for "this was run / tested / verified", zh and en. Deliberately narrow: a
- * false negative just means the deterministic check stays quiet, the same as the old model call
- * failing open.
+ * A conservative match for "this was run / tested / verified", zh and en: what the app goes by when
+ * no model can read the reply (a model reads it first, ADR 0055). Deliberately narrow: a false
+ * negative just means the deterministic check stays quiet.
  */
 const VERIFICATION_CLAIM =
   /测试(?:全部)?通过|全部通过|跑通了?|验证过了?|已验证|已经验证|构建成功|编译(?:通过|成功)|build (?:succeeded|passed)|builds? successfully|tests?\s?(?:all\s)?pass(?:ed|ing)?|all green|\bverified\b|\bconfirmed working\b/i;

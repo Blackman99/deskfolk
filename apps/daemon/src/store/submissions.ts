@@ -19,6 +19,7 @@
  */
 import { USER_MEMBER, type Message, type Ticket, type TicketStatus } from "@real-bot/protocol";
 import { clauseObjects, clausesOf } from "../complaint-words";
+import type { ReadingSource } from "../line-reading";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { derivedNotGate } from "./acceptance-checks";
@@ -1533,19 +1534,24 @@ function reworkCards(ctx: StoreContext, messageId: string): Array<{ id: string; 
 }
 
 /**
- * Your complaint about work already handed over or approved (§6.6, ADR 0046), read with no model —
- * and only ever asked about, never acted on by itself: what a word list makes of a line is a guess
- * («收到» in a reply, «别重做了», «C07 很好，比上一版那个错乱的好多了»), so a guess costs a card, not
- * a rework. A line of yours filed under a ticket (or some of its parts) by the rows or by you — not a
+ * Your complaint about work already handed over or approved (§6.6, ADR 0046) — only ever asked
+ * about, never acted on by itself: what a reading makes of a line is still a reading («收到» in a
+ * reply, «别重做了», «C07 很好，比上一版那个错乱的好多了»), so a misreading costs a card, not a
+ * rework. A line of yours filed under a ticket (or some of its parts) by the rows or by you — not a
  * Bot's pick; or under a plan as a whole whose handed-over work is one ticket with its maker still here —
  * while that ticket is handed over, in review or approved, asks when one of its clauses
- * objects (`clauseObjects`: a complaint word, no praise, no redo turned down), when it annotates a
+ * objects (`objecting`: the clauses a model read as objecting to the work as it stands, ADR 0055;
+ * with no reading, `clauseObjects`: a complaint word, no praise, no redo turned down), when it annotates a
  * file, or when the scribe made a part-level entry of it. The parts asked about are those an
  * objecting clause numbers, or every part it was filed under when an objecting clause numbers none
  * (or the signal was not words). One card per line and ticket; on a refile, a card still asking about
  * a ticket the line is no longer filed under stops asking. Returns the new cards.
  */
-export function noteComplaint(ctx: StoreContext, messageId: string, input: { scribeAdded?: readonly string[]; now?: string } = {}): Message[] {
+export function noteComplaint(
+  ctx: StoreContext,
+  messageId: string,
+  input: { scribeAdded?: readonly string[]; objecting?: { clauses: readonly string[]; source: ReadingSource }; now?: string } = {},
+): Message[] {
   return ctx.commit(() => {
     if (!supervised(ctx)) return [];
     const message = ctx.db.query<{ id: string; kind: string; body: string }, [string]>("SELECT id, kind, body FROM messages WHERE id = ?").get(messageId);
@@ -1575,7 +1581,7 @@ export function noteComplaint(ctx: StoreContext, messageId: string, input: { scr
     const annotated = Boolean(ctx.db.query("SELECT 1 FROM annotations WHERE message_id = ? AND status <> 'draft'").get(messageId));
     const scribed = (input.scribeAdded ?? []).length > 0
       && Boolean(ctx.db.query("SELECT 1 FROM requirements WHERE scope = 'part' AND id IN (SELECT value FROM json_each(?))").get(JSON.stringify(input.scribeAdded)));
-    const objecting = clausesOf(message.body).filter(clauseObjects);
+    const objecting = input.objecting ? [...input.objecting.clauses] : clausesOf(message.body).filter(clauseObjects);
     if (!annotated && !scribed && objecting.length === 0) return [];
     // Which parts it is about: those an objecting clause numbers; all it was filed under when one
     // numbers none, or when the signal is the annotation or the scribe's entry rather than words.
@@ -1611,7 +1617,7 @@ export function noteComplaint(ctx: StoreContext, messageId: string, input: { scr
       });
       createNotification(ctx, { semantic_key: `rework:${card.id}`, kind: "ask", session_id: plan.session_id, message_id: card.id, action_state: "open" });
       recordWorkEvent(ctx, { kind: "complaint.asked", actor: "app", taskId: ticket.task_id, ticketId,
-        payload: { message_id: messageId, card_id: card.id, parts: partKeys, signal: annotated ? "annotation" : scribed ? "scribe" : "words", at: now } });
+        payload: { message_id: messageId, card_id: card.id, parts: partKeys, signal: annotated ? "annotation" : scribed ? "scribe" : input.objecting?.source === "model" ? "reading" : "words", at: now } });
       cards.push(card);
     }
     return cards;

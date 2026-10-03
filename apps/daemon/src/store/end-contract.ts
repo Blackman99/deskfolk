@@ -13,7 +13,7 @@ import { isReservedTaskPath } from "./tasks";
 import { settingsCached } from "./settings";
 import { noProgressNoticeBody, promisedLaterNoticeBody } from "../prompts/control-copy";
 import { supervisorJobLabel } from "../prompts/transcript-copy";
-import { laterWorkSentence } from "../later-words";
+import { LATER_QUOTE_MAX, laterWorkSentence } from "../later-words";
 import { parseMentions } from "../mentions";
 import { takeCodePoints } from "../text";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
@@ -33,6 +33,12 @@ export type FinishWorkOptions = {
   pureText?: boolean;
   /** Pure text: the closing reply about to go out, the last thing the user will read ("" when it goes out as nothing). */
   closing?: string;
+  /**
+   * The segment's last word to the user ({@link segmentLastWord}) and the sentence in which it says
+   * the work is still going, as the reader read it (ADR 0055); `later` null when it promises
+   * nothing. Absent, the word lists read the last word here.
+   */
+  lastWord?: { said: string; later: string | null };
   /** Total contract bounces already consumed by the parent engine, across all contracts. */
   contractBounces?: number;
 };
@@ -261,23 +267,30 @@ function noProgressNotice(ctx: StoreContext, turn: Actor): string {
   return noProgressNoticeBody(locale, { job: supervisorJobLabel(locale, { plan, ticket }), bot });
 }
 
-/** How much of a "still going" sentence the bounce and the user's line quote. */
-const PROMISE_QUOTE_MAX = 60;
+/**
+ * The segment's last word to the user: the pure-text reply about to go out (`closing`), else its
+ * newest message (`send_message` or an earlier closing reply). Null when it said nothing.
+ */
+export function segmentLastWord(ctx: StoreContext, turnId: string, closing?: string): string | null {
+  if (closing?.trim()) return closing;
+  return ctx.db.query<{ body: string }, [string]>(`SELECT m.body FROM messages m JOIN turns t ON t.id = ?1
+    WHERE (m.turn_id = ?1 OR m.source_turn_id = ?1) AND m.author = t.bot_id AND m.kind = 'bot' ORDER BY m.message_seq DESC LIMIT 1`).get(turnId)?.body ?? null;
+}
 
 /**
  * The sentence in which the segment's last word to the user says the work is still going, when no
- * Bot is named in it to take that on; null when it promised nothing. Its last word is the pure-text
- * reply about to go out, else its newest message (`send_message` or an earlier closing reply).
+ * Bot is named in it to take that on; null when it promised nothing. Read as the reader read it
+ * (`lastWord`), else by the word lists.
  */
-function unbackedPromise(ctx: StoreContext, turn: Actor, closing: string | undefined): string | null {
-  const said = closing?.trim() ? closing : ctx.db.query<{ body: string }, [string, string]>(`SELECT body FROM messages
-    WHERE (turn_id = ?1 OR source_turn_id = ?1) AND author = ?2 AND kind = 'bot' ORDER BY message_seq DESC LIMIT 1`).get(turn.id, turn.bot_id)?.body;
-  const sentence = said ? laterWorkSentence(said) : null;
+function unbackedPromise(ctx: StoreContext, turn: Actor, opts: FinishWorkOptions): string | null {
+  const said = opts.lastWord ? opts.lastWord.said : segmentLastWord(ctx, turn.id, opts.closing);
+  const sentence = opts.lastWord ? opts.lastWord.later : said ? laterWorkSentence(said) : null;
   if (!said || !sentence) return null;
   const roster = ctx.db.query<{ name: string }, []>("SELECT name FROM bots WHERE deleted_at IS NULL AND archived_at IS NULL").all().map((bot) => bot.name);
   const named = parseMentions(said, roster);
   if (named.everyone || named.mentions.length > 0) return null;
-  const clipped = takeCodePoints(sentence, PROMISE_QUOTE_MAX);
+  if (opts.lastWord) return sentence;
+  const clipped = takeCodePoints(sentence, LATER_QUOTE_MAX);
   return clipped.truncated ? `${clipped.text}…` : clipped.text;
 }
 
@@ -396,7 +409,7 @@ export function finishWork(ctx: StoreContext, input: FinishWorkInput, opts: Fini
     // and an idle job there is the plan watch's. Bounced once; an ending after that goes through,
     // with a line telling the user it stopped.
     const promised = !unfinished && !waiting && turn.mode !== "readonly" && ["done", "answered", "nothing_new"].includes(reason)
-      ? unbackedPromise(ctx, turn, opts.closing) : null;
+      ? unbackedPromise(ctx, turn, opts) : null;
     if (promised && rejectionsFor(ctx, turn.id, "promised_later") === 0) {
       return rejectEnd(ctx, turn, base, opts, "promised_later",
         `You said 「${promised}」, but ending now leaves that with nobody: nothing open on this work wakes you again. Do it now; or book a check_back for when you come back to it, then end with reason nothing_new; or name the Bot who takes it. If it cannot go on, end blocked (needs_from_user) or gave_up (note) and say why.`);

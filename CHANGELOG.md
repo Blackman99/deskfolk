@@ -11,6 +11,18 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 - In your direct with a Bot, a line of yours that comes right after the Bot's line — nothing of yours in between, within two hours, and not opening with 另外 / 顺便 — is filed, by default, under the job that line was on, the way a quoted reply is. That includes a routine's run: 「标题跟 LOGO 没有对齐」 three minutes after the morning brief goes to today's brief, where on 2026-10-03 it was filed under a three-day-old job that happened to be the only other one open there, and the fix was written into that job's requirements.
 - A routine's job is named in the tag under its lines (it used to read 「一件事」), and the change-attribution dialog lists it, latest run first.
 
+### A model reads what a line means, not a word list
+
+- Before the app acts on a line of yours or a Bot's, one short call reads what it means, instead of only fixed word lists ([ADR 0055](docs/adr/0055-lines-read-by-a-model.md)). Each missed phrasing used to be patched by adding words: 视频导演 said it was writing the new EP01 setting and storyboard plan and ended, and 「正在编写」 was not in the list; you said 「从头再做一遍，之前的作废」 (start over, scrap what came before), and neither 作废 nor 从头再做 was either. Now:
+  - A stop the rules do not know (「先别搞了，收手吧」, "drop it for now") stops all the same; a plain "stop" or "continue" is still carried out by the rules at once, never waiting on a model. One read as a stop beside other words goes to the Bots as usual with the buttons; one read as no control at all no longer gets buttons.
+  - "Where is episode 2 at now?" and other phrasings get the app's own status answer, waking no Bot.
+  - Dissatisfaction without a complaint word (「这版节奏拖沓，整个推掉吧」, "this cut drags, scrap it") asks whether to send the delivered work back to rework.
+  - A Bot ending right after "I'll put the episode 2 storyboard together and post it" is turned back once by the ending contract, and the closing check hears it too; whether a line is "nothing to do" or a bare status is read the same way.
+  - The scribe marks each requirement it notes as craft, a choice of look, a series' constant or other, which the conversation-wide default and the standing offer go by.
+- The model only reads: whether a hold is made, an ending bounced or a card asked is still the rules', and a sentence it quotes must be words of the line. With no model, an error, more than 20 s or an unreadable answer, the word lists read the line as before, and the work log says so (`reader.answer`).
+- Your line wakes no Bot until it is read (a plain stop excepted), so Settings → Models gains "Model that reads lines" to pick a fast one; otherwise the default model reads. Readings use the model's lightest thinking level and do not queue behind the Bots' long streams. Measured: the default grok-4.7-build-fast takes 3 s at the median, deepseek-v4.1-flash under 1 s, and the four models tried read equally well.
+- The spend view gains a "Line reading" line (under Other).
+
 ### The plan and its tickets point at each other on the board
 
 - A picked ticket lists what it has to meet — the plan's Done when lines, rules and what you asked for, as every ticket does, plus the requests and checks held to it alone — and "See in the plan" opens the plan read against it: the ticket is named at the top and lines held to other tickets dim. In the plan, a request or check held to one ticket names it and shows it in the ticket list; a row above Progress counts the tickets by status and opens the list on one, so the organizer's written progress is no longer mistaken for the tickets' state.

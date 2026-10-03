@@ -21,6 +21,13 @@ import { recordWorkEvent } from "./work-events";
 export type RequirementScope = "part" | "ticket" | "plan" | "project" | "standing";
 export type RequirementStatus = "proposed" | "open" | "superseded" | "waived" | "not_requirement" | "unverified";
 export type RequirementSourceKind = "message" | "ask_answer" | "annotation" | "board" | "accepted_suggestion" | "legacy";
+/**
+ * What an entry is about, as the scribe read your words (ADR 0055): how the work is made (craft),
+ * a choice of how it looks or sounds (look), what stays the same across a series (series), or
+ * anything else. Null when nothing read it so; the word lists of craft-words.ts say then.
+ */
+export type RequirementNature = "craft" | "look" | "series" | "other";
+export const REQUIREMENT_NATURES: readonly RequirementNature[] = ["craft", "look", "series", "other"];
 
 export type Requirement = {
   id: string;
@@ -47,6 +54,8 @@ export type Requirement = {
   seq: number;
   /** The plan the words were said about; null only when nothing says which. */
   origin_task_id: string | null;
+  /** What it is about, as the scribe read it; null when nothing read it so. */
+  nature: RequirementNature | null;
 };
 
 type RequirementRow = Omit<Requirement, "value"> & { value: string | null };
@@ -127,6 +136,8 @@ export function addRequirement(
     originTaskId?: string | null;
     /** What you did that wrote it (the plan's version your board edit made), named in the work log. */
     action?: string | null;
+    /** What it is about, as the scribe read it. */
+    nature?: RequirementNature | null;
     now?: string;
   },
 ): Requirement {
@@ -165,8 +176,8 @@ export function addRequirement(
     ctx.db.run(
       `INSERT INTO requirements
          (id, scope, scope_id, domain, quote, restated, category, polarity, dimension, value, source_kind, source_quote_id,
-          status, supersedes, times_raised, last_raised_at, added_by, created_at, updated_at, origin_task_id, seq)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM requirements))`,
+          status, supersedes, times_raised, last_raised_at, added_by, created_at, updated_at, origin_task_id, nature, seq)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM requirements))`,
       [
         id,
         input.scope,
@@ -187,6 +198,7 @@ export function addRequirement(
         now,
         now,
         origin,
+        input.nature ?? null,
       ],
     );
     if (input.sourceQuoteId) addMention(ctx, id, input.sourceQuoteId, now);

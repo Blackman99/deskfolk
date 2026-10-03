@@ -210,6 +210,9 @@ describe("进度询问", () => {
     const trigger = h.store.insertMessage({ sessionId: session, kind: "user", author: USER_MEMBER, body: "调研三个分发渠道" });
     await h.engine.handleInboundMessage(trigger, { fromUser: true });
     const turn = await until(() => h.store.listLiveTurns({ sessionId: session })[0]);
+    // Its hop is out before it is made to wait on you: a turn that has not reached its hop yet would
+    // find itself not running and end.
+    await until(() => h.seen.length > 0 || undefined);
     h.store.scheduleCheckBack({ botId: researcher.bot.id, sessionId: session, turnId: turn.id, note: "核对 Writer 有没有交初稿", afterMinutes: 30 });
     h.store.insertApproval({ turnId: turn.id, messageId: null, kind_key: "outside-read", summary: "读取 ~/Downloads/渠道报价.pdf", target: "/Users/x/Downloads/渠道报价.pdf" });
     h.store.db.run(`UPDATE turns SET status = 'waiting_approval' WHERE id = ?`, [turn.id]);

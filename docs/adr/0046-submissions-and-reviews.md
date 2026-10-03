@@ -134,3 +134,10 @@ Three more: pressing Approve while the app waited on a gate, then adding another
 投诉返工只看归到任务上的话。AI影视创作组里你说「从头再做一遍，之前的作废」，行的归属把它归到了规划（没有任务）；规划里唯一的工作任务还停在上一轮的已交付，于是没卡片、没返工，结束契约看这件事什么都不欠，视频导演说完「正在编写…」就以 done 收尾了。「作废」「从头再做」也不在投诉词里。现在投诉词加上「作废」「推翻」「推倒」「从头（再）做/来/开始/拍/写」「再做一遍」「重新做/来/拍/写/生成」（「不用从头再做」「不必重新做」这类回绝不算）；只归到规划的一句话，规划里已交付、审查中或已通过的任务只有一张、做它的 Bot 还在（没归档、没删除）时，按归到这一张来问；有好几张时说的是哪张是猜，不问。其余照旧：只问不动，一句话对一张任务只问一次。
 
 Complaint rework read only lines filed under a ticket. In the AI video group you said 「从头再做一遍，之前的作废」 ("start over, scrap what came before"); the rows filed it under the plan, no ticket, while the plan's one work ticket still read handed over from the earlier run. No card was posted and nothing was sent back; the end contract found nothing owed, and 视频导演 ended as done right after saying it was writing. 作废 and 从头再做 were not complaint words either. Now the words include 作废, 推翻, 推倒, 从头(再)做/来/开始/拍/写, 再做一遍 and 重新做/来/拍/写/生成 (a start-over turned down, 不用从头再做 or 不必重新做, does not count), and a line filed only under a plan asks about that plan's one submitted, in-review or approved ticket when there is exactly one and its maker is still here (neither archived nor deleted); with several, which is meant is a guess, and nothing is asked. The rest is unchanged: it only asks, once per line and ticket.
+
+
+## 2026-10-03 补记：挑毛病由读句读 / What a line objects to is read by a model
+
+上面加进投诉词的「作废」「从头再做」现在只是兜底：返工卡问不问、问哪几个分件，看读句摘出的挑毛病的分句（[ADR 0055](0055-lines-read-by-a-model.md)；分件号仍按规则从这些分句里找），读不了时才按投诉词。工作记录 `complaint.asked` 的 `signal` 因此多了 `reading`。
+
+作废 and 从头再做, added to the complaint words above, are now only the fallback: whether a rework card asks, and about which parts, goes by the objecting clauses a reading quotes ([ADR 0055](0055-lines-read-by-a-model.md); part numbers still found in them by rule), by the complaint words only when the line cannot be read. `complaint.asked` therefore gains the `signal` `reading`.

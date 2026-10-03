@@ -5,6 +5,7 @@
 	import McpSettings from './McpSettings.svelte';
 	import LessonsSettings from './LessonsSettings.svelte';
 	import ModelLadderCard from './ModelLadderCard.svelte';
+	import ReaderModelCard from './ReaderModelCard.svelte';
 	import type { Lesson } from '@real-bot/protocol';
 	import { backdropClick } from '../click-outside.ts';
 	import WorkspacePicker from './WorkspacePicker.svelte';
@@ -1364,6 +1365,13 @@
 						</div>
 						{#if snapshot.providers.length > 0}
 							<ModelLadderCard api={runtime.client} providers={snapshot.providers} {t} />
+							<ReaderModelCard
+								providers={snapshot.providers}
+								chosen={snapshot.settings.reader_model ?? null}
+								defaultModel={snapshot.settings.endpoint_default_model}
+								patch={(patch) => runtime.patchSettings(patch)}
+								{t}
+							/>
 						{/if}
 					</div>
 				{:else if activeSettingsTab === 'mcp'}

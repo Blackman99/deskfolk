@@ -290,6 +290,7 @@ export class Store {
   readonly patchMcpServerSync = this.bind(mcp.patchMcpServerSync);
   readonly deleteMcpServerSync = this.bind(mcp.deleteMcpServerSync);
   readonly providersCached = this.bind(providers.providersCached);
+  readonly lightestThinkingLevelFor = this.bind(providers.lightestThinkingLevelFor);
 
   close(): void {
     this.db.close();
@@ -547,6 +548,7 @@ export class Store {
   readonly markNeedsAttention = this.bind(desk.markNeedsAttention);
   readonly markWorkDirectoryUsed = this.bind(desk.markWorkDirectoryUsed);
   readonly finishWork = this.bind(endContract.finishWork);
+  readonly segmentLastWord = this.bind(endContract.segmentLastWord);
   readonly endAfterSubmit = this.bind(endContract.endAfterSubmit);
   readonly prepareSubmission = this.bind(submissions.prepareSubmission);
   readonly settleSubmissionChecks = this.bind(submissions.settleSubmissionChecks);

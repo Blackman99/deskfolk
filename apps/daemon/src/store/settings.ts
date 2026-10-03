@@ -9,6 +9,7 @@ import {
   providerKeychainName,
   type PatchProviderRequest,
   type Provider,
+  type ReaderModel,
   type Settings,
   type SettingsPatch,
   type Theme,
@@ -70,6 +71,11 @@ export function settingsCached(ctx: StoreContext): Settings {
   const themeRaw = map.get("theme");
   const theme: Theme = themeRaw === "light" || themeRaw === "dark" ? themeRaw : "system";
   const launch_at_login = map.get("launch_at_login") !== "0";
+  // Kept as you chose it, read as null while its endpoint is gone or no longer lists the model.
+  const readerProvider = providers.find((provider) => provider.id === emptyToNull(map.get("reader_provider_id")));
+  const readerModel = emptyToNull(map.get("reader_model"));
+  const reader_model = readerProvider && readerModel && readerProvider.models.includes(readerModel)
+    ? { provider_id: readerProvider.id, model: readerModel } : null;
   return {
     settings_rev: ctx.db.query<{ settings_rev: number }, []>("SELECT settings_rev FROM request_meta WHERE singleton = 1").get()!.settings_rev,
     workspace_path,
@@ -79,11 +85,25 @@ export function settingsCached(ctx: StoreContext): Settings {
     endpoint_model_catalog,
     endpoint_default_model,
     default_provider_id: defaultProvider?.id ?? null,
+    reader_model,
     launch_at_login,
     locale,
     theme,
     wizard_complete: Boolean(workspace_path && providers.some((provider) => provider.base_url && provider.key_set)),
   };
+}
+
+/** The model a patch names for reading lines (ADR 0055): one an endpoint lists, or null to follow the default. */
+function readerModelOf(ctx: StoreContext, value: unknown): ReaderModel | null {
+  if (value === null) return null;
+  const row = value as Partial<ReaderModel> | undefined;
+  if (!row || typeof row !== "object" || typeof row.provider_id !== "string" || typeof row.model !== "string") {
+    throw new HttpError(422, "invalid_args", "reader_model must be null or { provider_id, model }");
+  }
+  const provider = providersCached(ctx).find((candidate) => candidate.id === row.provider_id);
+  if (!provider) throw new HttpError(404, "not_found", "provider not found");
+  if (!provider.models.includes(row.model)) throw new HttpError(422, "invalid_args", "reader_model must be a model that endpoint lists");
+  return { provider_id: provider.id, model: row.model };
 }
 
 export async function patchSettings(
@@ -108,6 +128,7 @@ export function patchSettingsSync(ctx: StoreContext, patch: SettingsPatch | Reco
       key !== "endpoint_models" &&
       key !== "endpoint_default_model" &&
       key !== "default_provider_id" &&
+      key !== "reader_model" &&
       key !== "launch_at_login" &&
       key !== "locale" &&
       key !== "theme"
@@ -141,6 +162,11 @@ export function patchSettingsSync(ctx: StoreContext, patch: SettingsPatch | Reco
       const nextId = normalizeOptionalId(patch.default_provider_id, "default_provider_id");
       if (nextId) requireProvider(ctx, nextId);
       setSetting(ctx, "default_provider_id", nextId ?? "");
+    }
+    if ("reader_model" in patch) {
+      const chosen = readerModelOf(ctx, patch.reader_model);
+      setSetting(ctx, "reader_provider_id", chosen?.provider_id ?? "");
+      setSetting(ctx, "reader_model", chosen?.model ?? "");
     }
   });
   const touchesEndpoint =

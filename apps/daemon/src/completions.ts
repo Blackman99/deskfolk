@@ -106,6 +106,17 @@ export type JudgeRequest = {
    * answer stops mid-sentence.
    */
   maxTokens?: number;
+  /**
+   * Sent as `reasoning_effort` when given. Absent sends none, and the endpoint thinks as it likes;
+   * a reading the app waits on asks for the lightest the model lists (ADR 0055).
+   */
+  thinkingLevel?: ThinkingLevel;
+  /**
+   * `reading`: a reading the app waits on before it acts on a line (ADR 0055). It takes its own
+   * per-origin slots instead of queueing behind the Bots' streaming hops, which can hold the shared
+   * ones for minutes; a stop said while two Bots stream must not wait for either of them.
+   */
+  lane?: "reading";
 };
 
 export type JudgeResult = {
@@ -161,6 +172,7 @@ export function createCompletionsClient(
   if (options.clock?.firstByteMs) clock.firstByteMs = options.clock.firstByteMs;
   if (options.clock?.idleMs) clock.idleMs = options.clock.idleMs;
   const gate = createOriginGate(options.originLimit ?? ORIGIN_STREAM_LIMIT);
+  const readingGate = createOriginGate(options.originLimit ?? ORIGIN_STREAM_LIMIT);
   const capForms: CapForms = new Map();
 
   return {
@@ -168,7 +180,7 @@ export function createCompletionsClient(
       return completeStreaming(fetchImpl, clock, gate, request, capForms, options.wake);
     },
     async judge(request) {
-      return completeJudge(fetchImpl, clock, gate, request);
+      return completeJudge(fetchImpl, clock, request.lane === "reading" ? readingGate : gate, request);
     },
   };
 }
@@ -727,6 +739,7 @@ async function completeJudgeBody(
       },
       body: JSON.stringify({
         model: request.model,
+        ...(request.thinkingLevel ? { reasoning_effort: request.thinkingLevel } : {}),
         messages: toApiMessages(request.messages),
         temperature: 0,
         max_tokens: request.maxTokens ?? (request.tools?.length ? 512 : 256),

@@ -681,7 +681,8 @@ describe("a status question under a stop", () => {
     await h.waitIdle();
 
     expect(h.turns(director)).toEqual([]);
-    expect(h.judgeCalls().filter((row) => row.at > ask.created_at)).toEqual([]);
+    // Read once for what it asks (ADR 0055), and nothing else: no filing, no judgement, no turn.
+    expect(h.judgeCalls().filter((row) => row.at > ask.created_at).map((row) => row.kind)).toEqual(["read_user_line"]);
     const [answer] = after(h, dm, ask);
     expect(answer!.control).toMatchObject({ kind: "status" });
     expect(answer!.body).toContain("视频导演：叫停中");

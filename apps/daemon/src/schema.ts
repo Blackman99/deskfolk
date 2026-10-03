@@ -653,7 +653,10 @@ CREATE TABLE IF NOT EXISTS requirements (
   seq INTEGER,
   -- The plan the words were said about, whatever the scope: an entry of the conversation or a
   -- standing one reads as inherited in every other plan.
-  origin_task_id TEXT
+  origin_task_id TEXT,
+  -- What it is about, as the scribe read your words (ADR 0055): craft, look, series or other; null
+  -- when nothing read it so. Checked in code, not here, so a new kind needs no rebuild.
+  nature TEXT
 );
 
 CREATE INDEX IF NOT EXISTS requirements_scope ON requirements (scope, scope_id, status);
@@ -1012,9 +1015,10 @@ CREATE TABLE IF NOT EXISTS spend (
   kind TEXT NOT NULL CHECK (
     kind IN ('turn', 'judgement', 'route_pick', 'route_review', 'route_learn', 'composer_suggest', 'organize', 'acceptance_check')
   ),
-  -- What the call was for where the kind is shared (ADR 0042): the scribe and a reflection bill
-  -- as organize, a judgement of pictures as acceptance_check. Added by migrate.ts on older ledgers.
-  purpose TEXT CHECK (purpose IS NULL OR purpose IN ('scribe', 'vision', 'reflect')),
+  -- What the call was for where the kind is shared (ADR 0042): the scribe, a reflection and a
+  -- reading of a line (ADR 0055) bill as organize, a judgement of pictures as acceptance_check.
+  -- Added by migrate.ts on older ledgers, and widened there when a purpose is added.
+  purpose TEXT CHECK (purpose IS NULL OR purpose IN ('scribe', 'vision', 'reflect', 'reader')),
   chain_id TEXT,
   provider_id TEXT,
   provider_name TEXT,
