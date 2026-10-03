@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A complaint's card and the lead don't both send the work back
+
+- When a line of yours about handed-over work brings up the "send it back to rework?" card, the Bot the line also wakes (the lead, in a group) is told the card is asking and to leave that ticket to your answer. It was not told, and could hand the fix to the maker while you pressed Send back.
+- The Bots' list of a job's tickets leaves dropped ones out and says who made an approved one, instead of "approved; X on it".
+
 ### Your opening line stays with the job when the lead lays it out
 
 - When a lead's layout drops the ticket a job opened with, your opening line — and a requirement read from it — now move to the whole job. They stayed under the dropped ticket, so the requirement held for a ticket nobody works on, and the attribution dialog showed your line under it.

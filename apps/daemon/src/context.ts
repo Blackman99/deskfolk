@@ -335,6 +335,11 @@ export type PlanFacts = {
   elsewhere: Array<{ bot: string; self: boolean; where: string; heard: boolean }>;
   /** This Bot's other live turns, on other plans: where, which plan, which ticket. */
   other_work: Array<{ where: string; plan: string; ticket: string | null }>;
+  /**
+   * Tickets the line that opened this turn was read as a complaint about, where a card still asks
+   * the user whether to send them back to rework: theirs to decide, not this turn's to act on.
+   */
+  rework_asked?: Array<{ seq: number; title: string }>;
 };
 
 /** Turns elsewhere on the same plan the block names. */
@@ -566,7 +571,25 @@ export function planFacts(
     home: task.session_id && task.session_id !== input.sessionId ? where(task.session_id) : null,
     elsewhere,
     other_work,
+    ...reworkAsked(store, input.triggerMessageId),
   };
+}
+
+/**
+ * The cards still asking the user whether to send a ticket back over the line that opened this
+ * turn. The line went to the lead as well as to the card: on 2026-10-04's walkthrough 「第三句不好，
+ * 换一句」 after the slogans were approved woke the lead, which was not told a card was asking, and
+ * could hand the fix to the writer while the user was about to press 转回返工 — the work twice.
+ */
+function reworkAsked(store: Store, triggerMessageId: string | null): Pick<PlanFacts, "rework_asked"> {
+  if (!triggerMessageId) return {};
+  const rows = store.db.query<{ seq: number; title: string }, [string]>(`SELECT t.seq, t.title FROM messages m
+    JOIN tickets t ON t.id = json_extract(m.control, '$.ticket_id')
+    WHERE json_extract(m.control, '$.kind') = 'rework' AND json_extract(m.control, '$.message_id') = ?
+      AND COALESCE(json_array_length(json_extract(m.control, '$.acted')), 0) = 0
+      AND EXISTS (SELECT 1 FROM json_each(json_extract(m.control, '$.offer')) WHERE value = 'rework')
+    ORDER BY t.seq`).all(triggerMessageId);
+  return rows.length > 0 ? { rework_asked: rows } : {};
 }
 
 /** When a line was said, in this machine's time: 「09-28 12:02」. */
@@ -705,6 +728,7 @@ const TICKET_STAGE_LABEL: Partial<Record<TicketStage, { zh: string; en: string }
   in_review: { zh: "审查中", en: "in review" },
   rework: { zh: "返工", en: "rework" },
   approved: { zh: "已通过", en: "approved" },
+  dropped: { zh: "作废", en: "dropped" },
 };
 
 function ticketWord(ticket: Pick<PlanTicketFact, "status" | "stage">, locale: Locale): string {
@@ -715,7 +739,10 @@ function ticketLine(ticket: PlanTicketFact, locale: Locale): string {
   const en = locale === "en";
   const number = String(ticket.seq).padStart(2, "0");
   const bits = [ticketWord(ticket, locale)];
-  if (ticket.worker) bits.push(en ? `${ticket.worker} on it` : `${ticket.worker}在做`);
+  // Who is on it only while it is open: an approved one says who made it, one set aside nobody's.
+  const closed = ticket.stage === "approved" || (!ticket.stage && ticket.status === "done");
+  if (ticket.worker && closed) bits.push(en ? `made by ${ticket.worker}` : `${ticket.worker}做的`);
+  else if (ticket.worker && ticket.status !== "parked") bits.push(en ? `${ticket.worker} on it` : `${ticket.worker}在做`);
   if (ticket.artifacts.length > 0) bits.push(ticket.artifacts.join(en ? ", " : "、"));
   return en ? `${number} ${ticket.title} (${bits.join("; ")})` : `${number} ${ticket.title}（${bits.join("；")}）`;
 }
@@ -852,12 +879,21 @@ export function planLines(facts: PlanFacts, locale: Locale): string[] {
     });
     lines.push(en ? `Your other live turns: ${rows.join("; ")}.` : `你同时在干的别的事：${rows.join("；")}。`);
   }
-  if (facts.tickets.length > 0) {
-    const shown = facts.tickets.slice(0, PLAN_TICKET_LINES);
-    const rest = facts.tickets.length - shown.length;
+  // A dropped ticket is no task (the job's opening ticket, folded once the lead laid the job out,
+  // read 「搁置；设计师在做」 here), unless it is this turn's own.
+  const listed = facts.tickets.filter((ticket) => ticket.stage !== "dropped" || ticket.id === facts.ticket?.id);
+  if (listed.length > 0) {
+    const shown = listed.slice(0, PLAN_TICKET_LINES);
+    const rest = listed.length - shown.length;
     const rows = shown.map((ticket) => `- ${ticketLine(ticket, locale)}`);
     if (rest > 0) rows.push(en ? `- … and ${rest} more` : `- …还有 ${rest} 条`);
     lines.push(`${en ? "Tickets:" : "任务清单："}\n${rows.join("\n")}`);
+  }
+  if (facts.rework_asked && facts.rework_asked.length > 0) {
+    const named = facts.rework_asked.map((ticket) => `${String(ticket.seq).padStart(2, "0")}${en ? ` "${ticket.title}"` : `「${ticket.title}」`}`).join(en ? ", " : "、");
+    lines.push(en
+      ? `(App) The line that opened this turn reads as a complaint about ${named}, already handed over: a card is asking the user whether to send it back to rework. That is theirs to decide — do not change it or hand the fix to anyone meanwhile; if they send it back, the app wakes its maker with these words.`
+      : `（应用）叫醒这一轮的那句话读成了对已交出的 ${named}的意见：卡片正在问用户要不要转回返工。这由用户定——定之前别改它，也别另派人改；用户选了返工，应用会带着这句话叫做的 Bot 改。`);
   }
   if (facts.ticket) {
     const number = String(facts.ticket.seq).padStart(2, "0");
