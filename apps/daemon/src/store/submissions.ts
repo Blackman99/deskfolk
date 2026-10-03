@@ -1537,7 +1537,8 @@ function reworkCards(ctx: StoreContext, messageId: string): Array<{ id: string; 
  * and only ever asked about, never acted on by itself: what a word list makes of a line is a guess
  * («收到» in a reply, «别重做了», «C07 很好，比上一版那个错乱的好多了»), so a guess costs a card, not
  * a rework. A line of yours filed under a ticket (or some of its parts) by the rows or by you — not a
- * Bot's pick — while that ticket is handed over, in review or approved, asks when one of its clauses
+ * Bot's pick; or under a plan as a whole whose handed-over work is one ticket with its maker still here —
+ * while that ticket is handed over, in review or approved, asks when one of its clauses
  * objects (`clauseObjects`: a complaint word, no praise, no redo turned down), when it annotates a
  * file, or when the scribe made a part-level entry of it. The parts asked about are those an
  * objecting clause numbers, or every part it was filed under when an objecting clause numbers none
@@ -1551,10 +1552,22 @@ export function noteComplaint(ctx: StoreContext, messageId: string, input: { scr
     if (!message || message.kind !== "user") return [];
     const filings = ctx.db.query<{ ticket_id: string; part_key: string | null }, [string]>(`SELECT ticket_id, part_key FROM message_filings
       WHERE message_id = ? AND ticket_id IS NOT NULL AND strength IN ('locked', 'default', 'user') ORDER BY is_primary DESC, rowid`).all(messageId);
+    // Filed under a plan as a whole, no ticket (「从头再做一遍，之前的作废」): about its handed-over work,
+    // when that is one ticket whose maker is still here. With more, which one is meant is a guess.
+    const plans = ctx.db.query<{ task_id: string }, [string]>(`SELECT DISTINCT task_id FROM message_filings
+      WHERE message_id = ? AND ticket_id IS NULL AND task_id IS NOT NULL AND strength IN ('locked', 'default', 'user')`).all(messageId).map((row) => row.task_id);
+    if (filings.length === 0) {
+      for (const taskId of plans) {
+        const handed = ctx.db.query<{ id: string }, [string]>(`SELECT t.id FROM tickets t JOIN bots b ON b.id = COALESCE(t.owner_bot_id, t.worker)
+          WHERE t.task_id = ? AND ${STAGE_SQL("t")} IN ('submitted', 'in_review', 'approved') AND b.archived_at IS NULL AND b.deleted_at IS NULL`).all(taskId);
+        if (handed.length === 1) filings.push({ ticket_id: handed[0]!.id, part_key: null });
+      }
+    }
     const existing = reworkCards(ctx, messageId);
     for (const card of existing) {
       if (filings.some((filing) => filing.ticket_id === card.ticket_id)) continue;
       const control = getMessage(ctx, card.id).control;
+      if (control?.kind === "rework" && plans.includes(control.task_id)) continue;
       if (control?.kind === "rework" && control.offer.includes("rework") && (control.acted ?? []).length === 0) {
         setMessageControl(ctx, card.id, { ...control, offer: [], result: locale(ctx) === "en" ? "That line was filed elsewhere since." : "这句话后来改归别处了。" });
       }

@@ -390,3 +390,51 @@ test("a late end-write failure rolls back actual user dispositions and delegated
   expect(f.store.db.query("SELECT COUNT(*) AS n FROM inbox_items WHERE source = 'delegation_reply'").get()).toEqual({ n: 0 });
   expect(f.store.db.query("SELECT status, end_reason FROM turns WHERE id = ?").get(turn.id)).toEqual({ status: "running", end_reason: null });
 });
+
+test("ending right after saying the work is under way bounces once, then ends with a line the user sees", () => {
+  // 2026-10-03: the video group's director said 「正在编写…」 and ended done; its one ticket still read
+  // handed over, so nothing was open, nothing woke it, and the group showed nothing at all.
+  const f = fixture("review");
+  f.store.db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('engine_level', '5')");
+  f.store.insertMessage({ sessionId: f.room.id, sourceTurnId: f.turn.id, kind: "bot", author: f.bot.id,
+    body: "已确认重新启动。正在编写全新第 1 集设定集与剧本分镜方案。" });
+  const first = finishWork(f.ctx, { turnId: f.turn.id, reason: "done" });
+  expect(first).toMatchObject({ ended: false, code: "promised_later" });
+  expect(first.bounce).toContain("正在编写");
+  expect(first.bounce).toContain("check_back");
+  expect(f.store.db.query("SELECT status, end_reason FROM turns WHERE id = ?").get(f.turn.id)).toEqual({ status: "running", end_reason: null });
+  const second = finishWork(f.ctx, { turnId: f.turn.id, reason: "done" });
+  expect(second).toMatchObject({ ended: true, endReason: "done", state: "idle", notice: { code: "promised_later" } });
+  expect(second.notice!.body).toContain("Writer");
+  expect(second.notice!.body).toContain("正在编写");
+});
+
+test("a promise someone picks up, a later word that is no promise, or a read-only answer ends as before", () => {
+  const named = fixture("done");
+  const editor = named.store.createBot({ name: "Editor", duties: "edit", boundaries: "none" }).bot;
+  named.store.insertMessage({ sessionId: named.room.id, sourceTurnId: named.turn.id, kind: "bot", author: named.bot.id,
+    body: `@${editor.name} 接下来开始写分镜，交给你了` });
+  expect(finishWork(named.ctx, { turnId: named.turn.id, reason: "done" })).toMatchObject({ ended: true, endReason: "done" });
+  const delivered = fixture("done");
+  delivered.store.insertMessage({ sessionId: delivered.room.id, sourceTurnId: delivered.turn.id, kind: "bot", author: delivered.bot.id, body: "正在编写设定集。" });
+  delivered.store.insertMessage({ sessionId: delivered.room.id, turnId: delivered.turn.id, kind: "bot", author: delivered.bot.id, body: "设定集写好了，在 bible.md。" });
+  expect(finishWork(delivered.ctx, { turnId: delivered.turn.id, reason: "done" })).toMatchObject({ ended: true, endReason: "done" });
+  const quiet = fixture("done");
+  expect(finishWork(quiet.ctx, { turnId: quiet.turn.id, reason: "done" })).toMatchObject({ ended: true, endReason: "done" });
+});
+
+test("a pure-text closing reply is weighed by the words about to go out, not by what was said before", () => {
+  const f = fixture("done");
+  f.store.insertMessage({ sessionId: f.room.id, sourceTurnId: f.turn.id, kind: "bot", author: f.bot.id, body: "收到。" });
+  expect(finishWork(f.ctx, { turnId: f.turn.id, reason: "done" }, { pureText: true, closing: "正在核验 18 张起止帧，结论随后。" }))
+    .toMatchObject({ ended: false, code: "promised_later" });
+  const done = fixture("done");
+  done.store.insertMessage({ sessionId: done.room.id, sourceTurnId: done.turn.id, kind: "bot", author: done.bot.id, body: "正在核验 18 张起止帧。" });
+  expect(finishWork(done.ctx, { turnId: done.turn.id, reason: "done" }, { pureText: true, closing: "核验完了：18 张都对得上。" }))
+    .toMatchObject({ ended: true, endReason: "done" });
+  // A no-work closer goes out as nothing: what the user last read is the line before it.
+  const closer = fixture("done");
+  closer.store.insertMessage({ sessionId: closer.room.id, sourceTurnId: closer.turn.id, kind: "bot", author: closer.bot.id, body: "正在核验 18 张起止帧。" });
+  expect(finishWork(closer.ctx, { turnId: closer.turn.id, reason: "done" }, { pureText: true, closing: "" }))
+    .toMatchObject({ ended: false, code: "promised_later" });
+});

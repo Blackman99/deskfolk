@@ -27,21 +27,11 @@ import { describeCheck } from "./acceptance-eval";
 import { takeCodePoints } from "./text";
 import { classifyPath } from "./workspace-paths";
 
+/** The words for "still going" live with the other word lists; the end contract reads them too. */
+export { promisesLaterWork } from "./later-words";
+
 /** How much of one handed-over file the check reads. */
 export const CLOSING_EXCERPT_LIMIT = 3000;
-
-/**
- * Words a closing message uses when the work is still going. A match only means "check this reply
- * too"; the deterministic rules below decide whether anything is actually left hanging, so a
- * storyboard line that happens to say 随后 costs nothing more than that check.
- */
-const LATER_WORK =
-  /随后|稍后|稍候|回头|待会|过会|晚些|晚点|结论后补|后续再|马上(就)?(给|发|补|出)|正在(逐|进行|核|检|审|处理|生成|渲染|排查|分析|比对|确认|整理|跑)|\b(?:to follow|shortly|in a (?:moment|bit|few minutes)|stay tuned)\b|\bI(?:'ll| will) (?:follow up|get back|report back|post|share|send)\b|\bI'm (?:now )?(?:checking|reviewing|verifying|comparing|working on)\b/i;
-
-/** Whether a closing message says it is still working on something it has not handed over. */
-export function promisesLaterWork(text: string): boolean {
-  return LATER_WORK.test(text);
-}
 
 /**
  * A conservative match for "this was run / tested / verified", zh and en. Deliberately narrow: a

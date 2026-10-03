@@ -1121,19 +1121,22 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
           continue;
         }
       }
+      let endingLine: string | null = null;
       if (store.capabilities().engine_level >= ENGINE_LEVELS.delegation) {
-        const finished = store.finishWork({ turnId, reason: "done" }, { pureText: true });
+        const finished = store.finishWork({ turnId, reason: "done" }, { pureText: true, closing: closingBody });
         if (finished.bounce) {
           live.loop.push({ role: "user", content: finished.bounce });
           if (posted && !live.parentId && current.mode !== "readonly") void track(handleParticipation(posted, { fromUser: false }));
           continue;
         }
-        if (finished.notice || finished.ask) {
-          publishMessage(store.insertMessage({ sessionId: current.session_id, turnId, kind: "system", author: current.bot_id,
-            body: finished.ask?.body ?? finished.notice!.body, hiddenFromBots: true }));
-        }
+        if (finished.notice || finished.ask) endingLine = finished.ask?.body ?? finished.notice!.body;
       }
       const message = posted !== undefined ? posted : publishCitedBotMessage(current, live, turnId, rawBody);
+      // The line about how it ended reads after the reply it is about (「它说了『…』，但这一轮已经结束了」).
+      if (endingLine) {
+        publishMessage(store.insertMessage({ sessionId: current.session_id, turnId, kind: "system", author: current.bot_id,
+          body: endingLine, hiddenFromBots: true }));
+      }
       if (message && live.writtenPaths.length > 0) observeTicket(turnId, current.bot_id, "delivered");
       const completed = store.setTurnStatus(turnId, "completed", executionOf(live));
       lives.delete(turnId);

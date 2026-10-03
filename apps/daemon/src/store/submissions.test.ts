@@ -907,6 +907,45 @@ test("praise, a redo turned down, a reply that only acknowledges, a Bot's filing
   expect(doing.store.noteComplaint(said(doing, "母带太短了，不对").id)).toEqual([]);
 });
 
+/** A line of yours the rows filed under the plan as a whole, no ticket, the way 「从头再做一遍」 was. */
+function saidOfPlan(f: Fixture, body: string) {
+  const line = f.store.postMessage(f.room.id, { body });
+  f.store.db.run(`INSERT INTO message_filings (message_id, task_id, ticket_id, part_key, filed_by, strength, is_primary, created_at)
+    VALUES (?, ?, NULL, NULL, 'rule:6', 'default', 1, ?)`, [line.id, f.plan.id, isoNow()]);
+  return line;
+}
+
+test("starting over, said of the whole plan, asks about its one handed-over ticket whose maker is still here", () => {
+  // 2026-10-03: 「从头再做一遍，之前的作废」 was filed under the plan, its one ticket still read handed over
+  // (from before submissions, nothing behind it, its reviewer archived), and nothing asked or moved.
+  const f = fixture();
+  f.store.db.run("UPDATE tickets SET status = 'review', reviewer_bot_id = ? WHERE id = ?", [f.reviewer.id, f.ticket.id]);
+  const theirs = f.store.createTicket({ taskId: f.plan.id, title: "回复视频导演", worker: f.reviewer.id });
+  f.store.db.run("UPDATE tickets SET status = 'review' WHERE id = ?", [theirs.id]);
+  f.store.archiveBot(f.reviewer.id);
+  const line = saidOfPlan(f, "从头再做一遍，之前的作废");
+  const cards = f.store.noteComplaint(line.id);
+  // The archived reviewer's own ticket is not asked about: sending it back would wake nobody.
+  expect(cards.map((card) => card.control)).toMatchObject([{ kind: "rework", ticket_id: f.ticket.id, part_keys: [], message_id: line.id }]);
+  expect(cards[0]!.body).toContain("从头再做一遍，之前的作废");
+  f.store.answerReworkCard(cards[0]!.id, "rework");
+  expect(ticketRow(f)).toEqual({ status: "doing", stage: "rework" });
+  expect(f.store.db.query("SELECT body_snapshot AS body FROM inbox_items WHERE bot_id = ? ORDER BY seq DESC LIMIT 1").get(f.producer.id))
+    .toMatchObject({ body: expect.stringContaining("从头再做一遍") });
+});
+
+test("a plan-wide complaint with more than one handed-over ticket, or praise of the plan, asks nothing", () => {
+  const f = fixture();
+  f.store.db.run("UPDATE tickets SET status = 'review' WHERE id = ?", [f.ticket.id]);
+  const second = f.store.createTicket({ taskId: f.plan.id, title: "07 预告", worker: f.producer.id });
+  f.store.db.run("UPDATE tickets SET status = 'done' WHERE id = ?", [second.id]);
+  expect(f.store.noteComplaint(saidOfPlan(f, "全部作废，从头再做").id)).toEqual([]);
+  const one = fixture();
+  one.store.db.run("UPDATE tickets SET status = 'review' WHERE id = ?", [one.ticket.id]);
+  expect(one.store.noteComplaint(saidOfPlan(one, "很好，就这样").id)).toEqual([]);
+  expect(reworkCardsOf(one)).toEqual([]);
+});
+
 test("only the part an objecting clause names is asked about; a question asks nothing; dismissing leaves everything as it was", () => {
   const f = fixture();
   const produced = segment(f);

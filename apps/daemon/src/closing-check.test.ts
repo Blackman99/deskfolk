@@ -528,6 +528,18 @@ describe("closing check pieces", () => {
     expect(promisesLaterWork("Done: the report is in report.md")).toBe(false);
   });
 
+  test("promisesLaterWork hears a plan of work announced as under way, not a scene that says 正在", () => {
+    // 2026-10-03: the video group's director said this, ended its segment as done, and nothing ran.
+    expect(promisesLaterWork("正在编写全新第 1 集设定集与剧本分镜方案。")).toBe(true);
+    expect(promisesLaterWork("我将按照人设与「关键帧出片」标准流程展开：")).toBe(true);
+    expect(promisesLaterWork("接下来开始写分镜")).toBe(true);
+    expect(promisesLaterWork("现在就去生成关键帧")).toBe(true);
+    expect(promisesLaterWork("I'm now drafting the shot list.")).toBe(true);
+    expect(promisesLaterWork("I'll start on the storyboard next.")).toBe(true);
+    expect(promisesLaterWork("镜头 3：埼玉正在超市买菜，怪人从背后逼近")).toBe(false);
+    expect(promisesLaterWork("我会在 report.md 里写明原因")).toBe(false);
+  });
+
   test("claimsVerification is conservative and respects an explicit disclaimer", () => {
     expect(claimsVerification("测试全部通过")).toBe(true);
     expect(claimsVerification("跑通了，21/21 通过")).toBe(true);

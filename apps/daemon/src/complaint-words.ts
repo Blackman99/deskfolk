@@ -1,6 +1,6 @@
 /**
  * Whether a line of yours complains about the work: a fixed list of words for something being
- * wrong with it (太假, 不对, 跳跃, 穿帮, 反了, 太短, 重做, 不行, 有问题, 错乱…), read with no
+ * wrong with it (太假, 不对, 跳跃, 穿帮, 反了, 太短, 重做, 作废, 从头再做, 不行, 有问题, 错乱…), read with no
  * model. The ledger's fallback capture (store/scribe-patch.ts) uses it to keep a complaint about a
  * delivered job as a proposed entry when the scribe filed nothing for it; ADR 0040's rework rule
  * for a complaint about an approved part (P4e) is meant to read the same list.
@@ -12,7 +12,7 @@
 const ZH = new RegExp(
   [
     "太假", "假的", "不真实", "不对", "不太对", "跳跃", "跳变", "跳帧", "穿帮", "穿模", "穿地", "反了", "颠倒", "镜像了",
-    "太短", "太长", "短了", "偏短", "有点短", "好短", "长了", "偏长", "有点长", "好长", "太慢", "太快", "太暗", "太亮", "好假", "很假", "好丑", "很丑", "重做", "重来", "返工", "不行", "不好(?!意思)", "有问题", "问题很大",
+    "太短", "太长", "短了", "偏短", "有点短", "好短", "长了", "偏长", "有点长", "好长", "太慢", "太快", "太暗", "太亮", "好假", "很假", "好丑", "很丑", "重做", "重来", "返工", "作废", "推翻", "推倒", "从头(?:再)?(?:做|来|开始|拍|写)", "再做一遍", "重新(?:做|来|拍|写|生成)", "不行", "不好(?!意思)", "有问题", "问题很大",
     "错乱", "错了", "搞错", "弄错", "不像", "难看", "变形", "畸形", "模糊", "糊了", "卡顿", "闪烁", "不连贯", "不一致",
     "对不上", "没按", "不符合", "不满意", "失败", "崩了", "糟糕", "差劲", "违和", "别扭", "奇怪", "不自然",
   ].join("|"),
@@ -37,8 +37,8 @@ export function soundsLikePraise(text: string): boolean {
   return PRAISE.test(text.replace(NOT_PRAISE, " "));
 }
 
-/** A redo turned down rather than asked for: 「别重做了」「不用改」「无需返工」. */
-const DECLINED_REDO = /(?:别|不要|不用|无需|不必)再?(?:重做|重来|返工|重剪|重渲|改|动)|\b(?:don'?t|no need to) (?:redo|re-do|change)/i;
+/** A redo turned down rather than asked for: 「别重做了」「不用改」「无需返工」「不用从头再做」. */
+const DECLINED_REDO = /(?:别|不要|不用|无需|不必)再?(?:从头|重新|推翻|推倒|作废|重做|重来|返工|重剪|重渲|改|动)|\b(?:don'?t|no need to) (?:redo|re-do|change)/i;
 
 /**
  * Not about the work as it stands now: a condition (「如果太短就告诉我」), another time or version

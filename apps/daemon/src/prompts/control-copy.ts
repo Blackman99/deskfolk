@@ -401,6 +401,18 @@ export function noProgressNoticeBody(locale: Locale, input: { job: string; bot: 
     : `${input.job}：${input.bot}连续两次结束都没有进展，还有没做完的事，先停下等你。说一句接下来怎么做，或者 @ ${input.bot}。`;
 }
 
+/**
+ * The line a job gets when a Bot said the work is still going and then ended its segment anyway,
+ * after the end contract's one bounce (ADR 0044): nothing open wakes it, so without this line the
+ * conversation would read as work under way. `job` is null for a desk conversation with no plan.
+ */
+export function promisedLaterNoticeBody(locale: Locale, input: { job: string | null; bot: string; said: string }): string {
+  const head = input.job ? (locale === "en" ? `${input.job}: ` : `${input.job}：`) : "";
+  return locale === "en"
+    ? `${head}${input.bot} said "${input.said}", but its turn has ended and nobody is carrying on with it. To have it go on, @ ${input.bot}.`
+    : `${head}${input.bot}说「${input.said}」，但这一轮已经结束了，没有人接着做。要它继续，@ ${input.bot}。`;
+}
+
 export function supervisorNoticeBody(
   locale: Locale,
   input: {

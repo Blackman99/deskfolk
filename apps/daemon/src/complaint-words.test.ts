@@ -19,3 +19,13 @@ test("praise, a declined redo, a question, a condition, another time or version,
 test("only the clause that complains names its part", () => {
   expect(clausesOf("C07 跳跃，C08 很好").map((clause) => [clause, clauseObjects(clause)])).toEqual([["C07 跳跃", true], ["C08 很好", false]]);
 });
+
+test("starting over objects to the work as it stands; a start-over turned down does not", () => {
+  // 2026-10-03, the video group: said about the whole job, it never read as a complaint.
+  for (const line of ["从头再做一遍，之前的作废", "之前的都作废", "推倒重来", "重新做一版", "整个重新拍"]) {
+    expect({ line, objects: objects(line) }).toEqual({ line, objects: true });
+  }
+  for (const line of ["不用从头再做", "不必重新做，改两处就行", "别推翻，就这样"]) {
+    expect({ line, objects: objects(line) }).toEqual({ line, objects: false });
+  }
+});

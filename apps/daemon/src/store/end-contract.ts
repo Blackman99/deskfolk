@@ -11,8 +11,11 @@ import { disposeInboxItems, inboxLabel, turnInbox } from "./inbox";
 import { listDelegations, replyDelegation, type Delegation } from "./delegations";
 import { isReservedTaskPath } from "./tasks";
 import { settingsCached } from "./settings";
-import { noProgressNoticeBody } from "../prompts/control-copy";
+import { noProgressNoticeBody, promisedLaterNoticeBody } from "../prompts/control-copy";
 import { supervisorJobLabel } from "../prompts/transcript-copy";
+import { laterWorkSentence } from "../later-words";
+import { parseMentions } from "../mentions";
+import { takeCodePoints } from "../text";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import { STAGE_SQL } from "./submissions";
 
@@ -28,6 +31,8 @@ export type FinishWorkInput = {
 export type FinishWorkOptions = {
   /** Pure text uses the same facts but does not require an explicit end_turn call. */
   pureText?: boolean;
+  /** Pure text: the closing reply about to go out, the last thing the user will read ("" when it goes out as nothing). */
+  closing?: string;
   /** Total contract bounces already consumed by the parent engine, across all contracts. */
   contractBounces?: number;
 };
@@ -57,7 +62,7 @@ export type FinishWorkResult = {
   endReason?: EndReason | "needs_attention";
   /** The engine creates the visible question/notification after this transaction commits. */
   ask?: { body: string };
-  notice?: { code: "gave_up" | "no_progress"; body: string };
+  notice?: { code: "gave_up" | "no_progress" | "promised_later"; body: string };
   noProgressCount?: number;
 };
 type Actor = {
@@ -256,6 +261,40 @@ function noProgressNotice(ctx: StoreContext, turn: Actor): string {
   return noProgressNoticeBody(locale, { job: supervisorJobLabel(locale, { plan, ticket }), bot });
 }
 
+/** How much of a "still going" sentence the bounce and the user's line quote. */
+const PROMISE_QUOTE_MAX = 60;
+
+/**
+ * The sentence in which the segment's last word to the user says the work is still going, when no
+ * Bot is named in it to take that on; null when it promised nothing. Its last word is the pure-text
+ * reply about to go out, else its newest message (`send_message` or an earlier closing reply).
+ */
+function unbackedPromise(ctx: StoreContext, turn: Actor, closing: string | undefined): string | null {
+  const said = closing?.trim() ? closing : ctx.db.query<{ body: string }, [string, string]>(`SELECT body FROM messages
+    WHERE (turn_id = ?1 OR source_turn_id = ?1) AND author = ?2 AND kind = 'bot' ORDER BY message_seq DESC LIMIT 1`).get(turn.id, turn.bot_id)?.body;
+  const sentence = said ? laterWorkSentence(said) : null;
+  if (!said || !sentence) return null;
+  const roster = ctx.db.query<{ name: string }, []>("SELECT name FROM bots WHERE deleted_at IS NULL AND archived_at IS NULL").all().map((bot) => bot.name);
+  const named = parseMentions(said, roster);
+  if (named.everyone || named.mentions.length > 0) return null;
+  const clipped = takeCodePoints(sentence, PROMISE_QUOTE_MAX);
+  return clipped.truncated ? `${clipped.text}…` : clipped.text;
+}
+
+/** The user's line when a Bot ended anyway after saying the work is still going, naming the job and the Bot. */
+function promisedLaterNotice(ctx: StoreContext, turn: Actor, said: string): string {
+  const locale = settingsCached(ctx).locale === "en" ? "en" : "zh";
+  const plan = turn.task_id ? ctx.db.query<{ title: string }, [string]>("SELECT title FROM tasks WHERE id = ?").get(turn.task_id)?.title ?? turn.task_id : null;
+  const ticket = turn.ticket_id ? ctx.db.query<{ seq: number; title: string }, [string]>("SELECT seq, title FROM tickets WHERE id = ?").get(turn.ticket_id) ?? null : null;
+  const bot = ctx.db.query<{ name: string }, [string]>("SELECT name FROM bots WHERE id = ?").get(turn.bot_id)?.name ?? turn.bot_id;
+  return promisedLaterNoticeBody(locale, { job: plan === null ? null : supervisorJobLabel(locale, { plan, ticket }), bot, said });
+}
+
+function rejectionsFor(ctx: StoreContext, turnId: string, code: string): number {
+  return ctx.db.query<{ n: number }, [string, string]>(`SELECT COUNT(*) AS n FROM work_events
+    WHERE turn_id = ? AND kind = 'end.rejected' AND json_extract(payload, '$.code') = ?`).get(turnId, code)!.n;
+}
+
 /** Whether the request's own line has reached the Bot it asks — in this segment, when `turnId` is given. */
 function requestRead(ctx: StoreContext, delegation: Delegation, turnId: string | null): boolean {
   if (delegation.request_inbox_seq === null) return false;
@@ -345,13 +384,22 @@ export function finishWork(ctx: StoreContext, input: FinishWorkInput, opts: Fini
     const waiting = validWaiting(ctx, item, facts);
     const unfinished = facts.tickets.length + facts.outgoingDelegations.length + facts.incomingDelegations.length + facts.waits.length > 0;
     const base = { obligations: facts, dispositions, unacknowledgedInbox, replies, implicitSubmission };
-    const previous = ctx.db.query<{ n: number }, [string]>(`SELECT COUNT(*) AS n FROM work_events
-      WHERE turn_id = ? AND kind = 'end.rejected' AND json_extract(payload, '$.code') = 'unfinished_obligations'`).get(turn.id)!.n;
-    if (reason === "done" && unfinished && !waiting && previous === 0) {
+    if (reason === "done" && unfinished && !waiting && rejectionsFor(ctx, turn.id, "unfinished_obligations") === 0) {
       const toAnswer = requestLabels(answerable.filter((delegation) => requestRead(ctx, delegation, null)));
       return rejectEnd(ctx, turn, base, opts, "unfinished_obligations",
         `Unfinished obligations: ${[...facts.tickets.map((ticket) => ticket.id), ...facts.outgoingDelegations, ...facts.incomingDelegations, ...facts.waits].join(", ")}. Continue. If you are waiting on another Bot's work, delegate it to that Bot and wait for the reply, or end_turn with reason nothing_new; blocked is only for something the user alone can give, and needs_from_user reaches the user as a question.`
           + (toAnswer.length ? ` To answer ${toAnswer.join(", ")}, end with reason answered and your reply in answer.` : ""));
+    }
+    // Saying the work is under way, then ending with nothing open on it: nothing wakes the Bot
+    // again, and the conversation reads as work going on (2026-10-03: 「正在编写…」 then done, on
+    // a plan whose one ticket still read handed over). Open work is the obligations' bounce above,
+    // and an idle job there is the plan watch's. Bounced once; an ending after that goes through,
+    // with a line telling the user it stopped.
+    const promised = !unfinished && !waiting && turn.mode !== "readonly" && ["done", "answered", "nothing_new"].includes(reason)
+      ? unbackedPromise(ctx, turn, opts.closing) : null;
+    if (promised && rejectionsFor(ctx, turn.id, "promised_later") === 0) {
+      return rejectEnd(ctx, turn, base, opts, "promised_later",
+        `You said 「${promised}」, but ending now leaves that with nobody: nothing open on this work wakes you again. Do it now; or book a check_back for when you come back to it, then end with reason nothing_new; or name the Bot who takes it. If it cannot go on, end blocked (needs_from_user) or gave_up (note) and say why.`);
     }
     const endReason = reason === "done" && unfinished && !waiting ? "nothing_new" : reason;
     // From level 5 the work on a ticket closes only once it is approved or dropped: a hand-over can
@@ -362,6 +410,7 @@ export function finishWork(ctx: StoreContext, input: FinishWorkInput, opts: Fini
     const state = reason === "blocked" || reason === "gave_up" || count >= 2 ? "blocked"
       : waiting ? "waiting" : turn.task_id === null || completedTicket ? "closed" : "idle";
     const result = persistEnd(ctx, turn, base, endReason, state, count, {
+      ...(promised ? { notice: { code: "promised_later" as const, body: promisedLaterNotice(ctx, turn, promised) } } : {}),
       ...(reason === "blocked" ? { ask: { body: needsFromUser! } } : {}),
       ...(reason === "gave_up" ? { notice: { code: "gave_up" as const, body: note! } } : {}),
       ...(count >= 2 ? { notice: { code: "no_progress" as const, body: noProgressNotice(ctx, turn) } } : {}),
