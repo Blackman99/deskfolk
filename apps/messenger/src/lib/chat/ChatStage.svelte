@@ -1426,6 +1426,7 @@
 										{t}
 										onPreview={(att) => onOpenArtifact(att.workspace_relpath, att, singleMsg.message.id)}
 										onOpenImage={(att, from) => openInlineImage(att, att.workspace_relpath, from)}
+										expand={singleMsg.message.control?.kind === 'review_item'}
 									/>
 								{/if}
 								{#if singleMsg.message.control}

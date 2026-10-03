@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
   buildCitedPathTree,
   buildTaskArtifactTree,
+  citedBundleName,
   citedBundleRoot,
   collectTreePaths,
   countCitedFiles,
@@ -47,6 +48,13 @@ test("a nested file keeps an ancestor that was also cited as a path", () => {
   expect(tree[0]?.kind).toBe("dir");
   expect(tree[0]?.children?.[0]).toMatchObject({ name: "src", kind: "dir" });
   expect(tree[0]?.children?.[0]?.children?.map((n) => n.name)).toEqual(["store.ts"]);
+});
+
+test("citedBundleName goes past folders that hold only one folder, to where the files are", () => {
+  const ticket = "work/做一张咖啡店开业海报-cbp8/01-海报";
+  expect(citedBundleName(buildCitedPathTree([`${ticket}/poster.png`, `${ticket}/poster.html`, `${ticket}/poster.svg`]))).toBe("01-海报");
+  expect(citedBundleName(buildCitedPathTree(["mall/web", "mall/server", "mall/ARCHITECTURE.md", "brief.md"]))).toBe("mall");
+  expect(citedBundleName(buildCitedPathTree(["a.md", "b.md", "c.md"]))).toBeNull();
 });
 
 test("countCitedFiles and citedBundleRoot summarize a nested project", () => {

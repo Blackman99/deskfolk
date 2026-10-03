@@ -22,3 +22,21 @@ test("a card asking you to approve a hand-over shows its files, to open before y
     expect([...row.querySelectorAll("button")].map((b) => b.textContent?.trim())).toEqual(expect.arrayContaining(["放行", "退回"]));
   } finally { close(); }
 });
+
+test("a hand-over of a few files shows each of them on the card, not one folder to open first", () => {
+  // 2026-10-04 real-model run: poster.html, poster.png and poster.svg showed as one chip 「work · 3 个文件」.
+  const session = aGroup();
+  const dir = "work/做一张咖啡店开业海报-cbp8/01-海报";
+  const files = ["poster.html", "poster.png", "poster.svg"];
+  const card = aMessage({ id: "card", session_id: session.id, kind: "system", author: "user",
+    body: "做一张咖啡店开业海报 的任务 01「海报」交上来了（poster.html、poster.png、poster.svg）。没有审查者，也没有你确认过的检查替你把关，所以要你来定。\n看过之后，放行或者退回。",
+    attachments: files.map((name, i) => anAttachment({ id: `att-${i}`, message_id: "card", workspace_relpath: `${dir}/${name}`, original_filename: name })),
+    control: { kind: "review_item", submission_id: "sub-1", task_id: "plan-1", ticket_id: "ticket-1", requirement_ids: [], check_ids: [], offer: ["approve", "reject"] } as never });
+  const runtime = fakeRuntime({ bots: [aBot()], sessions: [session], messages: [card] }, { selectedId: session.id });
+  const { host, close } = render(ChatStage, { runtime, t: copyFor("zh"), selected: session, onOpenProfile: () => {}, onOpenArtifact: () => {}, onCreateBot: () => {} });
+  try {
+    const row = host.querySelector('[data-message-id="card"]')!;
+    expect(row.querySelector(".attachment-bundle-btn")).toBeNull();
+    expect(row.querySelectorAll(".attachment-file-btn")).toHaveLength(3);
+  } finally { close(); }
+});

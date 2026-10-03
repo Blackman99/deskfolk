@@ -198,6 +198,27 @@ export function countCitedFiles(nodes: readonly ArtifactTreeNode[]): number {
   return n;
 }
 
+/**
+ * The name a bundle shows: its folder (`citedBundleRoot`), and past it the one folder all of it is in.
+ * Files in a ticket's folder are cited as `work/<job>/<NN-ticket>/…`, so the root alone read 「work」
+ * on a hand-over's card (2026-10-04) — the one name every job's files share.
+ */
+export function citedBundleName(nodes: readonly ArtifactTreeNode[]): string | null {
+  const root = citedBundleRoot(nodes);
+  if (!root) return null;
+  let node = findNode(nodes, root);
+  while (node?.kind === "dir" && node.children?.length === 1 && node.children[0]!.kind === "dir") node = node.children[0]!;
+  return node?.name ?? root.split("/").pop() ?? root;
+}
+
+function findNode(nodes: readonly ArtifactTreeNode[], path: string): ArtifactTreeNode | null {
+  for (const node of nodes) {
+    if (node.path === path) return node;
+    if (node.kind === "dir" && path.startsWith(`${node.path}/`)) return findNode(node.children ?? [], path);
+  }
+  return null;
+}
+
 /** Project folder for the bubble entry: the only root dir, or the dir that holds most cited files. */
 export function citedBundleRoot(nodes: readonly ArtifactTreeNode[]): string | null {
   if (nodes.length === 1 && nodes[0]?.kind === "dir") return nodes[0].path;

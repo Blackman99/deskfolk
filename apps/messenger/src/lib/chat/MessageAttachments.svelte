@@ -3,7 +3,7 @@
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
 	import { artifactKind, handedOverPaths, isInlineImageName, svgDisplayBlob } from '../overlays/artifacts.ts';
-	import { buildCitedPathTree, citedBundleRoot, countCitedFiles } from '../overlays/artifact-tree.ts';
+	import { buildCitedPathTree, citedBundleName, countCitedFiles } from '../overlays/artifact-tree.ts';
 	import { onDestroy } from 'svelte';
 	import { whenVisible } from '../when-visible.ts';
 
@@ -16,9 +16,16 @@
 		onPreview: (att: Attachment) => void;
 		/** A picture stays in the app. `from` is the control the picture grows out of. */
 		onOpenImage?: (att: Attachment, from?: HTMLElement) => void;
+		/**
+		 * Each file its own chip, a few of them at least: a hand-over's card is where you decide, so its
+		 * files are there to open, not folded into one folder to open first.
+		 */
+		expand?: boolean;
 	}
 
-	let { attachments, body = null, api, t, onPreview, onOpenImage }: Props = $props();
+	let { attachments, body = null, api, t, onPreview, onOpenImage, expand = false }: Props = $props();
+	/** How many files a card that shows each still shows one by one. */
+	const EXPANDED_MAX = 6;
 
 	let thumbs = $state<Record<string, string>>({});
 	let missing = $state<Record<string, true>>({});
@@ -27,8 +34,8 @@
 	const rows = $derived(withHandoffRows(attachments, body));
 	const tree = $derived(buildCitedPathTree(rows.map((row) => row.workspace_relpath)));
 	const fileCount = $derived(countCitedFiles(tree));
-	const bundle = $derived(citedBundleRoot(tree));
-	const collapse = $derived(rows.length > 1);
+	const bundle = $derived(citedBundleName(tree));
+	const collapse = $derived(rows.length > 1 && !(expand && rows.length <= EXPANDED_MAX));
 	const previewTarget = $derived(rows.length > 0 ? firstPreviewable(rows) : null);
 
 	function withHandoffRows(stored: Attachment[], source: string | null): Attachment[] {

@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A hand-over's card shows its files one by one
+
+- The card asking you to approve a hand-over lists up to six files one by one, pictures with thumbnails, so the poster is a click away. Several files folded into one folder chip named "work", the folder every job's files are in; a folder chip elsewhere now names the folder the files are actually in.
+
 ### A piece of a job no longer comes back as the whole job
 
 - A Bot asked to deliver part of another Bot's ticket (the lead sending the slogans to the writer on the poster job's one ticket) could hand it in as that whole ticket, and the card then asked you to approve the job with only the slogans in it. Such a request is now refused with two ways on: give the piece a ticket of its own first, or ask for it as an answer and hand the ticket in yourself. Found in a run with real models; the lead then asked for the slogans as an answer and made the poster itself.

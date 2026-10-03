@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { USER_MEMBER, type TaskTraceNode, type Ticket } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
-	import { buildCitedPathTree, citedBundleRoot, countCitedFiles } from './artifact-tree.ts';
+	import { buildCitedPathTree, citedBundleName, countCitedFiles } from './artifact-tree.ts';
 	import { type ActorFace, ticketTag } from './plan-board.ts';
 	import type { RouteLogRow } from './route-log.ts';
 	import { saidNothing, traceFileName } from './task-trace.ts';
@@ -51,7 +51,7 @@
 	function nodeBundleInfo(node: TaskTraceNode) {
 		const tree = buildCitedPathTree(node.artifacts.map((a) => a.path));
 		const fileCount = countCitedFiles(tree);
-		const bundle = citedBundleRoot(tree);
+		const bundle = citedBundleName(tree);
 		return { tree, fileCount, bundle };
 	}
 </script>
