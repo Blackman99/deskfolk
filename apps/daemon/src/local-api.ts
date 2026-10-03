@@ -1,5 +1,6 @@
 import {
   type LessonPatch,
+  type ModelLadderResponse,
   type SharedSkillsResponse,
   type QualityCategory,
   FILE_DROP_SESSION_ID,
@@ -1610,6 +1611,11 @@ function dispatch(
   if (path === "/v1/lessons" && method === "GET") {
     const status = url.searchParams.get("status");
     return jsonResponse({ items: store.listLessons(status === "active" || status === "retired" || status === "candidate" ? { status } : {}) }, 200, null);
+  }
+
+  if (path === "/v1/model-ladder" && (method === "GET" || method === "PUT")) {
+    const items = method === "PUT" ? store.setModelLadder(((input.body ?? {}) as { items?: unknown }).items) : store.modelLadder();
+    return jsonResponse({ items, available: store.routingOn() } satisfies ModelLadderResponse, 200, null);
   }
 
   if (path === "/v1/shared-skills" && method === "GET") {

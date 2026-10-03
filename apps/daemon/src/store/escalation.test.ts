@@ -90,3 +90,35 @@ test("your send-back of the organizer's reading is not counted as the producer's
   handOver(f, 1, "fail");
   expect(f.store.workEscalation(work)).toBe(0);
 });
+
+test("trouble inside turns steps a job up at most once between two of its hand-overs, and a pinned thinking level is never stepped", () => {
+  const f = fixture();
+  const work = f.turn.work_item_id!;
+  const another = () => f.store.createTurn({ sessionId: f.turn.session_id, botId: f.maker.id,
+    triggerMessageId: f.store.insertMessage({ sessionId: f.turn.session_id, kind: "system", author: f.maker.id, body: "再来" }).id, taskId: f.plan.id, ticketId: f.ticket.id });
+  expect(f.store.stepUpForTrouble(f.turn.id, "malformed_tool_json")).toBe(true);
+  f.store.setTurnStatus(f.turn.id, "completed");
+  const second = another();
+  expect(second.work_item_id).toBe(work);
+  expect(f.store.stepUpForTrouble(second.id, "tool_failures")).toBe(false);
+  expect(f.store.workEscalation(work)).toBe(1);
+  expect(f.store.workTroubleSteps(work)).toBe(1);
+  // A hand-over in between: trouble may step it once more.
+  const submit = (n: number) => f.store.prepareSubmission({ turnId: second.id, origin: "submit", artifacts: [{ path: `${f.ticket.dir}/master.mp4`, sha256: `${n}`.padStart(64, "0") }] });
+  submit(1);
+  expect(f.store.stepUpForTrouble(second.id, "tool_failures")).toBe(true);
+  expect(f.store.workTroubleSteps(work)).toBe(2);
+  f.store.db.run("UPDATE bots SET thinking_level = 'low', model = 'm' WHERE id = ?", [f.maker.id]);
+  submit(2);
+  expect(f.store.stepUpForTrouble(second.id, "failure_shape")).toBe(false);
+});
+
+test("a step trouble inside a turn made does not start the count of failed hand-overs again", () => {
+  const f = fixture();
+  const work = f.turn.work_item_id!;
+  handOver(f, 1, "fail");
+  expect(f.store.stepUpForTrouble(f.turn.id, "malformed_tool_json")).toBe(true);
+  expect(f.store.workEscalation(work)).toBe(1);
+  handOver(f, 2, "fail");
+  expect(f.store.workEscalation(work)).toBe(2);
+});

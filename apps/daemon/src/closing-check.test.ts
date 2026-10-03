@@ -18,6 +18,7 @@ import { TurnAdmission } from "./quiesce";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";
 import { createTurnEngine } from "./turn-engine";
+import { troubleCount } from "./engine/trouble";
 
 function say(content: string): CompletionOk {
   return { ok: true, content, toolCalls: [], finishReason: "stop", hadChoices: true, usage: null, missingReason: null };
@@ -111,6 +112,7 @@ function makeLive(overrides: Partial<Live> = {}): Live {
     repeatedFailures: 0,
     failures: [],
     failedCalls: new Set(),
+    trouble: troubleCount(),
     ...overrides,
   };
 }

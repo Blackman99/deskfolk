@@ -17,8 +17,7 @@ ADR 0040 §9.1 and §9.2 want "this work needs pictures seen" and "this work kee
 
 ## 缺口 / Not done
 
-- **换模型那一级**：spec 的阶梯在思考档之后换到 `model_policy.ladder` 里的下一个模型；没有排好的阶梯，这里只提档。
-- **其他触发**：同一跳重试后仍是失败形状、工具 JSON 连着畸形、同一工具连败三次，还没接到阶梯上。
+- **换模型那一级** 和 **其他触发**（重试后仍失败、工具 JSON 连着畸形、同一工具连败三次）：见 [ADR 0054](0054-model-ladder-and-in-turn-triggers.md)，由你排的模型阶梯来换模型。
 - **能力探测**：`input_image` 只能手填；`/models` 没有统一的字段可读。
 
 ## 取舍 / Trade-offs

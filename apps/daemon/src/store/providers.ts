@@ -15,6 +15,7 @@ import {
 } from "@real-bot/protocol";
 import { pickThinkingLevel } from "../route-decision";
 import { HttpError } from "../errors";
+import { dropUnknownLadderModels } from "./model-ladder";
 import { isoNow, ulid } from "../ids";
 import {
   catalogNames,
@@ -149,6 +150,7 @@ export function patchProviderSync(ctx: StoreContext, id: string, patch: PatchPro
     if (patch.models !== undefined) {
       dropUnknownBotModelsForProvider(ctx, id, models);
       dropUnknownTicketModels(ctx, id, models);
+      dropUnknownLadderModels(ctx, id, models);
     }
     ctx.db.run(
       `UPDATE providers SET name = ?, base_url = ?, models = ?, available_models = ?, default_model = ?, updated_at = ? WHERE id = ?`,
@@ -182,6 +184,7 @@ export function deleteProviderSync(ctx: StoreContext, id: string): void {
   ctx.commit(() => {
     ctx.db.run(`UPDATE bots SET provider_id = NULL, updated_at = ? WHERE provider_id = ?`, [now, id]);
     dropUnknownTicketModels(ctx, id, []);
+    dropUnknownLadderModels(ctx, id, []);
     const deleted = ctx.db.query("DELETE FROM providers WHERE id = ? RETURNING id").get(id);
     if (!deleted) throw new HttpError(404, "not_found", "provider not found");
   });

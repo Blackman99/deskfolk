@@ -132,7 +132,7 @@ export function routeLogRows(
       hops: record.hops,
       feedback: record.feedback,
       reason: record.reason?.trim() || null,
-      reasonLabel: record.reason_code ? (labels.reasonCode?.[record.reason_code] ?? record.reason_code) : null,
+      reasonLabel: reasonLabelOf(record, labels),
       markedModel: null,
       review: reviewFor(reviewByTurn.get(record.turn_id), labels),
       learning: record.turn_id === record.chain_id ? learningFor(record.chain_id, learningByChain) : null,
@@ -170,6 +170,14 @@ function learningFor(
   const learning = byChain.get(chainId);
   if (!learning) return null;
   return { kind: learning.kind, label: learning.label };
+}
+
+/** Why it ran on this model; stepped up or moved, why the model was chosen first comes before it. */
+function reasonLabelOf(record: { reason_code?: string | null; base_reason_code?: string | null }, labels: RouteLogLabels): string | null {
+  if (!record.reason_code) return null;
+  const label = (code: string) => labels.reasonCode?.[code] ?? code;
+  return record.base_reason_code && record.base_reason_code !== record.reason_code
+    ? `${label(record.base_reason_code)} · ${label(record.reason_code)}` : label(record.reason_code);
 }
 
 function failReasonOf(kind: string | null, labels: RouteLogLabels): string | null {

@@ -291,8 +291,16 @@ export function createRouting(deps: RoutingDeps): Routing {
 
   function decideRoute(botId: string, creds: Creds, text: string, turnId?: string): Routed | null {
     const base = baseRoute(botId, creds, text, turnId);
-    const routed = base && turnId ? escalate(base, botId, turnId) : base;
-    if (!base || !routed || !turnId || !store.turnNeedsPictures(turnId)) return routed;
+    const routed = decideFrom(base, botId, creds, text, turnId);
+    // Stepped up or moved for pictures: why the model was chosen in the first place is kept beside it.
+    if (!base || !routed || routed.decision.reasonCode === base.decision.reasonCode) return routed;
+    return { ...routed, decision: { ...routed.decision, baseReasonCode: base.decision.reasonCode } };
+  }
+
+  function decideFrom(base: Routed | null, botId: string, creds: Creds, text: string, turnId?: string): Routed | null {
+    const pictures = Boolean(base && turnId && store.turnNeedsPictures(turnId));
+    const routed = base && turnId ? escalate(base, botId, turnId, creds, text, pictures) : base;
+    if (!base || !routed || !turnId || !pictures) return routed;
     // Its work needs pictures seen (ADR 0049): a model marked as taking none gives way to one that can.
     const catalog = store.catalogEntries();
     const sees = (providerId: string, model: string) => catalog.find((entry) => entry.providerId === providerId && entry.name === model)?.input_image;
@@ -321,10 +329,12 @@ export function createRouting(deps: RoutingDeps): Routing {
 
   /**
    * A job that failed twice in a row runs a thinking level higher per step (ADR 0049), up to the top
-   * its model offers — not past a level you pinned, nor on a model measured to gain nothing from it;
-   * at the top you are told once that switching models is yours.
+   * its model offers — not past a level you pinned, nor on a model measured to gain nothing from it.
+   * Past the top, each step failed hand-overs made is one rung up the model ladder you ordered (ADR
+   * 0054), when its model is on it and it was not your pin or the ticket's model; with no rung left
+   * you are told once that switching models is yours.
    */
-  function escalate(routed: Routed, botId: string, turnId: string): Routed {
+  function escalate(routed: Routed, botId: string, turnId: string, creds: Creds, text: string, pictures: boolean): Routed {
     let workItemId: string | null = null;
     let pinnedLevel = false;
     try {
@@ -335,16 +345,55 @@ export function createRouting(deps: RoutingDeps): Routing {
     }
     const steps = workItemId ? store.workEscalation(workItemId) : 0;
     if (steps === 0 || pinnedLevel) return routed;
-    const entry = store.catalogEntries().find((row) => row.providerId === routed.target.providerId && row.name === routed.target.model);
+    const catalog = store.catalogEntries();
+    const entry = catalog.find((row) => row.providerId === routed.target.providerId && row.name === routed.target.model);
     const levels = [...(entry?.thinking_levels ?? [])].sort((a, b) => thinkingLevelRank(a) - thinkingLevelRank(b));
     const current = levels.findIndex((level) => level.toLowerCase() === String(routed.target.thinkingLevel).toLowerCase());
     const top = levels.length - 1;
-    if (entry?.reasoning_effective === false || current === -1 || current >= top) {
-      store.noteModelOnce(botId, "escalation_top", routed.target.model);
-      return routed;
+    // The thinking levels this model has left to give: none when thinking is measured to change nothing.
+    const room = entry?.reasoning_effective === false || current === -1 ? 0 : Math.max(0, top - current);
+    if (steps <= room) {
+      const thinkingLevel = levels[current + steps]!;
+      return { target: { ...routed.target, thinkingLevel }, decision: { ...routed.decision, thinkingLevel, reasonCode: "escalation" } };
     }
-    const thinkingLevel = levels[Math.min(current + steps, top)]!;
-    return { target: { ...routed.target, thinkingLevel }, decision: { ...routed.decision, thinkingLevel, reasonCode: "escalation" } };
+    const atTop: Routed = room === 0 ? routed
+      : { target: { ...routed.target, thinkingLevel: levels[top]! }, decision: { ...routed.decision, thinkingLevel: levels[top]!, reasonCode: "escalation" } };
+    // Only failed hand-overs go past the top: a step trouble inside a turn made raises the level, never the model.
+    const wanted = Math.min(steps - room, steps - store.workTroubleSteps(workItemId!));
+    if (wanted <= 0) return atTop;
+    // Your pin and the ticket's model stay: the ladder only moves what the app chose.
+    const climbs = routed.decision.reasonCode === "default" || routed.decision.reasonCode === "endpoint_default";
+    const climbed = climbs ? climb(routed, wanted, creds, text, pictures) : null;
+    if (climbed) {
+      // On the last rung and failing still: what next is yours.
+      if (climbed.short) store.noteModelOnce(botId, "escalation_top", climbed.routed.target.model);
+      return climbed.routed;
+    }
+    store.noteModelOnce(botId, "escalation_top", atTop.target.model);
+    return atTop;
+  }
+
+  /**
+   * `rungs` up the model ladder from the model a turn would run on, past rungs no endpoint lists any
+   * more or, for work that needs pictures seen, marked as taking none. At the last rung there is,
+   * when the climb asks for more (`short`). Null when its model is not on the ladder or nothing is above it.
+   */
+  function climb(routed: Routed, rungs: number, creds: Creds, text: string, pictures: boolean): { routed: Routed; short: boolean } | null {
+    const ladder = store.modelLadder();
+    const at = ladder.findIndex((rung) => rung.provider_id === routed.target.providerId && rung.model === routed.target.model);
+    if (at === -1) return null;
+    const catalog = store.catalogEntries();
+    const above = ladder.slice(at + 1).filter((rung) => creds.providers.some((provider) => provider.id === rung.provider_id && provider.models.includes(rung.model))
+      && (!pictures || catalog.find((entry) => entry.providerId === rung.provider_id && entry.name === rung.model)?.input_image !== false));
+    const rung = above[Math.min(rungs, above.length) - 1];
+    if (!rung) return null;
+    const provider = creds.providers.find((row) => row.id === rung.provider_id)!;
+    const supported = catalog.find((entry) => entry.providerId === rung.provider_id && entry.name === rung.model)?.thinking_levels ?? [];
+    const thinkingLevel = supported.length === 0 ? routed.target.thinkingLevel : pickThinkingLevel(classifyMessage(text), supported);
+    return { short: rungs > above.length, routed: {
+      target: { ...routed.target, baseUrl: provider.baseUrl, apiKey: provider.apiKey, providerId: provider.id, providerName: provider.name, model: rung.model, thinkingLevel },
+      decision: { ...routed.decision, model: rung.model, providerId: provider.id, thinkingLevel, reasonCode: "escalation_model" },
+    } };
   }
 
   /** A Bot pinned to an endpoint only (no model) stays on that endpoint: its default, the fallback and a picture-taking stand-in are from its list. */

@@ -24,6 +24,8 @@ export type RouteDecision = {
   signature: string;
   /** Why it runs on this, from engine level 7 (ADR 0048): `pin`, `default` or `endpoint_default`. */
   reasonCode?: string;
+  /** Why the model was chosen before a step up or the picture filter moved it (`pin`, `ticket_override`, …), from engine level 7. */
+  baseReasonCode?: string;
 };
 
 export type MessageKind = "coding" | "writing" | "reasoning" | "simple" | "general";

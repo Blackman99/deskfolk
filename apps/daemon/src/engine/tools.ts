@@ -31,6 +31,8 @@ import type { Closing } from "./closing";
 import { HELD_CALL, mayAct } from "./control";
 import type { Participation } from "./participation";
 import type { Submissions } from "./submissions";
+import type { TurnTrouble } from "../store/escalation";
+import { noteArguments, noteOutcome } from "./trouble";
 import type { Live } from "./types";
 
 /** Tools that are the work itself, not looking around: a turn using one is working on its ticket. */
@@ -219,6 +221,7 @@ export function createTools(deps: ToolsDeps): Tools {
       }
       const fingerprint = `${call.name}\n${call.arguments}`;
       if (live.failedCalls.has(fingerprint)) live.repeatedFailures += 1;
+      troubled(turnId, live, noteArguments(live.trouble, call.arguments));
       let args: Record<string, unknown> = {};
       try {
         const parsed = JSON.parse(call.arguments) as unknown;
@@ -378,6 +381,7 @@ export function createTools(deps: ToolsDeps): Tools {
           ? { ok: true, data: admitPicture(live, pictures, resolved) }
           : { ok: false, error: resolved.error };
         if (!resolved.ok && resolved.error?.code !== "held") noteFailure(live, call.name, args, fingerprint, resolved.error);
+        troubled(turnId, live, noteOutcome(live.trouble, call.name, resolved.ok, resolved.error));
         live.loop.push({
           role: "tool",
           tool_call_id: call.id,
@@ -402,6 +406,7 @@ export function createTools(deps: ToolsDeps): Tools {
       if (!result.ok && result.error?.code !== "closing_check" && result.error?.code !== "held") {
         noteFailure(live, call.name, args, fingerprint, result.error);
       }
+      troubled(turnId, live, noteOutcome(live.trouble, call.name, result.ok, result.error));
       live.loop.push({
         role: "tool",
         tool_call_id: call.id,
@@ -432,6 +437,11 @@ export function createTools(deps: ToolsDeps): Tools {
     } catch {
       // evidence, not the work: the read already happened
     }
+  }
+
+  /** Trouble inside the turn steps its job up once (ADR 0054); the rest of this turn goes on at the new level. */
+  function troubled(turnId: string, live: Live, trouble: TurnTrouble | null): void {
+    if (trouble && store.stepUpForTrouble(turnId, trouble)) live.restep?.();
   }
 
   function hasEffect(live: Live, name: string): boolean {

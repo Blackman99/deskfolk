@@ -47,6 +47,7 @@ type DecisionRow = {
   files_written: number | null;
   tool_failures: string | null;
   reason_code?: string | null;
+  base_reason_code?: string | null;
 };
 
 type FeedbackRow = {
@@ -109,8 +110,8 @@ export function recordTurnRoute(
   ctx.db.run(
     `INSERT INTO turn_route_decisions (
        turn_id, session_id, bot_id, trigger_message_id, provider_id, model, thinking_level, signature,
-       reason, chain_id, created_at, reason_code
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       reason, chain_id, created_at, reason_code, base_reason_code
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(turn_id) DO NOTHING`,
     [
       input.turnId,
@@ -125,6 +126,7 @@ export function recordTurnRoute(
       open ?? input.turnId,
       isoNow(),
       input.decision.reasonCode ?? null,
+      input.decision.baseReasonCode ?? null,
     ],
   );
 }
@@ -252,6 +254,12 @@ export type TurnExecution = {
  * `execution` is written in the same update. A close that has no counts (a turn the engine was not
  * running, or a process that died first) leaves the columns null.
  */
+/** A turn stepped up mid-loop (ADR 0054): its route row says the level it went on with, and keeps why its model was chosen. */
+export function stepTurnRoute(ctx: StoreContext, turnId: string, thinkingLevel: string): void {
+  ctx.db.run(`UPDATE turn_route_decisions SET thinking_level = ?, base_reason_code = COALESCE(base_reason_code, reason_code),
+    reason_code = 'escalation' WHERE turn_id = ?`, [thinkingLevel, turnId]);
+}
+
 export function finishTurnRoute(
   ctx: StoreContext,
   turnId: string,
@@ -1021,6 +1029,7 @@ function toRecord(row: DecisionRow, feedback: FeedbackRow[]): RouteRecord {
     repeated_failures: row.repeated_failures,
     files_written: row.files_written,
     reason_code: row.reason_code ?? null,
+    base_reason_code: row.base_reason_code ?? null,
     feedback: feedback.map(
       (item): RouteFeedback => ({ message_id: item.message_id, body: item.body, created_at: item.created_at }),
     ),

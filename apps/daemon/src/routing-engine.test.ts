@@ -5,7 +5,8 @@
 import { afterEach, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { call, createScenario, endTurn, tool, type Scenario, type ToolOutcome } from "./test-kit/scenario";
+import { call, createScenario, endTurn, failed, tool, type Scenario, type ToolOutcome } from "./test-kit/scenario";
+import { openPlan, planSpec } from "./scenarios/video-team";
 
 const open: Scenario[] = [];
 afterEach(async () => {
@@ -144,4 +145,85 @@ test("a picture read mid-turn is not sent to a model marked as taking none; the 
   h.postUser(h.direct(writer!), "读一下 frame.png");
   await h.waitIdle();
   expect(results[0]!.content).toContain("看不了图");
+});
+
+/** A Bot on a ticket of EP01 in its direct, its model offering four thinking levels; your next line is filed under the ticket. */
+function onTicket(h: Scenario) {
+  const provider = h.store.db.query<{ id: string }, []>("SELECT id FROM providers LIMIT 1").get()!.id;
+  h.store.db.run("UPDATE providers SET models = ? WHERE id = ?", [JSON.stringify([
+    { name: "scenario", price: null, thinking_levels: ["none", "low", "medium", "high"], strengths: [] },
+  ]), provider]);
+  const [writer] = h.createBots({ name: "Writer", duties: "write" });
+  const dm = h.direct(writer!);
+  const plan = openPlan(h, dm, "EP01", planSpec("EP01 开场"));
+  const ticket = h.store.createTicket({ taskId: plan.id, title: "开场白", status: "doing", worker: writer!.id });
+  h.judge("organizer", { session: dm }).reply({ decision: "join", join_plan_id: plan.id, plan: planSpec("EP01 开场"), tickets: [], message_ticket: ticket.id });
+  return { writer: writer!, dm };
+}
+
+const LEVELS = ["none", "low", "medium", "high"];
+const stepsOf = (h: Scenario, botId: string) => h.hops(botId).map((hop) => LEVELS.indexOf(String(hop.request.thinkingLevel)));
+const escalations = (h: Scenario) => h.store.db.query<{ reason: string; to: number }, []>(
+  "SELECT json_extract(payload, '$.reason') AS reason, json_extract(payload, '$.to') AS \"to\" FROM work_events WHERE kind = 'model.escalated' ORDER BY seq").all();
+
+test("tool arguments that are not JSON twice in a row step the job up for the rest of the turn, once", async () => {
+  const h = await createScenario({ routing: true });
+  open.push(h);
+  const { writer, dm } = onTicket(h);
+  h.script(writer, dm).reply(call({ name: "read_file", raw: "{\"path\": " }), call({ name: "read_file", raw: "[1]" }),
+    call({ name: "read_file", raw: "still not" }), call({ name: "read_file", raw: "nor this" }), call(endTurn()));
+  h.postUser(dm, "写一句开场白");
+  await h.waitIdle();
+  const steps = stepsOf(h, writer.id);
+  expect(steps.length).toBe(5);
+  expect(steps[0]).toBeLessThan(LEVELS.length - 1);
+  // Two hops on its own level, then one up for every hop left: once per turn, however many more come.
+  expect(steps).toEqual([steps[0]!, steps[0]!, steps[0]! + 1, steps[0]! + 1, steps[0]! + 1]);
+  expect(escalations(h)).toEqual([{ reason: "malformed_tool_json", to: 1 }]);
+  expect(h.store.db.query("SELECT thinking_level, reason_code, base_reason_code FROM turn_route_decisions WHERE bot_id = ?").get(writer.id))
+    .toEqual({ thinking_level: LEVELS[steps[0]! + 1], reason_code: "escalation", base_reason_code: "endpoint_default" });
+});
+
+test("the same tool called wrongly three times in a row steps the job up; another tool in between starts again, a missing file counts for nothing", async () => {
+  const h = await createScenario({ routing: true });
+  open.push(h);
+  const { writer, dm } = onTicket(h);
+  const wrong = () => call(tool("read_file", {}));
+  const missing = () => call(tool("read_file", { path: "missing.txt" }));
+  h.script(writer, dm).reply(wrong(), wrong(), call(tool("list_files", { path: "." })), wrong(), missing(), missing(), missing(), wrong(), wrong(), call(endTurn()));
+  h.postUser(dm, "读一下那几个文件");
+  await h.waitIdle();
+  const steps = stepsOf(h, writer.id);
+  expect(steps.slice(0, 9)).toEqual(Array(9).fill(steps[0]));
+  expect(steps[9]).toBe(steps[0]! + 1);
+  expect(escalations(h)).toEqual([{ reason: "tool_failures", to: 1 }]);
+});
+
+test("a thinking level you pinned is not moved by trouble inside the turn, and nothing is stepped", async () => {
+  const h = await createScenario({ routing: true });
+  open.push(h);
+  const { writer, dm } = onTicket(h);
+  h.store.patchBot(writer.id, { model: "scenario", thinking_level: "low" });
+  h.script(writer, dm).reply(call({ name: "read_file", raw: "{" }), call({ name: "read_file", raw: "{" }), call(endTurn()));
+  h.postUser(dm, "写一句开场白");
+  await h.waitIdle();
+  expect(stepsOf(h, writer.id)).toEqual([1, 1, 1]);
+  expect(escalations(h)).toEqual([]);
+});
+
+test("a reply that fails again after its retry steps the job up for its next turn", async () => {
+  const h = await createScenario({ routing: true });
+  open.push(h);
+  const { writer, dm } = onTicket(h);
+  h.script(writer, dm).reply(failed("repeat"), failed("repeat"));
+  h.postUser(dm, "写一句开场白");
+  await h.waitIdle();
+  const first = stepsOf(h, writer.id);
+  expect(escalations(h)).toEqual([{ reason: "failure_shape", to: 1 }]);
+  h.judge("organizer", { session: dm }).reply({ decision: "continue", plan: planSpec("EP01 开场"), tickets: [],
+    message_ticket: h.store.db.query<{ id: string }, []>("SELECT id FROM tickets LIMIT 1").get()!.id });
+  h.script(writer, dm).reply(call(endTurn()));
+  h.postUser(dm, "再来一次");
+  await h.waitIdle();
+  expect(stepsOf(h, writer.id).at(-1)).toBe(first[0]! + 1);
 });

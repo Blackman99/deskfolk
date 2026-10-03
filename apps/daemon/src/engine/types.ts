@@ -9,6 +9,7 @@ import type { ChatMessage } from "../completions";
 import type { RouteDecision } from "../route-decision";
 import type { ToolFailure } from "../store/routing";
 import type { HeardItem } from "../turn-inbox";
+import type { TroubleCount } from "./trouble";
 
 /** A line a live turn has not read yet: a Bot naming it, or its own check-back coming due. */
 export type InboxEntry = {
@@ -97,6 +98,10 @@ export type Live = {
   repeatedFailures: number;
   /** `${name}\n${arguments}` of calls that already failed, so a repeat can be recognised. */
   failedCalls: Set<string>;
+  /** Malformed arguments and same-tool failures in a row (ADR 0054): enough of either steps the job up. */
+  trouble: TroubleCount;
+  /** After a step up mid-turn: the rest of the turn runs at the thinking level its job is on now. */
+  restep?: () => void;
   /** The first few distinct failed calls, written onto the route row for the learning hop. */
   failures: ToolFailure[];
   ask?: {

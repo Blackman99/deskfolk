@@ -906,6 +906,15 @@ export type PatchTaskSpecRequest = {
 /** A model on an endpoint, as a ticket's override names it. */
 export type TicketModel = { provider_id: string; model: string };
 
+/** At most this many rungs on the model ladder: a short climb, not a catalog. */
+export const MODEL_LADDER_MAX = 8;
+
+/** One rung of the model ladder (ADR 0054, level 7): a listed model, in the order you put them, weaker to stronger. */
+export type ModelLadderRung = { provider_id: string; model: string };
+
+/** `GET /v1/model-ladder` and `PUT /v1/model-ladder {items}`: the ladder, and whether this engine level has one. */
+export type ModelLadderResponse = { items: ModelLadderRung[]; available: boolean };
+
 export type PatchTicketRequest = {
   title?: string;
   spec?: string;
@@ -2102,9 +2111,12 @@ export type RouteRecord = {
   feedback: RouteFeedback[];
   /**
    * Why it ran on this model, from engine level 7 (ADR 0048/0049): `pin`, `default`,
-   * `endpoint_default`, `pin_unlisted`, `capability_filter` or `escalation`. Null when a per-turn pick chose.
+   * `endpoint_default`, `pin_unlisted`, `ticket_override`, `capability_filter`, `escalation` or
+   * `escalation_model`. Null when a per-turn pick chose.
    */
   reason_code?: string | null;
+  /** Why the model was chosen before a step up or the picture filter moved it (ADR 0054); null when nothing moved it. */
+  base_reason_code?: string | null;
 };
 
 /** What went wrong with the work, filed by the event's own type (ADR 0050, engine level 8). */

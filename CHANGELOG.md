@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A model ladder, and stepping up inside a turn (engine level 7, opt-in)
+
+- Settings → Models has a Model ladder card: order a few models weaker to stronger, and a job that keeps failing at its model's top thinking level moves one model up it on its next turn. Your pin and a ticket's model are never switched. See [ADR 0054](docs/adr/0054-model-ladder-and-in-turn-triggers.md).
+- A reply that fails again after its retry, tool arguments that are not JSON twice in a row, and the same tool called wrongly three times in a row now step a job up too — at most once between two hand-overs, and only in thinking level; the last two raise it for the rest of that turn. A missing file, a timeout or an MCP server's error does not count.
+
 ### A model per ticket (engine level 7, opt-in)
 
 - On the board a ticket can be given the model its turns run on, ahead of the Bot's pin and default model, for its owner's turns only (whoever reviews it keeps its own model); the picture filter leaves it alone, like a pin. It is cleared when its endpoint goes or stops listing it. See [ADR 0049](docs/adr/0049-capability-filter-and-escalation.md).

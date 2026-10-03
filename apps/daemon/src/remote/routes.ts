@@ -159,6 +159,7 @@ add("POST", "sessions", { name: string, members: list(id) }, ["name", "members"]
 add("POST", "allow-rules", { kind_key: string, scope: string }, ["kind_key", "scope"]);
 add("POST", "turns/:id/mark-model"); add("DELETE", "turns/:id/mark-model");
 add("PATCH", "lessons/:id", { status: one("active", "retired"), action: one("warn", "block"), text: string }, [], true);
+get("model-ladder"); add("PUT", "model-ladder", { items: list(object({ provider_id: id, model: string }, ["provider_id", "model"])) }, ["items"]);
 add("POST", "skills/:id/share"); add("PATCH", "shared-skills/:id", { enabled: bool }, ["enabled"], true); add("DELETE", "shared-skills/:id");
 add("POST", "turns/stop", { turn_id: id }, ["turn_id"]); add("POST", "turns/continue", { message_id: id }, ["message_id"]);
 add("POST", "sessions/:id/messages", { body: string, parent_id: nullable(id), ask_id: nullable(id), fork: bool, files: list(object({ filename: string, size: v => typeof v === "number" && Number.isSafeInteger(v) && v >= 0, sha256: v => typeof v === "string" && /^[0-9a-f]{64}$/.test(v) }, ["filename", "size", "sha256"])), paths: list(v => typeof v === "string" && v.length > 0 && v.length <= 4096) }, ["body"]);

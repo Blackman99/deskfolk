@@ -313,3 +313,14 @@ test("why it ran on a model without a pick reads as its label; a card offers mar
     { bots: BOTS, providers: [], labels });
   expect([card().markedModel, card(false).markedModel, card(true).markedModel]).toEqual([null, false, true]);
 });
+
+test("a turn stepped up or moved for pictures reads why its model was chosen first, then the step", () => {
+  const labels = { ...LABELS, reasonCode: { ticket_override: "这张任务指定的", escalation: "提了一档思考", default: "Bot 的默认模型", escalation_model: "换到阶梯上往上一个" } };
+  const [overridden, climbed, plain] = routeLogRows(
+    [record({ turn_id: "t3", reason_code: "escalation", base_reason_code: null }),
+      record({ turn_id: "t2", reason_code: "escalation_model", base_reason_code: "default" }),
+      record({ turn_id: "t1", reason_code: "escalation", base_reason_code: "ticket_override" })],
+    { bots: BOTS, providers: [], labels },
+  );
+  expect([overridden!.reasonLabel, climbed!.reasonLabel, plain!.reasonLabel]).toEqual(["这张任务指定的 · 提了一档思考", "Bot 的默认模型 · 换到阶梯上往上一个", "提了一档思考"]);
+});

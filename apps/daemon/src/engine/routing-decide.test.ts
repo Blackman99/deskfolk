@@ -52,7 +52,8 @@ test("a pinned thinking level is never escalated, and a model measured to gain n
   expect(f.routing.decideRoute(f.bot.id, f.creds, "继续", f.turn.id)!.decision).toMatchObject({ thinkingLevel: "low", reasonCode: "default" });
 });
 
-const noted = (f: ReturnType<typeof fixture>) => f.store.db.query<{ kind: string }, []>("SELECT kind FROM work_events WHERE kind LIKE 'model.%' ORDER BY seq").all().map((row) => row.kind);
+/** What you were told about the model (not the steps themselves). */
+const noted = (f: ReturnType<typeof fixture>) => f.store.db.query<{ kind: string }, []>("SELECT kind FROM work_events WHERE kind LIKE 'model.%' AND kind <> 'model.escalated' ORDER BY seq").all().map((row) => row.kind);
 
 test("a pinned model that cannot see pictures stays pinned on a picture turn, stepped up or not", () => {
   const f = fixture([{ name: "blind", price: null, thinking_levels: ["low", "high"], strengths: [], input_image: false },
@@ -118,4 +119,82 @@ test("whoever reviews the ticket keeps its own model, and a model no endpoint li
   f.store.patchTicketByUser(ticketId, { modelOverride: { provider_id: "p-2", model: "c" } });
   await f.store.deleteProvider("p-2");
   expect(f.store.getTicket(ticketId).model_override).toBeNull();
+});
+
+const climbing = (opts: { picture?: boolean } = {}) => fixture([
+  { name: "light", price: null, thinking_levels: ["low", "high"], strengths: [] },
+  { name: "blind", price: null, thinking_levels: ["low"], strengths: [], input_image: false },
+  { name: "mid", price: null, thinking_levels: ["low", "high"], strengths: [] },
+], { ...opts, other: [{ name: "heavy", price: null, thinking_levels: ["low", "high"], strengths: [] }] });
+
+test("past its model's top thinking level a job climbs the ladder you ordered, one rung per step, and you are told once on the last", () => {
+  const f = climbing();
+  f.store.setModelLadder([{ provider_id: "p-1", model: "light" }, { provider_id: "p-1", model: "blind" }, { provider_id: "p-1", model: "mid" }, { provider_id: "p-2", model: "heavy" }]);
+  f.store.db.run("UPDATE bots SET default_provider_id = 'p-1', default_model = 'light', default_thinking_level = 'low', default_source = 'confirmed' WHERE id = ?", [f.bot.id]);
+  const at = (steps: number) => {
+    f.store.db.run("UPDATE work_items SET escalation = ? WHERE id = ?", [steps, f.turn.work_item_id!]);
+    const decision = f.routing.decideRoute(f.bot.id, f.creds, "继续", f.turn.id)!.decision;
+    return [decision.providerId, decision.model, decision.reasonCode];
+  };
+  expect(at(1)).toEqual(["p-1", "light", "escalation"]);
+  expect(at(2)).toEqual(["p-1", "blind", "escalation_model"]);
+  expect(at(3)).toEqual(["p-1", "mid", "escalation_model"]);
+  expect(at(4)).toEqual(["p-2", "heavy", "escalation_model"]);
+  expect(noted(f)).toEqual([]);
+  expect(at(5)).toEqual(["p-2", "heavy", "escalation_model"]);
+  at(6);
+  expect(noted(f)).toEqual(["model.escalation_top"]);
+});
+
+test("the climb passes rungs that cannot see the pictures a job needs and rungs no endpoint lists", () => {
+  const f = climbing({ picture: true });
+  f.store.setModelLadder([{ provider_id: "p-1", model: "light" }, { provider_id: "p-1", model: "blind" }, { provider_id: "p-1", model: "mid" }, { provider_id: "p-2", model: "heavy" }]);
+  f.store.db.run("UPDATE work_items SET escalation = 2 WHERE id = ?", [f.turn.work_item_id!]);
+  f.store.db.run("UPDATE bots SET default_provider_id = 'p-1', default_model = 'light', default_thinking_level = 'low', default_source = 'confirmed' WHERE id = ?", [f.bot.id]);
+  expect(f.routing.decideRoute(f.bot.id, f.creds, "看图", f.turn.id)!.decision).toMatchObject({ model: "mid", reasonCode: "escalation_model" });
+  const unlisted = { ...f.creds, providers: f.creds.providers.map((provider) => provider.id === "p-1" ? { ...provider, models: ["light", "blind"] } : provider) };
+  expect(f.routing.decideRoute(f.bot.id, unlisted, "看图", f.turn.id)!.decision).toMatchObject({ model: "heavy", reasonCode: "escalation_model" });
+});
+
+test("a model measured to gain nothing from thinking climbs at once; your pin, the ticket's model and a model off the ladder do not climb", () => {
+  const f = fixture([{ name: "flat", price: null, thinking_levels: ["low", "high"], strengths: [], reasoning_effective: false },
+    { name: "mid", price: null, thinking_levels: ["low"], strengths: [] }]);
+  f.store.setModelLadder([{ provider_id: "p-1", model: "flat" }, { provider_id: "p-1", model: "mid" }]);
+  f.store.db.run("UPDATE work_items SET escalation = 1 WHERE id = ?", [f.turn.work_item_id!]);
+  f.store.db.run("UPDATE bots SET default_provider_id = 'p-1', default_model = 'flat', default_thinking_level = 'low', default_source = 'confirmed' WHERE id = ?", [f.bot.id]);
+  const decide = () => f.routing.decideRoute(f.bot.id, f.creds, "继续", f.turn.id)!.decision;
+  expect(decide()).toMatchObject({ model: "mid", reasonCode: "escalation_model" });
+  // Your pin, without a level: it is stepped, never switched.
+  f.store.db.run("UPDATE bots SET model = 'flat' WHERE id = ?", [f.bot.id]);
+  expect(decide()).toMatchObject({ model: "flat", reasonCode: "pin" });
+  f.store.db.run("UPDATE bots SET model = NULL WHERE id = ?", [f.bot.id]);
+  f.store.patchTicketByUser(f.store.getTurn(f.turn.id).ticket_id!, { modelOverride: { provider_id: "p-1", model: "flat" } });
+  expect(decide()).toMatchObject({ model: "flat", reasonCode: "ticket_override" });
+  f.store.patchTicketByUser(f.store.getTurn(f.turn.id).ticket_id!, { modelOverride: null });
+  f.store.setModelLadder([{ provider_id: "p-1", model: "mid" }]);
+  expect(decide()).toMatchObject({ model: "flat", reasonCode: "default" });
+  expect(noted(f)).toEqual(["model.escalation_top"]);
+});
+
+test("a step trouble inside a turn made raises the thinking level but never climbs the ladder, nor says the top is reached", () => {
+  const f = fixture([{ name: "flat", price: null, thinking_levels: ["low", "high"], strengths: [] }, { name: "mid", price: null, thinking_levels: ["low"], strengths: [] }]);
+  f.store.setModelLadder([{ provider_id: "p-1", model: "flat" }, { provider_id: "p-1", model: "mid" }]);
+  f.store.db.run("UPDATE bots SET default_provider_id = 'p-1', default_model = 'flat', default_thinking_level = 'low', default_source = 'confirmed' WHERE id = ?", [f.bot.id]);
+  const decide = () => f.routing.decideRoute(f.bot.id, f.creds, "继续", f.turn.id)!.decision;
+  f.store.stepUpForTrouble(f.turn.id, "malformed_tool_json");
+  expect(decide()).toMatchObject({ model: "flat", thinkingLevel: "high", reasonCode: "escalation", baseReasonCode: "default" });
+  // Two steps, one from trouble, one from failed hand-overs: the hand-overs' step past the top climbs.
+  f.store.db.run("UPDATE work_items SET escalation = 2 WHERE id = ?", [f.turn.work_item_id!]);
+  expect(decide()).toMatchObject({ model: "mid", reasonCode: "escalation_model", baseReasonCode: "default" });
+  expect(noted(f)).toEqual([]);
+});
+
+test("on a model with no thinking level to raise, a trouble step stays where it is and nothing is said", () => {
+  const f = fixture([{ name: "flat", price: null, thinking_levels: ["low", "high"], strengths: [], reasoning_effective: false },
+    { name: "mid", price: null, thinking_levels: ["low"], strengths: [] }]);
+  f.store.setModelLadder([{ provider_id: "p-1", model: "flat" }, { provider_id: "p-1", model: "mid" }]);
+  f.store.db.run("UPDATE bots SET default_provider_id = 'p-1', default_model = 'flat', default_thinking_level = 'low', default_source = 'confirmed' WHERE id = ?", [f.bot.id]);
+  f.store.stepUpForTrouble(f.turn.id, "tool_failures");
+  expect(f.routing.decideRoute(f.bot.id, f.creds, "继续", f.turn.id)!.decision).toMatchObject({ model: "flat", thinkingLevel: "low", reasonCode: "default" });
+  expect(noted(f)).toEqual([]);
 });

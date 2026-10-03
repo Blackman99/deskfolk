@@ -14,6 +14,7 @@ import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import { takeCodePoints } from "../text";
 import { type StoreContext } from "./shared";
 import { getTask, isReservedTaskPath, slugify, taskTitle } from "./tasks";
+import { providerListsModel } from "./model-ladder";
 
 export type { Ticket, TicketStatus } from "@real-bot/protocol";
 
@@ -54,14 +55,7 @@ function cleanModelOverride(ctx: StoreContext, value: unknown): TicketModel | nu
   if (!raw || typeof raw !== "object" || typeof raw.provider_id !== "string" || typeof raw.model !== "string") {
     throw new HttpError(422, "invalid_args", "model_override must be {provider_id, model} or null");
   }
-  const provider = ctx.db.query<{ models: string }, [string]>("SELECT models FROM providers WHERE id = ?").get(raw.provider_id);
-  let names: string[] = [];
-  try {
-    names = (JSON.parse(provider?.models ?? "[]") as Array<string | { name?: string }>).map((entry) => (typeof entry === "string" ? entry : entry.name ?? ""));
-  } catch {
-    names = [];
-  }
-  if (!provider || !names.includes(raw.model)) throw new HttpError(422, "invalid_args", "model_override names no model an endpoint lists");
+  if (!providerListsModel(ctx, raw.provider_id, raw.model)) throw new HttpError(422, "invalid_args", "model_override names no model an endpoint lists");
   return { provider_id: raw.provider_id, model: raw.model };
 }
 

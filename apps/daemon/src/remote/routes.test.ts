@@ -260,3 +260,13 @@ test("a ticket's model is set or cleared remotely, and nothing else rides in it"
   expect(() => validateBusiness(patch({ model_override: { provider_id: id } }))).toThrow();
   expect(() => validateBusiness(patch({ model_override: { provider_id: id, model: "m", thinking: "high" } }))).toThrow();
 });
+
+test("the model ladder is read and set remotely as a list of rungs, nothing more", () => {
+  const put = (body: unknown) => ({ v: 1 as const, id, method: "PUT" as const, path: "/v1/model-ladder", body: body as Record<string, unknown> });
+  expect(() => validateBusiness({ v: 1 as const, id, method: "GET" as const, path: "/v1/model-ladder" })).not.toThrow();
+  expect(() => validateBusiness(put({ items: [{ provider_id: id, model: "gemini" }] }))).not.toThrow();
+  expect(() => validateBusiness(put({ items: [] }))).not.toThrow();
+  expect(() => validateBusiness(put({}))).toThrow();
+  expect(() => validateBusiness(put({ items: [{ provider_id: id }] }))).toThrow();
+  expect(() => validateBusiness(put({ items: [{ provider_id: id, model: "m", thinking: "high" }] }))).toThrow();
+});

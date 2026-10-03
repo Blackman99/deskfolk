@@ -25,11 +25,13 @@ import type { CompletionsClient } from "../completions";
 import { assembleTurnMessages, planTagger, sessionLabel, type PlanRef } from "../context";
 import { HttpError } from "../errors";
 import { continueNote, hopLimits, isRetriedFailure, replyFailure, retryNote } from "../hop-limits";
+import { troubleCount } from "./trouble";
 import { completionFailBody, builtinTools, type FailKind } from "../prompts";
 import { isNoWorkCloser } from "../no-work";
 import type { McpHost } from "../mcp-host";
 import type { TurnAdmission } from "../quiesce";
 import { isoNow } from "../ids";
+import { MODEL_FAIL_SHAPES } from "../store/quality";
 import type { TurnExecution } from "../store/routing";
 import { ENGINE_LEVELS } from "../store/schema-gate";
 import type { Store } from "../store";
@@ -584,6 +586,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       toolErrors: 0,
       repeatedFailures: 0,
       failedCalls: new Set(),
+      trouble: troubleCount(),
       failures: [],
     };
     store.afterCommit(() => {
@@ -793,6 +796,15 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     }
     const target = routed.target;
     live.target = { providerId: target.providerId, model: target.model };
+    // A step up from trouble inside this turn (ADR 0054) moves only the thinking level of the hops
+    // left: a model the ladder climbs to waits for the job's next turn, not the middle of this loop.
+    live.restep = () => {
+      const again = decideRoute(botId, creds, triggerBody, turnId);
+      if (!again || again.target.providerId !== target.providerId || again.target.model !== target.model) return;
+      if (again.target.thinkingLevel === target.thinkingLevel) return;
+      target.thinkingLevel = again.target.thinkingLevel;
+      store.stepTurnRoute(turnId, again.target.thinkingLevel);
+    };
     const limits = hopLimits(
       store.catalogEntries().find((row) => row.providerId === target.providerId && row.name === target.model),
     );
@@ -1187,6 +1199,8 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       });
       store.voidPendingTurnActions(turnId, "turn_failed", now);
       store.finishTurnRoute(turnId, "failed", kind, executionOf(live));
+      // A reply that failed again after its retry steps its job up for the next turn (ADR 0054).
+      if (MODEL_FAIL_SHAPES.has(kind)) store.stepUpForTrouble(turnId, "failure_shape", now);
       // From level 8 how the turn failed is filed by its shape: a loop or a refusal is the model's (ADR 0050).
       if (store.learningOn()) {
         store.recordWorkEvent({ kind: "turn.failed", actor: "app", botId: current.bot_id, taskId: current.task_id, ticketId: current.ticket_id,

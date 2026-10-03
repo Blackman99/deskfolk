@@ -86,7 +86,7 @@ export function learningOn(ctx: StoreContext): boolean {
 }
 
 /** How a turn's reply failed, by the shape it took: the model's doing. */
-const MODEL_SHAPES = new Set(["repeat", "declined", "truncated", "overtime", "incomplete"]);
+export const MODEL_FAIL_SHAPES: ReadonlySet<string> = new Set(["repeat", "declined", "truncated", "overtime", "incomplete"]);
 /** A turn that stopped making progress or broke: the app's doing, not the Bot's or its model's. */
 const ORCHESTRATION_FAILS = new Set(["stuck", "crashed"]);
 /** The supervisor's repairs: work that stalled, a wait on nothing, a segment that ended without a word. */
@@ -224,7 +224,7 @@ function project(ctx: StoreContext, event: WorkEvent): Projected[] {
       return [{ ...base, kind: "hold_violation", category: "orchestration", bot_id: event.bot_id }];
     case "turn.failed": {
       const reason = typeof p.fail_kind === "string" ? p.fail_kind : "";
-      if (MODEL_SHAPES.has(reason)) return [{ ...base, kind: `failure_shape:${reason}`, category: "model", bot_id: event.bot_id, model: turnModel(ctx, event.turn_id) }];
+      if (MODEL_FAIL_SHAPES.has(reason)) return [{ ...base, kind: `failure_shape:${reason}`, category: "model", bot_id: event.bot_id, model: turnModel(ctx, event.turn_id) }];
       // An endpoint that could not be reached, was busy or refused is nobody's quality.
       if (ORCHESTRATION_FAILS.has(reason)) return [{ ...base, kind: `cut_off:${reason}`, category: "orchestration", bot_id: event.bot_id, model: turnModel(ctx, event.turn_id) }];
       return [];

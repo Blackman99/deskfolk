@@ -116,8 +116,8 @@ const REFUSED: ReadonlySet<string> = new Set(["denied", "invalid_args", "drainin
 
 // ── Replies ─────────────────────────────────────────────────────────────────────────────────────
 
-/** One tool call to script: the model-facing name and its arguments. The harness gives it an id. */
-export type ScriptedCall = { name: string; args?: Record<string, unknown>; id?: string };
+/** One tool call to script: the model-facing name and its arguments (or `raw` text, sent as is). The harness gives it an id. */
+export type ScriptedCall = { name: string; args?: Record<string, unknown>; raw?: string; id?: string };
 
 /** A plain reply with no tool calls; the turn posts it and ends. */
 export function say(content: string, usage: MappedUsage | null = null): CompletionOk {
@@ -129,7 +129,7 @@ export function call(...calls: ScriptedCall[]): CompletionOk {
   return {
     ok: true,
     content: "",
-    toolCalls: calls.map((spec) => ({ id: spec.id ?? "", name: spec.name, arguments: JSON.stringify(spec.args ?? {}) })),
+    toolCalls: calls.map((spec) => ({ id: spec.id ?? "", name: spec.name, arguments: spec.raw ?? JSON.stringify(spec.args ?? {}) })),
     finishReason: "tool_calls",
     hadChoices: true,
     usage: null,

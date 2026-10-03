@@ -4,6 +4,7 @@
 	import { pageSlide } from '../mobile-page-slide.ts';
 	import McpSettings from './McpSettings.svelte';
 	import LessonsSettings from './LessonsSettings.svelte';
+	import ModelLadderCard from './ModelLadderCard.svelte';
 	import type { Lesson } from '@real-bot/protocol';
 	import { backdropClick } from '../click-outside.ts';
 	import WorkspacePicker from './WorkspacePicker.svelte';
@@ -1361,6 +1362,9 @@
 								</div>
 							{/each}
 						</div>
+						{#if snapshot.providers.length > 0}
+							<ModelLadderCard api={runtime.client} providers={snapshot.providers} {t} />
+						{/if}
 					</div>
 				{:else if activeSettingsTab === 'mcp'}
 					<McpSettings bind:this={mcpSettings} {runtime} {t} {closeSettings} />

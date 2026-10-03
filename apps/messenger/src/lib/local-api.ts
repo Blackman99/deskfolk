@@ -2,6 +2,8 @@ import type {
   QualityReportRow,
   SharedSkill,
   SharedSkillsResponse,
+  ModelLadderResponse,
+  ModelLadderRung,
   Lesson,
   LessonPatch,
   AnswerAskRequest,
@@ -467,6 +469,15 @@ export class LocalApi {
   /** The quality report (ADR 0050): per Bot × model × plan kind over the last `days`. */
   async qualityReport(days = 7): Promise<QualityReportRow[]> {
     return (await this.get<ListPage<QualityReportRow>>(`/v1/quality/report?days=${days}`)).items;
+  }
+
+  /** The model ladder you ordered (ADR 0054), and whether this engine level has one (level 7). */
+  async modelLadder(): Promise<ModelLadderResponse> {
+    return this.get<ModelLadderResponse>("/v1/model-ladder");
+  }
+
+  async setModelLadder(items: ModelLadderRung[]): Promise<ModelLadderResponse> {
+    return this.request<ModelLadderResponse>("PUT", "/v1/model-ladder", { items });
   }
 
   /** The project skills (ADR 0052), and whether sharing is on (engine level 8). */

@@ -35,6 +35,8 @@ export function migrateModelDefaults(db: Database): void {
   const decisions = db.query<{ name: string }, []>("PRAGMA table_info(turn_route_decisions)").all().map((column) => column.name);
   // Why a turn ran on what it ran on, from level 7: pin, default, endpoint_default.
   if (decisions.length > 0 && !decisions.includes("reason_code")) db.run("ALTER TABLE turn_route_decisions ADD COLUMN reason_code TEXT");
+  // Why the model was chosen before a step up or the picture filter moved it (ADR 0054).
+  if (decisions.length > 0 && !decisions.includes("base_reason_code")) db.run("ALTER TABLE turn_route_decisions ADD COLUMN base_reason_code TEXT");
   // How many thinking levels up a job runs after failing in a row (ADR 0049); 0 is its own.
   const work = db.query<{ name: string }, []>("PRAGMA table_info(work_items)").all().map((column) => column.name);
   if (work.length > 0 && !work.includes("escalation")) db.run("ALTER TABLE work_items ADD COLUMN escalation INTEGER NOT NULL DEFAULT 0");
@@ -76,13 +78,14 @@ export function botDefault(ctx: StoreContext, botId: string): BotDefault {
  * What a Bot ran on most in the last {@link DEFAULT_MODEL_WINDOW_DAYS} days, among the models the
  * endpoints still list (a model since renamed or removed does not count), with the thinking level it
  * ran that model on most. Null when it ran on nothing still listed. Turns on a model you set on their
- * ticket do not count: that model is about the ticket, not the Bot.
+ * ticket, or one a failing job climbed the model ladder to, do not count: that model is about the
+ * work, not the Bot.
  */
 export function inferredDefault(ctx: StoreContext, botId: string, listed: ReadonlyArray<{ providerId: string; model: string }>, now: string = isoNow()):
   { providerId: string; model: string; thinkingLevel: ThinkingLevel; turns: number } | null {
   const since = new Date(Date.parse(now) - DEFAULT_MODEL_WINDOW_DAYS * 24 * 60 * 60_000).toISOString();
   const rows = ctx.db.query<{ provider_id: string | null; model: string; thinking_level: string; n: number }, [string, string]>(`SELECT provider_id, model,
-    thinking_level, COUNT(*) AS n FROM turn_route_decisions WHERE bot_id = ? AND created_at > ? AND reason_code IS NOT 'ticket_override'
+    thinking_level, COUNT(*) AS n FROM turn_route_decisions WHERE bot_id = ? AND created_at > ? AND COALESCE(reason_code, '') NOT IN ('ticket_override', 'escalation_model') AND COALESCE(base_reason_code, '') <> 'ticket_override'
     GROUP BY provider_id, model, thinking_level`).all(botId, since)
     .filter((row) => row.provider_id && listed.some((entry) => entry.providerId === row.provider_id && entry.model === row.model));
   const byModel = new Map<string, { providerId: string; model: string; turns: number; levels: Map<string, number> }>();
@@ -164,8 +167,8 @@ export function noteModelOnce(ctx: StoreContext, botId: string, kind: "pin_unlis
       ? (en ? `${name} is pinned to ${model}, which no endpoint lists any more: it runs on the endpoint's default until you pin another model or clear the pin.`
         : `${name} 钉的模型 ${model} 已经不在任何端点的名单上了：在你换一个或清掉之前，它先用端点默认。`)
       : kind === "escalation_top"
-        ? (en ? `${name}'s work keeps failing on ${model}, already at its top thinking level: switching models is yours to decide — pin another model to it if you want one.`
-          : `${name} 这件活在 ${model} 上一直没过，思考档已经到顶：要不要换模型由你定，想换就给它钉一个。`)
+        ? (en ? `${name}'s hand-overs keep failing on ${model}, and it has stepped up as far as it can — no higher thinking level, nothing above it on the model ladder: switching models is yours to decide — pin another model to it, or order the ladder in Settings → Models.`
+          : `${name} 这件活在 ${model} 上交付接连没过，已经升到头了——没有更高的思考档，模型阶梯上也没有更往上的：要不要换模型由你定——给它钉一个，或者到设置 → 模型里排好阶梯。`)
         : kind === "pin_no_pictures"
         ? (en ? `${name} is pinned to ${model}, which is marked as taking no pictures, but its work needs pictures seen: pin a model that can, or it goes on without seeing them.`
           : `${name} 钉的模型 ${model} 标着看不了图，可它这件活需要看图：换钉一个能看图的模型，不然它只能不看图做下去。`)
