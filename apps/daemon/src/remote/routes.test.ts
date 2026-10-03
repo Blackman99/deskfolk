@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { ANNOTATION_REMOTE_CROP_BASE64_MAX } from "@real-bot/protocol";
+import { ANNOTATION_REMOTE_CROP_BASE64_MAX, CLIENT_ONLY_CONTROL_OFFERS, CONTROL_OFFERS } from "@real-bot/protocol";
 import { canonicalBytes, MAX_LOGICAL_MESSAGE, type RemoteRequest } from "@real-bot/remote";
 import { HttpError } from "../errors";
 import { validateBusiness } from "./routes";
@@ -193,6 +193,20 @@ test("a phone can press a button on a line about your stops, one it names, nothi
   expect(() => ok({ method: "POST", path: `/v1/messages/${id}/control`, body: { action: "lift_everything" } })).toThrow();
   expect(() => ok({ method: "POST", path: `/v1/messages/${id}/control`, body: { action: "stop_plan", task_id: "EP01" } })).toThrow();
   expect(() => ok({ method: "POST", path: `/v1/messages/${id}/control`, body: { action: "stop", source: "user_text" } })).toThrow();
+});
+
+test("a phone can press every button an app's line offers, the messenger's own two aside", () => {
+  // 放行 and 退回 on a hand-over, a ceiling's choices, a complaint's, a lesson's, a Bot's default
+  // model: the list here was written out once and fell behind, so every card added after it was
+  // refused from the phone.
+  const ok = (body: Record<string, unknown>) => validateBusiness({ v: 1, id, method: "POST", path: `/v1/messages/${id}/control`, body });
+  for (const action of ["approve", "reject", "confirm_item", "remove_item", "another_way", "another_plan", "relax", "accept", "rework", "dismiss", "confirm", "decline"]) {
+    expect(() => ok({ action })).not.toThrow();
+  }
+  for (const action of CONTROL_OFFERS.filter((offer) => !CLIENT_ONLY_CONTROL_OFFERS.includes(offer))) {
+    expect(() => ok({ action })).not.toThrow();
+  }
+  for (const action of CLIENT_ONLY_CONTROL_OFFERS) expect(() => ok({ action })).toThrow();
 });
 
 test("a phone can confirm new-plan undo or quoted-message merge without forging action provenance", () => {

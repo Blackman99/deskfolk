@@ -807,6 +807,16 @@ test("remote chat uses the actual engine and event stream, not a parallel busine
   expect(JSON.stringify(c.events)).not.toContain('"turn.token"');
 });
 
+test("a phone's 放行 on a hand-over's card reaches the engine, as the window's does", async () => {
+  // The phone's list of card buttons had fallen behind: 放行 and 退回 never got past the route.
+  const f = await fixture(), d = await f.pair(), c = await f.connect(d), bot = f.store.createBot({ name: "Card", duties: "", boundaries: "" });
+  const card = f.store.insertMessage({ sessionId: bot.direct_session.id, kind: "system", author: bot.bot.id, body: "交上来了，等你定。", hiddenFromBots: true,
+    control: { kind: "review_item", submission_id: ulid(), task_id: ulid(), ticket_id: ulid(), requirement_ids: [], check_ids: [], offer: ["approve", "reject"] } });
+  const pressed = await c.rpc({ v: 1, id: ulid(), method: "POST", path: `/v1/messages/${card.id}/control`, body: { action: "approve" } });
+  // The engine's own answer — the card's hand-over is a stand-in here — not the route's refusal (422).
+  expect(pressed.status).toBe(404);
+});
+
 test("lost accepted response reconnects with fresh Noise and same receipt without duplicate mutation", async () => {
   const f = await fixture(), d = await f.pair(), c = await f.connect(d), id = ulid();
   const request: RemoteRequest = { v: 1, id, method: "POST", path: "/v1/bots", body: { name: "Lost response", duties: "", boundaries: "" } };

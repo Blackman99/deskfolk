@@ -1,4 +1,4 @@
-import { ANNOTATION_REMOTE_CROP_BASE64_MAX, FILE_DROP_SESSION_ID } from "@real-bot/protocol";
+import { ANNOTATION_REMOTE_CROP_BASE64_MAX, CLIENT_ONLY_CONTROL_OFFERS, CONTROL_OFFERS, FILE_DROP_SESSION_ID } from "@real-bot/protocol";
 import type { RemoteRequest } from "@real-bot/remote";
 import { HttpError } from "../errors";
 
@@ -86,8 +86,12 @@ const holdScopeId: Check = v => typeof v === "string" && /^[0-9A-HJKMNP-TV-Z]{26
 add("POST", "holds", { scope: one("global", "bot", "session", "plan", "ticket", "bot_plan", "turn"), scope_id: nullable(holdScopeId),
   action: one("pause", "cancel"), cascade: bool, lift_on_next_user_message: bool, session_id: nullable(id) }, ["scope"]);
 add("POST", "holds/:id/lift", {});
-// A button on a line about your stops (a receipt's undo, 「全部停下」 from the phone's menu is a hold above).
-add("POST", "messages/:id/control", { action: one("stop", "continue", "cancel", "undo", "stop_all", "stop_plan", "only_plan", "continue_only", "continue_all", "resume", "leave", "confirm_check", "remove_check", "confirm_requirements", "make_standing", "keep_project", "undo_plan", "merge_plan", "confirm_item", "remove_item"), task_id: id }, ["action"]);
+// A button on one of the app's lines: a receipt's undo, a hand-over's 放行 and 退回, a ceiling's
+// choices, a lesson's, a Bot's default model… (「全部停下」 from the phone's menu is a hold above).
+// Every button a line can offer but the two the messenger keeps to itself. The list was written
+// out here once and fell behind: from the phone, every card added after it was refused.
+const sentControlOffers = CONTROL_OFFERS.filter((offer) => !CLIENT_ONLY_CONTROL_OFFERS.includes(offer));
+add("POST", "messages/:id/control", { action: one(...sentControlOffers), task_id: id }, ["action"]);
 add("PATCH", "tickets/:id", { title: string, spec: string, status: ticketStatus, worker: nullable(id), depends_on: list(id), reviewer_bot_id: nullable(id),
   model_override: nullable(object({ provider_id: id, model: string }, ["provider_id", "model"])), if_revision: specRevision }, [], true);
 const checkKind: Check = one("exists", "contains", "matches", "command");

@@ -1324,39 +1324,49 @@ export type MessageDelivery = {
  *   merge refiles only the card's quoted message into the selected existing job, never its turns or files.
  *   Neither action lifts holds or reverses effects already started.
  */
-export type ControlOffer =
-  | "stop"
-  | "continue"
-  | "cancel"
-  | "undo"
-  | "stop_all"
-  | "stop_plan"
-  | "only_plan"
-  | "continue_only"
-  | "continue_all"
-  | "resume"
-  | "leave"
-  | "confirm_check"
-  | "edit_check"
-  | "remove_check"
-  | "confirm_requirements"
-  | "review_requirements"
-  | "make_standing"
-  | "keep_project"
-  | "undo_plan"
-  | "merge_plan"
-  | "confirm_item"
-  | "remove_item"
-  | "approve"
-  | "reject"
-  | "another_way"
-  | "another_plan"
-  | "relax"
-  | "accept"
-  | "rework"
-  | "dismiss"
-  | "confirm"
-  | "decline";
+export const CONTROL_OFFERS = [
+  "stop",
+  "continue",
+  "cancel",
+  "undo",
+  "stop_all",
+  "stop_plan",
+  "only_plan",
+  "continue_only",
+  "continue_all",
+  "resume",
+  "leave",
+  "confirm_check",
+  "edit_check",
+  "remove_check",
+  "confirm_requirements",
+  "review_requirements",
+  "make_standing",
+  "keep_project",
+  "undo_plan",
+  "merge_plan",
+  "confirm_item",
+  "remove_item",
+  "approve",
+  "reject",
+  "another_way",
+  "another_plan",
+  "relax",
+  "accept",
+  "rework",
+  "dismiss",
+  "confirm",
+  "decline",
+] as const;
+
+export type ControlOffer = (typeof CONTROL_OFFERS)[number];
+
+/**
+ * The buttons the messenger handles itself and never sends (`edit_check` fills your composer,
+ * `review_requirements` opens the board): every other one a line offers goes to
+ * `POST /v1/messages/:id/control`, from the phone as from the window.
+ */
+export const CLIENT_ONLY_CONTROL_OFFERS: readonly ControlOffer[] = ["edit_check", "review_requirements"];
 
 /**
  * Why the daemon started again (ADR 0041): `dev` for a development run (`bun --watch` restarts it

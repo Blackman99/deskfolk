@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Approve, send back and the other card buttons work from the phone
+
+- On the phone, 放行 and 退回 on a hand-over, the choices on a ceiling card or a complaint card, and confirming a lesson or a Bot's default model were refused with an error: the phone's list of allowed buttons had been written out before those cards existed. It now allows every button a card can offer, from one shared list, so a new card works on the phone too.
+
 ### A stopped group goes on from what you say next, and nobody is nagged while your 放行 waits
 
 - The group's stop menu is there while the group's work runs only in a Bot↔Bot direct opened from it — the lead's request to another Bot. It was missing then, so the group could not be stopped from its own conversation.
