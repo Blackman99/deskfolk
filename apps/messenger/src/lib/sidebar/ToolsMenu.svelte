@@ -6,7 +6,8 @@
 
 	/**
 	 * The 工具 popover: routines, spend, a terminal, and — after a line — the archived sessions and,
-	 * once the daemon has stops, 「全部停下」 (「全部继续」 while everything is stopped). One
+	 * once the daemon has stops, 「全部停下」 with a line saying it lasts until lifted (「全部继续」
+	 * while everything is stopped). One
 	 * menu for every button that opens it: the list's footer, the phone's search row, and the rail
 	 * the list folds into. The button stays with its owner; this hangs off it, walks with the arrow
 	 * keys, closes on Escape, Tab or a click elsewhere, and hands focus back to the button.
@@ -217,13 +218,29 @@
 			{/if}
 		</button>
 		{#if everything && onEverything}
-			<button type="button" class="tools-menu-item tools-menu-everything" role="menuitem" disabled={everythingDisabled} onclick={() => choose(onEverything)}>
+			<!-- It is there with nothing at work, since the stop is not on what runs now but on what
+				would start: the line under it says so, read as its description, not its name. -->
+			<button
+				type="button"
+				class="tools-menu-item tools-menu-everything"
+				class:has-hint={everything === 'stop'}
+				role="menuitem"
+				aria-labelledby="tools-menu-everything-label"
+				aria-describedby={everything === 'stop' ? 'tools-menu-everything-hint' : undefined}
+				disabled={everythingDisabled}
+				onclick={() => choose(onEverything)}
+			>
 				{#if everything === 'stop'}
 					<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
 				{:else}
 					<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="7 4 20 12 7 20 7 4"></polygon></svg>
 				{/if}
-				<span>{everything === 'stop' ? t.control.stopEverything : t.control.goOnEverything}</span>
+				<span class="tools-menu-text">
+					<span id="tools-menu-everything-label">{everything === 'stop' ? t.control.stopEverything : t.control.goOnEverything}</span>
+					{#if everything === 'stop'}
+						<span id="tools-menu-everything-hint" class="tools-menu-hint">{t.control.stopEverythingHint}</span>
+					{/if}
+				</span>
 			</button>
 		{/if}
 	</div>
@@ -277,6 +294,26 @@
 	.tools-menu-item svg {
 		flex-shrink: 0;
 		color: var(--muted);
+	}
+
+	/* Two lines: the icon sits with the label, the hint under it. */
+	.tools-menu-item.has-hint {
+		align-items: flex-start;
+		padding-block: 8px;
+	}
+
+	.tools-menu-text {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		min-width: 0;
+	}
+
+	.tools-menu-hint {
+		color: var(--muted);
+		font-size: var(--text-caption);
+		font-weight: 400;
+		line-height: 1.35;
 	}
 
 	.tools-menu-divider {

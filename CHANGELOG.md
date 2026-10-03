@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### "Stop everything" says it lasts until you lift it
+
+- The tools menu's "Stop everything" has a line under it: "Bots and routines stay stopped until you lift it". It holds the turns that would start, so it is in the menu with no Bot at work; by its name alone it looked like it stopped only what was running, and why it was there with nothing running was not clear.
+
 ### An ending is not sent back for naming mail it never had
 
 - A Bot that ends with a disposition for an id that is no mail of its segment — usually the line that woke it — now just ends. It was sent back twice for it, ended needing attention and was picked up again by the supervisor: one more turn for nothing (9 times on 4 jobs between 10-01 and 10-03). A wrong word on mail it did read, or a line of yours left without a disposition, still sends it back.

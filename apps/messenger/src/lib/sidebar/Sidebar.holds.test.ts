@@ -4,7 +4,7 @@ import { copyFor } from "../copy.ts";
 import { aBot, aDirect, aGroup, aHold, fakeRuntime } from "../test-fixtures.ts";
 import type { Snapshot } from "../snapshot.ts";
 import { reactive } from "../test-reactive.svelte.ts";
-import { buttonByText, click, render } from "../test-render.ts";
+import { click, render } from "../test-render.ts";
 import Sidebar from "./Sidebar.svelte";
 
 const t = copyFor("zh");
@@ -45,6 +45,13 @@ function open(over: Partial<Snapshot>, refusal: unknown = null) {
     onOpenSearch: () => {},
   });
   return { ...view, runtime, pressed };
+}
+
+/** The tools menu's stop-everything item, checked to read `label` (a line under it says more). */
+function everythingItem(host: HTMLElement, label: string): HTMLButtonElement {
+  const item = host.querySelector<HTMLButtonElement>(".tools-menu-everything");
+  expect(item && host.querySelector(`#${item.getAttribute("aria-labelledby")}`)?.textContent).toBe(label);
+  return item!;
 }
 
 test("your stops in force sit above the list, each with its lift; a plan parked before stops existed is not among them", () => {
@@ -100,12 +107,30 @@ test("the tools menu stops everything, and while everything is stopped lets it a
   const { host, runtime, pressed, close } = open({ holdsOn: true });
   try {
     click(host.querySelector(".tools-entry"));
-    click(buttonByText(host, "全部停下"));
+    click(everythingItem(host, "全部停下"));
     expect(pressed).toEqual([["stopScope", "global", null, null]]);
     runtime.snapshot = { ...runtime.snapshot, holds: [aHold({ id: "h-all", scope: "global", scope_id: null })] };
     click(host.querySelector(".tools-entry"));
-    click(buttonByText(host, "全部继续"));
+    click(everythingItem(host, "全部继续"));
     expect(pressed.at(-1)).toEqual(["liftHold", "h-all"]);
+  } finally {
+    close();
+  }
+});
+
+test("the tools menu's stop says it keeps the Bots and routines stopped until you lift it, so it is there with nothing at work", () => {
+  const { host, runtime, close } = open({ holdsOn: true });
+  try {
+    click(host.querySelector(".tools-entry"));
+    const item = everythingItem(host, "全部停下");
+    const hint = host.querySelector(`#${item.getAttribute("aria-describedby")}`);
+    expect(hint?.textContent).toBe("Bot 和日程都停到你解除");
+    expect(item.contains(hint)).toBe(true);
+    runtime.snapshot = { ...runtime.snapshot, holds: [aHold({ id: "h-all", scope: "global", scope_id: null })] };
+    flushSync();
+    const goOn = everythingItem(host, "全部继续");
+    expect(goOn.hasAttribute("aria-describedby")).toBe(false);
+    expect(goOn.textContent?.trim()).toBe("全部继续");
   } finally {
     close();
   }
@@ -115,7 +140,7 @@ test("a stop or a lift the daemon refuses is said above the list, and on the row
   const { host, close } = open({ holdsOn: true, holds: [aHold({ id: "h-bot", scope: "bot", scope_id: "bot-1" })] }, { status: 422 });
   try {
     click(host.querySelector(".tools-entry"));
-    click(buttonByText(host, "全部停下"));
+    click(everythingItem(host, "全部停下"));
     await tick();
     flushSync();
     expect(host.querySelector(".holds-failed")?.textContent).toBe("没做成，再试一次");
@@ -132,7 +157,7 @@ test("the tools menu's refusal goes once everything is stopped or let go some ot
   const { host, runtime, close } = open({ holdsOn: true }, { status: 422 });
   try {
     click(host.querySelector(".tools-entry"));
-    click(buttonByText(host, "全部停下"));
+    click(everythingItem(host, "全部停下"));
     await tick();
     flushSync();
     expect(host.querySelector(".holds-failed")).not.toBeNull();
@@ -148,7 +173,7 @@ test("the tools menu's refusal goes once everything is stopped or let go some ot
     flushSync();
 
     click(host.querySelector(".tools-entry"));
-    click(buttonByText(host, "全部继续"));
+    click(everythingItem(host, "全部继续"));
     await tick();
     flushSync();
     expect(host.querySelector(".holds-failed")).not.toBeNull();
