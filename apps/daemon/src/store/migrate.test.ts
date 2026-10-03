@@ -550,6 +550,76 @@ describe("a database an earlier build created", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  /**
+   * A development build made `tasks` with `session_id NOT NULL` on a real machine before the column
+   * shipped nullable, and `CREATE TABLE IF NOT EXISTS` kept that shape. Deleting a group sets its
+   * plans' `session_id` to NULL, so no group that ever held a plan could be deleted there.
+   */
+  test("a tasks table with session_id NOT NULL is rebuilt nullable with every row kept, and a group with plans then deletes", () => {
+    const dir = mkdtempSync(join(tmpdir(), "real-bot-migrate-"));
+    const file = join(dir, "state.sqlite");
+    try {
+      const seeded = new Store({ filename: file });
+      seeded.patchSettingsSync({ workspace_path: join(dir, "workspace") });
+      const a = seeded.createBot({ name: "Director", duties: "direct", boundaries: "none" });
+      const b = seeded.createBot({ name: "Writer", duties: "write", boundaries: "none" });
+      const group = seeded.createGroup({ name: "宣传片组", members: [a.bot.id, b.bot.id] });
+      const plan = seeded.openTask({ sessionId: group.id, title: "宣传片" });
+      const ticket = seeded.createTicket({ taskId: plan.id, title: "分镜" });
+      const check = seeded.createCheckByUser(plan.id, { item: "交出 board.jpg", kind: "exists", path: "board.jpg" });
+      // What you said is filed to the plan, so deleting the group keeps the plan and unlinks it:
+      // the UPDATE that the NOT NULL column refused.
+      const said = seeded.postMessage(group.id, { body: "做一支三十秒的宣传片" });
+      seeded.db.run(`UPDATE messages SET task_id = ? WHERE id = ?`, [plan.id, said.id]);
+      seeded.close();
+
+      // Put the table back in the shape the development build left behind.
+      const old = new Database(file, { strict: true });
+      const shape = old.query<{ sql: string }, []>(`SELECT sql FROM sqlite_master WHERE name = 'tasks'`).get()!.sql;
+      const own = old.query<{ sql: string }, []>(`SELECT sql FROM sqlite_master WHERE tbl_name = 'tasks' AND type IN ('index', 'trigger') AND sql IS NOT NULL`).all();
+      old.run(`PRAGMA foreign_keys = OFF`);
+      old.run(`PRAGMA legacy_alter_table = ON`);
+      old.run(shape.replace(/^CREATE TABLE (?:IF NOT EXISTS )?tasks\b/, "CREATE TABLE tasks_old").replace(/session_id TEXT REFERENCES/, "session_id TEXT NOT NULL REFERENCES"));
+      old.run(`INSERT INTO tasks_old SELECT * FROM tasks`);
+      old.run(`DROP TABLE tasks`);
+      old.run(`ALTER TABLE tasks_old RENAME TO tasks`);
+      for (const { sql } of own) old.run(sql);
+      expect(old.query<{ notnull: number }, []>(`SELECT "notnull" FROM pragma_table_info('tasks') WHERE name = 'session_id'`).get()!.notnull).toBe(1);
+      old.close();
+
+      const store = new Store({ filename: file });
+      expect(store.db.query<{ notnull: number }, []>(`SELECT "notnull" FROM pragma_table_info('tasks') WHERE name = 'session_id'`).get()!.notnull).toBe(0);
+      expect(store.getTask(plan.id)).toMatchObject({ title: "宣传片", session_id: group.id });
+      expect(store.getCheck(check.id)).toMatchObject({ item: "交出 board.jpg" });
+      const objects = store.db
+        .query<{ name: string }, []>(`SELECT name FROM sqlite_master WHERE tbl_name = 'tasks' AND type IN ('index', 'trigger') AND sql IS NOT NULL ORDER BY name`)
+        .all()
+        .map((row) => row.name);
+      expect(objects).toEqual(own.map((row) => row.sql.match(/^CREATE (?:INDEX|TRIGGER)(?: IF NOT EXISTS)? (\w+)/)![1]!).sort());
+
+      store.deleteSession(group.id, { eraseQuotes: false });
+      // The plan stays, no longer in any conversation.
+      expect(store.db.query<{ session_id: string | null }, [string]>(`SELECT session_id FROM tasks WHERE id = ?`).get(plan.id)).toEqual({ session_id: null });
+      expect(store.db.query<{ id: string }, [string]>(`SELECT id FROM tickets WHERE id = ?`).get(ticket.id)).toEqual({ id: ticket.id });
+      // Foreign keys are back on and nothing dangles: the plan's ticket still holds it in place.
+      expect(store.db.query<{ foreign_keys: number }, []>(`PRAGMA foreign_keys`).get()).toEqual({ foreign_keys: 1 });
+      expect(store.db.query(`PRAGMA foreign_key_check`).all()).toEqual([]);
+      expect(() => store.db.run(`DELETE FROM tasks WHERE id = ?`, [plan.id])).toThrow(/FOREIGN KEY/);
+      store.close();
+
+      // Reopening finds the column nullable and leaves the table alone.
+      const before = new Database(file, { strict: true });
+      const rebuilt = before.query<{ sql: string }, []>(`SELECT sql FROM sqlite_master WHERE name = 'tasks'`).get()!.sql;
+      before.close();
+      new Store({ filename: file }).close();
+      const after = new Database(file, { strict: true });
+      expect(after.query<{ sql: string }, []>(`SELECT sql FROM sqlite_master WHERE name = 'tasks'`).get()!.sql).toBe(rebuilt);
+      after.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 /**

@@ -300,6 +300,9 @@ export function migrateSchema(db: Database): void {
   migrateLessons(db);
   migrateReflections(db);
   migrateSharedSkills(db);
+  // After every column tasks gains above (the rebuild copies the table as it then stands), and
+  // before the triggers below, which are made again over the rebuilt table.
+  migrateNullableTaskSession(db);
   // Made again on every open rather than if missing, so the triggers are always this build's own.
   // Last, after every column they read (tasks.dormant_since comes in migratePlans).
   for (const trigger of [...HELD_TURN_TRIGGERS, ...QUOTE_TRIGGERS, ...REQUIREMENT_TRIGGERS, ...DORMANT_PLAN_TRIGGERS, ...SUBMISSION_TRIGGERS, ...WORK_QUESTION_TRIGGERS, ...REQUIREMENT_CARD_TRIGGERS]) {
@@ -927,6 +930,60 @@ function migrateAcceptanceCheckKinds(db: Database): void {
       if (violations.length > 0) throw new Error("acceptance_checks migration broke a foreign key");
     })();
   } finally {
+    db.run(`PRAGMA foreign_keys = ON`);
+  }
+}
+
+/**
+ * A plan outlives its conversation: deleting a group keeps its plans and sets their `session_id`
+ * to NULL (`deleteSession`), and `SCHEMA_SQL` has declared the column nullable since tasks began.
+ * A database whose `tasks` table was made by a development build from before that still says
+ * NOT NULL — `CREATE TABLE IF NOT EXISTS` never touches a table that is there — so deleting any
+ * group that ever held a plan failed on the constraint, and the app said only "internal error".
+ *
+ * The table is rebuilt from its own current definition with that one NOT NULL dropped, so every
+ * column added since comes along unchanged. As in `migrateAcceptanceCheckKinds`, by SQLite's
+ * 12-step procedure: foreign keys off first (tickets, checks and spec revisions reference tasks,
+ * some ON DELETE CASCADE, and the DROP must not reach them), every row copied in one transaction,
+ * the table's own indexes and triggers made again. The rename runs with `legacy_alter_table` on, so
+ * SQLite does not re-check the triggers on other tables that name `tasks` while it is briefly
+ * gone; those are made again at the end of every open anyway. The foreign-key check compares
+ * before and after, so a dangling row the database already had cannot stop the daemon starting.
+ */
+function migrateNullableTaskSession(db: Database): void {
+  const column = db
+    .query<{ notnull: number }, []>(`SELECT "notnull" FROM pragma_table_info('tasks') WHERE name = 'session_id'`)
+    .get();
+  if (!column || column.notnull === 0) return;
+  const table = db.query<{ sql: string }, []>(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'tasks'`).get()!.sql;
+  const relaxed = table.replace(/\bsession_id\s+TEXT\s+NOT\s+NULL\b/i, "session_id TEXT");
+  if (relaxed === table) throw new Error("tasks.session_id is NOT NULL but its definition does not say so in a known way");
+  // A table that was ever renamed is stored as CREATE TABLE "tasks".
+  const createNew = relaxed.replace(/^CREATE TABLE\s+(?:"tasks"|tasks\b)/i, "CREATE TABLE tasks_new");
+  if (createNew === relaxed) throw new Error("tasks has a definition this migration does not know how to copy");
+  const own = db
+    .query<{ sql: string }, []>(`SELECT sql FROM sqlite_master WHERE tbl_name = 'tasks' AND type IN ('index', 'trigger') AND sql IS NOT NULL`)
+    .all();
+  const columns = db
+    .query<{ name: string }, []>(`SELECT name FROM pragma_table_info('tasks')`)
+    .all()
+    .map((col) => `"${col.name}"`)
+    .join(", ");
+  const dangling = () => db.query(`PRAGMA foreign_key_check(tasks)`).all().length;
+  db.run(`PRAGMA foreign_keys = OFF`);
+  db.run(`PRAGMA legacy_alter_table = ON`);
+  try {
+    db.transaction(() => {
+      const before = dangling();
+      db.run(createNew);
+      db.run(`INSERT INTO tasks_new (${columns}) SELECT ${columns} FROM tasks`);
+      db.run(`DROP TABLE tasks`);
+      db.run(`ALTER TABLE tasks_new RENAME TO tasks`);
+      for (const { sql } of own) db.run(sql);
+      if (dangling() > before) throw new Error("tasks rebuild broke a foreign key");
+    })();
+  } finally {
+    db.run(`PRAGMA legacy_alter_table = OFF`);
     db.run(`PRAGMA foreign_keys = ON`);
   }
 }
