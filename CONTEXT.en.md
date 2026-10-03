@@ -271,7 +271,7 @@ One Bot's execution segment triggered by a message or wake: working, choosing at
 _Avoid_: turn as ticket, a turn ending means acceptance, a peer line clones same-plan work, endless tool calls
 
 **Archive**:
-Removes a Bot from the roster's main list; its sessions, profile and routines remain, and it can be restored. Only deleting removes the Bot from the roster (files in the shared workspace are left untouched).
+Removes a Bot from the roster's main list; its sessions, profile and routines remain, and it can be restored. Its direct moves to the archived list, and what waits there does not count toward the Dock badge until the Bot is restored. Only deleting removes the Bot from the roster (files in the shared workspace are left untouched).
 _Avoid_: hide as pause (archiving is not Stop)
 
 **Dangerous action**:

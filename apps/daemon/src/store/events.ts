@@ -302,7 +302,8 @@ export function committedEvents(ctx: StoreContext): ClientEvent[] {
       }
     }
   }
-  if (changes.some((change) => change.entity === "notifications")) {
+  // Archiving, restoring or deleting a Bot puts away or brings back what waits in its direct.
+  if (changes.some((change) => change.entity === "notifications" || change.entity === "bots")) {
     out.push({ event: "notification.summary", occurred_at, summary: getNotificationSummary(ctx) });
   }
   if (changes.some((change) => change.entity === "notification_policy")) {

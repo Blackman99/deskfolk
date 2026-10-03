@@ -132,6 +132,36 @@ describe("store notifications", () => {
     }
   });
 
+  it("does not count what waits in an archived Bot's direct until the Bot is restored", () => {
+    const store = new Store();
+    try {
+      const shelved = store.createBot({ name: "Shelved", duties: "write", boundaries: "none" });
+      const kept = store.createBot({ name: "Kept", duties: "write", boundaries: "none" });
+      // Its default-model card, seen but not answered, and a reply you never read.
+      const card = store.createNotification({
+        semantic_key: "model_default:card",
+        kind: "ask",
+        session_id: shelved.direct_session.id,
+        action_state: "open",
+      });
+      store.markNotificationRead(card.id);
+      store.createNotification({ semantic_key: "reply:shelved", kind: "reply", session_id: shelved.direct_session.id });
+      store.createNotification({ semantic_key: "reply:kept", kind: "reply", session_id: kept.direct_session.id });
+      expect(store.getNotificationSummary().attention_count).toBe(3);
+
+      // Archived, its direct leaves the main list for the archived one: nothing there holds the badge.
+      store.archiveBot(shelved.bot.id);
+      expect(store.getNotificationSummary()).toMatchObject({ attention_count: 1, unread_count: 1, open_count: 0 });
+      // Still there to open and answer in the archived list.
+      expect(store.listSessions().map((session) => session.id)).toContain(shelved.direct_session.id);
+
+      store.restoreBot(shelved.bot.id);
+      expect(store.getNotificationSummary()).toMatchObject({ attention_count: 3, unread_count: 2, open_count: 1 });
+    } finally {
+      store.close();
+    }
+  });
+
   it("reading through a line also reads a notification whose note the conversation does not list, up to the next line it does", () => {
     const store = new Store();
     try {
