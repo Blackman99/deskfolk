@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A job taken up in a group is led and chased there
+
+- A job that opened in your direct and went on in a group (《一拳超人》 opened in your direct with 审片员) can now be laid out with `plan_items` by the lead you confirmed in that group (it was refused: "this plan has no confirmed lead"), its tickets can belong to that group's Bots, and the supervisor calls them back there: it used to wake them in the direct they are not in, which opened nothing and left the call-back queued for good.
+- The supervisor's notices go to where you last spoke about the job and never to the direct of a Bot you archived.
+- The tag under the first line of a new conversation, or under a line on a job just opened, names the job at once; it read 「一件事」 until you reloaded.
+
 ### What you say right after a Bot's line is about that line's job
 
 - In your direct with a Bot, a line of yours that comes right after the Bot's line — nothing of yours in between, within two hours, and not opening with 另外 / 顺便 — is filed, by default, under the job that line was on, the way a quoted reply is. That includes a routine's run: 「标题跟 LOGO 没有对齐」 three minutes after the morning brief goes to today's brief, where on 2026-10-03 it was filed under a three-day-old job that happened to be the only other one open there, and the fix was written into that job's requirements.

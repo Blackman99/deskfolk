@@ -40,7 +40,7 @@ import {
   type WorkAnswerResult,
 } from "@real-bot/protocol";
 import { ApiError, probeHealth } from "./api.ts";
-import type { AttributionPlan } from "./chat/attribution.ts";
+import { attributable, messageFilings, type AttributedMessage, type AttributionPlan } from "./chat/attribution.ts";
 import type { FileProgress } from "./file-progress.ts";
 import { CommandActivity } from "./chat/command-activity.ts";
 import { TurnActivity, type ToolStep } from "./chat/turn-activity.ts";
@@ -1556,6 +1556,27 @@ export class MessengerRuntime {
     }
   }
 
+  /** Jobs a reload of a conversation's list was already asked for: one the list still lacks is not asked about again. */
+  private readonly attributionAsked = new Map<string, Set<string>>();
+
+  /**
+   * A tag names its job from its conversation's list, loaded when the conversation opened: the
+   * first line of a conversation that had none (2026-10-03, the first line in a new group), or a
+   * line on a job opened since, read 「一件事」 until a reload. A line on a job the list lacks loads
+   * the list again, from that line, once per job.
+   */
+  private loadAttributionFor(message: AttributedMessage & { id: string; session_id: string }): void {
+    if (!attributable(message)) return;
+    const plans = this.attributionPlans[message.session_id];
+    const missing = messageFilings(message).map((row) => row.task_id).filter((id) => !plans?.some((plan) => plan.id === id));
+    const asked = this.attributionAsked.get(message.session_id) ?? new Set<string>();
+    const fresh = missing.filter((id) => !asked.has(id));
+    if (fresh.length === 0) return;
+    for (const id of fresh) asked.add(id);
+    this.attributionAsked.set(message.session_id, asked);
+    void this.loadAttributionPlans(message.session_id, message.id);
+  }
+
   private readonly attributionRevision = new Map<string, number>();
   private messageSnapshotRevision = 0;
   private messageInvalidationSeq = 0;
@@ -3011,6 +3032,7 @@ export class MessengerRuntime {
         if (this.attributionPlans[event.session_id]) void this.loadAttributionPlans(event.session_id);
       }
     }
+    if (event.event === "message.created" || event.event === "message.upsert") this.loadAttributionFor(event);
     let next = applyEvent(this.snapshot, event);
     this.snapshot = next;
     if (event.event === "annotation.upsert" || event.event === "annotation.removed") this.noteAnnotationWrite(event.id);

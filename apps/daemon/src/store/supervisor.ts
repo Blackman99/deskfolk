@@ -23,6 +23,7 @@ import { isReservedTaskPath } from "./tasks";
 import { ticketDependencies } from "./tickets";
 import { executionRecoveryFacts } from "./tool-executions";
 import { ceilingCardOf, STAGE_SQL, superviseSubmissions, ticketReviewer, type Submission } from "./submissions";
+import { confirmedLeadsOf, conversationFor, eligibleInJob, jobConversations } from "./job-conversations";
 import { projectInsertedWorkEvent, recordWorkEvent } from "./work-events";
 import { queueWork } from "./work-items";
 
@@ -152,13 +153,6 @@ function beforeSupervision(since: number | null, updatedAt: string): boolean {
   return since !== null && Date.parse(updatedAt) < since;
 }
 
-/** A Bot that can take work in this plan: not archived or deleted, and in the plan's conversation. */
-function eligibleInPlan(ctx: StoreContext, botId: string | null | undefined, sessionId: string | null): string | null {
-  if (!botId || !sessionId) return null;
-  return ctx.db.query<{ id: string }, [string, string]>(`SELECT b.id FROM bots b JOIN session_participants p ON p.member = b.id
-    AND p.session_id = ? AND p.left_at IS NULL WHERE b.id = ? AND b.archived_at IS NULL AND b.deleted_at IS NULL`).get(sessionId, botId)?.id ?? null;
-}
-
 function botAlive(ctx: StoreContext, botId: string): boolean {
   return Boolean(ctx.db.query("SELECT 1 FROM bots WHERE id = ? AND archived_at IS NULL AND deleted_at IS NULL").get(botId));
 }
@@ -166,23 +160,24 @@ function botAlive(ctx: StoreContext, botId: string): boolean {
 /**
  * The plan's lead (§5.3 「迁移时的持球者」), read rather than written so that your lines' routing
  * (which follows a stored lead) does not change under you: the stored lead; else the Bot that
- * opened the plan; else the group's confirmed lead; else the Bot with the most turns in the plan.
- * Each only while it can still take work there.
+ * opened the plan; else a lead you confirmed in one of its groups (its home's first, then where you
+ * spoke about it last); else the Bot with the most turns in the plan. Each only while it can still
+ * take work in one of the job's conversations (see `job-conversations.ts`).
  */
 export function planLead(ctx: StoreContext, taskId: string): string | null {
   const row = plan(ctx, taskId);
   if (!row?.session_id) return null;
+  const conversations = jobConversations(ctx, taskId);
   const candidates = [
     row.lead_bot_id,
     ctx.db.query<{ actor: string }, [string]>(`SELECT actor FROM work_events WHERE task_id = ? AND kind = 'plan.opened'
       ORDER BY seq LIMIT 1`).get(taskId)?.actor ?? null,
-    ctx.db.query<{ member: string }, [string]>(`SELECT member FROM session_participants WHERE session_id = ? AND is_lead = 1
-      AND left_at IS NULL ORDER BY joined_at, member LIMIT 1`).get(row.session_id)?.member ?? null,
+    ...confirmedLeadsOf(ctx, conversations),
     ctx.db.query<{ bot_id: string }, [string]>(`SELECT bot_id FROM turns WHERE task_id = ? AND IFNULL(mode, 'work') <> 'readonly'
       GROUP BY bot_id ORDER BY COUNT(*) DESC, MIN(created_at), bot_id LIMIT 1`).get(taskId)?.bot_id ?? null,
   ];
   for (const candidate of candidates) {
-    const eligible = eligibleInPlan(ctx, candidate, row.session_id);
+    const eligible = eligibleInJob(ctx, candidate, taskId, conversations);
     if (eligible) return eligible;
   }
   return null;
@@ -226,7 +221,7 @@ export function ballHolder(ctx: StoreContext, input: { ticketId: string }): Ball
   const blocked = ctx.db.query<{ id: string }, [string, string]>(`SELECT id FROM work_items WHERE task_id = ? AND ticket_id = ?
     AND state = 'blocked' ORDER BY created_at, id LIMIT 1`).get(ticket.task_id, ticket.id);
   if (blocked) return { kind: "user", reason: "blocked", ref: blocked.id };
-  const owner = eligibleInPlan(ctx, ticket.owner_bot_id ?? ticket.worker, home?.session_id ?? null);
+  const owner = eligibleInJob(ctx, ticket.owner_bot_id ?? ticket.worker, ticket.task_id);
   const botId = owner ?? planLead(ctx, ticket.task_id);
   if (holdsCovering(ctx, { botId, sessionId: home?.session_id ?? null, taskId: ticket.task_id, ticketId: ticket.id }).length) {
     return { kind: "user", reason: "held", ref: ticket.id };
@@ -395,11 +390,17 @@ function restartDefers(ctx: StoreContext, record: RestartRecord, now: string): s
   return null;
 }
 
-/** Where a line about this work goes: the first of these you are in, else your direct with the Bot. */
+/**
+ * Where a line about this work goes: the first of these you are in, else your direct with the Bot.
+ * Never the direct of a Bot you archived or deleted: that conversation is out of your list, and a
+ * notice there about work going on elsewhere is one you would not see (2026-10-03).
+ */
 function placeToTell(ctx: StoreContext, botId: string, candidates: ReadonlyArray<string | null | undefined>): string | null {
   for (const id of candidates) {
     if (id && ctx.db.query(`SELECT 1 FROM sessions s JOIN session_participants p ON p.session_id = s.id AND p.member = ?
-      AND p.left_at IS NULL WHERE s.id = ? AND s.archived_at IS NULL`).get(USER_MEMBER, id)) return id;
+      AND p.left_at IS NULL WHERE s.id = ? AND s.archived_at IS NULL AND NOT (s.kind = 'direct' AND EXISTS (SELECT 1
+        FROM session_participants q JOIN bots b ON b.id = q.member WHERE q.session_id = s.id
+          AND (b.archived_at IS NOT NULL OR b.deleted_at IS NOT NULL)))`).get(USER_MEMBER, id)) return id;
   }
   return ctx.db.query<{ id: string }, [string, string]>(`SELECT s.id FROM sessions s
     JOIN session_participants u ON u.session_id = s.id AND u.member = ? AND u.left_at IS NULL
@@ -720,7 +721,7 @@ function callBackOrphans(ctx: StoreContext, result: SupervisorTickResult, now: s
     if (unknown.length > 0 && item && segment) {
       result.deferred.push({ workItemId: item.id, reason: "unknown_effect" });
       notice(ctx, result, { key: `unknown_effect:${item.id}:${segment.id}`, code: "unknown_effect", taskId: ticket.task_id, ticketId: ticket.id,
-        workItemId: item.id, botId: holder.botId, places: [ticket.session_id, item.home_session_id],
+        workItemId: item.id, botId: holder.botId, places: [...jobConversations(ctx, ticket.task_id).spoken, ticket.session_id, item.home_session_id],
         body: supervisorNoticeBody(locale(ctx), { code: "unknown_effect", job, bot: botName(ctx, holder.botId), tool: unknown.at(-1) ?? null }), now });
       continue;
     }
@@ -730,7 +731,7 @@ function callBackOrphans(ctx: StoreContext, result: SupervisorTickResult, now: s
         AND json_extract(wait_spec, '$.progress_seq') = ?`).get(ticket.id, progressSeq)!;
     if (spent.n >= ORPHAN_WAKES_PER_PROGRESS) {
       notice(ctx, result, { key: `stalled:${ticket.id}:${progressSeq}`, code: "stalled", taskId: ticket.task_id, ticketId: ticket.id,
-        workItemId: spent.work_item_id, botId: holder.botId, places: [ticket.session_id],
+        workItemId: spent.work_item_id, botId: holder.botId, places: [...jobConversations(ctx, ticket.task_id).spoken, ticket.session_id],
         body: supervisorNoticeBody(locale(ctx), { code: "stalled", job, bot: botName(ctx, holder.botId), count: spent.n }), now });
       continue;
     }
@@ -738,7 +739,7 @@ function callBackOrphans(ctx: StoreContext, result: SupervisorTickResult, now: s
       ? ctx.db.query<{ ask: string }, [string]>("SELECT ask FROM delegations WHERE id = ?").get(holder.delegationId)?.ask ?? null : null;
     const body = supervisorWakeNote(locale(ctx), { kind: "orphan", job, role: holder.kind, ask, submissionId: holder.kind === "reviewer" ? holder.submissionId : null,
       quietMinutes: Math.max(1, Math.floor((Date.parse(now) - quiet.since) / 60_000)) });
-    const sessionId = item ? item.thread_session_id ?? item.home_session_id : ticket.session_id;
+    const sessionId = item ? item.thread_session_id ?? item.home_session_id : conversationFor(ctx, holder.botId, ticket.task_id) ?? ticket.session_id;
     const queued = queueWork(ctx, { botId: holder.botId, sessionId, taskId: ticket.task_id, ticketId: ticket.id, messageId: null, author: "app",
       body, source: "system", kind: "wake", priority: 3, notice: false });
     const checkBackId = recordWake(ctx, { work: queued.workItem, sessionId, note: body, now,

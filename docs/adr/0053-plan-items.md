@@ -21,3 +21,9 @@ ADR 0040 §2.8 lists `plan_items` as the lead's own tool: tickets, who makes the
 ## 取舍 / Trade-offs
 
 - **按标题认任务**：负责人改标题会开新任务；换来的是返工、补分件不用记任务 id。
+
+## 2026-10-03 补记：负责人也看你说过这件事的群 / The lead in the groups you spoke about the job in
+
+「你在群里确认的负责人」原来只看规划的主会话。私聊里开出、后来在群里接着做的事（《一拳超人》），群里你确认的负责人调 `plan_items` 被拒「this plan has no confirmed lead」，谁做、谁审也只能填主会话里的 Bot。现在两者都看这件事的会话：主会话和你说过它的会话（见 [ADR 0045](0045-supervisor.md) 的补记）。存下的负责人和私聊里唯一的 Bot 不变，仍然不按谁跑得多推算。
+
+"The group lead you confirmed" was read in the plan's home only. For a job opened in a direct and taken up in a group (《一拳超人》), the lead you confirmed in that group was refused `plan_items` ("this plan has no confirmed lead"), and owners and reviewers had to be Bots of the home. Both now read the job's conversations: its home and those you spoke about it in (see the note in [ADR 0045](0045-supervisor.md)). The stored lead and the one Bot of a direct are unchanged; it is still never whoever ran most.

@@ -11,6 +11,7 @@ import type { Ticket } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { filenamePartNumbers } from "./filing";
+import { allJobConversations, confirmedLeadsOf, eligibleInJob, jobConversations } from "./job-conversations";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import type { StoreContext } from "./shared";
 import { createTicket, getTicket, listTickets, patchTicket } from "./tickets";
@@ -32,23 +33,23 @@ export type PlanItemsResult = {
 type Item = { title: string; owner: string | null; reviewer: string | null; dependsOn: string[]; parts: Array<{ key: string; title: string }> };
 
 /**
- * The lead plan_items listens to: the plan's stored lead, else the group lead you confirmed, else the
- * one Bot of a direct — each while it can still work there. Never the Bot that happened to run most,
- * which would move under you (`planLead` keeps that for whom the supervisor calls back).
+ * The lead plan_items listens to: the plan's stored lead, else a group lead you confirmed in one of
+ * the job's conversations (its home's first, then where you spoke about it last: a job opened in a
+ * direct and taken up in a group is led by the lead you confirmed there), else the one Bot of its
+ * home direct — each while it can still work in one of those conversations. Never the Bot that
+ * happened to run most, which would move under you (`planLead` keeps that for whom the supervisor
+ * calls back).
  */
 function stableLead(ctx: StoreContext, taskId: string): string | null {
   const plan = ctx.db.query<{ session_id: string | null; lead_bot_id: string | null }, [string]>("SELECT session_id, lead_bot_id FROM tasks WHERE id = ?").get(taskId);
   if (!plan?.session_id) return null;
-  const sessionId = plan.session_id;
-  const eligible = (botId: string | null | undefined) => botId ? ctx.db.query<{ id: string }, [string, string]>(`SELECT b.id FROM bots b
-    JOIN session_participants p ON p.member = b.id AND p.session_id = ? AND p.left_at IS NULL WHERE b.id = ? AND b.archived_at IS NULL AND b.deleted_at IS NULL`)
-    .get(sessionId, botId)?.id ?? null : null;
-  const confirmed = ctx.db.query<{ member: string }, [string]>(`SELECT member FROM session_participants WHERE session_id = ? AND is_lead = 1
-    AND left_at IS NULL ORDER BY joined_at, member LIMIT 1`).get(plan.session_id)?.member;
+  const conversations = jobConversations(ctx, taskId);
+  const eligible = (botId: string | null | undefined) => eligibleInJob(ctx, botId, taskId, conversations);
+  const confirmed = confirmedLeadsOf(ctx, conversations).map(eligible).find(Boolean) ?? null;
   const kind = ctx.db.query<{ kind: string }, [string]>("SELECT kind FROM sessions WHERE id = ?").get(plan.session_id)?.kind;
   const directBots = kind === "direct" ? ctx.db.query<{ member: string }, [string]>(`SELECT p.member FROM session_participants p JOIN bots b ON b.id = p.member
     WHERE p.session_id = ? AND p.left_at IS NULL`).all(plan.session_id) : [];
-  return eligible(plan.lead_bot_id) ?? eligible(confirmed) ?? (directBots.length === 1 ? eligible(directBots[0]!.member) : null);
+  return eligible(plan.lead_bot_id) ?? confirmed ?? (directBots.length === 1 ? eligible(directBots[0]!.member) : null);
 }
 
 function text(value: unknown, field: string, max: number): string {
@@ -77,13 +78,15 @@ function partKey(raw: string): { key: string; title: string } {
 }
 
 /** The Bots this plan's tickets can go to: in its conversation, not archived or deleted; by id or exact name. */
-function memberResolver(ctx: StoreContext, sessionId: string): (ref: string, field: string) => string {
-  const members = ctx.db.query<{ id: string; name: string }, [string]>(`SELECT b.id, b.name FROM bots b
-    JOIN session_participants sp ON sp.member = b.id AND sp.left_at IS NULL AND sp.session_id = ?
-    WHERE b.archived_at IS NULL AND b.deleted_at IS NULL`).all(sessionId);
+/** The Bots of the job's conversations (its home, and where you spoke about it), by id or name. */
+function memberResolver(ctx: StoreContext, taskId: string): (ref: string, field: string) => string {
+  const sessions = allJobConversations(jobConversations(ctx, taskId));
+  const members = ctx.db.query<{ id: string; name: string }, [string]>(`SELECT DISTINCT b.id, b.name FROM bots b
+    JOIN session_participants sp ON sp.member = b.id AND sp.left_at IS NULL AND sp.session_id IN (SELECT value FROM json_each(?))
+    WHERE b.archived_at IS NULL AND b.deleted_at IS NULL`).all(JSON.stringify(sessions));
   return (ref, field) => {
     const found = members.find((bot) => bot.id === ref) ?? members.find((bot) => bot.name === ref);
-    if (!found) throw new HttpError(422, "invalid_args", `${field} "${ref}" is not a Bot in this plan's conversation`);
+    if (!found) throw new HttpError(422, "invalid_args", `${field} "${ref}" is not a Bot in this plan's conversations`);
     return found.id;
   };
 }
@@ -102,7 +105,7 @@ export function planItems(ctx: StoreContext, input: { turnId: string; items: unk
   if (lead !== turn.bot_id) throw new HttpError(403, "forbidden", "only the plan's lead lays out its tickets; ask the lead, or delegate to it");
   if (!Array.isArray(input.items) || input.items.length === 0) throw new HttpError(422, "invalid_args", "items must be a non-empty list");
   if (input.items.length > PLAN_ITEMS_MAX) throw new HttpError(422, "invalid_args", `at most ${PLAN_ITEMS_MAX} items in one call`);
-  const member = memberResolver(ctx, plan.session_id);
+  const member = memberResolver(ctx, taskId);
   const items: Item[] = input.items.map((raw, index) => {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new HttpError(422, "invalid_args", `item ${index + 1} must be an object`);
     const entry = raw as Record<string, unknown>;

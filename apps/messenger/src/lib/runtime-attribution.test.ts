@@ -63,3 +63,23 @@ test("runtime loads all manual attribution choices including untouched plans fro
     { id: "plan-b", title: "海报", tickets: [] },
   ]);
 });
+
+test("a line on a job the conversation's list lacks loads the list again, once per job", async () => {
+  // 2026-10-03: the first line in a new group was filed under a job, and its tag read 「一件事」
+  // until a reload: the list loads when a conversation opens, from one of its lines, and it had none.
+  const calls: string[] = [];
+  const runtime = connected({ get: async (path: string) => { calls.push(path); return { items: [{ id: "plan-a", title: "一拳超人", tickets: [] }] }; } });
+  const ingest = (message: ReturnType<typeof aMessage>) => Reflect.get(runtime, "ingest").call(runtime, { ...message, event: "message.created", occurred_at: "now" });
+  const on = (task_id: string) => ({ filing_state: "filed" as const, filings: [{ task_id, ticket_id: null, part_key: null }] });
+  ingest(aMessage({ id: "m-1", session_id: "group-1", ...on("plan-a") }));
+  await Promise.resolve(); await Promise.resolve();
+  expect(calls).toEqual(["/v1/messages/m-1/attribution"]);
+  expect(runtime.attributionPlans["group-1"]?.map((plan) => plan.title)).toEqual(["一拳超人"]);
+  // Listed now: no reload. A job it still lacks after a reload is not asked about again.
+  ingest(aMessage({ id: "m-2", session_id: "group-1", kind: "bot", author: "bot-1", ...on("plan-a") }));
+  ingest(aMessage({ id: "m-3", session_id: "group-1", ...on("plan-gone") }));
+  await Promise.resolve(); await Promise.resolve();
+  ingest(aMessage({ id: "m-4", session_id: "group-1", ...on("plan-gone") }));
+  await Promise.resolve(); await Promise.resolve();
+  expect(calls).toEqual(["/v1/messages/m-1/attribution", "/v1/messages/m-3/attribution"]);
+});
