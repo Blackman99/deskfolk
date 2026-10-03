@@ -7,7 +7,7 @@ import { Store } from ".";
 import { filenamePartNumbers } from "./filing";
 import { ENGINE_LEVELS } from "./schema-gate";
 import { createHold, liftHold } from "./holds";
-import { checkLines, superviseSubmissions, UNREVIEWED_AFTER_MS } from "./submissions";
+import { checkLines, setTicketStage, settlePlanStage, superviseSubmissions, UNREVIEWED_AFTER_MS } from "./submissions";
 
 const stores: Store[] = [];
 afterEach(() => { for (const store of stores.splice(0)) store.close(); });
@@ -1194,3 +1194,21 @@ test("one part approved does not approve the ticket or lift another part's ceili
   expect(() => submit(f, produced.id, [[`${f.ticket.dir}/shot_01.mp4`, "1".repeat(64)]])).toThrow("capability ceiling");
 });
 
+
+test("a delivered job goes back to active when one of its tickets takes new work, and is delivered again once it is through", () => {
+  // Walked through on 2026-10-03: after delivery you said the third slogan was too plain, the lead
+  // asked for a new one and it was handed in — the ticket was in review again, the job still read
+  // delivered, and the supervisor, which only chases active jobs, would never chase that review.
+  const f = fixture();
+  setTicketStage(f.ctx, { ticketId: f.ticket.id, stage: "approved", source: "review" });
+  expect(settlePlanStage(f.ctx, f.plan.id)).toBe(true);
+  expect(f.store.getTask(f.plan.id)).toMatchObject({ stage: "delivered", status: "done" });
+
+  setTicketStage(f.ctx, { ticketId: f.ticket.id, stage: "in_review", source: "submission" });
+  expect(f.store.getTask(f.plan.id)).toMatchObject({ stage: "active", status: "active" });
+  expect(f.store.listWorkEvents({ kind: "plan.reopened" }).map((event) => event.payload)).toMatchObject([{ ticket: f.ticket.id, after: "in_review" }]);
+
+  setTicketStage(f.ctx, { ticketId: f.ticket.id, stage: "approved", source: "review" });
+  expect(settlePlanStage(f.ctx, f.plan.id)).toBe(true);
+  expect(f.store.getTask(f.plan.id)).toMatchObject({ stage: "delivered" });
+});

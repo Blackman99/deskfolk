@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Rework and changes after delivery keep the job straight
+
+- A Bot that hands in work it was asked for ends its segment once it has submitted. It was told to "carry on" — the request it had just handed in for counted as owed — and handed in again over the version under review.
+- A delivered job goes back to active when one of its tickets takes new work (a change you asked for after delivery, a rework), so the supervisor chases it again; it is delivered again once it is through.
+- On the board an approved ticket says who made it instead of "X is on it" and no longer "waits for #NN"; a dropped ticket says nobody's.
+
 ### A lead's group job runs through without waiting
 
 - A delegation that asks for a deliverable is answered when that hand-over is approved — by a review, the app's checks or your 放行 — and the Bot that delegated is woken with it at once. It used to stay open for good: the lead waited on it and never heard, and the job moved on only when the supervisor called it back minutes later.

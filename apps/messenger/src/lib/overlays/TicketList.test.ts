@@ -525,3 +525,21 @@ test("the rest of the card picks the ticket as its title does, and only the pick
   expect([...rowFor(view.host, "写结论").querySelectorAll(".ticket-setting-label")].map((label) => label.textContent)).toEqual([t.plan.reviewer, t.plan.editDepends]);
   view.close();
 });
+
+test("an approved ticket says who made it, a dropped one is nobody's, and neither waits on anything", () => {
+  // 2026-10-03: an approved poster read 「已通过 · 设计师在做 · 要等 #02 先完成」 once the slogans it
+  // depended on were handed in again, and a dropped ticket read 「搁置 · 设计师在做」: it is nobody's.
+  const detail = aDetail({
+    supervision_on: true,
+    tickets: [
+      aTicket({ id: "t1", seq: 1, title: "做一张海报", status: "parked", worker: "bot-1" }),
+      aTicket({ id: "t2", seq: 2, title: "三句宣传语", status: "review", worker: "bot-1" }),
+      aTicket({ id: "t3", seq: 3, title: "竖版海报", status: "done", worker: "bot-1", depends_on: ["t2"] }),
+    ],
+  });
+  const view = open({ detail });
+  const who = [...view.host.querySelectorAll(".ticket-row")].map((row) => row.querySelector(".ticket-who-text")?.textContent?.trim() ?? null);
+  expect(who).toEqual([null, t.plan.worker("制片", true), t.plan.workerDone("制片")]);
+  expect(rowFor(view.host, "竖版海报").querySelector(".ticket-depends")).toBeNull();
+  view.close();
+});

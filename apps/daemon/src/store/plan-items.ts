@@ -15,6 +15,7 @@ import { allJobConversations, confirmedLeadsOf, eligibleInJob, jobConversations 
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import type { StoreContext } from "./shared";
 import { createTicket, getTicket, listTickets, patchTicket } from "./tickets";
+import { setTicketStage } from "./submissions";
 import { recordWorkEvent } from "./work-events";
 import { closeWorkItemIfIdle, findOrCreateWorkItem } from "./work-items";
 
@@ -113,7 +114,8 @@ function foldOpeningTicket(ctx: StoreContext, input: { taskId: string; turnId: s
     UNION ALL SELECT 1 FROM turn_runs r JOIN turns t ON t.id = r.turn_id WHERE t.ticket_id = ?1
     UNION ALL SELECT 1 FROM delegations WHERE ticket_id = ?1 AND status = 'open' LIMIT 1`).get(opened);
   if (touched) return null;
-  patchTicket(ctx, opened, { status: "parked" }, { now: new Date(input.now) });
+  // Dropped, not parked: it reads 「作废」 on the board, not as work set aside that someone is on.
+  setTicketStage(ctx, { ticketId: opened, stage: "dropped", source: "supervisor", now: input.now });
   const turn = ctx.db.query<{ bot_id: string; session_id: string; ticket_id: string | null; work_item_id: string | null }, [string]>(
     "SELECT bot_id, session_id, ticket_id, work_item_id FROM turns WHERE id = ?").get(input.turnId);
   if (turn && turn.ticket_id === opened) {

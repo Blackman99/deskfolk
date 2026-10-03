@@ -330,7 +330,9 @@
 				{@const node = latestTurnOfTicket(nodes, ticket.id)}
 				{@const picked = ticket.id === selectedId}
 				{@const ball = ballLabel(ticket)}
-				{@const waits = dependsLabel(ticket)}
+				<!-- A closed ticket waits on nothing and nobody is still on it: 「已通过 · 设计师在做 · 要等 #02」 read as contradictory (2026-10-03). -->
+				{@const closed = ticket.status === 'done' || ticket.status === 'parked'}
+				{@const waits = closed ? null : dependsLabel(ticket)}
 				<div class="ticket-row is-{ticket.status}" class:is-selected={picked} data-ticket-id={ticket.id}>
 					<div class="ticket-head">
 						<button type="button" class="ticket-main" aria-pressed={picked} onclick={() => select(ticket.id)}>
@@ -359,6 +361,8 @@
 					<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 					<div class="ticket-body" onclick={() => select(ticket.id)}>
 						<div class="ticket-meta">
+							<!-- Set aside or dropped, it is nobody's: no 「X做的」 for work never done. -->
+							{#if ticket.status !== 'parked'}
 							<span class="ticket-who">
 								{#if ticket.worker}
 									<span
@@ -383,9 +387,10 @@
 									</span>
 								{/if}
 								<span class="ticket-who-text">
-									{ticket.worker ? t.plan.worker(actorName(ticket.worker, botsById, youLabel, deletedLabel), ticket.status !== "todo") : t.plan.nobody}
+									{ticket.worker ? (closed ? t.plan.workerDone(actorName(ticket.worker, botsById, youLabel, deletedLabel)) : t.plan.worker(actorName(ticket.worker, botsById, youLabel, deletedLabel), ticket.status !== "todo")) : t.plan.nobody}
 								</span>
 							</span>
+							{/if}
 							{#if ball}<span class="ticket-meta-item ticket-ball">{ball}</span>{/if}
 							{#if waits}<span class="ticket-meta-item ticket-depends">{waits}</span>{/if}
 							<!-- Picked, the menus below say these; otherwise the line does, only when one is set. -->

@@ -105,3 +105,9 @@ A disposition for an id that is no mail of this segment's — none at all (often
 期待交付物的委派原来没有任何回复路径：接收方 `submit`、审查放行，委派照样开着，委派方一直等待、也不知道结果；本机的三条都是群被清空才取消的。现在这份交付被放行时（审查、应用按检查、你在卡片上），应用以这份交付回复委派（`reply_ref = submission:<id>`），委派方立刻排队叫醒。点名分件的要放行覆盖全部分件，没点名的等整张任务通过；打回不回复。在一次 8 级的群任务走查里（负责人拆活、委派宣传语、审查、你放行），这让负责人在你放行后一秒内接着做海报，而不是 3 分半钟后被监督器当成没人推的任务叫醒、还挂着一条永远等不到的等待。
 
 A delegation that expects a deliverable had no path to an answer: the recipient's `submit` and an approving review left it open, and the delegating Bot waited for good without hearing (the three in the live database were cancelled only when their group was cleared). Now the approval of that hand-over — by a review, the app on its checks, or your card — answers the delegation with it (`reply_ref = submission:<id>`) and queues the delegating Bot at once. One naming parts needs them all approved; one naming none, the ticket through; a rejection answers nothing. In a level-8 walkthrough of a group job (the lead laying it out, delegating the slogans, reviewing, you approving) the lead went on to its poster within a second of your approval, instead of being woken 3½ minutes later as an orphaned ticket with a wait that could never end.
+
+## 2026-10-03 补记：交完等审查不算欠着 / A hand-over under review is not owed
+
+结束契约把还开着的、交给自己的委派都算作没完成的义务。接收方 `submit` 之后，那条期待交付物的委派要等放行才回复，于是 `submit` 结束不了这一段，回「carry on」，Bot 照着继续改、再交一份，顶掉正在审的那份。现在接收方为它交的那份还在检查、审查或等你放行时，这条委派不算义务；被打回后任务进返工，又算。
+
+The end contract counted every open delegation to the segment as unfinished. After the recipient's `submit`, the deliverable delegation stays open until approval, so `submit` could not end the segment and answered "carry on", and the Bot rewrote and handed in again over the one under review. Now, while the recipient's hand-over for it is being checked, reviewed or waits on you, the delegation is not counted; sent back, the ticket is in rework and it counts again.

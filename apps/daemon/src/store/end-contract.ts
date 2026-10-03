@@ -123,8 +123,15 @@ function obligations(ctx: StoreContext, turn: Actor): EndObligations {
     ).all(turn.task_id, turn.ticket_id);
   const outgoingDelegations = ctx.db.query<{ id: string }, [string | null]>(
     "SELECT id FROM delegations WHERE from_work_item_id = ? AND status = 'open' ORDER BY rowid").all(turn.work_item_id).map((row) => row.id);
+  // A deliverable already handed in for a request and waiting on its review (or your 放行) is no
+  // longer owed by this segment: the ball is the reviewer's, and approval answers the request. It
+  // was counted as owed, so a Bot that had just submitted was told to carry on and handed in again
+  // over the one under review (2026-10-03). Sent back, its ticket is in rework and owed again.
   const incomingDelegations = ctx.db.query<{ id: string }, [string | null, string]>(
-    "SELECT id FROM delegations WHERE to_work_item_id = ? AND to_bot_id = ? AND status = 'open' ORDER BY rowid").all(turn.work_item_id, turn.bot_id).map((row) => row.id);
+    `SELECT d.id FROM delegations d WHERE d.to_work_item_id = ?1 AND d.to_bot_id = ?2 AND d.status = 'open'
+      AND NOT (d.expects = 'deliverable' AND EXISTS (SELECT 1 FROM submissions s WHERE s.work_item_id = d.to_work_item_id
+        AND s.task_id = d.task_id AND (d.ticket_id IS NULL OR s.ticket_id = d.ticket_id) AND s.state IN ('checking', 'submitted', 'in_review')))
+      ORDER BY d.rowid`).all(turn.work_item_id, turn.bot_id).map((row) => row.id);
   const waits = ctx.db.query<{ id: string }, [string | null, string]>(`SELECT id FROM check_backs c
     WHERE (c.work_item_id = ?1 OR c.turn_id = ?2) AND c.fired_at IS NULL AND c.voided_at IS NULL AND c.suspended_at IS NULL
       AND (c.wait_spec IS NULL OR json_extract(c.wait_spec, '$.kind') = 'timer'

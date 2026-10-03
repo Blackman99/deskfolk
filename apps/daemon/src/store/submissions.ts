@@ -228,7 +228,24 @@ export function setTicketStage(ctx: StoreContext, input: {
       ticketId: row.id, turnId: input.turnId ?? null, payload: { work_item_id: input.workItemId ?? null, before, after: input.stage, source: input.source,
         submission_id: input.submissionId ?? null } });
   }
+  if (before === "approved" && input.stage !== "approved" && input.stage !== "dropped") reopenDeliveredPlan(ctx, row.task_id, row.id, input.stage, now);
   return getTicket(ctx, row.id);
+}
+
+/**
+ * A delivered job one of whose tickets takes new work — handed in again, sent back to rework — is
+ * active again: delivered means every ticket approved (ADR 0046), and the supervisor chases only
+ * active jobs. It stayed delivered, so a review of new work in it was never chased (2026-10-03, a
+ * slogan replaced after delivery). It is delivered again once its tickets are through.
+ */
+function reopenDeliveredPlan(ctx: StoreContext, taskId: string, ticketId: string, stage: TicketStage, now: string): void {
+  const plan = ctx.db.query<{ status: string; stage: string | null }, [string]>("SELECT status, stage FROM tasks WHERE id = ?").get(taskId);
+  if (!plan || (plan.stage ?? (plan.status === "done" ? "delivered" : "active")) !== "delivered") return;
+  const task = getTask(ctx, taskId);
+  const spec = parsePlanSpec(task.spec);
+  if (spec) setTaskSpec(ctx, taskId, { ...spec, status: "active" }, now);
+  ctx.db.run("UPDATE tasks SET stage = 'active', status = 'active', delivered_at = NULL, closed_at = NULL, dormant_since = NULL WHERE id = ?", [taskId]);
+  recordWorkEvent(ctx, { kind: "plan.reopened", actor: "app", taskId, ticketId, payload: { ticket: ticketId, after: stage } });
 }
 
 function setPartStage(ctx: StoreContext, submission: Submission, stage: "submitted" | "approved" | "rework"): void {
@@ -1089,9 +1106,11 @@ function reviewerVerdictLine(ctx: StoreContext, review: ReviewRecord, submission
   const model = review.reviewer_model ?? (en ? "an unknown model" : "未知模型");
   const notes = [review.note, ...review.verdicts.map((v) => `${v.requirement_id}: ${v.verdict}${v.evidence.length > 0 ? ` (${v.evidence.join("; ")})` : ""}`)]
     .filter((line): line is string => Boolean(line));
+  // A note that ends its own sentence is not given a second full stop (「……12 个字。。」).
+  const closed = (text: string, stop: string) => /[。．.!！?？]$/.test(text) ? text : `${text}${stop}`;
   const said = en
-    ? `${name} reviewed it and judged it ${review.outcome === "approve" ? "good" : "not good"}${notes.length > 0 ? `: ${notes.join("; ")}.` : "."}`
-    : `${name}审过了，判${review.outcome === "approve" ? "通过" : "不通过"}${notes.length > 0 ? `：${notes.join("；")}。` : "。"}`;
+    ? closed(`${name} reviewed it and judged it ${review.outcome === "approve" ? "good" : "not good"}${notes.length > 0 ? `: ${notes.join("; ")}` : ""}`, ".")
+    : closed(`${name}审过了，判${review.outcome === "approve" ? "通过" : "不通过"}${notes.length > 0 ? `：${notes.join("；")}` : ""}`, "。");
   // An answer's words or the organizer's reading are the card's reason already (its first line says so).
   if (submission.origin === "answer" || submission.origin === "organizer") return said;
   const why = review.same_model

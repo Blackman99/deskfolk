@@ -88,3 +88,38 @@ test("you approve the slogans, and the lead goes straight on to its poster", asy
   expect(posterSubmissions).toBe(1);
   expect(h.store.db.query("SELECT 1 FROM work_items WHERE state = 'waiting'").all()).toEqual([]);
 });
+
+test("a delegated hand-over ends its segment: the delegation it answers is in review, not owed", async () => {
+  // Walked through on 2026-10-03: 文案 submitted the slogans and was told "this work still has open
+  // requests … carry on" — the delegation it had just handed in for counted as unfinished — so it
+  // kept going, rewrote the file and handed it in again over the one under review.
+  const h = await createScenario({ learning: true });
+  open.push(h);
+  const [designer, writer] = h.createBots({ name: "设计师", duties: "海报和视觉；拆活、派活、审稿" }, { name: "文案", duties: "写宣传语" });
+  const room = h.group("海报组", [designer!, writer!]);
+  confirmGroupLead(h.store, room, designer!.id);
+  const ticketId = (title: string) => h.store.db.query<{ id: string }, [string]>("SELECT id FROM tickets WHERE title = ?").get(title)?.id ?? null;
+  const dirOf = (title: string) => h.store.db.query<{ dir: string }, [string]>("SELECT dir FROM tickets WHERE title = ?").get(title)!.dir;
+  const stop = call(tool("end_turn", { reason: "nothing_new" }));
+  h.script(designer!).handle(({ turn, hop }) => {
+    if (hop === 1 && turn?.mode === "desk") return call(tool("plan_items", { items: [{ title: "三句宣传语", owner: "文案", reviewer: "设计师" }] }));
+    if (hop === 2 && turn?.ticket_id !== ticketId("三句宣传语")) {
+      return call(tool("delegate", { to: "文案", ask: "写三句宣传语", expects: "deliverable", ticket: ticketId("三句宣传语")! }));
+    }
+    return stop;
+  });
+  // Were it told to carry on, it would write and hand in once more.
+  h.script(writer!).handle(({ hop }) => hop === 1 || hop === 3
+    ? call(writeFile(`${dirOf("三句宣传语")}/slogans.md`, hop === 1 ? "1. 一杯好咖啡\n" : "1. 再改一版\n"))
+    : hop === 2 || hop === 4 ? call(tool("submit", { artifacts: [`${dirOf("三句宣传语")}/slogans.md`] })) : stop);
+
+  h.postUser(room, "写三句咖啡店开业宣传语");
+  await h.waitIdle({ timeoutMs: 15_000 });
+
+  const submits = h.toolCalls(writer!, "submit");
+  expect(submits).toHaveLength(1);
+  // Write, hand in, and the segment is over.
+  expect(h.hops(writer!).map((hop) => hop.hop)).toEqual([1, 2]);
+  expect(h.store.db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM submissions").get()!.n).toBe(1);
+  expect(h.store.db.query<{ status: string }, []>("SELECT status FROM delegations").get()!.status).toBe("open");
+});

@@ -147,3 +147,9 @@ Complaint rework read only lines filed under a ticket. In the AI video group you
 放行卡片早就把交付的文件挂成附件，但信使画系统消息时不画附件，卡片上只有文字里的一串路径；原因写成「一份没有你确认过的检查撑着的交付」「（fixture，和生产者同模型）」。现在卡片上的文件能点开预览，文字写「……交上来了（文件名），等你定」，再说明为什么要你定：审查者和做的 Bot 同模型（同一个模型审自己的活不算数）、审查者没在要求上给依据，或没有审查者也没有你确认过的检查。
 
 The approval card always attached the hand-over's files, but the messenger drew no attachments on system lines, so the card showed only paths in its words, and gave its reason as "a hand-over no check you confirmed backs" and "(fixture, the same model as the producer)". Its files now open from the card, and it reads "…is in (file names), and it is yours to decide", then why: the reviewer runs on the producer's model (a model passing its own kind of work does not count), the reviewer gave no grounds on what you asked, or nobody reviews it and no check you confirmed stands behind it.
+
+## 2026-10-03 补记：已交付的规划有新工作就回到进行中 / A delivered plan with new work is active again
+
+规划只在所有没作废的任务都通过时交付，但没有回退：交付后你提意见、负责人让人重交，任务回到审查中，规划却还写着已交付，监督器（只追进行中的规划）不会追这次审查。现在任务从「已通过」变成审查中、返工或进行中时，已交付的规划回到进行中（`plan.reopened`），再全部通过就再交付。开事时折掉的那张任务写成「作废」阶段，看板上不再显示成谁在做的「搁置」。
+
+A plan is delivered once every ticket not dropped is approved, but nothing took that back: when, after delivery, you complained and the lead had the work handed in again, the ticket was in review while the plan still read delivered, and the supervisor, which chases only active plans, would not chase that review. Now a ticket leaving approved for review, rework or work puts a delivered plan back to active (`plan.reopened`), delivered again once all are through. The opening ticket folded by `plan_items` is set to the dropped stage, so the board no longer shows it as parked work someone is on.
