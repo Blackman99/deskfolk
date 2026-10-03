@@ -471,6 +471,57 @@ describe("MCP HTTP host", () => {
   });
 
   /**
+   * A restarted or redeployed server forgets every session and answers 404 on the old id. The host
+   * kept sending that id: the next turn's first step listed none of the server's tools, a call failed
+   * with "mcp http 404", and a settings refresh stored an empty tool list.
+   */
+  test("a restarted HTTP server's 404 opens a new session and the request runs once", async () => {
+    const http = await startHttp(undefined, "--http-sessions");
+    const base = http.url.replace(/\/mcp$/, "");
+    const forget = () => fetch(`${base}/forget`, { method: "POST" });
+    const stats = async () =>
+      (await (await fetch(`${base}/stats`)).json()) as { toolCallsRun: number; sessionsOpened: number };
+    try {
+      const spec = {
+        id: "remote",
+        name: "remote",
+        transport: "http" as const,
+        command: "",
+        args: [],
+        url: http.url,
+        headers: [],
+        enabled: true,
+        instructions: null,
+      };
+      const host = createMcpHost({
+        listServers: () => [spec],
+        probeTimeoutMs: 400,
+        requestTimeoutMs: 2000,
+        shutdownWaitMs: 200,
+      });
+      hosts.push(host);
+      expect((await host.listChatTools()).map((t) => t.function.name)).toContain("mcp_remote_echo");
+
+      await forget();
+      const result = await host.call("mcp_remote_echo", { text: "after restart" });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect((result.data.content as Array<{ text: string }>)[0]?.text).toBe("after restart");
+      expect((await stats()).toolCallsRun).toBe(1);
+
+      await forget();
+      expect((await host.inspect(spec)).tools.map((t) => t.name)).toContain("echo");
+
+      await forget();
+      const listed = await host.listForTurn();
+      expect(listed.tools.map((t) => t.function.name)).toContain("mcp_remote_echo");
+      expect((await stats()).sessionsOpened).toBe(4);
+    } finally {
+      http.close();
+    }
+  });
+
+  /**
    * The request timer only covers the response headers. A stream that opens and then says nothing
    * used to hold the call — and the whole turn behind it — open for good.
    */

@@ -11,6 +11,8 @@
  *   --video-polls=N     With --media: each job answers check_video with "running" N times, then "completed"
  *   --http              Streamable HTTP fixture; prints { port } then serves JSON-RPC
  *   --http-quiet-sse    Answer tools/call with an SSE stream that never sends a result
+ *   --http-sessions     A new session per handshake; POST /forget drops them all (a restart), a request
+ *                       on a dropped one gets 404, GET /stats counts the tools/call it ran
  */
 
 const flags = new Set(process.argv.slice(2));
@@ -271,10 +273,20 @@ function consume(chunk: string): void {
 
 if (flags.has("--http")) {
   const requiredAuth = process.env.MCP_HTTP_AUTH ?? null;
+  const sessionsMode = flags.has("--http-sessions");
+  const liveSessions = new Set<string>();
+  let sessionSerial = 0;
+  let toolCallsRun = 0;
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: Number(process.env.MCP_HTTP_PORT ?? "0"),
     async fetch(request) {
+      const path = new URL(request.url).pathname;
+      if (sessionsMode && path === "/forget") {
+        liveSessions.clear();
+        return new Response(null, { status: 204 });
+      }
+      if (sessionsMode && path === "/stats") return Response.json({ toolCallsRun, sessionsOpened: sessionSerial });
       if (request.method === "DELETE") return new Response(null, { status: 202 });
       if (requiredAuth) {
         const got = request.headers.get("Authorization");
@@ -289,6 +301,23 @@ if (flags.has("--http")) {
         return Response.json({ jsonrpc: "2.0", error: { code: -32700, message: "parse error" } }, { status: 400 });
       }
       const msg = parsed as { id?: string | number; method?: string; params?: Record<string, unknown> };
+      let sessionId = "fixture-session";
+      if (sessionsMode) {
+        const sent = request.headers.get("MCP-Session-Id");
+        if (msg.method === "server/discover" || msg.method === "initialize") {
+          sessionSerial += 1;
+          sessionId = `session-${sessionSerial}`;
+          liveSessions.add(sessionId);
+        } else if (!sent || !liveSessions.has(sent)) {
+          return Response.json(
+            { jsonrpc: "2.0", id: msg.id ?? null, error: { code: -32001, message: "Session not found" } },
+            { status: 404 },
+          );
+        } else {
+          sessionId = sent;
+        }
+        if (msg.method === "tools/call") toolCallsRun += 1;
+      }
       if (flags.has("--http-legacy-sse") && msg.method === "server/discover") {
         return Response.json(
           { jsonrpc: "2.0", id: "server-error", error: { code: -32600, message: "Bad Request: Missing session ID" } },
@@ -330,7 +359,7 @@ if (flags.has("--http")) {
         });
       }
       return Response.json(reply, {
-        headers: { "MCP-Session-Id": "fixture-session" },
+        headers: { "MCP-Session-Id": sessionId },
       });
     },
   });

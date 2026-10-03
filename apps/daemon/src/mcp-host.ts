@@ -171,6 +171,24 @@ export function createMcpHost(options: McpHostOptions): McpHost {
     return assigned;
   }
 
+  /**
+   * `use` on the server's live session — and once more on a new one when the server turns out to
+   * have forgotten it (a restart or redeploy answers 404), since it never ran the first attempt.
+   * Null when no session can be opened.
+   */
+  async function withSession<T>(server: McpServerSpec, use: (session: McpSession) => Promise<T>): Promise<T | null> {
+    for (let attempt = 0; ; attempt += 1) {
+      const session = await ensure(server);
+      if (!session) return null;
+      try {
+        return await use(session);
+      } catch (error) {
+        if (attempt === 0 && error instanceof McpSessionExpired) continue;
+        throw error;
+      }
+    }
+  }
+
   function guidesFrom(mapped: MappedMcpTool[]): McpPromptGuide[] {
     const byServer = new Map<string, MappedMcpTool[]>();
     for (const tool of mapped) {
@@ -206,13 +224,15 @@ export function createMcpHost(options: McpHostOptions): McpHost {
     }> = [];
     for (const server of enabledServers()) {
       if (closed) break;
-      const session = await ensure(server);
-      if (!session) continue;
+      const used: { session?: McpSession } = {};
       try {
-        const tools = await session.listTools();
-        listed.push({ id: server.id, name: server.name, tools });
+        const tools = await withSession(server, (session) => {
+          used.session = session;
+          return session.listTools();
+        });
+        if (tools) listed.push({ id: server.id, name: server.name, tools });
       } catch {
-        await session.close();
+        await used.session?.close();
         sessions.delete(server.id);
       }
     }
@@ -251,10 +271,9 @@ export function createMcpHost(options: McpHostOptions): McpHost {
     },
     async inspect(server) {
       if (closed) return { instructions: null, tools: [] };
-      const session = await ensure(server);
-      if (!session) return { instructions: null, tools: [] };
       try {
-        const tools = await session.listTools();
+        const tools = await withSession(server, (session) => session.listTools());
+        if (!tools) return { instructions: null, tools: [] };
         return {
           instructions: sessions.get(server.id)?.instructions ?? null,
           tools: tools.map((tool) => ({
@@ -282,9 +301,8 @@ export function createMcpHost(options: McpHostOptions): McpHost {
           await dropUnwantedSessions();
           return fail(`unknown tool: ${modelName}`);
         }
-        const session = await ensure(server);
-        if (!session) return fail("mcp server is not running");
-        const result = await session.callTool(tool.toolName, args, signal);
+        const result = await withSession(server, (session) => session.callTool(tool.toolName, args, signal));
+        if (!result) return fail("mcp server is not running");
         return { ok: true, data: result };
       } catch (error) {
         return fail(error instanceof Error ? error.message : "mcp call failed");
@@ -505,6 +523,17 @@ function spawnChild(server: McpServerSpec): Bun.Subprocess | null {
     });
   } catch {
     return null;
+  }
+}
+
+/**
+ * A Streamable HTTP server answered 404 to a request that carried our session id: it no longer
+ * knows the session (it was restarted or redeployed) and did not run the request. The spec has the
+ * client start a new session, and the request is safe to send again on it.
+ */
+class McpSessionExpired extends Error {
+  constructor() {
+    super("mcp session expired");
   }
 }
 
@@ -870,10 +899,11 @@ class HttpSession implements McpSession {
       Accept: "application/json, text/event-stream",
       "Content-Type": "application/json",
     });
-    if (this.sessionId) {
+    const sentSession = this.sessionId;
+    if (sentSession) {
       headers.set("MCP-Protocol-Version", this.protocolVersion);
     }
-    if (this.sessionId) headers.set("MCP-Session-Id", this.sessionId);
+    if (sentSession) headers.set("MCP-Session-Id", sentSession);
     for (const header of this.headers) headers.set(header.name, header.value);
     if (this.auth) headers.set("Authorization", this.auth.startsWith("Bearer ") ? this.auth : `Bearer ${this.auth}`);
     const controller = new AbortController();
@@ -901,6 +931,10 @@ class HttpSession implements McpSession {
       const sessionHeader = response.headers.get("mcp-session-id");
       if (response.ok && sessionHeader) this.sessionId = sessionHeader;
       if (response.status === 202) return {};
+      if (response.status === 404 && sentSession) {
+        this.expire();
+        throw new McpSessionExpired();
+      }
       if (!response.ok) {
         throw new Error(`mcp http ${response.status}`);
       }
@@ -921,6 +955,13 @@ class HttpSession implements McpSession {
     } finally {
       signal?.removeEventListener("abort", onAbort);
     }
+  }
+
+  /** The server forgot this session: there is nothing left to DELETE, and the host's next `ensure` opens a new one. */
+  private expire(): void {
+    this.sessionId = null;
+    this.dead = true;
+    for (const hook of this.deadHooks) hook();
   }
 
   private async shutdown(): Promise<void> {
