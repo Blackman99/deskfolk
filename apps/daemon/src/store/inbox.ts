@@ -295,6 +295,11 @@ export function refreshHeldInbox(ctx: StoreContext, only: { botId?: string; sess
  * item. An item another turn read, or one this turn never read, is not this turn's to answer for;
  * nor is an id that names none. Said twice, the later word stands.
  */
+/** Why a disposition was not recorded: its id names no mail at all (often the line that woke the segment, which is no mail). */
+export const NO_SUCH_MAIL = "no inbox item has this id";
+/** Why a disposition was not recorded: the mail is real, but another segment read it, or none yet. */
+export const NOT_READ_HERE = "this turn did not read it";
+
 export function disposeInboxItems(
   ctx: StoreContext,
   turnId: string,
@@ -314,11 +319,11 @@ export function disposeInboxItems(
       const seq = inboxSeqOf(label);
       const row = seq === null ? null : getInboxItem(ctx, seq);
       if (!row) {
-        notRecorded.push({ id: label, reason: "no inbox item has this id" });
+        notRecorded.push({ id: label, reason: NO_SUCH_MAIL });
         continue;
       }
       if (row.delivered_turn_id !== turnId) {
-        notRecorded.push({ id: label, reason: "this turn did not read it" });
+        notRecorded.push({ id: label, reason: NOT_READ_HERE });
         continue;
       }
       const disposition = raw.disposition as InboxDisposition;

@@ -93,3 +93,9 @@ The ending contract weighed only obligations: with no ticket of its own to do, n
 上面 `promised_later` 用 `later-words.ts` 的词判断最后一句话是不是在说还在做；同一天就改成由读句读（[ADR 0055](0055-lines-read-by-a-model.md)）：引擎在结束前读本段最后一句话，把读出的那一句交给结束契约（`FinishWorkOptions.lastWord`），读不了时才用词表。点没点名接手、引用截多长，仍按规则。
 
 `promised_later` above judged the last word by the words of `later-words.ts`; the same day it became a reading ([ADR 0055](0055-lines-read-by-a-model.md)): the engine reads the segment's last word before the ending and hands the sentence it found to the contract (`FinishWorkOptions.lastWord`), the word lists only when it cannot be read. Whether someone is named to take it, and how much is quoted, stay rules.
+
+## 2026-10-03 补记：没有的收件不挡收尾 / Mail a segment never had does not hold its ending
+
+处置里点了不是这一段收件的 id——根本不存在（常是叫醒它的那句话，那不是收件），或是别的段读的——什么都不记，也不再让结束被退回（`invalid_inbox_disposition`）。只有这一段读过的收件写了不合法的处置词，或你的话还没处置（`inbox_unacknowledged`），才退回。起因：10-03 01:13 通识修日报的那一段一封收件都没有，却因为在处置里写了叫醒它的那句话被退回两次，以需要处理结束，又被监督器拉起一轮；10-01 到 10-03 同样的退回有 9 次、4 个工作项。
+
+A disposition for an id that is no mail of this segment's — none at all (often the line that woke it, which is no mail) or mail another segment read — records nothing and no longer sends the ending back (`invalid_inbox_disposition`). Only a wrong word on mail the segment did read, or a line of yours it left without one (`inbox_unacknowledged`), does. Why: at 01:13 on 10-03 通识's segment fixing the brief had no mail at all, was sent back twice for naming the line that woke it, ended needing attention and was picked up again by the supervisor; there were 9 such bounces on 4 work items between 10-01 and 10-03.

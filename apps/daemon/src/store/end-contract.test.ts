@@ -138,9 +138,17 @@ test("ending records actual inbox dispositions, bounces for unread-for dispositi
   const corrected = finishWork(f.ctx, { turnId: f.turn.id, reason: "answered", inbox: [{ id: `U${annotation.seq}`, disposition: "declined", note: "Title is required" }] });
   expect(corrected).toMatchObject({ ended: true, state: "idle", dispositions: { recorded: [`U${annotation.seq}`] } });
   expect(getInboxItem(f.ctx, annotation.seq)?.state).toBe("declined");
+  // An id that names no mail (the line that woke it, say) records nothing and asks for nothing: the ending stands.
   const unread = fixture();
-  const invalid = finishWork(unread.ctx, { turnId: unread.turn.id, reason: "answered", inbox: [{ id: "U999999", disposition: "answered" }] });
-  expect(invalid).toMatchObject({ ended: false, code: "invalid_inbox_disposition", dispositions: { recorded: [], notRecorded: [{ id: "U999999" }] } });
+  const nothing = finishWork(unread.ctx, { turnId: unread.turn.id, reason: "answered", inbox: [{ id: "U999999", disposition: "answered" }] });
+  expect(nothing).toMatchObject({ ended: true, dispositions: { recorded: [], notRecorded: [{ id: "U999999" }] } });
+  // A wrong word on mail it did read still sends the ending back.
+  const misread = fixture();
+  const letter = queueInboxItem(misread.ctx, { botId: misread.bot.id, sessionId: misread.room.id, turnId: misread.turn.id, workItemId: misread.itemId,
+    taskId: misread.plan.id, ticketId: misread.ticket.id, messageId: null, author: "user", body: "Keep it short", source: "user", kind: "change", priority: 1 });
+  deliverInboxItems(misread.ctx, [letter.seq], misread.turn.id, 1);
+  const wrong = finishWork(misread.ctx, { turnId: misread.turn.id, reason: "answered", inbox: [{ id: `U${letter.seq}`, disposition: "ok" }] });
+  expect(wrong).toMatchObject({ ended: false, code: "invalid_inbox_disposition", dispositions: { recorded: [], notRecorded: [{ id: `U${letter.seq}` }] } });
 });
 
 test("answered with a real answer replies to only the current exact answer recipient, not an unread review or another ticket", () => {

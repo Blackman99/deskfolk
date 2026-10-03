@@ -7,7 +7,7 @@ import { isoNow } from "../ids";
 import { holdsCovering } from "./holds";
 import { requireNonEmpty, type StoreContext } from "./shared";
 import { recordWorkEvent } from "./work-events";
-import { disposeInboxItems, inboxLabel, turnInbox } from "./inbox";
+import { disposeInboxItems, NO_SUCH_MAIL, NOT_READ_HERE, inboxLabel, turnInbox } from "./inbox";
 import { listDelegations, replyDelegation, type Delegation } from "./delegations";
 import { isReservedTaskPath } from "./tasks";
 import { settingsCached } from "./settings";
@@ -380,10 +380,16 @@ export function finishWork(ctx: StoreContext, input: FinishWorkInput, opts: Fini
     const dispositions = disposeInboxItems(ctx, turn.id, inbox);
     const unacknowledgedInbox = turnInbox(ctx, turn.id).filter((mail) => mail.delivered_turn_id === turn.id
       && mail.state === "delivered" && ["user", "annotation"].includes(mail.source)).map(inboxLabel);
-    if (dispositions.notRecorded.length || unacknowledgedInbox.length) {
-      const code = dispositions.notRecorded.length ? "invalid_inbox_disposition" : "inbox_unacknowledged";
+    // A word about mail this segment never had — no such id (often the line that woke it, which is
+    // no mail), or mail another segment read — records nothing and asks for nothing: only a wrong
+    // word on mail it did read, or mail of yours it left unanswered, sends the ending back. Bounced
+    // twice for an id that named nothing, a segment with no mail at all used to end needing
+    // attention and be picked up again (2026-10-03, 01:17).
+    const refused = dispositions.notRecorded.filter((entry) => entry.reason !== NO_SUCH_MAIL && entry.reason !== NOT_READ_HERE);
+    if (refused.length || unacknowledgedInbox.length) {
+      const code = refused.length ? "invalid_inbox_disposition" : "inbox_unacknowledged";
       return rejectEnd(ctx, turn, { obligations: obligations(ctx, turn), dispositions, unacknowledgedInbox, replies: [], implicitSubmission }, opts, code,
-        `Record valid dispositions for each user inbox item: ${unacknowledgedInbox.join(", ") || dispositions.notRecorded.map((entry) => entry.id).join(", ")}.`);
+        `Record valid dispositions for each user inbox item: ${unacknowledgedInbox.join(", ") || refused.map((entry) => entry.id).join(", ")}.`);
     }
     const answerable = answerableRequests(ctx, turn);
     const unanswered = reason === "answered" && !answer ? answerable.filter((delegation) => requestRead(ctx, delegation, turn.id)) : [];

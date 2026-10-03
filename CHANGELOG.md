@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### An ending is not sent back for naming mail it never had
+
+- A Bot that ends with a disposition for an id that is no mail of its segment — usually the line that woke it — now just ends. It was sent back twice for it, ended needing attention and was picked up again by the supervisor: one more turn for nothing (9 times on 4 jobs between 10-01 and 10-03). A wrong word on mail it did read, or a line of yours left without a disposition, still sends it back.
+
 ### You can rename a job, and the board calls it by its name
 
 - A job's name has a 名字 / Name block at the top of its spec on the board: edit it, Enter, and every tag, the board's heading, its job switcher, its stop menu and every Bot's picture use the new name; its folder keeps its name, and "Last change" says you renamed it. A job used to keep the line that opened it for good — 《一拳超人》 was made for two days under 「让审片员回复视频导演，说明未回复原因并给出审片意见。」.
