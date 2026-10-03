@@ -64,9 +64,13 @@ export function markWorkDirectoryUsed(ctx: StoreContext, turnId: string): void {
   ctx.db.run("UPDATE turns SET work_dir_changes = MAX(work_dir_changes, 1) WHERE id = ? AND task_id IS NOT NULL", [turnId]);
 }
 
-/** A rejected filing never changes a job, and stops asking after two corrections. */
+/**
+ * A rejected filing never changes a job, and the desk stops asking after two corrections. Only a desk
+ * segment counts: once bound, a refused call is an ordinary failed call the Bot reads and retries (the
+ * trouble count and hop limits bound it), not a filing — cutting off a working segment would say it
+ * still needs a job chosen and has run nothing, after it ran everything.
+ */
 export function noteFilingBounce(ctx: StoreContext, turnId: string): number {
-  return ctx.db.query<{ filing_bounces: number }, [string, string]>(
-    "UPDATE turns SET filing_bounces = filing_bounces + 1, updated_at = ? WHERE id = ? RETURNING filing_bounces",
-  ).get(isoNow(), turnId)?.filing_bounces ?? 0;
+  ctx.db.run("UPDATE turns SET filing_bounces = filing_bounces + 1, updated_at = ? WHERE id = ? AND mode = 'desk'", [isoNow(), turnId]);
+  return ctx.db.query<{ filing_bounces: number }, [string]>("SELECT filing_bounces FROM turns WHERE id = ?").get(turnId)?.filing_bounces ?? 0;
 }

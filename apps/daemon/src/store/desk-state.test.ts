@@ -27,6 +27,17 @@ test("filing state reads its rejection budget and records an attention outcome w
   expect(store.getTurn(turn.id).work_item_id).not.toBeNull();
 });
 
+test("only a desk segment spends the filing budget: a bound one's refusals leave it alone", () => {
+  const { store, bot, session, line, turn } = fixture();
+  const plan = store.openTask({ sessionId: session.id, title: "Report" });
+  store.setTurnStatus(turn.id, "completed");
+  const bound = store.createTurn({ sessionId: session.id, botId: bot.id, triggerMessageId: line.id, taskId: plan.id });
+  expect(bound.mode).toBe("work");
+  expect(store.noteFilingBounce(bound.id)).toBe(0);
+  expect(store.noteFilingBounce(bound.id)).toBe(0);
+  expect(store.filingBudget(bound.id)).toBe(0);
+});
+
 test("Continue recovers the original user request across two interruption notes without creating new quotes", () => {
   const { store, line, turn } = fixture();
   const firstNote = store.interruptTurnRecord(turn.id)!.note;

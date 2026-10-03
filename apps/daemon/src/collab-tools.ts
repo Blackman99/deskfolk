@@ -143,11 +143,10 @@ export async function runCollabTool(
       case "create_direct":
         if (ctx.store.capabilities().engine_level >= 3) return fail("use_delegate", "to ask a teammate to work, use delegate");
         return createDirect(ctx, args);
-      case "delegate": {
-        const delegated = delegate(ctx, args);
-        if (!delegated.ok && ["invalid_args", "not_found"].includes(delegated.error?.code ?? "")) ctx.store.noteFilingBounce(ctx.turnId);
-        return delegated;
-      }
+      case "delegate":
+        // Never a filing refusal: at the desk delegate binds the segment before it runs, so what it
+        // refuses is a bound segment's ordinary failed call.
+        return delegate(ctx, args);
       case "add_member":
         return addMember(ctx, args);
       case "remove_member":
@@ -211,7 +210,7 @@ export async function runCollabTool(
         return fail("failed", `unknown tool: ${name}`);
     }
   } catch (error) {
-    if (["work_on", "delegate", "end_turn"].includes(name) && error instanceof HttpError && ["invalid_candidate", "invalid_args", "locked_attribution", "not_found"].includes(error.code)) {
+    if (["work_on", "end_turn"].includes(name) && error instanceof HttpError && ["invalid_candidate", "invalid_args", "locked_attribution", "not_found"].includes(error.code)) {
       ctx.store.noteFilingBounce(ctx.turnId);
     }
     if (error instanceof HttpError) return fail(error.code, error.message);

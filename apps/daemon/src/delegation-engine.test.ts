@@ -202,21 +202,33 @@ test("archiving an active Bot cancels its live completion and forbids the next s
   } finally { release.resolve(); await h.close(); }
 });
 
-test("returned invalid delegate targets also exhaust the shared correction budget", async () => {
+test("a bound segment's refused delegate, work_on and end_turn calls are ordinary failures, not a filing cut-off", async () => {
   const h = await createScenario({ delegation: true });
   try {
-    const [bot] = h.createBots("Writer");
-    const direct = h.direct(bot!);
-    const plan = h.store.openTask({ sessionId: direct, title: "Report" });
-    const line = h.store.postMessage(direct, { body: "Work on report" });
+    const [owner, helper] = h.createBots("Owner", "Helper");
+    const group = h.group("Studio", [owner!, helper!]);
+    const plan = h.store.openTask({ sessionId: group, title: "Episode 1" });
+    const line = h.store.postMessage(group, { body: "@Owner Hand the shot prompts to Helper" });
     h.store.fileMessage(line.id, { explicit: [{ taskId: plan.id }] });
-    h.script(bot!).reply(call(tool("delegate", { to: "Missing", ask: "Work", expects: "answer" })),
-      call(tool("delegate", { to: "Missing", ask: "Work", expects: "answer" })), call(writeFile("too-late.md", "forbidden")));
+    // The AI video group's two cut-offs: the work was done, then the hand-over came back twice.
+    h.script(owner!).reply(call(writeFile("prompts.md", "ten shots")),
+      call(tool("delegate", { to: "Missing", ask: "Shoot it", expects: "deliverable" })),
+      call(tool("delegate", { to: helper!.id, ask: "Shoot it", expects: "deliverable", parts: ["S01"] })),
+      call(tool("work_on", { plan: "not-a-candidate" })),
+      call(tool("end_turn", {})),
+      call(writeFile("notes.md", "still working")),
+      call(endTurn()));
     await h.engine.handleInboundMessage(h.store.getMessage(line.id), { fromUser: true });
     await h.waitIdle();
-    expect(h.toolCalls(bot!, "delegate")).toHaveLength(2);
-    expect(h.toolCalls(bot!, "write_file")).toHaveLength(0);
-    expect(h.turns(bot!)[0]!.end_reason).toBe("needs_attention");
+    expect(h.toolCalls(owner!, "delegate").map((row) => row.result)).toEqual([
+      { ok: false, error: "invalid_args" }, { ok: false, error: "invalid_args" }]);
+    expect(h.toolCalls(owner!, "work_on")[0]!.result).toEqual({ ok: false, error: "invalid_candidate" });
+    expect(h.toolCalls(owner!, "end_turn")[0]!.result).toEqual({ ok: false, error: "invalid_args" });
+    expect(h.toolCalls(owner!, "write_file").map((row) => row.result?.ok)).toEqual([true, true]);
+    const turn = h.turns(owner!)[0]!;
+    expect(turn.end_reason).toBe("nothing_new");
+    expect(h.store.filingBudget(turn.id)).toBe(0);
+    expect(h.messages(group).some((message) => message.kind === "system" && message.turn_id === turn.id)).toBe(false);
   } finally { await h.close(); }
 });
 
