@@ -198,3 +198,37 @@ test("on a model with no thinking level to raise, a trouble step stays where it 
   expect(f.routing.decideRoute(f.bot.id, f.creds, "继续", f.turn.id)!.decision).toMatchObject({ model: "flat", thinkingLevel: "low", reasonCode: "default" });
   expect(noted(f)).toEqual([]);
 });
+
+test("from level 7 a pin outlives its model leaving the endpoint's list: the endpoint default meanwhile, told once, the pin again once it is back", () => {
+  // 2026-10-03: saving My CPA's list without claude-opus-4-6-thinking wiped both video Bots' pins on
+  // the spot, so they ran on other models from the next turn and nothing said so.
+  const f = fixture([{ name: "a", price: null, thinking_levels: ["low"], strengths: [] }, { name: "b", price: null, thinking_levels: ["low"], strengths: [] }]);
+  f.store.db.run("UPDATE bots SET model = 'a', provider_id = 'p-1', thinking_level = 'low' WHERE id = ?", [f.bot.id]);
+  f.store.patchProviderSync("p-1", { models: ["b"] });
+  expect(f.store.getBot(f.bot.id)).toMatchObject({ model: "a" });
+  const without = { ...f.creds, providers: [{ ...f.creds.providers[0]!, models: ["b"], defaultModel: "b" }] };
+  expect(f.routing.decideRoute(f.bot.id, without, "继续", f.turn.id)!.decision).toMatchObject({ model: "b", reasonCode: "pin_unlisted" });
+  f.routing.decideRoute(f.bot.id, without, "继续", f.turn.id);
+  expect(noted(f)).toEqual(["model.pin_unlisted"]);
+  expect(f.store.db.query<{ body: string }, [string]>("SELECT body FROM messages WHERE session_id = ? AND kind = 'system' AND author = 'user' ORDER BY message_seq").all(f.dm).map((row) => row.body))
+    .toEqual(["Maker 钉的模型 a 已经不在任何端点的名单上了：在你换一个或清掉之前，它先用端点默认。"]);
+  f.store.patchProviderSync("p-1", { models: ["a", "b"] });
+  expect(f.routing.decideRoute(f.bot.id, f.creds, "继续", f.turn.id)!.decision).toMatchObject({ model: "a", reasonCode: "pin" });
+  // Below level 7 nothing reads a pin no endpoint lists, so it still goes with the list.
+  const low = fixture([{ name: "a", price: null, thinking_levels: ["low"], strengths: [] }, { name: "b", price: null, thinking_levels: ["low"], strengths: [] }]);
+  low.store.db.run("UPDATE settings SET value = ? WHERE key = 'engine_level'", [String(ENGINE_LEVELS.jobs)]);
+  low.store.db.run("UPDATE bots SET model = 'a', provider_id = 'p-1' WHERE id = ?", [low.bot.id]);
+  low.store.patchProviderSync("p-1", { models: ["b"] });
+  expect(low.store.getBot(low.bot.id).model).toBeNull();
+});
+
+test("the profile sent back with a pin no endpoint lists any more saves, pin and all; changing to an unlisted model is still refused", () => {
+  const f = fixture([{ name: "a", price: null, thinking_levels: ["low"], strengths: [] }, { name: "b", price: null, thinking_levels: ["low"], strengths: [] }]);
+  f.store.db.run("UPDATE bots SET model = 'a', provider_id = 'p-1', thinking_level = 'low' WHERE id = ?", [f.bot.id]);
+  f.store.patchProviderSync("p-1", { models: ["b"] });
+  // What the Bot panel sends on any edit: the whole profile, the pin as it is (the panel does not know its endpoint).
+  f.store.patchBot(f.bot.id, { name: "Maker", duties: "make films", boundaries: "none", model: "a", provider_id: null, thinking_level: "low" });
+  expect(f.store.getBot(f.bot.id)).toMatchObject({ duties: "make films", model: "a", thinking_level: "low" });
+  expect(f.store.db.query("SELECT provider_id FROM bots WHERE id = ?").get(f.bot.id)).toEqual({ provider_id: "p-1" });
+  expect(() => f.store.patchBot(f.bot.id, { model: "zz-never-listed", provider_id: null })).toThrow();
+});

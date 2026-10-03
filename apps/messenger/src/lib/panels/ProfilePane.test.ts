@@ -429,3 +429,23 @@ test("mobile skill delete button inside editor invokes danger confirm", async ()
   expect(runtime.calls.find((c) => c.name === "deleteSkill")?.args).toEqual(["s1"]);
   close();
 });
+
+test("a pin no endpoint lists any more stays offered, marked, and the rest of the profile still saves", async () => {
+  // From engine level 7 a pin outlives its model leaving an endpoint's list (ADR 0048); before, the
+  // pane's check refused every edit of a Bot whose pinned model the list no longer named.
+  const bot = { ...aBot(), model: "claude-opus-4-6-thinking", provider_id: "p-cpa", thinking_level: "low" as const };
+  const runtime = fakeRuntime({ bots: [bot] });
+  runtime.profileBotId = bot.id;
+  const { host, close } = render(ProfilePane, {
+    runtime, bot, t, modelOptions: [{ value: "p-cpa::gemini-3.8-flash-high", label: "gemini-3.8-flash-high" }],
+    selectedKind: "you-bot", profileFailed: false, initialTab: "basics",
+    openDangerConfirm: () => {}, clearDanger: () => {}, onDeleteBot: () => {}, onClearHistory: () => {},
+  });
+  expect(host.textContent).toContain(t.sidebar.botModelUnlistedHint);
+  fill(host.querySelector("#profile-duties"), "按分镜生成镜头");
+  await sleep(750);
+  const saves = runtime.calls.filter((c) => c.name === "patchBot");
+  expect(saves).toHaveLength(1);
+  expect(host.textContent).not.toContain(t.sidebar.botModelInvalid);
+  close();
+});

@@ -16,6 +16,7 @@ import {
 import { pickThinkingLevel } from "../route-decision";
 import { HttpError } from "../errors";
 import { dropUnknownLadderModels } from "./model-ladder";
+import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import { isoNow, ulid } from "../ids";
 import {
   catalogNames,
@@ -349,7 +350,18 @@ export function modelSupportsThinking(
   );
 }
 
+/**
+ * From level 7 (ADR 0048) a pin outlives its model leaving every list: the turn runs on the
+ * endpoint's default meanwhile and you are told once, and it is the pin again once the model is
+ * back. Wiping it here, as before, switched the Bot's model with nothing said (2026-10-03: saving
+ * an endpoint's list without the model the video Bots were pinned to).
+ */
+function pinsOutliveTheList(ctx: StoreContext): boolean {
+  return readEngineLevel(ctx.db) >= ENGINE_LEVELS.routing;
+}
+
 export function dropUnknownBotModels(ctx: StoreContext, models: string[]): void {
+  if (pinsOutliveTheList(ctx)) return;
   const rows = ctx.db
     .query<{ id: string; model: string }, []>(
       `SELECT id, model FROM bots WHERE deleted_at IS NULL AND model IS NOT NULL`,
@@ -372,6 +384,7 @@ function dropUnknownTicketModels(ctx: StoreContext, providerId: string, models: 
 }
 
 export function dropUnknownBotModelsForProvider(ctx: StoreContext, providerId: string, models: string[]): void {
+  if (pinsOutliveTheList(ctx)) return;
   const rows = ctx.db
     .query<{ id: string; model: string }, [string]>(
       `SELECT id, model FROM bots WHERE deleted_at IS NULL AND provider_id = ? AND model IS NOT NULL`,

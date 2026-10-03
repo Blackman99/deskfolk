@@ -124,8 +124,14 @@ export function patchBot(
       avatar = generateBoringAvatar({ name });
     }
   }
+  // The pin it already has, sent back with the rest of the profile (the Bot panel sends it whole, and
+  // without the endpoint when it does not know it), is no change. From level 7 a pin outlives its
+  // model leaving every list (ADR 0048), and checking it against the lists again here refused every
+  // other edit of that Bot.
+  const unchangedPin = row.model !== null && patch.model === row.model
+    && (patch.provider_id === undefined || patch.provider_id === null || patch.provider_id === row.provider_id);
   const nextTarget =
-    "model" in patch || "provider_id" in patch
+    ("model" in patch || "provider_id" in patch) && !unchangedPin
       ? resolveIncomingBotTarget(
           ctx,
           "model" in patch ? patch.model : row.model,

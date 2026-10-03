@@ -73,7 +73,21 @@
 	const skillBackdrop = backdropClick();
 
 	const snapshot = $derived(runtime.snapshot);
-	const modelValues = $derived(modelOptions.map((option) => option.value));
+	/**
+	 * A pin no endpoint lists any more: from engine level 7 it outlives the list (ADR 0048), the turn
+	 * runs on the endpoint's default meanwhile. Offered as it is and marked, so the rest of the profile
+	 * still saves and the pin is not lost by touching it.
+	 */
+	const unlistedPin = $derived.by(() => {
+		const value = botModelValue(bot);
+		return value && !modelOptions.some((option) => option.value === value) ? value : null;
+	});
+	const profileModelOptions = $derived(
+		unlistedPin && bot.model
+			? [...modelOptions, { value: unlistedPin, label: bot.model, hint: t.sidebar.botModelUnlisted }]
+			: modelOptions
+	);
+	const modelValues = $derived(profileModelOptions.map((option) => option.value));
 	const profileSkills = $derived(snapshot.skills.filter((skill) => skill.bot_id === bot.id));
 	const profileMemories = $derived(snapshot.memories.filter((m) => m.bot_id === bot.id));
 
@@ -642,12 +656,14 @@
 				bind:value={profileDraft.model}
 				placeholder={t.sidebar.botModelDefault}
 				emptyLabel={t.sidebar.botModelDefault}
-				options={modelOptions}
+				options={profileModelOptions}
 				error={!!profileErrors.model}
 				onchange={onProfileModelChange}
 			/>
 			{#if profileErrors.model}
 				<p class="field-error">{t.sidebar.botModelInvalid}</p>
+			{:else if unlistedPin && profileDraft.model === unlistedPin}
+				<p class="muted field-hint">{t.sidebar.botModelUnlistedHint}</p>
 			{:else if !profileDraft.model}
 				<p class="muted field-hint">{t.sidebar.botModelAutoHint}</p>
 			{/if}
