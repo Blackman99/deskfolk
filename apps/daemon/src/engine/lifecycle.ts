@@ -133,7 +133,7 @@ export type Lifecycle = {
     entry: Omit<InboxEntry, "message">,
     opts: { cause: WakeCause; taskId?: string | null; ticketId?: string | null; otherwise?: "redirect" | "fork" },
   ) => Turn | null;
-  hearAcross: (message: Message) => Turn[];
+  hearAcross: (message: Message, opts?: { turnIds?: readonly string[] }) => Turn[];
   dispatchQueued: () => void;
   attachLive: (turn: Turn, carry?: string | null) => void;
   continueFromInterrupt: (messageId: string) => Turn;
@@ -472,7 +472,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
    * interrupted. Turns in the line's own session already have it in their transcript, and a turn a
    * hold covers does not get it. Returns the turns that got it.
    */
-  function hearAcross(message: Message): Turn[] {
+  function hearAcross(message: Message, opts?: { turnIds?: readonly string[] }): Turn[] {
     if (!message.task_id) return [];
     const locale = store.settingsCached().locale;
     let author = "user";
@@ -488,6 +488,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     const got: Turn[] = [];
     for (const current of store.listLiveTurns()) {
       if (current.task_id !== message.task_id || current.session_id === message.session_id) continue;
+      if (opts?.turnIds && !opts.turnIds.includes(current.id)) continue;
       const live = lives.get(current.id);
       if (!live || live.abort.signal.aborted) continue;
       const wake = {

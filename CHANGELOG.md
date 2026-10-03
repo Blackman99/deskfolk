@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A stopped group goes on from what you say next, and nobody is nagged while your 放行 waits
+
+- The group's stop menu is there while the group's work runs only in a Bot↔Bot direct opened from it — the lead's request to another Bot. It was missing then, so the group could not be stopped from its own conversation.
+- After you stop a group from its menu, a line naming nobody there now brings back all the work the stop ended that the line does not reach, with your words — a Bot's part done in its direct with the lead, say. That Bot sat stopped and never heard your change; the supervisor called it back minutes later to answer the old request. A line naming one Bot is still for it alone.
+- While a hand-over waits on your 放行, the Bot that handed it in is no longer called back to "answer" the request it handed in for. It was told every three minutes that it still owed it and handed the same work in again each time.
+
 ### Rework and changes after delivery keep the job straight
 
 - A Bot that hands in work it was asked for ends its segment once it has submitted. It was told to "carry on" — the request it had just handed in for counted as owed — and handed in again over the version under review.

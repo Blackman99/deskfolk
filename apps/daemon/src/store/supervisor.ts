@@ -205,12 +205,19 @@ export function ballHolder(ctx: StoreContext, input: { ticketId: string }): Ball
   if (!ticket) throw new HttpError(404, "not_found", "ticket not found");
   if (ticket.status === "done" || ticket.status === "parked") return { kind: "closed" };
   const home = plan(ctx, ticket.task_id);
+  // A request for a deliverable whose hand-over waits on its checks or a review is not the delegate's
+  // to answer any more: the ball is the reviewer's, or yours on a card, and approval answers it. It
+  // held the ball here, so while an approval card waited on you the delegate was called back every
+  // few minutes to "answer" it and handed the same work in again each time (2026-10-04).
   const delegation = ctx.db.query<{ botId: string; workItemId: string; delegationId: string; since: string }, [string, string]>(`SELECT
     d.to_bot_id AS botId, d.to_work_item_id AS workItemId, d.id AS delegationId, d.created_at AS since
     FROM delegations d JOIN work_items w ON w.id = d.to_work_item_id AND w.bot_id = d.to_bot_id
       AND w.task_id = d.task_id AND w.ticket_id IS d.ticket_id AND w.state <> 'closed'
     JOIN bots b ON b.id = w.bot_id AND b.deleted_at IS NULL AND b.archived_at IS NULL
-    WHERE d.task_id = ? AND d.ticket_id = ? AND d.status = 'open' ORDER BY d.created_at, d.rowid LIMIT 1`).get(ticket.task_id, ticket.id);
+    WHERE d.task_id = ? AND d.ticket_id = ? AND d.status = 'open'
+      AND NOT (d.expects = 'deliverable' AND EXISTS (SELECT 1 FROM submissions s WHERE s.work_item_id = d.to_work_item_id
+        AND s.task_id = d.task_id AND s.ticket_id = d.ticket_id AND s.state IN ('checking', 'submitted', 'in_review')))
+    ORDER BY d.created_at, d.rowid LIMIT 1`).get(ticket.task_id, ticket.id);
   if (delegation) return { kind: "delegation", ...delegation };
   const ask = ctx.db.query<{ id: string }, [string, string]>(`SELECT m.id FROM turns t JOIN messages m ON m.id = t.pending_ask_id
     WHERE t.task_id = ?1 AND t.ticket_id = ?2 AND t.status = 'waiting_ask' AND m.kind = 'ask' AND m.ask_answer IS NULL

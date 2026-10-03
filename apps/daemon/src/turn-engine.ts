@@ -664,6 +664,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       }
       try {
         let filed = message;
+        let lifted: Hold[] = [];
         if (fromUser) {
           // From level 8 a reply is no feedback on the route it answers (ADR 0050): quality events are filed by type.
           if (!store.learningOn() && store.collectRouteFeedback(message)) {
@@ -693,7 +694,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
           }
           // A Stop you pressed on this job goes once you say something more about it to that Bot,
           // before the line wakes anyone: what you say next is what the Bot goes on from.
-          stops.liftOnYourLine(filed);
+          lifted = stops.liftOnYourLine(filed);
           // The job's turns in other sessions hear it before any turn opens here, so the one that
           // opens can be told they already have it.
           lifecycle.hearAcross(filed);
@@ -708,6 +709,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         } else {
           await core.track(participation.handleParticipation(filed, { fromUser, fork: opts?.fork, opened: handOver }));
         }
+        // The stopped work your line did not reach goes on from it, and hears it as work already at the job would have.
+        const resumed = stops.goOnFromYourLine(filed, lifted);
+        if (resumed.length > 0) lifecycle.hearAcross(filed, { turnIds: resumed.map((turn) => turn.id) });
       } finally {
         handOver();
         // Once the line is filed and has woken whom it wakes: the ledger never holds a turn back.

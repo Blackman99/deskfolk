@@ -28,6 +28,11 @@ function newestFirst(a: Turn, b: Turn): number {
  * met by a stop still on (2026-10-03). Every Bot stays stopped until you lift it, as the board's
  * and the tools menu's stops do. A direct has no menu: it has one Stop, the button, which stops
  * what its Bot is doing now. A Bot↔Bot direct is yours to read, not to stop from here.
+ *
+ * Work in a Bot↔Bot direct opened from the group — the lead's request to another Bot, and on down
+ * — is the group's work: the group's stop holds it, so the menu is there while only that runs.
+ * On 2026-10-04's walkthrough the lead had handed the slogans to 文案 and ended its turn, and the
+ * group had no menu at all while 文案 wrote them in its direct with the lead.
  */
 export function conversationStopItems(input: {
   session: SessionSummary;
@@ -36,6 +41,8 @@ export function conversationStopItems(input: {
   holds: readonly Hold[];
   t: Copy["control"];
   deleted: string;
+  /** Every conversation, for the Bot↔Bot directs opened from this one. */
+  sessions?: readonly SessionSummary[];
 }): StopMenuItem[] {
   const { session, bots, holds, t } = input;
   const live = input.turns.filter((turn) => isLiveStatus(turn.status)).sort(newestFirst);
@@ -44,7 +51,8 @@ export function conversationStopItems(input: {
     if (!held(holds, choice)) items.push({ key, label, choice });
   };
   if (session.kind !== "group") return [];
-  const working = live.filter((turn) => turn.session_id === session.id);
+  const opened = openedFrom(session.id, input.sessions ?? []);
+  const working = live.filter((turn) => turn.session_id === session.id || opened.has(turn.session_id));
   if (working.length === 0) return [];
   add(`session:${session.id}`, t.thisGroup, { scope: "session", id: session.id, liftOnNext: true });
   for (const botId of new Set(working.map((turn) => turn.bot_id))) {
@@ -54,6 +62,24 @@ export function conversationStopItems(input: {
   if (plan) add(`plan:${plan}`, t.thisJob, { scope: "plan", id: plan, liftOnNext: true });
   add("global", t.allBots, { scope: "global", id: null });
   return items;
+}
+
+/** How many Bot↔Bot directs down from the group still count as its work (a request's request, and so on). */
+const HANDED_ON_DEPTH = 4;
+
+/** The Bot↔Bot directs opened from `sessionId`, and from those, a few steps down. */
+function openedFrom(sessionId: string, sessions: readonly SessionSummary[]): Set<string> {
+  const found = new Set<string>();
+  let frontier = new Set([sessionId]);
+  for (let step = 0; step < HANDED_ON_DEPTH && frontier.size > 0; step += 1) {
+    const next = new Set<string>();
+    for (const row of sessions) {
+      if (row.origin_session_id && frontier.has(row.origin_session_id) && !found.has(row.id) && row.id !== sessionId) next.add(row.id);
+    }
+    for (const id of next) found.add(id);
+    frontier = next;
+  }
+  return found;
 }
 
 /** The flow board's stop menu: the job on it, and every Bot. */

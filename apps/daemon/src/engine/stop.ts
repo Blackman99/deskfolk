@@ -129,7 +129,13 @@ export type Stop = {
    * menu's hold, on the group, a Bot or a job, that the line is about. Only a line said after the
    * stop counts.
    */
-  liftOnYourLine: (message: Message) => void;
+  liftOnYourLine: (message: Message) => Hold[];
+  /**
+   * Once your line to a whole group has woken whom it wakes: the work the stops it lifted had ended
+   * that it did not reach goes on from it too — a Bot's stopped in a conversation of its own while
+   * the group's stop held, the lead taking the line in the group. Returns the turns that opened again.
+   */
+  goOnFromYourLine: (message: Message, lifted: Hold[]) => Turn[];
   /**
    * A read-only answer under a stop that ended having said nothing: in its place the app says the
    * Bot is stopped, with the buttons to go on, which also open its work on your line.
@@ -860,16 +866,50 @@ export function createStop(deps: StopDeps): Stop {
     });
   }
 
-  function liftOnYourLine(message: Message): void {
-    if (message.kind !== "user" || message.control || !on()) return;
+  function liftOnYourLine(message: Message): Hold[] {
+    if (message.kind !== "user" || message.control || !on()) return [];
     const about = stopsAbout(message);
-    if (about.length === 0) return;
-    store.transaction(() => {
-      for (const hold of about) {
-        store.liftHold(hold.id, { by: "user_text", messageId: message.id });
+    if (about.length === 0) return [];
+    return store.transaction(() =>
+      about.map((hold) => {
+        const lifted = store.liftHold(hold.id, { by: "user_text", messageId: message.id });
         store.recordWorkEvent({ kind: "control.lift", actor: "user", sessionId: message.session_id, payload: { hold: hold.id, by: "user_text", next_line: true } });
-      }
-    });
+        return lifted;
+      }),
+    );
+  }
+
+  /**
+   * The work a lifted stop had ended that your line to a whole group did not reach, opened again on
+   * a note with your words. A Bot your line woke goes on from it there, and one already back at that
+   * job is at it; the rest were left with nothing to go on from: on 2026-10-04's walkthrough a
+   * group's stop cut 文案 off in its direct with the lead, 「宣传语改成英文的，海报改横版」 woke only
+   * the lead, and 文案 sat stopped until the supervisor called it back three minutes later to
+   * "answer" the old request. The receipt had said the Bots go on from your line. A line that names
+   * Bots is for them alone, as 「@X 继续」 is: the others' work stays stopped.
+   */
+  function goOnFromYourLine(message: Message, lifted: Hold[]): Turn[] {
+    if (lifted.length === 0 || !on()) return [];
+    let group = false;
+    try {
+      group = store.getSession(message.session_id).kind === "group";
+    } catch {
+      return [];
+    }
+    const woken = new Set(wakes(message));
+    if (!group || store.presentBotIds(message.session_id).some((id) => !woken.has(id))) return [];
+    const reached = (record: HeldTurn) =>
+      store.listLiveTurns({ botId: record.bot_id }).some(
+        (turn) => turn.mode !== "readonly" && (turn.trigger_message_id === message.id || (record.task_id !== null && turn.task_id === record.task_id)),
+      );
+    const resumed = store.transaction(() =>
+      resumeLifted(
+        lifted.map((hold) => store.getHold(hold.id)),
+        saidOf(message),
+        { stops: true, leave: reached },
+      ),
+    );
+    return resumed.map((row) => row.turn);
   }
 
   function unanswered(turn: Turn): void {
@@ -1581,6 +1621,6 @@ export function createStop(deps: StopDeps): Stop {
     return named?.scope === "bot" ? named.id : USER_MEMBER;
   }
 
-  return { on, ruleLine, readLine, liftOnYourLine, unanswered, stopByButton, hold, act, lift, enforce, heldLines: heldLinesFor };
+  return { on, ruleLine, readLine, liftOnYourLine, goOnFromYourLine, unanswered, stopByButton, hold, act, lift, enforce, heldLines: heldLinesFor };
 }
 

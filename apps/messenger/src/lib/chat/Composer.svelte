@@ -142,7 +142,7 @@
 	 */
 	const stopItems = $derived(
 		selected?.kind === 'group' && snapshot.holdsOn && !lockedComposer
-			? conversationStopItems({ session: selected, turns: snapshot.turns, bots: botsById, holds: snapshot.holds, t: t.control, deleted: t.top.deleted })
+			? conversationStopItems({ session: selected, turns: snapshot.turns, bots: botsById, holds: snapshot.holds, t: t.control, deleted: t.top.deleted, sessions: snapshot.sessions })
 			: []
 	);
 
