@@ -243,3 +243,31 @@ test("a delegated answer reaches the waiting owner's work through its reused pai
     expect(h.store.getDelegationWait(delegation.id)!.voided_at).not.toBeNull();
   } finally { await h.close(); }
 });
+
+test("a review verdict left in the pair's thread bounces once, then reaches the waiting owner as the request's answer", async () => {
+  const h = await createScenario({ submissions: true });
+  try {
+    const [owner, helper] = h.createBots("Owner", "Helper");
+    const group = h.group("Studio", [owner!, helper!]);
+    const plan = h.store.openTask({ sessionId: group, title: "Episode" });
+    let heard = false;
+    let bounce = "";
+    h.script(owner!).reply(call(tool("delegate", { to: helper!.id, ask: "Pre-review the storyboard, do not shoot yet", expects: "review" })),
+      ({ request }) => { heard = hasWords(request, "Passed: all six points hold"); return call(endTurn()); });
+    h.script(helper!).reply(call(sendMessage("Passed: all six points hold"), tool("end_turn", { reason: "answered" })),
+      ({ request }) => {
+        bounce = request.messages.map((message) => typeof message.content === "string" ? message.content : "").join("\n");
+        return call(tool("end_turn", { reason: "answered", answer: "Passed: all six points hold" }));
+      });
+    const line = h.store.postMessage(group, { body: "@Owner Write the storyboard and get it pre-reviewed" });
+    h.store.fileMessage(line.id, { explicit: [{ taskId: plan.id }] });
+    await h.engine.handleInboundMessage(h.store.getMessage(line.id), { fromUser: true });
+    await h.waitIdle();
+    const delegation = h.store.listDelegations()[0]!;
+    expect(bounce).toContain("unanswered_request");
+    expect(delegation.status).toBe("replied");
+    expect(h.turns(helper!)).toHaveLength(1);
+    expect(h.turns(owner!)).toHaveLength(2);
+    expect(heard).toBe(true);
+  } finally { await h.close(); }
+});

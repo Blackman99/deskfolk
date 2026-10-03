@@ -30,7 +30,9 @@
 
 应用记录请求、发送/接收工作项和发起轮，创建或复用接收方在同规划/可选任务的工作项及精确 Bot 对协作私聊，投一条 priority=3 的叫醒请求收件。默认 `continue` 不为 true 时，委派方转 waiting，记 `delegation_wait`，本段结束；`continue:true` 不建立等待，本段继续，委派关系仍在；委派方之后可做独立工作并以 answered/idle 收尾，迟到的回答仍会把符合准入的原委派方排队叫醒，不靠假造等待。接收方的开段/听进/排队仍过 I1/I1b、名额和叫停，不因为被委派就另做一遍同规划。
 
-**当前交回只覆盖回答型**：接收方用 `end_turn({reason:"answered",answer:"…"})` 给精确绑定的、`expects="answer"` 的未关闭委派交回，代码只解决这类请求；普通收尾或 `send_message` 不算交回。结果一次落地为 priority=2 的持久 `delegation_reply` 收件，原委派变 replied、对应等待作废，允许的委派方转 queued 再被叫醒；被叫停的结果收件保持 held，不绕过叫停。已有底层 submission 引用校验是后续接口接缝，当前没有 Bot 的 `submit`/`review` 交回路径；`expects=deliverable/review` 可记录，但其真正结构化交付仍待 P4e，不能拿一句话冒充已通过审查。
+**文字交回覆盖回答型，以及没有交付可审的审查型**：接收方用 `end_turn({reason:"answered",answer:"…"})` 交回，关闭精确绑定到它的未关闭委派：`expects="answer"` 的都关；`expects="review"` 的只关它读到过请求、且请求范围内（指定了任务就是那张，没指定就是整个规划）没有交付在检查或待审（checking/submitted/in_review）的，比如请它预审一份剧本或分镜。有交付待审的审查请求走 `review`（[ADR 0046](adr/0046-submissions-and-reviews.md)）；`expects="deliverable"` 没有文字交回。普通收尾或 `send_message` 不算交回。结果一次落地为 priority=2 的持久 `delegation_reply` 收件，原委派变 replied、对应等待作废，允许的委派方转 queued 再被叫醒；被叫停的结果收件保持 held，不绕过叫停。文字交回只把结论交给委派方：不批准交付、不推进任务阶段，不能拿一句话冒充已通过审查。
+
+这一段读到了这样一项请求，却以 answered 收尾又没给 answer（典型是把结论用 `send_message` 发在私聊里）时，收尾被退回（`unanswered_request`），退回写明请求编号、谁在等、回复要写进 answer；它和其他退回共用两次预算，用尽转 needs_attention，不会悄悄留下一项没人关的委派。以 done 或纯文字收尾时，「还有没交出的义务」的退回也写明读过的这类请求怎样交回。
 
 **事件等待不是时间回看**：`delegation_wait` 不由 due 扫描触发（各级别都排除），只因这项委派的回复/取消解决。3 级定时回看按精确工作项/去重键替换，不替换同 Bot 同会话的另一工作项或委派等待；叫停挂起、解除恢复对应记录，不让不相干的新 timer 覆盖旧事件等待。没有真正到期时间的委派，视图的 `due_at` 是 `null`，不把内部占位时间显示成倒计时。
 

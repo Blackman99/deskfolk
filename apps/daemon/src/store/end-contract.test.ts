@@ -143,7 +143,7 @@ test("ending records actual inbox dispositions, bounces for unread-for dispositi
   expect(invalid).toMatchObject({ ended: false, code: "invalid_inbox_disposition", dispositions: { recorded: [], notRecorded: [{ id: "U999999" }] } });
 });
 
-test("answered with a real answer replies to only the current exact answer recipient, not review or another ticket", () => {
+test("answered with a real answer replies to only the current exact answer recipient, not an unread review or another ticket", () => {
   const f = fixture();
   const reader = f.store.createBot({ name: "Reader", duties: "read", boundaries: "none" }).bot;
   const room = f.store.createGroup({ name: "Team", members: [f.bot.id, reader.id] });
@@ -161,6 +161,50 @@ test("answered with a real answer replies to only the current exact answer recip
   expect(f.store.getTurn(turn.id).status).toBe("running");
   expect(finishWork(f.ctx, { turnId: turn.id, reason: "answered", answer: "Quarterly Report" })).toEqual(result);
   expect(f.store.db.query("SELECT COUNT(*) AS n FROM inbox_items WHERE source = 'delegation_reply'").get()).toEqual({ n: 1 });
+});
+
+function reviewRequest(status: "doing" | "review" = "doing") {
+  const f = fixture(status);
+  const reader = f.store.createBot({ name: "Reader", duties: "review", boundaries: "none" }).bot;
+  const room = f.store.createGroup({ name: "Team", members: [f.bot.id, reader.id] });
+  f.store.db.run("UPDATE turns SET session_id = ? WHERE id = ?", [room.id, f.turn.id]);
+  const asked = delegateWork(f.ctx, { fromTurnId: f.turn.id, toBotId: reader.id, ask: "Pre-review the storyboard, do not shoot yet", expects: "review" });
+  expect(finishWork(f.ctx, { turnId: f.turn.id, reason: "done" })).toMatchObject({ ended: true, state: "waiting" });
+  const thread = asked.delegation.thread_session_id;
+  const line = f.store.insertMessage({ sessionId: thread, kind: "system", author: reader.id, body: asked.delegation.ask });
+  const turn = f.store.createTurn({ sessionId: thread, botId: reader.id, triggerMessageId: line.id, taskId: f.plan.id, ticketId: f.ticket.id });
+  deliverInboxItems(f.ctx, [asked.delegation.request_inbox_seq!], turn.id, 1);
+  return { ...f, reader, thread, delegation: asked.delegation, request: `B${asked.delegation.request_inbox_seq}`, reviewTurn: turn };
+}
+
+test("a review request with nothing handed over is answered in words, after one bounce for a verdict left in the thread", () => {
+  const f = reviewRequest();
+  const said = finishWork(f.ctx, { turnId: f.reviewTurn.id, reason: "answered", inbox: [{ id: f.request, disposition: "answered", note: "Sent the verdict" }] });
+  expect(said).toMatchObject({ ended: false, code: "unanswered_request" });
+  expect(said.bounce).toContain(f.request);
+  expect(said.bounce).toContain("Writer");
+  expect(said.bounce).toContain("answer");
+  expect(getDelegation(f.ctx, f.delegation.id).status).toBe("open");
+  const answered = finishWork(f.ctx, { turnId: f.reviewTurn.id, reason: "answered", answer: "Passed: all six points hold" });
+  expect(answered).toMatchObject({ ended: true, state: "idle", replies: [{ delegation: { id: f.delegation.id, status: "replied" },
+    inbox: { bot_id: f.bot.id, body_snapshot: "Passed: all six points hold", source: "delegation_reply", kind: "result" } }] });
+  expect(getDelegationWait(f.ctx, f.delegation.id)?.voided_at).not.toBeNull();
+  expect(f.store.db.query("SELECT state, waiting_on FROM work_items WHERE id = ?").get(f.itemId)).toEqual({ state: "queued", waiting_on: null });
+});
+
+test("a review request whose submission waits for review is not closed in words and does not bounce", () => {
+  const f = reviewRequest();
+  f.store.db.run(`INSERT INTO submissions (id, work_item_id, task_id, ticket_id, bot_id, origin, artifacts, state, created_at, updated_at)
+    VALUES ('sub-1', ?, ?, ?, ?, 'submit', '[]', 'in_review', '2026-10-03T00:00:00.000Z', '2026-10-03T00:00:00.000Z')`, [f.itemId, f.plan.id, f.ticket.id, f.bot.id]);
+  expect(finishWork(f.ctx, { turnId: f.reviewTurn.id, reason: "answered", answer: "Looks fine" })).toMatchObject({ ended: true, replies: [] });
+  expect(getDelegation(f.ctx, f.delegation.id).status).toBe("open");
+});
+
+test("a done or prose ending over a read request says how to answer it", () => {
+  const f = reviewRequest();
+  const spoken = finishWork(f.ctx, { turnId: f.reviewTurn.id, reason: "done" });
+  expect(spoken).toMatchObject({ ended: false, code: "unfinished_obligations" });
+  expect(spoken.bounce).toContain(`To answer ${f.request}, end with reason answered and your reply in answer.`);
 });
 
 test("pure text bounces once on facts, then releases idle, while desk text defaults to answered", () => {

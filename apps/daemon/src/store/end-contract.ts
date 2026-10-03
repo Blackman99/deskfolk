@@ -8,7 +8,7 @@ import { holdsCovering } from "./holds";
 import { requireNonEmpty, type StoreContext } from "./shared";
 import { recordWorkEvent } from "./work-events";
 import { disposeInboxItems, inboxLabel, turnInbox } from "./inbox";
-import { listDelegations, replyDelegation } from "./delegations";
+import { listDelegations, replyDelegation, type Delegation } from "./delegations";
 import { isReservedTaskPath } from "./tasks";
 import { settingsCached } from "./settings";
 import { noProgressNoticeBody } from "../prompts/control-copy";
@@ -256,6 +256,45 @@ function noProgressNotice(ctx: StoreContext, turn: Actor): string {
   return noProgressNoticeBody(locale, { job: supervisorJobLabel(locale, { plan, ticket }), bot });
 }
 
+/** Whether the request's own line has reached the Bot it asks — in this segment, when `turnId` is given. */
+function requestRead(ctx: StoreContext, delegation: Delegation, turnId: string | null): boolean {
+  if (delegation.request_inbox_seq === null) return false;
+  const read = ctx.db.query<{ delivered_turn_id: string | null }, [number]>("SELECT delivered_turn_id FROM inbox_items WHERE seq = ?")
+    .get(delegation.request_inbox_seq)?.delivered_turn_id ?? null;
+  return read !== null && (turnId === null || read === turnId);
+}
+
+/** Whether something handed over within the request's reach waits for review: its verdict is `review`'s (ADR 0046), not words. */
+function submissionAwaitsReview(ctx: StoreContext, delegation: Delegation): boolean {
+  if (!ctx.db.query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'submissions'").get()) return false;
+  return Boolean(ctx.db.query(`SELECT 1 FROM submissions WHERE task_id = ?1 AND (?2 IS NULL OR ticket_id = ?2)
+    AND state IN ('checking', 'submitted', 'in_review') LIMIT 1`).get(delegation.task_id, delegation.ticket_id));
+}
+
+/**
+ * The open requests to this work that a reply in words answers (ADR 0044 §4): every request for an
+ * answer, and a request to review that the Bot has read with nothing handed over waiting for review —
+ * a script or storyboard named in the request itself. Otherwise nothing would ever close the review,
+ * and the Bot that asked would wait for good.
+ */
+function answerableRequests(ctx: StoreContext, turn: Actor): Delegation[] {
+  if (!turn.work_item_id) return [];
+  return listDelegations(ctx, { toWorkItemId: turn.work_item_id, status: "open" }).filter((delegation) => delegation.to_bot_id === turn.bot_id
+    && (delegation.expects === "answer" || (delegation.expects === "review" && requestRead(ctx, delegation, null) && !submissionAwaitsReview(ctx, delegation))));
+}
+
+function requestLabels(requests: readonly Delegation[]): string[] {
+  return requests.flatMap((delegation) => delegation.request_inbox_seq === null ? [] : [inboxLabel({ source: "delegation", seq: delegation.request_inbox_seq })]);
+}
+
+/** The bounce for a request this segment read and ended `answered` on without an answer: its words in the thread reach nobody. */
+function unansweredBounce(ctx: StoreContext, requests: readonly Delegation[]): string {
+  const askers = [...new Set(requests.map((delegation) => ctx.db.query<{ name: string }, [string]>(`SELECT b.name FROM work_items w
+    JOIN bots b ON b.id = w.bot_id WHERE w.id = ?`).get(delegation.from_work_item_id)?.name ?? delegation.from_work_item_id))];
+  return `Request ${requestLabels(requests).join(", ")} is still open: what you post in the thread does not reach ${askers.join(", ")}, who keeps waiting. `
+    + "End with end_turn reason answered and put your reply in answer — for a review, the verdict and what to change.";
+}
+
 /** The lines of yours this segment read and has not said anything about, each answered by its closing reply. */
 function answeredByReply(ctx: StoreContext, turnId: string): Array<{ id: string; disposition: "answered" }> {
   return turnInbox(ctx, turnId).filter((mail) => mail.delivered_turn_id === turnId && mail.state === "delivered"
@@ -294,10 +333,14 @@ export function finishWork(ctx: StoreContext, input: FinishWorkInput, opts: Fini
       return rejectEnd(ctx, turn, { obligations: obligations(ctx, turn), dispositions, unacknowledgedInbox, replies: [], implicitSubmission }, opts, code,
         `Record valid dispositions for each user inbox item: ${unacknowledgedInbox.join(", ") || dispositions.notRecorded.map((entry) => entry.id).join(", ")}.`);
     }
-    const replies = reason === "answered" && answer && turn.work_item_id
-      ? listDelegations(ctx, { toWorkItemId: turn.work_item_id, status: "open" })
-        .filter((delegation) => delegation.to_bot_id === turn.bot_id && delegation.expects === "answer")
-        .map((delegation) => replyDelegation(ctx, { delegationId: delegation.id, fromTurnId: turn.id, answer })) : [];
+    const answerable = answerableRequests(ctx, turn);
+    const unanswered = reason === "answered" && !answer ? answerable.filter((delegation) => requestRead(ctx, delegation, turn.id)) : [];
+    if (unanswered.length) {
+      return rejectEnd(ctx, turn, { obligations: obligations(ctx, turn), dispositions, unacknowledgedInbox, replies: [], implicitSubmission }, opts,
+        "unanswered_request", unansweredBounce(ctx, unanswered));
+    }
+    const replies = reason === "answered" && answer
+      ? answerable.map((delegation) => replyDelegation(ctx, { delegationId: delegation.id, fromTurnId: turn.id, answer })) : [];
     const facts = obligations(ctx, turn);
     const waiting = validWaiting(ctx, item, facts);
     const unfinished = facts.tickets.length + facts.outgoingDelegations.length + facts.incomingDelegations.length + facts.waits.length > 0;
@@ -305,8 +348,10 @@ export function finishWork(ctx: StoreContext, input: FinishWorkInput, opts: Fini
     const previous = ctx.db.query<{ n: number }, [string]>(`SELECT COUNT(*) AS n FROM work_events
       WHERE turn_id = ? AND kind = 'end.rejected' AND json_extract(payload, '$.code') = 'unfinished_obligations'`).get(turn.id)!.n;
     if (reason === "done" && unfinished && !waiting && previous === 0) {
+      const toAnswer = requestLabels(answerable.filter((delegation) => requestRead(ctx, delegation, null)));
       return rejectEnd(ctx, turn, base, opts, "unfinished_obligations",
-        `Unfinished obligations: ${[...facts.tickets.map((ticket) => ticket.id), ...facts.outgoingDelegations, ...facts.incomingDelegations, ...facts.waits].join(", ")}. Continue. If you are waiting on another Bot's work, delegate it to that Bot and wait for the reply, or end_turn with reason nothing_new; blocked is only for something the user alone can give, and needs_from_user reaches the user as a question.`);
+        `Unfinished obligations: ${[...facts.tickets.map((ticket) => ticket.id), ...facts.outgoingDelegations, ...facts.incomingDelegations, ...facts.waits].join(", ")}. Continue. If you are waiting on another Bot's work, delegate it to that Bot and wait for the reply, or end_turn with reason nothing_new; blocked is only for something the user alone can give, and needs_from_user reaches the user as a question.`
+          + (toAnswer.length ? ` To answer ${toAnswer.join(", ")}, end with reason answered and your reply in answer.` : ""));
     }
     const endReason = reason === "done" && unfinished && !waiting ? "nothing_new" : reason;
     // From level 5 the work on a ticket closes only once it is approved or dropped: a hand-over can
