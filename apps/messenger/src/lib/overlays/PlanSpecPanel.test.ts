@@ -150,6 +150,7 @@ function open(over: {
   const conflicts: number[] = [];
   const jumps: Array<[string, string]> = [];
   const patchCalls: Array<{ taskId: string; body: unknown }> = [];
+  const renameCalls: Array<{ taskId: string; body: unknown }> = [];
   const revisionCalls: string[] = [];
   const createCheckCalls: Array<{ taskId: string; body: unknown }> = [];
   const patchCheckCalls: Array<{ checkId: string; body: unknown }> = [];
@@ -165,6 +166,10 @@ function open(over: {
             patchCalls.push({ taskId, body });
             if (over.api?.patchTaskSpec) return over.api.patchTaskSpec(taskId, body);
             return aDetail({ revision: 4 });
+          },
+          renamePlan: async (taskId: string, body: { title: string }) => {
+            renameCalls.push({ taskId, body });
+            return aDetail({ title: body.title.trim() });
           },
           taskSpecRevisions: async (taskId: string) => {
             revisionCalls.push(taskId);
@@ -215,6 +220,7 @@ function open(over: {
     conflicts,
     jumps,
     patchCalls,
+    renameCalls,
     revisionCalls,
     createCheckCalls,
     patchCheckCalls,
@@ -290,7 +296,7 @@ test("cancel leaves the list unedited", () => {
 
 test("editing the goal saves through specWithGoal", async () => {
   const view = open();
-  click(view.host.querySelector(".plan-spec-edit-btn"));
+  click(view.host.querySelector(".plan-spec-goal .plan-spec-edit-btn"));
   const input = view.host.querySelector<HTMLInputElement>(".plan-spec-goal-input")!;
   expect(input.value).toBe("把三种方案比出高下");
   fill(input, "新的目标");
@@ -719,5 +725,31 @@ test("a plan without tickets has no ticket states, and a picked ticket that is n
   );
   expect(view.host.querySelector(".plan-spec-ticket-states")).toBeNull();
   expect(view.host.querySelector(".plan-spec-focus")).toBeNull();
+  view.close();
+});
+
+test("you name the job in its 名字 block: Enter saves just the name, and an empty name is not sent", async () => {
+  // 2026-10-03: 《一拳超人》 was being made under 「让审片员回复视频导演，说明未回复原因并给出审片意见。」.
+  const view = open({ detail: aDetail({ title: "让审片员回复视频导演，说明未回复原因并给出审片意见。" }) });
+  const block = view.host.querySelector(".plan-spec-name")!;
+  expect(block.querySelector(".plan-spec-name-text")?.textContent).toBe("让审片员回复视频导演，说明未回复原因并给出审片意见。");
+  click(block.querySelector(".plan-spec-edit-btn"));
+  const input = block.querySelector<HTMLInputElement>(".plan-spec-name-input")!;
+  expect(input.value).toBe("让审片员回复视频导演，说明未回复原因并给出审片意见。");
+  fill(input, "   ");
+  expect(block.querySelector<HTMLButtonElement>(".plan-spec-save-btn")?.disabled).toBe(true);
+  fill(input, "一拳超人");
+  input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  await settle();
+  expect(view.renameCalls).toEqual([{ taskId: "task-1", body: { title: "一拳超人" } }]);
+  expect(view.patchCalls).toEqual([]);
+  expect(view.saved.map((detail) => detail.title)).toEqual(["一拳超人"]);
+  expect(block.querySelector(".plan-spec-name-input")).toBeNull();
+  view.close();
+});
+
+test("a job not written up yet can still be named", () => {
+  const view = open({ detail: aDetail({ spec: null, revision: 0 }) });
+  expect(view.host.querySelector(".plan-spec-name .plan-spec-edit-btn")).not.toBeNull();
   view.close();
 });

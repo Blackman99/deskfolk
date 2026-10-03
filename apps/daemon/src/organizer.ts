@@ -772,6 +772,8 @@ export function renderPlanMap(
   return [
     `# ${spec.goal}`,
     "",
+    // The name it goes by in the app and in every turn's picture, which you can change on the board.
+    `- 名字：${task.title}`,
     `- 类别：${spec.kind ?? "（未定）"}`,
     `- 状态：${PLAN_STATUS_ZH[spec.status]}`,
     `- 目录：${task.dir}/`,

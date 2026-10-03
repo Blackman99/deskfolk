@@ -1578,6 +1578,19 @@ export class MessengerRuntime {
     void this.loadAttributionPlans(message.session_id, message.id);
   }
 
+  private renameAttributionPlan(id: string, title: string): void {
+    let changed = false;
+    const next: Record<string, AttributionPlan[]> = {};
+    for (const [session, plans] of Object.entries(this.attributionPlans)) {
+      next[session] = plans.map((plan) => {
+        if (plan.id !== id || plan.title === title) return plan;
+        changed = true;
+        return { ...plan, title };
+      });
+    }
+    if (changed) this.attributionPlans = next;
+  }
+
   private readonly attributionRevision = new Map<string, number>();
   private messageSnapshotRevision = 0;
   private messageInvalidationSeq = 0;
@@ -3088,6 +3101,8 @@ export class MessengerRuntime {
     }
     // The organizer's filing and your own edits: the plan's spec and tickets are part of the picture.
     if (event.event === "task.upsert" && this.boardShows(event.id)) this.traceReload += 1;
+    // You renamed a job: every tag that names it says the new name, without a reload.
+    if (event.event === "task.upsert") this.renameAttributionPlan(event.id, event.title);
     if ((event.event === "ticket.upsert" || event.event === "ticket.removed") && this.boardShows(event.task_id)) {
       this.traceReload += 1;
     }

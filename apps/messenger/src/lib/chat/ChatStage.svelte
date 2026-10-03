@@ -110,10 +110,14 @@
 	const workQuestionContextKey = $derived(snapshot.messages
 		.filter((row) => row.session_id === stageSessionId && row.control?.kind === 'work_question')
 		.map((row) => `${row.id}:${row.control?.kind === 'work_question' ? row.control.task_id : ''}`).join('|'));
+	// The list loads from one of the conversation's lines: opened before its lines have arrived, it
+	// waits for them (2026-10-03: a conversation reopened read 「一件事」 on every tag until a reload).
+	const hasLines = $derived(snapshot.messages.some((row) => row.session_id === stageSessionId && (row.kind === 'user' || row.kind === 'bot')));
 	$effect(() => {
 		const id = stageSessionId;
 		const questions = workQuestionContextKey;
-		if (id && connected && !fileDrop) void untrack(() => {
+		const ready = hasLines;
+		if (id && connected && !fileDrop && (ready || questions)) void untrack(() => {
 			const question = questions ? snapshot.messages.find((row) => row.session_id === id && row.control?.kind === 'work_question') : undefined;
 			void runtime.loadAttributionPlans(id, question?.id);
 		});

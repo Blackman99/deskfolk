@@ -67,3 +67,9 @@
 - 不修 resume 盲改 spec 的老问题：它只拿到 goal 就覆盖整份要点，和这次无关，另开。
 - 整理跳没跑出结果（没配默认模型、失败、答不成形）时不转发：消息没有盖章，就不知道是哪件事。
 - 不转发 Bot 的话：Bot 之间的交接本来就走点名、Bot↔Bot 私聊和听进。
+
+## 2026-10-03 补记：名字只由你改 / Only you rename a job
+
+「标题开规划后不再改」改为「应用、整理跳和 Bot 不改，你可以在流程图的要点里改」：开它的那句话可能只是一句别的事的追问（《一拳超人》在「让审片员回复视频导演，说明未回复原因并给出审片意见。」下面做了两天）。标注和局面在读的时候取名字，改名之后都跟着变；文件夹不改名，应用不搬你的文件。看板标题、切换列表和停止菜单也改用名字（原来是目标），和标注、局面叫同一个名字。`PATCH /v1/tasks/:id {title}`，本机和远端都有，记 `plan.renamed`。
+
+"The title never changes once the plan opens" becomes "the app, the organizer and the Bots never change it; you can, in the plan's spec on the board": the line that opened a job may only be a question about something else (《一拳超人》 was made for two days under 「让审片员回复视频导演，说明未回复原因并给出审片意见。」). Tags and pictures read the name when they are made, so a rename reaches them all; the folder keeps its name, since the app never moves your files. The board's heading, its job switcher and stop menu now use the name too (they used the goal), so the board calls a job what its tags and pictures do. `PATCH /v1/tasks/:id {title}`, local and remote, recorded as `plan.renamed`.

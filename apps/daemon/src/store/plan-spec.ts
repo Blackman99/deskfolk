@@ -23,9 +23,11 @@ import {
   setTaskSpec,
   taskLastActivityAt,
   taskSummary,
+  taskTitle,
   wakeDormantPlan,
   type Task,
 } from "./tasks";
+import { recordWorkEvent } from "./work-events";
 import { createTicket, isTicketStatus, listTickets, patchTicket, ticketArtifacts, ticketDependencies, ticketModel, TICKETS_MAX, type TicketRow } from "./tickets";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import { noteBoardStatus, organizerSaysDone } from "./submissions";
@@ -150,6 +152,28 @@ function assertRevision(ctx: StoreContext, taskId: string, ifRevision: unknown):
  * the one the plan shows is you stopping, resuming or accepting it, which holds carry once they are
  * on (`setPlanStatusByUser`); an edit that only sends back the status it was shown is none of those.
  */
+/**
+ * Your new name for a job (2026-10-03). A job is named after the line that opened it, and that line
+ * can be a question about something else entirely — 《一拳超人》 was made for two days under 「让审片员
+ * 回复视频导演，说明未回复原因并给出审片意见。」. Only you rename one: not the organizer, not a Bot.
+ * Its folder keeps its name (the app never moves your files), and like any edit of yours on the
+ * board, it takes a job set aside up again.
+ */
+export function renamePlanByUser(ctx: StoreContext, taskId: string, raw: unknown): Task {
+  const before = getTask(ctx, taskId);
+  if (typeof raw !== "string") throw new HttpError(422, "invalid_args", "title is a string");
+  const title = taskTitle(raw);
+  if (!title) throw new HttpError(422, "invalid_args", "a job needs a name");
+  return ctx.db.transaction(() => {
+    if (title !== before.title) {
+      ctx.db.run("UPDATE tasks SET title = ? WHERE id = ?", [title, taskId]);
+      recordWorkEvent(ctx, { kind: "plan.renamed", actor: "user", taskId, sessionId: before.session_id, payload: { before: before.title, after: title } });
+    }
+    wakeDormantPlan(ctx, taskId);
+    return getTask(ctx, taskId);
+  })();
+}
+
 export function setPlanSpecByUser(
   ctx: StoreContext,
   taskId: string,
@@ -733,6 +757,14 @@ export function planLastChange(ctx: StoreContext, taskId: string): { at: string;
       at: turn.last_activity_at,
       what: turn.status === "running" ? (en ? `${who} at work` : `${who} 正在做`) : en ? `${who}'s turn ended` : `${who} 的一轮结束了`,
     });
+  }
+  // Your new name for it is a change you made, and the latest one you would look for.
+  const renamed = ctx.db
+    .query<{ at: string; payload: string }, [string]>(`SELECT at, payload FROM work_events WHERE task_id = ? AND kind = 'plan.renamed' ORDER BY seq DESC LIMIT 1`)
+    .get(taskId);
+  if (renamed) {
+    const after = (JSON.parse(renamed.payload) as { after?: string }).after ?? "";
+    seen.push({ at: renamed.at, what: en ? `you renamed it "${after}"` : `你改名为《${after}》` });
   }
   const ledger = ctx.db
     .query<{ at: string; kind: string; payload: string }, [string]>(

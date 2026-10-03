@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
 import { copyFor } from "../copy.ts";
 import { aBot, aDirect, aMessage, fakeRuntime } from "../test-fixtures.ts";
-import { flushSync } from "svelte";
+import { flushSync, tick } from "svelte";
 import { buttonByText, click, fill, render } from "../test-render.ts";
+import { reactive } from "../test-reactive.svelte.ts";
 import ChatStage from "./ChatStage.svelte";
 
 const filed = (id: string, session: string, at: string, filings: { task_id: string; part_key?: string | null }[], over = {}) =>
@@ -113,5 +114,20 @@ test("a line of yours glued to the wrong job can be made a new job of its own; a
 
     click(host.querySelector('[data-message-id="theirs"] .attribution-chip'));
     expect(modal().querySelector(".plan-row.new-job")).toBeNull();
+  } finally { close(); }
+});
+
+test("a conversation opened before its lines arrive loads its jobs once they do, so its tags name them", async () => {
+  // 2026-10-03: reopening a group read 「一件事」 on every tag until a reload.
+  const session = aDirect();
+  const line = filed("line", session.id, "01", [{ task_id: "plan-a" }]);
+  // The real load needs one of the conversation's lines to ask from: one made before they arrive does nothing.
+  const linesWhenLoaded: number[] = [];
+  const runtime = reactive(fakeRuntime({ bots: [aBot()], sessions: [session], messages: [] }, { selectedId: session.id,
+    loadAttributionPlans: async () => { linesWhenLoaded.push(runtime.snapshot.messages.length); } }));
+  const { close } = render(ChatStage, { runtime, t: copyFor("zh"), selected: session, onOpenProfile: () => {}, onOpenArtifact: () => {}, onCreateBot: () => {} });
+  try {
+    runtime.snapshot = { ...runtime.snapshot, messages: [line] }; flushSync(); await tick();
+    expect(linesWhenLoaded).toEqual([1]);
   } finally { close(); }
 });

@@ -450,6 +450,7 @@ export class Store {
   readonly userWrittenSpec = this.bind(planSpec.userWrittenSpec);
   readonly recordSpecRevision = this.bind(planSpec.recordSpecRevision);
   readonly setPlanSpecByUser = this.bind(planSpec.setPlanSpecByUser);
+  readonly renamePlanByUser = this.bind(planSpec.renamePlanByUser);
   readonly patchTicketByUser = this.bind(planSpec.patchTicketByUser);
   readonly applyOrganizerResult = this.bind(planSpec.applyOrganizerResult);
   readonly taskDetail = this.bind(planSpec.taskDetail);

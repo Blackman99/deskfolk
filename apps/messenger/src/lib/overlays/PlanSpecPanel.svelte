@@ -64,7 +64,7 @@
 	const focusTicket = $derived(selectedTicket ? (ticketsById.get(selectedTicket) ?? null) : null);
 	const ticketStates = $derived(countsEntries(detail.ticket_counts));
 
-	type Editing = 'goal' | SpecListField;
+	type Editing = 'title' | 'goal' | SpecListField;
 	let editing = $state<Editing | null>(null);
 	let draft = $state('');
 	let saving = $state(false);
@@ -131,6 +131,12 @@
 		return t.plan.spec.blocked;
 	}
 
+	function startEditTitle(): void {
+		editing = 'title';
+		draft = detail.title;
+		saveError = null;
+	}
+
 	function startEditGoal(): void {
 		if (!detail.spec) return;
 		editing = 'goal';
@@ -168,7 +174,25 @@
 		return undefined;
 	}
 
+	/** Your new name for the job: only the name, never the spec, so no revision guard is needed. */
+	async function saveTitle(): Promise<void> {
+		if (!api || editing !== 'title' || saving) return;
+		if (!draft.trim()) { saveError = t.plan.saveFailed; return; }
+		saving = true;
+		saveError = null;
+		try {
+			onSaved(await api.renamePlan(detail.id, { title: draft }));
+			editing = null;
+			draft = '';
+		} catch {
+			saveError = t.plan.saveFailed;
+		} finally {
+			saving = false;
+		}
+	}
+
 	async function save(): Promise<void> {
+		if (editing === 'title') return saveTitle();
 		if (!api || !detail.spec || editing === null || saving) return;
 		const nextSpec = editing === 'goal' ? specWithGoal(detail.spec, draft) : specWithLines(detail.spec, editing, parseSpecLines(draft));
 		saving = true;
@@ -242,6 +266,38 @@
 	</div>
 {/snippet}
 
+{#snippet nameBlock()}
+	<!-- What the job is called: named after the line that opened it until you name it. -->
+	<div class="plan-spec-name">
+		<div class="plan-spec-goal-top">
+			<span class="plan-spec-name-label">{t.plan.spec.name}</span>
+			{#if api && editing !== 'title'}
+				<button type="button" class="plan-spec-edit-btn" onclick={startEditTitle} title={t.plan.spec.nameHint}>
+					<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<path d="M12 20h9"></path>
+						<path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+					</svg>
+					<span>{t.plan.edit}</span>
+				</button>
+			{/if}
+		</div>
+		{#if editing === 'title'}
+			<div class="plan-spec-edit">
+				<input class="plan-spec-goal-input plan-spec-name-input" type="text" bind:value={draft} disabled={saving} aria-label={t.plan.spec.name}
+					onkeydown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void saveTitle(); } else if (event.key === 'Escape') { event.stopPropagation(); cancelEdit(); } }} />
+				<p class="plan-spec-name-hint">{t.plan.spec.nameHint}</p>
+				<div class="plan-spec-edit-actions">
+					<button type="button" class="plan-spec-save-btn" onclick={saveTitle} disabled={saving || !draft.trim()}>{t.plan.save}</button>
+					<button type="button" class="plan-spec-cancel-btn" onclick={cancelEdit} disabled={saving}>{t.plan.cancel}</button>
+				</div>
+				{#if saveError}<p class="plan-spec-error">{saveError}</p>{/if}
+			</div>
+		{:else}
+			<div class="plan-spec-name-text">{detail.title}</div>
+		{/if}
+	</div>
+{/snippet}
+
 {#if !detail.spec && detail.revision === 0}
 	<!--
 		Nothing written up yet: no version to show and no history to open, and no claim that it is
@@ -251,6 +307,7 @@
 		<div class="plan-spec-head">
 			{@render title()}
 		</div>
+		{@render nameBlock()}
 		<div class="plan-spec-empty-card">
 			<p class="plan-spec-empty">{t.plan.noSpec}</p>
 			{#if detail.brief}
@@ -272,6 +329,7 @@
 
 	<div class="plan-spec-body">
 		{#if !detail.spec}
+			{@render nameBlock()}
 			<div class="plan-spec-empty-card">
 				<p class="plan-spec-empty">{t.plan.noSpec}</p>
 				{#if detail.brief}
@@ -313,6 +371,7 @@
 					<p class="plan-spec-focus-hint">{t.plan.links.focusHint}</p>
 				</div>
 			{/if}
+			{@render nameBlock()}
 			<!-- Hero: Plan Goal -->
 			<div class="plan-spec-goal">
 				<div class="plan-spec-goal-top">
@@ -700,6 +759,30 @@
 	}
 
 	/* Hero Goal Card */
+	.plan-spec-name {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		padding: 0 2px 10px;
+		border-bottom: 1px solid var(--line-subtle);
+	}
+	.plan-spec-name-label {
+		font-size: var(--text-caption);
+		font-weight: 600;
+		color: var(--muted);
+		letter-spacing: 0.02em;
+	}
+	.plan-spec-name-text {
+		font-size: var(--text-body);
+		font-weight: 600;
+		color: var(--ink);
+		overflow-wrap: anywhere;
+	}
+	.plan-spec-name-hint {
+		margin: 0;
+		font-size: var(--text-caption);
+		color: var(--muted);
+	}
 	.plan-spec-goal {
 		display: flex;
 		flex-direction: column;

@@ -1553,6 +1553,16 @@ function dispatch(
   if (params && method === "GET") {
     return jsonResponse(store.taskDetail(params.id!, store.citedPathExists), 200, null);
   }
+  // Your new name for a job: only the name, and only yours.
+  if (params && method === "PATCH") {
+    const body = input.body;
+    if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).join() !== "title") {
+      throw new HttpError(422, "invalid_args", "a job's rename is {title}");
+    }
+    const task = store.renamePlanByUser(params.id!, (body as { title: unknown }).title);
+    engine.renderPlanMirrors(task.id);
+    return jsonResponse(store.taskDetail(task.id, store.citedPathExists), 200, null);
+  }
 
   // Holds (叫停, ADR 0040): a stop you make from a button or a menu, and your lift of one. These
   // write the stop down, with the plans it parks and the check-backs it sets aside, and end the

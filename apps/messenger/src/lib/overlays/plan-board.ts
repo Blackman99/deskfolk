@@ -40,12 +40,17 @@ export function ticketTag(seq: number): string {
   return String(seq).padStart(2, "0");
 }
 
-/** The goal once the organizer has run, else the title, else the work dir — whichever this row has. */
+/**
+ * What a job is called on the board: its name — the one its tags and every Bot's picture use, and
+ * that you can change in its 要点 — else its goal, else the work dir. The goal came first while a
+ * name could not be changed (2026-10-03: the board called 《一拳超人》 by its goal while its tags
+ * and the Bots called it 「让审片员回复视频导演…」).
+ */
 export function planTitle(row: { goal?: string | null; title: string; dir: string }): string {
-  const goal = row.goal?.trim();
-  if (goal) return goal;
   const title = row.title?.trim();
   if (title) return title;
+  const goal = row.goal?.trim();
+  if (goal) return goal;
   return row.dir;
 }
 

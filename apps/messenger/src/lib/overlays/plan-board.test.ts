@@ -94,10 +94,10 @@ test("ticketTag pads to two digits", () => {
   expect(ticketTag(123)).toBe("123");
 });
 
-test("planTitle prefers the goal, then the title, then the dir", () => {
-  expect(planTitle({ goal: "把方案比出高下", title: "调研", dir: "work/x" })).toBe("把方案比出高下");
+test("planTitle is the job's name, else its goal, else the dir", () => {
+  expect(planTitle({ goal: "把方案比出高下", title: "调研", dir: "work/x" })).toBe("调研");
+  expect(planTitle({ goal: "把方案比出高下", title: "  ", dir: "work/x" })).toBe("把方案比出高下");
   expect(planTitle({ goal: null, title: "调研", dir: "work/x" })).toBe("调研");
-  expect(planTitle({ goal: "   ", title: "调研", dir: "work/x" })).toBe("调研");
   expect(planTitle({ goal: undefined, title: "", dir: "work/x" })).toBe("work/x");
   expect(planTitle({ title: "  ", dir: "work/x" })).toBe("work/x");
 });

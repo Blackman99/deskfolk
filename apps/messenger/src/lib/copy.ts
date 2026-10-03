@@ -1375,6 +1375,8 @@ const zh = {
     onModel: (model: string) => `用 ${model}`,
     spec: {
       title: "要点",
+      name: "名字",
+      nameHint: "这件事在应用里和 Bot 的局面里都叫这个名字；它的文件夹不跟着改名。",
       goal: "目标",
       acceptance: "验收",
       rules: "规则",
@@ -3104,6 +3106,8 @@ const en: CopyShape<typeof zh> = {
     onModel: (model: string) => `On ${model}`,
     spec: {
       title: "Plan",
+      name: "Name",
+      nameHint: "What this job is called in the app and in every Bot's picture; its folder keeps its name.",
       goal: "Goal",
       acceptance: "Done when",
       rules: "Rules",

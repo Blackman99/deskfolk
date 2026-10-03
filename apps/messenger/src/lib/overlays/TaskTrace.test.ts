@@ -890,11 +890,12 @@ test("a node with a single attachment renders 1 file button and opens through pr
   view.close();
 });
 
-test("the header reads the plan — goal, status, kind, ticket counts — and the tickets open beside the board, the spec a press away", async () => {
+test("the header reads the plan — its name, status, kind, ticket counts — and the tickets open beside the board, the spec a press away", async () => {
   forgetTraceSide();
   const view = open({ pane: true });
   await until(view.host, ".ticket-row");
-  expect(view.host.querySelector(".trace-titles h2")?.textContent).toContain("先出分镜的草图和配乐");
+  // Its name, as its tags and the Bots call it; the goal is in the spec.
+  expect(view.host.querySelector(".trace-titles h2")?.textContent).toBe("这件事 · 先出分镜");
   const meta = view.host.querySelector(".trace-meta")!;
   expect(meta.querySelector(".plan-status.is-active")?.textContent).toBe(t.plan.status.active);
   expect(meta.textContent).toContain("分镜");
@@ -923,7 +924,7 @@ test("the header reads the plan — goal, status, kind, ticket counts — and th
   // The switcher rows read the same way.
   click(await until(view.host, ".trace-title-trigger"));
   const jobs = [...view.host.querySelectorAll(".trace-job")];
-  expect(jobs[0]?.querySelector(".trace-job-title")?.textContent).toBe("先出分镜的草图和配乐");
+  expect(jobs[0]?.querySelector(".trace-job-title")?.textContent).toBe("先出分镜");
   expect(jobs[1]?.querySelector(".plan-status.is-done")).not.toBeNull();
   view.close();
 });
@@ -1687,8 +1688,8 @@ test("the board shows your stops over its job, lifts one, and its stop menu stop
   props.holds = [];
   flushSync();
   click(view.host.querySelector(".stop-menu-trigger"));
-  expect([...view.host.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent)).toEqual(["停下这件事《先出分镜的草图和配乐》", "停下所有 Bot"]);
-  click(buttonByText(view.host, "停下这件事《先出分镜的草图和配乐》"));
+  expect([...view.host.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent)).toEqual(["停下这件事《先出分镜》", "停下所有 Bot"]);
+  click(buttonByText(view.host, "停下这件事《先出分镜》"));
   expect(stops).toEqual([{ scope: "plan", id: "task-1" }]);
 
   props.holds = [

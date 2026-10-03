@@ -57,6 +57,14 @@ test("plans and tickets: reads are whitelisted, a spec edit carries the whole sp
   bad(specEdit({ spec: "写一份周报" }));
   bad(specEdit({ if_revision: 3 }));
 
+  // Your new name for a job, from the phone too: the name and nothing else.
+  const rename = (body: Record<string, unknown>): RemoteRequest => ({ v: 1, id, method: "PATCH", path: `/v1/tasks/${id}`, body });
+  ok(rename({ title: "一拳超人" }));
+  bad(rename({ title: "   " }));
+  bad(rename({ title: 3 }));
+  bad(rename({ title: "一拳超人", goal: "x" }));
+  bad(rename({}));
+
   const ticketEdit = (body: Record<string, unknown>): RemoteRequest => ({ v: 1, id, method: "PATCH", path: `/v1/tickets/${id}`, body });
   ok(ticketEdit({ status: "done", if_revision: 1 }));
   ok(ticketEdit({ title: "初稿", spec: "第一版", worker: null }));

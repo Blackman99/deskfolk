@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### You can rename a job, and the board calls it by its name
+
+- A job's name has a 名字 / Name block at the top of its spec on the board: edit it, Enter, and every tag, the board's heading, its job switcher, its stop menu and every Bot's picture use the new name; its folder keeps its name, and "Last change" says you renamed it. A job used to keep the line that opened it for good — 《一拳超人》 was made for two days under 「让审片员回复视频导演，说明未回复原因并给出审片意见。」.
+- The board's heading, switcher and stop menu read the job's name rather than its goal, so the board, the tags and the Bots call a job the same thing.
+- A conversation opened before its lines arrive now loads its jobs once they do; every tag in it read 「一件事」 until a reload.
+
 ### A line filed under the wrong job can be made a job of its own
 
 - The change-attribution dialog under a line of yours has "A new job": when the line is about none of the jobs listed, it opens a job from the line (with a ticket for it) and files the line there; the Bots that read it start on it there. It used to offer only jobs that existed, so a new request glued to an old job could only be stopped and said again.

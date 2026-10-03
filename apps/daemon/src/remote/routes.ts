@@ -77,6 +77,8 @@ const planSpec: Check = object(
 );
 const specRevision: Check = (v) => typeof v === "number" && Number.isInteger(v) && v >= 0;
 add("PATCH", "tasks/:id/spec", { spec: planSpec, if_revision: specRevision }, ["spec"], true);
+// Your new name for a job (only the name).
+add("PATCH", "tasks/:id", { title: v => typeof v === "string" && v.trim().length > 0 && v.length <= 400 }, ["title"]);
 // Holds (叫停): your stop from the phone, and your lift of one. A bot_plan hold names its Bot and plan as `<id>:<id>`.
 get("holds", { status: one("active", "all") });
 get("holds/:id");

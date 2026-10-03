@@ -254,3 +254,28 @@ test("holds as a list of your stops reads them: in the snapshot, naming the plan
   expect((await h.call("POST", `/v1/messages/${line.id}/control`, { action: "stop" })).status).toBe(422);
   expect((await h.call("POST", "/v1/messages/01ARZ3NDEKTSV4RRFFQ69G5FAV/control", { action: "stop" })).status).toBe(404);
 });
+
+test("you rename a job on the board: its name changes everywhere it is read, its folder stays, and the work log says you did", async () => {
+  // 2026-10-03: 《一拳超人》 was being made under a job named after the line that opened it two days
+  // before, 「让审片员回复视频导演，说明未回复原因并给出审片意见。」, and nothing could rename it.
+  const h = await harness();
+  const reviewer = h.store.createBot({ name: "审片员", duties: "审片", boundaries: "stay" });
+  const plan = h.store.openTask({ sessionId: reviewer.direct_session.id, title: "让审片员回复视频导演，说明未回复原因并给出审片意见。", spec });
+  h.store.db.run("UPDATE tasks SET dormant_since = ? WHERE id = ?", ["2026-10-02T00:00:00.000Z", plan.id]);
+
+  const renamed = await h.call("PATCH", `/v1/tasks/${plan.id}`, { title: "  一拳超人  动画 " });
+  expect(renamed.status).toBe(200);
+  expect(renamed.json).toMatchObject({ id: plan.id, title: "一拳超人 动画", dir: plan.dir });
+  expect(h.store.getTask(plan.id)).toMatchObject({ title: "一拳超人 动画", dir: plan.dir, dormant_since: null });
+  expect(h.store.listWorkEvents({ kind: "plan.renamed" }).map((event) => ({ actor: event.actor, payload: event.payload }))).toEqual([
+    { actor: "user", payload: { before: "让审片员回复视频导演，说明未回复原因并给出审片意见。", after: "一拳超人 动画" } },
+  ]);
+  expect(readFileSync(join(h.root, plan.dir, PLAN_MAP_FILE), "utf8")).toContain("一拳超人 动画");
+  // The board's 「上次变化」 says so.
+  expect((renamed.json as { last_change?: { what: string } }).last_change?.what).toBe("你改名为《一拳超人 动画》");
+
+  for (const body of [{ title: "   " }, { title: 3 }, {}, { title: "x", goal: "y" }]) {
+    expect((await h.call("PATCH", `/v1/tasks/${plan.id}`, body)).status).toBe(422);
+  }
+  expect((await h.call("PATCH", "/v1/tasks/nope", { title: "x" })).status).toBe(404);
+});

@@ -111,7 +111,9 @@ test("a work question arriving after the conversation opened requests its real c
     h.runtime.snapshot = { ...h.runtime.snapshot, messages: [message] }; flushSync(); await tick();
     // Read only after the change: reading the recorded calls earlier would freeze them (test-reactive proxy).
     const loads = h.runtime.calls.filter((call) => call.name === "loadAttributionPlans").map((call) => call.args);
-    expect(loads.slice(-2)).toEqual([[message.session_id, undefined], [message.session_id, message.id]]);
+    // With no line to load from, nothing is asked; the question, once it is there, is what is asked about.
+    expect(loads.at(-1)).toEqual([message.session_id, message.id]);
+    expect(loads.some((args) => args[1] === undefined && loads.indexOf(args) > 0)).toBe(false);
   } finally { h.close(); }
 });
 

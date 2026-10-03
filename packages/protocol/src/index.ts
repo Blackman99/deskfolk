@@ -1211,6 +1211,9 @@ export type MessageFiling = {
   is_primary?: boolean;
 };
 
+/** Your new name for a job; its folder keeps its name. */
+export type RenamePlanRequest = { title: string };
+
 export type PatchMessageAttributionRequest = {
   filings: Array<{ plan_id: string; ticket_id?: string | null; part_key?: string | null }>;
 };

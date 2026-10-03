@@ -70,6 +70,7 @@ import type {
   TaskTrace,
   Ticket,
   PatchTaskSpecRequest,
+  RenamePlanRequest,
   RequirementActionRequest,
   PatchTicketRequest,
   SessionTaskSummary,
@@ -517,6 +518,11 @@ export class LocalApi {
   async taskSpecRevisions(taskId: string, signal?: AbortSignal): Promise<TaskSpecRevision[]> {
     const page = await this.get<ListPage<TaskSpecRevision>>(`/v1/tasks/${encodeURIComponent(taskId)}/spec-revisions`, signal);
     return page.items;
+  }
+
+  /** Your new name for a job; its folder keeps its name. */
+  async renamePlan(taskId: string, body: RenamePlanRequest): Promise<TaskDetail> {
+    return this.patch<TaskDetail>(`/v1/tasks/${encodeURIComponent(taskId)}`, body);
   }
 
   /** Your edit of a plan's spec: the whole spec, guarded by the revision you edited from. */
