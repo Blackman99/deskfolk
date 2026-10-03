@@ -16,7 +16,7 @@
  */
 import { afterEach, expect, test } from "bun:test";
 import { confirmGroupLead } from "../store/group-leads";
-import { call, createScenario, tool, writeFile, type Scenario } from "../test-kit/scenario";
+import { call, createScenario, requestText, tool, writeFile, type Scenario } from "../test-kit/scenario";
 
 const open: Scenario[] = [];
 afterEach(async () => {
@@ -156,4 +156,38 @@ test("what was filed under the folded opening ticket goes up to the job: your li
   expect(h.store.getMessage(line.id).ticket_id).toBeNull();
   expect(h.store.db.query("SELECT ticket_id FROM user_quotes WHERE message_id = ?").all(line.id)).toEqual([{ ticket_id: null }]);
   expect(h.store.db.query("SELECT scope, scope_id FROM requirements").all()).toEqual([{ scope: "plan", scope_id: plan.id }]);
+});
+
+test("a lead's request for a piece of its own ticket is refused until the piece has a ticket of its own", async () => {
+  // Real-model run on 2026-10-04: the lead sent the slogans straight to 文案 on the job's one
+  // ticket, and 文案's slogans went to you to approve as the whole job — 放行 would have delivered
+  // it with no poster.
+  const h = await createScenario({ learning: true });
+  open.push(h);
+  const [designer, writer] = h.createBots({ name: "设计师", duties: "海报和视觉；拆活、派活、审稿" }, { name: "文案", duties: "写宣传语" });
+  const room = h.group("海报组", [designer!, writer!]);
+  confirmGroupLead(h.store, room, designer!.id);
+  const ticketId = (title: string) => h.store.db.query<{ id: string }, [string]>("SELECT id FROM tickets WHERE title = ?").get(title)?.id ?? null;
+  const stop = call(tool("end_turn", { reason: "nothing_new" }));
+  h.script(designer!).handle(({ hop, results }) => {
+    // Straight to 文案, on its own ticket (the one the request opened).
+    if (hop === 1) return call(tool("delegate", { to: "文案", ask: "写三句宣传语", expects: "deliverable" }));
+    if (hop === 2 && results[0]?.ok === false) return call(tool("plan_items", { items: [{ title: "三句宣传语", owner: "文案", reviewer: "设计师" }] }));
+    if (hop === 3) return call(tool("delegate", { to: "文案", ask: "写三句宣传语", expects: "deliverable", ticket: ticketId("三句宣传语")! }));
+    return stop;
+  });
+  h.script(writer!).reply(stop);
+
+  h.postUser(room, "做一张咖啡店开业海报，竖版，配三句宣传语");
+  await h.waitIdle({ timeoutMs: 15_000 });
+
+  const [refused, laidOut, sent] = h.toolCalls(designer!).filter((c) => c.name !== "end_turn");
+  expect(refused!.result).toMatchObject({ ok: false });
+  // What it is told: why, and the two ways on.
+  const told = requestText(h.hops(designer!).find((hop) => hop.hop === 2)!.request);
+  expect(told).toContain("this ticket is your own");
+  expect(told).toContain("plan_items");
+  expect(laidOut!.result?.ok).toBe(true);
+  expect(sent!.result?.ok).toBe(true);
+  expect(h.store.db.query("SELECT ticket_id FROM delegations").all()).toEqual([{ ticket_id: ticketId("三句宣传语") }]);
 });

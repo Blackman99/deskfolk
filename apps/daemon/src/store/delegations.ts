@@ -10,6 +10,7 @@ import { HOLD_SCOPES, holdsCovering } from "./holds";
 import { holdInboxItems, queueInboxItem, refreshHeldInbox, supersedeInboxItems, type InboxItem } from "./inbox";
 import { aliveBot, isPresent, requireNonEmpty, sessionRow, type StoreContext } from "./shared";
 import { requirementsBearingOn } from "./requirements";
+import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import type { WorkItem } from "./work-items";
 
 export type Delegation = {
@@ -376,6 +377,25 @@ export function cancelDelegationsForSession(ctx: StoreContext, input: { sessionI
   });
 }
 
+/**
+ * A request for a deliverable on a ticket the caller owns, naming no part, makes whatever comes back
+ * the whole ticket's hand-over (a delegate there hands it over as its producer). On 2026-10-04's
+ * real-model run the poster group's lead, asked for a poster with three slogans, sent the slogans
+ * straight to 文案 on the job's one ticket; 文案's 宣传语.txt then went to you to approve as the whole
+ * job, and 放行 would have delivered it with no poster. From level 5 the piece gets a ticket of its
+ * own first (`plan_items`, the lead's; with ADR 0053's layout, then the request), or comes back as an
+ * answer for the caller to hand over itself.
+ */
+function refuseOwnTicket(ctx: StoreContext, input: { botId: string; ticketId: string | null; expects: Delegation["expects"]; partKeys: readonly string[] }): void {
+  if (input.expects !== "deliverable" || !input.ticketId || input.partKeys.length > 0) return;
+  if (readEngineLevel(ctx.db) < ENGINE_LEVELS.submissions) return;
+  const owner = ctx.db.query<{ owner: string | null }, [string]>("SELECT COALESCE(owner_bot_id, worker) AS owner FROM tickets WHERE id = ?").get(input.ticketId)?.owner;
+  if (owner !== input.botId) return;
+  throw new HttpError(422, "invalid_args", "this ticket is your own: what the delegate hands over for it would close it as the whole of your work. "
+    + "Give the piece you are handing over a ticket of its own first (plan_items: its title, the delegate as owner, you as reviewer) and delegate on that ticket, "
+    + "or ask with expects \"answer\" to get it back and hand this ticket over yourself.");
+}
+
 export function delegateWork(ctx: StoreContext, input: {
   fromTurnId: string; toBotId: string; ask: string; expects: Delegation["expects"];
   ticketId?: string | null; partKeys?: string[]; requirementIds?: string[]; continue?: boolean; now?: string;
@@ -396,6 +416,7 @@ export function delegateWork(ctx: StoreContext, input: {
     const partKeys = identifiers(input.partKeys, "partKeys");
     const requirementIds = identifiers(input.requirementIds, "requirementIds");
     validateBindings(ctx, from.task_id, ticketId, partKeys, requirementIds);
+    refuseOwnTicket(ctx, { botId: from.bot_id, ticketId, expects: input.expects, partKeys });
     const threadId = thread(ctx, from, target.id, now);
     const recipientHome = planHome && isPresent(ctx, planHome, target.id) ? planHome
       : isPresent(ctx, from.home_session_id, target.id) ? from.home_session_id : from.session_id;

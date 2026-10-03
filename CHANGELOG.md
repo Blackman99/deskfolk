@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A piece of a job no longer comes back as the whole job
+
+- A Bot asked to deliver part of another Bot's ticket (the lead sending the slogans to the writer on the poster job's one ticket) could hand it in as that whole ticket, and the card then asked you to approve the job with only the slogans in it. Such a request is now refused with two ways on: give the piece a ticket of its own first, or ask for it as an answer and hand the ticket in yourself. Found in a run with real models; the lead then asked for the slogans as an answer and made the poster itself.
+
 ### A complaint's card and the lead don't both send the work back
 
 - When a line of yours about handed-over work brings up the "send it back to rework?" card, the Bot the line also wakes (the lead, in a group) is told the card is asking and to leave that ticket to your answer. It was not told, and could hand the fix to the maker while you pressed Send back.
