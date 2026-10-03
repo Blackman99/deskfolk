@@ -131,9 +131,13 @@ describe("making a hold", () => {
     expect(make({ action: "stop" })?.status).toBe(422);
     expect(make({ targets: [{ scope: "global", id: "x" }] })?.status).toBe(422);
     expect(make({ targets: "session" })?.status).toBe(422);
-    // Only a Stop's own hold, on one Bot in one plan or on one turn, goes when you next speak.
-    expect(make({ liftOnNextUserMessage: true })?.status).toBe(422);
+    // A Stop's hold, and one from a group's stop menu, goes when you next speak; one on everything
+    // or on a ticket waits for you to lift it.
+    expect(make({ scope: "global", scopeId: null, liftOnNextUserMessage: true })?.status).toBe(422);
     expect(make({ scope: "turn", scopeId: turn.id, liftOnNextUserMessage: true })).toBeNull();
+    expect(make({ liftOnNextUserMessage: true })).toBeNull();
+    expect(make({ scope: "session", scopeId: room.id, liftOnNextUserMessage: true })).toBeNull();
+    expect(make({ scope: "plan", scopeId: plan.id, liftOnNextUserMessage: true })).toBeNull();
     // A stop you said names your line, and a line a Bot wrote is not yours.
     expect(make({ source: "user_text" })?.status).toBe(422);
     const botLine = store.insertMessage({ sessionId: room.id, kind: "bot", author: director.id, body: "停了" });

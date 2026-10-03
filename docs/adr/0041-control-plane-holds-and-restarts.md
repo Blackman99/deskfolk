@@ -57,3 +57,13 @@
 - 不删叫停记录；清空聊天、删群都不删。
 - 不在叫停前确认：回执上能撤销、扩大、缩小。
 - 重启后不替你重交最后那次送审或渲染。
+
+## 2026-10-03 补记：群停止菜单的叫停随你下一句话解除 / A group stop menu's hold goes with your next line
+
+群停止菜单里的「停下这个群里的工作」「停下 X 的全部工作」「停下这件事」改成和卡片上的 Stop 一样：建的叫停带 `lift_on_next_user_message`，你的下一句相关的话在叫醒任何人之前解除它，Bot 从这句往下，不另带说明重开。相关的话按范围定：群上的是你之后在这个群里说的任何一句；Bot 上的是对它说的话（判断同 Stop）；规划上的是落在这件规划上的话。在群里说「@X 继续」也算这样一句：群或规划上的叫停解除，只有 X 被停下的轮带说明重开，别的 Bot 停下的轮就停着。「停下所有 Bot」、流程图和工具菜单的叫停、说出来的「停下」照旧要你亲手解除；`lift_on_next_user_message` 不能用在全部和任务范围上。侧栏的「叫停中」只列要你亲手解除的叫停，所以这三项不再出现在那里。
+
+起因：10-03 你在群里用菜单停下视频导演，接着说「从头再做一遍，之前的作废」。这句话不是「继续」，叫停没解除，它只开了一段只读轮；那段读了九跳文件后回了空，群里什么都没出现，「叫停中」一直挂到你手动解除。叫停防的是应用自己把活叫回来（规划叫回、回看、日程、别的 Bot 的话），不是你本人的新指令。私聊在 10-02 已改成只有 Stop，群菜单这次跟上。
+
+同时补上只读段的空回答：只读段一个字没回就结束时，应用在它的位置回一条状态行（`control.unanswered` 指向你的那句话），说明它被叫停着，带「只让 X 继续」「全部继续」；按下后除了照常解除、重开被停下的轮，这个会话里没有轮因此重开的 Bot 还会由你那句话给它开一轮。
+
+The group stop menu's "Stop the work in this group", "Stop all of X's work" and "Stop this job" now make holds with `lift_on_next_user_message`, like a Stop on a card: your next line about them (any line in that group; a line to that Bot; a line landing on that plan) lifts them before it wakes anyone, and the Bots go on from it with no note. "@X continue" in the group counts: the group's or plan's hold goes and only X's stopped turns start again on a note. "Stop every Bot", the board's and tools menu's stops and a spoken "stop" still wait for you; the flag is refused on global and ticket holds. A read-only answer that ends without a word is now answered by the app with a status line (`control.unanswered`) whose go-on buttons also open the Bot's turn on your line when nothing of it starts again there.

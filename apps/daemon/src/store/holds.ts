@@ -265,9 +265,11 @@ export function createHold(
   if (typeof cascade !== "boolean") throw new HttpError(422, "invalid_args", "cascade must be a boolean");
   const liftOnNext = input.liftOnNextUserMessage ?? false;
   if (typeof liftOnNext !== "boolean") throw new HttpError(422, "invalid_args", "lift_on_next_user_message must be a boolean");
-  // Only a Stop's own hold goes when you next speak in that job; a stop you said or chose stays until you lift it.
-  if (liftOnNext && scope !== "bot_plan" && scope !== "turn") {
-    throw new HttpError(422, "invalid_args", "only a hold on one Bot's work in a plan, or on one turn, lifts on your next line");
+  // A Stop's hold goes when you next speak in that job, and so does one from a group's stop menu
+  // when you next speak there (engine/stop.ts `stopsAbout`). A stop on everything, or on one
+  // ticket, stays until you lift it: no one line of yours is about all of it.
+  if (liftOnNext && scope !== "bot_plan" && scope !== "turn" && scope !== "bot" && scope !== "session" && scope !== "plan") {
+    throw new HttpError(422, "invalid_args", "a hold on everything or on a ticket does not lift on your next line");
   }
   if (input.source === "user_text" && !input.sourceMessageId) {
     throw new HttpError(422, "invalid_args", "a stop you said names the line you said it in");

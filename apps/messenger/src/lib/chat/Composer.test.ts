@@ -739,7 +739,7 @@ test("a direct's Stop is never a second one: where Stop already replaces Send th
   }
 });
 
-test("a group's stop menu sits beside Send while a Bot works in it, and stops the chosen scope from here", () => {
+test("a group's stop menu sits beside Send while a Bot works in it, and stops the chosen scope from here, until your next line there", () => {
   const selected = aGroup();
   const turns = [aTurn({ session_id: selected.id, bot_id: "bot-1", task_id: "task-1" })];
   const runtime = reactive(fakeRuntime({ bots: [aBot({ id: "bot-1", name: "视频导演" })], sessions: [selected], turns, holdsOn: true }));
@@ -750,7 +750,7 @@ test("a group's stop menu sits beside Send while a Bot works in it, and stops th
     click(host.querySelector(".stop-menu-trigger"));
     expect([...host.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent)).toEqual(["停下这个群里的工作", "停下视频导演的全部工作", "停下这件事", "停下所有 Bot"]);
     click(buttonByText(host, "停下这件事"));
-    expect(runtime.calls.filter((call) => call.name === "stopScope").map((call) => call.args)).toEqual([["plan", "task-1", selected.id]]);
+    expect(runtime.calls.filter((call) => call.name === "stopScope").map((call) => call.args)).toEqual([["plan", "task-1", selected.id, { liftOnNext: true }]]);
   } finally {
     close();
   }

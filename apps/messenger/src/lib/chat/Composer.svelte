@@ -149,7 +149,7 @@
 	/** A refusal comes back for the menu to say. */
 	function pickStop(item: StopMenuItem): Promise<unknown> | void {
 		if (!selected) return;
-		return runtime.stopScope(item.choice.scope, item.choice.id, selected.id);
+		return runtime.stopScope(item.choice.scope, item.choice.id, selected.id, { liftOnNext: item.choice.liftOnNext });
 	}
 
 	const lockedNotice = $derived.by(() => {

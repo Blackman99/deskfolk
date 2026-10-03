@@ -75,8 +75,11 @@ export function stopReceiptBody(
     parked: readonly string[];
     beside: readonly { bot: string; plan: string; ticket: string | null }[];
     stillRunning: readonly ControlTurnLine[];
-    /** A Stop's hold: it goes when you next speak about that job. */
-    liftOnNextLine: boolean;
+    /**
+     * A hold that goes when you next speak, and about what: a Stop's, about that job (`job`); a
+     * group stop menu's, in that group (`group`) or to that Bot (`bot`). False: until you lift it.
+     */
+    liftOnNextLine: false | "job" | "group" | "bot";
     /** Everything is stopped, routines too. */
     global: boolean;
   },
@@ -121,9 +124,7 @@ export function stopReceiptBody(
   // A stop on everything is lifted by words that name everything; a plain 「继续」 lifts one Bot's or one group's.
   lines.push(
     input.liftOnNextLine
-      ? en
-        ? "Say anything more about this job and it goes on from there."
-        : "你在这件事上再说话，它就接着往下。"
+      ? nextLineLifts(locale, input.liftOnNextLine)
       : input.global
         ? en
           ? `Say "all bots continue" to lift it.`
@@ -133,6 +134,19 @@ export function stopReceiptBody(
           : "说「继续」就解除。",
   );
   return lines.join("\n");
+}
+
+/** How a stop that goes with your next line says so, by what that line has to be about. */
+function nextLineLifts(locale: Locale, about: "job" | "group" | "bot"): string {
+  const en = locale === "en";
+  switch (about) {
+    case "job":
+      return en ? "Say anything more about this job and it goes on from there." : "你在这件事上再说话，它就接着往下。";
+    case "group":
+      return en ? "Say anything more in this group and the Bots go on from what you say." : "你在这个群里再说话就解除，Bot 从你这句接着往下。";
+    case "bot":
+      return en ? "Say anything more to it and it goes on from what you say." : "你再对它说话就解除，它从你这句接着往下。";
+  }
 }
 
 /** The receipt for a go on: which stops it lifted, and what goes on now. */
@@ -194,13 +208,22 @@ export function controlStatusBody(
     ended: readonly ControlTurnLine[];
     /** The words said it had not stopped, or asked whether it can stop, and nothing holds it: the answer ends with a stop button. */
     offerStop: boolean;
+    /** Said in place of a read-only answer that said nothing to your line: it opens by saying why. */
+    unanswered?: boolean;
   },
 ): string {
   const en = locale === "en";
-  const lines: string[] =
+  const lead = input.unanswered
+    ? [
+        en
+          ? `${input.about} did not answer: it is stopped, so it could only read and reply, and does not act on what you said.`
+          : `${input.about}没有回话：它被叫停着，这一段只能读和回答，不会照你的话动手。`,
+      ]
+    : [];
+  const lines: string[] = [...lead, ...(
     input.holds.length === 0
       ? [en ? `${input.about}: not stopped.` : `${input.about}：没有被叫停。`, ...endedLines(locale, input.ended)]
-      : heldLines(locale, { about: input.about, holds: input.holds, ended: input.ended });
+      : heldLines(locale, { about: input.about, holds: input.holds, ended: input.ended }))];
   lines.push(
     input.running.length === 0
       ? en
@@ -219,6 +242,7 @@ export function controlStatusBody(
     );
   }
   if (input.offerStop) lines.push(en ? `Press Stop to stop ${input.about}.` : `要停下${input.about}，点「停下」。`);
+  if (input.unanswered) lines.push(en ? "A button below lifts the stop, and it takes up your line." : "点下面的按钮解除，它就照你这句做。");
   return lines.join("\n");
 }
 

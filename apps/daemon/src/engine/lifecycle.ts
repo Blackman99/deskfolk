@@ -97,6 +97,11 @@ export type LifecycleDeps = {
    */
   answerAsk: (askId: string, sessionId: string, custom: string) => void;
   /**
+   * Late-bound: the stops' `unanswered`. A read-only answer under a stop that ended without a word
+   * to you leaves your line unanswered; the app says why in its place, with the buttons to go on.
+   */
+  readOnlyUnanswered?: (turn: Turn) => void;
+  /**
    * Late-bound: the implicit submission (ADR 0046, engine level 5) — new files the segment cited
    * in its ticket's folder, handed over for it, checked, and moved on. Resolves once settled.
    */
@@ -177,6 +182,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     observeTicket,
     handleParticipation,
     answerAsk,
+    readOnlyUnanswered,
     implicitSubmission,
   } = deps;
 
@@ -1041,6 +1047,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
         }
         if (outcome === "noop" || outcome === "spoke") {
           completeSilent(turnId);
+          saidNothing(current, live);
           return;
         }
         continue;
@@ -1137,8 +1144,19 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       if (message && !live.parentId && current.mode !== "readonly") {
         void track(handleParticipation(message, { fromUser: false }));
       }
+      saidNothing(current, live);
       return;
     }
+  }
+
+  /**
+   * A read-only answer that ended having said nothing (2026-10-03: nine hops of reading, then an
+   * empty reply): your line would sit there unanswered under a stop you might not know still holds.
+   */
+  function saidNothing(turn: Turn, live: Live): void {
+    if (turn.mode !== "readonly" || live.spoke) return;
+    // Ended as an answer, not stopped or cut off: those say so themselves.
+    if (store.getTurn(turn.id).status === "completed") readOnlyUnanswered?.(turn);
   }
 
   /**

@@ -869,7 +869,10 @@ export type Hold = {
   /** `legacy`: a plan parked before holds existed, taken over as one. */
   source: "user_text" | "user_button" | "legacy" | "migration";
   source_message_id: string | null;
-  /** Set on the hold a Stop makes: your next line in that job lifts it. */
+  /**
+   * Set on the hold a Stop makes, and on one a group's stop menu makes: your next line about it (in
+   * that job; in that group, to that Bot) lifts it. Never on a stop on everything.
+   */
   lift_on_next_user_message: boolean;
   targets: HoldTarget[];
   effect: HoldEffect;
@@ -1396,7 +1399,9 @@ export type SupervisorControl = {
  * - `receipt`, on the app's line: what a stop or a go on of yours did, from the holds' own record.
  * - `status`, on the app's line: where your stops stand when you asked (「停了吗」「你没停」) or
  *   said go on while a wider hold still covers the Bot; also its answer to a status question
- *   (「怎么样了」), which offers nothing and names no hold.
+ *   (「怎么样了」), which offers nothing and names no hold. With `unanswered`, said in place of a
+ *   reply: your line that a stop let the Bot only answer read-only, and that answer said nothing;
+ *   its go on buttons then also open the Bot's work on that line.
  * - `restart`, on the app's line after a restart (ADR 0041): a job the restart cut off. `notes` are
  *   the 「中断」 lines of its turns; 继续 (`resume`) continues each the way its own Continue would.
  * - `check`, on the app's line (ADR 0040 P3): a check from your words offered to you (`proposed`;
@@ -1428,7 +1433,7 @@ export type MessageControl =
       held_ids?: string[];
       acted?: ControlOffer[];
     }
-  | { kind: "status"; hold_ids: string[]; offer: ControlOffer[]; scopes: ControlScope[]; acted?: ControlOffer[] }
+  | { kind: "status"; hold_ids: string[]; offer: ControlOffer[]; scopes: ControlScope[]; unanswered?: string; acted?: ControlOffer[] }
   | { kind: "restart"; cause: RestartCause; notes: string[]; offer: ControlOffer[]; acted?: ControlOffer[] }
   | {
       kind: "check";

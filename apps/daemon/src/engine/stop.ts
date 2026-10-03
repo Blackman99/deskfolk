@@ -21,7 +21,10 @@
  * the buttons. A Stop's hold goes with your next line to its Bot about its job, and a 「继续」 that
  * nothing else holds back is that line; a go on to the Bot said away from that job, or one that
  * names everything, lifts it and opens the work again on the note, like any other. A line or a go
- * on to one Bot leaves the other Bots' Stops alone.
+ * on to one Bot leaves the other Bots' Stops alone. A group's stop menu stops the same way, on the
+ * group, a Bot or a job: your next line there is what the Bots go on from. Your line to a Bot a
+ * stop that stays still holds gets a read-only answer; one that says nothing is answered by the
+ * app instead, with the buttons to go on.
  *
  * The app's lines about your stops carry buttons (`MessageControl`), and `act` carries them out:
  * undo a stop (a line read as one then reaches the Bots as any line), widen it to every Bot or to
@@ -108,10 +111,16 @@ export type Stop = {
   handleLine: (message: Message) => boolean;
   /**
    * Your line, once filed: a Stop's hold on the job it is about, on a Bot the line is said to, goes
-   * before the line wakes anyone, so the Bot goes on from what you said. Only a line said after the
-   * Stop counts.
+   * before the line wakes anyone, so the Bot goes on from what you said; so does a group stop
+   * menu's hold, on the group, a Bot or a job, that the line is about. Only a line said after the
+   * stop counts.
    */
   liftOnYourLine: (message: Message) => void;
+  /**
+   * A read-only answer under a stop that ended having said nothing: in its place the app says the
+   * Bot is stopped, with the buttons to go on, which also open its work on your line.
+   */
+  unanswered: (turn: Turn) => void;
   /**
    * Stop on a turn's card, in a direct or a group: a hold on this Bot's work in its plan (on the
    * turn, when it has no plan) that your next line about that job lifts, and the turn ends under it.
@@ -571,8 +580,15 @@ export function createStop(deps: StopDeps): Stop {
     const named = holdsToLift(session, scopes);
     const everything = scopes.some((scope) => scope.scope === "global");
     // The Stops the line is about, those on a Bot the words leave out aside: 「@X 继续」 in a group
-    // says nothing to the other Bots on the plan it lands on, and their Stops stay.
-    const about = stopsAbout(message).filter((hold) => everything || scopes.some((scope) => scope.scope !== "bot" || stopOnBot(hold, scope.id)));
+    // says nothing to the other Bots on the plan it lands on, and their Stops stay. A group stop
+    // menu's hold on the group or a job is about whatever you say there next, a go on to one Bot
+    // included; only the Bots the words name open again on it (`othersOnWide`).
+    const about = stopsAbout(message).filter(
+      (hold) => everything || isWide(hold) || scopes.some((scope) => scope.scope !== "bot" || stopOnBot(hold, scope.id)),
+    );
+    const namedBots = everything ? [] : scopes.flatMap((scope) => (scope.scope === "bot" ? [scope.id] : []));
+    const othersOnWide = (record: HeldTurn, hold: Hold) =>
+      namedBots.length > 0 && hold.lift_on_next_user_message && isWide(hold) && !namedBots.includes(record.bot_id);
     const withLine = new Set(about.map((hold) => hold.id));
     // Your Stops on the work of a Bot the words name, on a job the line does not land on (one it
     // was doing in a direct with another Bot, say): 「继续」 to that Bot is about them all the same,
@@ -600,7 +616,7 @@ export function createStop(deps: StopDeps): Stop {
       for (const hold of lifted) {
         store.recordWorkEvent({ kind: "control.lift", actor: "user", sessionId: message.session_id, payload: { hold: hold.id, by } });
       }
-      const resumed = resumeLifted(lifted, said, { stops: true });
+      const resumed = resumeLifted(lifted, said, { stops: true, leave: othersOnWide });
       const current = lifted.map((hold) => store.getHold(hold.id));
       const stillHeld = heldAbout(scopes, session.id, message);
       const receipt = store.insertMessage({
@@ -690,7 +706,7 @@ export function createStop(deps: StopDeps): Stop {
   function resumeLifted(
     lifted: Hold[],
     said: SaidLine,
-    opts: { stops: boolean; leave?: (record: HeldTurn) => boolean },
+    opts: { stops: boolean; leave?: (record: HeldTurn, hold: Hold) => boolean },
   ): Array<{ record: HeldTurn; turn: Turn }> {
     const resumed: Array<{ record: HeldTurn; turn: Turn }> = [];
     const seen = new Set<string>();
@@ -712,7 +728,7 @@ export function createStop(deps: StopDeps): Stop {
           store.addHoldEffect(heir.id, { held_over: [record] });
           continue;
         }
-        if (opts.leave?.(record)) continue;
+        if (opts.leave?.(record, hold)) continue;
         const turn = resume(record, said);
         if (!turn) continue;
         store.addHoldEffect(hold.id, { resumed_turns: [turn.id] });
@@ -790,6 +806,21 @@ export function createStop(deps: StopDeps): Stop {
     });
   }
 
+  function unanswered(turn: Turn): void {
+    if (!on() || turn.mode !== "readonly") return;
+    let line: Message;
+    try {
+      line = store.getMessage(turn.trigger_message_id);
+    } catch {
+      return;
+    }
+    if (line.kind !== "user") return;
+    const scopes: ControlScope[] = [{ scope: "bot", id: turn.bot_id }];
+    // Lifted meanwhile: nothing stands in the way of saying it again.
+    if (heldAbout(scopes, line.session_id, line).length === 0) return;
+    answerStatus(line, scopes, { offerStop: false, offerContinue: true, unanswered: line.id });
+  }
+
   /**
    * The Stops your line is about: on a Bot's work in the plan the line is filed under, or would
    * land on for that Bot; on a turn in the conversation it is said in. Only a line said to that Bot
@@ -797,17 +828,34 @@ export function createStop(deps: StopDeps): Stop {
    * or the stopped Bot's appointments would come back and restart it without a word from you. Only
    * a line said after the Stop — one sent just before, still being filed when the Stop landed, is
    * not what you said to it.
+   *
+   * A group's stop menu makes the same kind of hold, a scope wider: on the group, any line of yours
+   * in it; on a Bot's work, a line said to that Bot; on a job, a line said to a Bot it lands on
+   * that job for. Stopping a group is "not this", like a Stop; what you say next there is what the
+   * Bots go on from, not a question to answer read-only under a stop that is still on (2026-10-03:
+   * 「从头再做一遍，之前的作废」 after the group's stop got a read-only turn that said nothing).
    */
   function stopsAbout(message: Message): Hold[] {
     return store.listHolds({ inForce: true }).filter((hold) => {
       if (!stopBefore(hold, message) || hold.scope_id === null) return false;
-      if (hold.scope === "turn") {
-        const turn = turnRow(hold.scope_id);
-        return turn !== null && turn.session_id === message.session_id && saidTo(message, turn.bot_id);
+      switch (hold.scope) {
+        case "turn": {
+          const turn = turnRow(hold.scope_id);
+          return turn !== null && turn.session_id === message.session_id && saidTo(message, turn.bot_id);
+        }
+        case "bot_plan": {
+          const [botId, taskId] = hold.scope_id.split(":");
+          return saidTo(message, botId!) && landedPlan(message, botId!) === taskId;
+        }
+        case "session":
+          return message.session_id === hold.scope_id;
+        case "bot":
+          return saidTo(message, hold.scope_id);
+        case "plan":
+          return message.task_id === hold.scope_id || wakes(message).some((botId) => landedPlan(message, botId) === hold.scope_id);
+        default:
+          return false;
       }
-      if (hold.scope !== "bot_plan") return false;
-      const [botId, taskId] = hold.scope_id.split(":");
-      return saidTo(message, botId!) && landedPlan(message, botId!) === taskId;
     });
   }
 
@@ -834,7 +882,7 @@ export function createStop(deps: StopDeps): Stop {
     return store.listHolds({ inForce: true }).filter((hold) => stopBefore(hold, message) && bots.some((bot) => stopOnBot(hold, bot)));
   }
 
-  /** A Stop's hold, pressed before `message` was said. */
+  /** A hold that lifts on your next line (a Stop's, or a group stop menu's), made before `message` was said. */
   function stopBefore(hold: Hold, message: Message): boolean {
     return hold.lift_on_next_user_message && message.created_at > hold.created_at;
   }
@@ -847,7 +895,7 @@ export function createStop(deps: StopDeps): Stop {
    * recorded as a violation (there should never be any). `offerContinue`: a go on the words could
    * not lift, since something wider holds it; the answer offers the buttons.
    */
-  function answerStatus(message: Message, scopes: ControlScope[], opts: { offerStop: boolean; offerContinue?: boolean }): void {
+  function answerStatus(message: Message, scopes: ControlScope[], opts: { offerStop: boolean; offerContinue?: boolean; unanswered?: string }): void {
     const here = message.session_id;
     const { answer, ended } = store.transaction(() => {
       const holds = heldAbout(scopes, here, message);
@@ -869,9 +917,10 @@ export function createStop(deps: StopDeps): Stop {
           elsewhere: elsewhere.map((turn) => turnLine(heldTurn(turn, lives.get(turn.id)), here, heading)),
           ended: ended.map((row) => turnLine(row.record, here, heading)),
           offerStop,
+          unanswered: opts.unanswered !== undefined,
         }),
         hiddenFromBots: true,
-        control: { kind: "status", hold_ids: holds.map((hold) => hold.id), offer, scopes },
+        control: { kind: "status", hold_ids: holds.map((hold) => hold.id), offer, scopes, ...(opts.unanswered ? { unanswered: opts.unanswered } : {}) },
       });
       return { answer, ended };
     });
@@ -969,8 +1018,12 @@ export function createStop(deps: StopDeps): Stop {
     return inForce.filter((hold) => ids.has(hold.id));
   }
 
-  /** A hold on part of a Bot's work, as a Stop makes: on it in one plan, or on one of its turns. */
+  /**
+   * A hold on a Bot's own work, as a Stop makes — on it in one plan, or on one of its turns — or as
+   * a group's stop menu makes on all of it.
+   */
   function stopOnBot(hold: Hold, botId: string): boolean {
+    if (hold.scope === "bot") return hold.scope_id === botId;
     if (hold.scope === "bot_plan") return hold.scope_id?.startsWith(`${botId}:`) === true;
     return hold.scope === "turn" && hold.scope_id !== null && turnRow(hold.scope_id)?.bot_id === botId;
   }
@@ -1072,7 +1125,8 @@ export function createStop(deps: StopDeps): Stop {
       case "continue_only":
       case "continue_all": {
         const listed = control.kind === "status" ? control.hold_ids : control.kind === "receipt" ? (control.held_ids ?? []) : [];
-        return goOnByButton(message, control.scopes, listed, action === "continue_only", pressed);
+        const line = control.kind === "status" ? control.unanswered : undefined;
+        return goOnByButton(message, control.scopes, listed, action === "continue_only", pressed, line);
       }
       case "resume":
       case "leave":
@@ -1163,9 +1217,10 @@ export function createStop(deps: StopDeps): Stop {
    * The two buttons under a go on that a wider stop held back. 「全部继续」 lifts every stop over what
    * the go on named. 「只让 X 继续」 lifts them too, but each wider one (on everything, a conversation,
    * a plan) first leaves in its place one stop per other Bot on what it held of that Bot's work, so
-   * only the Bots the go on named go on.
+   * only the Bots the go on named go on. Under the line said in place of a read-only answer that
+   * said nothing (`unanswered`), each named Bot also takes up your line there.
    */
-  function goOnByButton(message: Message, scopes: ControlScope[], listed: string[], only: boolean, pressed: () => void): ControlActionResult {
+  function goOnByButton(message: Message, scopes: ControlScope[], listed: string[], only: boolean, pressed: () => void, unanswered?: string): ControlActionResult {
     const here = message.session_id;
     const keep = new Set(botsNamed(scopes, here));
     const result = store.transaction(() => {
@@ -1180,11 +1235,37 @@ export function createStop(deps: StopDeps): Stop {
         store.recordWorkEvent({ kind: "control.lift", actor: "user", sessionId: here, payload: { hold: hold.id, by: "user_button" } });
       }
       const resumed = resumeLifted(lifted, null, { stops: true });
+      if (unanswered) takeUp(unanswered, keep, resumed);
       const line = continueReceiptLine(here, scopes, lifted, resumed, made.map((hold) => store.getHold(hold.id)));
       return { made, lifted: lifted.map((hold) => store.getHold(hold.id)), line };
     });
     publishMessage(result.line);
     return { made: result.made.map((hold) => store.getHold(hold.id)), lifted: result.lifted };
+  }
+
+  /**
+   * Your line a read-only answer said nothing to, taken up now by each of `bots` that is not at
+   * work there already — a stopped turn opened again in that conversation reads the line in its
+   * transcript — the way the line would have opened its turn with nothing stopped. One a stop still
+   * covers answers read-only again.
+   */
+  function takeUp(lineId: string, bots: Set<string>, resumed: Array<{ record: HeldTurn }>): void {
+    let line: Message;
+    let session: Session;
+    try {
+      line = store.getMessage(lineId);
+      session = store.getSession(line.session_id);
+    } catch {
+      return;
+    }
+    const withYou = session.kind !== "group" && store.isPresent(session.id, USER_MEMBER);
+    for (const botId of bots) {
+      if (resumed.some((row) => row.record.bot_id === botId && row.record.session_id === session.id)) continue;
+      if (!store.isPresent(session.id, botId)) continue;
+      if (store.listLiveTurns({ sessionId: session.id, botId }).some((turn) => turn.mode !== "readonly")) continue;
+      if (withYou) startTurn(session.id, botId, line, "fork", { cause: "user_line" });
+      else hearOrStart(session.id, botId, line, { item: { author: "", body: line.body, checkBack: false } }, { cause: "user_line", otherwise: "fork" });
+    }
   }
 
   /** The Bots a go on names: the Bot itself; the Bots in a conversation; the Bots that worked in a plan. */
@@ -1282,9 +1363,17 @@ export function createStop(deps: StopDeps): Stop {
         const turn = safeTurn(id);
         return turn ? [turnLine(heldTurn(turn, lives.get(id)), here, heading)] : [];
       }),
-      liftOnNextLine: holds.some((hold) => hold.lift_on_next_user_message),
+      liftOnNextLine: nextLineAbout(holds.find((hold) => hold.lift_on_next_user_message)),
       global: holds.some((hold) => hold.scope === "global"),
     });
+  }
+
+  /** What the line that lifts `hold` has to be about, as its receipt says it; false for none. */
+  function nextLineAbout(hold: Hold | undefined): false | "job" | "group" | "bot" {
+    if (!hold) return false;
+    if (hold.scope === "session") return "group";
+    if (hold.scope === "bot") return "bot";
+    return "job";
   }
 
   function turnLine(record: HeldTurn, here: string, heading: Set<string>): ControlTurnLine {
@@ -1426,6 +1515,6 @@ export function createStop(deps: StopDeps): Stop {
     return named?.scope === "bot" ? named.id : USER_MEMBER;
   }
 
-  return { on, handleLine, liftOnYourLine, stopByButton, hold, act, lift, enforce, heldLines: heldLinesFor };
+  return { on, handleLine, liftOnYourLine, unanswered, stopByButton, hold, act, lift, enforce, heldLines: heldLinesFor };
 }
 

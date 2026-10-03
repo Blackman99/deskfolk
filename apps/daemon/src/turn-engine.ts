@@ -466,6 +466,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     handleParticipation: participation.handleParticipation,
     // Late-bound: the engine below; a line only reaches a waiting segment once it is built.
     answerAsk: (askId, sessionId, custom) => { engine.replyAsk(askId, sessionId, { custom }); },
+    // Late-bound: `stops` is built below; a read-only answer only ends once it is.
+    readOnlyUnanswered: (turn) => stops.unanswered(turn),
     implicitSubmission: (turnId, opts) => submissions.implicit(turnId, opts),
   });
 

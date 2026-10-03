@@ -28,6 +28,18 @@ test("in a group: the group, then each Bot at work there", () => {
   expect(items(group, turns).map((item) => item.label)).toEqual(["停下这个群里的工作", "停下视频导演的全部工作", "停下审片员的全部工作", "停下这件事", "停下所有 Bot"]);
 });
 
+test("the group, a Bot and the job stop until your next line there; every Bot stays stopped until you lift it", () => {
+  const group = aGroup();
+  const turns = [aTurn({ session_id: group.id, bot_id: "bot-1", task_id: "task-1" })];
+  expect(items(group, turns, []).map((item) => [item.choice.scope, item.choice.liftOnNext === true])).toEqual([
+    ["session", true],
+    ["bot", true],
+    ["plan", true],
+    ["global", false],
+  ]);
+  expect(planStopItems({ taskId: "task-1", title: "EP01", holds: [], t }).some((item) => item.choice.liftOnNext)).toBe(false);
+});
+
 test("what a stop in force already covers is left out; everything stopped leaves nothing", () => {
   const group = aGroup();
   const turns = [aTurn({ session_id: group.id, bot_id: "bot-1", task_id: "task-1" })];

@@ -2273,8 +2273,20 @@ export class MessengerRuntime {
    * the conversation it was chosen in, when one is named. A refusal comes back to show; a dropped
    * link marks the connection.
    */
-  async stopScope(scope: "global" | "bot" | "session" | "plan", scopeId: string | null, sessionId?: string | null): Promise<ApiError | null> {
-    return this.controlCall((api) => api.createHold({ scope, scope_id: scopeId, ...(sessionId ? { session_id: sessionId } : {}) }));
+  async stopScope(
+    scope: "global" | "bot" | "session" | "plan",
+    scopeId: string | null,
+    sessionId?: string | null,
+    opts: { liftOnNext?: boolean } = {},
+  ): Promise<ApiError | null> {
+    return this.controlCall((api) =>
+      api.createHold({
+        scope,
+        scope_id: scopeId,
+        ...(sessionId ? { session_id: sessionId } : {}),
+        ...(opts.liftOnNext ? { lift_on_next_user_message: true } : {}),
+      }),
+    );
   }
 
   /** Your lift of one stop, from the list of them or the board. */

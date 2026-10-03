@@ -3,7 +3,7 @@ import { continueReceiptBody, controlStatusBody, readOnlyLine, resumeNote, stopR
 
 const said = { at: "10:35", body: "你手头的生成停一下" };
 const turn = { bot: null, plan: "EP01", where: "视频导演和审片员的私聊", lastStep: "shell ffmpeg -i a.mp4" };
-const quiet = { suspended: 0, parked: [], beside: [], stillRunning: [], liftOnNextLine: false, global: false };
+const quiet = { suspended: 0, parked: [], beside: [], stillRunning: [], liftOnNextLine: false as const, global: false };
 
 describe("stopReceiptBody", () => {
   test("says what was stopped, with your words, each turn's last step and what runs now", () => {
@@ -25,10 +25,12 @@ describe("stopReceiptBody", () => {
     ]);
   });
 
-  test("names the words that lift it: everything's, a Stop's next line, anyone else's 「继续」", () => {
+  test("names the words that lift it: everything's, a next line about the job, in the group or to the Bot, anyone else's 「继续」", () => {
     expect(stopReceiptBody("zh", { ...quiet, scopes: ["所有 Bot 的工作"], said, stopped: [], global: true })).toContain("说「所有 Bot 继续」就解除");
     expect(stopReceiptBody("en", { ...quiet, scopes: ["every Bot's work"], said, stopped: [], global: true })).toContain(`Say "all bots continue"`);
-    expect(stopReceiptBody("zh", { ...quiet, scopes: ["x"], said: null, stopped: [], liftOnNextLine: true })).toContain("你在这件事上再说话");
+    expect(stopReceiptBody("zh", { ...quiet, scopes: ["x"], said: null, stopped: [], liftOnNextLine: "job" })).toContain("你在这件事上再说话");
+    expect(stopReceiptBody("zh", { ...quiet, scopes: ["x"], said: null, stopped: [], liftOnNextLine: "group" }).split("\n").at(-1)).toBe("你在这个群里再说话就解除，Bot 从你这句接着往下。");
+    expect(stopReceiptBody("zh", { ...quiet, scopes: ["x"], said: null, stopped: [], liftOnNextLine: "bot" }).split("\n").at(-1)).toBe("你再对它说话就解除，它从你这句接着往下。");
   });
 
   test("with nothing running says so, and a button's stop quotes no words", () => {

@@ -5,10 +5,11 @@ import { sessionTitle, type RosterLabels } from "./session-title.ts";
 
 /**
  * Your stops as the list shows them: the ones you made, by word, button or menu, that stay until
- * you lift them. A Stop (the button on a reply) lifts itself with your next line to that Bot, and
- * the conversation already holds its receipt with an undo, so it is not listed — a banner that
- * clears itself is one nobody needs to read. A plan parked before holds existed, taken over as one,
- * is shown where it lives — parked on the board — and not here.
+ * you lift them. A Stop (the button on a reply), and a stop from a group's menu on the group, a
+ * Bot or the job, lifts itself with your next line there, and the conversation already holds its
+ * receipt with an undo, so it is not listed — a banner that clears itself is one nobody needs to
+ * read, and one that stays after you have moved on reads as stuck. A plan parked before holds
+ * existed, taken over as one, is shown where it lives — parked on the board — and not here.
  */
 export function listedHolds(holds: readonly Hold[]): Hold[] {
   return holds.filter((hold) => (hold.source === "user_text" || hold.source === "user_button") && !hold.lift_on_next_user_message);

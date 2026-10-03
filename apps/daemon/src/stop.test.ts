@@ -1101,6 +1101,130 @@ describe("a hold from the menu", () => {
   });
 });
 
+describe("a group's stop menu", () => {
+  /** A stop chosen from the group's menu: it goes with your next line there (Composer.svelte). */
+  function menuStop(h: Scenario, scope: "session" | "bot" | "plan", scopeId: string, room: string): Hold {
+    return h.engine.createHold({ scope, scopeId, sessionId: room, liftOnNextUserMessage: true });
+  }
+
+  test("on the group: your next line there lifts it and is what the Bots go on from, not a read-only answer", async () => {
+    const h = await scenario();
+    const { director, room } = videoTeam(h);
+    const cut = await atWork(h, director, room, () => h.postUser(room, "@视频导演 做第三集"));
+
+    const hold = menuStop(h, "session", room, room);
+
+    expect(h.store.getTurn(cut.id).status).toBe("stopped");
+    const receipt = h.messages(room).filter((message) => message.kind === "system").at(-1)!;
+    expect(receipt.body.split("\n").at(-1)).toBe("你在这个群里再说话就解除，Bot 从你这句接着往下。");
+
+    h.script(director, room).reply(say("好，从第 1 集重做"));
+    const next = h.postUser(room, "@视频导演 从头再做一遍，之前的作废");
+    await h.waitIdle();
+
+    expect(h.store.getHold(hold.id)).toMatchObject({ lifted_by: "user_text", lifted_message_id: next.id });
+    // Your line is what it goes on from: one turn on it that can act (on no job: at the desk), no note of the app's.
+    const opened = h.turns(director).filter((row) => row.created_at > next.created_at);
+    expect(opened.map(({ trigger_message_id, mode }) => ({ trigger_message_id, mode }))).toEqual([{ trigger_message_id: next.id, mode: "desk" }]);
+    expect(h.messages(room).at(-1)!.body).toBe("好，从第 1 集重做");
+  });
+
+  test("on a Bot: a line to another Bot leaves it, a line to that Bot lifts it", async () => {
+    const h = await scenario();
+    const { director, reviewer, room } = videoTeam(h);
+    await atWork(h, director, room, () => h.postUser(room, "@视频导演 做第三集"));
+    const hold = menuStop(h, "bot", director.id, room);
+    expect(h.messages(room).filter((message) => message.kind === "system").at(-1)!.body.split("\n").at(-1)).toBe("你再对它说话就解除，它从你这句接着往下。");
+
+    h.script(reviewer, room).reply(say("好的"));
+    h.postUser(room, "@审片员 先看下第二集");
+    await h.waitIdle();
+    expect(h.store.getHold(hold.id).lifted_at).toBeNull();
+
+    h.script(director, room).reply(say("好，改成夜景"));
+    const next = h.postUser(room, "@视频导演 第三集改成夜景");
+    await h.waitIdle();
+
+    expect(h.store.getHold(hold.id)).toMatchObject({ lifted_by: "user_text", lifted_message_id: next.id });
+    expect(h.turns(director).filter((row) => row.created_at > next.created_at).map(({ mode }) => mode)).toEqual(["desk"]);
+  });
+
+  test("on a job: your next line about it lifts it, and the job is no longer parked", async () => {
+    const h = await scenario();
+    const { director, room } = videoTeam(h);
+    const ep01 = openPlan(h, room, "EP01", planSpec("EP01 动画成片"));
+    await atWork(h, director, room, () => h.postUser(room, "@视频导演 EP01 出第三镜"));
+    const hold = menuStop(h, "plan", ep01.id, room);
+    expect(h.store.getTask(ep01.id).status).toBe("parked");
+
+    h.script(director, room).reply(say("好，第三镜改慢"));
+    const next = h.store.postMessage(room, { body: "@视频导演 第三镜改慢一点" });
+    h.store.fileMessage(next.id, { explicit: [{ taskId: ep01.id }] });
+    await h.engine.handleInboundMessage(h.store.getMessage(next.id), { fromUser: true });
+    await h.waitIdle();
+
+    expect(h.store.getHold(hold.id)).toMatchObject({ lifted_by: "user_text", lifted_message_id: next.id });
+    expect(h.store.getTask(ep01.id).status).toBe("active");
+  });
+
+  test("「@X 继续」 lifts the group's stop and X goes on; the other Bots' stopped work stays stopped", async () => {
+    const h = await scenario();
+    const { director, writer, room } = videoTeam(h);
+    const shooting = await atWork(h, director, room, () => h.postUser(room, "@视频导演 出第三镜"));
+    const writing = await atWork(h, writer, room, () => h.postUser(room, "@编剧分镜师 第三场改成夜景"));
+    const hold = menuStop(h, "session", room, room);
+
+    h.script(director, room).reply(say("接着出第三镜"));
+    const go = h.postUser(room, "@视频导演 继续");
+    await h.waitIdle();
+
+    expect(h.store.getHold(hold.id).lifted_at).not.toBeNull();
+    expect(h.turns(director).filter((row) => row.id !== shooting.id).map(({ trigger_message_id, mode }) => ({ trigger_message_id, mode }))).toEqual([
+      { trigger_message_id: go.id, mode: "desk" },
+    ]);
+    expect(h.turns(writer).map((row) => row.id)).toEqual([writing.id]);
+  });
+});
+
+describe("a read-only answer that says nothing", () => {
+  test("is answered by the app with the go on buttons, which lift the stop and take up your line", async () => {
+    const h = await scenario();
+    const { director, room } = videoTeam(h);
+    const [hold] = [h.engine.createHold({ scope: "session", scopeId: room })];
+    h.script(director, room).reply(call(endTurn()));
+
+    const line = h.postUser(room, "@视频导演 从头再做一遍");
+    await h.waitIdle();
+
+    expect(h.turns(director).map(({ mode, status }) => ({ mode, status }))).toEqual([{ mode: "readonly", status: "completed" }]);
+    const status = after(h, room, line).find((message) => message.control?.kind === "status")!;
+    expect(status.control).toMatchObject({ kind: "status", hold_ids: [hold!.id], offer: ["continue_only", "continue_all"], unanswered: line.id });
+    expect(status.body.split("\n")[0]).toBe("视频导演没有回话：它被叫停着，这一段只能读和回答，不会照你的话动手。");
+    expect(status.body.split("\n").at(-1)).toBe("点下面的按钮解除，它就照你这句做。");
+
+    h.script(director, room).reply(say("好，从头做"));
+    const { lifted } = h.engine.control(status.id, { action: "continue_all" });
+    await h.waitIdle();
+
+    expect(lifted.map((row) => row.id)).toEqual([hold!.id]);
+    const working = h.turns(director).filter((row) => row.mode !== "readonly");
+    expect(working.map(({ trigger_message_id }) => trigger_message_id)).toEqual([line.id]);
+    expect(h.messages(room).filter((message) => message.kind === "bot").at(-1)!.body).toBe("好，从头做");
+  });
+
+  test("that did answer gets no line of the app's", async () => {
+    const h = await scenario();
+    const { director, room } = videoTeam(h);
+    h.engine.createHold({ scope: "session", scopeId: room });
+    h.script(director, room).reply(say("停着呢，解除后我再做"));
+
+    const line = h.postUser(room, "@视频导演 从头再做一遍");
+    await h.waitIdle();
+
+    expect(after(h, room, line).map(({ kind, body }) => ({ kind, body }))).toEqual([{ kind: "bot", body: "停着呢，解除后我再做" }]);
+  });
+});
+
 describe("buttons on the app's lines about your stops", () => {
   /** The app's receipt for `line` in `session`. */
   function receiptAfter(h: Scenario, session: string, line: { created_at: string }) {
