@@ -1534,6 +1534,8 @@ export type MessageControl =
       domain?: string;
       offer: ControlOffer[];
       acted?: ControlOffer[];
+      /** A `legacy` card's old rules were all taken up or turned down elsewhere (the board) before any press: from then on it offers nothing. Never on a pressed card. */
+      settled_at?: string;
     }
   | {
       /** Visible receipt for a newly opened job; actions stop it, never undo past external effects. */

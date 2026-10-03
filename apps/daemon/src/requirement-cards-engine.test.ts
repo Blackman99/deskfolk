@@ -61,6 +61,31 @@ test("old rules with none of your words are asked about once, on your next line 
   expect(h.engine.control(card!.id, { action: "confirm_requirements" })).toEqual({ made: [], lifted: [] });
 });
 
+test("old rules gone through on the board settle their card: it asks no more, and a stale 都是 changes nothing", async () => {
+  const h = await createScenario();
+  open.push(h);
+  const { director, room } = videoTeam(h);
+  const goal = "EP01 动画成片";
+  const ep01 = openPlan(h, room, "EP01", planSpec(goal));
+  h.store.db.run(`UPDATE tasks SET spec = ? WHERE id = ?`, [JSON.stringify(planSpec(goal, { rules: ["按附件图片里的格式来写", "地址字段和排版与附件图片一致"] })), ep01.id]);
+  h.store.db.run(`DELETE FROM settings WHERE key = ?`, [LEGACY_IMPORTED_KEY]);
+  const rules = h.store.importLegacyRules();
+  h.judge("organizer", { session: room }).reply({ decision: "continue", plan: planSpec(goal), tickets: [] });
+  h.script(director, room).reply(say("好"));
+  h.postUser(room, "@视频导演 分镜先给我看看");
+  await h.waitIdle();
+  const [card] = cards(h, room);
+  expect(card!.control).toMatchObject({ requirement_ids: rules });
+
+  // 逐条看, then each rule's own button on the board.
+  for (const id of rules) h.store.rejectRequirement(id, { taskId: ep01.id });
+  expect(h.store.getMessage(card!.id).control).toMatchObject({ settled_at: expect.any(String) });
+  // A window that still showed the buttons: the press is taken and does nothing.
+  expect(h.engine.control(card!.id, { action: "confirm_requirements" })).toEqual({ made: [], lifted: [] });
+  expect(rules.map((id) => h.store.getRequirement(id).status)).toEqual(["not_requirement", "not_requirement"]);
+  expect(h.store.getMessage(card!.id).control).not.toHaveProperty("acted");
+});
+
 test("a craft category raised in two video jobs is suggested as standing once, and 升为常设 makes it hold for every video job", async () => {
   const h = await createScenario();
   open.push(h);

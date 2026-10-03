@@ -66,6 +66,8 @@ export function controlBar(control: MessageControl | undefined, holds: readonly 
   // through on the board (the messenger opens it, `review_requirements`), or requirements to make
   // standing. Stops play no part.
   if (control.kind === "requirement") {
+    // Its old rules were all gone through on the board before a press: nothing left to ask.
+    if (control.settled_at) return { state: "done", note: t.requirementsSettled };
     const count = control.requirement_ids.length;
     const buttons = control.offer.flatMap((action): ControlButton[] => {
       if (count === 0) return [];

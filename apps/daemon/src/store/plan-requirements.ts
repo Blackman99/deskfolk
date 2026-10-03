@@ -6,6 +6,7 @@
  * are due to say. The situation block every turn opens on and the board both read from here, so a
  * Bot and you see the same list.
  */
+import type { Database } from "bun:sqlite";
 import type { PlanRequirement } from "@real-bot/protocol";
 import { conversationWide, craftRequirement } from "../craft-words";
 import { isoNow } from "../ids";
@@ -467,4 +468,36 @@ export function recordRequirementCard(
       message: input.messageId,
     },
   });
+}
+
+const NOW_SQL = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
+/** A card about old rules nobody pressed, none of whose rules is still unverified, says so in place of its buttons. */
+const SETTLE_LEGACY_CARDS = `UPDATE messages SET control = json_set(control, '$.settled_at', ${NOW_SQL})
+  WHERE json_valid(control) AND json_extract(control, '$.kind') = 'requirement' AND json_extract(control, '$.event') = 'legacy'
+    AND json_array_length(COALESCE(json_extract(control, '$.acted'), '[]')) = 0 AND json_type(control, '$.settled_at') IS NULL
+    AND NOT EXISTS (SELECT 1 FROM json_each(json_extract(messages.control, '$.requirement_ids')) named
+      JOIN requirements r ON r.id = named.value WHERE r.status = 'unverified')`;
+
+/**
+ * A card asking 「这些是你说的吗」 asks only while one of its old rules is still unverified. Once
+ * you have gone through them on the board (逐条看, then each one's own button, or a rules edit
+ * that takes a line up or off), 都是 would put nothing in force and the card would still ask:
+ * it settles instead. Whoever moves the entry, an older build sharing the database included. A
+ * press of 都是 confirms its rules first, then writes the press over this (`acted` wins).
+ */
+export const REQUIREMENT_CARD_TRIGGERS: ReadonlyArray<{ name: string; sql: string }> = [
+  {
+    name: "requirement_cards_follow_ledger",
+    sql: `CREATE TRIGGER requirement_cards_follow_ledger AFTER UPDATE OF status ON requirements
+      WHEN OLD.status = 'unverified' AND NEW.status <> 'unverified'
+      BEGIN
+        ${SETTLE_LEGACY_CARDS}
+          AND EXISTS (SELECT 1 FROM json_each(json_extract(messages.control, '$.requirement_ids')) WHERE value = OLD.id);
+      END`,
+  },
+];
+
+/** The cards a build without the trigger left asking after their rules were gone through, and any whose rules were purged; run on every open, after it. */
+export function settleAnsweredLegacyCards(db: Database): void {
+  db.run(`${SETTLE_LEGACY_CARDS} AND control LIKE '%"legacy"%'`);
 }

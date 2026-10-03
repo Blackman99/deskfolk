@@ -8,8 +8,9 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "bun:test";
-import type { ClientEvent, PlanRequirement, TaskDetail } from "@real-bot/protocol";
+import { USER_MEMBER, type ClientEvent, type ControlOffer, type PlanRequirement, type TaskDetail } from "@real-bot/protocol";
 import { LEGACY_IMPORTED_KEY, Store, type PlanSpec } from ".";
+import { migrateSchema } from "./migrate";
 import { REQUIREMENT_SUPERSEDE_ABORT } from "./requirements";
 
 const roots: string[] = [];
@@ -392,6 +393,73 @@ describe("the old rules, taken in once", () => {
     expect(store.legacyCardDue(plan("另一件事").id)).toEqual([]);
     store.recordRequirementCard({ card: "legacy", requirements: [old.id], messageId: "m1", taskId: ep01.id });
     expect(store.legacyCardDue(ep01.id)).toEqual([]);
+    store.close();
+  });
+
+  /** Two old rules of EP01 and the card asking about them, as the engine puts it up; `acted` for one already pressed. */
+  function legacyCard(f: ReturnType<typeof fixture>, quotes: string[], acted?: ControlOffer[]) {
+    const rules = quotes.map((quote) => f.store.addRequirement({ scope: "plan", scopeId: f.ep01.id, quote, sourceKind: "legacy", addedBy: "import", status: "unverified" }));
+    const card = f.store.insertMessage({
+      sessionId: f.room,
+      kind: "system",
+      author: USER_MEMBER,
+      body: "这些是你说的吗？",
+      hiddenFromBots: true,
+      control: { kind: "requirement", event: "legacy", requirement_ids: rules.map((rule) => rule.id), task_id: f.ep01.id, offer: ["confirm_requirements", "review_requirements"], ...(acted ? { acted } : {}) },
+    });
+    return { rules, card: card.id };
+  }
+  const settledAt = (store: Store, id: string): unknown => {
+    const control = store.getMessage(id).control;
+    return control?.kind === "requirement" ? control.settled_at : undefined;
+  };
+
+  test("a card about old rules settles once you went through every one of them on the board, and reaches the window then", () => {
+    const f = fixture();
+    const { store } = f;
+    const { rules: [format, address], card } = legacyCard(f, ["按附件图片里的格式来写", "地址字段和排版与附件图片一致"]);
+    const seen: ClientEvent[] = [];
+    store.onCommit((event) => seen.push(event));
+    const pushed = () => seen.filter((event) => event.event === "message.upsert" && event.id === card);
+
+    store.rejectRequirement(format!.id, { taskId: f.ep01.id });
+    expect(settledAt(store, card)).toBeUndefined();
+    expect(pushed()).toEqual([]);
+    store.confirmRequirement(address!.id, { taskId: f.ep01.id });
+    expect(settledAt(store, card)).toEqual(expect.any(String));
+    expect(pushed()).toEqual([expect.objectContaining({ control: expect.objectContaining({ settled_at: expect.any(String) }) })]);
+    // Nothing moves it again: the board's other buttons are not about old rules.
+    const at = settledAt(store, card);
+    store.waiveRequirement(address!.id, { taskId: f.ep01.id });
+    expect(settledAt(store, card)).toBe(at);
+    store.close();
+  });
+
+  test("a pressed card stays as pressed, and a card with a rule still unverified keeps asking", () => {
+    const f = fixture();
+    const { store } = f;
+    const pressed = legacyCard(f, ["按用户要求接着做"], ["confirm_requirements"]);
+    const asking = legacyCard(f, ["镜头要稳", "字幕放下方"]);
+    store.rejectRequirement(pressed.rules[0]!.id, { taskId: f.ep01.id });
+    store.rejectRequirement(asking.rules[0]!.id, { taskId: f.ep01.id });
+    expect(settledAt(store, pressed.card)).toBeUndefined();
+    expect(store.getMessage(pressed.card).control).toMatchObject({ acted: ["confirm_requirements"] });
+    expect(settledAt(store, asking.card)).toBeUndefined();
+    store.close();
+  });
+
+  test("cards an older build left asking after their rules were gone through settle when the database opens", () => {
+    const f = fixture();
+    const { store } = f;
+    const { rules, card } = legacyCard(f, ["按附件图片里的格式来写", "地址字段和排版与附件图片一致"]);
+    store.db.run("DROP TRIGGER requirement_cards_follow_ledger");
+    for (const rule of rules) store.rejectRequirement(rule.id, { taskId: f.ep01.id });
+    expect(settledAt(store, card)).toBeUndefined();
+    migrateSchema(store.db);
+    const at = settledAt(store, card);
+    expect(at).toEqual(expect.any(String));
+    migrateSchema(store.db);
+    expect(settledAt(store, card)).toBe(at);
     store.close();
   });
 });

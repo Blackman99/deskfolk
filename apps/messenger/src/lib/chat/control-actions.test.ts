@@ -144,7 +144,7 @@ test("the app's line about checks in force offers to remove them, and says so on
   expect(controlBar({ ...line, acted: ["remove_check"] }, [], names, t)).toEqual({ state: "done", note: "已删掉" });
 });
 
-test("the app's lines about the requirements ledger: 都是 / 逐条看 for old rules, 升为常设 / 不用 for a standing suggestion", () => {
+test("the app's lines about the requirements ledger: 都是 / 逐条看 for old rules (settled once gone through on the board), 升为常设 / 不用 for a standing suggestion", () => {
   const legacy: MessageControl = {
     kind: "requirement",
     event: "legacy",
@@ -161,6 +161,9 @@ test("the app's lines about the requirements ledger: 都是 / 逐条看 for old 
     ],
   });
   expect(controlBar({ ...legacy, acted: ["confirm_requirements"] }, [], names, t)).toEqual({ state: "done", note: "已确认都是你说的" });
+  // Gone through on the board (逐条看) before any press: the card asks no more.
+  expect(controlBar({ ...legacy, settled_at: "2026-10-03T01:20:00.000Z" }, [], names, t)).toEqual({ state: "done", note: "已在流程图上逐条处理" });
+  expect(controlBar({ ...legacy, settled_at: "2026-10-03T01:20:00.000Z" }, [], names, copyFor("en").control)).toEqual({ state: "done", note: "Gone through one by one on the board" });
   const standing: MessageControl = {
     kind: "requirement",
     event: "standing",

@@ -4,7 +4,8 @@
  * - `legacy`: the plan bears old rules the app found none of your words for (taken in from before
  *   the ledger, `unverified`): 「这些是你说的吗」 with 都是 (they are in force from then) and 逐条看
  *   (the messenger opens the board, where each has its own buttons). Put up once per rule, the
- *   first time a line of yours lands in a plan that bears it.
+ *   first time a line of yours lands in a plan that bears it; settled once none of its rules is
+ *   unverified any more (`REQUIREMENT_CARD_TRIGGERS`).
  * - `standing`: craft requirements of one category you have now raised in two or more video jobs of
  *   one conversation, the words of each on the card: 升为常设 makes them hold for every video job,
  *   不用 leaves them where they are. Once per category; when the category's entries say different
@@ -161,8 +162,8 @@ export function createRequirementCards(deps: RequirementCardsDeps): RequirementC
     const action = input.action;
     const served = action === "confirm_requirements" || action === "make_standing" || action === "keep_project";
     if (!served || !control.offer.includes(action)) throw new HttpError(422, "invalid_args", "this line does not offer that button");
-    // One press per line, as on every line with buttons.
-    if ((control.acted ?? []).length > 0) return { made: [], lifted: [] };
+    // One press per line, as on every line with buttons; none once you went through its old rules on the board.
+    if ((control.acted ?? []).length > 0 || control.settled_at) return { made: [], lifted: [] };
     store.transaction(() => {
       for (const id of control.requirement_ids) {
         let entry;
