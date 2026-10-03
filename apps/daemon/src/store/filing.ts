@@ -103,7 +103,7 @@ type FilingDecision = FilingTarget & { filedBy: string; strength: MessageFiling[
 type FilingMessage = {
   id: string; session_id: string; created_at: string; body: string; kind: string; author: string;
   parent_id: string | null; turn_id: string | null; task_id: string | null; ticket_id: string | null;
-  control: string | null; filing_state: FilingState | null; filing_candidates: string | null;
+  control: string | null; filing_state: FilingState | null; filing_candidates: string | null; message_seq: number;
 };
 
 export function fileMessage(ctx: StoreContext, messageId: string, input: FileMessageInput = {}): {
@@ -183,7 +183,7 @@ export function fileMessage(ctx: StoreContext, messageId: string, input: FileMes
       for (const item of boundItems) add(item.work_item_id ? workItemTarget(ctx, item.work_item_id) : item.task_id ? [{ taskId: item.task_id, ticketId: item.ticket_id }] : [], 5);
     }
     if (!decisions.length && !input.none && !control && message.kind === 'user') {
-      decisions.push(...defaultDecisions(ctx, { sessionId: message.session_id, body: message.body, candidates }));
+      decisions.push(...defaultDecisions(ctx, { sessionId: message.session_id, body: message.body, candidates, line: message }));
     }
     // Explicitly referenced plans remain selectable, even when dormant or already accepted.
     for (const decision of decisions) if (!candidates.some((c) => c.id === decision.taskId)) candidates.push(candidateOf(ctx, decision.taskId));
@@ -330,12 +330,43 @@ function numberOf(text: string): number {
   return result + digit;
 }
 
-function defaultDecisions(ctx: StoreContext, input: { sessionId: string; body: string; candidates: PlanCandidate[] }): FilingDecision[] {
+/** How long after the Bot's line a line of yours in your direct still answers it (rule 9). */
+export const ANSWERS_BOT_LINE_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * Rule 9: in your direct with a Bot, a line of yours that comes right after the Bot's line, with
+ * nothing of yours in between and within {@link ANSWERS_BOT_LINE_MS}, answers that line the way a
+ * quoted reply does, and goes where it went. That reaches a routine's standing plan and its dated
+ * ticket too, which no other default does: what you say three minutes after the morning brief is
+ * about the morning brief, not about the one other job the conversation has open (2026-10-03).
+ */
+function answeredBotLine(ctx: StoreContext, line: Pick<FilingMessage, 'id' | 'session_id' | 'created_at' | 'parent_id'> & { message_seq?: number }): FilingTarget[] {
+  if (line.parent_id) return [];
+  const session = ctx.db.query<{ kind: string }, [string]>('SELECT kind FROM sessions WHERE id = ?').get(line.session_id);
+  if (session?.kind !== 'direct' || !ctx.db.query("SELECT 1 FROM session_participants WHERE session_id = ? AND member = 'user'").get(line.session_id)) return [];
+  const previous = ctx.db.query<{ id: string; kind: string; created_at: string }, [string, string, string, number]>(`SELECT id, kind, created_at FROM messages
+    WHERE session_id = ?1 AND id <> ?2 AND parent_id IS NULL AND kind IN ('user', 'bot') AND hidden_from_bots = 0
+      AND (created_at < ?3 OR (created_at = ?3 AND message_seq < ?4))
+    ORDER BY created_at DESC, message_seq DESC LIMIT 1`).get(line.session_id, line.id, line.created_at, line.message_seq ?? Number.MAX_SAFE_INTEGER);
+  if (previous?.kind !== 'bot' || Date.parse(line.created_at) - Date.parse(previous.created_at) > ANSWERS_BOT_LINE_MS) return [];
+  // A job you have accepted or dropped since is not where a new line goes; the other rules read it.
+  return inheritedTargets(ctx, previous.id).filter((target) => ctx.db.query(`SELECT 1 FROM tasks WHERE id = ?
+    AND COALESCE(stage, CASE WHEN status = 'done' THEN 'delivered' ELSE 'active' END) IN ('active', 'delivered')`).get(target.taskId));
+}
+
+function defaultDecisions(ctx: StoreContext, input: {
+  sessionId: string; body: string; candidates: PlanCandidate[];
+  /** The line being filed, when there is one: what rule 9 reads it against. */
+  line?: Pick<FilingMessage, 'id' | 'session_id' | 'created_at' | 'parent_id'> & { message_seq?: number };
+}): FilingDecision[] {
   const candidates = input.candidates.filter((c) => c.dormantSince === null && (c.stage === 'active' || c.stage === 'delivered'));
   const numbers = partNumbers(input.body);
   const { hits: partHits, ambiguous } = matchParts(ctx, candidates, numbers);
   const newRequest = /^(?:另外|再帮我|新做|顺便)/.test(input.body.trim()) && numbers.length === 0 && messagePaths(ctx, input).length === 0;
   const decide = (target: FilingTarget, rule: number): FilingDecision => ({ ...target, filedBy: `rule:${rule}`, strength: 'default' });
+  // Signal 9 comes before the others: an answer to the Bot's line is about that line's job.
+  const answered = input.line && !newRequest ? answeredBotLine(ctx, input.line) : [];
+  if (answered.length) return answered.map((target) => decide(target, 9));
   // Signal 6 decides the plan first. Within it, attach uniquely known parts without overriding its provenance.
   if (candidates.length === 1 && !newRequest) {
     const planHits = partHits.filter((hit) => hit.taskId === candidates[0]!.id);

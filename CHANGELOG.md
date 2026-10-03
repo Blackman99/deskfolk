@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### What you say right after a Bot's line is about that line's job
+
+- In your direct with a Bot, a line of yours that comes right after the Bot's line — nothing of yours in between, within two hours, and not opening with 另外 / 顺便 — is filed, by default, under the job that line was on, the way a quoted reply is. That includes a routine's run: 「标题跟 LOGO 没有对齐」 three minutes after the morning brief goes to today's brief, where on 2026-10-03 it was filed under a three-day-old job that happened to be the only other one open there, and the fix was written into that job's requirements.
+- A routine's job is named in the tag under its lines (it used to read 「一件事」), and the change-attribution dialog lists it, latest run first.
+
 ### The plan and its tickets point at each other on the board
 
 - A picked ticket lists what it has to meet — the plan's Done when lines, rules and what you asked for, as every ticket does, plus the requests and checks held to it alone — and "See in the plan" opens the plan read against it: the ticket is named at the top and lines held to other tickets dim. In the plan, a request or check held to one ticket names it and shows it in the ticket list; a row above Progress counts the tickets by status and opens the list on one, so the organizer's written progress is no longer mistaken for the tickets' state.
