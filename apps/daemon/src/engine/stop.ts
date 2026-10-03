@@ -144,6 +144,8 @@ const LINEAGE_STEPS = 12;
 const WRITTEN_MAX = 10;
 /** A Bot's lines this far back tell who 「你」 is in a group (control-line.ts reads the window). */
 const RECENT_WINDOW_MS = 10 * 60_000;
+/** How many of your latest lines in a conversation say which jobs are being talked about there, for the status answer. */
+const RECENT_FILINGS = 20;
 /** How many plans a receipt offers to widen a stop to, and as many to narrow it to. */
 const PLAN_OFFERS_MAX = 3;
 
@@ -192,10 +194,22 @@ export function createStop(deps: StopDeps): Stop {
         // 「算了」 alone: nothing is stopped or dropped by text; the buttons ask which you meant.
         mark(message, ["stop", "cancel"], reading.scopes);
         return false;
-      case "possible_control":
-        mark(message, reading.offer, reading.scopes);
+      case "possible_control": {
+        // 继续 on the hint lifts your stops, so it is offered only while there is one it would
+        // lift. With none, pressing it could only answer 「没有被叫停」 and read 「已继续」 under a
+        // request that went on as any line (「继续做第二集，……」 with nothing stopped).
+        const offer = reading.offer.filter((action) => action !== "continue" || goOnLifts(message, session, reading.scopes));
+        if (offer.length > 0) mark(message, offer, reading.scopes);
         return false;
+      }
     }
+  }
+
+  /** Whether a go on said with `message` would lift anything now, or meet a stop that holds what it names. */
+  function goOnLifts(message: Message, session: Session, scopes: ControlScope[]): boolean {
+    if (holdsToLift(session, scopes).length > 0 || stopsAbout(message).length > 0 || stopsOnBots(message, scopes).length > 0) return true;
+    if (scopes.some((scope) => scope.scope === "global") && store.listHolds({ inForce: true }).some((hold) => stopBefore(hold, message))) return true;
+    return scopes.some((scope) => scopeHolds(scope, message).length > 0);
   }
 
   function lineInput(message: Message, session: Session): ControlLineInput {
@@ -838,7 +852,9 @@ export function createStop(deps: StopDeps): Stop {
     const { answer, ended } = store.transaction(() => {
       const holds = heldAbout(scopes, here, message);
       const ended = endViolations(holds);
-      const running = store.listLiveTurns().filter((turn) => turn.mode !== "readonly" && scopes.some((scope) => inScope(scope, turn)));
+      const live = store.listLiveTurns().filter((turn) => turn.mode !== "readonly");
+      const running = live.filter((turn) => scopes.some((scope) => inScope(scope, turn)));
+      const elsewhere = scopes.some((scope) => scope.scope === "session") ? workOnHere(message, live.filter((turn) => !running.includes(turn))) : [];
       const offerStop = opts.offerStop && holds.length === 0;
       const offer: ControlOffer[] = offerStop ? ["stop"] : opts.offerContinue ? ["continue_only", "continue_all"] : [];
       const heading = headingBots(scopes);
@@ -850,6 +866,7 @@ export function createStop(deps: StopDeps): Stop {
           about: scopes.map((scope) => aboutLabel(scope, here)).join(locale() === "en" ? ", " : "、"),
           holds: holds.map((hold) => ({ scope: scopeLabel(hold, here), said: holdSaid(hold), since: clockOf(hold.created_at) })),
           running: running.map((turn) => turnLine(heldTurn(turn, lives.get(turn.id)), here, heading)),
+          elsewhere: elsewhere.map((turn) => turnLine(heldTurn(turn, lives.get(turn.id)), here, heading)),
           ended: ended.map((row) => turnLine(row.record, here, heading)),
           offerStop,
         }),
@@ -860,6 +877,28 @@ export function createStop(deps: StopDeps): Stop {
     });
     for (const { turn } of ended) publishTurn(turn, null);
     publishMessage(answer);
+  }
+
+  /**
+   * Of `turns`, those doing what is said in `line`'s conversation although a stop there does not
+   * reach them: on a job this line or one of your last lines there is filed under, or in a Bot↔Bot
+   * direct opened from it. A job keeps the conversation it was opened in, so a group's lines filed
+   * under a job opened in a direct are worked on where a stop in the group does not cover
+   * (2026-10-03: 「此刻在跑：无」 in the group while 审片员 reviewed that job in a direct).
+   */
+  function workOnHere(line: Message, turns: Turn[]): Turn[] {
+    if (turns.length === 0) return [];
+    const filed = store.db
+      .query<{ task_id: string }, [string]>(
+        `SELECT task_id FROM (SELECT task_id FROM messages WHERE session_id = ? AND kind = 'user' ORDER BY created_at DESC, rowid DESC LIMIT ${RECENT_FILINGS})
+         WHERE task_id IS NOT NULL`,
+      )
+      .all(line.session_id)
+      .map((row) => row.task_id);
+    const plans = new Set([line.task_id, ...filed].filter((id): id is string => !!id));
+    const openedHere = (sessionId: string) =>
+      store.db.query<{ origin_session_id: string | null }, [string]>(`SELECT origin_session_id FROM sessions WHERE id = ?`).get(sessionId)?.origin_session_id === line.session_id;
+    return turns.filter((turn) => (turn.task_id != null && plans.has(turn.task_id)) || openedHere(turn.session_id));
   }
 
   /**

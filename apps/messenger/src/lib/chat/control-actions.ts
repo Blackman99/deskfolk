@@ -156,18 +156,20 @@ export function controlBar(control: MessageControl | undefined, holds: readonly 
   const who = whoOf(control.scopes, names, t);
 
   if (control.kind === "possible_control") {
-    const buttons = control.offer.flatMap((action): ControlButton[] => {
+    // 继续 lifts stops: with none in force anywhere (lifted since the line was marked), it has nothing to do.
+    const offer = control.offer.filter((action) => action !== "continue" || holds.length > 0);
+    const buttons = offer.flatMap((action): ControlButton[] => {
       if (action === "stop") return [{ action, label: who ? t.stopWho(who) : t.stop, primary: true }];
-      if (action === "continue") return [{ action, label: t.continue, primary: !control.offer.includes("stop") }];
+      if (action === "continue") return [{ action, label: t.continue, primary: !offer.includes("stop") }];
       if (action === "cancel") return [{ action, label: t.cancel, primary: false }];
       return [];
     });
     if (buttons.length === 0) return { state: "none" };
-    const prompt = control.offer.includes("cancel")
+    const prompt = offer.includes("cancel")
       ? t.hintAbandon
-      : control.offer.includes("stop") && control.offer.includes("continue")
+      : offer.includes("stop") && offer.includes("continue")
         ? t.hintEither
-        : control.offer.includes("continue")
+        : offer.includes("continue")
           ? t.hintContinue(who ?? "")
           : t.hintStop(who ?? "");
     return { state: "ask", prompt, buttons };

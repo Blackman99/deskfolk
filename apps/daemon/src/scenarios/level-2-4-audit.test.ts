@@ -167,8 +167,11 @@ describe("D2: a line of yours that only might mean a stop or a go on", () => {
       await h.waitIdle();
 
       for (const line of [plain, quoting]) {
-        expect(h.store.getMessage(line.id)).toMatchObject({ control: { kind: "possible_control" }, filing_state: "filed", task_id: plan.id });
+        expect(h.store.getMessage(line.id)).toMatchObject({ filing_state: "filed", task_id: plan.id });
       }
+      // Nothing is stopped, so 继续 would have nothing to lift: only the stop the second may mean is offered.
+      expect(h.store.getMessage(plain.id).control).toBeUndefined();
+      expect(h.store.getMessage(quoting.id).control).toMatchObject({ kind: "possible_control", offer: ["stop"] });
       // Its quote of the ticket's line is followed (ADR 0040 §8.2 signal 3), not dropped.
       expect(h.store.getMessage(quoting.id).ticket_id).toBe(ticket.id);
       // No desk segment opens for them: the segment on the report reads both (at level 2 the old

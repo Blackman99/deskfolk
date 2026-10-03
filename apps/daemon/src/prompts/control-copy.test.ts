@@ -63,6 +63,18 @@ describe("the other lines", () => {
     expect(held).toContain("Found still running under the stop, and ended now: EP01");
   });
 
+  test("the status answer names work on what is said here that a stop here does not reach", () => {
+    const reviewing = { bot: "审片员", plan: "EP01", where: "视频导演和审片员的私聊", lastStep: null };
+    expect(controlStatusBody("zh", { about: "这里", holds: [], running: [], elsewhere: [reviewing], ended: [], offerStop: false }).split("\n")).toEqual([
+      "这里：没有被叫停。",
+      "此刻在跑：无。",
+      "别处也在做这里的事（在这里叫停停不到）：审片员 · EP01 · 在「视频导演和审片员的私聊」",
+    ]);
+    expect(controlStatusBody("en", { about: "here", holds: [], running: [], elsewhere: [reviewing], ended: [], offerStop: false }))
+      .toContain("Also working on this elsewhere, out of reach of a stop here: 审片员 · EP01 · in 视频导演和审片员的私聊");
+    expect(controlStatusBody("zh", { about: "这里", holds: [], running: [], elsewhere: [], ended: [], offerStop: false })).not.toContain("别处");
+  });
+
   test("the note stopped work goes on with states what happened and pushes nothing", () => {
     for (const locale of ["zh", "en"] as const) {
       const note = resumeNote(locale, { said: { at: "11:00", body: "继续" }, plan: "规划「EP01」", written: ["work/EP01/a.mp4"], recent: ["shell ffmpeg"] });

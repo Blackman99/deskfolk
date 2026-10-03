@@ -186,6 +186,11 @@ export function controlStatusBody(
     about: string;
     holds: readonly { scope: string; said: SaidLine; since: string }[];
     running: readonly ControlTurnLine[];
+    /**
+     * Work on what is said here that runs where a stop here does not reach: on the job your line is
+     * filed under, or in a Bot↔Bot direct opened from here, when the job's own conversation is another.
+     */
+    elsewhere?: readonly ControlTurnLine[];
     ended: readonly ControlTurnLine[];
     /** The words said it had not stopped, or asked whether it can stop, and nothing holds it: the answer ends with a stop button. */
     offerStop: boolean;
@@ -205,6 +210,14 @@ export function controlStatusBody(
         ? `Running now: ${input.running.map((line) => turnLine(locale, line)).join("; ")}`
         : `此刻在跑：${input.running.map((line) => turnLine(locale, line)).join("；")}`,
   );
+  const elsewhere = input.elsewhere ?? [];
+  if (elsewhere.length > 0) {
+    lines.push(
+      en
+        ? `Also working on this elsewhere, out of reach of a stop here: ${elsewhere.map((line) => turnLine(locale, line)).join("; ")}`
+        : `别处也在做这里的事（在这里叫停停不到）：${elsewhere.map((line) => turnLine(locale, line)).join("；")}`,
+    );
+  }
   if (input.offerStop) lines.push(en ? `Press Stop to stop ${input.about}.` : `要停下${input.about}，点「停下」。`);
   return lines.join("\n");
 }

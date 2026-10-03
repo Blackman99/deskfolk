@@ -580,6 +580,48 @@ describe("asking whether it stopped", () => {
     expect(h.judgeCalls().filter((row) => row.at > ask.created_at)).toEqual([]);
   });
 
+  // 2026-10-03: the job was opened in a direct, the group's lines were filed under it, and 审片员
+  // reviewed it in a Bot↔Bot direct opened from the group; the group was told 「此刻在跑：无」.
+  test("in a group, it names work on the group's job that runs where a stop in the group does not reach", async () => {
+    const h = await scenario();
+    const { director, reviewer, room } = videoTeam(h);
+    const dm = h.direct(director);
+    const ep01 = openPlan(h, dm, "EP01", planSpec("EP01 动画成片"));
+    const asked = h.postBot(director, room, "母带好了，我私下找审片员审", { taskId: ep01.id });
+    const thread = h.botDirect(director, reviewer, { sessionId: room, messageId: asked.id });
+    await atWork(h, reviewer, thread, () => h.postBot(director, thread, "EP01 母带请审", { taskId: ep01.id }));
+
+    const ask = h.postUser(room, "怎么还在跑？");
+    await h.routed();
+
+    const [answer] = after(h, room, ask);
+    expect(answer!.control).toMatchObject({ kind: "status", hold_ids: [] });
+    expect(answer!.body).toContain("此刻在跑：无");
+    expect(answer!.body).toContain("别处也在做这里的事（在这里叫停停不到）：审片员 · EP01");
+    // In the direct the job belongs to, the same work is what is running, and nothing is listed twice.
+    const there = h.postUser(dm, "怎么还在跑？");
+    await h.routed();
+    const [direct] = after(h, dm, there);
+    expect(direct!.body).not.toContain("别处");
+  });
+
+  test("in a group, work on a job your lines there were filed under counts too, wherever it runs", async () => {
+    const h = await scenario();
+    const { director, reviewer, room } = videoTeam(h);
+    const dm = h.direct(director);
+    const ep01 = openPlan(h, dm, "EP01", planSpec("EP01 动画成片"));
+    const thread = h.botDirect(director, reviewer);
+    await atWork(h, reviewer, thread, () => h.postBot(director, thread, "EP01 母带请审", { taskId: ep01.id }));
+    const filed = h.postUser(room, "片头再短一点");
+    h.store.db.run(`UPDATE messages SET task_id = ? WHERE id = ?`, [ep01.id, filed.id]);
+
+    const ask = h.postUser(room, "怎么还在跑？");
+    await h.routed();
+
+    const [answer] = after(h, room, ask).filter((message) => message.control?.kind === "status");
+    expect(answer!.body).toContain("别处也在做这里的事（在这里叫停停不到）：审片员 · EP01");
+  });
+
   test.each([
     ["「能停么」 asks whether it can stop: the answer offers the button and stops nothing", "能停么", ["stop"]],
     ["「怎么能停」 asks about a stop: the answer offers nothing and stops nothing", "怎么能停", []],
@@ -679,6 +721,38 @@ describe("a line that only might be control", () => {
     expect(holds(h)).toEqual([]);
     expect(h.store.getMessage(line.id).control).toEqual({ kind: "possible_control", offer: ["stop"], scopes: [{ scope: "bot", id: director.id }] });
     expect(h.turns(director).map(({ mode, task_id }) => ({ mode, task_id }))).toEqual([{ mode: "desk", task_id: null }]);
+  });
+
+  // 2026-10-03: 「继续做第二集，……」 in a group with nothing stopped carried a 继续 button, whose
+  // press answered 「没有被叫停。此刻在跑：无。」 and read 「已继续」.
+  test("a request that starts with 继续 carries no button while nothing is stopped, and goes to the Bot as usual", async () => {
+    const h = await scenario();
+    const { director } = videoTeam(h);
+    const dm = h.direct(director);
+    h.script(director, dm).reply(say("好，开始第二集"));
+
+    const line = h.postUser(dm, "继续做第二集，琦玉跟杰诺斯参加英雄协会报名");
+    await h.waitIdle();
+
+    expect(holds(h)).toEqual([]);
+    expect(h.store.getMessage(line.id).control).toBeUndefined();
+    expect(h.turns(director)).toHaveLength(1);
+    expect(after(h, dm, line).filter((message) => message.kind === "system")).toEqual([]);
+  });
+
+  test("the same request under a stop on the Bot offers 继续, and the press lifts it", async () => {
+    const h = await scenario();
+    const { director } = videoTeam(h);
+    const dm = h.direct(director);
+    const hold = h.engine.createHold({ scope: "bot", scopeId: director.id });
+    h.script(director, dm).reply(say("好"));
+
+    const line = h.postUser(dm, "继续做第二集，琦玉跟杰诺斯参加英雄协会报名");
+    await h.waitIdle();
+
+    expect(h.store.getMessage(line.id).control).toEqual({ kind: "possible_control", offer: ["continue"], scopes: [{ scope: "bot", id: director.id }] });
+    const { lifted } = h.engine.control(line.id, { action: "continue" });
+    expect(lifted.map((row) => row.id)).toEqual([hold.id]);
   });
 
   test("「算了」 alone stops and drops nothing: it asks which, and the Bot still gets it", async () => {

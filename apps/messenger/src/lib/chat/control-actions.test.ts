@@ -57,7 +57,7 @@ test("your line that might have meant a stop asks, naming the Bot", () => {
     buttons: [{ action: "stop", label: "停下视频导演", primary: true }],
   });
   const either: MessageControl = { kind: "possible_control", offer: ["stop", "continue"], scopes: [] };
-  expect(controlBar(either, [], names, t)).toMatchObject({ prompt: "这句像是在说停下或继续：" });
+  expect(controlBar(either, [aHold()], names, t)).toMatchObject({ prompt: "这句像是在说停下或继续：" });
   const abandon: MessageControl = { kind: "possible_control", offer: ["stop", "cancel"], scopes: [{ scope: "bot", id: "bot-1" }] };
   expect(controlBar(abandon, [], names, t)).toMatchObject({
     prompt: "要停下，还是作废这件事？",
@@ -66,6 +66,21 @@ test("your line that might have meant a stop asks, naming the Bot", () => {
       { action: "cancel", label: "作废这件事", primary: false },
     ],
   });
+});
+
+test("a line that might have meant a go on offers 继续 only while a stop is in force", () => {
+  const goOn: MessageControl = { kind: "possible_control", offer: ["continue"], scopes: [{ scope: "bot", id: "bot-1" }] };
+  expect(controlBar(goOn, [aHold()], names, t)).toMatchObject({ state: "ask", buttons: [{ action: "continue", primary: true }] });
+  // Lifted since the line was marked: nothing left for it to lift.
+  expect(controlBar(goOn, [], names, t)).toEqual({ state: "none" });
+  const either: MessageControl = { kind: "possible_control", offer: ["stop", "continue"], scopes: [{ scope: "bot", id: "bot-1" }] };
+  expect(controlBar(either, [], names, t)).toEqual({
+    state: "ask",
+    prompt: "这句像是要停下视频导演：",
+    buttons: [{ action: "stop", label: "停下视频导演", primary: true }],
+  });
+  // Once pressed it says so, stops or none.
+  expect(controlBar({ ...goOn, acted: ["continue"] }, [], names, t)).toEqual({ state: "done", note: "已继续" });
 });
 
 test("a go on held back by a wider stop offers its two buttons only while that stop stands", () => {
