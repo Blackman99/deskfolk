@@ -207,8 +207,8 @@ export const CHECK_BACK: ToolDef = {
 export const WORK_ON: ToolDef = {
   name: "work_on",
   description: {
-    zh: "把这一轮改挂到一件事上。plan 传那件事的 id，或者 {new:{title, quote_message_id}} 按你引用的那句用户原话新开一件。这件事已经有别的一轮在做时，这句会并进那一轮，本轮结束。",
-    en: "Bind this turn to a job. plan is that job's id, or {new:{title, quote_message_id}} to open one from a line of the user's you quote. When the job already has a turn of yours, this line joins it and this turn ends.",
+    zh: "把这一轮改挂到一件事上。plan 传那件事的 id，或者 {new:{title, quote_message_id}} 按你引用的那句用户原话新开一件。这件事已经有别的一轮在做时，这句会并进那一轮，本轮结束。这一段还没动手（没写文件、没跑命令）时，也可以用它换到同一件事的另一张任务，比如交来的活过了、接着做你自己那张。",
+    en: "Bind this turn to a job. plan is that job's id, or {new:{title, quote_message_id}} to open one from a line of the user's you quote. When the job already has a turn of yours, this line joins it and this turn ends. Before this segment has done anything (no file written, no command run) it can also move to another ticket of the same job — say, to your own ticket once the work you asked for is in.",
   },
   properties: {
     plan: { type: ["string", "object"], description: { zh: "候选里的一件事 id，或 {new:{title, quote_message_id}}；引文必须来自这一轮的用户消息。", en: "A captured candidate's id, or {new:{title,quote_message_id}} quoting a user line in this turn's conversation." } },

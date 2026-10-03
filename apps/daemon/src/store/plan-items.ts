@@ -16,6 +16,7 @@ import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import type { StoreContext } from "./shared";
 import { createTicket, getTicket, listTickets, patchTicket } from "./tickets";
 import { recordWorkEvent } from "./work-events";
+import { closeWorkItemIfIdle, findOrCreateWorkItem } from "./work-items";
 
 /** At most this many items in one call; a plan holds at most `TICKETS_MAX` tickets anyway. */
 export const PLAN_ITEMS_MAX = 20;
@@ -28,6 +29,8 @@ export type PlanItemsResult = {
     /** What was asked but left as it was: an owner or reviewer already set. */
     kept?: Array<"owner" | "reviewer">;
   }>;
+  /** The ticket the job opened with, dropped because the layout left it out and nothing was done on it. */
+  folded?: string;
 };
 
 type Item = { title: string; owner: string | null; reviewer: string | null; dependsOn: string[]; parts: Array<{ key: string; title: string }> };
@@ -89,6 +92,39 @@ function memberResolver(ctx: StoreContext, taskId: string): (ref: string, field:
     if (!found) throw new HttpError(422, "invalid_args", `${field} "${ref}" is not a Bot in this plan's conversations`);
     return found.id;
   };
+}
+
+/**
+ * The ticket a job opened with — named as the job, made when a desk's first effect opened it (or you
+ * made a job of a line) — folded into the lead's layout when the layout leaves it out and nothing
+ * was ever done on it: no hand-over, no file, no command, no open request. Left standing, it was a
+ * third ticket nobody would hand in, owned by the lead, that the supervisor chased and that kept the
+ * job from being delivered (2026-10-03). It is dropped, and a segment on it goes on the whole job.
+ */
+function foldOpeningTicket(ctx: StoreContext, input: { taskId: string; turnId: string; laidOut: readonly string[]; now: string }): string | null {
+  const opened = ctx.db.query<{ ticket_id: string | null }, [string]>(`SELECT ticket_id FROM work_events WHERE task_id = ? AND kind = 'plan.opened'
+    ORDER BY seq LIMIT 1`).get(input.taskId)?.ticket_id ?? null;
+  if (!opened || input.laidOut.includes(opened)) return null;
+  const ticket = getTicket(ctx, opened);
+  const title = ctx.db.query<{ title: string }, [string]>("SELECT title FROM tasks WHERE id = ?").get(input.taskId)?.title ?? "";
+  if (ticket.title.trim() !== title.trim() || (ticket.status !== "todo" && ticket.status !== "doing")) return null;
+  const touched = ctx.db.query(`SELECT 1 FROM submissions WHERE ticket_id = ?1
+    UNION ALL SELECT 1 FROM messages m JOIN attachments a ON a.message_id = m.id WHERE m.ticket_id = ?1 AND m.kind = 'bot'
+    UNION ALL SELECT 1 FROM turn_runs r JOIN turns t ON t.id = r.turn_id WHERE t.ticket_id = ?1
+    UNION ALL SELECT 1 FROM delegations WHERE ticket_id = ?1 AND status = 'open' LIMIT 1`).get(opened);
+  if (touched) return null;
+  patchTicket(ctx, opened, { status: "parked" }, { now: new Date(input.now) });
+  const turn = ctx.db.query<{ bot_id: string; session_id: string; ticket_id: string | null; work_item_id: string | null }, [string]>(
+    "SELECT bot_id, session_id, ticket_id, work_item_id FROM turns WHERE id = ?").get(input.turnId);
+  if (turn && turn.ticket_id === opened) {
+    ctx.db.run("UPDATE turns SET ticket_id = NULL, work_item_id = NULL, updated_at = ? WHERE id = ?", [input.now, input.turnId]);
+    const item = findOrCreateWorkItem(ctx, { botId: turn.bot_id, sessionId: turn.session_id, taskId: input.taskId, ticketId: null });
+    ctx.db.run("UPDATE turns SET work_item_id = ? WHERE id = ?", [item.id, input.turnId]);
+    if (turn.work_item_id && turn.work_item_id !== item.id) closeWorkItemIfIdle(ctx, turn.work_item_id);
+  }
+  recordWorkEvent(ctx, { kind: "ticket.folded", actor: "app", taskId: input.taskId, ticketId: opened, turnId: input.turnId,
+    payload: { into: input.laidOut } });
+  return opened;
 }
 
 export function planItems(ctx: StoreContext, input: { turnId: string; items: unknown }, now: string = isoNow()): PlanItemsResult {
@@ -185,8 +221,10 @@ export function planItems(ctx: StoreContext, input: { turnId: string; items: unk
       out.push({ ticket_id: after.id, seq: after.seq, title: after.title, owner: after.owner_bot_id ?? after.worker, reviewer: after.reviewer_bot_id ?? null,
         depends_on: after.depends_on ?? [], parts: item.parts.map((part) => part.key), created, ...(kept.length > 0 ? { kept } : {}) });
     }
+    const folded = foldOpeningTicket(ctx, { taskId, turnId: input.turnId, laidOut: out.map((row) => row.ticket_id), now });
     recordWorkEvent(ctx, { kind: "plan.items", actor: turn.bot_id, botId: turn.bot_id, taskId, turnId: input.turnId,
-      payload: { created: out.filter((row) => row.created).map((row) => row.ticket_id), updated: out.filter((row) => !row.created).map((row) => row.ticket_id) } });
-    return { tickets: out };
+      payload: { created: out.filter((row) => row.created).map((row) => row.ticket_id), updated: out.filter((row) => !row.created).map((row) => row.ticket_id),
+        ...(folded ? { folded } : {}) } });
+    return { tickets: out, ...(folded ? { folded } : {}) };
   });
 }

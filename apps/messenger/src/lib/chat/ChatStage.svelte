@@ -1416,6 +1416,17 @@
 									{/if}
 									<span class="body">{singleMsg.message.body}</span>
 								</div>
+								<!-- A card about a hand-over carries its files: what you approve is right there to open. -->
+								{#if messageShowsAttachments(singleMsg.message)}
+									<MessageAttachments
+										attachments={singleMsg.message.attachments}
+										body={singleMsg.message.body}
+										api={runtime.client}
+										{t}
+										onPreview={(att) => onOpenArtifact(att.workspace_relpath, att, singleMsg.message.id)}
+										onOpenImage={(att, from) => openInlineImage(att, att.workspace_relpath, from)}
+									/>
+								{/if}
 								{#if singleMsg.message.control}
 									<ControlActions
 										control={singleMsg.message.control}

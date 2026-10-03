@@ -208,6 +208,39 @@ export function replyDelegation(ctx: StoreContext, input: {
   });
 }
 
+/**
+ * A hand-over approved answers the requests for it (2026-10-03). A delegation that expects a
+ * deliverable is answered by the work it asked for being handed in and approved — by a review, the
+ * app on its checks, or your 放行 — not by anything the producer says in the thread; nothing answered
+ * it before, so the Bot that delegated waited for good and was never told (all three such
+ * delegations in the live database ended only when their group was cleared). One that names parts
+ * is answered once the approval covers them all; one that names none, once the ticket is through.
+ */
+export function deliverDelegations(ctx: StoreContext, submission: {
+  id: string; work_item_id: string | null; task_id: string; part_keys: string[]; artifacts: Array<{ path: string }>; content: string | null;
+}, input: { ticketApproved: boolean; now: string }): InboxItem[] {
+  if (!submission.work_item_id) return [];
+  const open = ctx.db.query<DelegationRow, [string, string]>(`SELECT * FROM delegations WHERE status = 'open' AND expects = 'deliverable'
+    AND to_work_item_id = ? AND task_id = ? ORDER BY created_at, rowid`).all(submission.work_item_id, submission.task_id).map(toDelegation);
+  const en = ctx.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'locale'").get()?.value === "en";
+  const out: InboxItem[] = [];
+  for (const delegation of open) {
+    const covered = delegation.part_keys.length > 0
+      ? delegation.part_keys.every((key) => submission.part_keys.includes(key))
+      : input.ticketApproved;
+    if (!covered) continue;
+    const name = ctx.db.query<{ name: string }, [string]>("SELECT name FROM bots WHERE id = ?").get(delegation.to_bot_id)?.name ?? delegation.to_bot_id;
+    const what = submission.artifacts.length > 0
+      ? submission.artifacts.map((artifact) => artifact.path).join(en ? ", " : "、")
+      : (submission.content ?? "").slice(0, 400);
+    const answer = en
+      ? `(app) ${name} handed in "${delegation.ask}", and it was approved (submission ${submission.id}): ${what}`
+      : `（应用）${name} 交了「${delegation.ask}」，已通过（交付 ${submission.id}）：${what}`;
+    out.push(resolve(ctx, delegation, { bot_id: delegation.to_bot_id }, { answer, replyRef: `submission:${submission.id}`, now: input.now, status: "replied" }));
+  }
+  return out;
+}
+
 export function cancelDelegation(ctx: StoreContext, input: {
   delegationId: string; fromTurnId: string; now?: string;
 }): { delegation: Delegation; inbox: InboxItem | null; cancelled: boolean } {

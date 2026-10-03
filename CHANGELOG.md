@@ -6,6 +6,13 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A lead's group job runs through without waiting
+
+- A delegation that asks for a deliverable is answered when that hand-over is approved — by a review, the app's checks or your 放行 — and the Bot that delegated is woken with it at once. It used to stay open for good: the lead waited on it and never heard, and the job moved on only when the supervisor called it back minutes later.
+- A segment that has done nothing yet can move to another ticket of its job with `work_on`, so a lead told the slogans are in goes straight on to its own poster.
+- When the lead lays a job out with `plan_items`, the ticket of the job's own name made when it opened is dropped if the layout leaves it out and nothing was done on it. It was a third ticket nobody handed in, which the supervisor chased and which kept the job from being delivered.
+- The card asking you to approve a hand-over shows its files to open before you decide, and says in plain words why it is yours to decide.
+
 ### "Stop everything" says it lasts until you lift it
 
 - The tools menu's "Stop everything" has a line under it: "Bots and routines stay stopped until you lift it". It holds the turns that would start, so it is in the menu with no Bot at work; by its name alone it looked like it stopped only what was running, and why it was there with nothing running was not clear.

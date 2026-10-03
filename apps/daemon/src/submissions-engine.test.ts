@@ -62,7 +62,9 @@ test("a closing reply that hands a file of the ticket over is an implicit submis
   expect(stageOf(h, j.ticket.id)).toEqual({ stage: "submitted", status: "review" });
   const card = h.messages(j.room).find((message) => message.control?.kind === "review_item")!;
   expect(card.control).toMatchObject({ offer: ["approve", "reject"] });
-  expect(card.body).toContain(`${j.ticket.dir}/board.md`);
+  // Its words name the file; the file itself is on the card, to open.
+  expect(card.body).toContain("board.md");
+  expect(card.attachments.map((attachment) => attachment.workspace_relpath)).toContain(`${j.ticket.dir}/board.md`);
   h.engine.control(card.id, { action: "approve" });
   await h.waitIdle();
   expect(h.store.getSubmission(submission!.id).state).toBe("approved");

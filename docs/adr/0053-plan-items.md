@@ -27,3 +27,9 @@ ADR 0040 §2.8 lists `plan_items` as the lead's own tool: tickets, who makes the
 「你在群里确认的负责人」原来只看规划的主会话。私聊里开出、后来在群里接着做的事（《一拳超人》），群里你确认的负责人调 `plan_items` 被拒「this plan has no confirmed lead」，谁做、谁审也只能填主会话里的 Bot。现在两者都看这件事的会话：主会话和你说过它的会话（见 [ADR 0045](0045-supervisor.md) 的补记）。存下的负责人和私聊里唯一的 Bot 不变，仍然不按谁跑得多推算。
 
 "The group lead you confirmed" was read in the plan's home only. For a job opened in a direct and taken up in a group (《一拳超人》), the lead you confirmed in that group was refused `plan_items` ("this plan has no confirmed lead"), and owners and reviewers had to be Bots of the home. Both now read the job's conversations: its home and those you spoke about it in (see the note in [ADR 0045](0045-supervisor.md)). The stored lead and the one Bot of a direct are unchanged; it is still never whoever ran most.
+
+## 2026-10-03 补记：开事时的同名任务折进拆分 / The opening ticket folds into the layout
+
+桌面段第一次动手开事（或你用一句话新开一件事）会建一张和事同名的产出任务；负责人随后用 `plan_items` 拆活时，它成了第三张没人会交的任务，监督器去追它，规划也因此交付不了。现在拆分里没提它、它上面也什么都没做过（没交付、没产物、没跑过命令、没有开着的委派）时，它被作废（`ticket.folded`），调用的这一段改挂到整件事上。拆分里提到同名的，照旧就是那张。
+
+A desk's first effect opening a job (or you making a job of a line) makes a ticket of the job's own name; when the lead then lays the job out with `plan_items`, it was a third ticket nobody would hand in, chased by the supervisor and keeping the job from delivery. Now, when the layout leaves it out and nothing was ever done on it (no hand-over, no file, no command, no open request), it is dropped (`ticket.folded`) and the calling segment goes on the whole job. A layout that names it keeps it, as before.

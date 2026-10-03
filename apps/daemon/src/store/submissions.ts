@@ -23,6 +23,7 @@ import type { ReadingSource } from "../line-reading";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { derivedNotGate } from "./acceptance-checks";
+import { deliverDelegations } from "./delegations";
 import { confirmDerivedCheck } from "./derived-checks";
 import { filenamePartNumbers, partNumbers, registerFilenameParts } from "./filing";
 import { holdsCovering } from "./holds";
@@ -974,6 +975,8 @@ function approve(ctx: StoreContext, submission: Submission, record: ReviewRecord
       payload: { submission_id: submission.id, work_item_id: submission.work_item_id, by: "no_reviewer" } });
   }
   if (submission.awaiting?.message_id) letGoOfCard(ctx, submission.awaiting.message_id, { reason: "approved" });
+  // The Bot that asked for this work hears it is in, and goes on.
+  deliverDelegations(ctx, approved, { ticketApproved: openParts === 0, now });
   if (openParts === 0) closeCeilingCards(ctx, submission.ticket_id, locale(ctx) === "en" ? "The ticket was approved, so this no longer asks." : "这张任务已通过，不再问了。");
   settlePlanStage(ctx, submission.task_id, now);
 }
@@ -1076,14 +1079,29 @@ function modelKnown(review: ReviewRecord, submission: Pick<Submission, "model">)
   return Boolean(review.reviewer_model && submission.model);
 }
 
-function reviewerVerdictLine(ctx: StoreContext, review: ReviewRecord, submission: Pick<Submission, "model">, en: boolean): string {
+/**
+ * The reviewer's word on the card, and why it is not enough on its own, in plain words: a reviewer on
+ * the producer's own model judging its own kind of work, or one that gave no grounds on what you
+ * asked. "设计师（fixture，和生产者同模型）判了通过" read as jargon (2026-10-03).
+ */
+function reviewerVerdictLine(ctx: StoreContext, review: ReviewRecord, submission: Pick<Submission, "model" | "origin">, en: boolean): string {
   const name = ctx.db.query<{ name: string }, [string]>("SELECT name FROM bots WHERE id = ?").get(review.reviewer_bot_id)?.name ?? review.reviewer_bot_id;
-  const model = review.reviewer_model ?? (en ? "unknown model" : "未知模型");
+  const model = review.reviewer_model ?? (en ? "an unknown model" : "未知模型");
   const notes = [review.note, ...review.verdicts.map((v) => `${v.requirement_id}: ${v.verdict}${v.evidence.length > 0 ? ` (${v.evidence.join("; ")})` : ""}`)]
     .filter((line): line is string => Boolean(line));
-  return en
-    ? `${name} (${model}${review.same_model ? (modelKnown(review, submission) ? ", the same model as the producer" : ", counted as the producer's own model: one of the two is not known") : ""}) judged it ${review.outcome}${notes.length > 0 ? `: ${notes.join("; ")}` : "."}`
-    : `${name}（${model}${review.same_model ? (modelKnown(review, submission) ? "，和生产者同模型" : "，有一方模型不明，按同模型算") : ""}）判了${review.outcome === "approve" ? "通过" : "不通过"}${notes.length > 0 ? `：${notes.join("；")}` : "。"}`;
+  const said = en
+    ? `${name} reviewed it and judged it ${review.outcome === "approve" ? "good" : "not good"}${notes.length > 0 ? `: ${notes.join("; ")}.` : "."}`
+    : `${name}审过了，判${review.outcome === "approve" ? "通过" : "不通过"}${notes.length > 0 ? `：${notes.join("；")}。` : "。"}`;
+  // An answer's words or the organizer's reading are the card's reason already (its first line says so).
+  if (submission.origin === "answer" || submission.origin === "organizer") return said;
+  const why = review.same_model
+    ? modelKnown(review, submission)
+      ? (en ? ` But it runs on the same model as the Bot that made it (${model}), and a model passing its own kind of work does not count, so it is yours to decide.`
+        : `但它和做的 Bot 用的是同一个模型（${model}），同一个模型审自己的活不算数，所以要你来定。`)
+      : (en ? " But one of the two models is not known, so it counts as the same model, and it is yours to decide."
+        : "但有一方的模型不明，按同一个模型算，所以要你来定。")
+    : (en ? " But it gave no grounds on what you asked for, so it is yours to decide." : "但它没在你的要求上给出依据，所以要你来定。");
+  return `${said}${why}`;
 }
 
 /**
@@ -1096,6 +1114,11 @@ function reviewerVerdictLine(ctx: StoreContext, review: ReviewRecord, submission
  * on; your two buttons are the submission's own outcome (`approve`, `reject` — `answerReviewCard`),
  * not a required item's.
  */
+/** The files a hand-over's card names in its words; the card shows the files themselves beside them. */
+function fileNames(submission: Pick<Submission, "artifacts">, en: boolean): string {
+  return submission.artifacts.map((artifact) => artifact.path.split("/").pop() ?? artifact.path).join(en ? ", " : "、");
+}
+
 function askApproval(ctx: StoreContext, submission: Submission, now: string, review: ReviewRecord | null = null): Message | null {
   const previous = submission.awaiting;
   if (previous?.kind === "approval") return null;
@@ -1114,11 +1137,11 @@ function askApproval(ctx: StoreContext, submission: Submission, now: string, rev
         ? (en ? `Ticket ${number} "${ticket.title}" of ${plan.title}: the organizer read this as done.`
           : `${plan.title} 的任务 ${number}「${ticket.title}」：整理跳认为这张任务做完了。`)
         : review
-          ? (en ? `Ticket ${number} "${ticket.title}" of ${plan.title}: a hand-over no check you confirmed backs — ${submission.artifacts.map((a) => a.path).join(", ")}`
-            : `${plan.title} 的任务 ${number}「${ticket.title}」：一份没有你确认过的检查撑着的交付——${submission.artifacts.map((a) => a.path).join("、")}`)
-          : (en ? `Ticket ${number} "${ticket.title}" of ${plan.title}: a hand-over with no reviewer and no active check backing it — ${submission.artifacts.map((a) => a.path).join(", ")}`
-            : `${plan.title} 的任务 ${number}「${ticket.title}」：一份没有审查者、也没有生效检查撑着的交付——${submission.artifacts.map((a) => a.path).join("、")}`);
-    const tail = en ? "Approve it, or send it back." : "放行，或者退回。";
+          ? (en ? `Ticket ${number} "${ticket.title}" of ${plan.title} is in (${fileNames(submission, en)}), and it is yours to decide.`
+            : `${plan.title} 的任务 ${number}「${ticket.title}」交上来了（${fileNames(submission, en)}），等你定。`)
+          : (en ? `Ticket ${number} "${ticket.title}" of ${plan.title} is in (${fileNames(submission, en)}). Nobody reviews it and no check you confirmed stands behind it, so it is yours to decide.`
+            : `${plan.title} 的任务 ${number}「${ticket.title}」交上来了（${fileNames(submission, en)}）。没有审查者，也没有你确认过的检查替你把关，所以要你来定。`);
+    const tail = en ? "Have a look, then approve it or send it back." : "看过之后，放行或者退回。";
     const body = [head + verdict, tail].join("\n");
     const isDirect = ctx.db.query<{ kind: string }, [string]>("SELECT kind FROM sessions WHERE id = ?").get(plan.session_id)?.kind === "direct"
       && producerIsBot(ctx, submission);

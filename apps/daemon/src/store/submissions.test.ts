@@ -816,7 +816,7 @@ test("a reviewer's approve of a hand-over nothing of yours backs waits on your c
     expect(card.control).toMatchObject({ kind: "review_item", offer: ["approve", "reject"] });
     expect(card.body).toContain("Reviewer");
     expect(card.body).toContain("EP01_MASTER.mp4");
-    if (!c.reviewerModel) expect(card.body).toContain("有一方模型不明，按同模型算");
+    if (!c.reviewerModel) expect(card.body).toContain("有一方的模型不明，按同一个模型算");
   }
 });
 

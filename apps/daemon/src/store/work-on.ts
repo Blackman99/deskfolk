@@ -125,8 +125,17 @@ export function workOn(ctx: StoreContext, input: WorkOnInput): WorkOnResult {
         others.push({ taskId: item.task_id, ticketId: item.ticket_id });
       }
     }
+    // Another ticket of the same job is open to a segment that has done nothing yet — no file, no
+    // command, its directory unused — as a new job is (I8: the directory changes once, before any
+    // effect). A lead woken with the slogans in could not go on to its own poster, and waited minutes
+    // for the supervisor to open a segment on it (2026-10-03).
     if (!fresh && turn.task_id && (turn.task_id !== taskId || turn.ticket_id !== ticketId)) {
-      throw new HttpError(409, "work_dir_fixed", "this segment's working directory is already bound");
+      const used = ctx.db.query<{ n: number }, [string]>("SELECT work_dir_changes AS n FROM turns WHERE id = ?").get(turn.id)?.n ?? 0;
+      const ran = Boolean(ctx.db.query("SELECT 1 FROM turn_runs WHERE turn_id = ? LIMIT 1").get(turn.id));
+      const acted = used > 0 || (input.writtenPaths?.length ?? 0) > 0 || ran;
+      if (turn.task_id !== taskId || acted) {
+        throw new HttpError(409, "work_dir_fixed", "this segment's working directory is already bound");
+      }
     }
     const busy = listLiveTurns(ctx, { botId: turn.bot_id }).find((row) => row.id !== turn.id && row.task_id === taskId && row.mode !== "readonly");
     const filedLine = quote ?? trigger;

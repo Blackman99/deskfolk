@@ -141,3 +141,9 @@ Complaint rework read only lines filed under a ticket. In the AI video group you
 上面加进投诉词的「作废」「从头再做」现在只是兜底：返工卡问不问、问哪几个分件，看读句摘出的挑毛病的分句（[ADR 0055](0055-lines-read-by-a-model.md)；分件号仍按规则从这些分句里找），读不了时才按投诉词。工作记录 `complaint.asked` 的 `signal` 因此多了 `reading`。
 
 作废 and 从头再做, added to the complaint words above, are now only the fallback: whether a rework card asks, and about which parts, goes by the objecting clauses a reading quotes ([ADR 0055](0055-lines-read-by-a-model.md); part numbers still found in them by rule), by the complaint words only when the line cannot be read. `complaint.asked` therefore gains the `signal` `reading`.
+
+## 2026-10-03 补记：放行卡片带文件、说人话 / The approval card carries its files and speaks plainly
+
+放行卡片早就把交付的文件挂成附件，但信使画系统消息时不画附件，卡片上只有文字里的一串路径；原因写成「一份没有你确认过的检查撑着的交付」「（fixture，和生产者同模型）」。现在卡片上的文件能点开预览，文字写「……交上来了（文件名），等你定」，再说明为什么要你定：审查者和做的 Bot 同模型（同一个模型审自己的活不算数）、审查者没在要求上给依据，或没有审查者也没有你确认过的检查。
+
+The approval card always attached the hand-over's files, but the messenger drew no attachments on system lines, so the card showed only paths in its words, and gave its reason as "a hand-over no check you confirmed backs" and "(fixture, the same model as the producer)". Its files now open from the card, and it reads "…is in (file names), and it is yours to decide", then why: the reviewer runs on the producer's model (a model passing its own kind of work does not count), the reviewer gave no grounds on what you asked, or nobody reviews it and no check you confirmed stands behind it.
