@@ -32,6 +32,16 @@ function fixture(status: "todo" | "doing" | "review" | "done" | "parked" = "doin
   return { store, ctx, bot, room, plan, ticket, line, turn, itemId };
 }
 
+test("the unfinished-obligations bounce sends a Bot waiting on another Bot to delegate or nothing_new, not to blocked", () => {
+  // Read as "what blocks you", a Bot waiting on a reviewer ended blocked, and its wait became a question card to the user.
+  const f = fixture();
+  const bounce = finishWork(f.ctx, { turnId: f.turn.id, reason: "done" }).bounce!;
+  expect(bounce).toContain("delegate");
+  expect(bounce).toContain("nothing_new");
+  expect(bounce).toMatch(/blocked is only for .*the user/);
+  expect(bounce).not.toContain("what blocks you");
+});
+
 test("done cannot orally close a doing ticket: one persisted bounce, then honest nothing_new without terminating the turn", () => {
   const f = fixture();
   const first = finishWork(f.ctx, { turnId: f.turn.id, reason: "done" });

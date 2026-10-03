@@ -126,8 +126,8 @@ function systemText(locale: Locale, shell: ToolShellKind, engineLevel = 0): stri
       ? (locale === "en" ? "Use delegate for another Bot's work. The app keeps a real delegation wait; an answer is returned with end_turn(reason:'answered',answer:...). A timer check_back is for an independent later check and cannot replace a delegation wait." : "队友的工作用 delegate 委派，应用持久等它交回；回答用 end_turn(reason:'answered',answer:...)。check_back 定时回看用于独立的稍后检查，不会替代委派等待。")
       : paragraph).join("\n\n");
     text += locale === "en"
-      ? "\n\nWork-item contract: end_turn requires reason done/answered/nothing_new/blocked/gave_up. blocked needs needs_from_user; gave_up needs note. Give dispositions for every user inbox item. You may post at most three progress lines, then continue working. Do not use prose to claim an unfinished ticket is complete."
-      : "\n\n工作项结束契约：end_turn 的 reason 是 done/answered/nothing_new/blocked/gave_up。blocked 必须写 needs_from_user，gave_up 必须写 note。用户收件逐条处置；每段最多三条进度话，然后接着干。不能用纯文字把没交出的任务当成完成。";
+      ? "\n\nWork-item contract: end_turn requires reason done/answered/nothing_new/blocked/gave_up. blocked is only for what the user alone can give, and needs needs_from_user, which reaches the user as a question. Waiting on another Bot is not blocked: delegate to it, or end with nothing_new. gave_up needs note. Give dispositions for every user inbox item. You may post at most three progress lines, then continue working. Do not use prose to claim an unfinished ticket is complete."
+      : "\n\n工作项结束契约：end_turn 的 reason 是 done/answered/nothing_new/blocked/gave_up。blocked 只用于只有用户能给的东西，必须写 needs_from_user，它会作为提问发给用户；等别的 Bot 不算 blocked，要么 delegate 给它，要么用 nothing_new 结束。gave_up 必须写 note。用户收件逐条处置；每段最多三条进度话，然后接着干。不能用纯文字把没交出的任务当成完成。";
   }
   if (engineLevel >= 5) {
     text += locale === "en"

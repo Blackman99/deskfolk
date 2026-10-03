@@ -306,7 +306,7 @@ export function finishWork(ctx: StoreContext, input: FinishWorkInput, opts: Fini
       WHERE turn_id = ? AND kind = 'end.rejected' AND json_extract(payload, '$.code') = 'unfinished_obligations'`).get(turn.id)!.n;
     if (reason === "done" && unfinished && !waiting && previous === 0) {
       return rejectEnd(ctx, turn, base, opts, "unfinished_obligations",
-        `Unfinished obligations: ${[...facts.tickets.map((ticket) => ticket.id), ...facts.outgoingDelegations, ...facts.incomingDelegations, ...facts.waits].join(", ")}. Continue, or end_turn with who you await or what blocks you.`);
+        `Unfinished obligations: ${[...facts.tickets.map((ticket) => ticket.id), ...facts.outgoingDelegations, ...facts.incomingDelegations, ...facts.waits].join(", ")}. Continue. If you are waiting on another Bot's work, delegate it to that Bot and wait for the reply, or end_turn with reason nothing_new; blocked is only for something the user alone can give, and needs_from_user reaches the user as a question.`);
     }
     const endReason = reason === "done" && unfinished && !waiting ? "nothing_new" : reason;
     // From level 5 the work on a ticket closes only once it is approved or dropped: a hand-over can
