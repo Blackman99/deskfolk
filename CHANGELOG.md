@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A line filed under the wrong job can be made a job of its own
+
+- The change-attribution dialog under a line of yours has "A new job": when the line is about none of the jobs listed, it opens a job from the line (with a ticket for it) and files the line there; the Bots that read it start on it there. It used to offer only jobs that existed, so a new request glued to an old job could only be stopped and said again.
+- A segment still at work on the job a line was moved away from is told, at its next step, not to act on it there; before, it heard nothing and finished the line in the wrong job.
+- A tag no longer says a ticket named as its job twice (「X › X」).
+
 ### A job taken up in a group is led and chased there
 
 - A job that opened in your direct and went on in a group (《一拳超人》 opened in your direct with 审片员) can now be laid out with `plan_items` by the lead you confirmed in that group (it was refused: "this plan has no confirmed lead"), its tickets can belong to that group's Bots, and the supervisor calls them back there: it used to wake them in the direct they are not in, which opened nothing and left the call-back queued for good.

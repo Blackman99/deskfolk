@@ -47,7 +47,7 @@ function object(value: unknown): Record<string, unknown> | null {
  * A new job's title without the Bots it names: 「@Alpha 做一个 logo」 opens 「做一个 logo」. A title
  * that is nothing but names keeps them.
  */
-function planTitle(ctx: StoreContext, said: string): string {
+export function planTitle(ctx: StoreContext, said: string): string {
   const roster = ctx.db.query<{ name: string }, []>("SELECT name FROM bots WHERE deleted_at IS NULL").all().map((row) => row.name);
   const spans = parseMentions(said, roster).spans.filter((span) => span.kind !== "unresolved");
   let title = said;

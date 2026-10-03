@@ -53,6 +53,7 @@ const zh = {
     ticket: "任务", part: "分件", wholePlan: "整件事", partPlaceholder: "分件（可选），如 Shot 01", addFiling: "再加一个任务", addPart: "指定分件", removeFiling: "移除这项",
     unfile: "不归到任何事", unfiled: "这句话不归到任何事。", cancel: "取消", save: "保存", saving: "正在保存…", failed: "未能保存，归属未改。你的选择已保留。",
     loading: "正在载入…", loadFailed: "未能载入事情列表。", retry: "重试", noPlans: "还没有可选的事情。",
+    newJob: "新开一件事", newJobHint: "用这句话开一件新事，原来那件不受影响",
   },
   routines: {
     title: "日程", add: "新建日程", edit: "编辑日程", empty: "这个 Bot 还没有日程。",
@@ -1801,6 +1802,7 @@ const en: CopyShape<typeof zh> = {
     ticket: "Ticket", part: "Part", wholePlan: "Whole job", partPlaceholder: "Part (optional), e.g. Shot 01", addFiling: "Add another ticket", addPart: "Set a part", removeFiling: "Remove this one",
     unfile: "File under no job", unfiled: "This is not filed under any job.", cancel: "Cancel", save: "Save", saving: "Saving…", failed: "Could not save; attribution unchanged. Your selection is preserved.",
     loading: "Loading…", loadFailed: "Could not load the list of jobs.", retry: "Retry", noPlans: "There are no jobs to choose from yet.",
+    newJob: "A new job", newJobHint: "Open a new job from this line; the other job is left as it is",
   },
   routines: {
     title: "Routines", add: "Add routine", edit: "Edit routine", empty: "This Bot has no routines yet.",

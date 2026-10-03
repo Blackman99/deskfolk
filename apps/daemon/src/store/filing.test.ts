@@ -58,7 +58,9 @@ test("a turn's original trigger receives a correction even without a separately 
   const turn = store.createTurn({ sessionId: direct, botId: bot.id, triggerMessageId: message.id, taskId: a.id });
   filing.refileMessage(ctx, message.id, { filings: [{ taskId: b.id }], userActionId: 'trigger-correction' });
   expect(store.getTurn(turn.id).task_id).toBe(a.id);
-  expect(store.db.query("SELECT task_id, state FROM inbox_items WHERE message_id = ? AND source = 'system'").all(message.id)).toEqual([{ task_id: b.id, state: 'queued' }]);
+  // The correction for B, and a note for the segment still running on A not to act on the line there.
+  expect(store.db.query("SELECT task_id, turn_id, state FROM inbox_items WHERE message_id = ? AND source = 'system' ORDER BY seq").all(message.id)).toEqual([
+    { task_id: b.id, turn_id: null, state: 'queued' }, { task_id: a.id, turn_id: turn.id, state: 'queued' }]);
 });
 
 test("a real pre-quotes schema reopens with additive filing, desk, parallel and lead columns intact", async () => {
@@ -169,7 +171,7 @@ test("refiling acknowledged mail corrects the new home session under its hold an
     messageId: message.id, author: 'user', body: message.body, source: 'user', kind: 'change', priority: 1 });
   store.db.run("UPDATE inbox_items SET state = 'adopted', delivered_turn_id = ? WHERE seq = ?", [turn.id, item.seq]);
   filing.refileMessage(ctx, message.id, { filings: [{ taskId: b.id }], userActionId: 'project-move' });
-  expect(store.db.query("SELECT session_id, state FROM inbox_items WHERE source = 'system' AND message_id = ?").all(message.id)).toEqual([{ session_id: direct, state: 'held' }]);
+  expect(store.db.query("SELECT session_id, state FROM inbox_items WHERE source = 'system' AND message_id = ? AND turn_id IS NOT ?").all(message.id, turn.id)).toEqual([{ session_id: direct, state: 'held' }]);
   expect(store.db.query("SELECT scope_id, origin_task_id FROM requirements WHERE id = 'project-requirement'").get()).toEqual({ scope_id: direct, origin_task_id: b.id });
 });
 
@@ -251,7 +253,11 @@ test("refiling validates atomically, moves unread targets, preserves delivered a
   expect(result).toMatchObject({ id: message.id, task_id: b.id, ticket_id: ticket.id, filing_state: 'filed' });
   expect(store.getInboxItem(queued.seq)).toMatchObject({ task_id: b.id, ticket_id: ticket.id, turn_id: null });
   expect(store.getInboxItem(delivered.seq)).toMatchObject({ task_id: a.id, delivered_turn_id: turn.id, state: 'delivered' });
-  expect(store.db.query("SELECT task_id, ticket_id FROM inbox_items WHERE source = 'system' AND message_id = ?").all(message.id)).toEqual([{ task_id: b.id, ticket_id: ticket.id }]);
+  expect(store.db.query("SELECT task_id, ticket_id FROM inbox_items WHERE source = 'system' AND message_id = ? ORDER BY seq").all(message.id)).toEqual([
+    { task_id: b.id, ticket_id: ticket.id },
+    // The segment that read it on A hears not to act on it there.
+    { task_id: a.id, ticket_id: null },
+  ]);
   expect(store.listQuotes({ messageId: message.id })[0]).toMatchObject({ task_id: b.id, ticket_id: ticket.id });
   expect(store.db.query("SELECT scope_id, origin_task_id FROM requirements WHERE id = 'requirement'").get()).toEqual({ scope_id: b.id, origin_task_id: b.id });
   expect(store.listWorkEvents({ kind: 'attribution.changed' })[0]!.payload).toMatchObject({ message: message.id, user_action_id: 'change-action' });

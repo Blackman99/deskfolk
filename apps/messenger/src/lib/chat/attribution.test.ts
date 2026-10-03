@@ -23,6 +23,12 @@ test("a filing is told by the job's title, then the ticket and part; an unloaded
   expect(filingLabel({ task_id: "gone", ticket_id: null, part_key: null }, plans, "一件事")).toBe("一件事");
 });
 
+test("a ticket named as its job is (the one a new job opens with) is not said twice", () => {
+  const fresh: AttributionPlan[] = [{ id: "n", title: "请写一篇小说", tickets: [{ id: "nt", title: "请写一篇小说" }, { id: "nt2", title: "第二章" }] }];
+  expect(filingParts({ task_id: "n", ticket_id: "nt", part_key: null }, fresh)).toEqual({ plan: "请写一篇小说", ticket: null, part: null });
+  expect(filingLabel({ task_id: "n", ticket_id: "nt2", part_key: null }, fresh)).toBe("请写一篇小说 · 第二章");
+});
+
 test("only your lines and a Bot's are filed; the app's control lines are not", () => {
   expect(attributable(aMessage({ kind: "user" }))).toBe(true);
   expect(attributable(aMessage({ kind: "bot" }))).toBe(true);

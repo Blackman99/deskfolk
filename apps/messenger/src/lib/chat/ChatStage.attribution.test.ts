@@ -86,3 +86,32 @@ test("a line whose tag a run hides can still be changed from its right-click men
     expect(runtime.calls).toContainEqual({ name: "patchMessageAttribution", args: ["second", [{ plan_id: "plan-a" }, { plan_id: "plan-b" }]] });
   } finally { close(); }
 });
+
+test("a line of yours glued to the wrong job can be made a new job of its own; a Bot's line cannot", async () => {
+  const session = aDirect();
+  const messages = [
+    filed("mine", session.id, "01", [{ task_id: "plan-a" }]),
+    filed("theirs", session.id, "02", [{ task_id: "plan-b" }], { kind: "bot", author: "bot-1" }),
+  ];
+  const runtime = fakeRuntime({ bots: [aBot()], sessions: [session], messages }, { selectedId: session.id });
+  runtime.attributionPlans = { [session.id]: [{ id: "plan-a", title: "sleep 120", tickets: [] }, { id: "plan-b", title: "海报", tickets: [] }] };
+  const { host, close } = render(ChatStage, { runtime, t: copyFor("zh"), selected: session, onOpenProfile: () => {}, onOpenArtifact: () => {}, onCreateBot: () => {} });
+  try {
+    click(host.querySelector('[data-message-id="mine"] .attribution-chip'));
+    const modal = () => host.querySelector(".attribution-modal")!;
+    const newJob = () => modal().querySelector<HTMLInputElement>(".plan-row.new-job input");
+    expect(modal().querySelector(".plan-row.new-job")?.textContent).toContain("新开一件事");
+    click(newJob());
+    // Chosen, it stands alone: the old job is let go of.
+    expect(modal().querySelector('input[value="plan-a"]:checked')).toBeNull();
+    expect(newJob()?.checked).toBe(true);
+    click(buttonByText(host, "保存"));
+    await Promise.resolve(); await Promise.resolve(); flushSync();
+    expect(runtime.calls).toContainEqual({ name: "newJobFromMessage", args: ["mine"] });
+    expect(runtime.calls.some((call) => call.name === "patchMessageAttribution")).toBe(false);
+    expect(host.querySelector(".attribution-modal")).toBeNull();
+
+    click(host.querySelector('[data-message-id="theirs"] .attribution-chip'));
+    expect(modal().querySelector(".plan-row.new-job")).toBeNull();
+  } finally { close(); }
+});

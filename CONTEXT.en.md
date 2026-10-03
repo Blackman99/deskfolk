@@ -93,7 +93,7 @@ An execution segment before the Bot has chosen which job to work on, able to rea
 _Avoid_: another Bot, a side call before a turn opens, acting before filing, bypassing a hold through a desk
 
 **Attribution**:
-The relationship between a message and the plans, tickets or parts it concerns: it may name several targets, remain undetermined, or be explicitly left unfiled by you. Attribution is not where a message was sent and does not move an entire plan into another job. Details: [Behavior · Attribution](docs/behavior.en.md#attribution).
+The relationship between a message and the plans, tickets or parts it concerns: it may name several targets, remain undetermined, or be explicitly left unfiled by you; a line of yours filed under the wrong job can also be made a new job of its own, by you. Attribution is not where a message was sent and does not move an entire plan into another job. Details: [Behavior · Attribution](docs/behavior.en.md#attribution).
 _Avoid_: one line can concern only one job, undetermined means no work exists, correction rewriting execution history, correction moving files
 
 **User quote**:

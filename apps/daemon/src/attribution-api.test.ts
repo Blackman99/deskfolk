@@ -69,6 +69,8 @@ test("correcting a delivered line keeps its read audit and durably queues the co
   expect(h.store.getInboxItem(item.seq)).toMatchObject({ state: "delivered", task_id: h.a.id, delivered_turn_id: turn.id, delivered_hop: 2 });
   expect(h.store.db.query("SELECT task_id, ticket_id, state, body_snapshot FROM inbox_items WHERE message_id = ? AND source = 'system'").all(h.message.id)).toEqual([
     { task_id: h.b.id, ticket_id: h.ticket.id, state: "held", body_snapshot: `这句改归到 Second：${h.message.body}` },
+    // The segment still running on First read the line: it hears not to act on it there.
+    { task_id: h.a.id, ticket_id: null, state: "queued", body_snapshot: `（应用）用户把你这一段读过的这句话改归到了《Second》，那件事会在那里另开一段做；这一段别再按这句动手：${h.message.body}` },
   ]);
   expect(h.store.getHold(hold.id).lifted_at).toBeNull();
 });
@@ -131,4 +133,31 @@ test("a correction that files a line hands it to the scribe; one that unfiles it
   expect(noted).toEqual([]);
   expect((await h.request(h.message.id, { plan_id: h.a.id })).status).toBe(200);
   expect(noted).toEqual([h.message.id]);
+});
+
+test("「新开一件事」: your line opens a job of its own, named after it, with a ticket, and is filed there", async () => {
+  const h = start();
+  const response = await h.request(h.message.id, { new_plan: {} });
+  expect(response.status).toBe(200);
+  const moved = await response.json();
+  const plan = h.store.getTask(moved.task_id);
+  expect(plan).toMatchObject({ title: "Both jobs should follow this", session_id: h.session });
+  expect(plan.id).not.toBe(h.a.id);
+  const [ticket] = h.store.listTickets(plan.id);
+  expect(ticket).toMatchObject({ title: "Both jobs should follow this", spec: "Both jobs should follow this", owner_bot_id: h.store.listBots()[0]!.id });
+  expect(moved.filings).toMatchObject([{ task_id: plan.id, ticket_id: ticket!.id, part_key: null }]);
+  expect(h.events.filter((event) => event.event === "attribution.changed").at(-1)).toMatchObject({ message_id: h.message.id, filings: moved.filings });
+  // Named as you say, when you name it.
+  const named = await h.request(h.message.id, { new_plan: { title: "海报" } });
+  expect(h.store.getTask((await named.json()).task_id).title).toBe("海报");
+});
+
+test("「新开一件事」 takes only a line of yours, and nothing beside it", async () => {
+  const h = start();
+  const bots = h.store.listBots();
+  const said = h.store.insertMessage({ sessionId: h.session, kind: "bot", author: bots[0]!.id, body: "I will do it" });
+  expect((await h.request(said.id, { new_plan: {} })).status).toBe(422);
+  expect((await h.request(h.message.id, { new_plan: {}, filings: [] })).status).toBe(422);
+  expect((await h.request(h.message.id, { new_plan: { title: 3 } })).status).toBe(422);
+  expect((await h.request(h.message.id, { new_plan: { why: "x" } })).status).toBe(422);
 });

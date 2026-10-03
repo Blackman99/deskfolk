@@ -13,9 +13,10 @@
    * with when), then the rest folded behind a count — or all of them the moment you search. Choosing
    * is one click on a row, or Enter on the first match; the ticket is asked for only under a chosen
    * job that has tickets, and a part only once a ticket is chosen and you ask to set one. Save and
-   * Cancel stay in view however long the list is.
+   * Cancel stay in view however long the list is. A line of yours that is about none of them can be
+   * made a new job instead: 「新开一件事」 is a choice of its own, and choosing it lets go of the rest.
    */
-  let { message, t, locale = 'zh', plans = [], lastUsed, disabled = false, loading = false, loadError = false, onLoad, onSave, onClose }: {
+  let { message, t, locale = 'zh', plans = [], lastUsed, disabled = false, loading = false, loadError = false, onLoad, onSave, onNewJob, onClose }: {
     message: AttributedMessage;
     t: Copy;
     locale?: 'zh' | 'en';
@@ -27,6 +28,8 @@
     loadError?: boolean;
     onLoad?: () => Promise<unknown>;
     onSave: (filings: AttributionInput[]) => Promise<unknown>;
+    /** Opens a job from this line and files it there; only offered for a line of yours. */
+    onNewJob?: () => Promise<unknown>;
     onClose: () => void;
   } = $props();
 
@@ -53,6 +56,9 @@
     ...(row.part_key ? { part_key: row.part_key } : {}),
   }));
   let draft = $state<AttributionInput[]>(initial.map((row) => ({ ...row })));
+  /** 「新开一件事」 chosen: the line goes to a job of its own, and nothing else is chosen. */
+  let newJob = $state(false);
+  const canOpenJob = untrack(() => Boolean(onNewJob) && message.kind === 'user');
   let query = $state('');
   let showAll = $state(false);
   let pending = $state(false);
@@ -63,7 +69,7 @@
   let bodyEl = $state<HTMLElement | null>(null);
   const now = Date.now();
 
-  const changed = $derived(JSON.stringify(draft) !== JSON.stringify(initial));
+  const changed = $derived(newJob || JSON.stringify(draft) !== JSON.stringify(initial));
   const ranked = $derived(rankPlans({ plans: options, chosen: draft.map((row) => row.plan_id), lastUsed, query }));
   const searching = $derived(query.trim().length > 0);
   const othersShown = $derived(searching || showAll);
@@ -85,7 +91,14 @@
 
   function toggle(planId: string, checked: boolean): void {
     askedPart = [];
+    if (checked) newJob = false;
     draft = checked ? [...draft, { plan_id: planId }] : draft.filter((row) => row.plan_id !== planId);
+  }
+
+  function chooseNewJob(checked: boolean): void {
+    newJob = checked;
+    if (checked) { askedPart = []; draft = []; }
+    else draft = initial.map((row) => ({ ...row }));
   }
 
   function change(index: number, field: 'ticket_id' | 'part_key', value: string): void {
@@ -121,7 +134,7 @@
     pending = true;
     failed = false;
     try {
-      failed = Boolean(await onSave(draft.map((row) => ({ ...row }))));
+      failed = Boolean(newJob && onNewJob ? await onNewJob() : await onSave(draft.map((row) => ({ ...row }))));
       if (!failed) onClose();
     } catch { failed = true; }
     finally { pending = false; }
@@ -131,6 +144,16 @@
     if (!pending) onClose();
   }
 </script>
+
+{#snippet newJobRow()}
+  <label class="plan-row new-job" class:is-chosen={newJob}>
+    <input type="checkbox" checked={newJob} onchange={(event) => chooseNewJob(event.currentTarget.checked)} />
+    <span class="plan-text">
+      <span class="plan-title">{t.attribution.newJob}</span>
+      <span class="plan-meta">{t.attribution.newJobHint}</span>
+    </span>
+  </label>
+{/snippet}
 
 {#snippet row(plan: AttributionPlan, checked: boolean)}
   <label class="plan-row" class:is-chosen={checked}>
@@ -208,7 +231,9 @@
             <span class="count-pill">{ranked.chosen.length}</span>
           {/if}
         </div>
-        {#if ranked.chosen.length === 0}
+        {#if newJob}
+          {@render newJobRow()}
+        {:else if ranked.chosen.length === 0}
           <div class="empty-unfiled">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <circle cx="12" cy="12" r="10"></circle>
@@ -263,6 +288,8 @@
         {/each}
       {/if}
 
+      {#if canOpenJob && !newJob}{@render newJobRow()}{/if}
+
       {#if ranked.here.length > 0}
         <div class="section-head">
           <h3>{t.attribution.here}</h3>
@@ -300,7 +327,7 @@
     </fieldset>
     <div class="attribution-foot">
       {#if failed}<span class="error" role="status">{t.attribution.failed}</span>{/if}
-      <button type="button" class="unfile" disabled={disabled || pending || draft.length === 0} onclick={() => { askedPart = []; draft = []; }}>{t.attribution.unfile}</button>
+      <button type="button" class="unfile" disabled={disabled || pending || draft.length === 0} onclick={() => { askedPart = []; draft = []; newJob = false; }}>{t.attribution.unfile}</button>
       <button type="button" class="cancel" disabled={pending} onclick={dismiss}>{t.attribution.cancel}</button>
       <button type="submit" class="primary" aria-busy={pending} disabled={disabled || pending || !changed}>{pending ? t.attribution.saving : t.attribution.save}</button>
     </div>
@@ -491,6 +518,8 @@
     border: 1px solid transparent;
     transition: background 0.15s ease, border-color 0.15s ease;
   }
+  /* Not one of the jobs: a way to make one, so it reads as an action rather than another row. */
+  .plan-row.new-job:not(.is-chosen) { border-style: dashed; border-color: var(--line); margin: 4px 0 2px; }
   .plan-row:hover {
     background: var(--row-hover);
     border-color: var(--line-subtle);

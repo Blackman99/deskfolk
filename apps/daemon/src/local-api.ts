@@ -2046,6 +2046,22 @@ function dispatch(
   if (params && method === "PATCH") {
     const body = input.body;
     if (!body || typeof body !== "object" || Array.isArray(body)) throw new HttpError(422, "invalid_args", "an attribution object is required");
+    // 「新开一件事」: the line opens a job of its own and is filed there.
+    if (Object.hasOwn(body, "new_plan")) {
+      const fresh = (body as { new_plan: unknown }).new_plan;
+      if (Object.keys(body).length !== 1 || !fresh || typeof fresh !== "object" || Array.isArray(fresh)
+        || Object.keys(fresh).some((key) => key !== "title")
+        || ((fresh as { title?: unknown }).title !== undefined && (fresh as { title?: unknown }).title !== null
+          && (typeof (fresh as { title?: unknown }).title !== "string" || ((fresh as { title: string }).title).length > 200))) {
+        throw new HttpError(422, "invalid_args", "new_plan is {title?}");
+      }
+      const opened = store.newJobFromLine(params.id!, { title: (fresh as { title?: string | null }).title ?? null, userActionId: scope?.requestId ?? ulid() });
+      engine.noteFiled(opened.id);
+      store.afterCommit(() => engine.dispatchQueuedWork());
+      publish({ event: "attribution.changed", occurred_at: occurred(), message_id: opened.id, session_id: opened.session_id,
+        filing_state: opened.filing_state ?? "filed", filings: opened.filings ?? [] });
+      return jsonResponse(opened, 200, null);
+    }
     const multi = Object.hasOwn(body, "filings");
     if (multi && Object.keys(body).length !== 1) throw new HttpError(422, "invalid_args", "choose filings or one plan_id");
     const targets = multi ? (body as { filings: unknown }).filings : [body];

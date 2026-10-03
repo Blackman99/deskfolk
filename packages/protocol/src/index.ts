@@ -1215,6 +1215,11 @@ export type PatchMessageAttributionRequest = {
   filings: Array<{ plan_id: string; ticket_id?: string | null; part_key?: string | null }>;
 };
 
+/** 「新开一件事」: a line of yours opens a job of its own (named after it, or `title`) and is filed there. */
+export type NewJobFromLineRequest = {
+  new_plan: { title?: string | null };
+};
+
 export type Message = {
   id: string;
   session_id: string;

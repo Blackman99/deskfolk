@@ -23,12 +23,15 @@ export function attributable(message: AttributedMessage): boolean {
 /**
  * One filing in words, in parts so a narrow line can cut the long one: the plan's title (a plan is
  * named after the request that opened it, so it can be a whole sentence), then the ticket and the
- * part. A plan that has not loaded, or is gone, is `null` rather than its id.
+ * part. A plan that has not loaded, or is gone, is `null` rather than its id. A ticket named as its
+ * plan is (the one a new job opens with) is not said twice: 「请写一篇小说 › 请写一篇小说」 says nothing
+ * the first half did not.
  */
 export function filingParts(filing: Filing, plans: readonly AttributionPlan[]): { plan: string | null; ticket: string | null; part: string | null } {
   const plan = plans.find((row) => row.id === filing.task_id);
   const ticket = plan?.tickets.find((row) => row.id === filing.ticket_id);
-  return { plan: plan?.title || null, ticket: filing.ticket_id ? (ticket?.title ?? null) : null, part: filing.part_key };
+  const ticketTitle = filing.ticket_id ? (ticket?.title ?? null) : null;
+  return { plan: plan?.title || null, ticket: ticketTitle && ticketTitle.trim() === plan?.title.trim() ? null : ticketTitle, part: filing.part_key };
 }
 
 export function filingLabel(filing: Filing, plans: readonly AttributionPlan[], unknownPlan = ""): string {

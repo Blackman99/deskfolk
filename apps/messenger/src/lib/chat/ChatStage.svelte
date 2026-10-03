@@ -2068,6 +2068,7 @@
 			loadError={runtime.attributionLoadError[target.session_id] ?? false}
 			onLoad={() => runtime.loadAttributionPlans(target.session_id, target.id)}
 			onSave={(filings) => runtime.patchMessageAttribution(target.id, filings)}
+			onNewJob={() => runtime.newJobFromMessage(target.id)}
 			onClose={() => { attributionEditId = null; }}
 		/>
 	{/if}

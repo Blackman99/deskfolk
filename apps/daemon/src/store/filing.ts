@@ -566,11 +566,39 @@ export function refileMessage(ctx: StoreContext, messageId: string, input: Refil
       const key = `${item.bot_id}:${targetKey(target)}`;
       if (!corrected.has(key)) { corrected.add(key); queueCorrection(ctx, message, item.bot_id, item.session_id ?? message.session_id, target); }
     }
+    tellSegmentsLeftBehind(ctx, message, targets);
     recordWorkEvent(ctx, { kind: 'attribution.changed', actor: 'user', taskId: primary?.taskId ?? null, ticketId: primary?.ticketId ?? null,
       sessionId: message.session_id, payload: { message: messageId, user_action_id: 'filings' in input ? input.userActionId : null,
       before, after: filingsOfMessage(ctx, messageId) } });
     return ctx.db.query<RefileMessageResult, [string]>('SELECT id, session_id, task_id, ticket_id, filing_state FROM messages WHERE id = ?').get(messageId)!;
   });
+}
+
+/**
+ * A segment still running that read the line, on a job the line is no longer filed under (or on no
+ * job yet, at its desk), would go on acting on it there: your correction reached the job you moved
+ * it to, and the segment never heard it. It hears so at its next step, from the app, and is told
+ * not to act on the line where it is (2026-10-03: a new request glued to an old job could only be
+ * stopped and said again).
+ */
+function tellSegmentsLeftBehind(ctx: StoreContext, message: FilingMessage, targets: FilingTarget[]): void {
+  const segments = ctx.db.query<{ id: string; bot_id: string; session_id: string; task_id: string | null; ticket_id: string | null; work_item_id: string | null }, [string]>(
+    `SELECT t.id, t.bot_id, t.session_id, t.task_id, t.ticket_id, t.work_item_id FROM turns t
+     WHERE t.status IN ('running', 'waiting_approval', 'waiting_ask') AND IFNULL(t.mode, 'work') <> 'readonly'
+       AND (t.trigger_message_id = ?1 OR EXISTS (SELECT 1 FROM inbox_items i WHERE i.message_id = ?1 AND i.delivered_turn_id = t.id))`).all(message.id);
+  const where = targets.length
+    ? targets.map((target) => `《${candidateOf(ctx, target.taskId).title}》`).join('、')
+    : null;
+  for (const segment of segments) {
+    if (segment.task_id && targets.some((target) => target.taskId === segment.task_id)) continue;
+    const body = where
+      ? `（应用）用户把你这一段读过的这句话改归到了${where}，那件事会在那里另开一段做；这一段别再按这句动手：${message.body}`
+      : `（应用）用户说这句话不归到任何事；这一段别再按这句动手：${message.body}`;
+    ctx.db.run(`INSERT INTO inbox_items (id, bot_id, work_item_id, session_id, turn_id, task_id, ticket_id,
+      message_id, author, body_snapshot, source, kind, priority, state, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'app', ?, 'system', 'change', 1, 'queued', ?)`, [ulid(), segment.bot_id, segment.work_item_id,
+      segment.session_id, segment.id, segment.task_id, segment.ticket_id, message.id, body, isoNow()]);
+  }
 }
 
 function refileRoute(ctx: StoreContext, botId: string, sessionId: string, target: FilingTarget): { workItemId: string; turnId: string | null; sessionId: string; held: boolean } {

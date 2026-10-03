@@ -35,6 +35,7 @@ import {
   type PatchAnnotationRequest,
   type Message,
   type PatchMessageAttributionRequest,
+  type NewJobFromLineRequest,
   type GroupLeadState,
   type DelegationView,
   type WorkAnswerResult,
@@ -1597,6 +1598,25 @@ export class MessengerRuntime {
           (this.messageSessionInvalidated.get(message.session_id) ?? 0) <= invalidationSeq) {
         this.snapshot = applyEvent(this.snapshot, { ...message, event: "message.upsert", occurred_at: new Date().toISOString() });
       }
+      this.traceReload += 1;
+      return null;
+    } catch (error) {
+      return this.sheetFailure(error, api) ?? new ApiError(0, "disconnected", "Attribution result unconfirmed");
+    }
+  }
+
+  /**
+   * 「新开一件事」: a line of yours opens a job of its own and is filed there (the Bots that read it
+   * start on it there). The message comes back as it now stands, and the job's name loads with it.
+   */
+  async newJobFromMessage(id: string): Promise<ApiError | null> {
+    const api = this.api;
+    if (!api || this.connection !== "connected") return new ApiError(0, "disconnected", "Attribution not saved");
+    try {
+      const message = await api.patch<Message>(`/v1/messages/${encodeURIComponent(id)}/attribution`, { new_plan: {} } satisfies NewJobFromLineRequest);
+      if (this.api !== api) return new ApiError(0, "disconnected", "Attribution result unconfirmed");
+      this.snapshot = applyEvent(this.snapshot, { ...message, event: "message.upsert", occurred_at: new Date().toISOString() });
+      this.loadAttributionFor(message);
       this.traceReload += 1;
       return null;
     } catch (error) {
