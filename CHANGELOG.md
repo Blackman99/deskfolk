@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Say what to change when you send a hand-over back
+
+- 退回 on a hand-over's card asks what should change, in a box under the card (you can leave it empty). What you write goes word for word to the Bot that made it, and the card shows it. Before, the Bot was told only that you sent it back and had to guess why.
+
 ### Approve, send back and the other card buttons work from the phone
 
 - On the phone, 放行 and 退回 on a hand-over, the choices on a ceiling card or a complaint card, and confirming a lesson or a Bot's default model were refused with an error: the phone's list of allowed buttons had been written out before those cards existed. It now allows every button a card can offer, from one shared list, so a new card works on the phone too.

@@ -1592,7 +1592,14 @@ export type MessageControl =
  * offers; `task_id` names the plan for `stop_plan` / `only_plan` / `merge_plan`. The line's `acted` records it, so
  * pressing one again does nothing more.
  */
-export type ControlActionRequest = { action: ControlOffer; task_id?: string };
+/**
+ * A press on one of the app's lines. `note`: with 退回 (`reject`) on a hand-over's card only, what you
+ * want changed, passed on word for word to the Bot that made it (at most `CONTROL_NOTE_MAX` code
+ * points); every other press refuses one.
+ */
+export type ControlActionRequest = { action: ControlOffer; task_id?: string; note?: string };
+
+export const CONTROL_NOTE_MAX = 2000;
 
 /**
  * What a control button did: the holds it made, and those it lifted. `partial` only on a restart

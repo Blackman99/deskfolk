@@ -317,8 +317,8 @@ export function createSubmissions(deps: SubmissionsDeps): Submissions {
    * it a gate, and the submission is taken up again once it has run — a failing gate sends the
    * hand-over back to its producer, now against a number you confirmed.
    */
-  function act(message: Message, input: { action: unknown }): ControlActionResult {
-    const answered = store.answerReviewCard(message.id, input.action);
+  function act(message: Message, input: { action: unknown; note?: unknown }): ControlActionResult {
+    const answered = store.answerReviewCard(message.id, input.action, { note: input.note });
     publishMessage(answered.message);
     if (answered.checkIds.length > 0) {
       const submission = answered.submission;

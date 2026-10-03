@@ -266,10 +266,13 @@ test("a hand-over with no reviewer and nothing required waits on an approve/reje
     prompt: null,
     buttons: [
       { action: "approve", label: "放行", primary: true },
-      { action: "reject", label: "退回", primary: false },
+      // 退回 asks what to change first (the box under the row).
+      { action: "reject", label: "退回", primary: false, note: true },
     ],
   });
   expect(controlBar({ ...card, acted: ["reject"] }, [], names, t)).toEqual({ state: "done", note: "已退回" });
+  // Sent back with what you want changed: the card says it.
+  expect(controlBar({ ...card, acted: ["reject"], result: "已退回：「第三句太长」" }, [], names, t)).toEqual({ state: "done", note: "已退回：「第三句太长」" });
   expect(controlBar({ ...card, acted: ["approve"] }, [], names, copyFor("en").control)).toEqual({ state: "done", note: "Approved" });
 });
 
@@ -301,7 +304,7 @@ test("an approve/reject card waiting on a check shows why beside 退回; one tak
     offer: ["reject"],
     result: "等检查跑完再放行…",
   };
-  expect(controlBar(card, [], names, t)).toEqual({ state: "ask", prompt: "等检查跑完再放行…", buttons: [{ action: "reject", label: t.sendBack, primary: false }] });
+  expect(controlBar(card, [], names, t)).toEqual({ state: "ask", prompt: "等检查跑完再放行…", buttons: [{ action: "reject", label: t.sendBack, primary: false, note: true }] });
   expect(controlBar({ ...card, offer: [], result: "已被新的交付取代。" }, [], names, t)).toEqual({ state: "done", note: "已被新的交付取代。" });
   // Nothing to press and nothing said: no row at all.
   expect(controlBar({ ...card, offer: [], result: undefined }, [], names, t)).toEqual({ state: "none" });

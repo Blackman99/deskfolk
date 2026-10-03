@@ -18,14 +18,14 @@ const receipt: MessageControl = {
 };
 
 function mount(result: unknown = null, control: MessageControl = receipt) {
-  const pressed: Array<{ action: ControlOffer; taskId?: string }> = [];
+  const pressed: Array<{ action: ControlOffer; taskId?: string; note?: string }> = [];
   const props = reactive({
     control,
     holds: [aHold()],
     botName: () => "视频导演",
     t,
-    onAct: async (action: ControlOffer, taskId?: string) => {
-      pressed.push({ action, taskId });
+    onAct: async (action: ControlOffer, taskId?: string, note?: string) => {
+      pressed.push(note === undefined ? { action, taskId } : { action, taskId, note });
       return result;
     },
   });
@@ -77,5 +77,59 @@ test("继续 on a restart notice that a stop kept from some turns says how many 
   props.holds = [];
   flushSync();
   expect(host.querySelector(".control-note")).toBeNull();
+  close();
+});
+
+const handOver = { kind: "review_item", submission_id: "sub-1", task_id: "plan-1", ticket_id: "ticket-2", requirement_ids: [], check_ids: [], offer: ["approve", "reject"] } as MessageControl;
+
+function typeInto(box: HTMLTextAreaElement, text: string): void {
+  box.value = text;
+  box.dispatchEvent(new Event("input", { bubbles: true }));
+  flushSync();
+}
+
+test("退回 on a hand-over asks what to change first, and sends it with the press", async () => {
+  const { host, pressed, close } = mount(null, handOver);
+  click(buttonByText(host, "退回"));
+  flushSync();
+  // Nothing sent yet: a box under the row asks what to change.
+  expect(pressed).toEqual([]);
+  const box = host.querySelector<HTMLTextAreaElement>(".control-note-input")!;
+  expect(box.placeholder).toBe("哪里要改？原话转给做的 Bot（可以不写）");
+  typeInto(box, "  第三句太长，改到 8 个字以内 ");
+  click(buttonByText(host, "确认退回"));
+  await tick();
+  flushSync();
+  expect(pressed).toEqual([{ action: "reject", taskId: undefined, note: "第三句太长，改到 8 个字以内" }]);
+  expect(host.querySelector(".control-note-input")).toBeNull();
+  close();
+});
+
+test("退回 with nothing written sends it back as before; Escape or 取消 sends nothing", async () => {
+  const { host, pressed, close } = mount(null, handOver);
+  click(buttonByText(host, "退回"));
+  flushSync();
+  host.querySelector<HTMLTextAreaElement>(".control-note-input")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  flushSync();
+  expect(host.querySelector(".control-note-input")).toBeNull();
+  click(buttonByText(host, "退回"));
+  flushSync();
+  click(buttonByText(host, "取消"));
+  flushSync();
+  expect(pressed).toEqual([]);
+  click(buttonByText(host, "退回"));
+  flushSync();
+  click(buttonByText(host, "确认退回"));
+  await tick();
+  flushSync();
+  expect(pressed).toEqual([{ action: "reject", taskId: undefined }]);
+  close();
+});
+
+test("放行 on the same card goes at once", async () => {
+  const { host, pressed, close } = mount(null, handOver);
+  click(buttonByText(host, "放行"));
+  await tick();
+  expect(pressed).toEqual([{ action: "approve", taskId: undefined }]);
   close();
 });

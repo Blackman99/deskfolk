@@ -2353,10 +2353,10 @@ export class MessengerRuntime {
    * A button on a line's control row. Resolves to a refusal to show; to `{ partial }` when a
    * restart notice's 继续 went on with some of its turns and a stop of yours holds the rest; or null.
    */
-  async controlAction(messageId: string, action: ControlOffer, taskId?: string): Promise<ApiError | { partial: NonNullable<ControlActionResult["partial"]> } | null> {
+  async controlAction(messageId: string, action: ControlOffer, taskId?: string, note?: string): Promise<ApiError | { partial: NonNullable<ControlActionResult["partial"]> } | null> {
     const answer: { partial?: ControlActionResult["partial"] } = {};
     const refused = await this.controlCall(async (api) => {
-      answer.partial = (await api.controlAction(messageId, taskId ? { action, task_id: taskId } : { action })).partial;
+      answer.partial = (await api.controlAction(messageId, { action, ...(taskId ? { task_id: taskId } : {}), ...(note ? { note } : {}) })).partial;
     });
     return refused ?? (answer.partial ? { partial: answer.partial } : null);
   }

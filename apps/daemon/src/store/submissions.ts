@@ -17,7 +17,7 @@
  * review, the supervisor's part. Hashing files, running checks and waking Bots is the engine's
  * (`engine/submissions.ts`).
  */
-import { USER_MEMBER, type Message, type Ticket, type TicketStatus } from "@real-bot/protocol";
+import { CONTROL_NOTE_MAX, USER_MEMBER, type Message, type Ticket, type TicketStatus } from "@real-bot/protocol";
 import { clauseObjects, clausesOf } from "../complaint-words";
 import type { ReadingSource } from "../line-reading";
 import { HttpError } from "../errors";
@@ -1327,7 +1327,8 @@ export function takeUpPendingApproval(ctx: StoreContext, submissionId: string, n
  * back in `checkIds`, for the engine to run before taking it up again — `takeUpPendingApproval`);
  * `reject` sends it back to rework and wakes its producer, the way a reviewer's reject does.
  */
-export function answerReviewCard(ctx: StoreContext, messageId: string, action: unknown): { submission: Submission; checkIds: string[]; message: Message } {
+export function answerReviewCard(ctx: StoreContext, messageId: string, action: unknown, opts: { note?: unknown } = {}): { submission: Submission; checkIds: string[]; message: Message } {
+  const note = sendBackNote(opts.note);
   return ctx.commit(() => {
     const message = getMessage(ctx, messageId);
     const control = message.control;
@@ -1356,7 +1357,7 @@ export function answerReviewCard(ctx: StoreContext, messageId: string, action: u
     let checkIds: string[] = [];
     let after: Submission;
     if (action === "reject") {
-      after = rejectByUser(ctx, submission, now);
+      after = rejectByUser(ctx, submission, now, note);
     } else {
       if (action === "confirm_item") {
         recordWorkEvent(ctx, { kind: "review.item_confirmed", actor: USER_MEMBER, taskId: submission.task_id, ticketId: submission.ticket_id,
@@ -1380,16 +1381,30 @@ export function answerReviewCard(ctx: StoreContext, messageId: string, action: u
       }
       after = action === "confirm_check" ? getSubmission(ctx, submission.id) : takeUpAwaiting(ctx, getSubmission(ctx, submission.id), now).submission;
     }
-    // What the press did, in place of a waiting line it may have had (退回 while 放行 was pending).
+    // What the press did, in place of a waiting line it may have had (退回 while 放行 was pending);
+    // a 退回 with what you want changed says it there.
     const { result: _waiting, ...answered } = control;
-    setMessageControl(ctx, messageId, { ...answered, acted: [action as ReviewCardAction] });
+    const said = action === "reject" && note ? { result: locale(ctx) === "en" ? `Sent back: "${note}"` : `已退回：「${note}」` } : {};
+    setMessageControl(ctx, messageId, { ...answered, ...said, acted: [action as ReviewCardAction] });
     updateNotificationActionState(ctx, `review_item:${messageId}`, "resolved", action as ReviewCardAction, true);
     return { submission: after, checkIds, message: getMessage(ctx, messageId) };
   });
 }
 
+/**
+ * What you want changed, said with 退回: trimmed, null when there is none. A 退回 that said nothing
+ * left the Bot to guess what was wrong (2026-10-04): it was told only that you sent it back.
+ */
+function sendBackNote(raw: unknown): string | null {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== "string") throw new HttpError(422, "invalid_args", "note must be a string");
+  const note = raw.trim();
+  if ([...note].length > CONTROL_NOTE_MAX) throw new HttpError(422, "invalid_args", `note is longer than ${CONTROL_NOTE_MAX} characters`);
+  return note.length > 0 ? note : null;
+}
+
 /** Your 退回 on an approval card (ADR 0046): rework, the way a reviewer's reject reads, without one. */
-function rejectByUser(ctx: StoreContext, submission: Submission, now: string): Submission {
+function rejectByUser(ctx: StoreContext, submission: Submission, now: string, note: string | null = null): Submission {
   ctx.db.run("UPDATE submissions SET state = 'rejected', checks = ?, awaiting = NULL, updated_at = ? WHERE id = ?",
     [JSON.stringify(submission.checks), now, submission.id]);
   setTicketStage(ctx, { ticketId: submission.ticket_id, stage: "rework", source: "user", turnId: null, workItemId: submission.work_item_id, submissionId: submission.id, now });
@@ -1398,9 +1413,12 @@ function rejectByUser(ctx: StoreContext, submission: Submission, now: string): S
   const ceiling = checkCeiling(ctx, decided, now);
   noteHandOverFailed(ctx, submission.work_item_id, now);
   recordWorkEvent(ctx, { kind: "review.recorded", actor: USER_MEMBER, taskId: submission.task_id, ticketId: submission.ticket_id,
-    payload: { submission_id: submission.id, work_item_id: submission.work_item_id, outcome: "reject", by: "user" } });
+    payload: { submission_id: submission.id, work_item_id: submission.work_item_id, outcome: "reject", by: "user", ...(note ? { note } : {}) } });
   const en = locale(ctx) === "en";
-  tellAfterFailure(ctx, decided, en ? { what: `(app) The user sent submission ${decided.id} back for rework.`, retry: "" } : { what: `（应用）用户把交付 ${decided.id} 退回重做了。`, retry: "" }, ceiling, now);
+  const what = en
+    ? `(app) The user sent submission ${decided.id} back for rework.${note ? ` What they want changed, in their words: "${note}"` : ""}`
+    : `（应用）用户把交付 ${decided.id} 退回重做了。${note ? `要改的地方，原话：「${note}」` : ""}`;
+  tellAfterFailure(ctx, decided, { what, retry: "" }, ceiling, now);
   return decided;
 }
 

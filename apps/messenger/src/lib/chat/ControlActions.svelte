@@ -20,9 +20,10 @@
 		disabled?: boolean;
 		/**
 		 * Makes the press. Resolves to a refusal to show, `{ partial }` for a restart notice's 继续
-		 * that a stop of yours kept from some of its turns, or nothing.
+		 * that a stop of yours kept from some of its turns, or nothing. `note`: what you wrote in the
+		 * box a button asks it in (退回 on a hand-over), when you wrote anything.
 		 */
-		onAct: (action: ControlOffer, taskId?: string) => Promise<unknown>;
+		onAct: (action: ControlOffer, taskId?: string, note?: string) => Promise<unknown>;
 	};
 
 	let { control, holds, botName, t, align = 'start', disabled = false, onAct }: Props = $props();
@@ -37,18 +38,47 @@
 		if (partial && partial.over !== holdsNow) partial = null;
 	});
 
-	async function press(button: ControlButton): Promise<void> {
+	/**
+	 * A button that asks what you want changed first (退回 on a hand-over): its box under the row,
+	 * and what you have written in it. It said nothing before, and the Bot it went back to was told
+	 * only that you sent it back (2026-10-04).
+	 */
+	let asking = $state<ControlButton | null>(null);
+	let noteText = $state('');
+	let noteBox = $state<HTMLTextAreaElement | null>(null);
+
+	function ask(button: ControlButton): void {
 		if (pending || disabled) return;
+		asking = button;
+		failed = false;
+		void Promise.resolve().then(() => noteBox?.focus());
+	}
+
+	function onNoteKey(event: KeyboardEvent): void {
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			asking = null;
+		} else if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && asking) {
+			event.preventDefault();
+			void press(asking, noteText);
+		}
+	}
+
+	async function press(button: ControlButton, note?: string): Promise<void> {
+		if (pending || disabled) return;
+		if (button.note && note === undefined) return ask(button);
 		pending = button;
 		failed = false;
 		partial = null;
 		const over = holdsNow;
 		try {
 			// A refusal comes back as a value; the row stays so it can be pressed again.
-			const answer = await onAct(button.action, button.taskId);
+			const said = note?.trim();
+			const answer = said ? await onAct(button.action, button.taskId, said) : await onAct(button.action, button.taskId);
 			const some = partialOf(answer);
 			if (some) partial = { ...some, over };
 			else failed = Boolean(answer);
+			if (!failed) asking = null;
 		} catch {
 			failed = true;
 		} finally {
@@ -77,6 +107,39 @@
 				{button.label}
 			</button>
 		{/each}
+		{#if asking}
+			<div class="control-note-form">
+				<textarea
+					bind:this={noteBox}
+					bind:value={noteText}
+					class="control-note-input"
+					rows="2"
+					maxlength="2000"
+					placeholder={t.control.sendBackNote}
+					aria-label={t.control.sendBackNote}
+					disabled={disabled || pending !== null}
+					onkeydown={onNoteKey}
+					onmousedown={(e) => e.stopPropagation()}
+				></textarea>
+				<div class="control-note-actions">
+					<button
+						type="button"
+						class="control-btn is-primary"
+						disabled={disabled || pending !== null}
+						aria-busy={pending === asking ? 'true' : undefined}
+						onmousedown={(e) => e.stopPropagation()}
+						onclick={() => asking && void press(asking, noteText)}
+					>{t.control.sendBackConfirm}</button>
+					<button
+						type="button"
+						class="control-btn"
+						disabled={pending !== null}
+						onmousedown={(e) => e.stopPropagation()}
+						onclick={() => (asking = null)}
+					>{t.control.sendBackCancel}</button>
+				</div>
+			</div>
+		{/if}
 		{#if failed}
 			<span class="control-error" role="status">{t.control.failed}</span>
 		{:else if partial}
@@ -107,6 +170,37 @@
 	.control-note {
 		font-size: var(--text-caption);
 		color: var(--muted);
+	}
+
+	.control-note-form {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		flex-basis: 100%;
+		max-width: 420px;
+	}
+
+	.control-note-input {
+		width: 100%;
+		min-height: 52px;
+		padding: 6px 8px;
+		font: inherit;
+		font-size: var(--text-caption);
+		color: var(--ink);
+		background: var(--pane);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-sm);
+		resize: vertical;
+	}
+
+	.control-note-input:focus {
+		outline: none;
+		border-color: var(--accent-border);
+	}
+
+	.control-note-actions {
+		display: flex;
+		gap: 6px;
 	}
 
 	.control-error {

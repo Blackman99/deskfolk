@@ -793,7 +793,7 @@
 	 * number you type is what the check stands on. 逐条看 on old rules opens the plan's board, where
 	 * each has its own buttons. Every other button goes to the daemon.
 	 */
-	function pressControl(message: Message, action: ControlOffer, taskId?: string): Promise<unknown> {
+	function pressControl(message: Message, action: ControlOffer, taskId?: string, note?: string): Promise<unknown> {
 		if (action === 'edit_check') {
 			const draft = message.control?.kind === 'check' ? message.control.edit_draft : undefined;
 			if (draft) pickStarterPrompt(draft);
@@ -803,7 +803,8 @@
 			if (message.control?.kind === 'requirement') runtime.openTrace(message.control.task_id);
 			return Promise.resolve(null);
 		}
-		return runtime.controlAction(message.id, action, taskId);
+		// 退回 with what you want changed (a hand-over's card): the words go with the press.
+		return note ? runtime.controlAction(message.id, action, taskId, note) : runtime.controlAction(message.id, action, taskId);
 	}
 
 	/** The composer hands the files over; scrolling to the new message is the stage's job. */
@@ -1434,7 +1435,7 @@
 										botName={botNameOf}
 										{t}
 										disabled={!connected}
-										onAct={(action, taskId) => pressControl(singleMsg.message, action, taskId)}
+										onAct={(action, taskId, note) => pressControl(singleMsg.message, action, taskId, note)}
 									/>
 								{/if}
 								{/if}

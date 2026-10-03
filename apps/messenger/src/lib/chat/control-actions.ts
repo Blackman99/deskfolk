@@ -2,7 +2,8 @@ import type { ControlOffer, ControlScope, Hold, MessageControl } from "@real-bot
 import type { Copy } from "../copy.ts";
 
 /** One button under a line about your stops or a restart. `taskId` names the plan a widen or narrow button is about. */
-export type ControlButton = { action: ControlOffer; taskId?: string; label: string; primary: boolean };
+/** `note`: the press asks first what you want changed, in a box under the row (退回 on a hand-over). */
+export type ControlButton = { action: ControlOffer; taskId?: string; label: string; primary: boolean; note?: boolean };
 
 /**
  * What a line's control row shows now: the question and its buttons; what you pressed on it; or
@@ -92,7 +93,7 @@ export function controlBar(control: MessageControl | undefined, holds: readonly 
       if (action === "confirm_item") return [{ action, label: t.confirmItem, primary: !misleading && !control.offer.includes("confirm_check") }];
       if (action === "remove_item") return [{ action, label: t.removeItem, primary: false }];
       if (action === "approve") return [{ action, label: t.approveSubmission, primary: true }];
-      if (action === "reject") return [{ action, label: t.sendBack, primary: false }];
+      if (action === "reject") return [{ action, label: t.sendBack, primary: false, note: true }];
       return [];
     });
     // The app's own line on the card stands beside what is left to press (waiting on a check after

@@ -102,7 +102,7 @@ export type TurnEngine = {
    * `POST /v1/messages/:id/control`: a button on a line about your stops (undo, widen, narrow, go
    * on), or on a restart notice (继续, 不续).
    */
-  control: (messageId: string, input: { action: unknown; taskId?: unknown }) => ControlActionResult;
+  control: (messageId: string, input: { action: unknown; taskId?: unknown; note?: unknown }) => ControlActionResult;
   /** Called once at boot, after recovery: a line per job the restart cut off, in the conversation it belongs to where you are (ADR 0041). */
   announceRestart: (cause: RestartCause) => RestartSummary;
   /** Ends every live turn a hold covers, after a write that may have made one (a plan parked on the board). */
@@ -891,6 +891,10 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       // A restart notice's buttons, and those on a line about checks from your words or about the
       // requirements ledger, work at any engine level; every other line's are about stops.
       const message = store.getMessage(messageId);
+      // What you want changed goes with 退回 on a hand-over's card, and with nothing else.
+      if (input.note !== undefined && (message.control?.kind !== "review_item" || input.action !== "reject")) {
+        throw new HttpError(422, "invalid_args", "only 退回 on a hand-over's card takes a note");
+      }
       if (message.control?.kind === "restart") return restart.act(message, input);
       if (message.control?.kind === "check") return derivedChecks.act(message, input);
       if (message.control?.kind === "requirement") return requirementCards.act(message, input);

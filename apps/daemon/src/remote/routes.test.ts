@@ -207,6 +207,10 @@ test("a phone can press every button an app's line offers, the messenger's own t
     expect(() => ok({ action })).not.toThrow();
   }
   for (const action of CLIENT_ONLY_CONTROL_OFFERS) expect(() => ok({ action })).toThrow();
+  // 退回 with what you want changed; the daemon refuses it on any other press.
+  expect(() => ok({ action: "reject", note: "第三句太长，改到 8 个字以内" })).not.toThrow();
+  expect(() => ok({ action: "reject", note: "长".repeat(2001) })).toThrow();
+  expect(() => ok({ action: "reject", note: 3 })).toThrow();
 });
 
 test("a phone can confirm new-plan undo or quoted-message merge without forging action provenance", () => {

@@ -1106,6 +1106,9 @@ const zh = {
     /** On a card about a hand-over with no reviewer and nothing required (ADR 0046). */
     approveSubmission: "放行",
     sendBack: "退回",
+    sendBackNote: "哪里要改？原话转给做的 Bot（可以不写）",
+    sendBackConfirm: "确认退回",
+    sendBackCancel: "取消",
     /** On a ceiling card (ADR 0046): how a part that keeps failing goes on. */
     /** On a card about a Bot's default model (ADR 0048). */
     keepDefaultModel: "就用这个",
@@ -2845,6 +2848,9 @@ const en: CopyShape<typeof zh> = {
     removeItem: "No longer require it",
     approveSubmission: "Approve",
     sendBack: "Send it back",
+    sendBackNote: "What should change? Passed on word for word to the Bot that made it (optional)",
+    sendBackConfirm: "Send it back",
+    sendBackCancel: "Cancel",
     keepDefaultModel: "Keep it",
     adoptLesson: "Adopt",
     declineLesson: "No",

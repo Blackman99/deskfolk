@@ -2047,7 +2047,7 @@ function dispatch(
         scope: "plan", scopeId: taskId, action: "cancel", cascade: true, liftOnNextUserMessage: false,
       })), 200, null);
     }
-    return jsonResponse(engine.control(params.id!, { action: body.action, taskId: body.task_id }), 200, null);
+    return jsonResponse(engine.control(params.id!, { action: body.action, taskId: body.task_id, note: body.note }), 200, null);
   }
 
   // Move a line to another job (ADR 0040 §8.5). The inbox items it already reached move with it.
