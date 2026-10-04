@@ -2,7 +2,7 @@
  * What a restart cut off, told where you will see it (ADR 0041, engine/restart.ts): why the daemon
  * started again, read from how the last run ended and how this one runs; one line per job in the
  * conversation it belongs to where you are, with one notification; 继续 continues each of its turns
- * the way its own Continue would, 不续 leaves them. Nothing goes on by itself. The incident replay is
+ * the way its own Continue would, 先放着 leaves them. Nothing goes on by itself. The incident replay is
  * scenarios/restart-mid-job.test.ts; these pin each piece.
  */
 import { mkdtempSync, rmSync } from "node:fs";
@@ -77,14 +77,14 @@ describe("why the daemon started again", () => {
     const turns = [{ bot: "视频导演", plan: "任务 06《母带》", where: "视频导演和审片员的私聊", lastStep: "ffmpeg -i shots.txt EP01.mp4" }];
     expect(restartNoticeBody("zh", { cause: "crash", plan: "EP01", turns })).toBe(
       "守护进程意外退出后重新启动了，「EP01」这件事中断了：视频导演 · 任务 06《母带》 · 在「视频导演和审片员的私聊」 · 最后一步：ffmpeg -i shots.txt EP01.mp4。\n" +
-        "不会自己接着做：点「继续」从断的地方接着做，点「不续」就先放着。",
+        "不会自己接着做：点「继续」从断的地方接着做，点「先放着」就先不动它，之后还能点它那条「中断」后面的「继续」。",
     );
     expect(restartNoticeBody("zh", { cause: "dev", plan: null, turns: [{ bot: "视频导演", plan: null, where: null, lastStep: null }] })).toStartWith(
       "开发版守护进程重新启动了，这里的工作中断了：视频导演 · 没有规划的一段。",
     );
     expect(restartNoticeBody("en", { cause: "clean", plan: "EP01", turns })).toBe(
       'The daemon was stopped and has started again; the plan "EP01" was cut off: 视频导演 · 任务 06《母带》 · in 视频导演和审片员的私聊 · last step: ffmpeg -i shots.txt EP01.mp4.\n' +
-        "Nothing picks up on its own: Continue picks each up from where it stopped; Leave it keeps it as it is.",
+        "Nothing picks up on its own: Continue picks each up from where it stopped; Not now leaves it as it is; its 「中断」 line's own Continue still picks it up later.",
     );
   });
 });
@@ -168,7 +168,7 @@ describe("after a restart", () => {
     expect(turnsAfter(h, writer, pressedAt)).toHaveLength(1);
   });
 
-  test("不续 leaves the work as it is; its own 「中断」 line can still continue it", async () => {
+  test("先放着 leaves the work as it is; its own 「中断」 line can still continue it", async () => {
     const h = await scenario();
     const { director, reviewer, room } = videoTeam(h);
     const ep01 = openPlan(h, room, "EP01", planSpec("EP01 动画成片"));

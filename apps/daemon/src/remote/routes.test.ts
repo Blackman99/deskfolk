@@ -174,7 +174,7 @@ test("a phone can press a button on a line about your stops, one it names, nothi
   const ok = (request: Omit<RemoteRequest, "v" | "id">) => validateBusiness({ v: 1, id, ...request });
   expect(() => ok({ method: "POST", path: `/v1/messages/${id}/control`, body: { action: "undo" } })).not.toThrow();
   expect(() => ok({ method: "POST", path: `/v1/messages/${id}/control`, body: { action: "only_plan", task_id: id } })).not.toThrow();
-  // A restart notice's 继续 and 不续 (ADR 0041).
+  // A restart notice's 继续 and 先放着 (ADR 0041).
   expect(() => ok({ method: "POST", path: `/v1/messages/${id}/control`, body: { action: "resume" } })).not.toThrow();
   expect(() => ok({ method: "POST", path: `/v1/messages/${id}/control`, body: { action: "leave" } })).not.toThrow();
   // The app's line about checks from your words (ADR 0040 P3).

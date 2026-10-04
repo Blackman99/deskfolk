@@ -109,7 +109,7 @@ test("a restart notice offers to go on or leave it, whatever stops are in force,
     prompt: null,
     buttons: [
       { action: "resume", label: "继续", primary: true },
-      { action: "leave", label: "不续", primary: false },
+      { action: "leave", label: "先放着", primary: false },
     ],
   };
   expect(controlBar(notice, [], names, t)).toEqual(bar);

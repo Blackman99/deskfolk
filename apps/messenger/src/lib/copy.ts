@@ -1096,7 +1096,7 @@ const zh = {
     continueOnlyHere: "只让这里继续",
     continueAll: "全部继续",
     resume: "继续",
-    leave: "不续",
+    leave: "先放着",
     removeChecks: (count: number) => (count === 1 ? "删掉这条检查" : `删掉这 ${count} 条检查`),
     confirmCheck: "确认",
     /** On a card about a hand-over's required items (ADR 0046). */
@@ -2842,7 +2842,7 @@ const en: CopyShape<typeof zh> = {
     continueOnlyHere: "Only this goes on",
     continueAll: "All go on",
     resume: "Continue",
-    leave: "Leave it",
+    leave: "Not now",
     removeChecks: (count: number) => (count === 1 ? "Remove this check" : `Remove these ${count} checks`),
     confirmCheck: "Confirm",
     confirmReviewCheck: "Confirm the check",

@@ -335,26 +335,26 @@ function arrangementLine(locale: Locale, arrangement: RestartArrangement | null)
       return en ? "It stopped cleanly, so it picks up from where it stopped now." : "这次是正常停下，现在就从断的地方自动接着做。";
     case "after_stable":
       return en
-        ? "Once the daemon has run steadily for a minute it picks up once on its own; Continue goes on now, Leave it keeps it as it is."
-        : "守护进程稳定运行 1 分钟后会自动接着做一次；点「继续」现在就接着做，点「不续」就先放着。";
+        ? "Once the daemon has run steadily for a minute it picks up once on its own; Continue goes on now, Not now leaves it as it is; its 「中断」 line's own Continue still picks it up later."
+        : "守护进程稳定运行 1 分钟后会自动接着做一次；点「继续」现在就接着做，点「先放着」就先不动它，之后还能点它那条「中断」后面的「继续」。";
     case "dev_burst":
       return en
-        ? "The development daemon restarted more than once within five minutes, so nothing picks up on its own: Continue picks each up from where it stopped; Leave it keeps it as it is."
-        : "开发版守护进程 5 分钟内重启了不止一次，不会自己接着做：点「继续」从断的地方接着做，点「不续」就先放着。";
+        ? "The development daemon restarted more than once within five minutes, so nothing picks up on its own: Continue picks each up from where it stopped; Not now leaves it as it is; its 「中断」 line's own Continue still picks it up later."
+        : "开发版守护进程 5 分钟内重启了不止一次，不会自己接着做：点「继续」从断的地方接着做，点「先放着」就先不动它，之后还能点它那条「中断」后面的「继续」。";
     case "held":
       return en ? "A stop of yours covers it; it picks up once you lift the stop." : "你的叫停还覆盖着它，解除叫停之后再接着做。";
     case "unknown_effect":
       return en
-        ? "Its last external call has no known outcome, so nothing picks up on its own, to avoid submitting it twice: check whether that step went through, then press Continue; Leave it keeps it as it is."
-        : "最后一步是结果不明的外部调用，为免重复提交不会自己接着做：先确认那一步有没有生效，再点「继续」；点「不续」就先放着。";
+        ? "Its last external call has no known outcome, so nothing picks up on its own, to avoid submitting it twice: check whether that step went through, then press Continue; Not now leaves it as it is; its 「中断」 line's own Continue still picks it up later."
+        : "最后一步是结果不明的外部调用，为免重复提交不会自己接着做：先确认那一步有没有生效，再点「继续」；点「先放着」就先不动它，之后还能点它那条「中断」后面的「继续」。";
     case "restarted_again":
       return en
-        ? "An earlier development restart cut it off, and the daemon started again before it could pick up, so nothing picks up on its own: Continue picks each up from where it stopped; Leave it keeps it as it is."
-        : "它是之前开发版重启时断的，还没来得及自动接着做，守护进程又启动了一次，所以不会自己接着做：点「继续」从断的地方接着做，点「不续」就先放着。";
+        ? "An earlier development restart cut it off, and the daemon started again before it could pick up, so nothing picks up on its own: Continue picks each up from where it stopped; Not now leaves it as it is; its 「中断」 line's own Continue still picks it up later."
+        : "它是之前开发版重启时断的，还没来得及自动接着做，守护进程又启动了一次，所以不会自己接着做：点「继续」从断的地方接着做，点「先放着」就先不动它，之后还能点它那条「中断」后面的「继续」。";
     default:
       return en
-        ? "Nothing picks up on its own: Continue picks each up from where it stopped; Leave it keeps it as it is."
-        : "不会自己接着做：点「继续」从断的地方接着做，点「不续」就先放着。";
+        ? "Nothing picks up on its own: Continue picks each up from where it stopped; Not now leaves it as it is; its 「中断」 line's own Continue still picks it up later."
+        : "不会自己接着做：点「继续」从断的地方接着做，点「先放着」就先不动它，之后还能点它那条「中断」后面的「继续」。";
   }
 }
 

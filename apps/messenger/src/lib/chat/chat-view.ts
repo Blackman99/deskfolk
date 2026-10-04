@@ -391,7 +391,7 @@ export function isAppLine(message: Pick<Message, "kind" | "control">): boolean {
 
 /**
  * The 「中断」 lines a restart notice among `messages` still offers to continue (ADR 0041): until
- * you press one of its buttons it stands for their own Continue. After 不续, each line's own
+ * you press one of its buttons it stands for their own Continue. After 先放着, each line's own
  * Continue is back.
  */
 export function restartAnnounced(messages: readonly Pick<Message, "control">[]): Set<string> {

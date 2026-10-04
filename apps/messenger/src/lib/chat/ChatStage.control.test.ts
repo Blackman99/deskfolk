@@ -166,7 +166,7 @@ test("a direct's streaming reply carries no Stop of its own: the composer holds 
   }
 });
 
-test("a restart notice carries 继续 and 不续, and the 「中断」 line it names offers no Continue of its own until it is answered", () => {
+test("a restart notice carries 继续 and 先放着, and the 「中断」 line it names offers no Continue of its own until it is answered", () => {
   const session = aDirect();
   const note = aMessage({ id: "cut", session_id: session.id, kind: "system", author: "bot-1", body: "中断", turn_id: "turn-cut" });
   const control: MessageControl = { kind: "restart", cause: "dev", notes: ["cut"], offer: ["resume", "leave"] };
@@ -176,7 +176,7 @@ test("a restart notice carries 继续 and 不续, and the 「中断」 line it n
   try {
     expect(host.querySelector('[data-message-id="cut"] .btn-continue-turn')).toBeNull();
     const row = host.querySelector('[data-message-id="notice"]')!;
-    expect([...row.querySelectorAll(".control-btn")].map((button) => button.textContent?.trim())).toEqual(["继续", "不续"]);
+    expect([...row.querySelectorAll(".control-btn")].map((button) => button.textContent?.trim())).toEqual(["继续", "先放着"]);
     click(buttonByText(row as HTMLElement, "继续"));
     expect(runtime.calls.filter((call) => call.name === "controlAction").map((call) => call.args)).toEqual([["notice", "resume", undefined]]);
   } finally {

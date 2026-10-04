@@ -379,7 +379,7 @@ function restartedJustBefore(ctx: StoreContext, boot: Boot): boolean {
     .get(boot.seq, new Date(Date.parse(boot.at) - DEV_RESTART_WINDOW_MS).toISOString()));
 }
 
-/** Whether you pressed 不续 on the restart notice that offered this 「中断」 line. */
+/** Whether you pressed 先放着 on the restart notice that offered this 「中断」 line. */
 function leftByYou(ctx: StoreContext, noteId: string | null): boolean {
   if (!noteId) return false;
   return Boolean(ctx.db.query(`SELECT 1 FROM messages m WHERE json_valid(m.control) AND json_extract(m.control, '$.kind') = 'restart'

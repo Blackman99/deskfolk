@@ -514,7 +514,7 @@ describe("chat-view helpers", () => {
     const announced = restartAnnounced([{ control: undefined }, notice]);
     expect([...announced]).toEqual(["cut-1", "cut-2"]);
     expect(canContinueInterrupt(note, [], { announced })).toBe(false);
-    // After 不续 (or 继续) the notice asks nothing more, and the line's own Continue is back.
+    // After 先放着 (or 继续) the notice asks nothing more, and the line's own Continue is back.
     expect([...restartAnnounced([{ control: { ...notice.control, acted: ["leave" as const] } }])]).toEqual([]);
     expect(canContinueInterrupt(note, [], { announced: new Set() })).toBe(true);
   });

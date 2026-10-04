@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A restart notice's second button says what it does
+
+- The button that leaves cut-off work as it is now reads Not now (in Chinese 「先放着」), and the line says you can still continue it from its 「中断」 line. Its old Chinese label 「不续」 read as closing the notice, and was pressed that way.
+
 ### Changing a job mid-way no longer mixes up who hands in what
 
 - When a line that names nobody goes to the lead and is about another Bot's ticket, the lead starts on the whole job instead of working under that ticket. After a stop, 「宣传语改成英文的，海报改横版」 put the lead on the copywriter's ticket, and its poster was handed in as the slogans, pushing the English slogans aside. Name a Bot to have it take that ticket itself.

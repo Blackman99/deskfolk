@@ -428,7 +428,7 @@ test("a development restart soon after another, or followed by one, waits for yo
   expect(g.store.supervisorTick({ now: at(10 * MIN) }).deferred).toContainEqual({ workItemId: cut.turn.work_item_id, reason: "dev_restart_window" });
 });
 
-test("不续 on the restart notice, a stop, or an external call with no known outcome keeps work a restart cut off where it is", () => {
+test("先放着 on the restart notice, a stop, or an external call with no known outcome keeps work a restart cut off where it is", () => {
   const f = fixture();
   const { turn, note } = cutByRestart(f, "boot-left", "clean");
   f.store.insertMessage({ sessionId: f.room.id, kind: "system", author: f.owner.id, body: "重启", hiddenFromBots: true,
@@ -469,7 +469,7 @@ test("work a restart cut off keeps its Bot from being called to the job's other 
   const waiting = f.store.supervisorTick({ now: at(10 * MIN) });
   expect(waiting.wakes).toEqual([]);
   expect(waiting.deferred).toContainEqual({ workItemId: cut.work_item_id, reason: "unknown_effect" });
-  // 不续 leaves it where it is, and the rest of the job with it.
+  // 先放着 leaves it where it is, and the rest of the job with it.
   f.store.insertMessage({ sessionId: f.room.id, kind: "system", author: f.owner.id, body: "重启", hiddenFromBots: true,
     control: { kind: "restart", cause: "dev", notes: [note.id], offer: ["resume", "leave"], acted: ["leave"] } });
   expect(f.store.supervisorTick({ now: at(20 * MIN) }).wakes).toEqual([]);

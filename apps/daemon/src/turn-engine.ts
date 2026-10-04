@@ -100,7 +100,7 @@ export type TurnEngine = {
   liftHold: (id: string) => Hold;
   /**
    * `POST /v1/messages/:id/control`: a button on a line about your stops (undo, widen, narrow, go
-   * on), or on a restart notice (继续, 不续).
+   * on), or on a restart notice (继续, 先放着).
    */
   control: (messageId: string, input: { action: unknown; taskId?: unknown; note?: unknown }) => ControlActionResult;
   /** Called once at boot, after recovery: a line per job the restart cut off, in the conversation it belongs to where you are (ADR 0041). */

@@ -5,7 +5,8 @@
  * as the engine is up and before the scheduler's first tick (so a check-back that fell due while the
  * daemon was down cannot wake a Bot first), each job the restart cut off gets one line in the
  * conversation it belongs to where you are, with a notification: why the daemon started again, each
- * of its turns and the step it was on, and two buttons, 继续 and 不续.
+ * of its turns and the step it was on, and two buttons, 继续 and 先放着 (until 2026-10-04 named 不续,
+ * which read as closing the notice).
  *
  * Why it started again is read from how this run is started and how the last one ended: `dev` for a
  * development run whatever the last one wrote, else `clean` after a deliberate stop
@@ -42,7 +43,7 @@ export type Restart = {
   /** Called once at boot, after recovery and before the scheduler starts: one line per job the restart cut off, and a work-log row. */
   announce: (cause: RestartCause) => RestartSummary;
   /**
-   * `POST /v1/messages/:id/control` on a restart notice: 继续 (`resume`) or 不续 (`leave`). A 继续
+   * `POST /v1/messages/:id/control` on a restart notice: 继续 (`resume`) or 先放着 (`leave`). A 继续
    * that a stop of yours kept from some of the turns returns `partial` and leaves the notice unanswered.
    */
   act: (message: Message, input: { action: unknown }) => ControlActionResult;
