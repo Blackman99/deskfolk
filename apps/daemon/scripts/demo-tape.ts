@@ -27,6 +27,7 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { defaultAppDataDir } from "@real-bot/protocol";
 import { bunKeyStore } from "../src/secrets";
+import { classify, normalize, type ChatBody } from "./demo-tape-keys";
 
 const { values: opts, positionals } = parseArgs({
   allowPositionals: true,
@@ -79,59 +80,7 @@ type ModelsEntry = { channel: "models"; body: string };
 type Entry = ModelEntry | McpEntry | ModelsEntry;
 type Media = { url: string; file: string; type: string };
 
-/* ───────── Classifying model calls ───────── */
-
-const SIDE_CALLS: [string, string][] = [
-  ["你正在做一次判断", "judge"],
-  ["你在为一条刚到的消息挑模型", "route"],
-  ["你在替这个会话整理", "organizer"],
-  ["你是书记员", "scribe"],
-  ["你在替一个 Bot 做收尾自检", "closing"],
-  ["你在复盘一次模型选择", "review"],
-  ["你在替这个 Bot 记下一条", "learn"],
-  ["你在给用户写下一步", "composer"],
-];
-
-type ChatBody = { stream?: boolean; messages?: { role: string; content: unknown }[] };
-
-function textOf(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) return content.map((p) => (p && typeof p === "object" && "text" in p ? String(p.text) : "")).join("\n");
-  return "";
-}
-
-function classify(body: ChatBody): string {
-  const system = textOf(body.messages?.find((m) => m.role === "system")?.content);
-  const user = textOf(body.messages?.find((m) => m.role === "user")?.content);
-  if (body.stream) {
-    const name = system.match(/# (?:人设|Profile)\n\n## (?:名字|Name)\n\n([^\n]+)/)?.[1];
-    return `turn:${name ?? "?"}`;
-  }
-  const kind = SIDE_CALLS.find(([prefix]) => system.startsWith(prefix))?.[1] ?? "other";
-  let payload: Record<string, any> = {};
-  try {
-    payload = JSON.parse(user);
-  } catch {
-    // not JSON
-  }
-  if (kind === "judge") return `judge:${payload.you?.name ?? "?"}`;
-  if (kind === "route" || kind === "review") return `${kind}:${payload.bot?.name ?? "?"}`;
-  if (kind === "organizer") return `organizer:${payload.mode ?? "?"}:${payload.session?.name ?? "?"}`;
-  // The scribe runs after each line's turns have started, so it is matched by the line it reads.
-  if (kind === "scribe") return `scribe:${digest(normalize(String(payload.said?.body ?? "")))}`;
-  // Bots can finish in either order, so a closing check is matched by the reply it checks.
-  if (kind === "closing") return `closing:${digest(normalize(String(payload.reply ?? "")))}`;
-  return kind;
-}
-
-/** A reply with its run-specific ids and work dirs blanked, so both runs read the same. */
-function normalize(s: string): string {
-  return s.replace(/\b[0-9A-HJKMNP-TV-Z]{26}\b/g, "#").replace(/(work\/[^\s"'`\\/]+)-[0-9a-z]{4,26}/g, "$1-#");
-}
-
-function digest(s: string): string {
-  return new Bun.CryptoHasher("sha1").update(s).digest("hex").slice(0, 12);
-}
+/* ───────── Classifying model calls: demo-tape-keys.ts ───────── */
 
 /** `--models a,b` narrows the endpoint's model list, so the wizard offers just those. */
 function narrowModels(body: string): string {
@@ -323,21 +272,31 @@ async function recordMcp(req: Request, live: Live): Promise<Response> {
     const v = res.headers.get(name);
     if (v) outHeaders.set(name, v);
   }
-  if (req.method !== "POST") return new Response(res.body, { status: res.status, headers: outHeaders });
-  const body = await res.text();
+  if (req.method !== "POST" || !res.body) return new Response(res.body, { status: res.status, headers: outHeaders });
   let msg: any = null;
   try {
     msg = JSON.parse(text!);
   } catch {
     // batch or junk: pass through unrecorded
   }
+  // Passed on as it streams, and recorded once it ends: a server that sends its headers at once and
+  // pings while a long call runs (an image can take a minute) must reach the daemon the same way,
+  // or the daemon's wait for the headers (30 s) cuts the call off.
+  const [toDaemon, toTape] = res.body.tee();
   if (msg && !Array.isArray(msg) && msg.id !== undefined && res.ok) {
-    const key = rpcKey(msg);
-    record({ channel: "mcp", key, seq: nextSeq(`mcp:${key}`), request: text!, body });
-    log(`mcp ${key}`);
-    if (key.startsWith("call:")) void keepMedia(body);
+    void new Response(toTape)
+      .text()
+      .then((body) => {
+        const key = rpcKey(msg);
+        record({ channel: "mcp", key, seq: nextSeq(`mcp:${key}`), request: text!, body });
+        log(`mcp ${key}`);
+        if (key.startsWith("call:")) void keepMedia(body);
+      })
+      .catch((e) => log(`mcp stream lost: ${(e as Error).message}`));
+  } else {
+    void toTape.cancel();
   }
-  return new Response(body, { status: res.status, headers: outHeaders });
+  return new Response(toDaemon, { status: res.status, headers: outHeaders });
 }
 
 /* ───────── Replaying ───────── */

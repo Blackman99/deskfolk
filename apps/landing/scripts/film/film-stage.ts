@@ -253,7 +253,7 @@ export async function filmStage(opts: {
         approvalGraceUntil = 0;
       }
     },
-    tray: async () => {
+    leave: async () => {
       await film('hideCursor');
       await film('focus', null);
       await sleep(250);
@@ -265,29 +265,15 @@ export async function filmStage(opts: {
       await sleep(700);
       await film('desk', { menu: false });
       await sleep(300);
-      const sessions = await api('GET', '/v1/sessions');
-      const group = (sessions.items ?? sessions).find((x: any) => x.name === opts.groupName);
-      const bots = await api('GET', '/v1/bots');
-      const coordinator = (bots.items ?? bots).find((b: any) => b.name === 'Coordinator');
-      // The banner is the Coordinator's delivery summary, not whatever line happened to come last.
-      const page = group ? await api('GET', `/v1/sessions/${group.id}/messages?limit=100`) : null;
-      const list: any[] = page?.items ?? page?.messages ?? (Array.isArray(page) ? page : []);
-      const newest = [...list].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
-      const summary = newest.find((m) => m.kind === 'bot' && m.author === coordinator?.id) ?? group?.last_message;
-      const author = (bots.items ?? bots).find((b: any) => b.id === summary?.author)?.name ?? 'Coordinator';
-      // A notification shows text, not Markdown.
-      const body = String(summary?.body ?? '')
-        .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-        .replace(/[*_`#>]+/g, '')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 120);
-      await film('desk', { banner: { title: `${opts.groupName} · ${author}`, body } });
-      cue('notify');
-      await sleep(600);
-      await film('desk', { badge: true });
-      cue('pop');
+    },
+    back: async () => {
+      // Show window, the tray menu's first row, and the window comes back where it was.
+      await film('desk', { menu: true });
+      cue('tick');
       await sleep(900);
+      await film('desk', { menu: false, on: false });
+      cue('whoosh');
+      await sleep(700);
     },
     attempt: async (_what, fn) => fn(),
     log

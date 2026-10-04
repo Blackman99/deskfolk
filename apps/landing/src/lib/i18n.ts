@@ -191,11 +191,11 @@ const zh: Dict = {
     scrollHint: '往下滚动，看一遍完整流程'
   },
   demo: {
-    heading: '从空名册到一套发布物料，一次走完',
+    heading: '一支宣传短片，从交出去到验收，一次走完',
     intro:
-      '右侧是 Deskfolk 的真实界面，随你的滚动一步步播放。画面录自一个从空状态启动的演示实例：Bot 的回复来自真实模型，海报和预告片由经 MCP 接入的生图、生视频工具生成。耗时长的步骤加速播放，右下角标着倍速；只有收进托盘那一步的桌面、横幅和 Dock 是合成的。',
+      '右侧是 Deskfolk 的真实界面，随你的滚动一步步播放。画面录自一个从空状态启动的演示实例：Bot 的回复来自真实模型，视频由经 MCP 接入的 Grok Imagine 生成。耗时长的步骤加速播放，右下角标着倍速；只有关窗走开那一步的桌面和托盘菜单是合成的。',
     railLabel: '演示进度',
-    stillLabel: 'Deskfolk 窗口：左边是群聊「发布」，下面是这件事的流程图，右边是生成的预告片，再往下是终端',
+    stillLabel: 'Deskfolk 窗口：左边是群聊「发布」，下面是这件事的流程图，右边在播放做好的宣传短片',
     play: '播放这一步',
     replay: '从头播放',
     enlarge: '放大看这一步',
@@ -203,69 +203,56 @@ const zh: Dict = {
       {
         title: '先选工作区和模型端点',
         body:
-          '首次打开就是向导：选一个本机目录做共享工作区，再接一个 OpenAI 兼容端点，拉取它的模型列表、选好默认模型。之后每开一轮，由 agent 按任务挑模型和思考等级并留下一句理由，你不用每轮自选。',
+          '首次打开就是向导：选一个本机目录做共享工作区，再接一个 OpenAI 兼容端点，拉取它的模型列表、选好默认模型。之后不用每轮自选：每个 Bot 有自己的默认模型，可以钉，卡住了沿你排的阶梯往上换。',
         callout: '密钥只在这一格里填，交给系统保管，不进聊天。'
       },
       {
-        title: '建第一个 Bot',
+        title: '第一个 Bot：制片',
         body:
-          '向导的最后一步就是它：名字、职责、边界已经按通用助手填好，可以直接创建，也可以改成你要的样子。这里改成 Coordinator，负责拆任务、点名分派和验收。创建后名册那一行多一个头像，头像按名字生成，和它的私聊随即打开。这一步也能跳过，之后随时在名册里建；名册没有人数上限，也不含你。',
+          '向导的最后一步就是它：名字、职责、边界已经按通用助手填好，可以直接创建，也可以改成你要的样子。这里改成「制片」：开工前把活拆成任务、每张的审查者设成审片，交付前自己先核对；边界是只在工作区里动手、你说停就停。创建后它的私聊随即打开。这一步也能跳过，之后随时在名册里建。',
         callout: '向导最后一步：名字、职责、边界，建好就能私聊。'
       },
       {
-        title: '剩下的队友，让它自己去建',
+        title: '一句话，要来审片',
         body:
-          '在私聊里告诉 Coordinator 要谁：它用内置工具建好 Writer、Designer、Director 三个队友，再建群「发布」把四个都拉进来。创建 Bot、建群、改端点和 MCP，都是对话里的一句话。',
-        callout: '一句话，它自己建好三个队友和一个群。'
+          '在私聊里说一句：建一个「审片」，逐条对照你的要求审视频和文案，看帧、核对时长和分辨率，带依据地判通过或打回，只审不改；再建群「发布」把两个都拉进来。创建 Bot、建群、改端点和 MCP，都是对话里的一句话。审片用的是另一个模型，判通过的不是制片自己那个模型。',
+        callout: '一句话，它建好审片和群「发布」。'
       },
       {
-        title: '在群里下任务，没被点名的自己判断',
+        title: '交出去，它先拆成任务',
         body:
-          '在群里发一条不带 @ 的任务：给「晨光」手冲壶做一套发布物料。在场的每个 Bot 各自决定下场还是旁观，Director 判断海报还没出来，先不下场；旁观不进主转录。用 @ 点名则必须下场。应用不代你裁决谁说话，也没有轮数熔断。',
-        callout: '没被点名的 Bot，各自判断下不下场。'
+          '在群里交代这件事：给「晨光」手冲壶做一支 6 秒、1080×1920 的宣传短片，片尾带品牌 logo，再配一句主标语。制片是这个群的负责人，先把活拆成任务，每张都写明谁来做、谁来审。把流程图拖到会话下面，右边就是任务清单：谁在做、球在谁手里、谁来审，一眼看清。',
+        callout: '每张任务都写明谁来做、谁来审。'
       },
       {
-        title: '危险动作停在批准卡上',
+        title: '工作区外先问你，做完由你来定',
         body:
-          '品牌 logo 放在工作区外，把它拷进来的命令先停在批准卡上，等你点「允许一次」或拒绝。工作区外读写、出站网络、新接 MCP 或端点都要你放行；已配好的工具调用直接执行。等你的事标在侧栏这条会话上，没有另开的通知页。',
-        callout: '工作区外的文件，要你点头才读。'
+          'logo 在工作区外，拷进来的命令停在批准卡上，点「允许一次」才跑。制片把画面交给 Grok Imagine 生成视频，这一段就结束了；应用把你的话整理成「你的要求」，每条都站在你的原话上、只增不删。你说的时长 6 秒和分辨率 1080×1920 成了两条检查提议，点「确认」它们才成为门禁。',
+        callout: '你的原话记成要求；数字成了检查，你点确认。'
       },
       {
-        title: '交接就是发消息，命令看得见',
+        title: '关窗走开，渲染由应用去查',
         body:
-          'Writer 写好主标语和文案；Designer 调生图工具出底图，用 Python 叠上 logo 做成海报，交给 Director；Director 把海报生成视频、下载下来剪成 6 秒，再交给 Coordinator 用 ffprobe 核对验收。每条命令和它的输出挂在那条消息底下，跑完折成一行。本轮写出的文件自动挂在回复上，没有另一套产物库。',
-        callout: '@ 一下就是交接；命令和输出就在消息底下。'
+          '窗口收进托盘，视频还在渲染。等渲染的这段时间没有轮在跑：应用按 30 秒、1 分钟……自己去查，查到结果再叫醒制片；监督器每 15 秒看一眼，活停在半路就叫回去，重启也不丢。',
+        callout: '你走开，应用替你盯着渲染。'
       },
       {
-        title: '产物在旁边一块窗格里打开',
+        title: '说停就停，只有你能解除',
         body:
-          '点开回复里的预告片，它在「发布的产物」标签里打开，把标签拖到会话右边，窗口就分成左右两栏。产物窗格左边是这件事引用过的文件，右边按类型预览：视频和图片直接看，Markdown 和代码进 Monaco 编辑器，改完 ⌘S（Windows 上是 Ctrl+S）写回同一路径。',
-        callout: '生成的海报和预告片，直接在旁边窗格里看。'
+          '你在群里说「先停一下」：叫停当场生效，压在这件事上，开轮、叫醒和有副作用的调用都过不去。这时再说「片尾的 logo 再大一点」，制片只开一段只读的轮来回你，这句话同时记成一条新要求。说「继续」才解开，活从你最后那句话接着做。',
+        callout: '叫停是一个状态，你说「继续」才解开。'
       },
       {
-        title: '一件事是一张流程图',
+        title: '做完有定义',
         body:
-          '从会话标签的 ⋯ 打开「经过」，再把它拖到会话下面。这件事按谁叫醒了谁画出来：一轮一张卡片，交出的文件挂在卡片上；Bot 卡片底下一行是这一轮的模型、思考等级和消息类别，点开看它为什么这么挑、走了几跳。',
-        callout: '谁叫醒了谁、每轮交了什么，一张图看完。'
+          '制片交件，应用当场跑你确认过的检查，时长或分辨率不对就退回返工；Bot 说「做完了」不算。检查通过后，审片看过帧，逐条带依据判通过，这张任务才变成「已通过」。主标语是文字，交上来落在你的放行卡上。',
+        callout: '检查、审查、你的放行；Bot 说的不算。'
       },
       {
-        title: '分出一块，开你自己的终端',
+        title: '回来，看结果',
         body:
-          '在产物标签上右键「向下分割」，在分出的空窗格里开一个终端：这是你自己的 shell，不走批准，Bot 也碰不到。会话、流程图、产物和终端四块摆在同一个窗口里；排法只记在这台电脑上，退出再开，分屏和终端都回来。',
-        callout: '你自己的 shell，就在同一个窗口里。'
-      },
-      {
-        title: '关窗不停，等你的事会来找你',
-        body:
-          '窗口藏进托盘，进行中的轮次和终端都接着跑。Coordinator 验收完，macOS 横幅点开就是这条会话；Dock 角标只数你没看过的和还在等你的。私聊里的 Stop 立即停掉眼前这一轮；Cmd+Q 或托盘「退出」才结束窗口和守护进程。横幅和 Dock 角标目前只在 macOS 上有。',
-        callout: '关窗不停；做完了，横幅来找你。'
-      },
-      {
-        title: '不在电脑旁，用手机接着管',
-        body:
-          '配对过的手机经你自己部署的中继连回这台 Mac：会话、批准、工作区和终端都在，消息在两端之间端到端加密，中继只转发它解不开的密文。在手机上 @Writer 补一句英文主标语，干活的仍是 Mac 上那个 Writer；你在手机上读过，Mac 的 Dock 角标也跟着消掉。配对只做一次：Mac 的设置里给出一段一次性配对内容，粘到手机上、两边核对指纹，再在 Mac 上用触控 ID 批准。这是默认关闭的实验功能，目前只在 macOS 上有。',
-        callout: '经你自己的中继，在手机上接着管。',
-        link: { label: '接入步骤', page: 'remote' }
+          '回来问一句「怎么样了」，应用按这件事的状态直接回你，不开轮、不叫醒谁。流程图在会话下面，成片在旁边窗格里播放：每张任务过了哪些检查、谁审的、谁放行的，都在上面。',
+        callout: '问一句「怎么样了」，按状态直接回你。'
       }
     ]
   },
@@ -274,7 +261,7 @@ const zh: Dict = {
     watchHint: '或者直接看完整视频',
     duration: '1:49',
     title: 'Deskfolk 完整演示',
-    description: '从首次配置到一群 Bot 交出一套发布物料，再到它的流程图、你自己的终端和手机。',
+    description: '从首次配置到交出一支宣传短片：要求记下、检查由你确认、叫停又继续，回来看审过的成片。',
     close: '关闭'
   },
   boundaries: {
@@ -364,7 +351,7 @@ const zh: Dict = {
     title: 'Deskfolk — 交出去，离开，回来看结果',
     description:
       'macOS 本机的 agent 协作应用（Windows 为预览版）：把多天、多步、要返工的活交给 Bot，你可以离开。模型负责干活，应用负责当真：你的原话原样存档、需求只增不删，任务要过应用自己跑的检查和有依据的审查才算做完，叫停是只有你能解除的状态，停在半路有监督器去追，只在需要你时才找你。会话和文件在本机，模型端点和 MCP 工具由你接入，危险动作先等你批准。面向会自己配模型端点的独立开发者与小工作室。MIT 开源，Alpha 阶段。',
-    imageAlt: 'Deskfolk：一个窗口里并排着群聊、流程图、生成的预告片和终端'
+    imageAlt: 'Deskfolk：一个窗口里并排着群聊、这件事的流程图和做好的宣传短片'
   },
   docs: {
     onThisPage: '本页',
@@ -492,11 +479,11 @@ const en: Dict = {
     scrollHint: 'Scroll to watch the full flow'
   },
   demo: {
-    heading: 'From an empty roster to a launch kit, in one pass',
+    heading: 'One promo film, from hand-off to sign-off',
     intro:
-      'On the right is the real Deskfolk app, playing step by step as you scroll. It was recorded on a demo instance that started empty: the Bots answer with real models, and the poster and teaser come from image and video tools connected over MCP. Long steps play sped up, with the speed in the corner; only the desktop, banner and Dock in the tray step are composed.',
+      'On the right is the real Deskfolk app, playing step by step as you scroll. It was recorded on a demo instance that started empty: the Bots answer with real models, and the video comes from Grok Imagine connected over MCP. Long steps play sped up, with the speed in the corner; only the desktop and tray menu in the walk-away step are composed.',
     railLabel: 'Walkthrough progress',
-    stillLabel: 'The Deskfolk window: the Launch group on the left with its flow below, the generated teaser on the right with a terminal below',
+    stillLabel: 'The Deskfolk window: the Launch group on the left with its flow below, and the finished promo film playing on the right',
     play: 'Play this step',
     replay: 'Play from the start',
     enlarge: 'Enlarge this step',
@@ -504,69 +491,56 @@ const en: Dict = {
       {
         title: 'Set the workspace and a model endpoint',
         body:
-          'The first run is a wizard: pick a local folder as the shared workspace, add an OpenAI-compatible endpoint, fetch its models and choose the default. From then on an agent picks the model and thinking level for each turn — and leaves a reason — instead of asking you every time.',
+          'The first run is a wizard: pick a local folder as the shared workspace, add an OpenAI-compatible endpoint, fetch its models and choose the default. From then on nobody asks you turn by turn: each Bot has its own default model, which you can pin, and climbs the ladder you order when it gets stuck.',
         callout: 'The key goes in this one field, into the system\'s credential store, never the chat.'
       },
       {
-        title: 'Create the first bot',
+        title: 'The first Bot: the Producer',
         body:
-          'It is the wizard\'s last step: name, duties and boundaries come filled in for a general assistant, to create as is or make your own. Here it becomes Coordinator, who splits the goal, names who does what and checks the results. On create, a face appears on the roster row, its avatar generated from the name, and a direct chat opens. You can skip the step and add bots from the roster any time; the roster has no cap and does not include you.',
+          'It is the wizard\'s last step: name, duties and boundaries come filled in for a general assistant, to create as is or make your own. Here it becomes the Producer: before starting, it lays the job out in tickets with the Reviewer on each, and checks its own work before handing it in; it stays in the workspace and stops when you say so. On create, its direct chat opens. You can skip the step and add Bots from the roster any time.',
         callout: 'The wizard’s last step: name, duties, boundaries, and it’s ready to chat.'
       },
       {
-        title: 'Let it hire the rest of the team',
+        title: 'One line brings in a Reviewer',
         body:
-          'Tell Coordinator who you need, in its direct chat. It uses built-in tools to create Writer, Designer and Director, then opens the group "Launch" with all four in it. Creating bots and groups, or changing endpoints and MCP, is one sentence in a chat.',
-        callout: 'One message, and it hires three teammates and makes a group.'
+          'In the direct chat, one line: make a Reviewer that checks videos and copy against your asks item by item, looks at frames, checks length and size, and passes or sends back with evidence, never editing; then make a group called “Launch” with both. Creating Bots and groups, or changing endpoints and MCP, is one sentence in a chat. The Reviewer runs on another model, so a pass is not the Producer’s own model grading itself.',
+        callout: 'One line, and it makes the Reviewer and the “Launch” group.'
       },
       {
-        title: 'Post the goal; unmentioned bots decide for themselves',
+        title: 'Hand it off: it lays out tickets',
         body:
-          'Post the task in the group without an @: a launch kit for the "Dawn" pour-over kettle. Every bot present decides to join or pass, and Director passes until there is a poster to work from; passing never enters the transcript. An @mention makes joining mandatory. The app does not arbitrate who speaks and has no turn-count breaker.',
-        callout: 'Bots nobody mentioned decide for themselves whether to join.'
+          'In the group, hand over the job: a 6-second, 1080×1920 promo film for the “Dawn” kettle, ending on the brand logo, plus a tagline. The Producer leads the group, so it lays the job out in tickets first, each naming who makes it and who reviews it. Drag the flow under the chat and the tickets sit beside it: who is on it, whose turn it is, who reviews.',
+        callout: 'Every ticket names who makes it and who reviews it.'
       },
       {
-        title: 'Dangerous actions stop at an approval card',
+        title: 'It asks before leaving the workspace; you define done',
         body:
-          'The brand logo lives outside the workspace, so the command that copies it in stops at an approval card until you allow it once or deny it. Reading or writing outside the workspace, outbound network, adding MCP or endpoints all wait for you; calls to configured tools run directly. What waits on you is marked on the conversation in the sidebar; there is no separate notifications page.',
-        callout: 'Files outside the workspace wait for your yes.'
+          'The logo lives outside the workspace, so the command that copies it in stops at an approval card until you press Allow once. Once the Producer hands the picture to Grok Imagine, its segment ends, and the app writes your words up as asks, each standing on what you said and only ever added to. The length and size you gave become two proposed checks; they gate the work only once you confirm them.',
+        callout: 'Your words become asks; your numbers, checks you confirm.'
       },
       {
-        title: 'A handoff is just a message, and commands show',
+        title: 'Walk away; the app watches the render',
         body:
-          'Writer drafts the tagline and copy; Designer has the image tool paint a backdrop and lays the logo over it in Python, then hands the poster to Director; Director turns it into a clip, downloads it, trims it to 6 seconds and hands it to Coordinator, who checks it with ffprobe. Each command and its output sit under the message that ran it and fold to one line when done. Files written during the turn attach to the reply; there is no separate artifact store.',
-        callout: 'An @ is a handoff; commands and their output sit under the message.'
+          'The window goes to the tray while the video renders. Nothing runs a turn while it waits: the app polls the render itself, at 30 seconds, a minute and on, and wakes the Producer with the result; the supervisor looks every 15 seconds and calls stalled work back, across restarts too.',
+        callout: 'You leave; the app keeps an eye on the render.'
       },
       {
-        title: 'The output opens in a pane beside it',
+        title: 'Stop means stop, until you lift it',
         body:
-          'Open the teaser from the reply and it lands in the "Launch\'s artifacts" tab; drag the tab to the right of the conversation and the window splits in two. The artifact pane lists the files this job touched on the left and previews the one you pick on the right: video and images play and show as they are, Markdown and code open in a Monaco editor, and ⌘S (Ctrl+S on Windows) writes back to the same path.',
-        callout: 'The poster and the teaser open right in the pane beside it.'
+          'Say “Pause.” in the group: the stop holds the job at once, and no turn, wake-up or side effect gets past it. Say “Make the logo at the end bigger.” while it holds, and the Producer answers in a read-only turn while the line is kept as a new ask. Only “Continue.” lifts the stop, and the work goes on from what you said last.',
+        callout: 'A stop is a state: only “Continue.” lifts it.'
       },
       {
-        title: 'One job reads as a flow',
+        title: 'Done has a definition',
         body:
-          'Pick Trace from the conversation tab\'s ⋯ and drag it under the conversation. The job is drawn by who woke whom: a card per turn, with the files it handed over on the card. Under each Bot card is the model, thinking level and message kind its turn ran on; click it for why, and how many hops it took.',
-        callout: 'Who woke whom and what each turn handed over, on one board.'
+          'When the Producer hands the film in, the app runs the checks you confirmed on the spot, and a wrong length or size sends it back for rework; a Bot saying “done” moves nothing. Once the checks pass, the Reviewer looks at the frames and passes it with evidence for each item, and only then is the ticket approved. The tagline is text, so its hand-in lands on your card.',
+        callout: 'Checks, a review and your OK; a Bot’s word moves nothing.'
       },
       {
-        title: 'Split off a pane for your own terminal',
+        title: 'Return to results',
         body:
-          'Right-click the artifacts tab, pick Split down, and open a terminal in the new empty pane: it is your own shell, it needs no approval, and no Bot can touch it. Conversation, flow, artifact and terminal now share one window; the layout is remembered on this computer, and Quit and reopen brings back the split and the terminal.',
-        callout: 'Your own shell, in the same window.'
-      },
-      {
-        title: 'Close the window; what waits on you finds you',
-        body:
-          'The window hides in the tray, and running turns and terminals carry on. When Coordinator signs off the kit, a macOS banner opens straight to that conversation, and the Dock badge counts only what you have not seen plus what is still waiting on you. Stop in a direct chat ends the current turn immediately; only Cmd+Q or Quit in the tray ends the window and the daemon. Banners and the Dock badge are macOS only for now.',
-        callout: 'Closing the window stops nothing; when it’s done, a banner finds you.'
-      },
-      {
-        title: 'Away from your computer, carry on from your phone',
-        body:
-          'A paired phone reaches this Mac through a relay you deploy yourself: conversations, approvals, the workspace and your terminals are all there, encrypted end to end between the two, with the relay passing along ciphertext it cannot read. Ask @Writer for a Chinese tagline from the phone and it is still the Writer on the Mac doing the work; read it on the phone and the Mac\'s Dock badge clears too. Pairing happens once: the Mac\'s settings hand out a one-time code, you paste it on the phone, check that the fingerprints match, and approve at the Mac with Touch ID. It is an experimental feature, off by default, and macOS only for now.',
-        callout: 'Through your own relay, carry on from your phone.',
-        link: { label: 'Set it up', page: 'remote' }
+          'Back at your desk, ask “How is it going?” and the app answers from the job’s state without starting a turn or waking anyone. The flow sits under the chat and the film plays beside it: every ticket’s checks, reviewer and approval are on it.',
+        callout: 'Ask “How is it going?” and the state answers.'
       }
     ]
   },
@@ -575,7 +549,7 @@ const en: Dict = {
     watchHint: 'or watch the full video',
     duration: '1:45',
     title: 'Deskfolk, the full demo',
-    description: 'From first setup to a group of Bots delivering a launch kit, with its flow board, your own terminal and your phone.',
+    description: 'From first setup to a promo film handed off: asks kept, checks you confirm, a stop and a go-on, and a reviewed cut to come back to.',
     close: 'Close'
   },
   boundaries: {
@@ -665,7 +639,7 @@ const en: Dict = {
     title: 'Deskfolk — Hand it off, walk away, return to results',
     description:
       'A local agent app for macOS (Windows in preview): hand Bots the multi-day, multi-step jobs that need rework, and walk away. The model does the work; the app holds it to account: your words are kept as you said them, requirements are only ever added, a job is done only after checks the app runs itself and a review backed by evidence, a stop is a state only you can lift, a supervisor chases stalls, and the app comes to you only when it needs you. Chats and files stay on your Mac; you plug in the model endpoints and MCP tools, and risky actions wait for your approval. For solo developers and small studios who bring their own model endpoint. MIT, alpha.',
-    imageAlt: 'Deskfolk: a group chat, its flow, the teaser the team made and a terminal side by side in one window'
+    imageAlt: 'Deskfolk: a group chat, the job’s flow and the finished promo film side by side in one window'
   },
   docs: {
     onThisPage: 'On this page',

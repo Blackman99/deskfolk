@@ -1,7 +1,9 @@
 /**
  * An empty, isolated daemon for filming the promo: its own data dir and port, an in-memory
- * keystore (never the macOS Keychain), the scheduler off, and nothing seeded, so the film can
- * start from the first-run wizard. Its model endpoint and MCP server are scripts/demo-tape.ts,
+ * keystore (never the macOS Keychain), and nothing seeded, so the film can start from the first-run
+ * wizard. The scheduler runs: from engine level 4 the supervisor, a hand-over waiting for the next
+ * tick and a media job the daemon polls all run in its tick, and the demo has no routines for it
+ * to fire. Its model endpoint and MCP server are scripts/demo-tape.ts,
  * which the wizard and the film's director point it at.
  *
  * Start it with HOME set to a throwaway home (the orchestrator does): shells and terminals the
@@ -51,7 +53,7 @@ if (process.env.REAL_BOT_DEMO_CURLRC === "1") {
   writeFileSync(join(home, ".curlrc"), ['connect-to = "::127.0.0.1:8443"', "insecure", ""].join("\n"));
 }
 
-const handle = await startRuntime({ dataDir, bind, endpointKey: memoryKeyStore(), schedule: false, supervisor: "none" });
+const handle = await startRuntime({ dataDir, bind, endpointKey: memoryKeyStore(), supervisor: "none" });
 console.log(`demo daemon on ${handle.origin} (data ${dataDir}, home ${home})`);
 
 const stop = async () => {

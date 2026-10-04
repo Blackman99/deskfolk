@@ -292,7 +292,8 @@ async function plain(browser: Browser, appUrl: string, api: Api) {
     press: (target, key) => target.press(key),
     hold: (ms) => sleep(Math.min(ms, 400)),
     idle,
-    tray: async () => {},
+    leave: async () => {},
+    back: async () => {},
     attempt: async (what, fn) => {
       try {
         await fn();

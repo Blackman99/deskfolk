@@ -1,14 +1,14 @@
 /**
  * The homepage walkthrough's pictures, cut from live.ts films: every step's bars cropped to the
  * stage (the window without the film's titles around it), steps that run long sped up so none
- * lasts much past 10 s, H.264 at 30 fps without sound; and the four-pane screen at the end of
- * step 9 as the first screen's still. Clips keep the film's pixel density (live.ts records at 2×
+ * lasts much past 10 s, H.264 at 30 fps without sound; and the screen the last step ends on (the
+ * chat, its flow board and the teaser side by side) as the first screen's still. Clips keep the film's pixel density (live.ts records at 2×
  * by default), so the stage, at most 1480 CSS px wide, stays sharp on a high-density screen.
  *
  *   node scripts/film/clips.ts [--from film-out] [--sets zh-light,zh-dark,en-light,en-dark]
  *
  * Reads <from>/deskfolk-live-<lang>-<theme>.{silent.mp4,timeline.json} (live.ts film, not the
- * recut) and writes static/media/walkthrough/<lang>-<theme>/{01…11.mp4,hero.jpg} plus
+ * recut) and writes static/media/walkthrough/<lang>-<theme>/{01….mp4,hero.jpg} (one clip a step) plus
  * src/lib/demo/clips.json, which the walkthrough reads for each clip's speed and length.
  */
 import { execFileSync } from 'node:child_process';
@@ -106,9 +106,9 @@ for (const set of opts.sets.split(',').filter(Boolean)) {
     steps.push({ seconds: Math.round((length / speed) * 10) / 10, speed });
   });
 
-  // The first screen: all four panes at the end of step 9, just before the window hides.
+  // The first screen: where the last step ends, just before the trust card fades the stage.
   const hero = path.join(dir, 'hero.jpg');
-  ffmpeg(['-ss', (starts[9] - 0.2).toFixed(3), '-i', film, '-frames:v', '1', '-vf', crop, '-q:v', '3', hero]);
+  ffmpeg(['-ss', (ends[ends.length - 1] - 0.2).toFixed(3), '-i', film, '-frames:v', '1', '-vf', crop, '-q:v', '3', hero]);
   bytes += statSync(hero).size;
 
   manifest.sets[set] = { steps };
