@@ -29,6 +29,7 @@ import { holdsCovering } from "./holds";
 import { queueInboxItem, refreshHeldInbox } from "./inbox";
 import { getMessage, insertMessage, setMessageControl } from "./messages";
 import { spokenFor } from "./job-conversations";
+import { bindToOwnTicket } from "./work-on";
 import { createNotification, updateNotificationActionState } from "./notifications";
 import { emptyPlanSpec, parsePlanSpec } from "./plan-shape";
 import { requirementsBearingOn, setRequirementHere, waiveRequirement } from "./requirements";
@@ -391,9 +392,16 @@ export function prepareSubmission(ctx: StoreContext, input: {
 }): { submission: Submission; checkIds: string[] } | null {
   return ctx.commit(() => {
     if (!supervised(ctx)) throw new HttpError(409, "submissions_unavailable", "submissions are not on at this engine level");
-    const turn = ctx.db.query<SegmentRow, [string]>("SELECT id, bot_id, status, work_item_id, task_id, ticket_id FROM turns WHERE id = ?")
+    const segment = () => ctx.db.query<SegmentRow, [string]>("SELECT id, bot_id, status, work_item_id, task_id, ticket_id FROM turns WHERE id = ?")
       .get(requireNonEmpty("turnId", input.turnId));
+    let turn = segment();
     if (!turn) throw new HttpError(404, "not_found", "turn not found");
+    // Handing in files that all sit in one of its own tickets' folders puts a segment on the whole job
+    // onto that ticket, as writing there does — whatever wrote them. On 2026-10-04's real-model run the
+    // lead's poster came from a command you approved, which did not put it on its ticket; submit asked
+    // it to bind first, its work_on went wrong, and it gave up with the poster made.
+    if (input.origin === "submit" && turn.task_id && !turn.ticket_id && input.artifacts.length > 0
+      && bindToOwnTicket(ctx, { turnId: turn.id, paths: input.artifacts.map((artifact) => artifact.path), every: true })) turn = segment()!;
     if (!turn.task_id || !turn.ticket_id || !turn.work_item_id) {
       throw new HttpError(422, "invalid_args", "a submission hands over one ticket's work: bind this segment to the ticket first (work_on with its ticket)");
     }

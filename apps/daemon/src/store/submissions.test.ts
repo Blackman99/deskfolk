@@ -1233,3 +1233,18 @@ test("a delivered job goes back to active when one of its tickets takes new work
   expect(settlePlanStage(f.ctx, f.plan.id)).toBe(true);
   expect(f.store.getTask(f.plan.id)).toMatchObject({ stage: "delivered" });
 });
+
+test("handing in files that all sit in one of its own tickets' folders puts a segment on the whole job onto that ticket", () => {
+  // Real-model run, 2026-10-04: the lead's poster came from a command you approved, which did not put
+  // the segment on its ticket; submit asked it to bind first and it gave up with the poster made.
+  const f = fixture();
+  const whole = segment(f, f.producer.id, null);
+  const other = f.store.createTicket({ taskId: f.plan.id, title: "07 字幕", worker: f.reviewer.id });
+  // Files across tickets, or in another Bot's ticket, bind nothing: the hand-over stays refused.
+  expect(() => submit(f, whole.id, [[`${f.ticket.dir}/master.mp4`, HASH_A], [`${other.dir}/subs.srt`, HASH_B]])).toThrow("bind this segment");
+  expect(() => submit(f, whole.id, [[`${other.dir}/subs.srt`, HASH_B]])).toThrow("bind this segment");
+  const handed = submit(f, whole.id, [[`${f.ticket.dir}/master.mp4`, HASH_A]])!;
+  expect(handed.submission.ticket_id).toBe(f.ticket.id);
+  expect(f.store.getTurn(whole.id).ticket_id).toBe(f.ticket.id);
+  expect(f.store.listWorkEvents({ kind: "work.bound" }).map((event) => event.payload)).toMatchObject([{ by: "write", path: `${f.ticket.dir}/master.mp4` }]);
+});

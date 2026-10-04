@@ -23,6 +23,7 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 - When the lead you confirmed in a group splits your request into tickets it does itself, it now goes straight on to the first one. Choosing its own ticket was refused because the job had been opened in that same turn, while the app told it to keep going, so its part could not start until something woke it again.
 - Your request stays filed to the whole job when the lead starts on one of its tickets. It used to be tagged with that ticket alone.
+- A lead that draws its own part with a command you approved can hand it in. Its poster used to be left at the whole job's level, where it could not be handed in, and the lead gave up with the poster made. Files it hands in that all sit in one of its own tickets' folders now count as that ticket's however they were written.
 
 ### Work a restart cut off is not pushed aside by the next ticket
 

@@ -194,7 +194,7 @@ export function workOn(ctx: StoreContext, input: WorkOnInput): WorkOnResult {
  * the approved slogans, both at the job's level, and the job still read delivered with the old
  * versions approved. A dropped ticket does not. Returns the ticket bound to.
  */
-export function bindToOwnTicket(ctx: StoreContext, input: { turnId: string; paths: readonly string[] }): string | null {
+export function bindToOwnTicket(ctx: StoreContext, input: { turnId: string; paths: readonly string[]; every?: boolean }): string | null {
   if (input.paths.length === 0 || readEngineLevel(ctx.db) < ENGINE_LEVELS.submissions) return null;
   return ctx.commit(() => {
     const turn = ctx.db.query<{ id: string; bot_id: string; session_id: string; task_id: string | null; ticket_id: string | null; work_item_id: string | null; mode: string | null; status: string }, [string]>(
@@ -202,7 +202,8 @@ export function bindToOwnTicket(ctx: StoreContext, input: { turnId: string; path
     if (!turn?.task_id || turn.ticket_id || turn.mode !== "work" || turn.status !== "running") return null;
     const tickets = ctx.db.query<{ id: string; dir: string; owner: string | null }, [string]>(`SELECT id, dir, COALESCE(owner_bot_id, worker) AS owner
       FROM tickets WHERE task_id = ? AND status <> 'parked' ORDER BY seq`).all(turn.task_id);
-    const hit = tickets.find((ticket) => ticket.owner === turn.bot_id && input.paths.some((path) => path.startsWith(`${ticket.dir}/`)));
+    const inside = (ticket: { dir: string }) => (path: string) => path.startsWith(`${ticket.dir}/`);
+    const hit = tickets.find((ticket) => ticket.owner === turn.bot_id && (input.every ? input.paths.every(inside(ticket)) : input.paths.some(inside(ticket))));
     if (!hit) return null;
     if (holdsCovering(ctx, { botId: turn.bot_id, sessionId: turn.session_id, taskId: turn.task_id, ticketId: hit.id, turnId: turn.id }).length) return null;
     const previousItem = turn.work_item_id;

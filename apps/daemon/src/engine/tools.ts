@@ -202,6 +202,17 @@ export function createTools(deps: ToolsDeps): Tools {
     }
   }
 
+  /**
+   * What a call wrote, noted; writing in one of its own tickets' folders puts a segment on the whole
+   * job onto that ticket. Both after a call that ran at once and after one you approved: on
+   * 2026-10-04's real-model run the lead rendered its poster with a python3 command you approved,
+   * the segment stayed on the whole job, and submit was refused until it gave up.
+   */
+  function noteWrites(turnId: string, live: Live, toolName: string, result: ToolResult): void {
+    noteWrittenPaths(live, toolName, result);
+    if (result.ok && (toolName === "write_file" || toolName === "shell") && live.writtenPaths.length > 0) store.bindToOwnTicket({ turnId, paths: live.writtenPaths });
+  }
+
   async function executeTools(turnId: string, calls: ToolCall[]): Promise<"wait" | "noop" | "more" | "spoke"> {
     const live = lives.get(turnId);
     if (!live) return "wait";
@@ -324,9 +335,7 @@ export function createTools(deps: ToolsDeps): Tools {
       await publishEmitted(turnId, live, result.emitted);
       if (!active(turnId, live)) return "wait";
       result = withLatestMcp(call.name, result);
-      noteWrittenPaths(live, call.name, result);
-      // Writing in one of its own tickets' folders puts a segment on the whole job onto that ticket.
-      if (result.ok && (call.name === "write_file" || call.name === "shell") && live.writtenPaths.length > 0) store.bindToOwnTicket({ turnId, paths: live.writtenPaths });
+      noteWrites(turnId, live, call.name, result);
       if (result.waitAsk) {
         const waitAsk = result.waitAsk;
         const { ask, waiting } = store.transaction(() => {
@@ -419,7 +428,7 @@ export function createTools(deps: ToolsDeps): Tools {
         await publishEmitted(turnId, live, resolved.emitted);
         if (!active(turnId, live)) return "wait";
         resolved = withLatestMcp(call.name, resolved);
-        noteWrittenPaths(live, call.name, resolved);
+        noteWrites(turnId, live, call.name, resolved);
         const payload = resolved.ok
           ? { ok: true, data: admitPicture(live, pictures, resolved) }
           : { ok: false, error: resolved.error };

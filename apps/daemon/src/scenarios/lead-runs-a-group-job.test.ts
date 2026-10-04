@@ -322,3 +322,52 @@ test("changing a delivered ticket's files after a complaint hands that ticket ov
   await h.waitIdle({ timeoutMs: 15_000 });
   expect(h.store.db.query<{ status: string; stage: string }, []>("SELECT status, stage FROM tasks").get()).toEqual({ status: "done", stage: "delivered" });
 });
+
+test("a lead woken at the job's level whose approved command draws in its own ticket's folder hands that ticket in", async () => {
+  // Real-model run, 2026-10-04 (after e1f87bc): woken by the approved slogans, the lead rendered the
+  // poster with a python3 command you approved into 03's folder; the approved command's path never
+  // put the segment on 03, submit asked it to bind first, its work_on failed, and it gave up.
+  const h = await createScenario({ learning: true });
+  open.push(h);
+  const [designer, writer] = h.createBots({ name: "设计师", duties: "海报和视觉；拆活、派活、审稿" }, { name: "文案", duties: "写宣传语" });
+  const room = h.group("海报组", [designer!, writer!]);
+  confirmGroupLead(h.store, room, designer!.id);
+  const ticketId = (title: string) => h.store.db.query<{ id: string }, [string]>("SELECT id FROM tickets WHERE title = ?").get(title)?.id ?? null;
+  const dirOf = (title: string) => h.store.db.query<{ dir: string }, [string]>("SELECT dir FROM tickets WHERE title = ?").get(title)!.dir;
+  const stop = call(tool("end_turn", { reason: "nothing_new" }));
+  let laidOut = false, reviewed = false, drew = 0;
+  h.script(designer!).handle(({ turn, hop }) => {
+    if (!laidOut && hop === 1) return call(tool("plan_items", { items: [
+      { title: "三句宣传语", owner: "文案", reviewer: "设计师" }, { title: "竖版海报", owner: "设计师", depends_on: ["三句宣传语"] }] }));
+    if (!laidOut) { laidOut = true; return call(tool("delegate", { to: "文案", ask: "写三句宣传语", expects: "deliverable", ticket: ticketId("三句宣传语")! })); }
+    if (turn?.ticket_id === ticketId("三句宣传语")) {
+      if (reviewed) return stop;
+      reviewed = true;
+      return call(tool("review", { outcome: "approve", verdicts: [], note: "好" }));
+    }
+    // Told the slogans are in, at the job's level: renders the poster with a command that needs your approval, then hands it in.
+    drew += 1;
+    // The command runs in the job's folder, as the real one did; the ticket's folder is under it.
+    if (drew === 1) {
+      const folder = dirOf("竖版海报").split("/").at(-1);
+      return call(tool("shell", { command: `cat /etc/hosts > /dev/null; mkdir -p '${folder}' && printf poster > '${folder}/poster.png'` }));
+    }
+    if (drew === 2) return call(tool("submit", { artifacts: [`${dirOf("竖版海报")}/poster.png`] }));
+    return stop;
+  });
+  h.script(writer!).handle(({ hop }) => hop === 1 ? call(writeFile(`${dirOf("三句宣传语")}/slogans.md`, "1. 一杯好咖啡\n"))
+    : hop === 2 ? call(tool("submit", { artifacts: [`${dirOf("三句宣传语")}/slogans.md`] })) : stop);
+
+  h.postUser(room, "做一张咖啡店开业海报，竖版，配三句宣传语");
+  await h.waitIdle({ timeoutMs: 15_000 });
+  h.engine.control(h.messages(room).find((message) => message.control?.kind === "review_item")!.id, { action: "approve" });
+  await h.waitFor(() => Boolean(h.store.db.query("SELECT 1 FROM approvals WHERE status = 'pending'").get()), { what: "the render to ask for approval" });
+  const approval = h.store.db.query<{ id: string }, []>("SELECT id FROM approvals WHERE status = 'pending'").get()!;
+  h.engine.resolveApproval(approval.id, "allow_once");
+  await h.waitIdle({ timeoutMs: 15_000 });
+
+  const drawing = h.turns(designer!).at(-1)!;
+  expect(drawing.ticket_id).toBe(ticketId("竖版海报"));
+  expect(h.toolCalls(designer!, "submit").map((c) => c.result?.ok)).toEqual([true]);
+  expect(h.store.db.query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM submissions WHERE ticket_id = ?").get(ticketId("竖版海报")!)!.n).toBe(1);
+});
