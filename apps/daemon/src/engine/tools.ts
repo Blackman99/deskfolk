@@ -137,14 +137,20 @@ export function createTools(deps: ToolsDeps): Tools {
 
   /**
    * What a collaboration call's words say, read before it runs (ADR 0055): whether a message is only
-   * a no-work closer, and for an ending the segment's last word and the sentence in which it says
-   * the work is still going. Undefined for any other call.
+   * a no-work closer, for an ending the segment's last word and the sentence in which it says the
+   * work is still going, and whether a question to the user — a blocked ending's or `ask_user`'s —
+   * only asks their OK to go on (ADR 0058). Undefined for any other call.
    */
   async function readForCall(turn: Turn, name: string, args: Record<string, unknown>): Promise<ToolCtx["read"]> {
     const read = (text: string) => (deps.readBotLine ?? readBotLineByWords)(text, turn.session_id);
     if (name === "send_message" && typeof args.body === "string") return { noWork: await readsAsNoWork(args.body, read) };
-    if (name !== "end_turn" || store.capabilities().engine_level < ENGINE_LEVELS.delegation) return undefined;
-    if (!PROMISE_WEIGHED.includes(args.reason as string) || turn.mode === "readonly") return undefined;
+    if (store.capabilities().engine_level < ENGINE_LEVELS.delegation || turn.mode === "readonly") return undefined;
+    // A question to the user, read unless one was already sent back this segment: then the next is theirs.
+    const question = name === "ask_user" ? args.question : name === "end_turn" && args.reason === "blocked" ? args.needs_from_user : null;
+    if (typeof question === "string" && question.trim()) {
+      return store.goAheadRefused(turn.id) ? undefined : { goAhead: (await read(question)).goAhead };
+    }
+    if (name !== "end_turn" || !PROMISE_WEIGHED.includes(args.reason as string)) return undefined;
     const said = store.segmentLastWord(turn.id);
     return said?.trim() ? { lastWord: { said, later: (await read(said)).later } } : undefined;
   }

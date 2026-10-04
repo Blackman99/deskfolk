@@ -23,6 +23,8 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 - A running time, resolution, aspect or frame rate you give no longer gets a card asking whether to add a check, nor a new one each time you say it again: the offer is on the flow board, to confirm there. A card still comes when the number differs from a check in force, since that check holds the Bots to the old number until you choose.
 - No card asks whether old rules are yours any more, or offers to make a requirement hold for every video job.
 - What a routine hands over is approved once its checks pass, with no card asking you to approve it every day. When a result is wrong, say so: you are still asked whether to send it back to rework.
+- A Bot that stops only to ask your OK to go on — to confirm work in progress, or whether it may start the next step — is sent back once to go on, with no card for you; asked again, the question reaches you. A question about something only you can give, or a choice that is yours, reaches you as before.
+- Pressing Stop on a Bot's turn no longer posts a receipt in the conversation: you stopped that turn yourself, and your next word to it lets it go on.
 - Cards of these kinds already in your conversations still take their buttons.
 
 ### Which job your line is about is read, not guessed by rules

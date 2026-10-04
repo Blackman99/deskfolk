@@ -32,11 +32,20 @@ test("a reading of your line needs one of the four controls; control_only means 
 test("a Bot's promise is kept as the sentence of its line; one the line does not hold falls back to the lists' sentence, else the line", () => {
   const body = "收到。我这边着手整理第二集的分镜脚本，弄好发群里。";
   expect(checkBotReading({ later: "我这边着手整理第二集的分镜脚本，弄好发群里", claims_verified: false, no_work: false, bare_status: false }, body))
-    .toEqual({ source: "model", later: "我这边着手整理第二集的分镜脚本，弄好发群里", claimsVerified: false, noWork: false, bareStatus: false });
+    .toEqual({ source: "model", later: "我这边着手整理第二集的分镜脚本，弄好发群里", claimsVerified: false, noWork: false, bareStatus: false, goAhead: false });
   expect(checkBotReading({ later: "稍后发你" }, "初稿先放这。结论随后。")!.later).toBe("结论随后。");
   expect(checkBotReading({ later: "稍后发你" }, body)!.later).toBe(body);
   expect(checkBotReading({ later: null, claims_verified: true }, "测试跑过了")!).toMatchObject({ later: null, claimsVerified: true });
   expect(checkBotReading({ verdict: "fine" }, body)).toBeNull();
+});
+
+test("a question that only asks for an OK to go on reads as a go-ahead only when a model says so (ADR 0058)", () => {
+  const asked = "请确认《一拳超人》关键帧板（board.jpg）与设定集是否符合预期，确认后将正式启动视频片段生成与后期剪辑。";
+  expect(checkBotReading({ later: null, go_ahead: true }, asked)!.goAhead).toBe(true);
+  expect(checkBotReading({ go_ahead: "yes" }, asked)!.goAhead).toBe(false);
+  // An answer that says nothing of it is still a reading; the word lists never read a go-ahead.
+  expect(checkBotReading({ later: null, bare_status: false }, asked)!.goAhead).toBe(false);
+  expect(botLineByWords(asked).goAhead).toBe(false);
 });
 
 test("a long promise is cut to what a bounce quotes", () => {

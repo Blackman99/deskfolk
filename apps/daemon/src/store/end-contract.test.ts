@@ -61,6 +61,26 @@ function errorCode(work: () => unknown): string {
   throw new Error("expected domain refusal");
 }
 
+test("a blocked ending read as only asking an OK to go on bounces once; asked again, or with no bounce left, it goes to the user (ADR 0058)", () => {
+  const f = fixture();
+  const ask = "确认关键帧板没问题后我再开始生成视频";
+  const first = finishWork(f.ctx, { turnId: f.turn.id, reason: "blocked", needsFromUser: ask }, { goAhead: true });
+  expect(first).toMatchObject({ ended: false, code: "asks_go_ahead" });
+  expect(first.bounce).toContain(`「${ask}」`);
+  expect(f.store.goAheadRefused(f.turn.id)).toBe(true);
+  // Told once: the same question again is the user's to answer.
+  const again = finishWork(f.ctx, { turnId: f.turn.id, reason: "blocked", needsFromUser: ask }, { goAhead: true });
+  expect(again).toMatchObject({ ended: true, endReason: "blocked", ask: { body: ask } });
+
+  // Two bounces already spent this segment: the question goes up rather than the work ending needing attention.
+  const g = fixture();
+  for (const code of ["inbox_unacknowledged", "unfinished_obligations"]) {
+    recordWorkEvent(g.ctx, { kind: "end.rejected", actor: "app", turnId: g.turn.id, payload: { code } });
+  }
+  expect(finishWork(g.ctx, { turnId: g.turn.id, reason: "blocked", needsFromUser: ask }, { goAhead: true }))
+    .toMatchObject({ ended: true, endReason: "blocked", ask: { body: ask } });
+});
+
 test("end reasons validate mandatory fields before writes and bound work cannot bypass a hold", () => {
   const f = fixture();
   for (const invalid of [{ reason: "maybe" }, { reason: "blocked" }, { reason: "blocked", needsFromUser: " " },

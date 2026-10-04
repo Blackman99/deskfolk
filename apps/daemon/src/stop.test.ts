@@ -829,8 +829,9 @@ describe("Stop on a turn's card", () => {
     // The appointment it made waits for the lift instead of being cancelled.
     const booked = h.store.getCheckBack(hold!.effect.suspended_check_backs![0]!);
     expect(booked.suspended_at).not.toBeNull();
-    const receipt = h.messages(dm).filter((message) => message.kind === "system").at(-1)!;
-    expect(receipt.body).toContain("你在这件事上再说话，它就接着往下");
+    // You pressed it on the turn it stopped: no receipt says so again (ADR 0058). The hold records what it ended.
+    expect(h.messages(dm).filter((message) => message.control?.kind === "receipt")).toEqual([]);
+    expect(hold!.effect.stopped_turns!.map((row) => row.turn_id)).toEqual([turn.id]);
 
     h.script(director, dm).reply(say("好，换成慢速"));
     const next = h.postUser(dm, "片头改成慢速");
@@ -999,7 +1000,7 @@ describe("Stop on a turn's card", () => {
     expect(holds(h)).toEqual([]);
   });
 
-  test("stops one Bot's turn in a group, the others' going on, and says so in the group", async () => {
+  test("stops one Bot's turn in a group, the others' going on, with no receipt in the group", async () => {
     const h = await scenario();
     const { director, writer, room } = videoTeam(h);
     const ep01 = openPlan(h, room, "EP01", planSpec("EP01 动画成片"));
@@ -1012,8 +1013,7 @@ describe("Stop on a turn's card", () => {
     expect(hold).toMatchObject({ scope: "bot_plan", scope_id: `${director.id}:${ep01.id}`, source: "user_button", lift_on_next_user_message: true });
     expect(h.store.getTurn(cut.id).status).toBe("stopped");
     expect(h.store.getTurn(other.id).status).toBe("running");
-    const receipt = h.messages(room).find((message) => message.control?.kind === "receipt");
-    expect(receipt?.control).toMatchObject({ verb: "stop", hold_ids: [hold!.id], offer: ["undo"] });
+    expect(h.messages(room).filter((message) => message.control?.kind === "receipt")).toEqual([]);
   });
 
   test.each([

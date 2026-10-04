@@ -559,6 +559,7 @@ export class Store {
   readonly markWorkDirectoryUsed = this.bind(desk.markWorkDirectoryUsed);
   readonly finishWork = this.bind(endContract.finishWork);
   readonly segmentLastWord = this.bind(endContract.segmentLastWord);
+  readonly goAheadRefused = this.bind(endContract.goAheadRefused);
   readonly endAfterSubmit = this.bind(endContract.endAfterSubmit);
   readonly prepareSubmission = this.bind(submissions.prepareSubmission);
   readonly settleSubmissionChecks = this.bind(submissions.settleSubmissionChecks);

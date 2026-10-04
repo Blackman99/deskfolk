@@ -1,7 +1,8 @@
 /**
  * 读句: what a line means, as the app acts on it (ADR 0055). Whether a line of yours tells the Bots
  * to stop or go on, only asks where the work stands, or objects to what was handed over; whether a
- * Bot's line says the work is still going, claims a run, has nothing in it, or is a bare status.
+ * Bot's line says the work is still going, claims a run, has nothing in it, is a bare status, or only
+ * asks the user's OK to go on (ADR 0058).
  * And which job a line of yours is about (ADR 0057) — that one has no word lists behind it.
  *
  * A model reads each line (`reader.ts`, the prompts in `prompts/reader.ts`); this file holds what the
@@ -51,6 +52,12 @@ export type BotLineReading = {
   noWork: boolean;
   /** Nothing but an acknowledgement, a claim of being done, a wait or a short promise: nothing of its own. */
   bareStatus: boolean;
+  /**
+   * It only asks the user's OK to go on with what they already asked for — a sign-off on work in
+   * progress, a go-ahead for the next step — with nothing only they can give and no choice of
+   * theirs to make (ADR 0058). Only a model reads this: the word lists never say so.
+   */
+  goAhead: boolean;
 };
 
 
@@ -79,6 +86,7 @@ export function botLineByWords(body: string): BotLineReading {
     claimsVerified: claimsVerification(body),
     noWork: isNoWorkCloser(body),
     bareStatus: isBareStatus(body.trim()),
+    goAhead: false,
   };
 }
 
@@ -170,7 +178,7 @@ export function checkUserReading(answer: Record<string, unknown>, body: string):
  * opening, since the model did say the line promises more. Null when the answer is not a reading.
  */
 export function checkBotReading(answer: Record<string, unknown>, body: string): BotLineReading | null {
-  const keys = ["later", "claims_verified", "no_work", "bare_status"];
+  const keys = ["later", "claims_verified", "no_work", "bare_status", "go_ahead"];
   if (!keys.some((key) => key in answer)) return null;
   const raw = typeof answer.later === "string" && answer.later.trim() ? answer.later : null;
   const later = raw === null ? null : findWords(raw, body) ?? laterWorkSentence(body) ?? body;
@@ -180,6 +188,7 @@ export function checkBotReading(answer: Record<string, unknown>, body: string): 
     claimsVerified: answer.claims_verified === true,
     noWork: answer.no_work === true,
     bareStatus: answer.bare_status === true,
+    goAhead: answer.go_ahead === true,
   };
 }
 

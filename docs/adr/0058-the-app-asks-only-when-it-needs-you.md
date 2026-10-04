@@ -44,3 +44,13 @@ Approvals, Bots' questions and work question cards, the approve/reject and requi
 - 「升为常设」没有新的入口：已经常设的条目照常适用，流程图上还没有把会话条目扩到每个视频的按钮。 / Making a requirement standing has no entry point any more; standing entries keep holding, and the board has no button for it yet.
 - 日程交出的东西不经你看就算放行；你说它有问题时，投诉返工卡照样问你。规划级的检查不绑每天新开的任务，所以眼下没法给日程的每一次加一道门禁；要的话另记一笔。 / A routine's work counts as approved without your look; a complaint about it still gets the complaint card. A plan-wide check binds no ticket a later run opens, so nothing can gate every run of a routine yet; that would be a decision of its own.
 - 开发版接连重启时，被打断的活由后一次启动补发通知；在那之前的一分钟里，界面上只有各轮自己的「中断」行。 / With development restarts in a row, the later boot tells the stranded work; until then only each turn's own "Interrupted" line shows it.
+
+## 补记 / Addendum (2026-10-04, afternoon)
+
+同一天下午你又指出两处：《一拳超人》上视频导演 12:10 以 blocked 停下，问「请确认关键帧板（board.jpg）与设定集是否符合预期，确认后将正式启动视频片段生成与后期剪辑」，卡片等到 14:48 你答「确认」；14:49 你按了 Stop，应用又在会话里回了一张「已停下视频导演在『制作《一拳超人》动画』上的工作……你在这件事上再说话，它就接着往下」。两张都不必要。
+
+The same afternoon you pointed at two more: the video director stopped blocked at 12:10 on 「请确认关键帧板…确认后将正式启动视频片段生成与后期剪辑」, which waited until your 「确认」 at 14:48; and at 14:49 you pressed Stop, and the app posted a receipt saying it had stopped the director's work and that your next word would let it go on. Neither was needed.
+
+8. **只请你点头的提问退回一次 / A question that only asks your OK is sent back once.** 读句给 Bot 的话多读一项 `go_ahead`：问用户的话是不是只在请用户点头才接着做他要的事（确认做到一半的东西、问能不能开始下一步）；要用户给只有他有的东西、在几个方案里拿主意、说清障碍都不算。只有模型读这一项，词表从不说是。3 级起，`end_turn(blocked)` 的 `needs_from_user` 和 `ask_user` 的问句在调用前读一次（`engine/tools.ts` 的 `readForCall`）；读成请示，结束契约退回（`asks_go_ahead`，`goAheadBounce`），`ask_user` 回错误并记 `ask.go_ahead_refused`。一段只退一次（`goAheadRefused`），之后的问题不再读、照常发出；结束契约的两次退回已用完时也照常发出，不会把一个真问题变成「需要处理」。工具说明里同样写明不要停下来请示。 / The reader's reading of a Bot's line gains `go_ahead`, read by a model only. From level 3 a blocked ending's `needs_from_user` and an `ask_user` question are read before the call; a go-ahead is sent back (`asks_go_ahead`), once per segment, and never when the contract's bounces are spent; the tool descriptions say the same.
+
+9. **卡片上的 Stop 不回执 / No receipt for a Stop on a turn's card.** `stopByButton` 照旧建叫停、结束那一轮、挂起回看，把停在哪一步记在叫停的 `effect` 上，只是不再插回执：停的就是你按的那一轮，你下一句话就解除它，回执和「撤销」只是把你刚做的事再说一遍。你说的叫停、群里的停止菜单、「全部停下」这类会波及几个 Bot、你看不全它们停在哪的，回执照留。 / `stopByButton` makes the hold, ends the turn and records its effect as before, with no receipt line. Stops you say, and the stop menus that can reach several Bots, keep theirs.

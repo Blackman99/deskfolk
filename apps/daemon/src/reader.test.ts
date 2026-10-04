@@ -138,7 +138,7 @@ test("a Bot's line is read once per text, on its own, and an empty one is not re
   const first = await h.reader.botLine(body, h.direct);
   const again = await h.reader.botLine(body, h.direct);
   expect(again).toBe(first);
-  expect(first).toEqual({ source: "model", later: "我这边着手整理第二集的分镜脚本", claimsVerified: false, noWork: false, bareStatus: false });
+  expect(first).toEqual({ source: "model", later: "我这边着手整理第二集的分镜脚本", claimsVerified: false, noWork: false, bareStatus: false, goAhead: false });
   expect(h.requests).toHaveLength(1);
   expect(h.requests[0]!.messages[0]!.content).toBe(READ_BOT_LINE_SYSTEM);
   expect(JSON.parse(String(h.requests[0]!.messages[1]!.content))).toEqual({ said: body });

@@ -40,6 +40,7 @@ import type { KeyOperation } from "./store/receipts";
 import type { TurnAdmission } from "./quiesce";
 import { normalizeModelCatalog } from "./models";
 import { type Store } from "./store";
+import { goAheadBounce } from "./store/end-contract";
 import { ENGINE_LEVELS } from "./store/schema-gate";
 import {
   extractWorkspacePathsFromBody,
@@ -118,10 +119,11 @@ export type ToolCtx = {
   /**
    * What the call's words say, as the engine read them before it runs (ADR 0055): `noWork` for a
    * `send_message` body that is only a no-work closer; `lastWord` for an `end_turn`, the segment's
-   * last word and the sentence in which it says the work is still going. Absent, the word lists
-   * read them here.
+   * last word and the sentence in which it says the work is still going; `goAhead` for a question
+   * to the user (`ask_user`, a blocked ending) that only asks their OK to go on (ADR 0058). Absent,
+   * the word lists read them here, and none of them reads a go-ahead.
    */
-  read?: { noWork?: boolean; lastWord?: { said: string; later: string | null } };
+  read?: { noWork?: boolean; lastWord?: { said: string; later: string | null }; goAhead?: boolean };
 };
 
 export async function runCollabTool(
@@ -661,6 +663,13 @@ function askUser(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
   if (!ctx.store.isPresent(ctx.sessionId, USER_MEMBER)) {
     return fail("not_a_member", "the user is not in this session; ask where they are");
   }
+  // Only the user's OK to go on (ADR 0058): sent back once, as a blocked ending asking it is.
+  if (ctx.read?.goAhead) {
+    const turn = ctx.store.getTurn(ctx.turnId);
+    ctx.store.recordWorkEvent({ kind: "ask.go_ahead_refused", actor: "app", botId: ctx.botId, taskId: turn.task_id, ticketId: turn.ticket_id,
+      turnId: ctx.turnId, sessionId: ctx.sessionId, payload: { question } });
+    return fail("asks_go_ahead", goAheadBounce(question));
+  }
   return { ok: true, data: {}, waitAsk: { question, spec }, emitted: [] };
 }
 
@@ -703,7 +712,8 @@ function endTurn(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
   if (ctx.store.capabilities().engine_level >= ENGINE_LEVELS.delegation) {
     const finished = ctx.store.finishWork({ turnId: ctx.turnId, reason: args.reason, note: args.note,
       needsFromUser: args.needs_from_user, answer: args.answer, inbox: args.inbox },
-      { ...(ctx.read?.lastWord ? { lastWord: ctx.read.lastWord } : {}), written: ctx.producedPaths ?? ctx.writtenPaths ?? [] });
+      { ...(ctx.read?.lastWord ? { lastWord: ctx.read.lastWord } : {}), ...(ctx.read?.goAhead ? { goAhead: true } : {}),
+        written: ctx.producedPaths ?? ctx.writtenPaths ?? [] });
     if (finished.bounce) return { ok: false, error: { code: finished.code ?? "end_contract", message: finished.bounce }, emitted: [] };
     const emitted: ToolResult["emitted"] = [];
     if (finished.notice || finished.ask) {

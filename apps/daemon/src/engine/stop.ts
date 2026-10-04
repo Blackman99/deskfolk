@@ -30,7 +30,9 @@
  * undo a stop (a line read as one then reaches the Bots as any line), widen it to every Bot or to
  * the plan other Bots are working in, narrow a stop on a Bot to one plan, drop the job, or let one
  * Bot go on under a wider stop by splitting that stop into one per other Bot. A stop from a menu
- * or a button gets the same receipt as one you said.
+ * gets the same receipt as one you said. A Stop pressed on one turn gets none (2026-10-04, ADR 0058):
+ * you pressed it on the very turn it stopped, your next word to that Bot about its job lifts it, so
+ * the receipt and its Undo only repeated what you had just done.
  *
  * Work items and their inbox, external jobs and upstream waits (ADR 0040 P4) do not exist yet, so
  * "the work a hold covers" is live turns, check-backs and plans, and a delegation is the lineage of
@@ -442,23 +444,11 @@ export function createStop(deps: StopDeps): Stop {
     const result = store.transaction(() => {
       const hold = store.createHold({ scope, scopeId, source: "user_button", liftOnNextUserMessage: true, targets: handedOn(scope, scopeId) });
       const ended = endCovered([hold], new Set([turn.id]));
-      const [settled] = settle([hold], ended, null);
-      let receipt: Message | null = null;
-      // Said where you pressed it, when you are there to read it; a Bot↔Bot direct has nobody.
-      if (store.isPresent(turn.session_id, USER_MEMBER)) {
-        receipt = store.insertMessage({
-          sessionId: turn.session_id,
-          kind: "system",
-          author: bot,
-          body: stopReceipt([settled!], turn.session_id),
-          hiddenFromBots: true,
-          control: { kind: "receipt", verb: "stop", hold_ids: [hold.id], offer: ["undo"], scopes: [] },
-        });
-      }
-      return { ended, receipt };
+      // What it ended is recorded on the hold (its `effect`), for 「停了吗」 and the board; nothing is said.
+      settle([hold], ended, null);
+      return { ended };
     });
     for (const { turn: ended } of result.ended) publishTurn(ended, null);
-    if (result.receipt) publishMessage(result.receipt);
     return result.ended.find((row) => row.turn.id === turnId)?.turn ?? store.getTurn(turnId);
   }
 

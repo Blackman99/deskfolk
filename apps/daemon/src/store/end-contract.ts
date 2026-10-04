@@ -39,6 +39,11 @@ export type FinishWorkOptions = {
    * nothing. Absent, the word lists read the last word here.
    */
   lastWord?: { said: string; later: string | null };
+  /**
+   * A blocked ending's `needs_from_user` only asks the user's OK to go on with what they already
+   * asked for, as the reader read it (ADR 0058). Absent or false, it goes to them as before.
+   */
+  goAhead?: boolean;
   /** Total contract bounces already consumed by the parent engine, across all contracts. */
   contractBounces?: number;
   /** Workspace paths the segment wrote, from the engine (the end-of-segment attachments come after this). */
@@ -326,6 +331,28 @@ function promisedLaterNotice(ctx: StoreContext, turn: Actor, said: string): stri
   return promisedLaterNoticeBody(locale, { job: plan === null ? null : supervisorJobLabel(locale, { plan, ticket }), bot, said });
 }
 
+/** Whether the contract may still send this ending back, or has used its two bounces and would end it needing attention. */
+function bounceLeft(ctx: StoreContext, turnId: string, opts: FinishWorkOptions): boolean {
+  const count = ctx.db.query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM work_events WHERE turn_id = ? AND kind = 'end.rejected'").get(turnId)!.n;
+  const filing = ctx.db.query<{ filing_bounces: number }, [string]>("SELECT filing_bounces FROM turns WHERE id = ?").get(turnId)!.filing_bounces;
+  return Math.max(opts.contractBounces ?? 0, count + filing) < 2;
+}
+
+/**
+ * Whether this segment was already told once not to stop for a go-ahead (ADR 0058), on an ending or
+ * on `ask_user`: a second such question goes to the user, since the Bot holds it is theirs to answer.
+ */
+export function goAheadRefused(ctx: StoreContext, turnId: string): boolean {
+  return Boolean(ctx.db.query(`SELECT 1 FROM work_events WHERE turn_id = ? AND (kind = 'ask.go_ahead_refused'
+    OR (kind = 'end.rejected' AND json_extract(payload, '$.code') = 'asks_go_ahead')) LIMIT 1`).get(turnId));
+}
+
+/** What a Bot hears when it stopped, or asked, only for the user's OK to go on (ADR 0058). */
+export function goAheadBounce(question: string): string {
+  const clipped = takeCodePoints(question.replace(/\s+/g, " ").trim(), LATER_QUOTE_MAX);
+  return `You stopped to ask the user for a go-ahead: 「${clipped.truncated ? `${clipped.text}…` : clipped.text}」. What they want is already said, so do not wait for an OK or a sign-off on work in progress: go on with it, and they look at what you hand over (they can stop you at any time). Stop only for what they alone can give — a credential, a permission, something only they know — or a choice between options that is theirs to make, and say which.`;
+}
+
 function rejectionsFor(ctx: StoreContext, turnId: string, code: string): number {
   return ctx.db.query<{ n: number }, [string, string]>(`SELECT COUNT(*) AS n FROM work_events
     WHERE turn_id = ? AND kind = 'end.rejected' AND json_extract(payload, '$.code') = ?`).get(turnId, code)!.n;
@@ -426,6 +453,12 @@ export function finishWork(ctx: StoreContext, input: FinishWorkInput, opts: Fini
     const waiting = validWaiting(ctx, item, facts);
     const unfinished = facts.tickets.length + facts.outgoingDelegations.length + facts.incomingDelegations.length + facts.waits.length > 0;
     const base = { obligations: facts, dispositions, unacknowledgedInbox, replies, implicitSubmission };
+    // Stopping only to ask the user's OK to go on (ADR 0058): sent back once to go on. On 2026-10-04 a
+    // video director stopped for 「请确认关键帧板…确认后将正式启动视频片段生成」, and the job sat two and
+    // a half hours on a card that asked nothing only the user could give.
+    if (reason === "blocked" && opts.goAhead && !goAheadRefused(ctx, turn.id) && bounceLeft(ctx, turn.id, opts)) {
+      return rejectEnd(ctx, turn, base, opts, "asks_go_ahead", goAheadBounce(needsFromUser!));
+    }
     const changed = reason === "blocked" || reason === "gave_up" ? [] : approvedChanged(ctx, turn, opts.written ?? []);
     if (changed.length > 0 && rejectionsFor(ctx, turn.id, "approved_changed") === 0) {
       return rejectEnd(ctx, turn, base, opts, "approved_changed",
