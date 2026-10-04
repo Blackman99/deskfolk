@@ -207,3 +207,32 @@ export async function readsAsNoWork(body: string, read: (body: string) => Promis
 export function readBotLineByWords(body: string): Promise<BotLineReading> {
   return Promise.resolve(botLineByWords(body));
 }
+
+/**
+ * Whether a job is a large one (大活, ADR 0060): one to lay out in several units, with a sample made
+ * and approved first. Only a model reads this — there is no word list for how big a thing is — and
+ * a job no model could read stays unread (`source: "unread"`), which only the signal acts on.
+ */
+export type ScaleReading = {
+  source: "model" | "unread";
+  large: boolean;
+  /** The words of yours that show it is large, as they are in your lines; null when none were quoted or found. */
+  quote: string | null;
+  /** What one unit of it is, in a few words (「一场」「一章」); null when not large. */
+  unit: string | null;
+};
+
+export const UNREAD_SCALE: ScaleReading = { source: "unread", large: false, quote: null, unit: null };
+
+/**
+ * A model's answer about a job's size, checked: `large` a boolean, the quote kept only as words of
+ * your lines (a quote the model made up is dropped, the reading stands), the unit a few words.
+ * Null when the answer is not a reading at all.
+ */
+export function checkScaleReading(answer: Record<string, unknown>, said: readonly string[]): ScaleReading | null {
+  if (typeof answer.large !== "boolean") return null;
+  const quoted = typeof answer.quote === "string" && answer.quote.trim() ? answer.quote.trim() : null;
+  const quote = quoted ? said.map((line) => findWords(quoted, line)).find((found): found is string => found !== null) ?? null : null;
+  const unit = answer.large && typeof answer.unit === "string" && answer.unit.trim() ? clipped(answer.unit, 24) : null;
+  return { source: "model", large: answer.large, quote: quote ? clipped(quote, 120) : null, unit };
+}

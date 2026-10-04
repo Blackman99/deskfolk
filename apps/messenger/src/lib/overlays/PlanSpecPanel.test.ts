@@ -151,6 +151,7 @@ function open(over: {
   const jumps: Array<[string, string]> = [];
   const patchCalls: Array<{ taskId: string; body: unknown }> = [];
   const renameCalls: Array<{ taskId: string; body: unknown }> = [];
+  const scaleCalls: Array<{ taskId: string; body: unknown }> = [];
   const revisionCalls: string[] = [];
   const createCheckCalls: Array<{ taskId: string; body: unknown }> = [];
   const patchCheckCalls: Array<{ checkId: string; body: unknown }> = [];
@@ -170,6 +171,10 @@ function open(over: {
           renamePlan: async (taskId: string, body: { title: string }) => {
             renameCalls.push({ taskId, body });
             return aDetail({ title: body.title.trim() });
+          },
+          setPlanScale: async (taskId: string, body: { scale: "large" | "single" }) => {
+            scaleCalls.push({ taskId, body });
+            return aDetail({ scale: { value: body.scale, by: "user", at: "2026-10-04T00:00:00.000Z", why: null, unit: null } });
           },
           taskSpecRevisions: async (taskId: string) => {
             revisionCalls.push(taskId);
@@ -221,6 +226,7 @@ function open(over: {
     jumps,
     patchCalls,
     renameCalls,
+    scaleCalls,
     revisionCalls,
     createCheckCalls,
     patchCheckCalls,
@@ -772,4 +778,22 @@ test("a job not written up yet can still be named", () => {
   const view = open({ detail: aDetail({ spec: null, revision: 0 }) });
   expect(view.host.querySelector(".plan-spec-name .plan-spec-edit-btn")).not.toBeNull();
   view.close();
+});
+
+test("a large job says so under its name, with what showed it, and you can call it off (ADR 0060)", async () => {
+  const view = open({ detail: aDetail({ scale: { value: "large", by: "reader", at: "2026-10-04T00:00:00.000Z", why: "20 分钟", unit: "一场" } }) });
+  const line = view.host.querySelector(".plan-spec-scale");
+  expect(line?.textContent).toContain("大活：先拆成几件（每件一场），先做样片给你放行，再铺开。");
+  expect(line?.textContent).toContain("从你说的「20 分钟」认出来的。");
+  click([...line!.querySelectorAll("button")].find((button) => button.textContent?.trim() === t.plan.spec.scaleNotLarge));
+  await settle();
+  expect(view.scaleCalls).toEqual([{ taskId: "task-1", body: { scale: "single" } }]);
+  view.props.detail = view.saved.at(-1)!;
+  flushSync();
+  expect(view.host.querySelector(".plan-spec-scale")?.textContent).toContain(t.plan.spec.scaleSingle);
+  view.close();
+  // Nothing read either way: no line at all.
+  const plain = open();
+  expect(plain.host.querySelector(".plan-spec-scale")).toBeNull();
+  plain.close();
 });

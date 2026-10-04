@@ -1554,12 +1554,19 @@ function dispatch(
   if (params && method === "GET") {
     return jsonResponse(store.taskDetail(params.id!, store.citedPathExists), 200, null);
   }
-  // Your new name for a job: only the name, and only yours.
+  // Your new name for a job, or what size it is (ADR 0060): one of the two, and only yours.
   if (params && method === "PATCH") {
     const body = input.body;
-    if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).join() !== "title") {
-      throw new HttpError(422, "invalid_args", "a job's rename is {title}");
+    const keys = body && typeof body === "object" && !Array.isArray(body) ? Object.keys(body).join() : "";
+    if (keys === "scale") {
+      const value = (body as { scale: unknown }).scale;
+      if (value !== "large" && value !== "single") throw new HttpError(422, "invalid_args", "scale is large or single");
+      store.getTask(params.id!);
+      store.markPlanScale({ taskId: params.id!, value, by: "user" });
+      engine.renderPlanMirrors(params.id!);
+      return jsonResponse(store.taskDetail(params.id!, store.citedPathExists), 200, null);
     }
+    if (keys !== "title") throw new HttpError(422, "invalid_args", "a job's PATCH is {title} or {scale}");
     const task = store.renamePlanByUser(params.id!, (body as { title: unknown }).title);
     engine.renderPlanMirrors(task.id);
     return jsonResponse(store.taskDetail(task.id, store.citedPathExists), 200, null);

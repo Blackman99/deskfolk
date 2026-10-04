@@ -429,6 +429,11 @@ export type Ticket = {
   reviewer_bot_id?: string | null;
   /** The model its turns run on, set on the board from level 7 (ADR 0049): over the Bot's pin and default. Null for none. */
   model_override?: TicketModel | null;
+  /**
+   * The job's sample (样片, ADR 0060): the one unit made first to the full standard, which the job's
+   * other tickets wait for and are compared with; you approve it yourself. Absent from older daemons.
+   */
+  sample?: boolean;
   created_at: string;
   updated_at: string;
   closed_at: string | null;
@@ -445,8 +450,10 @@ export type TicketArtifactRef = { path: string; message_id: string; attachment_i
 export type TicketBall = {
   kind: "owner" | "lead" | "delegation" | "reviewer" | "app" | "user";
   bot_id?: string | null;
-  reason?: "approval" | "job" | "ask" | "blocked" | "held" | "held_dependency" | "review" | "ceiling" | "unclaimed";
+  reason?: "approval" | "job" | "ask" | "blocked" | "held" | "held_dependency" | "waits" | "review" | "ceiling" | "unclaimed";
   since?: string;
+  /** `waits`: the ticket it waits for, not through yet (ADR 0060) — nobody starts it meanwhile. */
+  waits_for?: string;
 };
 
 export type TicketWithArtifacts = Ticket & {
@@ -485,7 +492,8 @@ export type AcceptanceCheckSource = "organizer" | "user";
  * what it stands on, and the organizer never touches it.
  */
 /** `reflection`: a check a Bot's reflection proposed and you adopted (ADR 0051) — a gate, but not yours until you edit it. */
-export type AcceptanceCheckOrigin = "derived" | "organizer" | "user" | "reflection";
+/** `sample`: a standard check (照样片, ADR 0060) the app made when you approved a large job's sample — yours, as the sample it holds to is. */
+export type AcceptanceCheckOrigin = "derived" | "organizer" | "user" | "reflection" | "sample";
 
 /** Where a check from your words stands: offered to you, or a gate you confirmed. */
 export type DerivedCheckState = "proposed" | "active";
@@ -569,6 +577,11 @@ export type AcceptanceCheck = {
    * Null on every other check.
    */
   derived_state?: DerivedCheckState | null;
+  /**
+   * A standard check (照样片, ADR 0060): the sample ticket this ticket's hand-over is compared with —
+   * kind `continuity`, made by the app when you approve the sample. Null on every other check.
+   */
+  standard_of?: string | null;
   created_at: string;
   updated_at: string;
   /** When this definition took effect; a redefinition bumps it and drops the runs before it. */
@@ -773,6 +786,14 @@ export type PlanRequirement = {
   supersedes: { id: string; seq: number; quote: string } | null;
 };
 
+/**
+ * A plan's size as the app goes by it (ADR 0060): `large`, made as several units with a sample first;
+ * `single`, one piece — only ever yours to say, and then nothing reads it as large again. `by`: the
+ * reader (a model reading your words), the signal (work going round on it with nothing through), or
+ * you. `why`: the words or facts it stands on; `unit`: what one unit of it is (「一场」「一章」).
+ */
+export type PlanScale = { value: "large" | "single"; by: "reader" | "signal" | "user"; at: string; why: string | null; unit: string | null };
+
 /** One plan as the board reads it: the switcher row plus its spec, revision and tickets. */
 export type TaskDetail = SessionTaskSummary & {
   /** Engine level 5 is on (ADR 0046): tickets have stages, parts passed and a reviewer to set. Absent below it. */
@@ -781,6 +802,11 @@ export type TaskDetail = SessionTaskSummary & {
   supervision_on?: boolean;
   /** Engine level 7 is on (ADR 0048): a ticket can be given the model its turns run on. Absent below it. */
   routing_on?: boolean;
+  /**
+   * Whether this is a large job (大活, ADR 0060): one laid out before anything is made, with a sample
+   * you approve first. Null when nothing has read it as either. Absent from older daemons.
+   */
+  scale?: PlanScale | null;
   /** From level 5: the Bots that can review this plan's tickets (in its conversation, not archived); a ticket's owner is left out on its row. */
   reviewer_ids?: string[];
   brief: string | null;
@@ -1222,6 +1248,8 @@ export type MessageFiling = {
 
 /** Your new name for a job; its folder keeps its name. */
 export type RenamePlanRequest = { title: string };
+/** `PATCH /v1/tasks/:id` with your word on the job's size (ADR 0060): `single` and nothing reads it as large again. */
+export type SetPlanScaleRequest = { scale: "large" | "single" };
 
 export type PatchMessageAttributionRequest = {
   filings: Array<{ plan_id: string; ticket_id?: string | null; part_key?: string | null }>;

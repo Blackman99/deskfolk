@@ -200,6 +200,21 @@
 		}
 	}
 
+	/** Your word on the job's size (ADR 0060): large, laid out with a sample first; or no need. */
+	let scaleSaving = $state(false);
+	async function setScale(scale: 'large' | 'single'): Promise<void> {
+		if (!api || scaleSaving) return;
+		scaleSaving = true;
+		saveError = null;
+		try {
+			onSaved(await api.setPlanScale(detail.id, { scale }));
+		} catch {
+			saveError = t.plan.saveFailed;
+		} finally {
+			scaleSaving = false;
+		}
+	}
+
 	async function save(): Promise<void> {
 		if (editing === 'title') return saveTitle();
 		if (!api || !detail.spec || editing === null || saving) return;
@@ -307,6 +322,18 @@
 				<p class="plan-spec-renamed-goal">
 					{t.plan.spec.renamedGoal(detail.spec.goal)}
 					<button type="button" class="plan-spec-edit-btn" onclick={startEditGoal}>{t.plan.spec.editGoal}</button>
+				</p>
+			{/if}
+			<!-- A large job (ADR 0060): laid out before anything is made, its sample yours to approve; yours to call off. -->
+			{#if detail.scale?.value === 'large'}
+				<p class="plan-spec-scale is-large">
+					<span>{t.plan.spec.scaleLarge(detail.scale.unit)} {t.plan.spec.scaleWhy[detail.scale.by](detail.scale.why)}</span>
+					{#if api}<button type="button" class="plan-spec-edit-btn" onclick={() => setScale('single')} disabled={scaleSaving}>{t.plan.spec.scaleNotLarge}</button>{/if}
+				</p>
+			{:else if detail.scale?.value === 'single'}
+				<p class="plan-spec-scale">
+					<span>{t.plan.spec.scaleSingle}</span>
+					{#if api}<button type="button" class="plan-spec-edit-btn" onclick={() => setScale('large')} disabled={scaleSaving}>{t.plan.spec.scaleMakeLarge}</button>{/if}
 				</p>
 			{/if}
 		{/if}
@@ -798,6 +825,16 @@
 		font-size: var(--text-caption);
 		color: var(--muted);
 	}
+	.plan-spec-scale {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 6px;
+		margin: 4px 0 0;
+		font-size: var(--text-caption);
+		color: var(--ink-secondary);
+	}
+
 	.plan-spec-renamed-goal {
 		display: flex;
 		flex-wrap: wrap;

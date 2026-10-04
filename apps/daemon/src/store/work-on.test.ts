@@ -194,3 +194,19 @@ test("work_on atomically opens a quoted job, owns its exact ticket, files the wo
   expect(store.getMessage(result.messages[0]!.id).id).toBe(result.messages[0]!.id);
   expect(store.db.query("SELECT state FROM work_items WHERE id = ?").get(turn.work_item_id!)).toEqual({ state: "closed" });
 });
+
+test("a segment on a job may name one of its tickets where the job goes; naming something else says which job it is on", () => {
+  const { store, ctx, bot, sessionId, line, turn } = fixture();
+  const opened = domain.workOn(ctx, { turnId: turn.id, plan: { new: { quote_message_id: line.id, title: "Report" } } });
+  const outline = store.createTicket({ taskId: opened.taskId!, title: "Outline", worker: bot.id });
+  // As after plan_items folded the opening ticket: the segment is on the whole job.
+  store.db.run("UPDATE turns SET ticket_id = NULL WHERE id = ?", [turn.id]);
+  // The ticket's id given as the job: that job, and that ticket (2026-10-04, large-job run).
+  const bound = domain.workOn(ctx, { turnId: turn.id, plan: outline.id });
+  expect(bound).toMatchObject({ taskId: opened.taskId, ticketId: outline.id });
+  expect(store.getTurn(turn.id)).toMatchObject({ task_id: opened.taskId, ticket_id: outline.id });
+  // Anything else that is no candidate: the refusal names the job the segment is on.
+  expect(() => domain.workOn(ctx, { turnId: turn.id, plan: "01M00000000000000000000000" }))
+    .toThrow(`This segment is already on job ${opened.taskId}`);
+  void sessionId;
+});

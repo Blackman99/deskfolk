@@ -28,12 +28,12 @@ const TICKET_SLUG_MAX = 24;
 /** How many other tickets one may wait for; a plan holds {@link TICKETS_MAX} at most. */
 export const TICKET_DEPENDS_MAX = TICKETS_MAX - 1;
 
-/** A `tickets` row as stored: `depends_on` and `model_override` are JSON text. */
-export type TicketRow = Omit<Ticket, "depends_on" | "model_override"> & { depends_on: string; model_override?: string | null };
+/** A `tickets` row as stored: `depends_on` and `model_override` are JSON text, `sample` 0 or 1. */
+export type TicketRow = Omit<Ticket, "depends_on" | "model_override" | "sample"> & { depends_on: string; model_override?: string | null; sample?: number | null };
 
 /** A stored row as the API gives it: `depends_on` a list (a row an older build wrote reads as none), `model_override` an object or null. */
 export function toTicket(row: TicketRow): Ticket {
-  return { ...row, depends_on: ticketDependencies(row.depends_on), model_override: ticketModel(row.model_override) };
+  return { ...row, depends_on: ticketDependencies(row.depends_on), model_override: ticketModel(row.model_override), sample: row.sample === 1 };
 }
 
 /** A stored override, or null for none or one that does not read. */

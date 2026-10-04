@@ -147,6 +147,11 @@
 	function ballLabel(ticket: TicketWithArtifacts): string | null {
 		const ball = ticket.ball;
 		if (!ball) return null;
+		// Waiting for another ticket (ADR 0060): which one, and whether it is the sample you approve.
+		if (ball.kind === 'app' && ball.reason === 'waits' && ball.waits_for) {
+			const other = detail.tickets.find((row) => row.id === ball.waits_for);
+			return other ? t.plan.ballWaits(`#${ticketTag(other.seq)}`, Boolean(other.sample)) : null;
+		}
 		// Below level 5 a ticket waiting on you is one to mark done on the board, not an approval card.
 		const key = ball.kind === 'user' && ball.reason === 'review' && !detail.submissions_on ? 'acceptance'
 			: ball.kind === 'app' || ball.kind === 'user' ? (ball.reason ?? '') : ball.kind;
@@ -338,6 +343,7 @@
 						<button type="button" class="ticket-main" aria-pressed={picked} onclick={() => select(ticket.id)}>
 							<span class="ticket-tag mono">{ticketTag(ticket.seq)}</span>
 							<span class="ticket-title">{ticket.title}</span>
+							{#if ticket.sample}<span class="ticket-sample" title={t.plan.sampleHint}>{t.plan.sample}</span>{/if}
 						</button>
 						{#if ticket.parts && ticket.parts.total > 0}
 							<span class="ticket-parts mono">{t.plan.partsApproved(ticket.parts.approved, ticket.parts.total)}</span>
@@ -836,6 +842,17 @@
 		color: var(--ink);
 		letter-spacing: -0.01em;
 		transition: color 0.12s ease;
+	}
+
+	/* The job's sample (ADR 0060): a quiet tag beside its title, not a status. */
+	.ticket-sample {
+		flex: none;
+		padding: 0 5px;
+		border: 1px solid var(--line);
+		border-radius: 4px;
+		font-size: 10.5px;
+		line-height: 16px;
+		color: var(--ink-secondary);
 	}
 
 	.ticket-parts {

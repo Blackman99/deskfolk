@@ -77,8 +77,8 @@ const planSpec: Check = object(
 );
 const specRevision: Check = (v) => typeof v === "number" && Number.isInteger(v) && v >= 0;
 add("PATCH", "tasks/:id/spec", { spec: planSpec, if_revision: specRevision }, ["spec"], true);
-// Your new name for a job (only the name).
-add("PATCH", "tasks/:id", { title: v => typeof v === "string" && v.trim().length > 0 && v.length <= 400 }, ["title"]);
+// Your new name for a job, or what size it is (ADR 0060): one of the two; the daemon refuses both at once.
+add("PATCH", "tasks/:id", { title: v => typeof v === "string" && v.trim().length > 0 && v.length <= 400, scale: one("large", "single") }, []);
 // Holds (叫停): your stop from the phone, and your lift of one. A bot_plan hold names its Bot and plan as `<id>:<id>`.
 get("holds", { status: one("active", "all") });
 get("holds/:id");
@@ -251,6 +251,10 @@ export function validateBusiness(request: RemoteRequest): void {
       if (((multi || fresh) && Object.keys(body).length !== 1) || (!multi && !fresh && !Object.hasOwn(body, "plan_id"))) {
         throw new HttpError(422, "invalid_args", "choose filings, one plan_id or new_plan");
       }
+    }
+    // A job's PATCH is its new name or its size, one at a time (ADR 0060).
+    if (request.method === "PATCH" && /^\/v1\/tasks\/[^/]+$/.test(request.path) && Object.keys(request.body ?? {}).length !== 1) {
+      throw new HttpError(422, "invalid_args", "a job's PATCH is {title} or {scale}");
     }
     if (/^\/v1\/credential-operations\//.test(request.path) && request.body?.action === "repair" && !request.body.value) throw new HttpError(422, "invalid_args", "credential value required");
   } catch (error) {

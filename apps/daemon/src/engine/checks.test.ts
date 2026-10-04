@@ -143,3 +143,32 @@ describe("createPlanChecks: judging pictures from level 5", () => {
     f.close();
   });
 });
+
+describe("createPlanChecks: standard checks (ADR 0060)", () => {
+  test("a standard check runs only when named, never on a plan-wide pass, and once its ticket is through it holds the plan open no more", async () => {
+    const f = fixture();
+    f.store.db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('engine_level', '5')");
+    const sample = f.store.createTicket({ taskId: f.planB.id, title: "第一场" });
+    const unit = f.store.createTicket({ taskId: f.planB.id, title: "第二场" });
+    const now = new Date().toISOString();
+    f.store.db.run(`INSERT INTO acceptance_checks (id, task_id, ticket_id, item, kind, negate, source, created_at, updated_at, defined_at, origin, standard_of)
+      VALUES ('std-1', ?, ?, '达到样片的水准', 'continuity', 0, 'user', ?, ?, ?, 'sample', ?)`, [f.planB.id, unit.id, now, now, now, sample.id]);
+    const ran: string[] = [];
+    const evaluate: CheckEvaluator = async (_root, check) => {
+      ran.push(check.id);
+      return { outcome: "fail", exitCode: null, detail: "第 3 帧起都是静止图片", output: null };
+    };
+    const checks = createPlanChecks({ store: f.store, wake: createWakeWatch(), renderMirrors: () => {}, evaluate });
+    await checks.run(f.planB.id, { cause: "settle", only: "all" });
+    await checks.run(f.planB.id, { cause: "settle", only: "unrun" });
+    expect(ran).toEqual([]);
+    await checks.run(f.planB.id, { cause: "settle", checkIds: ["std-1"] });
+    expect(ran).toEqual(["std-1"]);
+    // Failed and its ticket still open: it holds a plan read as done open, as any failing gate does.
+    expect(f.store.checksHoldingPlanOpen(f.planB.id).map((check) => check.id)).toEqual(["std-1"]);
+    // Its ticket approved: what it judged is decided, and it holds nothing.
+    f.store.db.run("UPDATE tickets SET status = 'done', stage = 'approved' WHERE id = ?", [unit.id]);
+    expect(f.store.checksHoldingPlanOpen(f.planB.id)).toEqual([]);
+    f.close();
+  });
+});

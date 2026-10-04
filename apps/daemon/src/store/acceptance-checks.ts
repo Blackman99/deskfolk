@@ -71,12 +71,14 @@ type AcceptanceCheckRow = {
   defined_at: string;
   first_passed_at: string | null;
   removed_at: string | null;
-  origin: "derived" | "reflection" | null;
+  origin: "derived" | "reflection" | "sample" | null;
   measure: string | null;
   quote_id: string | null;
   bind_kind: "glob" | null;
   bind_glob: string | null;
   derived_state: "proposed" | "active" | null;
+  /** A standard check's sample ticket (ADR 0060); null on every other check. */
+  standard_of?: string | null;
 };
 
 export type { AcceptanceCheckRow };
@@ -231,6 +233,7 @@ function toAcceptanceCheck(ctx: StoreContext, row: AcceptanceCheckRow): Acceptan
     bind_kind: row.bind_kind,
     bind_glob: row.bind_glob,
     derived_state: row.origin === "derived" ? (row.derived_state ?? "proposed") : null,
+    standard_of: row.standard_of ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
     defined_at: row.defined_at,
@@ -901,5 +904,13 @@ export function checkNeverRanSinceDefinition(check: Pick<AcceptanceCheck, "defin
  * that is no gate is not one: only offered, set aside, or with no file bound yet (ADR 0040 P3).
  */
 export function checksHoldingPlanOpen(ctx: StoreContext, taskId: string): AcceptanceCheck[] {
-  return listChecks(ctx, taskId).filter((check) => !derivedNotGate(check) && (checkNeverRanSinceDefinition(check) || check.last_run?.outcome === "fail"));
+  return listChecks(ctx, taskId).filter((check) => !derivedNotGate(check) && !standardSettled(ctx, check)
+    && (checkNeverRanSinceDefinition(check) || check.last_run?.outcome === "fail"));
+}
+
+/** A standard check (ADR 0060) on a ticket already through (approved or dropped): it judged that hand-over, and holds nothing after. */
+function standardSettled(ctx: StoreContext, check: AcceptanceCheck): boolean {
+  if (!check.standard_of || !check.ticket_id) return false;
+  return Boolean(ctx.db.query(`SELECT 1 FROM tickets WHERE id = ? AND (stage IN ('approved', 'dropped')
+    OR (stage IS NULL AND status IN ('done', 'parked')))`).get(check.ticket_id));
 }

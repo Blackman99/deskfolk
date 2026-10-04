@@ -6,6 +6,14 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Large jobs are laid out first, with a sample made first
+
+- A large job — a whole episode, a book of many chapters — is no longer made as one thing in one go. The app reads it from your words (and reads again when segments go by with nothing approved); the plan panel says "A large job" under its name with what showed it, and "No need" beside it. Until it is laid out, Bots cannot generate images or video or hand anything over; the lead lays it out with plan_items, one part marked as the sample, the others waiting for it.
+- The sample always comes to you to approve, its card saying what it took and roughly what the rest would; the other parts do not start before you approve it. After that each part is compared with the sample when handed over — picture, richness, sound and subtitles, quality — and sent back with what falls short. The last part, which delivers the job, is yours to approve too.
+- A ticket's "waits for" now holds: the next ticket is not woken, and cannot generate or hand over, until the one it waits for is handed over — or, for the sample, until you approve it. The board reads "Waits for you to approve sample #02".
+- In a laid-out job the next part starts as soon as the one it waits for is handed in: the supervisor calls its owner at the next tick, not after the 10-minute quiet window. A lead that names a ticket of its job where the job goes is put on that ticket; it used to be told only to pick a candidate, and stopped to ask you.
+- The video director and its film-kit changed with it: budget shots, money and time first and make the film shorter rather than fill it with stills; cut only with cut.py, voice lines and subtitles tied to their shots; check.py now fails still images used as shots, stills under camera moves (43% of the 20-minute cut that prompted this, 0% of the real animated pilots), a picture shown over and over, and a master not cut by cut.py. It was prompted by a 20-minute episode that came back as 40 pictures zoomed and panned over and over, its voice lines pinned to round seconds, which the old checks all passed.
+
 ### Bots say only what matters
 
 - Every Bot is told to leave out filler — a sentence whose removal or addition changes nothing in what the message means — such as opening acknowledgements, restating the request, apologies and thanks, self-praise, announcing what it changed when the content shows it, and endings that ask you to confirm or to say if anything should change. It opens with the content itself. Long content you asked for is written in full. On the video director's reply to 「这个排版不对…按照剧情逐渐推进」, two runs went from 4098 and 3759 characters to 2326 and 2020, with the same plot outline and shot list.

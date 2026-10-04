@@ -5,6 +5,7 @@
  * too, in one transaction with the spec, so a plan is never half-updated.
  */
 import { ballHolder } from "./supervisor";
+import { planScale } from "./large-jobs";
 import type { AcceptanceCheck, TaskDetail, TaskSpecRevision, Ticket, TicketBall, TicketStatus } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
@@ -628,7 +629,7 @@ function ballOn(ctx: StoreContext, ticketId: string): { ball?: TicketBall } {
     case "reviewer":
       return { ball: { kind: holder.kind, bot_id: holder.botId } };
     case "app":
-      return { ball: { kind: "app", reason: holder.reason } };
+      return { ball: { kind: "app", reason: holder.reason, ...(holder.reason === "waits" ? { waits_for: holder.ref } : {}) } };
     case "user":
       return { ball: { kind: "user", reason: holder.reason } };
   }
@@ -662,6 +663,8 @@ export function taskDetail(ctx: StoreContext, taskId: string, present: (path: st
     last_change: planLastChange(ctx, taskId),
     ...(withBall ? { supervision_on: true } : {}),
     ...(readEngineLevel(ctx.db) >= ENGINE_LEVELS.routing ? { routing_on: true } : {}),
+    // The job's size (ADR 0060): only where large jobs are on, and only once something has read it.
+    ...(withStages ? { scale: planScale(ctx, taskId) } : {}),
     ...(withStages ? { submissions_on: true, reviewer_ids: ctx.db.query<{ id: string }, [string]>(`SELECT b.id FROM bots b
       JOIN session_participants sp ON sp.member = b.id AND sp.left_at IS NULL AND sp.session_id = (SELECT session_id FROM tasks WHERE id = ?)
       WHERE b.archived_at IS NULL AND b.deleted_at IS NULL ORDER BY sp.joined_at, b.id`).all(taskId).map((row) => row.id) } : {}),

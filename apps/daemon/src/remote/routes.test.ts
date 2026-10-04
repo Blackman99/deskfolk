@@ -64,6 +64,11 @@ test("plans and tickets: reads are whitelisted, a spec edit carries the whole sp
   bad(rename({ title: 3 }));
   bad(rename({ title: "一拳超人", goal: "x" }));
   bad(rename({}));
+  // Or what size it is (ADR 0060): one of the two at a time.
+  ok(rename({ scale: "single" }));
+  ok(rename({ scale: "large" }));
+  bad(rename({ scale: "huge" }));
+  bad(rename({ title: "一拳超人", scale: "single" }));
 
   const ticketEdit = (body: Record<string, unknown>): RemoteRequest => ({ v: 1, id, method: "PATCH", path: `/v1/tickets/${id}`, body });
   ok(ticketEdit({ status: "done", if_revision: 1 }));

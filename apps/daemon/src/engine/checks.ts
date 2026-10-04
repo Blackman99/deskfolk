@@ -10,6 +10,7 @@ import type { AcceptanceCheck, Locale } from "@real-bot/protocol";
 import { evaluateCheck, type CheckVerdict, type SeamsEvalDeps } from "../acceptance-eval";
 import { NO_ABLATION, type Ablation } from "../ablation";
 import type { JudgeSeams } from "../seams-check";
+import type { JudgeStandard } from "../standard-check";
 import type { TurnAdmission } from "../quiesce";
 import { parsePlanSpec, type Store, type Task } from "../store";
 import { ENGINE_LEVELS } from "../store/schema-gate";
@@ -18,8 +19,10 @@ import type { WakeWatch } from "../wake";
 export type CheckEvaluator = (
   root: string | null,
   check: AcceptanceCheck,
-  opts: { signal?: AbortSignal; wake?: WakeWatch; locale?: Locale; continuity?: SeamsEvalDeps },
+  opts: { signal?: AbortSignal; wake?: WakeWatch; locale?: Locale; continuity?: SeamsEvalDeps; standard?: StandardDeps },
 ) => Promise<CheckVerdict>;
+
+type StandardDeps = { sides: ReturnType<Store["standardSides"]>; judge: JudgeStandard; rules: readonly string[]; sessionId: string | null };
 
 export type PlanChecksDeps = {
   store: Store;
@@ -37,6 +40,8 @@ export type PlanChecksDeps = {
    * `error` outcome.
    */
   judgeContinuity?: JudgeSeams;
+  /** The judge a standard check (照样片, ADR 0060) asks; wired like `judgeContinuity`. */
+  judgeStandard?: JudgeStandard;
   /** Benchmark switches (see `ablation.ts`): `acceptance-checks` makes every method here a no-op. */
   ablation?: Ablation;
 };
@@ -72,6 +77,12 @@ export function createPlanChecks(deps: PlanChecksDeps): PlanChecks {
       throw new Error("continuity checks are not wired up here");
     });
 
+  const judgeStandard: JudgeStandard =
+    deps.judgeStandard ??
+    (async () => {
+      throw new Error("standard checks are not wired up here");
+    });
+
   const inFlight = new Map<string, Promise<void>>();
   const rerun = new Map<string, RunOptions>();
   const controllers = new Map<string, AbortController>();
@@ -100,6 +111,19 @@ export function createPlanChecks(deps: PlanChecksDeps): PlanChecks {
   async function evaluateOne(check: AcceptanceCheck, root: string | null, signal: AbortSignal, task: Task, seen: { vision: boolean }): Promise<CheckVerdict> {
     const resolved: AcceptanceCheck = check.kind === "command" ? { ...check, cwd: effectiveCwd(check) } : check;
     const locale = store.settingsCached().locale;
+    if (check.standard_of) {
+      // 照样片 (ADR 0060): a gate even when it judges pictures, but never under your stop or past
+      // the day's picture budget — then it is not judged this time, which holds nothing.
+      const judge: JudgeStandard = async (evidence, ...rest) => {
+        if (evidence.some((item) => item.kind === "image")) {
+          const refusal = store.visionRefusal(task.id);
+          if (refusal) throw new Error(refusal);
+        }
+        return judgeStandard(evidence, ...rest);
+      };
+      const standard: StandardDeps = { sides: store.standardSides(check.id), judge, rules: parsePlanSpec(task.spec)?.rules ?? [], sessionId: task.session_id };
+      return exclusiveCommand(() => evaluate(root, resolved, { signal, wake, locale, standard }));
+    }
     if (check.kind === "continuity") {
       // A judgement of pictures, from level 5, is only a reference (ADR 0046): marked as such, not
       // made under your stop or past the day's cap — the check then reads as not judged this time.
@@ -142,6 +166,11 @@ export function createPlanChecks(deps: PlanChecksDeps): PlanChecks {
     // A check from your words with no file to measure yet has nothing to run on; one you have not
     // confirmed is measured all the same, its result shown and never a block (ADR 0040 P3).
     let targets = checks.filter((check) => !(check.origin === "derived" && !check.bind_kind));
+    // A standard check (照样片, ADR 0060) judges a hand-over: it runs when one is made or decided,
+    // named by id, never on a plan-wide pass. Rerun at a settle after its ticket was approved, the
+    // judge flipped once and the failure put a delivered job back to in progress (2026-10-04); for
+    // video every settle would also pay for frames again.
+    if (!opts.checkIds?.length) targets = targets.filter((check) => !check.standard_of);
     if (opts.checkIds?.length) {
       const want = new Set(opts.checkIds);
       targets = targets.filter((check) => want.has(check.id));

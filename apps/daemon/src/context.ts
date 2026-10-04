@@ -329,6 +329,15 @@ export type PlanFacts = {
   trace: string[];
   /** The appointment this Bot still has in this session, if any. */
   check_back: { in_minutes: number; note: string } | null;
+  /**
+   * A large job (大活, ADR 0060): what showed it, what one unit is, whether it is laid out yet, its
+   * sample and how it stands, and the ticket this turn's ticket waits for. Absent for other jobs.
+   */
+  large?: {
+    why: string | null; unit: string | null; laid_out: boolean;
+    sample: { seq: number; title: string; stage: string } | null;
+    waiting_on: { seq: number; title: string; sample: boolean } | null;
+  };
   /** The plan's name, the one every tag on a line from it uses. */
   title: string;
   /** Where the plan was opened, when that is not this session. */
@@ -582,8 +591,48 @@ export function planFacts(
     home: task.session_id && task.session_id !== input.sessionId ? where(task.session_id) : null,
     elsewhere,
     other_work,
+    ...largeJobFacts(store, input.taskId, ticket?.id ?? null),
     ...reworkAsked(store, input.triggerMessageId),
   };
+}
+
+/** A large job's standing for the situation (ADR 0060); nothing for another job. */
+function largeJobFacts(store: Store, taskId: string, ticketId: string | null): Pick<PlanFacts, "large"> {
+  const scale = store.planScale(taskId);
+  const sample = store.sampleOf(taskId);
+  const waiting = ticketId ? store.waitingOn(ticketId) : null;
+  if (scale?.value !== "large" && !sample && !waiting?.sample) return {};
+  return { large: { why: scale?.why ?? null, unit: scale?.unit ?? null, laid_out: !store.layoutMissing(taskId),
+    sample: sample ? { seq: sample.seq, title: sample.title, stage: sample.stage } : null,
+    waiting_on: waiting ? { seq: waiting.seq, title: waiting.title, sample: waiting.sample } : null } };
+}
+
+/** The lines a large job adds to the situation: lay it out first, the sample first, and what waits for what. */
+function largeJobLines(large: NonNullable<PlanFacts["large"]>, locale: Locale): string[] {
+  const en = locale === "en";
+  const n = (seq: number) => String(seq).padStart(2, "0");
+  const lines: string[] = [];
+  if (!large.laid_out) {
+    lines.push(en
+      ? `This is a large job${large.why ? ` (the user: 「${large.why}」)` : ""}. Lay it out before making anything: the plan's lead calls plan_items with the units${large.unit ? ` (${large.unit} each)` : ""}, `
+        + "one of them sample: true — made first, to the full standard the whole job needs, for the user to approve — the rest waiting for it, and a last one that puts them together. "
+        + "Until then the app refuses generating calls (images, video and other MCP calls with side effects) and hand-overs; reading, notes, scripts and local commands go on."
+      : `这是件大活${large.why ? `（用户说的「${large.why}」）` : ""}。先拆再做：规划负责人用 plan_items 拆成几件${large.unit ? `（每件${large.unit}）` : ""}，`
+        + "其中一件标 sample: true 作样片——先做、按整件事要的水准做足、交给用户放行——其余各件等它，最后一件负责组装。"
+        + "拆好之前，应用会拒绝出图、出视频这类有副作用的外部调用和交付；读文件、写笔记和脚本、跑本地命令照常。");
+  }
+  if (large.sample) {
+    const approved = large.sample.stage === "approved";
+    lines.push(en
+      ? `Sample: ticket #${n(large.sample.seq)} "${large.sample.title}" — ${approved ? "approved by the user; every other unit is compared with it when handed over" : "not approved yet; the units waiting for it do not start until the user approves it"}.`
+      : `样片：任务 #${n(large.sample.seq)}「${large.sample.title}」——${approved ? "用户已放行；其余各件交上来时拿它对照水准" : "还没放行；等它的各件在用户放行前不开工"}。`);
+  }
+  if (large.waiting_on) {
+    lines.push(en
+      ? `This turn's ticket waits for ticket #${n(large.waiting_on.seq)} "${large.waiting_on.title}"${large.waiting_on.sample ? " (the sample)" : ""}: generating and handing over on it are refused until that one is through.`
+      : `这一轮的任务在等任务 #${n(large.waiting_on.seq)}「${large.waiting_on.title}」${large.waiting_on.sample ? "（样片）" : ""}：它过了之前，这张任务上出图出视频和交付都会被拒。`);
+  }
+  return lines;
 }
 
 /**
@@ -877,6 +926,7 @@ export function planLines(facts: PlanFacts, locale: Locale): string[] {
   // The user's own words and what they asked, before anything the app or a Bot made of them. The
   // plan's rules and Done-when lines are in the ledger now, typed on the board or taken in as old rules.
   if (facts.quotes) lines.push(quoteLines(facts.quotes, locale));
+  if (facts.large) lines.push(...largeJobLines(facts.large, locale));
   lines.push(...requirementLines(facts.requirements, locale));
   if (facts.calibration.length > 0) {
     const rows = facts.calibration.map((miss) => en

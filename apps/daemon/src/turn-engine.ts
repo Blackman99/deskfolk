@@ -15,7 +15,8 @@ import { createCompletionsClient, type CompletionsClient } from "./completions";
 import { createChains } from "./engine/chains";
 import { createPlanChecks } from "./engine/checks";
 import { createClosing } from "./engine/closing";
-import { createSeamsJudge } from "./engine/seams-judge";
+import { createSeamsJudge, createStandardJudge } from "./engine/seams-judge";
+import { createScaleWatch } from "./engine/scale-watch";
 import { createComposer } from "./engine/composer";
 import { HELD_CALL, mayAct } from "./engine/control";
 import { createCore } from "./engine/core";
@@ -331,6 +332,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     ablation,
   });
 
+  // Large jobs (ADR 0060): your lines and the supervisor's signal read whether a job is one.
+  const scaleWatch = createScaleWatch({ store, reader, track: core.track });
+
   const seamsJudge = createSeamsJudge({
     completions,
     async routing() {
@@ -340,12 +344,21 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     spend,
   });
 
+  const judgeDeps = {
+    completions,
+    async routing() {
+      const creds = await routing.credentials().catch(() => null);
+      return creds ? routing.routingTarget(creds) : null;
+    },
+    spend,
+  };
   const checks = createPlanChecks({
     store,
     admission: options.admission,
     wake,
     renderMirrors: organizer.renderMirrors,
     judgeContinuity: seamsJudge,
+    judgeStandard: createStandardJudge(judgeDeps),
     ablation,
   });
 
@@ -624,6 +637,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     }
     store.afterCommit(() => void core.track(scribe.noteLine(messageId, scribe.handedOverAt())));
     store.afterCommit(() => submissions.noteComplaint(messageId));
+    store.afterCommit(() => scaleWatch.noteLine(messageId));
   }
 
   const engine: TurnEngine = {
@@ -726,6 +740,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         if (fromUser) void core.track(scribe.noteLine(message.id, handedOver));
         // Its numbers become checks as soon as it is filed, whatever the scribe makes of it.
         if (fromUser) derivedChecks.noteLine(message.id);
+        // And whether its job is a large one, read once while nothing has said either way (ADR 0060).
+        if (fromUser) scaleWatch.noteLine(message.id);
       }
     },
     settlePlan(taskId) {
@@ -764,6 +780,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       if (store.capabilities().engine_level < ENGINE_LEVELS.supervision || options.admission?.draining) return;
       const tick = store.supervisorTick({ now: at.toISOString() });
       for (const message of tick.messages) core.publishMessage(message);
+      scaleWatch.tick();
       // Gates a waiting hand-over needs before it can be decided: run now, read at the next tick.
       for (const due of tick.checksToRun ?? []) void core.track(checks.run(due.taskId, { cause: "settle", checkIds: due.checkIds }));
       // A segment cut off picks up from its own 「中断」 or failure line, as its Continue would:

@@ -737,6 +737,12 @@ export function createTools(deps: ToolsDeps): Tools {
     // same submit within half an hour gets the first job back; a part with a job pending, or a result
     // not handed over yet, is not submitted again without a reason.
     const pair = store.jobsOn() ? jobPair(name, live.mcpTools) : null;
+    // A large job not laid out yet, or a ticket still waiting for another (ADR 0060): nothing is
+    // generated through a server meanwhile. Reading and checking on a job already running go on.
+    if (pair?.kind !== "check" && live.mcpTools.get(name)?.readOnly !== true) {
+      const refusal = store.largeJobRefusal(turn.id);
+      if (refusal) return { ok: false, error: { code: refusal.code, message: refusal.message }, emitted: [] };
+    }
     const en = live.locale === "en";
     let forwarded = outgoing.args;
     let job: { digest: string; partNo: number | null; reason: string | null } | null = null;

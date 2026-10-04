@@ -5,6 +5,7 @@
  */
 import type { HoldScope, HoldTarget } from "@real-bot/protocol";
 import { HttpError } from "../errors";
+import { waitingOn } from "./large-jobs";
 import { isoNow, ulid } from "../ids";
 import { HOLD_SCOPES, holdsCovering } from "./holds";
 import { holdInboxItems, queueInboxItem, refreshHeldInbox, supersedeInboxItems, type InboxItem } from "./inbox";
@@ -417,6 +418,12 @@ export function delegateWork(ctx: StoreContext, input: {
     const requirementIds = identifiers(input.requirementIds, "requirementIds");
     validateBindings(ctx, from.task_id, ticketId, partKeys, requirementIds);
     refuseOwnTicket(ctx, { botId: from.bot_id, ticketId, expects: input.expects, partKeys });
+    // Asking for a ticket's deliverable starts it: not while it waits for another (ADR 0060).
+    const waited = input.expects === "deliverable" && ticketId ? waitingOn(ctx, ticketId) : null;
+    if (waited) {
+      throw new HttpError(409, "waits_for", `that ticket waits for ticket #${String(waited.seq).padStart(2, "0")} "${waited.title}"${waited.sample
+        ? ", the job's sample, which the user has not approved yet" : ", which has not been handed over yet"}: ask for it once that one is through`);
+    }
     const threadId = thread(ctx, from, target.id, now);
     const recipientHome = planHome && isPresent(ctx, planHome, target.id) ? planHome
       : isPresent(ctx, from.home_session_id, target.id) ? from.home_session_id : from.session_id;

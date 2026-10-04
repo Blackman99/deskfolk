@@ -296,15 +296,15 @@ export const REVIEW: ToolDef = {
 export const PLAN_ITEMS: ToolDef = {
   name: "plan_items",
   description: {
-    zh: "只给规划负责人（存下的或用户确认的，私聊里就是你）：一次把这件事拆成任务——每张写标题、谁做（owner，新任务必填）、谁审（reviewer，可省略，不能是做的人）、要等哪些任务先完成（depends_on，写其他任务的标题或编号），以及分件（parts，如「Shot 07」）。标题和规划里已有的任务相同时就是那张任务：只补空着的谁做、谁审（已经有人的不换，结果里 kept 会写明），依赖和分件只加不减；已完成、搁置或已通过的任务不动。全部合法才一起生效。负责人之外的 Bot 不能用：要拆活，委派给负责人。",
-    en: "For the plan's lead only (the stored one or the one the user confirmed; in a direct, you): lay the plan out as tickets in one call — each with a title, who makes it (owner, required for a new ticket), who reviews it (reviewer, optional, never the owner), which tickets it waits for (depends_on: other tickets' titles or numbers) and its parts (parts, such as \"Shot 07\"). A title the plan already has is that ticket: only an empty owner or reviewer is filled in (one already set stays, and kept says so), and dependencies and parts are only added; a ticket that is done, parked or approved is not touched. The call stands only if every item does. Other Bots cannot use it: to split work, delegate to the lead.",
+    zh: "只给规划负责人（存下的或用户确认的，私聊里就是你）：一次把这件事拆成任务——每张写标题、谁做（owner，新任务必填）、谁审（reviewer，可省略，不能是做的人）、要等哪些任务先完成（depends_on，写其他任务的标题或编号），以及分件（parts，如「Shot 07」）。大活（局面里写着的）要标一件 sample: true 作样片：先做、按整件事的水准做足、由用户放行；其余各件自动等它，放行后交上来时拿它对照。样片之前要先有的（设定、提纲）可以让样片 depends_on 它们。一件事只有一个样片。标题和规划里已有的任务相同时就是那张任务：只补空着的谁做、谁审（已经有人的不换，结果里 kept 会写明），依赖和分件只加不减；已完成、搁置或已通过的任务不动。全部合法才一起生效。负责人之外的 Bot 不能用：要拆活，委派给负责人。",
+    en: "For the plan's lead only (the stored one or the one the user confirmed; in a direct, you): lay the plan out as tickets in one call — each with a title, who makes it (owner, required for a new ticket), who reviews it (reviewer, optional, never the owner), which tickets it waits for (depends_on: other tickets' titles or numbers) and its parts (parts, such as \"Shot 07\"). A large job (your situation says so) marks one item sample: true — made first, to the full standard of the whole job, approved by the user; the other tickets wait for it, and once it is approved each is compared with it when handed over. What the sample needs before it (a style sheet, an outline) can be its depends_on. A job has one sample. A title the plan already has is that ticket: only an empty owner or reviewer is filled in (one already set stays, and kept says so), and dependencies and parts are only added; a ticket that is done, parked or approved is not touched. The call stands only if every item does. Other Bots cannot use it: to split work, delegate to the lead.",
   },
   properties: {
     items: {
       type: "array",
       description: {
-        zh: "每张任务一项：title、owner（在场 Bot 的名字或 id）、reviewer、depends_on（字符串列表）、parts（字符串列表）。",
-        en: "One per ticket: title, owner (a Bot here, by name or id), reviewer, depends_on (list of strings), parts (list of strings).",
+        zh: "每张任务一项：title、owner（在场 Bot 的名字或 id）、reviewer、depends_on（字符串列表）、parts（字符串列表）、sample（是否样片，true 或省略）。",
+        en: "One per ticket: title, owner (a Bot here, by name or id), reviewer, depends_on (list of strings), parts (list of strings), sample (true for the job's sample, else left out).",
       },
       items: {
         type: "object",
@@ -314,6 +314,7 @@ export const PLAN_ITEMS: ToolDef = {
           reviewer: { type: "string" },
           depends_on: { type: "array", items: { type: "string" } },
           parts: { type: "array", items: { type: "string" } },
+          sample: { type: "boolean" },
         },
         required: ["title"],
       },

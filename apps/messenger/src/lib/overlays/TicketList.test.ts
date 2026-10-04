@@ -543,3 +543,22 @@ test("an approved ticket says who made it, a dropped one is nobody's, and neithe
   expect(rowFor(view.host, "竖版海报").querySelector(".ticket-depends")).toBeNull();
   view.close();
 });
+
+test("a large job's sample carries its tag, and a ticket waiting for it says it waits for your approval of it (ADR 0060)", () => {
+  const view = open({
+    detail: aDetail({
+      supervision_on: true,
+      tickets: [
+        aTicket({ id: "t1", seq: 1, title: "设定集", status: "done", stage: "approved" }),
+        aTicket({ id: "t2", seq: 2, title: "第一场", sample: true, depends_on: ["t1"], ball: { kind: "owner", bot_id: "bot-1" } }),
+        aTicket({ id: "t3", seq: 3, title: "第二场", status: "todo", sample: false, depends_on: ["t2"], ball: { kind: "app", reason: "waits", waits_for: "t2" } }),
+        aTicket({ id: "t4", seq: 4, title: "配乐", status: "todo", depends_on: ["t1"], ball: { kind: "app", reason: "waits", waits_for: "t1" } }),
+      ],
+    }),
+  });
+  expect(rowFor(view.host, "第一场").querySelector(".ticket-sample")?.textContent).toBe(t.plan.sample);
+  expect(rowFor(view.host, "第二场").querySelector(".ticket-sample")).toBeNull();
+  expect(rowFor(view.host, "第二场").querySelector(".ticket-ball")?.textContent).toBe("等样片 #02 你放行");
+  expect(rowFor(view.host, "配乐").querySelector(".ticket-ball")?.textContent).toBe("等 #01 先交");
+  view.close();
+});

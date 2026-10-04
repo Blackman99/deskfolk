@@ -16,6 +16,7 @@ import type { AcceptanceCheck, AcceptanceCheckOutcome, Locale } from "@real-bot/
 import { measureLabel, unboundNote } from "./derived-checks";
 import { runMeasureCheck } from "./measure-check";
 import { runSeamsCheck, type JudgeSeams } from "./seams-check";
+import { runStandardCheck, type StandardEvalDeps } from "./standard-check";
 import { ENV_WHITELIST } from "./terminal-env";
 import { classifyPath, classifyShell } from "./workspace-paths";
 import type { WakeWatch } from "./wake";
@@ -362,11 +363,19 @@ export type SeamsEvalDeps = {
 export async function evaluateCheck(
   root: string | null,
   check: AcceptanceCheck,
-  opts: { signal?: AbortSignal; wake?: WakeWatch; env?: Record<string, string>; locale?: Locale; continuity?: SeamsEvalDeps } = {},
+  opts: { signal?: AbortSignal; wake?: WakeWatch; env?: Record<string, string>; locale?: Locale; continuity?: SeamsEvalDeps; standard?: Omit<StandardEvalDeps, "locale" | "signal" | "env"> } = {},
 ): Promise<CheckVerdict> {
   if (!root) return { outcome: "blocked", exitCode: null, detail: sayer(opts.locale ?? "zh")("没有打开工作区", "no workspace is open"), output: null };
   if (check.kind === "command") return runCommandCheck(root, check, opts);
   if (check.kind === "measure") return runMeasureCheck(root, check, opts);
+  // 照样片 (ADR 0060): stored as a seams check an older build reads as one with nothing to compare.
+  if (check.standard_of) {
+    if (!opts.standard) {
+      return { outcome: "error", exitCode: null, detail: sayer(opts.locale ?? "zh")("照样片检查没有接上判定模型", "standard checks are not wired up here"), output: null };
+    }
+    const { pictures: _pictures, ...verdict } = await runStandardCheck(root, check, { ...opts.standard, locale: opts.locale, signal: opts.signal, env: opts.env });
+    return verdict;
+  }
   if (check.kind === "continuity") {
     if (!opts.continuity) {
       return { outcome: "error", exitCode: null, detail: sayer(opts.locale ?? "zh")("衔接检查没有接上判定模型", "seams checks are not wired up here"), output: null };
@@ -386,10 +395,11 @@ export async function evaluateCheck(
 
 /** One line describing what a check verifies, for the plan's mirror files. */
 export function describeCheck(
-  check: Pick<AcceptanceCheck, "kind" | "path" | "pattern" | "negate" | "command" | "cwd" | "measure">,
+  check: Pick<AcceptanceCheck, "kind" | "path" | "pattern" | "negate" | "command" | "cwd" | "measure"> & { standard_of?: string | null },
   locale: Locale,
 ): string {
   const zh = locale === "zh";
+  if (check.standard_of) return zh ? "交上来的和放行的样片对照，看是否达到同样的水准" : "Compares what is handed over with the approved sample for the same standard";
   if (check.kind === "measure") {
     const what = check.measure ? measureLabel(check.measure, locale) : "";
     if (!check.path) return zh ? `${what}（${unboundNote(locale)}）` : `${what} (${unboundNote(locale)})`;

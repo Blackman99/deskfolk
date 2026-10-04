@@ -20,6 +20,7 @@ import { migrateLessons } from "./lessons";
 import { migrateQuality } from "./quality";
 import { migrateReflections } from "./reflection";
 import { migrateSharedSkills } from "./shared-skills";
+import { migrateLargeJobs } from "./large-job-migration";
 import { clipQuote, QUOTE_TRIGGERS } from "./quotes";
 import { REQUIREMENT_TRIGGERS } from "./requirements";
 import { REQUIREMENT_CARD_TRIGGERS, settleAnsweredLegacyCards } from "./plan-requirements";
@@ -300,6 +301,7 @@ export function migrateSchema(db: Database): void {
   migrateLessons(db);
   migrateReflections(db);
   migrateSharedSkills(db);
+  migrateLargeJobs(db);
   // After every column tasks gains above (the rebuild copies the table as it then stands), and
   // before the triggers below, which are made again over the rebuilt table.
   migrateNullableTaskSession(db);

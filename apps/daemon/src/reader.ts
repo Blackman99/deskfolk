@@ -23,6 +23,8 @@ import type { CompletionsClient, JudgeResult, MappedUsage } from "./completions"
 import {
   botLineByWords,
   UNREAD_FILING,
+  UNREAD_SCALE,
+  type ScaleReading,
   userLineByWords,
   type BotLineReading,
   type FilingReading,
@@ -37,6 +39,9 @@ import {
   parseUserLineAnswer,
   READ_BOT_LINE_SYSTEM,
   READ_FILING_SYSTEM,
+  READ_SCALE_SYSTEM,
+  parseScaleAnswer,
+  scalePayload,
   READ_USER_LINE_SYSTEM,
   userLinePayload,
 } from "./prompts/reader";
@@ -90,13 +95,20 @@ export type Reader = {
    * rejects; what no model could read comes back `unread`, for the Bot's desk.
    */
   filing: (message: Message) => Promise<FilingReading | null>;
+  /**
+   * Whether a job is a large one (ADR 0060), read from your lines about it — and, when the signal
+   * asks, the facts of how it has gone — once per `key`. Never rejects; what no model could read
+   * comes back `unread`.
+   */
+  scale: (input: { key: string; sessionId: string | null; title: string; goal: string | null; said: readonly string[];
+    facts?: { segments: number; handedBack: number } | null }) => Promise<ScaleReading>;
   /** Shutting down: calls in flight are abandoned, and read by the word lists. */
   stop: () => void;
 };
 
 type Asked<T> = {
   key: string;
-  kind: "user_line" | "bot_line" | "filing";
+  kind: "user_line" | "bot_line" | "filing" | "scale";
   sessionId: string | null;
   messageId: string | null;
   system: string;
@@ -317,11 +329,27 @@ export function createReader(deps: ReaderDeps): Reader {
     });
   }
 
+  function scale(input: Parameters<Reader["scale"]>[0]): Promise<ScaleReading> {
+    return remember(input.key, () => read<ScaleReading>({
+      key: input.key,
+      kind: "scale",
+      sessionId: input.sessionId,
+      messageId: null,
+      system: READ_SCALE_SYSTEM,
+      payload: scalePayload(input),
+      parse: (raw) => parseScaleAnswer(raw, input.said),
+      // No word list says how big a thing is: an unread job is only the signal's to call large.
+      fallback: () => UNREAD_SCALE,
+      fallbackNote: "left unread",
+    }));
+  }
+
   return {
     userLine,
     userText,
     botLine,
     filing,
+    scale,
     stop() {
       stopped = true;
       for (const controller of inFlight) controller.abort();

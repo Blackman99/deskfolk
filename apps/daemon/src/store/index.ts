@@ -95,6 +95,7 @@ import * as lessons from "./lessons";
 import * as reflection from "./reflection";
 import * as sharedSkills from "./shared-skills";
 import * as planItemsModule from "./plan-items";
+import * as largeJobs from "./large-jobs";
 import * as newJobModule from "./new-job-from-line";
 
 export { HttpError } from "../errors";
@@ -472,6 +473,7 @@ export class Store {
   readonly patchCheckByUser = this.bind(acceptanceChecks.patchCheckByUser);
   readonly removeCheckByUser = this.bind(acceptanceChecks.removeCheckByUser);
   readonly checkStale = this.bind(acceptanceChecks.checkStale);
+  readonly checksHoldingPlanOpen = this.bind(acceptanceChecks.checksHoldingPlanOpen);
   readonly beginCheckRun = this.bind(acceptanceChecks.beginCheckRun);
   readonly finishCheckRun = this.bind(acceptanceChecks.finishCheckRun);
   readonly markCheckRunJudgedBy = this.bind(acceptanceChecks.markCheckRunJudgedBy);
@@ -621,6 +623,17 @@ export class Store {
   readonly setSharedSkillEnabled = this.bind(sharedSkills.setSharedSkillEnabled);
   readonly unshareSkill = this.bind(sharedSkills.unshareSkill);
   readonly planItems = this.bind(planItemsModule.planItems);
+  // Large jobs (大活, ADR 0060): the plan's size, its sample and what waits for it.
+  readonly planScale = this.bind(largeJobs.planScale);
+  readonly markPlanScale = this.bind(largeJobs.markPlanScale);
+  readonly largeJobRefusal = this.bind(largeJobs.largeJobRefusal);
+  readonly layoutMissing = this.bind(largeJobs.layoutMissing);
+  readonly sampleOf = this.bind(largeJobs.sampleOf);
+  readonly waitingOn = this.bind(largeJobs.waitingOn);
+  readonly signalFacts = this.bind(largeJobs.signalFacts);
+  readonly standardSides = this.bind(largeJobs.standardSides);
+  readonly scaleInputs = this.bind(largeJobs.scaleInputs);
+  readonly signalledPlans = this.bind(largeJobs.signalledPlans);
   /** 「新开一件事」: the line opens a job of its own and is filed there; the message as it now stands. */
   readonly newJobFromLine = (messageId: string, input: { title?: string | null; userActionId: string }) => this.transaction(() => {
     newJobModule.newJobFromLine(this.ctx, messageId, input);

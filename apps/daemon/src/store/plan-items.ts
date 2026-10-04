@@ -18,6 +18,7 @@ import { createTicket, getTicket, listTickets, patchTicket } from "./tickets";
 import { setTicketStage } from "./submissions";
 import { recordWorkEvent } from "./work-events";
 import { closeWorkItemIfIdle, findOrCreateWorkItem } from "./work-items";
+import { layoutMissing, planScale, sampleOf, syncStandardChecks, waitOnSample } from "./large-jobs";
 
 /** At most this many items in one call; a plan holds at most `TICKETS_MAX` tickets anyway. */
 export const PLAN_ITEMS_MAX = 20;
@@ -27,6 +28,8 @@ const PARTS_MAX = 60;
 export type PlanItemsResult = {
   tickets: Array<{
     ticket_id: string; seq: number; title: string; owner: string | null; reviewer: string | null; depends_on: string[]; parts: string[]; created: boolean;
+    /** The job's sample (ADR 0060): made first, approved by the user, and what the rest wait for. */
+    sample?: true;
     /** What was asked but left as it was: an owner or reviewer already set. */
     kept?: Array<"owner" | "reviewer">;
   }>;
@@ -34,7 +37,7 @@ export type PlanItemsResult = {
   folded?: string;
 };
 
-type Item = { title: string; owner: string | null; reviewer: string | null; dependsOn: string[]; parts: Array<{ key: string; title: string }> };
+type Item = { title: string; owner: string | null; reviewer: string | null; dependsOn: string[]; parts: Array<{ key: string; title: string }>; sample: boolean };
 
 /**
  * The lead plan_items listens to: the plan's stored lead, else a group lead you confirmed in one of
@@ -187,10 +190,12 @@ export function planItems(ctx: StoreContext, input: { turnId: string; items: unk
       if (before === undefined) parts.push(part);
       named.set(part.key, raw);
     }
-    return { title: text(entry.title, "title", 80), owner, reviewer, dependsOn: list(entry.depends_on, "depends_on"), parts };
+    if (entry.sample !== undefined && entry.sample !== null && typeof entry.sample !== "boolean") throw new HttpError(422, "invalid_args", `item ${index + 1}: sample is true or false`);
+    return { title: text(entry.title, "title", 80), owner, reviewer, dependsOn: list(entry.depends_on, "depends_on"), parts, sample: entry.sample === true };
   });
   const titles = items.map((item) => item.title.toLowerCase());
   if (new Set(titles).size !== titles.length) throw new HttpError(422, "invalid_args", "two items have the same title");
+  if (items.filter((item) => item.sample).length > 1) throw new HttpError(422, "invalid_args", "a job has one sample: mark one item sample: true");
 
   return ctx.commit(() => {
     // Same title in the plan: the same ticket (rework never opens a second one).
@@ -248,10 +253,32 @@ export function planItems(ctx: StoreContext, input: { turnId: string; items: unk
       out.push({ ticket_id: after.id, seq: after.seq, title: after.title, owner: after.owner_bot_id ?? after.worker, reviewer: after.reviewer_bot_id ?? null,
         depends_on: after.depends_on ?? [], parts: item.parts.map((part) => part.key), created, ...(kept.length > 0 ? { kept } : {}) });
     }
+    // The sample (样片, ADR 0060): one per job, made first; everything else not before it waits for it.
+    const chosen = made.find((row) => row.item.sample);
+    if (chosen) {
+      const current = sampleOf(ctx, taskId);
+      if (current && current.id !== chosen.ticket.id) {
+        throw new HttpError(409, "conflict", `this job's sample is already ticket ${String(current.seq).padStart(2, "0")} "${current.title}"; leave sample out, or the user changes it on the board`);
+      }
+      if (!current) ctx.db.run("UPDATE tickets SET sample = 1, updated_at = ? WHERE id = ?", [now, chosen.ticket.id]);
+      const row = out.find((entry) => entry.ticket_id === chosen.ticket.id);
+      if (row) row.sample = true;
+    }
     const folded = foldOpeningTicket(ctx, { taskId, turnId: input.turnId, laidOut: out.map((row) => row.ticket_id), now });
+    const waiting = waitOnSample(ctx, taskId, now);
+    for (const row of out) {
+      if (waiting.includes(row.ticket_id)) row.depends_on = getTicket(ctx, row.ticket_id).depends_on ?? [];
+    }
+    // A large job is laid out only with a sample something waits for: one ticket for it all is the job again.
+    if (layoutMissing(ctx, taskId)) {
+      const scale = planScale(ctx, taskId);
+      throw new HttpError(422, "invalid_args", `this job is a large one${scale?.unit ? ` (${scale.unit} a unit)` : ""}: lay it out as several tickets, one of them `
+        + "marked sample: true (made first, to the full standard, for the user to approve) and the others waiting for it; nothing was changed");
+    }
+    syncStandardChecks(ctx, taskId, now);
     recordWorkEvent(ctx, { kind: "plan.items", actor: turn.bot_id, botId: turn.bot_id, taskId, turnId: input.turnId,
       payload: { created: out.filter((row) => row.created).map((row) => row.ticket_id), updated: out.filter((row) => !row.created).map((row) => row.ticket_id),
-        ...(folded ? { folded } : {}) } });
+        ...(folded ? { folded } : {}), ...(chosen ? { sample: chosen.ticket.id } : {}) } });
     return { tickets: out, ...(folded ? { folded } : {}) };
   });
 }

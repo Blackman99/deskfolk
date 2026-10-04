@@ -1,6 +1,7 @@
 /**
  * 读句 (ADR 0055): the short tool-less calls that read a line for what the app acts on — one for a
- * line of yours, one for a Bot's, and one for which job a line of yours is about (ADR 0057). The
+ * line of yours, one for a Bot's, one for which job a line of yours is about (ADR 0057), and one for
+ * whether a job is a large one (ADR 0060). The
  * prompts, the payloads and the reading of the answers live here; the engine side is `reader.ts`,
  * what a reading is and how an answer is checked `line-reading.ts`.
  *
@@ -13,10 +14,12 @@ import { extractJsonObject } from "../route-agent";
 import {
   checkBotReading,
   checkFilingReading,
+  checkScaleReading,
   checkUserReading,
   type BotLineReading,
   type FilingReading,
   type FilingRefs,
+  type ScaleReading,
   type UserLineReading,
 } from "../line-reading";
 import type { LineToFile } from "../store";
@@ -213,4 +216,46 @@ export function parseUserLineAnswer(raw: string, body: string): UserLineReading 
 export function parseBotLineAnswer(raw: string, body: string): BotLineReading | null {
   const parsed = extractJsonObject(raw);
   return parsed ? checkBotReading(parsed, body) : null;
+}
+
+export const READ_SCALE_SYSTEM = `你在替一个多 Bot 协作应用判断用户交代的一件事是不是「大活」：成品由很多同类的部分组成，要先拆成几件、先做一件样片给用户看过再铺开，才做得好的事。不是回答用户，也不能发言；没有工具。
+
+输入是一个 JSON：job 是这件事（title 名字，goal 目标）；said 是用户对这件事说过的话，从早到晚；facts（有时有）是这件事做到现在的情况：segments 是 Bot 已经做了几段，handed_back 是交上去被退回或没过检查几次。
+
+large 为 true：
+- 几分钟以上的视频、动画，一整集、一部片子；
+- 很多章、很多节的书、报告、课程、教程；
+- 很多页的网站、幻灯片，很多模块的应用；
+- 一批几十个同类的东西（几十张图、几十条文案、几十个商品页）。
+large 为 false：一件东西一次就能做完——一张海报、一段几十秒的短片、一篇文章、一个函数、一个问题、一份清单、改一处。说不清就判 false。
+
+看用户要的东西本身，不看措辞：只说「做个视频」「写个故事」看不出多大，判 false；说了「20 分钟」「一整本」「全套」「三十张」才看得出。facts 里段数多、被退回多，只说明做得不顺，不等于是大活：要的东西本身大才是。
+
+quote 抄用户原话里说明它大的那几个字（没有就写 null）；unit 用几个字写一件该有多大（「一场」「一章」「一页」「十张图」），判 false 时写 null。
+
+只输出一个 JSON 对象，不要 markdown 围栏，不要前言后语：
+{"large": true, "quote": "<原话里的几个字>", "unit": "一章"}`;
+
+/** As much of each line of yours about a job as a reading of its size sends; at most this many lines, the newest. */
+const SCALE_LINE_MAX = 300;
+const SCALE_LINES = 12;
+
+export type ScalePayload = {
+  job: { title: string; goal: string | null };
+  said: string[];
+  facts?: { segments: number; handed_back: number };
+};
+
+export function scalePayload(input: { title: string; goal: string | null; said: readonly string[]; facts?: { segments: number; handedBack: number } | null }): ScalePayload {
+  return {
+    job: { title: input.title, goal: input.goal ? head(input.goal, JOB_TEXT_MAX) : null },
+    said: input.said.slice(-SCALE_LINES).map((line) => head(line, SCALE_LINE_MAX)),
+    ...(input.facts ? { facts: { segments: input.facts.segments, handed_back: input.facts.handedBack } } : {}),
+  };
+}
+
+/** The answer about a job's size as a checked reading; null when it is not one. */
+export function parseScaleAnswer(raw: string, said: readonly string[]): ScaleReading | null {
+  const parsed = extractJsonObject(raw);
+  return parsed ? checkScaleReading(parsed, said) : null;
 }

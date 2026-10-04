@@ -21,6 +21,7 @@ import { settingsCached } from "./settings";
 import { requireNonEmpty, type StoreContext } from "./shared";
 import { isReservedTaskPath } from "./tasks";
 import { ticketDependencies } from "./tickets";
+import { waitingOn } from "./large-jobs";
 import { executionRecoveryFacts } from "./tool-executions";
 import { ceilingCardOf, STAGE_SQL, superviseSubmissions, ticketReviewer, type Submission } from "./submissions";
 import { confirmedLeadsOf, conversationFor, eligibleInJob, jobConversations, spokenFor } from "./job-conversations";
@@ -54,6 +55,8 @@ export type BallHolder =
   | { kind: "app"; reason: "approval"; ref: string }
   /** From level 6: a render the daemon polls; its result wakes whoever waits on it (ADR 0047). */
   | { kind: "app"; reason: "job"; ref: string }
+  /** From level 5: a ticket it waits for is not through yet (the sample until you approve it, ADR 0060); nobody starts it meanwhile. */
+  | { kind: "app"; reason: "waits"; ref: string }
   | { kind: "user"; reason: "ask" | "blocked" | "held" | "held_dependency" | "review" | "ceiling" | "unclaimed"; ref?: string };
 
 export type SupervisorWake = {
@@ -238,6 +241,9 @@ export function ballHolder(ctx: StoreContext, input: { ticketId: string }): Ball
       return { kind: "user", reason: "held_dependency", ref: id };
     }
   }
+  // Waiting for a ticket not through (ADR 0060): nobody is called to it until that one is.
+  const waited = waitingOn(ctx, ticket.id);
+  if (waited) return { kind: "app", reason: "waits", ref: waited.id };
   if (readEngineLevel(ctx.db) >= ENGINE_LEVELS.submissions) {
     // It hit the capability ceiling: a card asks you how to go on, and nobody is woken for it meanwhile.
     const ceiling = ceilingCardOf(ctx, ticket.id);
@@ -284,11 +290,24 @@ function submissionHolder(ctx: StoreContext, ticket: TicketRow): BallHolder | nu
  * one does not hold it: set aside, it will never be done, and waiting for it would never end.
  */
 function dependenciesPending(ctx: StoreContext, ticket: TicketRow): boolean {
+  // From level 5 the rule is `waitingOn`'s (ADR 0060): another ticket holds it until handed over, the sample until approved.
+  if (readEngineLevel(ctx.db) >= ENGINE_LEVELS.submissions) return waitingOn(ctx, ticket.id) !== null;
   let parsed: unknown;
   try { parsed = JSON.parse(ticket.depends_on); } catch { return true; }
   if (!Array.isArray(parsed)) return true;
   return parsed.some((id) => typeof id !== "string"
     || !ctx.db.query("SELECT 1 FROM tickets WHERE id = ? AND task_id = ? AND status IN ('done', 'parked')").get(id, ticket.task_id));
+}
+
+/**
+ * A ticket whose turn has come: it waits for at least one other ticket and none of them holds it any
+ * more, it is still to do, and nobody has worked on it — no work item, no segment ever on it. From
+ * level 5 only, where `waitingOn` says what holds a ticket.
+ */
+function readyToStart(ctx: StoreContext, ticket: TicketRow, item: Work | null): boolean {
+  if (item || readEngineLevel(ctx.db) < ENGINE_LEVELS.submissions || ticket.status !== "todo") return false;
+  if (ticketDependencies(ticket.depends_on).length === 0 || waitingOn(ctx, ticket.id)) return false;
+  return !ctx.db.query("SELECT 1 FROM turns WHERE ticket_id = ? LIMIT 1").get(ticket.id);
 }
 
 /** A stop of yours over the work: its Bot, its plan, ticket and conversations, or any of its recent turns. */
@@ -582,8 +601,9 @@ function pickUpAttention(ctx: StoreContext, result: SupervisorTickResult, now: s
     if (work.ticket_id) {
       const holder = ballHolder(ctx, { ticketId: work.ticket_id });
       if (holder.kind === "closed" || (holder.kind === "user" && (holder.reason === "held" || holder.reason === "held_dependency"))
+        || (holder.kind === "app" && holder.reason === "waits")
         || (holder.kind === "delegation" && holder.workItemId !== work.id)) {
-        result.deferred.push({ workItemId: work.id, reason: `ball_${holder.kind === "user" ? holder.reason : holder.kind}` });
+        result.deferred.push({ workItemId: work.id, reason: `ball_${holder.kind === "user" || holder.kind === "app" ? holder.reason : holder.kind}` });
         continue;
       }
     }
@@ -751,7 +771,11 @@ function callBackOrphans(ctx: StoreContext, result: SupervisorTickResult, now: s
     if (item && heldWork(ctx, item)) continue;
     if (engaged(ctx, holder.botId, ticket.task_id, ticket.id, item?.id ?? null)) continue;
     const quiet = quietDeadline(ctx, ticket);
-    if ((since !== null && quiet.since < since) || Date.parse(now) < quiet.deadline) continue;
+    // Its turn has come (ADR 0060): a ticket nobody has started, every ticket it waits for through,
+    // is called at once rather than after the quiet window — a laid-out job goes on when the part
+    // before is in. On 2026-10-04's run the sample sat 10 minutes after its outline was approved.
+    const due = readyToStart(ctx, ticket, item);
+    if (!due && ((since !== null && quiet.since < since) || Date.parse(now) < quiet.deadline)) continue;
     const job = jobLabel(ctx, ticket.task_id, ticket.id);
     const segment = item ? latestSegment(ctx, item.id) : null;
     const unknown = uncertainEffects(ctx, segment, false);

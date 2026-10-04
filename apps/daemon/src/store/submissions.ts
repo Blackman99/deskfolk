@@ -41,6 +41,7 @@ import { settingsCached } from "./settings";
 import { requireNonEmpty, type StoreContext } from "./shared";
 import { getTask, isReservedTaskPath, setTaskSpec } from "./tasks";
 import { getTicket, toTicket, type TicketRow } from "./tickets";
+import { largeJobRefusal, sampleOf, sampleSums, sampleSumsLines, syncStandardChecks, yoursToApprove } from "./large-jobs";
 import { recordWorkEvent } from "./work-events";
 import { hasWorkAuthority, queueWork } from "./work-items";
 
@@ -406,6 +407,13 @@ export function prepareSubmission(ctx: StoreContext, input: {
     if (!turn.task_id || !turn.ticket_id || !turn.work_item_id) {
       throw new HttpError(422, "invalid_args", "a submission hands over one ticket's work: bind this segment to the ticket first (work_on with its ticket)");
     }
+    // A large job not laid out, or a ticket still waiting (ADR 0060): nothing is handed over yet. Said
+    // to a Bot that hands over itself; files or words left at an ending simply stay where they are.
+    const refusal = largeJobRefusal(ctx, turn.id);
+    if (refusal) {
+      if (input.origin === "submit") throw new HttpError(409, refusal.code, refusal.message);
+      return null;
+    }
     if (input.origin === "submit" && !hasWorkAuthority(ctx, turn.id)) throw new HttpError(409, "no_work_authority", "this segment no longer owns this work");
     if (input.origin !== "submit" && !producesTicket(ctx, { ...turn, ticket_id: turn.ticket_id })) return null;
     const ticketDir = stagedTicket(ctx, turn.ticket_id).dir;
@@ -553,13 +561,16 @@ export function boundCheckIds(ctx: StoreContext, submission: Pick<Submission, "t
 /** Each check's latest run that started at or after `since`, as a submission keeps it. A check with none reads `not_run`. */
 export function checkResults(ctx: StoreContext, checkIds: readonly string[], since: string): SubmissionCheck[] {
   return checkIds.flatMap((id) => {
-    const check = ctx.db.query<{ id: string; item: string; origin: string | null; bind_kind: string | null; derived_state: string | null; source: string }, [string]>(
-      "SELECT id, item, origin, bind_kind, derived_state, source FROM acceptance_checks WHERE id = ? AND removed_at IS NULL").get(id);
+    const check = ctx.db.query<{ id: string; item: string; origin: string | null; bind_kind: string | null; derived_state: string | null; source: string; standard_of: string | null }, [string]>(
+      "SELECT id, item, origin, bind_kind, derived_state, source, standard_of FROM acceptance_checks WHERE id = ? AND removed_at IS NULL").get(id);
     if (!check) return [];
     const run = ctx.db.query<{ outcome: string | null; detail: string; judged_by: string | null }, [string, string]>(`SELECT outcome, detail, judged_by
       FROM acceptance_check_runs WHERE check_id = ? AND finished_at IS NOT NULL AND started_at >= ? ORDER BY finished_at DESC, rowid DESC LIMIT 1`).get(id, since);
     const vision = run?.judged_by === "vision" && supervised(ctx);
-    const gate = !derivedNotGate(check) && !vision;
+    // A standard check (ADR 0060) is a gate once it judged: a pass or a fail. One it could not make
+    // (nothing to compare yet, no model, your stop, the picture budget) holds nothing back.
+    const unjudged = check.standard_of !== null && run !== null && run.outcome !== "pass" && run.outcome !== "fail";
+    const gate = !derivedNotGate(check) && !vision && !unjudged;
     // A check a reflection proposed is a gate but not yours (ADR 0051): adopting a card is not writing it.
     return [{ check_id: id, item: check.item, gate, yours: gate && (check.origin === "derived" || (check.source === "user" && check.origin !== "reflection")),
       outcome: run?.outcome ?? "not_run", detail: run?.detail ?? "", ...(vision ? { reference: "vision" as const } : {}) }];
@@ -976,13 +987,17 @@ export function reviewSubmission(ctx: StoreContext, input: {
       // Either way the clean approve moves it to your approve/reject card, its verdict shown there.
       // (Every gate passed by here: a failing or unrun one refused the approval above.)
       const unbacked = !checks.some(backs) && (sameModel || !hasEvidence(ctx, submission, verdicts));
-      if (!routine && (ORIGIN_NEEDS_USER.includes(submission.origin) || unbacked)) {
+      // A large job's sample and its last hand-over are yours past any review (ADR 0060).
+      const yours = yoursToApprove(ctx, submission.ticket_id);
+      if (!routine && (ORIGIN_NEEDS_USER.includes(submission.origin) || unbacked || yours)) {
         ctx.db.run("UPDATE submissions SET checks = ?, updated_at = ? WHERE id = ?", [JSON.stringify(checks), now, submission.id]);
         const card = askApproval(ctx, getSubmission(ctx, submission.id), now, record);
         recordWorkEvent(ctx, { kind: "review.awaiting_user", actor: turn.bot_id, botId: turn.bot_id, taskId: submission.task_id, ticketId: submission.ticket_id,
           turnId: turn.id, payload: { submission_id: submission.id, requirement_ids: [], message_id: card?.id ?? null } });
         const why = ORIGIN_NEEDS_USER.includes(submission.origin)
           ? `submission ${submission.id} is a ${submission.origin === "answer" ? "words" : "organizer"} hand-over`
+          : yours === "sample" ? `submission ${submission.id} is the job's sample, which sets the standard for the rest`
+          : yours === "last" ? `submission ${submission.id} is the large job's last hand-over, which delivers it`
           : `no check the user confirmed backs submission ${submission.id}, and ${sameModel ? "you run on the producer's own model" : "your verdicts carry no evidence"}`;
         return { ok: false, code: "awaiting_user",
           reasons: [`${why}: a review's approve moves it to the user's approve/reject card, never straight to approved`],
@@ -1037,6 +1052,8 @@ function approve(ctx: StoreContext, submission: Submission, record: ReviewRecord
   // The Bot that asked for this work hears it is in, and goes on.
   deliverDelegations(ctx, approved, { ticketApproved: openParts === 0, now });
   if (openParts === 0) closeCeilingCards(ctx, submission.ticket_id, locale(ctx) === "en" ? "The ticket was approved, so this no longer asks." : "这张任务已通过，不再问了。");
+  // The sample through: the tickets waiting for it are held to it from now on (ADR 0060).
+  if (openParts === 0 && sampleOf(ctx, submission.task_id)?.id === submission.ticket_id) syncStandardChecks(ctx, submission.task_id, now);
   settlePlanStage(ctx, submission.task_id, now);
 }
 
@@ -1200,7 +1217,14 @@ function askApproval(ctx: StoreContext, submission: Submission, now: string, rev
     const en = locale(ctx) === "en";
     const number = String(ticket.seq).padStart(2, "0");
     const verdict = review ? `\n${reviewerVerdictLine(ctx, review, submission, en)}` : "";
-    const head = submission.origin === "answer"
+    const yours = submission.origin === "answer" || submission.origin === "organizer" ? null : yoursToApprove(ctx, submission.ticket_id);
+    const head = yours === "sample"
+      ? (en ? `The sample of ${plan.title} is in: ticket ${number} "${ticket.title}" (${fileNames(submission, en)}). It sets the standard for the rest: once you approve it, they start, and each is compared with it when handed over.\n${sampleSumsLines(sampleSums(ctx, ticket.id), "en")}`
+        : `${plan.title} 的样片交上来了：任务 ${number}「${ticket.title}」（${fileNames(submission, en)}）。它定下其余各件的水准：放行后它们才开工，交上来时拿它对照。\n${sampleSumsLines(sampleSums(ctx, ticket.id), "zh")}`)
+      : yours === "last"
+        ? (en ? `The last part of ${plan.title} is in: ticket ${number} "${ticket.title}" (${fileNames(submission, en)}). Approving it delivers the job.`
+          : `${plan.title} 的最后一件交上来了：任务 ${number}「${ticket.title}」（${fileNames(submission, en)}）。放行后整件事就交付了。`)
+      : submission.origin === "answer"
       ? (en ? `Ticket ${number} "${ticket.title}" of ${plan.title}: the words themselves — "${truncatedAnswer(submission.content ?? "")}"`
         : `${plan.title} 的任务 ${number}「${ticket.title}」：交的话本身——「${truncatedAnswer(submission.content ?? "")}」`)
       : submission.origin === "organizer"
@@ -1314,7 +1338,8 @@ function takeUpAwaiting(ctx: StoreContext, submission: Submission, now: string):
   // when at least one gate you wrote or confirmed backs it and all gates pass — by here every gate
   // that ran did (the first check above sent a failure back); with none of yours bound, it waits
   // on the same card instead.
-  if (ORIGIN_NEEDS_USER.includes(submission.origin) || (!review && !checks.some(backs))) {
+  // A large job's sample and its last hand-over are always yours (ADR 0060), whatever backs them.
+  if (ORIGIN_NEEDS_USER.includes(submission.origin) || (!review && !checks.some(backs)) || yoursToApprove(ctx, submission.ticket_id)) {
     askApproval(ctx, submission, now, review);
     return { submission: getSubmission(ctx, submission.id), unrun: [] };
   }

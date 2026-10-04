@@ -4,6 +4,7 @@
  */
 import { parseMentions, type Message } from "@real-bot/protocol";
 import { HttpError } from "../errors";
+import { waitingOn } from "./large-jobs";
 import { isoNow } from "../ids";
 import { assertDeskCandidate, originalUserRequest } from "./desk";
 import { fileMessage, updatePlanDormancy } from "./filing";
@@ -66,10 +67,27 @@ export function workOn(ctx: StoreContext, input: WorkOnInput): WorkOnResult {
     const fresh = object(object(input.plan)?.new);
     let taskId: string;
     let quote: Message | null = null;
+    // A ticket of the job the segment is on, named where its job goes: that job, and that ticket. On
+    // 2026-10-04's large-job run the lead, on the book it had just laid out, could not go on to the
+    // outline ticket it owned: told only to "choose a job in this turn's candidate list", it gave up.
+    if (typeof input.plan === "string" && turn.task_id && input.plan !== turn.task_id && (input.ticket === undefined || input.ticket === null)
+      && ctx.db.query("SELECT 1 FROM tickets WHERE id = ? AND task_id = ?").get(input.plan, turn.task_id)) {
+      input = { ...input, ticket: input.plan, plan: turn.task_id };
+    }
     if (typeof input.plan === "string") {
       // The job the segment is already on needs no capture: a desk whose plan_items opened the job in
       // this very segment could not name it to go on to its own first ticket (2026-10-04).
-      if (readEngineLevel(ctx.db) >= ENGINE_LEVELS.work_items && input.plan !== turn.task_id) assertDeskCandidate(ctx, turn.id, input.plan);
+      if (readEngineLevel(ctx.db) >= ENGINE_LEVELS.work_items && input.plan !== turn.task_id) {
+        try {
+          assertDeskCandidate(ctx, turn.id, input.plan);
+        } catch (error) {
+          // Already on a job: say which, and how to name one of its tickets.
+          if (turn.task_id && error instanceof HttpError) {
+            throw new HttpError(422, error.code, `${error.message}. This segment is already on job ${turn.task_id}: to work on one of its tickets, call work_on with plan "${turn.task_id}" and ticket set to that ticket's id`);
+          }
+          throw error;
+        }
+      }
       const task = getTask(ctx, input.plan);
       const state = ctx.db.query<{ stage: string }, [string]>(`SELECT COALESCE(stage,
         CASE WHEN status = 'done' THEN 'delivered' ELSE 'active' END) AS stage FROM tasks WHERE id = ?`).get(task.id);
@@ -112,6 +130,12 @@ export function workOn(ctx: StoreContext, input: WorkOnInput): WorkOnResult {
     }
     if (holdsCovering(ctx, { botId: turn.bot_id, sessionId: turn.session_id, taskId, ticketId, turnId: turn.id }).length) {
       throw new HttpError(409, "held", "a stop of yours covers this work");
+    }
+    // A ticket waiting for another not through yet — the sample until the user approves it (ADR 0060) — is not started.
+    const waited = ticketId ? waitingOn(ctx, ticketId) : null;
+    if (waited) {
+      throw new HttpError(409, "waits_for", `this ticket waits for ticket #${String(waited.seq).padStart(2, "0")} "${waited.title}"${waited.sample
+        ? ", the job's sample, which the user has not approved yet" : ", which has not been handed over yet"}: work on that one, or on the job as a whole`);
     }
 
     const others: Array<{ taskId: string; ticketId: string | null }> = [];

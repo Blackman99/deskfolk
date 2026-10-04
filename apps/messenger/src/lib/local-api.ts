@@ -71,6 +71,7 @@ import type {
   Ticket,
   PatchTaskSpecRequest,
   RenamePlanRequest,
+  SetPlanScaleRequest,
   RequirementActionRequest,
   PatchTicketRequest,
   SessionTaskSummary,
@@ -522,6 +523,11 @@ export class LocalApi {
 
   /** Your new name for a job; its folder keeps its name. */
   async renamePlan(taskId: string, body: RenamePlanRequest): Promise<TaskDetail> {
+    return this.patch<TaskDetail>(`/v1/tasks/${encodeURIComponent(taskId)}`, body);
+  }
+
+  /** Your word on a job's size (ADR 0060): a large one is laid out with a sample first; single, it is not. */
+  async setPlanScale(taskId: string, body: SetPlanScaleRequest): Promise<TaskDetail> {
     return this.patch<TaskDetail>(`/v1/tasks/${encodeURIComponent(taskId)}`, body);
   }
 
