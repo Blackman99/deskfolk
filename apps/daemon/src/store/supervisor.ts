@@ -579,7 +579,7 @@ function pickUpAttention(ctx: StoreContext, result: SupervisorTickResult, now: s
       result.deferred.push({ workItemId: work.id, reason: "unknown_effect" });
       // A restart's own notice already says so; anything else is said here, once per segment.
       if (!restart && segment) notice(ctx, result, { key: `unknown_effect:${work.id}:${segment.id}`, code: "unknown_effect", taskId,
-        ticketId: work.ticket_id, workItemId: work.id, botId: work.bot_id, places: [work.session_id, work.home_session_id, segment.session_id],
+        ticketId: work.ticket_id, workItemId: work.id, botId: work.bot_id, places: [...jobConversations(ctx, taskId).spoken, work.session_id, work.home_session_id, segment.session_id],
         body: supervisorNoticeBody(locale(ctx), { code: "unknown_effect", job: jobLabel(ctx, taskId, work.ticket_id), bot: botName(ctx, work.bot_id), tool: unknown.at(-1) ?? null }),
         now });
       continue;
@@ -588,7 +588,7 @@ function pickUpAttention(ctx: StoreContext, result: SupervisorTickResult, now: s
     if (recent.length >= PICKUPS_PER_HOUR) {
       result.deferred.push({ workItemId: work.id, reason: "retry_budget" });
       notice(ctx, result, { key: `retry_budget:${work.id}:${recent[0]!.id}`, code: "retry_budget", taskId, ticketId: work.ticket_id,
-        workItemId: work.id, botId: work.bot_id, places: [work.session_id, work.home_session_id, segment?.session_id],
+        workItemId: work.id, botId: work.bot_id, places: [...jobConversations(ctx, taskId).spoken, work.session_id, work.home_session_id, segment?.session_id],
         body: supervisorNoticeBody(locale(ctx), { code: "retry_budget", job: jobLabel(ctx, taskId, work.ticket_id), bot: botName(ctx, work.bot_id), count: recent.length }),
         now });
       continue;

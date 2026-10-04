@@ -1067,7 +1067,7 @@ const zh = {
   workQuestion: {
     title: "工作需要你的回答",
     context: (bot: string, plan: string, ticket: string | null) => `${bot} · ${plan}${ticket ? ` · ${ticket}` : ""}`,
-    hint: "这一段已结束。保存回答不会解除你的叫停。",
+    hint: "回答后，它会照你的回答接着做；叫停着的话，等你解除才接着做。",
     answer: "你的回答",
     submit: "保存回答",
     saving: "正在保存…",
@@ -2813,7 +2813,7 @@ const en: CopyShape<typeof zh> = {
   workQuestion: {
     title: "This work needs your answer",
     context: (bot: string, plan: string, ticket: string | null) => `${bot} · ${plan}${ticket ? ` · ${ticket}` : ""}`,
-    hint: "This segment has ended. Saving an answer will not lift your stops.",
+    hint: "Once you answer, it goes on with your answer; if a stop covers it, once you lift the stop.",
     answer: "Your answer",
     submit: "Save answer",
     saving: "Saving…",

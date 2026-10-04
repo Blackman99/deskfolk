@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A job you went on with in a direct asks and tells you there
+
+- When a group's job is taken up in your direct with one of its Bots, the Bot's questions now come up in that direct, and so does the line saying a restart cut its work off. Both used to land in the group the job was opened in, while the Bot was asking you to sign off in the direct and its interrupted line sat there beside your last words.
+- A question card now says it goes on with your answer, instead of saying that saving the answer will not lift your stops when nothing was stopped.
+
 ### A lead that lays out its own work can start on it right away
 
 - When the lead you confirmed in a group splits your request into tickets it does itself, it now goes straight on to the first one. Choosing its own ticket was refused because the job had been opened in that same turn, while the app told it to keep going, so its part could not start until something woke it again.

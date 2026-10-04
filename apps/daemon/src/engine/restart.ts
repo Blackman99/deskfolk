@@ -173,9 +173,12 @@ export function createRestart(deps: RestartDeps): Restart {
   }
 
   /**
-   * Where you are told about a turn: its plan's conversation when you are in it; else its own
-   * conversation when you are; else, from a Bot↔Bot direct, the first conversation you are in up
-   * the line that opened it; else your direct with the Bot. Null when there is none of these.
+   * Where you are told about a turn: where you last spoke about its plan, as the supervisor's own
+   * notices go; else its plan's conversation when you are in it; else its own conversation when you
+   * are; else, from a Bot↔Bot direct, the first conversation you are in up the line that opened it;
+   * else your direct with the Bot. Null when there is none of these. A job opened in a group and
+   * taken up in your direct was told of in the group, while its 「中断」 line was in the direct beside
+   * your last words (2026-10-04).
    */
   function placeToTell(turn: Turn): string | null {
     const withYou = (id: string | null | undefined): string | null => {
@@ -187,6 +190,10 @@ export function createRestart(deps: RestartDeps): Restart {
         return null;
       }
     };
+    for (const spoken of turn.task_id ? store.jobConversations(turn.task_id).spoken : []) {
+      const here = withYou(spoken);
+      if (here) return here;
+    }
     const home = turn.task_id ? taskSession(turn.task_id) : null;
     const near = withYou(home) ?? withYou(turn.session_id);
     if (near) return near;

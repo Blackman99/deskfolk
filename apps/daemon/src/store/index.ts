@@ -25,6 +25,7 @@ import * as holds from "./holds";
 import * as inbox from "./inbox";
 import * as filing from "./filing";
 import * as desk from "./desk";
+import * as jobConversations from "./job-conversations";
 import * as newPlanCards from "./new-plan-cards";
 import * as delegations from "./delegations";
 import * as workOn from "./work-on";
@@ -544,6 +545,7 @@ export class Store {
   readonly planCandidateEvidence = this.bind(filing.candidateOf);
   readonly filingsOfMessage = this.bind(filing.filingsOfMessage);
   readonly deskCandidateIds = this.bind(desk.deskCandidateIds);
+  readonly jobConversations = this.bind(jobConversations.jobConversations);
   readonly assertDeskCandidate = this.bind(desk.assertDeskCandidate);
   readonly noteFilingBounce = this.bind(desk.noteFilingBounce);
   readonly filingBudget = this.bind(desk.filingBudget);

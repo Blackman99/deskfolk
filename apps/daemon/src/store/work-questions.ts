@@ -1,7 +1,8 @@
 /**
  * A blocked job's question (ADR 0045): what `end_turn({reason:"blocked", needs_from_user})` needs
- * from you, kept as a card that outlives the segment that asked, where you can answer it — the
- * job's conversation, else its plan's, else your direct with the Bot. It is not a live ask (no turn
+ * from you, kept as a card that outlives the segment that asked, where you can answer it — where
+ * the segment asked, else where you last spoke about the job, else the job's conversation, else its
+ * plan's, else your direct with the Bot. It is not a live ask (no turn
  * waits on it) nor an approval. Your answer is a line of yours in the job's inbox: it queues the
  * work again, is held like any line while a stop of yours covers the work, and lifts nothing.
  */
@@ -15,6 +16,7 @@ import { createNotification, updateNotificationActionState } from "./notificatio
 import { recordQuote } from "./quotes";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import { requireNonEmpty, type StoreContext } from "./shared";
+import { jobConversations } from "./job-conversations";
 import { recordWorkEvent } from "./work-events";
 
 type Work = { id: string; bot_id: string; task_id: string | null; ticket_id: string | null; state: string; home_session_id: string; closed_at: string | null; waiting_on: string | null };
@@ -27,10 +29,14 @@ function workOf(ctx: StoreContext, id: string): Work {
   return work;
 }
 
-function publicHome(ctx: StoreContext, work: Work): string {
+function publicHome(ctx: StoreContext, work: Work, asked: string): string {
   const planHome = work.task_id ? ctx.db.query<{ session_id: string | null }, [string]>("SELECT session_id FROM tasks WHERE id = ?").get(work.task_id)?.session_id : null;
-  for (const sessionId of [work.home_session_id, planHome]) {
-    if (sessionId && ctx.db.query("SELECT 1 FROM session_participants WHERE session_id = ? AND member = 'user' AND left_at IS NULL").get(sessionId)) return sessionId;
+  // Where the Bot asked comes first: a job opened in a group and taken up in your direct asked its
+  // 「请拍板」 there, while the card went to the group its work began in (2026-10-04).
+  const spoken = work.task_id ? jobConversations(ctx, work.task_id).spoken : [];
+  for (const sessionId of [asked, ...spoken, work.home_session_id, planHome]) {
+    if (sessionId && ctx.db.query(`SELECT 1 FROM session_participants p JOIN sessions s ON s.id = p.session_id
+      WHERE p.session_id = ? AND p.member = 'user' AND p.left_at IS NULL AND s.archived_at IS NULL`).get(sessionId)) return sessionId;
   }
   const direct = ctx.db.query<{ id: string }, [string]>(`SELECT s.id FROM sessions s JOIN session_participants u ON u.session_id = s.id AND u.member = 'user' AND u.left_at IS NULL
     JOIN session_participants b ON b.session_id = s.id AND b.member = ? AND b.left_at IS NULL WHERE s.kind = 'direct' AND s.archived_at IS NULL ORDER BY s.created_at LIMIT 1`).get(work.bot_id);
@@ -45,7 +51,7 @@ export function createWorkQuestion(ctx: StoreContext, input: { turnId: string; b
       throw new HttpError(409, "work_questions_unavailable", "a blocked job's question is a card from the supervisor's engine level on");
     }
     requireNonEmpty("question", input.body);
-    const turn = ctx.db.query<{ id: string; bot_id: string; work_item_id: string | null; task_id: string | null; ticket_id: string | null; end_reason: string | null }, [string]>("SELECT * FROM turns WHERE id = ?").get(input.turnId);
+    const turn = ctx.db.query<{ id: string; bot_id: string; session_id: string; work_item_id: string | null; task_id: string | null; ticket_id: string | null; end_reason: string | null }, [string]>("SELECT * FROM turns WHERE id = ?").get(input.turnId);
     if (!turn?.work_item_id || turn.end_reason !== "blocked" || !turn.task_id) throw new HttpError(422, "invalid_args", "a question requires a bound blocked segment");
     const work = workOf(ctx, turn.work_item_id);
     if (work.state !== "blocked" || work.bot_id !== turn.bot_id || work.task_id !== turn.task_id || work.ticket_id !== turn.ticket_id) throw new HttpError(409, "conflict", "the blocked work changed");
@@ -55,7 +61,7 @@ export function createWorkQuestion(ctx: StoreContext, input: { turnId: string; b
       if (question.control?.kind !== "work_question" || question.control.question !== input.body) throw new HttpError(409, "conflict", "question changed for this segment");
       return question;
     }
-    const sessionId = publicHome(ctx, work);
+    const sessionId = publicHome(ctx, work, turn.session_id);
     const control: WorkQuestionControl = { kind: "work_question", work_item_id: work.id, task_id: turn.task_id, ticket_id: turn.ticket_id, question: input.body, offer: [] };
     const message = insertMessage(ctx, { sessionId, turnId: turn.id, sourceTurnId: turn.id, kind: "system", author: work.bot_id, body: input.body,
       hiddenFromBots: true, control });
