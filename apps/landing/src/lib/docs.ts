@@ -111,6 +111,7 @@ export const TERM_GROUPS: Record<ManifestoTopic, readonly string[]> = {
     'Interrupted',
     'Catch-up',
     'Terminal',
+    'Remote screen',
     'Command stream',
     'Pane',
     'Layout',

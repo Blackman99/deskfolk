@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { base64url, canonicalBytes, canonicalHash, canonicalize, DeviceSession, fromBase64url, generateIdentity, requestDigest,
   identityPublic, openPairingGrant, randomBytes, sealPairing, signEnrollmentProof, Reassembler, decodeFileChunk,
-  encodeFileChunk, sha256Hex, type EnrollmentChallenge, type RemoteRequest, type UvChallenge } from "@real-bot/remote";
+  encodeFileChunk, sha256Hex, decodeTunnelChunk, encodeTunnelChunk, type EnrollmentChallenge, type RemoteRequest, type TunnelChunk,
+  type UvChallenge } from "@real-bot/remote";
 import { startRelay } from "../../../relay/src/server";
 import { Store } from "../store";
 import { memoryKeyStore } from "../secrets";
@@ -26,6 +27,8 @@ import { inflateRawSync } from "node:zlib";
 import { finishRestart, finishStop, maintenanceDiagnostics, restartAvailable, type MaintenanceControl } from "./maint";
 import { RuntimeLifecycle } from "../lifecycle";
 import { generateKeyPairSync, sign, createHash } from "node:crypto";
+import { ScreenService, type ScreenServiceOptions } from "./screen";
+import { TUNNEL_WINDOW } from "./tunnel";
 
 function cbor(value: unknown): Buffer {
   const head = (major: number, n: number) => n < 24 ? Buffer.from([major * 32 + n]) : n < 256 ? Buffer.from([major * 32 + 24, n]) : Buffer.from([major * 32 + 25, n >> 8, n & 255]);
@@ -130,7 +133,8 @@ function silenceable(ws: WebSocket): { ws: WebSocket; silence(): Promise<void> }
   } };
 }
 
-async function fixture(completions?: import("../completions").CompletionsClient, holdAfterMetadata = false, withMaint = false, relayHeartbeat?: RelayHeartbeat) {
+async function fixture(completions?: import("../completions").CompletionsClient, holdAfterMetadata = false, withMaint = false, relayHeartbeat?: RelayHeartbeat,
+  screenOptions?: Omit<ScreenServiceOptions, "store">) {
   const root = mkdtempSync(join(tmpdir(), "rb-rc07-"));
   const endpointKeys = memoryKeyStore();
   const store = new Store({ filename: join(root, "host.sqlite"), endpointKey: endpointKeys });
@@ -145,7 +149,10 @@ async function fixture(completions?: import("../completions").CompletionsClient,
   const control = withMaint ? maintControl(root) : null;
   /** Every relay socket the host opened, oldest first, when the test controls the network. */
   const sockets: Array<ReturnType<typeof silenceable>> = [];
-  const controller = new RemoteController({ store, api, native: native.client, maint: control?.maint, relayHeartbeat,
+  // Never the real caffeinate: a test run must not light up the screen of the Mac it runs on.
+  const screen = screenOptions ? new ScreenService({ store, wakeDisplay: () => ({ stop() {} }), ...screenOptions }) : undefined;
+  if (screen) cleanup.push(() => screen.close());
+  const controller = new RemoteController({ store, api, native: native.client, maint: control?.maint, relayHeartbeat, screen,
     socketFactory: url => {
       const ws = new WebSocket(`${localOrigin.replace("http:", "ws:")}${new URL(url).pathname}`);
       if (relayHeartbeat) sockets.push(silenceable(ws));
@@ -213,11 +220,14 @@ async function fixture(completions?: import("../completions").CompletionsClient,
     /** Ids of answers that came compressed. */
     const compressed: string[] = [];
     const snapshotPages = new Map<string, { transfer: string; count: number; chunks: Uint8Array[] }>();
+    /** Type 9 frames that arrived while waiting for an answer, oldest first. */
+    const tunnel: TunnelChunk[] = [];
     async function rpc(request: RemoteRequest) {
       socket.send(new Uint8Array(noise.send(1, canonicalBytes(request))));
       for (;;) {
         const frame = noise.receive(await next() as Uint8Array);
         if (frame.type === 5) { decodeFileChunk(frame.body); continue; }
+        if (frame.type === 9) { tunnel.push(decodeTunnelChunk(frame.body)); continue; }
         if (frame.type === 6) continue;
         const logical = frame.type === 4 ? assembler.accept(frame.body, performance.now()) : frame;
         if (!logical) continue;
@@ -293,9 +303,21 @@ async function fixture(completions?: import("../completions").CompletionsClient,
         if (message.id === id) return message;
       }
     }
-    return { socket, noise, next, rpc, download, upload, events, ready, compressed };
+    /** The next type 9 frame, from what already arrived or off the wire; events in between are kept. */
+    async function nextTunnel(timeoutMs = 3000): Promise<TunnelChunk> {
+      const deadline = Date.now() + timeoutMs;
+      while (!tunnel.length) {
+        if (Date.now() > deadline) throw new Error("no tunnel frame");
+        const frame = noise.receive(await next() as Uint8Array);
+        if (frame.type === 9) tunnel.push(decodeTunnelChunk(frame.body));
+        else if (frame.type === 3) events.push(JSON.parse(new TextDecoder().decode(frame.body)));
+      }
+      return tunnel.shift()!;
+    }
+    const sendTunnel = (chunk: TunnelChunk) => socket.send(new Uint8Array(noise.send(9, encodeTunnelChunk(chunk))));
+    return { socket, noise, next, rpc, download, upload, events, ready, compressed, tunnel, nextTunnel, sendTunnel };
   }
-  return { root, store, endpointKeys, api, native, controller, relay, localOrigin, sockets, pair, connect, post, maint: control, releasePressure: () => { hold = false; } };
+  return { root, store, endpointKeys, api, native, controller, relay, localOrigin, sockets, pair, connect, post, maint: control, screen, releasePressure: () => { hold = false; } };
 }
 
 test("cancel fences the pump's current unsent frame under held socket pressure", async () => {
@@ -1643,4 +1665,177 @@ test("a film past 50 MiB still streams to the phone a piece at a time", async ()
     expect(response.status).toBe(206);
     expect(response.headers.contentRange).toBe(contentRange);
   }
+});
+
+/** Stands in for macOS Screen Sharing: greets like an RFB 3.889 server, then streams what a test says. */
+function fakeScreenSharing() {
+  const received: number[] = [];
+  const clients: Array<import("bun").Socket<{ pending?: Uint8Array }>> = [];
+  let closed = 0;
+  const flush = (socket: import("bun").Socket<{ pending?: Uint8Array }>) => {
+    const pending = socket.data.pending;
+    if (!pending?.length) return;
+    const n = socket.write(pending);
+    socket.data.pending = pending.subarray(n);
+  };
+  const server = Bun.listen<{ pending?: Uint8Array }>({ hostname: "127.0.0.1", port: 0, socket: {
+    open(socket) { socket.data = {}; clients.push(socket); socket.write("RFB 003.889\n"); },
+    data(_socket, bytes) { received.push(...bytes); },
+    drain(socket) { flush(socket); },
+    close() { closed++; },
+  } });
+  cleanup.push(() => server.stop(true));
+  return {
+    port: server.port, received, get closed() { return closed; },
+    /** The newest client: the probe's connections come and go before the tunnel's. */
+    stream(bytes: Uint8Array) { const socket = clients.at(-1)!; socket.data.pending = bytes; flush(socket); },
+    stop() { server.stop(true); },
+  };
+}
+
+test("the remote screen is offered on the link, and only answers once the Mac turned it on", async () => {
+  const sharing = fakeScreenSharing();
+  const f = await fixture(undefined, false, false, undefined, { port: sharing.port, helperPath: () => null });
+  const c = await f.connect(await f.pair());
+  const features = await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/features", body: { compress: [] } });
+  expect(features.body).toMatchObject({ screen: "rfb-v1" });
+  const off = await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/screen/start", body: {} });
+  expect(off.status).toBe(409); expect(off.body.error.code).toBe("screen_disabled");
+  await f.screen!.configure({ enabled: true });
+  const on = await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/screen/start", body: {} });
+  expect(on.status).toBe(200);
+  expect(on.body).toMatchObject({ ice_servers: [], direct: false });
+  sharing.stop();
+  const gone = await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/screen/start", body: {} });
+  expect(gone.status).toBe(409); expect(gone.body.error.code).toBe("screen_sharing_off");
+  // The switch and its servers are the window's: no phone reaches them.
+  expect((await c.rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/remote/screen" })).status).toBeGreaterThanOrEqual(400);
+});
+
+test("a link without a screen service says so and refuses its routes", async () => {
+  const f = await fixture();
+  const c = await f.connect(await f.pair());
+  const features = await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/features", body: { compress: [] } });
+  expect(features.body.screen).toBeUndefined();
+  expect((await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/screen/start", body: {} })).status).toBe(404);
+});
+
+test("relayed screen bytes stay within the window until the phone acknowledges, and flow both ways", async () => {
+  const sharing = fakeScreenSharing();
+  const f = await fixture(undefined, false, false, undefined, { port: sharing.port, helperPath: () => null });
+  await f.screen!.configure({ enabled: true });
+  const c = await f.connect(await f.pair());
+  const start = await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/screen/start", body: {} });
+  const session = start.body.session_id as string;
+  const opened = await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/screen/tunnel", body: { session_id: session } });
+  expect(opened.status).toBe(200);
+  const tunnelId = opened.body.tunnel_id as number;
+  const screenBytes = new Uint8Array(200_000).map((_, i) => (i * 7) % 256);
+  await Bun.sleep(50);
+  sharing.stream(screenBytes);
+  const got: number[] = [];
+  const take = async () => { const chunk = await c.nextTunnel(); expect(chunk.tunnelId).toBe(tunnelId); expect(chunk.kind).toBe("data"); expect(chunk.offset).toBe(BigInt(got.length)); got.push(...chunk.chunk); };
+  while (got.length < TUNNEL_WINDOW) await take();
+  expect(got.length).toBe(TUNNEL_WINDOW);
+  // Nothing past the window without an acknowledgement — and a request meanwhile is answered.
+  const bots = c.rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/bots" });
+  expect((await bots).status).toBe(200);
+  expect(c.tunnel.length).toBe(0);
+  const total = 12 + screenBytes.length;
+  while (got.length < total) {
+    c.sendTunnel({ tunnelId, offset: BigInt(got.length), kind: "ack", chunk: new Uint8Array() });
+    const goal = Math.min(total, got.length + TUNNEL_WINDOW);
+    while (got.length < goal) await take();
+  }
+  expect(new TextDecoder().decode(new Uint8Array(got.slice(0, 12)))).toBe("RFB 003.889\n");
+  expect(new Uint8Array(got.slice(12))).toEqual(screenBytes);
+  // The phone's side: a pointer event, then the keepalive the page sends.
+  c.sendTunnel({ tunnelId, offset: 0n, kind: "data", chunk: new Uint8Array([5, 1, 0, 10, 0, 20]) });
+  expect((await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/screen/status", body: { session_id: session } })).body).toEqual({ mode: "relay" });
+  expect(sharing.received).toEqual([5, 1, 0, 10, 0, 20]);
+  expect(f.screen!.status().sessions).toMatchObject([{ mode: "relay", deviceName: "Fixture device" }]);
+  const stopped = await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/screen/stop", body: { session_id: session } });
+  expect(stopped.body).toEqual({ ended: true });
+  let last = await c.nextTunnel();
+  while (last.kind === "data") last = await c.nextTunnel();
+  expect(last.kind).toBe("eof");
+  await Bun.sleep(50);
+  expect(f.screen!.status().sessions).toEqual([]);
+  expect((await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/screen/status", body: { session_id: session } })).body.error.code).toBe("screen_session_gone");
+});
+
+test("turning the screen off on the Mac, or revoking the phone, ends what is open", async () => {
+  const sharing = fakeScreenSharing();
+  const f = await fixture(undefined, false, false, undefined, { port: sharing.port, helperPath: () => null });
+  await f.screen!.configure({ enabled: true });
+  const d = await f.pair(), c = await f.connect(d);
+  const open = async () => {
+    const start = await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/screen/start", body: {} });
+    await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/screen/tunnel", body: { session_id: start.body.session_id } });
+    await Bun.sleep(50);
+    return start.body.session_id as string;
+  };
+  await open();
+  const closedBefore = sharing.closed;
+  await f.screen!.configure({ enabled: false });
+  let last = await c.nextTunnel();
+  while (last.kind === "data") last = await c.nextTunnel();
+  expect(last.kind).toBe("eof");
+  await Bun.sleep(50);
+  expect(sharing.closed).toBeGreaterThan(closedBefore);
+  await f.screen!.configure({ enabled: true });
+  await open();
+  expect(f.screen!.status().sessions.length).toBe(1);
+  const closedNow = sharing.closed;
+  await f.controller.trust.revoke(d.deviceId, () => f.controller.trust.assertHost());
+  await Bun.sleep(100);
+  expect(f.screen!.status().sessions).toEqual([]);
+  expect(sharing.closed).toBeGreaterThan(closedNow);
+});
+
+test("an unknown tunnel breaks the link", async () => {
+  const sharing = fakeScreenSharing();
+  const f = await fixture(undefined, false, false, undefined, { port: sharing.port, helperPath: () => null });
+  const c = await f.connect(await f.pair());
+  const closed = new Promise<void>(resolve => c.socket.addEventListener("close", () => resolve()));
+  c.sendTunnel({ tunnelId: 42, offset: 0n, kind: "ack", chunk: new Uint8Array() });
+  await closed;
+});
+
+test("the direct path hands the offer to the helper and returns its answer; media offers never reach it", async () => {
+  const sharing = fakeScreenSharing();
+  const offers: unknown[] = [];
+  let exit: (() => void) | undefined;
+  const spawnHelper = () => {
+    let controller!: ReadableStreamDefaultController<Uint8Array>;
+    const stdout = new ReadableStream<Uint8Array>({ start(c) { controller = c; } });
+    const frame = (type: number, value: unknown) => {
+      const payload = new TextEncoder().encode(JSON.stringify(value)), out = new Uint8Array(5 + payload.length);
+      out[0] = type; new DataView(out.buffer).setUint32(1, payload.length); out.set(payload, 5); return out;
+    };
+    exit = () => controller.close();
+    return {
+      stdin: { write(bytes: Uint8Array) {
+        if (bytes[0] === 1) { offers.push(JSON.parse(new TextDecoder().decode(bytes.subarray(5)))); controller.enqueue(frame(1, { sdp: "answer-sdp" })); }
+      }, end() {} },
+      stdout, kill() {}, exited: Promise.resolve(),
+    };
+  };
+  const f = await fixture(undefined, false, false, undefined, { port: sharing.port, helperPath: () => "/fixture/real-bot-rtc", spawnHelper });
+  await f.screen!.configure({ enabled: true, iceServers: [{ urls: ["stun:relay.example.test:3478"] }] });
+  const c = await f.connect(await f.pair());
+  const start = await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/screen/start", body: {} });
+  expect(start.body).toMatchObject({ direct: true, ice_servers: [{ urls: ["stun:relay.example.test:3478"] }] });
+  const session = start.body.session_id as string;
+  const data = "v=0\r\nm=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\na=mid:0\r\n";
+  const video = await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/screen/offer", body: { session_id: session, sdp: `${data}m=video 9 UDP/TLS/RTP/SAVPF 96\r\n` } });
+  expect(video.status).toBe(422);
+  expect(offers).toEqual([]);
+  const answer = await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/screen/offer", body: { session_id: session, sdp: data } });
+  expect(answer.body).toEqual({ sdp: "answer-sdp" });
+  // The servers are the Mac's, whatever the phone might have put next to its offer.
+  expect(offers).toEqual([{ sdp: data, ice_servers: [{ urls: ["stun:relay.example.test:3478"] }] }]);
+  exit!();
+  await Bun.sleep(50);
+  expect((await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/screen/status", body: { session_id: session } })).body.error.code).toBe("screen_session_gone");
 });

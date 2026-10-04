@@ -136,6 +136,7 @@ export type BackLayer =
   | "settings"
   | "session-settings"
   | "terminal"
+  | "screen"
   | "trace"
   | "routines"
   | "spend"
@@ -156,6 +157,7 @@ export type LayerState = {
   settingsOpen: boolean;
   sessionSettingsOpen: boolean;
   terminalOpen: boolean;
+  screenOpen: boolean;
   traceOpen: boolean;
   routinesOpen: boolean;
   spendOpen: boolean;
@@ -182,6 +184,8 @@ const LAYER_ORDER: ReadonlyArray<[BackLayer, keyof LayerState]> = [
   ["session-settings", "sessionSettingsOpen"],
   // A history entry, like the calendar. The page's button closes it, and Back walks the URL.
   ["terminal", "terminalOpen"],
+  // The same: a page in the URL, which Back leaves for the roster.
+  ["screen", "screenOpen"],
   ["trace", "traceOpen"],
   ["routines", "routinesOpen"],
   ["spend", "spendOpen"],

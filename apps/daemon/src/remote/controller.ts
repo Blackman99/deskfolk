@@ -19,6 +19,8 @@ import { LocalTrustActions, validateRelay, type TrustChange } from "./local-acti
 import type { MaintenanceControl } from "./maint";
 import { PushService, type PushFetch } from "./push";
 import { StreamOutbox } from "./stream-outbox";
+import type { ScreenLink, ScreenService } from "./screen";
+import { TunnelMux } from "./tunnel";
 
 export type RemoteStatus = { state: "off" | "native_unavailable" | "activation_gated" | "connecting" | "online" | "disconnected" | "trust_mismatch"; diagnostic: string | null; devices: number };
 export type RemoteNativeProvider = Pick<RemoteNativeClient, "capability" | "read" | "highwater" | "advanceHighwater" | "prepare" | "consume" | "reset">;
@@ -32,6 +34,8 @@ export type RemoteControllerOptions = {
   relayHeartbeat?: RelayHeartbeat;
   /** The OS this runs on, for the status the sealed provider gives; this process's own unless a test says. */
   platform?: NodeJS.Platform;
+  /** The remote screen (ADR 0056); a link offers it in `/remote/features` only when this is set. */
+  screen?: ScreenService;
 };
 type PendingPair = { context: PairingContext; issuedAt: number; secret: Uint8Array; request?: PairingRequest; action?: LocalAction; challenge?: string; consuming?: boolean };
 type Link = { close(): void };
@@ -395,6 +399,9 @@ export class RemoteController {
     const abort = new AbortController();
     const outgoing: Array<{ type: number; body: Uint8Array; stream?: number; done?: () => void }> = [];
     let streamId = 0;
+    /** The remote screen's relayed bytes on this link (type 9), each bound to a socket the daemon opened. */
+    const tunnels = new TunnelMux(body => enqueue(9, body));
+    const screenLink: ScreenLink = { routeId, deviceId, deviceName: device.name, tunnels };
     type FileStream = {
       cancelled: boolean; direction: "down" | "up"; live?: LiveFile;
       done?: (error?: HttpError, commit?: import("../store").FileCommit) => void;
@@ -419,6 +426,7 @@ export class RemoteController {
     };
     const close = () => {
       if (!alive) return; alive = false; abort.abort();
+      tunnels.closeAll(); this.options.screen?.linkClosed(routeId);
       clearInterval(timer); clearTimeout(handshakeTimer); session.close(); assembler.clear(); unsubscribe?.();
       unsubscribeStreams?.(); unsubscribeTools?.(); clearTimeout(streamTimer); outboxes.clear();
       if (principal) {
@@ -564,7 +572,13 @@ export class RemoteController {
           // What this device reads, asked once per link before anything that would use it.
           const compress = request.body?.compress;
           deflate = Array.isArray(compress) && compress.includes("deflate-raw");
-          sendJson(2, { v: 1, id, status: 200, body: { compress: deflate ? "deflate-raw" : null } });
+          sendJson(2, { v: 1, id, status: 200, body: { compress: deflate ? "deflate-raw" : null, ...(this.options.screen ? { screen: "rfb-v1" } : {}) } });
+          return;
+        }
+        if (request.method === "POST" && request.path.startsWith("/remote/screen/") && this.options.screen) {
+          // Inline, not through the dispatcher: a session belongs to this link and its tunnels.
+          this.dispatcher.uv.assert(principal!);
+          sendJson(2, { v: 1, id, status: 200, body: await this.options.screen.handle(screenLink, request.path, request.body ?? undefined) });
           return;
         }
         const files = claimedFiles(request);
@@ -719,6 +733,11 @@ export class RemoteController {
             stream.done?.(error instanceof HttpError ? error : new HttpError(422, "failed", "upload failed"));
             retire(chunk.streamId);
           }
+          return;
+        }
+        if (frame.type === 9) {
+          // Never waits behind a request: the screen keeps moving while an answer is worked out.
+          tunnels.receive(frame.body);
           return;
         }
         if (frame.type !== 1 && frame.type !== 4) throw new Error("remote_type");

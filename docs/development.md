@@ -17,6 +17,7 @@
 | `@real-bot/remote` | `packages/remote` | 浏览器/Bun 纯密码与编码接口；实验性、默认关闭，见[协议契约](remote-protocol.md) |
 | `RuntimeHelper` | `apps/runtime-helper` | Swift 6 · macOS 13+ 专属，原生远控凭据/认证（默认禁用），以及终端会话的 pty（`real-bot-pty`） |
 | `real-bot-conpty` | `apps/conpty-helper` | Rust · Windows 专属，终端会话的 pty（`real-bot-pty.exe`，走 ConPTY）；没有远控凭据的等价物 |
+| `real-bot-rtc` | `apps/rtc-helper` | Rust（webrtc-rs）· macOS，远程屏幕的直连：接手机的 WebRTC offer，把 `rfb` data channel 接到本机屏幕共享 5900；没有它时手机只走中继 |
 
 根 `pnpm test` 也构建并运行 `packages/remote/test/snow` 的独立 Rust snow 对打测试，需 Cargo；根 `pnpm typecheck` 包含此包。`pnpm --filter @real-bot/remote build` 产出 ESM/声明，`build:browser` 构建完整浏览器 API 与隔离 smoke fixture，`smoke:serve` 仅监听 `127.0.0.1:5184`。只使用生成的测试密钥，不连接个人数据库/钥匙串，不代表真机或安全审计门已过。
 
@@ -232,6 +233,8 @@ DUMP_STORY=group-pane DUMP_OUT=/tmp/before.txt pnpm exec playwright test dump
 这一整节是 macOS 专属：Windows 没有共享 Keychain access group 的等价物，本节描述的签名 helper、entitlements 与凭据桥都不存在，远控/手机配对在 Windows 上尚不可用。Windows 的终端 pty 由 `apps/conpty-helper` 单独提供，见文末「Windows（实验性）」。
 
 应用发布包（含默认必需 daemon）最低要求 macOS 13.0，Tauri 元数据与打包检查一致。`apps/runtime-helper` 是 Swift 6/macOS 13+ helper、`libRemoteCredentials.dylib` 与 `real-bot-pty`。`pnpm --filter @real-bot/desktop build:native` 编译并打包三者和独立 daemon；Tauri 发布构建会自动执行。源码/ad-hoc 构建不能访问远控 Keychain 或跳过本机认证；`--remote-native-capability` 在开库/监听前返回脱敏禁用原因。协议、daemon 导出、Tauri `remote_native_confirmation` 桥、共享组与吊销高水位的恢复顺序见 [native credentials](native-credentials.md)。不新增 HTTP 维护路由，也不改变默认窗监督/登录项。
+
+远程屏幕的直连 helper 是另一个 Cargo crate：`cargo build --manifest-path apps/rtc-helper/Cargo.toml`。开发态不必先跑 `build:native`，`apps/daemon/src/remote/rtc-helper.ts` 会去 `apps/rtc-helper/target/{release,debug}/` 找它，`REAL_BOT_RTC_HELPER` 可指定别处；一个都没有时守护进程告诉手机不能直连，手机直接走中继（type 9 帧）。它只连本机 5900，端口写死；只有 debug 构建读 `REAL_BOT_RTC_TARGET_PORT`，给假 RFB 服务器做端到端用，守护进程这边用 `startRuntime({ screen: { port } })` 指向同一个。`build:native` 按目标三元组 `cargo build --release --locked`（`MACOSX_DEPLOYMENT_TARGET` 取发布最低版本），签名身份 `com.real-bot.rtc`，不带 entitlements；`src-tauri/Info.plist` 合并进包，写着局域网直连要的 `NSLocalNetworkUsageDescription`。`cargo test --locked --manifest-path apps/rtc-helper/Cargo.toml` 在 CI 和发布前都跑。它依赖的 rtc-sctp 用的是 `apps/rtc-helper/vendor/rtc-sctp`（`[patch.crates-io]`，只改了重传超时下限，升级 webrtc 时照那里的 README 处理）。`real-bot-rtc display-hold` 是流畅模式的子命令，会真的换这台 Mac 的分辨率：端到端测试把 `REAL_BOT_RTC_HELPER` 指向真 helper 时，除非就是要验证换分辨率，也给 `startRuntime({ screen: { holdDisplay } })` 一个假的。量直连吞吐别用 debug 构建（慢得多）：`CARGO_TARGET_DIR=<别处> cargo build --release --config 'profile.release.debug-assertions=true'` 得到一个读测试端口覆盖的优化构建，放在别处是为了不让开发态守护进程从 `target/release` 拿到它。
 
 终端的 pty 单独一个 product：`swift build --package-path apps/runtime-helper --product real-bot-pty`。开发态不必先跑 `build:native`，`apps/daemon/src/pty.ts` 会去 `.build/{release,debug}/` 找它；`REAL_BOT_PTY_HELPER` 可指定别处。它不带钥匙串访问组——开 shell 这件事你在 Terminal.app 里本来就能做，没有可提升的权限，所以它是独立 product 而不是凭据 helper 的一个子命令。控制终端只能在 fork 和 exec 之间用 `ioctl(TIOCSCTTY)` 拿到，`posix_spawn` 没有那个接缝，所以这一小块必须是原生的；两条路线的实测对照留在 `.scratch/terminal/prototypes/`。
 

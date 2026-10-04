@@ -706,11 +706,13 @@
 			routines: phone && runtime.routinesOpen,
 			spend: phone && runtime.spendOpen,
 			terminal: phone && runtime.terminalOpen,
+			screen: runtime.screenOpen,
 			archived: viewingArchived
 		}}
 		{onOpenRoutines}
 		{onOpenSpend}
 		onOpenTerminal={() => (phone ? runtime.openTerminal() : onNewTerminal())}
+		onOpenScreen={runtime.screenOffered ? () => runtime.openRemoteScreen() : null}
 		onOpenArchived={() => (viewingArchived = true)}
 		everything={snapshot.holdsOn ? (everythingHeld.length > 0 ? 'go-on' : 'stop') : null}
 		everythingDisabled={runtime.connection !== 'connected'}
@@ -784,7 +786,7 @@
 	The headers' buttons are 22px targets at the top of a screen you hold from the bottom, and
 	there are two of them saying the same kind of thing; this asks which once, where your thumb is.
 -->
-{#if phone && !selected && !searchOpen && !viewingArchived && !workspaceOpen && !runtime.settingsOpen && !runtime.routinesOpen && !runtime.spendOpen && !runtime.terminalOpen}
+{#if phone && !selected && !searchOpen && !viewingArchived && !workspaceOpen && !runtime.settingsOpen && !runtime.routinesOpen && !runtime.spendOpen && !runtime.terminalOpen && !runtime.screenOpen}
 	<div class="fab-wrap" bind:this={fabEl}>
 		{#if createMenuOpen}
 			<div class="fab-menu" role="menu">

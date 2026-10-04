@@ -16,6 +16,7 @@ fn main() {
                 "real-bot-runtime-helper",
                 "real-bot-pty",
                 "libRemoteCredentials.dylib",
+                "real-bot-rtc",
             ]
         };
         for file in files {

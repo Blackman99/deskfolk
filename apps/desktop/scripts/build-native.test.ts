@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { resolve } from "node:path";
 import {
   conptyBuildPlan,
+  rtcBuildPlan,
   daemonBuildPlan,
   familyFor,
   resolveTriple,
@@ -92,4 +93,21 @@ test("the ConPTY helper is built for the requested triple and copied beside the 
   // Repo-relative, not resolved against whatever cwd the script happens to run in.
   expect(plan.builtPath).toBe("apps/conpty-helper/target/x86_64-pc-windows-msvc/release/real-bot-pty.exe");
   expect(plan.destPath).toBe(resolve(nativeDir, "real-bot-pty.exe"));
+});
+
+test("the remote screen's helper is built by Cargo for the macOS triple, at the advertised minimum", () => {
+  const plan = rtcBuildPlan("aarch64-apple-darwin", nativeDir, "13.0");
+  expect(plan.args).toEqual([
+    "cargo",
+    "build",
+    "--release",
+    "--locked",
+    "--manifest-path",
+    "apps/rtc-helper/Cargo.toml",
+    "--target",
+    "aarch64-apple-darwin",
+  ]);
+  expect(plan.builtPath).toBe("apps/rtc-helper/target/aarch64-apple-darwin/release/real-bot-rtc");
+  expect(plan.destPath).toBe(resolve(nativeDir, "real-bot-rtc"));
+  expect(plan.env).toEqual({ MACOSX_DEPLOYMENT_TARGET: "13.0" });
 });

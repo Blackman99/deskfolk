@@ -6,11 +6,11 @@ export { canonicalize, canonicalBytes, canonicalHash, sha256Hex, normalizeAttach
 export type { AttachmentDigest, ConditionalHeaders, RequestDigestInput, CanonicalEncoder } from './canonical.ts';
 export {
   PROTOCOL_VERSION, MAX_PLAINTEXT, TRANSPORT_HEADER, MAX_BODY, FRAGMENT_HEADER,
-  MAX_FRAGMENT_CHUNK, MAX_LOGICAL_MESSAGE, REASSEMBLY_TTL_MS, MAX_FILE_CHUNK,
+  MAX_FRAGMENT_CHUNK, MAX_LOGICAL_MESSAGE, REASSEMBLY_TTL_MS, MAX_FILE_CHUNK, MAX_TUNNEL_CHUNK, TUNNEL_WINDOW, TUNNEL_ACK_EVERY,
   encodePrologue, encodeFrame, decodeFrame, encodeFragment, decodeFragment,
-  fragmentMessage, Reassembler, encodeFileChunk, decodeFileChunk,
+  fragmentMessage, Reassembler, encodeFileChunk, decodeFileChunk, encodeTunnelChunk, decodeTunnelChunk,
 } from './codec.ts';
-export type { FrameType, LogicalType, SessionBinding, TransportFrame, Fragment, FileChunk } from './codec.ts';
+export type { FrameType, LogicalType, SessionBinding, TransportFrame, Fragment, FileChunk, TunnelChunk, TunnelChunkKind } from './codec.ts';
 export { encodeEnrollmentProof, signEnrollmentProof, verifyEnrollmentProof, PAIR_MAILBOX_CONTRACT } from './enrollment.ts';
 export type { EnrollmentChallenge, EnrollmentVerification } from './enrollment.ts';
 export { MAX_PAIRING_ENVELOPE, sealPairing, openPairing, sealPairingGrant, openPairingGrant, encodeGrant, decodeGrant, signGrant, verifyGrant } from './pairing.ts';

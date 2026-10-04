@@ -7,7 +7,9 @@ import {
   canonicalBytes,
   canonicalize,
   decodeFileChunk,
+  decodeTunnelChunk,
   encodeFileChunk,
+  encodeTunnelChunk,
   fromBase64url,
   randomBytes,
   sha256Hex,
@@ -17,6 +19,7 @@ import {
   type RemoteReady,
   type RemoteRequest,
   type RemoteResponse,
+  type TunnelChunk,
 } from "@real-bot/remote";
 import type { SyncFrame as ProtocolSyncFrame,
   StreamFrame,
@@ -128,6 +131,11 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Where one tunnel's frames go on this side (see rfb-channel.ts); `end` is the link going away. */
+export type TunnelSink = { chunk(chunk: TunnelChunk): void; end(): void };
+/** Frames for a tunnel whose opening answer has not been read yet, held this long at most. */
+const EARLY_TUNNEL_FRAMES = 64;
+
 export class RemoteTransport {
   private socket: WebSocket | null = null;
   private session: DeviceSession | null = null;
@@ -153,6 +161,11 @@ export class RemoteTransport {
   /** When the next upload chunk may leave, on {@link now}'s clock. */
   private uploadAt = 0;
   private stallTimer: ReturnType<typeof setInterval> | null = null;
+  /** The remote screen's relayed byte streams (type 9), by the id the Mac gave each. */
+  private tunnels = new Map<number, TunnelSink>();
+  private earlyTunnel = new Map<number, TunnelChunk[]>();
+  private tunnelOut: Uint8Array[] = [];
+  private tunnelSending = false;
   readyFrame: RemoteReady | null = null;
   constructor(
     readonly enrollment: StoredEnrollment,
@@ -192,6 +205,11 @@ export class RemoteTransport {
     this.session = null;
     this.socket?.close();
     this.socket = null;
+    const tunnels = [...this.tunnels.values()];
+    this.tunnels.clear();
+    this.earlyTunnel.clear();
+    this.tunnelOut.length = 0;
+    for (const sink of tunnels) sink.end();
     const waiter = this.waiter;
     this.waiter = null;
     waiter?.reject(new ApiError(503, "request_unknown", "result unknown; explicitly retry the original request", waiter.id));
@@ -457,6 +475,10 @@ export class RemoteTransport {
         this.onFile(decodeFileChunk(frame.body));
         return;
       }
+      if (frame.type === 9) {
+        this.onTunnel(decodeTunnelChunk(frame.body));
+        return;
+      }
       const logical = frame.type === 4 ? this.assembler.accept(frame.body, performance.now()) : { type: frame.type, body: frame.body };
       if (!logical) return;
       if (logical.type === 3) {
@@ -467,6 +489,68 @@ export class RemoteTransport {
       this.onResponse(parseJson(unpackAnswer(logical.body)) as RemoteResponse);
     } catch {
       this.fail();
+    }
+  }
+
+  /**
+   * A tunnel the Mac opened at this device's request. Its first bytes can be read before the
+   * answer that named it, so those wait here for the owner.
+   */
+  openTunnel(id: number, sink: TunnelSink): void {
+    if (this.closed) {
+      sink.end();
+      return;
+    }
+    this.tunnels.set(id, sink);
+    const early = this.earlyTunnel.get(id) ?? [];
+    this.earlyTunnel.delete(id);
+    for (const chunk of early) sink.chunk(chunk);
+  }
+
+  closeTunnel(id: number): void {
+    this.tunnels.delete(id);
+    this.earlyTunnel.delete(id);
+  }
+
+  /** Queues one frame of a tunnel, paced with uploads; frames leave in the order given. */
+  sendTunnel(chunk: TunnelChunk): void {
+    if (this.closed) return;
+    this.tunnelOut.push(encodeTunnelChunk(chunk));
+    void this.pumpTunnel();
+  }
+
+  private onTunnel(chunk: TunnelChunk): void {
+    const sink = this.tunnels.get(chunk.tunnelId);
+    if (sink) {
+      sink.chunk(chunk);
+      return;
+    }
+    const early = this.earlyTunnel.get(chunk.tunnelId) ?? [];
+    // Nobody is going to claim this many: the owner gave up on it.
+    if (early.length >= EARLY_TUNNEL_FRAMES) return;
+    early.push(chunk);
+    this.earlyTunnel.set(chunk.tunnelId, early);
+  }
+
+  private async pumpTunnel(): Promise<void> {
+    if (this.tunnelSending) return;
+    this.tunnelSending = true;
+    const sleep = this.hooks.sleep ?? wait;
+    try {
+      while (!this.closed && this.tunnelOut.length) {
+        const body = this.tunnelOut[0]!;
+        const now = this.now();
+        const at = Math.max(now, this.uploadAt);
+        this.uploadAt = at + (body.length + FRAME_RESERVE) / UPLOAD_BYTES_PER_MS;
+        if (at > now) await sleep(at - now);
+        if (this.closed || !this.session || !this.socket) return;
+        this.tunnelOut.shift();
+        this.socket.send(new Uint8Array(this.session.send(9, body)));
+      }
+    } catch {
+      this.fail();
+    } finally {
+      this.tunnelSending = false;
     }
   }
 

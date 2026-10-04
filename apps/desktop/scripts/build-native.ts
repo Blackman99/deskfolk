@@ -3,7 +3,8 @@
  * `tauri.conf.json`'s `bundle.resources` copies into the app bundle whole.
  *
  * macOS: the Swift runtime helper, pty helper and credentials library (built by `swift build`),
- * plus the daemon (`bun build --compile`) — all four get `codesign`'d with the daemon entitlements
+ * the remote screen's WebRTC helper (`apps/rtc-helper`, built by Cargo), plus the daemon
+ * (`bun build --compile`) — all five get `codesign`'d, the daemon with the entitlements
  * the credential runtime needs, and `verifyNativeMinimum` checks every one was actually built for
  * the advertised macOS minimum. Windows has no notion of any of that: WebView2 doesn't gate a
  * credential runtime behind a signed helper the way Keychain access groups do, so there is no
@@ -100,6 +101,27 @@ export interface ConptyBuildPlan {
   destPath: string;
 }
 
+export interface RtcBuildPlan {
+  /** argv for `Bun.spawn`, run with `cwd` at the repo root. */
+  args: string[];
+  /** Where Cargo writes the binary, relative to the repo root. */
+  builtPath: string;
+  destPath: string;
+  /** Cargo's own reading of the deployment target, so the binary carries the advertised minimum. */
+  env: Record<string, string>;
+}
+
+/** Builds the remote screen's WebRTC helper (`apps/rtc-helper`) for a macOS `triple`. */
+export function rtcBuildPlan(triple: string, nativeDir: string, minimum: string): RtcBuildPlan {
+  const manifestPath = "apps/rtc-helper/Cargo.toml";
+  return {
+    args: ["cargo", "build", "--release", "--locked", "--manifest-path", manifestPath, "--target", triple],
+    builtPath: `apps/rtc-helper/target/${triple}/release/real-bot-rtc`,
+    destPath: resolve(nativeDir, "real-bot-rtc"),
+    env: { MACOSX_DEPLOYMENT_TARGET: minimum },
+  };
+}
+
 /** Builds the Windows terminal helper (`apps/conpty-helper`) for `triple` and places it beside the daemon. */
 export function conptyBuildPlan(triple: string, nativeDir: string): ConptyBuildPlan {
   const manifestPath = "apps/conpty-helper/Cargo.toml";
@@ -113,8 +135,8 @@ export function conptyBuildPlan(triple: string, nativeDir: string): ConptyBuildP
   };
 }
 
-async function run(root: string, args: string[]): Promise<void> {
-  const child = Bun.spawn(args, { cwd: root, stdout: "inherit", stderr: "inherit" });
+async function run(root: string, args: string[], env?: Record<string, string>): Promise<void> {
+  const child = Bun.spawn(args, { cwd: root, stdout: "inherit", stderr: "inherit", ...(env ? { env: { ...process.env, ...env } } : {}) });
   if ((await child.exited) !== 0) throw new Error(`Native build failed: ${args[0]}`);
 }
 
@@ -137,6 +159,10 @@ async function buildDarwin(root: string, triple: string, output: string): Promis
     await copyFile(resolve(bin, name), resolve(output, name));
   }
 
+  const rtc = rtcBuildPlan(triple, output, minimumMacOS);
+  await run(root, rtc.args, rtc.env);
+  await copyFile(resolve(root, rtc.builtPath), rtc.destPath);
+
   const { args } = daemonBuildPlan(triple, output);
   await run(root, args);
 
@@ -148,6 +174,8 @@ async function buildDarwin(root: string, triple: string, output: string): Promis
     ["real-bot-runtime-helper", "com.real-bot.runtime-helper"],
     // Signed like the rest, but it carries no access group: a pty is not a credential principal.
     ["real-bot-pty", "com.real-bot.pty"],
+    // The remote screen's direct path: no entitlements, and it only ever dials Screen Sharing.
+    ["real-bot-rtc", "com.real-bot.rtc"],
     ["libRemoteCredentials.dylib", "com.real-bot.remote-credentials"],
     ["real-bot-daemon", "com.real-bot.daemon"],
   ]) {

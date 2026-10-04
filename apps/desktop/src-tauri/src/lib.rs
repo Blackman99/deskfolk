@@ -320,8 +320,15 @@ fn is_allowed_external_url(url: &str) -> bool {
     if url.chars().any(|c| c.is_whitespace() || c.is_control()) {
         return false;
     }
-    url.starts_with("https://") || url.starts_with("http://") || url.starts_with("mailto:")
+    url.starts_with("https://")
+        || url.starts_with("http://")
+        || url.starts_with("mailto:")
+        || url == SHARING_SETTINGS_URL
 }
+
+/// System Settings' Sharing pane, where Screen Sharing is turned on for the remote screen. The one
+/// settings address the window may open; any other `x-apple.systempreferences:` stays refused.
+const SHARING_SETTINGS_URL: &str = "x-apple.systempreferences:com.apple.Sharing-Settings.extension";
 
 #[tauri::command]
 fn open_external_url(url: String) -> Result<(), String> {
@@ -1573,6 +1580,8 @@ mod tests {
         assert!(is_allowed_external_url("https://example.com"));
         assert!(is_allowed_external_url("http://example.com/path?q=1#frag"));
         assert!(is_allowed_external_url("mailto:dev@real-bot.local"));
+        assert!(is_allowed_external_url("x-apple.systempreferences:com.apple.Sharing-Settings.extension"));
+        assert!(!is_allowed_external_url("x-apple.systempreferences:com.apple.preference.security"));
         assert!(!is_allowed_external_url("file:///etc/passwd"));
         assert!(!is_allowed_external_url("javascript:alert(1)"));
         assert!(!is_allowed_external_url("data:text/html,x"));

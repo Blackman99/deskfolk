@@ -314,6 +314,25 @@ test("the phone terminal page outranks the calendar and does not carry a preview
   });
 });
 
+test("the Mac's screen is a phone page in the URL, which the Mac's own window never opens", () => {
+  expect(sessionUrl(at("?s=abc"), view({ selectedId: "abc", overlay: { kind: "screen" } }), true)).toBe("/?s=abc&o=screen");
+  expect(overlayFromUrl(at("?o=screen"), true)).toEqual({ kind: "screen" });
+  expect(overlayFromUrl(at("?o=screen"))).toEqual({ kind: "none" });
+  expect(overlayFromFlags({
+    settingsOpen: false,
+    sessionSettingsOpen: false,
+    profileBotId: null,
+    workspaceOpen: false,
+    workspaceSelected: null,
+    routinesOpen: true,
+    screenOpen: true,
+  })).toEqual({ kind: "screen" });
+  expect(overlayApply({ kind: "screen" }, { kind: "none" }, { ...ready, selectedId: null, snapshotReady: false })).toEqual({
+    action: "set",
+    overlay: { kind: "screen" },
+  });
+});
+
 test("the spend ledger outranks the calendar and does not carry a preview", () => {
   expect(sessionUrl(at("?s=abc&p=notes/a.md"), view({ selectedId: "abc", previewRelpath: "notes/a.md", overlay: { kind: "spend" } }))).toBe(
     "/?s=abc&o=spend",

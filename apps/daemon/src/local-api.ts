@@ -80,6 +80,7 @@ import { PresenceManager, NotificationDeliveryScheduler } from "./notifications"
 import { confirmGroupLead, groupLeadState } from "./store/group-leads";
 import { attributionOptions } from "./store/attribution-options";
 import { delegationViews } from "./store/delegation-view";
+import type { ScreenService } from "./remote/screen";
 
 const AUTH_TIMEOUT_MS = 5_000;
 const REACTIONS = new Set<string>(REACTION_EMOJI);
@@ -106,6 +107,8 @@ export type LocalApiOptions = {
   canonicalEncoder?: CanonicalEncoder;
   admission?: TurnAdmission;
   remoteStatus?: () => NonNullable<RuntimeSnapshot["remoteStatus"]>;
+  /** The remote screen's switch and sessions, set from the window only (ADR 0056). */
+  screen?: ScreenService;
   /**
    * Dev-only bridge to the pairing side of the setup channel. The packaged window reaches it over
    * its inherited socketpair, which a source build has no way to obtain; absent in production, and
@@ -787,6 +790,17 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
         if (action === "cancel") return jsonResponse(quiesce.cancel(), 200, origin);
         if (action === "force") return jsonResponse(quiesce.force(), 200, origin);
         throw new HttpError(422, "invalid_args", "action must be begin, wait, cancel, or force");
+      }
+      // The remote screen is the Mac's to allow: these never pass the business dispatch a phone
+      // reaches, so no paired device can turn it on, widen its ICE servers, or see who else is in.
+      if (path === "/v1/remote/screen" && options.screen && (request.method === "GET" || request.method === "PUT")) {
+        if (request.method === "PUT") return jsonResponse(await options.screen.configure(await readJson(request)), 200, origin);
+        await options.screen.probe();
+        return jsonResponse(options.screen.status(), 200, origin);
+      }
+      if (request.method === "POST" && path === "/v1/remote/screen/disconnect" && options.screen) {
+        options.screen.endAll();
+        return jsonResponse(options.screen.status(), 200, origin);
       }
       if (request.method === "POST" && path === "/v1/remote/setup") {
         if (!options.devSetup) throw new HttpError(404, "not_found", "unknown route");

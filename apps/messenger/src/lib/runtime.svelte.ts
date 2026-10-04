@@ -564,6 +564,13 @@ export class MessengerRuntime {
     return this.api?.kind === "remote" || (HOSTED_MESSENGER && this.connection !== "connected");
   }
 
+  /** Whether the Mac this phone reached offers its screen; learned on each link (`/remote/features`). */
+  get screenOffered(): boolean {
+    void this.connection;
+    const api = this.api;
+    return api?.kind === "remote" && api.screenOffered;
+  }
+
   openCreateBot(): void {
     this.settingsOpen = false;
     this.createGroupOpen = false;
@@ -572,6 +579,7 @@ export class MessengerRuntime {
     this.routinesOpen = false;
     this.spendOpen = false;
     this.terminalOpen = false;
+    this.screenOpen = false;
     this.createBotOpen = true;
   }
 
@@ -583,6 +591,7 @@ export class MessengerRuntime {
     this.routinesOpen = false;
     this.spendOpen = false;
     this.terminalOpen = false;
+    this.screenOpen = false;
     this.createGroupOpen = true;
   }
 
@@ -598,6 +607,7 @@ export class MessengerRuntime {
     this.routinesOpen = false;
     this.spendOpen = false;
     this.terminalOpen = false;
+    this.screenOpen = false;
     this.profileBotId = null;
     this.sessionSettingsOpen = true;
   }
@@ -645,6 +655,7 @@ export class MessengerRuntime {
     this.previewTaskId = null;
     this.previewSiblings = null;
     void this.refreshTerminals();
+    this.screenOpen = false;
     this.terminalOpen = true;
   }
 
@@ -701,6 +712,35 @@ export class MessengerRuntime {
     this.terminalOpen = false;
   }
 
+  /**
+   * The remote screen: the Mac's own screen on this phone, through macOS Screen Sharing. Only a
+   * phone reaches its Mac this way, so it is a page in the URL and never a desktop pane.
+   */
+  screenOpen = $state(false);
+
+  openRemoteScreen(): void {
+    if (!this.remote) return;
+    this.settingsOpen = false;
+    this.createBotOpen = false;
+    this.createGroupOpen = false;
+    this.closeSessionSettings();
+    this.workspaceOpen = false;
+    this.routinesOpen = false;
+    this.spendOpen = false;
+    this.terminalOpen = false;
+    this.clearTrace();
+    this.threadOpen = false;
+    this.previewRelpath = null;
+    this.previewAttachmentId = null;
+    this.previewTaskId = null;
+    this.previewSiblings = null;
+    this.screenOpen = true;
+  }
+
+  closeRemoteScreen(): void {
+    this.screenOpen = false;
+  }
+
   /** Jobs whose board is on screen outside the narrow overlay — a workbench pane — by job. */
   private traceWatchers = new Map<string, number>();
 
@@ -741,6 +781,7 @@ export class MessengerRuntime {
     this.routinesOpen = false;
     this.spendOpen = false;
     this.terminalOpen = false;
+    this.screenOpen = false;
     this.traceSessionId = this.selectedId;
     this.traceTaskId = taskId ?? "";
     this.traceFocus = focus;
@@ -794,6 +835,7 @@ export class MessengerRuntime {
     this.routinesOpen = false;
     this.spendOpen = false;
     this.terminalOpen = false;
+    this.screenOpen = false;
     this.profileBotId = botId;
     this.sessionSettingsOpen = true;
   }
@@ -820,6 +862,7 @@ export class MessengerRuntime {
     this.routinesOpen = false;
     this.spendOpen = false;
     this.terminalOpen = false;
+    this.screenOpen = false;
     this.settingsOpen = !this.settingsOpen;
   }
 
@@ -831,6 +874,7 @@ export class MessengerRuntime {
     this.routinesOpen = false;
     this.spendOpen = false;
     this.terminalOpen = false;
+    this.screenOpen = false;
     this.workspaceOpen = true;
     if (selected) this.workspaceSelected = selected;
   }
@@ -852,6 +896,7 @@ export class MessengerRuntime {
     this.workspaceOpen = false;
     this.spendOpen = false;
     this.terminalOpen = false;
+    this.screenOpen = false;
     this.clearTrace();
     this.threadOpen = false;
     this.previewRelpath = null;
@@ -874,6 +919,7 @@ export class MessengerRuntime {
     this.workspaceOpen = false;
     this.routinesOpen = false;
     this.terminalOpen = false;
+    this.screenOpen = false;
     this.clearTrace();
     this.threadOpen = false;
     this.previewRelpath = null;
@@ -899,6 +945,7 @@ export class MessengerRuntime {
       this.routinesOpen = false;
       this.spendOpen = false;
       this.terminalOpen = false;
+      this.screenOpen = false;
       this.settingsOpen = true;
       return;
     }
@@ -911,6 +958,7 @@ export class MessengerRuntime {
       this.routinesOpen = false;
       this.spendOpen = false;
       this.terminalOpen = false;
+      this.screenOpen = false;
       this.profileBotId = null;
       this.sessionSettingsOpen = true;
       return;
@@ -924,6 +972,7 @@ export class MessengerRuntime {
       this.routinesOpen = false;
       this.spendOpen = false;
       this.terminalOpen = false;
+      this.screenOpen = false;
       this.profileBotId = overlay.botId;
       this.sessionSettingsOpen = true;
       return;
@@ -936,6 +985,7 @@ export class MessengerRuntime {
       this.routinesOpen = false;
       this.spendOpen = false;
       this.terminalOpen = false;
+      this.screenOpen = false;
       this.workspaceOpen = true;
       this.workspaceSelected = overlay.selected ?? "";
       return;
@@ -950,6 +1000,7 @@ export class MessengerRuntime {
       this.routinesOpen = false;
       this.spendOpen = false;
       this.terminalOpen = false;
+      this.screenOpen = false;
       this.traceSessionId = this.traceSessionId ?? this.selectedId;
       this.traceTaskId = overlay.taskId ?? "";
       return;
@@ -962,6 +1013,7 @@ export class MessengerRuntime {
       this.workspaceOpen = false;
       this.spendOpen = false;
       this.terminalOpen = false;
+      this.screenOpen = false;
       this.clearTrace();
         this.threadOpen = false;
       this.previewRelpath = null;
@@ -979,6 +1031,7 @@ export class MessengerRuntime {
       this.workspaceOpen = false;
       this.routinesOpen = false;
       this.terminalOpen = false;
+      this.screenOpen = false;
       this.clearTrace();
       this.threadOpen = false;
       this.previewRelpath = null;
@@ -1002,7 +1055,12 @@ export class MessengerRuntime {
       this.previewAttachmentId = null;
       this.previewTaskId = null;
       this.previewSiblings = null;
+      this.screenOpen = false;
       this.terminalOpen = true;
+      return;
+    }
+    if (overlay.kind === "screen") {
+      this.openRemoteScreen();
       return;
     }
     this.settingsOpen = false;
@@ -1012,6 +1070,7 @@ export class MessengerRuntime {
     this.routinesOpen = false;
     this.spendOpen = false;
     this.terminalOpen = false;
+    this.screenOpen = false;
   }
 
   closeSheets(): void {
@@ -1024,6 +1083,7 @@ export class MessengerRuntime {
     this.routinesOpen = false;
     this.spendOpen = false;
     this.terminalOpen = false;
+    this.screenOpen = false;
   }
 
   /** A ledger or search link can outlive the conversation it names. */
@@ -1040,6 +1100,7 @@ export class MessengerRuntime {
       this.closeRoutines();
       this.closeSpend();
       this.closeTerminal();
+      this.closeRemoteScreen();
       // Selecting the conversation already underneath a pane must still bring it forward.
       if (this.selectedId === id) this.toPane({ kind: "chat", sessionId: id });
     }

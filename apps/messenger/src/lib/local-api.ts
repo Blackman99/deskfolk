@@ -1,5 +1,7 @@
 import type {
   QualityReportRow,
+  RemoteScreenIceServer,
+  RemoteScreenStatus,
   SharedSkill,
   SharedSkillsResponse,
   ModelLadderResponse,
@@ -598,6 +600,19 @@ export class LocalApi {
    */
   async remoteSetup(request: Record<string, unknown>): Promise<unknown> {
     return this.request<unknown>("POST", "/v1/remote/setup", request);
+  }
+
+  /** The remote screen's switch, ICE servers and who is connected: the Mac's own, over loopback only. */
+  remoteScreen(): Promise<RemoteScreenStatus> {
+    return this.get<RemoteScreenStatus>("/v1/remote/screen");
+  }
+
+  setRemoteScreen(body: { enabled?: boolean; iceServers?: RemoteScreenIceServer[] }): Promise<RemoteScreenStatus> {
+    return this.put<RemoteScreenStatus>("/v1/remote/screen", body);
+  }
+
+  disconnectRemoteScreen(): Promise<RemoteScreenStatus> {
+    return this.post<RemoteScreenStatus>("/v1/remote/screen/disconnect");
   }
 
   /** Follow a running command's output. The id is `<turn_id>:<tool_call_id>`. */

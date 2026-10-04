@@ -56,6 +56,7 @@
 	} from './independent-runtime.ts';
 	import NotificationSettings from './NotificationSettings.svelte';
 	import RelayGuide from './RelayGuide.svelte';
+	import RemoteScreenSettings from './RemoteScreenSettings.svelte';
 
 	type SettingsTab = 'general' | 'models' | 'mcp' | 'notifications' | 'lessons' | 'remote' | 'about';
 
@@ -1583,6 +1584,9 @@
 										</ul>
 									{/if}
 								</div>
+								{#if runtime.client?.kind === 'local'}
+									<RemoteScreenSettings api={runtime.client} {t} />
+								{/if}
 							{:else if runtime.remoteStatus && !runtime.remote && !relayConnectable && !remoteSetupNote}
 								<p class="muted">{t.remote.devices(runtime.remoteStatus.devices)}</p>
 							{/if}

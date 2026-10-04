@@ -180,7 +180,7 @@
 		closeGlobalSearch();
 		const open = () => {
 			closeSettings();
-			if (!wide) { runtime.closeSessionSettings(); runtime.closeTerminal(); runtime.closeTrace(); runtime.threadOpen = false; }
+			if (!wide) { runtime.closeSessionSettings(); runtime.closeTerminal(); runtime.closeRemoteScreen(); runtime.closeTrace(); runtime.threadOpen = false; }
 			if (path) openArtifactPath(path);
 			else if (jump && 'routineId' in jump) void runtime.openRoutine(jump.botId, jump.routineId);
 			else if (jump) void runtime.selectSession(jump.sessionId, { messageId: jump.messageId });
@@ -273,6 +273,7 @@
 			settingsOpen: runtime.settingsOpen,
 			sessionSettingsOpen: runtime.sessionSettingsOpen,
 			terminalOpen: runtime.terminalOpen,
+			screenOpen: runtime.screenOpen,
 			traceOpen: runtime.traceOpen,
 			routinesOpen: runtime.routinesOpen,
 			spendOpen: runtime.spendOpen,
@@ -322,6 +323,9 @@
 			case 'terminal':
 				// A history entry, like the calendar: the page's button closes it, and Back walks
 				// the URL. Answering true here would pop nothing and leave the page open.
+				return false;
+			case 'screen':
+				// The same: Back leaves the Mac's screen by walking the URL.
 				return false;
 			case 'trace':
 				// The flow is one entry in history, and nothing done on it adds another. A file opened
@@ -1065,6 +1069,8 @@
 		!runtime.spendOpen &&
 		// The terminal is a full screen here, and the bar would sit on top of its key row.
 		!runtime.terminalOpen &&
+		// So is the Mac's screen, with its own key row.
+		!runtime.screenOpen &&
 		!runtime.createBotOpen && !runtime.createGroupOpen && !runtime.sessionSettingsOpen &&
 		!runtime.profileBotId && !danger.dangerConfirm &&
 		(runtime.settingsOpen ? !mobileSettingsDetail && !providerEditor : runtime.workspaceOpen || (!selected && !artifactPreview))
@@ -1138,6 +1144,8 @@
 				runtime.closeSessionSettings();
 			} else if (runtime.terminalOpen) {
 				runtime.closeTerminal();
+			} else if (runtime.screenOpen) {
+				runtime.closeRemoteScreen();
 			} else if (runtime.traceOpen && !artifactPreview) {
 				// A file opened from the flow lies over it, so the preview below closes first.
 				runtime.closeTrace();
@@ -1301,6 +1309,7 @@
 	class:has-routines={runtime.routinesOpen}
 	class:has-spend={runtime.spendOpen}
 	class:has-terminal={runtime.terminalOpen}
+	class:has-screen={runtime.screenOpen}
 	class:is-preview={Boolean(artifactPreview)}
 	class:is-preview-dragging={previewDragging}
 	class:is-sidebar-dragging={sidebarDragging}
@@ -1545,6 +1554,14 @@
 					onChanged={() => runtime.refreshTerminals()}
 					onClose={() => runtime.closeTerminal()}
 				/>
+			</div>
+			{/key}
+		{:else if runtime.screenOpen && runtime.client?.kind === 'remote'}
+			{#key runtime.screenOpen}
+			<div class="screen-page" transition:pageSlide>
+				{#await import('./overlays/RemoteScreenPane.svelte') then { default: RemoteScreenPane }}
+					<RemoteScreenPane api={runtime.client} {t} onClose={() => runtime.closeRemoteScreen()} />
+				{/await}
 			</div>
 			{/key}
 		{:else if selected}
@@ -2241,9 +2258,11 @@
 		 */
 		.shell:has(.conversation) .main,
 		.shell:has(.terminal-page) .main,
+		.shell:has(.screen-page) .main,
 		.shell.has-routines .main,
 		.shell.has-spend .main,
-		.shell.has-terminal .main {
+		.shell.has-terminal .main,
+		.shell.has-screen .main {
 			position: fixed;
 			inset: 0;
 			z-index: 30;
@@ -2317,5 +2336,20 @@
 			inset: 0;
 			z-index: 80;
 		}
+	}
+
+	/*
+	 * The Mac's screen takes the whole viewport at every width: over the tab bar on a phone,
+	 * and over both columns on a tablet, where every pixel of the Mac is worth having.
+	 */
+	.screen-page {
+		position: fixed;
+		inset: 0;
+		z-index: 106;
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+		min-height: 0;
+		background: var(--pane);
 	}
 </style>

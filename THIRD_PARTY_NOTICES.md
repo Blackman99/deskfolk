@@ -257,3 +257,41 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ```
+
+## noVNC
+
+The remote screen page in `apps/messenger` draws the Mac's Screen Sharing with [@novnc/novnc](https://github.com/novnc/noVNC) 1.7.0, used unmodified and loaded only on that page. noVNC is licensed under the [Mozilla Public License 2.0](https://www.mozilla.org/en-US/MPL/2.0/); its source, including the files bundled into the hosted messenger, is available at <https://github.com/novnc/noVNC/tree/v1.7.0>. Its bundled components keep their own licenses as listed in that repository's `LICENSE.txt`.
+
+```text
+noVNC is Copyright (C) 2022 The noVNC authors (see AUTHORS)
+
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+```
+
+## webrtc-rs
+
+`real-bot-rtc` (`apps/rtc-helper`), the remote screen's direct-connection helper shipped inside the macOS app, is built on [webrtc](https://github.com/webrtc-rs/webrtc) and [rtc](https://github.com/webrtc-rs/rtc) 0.21.0, dual-licensed under the MIT license and the Apache License 2.0; this project uses them under the MIT license. `apps/rtc-helper/vendor/rtc-sctp` is that project's rtc-sctp 0.21.0 with one constant changed (the floor of the retransmission timeout); its README says which and why.
+
+```text
+Copyright (c) 2021 WebRTC.rs
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+```

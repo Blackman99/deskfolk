@@ -130,6 +130,7 @@ function layers(over: Partial<LayerState> = {}): LayerState {
     sessionSettingsOpen: false,
     toolsMenuOpen: false,
     terminalOpen: false,
+    screenOpen: false,
     traceOpen: false,
     routinesOpen: false,
     spendOpen: false,
@@ -150,6 +151,15 @@ test("the phone terminal page is a screen of its own, and Back leaves it to hist
   // A menu over the page still closes before Back walks off the page.
   expect(topLayer(layers({ terminalOpen: true, toolsMenuOpen: true }))).toBe("tools-menu");
   expect(topLayer(layers({ terminalOpen: true, routinesOpen: true }))).toBe("terminal");
+});
+
+test("the Mac's screen is a page of its own, and Back leaves it to history", () => {
+  const screen: UrlView = { ...roster, overlay: { kind: "screen" } };
+  expect(routeLayers(screen)).toEqual(["screen"]);
+  expect(routeStep(roster, screen)).toBe("deeper");
+  expect(routeStep(screen, roster)).toBe("shallower");
+  expect(topLayer(layers({ screenOpen: true, toolsMenuOpen: true }))).toBe("tools-menu");
+  expect(topLayer(layers({ screenOpen: true, routinesOpen: true }))).toBe("screen");
 });
 
 test("the spend ledger is a screen of its own, beside the calendar", () => {

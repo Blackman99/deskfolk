@@ -72,7 +72,7 @@ How to run it and read the results: [Development · golden-path benchmark](docs/
 - **Your own terminal.** Shells held by the daemon keep running when the window closes; a Bot's commands scroll under its message while they run, and before it starts writing, its "Thinking" line names the file it is reading or the command it is running, and opens into every step the turn has taken.
 - **Spend by model, conversation and Bot.** Track turn, decision and feedback calls; reported amounts and estimates stay separate — [spend and billing rates](docs/spend.md).
 - **Routines.** Bots start work daily or weekly on the local clock of the computer they run on — [how routines work](docs/routines.md).
-- **From your phone — experimental, off by default.** Reach your Mac through a relay you run yourself, end-to-end encrypted — [remote access](docs/remote-access.md).
+- **From your phone — experimental, off by default.** Reach your Mac through a relay you run yourself, end-to-end encrypted — [remote access](docs/remote-access.md). With Screen Sharing on at the Mac, you can also see and operate its screen from the phone, lock screen included.
 
 ## Get it
 

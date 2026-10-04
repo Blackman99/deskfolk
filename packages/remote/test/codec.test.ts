@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { u64 } from '../src/bytes.ts';
-import { MAX_BODY, MAX_FILE_CHUNK, MAX_FRAGMENT_CHUNK, MAX_LOGICAL_MESSAGE, Reassembler, decodeFileChunk, decodeFragment, decodeFrame, encodeFileChunk, encodeFragment, encodeFrame, fragmentMessage, randomBytes } from '../src/index.ts';
+import { MAX_BODY, MAX_FILE_CHUNK, MAX_FRAGMENT_CHUNK, MAX_LOGICAL_MESSAGE, MAX_TUNNEL_CHUNK, Reassembler, decodeFileChunk, decodeFragment, decodeFrame, decodeTunnelChunk, encodeFileChunk, encodeFragment, encodeFrame, encodeTunnelChunk, fragmentMessage, randomBytes } from '../src/index.ts';
 
 test('32KiB includes all transport/fragment/file headers', () => {
   const sessionId = randomBytes(16);
@@ -12,9 +12,34 @@ test('32KiB includes all transport/fragment/file headers', () => {
   expect(() => encodeFileChunk({ streamId: 0, offset: -1n, eof: false, chunk: new Uint8Array() })).toThrow();
   file[12] = 2; expect(() => decodeFileChunk(file)).toThrow('flags');
   for (const bad of [new Uint8Array(24), new Uint8Array(32769)]) expect(() => decodeFrame(bad)).toThrow();
-  const invalid = frame.slice(); invalid[24] = 9; expect(() => decodeFrame(invalid)).toThrow();
+  const invalid = frame.slice(); invalid[24] = 10; expect(() => decodeFrame(invalid)).toThrow();
   expect(() => u64(2n ** 64n)).toThrow();
 });
+
+test('type 9 tunnel chunks: data, EOF and ACK, within one frame', () => {
+  const sessionId = randomBytes(16);
+  const data = encodeTunnelChunk({ tunnelId: 7, offset: 4294967296n, kind: 'data', chunk: new Uint8Array(MAX_TUNNEL_CHUNK).fill(3) });
+  const frame = encodeFrame({ sessionId, seq: 2n, type: 9, body: data });
+  expect(frame.length).toBe(32768);
+  expect(decodeTunnelChunk(decodeFrame(frame).body)).toEqual({ tunnelId: 7, offset: 4294967296n, kind: 'data', chunk: new Uint8Array(MAX_TUNNEL_CHUNK).fill(3) });
+  for (const kind of ['eof', 'ack'] as const) {
+    const body = encodeTunnelChunk({ tunnelId: 1, offset: 9n, kind, chunk: new Uint8Array() });
+    expect(body.length).toBe(13); expect(decodeTunnelChunk(body).kind).toBe(kind);
+  }
+  expect(() => encodeTunnelChunk({ tunnelId: 1, offset: 0n, kind: 'data', chunk: new Uint8Array() })).toThrow();
+  expect(() => encodeTunnelChunk({ tunnelId: 1, offset: 0n, kind: 'ack', chunk: new Uint8Array(1) })).toThrow();
+  expect(() => encodeTunnelChunk({ tunnelId: 1, offset: 0n, kind: 'data', chunk: new Uint8Array(MAX_TUNNEL_CHUNK + 1) })).toThrow();
+  const reserved = encodeTunnelChunk({ tunnelId: 1, offset: 0n, kind: 'eof', chunk: new Uint8Array() }); reserved[12] = 3;
+  expect(() => decodeTunnelChunk(reserved)).toThrow('reserved');
+  const ackWithBytes = concatAck(); expect(() => decodeFrame(encodeFrameUnchecked(sessionId, ackWithBytes))).toThrow();
+});
+
+function concatAck(): Uint8Array {
+  const body = new Uint8Array(14); body[12] = 2; return body;
+}
+function encodeFrameUnchecked(sessionId: Uint8Array, body: Uint8Array): Uint8Array {
+  const out = new Uint8Array(25 + body.length); out.set(sessionId); out[24] = 9; out.set(body, 25); return out;
+}
 
 test('1 MiB snapshot fragmentation, strict contiguous bounded reassembly', () => {
   const plain = new Uint8Array(MAX_LOGICAL_MESSAGE).fill(17), frames = fragmentMessage(8, plain), r = new Reassembler();

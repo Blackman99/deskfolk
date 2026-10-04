@@ -5,7 +5,8 @@
 	import { spendCopyFor } from '../spend/spend-copy.ts';
 
 	/**
-	 * The 工具 popover: routines, spend, a terminal, and — after a line — the archived sessions and,
+	 * The 工具 popover: routines, spend, a terminal, the Mac's screen on a phone that can reach it,
+	 * and — after a line — the archived sessions and,
 	 * once the daemon has stops, 「全部停下」 with a line saying it lasts until lifted (「全部继续」
 	 * while everything is stopped). One
 	 * menu for every button that opens it: the list's footer, the phone's search row, and the rail
@@ -29,10 +30,12 @@
 		focusLast?: boolean;
 		archivedCount: number;
 		/** What is on screen now, for the phone's pages. */
-		current?: { routines?: boolean; spend?: boolean; terminal?: boolean; archived?: boolean };
+		current?: { routines?: boolean; spend?: boolean; terminal?: boolean; screen?: boolean; archived?: boolean };
 		onOpenRoutines: () => void;
 		onOpenSpend: () => void;
 		onOpenTerminal: () => void;
+		/** The remote screen; null where this is not a phone on a Mac that offers it. */
+		onOpenScreen?: (() => void) | null;
 		onOpenArchived: () => void;
 		/** Stop every Bot, or lift a stop on everything; null where the daemon has no stops. */
 		everything?: 'stop' | 'go-on' | null;
@@ -54,6 +57,7 @@
 		onOpenRoutines,
 		onOpenSpend,
 		onOpenTerminal,
+		onOpenScreen = null,
 		onOpenArchived,
 		everything = null,
 		everythingDisabled = false,
@@ -199,6 +203,22 @@
 			</svg>
 			<span>{phone ? t.terminal.title : t.terminal.newTab}</span>
 		</button>
+		{#if onOpenScreen}
+			<button
+				type="button"
+				class="tools-menu-item"
+				role="menuitem"
+				aria-current={current.screen ? 'true' : undefined}
+				onclick={() => choose(onOpenScreen)}
+			>
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<rect x="2" y="3" width="20" height="14" rx="2"></rect>
+					<line x1="8" y1="21" x2="16" y2="21"></line>
+					<line x1="12" y1="17" x2="12" y2="21"></line>
+				</svg>
+				<span>{t.screen.title}</span>
+			</button>
+		{/if}
 		<div class="tools-menu-divider" role="separator"></div>
 		<button
 			type="button"

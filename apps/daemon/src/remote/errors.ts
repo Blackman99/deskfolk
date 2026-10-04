@@ -9,6 +9,7 @@ const codes = new Set([
   "push_disabled", "push_pending", "no_subscription", "push_contact_required", "gateway_unavailable",
   "rate_limited", "capability_unavailable", "not_enabled", "recovery_required",
   "held", "holds_unavailable",
+  "screen_disabled", "screen_sharing_off", "screen_session_gone", "direct_unavailable", "direct_failed",
 ]);
 export function remoteError(code: unknown): { error: { code: string; message: string } } {
   return { error: { code: typeof code === "string" && codes.has(code) ? code : "rejected", message: "remote request rejected" } };

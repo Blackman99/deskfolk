@@ -3,12 +3,15 @@ import {
   base64url,
   canonicalBytes,
   decodeFileChunk,
+  decodeTunnelChunk,
   encodeFileChunk,
+  encodeTunnelChunk,
   generateIdentity,
   identityPublic,
   parseRemoteRequest,
   type RemoteRequest,
   type RemoteResponse,
+  type TunnelChunk,
 } from "@real-bot/remote";
 import { deflateSync } from "fflate";
 import type { StoredEnrollment } from "./idb.ts";
@@ -116,6 +119,8 @@ export function fakeHost(options: {
   const cancels: number[] = [];
   /** Upload chunks as they arrived, each with what `options.clock` read then. */
   const chunks: Array<{ streamId: number; offset: number; eof: boolean; size: number; at: number }> = [];
+  /** Type 9 frames the page sent, with what `options.clock` read then. */
+  const tunnelFrames: Array<TunnelChunk & { at: number }> = [];
   const socket = new FakeSocket((data, sock) => {
     if (typeof data === "string") {
       const message = JSON.parse(data) as { type: string; nonce_c?: string };
@@ -142,6 +147,10 @@ export function fakeHost(options: {
     const frame = host.receive(data);
     if (frame.type === 6) {
       cancels.push(new DataView(frame.body.buffer, frame.body.byteOffset, 4).getUint32(0));
+      return;
+    }
+    if (frame.type === 9) {
+      tunnelFrames.push({ ...decodeTunnelChunk(frame.body), at: options.clock?.() ?? 0 });
       return;
     }
     if (frame.type === 5) {
@@ -174,6 +183,9 @@ export function fakeHost(options: {
     requests,
     cancels,
     chunks,
+    tunnelFrames,
+    /** A type 9 frame from the Mac: screen bytes, an acknowledgement, or the end of a tunnel. */
+    tunnel: (chunk: TunnelChunk) => socket.deliver(host.send(9, encodeTunnelChunk(chunk))),
     event: (payload: unknown) => socket.deliver(host.send(3, canonicalBytes(payload))),
     /** An answer the test sends when it chooses, rather than the moment the request lands. */
     respond: (response: RemoteResponse) => socket.deliver(host.send(2, canonicalBytes(response))),

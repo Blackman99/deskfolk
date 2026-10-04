@@ -72,6 +72,7 @@ describe("schema", () => {
       "remote_push_subs",
       "remote_replays",
       "remote_revocations",
+      "remote_screen",
       "remote_transition",
       "request_meta",
       "request_receipts",

@@ -2370,6 +2370,39 @@ export type EventCursor = {
 
 export type CredentialOperation = { id: string; kind: string; entity_id: string; request_id: string | null; can_repair: boolean };
 
+/** A STUN or TURN server the Mac's settings name for the remote screen's direct connection. */
+export type RemoteScreenIceServer = { urls: string[]; username?: string; credential?: string };
+
+/**
+ * The remote screen as the Mac's own window sees it (`GET/PUT /v1/remote/screen`, loopback only):
+ * whether paired devices may view and control this Mac through macOS Screen Sharing, which ICE
+ * servers a direct connection may use, whether Screen Sharing answered, and who is connected now.
+ */
+export type RemoteScreenStatus = {
+  enabled: boolean;
+  iceServers: RemoteScreenIceServer[];
+  /** Null before anything looked. */
+  sharing: boolean | null;
+  /** Whether this Mac can take a direct connection at all (its WebRTC helper is in place). */
+  direct: boolean;
+  sessions: Array<{
+    deviceId: string;
+    deviceName: string;
+    mode: "connecting" | "direct" | "relay";
+    since: number;
+    /** Bytes carried so far each way; a direct session's come from its helper every couple of seconds. */
+    toPhone: number;
+    fromPhone: number;
+    /**
+     * What Screen Sharing announced, read off a relayed session's plain RFB after its sign-in: the
+     * framebuffer and how the first update is encoded (RFB encoding number).
+     */
+    framebuffer?: { width: number; height: number; firstEncoding?: number };
+  }>;
+  /** Pixel sizes while a smooth session has the display lowered, and what it is otherwise. */
+  lowered?: { width: number; height: number; fromWidth: number; fromHeight: number };
+};
+
 export type RuntimeSnapshot = EventCursor & {
   remoteStatus?: { state: "off" | "native_unavailable" | "activation_gated" | "connecting" | "online" | "disconnected" | "trust_mismatch"; diagnostic: string | null; devices: number };
   credentialOperations?: CredentialOperation[];

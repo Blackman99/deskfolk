@@ -54,6 +54,11 @@ CREATE TABLE IF NOT EXISTS remote_push_subs (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS remote_push_subs_hash ON remote_push_subs(endpoint_hash);
+CREATE TABLE IF NOT EXISTS remote_screen (
+  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+  enabled INTEGER NOT NULL DEFAULT 0,
+  ice_servers TEXT NOT NULL DEFAULT '[]'
+);
 
 CREATE TABLE IF NOT EXISTS request_receipts (
   device_id TEXT NOT NULL,

@@ -7,6 +7,7 @@ test("the native resource list is per-OS: Windows ships no Swift helper or crede
     "real-bot-runtime-helper",
     "real-bot-pty",
     "libRemoteCredentials.dylib",
+    "real-bot-rtc",
   ]);
   expect(nativeFilesFor("win32")).toEqual(["real-bot-daemon.exe", "real-bot-pty.exe"]);
 });

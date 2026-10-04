@@ -83,6 +83,7 @@ Groundwork in place:
 - Optional Web Push sends only generic reminders that something is waiting, goes out from the Mac, and when opened only brings you back to the session list; it never approves anything.
 - Everyday features and Web Push work end to end in Chrome on a real Android device (from source, with the development switch).
 - The installed app registers with a relay and pairs devices: remote credentials live in a private file in the data folder, and the window approves each device with Touch ID (ADR 0033).
+- Seeing and operating the Mac's screen from the phone (off by default, turned on at the Mac): through macOS's own Screen Sharing, lock screen included; WebRTC directly when it can connect, via the relay when it cannot ([ADR 0056](docs/adr/0056-remote-screen.md)). The local end-to-end check passes; a direct connection from a real phone on cellular, the real Screen Sharing, and iOS Safari are not yet accepted.
 
 Next:
 

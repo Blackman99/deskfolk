@@ -106,6 +106,8 @@ import type { Snapshot } from "../snapshot.ts";
 import { ulid } from "./ids.ts";
 import type { StoredEnrollment } from "./idb.ts";
 import { RemoteTransport, type RpcOptions, type TransportHooks } from "./transport.ts";
+import { TunnelChannel, type ScreenChannel } from "./rfb-channel.ts";
+import type { ScreenApi } from "./screen-connect.ts";
 import { createRemoteMediaSource, type MediaSourceHandle } from "./media-source.ts";
 import { createAssertion, createRegistration, type WebAuthnBridge } from "./webauthn.ts";
 import type {
@@ -252,6 +254,8 @@ export class RemoteApi {
   readonly endpoint: LocalEndpoint;
   private readonly pending = new Map<string, PendingRemote>();
   private transport: RemoteTransport | null = null;
+  /** What the Mac said it offers on this link, from `/remote/features`. */
+  private features: { screen?: unknown } = {};
   private mediaAbort = new AbortController();
   private readonly identity: IdentitySecrets;
   private revisions = new Map<string, string>();
@@ -362,10 +366,12 @@ export class RemoteApi {
     const ready = await transport.connect();
     // Asks the Mac to deflate its answers — a snapshot is a fifth of its JSON that way. An older
     // Mac says 404 and they come as they always did.
+    this.features = {};
     try {
-      await transport.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/features", body: { compress: ["deflate-raw"] } });
+      const answer = await transport.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/features", body: { compress: ["deflate-raw"] } });
+      if (answer.status === 200 && answer.body && typeof answer.body === "object") this.features = answer.body as { screen?: unknown };
     } catch {
-      // Answers stay uncompressed; nothing else depends on it.
+      // Answers stay uncompressed, and the Mac offers nothing else this link knows of.
     }
     this.transport = transport;
     transport.ondrop = () => {
@@ -381,6 +387,41 @@ export class RemoteApi {
     this.mediaAbort = new AbortController();
     this.transport?.close();
     this.transport = null;
+  }
+
+  /** Whether the Mac this link reaches can show its screen at all (it may still be turned off there). */
+  get screenOffered(): boolean {
+    return this.features.screen === "rfb-v1";
+  }
+  async screenStart(options: { smooth?: boolean } = {}): ReturnType<ScreenApi["screenStart"]> {
+    return this.screenCall("/remote/screen/start", options.smooth ? { smooth: true } : {});
+  }
+  async screenOffer(sessionId: string, sdp: string): ReturnType<ScreenApi["screenOffer"]> {
+    return this.screenCall("/remote/screen/offer", { session_id: sessionId, sdp });
+  }
+  async screenTunnel(sessionId: string): ReturnType<ScreenApi["screenTunnel"]> {
+    return this.screenCall("/remote/screen/tunnel", { session_id: sessionId });
+  }
+  /** The page's keepalive; the Mac ends a session it stops hearing from. */
+  async screenStatus(sessionId: string): Promise<{ mode: string }> {
+    return this.screenCall("/remote/screen/status", { session_id: sessionId });
+  }
+  async screenStop(sessionId: string): Promise<void> {
+    await this.screenCall("/remote/screen/stop", { session_id: sessionId });
+  }
+  openScreenTunnel(tunnelId: number): ScreenChannel {
+    const transport = this.transport;
+    if (!transport) throw new ApiError(503, "request_unknown", "the link to the Mac is down");
+    return new TunnelChannel(transport, tunnelId);
+  }
+  /** No receipts: each of these is about a session that lives only as long as this link. */
+  private async screenCall<T>(path: string, body: Record<string, unknown> = {}): Promise<T> {
+    const response = await this.dispatch({ v: 1, id: ulid(), method: "POST", path, body });
+    if (response.status >= 400) {
+      const error = response.body as ErrorBody | undefined;
+      throw new ApiError(response.status, error?.error?.code ?? "failed", error?.error?.message ?? "request failed");
+    }
+    return response.body as T;
   }
 
   async get<T>(path: string, signal?: AbortSignal): Promise<T> {

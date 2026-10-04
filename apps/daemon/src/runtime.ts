@@ -15,6 +15,7 @@ import { bunKeyStore } from "./secrets";
 import { Store, type EndpointKeyStore } from "./store";
 import type { CompletionsClient } from "./completions";
 import { RemoteController } from "./remote/controller";
+import { ScreenService, type ScreenServiceOptions } from "./remote/screen";
 import { inheritedLocalSetup } from "./remote/local-setup";
 import { createDevRemote, devPairingDispatch } from "./remote/dev-setup";
 import { shippedRemoteNative } from "./remote/file-native";
@@ -51,6 +52,11 @@ export type RuntimeOptions = {
    * change what they read.
    */
   run?: RunShape;
+  /**
+   * The remote screen pointed somewhere other than Screen Sharing — a fake RFB server, for the
+   * end-to-end fixture. `main.ts` never sets it, so a running app has no way to reach another port.
+   */
+  screen?: Omit<ScreenServiceOptions, "store">;
 };
 
 export type RuntimeHandle = {
@@ -127,6 +133,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
   let api: ReturnType<typeof createLocalApi> | undefined;
   let store: Store | undefined;
   let remote: RemoteController | undefined;
+  let screen: ScreenService | undefined;
   let closeSetup: (() => void) | undefined;
   let closeDevSetup: (() => void) | undefined;
   let windowAlive = false;
@@ -164,6 +171,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
         closeSetup?.();
         closeDevSetup?.();
         remote?.stop();
+        screen?.close();
         api?.quiesce.close();
         api?.scheduler?.stop();
         // Stop the shells before the store closes. Their rows stay, so the next start puts them back.
@@ -280,6 +288,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
     const shipped = dev || process.platform === "win32" ? undefined : shippedRemoteNative(options.dataDir);
     const devPairing = dev ? devPairingDispatch(dev.native) : undefined;
     const previousShutdown = store.previousShutdown;
+    screen = new ScreenService({ store, ...options.screen });
     api = createLocalApi({
       store,
       token,
@@ -302,6 +311,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
         if (told && told.turns > 0) bootLog(`started again after a ${told.cause} end: ${told.turns} turn(s) in ${told.jobs} job(s) were cut off, told where each belongs`);
       },
       remoteStatus: () => remote?.status() ?? { state: "off", diagnostic: null, devices: 0 },
+      screen,
       onQuit: () => {
         options.onQuit?.();
         removeDescriptor(options.dataDir);
@@ -334,7 +344,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
       },
     });
     const metadata = store.db.query<{ host_id: string; relay_origin: string; relay_id: string }, []>("SELECT host_id, relay_origin, relay_id FROM remote_host WHERE singleton = 1").get();
-    remote = new RemoteController({ store, api, maint, native: dev?.native ?? shipped,
+    remote = new RemoteController({ store, api, maint, native: dev?.native ?? shipped, screen,
       config: metadata ? { hostId: metadata.host_id, origin: metadata.relay_origin, relayId: metadata.relay_id } : undefined });
     if (options.desktopRemoteChannel) {
       closeSetup = await inheritedLocalSetup(remote, () => { windowAlive = false; }, shipped);

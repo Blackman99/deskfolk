@@ -9,7 +9,8 @@ export const MAX_FRAGMENT_CHUNK = MAX_BODY - FRAGMENT_HEADER;
 export const MAX_LOGICAL_MESSAGE = 1024 * 1024;
 export const REASSEMBLY_TTL_MS = 30_000;
 export const MAX_FILE_CHUNK = MAX_BODY - 13;
-export type FrameType = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+export const MAX_TUNNEL_CHUNK = MAX_BODY - 13;
+export type FrameType = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
 export type LogicalType = 1 | 2 | 3 | 8;
 export interface SessionBinding {
   hostId: string;
@@ -25,12 +26,13 @@ export function encodePrologue(b: SessionBinding): Uint8Array {
 }
 export interface TransportFrame { sessionId: Uint8Array; seq: bigint; type: FrameType; body: Uint8Array }
 function frameBody(type: number, body: Uint8Array): asserts type is FrameType {
-  check(Number.isInteger(type) && type >= 1 && type <= 8, 'unknown frame type');
+  check(Number.isInteger(type) && type >= 1 && type <= 9, 'unknown frame type');
   check(body.length <= MAX_BODY, 'total plaintext exceeds 32 KiB');
   if (type === 4) decodeFragment(body);
   if (type === 5) decodeFileChunk(body);
   if (type === 6) check(body.length === 4, 'invalid stream cancellation');
   if (type === 7) check(body.length === 0, 'invalid close frame');
+  if (type === 9) decodeTunnelChunk(body);
 }
 export function encodeFrame(frame: TransportFrame): Uint8Array {
   frameBody(frame.type, frame.body);
@@ -107,4 +109,34 @@ export function decodeFileChunk(input: Uint8Array): FileChunk {
   const r = new Reader(input), streamId = r.u32(), offset = r.u64(), flags = r.u8();
   check(flags === 0 || flags === 1, 'reserved file flags');
   return { streamId, offset, eof: flags === 1, chunk: r.take(r.remaining) };
+}
+/**
+ * A byte stream between the phone and one local socket on the Mac (the remote screen's fallback
+ * when a direct connection cannot be made), in both directions. `offset` counts this direction's
+ * bytes. Data is never empty; EOF carries none; an ACK carries none and its `offset` is how many of
+ * the other direction's bytes have been consumed — the sender keeps at most a window ahead of it,
+ * so nothing piles up in the relay's per-socket buffer.
+ */
+export type TunnelChunkKind = 'data' | 'eof' | 'ack';
+/**
+ * How far either side may run ahead of what the other acknowledged. The relay drops a route whose
+ * buffer toward the phone passes 64 KiB and only the phone can say what arrived, so this stays
+ * below that with room for frame overhead and whatever else the link carries meanwhile.
+ */
+export const TUNNEL_WINDOW = 48 * 1024;
+/** Each side acknowledges every quarter window it has consumed. */
+export const TUNNEL_ACK_EVERY = TUNNEL_WINDOW / 4;
+export interface TunnelChunk { tunnelId: number; offset: bigint; kind: TunnelChunkKind; chunk: Uint8Array }
+const TUNNEL_FLAGS: Record<TunnelChunkKind, number> = { data: 0, eof: 1, ack: 2 };
+export function encodeTunnelChunk(t: TunnelChunk): Uint8Array {
+  check(t.kind in TUNNEL_FLAGS && t.chunk.length <= MAX_TUNNEL_CHUNK && (t.kind === 'data') === (t.chunk.length > 0), 'invalid tunnel chunk');
+  return concat(u32(t.tunnelId), u64(t.offset), Uint8Array.of(TUNNEL_FLAGS[t.kind]), t.chunk);
+}
+export function decodeTunnelChunk(input: Uint8Array): TunnelChunk {
+  check(input.length <= MAX_BODY, 'tunnel frame limit');
+  const r = new Reader(input), tunnelId = r.u32(), offset = r.u64(), flags = r.u8(), chunk = r.take(r.remaining);
+  check(flags <= 2, 'reserved tunnel flags');
+  const kind: TunnelChunkKind = flags === 0 ? 'data' : flags === 1 ? 'eof' : 'ack';
+  check((kind === 'data') === (chunk.length > 0), 'invalid tunnel chunk');
+  return { tunnelId, offset, kind, chunk };
 }

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged into the bundle's own Info.plist by Tauri. -->
+<plist version="1.0">
+<dict>
+	<!-- macOS 15+ asks before an app reaches the local network: the remote screen's direct
+	     connection (real-bot-rtc) does, to a paired phone on the same Wi-Fi. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Deskfolk connects your paired phone straight to this Mac's screen when both are on the same network.</string>
+</dict>
+</plist>

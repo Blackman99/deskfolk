@@ -48,6 +48,9 @@ jobs:
       - name: Cargo test
         run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 
+      - name: Remote screen helper tests
+        run: cargo test --locked --manifest-path apps/rtc-helper/Cargo.toml
+
       - name: Build messenger
         run: pnpm --filter @real-bot/messenger build
 

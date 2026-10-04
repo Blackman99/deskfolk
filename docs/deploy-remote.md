@@ -121,6 +121,10 @@ The host adapter now paces all outgoing link/control frames through one1.5MB/s b
 - SQLite holds one host, at most16 device keys and a singleton bootstrap-consumed bit/hash. FULL synchronous rollback-journal transactions, exclusive single writer, 0600 database, `max_page_count=256` (~1 MiB at default4KiB pages), no growing tombstone/event/nonce/mailbox tables. Host revoked ID may be re-added only by an explicit new authenticated host registration; never by an old device proof.
 - Logs are allowlisted `{event,code}` constants, sampled at5/sec burst20. No error objects/stacks, URL paths/query, IPs, public/private keys, request/response bodies, ciphertext or challenge material. Startup failure is fixed `{event:"startup_failed",code:1}`. Caddy access and diagnostic output are disabled (including startup wrapper); observe health and bounded counters, not raw HTTP error logs. Canary plaintext/redaction tests are part of root tests.
 
+### Optional STUN for the remote screen
+
+The remote screen's direct connection (ADR 0056) needs no relay change: it is WebRTC between the phone and the Mac, signalled over the existing link, and falls back to type 9 frames through the relay when it cannot connect. For a phone on cellular to reach a Mac behind NAT directly, run a STUN server beside the relay — coturn with `stun-only`, `no-tcp-relay` and UDP 3478 open in the firewall / security group is enough — and enter `stun:<relay host>:3478` in the Mac's Settings → Remote access → STUN / TURN servers. A TURN server works too (its traffic then passes through that server, encrypted); none is configured by default, and the relay's own container is unchanged. Bandwidth through the relay stays bounded by the limits above, which is what makes the relayed screen slower.
+
 ## Environment and bootstrap recovery
 
 | Variable | Default / requirement |
