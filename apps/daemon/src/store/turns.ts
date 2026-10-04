@@ -73,7 +73,7 @@ export function createTurn(
     const workItems = readEngineLevel(ctx.db) >= ENGINE_LEVELS.work_items;
     // In the deterministic engine neither the current slot nor the waker's ticket decides work.
     const explicitTask = landing.taskId ?? trigger.task_id ?? null;
-    const explicitTicket = landing.ticketId ?? trigger.ticket_id ?? null;
+    const explicitTicket = landing.ticketId ?? lineTicketFor(ctx, trigger.ticket_id ?? null, input.botId);
     const { taskId, ticketId, handedTicketId } = readOnly
       ? { taskId: null, ticketId: null, handedTicketId: null }
       : workItems
@@ -139,10 +139,24 @@ export function turnLanding(
 ): { taskId: string | null; ticketId: string | null } {
   const landing = landingInput(ctx, input);
   if (readEngineLevel(ctx.db) >= ENGINE_LEVELS.work_items) {
-    return { taskId: landing.taskId ?? input.trigger.task_id ?? null, ticketId: landing.ticketId ?? input.trigger.ticket_id ?? null };
+    return { taskId: landing.taskId ?? input.trigger.task_id ?? null, ticketId: landing.ticketId ?? lineTicketFor(ctx, input.trigger.ticket_id ?? null, input.botId) };
   }
   const { taskId, ticketId } = findTurnTask(ctx, landing);
   return { taskId, ticketId };
+}
+
+/**
+ * The ticket a line filed under puts a Bot it wakes by default on: the line's own, unless that
+ * ticket is another Bot's that can still take work — then none, the whole job, from which the Bot
+ * can hand the ticket out or go on to its own. A lead woken by 「宣传语改成英文的，海报改横版」,
+ * read as about 文案's slogans ticket, worked on that ticket: the poster it drew was handed in as
+ * the slogans and pushed 文案's English lines aside (2026-10-04, real-model run).
+ */
+export function lineTicketFor(ctx: StoreContext, ticketId: string | null, botId: string): string | null {
+  if (!ticketId) return null;
+  const owner = ctx.db.query<{ id: string }, [string, string]>(`SELECT b.id FROM tickets t JOIN bots b ON b.id = COALESCE(t.owner_bot_id, t.worker)
+    WHERE t.id = ?1 AND b.id <> ?2 AND b.archived_at IS NULL AND b.deleted_at IS NULL`).get(ticketId, botId);
+  return owner ? null : ticketId;
 }
 
 function landingInput(

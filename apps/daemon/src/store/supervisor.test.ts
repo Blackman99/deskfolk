@@ -626,3 +626,32 @@ test("in a parked, done or dormant plan no ticket says who has the ball: nothing
     expect(f.store.taskDetail(f.plan.id, () => true).tickets[0]!.ball).toBeUndefined();
   }
 });
+
+test("idle work with mail in line is queued again, so the mail is dispatched", () => {
+  // Real-model run, 2026-10-04: a review request queued on work whose segment then ended idle was never
+  // dispatched, and the mail in line kept the reviewer from being called back.
+  const f = fixture();
+  const turn = ended(f, "idle");
+  f.store.queueWork({ botId: f.owner.id, sessionId: f.room.id, taskId: f.plan.id, ticketId: f.ticket.id, messageId: null, author: "app",
+    body: "（应用）请审查新交的一版", source: "review", kind: "change", priority: 2, notice: false });
+  f.store.db.run("UPDATE work_items SET state = 'idle' WHERE id = ?", [turn.work_item_id]);
+  const tick = f.store.supervisorTick({ now: at(MIN) });
+  expect(tick.repaired).toContainEqual({ workItemId: turn.work_item_id, from: "idle", reason: "mail_in_line" });
+  expect(state(f, turn.work_item_id)).toBe("queued");
+  expect(f.store.dispatchableWork().map((work) => work.id)).toEqual([turn.work_item_id]);
+});
+
+test("work that needs attention with mail in line is picked up all the same", () => {
+  // Real-model run, 2026-10-04: a review request was queued on the reviewer's work, the segment
+  // dispatched for it failed at once, and the mail in line kept the failed work from being picked
+  // up, while needing attention kept it from being dispatched.
+  const f = fixture();
+  const turn = segment(f);
+  f.store.queueWork({ botId: f.owner.id, sessionId: f.room.id, taskId: f.plan.id, ticketId: f.ticket.id, messageId: null, author: "app",
+    body: "（应用）请审查新交的一版", source: "review", kind: "change", priority: 2, notice: false });
+  const line = f.store.insertMessage({ sessionId: f.room.id, turnId: turn.id, kind: "system", author: f.owner.id, body: completionFailBody("zh", "unreachable") });
+  f.store.setTurnStatus(turn.id, "completed");
+  f.store.markSegmentCutOff(turn.id, "unreachable");
+  const tick = f.store.supervisorTick({ now: at(MIN) });
+  expect(tick.wakes).toMatchObject([{ workItemId: turn.work_item_id, noteId: line.id, cause: "needs_attention" }]);
+});

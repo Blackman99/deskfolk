@@ -766,6 +766,7 @@ export class Store {
 
   // Turns, approvals, interrupts -----------------------------------------------------------
   readonly createTurn = this.bind(turns.createTurn);
+  readonly lineTicketFor = this.bind(turns.lineTicketFor);
   readonly turnLanding = this.bind(turns.turnLanding);
   readonly getTurn = this.bind(turns.getTurn);
   readonly listLiveTurns = this.bind(turns.listLiveTurns);

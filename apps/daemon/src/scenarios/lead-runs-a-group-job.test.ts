@@ -16,7 +16,7 @@
  */
 import { afterEach, expect, test } from "bun:test";
 import { confirmGroupLead } from "../store/group-leads";
-import { call, createScenario, requestText, say, tool, writeFile, type Scenario } from "../test-kit/scenario";
+import { call, createScenario, fileUnder, requestText, say, tool, writeFile, type Scenario } from "../test-kit/scenario";
 
 const open: Scenario[] = [];
 afterEach(async () => {
@@ -370,4 +370,32 @@ test("a lead woken at the job's level whose approved command draws in its own ti
   expect(drawing.ticket_id).toBe(ticketId("竖版海报"));
   expect(h.toolCalls(designer!, "submit").map((c) => c.result?.ok)).toEqual([true]);
   expect(h.store.db.query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM submissions WHERE ticket_id = ?").get(ticketId("竖版海报")!)!.n).toBe(1);
+});
+
+test("a lead woken by your line about another Bot's ticket works on the whole job, not on that ticket", async () => {
+  // Real-model run, 2026-10-04: 「宣传语改成英文的，海报改横版」 was read as about 文案's slogans
+  // ticket; the lead's turn on it landed on that ticket, and the poster it drew went in as the
+  // slogans, pushing 文案's English lines aside.
+  const h = await createScenario({ learning: true });
+  open.push(h);
+  const [designer, writer] = h.createBots({ name: "设计师", duties: "海报和视觉；拆活、派活、审稿" }, { name: "文案", duties: "写宣传语" });
+  const room = h.group("海报组", [designer!, writer!]);
+  confirmGroupLead(h.store, room, designer!.id);
+  const plan = h.store.openTask({ sessionId: room, title: "开业海报" });
+  const slogans = h.store.createTicket({ taskId: plan.id, title: "三句宣传语", worker: writer!.id });
+  const poster = h.store.createTicket({ taskId: plan.id, title: "竖版海报", worker: designer!.id });
+  h.judge("read_filing").handle(fileUnder("开业海报", { ticket: "三句宣传语" }));
+  const stop = call(tool("end_turn", { reason: "nothing_new" }));
+  h.script(designer!).handle(({ hop }) => hop === 1 ? call(writeFile(`${poster.dir}/poster.svg`, "<svg/>")) : stop);
+  h.script(writer!).reply(stop);
+
+  h.postUser(room, "宣传语改成英文的，海报改横版");
+  await h.waitIdle({ timeoutMs: 15_000 });
+
+  const line = h.messages(room).find((message) => message.kind === "user")!;
+  expect(line.ticket_id).toBe(slogans.id);
+  const lead = h.turns(designer!)[0]!;
+  expect([lead.task_id, lead.ticket_id === slogans.id]).toEqual([plan.id, false]);
+  // Its own poster's folder still puts it on its own ticket.
+  expect(lead.ticket_id).toBe(poster.id);
 });

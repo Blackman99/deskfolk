@@ -73,7 +73,7 @@ export type SupervisorTickResult = {
   wakes: SupervisorWake[];
   /** Lines the tick wrote (its notices), for the engine to publish. */
   messages: Message[];
-  repaired: Array<{ workItemId: string; from: "waiting" | "running"; reason: "wait_invalid" | "lost_segment" | "segment_ended" }>;
+  repaired: Array<{ workItemId: string; from: "waiting" | "running" | "idle"; reason: "wait_invalid" | "lost_segment" | "segment_ended" | "mail_in_line" }>;
   deferred: Array<{ workItemId: string; reason: string }>;
   unsupported: readonly string[];
   /** From level 5: submissions the tick took on (§5.3.7) — to their reviewer, approved, back to their producer, or waiting on you. */
@@ -519,6 +519,27 @@ function repairLostSegments(ctx: StoreContext, result: SupervisorTickResult, now
   }
 }
 
+/**
+ * Idle work with mail in line that nothing dispatches: only queued work is dispatched, and the mail
+ * in line keeps the supervisor from calling the Bot back, so the two wait on each other for good. A
+ * segment that ended idle after a newer review request was queued on its work left the poster
+ * unreviewed (2026-10-04, real-model run); the end contract now keeps such work queued, and this
+ * catches whatever else leaves it so.
+ */
+function requeueMailInLine(ctx: StoreContext, result: SupervisorTickResult, now: string): void {
+  const stranded = ctx.db.query<Work, []>(`SELECT w.* FROM work_items w JOIN tasks p ON p.id = w.task_id
+    WHERE w.state = 'idle' AND ${ACTIVE_PLAN("p")}
+      AND EXISTS (SELECT 1 FROM inbox_items i WHERE i.work_item_id = w.id AND i.state = 'queued' AND i.wakes = 1)
+      AND NOT EXISTS (SELECT 1 FROM turns t WHERE t.work_item_id = w.id AND t.status IN ${LIVE})`).all();
+  for (const work of stranded) {
+    ctx.db.run("UPDATE work_items SET state = 'queued', updated_at = ? WHERE id = ? AND state = 'idle'", [now, work.id]);
+    ctx.db.run(`INSERT INTO work_events (at, kind, actor, bot_id, task_id, ticket_id, work_item_id, session_id, payload)
+      VALUES (?, 'supervisor.requeued', 'app', ?, ?, ?, ?, ?, '{}')`, [now, work.bot_id, work.task_id, work.ticket_id, work.id, work.home_session_id]);
+    projectInsertedWorkEvent(ctx);
+    result.repaired.push({ workItemId: work.id, from: "idle", reason: "mail_in_line" });
+  }
+}
+
 /** Pick-ups of this item in the hour before `now`. */
 function pickupsInHour(ctx: StoreContext, workItemId: string, now: string): Array<{ id: string }> {
   // A pick-up the engine could not carry out was voided (see {@link refuseSupervisorPickup}) and is no attempt.
@@ -567,7 +588,11 @@ function pickUpAttention(ctx: StoreContext, result: SupervisorTickResult, now: s
       }
     }
     if (ctx.db.query(`SELECT 1 FROM turns WHERE bot_id = ? AND task_id = ? AND status IN ${LIVE} AND IFNULL(mode, 'work') <> 'readonly'`).get(work.bot_id, taskId)) continue;
-    if (ctx.db.query(`SELECT 1 FROM inbox_items WHERE work_item_id = ? AND state IN ('queued', 'held')`).get(work.id)) continue;
+    // Mail held by a stop waits with it. Mail merely in line is no reason to wait: work that needs
+    // attention is not dispatched, so a review request queued on work whose segment failed stayed
+    // there, and the work was never picked up either (2026-10-04, real-model run). The segment that
+    // picks it up reads that mail too.
+    if (ctx.db.query(`SELECT 1 FROM inbox_items WHERE work_item_id = ? AND state = 'held'`).get(work.id)) continue;
     const segment = latestSegment(ctx, work.id);
     const restart = restartRecord(ctx, work, segment);
     if (restart) {
@@ -774,6 +799,7 @@ export function supervisorTick(ctx: StoreContext, input: { now?: string } = {}):
     if (readEngineLevel(ctx.db) < ENGINE_LEVELS.supervision) return result;
     repairWaits(ctx, result, now);
     repairLostSegments(ctx, result, now);
+    requeueMailInLine(ctx, result, now);
     pickUpAttention(ctx, result, now);
     if (readEngineLevel(ctx.db) >= ENGINE_LEVELS.submissions) {
       result.unsupported = SUPERVISOR_UNSUPPORTED_AT_SUBMISSIONS;

@@ -153,6 +153,20 @@ export function createParticipation(deps: ParticipationDeps): Participation {
     }
   }
 
+  /**
+   * The job and ticket a line wakes a Bot on: the line's. A Bot it reaches only by default — a
+   * group's lead, or whoever is at work there, for a line that names nobody — does not take on
+   * another Bot's ticket the line was filed under: it is woken on the whole job, from which it can
+   * hand that ticket out or go on to its own (store `lineTicketFor`). A Bot you name, or talk to in
+   * your direct with it, takes the line's ticket as before. Below the work items' level a turn
+   * finds its own.
+   */
+  function attributionFor(message: Message, botId: string, opts: { byDefault?: boolean } = {}): { taskId?: string | null; ticketId?: string | null } {
+    if (store.capabilities().engine_level < ENGINE_LEVELS.work_items) return {};
+    const ticketId = message.ticket_id ?? null;
+    return { taskId: message.task_id ?? null, ticketId: opts.byDefault ? store.lineTicketFor(ticketId, botId) : ticketId };
+  }
+
   async function handleParticipation(
     message: Message,
     opts: {
@@ -184,7 +198,7 @@ export function createParticipation(deps: ParticipationDeps): Participation {
       const working = store.listLiveTurns({ sessionId: session.id, botId: target }).some((turn) => turn.mode !== "readonly");
       const fork = opts.fork !== undefined ? opts.fork : withYou && !working;
       const cause = causeOf(message);
-      const attribution = store.capabilities().engine_level >= ENGINE_LEVELS.work_items ? { taskId: message.task_id ?? null, ticketId: message.ticket_id ?? null } : {};
+      const attribution = attributionFor(message, target);
       if (fork) startTurn(session.id, target, message, "fork", { cause, ...attribution });
       else if (working || (!opts.fromUser && message.kind === "bot")) hearOrStart(session.id, target, message, { item: inboxItem(message) }, { cause, ...attribution });
       else startTurn(session.id, target, message, "redirect", { cause, ...attribution });
@@ -242,8 +256,7 @@ export function createParticipation(deps: ParticipationDeps): Participation {
       const focused = lead ? { bot_id: lead } : store.listLiveTurns({ sessionId: session.id })[0];
       if (focused) {
         const fork = opts.fork !== undefined ? opts.fork : true;
-        startTurn(session.id, focused.bot_id, message, fork ? "fork" : "redirect", { cause,
-          ...(store.capabilities().engine_level >= ENGINE_LEVELS.work_items ? { taskId: message.task_id ?? null, ticketId: message.ticket_id ?? null } : {}) });
+        startTurn(session.id, focused.bot_id, message, fork ? "fork" : "redirect", { cause, ...attributionFor(message, focused.bot_id, { byDefault: true }) });
         opened.add(focused.bot_id);
       }
       if (lead) {
@@ -254,7 +267,7 @@ export function createParticipation(deps: ParticipationDeps): Participation {
 
     for (const botId of mandatory) {
       // A Bot naming a Bot that is mid-task is heard in that task; your line still turns it around.
-      const attribution = store.capabilities().engine_level >= ENGINE_LEVELS.work_items ? { taskId: message.task_id ?? null, ticketId: message.ticket_id ?? null } : {};
+      const attribution = attributionFor(message, botId);
       if (opts.fork === true) startTurn(session.id, botId, message, "fork", { cause, ...attribution });
       else if (!opts.fromUser && message.kind === "bot") hearOrStart(session.id, botId, message, { item: inboxItem(message) }, { cause, ...attribution });
       else startTurn(session.id, botId, message, "redirect", { cause, ...attribution });

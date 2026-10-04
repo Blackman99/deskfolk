@@ -163,7 +163,8 @@ test("answered with a real answer replies to only the current exact answer recip
   const line = f.store.insertMessage({ sessionId: answer.delegation.thread_session_id, kind: "system", author: "app", body: "Read this" });
   const turn = f.store.createTurn({ sessionId: answer.delegation.thread_session_id, botId: reader.id, triggerMessageId: line.id, taskId: f.plan.id, ticketId: f.ticket.id });
   const result = finishWork(f.ctx, { turnId: turn.id, reason: "answered", answer: "Quarterly Report" });
-  expect(result).toMatchObject({ ended: true, state: "idle", replies: [{ delegation: { id: answer.delegation.id, status: "replied" }, inbox: { body_snapshot: "Quarterly Report", source: "delegation_reply", source_turn_id: f.turn.id } }] });
+  // The review asked on the same ticket is still in line, unread: it is this work's next step, so the work stays queued.
+  expect(result).toMatchObject({ ended: true, state: "queued", replies: [{ delegation: { id: answer.delegation.id, status: "replied" }, inbox: { body_snapshot: "Quarterly Report", source: "delegation_reply", source_turn_id: f.turn.id } }] });
   expect(getDelegation(f.ctx, review.delegation.id).status).toBe("open");
   expect(getDelegation(f.ctx, other.delegation.id).status).toBe("open");
   expect(f.store.getTurn(turn.id).status).toBe("running");
@@ -445,4 +446,20 @@ test("a pure-text closing reply is weighed by the words about to go out, not by 
   closer.store.insertMessage({ sessionId: closer.room.id, sourceTurnId: closer.turn.id, kind: "bot", author: closer.bot.id, body: "正在核验 18 张起止帧。" });
   expect(finishWork(closer.ctx, { turnId: closer.turn.id, reason: "done" }, { pureText: true, closing: "" }))
     .toMatchObject({ ended: false, code: "promised_later" });
+});
+
+test("mail queued on the work while its segment ran keeps the work queued at the end, so it is dispatched", () => {
+  // Real-model run, 2026-10-04: the poster's reviewer was mid-review when the lead handed in a newer
+  // version; its review request was queued on the same work, the review segment then ended
+  // nothing_new and set the work idle. Nothing dispatches mail on idle work, and the queued mail kept
+  // the supervisor from calling the reviewer back: the review never happened.
+  const f = fixture();
+  f.store.queueWork({ botId: f.bot.id, sessionId: f.room.id, taskId: f.plan.id, ticketId: f.ticket.id, messageId: null, author: "app",
+    body: "（应用）请审查新交的一版", source: "review", kind: "change", priority: 2, notice: false });
+  expect(finishWork(f.ctx, { turnId: f.turn.id, reason: "answered" })).toMatchObject({ ended: true, state: "queued" });
+  f.store.db.run("UPDATE turns SET status = 'completed' WHERE id = ?", [f.turn.id]);
+  expect(f.store.dispatchableWork().map((work) => work.id)).toEqual([f.itemId]);
+  // With nothing queued it goes idle as before.
+  const g = fixture();
+  expect(finishWork(g.ctx, { turnId: g.turn.id, reason: "answered" })).toMatchObject({ state: "idle" });
 });

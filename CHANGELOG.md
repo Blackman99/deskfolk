@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Changing a job mid-way no longer mixes up who hands in what
+
+- When a line that names nobody goes to the lead and is about another Bot's ticket, the lead starts on the whole job instead of working under that ticket. After a stop, 「宣传语改成英文的，海报改横版」 put the lead on the copywriter's ticket, and its poster was handed in as the slogans, pushing the English slogans aside. Name a Bot to have it take that ticket itself.
+- A review asked for while the reviewer was still busy with the previous version is no longer lost. The reviewer's segment ended and set its work idle, so the newer poster waited for a review that never came. Work whose last step failed is also taken up again when mail is waiting for it; the two used to wait on each other.
+
 ### The app asks you only when it needs you
 
 - A Bot's default model is used without a card asking you about it: it is what the Bot ran on most in the last week, and pinning a model on the Bot changes it.

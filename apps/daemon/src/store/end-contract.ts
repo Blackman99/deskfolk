@@ -66,7 +66,7 @@ export type FinishWorkResult = {
   implicitSubmission: ImplicitSubmissionCandidates;
   bounce?: string;
   code?: string;
-  state?: "idle" | "closed" | "waiting" | "blocked" | "needs_attention";
+  state?: "idle" | "queued" | "closed" | "waiting" | "blocked" | "needs_attention";
   endReason?: EndReason | "needs_attention";
   /** The engine creates the visible question/notification after this transaction commits. */
   ask?: { body: string };
@@ -455,8 +455,13 @@ export function finishWork(ctx: StoreContext, input: FinishWorkInput, opts: Fini
     const completedTicket = turn.ticket_id !== null && facts.tickets.length === 0 && !unfinished
       && (readEngineLevel(ctx.db) < ENGINE_LEVELS.submissions || ticketClosed(ctx, turn.ticket_id));
     const count = endReason === "nothing_new" && !waiting ? noProgressCount(ctx, turn, unfinished) : 0;
-    const state = reason === "blocked" || reason === "gave_up" || count >= 2 ? "blocked"
+    const ended = reason === "blocked" || reason === "gave_up" || count >= 2 ? "blocked"
       : waiting ? "waiting" : turn.task_id === null || completedTicket ? "closed" : "idle";
+    // Mail queued on this work while the segment ran, and not read by it, is the work's next step:
+    // left idle, nothing would dispatch it, and the mail in line kept the supervisor from calling the
+    // Bot back — a reviewer mid-review when a newer version came in never reviewed it (2026-10-04).
+    const state = ended === "idle" && turn.work_item_id && ctx.db.query(`SELECT 1 FROM inbox_items WHERE work_item_id = ?
+      AND state = 'queued' AND wakes = 1`).get(turn.work_item_id) ? "queued" : ended;
     const result = persistEnd(ctx, turn, base, endReason, state, count, {
       ...(promised ? { notice: { code: "promised_later" as const, body: promisedLaterNotice(ctx, turn, promised) } } : {}),
       ...(reason === "blocked" ? { ask: { body: needsFromUser! } } : {}),
