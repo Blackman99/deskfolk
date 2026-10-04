@@ -155,6 +155,29 @@ describe("workspace tools", () => {
     close();
   });
 
+  test.skipIf(process.platform === "win32")("a command that reaches outside, once let through, runs in the work dir it makes", async () => {
+    const brand = realpathSync(mkdtempSync(join(tmpdir(), "real-bot-brand-")));
+    dirs.push(brand);
+    writeFileSync(join(brand, "logo.png"), "png");
+    const workDir = "work/2026-10-04-宣传短片-dbrh";
+    // With the work dir implied, and named as the cwd (Bots do both).
+    for (const cwd of [undefined, workDir]) {
+      const { store, root, close } = await storeWithWorkspace();
+      const signal = new AbortController().signal;
+      const asked = await runWorkspaceTool({ store, signal, workDir }, "shell", {
+        command: `mkdir -p launch && cp ${join(brand, "logo.png")} launch/logo.png`,
+        ...(cwd ? { cwd } : {}),
+      });
+      expect(asked.waitApproval?.kind_key).toBe("unconstrained-shell");
+      // Nothing is made while it waits on you.
+      expect(existsSync(join(root, workDir))).toBe(false);
+      const ran = await asked.waitApproval!.run();
+      expect(ran.ok).toBe(true);
+      expect(readFileSync(join(root, workDir, "launch/logo.png"), "utf8")).toBe("png");
+      close();
+    }
+  });
+
   test("an explicit cwd still wins, and `.` is still the workspace root", async () => {
     const { store, root, close } = await storeWithWorkspace();
     const signal = new AbortController().signal;

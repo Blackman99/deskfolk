@@ -346,15 +346,6 @@ async function runShell(
       lesson = { signature: kind.signature, head: kind.head, place: kind.place, botId, overriding: check.overriding };
     }
   }
-  // The work dir is created here rather than up front: a turn that only talks should not leave an
-  // empty folder behind, but a cwd that does not exist fails the spawn.
-  if (!explicitCwd && ctx.workDir && classified.kind === "jailed") {
-    try {
-      mkdirSync(classified.cwdAbs, { recursive: true });
-    } catch {
-      return fail("failed", "could not create the work dir");
-    }
-  }
   if (classified.kind === "unconstrained") {
     const pending = needsApproval(
       opts,
@@ -366,6 +357,18 @@ async function runShell(
       args,
     );
     if (pending) return pending;
+  }
+  // The work dir is created here rather than up front: a turn that only talks should not leave an
+  // empty folder behind, but a cwd that does not exist fails the spawn. A command run in it gets it,
+  // whether it names it as its cwd or not, and one that reaches outside gets it once you let it
+  // through: a new job's first command is often the copy of a file from elsewhere, and it used to
+  // fail to start after your OK.
+  if (ctx.workDir && (!explicitCwd || classified.cwdAbs === classifyPath(root, ctx.workDir).abs)) {
+    try {
+      mkdirSync(classified.cwdAbs, { recursive: true });
+    } catch {
+      return fail("failed", "could not create the work dir");
+    }
   }
   if (ctx.signal.aborted) return fail("failed", "interrupted");
   const before = snapshotWorkDir(root, ctx.workDir);

@@ -12,6 +12,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 - The remote screen works on Windows through a VNC server you install, since Windows has no screen sharing of its own: TightVNC as a system service (so the lock screen and UAC prompts can be operated too), with a password and loopback connections only. Until one answers, the card lists those steps and links the download. On the phone the page is called **Computer screen**, asks for the VNC password, has Ctrl, Alt and Win keys and a Ctrl+Alt+Del button in the top bar where Smooth would be; while it is connected the PC's display and sleep are held off. See [remote access](docs/remote-access.md#on-windows).
 - The installer ships `real-bot-rtc.exe` for direct connections and stops it, like the daemon, before an upgrade. A daemon the window starts on Windows now counts as window-supervised, so a phone's remote restart is available there too.
 
+### A command that reaches outside the workspace runs once you allow it
+
+- On a new job, the first command that reached outside the workspace (copying a file in from elsewhere, say) failed to start right after you pressed Allow once: the job's folder did not exist yet, and only commands that stay inside the workspace made it. The Bot then asked again in other ways, a card each time. The folder is now made once you let the command through.
+
 ### Submissions, reviews, default models and lessons are on by default
 
 - From this version a data folder goes straight to engine level 8 at startup, with nothing to turn on by hand: a ticket moves only on a delivery, the checks the app runs, a review and your approval, and a Bot saying "passed" moves nothing; renders on a media server are polled by the app; each Bot runs on its own default model (the one it used most over the last 7 days; pin another to change it), and a stuck job thinks one level harder, then climbs the ladder of models you order in Settings → Models; what goes wrong is filed by type, and lessons are enforced by the app before a call, with no model reviewing afterwards.
