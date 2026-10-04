@@ -201,14 +201,15 @@ jobs:
           workspaces: |
             apps/conpty-helper -> target
             apps/desktop/src-tauri -> target
+            apps/rtc-helper -> target
 
       - name: Install JavaScript dependencies
         run: pnpm install --frozen-lockfile
 
       # Code signing turns on once WINDOWS_SIGN_COMMAND is set: a command in the form of Tauri's
       # `bundle.windows.signCommand` string, `%1` standing for the file. Tauri signs the app and
-      # the installer with it; build-native signs the daemon and the pty helper with the same
-      # value. Without it the installer stays unsigned, and SmartScreen warns on first run.
+      # the installer with it; build-native signs the daemon, the pty helper and the WebRTC helper
+      # with the same value. Without it the installer stays unsigned, and SmartScreen warns on first run.
       # trusted-signing-cli (Azure Trusted Signing) is installed when the command names it, and
       # reads its credentials from the AZURE_* secrets passed to the build below.
       - name: Windows signing (when configured)

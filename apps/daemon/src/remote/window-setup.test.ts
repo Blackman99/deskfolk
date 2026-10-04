@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { createConnection, createServer, type Socket } from "node:net";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { base64url, canonicalize, fromBase64url, generateIdentity, identityPublic, openPairingGrant, randomBytes, sealPairing,
@@ -110,3 +110,42 @@ test("an unreachable relay is told apart from a refused token", async () => {
     .toEqual({ ok: false, error: "relay_unreachable" });
   expect(host.store.db.query("SELECT host_id FROM remote_host").get()).toBeNull();
 });
+
+// A Windows window hands the daemon its setup channel as stdin and stdout. A child Bun runs the
+// same channel over its own stdin and stdout, prints the way the daemon does, and answers one
+// framed request: what it printed must not reach the window, and the window closing its end
+// must end the channel there.
+test("the channel can be the daemon's stdin and stdout, with what it prints kept off it", async () => {
+  const root = mkdtempSync(join(tmpdir(), "rb-stdio-setup-"));
+  cleanup.push(() => rmSync(root, { recursive: true, force: true }));
+  const script = join(root, "daemon.ts");
+  writeFileSync(script, `
+    import { attachLocalSetup, inheritedChannel, reserveStdout } from ${JSON.stringify(join(import.meta.dir, "local-setup.ts"))};
+    reserveStdout();
+    console.log("daemon listening on http://127.0.0.1:17890");
+    const controller = { status: () => ({ state: "off", diagnostic: null, devices: 0 }) };
+    attachLocalSetup(inheritedChannel(0, 1), controller as never, () => { console.info("window gone"); process.exit(0); });
+  `);
+  const child = Bun.spawn([process.execPath, script], { stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+  cleanup.push(() => { try { child.kill(); } catch { /* exited */ } });
+  const payload = Buffer.from(JSON.stringify({ operation: "status" })), prefix = Buffer.alloc(4);
+  prefix.writeUInt32BE(payload.length);
+  child.stdin.write(Buffer.concat([prefix, payload]));
+  await child.stdin.flush();
+  const reader = child.stdout.getReader();
+  let buffer = Buffer.alloc(0);
+  while (buffer.length < 4 || buffer.length < buffer.readUInt32BE(0) + 4) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer = Buffer.concat([buffer, Buffer.from(value)]);
+  }
+  expect(buffer.readUInt32BE(0)).toBe(buffer.length - 4);
+  expect(JSON.parse(buffer.subarray(4).toString("utf8"))).toEqual({ ok: true, value: { state: "off", diagnostic: null, devices: 0 } });
+  await child.stdin.end();
+  expect(await child.exited).toBe(0);
+  // Nothing else came down the channel; the prints went to stderr.
+  expect((await reader.read()).done).toBe(true);
+  const printed = await new Response(child.stderr).text();
+  expect(printed).toContain("daemon listening");
+  expect(printed).toContain("window gone");
+}, 20_000);

@@ -3,12 +3,21 @@ import type { RemoteScreenStatus } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { ulid } from "../ids";
 import type { Store } from "../store";
-import { rtcHelperPath, startDisplayHold, startRtcHelper, type DisplayHold, type HoldDisplay, type IceServer, type LoweredDisplay, type RtcHelper, type RtcSpawn } from "./rtc-helper";
+import { rtcHelperPath, startDisplayHold, startRtcHelper, startStayAwake, type DisplayHold, type HoldDisplay, type IceServer, type LoweredDisplay, type RtcHelper, type RtcSpawn } from "./rtc-helper";
 import { RfbSniffer } from "./rfb-sniff";
 import type { TunnelMux, TunnelSocket } from "./tunnel";
 
-/** macOS Screen Sharing (and Remote Management) listen here, on every interface including loopback. */
+/**
+ * Where the screen's RFB server listens: macOS Screen Sharing (and Remote Management) on every
+ * interface including loopback; on Windows, a VNC server the user installed (ADR 0059).
+ */
 export const SCREEN_SHARING_PORT = 5900;
+
+/** Which computer a phone is looking at, for its words and its key row: a Mac, or a Windows PC. */
+export type ScreenHost = "mac" | "windows";
+export function screenHost(platform: string = process.platform): ScreenHost {
+  return platform === "win32" ? "windows" : "mac";
+}
 /** The phone pings while its page is open; a session that stops hearing from it ends. */
 const KEEPALIVE_TIMEOUT_MS = 45_000;
 const PROBE_TTL_MS = 3000;
@@ -40,7 +49,10 @@ export type ScreenServiceOptions = {
   /** Opens the local socket a relayed session carries; `node:net` unless a test says. */
   connect?: (port: number) => TunnelSocket;
   now?: () => number;
-  /** Keeps the Mac's display on while anyone is connected; `caffeinate` on macOS unless a test says. */
+  /**
+   * Keeps the display on while anyone is connected: `caffeinate` on macOS, `real-bot-rtc
+   * stay-awake` on Windows, unless a test says.
+   */
   wakeDisplay?: () => { stop(): void };
   /**
    * Lowers the Mac's display while a session wants it smooth; `real-bot-rtc display-hold` unless a
@@ -57,7 +69,8 @@ export type ScreenServiceOptions = {
  * display on (the lock screen shows, ready for a password); `-d` and the long `-t` keep it on until
  * the last session lets go.
  */
-function caffeinate(): { stop(): void } {
+function caffeinate(helperPath: () => string | null): { stop(): void } {
+  if (process.platform === "win32") return stayAwake(helperPath());
   if (process.platform !== "darwin") return { stop() {} };
   try {
     const child = Bun.spawn(["/usr/bin/caffeinate", "-d", "-u", "-t", "86400"], { stdin: "ignore", stdout: "ignore", stderr: "ignore" });
@@ -68,10 +81,25 @@ function caffeinate(): { stop(): void } {
 }
 
 /**
- * The remote screen: a paired phone viewing and driving this Mac through macOS's own Screen
- * Sharing. The daemon only ever connects to that one local port, either itself (the relayed path,
- * bytes in type 9 frames) or through `real-bot-rtc` (the direct path). Everything here is off
- * until the Mac's own settings turn it on, and only the window can do that.
+ * Windows has no `caffeinate`: the helper holds `SetThreadExecutionState` for the display and the
+ * system until its stdin closes, so a PC left idle does not sleep under a phone that is watching
+ * it. Without a helper (a source checkout that never built it) nothing holds them.
+ */
+function stayAwake(path: string | null): { stop(): void } {
+  if (!path) return { stop() {} };
+  try {
+    return startStayAwake(path);
+  } catch {
+    return { stop() {} };
+  }
+}
+
+/**
+ * The remote screen: a paired phone viewing and driving this computer through an RFB server it
+ * already runs — macOS's own Screen Sharing, or on Windows a VNC server the user installed. The
+ * daemon only ever connects to that one local port, either itself (the relayed path, bytes in
+ * type 9 frames) or through `real-bot-rtc` (the direct path). Everything here is off until the
+ * computer's own settings turn it on, and only the window can do that.
  */
 export class ScreenService {
   private readonly sessions = new Map<string, Session>();
@@ -133,7 +161,11 @@ export class ScreenService {
     return this.status();
   }
 
-  /** Whether Screen Sharing is there: something on the port that greets like an RFB server. */
+  /**
+   * Whether Screen Sharing (or the Windows VNC server) is there: something on the port that greets
+   * like an RFB server. A Windows VNC server that refuses loopback connections drops the socket
+   * before its greeting, and reads as not there.
+   */
   async probe(fresh = false): Promise<boolean> {
     if (!fresh && this.probed && this.now() - this.probed.at < PROBE_TTL_MS) return this.probed.sharing;
     const sharing = await new Promise<boolean>((resolve) => {
@@ -179,7 +211,7 @@ export class ScreenService {
       since: this.now(), lastSeen: this.now(), toPhone: 0, fromPhone: 0, smooth };
     this.sessions.set(session.id, session);
     // Before the channel exists, so the display is on by the time the first frame is taken.
-    this.awake ??= (this.options.wakeDisplay ?? caffeinate)();
+    this.awake ??= (this.options.wakeDisplay ?? (() => caffeinate(() => this.helperPath())))();
     // Also before: Screen Sharing announces the framebuffer once, when the phone connects.
     const lowered = await this.smoothDisplay(smooth);
     return { session_id: session.id, ice_servers: settings.iceServers, direct: this.helperPath() !== null, ...(lowered ? { smooth: lowered } : {}) };
@@ -197,7 +229,9 @@ export class ScreenService {
     }
     this.cancelRestore();
     if (!this.display) {
-      const path = this.helperPath();
+      // Only macOS: its app-scoped mode is what puts the screen back even if the helper dies. A
+      // Windows VNC server sends the Tight JPEG noVNC asks for, which is small already.
+      const path = process.platform === "darwin" ? this.helperPath() : null;
       const hold = this.options.holdDisplay?.() ?? (path ? startDisplayHold(path) : null);
       if (!hold) return { applied: false, reason: "unavailable" };
       const held = { hold };

@@ -213,7 +213,10 @@ export class RemoteAdmin {
     } catch (error) {
       const code = error instanceof ApiError ? error.code : "request_unknown";
       // A dismissed or failed Touch ID sheet spent nothing; the approve button stays for another go.
-      if (this.hostPairing === current && code !== "cancelled" && code !== "authentication") {
+      // So does a Windows without Hello set up, saying what to set up first.
+      if (this.hostPairing === current && code === "hello_not_configured") {
+        this.hostPairing = { ...current, note: code };
+      } else if (this.hostPairing === current && code !== "cancelled" && code !== "authentication") {
         this.hostPairing = { phase: "failed", error: code };
       }
     } finally {

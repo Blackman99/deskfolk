@@ -6,11 +6,11 @@ export const minimumMacOS = config.bundle.macOS.minimumSystemVersion;
 /**
  * What `build-native.ts` ships into `native/`, per OS. macOS carries the Swift
  * runtime helper, pty helper and credentials library alongside the daemon, and the remote screen's
- * WebRTC helper; Windows has no
- * equivalent of any of those, so it ships only the daemon and the ConPTY helper.
+ * WebRTC helper; Windows has no equivalent of the Swift pieces, so it ships the daemon, the ConPTY
+ * helper and the WebRTC helper.
  */
 export function nativeFilesFor(platform: string): string[] {
-  if (platform === "win32") return ["real-bot-daemon.exe", "real-bot-pty.exe"];
+  if (platform === "win32") return ["real-bot-daemon.exe", "real-bot-pty.exe", "real-bot-rtc.exe"];
   return ["real-bot-daemon", "real-bot-runtime-helper", "real-bot-pty", "libRemoteCredentials.dylib", "real-bot-rtc"];
 }
 

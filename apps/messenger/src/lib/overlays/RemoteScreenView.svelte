@@ -11,6 +11,8 @@
 		background: string;
 		sendCredentials(credentials: { username?: string; password?: string }): void;
 		sendKey(keysym: number, code: string | null, down?: boolean): void;
+		/** Ctrl, Alt and Delete as one press, which a Windows VNC server running as a service turns into the secure attention sequence. */
+		sendCtrlAltDel(): void;
 		disconnect(): void;
 	}
 	export type RfbConstructor = new (
@@ -25,7 +27,7 @@
 	import type { Copy } from '../copy.ts';
 	import { ApiError } from '../api.ts';
 	import { connectScreen, type ScreenApi, type ScreenConnection, type SmoothResult } from '../remote/screen-connect.ts';
-	import { KEYSYM, MODIFIERS, SCREEN_KEYS, press, typeText, type Modifier } from './remote-screen-keys.ts';
+	import { KEYSYM, SCREEN_KEYS, modifiersFor, press, typeText, type Modifier } from './remote-screen-keys.ts';
 	import { loadNoVnc } from './novnc-loader.ts';
 	import { actualZoom, boxFor, follow, keepShown, maxZoom, panBy, zoomAround, type Point, type Size, type ZoomView } from './screen-zoom.ts';
 	import { TrackpadGestures, loadTrackpadMode, pointerGain, saveTrackpadMode, type Finger, type TrackpadAction } from './screen-trackpad.ts';
@@ -41,6 +43,9 @@
 	 * window switch is a third of the bytes to fetch and decode. The row at the bottom has the keys
 	 * a soft keyboard lacks. The account password Screen Sharing asks for stays in this page's
 	 * memory, to sign straight back in after a drop.
+	 *
+	 * A Windows PC (`host`) is the same page over its VNC server: its key row reads Ctrl, Alt, Win,
+	 * and the header has Ctrl+Alt+Del where a Mac's smooth mode (which lowers its resolution) is.
 	 */
 	interface Props {
 		api: ScreenApi & {
@@ -58,9 +63,12 @@
 		answerMs?: number;
 		/** The Mac account kept on this phone after it once got in; absent, it is asked every time. */
 		remember?: RememberedSignIn;
+		/** Whose screen: a Mac's Screen Sharing, or a Windows PC's VNC server. */
+		host?: 'mac' | 'windows';
 	}
 
-	let { api, t, onClose, loadRfb, connect = connectScreen, keepaliveMs = 15_000, answerMs = 20_000, remember }: Props = $props();
+	let { api, t, onClose, loadRfb, connect = connectScreen, keepaliveMs = 15_000, answerMs = 20_000, remember, host = 'mac' }: Props = $props();
+	const modifiers = $derived(modifiersFor(host));
 
 	type Phase = 'connecting' | 'signin' | 'live' | 'ended' | 'failed' | 'paused';
 	let phase = $state<Phase>('connecting');
@@ -177,7 +185,7 @@
 				if (mine !== attempt) return;
 			}
 			step = 'linking';
-			const opened = await connect(api, { smooth });
+			const opened = await connect(api, { smooth: smooth && host === 'mac' });
 			if (mine !== attempt || !screenEl) {
 				opened.channel.close();
 				void api.screenStop(opened.sessionId).catch(() => {});
@@ -601,13 +609,27 @@
 				title={t.screen.trackpadTitle}
 				onclick={toggleTrackpad}
 			>{t.screen.trackpad}</button>
-			<button
-				type="button"
-				class="screen-text-button screen-mode screen-smooth"
-				aria-pressed={smooth}
-				title={t.screen.smoothTitle}
-				onclick={toggleSmooth}
-			>{t.screen.smooth}</button>
+			{#if host === 'mac'}
+				<button
+					type="button"
+					class="screen-text-button screen-mode screen-smooth"
+					aria-pressed={smooth}
+					title={t.screen.smoothTitle}
+					onclick={toggleSmooth}
+				>{t.screen.smooth}</button>
+			{:else}
+				<!--
+					Where a Mac's smooth mode is: the key row has no room left for it on a phone. Two short
+					lines ("Ctrl+Alt" over "Del") so the title keeps its room.
+				-->
+				<button
+					type="button"
+					class="screen-text-button screen-cad"
+					data-key="ctrl-alt-del"
+					aria-label={t.screen.ctrlAltDelLabel}
+					onclick={() => { takeArmed(); rfb?.sendCtrlAltDel(); }}
+				>{#each t.screen.ctrlAltDel.split(/\+(?=[^+]*$)/) as part, index (index)}{#if index}<br />{/if}{part}{/each}</button>
+			{/if}
 			<button
 				type="button"
 				class="screen-text-button screen-zoom"
@@ -698,7 +720,7 @@
 					<path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M7 12h10"></path>
 				</svg>
 			</button>
-			{#each MODIFIERS as modifier (modifier.id)}
+			{#each modifiers as modifier (modifier.id)}
 				<button
 					type="button"
 					class="screen-key"
@@ -712,6 +734,7 @@
 			{#each SCREEN_KEYS as key (key.id)}
 				<button type="button" class="screen-key" data-key={key.id} onclick={() => press(send, key.keysym, takeArmed())}>{key.label}</button>
 			{/each}
+
 		</div>
 		<input
 			bind:this={inputEl}
@@ -798,6 +821,12 @@
 		padding: 6px 8px;
 		border-radius: var(--radius-sm);
 		font-size: 13px;
+	}
+
+	.screen-cad {
+		padding: 2px 4px;
+		font-size: 11px;
+		line-height: 1.15;
 	}
 
 	.screen-mode[aria-pressed='true'] {

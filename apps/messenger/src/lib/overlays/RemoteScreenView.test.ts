@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { flushSync } from "svelte";
 import { ApiError } from "../api.ts";
-import { copyFor } from "../copy.ts";
+import { copyFor, screenCopy } from "../copy.ts";
 import { click, fill, press, render } from "../test-render.ts";
 import type { ScreenConnection } from "../remote/screen-connect.ts";
 import RemoteScreenView, { type Rfb } from "./RemoteScreenView.svelte";
@@ -42,6 +42,8 @@ class FakeRfb extends EventTarget implements Rfb {
   gesture(type: string, detail: Record<string, unknown>) { this.canvas.dispatchEvent(new CustomEvent(type, { detail })); flushSync(); }
   sendCredentials(credentials: { username?: string; password?: string }) { this.credentials.push(credentials); }
   sendKey(keysym: number, _code: string | null, down?: boolean) { this.keys.push([keysym, down ?? true]); }
+  ctrlAltDel = 0;
+  sendCtrlAltDel() { this.ctrlAltDel++; }
   disconnect() { this.disconnected = true; }
   fire(type: string, detail?: unknown) { this.dispatchEvent(new CustomEvent(type, { detail })); flushSync(); }
 }
@@ -51,7 +53,7 @@ const settle = async () => {
   flushSync();
 };
 
-function mountView(options: { connect?: (api: unknown, options?: { smooth?: boolean }) => Promise<ScreenConnection>; status?: () => Promise<{ mode: string }>; keepaliveMs?: number; answerMs?: number; remember?: RememberedSignIn } = {}) {
+function mountView(options: { connect?: (api: unknown, options?: { smooth?: boolean }) => Promise<ScreenConnection>; status?: () => Promise<{ mode: string }>; keepaliveMs?: number; answerMs?: number; remember?: RememberedSignIn; host?: "mac" | "windows" } = {}) {
   FakeRfb.made = [];
   const calls: string[] = [];
   const closedChannels: number[] = [];
@@ -70,8 +72,9 @@ function mountView(options: { connect?: (api: unknown, options?: { smooth?: bool
   });
   let closed = 0;
   const view = render(RemoteScreenView as never, {
-    api, t, onClose: () => { closed++; }, loadRfb: async () => FakeRfb as never, connect: connect as never, keepaliveMs: options.keepaliveMs ?? 60_000, answerMs: options.answerMs ?? 60_000,
+    api, t: options.host ? { ...t, screen: screenCopy(t, options.host) } : t, onClose: () => { closed++; }, loadRfb: async () => FakeRfb as never, connect: connect as never, keepaliveMs: options.keepaliveMs ?? 60_000, answerMs: options.answerMs ?? 60_000,
     ...(options.remember ? { remember: options.remember } : {}),
+    ...(options.host ? { host: options.host } : {}),
   });
   closers.push(view.close);
   return { ...view, calls, closedChannels, closed: () => closed };
@@ -105,6 +108,46 @@ test("the key row holds an armed modifier around the next key, then lets it go",
   rfb.keys = [];
   click(view.host.querySelector('[data-key="escape"]'));
   expect(rfb.keys).toEqual([[KEYSYM.escape, true], [KEYSYM.escape, false]]);
+});
+
+test("a Windows PC gets its own key row and words, Ctrl+Alt+Del, and no smooth mode", async () => {
+  closers.push(() => saveScreenFlag("smooth", false));
+  saveScreenFlag("smooth", true);
+  const asked: boolean[] = [];
+  const view = mountView({
+    host: "windows",
+    connect: async (_api, options) => {
+      asked.push(options?.smooth ?? false);
+      return { sessionId: "S1", mode: "direct" as const, channel: { close() {} } as never };
+    },
+  });
+  await settle();
+  // A smooth mode saved from a Mac is not asked of a PC.
+  expect(asked).toEqual([false]);
+  const windows = screenCopy(t, "windows");
+  expect(view.host.textContent).toContain(windows.waitingMac);
+  const rfb = FakeRfb.made[0]!;
+  rfb.fire("connect");
+  expect(view.host.querySelector(".screen-smooth")).toBeNull();
+  const labels = [...view.host.querySelectorAll<HTMLElement>(".screen-key[data-key]")].map((key) => key.textContent?.trim());
+  expect(labels.slice(0, 4)).toEqual(["Ctrl", "Alt", "Win", "⇧"]);
+  // Win is the keysym a Mac's ⌘ is, which a Windows VNC server reads as the Windows key.
+  click(view.host.querySelector('[data-key="command"]'));
+  click(view.host.querySelector('[data-key="escape"]'));
+  expect(rfb.keys).toEqual([[KEYSYM.command, true], [KEYSYM.escape, true], [KEYSYM.escape, false], [KEYSYM.command, false]]);
+  // Ctrl+Alt+Del goes as noVNC's own; a modifier armed before it is dropped, not held.
+  click(view.host.querySelector('[data-key="control"]'));
+  click(view.host.querySelector('[data-key="ctrl-alt-del"]'));
+  expect(rfb.ctrlAltDel).toBe(1);
+  expect(view.host.querySelector('[data-key="control"]')?.getAttribute("aria-pressed")).toBe("false");
+});
+
+test("a Mac's key row has no Ctrl+Alt+Del", async () => {
+  const view = mountView();
+  await settle();
+  FakeRfb.made[0]!.fire("connect");
+  expect(view.host.querySelector('[data-key="ctrl-alt-del"]')).toBeNull();
+  expect(view.host.querySelector('[data-key="command"]')?.textContent?.trim()).toBe("⌘");
 });
 
 test("the soft keyboard's text and deletions reach the Mac as keys", async () => {

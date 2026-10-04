@@ -3,13 +3,16 @@
 //! The daemon starts it when the phone asks for a direct connection, writes the phone's offer
 //! (which came over the end-to-end encrypted remote link, so its DTLS fingerprint is the paired
 //! device's) and reads back the answer. When the phone's `rfb` channel opens, the helper connects
-//! to macOS Screen Sharing on 127.0.0.1:5900 and carries bytes both ways. It never connects
-//! anywhere else: the port is not a parameter. stdin closing — the daemon stopping the session,
-//! or the daemon dying — ends the process.
+//! to the RFB server on 127.0.0.1:5900 — macOS Screen Sharing, or on Windows the VNC server the
+//! user installed — and carries bytes both ways. It never connects anywhere else: the port is not
+//! a parameter. stdin closing — the daemon stopping the session, or the daemon dying — ends the
+//! process.
 //!
-//! `real-bot-rtc display-hold` is the other job this binary does: the Mac's display at a lower
-//! resolution while a phone has the remote screen in smooth mode (see display.rs).
+//! The binary has two other jobs, each its own subcommand: `display-hold`, the Mac's display at a
+//! lower resolution while a phone has the remote screen in smooth mode (see display.rs), and
+//! `stay-awake`, a Windows PC's display and sleep held off while a phone is connected (awake.rs).
 
+mod awake;
 mod display;
 mod output;
 mod peer;
@@ -21,7 +24,7 @@ use std::net::{Ipv4Addr, SocketAddr};
 use output::Output;
 use protocol::Command;
 
-/// macOS Screen Sharing (and Remote Management) listen here.
+/// macOS Screen Sharing (and Remote Management) listen here, and so does a Windows VNC server.
 const SCREEN_SHARING_PORT: u16 = 5900;
 
 fn target() -> SocketAddr {
@@ -38,8 +41,10 @@ fn target() -> SocketAddr {
 }
 
 fn main() {
-    if std::env::args().nth(1).as_deref() == Some("display-hold") {
-        std::process::exit(display::hold());
+    match std::env::args().nth(1).as_deref() {
+        Some("display-hold") => std::process::exit(display::hold()),
+        Some("stay-awake") => std::process::exit(awake::stay_awake()),
+        _ => {}
     }
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)

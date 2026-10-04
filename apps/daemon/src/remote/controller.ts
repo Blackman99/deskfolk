@@ -19,7 +19,7 @@ import { LocalTrustActions, validateRelay, type TrustChange } from "./local-acti
 import type { MaintenanceControl } from "./maint";
 import { PushService, type PushFetch } from "./push";
 import { StreamOutbox } from "./stream-outbox";
-import type { ScreenLink, ScreenService } from "./screen";
+import { screenHost, type ScreenLink, type ScreenService } from "./screen";
 import { TunnelMux } from "./tunnel";
 
 export type RemoteStatus = { state: "off" | "native_unavailable" | "activation_gated" | "connecting" | "online" | "disconnected" | "trust_mismatch"; diagnostic: string | null; devices: number };
@@ -32,7 +32,7 @@ export type RemoteControllerOptions = {
   pausedUpgrade?: boolean;
   /** Test-only heartbeat pace. Production asks the relay every 15 s and gives it 10 s to answer. */
   relayHeartbeat?: RelayHeartbeat;
-  /** The OS this runs on, for the status the sealed provider gives; this process's own unless a test says. */
+  /** The OS this runs on, which a phone learns from `/remote/features`; this process's own unless a test says. */
   platform?: NodeJS.Platform;
   /** The remote screen (ADR 0056); a link offers it in `/remote/features` only when this is set. */
   screen?: ScreenService;
@@ -70,13 +70,9 @@ export class RemoteController {
   private routes = new Set<string>();
   constructor(private readonly options: RemoteControllerOptions) {
     this.native = options.native ?? remoteNative;
-    // The sealed provider cannot be set up from any build yet, and on Windows nothing can: its window
-    // hands the daemon no setup channel and has no confirmation sheet. Say which, so the panel offers
-    // no form and names why.
-    if (this.native === remoteNative) {
-      const windows = (options.platform ?? process.platform) === "win32";
-      this.statusValue = { state: "off", diagnostic: windows ? "platform_unsupported" : "sealed_runtime_required", devices: 0 };
-    }
+    // The sealed provider cannot be set up from any build yet: only a source run gets it, and that
+    // needs the dev switch. Say so, so the panel offers no form and names why.
+    if (this.native === remoteNative) this.statusValue = { state: "off", diagnostic: "sealed_runtime_required", devices: 0 };
     this.trust = new RemoteTrust(options.store, this.native, options.now);
     this.push = new PushService({
       store: options.store,
@@ -572,7 +568,8 @@ export class RemoteController {
           // What this device reads, asked once per link before anything that would use it.
           const compress = request.body?.compress;
           deflate = Array.isArray(compress) && compress.includes("deflate-raw");
-          sendJson(2, { v: 1, id, status: 200, body: { compress: deflate ? "deflate-raw" : null, ...(this.options.screen ? { screen: "rfb-v1" } : {}) } });
+          sendJson(2, { v: 1, id, status: 200, body: { compress: deflate ? "deflate-raw" : null,
+            ...(this.options.screen ? { screen: "rfb-v1", host: screenHost(this.options.platform ?? process.platform) } : {}) } });
           return;
         }
         if (request.method === "POST" && request.path.startsWith("/remote/screen/") && this.options.screen) {

@@ -115,6 +115,24 @@ test("a submitted device shows its own fingerprint and only then an approve butt
   expect(card?.textContent).toContain("0b59 c504");
   click(host.querySelector("[data-testid=pairing-confirm]"));
   expect(runtime.calls.some((c) => c.name === "confirmHostPairing")).toBe(true);
+  expect(host.querySelector("[data-testid=pairing-needs-hello]")).toBeNull();
+  close();
+});
+
+test("an approval Windows Hello could not ask for says to set Hello up, and keeps the approve button", () => {
+  const { host, close } = open({
+    phase: "confirm",
+    pairingId: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+    code,
+    expiresUnix: 2_000_000_000,
+    fingerprint: hostFingerprint,
+    name: "Pixel",
+    deviceFingerprint,
+    challenge: `${"c".repeat(43)}=`,
+    note: "hello_not_configured",
+  });
+  expect(host.querySelector("[data-testid=pairing-needs-hello]")?.textContent).toContain("Sign-in options");
+  expect(host.querySelector("[data-testid=pairing-confirm]")).not.toBeNull();
   close();
 });
 
@@ -162,16 +180,6 @@ test("a build whose credential store cannot be set up offers no connect form", (
   const { host, close } = open(null, { remoteStatus: { state: "off", diagnostic: "sealed_runtime_required", devices: 0 } });
   expect(host.querySelector("[data-testid=remote-connect]")).toBeNull();
   expect(host.querySelector("[data-testid=remote-setup-note]")?.textContent).toContain("REAL_BOT_DEV_REMOTE=1");
-  close();
-});
-
-test("on Windows the card says remote access is not there yet instead of offering a form that cannot work", () => {
-  const { host, close } = open(null, { remoteStatus: { state: "off", diagnostic: "platform_unsupported", devices: 0 } });
-  expect(host.querySelector("[data-testid=remote-connect]")).toBeNull();
-  expect(host.querySelector("[data-testid=relay-guide]")).toBeNull();
-  expect(host.querySelector("[data-testid=remote-setup-note]")?.textContent).toContain("isn't available on Windows yet");
-  // A paired-device count of zero says nothing there; the note is the whole story.
-  expect(host.textContent).not.toContain("paired devices");
   close();
 });
 

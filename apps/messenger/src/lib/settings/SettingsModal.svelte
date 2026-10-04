@@ -385,11 +385,9 @@
 	const remoteSetupNote = $derived(
 		runtime.remote
 			? ''
-			: runtime.remoteStatus?.diagnostic === 'platform_unsupported'
-				? t.remote.setupUnsupportedWindows
-				: runtime.remoteStatus?.diagnostic === 'sealed_runtime_required'
-					? t.remote.setupNeedsDevSwitch
-					: ''
+			: runtime.remoteStatus?.diagnostic === 'sealed_runtime_required'
+				? t.remote.setupNeedsDevSwitch
+				: ''
 	);
 	let workspaceSavedTick = $state(0);
 	/** Latest editor draft, so a parent that nulls `providerEditor` still has something to flush. */
@@ -1512,6 +1510,9 @@
 													<p class="pairing-step-text">{t.remote.hostPairArrived(runtime.hostPairing.name)}</p>
 													<p class="pairing-fingerprint mono">{formatFingerprint(runtime.hostPairing.deviceFingerprint)}</p>
 													<p class="pairing-step-note">{t.remote.hostPairCompare}</p>
+													{#if runtime.hostPairing.note === 'hello_not_configured'}
+														<p class="field-error" data-testid="pairing-needs-hello">{t.remote.confirmNeedsHello}</p>
+													{/if}
 													<div class="pairing-decide">
 														<button
 															type="button"
@@ -1561,7 +1562,9 @@
 										<button type="button" class="btn-xs" disabled={runtime.hostDevicesBusy} onclick={() => void runtime.refreshHostDevices()}>{t.remote.refreshStatus}</button>
 									</div>
 									{#if runtime.hostDevicesError}
-										<p class="field-error">{t.remote.deviceActionFailed}</p>
+										<p class="field-error">
+											{runtime.hostDevicesError === 'hello_not_configured' ? t.remote.confirmNeedsHello : t.remote.deviceActionFailed}
+										</p>
 									{/if}
 									{#if runtime.hostDevices.length === 0}
 										<p class="muted">{t.remote.connectedDevicesEmpty}</p>

@@ -111,3 +111,11 @@ test("the remote screen's helper is built by Cargo for the macOS triple, at the 
   expect(plan.destPath).toBe(resolve(nativeDir, "real-bot-rtc"));
   expect(plan.env).toEqual({ MACOSX_DEPLOYMENT_TARGET: "13.0" });
 });
+
+test("on Windows the remote screen's helper is an .exe beside the daemon, with no macOS minimum", () => {
+  const plan = rtcBuildPlan("x86_64-pc-windows-msvc", nativeDir);
+  expect(plan.args.slice(-2)).toEqual(["--target", "x86_64-pc-windows-msvc"]);
+  expect(plan.builtPath).toBe("apps/rtc-helper/target/x86_64-pc-windows-msvc/release/real-bot-rtc.exe");
+  expect(plan.destPath).toBe(resolve(nativeDir, "real-bot-rtc.exe"));
+  expect(plan.env).toEqual({});
+});

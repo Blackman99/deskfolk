@@ -120,32 +120,51 @@ export function attachLocalSetup(stream: Duplex, controller: RemoteController, o
  * anything is read from it. With the file store (`file`), the packaged daemon trusts it for what it
  * is: the socketpair the window made and handed only to the process it spawned. Another same-user
  * process could start a daemon with its own FD 3, but that daemon reads the same 0600 file anyway.
+ *
+ * A Windows window cannot hand a child a descriptor past the standard three, so there the channel
+ * is the daemon's own stdin and stdout, two pipes the window made for it and nobody else holds
+ * (ADR 0059); `main.ts` sends everything the daemon would print to stderr instead (`reserveStdout`).
  */
-export async function inheritedLocalSetup(controller: RemoteController, onGone?: () => void, file?: FileRemoteNative): Promise<(() => void) | undefined> {
+export async function inheritedLocalSetup(controller: RemoteController, onGone?: () => void, file?: FileRemoteNative,
+  platform: string = process.platform): Promise<(() => void) | undefined> {
   if (!process.argv.includes("--desktop-remote-channel")) return;
+  const channel = () => platform === "win32" ? inheritedChannel(0, 1) : inheritedChannel(3);
   try {
-    if (file) return attachLocalSetup(inheritedChannel(3), controller, onGone, windowDispatch(file));
+    if (file) return attachLocalSetup(channel(), controller, onGone, windowDispatch(file));
     await remoteNative.authorizeDesktopChannel();
-    return attachLocalSetup(inheritedChannel(3), controller, onGone);
+    return attachLocalSetup(channel(), controller, onGone);
   } catch { return; }
 }
 
 /**
- * The inherited socketpair as a stream. Bun's `new net.Socket({ fd })` ends it at once (the
- * window read EOF before sending anything), which went unnoticed while the sealed provider refused
- * the channel before attaching; plain reads and writes on the descriptor work. Destroying closes
- * FD 3, so the window reads EOF; the window closing its end ends the stream here.
+ * With the channel on stdin and stdout (a Windows window's, ADR 0059), nothing else may write to
+ * stdout: what the daemon prints goes to stderr from here on. Called first thing in `main.ts`.
  */
-export function inheritedChannel(fd: number): Duplex {
+export function reserveStdout(): void {
+  for (const method of ["log", "info", "debug", "dir", "table"] as const) console[method] = console.error;
+  process.stdout.write = process.stderr.write.bind(process.stderr) as typeof process.stdout.write;
+}
+
+/**
+ * The inherited socketpair (or, on Windows, the stdin/stdout pipe pair) as a stream. Bun's
+ * `new net.Socket({ fd })` ends it at once (the window read EOF before sending anything), which
+ * went unnoticed while the sealed provider refused the channel before attaching; plain reads and
+ * writes on the descriptor work. Destroying closes the descriptors, so the window reads EOF; the
+ * window closing its end ends the stream here.
+ */
+export function inheritedChannel(fd: number, writeFd: number = fd): Duplex {
   const input = createReadStream("", { fd, autoClose: false, highWaterMark: 8192 });
-  const output = createWriteStream("", { fd, autoClose: false });
+  const output = createWriteStream("", { fd: writeFd, autoClose: false });
   let open = true;
   const channel = new Duplex({
     read() {},
     write(chunk, _encoding, done) { output.write(chunk, done); },
     destroy(error, done) {
       input.destroy(); output.destroy();
-      if (open) { open = false; try { closeSync(fd); } catch { /* already gone */ } }
+      if (open) {
+        open = false;
+        for (const each of new Set([fd, writeFd])) { try { closeSync(each); } catch { /* already gone */ } }
+      }
       done(error);
     },
   });

@@ -42,6 +42,10 @@ windows-sys = { version = "0.61", features = [
     "Win32_UI_WindowsAndMessaging",
 ] }
 windows-core = "0.61"
+# Windows Hello for confirming remote-access changes (`local_confirm::verify_owner`); the same
+# 0.61 / 0.2 the dependencies above already resolve.
+windows = { version = "0.61", features = ["Security_Credentials_UI", "Win32_Foundation", "Win32_System_WinRT"] }
+windows-future = "0.2"
 # For `Webview::with_webview`'s WebView2 controller handle (disabling the
 # browser accelerator keys) — the same crate Tauri's own docs use for this.
 webview2-com = "0.38"

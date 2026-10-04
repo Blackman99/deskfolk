@@ -25,9 +25,12 @@ The docs and the [glossary](../CONTEXT.en.md) are written for macOS (Dock, Keych
 
 A Bot's `shell` tool runs commands in Git Bash when it finds one, and in PowerShell otherwise, so installing [Git for Windows](https://gitforwindows.org/) is recommended. The `REAL_BOT_TOOL_SHELL` environment variable can point at a `bash.exe`, `pwsh.exe` or `powershell.exe` to override that choice.
 
+## Remote access and the remote screen
+
+Remote access works as on the Mac ([remote access](remote-access.md)), with two differences. Approving a device uses Windows Hello — face, fingerprint or PIN — so set a PIN under Windows Settings → Accounts → Sign-in options first. And the remote screen needs a VNC server, since Windows has no screen sharing of its own: install TightVNC as a system service, set its password, and allow loopback connections only; the steps are in [remote access](remote-access.md#on-windows), and the card in Settings lists them while no VNC server answers. Neither has been tried on a real Windows PC yet ([ADR 0059](adr/0059-windows-remote-access-and-screen.md)).
+
 ## Not there yet
 
-- Remote access and phone pairing. The remote-control section of Settings says outright that Windows is not supported yet.
 - The optional independent runtime (off by default on the Mac too).
 - Downloading and installing an update inside the app: a new version still means a manual download in the browser.
 - Desktop notifications and the icon badge.

@@ -44,3 +44,37 @@ test("on Windows the routine hints name the computer that runs them, not a Mac",
     "Due marks show only on the execution computer. The clock on a block is that computer’s local time.",
   );
 });
+
+const remoteHostCopy = (copy: typeof COPY) => [
+  copy.zh.remote.hostPairEmpty,
+  copy.zh.remote.hostPairDone,
+  copy.zh.remote.hostConnectIntro,
+  copy.zh.remote.relayGuideLead,
+  copy.zh.remote.relayGuideFill,
+  copy.zh.screen.macToggle,
+  copy.zh.screen.macToggleDesc,
+  copy.zh.screen.macIceServersDesc,
+  copy.zh.screen.macActive("Pixel", "直连"),
+  copy.en.remote.hostPairEmpty,
+  copy.en.remote.hostPairDone,
+  copy.en.remote.hostConnectIntro,
+  copy.en.remote.hostConnectFailed,
+  copy.en.remote.relayGuideLead,
+  copy.en.remote.relayGuideFill,
+  copy.en.screen.macToggle,
+  copy.en.screen.macToggleDesc,
+  copy.en.screen.macIceServersDesc,
+  copy.en.screen.macActive("Pixel", "Direct"),
+];
+
+test("the window's remote-access and remote-screen words name the Mac there, and the computer on Windows", async () => {
+  expect(COPY.zh.remote.hostPairEmpty).toBe("还没有设备配对到这台 Mac。");
+  expect(COPY.zh.remote.relayGuideLead).toContain("：Mac 只往外连它");
+  expect(COPY.zh.screen.macActive("Pixel", "直连")).toBe("Pixel 正在看这台 Mac 的屏幕（直连）");
+  expect(COPY.en.screen.macToggle).toBe("Allow viewing and controlling this Mac's screen");
+  const windows = await copyOn("Win32");
+  for (const line of remoteHostCopy(windows)) expect(line).not.toContain("Mac");
+  expect(windows.zh.screen.macToggle).toBe("允许看和操作这台电脑的屏幕");
+  expect(windows.zh.screen.macSharingSettings).toBe("下载 TightVNC");
+  expect(windows.en.screen.macSharingOff).toBe("No VNC server found: the phone cannot connect");
+});

@@ -184,13 +184,20 @@ test("falls back to the relay when the direct channel never opens, or the Mac ca
   expect(noHelper.calls).toEqual(["start", "tunnel"]);
 });
 
-test("the page learns from the link's features whether the Mac offers its screen", async () => {
-  for (const [screen, offered] of [["rfb-v1", true], [undefined, false]] as const) {
+test("the page learns from the link's features whether the Mac offers its screen, and whether it is a Windows PC", async () => {
+  for (const [features, offered, host] of [
+    [{ screen: "rfb-v1", host: "mac" }, true, "mac"],
+    [{ screen: "rfb-v1", host: "windows" }, true, "windows"],
+    // A daemon from before Windows had a screen says nothing about it, and was a Mac.
+    [{ screen: "rfb-v1" }, true, "mac"],
+    [{}, false, "mac"],
+  ] as const) {
     const relay = fakeHost({ answer: (request) => request.path === "/remote/features"
-      ? { v: 1, id: request.id, status: 200, body: { compress: null, ...(screen ? { screen } : {}) } } : null });
+      ? { v: 1, id: request.id, status: 200, body: { compress: null, ...features } } : null });
     const api = new RemoteApi(enrollment, { socketFactory: () => relay.socket as unknown as WebSocket });
     await api.connect(() => {});
     expect(api.screenOffered).toBe(offered);
+    expect(api.screenHost).toBe(host);
     api.close();
   }
   // A Mac from before the remote screen answers 404 to the features ask.
@@ -198,6 +205,7 @@ test("the page learns from the link's features whether the Mac offers its screen
   const api = new RemoteApi(enrollment, { socketFactory: () => old.socket as unknown as WebSocket });
   await api.connect(() => {});
   expect(api.screenOffered).toBe(false);
+  expect(api.screenHost).toBe("mac");
   api.close();
 });
 

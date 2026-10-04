@@ -1,7 +1,8 @@
 import { generateKeyPairSync, randomBytes as nodeRandomBytes } from "node:crypto";
-import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { canonicalHash, generateIdentity } from "@real-bot/remote";
+import { renameReplacing } from "../file-integrity";
 import { isCompiledBinary } from "../platform";
 import { RemoteNativeError, type LocalAction, type RemoteMaterial } from "../remote-native";
 
@@ -107,7 +108,8 @@ export class FileRemoteNative {
     const temp = `${this.file}.tmp`;
     try {
       writeFileSync(temp, JSON.stringify(this.loaded), { mode: 0o600 });
-      renameSync(temp, this.file);
+      // On Windows an indexer or antivirus holding the old file for a moment is not a failure.
+      renameReplacing(temp, this.file);
       chmodSync(this.file, 0o600);
     } catch { throw new RemoteNativeError("storage"); }
   }

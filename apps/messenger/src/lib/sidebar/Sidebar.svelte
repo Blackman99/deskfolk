@@ -713,6 +713,7 @@
 		{onOpenSpend}
 		onOpenTerminal={() => (phone ? runtime.openTerminal() : onNewTerminal())}
 		onOpenScreen={runtime.screenOffered ? () => runtime.openRemoteScreen() : null}
+		screenHost={runtime.screenHost}
 		onOpenArchived={() => (viewingArchived = true)}
 		everything={snapshot.holdsOn ? (everythingHeld.length > 0 ? 'go-on' : 'stop') : null}
 		everythingDisabled={runtime.connection !== 'connected'}

@@ -255,7 +255,7 @@ export class RemoteApi {
   private readonly pending = new Map<string, PendingRemote>();
   private transport: RemoteTransport | null = null;
   /** What the Mac said it offers on this link, from `/remote/features`. */
-  private features: { screen?: unknown } = {};
+  private features: { screen?: unknown; host?: unknown } = {};
   private mediaAbort = new AbortController();
   private readonly identity: IdentitySecrets;
   private revisions = new Map<string, string>();
@@ -369,7 +369,7 @@ export class RemoteApi {
     this.features = {};
     try {
       const answer = await transport.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/features", body: { compress: ["deflate-raw"] } });
-      if (answer.status === 200 && answer.body && typeof answer.body === "object") this.features = answer.body as { screen?: unknown };
+      if (answer.status === 200 && answer.body && typeof answer.body === "object") this.features = answer.body as { screen?: unknown; host?: unknown };
     } catch {
       // Answers stay uncompressed, and the Mac offers nothing else this link knows of.
     }
@@ -392,6 +392,10 @@ export class RemoteApi {
   /** Whether the Mac this link reaches can show its screen at all (it may still be turned off there). */
   get screenOffered(): boolean {
     return this.features.screen === "rfb-v1";
+  }
+  /** Which computer that screen is: a Windows PC behind a VNC server, or (what older daemons are) a Mac. */
+  get screenHost(): "mac" | "windows" {
+    return this.features.host === "windows" ? "windows" : "mac";
   }
   async screenStart(options: { smooth?: boolean } = {}): ReturnType<ScreenApi["screenStart"]> {
     return this.screenCall("/remote/screen/start", options.smooth ? { smooth: true } : {});

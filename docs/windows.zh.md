@@ -25,9 +25,12 @@ Windows 版是刚起步的实验性预览：能装、能跑，但有几样功能
 
 Bot 的 `shell` 工具找得到 Git Bash 时用它跑命令，找不到才退到 PowerShell，所以建议装上 [Git for Windows](https://gitforwindows.org/)。环境变量 `REAL_BOT_TOOL_SHELL` 可以指定一个 `bash.exe`、`pwsh.exe` 或 `powershell.exe`，覆盖这个判断。
 
+## 远程访问和远程屏幕
+
+远程访问和 Mac 上一样（[远程访问](remote-access.zh.md)），差两处。批准设备用 Windows Hello——人脸、指纹或 PIN，所以先在 Windows 设置 → 账户 → 登录选项 里设一个 PIN。远程屏幕要一个 VNC 服务，因为 Windows 没有自带的屏幕共享：把 TightVNC 装成系统服务，设好密码，只允许本机回环连接；步骤见[远程访问](remote-access.zh.md#windows-上)，没有 VNC 服务应答时设置里的卡片也会列出来。这两样都还没在真的 Windows 电脑上试过（[ADR 0059](adr/0059-windows-remote-access-and-screen.md)）。
+
 ## 还没有的
 
-- 远程访问和手机配对。设置里远控那一栏会直接写明 Windows 版还不支持。
 - 可选的独立运行时（Mac 上也默认关闭）。
 - 在应用里下载并安装更新：发现新版仍要去浏览器手动下载。
 - 桌面通知与图标角标。

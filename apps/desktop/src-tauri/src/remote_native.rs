@@ -249,6 +249,21 @@ fn after_ready(
     }
 }
 
+/// The main window's handle, for Windows Hello to come up in front of; nothing elsewhere.
+fn owner_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Option<isize> {
+    #[cfg(windows)]
+    {
+        app.get_webview_window("main")
+            .and_then(|window| window.hwnd().ok())
+            .map(|hwnd| hwnd.0 as isize)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = app;
+        None
+    }
+}
+
 #[tauri::command]
 pub async fn remote_native_confirmation<R: tauri::Runtime>(
     _caller: BundledNativeCaller,
@@ -258,13 +273,14 @@ pub async fn remote_native_confirmation<R: tauri::Runtime>(
 ) -> Result<LocalConfirmation, String> {
     let request = request(&operation, challenge.clone())?;
     let directory = native_dir(&app.path().resource_dir().map_err(|_| "unavailable")?);
+    let window = owner_window(&app);
     tauri::async_runtime::spawn_blocking(move || {
         // The shipped daemon keeps its challenges on the file credential store (ADR 0033).
         if let (Operation::Confirm, Some(challenge)) = (&operation, challenge.as_deref()) {
             let local = super::local_confirm::confirm(
                 challenge,
                 super::remote_setup::exchange,
-                super::local_confirm::verify_owner,
+                |reason| super::local_confirm::verify_owner(reason, window),
             );
             if let Some(local) = local {
                 return Ok(local);

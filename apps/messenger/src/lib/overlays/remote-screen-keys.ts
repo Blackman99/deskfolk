@@ -1,5 +1,5 @@
 /**
- * X11 keysyms for what a phone sends to the Mac's screen. RFB speaks keysyms, not characters, and
+ * X11 keysyms for what a phone sends to the Mac's (or Windows PC's) screen. RFB speaks keysyms, not characters, and
  * noVNC exports no keysym table of its own (its package exposes only `rfb.js`), so the handful a
  * soft keyboard and the key row need are spelled out here.
  */
@@ -17,7 +17,7 @@ export const KEYSYM = {
   control: 0xffe3,
   /** Option. */
   alt: 0xffe9,
-  /** Command: what noVNC itself sends for a Mac keyboard's ⌘ (domkeytable's Meta). */
+  /** Command: what noVNC itself sends for a Mac keyboard's ⌘ (domkeytable's Meta); a Windows VNC server reads it as the Windows key. */
   command: 0xffeb,
 } as const;
 
@@ -28,6 +28,18 @@ export const MODIFIERS: ReadonlyArray<{ id: Modifier; label: string; name: strin
   { id: "control", label: "⌃", name: "Control" },
   { id: "shift", label: "⇧", name: "Shift" },
 ];
+
+/** A Windows PC's, named the way its keyboard is: Ctrl first, which its shortcuts use; Win is ⌘'s keysym. */
+export const WINDOWS_MODIFIERS: ReadonlyArray<{ id: Modifier; label: string; name: string }> = [
+  { id: "control", label: "Ctrl", name: "Ctrl" },
+  { id: "alt", label: "Alt", name: "Alt" },
+  { id: "command", label: "Win", name: "Windows" },
+  { id: "shift", label: "⇧", name: "Shift" },
+];
+
+export function modifiersFor(host: "mac" | "windows"): ReadonlyArray<{ id: Modifier; label: string; name: string }> {
+  return host === "windows" ? WINDOWS_MODIFIERS : MODIFIERS;
+}
 
 export type ScreenKey = { id: string; label: string; keysym: number };
 export const SCREEN_KEYS: ReadonlyArray<ScreenKey> = [

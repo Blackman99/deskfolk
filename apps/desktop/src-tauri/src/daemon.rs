@@ -25,11 +25,14 @@ pub fn spawn(resources: &std::path::Path) -> Option<Child> {
             .env_remove("NODE_OPTIONS");
         cmd
     };
+    cmd.stdin(Stdio::null()).stdout(Stdio::null());
     #[cfg(unix)]
     let channel = super::remote_setup::prepare_channel(&mut cmd)?;
+    // After the line above: on Windows the channel IS the daemon's stdin and stdout.
+    #[cfg(windows)]
+    super::remote_setup::prepare_channel(&mut cmd);
     #[cfg(windows)]
     suppress_console_window(&mut cmd);
-    cmd.stdin(Stdio::null()).stdout(Stdio::null());
     // Only a source daemon THIS WINDOW spawns gets this treatment — `pnpm dev`'s usual daemon is
     // pnpm's own child, never passes through here, and is unchanged: its stderr is still whatever
     // pnpm gave it (the terminal `pnpm dev` runs in). Even here, "inherit was /dev/null" is only
@@ -50,11 +53,15 @@ pub fn spawn(resources: &std::path::Path) -> Option<Child> {
     if let Ok(dir) = std::env::var("REAL_BOT_DATA_DIR") {
         cmd.env("REAL_BOT_DATA_DIR", dir);
     }
-    let child = cmd.spawn().ok()?;
+    #[cfg_attr(not(windows), allow(unused_mut))]
+    let mut child = cmd.spawn().ok()?;
     #[cfg(unix)]
     super::remote_setup::adopt_channel(channel);
     #[cfg(windows)]
-    end_with_this_process(&child);
+    {
+        super::remote_setup::adopt_channel(&mut child);
+        end_with_this_process(&child);
+    }
     Some(child)
 }
 

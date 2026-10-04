@@ -55,6 +55,7 @@ jobs:
           workspaces: |
             apps/conpty-helper -> target
             apps/desktop/src-tauri -> target
+            apps/rtc-helper -> target
 
       - name: Install JavaScript dependencies
         run: pnpm install --frozen-lockfile
@@ -92,6 +93,10 @@ jobs:
       - name: ConPTY helper crate tests
         if: success() || failure()
         run: cargo test --manifest-path apps/conpty-helper/Cargo.toml
+
+      - name: Remote screen helper tests
+        if: success() || failure()
+        run: cargo test --locked --manifest-path apps/rtc-helper/Cargo.toml
 
       - name: Desktop Tauri crate tests
         if: success() || failure()
@@ -136,12 +141,13 @@ jobs:
           workspaces: |
             apps/conpty-helper -> target
             apps/desktop/src-tauri -> target
+            apps/rtc-helper -> target
 
       - name: Install JavaScript dependencies
         run: pnpm install --frozen-lockfile
 
-      # beforeBuildCommand builds the messenger and runs build:native, which now compiles
-      # real-bot-daemon.exe and real-bot-pty.exe into src-tauri/native/ for this branch.
+      # beforeBuildCommand builds the messenger and runs build:native, which compiles
+      # real-bot-daemon.exe, real-bot-pty.exe and real-bot-rtc.exe into src-tauri/native/.
       - name: Build unsigned NSIS installer
         run: pnpm --filter @real-bot/desktop tauri build --bundles nsis
 

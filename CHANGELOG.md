@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Remote access and the remote screen on Windows (experimental, not yet tried on a real PC)
+
+- The Windows preview can now connect to your relay and pair a phone, as the Mac can: Settings → Remote access gives the connect form instead of saying Windows is not supported, and approving a device (or removing one) asks Windows Hello — face, fingerprint or PIN. Without Hello set up, the card says to set a PIN under Windows Settings → Accounts → Sign-in options and keeps the approve button. Under the hood the window talks to its daemon over the daemon's own stdin and stdout, since Windows has no equivalent of the Mac's inherited channel ([ADR 0059](docs/adr/0059-windows-remote-access-and-screen.md)).
+- The remote screen works on Windows through a VNC server you install, since Windows has no screen sharing of its own: TightVNC as a system service (so the lock screen and UAC prompts can be operated too), with a password and loopback connections only. Until one answers, the card lists those steps and links the download. On the phone the page is called **Computer screen**, asks for the VNC password, has Ctrl, Alt and Win keys and a Ctrl+Alt+Del button in the top bar where Smooth would be; while it is connected the PC's display and sleep are held off. See [remote access](docs/remote-access.md#on-windows).
+- The installer ships `real-bot-rtc.exe` for direct connections and stops it, like the daemon, before an upgrade. A daemon the window starts on Windows now counts as window-supervised, so a phone's remote restart is available there too.
+
 ### Large jobs are laid out first, with a sample made first
 
 - A large job — a whole episode, a book of many chapters — is no longer made as one thing in one go. The app reads it from your words (and reads again when segments go by with nothing approved); the plan panel says "A large job" under its name with what showed it, and "No need" beside it. Until it is laid out, Bots cannot generate images or video or hand anything over; the lead lays it out with plan_items, one part marked as the sample, the others waiting for it.

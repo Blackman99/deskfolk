@@ -35,3 +35,5 @@
 
 - 不回落到 `Bun.secrets` 的普通钥匙串项。ADR 0022 拒绝过它：没有访问组的项对同用户进程挡不了多少，却让人以为密钥在钥匙串里就安全了。文件就写成文件，代价写在这里。
 - 不给发布包留一个跳过确认的开关。`dev_authenticate` 这类顶替者确认只在源码态存在，编译态守护进程从来不提供。
+
+Windows 上同样用这个文件存凭据；那边的设置通道和确认框不同（守护进程的 stdin/stdout、Windows Hello），见 [ADR 0059](0059-windows-remote-access-and-screen.md)。

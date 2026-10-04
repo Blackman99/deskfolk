@@ -17,6 +17,8 @@ use crate::protocol::{self, Failure, State, TYPE_CLOSE, TYPE_ERROR, TYPE_STATE};
 /// helper → daemon: what the display became.
 pub const TYPE_DISPLAY: u8 = 5;
 
+// Only macOS lowers a display (and the tests check the choice everywhere).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ModeInfo {
     pub width: usize,
@@ -38,6 +40,7 @@ struct Lowered {
 /// The mode to switch to, as an index into `modes`: one pixel per point, the current mode's shape,
 /// and at least its size in points so no window has to shrink to fit; the smallest such, at the
 /// current refresh rate when that is offered. It must also have fewer pixels than now.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub fn lower_mode(current: &ModeInfo, modes: &[ModeInfo]) -> Result<usize, &'static str> {
     if current.pixel_width <= current.width {
         return Err("already_low");

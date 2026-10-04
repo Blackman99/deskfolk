@@ -8,11 +8,12 @@
  * the credential runtime needs, and `verifyNativeMinimum` checks every one was actually built for
  * the advertised macOS minimum. Windows has no notion of any of that: WebView2 doesn't gate a
  * credential runtime behind a signed helper the way Keychain access groups do, so there is no
- * Swift helper, no `codesign`, no minimum-OS check — just the daemon and the ConPTY helper
- * (`apps/conpty-helper`, built by Cargo) copied in as-is.
+ * Swift helper, no `codesign`, no minimum-OS check — just the daemon, the ConPTY helper
+ * (`apps/conpty-helper`) and the remote screen's WebRTC helper, both built by Cargo, copied in
+ * as-is (and signed with the release's sign command when there is one).
  *
- * The planning functions below (`resolveTriple`, `familyFor`, `daemonBuildPlan`, `conptyBuildPlan`)
- * are pure — no I/O — so a test can exercise the Windows branch without a Windows machine, Cargo,
+ * The planning functions below (`resolveTriple`, `familyFor`, `daemonBuildPlan`, `conptyBuildPlan`,
+ * `rtcBuildPlan`) are pure — no I/O — so a test can exercise the Windows branch without a Windows machine, Cargo,
  * or a built `conpty-helper`. Only the `import.meta.main` block actually spawns anything.
  */
 import { copyFile, mkdir } from "node:fs/promises";
@@ -107,18 +108,22 @@ export interface RtcBuildPlan {
   /** Where Cargo writes the binary, relative to the repo root. */
   builtPath: string;
   destPath: string;
-  /** Cargo's own reading of the deployment target, so the binary carries the advertised minimum. */
+  /** On macOS, Cargo's own reading of the deployment target, so the binary carries the advertised minimum. */
   env: Record<string, string>;
 }
 
-/** Builds the remote screen's WebRTC helper (`apps/rtc-helper`) for a macOS `triple`. */
-export function rtcBuildPlan(triple: string, nativeDir: string, minimum: string): RtcBuildPlan {
+/**
+ * Builds the remote screen's WebRTC helper (`apps/rtc-helper`) for `triple`: on macOS at the
+ * advertised `minimum`, on Windows as `real-bot-rtc.exe`.
+ */
+export function rtcBuildPlan(triple: string, nativeDir: string, minimum?: string): RtcBuildPlan {
   const manifestPath = "apps/rtc-helper/Cargo.toml";
+  const name = familyFor(triple) === "windows" ? "real-bot-rtc.exe" : "real-bot-rtc";
   return {
     args: ["cargo", "build", "--release", "--locked", "--manifest-path", manifestPath, "--target", triple],
-    builtPath: `apps/rtc-helper/target/${triple}/release/real-bot-rtc`,
-    destPath: resolve(nativeDir, "real-bot-rtc"),
-    env: { MACOSX_DEPLOYMENT_TARGET: minimum },
+    builtPath: `apps/rtc-helper/target/${triple}/release/${name}`,
+    destPath: resolve(nativeDir, name),
+    env: minimum ? { MACOSX_DEPLOYMENT_TARGET: minimum } : {},
   };
 }
 
@@ -192,8 +197,8 @@ async function buildDarwin(root: string, triple: string, output: string): Promis
 /**
  * The argv that signs one Windows binary with `command`, spelled the way Tauri's own
  * `bundle.windows.signCommand` string is: split on single spaces, `%1` standing for the file. One
- * value then signs everything — Tauri the app exe and the installer, this script the daemon and
- * the pty helper, which Tauri ships as plain resources and never signs itself.
+ * value then signs everything — Tauri the app exe and the installer, this script the daemon, the
+ * pty helper and the WebRTC helper, which Tauri ships as plain resources and never signs itself.
  */
 export function windowsSignArgv(command: string, file: string): string[] {
   const argv = command.split(" ").filter(Boolean).map((arg) => arg.replaceAll("%1", file));
@@ -211,10 +216,14 @@ async function buildWindows(root: string, triple: string, output: string): Promi
   await run(root, conpty.args);
   await copyFile(resolve(root, conpty.builtPath), conpty.destPath);
 
+  const rtc = rtcBuildPlan(triple, output);
+  await run(root, rtc.args);
+  await copyFile(resolve(root, rtc.builtPath), rtc.destPath);
+
   // The release workflow sets this only when signing is configured; see release.yml.
   const sign = process.env.REAL_BOT_WINDOWS_SIGN_COMMAND?.trim();
   if (sign) {
-    for (const file of [daemon, conpty.destPath]) await run(root, windowsSignArgv(sign, file));
+    for (const file of [daemon, conpty.destPath, rtc.destPath]) await run(root, windowsSignArgv(sign, file));
     console.log(`Native resources built and signed in ${dirname(output)}/native.`);
   } else {
     console.log(`Native resources built in ${dirname(output)}/native (unsigned: no REAL_BOT_WINDOWS_SIGN_COMMAND).`);

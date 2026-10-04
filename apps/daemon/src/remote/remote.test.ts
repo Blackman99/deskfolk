@@ -939,13 +939,13 @@ test("default native provider never reads credentials and local bearer has no se
   await expect(dispatchLocalSetup(remote, { operation: "read", material: "host_identity" })).rejects.toThrow();
 });
 
-test("with the sealed provider the status says why nothing can be set up: a source run needs the switch, Windows has no way yet", async () => {
+test("with the sealed provider the status says why nothing can be set up: a source run needs the switch, on Windows too", async () => {
   const root = mkdtempSync(join(tmpdir(), "rc07-why-")), store = new Store({ filename: join(root, "db"), endpointKey: memoryKeyStore() });
   const api = createLocalApi({ store, token: "local", schedule: false });
   const mac = new RemoteController({ store, api, platform: "darwin" }), windows = new RemoteController({ store, api, platform: "win32" });
   cleanup.push(async () => { mac.stop(); windows.stop(); api.quiesce.close(); await api.engine.close(); store.close(); rmSync(root, { recursive: true, force: true }); });
   expect(mac.status()).toEqual({ state: "off", diagnostic: "sealed_runtime_required", devices: 0 });
-  expect(windows.status()).toEqual({ state: "off", diagnostic: "platform_unsupported", devices: 0 });
+  expect(windows.status()).toEqual({ state: "off", diagnostic: "sealed_runtime_required", devices: 0 });
 });
 
 test("connected device activity is recorded and local removal revokes the selected device", async () => {
@@ -1698,7 +1698,7 @@ test("the remote screen is offered on the link, and only answers once the Mac tu
   const f = await fixture(undefined, false, false, undefined, { port: sharing.port, helperPath: () => null });
   const c = await f.connect(await f.pair());
   const features = await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/features", body: { compress: [] } });
-  expect(features.body).toMatchObject({ screen: "rfb-v1" });
+  expect(features.body).toMatchObject({ screen: "rfb-v1", host: process.platform === "win32" ? "windows" : "mac" });
   const off = await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/screen/start", body: {} });
   expect(off.status).toBe(409); expect(off.body.error.code).toBe("screen_disabled");
   await f.screen!.configure({ enabled: true });
@@ -1717,6 +1717,7 @@ test("a link without a screen service says so and refuses its routes", async () 
   const c = await f.connect(await f.pair());
   const features = await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/features", body: { compress: [] } });
   expect(features.body.screen).toBeUndefined();
+  expect(features.body.host).toBeUndefined();
   expect((await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/screen/start", body: {} })).status).toBe(404);
 });
 

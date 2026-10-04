@@ -6,23 +6,26 @@ import type { RemoteScreenIceServer } from "@real-bot/protocol";
 export type IceServer = RemoteScreenIceServer;
 
 /**
- * `real-bot-rtc`, packaged next to the daemon; in a source checkout, whatever `cargo build` last
- * produced. The override exists for tests and for a daemon started from somewhere unusual. Null on
- * Windows and when nothing is built: the phone then goes straight to the relayed path.
+ * `real-bot-rtc` (`real-bot-rtc.exe` on Windows), packaged next to the daemon; in a source
+ * checkout, whatever `cargo build` last produced. The override exists for tests and for a daemon
+ * started from somewhere unusual. Null on other systems and when nothing is built: the phone then
+ * goes straight to the relayed path.
  */
 export function rtcHelperPath(
   env: Record<string, string | undefined> = process.env,
   platform: string = process.platform,
   exists: (path: string) => boolean = existsSync,
+  execPath: string = process.execPath,
 ): string | null {
   const override = env.REAL_BOT_RTC_HELPER;
   if (override) return override;
-  if (platform !== "darwin") return null;
-  const packaged = join(dirname(process.execPath), "real-bot-rtc");
+  if (platform !== "darwin" && platform !== "win32") return null;
+  const name = platform === "win32" ? "real-bot-rtc.exe" : "real-bot-rtc";
+  const packaged = join(dirname(execPath), name);
   if (exists(packaged)) return packaged;
   const root = resolve(import.meta.dir, "../../../..");
   for (const configuration of ["release", "debug"]) {
-    const built = join(root, "apps/rtc-helper/target", configuration, "real-bot-rtc");
+    const built = join(root, "apps/rtc-helper/target", configuration, name);
     if (exists(built)) return built;
   }
   return null;
@@ -181,6 +184,24 @@ export function startDisplayHold(path: string, spawn: RtcSpawn = defaultSpawn, t
         clearTimeout(kill);
       })();
       return released;
+    },
+  };
+}
+
+/**
+ * Windows' stand-in for `caffeinate -d -i`: `real-bot-rtc stay-awake` keeps the display and the
+ * system from idling off until its stdin closes, and Windows lets go of the request when the
+ * process ends, however it ends.
+ */
+export function startStayAwake(path: string, spawn: RtcSpawn = defaultSpawn): { stop(): void } {
+  const child = spawn(path, ["stay-awake"]);
+  let stopped = false;
+  return {
+    stop() {
+      if (stopped) return;
+      stopped = true;
+      try { child.stdin.end(); } catch {}
+      setTimeout(() => { try { child.kill(); } catch {} }, 2000).unref?.();
     },
   };
 }

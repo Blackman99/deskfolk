@@ -93,6 +93,11 @@ test("the card keeps the approve step after a dismissed sheet, and fails on anyt
   await remote.confirmHostPairing();
   expect(remote.hostPairing).toEqual(confirm);
 
+  // Windows without Hello set up: the step stays, saying what to set up before approving again.
+  window(async () => ({ ok: false, diagnostic: "hello_not_configured" }));
+  await remote.confirmHostPairing();
+  expect(remote.hostPairing).toEqual({ ...confirm, note: "hello_not_configured" });
+
   window(async () => ({ ok: false, diagnostic: "expired" }));
   await remote.confirmHostPairing();
   expect(remote.hostPairing).toEqual({ phase: "failed", error: "expired" });

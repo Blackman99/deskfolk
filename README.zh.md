@@ -72,7 +72,7 @@ grk 单干没做完的两次：一次为了在浏览器里核对落地页而超�
 - **你自己的终端。** 守护进程持有 shell，关窗不停；Bot 跑的命令边跑边在它的消息下面滚动，还没开口时「思考中」那一行也写着它正在读哪个文件、跑哪条命令，点开能看这一轮做过的每一步。
 - **按模型、会话和 Bot 看花费。** 轮次、决策和反馈调用分别记录，实报与估算分开统计——[花费与计费单价](docs/spend.zh.md)。
 - **每日与每周日程。** Bot 按运行它的这台电脑的本地时间定点开工——[日程怎么用](docs/routines.zh.md)。
-- **手机上接着用（实验性，默认关闭）。** 经你自己部署的中继连回 Mac，端到端加密——[远程访问](docs/remote-access.zh.md)。打开 Mac 上的屏幕共享后，还能在手机上看和操作 Mac 的屏幕，锁屏也行。
+- **手机上接着用（实验性，默认关闭）。** 经你自己部署的中继连回 Mac，端到端加密——[远程访问](docs/remote-access.zh.md)。打开 Mac 上的屏幕共享（Windows 上装一个 VNC 服务）后，还能在手机上看和操作 Mac 的屏幕，锁屏也行。
 
 ## 获取
 
@@ -90,7 +90,7 @@ pnpm dev
 ```
 
 - **在 Windows 上从源码启动：** 同样 `git clone` / `pnpm install` / `pnpm dev`，用 Rust 的 MSVC 工具链加 Visual Studio Build Tools（勾选 "Desktop development with C++"）代替 Xcode，另外先跑一次 `cargo build --manifest-path apps/conpty-helper/Cargo.toml` 编终端 helper。建议也装上 Git for Windows：Bot 的 shell 工具找得到 Git Bash 就在里面跑命令，找不到才用 PowerShell。本地打安装包用 `pnpm --filter @real-bot/desktop tauri build --bundles nsis`。
-- **Windows 上还没有的：** 远控和手机配对、独立运行时、应用内下载安装更新、桌面通知与角标、图片缩略图。数据在 `%LOCALAPPDATA%\real-bot`，密钥在 Windows 凭据管理器；装法、差异和缺口见 [Windows 预览版](docs/windows.zh.md)，前置条件和打包见[开发说明](docs/development.md#windows实验性)。
+- **Windows 上还没有的：** 独立运行时、应用内下载安装更新、桌面通知与角标、图片缩略图。数据在 `%LOCALAPPDATA%\real-bot`，密钥在 Windows 凭据管理器；装法、差异和缺口见 [Windows 预览版](docs/windows.zh.md)，前置条件和打包见[开发说明](docs/development.md#windows实验性)。
 
 拿源码版干要跑几个小时的活（比如多镜头视频）时，用 `pnpm dev:steady` 代替 `pnpm dev`：守护进程不会因为改代码或 `git pull` 重启，进行中的轮次不会被打断。
 
@@ -98,7 +98,7 @@ pnpm dev
 
 ## 状态
 
-Alpha，macOS 是主要目标，功能和数据格式在那边也仍会变化。Windows 是刚起步的实验性预览，还有不少毛边和缺失功能（见上文「获取」）。Linux 暂不支持。远程访问（目前只在 macOS 上）是默认关闭的原型：日常功能和 Web Push 已在 Android Chrome 真机上走通；iOS 主屏幕和 WebAuthn 用户验证还没做真机验收，独立安全复核也没有通过；安装的应用就能配对：Mac 的远控身份存在一个私有文件里而不是钥匙串，每台设备用触控 ID 批准（[ADR 0033](docs/adr/0033-remote-credentials-in-a-file.md)）。
+Alpha，macOS 是主要目标，功能和数据格式在那边也仍会变化。Windows 是刚起步的实验性预览，还有不少毛边和缺失功能（见上文「获取」）。Linux 暂不支持。远程访问是默认关闭的原型（Windows 上还没在真机试过）：日常功能和 Web Push 已在 Android Chrome 真机上走通；iOS 主屏幕和 WebAuthn 用户验证还没做真机验收，独立安全复核也没有通过；安装的应用就能配对：Mac 的远控身份存在一个私有文件里而不是钥匙串，每台设备用触控 ID 批准，Windows 上用 Windows Hello（[ADR 0033](docs/adr/0033-remote-credentials-in-a-file.md)、[ADR 0059](docs/adr/0059-windows-remote-access-and-screen.md)）。
 
 [哪些已接入、哪些不做](https://blackman99.github.io/deskfolk/zh#boundaries) · [路线图](ROADMAP.md) · [领域语言](CONTEXT.md) · [中继部署](docs/deploy-remote.md)
 

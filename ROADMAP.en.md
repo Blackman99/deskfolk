@@ -83,7 +83,7 @@ Groundwork in place:
 - Optional Web Push sends only generic reminders that something is waiting, goes out from the Mac, and when opened only brings you back to the session list; it never approves anything.
 - Everyday features and Web Push work end to end in Chrome on a real Android device (from source, with the development switch).
 - The installed app registers with a relay and pairs devices: remote credentials live in a private file in the data folder, and the window approves each device with Touch ID (ADR 0033).
-- Seeing and operating the Mac's screen from the phone (off by default, turned on at the Mac): through macOS's own Screen Sharing, lock screen included; WebRTC directly when it can connect, via the relay when it cannot ([ADR 0056](docs/adr/0056-remote-screen.md)). The local end-to-end check passes; a direct connection from a real phone on cellular, the real Screen Sharing, and iOS Safari are not yet accepted.
+- Seeing and operating the Mac's screen from the phone (off by default, turned on at the Mac): through macOS's own Screen Sharing, lock screen included; WebRTC directly when it can connect, via the relay when it cannot ([ADR 0056](docs/adr/0056-remote-screen.md)). The local end-to-end check passes; a direct connection from a real phone on cellular, the real Screen Sharing, and iOS Safari are not yet accepted. On Windows it uses a VNC server the user installs (TightVNC), and remote access itself is wired up there too, approving devices with Windows Hello ([ADR 0059](docs/adr/0059-windows-remote-access-and-screen.md)); neither has been tried on a real PC.
 
 Next:
 
@@ -97,7 +97,7 @@ For the steps to deploy the relay, connect the Mac and pair a phone, see the [re
 
 - Local, single-person use; not a multi-user SaaS, and not a cloud virtual machine.
 - Bots share the workspace and tools; there is no permission isolation between Bots.
-- Running and verification currently target macOS first. Windows is an experimental preview, without remote access, the independent runtime, in-app update install or desktop notifications yet; there is no delivery commitment for Linux or signed installers.
+- Running and verification currently target macOS first. Windows is an experimental preview, without the independent runtime, in-app update install or desktop notifications yet, and with remote access not yet tried on a real PC; there is no delivery commitment for Linux or signed installers.
 - Remote access is an experimental prototype, off by default; there is no cloud relay run by the project.
 - There is no commitment yet to a stable API, database compatibility or production readiness.
 

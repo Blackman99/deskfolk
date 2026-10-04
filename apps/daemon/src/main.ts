@@ -5,6 +5,11 @@ import { bunKeyStore } from "./secrets";
 import { remoteNative } from "./remote-native";
 import { describeError, logStartup, startupLogPath } from "./startup-log";
 
+import { reserveStdout } from "./remote/local-setup";
+
+// A Windows window's setup channel is this process's stdin and stdout (ADR 0059).
+if (process.platform === "win32" && process.argv.includes("--desktop-remote-channel")) reserveStdout();
+
 if (process.argv.includes("--remote-native-capability")) {
   console.log(JSON.stringify(await remoteNative.capability()));
   process.exit(0);

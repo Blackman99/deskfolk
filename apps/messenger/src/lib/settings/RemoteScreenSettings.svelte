@@ -25,21 +25,26 @@
 	import type { RemoteScreenStatus } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { LocalApi } from '../local-api.ts';
+	import { desktopPlatform } from '../platform.ts';
 	import { isTauri, readTauriInternals } from '../tauri.ts';
 
 	/**
 	 * The Mac's half of the remote screen: whether paired devices may view and control it, whether
 	 * macOS Screen Sharing is there to serve them, which ICE servers a direct connection may use,
 	 * and who is connected now. Reachable only from this window: no paired device can change it.
+	 * On Windows the server is a VNC server the person installs (ADR 0059): while none answers, the
+	 * card says how to set TightVNC up and links its download page instead of macOS's Sharing pane.
 	 */
 	interface Props {
 		api: LocalApi;
 		t: Copy;
 		/** How often the card looks again while open: someone may connect, or Screen Sharing be turned on. */
 		pollMs?: number;
+		/** The OS this window runs on; read from the webview unless a test says. */
+		windows?: boolean;
 	}
 
-	let { api, t, pollMs = 5000 }: Props = $props();
+	let { api, t, pollMs = 5000, windows = desktopPlatform() === 'windows' }: Props = $props();
 
 	let status = $state<RemoteScreenStatus | null>(null);
 	let busy = $state(false);
@@ -90,12 +95,16 @@
 		}
 	}
 
-	/** System Settings' Sharing pane. The window's opener allows this one address and no other. */
+	/**
+	 * System Settings' Sharing pane (the window's opener allows this one settings address and no
+	 * other), or on Windows TightVNC's download page.
+	 */
 	async function openSharing(): Promise<void> {
 		const internals = readTauriInternals();
 		if (!isTauri(internals) || !internals?.invoke) return;
+		const url = windows ? 'https://www.tightvnc.com/download.php' : 'x-apple.systempreferences:com.apple.Sharing-Settings.extension';
 		try {
-			await internals.invoke('open_external_url', { url: 'x-apple.systempreferences:com.apple.Sharing-Settings.extension' });
+			await internals.invoke('open_external_url', { url });
 		} catch {
 			// Nothing to fall back to: the description already names where the switch is.
 		}
@@ -146,6 +155,9 @@
 				<button type="button" class="btn-xs" onclick={() => void openSharing()}>{t.screen.macSharingSettings}</button>
 			{/if}
 		</div>
+		{#if windows && !status.sharing}
+			<p class="settings-row-desc remote-screen-vnc" data-testid="remote-screen-vnc">{t.screen.macVncSteps}</p>
+		{/if}
 		{#each status.sessions as session (session.deviceId)}
 			<div class="remote-screen-active" role="status">
 				<span>

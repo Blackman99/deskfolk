@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { isOutside } from '../click-outside.ts';
-	import type { Copy } from '../copy.ts';
+	import { screenCopy, type Copy } from '../copy.ts';
 	import { spendCopyFor } from '../spend/spend-copy.ts';
 
 	/**
@@ -36,6 +36,8 @@
 		onOpenTerminal: () => void;
 		/** The remote screen; null where this is not a phone on a Mac that offers it. */
 		onOpenScreen?: (() => void) | null;
+		/** Whose screen that is, for its name: a Mac's, or a Windows PC's. */
+		screenHost?: 'mac' | 'windows';
 		onOpenArchived: () => void;
 		/** Stop every Bot, or lift a stop on everything; null where the daemon has no stops. */
 		everything?: 'stop' | 'go-on' | null;
@@ -58,6 +60,7 @@
 		onOpenSpend,
 		onOpenTerminal,
 		onOpenScreen = null,
+		screenHost = 'mac',
 		onOpenArchived,
 		everything = null,
 		everythingDisabled = false,
@@ -216,7 +219,7 @@
 					<line x1="8" y1="21" x2="16" y2="21"></line>
 					<line x1="12" y1="17" x2="12" y2="21"></line>
 				</svg>
-				<span>{t.screen.title}</span>
+				<span>{screenCopy(t, screenHost).title}</span>
 			</button>
 		{/if}
 		<div class="tools-menu-divider" role="separator"></div>

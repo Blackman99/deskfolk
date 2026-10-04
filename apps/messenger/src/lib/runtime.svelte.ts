@@ -149,6 +149,8 @@ export type HostPairing =
       name: string;
       deviceFingerprint: string;
       challenge: string;
+      /** Why the last approval did not go through while it can still be tried again (Windows Hello not set up). */
+      note?: string;
     }
   | { phase: "paired"; deviceId: string }
   | { phase: "failed"; error: string };
@@ -569,6 +571,13 @@ export class MessengerRuntime {
     void this.connection;
     const api = this.api;
     return api?.kind === "remote" && api.screenOffered;
+  }
+
+  /** Whether that screen is a Mac's or a Windows PC's, for its words and its key row. */
+  get screenHost(): "mac" | "windows" {
+    void this.connection;
+    const api = this.api;
+    return api?.kind === "remote" ? api.screenHost : "mac";
   }
 
   openCreateBot(): void {

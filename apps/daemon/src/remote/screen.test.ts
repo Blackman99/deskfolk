@@ -1,9 +1,10 @@
 import { afterEach, expect, test } from "bun:test";
+import { join } from "node:path";
 import { Store } from "../store";
 import { memoryKeyStore } from "../secrets";
 import { createLocalApi } from "../local-api";
-import { onlyDataChannel, parseIceServers, ScreenService } from "./screen";
-import { rtcHelperPath, startDisplayHold, type DisplayHold, type RtcSpawn } from "./rtc-helper";
+import { onlyDataChannel, parseIceServers, screenHost, ScreenService } from "./screen";
+import { rtcHelperPath, startDisplayHold, startStayAwake, type DisplayHold, type RtcSpawn } from "./rtc-helper";
 import { TunnelMux } from "./tunnel";
 import { HttpError } from "../errors";
 
@@ -89,9 +90,15 @@ test("an offer passes only with one data channel section", () => {
   expect(onlyDataChannel("v=0\r\n")).toBe(false);
 });
 
-test("the helper is the packaged one, a source build, or none; never on Windows", () => {
+test("the helper is the packaged one, a source build, or none; an .exe on Windows, nothing elsewhere", () => {
   expect(rtcHelperPath({ REAL_BOT_RTC_HELPER: "/x/real-bot-rtc" }, "darwin", () => false)).toBe("/x/real-bot-rtc");
-  expect(rtcHelperPath({}, "win32", () => true)).toBeNull();
+  expect(rtcHelperPath({}, "win32", (path) => path.endsWith("real-bot-rtc.exe"), join("/app", "native", "real-bot-daemon.exe")))
+    .toBe(join("/app", "native", "real-bot-rtc.exe"));
+  const slashed = (path: string) => path.replaceAll("\\", "/");
+  expect(rtcHelperPath({}, "win32", (path) => slashed(path).endsWith("target/debug/real-bot-rtc.exe"), "/nowhere/bun.exe"))
+    .toMatch(/apps[\\/]rtc-helper[\\/]target[\\/]debug[\\/]real-bot-rtc\.exe$/);
+  expect(rtcHelperPath({}, "win32", (path) => !path.endsWith(".exe"))).toBeNull();
+  expect(rtcHelperPath({}, "linux", () => true)).toBeNull();
   expect(rtcHelperPath({}, "darwin", () => false)).toBeNull();
   expect(rtcHelperPath({}, "darwin", (path) => path.endsWith("target/release/real-bot-rtc"))).toMatch(/apps\/rtc-helper\/target\/release\/real-bot-rtc$/);
 });
@@ -248,6 +255,20 @@ test("display-hold: lowered, told to stop, restored", async () => {
   // Released once, however often asked.
   await hold.release();
   expect(helper.told).toEqual(["frame 2", "end"]);
+});
+
+test("a phone learns whether it is looking at a Mac or a Windows PC", () => {
+  expect(screenHost("darwin")).toBe("mac");
+  expect(screenHost("win32")).toBe("windows");
+});
+
+test("stay-awake: started with its subcommand, let go by closing its stdin", async () => {
+  const helper = displayHelper(() => {});
+  const awake = startStayAwake("/x/real-bot-rtc.exe", helper.spawn);
+  expect(helper.args()).toEqual(["stay-awake"]);
+  awake.stop();
+  awake.stop();
+  expect(helper.told).toEqual(["end"]);
 });
 
 test("display-hold: a refusal or silence is a failure, not a hang", async () => {

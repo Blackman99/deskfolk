@@ -1,8 +1,8 @@
 //! Local confirmation for remote access on the file credential store (ADR 0033).
 //!
 //! The daemon prepares every action and holds its challenge. The window asks it over the inherited
-//! channel what the action is, shows that on a LocalAuthentication sheet, and only after the person
-//! passes it asks for the proof. The webview only ever sees the proof: it cannot send either step
+//! channel what the action is, shows that on a LocalAuthentication sheet (Windows Hello on Windows,
+//! ADR 0059), and only after the person passes it asks for the proof. The webview only ever sees the proof: it cannot send either step
 //! (`remote_setup::validate`), and it never supplies the words on the sheet.
 
 use serde_json::{json, Value};
@@ -84,9 +84,10 @@ fn reason(value: &Value) -> Result<String, &'static str> {
     Ok(format!("{verb}: {display}"))
 }
 
-/// Touch ID, or the login password where there is none, for this one action.
+/// Touch ID, or the login password where there is none, for this one action. `_window` is for
+/// Windows, whose sheet needs to be told which window to come up in front of.
 #[cfg(target_os = "macos")]
-pub fn verify_owner(reason: &str) -> Result<(), String> {
+pub fn verify_owner(reason: &str, _window: Option<isize>) -> Result<(), String> {
     use block2::RcBlock;
     use objc2::rc::Retained;
     use objc2::runtime::{AnyClass, AnyObject, Bool};
@@ -139,8 +140,81 @@ pub fn verify_owner(reason: &str) -> Result<(), String> {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
-pub fn verify_owner(_reason: &str) -> Result<(), String> {
+/// Windows Hello — a face, a fingerprint, or the PIN — for this one action, in front of `window`
+/// (the main window's HWND). Hello has to be set up for the account: Windows offers an app no
+/// sheet that takes the account password instead, so without it this says `hello_not_configured`.
+#[cfg(windows)]
+pub fn verify_owner(reason: &str, window: Option<isize>) -> Result<(), String> {
+    use std::time::{Duration, Instant};
+    use windows::core::{factory, HSTRING};
+    use windows::Security::Credentials::UI::{
+        UserConsentVerificationResult, UserConsentVerifier, UserConsentVerifierAvailability,
+    };
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::System::WinRT::IUserConsentVerifierInterop;
+    use windows_future::{AsyncStatus, IAsyncOperation};
+
+    let availability = UserConsentVerifier::CheckAvailabilityAsync()
+        .and_then(|operation| operation.get())
+        .map_err(|_| "unavailable")?;
+    if availability == UserConsentVerifierAvailability::DeviceBusy {
+        return Err("unavailable".into());
+    }
+    if availability != UserConsentVerifierAvailability::Available {
+        return Err("hello_not_configured".into());
+    }
+    let message = HSTRING::from(format!("Deskfolk wants to {reason}"));
+    // Parented to the window the sheet comes up in front of it; without one (or on a Windows
+    // that lacks the interop) it may open behind it, but it still opens.
+    let parented = window.and_then(|hwnd| {
+        // SAFETY: `hwnd` is the live main window's handle, read on this request.
+        unsafe {
+            factory::<UserConsentVerifier, IUserConsentVerifierInterop>()
+                .and_then(|interop| {
+                    interop.RequestVerificationForWindowAsync::<IAsyncOperation<UserConsentVerificationResult>>(
+                        HWND(hwnd as *mut core::ffi::c_void),
+                        &message,
+                    )
+                })
+                .ok()
+        }
+    });
+    let operation = match parented {
+        Some(operation) => operation,
+        None => UserConsentVerifier::RequestVerificationAsync(&message).map_err(|_| "unavailable")?,
+    };
+    // The daemon's challenge lasts 120 s; a sheet left open past that could not be used anyway.
+    let deadline = Instant::now() + Duration::from_secs(110);
+    loop {
+        match operation.Status().map_err(|_| "unavailable")? {
+            AsyncStatus::Completed => break,
+            AsyncStatus::Canceled => return Err("cancelled".into()),
+            AsyncStatus::Started if Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            AsyncStatus::Started => {
+                let _ = operation.Cancel();
+                return Err("timeout".into());
+            }
+            _ => return Err("unavailable".into()),
+        }
+    }
+    let result = operation.GetResults().map_err(|_| "unavailable")?;
+    if result == UserConsentVerificationResult::Verified {
+        Ok(())
+    } else if result == UserConsentVerificationResult::Canceled {
+        Err("cancelled".into())
+    } else if result == UserConsentVerificationResult::RetriesExhausted {
+        Err("authentication".into())
+    } else if result == UserConsentVerificationResult::DeviceBusy {
+        Err("unavailable".into())
+    } else {
+        Err("hello_not_configured".into())
+    }
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
+pub fn verify_owner(_reason: &str, _window: Option<isize>) -> Result<(), String> {
     Err("unavailable".into())
 }
 

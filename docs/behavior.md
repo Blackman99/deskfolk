@@ -513,7 +513,9 @@ Bot 在哪读到它：每一轮的局面里都有「用户要求」一段，列�
 
 **谁在看、怎么结束**：有设备连着时，Mac 窗的设置卡片上写着是哪台、直连还是经中继，可以当场「断开」。撤销那台设备、关掉开关、远程链路断开、手机页面切到后台、Mac 45 秒收不到页面的保活，连接都会结束；从后台回到这一页会自动接回。
 
-**接口**：手机经远程链路调 `POST /remote/screen/start | offer | tunnel | status | stop`，只在远程链路上存在、本机回环到不了；`/remote/features` 的回答里带 `screen: "rfb-v1"` 时手机才显示入口。Mac 窗经本机接口调 `GET` / `PUT /v1/remote/screen`（开关和 ICE 服务器）和 `POST /v1/remote/screen/disconnect`，这几条不在远程白名单里。协议细节见[远控协议](remote-protocol.md#remote-screen)，取舍见 [ADR 0056](adr/0056-remote-screen.md)。Windows 没有远程屏幕；Bot 用不了。
+**Windows**：Windows 没有自带的屏幕共享，画面和输入来自用户装的 VNC 服务（推荐 TightVNC，注册成系统服务、只允许本机回环），守护进程照样只连本机 5900（[ADR 0059](adr/0059-windows-remote-access-and-screen.md)）。手机从远程链路得知对面是 Windows：这一页叫「电脑屏幕」，登录只要 VNC 服务的密码，按键行是 Ctrl、Alt、Win、⇧，顶栏原来「流畅」的位置是 Ctrl+Alt+Del，没有流畅模式（TightVNC 发 JPEG，本来就小）。有设备连着时 `real-bot-rtc stay-awake` 按住显示器和睡眠，作用和 Mac 上的 `caffeinate` 一样。没有 VNC 服务应答时，电脑窗的卡片列出安装和配置的几步，按钮打开 TightVNC 的下载页。还没在真的 Windows 电脑上验过。
+
+**接口**：手机经远程链路调 `POST /remote/screen/start | offer | tunnel | status | stop`，只在远程链路上存在、本机回环到不了；`/remote/features` 的回答里带 `screen: "rfb-v1"` 时手机才显示入口，`host` 说对面是 Mac 还是 Windows。Mac 窗经本机接口调 `GET` / `PUT /v1/remote/screen`（开关和 ICE 服务器）和 `POST /v1/remote/screen/disconnect`，这几条不在远程白名单里。协议细节见[远控协议](remote-protocol.md#remote-screen)，取舍见 [ADR 0056](adr/0056-remote-screen.md)。Bot 用不了。
 
 <a id="interrupted"></a>
 ## 中断（Interrupted）
