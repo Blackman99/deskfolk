@@ -2,9 +2,9 @@
 
 [简体中文](CONTEXT.md)
 
-A single-person agent collaboration app running locally on macOS (with Windows as an experimental preview): a team of named, persistent Bots splits one job and hands it on until it is delivered, while the app keeps the plan and its done-when in view, chases what stalls and checks the delivery first. They collaborate through directs, groups, mentions and asynchronous handoffs (modelled on Grok Bot); the computer is a shared folder on this Mac, not a cloud VM.
+A single-person agent collaboration app running locally on macOS (with Windows as an experimental preview): you hand a multi-day, multi-step job that needs rework to named, persistent Bots (one or several) and walk away; the model does the work and the app holds it to account — your words are not lost, done has a definition, a stop is a state, and a supervisor chases what stalls. They collaborate through directs, groups, mentions and asynchronous handoffs (modelled on Grok Bot); the computer is a shared folder on this Mac, not a cloud VM.
 
-> **WIP**: This document defines the domain language; it is not a statement that every capability has passed acceptance. Entries are written for macOS (Dock, Keychain, Finder, Trash); what stands in for them on Windows, and what Windows does not have yet, is in [Windows preview](docs/windows.md). For the current scope, see the [README](README.md); for the direction of work on agent decisions, feedback on automatic tasks, reflection after each run, and full coverage of conversation operations, see the [roadmap](ROADMAP.md).
+> **WIP**: This document defines the domain language; it is not a statement that every capability has passed acceptance. Entries are written for macOS (Dock, Keychain, Finder, Trash); what stands in for them on Windows, and what Windows does not have yet, is in [Windows preview](docs/windows.md). For the current scope, see the [README](README.md); for the direction of work on the kernel of plans, tickets and done-when, and on full coverage of conversation operations, see the [roadmap](ROADMAP.md).
 
 ## Language
 

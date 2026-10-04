@@ -10,7 +10,7 @@ landing=${here:h:h}
 repo=${landing:h:h}
 lang=${1:-zh}
 fps=${FPS:-60}
-poster_at=${POSTER_AT:-24.97}
+poster_at=${POSTER_AT:-37.3}
 work=$landing/film-out/motion
 mkdir -p $work
 

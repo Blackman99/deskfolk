@@ -42,9 +42,9 @@ export type Dict = {
     headlineLines: string[];
     /** What kind of job and who it is for; the trust list below says how. */
     subhead: string;
-    /** Heading of the list below the subhead. */
+    /** Heading of the list below the subhead: the one line the list makes good on. */
     trustLabel: string;
-    /** What the headline's promise rests on, one claim per item. */
+    /** What the headline's promise rests on, one guarantee per item, each with the failure it came out of. */
     trust: { label: string; body: string }[];
     wipNote: string;
     ctaPrimary: string;
@@ -171,15 +171,15 @@ const zh: Dict = {
     themeDark: '暗色'
   },
   hero: {
-    headline: '交给一组 Bot，盯到交付。',
-    headlineLines: ['交给一组 Bot，', '盯到交付。'],
-    subhead: '一份调研报告、一套发布物料、一个带测试的小工具，交给几个 Bot 分工交接。面向自带模型端点的独立开发者和小工作室。',
-    trustLabel: '为什么放心交给它',
+    headline: '交出去，离开，回来看结果。',
+    headlineLines: ['交出去，离开，', '回来看结果。'],
+    subhead: '多天、多步、要返工的活交给 Bot；Bot 说做完的，应用先核过。面向自带模型端点的独立开发者和小工作室。',
+    trustLabel: '模型负责干活，应用负责当真',
     trust: [
-      { label: '交付前先自查。', body: '交文件前先对一遍验收：漏掉的补上或说清去向，「测试通过」要有跑过的命令作证。' },
-      { label: '停在半路有人管。', body: '一件事静下来却还有任务没做完，应用先叫回那个 Bot，还不动就告诉你。' },
-      { label: '做了什么都看得见。', body: '一件事一张流程图：谁叫醒了谁、每轮交出哪些文件、用了哪个模型、为什么。' },
-      { label: '危险动作先问你。', body: '会话和文件在本机，模型调用走你接入的端点；工作区外读写、出站网络、新工具要你批准。' }
+      { label: '你的要求不会丢。', body: '原话原样存档，需求只增不删（以前丢过 15 条规则）。' },
+      { label: '做完有定义。', body: '只有交付、检查、审查和你的放行能推进，Bot 说「通过」不算（107 秒曾被当成 2 分钟）。' },
+      { label: '停下是状态。', body: '叫停只有你能解除，开轮、叫醒和有副作用的调用都先过它（以前说了停，Bot 还在送审）。' },
+      { label: '停在半路有人追，也不烦你。', body: '监督器不调模型、重启不丢，只在需要你时找你（以前停了 7.6 小时没人知道）。' }
     ],
     wipNote: 'Alpha 版本：macOS 未签名快照，Windows 为实验性预览；功能与数据结构仍会变化。',
     ctaPrimary: '下载 Alpha',
@@ -272,7 +272,7 @@ const zh: Dict = {
   film: {
     watch: '播放完整视频',
     watchHint: '或者直接看完整视频',
-    duration: '1:51',
+    duration: '1:49',
     title: 'Deskfolk 完整演示',
     description: '从首次配置到一群 Bot 交出一套发布物料，再到它的流程图、你自己的终端和手机。',
     close: '关闭'
@@ -298,14 +298,14 @@ const zh: Dict = {
       },
       {
         dim: 'Bot 形态',
-        live: '持久名册、私聊、多 Bot 群、@ 点名、参与判断、异步交接；纠正链结束后自动复盘，结论留成该 Bot 的经验',
-        wip: '验证经验复用是否真的让选择更准、完成更快',
+        live: '持久名册、私聊、多 Bot 群、@ 点名、参与判断、异步交接；出了问题按类型记成质量事件，教训由应用在调用前执行，不靠事后复盘写进记忆',
+        wip: '用长活实测这些保证：叫停之后还有没有副作用、规则丢没丢、打扰了你几次',
         avoid: '用完即弃的对话框、中央裁决路由、轮数熔断'
       },
       {
         dim: '模型与工具',
-        live: '多个 OpenAI 兼容端点；stdio 与 Streamable HTTP MCP；开轮前由 agent 挑模型和思考等级并给出理由，规则兜底，记在流程图那一轮的卡片上',
-        wip: '工具和协作方式也由 agent 开轮前决定',
+        live: '多个 OpenAI 兼容端点；stdio 与 Streamable HTTP MCP；每个 Bot 有默认模型（按近 7 天用量推断，可以钉），要看图的活避开看不了图的模型，卡住了先提思考档、再沿你排的阶梯换模型；每轮的模型和原因记在流程图那一轮的卡片上',
+        wip: '阶梯和提档在真实长活里的效果，还没有实测',
         avoid: '绑定单一厂商、供应商目录、假装兼容所有实现'
       },
       {
@@ -361,9 +361,9 @@ const zh: Dict = {
     contributors: 'Deskfolk Contributors'
   },
   seo: {
-    title: 'Deskfolk — 交给一组 Bot，盯到交付',
+    title: 'Deskfolk — 交出去，离开，回来看结果',
     description:
-      'macOS 本机的 AI 团队（Windows 为预览版）：几个 Bot 分工交接，把一份调研报告、一套发布物料或一个小工具做到交付。交付前按验收自查，停在半路会被追，说「测试通过」要有跑过的命令作证，每一步都画在流程图上。会话和文件在本机，模型端点和 MCP 工具由你接入，危险动作先等你批准。面向会自己配模型端点的独立开发者与小工作室。MIT 开源，Alpha 阶段。',
+      'macOS 本机的 agent 协作应用（Windows 为预览版）：把多天、多步、要返工的活交给 Bot，你可以离开。模型负责干活，应用负责当真：你的原话原样存档、需求只增不删，任务要过应用自己跑的检查和有依据的审查才算做完，叫停是只有你能解除的状态，停在半路有监督器去追，只在需要你时才找你。会话和文件在本机，模型端点和 MCP 工具由你接入，危险动作先等你批准。面向会自己配模型端点的独立开发者与小工作室。MIT 开源，Alpha 阶段。',
     imageAlt: 'Deskfolk：一个窗口里并排着群聊、流程图、生成的预告片和终端'
   },
   docs: {
@@ -472,15 +472,15 @@ const en: Dict = {
     themeDark: 'Dark'
   },
   hero: {
-    headline: 'Hand it to Bots that see it through.',
-    headlineLines: ['Hand it to Bots', 'that see it through.'],
-    subhead: 'Reports, launch kits, small tools with tests: a few Bots split the job and hand it on. For solo developers and small studios with their own model endpoint.',
-    trustLabel: 'Why you can hand it over',
+    headline: 'Hand it off. Walk away. Return to results.',
+    headlineLines: ['Hand it off.', 'Walk away.', 'Return to results.'],
+    subhead: 'Multi-day, multi-step jobs that need rework go to Bots; when a Bot says done, the app checks first. Bring your own model endpoint.',
+    trustLabel: 'The model does the work; the app holds it to account',
     trust: [
-      { label: 'It checks before delivery.', body: 'Checked against the done-when; "tests pass" needs a command that ran.' },
-      { label: 'Stalls get chased.', body: 'A job gone quiet with tickets open calls its Bot back, then tells you if nothing moves.' },
-      { label: 'It shows its work.', body: 'A flow per job: who woke whom, what each turn handed over, which model and why.' },
-      { label: 'It asks first.', body: 'Local files, models on endpoints you add; outside access and new tools need your OK.' }
+      { label: 'Nothing you ask for gets lost.', body: 'Kept word for word, only ever added to (15 rules were once lost).' },
+      { label: 'Done has a definition.', body: 'Only checks, reviews and your OK move work (a 107 s cut once passed as 2 min).' },
+      { label: 'Stop is a state.', body: 'Only you lift it; nothing starts or acts past it (a Bot once kept going after "hold on").' },
+      { label: 'Stalls get chased, without pestering you.', body: 'Work picks back up; you hear when needed (a job once sat 7.6 h).' }
     ],
     wipNote: 'Alpha: unsigned macOS snapshot, with Windows as an experimental preview. Features and data structures may still change.',
     ctaPrimary: 'Download alpha',
@@ -599,14 +599,14 @@ const en: Dict = {
       },
       {
         dim: 'Bots',
-        live: 'Persistent roster, direct chats, multi-bot groups, @mentions, judgement, async handoffs; a review at the end of a correction, kept as that bot\'s experience',
-        wip: 'Measuring whether reused experience actually picks better and finishes faster',
+        live: 'Persistent roster, direct chats, multi-bot groups, @mentions, judgement, async handoffs; what goes wrong is filed by type as a quality event, and lessons are enforced by the app before a call instead of written into memory by a review afterwards',
+        wip: 'Measuring these guarantees on long jobs: side effects after a stop, rules lost, how often you were interrupted',
         avoid: 'Disposable chat boxes, a central dispatcher, turn-count breakers'
       },
       {
         dim: 'Models and tools',
-        live: 'Multiple OpenAI-compatible endpoints; stdio and Streamable HTTP MCP; an agent picks the model and thinking level before each turn and says why, with rules as the fallback, kept on that turn\'s card in the flow',
-        wip: 'Agent-led choice of tools and collaboration, decided before the turn too',
+        live: 'Multiple OpenAI-compatible endpoints; stdio and Streamable HTTP MCP; each Bot has a default model (inferred from the last 7 days of use, or pinned), work that needs to see images skips models that cannot, and a stuck job thinks harder, then climbs the ladder of models you order; each turn\'s model and why are kept on its card in the flow',
+        wip: 'How the ladder and stepping up do on real long jobs, not measured yet',
         avoid: 'Vendor lock-in, a provider catalogue, pretending every implementation is compatible'
       },
       {
@@ -662,9 +662,9 @@ const en: Dict = {
     contributors: 'Deskfolk Contributors'
   },
   seo: {
-    title: 'Deskfolk — Hand it to Bots that see it through',
+    title: 'Deskfolk — Hand it off, walk away, return to results',
     description:
-      'A local AI team for macOS (Windows in preview): Bots split the work and hand it on until a research report, a launch kit or a small tool is delivered. Deliveries are checked against the done-when, stalled jobs get chased, a "tests pass" needs a command that actually ran, and every step is drawn on a flow board. Chats and files stay on your Mac; you plug in the model endpoints and MCP tools, and risky actions wait for your approval. For solo developers and small studios who bring their own model endpoint. MIT, alpha.',
+      'A local agent app for macOS (Windows in preview): hand Bots the multi-day, multi-step jobs that need rework, and walk away. The model does the work; the app holds it to account: your words are kept as you said them, requirements are only ever added, a job is done only after checks the app runs itself and a review backed by evidence, a stop is a state only you can lift, a supervisor chases stalls, and the app comes to you only when it needs you. Chats and files stay on your Mac; you plug in the model endpoints and MCP tools, and risky actions wait for your approval. For solo developers and small studios who bring their own model endpoint. MIT, alpha.',
     imageAlt: 'Deskfolk: a group chat, its flow, the teaser the team made and a terminal side by side in one window'
   },
   docs: {

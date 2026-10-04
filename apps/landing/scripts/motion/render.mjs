@@ -1,7 +1,7 @@
 // Capture promo.html frame by frame (see build.sh and docs/development.md).
 //   node render.mjs --lang zh --out <dir> [--fps 60] [--workers 8]   -> <dir>/frames-<lang>/%05d.jpg + <dir>/cues-<lang>.json
 //   node render.mjs --lang zh --out <dir> --stills 5.5,24.9          -> <dir>/stills/<lang>-<t>.png
-//   node render.mjs --lang zh --out <dir> --poster 24.97             -> <dir>/poster-<lang>.png (play button + duration)
+//   node render.mjs --lang zh --out <dir> --poster 37.3              -> <dir>/poster-<lang>.png (play button + duration)
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';

@@ -416,7 +416,7 @@ const zh = {
     themeDesc: "界面外观配色偏好",
     languageDesc: "界面所使用的显示语言",
     launchDesc: "系统登录时在后台自动启动 Deskfolk",
-    aboutDescription: "几个 Bot 分工交接，应用盯着验收：停在半路会追，没验证过会直说，每一步都查得到。",
+    aboutDescription: "多天、多步、要返工的活交给 Bot；Bot 说做完的，应用先核过。",
     remoteSection: "中继连接",
     remoteSubtitle: "浏览器配对身份只存在本机 IndexedDB。聊天、快照、草稿、命令和文件不持久化。",
     remoteSubtitleHost: "手机或另一台电脑经你自己部署的中继连回这里，端到端加密。实验性功能，默认关闭。",
@@ -2260,8 +2260,7 @@ const en: CopyShape<typeof zh> = {
     themeDesc: "Color theme for the interface",
     languageDesc: "Display language for the interface",
     launchDesc: `Start Deskfolk automatically when logging into ${osName}`,
-    aboutDescription:
-      "Bots split the work and hand it on; stalls get chased, unverified claims get called out, and every step is on record.",
+    aboutDescription: "Multi-day, multi-step jobs that need rework go to Bots; when a Bot says done, the app checks first.",
     remoteSection: "Relay connection",
     remoteSubtitle: "Browser pairing identity lives in IndexedDB only. Chat, snapshots, drafts, commands and files are not persisted.",
     remoteSubtitleHost: "A phone or another computer reaches this one through a relay you deploy yourself, end-to-end encrypted. Experimental, off by default.",

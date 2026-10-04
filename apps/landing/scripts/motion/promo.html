@@ -143,6 +143,34 @@ html,body{margin:0;background:#000;overflow:hidden}
 .pill{border:3px solid rgba(255,255,255,.88);border-radius:999px;padding:20px 38px;font-size:38px;font-weight:600;white-space:nowrap;will-change:transform,opacity}
 .endline{font-size:30px;font-weight:500;color:var(--mist);white-space:nowrap}
 .url{font-size:34px;font-weight:600;white-space:nowrap}
+/* the ledger of your asks, and the board you come back to */
+.panel.ledger{width:860px;height:530px}
+.panel.board{width:980px;height:420px}
+.lrow{position:absolute;left:24px;right:24px;height:84px;border-radius:16px}
+.lrow .rid{position:absolute;left:28px;top:27px;font-family:"Folk Mono",monospace;font-size:26px;color:var(--mist)}
+.lrow .rq{position:absolute;left:140px;top:21px;font-size:32px;font-weight:600;white-space:nowrap}
+.lrow .rst{position:absolute;right:28px;top:25px;font-size:28px;font-weight:600;color:var(--mint);white-space:nowrap}
+.lrow .ic{position:absolute;right:28px;top:20px;width:44px;height:44px}
+.lrow .ic svg{position:absolute;left:0;top:0;width:44px;height:44px}
+.board .lrow .ic{left:28px;right:auto}
+.board .lrow .rq{left:100px}
+.bfoot{position:absolute;left:52px;bottom:38px;font-size:28px;font-weight:600;color:var(--mint);white-space:nowrap}
+.sheet{background:#fff;color:var(--ink);font-size:30px;font-weight:600;padding:22px 30px;border-radius:18px;display:flex;gap:14px;align-items:center;
+  white-space:nowrap;box-shadow:0 14px 34px rgba(3,38,46,.3)}
+/* checks the app runs on a hand-over */
+.panel.checks2{width:760px;height:300px}
+.panel.checks2 .row{width:760px}
+.panel.checks2 .row .target{left:270px}
+.en .panel.checks2 .row .target{left:250px}
+.panel.checks2 .ph{font-size:30px;top:30px}
+.st.rework{background:#fde9c4;color:var(--amber-ink)}
+/* a stop over the Bots, and the cards that never had to reach you */
+.holdbar{background:var(--amber);color:var(--amber-ink);font-size:30px;font-weight:700;padding:18px 30px;border-radius:18px;display:flex;align-items:center;
+  gap:14px;white-space:nowrap;box-shadow:0 14px 34px rgba(3,38,46,.3)}
+.ghost{background:#fff;color:var(--ink);font-size:28px;font-weight:600;padding:18px 26px;border-radius:16px;white-space:nowrap;
+  box-shadow:0 12px 28px rgba(3,38,46,.26)}
+.ghost.need{box-shadow:inset 0 0 0 4px var(--amber),0 14px 34px rgba(3,38,46,.3)}
+.dimmer{width:1920px;height:1080px;background:#000;opacity:0;z-index:20;pointer-events:none}
 </style>
 </head>
 <body>
@@ -150,71 +178,87 @@ html,body{margin:0;background:#000;overflow:hidden}
 <script>
 const STR = {
 zh: {
-  claims: ['测试全部通过。', '结论随后发你。', '已经做完了。'],
-  s0a: 'AI 说「做完了」，', s0b: '你还得自己查一遍。',
-  tagline: '交给一组 Bot，盯到交付。',
-  names: [['Iris', '调研'], ['Theo', '文案'], ['Kai', '工程']],
+  claims: ['一直在做。', '你的要求都记着。', '已经做完了。'],
+  s0a: '交出去几小时，回来一看：', s0b: '它停了，规则忘了，还说做完了。',
+  tagline: '交出去，离开，回来看结果。',
+  names: [['制片', '制作'], ['审片', '审查']],
+  initial: '制',
   you: '你',
-  goal: '下周上线：落地页和发布文案，带测试。',
-  docs: ['调研.md', '文案.md'],
-  s2a: '一组 Bot，各管一段，彼此交接。',
-  s2b: '交到你手上之前，应用先看一眼。',
-  c1: '测试全部通过。', c1tag: '这一轮没跑过命令', c1rec: '已运行 pnpm test，退出码 0',
-  s3: '说「测过了」，就得这一轮真跑过。',
-  c2: '文案随后发你。', c2tag: '没约回看，也没交给谁', c2clock: '20 分钟后回看：核对三版标题', c2doc: '发布文案.md',
-  s4: '说「随后」，就得约好什么时候回来。',
-  tickets: [['调研竞品', '已完成', 'done', 'I'], ['发布文案', '已完成', 'done', 'T'], ['落地页', '进行中', 'doing', 'K'], ['上线自查', '待做', 'todo', 'K']],
-  review: '待验收',
-  quiet: n => `已静 ${n} 秒`,
-  nudge: '还有 2 个任务没收口，先看 ③',
-  s5a: '都停下了，事还没做完。', s5b: '停在半路，应用去追。', s5c: '追过还没动静，就通知你。',
-  checksTitle: '验收检查',
-  checks: [['文件存在', 'work/落地页/index.html', ''], ['包含文字', '「立即下载」', ''], ['命令', 'pnpm test', '退出码 0'], ['接缝', '三版文案说法一致', '']],
-  seamFail: '第 2 版把 Alpha 写成了正式版', seamPass: '三版说法一致',
-  pass: (n, m) => `${n}/${m} 通过`,
-  callback: '叫回 Theo：接缝没过',
-  s6a: '验收，交给应用自己跑。', s6b: '检查由你来定，Bot 改不了。',
-  graph: { n1: '下周上线…', n2: '调研竞品', n3: '文案随后给', a1: '回看', n4: '交出文案', n5: '做落地页', a2: '追一次', n6: '交出 index.html', a3: '验收 4/4', n7: '做完了' },
-  detail: { head: 'Kai 的第 3 轮', rows: [['交出', 'index.html'], ['任务', '③ 落地页'], ['模型', '快模型，低思考'], ['理由', '只改一段样式']] },
-  s7: '谁叫醒了谁，每一步都查得到。',
+  goal: '「晨光」宣传短片：6 秒，竖版，片尾带 logo',
+  away: '几小时后',
+  s2a: '活交出去，你就可以离开。',
+  s2b: '模型负责干活，应用负责当真。',
+  ledgerTitle: '你的要求',
+  reqs: [['R-1', '「时长 6 秒」'], ['R-2', '「分辨率 1080×1920」'], ['R-3', '「片尾带品牌 logo」']],
+  req4: ['R-4', '「logo 再大一点」'],
+  rewrite: '整理后的要求 · 2 条',
+  reject: '引文对不上，退回',
+  keep: '只增不删',
+  g1: '你的要求不会丢。', g1sub: '以前 70 版修订丢过 15 条规则。',
+  ticket: '宣传短片',
+  stage: { doing: '进行中', submitted: '已交付', rework: '返工', approved: '已通过' },
+  said: '做完了。', notCount: 'Bot 说的不算',
+  file: 'dawn_final.mp4',
+  checksTitle: '按你的话加的检查',
+  checks2: [['时长', '6 秒', '8.0 秒', '6.0 秒'], ['分辨率', '1080×1920', '720×1280', '1080×1920']],
+  evidence: ['看过 12 帧', '逐条带依据'],
+  g2: '做完有定义：检查、审查、你的放行。', g2sub: '以前 107 秒被当成「约 2 分钟」放行。',
+  stop: '先停一下', hold: '叫停中 · 只有你能解除', held: '被叫停扣着', go: '继续',
+  g3: '停下是状态，只有你能解除。', g3sub: '以前说了停，Bot 还在别处送审。',
+  restart: '重启', cut: '中断', tick: '每 15 秒看一眼', resumed: '接着做',
+  ghosts: ['默认模型就用这个？', '重启了，点继续？', '这一轮没做完', '要加这条检查吗？'],
+  needYou: '等你放行：主标语',
+  g4: '停在半路有人追，真要你时才找你。', g4sub: '以前重启后停了 7.6 小时没人知道。',
+  boardTitle: '「晨光」宣传短片',
+  boardRows: [['主标语', '已通过'], ['宣传短片', '已通过 · 6.0 秒']],
+  boardFoot: '检查 2/2 通过 · 等你的 0',
+  back: '回来，看结果。',
   items: ['Bot 和守护进程', '工作区', '钥匙串'], endpoint: ['你配置的', '模型端点'],
-  ask: 'Kai 想访问网络', host: 'registry.npmjs.org', deny: '拒绝', allow: '批准',
+  ask: '制片想访问网络', host: 'registry.npmjs.org', deny: '拒绝', allow: '批准',
   s8a: '跑在你自己的电脑上。', s8b: '越出工作区、连网之前，先问你。',
-  also: ['分屏工作台', '你自己的终端', '在交付物上批注', '按模型看花费', '每日日程', '手机上接着用'],
+  also: ['分屏工作台', '你自己的终端', '在交付物上批注', '按模型看花费', '每日日程', '办公文件预览'],
   endLine: '开源免费，macOS 可用，Windows 预览中',
 },
 en: {
-  claims: ['All tests pass.', "I'll send the findings later.", "It's done."],
-  s0a: 'AI says “done.”', s0b: 'You still have to check.',
-  tagline: 'Hand it to Bots that see it through.',
-  names: [['Iris', 'Research'], ['Theo', 'Copy'], ['Kai', 'Engineering']],
+  claims: ['Still on it.', 'I have all your asks.', "It's done."],
+  s0a: 'Hand it off for a few hours, come back:', s0b: 'it stopped, forgot your rules, and says it’s done.',
+  tagline: 'Hand it off. Walk away. Return to results.',
+  names: [['Producer', 'Makes'], ['Reviewer', 'Reviews']],
+  initial: 'P',
   you: 'You',
-  goal: 'Ship next week: landing page and launch copy, with tests.',
-  docs: ['research.md', 'copy.md'],
-  s2a: 'A team of Bots, each owning a part.',
-  s2b: 'Before anything reaches you, the app takes a look.',
-  c1: 'All tests pass.', c1tag: 'No command ran this turn', c1rec: 'Ran pnpm test, exit 0',
-  s3: 'Says “tested”? Then it ran this turn.',
-  c2: "I'll send the copy later.", c2tag: 'No check-back, no handoff', c2clock: 'Check back in 20 min: review 3 headlines', c2doc: 'launch-copy.md',
-  s4: 'Says “later”? Then it books a time to come back.',
-  tickets: [['Research rivals', 'Done', 'done', 'I'], ['Launch copy', 'Done', 'done', 'T'], ['Landing page', 'In progress', 'doing', 'K'], ['Launch check', 'To do', 'todo', 'K']],
-  review: 'In review',
-  quiet: n => `Quiet for ${n} s`,
-  nudge: '2 tickets still open. Start with ③',
-  s5a: "Everyone went quiet. The job isn't done.", s5b: 'Stalled halfway? The app follows up.', s5c: 'Still nothing? It lets you know.',
-  checksTitle: 'Acceptance checks',
-  checks: [['File exists', 'work/landing/index.html', ''], ['Contains', '“Download now”', ''], ['Command', 'pnpm test', 'exit 0'], ['Seams', '3 copy versions agree', '']],
-  seamFail: 'Version 2 calls the alpha “stable”', seamPass: 'All 3 versions agree',
-  pass: (n, m) => `${n}/${m} passed`,
-  callback: 'Called Theo back: seams failed',
-  s6a: 'The app runs the acceptance checks itself.', s6b: "You set the checks. Bots can't edit them.",
-  graph: { n1: 'Ship next week…', n2: 'Research rivals', n3: 'Copy later', a1: 'Check-back', n4: 'Delivers copy', n5: 'Landing page', a2: 'Follow-up', n6: 'Ships index.html', a3: 'Checks 4/4', n7: 'Done' },
-  detail: { head: "Kai's turn 3", rows: [['Delivered', 'index.html'], ['Ticket', '③ Landing page'], ['Model', 'fast, low thinking'], ['Why', 'one small style change']] },
-  s7: 'Who woke whom, every step on record.',
+  goal: '“Dawn” promo film: 6 s, vertical, logo at the end',
+  away: 'Hours later',
+  s2a: 'Hand it off, and you can walk away.',
+  s2b: 'The model does the work; the app holds it to account.',
+  ledgerTitle: 'What you asked for',
+  reqs: [['R-1', '“length 6 seconds”'], ['R-2', '“resolution 1080×1920”'], ['R-3', '“ending on the brand logo”']],
+  req4: ['R-4', '“logo bigger”'],
+  rewrite: 'Tidied asks · 2',
+  reject: 'Quote doesn’t match: sent back',
+  keep: 'Only ever added',
+  g1: 'Nothing you ask for gets lost.', g1sub: 'Before this, 70 revisions dropped 15 rules.',
+  ticket: 'Promo film',
+  stage: { doing: 'In progress', submitted: 'Handed in', rework: 'Rework', approved: 'Approved' },
+  said: "It's done.", notCount: 'A Bot’s word moves nothing',
+  file: 'dawn_final.mp4',
+  checksTitle: 'Checks from your words',
+  checks2: [['Length', '6 s', '8.0 s', '6.0 s'], ['Size', '1080×1920', '720×1280', '1080×1920']],
+  evidence: ['Looked at 12 frames', 'Evidence for every item'],
+  g2: 'Done has a definition: checks, review, your OK.', g2sub: 'Before this, a 107-second cut passed as “about 2 minutes”.',
+  stop: 'Pause.', hold: 'Stopped · only you can lift it', held: 'Held by your stop', go: 'Continue.',
+  g3: 'A stop is a state only you can lift.', g3sub: 'Before this, a Bot kept submitting after “hold on”.',
+  restart: 'Restart', cut: 'Cut off', tick: 'Looks every 15 s', resumed: 'Picks it up',
+  ghosts: ['Use this default model?', 'Restarted: press Continue?', 'Turn not finished', 'Add this check?'],
+  needYou: 'Needs your OK: tagline',
+  g4: 'Stalls get chased; it asks only when it needs you.', g4sub: 'Before this, a long job sat 7.6 hours unnoticed.',
+  boardTitle: '“Dawn” promo film',
+  boardRows: [['Tagline', 'Approved'], ['Promo film', 'Approved · 6.0 s']],
+  boardFoot: 'Checks 2/2 · Waiting on you: 0',
+  back: 'Return to results.',
   items: ['Bots and daemon', 'Workspace', 'Keychain'], endpoint: ['Your model', 'endpoint'],
-  ask: 'Kai wants network access', host: 'registry.npmjs.org', deny: 'Deny', allow: 'Allow',
+  ask: 'Producer wants network access', host: 'registry.npmjs.org', deny: 'Deny', allow: 'Allow',
   s8a: 'Runs on your own computer.', s8b: 'Leaving the workspace or going online? It asks first.',
-  also: ['Split-pane workbench', 'Your own terminal', 'Annotate deliverables', 'Spend by model', 'Daily routines', 'Continue on your phone'],
+  also: ['Split-pane workbench', 'Your own terminal', 'Annotate deliverables', 'Spend by model', 'Daily routines', 'Office file previews'],
   endLine: 'Open source and free. macOS now, Windows in preview.',
 },
 };
@@ -337,6 +381,7 @@ const ICON_CURSOR = '<svg width="44" height="60" viewBox="0 0 44 60"><path d="M5
 const ICON_FOLDER = '<svg width="120" height="96" viewBox="0 0 120 96"><path d="M8 20a8 8 0 0 1 8-8h28l10 12h50a8 8 0 0 1 8 8v48a8 8 0 0 1-8 8H16a8 8 0 0 1-8-8z" fill="none" stroke="#fff" stroke-width="5" stroke-linejoin="round"/></svg>';
 const ICON_KEY = '<svg width="120" height="96" viewBox="0 0 120 96"><circle cx="38" cy="48" r="20" fill="none" stroke="#fff" stroke-width="5"/><circle cx="38" cy="48" r="6" fill="#fff"/><path d="M58 48h46M92 48v14M80 48v10" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/></svg>';
 
+const ICON_LOCK = '<svg width="30" height="34" viewBox="0 0 30 34"><rect x="3" y="14" width="24" height="18" rx="4" fill="currentColor"/><path d="M8 14V10a7 7 0 0 1 14 0v4" fill="none" stroke="currentColor" stroke-width="3.6" stroke-linecap="round"/></svg>';
 // ---------- scenes ----------
 const scenes = [];
 const CUES = [];
@@ -380,63 +425,44 @@ cue(7.0, 'hop', { x: 1480 });
 cue(7.5, 'riser', { d: 1.0 });
 cue(8.5, 'impact');
 
-// S1-S4: title, team, two claims (one continuous stage) ---------------------
-const X = { iris: 320, theo: 580, kai: 840, w: 1230, you: 1600 }, RY = 440, LY = 300;
-scene(8.45, 42.55, root => {
+// S1-S2: title, then the hand-off: two Bots take the job and you walk away (one continuous stage) --------
+const X = { make: 520, rev: 780, w: 1230, you: 1600 }, RY = 440;
+scene(8.45, 22.55, root => {
   const svg = layer(root);
-  const link1 = stroke(svg, `M ${X.iris + 62} ${RY} L ${X.theo - 62} ${RY}`);
-  const link2 = stroke(svg, `M ${X.theo + 62} ${RY} L ${X.kai - 62} ${RY}`);
-  const route = stroke(svg, `M ${X.kai + 62} ${RY} L ${X.you - 62} ${RY}`, 'rgba(255,255,255,.22)', 3);
+  const link = stroke(svg, `M ${X.make + 62} ${RY} L ${X.rev - 62} ${RY}`);
+  const route = stroke(svg, `M ${X.rev + 62} ${RY} L ${X.you - 62} ${RY}`, 'rgba(255,255,255,.22)', 3);
   const bots = T.names.map(([n, r]) => {
     const pl = el(root, 'pulse'); size(pl, 124);
     const d = el(root, 'disc white'); size(d, 124);
     return { d, pl, nm: el(root, 'name', n), rl: el(root, 'role', r) };
   });
   const you = el(root, 'youring', T.you);
-  const youPulse = el(root, 'pulse mintp'); size(youPulse, 124);
-  const scan = el(root, 'ring'); size(scan, 96);
-  const flash = el(root, 'ring mintring'); size(flash, 96);
   const amber = el(root, 'disc amberbg ringed'); size(amber, 96);
   const alabel = el(root, 'alabel', 'Deskfolk');
   const word = el(root, 'maskwrap', '<span class="wordmark">Deskfolk</span>');
   const tagl = el(root, 'maskwrap', `<span class="tagline">${T.tagline}</span>`);
   const goal = el(root, 'bubble', T.goal);
-  const docs = T.docs.map(d => el(root, 'doc', ICON_DOC + d));
-  const mk = (txt, tag, rec) => {
-    const b = el(root, 'bubble', txt);
-    const w = document.createElement('div'); w.className = 'stampwrap'; b.appendChild(w);
-    const tg = document.createElement('div'); tg.className = 'tag'; tg.textContent = tag; w.appendChild(tg);
-    let rc = null;
-    if (rec) { rc = document.createElement('div'); rc.className = 'receipt'; rc.textContent = rec; w.appendChild(rc); }
-    return { b, tg, rc };
-  };
-  const b1 = mk(T.c1, T.c1tag, T.c1rec);
-  const b2 = mk(T.c2, T.c2tag, null);
-  const term = el(root, 'term', '<div class="l1"></div><div class="l2 ok"></div><div class="l3 dim"></div>');
-  const clock = el(root, 'clockchip', ICON_CLOCK + `<span>${T.c2clock}</span>`);
-  const doc3 = el(root, 'bubble docb', ICON_DOC + T.c2doc);
-  const sups = [Super(root, [T.s2a]), Super(root, [T.s2b]), Super(root, [T.s3]), Super(root, [T.s4])];
-  return { link1, link2, route, bots, you, youPulse, scan, flash, amber, alabel, word, tagl, goal, docs, b1, b2, term, clock, doc3, sups,
-    tl: term.querySelectorAll('div'), hh: clock.querySelector('.hh'), mh: clock.querySelector('.mh') };
+  const away = el(root, 'clockchip', ICON_CLOCK + `<span>${T.away}</span>`);
+  const sups = [Super(root, [T.s2a]), Super(root, [T.s2b])];
+  return { link, route, bots, you, amber, alabel, word, tagl, goal, away, sups, hh: away.querySelector('.hh'), mh: away.querySelector('.mh') };
 }, (t, c, root) => {
-  root.style.opacity = 1 - P(t, 42.1, 42.5, E.lin);
-  const bx = [X.iris, X.theo, X.kai];
-
-  // --- title: amber contracts, white rolls in, then the logo unfolds into the cast
+  root.style.opacity = 1 - P(t, 22.1, 22.5, E.lin);
+  const bx = [X.make, X.rev];
+  // --- title: amber contracts, white rolls in, then the logo unfolds into the two Bots
   const LOGO_W = 868, LOGO_A = 1052, LOGO_Y = 430;
-  const split = [0, 1, 2].map(i => P(t, 12.5 + i * 0.07, 13.3 + i * 0.07, E.io));
+  const split = P(t, 12.5, 13.3, E.io);
   const roll = P(t, 9.0, 9.6, E.out);
   c.bots.forEach((b, i) => {
-    const sp = split[i];
-    const tx = lerp(lerp(-240, LOGO_W, roll), bx[i], sp);
-    const ty = lerp(LOGO_Y, RY, sp);
-    const s = lerp(2.258, 1, sp) * (sp > 0.99 ? breath(t, i * 1.7) : 1);
-    put(b.d, tx, ty, s, t < 9.0 ? 0 : 1);
-    const lo = P(t, 13.3 + i * 0.08, 13.8 + i * 0.08, E.out);
+    const tx = i === 0 ? lerp(lerp(-240, LOGO_W, roll), bx[0], split) : bx[1];
+    const ty = i === 0 ? lerp(LOGO_Y, RY, split) : RY;
+    const s = i === 0 ? lerp(2.258, 1, split) : P(t, 13.35, 13.8, E.spring);
+    const live = (i === 0 ? split > 0.99 : s > 0.99) ? breath(t, i * 1.7) : 1;
+    put(b.d, tx, ty, s * live, i === 0 ? (t < 9.0 ? 0 : 1) : (t < 13.35 ? 0 : 1));
+    const lo = P(t, 13.4 + i * 0.12, 13.9 + i * 0.12, E.out);
     put(b.nm, bx[i], RY + 102 + (1 - lo) * 14, 1, lo);
     put(b.rl, bx[i], RY + 142 + (1 - lo) * 14, 1, lo);
   });
-  // amber position: flood -> logo -> watcher, plus hops
+  // the app: flood -> logo -> watcher between the Bots and you
   let ax, ay, as;
   if (t < 12.5) {
     const p = P(t, 8.5, 9.3, E.io);
@@ -445,20 +471,9 @@ scene(8.45, 42.55, root => {
     const p = P(t, 12.5, 13.25, E.io);
     ax = lerp(LOGO_A, X.w, p); ay = lerp(LOGO_Y, RY, p); as = lerp(2.917, 1, p);
   }
-  const HOPS = [[19.5, 19.72, 26], [23.6, 24.8, 50], [28.55, 29.0, 50], [33.8, 34.8, 50], [39.85, 40.25, 50]];
-  let hop = 0;
-  for (const [u, d, h] of HOPS) hop += h * (P(t, u, u + 0.2, E.out) - P(t, d, d + 0.34, E.back));
+  const hop = 30 * (P(t, 19.5, 19.7, E.out) - P(t, 19.72, 20.06, E.back));
   put(c.amber, ax, ay - hop, as);
   put(c.alabel, X.w, RY + 86 + (1 - P(t, 19.6, 20.1)) * 12, 1, P(t, 19.6, 20.1));
-  // scan & pass rings
-  const ring = (e, t0, dur, grow) => {
-    const p = clamp((t - t0) / dur);
-    if (t < t0 || p >= 1) { e.style.visibility = 'hidden'; return; }
-    put(e, X.w, RY - hop, 1 + grow * E.out(p), 0.9 * (1 - p));
-  };
-  if (t < 30) ring(c.scan, 23.85, 0.65, 4.6); else ring(c.scan, 34.05, 0.65, 4.6);
-  if (t < 35) ring(c.flash, 28.75, 0.55, 2.2); else ring(c.flash, 40.05, 0.55, 2.2);
-
   // wordmark + tagline
   const wo = 1 - P(t, 12.2, 12.55, E.lin);
   const wp = P(t, 9.9, 10.5, E.out5), tp = P(t, 10.6, 11.2, E.out5);
@@ -466,340 +481,356 @@ scene(8.45, 42.55, root => {
   c.word.firstChild.style.transform = `translateY(${(1 - wp) * 110}%)`;
   put(c.tagl, 960, 748, 1, wo);
   c.tagl.firstChild.style.transform = `translateY(${(1 - tp) * 110}%)`;
-
-  // you ring
+  // you: arrive, hand the job over, then walk away
   const yp = P(t, 13.6, 14.1, E.spring);
-  const youBump = 1 + 0.12 * Math.sin(Math.PI * clamp((t - 30.1) / 0.3)) + 0.12 * Math.sin(Math.PI * clamp((t - 41.1) / 0.3));
-  put(c.you, X.you, RY, yp * youBump);
-  pulse(c.youPulse, X.you, RY, t, [30.15, 41.15], 1, 0.8, 0.8);
-
-  // links and route
-  draw(c.link1, P(t, 15.0, 15.5, E.io));
-  draw(c.link2, P(t, 15.2, 15.7, E.io));
+  const leave = P(t, 16.6, 17.6, E.in2);
+  put(c.you, lerp(X.you, 2080, leave), RY, yp, 1 - leave * 0.9);
+  draw(c.link, P(t, 15.0, 15.5, E.io));
   draw(c.route, P(t, 19.7, 20.3, E.io));
-
-  // bot pulses
-  const PULSES = [[16.0, 16.3], [17.3, 17.55, 17.8, 32.3, 32.55, 35.85, 38.6, 38.85, 54.0], [18.8, 22.35, 26.0]];
-  c.bots.forEach((b, i) => pulse(b.pl, bx[i], RY, t, PULSES[i]));
-
-  // goal bubble: from you to above the team
+  // the goal: from you to above the Bots
   {
     const p = P(t, 14.1, 15.0, E.io);
-    const s = P(t, 14.0, 14.35, E.out) * lerp(0.35, 1, p) * (1 - 0.1 * P(t, 21.0, 21.4));
-    put(c.goal, lerp(X.you, 600, p), lerp(RY - 40, 262, p), s, 1 - P(t, 21.0, 21.4, E.lin));
+    const s = P(t, 14.0, 14.35, E.out) * lerp(0.35, 1, p);
+    put(c.goal, lerp(X.you, 650, p), lerp(RY - 40, 262, p), s, 1 - P(t, 21.6, 22.0, E.lin));
   }
-  // handoff docs
-  const hand = (e, t0, x0, x1) => {
-    const p = clamp((t - t0) / 0.8);
-    if (t < t0 || p >= 1) { e.style.visibility = 'hidden'; return; }
-    const e2 = E.io(p);
-    const s = Math.min(P(t, t0, t0 + 0.15), 1 - P(t, t0 + 0.65, t0 + 0.8, E.in2));
-    put(e, lerp(x0, x1, e2), RY - 100 * Math.sin(Math.PI * e2), s, 1);
-  };
-  hand(c.docs[0], 16.5, X.iris, X.theo);
-  hand(c.docs[1], 18.0, X.theo, X.kai);
-
-  // claim 1: Kai says tests pass
-  {
-    const s0 = P(t, 22.5, 22.95, E.spring);
-    const x = kf(t, [[23.0, X.kai], [23.7, X.w, E.io], [25.0, X.w], [25.75, X.kai, E.back], [28.0, X.kai], [28.65, X.w, E.io], [28.95, X.w], [29.6, X.you, E.io]]);
-    const land = P(t, 29.6, 30.15, E.in2);
-    const shake = t > 24.5 && t < 24.9 ? 7 * Math.sin((t - 24.5) * 60) * (1 - (t - 24.5) / 0.4) : 0;
-    put(c.b1.b, x + shake, lerp(LY, RY, land), s0 * (1 - 0.8 * land), 1 - P(t, 29.95, 30.15, E.lin));
-    setStamp(c.b1.tg, stamp(t, 24.5), 1 - P(t, 27.25, 27.45, E.lin));
-    setStamp(c.b1.rc, stamp(t, 27.5));
-    const ts = P(t, 26.0, 26.35, E.back);
-    put(c.term, X.kai, 712, lerp(0.9, 1, ts), t < 26.0 ? 0 : clamp((t - 26.0) / 0.12) * (1 - P(t, 30.6, 31.0, E.lin)));
-    const blink = Math.floor(t * 3) % 2 ? '' : '▍';
-    const cmd = '$ pnpm test';
-    const typedCmd = typed(cmd, t, 26.2, 16);
-    c.tl[0].textContent = typedCmd + (t < 27.0 ? blink : '');
-    c.tl[1].textContent = t >= 27.0 ? '✓ 42 passed  (1.8s)' : '';
-    c.tl[2].textContent = t >= 27.25 ? '  exit 0' : '';
-  }
-  // claim 2: Theo says "later"
-  {
-    const s0 = P(t, 32.5, 32.95, E.spring);
-    const x = kf(t, [[33.0, X.theo], [33.85, X.w, E.io], [35.0, X.w], [35.85, X.theo, E.back]]);
-    const shake = t > 34.5 && t < 34.9 ? 7 * Math.sin((t - 34.5) * 60) * (1 - (t - 34.5) / 0.4) : 0;
-    put(c.b2.b, x + shake, LY, s0, 1 - P(t, 36.2, 36.6, E.lin));
-    setStamp(c.b2.tg, stamp(t, 34.5));
-    const cs = P(t, 36.0, 36.4, E.spring);
-    const wig = t > 38.5 && t < 39.2 ? 7 * Math.sin((t - 38.5) * 70) * (1 - (t - 38.5) / 0.7) : 0;
-    put(c.clock, X.theo + 20, 712, cs, 1 - P(t, 41.3, 41.7, E.lin), wig);
-    const spin = P(t, 36.5, 38.5, E.io);
-    c.mh.setAttribute('transform', `rotate(${(spin * 360 * 4).toFixed(2)} 24 24)`);
-    c.hh.setAttribute('transform', `rotate(${(spin * 120).toFixed(2)} 24 24)`);
-    const ds = P(t, 39.0, 39.4, E.spring);
-    const dx = kf(t, [[39.2, X.theo], [39.85, X.w, E.io], [40.2, X.w], [40.85, X.you, E.io]]);
-    const land = P(t, 40.85, 41.3, E.in2);
-    put(c.doc3, dx, lerp(LY, RY, land), ds * (1 - 0.8 * land), 1 - P(t, 41.1, 41.3, E.lin));
-  }
-
+  // hours go by where you stood
+  const ap = P(t, 17.4, 17.8, E.spring);
+  put(c.away, X.you, RY, ap, 1 - P(t, 21.4, 21.8, E.lin));
+  const spin = P(t, 17.6, 19.4, E.io);
+  c.mh.setAttribute('transform', `rotate(${(spin * 360 * 6).toFixed(2)} 24 24)`);
+  c.hh.setAttribute('transform', `rotate(${(spin * 180).toFixed(2)} 24 24)`);
+  // the Bots at work
+  pulse(c.bots[0].pl, bx[0], RY, t, [15.6, 17.0, 18.4, 20.6]);
+  pulse(c.bots[1].pl, bx[1], RY, t, [16.2, 19.0, 21.2]);
   showSuper(c.sups[0], t, [13.0], 18.9);
   showSuper(c.sups[1], t, [19.3], 21.9);
-  showSuper(c.sups[2], t, [22.6], 31.7);
-  showSuper(c.sups[3], t, [32.6], 41.8);
 });
-// cues for the continuous stage
 cue(9.05, 'whoosh', { x: 400, d: 0.6 });
 cue(9.55, 'land', { x: 868 });
 cue(9.9, 'swell', { d: 1.2 });
 cue(12.5, 'split');
-[0, 1, 2].forEach(i => cue(13.3 + i * 0.08, 'pop', { p: i, x: [320, 580, 840][i] }));
+cue(13.35, 'pop', { p: 0, x: 520 });
+cue(13.5, 'pop', { p: 1, x: 780 });
 cue(13.65, 'pop', { p: 3, x: 1600 });
-cue(14.0, 'pop', { p: 2, x: 1600 });
 cue(14.15, 'whoosh', { x: 1100, d: 0.8 });
-cue(16.5, 'slide', { x: 450 });
-cue(17.3, 'pop', { p: 1, x: 580 });
-cue(18.0, 'slide', { x: 710 });
-cue(18.8, 'pop', { p: 2, x: 840 });
+cue(16.6, 'whoosh', { x: 1800, d: 0.9 });
+cue(17.4, 'pop', { p: 2, x: 1600 });
+for (let k = 0; k < 12; k++) cue(17.6 + k * 0.15, 'tick', { x: 1600, soft: 1 });
 cue(19.5, 'hop', { x: 1230 });
-// claim 1
-cue(22.5, 'pop', { p: 2, x: 840 });
-cue(23.0, 'whoosh', { x: 1030, d: 0.7 });
-cue(23.6, 'hop', { x: 1230 });
-cue(23.85, 'scan', { x: 1230 });
-cue(24.5, 'stamp', { x: 1230 });
-cue(25.0, 'whoosh', { x: 1030, d: 0.7 });
-Array.from('$ pnpm test').forEach((ch, i) => { if (ch !== ' ') cue(26.2 + i / 16, 'type', { x: 840, i }); });
-cue(27.0, 'blip', { x: 840 });
-cue(27.5, 'stamp', { x: 840, p: 1 });
-cue(28.0, 'whoosh', { x: 1030, d: 0.65 });
-cue(28.6, 'hop', { x: 1230 });
-cue(28.75, 'ok', { x: 1230 });
-cue(29.35, 'whoosh', { x: 1420, d: 0.6 });
-cue(30.1, 'receive', { x: 1600 });
-// claim 2
-cue(32.5, 'pop', { p: 1, x: 580 });
-cue(33.0, 'whoosh', { x: 900, d: 0.85 });
-cue(33.8, 'hop', { x: 1230 });
-cue(34.05, 'scan', { x: 1230 });
-cue(34.5, 'stamp', { x: 1230 });
-cue(35.0, 'whoosh', { x: 900, d: 0.85 });
-cue(36.0, 'pop', { p: 1, x: 580 });
-for (let k = 0; k < 16; k++) { const u = k / 16; cue(36.5 + 2 * (u < 0.5 ? Math.cbrt(u / 4) : 1 - Math.cbrt((1 - u) / 4)), 'tick', { x: 580 }); }
-cue(38.5, 'ring', { x: 580 });
-cue(39.0, 'pop', { p: 1, x: 580 });
-cue(39.2, 'whoosh', { x: 900, d: 0.65 });
-cue(39.85, 'hop', { x: 1230 });
-cue(40.05, 'ok', { x: 1230 });
-cue(40.4, 'whoosh', { x: 1420, d: 0.6 });
-cue(41.1, 'receive', { x: 1600 });
 
-// S5 stall ---------------------------------------------------------------
-const CX = [330, 750, 1170, 1590], CY = 430;
-scene(42.4, 50.6, root => {
-  const svg = layer(root);
-  const links = [0, 1, 2].map(i => stroke(svg, `M ${CX[i] + 165} ${CY} L ${CX[i + 1] - 165} ${CY}`, 'rgba(255,255,255,.34)', 3));
-  const cards = T.tickets.map(([title, st, cls, who], i) => {
-    const c = el(root, 'card', `<div class="top"><div class="num">${i + 1}</div>${title}</div><div class="bot"><div class="st ${cls}">${st}</div>${i === 2 ? `<div class="st review">${T.review}</div>` : ''}<div class="av">${who}</div></div>`);
-    return c;
+// G1 your words stay: the requirements ledger ----------------------------------
+const LX = 700, LTOP = 250, LROW = 96;
+scene(22.45, 32.6, root => {
+  const panel = el(root, 'panel ledger');
+  const ph = el(panel, 'ph', T.ledgerTitle); ph.classList.remove('a');
+  const rows = [...T.reqs, T.req4].map(([id, quote], i) => {
+    const r = document.createElement('div'); r.className = 'lrow'; r.style.top = 112 + i * LROW + 'px'; panel.appendChild(r);
+    r.innerHTML = `<div class="rid mono">${id}</div><div class="rq">${quote}</div><div class="ic">${ICON_OK}</div>`;
+    return { r, ok: r.querySelector('.ok') };
   });
-  const timer = el(root, 'timer', '<svg width="56" height="56" viewBox="0 0 56 56"><circle cx="28" cy="28" r="23" fill="none" stroke="rgba(255,255,255,.18)" stroke-width="5"/><circle class="tr" cx="28" cy="28" r="23" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" pathLength="1" stroke-dasharray="1 1" stroke-dashoffset="1" transform="rotate(-90 28 28)"/></svg><span></span>');
+  const tidy = el(root, 'disc white'); size(tidy, 110);
+  const sheet = el(root, 'sheet', ICON_DOC + `<span>${T.rewrite}</span>`);
+  const reject = el(root, 'tag', T.reject);
+  const keep = el(root, 'receipt', T.keep);
   const amber = el(root, 'disc amberbg ringed'); size(amber, 96);
   const apulse = el(root, 'pulse amberp'); size(apulse, 96);
-  const nudge = el(root, 'nudge', T.nudge);
-  const file = el(root, 'doc', ICON_DOC + 'index.html');
-  const sa = Super(root, [T.s5a]), sb = Super(root, [T.s5b, T.s5c]);
-  return { links, cards, timer, tr: timer.querySelector('.tr'), tspan: timer.querySelector('span'), amber, apulse, nudge, file, sa, sb,
-    avs: cards.map(c => c.querySelector('.av')), sts: cards[2].querySelectorAll('.st') };
+  const sup = Super(root, [T.g1, T.g1sub]);
+  return { panel, rows, tidy, sheet, reject, keep, amber, apulse, sup };
 }, (t, c, root) => {
-  root.style.opacity = P(t, 42.4, 42.6, E.lin) * (1 - P(t, 50.1, 50.5, E.lin));
-  c.cards.forEach((e, i) => put(e, CX[i], CY + (1 - P(t, 42.6 + i * 0.14, 43.1 + i * 0.14)) * 40, 1, P(t, 42.6 + i * 0.14, 42.9 + i * 0.14, E.lin)));
-  c.links.forEach((l, i) => draw(l, P(t, 43.0 + i * 0.12, 43.4 + i * 0.12, E.io)));
-  // quiet: avatars dim, timer counts to 30
-  const quiet = P(t, 43.6, 44.2, E.io);
-  const wake = P(t, 47.0, 47.3, E.out);
-  c.avs.forEach((a, i) => {
-    const dim = i >= 2 ? quiet * (1 - wake) : quiet;
-    a.style.opacity = (1 - 0.6 * dim).toFixed(3);
-    a.style.transform = i === 2 ? `scale(${(1 + 0.25 * Math.sin(Math.PI * clamp((t - 47.0) / 0.35))).toFixed(3)})` : '';
-  });
-  const tp = P(t, 43.6, 45.9, E.lin);
-  const to = P(t, 43.5, 43.8, E.lin) * (1 - P(t, 49.6, 50.0, E.lin));
-  put(c.timer, 1500, 214, 1, to, 0, '0%', '-50%');
-  c.tr.setAttribute('stroke-dashoffset', (1 - tp).toFixed(4));
-  c.tr.setAttribute('stroke', tp >= 1 ? '#f0ab3d' : '#fff');
-  c.tspan.textContent = T.quiet(Math.round(tp * 30));
-  // amber rolls in and lands on card 3
-  const rx = kf(t, [[46.0, 2060], [46.5, CX[2], E.out]]);
-  const ry = 300 - 18 * Math.sin(Math.PI * clamp((t - 46.5) / 0.22));
-  put(c.amber, rx, ry, 1, t < 46.0 ? 0 : 1, (rx - 2060) * 0.3);
-  pulse(c.apulse, CX[2], CY, t, [46.55], 1.9, 2.4, 0.8, 0.9);
-  const np = P(t, 46.7, 47.05, E.spring);
-  put(c.nudge, CX[2], 206 + (1 - np) * 30, np, 1);
-  // card 3 status: in progress -> in review, with its file
-  const sw = P(t, 47.5, 47.8, E.out);
-  c.sts[0].style.opacity = (1 - sw).toFixed(3);
-  c.sts[1].style.opacity = sw.toFixed(3);
-  c.sts[1].style.transform = `scale(${lerp(1.3, 1, sw).toFixed(3)})`;
-  put(c.file, CX[2], CY + 140, P(t, 47.6, 48.0, E.spring), 1);
-  showSuper(c.sa, t, [43.2], 45.9);
-  showSuper(c.sb, t, [46.2, 47.4], 50.0);
-});
-[0, 1, 2, 3].forEach(i => cue(42.6 + i * 0.14, 'card', { p: i, x: CX[i] }));
-cue(43.6, 'hush');
-for (let k = 0; k < 5; k++) cue(43.9 + k * 0.5, 'tick', { x: 1500, soft: 1 });
-cue(45.9, 'blip', { x: 1500, p: -1 });
-cue(46.0, 'roll', { x: 1600, d: 0.5 });
-cue(46.5, 'land', { x: 1170 });
-cue(46.55, 'nudge', { x: 1170 });
-cue(47.0, 'wake', { x: 1170 });
-cue(47.5, 'ok', { x: 1170, p: -1 });
-
-// S6 acceptance checks ------------------------------------------------------
-const ROWY = [150, 242, 334, 426];
-scene(50.4, 60.6, root => {
-  const panel = el(root, 'panel');
-  const ph = el(panel, 'ph', T.checksTitle); ph.classList.remove('a');
-  const pc = el(panel, 'pc', ''); pc.classList.remove('a');
-  const rows = T.checks.map(([kind, target, res], i) => {
-    const r = document.createElement('div'); r.className = 'row'; r.style.top = ROWY[i] - 46 + 'px'; panel.appendChild(r);
-    r.innerHTML = `<div class="ic">${ICON_SPIN}${ICON_OK}${i === 3 ? ICON_BAD : ''}</div><div class="kind">${kind}</div><div class="target mono">${target}</div><div class="res mono">${res}</div>${i === 3 ? `<div class="detail"></div>` : ''}`;
-    if (i < 3) { const s = document.createElement('div'); s.className = 'sep'; s.style.top = ROWY[i] + 46 + 'px'; panel.appendChild(s); }
-    return { r, spin: r.querySelector('.spin'), ok: r.querySelector('.ok'), bad: r.querySelector('.bad'), res: r.querySelector('.res'), detail: r.querySelector('.detail') };
-  });
-  const svg = layer(root);
-  const orbit = sv('circle', { cx: 0, cy: 0, r: 150, fill: 'none', stroke: '#f0ab3d', 'stroke-width': 4, 'stroke-dasharray': '6 16', 'stroke-linecap': 'round' }, svg);
-  const amber = el(root, 'disc amberbg ringed'); size(amber, 96);
-  const apulse = el(root, 'pulse amberp'); size(apulse, 96);
-  const call = el(root, 'nudge', T.callback);
-  const theo = el(root, 'disc white'); size(theo, 124);
-  const tpl = el(root, 'pulse'); size(tpl, 124);
-  const tname = el(root, 'name', 'Theo');
-  const sup = Super(root, [T.s6a, T.s6b]);
-  return { panel, pc, rows, orbit, amber, apulse, call, theo, tpl, tname, sup };
-}, (t, c, root) => {
-  root.style.opacity = P(t, 50.4, 50.6, E.lin) * (1 - P(t, 60.1, 60.5, E.lin));
-  const pp = P(t, 50.5, 51.0, E.out);
-  put(c.panel, 680, 440, lerp(0.96, 1, pp), pp);
-  const RES = [51.5, 52.0, 52.5, 53.5];
-  let passed = 0;
+  root.style.opacity = P(t, 22.45, 22.65, E.lin) * (1 - P(t, 32.1, 32.5, E.lin));
+  const pp = P(t, 22.5, 23.0, E.out);
+  put(c.panel, LX, 430, lerp(0.96, 1, pp), pp);
   c.rows.forEach((r, i) => {
-    r.r.style.opacity = P(t, 50.7 + i * 0.12, 51.0 + i * 0.12, E.lin).toFixed(3);
-    const rerun = i === 3 && t >= 55.9 && t < 56.5;
-    const failed = i === 3 && t >= RES[3] && t < 55.9;
-    const done = t >= RES[i] && !(i === 3 && t < 56.5);
-    const spinning = t < RES[i] || rerun;
+    const t0 = i < 3 ? 22.9 + i * 0.35 : 29.6;
+    const p = P(t, t0, t0 + 0.4, E.out);
+    r.r.style.opacity = p.toFixed(3);
+    r.r.style.transform = `translateX(${((1 - p) * -30).toFixed(1)}px)`;
+    const okp = P(t, (i < 3 ? 27.4 : 30.1) + (i < 3 ? i * 0.08 : 0), (i < 3 ? 27.7 : 30.4) + (i < 3 ? i * 0.08 : 0), E.back);
+    r.ok.style.opacity = okp > 0 ? 1 : 0;
+    r.ok.style.transform = `scale(${okp.toFixed(3)})`;
+    // R-3 is the one the rewrite left out: it glows when it is kept
+    r.r.style.boxShadow = i === 2 && t > 27.3 && t < 28.6 ? `inset 0 0 0 3px rgba(163,236,213,${(1 - P(t, 27.9, 28.6, E.lin)).toFixed(3)})` : 'none';
+  });
+  // a tidy-up pass offers the list rewritten, two lines short of yours
+  const tp = P(t, 24.0, 24.4, E.spring);
+  put(c.tidy, 1560, 330, tp * breath(t), 1 - P(t, 31.6, 32.0, E.lin));
+  const sx = kf(t, [[24.6, 1560], [25.5, 1180, E.io], [26.7, 1180], [27.2, 1680, E.in2]]);
+  const sy = kf(t, [[24.6, 330], [25.5, 420, E.io], [26.7, 420], [27.2, 360, E.in2]]);
+  const shake = t > 26.6 && t < 27.0 ? 8 * Math.sin((t - 26.6) * 60) * (1 - (t - 26.6) / 0.4) : 0;
+  put(c.sheet, sx + shake, sy, P(t, 24.6, 24.9, E.spring), 1 - P(t, 27.0, 27.25, E.lin));
+  // the app checks every quote against your own words, and sends it back
+  const aS = P(t, 25.6, 26.0, E.spring);
+  put(c.amber, 1230, 600, aS, 1 - P(t, 31.6, 32.0, E.lin));
+  pulse(c.apulse, 1230, 600, t, [26.3], 1.4, 1.6, 0.6, 0.9);
+  const rs = stamp(t, 26.6);
+  put(c.reject, 1180, 330, rs.s, rs.o * (1 - P(t, 28.6, 29.0, E.lin)), rs.r);
+  const ks = stamp(t, 29.9);
+  put(c.keep, 1230, 470, ks.s, ks.o * (1 - P(t, 31.6, 32.0, E.lin)), ks.r);
+  showSuper(c.sup, t, [22.8, 23.7], 31.9);
+});
+[0, 1, 2].forEach(i => cue(22.9 + i * 0.35, 'card', { p: i, x: 520 }));
+cue(24.0, 'pop', { p: 2, x: 1560 });
+cue(24.6, 'whoosh', { x: 1400, d: 0.8 });
+cue(26.3, 'scan', { x: 1230 });
+cue(26.6, 'stamp', { x: 1180 });
+cue(27.0, 'whoosh', { x: 1500, d: 0.6 });
+cue(27.4, 'ok', { x: 600 });
+cue(29.6, 'card', { p: 3, x: 520 });
+cue(29.9, 'stamp', { x: 1230, p: 1 });
+cue(30.1, 'ok', { x: 600, p: 1 });
+
+// G2 done has a definition: the app's checks, the Reviewer's evidence --------------
+const TX = 760, TY = 430, CPX = 1330, CPY = 330;
+scene(32.5, 42.55, root => {
+  const maker = el(root, 'disc white'); size(maker, 124);
+  const mpulse = el(root, 'pulse'); size(mpulse, 124);
+  const mname = el(root, 'name', T.names[0][0]);
+  const said = el(root, 'bubble', T.said);
+  const sw = document.createElement('div'); sw.className = 'stampwrap'; said.appendChild(sw);
+  const notCount = document.createElement('div'); notCount.className = 'tag'; notCount.textContent = T.notCount; sw.appendChild(notCount);
+  const card = el(root, 'card', `<div class="top"><div class="num">3</div>${T.ticket}</div><div class="bot">${['doing', 'submitted', 'rework', 'approved'].map(k => `<div class="st ${k === 'approved' ? 'done' : k === 'rework' ? 'rework' : k === 'submitted' ? 'review' : 'doing'}">${T.stage[k]}</div>`).join('')}<div class="av">${T.initial}</div></div>`);
+  const sts = card.querySelectorAll('.st');
+  const file = el(root, 'doc', ICON_DOC + T.file);
+  const panel = el(root, 'panel checks2');
+  const cph = el(panel, 'ph', T.checksTitle); cph.classList.remove('a');
+  const rows = T.checks2.map(([kind, want], i) => {
+    const r = document.createElement('div'); r.className = 'row'; r.style.top = 92 + i * 92 + 'px'; panel.appendChild(r);
+    r.innerHTML = `<div class="ic">${ICON_SPIN}${ICON_OK}${ICON_BAD}</div><div class="kind">${kind}</div><div class="target mono">${want}</div><div class="res mono"></div>`;
+    return { r, spin: r.querySelector('.spin'), ok: r.querySelector('.ok'), bad: r.querySelector('.bad'), res: r.querySelector('.res') };
+  });
+  const amber = el(root, 'disc amberbg ringed'); size(amber, 96);
+  const apulse = el(root, 'pulse amberp'); size(apulse, 96);
+  const rev = el(root, 'disc white'); size(rev, 110);
+  const rname = el(root, 'name', T.names[1][0]);
+  const ev = T.evidence.map(x => el(root, 'receipt', x));
+  const sup = Super(root, [T.g2, T.g2sub]);
+  return { maker, mpulse, mname, said, notCount, card, sts, file, panel, rows, amber, apulse, rev, rname, ev, sup };
+}, (t, c, root) => {
+  root.style.opacity = P(t, 32.5, 32.7, E.lin) * (1 - P(t, 42.1, 42.5, E.lin));
+  const MX = 330, MY = 430;
+  put(c.maker, MX, MY, P(t, 32.6, 33.0, E.spring) * breath(t));
+  put(c.mname, MX, MY + 102, 1, P(t, 32.8, 33.1, E.lin));
+  pulse(c.mpulse, MX, MY, t, [34.5, 37.2, 37.6]);
+  // "Done", it says: the ticket does not move
+  const bs = P(t, 33.0, 33.35, E.spring);
+  put(c.said, MX, MY - 150, bs, 1 - P(t, 34.6, 34.9, E.lin));
+  setStamp(c.notCount, stamp(t, 33.8), 1 - P(t, 34.6, 34.9, E.lin));
+  const cardShake = t > 33.8 && t < 34.2 ? 7 * Math.sin((t - 33.8) * 60) * (1 - (t - 33.8) / 0.4) : 0;
+  put(c.card, TX + cardShake, TY, P(t, 32.7, 33.1, E.spring), 1);
+  // the stage the ticket is in: in progress -> handed in -> rework -> handed in -> approved
+  const stageAt = t < 35.0 ? 0 : t < 36.8 ? 1 : t < 38.3 ? 2 : t < 40.5 ? 1 : 3;
+  c.sts.forEach((s, i) => {
+    const on = i === stageAt;
+    s.style.opacity = on ? 1 : 0;
+    s.style.transform = on ? `scale(${lerp(1.25, 1, P(t, [0, 35.0, 36.8, 40.5][i] || 32.7, ([0, 35.0, 36.8, 40.5][i] || 32.7) + 0.3, E.out)).toFixed(3)})` : '';
+  });
+  // handing it in: the file goes from the Producer to the ticket, twice
+  const hand = (t0) => {
+    const u = clamp((t - t0) / 0.7);
+    if (t < t0 || u >= 1) return null;
+    return { x: lerp(MX + 80, TX, E.io(u)), y: MY + 140 - 70 * Math.sin(Math.PI * u), o: Math.sin(Math.PI * u) + 0.2 };
+  };
+  const h = hand(34.4) ?? hand(37.9);
+  if (h) put(c.file, h.x, h.y, 1, Math.min(1, h.o)); else put(c.file, TX, TY + 140, 1, t > 35.1 && t < 42.1 ? 1 : 0);
+  // the app runs the checks your numbers made: first time they fail, after the fix they pass
+  const pp = P(t, 34.9, 35.3, E.out);
+  put(c.panel, CPX, CPY + 95, lerp(0.96, 1, pp), pp);
+  const RUN1 = [35.4, 35.9], RUN2 = [38.4, 38.8];
+  c.rows.forEach((r, i) => {
+    const [, want, bad, good] = T.checks2[i];
+    const spinning = (t >= 35.2 && t < RUN1[i]) || (t >= 38.1 && t < RUN2[i]);
+    const failed = t >= RUN1[i] && t < 38.1;
+    const passed = t >= RUN2[i];
     r.spin.style.opacity = spinning ? 1 : 0;
     r.spin.style.transform = `rotate(${(t * 420) % 360}deg)`;
-    const okT = i === 3 ? 56.5 : RES[i];
-    const okp = P(t, okT, okT + 0.3, E.back);
-    r.ok.style.opacity = done ? 1 : 0;
-    r.ok.style.transform = `scale(${done ? okp : 0})`;
-    if (r.bad) {
-      const bp = P(t, RES[3], RES[3] + 0.3, E.back);
-      r.bad.style.opacity = failed ? 1 : 0;
-      r.bad.style.transform = `scale(${bp})`;
-      r.detail.textContent = t < 56.5 ? T.seamFail : T.seamPass;
-      r.detail.style.color = t < 56.5 ? '#f0ab3d' : '#a3ecd5';
-      r.detail.style.opacity = (t < 56.5 ? P(t, RES[3] + 0.1, RES[3] + 0.4, E.lin) * (1 - P(t, 55.9, 56.1, E.lin)) : P(t, 56.55, 56.85, E.lin)).toFixed(3);
-    }
-    r.res.style.opacity = done ? 1 : 0;
-    if (done) passed++;
+    r.bad.style.opacity = failed ? 1 : 0;
+    r.bad.style.transform = `scale(${P(t, RUN1[i], RUN1[i] + 0.3, E.back).toFixed(3)})`;
+    r.ok.style.opacity = passed ? 1 : 0;
+    r.ok.style.transform = `scale(${P(t, RUN2[i], RUN2[i] + 0.3, E.back).toFixed(3)})`;
+    r.res.textContent = failed ? bad : passed ? good : '';
+    r.res.style.color = failed ? '#f0ab3d' : '#a3ecd5';
+    void want;
   });
-  c.pc.textContent = T.pass(passed, 4);
-  c.pc.style.color = passed === 4 ? '#a3ecd5' : 'rgba(255,255,255,.66)';
-  // the watcher runs them
-  const running = (t > 50.9 && t < 53.6) || (t > 55.85 && t < 56.55);
-  const aS = 2.3 * P(t, 50.6, 51.1, E.spring);
-  const AX = 1560, AY = 400;
+  const aS = P(t, 34.9, 35.3, E.spring);
+  put(c.amber, CPX + 340, CPY - 30, aS * 0.9, 1);
+  pulse(c.apulse, CPX + 340, CPY - 30, t, [35.4, 35.9, 38.4, 38.8], 0.9, 0.6, 0.5, 0.8);
+  // the Reviewer looks at the frames and rules with evidence, under the checks and clear of the super
+  const RVX = CPX - 320, RVY = 668;
+  const rp = P(t, 39.0, 39.4, E.spring);
+  put(c.rev, RVX, RVY, rp * breath(t, 1));
+  put(c.rname, RVX, RVY + 92, 1, P(t, 39.2, 39.5, E.lin));
+  c.ev.forEach((e, i) => put(e, RVX + 100, RVY - 31 + i * 62, P(t, 39.6 + i * 0.4, 39.9 + i * 0.4, E.spring), 1, 0, '0%', '-50%'));
+  showSuper(c.sup, t, [32.8, 33.8], 42.0);
+});
+cue(32.6, 'pop', { p: 0, x: 330 });
+cue(32.7, 'card', { p: 2, x: 760 });
+cue(33.0, 'pop', { p: 1, x: 330 });
+cue(33.8, 'stamp', { x: 330 });
+cue(34.4, 'slide', { x: 540 });
+cue(35.0, 'land', { x: 760 });
+cue(35.4, 'warn', { x: 1330 });
+cue(35.9, 'warn', { x: 1330 });
+cue(36.8, 'nudge', { x: 760 });
+cue(37.2, 'wake', { x: 330 });
+cue(37.9, 'slide', { x: 540 });
+cue(38.4, 'ok', { x: 1330 });
+cue(38.8, 'ok', { x: 1330, p: 1 });
+cue(39.0, 'pop', { p: 3, x: 1010 });
+cue(39.6, 'blip', { x: 1250 });
+cue(40.0, 'blip', { x: 1250, p: 1 });
+cue(40.5, 'chord', { x: 760 });
+
+// G3 a stop is a state: it holds until you lift it -------------------------------
+scene(42.4, 50.6, root => {
+  const bots = T.names.map(([n]) => {
+    const d = el(root, 'disc white'); size(d, 124);
+    return { d, nm: el(root, 'name', n) };
+  });
+  const you = el(root, 'youring', T.you);
+  const stop = el(root, 'bubble', T.stop);
+  const go = el(root, 'bubble', T.go);
+  const bar = el(root, 'holdbar', ICON_LOCK + `<span>${T.hold}</span>`);
+  const doc = el(root, 'doc', ICON_DOC + T.file);
+  const held = el(root, 'tag', T.held);
+  const sup = Super(root, [T.g3, T.g3sub]);
+  return { bots, you, stop, go, bar, doc, held, sup };
+}, (t, c, root) => {
+  root.style.opacity = P(t, 42.4, 42.6, E.lin) * (1 - P(t, 50.1, 50.5, E.lin));
+  const bx = [X.make, X.rev];
+  const freeze = P(t, 43.5, 43.8, E.out) * (1 - P(t, 46.3, 46.6, E.out));
+  c.bots.forEach((b, i) => {
+    put(b.d, bx[i], RY, P(t, 42.5 + i * 0.1, 42.9 + i * 0.1, E.spring) * (freeze > 0.5 ? 1 : breath(t, i)), 1 - 0.45 * freeze);
+    put(b.nm, bx[i], RY + 102, 1, P(t, 42.7, 43.0, E.lin));
+  });
+  // you come back for a moment
+  const yx = kf(t, [[42.6, 2080], [43.1, X.you, E.out]]);
+  put(c.you, yx, RY, 1, 1);
+  put(c.stop, X.you, RY - 150, P(t, 43.1, 43.45, E.spring), 1 - P(t, 45.2, 45.5, E.lin));
+  put(c.go, X.you, RY - 150, P(t, 45.8, 46.15, E.spring), 1 - P(t, 48.6, 48.9, E.lin));
+  // the stop drops over both Bots and stays until you lift it
+  const down = P(t, 43.4, 43.8, E.back), up = P(t, 46.25, 46.6, E.in2);
+  put(c.bar, (bx[0] + bx[1]) / 2, lerp(140, RY - 150, down) - 260 * up, 1, down * (1 - up));
+  // the Producer tries to hand the poster in and is held back; after "go on" it goes through
+  const tryX = kf(t, [[44.4, bx[0] + 70], [44.85, bx[1] + 160, E.io], [45.2, bx[0] + 120, E.back]]);
+  const goX = kf(t, [[47.0, bx[0] + 70], [47.8, X.you - 120, E.io]]);
+  if (t >= 44.4 && t < 45.6) put(c.doc, tryX, RY + 150, 1, 1);
+  else if (t >= 47.0 && t < 48.2) put(c.doc, goX, RY + 150 - 60 * Math.sin(Math.PI * clamp((t - 47.0) / 0.8)), 1, 1 - P(t, 47.8, 48.2, E.lin));
+  else put(c.doc, 0, 0, 0, 0);
+  const hs = stamp(t, 44.85);
+  put(c.held, bx[1] + 160, RY + 70, hs.s, hs.o * (1 - P(t, 45.6, 45.9, E.lin)), hs.r);
+  showSuper(c.sup, t, [43.2, 44.2], 50.0);
+});
+cue(42.5, 'pop', { p: 0, x: 520 });
+cue(42.6, 'whoosh', { x: 1800, d: 0.5 });
+cue(43.1, 'pop', { p: 2, x: 1600 });
+cue(43.4, 'land', { x: 650 });
+cue(43.6, 'hush');
+cue(44.4, 'slide', { x: 700 });
+cue(44.85, 'stamp', { x: 940 });
+cue(45.8, 'pop', { p: 3, x: 1600 });
+cue(46.3, 'whoosh', { x: 650, d: 0.5 });
+cue(46.6, 'wake', { x: 520 });
+cue(47.0, 'slide', { x: 1100 });
+cue(47.8, 'receive', { x: 1480 });
+
+// G4 a stall gets chased, and you hear only what needs you -----------------------
+const GX = 1520, GY0 = 250, GDY = 104;
+scene(50.4, 60.6, root => {
+  const maker = el(root, 'disc white'); size(maker, 124);
+  const mpulse = el(root, 'pulse'); size(mpulse, 124);
+  const mname = el(root, 'name', T.names[0][0]);
+  const power = el(root, 'tag', T.restart);
+  const cut = el(root, 'nudge', T.cut);
+  const svg = layer(root);
+  const orbit = sv('circle', { cx: 0, cy: 0, r: 120, fill: 'none', stroke: '#f0ab3d', 'stroke-width': 4, 'stroke-dasharray': '6 16', 'stroke-linecap': 'round' }, svg);
+  const amber = el(root, 'disc amberbg ringed'); size(amber, 96);
+  const apulse = el(root, 'pulse amberp'); size(apulse, 96);
+  const tick = el(root, 'alabel', T.tick);
+  const resumed = el(root, 'receipt', T.resumed);
+  const ghosts = T.ghosts.map(x => el(root, 'ghost', x));
+  const need = el(root, 'ghost need', T.needYou);
+  const dim = el(root, 'dimmer');
+  const sup = Super(root, [T.g4, T.g4sub]);
+  return { maker, mpulse, mname, power, cut, orbit, amber, apulse, tick, resumed, ghosts, need, dim, sup };
+}, (t, c, root) => {
+  root.style.opacity = P(t, 50.4, 50.6, E.lin) * (1 - P(t, 60.1, 60.5, E.lin));
+  const MX = 420, MY = 430, AX = 860, AY = 430;
+  // a restart: the screen blinks and the work is cut off
+  const blink = t > 51.0 && t < 51.5 ? Math.sin(Math.PI * (t - 51.0) / 0.5) : 0;
+  c.dim.style.opacity = (0.55 * blink).toFixed(3);
+  const ps = stamp(t, 50.9);
+  put(c.power, MX, MY - 170, ps.s, ps.o * (1 - P(t, 51.9, 52.2, E.lin)), ps.r);
+  const stalled = P(t, 51.3, 51.6, E.out) * (1 - P(t, 53.4, 53.7, E.out));
+  put(c.maker, MX, MY, P(t, 50.5, 50.9, E.spring) * (stalled > 0.5 ? 1 : breath(t)), 1 - 0.55 * stalled);
+  put(c.mname, MX, MY + 102, 1, P(t, 50.6, 50.9, E.lin));
+  put(c.cut, MX, MY + 170, P(t, 51.5, 51.85, E.spring), 1 - P(t, 53.3, 53.6, E.lin));
+  // the supervisor looks every 15 seconds, calls no model, and picks the work up
+  const aS = P(t, 51.8, 52.2, E.spring);
   put(c.amber, AX, AY, aS);
   c.orbit.setAttribute('cx', AX); c.orbit.setAttribute('cy', AY);
-  c.orbit.setAttribute('transform', `rotate(${(t * 90) % 360} ${AX} ${AY})`);
-  c.orbit.style.opacity = running ? 0.9 : 0;
-  pulse(c.apulse, AX, AY, t, [51.5, 52.0, 52.5, 53.5, 56.5], 2.3, 0.5, 0.5, 0.8);
-  const cp = P(t, 54.0, 54.35, E.spring);
-  put(c.call, AX, 590, cp, 1 - P(t, 56.3, 56.6, E.lin));
-  const th = P(t, 54.3, 54.7, E.spring);
-  put(c.theo, AX - 40, 740, th * 0.7 * breath(t), 1 - P(t, 57.2, 57.6, E.lin));
-  put(c.tname, AX + 66, 740, 1, P(t, 54.5, 54.8, E.lin) * (1 - P(t, 57.2, 57.6, E.lin)), 0, '0%', '-50%');
-  pulse(c.tpl, AX - 40, 740, t, [54.8, 55.3], 0.7);
-  showSuper(c.sup, t, [50.7, 57.0], 60.0);
+  c.orbit.setAttribute('transform', `rotate(${(t * 120) % 360} ${AX} ${AY})`);
+  c.orbit.style.opacity = t > 52.1 && t < 53.5 ? 0.9 : 0;
+  put(c.tick, AX, AY + 152, 1, P(t, 52.3, 52.6, E.lin) * (1 - P(t, 55.6, 56.0, E.lin)));
+  pulse(c.apulse, AX, AY, t, [52.5, 53.2], 1, 1.4, 0.6, 0.9);
+  pulse(c.mpulse, MX, MY, t, [53.5, 54.2, 55.0]);
+  put(c.resumed, MX, MY + 170, P(t, 53.6, 53.95, E.spring), 1 - P(t, 59.6, 60.0, E.lin));
+  // what used to ask you, and need not: up, then gone; one card stays, the one that needs you
+  c.ghosts.forEach((g, i) => {
+    const t0 = 54.2 + i * 0.22;
+    const s = P(t, t0, t0 + 0.35, E.spring);
+    const gone = P(t, 55.8 + i * 0.12, 56.2 + i * 0.12, E.in2);
+    put(g, GX + 60 * gone, GY0 + i * GDY, s, (1 - gone) * 0.8);
+    g.style.textDecoration = t > 55.5 ? 'line-through' : 'none';
+  });
+  const ns = P(t, 56.8, 57.2, E.spring);
+  put(c.need, GX, GY0 + 1.5 * GDY, ns, 1);
+  showSuper(c.sup, t, [50.7, 51.6], 60.0);
 });
-[51.5, 52.0, 52.5].forEach((tt, i) => cue(tt, 'ok', { p: i, x: 400 }));
-cue(53.5, 'warn', { x: 400 });
-cue(54.0, 'nudge', { x: 1560 });
-cue(54.3, 'pop', { p: 1, x: 1520 });
-cue(56.5, 'chord', { x: 400 });
+cue(50.5, 'pop', { p: 0, x: 420 });
+cue(50.9, 'impact');
+cue(51.5, 'warn', { x: 420 });
+cue(51.8, 'pop', { p: 4, x: 860 });
+for (let k = 0; k < 6; k++) cue(52.2 + k * 0.22, 'tick', { x: 860, soft: 1 });
+cue(53.2, 'nudge', { x: 640 });
+cue(53.6, 'wake', { x: 420 });
+T.ghosts.forEach((_, i) => cue(54.2 + i * 0.22, 'card', { p: i, x: 1520 }));
+cue(55.8, 'whoosh', { x: 1600, d: 0.5 });
+cue(56.8, 'receive', { x: 1520 });
 
-// S7 flow graph -------------------------------------------------------------
-const LANE = { you: 206, I: 322, T: 438, K: 554 };
-const G = [
-  ['n1', 285, LANE.you, 'you'], ['n2', 505, LANE.I, 'I'], ['n3', 735, LANE.T, 'T'], ['a1', 915, LANE.T, 'app'],
-  ['n4', 1080, LANE.T, 'T'], ['n5', 1275, LANE.K, 'K'], ['a2', 1440, LANE.K, 'app'], ['n6', 1640, LANE.K, 'K'],
-  ['a3', 1640, 380, 'app'], ['n7', 1640, LANE.you, 'fin'],
-];
-const GE = [['n1', 'n2'], ['n2', 'n3'], ['n3', 'a1'], ['a1', 'n4'], ['n4', 'n5'], ['n5', 'a2'], ['a2', 'n6'], ['n6', 'a3'], ['a3', 'n7']];
+// S7 come back to the result ------------------------------------------------------
 scene(60.4, 66.6, root => {
-  const cam = el(root, ''); cam.style.width = '1920px'; cam.style.height = '1080px'; cam.style.transformOrigin = '50% 40%';
-  const svg = layer(cam);
-  const nodes = {};
-  for (const [id, x, y, who] of G) {
-    let inner;
-    if (who === 'app') inner = T.graph[id];
-    else if (who === 'you') inner = `<div class="mini you">${T.you}</div>${T.graph[id]}`;
-    else if (who === 'fin') inner = `<div class="mini">✓</div>${T.graph[id]}`;
-    else inner = `<div class="mini">${who}</div>${T.graph[id]}`;
-    nodes[id] = { e: el(cam, 'node' + (who === 'app' ? ' app' : who === 'fin' ? ' fin' : ''), inner), x, y };
-  }
-  const edges = GE.map(([a, b]) => ({ a, b, path: stroke(svg, 'M0 0', nodes[a].e.classList.contains('app') ? 'rgba(240,171,61,.95)' : 'rgba(255,255,255,.5)', 3.2) }));
-  const conn = stroke(svg, 'M0 0', 'rgba(255,255,255,.6)', 3);
-  const card = el(cam, 'detailcard', `<div class="hd"><div class="av" style="position:static">K</div>${T.detail.head}</div><div class="kv">${T.detail.rows.map(([k, v]) => `<div class="k">${k}</div><div class="v">${v}</div>`).join('')}</div>`);
-  const sup = Super(root, [T.s7]);
-  return { cam, nodes, edges, conn, card, sup, layoutDone: false };
+  const you = el(root, 'youring', T.you);
+  const panel = el(root, 'panel board');
+  const ph = el(panel, 'ph', T.boardTitle); ph.classList.remove('a');
+  const rows = T.boardRows.map(([name, st], i) => {
+    const r = document.createElement('div'); r.className = 'lrow'; r.style.top = 112 + i * LROW + 'px'; panel.appendChild(r);
+    r.innerHTML = `<div class="ic">${ICON_OK}</div><div class="rq">${name}</div><div class="rst">${st}</div>`;
+    return { r, ok: r.querySelector('.ok') };
+  });
+  const foot = el(panel, 'bfoot', T.boardFoot); foot.classList.remove('a');
+  const sup = Super(root, [T.back]);
+  return { you, panel, rows, foot, sup };
 }, (t, c, root) => {
-  if (!c.layoutDone) {
-    for (const k in c.nodes) c.nodes[k].w = c.nodes[k].e.offsetWidth, c.nodes[k].h = c.nodes[k].e.offsetHeight;
-    // same-lane neighbours are chained by their measured widths, then the whole graph is fitted into the frame
-    const N = c.nodes, GAP = 44;
-    const after = (a, b, gap = GAP) => { N[b].x = N[a].x + N[a].w / 2 + gap + N[b].w / 2; };
-    after('n3', 'a1'); after('a1', 'n4');
-    N.n5.x = Math.max(N.n5.x, N.n4.x + N.n4.w / 2 + 50 + N.n5.w / 2);
-    after('n5', 'a2'); after('a2', 'n6');
-    N.a3.x = N.n7.x = N.n6.x;
-    let lo = Infinity, hi = -Infinity;
-    for (const k in N) { lo = Math.min(lo, N[k].x - N[k].w / 2); hi = Math.max(hi, N[k].x + N[k].w / 2); }
-    const fit = Math.min(1, 1600 / (hi - lo)), shift = 160 + (1600 - (hi - lo) * fit) / 2 - lo * fit;
-    c.fit = { s: fit, x: shift };
-    for (const ed of c.edges) {
-      const A = c.nodes[ed.a], B = c.nodes[ed.b];
-      let d;
-      if (Math.abs(A.x - B.x) < 40) { // vertical
-        const y0 = A.y - A.h / 2, y1 = B.y + B.h / 2;
-        d = `M ${A.x} ${y0} L ${B.x} ${y1}`;
-      } else {
-        const x0 = A.x + A.w / 2, x1 = B.x - B.w / 2, mx = (x0 + x1) / 2;
-        d = `M ${x0} ${A.y} C ${mx} ${A.y} ${mx} ${B.y} ${x1} ${B.y}`;
-      }
-      ed.path.setAttribute('d', d);
-    }
-    const n6 = c.nodes.n6;
-    c.conn.setAttribute('d', `M ${n6.x - 60} ${n6.y + n6.h / 2} L ${n6.x - 60} 612`);
-    c.layoutDone = true;
-  }
   root.style.opacity = P(t, 60.4, 60.6, E.lin) * (1 - P(t, 66.1, 66.5, E.lin));
-  const zoom = lerp(1.0, 1.035, P(t, 60.5, 66.5, E.lin));
-  c.cam.style.transform = `translate(960px,420px) scale(${zoom.toFixed(4)}) translate(-960px,-420px) translate(${c.fit.x.toFixed(2)}px,0) scale(${c.fit.s.toFixed(4)})`;
-  c.cam.style.transformOrigin = '0 0';
-  const T0 = 60.75, DT = 0.34;
-  const popAt = { n1: 60.55 };
-  c.edges.forEach((ed, i) => { const s = T0 + i * DT; draw(ed.path, P(t, s, s + DT, E.io)); popAt[ed.b] = s + DT * 0.85; });
-  for (const k in c.nodes) {
-    const n = c.nodes[k];
-    const p = P(t, popAt[k], popAt[k] + 0.35, E.spring);
-    const hi = k === 'n6' ? 1 + 0.08 * Math.sin(Math.PI * clamp((t - 63.95) / 0.35)) : 1;
-    put(n.e, n.x, n.y, p * hi, p > 0 ? 1 : 0);
-  }
-  draw(c.conn, P(t, 64.05, 64.35, E.io));
-  const cp = P(t, 64.25, 64.7, E.spring);
-  put(c.card, Math.min(c.nodes.n6.x - 200, (1760 - c.fit.x) / c.fit.s - 310), 612, cp, cp > 0 ? 1 : 0, 0, '-50%', '0%');
+  const yx = kf(t, [[60.5, -160], [61.1, 330, E.out]]);
+  put(c.you, yx, 430, 1, 1);
+  const pp = P(t, 61.0, 61.5, E.out);
+  put(c.panel, 1080, 430, lerp(0.96, 1, pp), pp);
+  c.rows.forEach((r, i) => {
+    const t0 = 61.5 + i * 0.4;
+    const p = P(t, t0, t0 + 0.35, E.out);
+    r.r.style.opacity = p.toFixed(3);
+    const okp = P(t, t0 + 0.15, t0 + 0.45, E.back);
+    r.ok.style.opacity = okp > 0 ? 1 : 0;
+    r.ok.style.transform = `scale(${okp.toFixed(3)})`;
+  });
+  c.foot.style.opacity = P(t, 63.0, 63.4, E.lin).toFixed(3);
   showSuper(c.sup, t, [60.7], 66.0);
 });
-GE.forEach((_, i) => cue(60.75 + i * 0.34 + 0.29, 'node', { p: i, x: G[i + 1][1] }));
-cue(60.55, 'node', { p: -1, x: 285 });
-cue(64.25, 'pop', { p: 3, x: 1330 });
+cue(60.6, 'whoosh', { x: 300, d: 0.6 });
+cue(61.0, 'pop', { p: 1, x: 1080 });
+[0, 1, 2].forEach(i => cue(61.65 + i * 0.4, 'ok', { x: 1080, p: i }));
+cue(63.0, 'chord', { x: 1080 });
 
 // S8 local ------------------------------------------------------------------
 scene(66.4, 74.6, root => {
@@ -813,7 +844,7 @@ scene(66.4, 74.6, root => {
   const labels = T.items.map(x => el(root, 'itemlabel', x));
   const endpoint = el(root, 'endpoint', `<div>${T.endpoint[0]}</div><div>${T.endpoint[1]}</div>`);
   const packets = [0, 1, 2, 3].map(() => { const p = el(root, 'disc white'); size(p, 14); return p; });
-  const dialog = el(root, 'dialog', `<div class="hd"><div class="av" style="position:static">K</div>${T.ask}</div><div class="host">${T.host}</div><div class="btns"><div class="btn deny">${T.deny}</div><div class="btn allow">${T.allow}</div></div>`);
+  const dialog = el(root, 'dialog', `<div class="hd"><div class="av" style="position:static">${T.initial}</div>${T.ask}</div><div class="host">${T.host}</div><div class="btns"><div class="btn deny">${T.deny}</div><div class="btn allow">${T.allow}</div></div>`);
   const cursor = el(root, '', ICON_CURSOR);
   const sup = Super(root, [T.s8a, T.s8b]);
   return { screen, base, wire, dots, icons, labels, endpoint, packets, dialog, allow: dialog.querySelector('.allow'), cursor, sup, lay: null };
