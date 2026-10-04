@@ -842,3 +842,24 @@ describe("memory in the turn context", () => {
     store.close();
   });
 });
+
+test("a goal written before you renamed the job is said to give way to your words", async () => {
+  // 2026-10-04: renamed 「做《一拳超人》动画」, the job's goal still read 「制作一部未来世界题材…的短片」
+  // at the head of every turn's picture, and only you edit it, on the board.
+  const { planFacts, planLines } = await import("./context");
+  const store = new Store();
+  const bot = store.createBot({ name: "视频导演", duties: "", boundaries: "" });
+  const plan = store.openTask({ sessionId: bot.direct_session.id, title: "制作一部未来世界题材的短片" });
+  store.setTaskSpec(plan.id, { kind: "科幻短片", goal: "制作一部未来世界题材、时长超过2分钟的短片", acceptance: [], rules: [], process: [], progress: null, status: "active" } as never);
+  const lines = () => planLines(planFacts(store, { taskId: plan.id, turnId: null, triggerMessageId: null, botId: bot.bot.id, sessionId: bot.direct_session.id, locale: "zh" })!, "zh").join("\n");
+  expect(lines()).not.toContain("改了名");
+  await Bun.sleep(5);
+  store.renamePlanByUser(plan.id, "做《一拳超人》动画");
+  expect(lines()).toContain("规划「做《一拳超人》动画」：制作一部未来世界题材、时长超过2分钟的短片");
+  expect(lines()).toContain("用户在目标写下之后给这件事改了名：目标和名字、用户原话对不上时，以用户原话为准。");
+  // You write the goal again on the board: it is yours, and current.
+  await Bun.sleep(5);
+  store.setPlanSpecByUser(plan.id, { kind: "动画", goal: "做一部《一拳超人》风格的动画短片", acceptance: [], rules: [], process: [], progress: null, status: "active" });
+  expect(lines()).not.toContain("改了名");
+  store.close();
+});

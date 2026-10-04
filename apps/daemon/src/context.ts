@@ -294,6 +294,8 @@ export type PlanFacts = {
   brief: string | null;
   /** The organizer's reading of the plan; null until it has run. */
   goal: string | null;
+  /** You renamed the plan after its goal was last written: the goal may be about what it was before. */
+  goal_before_rename?: boolean;
   kind: string | null;
   status: PlanStatus;
   acceptance: string[];
@@ -551,6 +553,7 @@ export function planFacts(
     first_turn: firstTurn,
     brief,
     goal: spec?.goal ?? null,
+    ...(spec?.goal && goalBeforeRename(store, input.taskId) ? { goal_before_rename: true } : {}),
     kind: spec?.kind ?? task.kind,
     status: task.status,
     acceptance: spec?.acceptance ?? [],
@@ -590,6 +593,21 @@ function reworkAsked(store: Store, triggerMessageId: string | null): Pick<PlanFa
       AND EXISTS (SELECT 1 FROM json_each(json_extract(m.control, '$.offer')) WHERE value = 'rework')
     ORDER BY t.seq`).all(triggerMessageId);
   return rows.length > 0 ? { rework_asked: rows } : {};
+}
+
+/**
+ * Whether you renamed the plan after its spec was last written: the goal then still says what the job
+ * was before. On 2026-10-04 a job renamed 「做《一拳超人》动画」 kept the goal 「制作一部未来世界题材、
+ * 时长超过2分钟…的短片」 at the head of every turn's picture; you told 视频导演 「制作《一拳超人》动画」
+ * in its direct, and the goal still said otherwise — only you edit it, on the board.
+ */
+function goalBeforeRename(store: Store, taskId: string): boolean {
+  const renamed = store.db.query<{ at: string }, [string]>(
+    "SELECT at FROM work_events WHERE task_id = ? AND kind = 'plan.renamed' AND actor = 'user' ORDER BY seq DESC LIMIT 1").get(taskId)?.at;
+  if (!renamed) return false;
+  const written = store.db.query<{ at: string }, [string]>(
+    "SELECT created_at AS at FROM task_spec_revisions WHERE task_id = ? ORDER BY created_at DESC LIMIT 1").get(taskId)?.at;
+  return !written || written < renamed;
 }
 
 /** When a line was said, in this machine's time: 「09-28 12:02」. */
@@ -813,6 +831,11 @@ export function planLines(facts: PlanFacts, locale: Locale): string[] {
         ? `Plan "${facts.title}": ${facts.goal} (${tags.join(", ")})`
         : `规划「${facts.title}」：${facts.goal}（${tags.join("，")}）`,
     );
+    if (facts.goal_before_rename) {
+      lines.push(en
+        ? "The user renamed this job after its goal was written: where the goal disagrees with the name or with their own words, their words win."
+        : "用户在目标写下之后给这件事改了名：目标和名字、用户原话对不上时，以用户原话为准。");
+    }
     if (facts.process.length > 0) lines.push(`${en ? "Process: " : "流程与分工："}${facts.process.join(sep)}`);
     if (facts.progress) {
       const parts: string[] = [];
