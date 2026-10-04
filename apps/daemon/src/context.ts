@@ -1127,6 +1127,7 @@ function situationUserMessage(
       : members.length > 0
         ? `在场成员（点名请逐字写全名）：${members.join("、")}。`
         : "在场成员：只有你。";
+  const team = teamLines(store, sessionId, selfBotId, locale);
   const seatLine =
     locale === "en"
       ? group.seats.length > 0
@@ -1148,9 +1149,41 @@ function situationUserMessage(
       : group.latest_user
         ? `用户最近一条：${group.latest_user}`
         : "用户最近一条：（无）";
-  const lines = [...held, membersLine, seatLine, wakerLine, latestLine, ...job];
+  const lines = [...held, membersLine, ...team, seatLine, wakerLine, latestLine, ...job];
   lines.push(...dirLines);
   return { role: "user", content: `${SITUATION_HEADING}\n\n${lines.join("\n")}` };
+}
+
+/** How much of a Bot's duties the line naming what each one does quotes. */
+const DUTIES_LINE = 40;
+
+/**
+ * What each Bot here does, and who the user confirmed as the group's lead — told to the lead as its
+ * job. The block named the others only (「在场成员：@文案。」), and on 2026-10-04's real-model runs the
+ * poster group's lead wrote the slogans itself in two of four jobs, never laying the work out for
+ * 文案, whose duties are 「写宣传语和文案」.
+ */
+function teamLines(store: Store, sessionId: string, selfBotId: string, locale: Locale): string[] {
+  const en = locale === "en";
+  const roles = store.presentBotIds(sessionId).filter((id) => id !== selfBotId).flatMap((id) => {
+    try {
+      const duties = oneLineClip(store.getBot(id).duties ?? "", DUTIES_LINE).trim();
+      return duties ? [`@${botDisplayName(store, id)}${en ? ": " : "："}${duties}`] : [];
+    } catch {
+      return [];
+    }
+  });
+  const lines = roles.length > 0 ? [en ? `What each does: ${roles.join("; ")}.` : `各自做什么：${roles.join("；")}。`] : [];
+  const lead = store.db.query<{ member: string }, [string]>(`SELECT p.member FROM session_participants p JOIN bots b ON b.id = p.member
+    WHERE p.session_id = ? AND p.left_at IS NULL AND p.is_lead = 1 AND b.deleted_at IS NULL AND b.archived_at IS NULL LIMIT 1`).get(sessionId)?.member;
+  if (lead === selfBotId) {
+    lines.push(en
+      ? "You are this group's lead, as the user confirmed: lay out the parts others should make with plan_items (who makes each, who reviews it), then delegate on those tickets; for a reply in words only, delegate with expects answer."
+      : "你是用户在这个群里确认的负责人：要别人做的部分，先用 plan_items 拆成任务、写明谁做谁审，再委派到那张任务；只要一句答复的，委派时 expects 用 answer。");
+  } else if (lead) {
+    lines.push(en ? `This group's lead, as the user confirmed, is @${botDisplayName(store, lead)}: laying the work out and handing it out is theirs.` : `用户确认的这个群的负责人是 @${botDisplayName(store, lead)}：拆活、派活由它定。`);
+  }
+  return lines;
 }
 
 /** For a read-only turn, the line naming the stop over it — the newest you said, if you said one; else nothing. */

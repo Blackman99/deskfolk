@@ -72,6 +72,11 @@ test("you approve the slogans, and the lead goes straight on to its poster", asy
   const live = h.store.listTickets(plan.id).filter((ticket) => ticket.status !== "parked");
   expect(live.map((ticket) => ticket.title)).toEqual(["三句宣传语", "竖版海报"]);
 
+  // The lead is told it leads, and what the others do (2026-10-04: real leads wrote the slogans themselves).
+  const desk = requestText(h.hops(designer!).find((hop) => hop.hop === 1)!.request);
+  expect(desk).toContain("各自做什么：@文案：写宣传语。");
+  expect(desk).toContain("你是用户在这个群里确认的负责人：要别人做的部分，先用 plan_items 拆成任务");
+
   // Same model for both: the approval waits on your 放行.
   const card = h.messages(room).find((message) => message.control?.kind === "review_item")!;
   expect(card).toBeDefined();
@@ -190,4 +195,42 @@ test("a lead's request for a piece of its own ticket is refused until the piece 
   expect(laidOut!.result?.ok).toBe(true);
   expect(sent!.result?.ok).toBe(true);
   expect(h.store.db.query("SELECT ticket_id FROM delegations").all()).toEqual([{ ticket_id: ticketId("三句宣传语") }]);
+});
+
+test("a lead woken at the job's level that draws in its own ticket's folder hands that ticket in", async () => {
+  // Real-model run, 2026-10-04: woken by 文案's approved slogans at the job's level, the lead drew the
+  // poster in 03's folder and ended with nothing_new — no ticket bound, so nothing was handed over.
+  const h = await createScenario({ learning: true });
+  open.push(h);
+  const [designer, writer] = h.createBots({ name: "设计师", duties: "海报和视觉；拆活、派活、审稿" }, { name: "文案", duties: "写宣传语" });
+  const room = h.group("海报组", [designer!, writer!]);
+  confirmGroupLead(h.store, room, designer!.id);
+  const ticketId = (title: string) => h.store.db.query<{ id: string }, [string]>("SELECT id FROM tickets WHERE title = ?").get(title)?.id ?? null;
+  const dirOf = (title: string) => h.store.db.query<{ dir: string }, [string]>("SELECT dir FROM tickets WHERE title = ?").get(title)!.dir;
+  const stop = call(tool("end_turn", { reason: "nothing_new" }));
+  let laidOut = false, reviewed = false, drew = false;
+  h.script(designer!).handle(({ turn, hop }) => {
+    if (!laidOut && hop === 1) return call(tool("plan_items", { items: [
+      { title: "三句宣传语", owner: "文案", reviewer: "设计师" }, { title: "竖版海报", owner: "设计师", depends_on: ["三句宣传语"] }] }));
+    if (!laidOut) { laidOut = true; return call(tool("delegate", { to: "文案", ask: "写三句宣传语", expects: "deliverable", ticket: ticketId("三句宣传语")! })); }
+    if (turn?.ticket_id === ticketId("三句宣传语")) {
+      if (reviewed) return stop;
+      reviewed = true;
+      return call(tool("review", { outcome: "approve", verdicts: [], note: "好" }));
+    }
+    // Told the slogans are in, at the job's level: draws in its ticket's folder, says nothing, ends.
+    if (!drew && hop === 1) { drew = true; return call(writeFile(`${dirOf("竖版海报")}/poster.svg`, "<svg/>")); }
+    return stop;
+  });
+  h.script(writer!).handle(({ hop }) => hop === 1 ? call(writeFile(`${dirOf("三句宣传语")}/slogans.md`, "1. 一杯好咖啡\n"))
+    : hop === 2 ? call(tool("submit", { artifacts: [`${dirOf("三句宣传语")}/slogans.md`] })) : stop);
+
+  h.postUser(room, "做一张咖啡店开业海报，竖版，配三句宣传语");
+  await h.waitIdle({ timeoutMs: 15_000 });
+  h.engine.control(h.messages(room).find((message) => message.control?.kind === "review_item")!.id, { action: "approve" });
+  await h.waitIdle({ timeoutMs: 15_000 });
+
+  const drawing = h.turns(designer!).at(-1)!;
+  expect(drawing.ticket_id).toBe(ticketId("竖版海报"));
+  expect(h.store.db.query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM submissions WHERE ticket_id = ?").get(ticketId("竖版海报")!)!.n).toBe(1);
 });

@@ -528,6 +528,7 @@ export class Store {
   // Work items (ADR 0040 P4b) -------------------------------------------------------------
   readonly findOrCreateWorkItem = this.bind(workItems.findOrCreateWorkItem);
   readonly workOn = this.bind(workOn.workOn);
+  readonly bindToOwnTicket = this.bind(workOn.bindToOwnTicket);
   readonly workItemQueuePlace = this.bind(workItems.queuePlace);
   readonly queueWork = this.bind(workItems.queueWork);
   readonly dispatchableWork = this.bind(workItems.dispatchableWork);

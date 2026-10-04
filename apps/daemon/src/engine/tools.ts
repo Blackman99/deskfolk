@@ -325,6 +325,8 @@ export function createTools(deps: ToolsDeps): Tools {
       if (!active(turnId, live)) return "wait";
       result = withLatestMcp(call.name, result);
       noteWrittenPaths(live, call.name, result);
+      // Writing in one of its own tickets' folders puts a segment on the whole job onto that ticket.
+      if (result.ok && (call.name === "write_file" || call.name === "shell") && live.writtenPaths.length > 0) store.bindToOwnTicket({ turnId, paths: live.writtenPaths });
       if (result.waitAsk) {
         const waitAsk = result.waitAsk;
         const { ask, waiting } = store.transaction(() => {

@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A group's lead hands the work out, and its own part is handed in
+
+- In a group, each Bot is told what the others do and who you confirmed as the lead; the lead is told to lay out what others should make and hand it out. Seeing only names, a real lead wrote the slogans itself in two of four jobs instead of giving them to the copywriter.
+- A Bot working on a whole job that writes into the folder of one of its own tickets is put on that ticket, so its work is handed in when it ends. A lead woken by the approved slogans drew the poster in its ticket's folder and ended without handing anything in.
+- Found and checked with real models: the poster job now runs through layout, slogans, poster and both approvals to delivered.
+
 ### A change you asked for lands in the file you approve
 
 - A Bot asked for a change after delivery could write the new version into a folder it named itself and hand in the old file, so the card asked you to approve a change that was not there. Writing into a made-up ticket folder is now refused with the real one named, and handing in exactly the files already approved is refused as unchanged. Found in a run with real models.

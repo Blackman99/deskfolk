@@ -171,11 +171,14 @@ test("a lead woken at the job's level by your change can still hand its ticket i
       await stopped;
       return call(tool("end_turn", { reason: "nothing_new" }));
     }
-    // Woken by your change, at the job's level: make the poster in its ticket's folder, hand it in.
-    if (hop === 1) return call(writeFile(`${opening().dir}/poster.svg`, "<svg/>"));
-    if (hop === 2) return call(tool("submit", { artifacts: [`${opening().dir}/poster.svg`] }));
+    // Woken by your change, at the job's level: a draft in the job's folder (no ticket's), then the
+    // ticket, then the poster in its folder, handed in.
+    const planDir = () => opening().dir.replace(/\/[^/]+$/, "");
+    if (hop === 1) return call(writeFile(`${planDir()}/draft.md`, "横版、英文"));
+    if (hop === 2) return call(tool("submit", { artifacts: [`${planDir()}/draft.md`] }));
     if (hop === 3) return call(tool("work_on", { plan: turn!.task_id!, ticket: opening().id }));
-    if (hop === 4) return call(tool("submit", { artifacts: [`${opening().dir}/poster.svg`] }));
+    if (hop === 4) return call(writeFile(`${opening().dir}/poster.svg`, "<svg/>"));
+    if (hop === 5) return call(tool("submit", { artifacts: [`${opening().dir}/poster.svg`] }));
     return stop;
   });
   h.script(writer!).reply(stop);
@@ -190,6 +193,6 @@ test("a lead woken at the job's level by your change can still hand its ticket i
 
   const changed = h.turns(designer!).at(-1)!;
   const calls = h.toolCalls(designer!).filter((c) => c.turnId === changed.id && c.name !== "end_turn");
-  expect(calls.map((c) => [c.name, c.result?.ok])).toEqual([["write_file", true], ["submit", false], ["work_on", true], ["submit", true]]);
+  expect(calls.map((c) => [c.name, c.result?.ok])).toEqual([["write_file", true], ["submit", false], ["work_on", true], ["write_file", true], ["submit", true]]);
   expect(h.store.db.query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM submissions WHERE ticket_id = ?").get(opening().id)!.n).toBe(1);
 });
