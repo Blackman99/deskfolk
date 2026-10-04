@@ -6,6 +6,13 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Which job your line is about is read, not guessed by rules
+
+- When a line of yours does not point at a job itself (a quoted reply, an annotation, a path, a job you chose), a model now reads which of the open jobs it is about, at the same time as it reads what the line says, and files it there. The fixed defaults are gone — "the only job open", "the group's only job", "the job of the Bot's line just before" — and nothing reads how the line opens or the numbers in it. A new request in a group was filed that way under an unrelated older job: 「制作《一拳超人》动画」 went under the job about the reviewer replying to the director.
+- A line read as about none of the jobs goes to the Bot it wakes, which opens a job for it once it starts working; a line it cannot place, or that no model could read, is the Bot's to place too. There is no word-list fallback.
+- Parts (shots) are only those the lead declares, and a hand-over names the parts it covers; a file's name no longer makes or picks a part.
+- It runs on the same model as line reading (Settings → Models → Model that reads lines).
+
 ### A job you went on with in a direct asks and tells you there
 
 - When a group's job is taken up in your direct with one of its Bots, the Bot's questions now come up in that direct, and so does the line saying a restart cut its work off. So do the cards about that Bot's work (approving or sending back what it hands in, what to do when it is stuck, its reflections), while another Bot's cards go to the group rather than into this direct; the card asking whether your complaint sends work back comes up where you complained. Both used to land in the group the job was opened in, while the Bot was asking you to sign off in the direct and its interrupted line sat there beside your last words.

@@ -7,7 +7,7 @@
  */
 import { afterEach, expect, test } from "bun:test";
 import { openPlan, planSpec, videoTeam } from "./video-team";
-import { call, createScenario, tool, writeFile, type Scenario } from "../test-kit/scenario";
+import { call, createScenario, fileUnder, tool, writeFile, type Scenario } from "../test-kit/scenario";
 
 const open: Scenario[] = [];
 afterEach(async () => {
@@ -26,6 +26,8 @@ function wentOnInYourDirect(h: Scenario) {
   h.store.db.run("UPDATE work_items SET state = 'idle' WHERE id = ?", [first.work_item_id!]);
   const dm = h.direct(director);
   h.postBot(director, dm, "关键帧板重做好了，请拍板。", { taskId: plan.id });
+  // Your reply to it is read as about the film (ADR 0057), as the reader model read the real line.
+  h.judge("read_filing").handle(fileUnder("做《一拳超人》动画"));
   return { director, writer, room, plan, dm, home: first.work_item_id! };
 }
 

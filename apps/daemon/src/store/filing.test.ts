@@ -136,11 +136,13 @@ test("continue gives an aged delivered plan a user-activity grace period", () =>
   expect(filing.updatePlanDormancy(ctx, { now: new Date(Date.now() + 1000).toISOString() })).toEqual([]);
 });
 
-test("annotation inherits the exact artifact part rather than just its directory ticket", () => {
+test("annotation inherits the exact part whose current file it marks, rather than just its directory ticket", () => {
   const { store, ctx, bot, room, direct } = fixture();
   const plan = store.openTask({ sessionId: room, title: '批注规划' });
   const ticket = store.createTicket({ taskId: plan.id, title: '渲染任务', spec: '', status: 'doing' });
   const path = `${ticket.dir}/shot_07.mp4`;
+  // The part's current file, as the hand-over that named the part left it; the file's name says nothing.
+  store.db.run(`INSERT INTO ticket_parts (id, ticket_id, key, title, declared_by, current_artifact) VALUES ('p7', ?, 'shot_07', 'Shot 07', 'plan_items', ?)`, [ticket.id, path]);
   const target = store.insertMessage({ sessionId: room, kind: 'bot', author: bot.id, body: '交付' });
   store.db.run('UPDATE messages SET task_id = ?, ticket_id = ? WHERE id = ?', [plan.id, ticket.id, target.id]);
   store.db.run(`INSERT INTO attachments (id, message_id, workspace_relpath, original_filename, created_at)
@@ -188,16 +190,17 @@ test("legacy UI stamps and user corrections stay authoritative on reprocessing, 
   expect(filing.fileMessage(ctx, message.id, { botId: bot.id })).toMatchObject({ state: 'none', filings: [] });
 });
 
-test("a candidate with ambiguous parts cannot be discarded to manufacture a unique match in another plan", () => {
+test("a file named like a shot makes no part: a path files a line under the ticket, and under a part only by its current file", () => {
   const { store, ctx, bot, room, direct } = fixture();
-  const a = store.openTask({ sessionId: room, title: '有冲突编号' });
-  const b = store.openTask({ sessionId: room, title: '另一集' });
-  for (const [i, taskId] of [a.id, a.id, b.id].entries()) {
-    const ticket = store.createTicket({ taskId, title: `分件任务${i}`, spec: '', status: 'todo' });
-    store.db.run(`INSERT INTO ticket_parts (id, ticket_id, key, title, declared_by) VALUES (?, ?, 'shot_01', 'Shot 01', 'plan_items')`, [`part${i}`, ticket.id]);
-  }
-  const message = store.postMessage(direct, { body: 'Shot 01 重做' });
-  expect(filing.fileMessage(ctx, message.id, { botId: bot.id }).state).toBe('undetermined');
+  const plan = store.openTask({ sessionId: room, title: '分件' });
+  const ticket = store.createTicket({ taskId: plan.id, title: '渲染', spec: '', status: 'doing' });
+  const delivery = store.insertMessage({ sessionId: room, kind: 'bot', author: bot.id, body: '交付' });
+  store.db.run('UPDATE messages SET task_id = ?, ticket_id = ? WHERE id = ?', [plan.id, ticket.id, delivery.id]);
+  store.db.run(`INSERT INTO attachments (id, message_id, workspace_relpath, original_filename, created_at)
+    VALUES ('shot12', ?, ?, 'shot_12.mp4', '2026-01-01')`, [delivery.id, `${ticket.dir}/shot_12.mp4`]);
+  const line = store.postMessage(direct, { body: `${ticket.dir}/shot_12.mp4 重做` });
+  expect(filing.fileMessage(ctx, line.id, { botId: bot.id }).filings).toMatchObject([{ taskId: plan.id, ticketId: ticket.id, partKey: null, filedBy: 'rule:4' }]);
+  expect(store.db.query('SELECT COUNT(*) AS n FROM ticket_parts').get()).toEqual({ n: 0 });
 });
 
 test("paths honor directory boundaries and traversal; binding rejects wrong-bot/closed work before writes, bot output uses its own turn", () => {
@@ -313,40 +316,73 @@ test("migration imports stale done plans as delivered+dormant once, preserving r
   expect(store.db.query('SELECT filing_state FROM messages WHERE id = ?').get(message.id)).toEqual({ filing_state: 'none' });
 });
 
-test("part numbering parses Chinese tens and bounded numeric ranges without unrelated word or oversized matches", () => {
-  expect(filing.partNumbers("第 13 镜、第三镜、Shot 7–9、3–5、前十二镜")).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
-  expect(filing.partNumbers("abc02 C0007 Shot 1234 前999999镜")).toEqual([7]);
+const read = (about: 'jobs' | 'new' | 'unclear', targets: Array<{ taskId: string; ticketId?: string | null; partKey?: string | null }> = []) =>
+  ({ source: 'model' as const, about, targets: targets.map((t) => ({ taskId: t.taskId, ticketId: t.ticketId ?? null, partKey: t.partKey ?? null })) });
+
+test("with nothing locked, a line goes where the reading puts it, as a default; with no reading, nowhere — not even to the one job open (ADR 0057)", () => {
+  const { store, ctx, bot, direct } = fixture();
+  const a = store.openTask({ sessionId: direct, title: "当前片" });
+  const shots = store.createTicket({ taskId: a.id, title: "镜头", spec: "", status: "doing" });
+  store.db.run(`INSERT INTO ticket_parts (id, ticket_id, key, title, declared_by) VALUES ('p3', ?, 'shot_03', 'Shot 03', 'plan_items')`, [shots.id]);
+  // The one job open, and a line about nothing else: still nobody's guess.
+  const unread = store.postMessage(direct, { body: "再看一遍" });
+  expect(filing.fileMessage(ctx, unread.id, { botId: bot.id })).toMatchObject({ state: "undetermined", filings: [] });
+  expect(filing.lineReadAsNew(ctx, unread.id)).toBe(false);
+  // Read as about the job, its ticket and part: filed there, as a default.
+  const about = store.postMessage(direct, { body: "第三镜要重做" });
+  expect(filing.fileMessage(ctx, about.id, { botId: bot.id, read: read("jobs", [{ taskId: a.id, ticketId: shots.id, partKey: "shot_03" }]) }).filings)
+    .toMatchObject([{ taskId: a.id, ticketId: shots.id, partKey: "shot_03", filedBy: "reader", strength: "default" }]);
+  // Read as about none of the jobs: left for the Bot's desk, marked so.
+  const fresh = store.postMessage(direct, { body: "帮我写首诗" });
+  expect(filing.fileMessage(ctx, fresh.id, { botId: bot.id, read: read("new") }).state).toBe("undetermined");
+  expect(filing.lineReadAsNew(ctx, fresh.id)).toBe(true);
+  // No telling which: left for the desk, unmarked.
+  const unclear = store.postMessage(direct, { body: "这个呢" });
+  expect(filing.fileMessage(ctx, unclear.id, { botId: bot.id, read: read("unclear") }).state).toBe("undetermined");
+  expect(filing.lineReadAsNew(ctx, unclear.id)).toBe(false);
+  // A job closed since the reading is no place for it.
+  const b = store.openTask({ sessionId: direct, title: "旧片" });
+  store.db.run("UPDATE tasks SET stage = 'accepted' WHERE id = ?", [b.id]);
+  const late = store.postMessage(direct, { body: "旧片再改改" });
+  expect(filing.fileMessage(ctx, late.id, { botId: bot.id, read: read("jobs", [{ taskId: b.id }]) }).state).toBe("undetermined");
+  // A locked signal wins over any reading: a quoted reply goes where the line it quotes went.
+  const quoted = store.postMessage(direct, { body: "这句再改", parent_id: about.id });
+  expect(filing.fileMessage(ctx, quoted.id, { botId: bot.id, read: read("new") }).filings)
+    .toMatchObject([{ taskId: a.id, ticketId: shots.id, partKey: "shot_03", filedBy: "rule:3", strength: "locked" }]);
+  expect(filing.lineReadAsNew(ctx, quoted.id)).toBe(false);
+  // Once the Bot chooses a job for the line read as new, it is no longer marked.
+  filing.fileMessage(ctx, fresh.id, { botId: bot.id, botSelection: [{ taskId: a.id }] });
+  expect(filing.lineReadAsNew(ctx, fresh.id)).toBe(false);
 });
 
-test("defaults use signals 6 then 7 then 8, skip new-request hints, and match declared or filename parts only uniquely", () => {
-  const { store, ctx, bot, direct, room } = fixture();
-  // The group's plans reach a line in the Bot's direct as its jobs: work it has open on them.
-  const mine = (taskId: string) => store.db.run(`INSERT INTO work_items (id, bot_id, task_id, home_session_id, state, created_at, updated_at)
-    VALUES (?, ?, ?, ?, 'idle', '2026-01-01', '2026-01-01')`, [`work-${taskId}`, bot.id, taskId, room]);
-  const a = store.openTask({ sessionId: room, title: "当前片" });
-  mine(a.id);
-  const shots = store.createTicket({ taskId: a.id, title: "Shot 01–03", spec: "", status: "doing" });
-  const simple = store.postMessage(direct, { body: "再看一遍" });
-  expect(filing.fileMessage(ctx, simple.id, { botId: bot.id }).filings).toMatchObject([{ taskId: a.id, filedBy: "rule:6", strength: "default" }]);
-  const newRequest = store.postMessage(direct, { body: "另外帮我写首诗" });
-  expect(filing.fileMessage(ctx, newRequest.id, { botId: bot.id }).state).toBe("undetermined");
-  const b = store.openTask({ sessionId: room, title: "交付片" });
-  mine(b.id);
-  const oldTicket = store.createTicket({ taskId: b.id, title: "渲染结果", spec: "", status: "done" });
-  store.db.run("UPDATE tasks SET stage = 'delivered', status = 'done' WHERE id = ?", [b.id]);
-  const delivery = store.insertMessage({ sessionId: room, kind: "bot", author: bot.id, body: "交付" });
-  store.db.run("UPDATE messages SET task_id = ?, ticket_id = ? WHERE id = ?", [b.id, oldTicket.id, delivery.id]);
-  store.db.run(`INSERT INTO attachments (id, message_id, workspace_relpath, original_filename, created_at)
-    VALUES ('shot12', ?, ?, 'shot_12.mp4', '2026-01-01')`, [delivery.id, `${oldTicket.dir}/shot_12.mp4`]);
-  const complaint = store.postMessage(direct, { body: "前三镜要重做" });
-  expect(filing.fileMessage(ctx, complaint.id, { botId: bot.id }).filings).toMatchObject([{ taskId: a.id, ticketId: shots.id, filedBy: "rule:7" }]);
-  const filenamePart = store.postMessage(direct, { body: "另外 Shot 12 要改" });
-  expect(filing.fileMessage(ctx, filenamePart.id, { botId: bot.id }).filings).toMatchObject([{ taskId: b.id, ticketId: oldTicket.id, partKey: "shot_12", filedBy: "rule:7" }]);
-  const group = store.postMessage(room, { body: "接着做" });
-  expect(filing.fileMessage(ctx, group.id, { botId: bot.id }).filings).toMatchObject([{ taskId: a.id, filedBy: "rule:8" }]);
-  store.createTicket({ taskId: b.id, title: "Shot 01–03", spec: "", status: "done" });
-  const ambiguous = store.postMessage(direct, { body: "前三镜重做" });
-  expect(filing.fileMessage(ctx, ambiguous.id, { botId: bot.id }).state).toBe("undetermined");
+test("what a reading is shown: the jobs a line may be about, a routine's included when the Bot's line just before was on it, and the lines before with their jobs", () => {
+  const { store, ctx, bot, direct } = fixture();
+  const job = store.openTask({ sessionId: direct, title: "地址信息" });
+  const routine = store.createRoutine({ bot_id: bot.id, title: "日报", instruction: "做日报", schedule: { kind: "daily", time: "01:00" } });
+  // Its standing plan, as its first fire opens it: never a candidate by itself.
+  const standing = store.openTask({ sessionId: direct, title: "日报" });
+  store.db.run("UPDATE tasks SET routine_id = ? WHERE id = ?", [routine.id, standing.id]);
+  const today = store.createTicket({ taskId: standing.id, title: "2026-10-03", spec: "", status: "doing", worker: bot.id });
+  const brief = store.insertMessage({ sessionId: direct, kind: "bot", author: bot.id, body: "今天的日报" });
+  store.db.run("UPDATE messages SET task_id = ?, ticket_id = ? WHERE id = ?", [standing.id, today.id, brief.id]);
+  const line = store.postMessage(direct, { body: "标题跟 LOGO 没有对齐" });
+
+  const shown = filing.lineToFile(ctx, line.id)!;
+  expect(shown).toMatchObject({ where: "direct", said: "标题跟 LOGO 没有对齐" });
+  expect(shown.jobs.map((j) => j.title).sort()).toEqual(["地址信息", "日报"].sort());
+  expect(shown.jobs.find((j) => j.taskId === standing.id)!.tickets.map((t) => t.title)).toEqual(["2026-10-03"]);
+  expect(shown.before.at(-1)).toMatchObject({ author: "导演", text: "今天的日报", taskId: standing.id });
+  // The desk captures the same jobs, so the Bot can choose what a reading could not.
+  expect(filing.lineCandidates(ctx, { sessionId: direct, botId: bot.id, messageId: line.id }).map((c) => c.id).sort()).toEqual([job.id, standing.id].sort());
+  // Read as the brief's: filed under the routine's job and today's ticket.
+  filing.fileMessage(ctx, line.id, { botId: bot.id, read: read("jobs", [{ taskId: standing.id, ticketId: today.id }]) });
+  expect(filing.filingsOfMessage(ctx, line.id)).toMatchObject([{ taskId: standing.id, ticketId: today.id, filedBy: "reader" }]);
+  // Nothing to read once it is filed; nor for a quoted reply, a pure stop, or a conversation with no job.
+  expect(filing.lineToFile(ctx, line.id)).toBeNull();
+  const quoted = store.postMessage(direct, { body: "这句再改", parent_id: brief.id });
+  expect(filing.lineToFile(ctx, quoted.id)).toBeNull();
+  const other = store.createBot({ name: "空闲", duties: "none", boundaries: "none" });
+  expect(filing.lineToFile(ctx, store.postMessage(other.direct_session.id, { body: "你好" }).id)).toBeNull();
 });
 
 test("locked annotation, quote, path and bound-work signals accumulate in order before any default", () => {

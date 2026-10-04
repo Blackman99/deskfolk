@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isoNow } from "../ids";
 import { Store } from ".";
-import { filenamePartNumbers } from "./filing";
 import { ENGINE_LEVELS } from "./schema-gate";
 import { createHold, liftHold } from "./holds";
 import { checkLines, setTicketStage, settlePlanStage, superviseSubmissions, UNREVIEWED_AFTER_MS } from "./submissions";
@@ -14,6 +13,7 @@ afterEach(() => { for (const store of stores.splice(0)) store.close(); });
 
 const HASH_A = "a".repeat(64);
 const HASH_B = "b".repeat(64);
+const HASH_C = "c".repeat(64);
 const later = (ms: number) => new Date(Date.parse(isoNow()) + ms).toISOString();
 
 function fixture(level: number = ENGINE_LEVELS.submissions) {
@@ -39,6 +39,19 @@ function segment(f: Fixture, botId: string = f.producer.id, ticketId: string | n
 
 function submit(f: Fixture, turnId: string, files: Array<[string, string]>, origin: "submit" | "implicit" = "submit") {
   return f.store.prepareSubmission({ turnId, origin, artifacts: files.map(([path, sha256]) => ({ path, sha256 })) });
+}
+
+/** Shot `n` as a part of `f`'s ticket, declared as the lead declares it with plan_items (no file name makes one). */
+function shotPart(f: Fixture, n: number): string {
+  const key = `shot_${String(n).padStart(2, "0")}`;
+  f.store.db.run(`INSERT OR IGNORE INTO ticket_parts (id, ticket_id, key, title, declared_by) VALUES (?, ?, ?, ?, 'plan_items')`,
+    [`${f.ticket.id}-${key}`, f.ticket.id, key, `Shot ${String(n).padStart(2, "0")}`]);
+  return key;
+}
+
+/** A hand-over of shot `n`'s file that names its part, as a Bot's submit does. */
+function submitShot(f: Fixture, turnId: string, n: number, sha256: string) {
+  return f.store.prepareSubmission({ turnId, origin: "submit", artifacts: [{ path: `${f.ticket.dir}/shot_${String(n).padStart(2, "0")}.mp4`, sha256 }], parts: [shotPart(f, n)] });
 }
 
 function ticketRow(f: Fixture) {
@@ -131,18 +144,24 @@ test("a submission records its files and parts, moves a todo ticket to doing, an
   const f = fixture();
   f.store.db.run("UPDATE tickets SET status = 'todo' WHERE id = ?", [f.ticket.id]);
   const turn = segment(f);
-  const first = submit(f, turn.id, [[`${f.ticket.dir}/EP01_shot_07.mp4`, HASH_A]], "implicit")!;
-  expect(first.submission).toMatchObject({ origin: "implicit", state: "checking", part_keys: ["shot_07"], bot_id: f.producer.id, awaiting: null,
-    artifacts: [{ path: `${f.ticket.dir}/EP01_shot_07.mp4`, sha256: HASH_A }] });
+  // A file's name makes no part (ADR 0057): the hand-over names the part the lead declared.
+  const part = shotPart(f, 7);
+  const named = f.store.prepareSubmission({ turnId: turn.id, origin: "submit", artifacts: [{ path: `${f.ticket.dir}/EP01_shot_07.mp4`, sha256: HASH_C }], parts: [part] })!;
+  expect(named.submission).toMatchObject({ origin: "submit", state: "checking", part_keys: ["shot_07"], bot_id: f.producer.id, awaiting: null,
+    artifacts: [{ path: `${f.ticket.dir}/EP01_shot_07.mp4`, sha256: HASH_C }] });
   expect(ticketRow(f)).toEqual({ status: "doing", stage: "doing" });
   expect(f.store.db.query("SELECT key, attempts, current_artifact, stage FROM ticket_parts WHERE ticket_id = ?").all(f.ticket.id))
     .toEqual([{ key: "shot_07", attempts: 1, current_artifact: `${f.ticket.dir}/EP01_shot_07.mp4`, stage: "in_progress" }]);
+  // One the app hands over for the Bot names none: it is the ticket's as a whole, whatever the file is called.
+  const first = submit(f, turn.id, [[`${f.ticket.dir}/EP01_shot_07.mp4`, HASH_A]], "implicit")!;
+  expect(first.submission).toMatchObject({ origin: "implicit", state: "checking", part_keys: [] });
+  expect(f.store.getSubmission(named.submission.id).state).toBe("superseded");
   // The same bytes again hand nothing over; new bytes supersede the open one.
   expect(submit(f, turn.id, [[`${f.ticket.dir}/EP01_shot_07.mp4`, HASH_A]], "implicit")).toBeNull();
   const second = submit(f, turn.id, [[`${f.ticket.dir}/EP01_shot_07.mp4`, HASH_B]], "implicit")!;
   expect(f.store.getSubmission(first.submission.id).state).toBe("superseded");
   expect(second.submission.state).toBe("checking");
-  expect(f.store.db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM work_events WHERE kind = 'submission.created'").get()!.n).toBe(2);
+  expect(f.store.db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM work_events WHERE kind = 'submission.created'").get()!.n).toBe(3);
 });
 
 test("an implicit submission is the producer's only — never the reviewer's notes, a review-woken segment's, or a stranger's", () => {
@@ -460,9 +479,9 @@ test("the supervisor's tick takes on submissions only from level 5", () => {
 test("a rejection sends the ticket and its parts to rework and wakes the producer", () => {
   const f = fixture();
   const produced = segment(f);
+  const { submission } = submitShot(f, produced.id, 3, HASH_A)!;
   f.store.setTurnStatus(produced.id, "completed");
   f.store.db.run("UPDATE work_items SET state = 'idle' WHERE id = ?", [produced.work_item_id]);
-  const { submission } = submit(f, produced.id, [[`${f.ticket.dir}/EP01_shot_03.mp4`, HASH_A]], "implicit")!;
   f.store.settleSubmissionChecks(submission.id);
   const reviewing = segment(f, f.reviewer.id);
   const rejected = f.store.reviewSubmission({ turnId: reviewing.id, outcome: "reject", note: "第 3 镜左右手反了",
@@ -534,15 +553,6 @@ test("parts passed and the reviewer setting show on the board only from level 5"
   const detail = low.store.taskDetail(low.plan.id, () => true);
   expect(detail.submissions_on).toBeUndefined();
   expect(detail.tickets[0]!.parts).toBeUndefined();
-});
-
-test("part numbers come from shot, C and 镜 names, digits or Chinese, and not from words that merely end in c", () => {
-  expect(filenamePartNumbers("work/x/EP01_shot_07.mp4")).toEqual([7]);
-  expect(filenamePartNumbers("C12_v2.mp4")).toEqual([12]);
-  expect(filenamePartNumbers("镜头三.png")).toEqual([3]);
-  expect(filenamePartNumbers("第十二镜.mp4")).toEqual([12]);
-  expect(filenamePartNumbers("music01.mp3")).toEqual([]);
-  expect(filenamePartNumbers("EP01_MASTER.mp4")).toEqual([]);
 });
 
 const DONE_SPEC = { kind: "x", goal: "EP01", acceptance: [], rules: [], process: [], progress: { done: [], open: [], blocked: [] }, status: "active" as const };
@@ -946,27 +956,38 @@ test("a plan-wide complaint with more than one handed-over ticket, or praise of 
   expect(reworkCardsOf(one)).toEqual([]);
 });
 
-test("only the part an objecting clause names is asked about; a question asks nothing; dismissing leaves everything as it was", () => {
+test("a complaint asks about the parts its line is filed under, not every part it mentions; a question asks nothing; dismissing leaves everything as it was", () => {
   const f = fixture();
   const produced = segment(f);
-  const { submission } = submit(f, produced.id, [[`${f.ticket.dir}/shot_07.mp4`, HASH_A], [`${f.ticket.dir}/shot_08.mp4`, HASH_B]])!;
+  const keys = [shotPart(f, 7), shotPart(f, 8)];
+  const { submission } = f.store.prepareSubmission({ turnId: produced.id, origin: "submit",
+    artifacts: [{ path: `${f.ticket.dir}/shot_07.mp4`, sha256: HASH_A }, { path: `${f.ticket.dir}/shot_08.mp4`, sha256: HASH_B }], parts: keys })!;
   f.store.patchTicketByUser(f.ticket.id, { reviewerBotId: f.reviewer.id });
   f.store.settleSubmissionChecks(submission.id);
-  const keys = f.store.db.query<{ key: string }, []>("SELECT key FROM ticket_parts ORDER BY key").all().map((row) => row.key);
-  /** A line filed under both parts, as one naming C07 and C08 is. */
+  /** A line the reading (ADR 0057) filed under the parts it asks about: C07, not the C08 it praises. */
+  const aboutC07 = (body: string) => {
+    const line = f.store.postMessage(f.room.id, { body });
+    f.store.fileMessage(line.id, { read: { source: "model", about: "jobs", targets: [{ taskId: f.plan.id, ticketId: f.ticket.id, partKey: keys[0]! }] } });
+    return line;
+  };
+  /** A line you filed under both parts yourself. */
   const both = (body: string) => {
     const line = f.store.postMessage(f.room.id, { body });
     f.store.fileMessage(line.id, { explicit: keys.map((partKey) => ({ taskId: f.plan.id, ticketId: f.ticket.id, partKey })) });
     return line;
   };
-  const [card] = f.store.noteComplaint(both("C07 跳跃，C08 很好").id);
+  const [card] = f.store.noteComplaint(aboutC07("C07 跳跃，C08 很好").id);
   expect(card!.control).toMatchObject({ part_keys: [keys[0]] });
   expect(f.store.answerReworkCard(card!.id, "dismiss").control).toMatchObject({ acted: ["dismiss"] });
   expect(ticketRow(f).stage).toBe("in_review");
   expect(f.store.getSubmission(submission.id).state).toBe("in_review");
 
-  expect(f.store.noteComplaint(both("C07 是不是太短了？").id)).toEqual([]);
-  const [asked] = f.store.noteComplaint(both("C07 好短啊").id);
+  expect(f.store.noteComplaint(aboutC07("C07 是不是太短了？").id)).toEqual([]);
+  // Filed under both by you, both are asked about.
+  const [mine] = f.store.noteComplaint(both("这两镜都太暗").id);
+  expect(mine!.control).toMatchObject({ part_keys: keys });
+  f.store.answerReworkCard(mine!.id, "dismiss");
+  const [asked] = f.store.noteComplaint(aboutC07("C07 好短啊").id);
   expect(asked!.control).toMatchObject({ part_keys: [keys[0]], offer: ["rework", "dismiss"] });
   // Sending a part in review back supersedes the hand-over, and undo brings it back.
   f.store.answerReworkCard(asked!.id, "rework");
@@ -1045,7 +1066,7 @@ test("undoing a rework takes back the producer's call to redo it, or tells it wh
 
 /** One hand-over of shot_01 by `turnId`, judged on `checkId`'s next run: `outcome`. */
 function shotHandOver(f: Fixture, turnId: string, checkId: string, outcome: "pass" | "fail", n: number) {
-  const { submission } = submit(f, turnId, [[`${f.ticket.dir}/shot_01.mp4`, `${n}`.padStart(64, "0")]])!;
+  const { submission } = submitShot(f, turnId, 1, `${n}`.padStart(64, "0"))!;
   run(f, checkId, outcome, outcome === "fail" ? "107.00 秒，要 108–132 秒" : "");
   return f.store.settleSubmissionChecks(submission.id);
 }
@@ -1064,7 +1085,7 @@ test("the same check failing three hand-overs in a row blocks the part, refuses 
   expect(card!.body).toContain("连续 3 次没过");
   expect(f.store.db.query("SELECT stage FROM ticket_parts").get()).toEqual({ stage: "blocked" });
   expect(f.store.ballHolder({ ticketId: f.ticket.id })).toMatchObject({ kind: "user", reason: "ceiling", ref: card!.id });
-  expect(() => submit(f, produced.id, [[`${f.ticket.dir}/shot_01.mp4`, "9".repeat(64)]])).toThrow("capability ceiling");
+  expect(() => submitShot(f, produced.id, 1, "9".repeat(64))).toThrow("capability ceiling");
 
   // Another way: back to rework, the producer told, the count starts over — one more failure does not block again.
   f.store.answerCeilingCard(card!.id, "another_way");
@@ -1081,7 +1102,7 @@ test("a requirement a review failed three times in a row offers to relax it; rel
   const nose = requirement(f, "R-nose", { times: 2 });
   for (let n = 1; n <= 3; n++) {
     const produced = segment(f);
-    const { submission } = submit(f, produced.id, [[`${f.ticket.dir}/shot_01.mp4`, `${n}`.padStart(64, "0")]])!;
+    const { submission } = submitShot(f, produced.id, 1, `${n}`.padStart(64, "0"))!;
     f.store.settleSubmissionChecks(submission.id);
     f.store.setTurnStatus(produced.id, "completed");
     const reviewing = segment(f, f.reviewer.id);
@@ -1137,7 +1158,7 @@ test("at the ceiling the producer only hears that you are asked, and is not woke
   const produced = segment(f);
   const check = gate(f, "fail");
   for (let n = 1; n <= 3; n++) {
-    const { submission } = submit(f, produced.id, [[`${f.ticket.dir}/shot_01.mp4`, `${n}`.padStart(64, "0")]])!;
+    const { submission } = submitShot(f, produced.id, 1, `${n}`.padStart(64, "0"))!;
     run(f, check.id, "fail", "107.00 秒，要 108–132 秒");
     f.store.settleSubmissionChecks(submission.id, undefined, { tell: true });
   }
@@ -1151,7 +1172,7 @@ test("the whole ticket counts only hand-overs of no part, and only failed ones; 
   const f = fixture();
   const produced = segment(f);
   for (let n = 1; n <= 7; n++) {
-    const { submission } = submit(f, produced.id, [[`${f.ticket.dir}/shot_0${n}.mp4`, `${n}`.padStart(64, "0")]])!;
+    const { submission } = submitShot(f, produced.id, n, `${n}`.padStart(64, "0"))!;
     f.store.settleSubmissionChecks(submission.id);
     superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + n * 1_000));
   }
@@ -1183,7 +1204,7 @@ test("one part approved does not approve the ticket or lift another part's ceili
   for (let n = 1; n <= 3; n++) shotHandOver(f, produced.id, check.id, "fail", n);
   const [card] = ceilingCards(f);
   f.store.db.run("UPDATE acceptance_checks SET removed_at = ? WHERE id = ?", [isoNow(), check.id]);
-  const { submission } = submit(f, produced.id, [[`${f.ticket.dir}/shot_02.mp4`, "2".repeat(64)]])!;
+  const { submission } = submitShot(f, produced.id, 2, "2".repeat(64))!;
   gate(f, "pass");
   f.store.settleSubmissionChecks(submission.id);
   superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
@@ -1191,7 +1212,7 @@ test("one part approved does not approve the ticket or lift another part's ceili
   expect(f.store.db.query("SELECT key, stage FROM ticket_parts ORDER BY key").all()).toEqual([{ key: "shot_01", stage: "blocked" }, { key: "shot_02", stage: "approved" }]);
   expect(ticketRow(f).stage).toBe("doing");
   expect(f.store.getMessage(card!.id).control).toMatchObject({ offer: ["another_way", "another_plan", "accept"] });
-  expect(() => submit(f, produced.id, [[`${f.ticket.dir}/shot_01.mp4`, "1".repeat(64)]])).toThrow("capability ceiling");
+  expect(() => submitShot(f, produced.id, 1, "1".repeat(64))).toThrow("capability ceiling");
 });
 
 

@@ -651,6 +651,12 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       const handOver = (): void => {
         for (const pending of organizing) participation.dropPendingJudgement(pending, true);
       };
+      // Which job the line is about is read by a model too (ADR 0057), beside what it says: the two
+      // calls run at once, so the line waits on the slower one, not on both. Work items file lines
+      // from level 2; below it the organizer's message-time call still does.
+      const where = fromUser && store.capabilities().engine_level >= ENGINE_LEVELS.work_items
+        ? core.track(reader.filing(message))
+        : null;
       // 读句 (ADR 0055): what the line means, read once, before anything below acts on it. A line
       // sent on again after you undid its stop is not waited on: you said it was no control, and
       // what else it says (a complaint) is read as its filing asks.
@@ -685,11 +691,13 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
           } catch {
             filed = message;
           }
-          // The rows decide where a line belongs when they can (ADR 0040 P4b), over the organizer's
-          // filing: a dormant plan is not a candidate, so a complaint lands on the job still live.
+          // The rows place a line by what it refers to (ADR 0040 P4b) and, with nothing to go by,
+          // where the reading says it belongs (ADR 0057); what neither places, the Bot chooses at
+          // its desk. A dormant plan is no candidate of its own, so a complaint lands on the job still live.
           if (store.capabilities().engine_level >= ENGINE_LEVELS.work_items) {
+            const read = where ? await where : null;
             store.updatePlanDormancy();
-            store.fileMessage(message.id);
+            store.fileMessage(message.id, read ? { read } : {});
             filed = store.getMessage(message.id);
             // A complaint about work handed over or approved asks about it before any turn opens on it.
             submissions.noteComplaint(filed.id, reading ? { reading } : {});

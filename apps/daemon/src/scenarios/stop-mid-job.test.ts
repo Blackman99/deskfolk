@@ -15,7 +15,7 @@
  */
 import { afterEach, expect, test } from "bun:test";
 import { confirmGroupLead } from "../store/group-leads";
-import { call, createScenario, requestText, tool, writeFile, type Scenario } from "../test-kit/scenario";
+import { call, createScenario, fileUnder, requestText, tool, writeFile, type Scenario } from "../test-kit/scenario";
 
 const open: Scenario[] = [];
 afterEach(async () => {
@@ -28,6 +28,8 @@ async function posterTeam() {
   const [designer, writer] = h.createBots({ name: "设计师", duties: "海报和视觉；拆活、派活、审稿" }, { name: "文案", duties: "写宣传语" });
   const room = h.group("海报组", [designer!, writer!]);
   confirmGroupLead(h.store, room, designer!.id);
+  // Your lines once the poster job is open are read as about it (ADR 0057).
+  h.judge("read_filing").handle(fileUnder());
   const ticketId = (title: string) => h.store.db.query<{ id: string }, [string]>("SELECT id FROM tickets WHERE title = ?").get(title)?.id ?? null;
   const dirOf = (title: string) => h.store.db.query<{ dir: string }, [string]>("SELECT dir FROM tickets WHERE title = ?").get(title)!.dir;
   return { h, designer: designer!, writer: writer!, room, ticketId, dirOf };

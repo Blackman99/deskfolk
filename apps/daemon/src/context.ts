@@ -307,7 +307,11 @@ export type PlanFacts = {
   /** The plan's active acceptance checks — the app's own evidence, run on this machine. */
   checks: PlanCheckFact[];
   /** The ticket this turn works in, when it has one. */
-  ticket: { id: string; seq: number; title: string; status: TicketStatus; stage?: TicketStage | null; spec: string; dir: string } | null;
+  ticket: {
+    id: string; seq: number; title: string; status: TicketStatus; stage?: TicketStage | null; spec: string; dir: string;
+    /** Its parts, as declared; a hand-over names the ones it covers (ADR 0057: no file name makes one). */
+    parts?: Array<{ key: string; title: string; stage: string }>;
+  } | null;
   /** What the user said in the job; null when nothing is kept, and on the first turn, whose trigger is the request. */
   quotes: QuoteLayer | null;
   /** The requirements ledger's entries bearing on the job, less those the user set not to hold for it. */
@@ -370,6 +374,8 @@ export const REQUIREMENT_ASIDE_LINES = 10;
 const REQUIREMENT_QUOTE_LINE = 200;
 /** Files named on one ticket's line. */
 const TICKET_ARTIFACT_LINES = 3;
+/** Parts named on the turn's own ticket. */
+const TICKET_PART_LINES = 30;
 
 const TICKET_ORDER: Record<TicketStatus, number> = { doing: 0, review: 1, todo: 2, parked: 3, done: 4 };
 
@@ -448,7 +454,9 @@ export function planFacts(
   if (input.ticketId) {
     try {
       const row = store.getTicket(input.ticketId);
-      ticket = { id: row.id, seq: row.seq, title: row.title, status: row.status, ...(row.stage ? { stage: row.stage } : {}), spec: row.spec, dir: row.dir };
+      const parts = store.listTicketParts(row.id).slice(0, TICKET_PART_LINES);
+      ticket = { id: row.id, seq: row.seq, title: row.title, status: row.status, ...(row.stage ? { stage: row.stage } : {}), spec: row.spec, dir: row.dir,
+        ...(parts.length > 0 ? { parts } : {}) };
     } catch {
       ticket = null;
     }
@@ -749,6 +757,17 @@ const TICKET_STAGE_LABEL: Partial<Record<TicketStage, { zh: string; en: string }
   dropped: { zh: "作废", en: "dropped" },
 };
 
+/** A part's stage, as the line naming the turn's ticket's parts says it. */
+const PART_STAGE_LABEL: Record<string, { zh: string; en: string }> = {
+  todo: { zh: "待做", en: "to do" },
+  in_progress: { zh: "进行中", en: "in progress" },
+  submitted: { zh: "已交付", en: "handed over" },
+  approved: { zh: "已通过", en: "approved" },
+  rework: { zh: "返工", en: "rework" },
+  blocked: { zh: "卡住", en: "stuck" },
+  waived: { zh: "不要了", en: "waived" },
+};
+
 function ticketWord(ticket: Pick<PlanTicketFact, "status" | "stage">, locale: Locale): string {
   return (ticket.stage ? TICKET_STAGE_LABEL[ticket.stage]?.[locale] : undefined) ?? TICKET_STATUS_LABEL[ticket.status][locale];
 }
@@ -924,6 +943,15 @@ export function planLines(facts: PlanFacts, locale: Locale): string[] {
       ? `This turn's ticket: ${number} ${facts.ticket.title} (${ticketWord(facts.ticket, "en")})`
       : `本轮任务：${number} ${facts.ticket.title}（${ticketWord(facts.ticket, "zh")}）`;
     lines.push(facts.ticket.spec ? `${head}${en ? " — " : "——"}${oneLineClip(facts.ticket.spec, 600)}` : head);
+    if (facts.ticket.parts && facts.ticket.parts.length > 0) {
+      const named = facts.ticket.parts.map((part) => {
+        const stage = PART_STAGE_LABEL[part.stage]?.[en ? "en" : "zh"] ?? part.stage;
+        return en ? `${part.key} (${part.title}, ${stage})` : `${part.key}（${part.title}·${stage}）`;
+      }).join(en ? ", " : "、");
+      lines.push(en
+        ? `Its parts: ${named}. Name the ones a hand-over covers in submit's parts; without them it is the whole ticket's.`
+        : `它的分件：${named}。交其中几个时在 submit 的 parts 里写明；不写就算整张任务的。`);
+    }
   }
   if (facts.artifacts.length > 0) {
     lines.push(
@@ -1117,7 +1145,12 @@ function situationUserMessage(
       ? "Desk segment: read and reply before choosing a job; work_on selects only the captured candidates below."
       : "桌面段：先读与回答，work_on 只可选本轮已列出的候选。",
       ...candidates.map((line) => `- ${line}`));
-    if (candidates.length === 1) job.push(locale === "en"
+    // The line was read as about none of these jobs (ADR 0057): the first effect opens one for it.
+    const request = store.originalUserRequest(turnId);
+    if (candidates.length > 0 && request && store.lineReadAsNew(request.id)) job.push(locale === "en"
+      ? "The app read the user's line as about none of these jobs: your first effect opens a new job for it. If it is about one of them after all, choose that one with work_on first."
+      : "应用读出这句话不是在说上面哪一件：第一次有副作用的调用会为它新开一件事；其实是在说其中某件的话，先用 work_on 选它。");
+    else if (candidates.length === 1) job.push(locale === "en"
       ? "The first effect defaults to that job; if unrelated, use work_on({new}) and quote the user first."
       : "第一次副作用默认归到这件事；不相干就先 work_on({new}) 引用用户原话。" );
     else if (candidates.length === 0) job.push(locale === "en"

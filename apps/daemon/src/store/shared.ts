@@ -184,6 +184,8 @@ export type MessageRow = {
   annotation_source_message_id?: string | null;
   filing_state?: "filed" | "undetermined" | "none" | null;
   filing_candidates?: string | null;
+  /** 'new' on a line of yours read as about none of the jobs it might have been (ADR 0057). */
+  filing_reading?: string | null;
   /** JSON `AskSpec` on a question that offered choices. */
   ask_spec?: string | null;
   /** JSON `AskAnswer` once you answered the question. */

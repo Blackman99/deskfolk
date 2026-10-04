@@ -25,7 +25,6 @@ import { isoNow, ulid } from "../ids";
 import { derivedNotGate } from "./acceptance-checks";
 import { deliverDelegations } from "./delegations";
 import { confirmDerivedCheck } from "./derived-checks";
-import { filenamePartNumbers, partNumbers, registerFilenameParts } from "./filing";
 import { holdsCovering } from "./holds";
 import { queueInboxItem, refreshHeldInbox } from "./inbox";
 import { getMessage, insertMessage, setMessageControl } from "./messages";
@@ -259,7 +258,10 @@ function setPartStage(ctx: StoreContext, submission: Submission, stage: "submitt
   }
 }
 
-/** The parts a submission is about: those named, else those its files' names number (§8.2 rule 7), made when missing. */
+/**
+ * The parts a submission is about: those the Bot names. A hand-over that names none is the
+ * ticket's as a whole; a file's name never makes it a part's (ADR 0057).
+ */
 function submissionParts(ctx: StoreContext, ticketId: string, artifacts: readonly SubmissionArtifact[], named: unknown): Map<string, string> {
   const parts = new Map<string, string>();
   if (named !== undefined && named !== null) {
@@ -270,10 +272,6 @@ function submissionParts(ctx: StoreContext, ticketId: string, artifacts: readonl
       }
       parts.set(key, artifacts[0]!.path);
     }
-    return parts;
-  }
-  for (const artifact of artifacts) {
-    for (const key of registerFilenameParts(ctx, ticketId, artifact.path)) parts.set(key, artifact.path);
   }
   return parts;
 }
@@ -1668,16 +1666,14 @@ export function noteComplaint(
       && Boolean(ctx.db.query("SELECT 1 FROM requirements WHERE scope = 'part' AND id IN (SELECT value FROM json_each(?))").get(JSON.stringify(input.scribeAdded)));
     const objecting = input.objecting ? [...input.objecting.clauses] : clausesOf(message.body).filter(clauseObjects);
     if (!annotated && !scribed && objecting.length === 0) return [];
-    // Which parts it is about: those an objecting clause numbers; all it was filed under when one
-    // numbers none, or when the signal is the annotation or the scribe's entry rather than words.
-    const numbered = objecting.map(partNumbers);
-    const general = annotated || scribed || numbered.some((numbers) => numbers.length === 0);
-    const named = new Set(numbered.flat());
+    // Which parts it is about: the parts it is filed under — what the reading of where it belongs
+    // named, an annotation's file, the line it quotes or your own choice (ADR 0057) — never a
+    // number picked out of its words.
     const byTicket = new Map<string, { whole: boolean; parts: Set<string> }>();
     for (const filing of filings) {
       const entry = byTicket.get(filing.ticket_id) ?? { whole: false, parts: new Set<string>() };
       if (!filing.part_key) entry.whole = true;
-      else if (general || filenamePartNumbers(filing.part_key).some((n) => named.has(n))) entry.parts.add(filing.part_key);
+      else entry.parts.add(filing.part_key);
       byTicket.set(filing.ticket_id, entry);
     }
     const now = input.now ?? isoNow();

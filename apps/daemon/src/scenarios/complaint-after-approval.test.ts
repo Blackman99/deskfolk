@@ -9,7 +9,7 @@
  */
 import { afterEach, expect, test } from "bun:test";
 import { confirmGroupLead } from "../store/group-leads";
-import { call, createScenario, requestText, tool, writeFile, type Scenario } from "../test-kit/scenario";
+import { call, createScenario, fileUnder, requestText, tool, writeFile, type Scenario } from "../test-kit/scenario";
 
 const open: Scenario[] = [];
 afterEach(async () => {
@@ -27,6 +27,8 @@ test("a complaint about approved work: the card asks you, the lead is told it do
   // The reader takes the line as an objection; every other line, as nothing in particular.
   h.judge("read_user_line").handle(({ payload }) => ({ control: null, control_only: false, status_only: false,
     objections: JSON.stringify(payload ?? "").includes("第三句") ? ["第三句不好，换一句"] : [] }));
+  // And where a line belongs (ADR 0057): about the poster job, the one there is.
+  h.judge("read_filing").handle(fileUnder());
   const stop = call(tool("end_turn", { reason: "nothing_new" }));
   let laidOut = false;
   let reviewed = false;

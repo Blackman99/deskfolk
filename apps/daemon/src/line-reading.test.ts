@@ -1,9 +1,10 @@
 /**
  * 读句 (ADR 0055): what a model's answer must be before anything acts on it, and the word lists'
- * reading the app falls back to when no model can read a line.
+ * reading the app falls back to when no model can read a line. Where a line belongs (ADR 0057) has
+ * no word lists behind it: its answer is checked against the refs the reading was shown.
  */
 import { expect, test } from "bun:test";
-import { botLineByWords, checkBotReading, checkUserReading, readsAsNoWork, userLineByWords } from "./line-reading";
+import { botLineByWords, checkBotReading, checkFilingReading, checkUserReading, readsAsNoWork, userLineByWords, type FilingRefs } from "./line-reading";
 import { parseBotLineAnswer, parseUserLineAnswer } from "./prompts/reader";
 
 test("a reading of your line keeps each objection as the line's own words, however the model copied them", () => {
@@ -77,3 +78,32 @@ test("a line that cannot be a no-work closer by its shape costs no reading", asy
   expect(await readsAsNoWork("这轮我就不说了", read)).toBe(true);
   expect(asked).toEqual(["这轮我就不说了"]);
 });
+
+const REFS: FilingRefs = [
+  { ref: "J1", taskId: "film", tickets: [{ ref: "T1", ticketId: "shots", parts: ["shot_01", "shot_02", "shot_03"] }, { ref: "T2", ticketId: "music", parts: [] }] },
+  { ref: "J2", taskId: "poster", tickets: [{ ref: "T3", ticketId: "draft", parts: [] }] },
+];
+
+test("where a line belongs, as read: jobs, tickets and parts by the refs it was shown, each part a target of its own", () => {
+  expect(checkFilingReading({ about: "jobs", jobs: [{ job: "J1", ticket: "T1", parts: ["shot_01", "shot_03"] }, { job: "J2", ticket: null, parts: [] }] }, REFS)).toEqual({
+    source: "model", about: "jobs",
+    targets: [{ taskId: "film", ticketId: "shots", partKey: "shot_01" }, { taskId: "film", ticketId: "shots", partKey: "shot_03" }, { taskId: "poster", ticketId: null, partKey: null }],
+  });
+  // A part named without its ticket is the ticket's when only one ticket of the job has it.
+  expect(checkFilingReading({ about: "jobs", jobs: [{ job: "J1", parts: ["shot_02"] }] }, REFS)!.targets).toEqual([{ taskId: "film", ticketId: "shots", partKey: "shot_02" }]);
+});
+
+test("refs it was not shown are dropped: a wrong ticket or part leaves the job, a wrong job leaves nothing, and nothing left reads as unclear", () => {
+  expect(checkFilingReading({ about: "jobs", jobs: [{ job: "J1", ticket: "T9", parts: ["shot_09"] }] }, REFS)!.targets).toEqual([{ taskId: "film", ticketId: null, partKey: null }]);
+  expect(checkFilingReading({ about: "jobs", jobs: [{ job: "J1", ticket: "T2", parts: ["shot_01"] }] }, REFS)!.targets).toEqual([{ taskId: "film", ticketId: "music", partKey: null }]);
+  expect(checkFilingReading({ about: "jobs", jobs: [{ job: "J7" }, "J1"] }, REFS)).toEqual({ source: "model", about: "unclear", targets: [] });
+  expect(checkFilingReading({ about: "jobs" }, REFS)).toEqual({ source: "model", about: "unclear", targets: [] });
+});
+
+test("new and unclear carry no targets, whatever else the answer says; anything else is no reading", () => {
+  expect(checkFilingReading({ about: "new", jobs: [{ job: "J1" }] }, REFS)).toEqual({ source: "model", about: "new", targets: [] });
+  expect(checkFilingReading({ about: "unclear" }, REFS)).toEqual({ source: "model", about: "unclear", targets: [] });
+  expect(checkFilingReading({ about: "J1" }, REFS)).toBeNull();
+  expect(checkFilingReading({ jobs: [{ job: "J1" }] }, REFS)).toBeNull();
+});
+

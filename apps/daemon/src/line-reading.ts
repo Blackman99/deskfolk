@@ -2,6 +2,7 @@
  * 读句: what a line means, as the app acts on it (ADR 0055). Whether a line of yours tells the Bots
  * to stop or go on, only asks where the work stands, or objects to what was handed over; whether a
  * Bot's line says the work is still going, claims a run, has nothing in it, or is a bare status.
+ * And which job a line of yours is about (ADR 0057) — that one has no word lists behind it.
  *
  * A model reads each line (`reader.ts`, the prompts in `prompts/reader.ts`); this file holds what the
  * reading is, the checks every answer goes through before anything acts on it (a quoted sentence
@@ -79,6 +80,64 @@ export function botLineByWords(body: string): BotLineReading {
     noWork: isNoWorkCloser(body),
     bareStatus: isBareStatus(body.trim()),
   };
+}
+
+/**
+ * Where a line of yours belongs, as a model read it (ADR 0057). Nothing stands in for the model
+ * here: a line it could not read (`unread`) is the Bot's to place at its desk, as is one it read as
+ * about none of the jobs (`new`) or could not tell which (`unclear`).
+ */
+export type FilingReading = {
+  /** `unread` when no model read it: none set, the call failed or ran out of time, or the answer did not read. */
+  source: "model" | "unread";
+  /** `jobs`: about the jobs in `targets`; `new`: about none of the jobs it might have been; `unclear`: no telling which. */
+  about: "jobs" | "new" | "unclear";
+  /** What it is about, when `jobs`: a job, a ticket of it, a part of that ticket. */
+  targets: Array<{ taskId: string; ticketId: string | null; partKey: string | null }>;
+};
+
+/** The jobs a reading of where a line belongs was shown, by the refs its answer names them with. */
+export type FilingRefs = Array<{ ref: string; taskId: string; tickets: Array<{ ref: string; ticketId: string; parts: string[] }> }>;
+
+/** Where a line goes when no model read it: nowhere yet, for the Bot's desk. */
+export const UNREAD_FILING: FilingReading = { source: "unread", about: "unclear", targets: [] };
+
+const ABOUT = ["jobs", "new", "unclear"] as const;
+/** At most this many targets one reading files a line under. */
+const FILED_MAX = 6;
+
+/**
+ * A model's answer about where a line of yours belongs, checked against what it was shown: a job
+ * by a ref it was given, a ticket of that job, parts that ticket has (a part named without its
+ * ticket is the ticket's when only one ticket of the job has it). A ticket it got wrong leaves the
+ * job; a job it got wrong is dropped, and with none left the line reads as `unclear`. Null when
+ * the answer is not a reading at all.
+ */
+export function checkFilingReading(answer: Record<string, unknown>, refs: FilingRefs): FilingReading | null {
+  const about = answer.about as (typeof ABOUT)[number];
+  if (!ABOUT.includes(about)) return null;
+  if (about !== "jobs") return { source: "model", about, targets: [] };
+  const targets: FilingReading["targets"] = [];
+  const push = (target: FilingReading["targets"][number]): void => {
+    const known = targets.some((t) => t.taskId === target.taskId && t.ticketId === target.ticketId && t.partKey === target.partKey);
+    if (!known && targets.length < FILED_MAX) targets.push(target);
+  };
+  for (const raw of Array.isArray(answer.jobs) ? answer.jobs : []) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const entry = raw as Record<string, unknown>;
+    const job = refs.find((candidate) => candidate.ref === entry.job);
+    if (!job) continue;
+    const named = Array.isArray(entry.parts) ? entry.parts.filter((key): key is string => typeof key === "string" && key !== "") : [];
+    let ticket = typeof entry.ticket === "string" ? job.tickets.find((candidate) => candidate.ref === entry.ticket) ?? null : null;
+    if (!ticket && named.length > 0) {
+      const holders = job.tickets.filter((candidate) => named.every((key) => candidate.parts.includes(key)));
+      if (holders.length === 1) ticket = holders[0]!;
+    }
+    const parts = ticket ? named.filter((key) => ticket!.parts.includes(key)) : [];
+    if (ticket && parts.length > 0) for (const key of parts) push({ taskId: job.taskId, ticketId: ticket.ticketId, partKey: key });
+    else push({ taskId: job.taskId, ticketId: ticket?.ticketId ?? null, partKey: null });
+  }
+  return targets.length > 0 ? { source: "model", about: "jobs", targets } : { source: "model", about: "unclear", targets: [] };
 }
 
 const CONTROL = ["stop", "go_on", "both", "none"] as const;

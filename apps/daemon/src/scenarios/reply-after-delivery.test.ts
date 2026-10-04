@@ -6,15 +6,18 @@
  * wrote 「标题要和 LOGO 对齐」 into the address job's ledger, a card asked about that job's old
  * rules, and two turns on the address job rewrote the brief's files in the routine's folder.
  *
- * A line of yours in a direct that comes right after the Bot's line, with nothing of yours in
- * between, answers that line, the way a quoted reply does: it is filed, by default, under the job
- * that line was on — a routine's standing plan and its dated ticket included.
+ * Which job a line is about is a model's reading now (ADR 0057), and what it reads has to hold
+ * what that morning needed: the lines just before yours, how long ago each was said and which job
+ * each was on, and among the jobs it may choose, the one the Bot's last line was on — a routine's
+ * standing plan and its dated ticket included, which are never candidates by themselves. Read as
+ * an answer to the brief, the line is filed there; read as something new, it is left for the
+ * Bot's desk and never lands on the brief, or on the address job, by default.
  */
 import { afterEach, expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { attributionOptions } from "../store/attribution-options";
-import { call, createScenario, endTurn, say, writeFile, type Scenario } from "../test-kit/scenario";
+import { call, createScenario, endTurn, fileUnder, READ_AS_NEW, say, writeFile, type JudgeContext, type Scenario } from "../test-kit/scenario";
 import { openPlan, planSpec } from "./video-team";
 
 const open: Scenario[] = [];
@@ -59,14 +62,35 @@ async function theMorning(h: Scenario, opts: { briefAgoMs?: number } = {}) {
   return { helper: helper!, dm, address, standing, today };
 }
 
+type Shown = { said: string; before: Array<{ author: string; text: string; ago: string; job?: string }>; jobs: Array<{ ref: string; title: string; tickets: Array<{ ref: string; title: string }> }> };
+
+/** The reading of where your line belongs, kept to look at, answered by `answer`. */
+function readingOf(h: Scenario, answer: (ctx: JudgeContext) => unknown): Shown[] {
+  const shown: Shown[] = [];
+  h.judge("read_filing").handle((ctx) => {
+    shown.push(ctx.payload as Shown);
+    return answer(ctx) as ReturnType<ReturnType<typeof fileUnder>>;
+  });
+  return shown;
+}
+
 test("your complaint right after the routine's brief is filed under the brief's job, and the Bot works on it there", async () => {
   const h = await createScenario({ learning: true });
   open.push(h);
   const { helper, dm, address, standing, today } = await theMorning(h);
 
   h.script(helper, dm).reply(say("好，我把标题放大并和 LOGO 对齐。"));
+  const shown = readingOf(h, fileUnder("每日AI重点新闻简报", { ticket: today.title }));
   const complaint = h.postUser(dm, COMPLAINT);
   await h.waitIdle();
+
+  // What the reading was shown: the brief's job among the jobs, the address job beside it, and the
+  // brief itself as the line just before yours, said minutes ago, on that job.
+  const [read] = shown;
+  const brief = read!.jobs.find((job) => job.title === "每日AI重点新闻简报")!;
+  expect(brief.tickets.map((ticket) => ticket.title)).toContain(today.title);
+  expect(read!.jobs.map((job) => job.title)).toContain("按附件图片里的格式给出一份地址信息");
+  expect(read!.before.at(-1)).toMatchObject({ author: "通识", job: brief.ref, ago: "刚刚" });
 
   expect(h.store.filingsOfMessage(complaint.id).map(({ taskId, ticketId, strength }) => ({ taskId, ticketId, strength }))).toEqual([
     { taskId: standing.id, ticketId: today.id, strength: "default" },
@@ -82,40 +106,52 @@ test("your complaint right after the routine's brief is filed under the brief's 
   expect(listed!.tickets[0]).toEqual({ id: today.id, title: today.title });
 });
 
-test("a line long after the Bot's last one is not read as an answer to it", async () => {
+test("a line long after the Bot's last one: the reading is told how long ago that was, and goes by what it reads", async () => {
   const h = await createScenario({ learning: true });
   open.push(h);
-  const { helper, dm, standing } = await theMorning(h, { briefAgoMs: 3 * 60 * 60 * 1000 });
+  const { helper, dm, standing, address } = await theMorning(h, { briefAgoMs: 3 * 60 * 60 * 1000 });
 
   h.script(helper, dm).reply(say("好的。"));
+  const shown = readingOf(h, () => ({ about: "unclear" }));
   const later = h.postUser(dm, COMPLAINT);
   await h.waitIdle();
 
-  expect(h.store.filingsOfMessage(later.id).some((f) => f.taskId === standing.id)).toBe(false);
+  expect(shown[0]!.before.at(-1)).toMatchObject({ author: "通识", ago: "3 小时前" });
+  // It could not tell: the line is left for the Bot to place, on neither job by default.
+  expect(h.store.getMessage(later.id).filing_state).toBe("undetermined");
+  expect(h.store.filingsOfMessage(later.id).some((f) => f.taskId === standing.id || f.taskId === address.id)).toBe(false);
 });
 
-test("a line of yours in between: the next one is not an answer to the Bot's line", async () => {
+test("a line of yours in between: the reading sees it, between the brief and the line", async () => {
   const h = await createScenario({ learning: true });
   open.push(h);
-  const { helper, dm, standing } = await theMorning(h);
+  const { helper, dm } = await theMorning(h);
 
   h.script(helper, dm).reply(say("好的。"), say("好的。"));
-  // The first goes nowhere in particular: it is the answer to the brief, the second answers nothing.
   h.store.transaction(() => h.store.postMessage(dm, { body: "收到" }));
-  const second = h.postUser(dm, COMPLAINT);
+  const shown = readingOf(h, () => ({ about: "unclear" }));
+  h.postUser(dm, COMPLAINT);
   await h.waitIdle();
 
-  expect(h.store.filingsOfMessage(second.id).some((f) => f.taskId === standing.id)).toBe(false);
+  expect(shown[0]!.before.slice(-2).map(({ author, text }) => ({ author, text }))).toEqual([
+    { author: "通识", text: expect.stringContaining("今天的日报") },
+    { author: "user", text: "收到" },
+  ]);
 });
 
-test("「另外…」 right after the brief asks for something else: it is not filed under the brief", async () => {
+test("「另外…」 right after the brief, read as something else: it is not filed under the brief, and its first effect opens a job of its own", async () => {
   const h = await createScenario({ learning: true });
   open.push(h);
-  const { helper, dm, standing } = await theMorning(h);
+  const { helper, dm, standing, address } = await theMorning(h);
 
-  h.script(helper, dm).reply(say("好的，我先看看。"), call(endTurn()));
+  h.script(helper, dm).reply(call(writeFile("slogans.md", "1. 一杯好咖啡")), call(endTurn()));
+  readingOf(h, () => READ_AS_NEW);
   const other = h.postUser(dm, "另外帮我写三句咖啡店开业宣传语");
   await h.waitIdle();
 
-  expect(h.store.filingsOfMessage(other.id).some((f) => f.taskId === standing.id)).toBe(false);
+  const filed = h.store.filingsOfMessage(other.id);
+  expect(filed.some((f) => f.taskId === standing.id || f.taskId === address.id)).toBe(false);
+  // At the Bot's desk, its first effect opened a job for the line instead of binding a candidate.
+  expect(filed).toHaveLength(1);
+  expect(h.store.getTask(filed[0]!.taskId).title).toBe("另外帮我写三句咖啡店开业宣传语");
 });

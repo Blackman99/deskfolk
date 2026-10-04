@@ -66,7 +66,7 @@ import { createMcpHost, type McpCallResult, type McpHost } from "../mcp-host";
 import { COLLAB_TOOL_NAMES, COMPOSER_SUGGEST_SYSTEM, JUDGEMENT_SYSTEM, type FailKind } from "../prompts";
 import { ORGANIZER_SYSTEM, ORGANIZER_SYSTEM_UNDER_HOLDS } from "../prompts/organizer";
 import { ROUTE_LEARN_SYSTEM, ROUTE_PICK_SYSTEM, ROUTE_REVIEW_SYSTEM } from "../prompts/routing";
-import { READ_BOT_LINE_SYSTEM, READ_USER_LINE_SYSTEM } from "../prompts/reader";
+import { READ_BOT_LINE_SYSTEM, READ_FILING_SYSTEM, READ_USER_LINE_SYSTEM } from "../prompts/reader";
 import { SCRIBE_SYSTEM } from "../prompts/scribe";
 import { TurnAdmission } from "../quiesce";
 import { startScheduler, type Scheduler } from "../scheduler";
@@ -201,6 +201,25 @@ export class Script<C, R> {
   }
 }
 
+/**
+ * A reading of where a line of yours belongs (ADR 0057), for `h.judge("read_filing")`: it files the
+ * line under the job titled `title` (with no title, the one job the reading was shown), on that
+ * job's ticket titled `ticket` and its `parts`, by the refs the reading was given. A job it was not
+ * shown reads as `unclear`, as a model that could not tell would answer.
+ */
+export function fileUnder(title?: string, opts: { ticket?: string; parts?: string[] } = {}): (ctx: JudgeContext) => JudgeAnswer {
+  return ({ payload }) => {
+    const jobs = (payload as { jobs?: Array<{ ref: string; title: string; tickets: Array<{ ref: string; title: string }> }> } | null)?.jobs ?? [];
+    const job = title === undefined ? (jobs.length === 1 ? jobs[0] : undefined) : jobs.find((candidate) => candidate.title === title);
+    if (!job) return { about: "unclear" };
+    const ticket = opts.ticket ? job.tickets.find((candidate) => candidate.title === opts.ticket)?.ref ?? null : null;
+    return { about: "jobs", jobs: [{ job: job.ref, ticket, parts: opts.parts ?? [] }] };
+  };
+}
+
+/** A reading of where a line belongs that says it is about none of the jobs it was shown. */
+export const READ_AS_NEW: JudgeAnswer = { about: "new" };
+
 /** What a scripted turn hop is told about itself. */
 export type HopContext = {
   bot: Bot;
@@ -219,6 +238,12 @@ export type JudgeKind =
   | "organizer" | "scribe" | "judgement" | "route_pick" | "route_review" | "route_learn" | "composer" | "reflect"
   /** 读句 (ADR 0055): a line of yours, a Bot's line. Unscripted, the line is read by the word lists. */
   | "read_user_line" | "read_bot_line"
+  /**
+   * Which job a line of yours is about (ADR 0057). The payload's `jobs` carry refs (`J1`, tickets
+   * `T1`…); answer `{about: "jobs", jobs: [{job: "J1", ticket: null, parts: []}]}`, `{about: "new"}`
+   * or `{about: "unclear"}`. Unscripted, the line is unread and goes to the Bot's desk.
+   */
+  | "read_filing"
   | "other";
 
 /** What a scripted side-call is told: its kind, the parsed payload, and whose it is when that shows. */
@@ -455,6 +480,7 @@ function judgeKindOf(request: JudgeRequest): JudgeKind {
   if (system === reflectionSystem("zh") || system === reflectionSystem("en")) return "reflect";
   if (system === READ_USER_LINE_SYSTEM) return "read_user_line";
   if (system === READ_BOT_LINE_SYSTEM) return "read_bot_line";
+  if (system === READ_FILING_SYSTEM) return "read_filing";
   return "other";
 }
 

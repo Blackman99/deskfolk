@@ -13,7 +13,7 @@ import { isoNow, ulid } from "../ids";
 import { isHeldAbort } from "./holds";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import { findOrCreateWorkItem, markSegmentCutOff, queuePlace, queueWork, settleRunningWork } from "./work-items";
-import { planCandidates } from "./filing";
+import { lineCandidates } from "./filing";
 import { releaseEndedInbox } from "./inbox";
 import { getMessage } from "./messages";
 import {
@@ -110,8 +110,10 @@ export function createTurn(
       throw heldError(error);
     }
     // Capture once at admission: a later plan must not silently become a desk turn's candidate.
+    // The jobs of the lines just before the trigger are among them (ADR 0057), as they were for
+    // the reading of where the line belongs: what the reading could not place, the Bot can.
     if (readEngineLevel(ctx.db) >= ENGINE_LEVELS.work_items && !readOnly) {
-      const candidates = planCandidates(ctx, { sessionId: input.sessionId, botId: input.botId }).map((plan) => plan.id);
+      const candidates = lineCandidates(ctx, { sessionId: input.sessionId, botId: input.botId, messageId: input.triggerMessageId }).map((plan) => plan.id);
       if (taskId && !candidates.includes(taskId)) candidates.unshift(taskId);
       ctx.db.run(`UPDATE turns SET filing_candidates = ? WHERE id = ?`, [JSON.stringify(candidates), id]);
     }

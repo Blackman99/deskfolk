@@ -299,7 +299,10 @@ CREATE TABLE IF NOT EXISTS messages (
   bot_only INTEGER NOT NULL DEFAULT 0,
   filing_state TEXT CHECK (filing_state IS NULL OR filing_state IN ('filed', 'undetermined', 'none')),
   -- Candidate ids fixed when this message was filed, never recomputed when applying a model answer.
-  filing_candidates TEXT
+  filing_candidates TEXT,
+  -- 'new' on a line of yours a model read as about none of the jobs it might have been (ADR 0057):
+  -- left unplaced for the Bot's desk, whose first effect opens a job for it. Null otherwise.
+  filing_reading TEXT
 );
 
 CREATE TABLE IF NOT EXISTS message_filings (

@@ -244,7 +244,7 @@ export const SUBMIT: ToolDef = {
   },
   properties: {
     artifacts: { type: "array", items: { type: "string" }, description: { zh: "交付的文件路径，相对工作区或你的工作目录。", en: "The delivered files, relative to the workspace or your work dir." } },
-    parts: { type: "array", items: { type: "string" }, description: { zh: "这次交的分件编号（如 shot_07）；省略时按文件名认。", en: "Part keys this covers (shot_07); read from the file names when omitted." } },
+    parts: { type: "array", items: { type: "string" }, description: { zh: "这次交的分件（任务列出的 key，如 shot_07）；不写就算整张任务的，文件名不会被当成分件。", en: "Part keys this covers, as the ticket lists them (shot_07); without them the hand-over is the whole ticket's — file names are not read as parts." } },
     claims: {
       type: "array",
       description: {

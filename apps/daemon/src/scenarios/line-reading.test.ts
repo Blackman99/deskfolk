@@ -10,7 +10,7 @@
  * reading that does the work.
  */
 import { afterEach, expect, test } from "bun:test";
-import { call, createScenario, requestText, sendMessage, tool, type HopContext, type Scenario, type ScenarioOptions, type ToolOutcome } from "../test-kit/scenario";
+import { call, createScenario, fileUnder, requestText, sendMessage, tool, type HopContext, type Scenario, type ScenarioOptions, type ToolOutcome } from "../test-kit/scenario";
 import { openPlan, planSpec, videoTeam } from "./video-team";
 
 const open: Scenario[] = [];
@@ -83,6 +83,8 @@ test("a complaint the lists miss asks to send the handed-over work back", async 
     const plan = openPlan(h, room, "一拳超人", planSpec("一拳超人风格可播放短片"));
     const ticket = h.store.createTicket({ taskId: plan.id, title: "一拳超人风格可播放短片", status: "review", worker: director.id });
     if (read) h.judge("read_user_line").reply({ ...NOTHING, objections: ["这版节奏拖沓", "整个推掉吧"] });
+    // About the film, either way (ADR 0057): what is read here is whether it objects.
+    h.judge("read_filing").reply(fileUnder("一拳超人"));
     h.script(director).handle(() => call(tool("end_turn", { reason: "nothing_new" })));
     h.postUser(room, "@视频导演 这版节奏拖沓，整个推掉吧");
     await h.waitIdle();

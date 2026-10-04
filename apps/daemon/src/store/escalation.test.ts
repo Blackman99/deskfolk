@@ -28,8 +28,12 @@ function fixture(level: number = ENGINE_LEVELS.routing) {
 }
 type Fixture = ReturnType<typeof fixture>;
 
-function handOver(f: Fixture, n: number, outcome: "pass" | "fail", file = "master.mp4") {
-  const { submission } = f.store.prepareSubmission({ turnId: f.turn.id, origin: "submit", artifacts: [{ path: `${f.ticket.dir}/${file}`, sha256: `${n}`.padStart(64, "0") }] })!;
+/** A hand-over of the master, or of part `part` (declared as the lead does, named as the Bot does). */
+function handOver(f: Fixture, n: number, outcome: "pass" | "fail", part?: string) {
+  if (part) f.store.db.run(`INSERT OR IGNORE INTO ticket_parts (id, ticket_id, key, title, declared_by) VALUES (?, ?, ?, ?, 'plan_items')`, [`part-${part}`, f.ticket.id, part, part]);
+  const file = part ? `${part}.mp4` : "master.mp4";
+  const { submission } = f.store.prepareSubmission({ turnId: f.turn.id, origin: "submit", artifacts: [{ path: `${f.ticket.dir}/${file}`, sha256: `${n}`.padStart(64, "0") }],
+    ...(part ? { parts: [part] } : {}) })!;
   for (const [i, id] of f.checks.entries()) {
     const run = f.store.beginCheckRun(id, "settle");
     f.store.finishCheckRun(run.id, { outcome: outcome === "fail" && i === n % 2 ? "fail" : "pass", exitCode: null, detail: "", output: null });
@@ -71,12 +75,12 @@ function approveUnreviewed(f: Fixture, submissionId: string) {
 test("one part approved keeps the job stepped up while another part is still failing; the ticket's approval puts it back", () => {
   const f = fixture();
   const work = f.turn.work_item_id!;
-  handOver(f, 1, "fail", "shot_01.mp4");
-  handOver(f, 2, "fail", "shot_01.mp4");
+  handOver(f, 1, "fail", "shot_01");
+  handOver(f, 2, "fail", "shot_01");
   expect(f.store.workEscalation(work)).toBe(1);
-  approveUnreviewed(f, handOver(f, 3, "pass", "shot_02.mp4").submission.id);
+  approveUnreviewed(f, handOver(f, 3, "pass", "shot_02").submission.id);
   expect(f.store.workEscalation(work)).toBe(1);
-  approveUnreviewed(f, handOver(f, 4, "pass", "shot_01.mp4").submission.id);
+  approveUnreviewed(f, handOver(f, 4, "pass", "shot_01").submission.id);
   expect(f.store.workEscalation(work)).toBe(0);
 });
 

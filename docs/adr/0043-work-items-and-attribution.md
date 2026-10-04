@@ -70,3 +70,10 @@ Your manual correction could only pick a job that existed, so a new request file
 I8 只允许一段的目录在动手之前变一次。原来这只用于「拆出新事」：一段绑到某张任务（或整件事）后，就算什么都没做，也换不到同一件事的另一张任务。负责人被叫醒得知宣传语已通过，想接着做自己的海报，`work_on` 被拒，只能等监督器几分钟后另开一段。现在同一件事里的另一张任务，对还没写过文件、没跑过命令、目录没用过的一段开放，判断和拆出新事一样；换到别的事仍然不行。
 
 I8 lets a segment's directory change once, before any effect. That was only used to split a new job off: a segment bound to one ticket (or to the whole job) could not move to another ticket of the same job, even having done nothing. A lead woken with the slogans approved was refused `work_on` for its own poster and waited minutes for the supervisor to open a segment on it. Now another ticket of the same job is open to a segment that has written no file, run no command and not used its directory, judged as a split is; another job is still refused.
+
+## 2026-10-04 补记：默认规则换成模型读 / The defaults become a reading
+
+默认来源 6–9、句首「另外 / 再帮我 / 新做 / 顺便」的提示、话里的分件编号（规则 7）和交付文件名认出的分件都去掉了，见 [ADR 0057](0057-the-job-a-line-is-about-is-read.md)：没有锁定信号时，这句话在说哪件事由模型读（规则 9 要的上下文——之前几句、各归在哪件事、多久以前、日程的常驻规划——都在它看到的东西里），读不出的交给桌面段，桌面段的候选和读法看到的是同一份。锁定来源 1–5 不变。
+
+Default sources 6–9, the 「另外 / 再帮我 / 新做 / 顺便」 opening hint, part numbers in the line (rule 7) and parts read from delivered file names are gone; see [ADR 0057](0057-the-job-a-line-is-about-is-read.md). With no locked signal, a model reads which job the line is about (what rule 9 needed — the lines before, the job each was on, how long ago, a routine's standing plan — is all in what it is shown), and a line it cannot place goes to the desk, which captures the same candidates. Locked sources 1–5 are unchanged.
+

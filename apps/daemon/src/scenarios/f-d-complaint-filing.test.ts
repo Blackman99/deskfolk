@@ -10,11 +10,12 @@
  * nothing was sent back for rework.
  *
  * Target, in two steps:
- * - ADR 0040 P4b (deterministic attribution) flips the first test: EP01 went dormant (from P3) when
- *   the group was cleared after its last activity, so 审片员's only live candidate is the film (the
- *   job it reviewed Shots 01–03 in; a group plan it never worked on would be none), and
- *   「前三镜」 names its Shots 01–03. The line is filed there, 审片员 works on it there, and
- *   视频导演's running turn on the film reads it at its next step.
+ * - ADR 0040 P4b flips the first test: EP01 went dormant (from P3) when the group was cleared after
+ *   its last activity, so 审片员's only live job is the film (the job it reviewed Shots 01–03 in; a
+ *   group plan it never worked on would be none). Which job the line is about, and which of the
+ *   shots the lead laid out it names, is a model's reading of it (ADR 0057): here, the film's
+ *   Shots 01–03. The line is filed there, 审片员 works on it there, and 视频导演's running turn
+ *   on the film reads it at its next step.
  * - ADR 0040 P4e (submissions, reviews and parts; ADR 0046's complaint rule) flips the second: at
  *   engine level 5 a complaint about approved work asks, on a card, whether to send it back; sent
  *   back, Shots 01–03 reopen part by part and the director, who made them, is woken with what you
@@ -28,7 +29,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CompletionRequest } from "../completions";
-import { call, createScenario, endTurn, requestText, say, shell, type Scenario } from "../test-kit/scenario";
+import { call, createScenario, endTurn, fileUnder, requestText, say, shell, type Scenario } from "../test-kit/scenario";
 import { openPlan, planSpec, videoTeam } from "./video-team";
 
 const open: Scenario[] = [];
@@ -58,6 +59,12 @@ async function theMorning(h: Scenario, opts: { directorAtWork?: boolean } = {}) 
   const shots = ["shot_01.mp4", "shot_02.mp4", "shot_03.mp4"].map((name) => `${firstThree.dir}/${name}`);
   mkdirSync(join(h.root, firstThree.dir), { recursive: true });
   for (const path of shots) writeFileSync(join(h.root, path), "shot");
+  // The lead laid the three shots out as the ticket's parts (plan_items): what a line can name.
+  for (const [i, path] of shots.entries()) {
+    const key = `shot_0${i + 1}`;
+    h.store.db.run(`INSERT INTO ticket_parts (id, ticket_id, key, title, declared_by, stage, current_artifact) VALUES (?, ?, ?, ?, 'plan_items', 'approved', ?)`,
+      [`part-${key}`, firstThree.id, key, `Shot 0${i + 1}`, path]);
+  }
   const delivered = h.store.insertMessage({ sessionId: room, kind: "bot", author: director.id, body: "Shot 01–03 交付", paths: shots });
   h.store.db.run(`UPDATE messages SET task_id = ?, ticket_id = ? WHERE id = ?`, [echo.id, firstThree.id, delivered.id]);
   // 05:58: 审片员 passed them, in a segment of its own on the film: that, not being in the group, is
@@ -96,6 +103,8 @@ async function theMorning(h: Scenario, opts: { directorAtWork?: boolean } = {}) 
     message_ticket: null,
   });
   h.script(reviewer, reviewerDm).reply(say("收到，前三镜我让视频导演重做"));
+  // How it is read now (ADR 0057): about the film, its first three shots.
+  h.judge("read_filing").reply(fileUnder("回响纪元", { ticket: "Shot 01–03", parts: ["shot_01", "shot_02", "shot_03"] }));
 
   const complaint = h.postUser(reviewerDm, COMPLAINT);
   await h.routed();
@@ -137,7 +146,7 @@ test("the complaint sends the approved Shots 01–03 back for rework", async () 
   expect(h.store.getTicket(firstThree.id)).toMatchObject({ status: "doing", stage: "rework" });
   // The director, who made them, is woken with what you said.
   expect(heard.map((request) => requestText(request).includes("前三镜背景严重跳跃"))).toEqual([true]);
-  // Part by part: 「前三镜」 named the three shots it was filed under.
+  // Part by part: the reading named the three shots it was filed under.
   expect(h.store.db.query("SELECT key, stage FROM ticket_parts WHERE ticket_id = ? ORDER BY key").all(firstThree.id))
     .toEqual([{ key: "shot_01", stage: "rework" }, { key: "shot_02", stage: "rework" }, { key: "shot_03", stage: "rework" }]);
   expect(h.store.getMessage(card!.id).control).toMatchObject({ offer: ["undo"], result: "已转回返工。" });

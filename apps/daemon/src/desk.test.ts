@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { runCollabTool } from "./collab-tools";
 import { Store } from "./store";
-import { call, createScenario, endTurn, writeFile } from "./test-kit/scenario";
+import { call, createScenario, endTurn, READ_AS_NEW, requestText, writeFile } from "./test-kit/scenario";
 import { assembleTurnMessages } from "./context";
 
 const stores: Store[] = [];
@@ -269,12 +269,13 @@ test("a cold corrected work item adopts and reads the correction when its segmen
   } finally { await h.close(); }
 });
 
-test("a default filing can be split into a quoted new job before its first effect", async () => {
+test("a filing the reading made can be split into a quoted new job before its first effect", async () => {
   const { store, worker, ctx, turn: initial } = fixture();
   store.setTurnStatus(initial.id, "completed");
   const a = store.openTask({ sessionId: ctx.sessionId, title: "Report" });
   const line = store.postMessage(ctx.sessionId, { body: "Make a website" });
-  store.fileMessage(line.id, { botId: worker.bot.id });
+  // The reading put it under the report (ADR 0057): a default the Bot may still split off.
+  store.fileMessage(line.id, { botId: worker.bot.id, read: { source: "model", about: "jobs", targets: [{ taskId: a.id, ticketId: null, partKey: null }] } });
   expect(store.getMessage(line.id).task_id).toBe(a.id);
   const turn = store.createTurn({ sessionId: ctx.sessionId, botId: worker.bot.id, triggerMessageId: line.id });
   const result = await runCollabTool({ ...ctx, turnId: turn.id }, "work_on", { plan: { new: { title: "Website", quote_message_id: line.id } } });
@@ -448,3 +449,39 @@ test("work_on cannot move a desk turn into a plan outside its captured candidate
   expect(store.getTurn(turn.id).task_id).toBeNull();
   expect(store.getTask(foreign.id).title).toBe("Private job");
 });
+
+test("a line read as about none of the jobs gets a job of its own at the first effect, even beside several, and the desk is told", async () => {
+  const h = await createScenario({ workItems: true, locale: "en" });
+  try {
+    const [bot] = h.createBots("Writer");
+    const direct = h.direct(bot!);
+    for (const title of ["Report", "Website"]) h.store.openTask({ sessionId: direct, title });
+    h.judge("read_filing").reply(READ_AS_NEW);
+    h.script(bot!).reply(call(writeFile("poem.md", "roses")), call(endTurn()));
+    const line = h.postUser(direct, "Write me a poem");
+    await h.waitIdle();
+
+    expect(requestText(h.hops(bot!)[0]!.request)).toContain("The app read the user's line as about none of these jobs");
+    expect(h.toolCalls(bot!, "write_file").map((row) => row.result?.ok)).toEqual([true]);
+    const filed = h.store.filingsOfMessage(line.id);
+    expect(filed).toHaveLength(1);
+    expect(h.store.getTask(filed[0]!.taskId).title).toBe("Write me a poem");
+  } finally { await h.close(); }
+});
+
+test("among several jobs with no reading to go by, the first effect waits for the Bot's choice, a new job among the choices", async () => {
+  const h = await createScenario({ workItems: true, locale: "en" });
+  try {
+    const [bot] = h.createBots("Writer");
+    const direct = h.direct(bot!);
+    for (const title of ["Report", "Website"]) h.store.openTask({ sessionId: direct, title });
+    h.judge("read_filing").reply({ about: "unclear" });
+    h.script(bot!).reply(call(writeFile("x.md", "x")), call(endTurn()));
+    h.postUser(direct, "Change it");
+    await h.waitIdle();
+
+    expect(h.toolCalls(bot!, "write_file").map((row) => row.result)).toEqual([{ ok: false, error: "needs_filing" }]);
+    expect(requestText(h.hops(bot!)[1]!.request)).toContain("or {new:{title, quote_message_id}} quoting the user's line when it is about none of them");
+  } finally { await h.close(); }
+});
+

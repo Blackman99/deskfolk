@@ -47,8 +47,8 @@ test("a default may split before acting, but durable directory use or in-flight 
     const { store, ctx, bot, sessionId, turn: initial } = fixture();
     store.setTurnStatus(initial.id, 'completed');
     const existing = store.openTask({ sessionId, title: 'Default candidate' });
-    const line = store.postMessage(sessionId, { body: 'Another deliverable without the heuristic prefix' });
-    store.fileMessage(line.id, { botId: bot.id });
+    const line = store.postMessage(sessionId, { body: 'Another deliverable the reading took for the old job' });
+    store.fileMessage(line.id, { botId: bot.id, read: { source: 'model', about: 'jobs', targets: [{ taskId: existing.id, ticketId: null, partKey: null }] } });
     const turn = store.createTurn({ sessionId, botId: bot.id, triggerMessageId: line.id });
     expect(turn.task_id).toBe(existing.id);
     if (evidence === 'persisted') store.markWorkDirectoryUsed(turn.id);

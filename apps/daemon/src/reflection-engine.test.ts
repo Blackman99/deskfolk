@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { isoNow } from "./ids";
-import { createScenario, requestText, say, type Scenario } from "./test-kit/scenario";
+import { createScenario, fileUnder, requestText, say, type Scenario } from "./test-kit/scenario";
 
 const open: Scenario[] = [];
 afterEach(async () => {
@@ -45,6 +45,7 @@ test("a review miss becomes the reviewer's checklist item only once you adopt it
   expect(h.judgeCalls("reflect")).toHaveLength(1);
 
   h.script(reviewer!, room).reply(say("我再看一遍"));
+  h.judge("read_filing").reply(fileUnder("EP01", { ticket: "第七镜" }));
   h.postUser(room, "@审片员 再看看 EP01 第七镜");
   await h.waitIdle();
   const [hop] = h.hops(reviewer!);

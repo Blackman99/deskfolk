@@ -18,6 +18,9 @@
  *   POST /__next  { judgement }     — queue one participation judgement: "join", "pass", or `{ decision, reason }`.
  *                                     Without one a judgement still answers `{}`, which reads as a pass.
  *   POST /__next  { coverage }      — queue one goal-coverage verdict (a JSON string, or an object to stringify).
+ *   POST /__next  { filing }        — queue one reading of where a line belongs (ADR 0057), e.g.
+ *                                     `{ about: "jobs", jobs: [{ job: "J1", ticket: null, parts: [] }] }` or `{ about: "new" }`.
+ *                                     Without one it reads a line as about the one job it was shown, else `unclear`.
  *   GET  /__log                     — every request received, newest last (messages trimmed).
  *
  * Rules for a streamed turn, when nothing is queued:
@@ -37,6 +40,7 @@ const organizerQueue: string[] = [];
 const scribeQueue: string[] = [];
 const judgementQueue: string[] = [];
 const coverageQueue: string[] = [];
+const filingQueue: string[] = [];
 const log: Array<{ at: string; stream: boolean; tools: string[]; last: string; images: number }> = [];
 let callSeq = 0;
 
@@ -76,6 +80,24 @@ function isJudgementCall(messages: ChatMessage[]): boolean {
 
 function isCoverageCall(messages: ChatMessage[]): boolean {
   return systemStarts(messages, "你在核对一件事做完了没有");
+}
+
+function isFilingCall(messages: ChatMessage[]): boolean {
+  return systemStarts(messages, "你在替一个多 Bot 协作应用判断用户刚说的一句话是在说哪件事");
+}
+
+/** Where a line belongs, when nothing is queued: the one job the reading was shown, else no telling. */
+function filing(messages: ChatMessage[]): string {
+  const queued = filingQueue.shift();
+  if (queued) return queued;
+  let payload: { jobs?: Array<{ ref: string }> } = {};
+  try {
+    payload = JSON.parse(text(messages.filter((m) => m.role === "user").at(-1)?.content ?? "{}")) as typeof payload;
+  } catch {
+    payload = {};
+  }
+  const jobs = payload.jobs ?? [];
+  return JSON.stringify(jobs.length === 1 ? { about: "jobs", jobs: [{ job: jobs[0]!.ref, ticket: null, parts: [] }] } : { about: "unclear" });
 }
 
 /**
@@ -205,6 +227,7 @@ const server = Bun.serve({
         scribe?: string | Record<string, unknown>;
         judgement?: string | Record<string, unknown>;
         coverage?: string | Record<string, unknown>;
+        filing?: string | Record<string, unknown>;
       };
       if (body.reply) queue.push(body.reply);
       if (body.organizer !== undefined) organizerQueue.push(typeof body.organizer === "string" ? body.organizer : JSON.stringify(body.organizer));
@@ -214,12 +237,14 @@ const server = Bun.serve({
         judgementQueue.push(typeof verdict === "string" ? verdict : JSON.stringify(verdict));
       }
       if (body.coverage !== undefined) coverageQueue.push(typeof body.coverage === "string" ? body.coverage : JSON.stringify(body.coverage));
+      if (body.filing !== undefined) filingQueue.push(typeof body.filing === "string" ? body.filing : JSON.stringify(body.filing));
       return Response.json({
         queued: queue.length,
         organizer: organizerQueue.length,
         scribe: scribeQueue.length,
         judgement: judgementQueue.length,
         coverage: coverageQueue.length,
+        filing: filingQueue.length,
       });
     }
     if (request.method === "POST" && url.pathname === "/v1/chat/completions") {
@@ -242,7 +267,9 @@ const server = Bun.serve({
               ? (judgementQueue.shift() ?? "{}")
               : isCoverageCall(messages)
                 ? coverage(messages)
-                : "{}";
+                : isFilingCall(messages)
+                  ? filing(messages)
+                  : "{}";
         return Response.json({ choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }], usage: { prompt_tokens: 10, completion_tokens: 1, total_tokens: 11 } });
       }
       return streamed(decide(messages));

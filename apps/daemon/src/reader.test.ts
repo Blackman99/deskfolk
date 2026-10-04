@@ -6,7 +6,7 @@
 import { afterEach, expect, test } from "bun:test";
 import type { CompletionsClient, JudgeRequest, JudgeResult } from "./completions";
 import type { OrganizerRouting } from "./organizer";
-import { READ_BOT_LINE_SYSTEM, READ_USER_LINE_SYSTEM, type UserLinePayload } from "./prompts/reader";
+import { READ_BOT_LINE_SYSTEM, READ_FILING_SYSTEM, READ_USER_LINE_SYSTEM, type FilingPayload, type UserLinePayload } from "./prompts/reader";
 import { createReader, READER_MAX_TOKENS, type ReaderDeps } from "./reader";
 import { Store } from "./store";
 
@@ -170,3 +170,57 @@ test("stopping abandons a reading in flight, which the word lists then read", as
   expect((await reading).source).toBe("words");
   expect(h.answers()).toMatchObject([{ fail: "stopped" }]);
 });
+
+test("where a line of yours belongs is read once, shown the jobs it may be about by ref, with the lines before it and their jobs", async () => {
+  const h = harness((request) => judged(request.messages[0]!.content === READ_FILING_SYSTEM
+    ? JSON.stringify({ about: "jobs", jobs: [{ job: "J1", ticket: "T1", parts: [] }] }) : STOP));
+  const film = h.store.openTask({ sessionId: h.direct, title: "回响纪元" });
+  const shots = h.store.createTicket({ taskId: film.id, title: "Shot 01–03", spec: "", status: "doing", worker: h.director.bot.id });
+  const handed = h.store.insertMessage({ sessionId: h.direct, kind: "bot", author: h.director.bot.id, body: "Shot 01–03 交了" });
+  h.store.db.run("UPDATE messages SET task_id = ?, ticket_id = ? WHERE id = ?", [film.id, shots.id, handed.id]);
+  const line = h.store.postMessage(h.direct, { body: "前三镜背景跳了" });
+
+  const reading = await h.reader.filing(line);
+  expect(reading).toEqual({ source: "model", about: "jobs", targets: [{ taskId: film.id, ticketId: shots.id, partKey: null }] });
+  expect(await h.reader.filing(line)).toBe(reading);
+  expect(h.requests).toHaveLength(1);
+  const request = h.requests[0]!;
+  expect(request).toMatchObject({ lane: "reading", maxTokens: READER_MAX_TOKENS, model: "reader-model" });
+  const payload = JSON.parse(String(request.messages[1]!.content)) as FilingPayload;
+  expect(payload).toEqual({
+    said: "前三镜背景跳了",
+    where: "direct",
+    before: [{ author: "视频导演", text: "Shot 01–03 交了", ago: "刚刚", job: "J1" }],
+    jobs: [{ ref: "J1", title: "回响纪元", stage: "进行中", last_active: "刚刚",
+      tickets: [{ ref: "T1", title: "Shot 01–03", state: "进行中", owner: "视频导演" }] }],
+  });
+  expect(h.answers()).toEqual([{ read: "filing", message_id: line.id, source: "model", model: "reader-model", fail: null, reading,
+    raw: JSON.stringify({ about: "jobs", jobs: [{ job: "J1", ticket: "T1", parts: [] }] }) }]);
+});
+
+test("where a line belongs is not read when nothing is left to decide: no job open, or a reference places it", async () => {
+  const h = harness(() => judged(STOP));
+  expect(await h.reader.filing(h.store.postMessage(h.direct, { body: "你好" }))).toBeNull();
+  const film = h.store.openTask({ sessionId: h.direct, title: "回响纪元" });
+  const said = h.store.postMessage(h.direct, { body: "做片子" });
+  h.store.fileMessage(said.id, { explicit: [{ taskId: film.id }] });
+  expect(await h.reader.filing(h.store.postMessage(h.direct, { body: "再快一点", parent_id: said.id }))).toBeNull();
+  expect(h.requests).toEqual([]);
+});
+
+test("no word list stands in for where a line belongs: with no model, a failed call or no reading, it is unread and left for the Bot's desk", async () => {
+  for (const [answer, routing, fail] of [
+    [() => judged(STOP), null, "no_model"],
+    [() => Promise.reject(new Error("boom")), ROUTING, "call_error"],
+    [() => judged("另外开头的是新事"), ROUTING, "unreadable"],
+  ] as const) {
+    const h = harness(answer as () => JudgeResult, { routing });
+    h.store.openTask({ sessionId: h.direct, title: "回响纪元" });
+    const line = h.store.postMessage(h.direct, { body: "另外帮我写首诗" });
+    expect(await h.reader.filing(line)).toEqual({ source: "unread", about: "unclear", targets: [] });
+    expect(h.answers()).toMatchObject([{ read: "filing", source: "unread", fail }]);
+    // A call that was made says so in the log.
+    if (fail !== "no_model") expect(h.logged.at(-1)).toContain(`${fail}, left for the Bot's desk`);
+  }
+});
+

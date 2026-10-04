@@ -5,7 +5,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { call, createScenario, endTurn, failed, tool, type Scenario, type ToolOutcome } from "./test-kit/scenario";
+import { call, createScenario, endTurn, failed, fileUnder, tool, type Scenario, type ToolOutcome } from "./test-kit/scenario";
 import { openPlan, planSpec } from "./scenarios/video-team";
 
 const open: Scenario[] = [];
@@ -158,6 +158,8 @@ function onTicket(h: Scenario) {
   const plan = openPlan(h, dm, "EP01", planSpec("EP01 开场"));
   const ticket = h.store.createTicket({ taskId: plan.id, title: "开场白", status: "doing", worker: writer!.id });
   h.judge("organizer", { session: dm }).reply({ decision: "join", join_plan_id: plan.id, plan: planSpec("EP01 开场"), tickets: [], message_ticket: ticket.id });
+  // Your lines here are read as about EP01 (ADR 0057).
+  h.judge("read_filing").handle(fileUnder("EP01"));
   return { writer: writer!, dm };
 }
 

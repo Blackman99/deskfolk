@@ -11,7 +11,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { CompletionResult } from "./completions";
 import type { ClientEvent, Hold } from "@real-bot/protocol";
 import { openPlan, planSpec, videoTeam } from "./scenarios/video-team";
-import { call, checkBack, createScenario, endTurn, requestText, say, sendMessage, shell, tool, type Scenario, type ScenarioOptions } from "./test-kit/scenario";
+import { call, checkBack, createScenario, endTurn, fileUnder, requestText, say, sendMessage, shell, tool, type Scenario, type ScenarioOptions } from "./test-kit/scenario";
 
 const open: Scenario[] = [];
 afterEach(async () => {
@@ -23,6 +23,9 @@ afterEach(async () => {
 async function scenario(options: ScenarioOptions = { workItems: true }): Promise<Scenario> {
   const h = await createScenario(options);
   open.push(h);
+  // Where a line of yours belongs is a model's reading (ADR 0057); here it reads a line as about
+  // the one job it was shown, as these lines are, and leaves it unplaced among several.
+  h.judge("read_filing").handle(fileUnder());
   return h;
 }
 
@@ -1306,8 +1309,14 @@ describe("buttons on the app's lines about your stops", () => {
     const [hold] = holds(h);
     expect([shooting, writing].map((turn) => h.store.getTurn(turn.id).status)).toEqual(["stopped", "stopped"]);
 
-    h.script(director, room).reply(call(endTurn()));
-    h.script(writer, room).reply(call(endTurn()));
+    // The reopened work is still at it when your line, sent on, has been read and filed: the next
+    // step hears it there, and the work ends after it.
+    const atIt = async () => {
+      await h.waitFor(() => h.store.getMessage(stop.id).filing_state !== undefined, { what: "the line sent on to be filed" });
+      return call(tool("list_bots"));
+    };
+    h.script(director, room).reply(atIt, call(endTurn()));
+    h.script(writer, room).reply(atIt, call(endTurn()));
     h.engine.control(receipt.id, { action: "undo" });
     await h.waitIdle();
 

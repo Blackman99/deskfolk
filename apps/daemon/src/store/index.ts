@@ -126,6 +126,7 @@ export type { DerivedChecksChange } from "./derived-checks";
 export { TICKET_STATUSES, TICKETS_MAX, TICKET_SPEC_MAX, TICKET_TITLE_MAX, isTicketStatus } from "./tickets";
 export { checkLines, gateFailed, inTicketDir, ticketStage, type Submission as StoredSubmission, type SubmissionCheck, type SettledSubmission, type ReviewResult } from "./submissions";
 export { jobArgsDigest, promptPartNumber, type ExternalJob, type JobState } from "./external-jobs";
+export type { JobToFile, LineToFile } from "./filing";
 export { ORGANIZER_NEW_TICKETS_MAX, titleKey } from "./plan-spec";
 export type { OrganizerResult, OrganizerTicketInput, SpecRevisionRow } from "./plan-spec";
 export { CHECK_BACK_MAX_MINUTES, CHECK_BACK_MIN_MINUTES, CHECK_BACK_NOTE_MAX, PLAN_NUDGE_NOTE_MAX, repeatsPlanAnswer } from "./check-backs";
@@ -437,6 +438,7 @@ export class Store {
   readonly createTicket = this.bind(tickets.createTicket);
   readonly getTicket = this.bind(tickets.getTicket);
   readonly listTickets = this.bind(tickets.listTickets);
+  readonly listTicketParts = this.bind(tickets.listTicketParts);
   readonly patchTicket = this.bind(tickets.patchTicket);
   readonly ticketOfTurn = this.bind(tickets.ticketOfTurn);
   readonly observeTicketWork = this.bind(tickets.observeTicketWork);
@@ -539,9 +541,11 @@ export class Store {
   readonly settleEndedSegment = this.bind(workItems.settleEndedSegment);
   readonly isPlanRunnable = this.bind(workItems.isPlanRunnable);
   readonly hasWorkAuthority = this.bind(workItems.hasWorkAuthority);
-  readonly fileLine = this.bind(filing.fileLine);
   readonly fileMessage = this.bind(filing.fileMessage);
+  readonly lineToFile = this.bind(filing.lineToFile);
+  readonly lineReadAsNew = this.bind(filing.lineReadAsNew);
   readonly planCandidates = this.bind(filing.planCandidates);
+  readonly lineCandidates = this.bind(filing.lineCandidates);
   readonly planCandidateEvidence = this.bind(filing.candidateOf);
   readonly filingsOfMessage = this.bind(filing.filingsOfMessage);
   readonly deskCandidateIds = this.bind(desk.deskCandidateIds);

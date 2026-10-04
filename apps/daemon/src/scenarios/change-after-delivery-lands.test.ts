@@ -6,7 +6,7 @@
  * card asked you to approve a change that was not in the file.
  */
 import { afterEach, expect, test } from "bun:test";
-import { call, createScenario, requestText, tool, writeFile, type Scenario } from "../test-kit/scenario";
+import { call, createScenario, fileUnder, requestText, tool, writeFile, type Scenario } from "../test-kit/scenario";
 
 const open: Scenario[] = [];
 afterEach(async () => {
@@ -21,6 +21,8 @@ async function delivered() {
   const [bot] = h.createBots("设计师");
   const direct = h.direct(bot!);
   const ticket = () => h.store.db.query<{ id: string; dir: string; title: string }, []>("SELECT id, dir, title FROM tickets ORDER BY created_at LIMIT 1").get()!;
+  // Your change after delivery is read as about what was delivered (ADR 0057): the job, its ticket.
+  h.judge("read_filing").handle((ctx) => fileUnder(undefined, { ticket: ticket().title })(ctx));
   let turns = 0;
   const steps: Array<(hop: number) => ReturnType<typeof call>> = [];
   h.script(bot!).handle(({ hop }) => {

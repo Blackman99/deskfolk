@@ -6,10 +6,11 @@
  *
  * 「新开一件事」 opens a job from the line and files it there: the Bot starts on it in a segment of
  * its own, and the segment still at work on the old job hears, at its next step, not to act on the
- * line there.
+ * line there. A model reads where a line belongs now (ADR 0057), not rule 6; a reading can still
+ * take a new request for the old job, and this is how you put it right.
  */
 import { afterEach, expect, test } from "bun:test";
-import { call, createScenario, requestText, say, shell, type Scenario } from "../test-kit/scenario";
+import { call, createScenario, fileUnder, requestText, say, shell, type Scenario } from "../test-kit/scenario";
 import { openPlan, planSpec } from "./video-team";
 
 const open: Scenario[] = [];
@@ -35,6 +36,8 @@ test("a new request glued to an old job becomes a job of its own, and the old se
     heard = requestText(request);
     return say("好，这一段不写了。");
   });
+  // The reading takes it for the old job, as rule 6 did then.
+  h.judge("read_filing").reply(fileUnder("请用 shell 工具执行 sleep 120，执行完告诉我完成"));
   const line = h.postUser(dm, "请写一篇 4000 字的中文长篇科幻小说，不要调用任何工具");
   await h.waitFor(() => h.turns(bot!).some((turn) => turn.status === "running"), { what: "the old segment at work" });
   const first = h.turns(bot!)[0]!;

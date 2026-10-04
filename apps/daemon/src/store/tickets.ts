@@ -146,6 +146,13 @@ export function listTickets(ctx: StoreContext, taskId: string): Ticket[] {
     .map(toTicket);
 }
 
+/** A ticket's parts by key, as the lead (or you) declared them, each with its stage. */
+export function listTicketParts(ctx: StoreContext, ticketId: string): Array<{ key: string; title: string; stage: string }> {
+  return ctx.db
+    .query<{ key: string; title: string; stage: string }, [string]>(`SELECT key, title, stage FROM ticket_parts WHERE ticket_id = ? ORDER BY key`)
+    .all(ticketId);
+}
+
 /**
  * A ticket's dependencies as you set them (ADR 0045): other tickets of its plan, each once, none of
  * them itself, and no loop back to it through theirs.

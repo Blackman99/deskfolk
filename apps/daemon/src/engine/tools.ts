@@ -600,17 +600,20 @@ export function createTools(deps: ToolsDeps): Tools {
     const deskAllowed = NO_EFFECT_TOOLS.has(name) || name === "send_message" || name === "ask_user" || name === "work_on" || live.mcpTools.get(name)?.readOnly === true;
     if (turn.mode === "desk" && !deskAllowed) {
       const candidates = store.deskCandidateIds(turn.id);
-      if (candidates.length > 1) {
-        store.noteFilingBounce(turn.id);
-        return { ok: false, error: { code: "needs_filing", message: `Choose a job with work_on before this call: ${candidates.join(", ")}` }, emitted: [] };
-      }
       const trigger = store.originalUserRequest(turn.id) ?? store.getMessage(turn.trigger_message_id);
+      // A line of yours read as about none of these jobs (ADR 0057) gets a job of its own at the
+      // first effect, as a line with no candidates does — unless the Bot chose one with work_on first.
+      const readNew = trigger.kind === "user" && store.lineReadAsNew(trigger.id);
+      if (candidates.length > 1 && !readNew) {
+        store.noteFilingBounce(turn.id);
+        return { ok: false, error: { code: "needs_filing", message: `Choose a job with work_on before this call: one of ${candidates.join(", ")}, or {new:{title, quote_message_id}} quoting the user's line when it is about none of them` }, emitted: [] };
+      }
       if (candidates.length === 0 && trigger.kind !== "user") {
         return { ok: false, error: { code: "needs_filing", message: "Only a user request can open a new job; choose a candidate with work_on" }, emitted: [] };
       }
       const bound = await runCollabTool({ store, botId: turn.bot_id, sessionId: turn.session_id, turnId: turn.id,
         parentId: live.parentId, signal: live.abort.signal, admission }, "work_on", {
-        plan: candidates[0] ?? { new: { title: trigger.body, quote_message_id: trigger.id } },
+        plan: readNew || candidates.length === 0 ? { new: { title: trigger.body, quote_message_id: trigger.id } } : candidates[0],
       });
       for (const messageId of bound.filed ?? []) noteFiled(messageId);
       if (!bound.ok || bound.data?.merged) return bound;

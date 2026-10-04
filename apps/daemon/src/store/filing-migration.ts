@@ -12,6 +12,7 @@ export function migrateFiling(db: Database, now: string = isoNow()): void {
   add("messages", [
     ["filing_state", "TEXT CHECK (filing_state IS NULL OR filing_state IN ('filed', 'undetermined', 'none'))"],
     ["filing_candidates", "TEXT"],
+    ["filing_reading", "TEXT"],
   ]);
   add("tasks", [
     ["stage", "TEXT CHECK (stage IS NULL OR stage IN ('active', 'delivered', 'accepted', 'abandoned'))"],

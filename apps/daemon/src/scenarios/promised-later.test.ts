@@ -10,7 +10,7 @@
  * bounces the ending once, and an ending after that goes through with a line telling you it stopped.
  */
 import { afterEach, expect, test } from "bun:test";
-import { call, checkBack, createScenario, requestText, say, sendMessage, tool, type HopContext, type Scenario, type ScriptedCall, type ToolOutcome } from "../test-kit/scenario";
+import { call, checkBack, createScenario, fileUnder, requestText, say, sendMessage, tool, type HopContext, type Scenario, type ScriptedCall, type ToolOutcome } from "../test-kit/scenario";
 import { openPlan, planSpec, videoTeam } from "./video-team";
 
 const open: Scenario[] = [];
@@ -108,6 +108,7 @@ test("the start-over line asks to send the handed-over ticket back, and sent bac
   const plan = openPlan(h, room, "一拳超人", planSpec("一拳超人风格可播放短片"));
   const ticket = h.store.createTicket({ taskId: plan.id, title: "一拳超人风格可播放短片", status: "review", worker: director.id });
   h.script(director).handle(() => call(tool("end_turn", { reason: "nothing_new" })));
+  h.judge("read_filing").reply(fileUnder("一拳超人"));
   h.postUser(room, "@视频导演 从头再做一遍，之前的作废");
   await h.waitIdle();
   const card = h.messages(room).find((message) => message.control?.kind === "rework");

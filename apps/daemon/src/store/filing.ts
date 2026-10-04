@@ -1,15 +1,22 @@
 /**
- * Deterministic message attribution (ADR 0040 §8.2): locked signals 1–5 accumulate in order;
- * otherwise defaults 6–8 decide one plan. message_filings is authoritative; the old message and
- * quote columns project only its primary target. Candidate ids are captured with the decision.
+ * Message attribution (ADR 0040 §8.2, ADR 0057): the locked signals 1–5 — what you chose, an
+ * annotation, a quoted reply, a workspace path or attachment, the work a line is bound to —
+ * accumulate in order. Without one, where a line of yours goes is what a model read it as
+ * (`reader.ts`, given `lineToFile`): one or more of the jobs it may be about, a new one, or no
+ * telling. A line the reading did not place is the Bot's to choose at its desk. Nothing here reads
+ * the line's words, numbers or opening to guess. message_filings is authoritative; the old message
+ * and quote columns project only its primary target. Candidate ids are captured with the decision.
  * Dormancy is independent of stage and holds. Engine/API integration belongs to the facade.
  */
 import { isoNow, ulid } from "../ids";
 import { HttpError } from "../errors";
+import type { FilingReading } from "../line-reading";
 import type { StoreContext } from "./shared";
 import { recordWorkEvent } from "./work-events";
 import { heldSql } from "./holds";
 import { externalJobsReadable } from "./external-jobs-migration";
+import { parsePlanSpec } from "./plan-shape";
+import { STAGE_SQL } from "./submissions";
 
 export type Filing = { taskId: string; ticketId: string | null };
 export type FilingTarget = { taskId: string; ticketId?: string | null; partKey?: string | null };
@@ -27,6 +34,12 @@ export type FileMessageInput = {
   referenceMessageId?: string; none?: boolean;
   /** Caller validates the admitted turn's snapshot, or atomically creates the new plan from a quote. */
   botSelection?: FilingTarget[];
+  /**
+   * A model's reading of where a line of yours belongs (ADR 0057), read from `lineToFile`. It files
+   * the line only when no locked signal does; one it read as about none of the jobs is left for
+   * the Bot's desk, marked so (`lineReadAsNew`).
+   */
+  read?: FilingReading;
 };
 
 export function filingsOfMessage(ctx: StoreContext, messageId: string): MessageFiling[] {
@@ -72,6 +85,47 @@ export function planCandidates(ctx: StoreContext, input: { sessionId: string; bo
         AND COALESCE(t.stage, CASE WHEN t.status = 'done' THEN 'delivered' ELSE 'active' END) IN ('active', 'delivered')
       ORDER BY t.created_at DESC, t.id DESC`).all(input.sessionId, input.botId ?? null, since);
   return rows.map((row) => candidateOf(ctx, row.id));
+}
+
+/** How many lines before yours a reading of where it belongs sees, and whose jobs it may file it under. */
+export const LINES_BEFORE = 6;
+
+type LineBefore = { id: string; kind: string; author: string; body: string; created_at: string; taskId: string | null };
+
+/**
+ * The lines just before `messageId` in its conversation, oldest first, each with the job it is
+ * filed under (its primary filing; null when none). Lines only a Bot reads and the app's own lines
+ * about your stops, cards and checks are not among them.
+ */
+export function linesBefore(ctx: StoreContext, messageId: string, limit = LINES_BEFORE): LineBefore[] {
+  const line = ctx.db.query<{ session_id: string; created_at: string; message_seq: number }, [string]>(
+    'SELECT session_id, created_at, message_seq FROM messages WHERE id = ?').get(messageId);
+  if (!line) return [];
+  return ctx.db.query<Omit<LineBefore, 'taskId'>, [string, string, string, number, number]>(`SELECT id, kind, author, body, created_at FROM messages
+    WHERE session_id = ?1 AND id <> ?2 AND kind IN ('user', 'bot') AND hidden_from_bots = 0 AND bot_only = 0
+      AND (created_at < ?3 OR (created_at = ?3 AND message_seq < ?4))
+    ORDER BY created_at DESC, message_seq DESC LIMIT ?5`).all(line.session_id, messageId, line.created_at, line.message_seq, limit)
+    .reverse()
+    .map((row) => ({ ...row, taskId: inheritedTargets(ctx, row.id)[0]?.taskId ?? null }));
+}
+
+/**
+ * The jobs a line may be about (ADR 0057): the conversation's candidates (`planCandidates`), and
+ * the jobs the lines just before it are on, while those are still open or delivered — a routine's
+ * standing plan or a dormant job included, which are never candidates by themselves. What you say
+ * three minutes after the morning brief may well be about the brief (2026-10-03: with only the
+ * conversation's candidates, the one left was a three-day-old address job). A desk segment
+ * captures the same set, so the Bot can choose what the reading could not.
+ */
+export function lineCandidates(ctx: StoreContext, input: { sessionId: string; botId?: string; messageId: string }): PlanCandidate[] {
+  const candidates = planCandidates(ctx, input);
+  for (const line of linesBefore(ctx, input.messageId)) {
+    if (!line.taskId || candidates.some((c) => c.id === line.taskId)) continue;
+    const open = ctx.db.query(`SELECT 1 FROM tasks WHERE id = ?
+      AND COALESCE(stage, CASE WHEN status = 'done' THEN 'delivered' ELSE 'active' END) IN ('active', 'delivered')`).get(line.taskId);
+    if (open) candidates.push(candidateOf(ctx, line.taskId));
+  }
+  return candidates;
 }
 
 /** Read evidence only for an already captured id; never widen the desk's candidate set. */
@@ -148,49 +202,173 @@ export function fileMessage(ctx: StoreContext, messageId: string, input: FileMes
         : planCandidates(ctx, { sessionId: message.session_id, botId: input.botId });
       return { filings: existing, candidates, state: message.filing_state };
     }
-    const candidates = planCandidates(ctx, { sessionId: message.session_id, botId: input.botId });
+    const candidates = message.kind === 'user'
+      ? lineCandidates(ctx, { sessionId: message.session_id, botId: input.botId, messageId })
+      : planCandidates(ctx, { sessionId: message.session_id, botId: input.botId });
     const control = pureControl(message.control);
-    const decisions: FilingDecision[] = [];
-    const add = (targets: FilingTarget[], rule: number) => {
-      for (const target of targets) {
-        validTarget(ctx, target);
-        if (!decisions.some((d) => targetKey(d) === targetKey(target))) decisions.push({ ...target, filedBy: `rule:${rule}`, strength: 'locked' });
+    const decisions = !input.none && !control ? lockedDecisions(ctx, message, input) : [];
+    // Nothing locked: a line of yours goes where a model read it as being about (ADR 0057) — never
+    // where its words, a number in it or how it opens suggest. A target that has since closed or
+    // gone is dropped; what is left unplaced is the Bot's to choose at its desk.
+    if (!decisions.length && !input.none && !control && message.kind === 'user' && input.read?.about === 'jobs') {
+      for (const target of input.read.targets) {
+        if (!openTarget(ctx, target) || decisions.some((d) => targetKey(d) === targetKey(target))) continue;
+        decisions.push({ ...target, filedBy: 'reader', strength: 'default' });
       }
-    };
-    if (!input.none && !control) {
-      add(input.explicit ?? (message.kind === 'user' && message.filing_state === null && message.task_id
-        ? [{ taskId: message.task_id, ticketId: message.ticket_id }] : []), 1);
-      const annotations = ctx.db.query<{ relpath: string; target_message_id: string; target_turn_id: string | null }, [string]>(
-        "SELECT relpath, target_message_id, target_turn_id FROM annotations WHERE message_id = ? AND status <> 'draft' ORDER BY rowid").all(messageId);
-      for (const annotation of annotations) {
-        const paths = pathTargets(ctx, [annotation.relpath]);
-        add(paths.length ? paths : inheritedTargets(ctx, annotation.target_message_id), 2);
-        if (!paths.length && annotation.target_turn_id) add(turnTarget(ctx, annotation.target_turn_id), 2);
-      }
-      const reference = input.referenceMessageId ?? message.parent_id;
-      if (reference) add(inheritedTargets(ctx, reference), 3);
-      const paths = messagePaths(ctx, message);
-      add(pathTargets(ctx, paths), 4);
-      add(input.bound ?? [], 5);
-      if (input.boundWorkItemId) add(workItemTarget(ctx, input.boundWorkItemId, input.botId), 5);
-      // Bot output inherits its own current work item, never the source/waking turn.
-      if (message.kind === 'bot' && message.turn_id) add(turnTarget(ctx, message.turn_id, message.author), 5);
-      const wakes = ctx.db.query<FilingTarget, [string]>(`SELECT task_id AS taskId, ticket_id AS ticketId FROM check_backs
-        WHERE message_id = ? AND task_id IS NOT NULL ORDER BY created_at, id`).all(messageId);
-      add(wakes, 5);
-      const boundItems = ctx.db.query<{ work_item_id: string | null; task_id: string | null; ticket_id: string | null }, [string]>(`SELECT work_item_id, task_id, ticket_id
-        FROM inbox_items WHERE message_id = ? AND source IN ('delegation', 'delegation_reply', 'review', 'job', 'timer') ORDER BY seq`).all(messageId);
-      for (const item of boundItems) add(item.work_item_id ? workItemTarget(ctx, item.work_item_id) : item.task_id ? [{ taskId: item.task_id, ticketId: item.ticket_id }] : [], 5);
-    }
-    if (!decisions.length && !input.none && !control && message.kind === 'user') {
-      decisions.push(...defaultDecisions(ctx, { sessionId: message.session_id, body: message.body, candidates, line: message }));
     }
     // Explicitly referenced plans remain selectable, even when dormant or already accepted.
     for (const decision of decisions) if (!candidates.some((c) => c.id === decision.taskId)) candidates.push(candidateOf(ctx, decision.taskId));
     const state: FilingState = decisions.length ? 'filed' : input.none || control ? 'none' : 'undetermined';
     replaceFilings(ctx, message, decisions, state, candidates);
+    if (message.kind === 'user') {
+      ctx.db.run('UPDATE messages SET filing_reading = ? WHERE id = ?',
+        [state === 'undetermined' && input.read?.about === 'new' ? 'new' : null, message.id]);
+    }
     return { filings: filingsOfMessage(ctx, messageId), candidates, state };
   });
+}
+
+/**
+ * Signals 1–5, in order, deduplicated: what you chose for the line (or the job it was sent from),
+ * an annotation's file or line, the line a reply quotes, workspace paths it carries or names, and
+ * the work it is bound to. Each is a reference the line makes, not a reading of what it says.
+ */
+function lockedDecisions(ctx: StoreContext, message: FilingMessage, input: FileMessageInput): FilingDecision[] {
+  const decisions: FilingDecision[] = [];
+  const add = (targets: FilingTarget[], rule: number) => {
+    for (const target of targets) {
+      validTarget(ctx, target);
+      if (!decisions.some((d) => targetKey(d) === targetKey(target))) decisions.push({ ...target, filedBy: `rule:${rule}`, strength: 'locked' });
+    }
+  };
+  add(input.explicit ?? (message.kind === 'user' && message.filing_state === null && message.task_id
+    ? [{ taskId: message.task_id, ticketId: message.ticket_id }] : []), 1);
+  const annotations = ctx.db.query<{ relpath: string; target_message_id: string; target_turn_id: string | null }, [string]>(
+    "SELECT relpath, target_message_id, target_turn_id FROM annotations WHERE message_id = ? AND status <> 'draft' ORDER BY rowid").all(message.id);
+  for (const annotation of annotations) {
+    const paths = pathTargets(ctx, [annotation.relpath]);
+    add(paths.length ? paths : inheritedTargets(ctx, annotation.target_message_id), 2);
+    if (!paths.length && annotation.target_turn_id) add(turnTarget(ctx, annotation.target_turn_id), 2);
+  }
+  const reference = input.referenceMessageId ?? message.parent_id;
+  if (reference) add(inheritedTargets(ctx, reference), 3);
+  const paths = messagePaths(ctx, message);
+  add(pathTargets(ctx, paths), 4);
+  add(input.bound ?? [], 5);
+  if (input.boundWorkItemId) add(workItemTarget(ctx, input.boundWorkItemId, input.botId), 5);
+  // Bot output inherits its own current work item, never the source/waking turn.
+  if (message.kind === 'bot' && message.turn_id) add(turnTarget(ctx, message.turn_id, message.author), 5);
+  const wakes = ctx.db.query<FilingTarget, [string]>(`SELECT task_id AS taskId, ticket_id AS ticketId FROM check_backs
+    WHERE message_id = ? AND task_id IS NOT NULL ORDER BY created_at, id`).all(message.id);
+  add(wakes, 5);
+  const boundItems = ctx.db.query<{ work_item_id: string | null; task_id: string | null; ticket_id: string | null }, [string]>(`SELECT work_item_id, task_id, ticket_id
+    FROM inbox_items WHERE message_id = ? AND source IN ('delegation', 'delegation_reply', 'review', 'job', 'timer') ORDER BY seq`).all(message.id);
+  for (const item of boundItems) add(item.work_item_id ? workItemTarget(ctx, item.work_item_id) : item.task_id ? [{ taskId: item.task_id, ticketId: item.ticket_id }] : [], 5);
+  return decisions;
+}
+
+/** A target a reading named that can still take a line: its job open or delivered, its ticket not dropped, its part still there. */
+function openTarget(ctx: StoreContext, target: FilingTarget): boolean {
+  try {
+    validTarget(ctx, target);
+  } catch {
+    return false;
+  }
+  const open = ctx.db.query(`SELECT 1 FROM tasks WHERE id = ?
+    AND COALESCE(stage, CASE WHEN status = 'done' THEN 'delivered' ELSE 'active' END) IN ('active', 'delivered')`).get(target.taskId);
+  if (!open) return false;
+  if (!target.ticketId) return true;
+  return Boolean(ctx.db.query(`SELECT 1 FROM tickets t WHERE t.id = ? AND ${STAGE_SQL('t')} <> 'dropped'`).get(target.ticketId));
+}
+
+/** Whether a line of yours was read as about none of the jobs it might have been (ADR 0057), and is still unplaced. */
+export function lineReadAsNew(ctx: StoreContext, messageId: string): boolean {
+  return Boolean(ctx.db.query(`SELECT 1 FROM messages WHERE id = ? AND filing_reading = 'new' AND filing_state = 'undetermined'`).get(messageId));
+}
+
+/** How many jobs, and tickets per job, a reading of where a line belongs is shown. */
+const JOBS_TO_READ = 12;
+const TICKETS_TO_READ = 12;
+const PARTS_TO_READ = 30;
+
+export type JobToFile = {
+  taskId: string;
+  title: string;
+  goal: string | null;
+  stage: 'active' | 'delivered';
+  lastActivityAt: string;
+  /** Null when the job lives in this conversation; else the name of the one it does. */
+  home: string | null;
+  tickets: Array<{ ticketId: string; title: string; stage: string; owner: string | null; parts: Array<{ key: string; title: string }> }>;
+  recentArtifacts: string[];
+  lastUserQuote: string | null;
+};
+
+/** What a model reads to say where a line of yours belongs (ADR 0057). */
+export type LineToFile = {
+  where: 'group' | 'direct';
+  said: string;
+  at: string;
+  before: Array<{ author: string; text: string; at: string; taskId: string | null }>;
+  jobs: JobToFile[];
+};
+
+/**
+ * The line and the jobs it may be about, for the reading of where it belongs; null when there is
+ * nothing for a reading to decide: not a line of yours, filed already, only a stop or a go on, a
+ * locked signal places it, or no job is open for it.
+ */
+export function lineToFile(ctx: StoreContext, messageId: string): LineToFile | null {
+  const message = ctx.db.query<FilingMessage, [string]>("SELECT * FROM messages WHERE id = ?").get(messageId);
+  if (!message || message.kind !== 'user' || message.filing_state !== null || pureControl(message.control)) return null;
+  try {
+    if (lockedDecisions(ctx, message, {}).length) return null;
+  } catch {
+    // An unreadable locked signal is fileMessage's to refuse; a reading would not help.
+    return null;
+  }
+  const candidates = lineCandidates(ctx, { sessionId: message.session_id, messageId })
+    .sort((a, b) => (a.lastActivityAt < b.lastActivityAt ? 1 : a.lastActivityAt > b.lastActivityAt ? -1 : 0))
+    .slice(0, JOBS_TO_READ);
+  if (candidates.length === 0) return null;
+  const nameOf = (author: string): string => author === 'user' ? 'user'
+    : ctx.db.query<{ name: string }, [string]>('SELECT name FROM bots WHERE id = ?').get(author)?.name ?? author;
+  const jobs = candidates.map((candidate): JobToFile => {
+    const task = ctx.db.query<{ session_id: string | null; spec: string | null; brief: string | null }, [string]>(
+      'SELECT session_id, spec, brief FROM tasks WHERE id = ?').get(candidate.id);
+    const home = task?.session_id && task.session_id !== message.session_id
+      ? ctx.db.query<{ name: string | null; kind: string }, [string]>('SELECT name, kind FROM sessions WHERE id = ?').get(task.session_id)
+      : null;
+    const tickets = ctx.db.query<{ id: string; title: string; stage: string; owner: string | null }, [string]>(`SELECT t.id, t.title,
+        ${STAGE_SQL('t')} AS stage, COALESCE(t.owner_bot_id, t.worker) AS owner FROM tickets t
+      WHERE t.task_id = ? AND ${STAGE_SQL('t')} <> 'dropped' ORDER BY t.seq DESC LIMIT ${TICKETS_TO_READ}`).all(candidate.id).reverse();
+    return {
+      taskId: candidate.id,
+      title: candidate.title,
+      goal: parsePlanSpec(task?.spec ?? null)?.goal?.trim() || task?.brief?.trim() || null,
+      stage: candidate.stage === 'delivered' ? 'delivered' : 'active',
+      lastActivityAt: candidate.lastActivityAt,
+      home: home ? (home.name ?? home.kind) : null,
+      tickets: tickets.map((ticket) => ({
+        ticketId: ticket.id,
+        title: ticket.title,
+        stage: ticket.stage,
+        owner: ticket.owner ? nameOf(ticket.owner) : null,
+        parts: ctx.db.query<{ key: string; title: string }, [string]>(`SELECT key, title FROM ticket_parts WHERE ticket_id = ?
+          ORDER BY key LIMIT ${PARTS_TO_READ}`).all(ticket.id),
+      })),
+      recentArtifacts: candidate.recentArtifacts,
+      lastUserQuote: candidate.lastUserQuote,
+    };
+  });
+  const kind = ctx.db.query<{ kind: string }, [string]>('SELECT kind FROM sessions WHERE id = ?').get(message.session_id)?.kind;
+  return {
+    where: kind === 'direct' ? 'direct' : 'group',
+    said: message.body,
+    at: message.created_at,
+    before: linesBefore(ctx, messageId).map((line) => ({ author: nameOf(line.kind === 'user' ? 'user' : line.author), text: line.body, at: line.created_at, taskId: line.taskId })),
+    jobs,
+  };
 }
 
 /**
@@ -285,9 +463,7 @@ function pathTargets(ctx: StoreContext, paths: string[]): FilingTarget[] {
       const dir = segments.slice(0, i).join('/');
       const ticket = ctx.db.query<{ task_id: string; id: string }, [string]>('SELECT task_id, id FROM tickets WHERE dir = ?').get(dir);
       if (ticket) {
-        const delivered = Boolean(ctx.db.query(`SELECT 1 FROM attachments a JOIN messages m ON m.id = a.message_id
-          WHERE a.workspace_relpath = ? AND m.ticket_id = ? AND m.kind = 'bot' LIMIT 1`).get(raw, ticket.id));
-        if (delivered) registerFilenameParts(ctx, ticket.id, raw);
+        // The part whose current file this is, as its hand-over named it; a file name numbers no part.
         const parts = ctx.db.query<{ key: string }, [string, string]>('SELECT key FROM ticket_parts WHERE ticket_id = ? AND current_artifact = ? ORDER BY key').all(ticket.id, raw);
         targets.push(...(parts.length ? parts.map((p) => ({ taskId: ticket.task_id, ticketId: ticket.id, partKey: p.key })) : [{ taskId: ticket.task_id, ticketId: ticket.id }]));
         break;
@@ -297,150 +473,6 @@ function pathTargets(ctx: StoreContext, paths: string[]): FilingTarget[] {
     }
   }
   return targets;
-}
-
-const CN: Record<string, number> = { 零: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
-const NUMBER = '[零一二两三四五六七八九十百\\d]+';
-const PART_WORD = new RegExp(`前\\s*(${NUMBER})\\s*镜|第\\s*(${NUMBER})\\s*镜|(?<![a-z])(?:shot|镜头?|c)\\s*[ _-]?\\s*0*(\\d{1,3})(?:\\s*[–—-]\\s*0*(\\d{1,3}))?(?!\\d)|(?<!\\d)(\\d{1,3})\\s*[–—-]\\s*(\\d{1,3})(?!\\d)`, 'gi');
-
-/** One bounded numbering system, 1..999; ranges and Chinese tens use exactly the same numbers. */
-export function partNumbers(body: string): number[] {
-  const found = new Set<number>();
-  const range = (from: number, to: number) => {
-    if (from < 1 || to > 999 || from > to) return;
-    for (let n = from; n <= to; n++) found.add(n);
-  };
-  for (const match of body.matchAll(PART_WORD)) {
-    if (match[1]) range(1, numberOf(match[1]));
-    else if (match[2]) range(numberOf(match[2]), numberOf(match[2]));
-    else if (match[3]) range(Number(match[3]), Number(match[4] ?? match[3]));
-    else if (match[5] && match[6]) range(Number(match[5]), Number(match[6]));
-  }
-  return [...found].sort((a, b) => a - b);
-}
-
-function numberOf(text: string): number {
-  if (/^\d+$/.test(text)) return Number(text);
-  let result = 0;
-  let digit = 0;
-  for (const char of text) {
-    if (char === '十' || char === '百') { result += (digit || 1) * (char === '十' ? 10 : 100); digit = 0; }
-    else digit = CN[char] ?? 0;
-  }
-  return result + digit;
-}
-
-/** How long after the Bot's line a line of yours in your direct still answers it (rule 9). */
-export const ANSWERS_BOT_LINE_MS = 2 * 60 * 60 * 1000;
-
-/**
- * Rule 9: in your direct with a Bot, a line of yours that comes right after the Bot's line, with
- * nothing of yours in between and within {@link ANSWERS_BOT_LINE_MS}, answers that line the way a
- * quoted reply does, and goes where it went. That reaches a routine's standing plan and its dated
- * ticket too, which no other default does: what you say three minutes after the morning brief is
- * about the morning brief, not about the one other job the conversation has open (2026-10-03).
- */
-function answeredBotLine(ctx: StoreContext, line: Pick<FilingMessage, 'id' | 'session_id' | 'created_at' | 'parent_id'> & { message_seq?: number }): FilingTarget[] {
-  if (line.parent_id) return [];
-  const session = ctx.db.query<{ kind: string }, [string]>('SELECT kind FROM sessions WHERE id = ?').get(line.session_id);
-  if (session?.kind !== 'direct' || !ctx.db.query("SELECT 1 FROM session_participants WHERE session_id = ? AND member = 'user'").get(line.session_id)) return [];
-  const previous = ctx.db.query<{ id: string; kind: string; created_at: string }, [string, string, string, number]>(`SELECT id, kind, created_at FROM messages
-    WHERE session_id = ?1 AND id <> ?2 AND parent_id IS NULL AND kind IN ('user', 'bot') AND hidden_from_bots = 0
-      AND (created_at < ?3 OR (created_at = ?3 AND message_seq < ?4))
-    ORDER BY created_at DESC, message_seq DESC LIMIT 1`).get(line.session_id, line.id, line.created_at, line.message_seq ?? Number.MAX_SAFE_INTEGER);
-  if (previous?.kind !== 'bot' || Date.parse(line.created_at) - Date.parse(previous.created_at) > ANSWERS_BOT_LINE_MS) return [];
-  // A job you have accepted or dropped since is not where a new line goes; the other rules read it.
-  return inheritedTargets(ctx, previous.id).filter((target) => ctx.db.query(`SELECT 1 FROM tasks WHERE id = ?
-    AND COALESCE(stage, CASE WHEN status = 'done' THEN 'delivered' ELSE 'active' END) IN ('active', 'delivered')`).get(target.taskId));
-}
-
-function defaultDecisions(ctx: StoreContext, input: {
-  sessionId: string; body: string; candidates: PlanCandidate[];
-  /** The line being filed, when there is one: what rule 9 reads it against. */
-  line?: Pick<FilingMessage, 'id' | 'session_id' | 'created_at' | 'parent_id'> & { message_seq?: number };
-}): FilingDecision[] {
-  const candidates = input.candidates.filter((c) => c.dormantSince === null && (c.stage === 'active' || c.stage === 'delivered'));
-  const numbers = partNumbers(input.body);
-  const { hits: partHits, ambiguous } = matchParts(ctx, candidates, numbers);
-  const newRequest = /^(?:另外|再帮我|新做|顺便)/.test(input.body.trim()) && numbers.length === 0 && messagePaths(ctx, input).length === 0;
-  const decide = (target: FilingTarget, rule: number): FilingDecision => ({ ...target, filedBy: `rule:${rule}`, strength: 'default' });
-  // Signal 9 comes before the others: an answer to the Bot's line is about that line's job.
-  const answered = input.line && !newRequest ? answeredBotLine(ctx, input.line) : [];
-  if (answered.length) return answered.map((target) => decide(target, 9));
-  // Signal 6 decides the plan first. Within it, attach uniquely known parts without overriding its provenance.
-  if (candidates.length === 1 && !newRequest) {
-    const planHits = partHits.filter((hit) => hit.taskId === candidates[0]!.id);
-    return (planHits.length ? planHits : [{ taskId: candidates[0]!.id }]).map((hit) => decide(hit, 6));
-  }
-  if (!ambiguous && new Set(partHits.map((hit) => hit.taskId)).size === 1) return partHits.map((hit) => decide(hit, 7));
-  const session = ctx.db.query<{ kind: string }, [string]>('SELECT kind FROM sessions WHERE id = ?').get(input.sessionId);
-  if (session?.kind === 'group' && !newRequest) {
-    const own = candidates.filter((c) => c.stage === 'active' && ctx.db.query('SELECT 1 FROM tasks WHERE id = ? AND session_id = ?').get(c.id, input.sessionId));
-    if (own.length === 1) return [decide({ taskId: own[0]!.id }, 8)];
-  }
-  return [];
-}
-
-/** The part numbers a file's name gives (§8.2 rule 7): `shot_07`, `C07`, `镜头7`, `第七镜`. */
-export function filenamePartNumbers(path: string): number[] {
-  const filename = path.split('/').at(-1) ?? '';
-  const found = new Set<number>();
-  for (const match of filename.matchAll(/(?<![a-z])(?:shot|c|镜头?)[ _-]?0*(\d{1,3})(?!\d)/gi)) found.add(Number(match[1]));
-  for (const match of filename.matchAll(/第?([零一二两三四五六七八九十百]+)镜|镜头?([零一二两三四五六七八九十百]+)/g)) found.add(numberOf(match[1] ?? match[2]!));
-  return [...found].filter((n) => n >= 1 && n <= 999).sort((a, b) => a - b);
-}
-
-/**
- * The ticket's parts a file's name numbers, made when missing (declared by the file name); returns
- * their keys. A part made this way starts with that file as its current one.
- */
-export function registerFilenameParts(ctx: StoreContext, ticketId: string, path: string): string[] {
-  return filenamePartNumbers(path).map((n) => {
-    const key = `shot_${String(n).padStart(2, '0')}`;
-    ctx.db.run(`INSERT OR IGNORE INTO ticket_parts (id, ticket_id, key, title, declared_by, current_artifact)
-      VALUES (?, ?, ?, ?, 'filename', ?)`, [ulid(), ticketId, key, `Shot ${String(n).padStart(2, '0')}`, path]);
-    return key;
-  });
-}
-
-/** Filename discovery only traverses candidate plans and materializes identities, not delivery stages. */
-function matchParts(ctx: StoreContext, candidates: PlanCandidate[], numbers: number[]): { hits: FilingTarget[]; ambiguous: boolean } {
-  if (!numbers.length) return { hits: [], ambiguous: false };
-  const hits: FilingTarget[] = [];
-  let anyAmbiguous = false;
-  for (const candidate of candidates) {
-    const tickets = ctx.db.query<{ id: string; title: string }, [string]>('SELECT id, title FROM tickets WHERE task_id = ? ORDER BY seq').all(candidate.id);
-    for (const ticket of tickets) {
-      const paths = ctx.db.query<{ path: string }, [string]>(`SELECT a.workspace_relpath AS path FROM messages m
-        JOIN attachments a ON a.message_id = m.id WHERE m.ticket_id = ? AND m.kind = 'bot'
-        ORDER BY m.created_at DESC, a.id DESC LIMIT 256`).all(ticket.id);
-      for (const { path } of paths) registerFilenameParts(ctx, ticket.id, path);
-    }
-    const parts = ctx.db.query<{ ticket_id: string; key: string; title: string }, [string]>(`SELECT p.ticket_id, p.key, p.title FROM ticket_parts p
-      JOIN tickets k ON k.id = p.ticket_id WHERE k.task_id = ? ORDER BY k.seq, p.key`).all(candidate.id);
-    const selected: FilingTarget[] = [];
-    const covered = new Set<number>();
-    let ambiguous = false;
-    for (const n of numbers) {
-      const matching = parts.filter((part) => partNumbers(`${part.key} ${part.title}`).includes(n));
-      if (matching.length > 1) { ambiguous = true; break; }
-      if (matching.length === 1) {
-        const part = matching[0]!;
-        selected.push({ taskId: candidate.id, ticketId: part.ticket_id, partKey: part.key });
-        covered.add(n);
-      }
-    }
-    if (ambiguous) { anyAmbiguous = true; continue; }
-    if (covered.size === numbers.length) {
-      hits.push(...[...new Map(selected.map((hit) => [targetKey(hit), hit])).values()]);
-      continue;
-    }
-    // Minimum legacy compatibility: titles declared before ticket_parts carry a numbered span.
-    const legacy = tickets.filter((ticket) => numbers.every((n) => partNumbers(ticket.title).includes(n)));
-    if (legacy.length === 1) hits.push({ taskId: candidate.id, ticketId: legacy[0]!.id });
-    else if (legacy.length > 1) anyAmbiguous = true;
-  }
-  return { hits, ambiguous: anyAmbiguous };
 }
 
 export function resumePlan(ctx: StoreContext, taskId: string): void {
@@ -633,13 +665,4 @@ function queueCorrection(ctx: StoreContext, message: FilingMessage, botId: strin
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'user', ?, 'system', 'change', 1, ?, ?)`, [ulid(), botId, route.workItemId,
     route.sessionId, route.turnId, target.taskId, target.ticketId ?? null, message.id, `这句改归到 ${title}：${message.body}`,
     route.held ? 'held' : 'queued', isoNow()]);
-}
-
-/** Legacy scalar caller; the same ordered defaults, never the old shared-user/first-worker heuristic. */
-export function fileLine(ctx: StoreContext, input: { sessionId: string; body: string }): Filing | null {
-  return ctx.commit(() => {
-    const candidates = planCandidates(ctx, { sessionId: input.sessionId });
-    const target = defaultDecisions(ctx, { ...input, candidates })[0];
-    return target ? { taskId: target.taskId, ticketId: target.ticketId ?? null } : null;
-  });
 }

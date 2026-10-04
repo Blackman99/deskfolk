@@ -30,7 +30,7 @@ import { ENGINE_LEVELS } from "./store/schema-gate";
 import type { Hold, HoldScope } from "@real-bot/protocol";
 import { openPlan, planSpec, videoTeam } from "./scenarios/video-team";
 import { heardNote } from "./turn-inbox";
-import { call, checkBack, createScenario, endTurn, media, requestText, say, sendMessage, shell, tool, writeFile, type Scenario } from "./test-kit/scenario";
+import { call, checkBack, createScenario, endTurn, fileUnder, media, requestText, say, sendMessage, shell, tool, writeFile, type Scenario } from "./test-kit/scenario";
 
 const open: Scenario[] = [];
 afterEach(async () => {
@@ -197,8 +197,10 @@ describe("legacy phase 0–2 holds turn every old wake away, and say so in the w
     const h = await scenario({ workItems: true });
     const { director, reviewer, room } = videoTeam(h);
     const ep01 = openPlan(h, room, "EP01", planSpec("EP01 动画成片"));
-    // With work items on, the rows file this line without the organizer: EP01 has real work underway.
+    // With work items on, the line is filed by the reading of where it belongs (ADR 0057), without
+    // the organizer: EP01, where the Bot has real work underway, is among the jobs it is shown.
     h.store.createTicket({ taskId: ep01.id, title: "母带", status: "doing", worker: director.id });
+    h.judge("read_filing").reply(fileUnder("EP01"));
     const thread = h.botDirect(director, reviewer);
     const go = await midHop(h, director, thread, [call(tool("list_dir", { path: "." })), say("在做")], () => {
       h.postBot(reviewer, thread, "EP01 母带按新的转场重新拼一遍", { taskId: ep01.id });

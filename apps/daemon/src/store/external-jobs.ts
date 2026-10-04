@@ -7,7 +7,7 @@
  */
 import { createHash } from "node:crypto";
 import { isoNow, ulid } from "../ids";
-import { filenamePartNumbers, partNumbers } from "./filing";
+import { filenamePartNumbers, partNumbers } from "./part-numbers";
 import { refreshHeldInbox } from "./inbox";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import { settingsCached } from "./settings";
@@ -79,7 +79,7 @@ export function recentJob(ctx: StoreContext, digest: string, now: string = isoNo
   return row ? toJob(row) : null;
 }
 
-/** The one part (shot) number a submit's prompt names, read the way a line of yours is; null for none or several. */
+/** The one shot number a submit's prompt names, for the one-render-per-shot guard only; null for none or several. */
 export function promptPartNumber(prompt: string): number | null {
   const numbers = partNumbers(prompt);
   return numbers.length === 1 ? numbers[0]! : null;

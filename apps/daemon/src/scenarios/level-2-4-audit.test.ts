@@ -12,6 +12,7 @@ import {
   call,
   createScenario,
   failed,
+  fileUnder,
   requestText,
   say,
   tool,
@@ -147,6 +148,8 @@ describe("D2: a line of yours that only might mean a stop or a go on", () => {
       const plan = h.store.openTask({ sessionId: dm, title: "Report" });
       const ticket = h.store.createTicket({ taskId: plan.id, title: "Draft", worker: bot!.id });
       const seed = seedLine(h, dm, bot!.id, plan.id, ticket.id, "草稿目录建好了");
+      // Lines with nothing to go by are read as about the report (ADR 0057).
+      h.judge("read_filing").handle(fileUnder("Report"));
       const gate = Promise.withResolvers<void>();
       let working = false;
       h.script(bot!).handle(async (ctx) => {

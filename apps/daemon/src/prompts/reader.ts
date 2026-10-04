@@ -1,15 +1,25 @@
 /**
- * 读句 (ADR 0055): the two short tool-less calls that read a line for what the app acts on — one
- * for a line of yours, one for a Bot's. The prompts, the payload and the reading of the answer live
- * here; the engine side is `reader.ts`, what a reading is and how an answer is checked
- * `line-reading.ts`.
+ * 读句 (ADR 0055): the short tool-less calls that read a line for what the app acts on — one for a
+ * line of yours, one for a Bot's, and one for which job a line of yours is about (ADR 0057). The
+ * prompts, the payloads and the reading of the answers live here; the engine side is `reader.ts`,
+ * what a reading is and how an answer is checked `line-reading.ts`.
  *
- * Each prompt asks only what a fixed word list used to guess, says what does not count (a scene in
- * a script, a condition, a quote, praise beside a fault…), and asks for the line's own words where
- * the app quotes them back, so a reading can be checked against the line before anything acts on it.
+ * Each prompt asks only what a fixed word list or rule used to guess, says what does not count (a
+ * scene in a script, a condition, a quote, praise beside a fault, an opening word…), and asks for
+ * the line's own words, or the refs it was shown, where the app acts on them, so a reading can be
+ * checked before anything acts on it.
  */
 import { extractJsonObject } from "../route-agent";
-import { checkBotReading, checkUserReading, type BotLineReading, type UserLineReading } from "../line-reading";
+import {
+  checkBotReading,
+  checkFilingReading,
+  checkUserReading,
+  type BotLineReading,
+  type FilingReading,
+  type FilingRefs,
+  type UserLineReading,
+} from "../line-reading";
+import type { LineToFile } from "../store";
 import { takeCodePoints } from "../text";
 
 export const READ_USER_LINE_SYSTEM = `你在替一个多 Bot 协作应用读用户说的一句话，判断应用该怎么处理它。不是回答用户，也不能发言；没有工具。
@@ -43,6 +53,27 @@ export const READ_BOT_LINE_SYSTEM = `你在替一个多 Bot 协作应用读一�
 
 只输出一个 JSON 对象，不要 markdown 围栏，不要前言后语：
 {"later": null, "claims_verified": false, "no_work": false, "bare_status": false}`;
+
+export const READ_FILING_SYSTEM = `你在替一个多 Bot 协作应用判断用户刚说的一句话是在说哪件事，好把它交给做那件事的 Bot。不是回答用户，也不能发言；没有工具。
+
+输入是一个 JSON：
+- said 是这句话；where 是 group（群）或 direct（用户和一个 Bot 的私聊）。
+- before 是这句之前的几句，从早到晚：author 是 user 或 Bot 的名字，ago 是多久以前说的，job 是那一句归在哪件事（没归的不写）。
+- jobs 是此刻可选的事：ref 是它的编号，title 是名字，goal 是目标，stage 是进行中或已交付（交了、等用户看），home 是它开在哪个会话（开在这里的不写），last_active 是多久以前有过动静，tickets 是它的任务（ref、title、state 状态、owner 谁在做、parts 它的分件），recent_files 是最近交出的文件，user_last_said 是用户最近对它说的一句。
+
+回答 about：
+- "jobs"：这句话在说 jobs 里的一件或几件——接着做、补充或改要求、指出问题、要求返工、问它的细节、回应 Bot 刚说的那件事。jobs 里每件写 {"job": "<ref>", "ticket": "<ref 或 null>", "parts": ["<key>"]}：明确落到其中某张任务时才写 ticket；明确说到其中几个分件（「第三镜」「C07」「片尾」）时才写 parts，用它列出的 key，只写这句话要求改、指出问题或问到的，只是夸一句的不写。拿不准就写 null 和 []。
+- "new"：不是在说其中任何一件。要做一件新的事（哪怕别的事还开着，哪怕和某件是同一类：又一张海报、另一篇文章），或者和这些事都无关（问候、闲聊、问别的问题、一次性的小忙）。
+- "unclear"：像是在说其中某件，但看不出是哪一件。
+
+怎么判断：
+- 看说的是什么、接在什么后面，不看措辞：「另外」「再」「顺便」开头的也可能是在改原来那件，「继续」也可能说的是另一件。
+- 只开着一件事，不等于这句话就在说它。
+- 紧接在 Bot 的一句之后说的，多半是在回应那一句（before 里它的 job）；内容明显是另一件新要求时仍是 new。
+- 一件事目标之内的下一步（同一部片子的下一个镜头、同一份报告的下一节）算那件事；目标之外的新成果是 new。
+
+只输出一个 JSON 对象，不要 markdown 围栏，不要前言后语：
+{"about": "jobs", "jobs": [{"job": "J1", "ticket": null, "parts": []}]}`;
 
 /** As much of a line as a reading sends; past it the line is cut, and what matters is near the start or the end. */
 export const READ_TEXT_MAX = 2000;
@@ -84,6 +115,91 @@ export function userLinePayload(input: {
 
 export function botLinePayload(body: string): { said: string } {
   return { said: botText(body) };
+}
+
+/** As much of a job's goal, or of what you last said about it, as a reading of where a line belongs sends. */
+const JOB_TEXT_MAX = 300;
+
+const TICKET_STAGE_WORDS: Record<string, string> = {
+  todo: "待做", doing: "进行中", submitted: "已交付", in_review: "审查中", rework: "返工", approved: "已通过",
+};
+
+/** How long before `now` something happened, in words a reading reads at a glance. */
+export function agoWords(at: string, now: number): string {
+  const minutes = Math.floor(Math.max(0, now - Date.parse(at)) / 60_000);
+  if (!Number.isFinite(minutes) || minutes < 1) return "刚刚";
+  if (minutes < 60) return `${minutes} 分钟前`;
+  const hours = Math.floor(minutes / 60);
+  return hours < 48 ? `${hours} 小时前` : `${Math.floor(hours / 24)} 天前`;
+}
+
+export type FilingPayload = {
+  said: string;
+  where: "group" | "direct";
+  before: Array<{ author: string; text: string; ago: string; job?: string }>;
+  jobs: Array<{
+    ref: string;
+    title: string;
+    goal?: string;
+    stage: string;
+    home?: string;
+    last_active: string;
+    tickets: Array<{ ref: string; title: string; state: string; owner?: string; parts?: Array<{ key: string; title: string }> }>;
+    recent_files?: string[];
+    user_last_said?: string;
+  }>;
+};
+
+/**
+ * What a reading of where a line belongs is sent, and the refs its answer names the jobs, tickets
+ * and parts by: `J1`… for jobs, `T1`… for tickets across them, parts by their key. Times are said
+ * relative to the line, so the reading sees how long ago the Bot's last line or a job's last move was.
+ */
+export function filingPayload(input: LineToFile): { payload: FilingPayload; refs: FilingRefs } {
+  const now = Date.parse(input.at);
+  const refs: FilingRefs = [];
+  let tickets = 0;
+  const jobs = input.jobs.map((job, index): FilingPayload["jobs"][number] => {
+    const ref = `J${index + 1}`;
+    const listed = job.tickets.map((ticket) => ({ ...ticket, ref: `T${++tickets}` }));
+    refs.push({ ref, taskId: job.taskId, tickets: listed.map((ticket) => ({ ref: ticket.ref, ticketId: ticket.ticketId, parts: ticket.parts.map((part) => part.key) })) });
+    return {
+      ref,
+      title: job.title,
+      ...(job.goal && job.goal !== job.title ? { goal: head(job.goal, JOB_TEXT_MAX) } : {}),
+      stage: job.stage === "delivered" ? "已交付" : "进行中",
+      ...(job.home ? { home: job.home } : {}),
+      last_active: agoWords(job.lastActivityAt, now),
+      tickets: listed.map((ticket) => ({
+        ref: ticket.ref,
+        title: ticket.title,
+        state: TICKET_STAGE_WORDS[ticket.stage] ?? ticket.stage,
+        ...(ticket.owner ? { owner: ticket.owner } : {}),
+        ...(ticket.parts.length > 0 ? { parts: ticket.parts } : {}),
+      })),
+      ...(job.recentArtifacts.length > 0 ? { recent_files: job.recentArtifacts } : {}),
+      ...(job.lastUserQuote ? { user_last_said: head(job.lastUserQuote, JOB_TEXT_MAX) } : {}),
+    };
+  });
+  const jobRef = new Map(refs.map((job) => [job.taskId, job.ref]));
+  return {
+    payload: {
+      said: takeCodePoints(input.said, READ_TEXT_MAX).text,
+      where: input.where,
+      before: input.before.map((line) => {
+        const job = line.taskId ? jobRef.get(line.taskId) : undefined;
+        return { author: line.author, text: head(line.text, RECENT_TEXT_MAX), ago: agoWords(line.at, now), ...(job ? { job } : {}) };
+      }),
+      jobs,
+    },
+    refs,
+  };
+}
+
+/** The answer about where a line of yours belongs as a checked reading; null when it is not one. */
+export function parseFilingAnswer(raw: string, refs: FilingRefs): FilingReading | null {
+  const parsed = extractJsonObject(raw);
+  return parsed ? checkFilingReading(parsed, refs) : null;
 }
 
 /** The answer about a line of yours as a checked reading; null when it is not one. */

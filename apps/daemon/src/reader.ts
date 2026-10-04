@@ -8,9 +8,13 @@
  *
  * When no model can read it — no default model, the call failed, ran past its time or answered
  * with something that is not a reading — the line is read by the old word lists instead
- * (`line-reading.ts`), and the work log says so. Every reading goes into the work log as
- * `reader.answer`, with the model's answer as it came back; the call is billed as the organizer's
- * are, with its own purpose. Nothing here writes state but those two rows.
+ * (`line-reading.ts`), and the work log says so.
+ *
+ * Which job a line of yours is about (ADR 0057) is a call of its own, made beside the first and
+ * shown the jobs the line may be about. It has no word lists behind it: a line no model could
+ * place is left for the Bot's desk, where the Bot chooses. Every reading goes into the work log
+ * as `reader.answer`, with the model's answer as it came back; the call is billed as the
+ * organizer's are, with its own purpose. Nothing here writes state but those two rows.
  */
 import { createHash } from "node:crypto";
 import { USER_MEMBER, type Message } from "@real-bot/protocol";
@@ -18,17 +22,21 @@ import { NO_ABLATION, type Ablation } from "./ablation";
 import type { CompletionsClient, JudgeResult, MappedUsage } from "./completions";
 import {
   botLineByWords,
+  UNREAD_FILING,
   userLineByWords,
   type BotLineReading,
-  type ReadingSource,
+  type FilingReading,
   type UserLineReading,
 } from "./line-reading";
 import type { OrganizerRouting } from "./organizer";
 import {
   botLinePayload,
+  filingPayload,
   parseBotLineAnswer,
+  parseFilingAnswer,
   parseUserLineAnswer,
   READ_BOT_LINE_SYSTEM,
+  READ_FILING_SYSTEM,
   READ_USER_LINE_SYSTEM,
   userLinePayload,
 } from "./prompts/reader";
@@ -76,19 +84,28 @@ export type Reader = {
   userText: (key: string, body: string, sessionId: string | null) => Promise<UserLineReading>;
   /** A Bot's line, read once per text. Never rejects. */
   botLine: (body: string, sessionId: string | null) => Promise<BotLineReading>;
+  /**
+   * Which job a line of yours is about (ADR 0057), read once. Null when there is nothing to read:
+   * a locked signal places the line, it is only a stop or a go on, or no job is open for it. Never
+   * rejects; what no model could read comes back `unread`, for the Bot's desk.
+   */
+  filing: (message: Message) => Promise<FilingReading | null>;
   /** Shutting down: calls in flight are abandoned, and read by the word lists. */
   stop: () => void;
 };
 
 type Asked<T> = {
   key: string;
-  kind: "user_line" | "bot_line";
+  kind: "user_line" | "bot_line" | "filing";
   sessionId: string | null;
   messageId: string | null;
   system: string;
   payload: unknown;
   parse: (raw: string) => T | null;
-  byWords: () => T;
+  /** What the line reads as when no model read it: the word lists, or nothing at all for a filing. */
+  fallback: () => T;
+  /** How the log line ends when the fallback stands in. */
+  fallbackNote: string;
 };
 
 export function createReader(deps: ReaderDeps): Reader {
@@ -109,7 +126,7 @@ export function createReader(deps: ReaderDeps): Reader {
     return made;
   }
 
-  function record<T extends { source: ReadingSource }>(asked: Asked<T>, reading: T, fields: { model: string | null; fail: string | null; raw: string | null }): void {
+  function record<T extends { source: string }>(asked: Asked<T>, reading: T, fields: { model: string | null; fail: string | null; raw: string | null }): void {
     try {
       store.recordWorkEvent({
         kind: "reader.answer",
@@ -130,9 +147,9 @@ export function createReader(deps: ReaderDeps): Reader {
     }
   }
 
-  async function read<T extends { source: ReadingSource }>(asked: Asked<T>): Promise<T> {
+  async function read<T extends { source: string }>(asked: Asked<T>): Promise<T> {
     const byWords = (fail: string, model: string | null, raw: string | null): T => {
-      const reading = asked.byWords();
+      const reading = asked.fallback();
       record(asked, reading, { model, fail, raw });
       return reading;
     };
@@ -183,7 +200,7 @@ export function createReader(deps: ReaderDeps): Reader {
     const reading = fail ? null : asked.parse(raw ?? "");
     if (!reading) {
       const why = fail ?? (result!.truncated ? "truncated" : "unreadable");
-      log(`[reader] ${asked.kind} ${asked.messageId ?? asked.key}: ${why}, read by the word lists`);
+      log(`[reader] ${asked.kind} ${asked.messageId ?? asked.key}: ${why}, ${asked.fallbackNote}`);
       return byWords(why, routing.model, raw);
     }
     record(asked, reading, { model: routing.model, fail: null, raw });
@@ -236,7 +253,8 @@ export function createReader(deps: ReaderDeps): Reader {
           const reading = parseUserLineAnswer(raw, message.body);
           return reading && { ...reading, statusOnly: reading.statusOnly && statusQuestionShape(message) };
         },
-        byWords: () => userLineByWords(message.body, { statusQuestion: isStatusQuestion(message) }),
+        fallback: () => userLineByWords(message.body, { statusQuestion: isStatusQuestion(message) }),
+        fallbackNote: "read by the word lists",
       });
     });
   }
@@ -250,7 +268,8 @@ export function createReader(deps: ReaderDeps): Reader {
       system: READ_USER_LINE_SYSTEM,
       payload: userLinePayload({ body, where: "direct", replyingTo: null, recent: [] }),
       parse: (raw) => parseUserLineAnswer(raw, body),
-      byWords: () => userLineByWords(body, { statusQuestion: false }),
+      fallback: () => userLineByWords(body, { statusQuestion: false }),
+      fallbackNote: "read by the word lists",
     }));
   }
 
@@ -267,7 +286,33 @@ export function createReader(deps: ReaderDeps): Reader {
         system: READ_BOT_LINE_SYSTEM,
         payload: botLinePayload(body),
         parse: (raw) => parseBotLineAnswer(raw, body),
-        byWords: () => botLineByWords(body),
+        fallback: () => botLineByWords(body),
+        fallbackNote: "read by the word lists",
+      });
+    });
+  }
+
+  function filing(message: Message): Promise<FilingReading | null> {
+    return remember(`filing:${message.id}`, () => {
+      let line: ReturnType<Store["lineToFile"]> = null;
+      try {
+        line = store.lineToFile(message.id);
+      } catch {
+        line = null;
+      }
+      if (!line) return Promise.resolve(null);
+      const { payload, refs } = filingPayload(line);
+      return read<FilingReading>({
+        key: `filing:${message.id}`,
+        kind: "filing",
+        sessionId: message.session_id,
+        messageId: message.id,
+        system: READ_FILING_SYSTEM,
+        payload,
+        parse: (raw) => parseFilingAnswer(raw, refs),
+        // No word list guesses where a line goes: the Bot chooses at its desk.
+        fallback: () => UNREAD_FILING,
+        fallbackNote: "left for the Bot's desk",
       });
     });
   }
@@ -276,6 +321,7 @@ export function createReader(deps: ReaderDeps): Reader {
     userLine,
     userText,
     botLine,
+    filing,
     stop() {
       stopped = true;
       for (const controller of inFlight) controller.abort();
