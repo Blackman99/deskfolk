@@ -149,3 +149,47 @@ test("while your 放行 waits, nobody is called back to answer the request it an
   expect(h.store.db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM submissions").get()!.n).toBe(1);
   expect(h.store.db.query<{ status: string }, []>("SELECT status FROM delegations").get()!.status).toBe("open");
 });
+
+test("a lead woken at the job's level by your change can still hand its ticket in", async () => {
+  // Real-model run, 2026-10-04: after the stop, 「宣传语改成英文的，海报改横版」 was filed to the whole job
+  // and opened the lead's turn there. It made the landscape poster, then could not submit (no
+  // ticket) nor work_on its ticket 01 (it had already acted), and gave up with the job undelivered.
+  const h = await createScenario({ learning: true });
+  open.push(h);
+  const [designer, writer] = h.createBots({ name: "设计师", duties: "海报和视觉；拆活、派活、审稿" }, { name: "文案", duties: "写宣传语" });
+  const room = h.group("海报组", [designer!, writer!]);
+  confirmGroupLead(h.store, room, designer!.id);
+  const opening = () => h.store.db.query<{ id: string; dir: string; task_id: string }, []>("SELECT id, dir, task_id FROM tickets ORDER BY created_at LIMIT 1").get()!;
+  let release!: () => void;
+  const stopped = new Promise<void>((resolve) => { release = resolve; });
+  let turns = 0;
+  h.script(designer!).handle(async ({ hop, turn }) => {
+    if (hop === 1) turns++;
+    // Its first segment opens the job, then is at work when you stop the group.
+    if (turns === 1) {
+      if (hop === 1) return call(writeFile("work/notes.md", "竖版"));
+      await stopped;
+      return call(tool("end_turn", { reason: "nothing_new" }));
+    }
+    // Woken by your change, at the job's level: make the poster in its ticket's folder, hand it in.
+    if (hop === 1) return call(writeFile(`${opening().dir}/poster.svg`, "<svg/>"));
+    if (hop === 2) return call(tool("submit", { artifacts: [`${opening().dir}/poster.svg`] }));
+    if (hop === 3) return call(tool("work_on", { plan: turn!.task_id!, ticket: opening().id }));
+    if (hop === 4) return call(tool("submit", { artifacts: [`${opening().dir}/poster.svg`] }));
+    return stop;
+  });
+  h.script(writer!).reply(stop);
+
+  h.postUser(room, "做一张咖啡店开业海报，竖版，配三句宣传语");
+  await h.waitFor(() => turns === 1 && h.toolCalls(designer!, "write_file").length === 1, { timeoutMs: 5_000, what: "the lead at work" });
+  h.engine.createHold({ scope: "session", scopeId: room, liftOnNextUserMessage: true, sessionId: room });
+  release();
+  await h.waitIdle({ timeoutMs: 15_000 });
+  h.postUser(room, "宣传语改成英文的，海报改横版");
+  await h.waitIdle({ timeoutMs: 15_000 });
+
+  const changed = h.turns(designer!).at(-1)!;
+  const calls = h.toolCalls(designer!).filter((c) => c.turnId === changed.id && c.name !== "end_turn");
+  expect(calls.map((c) => [c.name, c.result?.ok])).toEqual([["write_file", true], ["submit", false], ["work_on", true], ["submit", true]]);
+  expect(h.store.db.query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM submissions WHERE ticket_id = ?").get(opening().id)!.n).toBe(1);
+});

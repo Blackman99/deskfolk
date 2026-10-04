@@ -133,7 +133,12 @@ export function workOn(ctx: StoreContext, input: WorkOnInput): WorkOnResult {
       const used = ctx.db.query<{ n: number }, [string]>("SELECT work_dir_changes AS n FROM turns WHERE id = ?").get(turn.id)?.n ?? 0;
       const ran = Boolean(ctx.db.query("SELECT 1 FROM turn_runs WHERE turn_id = ? LIMIT 1").get(turn.id));
       const acted = used > 0 || (input.writtenPaths?.length ?? 0) > 0 || ran;
-      if (turn.task_id !== taskId || acted) {
+      // From the whole job down to one of its own tickets is no move to another directory: what the
+      // segment did, it did in the job, which holds the ticket. A lead woken at the job's level by
+      // your change after a stop made the poster, then could neither submit (no ticket) nor bind to
+      // its ticket, and gave up with the job undelivered (2026-10-04, real-model run).
+      const narrowing = turn.task_id === taskId && turn.ticket_id === null && ticketId !== null;
+      if (turn.task_id !== taskId || (acted && !narrowing)) {
         throw new HttpError(409, "work_dir_fixed", "this segment's working directory is already bound");
       }
     }
