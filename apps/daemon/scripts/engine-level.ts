@@ -4,10 +4,11 @@
  * folder and predates the version gate (ADR 0041) — on a developer's own Mac the installed copy is
  * often an older release, and a source run then keeps holds, and every level after them, off in the
  * one data folder that developer actually works in — and a level above that default ceiling, which
- * is experimental and otherwise never turns on by itself, installed app or not (as of this writing,
- * levels 5 and 6, ADR 0046 and 0047). Accepting both at once is deliberate: an old
- * installed app, opened without this daemon running, would not honor a hold, and an experimental
- * level has not been shaken out live yet either way. Taking it back never lowers the level.
+ * is experimental and otherwise never turns on by itself, installed app or not (none since
+ * 2026-10-04, when the default became this build's top level, 8; levels 5–8 were such levels until
+ * then). Accepting both at once is deliberate: an old installed app, opened without this daemon
+ * running, would not honor a hold, and an experimental level has not been shaken out live yet
+ * either way. Taking it back never lowers the level.
  *
  *   bun apps/daemon/scripts/engine-level.ts --accept-older-app [--data-dir <dir>]
  *   bun apps/daemon/scripts/engine-level.ts --clear [--data-dir <dir>]
@@ -20,7 +21,8 @@
  * run as a crash until it records a clean stop, which would make the next boot say it came back
  * from one. Either way it prints the capabilities as they then stand. No installed app need share
  * the data folder at all: this is also how a developer opts into an experimental level on a data
- * folder of its own.
+ * folder of its own, once a build brings one above the default. `--level` matters only past an
+ * older installed app: with none in the way the data folder reaches the default level anyway.
  */
 import { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
@@ -30,8 +32,8 @@ import { acceptOlderApp, capabilitiesOf, withdrawOlderAppOptIn } from "../src/st
 
 export const USAGE = [
   "usage: bun apps/daemon/scripts/engine-level.ts (--accept-older-app [--level <n>] | --clear) [--data-dir <dir>]",
-  "  --accept-older-app  let the data folder up to this build's top engine level: past an older installed app that shares it, and past the default level (an experimental one, such as level 5 or 6)",
-  "  --level <n>         with --accept-older-app: go only up to level n (say, 5 without 6's external jobs)",
+  "  --accept-older-app  let the data folder up to this build's top engine level: past an older installed app that shares it, and past the default level once a build brings an experimental one above it",
+  "  --level <n>         with --accept-older-app: past an older installed app, go only up to level n (say, 5 without 6's external jobs); with none in the way the default level is reached anyway",
   "  --clear             take the opt-in back; the level never goes down",
 ].join("\n");
 

@@ -66,13 +66,14 @@ export const ENGINE_LEVEL = ENGINE_LEVELS.learning;
 
 /**
  * The highest level a build raises on its own, with no developer opt-in: `ENGINE_LEVEL` may sit
- * above this while a level is still being shaken out live (ADR 0046's submissions — not yet
- * audited running real jobs). A level above this one is experimental and goes up only through a
- * developer's explicit opt-in for that level ({@link acceptOlderApp}, {@link raiseEngineLevel}),
- * whether or not an older installed app shares the database — a packaged build and a source run on
- * a data folder of its own (`installed === null`) are not exempt.
+ * above this while a level is still being shaken out live. Since 2026-10-04 it is this build's top
+ * level, learning: levels 5–8 had run on the developer's own data folder since 2026-10-03, and the
+ * README and the site now promise what they do. A level a later build adds above it is experimental
+ * and goes up only through a developer's explicit opt-in for that level ({@link acceptOlderApp},
+ * {@link raiseEngineLevel}), whether or not an older installed app shares the database — a packaged
+ * build and a source run on a data folder of its own (`installed === null`) are not exempt.
  */
-export const ENGINE_LEVEL_BY_DEFAULT = ENGINE_LEVELS.supervision;
+export const ENGINE_LEVEL_BY_DEFAULT = ENGINE_LEVELS.learning;
 
 /** The floor a database needs once it runs at each engine level: whatever an older build would misread there. */
 // Level 7 (ADR 0048: default models instead of a per-turn pick) leaves nothing an older build would
@@ -232,7 +233,8 @@ const ACCEPT_HINT = "or, developing on this data folder, accept that with `bun a
  * job; one from before the gate would not, so that is the case refused here — unless a developer
  * accepted that for this database ({@link acceptOlderApp}, ADR 0041).
  *
- * Above {@link ENGINE_LEVEL_BY_DEFAULT}, a level is experimental and never turns on by itself: with
+ * Above {@link ENGINE_LEVEL_BY_DEFAULT} (nothing, while the default is this build's top level), a
+ * level is experimental and never turns on by itself: with
  * no compatibility concern (no installed app, or one that reads the gate itself) the ceiling is
  * `min(ENGINE_LEVEL, max(ENGINE_LEVEL_BY_DEFAULT, optIn?.level ?? 0))` — an opt-in only ever raises
  * that ceiling, never pulls it below the default, so a stale or low opt-in left over from an

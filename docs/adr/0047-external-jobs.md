@@ -1,6 +1,6 @@
 # 外部作业：守护进程代为轮询、按参数去重、分件锁 / External jobs: the daemon polls, submits are deduplicated, parts are held
 
-Status: implemented at engine level 6 (`ENGINE_LEVELS.jobs`), ADR 0040's P4d. Like level 5, level 6 is experimental and opt-in only: no build raises a data folder past `ENGINE_LEVEL_BY_DEFAULT` (4) on its own; a developer's opt-in (`apps/daemon/scripts/engine-level.ts --accept-older-app`) takes it to this build's top level, or with `--level 5` (`level` on `POST /v1/capabilities/raise`) only as far as asked — level 5 can be tried without level 6.
+Status: implemented at engine level 6 (`ENGINE_LEVELS.jobs`), ADR 0040's P4d. Like level 5, level 6 is experimental and opt-in only: no build raises a data folder past `ENGINE_LEVEL_BY_DEFAULT` (4) on its own; a developer's opt-in (`apps/daemon/scripts/engine-level.ts --accept-older-app`) takes it to this build's top level, or with `--level 5` (`level` on `POST /v1/capabilities/raise`) only as far as asked — level 5 can be tried without level 6. Default since 2026-10-04: `ENGINE_LEVEL_BY_DEFAULT` is 8, so a build takes a data folder to this level on its own; the opt-in above now only matters past an installed app from before the version gate.
 
 [ADR 0040](0040-agent-kernel-the-job-owns-state.md) §5.5 和 §3.3 要让「等一个渲染」不再花 Bot 的轮次。在这之前，视频生成是 MCP 服务器上 `submit_video` 提交、`check_video` 查询的一对工具：每次查询都是 Bot 的一轮、一次模型调用，只为得知「还在渲」；视频导演在两个私聊里同时等同一个作业，一个查了 17 次、一个查了 7 次（09-28，`job-double-polling.test.ts`）；两条 Bot↔Bot 私聊把 C07、C08 各重渲了一遍，服务器收了四次钱（09-27，事故 F-c）。线上库里 `check_video` 调用 102 次，`submit_video` 只有 34 次。
 

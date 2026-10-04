@@ -178,8 +178,9 @@ describe("schema gate", () => {
     const store = new Store({ filename: file });
     // ENGINE_LEVEL_BY_DEFAULT: a level above it is experimental and never turns on
     // by itself, installed app or not — including a source run on a data folder of its own.
+    // Since 2026-10-04 that ceiling is this build's top level, so every feature comes on.
     expect(store.raiseEngineLevel(null)).toEqual({ level: ENGINE_LEVEL_BY_DEFAULT, raised: true, refused: null, accepted: null });
-    expect(store.capabilities()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL_BY_DEFAULT, features: ["holds", "work_items", "delegation", "supervision"] });
+    expect(store.capabilities()).toEqual({ schema_level: SCHEMA_LEVEL, engine_level: ENGINE_LEVEL_BY_DEFAULT, features: ["holds", "work_items", "delegation", "supervision", "submissions", "jobs", "routing", "learning"] });
     // Already there: nothing to do, and the gate settings stay out of the change journal.
     const events: string[] = [];
     store.onCommit((event) => events.push(event.event));
@@ -187,12 +188,15 @@ describe("schema gate", () => {
     store.transaction(() => {});
     expect(events).toEqual([]);
     store.close();
+    // The floor is what the default level needs, not the level itself: levels 7 and 8 leave level 6's.
     const floor = new Database(file, { readonly: true });
-    expect(floor.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'schema_min_compatible'").get()?.value).toBe(String(ENGINE_LEVEL_BY_DEFAULT));
+    expect(floor.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'schema_min_compatible'").get()?.value).toBe("6");
     floor.close();
   });
 
-  test("an opt-in raises the ceiling past the default even with no installed app sharing the database", () => {
+  test("an opt-in for this build's top level lands where the default does, with no installed app sharing the database", () => {
+    // Nothing sits above the default today; the opt-in still records this build's top level, so it
+    // would reach a later experimental level the same way.
     const store = new Store();
     const optIn = store.transaction(() => store.acceptOlderApp("api"));
     expect(optIn.level).toBe(ENGINE_LEVEL);
@@ -385,12 +389,14 @@ test("going up to the work items' level puts old parked plans nobody is on to sl
   }
 });
 
-test("an opt-in may stop short of this build's top level: level 5 without level 6's jobs", () => {
+test("past an installed app from before the gate, an opt-in may stop short of this build's top level: level 5 without level 6's jobs", () => {
   const store = new Store();
   const optIn = store.transaction(() => store.acceptOlderApp("script", ENGINE_LEVELS.submissions));
   expect(optIn.level).toBe(ENGINE_LEVELS.submissions);
-  expect(store.raiseEngineLevel(null)).toMatchObject({ level: ENGINE_LEVELS.submissions, raised: true });
+  expect(store.raiseEngineLevel({ version: "0.1.0-rc.11" })).toMatchObject({ level: ENGINE_LEVELS.submissions, raised: true });
   expect(store.capabilities().features).not.toContain("jobs");
+  // With no such app the same opt-in stops nowhere short: the default is this build's top level.
+  expect(store.raiseEngineLevel(null)).toMatchObject({ level: ENGINE_LEVEL_BY_DEFAULT, raised: true });
   // Asked for past the top, it stops at the top.
   expect(store.transaction(() => store.acceptOlderApp("api", 99)).level).toBe(ENGINE_LEVEL);
   store.close();

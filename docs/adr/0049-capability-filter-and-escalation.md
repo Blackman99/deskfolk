@@ -1,6 +1,6 @@
 # 按能力挑模型、失败时提档 / Picking by capability, and stepping up on failure
 
-Status: implemented at engine level 7 (`ENGINE_LEVELS.routing`), the second part of ADR 0040's P5, on top of [ADR 0048](0048-default-models.md). Opt-in like the rest of level 7.
+Status: implemented at engine level 7 (`ENGINE_LEVELS.routing`), the second part of ADR 0040's P5, on top of [ADR 0048](0048-default-models.md). Opt-in like the rest of level 7. Default since 2026-10-04 (`ENGINE_LEVEL_BY_DEFAULT` is 8).
 
 [ADR 0040](0040-agent-kernel-the-job-owns-state.md) §9.1 和 §9.2 要让「这件活需要看图」和「这件活一直没过」直接影响它跑在什么上，而不是靠每轮一次的模型挑选去猜。ADR 0048 定下默认模型之后，剩下两件：能力不够的模型别接需要看图的活；同一件活连着失败时，按固定规则往上走一步。
 

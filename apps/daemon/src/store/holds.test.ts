@@ -111,8 +111,9 @@ describe("making a hold", () => {
     });
     expect(store.capabilities()).toMatchObject({ engine_level: 0, features: [] });
     expect(store.raiseEngineLevel(null)).toEqual({ level: ENGINE_LEVEL_BY_DEFAULT, raised: true, refused: null, accepted: null });
-    expect(store.capabilities()).toMatchObject({ engine_level: ENGINE_LEVEL_BY_DEFAULT, features: ["holds", "work_items", "delegation", "supervision"] });
-    expect(store.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'schema_min_compatible'").get()?.value).toBe(String(ENGINE_LEVEL_BY_DEFAULT));
+    expect(store.capabilities()).toMatchObject({ engine_level: ENGINE_LEVEL_BY_DEFAULT, features: ["holds", "work_items", "delegation", "supervision", "submissions", "jobs", "routing", "learning"] });
+    // The default level's floor: levels 7 and 8 leave level 6's.
+    expect(store.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'schema_min_compatible'").get()?.value).toBe("6");
     const hold = store.createHold({ scope: "bot", scopeId: director.id, source: "user_button" });
     expect(hold).toMatchObject({ scope: "bot", scope_id: director.id, action: "pause", cascade: true, source: "user_button", lifted_at: null, targets: [] });
     store.close();

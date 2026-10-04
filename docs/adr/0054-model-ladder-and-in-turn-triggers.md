@@ -1,6 +1,6 @@
 # 你排的模型阶梯，和一轮之内的提档 / The model ladder you order, and stepping up inside a turn
 
-Status: implemented at engine level 7 (`ENGINE_LEVELS.routing`), the rest of issue 27 on top of [ADR 0049](0049-capability-filter-and-escalation.md). Opt-in like the rest of level 7.
+Status: implemented at engine level 7 (`ENGINE_LEVELS.routing`), the rest of issue 27 on top of [ADR 0049](0049-capability-filter-and-escalation.md). Opt-in like the rest of level 7. Default since 2026-10-04 (`ENGINE_LEVEL_BY_DEFAULT` is 8).
 
 [ADR 0040](0040-agent-kernel-the-job-owns-state.md) §9.2 的阶梯在思考档之后换到 `model_policy.ladder` 里的下一个模型，触发也不只是交付连着没过：同一跳重试后仍是失败形状、工具 JSON 连续两次畸形、同一工具连续失败三次，都该往上走一步。ADR 0049 只做了提思考档，因为模型都没填参考价，应用分不出哪个更强，盲换可能换到更弱的。
 

@@ -1,6 +1,6 @@
 # 质量事件和教训代替事后复盘 / Quality events and lessons instead of after-the-fact reviews
 
-Status: implemented at engine level 8 (`ENGINE_LEVELS.learning`), the learning half of ADR 0040's P5 (issue 28, first part). Opt-in like levels 5–7: no build raises a data folder past `ENGINE_LEVEL_BY_DEFAULT` (4) on its own.
+Status: implemented at engine level 8 (`ENGINE_LEVELS.learning`), the learning half of ADR 0040's P5 (issue 28, first part). Opt-in like levels 5–7: no build raises a data folder past `ENGINE_LEVEL_BY_DEFAULT` (4) on its own. Default since 2026-10-04: `ENGINE_LEVEL_BY_DEFAULT` is 8, so a build takes a data folder to this level on its own; the opt-in above now only matters past an installed app from before the version gate.
 
 [ADR 0040](0040-agent-kernel-the-job-owns-state.md) §7 要让「哪里出了问题」按事件的类型确定性地归类，「学到的东西」变成应用自己检查的规则，而不是事后问模型「是不是模型不行」、再把结论写进记忆。在这之前，一条链安静 15 分钟后开一次复盘调用（`route_review`），有把握的「模型的问题」再开一次学习调用（`route_learn`）写记忆或改技能；你在回复里说的话被当成对那次选路的反馈（`route_feedback`）。审计里，2 条「停工」被判成该换更强的模型；09-28 一个 Bot 把「全盘 grep 会超时」写进记忆，第二天又跑了一次同样的搜索（夹具 F-g）。
 
