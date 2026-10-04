@@ -99,6 +99,50 @@ test("closed work and transcript-erased questions cannot resurrect or accept an 
   expect(h.store.db.query("SELECT id FROM inbox_items WHERE message_id = ?").all(question.id)).toEqual([]);
 });
 
+/** Your answer to the card in the group wakes the Bot in the job's own thread, on the card itself, as the queue dispatches it. */
+function answerWakesThread(h: ReturnType<typeof fixture>) {
+  h.store.finishWork({ turnId: h.turn.id, reason: "blocked", needsFromUser: "Choose" });
+  h.store.setTurnStatus(h.turn.id, "completed");
+  const question = createWorkQuestion(h.ctx, { turnId: h.turn.id, body: "Choose" });
+  answerWorkQuestion(h.ctx, question.id, { body: "Version 3", userActionId: "answer" });
+  const [work] = h.store.dispatchableWork();
+  const trigger = h.store.prepareQueuedTrigger(work!.id)!;
+  const woken = h.store.createTurn({ sessionId: work!.home_session_id, botId: work!.bot_id, triggerMessageId: trigger.id, taskId: work!.task_id });
+  h.store.recordTurnRoute({ turnId: woken.id, decision: { model: "grk", thinkingLevel: "low", providerId: "", signature: "general" } });
+  h.store.setTurnStatus(woken.id, "completed");
+  expect({ turn: woken.session_id, trigger: trigger.session_id }).toEqual({ turn: h.thread.id, trigger: h.group.id });
+  return { question, woken };
+}
+
+/** The line the woken turn points at afterwards, and the one its routing decision names. */
+function wokenTrigger(h: ReturnType<typeof fixture>, turnId: string) {
+  const line = h.store.getMessage(h.store.getTurn(turnId).trigger_message_id);
+  const decision = h.store.db.query<{ trigger_message_id: string }, [string]>("SELECT trigger_message_id FROM turn_route_decisions WHERE turn_id = ?").get(turnId);
+  return { line, decision: decision?.trigger_message_id, botOnly: h.store.db.query("SELECT bot_only FROM messages WHERE id = ?").get(line.id) };
+}
+
+test("clearing the group a card was answered in keeps the turn the answer woke in the job's thread", () => {
+  const h = fixture();
+  const { question, woken } = answerWakesThread(h);
+  h.store.clearSessionMessages(h.group.id);
+  const { line, decision, botOnly } = wokenTrigger(h, woken.id);
+  expect(line).toMatchObject({ session_id: h.thread.id, kind: "system", author: h.bot.bot.id, created_at: question.created_at });
+  expect(line.body).not.toContain("Choose");
+  expect(botOnly).toEqual({ bot_only: 1 });
+  expect(decision).toBe(line.id);
+  expect(h.store.db.query("SELECT count(*) AS n FROM messages WHERE session_id = ?").get(h.group.id)).toEqual({ n: 0 });
+});
+
+test("deleting the group a card was answered in keeps the turn the answer woke in the job's thread", () => {
+  const h = fixture();
+  const { woken } = answerWakesThread(h);
+  h.store.deleteSession(h.group.id);
+  const { line, decision } = wokenTrigger(h, woken.id);
+  expect(line).toMatchObject({ session_id: h.thread.id, kind: "system", author: h.bot.bot.id });
+  expect(decision).toBe(line.id);
+  expect(h.store.db.query("SELECT id FROM sessions WHERE id = ?").get(h.group.id)).toBeNull();
+});
+
 /** Where a card's `ask` notification stands, whether the card itself says it lapsed, and what the Dock badge counts. */
 function asks(h: ReturnType<typeof fixture>, ...ids: string[]) {
   const state = (id: string) => {

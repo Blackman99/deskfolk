@@ -16,9 +16,10 @@ import { notBotOnlyLine, voidCheckBacks } from "./check-backs";
 import { cancelDelegationsForSession } from "./delegations";
 import { forgetHoldLines, holdPlansLeavingSession } from "./holds";
 import { forgetInboxSources } from "./inbox";
-import { hydrateMessage, listMessages } from "./messages";
+import { hydrateMessage, insertMessage, listMessages } from "./messages";
 import { eraseQuotes, forgetQuoteSources, quoteIdsOfSession } from "./quotes";
 import { forgetRequirementsSession } from "./requirements";
+import { settingsCached } from "./settings";
 import { dropUnreferencedTasks, setPlansDormant } from "./tasks";
 import { getSessionNotificationPreference, markNotificationsReadThroughMessage } from "./notifications";
 
@@ -328,6 +329,7 @@ export function deleteSession(ctx: StoreContext, id: string, opts: { eraseQuotes
     ctx.db.run(`DELETE FROM notifications WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM session_notification_preferences WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM check_backs WHERE session_id = ?`, [id]);
+    rehomeForeignTriggers(ctx, id);
     ctx.db.run(`DELETE FROM turns WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM messages WHERE session_id = ?`, [id]);
     // Spend is a ledger. Deleting the session leaves the rows, with the names they were written with.
@@ -354,6 +356,41 @@ export function deleteSession(ctx: StoreContext, id: string, opts: { eraseQuotes
     ctx.db.run(`DELETE FROM sessions WHERE id = ?`, [id]);
     return dormant;
   })();
+}
+
+/**
+ * A turn in another conversation that a line here woke keeps a line to point at once this history
+ * goes: your answer to a job's card, given where the card was, wakes its Bot in the job's own
+ * thread on the card itself. Each such turn gets a stand-in in its own conversation that only its
+ * Bot reads (`messages.bot_only`), dated as the line was. The words go with the history. Left
+ * pointing here, the turn's `trigger_message_id` rolls the whole clear or delete back.
+ */
+function rehomeForeignTriggers(ctx: StoreContext, sessionId: string): void {
+  const woken = ctx.db
+    .query<{ session_id: string; bot_id: string; trigger_message_id: string; created_at: string }, [string]>(
+      `SELECT DISTINCT t.session_id, t.bot_id, t.trigger_message_id, m.created_at
+       FROM turns t JOIN messages m ON m.id = t.trigger_message_id
+       WHERE m.session_id = ?1 AND t.session_id <> ?1`,
+    )
+    .all(sessionId);
+  if (woken.length === 0) return;
+  const body = settingsCached(ctx).locale === "en"
+    ? "(The line that woke this turn is gone: its conversation was cleared or deleted.)"
+    : "（唤起这一轮的那句已不在：它所在的会话被清空或删除了。）";
+  for (const row of woken) {
+    const standIn = insertMessage(ctx, { sessionId: row.session_id, kind: "system", author: row.bot_id, body, botOnly: true });
+    ctx.db.run(`UPDATE messages SET created_at = ? WHERE id = ?`, [row.created_at, standIn.id]);
+    ctx.db.run(
+      `UPDATE turns SET trigger_message_id = ? WHERE trigger_message_id = ? AND session_id = ? AND bot_id = ?`,
+      [standIn.id, row.trigger_message_id, row.session_id, row.bot_id],
+    );
+  }
+  // Their routing decisions name the same line; they follow the turn they were made for.
+  ctx.db.run(
+    `UPDATE turn_route_decisions SET trigger_message_id = (SELECT t.trigger_message_id FROM turns t WHERE t.id = turn_route_decisions.turn_id)
+     WHERE session_id <> ?1 AND trigger_message_id IN (SELECT id FROM messages WHERE session_id = ?1)`,
+    [sessionId],
+  );
 }
 
 /**
@@ -410,6 +447,7 @@ export function clearSessionMessages(ctx: StoreContext, id: string, opts: { eras
     ctx.db.run(`DELETE FROM notifications WHERE session_id = ?`, [id]);
     // The jobs end with the history, so nobody comes back to them later.
     voidCheckBacks(ctx, { sessionId: id }, now);
+    rehomeForeignTriggers(ctx, id);
     ctx.db.run(`DELETE FROM turns WHERE session_id = ?`, [id]);
     ctx.db.run(`DELETE FROM messages WHERE session_id = ?`, [id]);
     // Dirs nothing else belongs to go; the plans left are set aside, not ended.
