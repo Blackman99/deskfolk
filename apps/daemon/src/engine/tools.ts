@@ -169,6 +169,19 @@ export function createTools(deps: ToolsDeps): Tools {
 
   function noteWrittenPaths(live: Live, toolName: string, result: ToolResult): void {
     if (!result.ok) return;
+    // What the turn deleted is no artifact of it, written first or not, nor is anything under a
+    // folder it deleted. On 2026-10-04's real-model run a Bot wrote slogans.md at the workspace root,
+    // wrote it again in its ticket's folder and deleted the first: both still came with its last
+    // line, two bubbles of the same file, one of them gone.
+    if (toolName === "delete_file") {
+      const root = store.workspacePath();
+      if (!root) return;
+      const gone = writtenPathFromToolData(result.data).map((raw) => classifyPath(root, raw)).filter((path) => path.zone === "inside").map((path) => path.rel);
+      const kept = (paths: string[]) => paths.filter((path) => !gone.some((dead) => path === dead || path.startsWith(`${dead}/`)));
+      live.writtenPaths = kept(live.writtenPaths);
+      if (live.producedPaths) live.producedPaths = kept(live.producedPaths);
+      return;
+    }
     // `shell` now reports the files it left in the work dir; everything else among the workspace
     // tools only reads, and read paths are not artifacts.
     if (isWorkspaceTool(toolName) && toolName !== "write_file" && toolName !== "shell") return;

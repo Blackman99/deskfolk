@@ -328,7 +328,7 @@ _Avoid_: bypassing same-plan uniqueness, opening a turn bypasses a hold, group m
 _Avoid_: @-mentioning without joining the group, implicitly creating a Bot for an unknown name
 
 **Artifact**:
-A workspace-relative path, or an `http`/`https` link, referenced in a message; the file itself lives in the workspace (or at the remote URL), and files written during a turn appear in its final message automatically. Opening one shows it in the preview panel to the right of the chat (image / audio and video / PDF / text / single-file HTML / Word / Excel / PowerPoint); other kinds offer a download or opening with the default app. In a handoff, the path goes into the message to the other party, with no separate kind; artifacts inside the workspace can be annotated (see "Annotation"). Details: [Behavior · Artifact](docs/behavior.en.md#artifact).
+A workspace-relative path, or an `http`/`https` link, referenced in a message; the file itself lives in the workspace (or at the remote URL), and files written during a turn appear in its final message automatically (not those the turn deleted again). Opening one shows it in the preview panel to the right of the chat (image / audio and video / PDF / text / single-file HTML / Word / Excel / PowerPoint); other kinds offer a download or opening with the default app. In a handoff, the path goes into the message to the other party, with no separate kind; artifacts inside the workspace can be annotated (see "Annotation"). Details: [Behavior · Artifact](docs/behavior.en.md#artifact).
 _Avoid_: asset library, Artifact table, snapshot copy, per-Bot artifact folder, `@file`
 
 **Annotation**:

@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A file a Bot deleted no longer comes with its message
+
+- When a Bot wrote a file and then deleted it in the same turn (a draft at the wrong place, rewritten in its ticket's folder), the deleted file still came with its last message, so the conversation showed the same file twice, once as a file that was gone.
+
 ### A Bot stuck on a command says so, in a window opened later too
 
 - A window opened while a Bot was running a command (or a phone coming back) showed "thinking" until the command ended; a command that hung for ten minutes read "thinking" the whole time. Live turns read through the API now carry the call they are running, and the indicator shows it with how long it has run.
