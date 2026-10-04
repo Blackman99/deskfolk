@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A Bot stuck on a command says so, in a window opened later too
+
+- A window opened while a Bot was running a command (or a phone coming back) showed "thinking" until the command ended; a command that hung for ten minutes read "thinking" the whole time. Live turns read through the API now carry the call they are running, and the indicator shows it with how long it has run.
+
 ### A Bot working on a whole job can hand its ticket in
 
 - A Bot whose segment was opened on a whole job (your change after a stop, filed to the job rather than one ticket) could do the work and then neither hand it in nor move to the job's ticket, and gave up with the job undelivered. It can now move to one of that job's own tickets after working, and hand it in. Found in a run with real models.

@@ -343,7 +343,8 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
   const quiesce = new Quiesce(options.store, engine, options.admission!, scheduler);
 
   function withPartial(turn: import("@real-bot/protocol").Turn) {
-    return { ...turn, partial_text: turn.partial_text ?? engine.partialText(turn.id) };
+    const tool = engine.runningTool(turn.id);
+    return { ...turn, partial_text: turn.partial_text ?? engine.partialText(turn.id), ...(tool ? { running_tool: tool } : {}) };
   }
 
   function snapshotSessions(sessions: RuntimeSnapshot["sessions"]) {

@@ -112,6 +112,8 @@ export type TurnEngine = {
   /** Includes interrupted runners and approved effects that have not settled yet. */
   unsettledTurnIds: () => string[];
   partialText: (turnId: string) => string | null;
+  /** The tool call a live turn is running now, if any. */
+  runningTool: (turnId: string) => import("@real-bot/protocol").TurnRunningTool | null;
   pendingJudgements: (sessionId?: string) => PendingJudgement[];
   /** Reviews chains the last run left open; called once after boot. */
   sweepStaleChains: () => void;
@@ -946,6 +948,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     },
     partialText(turnId) {
       return core.lives.get(turnId)?.partial ?? null;
+    },
+    runningTool(turnId) {
+      return core.lives.get(turnId)?.runningTool ?? null;
     },
     pendingJudgements(sessionId) {
       const rows = [...participation.pendingJudges.values()];

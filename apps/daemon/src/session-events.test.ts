@@ -284,6 +284,20 @@ describe("commit / subscribe / snapshot barrier", () => {
     client.ws.close();
   });
 
+  test("a live turn read through the API says which tool call it is running", async () => {
+    // 2026-10-04: a window opened while a Bot's `qlmanage` hung showed 「思考中」 for ten minutes.
+    const h = await harness();
+    const created = h.store.createBot({ name: "Writer", duties: "fixture", boundaries: "fixture" });
+    const message = h.store.postMessage(created.direct_session.id, { body: "fixture" });
+    const turn = h.store.createTurn({ sessionId: created.direct_session.id, botId: created.bot.id, triggerMessageId: message.id });
+    const running = { id: "call-1", name: "shell", target: "qlmanage -t -s 1920 -o . poster.svg", started_at: "2026-10-04T00:01:00.000Z" };
+    spyOn(h.api.engine, "runningTool").mockImplementation((id) => (id === turn.id ? running : null));
+    const detail = await h.get<SessionSnapshot>(`/v1/sessions/${created.direct_session.id}/snapshot`);
+    expect(detail.session.turns[0]!.running_tool).toEqual(running);
+    const snapshot = await h.get<RuntimeSnapshot>("/v1/snapshot");
+    expect(snapshot.sessions[0]!.live_turns![0]!.running_tool).toEqual(running);
+  });
+
   test("nested engine writes, rollback, reactions, memories and deletes are journalled without caller publishes", async () => {
     const h = await harness();
     const created = h.store.createBot({ name: "Writer", duties: "fixture", boundaries: "fixture" });

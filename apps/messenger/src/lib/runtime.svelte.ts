@@ -3210,10 +3210,27 @@ export class MessengerRuntime {
     return true;
   }
 
-  /** The step this turn is in or last finished; reading it follows the next tool frame. */
+  /**
+   * The step this turn is in or last finished; reading it follows the next tool frame. A window
+   * that saw no frame of it (opened after the call started, a phone back from the background)
+   * has the call the daemon said the turn was running when this conversation was read.
+   */
   stepOf(turnId: string): ToolStep | null {
     void this.toolRevision;
-    return this.turnActivity.latestFor(turnId);
+    const seen = this.turnActivity.latestFor(turnId);
+    if (seen) return seen;
+    const running = this.snapshot.turns.find((turn) => turn.id === turnId)?.running_tool;
+    if (!running) return null;
+    return {
+      id: running.id,
+      name: running.name,
+      target: running.target ?? null,
+      mcp: running.mcp_server && running.mcp_tool ? { server: running.mcp_server, tool: running.mcp_tool } : null,
+      running: true,
+      startedAt: Date.parse(running.started_at),
+      exitCode: null,
+      durationMs: null,
+    };
   }
 
   /** Every step this client has seen the turn take, oldest first. */

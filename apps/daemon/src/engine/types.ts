@@ -39,6 +39,8 @@ export type Live = {
   interrupt: boolean;
   burned: boolean;
   partial: string;
+  /** The tool call running now, from its start frame until it exits. */
+  runningTool?: import("@real-bot/protocol").TurnRunningTool | null;
   parentId: string | null;
   writtenPaths: string[];
   /**

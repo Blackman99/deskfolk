@@ -1170,7 +1170,16 @@ export type Turn = {
   routine_due_at?: string | null;
   /** What the turn may do (ADR 0040); null on turns an older build opened. */
   mode?: TurnMode | null;
+  /**
+   * The tool call it is running right now, on a live turn read through the API: what a window that
+   * missed its `turn.tool` start (opened later, a phone reconnecting) shows instead of 「思考中」 —
+   * on 2026-10-04 a `qlmanage` that hung for ten minutes read 「思考中」 the whole time.
+   */
+  running_tool?: TurnRunningTool | null;
 };
+
+/** A tool call a live turn is running: `turn.tool`'s start frame, with when it started. */
+export type TurnRunningTool = { id: string; name: string; target?: string; mcp_server?: string; mcp_tool?: string; started_at: string };
 
 /**
  * `work`: an ordinary turn. `readonly`: the one kind a hold lets open, the turn a line of yours

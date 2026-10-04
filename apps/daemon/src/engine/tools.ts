@@ -271,11 +271,19 @@ export function createTools(deps: ToolsDeps): Tools {
       } else {
         const target = toolTargetOf(call.name, args);
         const mcpTool = live.mcpTools.get(call.name);
+        // A command is what a shell call is about; the start frame carries it in its arguments.
+        const about = target ?? (call.name === "shell" && typeof args.command === "string" ? args.command : null);
+        live.runningTool = { id: call.id, name: call.name, ...(about ? { target: about } : {}),
+          ...(mcpTool ? { mcp_server: mcpTool.server, mcp_tool: mcpTool.tool } : {}), started_at: new Date(startedAt).toISOString() };
         publish({ event: "turn.tool", occurred_at: occurred(), turn_id: turnId, id: call.id,
           name: call.name, arguments: call.arguments, phase: "started",
           ...(target ? { target } : {}),
           ...(mcpTool ? { mcp_server: mcpTool.server, mcp_tool: mcpTool.tool } : {}) });
-        result = await dispatchTool(turn, live, call.name, args, call.id);
+        try {
+          result = await dispatchTool(turn, live, call.name, args, call.id);
+        } finally {
+          if (live.runningTool?.id === call.id) live.runningTool = null;
+        }
         for (const messageId of result.filed ?? []) noteFiled(messageId);
         finishEffectEvidence(turnId, live, call.name, call.id, result);
         publish({ event: "turn.tool", occurred_at: occurred(), turn_id: turnId, id: call.id,
