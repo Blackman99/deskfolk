@@ -88,6 +88,52 @@ test("a file hand-over with no reviewer still auto-approves when an active gate 
   expect(stageOf(h, j.ticket.id)).toEqual({ stage: "approved", status: "done" });
 });
 
+/** A daily routine of a Bot of its own, fired at its due time: the run is a ticket of the routine's standing plan. */
+function dailyBrief(h: Scenario) {
+  const [bot] = h.createBots("Newsdesk");
+  const room = h.direct(bot!);
+  const routine = h.store.createRoutine({ bot_id: bot!.id, title: "每日简报", instruction: "整理今天的新闻", schedule: { kind: "daily", time: "09:00" }, enabled: false });
+  // Made in a year to come, fired on its days there: the scheduler's own ticks, at today's time, find nothing due.
+  h.store.db.run("UPDATE routines SET created_at = ?, last_fired_for_due_at = NULL, enabled = 1 WHERE id = ?", [new Date(2099, 0, 1, 8, 0, 0).toISOString(), routine.id]);
+  /** The run's ticket folder, once the fire made it. */
+  const dir = () => {
+    const plan = h.store.routineTask(routine.id)!;
+    return h.store.listTickets(plan.id).at(-1)!.dir;
+  };
+  return { bot: bot!, room, routine, dir, fire: (day: number) => h.engine.fireRoutine(routine.id, new Date(2099, 0, day, 9, 0, 0)) };
+}
+
+test("a routine's run hands its file over and is approved once its gates pass: nobody is asked to approve each day's brief", async () => {
+  const h = await scenario();
+  const r = dailyBrief(h);
+  h.script(r.bot).reply(() => call(writeFile(`${r.dir()}/brief.md`, "# 今日要闻")), say("今天的简报好了"));
+  expect(r.fire(1)).not.toBeNull();
+  await h.waitIdle();
+  h.tick(new Date(Date.now() + 20_000));
+  await h.waitIdle();
+
+  const plan = h.store.routineTask(r.routine.id)!;
+  const [submission] = h.store.listSubmissions({ taskId: plan.id });
+  expect(submission).toMatchObject({ origin: "implicit", state: "approved" });
+  expect(h.messages(r.room).some((message) => message.control?.kind === "review_item")).toBe(false);
+  expect(h.store.db.query("SELECT COUNT(*) AS n FROM notifications WHERE kind = 'ask'").get()).toEqual({ n: 0 });
+  expect(h.store.listWorkEvents({ kind: "submission.approved" }).map((event) => event.payload.by)).toEqual(["routine"]);
+
+  // A gate you set on a run still holds it back: a failing one sends it back, as anywhere.
+  h.script(r.bot).reply(() => {
+    const ticket = h.store.listTickets(plan.id).at(-1)!;
+    h.store.createCheckByUser(plan.id, { item: "简报里有日期", kind: "contains", path: `${ticket.dir}/brief.md`, pattern: "2099", ticket_id: ticket.id });
+    return call(writeFile(`${ticket.dir}/brief.md`, "# 今日要闻（无日期）"));
+  }, say("今天的简报好了"));
+  expect(r.fire(2)).not.toBeNull();
+  await h.waitIdle();
+  h.tick(new Date(Date.now() + 40_000));
+  await h.waitIdle();
+  const second = h.store.listSubmissions({ taskId: plan.id }).find((row) => row.id !== submission!.id)!;
+  expect(second.state).not.toBe("approved");
+  expect(h.messages(r.room).some((message) => message.control?.kind === "review_item")).toBe(false);
+});
+
 test("end_turn(done) hands the new files over first, so the ticket is no longer the maker's obligation", async () => {
   const h = await scenario();
   const j = job(h);

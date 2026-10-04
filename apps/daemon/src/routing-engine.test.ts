@@ -46,7 +46,7 @@ test("below level 7 the per-turn pick still runs and records no reason code", as
   expect(reasonOf(h, writer!.id)?.reason_code ?? null).toBeNull();
 });
 
-test("a Bot with a week of use runs on what it used most, and is asked once in its direct", async () => {
+test("a Bot with a week of use runs on what it used most, without a card asking you about it", async () => {
   const h = await createScenario({ routing: true });
   open.push(h);
   const [reviewer] = h.createBots({ name: "审片员", duties: "审片" });
@@ -63,11 +63,9 @@ test("a Bot with a week of use runs on what it used most, and is asked once in i
   h.postUser(dm, "看一下第三镜");
   await h.waitIdle();
   expect(reasonOf(h, reviewer!.id)).toEqual({ reason_code: "default", model: "scenario" });
-  const cards = h.messages(dm).filter((message) => message.control?.kind === "model_default");
-  expect(cards).toHaveLength(1);
-  expect(cards[0]!.control).toMatchObject({ model: "scenario", thinking_level: "high", offer: ["confirm", "decline"] });
-  h.engine.control(cards[0]!.id, { action: "confirm" });
-  expect(h.store.botDefault(reviewer!.id)).toMatchObject({ source: "confirmed" });
+  expect(h.store.botDefault(reviewer!.id)).toMatchObject({ model: "scenario", thinkingLevel: "high", source: "inferred" });
+  expect(h.messages(dm).filter((message) => message.control?.kind === "model_default")).toEqual([]);
+  expect(h.store.db.query("SELECT COUNT(*) AS n FROM notifications WHERE kind = 'ask'").get()).toEqual({ n: 0 });
 });
 
 test("a pin no endpoint lists any more runs on the endpoint's default, says so once, and never gets a default inferred behind it", async () => {

@@ -1,5 +1,7 @@
 # 需求台账：原话、只增不删的条目、书记员、点了才生效的检查和投影
 
+> 部分由 [ADR 0058](0058-the-app-asks-only-when-it-needs-you.md) 修订（2026-10-04）：旧规则卡和升为常设的建议卡不再发；按你的话加的检查只在要替换一条生效的门禁时出卡片，其余提议只在流程图上。 / Amended in part by [ADR 0058](0058-the-app-asks-only-when-it-needs-you.md) (2026-10-04): no old-rules card and no standing suggestion; a check from your words gets a card only when it would replace a gate in force.
+
 [ADR 0040](0040-agent-kernel-the-job-owns-state.md) 的 P3 阶段。你的要求原来记在规划要点里的一份 JSON 上，整理跳每次整份重写，存档靠转录。几件事都出在这里：
 
 - **整份重写丢规则。** 09-29 04:21 你在审片员 Bot 的私聊里说 C09 的脚不能穿地，这句被归到 EP01，整理跳的答案把它当成了规划的整份规则，片长、台词、仓门朝向、过门的过渡和左手这几条就没了，左手和片长后来再也没回来（夹具 F-b）。另一次整理把「接着做完」写成你的规则，同时丢掉你的两条（编造的规则）。

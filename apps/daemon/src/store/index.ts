@@ -644,6 +644,8 @@ export class Store {
   readonly supervisorTick = this.bind(supervisor.supervisorTick);
   readonly recordSupervisorRestart = this.bind(supervisor.recordSupervisorRestart);
   readonly settleRestartNotices = this.bind(supervisor.settleRestartNotices);
+  readonly workLeftByEarlierRestart = () => supervisor.workLeftByEarlierRestart(this.ctx, this.bootId);
+  readonly supervisorTakesUp = this.bind(supervisor.supervisorTakesUp);
   readonly refuseSupervisorPickup = this.bind(supervisor.refuseSupervisorPickup);
   readonly recordArtifactProgress = this.bind(supervisor.recordArtifactProgress);
   readonly recordPeerNote = this.bind(peerNotes.recordPeerNote);
@@ -695,10 +697,7 @@ export class Store {
   readonly setRequirementHere = this.bind(requirements.setRequirementHere);
   readonly planRequirements = this.bind(planRequirements.planRequirements);
   readonly importLegacyRules = this.bind(planRequirements.importLegacyRules);
-  readonly legacyCardDue = this.bind(planRequirements.legacyCardDue);
-  readonly standingSuggestion = this.bind(planRequirements.standingSuggestion);
   readonly mayMakeStanding = this.bind(planRequirements.mayMakeStanding);
-  readonly recordRequirementCard = this.bind(planRequirements.recordRequirementCard);
   readonly applyScribePatch = this.bind(scribePatch.applyScribePatch);
   readonly captureComplaint = this.bind(scribePatch.captureComplaint);
   readonly plansHandedOver = this.bind(scribePatch.plansHandedOver);

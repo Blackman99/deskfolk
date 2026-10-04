@@ -9,10 +9,11 @@
  *
  * Target, in two steps:
  * - ADR 0040 P3 (checks derived from your words), done: 「约2分钟」 is offered as a running-time
- *   check of 108–132 s the moment it is filed, and offered again, 「你已经说了 2 次」, when you say it
- *   that afternoon. Bound to the master once a `*MASTER*` video is delivered, it is measured and shown
- *   failing at 107.00 s — information, not yet a block: your words alone never make a gate. One
- *   click on 确认 does, and the gate then fails the 107-second master. Your complaint about it,
+ *   check of 108–132 s the moment it is filed, and is the same offer when you say it again that
+ *   afternoon — shown on the board, with no card asking you to confirm what you said (2026-10-04).
+ *   Bound to the master once a `*MASTER*` video is delivered, it is measured and shown failing at
+ *   107.00 s — information, not yet a block: your words alone never make a gate. One confirm on the
+ *   board does, and the gate then fails the 107-second master. Your complaint about it,
  *   「上一版 107 秒太短了」, names 107 seconds too, and changes nothing.
  * - ADR 0040 P4e (submissions and reviews, ADR 0046, engine level 5), done, the spec's way (§6.5):
  *   「片长约2分钟」, raised twice in the ledger, is a required item. 视频导演 hands the master over with
@@ -86,7 +87,7 @@ async function theMaster(h: Scenario, reviewing: Array<ReturnType<typeof call> |
   return { planId: plan!.id, replies, director };
 }
 
-test.skipIf(!FFMPEG)("your 「约2分钟」 is offered, offered again when said twice, shown failing the 107 s master, and fails it as a gate after one confirm", async () => {
+test.skipIf(!FFMPEG)("your 「约2分钟」 is offered once though said twice, shown failing the 107 s master, and fails it as a gate after one confirm", async () => {
   const h = await createScenario();
   open.push(h);
   const { planId, director } = await theMaster(h, []);
@@ -107,18 +108,14 @@ test.skipIf(!FFMPEG)("your 「约2分钟」 is offered, offered again when said 
     last_run: { outcome: "fail", detail: "107.00 秒，要时长 108–132 秒" },
   });
   expect(yours!.path).toEndWith("EP01_MASTER.mp4");
-  // The card after your first line, and again after your second, saying how often you said it.
-  expect(cards().map((message) => (message.control?.kind === "check" ? [message.control.event, message.control.check_ids] : null))).toEqual([
-    ["proposed", [yours!.id]],
-    ["proposed", [yours!.id]],
-  ]);
-  expect(cards()[1]!.body).toStartWith("你已经说了 2 次。按你的话加检查：时长 108–132 秒？");
+  // No card asks you to confirm what you said, after either line.
+  expect(cards()).toEqual([]);
   // Shown to the Bots as an unconfirmed check that fails, and holding nothing back.
   expect(readFileSync(join(h.root, h.store.getTask(planId).dir, PLAN_MAP_FILE), "utf8")).toContain("[未确认，不通过]");
   expect(holding()).toEqual([]);
 
-  // One click on 确认: a gate, measured again, failing the 107-second master and holding the job open.
-  h.engine.control(cards()[1]!.id, { action: "confirm_check" });
+  // One confirm on the board: a gate, measured again, failing the 107-second master and holding the job open.
+  h.engine.confirmDerivedCheck(yours!.id);
   await h.waitIdle();
   expect(h.store.listChecks(planId)).toMatchObject([{ id: yours!.id, derived_state: "active", last_run: { outcome: "fail", detail: "107.00 秒，要时长 108–132 秒" } }]);
   expect(holding()).toEqual([yours!.id]);

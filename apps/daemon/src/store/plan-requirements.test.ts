@@ -1,8 +1,8 @@
 /**
  * The requirements ledger as a plan sees it (ADR 0040 P3): the board's rules and Done-when lines
  * written in as ledger operations, what a plan inherits from its conversation and can set aside,
- * your confirm / reject / waive / widen, the old rules taken in once, the cards' due lists, and
- * the board's 「上次变化」.
+ * your confirm / reject / waive / widen, the old rules taken in once, how the cards put up about
+ * them before 2026-10-04 settle and widen, and the board's 「上次变化」.
  */
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -116,7 +116,7 @@ describe("the board's rules and Done-when lines are ledger operations", () => {
     store.close();
   });
 
-  test("an old rule the organizer wrote, taken off the only board that had it, is no requirement: no later film is asked about it", () => {
+  test("an old rule the organizer wrote, taken off the only board that had it, is no requirement: no later film bears it", () => {
     const { store, ep01, plan, deliver } = fixture();
     deliver(ep01.id, "EP01_MASTER.mp4");
     store.db.run(`UPDATE tasks SET spec = ? WHERE id = ?`, [JSON.stringify(spec({ rules: ["每次过门都要有过渡镜头"] })), ep01.id]);
@@ -125,11 +125,10 @@ describe("the board's rules and Done-when lines are ledger operations", () => {
     const [transition] = store.listRequirements();
     expect(transition).toMatchObject({ scope: "project", status: "unverified", origin_task_id: ep01.id });
     const ep02 = plan("EP02 动画成片");
-    expect(store.legacyCardDue(ep02.id)).toEqual([transition!.id]);
+    expect(store.planRequirements(ep02.id)).toMatchObject([{ id: transition!.id, status: "unverified" }]);
 
     const { revision } = store.setPlanSpecByUser(ep01.id, spec({ rules: [] }));
     expect(store.getRequirement(transition!.id).status).toBe("not_requirement");
-    expect(store.legacyCardDue(ep02.id)).toEqual([]);
     expect(store.planRequirements(ep02.id)).toEqual([]);
     expect(store.listWorkEvents({ kind: "requirement.reject" })).toMatchObject([{ payload: { requirement: transition!.id, task: ep01.id, action: revision.id } }]);
     store.close();
@@ -153,12 +152,12 @@ describe("the board's rules and Done-when lines are ledger operations", () => {
     expect(store.getRequirement(transition!.id).status).toBe("unverified");
     expect(store.planRequirements(ep01.id)).toMatchObject([{ id: transition!.id, excluded: true }]);
     const ep03 = plan("EP03 动画成片");
-    expect(store.legacyCardDue(ep03.id)).toEqual([transition!.id]);
+    expect(store.planRequirements(ep03.id)).toMatchObject([{ id: transition!.id, status: "unverified" }]);
 
     // Off EP02's too: no board has it any more, and nobody said it.
     store.setPlanSpecByUser(ep02.id, spec({ goal: ep02.title, rules: [] }));
     expect(store.getRequirement(transition!.id).status).toBe("not_requirement");
-    expect(store.legacyCardDue(ep03.id)).toEqual([]);
+    expect(store.planRequirements(ep03.id)).toEqual([]);
     store.close();
   });
 
@@ -385,18 +384,7 @@ describe("the old rules, taken in once", () => {
     store.close();
   });
 
-  test("the old rules no card has asked about are due once; a card for them clears the list", () => {
-    const { store, ep01, plan } = fixture();
-    const old = store.addRequirement({ scope: "plan", scopeId: ep01.id, quote: "按用户要求接着做", sourceKind: "legacy", addedBy: "import", status: "unverified" });
-    store.addRequirement({ scope: "plan", scopeId: ep01.id, quote: "一条待确认的抱怨", sourceKind: "board", addedBy: "capture", status: "proposed" });
-    expect(store.legacyCardDue(ep01.id)).toEqual([old.id]);
-    expect(store.legacyCardDue(plan("另一件事").id)).toEqual([]);
-    store.recordRequirementCard({ card: "legacy", requirements: [old.id], messageId: "m1", taskId: ep01.id });
-    expect(store.legacyCardDue(ep01.id)).toEqual([]);
-    store.close();
-  });
-
-  /** Two old rules of EP01 and the card asking about them, as the engine puts it up; `acted` for one already pressed. */
+  /** Two old rules of EP01 and the card asking about them, as the engine put it up before 2026-10-04; `acted` for one already pressed. */
   function legacyCard(f: ReturnType<typeof fixture>, quotes: string[], acted?: ControlOffer[]) {
     const rules = quotes.map((quote) => f.store.addRequirement({ scope: "plan", scopeId: f.ep01.id, quote, sourceKind: "legacy", addedBy: "import", status: "unverified" }));
     const card = f.store.insertMessage({
@@ -464,7 +452,7 @@ describe("the old rules, taken in once", () => {
   });
 });
 
-describe("the standing suggestion", () => {
+describe("what a standing card already out may widen", () => {
   /** An entry the scribe wrote down from a line of yours in the plan. */
   function noted(
     { store, say }: ReturnType<typeof fixture>,
@@ -479,102 +467,39 @@ describe("the standing suggestion", () => {
     return store.addRequirement({ scope, scopeId, quote: words, category, sourceKind: "message", sourceQuoteId: say(taskId, words).id, addedBy: "scribe" });
   }
 
-  test("a craft category raised in two video jobs of the conversation is suggested once; one job, or one that is no video, is not", () => {
+  test("a craft entry of this conversation, in force, of the card's category", () => {
     const h = fixture();
     const { store, ep01, plan, say, deliver } = h;
     const continuity = noted(h, ep01.id, "背景要连贯", "背景连贯");
     const next = plan("9AG7 未来世界短片");
-    expect(store.standingSuggestion(ep01.id, [continuity.id])).toBeNull();
     store.raiseRequirement(continuity.id, { quoteId: say(next.id, "前后背景要连贯").id, actor: "scribe" });
-    expect(store.standingSuggestion(next.id, [continuity.id])).toBeNull();
     deliver(next.id, "9AG7_MASTER.mp4");
-    // EP01 made no video yet: one video job so far.
-    expect(store.standingSuggestion(next.id, [continuity.id])).toBeNull();
     deliver(ep01.id, "EP01_MASTER.mp4");
-    expect(store.standingSuggestion(next.id, [continuity.id])).toEqual({ category: "背景连贯", domain: "video", requirements: [continuity.id], plans: 2, quotes: ["背景要连贯"], each: false });
     expect(store.mayMakeStanding(continuity.id, { taskId: next.id, category: "背景连贯" })).toBe(true);
-    store.recordRequirementCard({ card: "standing", requirements: [continuity.id], category: "背景连贯", messageId: "m1", taskId: next.id });
-    expect(store.standingSuggestion(next.id, [continuity.id])).toBeNull();
+    expect(store.mayMakeStanding(continuity.id, { taskId: next.id, category: "转场" })).toBe(false);
+    store.waiveRequirement(continuity.id, { taskId: next.id });
+    expect(store.mayMakeStanding(continuity.id, { taskId: next.id, category: "背景连贯" })).toBe(false);
     store.close();
   });
 
-  test("never a running time or a series' constant, nor another conversation's entries, nor a ticket's", () => {
+  test("never a running time, a choice of look, another conversation's entry, nor a ticket's", () => {
     const h = fixture();
     const { store, ep01, plan, deliver, group } = h;
     const next = plan("9AG7 未来世界短片");
     deliver(ep01.id, "EP01_MASTER.mp4");
     deliver(next.id, "9AG7_MASTER.mp4");
-    // 「片长约 2 分钟」 and 「片长 30 秒」 are one category, said about two video jobs: no craft, no card.
     const long = noted(h, ep01.id, "片长约 2 分钟", "时长", "plan");
-    const short = noted(h, next.id, "片长 30 秒", "时长", "plan");
-    expect(store.standingSuggestion(next.id, [short.id])).toBeNull();
     expect(store.mayMakeStanding(long.id, { taskId: next.id, category: "时长" })).toBe(false);
-    // The arm is BEACON ZERO's: it holds for the group, never for every video job.
-    const arm = noted(h, ep01.id, "机械臂必须是左手", "角色设定");
-    store.raiseRequirement(arm.id, { quoteId: h.say(next.id, "机械臂必须是左手").id, actor: "scribe" });
-    expect(store.standingSuggestion(next.id, [arm.id])).toBeNull();
-
-    // The same craft category said in a video job of another group counts for that group only.
+    const cold = noted(h, ep01.id, "色调偏冷", "色调");
+    expect(store.mayMakeStanding(cold.id, { taskId: next.id, category: "色调" })).toBe(false);
     const other = group("另一个组");
     const film = plan("别组的片子", {}, other);
     deliver(film.id, "OTHER_MASTER.mp4");
     const theirs = noted(h, film.id, "转场要有过渡镜头", "转场");
-    const ours = noted(h, next.id, "每次过门都要有过渡镜头", "转场");
-    expect(store.standingSuggestion(next.id, [ours.id])).toBeNull();
-    expect(store.standingSuggestion(film.id, [theirs.id])).toBeNull();
     expect(store.mayMakeStanding(theirs.id, { taskId: next.id, category: "转场" })).toBe(false);
-
-    // A ticket's entry is about one piece of the work: not counted, not widened.
     const ticket = store.createTicket({ taskId: ep01.id, title: "C09" });
     const shot = noted(h, ep01.id, "背景颜色要连贯", "背景连贯", "ticket", ticket.id);
-    const continuity = noted(h, next.id, "背景要连贯", "背景连贯");
-    expect(store.standingSuggestion(next.id, [continuity.id])).toBeNull();
     expect(store.mayMakeStanding(shot.id, { taskId: next.id, category: "背景连贯" })).toBe(false);
-    store.close();
-  });
-});
-
-describe("the standing suggestion, when what you asked differs", () => {
-  function noted({ store, say }: ReturnType<typeof fixture>, taskId: string, words: string, category: string) {
-    const task = store.getTask(taskId);
-    return store.addRequirement({ scope: "project", scopeId: task.session_id, quote: words, category, sourceKind: "message", sourceQuoteId: say(taskId, words).id, addedBy: "scribe" });
-  }
-
-  test("a choice of look (EP01 cold, EP02 warm) is never offered: one click would make both hold for every film", () => {
-    const h = fixture();
-    const { store, ep01, plan, deliver } = h;
-    const ep02 = plan("EP02 动画成片");
-    deliver(ep01.id, "EP01_MASTER.mp4");
-    deliver(ep02.id, "EP02_MASTER.mp4");
-    const cold = noted(h, ep01.id, "色调偏冷", "色调");
-    const warm = noted(h, ep02.id, "色调要暖", "色调");
-    expect(store.standingSuggestion(ep02.id, [warm.id])).toBeNull();
-    expect(store.standingSuggestion(ep01.id, [cold.id])).toBeNull();
-    expect([cold, warm].map((entry) => store.mayMakeStanding(entry.id, { taskId: ep02.id, category: "色调" }))).toEqual([false, false]);
-    store.close();
-  });
-
-  test("a craft category whose entries say different things is offered one entry at a time, each with its own words, once each", () => {
-    const h = fixture();
-    const { store, ep01, plan, deliver, say } = h;
-    const ep02 = plan("EP02 动画成片");
-    deliver(ep01.id, "EP01_MASTER.mp4");
-    deliver(ep02.id, "EP02_MASTER.mp4");
-    // Two films, one category by the scribe's label, two different asks: no card for the category.
-    const steady = noted(h, ep01.id, "背景要连贯", "背景连贯");
-    const noJump = noted(h, ep02.id, "背景不能跳变", "背景连贯");
-    expect(store.standingSuggestion(ep02.id, [noJump.id])).toBeNull();
-
-    // One of them said in both films: a card about that one alone.
-    store.raiseRequirement(steady.id, { quoteId: say(ep02.id, "背景要连贯，别忘了").id, actor: "scribe" });
-    const card = store.standingSuggestion(ep02.id, [steady.id]);
-    expect(card).toEqual({ category: "背景连贯", domain: "video", requirements: [steady.id], plans: 2, quotes: ["背景要连贯"], each: true });
-    store.recordRequirementCard({ card: "standing", requirements: [steady.id], category: "背景连贯", each: true, messageId: "m1", taskId: ep02.id });
-    expect(store.standingSuggestion(ep02.id, [steady.id])).toBeNull();
-
-    // The other one, said in both films later, still gets its own: the category was never asked as a whole.
-    store.raiseRequirement(noJump.id, { quoteId: say(ep01.id, "背景不能跳变").id, actor: "scribe" });
-    expect(store.standingSuggestion(ep01.id, [noJump.id])).toMatchObject({ requirements: [noJump.id], quotes: ["背景不能跳变"], each: true });
     store.close();
   });
 });

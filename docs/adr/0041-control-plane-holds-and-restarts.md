@@ -1,5 +1,7 @@
 # 控制面：叫停、叫醒闸、控制句、回执和重启分类
 
+> 部分由 [ADR 0058](0058-the-app-asks-only-when-it-needs-you.md) 修订（2026-10-04）：重启后会自己接着做、或被你的叫停扣着的活不再发那一句和通知，只告诉你要你接手的。 / Amended in part by [ADR 0058](0058-the-app-asks-only-when-it-needs-you.md) (2026-10-04): a restart notice goes up only for work that will not go on by itself.
+
 [ADR 0040](0040-agent-kernel-the-job-owns-state.md) 的 P2 阶段。09-29 你在私聊里说「你手头的生成停一下」，这句话像普通要求一样过了整理跳，视频导演在另外两条 Bot↔Bot 私聊里的轮都没听到，一个接着重拼母带，一个把 Shot 11 送审；11:02 规划叫回又让它交了一个新镜头。停不住的原因在结构上：叫停只是规划上一个模型改得回去的「搁置」，开轮、叫醒和有副作用的工具调用都不看它。09-26 还有一件：重启打断了 Bot↔Bot 私聊里的长活，中断那一行只写在那条私聊里，你不在那里，活停了 7.6 小时没人知道。
 
 本文记下 P2 怎么落地、和 ADR 0040 的出入，以及取代了什么：

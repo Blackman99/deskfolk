@@ -63,13 +63,26 @@ test("a segment that failed needs attention, and the next tick goes on from its 
   const failure = h.messages(room).find((message) => message.turn_id === first!.id && message.body === completionFailBody("zh", "endpoint_error"))!;
   expect(failure).toBeDefined();
   expect(h.store.db.query("SELECT state FROM work_items WHERE id = ?").get(first!.work_item_id!)).toEqual({ state: "needs_attention" });
+  // Retried without you, so the failure asks nothing of you: no notification.
+  expect(h.store.db.query("SELECT COUNT(*) AS n FROM notifications WHERE kind = 'failure'").get()).toEqual({ n: 0 });
   h.tick();
   await h.waitIdle();
   const turns = h.turns(bot);
   expect(turns).toHaveLength(2);
   expect(turns[1]).toMatchObject({ trigger_message_id: failure.id, task_id: plan.id, ticket_id: ticket.id });
   expect(h.store.getMessage(failure.id).source_turn_id).toBe(turns[1]!.id);
-  expect(h.store.db.query("SELECT action_state FROM notifications WHERE semantic_key = ?").get(`failure:${first!.id}`)).toEqual({ action_state: "resolved" });
+});
+
+test("a failed reply on no job, which nothing retries, still tells you", async () => {
+  const h = await scenario({ supervision: true });
+  const [bot] = h.createBots("Writer");
+  const room = h.direct(bot!);
+  h.script(bot!).reply(failed("endpoint_error"));
+  h.postUser(room, "你好");
+  await h.waitIdle();
+  const [turn] = h.turns(bot!);
+  expect(h.store.db.query("SELECT kind, action_state FROM notifications WHERE semantic_key = ?").get(`failure:${turn!.id}`))
+    .toEqual({ kind: "failure", action_state: "open" });
 });
 
 test("a ticket that went quiet before the supervisor's level was raised is left alone until something happens in it", async () => {

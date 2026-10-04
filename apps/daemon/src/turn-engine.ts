@@ -257,7 +257,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     ablation,
   });
 
-  const requirementCards = createRequirementCards({ store, publishMessage: core.publishMessage });
+  const requirementCards = createRequirementCards({ store });
 
   // 读句 (ADR 0055): what a line means, read once by the default model before the app acts on it.
   const reader = createReader({
@@ -323,9 +323,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       });
     },
     draining: () => Boolean(options.admission?.draining),
-    // Entries it wrote down or raised may now be ones you asked for in two plans (ADR 0040 P3).
     onFiled: (quote, outcome) => {
-      requirementCards.noteFiled(quote, [...outcome.added, ...outcome.raised]);
       // A part-level entry the scribe made of a line about delivered work reads as a complaint (§6.6).
       if (quote.message_id && outcome.added.length > 0) submissions.noteComplaint(quote.message_id, { scribeAdded: outcome.added });
     },
@@ -728,8 +726,6 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         if (fromUser) void core.track(scribe.noteLine(message.id, handedOver));
         // Its numbers become checks as soon as it is filed, whatever the scribe makes of it.
         if (fromUser) derivedChecks.noteLine(message.id);
-        // Old rules of its plan that nobody found your words for are asked about, once.
-        if (fromUser) requirementCards.noteLine(message.id);
       }
     },
     settlePlan(taskId) {
@@ -874,7 +870,6 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         waiter(answer);
         void core.track(scribe.noteAnswer(askId));
         derivedChecks.noteLine(askId);
-        requirementCards.noteLine(askId);
       });
       return answered;
     },

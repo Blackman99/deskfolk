@@ -956,7 +956,9 @@ export function reviewSubmission(ctx: StoreContext, input: {
           turnId: turn.id, payload: { submission_id: submission.id, reasons, same_model: sameModel } });
         return { ok: false, code: "review_refused", reasons, submission: getSubmission(ctx, submission.id) };
       }
-      if (sameModel) {
+      // A routine's run is approved on a clean review, with nothing put to you (see takeUpAwaiting).
+      const routine = routinePlan(ctx, submission.task_id);
+      if (sameModel && !routine) {
         const open = unbackedItems(ctx, { ...submission, checks }, "raised");
         if (open.length > 0) {
           ctx.db.run("UPDATE submissions SET checks = ?, updated_at = ? WHERE id = ?", [JSON.stringify(checks), now, submission.id]);
@@ -973,7 +975,7 @@ export function reviewSubmission(ctx: StoreContext, input: {
       // Either way the clean approve moves it to your approve/reject card, its verdict shown there.
       // (Every gate passed by here: a failing or unrun one refused the approval above.)
       const unbacked = !checks.some(backs) && (sameModel || !hasEvidence(ctx, submission, verdicts));
-      if (ORIGIN_NEEDS_USER.includes(submission.origin) || unbacked) {
+      if (!routine && (ORIGIN_NEEDS_USER.includes(submission.origin) || unbacked)) {
         ctx.db.run("UPDATE submissions SET checks = ?, updated_at = ? WHERE id = ?", [JSON.stringify(checks), now, submission.id]);
         const card = askApproval(ctx, getSubmission(ctx, submission.id), now, record);
         recordWorkEvent(ctx, { kind: "review.awaiting_user", actor: turn.bot_id, botId: turn.bot_id, taskId: submission.task_id, ticketId: submission.ticket_id,
@@ -985,7 +987,7 @@ export function reviewSubmission(ctx: StoreContext, input: {
           reasons: [`${why}: a review's approve moves it to the user's approve/reject card, never straight to approved`],
           submission: getSubmission(ctx, submission.id), card };
       }
-      approve(ctx, submission, record, checks, now);
+      approve(ctx, submission, record, checks, now, routine ? "routine" : "no_reviewer");
       return { ok: true, submission: getSubmission(ctx, submission.id), outcome };
     }
     ctx.db.run("UPDATE submissions SET state = 'rejected', reviews = ?, checks = ?, updated_at = ? WHERE id = ?",
@@ -1003,8 +1005,12 @@ export function reviewSubmission(ctx: StoreContext, input: {
   });
 }
 
-/** An approval: by a review (`record`) or, with none, by the app on its checks. The ticket and its parts are approved; the plan may be delivered. */
-function approve(ctx: StoreContext, submission: Submission, record: ReviewRecord | null, checks: readonly SubmissionCheck[], now: string): void {
+/**
+ * An approval: by a review (`record`) or, with none, by the app on its checks — `by` says why the app
+ * needed nobody for it. The ticket and its parts are approved; the plan may be delivered.
+ */
+function approve(ctx: StoreContext, submission: Submission, record: ReviewRecord | null, checks: readonly SubmissionCheck[], now: string,
+  by: "no_reviewer" | "routine" = "no_reviewer"): void {
   ctx.db.run("UPDATE submissions SET state = 'approved', reviews = ?, checks = ?, awaiting = NULL, updated_at = ? WHERE id = ?",
     [JSON.stringify(record ? [...submission.reviews, record] : submission.reviews), JSON.stringify(checks), now, submission.id]);
   const approved = getSubmission(ctx, submission.id);
@@ -1020,11 +1026,11 @@ function approve(ctx: StoreContext, submission: Submission, record: ReviewRecord
   if (record) {
     recordWorkEvent(ctx, { kind: "review.recorded", actor: record.reviewer_bot_id, botId: record.reviewer_bot_id, taskId: submission.task_id,
       ticketId: submission.ticket_id, turnId: record.turn_id, payload: { submission_id: submission.id, work_item_id: submission.work_item_id, outcome: "approve",
-        same_model: record.same_model } });
+        same_model: record.same_model, ...(by === "routine" ? { by } : {}) } });
     tellProducer(ctx, approved, record, now);
   } else {
     recordWorkEvent(ctx, { kind: "submission.approved", actor: "app", botId: submission.bot_id, taskId: submission.task_id, ticketId: submission.ticket_id,
-      payload: { submission_id: submission.id, work_item_id: submission.work_item_id, by: "no_reviewer" } });
+      payload: { submission_id: submission.id, work_item_id: submission.work_item_id, by } });
   }
   if (submission.awaiting?.message_id) letGoOfCard(ctx, submission.awaiting.message_id, { reason: "approved" });
   // The Bot that asked for this work hears it is in, and goes on.
@@ -1224,6 +1230,11 @@ function askApproval(ctx: StoreContext, submission: Submission, now: string, rev
   return message;
 }
 
+/** Whether the plan is a routine's standing plan, whose runs nobody waits on to approve. */
+function routinePlan(ctx: StoreContext, taskId: string): boolean {
+  return Boolean(ctx.db.query("SELECT 1 FROM tasks WHERE id = ? AND routine_id IS NOT NULL").get(taskId));
+}
+
 /** Why a card no longer waits on you, as it then reads in place of its buttons. */
 type LetGo =
   | { reason: "superseded"; by: "submission" | "board" | "complaint" }
@@ -1278,6 +1289,13 @@ function takeUpAwaiting(ctx: StoreContext, submission: Submission, now: string):
   }
   const unrun = checks.filter((check) => check.gate && check.outcome === "not_run").map((check) => check.check_id);
   if (unrun.length > 0) return { submission, unrun };
+  // A routine runs unattended, as you set it up: what a run hands over is taken once its gates pass —
+  // every gate that ran did, by here — with no card asking you to approve each day's brief
+  // (2026-10-04). A card an earlier build left waiting is let go of as approved.
+  if (routinePlan(ctx, submission.task_id)) {
+    approve(ctx, submission, submission.awaiting?.review ?? null, checks, now, "routine");
+    return { submission: getSubmission(ctx, submission.id), unrun: [] };
+  }
   // Your approve/reject card waits on your press alone; a later tick never approves it by itself.
   // A 放行 you already pressed, waiting on a gate, resolves here once every gate has run — one
   // added while it waited included, which the press's own run never saw.

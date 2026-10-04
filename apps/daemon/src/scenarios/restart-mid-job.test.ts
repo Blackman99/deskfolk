@@ -14,6 +14,8 @@
  *   by itself within that tick. The cases after it pin the rest of the restart policy at that level:
  *   a crash goes on once after a minute of steady running, a development restart soon after another
  *   waits for you, and a last step whose outcome is unknown is never repeated on its own.
+ * - Since 2026-10-04 only work that waits for you is told: a job that goes on by itself gets no
+ *   notice and no notification, and work a later restart strands is told by that later boot.
  */
 import { afterEach, expect, test } from "bun:test";
 import type { CompletionResult } from "../completions";
@@ -92,11 +94,10 @@ test("after a clean restart, the job goes on by itself within a tick", async () 
   await h.waitIdle();
 
   expect(h.turns(director).filter((turn) => turn.created_at > downAt).map((turn) => turn.task_id)).toEqual([ep01.id]);
-  // The notice said it would, and is answered by it: no 继续 left to press, the notification resolved.
-  const notice = h.messages(room).find((message) => message.control?.kind === "restart")!;
-  expect(notice.body).toContain("这次是正常停下，现在就从断的地方自动接着做");
-  expect(notice.control).toMatchObject({ kind: "restart", acted: ["resume"] });
-  expect(h.store.db.query("SELECT action_state FROM notifications WHERE semantic_key = ?").get(`restart:${notice.id}`)).toEqual({ action_state: "resolved" });
+  // Nothing was yours to decide: no notice, and the turn's own notification went, read, nothing open.
+  expect(h.messages(room).filter((message) => message.control?.kind === "restart")).toEqual([]);
+  expect(h.store.db.query(`SELECT action_state = 'open' AS open, read_at IS NOT NULL AS read FROM notifications
+    WHERE semantic_key LIKE 'interrupted:%' OR semantic_key LIKE 'restart:%'`).all()).toEqual([{ open: 0, read: 1 }]);
   expect(submitsOf(h, "EP01 片尾")).toBe(1);
 });
 
@@ -109,8 +110,8 @@ test("after a crash at the supervisor's level the job waits a minute of steady r
 
   await h.restart({ clean: false });
   await h.waitIdle();
-  const notice = h.messages(room).find((message) => message.control?.kind === "restart")!;
-  expect(notice.body).toContain("守护进程稳定运行 1 分钟后会自动接着做一次");
+  // It goes on by itself, so nothing asks you about it.
+  expect(h.messages(room).filter((message) => message.control?.kind === "restart")).toEqual([]);
   expect(h.turns(director).filter((turn) => turn.created_at > downAt)).toEqual([]);
 
   h.tick(new Date(Date.now() + 61_000));
@@ -134,13 +135,25 @@ test("a development daemon restarting again within five minutes leaves the job f
   h.tick(new Date(Date.now() + 10 * 60_000));
   await h.waitIdle();
 
-  // The first restart said it would go on after a minute; the second, seconds later, cut nothing
-  // new and so said nothing, but it is the restart in quick succession that keeps the job waiting.
+  // The first restart said nothing, the job being due to go on after a minute; the second, seconds
+  // later, cut nothing new, but it is what keeps the job waiting — so it tells you, once.
   const notices = h.messages(room).filter((message) => message.control?.kind === "restart");
   expect(notices).toHaveLength(1);
-  expect(notices[0]!.body).toContain("稳定运行 1 分钟后");
+  expect(notices[0]!.body).toContain("还没来得及自动接着做，守护进程又启动了一次");
+  const cutNote = h.messages(room).find((message) => message.kind === "system" && message.body === "中断")!;
+  expect(notices[0]!.control).toMatchObject({ kind: "restart", cause: "dev", notes: [cutNote.id] });
+  expect(h.store.db.query("SELECT kind, action_state FROM notifications WHERE semantic_key = ?").get(`restart:${notices[0]!.id}`))
+    .toEqual({ kind: "interrupted", action_state: "open" });
   expect(h.turns(director).filter((turn) => turn.created_at > downAt)).toEqual([]);
   expect(h.store.db.query("SELECT state FROM work_items WHERE bot_id = ? AND task_id IS NOT NULL").all(director.id)).toEqual([{ state: "needs_attention" }]);
+
+  // A third restart does not tell it again; 继续 on the notice takes it up from its 「中断」 line.
+  await h.restart({ clean: true, dev: true });
+  await h.waitIdle();
+  expect(h.messages(room).filter((message) => message.control?.kind === "restart")).toHaveLength(1);
+  h.engine.control(notices[0]!.id, { action: "resume" });
+  await h.waitIdle();
+  expect(h.turns(director).filter((turn) => turn.created_at > downAt)).toHaveLength(1);
 });
 
 test("a crash in the middle of an external call never repeats it on its own", async () => {

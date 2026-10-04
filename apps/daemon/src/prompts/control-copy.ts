@@ -322,8 +322,10 @@ export function readOnlyLine(locale: Locale, said: SaidLine): string {
  * - `held`: a stop of yours covers it; it goes on after the lift.
  * - `unknown_effect`: its last external call has no known outcome, so it waits for you.
  * - `waits`: work on no plan, which the supervisor does not pick up.
+ * - `restarted_again`: cut by an earlier development restart and to go on after a minute, but the
+ *   daemon started again first, so it waits for you; told by the later boot.
  */
-export type RestartArrangement = "now" | "after_stable" | "dev_burst" | "held" | "unknown_effect" | "waits";
+export type RestartArrangement = "now" | "after_stable" | "dev_burst" | "held" | "unknown_effect" | "waits" | "restarted_again";
 
 /** One arrangement as the notice's last line says it. */
 function arrangementLine(locale: Locale, arrangement: RestartArrangement | null): string {
@@ -345,6 +347,10 @@ function arrangementLine(locale: Locale, arrangement: RestartArrangement | null)
       return en
         ? "Its last external call has no known outcome, so nothing picks up on its own, to avoid submitting it twice: check whether that step went through, then press Continue; Leave it keeps it as it is."
         : "最后一步是结果不明的外部调用，为免重复提交不会自己接着做：先确认那一步有没有生效，再点「继续」；点「不续」就先放着。";
+    case "restarted_again":
+      return en
+        ? "An earlier development restart cut it off, and the daemon started again before it could pick up, so nothing picks up on its own: Continue picks each up from where it stopped; Leave it keeps it as it is."
+        : "它是之前开发版重启时断的，还没来得及自动接着做，守护进程又启动了一次，所以不会自己接着做：点「继续」从断的地方接着做，点「不续」就先放着。";
     default:
       return en
         ? "Nothing picks up on its own: Continue picks each up from where it stopped; Leave it keeps it as it is."

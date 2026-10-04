@@ -1,6 +1,6 @@
 # 监督器：持球者、没人推的任务、需要处理的工作与重启续跑 / Supervisor: ball holder, tickets nobody moves, attention and restart resume
 
-Status: implemented at engine level 4 (`ENGINE_LEVELS.supervision`), part of ADR 0040's P4c. External jobs (P4d) are not part of it (they came with [ADR 0047](0047-external-jobs.md)), and the board's ball display and dependency editor came later (2026-10-03); reviewer assignment, submitted → approved and implicit submission came at level 5 with [ADR 0046](0046-submissions-and-reviews.md). See the gaps below.
+Status: implemented at engine level 4 (`ENGINE_LEVELS.supervision`), part of ADR 0040's P4c. External jobs (P4d) are not part of it (they came with [ADR 0047](0047-external-jobs.md)), and the board's ball display and dependency editor came later (2026-10-03); reviewer assignment, submitted → approved and implicit submission came at level 5 with [ADR 0046](0046-submissions-and-reviews.md). See the gaps below. Amended in part by [ADR 0058](0058-the-app-asks-only-when-it-needs-you.md) (2026-10-04): work a restart cut off that goes on by itself gets no notice, and a failed turn the supervisor will pick up gets no failure notification.
 
 [ADR 0040](0040-agent-kernel-the-job-owns-state.md) §5 要让「没做完不停下」由库里的事实保证，而不是进程里的计时器。在这之前推进兜底有三条：[ADR 0039](0039-plans-with-work-left-are-called-back.md) 的规划叫回（`plan_nudge`，按第一个未完成任务的 worker 或最后说话的 Bot 挑人，「任务都交出、记录说还有活」时等 10 分钟的计时器在进程里）、Bot↔Bot 私聊静下来后的 report_back（10 秒计时器在进程里），以及 [ADR 0041](0041-control-plane-holds-and-restarts.md) 的重启通知（一律等你按「继续」）。重启会丢掉计时器；叫回不看谁真正持球；重启后每次都要你手动续跑，09-26 那次停了 7.6 小时。
 

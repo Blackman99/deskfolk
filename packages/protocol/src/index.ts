@@ -1445,12 +1445,13 @@ export type SupervisorControl = {
  * - `check`, on the app's line (ADR 0040 P3): a check from your words offered to you (`proposed`;
  *   `replacing` names the check in force it would replace, `times` how many separate lines of
  *   yours have said it when that is two or more), or checks you confirmed that found the job's
- *   final deliverable (`bound`). `edit_draft` is what its 改 puts in your composer.
+ *   final deliverable (`bound`). `edit_draft` is what its 改 puts in your composer. Since ADR 0058
+ *   only a `proposed` card with `replacing` is put up; the others are older lines.
  * - `requirement`, on the app's line (ADR 0040 P3): old rules of the plan `task_id` with none of your
  *   words found for them (`legacy`), or craft requirements of one `category` you raised in two or
  *   more `domain` plans of the conversation, suggested to hold for every plan of `domain` (`standing`;
  *   the body quotes their words, and when the category's entries are in different words it names
- *   one entry alone).
+ *   one entry alone). None is put up since ADR 0058; older lines keep their buttons.
  * - `work_question` ({@link WorkQuestionControl}) and `supervisor` ({@link SupervisorControl}), on
  *   lines the supervisor level writes (ADR 0045).
  * `acted` lists the buttons you pressed on it, in order; absent until you press one.
@@ -1558,7 +1559,8 @@ export type MessageControl =
   | {
       /**
        * A Bot's default model, inferred from what it ran on most lately (ADR 0048, engine level 7):
-       * `confirm` keeps it, `decline` drops it so the Bot runs on the endpoint's default.
+       * `confirm` keeps it, `decline` drops it so the Bot runs on the endpoint's default. None is put
+       * up since ADR 0058; older lines keep their buttons.
        */
       kind: "model_default";
       bot_id: string;

@@ -15,12 +15,18 @@
  * off by the cause — at once after a clean stop, after a minute of steady running after a crash or a
  * development restart, and never on its own after development restarts in a burst, nor when the last
  * step was an external call with no known outcome (store/supervisor.ts) — and the notice says which.
+ * A job whose every turn goes on that way, or stays under a stop of yours, gets no notice and no
+ * notification (2026-10-04): there is nothing for you to decide, each turn's own 「中断」 line still
+ * says where it stopped, and a 不续 pressed on such a notice set aside work due to go on a minute later.
  */
 import { USER_MEMBER, type ControlActionResult, type Message, type RestartCause, type Session, type Turn } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { ENGINE_LEVELS } from "../store/schema-gate";
-import { restartNoticeBody, type ControlTurnLine } from "../prompts";
+import { restartNoticeBody, type ControlTurnLine, type RestartArrangement } from "../prompts";
 import type { Store } from "../store";
+
+/** How a cut-off turn goes on with nothing from you: the supervisor picks it up, or it waits on a stop you made. */
+const GOES_ON_WITHOUT_YOU: ReadonlySet<RestartArrangement> = new Set(["now", "after_stable", "held"]);
 
 export type RestartDeps = {
   store: Store;
@@ -29,7 +35,7 @@ export type RestartDeps = {
   continueFromInterrupt: (messageId: string) => Turn;
 };
 
-/** What a boot told you: the jobs it put a line in for, and the turns in them. */
+/** What a boot told you: the jobs it put a line in for, and the turns in them (none for jobs that go on without you). */
 export type RestartSummary = { cause: RestartCause; jobs: number; turns: number };
 
 export type Restart = {
@@ -78,12 +84,23 @@ export function createRestart(deps: RestartDeps): Restart {
     const supervised = store.capabilities().engine_level >= ENGINE_LEVELS.supervision;
     const arrangements = new Map(
       (supervised ? store.recordSupervisorRestart({ bootId: store.bootId, cause, interruptedTurnIds: cut.map((row) => row.turn.id) }) : [])
-        .map((row) => [row.turnId, row.arrangement] as const),
+        .map((row): [string, RestartArrangement] => [row.turnId, row.arrangement]),
     );
+    // Work an earlier development restart cut off and left unsaid, as it was to go on after a
+    // minute, that this restart now keeps from going on by itself: told here, beside this one's.
+    const rows = [...cut];
+    for (const left of supervised ? store.workLeftByEarlierRestart() : []) {
+      try {
+        rows.push({ turn: store.getTurn(left.turnId), note: store.getMessage(left.noteId) });
+        arrangements.set(left.turnId, "restarted_again");
+      } catch {
+        // gone with a cleared conversation since
+      }
+    }
     // One line per job and place: a plan's turns go to the plan's conversation, turns on no plan to
     // wherever each is told, so the turns of one plan cut in three directs make one line.
     const jobs = new Map<string, { where: string; plan: string | null; cut: typeof cut }>();
-    for (const row of cut) {
+    for (const row of rows) {
       const where = placeToTell(row.turn);
       if (!where) continue;
       const plan = row.turn.task_id ?? null;
@@ -93,7 +110,16 @@ export function createRestart(deps: RestartDeps): Restart {
       jobs.set(key, job);
     }
     let turns = 0;
+    let told = 0;
     for (const job of jobs.values()) {
+      if (supervised && job.cut.every((row) => GOES_ON_WITHOUT_YOU.has(arrangements.get(row.turn.id) ?? "waits"))) {
+        // Nothing to ask: the turns' own notifications go too, read, so no banner or badge says it.
+        store.transaction(() => {
+          for (const row of job.cut) store.updateNotificationActionState(`interrupted:${row.turn.id}`, "voided", "goes_on_by_itself", true);
+        });
+        continue;
+      }
+      told += 1;
       turns += job.cut.length;
       const notice = store.transaction(() => {
         const notice = store.insertMessage({
@@ -122,7 +148,7 @@ export function createRestart(deps: RestartDeps): Restart {
       });
       publishMessage(notice);
     }
-    return { cause, jobs: jobs.size, turns };
+    return { cause, jobs: told, turns };
   }
 
   function act(message: Message, input: { action: unknown }): ControlActionResult {

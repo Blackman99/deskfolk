@@ -835,6 +835,43 @@ export function recordSupervisorRestart(ctx: StoreContext, input: {
 }
 
 /**
+ * Whether the work this segment was on is now the supervisor's to take up (§5.3.5): it needs
+ * attention, on a plan the supervisor works in. A failure there is retried without you, and you are
+ * told only when it will not be any more (its retry budget, an outcome it cannot know), so the
+ * failure itself asks nothing of you.
+ */
+export function supervisorTakesUp(ctx: StoreContext, turnId: string): boolean {
+  if (readEngineLevel(ctx.db) < ENGINE_LEVELS.supervision) return false;
+  return Boolean(ctx.db.query(`SELECT 1 FROM turns t JOIN work_items w ON w.id = t.work_item_id JOIN tasks p ON p.id = w.task_id
+    WHERE t.id = ? AND w.state = 'needs_attention' AND ${ACTIVE_PLAN("p")}`).get(turnId));
+}
+
+/**
+ * Work an earlier development restart cut off that has not been picked up and now never will be on
+ * its own — the daemon started again first, and §5.6 leaves work cut by a development restart to you
+ * once another restart came before its pick-up — with no restart notice naming its 「中断」 line:
+ * its own boot said nothing, since it was to go on after a minute (2026-10-04). The boot that strands
+ * it tells you instead (engine/restart.ts). Turn and note ids, oldest first.
+ */
+export function workLeftByEarlierRestart(ctx: StoreContext, bootId: string): Array<{ turnId: string; noteId: string }> {
+  if (readEngineLevel(ctx.db) < ENGINE_LEVELS.supervision) return [];
+  const items = ctx.db.query<Work, []>(`SELECT w.* FROM work_items w JOIN tasks p ON p.id = w.task_id
+    WHERE w.state = 'needs_attention' AND ${ACTIVE_PLAN("p")} ORDER BY w.updated_at, w.id`).all();
+  const out: Array<{ turnId: string; noteId: string }> = [];
+  for (const work of items) {
+    const segment = latestSegment(ctx, work.id);
+    const record = restartRecord(ctx, work, segment);
+    if (!segment || !record || record.cause !== "dev" || record.boot_id === bootId || record.turn_id !== segment.id) continue;
+    const noteId = continuableNote(ctx, segment);
+    if (!noteId || noteId !== record.note_id) continue;
+    if (ctx.db.query(`SELECT 1 FROM messages m WHERE json_valid(m.control) AND json_extract(m.control, '$.kind') = 'restart'
+      AND EXISTS (SELECT 1 FROM json_each(json_extract(m.control, '$.notes')) n WHERE n.value = ?)`).get(noteId)) continue;
+    out.push({ turnId: segment.id, noteId });
+  }
+  return out;
+}
+
+/**
  * Restart notices whose every 「中断」 line has been continued — by the supervisor or by you — get
  * the 继续 they no longer need marked as done, and their notification resolved. Returns the lines
  * that changed, for the engine to publish.

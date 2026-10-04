@@ -37,29 +37,39 @@ test("a Bot's default is what it ran on most in the last week, among models stil
   ran(f.store, f.reviewer.id, f.dm, "grok", "none", 20, 9);
   const fallback = f.store.ensureBotDefault(f.reviewer.id, listed);
   expect(fallback).toEqual({ providerId: "p-1", model: "gemini", thinkingLevel: "high", source: "inferred", turns: 8 });
-  const cards = f.store.db.query<{ id: string }, []>("SELECT id FROM messages WHERE json_extract(control, '$.kind') = 'model_default'").all();
-  expect(cards).toHaveLength(1);
-  const card = f.store.getMessage(cards[0]!.id);
-  expect(card.session_id).toBe(f.dm);
-  expect(card.body).toContain("gemini");
-  expect(card.control).toMatchObject({ bot_id: f.reviewer.id, model: "gemini", thinking_level: "high", offer: ["confirm", "decline"] });
-  // Asked once: the next turn uses it without asking again.
-  f.store.ensureBotDefault(f.reviewer.id, listed);
-  expect(f.store.db.query("SELECT COUNT(*) AS n FROM messages WHERE json_extract(control, '$.kind') = 'model_default'").get()).toEqual({ n: 1 });
+  // Nothing to decide: no card asks you about it, and no notification waits on you.
+  expect(f.store.db.query("SELECT COUNT(*) AS n FROM messages WHERE json_extract(control, '$.kind') = 'model_default'").get()).toEqual({ n: 0 });
+  expect(f.store.db.query("SELECT COUNT(*) AS n FROM notifications WHERE semantic_key LIKE 'model_default:%'").get()).toEqual({ n: 0 });
+  expect(f.store.db.query("SELECT COUNT(*) AS n FROM work_events WHERE kind = 'model.default_inferred' AND bot_id = ?").get(f.reviewer.id)).toEqual({ n: 1 });
+  // Inferred once: the next turn uses it as it is.
+  expect(f.store.ensureBotDefault(f.reviewer.id, listed)).toEqual(fallback);
+});
 
-  f.store.answerModelDefaultCard(card.id, "confirm");
+/** A default-model card from before they stopped being put up (2026-10-04), with its notification. */
+function oldCard(f: ReturnType<typeof fixture>, model: string, thinking: "low" | "high"): string {
+  const card = f.store.insertMessage({ sessionId: f.dm, kind: "system", author: "user", hiddenFromBots: true, body: `审片员 之后默认用 ${model}`,
+    control: { kind: "model_default", bot_id: f.reviewer.id, provider_id: "p-1", model, thinking_level: thinking, offer: ["confirm", "decline"] } });
+  f.store.createNotification({ semantic_key: `model_default:${card.id}`, kind: "ask", session_id: f.dm, message_id: card.id, action_state: "open" });
+  return card.id;
+}
+
+test("a card already out still takes its buttons, once each", () => {
+  const f = fixture();
+  ran(f.store, f.reviewer.id, f.dm, "gemini", "high", 2);
+  f.store.ensureBotDefault(f.reviewer.id, listed);
+  const card = oldCard(f, "gemini", "high");
+  f.store.answerModelDefaultCard(card, "confirm");
   expect(f.store.botDefault(f.reviewer.id)).toMatchObject({ model: "gemini", source: "confirmed" });
-  expect(() => f.store.answerModelDefaultCard(card.id, "decline")).toThrow();
+  expect(f.store.db.query("SELECT action_state FROM notifications WHERE semantic_key = ?").get(`model_default:${card}`)).toEqual({ action_state: "resolved" });
+  expect(() => f.store.answerModelDefaultCard(card, "decline")).toThrow();
 });
 
 test("declining drops the default for good; a Bot with nothing listed to go on gets none", () => {
   const f = fixture();
   ran(f.store, f.reviewer.id, f.dm, "grok", "low", 2);
   f.store.ensureBotDefault(f.reviewer.id, listed);
-  const card = f.store.db.query<{ id: string }, []>("SELECT id FROM messages WHERE json_extract(control, '$.kind') = 'model_default'").get()!;
-  f.store.answerModelDefaultCard(card.id, "decline");
+  f.store.answerModelDefaultCard(oldCard(f, "grok", "low"), "decline");
   expect(f.store.ensureBotDefault(f.reviewer.id, listed)).toMatchObject({ model: null, source: "declined" });
-  expect(f.store.db.query("SELECT COUNT(*) AS n FROM messages WHERE json_extract(control, '$.kind') = 'model_default'").get()).toEqual({ n: 1 });
 
   const writer = f.store.createBot({ name: "编剧", duties: "写", boundaries: "none" }).bot;
   expect(f.store.ensureBotDefault(writer.id, listed)).toMatchObject({ model: null, source: null });

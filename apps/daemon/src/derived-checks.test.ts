@@ -1,18 +1,18 @@
 /**
  * Checks from your words (ADR 0040 P3): the range each number allows, when two agree, which of your
- * words state a number for the work (kept narrow: a miss costs no card, a misread costs a card),
+ * words state a number for the work (kept narrow: a misread offers a check you did not ask for),
  * which delivered file is the final deliverable, and how the checks are named.
  */
 import { describe, expect, test } from "bun:test";
 import {
   bindRuleOf,
-  derivedCardBody,
   derivedStatements,
   editDraft,
   measureLabel,
   measureOf,
   partTicket,
   readingLabel,
+  replacementCardBody,
   sameAsk,
   statedOfTheWork,
   unconfirmedNote,
@@ -284,19 +284,12 @@ describe("how the checks read", () => {
     expect(measureLabel({ dimension: "aspect", ratio: "portrait" }, "en")).toBe("Portrait (taller than wide)");
   });
 
-  test("the app's lines: an offer holds nothing back and says how often you said it; a replacement leaves the gate in force", () => {
+  test("the app's card: a replacement names both numbers, says how often you said it, and leaves the gate in force", () => {
     const measure = { dimension: "duration", min: 108, max: 132 } as const;
-    const proposed = derivedCardBody("zh", "proposed", [measure]);
-    expect(proposed).toContain("按你的话加检查：时长 108–132 秒");
-    expect(proposed).toContain("你确认之后才拦东西");
-    expect(derivedCardBody("zh", "proposed", [measure], { times: 2 })).toStartWith("你已经说了 2 次。按你的话加检查");
-    expect(derivedCardBody("en", "proposed", [measure], { times: 3 })).toStartWith("You have said it 3 times.");
-    const replacing = derivedCardBody("zh", "proposed", [{ dimension: "duration", min: 162, max: 198 }], { replaces: [measure] });
-    expect(replacing).toContain("生效中是时长 108–132 秒，你刚说的是时长 162–198 秒");
-    expect(replacing).toContain("生效中的那条照旧");
-    expect(derivedCardBody("zh", "proposed", [measure], { demoted: true })).toContain("改回待确认");
-    expect(derivedCardBody("en", "bound", [measure], { path: "EP01_MASTER.mp4" })).toContain("delivered EP01_MASTER.mp4");
-    expect(derivedCardBody("en", "proposed", [measure])).toContain("It holds nothing back until you confirm it");
+    const replacing = replacementCardBody("zh", [{ dimension: "duration", min: 162, max: 198 }], [measure]);
+    expect(replacing).toBe("你后来说的和生效中的检查不一样：生效中是时长 108–132 秒，你刚说的是时长 162–198 秒。你选之前，生效中的那条照旧。");
+    expect(replacementCardBody("zh", [measure], [measure], 2)).toStartWith("你已经说了 2 次。你后来说的");
+    expect(replacementCardBody("en", [measure], [measure], 3)).toStartWith("You have said it 3 times. What you said last differs");
     // What the Bots read of an offer: what the cut measured, and that it waits for the user.
     expect(unconfirmedNote({ item: "时长约 2 分钟", path: "EP01_MASTER.mp4", last_run: { outcome: "fail", detail: "107.00 秒，要时长 108–132 秒" } }, "zh")).toBe(
       "未确认的检查：107.00 秒，用户说的是时长约 2 分钟（待用户确认）",

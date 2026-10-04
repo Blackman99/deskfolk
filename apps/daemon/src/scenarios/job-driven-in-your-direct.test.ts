@@ -59,6 +59,8 @@ test("work a restart cut off is told where you last spoke about its job", async 
   h.postUser(dm, "但是打斗画面要有张力");
   await h.waitFor(() => mid, { what: "the director to be mid-hop" });
 
+  // Two development restarts in a row: the job waits for you, so it is told (one that goes on by itself is not).
+  await h.restart({ clean: false, dev: true });
   await h.restart({ clean: false, dev: true });
   await h.waitIdle();
 

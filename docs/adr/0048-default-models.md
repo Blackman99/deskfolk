@@ -1,6 +1,6 @@
 # 默认模型代替每轮选路 / Default models instead of a per-turn pick
 
-Status: implemented at engine level 7 (`ENGINE_LEVELS.routing`), the first part of ADR 0040's P5. Experimental and opt-in like levels 5 and 6 (`engine-level.ts --accept-older-app`, or `--level 7`); a build never raises a data folder past level 4 on its own.
+Status: implemented at engine level 7 (`ENGINE_LEVELS.routing`), the first part of ADR 0040's P5. Experimental and opt-in like levels 5 and 6 (`engine-level.ts --accept-older-app`, or `--level 7`); a build never raises a data folder past level 4 on its own. Amended in part by [ADR 0058](0058-the-app-asks-only-when-it-needs-you.md) (2026-10-04): no card asks you about the inferred default; cards already out keep their buttons.
 
 [ADR 0040](0040-agent-kernel-the-job-owns-state.md) §9 要让「这一轮跑在哪个模型上」变成几条固定规则，不再每轮开头调一次模型来挑。审计（§4.3）里，开轮前的选路平均挡 11.5 秒、一天累计 22.7 分钟，约 65% 的理由是「沿用」；[ADR 0037](0037-cut-the-core-loop-by-the-benchmark.md) 关掉它之后，solo 的花费从 $0.89 降到 $0.40、用时从 11 分 23 秒降到 2 分 01 秒。可是直接删掉选路也不行：视频导演、审片员、编剧分镜师都没钉模型，会全部落到端点默认，也就是那几次 128K 复读都出自的那个模型。所以先给每个 Bot 定一个默认模型。
 

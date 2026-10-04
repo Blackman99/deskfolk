@@ -2,9 +2,9 @@
  * The requirements ledger as one plan sees it (ADR 0040 P3): the entries bearing on it, with how
  * often and in how many plans you said each, where the words were said and what it inherits from
  * the rest of its conversation; the board's rules and Done-when lines written into the ledger as
- * you edit them; the old rules of every plan taken in once; and what the app's cards about entries
- * are due to say. The situation block every turn opens on and the board both read from here, so a
- * Bot and you see the same list.
+ * you edit them; the old rules of every plan taken in once; and how the app's cards about entries,
+ * put up until 2026-10-04, still answer. The situation block every turn opens on and the board both
+ * read from here, so a Bot and you see the same list.
  */
 import type { Database } from "bun:sqlite";
 import type { PlanRequirement } from "@real-bot/protocol";
@@ -306,34 +306,6 @@ export function importLegacyRules(ctx: StoreContext): string[] {
   })();
 }
 
-/**
- * The cards about entries the app has already put up, by kind: what it has said, it does not say
- * again. `each` marks a standing card that asked about one entry of its category alone.
- */
-function carded(ctx: StoreContext, card: "legacy" | "standing"): Array<{ requirements: string[]; category: string | null; each: boolean }> {
-  return ctx.db
-    .query<{ payload: string }, [string]>(
-      `SELECT payload FROM work_events WHERE kind = 'requirement.card' AND json_extract(payload, '$.card') = ? ORDER BY seq ASC`,
-    )
-    .all(card)
-    .map((row) => {
-      const payload = JSON.parse(row.payload) as { requirements?: string[]; category?: string | null; each?: boolean };
-      return { requirements: payload.requirements ?? [], category: payload.category ?? null, each: payload.each === true };
-    });
-}
-
-/**
- * The old rules bearing on the plan that nobody found your words for and no card has asked you
- * about yet: what the app's 「这些是你说的吗」 line is due to name, the first time a line of yours
- * lands in the plan. Empty when there are none.
- */
-export function legacyCardDue(ctx: StoreContext, taskId: string): string[] {
-  const asked = new Set(carded(ctx, "legacy").flatMap((card) => card.requirements));
-  return requirementsBearingOn(ctx, taskId, ["unverified"])
-    .filter((entry) => !entry.excluded && entry.added_by === IMPORT_WRITER && !asked.has(entry.id))
-    .map((entry) => entry.id);
-}
-
 /** Categories compare folded, as the scribe's do. */
 function categoryKey(category: string | null): string {
   return category ? category.normalize("NFKC").toLowerCase().trim() : "";
@@ -345,7 +317,7 @@ function sessionOf(ctx: StoreContext, taskId: string): string | null {
 }
 
 /**
- * Whether an entry is one the standing suggestion in a conversation may name, and 升为常设 widen:
+ * Whether an entry is one a standing card in a conversation could name, and 升为常设 widen:
  * in force, not standing yet, of `category`, about how the work is made (its `nature` as the scribe
  * read it, else craft-words.ts — a choice of look or sound such as 色调偏冷, a series' constants, a
  * running time, anything naming one part are not), and held by that conversation or one of its plans. Never a ticket's, which is
@@ -358,116 +330,16 @@ function standingCandidate(ctx: StoreContext, entry: Requirement, at: { sessionI
   return entry.scope === "plan" && sessionOf(ctx, entry.scope_id!) === at.sessionId;
 }
 
-/** The standing card due after a filing: which entries it would widen, in how many plans you said them, and their words. */
-export type StandingSuggestion = {
-  category: string;
-  domain: string;
-  requirements: string[];
-  plans: number;
-  /** Each entry's own words, once per wording: what the card shows, so 升为常设 is pressed knowing what it widens. */
-  quotes: string[];
-  /** The card asks about one entry alone: the category's entries say different things. */
-  each: boolean;
-};
-
 /**
- * Whether entries of one category just raised or added (`touched`) are now craft requirements you
- * have raised in two or more video jobs of this plan's conversation (ADR 0042): the words raising
- * them counted by the plan they were said in, and a plan counted only once it is video work by what
- * was done in it (`planDomains`), this one included. Then the app suggests they hold for every
- * video job (`standing`), once per category — but only when the category's entries all say the
- * same words. Entries of one category in other words may ask for different things (「背景要连贯」
- * and 「每场换一个背景」 under one label: a scribe's label is no proof they agree), and one click
- * would make them all standing at once; then the card asks about one entry alone, one you just
- * said again that you have said in two or more such jobs itself, once per entry. The card due, or
- * null.
- */
-export function standingSuggestion(ctx: StoreContext, taskId: string, touched: readonly string[]): StandingSuggestion | null {
-  const sessionId = sessionOf(ctx, taskId);
-  const domain = sessionId && touched.length > 0 ? planDomains(ctx, taskId)[0] : undefined;
-  if (!sessionId || !domain) return null;
-  const cards = carded(ctx, "standing");
-  const suggested = new Set(cards.filter((card) => !card.each).map((card) => categoryKey(card.category)));
-  const asked = new Set(cards.flatMap((card) => card.requirements));
-  /** In how many video plans of the conversation words of yours raised these entries (or first said them). */
-  const plansOf = (ids: readonly string[]): number =>
-    ctx.db
-      .query<{ t: string }, [string, string]>(
-        `SELECT DISTINCT t FROM (
-           SELECT q.task_id AS t FROM requirement_mentions m JOIN user_quotes q ON q.id = m.quote_id
-           WHERE m.requirement_id IN (SELECT value FROM json_each(?1)) AND q.task_id IS NOT NULL
-           UNION SELECT origin_task_id FROM requirements WHERE id IN (SELECT value FROM json_each(?1)) AND origin_task_id IS NOT NULL)
-         WHERE t IN (SELECT id FROM tasks WHERE session_id = ?2)`,
-      )
-      .all(JSON.stringify(ids), sessionId)
-      .filter((plan) => planDomains(ctx, plan.t).includes(domain)).length;
-  const tried = new Set<string>();
-  for (const id of touched) {
-    const entry = getRequirementOrNull(ctx, id);
-    const key = categoryKey(entry?.category ?? null);
-    if (!entry || !key || tried.has(key) || suggested.has(key)) continue;
-    const at = { sessionId, category: entry.category! };
-    if (!standingCandidate(ctx, entry, at)) continue;
-    tried.add(key);
-    const entries = ctx.db
-      .query<{ id: string }, [string]>(
-        `SELECT id FROM requirements WHERE status = 'open' AND (
-           (scope = 'project' AND scope_id = ?1) OR (scope = 'plan' AND scope_id IN (SELECT id FROM tasks WHERE session_id = ?1)))
-         ORDER BY created_at ASC, rowid ASC`,
-      )
-      .all(sessionId)
-      .map((row) => getRequirement(ctx, row.id))
-      .filter((candidate) => standingCandidate(ctx, candidate, at));
-    const wordings = new Map<string, string>();
-    for (const candidate of entries) if (!wordings.has(quoteWords(candidate.quote))) wordings.set(quoteWords(candidate.quote), candidate.quote);
-    if (wordings.size === 1) {
-      const ids = entries.map((candidate) => candidate.id);
-      if (ids.every((candidate) => asked.has(candidate))) continue;
-      const plans = plansOf(ids);
-      if (plans >= 2) return { category: entry.category!, domain, requirements: ids, plans, quotes: [...wordings.values()], each: false };
-      continue;
-    }
-    // Other words in the category: each entry you just said again, on its own.
-    for (const own of entries) {
-      if (!touched.includes(own.id) || asked.has(own.id)) continue;
-      const plans = plansOf([own.id]);
-      if (plans >= 2) return { category: entry.category!, domain, requirements: [own.id], plans, quotes: [own.quote], each: true };
-    }
-  }
-  return null;
-}
-
-/**
- * Whether 升为常设 on a standing suggestion made for this plan still widens this entry: the card
- * named it, and it is one such a card may name now ({@link standingSuggestion}'s own test).
+ * Whether 升为常设 on a standing card made for this plan (one put up before 2026-10-04) still widens
+ * this entry: the card named it, and it is one such a card could name now — a craft entry of this
+ * conversation, in force, of the card's category.
  */
 export function mayMakeStanding(ctx: StoreContext, id: string, card: { taskId: string; category: string | null }): boolean {
   const sessionId = sessionOf(ctx, card.taskId);
   const entry = getRequirementOrNull(ctx, id);
   if (!sessionId || !entry || !card.category) return false;
   return standingCandidate(ctx, entry, { sessionId, category: card.category });
-}
-
-/**
- * A line of the app's about entries went up: named in the work log, so it is not put up again
- * (`each`: a standing card about one entry alone, which leaves its category's own card unasked).
- */
-export function recordRequirementCard(
-  ctx: StoreContext,
-  input: { card: "legacy" | "standing"; requirements: readonly string[]; category?: string | null; each?: boolean; messageId: string; taskId: string },
-): void {
-  recordWorkEvent(ctx, {
-    kind: "requirement.card",
-    actor: "app",
-    taskId: input.taskId,
-    payload: {
-      card: input.card,
-      requirements: input.requirements,
-      category: input.category ?? null,
-      ...(input.each ? { each: true } : {}),
-      message: input.messageId,
-    },
-  });
 }
 
 const NOW_SQL = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";

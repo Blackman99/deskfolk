@@ -363,51 +363,19 @@ export function unconfirmedNote(check: { item: string; last_run?: { outcome: str
   return en ? `unconfirmed check: the user said ${check.item}, not measured yet (waiting for the user to confirm)` : `未确认的检查：用户说的是${check.item}，还没量（待用户确认）`;
 }
 
-/** What a card about checks from your words says: offered (`proposed`), or a gate that found the final deliverable (`bound`). */
-export type DerivedCardEvent = "proposed" | "bound";
-
 /**
- * The app's line in the plan's conversation about checks from your words: one offered to you, with
- * what it asks, how many separate lines of yours have said it (`times`), and for a replacement the
- * gate it would replace (`replaces`), or that a gate's words were erased (`demoted`); or gates that
- * found the final deliverable. `path` is the file they measure, when they have one.
+ * The app's card about a check from your words that differs from a gate in force: the gate's
+ * number and the one you said last (`replaces`, then `measures`), and how many separate lines of
+ * yours have said it (`times`). The only card an offer gets (2026-10-04).
  */
-export function derivedCardBody(
-  locale: Locale,
-  event: DerivedCardEvent,
-  measures: readonly CheckMeasure[],
-  opts: { path?: string | null; replaces?: readonly CheckMeasure[]; times?: number; demoted?: boolean } = {},
-): string {
+export function replacementCardBody(locale: Locale, measures: readonly CheckMeasure[], replaces: readonly CheckMeasure[], times = 1): string {
   const en = locale === "en";
   const list = measures.map((measure) => measureLabel(measure, locale)).join(en ? "; " : "、");
-  const old = (opts.replaces ?? []).map((measure) => measureLabel(measure, locale)).join(en ? "; " : "、");
-  const path = opts.path ?? null;
-  if (event === "bound") {
-    return en
-      ? `The checks you confirmed now look at the delivered ${path}: ${list}. Measuring it now; until it passes, the job is not done.`
-      : `你确认的检查对上了交付的 ${path}：${list}。这就去量，没过之前这件事不算做完。`;
-  }
-  const times = opts.times && opts.times >= 2 ? (en ? `You have said it ${opts.times} times. ` : `你已经说了 ${opts.times} 次。`) : "";
-  if (opts.demoted) {
-    return en
-      ? `The words you confirmed a check on were erased, so it is only offered again: ${list}. It holds nothing back until you confirm it.`
-      : `你确认过的检查依据的原话被抹掉了，它改回待确认：${list}。你再确认之前它不拦东西。`;
-  }
-  if (old) {
-    return en
-      ? `${times}What you said last differs from the check in force: ${old} in force, ${list} just now. The one in force stays until you choose.`
-      : `${times}你后来说的和生效中的检查不一样：生效中是${old}，你刚说的是${list}。你选之前，生效中的那条照旧。`;
-  }
-  const what = path
-    ? en
-      ? ` It measures the delivered ${path}, and shows you the result.`
-      : `它会量交付的 ${path}，结果给你看。`
-    : en
-      ? " It measures the final cut (a video named *MASTER* or *final*, or under deliverables/)."
-      : "它量的是最终成品（文件名带 MASTER 或 final 的视频，或放在 deliverables/ 下的）。";
+  const old = replaces.map((measure) => measureLabel(measure, locale)).join(en ? "; " : "、");
+  const said = times >= 2 ? (en ? `You have said it ${times} times. ` : `你已经说了 ${times} 次。`) : "";
   return en
-    ? `${times}Add a check from what you said: ${list}?${what} It holds nothing back until you confirm it.`
-    : `${times}按你的话加检查：${list}？${what}你确认之后才拦东西。`;
+    ? `${said}What you said last differs from the check in force: ${old} in force, ${list} just now. The one in force stays until you choose.`
+    : `${said}你后来说的和生效中的检查不一样：生效中是${old}，你刚说的是${list}。你选之前，生效中的那条照旧。`;
 }
 
 /** The words a card's 改 puts in your composer for a dimension: say the number, and your line is the source. */

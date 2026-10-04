@@ -6,6 +6,16 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### The app asks you only when it needs you
+
+- A Bot's default model is used without a card asking you about it: it is what the Bot ran on most in the last week, and pinning a model on the Bot changes it.
+- Work a restart cut off that the app picks up again by itself (at once after a clean stop, after a minute of steady running after a crash or a development restart), or that a stop of yours holds, no longer gets a notice with Continue and Leave it, nor a notification; each turn's own "Interrupted" line still says where it stopped. You are told only about work that waits for you, and work that was to go on by itself but was cut off again by the next start is told by that start. On 2026-10-04 Leave it was pressed on two such notices, and the second one set aside work due to go on a minute later.
+- A failed turn that the app retries by itself no longer sends a "turn not finished" notification; you hear once it stops retrying.
+- A running time, resolution, aspect or frame rate you give no longer gets a card asking whether to add a check, nor a new one each time you say it again: the offer is on the flow board, to confirm there. A card still comes when the number differs from a check in force, since that check holds the Bots to the old number until you choose.
+- No card asks whether old rules are yours any more, or offers to make a requirement hold for every video job.
+- What a routine hands over is approved once its checks pass, with no card asking you to approve it every day. When a result is wrong, say so: you are still asked whether to send it back to rework.
+- Cards of these kinds already in your conversations still take their buttons.
+
 ### Which job your line is about is read, not guessed by rules
 
 - When a line of yours does not point at a job itself (a quoted reply, an annotation, a path, a job you chose), a model now reads which of the open jobs it is about, at the same time as it reads what the line says, and files it there. The fixed defaults are gone — "the only job open", "the group's only job", "the job of the Bot's line just before" — and nothing reads how the line opens or the numbers in it. A new request in a group was filed that way under an unrelated older job: 「制作《一拳超人》动画」 went under the job about the reviewer replying to the director.

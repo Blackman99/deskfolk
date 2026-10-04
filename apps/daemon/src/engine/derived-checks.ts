@@ -4,12 +4,15 @@
  * once a line or an answer of yours is filed, once a turn of the plan ends, and (through the local
  * API) after you edit the plan on the board or confirm or remove one there — says what changed in
  * the plan's conversation, and measures each as soon as it has a file (an offer's result is shown,
- * never a block). A number read from your words is offered on its own card, with 确认 / 改 / 不要,
- * and nothing becomes a gate but that 确认; 改 is your composer, since your words are what a check
- * stands on.
+ * never a block). A number read from your words is an offer, and nothing becomes a gate but your 确认
+ * — on the board, or on the required-items card that shows what it measured. Only a number that differs from a gate
+ * in force asks you on a card of its own, with 确认 / 改 / 不要: until you choose, the gate holds the
+ * Bots to the number you said before. Any other offer, said again or not, asked you to confirm what
+ * you had just said, so it no longer has a card (2026-10-04); nor has a gate finding its file. 改 is
+ * your composer, since your words are what a check stands on.
  */
 import { USER_MEMBER, type AcceptanceCheck, type ControlActionResult, type Message, type Turn } from "@real-bot/protocol";
-import { derivedCardBody, editDraft } from "../derived-checks";
+import { editDraft, replacementCardBody } from "../derived-checks";
 import { HttpError } from "../errors";
 import { derivedChanged, type DerivedChecksChange, type Store } from "../store";
 
@@ -51,10 +54,9 @@ export function createDerivedChecks(deps: DerivedChecksDeps): DerivedChecks {
   const log = deps.log ?? ((line: string) => console.error(line));
 
   /**
-   * The app's lines about a sync, in the plan's conversation when you are in it: one per check
-   * offered, with its buttons; one for the checks your words put in force; one for gates that found
-   * the final deliverable. Moving to a newer cut of the master says nothing: a job re-cut five times
-   * would say it five times, and the run on the new cut shows on the board and in any call-back.
+   * The app's lines about a sync, in the plan's conversation when you are in it: one per offer that
+   * would replace a gate in force, with its buttons. Everything else a sync changes shows on the
+   * board and in the plan's situation, and asks nothing of you.
    */
   function tell(taskId: string, change: DerivedChecksChange): void {
     let sessionId: string | null;
@@ -92,11 +94,11 @@ export function createDerivedChecks(deps: DerivedChecksDeps): DerivedChecks {
     const gateOf = (check: AcceptanceCheck): AcceptanceCheck | null =>
       live.find((other) => other.id !== check.id && other.derived_state === "active" && other.measure?.dimension === check.measure?.dimension) ?? null;
 
-    // One card per offer: a new one, one you have just said again (with how many times), or a gate
-    // whose words were erased.
-    for (const check of named([...change.proposed, ...change.repeated, ...change.demoted])) {
+    // One card per offer that differs from a gate in force, new or said again (with how many times).
+    for (const check of named([...change.proposed, ...change.repeated])) {
       if (!live.some((other) => other.id === check.id)) continue;
       const gate = gateOf(check);
+      if (!gate?.measure) continue;
       const times = change.counts[check.id] ?? 1;
       say(
         {
@@ -104,26 +106,11 @@ export function createDerivedChecks(deps: DerivedChecksDeps): DerivedChecks {
           event: "proposed",
           check_ids: [check.id],
           offer: ["confirm_check", "edit_check", "remove_check"],
-          replacing: gate?.id ?? null,
+          replacing: gate.id,
           edit_draft: editDraft(check.measure!.dimension, locale),
           ...(times >= 2 ? { times } : {}),
         },
-        derivedCardBody(locale, "proposed", [check.measure!], {
-          path: check.path,
-          replaces: gate?.measure ? [gate.measure] : [],
-          times,
-          demoted: change.demoted.includes(check.id),
-        }),
-      );
-    }
-    // A gate's first file: an offer finding one says nothing (its card says what it would measure).
-    const bound = named(change.bound.filter((id) => !change.rebound.includes(id))).filter(
-      (check) => check.derived_state === "active" && live.some((other) => other.id === check.id),
-    );
-    if (bound.length > 0) {
-      say(
-        { kind: "check", event: "bound", check_ids: bound.map((check) => check.id), offer: ["remove_check"] },
-        derivedCardBody(locale, "bound", bound.map((check) => check.measure!), { path: bound[0]!.path }),
+        replacementCardBody(locale, [check.measure!], [gate.measure], times),
       );
     }
   }

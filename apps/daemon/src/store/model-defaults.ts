@@ -1,9 +1,10 @@
 /**
  * A Bot's default model (ADR 0048, engine level 7): what it runs on when you have not pinned one,
  * so that no model call has to pick it before every turn. Inferred once from what it actually ran
- * on in the last seven days, and put to you on a card in its direct; you confirm it, or decline it
- * and it runs on the endpoint's default. Until you answer, the inferred one is used — it is what the
- * old per-turn pick settled on most.
+ * on in the last seven days — what the old per-turn pick settled on most — and used from then on
+ * without asking you: pinning a model on the Bot is how you change it. A card in its direct used to
+ * ask (confirm, or decline for the endpoint's default); it asked about nothing you had to decide, so
+ * none is put up any more (2026-10-04), and those already out still take their buttons.
  */
 import type { TicketModel } from "@real-bot/protocol";
 import { ticketModel } from "./tickets";
@@ -13,7 +14,7 @@ import { HttpError } from "../errors";
 import { pictureMime } from "../loop-pictures";
 import { isoNow } from "../ids";
 import { getMessage, insertMessage, setMessageControl } from "./messages";
-import { createNotification, updateNotificationActionState } from "./notifications";
+import { updateNotificationActionState } from "./notifications";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import { settingsCached } from "./settings";
 import { requiredItems } from "./submissions";
@@ -103,8 +104,8 @@ export function inferredDefault(ctx: StoreContext, botId: string, listed: Readon
 }
 
 /**
- * Infers a Bot's default the first time it is needed (no pin, never inferred or answered), records
- * it as `inferred`, and puts it to you on a card in the Bot's direct. Returns the default now in force.
+ * Infers a Bot's default the first time it is needed (no pin, never inferred or answered) and records
+ * it as `inferred`, in the work log too; nothing is said in a conversation. Returns the default now in force.
  */
 export function ensureBotDefault(ctx: StoreContext, botId: string, listed: ReadonlyArray<{ providerId: string; model: string }>, now: string = isoNow()): BotDefault {
   return ctx.commit(() => {
@@ -115,19 +116,6 @@ export function ensureBotDefault(ctx: StoreContext, botId: string, listed: Reado
     ctx.db.run(`UPDATE bots SET default_provider_id = ?, default_model = ?, default_thinking_level = ?, default_source = 'inferred', default_turns = ?,
       default_set_at = ? WHERE id = ?`, [inferred.providerId, inferred.model, inferred.thinkingLevel, inferred.turns, now, botId]);
     recordWorkEvent(ctx, { kind: "model.default_inferred", actor: "app", botId, payload: { ...inferred } });
-    const direct = placeToAsk(ctx, botId);
-    if (direct) {
-      const en = settingsCached(ctx).locale === "en";
-      const name = ctx.db.query<{ name: string }, [string]>("SELECT name FROM bots WHERE id = ?").get(botId)?.name ?? botId;
-      const card = insertMessage(ctx, {
-        sessionId: direct.id, kind: "system", author: USER_MEMBER, hiddenFromBots: true,
-        body: en
-          ? `${name} now runs on ${inferred.model} (thinking ${inferred.thinkingLevel}) unless you pin a model: it is what it ran on most in the last ${DEFAULT_MODEL_WINDOW_DAYS} days (${inferred.turns} turns). No model picks it before every turn any more.`
-          : `${name} 之后默认用 ${inferred.model}（思考档 ${inferred.thinkingLevel}），除非你给它钉了模型：这是它最近 ${DEFAULT_MODEL_WINDOW_DAYS} 天用得最多的（${inferred.turns} 轮）。以后不再每轮先调一次模型来挑。`,
-        control: { kind: "model_default", bot_id: botId, provider_id: inferred.providerId, model: inferred.model, thinking_level: inferred.thinkingLevel, offer: ["confirm", "decline"] },
-      });
-      createNotification(ctx, { semantic_key: `model_default:${card.id}`, kind: "ask", session_id: direct.id, message_id: card.id, action_state: "open" });
-    }
     return botDefault(ctx, botId);
   });
 }

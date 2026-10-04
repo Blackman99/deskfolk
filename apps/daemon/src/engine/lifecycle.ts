@@ -1254,7 +1254,8 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       }
       // From the supervisor's level the job needs attention; its 「继续」 line is this failure line.
       store.markSegmentCutOff(turnId, kind);
-      if (store.isPresent(current.session_id, USER_MEMBER)) {
+      // Work the supervisor takes up is retried without you; it tells you when it stops retrying.
+      if (store.isPresent(current.session_id, USER_MEMBER) && !store.supervisorTakesUp(turnId)) {
         store.createNotification({
           semantic_key: `failure:${turnId}`,
           kind: "failure",
