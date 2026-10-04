@@ -139,6 +139,7 @@
 
 	function startEditGoal(): void {
 		if (!detail.spec) return;
+		renamed = false;
 		editing = 'goal';
 		draft = detail.spec.goal;
 		saveError = null;
@@ -174,6 +175,13 @@
 		return undefined;
 	}
 
+	/**
+	 * Just renamed: the goal, which the Bots work to, said beside the new name until you edit it or
+	 * leave. On 2026-10-04 you renamed a job 「做《一拳超人》动画」 and its goal still read 「制作一部未来
+	 * 世界题材、时长超过2分钟…的短片」, further down the panel, where the Bots read it as the job.
+	 */
+	let renamed = $state(false);
+
 	/** Your new name for the job: only the name, never the spec, so no revision guard is needed. */
 	async function saveTitle(): Promise<void> {
 		if (!api || editing !== 'title' || saving) return;
@@ -184,6 +192,7 @@
 			onSaved(await api.renamePlan(detail.id, { title: draft }));
 			editing = null;
 			draft = '';
+			renamed = Boolean(detail.spec?.goal.trim());
 		} catch {
 			saveError = t.plan.saveFailed;
 		} finally {
@@ -294,6 +303,12 @@
 			</div>
 		{:else}
 			<div class="plan-spec-name-text">{detail.title}</div>
+			{#if renamed && detail.spec && api}
+				<p class="plan-spec-renamed-goal">
+					{t.plan.spec.renamedGoal(detail.spec.goal)}
+					<button type="button" class="plan-spec-edit-btn" onclick={startEditGoal}>{t.plan.spec.editGoal}</button>
+				</p>
+			{/if}
 		{/if}
 	</div>
 {/snippet}
@@ -782,6 +797,15 @@
 		margin: 0;
 		font-size: var(--text-caption);
 		color: var(--muted);
+	}
+	.plan-spec-renamed-goal {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 6px;
+		margin: 4px 0 0;
+		font-size: var(--text-caption);
+		color: var(--ink-secondary);
 	}
 	.plan-spec-goal {
 		display: flex;

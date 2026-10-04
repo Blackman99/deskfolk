@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Renaming a job reminds you of its goal
+
+- After you rename a job on the board, a line under the new name says what its goal still reads, with a button to edit it. Renaming changes only the name, and the Bots work to the goal: a job renamed to a new film still had the old film's goal further down the panel.
+
 ### A change after delivery comes back for your 放行, and the job stays delivered when it is
 
 - When you ask for a change to work already approved and a Bot changes the files without handing them in, it is now told to hand the change in, so a card puts the new version in front of you. Before, the job still read done with the old versions approved.

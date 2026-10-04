@@ -748,6 +748,26 @@ test("you name the job in its 名字 block: Enter saves just the name, and an em
   view.close();
 });
 
+test("once renamed, the goal the Bots work to is said beside the new name, with a way to edit it", async () => {
+  // 2026-10-04: renamed 「做《一拳超人》动画」, the job's goal still read 「制作一部未来世界题材…的短片」,
+  // further down the panel; the Bots read it as the job.
+  const view = open({ detail: aDetail({ title: "制作一部未来世界题材的短片", spec: { ...aDetail().spec!, goal: "制作一部未来世界题材、时长超过2分钟的短片" } }) });
+  const block = view.host.querySelector(".plan-spec-name")!;
+  expect(block.querySelector(".plan-spec-renamed-goal")).toBeNull();
+  click(block.querySelector(".plan-spec-edit-btn"));
+  const input = block.querySelector<HTMLInputElement>(".plan-spec-name-input")!;
+  fill(input, "做《一拳超人》动画");
+  input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  await settle();
+  const hint = block.querySelector(".plan-spec-renamed-goal")!;
+  expect(hint.textContent).toContain("目标还写着「制作一部未来世界题材、时长超过2分钟的短片」");
+  click(hint.querySelector("button"));
+  await settle();
+  expect(view.host.querySelector<HTMLTextAreaElement>(".plan-spec-goal textarea, .plan-spec-goal .plan-spec-goal-input")).not.toBeNull();
+  expect(block.querySelector(".plan-spec-renamed-goal")).toBeNull();
+  view.close();
+});
+
 test("a job not written up yet can still be named", () => {
   const view = open({ detail: aDetail({ spec: null, revision: 0 }) });
   expect(view.host.querySelector(".plan-spec-name .plan-spec-edit-btn")).not.toBeNull();
