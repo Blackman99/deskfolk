@@ -67,7 +67,9 @@ export function workOn(ctx: StoreContext, input: WorkOnInput): WorkOnResult {
     let taskId: string;
     let quote: Message | null = null;
     if (typeof input.plan === "string") {
-      if (readEngineLevel(ctx.db) >= ENGINE_LEVELS.work_items) assertDeskCandidate(ctx, turn.id, input.plan);
+      // The job the segment is already on needs no capture: a desk whose plan_items opened the job in
+      // this very segment could not name it to go on to its own first ticket (2026-10-04).
+      if (readEngineLevel(ctx.db) >= ENGINE_LEVELS.work_items && input.plan !== turn.task_id) assertDeskCandidate(ctx, turn.id, input.plan);
       const task = getTask(ctx, input.plan);
       const state = ctx.db.query<{ stage: string }, [string]>(`SELECT COALESCE(stage,
         CASE WHEN status = 'done' THEN 'delivered' ELSE 'active' END) AS stage FROM tasks WHERE id = ?`).get(task.id);
@@ -144,8 +146,13 @@ export function workOn(ctx: StoreContext, input: WorkOnInput): WorkOnResult {
     }
     const busy = listLiveTurns(ctx, { botId: turn.bot_id }).find((row) => row.id !== turn.id && row.task_id === taskId && row.mode !== "readonly");
     const filedLine = quote ?? trigger;
-    fileMessage(ctx, filedLine.id, { botId: turn.bot_id, botSelection: [{ taskId, ticketId }, ...others] });
-    const filed = filedLine.kind === "user" ? [filedLine.id] : [];
+    // From the whole job down to one of its tickets is the segment's step, not a reading of your line:
+    // a line filed to the job stays the job's. A lead that laid out 「竖版海报和三句宣传语」 and started
+    // on the poster had your whole request tagged 竖版海报 (2026-10-04).
+    const keepsJob = !fresh && others.length === 0 && turn.task_id === taskId && turn.ticket_id === null && ticketId !== null
+      && Boolean(ctx.db.query("SELECT 1 FROM message_filings WHERE message_id = ? AND task_id = ? AND ticket_id IS NULL").get(filedLine.id, taskId));
+    if (!keepsJob) fileMessage(ctx, filedLine.id, { botId: turn.bot_id, botSelection: [{ taskId, ticketId }, ...others] });
+    const filed = filedLine.kind === "user" && !keepsJob ? [filedLine.id] : [];
     if (busy) {
       ctx.db.run("UPDATE turns SET end_reason = 'merged' WHERE id = ?", [turn.id]);
       queueInboxItem(ctx, { botId: turn.bot_id, sessionId: busy.session_id, turnId: busy.id, taskId, ticketId,

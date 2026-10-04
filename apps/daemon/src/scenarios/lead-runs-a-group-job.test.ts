@@ -197,6 +197,39 @@ test("a lead's request for a piece of its own ticket is refused until the piece 
   expect(h.store.db.query("SELECT ticket_id FROM delegations").all()).toEqual([{ ticket_id: ticketId("三句宣传语") }]);
 });
 
+test("a lead that lays out a job it does itself goes on to its first ticket in the same segment", async () => {
+  // Fixture walk, 2026-10-04: the desk's plan_items opened the job and put the segment on it, the
+  // ending was sent back with "Unfinished obligations … Continue", and work_on to the lead's own
+  // first ticket was refused as no candidate of the segment's — the job it had just opened.
+  const h = await createScenario({ learning: true });
+  open.push(h);
+  const [designer, writer] = h.createBots({ name: "设计师", duties: "海报和视觉；拆活、派活、审稿" }, { name: "文案", duties: "写宣传语" });
+  const room = h.group("海报组", [designer!, writer!]);
+  confirmGroupLead(h.store, room, designer!.id);
+  const ticketId = (title: string) => h.store.db.query<{ id: string }, [string]>("SELECT id FROM tickets WHERE title = ?").get(title)?.id ?? null;
+  const dirOf = (title: string) => h.store.db.query<{ dir: string }, [string]>("SELECT dir FROM tickets WHERE title = ?").get(title)!.dir;
+  const stop = call(tool("end_turn", { reason: "nothing_new" }));
+  let calls = 0;
+  h.script(designer!).handle(({ turn, hop }) => {
+    if (hop > 5 || ++calls > 8) return stop;
+    if (hop === 1) return call(tool("plan_items", { items: [{ title: "竖版海报", owner: "设计师" }, { title: "三句宣传语", owner: "设计师" }] }));
+    if (turn?.ticket_id !== ticketId("竖版海报")) return call(tool("work_on", { plan: turn!.task_id!, ticket: ticketId("竖版海报")! }));
+    if (hop <= 3) return call(writeFile(`${dirOf("竖版海报")}/poster.txt`, "海报：一杯好咖啡，从今天开始"));
+    return call(tool("submit", { artifacts: [`${dirOf("竖版海报")}/poster.txt`] }));
+  });
+  h.script(writer!).reply(stop);
+
+  h.postUser(room, "帮我做开业的竖版海报和三句宣传语，都由设计师来做");
+  await h.waitIdle({ timeoutMs: 15_000 });
+
+  expect(h.toolCalls(designer!, "work_on").map((c) => c.result?.ok)).toEqual([true]);
+  expect(h.turns(designer!)).toHaveLength(1);
+  expect(h.store.db.query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM submissions WHERE ticket_id = ?").get(ticketId("竖版海报")!)!.n).toBe(1);
+  // Your request stays the whole job's: starting on the poster is the lead's step, not a reading of your line.
+  const request = h.messages(room).find((message) => message.kind === "user")!;
+  expect(h.store.db.query("SELECT ticket_id FROM message_filings WHERE message_id = ?").all(request.id)).toEqual([{ ticket_id: null }]);
+});
+
 test("a lead woken at the job's level that draws in its own ticket's folder hands that ticket in", async () => {
   // Real-model run, 2026-10-04: woken by 文案's approved slogans at the job's level, the lead drew the
   // poster in 03's folder and ended with nothing_new — no ticket bound, so nothing was handed over.

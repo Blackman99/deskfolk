@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A lead that lays out its own work can start on it right away
+
+- When the lead you confirmed in a group splits your request into tickets it does itself, it now goes straight on to the first one. Choosing its own ticket was refused because the job had been opened in that same turn, while the app told it to keep going, so its part could not start until something woke it again.
+- Your request stays filed to the whole job when the lead starts on one of its tickets. It used to be tagged with that ticket alone.
+
 ### Work a restart cut off is not pushed aside by the next ticket
 
 - When a restart cuts off a Bot's work and the notice says it waits for your Continue, the Bot is no longer called to another ticket of the same job meanwhile, nor after you choose not to continue. Two minutes after a development restart, the Bot was called to the next ticket of your film job and redrew the cut ticket's frames under it while you were answering the notice.
