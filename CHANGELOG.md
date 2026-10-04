@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A change after delivery comes back for your 放行, and the job stays delivered when it is
+
+- When you ask for a change to work already approved and a Bot changes the files without handing them in, it is now told to hand the change in, so a card puts the new version in front of you. Before, the job still read done with the old versions approved.
+- Once a job is delivered, the organizer's tidy-up no longer marks it in progress again. It did 19 seconds after a delivery, right after you had asked for a change.
+- Found and checked with real models.
+
 ### A group's lead hands the work out, and its own part is handed in
 
 - In a group, each Bot is told what the others do and who you confirmed as the lead; the lead is told to lay out what others should make and hand it out. Seeing only names, a real lead wrote the slogans itself in two of four jobs instead of giving them to the copywriter.

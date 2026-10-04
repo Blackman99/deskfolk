@@ -1148,7 +1148,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
           if (live.abort.signal.aborted) drop();
           return;
         }
-        const finished = store.finishWork({ turnId, reason: "done" }, { pureText: true, closing: rawBody, lastWord });
+        const finished = store.finishWork({ turnId, reason: "done" }, { pureText: true, closing: rawBody, lastWord, written: live.producedPaths ?? live.writtenPaths });
         if (finished.bounce) {
           live.loop.push({ role: "user", content: finished.bounce });
           if (posted && !live.parentId && current.mode !== "readonly") void track(handleParticipation(posted, { fromUser: false }));

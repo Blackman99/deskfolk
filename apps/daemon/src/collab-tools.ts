@@ -101,6 +101,8 @@ export type ToolCtx = {
   approved?: boolean;
   approvalApiKey?: string;
   writtenPaths?: string[];
+  /** Every file the turn wrote, cited in a message or not (`Live.producedPaths`). */
+  producedPaths?: string[];
   /** This turn's work dir (its ticket's), so a path the Bot wrote from its shell's point of view still resolves. */
   workDir?: string | null;
   /** The plan dir this turn belongs to: what "this job's" annotations span, whichever ticket is on. */
@@ -701,7 +703,7 @@ function endTurn(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
   if (ctx.store.capabilities().engine_level >= ENGINE_LEVELS.delegation) {
     const finished = ctx.store.finishWork({ turnId: ctx.turnId, reason: args.reason, note: args.note,
       needsFromUser: args.needs_from_user, answer: args.answer, inbox: args.inbox },
-      ctx.read?.lastWord ? { lastWord: ctx.read.lastWord } : {});
+      { ...(ctx.read?.lastWord ? { lastWord: ctx.read.lastWord } : {}), written: ctx.producedPaths ?? ctx.writtenPaths ?? [] });
     if (finished.bounce) return { ok: false, error: { code: finished.code ?? "end_contract", message: finished.bounce }, emitted: [] };
     const emitted: ToolResult["emitted"] = [];
     if (finished.notice || finished.ask) {

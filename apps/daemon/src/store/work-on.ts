@@ -181,7 +181,11 @@ export function workOn(ctx: StoreContext, input: WorkOnInput): WorkOnResult {
  * on that ticket: bound to it as `work_on` would narrow it, so what it made is handed over and owed
  * as that ticket's. On 2026-10-04's real-model run the poster group's lead, woken at the job's level
  * by 文案's approved slogans, drew the poster in its ticket's folder and ended with nothing handed
- * over — at the job's level there was no ticket to hand it in for. Returns the ticket bound to.
+ * over — at the job's level there was no ticket to hand it in for. A delivered ticket counts too:
+ * changing what you approved is that ticket's work again, handed over again for you to decide — in
+ * the same run, after 「第二句不够有画面感，换一句」 the lead redrew the approved poster and 文案 rewrote
+ * the approved slogans, both at the job's level, and the job still read delivered with the old
+ * versions approved. A dropped ticket does not. Returns the ticket bound to.
  */
 export function bindToOwnTicket(ctx: StoreContext, input: { turnId: string; paths: readonly string[] }): string | null {
   if (input.paths.length === 0 || readEngineLevel(ctx.db) < ENGINE_LEVELS.submissions) return null;
@@ -190,7 +194,7 @@ export function bindToOwnTicket(ctx: StoreContext, input: { turnId: string; path
       "SELECT id, bot_id, session_id, task_id, ticket_id, work_item_id, mode, status FROM turns WHERE id = ?").get(input.turnId);
     if (!turn?.task_id || turn.ticket_id || turn.mode !== "work" || turn.status !== "running") return null;
     const tickets = ctx.db.query<{ id: string; dir: string; owner: string | null }, [string]>(`SELECT id, dir, COALESCE(owner_bot_id, worker) AS owner
-      FROM tickets WHERE task_id = ? AND status NOT IN ('done', 'parked') ORDER BY seq`).all(turn.task_id);
+      FROM tickets WHERE task_id = ? AND status <> 'parked' ORDER BY seq`).all(turn.task_id);
     const hit = tickets.find((ticket) => ticket.owner === turn.bot_id && input.paths.some((path) => path.startsWith(`${ticket.dir}/`)));
     if (!hit) return null;
     if (holdsCovering(ctx, { botId: turn.bot_id, sessionId: turn.session_id, taskId: turn.task_id, ticketId: hit.id, turnId: turn.id }).length) return null;

@@ -693,6 +693,7 @@ export function createTools(deps: ToolsDeps): Tools {
               turnId: turn.id,
               parentId: live.parentId,
               writtenPaths: live.writtenPaths,
+              producedPaths: live.producedPaths ?? [],
               workDir: live.workDir,
               planDir: live.planDir,
               mentionWarned: live.mentionWarned,

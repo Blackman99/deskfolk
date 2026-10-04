@@ -41,6 +41,8 @@ export type FinishWorkOptions = {
   lastWord?: { said: string; later: string | null };
   /** Total contract bounces already consumed by the parent engine, across all contracts. */
   contractBounces?: number;
+  /** Workspace paths the segment wrote, from the engine (the end-of-segment attachments come after this). */
+  written?: readonly string[];
 };
 export type EndObligations = {
   tickets: Array<{ id: string; status: string }>;
@@ -168,6 +170,20 @@ function implicitCandidates(ctx: StoreContext, turn: Actor): ImplicitSubmissionC
     return true;
   });
   return { implemented: false, candidates, requires: ["exists", "new_content_hash", "bound_checks", "stored_submission"] };
+}
+
+/**
+ * Files the segment wrote in the folder of a ticket of its job you already approved, handed over by
+ * no `submit` of its own: a change to what you approved that nothing puts in front of you. After
+ * 「第二句不够有画面感，换一句」 a real-model lead redrew the approved poster and 文案 rewrote the
+ * approved slogans; the job still read delivered, the old versions approved, and no card came
+ * (2026-10-04). An automatic hand-over never reopens an approved ticket (ADR 0046); `submit` does.
+ */
+function approvedChanged(ctx: StoreContext, turn: Actor, written: readonly string[]): string[] {
+  if (written.length === 0 || !turn.task_id) return [];
+  if (ctx.db.query("SELECT 1 FROM submissions WHERE turn_id = ? AND origin = 'submit'").get(turn.id)) return [];
+  const approved = ctx.db.query<{ dir: string }, [string]>(`SELECT t.dir FROM tickets t WHERE t.task_id = ? AND ${STAGE_SQL("t")} = 'approved'`).all(turn.task_id);
+  return written.filter((path) => approved.some((ticket) => path.startsWith(`${ticket.dir}/`) && !isReservedTaskPath(ticket.dir, path)));
 }
 
 function ticketClosed(ctx: StoreContext, ticketId: string): boolean {
@@ -410,6 +426,12 @@ export function finishWork(ctx: StoreContext, input: FinishWorkInput, opts: Fini
     const waiting = validWaiting(ctx, item, facts);
     const unfinished = facts.tickets.length + facts.outgoingDelegations.length + facts.incomingDelegations.length + facts.waits.length > 0;
     const base = { obligations: facts, dispositions, unacknowledgedInbox, replies, implicitSubmission };
+    const changed = reason === "blocked" || reason === "gave_up" ? [] : approvedChanged(ctx, turn, opts.written ?? []);
+    if (changed.length > 0 && rejectionsFor(ctx, turn.id, "approved_changed") === 0) {
+      return rejectEnd(ctx, turn, base, opts, "approved_changed",
+        `You changed ${changed.join(", ")}, in the folder of a ticket the user already approved, and did not hand it over: what they approved is the old version. `
+          + "Hand the change over with submit (it reopens that ticket and goes to them to decide), or end again if it is not that ticket's work.");
+    }
     if (reason === "done" && unfinished && !waiting && rejectionsFor(ctx, turn.id, "unfinished_obligations") === 0) {
       const toAnswer = requestLabels(answerable.filter((delegation) => requestRead(ctx, delegation, null)));
       return rejectEnd(ctx, turn, base, opts, "unfinished_obligations",

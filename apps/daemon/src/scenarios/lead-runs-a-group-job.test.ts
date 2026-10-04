@@ -16,7 +16,7 @@
  */
 import { afterEach, expect, test } from "bun:test";
 import { confirmGroupLead } from "../store/group-leads";
-import { call, createScenario, requestText, tool, writeFile, type Scenario } from "../test-kit/scenario";
+import { call, createScenario, requestText, say, tool, writeFile, type Scenario } from "../test-kit/scenario";
 
 const open: Scenario[] = [];
 afterEach(async () => {
@@ -233,4 +233,59 @@ test("a lead woken at the job's level that draws in its own ticket's folder hand
   const drawing = h.turns(designer!).at(-1)!;
   expect(drawing.ticket_id).toBe(ticketId("竖版海报"));
   expect(h.store.db.query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM submissions WHERE ticket_id = ?").get(ticketId("竖版海报")!)!.n).toBe(1);
+});
+
+test("changing a delivered ticket's files after a complaint hands that ticket over again", async () => {
+  // Real-model run, 2026-10-04: after 「第二句不够有画面感，换一句」 the lead redrew the approved poster
+  // at the job's level; the job stayed delivered with the old poster approved, and no card came.
+  const h = await createScenario({ learning: true });
+  open.push(h);
+  const [designer, writer] = h.createBots({ name: "设计师", duties: "海报和视觉；拆活、派活、审稿" }, { name: "文案", duties: "写宣传语" });
+  const room = h.group("海报组", [designer!, writer!]);
+  confirmGroupLead(h.store, room, designer!.id);
+  const ticketId = (title: string) => h.store.db.query<{ id: string }, [string]>("SELECT id FROM tickets WHERE title = ?").get(title)?.id ?? null;
+  const dirOf = (title: string) => h.store.db.query<{ dir: string }, [string]>("SELECT dir FROM tickets WHERE title = ?").get(title)!.dir;
+  const stop = call(tool("end_turn", { reason: "nothing_new" }));
+  let complained = false;
+  let laidOut = false;
+  h.script(designer!).handle(({ hop }) => {
+    if (!laidOut && hop === 1) { return call(tool("plan_items", { items: [{ title: "竖版海报", owner: "设计师" }] })); }
+    if (!laidOut && hop === 2) return call(tool("work_on", { plan: h.store.db.query<{ id: string }, []>("SELECT id FROM tasks").get()!.id, ticket: ticketId("竖版海报")! }));
+    if (!laidOut && hop === 3) return call(writeFile(`${dirOf("竖版海报")}/poster.svg`, "<svg>v1</svg>"));
+    if (!laidOut && hop === 4) { laidOut = true; return call(tool("submit", { artifacts: [`${dirOf("竖版海报")}/poster.svg`] })); }
+    // Your complaint after delivery, at the job's level: redraw the approved poster and end — told
+    // the change is not in front of you, hand it over.
+    if (complained && hop === 1) return call(writeFile(`${dirOf("竖版海报")}/poster.svg`, "<svg>v2</svg>"));
+    // It ends in words, as the real lead did: its closing reply carries the new poster.
+    if (complained && hop === 2) return say("亮一点了，海报已更新。");
+    if (complained && hop === 3) return call(tool("submit", { artifacts: [`${dirOf("竖版海报")}/poster.svg`] }));
+    return stop;
+  });
+  h.script(writer!).reply(stop);
+
+  h.postUser(room, "做一张竖版咖啡店开业海报");
+  await h.waitIdle({ timeoutMs: 15_000 });
+  h.tick(new Date(Date.now() + 60_000));
+  await h.waitIdle({ timeoutMs: 15_000 });
+  h.engine.control(h.messages(room).find((message) => message.control?.kind === "review_item")!.id, { action: "approve" });
+  await h.waitIdle({ timeoutMs: 15_000 });
+  expect(h.store.db.query<{ status: string }, []>("SELECT status FROM tasks").get()!.status).toBe("done");
+
+  complained = true;
+  h.postUser(room, "海报的颜色太暗了，换亮一点");
+  await h.waitIdle({ timeoutMs: 15_000 });
+
+  const handed = h.store.db.query<{ state: string }, [string]>("SELECT state FROM submissions WHERE ticket_id = ? ORDER BY created_at").all(ticketId("竖版海报")!);
+  const told = requestText(h.hops(designer!).filter((hop) => hop.hop === 3).at(-1)!.request);
+  expect(told).toContain("in the folder of a ticket the user already approved, and did not hand it over");
+  expect(handed.map((row) => row.state)).toEqual(["approved", "submitted"]);
+  expect(h.store.db.query<{ status: string }, []>("SELECT status FROM tasks").get()!.status).toBe("active");
+
+  // You approve the change: the job is delivered again, done as it was the first time.
+  h.tick(new Date(Date.now() + 60_000));
+  await h.waitIdle({ timeoutMs: 15_000 });
+  const again = h.messages(room).filter((message) => message.control?.kind === "review_item").at(-1)!;
+  h.engine.control(again.id, { action: "approve" });
+  await h.waitIdle({ timeoutMs: 15_000 });
+  expect(h.store.db.query<{ status: string; stage: string }, []>("SELECT status, stage FROM tasks").get()).toEqual({ status: "done", stage: "delivered" });
 });

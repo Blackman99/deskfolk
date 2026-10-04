@@ -597,6 +597,25 @@ describe("what one organizer run changes", () => {
     store.close();
   });
 
+  test("from level 5 a settle does not reopen a job hand-overs and approvals delivered", () => {
+    // 2026-10-04, real-model run: 19 s after your 放行 delivered the poster job again, a settle that had
+    // just seen your change called it in progress, and the board said 进行中 over a delivered job.
+    const { store, session, bot } = fixture();
+    store.db.run("INSERT INTO settings (key, value) VALUES ('engine_level', '8') ON CONFLICT(key) DO UPDATE SET value = excluded.value");
+    const plan = store.openTask({ sessionId: session.id, title: "开业海报" });
+    store.createTicket({ taskId: plan.id, title: "海报", spec: "竖版", status: "done", worker: bot.id });
+    store.applyOrganizerResult({ sessionId: session.id, current: store.getTask(plan.id),
+      result: result({ spec: spec({ goal: "一张开业海报" }) }), source: { messageId: null, turnId: null, messageBody: "" }, settle: true });
+    const spec0 = parsePlanSpec(store.getTask(plan.id).spec)!;
+    store.setTaskSpec(plan.id, { ...spec0, status: "done" });
+    expect(store.getTask(plan.id).status).toBe("done");
+    const settled = store.applyOrganizerResult({ sessionId: session.id, current: store.getTask(plan.id),
+      result: result({ spec: spec({ goal: "一张开业海报", status: "active" }) }), source: { messageId: null, turnId: null, messageBody: "" }, settle: true });
+    expect(settled.task.status).toBe("done");
+    expect(settled.kept).toContain("kept the job done: hand-overs and approvals decide it");
+    store.close();
+  });
+
   test("a settle leaves a plan a newer one displaced parked, though its spec still reads active", () => {
     const { store, session } = fixture();
     const older = store.openTask({ sessionId: session.id, title: "写周报", spec: spec() });

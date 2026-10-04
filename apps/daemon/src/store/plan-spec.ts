@@ -392,7 +392,11 @@ function targetGone(decision: "resume" | "join", planId: string): HttpError {
  * A settle takes less still: it files the handover, what the Bots did since, and never what the job
  * is for. The goal and kind stay as they were (a plan with no spec yet takes the answer's, or it
  * would never get one) and the plan is not parked by it; the process, the progress and a plan called
- * done still land. `kept` says what the answer asked for and did not get, for the log.
+ * done still land. From level 5 (ADR 0046) hand-overs and approvals decide when the job is done, so
+ * a settle does not reopen a done job either (its "done" is held back in `applyOrganizerResult`): on
+ * 2026-10-04's real-model run a settle read the job 19 s after your 放行 delivered it again and,
+ * having just seen your change, called it in progress — the board said 进行中 over a delivered job.
+ * `kept` says what the answer asked for and did not get, for the log.
  *
  * `standing` is the plan's status as it is now, the task's own: a plan with no spec yet has one too,
  * and a plan a newer one displaced was parked without its spec being written again.
@@ -403,12 +407,14 @@ function filedSpec(
   settle: boolean,
   kept: string[],
   standing: PlanSpec["status"] = before?.status ?? "active",
+  delivery = false,
 ): PlanSpec {
   const filed = { ...spec, acceptance: before?.acceptance ?? [], rules: before?.rules ?? [] };
   if (!settle) return filed;
-  const status = spec.status === "parked" && standing !== "parked" ? standing : spec.status;
+  const reopens = delivery && standing === "done" && spec.status === "active";
+  const status = reopens ? standing : spec.status === "parked" && standing !== "parked" ? standing : spec.status;
   if (before && spec.goal !== before.goal) kept.push("kept the goal as it was");
-  if (status !== spec.status) kept.push("did not park the plan");
+  if (status !== spec.status) kept.push(reopens ? "kept the job done: hand-overs and approvals decide it" : "did not park the plan");
   if (!before) return { ...filed, status };
   return { ...filed, kind: before.kind ?? spec.kind, goal: before.goal, status };
 }
@@ -501,7 +507,8 @@ export function applyOrganizerResult(
     // tickets are approved (ADR 0046): the organizer's statuses for tickets it did not just open, and
     // its "done" for the plan, are not written.
     const stageless = readEngineLevel(ctx.db) < ENGINE_LEVELS.submissions;
-    const answered = filedSpec(result.spec, parsePlanSpec(standing.spec), settle, kept, standing.status);
+    const answered = filedSpec(result.spec, parsePlanSpec(standing.spec), settle, kept, standing.status,
+      readEngineLevel(ctx.db) >= ENGINE_LEVELS.submissions);
     // A plan with no ticket to approve (none, or all dropped) may still be read as done.
     const ticketless = !ctx.db.query(`SELECT 1 FROM tickets WHERE task_id = ? AND status <> 'parked'`).get(target.id);
     const filed = !stageless && !ticketless && answered.status === "done" && standing.status !== "done" ? { ...answered, status: standing.status } : answered;
