@@ -653,9 +653,10 @@ function failOnGates(ctx: StoreContext, submission: Submission, checks: Submissi
  * to fix it — unless every unit it covered is now stuck at the capability ceiling: then it only hears
  * that you are being asked how to go on, and is not woken to try again (the ball is yours).
  */
-function tellAfterFailure(ctx: StoreContext, submission: Submission, said: { what: string; retry: string }, ceiling: CeilingOutcome, now: string): void {
+function tellAfterFailure(ctx: StoreContext, submission: Submission, said: { what: string; retry: string }, ceiling: CeilingOutcome, now: string,
+  answeredIn: string | null = null): void {
   if (!producerIsBot(ctx, submission)) return;
-  const sessionId = producerSession(ctx, submission);
+  const sessionId = yourDirectWith(ctx, answeredIn, submission.bot_id) ?? producerSession(ctx, submission);
   if (!sessionId) return;
   const en = locale(ctx) === "en";
   const stuck = ceiling.stuck.map((unit) => unit ?? (en ? "the ticket" : "这张任务"));
@@ -677,6 +678,19 @@ function tellAfterFailure(ctx: StoreContext, submission: Submission, said: { wha
 /** Whether a submission's producer is a Bot (the organizer's reading of a ticket nobody owns has none). */
 function producerIsBot(ctx: StoreContext, submission: Pick<Submission, "bot_id">): boolean {
   return Boolean(ctx.db.query("SELECT 1 FROM bots WHERE id = ? AND deleted_at IS NULL").get(submission.bot_id));
+}
+
+/**
+ * Your direct with this Bot, when that is where you answered a card about its work: it goes on with
+ * the rework there, beside your words. Sent back from your direct with 文案, the slogans were redone
+ * in the group the job began in, and the new version landed there (2026-10-04, real-model run).
+ */
+function yourDirectWith(ctx: StoreContext, sessionId: string | null | undefined, botId: string): string | null {
+  if (!sessionId) return null;
+  return ctx.db.query(`SELECT 1 FROM sessions s WHERE s.id = ?1 AND s.kind = 'direct' AND s.archived_at IS NULL
+    AND EXISTS (SELECT 1 FROM session_participants p WHERE p.session_id = s.id AND p.member = ?2 AND p.left_at IS NULL)
+    AND EXISTS (SELECT 1 FROM session_participants u WHERE u.session_id = s.id AND u.member = 'user' AND u.left_at IS NULL)`)
+    .get(sessionId, botId) ? sessionId : null;
 }
 
 function producerSession(ctx: StoreContext, submission: Submission): string | null {
@@ -1380,7 +1394,7 @@ export function answerReviewCard(ctx: StoreContext, messageId: string, action: u
     let checkIds: string[] = [];
     let after: Submission;
     if (action === "reject") {
-      after = rejectByUser(ctx, submission, now, note);
+      after = rejectByUser(ctx, submission, now, note, message.session_id);
     } else {
       if (action === "confirm_item") {
         recordWorkEvent(ctx, { kind: "review.item_confirmed", actor: USER_MEMBER, taskId: submission.task_id, ticketId: submission.ticket_id,
@@ -1427,7 +1441,7 @@ function sendBackNote(raw: unknown): string | null {
 }
 
 /** Your 退回 on an approval card (ADR 0046): rework, the way a reviewer's reject reads, without one. */
-function rejectByUser(ctx: StoreContext, submission: Submission, now: string, note: string | null = null): Submission {
+function rejectByUser(ctx: StoreContext, submission: Submission, now: string, note: string | null = null, answeredIn: string | null = null): Submission {
   ctx.db.run("UPDATE submissions SET state = 'rejected', checks = ?, awaiting = NULL, updated_at = ? WHERE id = ?",
     [JSON.stringify(submission.checks), now, submission.id]);
   setTicketStage(ctx, { ticketId: submission.ticket_id, stage: "rework", source: "user", turnId: null, workItemId: submission.work_item_id, submissionId: submission.id, now });
@@ -1441,7 +1455,7 @@ function rejectByUser(ctx: StoreContext, submission: Submission, now: string, no
   const what = en
     ? `(app) The user sent submission ${decided.id} back for rework.${note ? ` What they want changed, in their words: "${note}"` : ""}`
     : `（应用）用户把交付 ${decided.id} 退回重做了。${note ? `要改的地方，原话：「${note}」` : ""}`;
-  tellAfterFailure(ctx, decided, { what, retry: "" }, ceiling, now);
+  tellAfterFailure(ctx, decided, { what, retry: "" }, ceiling, now, answeredIn);
   return decided;
 }
 
@@ -1799,7 +1813,7 @@ export function answerReworkCard(ctx: StoreContext, cardId: string, action: unkn
     let producerInbox: number | null = null;
     if (producer && plan.session_id && ctx.db.query("SELECT 1 FROM bots WHERE id = ? AND deleted_at IS NULL").get(producer)) {
       const what = partKeys.length > 0 ? (en ? ` (${partKeys.join(", ")})` : `（${partKeys.join("、")}）`) : "";
-      producerInbox = queueWork(ctx, { botId: producer, sessionId: plan.session_id, taskId: ticket.task_id, ticketId: ticket.id, messageId: null, author: "app",
+      producerInbox = queueWork(ctx, { botId: producer, sessionId: yourDirectWith(ctx, card.session_id, producer) ?? plan.session_id, taskId: ticket.task_id, ticketId: ticket.id, messageId: null, author: "app",
         body: en ? `(app) The user sent ticket "${ticket.title}"${what} back to rework, saying: "${excerpt}". Fix that and hand it over again.`
           : `（应用）用户把任务「${ticket.title}」${what}转回返工了，用户说：「${excerpt}」。按这个改好再交。`,
         source: "review", kind: "change", priority: 2, notice: false }).inbox.seq;
@@ -2089,10 +2103,10 @@ export function answerCeilingCard(ctx: StoreContext, messageId: string, action: 
       if (accepted) {
         const work = ctx.db.query<{ id: string }, [string, string, string]>(`SELECT id FROM work_items WHERE bot_id = ? AND task_id = ? AND ticket_id = ?
           AND state <> 'closed' ORDER BY created_at LIMIT 1`).get(producer, ticket.task_id, ticket.id);
-        if (work) queueInboxItem(ctx, { botId: producer, sessionId: plan.session_id, turnId: null, workItemId: work.id, taskId: ticket.task_id, ticketId: ticket.id,
+        if (work) queueInboxItem(ctx, { botId: producer, sessionId: yourDirectWith(ctx, message.session_id, producer) ?? plan.session_id, turnId: null, workItemId: work.id, taskId: ticket.task_id, ticketId: ticket.id,
           messageId: null, author: "app", body, source: "review", kind: "result", priority: 2, wakes: false, now });
       } else {
-        queueWork(ctx, { botId: producer, sessionId: plan.session_id, taskId: ticket.task_id, ticketId: ticket.id, messageId: null, author: "app",
+        queueWork(ctx, { botId: producer, sessionId: yourDirectWith(ctx, message.session_id, producer) ?? plan.session_id, taskId: ticket.task_id, ticketId: ticket.id, messageId: null, author: "app",
           body, source: "review", kind: "result", priority: 2, notice: false });
       }
       refreshHeldInbox(ctx, { botId: producer });

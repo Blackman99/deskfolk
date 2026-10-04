@@ -143,13 +143,25 @@ export type QueuedWork = Pick<WorkItem, "id" | "bot_id" | "home_session_id" | "t
   message_id: string | null;
 };
 
+/**
+ * Where queued work runs: a delegation in its own conversation; a send-back or rework you asked for
+ * in your direct with the Bot, in that direct (2026-10-04: sent back from your direct with 文案, the
+ * slogans were redone in the group the work began in); else the work's thread, else its home.
+ */
+const RUNS_IN = `COALESCE(CASE WHEN i.source = 'delegation' THEN i.session_id
+    WHEN i.source = 'review' AND i.session_id IS NOT w.home_session_id AND EXISTS (SELECT 1 FROM sessions d
+      JOIN session_participants du ON du.session_id = d.id AND du.member = 'user' AND du.left_at IS NULL
+      JOIN session_participants db ON db.session_id = d.id AND db.member = w.bot_id AND db.left_at IS NULL
+      WHERE d.id = i.session_id AND d.kind = 'direct' AND d.archived_at IS NULL) THEN i.session_id END,
+    w.thread_session_id, w.home_session_id)`;
+
 /** Oldest waking mail per work item, ordered by its priority then arrival, ready for admission. */
 export function dispatchableWork(ctx: StoreContext): QueuedWork[] {
-  const queued = ctx.db.query<QueuedWork, []>(`SELECT w.id, w.bot_id, COALESCE(CASE WHEN i.source = 'delegation' THEN i.session_id END, w.thread_session_id, w.home_session_id) AS home_session_id,
+  const queued = ctx.db.query<QueuedWork, []>(`SELECT w.id, w.bot_id, ${RUNS_IN} AS home_session_id,
       w.task_id, w.ticket_id, i.message_id
     FROM work_items w JOIN inbox_items i ON i.work_item_id = w.id AND i.state = 'queued' AND i.wakes = 1
     JOIN bots b ON b.id = w.bot_id AND b.archived_at IS NULL AND b.deleted_at IS NULL
-    JOIN sessions s ON s.id = COALESCE(CASE WHEN i.source = 'delegation' THEN i.session_id END, w.thread_session_id, w.home_session_id) AND s.archived_at IS NULL
+    JOIN sessions s ON s.id = ${RUNS_IN} AND s.archived_at IS NULL
     JOIN session_participants member ON member.session_id = s.id AND member.member = w.bot_id AND member.left_at IS NULL
     WHERE w.state = 'queued'
       AND (w.task_id IS NULL OR EXISTS (SELECT 1 FROM tasks p WHERE p.id = w.task_id AND p.dormant_since IS NULL
@@ -157,7 +169,7 @@ export function dispatchableWork(ctx: StoreContext): QueuedWork[] {
       AND i.seq = (SELECT MIN(j.seq) FROM inbox_items j WHERE j.work_item_id = w.id AND j.state = 'queued' AND j.wakes = 1)
       AND NOT EXISTS (SELECT 1 FROM turns t WHERE t.bot_id = w.bot_id AND t.task_id IS w.task_id
         AND t.status IN ('running', 'waiting_approval', 'waiting_ask') AND IFNULL(t.mode, 'work') <> 'readonly')
-      AND NOT ${heldSql({ bot: "w.bot_id", session: "COALESCE(CASE WHEN i.source = 'delegation' THEN i.session_id END, w.thread_session_id, w.home_session_id)", task: "w.task_id", ticket: "w.ticket_id", turn: "i.turn_id" })}
+      AND NOT ${heldSql({ bot: "w.bot_id", session: RUNS_IN, task: "w.task_id", ticket: "w.ticket_id", turn: "i.turn_id" })}
     ORDER BY i.priority, i.seq`).all();
   return queued.filter((item) => queuePlace(ctx, { botId: item.bot_id, taskId: item.task_id }) === null);
 }

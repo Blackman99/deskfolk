@@ -110,3 +110,40 @@ test("the question whether a complaint sends work back comes up where you compla
   expect(asked(room)).toEqual([]);
   expect(asked(dm)).toHaveLength(1);
 });
+
+test("work you send back from your direct with the Bot that made it is redone there", async () => {
+  // Real-model run, 2026-10-04: 「第二句换成更有画面感的」 said to 文案 in your direct, 转回返工 pressed there,
+  // and 文案 redid the slogans in the group the job began in; the new version landed there.
+  const h = await createScenario({ learning: true });
+  open.push(h);
+  const { director, room, plan, dm } = wentOnInYourDirect(h);
+  const shots = h.store.createTicket({ taskId: plan.id, title: "关键帧板", worker: director.id });
+  // The ticket's work began in the group, as the slogans' did.
+  const begun = h.store.postMessage(room, { body: "先出关键帧板" });
+  h.store.db.run("UPDATE messages SET task_id = ?, ticket_id = ? WHERE id = ?", [plan.id, shots.id, begun.id]);
+  const there = h.store.createTurn({ sessionId: room, botId: director.id, triggerMessageId: begun.id, taskId: plan.id, ticketId: shots.id });
+  h.store.setTurnStatus(there.id, "completed");
+  h.store.db.run("UPDATE work_items SET state = 'idle' WHERE id = ?", [there.work_item_id!]);
+  h.postBot(director, dm, "关键帧板在群里交过一版了。", { taskId: plan.id, ticketId: shots.id });
+  h.script(director).handle(({ turn, hop }) => {
+    if (turn?.trigger_message_id && h.store.getMessage(turn.trigger_message_id).kind === "user") {
+      return hop === 1 ? call(tool("work_on", { plan: plan.id, ticket: shots.id }))
+        : hop === 2 ? call(writeFile(`${shots.dir}/board.md`, "S01 怪人砸楼")) : call(tool("submit", { artifacts: [`${shots.dir}/board.md`] }));
+    }
+    return call(tool("end_turn", { reason: "nothing_new" }));
+  });
+
+  h.postUser(dm, "但是打斗画面要有张力");
+  await h.waitIdle();
+  h.tick(new Date(Date.now() + 60_000));
+  await h.waitIdle();
+  const card = h.messages(dm).find((message) => message.control?.kind === "review_item")!;
+  const before = h.turns(director).length;
+
+  h.engine.control(card.id, { action: "reject", note: "城市破坏还不够" });
+  await h.waitIdle();
+
+  expect(h.store.db.query("SELECT home_session_id FROM work_items WHERE id = ?").get(there.work_item_id!)).toEqual({ home_session_id: room });
+  const redo = h.turns(director).slice(before);
+  expect(redo.map((turn) => turn.session_id)).toEqual([dm]);
+});

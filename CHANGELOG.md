@@ -17,6 +17,7 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 - When a group's job is taken up in your direct with one of its Bots, the Bot's questions now come up in that direct, and so does the line saying a restart cut its work off. So do the cards about that Bot's work (approving or sending back what it hands in, what to do when it is stuck, its reflections), while another Bot's cards go to the group rather than into this direct; the card asking whether your complaint sends work back comes up where you complained. Both used to land in the group the job was opened in, while the Bot was asking you to sign off in the direct and its interrupted line sat there beside your last words.
 - A question card now says it goes on with your answer, instead of saying that saving the answer will not lift your stops when nothing was stopped.
+- When you send work back from your direct with the Bot that made it, it redoes the work in that direct and the new version comes up there. It used to go back to the group the job was opened in.
 
 ### A lead that lays out its own work can start on it right away
 
