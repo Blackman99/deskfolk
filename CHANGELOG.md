@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### What you say when you send work back stays on the job
+
+- A note you write with 退回 is now kept as your own words on the job, like an answer on a question card: it goes into the requirements, numbers in it can become checks, and the Bot sees it in every later turn. It used to reach the Bot once, as the rework note: 「一集时长20分钟，不是这么短的视频」 came back as a 27-second cut of a 20-minute script.
+
 ### A restart notice's second button says what it does
 
 - The button that leaves cut-off work as it is now reads Not now (in Chinese 「先放着」), and the line says you can still continue it from its 「中断」 line. Its old Chinese label 「不续」 read as closing the notice, and was pressed that way.

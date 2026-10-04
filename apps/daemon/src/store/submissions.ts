@@ -29,6 +29,7 @@ import { holdsCovering } from "./holds";
 import { queueInboxItem, refreshHeldInbox } from "./inbox";
 import { getMessage, insertMessage, setMessageControl } from "./messages";
 import { spokenFor } from "./job-conversations";
+import { recordQuote } from "./quotes";
 import { bindToOwnTicket } from "./work-on";
 import { createNotification, updateNotificationActionState } from "./notifications";
 import { emptyPlanSpec, parsePlanSpec } from "./plan-shape";
@@ -1421,6 +1422,11 @@ export function answerReviewCard(ctx: StoreContext, messageId: string, action: u
     let after: Submission;
     if (action === "reject") {
       after = rejectByUser(ctx, submission, now, note, message.session_id);
+      // What you said with it is your word on the job, as an answer on a question card is: kept as
+      // yours, read into the ledger, measured for numbers. The 《一拳超人》 note 「一集时长20分钟……」
+      // reached the director once, as its rework note, and nowhere else (2026-10-04).
+      if (note) recordQuote(ctx, { via: "ask_answer", body: note, messageId: message.id, sessionId: message.session_id,
+        taskId: submission.task_id, ticketId: submission.ticket_id, now });
     } else {
       if (action === "confirm_item") {
         recordWorkEvent(ctx, { kind: "review.item_confirmed", actor: USER_MEMBER, taskId: submission.task_id, ticketId: submission.ticket_id,

@@ -74,3 +74,21 @@ test("退回 alone still sends it back; a note goes with 退回 on a hand-over's
   const control = h.store.getMessage(card.id).control as { result?: string };
   expect(control.result).toBeUndefined();
 });
+
+test("what you say with 退回 is your word on the job: the ledger reads it, and the Bot's later turns see it", async () => {
+  // 2026-10-04, live: 「一集时长20分钟，不是这么短的视频，而且要有剧情走向」 sent back with the
+  // 《一拳超人》 hand-over reached the director once, as its rework note, and nothing else: no
+  // quote of yours, no requirement, no check — it reworked to a 27.5-second cut of a 20-minute script.
+  const { h, card } = await cardWaitingOnYou();
+  const read: string[] = [];
+  h.judge("scribe").handle(({ payload }) => {
+    read.push(JSON.stringify(payload));
+    return { adds: [], raises: [], supersedes: [] };
+  });
+
+  h.engine.control(card.id, { action: "reject", note: "每句都要提到店名「巷口」" });
+  await h.waitIdle({ timeoutMs: 15_000 });
+
+  expect(h.store.db.query("SELECT via, body FROM user_quotes WHERE message_id = ?").all(card.id)).toEqual([{ via: "ask_answer", body: "每句都要提到店名「巷口」" }]);
+  expect(read.some((payload) => payload.includes("每句都要提到店名「巷口」"))).toBe(true);
+});

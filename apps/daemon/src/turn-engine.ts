@@ -903,7 +903,15 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       if (message.control?.kind === "restart") return restart.act(message, input);
       if (message.control?.kind === "check") return derivedChecks.act(message, input);
       if (message.control?.kind === "requirement") return requirementCards.act(message, input);
-      if (message.control?.kind === "review_item") return submissions.act(message, input);
+      if (message.control?.kind === "review_item") {
+        const acted = submissions.act(message, input);
+        // A note sent back with 退回 is read like an answer on a question card: into the ledger, and for numbers to check.
+        if (input.action === "reject" && store.quoteOfMessage(message.id, "ask_answer")) {
+          void core.track(scribe.noteAnswer(message.id));
+          derivedChecks.sync(message.control.task_id);
+        }
+        return acted;
+      }
       if (message.control?.kind === "rework") return submissions.answerRework(message, input);
       if (message.control?.kind === "ceiling") return submissions.answerCeiling(message, input);
       if (message.control?.kind === "lesson") {
