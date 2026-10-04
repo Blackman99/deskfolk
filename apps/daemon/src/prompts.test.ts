@@ -136,6 +136,22 @@ describe("prompts", () => {
     ]) expect(en).toContain(rule);
   });
 
+  test("both locales tell the Bot to say only what matters, by the user's own test for filler", () => {
+    const profile = { name: "Writer", duties: "draft", boundaries: "stay", interrupt: false };
+    const zh = turnSystemPrompt({ ...profile, locale: "zh" });
+    expect(zh).toContain("把它去掉或加上，对你这段话要表达的内容有没有影响——没有影响就是废话，不写");
+    expect(zh).toContain("开场应答（「好的」「收到」「明白了」）");
+    expect(zh).toContain("结尾请用户确认、征求意见或问要不要继续");
+    expect(zh).toContain("开门见山：第一句就是内容或结论本身");
+    expect(zh).toContain("用户要的长内容（文章、剧本、方案）本身照写");
+    const en = turnSystemPrompt({ ...profile, locale: "en" });
+    expect(en).toContain("if that changes nothing in what your message means to convey, it is filler, and you do not write it");
+    expect(en).toContain("Get straight to it: the first sentence is the content or the conclusion itself");
+    expect(en).toContain("long content the user asked for (an article, a script, a plan) is written in full");
+    // The product rules still close the block.
+    expect(zh.endsWith("区内。")).toBe(true);
+  });
+
   test("communication tools leave recoverable technical work to the Bot", () => {
     for (const locale of ["zh", "en"] as const) {
       const tools = builtinTools(locale);

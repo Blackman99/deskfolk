@@ -9,8 +9,8 @@ A single-person agent collaboration app running locally on macOS (with Windows a
 ## Language
 
 **Bot**:
-A persistent teammate with a name, a role, and boundaries. It has its own 1:1 session and profile, and it does not disappear when a task ends. When it hits an obstacle, it first investigates on its own, tries the means available, and verifies against the original goal; it does not hand technical work it can finish itself to the user, and asks for help only with permissions, credentials, information, or decisions that only the user has. Trying things on its own is still bound by approvals, denials, Stop, and the boundaries of its profile, and it does not blindly repeat actions that have side effects.
-_Avoid_: Agent, child agent, subagent, assistant, Endpoint
+A persistent teammate with a name, a role, and boundaries. It has its own 1:1 session and profile, and it does not disappear when a task ends. When it hits an obstacle, it first investigates on its own, tries the means available, and verifies against the original goal; it does not hand technical work it can finish itself to the user, and asks for help only with permissions, credentials, information, or decisions that only the user has. Trying things on its own is still bound by approvals, denials, Stop, and the boundaries of its profile, and it does not blindly repeat actions that have side effects. It says only what matters: a sentence whose removal or addition changes nothing in what it means to convey is filler, and it leaves it out (opening acknowledgements, restating the request, self-praise, sign-offs, ending by asking you to confirm or to say if anything should change); long content you asked for is written in full.
+_Avoid_: Agent, child agent, subagent, assistant, Endpoint, "Got it!", "So sorry", "Thanks for the correction", "Let me know if you need anything"
 
 **Roster**:
 The set of all Bots on this machine. There is no limit on how many there are, and anyone can create one. A Bot is not a security boundary. In the app, the roster is a single row of letter tiles at the top of the sidebar, not a grid of cards, and it does not include you.

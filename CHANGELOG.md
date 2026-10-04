@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Bots say only what matters
+
+- Every Bot is told to leave out filler — a sentence whose removal or addition changes nothing in what the message means — such as opening acknowledgements, restating the request, apologies and thanks, self-praise, announcing what it changed when the content shows it, and endings that ask you to confirm or to say if anything should change. It opens with the content itself. Long content you asked for is written in full. On the video director's reply to 「这个排版不对…按照剧情逐渐推进」, two runs went from 4098 and 3759 characters to 2326 and 2020, with the same plot outline and shot list.
+
 ### What you say when you send work back stays on the job
 
 - A note you write with 退回 is now kept as your own words on the job, like an answer on a question card: it goes into the requirements, numbers in it can become checks, and the Bot sees it in every later turn. It used to reach the Bot once, as the rework note: 「一集时长20分钟，不是这么短的视频」 came back as a 27-second cut of a 20-minute script.
