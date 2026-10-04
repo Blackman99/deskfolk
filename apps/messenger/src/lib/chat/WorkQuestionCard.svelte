@@ -22,6 +22,8 @@
 	let held = $state(false);
 	// The job went on without an answer; the daemon refuses one from then on, so there is no box to fill.
 	const lapsed = $derived(!control.answer && Boolean(control.superseded_at));
+	// A ticket named as its job is (the one a new job opens with) is not said twice, as on the line's job chip.
+	const ticketShown = $derived(ticketName && ticketName.trim() !== planName.trim() ? ticketName : null);
 
 	async function submit(): Promise<void> {
 		if (pending || disabled || readOnly || control.answer || lapsed || !draft.trim()) return;
@@ -44,7 +46,7 @@
 
 <section class="work-question-card" class:is-lapsed={lapsed} aria-label={lapsed ? t.workQuestion.lapsedTitle : t.workQuestion.title}>
 	<div class="work-question-title">{lapsed ? t.workQuestion.lapsedTitle : t.workQuestion.title}</div>
-	<div class="work-question-context">{t.workQuestion.context(botName, planName, ticketName)}</div>
+	<div class="work-question-context">{t.workQuestion.context(botName, planName, ticketShown)}</div>
 	<div class="work-question-text">{control.question}</div>
 	{#if control.answer}
 		<div class="work-question-saved">

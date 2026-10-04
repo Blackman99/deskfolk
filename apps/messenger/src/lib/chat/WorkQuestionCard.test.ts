@@ -73,3 +73,14 @@ test("a card whose job went on without an answer offers no box and says why, liv
     expect(saved.host.querySelector(".work-question-answer")?.textContent).toBe("V3");
   } finally { saved.close(); }
 });
+
+test("a ticket named as its job is not said twice in the card's context", () => {
+  const same = render(WorkQuestionCard, { control, botName: "视频导演", planName: "制作《一拳超人》动画", ticketName: "制作《一拳超人》动画", t,
+    onAnswer: async (): Promise<WorkAnswerResult> => { throw new Error("not answered here"); } });
+  const other = render(WorkQuestionCard, { control, botName: "视频导演", planName: "制作《一拳超人》动画", ticketName: "关键帧板", t,
+    onAnswer: async (): Promise<WorkAnswerResult> => { throw new Error("not answered here"); } });
+  try {
+    expect(same.host.querySelector(".work-question-context")?.textContent).toBe(t.workQuestion.context("视频导演", "制作《一拳超人》动画", null));
+    expect(other.host.querySelector(".work-question-context")?.textContent).toBe(t.workQuestion.context("视频导演", "制作《一拳超人》动画", "关键帧板"));
+  } finally { same.close(); other.close(); }
+});
