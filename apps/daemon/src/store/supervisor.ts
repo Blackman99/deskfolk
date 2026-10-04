@@ -527,7 +527,12 @@ function pickupsInHour(ctx: StoreContext, workItemId: string, now: string): Arra
     .all(workItemId, new Date(Date.parse(now) - HOUR_MS).toISOString());
 }
 
-/** Whether a Bot is engaged on this job some other way: a live segment, mail in line, a pending wait, or other work on it not idle. */
+/**
+ * Whether a Bot is engaged on this job some other way: a live segment, mail in line, a pending wait, or other work on it not
+ * idle. Its work that needs attention counts anywhere in the job: a Bot has one live segment per job (I1b), so a call to
+ * another ticket would take the place of work a restart or a failure cut off — on 2026-10-04 one two minutes after a
+ * development restart had the Bot redraw the cut ticket's frames under the next ticket while the notice said it would wait.
+ */
 function engaged(ctx: StoreContext, botId: string, taskId: string, ticketId: string | null, exceptWork: string | null): boolean {
   if (ctx.db.query(`SELECT 1 FROM turns WHERE bot_id = ? AND task_id = ? AND status IN ${LIVE} AND IFNULL(mode, 'work') <> 'readonly'`)
     .get(botId, taskId)) return true;
@@ -535,8 +540,8 @@ function engaged(ctx: StoreContext, botId: string, taskId: string, ticketId: str
     AND state IN ('queued', 'held')`).get(botId, taskId, ticketId)) return true;
   if (ctx.db.query(`SELECT 1 FROM check_backs WHERE bot_id = ?1 AND task_id = ?2 AND (ticket_id IS ?3 OR ticket_id IS NULL)
     AND fired_at IS NULL AND (voided_at IS NULL OR suspended_at IS NOT NULL)`).get(botId, taskId, ticketId)) return true;
-  return Boolean(ctx.db.query(`SELECT 1 FROM work_items WHERE bot_id = ?1 AND task_id = ?2 AND (ticket_id IS ?3 OR ticket_id IS NULL)
-    AND id IS NOT ?4 AND state IN ('queued', 'running', 'waiting', 'blocked', 'needs_attention')`).get(botId, taskId, ticketId, exceptWork));
+  return Boolean(ctx.db.query(`SELECT 1 FROM work_items WHERE bot_id = ?1 AND task_id = ?2 AND id IS NOT ?4 AND (state = 'needs_attention'
+    OR ((ticket_id IS ?3 OR ticket_id IS NULL) AND state IN ('queued', 'running', 'waiting', 'blocked')))`).get(botId, taskId, ticketId, exceptWork));
 }
 
 /**

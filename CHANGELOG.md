@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Work a restart cut off is not pushed aside by the next ticket
+
+- When a restart cuts off a Bot's work and the notice says it waits for your Continue, the Bot is no longer called to another ticket of the same job meanwhile, nor after you choose not to continue. Two minutes after a development restart, the Bot was called to the next ticket of your film job and redrew the cut ticket's frames under it while you were answering the notice.
+
 ### Renaming a job reminds you of its goal
 
 - The Bots are told too: after a rename, a goal written before it gives way to your own words until you update it.

@@ -455,6 +455,32 @@ test("不续 on the restart notice, a stop, or an external call with no known ou
   expect(tick.messages).toEqual([]);
 });
 
+test("work a restart cut off keeps its Bot from being called to the job's other tickets until it goes on", () => {
+  // 2026-10-04: a development restart cut 视频导演 mid image call on ticket 02 of 《一拳超人》; the notice said it would not go
+  // on by itself, yet two minutes later the same Bot was called to ticket 03, took the job's one live segment and redrew
+  // ticket 02's keyframes under it while you were pressing 不续.
+  const f = fixture();
+  const next = f.store.createTicket({ taskId: f.plan.id, title: "Subtitles", worker: f.owner.id, now: new Date(T0) });
+  const cut = segment(f);
+  pendingEffect(f, cut.id, cut.work_item_id);
+  const { note } = f.store.interruptTurnRecord(cut.id)!;
+  boot(f, "boot-dev", "dev", at(0));
+  expect(f.store.recordSupervisorRestart({ bootId: "boot-dev", cause: "dev", interruptedTurnIds: [cut.id], now: at(0) })[0]!.arrangement).toBe("unknown_effect");
+  const waiting = f.store.supervisorTick({ now: at(10 * MIN) });
+  expect(waiting.wakes).toEqual([]);
+  expect(waiting.deferred).toContainEqual({ workItemId: cut.work_item_id, reason: "unknown_effect" });
+  // 不续 leaves it where it is, and the rest of the job with it.
+  f.store.insertMessage({ sessionId: f.room.id, kind: "system", author: f.owner.id, body: "重启", hiddenFromBots: true,
+    control: { kind: "restart", cause: "dev", notes: [note.id], offer: ["resume", "leave"], acted: ["leave"] } });
+  expect(f.store.supervisorTick({ now: at(20 * MIN) }).wakes).toEqual([]);
+  // Your 继续 on its line takes it up; once that segment is over, the other ticket is the Bot's to be called to again.
+  const resumed = f.store.claimInterruptContinue(note.id);
+  f.store.setTurnStatus(resumed.id, "completed");
+  f.store.db.run("UPDATE work_items SET state = 'idle' WHERE id = ?", [cut.work_item_id]);
+  expect(f.store.supervisorTick({ now: at(40 * MIN) }).wakes.filter((wake) => wake.ticketId === next.id))
+    .toMatchObject([{ botId: f.owner.id, cause: "orphan" }]);
+});
+
 test("a segment interrupted before this boot that no record names follows this boot's restart policy", () => {
   const f = fixture();
   const turn = segment(f);
