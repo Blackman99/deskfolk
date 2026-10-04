@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A change you asked for lands in the file you approve
+
+- A Bot asked for a change after delivery could write the new version into a folder it named itself and hand in the old file, so the card asked you to approve a change that was not there. Writing into a made-up ticket folder is now refused with the real one named, and handing in exactly the files already approved is refused as unchanged. Found in a run with real models.
+
 ### A file a Bot deleted no longer comes with its message
 
 - When a Bot wrote a file and then deleted it in the same turn (a draft at the wrong place, rewritten in its ticket's folder), the deleted file still came with its last message, so the conversation showed the same file twice, once as a file that was gone.

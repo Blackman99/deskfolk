@@ -202,6 +202,8 @@ function writeFile(
   if (ctx.signal.aborted) return fail("failed", "interrupted");
   const abs = classified.abs;
   if (existsAsDir(abs)) return fail("failed", "path is a directory");
+  const stray = classified.zone === "inside" ? strayTicketFolder(root, classified.rel, ctx) : null;
+  if (stray) return fail("invalid_args", stray);
   ctx.onEffectStart?.("write_file");
   try {
     mkdirSync(dirname(abs), { recursive: true });
@@ -210,6 +212,26 @@ function writeFile(
   } catch {
     return fail("failed", "write failed");
   }
+}
+
+/**
+ * A job's ticket folders are `work/<job>/NN-<title, cut short>`. A folder of that shape in a job
+ * that no ticket has, and that is not there yet, is one built from a title instead of read from the
+ * situation: on 2026-10-04's real-model run a Bot rewrote plan.md into `01-…每天一个主题/` — its
+ * ticket's folder is `01-…每天一个/` — then handed in the untouched one, and the card asked you to
+ * approve a change that was not in it. Said, with the job's real folders, before anything is written.
+ */
+function strayTicketFolder(root: string, rel: string, ctx: WorkspaceToolCtx): string | null {
+  const parts = rel.split("/");
+  if (parts.length < 4 || parts[0] !== "work" || !/^\d{2}-/.test(parts[2]!)) return null;
+  const planDir = parts.slice(0, 2).join("/");
+  const folder = `${planDir}/${parts[2]}`;
+  if (existsAsDir(join(root, folder))) return null;
+  const tickets = ctx.store.db.query<{ dir: string }, [string]>(
+    "SELECT t.dir FROM tickets t JOIN tasks k ON k.id = t.task_id WHERE k.dir = ? ORDER BY t.seq").all(planDir);
+  if (tickets.length === 0 || tickets.some((ticket) => ticket.dir === folder)) return null;
+  const yours = ctx.workDir && ctx.workDir !== planDir ? ` This turn's ticket folder is ${ctx.workDir}/.` : "";
+  return `${folder}/ is no ticket's folder in this job; its ticket folders are ${tickets.map((ticket) => `${ticket.dir}/`).join(", ")}.${yours} Use the folder the situation names, not one built from a ticket's title.`;
 }
 
 function deleteFile(

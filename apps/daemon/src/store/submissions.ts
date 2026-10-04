@@ -436,6 +436,20 @@ export function prepareSubmission(ctx: StoreContext, input: {
       if (typeof artifact.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(artifact.sha256)) throw new HttpError(422, "invalid_args", `${path} has no content hash`);
       if (!artifacts.some((seen) => seen.path === path)) artifacts.push({ path, sha256: artifact.sha256 });
     }
+    // The same files, byte for byte, as the hand-over approved or still open on this ticket: nothing
+    // to decide. On 2026-10-04's real-model run, asked for a change after delivery, a Bot wrote the
+    // new version into a folder of its own making and handed in the untouched file; the card asked
+    // you to approve a change that was not there.
+    if (input.origin === "submit") {
+      const last = listSubmissions(ctx, { ticketId: turn.ticket_id, limit: 1 })[0];
+      const same = last && ["approved", "checking", "submitted", "in_review"].includes(last.state)
+        && last.artifacts.length === artifacts.length
+        && artifacts.every((artifact) => last.artifacts.some((before) => before.path === artifact.path && before.sha256 === artifact.sha256));
+      if (same) {
+        throw new HttpError(409, "unchanged", `these files are exactly what hand-over ${last.id} (${last.state}) already has; nothing changed since. `
+          + "If you made changes, they are not in these files: hand in the files you changed, in this ticket's folder.");
+      }
+    }
     if (input.origin === "implicit") {
       const known = new Map<string, string>();
       for (const previous of listSubmissions(ctx, { ticketId: turn.ticket_id, limit: 200 }).reverse()) {
