@@ -22,6 +22,20 @@ export function jobConversations(ctx: Pick<StoreContext, "db">, taskId: string):
   return { home, spoken };
 }
 
+/**
+ * Where a line about `botId`'s work on the job may go to you, where you spoke about the job last
+ * first: the groups you are still in, and your direct with that Bot — never your direct with another
+ * of its Bots, where a card about this one would sit in the wrong conversation. A job opened in a
+ * group and taken up in your direct with one of its Bots asked you to sign off there while its
+ * cards went to the group (2026-10-04).
+ */
+export function spokenFor(ctx: Pick<StoreContext, "db">, taskId: string, botId: string | null): string[] {
+  return jobConversations(ctx, taskId).spoken.filter((sessionId) => Boolean(ctx.db.query(`SELECT 1 FROM sessions s
+    JOIN session_participants u ON u.session_id = s.id AND u.member = 'user' AND u.left_at IS NULL
+    WHERE s.id = ?1 AND s.archived_at IS NULL AND (s.kind = 'group' OR (s.kind = 'direct' AND EXISTS (SELECT 1
+      FROM session_participants b WHERE b.session_id = s.id AND b.member = ?2 AND b.left_at IS NULL)))`).get(sessionId, botId)));
+}
+
 /** Home first, then where you spoke about it, each once. */
 export function allJobConversations(conversations: JobConversations): string[] {
   return [...new Set([...(conversations.home ? [conversations.home] : []), ...conversations.spoken])];

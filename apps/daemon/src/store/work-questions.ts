@@ -16,7 +16,7 @@ import { createNotification, updateNotificationActionState } from "./notificatio
 import { recordQuote } from "./quotes";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import { requireNonEmpty, type StoreContext } from "./shared";
-import { jobConversations } from "./job-conversations";
+import { spokenFor } from "./job-conversations";
 import { recordWorkEvent } from "./work-events";
 
 type Work = { id: string; bot_id: string; task_id: string | null; ticket_id: string | null; state: string; home_session_id: string; closed_at: string | null; waiting_on: string | null };
@@ -33,7 +33,7 @@ function publicHome(ctx: StoreContext, work: Work, asked: string): string {
   const planHome = work.task_id ? ctx.db.query<{ session_id: string | null }, [string]>("SELECT session_id FROM tasks WHERE id = ?").get(work.task_id)?.session_id : null;
   // Where the Bot asked comes first: a job opened in a group and taken up in your direct asked its
   // 「请拍板」 there, while the card went to the group its work began in (2026-10-04).
-  const spoken = work.task_id ? jobConversations(ctx, work.task_id).spoken : [];
+  const spoken = work.task_id ? spokenFor(ctx, work.task_id, work.bot_id) : [];
   for (const sessionId of [asked, ...spoken, work.home_session_id, planHome]) {
     if (sessionId && ctx.db.query(`SELECT 1 FROM session_participants p JOIN sessions s ON s.id = p.session_id
       WHERE p.session_id = ? AND p.member = 'user' AND p.left_at IS NULL AND s.archived_at IS NULL`).get(sessionId)) return sessionId;

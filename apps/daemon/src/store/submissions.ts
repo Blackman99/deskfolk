@@ -29,6 +29,7 @@ import { filenamePartNumbers, partNumbers, registerFilenameParts } from "./filin
 import { holdsCovering } from "./holds";
 import { queueInboxItem, refreshHeldInbox } from "./inbox";
 import { getMessage, insertMessage, setMessageControl } from "./messages";
+import { spokenFor } from "./job-conversations";
 import { createNotification, updateNotificationActionState } from "./notifications";
 import { emptyPlanSpec, parsePlanSpec } from "./plan-shape";
 import { requirementsBearingOn, setRequirementHere, waiveRequirement } from "./requirements";
@@ -1088,16 +1089,17 @@ function askYou(ctx: StoreContext, submission: Submission, items: ReadonlyArray<
     const tail = en
       ? "Confirm the check to let it decide, say these are met, or stop requiring them."
       : "确认那条检查让它来判，说一声这几条做到了，或者不再要这几条。";
-    const isDirect = ctx.db.query<{ kind: string }, [string]>("SELECT kind FROM sessions WHERE id = ?").get(plan.session_id)?.kind === "direct"
+    const place = cardPlace(ctx, submission, plan.session_id);
+    const isDirect = ctx.db.query<{ kind: string }, [string]>("SELECT kind FROM sessions WHERE id = ?").get(place)?.kind === "direct"
       && producerIsBot(ctx, submission);
     message = insertMessage(ctx, {
-      sessionId: plan.session_id, kind: "system", author: isDirect ? submission.bot_id : USER_MEMBER, hiddenFromBots: true,
+      sessionId: place, kind: "system", author: isDirect ? submission.bot_id : USER_MEMBER, hiddenFromBots: true,
       body: [head, ...lines, tail].join("\n"),
       control: { kind: "review_item", submission_id: submission.id, task_id: submission.task_id, ticket_id: submission.ticket_id,
         requirement_ids: requirementIds, check_ids: proposed, checks_passing: checksPassing,
         offer: [...(proposed.length > 0 ? ["confirm_check" as const] : []), "confirm_item", "remove_item"] },
     });
-    createNotification(ctx, { semantic_key: `review_item:${message.id}`, kind: "ask", session_id: plan.session_id, message_id: message.id, action_state: "open" });
+    createNotification(ctx, { semantic_key: `review_item:${message.id}`, kind: "ask", session_id: place, message_id: message.id, action_state: "open" });
   }
   const awaiting: AwaitingYou = { requirement_ids: requirementIds, check_ids: proposed, message_id: message?.id ?? null, review, at: now, kind: "items" };
   ctx.db.run("UPDATE submissions SET awaiting = ?, updated_at = ? WHERE id = ?", [JSON.stringify(awaiting), now, submission.id]);
@@ -1147,6 +1149,14 @@ function reviewerVerdictLine(ctx: StoreContext, review: ReviewRecord, submission
  * on; your two buttons are the submission's own outcome (`approve`, `reject` — `answerReviewCard`),
  * not a required item's.
  */
+/**
+ * Where a card about a hand-over goes: where you last spoke about its job — a group, or your direct
+ * with the Bot that made it — else the job's home (see `spokenFor`).
+ */
+function cardPlace(ctx: StoreContext, submission: Pick<Submission, "task_id" | "bot_id">, home: string): string {
+  return spokenFor(ctx, submission.task_id, submission.bot_id)[0] ?? home;
+}
+
 /** The files a hand-over's card names in its words; the card shows the files themselves beside them. */
 function fileNames(submission: Pick<Submission, "artifacts">, en: boolean): string {
   return submission.artifacts.map((artifact) => artifact.path.split("/").pop() ?? artifact.path).join(en ? ", " : "、");
@@ -1176,17 +1186,18 @@ function askApproval(ctx: StoreContext, submission: Submission, now: string, rev
             : `${plan.title} 的任务 ${number}「${ticket.title}」交上来了（${fileNames(submission, en)}）。没有审查者，也没有你确认过的检查替你把关，所以要你来定。`);
     const tail = en ? "Have a look, then approve it or send it back." : "看过之后，放行或者退回。";
     const body = [head + verdict, tail].join("\n");
-    const isDirect = ctx.db.query<{ kind: string }, [string]>("SELECT kind FROM sessions WHERE id = ?").get(plan.session_id)?.kind === "direct"
+    const place = cardPlace(ctx, submission, plan.session_id);
+    const isDirect = ctx.db.query<{ kind: string }, [string]>("SELECT kind FROM sessions WHERE id = ?").get(place)?.kind === "direct"
       && producerIsBot(ctx, submission);
     // A file hand-over's card links the files themselves, to open and look.
     const paths = submission.origin !== "answer" && submission.origin !== "organizer" ? submission.artifacts.map((a) => a.path) : undefined;
     message = insertMessage(ctx, {
-      sessionId: plan.session_id, kind: "system", author: isDirect ? submission.bot_id : USER_MEMBER, hiddenFromBots: true, body,
+      sessionId: place, kind: "system", author: isDirect ? submission.bot_id : USER_MEMBER, hiddenFromBots: true, body,
       ...(paths && paths.length > 0 ? { paths } : {}),
       control: { kind: "review_item", submission_id: submission.id, task_id: submission.task_id, ticket_id: submission.ticket_id,
         requirement_ids: [], check_ids: [], offer: ["approve", "reject"] },
     });
-    createNotification(ctx, { semantic_key: `review_item:${message.id}`, kind: "ask", session_id: plan.session_id, message_id: message.id, action_state: "open" });
+    createNotification(ctx, { semantic_key: `review_item:${message.id}`, kind: "ask", session_id: place, message_id: message.id, action_state: "open" });
   }
   const awaiting: AwaitingYou = { requirement_ids: [], check_ids: [], message_id: message?.id ?? null, review, at: now, kind: "approval" };
   ctx.db.run("UPDATE submissions SET awaiting = ?, updated_at = ? WHERE id = ?", [JSON.stringify(awaiting), now, submission.id]);
@@ -1628,7 +1639,7 @@ export function noteComplaint(
 ): Message[] {
   return ctx.commit(() => {
     if (!supervised(ctx)) return [];
-    const message = ctx.db.query<{ id: string; kind: string; body: string }, [string]>("SELECT id, kind, body FROM messages WHERE id = ?").get(messageId);
+    const message = ctx.db.query<{ id: string; kind: string; body: string; session_id: string }, [string]>("SELECT id, kind, body, session_id FROM messages WHERE id = ?").get(messageId);
     if (!message || message.kind !== "user") return [];
     const filings = ctx.db.query<{ ticket_id: string; part_key: string | null }, [string]>(`SELECT ticket_id, part_key FROM message_filings
       WHERE message_id = ? AND ticket_id IS NOT NULL AND strength IN ('locked', 'default', 'user') ORDER BY is_primary DESC, rowid`).all(messageId);
@@ -1683,13 +1694,16 @@ export function noteComplaint(
       const en = locale(ctx) === "en";
       const number = String(ticket.seq).padStart(2, "0");
       const what = partKeys.length > 0 ? (en ? ` (${partKeys.join(", ")})` : `（${partKeys.join("、")}）`) : "";
+      // The card answers what you just said, so it is where you said it while you can still answer there.
+      const place = ctx.db.query(`SELECT 1 FROM sessions s JOIN session_participants u ON u.session_id = s.id AND u.member = 'user'
+        AND u.left_at IS NULL WHERE s.id = ? AND s.archived_at IS NULL`).get(message.session_id) ? message.session_id : plan.session_id;
       const card = insertMessage(ctx, {
-        sessionId: plan.session_id, kind: "system", author: USER_MEMBER, hiddenFromBots: true,
+        sessionId: place, kind: "system", author: USER_MEMBER, hiddenFromBots: true,
         body: en ? `You said "${excerpt}" — send ticket ${number} "${ticket.title}"${what} of ${plan.title} back to rework?`
           : `你说「${excerpt}」——要把 ${plan.title} 的任务 ${number}「${ticket.title}」${what}转回返工吗？`,
         control: { kind: "rework", task_id: ticket.task_id, ticket_id: ticketId, part_keys: partKeys, message_id: messageId, offer: ["rework", "dismiss"] },
       });
-      createNotification(ctx, { semantic_key: `rework:${card.id}`, kind: "ask", session_id: plan.session_id, message_id: card.id, action_state: "open" });
+      createNotification(ctx, { semantic_key: `rework:${card.id}`, kind: "ask", session_id: place, message_id: card.id, action_state: "open" });
       recordWorkEvent(ctx, { kind: "complaint.asked", actor: "app", taskId: ticket.task_id, ticketId,
         payload: { message_id: messageId, card_id: card.id, parts: partKeys, signal: annotated ? "annotation" : scribed ? "scribe" : input.objecting?.source === "model" ? "reading" : "words", at: now } });
       cards.push(card);
@@ -2016,15 +2030,16 @@ function ceilingCard(ctx: StoreContext, submission: Submission, partKey: string 
     ? (en ? `"${hit.label}" failed ${hit.times} hand-overs in a row` : `「${hit.label}」连续 ${hit.times} 次没过`)
     : (en ? `${hit.times} hand-overs failed` : `已经交了 ${hit.times} 次都没过`);
   const requirementId = hit.reason === "streak" && !hit.key.startsWith("check:") ? hit.key : null;
+  const place = cardPlace(ctx, submission, plan.session_id);
   const message = insertMessage(ctx, {
-    sessionId: plan.session_id, kind: "system", author: USER_MEMBER, hiddenFromBots: true,
+    sessionId: place, kind: "system", author: USER_MEMBER, hiddenFromBots: true,
     body: en
       ? `Ticket ${number} "${ticket.title}"${unit} of ${plan.title} is stuck: ${why}. Trying again the same way is unlikely to help — how should it go on?`
       : `${plan.title} 的任务 ${number}「${ticket.title}」${unit}卡住了：${why}，照原样再试多半还是不过。要怎么办？`,
     control: { kind: "ceiling", task_id: submission.task_id, ticket_id: submission.ticket_id, part_key: partKey, requirement_id: requirementId,
       offer: ["another_way", "another_plan", ...(requirementId ? ["relax" as const] : []), "accept"] },
   });
-  createNotification(ctx, { semantic_key: `ceiling:${message.id}`, kind: "ask", session_id: plan.session_id, message_id: message.id, action_state: "open" });
+  createNotification(ctx, { semantic_key: `ceiling:${message.id}`, kind: "ask", session_id: place, message_id: message.id, action_state: "open" });
   return message;
 }
 

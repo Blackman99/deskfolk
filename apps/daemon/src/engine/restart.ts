@@ -190,7 +190,7 @@ export function createRestart(deps: RestartDeps): Restart {
         return null;
       }
     };
-    for (const spoken of turn.task_id ? store.jobConversations(turn.task_id).spoken : []) {
+    for (const spoken of turn.task_id ? store.spokenFor(turn.task_id, turn.bot_id) : []) {
       const here = withYou(spoken);
       if (here) return here;
     }

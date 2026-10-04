@@ -546,6 +546,7 @@ export class Store {
   readonly filingsOfMessage = this.bind(filing.filingsOfMessage);
   readonly deskCandidateIds = this.bind(desk.deskCandidateIds);
   readonly jobConversations = this.bind(jobConversations.jobConversations);
+  readonly spokenFor = this.bind(jobConversations.spokenFor);
   readonly assertDeskCandidate = this.bind(desk.assertDeskCandidate);
   readonly noteFilingBounce = this.bind(desk.noteFilingBounce);
   readonly filingBudget = this.bind(desk.filingBudget);

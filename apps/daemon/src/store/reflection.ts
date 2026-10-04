@@ -20,6 +20,7 @@ import { holdsCovering } from "./holds";
 import type { Lesson } from "./lessons";
 import { getLesson } from "./lessons";
 import { getMessage, insertMessage, setMessageControl } from "./messages";
+import { spokenFor } from "./job-conversations";
 import { createNotification, updateNotificationActionState } from "./notifications";
 import { learningOn } from "./quality";
 import { settingsCached } from "./settings";
@@ -282,9 +283,10 @@ export function recordReflection(ctx: StoreContext, due: DueReflection, outcome:
         : (lang === "en"
           ? `${looked}, and proposes a check for the ticket: ${outcome.check.item} — ${checkDefinition(outcome.check, "en")}`
           : `${looked}，提议给这张任务加一条检查：${outcome.check.item}——${checkDefinition(outcome.check, "zh")}`);
-      const message = insertMessage(ctx, { sessionId: plan.session_id, kind: "system", author: USER_MEMBER, hiddenFromBots: true, body,
+      const place = spokenFor(ctx, due.taskId, due.botId)[0] ?? plan.session_id;
+      const message = insertMessage(ctx, { sessionId: place, kind: "system", author: USER_MEMBER, hiddenFromBots: true, body,
         control: { kind: "lesson", lesson_id: id, task_id: due.taskId, ticket_id: due.ticketId, offer: ["confirm", "decline"] } });
-      createNotification(ctx, { semantic_key: `lesson:${message.id}`, kind: "ask", session_id: plan.session_id, message_id: message.id, action_state: "open" });
+      createNotification(ctx, { semantic_key: `lesson:${message.id}`, kind: "ask", session_id: place, message_id: message.id, action_state: "open" });
       card = message;
     }
     recordWorkEvent(ctx, { kind: "reflection.proposed", actor: due.botId, botId: due.botId, taskId: due.taskId, ticketId: due.ticketId,

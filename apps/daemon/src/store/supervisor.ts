@@ -23,7 +23,7 @@ import { isReservedTaskPath } from "./tasks";
 import { ticketDependencies } from "./tickets";
 import { executionRecoveryFacts } from "./tool-executions";
 import { ceilingCardOf, STAGE_SQL, superviseSubmissions, ticketReviewer, type Submission } from "./submissions";
-import { confirmedLeadsOf, conversationFor, eligibleInJob, jobConversations } from "./job-conversations";
+import { confirmedLeadsOf, conversationFor, eligibleInJob, jobConversations, spokenFor } from "./job-conversations";
 import { projectInsertedWorkEvent, recordWorkEvent } from "./work-events";
 import { queueWork } from "./work-items";
 
@@ -579,7 +579,7 @@ function pickUpAttention(ctx: StoreContext, result: SupervisorTickResult, now: s
       result.deferred.push({ workItemId: work.id, reason: "unknown_effect" });
       // A restart's own notice already says so; anything else is said here, once per segment.
       if (!restart && segment) notice(ctx, result, { key: `unknown_effect:${work.id}:${segment.id}`, code: "unknown_effect", taskId,
-        ticketId: work.ticket_id, workItemId: work.id, botId: work.bot_id, places: [...jobConversations(ctx, taskId).spoken, work.session_id, work.home_session_id, segment.session_id],
+        ticketId: work.ticket_id, workItemId: work.id, botId: work.bot_id, places: [...spokenFor(ctx, taskId, work.bot_id), work.session_id, work.home_session_id, segment.session_id],
         body: supervisorNoticeBody(locale(ctx), { code: "unknown_effect", job: jobLabel(ctx, taskId, work.ticket_id), bot: botName(ctx, work.bot_id), tool: unknown.at(-1) ?? null }),
         now });
       continue;
@@ -588,7 +588,7 @@ function pickUpAttention(ctx: StoreContext, result: SupervisorTickResult, now: s
     if (recent.length >= PICKUPS_PER_HOUR) {
       result.deferred.push({ workItemId: work.id, reason: "retry_budget" });
       notice(ctx, result, { key: `retry_budget:${work.id}:${recent[0]!.id}`, code: "retry_budget", taskId, ticketId: work.ticket_id,
-        workItemId: work.id, botId: work.bot_id, places: [...jobConversations(ctx, taskId).spoken, work.session_id, work.home_session_id, segment?.session_id],
+        workItemId: work.id, botId: work.bot_id, places: [...spokenFor(ctx, taskId, work.bot_id), work.session_id, work.home_session_id, segment?.session_id],
         body: supervisorNoticeBody(locale(ctx), { code: "retry_budget", job: jobLabel(ctx, taskId, work.ticket_id), bot: botName(ctx, work.bot_id), count: recent.length }),
         now });
       continue;
@@ -733,7 +733,7 @@ function callBackOrphans(ctx: StoreContext, result: SupervisorTickResult, now: s
     if (unknown.length > 0 && item && segment) {
       result.deferred.push({ workItemId: item.id, reason: "unknown_effect" });
       notice(ctx, result, { key: `unknown_effect:${item.id}:${segment.id}`, code: "unknown_effect", taskId: ticket.task_id, ticketId: ticket.id,
-        workItemId: item.id, botId: holder.botId, places: [...jobConversations(ctx, ticket.task_id).spoken, ticket.session_id, item.home_session_id],
+        workItemId: item.id, botId: holder.botId, places: [...spokenFor(ctx, ticket.task_id, holder.botId), ticket.session_id, item.home_session_id],
         body: supervisorNoticeBody(locale(ctx), { code: "unknown_effect", job, bot: botName(ctx, holder.botId), tool: unknown.at(-1) ?? null }), now });
       continue;
     }
@@ -743,7 +743,7 @@ function callBackOrphans(ctx: StoreContext, result: SupervisorTickResult, now: s
         AND json_extract(wait_spec, '$.progress_seq') = ?`).get(ticket.id, progressSeq)!;
     if (spent.n >= ORPHAN_WAKES_PER_PROGRESS) {
       notice(ctx, result, { key: `stalled:${ticket.id}:${progressSeq}`, code: "stalled", taskId: ticket.task_id, ticketId: ticket.id,
-        workItemId: spent.work_item_id, botId: holder.botId, places: [...jobConversations(ctx, ticket.task_id).spoken, ticket.session_id],
+        workItemId: spent.work_item_id, botId: holder.botId, places: [...spokenFor(ctx, ticket.task_id, holder.botId), ticket.session_id],
         body: supervisorNoticeBody(locale(ctx), { code: "stalled", job, bot: botName(ctx, holder.botId), count: spent.n }), now });
       continue;
     }
