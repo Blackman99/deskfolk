@@ -60,6 +60,8 @@ import { createMcpHost, persistMcpInspect, type McpHost } from "./mcp-host";
 import { COLLAB_TOOL_NAMES } from "./prompts";
 import { startScheduler, type Scheduler } from "./scheduler";
 import { createTurnEngine, type TurnEngine } from "./turn-engine";
+import { createClaudeCodeProbe, type ClaudeCodeProbe } from "./claude-code/probe";
+import type { AgentQuery } from "./engine/agent-runner";
 import { probeEndpointModels } from "./probe-models";
 import type { FileCommit } from "./store/files";
 import type { RouteLearningRow, RouteReviewRow } from "./store/routing";
@@ -141,6 +143,10 @@ export type LocalApiOptions = {
   installedApp?: () => SharedInstall | null;
   /** Where that route writes what it did: daemon.log, as boot does. */
   log?: (line: string) => void;
+  /** What the daemon knows of the user's own Claude Code (ADR 0061); one is made when absent. */
+  claudeCode?: ClaudeCodeProbe;
+  /** Stands in for the Agent SDK's `query` in tests, so no Claude Code is started. */
+  agentQuery?: AgentQuery;
 };
 
 export type LocalApi = {
@@ -170,7 +176,12 @@ export type LocalApi = {
 };
 
 export function createLocalApi(options: LocalApiOptions): LocalApi {
-  options = { ...options, admission: options.admission ?? new TurnAdmission() };
+  options = {
+    ...options,
+    admission: options.admission ?? new TurnAdmission(),
+    claudeCode: options.claudeCode ?? createClaudeCodeProbe({ setting: () => options.store.claudeCodePath() }),
+  };
+  const claudeCode = options.claudeCode!;
   const sockets = new Set<Bun.ServerWebSocket<SocketData>>();
   const timers = new Map<Bun.ServerWebSocket<SocketData>, ReturnType<typeof setTimeout>>();
 
@@ -332,6 +343,8 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
       admission: options.admission,
       streams,
       ablation: options.ablation,
+      claudeCode,
+      agentQuery: options.agentQuery,
     });
 
   options.beforeScheduler?.(engine);
@@ -797,6 +810,20 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
         if (request.method === "PUT") return jsonResponse(await options.screen.configure(await readJson(request)), 200, origin);
         await options.screen.probe();
         return jsonResponse(options.screen.status(), 200, origin);
+      }
+      // Your own Claude Code as the daemon finds it (ADR 0061). Local only, like the routes around
+      // it: reading it may run `claude --version` and `claude auth status`, never anything that
+      // touches its credentials, and a phone has no business pointing the daemon at a program.
+      if (path === "/v1/runtime/claude-code" && request.method === "GET") {
+        return jsonResponse(await claudeCode.current(), 200, origin);
+      }
+      if (path === "/v1/runtime/claude-code/detect" && request.method === "POST") {
+        return jsonResponse(await claudeCode.detect(), 200, origin);
+      }
+      if (path === "/v1/runtime/claude-code/path" && request.method === "PUT") {
+        const body = (await readJson(request)) as Record<string, unknown>;
+        options.store.setClaudeCodePath(body.path ?? null);
+        return jsonResponse(await claudeCode.detect(), 200, origin);
       }
       if (request.method === "POST" && path === "/v1/remote/screen/disconnect" && options.screen) {
         options.screen.endAll();

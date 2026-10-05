@@ -26,6 +26,8 @@ import { createRequirementCards } from "./engine/requirement-cards";
 import { createDirectReport } from "./engine/direct-report";
 import { createFire } from "./engine/fire";
 import { createLifecycle } from "./engine/lifecycle";
+import type { ClaudeCodeProbe } from "./claude-code/probe";
+import type { AgentQuery } from "./engine/agent-runner";
 import { createParticipation } from "./engine/participation";
 import { createPlanWatch } from "./engine/plan-watch";
 import { createRestart, type RestartSummary } from "./engine/restart";
@@ -178,6 +180,10 @@ export type TurnEngineOptions = {
   planLeftQuietMs?: number;
   /** A test waits here, between one tool call returning and the next being looked at. */
   betweenCalls?: (turnId: string, live: { inbox: Array<{ seq?: number; item: { author: string; body: string; checkBack: boolean }; message: import("@real-bot/protocol").Message }> }) => Promise<void> | void;
+  /** What the daemon knows of the user's own Claude Code, for Claude Agent turns (ADR 0061). */
+  claudeCode?: ClaudeCodeProbe;
+  /** Stands in for the Agent SDK's `query` in tests, so no Claude Code is started. */
+  agentQuery?: AgentQuery;
 };
 
 /** Long enough to still be debugging last week's turn, short enough not to hoard. */
@@ -534,6 +540,12 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     // Late-bound: `stops` is built below; a read-only answer only ends once it is.
     readOnlyUnanswered: (turn) => stops.unanswered(turn),
     implicitSubmission: (turnId, opts) => submissions.implicit(turnId, opts),
+    publishSpend: core.publishSpend,
+    claudeCode: options.claudeCode,
+    agentQuery: options.agentQuery,
+    openApprovalCard: tools.openApprovalCard,
+    beforeEffect: tools.beforeEffect,
+    noteWrittenPaths: tools.noteWrittenPaths,
   });
 
   // Level 5's hand-overs and reviews (ADR 0046): checks run as a settle would, through the plan's runner.

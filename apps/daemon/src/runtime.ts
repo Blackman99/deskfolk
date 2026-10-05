@@ -57,6 +57,11 @@ export type RuntimeOptions = {
    * end-to-end fixture. `main.ts` never sets it, so a running app has no way to reach another port.
    */
   screen?: Omit<ScreenServiceOptions, "store">;
+  /**
+   * A stand-in for the Agent SDK's query in Claude Agent turns (ADR 0061): a test's script, or a
+   * live check's wrapper that records what Claude Code said. `main.ts` never sets it.
+   */
+  agentQuery?: import("./engine/agent-runner").AgentQuery;
 };
 
 export type RuntimeHandle = {
@@ -300,6 +305,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
       completions: options.completions,
       schedule: options.schedule,
       ablation: options.ablation,
+      agentQuery: options.agentQuery,
       installedApp,
       log: bootLog,
       // Before the scheduler's first tick, a line for each job the restart cut off where you will

@@ -1,5 +1,6 @@
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
+import { join as joinPath } from "node:path";
 import {
   USER_MEMBER,
   type AcceptanceCheck,
@@ -225,6 +226,59 @@ export function assembleTurnMessages(
     input.turnId,
   );
   return [{ role: "system", content: system }, ...(situation ? [situation] : []), ...window, ...input.loop];
+}
+
+/** One piece of a Claude Agent turn's first message: words, or a picture as base64 (ADR 0061). */
+export type AgentInputPart = { type: "text"; text: string } | { type: "image"; mediaType: string; data: string };
+
+/**
+ * A Claude Agent turn's first message (ADR 0061): the situation block and the transcript window the
+ * app's own loop reads, in one user message — Claude Code keeps its own conversation from there.
+ * Other people's lines keep their 【name】 prefix; the Bot's own lines are marked as its own, since
+ * there is no assistant turn to carry them. Pictures in the window go along as images.
+ */
+export function assembleAgentTurnInput(
+  store: Store,
+  input: { sessionId: string; botId: string; turnId: string; triggerMessageId: string; locale: Locale },
+): AgentInputPart[] {
+  // Claude Code's file tools take host paths, so its dirs are named that way.
+  const situation = situationUserMessage(store, input.sessionId, input.triggerMessageId, input.locale, input.botId, input.turnId, true);
+  const window = transcriptWindow(store, {
+    sessionId: input.sessionId,
+    turnId: input.turnId,
+    triggerMessageId: input.triggerMessageId,
+    selfBotId: input.botId,
+    loopPictures: { images: 0, bytes: 0 },
+    locale: input.locale,
+  });
+  const en = input.locale === "en";
+  const parts: AgentInputPart[] = [];
+  const text = (value: string) => {
+    const last = parts.at(-1);
+    if (last?.type === "text") last.text += `\n\n${value}`;
+    else parts.push({ type: "text", text: value });
+  };
+  const add = (content: ChatMessage["content"], prefix = "") => {
+    if (typeof content === "string") {
+      text(`${prefix}${content}`);
+      return;
+    }
+    let first = true;
+    for (const part of content ?? []) {
+      if (part.type === "text") {
+        text(first ? `${prefix}${part.text}` : part.text);
+        first = false;
+        continue;
+      }
+      const match = /^data:([^;]+);base64,(.*)$/s.exec(part.image_url.url);
+      if (match) parts.push({ type: "image", mediaType: match[1]!, data: match[2]! });
+    }
+  };
+  if (situation) add(situation.content);
+  text(en ? "# Conversation (latest at the bottom)" : "# 对话（最新的在最下面）");
+  const self = en ? "【you】" : "【你】";
+  for (const line of window) add(line.content, line.role === "assistant" ? `${self}\n` : "");
+  return parts;
 }
 
 export type PlanTicketFact = {
@@ -1148,6 +1202,8 @@ function situationUserMessage(
   locale: Locale,
   selfBotId: string,
   turnId: string,
+  /** Name the work and plan dirs as host paths (a Claude Agent turn, ADR 0061), not workspace-relative ones. */
+  hostPaths = false,
 ): ChatMessage | null {
   let sessionKind: string;
   try {
@@ -1159,14 +1215,16 @@ function situationUserMessage(
   const ticketId = store.ticketOfTurn(turnId);
   const workDir = store.turnWorkDir(turnId);
   const planDir = ticketId ? store.turnPlanDir(turnId) : null;
+  const hostRoot = hostPaths ? store.workspacePath() : null;
+  const dir = (relpath: string) => (hostRoot ? asFolder(joinPath(hostRoot, relpath)) : `${relpath}/`);
   const workDirLine = workDir
     ? ticketId && planDir
       ? locale === "en"
-        ? `This turn's ticket dir: ${workDir}/ (plan dir: ${planDir}/)`
-        : `本轮任务目录：${workDir}/（规划目录：${planDir}/）`
+        ? `This turn's ticket dir: ${dir(workDir)} (plan dir: ${dir(planDir)})`
+        : `本轮任务目录：${dir(workDir)}（规划目录：${dir(planDir)}）`
       : locale === "en"
-        ? `This turn's work dir: ${workDir}/`
-        : `本轮工作目录：${workDir}/`
+        ? `This turn's work dir: ${dir(workDir)}`
+        : `本轮工作目录：${dir(workDir)}`
     : null;
   // The prompt speaks in workspace-relative paths, so a Bot that has to name a host path (a file the
   // user points at outside the workspace, a cwd) used to guess the root and `~` — often `/Users/me`.

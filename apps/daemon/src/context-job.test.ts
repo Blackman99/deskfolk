@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { USER_MEMBER } from "@real-bot/protocol";
 import type { ChatMessage } from "./completions";
 import {
+  assembleAgentTurnInput,
   assembleComposerSuggestUser,
   assembleJudgementUser,
   assembleTurnMessages,
@@ -12,6 +13,7 @@ import {
   SITUATION_HEADING,
 } from "./context";
 import { Store } from "./store";
+import { asFolder } from "./workspace-paths";
 
 const workspaces: string[] = [];
 
@@ -99,6 +101,18 @@ describe("the job in the situation block", () => {
     // Group facts stay first and the work dir stays last.
     expect(situation.indexOf("在场成员")).toBeLessThan(situation.indexOf("这件事最初的要求"));
     expect(situation.trimEnd().endsWith(`本轮工作目录：${store.getTask(reviewing.task_id!).dir}/`)).toBe(true);
+    store.close();
+  });
+
+  test("a Claude Agent turn reads its work dir as a host path, since Claude Code's file tools take those", async () => {
+    const { store, reviewer, group, drafting, handoff } = await room();
+    const reviewing = store.createTurn({ sessionId: group.id, botId: reviewer.id, triggerMessageId: handoff.id });
+    expect(reviewing.task_id).toBe(drafting.task_id!);
+    const relative = store.getTask(reviewing.task_id!).dir;
+    const parts = assembleAgentTurnInput(store, { sessionId: group.id, botId: reviewer.id, turnId: reviewing.id, triggerMessageId: handoff.id, locale: "zh" });
+    const text = parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n");
+    expect(text).toContain(`本轮工作目录：${asFolder(join(store.workspacePath()!, relative))}`);
+    expect(text).not.toContain(`本轮工作目录：${relative}/`);
     store.close();
   });
 

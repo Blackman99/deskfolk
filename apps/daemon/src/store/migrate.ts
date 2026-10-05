@@ -96,6 +96,17 @@ export function migrateSchema(db: Database): void {
   if (!botCols.includes("thinking_level")) {
     db.run(`ALTER TABLE bots ADD COLUMN thinking_level TEXT`);
   }
+  // Who runs the Bot's turns (ADR 0061): NULL is the app's own hop loop on an endpoint. Existing
+  // rows get NULL, which the CHECK lets through, so SQLite accepts it on ADD COLUMN.
+  if (!botCols.includes("runner")) {
+    db.run(`ALTER TABLE bots ADD COLUMN runner TEXT CHECK (runner IS NULL OR runner IN ('claude_code'))`);
+  }
+  // Its Claude model and effort, apart from the endpoint pin: the app's own calls about this Bot
+  // (whether to join a group line, say) still run on an endpoint.
+  if (!botCols.includes("agent_model")) db.run(`ALTER TABLE bots ADD COLUMN agent_model TEXT`);
+  if (!botCols.includes("agent_effort")) {
+    db.run(`ALTER TABLE bots ADD COLUMN agent_effort TEXT CHECK (agent_effort IS NULL OR agent_effort IN ('low', 'medium', 'high', 'xhigh', 'max'))`);
+  }
   const revCols = db
     .query<{ name: string }, []>(`PRAGMA table_info(profile_revisions)`)
     .all()

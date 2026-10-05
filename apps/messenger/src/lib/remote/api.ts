@@ -3,6 +3,7 @@ import type {
   SharedSkill,
   SharedSkillsResponse,
   ModelLadderResponse,
+  ClaudeCodeStatus,
   ModelLadderRung,
   Lesson,
   LessonPatch,
@@ -634,6 +635,19 @@ export class RemoteApi {
 
   async setModelLadder(items: ModelLadderRung[]): Promise<ModelLadderResponse> {
     return this.request<ModelLadderResponse>("PUT", "/v1/model-ladder", { items });
+  }
+
+  /** Your Claude Code is the Mac's to look at and point to (ADR 0061): never over the relay. */
+  async claudeCode(): Promise<ClaudeCodeStatus> {
+    throw new ApiError(404, "not_found", "Claude Code is only visible on the Mac");
+  }
+
+  async detectClaudeCode(): Promise<ClaudeCodeStatus> {
+    throw new ApiError(404, "not_found", "Claude Code is only visible on the Mac");
+  }
+
+  async setClaudeCodePath(_path: string | null): Promise<ClaudeCodeStatus> {
+    throw new ApiError(404, "not_found", "Claude Code is only visible on the Mac");
   }
 
   /** The project skills (ADR 0052), and whether sharing is on (engine level 8). */

@@ -1,7 +1,13 @@
 import {
+  CLAUDE_EFFORTS,
   USER_MEMBER,
   generateBoringAvatar,
+  isBotRunner,
+  isClaudeEffort,
+  isClaudeModelName,
   type Bot,
+  type BotRunner,
+  type ClaudeEffort,
   type CreateBotRequest,
   type ProfileRevision,
   type SessionDetail,
@@ -45,6 +51,42 @@ export function getBot(ctx: StoreContext, id: string): Bot {
   return toBot(row);
 }
 
+/** `runner` as a request gives it: absent or null is the app's own loop, anything else must be a known runner. */
+function incomingRunner(value: unknown): BotRunner | null {
+  if (value === undefined || value === null) return null;
+  if (!isBotRunner(value)) throw new HttpError(422, "invalid_args", "runner must be claude_code or null");
+  return value;
+}
+
+/** A Claude model name or alias for `agent_model` (ADR 0061); null or "" leaves it to Claude Code. */
+function incomingAgentModel(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") throw new HttpError(422, "invalid_args", "agent_model must be a string or null");
+  const trimmed = value.trim();
+  if (trimmed && !isClaudeModelName(trimmed)) throw new HttpError(422, "invalid_args", "agent_model is not a Claude model name");
+  return trimmed || null;
+}
+
+/** One of Claude Code's effort levels for `agent_effort`; null leaves it to Claude Code. */
+function incomingAgentEffort(value: unknown): ClaudeEffort | null {
+  if (value === undefined || value === null) return null;
+  const trimmed = typeof value === "string" ? value.trim() : value;
+  if (!isClaudeEffort(trimmed)) {
+    throw new HttpError(422, "invalid_args", `agent_effort must be one of ${CLAUDE_EFFORTS.join(", ")} or null`);
+  }
+  return trimmed;
+}
+
+/**
+ * Which runs a Bot is yours to choose (ADR 0061): a Claude Agent's turns spend your Claude account,
+ * so a Bot can neither switch itself or another Bot to it nor off it.
+ */
+function assertRunnerActor(actor: string, changed: boolean): void {
+  if (changed && actor !== USER_MEMBER) {
+    throw new HttpError(403, "forbidden", "only the user can choose what runs a bot");
+  }
+}
+
 export function createBot(
   ctx: StoreContext,
   input: CreateBotRequest,
@@ -57,6 +99,10 @@ export function createBot(
     typeof input.avatar === "string" && input.avatar.trim().length > 0
       ? input.avatar.trim()
       : generateBoringAvatar({ name });
+  const runner = incomingRunner(input.runner);
+  assertRunnerActor(actor, runner !== null);
+  const agentModel = incomingAgentModel(input.agent_model);
+  const agentEffort = incomingAgentEffort(input.agent_effort);
   const { model, providerId } = resolveIncomingBotTarget(ctx, input.model, input.provider_id);
   // Pinning a model pins a level too: a Bot is either on automatic for both or explicit about both.
   const thinkingLevel =
@@ -69,9 +115,9 @@ export function createBot(
   const revisionId = ulid();
   ctx.db.transaction(() => {
     ctx.db.run(
-      `INSERT INTO bots (id, name, duties, boundaries, avatar, model, provider_id, thinking_level, archived_at, deleted_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
-      [botId, name, duties, boundaries, avatar, model, providerId, thinkingLevel, now, now],
+      `INSERT INTO bots (id, name, duties, boundaries, avatar, model, provider_id, thinking_level, runner, agent_model, agent_effort, archived_at, deleted_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
+      [botId, name, duties, boundaries, avatar, model, providerId, thinkingLevel, runner, agentModel, agentEffort, now, now],
     );
     ctx.db.run(
       `INSERT INTO profile_revisions (id, bot_id, name, duties, boundaries, avatar, actor, message_id, created_at)
@@ -108,6 +154,9 @@ export function patchBot(
     model?: string | null;
     provider_id?: string | null;
     thinking_level?: ThinkingLevel | null;
+    runner?: BotRunner | null;
+    agent_model?: string | null;
+    agent_effort?: ClaudeEffort | null;
   },
   actor: string = USER_MEMBER,
 ): Bot {
@@ -124,6 +173,10 @@ export function patchBot(
       avatar = generateBoringAvatar({ name });
     }
   }
+  const runner = "runner" in patch ? incomingRunner(patch.runner) : (isBotRunner(row.runner) ? row.runner : null);
+  assertRunnerActor(actor, runner !== (isBotRunner(row.runner) ? row.runner : null));
+  const agentModel = "agent_model" in patch ? incomingAgentModel(patch.agent_model) : row.agent_model;
+  const agentEffort = "agent_effort" in patch ? incomingAgentEffort(patch.agent_effort) : (isClaudeEffort(row.agent_effort) ? row.agent_effort : null);
   // The pin it already has, sent back with the rest of the profile (the Bot panel sends it whole, and
   // without the endpoint when it does not know it), is no change. From level 7 a pin outlives its
   // model leaving every list (ADR 0048), and checking it against the lists again here refused every
@@ -149,8 +202,8 @@ export function patchBot(
   const now = isoNow();
   ctx.db.transaction(() => {
     ctx.db.run(
-      `UPDATE bots SET name = ?, duties = ?, boundaries = ?, avatar = ?, model = ?, provider_id = ?, thinking_level = ?, updated_at = ? WHERE id = ?`,
-      [name, duties, boundaries, avatar, model, providerId, thinkingLevel, now, id],
+      `UPDATE bots SET name = ?, duties = ?, boundaries = ?, avatar = ?, model = ?, provider_id = ?, thinking_level = ?, runner = ?, agent_model = ?, agent_effort = ?, updated_at = ? WHERE id = ?`,
+      [name, duties, boundaries, avatar, model, providerId, thinkingLevel, runner, agentModel, agentEffort, now, id],
     );
     ctx.db.run(
       `INSERT INTO profile_revisions (id, bot_id, name, duties, boundaries, avatar, actor, message_id, created_at)

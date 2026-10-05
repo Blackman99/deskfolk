@@ -90,6 +90,8 @@ export type Live = {
   emptyNudged?: boolean;
   /** A completion is in flight. Its own time limit bounds it, so the stale sweep leaves the turn alone meanwhile. */
   streaming?: boolean;
+  /** A Claude Agent turn (ADR 0061): Claude Code runs it, not the hop loop; no model ladder applies. */
+  agent?: boolean;
   /** The last hop failed and went again with a note (hop-limits.ts); failing again in a row ends the turn. */
   retried?: boolean;
   /** The last reply was cut off at the output cap and the turn carried on from it; cut again in a row, it fails. */

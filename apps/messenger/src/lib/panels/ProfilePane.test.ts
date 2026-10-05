@@ -449,3 +449,75 @@ test("a pin no endpoint lists any more stays offered, marked, and the rest of th
   expect(host.textContent).not.toContain(t.sidebar.botModelInvalid);
   close();
 });
+
+/** Claude Code as the daemon reports it (ADR 0061); the panel only reads it. */
+function claudeStatus(over: Record<string, unknown> = {}) {
+  return {
+    path: "/Users/you/.local/bin/claude", source: "known", version: "2.1.289", sdk_version: "2.1.289", outdated: false,
+    logged_in: true, auth_method: "claude.ai", subscription_type: "pro", email: null, base_url_set: false,
+    proxy: null, proxy_source: null, checked_at: "2026-10-05T00:00:00.000Z", error: null, ...over,
+  };
+}
+
+function openOnClaude(bot: ReturnType<typeof aBot>, status: ReturnType<typeof claudeStatus> | null) {
+  const runtime = fakeRuntime({ bots: [bot] });
+  runtime.profileBotId = bot.id;
+  (runtime as unknown as { client: unknown }).client = {
+    claudeCode: async () => {
+      if (!status) throw Object.assign(new Error("not here"), { status: 404 });
+      return status;
+    },
+  };
+  const view = render(ProfilePane, {
+    runtime, bot, t, modelOptions: [], selectedKind: "you-bot", profileFailed: false, initialTab: "basics",
+    openDangerConfirm: () => {}, clearDanger: () => {}, onDeleteBot: () => {}, onClearHistory: () => {},
+  });
+  return { ...view, runtime };
+}
+
+test("switching a Bot to Claude Agent saves it, and shows whose Claude account its turns run on", async () => {
+  const { host, runtime, close } = openOnClaude(aBot(), claudeStatus());
+  expect(host.querySelector("#profile-agent-model")).toBeNull();
+  click(host.querySelector("#profile-runner"));
+  click([...host.querySelectorAll("#profile-runner-listbox [role=option]")].find((li) => li.textContent?.includes("Claude Agent")) ?? null);
+  await sleep(200);
+  const saves = runtime.calls.filter((c) => c.name === "patchBot");
+  expect(saves).toHaveLength(1);
+  expect((saves[0]!.args[1] as { runner: string | null }).runner).toBe("claude_code");
+  close();
+  // Once it runs on Claude Code (the daemon's echo), the endpoint pin gives way to Claude's own model and effort.
+  const onClaude = openOnClaude(aBot({ runner: "claude_code" }), claudeStatus());
+  await sleep(30);
+  expect(onClaude.host.querySelector("#profile-model")).toBeNull();
+  expect(onClaude.host.querySelector("#profile-agent-model")).not.toBeNull();
+  expect(onClaude.host.querySelector("[data-runner-account]")?.textContent).toContain("Claude Pro 订阅");
+  onClaude.close();
+});
+
+test("an effort picked for a Claude Agent Bot is saved as Claude Code's effort", async () => {
+  const { host, runtime, close } = openOnClaude(aBot({ runner: "claude_code" }), claudeStatus());
+  click(buttonByText(host, "高"));
+  await sleep(200);
+  const saves = runtime.calls.filter((c) => c.name === "patchBot");
+  expect(saves).toHaveLength(1);
+  expect((saves[0]!.args[1] as { agent_effort: string | null }).agent_effort).toBe("high");
+  close();
+});
+
+test("a Claude Agent Bot whose Claude Code is missing or signed out says what to do in a terminal", async () => {
+  const missing = openOnClaude(aBot({ runner: "claude_code" }), claudeStatus({ path: null }));
+  await sleep(30);
+  expect(missing.host.querySelector("[data-runner-missing]")?.textContent).toContain("没找到 Claude Code");
+  missing.close();
+  const signedOut = openOnClaude(aBot({ runner: "claude_code" }), claudeStatus({ logged_in: false, auth_method: "none" }));
+  await sleep(30);
+  expect(signedOut.host.querySelector("[data-runner-signed-out]")?.textContent).toContain("运行 claude 登录");
+  signedOut.close();
+});
+
+test("away from the computer the panel says Claude Code's status lives there", async () => {
+  const phone = openOnClaude(aBot({ runner: "claude_code" }), null);
+  await sleep(30);
+  expect(phone.host.textContent).toContain("Claude Code 的状态只能在电脑上查看");
+  phone.close();
+});

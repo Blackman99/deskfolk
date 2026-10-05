@@ -1,5 +1,7 @@
 import {
   THINKING_LEVELS,
+  isClaudeEffort,
+  isClaudeModelName,
   isThinkingLevel,
   sortThinkingLevels,
   type CreateBotRequest,
@@ -16,6 +18,11 @@ export type CreateBotDraft = {
   model: string;
   /** Pinned thinking level; `''` lets the app pick. Omit to leave the field out of the request. */
   thinkingLevel?: string;
+  /** Who runs its turns (ADR 0061): `''` the app, `claude_code` Claude Agent. Omit to leave it out. */
+  runner?: string;
+  /** Claude Agent's model and effort; `''` leaves them to Claude Code. Omit to leave them out. */
+  agentModel?: string;
+  agentEffort?: string;
 };
 
 export type CreateBotFieldErrors = {
@@ -24,6 +31,8 @@ export type CreateBotFieldErrors = {
   boundaries?: "empty";
   model?: "empty" | "invalid";
   thinkingLevel?: "invalid";
+  agentModel?: "invalid";
+  agentEffort?: "invalid";
 };
 
 export type CreateBotPlan =
@@ -70,7 +79,11 @@ export function planCreateBot(
   if (rawThinking !== undefined && rawThinking.length > 0 && !isThinkingLevel(rawThinking)) {
     errors.thinkingLevel = "invalid";
   }
-  if (errors.name || errors.duties || errors.boundaries || errors.model || errors.thinkingLevel) {
+  const agentModel = draft.agentModel?.trim();
+  const agentEffort = draft.agentEffort?.trim();
+  if (agentModel && !isClaudeModelName(agentModel)) errors.agentModel = "invalid";
+  if (agentEffort && !isClaudeEffort(agentEffort)) errors.agentEffort = "invalid";
+  if (errors.name || errors.duties || errors.boundaries || errors.model || errors.thinkingLevel || errors.agentModel || errors.agentEffort) {
     return { ok: false, errors };
   }
   const body: CreateBotRequest = {
@@ -86,6 +99,9 @@ export function planCreateBot(
   if (avatar && avatar.length > 0) {
     body.avatar = avatar;
   }
+  if (draft.runner !== undefined) body.runner = draft.runner === "claude_code" ? "claude_code" : null;
+  if (agentModel !== undefined) body.agent_model = agentModel.length > 0 ? agentModel : null;
+  if (agentEffort !== undefined) body.agent_effort = agentEffort && isClaudeEffort(agentEffort) ? agentEffort : null;
   return {
     ok: true,
     body,
@@ -125,6 +141,8 @@ export function mapCreateBotError(
     return { model: "invalid" };
   }
   if (message.startsWith("thinking_level")) return { thinkingLevel: "invalid" };
+  if (message.startsWith("agent_model")) return { agentModel: "invalid" };
+  if (message.startsWith("agent_effort")) return { agentEffort: "invalid" };
   return { top: true };
 }
 

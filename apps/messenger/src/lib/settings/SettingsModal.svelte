@@ -6,6 +6,7 @@
 	import LessonsSettings from './LessonsSettings.svelte';
 	import ModelLadderCard from './ModelLadderCard.svelte';
 	import ReaderModelCard from './ReaderModelCard.svelte';
+	import ClaudeAgentCard from './ClaudeAgentCard.svelte';
 	import type { Lesson } from '@real-bot/protocol';
 	import { backdropClick } from '../click-outside.ts';
 	import WorkspacePicker from './WorkspacePicker.svelte';
@@ -1362,6 +1363,7 @@
 								</div>
 							{/each}
 						</div>
+						<ClaudeAgentCard api={runtime.client} {t} />
 						{#if snapshot.providers.length > 0}
 							<ModelLadderCard api={runtime.client} providers={snapshot.providers} {t} />
 							<ReaderModelCard

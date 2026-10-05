@@ -19,7 +19,8 @@ const models = list(v => string(v) || object({ name: string, price: nullable(v =
   max_output: nullable(v => positive(v) && Number.isInteger(v)), stream_tps_p10: nullable(positive), reasoning_effective: nullable(bool), input_image: nullable(bool) }, ["name"])(v));
 const schedule: Check = v => object({ kind: one("daily"), time: string }, ["kind", "time"])(v) ||
   object({ kind: one("weekly"), time: string, weekdays: list(string) }, ["kind", "time", "weekdays"])(v);
-const bot = { name: string, duties: string, boundaries: string, avatar: nullable(string), model: nullable(string), provider_id: nullable(id), thinking_level: nullable(string) };
+const bot = { name: string, duties: string, boundaries: string, avatar: nullable(string), model: nullable(string), provider_id: nullable(id), thinking_level: nullable(string), runner: nullable(one("claude_code")), agent_model: nullable(string),
+  agent_effort: nullable(one("low", "medium", "high", "xhigh", "max")) };
 const provider = { name: string, base_url: string, api_key: string, models, available_models: list(string), default_model: nullable(string) };
 const mcp = { name: string, transport: one("stdio", "http"), command: string, args: list(string), url: string,
   headers: list(object({ name: string, value: string }, ["name", "value"])), auth: string, enabled: bool, usage_note: nullable(string) };

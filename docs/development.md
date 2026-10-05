@@ -295,6 +295,8 @@ Bot 的 `shell` 每跑一条命令，守护进程还要另起一个 PowerShell�
 
 源码跑、又用默认数据目录（`%LOCALAPPDATA%\real-bot\`）时，守护进程读不出装的是哪一版，引擎级别停在 0，叫停不开，daemon.log 写明原因；要试叫停就设 `REAL_BOT_DATA_DIR` 换一个单独的目录。装好的应用自带的守护进程不受影响。
 
+Claude Agent（[ADR 0061](adr/0061-claude-agent-runner.md)）：找 `claude` 时认原生的 `claude.exe` 和 npm 的 `claude.cmd`，后者经 `cmd.exe` 跑；Claude Code 自己在 Windows 上要 Git for Windows（它的 Bash 工具就是 Git Bash）。没设代理变量时用当前用户 Internet 设置里的代理。Stop 用 `taskkill /T` 结束整棵进程树。都还没在 Windows 真机上验证过。
+
 远控（[ADR 0059](adr/0059-windows-remote-access-and-screen.md)）：编译态守护进程和 macOS 一样用文件凭据存储；窗交给它的设置通道不是 FD 3，而是守护进程自己的 stdin/stdout（`remote_setup.rs` 的 Windows 分支，守护进程 `main.ts` 开头的 `reserveStdout()` 把 console 输出挪到 stderr，所以守护进程里别往 stdout 写东西）；确认框是 Windows Hello（`local_confirm.rs`），账户没设 Hello 时答 `hello_not_configured`。远程屏幕连本机 5900 上用户装的 VNC 服务（推荐 TightVNC 服务模式、只允许回环），手机从 `/remote/features` 的 `host: "windows"` 换文案和按键行，没有流畅模式。要试直连，先 `cargo build --manifest-path apps/rtc-helper/Cargo.toml`。这些都还没在真的 Windows 电脑上跑过；`window-setup.test.ts` 里用子进程跑 stdin/stdout 通道的那条测试在 Windows CI 上也跑。从 macOS 交叉检查 Windows 目标的 Rust 代码：`rustup target add x86_64-pc-windows-msvc` 后 `cargo check --target x86_64-pc-windows-msvc`，ring 要编 C，给 clang 一组最小的桩头文件（`assert.h`、`string.h`、`stdlib.h`）并在 PATH 上放假的 `lib.exe` / `llvm-rc`（只 check 不链接，空输出就够）。
 
 还没有的：独立运行时（macOS 的 LaunchAgent 那一套）、应用内下载安装更新（发现新版仍只能跳浏览器手动下载）、桌面通知与图标角标、图片缩略图（依赖 macOS 系统的 `sips`；发给模型的图片不受影响，Windows 上用 GDI+ 缩小）。密钥（端点 API key、MCP 凭据）改存 Windows 凭据管理器（Credential Manager），不是 macOS 钥匙串。
@@ -377,6 +379,19 @@ Bot 在正文里按它壳的视角写路径（刚 `echo ... > sales.csv` 之后�
 超过上下文限额的工具结果会先保存完整 JSON 到本轮工作目录下的 `tool-results/<唯一标识>.json`（没有工作目录的旧轮次仍落工作区根），再提供 `full_result_path`（**工作区相对**路径）和受限预览。文件以仅当前用户可读写的权限独占创建，保留原始内容，可能包含工具返回的敏感信息。Bot 可用现有 `shell` 解析文件、筛选日志或提取链接、把内嵌 base64 图片解码为文件，不必反复生成或要求用户手工保存——注意 `full_result_path` 相对工作区根而 `shell` 默认在工作目录里跑，用命令或脚本读它要传 `cwd: "."`，`recovery_hint` 和中英轮次指令都写明了这一点。守护进程启动时会把**关闭超过 7 天**的工作目录里的 `tool-results/` 扫掉（一次最多 200 个），工作目录里的其它东西一律不动——那是用户的。模型看到的单条工具结果仍限制为 8,000 个 Unicode 码点；保存失败会明确标记，不会假称已经保存，真实失败状态也不会因裁剪而变成成功。
 
 主动排障不等于无限重试或绕过边界：有副作用且结果不明时先检查是否已成功，拒绝与 Stop 必须尊重。只有确实需要用户独有的权限、凭据、信息或决策时才求助，并说明实际尝试、剩余阻碍和最小必要操作；危险动作仍走批准卡，密钥不进聊天。`send_message` 成功会结束本轮，因此不能用它提前发送排障预告。
+
+## Claude Agent（由用户自己的 Claude Code 跑的 Bot）
+
+`bots.runner = 'claude_code'` 的 Bot，`attachLive` 把这一轮交给 `engine/agent-runner.ts`，不进 `runTurn`（[ADR 0061](adr/0061-claude-agent-runner.md)）。几处要知道的：
+
+- **Agent SDK 只在这条分支里动态加载**，打包的守护进程启动时不碰它。SDK 按平台带的 Claude Code 程序（约 230 MB）在 `pnpm-workspace.yaml` 里用 `overrides` 去掉了：pnpm 12 不认 `ignoredOptionalDependencies`。永远用用户自己装的 `claude`（`pathToClaudeCodeExecutable`）。
+- **找 `claude`**：`apps/daemon/src/claude-code/locate.ts`，顺序是设置里填的路径、PATH、常见安装位置、登录 shell。状态（`claude --version`、`claude auth status`）在 `status.ts`，`probe.ts` 缓存 60 秒；本机接口 `GET /v1/runtime/claude-code`、`POST …/detect`、`PUT …/path`（`/v1/runtime*` 不过中继）。不要在这里读 Claude Code 的钥匙串或配置文件。
+- **工具策略**是纯函数 `claude-code/policy.ts`（`decideAgentCall`），由 `PreToolUse` 钩子调用；出界的调用变成和应用自己的工具同一张批准卡（`tools.openApprovalCard`），有效果的调用先过 `tools.beforeEffect`。应用自己的协作工具以进程内 MCP 服务器 `deskfolk` 交给 Claude Code，每次调用都走 `executeTools`；批准、提问和这些调用排成一队。
+- **测试不起 Claude Code**：`TurnEngineOptions.agentQuery`（`createLocalApi` 的同名选项）换成一个脚本化的会话，按 Claude Code 的顺序调钩子、`canUseTool` 和 `deskfolk` 工具，见 `src/agent-runner.test.ts`；状态用 `claudeCode` 选项传一个假的 probe。
+- **网络**：`claude-code/proxy.ts`。环境里的 `HTTPS_PROXY` / `ALL_PROXY` 原样传；都没有时读系统代理（macOS 是 `/usr/sbin/scutil --proxy`，Windows 是 `reg query` 当前用户的 Internet Settings，两套解析都照搬桌面端 `updates.rs`）作为 `HTTPS_PROXY` 交给 Claude Code。结果记在状态的 `proxy` / `proxy_source` 里，开跑时用同一份状态补环境（`withSystemProxy`），设置卡片也显示它。
+- **Windows**：`claude.cmd`（npm 装的）经 `cmd.exe` 跑（`claude-code/spawn.ts` 借 `mcp-host.ts` 的 `windowsSpawnPlan`），不弹窗口；停下时 `taskkill /T` 结束整棵树，交给 SDK 的进程对象的 `kill` 也换成了这个，因为 SDK 关会话时自己会去杀它，只杀 `cmd.exe` 会把下面的进程留下。工具策略收一个 `PathHost`（`policy.ts` 的 `host`），Windows 的规则在 Mac 上用假的 Windows 主机测（`policy.test.ts`）。这些还没在真的 Windows 上跑过。
+- **真模型核对会花用户的 Claude 额度**，先问。不发提示词的会话（只读 `initializationResult()`、`accountInfo()`、`mcpServerStatus()`）不花额度，能确认选项、工具清单和 MCP 都被接受；但它们读的是本地记录的登录，不验证令牌，能不能真的调通只有一条真提示说了算。
+- **在开发会话里核对时用干净的环境**起守护进程（`env -i HOME=… USER=… SHELL=… TMPDIR=… LANG=… PATH=/usr/bin:/bin:/usr/sbin:/sbin bun <脚本>`）：Claude Code 自己的会话会在环境里留下 `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` 这类变量，原样传下去测到的就不是用户自己的登录了；干净环境也正好是从访达启动的样子。需要代理才能连上 Anthropic 的网络里，这时靠的是系统代理的回落，状态里应当是 `proxy_source: "system"`；看到 `403 Request not allowed` 先看这一项。
 
 ## 场景夹具
 

@@ -20,6 +20,11 @@ export const FAIL_REASON = {
   no_model: { zh: "没有可用的模型", en: "No model is configured" },
   stuck: { zh: "卡住了，很久没有任何进展", en: "It stopped making progress" },
   crashed: { zh: "运行时出错", en: "The runtime errored" },
+  // A Claude Agent turn's own (ADR 0061): about the user's Claude Code, not an endpoint or a model.
+  agent_missing: { zh: "这台电脑上没找到 Claude Code（claude）", en: "Claude Code (claude) was not found on this computer" },
+  agent_signed_out: { zh: "本机的 Claude Code 没通过认证：在终端里运行 claude，确认它能用后再继续", en: "Your Claude Code could not authenticate: run claude in a terminal, check it works, then go on" },
+  agent_limit: { zh: "Claude 的用量额度用完了", en: "Claude usage limit reached" },
+  agent_exited: { zh: "Claude Code 中途退出了", en: "Claude Code exited mid-turn" },
 } as const;
 
 export type FailKind = keyof typeof FAIL_REASON;
@@ -37,8 +42,10 @@ export function unknownMentionBody(locale: Locale, tokens: string[], members: st
   return `${list} 没有匹配到群成员。在场：${who}。点名请逐字写全名。`;
 }
 
-export function completionFailBody(locale: Locale, kind: FailKind): string {
-  const reason = FAIL_REASON[kind][locale];
+/** `detail` says more where the kind alone cannot, e.g. when a usage limit resets. */
+export function completionFailBody(locale: Locale, kind: FailKind, detail?: string | null): string {
+  const base = FAIL_REASON[kind][locale];
+  const reason = detail ? (locale === "en" ? `${base} (${detail})` : `${base}（${detail}）`) : base;
   return locale === "en" ? COMPLETION_FAIL.en(reason) : COMPLETION_FAIL.zh(reason);
 }
 

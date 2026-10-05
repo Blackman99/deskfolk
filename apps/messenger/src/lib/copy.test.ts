@@ -528,6 +528,10 @@ test("a card's model choice names itself, the outcomes and the message kinds in 
 test("the model choice log covers every fail kind the daemon can record", () => {
   // Mirrors FAIL_REASON in apps/daemon/src/prompts/transcript-copy.ts.
   expect(Object.keys(COPY.zh.routes.failReason).sort()).toEqual([
+    "agent_exited",
+    "agent_limit",
+    "agent_missing",
+    "agent_signed_out",
     "busy",
     "crashed",
     "declined",

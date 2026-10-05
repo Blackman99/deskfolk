@@ -6,6 +6,11 @@ export type ProfileFields = {
   model: string;
   /** Pinned thinking level as the picker value; `''` lets the app pick per message. */
   thinkingLevel: string;
+  /** Who runs its turns (ADR 0061): `''` the app on an endpoint, `claude_code` Claude Agent. Absent reads as `''`. */
+  runner?: string;
+  /** Claude Agent's model and effort; `''` leaves them to Claude Code. */
+  agentModel?: string;
+  agentEffort?: string;
 };
 
 /** Raw comparison: any keystroke counts, so a bot.upsert never clobbers text being typed. */
@@ -16,7 +21,10 @@ export function profileDraftDirty(draft: ProfileFields, baseline: ProfileFields)
     draft.boundaries !== baseline.boundaries ||
     (draft.avatar ?? null) !== (baseline.avatar ?? null) ||
     draft.model !== baseline.model ||
-    draft.thinkingLevel !== baseline.thinkingLevel
+    draft.thinkingLevel !== baseline.thinkingLevel ||
+    (draft.runner ?? "") !== (baseline.runner ?? "") ||
+    (draft.agentModel ?? "") !== (baseline.agentModel ?? "") ||
+    (draft.agentEffort ?? "") !== (baseline.agentEffort ?? "")
   );
 }
 
@@ -28,7 +36,10 @@ export function profileContentEqual(a: ProfileFields, b: ProfileFields): boolean
     a.boundaries.trim() === b.boundaries.trim() &&
     (a.avatar ?? "") === (b.avatar ?? "") &&
     a.model.trim() === b.model.trim() &&
-    a.thinkingLevel.trim() === b.thinkingLevel.trim()
+    a.thinkingLevel.trim() === b.thinkingLevel.trim() &&
+    (a.runner ?? "") === (b.runner ?? "") &&
+    (a.agentModel ?? "").trim() === (b.agentModel ?? "").trim() &&
+    (a.agentEffort ?? "") === (b.agentEffort ?? "")
   );
 }
 

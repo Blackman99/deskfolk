@@ -49,10 +49,15 @@ import type { Routing } from "./routing";
 import type { SpendTracker } from "./spend";
 import { readOnlyTools, type Tools } from "./tools";
 import type { InboxEntry, Live } from "./types";
+import type { Spend } from "@real-bot/protocol";
+import type { ClaudeCodeProbe } from "../claude-code/probe";
+import { createAgentRunner, type AgentQuery } from "./agent-runner";
 
 /** How many of a segment's written files are hashed for progress, newest first, and up to what size each. */
 const ARTIFACTS_HASHED_MAX = 50;
 const ARTIFACT_HASH_BYTES_MAX = 2 * 1024 ** 3;
+/** Claude Agent failures only the user can clear (ADR 0061): the supervisor does not retry them. */
+const USER_FIX_FAILS: ReadonlySet<FailKind> = new Set<FailKind>(["agent_missing", "agent_signed_out", "agent_limit"]);
 
 export type LifecycleDeps = {
   store: Store;
@@ -108,6 +113,15 @@ export type LifecycleDeps = {
    * in its ticket's folder, handed over for it, checked, and moved on. Resolves once settled.
    */
   implicitSubmission: (turnId: string, opts?: { cite?: string[]; tell?: boolean }) => Promise<{ state: string; failures: Array<{ item: string; detail: string }> } | null>;
+  /** For a Claude Agent turn's spend rows (ADR 0061). */
+  publishSpend: (row: Spend) => void;
+  /** What the daemon knows of the user's own Claude Code; absent, a Claude Agent turn finds none. */
+  claudeCode?: ClaudeCodeProbe;
+  /** Stands in for the Agent SDK in tests. */
+  agentQuery?: AgentQuery;
+  openApprovalCard: Tools["openApprovalCard"];
+  beforeEffect: Tools["beforeEffect"];
+  noteWrittenPaths: Tools["noteWrittenPaths"];
 };
 
 export type Lifecycle = {
@@ -141,7 +155,7 @@ export type Lifecycle = {
   drainLives: () => Promise<void>;
   executionOf: (live: Live | undefined) => TurnExecution | null;
   interruptTurn: (current: Turn) => void;
-  failTurn: (turnId: string, kind: FailKind) => void;
+  failTurn: (turnId: string, kind: FailKind, detail?: string | null) => void;
   sweepStalledTurns: (at?: Date) => void;
 };
 
@@ -188,6 +202,14 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     readOnlyUnanswered,
     implicitSubmission,
   } = deps;
+
+  function runsOnClaudeCode(botId: string): boolean {
+    try {
+      return store.getBot(botId).runner === "claude_code";
+    } catch {
+      return false;
+    }
+  }
 
   /**
    * The segment's last word to the user (the closing reply about to go out, else its newest
@@ -619,7 +641,9 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       const run = async (): Promise<void> => {
         try {
           publishTurn(turn);
-          await runTurn(turn.id);
+          // A Claude Agent Bot's turns are Claude Code's to work (ADR 0061); everything around them is shared.
+          if (runsOnClaudeCode(turn.bot_id)) await agentRunner.runAgentTurn(turn.id);
+          else await runTurn(turn.id);
         } catch (error) {
           if (!live.abort.signal.aborted) await crashTurn(turn.id, error);
         } finally {
@@ -1237,7 +1261,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     return false;
   }
 
-  function failTurn(turnId: string, kind: FailKind): void {
+  function failTurn(turnId: string, kind: FailKind, detail?: string | null): void {
     const live = lives.get(turnId);
     const current = store.getTurn(turnId);
     if (live?.abort.signal.aborted || !["running", "waiting_ask", "waiting_approval"].includes(current.status)) return;
@@ -1250,7 +1274,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
         parentId: live?.parentId ?? null,
         kind: "system",
         author: current.bot_id,
-        body: completionFailBody(locale, kind),
+        body: completionFailBody(locale, kind, detail),
       });
       store.voidPendingTurnActions(turnId, "turn_failed", now);
       store.finishTurnRoute(turnId, "failed", kind, executionOf(live));
@@ -1262,7 +1286,9 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
           turnId, sessionId: current.session_id, payload: { fail_kind: kind } });
       }
       // From the supervisor's level the job needs attention; its 「继续」 line is this failure line.
-      store.markSegmentCutOff(turnId, kind);
+      // What only you can fix — Claude Code missing, signed out, out of usage — is not retried for
+      // you: it would fail the same way until you do (ADR 0061).
+      if (!USER_FIX_FAILS.has(kind)) store.markSegmentCutOff(turnId, kind);
       // Work the supervisor takes up is retried without you; it tells you when it stops retrying.
       if (store.isPresent(current.session_id, USER_MEMBER) && !store.supervisorTakesUp(turnId)) {
         store.createNotification({
@@ -1304,6 +1330,31 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       }
     }
   }
+
+  const agentRunner = createAgentRunner({
+    store,
+    publish,
+    publishMessage,
+    publishTurn,
+    publishSpend: deps.publishSpend,
+    occurred,
+    lives,
+    active,
+    mcp,
+    claudeCode: deps.claudeCode,
+    agentQuery: deps.agentQuery,
+    closeChain,
+    holdChain,
+    spendOwner,
+    executeTools,
+    openApprovalCard: deps.openApprovalCard,
+    beforeEffect: deps.beforeEffect,
+    noteWrittenPaths: deps.noteWrittenPaths,
+    settleClosingReply,
+    completeSilent,
+    saidNothing,
+    failTurn,
+  });
 
   return {
     startTurn,

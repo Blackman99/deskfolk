@@ -453,6 +453,25 @@ Bot 在哪读到它：每一轮的局面里都有「用户要求」一段，列�
 
 **模型阶梯与一轮之内的提档（7 级起；[ADR 0054](adr/0054-model-ladder-and-in-turn-triggers.md)）**：设置 → 模型里可以把几个模型从弱到强排成阶梯（最多 8 个）。思考档用完（或模型测出提档没用）还要往上时，下一轮换到阶梯上往上一级的模型（`escalation_model`），跳过端点不再列出的、以及要看图而标着看不了图的；爬到最后一级还要往上就停在那里，告诉你一次。只有应用替 Bot 选的模型会沿阶梯换，你钉的和任务指定的只提思考档；没排阶梯或模型不在阶梯上时，到顶告诉你一次。除了交付连着没过，回复重试后仍失败、工具参数连续两次不是 JSON、同一工具连续三次调错（参数不对、被拦下还照调这类模型自己的错；文件不存在、超时、MCP 服务报错不算），也让这件活往上走一步，两次交付之间最多一步，而且只提思考档、不沿阶梯换模型；后两种在这一轮剩下的跳里就换上新的思考档。选路记录留着原本为什么选这个模型，流程图上读作「这张任务指定的 · 提了一档思考」。爬到阶梯上的轮次、任务指定模型的轮次不算进 Bot 默认模型的推断。
 
+<a id="claude-agent"></a>
+## Claude Agent（由你本机的 Claude Code 跑）
+
+**开启**：Bot 面板「运行方式」选「Claude Agent（你本机的 Claude Code）」，新建 Bot 时也能选；只有你能改，Bot 改自己或别的 Bot 会被拒。之后在面板里选 Claude 模型（Claude Code 的默认、sonnet、opus、haiku、fable）和思考强度（默认、低…最大）。端点上钉的模型不动：应用自己关于这个 Bot 的判断（群里要不要接话这类）仍跑在端点上，所以端点照样要配。
+
+**找你的 Claude Code**：依次看设置里填的路径、守护进程的 PATH、常见安装位置（`~/.local/bin`、`/opt/homebrew/bin`、`/usr/local/bin`、npm 全局目录…）、你的登录 shell。Windows 上看 PATH（原生的 `claude.exe` 和 npm 的 `claude.cmd` 都认）、`%USERPROFILE%\.local\bin\claude.exe` 和 `%APPDATA%\npm\claude.cmd`，没有登录 shell 这一步。设置 › 模型的「Claude Agent」卡片写着找到的位置、版本、账号（Claude 订阅、长期令牌、API key、第三方平台）和网络（直连，或经哪个代理），并提醒：没登录、按 API key 计费（每一轮按 token 收钱）、设了 `ANTHROPIC_BASE_URL`、版本比应用带的 Agent SDK 旧。应用只运行它、问它 `claude --version` 和 `claude auth status`，不提供登录，也不读它的凭据；没登录就在终端里运行 `claude` 登录。这张卡片和这些接口只在这台 Mac 上有。
+
+**网络**：守护进程环境里有 `HTTPS_PROXY` / `ALL_PROXY` 就原样传给 Claude Code（`NO_PROXY` 能把 Anthropic 排除在外）；一个都没有时，把系统设置里的 HTTPS 代理（Mac 上是 系统设置 › 网络 › 代理，Windows 上是 设置 › 网络和 Internet › 代理，浏览器用的那个）作为 `HTTPS_PROXY` 交给它。从访达、开始菜单或开机启动的应用拿不到你终端里的代理变量，而有的网络只能经代理连上 Anthropic，不这样就每个请求都被拒。只设 `HTTPS_PROXY`，Bot 自己访问本机的 `http://` 地址照样直连。PAC 文件和只开了 SOCKS 的代理不认。
+
+**一轮怎么跑**：一轮起一个新的 Claude Code 会话，当前目录是本轮工作目录（还没归到一件事时是工作区根），能读写整个工作区。它收到的第一条消息是局面块和转录窗口（和别的 Bot 一样，自己的话标「【你】」，图片原样带上；工作目录写成这台机器上的完整路径，因为 Claude Code 的文件工具只认这种路径）；系统提示是 Claude Code 自己的，加上这个 Bot 的人设、技能、记忆和应用给每个 Bot 的系统指令。你在 `~/.claude` 里的设置、hooks、插件和 CLAUDE.md 不进 Bot 的会话（SDK 的隔离模式）；钥匙串里的登录和环境里的 API key 照样用。只开 Read、Write、Edit、NotebookEdit、Glob、Grep、Bash、WebFetch、WebSearch、Agent（子任务）、TodoWrite；不能后台运行，转录里的 `/命令` 和 `@路径` 不会被展开。
+
+**边界和批准**：工作区内的读写和命令直接跑；读写工作区外、命令越界，会出一张和别的 Bot 一样的批准卡（你「总是允许」过的照样放行）；递归搜家目录照样被拒；顶层目录都不存在的路径（多半是把工作区里的路径当成了 `/work/…` 这种绝对路径）直接拒掉，并告诉它工作区在哪，不出卡——Windows 上是没有盘符的文件路径；Claude Code 自己的设置和凭据（`~/.claude`、`~/.claude.json`、钥匙串）一律拒绝，不出卡。Stop、停住、只读轮照常生效：停住时有效果的动作被拒，只读轮只能看不能动；Stop 结束的是 Claude Code 和它起的所有命令（Windows 上用 `taskkill /T` 结束整棵进程树）。
+
+**协作**：发进度、收尾、交付、审查、委派、问你、回看、拆任务、记忆、技能、批注，用的是和别的 Bot 一样的工具（在它那边叫 `mcp__deskfolk__…`），规则也一样；问你只能用 `ask_user`。最后一条不调工具的回复就是它发到会话里的消息，和别的 Bot 一样先过收尾自检、交出引用的文件、按收尾契约结束；被退回的那句送回同一个会话再答一次。审图时它用自己的 Read 看，应用记作看过。
+
+**记录**：每一轮在选路里记一行（端点为空，原因 `claude_code`），花费按模型记，端点名「Claude Agent」，金额是估算（订阅不按 token 收费）；跑过的命令、写过的文件、有效果的调用和别的 Bot 一样记下。
+
+**失败**：没找到 Claude Code、没通过认证（没登录，或请求被拒，带上 Claude Code 自己的那句报错）、用量额度用完（写明什么时候重置；开了额外用量时越过额度照常跑，不算）的失败只有你能解决，监督器不替你重试；Claude Code 中途退出算应用这边的问题，同样带上它的报错。请求失败时 Claude Code 写的那句报错不会被当成 Bot 的回复发出去。超过 200 步记作卡住了。见 [ADR 0061](adr/0061-claude-agent-runner.md)。
+
 <a id="hold"></a>
 ## 叫停（Hold）
 

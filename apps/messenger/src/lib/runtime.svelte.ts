@@ -21,6 +21,8 @@ import {
   type SessionDetail,
   type SettingsPatch,
   type ThinkingLevel,
+  type BotRunner,
+  type ClaudeEffort,
   type CreateSkillRequest,
   type PatchSkillRequest,
   type CreateRoutineRequest,
@@ -1801,6 +1803,9 @@ export class MessengerRuntime {
       model?: string | null;
       provider_id?: string | null;
       thinking_level?: ThinkingLevel | null;
+      runner?: BotRunner | null;
+      agent_model?: string | null;
+      agent_effort?: ClaudeEffort | null;
     },
   ): Promise<ApiError | null> {
     const api = this.api;

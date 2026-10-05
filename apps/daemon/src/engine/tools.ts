@@ -457,6 +457,8 @@ export function createTools(deps: ToolsDeps): Tools {
 
   /** Trouble inside the turn steps its job up once (ADR 0054); the rest of this turn goes on at the new level. */
   function troubled(turnId: string, live: Live, trouble: TurnTrouble | null): void {
+    // A Claude Agent turn has no model ladder to climb (ADR 0061): its trouble is Claude Code's to handle.
+    if (live.agent) return;
     if (trouble && store.stepUpForTrouble(turnId, trouble)) live.restep?.();
   }
 

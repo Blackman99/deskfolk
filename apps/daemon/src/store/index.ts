@@ -36,6 +36,7 @@ import * as submissions from "./submissions";
 import * as externalJobs from "./external-jobs";
 import * as modelDefaults from "./model-defaults";
 import * as modelLadder from "./model-ladder";
+import * as claudeCode from "./claude-code";
 import * as escalation from "./escalation";
 import * as toolExecutions from "./tool-executions";
 import * as workQuestions from "./work-questions";
@@ -593,6 +594,9 @@ export class Store {
   readonly turnTicketModel = this.bind(modelDefaults.turnTicketModel);
   readonly modelLadder = this.bind(modelLadder.modelLadder);
   readonly setModelLadder = this.bind(modelLadder.setModelLadder);
+  /** Where you pointed the daemon at your own `claude` (ADR 0061); null lets it look for one. */
+  readonly claudeCodePath = this.bind(claudeCode.claudeCodePath);
+  readonly setClaudeCodePath = this.bind(claudeCode.setClaudeCodePath);
   readonly botDefault = this.bind(modelDefaults.botDefault);
   readonly ensureBotDefault = this.bind(modelDefaults.ensureBotDefault);
   readonly noteModelOnce = this.bind(modelDefaults.noteModelOnce);

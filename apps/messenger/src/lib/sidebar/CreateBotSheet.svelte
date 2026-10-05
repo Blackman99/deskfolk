@@ -34,8 +34,13 @@
 		boundaries: '',
 		avatar: '',
 		model: '',
-		thinkingLevel: ''
+		thinkingLevel: '',
+		runner: ''
 	});
+	const runnerOptions = $derived([
+		{ value: '', label: t.sidebar.botRunnerApp },
+		{ value: 'claude_code', label: t.sidebar.botRunnerClaude }
+	]);
 	let errors = $state<CreateBotFieldErrors>({});
 	let failed = $state(false);
 
@@ -134,6 +139,12 @@
 				{/if}
 			</div>
 			<div class="modal-section">
+				<label for="bot-runner">{t.sidebar.botRunner}</label>
+				<Select id="bot-runner" bind:value={draft.runner} options={runnerOptions} onchange={onInput} />
+				<p class="muted field-hint">{draft.runner === 'claude_code' ? t.sidebar.botRunnerClaudeCreateHint : t.sidebar.botRunnerAppHint}</p>
+			</div>
+			{#if draft.runner !== 'claude_code'}
+			<div class="modal-section">
 				<label for="bot-model">{t.sidebar.botModel}</label>
 				<Select
 					id="bot-model"
@@ -170,6 +181,7 @@
 						<p class="field-error">{t.sidebar.botThinkingInvalid}</p>
 					{/if}
 				</div>
+			{/if}
 			{/if}
 		</div>
 		<div class="modal-foot actions">

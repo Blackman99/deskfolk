@@ -63,6 +63,9 @@ import type {
   SpendSummary,
   SpendSummaryQuery,
   ThinkingLevel,
+  BotRunner,
+  ClaudeEffort,
+  ClaudeCodeStatus,
   Turn,
   AcceptanceCheckInput,
   PatchAcceptanceCheckRequest,
@@ -303,6 +306,9 @@ export class LocalApi {
       model?: string | null;
       provider_id?: string | null;
       thinking_level?: ThinkingLevel | null;
+      runner?: BotRunner | null;
+      agent_model?: string | null;
+      agent_effort?: ClaudeEffort | null;
     },
   ): Promise<Bot> {
     return this.patch<Bot>(`/v1/bots/${id}`, body);
@@ -482,6 +488,20 @@ export class LocalApi {
 
   async setModelLadder(items: ModelLadderRung[]): Promise<ModelLadderResponse> {
     return this.request<ModelLadderResponse>("PUT", "/v1/model-ladder", { items });
+  }
+
+  /** Your own Claude Code as the daemon finds it (ADR 0061); on this Mac only, never over the relay. */
+  async claudeCode(): Promise<ClaudeCodeStatus> {
+    return this.get<ClaudeCodeStatus>("/v1/runtime/claude-code");
+  }
+
+  async detectClaudeCode(): Promise<ClaudeCodeStatus> {
+    return this.post<ClaudeCodeStatus>("/v1/runtime/claude-code/detect");
+  }
+
+  /** Points the daemon at a `claude` executable; null lets it look for one again. */
+  async setClaudeCodePath(path: string | null): Promise<ClaudeCodeStatus> {
+    return this.put<ClaudeCodeStatus>("/v1/runtime/claude-code/path", { path });
   }
 
   /** The project skills (ADR 0052), and whether sharing is on (engine level 8). */

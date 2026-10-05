@@ -6,6 +6,13 @@
 
 ## Unreleased
 
+### Bot 可以用你自己的 Claude Code 跑了（Claude Agent）
+
+- 以前每个 Bot 都跑在 OpenAI 兼容的端点上，Claude 订阅完全用不上：它是 Claude 的登录，不是 API key，Anthropic 的条款只让它用在 Claude Code 和自家应用里。现在 Bot 面板（或新建 Bot 时）的「运行方式」可以选 **Claude Agent**：这个 Bot 的每一轮由你本机安装并登录的 Claude Code 来跑，用 Claude Code 自己的工具，用量记在它登录的账号上（Claude 订阅或 API key）。Claude 模型和思考强度在同一个面板里选；只有你能切换。
+- 用起来和别的 Bot 一样：工作区外的读写和越界命令照样出批准卡等你，Stop 和停住照样生效，发进度、收尾、交付、审查、委派、问你都走同样的工具和规则。它的最后一条回复先过同样的收尾自检再发出，花费记在「Claude Agent」名下，金额是估算。
+- Deskfolk 不登录 Claude，也不读 Claude Code 的凭据：只运行你的 `claude`，问它版本和用的是哪个账号。设置 › 模型 › Claude Agent 写着找到的位置、版本、账号和网络（直连还是经哪个代理），没登录、按 token 计费（API key）、版本比应用要求的旧时会提醒；`claude` 装在不常见的地方可以在这里指定。应用从访达或开始菜单启动时拿不到终端里的代理变量，这时 Claude Code 走系统设置里的 HTTPS 代理，和浏览器一样。没找到、没通过认证、用量额度用完时，这一轮会直说，并带上 Claude Code 自己的报错（额度会写明什么时候重置），不替你反复重试。应用自己的判断仍跑在端点上，所以端点还是要配。细节见 [ADR 0061](docs/adr/0061-claude-agent-runner.md)。
+- Windows 上也能选：原生的 `claude.exe` 和 npm 的 `claude.cmd` 都认，代理照 设置 › 网络和 Internet › 代理 走，Stop 会结束 Claude Code 和它起的所有命令，Claude Code 自己的凭据在 Windows 的各种路径写法下一样碰不到。还没在 Windows 真机上试过，见 [Windows 预览版](docs/windows.zh.md)。
+
 ### 等你处理的卡片在列表上看得见了
 
 - Bot 那一轮结束后应用给你的卡片（样片放行或退回、工作停下来问你的问题、选默认模型）看过之后也照样计入 Dock 角标，但列表上没有任何地方标出它在哪：手机上或桌面上把消息都看完了，角标还停在 1，找不到是哪一行。现在这个会话的列表项会显示 **待审批** 或 **待回复**，和一轮正等你时一样，直到你在卡片上做了选择；卡片答完或不再等你，标记随即消失。

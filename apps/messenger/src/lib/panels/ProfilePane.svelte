@@ -6,7 +6,8 @@
 	import { backdropClick } from '../click-outside.ts';
 	import { untrack } from 'svelte';
 	import { pageSlide } from '../mobile-page-slide.ts';
-	import type { Bot } from '@real-bot/protocol';
+	import { CLAUDE_EFFORTS, CLAUDE_MODEL_ALIASES, type Bot, type ClaudeCodeStatus } from '@real-bot/protocol';
+	import { claudeAccountLabel, claudeAgentBlocker, claudeAgentPaysPerToken } from '../settings/claude-agent.ts';
 	import AvatarEditor from '../AvatarEditor.svelte';
 	import Select from '../Select.svelte';
 	import { thinkingLevelLabel, type Copy } from '../copy.ts';
@@ -105,7 +106,10 @@
 			boundaries: row.boundaries,
 			avatar: row.avatar ?? '',
 			model: botModelValue(row),
-			thinkingLevel: row.thinking_level ?? ''
+			thinkingLevel: row.thinking_level ?? '',
+			runner: row.runner ?? '',
+			agentModel: row.agent_model ?? '',
+			agentEffort: row.agent_effort ?? ''
 		};
 	}
 
@@ -133,6 +137,57 @@
 		pinnableThinkingLevels(profileDraft.model, snapshot.providers)
 	);
 
+	/** What the daemon finds of your own Claude Code (ADR 0061); null until asked, or away from the computer. */
+	let claudeStatus = $state<ClaudeCodeStatus | null>(null);
+	let claudeChecking = $state(false);
+	let claudeUnavailable = $state(false);
+	const runnerOptions = $derived([
+		{ value: '', label: t.sidebar.botRunnerApp },
+		{ value: 'claude_code', label: t.sidebar.botRunnerClaude }
+	]);
+	const agentModelOptions = $derived([
+		{ value: '', label: t.sidebar.botAgentModelDefault },
+		...CLAUDE_MODEL_ALIASES.map((alias) => ({ value: alias, label: alias })),
+		...(profileDraft.agentModel && !(CLAUDE_MODEL_ALIASES as readonly string[]).includes(profileDraft.agentModel)
+			? [{ value: profileDraft.agentModel, label: profileDraft.agentModel }]
+			: [])
+	]);
+
+	async function checkClaudeCode(): Promise<void> {
+		const client = runtime.client;
+		if (!client || claudeChecking) return;
+		claudeChecking = true;
+		try {
+			claudeStatus = await client.claudeCode();
+			claudeUnavailable = false;
+		} catch {
+			claudeUnavailable = true;
+		} finally {
+			claudeChecking = false;
+		}
+	}
+
+	// Asked once the Bot runs on Claude Code, or when you pick it: never for a Bot that does not.
+	$effect(() => {
+		if (profileDraft.runner === 'claude_code' && !claudeStatus && !claudeUnavailable) void untrack(() => checkClaudeCode());
+	});
+
+	function onProfileRunnerChange(value: string): void {
+		profileDraft.runner = value === 'claude_code' ? 'claude_code' : '';
+		onProfilePick();
+	}
+
+	function onProfileAgentModelChange(value: string): void {
+		profileDraft.agentModel = value;
+		onProfilePick();
+	}
+
+	function pickAgentEffort(level: string): void {
+		if (profileDraft.agentEffort === level) return;
+		profileDraft.agentEffort = level;
+		onProfilePick();
+	}
+
 	// Closing the drawer or switching Bots unmounts this pane; a pending autosave goes out first.
 	$effect(() => () => {
 		flushProfileSave();
@@ -152,7 +207,10 @@
 			boundaries: live.boundaries,
 			avatar: live.avatar ?? '',
 			model: botModelValue(live),
-			thinkingLevel: live.thinking_level ?? ''
+			thinkingLevel: live.thinking_level ?? '',
+			runner: live.runner ?? '',
+			agentModel: live.agent_model ?? '',
+			agentEffort: live.agent_effort ?? ''
 		};
 		const next = reconcileProfileDraft(profileDraft, profileBaseline, incoming);
 		if (profileDraftDirty(profileDraft, next.draft)) profileDraft = next.draft;
@@ -650,6 +708,65 @@
 		</div>
 
 		<div class="form-group">
+			<label for="profile-runner">{t.sidebar.botRunner}</label>
+			<Select
+				id="profile-runner"
+				bind:value={profileDraft.runner}
+				options={runnerOptions}
+				onchange={onProfileRunnerChange}
+			/>
+			{#if profileDraft.runner === 'claude_code'}
+				{#if claudeUnavailable}
+					<p class="muted field-hint">{t.sidebar.botRunnerClaudeUnavailable}</p>
+				{:else if !claudeStatus}
+					<p class="muted field-hint">{t.sidebar.botRunnerClaudeChecking}</p>
+				{:else if claudeAgentBlocker(claudeStatus) === 'missing'}
+					<p class="field-error" data-runner-missing>{t.sidebar.botRunnerClaudeMissing}</p>
+				{:else if claudeAgentBlocker(claudeStatus) === 'signed_out'}
+					<p class="field-error" data-runner-signed-out>{t.sidebar.botRunnerClaudeSignedOut}</p>
+				{:else}
+					<p class="muted field-hint" class:runner-pays={claudeAgentPaysPerToken(claudeStatus)} data-runner-account>{t.sidebar.botRunnerClaudeHint(claudeAccountLabel(claudeStatus, t))}</p>
+				{/if}
+			{:else}
+				<p class="muted field-hint">{t.sidebar.botRunnerAppHint}</p>
+			{/if}
+		</div>
+
+		{#if profileDraft.runner === 'claude_code'}
+		<div class="form-group">
+			<label for="profile-agent-model">{t.sidebar.botAgentModel}</label>
+			<Select
+				id="profile-agent-model"
+				bind:value={profileDraft.agentModel}
+				options={agentModelOptions}
+				error={!!profileErrors.agentModel}
+				onchange={onProfileAgentModelChange}
+			/>
+			{#if profileErrors.agentModel}
+				<p class="field-error">{t.sidebar.botAgentModelInvalid}</p>
+			{/if}
+		</div>
+		<div class="form-group">
+			<span class="field-label" id="profile-agent-effort-label">{t.sidebar.botAgentEffort}</span>
+			<div class="thinking-picker" role="radiogroup" aria-labelledby="profile-agent-effort-label">
+				{#each ['', ...CLAUDE_EFFORTS] as level (level)}
+					<button
+						type="button"
+						class="btn-chip level-chip"
+						class:active={(profileDraft.agentEffort ?? '') === level}
+						role="radio"
+						aria-checked={(profileDraft.agentEffort ?? '') === level}
+						onclick={() => pickAgentEffort(level)}
+					>{level ? thinkingLevelLabel(t.sidebar.thinkingLevels, level) : t.sidebar.botAgentEffortDefault}</button>
+				{/each}
+			</div>
+			<p class="muted field-hint">{t.sidebar.botAgentEffortHint}</p>
+			{#if profileErrors.agentEffort}
+				<p class="field-error">{t.sidebar.botAgentEffortInvalid}</p>
+			{/if}
+		</div>
+		{:else}
+		<div class="form-group">
 			<label for="profile-model">{t.sidebar.botModel}</label>
 			<Select
 				id="profile-model"
@@ -688,6 +805,7 @@
 				<p class="field-error">{t.sidebar.botThinkingInvalid}</p>
 			{/if}
 		</div>
+		{/if}
 		{/if}
 	</div>
 </div>
