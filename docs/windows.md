@@ -31,7 +31,7 @@ Remote access works as on the Mac ([remote access](remote-access.md)), with two 
 
 ## Letting your own Claude Code run a Bot
 
-Claude Agent ([how it works](behavior.en.md#claude-agent)) can be picked on Windows too. The `claude.exe` the official install script puts in place and npm's `claude.cmd` are both found; for one installed elsewhere, give its full path (`C:\…` or `~\…`) under Settings › Models › Claude Agent. Claude Code itself needs [Git for Windows](https://gitforwindows.org/) on Windows. With no proxy environment variables set, it goes through the proxy switched on under Settings › Network & internet › Proxy. Stop ends Claude Code and every command it started. None of this has been tried on a real Windows PC yet ([ADR 0061](adr/0061-claude-agent-runner.md)).
+Claude Agent ([how it works](behavior.en.md#claude-agent)) can be picked on Windows too. The `claude.exe` the official install script puts in place and npm's `claude.cmd` are both found; for one installed elsewhere, give its full path (`C:\…` or `~\…`) under Settings › Agents › Claude Agent. Claude Code itself needs [Git for Windows](https://gitforwindows.org/) on Windows. With no proxy environment variables set, it goes through the proxy switched on under Settings › Network & internet › Proxy. Stop ends Claude Code and every command it started. None of this has been tried on a real Windows PC yet ([ADR 0061](adr/0061-claude-agent-runner.md)).
 
 ## Not there yet
 

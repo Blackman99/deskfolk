@@ -458,7 +458,7 @@ Bot 在哪读到它：每一轮的局面里都有「用户要求」一段，列�
 
 **开启**：Bot 面板「运行方式」选「Claude Agent（你本机的 Claude Code）」，新建 Bot 时也能选；只有你能改，Bot 改自己或别的 Bot 会被拒。之后在面板里选 Claude 模型（Claude Code 的默认、sonnet、opus、haiku、fable）和思考强度（默认、低…最大）。端点上钉的模型不动：应用自己关于这个 Bot 的判断（群里要不要接话这类）仍跑在端点上，所以端点照样要配。
 
-**找你的 Claude Code**：依次看设置里填的路径、守护进程的 PATH、常见安装位置（`~/.local/bin`、`/opt/homebrew/bin`、`/usr/local/bin`、npm 全局目录…）、你的登录 shell。Windows 上看 PATH（原生的 `claude.exe` 和 npm 的 `claude.cmd` 都认）、`%USERPROFILE%\.local\bin\claude.exe` 和 `%APPDATA%\npm\claude.cmd`，没有登录 shell 这一步。设置 › 模型的「Claude Agent」卡片写着找到的位置、版本、账号（Claude 订阅、长期令牌、API key、第三方平台）和网络（直连，或经哪个代理），并提醒：没登录、按 API key 计费（每一轮按 token 收钱）、设了 `ANTHROPIC_BASE_URL`、版本比应用带的 Agent SDK 旧。应用只运行它、问它 `claude --version` 和 `claude auth status`，不提供登录，也不读它的凭据；没登录就在终端里运行 `claude` 登录。这张卡片和这些接口只在这台 Mac 上有。
+**找你的 Claude Code**：依次看设置里填的路径、守护进程的 PATH、常见安装位置（`~/.local/bin`、`/opt/homebrew/bin`、`/usr/local/bin`、npm 全局目录…）、你的登录 shell。Windows 上看 PATH（原生的 `claude.exe` 和 npm 的 `claude.cmd` 都认）、`%USERPROFILE%\.local\bin\claude.exe` 和 `%APPDATA%\npm\claude.cmd`，没有登录 shell 这一步。设置 › Agent 里的「Claude Agent」卡片写着找到的位置、版本、账号（Claude 订阅、长期令牌、API key、第三方平台）和网络（直连，或经哪个代理），并提醒：没登录、按 API key 计费（每一轮按 token 收钱）、设了 `ANTHROPIC_BASE_URL`、版本比应用带的 Agent SDK 旧。应用只运行它、问它 `claude --version` 和 `claude auth status`，不提供登录，也不读它的凭据；没登录就在终端里运行 `claude` 登录。这张卡片和这些接口只在这台 Mac 上有。
 
 **网络**：守护进程环境里有 `HTTPS_PROXY` / `ALL_PROXY` 就原样传给 Claude Code（`NO_PROXY` 能把 Anthropic 排除在外）；一个都没有时，把系统设置里的 HTTPS 代理（Mac 上是 系统设置 › 网络 › 代理，Windows 上是 设置 › 网络和 Internet › 代理，浏览器用的那个）作为 `HTTPS_PROXY` 交给它。从访达、开始菜单或开机启动的应用拿不到你终端里的代理变量，而有的网络只能经代理连上 Anthropic，不这样就每个请求都被拒。只设 `HTTPS_PROXY`，Bot 自己访问本机的 `http://` 地址照样直连。PAC 文件和只开了 SOCKS 的代理不认。
 

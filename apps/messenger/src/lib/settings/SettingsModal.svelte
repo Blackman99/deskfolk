@@ -59,7 +59,7 @@
 	import RelayGuide from './RelayGuide.svelte';
 	import RemoteScreenSettings from './RemoteScreenSettings.svelte';
 
-	type SettingsTab = 'general' | 'models' | 'mcp' | 'notifications' | 'lessons' | 'remote' | 'about';
+	type SettingsTab = 'general' | 'models' | 'agents' | 'mcp' | 'notifications' | 'lessons' | 'remote' | 'about';
 
 	type Props = {
 		mobileSettingsDetail?: boolean;
@@ -208,6 +208,8 @@
 			? t.settings.tabGeneral
 			: tab === 'models'
 				? t.settings.tabModels
+				: tab === 'agents'
+					? t.settings.tabAgents
 				: tab === 'mcp'
 					? t.settings.tabMcp
 					: tab === 'notifications'
@@ -844,6 +846,21 @@
 					<button
 						type="button"
 						class="settings-tab-btn"
+						class:is-active={activeSettingsTab === 'agents'}
+						data-settings-tab="agents"
+						onclick={() => openSettingsTab('agents')}
+					>
+						<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+							<polyline points="7 9 10 12 7 15"></polyline>
+							<line x1="12" y1="15" x2="17" y2="15"></line>
+						</svg>
+						<span class="tab-name">{t.settings.tabAgents}</span>
+					</button>
+
+					<button
+						type="button"
+						class="settings-tab-btn"
 						class:is-active={activeSettingsTab === 'mcp'}
 						data-settings-tab="mcp"
 						onclick={() => openSettingsTab('mcp')}
@@ -1363,7 +1380,6 @@
 								</div>
 							{/each}
 						</div>
-						<ClaudeAgentCard api={runtime.client} {t} />
 						{#if snapshot.providers.length > 0}
 							<ModelLadderCard api={runtime.client} providers={snapshot.providers} {t} />
 							<ReaderModelCard
@@ -1374,6 +1390,11 @@
 								{t}
 							/>
 						{/if}
+					</div>
+				{:else if activeSettingsTab === 'agents'}
+					<!-- Agents that run a Bot's turns themselves (ADR 0061): today your own Claude Code. -->
+					<div class="settings-tab-pane">
+						<ClaudeAgentCard api={runtime.client} {t} />
 					</div>
 				{:else if activeSettingsTab === 'mcp'}
 					<McpSettings bind:this={mcpSettings} {runtime} {t} {closeSettings} />

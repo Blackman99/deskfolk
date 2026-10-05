@@ -53,6 +53,7 @@ export const STORY_SIZES = {
 	'chat-stage-annotations': { width: 900, height: 820 },
 	'settings-general': { width: 1000, height: 720 },
 	'settings-providers': { width: 1000, height: 720 },
+	'settings-agents': { width: 1000, height: 720 },
 	'settings-mcp': { width: 1000, height: 720 },
 	'settings-about': { width: 1000, height: 720 },
 	// The remote access tab before the Mac has a relay, with the deploy-your-own guide unfolded.

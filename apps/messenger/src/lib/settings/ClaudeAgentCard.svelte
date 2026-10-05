@@ -3,6 +3,7 @@
 	import type { ClaudeCodeStatus } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import { claudeAccountLabel, claudeAgentPaysPerToken } from './claude-agent.ts';
+	import ClaudeSpark from './ClaudeSpark.svelte';
 
 	/**
 	 * Your own Claude Code as the daemon finds it (ADR 0061): where it is, which version, which
@@ -57,7 +58,7 @@
 
 <section class="claude-card" aria-label={t.claudeAgent.title} data-claude-agent>
 	<div class="claude-head">
-		<h3>{t.claudeAgent.title}</h3>
+		<h3 class="claude-title"><ClaudeSpark size={16} />{t.claudeAgent.title}</h3>
 		<p>{t.claudeAgent.hint}</p>
 	</div>
 	{#if unavailable}
@@ -124,6 +125,9 @@
 	}
 
 	.claude-head h3 {
+		display: flex;
+		align-items: center;
+		gap: 8px;
 		margin: 0;
 		font-size: 14px;
 		font-weight: 600;

@@ -284,6 +284,24 @@ const settingsProps = (over: Record<string, unknown> = {}) => ({
 	...over
 });
 
+/** Your own Claude Code as the Agent tab shows it: found, signed in to a subscription, behind the system proxy. */
+const claudeStatus = {
+	path: '/Users/you/.local/bin/claude',
+	source: 'known',
+	version: '2.1.289',
+	sdk_version: '2.1.289',
+	outdated: false,
+	logged_in: true,
+	auth_method: 'claude.ai',
+	subscription_type: 'pro',
+	email: 'you@example.com',
+	base_url_set: false,
+	proxy: 'http://127.0.0.1:7890',
+	proxy_source: 'system',
+	checked_at: '2026-10-06T00:00:00.000Z',
+	error: null
+};
+
 /** The shared world's Bots all carry an image; this one adds the letter fallback to the shot. */
 const pickerBots = [...bots, aBot({ id: 'bot-4', name: '配音', duties: '配音与混音', avatar: null })];
 
@@ -836,6 +854,22 @@ const defs: Record<StoryName, Story> = {
 	},
 	'settings-general': { component: SettingsModal as never, props: settingsProps(), afterMount: settingsTab('general') },
 	'settings-providers': { component: SettingsModal as never, props: settingsProps(), afterMount: settingsTab('models') },
+	'settings-agents': {
+		component: SettingsModal as never,
+		props: settingsProps({
+			runtime: fakeRuntime(world, {
+				settingsOpen: true,
+				// The dialog lists lessons from any client it has; this one has none.
+				client: {
+					listLessons: async () => [],
+					claudeCode: async () => claudeStatus,
+					detectClaudeCode: async () => claudeStatus,
+					setClaudeCodePath: async () => claudeStatus
+				}
+			})
+		}),
+		afterMount: settingsTab('agents')
+	},
 	'settings-mcp': { component: SettingsModal as never, props: settingsProps(), afterMount: settingsTab('mcp') },
 	// The remote access tab before the Mac has a relay, with the deploy-your-own guide unfolded.
 	'settings-remote-guide': {

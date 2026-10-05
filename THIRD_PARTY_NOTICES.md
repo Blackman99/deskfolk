@@ -297,6 +297,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## Claude Spark mark
+
+The Claude Agent card in Settings › Agents shows the Claude Spark next to the words "Claude Agent" (`apps/messenger/src/lib/settings/ClaudeSpark.svelte`): Anthropic's mark for Claude, taken unaltered — same path and colour, only sized — from Anthropic's press kit (https://anthropic.com/press-kit, "Claude Spark - Clay.svg"). It is a trademark of Anthropic PBC and is not covered by this repository's MIT license; Anthropic's trademark guidelines govern its use (https://www.anthropic.com/legal/trademark-guidelines).
+
 ## Office previews
 
 Office previews in `apps/messenger` use these dynamically loaded packages:

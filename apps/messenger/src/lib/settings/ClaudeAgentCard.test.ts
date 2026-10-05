@@ -26,6 +26,8 @@ test("the card says which way Claude Code reaches Anthropic: the system proxy it
   expect(network).toContain("http://127.0.0.1:12334");
   expect(network).toContain(t.claudeAgent.proxySource.system!);
   expect(proxied.host.querySelector("[data-claude-account]")?.textContent).toContain("you@example.com");
+  // Anthropic's Claude Spark beside the title, in its own colour.
+  expect(proxied.host.querySelector(".claude-head [data-claude-spark] path")?.getAttribute("fill")).toBe("#D97757");
   proxied.close();
 
   let asked = 0;

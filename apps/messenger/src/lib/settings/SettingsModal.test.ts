@@ -121,6 +121,23 @@ test("closing the endpoint editor before the debounce still sends the edit", asy
   close();
 });
 
+test("Claude Agent has a category of its own, Agent, and is no longer under models", async () => {
+  const { host, runtime, close } = open();
+  const status = {
+    path: "/Users/you/.local/bin/claude", source: "known", version: "2.1.289", sdk_version: "2.1.289", outdated: false,
+    logged_in: true, auth_method: "claude.ai", subscription_type: "pro", email: "you@example.com", base_url_set: false,
+    proxy: null, proxy_source: null, checked_at: "2026-10-06T00:00:00.000Z", error: null,
+  };
+  runtime.client = { claudeCode: async () => status, detectClaudeCode: async () => status, setClaudeCodePath: async () => status } as never;
+  openModels(host);
+  expect(host.querySelector("[data-claude-agent]")).toBeNull();
+  click(host.querySelector<HTMLButtonElement>('[data-settings-tab="agents"]'));
+  await sleep(0);
+  expect(host.querySelector(".settings-main-title")?.textContent).toContain(t.settings.tabAgents);
+  expect(host.querySelector("[data-claude-agent] [data-claude-account]")?.textContent).toContain("you@example.com");
+  close();
+});
+
 function openAbout(host: HTMLElement): void {
   const tabs = host.querySelectorAll<HTMLButtonElement>(".settings-tab-btn");
   click(tabs[tabs.length - 1]);
