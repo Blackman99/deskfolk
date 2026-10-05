@@ -13,7 +13,8 @@
  *   HOME=/tmp/demo/home REAL_BOT_DATA_DIR=/tmp/demo/data bun apps/daemon/scripts/demo-studio.ts
  *
  * Env: REAL_BOT_DATA_DIR (required), REAL_BOT_DEMO_BIND (default 127.0.0.1:17957),
- * REAL_BOT_DEMO_CURLRC=1 writes a ~/.curlrc sending curl to demo-tape's media server (replay).
+ * REAL_BOT_DEMO_CURLRC=1 writes a ~/.curlrc sending curl to demo-tape's media server (replay),
+ * REAL_BOT_DEMO_CONTROL (default 127.0.0.1:17958) where demo-tape asks for a render's poll now.
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -56,7 +57,25 @@ if (process.env.REAL_BOT_DEMO_CURLRC === "1") {
 const handle = await startRuntime({ dataDir, bind, endpointKey: memoryKeyStore(), supervisor: "none" });
 console.log(`demo daemon on ${handle.origin} (data ${dataDir}, home ${home})`);
 
+// A replay hands a render's end out where the shoot heard it (demo-tape-order.ts), and asks for the
+// poll then instead of waiting out the backoff the shoot's own clock set: due at the next tick.
+const [controlHost, controlPort] = (process.env.REAL_BOT_DEMO_CONTROL ?? "127.0.0.1:17958").split(":");
+const control = Bun.serve({
+  hostname: controlHost,
+  port: Number(controlPort),
+  async fetch(req) {
+    if (req.method !== "POST" || new URL(req.url).pathname !== "/poll-now") return new Response("not found", { status: 404 });
+    const { request_id } = (await req.json()) as { request_id?: unknown };
+    const { changes } = handle.store.db.run(
+      "UPDATE external_jobs SET next_poll_at = ? WHERE request_id = ? AND state = 'pending'",
+      [new Date().toISOString(), String(request_id)],
+    );
+    return Response.json({ changed: changes });
+  },
+});
+
 const stop = async () => {
+  control.stop(true);
   await handle.stop();
   process.exit(0);
 };

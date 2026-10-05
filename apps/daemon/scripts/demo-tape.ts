@@ -12,10 +12,13 @@
  *   real ones, and nothing secret is written to the tape. Media URLs the MCP server returns are
  *   downloaded into the tape as they appear (they are temporary upstream).
  * replay: answers from the tape. Model calls are matched by kind and Bot (the system prompt says
- *   which) and their order within that pair; MCP calls by tool name and order. Ids differ between
- *   the two runs, so ULIDs and work-dir names seen in requests are paired up and swapped in the
- *   answers. Answers stream at a readable pace (`--pace` scales it). Media is served over HTTPS
- *   on 127.0.0.1:8443 for the demo's curl, which a .curlrc in the demo HOME points there.
+ *   which) and their order within that pair; MCP calls by tool name and order, a render's checks
+ *   by the job they ask about. Every Bot's turns and each check that ended a render go out in the
+ *   order the shoot recorded them (demo-tape-order.ts); when a render's end is next, the demo
+ *   daemon is asked to poll it now (`--control`, demo-studio's). Ids differ between the two runs,
+ *   so ULIDs and work-dir names seen in requests are paired up and swapped in the answers. Answers
+ *   stream at a readable pace (`--pace` scales it). Media is served over HTTPS on 127.0.0.1:8443
+ *   for the demo's curl, which a .curlrc in the demo HOME points there.
  *
  * Ports: 127.0.0.1:8000 model (`/v1/...`, shown in the film as a local vLLM), 127.0.0.1:8100 MCP
  * (`/mcp`), 127.0.0.1:8443 media (replay). GET http://127.0.0.1:8000/__tape reports what was used.
@@ -27,7 +30,8 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { defaultAppDataDir } from "@real-bot/protocol";
 import { bunKeyStore } from "../src/secrets";
-import { classify, normalize, type ChatBody } from "./demo-tape-keys";
+import { checkArgs, classify, normalize, rpcKey, type ChatBody, type CheckArgs } from "./demo-tape-keys";
+import { checkState, stillGoing, Turnstile, type Slot } from "./demo-tape-order";
 
 const { values: opts, positionals } = parseArgs({
   allowPositionals: true,
@@ -36,6 +40,7 @@ const { values: opts, positionals } = parseArgs({
     mcp: { type: "string", default: "westlake-cpa" },
     pace: { type: "string", default: "1" },
     models: { type: "string" },
+    control: { type: "string", default: "127.0.0.1:17958" },
   },
 });
 const mode = positionals[0];
@@ -252,11 +257,6 @@ async function keepMedia(text: string) {
   }
 }
 
-function rpcKey(msg: any): string {
-  if (msg?.method === "tools/call") return `call:${msg.params?.name ?? "?"}`;
-  return String(msg?.method ?? "?");
-}
-
 async function recordMcp(req: Request, live: Live): Promise<Response> {
   if (!live.mcpUrl) return new Response("no upstream MCP server", { status: 502 });
   const headers = new Headers();
@@ -376,8 +376,8 @@ function sse(obj: unknown): Uint8Array {
 }
 
 /** Streams an assembled answer back as OpenAI chunks, at roughly a fast typist's speed. */
-/** `onAbort` runs when the client hangs up before the answer is out (a redirected turn). */
-function replayStream(a: Assistant, onAbort: () => void): Response {
+/** `onAbort` runs when the client hangs up before the answer is out (a redirected turn), `onDone` once it is all out. */
+function replayStream(a: Assistant, onAbort: () => void, onDone: () => void = () => {}): Response {
   let done = false;
   const id = `chatcmpl-replay-${Math.random().toString(36).slice(2)}`;
   const base = { id, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1000), model: a.model };
@@ -400,6 +400,7 @@ function replayStream(a: Assistant, onAbort: () => void): Response {
       controller.enqueue(sse("[DONE]"));
       done = true;
       controller.close();
+      onDone();
     },
     cancel() {
       if (!done) onAbort();
@@ -429,18 +430,39 @@ function rpcMessages(body: string): any[] {
   return out;
 }
 
+/** The answer in a recorded MCP body: the JSON-RPC message with an id. */
+function answerOf(e: McpEntry): any {
+  return rpcMessages(e.body).find((m) => m && m.id !== undefined) ?? { result: {} };
+}
+
+/** The key of a recorded MCP call, read again from its request; the recorded key when that does not parse. */
+function keyOfRequest(e: McpEntry): string {
+  try {
+    return rpcKey(JSON.parse(e.request));
+  } catch {
+    return e.key;
+  }
+}
+
 async function startReplay() {
   const tape = loadTape();
   const remap = new Remap();
   const queues = new Map<string, Entry[]>();
   const firsts = new Map<string, McpEntry>();
+  // What goes out in the shoot's order: every Bot's turns, and each check that ended a render.
+  const order: Slot[] = [];
   let models: ModelsEntry | undefined;
   for (const e of tape) {
     if (e.channel === "models") models = e;
     else {
-      const k = `${e.channel}:${e.key}`;
-      (queues.get(k) ?? queues.set(k, []).get(k)!).push(e);
+      // A tape from before checks were keyed by their job: key each check by the one it asked about.
+      const key = e.channel === "mcp" && /^call:check_[^:]+$/.test(e.key) ? keyOfRequest(e) : e.key;
+      const k = `${e.channel}:${key}`;
+      const queue = queues.get(k) ?? queues.set(k, []).get(k)!;
+      queue.push(e);
       if (e.channel === "mcp" && !e.key.startsWith("call:") && !firsts.has(e.key)) firsts.set(e.key, e);
+      const ends = e.channel === "mcp" && /^call:check_[^:]+:/.test(key) && checkState(answerOf(e)) === "ended";
+      if ((e.channel === "model" && key.startsWith("turn:")) || ends) order.push({ queue: k, index: queue.length - 1 });
     }
   }
   const used = new Map<string, number>();
@@ -460,9 +482,74 @@ async function startReplay() {
   const giveBack = (k: string, taken: number) => {
     if (used.get(k) !== taken) return;
     used.set(k, taken - 1);
+    turnstile.unserved(k, taken - 1);
     log(`gave back ${k} #${taken - 1} (request abandoned)`);
   };
-  log(`replaying ${tape.length} entries (${[...queues.keys()].length} keys)`);
+  const turnstile = new Turnstile(order, {
+    log,
+    // A Bot the next turn belongs to is woken within a scheduler tick (15 s); a render's end waits
+    // for the poll it asks for below, which also comes at a tick.
+    patience: (slot) => (slot.queue.startsWith("mcp:") ? 90_000 : 60_000),
+    // Another Bot's answer starts a moment after one went out, so the tools that one called (a copy
+    // into the ticket's folder) are done before the next Bot's run beside them: the shoot's model
+    // took seconds to answer, and the daemon reads what a command wrote off the folder's mtimes.
+    gap: (previous, next) => (previous.queue.startsWith("model:turn:") && next.queue.startsWith("model:turn:") && previous.queue !== next.queue ? 2000 : 0),
+    onNext: (slot) => {
+      const id = /^mcp:call:check_[^:]+:(.+)$/.exec(slot.queue)?.[1];
+      if (!id) return;
+      void fetch(`http://${opts.control}/poll-now`, { method: "POST", body: JSON.stringify({ request_id: id }) })
+        .then((res) => res.json() as Promise<{ changed: number }>)
+        .then((res) => log(`asked the demo daemon to poll ${id} now (${res.changed ? "pending there" : "not pending there"})`))
+        .catch((error) => log(`could not ask the demo daemon to poll ${id}: ${(error as Error).message}`));
+    },
+  });
+  setInterval(() => turnstile.tick(), 5000);
+  const lanes = new Map<string, Promise<unknown>>();
+  /** One Bot's requests wait their turn one after another, so two of them never pass on one entry. */
+  const inLane = <T>(k: string, run: () => Promise<T>): Promise<T> => {
+    const result = (lanes.get(k) ?? Promise.resolve()).then(run);
+    lanes.set(k, result.catch(() => undefined));
+    return result;
+  };
+
+  /**
+   * A check on a render: the shoot's "still going" answers in order, as often as the app asks; the
+   * answer that ended it only once that is due in the shoot's order (until then, "still going"
+   * again); after that, the end again.
+   */
+  async function answerCheck(msg: any, key: string, check: CheckArgs): Promise<Response> {
+    const k = `mcp:${key}`;
+    const queue = (queues.get(k) ?? []) as McpEntry[];
+    const n = used.get(k) ?? 0;
+    const end = queue.findIndex((e, i) => i >= n && checkState(answerOf(e)) === "ended");
+    let answer: any;
+    let ends = false;
+    if (end >= 0 && turnstile.due(k, end)) {
+      if (end > n) log(`${key}: skipped ${end - n} "still going" answer(s), the app asked less often than in the shoot`);
+      used.set(k, end + 1);
+      answer = answerOf(queue[end]!);
+      ends = true;
+    } else if (n < queue.length && (end < 0 || n < end)) {
+      used.set(k, n + 1);
+      answer = answerOf(queue[n]!);
+    } else if (end >= 0) {
+      const recorded = queue.slice(0, end).map(answerOf).reverse().find((a) => checkState(a) === "pending");
+      answer = stillGoing(answerOf(queue[end]!), recorded, check);
+      log(`${key}: still going (its end is not due yet)`);
+    } else if (queue.length) {
+      answer = answerOf(queue[queue.length - 1]!);
+    } else {
+      misses.push(k);
+      log(`MISS mcp ${key}`);
+      return Response.json({ jsonrpc: "2.0", id: msg.id, error: { code: -32601, message: `no tape entry for ${key}` } });
+    }
+    await sleep(MCP_DELAY[`call:${check.tool}`] ?? 150);
+    if (ends) turnstile.served(k, end);
+    return new Response(JSON.stringify({ ...answer, id: msg.id }), {
+      headers: { "content-type": "application/json", "mcp-session-id": "replay-session" },
+    });
+  }
+  log(`replaying ${tape.length} entries (${[...queues.keys()].length} keys, ${order.length} in the shoot's order)`);
 
   Bun.serve({
     hostname: "127.0.0.1",
@@ -475,6 +562,8 @@ async function startReplay() {
           used: Object.fromEntries(used),
           left: Object.fromEntries([...queues].map(([k, v]) => [k, v.length - (used.get(k) ?? 0)]).filter(([, n]) => (n as number) > 0)),
           misses,
+          skipped: turnstile.skipped,
+          neverAsked: turnstile.remaining(),
           remapped: remap.ids.size,
           remapMisses: remap.missed,
         });
@@ -486,9 +575,23 @@ async function startReplay() {
       const text = await req.text();
       const body = JSON.parse(text) as ChatBody;
       const key = classify(body);
-      const e = take(`model:${key}`) as ModelEntry | undefined;
-      const taken = used.get(`model:${key}`) ?? 0;
-      const abandon = () => giveBack(`model:${key}`, taken);
+      const k = `model:${key}`;
+      // A Bot's turns go out in the shoot's order among every other Bot's and the renders' ends.
+      const sequenced = key.startsWith("turn:");
+      const got = await inLane(k, async () => {
+        if (sequenced && !(await turnstile.wait(k, used.get(k) ?? 0, req.signal))) return null;
+        const entry = take(k) as ModelEntry | undefined;
+        return { entry, taken: used.get(k) ?? 0 };
+      });
+      if (!got) return new Response(null, { status: 499 });
+      const { entry: e, taken } = got;
+      const abandon = () => giveBack(k, taken);
+      // Out once the whole answer is: the shoot recorded each answer as it ended, and the next one
+      // starts only then, so one Bot's tools never run beside another's that the shoot ran apart (a
+      // Producer's copy into the ticket's folder, taken for the Reviewer's own write).
+      const finished = () => {
+        if (sequenced) turnstile.served(k, taken - 1);
+      };
       if (!e) {
         log(`MISS ${key}`);
         return new Response(JSON.stringify({ error: { message: `no tape entry for ${key}` } }), { status: 503 });
@@ -503,6 +606,7 @@ async function startReplay() {
             toolCalls: a.toolCalls.map((t) => ({ ...t, arguments: remap.apply(t.arguments) })),
           },
           abandon,
+          finished,
         );
       }
       await sleep(key.startsWith("organizer") ? 500 : 280);
@@ -510,6 +614,7 @@ async function startReplay() {
         abandon();
         return new Response(null, { status: 499 });
       }
+      finished();
       return new Response(remap.apply(e.body ?? "{}"), { headers: { "content-type": "application/json" } });
     },
   });
@@ -524,14 +629,15 @@ async function startReplay() {
       const msg = JSON.parse(await req.text());
       if (Array.isArray(msg) || msg.id === undefined) return new Response(null, { status: 202 });
       const key = rpcKey(msg);
+      const check = checkArgs(msg);
+      if (check) return answerCheck(msg, key, check);
       const e = key.startsWith("call:") ? (take(`mcp:${key}`) as McpEntry | undefined) : firsts.get(key);
       if (!e) {
         log(`MISS mcp ${key}`);
         return Response.json({ jsonrpc: "2.0", id: msg.id, error: { code: -32601, message: `no tape entry for ${key}` } });
       }
       await sleep(MCP_DELAY[key] ?? 150);
-      const answer = rpcMessages(e.body).find((m) => m && m.id !== undefined) ?? { result: {} };
-      return new Response(JSON.stringify({ ...answer, id: msg.id }), {
+      return new Response(JSON.stringify({ ...answerOf(e), id: msg.id }), {
         headers: { "content-type": "application/json", "mcp-session-id": "replay-session" },
       });
     },

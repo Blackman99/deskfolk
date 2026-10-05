@@ -62,6 +62,33 @@ export function classify(body: ChatBody): string {
   return kind;
 }
 
+/** The argument names a check tool takes a job's id in, as the daemon's job adapter tries them. */
+const JOB_ID_ARGS = ["job_id", "request_id", "task_id", "jobId", "requestId", "id"];
+
+export type CheckArgs = { tool: string; param: string; id: string };
+
+/** A check on a render (`check_<x>`): the tool, the argument the job's id is in, and the id. */
+export function checkArgs(msg: any): CheckArgs | null {
+  if (msg?.method !== "tools/call") return null;
+  const tool = String(msg.params?.name ?? "");
+  if (!/^check_/.test(tool)) return null;
+  const args = msg.params?.arguments ?? {};
+  const param = JOB_ID_ARGS.find((key) => typeof args[key] === "string" || typeof args[key] === "number");
+  return param ? { tool, param, id: String(args[param]) } : null;
+}
+
+/**
+ * How an MCP request is keyed: a tool call by the tool's name, a check on a render (`check_<x>`)
+ * also by the job it asks about. The app polls renders on its own clock, so which check comes next
+ * differs between the shoot and a replay; keyed by order alone, one job's answer went to another
+ * (2026-10-05). The id came from the tape's own submit answer, so it is the same in both runs.
+ */
+export function rpcKey(msg: any): string {
+  if (msg?.method !== "tools/call") return String(msg?.method ?? "?");
+  const check = checkArgs(msg);
+  return check ? `call:${check.tool}:${check.id}` : `call:${String(msg.params?.name ?? "?")}`;
+}
+
 /** A reply with its run-specific ids and work dirs blanked, so both runs read the same. */
 export function normalize(s: string): string {
   return s.replace(/\b[0-9A-HJKMNP-TV-Z]{26}\b/g, "#").replace(/(work\/[^\s"'`\\/]+)-[0-9a-z]{4,26}/g, "$1-#");

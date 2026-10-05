@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { READ_BOT_LINE_SYSTEM, READ_FILING_SYSTEM, READ_SCALE_SYSTEM, READ_USER_LINE_SYSTEM } from "../src/prompts/reader";
 import { turnSystemPrompt } from "../src/prompts/system";
-import { classify } from "./demo-tape-keys";
+import { classify, rpcKey } from "./demo-tape-keys";
 
 const side = (system: string, payload: unknown) => ({
   messages: [
@@ -45,4 +45,13 @@ test("a job's size is read by the lines you said about it", () => {
 
 test("a call nothing recognises stays 'other'", () => {
   expect(classify(side("Something new the app asks a model", { said: "x" }))).toBe("other");
+});
+
+test("a check on a render is keyed by the job it asks about; other calls by the tool alone", () => {
+  const call = (name: string, args: Record<string, unknown>) => ({ jsonrpc: "2.0", id: 7, method: "tools/call", params: { name, arguments: args } });
+  expect(rpcKey(call("check_video", { request_id: "99d4fc0f" }))).toBe("call:check_video:99d4fc0f");
+  expect(rpcKey(call("check_video", { job_id: 42 }))).toBe("call:check_video:42");
+  expect(rpcKey(call("check_video", {}))).toBe("call:check_video");
+  expect(rpcKey(call("submit_video", { prompt: "6 秒短片" }))).toBe("call:submit_video");
+  expect(rpcKey({ jsonrpc: "2.0", id: 1, method: "tools/list" })).toBe("tools/list");
 });

@@ -8,6 +8,7 @@
  * them, holds, submissions), not "no turn is live": from engine level 6 a Bot's turn ends while the
  * app polls its render, and the story must not run ahead of that.
  */
+import { execFileSync } from 'node:child_process';
 import type { Frame, Locator, Page } from 'playwright';
 
 export type Lang = 'zh' | 'en';
@@ -140,21 +141,42 @@ const stageOf = (ticket: any): string => ticket.stage ?? ticket.status ?? '';
 export async function playStory(s: Stage): Promise<void> {
   const t = TEXT[s.lang];
   const app = s.app;
-  const focused = () => app.locator('.wb-leaf.is-focused');
+  /**
+   * The conversation's pane: the one with a composer. Not the focused one, which is the board's once
+   * a pill or a ticket there was clicked, and has no composer to type the stop into.
+   */
+  const chat = () => app.locator('.wb-leaf').filter({ has: app.locator('.composer-input') }).first();
   const follow = () =>
-    focused()
+    chat()
       .locator('.stream')
       .first()
       .evaluate((el) => el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }))
       .catch(() => {});
-  const composer = () => focused().locator('.composer-input');
+  const composer = () => chat().locator('.composer-input');
 
   /* The daemon's state, read the way the board reads it. */
   const bots = async () => items(await s.api('GET', '/v1/bots'));
   const sessions = async () => items(await s.api('GET', '/v1/sessions'));
-  const planOf = async (sessionId: string) => items(await s.api('GET', `/v1/sessions/${sessionId}/tasks`))[0] ?? null;
+  /**
+   * The job your line opened in that conversation, named after the line (its first 40 characters).
+   * The conversation's list also carries jobs from elsewhere that worked there, such as the one in
+   * the Producer's direct that made the group: the first item is not always yours.
+   */
+  const planOf = async (sessionId: string, line: string) => {
+    const said = line.replace(/\s+/g, ' ').trim();
+    return items(await s.api('GET', `/v1/sessions/${sessionId}/tasks`)).find((x: any) => x.session_id === sessionId && said.startsWith(x.title)) ?? null;
+  };
   const detail = async (planId: string) => s.api('GET', `/v1/tasks/${planId}`);
   const holdsInForce = async () => items(await s.api('GET', '/v1/holds'));
+  /** Whether a render of the job is still out. No route lists renders, so the demo daemon's own database is read. */
+  const renderOut = (planId: string): boolean => {
+    try {
+      const sql = `SELECT count(*) FROM external_jobs WHERE task_id = '${planId}' AND state = 'pending'`;
+      return Number(execFileSync('sqlite3', ['-readonly', '/private/tmp/deskfolk-demo/data/state.sqlite', sql], { encoding: 'utf-8' }).trim()) > 0;
+    } catch {
+      return false;
+    }
+  };
   const until = async <T>(what: string, read: () => Promise<T | null | undefined | false>, timeoutMs: number, everyMs = 1000): Promise<T> => {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
@@ -265,7 +287,7 @@ export async function playStory(s: Stage): Promise<void> {
   await s.type(composer(), t.goal);
   await s.press(composer(), 'Enter');
   // The plan opens with the Producer's first segment, and your line is filed under it there.
-  const plan = await until('the plan', () => planOf(group.id), 5 * 60_000);
+  const plan = await until('the plan', () => planOf(group.id, t.goal), 5 * 60_000);
 
   const tab = (name: RegExp) => app.locator('.wb-tab', { hasText: name }).first();
   const paneOf = (el: Locator) => app.locator('.wb-leaf').filter({ has: el }).first();
@@ -416,10 +438,36 @@ export async function playStory(s: Stage): Promise<void> {
   await s.type(composer(), t.change);
   await s.press(composer(), 'Enter');
   await s.idle(5 * 60_000, { approve: false });
+  // The render still out when you stopped finishes while the stop holds, and the app keeps its
+  // result until you go on. Both shoots had it so, by seconds; waiting makes it the order a replay
+  // keeps too, whatever its pace.
+  await until('the render in', async () => !renderOut(plan.id), 10 * 60_000, 1000).catch(() => {});
   await s.hold(1200);
   await s.type(composer(), t.go);
   await s.press(composer(), 'Enter');
   await until('the stop lifted', async () => !(await holdsInForce()).some((h: any) => h.id === stop.id), 60_000, 500);
+  // When you went on, by the daemon's clock, and whether the app handed back what you said while
+  // it was stopped (its receipt says so): then the Producer works your change in, and step 8 waits
+  // for that hand-over, not for tickets approved before the stop.
+  const groupLines = async () => {
+    const page = await s.api('GET', `/v1/sessions/${group.id}/messages?limit=60`);
+    return items(page.items ? page : { items: page.messages ?? page });
+  };
+  const wentOn: string = await until(
+    'your go on',
+    async () => (await groupLines()).filter((m: any) => m.kind === 'user' && m.body === t.go).at(-1)?.created_at ?? null,
+    30_000,
+    500
+  );
+  const handedBack = await until(
+    'the go on receipt',
+    async () => {
+      const receipt = (await groupLines()).find((m: any) => m.kind === 'system' && m.created_at >= wentOn && m.control?.verb === 'continue');
+      return receipt ? { back: /照你叫停期间说的接着做|Going on from what you said while it was stopped/.test(receipt.body) } : null;
+    },
+    30_000,
+    500
+  );
   await s.hold(1200);
 
   /* 8 · Done has a definition: checks the app runs, a review with evidence, your release */
@@ -457,11 +505,20 @@ export async function playStory(s: Stage): Promise<void> {
       }
       await follow();
       const tickets = (await detail(plan.id)).tickets ?? [];
-      return tickets.length > 0 && tickets.every((x: any) => ['approved', 'done', 'dropped'].includes(stageOf(x)));
+      const through = tickets.length > 0 && tickets.every((x: any) => ['approved', 'done', 'dropped'].includes(stageOf(x)));
+      if (!handedBack.back) return through;
+      // Your change, handed back on the go on: a hand-over made after it, approved, with nothing
+      // still being checked or reviewed.
+      const subs = items(await s.api('GET', `/v1/tasks/${plan.id}/submissions`));
+      const open = subs.some((sub: any) => ['checking', 'submitted', 'in_review'].includes(sub.state));
+      return through && !open && subs.some((sub: any) => sub.created_at > wentOn && sub.state === 'approved');
     },
     90 * 60_000,
     1500
   );
+  // The reviewer's turn ends a moment after its approval: ask once nobody is at work, or the answer
+  // lists it as still going (a quiet moment is the point of coming back).
+  await until('nobody at work', async () => !(await sessions()).some((x: any) => (x.live_turns ?? []).length > 0), 3 * 60_000, 1000).catch(() => {});
   await s.hold(1500);
 
   /* 9 · Back to the result: ask how it went, see it on the board, play it beside the chat */
@@ -470,15 +527,18 @@ export async function playStory(s: Stage): Promise<void> {
   await s.press(composer(), 'Enter');
   await sleep(1500);
   await follow();
-  const answer = focused().locator('[data-message-id]').last();
+  const answer = chat().locator('[data-message-id]').last();
   await s.focus(answer);
   await s.hold(2600);
   await s.attempt('artifact pane', async () => {
     await follow();
-    const film = /^launch\/[^\s/]+\.(mp4|mov|webm)$/;
+    // The film the Producer delivered, in the job's own folder (work/<job>/launch/…): a link to it in
+    // a message (`artifact:` + the path URI-encoded, its folders in the text but out of sight), or the
+    // chip of a message that hands over that one file (two or more fold into a bundle).
+    const film = /\.(mp4|mov|webm)$/;
     const video = app
-      .locator('.attachment-file-btn', { hasText: /launch\/[^\s/]+\.(mp4|mov|webm)/ })
-      .or(app.locator('[data-message-id]').getByText(film))
+      .locator('[data-message-id] a.md-artifact-link[href*="launch%2F"]', { hasText: film })
+      .or(app.locator('.attachment-file-btn[title*="launch/"]', { has: app.locator('.file-title', { hasText: film }) }))
       .last();
     if (!(await video.count())) {
       s.log('no link to a film in launch/ in the chat');

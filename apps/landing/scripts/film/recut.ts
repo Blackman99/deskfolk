@@ -1,9 +1,10 @@
 /**
- * Recuts a live film: steps that take long in real time (the team's many hops while the poster
- * and teaser are made) are fast-forwarded to whole bars, with a speed badge on the stage while
- * they run, then the music is composed to the new timeline and the sound laid on the moved cues.
+ * Recuts a live film: steps that take long in real time (waiting for your asks to be written up,
+ * the Bots' many hops while the film is remade and reviewed) are fast-forwarded to whole bars, with
+ * a speed badge on the stage while they run, then the music is composed to the new timeline and the
+ * sound laid on the moved cues.
  *
- *   node scripts/film/recut.ts [--lang zh] [--theme light] [--speed 6=4,3=2.5] [--music track.mp3]
+ *   node scripts/film/recut.ts [--lang zh] [--theme light] [--speed 5=4,8=4] [--music track.mp3]
  *
  * Reads film-out/deskfolk-live-<lang>-<theme>.{silent.mp4,timeline.json,cues.json} from
  * live.ts film and writes film-out/deskfolk-live-<lang>-<theme>-cut.mp4.
@@ -24,7 +25,7 @@ const { values: opts } = parseArgs({
   options: {
     lang: { type: 'string', default: 'zh' },
     theme: { type: 'string', default: 'light' },
-    speed: { type: 'string', default: '6=4,3=2.5' },
+    speed: { type: 'string', default: '5=4,8=4' },
     music: { type: 'string' },
     out: { type: 'string', default: path.join(LANDING, 'film-out') }
   }

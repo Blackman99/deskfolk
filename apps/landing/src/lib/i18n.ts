@@ -259,7 +259,7 @@ const zh: Dict = {
   film: {
     watch: '播放完整视频',
     watchHint: '或者直接看完整视频',
-    duration: '1:49',
+    duration: '2:15',
     title: 'Deskfolk 完整演示',
     description: '从首次配置到交出一支宣传短片：要求记下、检查由你确认、叫停又继续，回来看审过的成片。',
     close: '关闭'
@@ -547,7 +547,7 @@ const en: Dict = {
   film: {
     watch: 'Play the full video',
     watchHint: 'or watch the full video',
-    duration: '1:45',
+    duration: '2:19',
     title: 'Deskfolk, the full demo',
     description: 'From first setup to a promo film handed off: asks kept, checks you confirm, a stop and a go-on, and a reviewed cut to come back to.',
     close: 'Close'
