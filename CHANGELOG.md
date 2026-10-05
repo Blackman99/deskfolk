@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### What you say to a stopped Bot gets done once you go on
+
+- While work was stopped, a line of yours to the Bot only got a read-only answer ("I'll enlarge it once you say continue"), and going on opened nothing unless a turn had been stopped mid-way: on a job already approved, "make the logo at the end bigger" was answered and never done. The stop now keeps the lines it could only answer, and going on hands them back: the Bot goes on from the last thing you said, reading the rest above it, and the receipt says so. A Bot another stop still holds gets them when that one is lifted.
+
 ### Renders on a server that answers in plain lines are waited on by the app too
 
 - A media server that answers its submit and check in `key: value` lines rather than JSON (grok-imagine: `request_id: …`, `status: done`, `url: …`) never had a render registered: the Bot checked on it again and again inside its own turn, and the app's polling, waking and duplicate check never applied. Those answers are read now; when a render is done, the Bot is woken with the server's whole answer, its warning that the link is temporary included. A render a Bot starts on the job as a whole, before any ticket of its own, counts too: the board says the Bot's ticket waits on the render, and the supervisor leaves the Bot alone meanwhile.

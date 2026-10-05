@@ -40,6 +40,7 @@
  */
 import {
   USER_MEMBER,
+  type AnsweredLine,
   type ControlActionResult,
   type ControlOffer,
   type ControlPlanOffer,
@@ -687,7 +688,8 @@ export function createStop(deps: StopDeps): Stop {
         author: authorIn(message.session_id, scopes),
         body: continueReceiptBody(locale(), {
           lifted: current.map((hold) => ({ scope: scopeLabel(hold, message.session_id), said: holdSaid(hold) })),
-          resumed: resumed.map((row) => turnLine(row.record, message.session_id, headingBots(scopes))),
+          resumed: resumed.filter((row) => !row.line).map((row) => turnLine(row.record, message.session_id, headingBots(scopes))),
+          takenUp: resumed.flatMap((row) => (row.line ? [{ bot: botName(row.record.bot_id), said: saidOf(row.line) }] : [])),
           resumedCheckBacks: current.reduce((sum, hold) => sum + (hold.effect.resumed_check_backs?.length ?? 0), 0),
           restored: current.flatMap((hold) => hold.effect.restored_plans ?? []).map((id) => planTitle(id) ?? id),
           stillHeld: stillHeld.map((hold) => ({ scope: scopeLabel(hold, message.session_id), said: holdSaid(hold) })),
@@ -764,13 +766,22 @@ export function createStop(deps: StopDeps): Stop {
    * says so (a go on that lifted it along with the rest): Stop means "not this", and your next line
    * is what the Bot goes on from. A turn `leave` names, nothing else holding it, is left for a line
    * of yours that is about to reach it anyway.
+   *
+   * Then the lines of yours they turned into read-only answers go back to their Bots (`line` on the
+   * row): under the stop a Bot could only answer, and said it would act once you went on. Before,
+   * nothing did: 「片尾的 logo 再大一点」 said under 「先停一下」 got 「等你说继续我再放大并重出成片」,
+   * and 继续 opened nothing — the job had been approved, no turn had been stopped to open again —
+   * so the logo stayed as it was (2026-10-04). Per Bot, conversation and job the last such line
+   * opens the turn, as it would have with nothing stopped, and the turn reads the others above it;
+   * a Bot whose stopped work opened again in that conversation reads them there. One another hold
+   * still covers keeps them on that hold, for when it is lifted.
    */
   function resumeLifted(
     lifted: Hold[],
     said: SaidLine,
     opts: { stops: boolean; leave?: (record: HeldTurn, hold: Hold) => boolean },
-  ): Array<{ record: HeldTurn; turn: Turn }> {
-    const resumed: Array<{ record: HeldTurn; turn: Turn }> = [];
+  ): Array<{ record: HeldTurn; turn: Turn; line?: Message }> {
+    const resumed: Array<{ record: HeldTurn; turn: Turn; line?: Message }> = [];
     const seen = new Set<string>();
     for (const hold of lifted) {
       if (hold.lift_on_next_user_message && !opts.stops) continue;
@@ -797,7 +808,66 @@ export function createStop(deps: StopDeps): Stop {
         resumed.push({ record, turn });
       }
     }
+    const answered = new Map<string, { row: AnsweredLine; hold: Hold; line: Message }>();
+    for (const hold of lifted) {
+      if (hold.lift_on_next_user_message && !opts.stops) continue;
+      for (const row of hold.effect.answered_lines ?? []) {
+        let line: Message;
+        try {
+          line = store.getMessage(row.message_id);
+        } catch {
+          continue;
+        }
+        const key = `${row.bot_id}|${line.session_id}|${line.task_id ?? ""}`;
+        const before = answered.get(key);
+        if (!before || before.line.created_at <= line.created_at) answered.set(key, { row, hold, line });
+      }
+    }
+    for (const { row, hold, line } of answered.values()) {
+      const record: HeldTurn = {
+        turn_id: row.turn_id,
+        bot_id: row.bot_id,
+        session_id: line.session_id,
+        task_id: line.task_id ?? null,
+        ticket_id: line.ticket_id ?? null,
+        written: [],
+        recent: [],
+      };
+      if (resumed.some((other) => other.record.bot_id === row.bot_id && other.record.session_id === line.session_id)) continue;
+      const still = store.holdsCovering({ botId: row.bot_id, sessionId: line.session_id, taskId: record.task_id, ticketId: record.ticket_id });
+      if (still.length > 0) {
+        const heir = [...still].reverse().find((other) => !other.lift_on_next_user_message) ?? still.at(-1)!;
+        store.addHoldEffect(heir.id, { answered_lines: [row] });
+        continue;
+      }
+      if (opts.leave?.(record, hold)) continue;
+      const turn = takeUpLine(line, row.bot_id);
+      if (!turn) continue;
+      store.addHoldEffect(hold.id, { taken_up_turns: [turn.id] });
+      resumed.push({ record, turn, line });
+    }
     return resumed;
+  }
+
+  /**
+   * Your line taken up by `botId` once nothing holds it, as the line would have opened its turn with
+   * nothing stopped: in your direct beside whatever the Bot took up there meanwhile, elsewhere heard
+   * by its turn on that job when it has one.
+   */
+  function takeUpLine(line: Message, botId: string): Turn | null {
+    if (admission?.draining) return null;
+    let session: Session;
+    try {
+      session = store.getSession(line.session_id);
+      if (store.getBot(botId).archived_at) return null;
+    } catch {
+      return null;
+    }
+    if (!store.isPresent(session.id, botId)) return null;
+    const withYou = session.kind !== "group" && store.isPresent(session.id, USER_MEMBER);
+    return withYou
+      ? startTurn(session.id, botId, line, "fork", { cause: "user_line" })
+      : hearOrStart(session.id, botId, line, { item: { author: "", body: line.body, checkBack: false } }, { cause: "user_line", otherwise: "fork" });
   }
 
   /**
@@ -1421,7 +1491,7 @@ export function createStop(deps: StopDeps): Stop {
     sessionId: string,
     scopes: ControlScope[],
     lifted: Hold[],
-    resumed: Array<{ record: HeldTurn }>,
+    resumed: Array<{ record: HeldTurn; line?: Message }>,
     stillHeld: Hold[],
   ): Message {
     const current = lifted.map((hold) => store.getHold(hold.id));
@@ -1431,7 +1501,8 @@ export function createStop(deps: StopDeps): Stop {
       author: authorIn(sessionId, scopes),
       body: continueReceiptBody(locale(), {
         lifted: current.map((hold) => ({ scope: scopeLabel(hold, sessionId), said: holdSaid(hold) })),
-        resumed: resumed.map((row) => turnLine(row.record, sessionId, headingBots(scopes))),
+        resumed: resumed.filter((row) => !row.line).map((row) => turnLine(row.record, sessionId, headingBots(scopes))),
+        takenUp: resumed.flatMap((row) => (row.line ? [{ bot: botName(row.record.bot_id), said: saidOf(row.line) }] : [])),
         resumedCheckBacks: current.reduce((sum, hold) => sum + (hold.effect.resumed_check_backs?.length ?? 0), 0),
         restored: current.flatMap((hold) => hold.effect.restored_plans ?? []).map((id) => planTitle(id) ?? id),
         stillHeld: stillHeld.map((hold) => ({ scope: scopeLabel(hold, sessionId), said: holdSaid(hold) })),

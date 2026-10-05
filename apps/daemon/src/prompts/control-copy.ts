@@ -156,6 +156,8 @@ export function continueReceiptBody(
     /** Each lifted hold, its scope in words and the line that made it. */
     lifted: readonly { scope: string; said: SaidLine }[];
     resumed: readonly ControlTurnLine[];
+    /** Bots going on from a line of yours they could only answer while it was stopped, with that line. */
+    takenUp?: readonly { bot: string; said: SaidLine }[];
     resumedCheckBacks: number;
     restored: readonly string[];
     /** Holds still covering what you let go on, in words, with the line that made each. */
@@ -169,6 +171,10 @@ export function continueReceiptBody(
   if (input.resumed.length > 0) {
     const turns = input.resumed.map((line) => turnLine(locale, line)).join(en ? "; " : "；");
     lines.push(en ? `- ${input.resumed.length} stopped turn(s) start again with a note on where they were: ${turns}` : `- ${input.resumed.length} 段被停下的工作带着一条说明重新开始：${turns}`);
+  }
+  if (input.takenUp && input.takenUp.length > 0) {
+    const rows = input.takenUp.map((row) => withSaid(locale, row.bot, row.said)).join(en ? "; " : "；");
+    lines.push(en ? `- Going on from what you said while it was stopped: ${rows}` : `- 照你叫停期间说的接着做：${rows}`);
   }
   if (input.resumedCheckBacks > 0) lines.push(en ? `- ${input.resumedCheckBacks} check-back(s) back on.` : `- ${input.resumedCheckBacks} 个回看恢复。`);
   if (input.restored.length > 0) lines.push(en ? `- Back as before: ${joinList(locale, input.restored)}` : `- 恢复原状：${joinList(locale, input.restored)}`);

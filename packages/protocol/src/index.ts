@@ -877,7 +877,17 @@ export type HoldEffect = {
   still_running?: string[];
   /** Turns found running under it later, when you said the work had not stopped, and ended then. */
   violations?: string[];
+  /**
+   * Your lines it turned into read-only answers: the Bot could only answer them. The go on that
+   * lifts it hands them back, the last one per Bot, conversation and job opening that Bot's turn.
+   */
+  answered_lines?: AnsweredLine[];
+  /** On lifting: the turns opened on lines of yours it had turned into read-only answers. */
+  taken_up_turns?: string[];
 };
+
+/** A line of yours a Bot could only answer read-only while a hold covered it, and the turn that answered it. */
+export type AnsweredLine = { message_id: string; bot_id: string; turn_id: string };
 
 /** A turn a hold ended: where it ran, on what, and what it had done so far. */
 export type HeldTurn = {

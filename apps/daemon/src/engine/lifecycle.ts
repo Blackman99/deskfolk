@@ -226,9 +226,13 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     admission?.assertNew();
     const wake = wakeOn(store, opts.cause, { sessionId, botId, trigger, taskId: opts.taskId, ticketId: opts.ticketId });
     // Your line to a Bot a hold covers still gets an answer: a read-only turn beside whatever it
-    // was doing, which can read and reply and nothing else (ADR 0040 I2's one exemption).
-    if (opts.cause === "user_line" && trigger.kind === "user" && heldWake(store, wake).length > 0) {
+    // was doing, which can read and reply and nothing else (ADR 0040 I2's one exemption). What it
+    // answers it cannot act on: each hold keeps the line, and the go on that lifts it hands the
+    // line back to the Bot (stop.ts `resumeLifted`).
+    const holding = opts.cause === "user_line" && trigger.kind === "user" ? heldWake(store, wake) : [];
+    if (holding.length > 0) {
       const readOnly = store.createTurn({ sessionId, botId, triggerMessageId: trigger.id, mode: "readonly" });
+      for (const hold of holding) store.addHoldEffect(hold.id, { answered_lines: [{ message_id: trigger.id, bot_id: botId, turn_id: readOnly.id }] });
       attachLive(readOnly);
       return readOnly;
     }

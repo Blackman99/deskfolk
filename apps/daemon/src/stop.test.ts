@@ -1229,6 +1229,75 @@ describe("a read-only answer that says nothing", () => {
   });
 });
 
+describe("a line a stop left read-only", () => {
+  // The Bot could only answer it, and said it would act once you went on; before, nothing did unless
+  // a turn had been stopped to open again (2026-10-04: the logo stayed as it was after 继续).
+  test("is what the Bot goes on from once you say go on, though no work had been stopped", async () => {
+    const h = await scenario();
+    const { director, room } = videoTeam(h);
+    const hold = h.engine.createHold({ scope: "session", scopeId: room });
+    h.script(director, room).reply(say("停着呢，解除后我再放大"));
+    const line = h.postUser(room, "@视频导演 片尾的 logo 再大一点");
+    await h.waitIdle();
+    const [answering] = h.turns(director);
+    expect(answering!.mode).toBe("readonly");
+    expect(h.store.getHold(hold.id).effect.answered_lines).toEqual([{ message_id: line.id, bot_id: director.id, turn_id: answering!.id }]);
+
+    h.script(director, room).reply(say("好，放大 logo 重出成片"));
+    const go = h.postUser(room, "继续");
+    await h.waitIdle();
+
+    const working = h.turns(director).filter((row) => row.mode !== "readonly");
+    // On no job here, so a desk segment: what the line would have opened with nothing stopped.
+    expect(working.map(({ trigger_message_id, mode }) => ({ trigger_message_id, mode }))).toEqual([{ trigger_message_id: line.id, mode: "desk" }]);
+    expect(h.store.getHold(hold.id)).toMatchObject({ lifted_message_id: go.id, effect: { taken_up_turns: [working[0]!.id] } });
+    expect(h.messages(room).filter((message) => message.kind === "bot").map((message) => message.body)).toEqual(["停着呢，解除后我再放大", "好，放大 logo 重出成片"]);
+    const receipt = after(h, room, go).find((message) => message.control?.kind === "receipt")!;
+    expect(receipt.body).toContain("照你叫停期间说的接着做：视频导演");
+    expect(receipt.body).toContain("片尾的 logo 再大一点");
+    expect(receipt.body).not.toContain("被停下的工作");
+  });
+
+  test("of several, the last opens the Bot's turn, and it reads the others above it", async () => {
+    const h = await scenario();
+    const { director, room } = videoTeam(h);
+    h.engine.createHold({ scope: "session", scopeId: room });
+    h.script(director, room).reply(say("记下了"), say("也记下了"));
+    h.postUser(room, "@视频导演 片尾的 logo 再大一点");
+    await h.waitIdle();
+    const last = h.postUser(room, "@视频导演 主标语也换一句");
+    await h.waitIdle();
+
+    h.script(director, room).reply(say("两处都改"));
+    h.postUser(room, "继续");
+    await h.waitIdle();
+
+    const working = h.turns(director).filter((row) => row.mode !== "readonly");
+    expect(working.map(({ trigger_message_id }) => trigger_message_id)).toEqual([last.id]);
+    expect(requestText(h.hops(director).find((hop) => hop.turnId === working[0]!.id)!.request)).toContain("片尾的 logo 再大一点");
+  });
+
+  test("one another stop still covers waits for that stop", async () => {
+    const h = await scenario();
+    const { director, room } = videoTeam(h);
+    const group = h.engine.createHold({ scope: "session", scopeId: room });
+    const own = h.engine.createHold({ scope: "bot", scopeId: director.id });
+    h.script(director, room).reply(say("停着呢"));
+    const line = h.postUser(room, "@视频导演 片尾的 logo 再大一点");
+    await h.waitIdle();
+
+    h.engine.liftHold(group.id);
+    await h.waitIdle();
+    expect(h.turns(director).filter((row) => row.mode !== "readonly")).toEqual([]);
+
+    h.script(director, room).reply(say("好，放大"));
+    h.engine.liftHold(own.id);
+    await h.waitIdle();
+    expect(h.turns(director).filter((row) => row.mode !== "readonly").map(({ trigger_message_id }) => trigger_message_id)).toEqual([line.id]);
+    expect(h.store.getHold(own.id).effect.taken_up_turns).toHaveLength(1);
+  });
+});
+
 describe("buttons on the app's lines about your stops", () => {
   /** The app's receipt for `line` in `session`. */
   function receiptAfter(h: Scenario, session: string, line: { created_at: string }) {
