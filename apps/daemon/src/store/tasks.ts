@@ -19,6 +19,7 @@
 import {
   INTERRUPT_NOTE_BODY,
   USER_MEMBER,
+  parseMentions,
   type SessionTaskSummary,
   type TaskTrace,
   type TaskTraceNode,
@@ -98,6 +99,32 @@ const UNSAFE = /[\\/:*?"<>|@\u0000-\u001f\u007f]/;
 
 export function taskTitle(body: string): string {
   return takeCodePoints(body.replace(/\s+/g, " ").trim(), TITLE_MAX).text;
+}
+
+/**
+ * A new job's title without the Bots it names: 「@Alpha 做一个 logo」 opens 「做一个 logo」. A title
+ * that is nothing but names keeps them.
+ */
+export function planTitle(ctx: StoreContext, said: string): string {
+  const roster = ctx.db.query<{ name: string }, []>("SELECT name FROM bots WHERE deleted_at IS NULL").all().map((row) => row.name);
+  const spans = parseMentions(said, roster).spans.filter((span) => span.kind !== "unresolved");
+  let title = said;
+  for (const span of [...spans].sort((a, b) => b.start - a.start)) title = `${title.slice(0, span.start)} ${title.slice(span.end)}`;
+  title = title.replace(/\s+/g, " ").replace(/^[\s,，、:：]+/, "").trim();
+  return title || said;
+}
+
+/**
+ * Whether a ticket's title names its job: the job's name, or the words that opened the job cut no
+ * shorter than the job's own title was (a job opened from your line names itself, and the ticket it
+ * opens with, after that line; a rename leaves the ticket as it was). Such a ticket is the whole job,
+ * whatever words the cut kept: 「…分辨率 1080×1920，片尾带」 is a brief cut short, not a part named 片尾.
+ */
+export function namedAfterJob(ctx: StoreContext, task: Task, title: string): boolean {
+  if (title === task.title) return true;
+  if (!task.brief) return false;
+  const opening = planTitle(ctx, task.brief);
+  return opening.startsWith(title) && title.startsWith(taskTitle(opening));
 }
 
 /**

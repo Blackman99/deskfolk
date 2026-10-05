@@ -8,10 +8,9 @@
 import { HttpError } from "../errors";
 import { refileMessage, updatePlanDormancy, type RefileMessageResult } from "./filing";
 import type { StoreContext } from "./shared";
-import { openTask } from "./tasks";
+import { openTask, planTitle } from "./tasks";
 import { createTicket } from "./tickets";
 import { recordWorkEvent } from "./work-events";
-import { planTitle } from "./work-on";
 
 export function newJobFromLine(ctx: StoreContext, messageId: string, input: { title?: string | null; userActionId: string }): RefileMessageResult & { task_id: string } {
   return ctx.commit(() => {

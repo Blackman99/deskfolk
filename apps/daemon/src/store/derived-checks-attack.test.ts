@@ -9,8 +9,9 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { runCollabTool } from "../collab-tools";
 import { Store } from ".";
-import { bindRuleOf, derivedStatements } from "../derived-checks";
+import { bindRuleOf, derivedStatements, partTicket } from "../derived-checks";
 import type { PlanSpec } from "./plan-shape";
 import type { OrganizerResult } from "./plan-spec";
 
@@ -342,5 +343,81 @@ describe("what a target is", () => {
     expect(of("C09 做成竖屏", { aboutPart: true }).size).toBe(0);
     expect(of("C09 做成竖屏").size).toBe(0);
     expect(of("片头做成竖屏").size).toBe(0);
+  });
+});
+
+describe("a job's own ticket stands for the whole job", () => {
+  // A lead opening a job from your line names the job, and the ticket it opens with, after that line
+  // cut to 40 characters. This cut ends on 片尾 and loses the 成片 after it: read as a ticket's name it
+  // was one part's, so your numbers were taken as said of that part and the film delivered on the
+  // ticket as no film. Such a job never got a check from your words.
+  const GOAL = "给「晨光」手冲壶做一支宣传短片：时长 6 秒，分辨率 1080×1920，片尾带品牌 logo，成片存为 launch/dawn_final.mp4；再配一句主标语，写进 launch/copy.md。";
+  const LIVE_OFFERED = ["时长 6 秒|proposed", "分辨率 1080p|proposed"];
+  // A later target replaces the offer for its dimension, listed after the one it did not touch.
+  const LIVE_REFILED = ["分辨率 1080p|proposed", "时长 3 秒|proposed"];
+  const LIVE_BOUND = LIVE_OFFERED.map((check) => `${check}@launch/dawn_final.mp4`);
+
+  /** Your line in the group, and the job 制片 opens from it with work_on, as a lead does. */
+  async function opened() {
+    const root = mkdtempSync(join(tmpdir(), "derived-own-"));
+    roots.push(root);
+    const store = new Store();
+    store.patchSettingsSync({ workspace_path: root });
+    store.raiseEngineLevel(null);
+    const { bot: lead } = store.createBot({ name: "制片", duties: "出片", boundaries: "none" });
+    const { bot: reviewer } = store.createBot({ name: "审片", duties: "审片", boundaries: "none" });
+    const group = store.createGroup({ name: "发布", members: [lead.id, reviewer.id] });
+    const line = store.postMessage(group.id, { body: GOAL });
+    const turn = store.createTurn({ sessionId: group.id, botId: lead.id, triggerMessageId: line.id });
+    await runCollabTool({ store, botId: lead.id, sessionId: group.id, turnId: turn.id, parentId: null },
+      "work_on", { plan: { new: { quote_message_id: line.id } } });
+    const planId = store.getTurn(turn.id).task_id!;
+    const deliver = (relpath: string) => {
+      mkdirSync(join(root, relpath, ".."), { recursive: true });
+      writeFileSync(join(root, relpath), "video");
+      store.insertMessage({ sessionId: group.id, turnId: turn.id, kind: "bot", author: lead.id, body: `交了 ${relpath}`, paths: [relpath] });
+    };
+    const live = () => store.listChecks(planId).filter((check) => check.origin === "derived")
+      .map((check) => `${check.item}|${check.derived_state}${check.path ? `@${check.path}` : ""}`);
+    return { store, group: group.id, planId, deliver, live, sync: () => store.syncDerivedChecks(planId) };
+  }
+
+  test("your numbers are offered and the film delivered on it is bound, though its cut name ends on 片尾", async () => {
+    const w = await opened();
+    const [own] = w.store.listTickets(w.planId);
+    expect(own!.title).toBe(w.store.getTask(w.planId).title);
+    expect(partTicket(own!.title)).toBe(true);
+    expect(w.sync().proposed).toHaveLength(2);
+    w.deliver("launch/dawn_final.mp4");
+    w.sync();
+    expect(w.live()).toEqual(LIVE_BOUND);
+    w.store.close();
+  });
+
+  test("renamed, the job keeps its own ticket: the offers stay and the film still binds", async () => {
+    const w = await opened();
+    w.sync();
+    w.store.renamePlanByUser(w.planId, "晨光宣传短片");
+    expect(w.sync().dropped).toEqual([]);
+    w.deliver("launch/dawn_final.mp4");
+    w.sync();
+    expect(w.live()).toEqual(LIVE_BOUND);
+    w.store.close();
+  });
+
+  test("a ticket the lead names after a part is still that part's", async () => {
+    const w = await opened();
+    w.sync();
+    const part = w.store.createTicket({ taskId: w.planId, title: "片尾 logo 动画", spec: "片尾的 logo 放大" });
+    const line = w.store.postMessage(w.group, { body: "时长 3 秒" });
+    w.store.refileMessage(line.id, { filings: [{ taskId: w.planId, ticketId: part.id }], userActionId: "to-the-part" });
+    w.sync();
+    expect(w.live()).toEqual(LIVE_OFFERED);
+    // The same words filed under the job's own ticket are said of the film.
+    const [own] = w.store.listTickets(w.planId);
+    w.store.refileMessage(line.id, { filings: [{ taskId: w.planId, ticketId: own!.id }], userActionId: "to-the-job" });
+    w.sync();
+    expect(w.live()).toEqual(LIVE_REFILED);
+    w.store.close();
   });
 });

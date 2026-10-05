@@ -2,7 +2,7 @@
  * work_on's durable state transition (ADR 0040 §2.8/§8.4). Tool adapters only decode this result;
  * they never write SQL or publish a card before the selection, binding and work log commit.
  */
-import { parseMentions, type Message } from "@real-bot/protocol";
+import type { Message } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { waitingOn } from "./large-jobs";
 import { isoNow } from "../ids";
@@ -14,7 +14,7 @@ import { getMessage } from "./messages";
 import { createNewPlanCard } from "./new-plan-cards";
 import { readEngineLevel, ENGINE_LEVELS } from "./schema-gate";
 import type { StoreContext } from "./shared";
-import { getTask, openTask } from "./tasks";
+import { getTask, openTask, planTitle } from "./tasks";
 import { createTicket, getTicket } from "./tickets";
 import { getTurn, listLiveTurns } from "./turns";
 import { recordWorkEvent } from "./work-events";
@@ -42,19 +42,6 @@ export type WorkOnResult = {
 
 function object(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
-}
-
-/**
- * A new job's title without the Bots it names: 「@Alpha 做一个 logo」 opens 「做一个 logo」. A title
- * that is nothing but names keeps them.
- */
-export function planTitle(ctx: StoreContext, said: string): string {
-  const roster = ctx.db.query<{ name: string }, []>("SELECT name FROM bots WHERE deleted_at IS NULL").all().map((row) => row.name);
-  const spans = parseMentions(said, roster).spans.filter((span) => span.kind !== "unresolved");
-  let title = said;
-  for (const span of [...spans].sort((a, b) => b.start - a.start)) title = `${title.slice(0, span.start)} ${title.slice(span.end)}`;
-  title = title.replace(/\s+/g, " ").replace(/^[\s,，、:：]+/, "").trim();
-  return title || said;
 }
 
 /** Every refusal throws, so a new plan/ticket created earlier in the transaction never leaks. */

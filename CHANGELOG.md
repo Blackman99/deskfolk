@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Your numbers become checks even when the job's name was cut short on a word for one part
+
+- A job a Bot opens from your line, and the ticket it opens with, are named after the first 40 characters of that line. When the cut ended on a word for one part of the work (片尾, 字幕, 镜头…) and lost the 成片 after it, the app took the job's own ticket for one part's: the numbers in your line (6 seconds, 1080×1920) were never offered as checks, and the film delivered on that ticket was not taken as the job's final cut, so nothing measured it. A ticket named after its job, by its name or by the start of the line that opened it (still so after you rename the job), now always stands for the whole job.
+
 ### Remote access and the remote screen on Windows (experimental, not yet tried on a real PC)
 
 - The Windows preview can now connect to your relay and pair a phone, as the Mac can: Settings → Remote access gives the connect form instead of saying Windows is not supported, and approving a device (or removing one) asks Windows Hello — face, fingerprint or PIN. Without Hello set up, the card says to set a PIN under Windows Settings → Accounts → Sign-in options and keeps the approve button. Under the hood the window talks to its daemon over the daemon's own stdin and stdout, since Windows has no equivalent of the Mac's inherited channel ([ADR 0059](docs/adr/0059-windows-remote-access-and-screen.md)).

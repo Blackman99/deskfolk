@@ -34,7 +34,7 @@ import { citedPathExists } from "./messages";
 import type { QuoteVia } from "./quotes";
 import { settingsCached } from "./settings";
 import type { StoreContext } from "./shared";
-import { getTask, isReservedTaskPath, type Task } from "./tasks";
+import { getTask, isReservedTaskPath, namedAfterJob, type Task } from "./tasks";
 import { recordWorkEvent } from "./work-events";
 
 /** What one sync did, by check id, for the engine to tell you about and to run. */
@@ -63,10 +63,11 @@ type QuoteRow = { id: string; body: string; via: QuoteVia; created_at: string; t
 
 /**
  * Your words about the plan still readable, oldest first, with whether each was filed under a part
- * and what counts as one line of it: words typed on the board count once per field group (the
- * plan's fields, or one ticket's description), however often you save it.
+ * (a ticket named after the job itself never is: `namedAfterJob`) and what counts as one line of
+ * it: words typed on the board count once per field group (the plan's fields, or one ticket's
+ * description), however often you save it.
  */
-function planQuotes(ctx: StoreContext, taskId: string): QuoteForChecks[] {
+function planQuotes(ctx: StoreContext, task: Task): QuoteForChecks[] {
   return ctx.db
     .query<QuoteRow, [string]>(
       `SELECT q.id, q.body, q.via, q.created_at, q.ticket_id, t.title AS ticket_title
@@ -74,14 +75,14 @@ function planQuotes(ctx: StoreContext, taskId: string): QuoteForChecks[] {
        WHERE q.task_id = ? AND q.redacted_at IS NULL
        ORDER BY q.created_at ASC, q.rowid ASC`,
     )
-    .all(taskId)
+    .all(task.id)
     .map((row) => ({
       id: row.id,
       body: row.body,
       via: row.via,
       source: row.via === "board" ? `board:${row.ticket_id ?? "plan"}` : row.id,
       at: row.created_at,
-      aboutPart: row.ticket_title !== null && partTicket(row.ticket_title),
+      aboutPart: row.ticket_title !== null && !namedAfterJob(ctx, task, row.ticket_title) && partTicket(row.ticket_title),
     }));
 }
 
@@ -91,7 +92,8 @@ function measureOfRow(row: AcceptanceCheckRow): CheckMeasure | null {
 
 /**
  * The plan's final deliverable: of the files its Bots delivered (attached to a Bot's line filed
- * under it, not on a part's or another version's ticket) that are still there and `bindRuleOf`
+ * under it, not on a part's or another version's ticket; a ticket named after the job is neither)
+ * that are still there and `bindRuleOf`
  * accepts, the best named, newest first within a name — but a name outranks another only in the same
  * kind of place: a file in a `deliverables/` folder or the plan's own folder (its tickets' included)
  * beats one elsewhere whatever its name, so a MASTER a Bot keeps somewhere else never takes the check
@@ -115,7 +117,7 @@ export function finalDeliverable(ctx: StoreContext, task: Task): { path: string;
     const inPlace = path.split("/").slice(0, -1).includes("deliverables") || path.startsWith(`${task.dir}/`);
     const rank = (inPlace ? 0 : 3) + rule.rank;
     if (best && best.rank <= rank) continue;
-    if ((titles ?? "").split("\n").some((title) => title && !filmTicket(title))) continue;
+    if ((titles ?? "").split("\n").some((title) => title && !namedAfterJob(ctx, task, title) && !filmTicket(title))) continue;
     if (isReservedTaskPath(task.dir, path) || !citedPathExists(ctx, path)) continue;
     best = { path, glob: rule.glob, rank };
     if (rank === 0) break;
@@ -150,7 +152,7 @@ export function syncDerivedChecks(ctx: StoreContext, taskId: string): DerivedChe
     return change;
   }
   const locale = settingsCached(ctx).locale;
-  const statements = derivedStatements(planQuotes(ctx, taskId));
+  const statements = derivedStatements(planQuotes(ctx, task));
   const rows = ctx.db.query<AcceptanceCheckRow, [string]>(`SELECT * FROM acceptance_checks WHERE task_id = ? AND origin = 'derived' ORDER BY created_at ASC, id ASC`).all(taskId);
   const byApp = removedByApp(ctx, taskId);
 
