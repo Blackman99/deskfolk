@@ -1172,8 +1172,17 @@ export type SessionSummary = Session & {
   live_turns?: Turn[];
   pending_judgements?: PendingJudgement[];
   unread_count?: number;
+  /**
+   * A card here still waits on your press, read or not: a hand-over to approve or send back, or a
+   * tool approval (`approval`); a question or a default-model pick (`ask`). The Dock badge counts
+   * these besides unread lines, and with no turn live, the row is the only place to see where they
+   * are. Null when nothing waits; absent from an older daemon.
+   */
+  waiting_on_you?: SessionWaitingOnYou | null;
   notification_preference?: import("./notifications.ts").SessionNotificationPreference;
 };
+
+export type SessionWaitingOnYou = "approval" | "ask";
 
 export type TurnStatus =
   | "running"

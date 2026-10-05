@@ -106,7 +106,18 @@ export function sidebarStatus(
 ): SessionStatusResult {
   const live = sessionStatus(session.id, turns, approvals, labels, pendingJudgements);
   if (live.kind !== "idle") return live;
-  return settledNotice(session, messages, labels) ?? live;
+  return waitingCard(session, labels) ?? settledNotice(session, messages, labels) ?? live;
+}
+
+/**
+ * A card that waits on your press with no turn open on it — a sample to approve, a question the
+ * work stopped on — counts toward the Dock badge read or not, so the row says where it is. Not a
+ * Bot at work (`isWorkingStatus` reads live turns only), and it outranks how the last turn ended.
+ */
+function waitingCard(session: SessionSummary, labels: StatusLabels): SessionStatusResult | null {
+  if (session.waiting_on_you === "approval") return { kind: "waiting_approval", label: labels.waitingApproval, isBusy: false };
+  if (session.waiting_on_you === "ask") return { kind: "waiting_ask", label: labels.waitingAsk, isBusy: false };
+  return null;
 }
 
 /**

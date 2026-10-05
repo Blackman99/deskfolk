@@ -230,6 +230,28 @@ test("an interrupt note shows on the row, and a live turn still wins", () => {
   expect(sidebarStatus(session, [makeTurn("t2", "s1", "running")], [], labels).kind).toBe("running");
 });
 
+test("a card waiting on you marks the row with no turn live, and a live turn still wins", () => {
+  const session: SessionSummary = {
+    id: "s1",
+    kind: "direct",
+    name: null,
+    created_at: "t",
+    updated_at: "t",
+    participants: [],
+    last_message: note("s1", "样片交上来了……看过之后，放行或者退回。"),
+    waiting_on_you: "approval",
+  };
+  const status = sidebarStatus(session, [makeTurn("t1", "s1", "completed")], [], labels);
+  expect(status).toEqual({ kind: "waiting_approval", label: "待审批", isBusy: false });
+  expect(sidebarStatus({ ...session, waiting_on_you: "ask" }, [], [], labels)).toEqual({ kind: "waiting_ask", label: "待回复", isBusy: false });
+  expect(sidebarStatus(session, [makeTurn("t2", "s1", "running")], [], labels).kind).toBe("running");
+  // Waiting on you is what needs the look, more than how the last turn ended.
+  expect(sidebarStatus({ ...session, last_message: note("s1", INTERRUPT_NOTE_BODY) }, [], [], labels).kind).toBe("waiting_approval");
+  expect(sidebarStatus({ ...session, waiting_on_you: null }, [], [], labels).kind).toBe("idle");
+  // Not a Bot at work: the working-only list and the roster's dots leave it out.
+  expect(workingSessionIds([session], [], []).size).toBe(0);
+});
+
 test("a newer ordinary message clears the failure label", () => {
   const session: SessionSummary = {
     id: "s1",

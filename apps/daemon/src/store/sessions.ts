@@ -6,6 +6,7 @@ import {
   type SessionDetail,
   type SessionParticipant,
   type SessionSummary,
+  type SessionWaitingOnYou,
   type Turn,
 } from "@real-bot/protocol";
 import { forgetLessonSources } from "./lessons";
@@ -109,6 +110,7 @@ export function listSessions(ctx: StoreContext): SessionSummary[] {
     liveTurnsBySession.set(row.session_id, list);
   }
   const unreadBySession = unreadCountsBySession(ctx);
+  const waitingBySession = waitingOnYouBySession(ctx);
   return sessions
     .filter((s) => {
       const parts = bySession.get(s.id) ?? [];
@@ -129,8 +131,27 @@ export function listSessions(ctx: StoreContext): SessionSummary[] {
       last_message: lastMessagesBySession.get(s.id) ?? null,
       live_turns: liveTurnsBySession.get(s.id) ?? [],
       unread_count: unreadBySession.get(s.id) ?? 0,
+      waiting_on_you: waitingBySession.get(s.id) ?? null,
       notification_preference: getSessionNotificationPreference(ctx, s.id),
     }));
+}
+
+/**
+ * What still waits on your press in each conversation, by its open notifications: a hand-over's
+ * card (`review_item`) or a tool approval reads as one to approve, anything else as one to answer.
+ * Read or not, the badge counts it; a sample's card read the moment it landed held the Dock badge
+ * at 1 with nothing on its row to say where (2026-10-05).
+ */
+function waitingOnYouBySession(ctx: StoreContext): Map<string, SessionWaitingOnYou> {
+  const rows = ctx.db
+    .query<{ session_id: string; approval: number }, []>(
+      `SELECT session_id, MAX(kind = 'approval' OR semantic_key LIKE 'review_item:%') AS approval
+       FROM notifications
+       WHERE action_state = 'open' AND kind IN ('approval', 'ask') AND session_id IS NOT NULL
+       GROUP BY session_id`,
+    )
+    .all();
+  return new Map(rows.map((row) => [row.session_id, row.approval ? "approval" : "ask"]));
 }
 
 /** `messageLimit` sizes the first page of history; a phone asks for fewer and pages back as it scrolls. */

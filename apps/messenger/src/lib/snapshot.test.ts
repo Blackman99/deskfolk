@@ -91,6 +91,25 @@ test("session.upsert keeps last_read_at and unread_count unless the event carrie
   expect(renamed.sessions[0]?.unread_count).toBe(2);
 });
 
+test("session.upsert keeps waiting_on_you unless the event carries it", () => {
+  const row = {
+    event: "session.upsert" as const,
+    occurred_at: "t",
+    id: "s1",
+    kind: "direct" as const,
+    name: null,
+    created_at: "t",
+    updated_at: "t",
+    participants: [{ member: "user", joined_at: "t", left_at: null }],
+  };
+  const waiting = applyEvent(emptySnapshot(), { ...row, waiting_on_you: "approval" });
+  expect(waiting.sessions[0]?.waiting_on_you).toBe("approval");
+  const older = applyEvent(waiting, { ...row, updated_at: "t2" });
+  expect(older.sessions[0]?.waiting_on_you).toBe("approval");
+  const answered = applyEvent(older, { ...row, updated_at: "t3", waiting_on_you: null });
+  expect(answered.sessions[0]?.waiting_on_you).toBeNull();
+});
+
 test("session.upsert keeps notification_preference unless the event carries it", () => {
   const first = applyEvent(emptySnapshot(), {
     event: "session.upsert",

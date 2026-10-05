@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### The list shows where a card waits on you
+
+- A card the app puts up for you after a Bot's turn has ended (a sample to approve or send back, a question the work stopped on, a default-model pick) counted toward the Dock badge even once read, but nothing on the list said where it was: with every line read, on the phone or here, the badge stayed at 1 with no row to account for it. The conversation's row now reads **Approval** or **Waiting input** until you answer the card, the way it does while a turn waits on you, and the mark goes as soon as the card is answered or no longer waits.
+
 ### What you say to a stopped Bot gets done once you go on
 
 - While work was stopped, a line of yours to the Bot only got a read-only answer ("I'll enlarge it once you say continue"), and going on opened nothing unless a turn had been stopped mid-way: on a job already approved, "make the logo at the end bigger" was answered and never done. The stop now keeps the lines it could only answer, and going on hands them back: the Bot goes on from the last thing you said, reading the rest above it, and the receipt says so. A Bot another stop still holds gets them when that one is lifted.

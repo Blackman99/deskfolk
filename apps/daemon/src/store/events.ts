@@ -170,6 +170,14 @@ export function committedEvents(ctx: StoreContext): ClientEvent[] {
   const cleared = new Set(changes.filter((c) => c.entity === "messages" && c.op === "DELETE").map((c) => c.session_id!));
   for (const id of cleared) out.push({ event: "session.cleared", occurred_at, id });
   const sessions = listSessions(ctx);
+  // What waits on you in a conversation is on its row (`waiting_on_you`): a card put up, answered
+  // or let go of changes the row too.
+  for (const change of changes) {
+    const id = change.entity === "notifications" ? change.session_id : null;
+    if (id && !unique.has(`sessions:${id}`) && sessions.some((session) => session.id === id)) {
+      unique.set(`sessions:${id}`, { entity: "sessions", id, op: "UPDATE", session_id: null });
+    }
+  }
   // One look at each annotated file per pass, however many of its annotations changed.
   let probe: FileProbe | undefined;
   for (const { entity, id } of unique.values()) {

@@ -3055,6 +3055,7 @@ export class MessengerRuntime {
               last_message: s.last_message,
               live_turns: s.live_turns,
               unread_count: detail.unread_count ?? s.unread_count ?? 0,
+              waiting_on_you: s.waiting_on_you ?? null,
               notification_preference: detail.notification_preference ?? s.notification_preference,
             }
           : s,

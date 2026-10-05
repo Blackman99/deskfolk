@@ -162,6 +162,48 @@ describe("store notifications", () => {
     }
   });
 
+  it("marks the conversation a card waits on you in, and lifts the mark once it no longer waits", () => {
+    const store = new Store();
+    try {
+      const director = store.createBot({ name: "Director", duties: "film", boundaries: "none" });
+      const other = store.createBot({ name: "Other", duties: "write", boundaries: "none" });
+      const session = director.direct_session.id;
+      const waiting = () => store.listSessions().find((row) => row.id === session)?.waiting_on_you;
+      const upserts: (string | null | undefined)[] = [];
+      store.onCommit((event) => {
+        if (event.event === "session.upsert" && event.id === session) upserts.push(event.waiting_on_you);
+      });
+      expect(waiting()).toBeNull();
+
+      // A sample's approve/reject card, read the moment it landed because the conversation was open:
+      // the Dock badge counts it, and with no turn live nothing on the row said where it was
+      // (2026-10-05).
+      const card = store.createNotification({ semantic_key: "review_item:card", kind: "ask", session_id: session, action_state: "open" });
+      store.markNotificationRead(card.id);
+      expect(waiting()).toBe("approval");
+      expect(upserts.at(-1)).toBe("approval");
+      expect(store.listSessions().find((row) => row.id === other.direct_session.id)?.waiting_on_you).toBeNull();
+
+      // A question card besides it: the hand-over still reads as the one to approve.
+      store.createNotification({ semantic_key: "work_question:q", kind: "ask", session_id: session, action_state: "open" });
+      expect(waiting()).toBe("approval");
+
+      store.updateNotificationActionState("review_item:card", "resolved", "approve", true);
+      expect(waiting()).toBe("ask");
+      expect(upserts.at(-1)).toBe("ask");
+
+      store.updateNotificationActionState("work_question:q", "voided", "superseded", true);
+      expect(waiting()).toBeNull();
+      expect(upserts.at(-1)).toBeNull();
+
+      // A reply waits on nothing: unread is the row's dot, not this mark.
+      store.createNotification({ semantic_key: "reply:r", kind: "reply", session_id: session });
+      expect(waiting()).toBeNull();
+    } finally {
+      store.close();
+    }
+  });
+
   it("reading through a line also reads a notification whose note the conversation does not list, up to the next line it does", () => {
     const store = new Store();
     try {

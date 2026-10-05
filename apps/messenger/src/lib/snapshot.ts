@@ -143,6 +143,8 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
             : (existing?.origin_message_id ?? null),
         unread_count:
           session.unread_count !== undefined ? session.unread_count : (existing?.unread_count ?? 0),
+        waiting_on_you:
+          session.waiting_on_you !== undefined ? session.waiting_on_you : (existing?.waiting_on_you ?? null),
         last_message: (() => {
           const incoming =
             session.last_message !== undefined ? session.last_message : (existing?.last_message ?? null);
