@@ -127,6 +127,24 @@ export type Tools = {
     requiresApiKey?: boolean,
   ) => Promise<ToolResult | null>;
   waitForAsk: (turnId: string, askId: string, toolCallId: string) => Promise<AskAnswer | null>;
+  openApprovalCard: (
+    turn: Turn,
+    live: Live,
+    waitApproval: NonNullable<ToolResult["waitApproval"]>,
+    toolCallId: string,
+  ) => Promise<ToolResult | null>;
+  openAskCard: (
+    turn: Turn,
+    live: Live,
+    waitAsk: NonNullable<ToolResult["waitAsk"]>,
+    toolCallId: string,
+  ) => Promise<{ ask: Message; answer: AskAnswer | null }>;
+  beforeEffect: (
+    turn: Turn,
+    live: Live,
+    name: string,
+    callId?: string,
+  ) => Promise<{ ok: true; turn: Turn } | { ok: false; result: ToolResult }>;
 };
 
 /** The endings a promise of more to come is weighed for (the end contract's `promised_later`). */
@@ -343,36 +361,7 @@ export function createTools(deps: ToolsDeps): Tools {
       result = withLatestMcp(call.name, result);
       noteWrites(turnId, live, call.name, result);
       if (result.waitAsk) {
-        const waitAsk = result.waitAsk;
-        const { ask, waiting } = store.transaction(() => {
-          const ask = store.insertMessage({
-            sessionId: turn.session_id,
-            turnId,
-            parentId: live.parentId,
-            kind: "ask",
-            author: turn.bot_id,
-            body: waitAsk.question,
-            ask: waitAsk.spec,
-          });
-          store.db.run(
-            "UPDATE turns SET status = 'waiting_ask', pending_ask_id = ?, updated_at = ? WHERE id = ?",
-            [ask.id, isoNow(), turnId],
-          );
-          const waiting = store.getTurn(turnId);
-          store.createNotification({
-            semantic_key: `ask:${ask.id}`,
-            kind: "ask",
-            session_id: turn.session_id,
-            message_id: ask.id,
-            turn_id: turnId,
-            created_at: ask.created_at,
-            action_state: "open",
-          });
-          return { ask, waiting };
-        });
-        publishMessage(ask);
-        publishTurn(waiting, null);
-        const answer = await waitForAsk(turnId, ask.id, call.id);
+        const { ask, answer } = await openAskCard(turn, live, result.waitAsk, call.id);
         if (answer == null || !active(turnId, live)) return "wait";
         live.loop.push({
           role: "tool",
@@ -396,38 +385,7 @@ export function createTools(deps: ToolsDeps): Tools {
         continue;
       }
       if (result.waitApproval) {
-        const waitApproval = result.waitApproval;
-        const { card, approval, waiting } = store.transaction(() => {
-          const card = store.insertMessage({
-            sessionId: turn.session_id,
-            turnId,
-            parentId: live.parentId,
-            kind: "approval",
-            author: turn.bot_id,
-            body: waitApproval.summary,
-          });
-          const approval = store.insertApproval({
-            turnId,
-            messageId: card.id,
-            kind_key: waitApproval.kind_key,
-            summary: waitApproval.summary,
-            target: waitApproval.target,
-            requires_api_key: Boolean(waitApproval.requiresApiKey),
-          });
-          const waiting = store.setTurnStatus(turnId, "waiting_approval");
-          return { card, approval, waiting };
-        });
-        const pending = waitForApproval(
-          turnId,
-          approval.id,
-          call.id,
-          waitApproval.run,
-          waitApproval.requiresApiKey,
-        );
-        publishMessage(card);
-        publish({ event: "approval.upsert", occurred_at: occurred(), ...approval });
-        publishTurn(waiting, null);
-        let resolved = await pending;
+        let resolved = await openApprovalCard(turn, live, result.waitApproval, call.id);
         if (resolved !== null) finishEffectEvidence(turnId, live, call.name, call.id, resolved);
         if (resolved == null || !active(turnId, live)) return "wait";
         recordRun(turnId, live, call.name, args, resolved);
@@ -610,6 +568,29 @@ export function createTools(deps: ToolsDeps): Tools {
     args: Record<string, unknown>,
     callId?: string,
   ): Promise<ToolResult> {
+    const gate = await beforeEffect(turn, live, name, callId);
+    if (!gate.ok) return gate.result;
+    turn = gate.turn;
+    // Level 5 (ADR 0046): a hand-over and a review are the engine's, which hashes, cites and runs checks.
+    if ((name === "submit" || name === "review") && submissions) {
+      return name === "submit" ? submissions().submit(turn.id, args) : submissions().review(turn.id, args);
+    }
+    return dispatchAfterGate(turn, live, name, args, callId);
+  }
+
+  /**
+   * What stands between a call and its effect: a desk segment binds a job first (the one its line
+   * was read as about, or a new one), then the hold covering the job is asked again right before
+   * acting, the work dir is marked used and the effect entered in the plan's ledger. Returns the
+   * turn as it stands after binding, or the refusal the call gets instead. The app's own tools and
+   * a Claude Agent turn's (ADR 0061, by the app tool name its call stands for) both pass here.
+   */
+  async function beforeEffect(
+    turn: Turn,
+    live: Live,
+    name: string,
+    callId?: string,
+  ): Promise<{ ok: true; turn: Turn } | { ok: false; result: ToolResult }> {
     // Desk segments may read and reply, but choosing a job precedes the first external effect.
     turn = store.getTurn(turn.id);
     const deskAllowed = NO_EFFECT_TOOLS.has(name) || name === "send_message" || name === "ask_user" || name === "work_on" || live.mcpTools.get(name)?.readOnly === true;
@@ -621,36 +602,43 @@ export function createTools(deps: ToolsDeps): Tools {
       const readNew = trigger.kind === "user" && store.lineReadAsNew(trigger.id);
       if (candidates.length > 1 && !readNew) {
         store.noteFilingBounce(turn.id);
-        return { ok: false, error: { code: "needs_filing", message: `Choose a job with work_on before this call: one of ${candidates.join(", ")}, or {new:{title, quote_message_id}} quoting the user's line when it is about none of them` }, emitted: [] };
+        return { ok: false, result: { ok: false, error: { code: "needs_filing", message: `Choose a job with work_on before this call: one of ${candidates.join(", ")}, or {new:{title, quote_message_id}} quoting the user's line when it is about none of them` }, emitted: [] } };
       }
       if (candidates.length === 0 && trigger.kind !== "user") {
-        return { ok: false, error: { code: "needs_filing", message: "Only a user request can open a new job; choose a candidate with work_on" }, emitted: [] };
+        return { ok: false, result: { ok: false, error: { code: "needs_filing", message: "Only a user request can open a new job; choose a candidate with work_on" }, emitted: [] } };
       }
       const bound = await runCollabTool({ store, botId: turn.bot_id, sessionId: turn.session_id, turnId: turn.id,
         parentId: live.parentId, signal: live.abort.signal, admission }, "work_on", {
         plan: readNew || candidates.length === 0 ? { new: { title: trigger.body, quote_message_id: trigger.id } } : candidates[0],
       });
       for (const messageId of bound.filed ?? []) noteFiled(messageId);
-      if (!bound.ok || bound.data?.merged) return bound;
+      if (!bound.ok || bound.data?.merged) return { ok: false, result: bound };
       await publishEmitted(turn.id, live, bound.emitted);
-      if (bound.data?.queued) return { ok: false, data: { ended: true, queued: true },
-        error: { code: "queued", message: "this job is queued; the effect waits for a working slot" }, emitted: [] };
+      if (bound.data?.queued) return { ok: false, result: { ok: false, data: { ended: true, queued: true },
+        error: { code: "queued", message: "this job is queued; the effect waits for a working slot" }, emitted: [] } };
       turn = store.getTurn(turn.id);
     }
     live.planDir = store.turnPlanDir(turn.id);
     live.workDir = store.turnWorkDir(turn.id);
     if (hasEffect(live, name) && name !== "work_on" && name !== "send_message" && name !== "ask_user") {
       // Binding may have changed which hold applies; check the target immediately before acting.
-      if (!mayAct(store, turn.id)) return { ok: false, error: { code: "held", message: HELD_CALL }, emitted: [] };
+      if (!mayAct(store, turn.id)) return { ok: false, result: { ok: false, error: { code: "held", message: HELD_CALL }, emitted: [] } };
       if (turn.task_id) store.markWorkDirectoryUsed(turn.id);
       if (name === "write_file" || name === "delete_file" || name === "shell" || live.mcpTools.has(name)) {
         store.recordNewPlanEffectStarted({ turnId: turn.id, tool: name, toolCallId: callId });
       }
     }
-    // Level 5 (ADR 0046): a hand-over and a review are the engine's, which hashes, cites and runs checks.
-    if ((name === "submit" || name === "review") && submissions) {
-      return name === "submit" ? submissions().submit(turn.id, args) : submissions().review(turn.id, args);
-    }
+    return { ok: true, turn };
+  }
+
+  /** The rest of `dispatchTool`, once `beforeEffect` let the call through. */
+  async function dispatchAfterGate(
+    turn: Turn,
+    live: Live,
+    name: string,
+    args: Record<string, unknown>,
+    callId?: string,
+  ): Promise<ToolResult> {
     if (name === "end_turn" && args.reason === "done" && submissions && store.capabilities().engine_level >= ENGINE_LEVELS.submissions) {
       // §5.2: an ending that says done hands over its new files first. A hand-over whose checks
       // fail comes back instead of the ending; the same files again hand nothing over, so asking
@@ -869,6 +857,96 @@ export function createTools(deps: ToolsDeps): Tools {
     }
   }
 
+  /**
+   * The card a call waits on for your OK, with its approval row and `waiting_approval`, written in
+   * one transaction; resolves with what `run` returned once you allowed it, a refusal when you
+   * denied it, or null when the turn stopped first. The app's own tools and a Claude Agent turn's
+   * permission prompts (ADR 0061) both come through here.
+   */
+  async function openApprovalCard(
+    turn: Turn,
+    live: Live,
+    waitApproval: NonNullable<ToolResult["waitApproval"]>,
+    toolCallId: string,
+  ): Promise<ToolResult | null> {
+    const turnId = turn.id;
+    const { card, approval, waiting } = store.transaction(() => {
+      const card = store.insertMessage({
+        sessionId: turn.session_id,
+        turnId,
+        parentId: live.parentId,
+        kind: "approval",
+        author: turn.bot_id,
+        body: waitApproval.summary,
+      });
+      const approval = store.insertApproval({
+        turnId,
+        messageId: card.id,
+        kind_key: waitApproval.kind_key,
+        summary: waitApproval.summary,
+        target: waitApproval.target,
+        requires_api_key: Boolean(waitApproval.requiresApiKey),
+      });
+      const waiting = store.setTurnStatus(turnId, "waiting_approval");
+      return { card, approval, waiting };
+    });
+    const pending = waitForApproval(
+      turnId,
+      approval.id,
+      toolCallId,
+      waitApproval.run,
+      waitApproval.requiresApiKey,
+    );
+    publishMessage(card);
+    publish({ event: "approval.upsert", occurred_at: occurred(), ...approval });
+    publishTurn(waiting, null);
+    return pending;
+  }
+
+  /**
+   * A question card for you, with `waiting_ask` and its notification, written in one transaction;
+   * resolves with your answer, or null when the turn stopped first. Shared with a Claude Agent
+   * turn's own questions (ADR 0061).
+   */
+  async function openAskCard(
+    turn: Turn,
+    live: Live,
+    waitAsk: NonNullable<ToolResult["waitAsk"]>,
+    toolCallId: string,
+  ): Promise<{ ask: Message; answer: AskAnswer | null }> {
+    const turnId = turn.id;
+    const { ask, waiting } = store.transaction(() => {
+      const ask = store.insertMessage({
+        sessionId: turn.session_id,
+        turnId,
+        parentId: live.parentId,
+        kind: "ask",
+        author: turn.bot_id,
+        body: waitAsk.question,
+        ask: waitAsk.spec,
+      });
+      store.db.run(
+        "UPDATE turns SET status = 'waiting_ask', pending_ask_id = ?, updated_at = ? WHERE id = ?",
+        [ask.id, isoNow(), turnId],
+      );
+      const waiting = store.getTurn(turnId);
+      store.createNotification({
+        semantic_key: `ask:${ask.id}`,
+        kind: "ask",
+        session_id: turn.session_id,
+        message_id: ask.id,
+        turn_id: turnId,
+        created_at: ask.created_at,
+        action_state: "open",
+      });
+      return { ask, waiting };
+    });
+    publishMessage(ask);
+    publishTurn(waiting, null);
+    const answer = await waitForAsk(turnId, ask.id, toolCallId);
+    return { ask, answer };
+  }
+
   function waitForApproval(
     turnId: string,
     approvalId: string,
@@ -918,5 +996,8 @@ export function createTools(deps: ToolsDeps): Tools {
     publishEmitted,
     waitForApproval,
     waitForAsk,
+    openApprovalCard,
+    openAskCard,
+    beforeEffect,
   };
 }

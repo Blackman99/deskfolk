@@ -1080,105 +1080,110 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
         continue;
       }
       live.loop.push({ role: "assistant", content: result.content });
-      const closer = await readsAsNoWork(result.content, (text) => readBotLine(text, current.session_id));
-      if (!active(turnId, live)) {
-        if (live.abort.signal.aborted) drop();
-        return;
-      }
-      const rawBody = closer ? "" : result.content;
-      // A delivery to the user goes out only after one look at what the job asked for. The note
-      // comes back as a user line in the loop, and the next reply is final whatever it says.
-      const closingBody = resolveBodyPathsToWorkDir(rawBody, live.workDir, (relpath) => pathExists(store, relpath));
-      const bounce = await closingCheck(turnId, live, current, {
-        body: closingBody,
-        said: rawBody,
-        paths: mergeCitedPaths(live.writtenPaths, [
-          ...attachmentLinePaths(closingBody),
-          ...extractWorkspacePathsFromBody(closingBody),
-        ]),
-        sessionId: current.session_id,
-      });
-      if (!active(turnId, live)) {
-        if (live.abort.signal.aborted) drop();
-        return;
-      }
-      if (bounce) {
-        live.loop.push({ role: "user", content: bounce });
+      const settled = await settleClosingReply(turnId, live, current, result.content);
+      if (settled.kind === "bounce") {
+        live.loop.push({ role: "user", content: settled.note });
         continue;
       }
-      // From level 5 a closing reply that hands files over goes out first, so what it cites is
-      // handed over (the implicit submission) before the ending is weighed (§5.2). Words alone
-      // are never inferred from a plain-text closing reply — that verbal hand-over once let
-      // "母带剪好了" approve a ticket nobody checked (ADR 0046): a ticket whose work
-      // is words closes only through an explicit `end_turn(done, answer)` (engine/tools.ts).
-      let posted: Message | null | undefined;
-      const files = store.capabilities().engine_level >= ENGINE_LEVELS.submissions && handsOver(current, live, closingBody);
-      if (files) {
-        posted = publishCitedBotMessage(current, live, turnId, rawBody);
-        const produced = live.producedPaths ?? [];
-        live.writtenPaths = [];
-        let settled: Awaited<ReturnType<typeof implicitSubmission>> = null;
-        try {
-          settled = await implicitSubmission(turnId);
-          // Files of a ticket someone else owns: not handed over for this Bot, which hears so once.
-          const hint = !settled ? store.handOverHint({ turnId, paths: produced }) : null;
-          if (hint) {
-            live.loop.push({ role: "user", content: hint });
-            if (posted && !live.parentId && current.mode !== "readonly") void track(handleParticipation(posted, { fromUser: false }));
-            continue;
-          }
-        } catch (error) {
-          console.error(`[turn ${turnId}] could not hand its files over`, error);
-        }
-        if (!active(turnId, live)) {
-          if (live.abort.signal.aborted) drop();
-          return;
-        }
-        // Handed over and sent back by its checks: the Bot hears why, and goes on (handing the same
-        // bytes over again hands nothing over, so the next ending is weighed as usual).
-        if (settled?.state === "checks_failed") {
-          const lines = settled.failures.map((check) => live.locale === "en" ? `"${check.item}": ${check.detail || "fail"}` : `「${check.item}」：${check.detail || "不通过"}`);
-          live.loop.push({ role: "user", content: live.locale === "en"
-            ? `(app) What you handed over failed its checks, so the ticket did not move: ${lines.join("; ")}. Fix it, or end_turn saying what blocks you.`
-            : `（应用）你交出的东西没过检查，任务没往前走：${lines.join("；")}。改好再交，或者用 end_turn 说明卡在哪。` });
-          if (posted && !live.parentId && current.mode !== "readonly") void track(handleParticipation(posted, { fromUser: false }));
-          continue;
-        }
-      }
-      let endingLine: string | null = null;
-      if (store.capabilities().engine_level >= ENGINE_LEVELS.delegation) {
-        const lastWord = await readLastWord(turnId, current, rawBody);
-        if (!active(turnId, live)) {
-          if (live.abort.signal.aborted) drop();
-          return;
-        }
-        const finished = store.finishWork({ turnId, reason: "done" }, { pureText: true, closing: rawBody, lastWord, written: live.producedPaths ?? live.writtenPaths });
-        if (finished.bounce) {
-          live.loop.push({ role: "user", content: finished.bounce });
-          if (posted && !live.parentId && current.mode !== "readonly") void track(handleParticipation(posted, { fromUser: false }));
-          continue;
-        }
-        if (finished.notice || finished.ask) endingLine = finished.ask?.body ?? finished.notice!.body;
-      }
-      const message = posted !== undefined ? posted : publishCitedBotMessage(current, live, turnId, rawBody);
-      // The line about how it ended reads after the reply it is about (「它说了『…』，但这一轮已经结束了」).
-      if (endingLine) {
-        publishMessage(store.insertMessage({ sessionId: current.session_id, turnId, kind: "system", author: current.bot_id,
-          body: endingLine, hiddenFromBots: true }));
-      }
-      if (message && live.writtenPaths.length > 0) observeTicket(turnId, current.bot_id, "delivered");
-      const completed = store.setTurnStatus(turnId, "completed", executionOf(live));
-      lives.delete(turnId);
-      publishTurn(completed, null);
-      // A closing reply goes out the way send_message would: in a group it wakes whoever it
-      // names, in a Bot↔Bot direct the other Bot. A you↔Bot direct has no one else to wake. A
-      // read-only turn's answer is for you and wakes nobody (ADR 0040 I2's exemption goes no further).
-      if (message && !live.parentId && current.mode !== "readonly") {
-        void track(handleParticipation(message, { fromUser: false }));
-      }
-      saidNothing(current, live);
+      if (settled.kind === "inactive" && live.abort.signal.aborted) drop();
       return;
     }
+  }
+
+  /**
+   * A closing reply — words with no tool call — taken through everything that has to pass before
+   * it goes out: the no-work reading, the closing check, the level-5 hand-over of the files it cites,
+   * the end contract, then the post, the completed status and whoever it wakes. Shared by the app's
+   * own hop loop and a Claude Agent turn (ADR 0061). `bounce` is a line the Bot answers in one more
+   * step; `ended` means the reply went out and the turn is completed; `inactive` means the turn
+   * stopped meanwhile, and whatever stopped it wrote its end.
+   */
+  async function settleClosingReply(
+    turnId: string,
+    live: Live,
+    current: Turn,
+    content: string,
+  ): Promise<{ kind: "bounce"; note: string } | { kind: "ended" } | { kind: "inactive" }> {
+    const closer = await readsAsNoWork(content, (text) => readBotLine(text, current.session_id));
+    if (!active(turnId, live)) return { kind: "inactive" };
+    const rawBody = closer ? "" : content;
+    // A delivery to the user goes out only after one look at what the job asked for. The note
+    // comes back as a user line in the loop, and the next reply is final whatever it says.
+    const closingBody = resolveBodyPathsToWorkDir(rawBody, live.workDir, (relpath) => pathExists(store, relpath));
+    const bounce = await closingCheck(turnId, live, current, {
+      body: closingBody,
+      said: rawBody,
+      paths: mergeCitedPaths(live.writtenPaths, [
+        ...attachmentLinePaths(closingBody),
+        ...extractWorkspacePathsFromBody(closingBody),
+      ]),
+      sessionId: current.session_id,
+    });
+    if (!active(turnId, live)) return { kind: "inactive" };
+    if (bounce) return { kind: "bounce", note: bounce };
+    // From level 5 a closing reply that hands files over goes out first, so what it cites is
+    // handed over (the implicit submission) before the ending is weighed (§5.2). Words alone
+    // are never inferred from a plain-text closing reply — that verbal hand-over once let
+    // "母带剪好了" approve a ticket nobody checked (ADR 0046): a ticket whose work
+    // is words closes only through an explicit `end_turn(done, answer)` (engine/tools.ts).
+    let posted: Message | null | undefined;
+    const files = store.capabilities().engine_level >= ENGINE_LEVELS.submissions && handsOver(current, live, closingBody);
+    if (files) {
+      posted = publishCitedBotMessage(current, live, turnId, rawBody);
+      const produced = live.producedPaths ?? [];
+      live.writtenPaths = [];
+      let settled: Awaited<ReturnType<typeof implicitSubmission>> = null;
+      try {
+        settled = await implicitSubmission(turnId);
+        // Files of a ticket someone else owns: not handed over for this Bot, which hears so once.
+        const hint = !settled ? store.handOverHint({ turnId, paths: produced }) : null;
+        if (hint) {
+          if (posted && !live.parentId && current.mode !== "readonly") void track(handleParticipation(posted, { fromUser: false }));
+          return { kind: "bounce", note: hint };
+        }
+      } catch (error) {
+        console.error(`[turn ${turnId}] could not hand its files over`, error);
+      }
+      if (!active(turnId, live)) return { kind: "inactive" };
+      // Handed over and sent back by its checks: the Bot hears why, and goes on (handing the same
+      // bytes over again hands nothing over, so the next ending is weighed as usual).
+      if (settled?.state === "checks_failed") {
+        const lines = settled.failures.map((check) => live.locale === "en" ? `"${check.item}": ${check.detail || "fail"}` : `「${check.item}」：${check.detail || "不通过"}`);
+        if (posted && !live.parentId && current.mode !== "readonly") void track(handleParticipation(posted, { fromUser: false }));
+        return { kind: "bounce", note: live.locale === "en"
+          ? `(app) What you handed over failed its checks, so the ticket did not move: ${lines.join("; ")}. Fix it, or end_turn saying what blocks you.`
+          : `（应用）你交出的东西没过检查，任务没往前走：${lines.join("；")}。改好再交，或者用 end_turn 说明卡在哪。` };
+      }
+    }
+    let endingLine: string | null = null;
+    if (store.capabilities().engine_level >= ENGINE_LEVELS.delegation) {
+      const lastWord = await readLastWord(turnId, current, rawBody);
+      if (!active(turnId, live)) return { kind: "inactive" };
+      const finished = store.finishWork({ turnId, reason: "done" }, { pureText: true, closing: rawBody, lastWord, written: live.producedPaths ?? live.writtenPaths });
+      if (finished.bounce) {
+        if (posted && !live.parentId && current.mode !== "readonly") void track(handleParticipation(posted, { fromUser: false }));
+        return { kind: "bounce", note: finished.bounce };
+      }
+      if (finished.notice || finished.ask) endingLine = finished.ask?.body ?? finished.notice!.body;
+    }
+    const message = posted !== undefined ? posted : publishCitedBotMessage(current, live, turnId, rawBody);
+    // The line about how it ended reads after the reply it is about (「它说了『…』，但这一轮已经结束了」).
+    if (endingLine) {
+      publishMessage(store.insertMessage({ sessionId: current.session_id, turnId, kind: "system", author: current.bot_id,
+        body: endingLine, hiddenFromBots: true }));
+    }
+    if (message && live.writtenPaths.length > 0) observeTicket(turnId, current.bot_id, "delivered");
+    const completed = store.setTurnStatus(turnId, "completed", executionOf(live));
+    lives.delete(turnId);
+    publishTurn(completed, null);
+    // A closing reply goes out the way send_message would: in a group it wakes whoever it
+    // names, in a Bot↔Bot direct the other Bot. A you↔Bot direct has no one else to wake. A
+    // read-only turn's answer is for you and wakes nobody (ADR 0040 I2's exemption goes no further).
+    if (message && !live.parentId && current.mode !== "readonly") {
+      void track(handleParticipation(message, { fromUser: false }));
+    }
+    saidNothing(current, live);
+    return { kind: "ended" };
   }
 
   /**

@@ -476,7 +476,7 @@ async function runShell(
  * usual noise are skipped, and a folder with more than {@link WORK_SCAN_MAX} entries reports
  * nothing at all rather than a list nobody wants.
  */
-function snapshotWorkDir(root: string, workDir: string | null | undefined): Map<string, number> | null {
+export function snapshotWorkDir(root: string, workDir: string | null | undefined): Map<string, number> | null {
   if (!workDir) return null;
   const base = classifyPath(root, workDir);
   if (base.zone !== "inside") return null;
@@ -512,7 +512,7 @@ function snapshotWorkDir(root: string, workDir: string | null | undefined): Map<
 }
 
 /** New or rewritten since the snapshot. A null snapshot means the walk was not worth reporting. */
-function producedPaths(
+export function producedPaths(
   root: string,
   workDir: string | null | undefined,
   before: Map<string, number> | null,

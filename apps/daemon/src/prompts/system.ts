@@ -116,7 +116,7 @@ const TIMEOUT_SENTENCE_WIN_ZH = "要常驻的进程限时或放后台运行：Po
 const TIMEOUT_SENTENCE_EN = "start a long-running process with a time limit such as `timeout 30 npm run dev` and check it with a separate command, so the shell does not hang on it.";
 const TIMEOUT_SENTENCE_WIN_EN = "start a long-running process with a time limit or in the background: PowerShell has no `timeout` wrapper, so use `Start-Process` or a background job and set a time limit appropriate to it, then check it with a separate command, so the shell does not hang on it.";
 
-function systemText(locale: Locale, shell: ToolShellKind, engineLevel = 0): string {
+export function systemText(locale: Locale, shell: ToolShellKind, engineLevel = 0): string {
   let text = locale === "en" ? SYSTEM_EN : SYSTEM_ZH;
   if (engineLevel >= 3) {
     text = text.replace(locale === "en" ? "send_message ends this turn, and so does a reply without tool calls:" : "send_message 会结束本轮，不调工具的回复也一样：",
@@ -219,7 +219,7 @@ export function turnSystemPrompt(input: {
   return input.interrupt ? `${INTERRUPT_FLAG}\n\n${body}` : body;
 }
 
-function formatSkillCatalog(locale: Locale, skills: SkillPromptEntry[]): string {
+export function formatSkillCatalog(locale: Locale, skills: SkillPromptEntry[]): string {
   if (skills.length === 0) return "";
   const heading = locale === "en" ? "# Skills" : "# 技能";
   const intro =
@@ -256,7 +256,7 @@ function formatSkillCatalog(locale: Locale, skills: SkillPromptEntry[]): string 
   return `${heading}\n\n${intro}${sharedNote}\n\n${blocks.join("\n\n")}`;
 }
 
-function formatMemoryDigest(locale: Locale, memories: MemoryPromptEntry[]): string {
+export function formatMemoryDigest(locale: Locale, memories: MemoryPromptEntry[]): string {
   if (memories.length === 0) return "";
   const heading = locale === "en" ? "# Memory" : "# 记忆";
   const intro =
@@ -271,7 +271,7 @@ function formatMemoryDigest(locale: Locale, memories: MemoryPromptEntry[]): stri
   return `${heading}\n\n${intro}\n\n${blocks.join("\n\n")}`;
 }
 
-function formatMcpGuides(locale: Locale, guides: McpPromptGuide[]): string {
+export function formatMcpGuides(locale: Locale, guides: McpPromptGuide[]): string {
   if (guides.length === 0) return "";
   const heading = locale === "en" ? "# MCP for this turn" : "# 本轮 MCP";
   const intro =
