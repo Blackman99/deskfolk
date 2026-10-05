@@ -251,8 +251,12 @@ export function ballHolder(ctx: StoreContext, input: { ticketId: string }): Ball
     const handed = submissionHolder(ctx, ticket);
     if (handed) return handed;
     // A render still running on it: the daemon's to poll, and its result wakes the Bot (ADR 0047).
+    // So is one its Bot started on the job as a whole, from a segment bound to no ticket: on
+    // 2026-10-05 the Producer laid out its ticket and submitted the film in one such segment, and the
+    // board never said it waited on the render, nor did anything keep the Bot from being called back.
     if (readEngineLevel(ctx.db) >= ENGINE_LEVELS.jobs) {
-      const job = ctx.db.query<{ id: string }, [string]>("SELECT id FROM external_jobs WHERE ticket_id = ? AND state = 'pending' ORDER BY created_at LIMIT 1").get(ticket.id);
+      const job = ctx.db.query<{ id: string }, [string, string, string]>(`SELECT id FROM external_jobs WHERE state = 'pending'
+        AND (ticket_id = ?1 OR (ticket_id IS NULL AND task_id = ?2 AND bot_id = ?3)) ORDER BY created_at LIMIT 1`).get(ticket.id, ticket.task_id, botId ?? "");
       if (job) return { kind: "app", reason: "job", ref: job.id };
     }
   } else if (ticket.status === "review" && !failingCheck(ctx, ticket)) return { kind: "user", reason: "review", ref: ticket.id };

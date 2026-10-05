@@ -19,10 +19,11 @@ function fixture(level: number = ENGINE_LEVELS.jobs) {
 type Fixture = ReturnType<typeof fixture>;
 const at = (ms: number) => new Date(Date.parse("2026-10-03T08:00:00.000Z") + ms).toISOString();
 
-function job(f: Fixture, requestId: string, opts: { args?: Record<string, unknown>; partNo?: number | null; now?: string } = {}) {
+function job(f: Fixture, requestId: string, opts: { args?: Record<string, unknown>; partNo?: number | null; now?: string; ticketId?: string | null; botId?: string } = {}) {
   return f.store.registerJob({ server: "cpa", submitTool: "mcp_cpa_submit_video", checkTool: "mcp_cpa_check_video", idParam: "job_id", requestId,
-    digest: jobArgsDigest("cpa", "submit_video", opts.args ?? { prompt: requestId }), taskId: f.plan.id, ticketId: f.ticket.id, partNo: opts.partNo ?? null,
-    botId: f.director.id, workItemId: null, turnId: null, sessionId: f.dm, now: opts.now ?? at(0) });
+    digest: jobArgsDigest("cpa", "submit_video", opts.args ?? { prompt: requestId }), taskId: f.plan.id,
+    ticketId: opts.ticketId === undefined ? f.ticket.id : opts.ticketId, partNo: opts.partNo ?? null,
+    botId: opts.botId ?? f.director.id, workItemId: null, turnId: null, sessionId: f.dm, now: opts.now ?? at(0) });
 }
 
 test("the same arguments within half an hour are the job already started, whatever their key order; not after", () => {
@@ -87,6 +88,17 @@ test("while a render runs on a ticket the ball is the job poller's, so nobody is
   const f = fixture();
   expect(f.store.ballHolder({ ticketId: f.ticket.id })).toMatchObject({ kind: "owner" });
   const running = job(f, "j-9");
+  expect(f.store.ballHolder({ ticketId: f.ticket.id })).toEqual({ kind: "app", reason: "job", ref: running.id });
+  f.store.recordJobPoll(running.id, { state: "completed", statusText: "completed", result: null }, at(60_000));
+  expect(f.store.ballHolder({ ticketId: f.ticket.id })).toMatchObject({ kind: "owner" });
+});
+
+test("a render its Bot started on the job as a whole, from a segment on no ticket, holds the ball too; another Bot's does not", () => {
+  const f = fixture();
+  const other = f.store.createBot({ name: "Editor", duties: "cut", boundaries: "none" }).bot;
+  job(f, "j-other", { ticketId: null, botId: other.id });
+  expect(f.store.ballHolder({ ticketId: f.ticket.id })).toMatchObject({ kind: "owner" });
+  const running = job(f, "j-plan", { ticketId: null });
   expect(f.store.ballHolder({ ticketId: f.ticket.id })).toEqual({ kind: "app", reason: "job", ref: running.id });
   f.store.recordJobPoll(running.id, { state: "completed", statusText: "completed", result: null }, at(60_000));
   expect(f.store.ballHolder({ ticketId: f.ticket.id })).toMatchObject({ kind: "owner" });

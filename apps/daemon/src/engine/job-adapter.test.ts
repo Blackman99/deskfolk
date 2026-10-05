@@ -30,3 +30,18 @@ test("the job id and state are read from an MCP answer's JSON text, at the top o
   expect(checkedJobId({ prompt: "x" })).toBeNull();
   expect(JSON.parse(jobReply({ job_id: "j", cached: true }).content[0]!.text)).toEqual({ job_id: "j", cached: true });
 });
+
+test("an answer written as key: value lines is read too: the id without its bracketed hint, the state, and the whole text once over", () => {
+  // grok-imagine's own answers, as recorded on 2026-10-04.
+  const lines = (text: string) => ({ content: [{ type: "text", text }], structuredContent: { result: text } });
+  expect(jobIdOf(lines("request_id: 1d920a6e-f6c3-957d-a5d0-4f859df1a2b5\n(poll with check_video)"))).toBe("1d920a6e-f6c3-957d-a5d0-4f859df1a2b5");
+  expect(jobStatusOf(lines("status: pending\nprogress: 80\nrequest_id: 1d920a6e-f6c3-957d-a5d0-4f859df1a2b5 (poll check_video again)")))
+    .toEqual({ state: "pending", statusText: "pending", result: null });
+  const done = "status: done\nurl: https://vidgen.x.ai/xai-vidgen-bucket/xai-video-1d920a6e.mp4\nduration_s: 6\ncost_in_usd_ticks: 15100000000\n(url is TEMPORARY — fetch promptly)";
+  expect(jobStatusOf(lines(done))).toEqual({ state: "completed", statusText: "done", result: done });
+  // A sentence is no record, and a bare URL is no key.
+  expect(jobIdOf(lines("Error executing tool submit_video: 1080p video resolution is not supported for reference-to-video requests."))).toBeNull();
+  expect(jobIdOf(lines("https://vidgen.x.ai/v.mp4"))).toBeNull();
+  // JSON still wins where an answer has both.
+  expect(jobIdOf({ content: [{ type: "text", text: "request_id: from-lines" }, { type: "text", text: JSON.stringify({ job_id: "from-json" }) }] })).toBe("from-json");
+});

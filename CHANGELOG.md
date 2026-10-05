@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Renders on a server that answers in plain lines are waited on by the app too
+
+- A media server that answers its submit and check in `key: value` lines rather than JSON (grok-imagine: `request_id: …`, `status: done`, `url: …`) never had a render registered: the Bot checked on it again and again inside its own turn, and the app's polling, waking and duplicate check never applied. Those answers are read now; when a render is done, the Bot is woken with the server's whole answer, its warning that the link is temporary included. A render a Bot starts on the job as a whole, before any ticket of its own, counts too: the board says the Bot's ticket waits on the render, and the supervisor leaves the Bot alone meanwhile.
+
 ### Your numbers become checks even when the job's name was cut short on a word for one part
 
 - A job a Bot opens from your line, and the ticket it opens with, are named after the first 40 characters of that line. When the cut ended on a word for one part of the work (片尾, 字幕, 镜头…) and lost the 成片 after it, the app took the job's own ticket for one part's: the numbers in your line (6 seconds, 1080×1920) were never offered as checks, and the film delivered on that ticket was not taken as the job's final cut, so nothing measured it. A ticket named after its job, by its name or by the start of the line that opened it (still so after you rename the job), now always stands for the whole job.

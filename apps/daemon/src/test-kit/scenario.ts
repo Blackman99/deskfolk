@@ -335,8 +335,11 @@ export type ScenarioOptions = {
   planLeftQuietMs?: number;
   /** Ticks the scheduler on its own this often (real ms). Absent, it ticks only on `tick()` / `advance()`. */
   tickMs?: number;
-  /** Starts the media MCP server; `videoPolls` is how many `check_video` calls a job answers `running` first. */
-  media?: boolean | { videoPolls?: number };
+  /**
+   * Starts the media MCP server; `videoPolls` is how many `check_video` calls a job answers `running`
+   * first, and `lines` has it answer in `key: value` lines as grok-imagine does, not JSON.
+   */
+  media?: boolean | { videoPolls?: number; lines?: boolean };
   locale?: "zh" | "en";
   ablation?: Ablation;
   /** Keeps the store in a file instead of memory, so `restart()` can boot a second engine on it. */
@@ -810,10 +813,11 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
 
   if (options.media) {
     const polls = typeof options.media === "object" ? (options.media.videoPolls ?? 0) : 0;
+    const lines = typeof options.media === "object" && options.media.lines === true;
     store.createMcpServerSync({
       name: MEDIA_SERVER,
       command: process.execPath,
-      args: [MCP_FIXTURE, "--media", ...(polls > 0 ? [`--video-polls=${polls}`] : [])],
+      args: [MCP_FIXTURE, "--media", ...(polls > 0 ? [`--video-polls=${polls}`] : []), ...(lines ? ["--video-lines"] : [])],
       enabled: true,
     });
   }

@@ -9,6 +9,7 @@
  *   --github            GitHub-shaped tools and instructions
  *   --media             Image and video tools with English descriptions
  *   --video-polls=N     With --media: each job answers check_video with "running" N times, then "completed"
+ *   --video-lines       With --media: answer as grok-imagine does, in `key: value` lines, the check taking `request_id`
  *   --http              Streamable HTTP fixture; prints { port } then serves JSON-RPC
  *   --http-quiet-sse    Answer tools/call with an SSE stream that never sends a result
  *   --http-sessions     A new session per handshake; POST /forget drops them all (a restart), a request
@@ -27,6 +28,9 @@ const media = flags.has("--media");
 const videoPolls = Number(process.argv.find((arg) => arg.startsWith("--video-polls="))?.slice("--video-polls=".length) ?? 0);
 const videoChecks = new Map<string, number>();
 let videoJobs = 0;
+// Answers written as lines, not JSON: `request_id: …` from a submit, `status: …` / `url: …` from a check.
+const videoLines = flags.has("--video-lines");
+const videoId = videoLines ? "request_id" : "job_id";
 
 const tools = media
   ? [
@@ -43,7 +47,7 @@ const tools = media
       {
         name: "check_video",
         description: "Check a video generation job and return its result",
-        inputSchema: { type: "object", properties: { job_id: { type: "string" } }, required: ["job_id"] },
+        inputSchema: { type: "object", properties: { [videoId]: { type: "string" } }, required: [videoId] },
         // Looking a job up changes nothing, which is what lets a stopped Bot still check on one.
         annotations: { readOnlyHint: true },
       },
@@ -186,12 +190,18 @@ function handle(msg: {
     if (media && tools.some((tool) => tool.name === name)) {
       let text: string;
       if (name === "submit_video") {
-        text = JSON.stringify({ job_id: videoPolls > 0 ? `fixture-video-${++videoJobs}` : "fixture-video", status: "pending" });
+        const job = videoPolls > 0 ? `fixture-video-${++videoJobs}` : "fixture-video";
+        text = videoLines ? `request_id: ${job}\n(poll with check_video)` : JSON.stringify({ job_id: job, status: "pending" });
       } else if (name === "check_video") {
-        const job = String(args.job_id ?? "");
+        const job = String(args[videoId] ?? "");
         const checks = (videoChecks.get(job) ?? 0) + 1;
         videoChecks.set(job, checks);
-        text = JSON.stringify({ job_id: args.job_id, status: checks > videoPolls ? "completed" : "running" });
+        const done = checks > videoPolls;
+        text = !videoLines
+          ? JSON.stringify({ job_id: args.job_id, status: done ? "completed" : "running" })
+          : done
+            ? `status: done\nurl: https://media.example/${job}.mp4\nduration_s: 6\n(url is TEMPORARY — fetch promptly)`
+            : `status: pending\nprogress: ${Math.round((100 * checks) / (videoPolls + 1))}\nrequest_id: ${job} (poll check_video again)`;
       } else {
         text = `generate_image: ${String(args.prompt ?? "")}`;
       }
