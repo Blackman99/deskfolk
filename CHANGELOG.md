@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+(none)
+
+## 0.1.0-rc.13 — 2026-10-06
+
+Unsigned macOS rc with an experimental unsigned Windows installer beside the `.dmg`s. This is not a supported signed installer; Gatekeeper or SmartScreen may block it. Prefer running from source.
+
 ### Part of a message can be copied on a phone
 
 - On a phone a long-press on a message opens its menu, so the message itself never selects, and Copy in that menu took the whole message: there was no way to take one sentence out of a long reply. The menu a long-press opens now has **Select text** under Copy. It opens the message's text on a page of its own, drawn as in the conversation, where a long-press selects as it does anywhere else on the phone: drag either end, then use the phone's own Copy. Its back arrow, or the phone's own Back, returns to the conversation; the page is not a step in history, so Back does not leave the conversation with it. A right-click with a mouse is as before: you select in the message itself, and Copy takes what is selected. iPhone Safari opens no menu on a long-press, so this is on Android phones.
