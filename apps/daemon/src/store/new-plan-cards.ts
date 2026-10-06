@@ -1,4 +1,8 @@
-/** New-plan receipts live on messages; no separate card table or whole-plan merge. */
+/**
+ * New-plan receipts live on messages; no separate card table or whole-plan merge. The app no longer
+ * puts one up (ADR 0058, 2026-10-06): the tag under your line already names the job it opened, and
+ * none of the four ever posted was pressed. Cards already out keep their buttons.
+ */
 import type { ControlActionResult, Hold, Message } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { getMessage, insertMessage, setMessageControl } from "./messages";
@@ -87,6 +91,7 @@ export function actNewPlanCard(ctx: StoreContext, messageId: string,
   });
 }
 
+/** A card as builds before 2026-10-06 put one up when a job opened; only tests of cards already out make one now. */
 export function createNewPlanCard(ctx: StoreContext, input: { turnId: string; taskId: string; quoteMessageId: string }): Message {
   return ctx.commit(() => {
     const turn = ctx.db.query<{ session_id: string; bot_id: string; task_id: string | null; mode: string | null; created_at: string }, [string]>(

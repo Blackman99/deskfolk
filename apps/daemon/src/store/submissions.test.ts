@@ -104,8 +104,13 @@ function onModel(f: Fixture, turnId: string, model: string) {
 }
 
 /** A submission of the master, checked, waiting with its reviewer (or with none). */
+/**
+ * A master handed over after an earlier segment on the job, as a master is: not made in one go, so
+ * with nothing of yours behind it, it comes to your card.
+ */
 function handedOver(f: Fixture, opts: { reviewer?: boolean; model?: string } = {}) {
   if (opts.reviewer) f.store.patchTicketByUser(f.ticket.id, { reviewerBotId: f.reviewer.id });
+  f.store.setTurnStatus(segment(f).id, "completed");
   const produced = segment(f);
   if (opts.model) onModel(f, produced.id, opts.model);
   const { submission } = submit(f, produced.id, [[`${f.ticket.dir}/EP01_MASTER.mp4`, HASH_A]])!;
@@ -841,6 +846,58 @@ test("with no reviewer, only a passing check of yours lets a file hand-over thro
     if (source === "user") expect(after).toMatchObject({ state: "approved" });
     else expect(after).toMatchObject({ state: "submitted", awaiting: { kind: "approval" } });
   }
+});
+
+/** A hand-over by one fresh segment on `f`'s ticket, checked and taken up at the tick. */
+function inOneGo(f: Fixture, sha256: string = HASH_A) {
+  const produced = segment(f);
+  const { submission } = submit(f, produced.id, [[`${f.ticket.dir}/avatar.jpg`, sha256]], "implicit")!;
+  f.store.settleSubmissionChecks(submission.id);
+  f.store.setTurnStatus(produced.id, "completed");
+  return { produced, submission };
+}
+const reviewCards = (f: Fixture) => f.store.db.query<{ n: number }, []>(`SELECT COUNT(*) AS n FROM messages
+  WHERE json_valid(control) AND json_extract(control, '$.kind') = 'review_item'`).get()!.n;
+
+test("with no reviewer, a hand-over made in one go — one ticket, one segment, never on your card — is approved at the tick with no card", () => {
+  const f = fixture();
+  const { submission } = inOneGo(f);
+  // Your next line starts a segment while it waits: that does not count against it.
+  const next = segment(f);
+  superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
+  expect(f.store.getSubmission(submission.id)).toMatchObject({ state: "approved", awaiting: null });
+  expect(f.store.listWorkEvents({ kind: "submission.approved" }).map((event) => event.payload)).toMatchObject([{ submission_id: submission.id, by: "one_go" }]);
+  expect(reviewCards(f)).toBe(0);
+  // A change after it, made by the one segment since the approval, goes the same way.
+  const { submission: change } = submit(f, next.id, [[`${f.ticket.dir}/avatar.jpg`, HASH_B]], "implicit")!;
+  f.store.settleSubmissionChecks(change.id);
+  superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 2_000));
+  expect(f.store.getSubmission(change.id).state).toBe("approved");
+  expect(reviewCards(f)).toBe(0);
+});
+
+test("not in one go — a second ticket, words handed over, or a job once on your card — it comes to your card", () => {
+  const cases: Array<[string, (f: Fixture) => void]> = [
+    ["second ticket", (f) => { f.store.createTicket({ taskId: f.plan.id, title: "07 字幕", worker: f.producer.id }); }],
+    ["once on your card", (f) => {
+      f.store.insertMessage({ sessionId: f.room.id, kind: "system", author: f.producer.id, body: "旧卡",
+        control: { kind: "review_item", submission_id: "old", task_id: f.plan.id, ticket_id: f.ticket.id, requirement_ids: [], check_ids: [], offer: [] } });
+    }],
+  ];
+  for (const [name, arrange] of cases) {
+    const f = fixture();
+    arrange(f);
+    const { submission } = inOneGo(f);
+    superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
+    expect({ name, ...f.store.getSubmission(submission.id) }).toMatchObject({ name, state: "submitted", awaiting: { kind: "approval" } });
+  }
+  // The words themselves, not a file: never approved on nobody's look.
+  const f = fixture();
+  const produced = segment(f);
+  const { submission } = f.store.prepareSubmission({ turnId: produced.id, origin: "answer", artifacts: [], content: "三个选题：雪原、旧城、列车" })!;
+  f.store.settleSubmissionChecks(submission.id);
+  superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
+  expect(f.store.getSubmission(submission.id)).toMatchObject({ state: "submitted", awaiting: { kind: "approval" } });
 });
 
 /** A master approved by a reviewer on another model that gave evidence, its check of yours passing: the plan is delivered. */

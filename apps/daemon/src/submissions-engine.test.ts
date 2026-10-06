@@ -28,6 +28,17 @@ function job(h: Scenario) {
   return { maker: maker!, reviewer: reviewer!, room, plan, ticket };
 }
 
+/**
+ * An earlier segment of the maker's on the job, ended: what it hands over next is not made in one go,
+ * so with nothing of yours behind it, it comes to your card.
+ */
+function workedOnBefore(h: Scenario, j: ReturnType<typeof job>) {
+  const trigger = h.store.insertMessage({ sessionId: j.room, kind: "system", author: j.maker.id, body: "工作" });
+  const at = new Date(Date.now() - 60_000).toISOString();
+  h.store.db.run(`INSERT INTO turns (id, session_id, bot_id, status, trigger_message_id, last_activity_at, created_at, updated_at, task_id, ticket_id, mode)
+    VALUES (?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, 'work')`, [`earlier-${j.plan.id}`, j.room, j.maker.id, trigger.id, at, at, at, j.plan.id, j.ticket.id]);
+}
+
 /** Your line asking the maker for the ticket's work, filed under it, and the maker's segment it starts. */
 async function ask(h: Scenario, j: ReturnType<typeof job>, body = "@Maker 出分镜") {
   const line = h.store.postMessage(j.room, { body });
@@ -42,6 +53,7 @@ const stageOf = (h: Scenario, ticketId: string) => h.store.db.query<{ stage: str
 test("a closing reply that hands a file of the ticket over is an implicit submission; with no reviewer and no active gate, it waits on your approve/reject card", async () => {
   const h = await scenario();
   const j = job(h);
+  workedOnBefore(h, j);
   h.script(j.maker).reply(call(writeFile(`${j.ticket.dir}/board.md`, "# 分镜\n1. 雪原")), say("分镜好了"));
   await ask(h, j);
 
@@ -476,6 +488,7 @@ test("pressing 放行 while a gate has not run yet waits for it, then resolves �
 test("a claim refused as an answer, then written to a throwaway file with no checks, still waits on your card", async () => {
   const h = await scenario();
   const j = job(h);
+  workedOnBefore(h, j);
   const results: ToolOutcome[] = [];
   h.script(j.maker).reply(call(tool("end_turn", { reason: "done", answer: "母带剪好了" })), ({ results: got }) => {
     results.push(...got);
@@ -527,6 +540,7 @@ test("放行 pressed while a gate runs, with a passing gate added meanwhile: the
 test("a card a newer hand-over or your board edit took over says so, with no buttons left", async () => {
   const h = await scenario();
   const j = job(h);
+  workedOnBefore(h, j);
   for (const version of ["v1", "v2"]) {
     h.script(j.maker).reply(call(writeFile(`${j.ticket.dir}/cut.md`, version)), call(tool("submit", { artifacts: ["cut.md"] })));
     await ask(h, j, `@Maker 交 ${version}`);

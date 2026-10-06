@@ -11,7 +11,6 @@ import { fileMessage, updatePlanDormancy } from "./filing";
 import { holdsCovering } from "./holds";
 import { queueInboxItem } from "./inbox";
 import { getMessage } from "./messages";
-import { createNewPlanCard } from "./new-plan-cards";
 import { readEngineLevel, ENGINE_LEVELS } from "./schema-gate";
 import type { StoreContext } from "./shared";
 import { getTask, openTask, planTitle } from "./tasks";
@@ -175,10 +174,8 @@ export function workOn(ctx: StoreContext, input: WorkOnInput): WorkOnResult {
     if (queuePlace(ctx, { botId: turn.bot_id, taskId }) !== null && turn.task_id !== taskId) {
       const queued = queueWork(ctx, { botId: turn.bot_id, sessionId: turn.session_id, taskId, ticketId,
         messageId: quote?.id ?? trigger.id, author: trigger.author, body: (quote ?? trigger).body });
-      const messages = queued.message ? [queued.message] : [];
-      if (fresh) messages.push(createNewPlanCard(ctx, { turnId: turn.id, taskId, quoteMessageId: quote!.id }));
       ctx.db.run("UPDATE turns SET end_reason = 'queued' WHERE id = ?", [turn.id]);
-      return { ended: true, queued: true, taskId, ticketId, workItemId: queued.workItem.id, messages, filed };
+      return { ended: true, queued: true, taskId, ticketId, workItemId: queued.workItem.id, messages: queued.message ? [queued.message] : [], filed };
     }
     const previousItem = turn.work_item_id;
     ctx.db.run(`UPDATE turns SET task_id = ?, ticket_id = ?, work_item_id = NULL, mode = 'work',
@@ -189,8 +186,7 @@ export function workOn(ctx: StoreContext, input: WorkOnInput): WorkOnResult {
     if (previousItem && previousItem !== item.id) closeWorkItemIfIdle(ctx, previousItem);
     recordWorkEvent(ctx, { kind: fresh ? "plan.opened" : "work.bound", actor: turn.bot_id, taskId, ticketId, turnId: turn.id,
       sessionId: turn.session_id, payload: { quote_message_id: quote?.id ?? null, also: others } });
-    const messages = fresh ? [createNewPlanCard(ctx, { turnId: turn.id, taskId, quoteMessageId: quote!.id })] : [];
-    return { taskId, ticketId, workItemId: item.id, messages, filed };
+    return { taskId, ticketId, workItemId: item.id, messages: [], filed };
   });
 }
 

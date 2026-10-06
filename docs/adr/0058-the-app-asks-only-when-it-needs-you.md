@@ -54,3 +54,30 @@ The same afternoon you pointed at two more: the video director stopped blocked a
 8. **只请你点头的提问退回一次 / A question that only asks your OK is sent back once.** 读句给 Bot 的话多读一项 `go_ahead`：问用户的话是不是只在请用户点头才接着做他要的事（确认做到一半的东西、问能不能开始下一步）；要用户给只有他有的东西、在几个方案里拿主意、说清障碍都不算。只有模型读这一项，词表从不说是。3 级起，`end_turn(blocked)` 的 `needs_from_user` 和 `ask_user` 的问句在调用前读一次（`engine/tools.ts` 的 `readForCall`）；读成请示，结束契约退回（`asks_go_ahead`，`goAheadBounce`），`ask_user` 回错误并记 `ask.go_ahead_refused`。一段只退一次（`goAheadRefused`），之后的问题不再读、照常发出；结束契约的两次退回已用完时也照常发出，不会把一个真问题变成「需要处理」。工具说明里同样写明不要停下来请示。 / The reader's reading of a Bot's line gains `go_ahead`, read by a model only. From level 3 a blocked ending's `needs_from_user` and an `ask_user` question are read before the call; a go-ahead is sent back (`asks_go_ahead`), once per segment, and never when the contract's bounces are spent; the tool descriptions say the same.
 
 9. **卡片上的 Stop 不回执 / No receipt for a Stop on a turn's card.** `stopByButton` 照旧建叫停、结束那一轮、挂起回看，把停在哪一步记在叫停的 `effect` 上，只是不再插回执：停的就是你按的那一轮，你下一句话就解除它，回执和「撤销」只是把你刚做的事再说一遍。你说的叫停、群里的停止菜单、「全部停下」这类会波及几个 Bot、你看不全它们停在哪的，回执照留。 / `stopByButton` makes the hold, ends the turn and records its effect as before, with no receipt line. Stops you say, and the stop menus that can reach several Bots, keep theirs.
+
+## 补记 / Addendum (2026-10-06)
+
+你在私聊里对「工作区文件助手」说「根据你的职责，生成图片更新你的头像」。它第一次动手就开了一件事，应用贴出「新开：根据你的职责，生成图片更新你的头像」［撤销］［并入…］，旁边是「没有可并入的同项目规划」；31 秒后它把 avatar.jpg 一次做完交上来，应用又贴出「……没有审查者，也没有你确认过的检查替你把关，所以要你来定。看过之后，放行或者退回。」你按了放行，说这种简单的事情不该反复出现应用自带的提示和确认。同一天前一件「创建一个 Bot，专门用来管理工作区的文件助手」也是这两张卡；两张放行卡分别在贴出后 12 秒和 7 秒被按下。
+
+In your direct with 工作区文件助手 you said 「根据你的职责，生成图片更新你的头像」. Its first effect opened a job and the app posted 「新开：…」 with Undo and a greyed Merge beside "no job of this project to merge into"; 31 seconds later it handed avatar.jpg over, done in one go, and the app posted "Nobody reviews it and no check you confirmed stands behind it, so it is yours to decide. Have a look, then approve it or send it back." You approved it and said something this simple should not keep bringing the app's own prompts and confirmations. The job just before it that day, creating the file-assistant Bot, got the same two cards; the two approval cards were pressed 12 and 7 seconds after they appeared.
+
+实际用下来的记录 / What the live database shows:
+
+- **新开卡 / The new-job card.** 一共贴出过 4 张（10-02 一张、10-04 一张、10-06 两张），没有一张按过。卡上的字就是你那句话前面加「新开：」，你那句话下面的归属标签已经写着它归到哪件事、点它能改。 / Four were ever posted, none ever pressed. Its words are your line with 新开 in front, and the tag under your line already names the job and changes it on a click.
+- **放行卡 / The approval card.** 18 张放行或必查要求卡里，你按「退回」并写了意见的 3 张都在《全职猎人》上，分别是这件事的第 4、7、8 段之后，第一次交付前已经跑了 900 多分钟；那时它也只有一张任务、还没认成大活，和头像这件事的形状一样，所以看任务张数和大小分不出来。分得开的是段数：今天这两件事都是开它的那一段一次做完、第一次交付；别的卡片都在做了两段以上之后。 / Of 18 approval and required-items cards, the three you sent back with notes were all on 《全职猎人》, after its 4th, 7th and 8th segments and over 900 minutes in; at that point it too had one ticket and no large-job reading — the avatar's shape — so ticket count and size do not tell them apart. Segments do: today's two jobs were each done and first handed over by the segment that opened them; every other card came after two segments or more.
+
+10. **不贴新开卡 / No new-job card.** `work_on` 开出新事（包括因名额满而排队的）时不再贴「新开：…」卡。归属标签写着这件新事；要改归属点它；要停下或不做了，说一句或按停止。已经贴出的卡片照样能按（`actNewPlanCard`）。 / Opening a job, queued or not, posts no card. The tag names the job; a click on it refiles the line; saying so or Stop stops or drops it. Cards already out still act.
+
+11. **一次做完的交付不等你放行 / Work made in one go is not held for your approval.** 没有审查者、也没有你写的或确认过的检查撑着的文件交付（`submit` 或隐式），在下面三条都成立时，下一拍直接放行（`submission.approved`，`by: one_go`），不出放行 / 退回卡（`submissions.ts` 的 `doneInOneGo`）： / A file hand-over with no reviewer and no check of yours behind it is approved at the next tick, with no card, when all three hold:
+    - 这件事只有一张没作废的任务（大活拆好之后总有好几张）；/ the job has one ticket not dropped (a laid-out large job always has several);
+    - 这件事从没有一张放行或必查要求卡片问过你；/ no approval or required-items card has ever asked you about the job;
+    - 交它的这一段，是这件事开出来（或它上一次放行）以来唯一的一段；交上来之后才开始的段（你等它时说的下一句）不算。 / the segment handing it over is the only one on the job since it opened, or since its last approved hand-over; segments that start after the hand-over do not count.
+    放行之后你在同一件事里要它改一下、它一段改完交上来，也照这条放行。一段话的交付和整理跳的读法照旧到卡片上；必查要求没东西撑着的照旧问你；大活的样片和最后一件照旧由你放行（ADR 0060）。 / A change you ask for afterwards, made by one segment, goes the same way. Words handed over and the organizer's readings still come to the card, as do unbacked required items and a large job's sample and last part.
+
+### 后果 / Consequences
+
+- 一次做完的东西不经你看就算交付了；不对就照常说，投诉返工卡会问要不要转回返工，转回后这件事重新打开。 / Work made in one go counts as delivered without your look; say when it is wrong, and the complaint card asks whether to send it back, reopening the job.
+- 「撤销」和「并入」没有了入口：把一句话改归到别的事（点归属标签）不会顺带作废它新开的那件事，那件事留着；要作废，说一句「停下，算了」，回执上有「作废这件事」。四张卡没人按过，所以先不补别的入口。 / Undo and Merge have no entry point now: refiling the line through its tag does not abandon the job it opened, which stays; to drop it, say "stop, never mind" and the receipt offers to drop the job. No card was ever pressed, so no other entry point is added yet.
+- 「问过你」看的是会话里还在的放行和必查要求卡片：清空历史把它们删了，之后这件事会被当成没问过。 / "Asked you once" counts the approval and required-items cards still in the conversation: clearing its history deletes them, and the job then reads as never asked.
+- 完工复盘（[ADR 0062](0062-retrospective-after-delivery.md)）照样看这些自动交付的事：一次做完、什么都没出的本来就跳过（`nothing_to_learn`），投诉返工之后再一次做完交付的，复盘读得到那次投诉。 / The retrospective (ADR 0062) still looks at these deliveries: one made in one go with nothing wrong is skipped as before (`nothing_to_learn`), and one delivered in one go after a complaint's rework has that complaint to read.
+- 「一次做完」看的是段数，不读这件事难不难：一段里做了很久、很大的东西也会直接放行。真遇到再加一读。 / "In one go" counts segments and does not read how hard the work was: a long, large piece made in one segment is approved too. A reading can be added if that ever bites.

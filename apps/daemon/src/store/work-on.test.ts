@@ -100,7 +100,7 @@ test("merging keeps the busy segment's exact binding and delivers the original t
   expect(store.db.query('SELECT seq FROM inbox_items WHERE turn_id = ? AND message_id = ?').all(busy.id, line.id)).toHaveLength(1);
 });
 
-test("a fresh job at parallel capacity queues durably with its new-plan card but never becomes a third working segment", () => {
+test("a fresh job at parallel capacity queues durably, with no new-plan card, but never becomes a third working segment", () => {
   const { store, ctx, bot, sessionId, turn: initial } = fixture();
   store.setTurnStatus(initial.id, 'completed');
   for (const title of ['First job', 'Second job']) {
@@ -120,8 +120,7 @@ test("a fresh job at parallel capacity queues durably with its new-plan card but
   expect(store.db.query("SELECT COUNT(*) AS n FROM turns WHERE mode = 'work' AND status = 'running'").get()).toEqual({ n: 2 });
   expect(store.db.query('SELECT state FROM work_items WHERE id = ?').get(result.workItemId!)).toEqual({ state: 'queued' });
   expect(store.db.query('SELECT task_id, message_id, state FROM inbox_items WHERE work_item_id = ?').all(result.workItemId!)).toEqual([{ task_id: result.taskId, message_id: line.id, state: 'queued' }]);
-  expect(result.messages.map((message) => message.control?.kind ?? null)).toEqual([null, 'plan_opened']);
-  expect(store.getMessage(result.messages[1]!.id).control).toMatchObject({ task_id: result.taskId, quote_message_id: line.id });
+  expect(result.messages.map((message) => message.control?.kind ?? null)).toEqual([null]);
 });
 
 test("contract selections validate the frozen candidate, exact ticket, same-bot also, and quote conversation without partial writes", () => {
@@ -157,7 +156,7 @@ test("a continued desk uses the original user's quote rather than its app note",
   const result = domain.workOn(ctx, { turnId: continued.id, plan: { new: { quote_message_id: line.id, title: 'Continued request' } } });
   expect(store.getTask(result.taskId!).brief).toBe(line.body);
   expect(store.getMessage(line.id).task_id).toBe(result.taskId);
-  expect(result.messages[0]!.control).toMatchObject({ quote_message_id: line.id });
+  expect(store.listWorkEvents({ kind: "plan.opened" }).at(-1)?.payload).toMatchObject({ quote_message_id: line.id });
 });
 
 test("a held desk or a malformed ticket cannot leave a created plan, ticket, filing, work event or visible card", () => {
@@ -175,7 +174,7 @@ test("a held desk or a malformed ticket cannot leave a created plan, ticket, fil
   expect(store.getTurn(turn.id)).toMatchObject({ task_id: null, mode: 'desk', session_id: sessionId });
 });
 
-test("work_on atomically opens a quoted job, owns its exact ticket, files the words and returns the durable new-job card", () => {
+test("work_on atomically opens a quoted job, owns its exact ticket and files the words, with no new-job card", () => {
   const { store, ctx, bot, turn, line } = fixture();
   const result = domain.workOn(ctx, { turnId: turn.id,
     plan: { new: { title: "Report", quote_message_id: line.id } },
@@ -189,9 +188,7 @@ test("work_on atomically opens a quoted job, owns its exact ticket, files the wo
   expect(store.getTicket(result.ticketId!)).toMatchObject({ title: "Draft", spec: "report.md", worker: bot.id });
   expect(store.getTask(result.taskId!)).toMatchObject({ title: "Report", brief: "Write an original report" });
   expect(store.getMessage(line.id).filings).toMatchObject([{ task_id: result.taskId, ticket_id: result.ticketId, strength: "bot" }]);
-  expect(result.messages).toHaveLength(1);
-  expect(result.messages[0]!.control).toMatchObject({ kind: "plan_opened", task_id: result.taskId, quote_message_id: line.id });
-  expect(store.getMessage(result.messages[0]!.id).id).toBe(result.messages[0]!.id);
+  expect(result.messages).toEqual([]);
   expect(store.db.query("SELECT state FROM work_items WHERE id = ?").get(turn.work_item_id!)).toEqual({ state: "closed" });
 });
 

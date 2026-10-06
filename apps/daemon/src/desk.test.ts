@@ -53,7 +53,8 @@ test("work_on opens the quoted request and binds its produce ticket in one opera
   expect(store.getTicket(bound.ticket_id!).worker).toBe(ctx.botId);
   expect(store.getTask(bound.task_id!).brief).toBe("Write a report");
   expect(store.getMessage(line.id).task_id).toBe(bound.task_id);
-  expect(result.emitted.some((entry) => entry.kind === "message" && entry.message.body.includes("Report"))).toBe(true);
+  // The tag under your line names the job; no 「新开」 card repeats it (ADR 0058, 2026-10-06).
+  expect(result.emitted.some((entry) => entry.kind === "message")).toBe(false);
 });
 
 test("an ambiguous desk segment cannot write until it chooses a captured plan", async () => {
@@ -103,7 +104,7 @@ test("a new standalone effect opens a produce job once and then uses that ticket
     expect(turn.task_id).not.toBeNull();
     expect(turn.ticket_id).not.toBeNull();
     expect(h.toolCalls(bot!, "write_file")[0]!.result?.ok).toBe(true);
-    expect(h.messages(h.direct(bot!)).filter((message) => message.body.includes("新开："))).toHaveLength(1);
+    expect(h.messages(h.direct(bot!)).filter((message) => message.control?.kind === "plan_opened")).toEqual([]);
   } finally {
     await h.close();
   }

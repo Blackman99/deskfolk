@@ -44,8 +44,9 @@ test("Undo during a real running job aborts the runner, preserves its written ar
     });
     h.postUser(session, "Write a report");
     await reached.promise;
-    const card = h.messages(session).find((message) => message.control?.kind === "plan_opened")!;
     const turn = h.turns(bot!)[0]!;
+    // A card as an earlier build put up when the job opened; the app posts none now.
+    const card = h.store.createNewPlanCard({ turnId: turn.id, taskId: turn.task_id!, quoteMessageId: h.messages(session).find((message) => message.kind === "user")!.id });
     expect(h.toolCalls(bot!, "shell")[0]?.result).toMatchObject({ ok: true });
     h.store.actNewPlanCard(card.id, { action: "undo_plan", userActionId: "running-user" }, (taskId) =>
       h.engine.createHold({ scope: "plan", scopeId: taskId, action: "cancel", liftOnNextUserMessage: false }));

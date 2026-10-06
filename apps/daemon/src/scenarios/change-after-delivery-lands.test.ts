@@ -35,11 +35,11 @@ async function delivered() {
   });
   h.postUser(direct, REQUEST);
   await h.waitIdle({ timeoutMs: 15_000 });
+  // Opened, made and handed in by one segment: the tick approves it with no card (ADR 0058, 2026-10-06).
   h.tick(new Date(Date.now() + 60_000));
   await h.waitIdle({ timeoutMs: 15_000 });
-  const card = h.messages(direct).find((message) => message.control?.kind === "review_item")!;
-  h.engine.control(card.id, { action: "approve" });
-  await h.waitIdle({ timeoutMs: 15_000 });
+  expect(h.messages(direct).filter((message) => message.control?.kind === "review_item")).toEqual([]);
+  expect(h.store.listSubmissions({ ticketId: ticket().id })).toMatchObject([{ state: "approved" }]);
   return { h, bot: bot!, direct, ticket, steps };
 }
 

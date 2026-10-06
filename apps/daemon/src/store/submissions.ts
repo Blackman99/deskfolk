@@ -1026,7 +1026,7 @@ export function reviewSubmission(ctx: StoreContext, input: {
  * needed nobody for it. The ticket and its parts are approved; the plan may be delivered.
  */
 function approve(ctx: StoreContext, submission: Submission, record: ReviewRecord | null, checks: readonly SubmissionCheck[], now: string,
-  by: "no_reviewer" | "routine" = "no_reviewer"): void {
+  by: "no_reviewer" | "routine" | "one_go" = "no_reviewer"): void {
   ctx.db.run("UPDATE submissions SET state = 'approved', reviews = ?, checks = ?, awaiting = NULL, updated_at = ? WHERE id = ?",
     [JSON.stringify(record ? [...submission.reviews, record] : submission.reviews), JSON.stringify(checks), now, submission.id]);
   const approved = getSubmission(ctx, submission.id);
@@ -1260,6 +1260,29 @@ function routinePlan(ctx: StoreContext, taskId: string): boolean {
   return Boolean(ctx.db.query("SELECT 1 FROM tasks WHERE id = ? AND routine_id IS NOT NULL").get(taskId));
 }
 
+/**
+ * A file hand-over made in one go: on a job with one ticket that has never come to your card, by the
+ * only segment on it since it opened or since its last approved hand-over. You asked, the Bot did it,
+ * and it is there where you asked; a card asking you to let it through adds nothing a word from you
+ * would not do (2026-10-06: 「根据你的职责，生成图片更新你的头像」 opened, made and handed over an
+ * avatar in 31 s, then waited on a 放行 card). A job of several tickets (a large one is laid out in
+ * several), one that took more segments or one you were asked about once still comes to your card:
+ * the three hand-overs of 《全职猎人》 you sent back with notes each came after four or more segments.
+ * Segments that start after the hand-over (your next line while it waits) do not count against it.
+ */
+function doneInOneGo(ctx: StoreContext, submission: Submission): boolean {
+  if (!submission.turn_id || (submission.origin !== "submit" && submission.origin !== "implicit")) return false;
+  const job = ctx.db.query<{ tickets: number; asked: number; others: number }, [string, string, string]>(`SELECT
+      (SELECT COUNT(*) FROM tickets t WHERE t.task_id = ?1 AND ${STAGE_SQL("t")} <> 'dropped') AS tickets,
+      (SELECT COUNT(*) FROM messages WHERE json_valid(control) AND json_extract(control, '$.kind') = 'review_item'
+        AND json_extract(control, '$.task_id') = ?1) AS asked,
+      (SELECT COUNT(*) FROM turns u, submissions s WHERE s.id = ?3 AND u.task_id = ?1 AND u.id <> ?2
+        AND u.mode IS NOT 'readonly' AND u.created_at <= s.created_at
+        AND u.created_at > COALESCE((SELECT MAX(a.created_at) FROM submissions a WHERE a.task_id = ?1
+          AND a.state = 'approved' AND a.id <> ?3), '')) AS others`).get(submission.task_id, submission.turn_id, submission.id);
+  return job?.tickets === 1 && job.asked === 0 && job.others === 0;
+}
+
 /** Why a card no longer waits on you, as it then reads in place of its buttons. */
 type LetGo =
   | { reason: "superseded"; by: "submission" | "board" | "complaint" }
@@ -1336,14 +1359,15 @@ function takeUpAwaiting(ctx: StoreContext, submission: Submission, now: string):
   // An organizer's reading or an answer always ends on your approve/reject card: nobody made the
   // words, reviewed or not. A file hand-over (submit/implicit) with no reviewer auto-approves only
   // when at least one gate you wrote or confirmed backs it and all gates pass — by here every gate
-  // that ran did (the first check above sent a failure back); with none of yours bound, it waits
-  // on the same card instead.
+  // that ran did (the first check above sent a failure back) — or when it was made in one go; with
+  // neither, it waits on the same card instead.
   // A large job's sample and its last hand-over are always yours (ADR 0060), whatever backs them.
-  if (ORIGIN_NEEDS_USER.includes(submission.origin) || (!review && !checks.some(backs)) || yoursToApprove(ctx, submission.ticket_id)) {
+  const oneGo = !review && !checks.some(backs) && doneInOneGo(ctx, submission);
+  if (ORIGIN_NEEDS_USER.includes(submission.origin) || (!review && !checks.some(backs) && !oneGo) || yoursToApprove(ctx, submission.ticket_id)) {
     askApproval(ctx, submission, now, review);
     return { submission: getSubmission(ctx, submission.id), unrun: [] };
   }
-  approve(ctx, submission, review, checks, now);
+  approve(ctx, submission, review, checks, now, oneGo ? "one_go" : "no_reviewer");
   return { submission: getSubmission(ctx, submission.id), unrun: [] };
 }
 

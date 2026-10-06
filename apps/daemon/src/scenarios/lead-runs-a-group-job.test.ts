@@ -298,10 +298,10 @@ test("changing a delivered ticket's files after a complaint hands that ticket ov
 
   h.postUser(room, "做一张竖版咖啡店开业海报");
   await h.waitIdle({ timeoutMs: 15_000 });
+  // One ticket, laid out, drawn and handed in by one segment: approved at the tick with no card.
   h.tick(new Date(Date.now() + 60_000));
   await h.waitIdle({ timeoutMs: 15_000 });
-  h.engine.control(h.messages(room).find((message) => message.control?.kind === "review_item")!.id, { action: "approve" });
-  await h.waitIdle({ timeoutMs: 15_000 });
+  expect(h.messages(room).filter((message) => message.control?.kind === "review_item")).toEqual([]);
   expect(h.store.db.query<{ status: string }, []>("SELECT status FROM tasks").get()!.status).toBe("done");
 
   complained = true;
@@ -314,12 +314,11 @@ test("changing a delivered ticket's files after a complaint hands that ticket ov
   expect(handed.map((row) => row.state)).toEqual(["approved", "submitted"]);
   expect(h.store.db.query<{ status: string }, []>("SELECT status FROM tasks").get()!.status).toBe("active");
 
-  // You approve the change: the job is delivered again, done as it was the first time.
+  // The change, made by the one segment since the approval: the job is delivered again at the tick,
+  // done as it was the first time, with no card.
   h.tick(new Date(Date.now() + 60_000));
   await h.waitIdle({ timeoutMs: 15_000 });
-  const again = h.messages(room).filter((message) => message.control?.kind === "review_item").at(-1)!;
-  h.engine.control(again.id, { action: "approve" });
-  await h.waitIdle({ timeoutMs: 15_000 });
+  expect(h.messages(room).filter((message) => message.control?.kind === "review_item")).toEqual([]);
   expect(h.store.db.query<{ status: string; stage: string }, []>("SELECT status, stage FROM tasks").get()).toEqual({ status: "done", stage: "delivered" });
 });
 
