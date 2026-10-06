@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { StreamFrame, ToolFrame } from "@real-bot/protocol";
-import { ACTIVITY_TAIL_BYTES, CommandActivity, summarize } from "./command-activity.ts";
+import { ACTIVITY_TAIL_BYTES, CommandActivity, formatDuration } from "./command-activity.ts";
 import { encodeBase64 } from "../overlays/terminals.ts";
 
 const started = (over: Partial<ToolFrame> = {}): ToolFrame => ({
@@ -39,7 +39,8 @@ test("finishing folds it into one line", () => {
   const [row] = activity.forTurn("T");
   expect(row!.running).toBe(false);
   expect(row!.exitCode).toBe(0);
-  expect(summarize(row!)).toBe("pnpm build · exit 0 · 8.2s");
+  expect(row!.durationMs).toBe(8200);
+  expect(formatDuration(row!.durationMs!)).toBe("8.2s");
   expect(row!.text).toBe("done\n");
 });
 
@@ -86,12 +87,8 @@ test("a finished turn leaves nothing behind", () => {
   expect(activity.forTurn("OTHER")).toHaveLength(1);
 });
 
-test("a long command line is clipped rather than wrapped across the bubble", () => {
-  const activity = new CommandActivity();
-  activity.applyTool(started({ command: "echo " + "y".repeat(200) }));
-  activity.applyTool(exited({ exit_code: 1, duration_ms: 450 }));
-  const line = summarize(activity.forTurn("T")[0]!);
-  expect(line.length).toBeLessThan(80);
-  expect(line).toContain("exit 1");
-  expect(line).toContain("450ms");
+test("a duration reads in the unit it is short in", () => {
+  expect(formatDuration(450)).toBe("450ms");
+  expect(formatDuration(12_340)).toBe("12.3s");
+  expect(formatDuration(125_000)).toBe("2m5s");
 });

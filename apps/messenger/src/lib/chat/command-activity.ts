@@ -92,18 +92,8 @@ function strip(entry: Entry): CommandRow {
   return row;
 }
 
-/** One line for a finished command: what ran, how it ended, how long it took. */
-export function summarize(row: CommandRow): string {
-  const head = (row.command ?? row.name).split("\n")[0]!.trim();
-  const clipped = head.length > 60 ? `${head.slice(0, 59)}…` : head;
-  if (row.running) return clipped;
-  const parts = [clipped];
-  if (row.exitCode !== null) parts.push(`exit ${row.exitCode}`);
-  if (row.durationMs !== null) parts.push(formatDuration(row.durationMs));
-  return parts.join(" · ");
-}
-
-function formatDuration(ms: number): string {
+/** How long a finished command took, as its row says it. */
+export function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
   const minutes = Math.floor(ms / 60_000);

@@ -534,7 +534,7 @@ describe("turn engine on the local API", () => {
     sub.close();
   });
 
-  test("assistant content on a tool hop is not streamed and is not inserted as a bot message", async () => {
+  test("assistant content on a tool hop shows as the turn's line while it works, never as a bot message", async () => {
     let hop = 0;
     const fixture = await startFixture(() => {
       hop += 1;
@@ -599,6 +599,12 @@ describe("turn engine on the local API", () => {
       (e) => e.event === "turn.upsert" && e.status === "running" && e.bot_id === botId,
     );
     expect(running?.partial_text === "" || running?.partial_text == null).toBe(true);
+    // Said beside its tool calls, it is the turn's line while they run, as a Claude Agent Bot's is.
+    expect(
+      sub.events.some(
+        (e) => e.event === "turn.upsert" && e.id === running?.id && e.status === "running" && e.partial_text === "I'll hand this off",
+      ),
+    ).toBe(true);
     await waitFor(
       sub.events,
       (e) => e.event === "turn.upsert" && e.id === running?.id && e.status === "completed",

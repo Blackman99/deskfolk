@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { ActivityCopy, TurnSteps } from './turn-activity.ts';
+	import { commandOutput } from './command-output.ts';
 
 	interface Props {
 		id: string;
@@ -70,7 +71,7 @@
 					>{copy.output}</button>
 				{/if}
 				{#if output && (row.state === 'running' || opened === row.id)}
-					<pre class="turn-step-output mono" use:pin={output}>{output}</pre>
+					<pre class="turn-step-output code-out mono" use:commandOutput={{ text: output, command: null, live: row.state === 'running' }}></pre>
 				{/if}
 			</li>
 		{/each}

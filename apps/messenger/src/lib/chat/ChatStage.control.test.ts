@@ -137,18 +137,17 @@ test("your line that might have meant a stop asks under it, on its side", () => 
   }
 });
 
-test("a Bot's reply in a group can be stopped once the daemon has stops, and the Stop names that turn", () => {
+test("a Bot's streaming reply in a group carries no Stop of its own: the composer's stop menu holds them", () => {
   const session = aGroup();
   const turns = [aTurn({ id: "turn-9", session_id: session.id, bot_id: "bot-2", partial_text: "正在审第三镜" })];
-  const off = stage(session, { turns });
-  expect(off.host.querySelector(".btn-mini-stop")).toBeNull();
-  off.close();
-  const { host, runtime, close } = stage(session, { turns, holdsOn: true });
-  try {
-    click(host.querySelector(".btn-mini-stop"));
-    expect(runtime.calls.filter((call) => call.name === "stopTurn").map((call) => call.args)).toEqual([[session.id, "turn-9"]]);
-  } finally {
-    close();
+  for (const holdsOn of [false, true]) {
+    const { host, close } = stage(session, { turns, holdsOn });
+    try {
+      expect(host.textContent).toContain("正在审第三镜");
+      expect(host.querySelector(".btn-mini-stop")).toBeNull();
+    } finally {
+      close();
+    }
   }
 });
 

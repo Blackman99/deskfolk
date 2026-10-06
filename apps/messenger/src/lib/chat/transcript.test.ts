@@ -73,27 +73,17 @@ test("a running turn streams after its trigger and is not a message", () => {
   });
 });
 
-test("a running turn with empty partial_text is a compact replying row, not a bubble", () => {
+test("a running turn that has said nothing yet is a bubble too, not a compact row", () => {
   const items = composeTranscript(
     [msg({ id: "m1", kind: "user", body: "go", created_at: "t1" })],
     [turn({ id: "turn-1", status: "running", trigger_message_id: "m1", partial_text: "" })],
     "s1",
   );
-  expect(items).toHaveLength(2);
-  expect(items[1]).toEqual({
-    type: "replying",
-    trigger_message_id: "m1",
-    entries: [
-      expect.objectContaining({
-        bot_id: "writer",
-        source: "turn",
-        turn_id: "turn-1",
-      }),
-    ],
-  });
+  expect(items.map((item) => item.type)).toEqual(["message", "streaming"]);
+  expect(items[1]).toMatchObject({ type: "streaming", turn: { id: "turn-1" } });
 });
 
-test("several bots thinking on the same trigger collapse into one compact list", () => {
+test("several bots at work on the same trigger each get their own bubble, oldest first", () => {
   const items = composeTranscript(
     [msg({ id: "m1", kind: "user", body: "please begin", created_at: "t1" })],
     [
@@ -116,12 +106,8 @@ test("several bots thinking on the same trigger collapse into one compact list",
     ],
     "s1",
   );
-  expect(items.map((item) => item.type)).toEqual(["message", "replying"]);
-  expect(items[1]).toMatchObject({
-    type: "replying",
-    trigger_message_id: "m1",
-    entries: [{ bot_id: "eunice" }, { bot_id: "carrie" }],
-  });
+  expect(items.map((item) => item.type)).toEqual(["message", "streaming", "streaming"]);
+  expect(items.slice(1).map((item) => (item.type === "streaming" ? item.turn.id : null))).toEqual(["turn-a", "turn-b"]);
 });
 
 test("a pending judgement appears as compact replying as soon as thinking starts", () => {
@@ -175,13 +161,11 @@ test("a join turn replaces the pending judgement for the same bot on that trigge
       },
     ],
   );
-  expect(items[1]?.type).toBe("replying");
-  if (items[1]?.type !== "replying") throw new Error("expected compact list");
-  expect(items[1].entries).toHaveLength(1);
-  expect(items[1].entries[0]).toMatchObject({ bot_id: "researcher", source: "turn" });
+  expect(items.map((item) => item.type)).toEqual(["message", "streaming"]);
+  expect(items[1]).toMatchObject({ type: "streaming", turn: { id: "turn-1", bot_id: "researcher" } });
 });
 
-test("a bot with streamed tokens leaves the compact list and occupies a streaming bubble", () => {
+test("a bot at work takes a bubble while another on the same line is still deciding", () => {
   const items = composeTranscript(
     [msg({ id: "m1", kind: "user", body: "please begin", created_at: "t1" })],
     [
@@ -193,16 +177,9 @@ test("a bot with streamed tokens leaves the compact list and occupies a streamin
         created_at: "t2",
         partial_text: "hel",
       }),
-      turn({
-        id: "turn-b",
-        bot_id: "carrie",
-        status: "running",
-        trigger_message_id: "m1",
-        created_at: "t3",
-        partial_text: "",
-      }),
     ],
     "s1",
+    [{ id: "pj-carrie", session_id: "s1", message_id: "m1", bot_id: "carrie", created_at: "t3" }],
   );
   expect(items.map((item) => item.type)).toEqual(["message", "streaming", "replying"]);
   expect(items[1]).toMatchObject({ type: "streaming", turn: { id: "turn-a" } });

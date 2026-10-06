@@ -1049,7 +1049,6 @@ const zh = {
     sending: "发送中…",
     /** Beside a staged file's size while it uploads. */
     uploaded: (percent: number) => `已传 ${percent}%`,
-    stop: "Stop",
     stopGeneration: "停止回复",
     waitingHint: "回复结束后可发送 · Shift+Enter 换行",
     attach: "添加附件",
@@ -1082,7 +1081,9 @@ const zh = {
     copied: "已复制",
     copyCode: "复制代码",
     commandActivity: "命令执行",
-    commandFailed: "失败",
+    /** The folded line over a reply's commands, and how many of them failed. */
+    commandCount: (count: number) => `${count} 条命令`,
+    commandsFailed: (count: number) => `${count} 条失败`,
     /**
      * The line under a message while a Bot works on it: the step it is in, or the one it just
      * finished while it thinks. `doing` and `done` are followed by the step's subject, if any.
@@ -2940,7 +2941,6 @@ const en: CopyShape<typeof zh> = {
     messagePrompt: "Message…",
     sending: "Sending…",
     uploaded: (percent: number) => `${percent}% sent`,
-    stop: "Stop",
     stopGeneration: "Stop reply",
     waitingHint: "Send after the reply ends · Shift+Enter for newline",
     attach: "Add attachment",
@@ -2968,7 +2968,8 @@ const en: CopyShape<typeof zh> = {
     copied: "Copied",
     copyCode: "Copy code",
     commandActivity: "Commands",
-    commandFailed: "failed",
+    commandCount: (count: number) => (count === 1 ? "1 command" : `${count} commands`),
+    commandsFailed: (count: number) => `${count} failed`,
     activity: {
       after: (done: string) => `Thinking · ${done}`,
       failed: "failed",

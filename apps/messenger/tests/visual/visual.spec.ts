@@ -34,7 +34,8 @@ for (const [name, size] of Object.entries(STORY_SIZES)) {
 				await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
 			}
 			if (name.startsWith('search-dialog')) await expect(page.locator('.search-result')).toHaveCount(6);
-			await expect(page).toHaveScreenshot(`${name}-${theme}.png`);
+			// A working turn's timer counts from the fixtures' 2026-09-19 to the moment of the shot.
+			await expect(page).toHaveScreenshot(`${name}-${theme}.png`, { mask: [page.locator('.stream-foot .duration-badge')] });
 			expect(errors).toEqual([]);
 		});
 	}

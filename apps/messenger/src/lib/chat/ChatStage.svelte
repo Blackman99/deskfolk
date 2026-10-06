@@ -12,6 +12,8 @@
 	import AskCard from './AskCard.svelte';
 	import WorkQuestionCard from './WorkQuestionCard.svelte';
 	import CommandActivity from './CommandActivity.svelte';
+	import TurnStepList from './TurnStepList.svelte';
+	import type { CommandRow } from './command-activity.ts';
 	import BotDmEntry from './BotDmEntry.svelte';
 	import ControlActions from './ControlActions.svelte';
 	import MessageAttribution from './MessageAttribution.svelte';
@@ -64,7 +66,7 @@
 	import { getStarterOptions } from './starter-prompts.ts';
 	import { distanceFromBottom, isNearBottom, maxScrollTop, stickAfterScroll } from './stream-scroll.ts';
 	import { composeTranscript, isLiveStatus, isPendingAsk, transcriptItemKey, type ReplyingEntry } from './transcript.ts';
-	import { describeStep, stepText, turnSteps, type StepLine, type TurnSteps } from './turn-activity.ts';
+	import { describeStep, turnSteps, type StepLine, type TurnSteps } from './turn-activity.ts';
 	import { HISTORY_WINDOW_INITIAL, HISTORY_WINDOW_STEP, windowForIndex, windowedItems } from './history-window.ts';
 	import { deferWhileDragging } from '../workbench/pane-resize.svelte.ts';
 	import { INDEX_MIN_MARKS, activeIndexMark, messageIndexMarks, type IndexMark } from './message-index.ts';
@@ -648,10 +650,25 @@
 		return runtime.activity.forTurn(entry.turn_id).find((row) => row.id === id)?.text || null;
 	}
 
-	/** A reply that is streaming says so, unless the turn has moved on to a tool call since. */
-	function streamingLabel(turn: Turn): string {
-		const step = runtime.stepOf(turn.id);
-		return step?.running ? stepText(describeStep(step, t.chat.activity, nowMs)) : t.stream.streaming;
+	/**
+	 * A running turn's commands. Reading the revision is what brings new output in, without
+	 * remounting the list: a remount folded it again on every frame.
+	 */
+	function commandRows(turnId: string): CommandRow[] {
+		void runtime.activityRevision;
+		return runtime.activity.forTurn(turnId);
+	}
+
+	/** A running turn as the step helpers read it, the way the thinking line read its entry. */
+	function workingEntry(turn: Turn): ReplyingEntry {
+		return { bot_id: turn.bot_id, created_at: turn.created_at, source: 'turn', turn_id: turn.id };
+	}
+
+	/** The working bubble whose steps are open: one at a time, and it goes with its turn. */
+	let openStepsTurn = $state<string | null>(null);
+
+	function toggleSteps(turnId: string): void {
+		openStepsTurn = openStepsTurn === turnId ? null : turnId;
 	}
 
 	/** A Bot's name for the buttons under a line about your stops. */
@@ -1743,25 +1760,7 @@
 								<span class="segment-count-badge mono">{t.chat.segmentCount(group.items.length)}</span>
 							{:else}
 								{@const single = group.items[0]}
-								{#if single.type === 'streaming'}
-									{@const liveElapsed = formatLiveDuration(single.turn.created_at, nowMs)}
-									<span class="streaming-status inline-flex items-center gap-2 text-12 text-accent font-medium">
-										<span class="pulse"></span>
-										{streamingLabel(single.turn)}
-									</span>
-									<span class="duration-badge mono live">⏱️ {liveElapsed}</span>
-									{#if selected?.kind === 'group' && snapshot.holdsOn}
-										<button
-											type="button"
-											class="btn-mini-stop"
-											title={t.composer.stop}
-											onclick={() => void runtime.stopTurn(selected?.id, single.turn.id)}
-										>
-											<span class="stop-icon-mini">■</span>
-											<span>{t.composer.stop}</span>
-										</button>
-									{/if}
-								{:else if single.type === 'message'}
+								{#if single.type === 'message'}
 									{@const duration = calculateBotDuration(single.message, snapshot.messages, snapshot.turns, messageLookup)}
 									<span class="msg-time mono" title={formatFullTimestamp(single.message.created_at)}>
 										{formatMessageTime(single.message.created_at)}
@@ -1800,25 +1799,7 @@
 									{#if isMulti}
 										<div class="segment-meta flex items-center gap-3 mt-[1px] mb-[5px] py-0 px-2 text-11 leading-none">
 											<span class="segment-tag">{t.chat.segmentPart(sIdx + 1)}</span>
-											{#if item.type === 'streaming'}
-												{@const liveElapsed = formatLiveDuration(item.turn.created_at, nowMs)}
-												<span class="streaming-status inline-flex items-center gap-2 text-12 text-accent font-medium">
-													<span class="pulse"></span>
-													{streamingLabel(item.turn)}
-												</span>
-												<span class="duration-badge mono live">⏱️ {liveElapsed}</span>
-												{#if selected?.kind === 'group' && snapshot.holdsOn}
-													<button
-														type="button"
-														class="btn-mini-stop"
-														title={t.composer.stop}
-														onclick={() => void runtime.stopTurn(selected?.id, item.turn.id)}
-													>
-														<span class="stop-icon-mini">■</span>
-														<span>{t.composer.stop}</span>
-													</button>
-												{/if}
-											{:else if item.type === 'message'}
+											{#if item.type === 'message'}
 												{@const duration = calculateBotDuration(item.message, snapshot.messages, snapshot.turns, messageLookup)}
 												<span class="msg-time mono" title={formatFullTimestamp(item.message.created_at)}>
 													{formatMessageTime(item.message.created_at)}
@@ -1834,11 +1815,12 @@
 									{/if}
 
 									{#if item.type === 'streaming'}
+										{@const entry = workingEntry(item.turn)}
+										{@const step = stepLineOf(entry)}
+										{@const said = Boolean(item.turn.partial_text?.trim())}
 										<article class="msg is-stream is-reply">
-											<div class="who">
-												{botAuthor?.name ?? t.top.deleted} · {streamingLabel(item.turn)}
-												<span class="pulse"></span>
-											</div>
+											<div class="who">{botAuthor?.name ?? t.top.deleted}</div>
+											{#if said}
 											<MarkdownBody
 												source={item.turn.partial_text ?? ''}
 												options={markdownOpts(undefined, { streaming: true })}
@@ -1850,13 +1832,52 @@
 											>
 												<span class="streaming-cursor"></span>
 											</MarkdownBody>
+											{/if}
 											<!--
 												What it is doing while it does it. Ephemeral: the turn's own record is what
 												survives a reload, so nothing here is stored and nothing enters the transcript.
 											-->
-											{#key runtime.activityRevision}
-												<CommandActivity rows={runtime.activity.forTurn(item.turn.id)} {t} />
-											{/key}
+											<CommandActivity rows={commandRows(item.turn.id)} {t} />
+											<!--
+												Where it is and for how long, after all it has said and run — the end of the
+												bubble is where the work is going on. Every running turn has it, whatever runs
+												the Bot; its step opens the list of steps, as the thinking line under your
+												message used to.
+											-->
+											<div class="stream-foot">
+												<span class="pulse"></span>
+												{#if step}
+													<button
+														type="button"
+														class="stream-step is-toggle"
+														aria-live="off"
+														aria-expanded={openStepsTurn === item.turn.id}
+														aria-controls={`turn-steps-${item.turn.id}`}
+														title={`${step.full}\n${t.chat.activity.showSteps}`}
+														onclick={() => toggleSteps(item.turn.id)}
+													><span class="toggle-label">{step.text}</span></button>
+													{#if step.elapsed}<span class="stream-step-elapsed mono" aria-hidden="true">{step.elapsed}</span>{/if}
+												{:else}
+													<span class="stream-step" aria-live="off">{said ? t.stream.streaming : statusLabels.running}</span>
+												{/if}
+												<span class="duration-badge mono">
+													<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+													{formatLiveDuration(item.turn.created_at, nowMs)}
+												</span>
+											</div>
+											{#if openStepsTurn === item.turn.id}
+												{@const steps = stepsOfEntry(entry)}
+												{#if steps}
+													<TurnStepList
+														id={`turn-steps-${item.turn.id}`}
+														name={botAuthor?.name ?? t.top.deleted}
+														{steps}
+														copy={t.chat.activity}
+														outputOf={(callId) => commandOutput(entry, callId)}
+														onClose={() => (openStepsTurn = null)}
+													/>
+												{/if}
+											{/if}
 										</article>
 									{:else if item.type === 'message'}
 										{@const rxGroups = groupReactions(item.message.reactions, USER_MEMBER)}
@@ -2386,44 +2407,6 @@
 		letter-spacing: -0.01em;
 	}
 
-	.duration-badge.live {
-		font-weight: 600;
-		padding: 1px 6px;
-		border-radius: var(--radius-full);
-		border: 1px solid var(--accent-border);
-		background: var(--accent-tint);
-		color: var(--accent);
-		animation: pulse 1.2s infinite;
-	}
-
-	.btn-mini-stop {
-		display: inline-flex;
-		align-items: center;
-		gap: 3px;
-		font-size: 11px;
-		font-weight: 600;
-		color: var(--danger);
-		background: var(--danger-bg);
-		border: 1px solid var(--danger-line);
-		border-radius: var(--radius-sm);
-		padding: 1px 6px;
-		cursor: pointer;
-		margin-left: auto;
-		transition: 0.15s ease;
-		transition-property: var(--transition-props);
-	}
-
-	.btn-mini-stop:hover {
-		background: var(--danger-bg);
-		border-color: var(--danger);
-		filter: brightness(0.95);
-	}
-
-	.stop-icon-mini {
-		font-size: 10px;
-		line-height: 1;
-	}
-
 	.msg-segments.is-user-segments {
 		align-items: flex-end;
 	}
@@ -2714,6 +2697,85 @@
 
 	.msg-attached-replying.is-user {
 		align-items: flex-end;
+	}
+
+	/* The working bubble's last line: its step, that step's time and the whole turn's. */
+	.stream-foot {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
+		margin-top: 8px;
+		color: var(--accent);
+		font-size: 12px;
+		font-weight: 500;
+	}
+
+	.stream-foot .pulse {
+		flex-shrink: 0;
+		margin-left: 0;
+	}
+
+	/* A long command clips; the times beside it never do. */
+	.stream-step {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.stream-step-elapsed,
+	.stream-foot .duration-badge {
+		flex-shrink: 0;
+	}
+
+	.stream-foot .duration-badge {
+		margin-left: 2px;
+	}
+
+	.stream-step.is-toggle {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 0;
+		border: 0;
+		background: transparent;
+		font: inherit;
+		color: inherit;
+		cursor: pointer;
+	}
+
+	.stream-step.is-toggle .toggle-label {
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.stream-step.is-toggle::after {
+		content: '';
+		flex-shrink: 0;
+		width: 4px;
+		height: 4px;
+		margin: 0 1px 2px 1px;
+		border-right: 1.5px solid currentColor;
+		border-bottom: 1.5px solid currentColor;
+		transform: rotate(45deg);
+		opacity: 0.6;
+		transition: transform 0.15s ease;
+	}
+
+	.stream-step.is-toggle[aria-expanded='true']::after {
+		margin-bottom: -2px;
+		transform: rotate(-135deg);
+	}
+
+	.stream-step.is-toggle:hover .toggle-label {
+		color: var(--ink);
+	}
+
+	.stream-step.is-toggle:focus-visible {
+		border-radius: var(--radius-xs);
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
 	}
 
 	/* Streaming Blinking Cursor */
@@ -3153,8 +3215,7 @@
 		.msg-header .app-badge,
 		.msg-header .segment-count-badge,
 		.msg-header .duration-badge,
-		.msg-header .msg-time,
-		.msg-header .streaming-status {
+		.msg-header .msg-time {
 			flex-shrink: 0;
 		}
 

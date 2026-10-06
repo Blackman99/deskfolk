@@ -58,6 +58,7 @@ const LANG_LOADERS: Record<Exclude<HighlightLang, "plaintext">, () => Promise<un
   terraform: () => import("shiki/langs/terraform.mjs"),
   svelte: () => import("shiki/langs/svelte.mjs"),
   vue: () => import("shiki/langs/vue.mjs"),
+  log: () => import("shiki/langs/log.mjs"),
 };
 
 function unwrapDefault<T>(mod: { default: T } | T): T {

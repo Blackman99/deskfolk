@@ -81,8 +81,9 @@ export function composeTranscript(
     .filter((turn) => turn.session_id === sessionId && turn.status === "running")
     .slice()
     .sort(byTime);
+  // Every running turn is a bubble from its first moment, whatever runs it and whether it has said
+  // anything yet: the compact row is only for a Bot still deciding whether to join (2026-10-06).
   for (const turn of running) {
-    if (!hasStreamedText(turn)) continue;
     const stream: TranscriptItem = { type: "streaming", turn };
     const at = lastIndexForTrigger(items, turn.trigger_message_id, turn.id);
     if (at >= 0) items.splice(at + 1, 0, stream);
@@ -99,16 +100,6 @@ export function composeTranscript(
     if (list.some((existing) => existing.bot_id === entry.bot_id)) return;
     list.push(entry);
     byTrigger.set(trigger, list);
-  }
-
-  for (const turn of running) {
-    if (hasStreamedText(turn)) continue;
-    addEntry(turn.trigger_message_id, {
-      bot_id: turn.bot_id,
-      created_at: turn.created_at,
-      source: "turn",
-      turn_id: turn.id,
-    });
   }
 
   for (const pending of pendingJudgements) {
@@ -143,10 +134,6 @@ export function composeTranscript(
     else items.push(block);
   }
   return items;
-}
-
-function hasStreamedText(turn: Turn): boolean {
-  return Boolean(turn.partial_text?.trim());
 }
 
 function occupancyKey(triggerId: string, botId: string): string {

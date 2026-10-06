@@ -1,15 +1,19 @@
 /*
- * Shiki writes `.tok` spans into two surfaces this sheet can see — MarkdownBody
- * (chat + artifact preview) and the standalone highlighter. Code-block chrome
- * (.code-header) lives on MarkdownBody. Global on purpose.
+ * Shiki writes `.tok` spans into three surfaces this sheet can see — MarkdownBody
+ * (chat + artifact preview), the standalone highlighter, and a command's output
+ * (`.code-out`, chat/command-output.ts). Code-block chrome (.code-header) lives on
+ * MarkdownBody. Global on purpose.
  */
-.md-body pre code .tok {
+.md-body pre code .tok,
+.code-out .tok {
   color: var(--shiki-light);
 }
 
 :root[data-theme="dark"] .code-hl .tok,
 :root[data-theme="dark"] .md-body pre code .tok,
+:root[data-theme="dark"] .code-out .tok,
 :root.dark .code-hl .tok,
-:root.dark .md-body pre code .tok {
+:root.dark .md-body pre code .tok,
+:root.dark .code-out .tok {
   color: var(--shiki-dark);
 }

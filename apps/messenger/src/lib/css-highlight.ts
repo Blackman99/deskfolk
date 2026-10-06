@@ -58,7 +58,8 @@ function dualColors(token: ThemedToken): { light?: string; dark?: string } {
 export function tokensToHighlightedHtml(
   source: string,
   highlighter: HighlighterCore,
-  lang: HighlightLang,
+  /** `ansi` is Shiki's own: it paints a command's colour codes and needs no grammar. */
+  lang: HighlightLang | "ansi",
 ): string {
   if (!source) return "";
   if (lang === "plaintext") return escapeHtml(source);

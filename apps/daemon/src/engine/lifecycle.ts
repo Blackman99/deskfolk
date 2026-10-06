@@ -979,8 +979,9 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       live.mcpTools = new Map(listed.guides.flatMap((guide) =>
         guide.tools.map((tool) => [tool.modelName, { server: guide.name, tool: tool.toolName ?? tool.modelName, readOnly: tool.readOnly === true,
           params: params.get(tool.modelName) ?? [] }] as const)));
-      live.partial = "";
-      publishTurn(current, "");
+      // What it last said while working stays up through the next hop, as a Claude Agent Bot's
+      // does: a hop that only calls tools does not wipe the line above them (2026-10-06).
+      publishTurn(current, live.partial);
       let result;
       // Tokens no longer count as progress: a hop that streamed one sentence for 17 minutes looked
       // alive the whole time. The stream's own time limit bounds it instead, and the stale sweep
@@ -1082,6 +1083,13 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
           content: result.content || null,
           tool_calls: result.toolCalls,
         });
+        // What it says beside its tool calls ("let me check the file first") is shown while it
+        // works, the same as a Claude Agent Bot's narration. Only these lines: a reply with no
+        // calls is the closing one, which shows once its checks pass.
+        if (result.content.trim()) {
+          live.partial = result.content;
+          publishTurn(store.getTurn(turnId), result.content);
+        }
         const outcome = await executeTools(turnId, result.toolCalls);
         if (!active(turnId, live)) return;
         if (outcome === "wait") {

@@ -41,17 +41,23 @@ function stage(
   return { ...rendered, runtime, opened };
 }
 
-test("a thinking Bot says which step it is in instead of a bare 思考中", () => {
+test("a working Bot's bubble ends on the step it is in instead of a bare 思考中", () => {
   const session = aDirect();
   const { host, close } = stage(session, [aTurn({ session_id: session.id })], { "turn-1": aStep() });
   try {
     flushSync();
-    const line = host.querySelector<HTMLElement>(".attached-replying-card.is-single .attached-replying-text");
+    const line = host.querySelector<HTMLElement>(".is-streaming-wrap .stream-foot .stream-step");
     expect(line?.textContent).toBe("读取 src/app.ts");
     // The tooltip has the whole subject, and says a click lists the steps.
     expect(line?.getAttribute("title")).toBe(`读取 src/app.ts\n${t.chat.activity.showSteps}`);
     // The line changes with every step and its timer ticks; the live region does not read it out.
     expect(line?.getAttribute("aria-live")).toBe("off");
+    // Nothing about the work is left in the header: it is all at the end of the bubble.
+    expect(host.querySelector(".msg-header .duration-badge")).toBeNull();
+    expect(host.querySelector(".stream-foot .duration-badge")).not.toBeNull();
+    // A turn that has said nothing yet is a bubble all the same, with no empty text in it.
+    expect(host.querySelector(".is-streaming-wrap .streaming-cursor")).toBeNull();
+    expect(host.querySelector(".attached-replying-card")).toBeNull();
   } finally {
     close();
   }
@@ -63,20 +69,20 @@ test("before its first step, and between steps, it is thinking", () => {
   const before = stage(session, turns, {});
   try {
     flushSync();
-    expect(before.host.querySelector(".attached-replying-text")?.textContent).toBe("思考中");
+    expect(before.host.querySelector(".stream-foot .stream-step")?.textContent).toBe("思考中");
   } finally {
     before.close();
   }
   const after = stage(session, turns, { "turn-1": aStep({ running: false }) });
   try {
     flushSync();
-    expect(after.host.querySelector(".attached-replying-text")?.textContent).toBe("思考中 · 读了 src/app.ts");
+    expect(after.host.querySelector(".stream-foot .stream-step")?.textContent).toBe("思考中 · 读了 src/app.ts");
   } finally {
     after.close();
   }
 });
 
-test("in a group each thinking Bot's chip carries its own step", () => {
+test("in a group each working Bot's bubble carries its own step", () => {
   const session = aGroup();
   const turns = [
     aTurn({ id: "turn-1", session_id: session.id, bot_id: "bot-1" }),
@@ -87,33 +93,41 @@ test("in a group each thinking Bot's chip carries its own step", () => {
   });
   try {
     flushSync();
-    const card = host.querySelector(".attached-replying-card.is-multiple");
-    expect(card).not.toBeNull();
-    const steps = [...card!.querySelectorAll(".attached-replying-step")].map((node) => node.textContent);
-    // The first Bot has not started a step, so its chip is just its name.
-    expect(steps).toEqual(["运行 ffprobe clip.mp4"]);
+    const bubbles = [...host.querySelectorAll(".is-streaming-wrap")].map((wrap) => [
+      wrap.querySelector(".sender-name")?.textContent?.trim(),
+      wrap.querySelector(".stream-foot .stream-step")?.textContent,
+    ]);
+    // The first Bot has not started a step, so it is thinking.
+    expect(bubbles).toEqual([[aBot().name, "思考中"], ["审片员", "运行 ffprobe clip.mp4"]]);
   } finally {
     close();
   }
 });
 
-test("a streaming reply that moved on to a tool call says so", () => {
+test("a streaming reply that moved on to a tool call says so at its end", () => {
   const session = aDirect();
   const turns = [aTurn({ session_id: session.id, partial_text: "我先看一下源文件。" })];
   const { host, close } = stage(session, turns, { "turn-1": aStep({ name: "shell", target: "pnpm test" }) });
   try {
     flushSync();
-    const status = host.querySelector(".is-streaming-wrap .streaming-status");
-    expect(status?.textContent?.trim()).toBe("运行 pnpm test");
+    expect(host.querySelector(".is-streaming-wrap .stream-foot .stream-step")?.textContent?.trim()).toBe("运行 pnpm test");
+    expect(host.querySelector(".is-streaming-wrap .streaming-cursor")).not.toBeNull();
   } finally {
     close();
   }
   const done = stage(session, turns, { "turn-1": aStep({ running: false }) });
   try {
     flushSync();
-    expect(done.host.querySelector(".is-streaming-wrap .streaming-status")?.textContent?.trim()).toBe(t.stream.streaming);
+    expect(done.host.querySelector(".is-streaming-wrap .stream-foot .stream-step")?.textContent?.trim()).toBe("思考中 · 读了 src/app.ts");
   } finally {
     done.close();
+  }
+  const writing = stage(session, turns, {});
+  try {
+    flushSync();
+    expect(writing.host.querySelector(".is-streaming-wrap .stream-foot .stream-step")?.textContent?.trim()).toBe(t.stream.streaming);
+  } finally {
+    writing.close();
   }
 });
 
@@ -123,14 +137,14 @@ test("a long step shows its time apart from the text, so clipping never cuts it 
   const { host, close } = stage(session, [aTurn({ session_id: session.id })], { "turn-1": long });
   try {
     flushSync();
-    expect(host.querySelector(".attached-replying-text")?.textContent).toBe("运行 pnpm exec playwright test --project webkit");
-    expect(host.querySelector(".attached-replying-elapsed")?.textContent).toBe("12s");
+    expect(host.querySelector(".stream-foot .stream-step")?.textContent).toBe("运行 pnpm exec playwright test --project webkit");
+    expect(host.querySelector(".stream-foot .stream-step-elapsed")?.textContent).toBe("12s");
   } finally {
     close();
   }
 });
 
-test("several Bots at once: each streaming reply and each thinking Bot shows its own step", () => {
+test("several Bots at once: each one's bubble shows its own step, said anything yet or not", () => {
   const session = aGroup();
   const turns = [
     aTurn({ id: "turn-a", session_id: session.id, bot_id: "bot-1", partial_text: "我先跑一下测试。", created_at: "2026-09-19T02:00:00.100Z" }),
@@ -158,16 +172,15 @@ test("several Bots at once: each streaming reply and each thinking Bot shows its
     flushSync();
     const bubbles = [...host.querySelectorAll(".is-streaming-wrap")].map((wrap) => [
       wrap.querySelector(".sender-name")?.textContent?.trim(),
-      wrap.querySelector(".streaming-status")?.textContent?.trim(),
+      wrap.querySelector(".stream-foot .stream-step")?.textContent?.trim(),
     ]);
     expect(bubbles).toEqual([
       [aBot().name, "运行 pnpm test"],
       ["审片员", "读取 clips/c01.mp4"],
+      // The third has not written anything yet: a bubble all the same, with its own step.
+      ["剪辑", "思考中 · 看了目录 frames"],
     ]);
-    // The third has not written anything yet: it is the pill, with its own step.
-    const pill = host.querySelector(".attached-replying-card.is-single");
-    expect(pill?.textContent).toContain("剪辑");
-    expect(pill?.querySelector(".attached-replying-text")?.textContent).toBe("思考中 · 看了目录 frames");
+    expect(host.querySelector(".attached-replying-card")).toBeNull();
   } finally {
     close();
   }
@@ -183,7 +196,7 @@ test("clicking the line lists every step of the turn so far, and clicking again 
   const { host, close } = stage(session, [aTurn({ session_id: session.id, created_at: new Date().toISOString() })], { "turn-1": list[2]! }, { "turn-1": list });
   try {
     flushSync();
-    const toggle = host.querySelector<HTMLButtonElement>("button.attached-replying-text");
+    const toggle = host.querySelector<HTMLButtonElement>("button.stream-step");
     expect(toggle?.getAttribute("aria-expanded")).toBe("false");
     expect(host.querySelector(".turn-steps")).toBeNull();
 
@@ -217,7 +230,7 @@ test("Escape inside the list folds it", () => {
   const { host, close } = stage(session, [aTurn({ session_id: session.id })], { "turn-1": aStep() });
   try {
     flushSync();
-    click(host.querySelector("button.attached-replying-text"));
+    click(host.querySelector("button.stream-step"));
     const panel = host.querySelector(".turn-steps")!;
     panel.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     flushSync();
@@ -233,7 +246,7 @@ test("a turn that began before the page connected says its first steps may be mi
   const { host, close } = stage(session, [turn], { "turn-1": aStep() }, {}, { listeningSince: Date.parse("2026-09-19T02:05:00.000Z") });
   try {
     flushSync();
-    click(host.querySelector("button.attached-replying-text"));
+    click(host.querySelector("button.stream-step"));
     expect(host.querySelector(".turn-steps-note")?.textContent).toBe(t.chat.activity.missedStart);
   } finally {
     close();
@@ -245,8 +258,8 @@ test("before its first step there is nothing to open", () => {
   const { host, close } = stage(session, [aTurn({ session_id: session.id })], {});
   try {
     flushSync();
-    expect(host.querySelector("button.attached-replying-text")).toBeNull();
-    expect(host.querySelector("span.attached-replying-text")?.textContent).toBe("思考中");
+    expect(host.querySelector("button.stream-step")).toBeNull();
+    expect(host.querySelector("span.stream-step")?.textContent).toBe("思考中");
   } finally {
     close();
   }
@@ -266,7 +279,7 @@ test("a command's output shows while it runs, and opens on demand once it has fi
   }
   try {
     flushSync();
-    click(host.querySelector("button.attached-replying-text"));
+    click(host.querySelector("button.stream-step"));
     const outputs = () => [...host.querySelectorAll(".turn-step-output")].map((node) => node.textContent);
     expect(outputs()).toEqual(["running 12 tests\n"]);
     const show = host.querySelector<HTMLButtonElement>(".turn-step-output-toggle");
@@ -274,6 +287,59 @@ test("a command's output shows while it runs, and opens on demand once it has fi
     click(show);
     expect(outputs()).toEqual(["lint clean\n", "running 12 tests\n"]);
     expect(show?.getAttribute("aria-expanded")).toBe("true");
+  } finally {
+    close();
+  }
+});
+
+test("a streaming reply's commands fold to one line, and stay as you left them while output comes in", () => {
+  const session = aDirect();
+  const turn = aTurn({ session_id: session.id, partial_text: "我先跑一下检查。" });
+  const { host, close, runtime } = stage(session, [turn], {});
+  const b64 = (text: string) => Buffer.from(text).toString("base64");
+  runtime.activity.applyTool({ type: "tool", turn_id: turn.id, id: "c1", name: "shell", phase: "started", command: 'cd "/w/2026-10-05-x" && pnpm lint' });
+  runtime.activity.applyStream({ type: "stream", id: `${turn.id}:c1`, offset: 0, data: b64("lint failed\n") });
+  runtime.activity.applyTool({ type: "tool", turn_id: turn.id, id: "c1", name: "shell", phase: "exited", exit_code: 1, duration_ms: 2_000 });
+  runtime.activity.applyTool({ type: "tool", turn_id: turn.id, id: "c3", name: "shell", phase: "started", command: "mkdir -p out" });
+  runtime.activity.applyTool({ type: "tool", turn_id: turn.id, id: "c3", name: "shell", phase: "exited", exit_code: 0, duration_ms: 22 });
+  runtime.activity.applyTool({ type: "tool", turn_id: turn.id, id: "c2", name: "shell", phase: "started", command: "pnpm test" });
+  runtime.activity.applyStream({ type: "stream", id: `${turn.id}:c2`, offset: 0, data: b64("running 12 tests\n") });
+  runtime.activityRevision += 1;
+  const summary = () => host.querySelector<HTMLButtonElement>(".command-activity .command-summary");
+  const output = () => host.querySelector(".command-activity .command-output")?.textContent ?? null;
+  const lines = () => [...host.querySelectorAll<HTMLElement>(".command-activity .command-row .command-line")];
+  try {
+    flushSync();
+    expect(summary()?.getAttribute("aria-expanded")).toBe("false");
+    expect(summary()?.textContent?.replace(/\s+/g, " ").trim()).toBe("3 条命令 1 条失败");
+    expect(host.querySelector(".command-activity .command-row")).toBeNull();
+
+    click(summary());
+    // The leading cd is gone, the program is set apart, and how it ended sits on the right.
+    const rows = lines().map((line) => [
+      line.querySelector(".command-program")?.textContent,
+      line.querySelector(".command-text")?.textContent,
+      line.querySelector(".command-meta")?.textContent?.replace(/\s+/g, " ").trim(),
+    ]);
+    expect(rows).toEqual([
+      ["pnpm", "pnpm lint", "退出码 1 2.0s"],
+      ["mkdir", "mkdir -p out", "22ms"],
+      ["pnpm", "pnpm test", ""],
+    ]);
+    expect(lines()[0]!.getAttribute("title")).toBe('cd "/w/2026-10-05-x" && pnpm lint');
+    // A command that printed nothing has nothing to open.
+    expect(lines().map((line) => line.tagName)).toEqual(["BUTTON", "DIV", "BUTTON"]);
+    // A running command's output waits to be asked for, like a finished one's.
+    expect(output()).toBeNull();
+    click(lines()[2]!);
+    expect(output()).toBe("running 12 tests\n");
+
+    // New output neither folds the list nor closes what you opened.
+    runtime.activity.applyStream({ type: "stream", id: `${turn.id}:c2`, offset: 17, data: b64("ok\n") });
+    runtime.activityRevision += 1;
+    flushSync();
+    expect(summary()?.getAttribute("aria-expanded")).toBe("true");
+    expect(output()).toBe("running 12 tests\nok\n");
   } finally {
     close();
   }
@@ -291,20 +357,20 @@ test("with several Bots, the name still opens the profile and the step opens tha
   });
   try {
     flushSync();
-    const members = [...host.querySelectorAll(".attached-replying-member")];
-    expect(members).toHaveLength(2);
-    click(members[1]!.querySelector("button.attached-replying-chip"));
+    const bubbles = [...host.querySelectorAll(".is-streaming-wrap")];
+    expect(bubbles).toHaveLength(2);
+    click(bubbles[1]!.querySelector("button.sender-name"));
     expect(opened).toEqual(["bot-2"]);
     expect(host.querySelector(".turn-steps")).toBeNull();
 
-    click(members[1]!.querySelector("button.attached-replying-step"));
+    click(bubbles[1]!.querySelector("button.stream-step"));
     const panel = host.querySelector(".turn-steps");
     expect(panel?.querySelector(".turn-steps-head")?.textContent).toBe("审片员 这一轮 · 1 步");
     expect(panel?.querySelector(".turn-step-text")?.textContent).toBe("运行 ffprobe clip.mp4");
-    expect(members[1]!.classList.contains("is-open")).toBe(true);
+    expect(bubbles[1]!.contains(panel)).toBe(true);
 
     // One list at a time: opening the other Bot's swaps it.
-    click(members[0]!.querySelector("button.attached-replying-step"));
+    click(bubbles[0]!.querySelector("button.stream-step"));
     expect(host.querySelectorAll(".turn-steps")).toHaveLength(1);
     expect(host.querySelector(".turn-steps-head")?.textContent).toBe(`${aBot().name} 这一轮 · 1 步`);
   } finally {

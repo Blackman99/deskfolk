@@ -52,6 +52,8 @@ export type HighlightLang =
   | "terraform"
   | "svelte"
   | "vue"
+  /** Command output nobody can name better: dates, levels, numbers, strings. Never from a file name. */
+  | "log"
   | "plaintext";
 
 const ALIAS: Record<string, HighlightLang> = {
