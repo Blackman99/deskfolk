@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { spawn } from "node:child_process";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import type { Socket } from "node:net";
@@ -84,6 +85,18 @@ test.skipIf(process.platform !== "darwin")("the compiled daemon starts outside t
       }],
     });
     expect(build.success).toBe(true);
+    // A Bot's read of the records (ADR 0065) runs this same executable again as a child.
+    const records = join(directory, "records.sqlite");
+    const seeded = new Database(records, { create: true });
+    seeded.run("CREATE TABLE t (x INTEGER)");
+    seeded.run("INSERT INTO t VALUES (7)");
+    seeded.close();
+    const query = Bun.spawnSync([binary, "--query-data"], {
+      cwd: "/",
+      env: { HOME: directory, PATH: "/usr/bin:/bin", TMPDIR: directory },
+      stdin: new Blob([JSON.stringify({ mode: "query", db: records, sql: "SELECT x FROM t", params: [], maxRows: 10 })]),
+    });
+    expect(JSON.parse(query.stdout.toString().trim())).toMatchObject({ ok: true, columns: ["x"], rows: [[7]] });
     // Started the way the window starts it: `--desktop-remote-channel` with a socketpair on FD 3.
     const child = spawn(binary, ["--desktop-remote-channel"], {
       cwd: "/",

@@ -613,6 +613,17 @@ The fixed text the app sends models, one slot each (`apps/daemon/src/prompts/reg
 - **Answers that do not read**: an answer to one of the app's own calls that came back and could not be read (not a timeout, an endpoint error or one cut off at its cap) is logged as `prompt.parse_failed` with the prompt and revision; settings show the count since your edit, or over the last 7 days on a default.
 - **Where things belong**: what every Bot should do goes into a built-in prompt; how one Bot works into its skills; a fact it learned is a memory; your requirements stay in the requirements ledger in your words. A Bot proposes such a change only when you ask it to analyze or improve something — there is no background tuning; set up a routine to do it periodically.
 
+<a id="records"></a>
+## Records
+
+Bots can read what the app keeps on this machine, read-only, for the evidence behind an analysis or an improvement ([ADR 0065](adr/0065-bots-read-this-machines-records.md)):
+
+- **Three tools**: `describe_data` lists tables, columns and row counts with a line on the main ones (`table` for one, with column types); `query_data` runs one read-only SQLite query — a single SELECT or WITH … SELECT, `?` bound to `params` in order, 100 rows by default and 1000 at most, long cells cut, blobs shown by size, stopped at 10 seconds; `read_data_log` reads the end of `daemon.log` (or the development build's `daemon-dev.stderr.log`), with grep. None has a side effect: no approval card, and they work under a hold and in read-only segments. Claude Agent Bots have them too.
+- **How it runs**: in a child process the daemon starts (`--query-data`), on a read-only `query_only` connection, two at most at once; one past its deadline is killed, and the daemon never waits on it.
+- **What cannot be read**: `remote_*`, `pending_keys`, `request_receipts` (remote access's keys and receipts), `notification_push_config`, `notification_devices` (push), `terminals` (yours), `sqlite_*`. Such a table reads as "no such table"; reaching one through a view or an index, opening another database or writing is refused from the query plan. Of the data folder only the two logs are read, never through a link, with anything that looks like a key blanked out.
+- **What can be read includes** other Bots' directs and memories (read-only, never into your context) and anything you ever pasted into a chat — keys belong on approval cards, not in chat.
+- **When**: only when you ask a Bot to analyze or improve something; what it finds goes into its own skills and memories, or into a built-in prompt through the approval card.
+
 <a id="spend"></a>
 ## Spend
 

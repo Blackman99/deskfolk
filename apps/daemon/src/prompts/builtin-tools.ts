@@ -36,6 +36,7 @@ import {
   UPDATE_MCP_SERVER,
   DELETE_MCP_SERVER,
 } from "./tools/catalog";
+import { DESCRIBE_DATA, QUERY_DATA, READ_DATA_LOG } from "./tools/data";
 
 export const TOOLS: ToolDef[] = [
   READ_FILE,
@@ -81,6 +82,9 @@ export const TOOLS: ToolDef[] = [
   READ_PROMPT,
   EDIT_PROMPT,
   RESET_PROMPT,
+  DESCRIBE_DATA,
+  QUERY_DATA,
+  READ_DATA_LOG,
 ];
 
 /** What send_message and end_turn say from level 3 (ADR 0044): segments end only through end_turn. */

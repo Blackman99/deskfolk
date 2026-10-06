@@ -109,6 +109,7 @@ export const TERM_GROUPS: Record<ManifestoTopic, readonly string[]> = {
     'Tray',
     'Local API',
     'Local token',
+    'Records',
     'Interrupted',
     'Catch-up',
     'Terminal',

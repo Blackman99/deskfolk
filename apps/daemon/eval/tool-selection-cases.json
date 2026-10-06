@@ -236,6 +236,25 @@
       "mcp": ["github"],
       "trigger": "From now on every Bot should paste the commands it ran and their output when it hands work over. Put that into the System section you all share.",
       "expect": { "first": ["read_prompt", "list_prompts", "edit_prompt"], "forbid": ["remember", "create_skill", "update_skill", "mcp_*"] }
+    },
+    {
+      "id": "builtin-zh-records-rework",
+      "category": "builtin",
+      "locale": "zh",
+      "skills": ["daily-report"],
+      "mcp": ["github"],
+      "trigger": "查一下最近一周哪个 Bot 的交付被退回得最多，退回的都是什么原因。",
+      "expect": { "first": ["describe_data", "query_data"], "forbid": ["mcp_*", "read_skill:*", "edit_prompt"] },
+      "note": "分析要依据：先查本机记录（ADR 0065），不改提示词。"
+    },
+    {
+      "id": "builtin-en-records-log",
+      "category": "builtin",
+      "locale": "en",
+      "skills": ["release-en"],
+      "mcp": ["github"],
+      "trigger": "Did the daemon log any errors in the last hour?",
+      "expect": { "first": ["read_data_log", "query_data", "describe_data"], "forbid": ["mcp_*", "shell", "read_file"] }
     }
   ]
 }

@@ -160,6 +160,8 @@ type Bound<F> = F extends (ctx: StoreContext, ...args: infer A) => infer R ? (..
 
 export class Store {
   readonly db: Database;
+  /** The database file, or null for an in-memory store: what a Bot's records queries open read-only (ADR 0065). */
+  readonly filename: string | null;
   readonly receipts: Receipts;
   /** How the previous run ended, read once at boot before this run's own flag is set to `crash` (see `schema-gate.ts`). */
   readonly previousShutdown: "clean" | "crash";
@@ -182,6 +184,7 @@ export class Store {
 
   constructor(options: StoreOptions = {}) {
     this.db = new Database(options.filename ?? ":memory:", { create: true, strict: true });
+    this.filename = options.filename && options.filename !== ":memory:" ? options.filename : null;
     this.db.run("PRAGMA foreign_keys = ON");
     if (options.filename && options.filename !== ":memory:") {
       this.db.run("PRAGMA journal_mode = WAL");

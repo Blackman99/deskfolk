@@ -30,6 +30,8 @@ const TARGET_KEYS: Readonly<Record<string, readonly string[]>> = {
   read_prompt: ["id"],
   edit_prompt: ["id"],
   reset_prompt: ["id"],
+  describe_data: ["table"],
+  read_data_log: ["name"],
 };
 
 /** Long enough for a deep path; the view clips again to what fits. */

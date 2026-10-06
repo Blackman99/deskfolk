@@ -47,6 +47,9 @@ describe("builtinTools order", () => {
       "read_prompt",
       "edit_prompt",
       "reset_prompt",
+      "describe_data",
+      "query_data",
+      "read_data_log",
     ]);
   });
 });

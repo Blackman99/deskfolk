@@ -50,6 +50,7 @@ import {
 } from "./artifact-paths";
 import { classifyPath, expandHome } from "./workspace-paths";
 import { editPrompt, listPrompts, readPrompt, resetPrompt } from "./prompt-tools";
+import { describeData, queryData, readDataLog } from "./data-tools";
 
 const DEFAULT_ENDPOINT_GUARD =
   "cannot modify the default endpoint's URL or key, or delete it";
@@ -231,6 +232,13 @@ export async function runCollabTool(
         return editPrompt(ctx, args);
       case "reset_prompt":
         return resetPrompt(ctx, args);
+      // This machine's records, read-only (ADR 0065).
+      case "describe_data":
+        return await describeData(ctx, args);
+      case "query_data":
+        return await queryData(ctx, args);
+      case "read_data_log":
+        return readDataLog(ctx, args);
       default:
         return fail("failed", `unknown tool: ${name}`);
     }

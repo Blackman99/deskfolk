@@ -124,6 +124,9 @@ const VERBS: Readonly<Record<string, ActivityVerb>> = {
   read_prompt: "prompt",
   edit_prompt: "editPrompt",
   reset_prompt: "editPrompt",
+  describe_data: "records",
+  query_data: "records",
+  read_data_log: "records",
 };
 
 /** A step shorter than this is over before its time would be worth reading. */

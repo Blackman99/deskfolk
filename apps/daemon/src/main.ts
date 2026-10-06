@@ -15,6 +15,13 @@ if (process.argv.includes("--remote-native-capability")) {
   process.exit(0);
 }
 
+// A Bot's read of this machine's records (ADR 0065) runs in a child of the daemon started this way:
+// one request on stdin, one answer on stdout, nothing of the daemon started.
+if (process.argv.includes("--query-data")) {
+  await (await import("./data-query/child")).runQueryChild();
+  process.exit(0);
+}
+
 const dataDir = process.env.REAL_BOT_DATA_DIR ?? defaultDataDir();
 
 const already = await probeHealth();

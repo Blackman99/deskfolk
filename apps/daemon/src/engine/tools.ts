@@ -59,6 +59,9 @@ const NO_EFFECT_TOOLS: ReadonlySet<string> = new Set([
   "list_annotations",
   "list_prompts",
   "read_prompt",
+  "describe_data",
+  "query_data",
+  "read_data_log",
   "end_turn",
 ]);
 
