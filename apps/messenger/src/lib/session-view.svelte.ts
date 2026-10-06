@@ -45,6 +45,14 @@ export class SessionView {
   draft = $state("");
   /** The message a reply is aimed at, or null for an ordinary send. */
   replyingToId = $state<string | null>(null);
+  /** The line of yours being changed in its bubble here (ADR 0063), or null. */
+  editingMessageId = $state<string | null>(null);
+  /** What that bubble's editor holds: kept while you look at another conversation. */
+  editDraft = $state("");
+  /** The change is on its way to the Mac. */
+  editSaving = $state(false);
+  /** Why the last save did not land, said under the editor until you change the words or leave. */
+  editError = $state<"not_editable" | "empty" | "failed" | null>(null);
   /** The turn the transcript is following, set when you send and when a Bot wakes for you. */
   focusedTurnId = $state<string | null>(null);
   /** Flashed after a jump — a search hit, a trace node, a notification. */

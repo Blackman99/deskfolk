@@ -25,6 +25,7 @@ import { createSubmissions } from "./engine/submissions";
 import { createRequirementCards } from "./engine/requirement-cards";
 import { createDirectReport } from "./engine/direct-report";
 import { createFire } from "./engine/fire";
+import { createIntake, INTAKE_CAP_MS } from "./engine/intake";
 import { createLifecycle } from "./engine/lifecycle";
 import type { ClaudeCodeProbe } from "./claude-code/probe";
 import type { AgentQuery } from "./engine/agent-runner";
@@ -48,6 +49,7 @@ import { createReflector } from "./engine/reflection";
 import { createRetrospector } from "./engine/retrospective";
 import type { TurnAdmission } from "./quiesce";
 import type { Store, UserQuote } from "./store";
+import type { EditMessageResult } from "./store/message-edits";
 import { ENGINE_LEVELS } from "./store/schema-gate";
 import type { TurnExecution } from "./store/routing";
 import { dropToolResults } from "./tool-results";
@@ -137,6 +139,12 @@ export type TurnEngine = {
    */
   noteFiled: (messageId: string) => void;
   /**
+   * A line of yours was changed after it went out (ADR 0063): the store has swapped the words where
+   * no Bot read them and queued the change for every Bot that had; this starts what was queued and
+   * has the words you changed read as yours.
+   */
+  noteEdited: (result: EditMessageResult) => void;
+  /**
    * One supervisor tick (ADR 0045), from the scheduler's: the store's repairs, pick-ups and
    * call-backs, then the segments it continues and the queue it dispatches. Off below the
    * supervisor's level and while draining.
@@ -176,6 +184,11 @@ export type TurnEngineOptions = {
   ablation?: Ablation;
   /** How long a reading of a line may take before the word lists read it instead (`reader.ts`). Tests shorten it. */
   readerTimeoutMs?: number;
+  /**
+   * How long a line of yours waits for the one before it in its conversation to be routed, counted
+   * from when that one started (`engine/intake.ts`, ADR 0063). Tests shorten it.
+   */
+  intakeCapMs?: number;
   /**
    * How long a group plan with everything handed over but work still in its progress, and its
    * session, stay quiet before the Bot that spoke last in it is called back. Tests shorten it.
@@ -300,10 +313,29 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     ablation,
     ...(options.readerTimeoutMs !== undefined ? { timeoutMs: options.readerTimeoutMs } : {}),
   });
+  // 连发 (ADR 0063): each conversation's lines of yours, routed in the order they came.
+  const intake = createIntake({ capMs: options.intakeCapMs ?? INTAKE_CAP_MS, draining: () => Boolean(options.admission?.draining) });
 
-  /** A quote of yours as the reader reads it: a line by its message, an answer on its own. */
+  /** What the line says now; null once it is gone (a cleared conversation). */
+  function bodyNow(messageId: string): string | null {
+    return store.db.query<{ body: string }, [string]>(`SELECT body FROM messages WHERE id = ?`).get(messageId)?.body ?? null;
+  }
+
+  /** The line as it now reads, or as it was when it is gone. */
+  function lineNow(message: Message): Message {
+    try {
+      return store.getMessage(message.id);
+    } catch {
+      return message;
+    }
+  }
+
+  /**
+   * A quote of yours as the reader reads it: a line by its message, an answer on its own, and the
+   * words you changed in a line on their own too — not as the whole line now reads (ADR 0063).
+   */
   function readQuote(quote: UserQuote): Promise<UserLineReading> {
-    if (quote.via === "message" && quote.message_id) {
+    if (quote.via === "message" && quote.message_id && !quote.edit_of) {
       try {
         return reader.userLine(store.getMessage(quote.message_id));
       } catch {
@@ -656,14 +688,38 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     store.afterCommit(() => scaleWatch.noteLine(messageId));
   }
 
+  /**
+   * A line of yours changed (ADR 0063). What was read of the old words is forgotten, the changes
+   * queued for the Bots that read them start, and the words you changed are read as yours: by the
+   * scribe, and for numbers that become checks. Not for a stop, a status question or a complaint —
+   * a change is not read as one — and the line stays filed where it was.
+   */
+  function noteEdited(result: EditMessageResult): void {
+    if (!result.edit) return;
+    const messageId = result.edit.message_id;
+    reader.forget(messageId);
+    lifecycle.dispatchQueued();
+    if (!result.quote) return;
+    void core.track(scribe.noteLine(messageId, scribe.handedOverAt()));
+    derivedChecks.noteLine(messageId);
+  }
+
   const engine: TurnEngine = {
-    async handleInboundMessage(message, opts) {
+    async handleInboundMessage(arrived, opts) {
+      let message = arrived;
       const fromUser = opts?.fromUser ?? message.author === USER_MEMBER;
+      // Sent on again as any line once you undid what was made of it: yours to change again (ADR 0063).
+      if (fromUser && opts?.ordinary) store.clearLineTaken(message.id);
       // 控制句, by the fixed rules: a line that is nothing but a stop or a go on is carried out here
       // at once and goes nowhere else — no filing, no turn, no model call (ADR 0040 P2). One sent on
       // again after you undid its stop skips every reading of it as control: you said it was neither.
+      // It waits for no line before it either: a stop goes ahead of whatever is still being read.
       const ruled = fromUser && !opts?.ordinary ? stops.ruleLine(message) : null;
-      if (ruled?.done) return;
+      if (ruled?.done) {
+        // Carried out, not handed to any Bot as words: it stays as you said it (ADR 0063).
+        store.markLineTaken(message.id, "app");
+        return;
+      }
       // Read as the line arrives: whether its job had handed something over, which is what a
       // complaint is judged by if the scribe files nothing for it. Its filing, or a turn it wakes,
       // may send that ticket back to doing over the complaint before the scribe gets to it.
@@ -679,26 +735,51 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       const handOver = (): void => {
         for (const pending of organizing) participation.dropPendingJudgement(pending, true);
       };
-      // Which job the line is about is read by a model too (ADR 0057), beside what it says: the two
-      // calls run at once, so the line waits on the slower one, not on both. Work items file lines
-      // from level 2; below it the organizer's message-time call still does.
-      const where = fromUser && store.capabilities().engine_level >= ENGINE_LEVELS.work_items
-        ? core.track(reader.filing(message))
-        : null;
-      // 读句 (ADR 0055): what the line means, read once, before anything below acts on it. A line
-      // sent on again after you undid its stop is not waited on: you said it was no control, and
-      // what else it says (a complaint) is read as its filing asks.
-      const reading = fromUser && !opts?.ordinary ? await core.track(reader.userLine(message)) : null;
-      // 进度询问: a line that only asks where a job stands, about a plan this session has one to
-      // report on, is answered from the store's own rows, right here — before anything below would
-      // organize, judge, wake or redirect a turn over it. Then the rest of 控制句: a line read as
-      // nothing but a stop or a go on is carried out like one the rules found, and one that only
-      // may have meant one carries the buttons and goes on below like any other.
-      if (reading && (statusQuestion.handle(message, reading) || (!ruled?.decided && stops.readLine(message, reading)))) {
+      // 连发 (ADR 0063): your lines in a conversation are taken in the order they came. This one waits
+      // until the one before it is routed — a second line sent while the first is still being read is
+      // heard by the turn the first opened, instead of racing it to be that turn's trigger — and lets
+      // the next one go once it is routed itself: when its turns and judgements have started.
+      const place = fromUser ? intake.enter(message.session_id) : null;
+      const routed = (): void => {
         handOver();
-        return;
-      }
+        place?.release();
+      };
+      // Nothing more is done with a line the app answered or carried out, or one cleared while it waited.
+      let settled = false;
       try {
+        if (place) {
+          await place.ready;
+          // Changed while it waited (ADR 0063): read, filed and routed as it now reads.
+          try {
+            message = store.getMessage(message.id);
+          } catch {
+            settled = true;
+            return;
+          }
+        }
+        // Which job the line is about is read by a model too (ADR 0057), beside what it says: the two
+        // calls run at once, so the line waits on the slower one, not on both. Work items file lines
+        // from level 2; below it the organizer's message-time call still does.
+        const where = fromUser && store.capabilities().engine_level >= ENGINE_LEVELS.work_items
+          ? core.track(reader.filing(message))
+          : null;
+        // 读句 (ADR 0055): what the line means, read once, before anything below acts on it. A line
+        // sent on again after you undid its stop is not waited on: you said it was no control, and
+        // what else it says (a complaint) is read as its filing asks.
+        const reading = fromUser && !opts?.ordinary ? await core.track(reader.userLine(message)) : null;
+        // Changed while it was being read: the reading is of words the line no longer has, so it is
+        // not carried out as a stop or a status question, and it judges no complaint (ADR 0063).
+        const fresh = reading !== null && bodyNow(message.id) === message.body;
+        // 进度询问: a line that only asks where a job stands, about a plan this session has one to
+        // report on, is answered from the store's own rows, right here — before anything below would
+        // organize, judge, wake or redirect a turn over it. Then the rest of 控制句: a line read as
+        // nothing but a stop or a go on is carried out like one the rules found, and one that only
+        // may have meant one carries the buttons and goes on below like any other.
+        if (reading && fresh && (statusQuestion.handle(message, reading) || (!ruled?.decided && stops.readLine(message, reading)))) {
+          store.markLineTaken(message.id, "app");
+          settled = true;
+          return;
+        }
         let filed = message;
         let lifted: Hold[] = [];
         if (fromUser) {
@@ -726,9 +807,12 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
             const read = where ? await where : null;
             store.updatePlanDormancy();
             store.fileMessage(message.id, read ? { read } : {});
+            // From this read until the line is heard or opens its turn nothing waits: a change you
+            // make to the line is decided against the rows that leaves (store/message-edits.ts), so
+            // every copy written below has the words the line has then.
             filed = store.getMessage(message.id);
             // A complaint about work handed over or approved asks about it before any turn opens on it.
-            submissions.noteComplaint(filed.id, reading ? { reading } : {});
+            submissions.noteComplaint(filed.id, reading && filed.body === message.body ? { reading } : {});
           }
           // A Stop you pressed on this job goes once you say something more about it to that Bot,
           // before the line wakes anyone: what you say next is what the Bot goes on from.
@@ -739,25 +823,30 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         }
         const targets = store.capabilities().engine_level >= ENGINE_LEVELS.work_items ? store.filingsOfMessage(filed.id) : [];
         if (targets.length > 1) {
-          for (const target of targets) {
-            const onJob = { ...filed, task_id: target.taskId, ticket_id: target.ticketId };
+          for (const [at, target] of targets.entries()) {
+            // Read again for each: a change may land while the job before was being judged.
+            const now = lineNow(filed);
+            const onJob = { ...now, task_id: target.taskId, ticket_id: target.ticketId };
             if (fromUser) lifecycle.hearAcross(onJob);
-            await core.track(participation.handleParticipation(onJob, { fromUser, fork: opts?.fork, opened: handOver }));
+            // The next line goes once the last of its jobs has started, not the first.
+            await core.track(participation.handleParticipation(onJob, { fromUser, fork: opts?.fork, opened: at === targets.length - 1 ? routed : handOver }));
           }
         } else {
-          await core.track(participation.handleParticipation(filed, { fromUser, fork: opts?.fork, opened: handOver }));
+          await core.track(participation.handleParticipation(filed, { fromUser, fork: opts?.fork, opened: routed }));
         }
         // The stopped work your line did not reach goes on from it, and hears it as work already at the job would have.
         const resumed = stops.goOnFromYourLine(filed, lifted);
         if (resumed.length > 0) lifecycle.hearAcross(filed, { turnIds: resumed.map((turn) => turn.id) });
       } finally {
-        handOver();
-        // Once the line is filed and has woken whom it wakes: the ledger never holds a turn back.
-        if (fromUser) void core.track(scribe.noteLine(message.id, handedOver));
-        // Its numbers become checks as soon as it is filed, whatever the scribe makes of it.
-        if (fromUser) derivedChecks.noteLine(message.id);
-        // And whether its job is a large one, read once while nothing has said either way (ADR 0060).
-        if (fromUser) scaleWatch.noteLine(message.id);
+        routed();
+        if (fromUser && !settled) {
+          // Once the line is filed and has woken whom it wakes: the ledger never holds a turn back.
+          void core.track(scribe.noteLine(message.id, handedOver));
+          // Its numbers become checks as soon as it is filed, whatever the scribe makes of it.
+          derivedChecks.noteLine(message.id);
+          // And whether its job is a large one, read once while nothing has said either way (ADR 0060).
+          scaleWatch.noteLine(message.id);
+        }
       }
     },
     settlePlan(taskId) {
@@ -784,6 +873,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     sweepToolResults,
     dispatchQueuedWork: lifecycle.dispatchQueued,
     noteFiled,
+    noteEdited,
     pollJobs(at = new Date()) {
       if (options.admission?.draining) return;
       jobPoller.poll(at);

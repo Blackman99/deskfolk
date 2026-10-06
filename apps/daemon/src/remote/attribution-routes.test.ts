@@ -32,3 +32,15 @@ test("the phone's lead API needs explicit confirmation, and never writes from su
     expect(() => validateBusiness(route("PUT", body))).toThrow();
   }
 });
+
+test("the phone can change a line of yours and read what it said before, with nothing but the words", () => {
+  const change = (body: unknown): RemoteRequest => ({ v: 1, id, method: "PATCH", path: `/v1/messages/${id}`, body: body as RemoteRequest["body"] });
+  expect(() => validateBusiness(change({ body: "片长 45 秒" }))).not.toThrow();
+  expect(() => validateBusiness({ v: 1, id, method: "GET", path: `/v1/messages/${id}/versions` })).not.toThrow();
+  for (const body of [{}, null, [], { body: 45 }, { body: "x", parent_id: id }, { body: "x", task_id: id }]) {
+    expect(() => validateBusiness(change(body))).toThrow();
+  }
+  // Only lines are changed this way: not a message's whole record, nor anything else.
+  expect(() => validateBusiness({ v: 1, id, method: "DELETE", path: `/v1/messages/${id}` })).toThrow();
+  expect(() => validateBusiness({ v: 1, id, method: "GET", path: `/v1/messages/${id}/versions`, query: { all: "1" } })).toThrow();
+});

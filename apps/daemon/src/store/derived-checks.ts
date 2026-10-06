@@ -59,18 +59,19 @@ function noChange(): DerivedChecksChange {
   return { proposed: [], repeated: [], demoted: [], bound: [], rebound: [], dropped: [], counts: {} };
 }
 
-type QuoteRow = { id: string; body: string; via: QuoteVia; created_at: string; ticket_id: string | null; ticket_title: string | null };
+type QuoteRow = { id: string; body: string; via: QuoteVia; created_at: string; ticket_id: string | null; ticket_title: string | null; edit_of: string | null };
 
 /**
  * Your words about the plan still readable, oldest first, with whether each was filed under a part
  * (a ticket named after the job itself never is: `namedAfterJob`) and what counts as one line of
  * it: words typed on the board count once per field group (the plan's fields, or one ticket's
- * description), however often you save it.
+ * description), however often you save it; a line you changed after sending it counts once too,
+ * with the words you changed (ADR 0063), so a number you left alone is not said twice.
  */
 function planQuotes(ctx: StoreContext, task: Task): QuoteForChecks[] {
   return ctx.db
     .query<QuoteRow, [string]>(
-      `SELECT q.id, q.body, q.via, q.created_at, q.ticket_id, t.title AS ticket_title
+      `SELECT q.id, q.body, q.via, q.created_at, q.ticket_id, t.title AS ticket_title, q.edit_of
        FROM user_quotes q LEFT JOIN tickets t ON t.id = q.ticket_id
        WHERE q.task_id = ? AND q.redacted_at IS NULL
        ORDER BY q.created_at ASC, q.rowid ASC`,
@@ -80,7 +81,7 @@ function planQuotes(ctx: StoreContext, task: Task): QuoteForChecks[] {
       id: row.id,
       body: row.body,
       via: row.via,
-      source: row.via === "board" ? `board:${row.ticket_id ?? "plan"}` : row.id,
+      source: row.via === "board" ? `board:${row.ticket_id ?? "plan"}` : row.edit_of ?? row.id,
       at: row.created_at,
       aboutPart: row.ticket_title !== null && !namedAfterJob(ctx, task, row.ticket_title) && partTicket(row.ticket_title),
     }));

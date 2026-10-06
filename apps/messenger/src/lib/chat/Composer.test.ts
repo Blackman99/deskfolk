@@ -766,3 +766,45 @@ test("no group stop menu before the daemon has stops, nor while nobody in it is 
     close();
   }
 });
+
+test("in a direct whose Bot works, or still reads your last line, the hint says it reads what you send next (ADR 0063)", () => {
+  const selected = aDirect();
+  const hint = (over: Parameters<typeof fakeRuntime>[0]) => {
+    const runtime = reactive(fakeRuntime({ bots: [aBot({ id: "bot-1" })], sessions: [selected], ...over }));
+    runtime.selectedId = selected.id;
+    const view = render(Composer, { runtime, t, selected, onSend: async () => true, onPickPrompt: () => {} });
+    const text = view.host.querySelector(".send-shortcut-hint")?.textContent ?? "";
+    view.close();
+    return text;
+  };
+  const working = [aTurn({ session_id: selected.id, bot_id: "bot-1" })];
+  const reading = [{ id: "pj-1", session_id: selected.id, message_id: "m-1", bot_id: "bot-1", stage: "organizing" as const, created_at: "t" }];
+  expect(hint({})).toBe(t.chat.sendHint);
+  expect(hint({ turns: working, turnInbox: true, linesInOrder: true })).toBe(t.composer.workingHint);
+  expect(hint({ pendingJudgements: reading, turnInbox: true, linesInOrder: true })).toBe(t.composer.workingHint);
+  // Where Send really waits — an older daemon — it still says to wait.
+  expect(hint({ pendingJudgements: reading, turnInbox: true })).toBe(t.composer.waitingHint);
+  expect(hint({ turns: working })).toBe(t.composer.waitingHint);
+});
+
+test("↑ in an empty box opens your newest line for changing; with words in the box it is only a key", () => {
+  const selected = aDirect();
+  const runtime = reactive(fakeRuntime({ bots: [aBot({ id: "bot-1" })], sessions: [selected] }));
+  runtime.selectedId = selected.id;
+  let asked = 0;
+  const view = render(Composer, { runtime, t, selected, onSend: async () => true, onPickPrompt: () => {}, onEditLast: () => { asked += 1; return true; } });
+  const editor = view.host.querySelector(".composer-input") as HTMLElement;
+  const up = () => {
+    const event = new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true, cancelable: true });
+    editor.dispatchEvent(event);
+    flushSync();
+    return event.defaultPrevented;
+  };
+  expect(up()).toBe(true);
+  expect(asked).toBe(1);
+  runtime.draft = "还没发的话";
+  flushSync();
+  expect(up()).toBe(false);
+  expect(asked).toBe(1);
+  view.close();
+});

@@ -1399,7 +1399,30 @@ export type Message = {
    * turn's inbox. Absent on every other line, and from a daemon that predates the inbox.
    */
   delivery?: MessageDelivery;
+  /**
+   * On a line of yours you changed after sending it (ADR 0063): when you last did. Null or absent
+   * on a line never changed, and from a daemon that cannot edit.
+   */
+  edited_at?: string | null;
+  /**
+   * On a line of yours the app carried out itself rather than handing it to a Bot (`app`: a stop,
+   * a go on or a status question it answered), or took as your answer to a Bot's question
+   * (`answer`). Neither can be edited: the stop was made, the question was answered once.
+   */
+  taken_as?: MessageTakenAs | null;
 };
+
+/** What became of a line of yours that never reached a Bot as a line (`Message.taken_as`). */
+export type MessageTakenAs = "app" | "answer";
+
+/** `PATCH /v1/messages/:id`: the new words of a line of yours (ADR 0063). */
+export type EditMessageRequest = { body: string };
+
+/** One earlier wording of a line you changed, and when it was written. */
+export type MessageVersion = { body: string; created_at: string };
+
+/** `GET /v1/messages/:id/versions`: what the line said before, oldest first, not counting what it says now. */
+export type MessageVersionsResponse = { versions: MessageVersion[] };
 
 /**
  * Where an inbox item stands (ADR 0040 P4a). `queued`: waiting for the turn's next step. `held`: a
@@ -2602,6 +2625,13 @@ export type RuntimeSnapshot = EventCursor & {
    * keeps the direct's composer to Stop while the Bot works.
    */
   turnInbox?: true;
+  /**
+   * Present from a daemon that takes your lines in a conversation in the order they came (ADR 0063):
+   * one sent while the last is still being read waits for it, so a direct's Send stays open then.
+   */
+  linesInOrder?: true;
+  /** Present from a daemon that lets you change a line of yours after sending it (ADR 0063). */
+  messageEdits?: true;
 };
 
 export type SessionSnapshot = EventCursor & {

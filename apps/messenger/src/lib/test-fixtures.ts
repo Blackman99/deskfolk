@@ -447,6 +447,22 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     attributionLoadError: {},
     loadAttributionPlans: record("loadAttributionPlans"),
     patchMessageAttribution: record("patchMessageAttribution"),
+    // Changing a line of yours (ADR 0063): opening and leaving the editor are the view's own state.
+    startEdit: (sessionId: string, message: { id: string; body: string }) => {
+      calls.push({ name: "startEdit", args: [sessionId, message] });
+      const view = sessionView(sessionId);
+      view.editingMessageId = message.id;
+      view.editDraft = message.body;
+      view.editError = null;
+    },
+    cancelEdit: (sessionId: string) => {
+      calls.push({ name: "cancelEdit", args: [sessionId] });
+      const view = sessionView(sessionId);
+      view.editingMessageId = null;
+      view.editDraft = "";
+    },
+    saveEdit: record("saveEdit", true),
+    messageVersions: record("messageVersions", []),
     newJobFromMessage: record("newJobFromMessage"),
     controlAction: record("controlAction"),
     continueInterrupt: record("continueInterrupt"),

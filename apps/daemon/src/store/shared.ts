@@ -202,6 +202,10 @@ export type MessageRow = {
   control?: string | null;
   /** 1 on a line only the Bot it wakes reads: the note stopped work opens again on (ADR 0041). */
   bot_only?: number;
+  /** When you last changed this line of yours (ADR 0063). */
+  edited_at?: string | null;
+  /** A line of yours the app carried out itself, or took as your answer to a question. */
+  taken_as?: "app" | "answer" | null;
   created_at: string;
 };
 

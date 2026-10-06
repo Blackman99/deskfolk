@@ -104,9 +104,19 @@ export function composeTranscript(
     byTrigger.set(trigger, list);
   }
 
-  for (const pending of pendingJudgements) {
+  // A Bot reading your lines shows once: under the first line it is reading while it has no turn
+  // here yet, and in its own bubble once it does. Lines you send in a row are read for it one after
+  // another, and would draw it replying under each of them (连发, ADR 0063).
+  const working = new Set(running.map((turn) => turn.bot_id));
+  const reading = new Set<string>();
+  const inOrder = [...pendingJudgements].sort((a, b) => byTime({ created_at: a.created_at, id: a.id }, { created_at: b.created_at, id: b.id }));
+  for (const pending of inOrder) {
     if (pending.session_id !== sessionId) continue;
     if (occupied.has(occupancyKey(pending.message_id, pending.bot_id))) continue;
+    if (pending.stage === "organizing") {
+      if (working.has(pending.bot_id) || reading.has(pending.bot_id)) continue;
+      reading.add(pending.bot_id);
+    }
     addEntry(pending.message_id, {
       bot_id: pending.bot_id,
       created_at: pending.created_at,

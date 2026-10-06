@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
-	import { USER_MEMBER, type Attachment, type Bot, type Message, type SessionSummary, type Turn,
+	import { USER_MEMBER, type Attachment, type Bot, type Message, type MessageVersion, type SessionSummary, type Turn,
 		type Annotation, type ControlOffer,
 	} from '@real-bot/protocol';
 	import Composer from './Composer.svelte';
@@ -60,6 +60,8 @@
 	import { canQuoteReply, draftWithQuoteMention, quotePreview, quotedBotName } from './quote-reply.ts';
 	import MessageContextMenu from './MessageContextMenu.svelte';
 	import MessageTextSheet from './MessageTextSheet.svelte';
+	import MessageEditor from './MessageEditor.svelte';
+	import { canEditMessage, lastEditableLine } from './message-edit.ts';
 	import { extractAssociatedFiles } from './message-context-menu.ts';
 	import { handedOverPaths } from '../overlays/artifacts.ts';
 	import { messageDisplayBody } from './message-body.ts';
@@ -952,6 +954,68 @@
 		void tick().then(() => composer?.focus());
 	}
 
+	/** A line of yours that can be changed from here now (ADR 0063); the daemon decides again on save. */
+	function editable(message: Message): boolean {
+		return canEditMessage(message, {
+			messageEdits: snapshot.messageEdits,
+			connected,
+			lockedComposer,
+			annotated: (annotationIndex.get(message.id)?.length ?? 0) > 0
+		});
+	}
+
+	function editingHere(message: Message): boolean {
+		return view?.editingMessageId === message.id;
+	}
+
+	/** Opens the line for changing, in its own bubble. */
+	function startEdit(message: Message): void {
+		if (!selected || !editable(message)) return;
+		runtime.startEdit(selected.id, message);
+	}
+
+	/** ↑ in an empty composer: your newest line here that can be changed. True when one opened. */
+	function editLastLine(): boolean {
+		const line = lastEditableLine(stream.flatMap((item) => (item.type === 'message' ? [item.message] : [])), editable);
+		if (!line) return false;
+		startEdit(line);
+		return true;
+	}
+
+	const editErrorText = $derived(
+		view?.editError === 'not_editable'
+			? t.chat.editNotEditable
+			: view?.editError === 'empty'
+				? t.chat.editEmpty
+				: view?.editError === 'failed'
+					? t.chat.editFailed
+					: null
+	);
+
+	/** What a changed line said before, under its bubble once you open it: read for the change it now carries. */
+	type VersionsShown = { at: string; loading: boolean; failed: boolean; versions: MessageVersion[] };
+	let versionsShown = $state<Record<string, VersionsShown>>({});
+
+	async function toggleVersions(message: Message): Promise<void> {
+		const at = message.edited_at ?? '';
+		const open = versionsShown[message.id];
+		if (open && open.at === at) {
+			const { [message.id]: _closed, ...rest } = versionsShown;
+			versionsShown = rest;
+			return;
+		}
+		versionsShown = { ...versionsShown, [message.id]: { at, loading: true, failed: false, versions: [] } };
+		const versions = await runtime.messageVersions(message.id, at);
+		// Closed, or changed again, while it loaded.
+		if (versionsShown[message.id]?.at !== at) return;
+		versionsShown = { ...versionsShown, [message.id]: { at, loading: false, failed: versions === null, versions: versions ?? [] } };
+	}
+
+	/** An event from inside a bubble's editor: the words being changed keep the browser's own selection and menu. */
+	function insideEditor(target: EventTarget | null): boolean {
+		return target instanceof Element && Boolean(target.closest('.msg-editor'));
+	}
+
 	function copyMessageBody(id: string, text: string, event?: MouseEvent): void {
 		fallbackCopyText(text);
 		if (navigator.clipboard?.writeText) {
@@ -995,6 +1059,7 @@
 	function handleMessageMouseDown(e: MouseEvent): void {
 		// A rendered picture keeps the secondary press: its own menu copies the pixels.
 		if (copyableImageAt(e.target)) return;
+		if (insideEditor(e.target)) return;
 		// WebKit selects the word on secondary mousedown, before contextmenu fires. Control-click as
 		// right-click is a mac habit only — on Windows Ctrl+click is an ordinary modified click.
 		if (e.button === 2 || (e.button === 0 && e.ctrlKey && desktopPlatform() === 'mac')) e.preventDefault();
@@ -1015,6 +1080,8 @@
 	}
 
 	function handleMessageContextMenu(e: MouseEvent, message: Message): void {
+		// Words being changed keep the system's own menu: select, cut, copy, paste.
+		if (insideEditor(e.target)) return;
 		// The picture's menu is mounted on the document and runs first. Leave this one closed.
 		if (copyableImageAt(e.target)) {
 			messageContextMenu = null;
@@ -1068,6 +1135,16 @@
 		runtime.openTrace(message.task_id, { messageId: message.id, turnId: message.turn_id });
 	}
 </script>
+
+{#snippet editedMark(message: Message)}
+	<button
+		type="button"
+		class="msg-edited"
+		aria-expanded={versionsShown[message.id]?.at === (message.edited_at ?? '')}
+		title={t.chat.editedAt(formatFullTimestamp(message.edited_at ?? message.created_at))}
+		onclick={() => void toggleVersions(message)}
+	>{t.chat.edited}</button>
+{/snippet}
 
 <div class:has-message-index={showMessageIndex} class="stream-stage flex-1 min-h-0 relative flex flex-col bg-pane overflow-hidden">
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -1571,7 +1648,7 @@
 												</span>
 											</div>
 										{/if}
-										<article class="msg is-you">
+										<article class="msg is-you" class:is-editing={editingHere(item.message)}>
 											<div class="who">{who(item.message)}</div>
 											<div class="msg-toolbar">
 												<div class="msg-toolbar-pill">
@@ -1583,6 +1660,17 @@
 															onclick={() => startQuoteReply(item.message)}
 														>
 															<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>
+														</button>
+													{/if}
+													{#if editable(item.message)}
+														<button
+															type="button"
+															class="act-btn"
+															title={t.chat.editMessage}
+															aria-label={t.chat.editThisLine}
+															onclick={() => startEdit(item.message)}
+														>
+															<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
 														</button>
 													{/if}
 													<button
@@ -1611,17 +1699,35 @@
 													<span class="quote-ref-body">{quotePreview(quoted?.body ?? '')}</span>
 												</button>
 											{/if}
-											<MarkdownBody
-												source={messageBody(item.message)}
-												options={markdownOpts(item.message)}
-												copyLabel={t.chat.copyCode}
-												copiedLabel={t.chat.copied}
-												inverted
-												onOpenArtifact={(path) => onOpenArtifact(path, undefined, item.message.id)}
-												onOpenImage={(path, from) => openBodyImage(item.message, path, from)}
-												loadArtifactImage={loadBodyImage}
-												onOpenProfile={onOpenProfile}
-											/>
+											{#if editingHere(item.message) && view && selected}
+												{@const editingIn = selected.id}
+												<MessageEditor
+													{t}
+													value={view.editDraft}
+													saving={view.editSaving}
+													error={editErrorText}
+													onInput={(value) => {
+														if (view) {
+															view.editDraft = value;
+															view.editError = null;
+														}
+													}}
+													onSave={() => void runtime.saveEdit(editingIn)}
+													onCancel={() => runtime.cancelEdit(editingIn)}
+												/>
+											{:else}
+												<MarkdownBody
+													source={messageBody(item.message)}
+													options={markdownOpts(item.message)}
+													copyLabel={t.chat.copyCode}
+													copiedLabel={t.chat.copied}
+													inverted
+													onOpenArtifact={(path) => onOpenArtifact(path, undefined, item.message.id)}
+													onOpenImage={(path, from) => openBodyImage(item.message, path, from)}
+													loadArtifactImage={loadBodyImage}
+													onOpenProfile={onOpenProfile}
+												/>
+											{/if}
 											{#if messageShowsAttachments(item.message)}
 												<MessageAttachments
 													attachments={item.message.attachments}
@@ -1646,6 +1752,28 @@
 												/>
 											{/if}
 										</article>
+										{#if item.message.edited_at}
+											<!-- Under the bubble, where what it said before opens: the hover bar above it would cover a mark by the time. -->
+											<div class="msg-edited-row">{@render editedMark(item.message)}</div>
+										{/if}
+										{#if versionsShown[item.message.id] && versionsShown[item.message.id]!.at === (item.message.edited_at ?? '')}
+											{@const shown = versionsShown[item.message.id]!}
+											<div class="msg-versions" role="region" aria-label={t.chat.earlierVersions}>
+												<div class="msg-versions-title">{t.chat.earlierVersions}</div>
+												{#if shown.loading}
+													<div class="msg-versions-note">{t.chat.versionsLoading}</div>
+												{:else if shown.failed}
+													<div class="msg-versions-note">{t.chat.versionsFailed}</div>
+												{:else}
+													{#each [...shown.versions].reverse() as version (version.created_at + version.body)}
+														<div class="msg-version">
+															<span class="msg-version-time mono" title={formatFullTimestamp(version.created_at)}>{formatMessageTime(version.created_at)}</span>
+															<span class="msg-version-body">{version.body}</span>
+														</div>
+													{/each}
+												{/if}
+											</div>
+										{/if}
 										{#if !fileDrop && !item.message.control && attributionChips.has(item.message.id)}
 											<MessageAttribution
 												message={item.message} {t}
@@ -2093,7 +2221,8 @@
 		onScrollToBottom={() => scrollToBottom(true)}
 		onSend={sendFromComposer}
 		onPickPrompt={pickStarterPrompt}
-	/>
+		onEditLast={editLastLine}
+		/>
 
 	{#if shownImage}
 		<MessageImageLightbox
@@ -2138,7 +2267,8 @@
 				? () => { attributionEditId = activeMenu.message.id; }
 				: undefined}
 			onSelectText={activeMenu.touch ? () => { textSheetId = activeMenu.message.id; } : undefined}
-		/>
+			onEdit={editable(activeMenu.message) ? () => startEdit(activeMenu.message) : undefined}
+			/>
 	{/if}
 	{#if textSheetMessage}
 		{@const shown = textSheetMessage}
@@ -2470,6 +2600,85 @@
 		font-size: 11px;
 		color: var(--muted);
 		margin-left: 2px;
+	}
+
+	/* 「已编辑」 under the bubble: as quiet as the time, and it opens what the line said before. */
+	.msg-edited-row {
+		display: flex;
+		justify-content: flex-end;
+		margin-top: 3px;
+		padding: 0 2px;
+	}
+
+	.msg-edited {
+		padding: 0;
+		border: 0;
+		background: none;
+		font-size: 11px;
+		line-height: inherit;
+		color: var(--muted);
+		cursor: pointer;
+		transition-property: color;
+		transition-duration: 0.15s;
+	}
+
+	.msg-edited:hover,
+	.msg-edited[aria-expanded='true'] {
+		color: var(--ink);
+		text-decoration: underline;
+		text-underline-offset: 2px;
+	}
+
+	/* A line being changed is a field, not a bubble: the column's width, neutral, with the focus colour. */
+	.msg.is-you.is-editing {
+		width: 100%;
+		background: var(--pane);
+		color: var(--ink);
+		border-color: var(--accent-border);
+		box-shadow: none;
+	}
+
+	.msg.is-editing .msg-toolbar {
+		display: none;
+	}
+
+	.msg-versions {
+		display: grid;
+		gap: 6px;
+		align-self: flex-end;
+		max-width: 100%;
+		margin-top: 6px;
+		padding: 8px 10px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		background: var(--pane);
+		color: var(--ink);
+	}
+
+	.msg-versions-title,
+	.msg-versions-note {
+		font-size: 11px;
+		color: var(--muted);
+	}
+
+	.msg-version {
+		display: grid;
+		grid-template-columns: auto 1fr;
+		gap: 8px;
+		align-items: baseline;
+		font-size: 13px;
+		line-height: 1.5;
+	}
+
+	.msg-version-time {
+		font-size: 11px;
+		color: var(--muted);
+	}
+
+	.msg-version-body {
+		color: var(--ink-secondary);
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
 	}
 
 	/* Bot Duration & Response Time Badge */
@@ -3269,6 +3478,14 @@
 			-webkit-touch-callout: none;
 			-webkit-user-select: none;
 			user-select: none;
+		}
+
+		/* Words being changed select, and paste, like any field's (ADR 0063). */
+		.msg :global(.msg-editor),
+		.msg :global(.msg-editor *) {
+			-webkit-touch-callout: default;
+			-webkit-user-select: text;
+			user-select: text;
 		}
 	}
 

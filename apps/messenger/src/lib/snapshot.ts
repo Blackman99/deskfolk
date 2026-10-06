@@ -55,6 +55,13 @@ export type Snapshot = {
    * the composer stays open. False for a daemon that would cut the turn off instead.
    */
   turnInbox: boolean;
+  /**
+   * Whether the daemon takes your lines in a conversation in the order they came (ADR 0063): a
+   * direct's Send stays open while your last line is still being read.
+   */
+  linesInOrder: boolean;
+  /** Whether a line of yours can be changed after it went out (ADR 0063). */
+  messageEdits: boolean;
 };
 
 export function emptySnapshot(): Snapshot {
@@ -93,6 +100,8 @@ export function emptySnapshot(): Snapshot {
     holds: [],
     holdsOn: false,
     turnInbox: false,
+    linesInOrder: false,
+    messageEdits: false,
   };
 }
 
@@ -105,6 +114,8 @@ export function fromRuntimeSnapshot(snapshot: RuntimeSnapshot): Snapshot {
     holds: snapshot.holds ?? [],
     holdsOn: snapshot.holds !== undefined,
     turnInbox: snapshot.turnInbox === true,
+    linesInOrder: snapshot.linesInOrder === true,
+    messageEdits: snapshot.messageEdits === true,
   };
 }
 

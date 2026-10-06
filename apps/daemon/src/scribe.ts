@@ -84,13 +84,15 @@ export function createScribe(deps: ScribeDeps): Scribe {
     return store.plansHandedOver();
   }
 
-  function enqueue(read: () => UserQuote | null, handedOver: HandedOver): Promise<void> {
+  function enqueue(read: () => UserQuote | readonly UserQuote[] | null, handedOver: HandedOver): Promise<void> {
     const mine = generation;
     const run = chain.then(async () => {
       if (mine !== generation) return;
       try {
-        const quote = read();
-        if (quote) await scribeOne(quote, mine, handedOver);
+        for (const quote of [read() ?? []].flat()) {
+          if (mine !== generation) return;
+          await scribeOne(quote, mine, handedOver);
+        }
       } catch (error) {
         log(`[scribe] ${error instanceof Error ? error.message : String(error)}`);
       }
@@ -192,7 +194,10 @@ export function createScribe(deps: ScribeDeps): Scribe {
 
   return {
     handedOverAt,
-    noteLine: (messageId, handedOver) => enqueue(() => store.quoteOfMessage(messageId, "message"), handedOver),
+    // Every quote of the line, oldest first: the line as you sent it, then the words you changed in it
+    // (ADR 0063). Each is read once, so a change that lands before the line's turn in the queue
+    // leaves nothing of the line unread.
+    noteLine: (messageId, handedOver) => enqueue(() => store.listQuotes({ messageId }).filter((quote) => quote.via === "message"), handedOver),
     noteAnswer: (askId) => {
       // Read here: the turn the answer resumes has not run on yet.
       const answer = store.quoteOfMessage(askId, "ask_answer");

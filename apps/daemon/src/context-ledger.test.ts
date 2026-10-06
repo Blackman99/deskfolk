@@ -103,6 +103,19 @@ describe("the quote layer", () => {
     store.close();
   });
 
+  test("a line you changed shows as sent, and the words you changed as changed where you said it (ADR 0063)", () => {
+    const { store, room, director, ep01, say, situation } = fixture();
+    const line = say(ep01.id, "片长约 2 分钟，机械臂是左手");
+    store.editMessage(line.id, { body: "片长约 3 分钟，机械臂是左手", userActionId: "layer" });
+    const trigger = store.insertMessage({ sessionId: room, kind: "user", author: USER_MEMBER, body: "@视频导演 继续" });
+    const zh = situation({ sessionId: room, botId: director.id, triggerId: trigger.id, taskId: ep01.id });
+    expect(zh).toContain("在群「AI影视创作组」：片长约 2 分钟，机械臂是左手");
+    expect(zh).toContain("在群「AI影视创作组」改了一句：片长约 3 分钟");
+    const en = situation({ sessionId: room, botId: director.id, triggerId: trigger.id, taskId: ep01.id, locale: "en" });
+    expect(en).toContain('changed a line in group "AI影视创作组": 片长约 3 分钟');
+    store.close();
+  });
+
   test("a short job lists all of it, in English too; nothing kept, no layer", () => {
     const { store, room, director, ep01, say, situation } = fixture();
     const trigger = store.insertMessage({ sessionId: room, kind: "user", author: USER_MEMBER, body: "@视频导演 开工" });

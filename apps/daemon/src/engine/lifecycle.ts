@@ -429,6 +429,8 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       const current = store.getTurn(turn.id);
       if (current.status !== "waiting_ask" || current.session_id !== trigger.session_id) return false;
       answerAsk(live.ask.id, trigger.session_id, trigger.body);
+      // Your answer now, written on the question: a question is answered once, so the line stays as it was (ADR 0063).
+      store.markLineTaken(trigger.id, "answer");
       return true;
     } catch {
       return false;
@@ -556,6 +558,12 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
    */
   function reopenForUnheard(turn: Turn, live: Live): void {
     if (live.inbox.length === 0 || admission?.draining) return;
+    // What it had not read says what the rows now say: a line you changed meanwhile (ADR 0063).
+    for (const entry of live.inbox) {
+      if (entry.seq === undefined) continue;
+      const row = store.getInboxItem(entry.seq);
+      if (row && row.body_snapshot !== entry.item.body) entry.item = { ...entry.item, body: row.body_snapshot };
+    }
     // A line heard from another session was answered there; it opens nothing here.
     const pending = live.inbox.filter((entry) => !entry.elsewhere);
     live.inbox = [];
@@ -932,6 +940,12 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       const queued = store.queuedForTurn(turnId);
       const stillQueued = new Set(queued.map((item) => item.seq));
       live.inbox = live.inbox.filter((entry) => entry.seq === undefined || stillQueued.has(entry.seq));
+      // A line you changed before this turn read it reads as it now does (ADR 0063): the rows hold the words.
+      const words = new Map(queued.map((item) => [item.seq, item.body_snapshot] as const));
+      for (const entry of live.inbox) {
+        const now = entry.seq === undefined ? undefined : words.get(entry.seq);
+        if (now !== undefined && now !== entry.item.body) entry.item = { ...entry.item, body: now };
+      }
       for (const item of queued) {
         if (cached.has(item.seq)) continue;
         let message: Message;

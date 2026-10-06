@@ -371,3 +371,39 @@ test("Stop with the window open hits the focused live turn, not a sibling", () =
   expect(stopTarget([other], "s1", "other")).toBeNull();
   expect(stopTarget([running], "s1", "here", "group")).toBeNull();
 });
+
+test("a Bot reading lines you sent in a row shows once, under the first, until its turn opens (ADR 0063)", () => {
+  const items = composeTranscript(
+    [
+      msg({ id: "m1", kind: "user", body: "先出第一版", created_at: "t1" }),
+      msg({ id: "m2", kind: "user", body: "片尾加字幕", created_at: "t2" }),
+    ],
+    [],
+    "s1",
+    [
+      { id: "pj-2", session_id: "s1", message_id: "m2", bot_id: "writer", stage: "organizing", created_at: "t2" },
+      { id: "pj-1", session_id: "s1", message_id: "m1", bot_id: "writer", stage: "organizing", created_at: "t1" },
+    ],
+  );
+  expect(items.filter((item) => item.type === "replying")).toEqual([
+    { type: "replying", trigger_message_id: "m1", entries: [expect.objectContaining({ bot_id: "writer", judgement_id: "pj-1" })] },
+  ]);
+});
+
+test("a Bot at work here is not drawn replying again under each line you send it meanwhile (ADR 0063)", () => {
+  const items = composeTranscript(
+    [
+      msg({ id: "m1", kind: "user", body: "先出第一版", created_at: "t1" }),
+      msg({ id: "m2", kind: "user", body: "片尾加字幕", created_at: "t2" }),
+    ],
+    [turn({ id: "turn-1", status: "running", trigger_message_id: "m1", created_at: "t1" })],
+    "s1",
+    [
+      { id: "pj-2", session_id: "s1", message_id: "m2", bot_id: "writer", stage: "organizing", created_at: "t3" },
+      // Another Bot still deciding, and a judgement, keep their rows.
+      { id: "pj-3", session_id: "s1", message_id: "m2", bot_id: "editor", stage: "organizing", created_at: "t3" },
+    ],
+  );
+  const replying = items.filter((item) => item.type === "replying");
+  expect(replying).toEqual([{ type: "replying", trigger_message_id: "m2", entries: [expect.objectContaining({ bot_id: "editor" })] }]);
+});

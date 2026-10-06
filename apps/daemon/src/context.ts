@@ -59,6 +59,8 @@ export function memoryEntryCost(subject: string, body: string, age: string): num
 
 /** Marks the message that opened this turn. Chinese in every locale, like transcript prefixes. */
 export const TRIGGER_FLAG = "（本轮触发）";
+/** On a line of yours you changed after sending it (ADR 0063); Chinese in every locale, like TRIGGER_FLAG. */
+export const EDITED_FLAG = "（发出后改过）";
 
 /** Group-only fact block. Chinese heading in every locale, like TRIGGER_FLAG. */
 export const SITUATION_HEADING = "# 局面";
@@ -752,7 +754,9 @@ function quoteLayer(store: Store, taskId: string, where: (sessionId: string) => 
           ? en ? `answering a question in ${place}` : `在${place}回答提问`
           : quote.via === "annotation"
             ? en ? `annotation in ${place}` : `在${place}批注`
-            : en ? `in ${place}` : `在${place}`;
+            : quote.edit_of
+              ? en ? `changed a line in ${place}` : `在${place}改了一句`
+              : en ? `in ${place}` : `在${place}`;
     return { at: quoteTime(quote.created_at), where: label, body: oneLineClip(quote.body, QUOTE_LAYER_BODY) };
   };
   if (said.length <= QUOTE_LAYER_HEAD + QUOTE_LAYER_TAIL) return { head: said.map(fact), tail: [], omitted: 0 };
@@ -1540,11 +1544,13 @@ function serializeTranscript(
   }
   body += annotationText;
   const triggerLine = message.id === triggerMessageId ? `${TRIGGER_FLAG}\n` : "";
+  // A line of yours reads as it now does; this says it is not what it first said (ADR 0063).
+  const editedLine = message.kind === "user" && message.edited_at ? `${EDITED_FLAG}\n` : "";
   // The Bot's own lines stay bare: a tag in its own voice is one it would start writing itself.
   if (message.kind === "bot" && message.author === selfBotId) {
     return { role: "assistant", content: `${triggerLine}${body}` };
   }
-  const text = `${prefix(store, message)}${tag}\n${triggerLine}${body}`;
+  const text = `${prefix(store, message)}${tag}\n${triggerLine}${editedLine}${body}`;
   return {
     role: "user",
     content: images.length > 0 ? [{ type: "text", text }, ...images] : text,

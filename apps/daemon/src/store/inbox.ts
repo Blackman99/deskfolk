@@ -44,6 +44,8 @@ export type InboxItem = {
   disposition_note: string | null;
   created_at: string;
   disposed_at: string | null;
+  /** The change of yours this row tells its Bot of (`message_edits.id`, ADR 0063); null on every other row. */
+  edit_id?: string | null;
 };
 
 /** As much of a Bot's word on what it did with a line as is kept. */
@@ -178,9 +180,10 @@ export function adoptWaitingInbox(ctx: StoreContext, input: { botId: string; ses
       .sort((a, b) => a.seq - b.seq);
     // The line this turn opened on is read as its trigger: a copy of it still waiting from a turn
     // that ended before reading it, for work this turn does not take over (a desk segment's, closed
-    // at its end), is taken up here rather than left queued where nothing reads it again.
+    // at its end), is taken up here rather than left queued where nothing reads it again. A change
+    // you made to the line is no copy of it: what it says the trigger said before is news.
     ctx.db.run(`UPDATE inbox_items SET state = 'superseded', disposed_at = ?3
-      WHERE bot_id = ?2 AND state = 'queued' AND turn_id IS NOT ?1 AND ${NOT_IN_LIVE_TURN}
+      WHERE bot_id = ?2 AND state = 'queued' AND turn_id IS NOT ?1 AND ${NOT_IN_LIVE_TURN} AND edit_id IS NULL
         AND message_id = (SELECT trigger_message_id FROM turns WHERE id = ?1)`, [input.turnId, input.botId, isoNow()]);
     return adopted;
   })();
@@ -346,7 +349,8 @@ export function disposeInboxItems(
 export function messageDelivery(ctx: StoreContext, messageId: string, sessionId: string): MessageDelivery | undefined {
   const row = ctx.db
     .query<Pick<InboxItem, "bot_id" | "state" | "delivered_hop" | "disposition_note">, [string, string]>(
-      `SELECT bot_id, state, delivered_hop, disposition_note FROM inbox_items WHERE message_id = ? AND session_id = ? ORDER BY seq LIMIT 1`,
+      `SELECT bot_id, state, delivered_hop, disposition_note FROM inbox_items
+       WHERE message_id = ? AND session_id = ? AND edit_id IS NULL ORDER BY seq LIMIT 1`,
     )
     .get(messageId, sessionId);
   if (!row) return undefined;

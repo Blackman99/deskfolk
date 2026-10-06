@@ -4,6 +4,8 @@
  *
  *   bun apps/daemon/scripts/fake-openai.ts            # listens on 127.0.0.1:17917
  *   REAL_BOT_FAKE_PORT=17918 bun apps/daemon/scripts/fake-openai.ts
+ *   REAL_BOT_FAKE_READ_DELAY_MS=3000 REAL_BOT_FAKE_STREAM_DELAY_MS=4000 bun apps/daemon/scripts/fake-openai.ts
+ *                                                     # answers late: a line being read, a turn at work, stay on screen
  *
  * Routes:
  *   GET  /v1/models                 — one model, `fixture`, with thinking levels.
@@ -35,6 +37,9 @@ type ChatMessage = { role: string; content: string | ChatPart[] | null; tool_cal
 type Scripted = { content?: string; tool_calls?: Array<{ name: string; arguments: Record<string, unknown> }> };
 
 const port = Number(process.env.REAL_BOT_FAKE_PORT ?? 17917);
+/** How long a `stream: false` call (reading a line, filing it, a judgement) and a streamed turn wait before answering. */
+const readDelayMs = Number(process.env.REAL_BOT_FAKE_READ_DELAY_MS ?? 0);
+const streamDelayMs = Number(process.env.REAL_BOT_FAKE_STREAM_DELAY_MS ?? 0);
 const queue: Scripted[] = [];
 const organizerQueue: string[] = [];
 const scribeQueue: string[] = [];
@@ -259,6 +264,7 @@ const server = Bun.serve({
         images: messages.reduce((n, m) => n + images(m.content), 0),
       });
       if (!body.stream) {
+        if (readDelayMs > 0) await Bun.sleep(readDelayMs);
         const content = isOrganizerCall(messages)
           ? organize(messages)
           : isScribeCall(messages)
@@ -272,6 +278,7 @@ const server = Bun.serve({
                   : "{}";
         return Response.json({ choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }], usage: { prompt_tokens: 10, completion_tokens: 1, total_tokens: 11 } });
       }
+      if (streamDelayMs > 0) await Bun.sleep(streamDelayMs);
       return streamed(decide(messages));
     }
     return new Response("not found", { status: 404 });

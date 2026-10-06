@@ -480,3 +480,22 @@ describe("yours to confirm or remove, not anyone's to rewrite", () => {
     w.store.close();
   });
 });
+
+describe("a line you changed after sending it (ADR 0063)", () => {
+  test("is one line of yours: a number left alone is not said twice, and a number changed replaces the offer", () => {
+    const w = world("片长约2分钟的 EP01 成片");
+    const [first] = w.store.syncDerivedChecks(w.planId).proposed;
+    const lineId = w.store.listQuotes({ taskId: w.planId })[0]!.message_id!;
+    w.store.editMessage(lineId, { body: "片长约2分钟的 EP02 成片", userActionId: "same-number" });
+    const kept = w.store.syncDerivedChecks(w.planId);
+    expect(kept.repeated).toEqual([]);
+    expect(kept.proposed).toEqual([]);
+    expect(w.derived()).toMatchObject([{ id: first, derived_state: "proposed", item: "时长约 2 分钟" }]);
+    w.store.editMessage(lineId, { body: "片长约3分钟的 EP02 成片", userActionId: "new-number" });
+    const change = w.store.syncDerivedChecks(w.planId);
+    expect(change.dropped).toEqual([first]);
+    expect(change.counts[change.proposed[0]!]).toBe(1);
+    expect(w.derived()).toMatchObject([{ id: change.proposed[0], item: "时长约 3 分钟", derived_state: "proposed" }]);
+    w.store.close();
+  });
+});

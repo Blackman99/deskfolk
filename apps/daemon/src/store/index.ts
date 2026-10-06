@@ -46,6 +46,7 @@ import * as liveProcs from "./live-procs";
 import * as mcp from "./mcp";
 import * as memories from "./memories";
 import * as messages from "./messages";
+import * as messageEdits from "./message-edits";
 import { migrateSchema } from "./migrate";
 import * as notifications from "./notifications";
 import * as organizerRuns from "./organizer-runs";
@@ -355,6 +356,10 @@ export class Store {
       // A line of yours in a direct reaches the working Bot at its next step, so the composer stays
       // open (ADR 0040 P4a). A client reads the field's presence as that.
       turnInbox: true as const,
+      // Your lines in a conversation are taken in the order they came, so Send stays open while the
+      // last one is read; and a line of yours can be changed after it went out (ADR 0063).
+      linesInOrder: true as const,
+      messageEdits: true as const,
       notificationSummary: notifications.getNotificationSummary(this.ctx),
       notificationPolicy: notifications.getNotificationPolicy(this.ctx),
     };
@@ -694,6 +699,11 @@ export class Store {
     return messages.getMessage(this.ctx, messageId);
   });
   readonly updatePlanDormancy = this.bind(filing.updatePlanDormancy);
+  // Changing a line of yours after it went out (ADR 0063).
+  readonly editMessage = this.bind(messageEdits.editMessage);
+  readonly messageVersions = this.bind(messageEdits.messageVersions);
+  readonly markLineTaken = this.bind(messageEdits.markLineTaken);
+  readonly clearLineTaken = this.bind(messageEdits.clearLineTaken);
   readonly resumePlan = this.bind(filing.resumePlan);
   readonly closeWorkItemIfIdle = this.bind(workItems.closeWorkItemIfIdle);
 

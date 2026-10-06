@@ -310,8 +310,26 @@ CREATE TABLE IF NOT EXISTS messages (
   filing_candidates TEXT,
   -- 'new' on a line of yours a model read as about none of the jobs it might have been (ADR 0057):
   -- left unplaced for the Bot's desk, whose first effect opens a job for it. Null otherwise.
-  filing_reading TEXT
+  filing_reading TEXT,
+  -- When you last changed this line of yours (ADR 0063); null on a line never changed.
+  edited_at TEXT,
+  -- A line of yours the app carried out itself ('app': a stop, a go on, a status question it
+  -- answered) or took as your answer to a Bot's question ('answer'). Neither can be edited.
+  taken_as TEXT CHECK (taken_as IS NULL OR taken_as IN ('app', 'answer'))
 );
+
+-- What a line of yours said before each change you made to it (ADR 0063): the transcript's own
+-- history, gone with the line when the conversation is cleared. Your words outlive it in
+-- user_quotes, where an edit only ever adds a quote.
+CREATE TABLE IF NOT EXISTS message_edits (
+  id TEXT PRIMARY KEY,
+  message_id TEXT NOT NULL REFERENCES messages (id) ON DELETE CASCADE,
+  body_before TEXT NOT NULL,
+  body_after TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS message_edits_message ON message_edits (message_id, created_at);
 
 CREATE TABLE IF NOT EXISTS message_filings (
   message_id TEXT NOT NULL REFERENCES messages (id) ON DELETE CASCADE,
@@ -601,7 +619,10 @@ CREATE TABLE IF NOT EXISTS user_quotes (
   -- As it came, at most QUOTE_MAX code points: a longer one keeps its head and tail.
   body TEXT NOT NULL,
   created_at TEXT NOT NULL,
-  redacted_at TEXT
+  redacted_at TEXT,
+  -- On the words you changed in a line already sent (ADR 0063): the first quote kept of that line.
+  -- The line's quotes are one source of what you said, however often you changed it.
+  edit_of TEXT
 );
 
 CREATE INDEX IF NOT EXISTS user_quotes_task ON user_quotes (task_id, created_at);
@@ -735,7 +756,10 @@ CREATE TABLE IF NOT EXISTS inbox_items (
   delivered_hop INTEGER,
   disposition_note TEXT,
   created_at TEXT NOT NULL,
-  disposed_at TEXT
+  disposed_at TEXT,
+  -- The change of yours (message_edits.id) this item tells a Bot of: you changed a line it had
+  -- already read (ADR 0063). Null on every other item.
+  edit_id TEXT
 );
 
 CREATE INDEX IF NOT EXISTS inbox_items_waiting ON inbox_items (bot_id, session_id, state);

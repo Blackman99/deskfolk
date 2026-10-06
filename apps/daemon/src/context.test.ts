@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { USER_MEMBER } from "@real-bot/protocol";
 import type { ChatMessage } from "./completions";
 import { attachPictures } from "./loop-pictures";
-import { assembleComposerSuggestUser, assembleJudgementUser, assembleTurnMessages, extractJudgement, trimToolContent, SITUATION_HEADING, TRIGGER_FLAG, VISION_WINDOW_BYTES, VISION_WINDOW_IMAGES } from "./context";
+import { assembleComposerSuggestUser, assembleJudgementUser, assembleTurnMessages, EDITED_FLAG, extractJudgement, trimToolContent, SITUATION_HEADING, TRIGGER_FLAG, VISION_WINDOW_BYTES, VISION_WINDOW_IMAGES } from "./context";
 import { Store } from "./store";
 
 const PNG_1X1 = Buffer.from(
@@ -76,6 +76,23 @@ function lineWith(messages: ChatMessage[], body: string): ChatMessage | undefine
 }
 
 describe("assembleTurnMessages", () => {
+  test("a line of yours changed after it went out reads as it now does, marked as changed (ADR 0063)", () => {
+    const store = new Store();
+    const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const direct = writer.direct_session.id;
+    const line = store.postMessage(direct, { body: "片长 30 秒" });
+    store.editMessage(line.id, { body: "片长 45 秒", userActionId: "context" });
+    const plain = store.postMessage(direct, { body: "再加字幕" });
+    const turn = store.createTurn({ sessionId: direct, botId: writer.bot.id, triggerMessageId: plain.id });
+    const window = assembleTurnMessages(store, {
+      sessionId: direct, botId: writer.bot.id, turnId: turn.id, triggerMessageId: plain.id, locale: "zh", interrupt: false, loop: [],
+    }).filter((m) => m.role === "user").map((m) => String(m.content));
+    expect(window).toContain(`【user】\n${EDITED_FLAG}\n片长 45 秒`);
+    expect(window.some((text) => text.includes("片长 30 秒"))).toBe(false);
+    expect(window).toContain(`【user】\n${TRIGGER_FLAG}\n再加字幕`);
+    store.close();
+  });
+
   test("marks only the trigger line in the transcript window", () => {
     const store = new Store();
     const writer = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });

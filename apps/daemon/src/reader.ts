@@ -102,6 +102,11 @@ export type Reader = {
    */
   scale: (input: { key: string; sessionId: string | null; title: string; goal: string | null; said: readonly string[];
     facts?: { segments: number; handedBack: number } | null }) => Promise<ScaleReading>;
+  /**
+   * A line of yours was changed (ADR 0063): what it was read as, and which job it was read to be
+   * about, are of words it no longer has. Anything that reads it from now on reads it as it is.
+   */
+  forget: (messageId: string) => void;
   /** Shutting down: calls in flight are abandoned, and read by the word lists. */
   stop: () => void;
 };
@@ -350,6 +355,10 @@ export function createReader(deps: ReaderDeps): Reader {
     botLine,
     filing,
     scale,
+    forget(messageId) {
+      cache.delete(`user:${messageId}`);
+      cache.delete(`filing:${messageId}`);
+    },
     stop() {
       stopped = true;
       for (const controller of inFlight) controller.abort();

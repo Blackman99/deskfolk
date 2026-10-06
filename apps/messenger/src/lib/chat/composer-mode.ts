@@ -24,6 +24,11 @@ export function composerAction(state: {
    * the box stays open and Stop is its own control. Absent, a direct with a live turn offers only Stop.
    */
   turnInbox?: boolean;
+  /**
+   * The daemon takes your lines in a conversation in the order they came (ADR 0063), so a direct's
+   * next line need not wait for the last to be read. Absent, Send waits for that reading there.
+   */
+  linesInOrder?: boolean;
 }): ComposerAction {
   const group = state.sessionKind === "group";
   if (state.sessionKind === "file-drop") {
@@ -38,7 +43,7 @@ export function composerAction(state: {
   return {
     kind: "send",
     disabled: !state.connected || !state.hasSession || state.locked ||
-      (!group && state.pendingJudgement) || state.busy || !state.hasContent,
+      (!group && !state.linesInOrder && state.pendingJudgement) || state.busy || !state.hasContent,
   };
 }
 

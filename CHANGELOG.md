@@ -27,6 +27,15 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 - The annotation panel's tabs sat flush against the line under its title, Pending, Resolved and Drafts were all the same grey, and the picked tab was teal, the same teal as Pending. The title and the tabs are now one block with the line under the tabs, and each state has one colour — Pending teal (as the marks drawn on the file), Resolved green, Drafts grey and dashed: each tab carries its state's dot and count, and each annotation a coloured left edge and a state label with a dot; the picked tab is a raised pill in plain text. An empty list is no longer a grey bubble and a line but the app's usual empty state, with the faded mark, a title and a line on what would be there, different for each tab ("No drafts", "Nothing resolved yet"…); a file no Bot handed over says it cannot be annotated.
 
+### Change a line you already sent
+
+- A line, once sent, could only be followed by another saying what the first should have said: the Bot read both, and the wrong one stayed in the transcript. Now **Edit** on a line of yours — its hover bar, or the right-click or long-press menu, or ↑ in an empty composer for your newest — turns the bubble into an editor: Enter saves, Esc cancels. A Bot that had not read the line yet reads only the new words; one that had is told "You changed this line. It now reads: … (it was: …)" at its next step, or woken to read it, and says what it did with it. The line shows **Edited** beside its time, which opens what it said before.
+- Your words are not lost: the clauses you changed are kept beside them, and the requirements ledger reads only those, so nothing you left alone counts as said twice; a requirement on words you deleted stays until you retire it on the board. A Bot's line, an answer to a question, a batch of annotations and a stop or status question the app carried out itself cannot be changed. ([ADR 0063](docs/adr/0063-edit-a-line-and-lines-in-order.md))
+
+### Send several lines in a row: a direct no longer waits while your last line is read
+
+- In a direct, Send stayed grey for the few seconds (up to 20) the app took to read your line and work out which job it was about, and while the Bot worked the hint under the box said "Send after the reply ends" — though a line sent then was already read at the Bot's next step. Now Send stays open: your lines in a conversation are taken in the order they came, each waiting for the one before it, so the first opens the turn and the next are read at its next step instead of racing it to be the trigger. A line that is only a stop still goes first. The hint says "Enter to send — it reads it at its next step", and a Bot already at work is no longer shown replying under each line you add.
+
 ## 0.1.0-rc.13 — 2026-10-06
 
 Unsigned macOS rc with an experimental unsigned Windows installer beside the `.dmg`s. This is not a supported signed installer; Gatekeeper or SmartScreen may block it. Prefer running from source.

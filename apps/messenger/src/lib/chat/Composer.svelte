@@ -56,7 +56,9 @@
 		/** The stage owns stick-to-bottom; this only draws the jump control on the card. */
 		showScrollBottom?: boolean;
 		onScrollToBottom?: () => void;
-	};
+		/** ↑ in an empty box: open your newest line here for changing (ADR 0063). True when one opened. */
+		onEditLast?: () => boolean;
+		};
 
 	let {
 		runtime,
@@ -65,8 +67,9 @@
 		onSend,
 		onPickPrompt,
 		showScrollBottom = false,
-		onScrollToBottom
-	}: Props = $props();
+		onScrollToBottom,
+		onEditLast
+		}: Props = $props();
 
 	const snapshot = $derived(runtime.snapshot);
 	/**
@@ -170,6 +173,17 @@
 					: t.composer.messagePrompt
 	);
 
+	/**
+	 * The line under the box. In a direct whose Bot is at work, or still reading your last line, what
+	 * you send reaches it at its next step; only where Send really waits — an older daemon — does it
+	 * say to wait for the reply.
+	 */
+	const composerHint = $derived.by(() => {
+		if (selected?.kind === 'group' || !(liveTurn || pendingHere.length > 0)) return t.chat.sendHint;
+		const waits = (Boolean(liveTurn) && !snapshot.turnInbox) || (pendingHere.length > 0 && !snapshot.linesInOrder);
+		return waits ? t.composer.waitingHint : t.composer.workingHint;
+	});
+
 	/** Something to send: text, or files staged without any. */
 	const hasContent = $derived(
 		Boolean(view?.draft.trim()) || pendingAttachments.length > 0 || pendingPaths.length > 0
@@ -185,7 +199,8 @@
 		hasContent,
 		sessionKind: fileDrop ? 'file-drop' : (selected?.kind ?? null),
 		turnInbox: snapshot.turnInbox,
-	}));
+		linesInOrder: snapshot.linesInOrder,
+		}));
 
 	/**
 	 * A direct's one Stop: beside Send while its Bot has a turn going here, because the box stays open
@@ -661,6 +676,20 @@
 			}
 		}
 
+		// ↑ in an empty box opens your newest line here for changing, as in other chat apps (ADR 0063).
+		if (
+			ev.key === 'ArrowUp' &&
+			!ev.shiftKey && !ev.altKey && !ev.metaKey && !ev.ctrlKey &&
+			onEditLast &&
+			!hasContent &&
+			!(view?.draft ?? '').trim()
+		) {
+			if (onEditLast()) {
+				ev.preventDefault();
+				return;
+			}
+		}
+
 		if (ev.key === 'Backspace' && editorEl) {
 			if (handleEditorBackspace(editorEl)) {
 				ev.preventDefault();
@@ -1112,7 +1141,7 @@
 {#if !lockedComposer}
 	<div class="composer-hint" id="composer-hint">
 		<span class="composer-frost-shell composer-hint-shell">
-			<span class="send-shortcut-hint">{selected?.kind !== 'group' && (liveTurn || pendingHere.length > 0) ? t.composer.waitingHint : t.chat.sendHint}</span>
+			<span class="send-shortcut-hint">{composerHint}</span>
 		</span>
 	</div>
 {/if}

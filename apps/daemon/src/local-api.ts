@@ -2165,6 +2165,26 @@ function dispatch(
     return jsonResponse(moved, 200, null);
   }
 
+  // Change a line of yours after it went out (ADR 0063): the words it shows, and what each Bot hears
+  // of it, decided in this one write; the Bots told of it start once it is in.
+  params = matchPath(path, "/v1/messages/:id");
+  if (params && method === "PATCH") {
+    const body = input.body;
+    if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some((key) => key !== "body")) {
+      throw new HttpError(422, "invalid_args", "an edit is {body}");
+    }
+    options.admission?.assertNew();
+    const result = store.editMessage(params.id!, { body: (body as { body?: unknown }).body, userActionId: scope?.requestId ?? ulid() });
+    if (result.edit) {
+      store.afterCommit(() => engine.noteEdited(result));
+      publish({ event: "message.upsert", occurred_at: occurred(), ...result.message });
+    }
+    return jsonResponse(result.message, 200, null);
+  }
+  // What a line you changed said before, oldest first.
+  params = matchPath(path, "/v1/messages/:id/versions");
+  if (params && method === "GET") return jsonResponse({ versions: store.messageVersions(params.id!) }, 200, null);
+
   params = matchPath(path, "/v1/messages/:id/reactions");
   if (params && (method === "PUT" || method === "DELETE")) {
     const body = (input.body) as { emoji?: string };

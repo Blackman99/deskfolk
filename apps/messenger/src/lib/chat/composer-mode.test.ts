@@ -172,3 +172,12 @@ test("the reason for the lock says which notice to show", () => {
   expect(lockedReason(aBotDirect({ archived_at: "t" }), bots)).toBe("archived");
   expect(lockedReason(aDirect(), new Map())).toBe("peer-gone");
 });
+
+test("a direct's Send stays open while your last line is read, once the daemon takes lines in order (ADR 0063)", () => {
+  expect(composerAction({ ...ready, pendingJudgement: true, linesInOrder: true })).toEqual({ kind: "send", disabled: false });
+  expect(composerAction({ ...ready, pendingJudgement: true, linesInOrder: true, turnInbox: true, hasLiveTurn: true })).toEqual({ kind: "send", disabled: false });
+  // An older daemon races two lines read at once, so there the next one still waits.
+  expect(composerAction({ ...ready, pendingJudgement: true })).toEqual({ kind: "send", disabled: true });
+  // Nothing to send is still nothing to send.
+  expect(composerAction({ ...ready, pendingJudgement: true, linesInOrder: true, hasContent: false })).toEqual({ kind: "send", disabled: true });
+});

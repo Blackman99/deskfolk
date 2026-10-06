@@ -22,6 +22,7 @@ import { migrateReflections } from "./reflection";
 import { migrateRetrospectives } from "./retrospectives";
 import { migrateSharedSkills } from "./shared-skills";
 import { migrateLargeJobs } from "./large-job-migration";
+import { migrateMessageEdits } from "./message-edits";
 import { clipQuote, QUOTE_TRIGGERS } from "./quotes";
 import { REQUIREMENT_TRIGGERS } from "./requirements";
 import { REQUIREMENT_CARD_TRIGGERS, settleAnsweredLegacyCards } from "./plan-requirements";
@@ -274,6 +275,7 @@ export function migrateSchema(db: Database): void {
   migrateAnnotations(db);
   migrateAskChoices(db);
   migrateMessageControl(db);
+  migrateMessageEdits(db);
   if (!tables.includes("terminals")) {
     db.run(`
       CREATE TABLE IF NOT EXISTS terminals (

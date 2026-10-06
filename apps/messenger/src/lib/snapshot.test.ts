@@ -892,3 +892,15 @@ test("holds: the snapshot says whether stops can be made, and hold.upsert keeps 
   snapshot = applyEvent(snapshot, { event: "hold.upsert", occurred_at: "now", ...older, lifted_at: "2026-09-19T03:00:00.000Z" });
   expect(snapshot.holds.map((hold) => hold.id)).toEqual(["hold-1"]);
 });
+
+test("the snapshot says whether your lines are taken in order and can be changed, and a change replaces the line (ADR 0063)", () => {
+  const base = { event_instance_id: "a".repeat(32), watermark_seq: 0, settings: emptySnapshot().settings, bots: [], sessions: [], approvals: [], mcpServers: [], providers: [], skills: [], memories: [], routines: [], allowRules: [] };
+  expect(fromRuntimeSnapshot(base)).toMatchObject({ linesInOrder: false, messageEdits: false });
+  let snapshot = fromRuntimeSnapshot({ ...base, linesInOrder: true, messageEdits: true });
+  expect(snapshot).toMatchObject({ linesInOrder: true, messageEdits: true });
+  const line = { id: "line-1", session_id: "s1", turn_id: null, parent_id: null, kind: "user" as const, author: "user", body: "片长 30 秒",
+    source_turn_id: null, created_at: "t1", attachments: [], reactions: [] };
+  snapshot = applyEvent(snapshot, { event: "message.created", occurred_at: "t1", ...line });
+  snapshot = applyEvent(snapshot, { event: "message.upsert", occurred_at: "t2", ...line, body: "片长 45 秒", edited_at: "t2" });
+  expect(snapshot.messages.filter((message) => message.id === "line-1")).toEqual([{ ...line, body: "片长 45 秒", edited_at: "t2" }]);
+});

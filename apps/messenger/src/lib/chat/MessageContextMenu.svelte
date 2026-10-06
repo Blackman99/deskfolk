@@ -21,8 +21,9 @@
 		onCopyId,
 		onReaction,
 		onAttribution,
-		onSelectText
-	}: {
+		onSelectText,
+		onEdit
+		}: {
 		message: Message;
 		x: number;
 		y: number;
@@ -38,6 +39,8 @@
 		onReaction: (emoji: string) => void;
 		/** Present when this line can be filed somewhere else. */
 		onAttribution?: () => void;
+		/** Present when this is a line of yours that can still be changed (ADR 0063). */
+		onEdit?: () => void;
 		/**
 		 * Present when the menu came from a touch: the long-press that opened it could not select,
 		 * so copying part of the message needs the text on a page of its own.
@@ -202,9 +205,27 @@
 			<path d="M20 18v-2a4 4 0 0 0-4-4H4"></path>
 		</svg>
 		<span>{t.chat.replyMessage}</span>
-	</button>
+		</button>
 
-	{#if onAttribution}
+		{#if onEdit}
+			<button
+				type="button"
+				class="msg-context-menu-item"
+				role="menuitem"
+				onclick={() => {
+					onEdit();
+					onClose();
+				}}
+			>
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M12 20h9"></path>
+					<path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+				</svg>
+				<span>{t.chat.editMessage}</span>
+			</button>
+		{/if}
+
+		{#if onAttribution}
 		<button
 			type="button"
 			class="msg-context-menu-item"

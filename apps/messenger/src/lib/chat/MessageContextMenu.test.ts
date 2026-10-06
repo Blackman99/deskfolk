@@ -29,9 +29,11 @@ function openMessageMenu(
     lockedComposer?: boolean;
     attribution?: boolean;
     selectText?: boolean;
+    edit?: boolean;
   } = {},
 ) {
   const calls = {
+    edit: 0,
     attribution: 0,
     selectText: 0,
     close: 0,
@@ -72,6 +74,7 @@ function openMessageMenu(
     },
     ...(opts.attribution ? { onAttribution: () => { calls.attribution += 1; } } : {}),
     ...(opts.selectText ? { onSelectText: () => { calls.selectText += 1; } } : {}),
+    ...(opts.edit ? { onEdit: () => { calls.edit += 1; } } : {}),
   });
 
   return { ...view, calls };
@@ -163,5 +166,20 @@ test("a menu opened by a touch offers 「选择文本」 under copy, which opens
 test("a message with no text has nothing to select", () => {
   const { host, close } = openMessageMenu(createTestMessage({ body: "" }), { selectText: true });
   expect([...host.querySelectorAll("button")].some((b) => b.textContent?.trim() === t.chat.selectText)).toBe(false);
+  close();
+});
+
+test("编辑 is offered only where the stage passes it, right after 回复, and opens the line and closes the menu", () => {
+  const yours = createTestMessage({ kind: "user", author: "user", body: "片长 30 秒" });
+  const without = openMessageMenu(yours);
+  expect([...without.host.querySelectorAll(".msg-context-menu-item")].map((item) => item.textContent?.trim())).not.toContain(t.chat.editMessage);
+  without.close();
+
+  const { host, calls, close } = openMessageMenu(yours, { edit: true });
+  const labels = [...host.querySelectorAll(".msg-context-menu-item")].map((item) => item.textContent?.trim());
+  expect(labels.indexOf(t.chat.editMessage)).toBe(labels.indexOf(t.chat.replyMessage) + 1);
+  click(buttonByText(host, t.chat.editMessage));
+  expect(calls.edit).toBe(1);
+  expect(calls.close).toBe(1);
   close();
 });

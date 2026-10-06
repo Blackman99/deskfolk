@@ -272,3 +272,14 @@ test("in the engine, a complaint the filing sends a ticket back over is still ju
     { quote: "前三镜背景严重跳跃，太假了", status: "proposed", added_by: "capture", scope: "ticket", scope_id: shots.id },
   ]);
 });
+
+test("a line changed before the scribe got to it is read as you sent it, then for the words you changed, each once", async () => {
+  const h = harness(() => judged(JSON.stringify({ adds: [], raises: [], supersedes: [] })));
+  const { line, noted } = h.say("片长 30 秒，加字幕");
+  // Changed before the scribe takes the line up (ADR 0063): its quotes by then are the line and the change.
+  h.store.editMessage(line.id, { body: "片长 45 秒，加字幕", userActionId: "before-scribe" });
+  await noted;
+  expect(h.requests.map((request) => h.payloadOf(request).said.body)).toEqual(["片长 30 秒，加字幕", "片长 45 秒"]);
+  await h.scribe.noteLine(line.id, h.scribe.handedOverAt());
+  expect(h.requests).toHaveLength(2);
+});

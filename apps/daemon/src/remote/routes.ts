@@ -58,6 +58,9 @@ get("(tasks|sessions)/:id/delegations");
 get("tasks/:id/submissions");
 get("sessions/:id/lead");
 get("messages/:id/attribution");
+// Changing a line of yours after it went out, and what it said before (ADR 0063).
+add("PATCH", "messages/:id", { body: string }, ["body"]);
+get("messages/:id/versions");
 add("PUT", "sessions/:id/lead", { bot_id: nullable(id), confirmed: one(true) }, ["bot_id", "confirmed"]);
 const partKey: Check = v => typeof v === "string" && v.length > 0 && v.length <= 200;
 const attribution = { plan_id: id, ticket_id: nullable(id), part_key: nullable(partKey) };

@@ -24,6 +24,11 @@ export type UserQuote = {
   created_at: string;
   /** Set once you erased it; `body` is empty from then on. */
   redacted_at: string | null;
+  /**
+   * On the clauses you changed in a line already sent (ADR 0063): the first quote kept of that
+   * line, so all of a line's quotes count as one source of what you said.
+   */
+  edit_of?: string | null;
 };
 
 /** As much of one thing you said as a quote keeps. */
@@ -83,14 +88,16 @@ export function recordQuote(
     sessionId?: string | null;
     taskId?: string | null;
     ticketId?: string | null;
+    /** The line's first quote, when these are words you changed in it (ADR 0063). */
+    editOf?: string | null;
     now?: string;
   },
 ): UserQuote | null {
   if (!input.body.trim()) return null;
   return ctx.db
     .query<UserQuote, Array<string | null>>(
-      `INSERT INTO user_quotes (id, message_id, session_id, task_id, ticket_id, via, body, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
+      `INSERT INTO user_quotes (id, message_id, session_id, task_id, ticket_id, via, body, created_at, edit_of)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
     )
     .get(
       ulid(),
@@ -101,6 +108,7 @@ export function recordQuote(
       input.via,
       clipQuote(input.body),
       input.now ?? isoNow(),
+      input.editOf ?? null,
     )!;
 }
 

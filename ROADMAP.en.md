@@ -22,7 +22,7 @@ What we don't do stays undone: cloud computers, multiple users, a provider catal
 
 Groundwork in place:
 
-- Persistent Bots, directs and groups, mentions, participation judgement and asynchronous handoffs.
+- Persistent Bots, directs and groups, mentions, participation judgement and asynchronous handoffs; lines sent in a row taken in order, and a line you sent changeable, the Bots going by the new words.
 - A local daemon, a shared folder, file tools, shell, approval for dangerous actions, and Stop.
 - Multiple OpenAI-compatible Chat Completions endpoints; stdio / Streamable HTTP MCP tools.
 - One flow board per job: the groups, directs and Bot↔Bot directs that share a work dir are drawn on the same board by who woke whom, one card per turn, with the files handed over attached to the cards.

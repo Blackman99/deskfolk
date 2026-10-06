@@ -36,6 +36,9 @@ import {
   type CreateAnnotationRequest,
   type PatchAnnotationRequest,
   type Message,
+  type EditMessageRequest,
+  type MessageVersion,
+  type MessageVersionsResponse,
   type PatchMessageAttributionRequest,
   type NewJobFromLineRequest,
   type GroupLeadState,
@@ -1705,6 +1708,91 @@ export class MessengerRuntime {
   private messageInvalidationSeq = 0;
   private readonly messageSessionInvalidated = new Map<string, number>();
 
+  /** Opens a line of yours for changing, in its bubble (ADR 0063). */
+  startEdit(sessionId: string, message: Message): void {
+    const view = this.viewFor(sessionId);
+    if (!view || view.editSaving) return;
+    view.editingMessageId = message.id;
+    view.editDraft = message.body;
+    view.editError = null;
+  }
+
+  /** Leaves the line as it was: nothing is sent. */
+  cancelEdit(sessionId: string): void {
+    const view = this.viewFor(sessionId);
+    if (!view || view.editSaving) return;
+    view.editingMessageId = null;
+    view.editDraft = "";
+    view.editError = null;
+  }
+
+  /**
+   * Sends the new words of the line open in its bubble. It comes back as it now reads and shows at
+   * once, and the bubble closes; the same words close it with nothing sent. A refusal, or a link
+   * that dropped, is said under the editor, and the words you typed stay there.
+   */
+  async saveEdit(sessionId: string): Promise<boolean> {
+    const view = this.viewFor(sessionId);
+    const id = view?.editingMessageId ?? null;
+    if (!view || !id || view.editSaving) return false;
+    const current = this.snapshot.messages.find((message) => message.id === id) ?? null;
+    if (current && view.editDraft.trim() === current.body.trim()) {
+      this.cancelEdit(sessionId);
+      return true;
+    }
+    if (!view.editDraft.trim() && !(current?.attachments.length)) {
+      view.editError = "empty";
+      return false;
+    }
+    const api = this.api;
+    if (!api || this.connection !== "connected") {
+      view.editError = "failed";
+      return false;
+    }
+    const revision = this.attributionRevision.get(id) ?? 0;
+    const snapshotRevision = this.messageSnapshotRevision;
+    const invalidationSeq = this.messageInvalidationSeq;
+    view.editSaving = true;
+    view.editError = null;
+    try {
+      const message = await api.patch<Message>(`/v1/messages/${encodeURIComponent(id)}`, { body: view.editDraft } satisfies EditMessageRequest);
+      if (this.api !== api) return false;
+      // The sequenced stream is newer than an in-flight, unsequenced HTTP response.
+      if ((this.attributionRevision.get(id) ?? 0) === revision && this.messageSnapshotRevision === snapshotRevision &&
+          (this.messageSessionInvalidated.get(message.session_id) ?? 0) <= invalidationSeq) {
+        this.snapshot = applyEvent(this.snapshot, { ...message, event: "message.upsert", occurred_at: new Date().toISOString() });
+      }
+      if (view.editingMessageId === id) {
+        view.editingMessageId = null;
+        view.editDraft = "";
+      }
+      return true;
+    } catch (error) {
+      const failure = this.sheetFailure(error, api);
+      view.editError = failure?.code === "not_editable" ? "not_editable" : failure?.code === "invalid_args" ? "empty" : "failed";
+      return false;
+    } finally {
+      view.editSaving = false;
+    }
+  }
+
+  private readonly versionsRead = new Map<string, { editedAt: string; versions: MessageVersion[] }>();
+
+  /** What a line you changed said before, oldest first: read once per change of it, then kept. */
+  async messageVersions(id: string, editedAt: string): Promise<MessageVersion[] | null> {
+    const kept = this.versionsRead.get(id);
+    if (kept && kept.editedAt === editedAt) return kept.versions;
+    const api = this.api;
+    if (!api) return null;
+    try {
+      const { versions } = await api.get<MessageVersionsResponse>(`/v1/messages/${encodeURIComponent(id)}/versions`);
+      this.versionsRead.set(id, { editedAt, versions });
+      return versions;
+    } catch {
+      return null;
+    }
+  }
+
   /** Refile only after an acknowledged write; a refusal never changes the shown selection. */
   async patchMessageAttribution(id: string, filings: PatchMessageAttributionRequest["filings"]): Promise<ApiError | null> {
     const api = this.api;
@@ -3140,10 +3228,13 @@ export class MessengerRuntime {
       if (gone) {
         gone.revision++;
         gone.resetHistory();
-        // What it was following, flashing or replying to went with the history.
+        // What it was following, flashing, replying to or changing went with the history.
         gone.focusedTurnId = null;
         gone.pendingFocusTrigger = null;
         gone.replyingToId = null;
+        gone.editingMessageId = null;
+        gone.editDraft = "";
+        gone.editError = null;
         this.dropComposerSuggestions(gone);
         this.clearHighlight(gone);
       }

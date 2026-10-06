@@ -48,6 +48,7 @@ describe("schema", () => {
       "live_procs",
       "mcp_servers",
       "memories",
+      "message_edits",
       "message_filings",
       "messages",
       "notification_counters",
