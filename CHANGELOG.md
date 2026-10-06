@@ -6,7 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
-(none)
+### Bots look back on a job you accepted, and improve their own memories and skills
+
+- A job sent back several times taught its Bot nothing it carried to the next one: what you said went into that job's requirements and stayed with its conversation, and from level 8 nothing wrote a memory after the fact. Now, once a job is delivered (every ticket approved) and has stayed quiet for half an hour, each Bot that handed something over in it looks back once, on its own model, over the job's record — your words, what became of each hand-over, complaints after an approval, the requirements, what went wrong for it — beside everything it already remembers and its own skills, never the transcript. It writes down where it tripped up, which of its ways made you send work back and what to do again next time, and works that into its own memories and skills: a memory on the same subject is rewritten rather than joined by a second one, two about one thing are merged, a wrong one is corrected or deleted; a skill gains a sentence after the step it concerns or a passage at its end, or has one wrong sentence corrected — a step is never rewritten whole, and none of its commands, file names or names in backticks is lost. A Bot nothing went wrong for in the job is skipped without a model call; a routine's job is not looked back on; a job reopened and delivered again is looked back on again, over what went wrong since.
+- Nothing is asked of you and nothing is posted. The job's board shows a **Retrospective** block in its side panel: who looked back, a summary, the three lists, and every change, which opens to show before and now (for a skill, only the lines that changed), each with an **Undo** that puts back what it replaced as long as nobody has changed it since; a change the app refused says why. A memory a retrospective wrote is marked so on the Bot's memory card. At most $2 and 12 retrospectives a day, billed as their own "Retrospective" line in spend. After updating, deliveries from the last 7 days are looked back on once, one at a time.
 
 ## 0.1.0-rc.13 — 2026-10-06
 

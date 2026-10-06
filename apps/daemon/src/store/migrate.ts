@@ -4,7 +4,7 @@
  * Runs once per open, before the store hands out any row.
  */
 import type { Database } from "bun:sqlite";
-import { FILE_DROP_SESSION_ID, sortThinkingLevels, THINKING_LEVELS, type MessageControl } from "@real-bot/protocol";
+import { FILE_DROP_SESSION_ID, SPEND_PURPOSE_KIND, sortThinkingLevels, THINKING_LEVELS, type MessageControl, type SpendPurpose } from "@real-bot/protocol";
 import { askAnswerText, readAskAnswer } from "../ask";
 import { isoNow, ulid } from "../ids";
 import { HELD_TURN_TRIGGERS } from "./holds";
@@ -19,6 +19,7 @@ import { migrateModelDefaults } from "./model-defaults";
 import { migrateLessons } from "./lessons";
 import { migrateQuality } from "./quality";
 import { migrateReflections } from "./reflection";
+import { migrateRetrospectives } from "./retrospectives";
 import { migrateSharedSkills } from "./shared-skills";
 import { migrateLargeJobs } from "./large-job-migration";
 import { clipQuote, QUOTE_TRIGGERS } from "./quotes";
@@ -325,6 +326,7 @@ export function migrateSchema(db: Database): void {
   migrateQuality(db);
   migrateLessons(db);
   migrateReflections(db);
+  migrateRetrospectives(db);
   migrateSharedSkills(db);
   migrateLargeJobs(db);
   // After every column tasks gains above (the rebuild copies the table as it then stands), and
@@ -883,28 +885,33 @@ function migrateSpendLedger(db: Database): void {
  * CHECK, added after the ledger rebuild above, which copies only the columns it knows. The rows
  * already there have none: before the scribe, every `organize` row was the organizer's.
  */
+/** Every purpose a ledger row may carry: the protocol's list, so a new one widens the stored CHECK on the next open. */
+const SPEND_PURPOSES = Object.keys(SPEND_PURPOSE_KIND) as SpendPurpose[];
+
 function migrateSpendPurpose(db: Database): void {
   const cols = db.query<{ name: string }, []>("PRAGMA table_info(spend)").all().map((row) => row.name);
   if (!cols.includes("purpose")) {
-    db.run(`ALTER TABLE spend ADD COLUMN purpose TEXT CHECK (purpose IS NULL OR purpose IN ('scribe', 'vision', 'reflect', 'reader'))`);
+    db.run(`ALTER TABLE spend ADD COLUMN purpose TEXT CHECK (purpose IS NULL OR purpose IN (${SPEND_PURPOSES.map((purpose) => `'${purpose}'`).join(", ")}))`);
   }
   widenSpendPurposes(db);
 }
 
 /**
- * `spend.purpose` gained `reader` (ADR 0055: reading a line for what the app acts on). Its CHECK is
- * a fixed `IN (...)` list, which SQLite cannot widen with `ALTER TABLE`, so a ledger whose list
- * lacks it is rebuilt the way `migrateNullableTaskSession` rebuilds tasks: the stored definition
- * with the list widened, every row copied into it in one transaction, its indexes made again. The
- * ledger has no foreign keys either way.
+ * `spend.purpose` gained `reader` (ADR 0055: reading a line for what the app acts on), then
+ * `retrospect` (ADR 0062: a Bot's retrospective of a delivered plan). Its CHECK is a fixed
+ * `IN (...)` list, which SQLite cannot widen with `ALTER TABLE`, so a ledger whose list lacks one
+ * of {@link SPEND_PURPOSES} is rebuilt the way `migrateNullableTaskSession` rebuilds tasks: the
+ * stored definition with the missing ones added to the list, every row copied into it in one
+ * transaction, its indexes made again. The ledger has no foreign keys either way.
  */
 function widenSpendPurposes(db: Database): void {
   const table = db.query<{ sql: string }, []>(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'spend'`).get()?.sql;
   if (!table) return;
   const list = /purpose\s+TEXT\s+CHECK\s*\(\s*purpose\s+IS\s+NULL\s+OR\s+purpose\s+IN\s*\(([^)]*)\)\s*\)/i.exec(table);
   if (!list) throw new Error("spend.purpose has a definition this migration does not know how to widen");
-  if (/'reader'/.test(list[1]!)) return;
-  const widened = table.replace(list[0], list[0].replace(list[1]!, `${list[1]!.trimEnd()}, 'reader'`));
+  const missing = SPEND_PURPOSES.filter((purpose) => !new RegExp(`'${purpose}'`).test(list[1]!));
+  if (missing.length === 0) return;
+  const widened = table.replace(list[0], list[0].replace(list[1]!, `${list[1]!.trimEnd()}, ${missing.map((purpose) => `'${purpose}'`).join(", ")}`));
   // A table that was ever renamed is stored as CREATE TABLE "spend".
   const createNew = widened.replace(/^CREATE TABLE\s+(?:"spend"|spend\b)/i, "CREATE TABLE spend_new");
   if (createNew === widened) throw new Error("spend has a definition this migration does not know how to copy");

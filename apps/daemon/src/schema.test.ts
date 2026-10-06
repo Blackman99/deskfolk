@@ -79,6 +79,7 @@ describe("schema", () => {
       "requirement_exclusions",
       "requirement_mentions",
       "requirements",
+      "retrospectives",
       "route_feedback",
       "route_learned",
       "route_learnings",

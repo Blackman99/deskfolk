@@ -43,6 +43,7 @@
  * every record carry across; the media server is a new process, so its job counters start over.
  */
 import { reflectionSystem } from "../prompts/reflection";
+import { retrospectiveSystem } from "../prompts/retrospective";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -235,7 +236,7 @@ export type HopContext = {
 export type ToolOutcome = { id: string; name: string; ok: boolean | null; error: string | null; content: string };
 
 export type JudgeKind =
-  | "organizer" | "scribe" | "judgement" | "route_pick" | "route_review" | "route_learn" | "composer" | "reflect"
+  | "organizer" | "scribe" | "judgement" | "route_pick" | "route_review" | "route_learn" | "composer" | "reflect" | "retrospect"
   /** 读句 (ADR 0055): a line of yours, a Bot's line. Unscripted, the line is read by the word lists. */
   | "read_user_line" | "read_bot_line"
   /**
@@ -481,6 +482,7 @@ function judgeKindOf(request: JudgeRequest): JudgeKind {
   if (system === ROUTE_LEARN_SYSTEM) return "route_learn";
   if (system === COMPOSER_SUGGEST_SYSTEM) return "composer";
   if (system === reflectionSystem("zh") || system === reflectionSystem("en")) return "reflect";
+  if (system === retrospectiveSystem("zh") || system === retrospectiveSystem("en")) return "retrospect";
   if (system === READ_USER_LINE_SYSTEM) return "read_user_line";
   if (system === READ_BOT_LINE_SYSTEM) return "read_bot_line";
   if (system === READ_FILING_SYSTEM) return "read_filing";

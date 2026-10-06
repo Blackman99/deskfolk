@@ -94,6 +94,13 @@ export function installChangeJournal(ctx: StoreContext): void {
     ctx.db.exec(`CREATE TEMP TRIGGER event_requirement_exclusions_${op} AFTER ${op} ON main.requirement_exclusions
       BEGIN INSERT INTO event_changes VALUES ('tasks', ${row}.task_id, 'UPDATE', ${row}.task_id); END`);
   }
+  // A retrospective has no event of its own either (ADR 0062): it is shown on its plan's board, so
+  // one starting, ending or having a change taken back is a change to that plan.
+  for (const op of ["INSERT", "UPDATE"]) {
+    ctx.db.exec(`CREATE TEMP TRIGGER event_retrospectives_${op} AFTER ${op} ON main.retrospectives
+      WHEN NEW.state <> 'skipped'
+      BEGIN INSERT INTO event_changes VALUES ('tasks', NEW.task_id, 'UPDATE', NEW.task_id); END`);
+  }
   // Handoffs and their event waits change independently of the thread's ordinary transcript.
   for (const op of ["INSERT", "UPDATE"]) {
     ctx.db.exec(`CREATE TEMP TRIGGER event_delegations_${op} AFTER ${op} ON main.delegations

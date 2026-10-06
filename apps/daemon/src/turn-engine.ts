@@ -45,6 +45,7 @@ import { createReader } from "./reader";
 import { createScribe } from "./scribe";
 import { createJobPoller } from "./engine/jobs";
 import { createReflector } from "./engine/reflection";
+import { createRetrospector } from "./engine/retrospective";
 import type { TurnAdmission } from "./quiesce";
 import type { Store, UserQuote } from "./store";
 import { ENGINE_LEVELS } from "./store/schema-gate";
@@ -145,6 +146,8 @@ export type TurnEngine = {
   pollJobs: (now?: Date) => void;
   /** Runs the next due reflection (ADR 0051, level 8), one at a time. */
   reflect: (now?: Date) => void;
+  /** Runs the next due retrospective of a delivered plan (ADR 0062, level 8), one at a time. */
+  retrospect: (now?: Date) => void;
   suggestComposer: (sessionId: string, signal?: AbortSignal, guard?: () => void) => Promise<ComposerSuggestion[]>;
   drain: () => Promise<void>;
   close: () => Promise<void>;
@@ -551,6 +554,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   // Level 5's hand-overs and reviews (ADR 0046): checks run as a settle would, through the plan's runner.
   const jobPoller = createJobPoller({ store, mcp, track: core.track, dispatchQueued: () => lifecycle.dispatchQueued() });
   const reflector = createReflector({ store, completions, routing, spend, track: core.track, publishMessage: core.publishMessage });
+  const retrospector = createRetrospector({ store, completions, routing, spend, track: core.track });
   const submissions = createSubmissions({
     store,
     runChecks: (taskId, checkIds) => checks.run(taskId, { cause: "settle", checkIds }),
@@ -787,6 +791,10 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     reflect(at = new Date()) {
       if (options.admission?.draining) return;
       reflector.reflect(at);
+    },
+    retrospect(at = new Date()) {
+      if (options.admission?.draining) return;
+      retrospector.retrospect(at);
     },
     supervise(at = new Date()) {
       if (store.capabilities().engine_level < ENGINE_LEVELS.supervision || options.admission?.draining) return;

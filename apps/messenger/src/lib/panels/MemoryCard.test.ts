@@ -58,6 +58,15 @@ test("a memory a learning hop wrote says when no later task of its kind has run"
   close();
 });
 
+test("a memory a retrospective wrote says so, naming the job; one written in a turn does not", () => {
+  const { host, close } = open([
+    aMemory({ id: "m-1", subject: "漫改画风", retrospective: { id: "retro-1", task_id: "task-1", plan_title: "全职猎人" } }),
+    aMemory({ id: "m-2", subject: "别的" }),
+  ]);
+  expect([...host.querySelectorAll(".memory-retrospective")].map((el) => el.textContent)).toEqual(["完工复盘《全职猎人》写的"]);
+  close();
+});
+
 test("a memory the Bot wrote during a turn shows no learning count", () => {
   const { host, close } = open([aMemory()]);
   expect(host.querySelector(".memory-learning")).toBeNull();

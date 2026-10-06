@@ -1,5 +1,6 @@
 import { type Skill } from "@real-bot/protocol";
 import { learningOutcome } from "./routing";
+import { retrospectiveOrigin } from "./retrospective-origin";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { codePointCount } from "../text";
@@ -72,14 +73,19 @@ export function parseSkillUsesJson(raw: string | null | undefined): string[] {
   }
 }
 
-/** Fills the learning counts a snapshot shows. A skill a turn wrote itself stays null. */
+/**
+ * Fills the learning counts a snapshot shows (a skill a turn wrote itself stays null), and which
+ * retrospective last changed it (ADR 0062).
+ */
 export function withLearning(ctx: StoreContext, skill: Skill): Skill {
-  const chain = ctx.db
-    .query<{ learned_chain_id: string | null }, [string]>(`SELECT learned_chain_id FROM skills WHERE id = ?`)
+  const row = ctx.db
+    .query<{ learned_chain_id: string | null; retrospective_id?: string | null }, [string]>(`SELECT * FROM skills WHERE id = ?`)
     .get(skill.id);
-  if (!chain?.learned_chain_id) return skill;
-  const outcome = learningOutcome(ctx, { botId: skill.bot_id, chainId: chain.learned_chain_id });
-  return outcome ? { ...skill, learning: outcome } : skill;
+  const retrospective = retrospectiveOrigin(ctx, row?.retrospective_id);
+  const withOrigin = retrospective ? { ...skill, retrospective } : skill;
+  if (!row?.learned_chain_id) return withOrigin;
+  const outcome = learningOutcome(ctx, { botId: skill.bot_id, chainId: row.learned_chain_id });
+  return outcome ? { ...withOrigin, learning: outcome } : withOrigin;
 }
 
 export function toSkill(row: SkillRow): Skill {
@@ -178,8 +184,10 @@ export function patchSkill(
   }
   const now = isoNow();
   const chain = opts.learnedChainId === undefined ? (current.learned_chain_id ?? null) : opts.learnedChainId;
+  // Rewritten by a turn or by you, it is no longer what a retrospective wrote (ADR 0062).
+  const rewritten = description !== current.description || body !== current.body;
   ctx.db.run(
-    `UPDATE skills SET name = ?, description = ?, body = ?, uses = ?, enabled = ?, learned_chain_id = ?, updated_at = ? WHERE id = ?`,
+    `UPDATE skills SET name = ?, description = ?, body = ?, uses = ?, enabled = ?, learned_chain_id = ?, updated_at = ?${rewritten ? ", retrospective_id = NULL" : ""} WHERE id = ?`,
     [name, description, body, uses, enabled, chain, now, id],
   );
   return getSkill(ctx, id);

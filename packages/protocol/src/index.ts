@@ -838,6 +838,11 @@ export type TaskDetail = SessionTaskSummary & {
   requirements?: PlanRequirement[];
   /** When the plan last changed and what changed, in the app's language. Absent from an older daemon. */
   last_change?: { at: string; what: string } | null;
+  /**
+   * From level 8: the retrospectives its Bots made of it once it was delivered (ADR 0062), oldest
+   * first; ones that ran or are running, not ones set aside. Absent below level 8 and from an older daemon.
+   */
+  retrospectives?: Retrospective[];
 };
 
 /**
@@ -1939,6 +1944,8 @@ export type Skill = {
    * shorter. Null when a turn wrote it, or no hop has revised it.
    */
   learning: { later: number; shorter: number } | null;
+  /** The retrospective (ADR 0062) that last changed it, and its plan; absent when a turn or you did. */
+  retrospective?: RetrospectiveOrigin | null;
 };
 
 export type CreateSkillRequest = {
@@ -1980,6 +1987,8 @@ export type Memory = {
    * Null when the Bot wrote it during a turn.
    */
   learning: { later: number; shorter: number } | null;
+  /** The retrospective (ADR 0062) that wrote it as it now reads, and its plan; absent when a turn or you wrote it. */
+  retrospective?: RetrospectiveOrigin | null;
   enabled: boolean;
   created_at: string;
   updated_at: string;
@@ -2007,16 +2016,18 @@ export type SpendKind =
  * What a call was for, where its kind is shared (ADR 0042): the scribe bills as `organize`, a
  * judgement of pictures (a `continuity` check looking at frames) as `acceptance_check`, and a
  * reflection, once there is one, as `organize`, and so does reading a line for what the app acts
- * on (`reader`, ADR 0055). The kind stays the nearest old value, so an older build still reads the
- * row; every other row has no purpose.
+ * on (`reader`, ADR 0055) and a Bot's retrospective of a delivered plan (`retrospect`, ADR 0062).
+ * The kind stays the nearest old value, so an older build still reads the row; every other row has
+ * no purpose.
  */
-export type SpendPurpose = "scribe" | "vision" | "reflect" | "reader";
+export type SpendPurpose = "scribe" | "vision" | "reflect" | "reader" | "retrospect";
 
 export const SPEND_PURPOSE_KIND: Record<SpendPurpose, SpendKind> = {
   scribe: "organize",
   vision: "acceptance_check",
   reflect: "organize",
   reader: "organize",
+  retrospect: "organize",
 };
 
 /** One line of the view's breakdown: a kind, or a purpose split out of the kind it bills as. */
@@ -2028,7 +2039,7 @@ export function spendLineOf(row: { kind: SpendKind; purpose?: SpendPurpose | nul
 
 /**
  * How the view groups lines. Decision is the pick before a turn and the organizer's filing of
- * a message; feedback is the review, the learning hop and a reflection; a composer suggestion,
+ * a message; feedback is the review, the learning hop, a reflection and a retrospective; a composer suggestion,
  * the scribe and an acceptance check's calls belong to neither and are "other".
  */
 export type SpendCategory = "turn" | "judgement" | "decision" | "feedback" | "other";
@@ -2046,6 +2057,7 @@ export const SPEND_CATEGORY_OF: Record<SpendLine, SpendCategory> = {
   vision: "other",
   reflect: "feedback",
   reader: "other",
+  retrospect: "feedback",
 };
 
 /**
@@ -2388,6 +2400,69 @@ export type SharedSkill = {
 
 /** `GET /v1/shared-skills`: the project skills, and whether sharing is on (engine level 8). */
 export type SharedSkillsResponse = { items: SharedSkill[]; available: boolean };
+
+/** Which retrospective last wrote a memory or a skill, on which plan: what its card says beside it. */
+export type RetrospectiveOrigin = { id: string; task_id: string; plan_title: string | null };
+
+/** A memory or a skill as one retrospective change found it or left it: a memory's subject, a skill's name and description, and the body. */
+export type RetrospectiveSide = { subject?: string; name?: string; description?: string; body: string };
+
+/**
+ * One change a retrospective made to its own Bot's memories or skills (ADR 0062), with what it
+ * replaced. `not_applied` says why in `reason`; `undone` is one you took back on the board.
+ */
+export type RetrospectiveChange = {
+  kind: "memory" | "skill";
+  op: "remember" | "forget" | "edit" | "create";
+  /** The memory's subject or the skill's name. */
+  label: string;
+  /** The memory or skill it wrote; for a forget, the one it deleted. Null when nothing was written. */
+  target_id: string | null;
+  before: RetrospectiveSide | null;
+  after: RetrospectiveSide | null;
+  /** The Bot's own reason, in a sentence. */
+  why: string;
+  status: "applied" | "not_applied" | "undone";
+  /**
+   * Why it was not made, as a code the window words in your language: `off` (you turned it off),
+   * `full`, `over_cap` (past what one retrospective may change), `unchanged`, `missing`,
+   * `project_skill` (shared by you, not the Bot's to change), `name_taken`, `project_name`,
+   * `too_long:<field>`, `required:<field>`, `edit_missing:<n>`, `edit_repeated:<n>:<times>`,
+   * `edit_not_one_sentence:<n>`, `edit_unread:<n>` (too long to read: only added to at its end),
+   * `drops:<names>` (it would lose these from the skill), `refused`.
+   */
+  reason?: string;
+  undone_at?: string;
+};
+
+/** What a retrospective made of an earlier conclusion of its Bot's: still holding, broken again here, or no longer true. */
+export type RetrospectiveVerdict = { conclusion: string; verdict: "held" | "recurred" | "obsolete" };
+
+/**
+ * A retrospective (完工复盘, ADR 0062, engine level 8): once a plan was delivered and stayed so for
+ * half an hour, a Bot that made something in it looked back once, on its own model, over the job's
+ * record — what tripped it up, what made you send work back, what to keep — and wrote what it
+ * concluded into its own memories and skills. Nothing waits on you: each change can be taken back.
+ */
+export type Retrospective = {
+  id: string;
+  task_id: string;
+  bot_id: string;
+  /** The delivery it looked back on; a plan reopened and delivered again gets another. */
+  delivered_at: string;
+  state: "pending" | "done" | "failed";
+  model: string | null;
+  summary: string | null;
+  pitfalls: string[];
+  rework_causes: string[];
+  keep: string[];
+  earlier: RetrospectiveVerdict[];
+  changes: RetrospectiveChange[];
+  /** Why it failed (`call_failed`, `unreadable`, `interrupted`), or why it changed nothing. */
+  note: string | null;
+  created_at: string;
+  finished_at: string | null;
+};
 
 /**
  * What later choices made of one review, counted locally from the rows that followed it.

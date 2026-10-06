@@ -6,6 +6,7 @@
  */
 import { ballHolder } from "./supervisor";
 import { planScale } from "./large-jobs";
+import { listRetrospectives } from "./retrospectives";
 import type { AcceptanceCheck, TaskDetail, TaskSpecRevision, Ticket, TicketBall, TicketStatus } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
@@ -661,6 +662,8 @@ export function taskDetail(ctx: StoreContext, taskId: string, present: (path: st
     held_by: planHeldBy(ctx, taskId),
     requirements: planRequirements(ctx, taskId),
     last_change: planLastChange(ctx, taskId),
+    // What its Bots made of it once it was delivered (ADR 0062): only where retrospectives run.
+    ...(readEngineLevel(ctx.db) >= ENGINE_LEVELS.learning ? { retrospectives: listRetrospectives(ctx, taskId) } : {}),
     ...(withBall ? { supervision_on: true } : {}),
     ...(readEngineLevel(ctx.db) >= ENGINE_LEVELS.routing ? { routing_on: true } : {}),
     // The job's size (ADR 0060): only where large jobs are on, and only once something has read it.

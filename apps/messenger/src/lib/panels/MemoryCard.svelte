@@ -241,6 +241,11 @@
 							<span aria-hidden="true" class="origin-dot">·</span>
 							<span class="memory-origin-missing">{t.sidebar.memoryOriginMissing}</span>
 						{/if}
+						{#if memory.retrospective}
+							<!-- Written by a retrospective of a delivered job (ADR 0062): its plan's board shows it, with an undo. -->
+							<span aria-hidden="true" class="origin-dot">·</span>
+							<span class="memory-retrospective">{t.sidebar.memoryFromRetrospective(memory.retrospective.plan_title)}</span>
+						{/if}
 						{#if memory.learning}
 							<span aria-hidden="true" class="origin-dot">·</span>
 							<span class="memory-learning">

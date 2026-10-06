@@ -9,6 +9,7 @@
  */
 import { type Memory } from "@real-bot/protocol";
 import { learningOutcome } from "./routing";
+import { retrospectiveOrigin } from "./retrospective-origin";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { codePointCount } from "../text";
@@ -37,14 +38,19 @@ export function parseMemoryBody(value: unknown): string {
   return body;
 }
 
-/** Fills the learning counts a snapshot shows. The prompt digest reads the row without them. */
+/**
+ * Fills the learning counts a snapshot shows, and which retrospective wrote the memory as it now
+ * reads (ADR 0062). The prompt digest reads the row without them.
+ */
 export function withLearning(ctx: StoreContext, memory: Memory): Memory {
-  const chain = ctx.db
-    .query<{ learned_chain_id: string | null }, [string]>(`SELECT learned_chain_id FROM memories WHERE id = ?`)
+  const row = ctx.db
+    .query<{ learned_chain_id: string | null; retrospective_id?: string | null }, [string]>(`SELECT * FROM memories WHERE id = ?`)
     .get(memory.id);
-  if (!chain?.learned_chain_id) return memory;
-  const outcome = learningOutcome(ctx, { botId: memory.bot_id, chainId: chain.learned_chain_id });
-  return outcome ? { ...memory, learning: outcome } : memory;
+  const retrospective = retrospectiveOrigin(ctx, row?.retrospective_id);
+  const withOrigin = retrospective ? { ...memory, retrospective } : memory;
+  if (!row?.learned_chain_id) return withOrigin;
+  const outcome = learningOutcome(ctx, { botId: memory.bot_id, chainId: row.learned_chain_id });
+  return outcome ? { ...withOrigin, learning: outcome } : withOrigin;
 }
 
 function toMemory(row: MemoryRow): Memory {
@@ -160,9 +166,10 @@ export function rememberMemory(
   const chain = input.learned_chain_id ?? null;
   const existing = findMemoryBySubject(ctx, input.bot_id, subject);
   if (existing) {
+    // Rewritten in a turn, it is no longer what a retrospective wrote (ADR 0062).
     ctx.db.run(
       `UPDATE memories SET subject = ?, body = ?, source_session_id = ?, source_message_id = ?,
-         learned_chain_id = ?, updated_at = ?
+         learned_chain_id = ?, retrospective_id = NULL, updated_at = ?
        WHERE id = ?`,
       [subject, body, input.source_session_id ?? null, input.source_message_id ?? null, chain, now, existing.id],
     );
@@ -207,7 +214,9 @@ export function patchMemory(
       throw new HttpError(409, "conflict", "that subject already has a memory");
     }
   }
-  ctx.db.run(`UPDATE memories SET subject = ?, body = ?, enabled = ?, updated_at = ? WHERE id = ?`, [
+  // Your words now, not a retrospective's: its tag goes once the text changes (ADR 0062).
+  const rewritten = subject !== current.subject || body !== current.body;
+  ctx.db.run(`UPDATE memories SET subject = ?, body = ?, enabled = ?, updated_at = ?${rewritten ? ", retrospective_id = NULL" : ""} WHERE id = ?`, [
     subject,
     body,
     enabled,

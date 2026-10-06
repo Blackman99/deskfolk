@@ -1086,6 +1086,8 @@
 						onShowTicket={(id) => void showTicket(id)}
 						onClearTicket={() => selectTicket(null)}
 						onShowTickets={showTickets}
+						{bots}
+						{deletedLabel}
 					/>
 				</div>
 				{#if hasTickets}

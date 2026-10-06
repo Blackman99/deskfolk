@@ -1723,6 +1723,15 @@ function dispatch(
     return jsonResponse(lesson, 200, null);
   }
 
+  // A change a retrospective made (ADR 0062), taken back from the plan's board: the board's plan comes back.
+  params = matchPath(path, "/v1/retrospectives/:id/changes/:index/undo");
+  if (params && method === "POST") {
+    const index = Number(params.index);
+    if (!Number.isInteger(index) || index < 0) throw new HttpError(422, "invalid_args", "index must be a change's position");
+    const retrospective = store.undoRetrospectiveChange(params.id!, index);
+    return jsonResponse(store.taskDetail(retrospective.task_id, store.citedPathExists), 200, null);
+  }
+
   params = matchPath(path, "/v1/sessions/:id/routes");
   if (params && method === "GET") {
     store.getSession(params.id!);

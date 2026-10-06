@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { AcceptanceCheck, TaskDetail, TaskSpecRevision, TicketStatus } from '@real-bot/protocol';
+	import type { AcceptanceCheck, Bot, TaskDetail, TaskSpecRevision, TicketStatus } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
 	import { formatFullTimestamp, formatMessageTime } from '../chat/chat-view.ts';
@@ -18,6 +18,7 @@
 	import AcceptanceCheckRow from './AcceptanceCheckRow.svelte';
 	import AcceptanceCheckForm from './AcceptanceCheckForm.svelte';
 	import PlanRequirements from './PlanRequirements.svelte';
+	import PlanRetrospectives from './PlanRetrospectives.svelte';
 
 	interface Props {
 		api: MessengerApi | null;
@@ -40,6 +41,9 @@
 		onClearTicket?: () => void;
 		/** Open the tickets panel, on one status or on all. */
 		onShowTickets?: (status: TicketStatus | 'all') => void;
+		/** The Bots, for the name on a retrospective (ADR 0062). */
+		bots?: readonly Bot[];
+		deletedLabel?: string;
 	}
 
 	/**
@@ -56,7 +60,9 @@
 		selectedTicket = null,
 		onShowTicket,
 		onClearTicket,
-		onShowTickets
+		onShowTickets,
+		bots = [],
+		deletedLabel = ''
 	}: Props = $props();
 
 	const ticketsById = $derived(new Map(detail.tickets.map((ticket) => [ticket.id, ticket] as const)));
@@ -340,6 +346,13 @@
 	</div>
 {/snippet}
 
+<!-- What its Bots made of the job once it was delivered (ADR 0062): shown, not put to you. -->
+{#snippet retrospectives()}
+	{#if (detail.retrospectives ?? []).length > 0}
+		<PlanRetrospectives {api} {detail} {t} {bots} {deletedLabel} {onSaved} />
+	{/if}
+{/snippet}
+
 {#if !detail.spec && detail.revision === 0}
 	<!--
 		Nothing written up yet: no version to show and no history to open, and no claim that it is
@@ -378,6 +391,7 @@
 					<p class="plan-spec-brief"><strong>{t.plan.brief}：</strong>{detail.brief}</p>
 				{/if}
 			</div>
+			{@render retrospectives()}
 		{:else}
 			{@const spec = detail.spec}
 			{#if focusTicket}
@@ -449,6 +463,8 @@
 					<div class="plan-spec-goal-text">{spec.goal}</div>
 				{/if}
 			</div>
+
+			{@render retrospectives()}
 
 			<!-- What you asked for: the requirements ledger, the list the Bots read too (ADR 0040 P3). -->
 			{#if detail.requirements}

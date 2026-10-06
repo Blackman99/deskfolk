@@ -1032,10 +1032,11 @@ CREATE TABLE IF NOT EXISTS spend (
   kind TEXT NOT NULL CHECK (
     kind IN ('turn', 'judgement', 'route_pick', 'route_review', 'route_learn', 'composer_suggest', 'organize', 'acceptance_check')
   ),
-  -- What the call was for where the kind is shared (ADR 0042): the scribe, a reflection and a
-  -- reading of a line (ADR 0055) bill as organize, a judgement of pictures as acceptance_check.
+  -- What the call was for where the kind is shared (ADR 0042): the scribe, a reflection, a
+  -- reading of a line (ADR 0055) and a retrospective (ADR 0062) bill as organize, a judgement of
+  -- pictures as acceptance_check.
   -- Added by migrate.ts on older ledgers, and widened there when a purpose is added.
-  purpose TEXT CHECK (purpose IS NULL OR purpose IN ('scribe', 'vision', 'reflect', 'reader')),
+  purpose TEXT CHECK (purpose IS NULL OR purpose IN ('scribe', 'vision', 'reflect', 'reader', 'retrospect')),
   chain_id TEXT,
   provider_id TEXT,
   provider_name TEXT,

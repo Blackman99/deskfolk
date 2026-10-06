@@ -54,6 +54,12 @@ export function startScheduler(options: SchedulerOptions): Scheduler {
     } catch (error) {
       console.error("[reflection] failed", error);
     }
+    // The retrospective (ADR 0062): one Bot looking back on one delivered plan at a time, from level 8.
+    try {
+      options.engine.retrospect(at);
+    } catch (error) {
+      console.error("[retrospective] failed", error);
+    }
     for (const routine of options.store.listRoutines()) {
       try {
         options.engine.fireRoutine(routine.id, at);

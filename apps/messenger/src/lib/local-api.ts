@@ -560,6 +560,11 @@ export class LocalApi {
     return this.patch<TaskDetail>(`/v1/tasks/${encodeURIComponent(taskId)}`, body);
   }
 
+  /** Takes back one change a retrospective made to its Bot's memories or skills (ADR 0062); the plan it is shown on comes back. */
+  async undoRetrospectiveChange(retrospectiveId: string, index: number): Promise<TaskDetail> {
+    return this.post<TaskDetail>(`/v1/retrospectives/${encodeURIComponent(retrospectiveId)}/changes/${index}/undo`, {});
+  }
+
   /** Your edit of a plan's spec: the whole spec, guarded by the revision you edited from. */
   async patchTaskSpec(taskId: string, body: PatchTaskSpecRequest): Promise<TaskDetail> {
     return this.patch<TaskDetail>(`/v1/tasks/${encodeURIComponent(taskId)}/spec`, body);

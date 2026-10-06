@@ -349,6 +349,7 @@ const zh = {
     memoryBodyEmpty: "填写记住了什么。",
     memorySubjectConflict: "关于这件事已经有一条记忆了。",
     memoryFormedIn: (where: string) => `记于 ${where}`,
+    memoryFromRetrospective: (plan: string | null) => (plan ? `完工复盘《${plan}》写的` : "完工复盘写的"),
     learningNoneYet: "还没有后续同类任务",
     learningLater: (later: number, shorter: number) => `之后 ${later} 次同类任务，${shorter} 次更短`,
     memoryOriginMissing: "来源已不在",
@@ -1683,6 +1684,59 @@ const zh = {
       hereAgain: "恢复",
       wholeProject: "对这个会话都适用",
       failed: "没做成，再试一次。"
+    },
+    retrospective: {
+      title: "完工复盘",
+      hint: "这件事交付后，做过它的 Bot 回看了一遍：踩了哪些坑、哪些做法让你返工、下次该照做什么，并改了它自己的记忆和技能。每一处改动都能撤销。",
+      running: (bot: string) => `${bot} 正在复盘…`,
+      failed: {
+        call_failed: "复盘没跑成：模型调用失败，什么都没改。",
+        truncated: "复盘没跑成：回答没写完，什么都没改。",
+        unreadable: "复盘没跑成：回答读不懂，什么都没改。",
+        interrupted: "复盘没跑成：被重启打断，什么都没改。",
+        no_model: "复盘没跑成：没有能用的模型，什么都没改。",
+        other: "复盘没跑成，什么都没改。"
+      },
+      pitfalls: "踩的坑",
+      reworkCauses: "让你返工的做法",
+      keep: "下次照做",
+      earlier: "以前的结论",
+      verdict: { held: "仍然成立", recurred: "又犯了", obsolete: "已不成立" },
+      changes: "改动",
+      noChanges: "没有改记忆和技能。",
+      change: {
+        memoryNew: (label: string) => `新记忆「${label}」`,
+        memoryRewrite: (label: string) => `改写记忆「${label}」`,
+        memoryForget: (label: string) => `删掉记忆「${label}」`,
+        skillEdit: (label: string) => `改了技能「${label}」`,
+        skillCreate: (label: string) => `新建技能「${label}」`
+      },
+      undo: "撤销",
+      undone: "已撤销",
+      undoChanged: "撤销没成：它之后又被改过，现在是新的样子。",
+      undoFailed: "撤销没成，再试一次。",
+      showDiff: "看改了什么",
+      before: "原来",
+      after: "现在",
+      notApplied: (reason: string) => `没写进去：${reason}`,
+      reason: {
+        off: "你停用了它",
+        full: "已经满了",
+        over_cap: "超出一次复盘能改的条数",
+        unchanged: "和原来一样",
+        missing: "没有这一条",
+        project_skill: "这是项目共享技能，不归它改",
+        name_taken: "已有同名技能",
+        project_name: "和一条项目共享技能同名",
+        too_long: "太长了",
+        required: "缺内容",
+        edit_missing: (n: number) => `第 ${n} 处：技能里找不到它指的那段原文`,
+        edit_repeated: (n: number, times: number) => `第 ${n} 处：它指的那段原文出现了 ${times} 次`,
+        edit_not_one_sentence: (n: number) => `第 ${n} 处：一次只能改正一句`,
+        edit_unread: (n: number) => `第 ${n} 处：技能太长没读，只能在末尾追加`,
+        drops: (names: string) => `会丢掉 ${names}`,
+        refused: "被拒绝了"
+      }
     }
   },
   detail: {
@@ -2251,6 +2305,7 @@ const en: CopyShape<typeof zh> = {
     memoryBodyEmpty: "Enter what it remembers.",
     memorySubjectConflict: "There is already a memory about that.",
     memoryFormedIn: (where: string) => `Formed in ${where}`,
+    memoryFromRetrospective: (plan: string | null) => (plan ? `Written by the retrospective of "${plan}"` : "Written by a retrospective"),
     learningNoneYet: "No later task of this kind yet",
     learningLater: (later: number, shorter: number) =>
       `${later} later ${later === 1 ? "task" : "tasks"} of this kind, ${shorter} shorter`,
@@ -3553,6 +3608,59 @@ const en: CopyShape<typeof zh> = {
       hereAgain: "Restore",
       wholeProject: "For the whole conversation",
       failed: "That did not work; try again."
+    },
+    retrospective: {
+      title: "Retrospective",
+      hint: "Once this job was delivered, the Bots that made it looked back on it: where they tripped up, which of their ways made you send work back, what to do again — and changed their own memories and skills. Every change can be taken back.",
+      running: (bot: string) => `${bot} is looking back…`,
+      failed: {
+        call_failed: "The retrospective did not run: the model call failed. Nothing was changed.",
+        truncated: "The retrospective did not run: its answer was cut off. Nothing was changed.",
+        unreadable: "The retrospective did not run: its answer could not be read. Nothing was changed.",
+        interrupted: "The retrospective did not run: a restart cut it off. Nothing was changed.",
+        no_model: "The retrospective did not run: no model was available. Nothing was changed.",
+        other: "The retrospective did not run. Nothing was changed."
+      },
+      pitfalls: "Where it tripped up",
+      reworkCauses: "What made you send work back",
+      keep: "Do again next time",
+      earlier: "Earlier conclusions",
+      verdict: { held: "still holds", recurred: "happened again", obsolete: "no longer holds" },
+      changes: "Changes",
+      noChanges: "No memory or skill changed.",
+      change: {
+        memoryNew: (label: string) => `New memory "${label}"`,
+        memoryRewrite: (label: string) => `Rewrote memory "${label}"`,
+        memoryForget: (label: string) => `Deleted memory "${label}"`,
+        skillEdit: (label: string) => `Changed skill "${label}"`,
+        skillCreate: (label: string) => `New skill "${label}"`
+      },
+      undo: "Undo",
+      undone: "Undone",
+      undoChanged: "Not undone: it was changed again since, and is new now.",
+      undoFailed: "That did not work; try again.",
+      showDiff: "What changed",
+      before: "Before",
+      after: "Now",
+      notApplied: (reason: string) => `Not made: ${reason}`,
+      reason: {
+        off: "you turned it off",
+        full: "it is full",
+        over_cap: "past what one retrospective may change",
+        unchanged: "the same as before",
+        missing: "there is no such one",
+        project_skill: "a project skill is not the Bot's to change",
+        name_taken: "a skill of that name exists",
+        project_name: "a project skill has that name",
+        too_long: "too long",
+        required: "something was missing",
+        edit_missing: (n: number) => `edit ${n}: the passage it names is not in the skill`,
+        edit_repeated: (n: number, times: number) => `edit ${n}: the passage it names is in the skill ${times} times`,
+        edit_not_one_sentence: (n: number) => `edit ${n}: a correction changes one sentence at a time`,
+        edit_unread: (n: number) => `edit ${n}: the skill was too long to read, so it can only be added to at its end`,
+        drops: (names: string) => `it would drop ${names}`,
+        refused: "refused"
+      }
     }
   },
   detail: {
