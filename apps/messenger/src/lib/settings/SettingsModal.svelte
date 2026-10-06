@@ -4,10 +4,12 @@
 	import { pageSlide } from '../mobile-page-slide.ts';
 	import McpSettings from './McpSettings.svelte';
 	import LessonsSettings from './LessonsSettings.svelte';
+	import PromptsSettings from './PromptsSettings.svelte';
+	import { editedCount } from './prompts-view.ts';
 	import ModelLadderCard from './ModelLadderCard.svelte';
 	import ReaderModelCard from './ReaderModelCard.svelte';
 	import ClaudeAgentCard from './ClaudeAgentCard.svelte';
-	import type { Lesson } from '@real-bot/protocol';
+	import type { Lesson, PromptSummary } from '@real-bot/protocol';
 	import { backdropClick } from '../click-outside.ts';
 	import WorkspacePicker from './WorkspacePicker.svelte';
 	import ProviderForm from './ProviderForm.svelte';
@@ -59,7 +61,7 @@
 	import RelayGuide from './RelayGuide.svelte';
 	import RemoteScreenSettings from './RemoteScreenSettings.svelte';
 
-	type SettingsTab = 'general' | 'models' | 'agents' | 'mcp' | 'notifications' | 'lessons' | 'remote' | 'about';
+	type SettingsTab = 'general' | 'models' | 'agents' | 'mcp' | 'prompts' | 'notifications' | 'lessons' | 'remote' | 'about';
 
 	type Props = {
 		mobileSettingsDetail?: boolean;
@@ -162,6 +164,27 @@
 		);
 	});
 	const lessonsTabVisible = $derived(lessons.length > 0);
+
+	// Built-in prompts (ADR 0064): read when settings open and again whenever one changes anywhere.
+	let promptItems = $state<PromptSummary[]>([]);
+	let promptsFailed = $state(false);
+	let promptsSettings = $state<PromptsSettings>();
+	$effect(() => {
+		const api = runtime.client;
+		void runtime.promptsRevision;
+		if (!runtime.settingsOpen || !api || runtime.connection !== 'connected') return;
+		void api.listPrompts().then(
+			(items) => {
+				if (runtime.client !== api) return;
+				promptItems = items;
+				promptsFailed = false;
+			},
+			() => {
+				if (runtime.client === api) promptsFailed = true;
+			}
+		);
+	});
+	const promptCounts = $derived(editedCount(promptItems));
 	let providerForm = $state<ProviderForm>();
 	let providerDetailModel = $state<string | null>(null);
 
@@ -188,6 +211,7 @@
 			return true;
 		}
 		if (mcpSettings?.backFromEditor()) return true;
+		if (promptsSettings?.backFromEditor()) return true;
 		if (!mobileSettingsDetail) return false;
 		mobileSettingsDetail = false;
 		return true;
@@ -212,6 +236,8 @@
 					? t.settings.tabAgents
 				: tab === 'mcp'
 					? t.settings.tabMcp
+				: tab === 'prompts'
+					? t.settings.tabPrompts
 					: tab === 'notifications'
 						? t.settings.tabNotifications
 						: tab === 'lessons'
@@ -880,6 +906,24 @@
 					<button
 						type="button"
 						class="settings-tab-btn"
+						class:is-active={activeSettingsTab === 'prompts'}
+						data-settings-tab="prompts"
+						onclick={() => openSettingsTab('prompts')}
+					>
+						<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<path d="M4 7V4h16v3"></path>
+							<line x1="9" y1="20" x2="15" y2="20"></line>
+							<line x1="12" y1="4" x2="12" y2="20"></line>
+						</svg>
+						<span class="tab-name">{t.settings.tabPrompts}</span>
+						{#if promptCounts.edited > 0}
+							<span class="tab-count text-11 font-semibold py-[1px] px-3 rounded-full bg-chip text-ink-secondary" class:is-warn={promptCounts.conflict}>{promptCounts.edited}</span>
+						{/if}
+					</button>
+
+					<button
+						type="button"
+						class="settings-tab-btn"
 						class:is-active={activeSettingsTab === 'notifications'}
 						data-settings-tab="notifications"
 						onclick={() => openSettingsTab('notifications')}
@@ -1398,6 +1442,8 @@
 					</div>
 				{:else if activeSettingsTab === 'mcp'}
 					<McpSettings bind:this={mcpSettings} {runtime} {t} {closeSettings} />
+				{:else if activeSettingsTab === 'prompts'}
+					<PromptsSettings bind:this={promptsSettings} {runtime} {t} items={promptItems} loadFailed={promptsFailed} {closeSettings} />
 				{:else if activeSettingsTab === 'notifications'}
 					<NotificationSettings {runtime} {t} />
 				{:else if activeSettingsTab === 'lessons' && lessonsTabVisible}

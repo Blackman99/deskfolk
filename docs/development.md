@@ -396,12 +396,16 @@ Bot 在正文里按它壳的视角写路径（刚 `echo ... > sales.csv` 之后�
 
 ## 内置提示词槽位
 
-应用发给模型的每一段固定文字，凡是你或 Bot 能改的，都在 `apps/daemon/src/prompts/registry.ts` 里登记成一个槽位：`turn.*` 是每一跳的系统指令和技能 / 记忆 / MCP 段的开头，`agent.preface` 是 Claude Agent 的前言，`tool.<名字>` 是每个工具的说明（参数说明仍在代码里），`call.*` 是应用自己的调用（整理跳、四种读句、书记员、参与判断、输入建议、反思、复盘、衔接检查三种、照样片检查）。文字本身还在原来的模块里，注册表只列出它们。
+应用发给模型的每一段固定文字，凡是你或 Bot 能改的，都在 `apps/daemon/src/prompts/registry.ts` 里登记成一个槽位（[ADR 0064](adr/0064-built-in-prompts-you-and-your-bots-can-edit.md)）：`turn.*` 是每一跳的系统指令和技能 / 记忆 / MCP 段的开头，`agent.preface` 是 Claude Agent 的前言，`tool.<名字>` 是每个工具的说明（参数说明仍在代码里），`call.*` 是应用自己的调用（整理跳、四种读句、书记员、参与判断、输入建议、反思、复盘、衔接检查三种、照样片检查）。文字本身还在原来的模块里，注册表只列出它们。
 
 - **默认按级别和 shell 渲染**：`defaultText(locale, { level, shell })` 就是这段文字一直以来的拼法，`systemText` 的级别补丁和 Windows 句子、整理跳 1 级起去掉的叫停规则、3 级起 `send_message` / `end_turn` 的说明都在这一步；覆盖替换的是渲染后的整段，不再打补丁。
 - **应用自己的调用，输出格式锁住**：答案要被代码解析的那几段拆成 `*_TEMPLATE`（可改，在原来的位置带一个 `{format}`）和 `*_FORMAT`（固定）。原来导出的 `*_SYSTEM`、`reflectionSystem`、`seamsJudgePrompt` 这些照旧是拼好的全文（`fill(TEMPLATE, { format: FORMAT })`），所以按全文认调用的测试和演示带不用改。`judgement` 和 `composer` 拼好后不能有 `{`（ADR 0012：它们的答案取第一个 `{…}`）。
 - **占位符**只有 `{format}`、`{item}`、`{rules}`、`{workspace}`、`{cwd}`（`fill.ts`），一遍填完，填进去的值不再被当成占位符；JSON 示例里的大括号只是文字。
 - **加一个槽位**：在文字所在的模块导出模板（和格式），在 `registry.ts` 的对应组里登记标题、说明、语言和占位符；`prompts/registry.test.ts` 会核对每个槽位的默认和原来导出的全文逐字相同、占位符照声明出现。`book.ts` 的 `promptPage(source, locale, env).resolve(id, values)` 给出要发的全文和它是哪个槽位（`ref`）。
+- **改过的版本**：存在 `prompt_overrides`（每个槽位每种语言一行：你的全文 + 它所依据的默认 `base_text` + 冲突时的新默认），每次改动在 `prompt_revisions` 里记一条（谁、为什么、前后全文、经哪张批准卡）；读写在 `store/prompts.ts`，编排（保存、恢复默认、撤销、恢复、保留我的、开库合并）在 `prompts/book.ts`，校验在 `prompts/validate.ts`。调用点每跳或每次调用现建一个 `promptPage(store, locale)`，不缓存、不放全局；每一轮把 `turnPromptTexts(page)` 交给 `turnSystemPrompt` / `agentSystemPrompt`、`editedToolDescription(page)` 交给 `builtinTools`，应用自己的调用用 `page.resolve(...)` 并把 `prompt: use.ref` 带进 `JudgeRequest`（不发给端点；测试夹具 `judgeKindOf` 先按它认调用）。
+- **读不懂的回答**：调用点在「回答来了却读不了」时调 `store.notePromptParseFailure`，记 `prompt.parse_failed`（超时、端点出错、截断不记）；加新的应用调用时照这样记。
+- **开库合并**：`reconcilePrompts` 在 `runtime.ts` 启动、`/v1/capabilities/raise` 抬级别之后和 `scripts/check-db.ts`（在库的副本上）各跑一次；改了某段默认的措辞，用过它的人下次开库会被合并或标冲突，提交前跑一次 `check:db` 看看会怎样。
+- **本机接口**：`GET /v1/prompts`、`GET|PUT /v1/prompts/:id/:locale`、`POST …/reset`、`POST …/keep-mine`、`GET /v1/prompt-revisions?approval_id=`、`POST /v1/prompt-revisions/:id/(undo|restore)`，都登记在手机白名单里；Bot 的工具是 `list_prompts` / `read_prompt` / `edit_prompt` / `reset_prompt`（`prompt-tools.ts`），改动走批准卡 `prompt-edit`，不进 `ALLOWED_KIND_KEYS`。
 
 ## 场景夹具
 

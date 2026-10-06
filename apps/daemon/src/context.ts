@@ -30,6 +30,7 @@ import { ENGINE_LEVELS } from "./store/schema-gate";
 import { codePointCount, takeCodePoints } from "./text";
 import { visionImage } from "./vision-image";
 import { asFolder, classifyPath } from "./workspace-paths";
+import { promptPage, turnPromptTexts } from "./prompts/book";
 
 const MAIN_LIMIT = 40;
 const BODY_LIMIT = 4000;
@@ -210,6 +211,8 @@ export function assembleTurnMessages(
     ],
     memories: memoryDigest(store, input.botId, input.locale),
     mcpGuides: input.mcpGuides,
+    // Built-in prompts you edited (ADR 0064); what you did not edit is rendered as shipped.
+    texts: turnPromptTexts(promptPage(store, input.locale)),
   });
   const window = transcriptWindow(store, {
     sessionId: input.sessionId,

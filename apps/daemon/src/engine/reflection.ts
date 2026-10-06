@@ -7,10 +7,11 @@
 import type { Message } from "@real-bot/protocol";
 import { parseReflection } from "../store/reflection";
 import type { CompletionsClient } from "../completions";
-import { reflectionPayload, reflectionSystem } from "../prompts/reflection";
+import { reflectionPayload } from "../prompts/reflection";
 import type { Store } from "../store";
 import type { Routing } from "./routing";
 import type { SpendTracker } from "./spend";
+import { promptPage } from "../prompts/book";
 
 /** How long one reflection may take. */
 const REFLECT_TIMEOUT_MS = 90_000;
@@ -38,12 +39,14 @@ export function createReflector(deps: {
       const routed = deps.routing.decideRoute(due.botId, creds, due.ticketTitle);
       if (routed) {
         const locale = deps.store.settingsCached().locale === "en" ? "en" : "zh";
+        const prompt = promptPage(deps.store, locale).resolve("call.reflection");
         const result = await deps.completions.judge({
           baseUrl: routed.target.baseUrl,
           apiKey: routed.target.apiKey,
           model: routed.target.model,
+          prompt: prompt.ref,
           messages: [
-            { role: "system", content: reflectionSystem(locale) },
+            { role: "system", content: prompt.text },
             { role: "user", content: reflectionPayload(due) },
           ],
           signal: new AbortController().signal,
@@ -64,6 +67,9 @@ export function createReflector(deps: {
           // the ledger is best effort
         }
         if (!result.failKind || result.failKind === "incomplete") outcome = parseReflection(result.content ?? "");
+        if (!result.failKind && !result.truncated && outcome?.kind === "none" && outcome.reason === "unreadable") {
+          deps.store.notePromptParseFailure({ prompt: prompt.ref.id, locale: prompt.ref.locale, revision: prompt.ref.revision_id, reason: "unreadable", taskId: due.taskId, botId: due.botId });
+        }
       }
     } catch {
       outcome = null;

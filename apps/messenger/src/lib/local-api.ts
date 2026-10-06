@@ -84,6 +84,11 @@ import type {
   SessionTaskSummary,
   WorkspaceTrashResult,
   WorkspaceTreePage,
+  Locale,
+  PromptDetail,
+  PromptRevisionRef,
+  PromptSummary,
+  PutPromptRequest,
 } from "@real-bot/protocol";
 import {
   isNonReceiptPath,
@@ -563,6 +568,43 @@ export class LocalApi {
   /** Takes back one change a retrospective made to its Bot's memories or skills (ADR 0062); the plan it is shown on comes back. */
   async undoRetrospectiveChange(retrospectiveId: string, index: number): Promise<TaskDetail> {
     return this.post<TaskDetail>(`/v1/retrospectives/${encodeURIComponent(retrospectiveId)}/changes/${index}/undo`, {});
+  }
+
+  /** Every built-in prompt and its state (ADR 0064). */
+  async listPrompts(): Promise<PromptSummary[]> {
+    return (await this.get<{ items: PromptSummary[] }>("/v1/prompts")).items;
+  }
+
+  /** One built-in prompt in one of its languages, in full: the text in force, the fixed format, the default, its history. */
+  async getPrompt(id: string, locale: Locale): Promise<PromptDetail> {
+    return this.get<PromptDetail>(`/v1/prompts/${encodeURIComponent(id)}/${locale}`);
+  }
+
+  /** Your version of a prompt, guarded by the latest change you saw (`if_revision`, null on one nobody changed). */
+  async putPrompt(id: string, locale: Locale, body: PutPromptRequest): Promise<PromptDetail> {
+    return this.put<PromptDetail>(`/v1/prompts/${encodeURIComponent(id)}/${locale}`, body);
+  }
+
+  async resetPrompt(id: string, locale: Locale, ifRevision: string | null): Promise<PromptDetail> {
+    return this.post<PromptDetail>(`/v1/prompts/${encodeURIComponent(id)}/${locale}/reset`, { if_revision: ifRevision });
+  }
+
+  /** Your version against a newer default that did not merge: keep yours. */
+  async keepMyPrompt(id: string, locale: Locale, ifRevision: string | null): Promise<PromptDetail> {
+    return this.post<PromptDetail>(`/v1/prompts/${encodeURIComponent(id)}/${locale}/keep-mine`, { if_revision: ifRevision });
+  }
+
+  /** The change an approval card let through, for the card's own Undo; null when it made none. */
+  async promptRevisionForApproval(approvalId: string): Promise<PromptRevisionRef | null> {
+    return (await this.get<{ items: PromptRevisionRef[] }>(`/v1/prompt-revisions?approval_id=${encodeURIComponent(approvalId)}`)).items[0] ?? null;
+  }
+
+  async undoPromptRevision(revisionId: string): Promise<PromptDetail> {
+    return this.post<PromptDetail>(`/v1/prompt-revisions/${encodeURIComponent(revisionId)}/undo`, {});
+  }
+
+  async restorePromptRevision(revisionId: string): Promise<PromptDetail> {
+    return this.post<PromptDetail>(`/v1/prompt-revisions/${encodeURIComponent(revisionId)}/restore`, {});
   }
 
   /** Your edit of a plan's spec: the whole spec, guarded by the revision you edited from. */

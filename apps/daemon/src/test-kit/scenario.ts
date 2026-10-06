@@ -472,7 +472,22 @@ export function requestText(request: CompletionRequest): string {
   return request.messages.map((message) => textOf(message.content)).join("\n");
 }
 
+/** A call that names its built-in prompt (ADR 0064) is known by it, whatever its text says now. */
+const KIND_BY_PROMPT: Record<string, JudgeKind> = {
+  "call.organizer": "organizer",
+  "call.scribe": "scribe",
+  "call.judgement": "judgement",
+  "call.composer": "composer",
+  "call.reflection": "reflect",
+  "call.retrospective": "retrospect",
+  "call.read_user_line": "read_user_line",
+  "call.read_bot_line": "read_bot_line",
+  "call.read_filing": "read_filing",
+};
+
 function judgeKindOf(request: JudgeRequest): JudgeKind {
+  const named = request.prompt ? KIND_BY_PROMPT[request.prompt.id] : undefined;
+  if (named) return named;
   const system = textOf(request.messages.find((m) => m.role === "system")?.content ?? "");
   if (system === ORGANIZER_SYSTEM || system === ORGANIZER_SYSTEM_UNDER_HOLDS) return "organizer";
   if (system === SCRIBE_SYSTEM) return "scribe";

@@ -49,6 +49,7 @@ import {
   resolveBodyPathsToWorkDir,
 } from "./artifact-paths";
 import { classifyPath, expandHome } from "./workspace-paths";
+import { editPrompt, listPrompts, readPrompt, resetPrompt } from "./prompt-tools";
 
 const DEFAULT_ENDPOINT_GUARD =
   "cannot modify the default endpoint's URL or key, or delete it";
@@ -63,7 +64,8 @@ export type ToolResult = {
     target: string;
     summary: string;
     requiresApiKey?: boolean;
-    run: (opts?: { api_key?: string }) => Promise<ToolResult> | ToolResult;
+    /** Runs the call once you allow it; `approval_id` / `message_id` say which card let it through. */
+    run: (opts?: { api_key?: string; approval_id?: string; message_id?: string | null }) => Promise<ToolResult> | ToolResult;
   };
   /** A picture `read_file` found; the engine shows it after the hop's tool results (see loop-pictures.ts). */
   picture?: LoopPicture;
@@ -101,6 +103,9 @@ export type ToolCtx = {
   parentId: string | null;
   approved?: boolean;
   approvalApiKey?: string;
+  /** The approval card that let this call through, and its message, when one did (a prompt edit records them). */
+  approvalId?: string | null;
+  approvalMessageId?: string | null;
   writtenPaths?: string[];
   /** Every file the turn wrote, cited in a message or not (`Live.producedPaths`). */
   producedPaths?: string[];
@@ -217,6 +222,15 @@ export async function runCollabTool(
         return await updateMcpServer(ctx, args);
       case "delete_mcp_server":
         return await deleteMcpServer(ctx, args);
+      // Built-in prompts (ADR 0064): reading is free; an edit or a reset waits for your approval card.
+      case "list_prompts":
+        return listPrompts(ctx, args);
+      case "read_prompt":
+        return readPrompt(ctx, args);
+      case "edit_prompt":
+        return editPrompt(ctx, args);
+      case "reset_prompt":
+        return resetPrompt(ctx, args);
       default:
         return fail("failed", `unknown tool: ${name}`);
     }

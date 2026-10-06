@@ -43,6 +43,10 @@ describe("builtinTools order", () => {
       "delete_mcp_server",
       "list_annotations",
       "resolve_annotation",
+      "list_prompts",
+      "read_prompt",
+      "edit_prompt",
+      "reset_prompt",
     ]);
   });
 });

@@ -6,7 +6,7 @@
 
 ## Current focus
 
-Positioning: hand it off, walk away, return to results. Give Bots a multi-day, multi-step job that needs rework and walk away, then come back without wondering whether it quietly stopped, forgot your rules or claimed to be done when it wasn't. The model does the work; the app holds it to account. It is for solo developers, technical individuals and small studios who can set up a model endpoint and API key themselves; one Bot on its own will do, and a team is for work that really splits; a one-off question or a half-hour job is not what it is for.
+Positioning: hand it off, walk away, return to results. Give Bots a multi-day, multi-step job that needs rework and walk away, then come back without wondering whether it quietly stopped, forgot your rules or claimed to be done when it wasn't. The model does the work; the app holds it to account. It is for solo developers, technical individuals and small studios who can set up a model endpoint and API key themselves; one Bot on its own will do, and a team is for work that really splits; a one-off question or a half-hour job is not what it is for. The way of working is itself a template: the built-in prompts hold the way of working its developer settled on, inside the app's shell (the interface, and the rules code keeps: approvals, holds, gates); you direct Bots in the app to change the prompts so they work your way, while the shell stays.
 
 Time goes to these, in this order, and the first two come before any new feature:
 
@@ -15,6 +15,7 @@ Time goes to these, in this order, and the first two come before any new feature
 3. **A first run narrowed to one kind of job.** Right after the setup wizard, offer "hand it off, close the window, come back tomorrow"; routines make a natural hook for the next day. Proper signing and notarization stay queued (the release workflow is ready and waits for a Developer ID certificate).
 4. **Everything around it is in maintenance.** Remote access (screen viewing included), Office previews, annotations, routines, Spend, global search and the split-pane workbench get bug fixes and follow core changes, but no new surface, and investments like remote screen viewing are made more sparingly. Remote access's security review and on-device checks stay queued and don't take time from the core.
 5. **"The app asks you" as a number.** How often each job interrupted you, and whether each interruption really needed you, counted as [ADR 0058](docs/adr/0058-the-app-asks-only-when-it-needs-you.md) defines it, in the second results table.
+6. **The app as your way-of-working template.** The built-in prompts can be changed in settings, and Bots can propose changes you let through on an approval card, each one undoable ([ADR 0064](docs/adr/0064-built-in-prompts-you-and-your-bots-can-edit.md)). Next, Bots read this machine's records for the evidence behind a change, and the situation block, in-loop notes and transcript lines become editable prompts too.
 
 What we don't do stays undone: cloud computers, multiple users, a provider catalogue, Bots as a security boundary.
 
@@ -74,6 +75,7 @@ Groundwork in place:
 - Bots change their own avatar, name, duties, boundaries and skills.
 - Bots create other Bots, create groups and manage their members.
 - Bots manage providers, model lists and MCP servers; dangerous configuration needs the user's approval.
+- Built-in prompts: you change them in settings; a Bot proposes with `edit_prompt`, you let it through on the approval card, and it can be undone ([ADR 0064](docs/adr/0064-built-in-prompts-you-and-your-bots-can-edit.md)).
 - Bots send messages, mention and hand off, and actively move other Bots' work forward.
 
 Next:
@@ -81,6 +83,7 @@ Next:
 - Gradually cover every app operation, and make clear which operations still need the graphical interface and what first-time setup requires.
 - Verify that configuration updates take effect consistently in the current turn, for other Bots, and in directs, groups and routines.
 - As the range of autonomous operations widens, keep user approval, denial, Stop, key entry and execution records; autonomy does not mean permissions loosen automatically.
+- Make the situation block, in-loop notes and transcript and control lines built-in prompts too; give the unreadable-answer count a denominator; run evaluations on your edited prompts.
 
 ## 4. Remote access (experimental, off by default)
 

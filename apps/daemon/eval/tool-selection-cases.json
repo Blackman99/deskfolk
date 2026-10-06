@@ -197,6 +197,45 @@
       "mcp": ["imagegen", "github"],
       "trigger": "What's your name and what do you do here?",
       "expect": { "first": "reply", "forbid": ["mcp_*", "read_skill:*"] }
+    },
+    {
+      "id": "builtin-zh-prompt-every-bot",
+      "category": "builtin",
+      "locale": "zh",
+      "skills": ["daily-report"],
+      "mcp": ["github"],
+      "trigger": "以后每个 Bot 交付时都要附上跑过的命令和输出，把这条写进你们共用的系统指令。",
+      "expect": { "first": ["read_prompt", "list_prompts", "edit_prompt"], "forbid": ["remember", "create_skill", "update_skill", "mcp_*"] },
+      "note": "每个 Bot 都该照做的做法进内置提示词（ADR 0064），先读再提改动。"
+    },
+    {
+      "id": "builtin-zh-prompt-not-for-preference",
+      "category": "builtin",
+      "locale": "zh",
+      "skills": ["daily-report"],
+      "mcp": ["github"],
+      "trigger": "记住：我喜欢简短的回复。",
+      "expect": { "first": "remember", "forbid": ["edit_prompt", "reset_prompt"] },
+      "note": "对一个 Bot 的偏好是记忆，不改大家共用的提示词。"
+    },
+    {
+      "id": "builtin-zh-prompt-not-for-own-way",
+      "category": "builtin",
+      "locale": "zh",
+      "skills": ["daily-report"],
+      "mcp": ["github"],
+      "trigger": "以后你写日报时，都把出处列在最后。",
+      "expect": { "first": ["read_skill:daily-report", "update_skill", "create_skill", "list_skills", "remember"], "forbid": ["edit_prompt", "reset_prompt"] },
+      "note": "只关于这个 Bot 的做法进它的技能或记忆。"
+    },
+    {
+      "id": "builtin-en-prompt-every-bot",
+      "category": "builtin",
+      "locale": "en",
+      "skills": ["release-en"],
+      "mcp": ["github"],
+      "trigger": "From now on every Bot should paste the commands it ran and their output when it hands work over. Put that into the System section you all share.",
+      "expect": { "first": ["read_prompt", "list_prompts", "edit_prompt"], "forbid": ["remember", "create_skill", "update_skill", "mcp_*"] }
     }
   ]
 }

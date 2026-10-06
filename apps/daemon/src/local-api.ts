@@ -83,6 +83,8 @@ import { PresenceManager, NotificationDeliveryScheduler } from "./notifications"
 import { confirmGroupLead, groupLeadState } from "./store/group-leads";
 import { attributionOptions } from "./store/attribution-options";
 import { delegationViews } from "./store/delegation-view";
+import { keepMyPrompt, reconcilePrompts, resetPromptText, restorePromptRevision, savePromptText, undoPromptRevision } from "./prompts/book";
+import { listPromptSummaries, promptDetail } from "./prompts/views";
 import type { ScreenService } from "./remote/screen";
 
 const AUTH_TIMEOUT_MS = 5_000;
@@ -724,6 +726,8 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
     // organizer parked since boot as holds mid-run, which is the next boot's job.
     if (before >= ENGINE_LEVEL) return store.capabilities();
     for (const line of store.catchUpEngineLevel(options.installedApp?.() ?? null)) options.log?.(line);
+    // A higher level renders some defaults differently: merge them into the prompts you edited (ADR 0064).
+    for (const line of reconcilePrompts(store)) options.log?.(`prompts: ${line}`);
     if (store.capabilities().engine_level > before) {
       // Plans taken over as holds end whatever still runs in them, as any new hold does.
       engine.enforceHolds();
@@ -1723,6 +1727,51 @@ function dispatch(
     return jsonResponse(lesson, 200, null);
   }
 
+  // Built-in prompts (ADR 0064): every one and its state, one in full, your edits, and changes taken back.
+  if (method === "GET" && path === "/v1/prompts") return jsonResponse({ items: listPromptSummaries(store) }, 200, null);
+  params = matchPath(path, "/v1/prompts/:id/:locale");
+  if (params && method === "GET") return jsonResponse(promptDetail(store, params.id!, params.locale!), 200, null);
+  if (params && method === "PUT") {
+    const body = (input.body ?? {}) as { text?: unknown; if_revision?: unknown; edit_session?: unknown };
+    if (typeof body.text !== "string") throw new HttpError(422, "invalid_args", "text is required");
+    savePromptText(store, {
+      id: params.id!, locale: params.locale!, text: body.text, ifRevision: promptRevisionGuard(body.if_revision),
+      editSession: typeof body.edit_session === "string" && body.edit_session ? body.edit_session : null, actor: "user",
+    });
+    return jsonResponse(promptDetail(store, params.id!, params.locale!), 200, null);
+  }
+  params = matchPath(path, "/v1/prompts/:id/:locale/reset");
+  if (params && method === "POST") {
+    resetPromptText(store, { id: params.id!, locale: params.locale!, ifRevision: promptRevisionGuard((input.body as { if_revision?: unknown } | null)?.if_revision), actor: "user" });
+    return jsonResponse(promptDetail(store, params.id!, params.locale!), 200, null);
+  }
+  params = matchPath(path, "/v1/prompts/:id/:locale/keep-mine");
+  if (params && method === "POST") {
+    keepMyPrompt(store, { id: params.id!, locale: params.locale!, ifRevision: promptRevisionGuard((input.body as { if_revision?: unknown } | null)?.if_revision) });
+    return jsonResponse(promptDetail(store, params.id!, params.locale!), 200, null);
+  }
+  // The change an approval card let through, for the card's own Undo.
+  if (method === "GET" && path === "/v1/prompt-revisions") {
+    const approvalId = url.searchParams.get("approval_id");
+    if (!approvalId) throw new HttpError(422, "invalid_args", "approval_id is required");
+    const row = store.promptRevisionByApproval(approvalId);
+    const head = row ? store.promptHead(row.prompt_id, row.locale) : null;
+    const now = row ? store.promptOverride(row.prompt_id, row.locale) : null;
+    return jsonResponse({ items: row ? [{ id: row.id, prompt_id: row.prompt_id, locale: row.locale, undoable: head?.id === row.id && (now?.text ?? null) === row.after_text }] : [] }, 200, null);
+  }
+  params = matchPath(path, "/v1/prompt-revisions/:id/undo");
+  if (params && method === "POST") {
+    undoPromptRevision(store, params.id!);
+    const revision = store.promptRevision(params.id!)!;
+    return jsonResponse(promptDetail(store, revision.prompt_id, revision.locale), 200, null);
+  }
+  params = matchPath(path, "/v1/prompt-revisions/:id/restore");
+  if (params && method === "POST") {
+    restorePromptRevision(store, params.id!);
+    const revision = store.promptRevision(params.id!)!;
+    return jsonResponse(promptDetail(store, revision.prompt_id, revision.locale), 200, null);
+  }
+
   // A change a retrospective made (ADR 0062), taken back from the plan's board: the board's plan comes back.
   params = matchPath(path, "/v1/retrospectives/:id/changes/:index/undo");
   if (params && method === "POST") {
@@ -2624,6 +2673,12 @@ async function parseMutation(request: Request, staged?: AttachmentInput[]): Prom
   }
   const normalizedFiles = normalizeFiles(files, (file) => ({ filename: file.originalFilename, bytes: file.buffer }));
   return { body, files: normalizedFiles.map((item) => item.file), normalizedFiles, multipart: true };
+}
+
+/** A prompt edit names the change it was made on: a revision id, or null for a prompt nobody has changed. */
+function promptRevisionGuard(value: unknown): string | null {
+  if (value === null || typeof value === "string") return value;
+  throw new HttpError(422, "invalid_args", "if_revision is required: the latest change you saw, or null");
 }
 
 function checkRevision(store: Store, request: Request, url: URL, body: Record<string, unknown>, scope: RequestScope): void {

@@ -24,6 +24,7 @@ import {
 import { UPDATE_PROFILE, LIST_SKILLS, READ_SKILL, CREATE_SKILL, UPDATE_SKILL, DELETE_SKILL, updateProfileTool } from "./tools/profile";
 import { REMEMBER, FORGET } from "./tools/memory";
 import { LIST_ANNOTATIONS, RESOLVE_ANNOTATION } from "./tools/annotations";
+import { EDIT_PROMPT, LIST_PROMPTS, READ_PROMPT, RESET_PROMPT } from "./tools/prompts";
 import { LIST_ROUTINES, CREATE_ROUTINE, UPDATE_ROUTINE, DELETE_ROUTINE } from "./tools/routines";
 import {
   LIST_ENDPOINTS,
@@ -76,6 +77,10 @@ export const TOOLS: ToolDef[] = [
   DELETE_MCP_SERVER,
   LIST_ANNOTATIONS,
   RESOLVE_ANNOTATION,
+  LIST_PROMPTS,
+  READ_PROMPT,
+  EDIT_PROMPT,
+  RESET_PROMPT,
 ];
 
 /** What send_message and end_turn say from level 3 (ADR 0044): segments end only through end_turn. */

@@ -28,6 +28,7 @@ import { classifyRestart, type RestartSummary, type RunShape } from "./engine/re
 import { isCompiledBinary } from "./platform";
 import { logStartup } from "./startup-log";
 import type { TurnEngine } from "./turn-engine";
+import { reconcilePrompts } from "./prompts/book";
 
 type SocketData = { authed: boolean };
 
@@ -278,6 +279,11 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
     const installedApp = () =>
       sharedInstalledVersion({ dataDir: options.dataDir, defaultDataDir: defaultDataDir(), compiled: isCompiledBinary(import.meta.path) });
     for (const line of store.catchUpEngineLevel(installedApp())) bootLog(line);
+    // Built-in prompts you edited whose default changed in this build (or at this level): merged in, or
+    // marked for you when they do not merge (ADR 0064). Which ones are edited goes in the log too.
+    for (const line of reconcilePrompts(store)) bootLog(`prompts: ${line}`);
+    const edited = store.listPromptOverrides().map((row) => `${row.prompt_id} (${row.locale})`);
+    if (edited.length > 0) bootLog(`prompts edited: ${edited.join(", ")}`);
     store.recoverInterruptedTurns();
     store.recoverInterruptedCheckRuns();
     // Commands the previous run's turns started may still be running (a render writing into the

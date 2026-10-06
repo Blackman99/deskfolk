@@ -2795,6 +2795,8 @@ export type WsAuthMessage = {
 
 export type ClientEvent =
   | { event: "credential_operations.changed"; occurred_at: string; items: CredentialOperation[] }
+  /** A built-in prompt changed (ADR 0064): reload it where it is shown. */
+  | { event: "prompt.changed"; occurred_at: string; id: string; locale: Locale }
   | ({ event: "settings.changed"; occurred_at: string } & Settings)
   | ({ event: "bot.upsert"; occurred_at: string } & Bot & { deleted_at: string | null })
   | ({ event: "session.upsert"; occurred_at: string } & SessionSummary)
@@ -2901,6 +2903,7 @@ export * from "./boring-avatars.ts";
 export * from "./cited-path.ts";
 export * from "./mentions.ts";
 export * from "./notifications.ts";
+export * from "./prompts.ts";
 export * from "./text-diff.ts";
 
 /**

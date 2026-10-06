@@ -20,6 +20,7 @@ import { fill } from "./prompts/fill";
 import { resolveFfmpegBins, runProcess, seamsRulesText } from "./seams-check";
 import { ENV_WHITELIST } from "./terminal-env";
 import { classifyPath } from "./workspace-paths";
+import type { PromptRef } from "./prompts/registry";
 
 export type StandardEvidence = { kind: "text"; text: string } | { kind: "image"; label: string; dataUri: string };
 
@@ -40,6 +41,10 @@ export type StandardEvalDeps = {
   locale?: Locale;
   signal?: AbortSignal;
   env?: Record<string, string>;
+  /** The prompt to send (ADR 0064): yours when you edited it. Absent, the default. */
+  prompt?: (item: string, rules: readonly string[], locale: Locale) => { text: string; ref: PromptRef | null };
+  /** An answer that came back and did not read, recorded against the prompt it ran on. */
+  noteUnreadable?: (ref: PromptRef | null) => void;
 };
 
 /** Frames taken from each side's video. */
@@ -325,14 +330,18 @@ export async function runStandardCheck(root: string, check: Pick<AcceptanceCheck
     const evidence = [...await side(sampleLabel, sampleFiles, "sample"), ...await side(currentLabel, currentFiles, "this")];
     if (deps.signal?.aborted) return verdict("blocked", t("检查被中止", "the check was stopped"));
     const pictures = evidence.some((item) => item.kind === "image");
+    const prompt = deps.prompt?.(check.item, deps.rules, locale) ?? { text: standardJudgePrompt(check.item, deps.rules, locale), ref: null };
     let raw: string;
     try {
-      raw = await deps.judge(evidence, standardJudgePrompt(check.item, deps.rules, locale), deps.sessionId);
+      raw = await deps.judge(evidence, prompt.text, deps.sessionId);
     } catch (error) {
       return verdict("error", error instanceof Error ? error.message : t("判定失败", "the judgement failed"), null, pictures);
     }
     const answer = parseStandardAnswer(raw);
-    if (!answer) return verdict("error", t("判定模型的回答读不懂", "the judge's answer did not read"), raw.slice(0, 2000), pictures);
+    if (!answer) {
+      deps.noteUnreadable?.(prompt.ref);
+      return verdict("error", t("判定模型的回答读不懂", "the judge's answer did not read"), raw.slice(0, 2000), pictures);
+    }
     const stats = evidence.filter((item): item is Extract<StandardEvidence, { kind: "text" }> => item.kind === "text").map((item) => item.text.split("\n")[0]).join("\n");
     return answer.ok
       ? verdict("pass", t("达到样片的水准", "keeps the sample's standard"), stats, pictures)

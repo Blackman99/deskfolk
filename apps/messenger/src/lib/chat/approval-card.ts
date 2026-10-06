@@ -12,6 +12,11 @@ export function canAlwaysAllow(kindKey: string | null | undefined): boolean {
   return kindKey != null && ALWAYS_ALLOW_KINDS.has(kindKey);
 }
 
+/** A Bot's proposed change to a built-in prompt (ADR 0064): never Always-allowed, shown as a diff. */
+export function isPromptEdit(kindKey: string | null | undefined): boolean {
+  return kindKey === "prompt-edit";
+}
+
 export function needsEndpointKey(
   kindKey: string | null | undefined,
   target?: string | null,

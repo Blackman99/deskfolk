@@ -52,6 +52,7 @@ import type { InboxEntry, Live } from "./types";
 import type { Spend } from "@real-bot/protocol";
 import type { ClaudeCodeProbe } from "../claude-code/probe";
 import { createAgentRunner, type AgentQuery } from "./agent-runner";
+import { editedToolDescription, promptPage } from "../prompts/book";
 
 /** How many of a segment's written files are hashed for progress, newest first, and up to what size each. */
 const ARTIFACTS_HASHED_MAX = 50;
@@ -983,7 +984,8 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
         loop: live.loop,
         mcpGuides: listed.guides,
       });
-      const offered = pace === "last" ? [] : [...builtinTools(target.locale, store.capabilities().engine_level), ...listed.tools];
+      // Tool descriptions you edited (ADR 0064) replace the shipped ones from this hop on.
+      const offered = pace === "last" ? [] : [...builtinTools(target.locale, store.capabilities().engine_level, editedToolDescription(promptPage(store, target.locale))), ...listed.tools];
       // A read-only turn is not shown what it may not call (ADR 0040 I3); the gate refuses them anyway.
       const tools = current.mode === "readonly" ? readOnlyTools(offered, listed.guides) : offered;
       live.toolNames = new Set(tools.map((tool) => tool.function.name));

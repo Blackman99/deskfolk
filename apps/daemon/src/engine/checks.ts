@@ -15,6 +15,9 @@ import type { TurnAdmission } from "../quiesce";
 import { parsePlanSpec, type Store, type Task } from "../store";
 import { ENGINE_LEVELS } from "../store/schema-gate";
 import type { WakeWatch } from "../wake";
+import { promptPage } from "../prompts/book";
+import { seamsRulesText } from "../seams-check";
+import type { StandardEvalDeps } from "../standard-check";
 
 export type CheckEvaluator = (
   root: string | null,
@@ -22,7 +25,7 @@ export type CheckEvaluator = (
   opts: { signal?: AbortSignal; wake?: WakeWatch; locale?: Locale; continuity?: SeamsEvalDeps; standard?: StandardDeps },
 ) => Promise<CheckVerdict>;
 
-type StandardDeps = { sides: ReturnType<Store["standardSides"]>; judge: JudgeStandard; rules: readonly string[]; sessionId: string | null };
+type StandardDeps = { sides: ReturnType<Store["standardSides"]>; judge: JudgeStandard; rules: readonly string[]; sessionId: string | null } & Pick<StandardEvalDeps, "prompt" | "noteUnreadable">;
 
 export type PlanChecksDeps = {
   store: Store;
@@ -121,7 +124,14 @@ export function createPlanChecks(deps: PlanChecksDeps): PlanChecks {
         }
         return judgeStandard(evidence, ...rest);
       };
-      const standard: StandardDeps = { sides: store.standardSides(check.id), judge, rules: parsePlanSpec(task.spec)?.rules ?? [], sessionId: task.session_id };
+      const standard: StandardDeps = {
+        sides: store.standardSides(check.id), judge, rules: parsePlanSpec(task.spec)?.rules ?? [], sessionId: task.session_id,
+        // Your version of the judge's prompt when you edited it (ADR 0064).
+        prompt: (item, rules, at) => promptPage(store, at).resolve("call.standard", { item, rules: seamsRulesText(rules, at) }),
+        noteUnreadable: (ref) => {
+          if (ref) store.notePromptParseFailure({ prompt: ref.id, locale: ref.locale, revision: ref.revision_id, reason: "unreadable", sessionId: task.session_id, taskId: task.id });
+        },
+      };
       return exclusiveCommand(() => evaluate(root, resolved, { signal, wake, locale, standard }));
     }
     if (check.kind === "continuity") {

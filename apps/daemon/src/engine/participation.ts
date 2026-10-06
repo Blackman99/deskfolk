@@ -18,7 +18,8 @@ import { assembleJudgementUser, extractJudgement } from "../context";
 import { isoNow, ulid } from "../ids";
 import { parseMentions } from "../mentions";
 import { isBareRemark } from "../no-work";
-import { JUDGEMENT_MAX_TOKENS, JUDGEMENT_SYSTEM, unknownMentionBody } from "../prompts";
+import { JUDGEMENT_MAX_TOKENS, unknownMentionBody } from "../prompts";
+import { promptPage } from "../prompts/book";
 import type { TurnAdmission } from "../quiesce";
 import { sessionUpsertFields } from "../session-events";
 import type { Store } from "../store";
@@ -470,12 +471,14 @@ export function createParticipation(deps: ParticipationDeps): Participation {
       }
       const billed = { ...callOf(target), thinkingLevel: null };
       const owned = spendOwner(message.session_id, botId);
+      const prompt = promptPage(store, "zh").resolve("call.judgement");
       const result = await completions.judge({
         baseUrl: target.baseUrl,
         apiKey: target.apiKey,
         model: target.model,
+        prompt: prompt.ref,
         messages: [
-          { role: "system", content: JUDGEMENT_SYSTEM },
+          { role: "system", content: prompt.text },
           { role: "user", content: user },
         ],
         signal: new AbortController().signal,
@@ -511,6 +514,9 @@ export function createParticipation(deps: ParticipationDeps): Participation {
         decision = extracted.decision;
         reason = extracted.reason;
         error = extracted.error;
+        if (error === "invalid_output") {
+          store.notePromptParseFailure({ prompt: prompt.ref.id, locale: prompt.ref.locale, revision: prompt.ref.revision_id, reason: error, sessionId: message.session_id, botId });
+        }
       }
       let row;
       try {

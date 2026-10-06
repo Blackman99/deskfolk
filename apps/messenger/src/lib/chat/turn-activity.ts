@@ -120,6 +120,10 @@ const VERBS: Readonly<Record<string, ActivityVerb>> = {
   add_mcp_server: "editSettings",
   update_mcp_server: "editSettings",
   delete_mcp_server: "editSettings",
+  list_prompts: "prompt",
+  read_prompt: "prompt",
+  edit_prompt: "editPrompt",
+  reset_prompt: "editPrompt",
 };
 
 /** A step shorter than this is over before its time would be worth reading. */

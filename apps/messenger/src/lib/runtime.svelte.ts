@@ -343,6 +343,8 @@ export class MessengerRuntime {
    * a reload of the summary off this, and one that is closed reads it when it next opens.
    */
   spendRevision = $state(0);
+  /** Bumped on every `prompt.changed` (ADR 0064): the prompts settings reload on it. */
+  promptsRevision = $state(0);
   workspaceSelected = $state("");
   threadOpen = $state(false);
   searchQuery = $state("");
@@ -3291,6 +3293,7 @@ export class MessengerRuntime {
       this.syncSettingsDraft(event);
     }
     if (event.event === "spend.created" || event.event === "spend.repriced") this.spendRevision += 1;
+    if (event.event === "prompt.changed") this.promptsRevision += 1;
     if (event.event === "turn.upsert") {
       this.claimFocus(event.session_id, event.trigger_message_id, event.id);
       // A finished turn keeps nothing of what it was doing: the transcript and its trace remain,

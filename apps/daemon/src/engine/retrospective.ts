@@ -7,7 +7,8 @@
  */
 import { parseRetrospective } from "../store/retrospectives";
 import type { CompletionsClient } from "../completions";
-import { retrospectivePayload, retrospectiveSystem } from "../prompts/retrospective";
+import { retrospectivePayload } from "../prompts/retrospective";
+import { promptPage, type PromptUse } from "../prompts/book";
 import type { Store } from "../store";
 import type { Routing } from "./routing";
 import type { SpendTracker } from "./spend";
@@ -37,17 +38,21 @@ export function createRetrospector(deps: {
     let model: string | null = null;
     let content = "";
     let failed: string | null = "no_model";
+    let prompt: PromptUse | null = null;
+    let cut = false;
     try {
       const routed = deps.routing.decideRoute(due.botId, creds, due.plan.title);
       if (routed) {
         model = routed.target.model;
         const locale = deps.store.settingsCached().locale === "en" ? "en" : "zh";
+        prompt = promptPage(deps.store, locale).resolve("call.retrospective");
         const result = await deps.completions.judge({
           baseUrl: routed.target.baseUrl,
           apiKey: routed.target.apiKey,
           model: routed.target.model,
+          prompt: prompt.ref,
           messages: [
-            { role: "system", content: retrospectiveSystem(locale) },
+            { role: "system", content: prompt.text },
             { role: "user", content: retrospectivePayload(due) },
           ],
           signal: new AbortController().signal,
@@ -69,11 +74,15 @@ export function createRetrospector(deps: {
         content = result.content ?? "";
         // An answer cut off mid-way writes nothing: half of what it meant could undo the other half.
         failed = result.failKind ? (result.failKind === "incomplete" ? "truncated" : "call_failed") : null;
+        cut = result.truncated === true;
       }
     } catch {
       failed = "call_failed";
     }
     const outcome = failed ? null : parseRetrospective(content);
+    if (prompt && !failed && !cut && !outcome) {
+      deps.store.notePromptParseFailure({ prompt: prompt.ref.id, locale: prompt.ref.locale, revision: prompt.ref.revision_id, reason: "unreadable", sessionId: due.sessionId, taskId: due.taskId, botId: due.botId });
+    }
     try {
       deps.store.recordRetrospective(due, outcome, { model, note: failed ?? (outcome ? null : "unreadable"), raw: content || null });
     } catch {

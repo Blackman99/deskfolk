@@ -2823,6 +2823,41 @@ describe("file tools and workspace shell on the local API", () => {
     sub.close();
   });
 
+  test("a Bot's prompt edit waits on its card; once allowed, the next hop reads the new System text (ADR 0064)", async () => {
+    let hop = 0;
+    const systems: string[] = [];
+    const fixture = await startFixture(({ body }) => {
+      hop += 1;
+      const messages = body.messages as Array<{ role: string; content?: string }>;
+      systems.push(String(messages.find((m) => m.role === "system")?.content ?? ""));
+      if (hop === 1) {
+        return sse(toolCallChunks("call_prompt", "edit_prompt", JSON.stringify({
+          id: "turn.system",
+          edits: [{ after: "说做过的必须真做过：", add: "附上你依据的命令输出。" }],
+          reason: "用户要求每个 Bot 交付时附命令输出。",
+        })));
+      }
+      return sse(textChunks("改好了"));
+    });
+    const h = await startApi();
+    const { sessionId } = await createWriterIn(h, fixture.origin);
+    const sub = await subscribe(h);
+    await fetch(`${h.origin}/v1/sessions/${sessionId}/messages`, { method: "POST", headers: auth(h), body: JSON.stringify({ body: "让每个 Bot 交付时都附上命令输出" }) });
+    const approvalEvent = await waitFor(sub.events, (e) => e.event === "approval.upsert" && e.status === "pending");
+    expect(approvalEvent.kind_key).toBe("prompt-edit");
+    // Never Always-allowed: every Bot reads this text.
+    const always = await fetch(`${h.origin}/v1/approvals/${approvalEvent.id}/resolve`, { method: "POST", headers: auth(h), body: JSON.stringify({ action: "always_allow" }) });
+    expect(always.status).toBe(422);
+    const resolved = await fetch(`${h.origin}/v1/approvals/${approvalEvent.id}/resolve`, { method: "POST", headers: auth(h), body: JSON.stringify({ action: "allow_once" }) });
+    expect(resolved.status).toBe(200);
+    await waitFor(sub.events, (e) => e.event === "message.created" && e.kind === "bot" && e.body === "改好了");
+    expect(systems[0]).not.toContain("说做过的必须真做过：附上你依据的命令输出。");
+    expect(systems[1]).toContain("说做过的必须真做过：附上你依据的命令输出。");
+    const head = h.store.promptHead("turn.system", "zh")!;
+    expect(head).toMatchObject({ actor: "bot", approval_id: approvalEvent.id, message_id: approvalEvent.message_id, reason: "用户要求每个 Bot 交付时附命令输出。" });
+    sub.close();
+  });
+
   test("a jailed shell runs immediately and returns stdout", async () => {
     let hop = 0;
     const fixture = await startFixture(({ body }) => {

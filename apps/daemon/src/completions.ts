@@ -2,6 +2,7 @@ import type { ThinkingLevel } from "@real-bot/protocol";
 import type { FailKind } from "./prompts";
 import { declinedFinish, RepeatWatch } from "./hop-limits";
 import type { WakeWatch } from "./wake";
+import type { PromptRef } from "./prompts/registry";
 
 export type ChatRole = "system" | "user" | "assistant" | "tool";
 
@@ -117,6 +118,12 @@ export type JudgeRequest = {
    * ones for minutes; a stop said while two Bots stream must not wait for either of them.
    */
   lane?: "reading";
+  /**
+   * Which built-in prompt the system message is, and which revision of yours it ran on (ADR 0064).
+   * Never sent to the endpoint: a failed reading is recorded against it, and tests tell calls apart
+   * by it rather than by their text, which you may have changed.
+   */
+  prompt?: PromptRef;
 };
 
 export type JudgeResult = {

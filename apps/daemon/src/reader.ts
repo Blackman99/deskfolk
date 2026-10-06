@@ -37,14 +37,11 @@ import {
   parseBotLineAnswer,
   parseFilingAnswer,
   parseUserLineAnswer,
-  READ_BOT_LINE_SYSTEM,
-  READ_FILING_SYSTEM,
-  READ_SCALE_SYSTEM,
   parseScaleAnswer,
   scalePayload,
-  READ_USER_LINE_SYSTEM,
   userLinePayload,
 } from "./prompts/reader";
+import { promptPage } from "./prompts/book";
 import { isStatusQuestion, statusQuestionShape } from "./status-question";
 import type { Store } from "./store";
 
@@ -116,7 +113,8 @@ type Asked<T> = {
   kind: "user_line" | "bot_line" | "filing" | "scale";
   sessionId: string | null;
   messageId: string | null;
-  system: string;
+  /** The built-in prompt the reading is asked with (ADR 0064): yours when you edited it. */
+  prompt: "call.read_user_line" | "call.read_bot_line" | "call.read_filing" | "call.read_scale";
   payload: unknown;
   parse: (raw: string) => T | null;
   /** What the line reads as when no model read it: the word lists, or nothing at all for a filing. */
@@ -174,6 +172,7 @@ export function createReader(deps: ReaderDeps): Reader {
     if (deps.draining()) return byWords("draining", null, null);
     const routing = await deps.routing().catch(() => null);
     if (!routing) return byWords("no_model", null, null);
+    const prompt = promptPage(store, "zh").resolve(asked.prompt);
     const controller = new AbortController();
     inFlight.add(controller);
     // The whole wait, a slot included: the call's own timer only starts once it has one.
@@ -185,8 +184,9 @@ export function createReader(deps: ReaderDeps): Reader {
         baseUrl: routing.baseUrl,
         apiKey: routing.apiKey,
         model: routing.model,
+        prompt: prompt.ref,
         messages: [
-          { role: "system", content: asked.system },
+          { role: "system", content: prompt.text },
           { role: "user", content: JSON.stringify(asked.payload) },
         ],
         signal: controller.signal,
@@ -217,6 +217,9 @@ export function createReader(deps: ReaderDeps): Reader {
     const reading = fail ? null : asked.parse(raw ?? "");
     if (!reading) {
       const why = fail ?? (result!.truncated ? "truncated" : "unreadable");
+      if (why === "unreadable") {
+        store.notePromptParseFailure({ prompt: prompt.ref.id, locale: prompt.ref.locale, revision: prompt.ref.revision_id, reason: why, sessionId: asked.sessionId });
+      }
       log(`[reader] ${asked.kind} ${asked.messageId ?? asked.key}: ${why}, ${asked.fallbackNote}`);
       return byWords(why, routing.model, raw);
     }
@@ -263,7 +266,7 @@ export function createReader(deps: ReaderDeps): Reader {
         kind: "user_line",
         sessionId: message.session_id,
         messageId: message.id,
-        system: READ_USER_LINE_SYSTEM,
+        prompt: "call.read_user_line",
         payload: userLinePayload({ body: message.body, where, replyingTo, recent }),
         // Only a line of the shape a status question has is read as one, however the model read its words.
         parse: (raw) => {
@@ -282,7 +285,7 @@ export function createReader(deps: ReaderDeps): Reader {
       kind: "user_line",
       sessionId,
       messageId: null,
-      system: READ_USER_LINE_SYSTEM,
+      prompt: "call.read_user_line",
       payload: userLinePayload({ body, where: "direct", replyingTo: null, recent: [] }),
       parse: (raw) => parseUserLineAnswer(raw, body),
       fallback: () => userLineByWords(body, { statusQuestion: false }),
@@ -300,7 +303,7 @@ export function createReader(deps: ReaderDeps): Reader {
         kind: "bot_line",
         sessionId,
         messageId: null,
-        system: READ_BOT_LINE_SYSTEM,
+        prompt: "call.read_bot_line",
         payload: botLinePayload(body),
         parse: (raw) => parseBotLineAnswer(raw, body),
         fallback: () => botLineByWords(body),
@@ -324,7 +327,7 @@ export function createReader(deps: ReaderDeps): Reader {
         kind: "filing",
         sessionId: message.session_id,
         messageId: message.id,
-        system: READ_FILING_SYSTEM,
+        prompt: "call.read_filing",
         payload,
         parse: (raw) => parseFilingAnswer(raw, refs),
         // No word list guesses where a line goes: the Bot chooses at its desk.
@@ -340,7 +343,7 @@ export function createReader(deps: ReaderDeps): Reader {
       kind: "scale",
       sessionId: input.sessionId,
       messageId: null,
-      system: READ_SCALE_SYSTEM,
+      prompt: "call.read_scale",
       payload: scalePayload(input),
       parse: (raw) => parseScaleAnswer(raw, input.said),
       // No word list says how big a thing is: an unread job is only the signal's to call large.

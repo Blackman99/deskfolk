@@ -10,13 +10,17 @@
  */
 import type { Locale } from "@real-bot/protocol";
 import type { ChatContentPart, CompletionsClient } from "../completions";
-import { SEAMS_JUDGE_TIMEOUT_MS, seamsJudgePrompt, type JudgeSeams, type SeamEvidence } from "../seams-check";
+import { parseSeamsJudgeAnswer, SEAMS_JUDGE_TIMEOUT_MS, seamsJudgePrompt, seamsRulesText, type JudgeSeams, type SeamEvidence } from "../seams-check";
 import type { JudgeStandard, StandardEvidence } from "../standard-check";
 import type { SpendTracker } from "./spend";
 import type { CallTarget } from "./types";
+import { promptPage } from "../prompts/book";
+import type { Store } from "../store";
 
 export type SeamsJudgeDeps = {
   completions: CompletionsClient;
+  /** Where your edits to the judges' prompts come from (ADR 0064), and where an unreadable answer is noted. */
+  store?: Store;
   /** Resolves the default endpoint's default model; null when none is configured. */
   routing: () => Promise<(CallTarget & { baseUrl: string; apiKey: string }) | null>;
   spend: SpendTracker;
@@ -45,12 +49,14 @@ export function createSeamsJudge(deps: SeamsJudgeDeps): JudgeSeams {
     const target = await deps.routing().catch(() => null);
     if (!target) throw new Error(locale === "en" ? "no model endpoint is configured" : "没有配置模型端点");
     const mode = evidence[0]?.kind === "digest" ? "digest" : evidence[0]?.kind === "text" ? "text" : "image";
+    const prompt = deps.store ? promptPage(deps.store, locale).resolve(`call.seams_${mode}`, { item, rules: seamsRulesText(rules, locale) }) : null;
     const result = await deps.completions.judge({
       baseUrl: target.baseUrl,
       apiKey: target.apiKey,
       model: target.model,
+      ...(prompt ? { prompt: prompt.ref } : {}),
       messages: [
-        { role: "system", content: seamsJudgePrompt(item, rules, locale, mode) },
+        { role: "system", content: prompt?.text ?? seamsJudgePrompt(item, rules, locale, mode) },
         { role: "user", content: evidenceContent(evidence, locale) },
       ],
       signal: new AbortController().signal,
@@ -73,6 +79,10 @@ export function createSeamsJudge(deps: SeamsJudgeDeps): JudgeSeams {
     }
     if (result.failKind && result.failKind !== "incomplete") {
       throw new Error(locale === "en" ? "the model call failed" : "模型调用失败");
+    }
+    // An answer that came back whole and does not read counts against the prompt it ran on.
+    if (prompt && deps.store && !result.failKind && !result.truncated && parseSeamsJudgeAnswer(result.content ?? "") === null) {
+      deps.store.notePromptParseFailure({ prompt: prompt.ref.id, locale: prompt.ref.locale, revision: prompt.ref.revision_id, reason: "unreadable", sessionId });
     }
     return result.content ?? "";
   };

@@ -34,6 +34,12 @@ function suggestionId(prompt: string, index: number): string {
  * Keep only drafts whose @tokens name present members (or everyone). Unknown @ is dropped so a
  * hallucinated name cannot wake nobody and leave a system note.
  */
+/** Whether an answer reads as suggestions at all (an empty list does): what counts as a failed reading. */
+export function composerAnswerReadable(raw: string): boolean {
+  const parsed = extractJsonObject(raw);
+  return Boolean(parsed && Array.isArray(parsed.suggestions));
+}
+
 export function parseComposerSuggestions(
   raw: string,
   rosterNames: readonly string[],

@@ -304,3 +304,32 @@ test("the model ladder is read and set remotely as a list of rungs, nothing more
   expect(() => validateBusiness(put({ items: [{ provider_id: id }] }))).toThrow();
   expect(() => validateBusiness(put({ items: [{ provider_id: id, model: "m", thinking: "high" }] }))).toThrow();
 });
+
+test("built-in prompts (ADR 0064): read, edit, reset, keep-mine and taking a change back are whitelisted, nothing looser", () => {
+  const ok = (request: RemoteRequest) => expect(() => validateBusiness(request)).not.toThrow();
+  const refused = (request: RemoteRequest) => {
+    let error: unknown = null;
+    try {
+      validateBusiness(request);
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBeInstanceOf(HttpError);
+  };
+  ok({ v: 1, id, method: "GET", path: "/v1/prompts" });
+  ok({ v: 1, id, method: "GET", path: "/v1/prompts/turn.system/en" });
+  ok({ v: 1, id, method: "GET", path: "/v1/prompts/call.read_user_line/zh" });
+  ok({ v: 1, id, method: "GET", path: "/v1/prompt-revisions", query: { approval_id: id } });
+  ok({ v: 1, id, method: "PUT", path: "/v1/prompts/tool.send_message/zh", body: { text: "发消息。", if_revision: null, edit_session: "s" } });
+  ok({ v: 1, id, method: "POST", path: "/v1/prompts/turn.memory/en/reset", body: { if_revision: id } });
+  ok({ v: 1, id, method: "POST", path: "/v1/prompts/turn.memory/en/keep-mine", body: { if_revision: id } });
+  ok({ v: 1, id, method: "POST", path: `/v1/prompt-revisions/${id}/undo`, body: {} });
+  ok({ v: 1, id, method: "POST", path: `/v1/prompt-revisions/${id}/restore`, body: {} });
+  refused({ v: 1, id, method: "GET", path: "/v1/prompts/Turn.System/en" });
+  refused({ v: 1, id, method: "GET", path: "/v1/prompts/turn.system/fr" });
+  refused({ v: 1, id, method: "GET", path: "/v1/prompts/../settings/en" });
+  refused({ v: 1, id, method: "PUT", path: "/v1/prompts/turn.system/en", body: { text: "x" } });
+  refused({ v: 1, id, method: "PUT", path: "/v1/prompts/turn.system/en", body: { text: "x", if_revision: null, actor: "bot" } });
+  refused({ v: 1, id, method: "POST", path: "/v1/prompt-revisions/not-an-id/undo", body: {} });
+  refused({ v: 1, id, method: "GET", path: "/v1/prompt-revisions" });
+});

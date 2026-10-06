@@ -23,6 +23,7 @@ import { migrateRetrospectives } from "./retrospectives";
 import { migrateSharedSkills } from "./shared-skills";
 import { migrateLargeJobs } from "./large-job-migration";
 import { migrateMessageEdits } from "./message-edits";
+import { migratePrompts } from "./prompts";
 import { clipQuote, QUOTE_TRIGGERS } from "./quotes";
 import { REQUIREMENT_TRIGGERS } from "./requirements";
 import { REQUIREMENT_CARD_TRIGGERS, settleAnsweredLegacyCards } from "./plan-requirements";
@@ -331,6 +332,8 @@ export function migrateSchema(db: Database): void {
   migrateRetrospectives(db);
   migrateSharedSkills(db);
   migrateLargeJobs(db);
+  // Built-in prompts you edited and every change to them (ADR 0064).
+  migratePrompts(db);
   // After every column tasks gains above (the rebuild copies the table as it then stands), and
   // before the triggers below, which are made again over the rebuilt table.
   migrateNullableTaskSession(db);

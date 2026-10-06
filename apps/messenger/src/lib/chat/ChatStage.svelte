@@ -11,6 +11,7 @@
 	import { desktopPlatform } from '../platform.ts';
 	import ReplyingIndicator from './ReplyingIndicator.svelte';
 	import AskCard from './AskCard.svelte';
+	import PromptEditCard from './PromptEditCard.svelte';
 	import WorkQuestionCard from './WorkQuestionCard.svelte';
 	import CommandActivity from './CommandActivity.svelte';
 	import TurnStepList from './TurnStepList.svelte';
@@ -33,6 +34,7 @@
 		approvalNeedsSecret,
 		approvalSecretRequired,
 		canAlwaysAllow,
+		isPromptEdit,
 		isHttpMcpApproval
 	} from './approval-card.ts';
 	import { avatarSrc, botAvatarColor } from '../avatar.ts';
@@ -1368,7 +1370,12 @@
 					>
 						<article class="msg is-approval">
 							<div class="who">{t.stream.approval} · {who(singleMsg.message)}</div>
-							<div class="body">{singleMsg.message.body}</div>
+							{#if isPromptEdit(card?.kind_key)}
+								<!-- A Bot's change to a built-in prompt (ADR 0064): the change itself, and once allowed, its Undo. -->
+								<PromptEditCard body={singleMsg.message.body} {t} approval={card ?? null} api={runtime.client} onOpenSettings={() => runtime.openSettings()} />
+							{:else}
+								<div class="body">{singleMsg.message.body}</div>
+							{/if}
 							{#if card?.status === 'pending'}
 								{#if approvalNeedsSecret(card)}
 									{@const mcpAuth = isHttpMcpApproval(card.kind_key, card.target) || card.kind_key === 'mcp-add' || card.kind_key === 'mcp-edit'}

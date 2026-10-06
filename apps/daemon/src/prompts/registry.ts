@@ -63,7 +63,7 @@ export type SlotDef = {
 };
 
 export const PLACEHOLDER_MEANING: Record<Placeholder, Localized> = {
-  format: { zh: "应用固定的输出格式插在这里（保留一次）", en: "where the app's fixed answer format goes (keep it exactly once)" },
+  format: { zh: "应用固定的输出格式插在这里", en: "where the app's fixed answer format goes" },
   item: { zh: "这条验收的原文", en: "the acceptance line" },
   rules: { zh: "这个规划定过的规则", en: "the plan's rules" },
   workspace: { zh: "工作区根目录的绝对路径", en: "the workspace root's absolute path" },

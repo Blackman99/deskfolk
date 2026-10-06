@@ -96,6 +96,7 @@ import * as quality from "./quality";
 import * as lessons from "./lessons";
 import * as reflection from "./reflection";
 import * as retrospectives from "./retrospectives";
+import * as prompts from "./prompts";
 import * as sharedSkills from "./shared-skills";
 import * as planItemsModule from "./plan-items";
 import * as largeJobs from "./large-jobs";
@@ -631,6 +632,23 @@ export class Store {
   readonly undoRetrospectiveChange = this.bind(retrospectives.undoRetrospectiveChange);
   readonly getRetrospective = this.bind(retrospectives.getRetrospective);
   readonly listRetrospectives = this.bind(retrospectives.listRetrospectives);
+  // Built-in prompts you edited (ADR 0064); what a slot is lives in prompts/registry.ts.
+  readonly listPromptOverrides = this.bind(prompts.listPromptOverrides);
+  readonly promptOverride = this.bind(prompts.promptOverride);
+  readonly promptHead = this.bind(prompts.promptHead);
+  readonly listPromptRevisions = this.bind(prompts.listPromptRevisions);
+  readonly promptRevision = this.bind(prompts.promptRevision);
+  readonly promptRevisionByApproval = this.bind(prompts.promptRevisionByApproval);
+  readonly writePrompt = this.bind(prompts.writePrompt);
+  readonly markPromptConflict = this.bind(prompts.markPromptConflict);
+  readonly clearPromptConflict = this.bind(prompts.clearPromptConflict);
+  readonly notePromptParseFailure = this.bind(prompts.notePromptParseFailure);
+  readonly promptParseFailures = this.bind(prompts.promptParseFailures);
+  readonly promptRevisionSource = this.bind(prompts.promptRevisionSource);
+  /** Your edits as a prompt page reads them (prompts/book.ts). */
+  promptOverrides(): Array<{ prompt_id: string; locale: "zh" | "en"; text: string; revision_id: string }> {
+    return prompts.listPromptOverrides(this.ctx).map((row) => ({ prompt_id: row.prompt_id, locale: row.locale, text: row.text, revision_id: row.revision_id }));
+  }
   readonly listSharedSkills = this.bind(sharedSkills.listSharedSkills);
   readonly getSharedSkill = this.bind(sharedSkills.getSharedSkill);
   readonly sharedSkillsFor = this.bind(sharedSkills.sharedSkillsFor);

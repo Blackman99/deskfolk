@@ -19,7 +19,8 @@ import { NO_ABLATION, type Ablation } from "./ablation";
 import type { CompletionsClient, JudgeResult, MappedUsage } from "./completions";
 import type { UserLineReading } from "./line-reading";
 import type { OrganizerRouting } from "./organizer";
-import { parseScribeAnswer, SCRIBE_SYSTEM, scribePayload } from "./prompts/scribe";
+import { parseScribeAnswer, scribePayload } from "./prompts/scribe";
+import { promptPage } from "./prompts/book";
 import { SCRIBE_WRITER, type ScribeOutcome, type Store, type Task, type UserQuote } from "./store";
 
 /** The patch is short, and a line is only as urgent as the ledger it goes into. */
@@ -130,6 +131,7 @@ export function createScribe(deps: ScribeDeps): Scribe {
     if (mine !== generation) return;
     if (!routing) return capture(quote, handedOver);
     const { payload, offered } = scribePayload(store, quote, task);
+    const prompt = promptPage(store, "zh").resolve("call.scribe");
     const controller = new AbortController();
     inFlight.add(controller);
     let result: JudgeResult | null = null;
@@ -139,8 +141,9 @@ export function createScribe(deps: ScribeDeps): Scribe {
         baseUrl: routing.baseUrl,
         apiKey: routing.apiKey,
         model: routing.model,
+        prompt: prompt.ref,
         messages: [
-          { role: "system", content: SCRIBE_SYSTEM },
+          { role: "system", content: prompt.text },
           { role: "user", content: JSON.stringify(payload) },
         ],
         signal: controller.signal,
@@ -173,6 +176,9 @@ export function createScribe(deps: ScribeDeps): Scribe {
           ? "truncated"
           : null;
     const patch = fail ? null : parseScribeAnswer(result!.content ?? "");
+    if (!fail && !patch) {
+      store.notePromptParseFailure({ prompt: prompt.ref.id, locale: prompt.ref.locale, revision: prompt.ref.revision_id, reason: "unreadable", sessionId: quote.session_id, taskId: task.id });
+    }
     store.recordWorkEvent({
       kind: "scribe.answer",
       actor: SCRIBE_WRITER,

@@ -130,6 +130,7 @@ export const TERM_GROUPS: Record<ManifestoTopic, readonly string[]> = {
     'Skill',
     'Project skill',
     'Memory',
+    'Built-in prompt',
     'Completion',
     'Context window',
     'Spend'

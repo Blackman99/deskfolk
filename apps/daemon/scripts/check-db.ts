@@ -15,6 +15,7 @@ import { copyFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { defaultAppDataDir, STATE_DB_NAME } from "@real-bot/protocol";
+import { reconcilePrompts } from "../src/prompts/book";
 import { Store } from "../src/store";
 
 const source =
@@ -43,9 +44,12 @@ try {
     )
     .get();
   const turns = store.db.query<{ n: number }, []>(`SELECT COUNT(*) AS n FROM turns`).get();
+  // What this build would do to the prompts you edited (ADR 0064), on the copy.
+  const prompts = reconcilePrompts(store);
   store.close();
   console.log(`opened a copy of ${source}`);
   console.log(`  ${tables?.n ?? 0} tables, ${turns?.n ?? 0} turns`);
+  for (const line of prompts) console.log(`  prompts: ${line}`);
 } catch (error) {
   console.error(`FAILED to open a copy of ${source}`);
   console.error(`  ${error instanceof Error ? error.message : String(error)}`);

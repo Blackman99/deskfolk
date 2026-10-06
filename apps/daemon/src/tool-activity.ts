@@ -27,6 +27,9 @@ const TARGET_KEYS: Readonly<Record<string, readonly string[]>> = {
   update_endpoint: ["name"],
   add_mcp_server: ["name"],
   update_mcp_server: ["name"],
+  read_prompt: ["id"],
+  edit_prompt: ["id"],
+  reset_prompt: ["id"],
 };
 
 /** Long enough for a deep path; the view clips again to what fits. */

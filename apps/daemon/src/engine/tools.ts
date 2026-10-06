@@ -57,6 +57,8 @@ const NO_EFFECT_TOOLS: ReadonlySet<string> = new Set([
   "list_endpoints",
   "list_mcp_servers",
   "list_annotations",
+  "list_prompts",
+  "read_prompt",
   "end_turn",
 ]);
 
@@ -131,7 +133,7 @@ export type Tools = {
     turnId: string,
     approvalId: string,
     toolCallId: string,
-    run: (opts?: { api_key?: string }) => Promise<ToolResult> | ToolResult,
+    run: (opts?: { api_key?: string; approval_id?: string; message_id?: string | null }) => Promise<ToolResult> | ToolResult,
     requiresApiKey?: boolean,
   ) => Promise<ToolResult | null>;
   waitForAsk: (turnId: string, askId: string, toolCallId: string) => Promise<AskAnswer | null>;
@@ -965,7 +967,7 @@ export function createTools(deps: ToolsDeps): Tools {
     turnId: string,
     approvalId: string,
     toolCallId: string,
-    run: (opts?: { api_key?: string }) => Promise<ToolResult> | ToolResult,
+    run: (opts?: { api_key?: string; approval_id?: string; message_id?: string | null }) => Promise<ToolResult> | ToolResult,
     requiresApiKey?: boolean,
   ): Promise<ToolResult | null> {
     const live = lives.get(turnId);

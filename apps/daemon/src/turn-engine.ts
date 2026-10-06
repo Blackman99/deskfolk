@@ -378,6 +378,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
 
   const seamsJudge = createSeamsJudge({
     completions,
+    store,
     async routing() {
       const creds = await routing.credentials().catch(() => null);
       return creds ? routing.routingTarget(creds) : null;
@@ -387,6 +388,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
 
   const judgeDeps = {
     completions,
+    store,
     async routing() {
       const creds = await routing.credentials().catch(() => null);
       return creds ? routing.routingTarget(creds) : null;
@@ -959,7 +961,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
               pending.waiter({ ok: false, error: { code: "held", message: HELD_CALL }, emitted: [] });
               return;
             }
-            const result = await pending.run({ api_key: apiKey });
+            const result = await pending.run({ api_key: apiKey, approval_id: row.id, message_id: row.message_id });
             if (core.active(row.turn_id, live)) pending.waiter(result);
           } catch (error) {
             pending.waiter(

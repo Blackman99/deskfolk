@@ -62,6 +62,8 @@ describe("schema", () => {
       "organizer_runs",
       "pending_keys",
       "profile_revisions",
+      "prompt_overrides",
+      "prompt_revisions",
       "providers",
       "quality_events",
       "reactions",

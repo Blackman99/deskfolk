@@ -58,6 +58,13 @@ get("(tasks|sessions)/:id/delegations");
 get("tasks/:id/submissions");
 get("sessions/:id/lead");
 get("messages/:id/attribution");
+// Built-in prompts (ADR 0064): read, edit, reset, keep yours against a newer default, take a change back.
+const prompt = "prompts/[a-z][a-z0-9_.]{0,63}/(zh|en)";
+get("prompts"); get(prompt);
+get("prompt-revisions", { approval_id: id }, ["approval_id"]);
+add("PUT", prompt, { text: string, if_revision: nullable(string), edit_session: string }, ["text", "if_revision"]);
+add("POST", `${prompt}/(reset|keep-mine)`, { if_revision: nullable(string) }, ["if_revision"]);
+add("POST", "prompt-revisions/:id/(undo|restore)", {});
 // Changing a line of yours after it went out, and what it said before (ADR 0063).
 add("PATCH", "messages/:id", { body: string }, ["body"]);
 get("messages/:id/versions");

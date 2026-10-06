@@ -1,4 +1,4 @@
-import type { ClientEvent, Judgement, Spend } from "@real-bot/protocol";
+import type { ClientEvent, Judgement, Locale, Spend } from "@real-bot/protocol";
 import { listApprovals, listAllowRules } from "./approvals";
 import { isBotOnlyLine } from "./check-backs";
 import { taskDetail } from "./plan-spec";
@@ -101,6 +101,15 @@ export function installChangeJournal(ctx: StoreContext): void {
       WHEN NEW.state <> 'skipped'
       BEGIN INSERT INTO event_changes VALUES ('tasks', NEW.task_id, 'UPDATE', NEW.task_id); END`);
   }
+  // Built-in prompts (ADR 0064) have no id column: an edit, a merge, a reset or a conflict marked is
+  // one change to that prompt in that language.
+  for (const table of ["prompt_overrides", "prompt_revisions"]) {
+    for (const op of ["INSERT", "UPDATE", "DELETE"]) {
+      const row = op === "DELETE" ? "OLD" : "NEW";
+      ctx.db.exec(`CREATE TEMP TRIGGER event_${table}_${op} AFTER ${op} ON main.${table}
+        BEGIN INSERT INTO event_changes VALUES ('prompts', ${row}.prompt_id || ':' || ${row}.locale, '${op}', NULL); END`);
+    }
+  }
   // Handoffs and their event waits change independently of the thread's ordinary transcript.
   for (const op of ["INSERT", "UPDATE"]) {
     ctx.db.exec(`CREATE TEMP TRIGGER event_delegations_${op} AFTER ${op} ON main.delegations
@@ -190,6 +199,11 @@ export function committedEvents(ctx: StoreContext): ClientEvent[] {
   for (const { entity, id } of unique.values()) {
     switch (entity) {
       case "settings": break;
+      case "prompts": {
+        const at = id.lastIndexOf(":");
+        out.push({ event: "prompt.changed", occurred_at, id: id.slice(0, at), locale: id.slice(at + 1) as Locale });
+        break;
+      }
       case "bots": {
         const row = ctx.db.query<BotRow, [string]>("SELECT * FROM bots WHERE id = ?").get(id);
         if (row) out.push({ event: "bot.upsert", occurred_at, ...toBot(row), deleted_at: row.deleted_at });

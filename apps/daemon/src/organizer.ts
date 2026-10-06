@@ -29,7 +29,8 @@ import { describeCheck } from "./acceptance-eval";
 import type { CompletionsClient, MappedUsage } from "./completions";
 import { HttpError } from "./errors";
 import { atomicWrite } from "./file-integrity";
-import { ORGANIZER_SYSTEM, ORGANIZER_SYSTEM_UNDER_HOLDS, organizerPayload, parseOrganizerResult } from "./prompts/organizer";
+import { organizerPayload, parseOrganizerResult } from "./prompts/organizer";
+import { promptPage } from "./prompts/book";
 import { derivedNotGate, parsePlanSpec, PLAN_MAP_FILE, TICKET_FILE, type OrganizerResult, type PlanSpec, type Store, type Task } from "./store";
 import { ENGINE_LEVELS } from "./store/schema-gate";
 import { classifyPath } from "./workspace-paths";
@@ -265,14 +266,17 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
         existing_check_ids: payload.current_plan?.checks.map((check) => check.id) ?? [],
       },
     };
+    // Your version of the organizer's prompt when you edited it (ADR 0064); its answer format stays fixed.
+    const prompt = promptPage(store, "zh").resolve("call.organizer");
     let result;
     try {
       result = await deps.completions.judge({
         baseUrl: routing.baseUrl,
         apiKey: routing.apiKey,
         model: routing.model,
+        prompt: prompt.ref,
         messages: [
-          { role: "system", content: holdsOn() ? ORGANIZER_SYSTEM_UNDER_HOLDS : ORGANIZER_SYSTEM },
+          { role: "system", content: prompt.text },
           { role: "user", content: JSON.stringify(payload) },
         ],
         signal: new AbortController().signal,
@@ -341,6 +345,7 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     });
     if (!parsed) {
       log(`[organizer] filing ${what}: the answer did not read as a plan, nothing filed`);
+      store.notePromptParseFailure({ prompt: prompt.ref.id, locale: prompt.ref.locale, revision: prompt.ref.revision_id, reason: "unparseable", sessionId: input.sessionId, taskId: input.current?.id ?? null });
       finishOrganizerRun(
         store,
         { ...base, spendId, rawAnswer: result.content ?? null, failKind: "unparseable", decision: null, candidatesApply: null, candidatesAtParse, downgradeReason: null },

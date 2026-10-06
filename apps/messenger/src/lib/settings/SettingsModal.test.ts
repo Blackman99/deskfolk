@@ -1,3 +1,4 @@
+import { flushSync } from "svelte";
 import { expect, test } from "bun:test";
 import { flushSync, mount, unmount } from "svelte";
 import { ApiError } from "../api.ts";
@@ -12,7 +13,7 @@ import SettingsModal from "./SettingsModal.svelte";
 const t = copyFor("zh");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function open(over: { providers?: ReturnType<typeof aProvider>[] } = {}) {
+function open(over: { providers?: ReturnType<typeof aProvider>[]; client?: unknown } = {}) {
   const provider = over.providers?.[0] ?? aProvider();
   const runtime = fakeRuntime({
     providers: over.providers ?? [provider],
@@ -31,6 +32,7 @@ function open(over: { providers?: ReturnType<typeof aProvider>[] } = {}) {
     },
   });
   runtime.settingsOpen = true;
+  if (over.client) runtime.client = over.client as never;
   const view = render(SettingsModal, {
     runtime,
     t,
@@ -135,6 +137,28 @@ test("Claude Agent has a category of its own, Agent, and is no longer under mode
   await sleep(0);
   expect(host.querySelector(".settings-main-title")?.textContent).toContain(t.settings.tabAgents);
   expect(host.querySelector("[data-claude-agent] [data-claude-account]")?.textContent).toContain("you@example.com");
+  close();
+});
+
+test("built-in prompts have a tab of their own, before About, counting what you edited", async () => {
+  const client = {
+    listPrompts: async () => [
+      { id: "turn.system", group: "turn", title: { zh: "系统指令", en: "System instructions" }, summary: { zh: "守则", en: "Rules" },
+        locales: [{ locale: "zh", state: "edited", last_actor: "user", last_bot_id: null, updated_at: null, parse_failures: null }] },
+    ],
+    listLessons: async () => [],
+  };
+  const { host, close } = open({ client });
+  await sleep(10);
+  flushSync();
+  const tabs = [...host.querySelectorAll<HTMLButtonElement>(".settings-tab-btn")].map((tab) => tab.getAttribute("data-settings-tab"));
+  expect(tabs).toContain("prompts");
+  expect(tabs.indexOf("prompts")).toBe(tabs.indexOf("mcp") + 1);
+  expect(tabs.at(-1)).toBe("about");
+  click(host.querySelector<HTMLButtonElement>('[data-settings-tab="prompts"]'));
+  expect(host.querySelector(".settings-main-title")?.textContent).toContain(t.settings.tabPrompts);
+  expect(host.querySelector('[data-settings-tab="prompts"] .tab-count')?.textContent).toBe("1");
+  expect(host.querySelector('[data-prompt="turn.system"]')).toBeTruthy();
   close();
 });
 

@@ -4,11 +4,11 @@
  * typing again aborts the request before it is used.
  */
 import { USER_MEMBER, type ComposerSuggestion } from "@real-bot/protocol";
-import { parseComposerSuggestions } from "../composer-suggestions";
+import { composerAnswerReadable, parseComposerSuggestions } from "../composer-suggestions";
 import type { CompletionsClient } from "../completions";
 import { assembleComposerSuggestUser } from "../context";
 import { resolveCompletionTarget } from "../models";
-import { COMPOSER_SUGGEST_SYSTEM } from "../prompts";
+import { promptPage } from "../prompts/book";
 import type { Store } from "../store";
 import type { Routing } from "./routing";
 import type { SpendTracker } from "./spend";
@@ -69,14 +69,16 @@ export function createComposer(deps: ComposerDeps): Composer {
     } catch {
       return [];
     }
+    const prompt = promptPage(store, "zh").resolve("call.composer");
     let result;
     try {
       result = await completions.judge({
         baseUrl: provider.baseUrl,
         apiKey: provider.apiKey,
         model: lightModel,
+        prompt: prompt.ref,
         messages: [
-          { role: "system", content: COMPOSER_SUGGEST_SYSTEM },
+          { role: "system", content: prompt.text },
           { role: "user", content: user },
         ],
         signal,
@@ -96,7 +98,11 @@ export function createComposer(deps: ComposerDeps): Composer {
       responded: result.failKind === null || result.failKind === "incomplete",
     });
     if (signal.aborted) return [];
-    if (result.failKind || result.hadToolCalls || !result.content) return [];
+    if (result.failKind || result.hadToolCalls) return [];
+    if (!composerAnswerReadable(result.content ?? "")) {
+      store.notePromptParseFailure({ prompt: prompt.ref.id, locale: prompt.ref.locale, revision: prompt.ref.revision_id, reason: "unreadable", sessionId });
+      return [];
+    }
     const roster = store
       .presentBotIds(sessionId)
       .map((id) => {
@@ -107,7 +113,7 @@ export function createComposer(deps: ComposerDeps): Composer {
         }
       })
       .filter((name): name is string => Boolean(name));
-    return parseComposerSuggestions(result.content, roster);
+    return parseComposerSuggestions(result.content ?? "", roster);
   }
 
   return { suggestComposer };

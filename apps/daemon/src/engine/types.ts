@@ -116,7 +116,7 @@ export type Live = {
   approval?: {
     id: string;
     toolCallId: string;
-    run: (opts?: { api_key?: string }) => Promise<ToolResult> | ToolResult;
+    run: (opts?: { api_key?: string; approval_id?: string; message_id?: string | null }) => Promise<ToolResult> | ToolResult;
     waiter: (result: ToolResult) => void;
     requiresApiKey?: boolean;
   };
