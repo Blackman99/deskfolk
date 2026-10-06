@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import type { Copy } from '../copy.ts';
 	import { formatDuration, type CommandRow } from './command-activity.ts';
 	import { commandLine, splitProgram } from './command-line.ts';
@@ -7,9 +8,11 @@
 	interface Props {
 		rows: CommandRow[];
 		t: Copy;
+		/** Something short to sit on the commands' line while there is room: the reply's tag and time. */
+		beside?: Snippet;
 	}
 
-	let { rows, t }: Props = $props();
+	let { rows, t, beside }: Props = $props();
 
 	/**
 	 * What a turn has run so far: the finished commands. The one running now is the bubble's last
@@ -87,6 +90,7 @@
 {#if done.length}
 	<div class="command-activity" class:is-open={expanded} aria-label={t.chat.commandActivity}>
 		<!-- A line of text that opens, the same folded or open: only the list under it is a card. -->
+		<div class="command-head">
 		<button type="button" class="command-summary" aria-expanded={expanded} onclick={() => (expanded = !expanded)}>
 			<svg class="command-summary-icon" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2.25"></rect><path d="M4.75 6.25l2 1.75-2 1.75M8.5 10h2.75"></path></svg>
 			<span class="command-count">{t.chat.commandCount(done.length)}</span>
@@ -95,6 +99,10 @@
 			{/if}
 			{@render chevron('command-summary-chevron')}
 		</button>
+		{#if beside}
+			<div class="command-beside">{@render beside()}</div>
+		{/if}
+		</div>
 		{#if expanded}
 			<div class="command-card">
 				<ol class="command-rows" use:follow={done.length}>
@@ -128,6 +136,32 @@
 		align-items: flex-start;
 		gap: 6px;
 		margin-top: 8px;
+	}
+
+	/* The commands' line and what sits beside it: one line while both fit, the second wraps under. */
+	.command-head {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		align-self: stretch;
+		gap: 6px 14px;
+		max-width: 100%;
+	}
+
+	/* Takes the rest of the line, so what it holds can sit at the right end of it. */
+	.command-beside {
+		display: flex;
+		flex: 1 1 auto;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 6px 14px;
+		min-width: 0;
+		max-width: 100%;
+	}
+
+	/* Its own spacing was for a line of its own. */
+	.command-beside > :global(*) {
+		margin-top: 0;
 	}
 
 	/* Text, not a button: the same few words whether the list under it is open or not. */

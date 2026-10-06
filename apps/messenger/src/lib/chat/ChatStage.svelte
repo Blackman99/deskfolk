@@ -352,9 +352,14 @@
 	 * sent on the way share its turn, and the card would repeat under each of them.
 	 */
 	const commandHosts = $derived.by(() => {
+		// While the turn runs, its commands are in its working bubble: a progress line it sent on the
+		// way would only repeat them, and from a record that is already behind.
+		const running = new Set(snapshot.turns.filter((turn) => turn.status === 'running').map((turn) => turn.id));
 		const last = new Map<string, string>();
 		for (const item of windowedStream) {
-			if (item.type === 'message' && item.message.kind === 'bot' && item.message.turn_id) last.set(item.message.turn_id, item.message.id);
+			if (item.type === 'message' && item.message.kind === 'bot' && item.message.turn_id && !running.has(item.message.turn_id)) {
+				last.set(item.message.turn_id, item.message.id);
+			}
 		}
 		return new Set(last.values());
 	});
@@ -1797,20 +1802,6 @@
 							{/if}
 							{#if isMulti}
 								<span class="segment-count-badge mono">{t.chat.segmentCount(group.items.length)}</span>
-							{:else}
-								{@const single = group.items[0]}
-								{#if single.type === 'message'}
-									{@const duration = calculateBotDuration(single.message, snapshot.messages, snapshot.turns, messageLookup)}
-									<span class="msg-time mono" title={formatFullTimestamp(single.message.created_at)}>
-										{formatMessageTime(single.message.created_at)}
-									</span>
-									{#if duration}
-										<span class="duration-badge mono" title={t.chat.replyTime(duration.formatted)}>
-											<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-											{duration.formatted}
-										</span>
-									{/if}
-								{/if}
 							{/if}
 						</div>
 
@@ -1838,18 +1829,6 @@
 									{#if isMulti}
 										<div class="segment-meta flex items-center gap-3 mt-[1px] mb-[5px] py-0 px-2 text-11 leading-none">
 											<span class="segment-tag">{t.chat.segmentPart(sIdx + 1)}</span>
-											{#if item.type === 'message'}
-												{@const duration = calculateBotDuration(item.message, snapshot.messages, snapshot.turns, messageLookup)}
-												<span class="msg-time mono" title={formatFullTimestamp(item.message.created_at)}>
-													{formatMessageTime(item.message.created_at)}
-												</span>
-												{#if duration}
-													<span class="duration-badge mono" title={t.chat.replyTime(duration.formatted)}>
-														<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-														{duration.formatted}
-													</span>
-												{/if}
-											{/if}
 										</div>
 									{/if}
 
@@ -1985,13 +1964,6 @@
 													onOpenImage={(att, from) => openInlineImage(att, att.workspace_relpath, from)}
 												/>
 											{/if}
-											{#if item.message.turn_id && commandHosts.has(item.message.id)}
-												{@const turnId = item.message.turn_id}
-												<!-- What the turn ran stays under its reply once it has ended, read when it comes near. -->
-												<div class="kept-commands" use:whenVisible={() => runtime.loadTurnCommands(turnId)}>
-													<CommandActivity rows={runtime.commandsOf(turnId)} {t} />
-												</div>
-											{/if}
 											{#if annotationIndex.get(item.message.id)}
 												<AnnotationCards
 													annotations={annotationIndex.get(item.message.id) ?? []}
@@ -2006,14 +1978,43 @@
 												/>
 											{/if}
 										</article>
-										{#if !fileDrop && item.message.kind === 'bot' && !item.message.control && attributionChips.has(item.message.id)}
-											<MessageAttribution
-												message={item.message} {t}
-												plans={runtime.attributionPlans[item.message.session_id] ?? []}
-												disabled={!connected || lockedComposer}
-												onOpen={() => { attributionEditId = item.message.id; }}
-											/>
-										{/if}
+										{@const tagged = !fileDrop && item.message.kind === 'bot' && !item.message.control && attributionChips.has(item.message.id)}
+										{@const ranIn = item.message.turn_id && commandHosts.has(item.message.id) ? item.message.turn_id : null}
+										{@const duration = calculateBotDuration(item.message, snapshot.messages, snapshot.turns, messageLookup)}
+										{#snippet tail()}
+											{#if tagged}
+												<MessageAttribution
+													message={item.message} {t}
+													plans={runtime.attributionPlans[item.message.session_id] ?? []}
+													disabled={!connected || lockedComposer}
+													onOpen={() => { attributionEditId = item.message.id; }}
+												/>
+											{/if}
+											<!-- On the right: how long it took, then when it came, last. -->
+											<span class="msg-when">
+												{#if duration}
+													<span class="duration-badge mono" title={t.chat.replyTime(duration.formatted)}>
+														<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+														{duration.formatted}
+													</span>
+												{/if}
+												<span class="msg-time mono" title={formatFullTimestamp(item.message.created_at)}>
+													{formatMessageTime(item.message.created_at)}
+												</span>
+											</span>
+										{/snippet}
+										<!--
+											The end of the message says what it ran, what it is filed under, when it came and how
+											long it took: one line while they fit, wrapping where they do not. What a finished turn
+											ran stays under its last reply, read when it comes near.
+										-->
+										<div class="msg-foot" use:whenVisible={() => { if (ranIn) runtime.loadTurnCommands(ranIn); }}>
+											{#if ranIn && runtime.commandsOf(ranIn).length}
+												<CommandActivity rows={runtime.commandsOf(ranIn)} {t} beside={tail} />
+											{:else}
+												<div class="msg-foot-line">{@render tail()}</div>
+											{/if}
+										</div>
 										{#if rxGroups.length > 0}
 											<div class="rx-row flex flex-wrap gap-2 mt-2">
 												{#each rxGroups as rx}
@@ -2781,6 +2782,38 @@
 		align-items: flex-end;
 	}
 
+	/* A Bot message's last line: its commands, its tag, its time and how long it took. */
+	.msg-foot {
+		margin-top: 6px;
+	}
+
+	.msg-foot-line {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 6px 14px;
+		max-width: 100%;
+	}
+
+	/* Pushed to the line's right end, on whichever line it lands. */
+	.msg-when {
+		display: inline-flex;
+		flex-shrink: 0;
+		align-items: center;
+		gap: 8px;
+		margin-left: auto;
+		white-space: nowrap;
+	}
+
+	.msg-foot :global(.command-activity) {
+		margin-top: 0;
+	}
+
+	/* The tag's own spacing was for a line of its own. */
+	.msg-foot :global(.message-attribution) {
+		margin-top: 0;
+	}
+
 	/* The working bubble's last line: its step, that step's time and the whole turn's. */
 	.stream-foot {
 		display: flex;
@@ -2811,8 +2844,10 @@
 		flex-shrink: 0;
 	}
 
+	/* The whole turn's time sits at the right end, where a finished message has its time. */
 	.stream-foot .duration-badge {
-		margin-left: 2px;
+		margin-left: auto;
+		padding-left: 8px;
 	}
 
 	.stream-step.is-toggle {
@@ -3296,7 +3331,6 @@
 		.msg-header .bot-badge,
 		.msg-header .app-badge,
 		.msg-header .segment-count-badge,
-		.msg-header .duration-badge,
 		.msg-header .msg-time {
 			flex-shrink: 0;
 		}

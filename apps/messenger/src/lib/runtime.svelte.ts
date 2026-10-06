@@ -3211,11 +3211,14 @@ export class MessengerRuntime {
       // and its commands go under its reply — what this page saw now, the Mac's record once read.
       if (!isLiveStatus(event.status)) {
         const seen = this.activity.forTurn(event.id).map((row) => ({ ...row, running: false }));
-        if (seen.length && !this.keptCommands.has(event.id)) {
+        const kept = this.keptCommands.get(event.id);
+        if (seen.length && (!kept || kept.length < seen.length)) {
           this.keptCommands.set(event.id, seen);
           this.keptCommandsRevision += 1;
         }
         this.keptCommandsRead.delete(event.id);
+        // One read while it was waiting on you is behind it now: read it again.
+        if (kept) this.loadTurnCommands(event.id);
         this.activity.forget(event.id);
         this.turnActivity.forget(event.id);
       }

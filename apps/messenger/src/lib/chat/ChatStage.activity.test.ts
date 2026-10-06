@@ -425,3 +425,54 @@ test("a finished turn's commands stay under its last reply, read as it comes nea
     close();
   }
 });
+
+test("a Bot message ends on one line with its commands, its tag and its time; a running turn's progress line has no card", () => {
+  const session = aDirect();
+  const filed = (over: Record<string, unknown>) => Object.assign(aMessage({ session_id: session.id, kind: "bot", author: "bot-1", ...over }), {
+    filing_state: "filed", filings: [{ task_id: "plan-a", ticket_id: null, part_key: null }],
+  });
+  const kept = [{ id: "turn-k:c1", turnId: "turn-k", name: "shell", command: "pnpm build", running: false, exitCode: 0, ok: true, durationMs: 900, text: "built" }];
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()],
+    sessions: [session],
+    messages: [
+      aMessage({ id: "ask", session_id: session.id, kind: "user", author: "user", body: "构建", created_at: "2026-09-19T02:00:00.000Z" }),
+      filed({ id: "reply", turn_id: "turn-k", body: "构建好了。", created_at: "2026-09-19T02:00:02.000Z" }),
+      aMessage({ id: "ask2", session_id: session.id, kind: "user", author: "user", body: "再来", created_at: "2026-09-19T02:01:00.000Z" }),
+      aMessage({ id: "progress", session_id: session.id, kind: "bot", author: "bot-1", turn_id: "turn-r", body: "开始了。", created_at: "2026-09-19T02:01:01.000Z" }),
+    ],
+    turns: [aTurn({ id: "turn-r", session_id: session.id, status: "running", trigger_message_id: "ask2", created_at: "2026-09-19T02:01:00.500Z" })],
+  }, {
+    selectedId: session.id,
+    commandsOf: (id: string) => (id === "turn-k" || id === "turn-r" ? kept : []),
+  }));
+  const { host, close } = render(ChatStage, {
+    runtime, t, selected: session,
+    onOpenProfile: () => {}, onOpenArtifact: () => {}, onCreateBot: () => {},
+  });
+  try {
+    flushSync();
+    const reply = host.querySelector('[data-message-id="reply"]')!;
+    // Nothing about when it came is left at the top.
+    const wrap = reply.closest(".msg-wrap")!;
+    expect(wrap.querySelector(".msg-header .msg-time")).toBeNull();
+    // The commands, the tag and the time share the commands' line.
+    const head = reply.querySelector(".msg-foot .command-head")!;
+    expect(head.querySelector(".command-summary")?.textContent?.replace(/\s+/g, " ").trim()).toBe("1 条命令");
+    expect(head.querySelector(".attribution-chip")).not.toBeNull();
+    expect(head.querySelector(".msg-time")?.textContent?.trim()).toMatch(/^\d{1,2}:\d{2}$/);
+    // On the right, the time last: how long it took comes before it.
+    expect(head.querySelector(".msg-when")?.lastElementChild?.classList.contains("msg-time")).toBe(true);
+    // Opened, the list goes under that line, not into it.
+    click(head.querySelector(".command-summary"));
+    expect(head.querySelector(".command-card")).toBeNull();
+    expect(reply.querySelector(".msg-foot .command-card")).not.toBeNull();
+
+    // Still running: its commands are in its working bubble, not under the line it sent on the way.
+    const progress = host.querySelector('[data-message-id="progress"]')!;
+    expect(progress.querySelector(".command-activity")).toBeNull();
+    expect(progress.querySelector(".msg-foot .msg-time")).not.toBeNull();
+  } finally {
+    close();
+  }
+});
