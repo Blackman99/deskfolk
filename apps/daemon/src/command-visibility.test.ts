@@ -225,3 +225,62 @@ test("every tool's start says what it is about, and never carries a body", async
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("a finished turn's commands are kept for the card under its reply: shell only, the end of what each printed", async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "bot-kept-")));
+  const store = new Store({ endpointKey: memoryKeyStore("sk-test") });
+  const api = createLocalApi({
+    store, token: "fixture", schedule: false,
+    completions: {
+      async complete(request) {
+        const results = request.messages.filter((m) => m.role === "tool");
+        if (!results.length) return call("shell", { command: "echo KEPT_MARK\necho ERR_MARK 1>&2", cwd: "." });
+        return { ok: true, content: "kept it", toolCalls: [], finishReason: "stop", hadChoices: true, usage: null, missingReason: null };
+      },
+      async judge() { throw new Error("direct turns do not judge"); },
+    },
+  });
+  const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: api.fetch, websocket: api.websocket });
+  const origin = `http://${server.hostname}:${server.port}`;
+  const get = (path: string) => fetch(`${origin}${path}`, { headers: { Authorization: "Bearer fixture" } });
+  try {
+    await store.patchSettings({ workspace_path: root, endpoint_base_url: "http://127.0.0.1:1/v1",
+      endpoint_api_key: "fixture", endpoint_models: ["fixture"], endpoint_default_model: "fixture" });
+    const bot = store.createBot({ name: "Keeper", duties: "build", boundaries: "stay" });
+    const trigger = store.insertMessage({ sessionId: bot.direct_session.id, kind: "user", author: "user", body: "跑一下" });
+    await api.engine.handleInboundMessage(trigger, { fromUser: true });
+    const deadline = Date.now() + 20000;
+    let reply = store.listMainMessages(bot.direct_session.id, 20).find((m) => m.kind === "bot" && m.body === "kept it");
+    while (!reply && Date.now() < deadline) {
+      await Bun.sleep(100);
+      reply = store.listMainMessages(bot.direct_session.id, 20).find((m) => m.kind === "bot" && m.body === "kept it");
+    }
+    expect(reply?.turn_id).toBeTruthy();
+    const turnId = reply!.turn_id!;
+
+    // An MCP call is kept as evidence but is not a command; a shell that printed a lot keeps its end.
+    store.recordTurnRun({ turnId, tool: "mcp_render", command: "{\"prompt\":\"x\"}", exitCode: null, ok: true, output: "ignored", durationMs: 5 });
+    store.recordTurnRun({ turnId, tool: "shell", command: "yes | head -n 9000", exitCode: 0, ok: true, toolCallId: "call_big",
+      durationMs: 12.6, output: `${"y\n".repeat(4500)}END_MARK` });
+
+    const response = await get(`/v1/turns/${turnId}/commands`);
+    expect(response.status).toBe(200);
+    const { items } = (await response.json()) as { items: Array<Record<string, unknown>> };
+    expect(items.map((item) => item.id)).toEqual(["call_1", "call_big"]);
+    expect(items[0]).toMatchObject({ command: "echo KEPT_MARK echo ERR_MARK 1>&2", exit_code: 0, ok: true });
+    expect(items[0]!.duration_ms).toBeGreaterThanOrEqual(0);
+    // stdout, then stderr.
+    expect(String(items[0]!.output)).toMatch(/KEPT_MARK\s+ERR_MARK/);
+    expect(items[1]!.duration_ms).toBe(13);
+    expect(String(items[1]!.output).length).toBe(4000);
+    expect(String(items[1]!.output).endsWith("END_MARK")).toBe(true);
+
+    expect((await get("/v1/turns/01J00000000000000000000000/commands")).status).toBe(404);
+  } finally {
+    api.terminals.shutdown();
+    await api.engine.close();
+    store.close();
+    await server.stop(true);
+    rmSync(root, { recursive: true, force: true });
+  }
+});

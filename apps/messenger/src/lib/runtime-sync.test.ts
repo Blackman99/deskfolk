@@ -1629,3 +1629,47 @@ test("a newer sequenced group lead change updates the open card and survives a l
   expect(await saving).toBeNull();
   expect(runtime.groupLeads["group-1"]?.confirmed_bot_id).toBe("bot-2");
 });
+
+test("a finished turn's commands stay for its reply: what this page saw at once, the Mac's record once read", async () => {
+  const { runtime } = await connected();
+  await until(() => runtime.connection === "connected");
+  const turnId = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
+  const frame = (data: unknown) => Socket.current.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(data) }));
+  frame({ type: "tool", turn_id: turnId, id: "call_1", name: "shell", phase: "started", command: "pnpm build" });
+  frame({ type: "stream", id: `${turnId}:call_1`, offset: 0, data: Buffer.from("built\n").toString("base64") });
+  frame({ type: "tool", turn_id: turnId, id: "call_1", name: "shell", phase: "exited", exit_code: 0, duration_ms: 900 });
+  Socket.current.frame({ type: "event", event_instance_id: instance, seq: 1, payload: { ...aTurn({ id: turnId, session_id: "direct-1", status: "completed" }), event: "turn.upsert", occurred_at: "now" } });
+  flushSync();
+
+  // The live rows are gone; what they showed is kept for the reply, finished.
+  expect(runtime.activity.forTurn(turnId)).toEqual([]);
+  expect(runtime.commandsOf(turnId).map((row) => [row.command, row.running, row.text])).toEqual([["pnpm build", false, "built\n"]]);
+
+  const asked: string[] = [];
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    const path = String(url);
+    if (path.includes(`/v1/turns/${turnId}/commands`)) {
+      asked.push(path);
+      return Response.json({ items: [
+        { id: "call_0", command: "pnpm install", exit_code: null, ok: false, duration_ms: 120_000, output: "timed out", created_at: "2026-10-06T00:00:00.000Z" },
+        { id: "call_1", command: "pnpm build", exit_code: 0, ok: true, duration_ms: 900, output: "built\n", created_at: "2026-10-06T00:02:00.000Z" },
+      ] });
+    }
+    return Response.json({ items: [] });
+  }) as typeof fetch;
+  runtime.loadTurnCommands(turnId);
+  runtime.loadTurnCommands(turnId);
+  await until(() => runtime.commandsOf(turnId).length === 2);
+  // The Mac's record replaces it, with what this page never saw, and is read once.
+  expect(runtime.commandsOf(turnId).map((row) => [row.command, row.ok, row.exitCode, row.durationMs, row.text])).toEqual([
+    ["pnpm install", false, null, 120_000, "timed out"],
+    ["pnpm build", true, 0, 900, "built\n"],
+  ]);
+  expect(asked).toHaveLength(1);
+
+  // A Mac from before the record answers 404: nothing changes, nothing throws.
+  globalThis.fetch = (async () => Response.json({ error: { code: "not_found", message: "no" } }, { status: 404 })) as typeof fetch;
+  runtime.loadTurnCommands("01ARZ3NDEKTSV4RRFFQ69G5FAW");
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  expect(runtime.commandsOf("01ARZ3NDEKTSV4RRFFQ69G5FAW")).toEqual([]);
+});

@@ -382,3 +382,46 @@ test("with several Bots, the name still opens the profile and the step opens tha
     close();
   }
 });
+
+test("a finished turn's commands stay under its last reply, read as it comes near, and nowhere else", () => {
+  const session = aDirect();
+  const kept = [
+    { id: "turn-k:c1", turnId: "turn-k", name: "shell", command: "pnpm install", running: false, exitCode: null, ok: false, durationMs: 120_000, text: "timed out" },
+    { id: "turn-k:c2", turnId: "turn-k", name: "shell", command: "pnpm build", running: false, exitCode: 0, ok: true, durationMs: 900, text: "" },
+  ];
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()],
+    sessions: [session],
+    messages: [
+      aMessage({ id: "ask", session_id: session.id, kind: "user", author: "user", body: "装一下依赖再构建", created_at: "2026-09-19T02:00:00.000Z" }),
+      aMessage({ id: "progress", session_id: session.id, kind: "bot", author: "bot-1", turn_id: "turn-k", body: "开始装依赖。", created_at: "2026-09-19T02:00:01.000Z" }),
+      aMessage({ id: "reply", session_id: session.id, kind: "bot", author: "bot-1", turn_id: "turn-k", body: "构建好了。", created_at: "2026-09-19T02:00:02.000Z" }),
+      aMessage({ id: "other", session_id: session.id, kind: "bot", author: "bot-1", turn_id: "turn-x", body: "没跑命令。", created_at: "2026-09-19T02:00:03.000Z" }),
+    ],
+    turns: [],
+  }, {
+    selectedId: session.id,
+    commandsOf: (id: string) => (id === "turn-k" ? kept : []),
+  }));
+  const { host, close } = render(ChatStage, {
+    runtime, t, selected: session,
+    onOpenProfile: () => {}, onOpenArtifact: () => {}, onCreateBot: () => {},
+  });
+  try {
+    flushSync();
+    const cardIn = (id: string) => host.querySelector(`[data-message-id="${id}"] .command-activity`);
+    expect(cardIn("reply")).not.toBeNull();
+    // The progress line shares the turn; the card would only repeat under it.
+    expect(cardIn("progress")).toBeNull();
+    // A turn that ran nothing has no card at all.
+    expect(cardIn("other")).toBeNull();
+    expect(cardIn("reply")?.querySelector(".command-summary")?.textContent?.replace(/\s+/g, " ").trim()).toBe("2 条命令 · 1 条失败");
+    click(cardIn("reply")?.querySelector(".command-summary") ?? null);
+    const metas = [...host.querySelectorAll('[data-message-id="reply"] .command-meta')].map((node) => node.textContent?.replace(/\s+/g, " ").trim());
+    // Timed out, so no exit code: it still reads as failed.
+    expect(metas).toEqual(["失败 2m0s", "900ms"]);
+    expect(runtime.calls.filter((call) => call.name === "loadTurnCommands").map((call) => call.args[0]).sort()).toEqual(["turn-k", "turn-x"]);
+  } finally {
+    close();
+  }
+});

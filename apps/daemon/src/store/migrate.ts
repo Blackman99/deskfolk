@@ -52,6 +52,10 @@ export function migrateSchema(db: Database): void {
   // already existed, so its new column needs the same guarded ALTER every other one here gets.
   const turnRunCols = db.query<{ name: string }, []>("PRAGMA table_info(turn_runs)").all().map((column) => column.name);
   if (turnRunCols.length > 0 && !turnRunCols.includes("cwd")) db.run("ALTER TABLE turn_runs ADD COLUMN cwd TEXT");
+  // What the command card under a finished turn's reply reads (2026-10-06).
+  for (const [column, type] of [["tool_call_id", "TEXT"], ["duration_ms", "INTEGER"], ["output", "TEXT"]] as const) {
+    if (turnRunCols.length > 0 && !turnRunCols.includes(column)) db.run(`ALTER TABLE turn_runs ADD COLUMN ${column} ${type}`);
+  }
   // The status line the app writes for a 进度询问 is a `system` message like any other — visible in
   // the conversation, search and unread — except no Bot's context window or the organizer's payload
   // should ever read it back: it is the app answering you, not something anyone here said. This

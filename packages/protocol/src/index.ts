@@ -2796,3 +2796,22 @@ export * from "./boring-avatars.ts";
 export * from "./cited-path.ts";
 export * from "./mentions.ts";
 export * from "./notifications.ts";
+
+/**
+ * One command a turn ran, for the card under its reply once the turn has ended
+ * (`GET /v1/turns/:id/commands`, oldest first, `shell` only, the turn's first 80 calls).
+ */
+export type TurnCommand = {
+  /** The tool call's id; the record's own on rows from before it was kept. */
+  id: string;
+  /** The command line, its whitespace folded and clipped to 300 code points. */
+  command: string;
+  exit_code: number | null;
+  ok: boolean;
+  duration_ms: number | null;
+  /** The last 4000 code points of what it printed, stdout then stderr; null when it printed nothing. */
+  output: string | null;
+  created_at: string;
+};
+
+export type TurnCommandsResponse = { items: TurnCommand[] };

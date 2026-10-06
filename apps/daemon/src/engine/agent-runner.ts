@@ -546,7 +546,8 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
         const exit = failed ? exitCodeOf(errorText) ?? 1 : 0;
         const rel = classifyPath(root, raw.cwd || cwd);
         store.recordTurnRun({ turnId, tool: "shell", command: args.command, exitCode: exit, ok: !failed,
-          error: failed ? clip(errorText, 400) : null, cwd: rel.zone === "inside" ? rel.rel : null });
+          error: failed ? clip(errorText, 400) : null, cwd: rel.zone === "inside" ? rel.rel : null,
+          toolCallId: id, durationMs: entry ? Date.now() - entry.startedAt : null, output: responseText || null });
         if (!failed && live.workDir) {
           const produced = producedPaths(root, live.workDir, entry?.snapshot ?? null);
           if (produced.paths?.length) deps.noteWrittenPaths(live, "shell", { ok: true, data: { paths: produced.paths }, emitted: [] });

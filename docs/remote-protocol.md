@@ -191,6 +191,7 @@ All routes reject unknown body/query fields and wrong types **before** effects/r
 | annotations `/:id` | PATCH/DELETE | draft: body/anchor/crop (same limit)/content_sha256; sent: status open/resolved; if_revision string (= updated_at); DELETE if_revision. Annotations are not in the snapshot: the client takes the revision from the last row it saw (list, create, PATCH and send replies, `annotation.upsert` events), newest `updated_at` wins |
 | annotations/send | POST | required session_id ULID, annotation_ids ULID[] (≤50); body string |
 | providers/bots/sessions/attachments/requests `/:id`; sessions `/:id/{snapshot,judgements,routes,composer-suggestions}`; bots `/:id/profile-revisions` | GET | No body/query |
+| turns `/:id/commands` | GET | No body/query; the turn's shell commands, oldest first (`{items}`: id, command, exit_code, ok, duration_ms, output tail, created_at), for the card under its reply; 404 once the turn is gone |
 | attachments `/:id/content` | GET | optional size `thumb`\|`preview` |
 | sessions `/:id/messages` | GET | query cursor exact `ISO-UTC-millisecond|ULID` from the shared history response, limit decimal1..200 |
 | workspace/tree; workspace/file | GET | query path string (required for file); file also optional size `thumb`\|`preview` or range string |

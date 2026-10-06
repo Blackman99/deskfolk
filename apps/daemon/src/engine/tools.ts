@@ -64,6 +64,14 @@ const NO_EFFECT_TOOLS: ReadonlySet<string> = new Set([
  * The tools a read-only turn is given: those that change nothing, and the MCP tools their server
  * marks read-only in this hop's list.
  */
+
+/** What a shell call printed, stdout then stderr, for its record. */
+function shellOutput(data: Record<string, unknown> | undefined): string | null {
+  const parts = [data?.stdout, data?.stderr].filter((part): part is string => typeof part === "string" && part.length > 0);
+  if (!parts.length) return null;
+  return parts.reduce((all, part) => (all && !all.endsWith("\n") ? `${all}\n${part}` : all + part), "");
+}
+
 export function readOnlyTools(tools: readonly ChatTool[], guides: readonly McpPromptGuide[]): ChatTool[] {
   const readOnlyMcp = new Set(guides.flatMap((guide) => guide.tools.filter((tool) => tool.readOnly === true).map((tool) => tool.modelName)));
   return tools.filter((tool) => NO_EFFECT_TOOLS.has(tool.function.name) || readOnlyMcp.has(tool.function.name));
@@ -342,7 +350,7 @@ export function createTools(deps: ToolsDeps): Tools {
           ...(result.waitApproval || result.waitAsk
             ? {}
             : { ok: result.ok, ...(result.ok || !result.error ? {} : { error_code: result.error.code }) }) });
-        if (!result.waitApproval) recordRun(turnId, live, call.name, args, result);
+        if (!result.waitApproval) recordRun(turnId, live, call.name, args, result, call.id, Date.now() - startedAt);
         if (call.name === "read_file" && result.ok) noteFrameRead(turnId, args);
       }
       if (!active(turnId, live)) return "wait";
@@ -388,7 +396,8 @@ export function createTools(deps: ToolsDeps): Tools {
         let resolved = await openApprovalCard(turn, live, result.waitApproval, call.id);
         if (resolved !== null) finishEffectEvidence(turnId, live, call.name, call.id, resolved);
         if (resolved == null || !active(turnId, live)) return "wait";
-        recordRun(turnId, live, call.name, args, resolved);
+        // No time: it includes the wait for your approval.
+        recordRun(turnId, live, call.name, args, resolved, call.id);
         await publishEmitted(turnId, live, resolved.emitted);
         if (!active(turnId, live)) return "wait";
         resolved = withLatestMcp(call.name, resolved);
@@ -504,7 +513,7 @@ export function createTools(deps: ToolsDeps): Tools {
    * command with how it exited, or an MCP call with its arguments. Best-effort; a turn whose row
    * went away records nothing.
    */
-  function recordRun(turnId: string, live: Live, name: string, args: Record<string, unknown>, result: ToolResult): void {
+  function recordRun(turnId: string, live: Live, name: string, args: Record<string, unknown>, result: ToolResult, callId?: string, durationMs?: number): void {
     const mcpTool = live.mcpTools.get(name);
     if (name !== "shell" && !mcpTool) return;
     let command: string;
@@ -529,6 +538,9 @@ export function createTools(deps: ToolsDeps): Tools {
         ok: result.ok,
         error: result.ok ? null : (result.error?.message ?? result.error?.code ?? null),
         cwd: name === "shell" ? (typeof args.cwd === "string" ? args.cwd : (live.workDir ?? null)) : null,
+        toolCallId: callId,
+        durationMs,
+        output: name === "shell" ? shellOutput(result.data) : null,
       });
     } catch {
       // the record is evidence, not the work; the call already happened

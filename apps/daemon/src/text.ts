@@ -27,6 +27,17 @@ export function takeCodePoints(text: string, limit: number): {
   };
 }
 
+/**
+ * The end of `text`, at most `limit` code points: cut by UTF-16 units first, so a huge dump is never
+ * walked, and without the low half of a pair the cut split.
+ */
+export function tailCodePoints(text: string, limit: number): string {
+  if (text.length <= limit) return text;
+  const tail = text.slice(text.length - limit);
+  const first = tail.charCodeAt(0);
+  return first >= 0xdc00 && first <= 0xdfff ? tail.slice(1) : tail;
+}
+
 function pairAt(text: string, index: number): boolean {
   const high = text.charCodeAt(index);
   if (high < 0xd800 || high > 0xdbff) return false;

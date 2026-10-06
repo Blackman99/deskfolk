@@ -17,6 +17,11 @@ export type CommandRow = {
   command: string | null;
   running: boolean;
   exitCode: number | null;
+  /**
+   * How it came back, when known: a kept command that timed out or was refused failed with no
+   * exit code. Live frames do not carry it; their exit code says it.
+   */
+  ok?: boolean;
   durationMs: number | null;
   /** What it has printed, clipped to the tail a person would actually read. */
   text: string;

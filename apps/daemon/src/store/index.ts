@@ -446,6 +446,7 @@ export class Store {
   readonly observeTicketWork = this.bind(tickets.observeTicketWork);
   readonly recordTurnRun = this.bind(turnRuns.recordTurnRun);
   readonly turnRuns = this.bind(turnRuns.turnRuns);
+  readonly turnCommands = this.bind(turnRuns.turnCommands);
   readonly taskRunsSince = this.bind(turnRuns.taskRunsSince);
   readonly ticketArtifacts = this.bind(tickets.ticketArtifacts);
   readonly listTicketDirs = this.bind(tickets.listTicketDirs);

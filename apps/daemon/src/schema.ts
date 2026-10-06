@@ -829,6 +829,12 @@ CREATE TABLE IF NOT EXISTS turn_runs (
   -- this column. commandSeenInPlan reads it to tell an acceptance check's command apart from one
   -- that only looks the same but ran somewhere else.
   cwd TEXT,
+  -- The tool call it answers, how long a shell command ran and the last of what it printed
+  -- (stdout, then stderr; TURN_RUN_OUTPUT_MAX), kept for the command card under the turn's reply
+  -- after the turn ends. Null for MCP calls and for rows from before these columns.
+  tool_call_id TEXT,
+  duration_ms INTEGER,
+  output TEXT,
   created_at TEXT NOT NULL
 );
 

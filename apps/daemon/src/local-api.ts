@@ -1,5 +1,6 @@
 import {
   type LessonPatch,
+  type TurnCommandsResponse,
   type ModelLadderResponse,
   type SharedSkillsResponse,
   type QualityCategory,
@@ -1413,6 +1414,14 @@ function dispatch(
       200,
       null,
     );
+  }
+
+  params = matchPath(path, "/v1/turns/:id/commands");
+  if (params && method === "GET") {
+    // What a turn ran, for the command card under its reply once it has ended; 404 once it is gone.
+    store.getTurn(params.id!);
+    const body: TurnCommandsResponse = { items: store.turnCommands(params.id!) };
+    return jsonResponse(body, 200, null);
   }
 
   params = matchPath(path, "/v1/tasks/:id/trace");

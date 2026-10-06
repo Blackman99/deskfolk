@@ -32,7 +32,7 @@
 	const failed = $derived(done.filter(isFailed).length);
 
 	function isFailed(row: CommandRow): boolean {
-		return row.exitCode !== null && row.exitCode !== 0;
+		return row.ok === false || (row.exitCode !== null && row.exitCode !== 0);
 	}
 
 	function toggle(id: string): void {
@@ -74,7 +74,7 @@
 	</span>
 	<span class="command-text mono"><span class="command-program">{parts.program}</span>{parts.rest}</span>
 	<span class="command-meta mono">
-		{#if isFailed(row)}<span class="command-exit">{t.chat.activity.exit(row.exitCode ?? 0)}</span>{/if}
+		{#if isFailed(row)}<span class="command-exit">{row.exitCode !== null ? t.chat.activity.exit(row.exitCode) : t.chat.activity.failed}</span>{/if}
 		{#if row.durationMs !== null}<span>{formatDuration(row.durationMs)}</span>{/if}
 	</span>
 	{#if openable}

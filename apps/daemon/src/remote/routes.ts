@@ -51,6 +51,8 @@ get("tasks/:id/artifacts");
 get("annotations", { relpath: v => typeof v === "string" && v.length <= 4096, session_id: id, target_session_id: id, message_id: id, target_message_id: id, status: one("draft", "open", "resolved") });
 get("annotations/:id"); get("annotations/:id/crop");
 get("tasks/:id/(trace|tickets|spec-revisions)");
+// The command card under a finished turn's reply.
+get("turns/:id/commands");
 get("sessions/:id/tasks");
 get("(tasks|sessions)/:id/delegations");
 get("tasks/:id/submissions");

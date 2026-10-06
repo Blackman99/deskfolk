@@ -44,6 +44,9 @@ test("plans and tickets: reads are whitelisted, a spec edit carries the whole sp
     ok({ v: 1, id, method: "GET", path });
   }
   bad({ v: 1, id, method: "GET", path: `/v1/tasks/${id}/tickets`, query: { unknown: "1" } });
+  // The command card under a finished turn's reply reads its turn's commands, and takes nothing else.
+  ok({ v: 1, id, method: "GET", path: `/v1/turns/${id}/commands` });
+  bad({ v: 1, id, method: "GET", path: `/v1/turns/${id}/commands`, query: { limit: "5" } });
 
   const specEdit = (body: Record<string, unknown>): RemoteRequest => ({ v: 1, id, method: "PATCH", path: `/v1/tasks/${id}/spec`, body });
   ok(specEdit({ spec, if_revision: 3 }));

@@ -13,6 +13,7 @@
 	import WorkQuestionCard from './WorkQuestionCard.svelte';
 	import CommandActivity from './CommandActivity.svelte';
 	import TurnStepList from './TurnStepList.svelte';
+	import { whenVisible } from '../when-visible.ts';
 	import type { CommandRow } from './command-activity.ts';
 	import BotDmEntry from './BotDmEntry.svelte';
 	import ControlActions from './ControlActions.svelte';
@@ -345,6 +346,17 @@
 	const windowedStream = $derived(windowedItems(stream, historyWindow));
 	const hiddenOlder = $derived(stream.length - windowedStream.length);
 	const groupedStream = $derived(groupTranscript(windowedStream));
+	/**
+	 * The reply each finished turn's commands go under: its last Bot message here. Progress lines it
+	 * sent on the way share its turn, and the card would repeat under each of them.
+	 */
+	const commandHosts = $derived.by(() => {
+		const last = new Map<string, string>();
+		for (const item of windowedStream) {
+			if (item.type === 'message' && item.message.kind === 'bot' && item.message.turn_id) last.set(item.message.turn_id, item.message.id);
+		}
+		return new Set(last.values());
+	});
 
 	/** One anchor for each visible message, including the unmounted history. */
 	const indexMarks = $derived(messageIndexMarks(stream));
@@ -1965,6 +1977,13 @@
 													onPreview={(att) => onOpenArtifact(att.workspace_relpath, att, item.message.id)}
 													onOpenImage={(att, from) => openInlineImage(att, att.workspace_relpath, from)}
 												/>
+											{/if}
+											{#if item.message.turn_id && commandHosts.has(item.message.id)}
+												{@const turnId = item.message.turn_id}
+												<!-- What the turn ran stays under its reply once it has ended, read when it comes near. -->
+												<div class="kept-commands" use:whenVisible={() => runtime.loadTurnCommands(turnId)}>
+													<CommandActivity rows={runtime.commandsOf(turnId)} {t} />
+												</div>
 											{/if}
 											{#if annotationIndex.get(item.message.id)}
 												<AnnotationCards

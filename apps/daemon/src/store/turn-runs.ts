@@ -5,7 +5,8 @@
  * so a turn that is redirected or interrupted keeps its record.
  */
 import { isoNow, ulid } from "../ids";
-import { takeCodePoints } from "../text";
+import { tailCodePoints, takeCodePoints } from "../text";
+import type { TurnCommand } from "@real-bot/protocol";
 import { type StoreContext } from "./shared";
 
 export type TurnRun = {
@@ -25,12 +26,23 @@ export type TurnRun = {
   error: string | null;
   /** Where a `shell` command actually ran, workspace-relative. Null for MCP calls. */
   cwd: string | null;
+  /** The tool call it answers. Absent from reads that list their columns, null on older rows. */
+  tool_call_id?: string | null;
+  /** How long a `shell` command ran. */
+  duration_ms?: number | null;
+  /** The last of what a `shell` command printed, stdout then stderr. */
+  output?: string | null;
   created_at: string;
 };
 
 /** Rows one turn keeps; a turn past this is looping, and its first runs say more than its last. */
 export const TURN_RUNS_PER_TURN = 80;
 export const TURN_RUN_COMMAND_MAX = 300;
+/**
+ * What a command printed, kept for its card after the turn: the end, where a build says how it went.
+ * Code points; the live card keeps 8 KB of the tail while it runs.
+ */
+export const TURN_RUN_OUTPUT_MAX = 4000;
 
 export function recordTurnRun(
   ctx: StoreContext,
@@ -43,6 +55,11 @@ export function recordTurnRun(
     error?: string | null;
     /** Workspace-relative cwd the shell actually ran in; ignored for anything but `shell`. */
     cwd?: string | null;
+    toolCallId?: string | null;
+    /** How long it ran; kept for `shell`. */
+    durationMs?: number | null;
+    /** What it printed; the end of it is kept for `shell`. */
+    output?: string | null;
     now?: Date;
   },
 ): void {
@@ -61,9 +78,13 @@ export function recordTurnRun(
   const at = input.now ?? new Date(isoNow());
   const command = takeCodePoints(input.command.replace(/\s+/g, " ").trim(), TURN_RUN_COMMAND_MAX).text;
   const cwd = input.tool === "shell" && typeof input.cwd === "string" && input.cwd.trim() ? input.cwd.trim() : null;
+  const shell = input.tool === "shell";
+  const durationMs = shell && typeof input.durationMs === "number" && Number.isFinite(input.durationMs) && input.durationMs >= 0
+    ? Math.round(input.durationMs) : null;
+  const output = shell && typeof input.output === "string" && input.output.trim() ? tailCodePoints(input.output, TURN_RUN_OUTPUT_MAX) : null;
   ctx.db.run(
-    `INSERT INTO turn_runs (id, turn_id, session_id, task_id, ticket_id, bot_id, tool, command, exit_code, ok, error, cwd, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO turn_runs (id, turn_id, session_id, task_id, ticket_id, bot_id, tool, command, exit_code, ok, error, cwd, tool_call_id, duration_ms, output, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       ulid(at.getTime()),
       input.turnId,
@@ -77,9 +98,34 @@ export function recordTurnRun(
       input.ok ? 1 : 0,
       input.error ?? null,
       cwd,
+      input.toolCallId ?? null,
+      durationMs,
+      output,
       at.toISOString(),
     ],
   );
+}
+
+/**
+ * The commands a turn ran, oldest first, for the card under its reply (`GET /v1/turns/:id/commands`).
+ * Shell only: the card counts commands. Its first TURN_RUNS_PER_TURN calls, like every read here.
+ */
+export function turnCommands(ctx: StoreContext, turnId: string): TurnCommand[] {
+  return ctx.db
+    .query<{ id: string; tool_call_id: string | null; command: string; exit_code: number | null; ok: number; duration_ms: number | null; output: string | null; created_at: string }, [string]>(
+      `SELECT id, tool_call_id, command, exit_code, ok, duration_ms, output, created_at FROM turn_runs
+       WHERE turn_id = ? AND tool = 'shell' ORDER BY created_at ASC, rowid ASC`,
+    )
+    .all(turnId)
+    .map((row) => ({
+      id: row.tool_call_id ?? row.id,
+      command: row.command,
+      exit_code: row.exit_code,
+      ok: row.ok === 1,
+      duration_ms: row.duration_ms,
+      output: row.output,
+      created_at: row.created_at,
+    }));
 }
 
 /** One turn's runs, oldest first. */

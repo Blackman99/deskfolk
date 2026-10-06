@@ -45,7 +45,7 @@ import {
 import { ApiError, probeHealth } from "./api.ts";
 import { attributable, messageFilings, type AttributedMessage, type AttributionPlan } from "./chat/attribution.ts";
 import type { FileProgress } from "./file-progress.ts";
-import { CommandActivity } from "./chat/command-activity.ts";
+import { CommandActivity, type CommandRow } from "./chat/command-activity.ts";
 import { TurnActivity, type ToolStep } from "./chat/turn-activity.ts";
 import { parseStreamFrame, parseToolFrame } from "./ephemeral-frames.ts";
 import type { LocalEndpoint } from "./discovery.ts";
@@ -469,6 +469,15 @@ export class MessengerRuntime {
   readonly activity = new CommandActivity();
   activityRevision = $state(0);
   /**
+   * What finished turns ran, for the command card under each one's reply: read from the Mac when
+   * the reply comes near the screen, and filled from the live rows the moment a turn ends so the
+   * card does not blink out while that read is out. A plain map; {@link keptCommandsRevision} is
+   * what the view watches.
+   */
+  private readonly keptCommands = new Map<string, CommandRow[]>();
+  private readonly keptCommandsRead = new Set<string>();
+  keptCommandsRevision = $state(0);
+  /**
    * The step each running turn is in, or last finished — the line that replaces a bare "思考中".
    * Its own revision: command output moves {@link activityRevision} many times a second, and the
    * lines under every message need not follow that.
@@ -558,6 +567,39 @@ export class MessengerRuntime {
     this.markDisconnected();
     if (this.timer) clearTimeout(this.timer);
     for (const view of this.views.values()) this.clearHighlightTimer(view);
+  }
+
+  /** The commands a finished turn ran, as its reply's card shows them; empty until read. */
+  commandsOf(turnId: string): CommandRow[] {
+    void this.keptCommandsRevision;
+    return this.keptCommands.get(turnId) ?? [];
+  }
+
+  /**
+   * Reads a finished turn's commands from the Mac, once. A Mac from before the record, or a turn
+   * since cleared, answers with an error: the card then stays as it was, empty or what was seen.
+   */
+  loadTurnCommands(turnId: string): void {
+    const api = this.api;
+    if (!api || this.keptCommandsRead.has(turnId)) return;
+    this.keptCommandsRead.add(turnId);
+    void api.turnCommands(turnId).then(
+      (items) => {
+        this.keptCommands.set(turnId, items.map((item) => ({
+          id: `${turnId}:${item.id}`,
+          turnId,
+          name: "shell",
+          command: item.command,
+          running: false,
+          exitCode: item.exit_code,
+          ok: item.ok,
+          durationMs: item.duration_ms,
+          text: item.output ?? "",
+        })));
+        this.keptCommandsRevision += 1;
+      },
+      () => {},
+    );
   }
 
   get client(): MessengerApi | null {
@@ -3165,8 +3207,15 @@ export class MessengerRuntime {
     if (event.event === "spend.created" || event.event === "spend.repriced") this.spendRevision += 1;
     if (event.event === "turn.upsert") {
       this.claimFocus(event.session_id, event.trigger_message_id, event.id);
-      // A finished turn keeps nothing of what it was doing: the transcript and its trace remain.
+      // A finished turn keeps nothing of what it was doing: the transcript and its trace remain,
+      // and its commands go under its reply — what this page saw now, the Mac's record once read.
       if (!isLiveStatus(event.status)) {
+        const seen = this.activity.forTurn(event.id).map((row) => ({ ...row, running: false }));
+        if (seen.length && !this.keptCommands.has(event.id)) {
+          this.keptCommands.set(event.id, seen);
+          this.keptCommandsRevision += 1;
+        }
+        this.keptCommandsRead.delete(event.id);
         this.activity.forget(event.id);
         this.turnActivity.forget(event.id);
       }

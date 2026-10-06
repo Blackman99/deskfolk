@@ -505,6 +505,10 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     // fail on it, and the transcript reads `runtime.activity` while a turn is live.
     activity: new CommandActivity(),
     activityRevision: 0,
+    keptCommandsRevision: 0,
+    // Not recorded: the transcript reads it on every render. A test stubs it to show a kept card.
+    commandsOf: () => [],
+    loadTurnCommands: record("loadTurnCommands"),
     toolRevision: 0,
     // Not recorded: the transcript reads it on every render. A test stubs it to show a step.
     stepOf: () => null,

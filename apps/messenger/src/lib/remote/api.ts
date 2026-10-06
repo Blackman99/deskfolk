@@ -70,6 +70,8 @@ import type {
   TaskDetail,
   TaskSpecRevision,
   TaskTrace,
+  TurnCommand,
+  TurnCommandsResponse,
   Ticket,
   PatchTaskSpecRequest,
   RenamePlanRequest,
@@ -614,6 +616,11 @@ export class RemoteApi {
   }
 
   /** The turns that share a work dir, read back as one picture. Pulled when the trace opens. */
+  /** What a finished turn ran, for the command card under its reply. */
+  async turnCommands(turnId: string): Promise<TurnCommand[]> {
+    return (await this.get<TurnCommandsResponse>(`/v1/turns/${encodeURIComponent(turnId)}/commands`)).items;
+  }
+
   async taskTrace(taskId: string): Promise<TaskTrace> {
     return this.get<TaskTrace>(`/v1/tasks/${encodeURIComponent(taskId)}/trace`);
   }
