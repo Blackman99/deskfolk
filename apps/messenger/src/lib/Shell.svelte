@@ -781,8 +781,8 @@
 			attachment: attachment ?? null,
 			siblings: siblingsForPath(snapshot.messages, relpath, attachment, runtime.previewMessageId, runtime.previewSiblings),
 			forceTree: runtime.forceArtifactTree,
-			// The entry opens the job's tree, not just this message's; older messages have none.
-			taskId: runtime.previewTaskId ?? owner?.task_id ?? null,
+			// A message's entry lists that message's files; only the flow chart names a job to list.
+			taskId: runtime.previewTaskId ?? null,
 			// 挂到谁：the message this was opened from when it handed this very path over — the tree
 			// keeps that message while you walk to other files — else the latest Bot message in this
 			// conversation that did, in this job first.
@@ -812,7 +812,7 @@
 				relpath: sanitizePreviewPath(relpath),
 				attachmentId: att?.id ?? null,
 				messageId: sourceMessageId,
-				taskId: taskId ?? owner?.task_id ?? null,
+				taskId: taskId ?? null,
 				forceTree,
 				siblings: siblings ?? siblingsForPath(snapshot.messages, relpath, att, sourceMessageId, runtime.previewSiblings)
 			});

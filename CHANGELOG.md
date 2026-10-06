@@ -15,6 +15,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 - Ask a Bot for something small (say, 「根据你的职责，生成图片更新你的头像」, "make yourself an avatar that fits your duties") and the conversation used to gain a "New job: …" card with Undo and Merge… as soon as it started, then, when it handed the result over, "Nobody reviews it and no check you confirmed stands behind it, so it is yours to decide. Have a look, then approve it or send it back." Both wanted a look and a press, for something already in front of you. The "New job" card is no longer posted: the tag under your line already names the job it opened, and a click on it changes that. A job of one ticket that never asked you, done and handed over in one go by one segment, now counts as delivered with no approval card; so does a change you ask for afterwards that one segment makes. Work that took several segments, was laid out in several tickets, or once asked you still waits for your approval. If what came back is wrong, say so: the complaint card asks whether to send it back to rework. Cards already out keep their buttons.
 
+### A file opened from a message lists only what that message names
+
+- Opening a file from a Bot's message used to fill the tree beside the preview with every file the whole job had referenced: after a job of several rounds that was dozens of files, with the two or three this message spoke of lost among them. Opened from a message, the tree now holds only the files that message names — its attachments and the paths its text points to. The job's files are still listed when you open a file card on the flow board. A preview already open from before the update switches over the next time you open it from the message.
+
 ## 0.1.0-rc.13 — 2026-10-06
 
 Unsigned macOS rc with an experimental unsigned Windows installer beside the `.dmg`s. This is not a supported signed installer; Gatekeeper or SmartScreen may block it. Prefer running from source.

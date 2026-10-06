@@ -36,7 +36,8 @@ export function previewContext(content: Extract<PaneContent, { kind: 'preview' }
   const attachment = siblings.find((att) => att.id === content.attachmentId)
     ?? siblings.find((att) => att.workspace_relpath === content.relpath) ?? null;
   const relpath = content.relpath ?? attachment?.workspace_relpath ?? '';
-  const taskId = content.taskId ?? owner?.task_id ?? null;
+  // Only a tab the flow chart opened lists the job; one opened from a message lists that message.
+  const taskId = content.taskId ?? null;
   /** What the source handed over, and all a tab keeps: never the stand-in below. */
   const handedOver = [...siblings];
   // A lone file keeps its row in the tree. A job's tree already lists what the job cited, and a

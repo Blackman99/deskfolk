@@ -25,7 +25,8 @@ test('message handoffs and context-menu references stay scoped to the source ses
   expect(previewContext({ ...content, taskId: null, forceTree: false }, [other, message]).siblings.map((a) => a.workspace_relpath))
     .toEqual(['work/a.md', 'work/b.md']);
   const context = previewContext({ ...content, taskId: null }, [other, message]);
-  expect(context.taskId).toBe('job');
+  // The message's job is not the tree's: a tab opened from a message lists that message.
+  expect(context.taskId).toBeNull();
   expect(context.siblings.map((a) => a.workspace_relpath)).toContain('work/reference.md');
 });
 

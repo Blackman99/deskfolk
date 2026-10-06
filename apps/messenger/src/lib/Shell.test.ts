@@ -820,6 +820,7 @@ test('mounted Shell: the floating + is on the list of chats and nowhere else', (
  * Every prop of the file pane comes off one object the shell derives from the snapshot, so a
  * snapshot that says nothing new still re-runs the pane's effects. Letting go of the listing there
  * — and pulling the same job again — is what made the tree blink while a conversation was live.
+ * Opened from the flow chart, which names the job, so the tree is the job's.
  */
 test('a snapshot that changes nothing leaves the file tree alone', async () => {
   const bot = aBot({ id: 'bot-1', name: 'Alpha' });
@@ -839,7 +840,7 @@ test('a snapshot that changes nothing leaves the file tree alone', async () => {
   const runtime = reactive(fakeRuntime({
     bots: [bot], sessions: [session], messages: [message],
     settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
-  }, { selectedId: session.id, previewRelpath: 'work/plan.md', previewMessageId: 'm1' }));
+  }, { selectedId: session.id, previewRelpath: 'work/plan.md', previewMessageId: 'm1', previewTaskId: 'task-1' }));
   runtime.client = {
     kind: 'local',
     taskArtifacts: async () => {
@@ -1015,11 +1016,11 @@ test('a file picked in a workspace pane opens in that pane and survives a restar
 });
 
 /**
- * The job's record is what the Mac noticed; a message can hand over more than that with `附件：`
- * lines, and messages stored before it read those lines always do. The bubble's entry counts them,
- * so the tree beside the file must list them too — including the file that is open.
+ * A message's entry opens the files that message names: its attachments and its `附件：` lines,
+ * which the bubble's entry counts too — including the file that is open. What else the job cited
+ * stays out, and the job is not even asked.
  */
-test('the file tree lists what the message handed over, not just what the job recorded', async () => {
+test('the file tree lists what the message handed over, not the rest of the job', async () => {
   const bot = aBot({ id: 'bot-1', name: 'Alpha' });
   const session = aDirect({ id: 'bot-1', participants: [
     { member: 'user', joined_at: 'now', left_at: null },
@@ -1046,12 +1047,19 @@ test('the file tree lists what the message handed over, not just what the job re
     previewRelpath: 'BEACON/shots/C01_START.png',
     previewMessageId: 'm1',
   }));
+  let pulls = 0;
   runtime.client = {
     kind: 'local',
-    taskArtifacts: async () => ({
-      id: 'task-1', dir: 'work/task', title: 'plan', closed_at: null,
-      items: [{ path: 'BEACON/docs/plan.md', last_cited_at: 'now', turn_id: null }],
-    }),
+    taskArtifacts: async () => {
+      pulls += 1;
+      return {
+        id: 'task-1', dir: 'work/task', title: 'plan', closed_at: null,
+        items: [
+          { path: 'BEACON/docs/plan.md', last_cited_at: 'now', turn_id: null },
+          { path: 'BEACON/docs/outline.md', last_cited_at: 'now', turn_id: null },
+        ],
+      };
+    },
     getWorkspaceFileBlob: async () => new Blob(['x'], { type: 'image/png' }),
     getAttachmentBlob: async () => new Blob(['x'], { type: 'image/png' }),
   } as never;
@@ -1064,6 +1072,8 @@ test('the file tree lists what the message handed over, not just what the job re
   const files = rows.filter((row) => !row?.includes('\u25b8'));
   // `1/3` out of the prose is not among them: the context menu may guess, a file tree may not.
   expect(files).toEqual(['plan.md', 'C01_END.png', 'C01_START.png']);
+  // outline.md is the job's, cited by some other message.
+  expect(pulls).toBe(0);
 });
 
 /**
@@ -1209,6 +1219,45 @@ test('opening message attachments in a workbench pane keeps its tree and selects
   expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain("Researcher's artifacts");
   expect(host.querySelectorAll('[role="tab"]').length).toBe(tabs);
   expect(rows().map((row) => row.title)).toContain('work/plan.md');
+});
+
+test('the pane a message adds on the workbench lists only the files that message names', async () => {
+  localStorage.removeItem('real-bot-workbench-layout');
+  const session = aDirect();
+  const attachments = ['plan.md', 'notes.md'].map((name, i) => anAttachment({
+    id: `own-att-${i}`, message_id: 'own-message', workspace_relpath: `work/${name}`,
+    original_filename: name, mime: 'text/markdown',
+  }));
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [session],
+    messages: [aMessage({ id: 'own-message', session_id: session.id, kind: 'bot', author: 'bot-1', task_id: 'task-1', attachments })],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+  }, { selectedId: session.id }));
+  let pulls = 0;
+  runtime.client = {
+    kind: 'local',
+    taskArtifacts: async () => {
+      pulls += 1;
+      return {
+        id: 'task-1', dir: 'work', title: 'plan', closed_at: null,
+        items: ['plan.md', 'notes.md', 'earlier.md'].map((name) => ({ path: `work/${name}`, last_cited_at: 'now', turn_id: null })),
+      };
+    },
+    getAttachmentBlob: async (id: string) => new Blob([`# ${id}`], { type: 'text/markdown' }),
+    getWorkspaceFileBlob: async (path: string) => new Blob([`# ${path}`], { type: 'text/markdown' }),
+  } as never;
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  click(host.querySelector('.attachment-bundle-btn'));
+  await settle();
+  await settle();
+  const files = [...host.querySelectorAll<HTMLButtonElement>('.artifact-tree-row')]
+    .map((row) => row.title)
+    .filter((title) => title.includes('.'));
+  // earlier.md is a file the job cited in another message.
+  expect(files.sort()).toEqual(['work/notes.md', 'work/plan.md']);
+  expect(pulls).toBe(0);
+  localStorage.removeItem('real-bot-workbench-layout');
 });
 
 test('on the workbench, Bot settings slide over the conversation with a scrim, not as a tab, and the model log has no entry', async () => {

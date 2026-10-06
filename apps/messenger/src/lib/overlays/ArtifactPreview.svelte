@@ -573,9 +573,9 @@
 			.map((row) => row.workspace_relpath)
 	);
 	/**
-	 * The job's files, anchored at its work dir, with this message's own marked — relevance is
-	 * "somebody cited it", so a file an earlier turn produced is still one click away. Falls back
-	 * to this message alone when the job is unknown or the pull failed.
+	 * Opened from a message, the files that message names and nothing else. Opened from the flow
+	 * chart, which names a job, the job's files anchored at its work dir with this step's own
+	 * marked — falling back to this step's alone when the pull failed.
 	 */
 	let citedTree = $derived(
 		taskArtifacts
