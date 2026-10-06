@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { commandLine, outputLang, splitProgram, viewedFile } from "./command-output.ts";
+import { commandLine, splitProgram } from "./command-line.ts";
+import { dedent, outputLang, viewedFile } from "./command-output.ts";
 
 test("the leading cd every command starts with goes, and a script's lines fold into one", () => {
   expect(commandLine('cd "/Users/me/real-bot-workspace/work/2026-10-05-x" && cat scratch/a.py')).toBe("cat scratch/a.py");
@@ -32,4 +33,10 @@ test("output is read by what printed it, then by its look, and as a log otherwis
   expect(outputLang("python3 render.py", "saved 3 frames to out/\n")).toBe("log");
   // A viewed file nobody can name falls back on the look of what it printed.
   expect(outputLang("cat notes.txt", "[1, 2]")).toBe("json");
+});
+
+test("a printed slice loses the indent all its lines share, and keeps the rest", () => {
+  expect(dedent("        if x:\n            y()\n\n        z()\n")).toBe("if x:\n    y()\n\nz()\n");
+  expect(dedent("a\n  b")).toBe("a\n  b");
+  expect(dedent("   \n")).toBe("   \n");
 });

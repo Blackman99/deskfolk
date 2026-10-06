@@ -86,7 +86,11 @@ test("a long subject is clipped to fit, a path from its start so the file name s
   const run = describeStep(step({ name: "shell", target: `${command}\nsecond line` }), zh, 0);
   expect(run.text.startsWith("运行 pnpm exec playwright")).toBe(true);
   expect(run.text.endsWith("…")).toBe(true);
-  expect(run.full).not.toContain("second line");
+  // Its lines fold onto one: a script's first line alone said only `python3 -c "`.
+  expect(run.full).not.toContain("\n");
+  expect(run.full.endsWith("second line")).toBe(true);
+  const script = describeStep(step({ name: "shell", target: 'cd "/w/job" && python3 -c "\nimport json\nprint(1)\n"' }), zh, 0);
+  expect(script.full).toBe('运行 python3 -c " import json print(1) "');
 });
 
 test("the whole turn is kept in order, each step with how long the daemon says it ran", () => {

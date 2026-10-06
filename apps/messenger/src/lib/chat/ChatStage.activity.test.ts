@@ -48,8 +48,9 @@ test("a working Bot's bubble ends on the step it is in instead of a bare 思考�
     flushSync();
     const line = host.querySelector<HTMLElement>(".is-streaming-wrap .stream-foot .stream-step");
     expect(line?.textContent).toBe("读取 src/app.ts");
-    // The tooltip has the whole subject, and says a click lists the steps.
-    expect(line?.getAttribute("title")).toBe(`读取 src/app.ts\n${t.chat.activity.showSteps}`);
+    // One step and nothing it prints: opening it would only say the line again, so it is a line.
+    expect(line?.tagName).toBe("SPAN");
+    expect(line?.getAttribute("title")).toBe("读取 src/app.ts");
     // The line changes with every step and its timer ticks; the live region does not read it out.
     expect(line?.getAttribute("aria-live")).toBe("off");
     // Nothing about the work is left in the header: it is all at the end of the bubble.
@@ -186,14 +187,15 @@ test("several Bots at once: each one's bubble shows its own step, said anything 
   }
 });
 
-test("clicking the line lists every step of the turn so far, and clicking again folds it", () => {
+test("clicking the line lists only what is going on now, and clicking again folds it", () => {
   const session = aDirect();
   const list = [
     aStep({ id: "c1", target: "deliveries/report.md", running: false, durationMs: 20 }),
     aStep({ id: "c2", name: "shell", target: "pnpm test", running: false, exitCode: 1, durationMs: 12_000 }),
     aStep({ id: "c3", name: "shell", target: "pnpm build", startedAt: Date.now() - 4_000 }),
+    aStep({ id: "c4", name: "read_file", target: "notes.md" }),
   ];
-  const { host, close } = stage(session, [aTurn({ session_id: session.id, created_at: new Date().toISOString() })], { "turn-1": list[2]! }, { "turn-1": list });
+  const { host, close } = stage(session, [aTurn({ session_id: session.id, created_at: new Date().toISOString() })], { "turn-1": list[3]! }, { "turn-1": list });
   try {
     flushSync();
     const toggle = host.querySelector<HTMLButtonElement>("button.stream-step");
@@ -204,19 +206,16 @@ test("clicking the line lists every step of the turn so far, and clicking again 
     const panel = host.querySelector(".turn-steps");
     expect(toggle?.getAttribute("aria-expanded")).toBe("true");
     expect(toggle?.getAttribute("aria-controls")).toBe(panel?.id);
-    expect(panel?.querySelector(".turn-steps-head")?.textContent).toBe(`${aBot().name} 这一轮 · 3 步`);
+    expect(panel?.querySelector(".turn-steps-head")?.textContent).toBe(`${aBot().name} 正在做的 2 件事`);
     const rows = [...panel!.querySelectorAll(".turn-step")].map((row) => [
       row.className.match(/is-(running|done|failed)/)?.[1],
       row.querySelector(".turn-step-text")?.textContent,
-      row.querySelector(".turn-step-meta")?.textContent?.replace(/\s+/g, " ").trim(),
     ]);
+    // What has finished is not repeated here: the commands are in the card, the rest is done with.
     expect(rows).toEqual([
-      ["done", "读了 deliveries/report.md", ""],
-      ["failed", "跑完 pnpm test", "退出码 1 12s"],
-      ["running", "运行 pnpm build", "4s"],
+      ["running", "运行 pnpm build"],
+      ["running", "读取 notes.md"],
     ]);
-    // It began after this page was listening, so nothing is said about missing steps.
-    expect(panel?.querySelector(".turn-steps-note")).toBeNull();
 
     click(toggle);
     expect(host.querySelector(".turn-steps")).toBeNull();
@@ -227,7 +226,7 @@ test("clicking the line lists every step of the turn so far, and clicking again 
 
 test("Escape inside the list folds it", () => {
   const session = aDirect();
-  const { host, close } = stage(session, [aTurn({ session_id: session.id })], { "turn-1": aStep() });
+  const { host, close } = stage(session, [aTurn({ session_id: session.id })], { "turn-1": aStep() }, { "turn-1": [aStep({ id: "r1", name: "shell", target: "pnpm build" }), aStep({ id: "r2", target: "notes.md" })] });
   try {
     flushSync();
     click(host.querySelector("button.stream-step"));
@@ -240,14 +239,15 @@ test("Escape inside the list folds it", () => {
   }
 });
 
-test("a turn that began before the page connected says its first steps may be missing", () => {
+test("what is going on now carries no note about the steps before the page connected", () => {
   const session = aDirect();
   const turn = aTurn({ session_id: session.id, created_at: "2026-09-19T02:00:00.000Z" });
-  const { host, close } = stage(session, [turn], { "turn-1": aStep() }, {}, { listeningSince: Date.parse("2026-09-19T02:05:00.000Z") });
+  const { host, close } = stage(session, [turn], { "turn-1": aStep() }, { "turn-1": [aStep({ id: "r1", name: "shell", target: "pnpm build" }), aStep({ id: "r2", target: "notes.md" })] }, { listeningSince: Date.parse("2026-09-19T02:05:00.000Z") });
   try {
     flushSync();
     click(host.querySelector("button.stream-step"));
-    expect(host.querySelector(".turn-steps-note")?.textContent).toBe(t.chat.activity.missedStart);
+    expect(host.querySelector(".turn-steps")).not.toBeNull();
+    expect(host.querySelector(".turn-steps-note")).toBeNull();
   } finally {
     close();
   }
@@ -265,7 +265,7 @@ test("before its first step there is nothing to open", () => {
   }
 });
 
-test("a command's output shows while it runs, and opens on demand once it has finished", () => {
+test("the line opens onto what a running command prints; a finished one is left to the card", () => {
   const session = aDirect();
   const list = [
     aStep({ id: "c1", name: "shell", target: "pnpm lint", running: false, exitCode: 0, durationMs: 2_000 }),
@@ -277,22 +277,20 @@ test("a command's output shows while it runs, and opens on demand once it has fi
     runtime.activity.applyTool({ type: "tool", turn_id: "turn-1", id, name: "shell", phase: "started", command: "x" });
     runtime.activity.applyStream({ type: "stream", id: `turn-1:${id}`, offset: 0, data: b64(text) });
   }
+  runtime.activityRevision += 1;
   try {
     flushSync();
     click(host.querySelector("button.stream-step"));
-    const outputs = () => [...host.querySelectorAll(".turn-step-output")].map((node) => node.textContent);
-    expect(outputs()).toEqual(["running 12 tests\n"]);
-    const show = host.querySelector<HTMLButtonElement>(".turn-step-output-toggle");
-    expect(show?.textContent).toBe("输出");
-    click(show);
-    expect(outputs()).toEqual(["lint clean\n", "running 12 tests\n"]);
-    expect(show?.getAttribute("aria-expanded")).toBe("true");
+    const outputs = [...host.querySelectorAll(".turn-step-output")].map((node) => node.textContent);
+    expect(outputs).toEqual(["running 12 tests\n"]);
+    expect([...host.querySelectorAll(".turn-step-text")].map((node) => node.textContent)).toEqual(["运行 pnpm test"]);
+    expect(host.querySelector(".turn-step-output-toggle")).toBeNull();
   } finally {
     close();
   }
 });
 
-test("a streaming reply's commands fold to one line, and stay as you left them while output comes in", () => {
+test("a streaming reply's finished commands fold to one line, and stay as you left them as more come in", () => {
   const session = aDirect();
   const turn = aTurn({ session_id: session.id, partial_text: "我先跑一下检查。" });
   const { host, close, runtime } = stage(session, [turn], {});
@@ -310,9 +308,10 @@ test("a streaming reply's commands fold to one line, and stay as you left them w
   const lines = () => [...host.querySelectorAll<HTMLElement>(".command-activity .command-row .command-line")];
   try {
     flushSync();
+    // The running one is not counted yet: it is the bubble's last line until it ends.
     expect(summary()?.getAttribute("aria-expanded")).toBe("false");
-    expect(summary()?.textContent?.replace(/\s+/g, " ").trim()).toBe("3 条命令 1 条失败");
-    expect(host.querySelector(".command-activity .command-row")).toBeNull();
+    expect(summary()?.textContent?.replace(/\s+/g, " ").trim()).toBe("2 条命令 · 1 条失败");
+    expect(host.querySelector(".command-activity .command-card")).toBeNull();
 
     click(summary());
     // The leading cd is gone, the program is set apart, and how it ended sits on the right.
@@ -324,22 +323,22 @@ test("a streaming reply's commands fold to one line, and stay as you left them w
     expect(rows).toEqual([
       ["pnpm", "pnpm lint", "退出码 1 2.0s"],
       ["mkdir", "mkdir -p out", "22ms"],
-      ["pnpm", "pnpm test", ""],
     ]);
     expect(lines()[0]!.getAttribute("title")).toBe('cd "/w/2026-10-05-x" && pnpm lint');
     // A command that printed nothing has nothing to open.
-    expect(lines().map((line) => line.tagName)).toEqual(["BUTTON", "DIV", "BUTTON"]);
-    // A running command's output waits to be asked for, like a finished one's.
+    expect(lines().map((line) => line.tagName)).toEqual(["BUTTON", "DIV"]);
     expect(output()).toBeNull();
-    click(lines()[2]!);
-    expect(output()).toBe("running 12 tests\n");
+    click(lines()[0]!);
+    expect(output()).toBe("lint failed\n");
 
-    // New output neither folds the list nor closes what you opened.
-    runtime.activity.applyStream({ type: "stream", id: `${turn.id}:c2`, offset: 17, data: b64("ok\n") });
+    // The running one ends and joins the list; the list stays open, and so does the output.
+    runtime.activity.applyTool({ type: "tool", turn_id: turn.id, id: "c2", name: "shell", phase: "exited", exit_code: 0, duration_ms: 3_100 });
     runtime.activityRevision += 1;
     flushSync();
     expect(summary()?.getAttribute("aria-expanded")).toBe("true");
-    expect(output()).toBe("running 12 tests\nok\n");
+    expect(summary()?.textContent?.replace(/\s+/g, " ").trim()).toBe("3 条命令 · 1 条失败");
+    expect(lines().map((line) => line.querySelector(".command-text")?.textContent)).toEqual(["pnpm lint", "mkdir -p out", "pnpm test"]);
+    expect(output()).toBe("lint failed\n");
   } finally {
     close();
   }
@@ -351,10 +350,16 @@ test("with several Bots, the name still opens the profile and the step opens tha
     aTurn({ id: "turn-1", session_id: session.id, bot_id: "bot-1" }),
     aTurn({ id: "turn-2", session_id: session.id, bot_id: "bot-2", created_at: "2026-09-19T02:00:00.500Z" }),
   ];
-  const { host, close, opened } = stage(session, turns, {
-    "turn-1": aStep({ id: "a1", target: "notes.md" }),
+  const { host, close, opened, runtime } = stage(session, turns, {
+    "turn-1": aStep({ id: "a1", name: "shell", target: "pnpm build" }),
     "turn-2": aStep({ id: "b1", name: "shell", target: "ffprobe clip.mp4" }),
   });
+  const b64 = (text: string) => Buffer.from(text).toString("base64");
+  for (const [turnId, id] of [["turn-1", "a1"], ["turn-2", "b1"]] as const) {
+    runtime.activity.applyTool({ type: "tool", turn_id: turnId, id, name: "shell", phase: "started", command: "x" });
+    runtime.activity.applyStream({ type: "stream", id: `${turnId}:${id}`, offset: 0, data: b64("working\n") });
+  }
+  runtime.activityRevision += 1;
   try {
     flushSync();
     const bubbles = [...host.querySelectorAll(".is-streaming-wrap")];
@@ -365,14 +370,14 @@ test("with several Bots, the name still opens the profile and the step opens tha
 
     click(bubbles[1]!.querySelector("button.stream-step"));
     const panel = host.querySelector(".turn-steps");
-    expect(panel?.querySelector(".turn-steps-head")?.textContent).toBe("审片员 这一轮 · 1 步");
+    expect(panel?.querySelector(".turn-steps-head")?.textContent).toBe("审片员 正在做");
     expect(panel?.querySelector(".turn-step-text")?.textContent).toBe("运行 ffprobe clip.mp4");
     expect(bubbles[1]!.contains(panel)).toBe(true);
 
     // One list at a time: opening the other Bot's swaps it.
     click(bubbles[0]!.querySelector("button.stream-step"));
     expect(host.querySelectorAll(".turn-steps")).toHaveLength(1);
-    expect(host.querySelector(".turn-steps-head")?.textContent).toBe(`${aBot().name} 这一轮 · 1 步`);
+    expect(host.querySelector(".turn-steps-head")?.textContent).toBe(`${aBot().name} 正在做`);
   } finally {
     close();
   }

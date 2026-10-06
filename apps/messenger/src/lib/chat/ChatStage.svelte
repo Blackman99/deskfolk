@@ -667,6 +667,26 @@
 	/** The working bubble whose steps are open: one at a time, and it goes with its turn. */
 	let openStepsTurn = $state<string | null>(null);
 
+	/**
+	 * What a working bubble's last line opens onto: only what is going on now. What has finished is
+	 * in the command card above it, or done with; listing the whole turn there repeated the card.
+	 */
+	function liveSteps(entry: ReplyingEntry): TurnSteps | null {
+		const all = stepsOfEntry(entry);
+		const rows = all?.rows.filter((row) => row.state === 'running') ?? [];
+		return rows.length ? { rows, dropped: 0, missedStart: false } : null;
+	}
+
+	/**
+	 * Whether opening the line shows more than it says: another step going on beside it, or what a
+	 * running command is printing. A lone step with nothing to show is just a line.
+	 */
+	function opensMore(entry: ReplyingEntry): boolean {
+		if (!entry.turn_id) return false;
+		const running = runtime.stepsOf(entry.turn_id).filter((step) => step.running);
+		return running.length > 1 || running.some((step) => step.name === 'shell' && Boolean(commandOutput(entry, step.id)));
+	}
+
 	function toggleSteps(turnId: string): void {
 		openStepsTurn = openStepsTurn === turnId ? null : turnId;
 	}
@@ -1847,15 +1867,19 @@
 											<div class="stream-foot">
 												<span class="pulse"></span>
 												{#if step}
-													<button
-														type="button"
-														class="stream-step is-toggle"
-														aria-live="off"
-														aria-expanded={openStepsTurn === item.turn.id}
-														aria-controls={`turn-steps-${item.turn.id}`}
-														title={`${step.full}\n${t.chat.activity.showSteps}`}
-														onclick={() => toggleSteps(item.turn.id)}
-													><span class="toggle-label">{step.text}</span></button>
+													{#if opensMore(entry)}
+														<button
+															type="button"
+															class="stream-step is-toggle"
+															aria-live="off"
+															aria-expanded={openStepsTurn === item.turn.id}
+															aria-controls={`turn-steps-${item.turn.id}`}
+															title={`${step.full}\n${t.chat.activity.showSteps}`}
+															onclick={() => toggleSteps(item.turn.id)}
+														><span class="toggle-label">{step.text}</span></button>
+													{:else}
+														<span class="stream-step" aria-live="off" title={step.full}>{step.text}</span>
+													{/if}
 													{#if step.elapsed}<span class="stream-step-elapsed mono" aria-hidden="true">{step.elapsed}</span>{/if}
 												{:else}
 													<span class="stream-step" aria-live="off">{said ? t.stream.streaming : statusLabels.running}</span>
@@ -1866,11 +1890,12 @@
 												</span>
 											</div>
 											{#if openStepsTurn === item.turn.id}
-												{@const steps = stepsOfEntry(entry)}
+												{@const steps = liveSteps(entry)}
 												{#if steps}
 													<TurnStepList
 														id={`turn-steps-${item.turn.id}`}
 														name={botAuthor?.name ?? t.top.deleted}
+														title={t.chat.activity.nowTitle(botAuthor?.name ?? t.top.deleted, steps.rows.length)}
 														{steps}
 														copy={t.chat.activity}
 														outputOf={(callId) => commandOutput(entry, callId)}

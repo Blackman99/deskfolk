@@ -11,12 +11,15 @@
 		/** What a command has printed, while this conversation is the one watching it. */
 		outputOf?: (callId: string) => string | null;
 		isUser?: boolean;
+		/** Its heading, when it lists something other than the whole turn. */
+		title?: string;
 		onClose: () => void;
 	}
 
-	let { id, name, steps, copy, outputOf, isUser = false, onClose }: Props = $props();
+	let { id, name, steps, copy, outputOf, isUser = false, title, onClose }: Props = $props();
 
 	const total = $derived(steps.rows.length + steps.dropped);
+	const heading = $derived(title ?? copy.stepsTitle(name, total));
 	/** A finished command's output opens on demand; the running one shows it as it goes. */
 	let opened = $state<string | null>(null);
 
@@ -36,14 +39,14 @@
 	class:is-user={isUser}
 	{id}
 	role="region"
-	aria-label={copy.stepsTitle(name, total)}
+	aria-label={heading}
 	onkeydown={(event) => {
 		if (event.key !== 'Escape') return;
 		event.stopPropagation();
 		onClose();
 	}}
 >
-	<div class="turn-steps-head">{copy.stepsTitle(name, total)}</div>
+	<div class="turn-steps-head">{heading}</div>
 	{#if steps.missedStart}
 		<p class="turn-steps-note">{copy.missedStart}</p>
 	{/if}

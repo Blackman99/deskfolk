@@ -1,5 +1,6 @@
 import type { ToolFrame } from "@real-bot/protocol";
 import type { Copy } from "../copy.ts";
+import { commandLine } from "./command-line.ts";
 
 /**
  * What each running turn is doing: every tool call this client has seen it make, in order. The
@@ -238,7 +239,8 @@ export function turnSteps(
 
 function subjectOf(step: ToolStep): string | null {
   if (step.mcp) return `${step.mcp.server} · ${step.mcp.tool}`;
-  if (step.target) return step.target.split("\n")[0]!.trim() || null;
+  // A command reads as its row in the command card does: no leading cd, its lines on one line.
+  if (step.target) return (step.name === "shell" ? commandLine(step.target) : step.target.split("\n")[0]!.trim()) || null;
   // A tool this table does not know still says which one it is.
   return VERBS[step.name] ? null : step.name;
 }

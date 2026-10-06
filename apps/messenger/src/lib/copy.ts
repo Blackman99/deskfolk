@@ -1093,6 +1093,8 @@ const zh = {
       failed: "失败",
       showSteps: "查看这一轮做过的步骤",
       stepsTitle: (name: string, n: number) => `${name} 这一轮 · ${n} 步`,
+      /** Over what a working Bot is doing right now, opened from the last line of its message. */
+      nowTitle: (name: string, n: number) => (n > 1 ? `${name} 正在做的 ${n} 件事` : `${name} 正在做`),
       missedStart: "这一轮在页面连上之前就开始了，那之前的步骤没有记录。",
       dropped: (n: number) => `更早的 ${n} 步没有列出。`,
       output: "输出",
@@ -2975,6 +2977,7 @@ const en: CopyShape<typeof zh> = {
       failed: "failed",
       showSteps: "Show the steps this turn has taken",
       stepsTitle: (name: string, n: number) => `${name} · this turn · ${n} step${n === 1 ? "" : "s"}`,
+      nowTitle: (name: string, n: number) => (n > 1 ? `${name} · ${n} things going on` : `${name} · going on now`),
       missedStart: "This turn began before this page connected; steps from before then are not listed.",
       dropped: (n: number) => `${n} earlier step${n === 1 ? " is" : "s are"} not listed.`,
       output: "Output",

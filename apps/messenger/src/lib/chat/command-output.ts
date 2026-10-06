@@ -3,31 +3,10 @@ import { tokensToHighlightedHtml } from "../css-highlight.ts";
 import { highlightLangFromPath, type HighlightLang } from "../highlight-lang.ts";
 import { HIGHLIGHT_CHAR_LIMIT } from "../highlight-mount.ts";
 import { ensureHighlightLang, getShikiHighlighter } from "../shiki-highlighter.ts";
+import { commandLine } from "./command-line.ts";
 
 /** What a command's output is painted as: a grammar, or Shiki's own reading of colour codes. */
 export type OutputLang = HighlightLang | "ansi";
-
-/** `cd <dir> &&` (or `;`): where it ran, which every command of a turn starts with. */
-const CD_PREFIX = /^cd\s+(?:"[^"]*"|'[^']*'|[^\s;&]+)\s*(?:&&|;)\s*/;
-
-/**
- * The command as its row shows it: without the leading `cd` that only says where it ran, its
- * lines folded into one. A Bot's `python3 -c "…"` used to show as just `python3 -c "`, and every
- * Claude Agent command as the same clipped workspace path.
- */
-export function commandLine(command: string): string {
-  let line = command.trim();
-  for (let match = CD_PREFIX.exec(line); match; match = CD_PREFIX.exec(line)) {
-    line = line.slice(match[0].length).trimStart();
-  }
-  return (line || command).replace(/\s+/g, " ").trim();
-}
-
-/** The program and the rest, so the row can set the program apart. */
-export function splitProgram(line: string): { program: string; rest: string } {
-  const at = line.search(/\s/);
-  return at < 0 ? { program: line, rest: "" } : { program: line.slice(0, at), rest: line.slice(at) };
-}
 
 /** Commands whose output is a file's own text: that file's name says how to read it. */
 const VIEWERS = new Set(["cat", "head", "tail", "bat", "less", "more", "nl", "sed"]);
@@ -48,6 +27,21 @@ export function viewedFile(command: string): string | null {
 
 const ANSI = /\x1b\[[0-9;]*[A-Za-z]/;
 const ANSI_ALL = /\x1b\[[0-9;]*[A-Za-z]/g;
+
+/**
+ * Without the indent every line shares: a slice of a file printed from inside a function started
+ * each line a dozen spaces in. The lines keep their indents relative to each other.
+ */
+export function dedent(text: string): string {
+  let common = Infinity;
+  for (const line of text.split("\n")) {
+    if (!line.trim()) continue;
+    common = Math.min(common, line.length - line.trimStart().length);
+    if (common === 0) return text;
+  }
+  if (!Number.isFinite(common)) return text;
+  return text.split("\n").map((line) => line.slice(Math.min(common, line.length - line.trimStart().length))).join("\n");
+}
 
 function isJson(text: string): boolean {
   try {
@@ -113,7 +107,7 @@ export const commandOutput: Action<HTMLElement, OutputParams> = (node, initial) 
       if (lang !== "ansi") await ensureHighlightLang(lang);
       const highlighter = await getShikiHighlighter();
       if (disposed || params.live || shown !== text || painted) return;
-      node.innerHTML = tokensToHighlightedHtml(text, highlighter, lang);
+      node.innerHTML = tokensToHighlightedHtml(dedent(text), highlighter, lang);
       painted = true;
     } catch {
       // The plain text is already there.
@@ -126,7 +120,7 @@ export const commandOutput: Action<HTMLElement, OutputParams> = (node, initial) 
     const { text, command, live } = params;
     if (shown !== text) {
       // Plain, colour codes left out until Shiki reads them.
-      node.textContent = text.replace(ANSI_ALL, "");
+      node.textContent = dedent(text.replace(ANSI_ALL, ""));
       shown = text;
       painted = false;
     }
