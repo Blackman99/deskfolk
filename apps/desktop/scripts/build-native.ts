@@ -86,6 +86,9 @@ export function daemonBuildPlan(triple: string, nativeDir: string): DaemonBuildP
         ]
       : []),
     "apps/daemon/src/main.ts",
+    // A Worker the daemon starts is only inside the executable when it is an entrypoint too: without
+    // it a `matches` check could not load its regex worker and read every pattern as broken.
+    "apps/daemon/src/acceptance-match-worker.ts",
     "--outfile",
     outfile,
   ];

@@ -1,9 +1,62 @@
 import { expect, test } from "bun:test";
 import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import type { Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+/**
+ * Every Worker the daemon starts, by the file it hands `new Worker(new URL("./…", import.meta.url))`.
+ * A compiled executable only carries a Worker that is one of its entrypoints; any other path is
+ * looked up on disk from the process's cwd and fails.
+ */
+function workerEntries(): string[] {
+  const found = new Set<string>();
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
+        for (const match of readFileSync(path, "utf8").matchAll(/new Worker\(new URL\("\.\/([^"]+)", import\.meta\.url\)/g)) {
+          found.add(join(dir, match[1]!).slice(import.meta.dir.length + 1));
+        }
+      }
+    }
+  };
+  walk(import.meta.dir);
+  return [...found].sort();
+}
+
+test("every Worker the daemon starts is an entrypoint wherever the daemon is compiled", () => {
+  const workers = workerEntries();
+  expect(workers).toContain("acceptance-match-worker.ts");
+  const compile = (JSON.parse(readFileSync(join(import.meta.dir, "../package.json"), "utf8")) as { scripts: { compile: string } }).scripts.compile;
+  const sidecar = readFileSync(join(import.meta.dir, "../scripts/build-sidecar.ts"), "utf8");
+  const native = readFileSync(join(import.meta.dir, "../../desktop/scripts/build-native.ts"), "utf8");
+  for (const worker of workers) {
+    expect(compile).toContain(` src/${worker} `);
+    expect(sidecar).toContain(`"src/${worker}"`);
+    expect(native).toContain(`"apps/daemon/src/${worker}"`);
+  }
+});
+
+// Shipped builds until this test read every `matches` pattern as one that "does not compile": the
+// regex Worker was not an entrypoint, so the compiled daemon could not start it.
+test.skipIf(process.platform !== "darwin")("a regex check runs in a compiled executable", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "compiled-regex-"));
+  const binary = join(directory, "regex-probe");
+  try {
+    const build = await Bun.build({
+      entrypoints: [join(import.meta.dir, "test-kit/compiled-regex-probe.ts"), ...workerEntries().map((worker) => join(import.meta.dir, worker))],
+      compile: { outfile: binary, autoloadDotenv: false, autoloadBunfig: false, autoloadTsconfig: false, autoloadPackageJson: false },
+    });
+    expect(build.success).toBe(true);
+    const run = Bun.spawnSync([binary], { cwd: "/", env: { HOME: directory, PATH: "/usr/bin:/bin", TMPDIR: directory }, timeout: 20_000 });
+    expect(JSON.parse(run.stdout.toString().trim())).toMatchObject({ outcome: "pass" });
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}, 60_000);
 
 // The shipped daemon is `bun build --compile` output (see apps/desktop/scripts/build-native.ts):
 // its modules live under `/$bunfs/root`, so anything read from a path beside the source is missing.
@@ -18,7 +71,7 @@ test.skipIf(process.platform !== "darwin")("the compiled daemon starts outside t
   const binary = join(directory, "real-bot-daemon");
   try {
     const build = await Bun.build({
-      entrypoints: [join(import.meta.dir, "main.ts")],
+      entrypoints: [join(import.meta.dir, "main.ts"), ...workerEntries().map((worker) => join(import.meta.dir, worker))],
       compile: { outfile: binary, autoloadDotenv: false, autoloadBunfig: false, autoloadTsconfig: false, autoloadPackageJson: false },
       plugins: [{
         name: "test-port",

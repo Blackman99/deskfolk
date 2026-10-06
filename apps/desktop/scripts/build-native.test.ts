@@ -54,6 +54,7 @@ test("the macOS daemon compile is unchanged: no Windows metadata flags, no .exe 
     "--no-compile-autoload-tsconfig",
     "--no-compile-autoload-package-json",
     "apps/daemon/src/main.ts",
+    "apps/daemon/src/acceptance-match-worker.ts",
     "--outfile",
     resolve(nativeDir, "real-bot-daemon"),
   ]);

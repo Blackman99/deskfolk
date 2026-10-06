@@ -36,6 +36,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 - In a direct, Send stayed grey for the few seconds (up to 20) the app took to read your line and work out which job it was about, and while the Bot worked the hint under the box said "Send after the reply ends" — though a line sent then was already read at the Bot's next step. Now Send stays open: your lines in a conversation are taken in the order they came, each waiting for the one before it, so the first opens the turn and the next are read at its next step instead of racing it to be the trigger. A line that is only a stop still goes first. The hint says "Enter to send — it reads it at its next step", and a Bot already at work is no longer shown replying under each line you add.
 
+### Pattern checks work in the installed app
+
+- A check that a file matches a pattern (an acceptance check of the `matches` kind) failed in every installed build with "pattern does not compile", whatever the pattern was. The daemon runs each pattern in a worker of its own so that a pathological one cannot hang it, and that worker was left out of the compiled daemon, so it never started; running from source was unaffected. The worker now ships inside the daemon, and a test fails when any worker the daemon starts is missing from a build.
+
 ## 0.1.0-rc.13 — 2026-10-06
 
 Unsigned macOS rc with an experimental unsigned Windows installer beside the `.dmg`s. This is not a supported signed installer; Gatekeeper or SmartScreen may block it. Prefer running from source.

@@ -88,6 +88,8 @@ if (import.meta.main) {
       "--compile",
       `--target=${target}`,
       join(daemonRoot, "src/main.ts"),
+      // A Worker the daemon starts is only inside the executable when it is an entrypoint too.
+      join(daemonRoot, "src/acceptance-match-worker.ts"),
       "--outfile",
       outfile,
     ],
