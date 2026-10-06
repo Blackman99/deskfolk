@@ -1688,6 +1688,7 @@
 						onDelete={(row) => void deleteDraft(row)}
 						onToggleStatus={(row, status) => void toggleAnnotation(row, status)}
 						onClose={() => (annotOpen = false)}
+						noTarget={!gate.ok && gate.reason === 'no-target'}
 					/>
 				</div>
 			{/if}

@@ -58,6 +58,13 @@ function listHarness(rows: Annotation[]) {
   return { ...view, calls };
 }
 
+/** A filter tab by its label; the tab also carries its state's dot and count. */
+function tab(host: HTMLElement, label: string): HTMLButtonElement {
+  const found = [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((el) => el.querySelector(".annot-filter-label")?.textContent === label);
+  if (!found) throw new Error(`no tab labelled ${label}`);
+  return found;
+}
+
 test("the list counts the file's annotations and filters them by state", () => {
   const { host, close } = listHarness([
     row({ id: "d", status: "draft", message_id: null }),
@@ -66,11 +73,17 @@ test("the list counts the file's annotations and filters them by state", () => {
   ]);
   expect(host.querySelector("h3")?.textContent).toBe("3 条批注");
   expect(host.querySelectorAll(".annot-item")).toHaveLength(3);
-  click(buttonByText(host, "已处理"));
+  // Each state's tab wears its colour and says how many; 全部 is the title's count already.
+  expect(tab(host, "全部").querySelector(".annot-dot, .annot-filter-count")).toBeNull();
+  for (const [label, state] of [["待处理", "is-open"], ["已处理", "is-resolved"], ["草稿", "is-draft"]] as const) {
+    expect(tab(host, label).querySelector(".annot-dot")?.classList.contains(state)).toBe(true);
+    expect(tab(host, label).querySelector(".annot-filter-count")?.textContent).toBe("1");
+  }
+  click(tab(host, "已处理"));
   const items = host.querySelectorAll(".annot-item");
   expect(items).toHaveLength(1);
   expect(items[0]?.textContent).toContain("Writer 已处理：改名为 picked");
-  click(buttonByText(host, "草稿"));
+  click(tab(host, "草稿"));
   expect(host.querySelector(".annot-item")?.getAttribute("data-annotation-id")).toBe("d");
   close();
 });
@@ -106,9 +119,22 @@ test("Escape in the edit box cancels the edit without closing anything else", ()
 });
 
 test("the list says so when a file has no annotations, and marks stale ones", () => {
+  // The app's own empty state, the faded mark with a title and what to do, not a grey icon of its own.
   const empty = listHarness([]);
-  expect(empty.host.textContent).toContain("这个文件还没有批注。");
+  const state = () => empty.host.querySelector(".empty-state");
+  expect(state()?.querySelector("h3")?.textContent).toBe("这个文件还没有批注");
+  expect(state()?.querySelector(".empty-hint")?.textContent).toContain("先存成草稿");
   empty.close();
+  // An empty tab says what would be there; a file nothing can be annotated on says that instead.
+  const someOpen = listHarness([row({ id: "o" })]);
+  click(tab(someOpen.host, "草稿"));
+  expect(someOpen.host.querySelector(".empty-state h3")?.textContent).toBe("没有草稿");
+  click(tab(someOpen.host, "已处理"));
+  expect(someOpen.host.querySelector(".empty-state h3")?.textContent).toBe("还没有已处理的批注");
+  someOpen.close();
+  const noTarget = render(AnnotationList, { annotations: [], t, locale: "zh", bots: new Map(), focusId: null, noTarget: true, onReveal: () => {}, onEdit: () => {}, onDelete: () => {}, onToggleStatus: () => {} });
+  expect(noTarget.host.querySelector(".empty-hint")?.textContent).toBe(t.stream.annotationNoTarget);
+  noTarget.close();
   const stale = listHarness([row({ stale: { kind: "moved", start_line: 9, start_col: 1, end_line: 10, end_col: 2 } }), row({ id: "gone", stale: { kind: "missing" } })]);
   expect(stale.host.textContent).toContain("原文已变，现在在第 9–10 行");
   expect(stale.host.textContent).toContain("文件不在了");

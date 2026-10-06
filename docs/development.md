@@ -141,7 +141,7 @@ Bot 资料中的 `RoutineCard.svelte` 读取 `snapshot.routines`，只提供现�
 - **圆角**：`--radius-xs/sm/md/lg/xl/full`（4 / 6 / 10 / 14 / 18 / 999px），不写字面值。
 - **过渡**：不写 `transition: all`，会把 left/top/width 也带上动画，布局一变卡片就滑过去。写时长和缓动，再加 `transition-property: var(--transition-props)`；真要动尺寸的（例如置顶区展开的 `max-height`）单独点名。
 - **图标**：内联 SVG 的 `stroke-width` 统一为 2。
-- **状态**：空闲不画任何标记（侧栏行、头像点都不画）；工作中是强调色，等你批准是警示色，等你回答是紫，失败 / 中断是红。有新版本的点是强调色，不是红：更新不是错误。
+- **状态**：空闲不画任何标记（侧栏行、头像点都不画）；工作中是强调色，等你批准是警示色，等你回答是紫，失败 / 中断是红。有新版本的点是强调色，不是红：更新不是错误。批注的三种状态各一个颜色（`AnnotationList.svelte` 的 `--annot-state`）：待处理是强调色，和文件上画的标记一致；已处理是 `--ok`；草稿是 `--muted`、虚线。列表里「选中」靠形态区分（浮起的标签、描边的卡片），不再用强调色的字，免得和待处理撞色。
 - **标识与空状态**：界面里的 Deskfolk 标识一律用 `src/lib/BrandMark.svelte`，颜色走 `--brand-*`，暗色下气泡提亮一档；不要再复制 SVG。任何「这里还什么都没有」的地方用 `src/lib/EmptyState.svelte`：淡化的标识（`BrandMark variant="art"`，颜色走 `--art-*`）、标题、一句该做什么、可选的按钮，`badge` 放一个说明缺的是什么的小图标。「思考中」是两个叠着的圆轮流放大（`ReplyingIndicator.svelte`），不是三个跳点。
 - **动效**：系统要求减少动效时，`base.css` 末尾的全局规则让所有动画和过渡一帧走完、停在终点（`animationend` 照常触发）；组件里不必再各写一段。
 

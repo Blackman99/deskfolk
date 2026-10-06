@@ -23,6 +23,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 - A card the app posts (the one waiting for your approval, say) listed every file handed over, each with the same page icon, so a video and a JSON file looked alike; a chip opened the preview beside the chat, and only a picture was enlarged over the whole app. A chip's icon now follows the extension (video, image, JSON, Markdown, code…; a picture still shows its thumbnail), and with many files only the first five are listed; after them always comes the same entry a Bot's message ends with, reading "N files", which opens every file of the card in the preview beside the chat. A chip opens its file over the whole app, the way a picture is: that one file with no file tree, where a video plays, a document reads and annotations work as usual; Escape, a click outside, the close button or the phone's Back puts it away. In the dark theme the grey icons of Markdown and plain text are lifted so they show, in the file tree too.
 
+### The annotation panel tells states apart at a glance, and is empty like the rest of the app
+
+- The annotation panel's tabs sat flush against the line under its title, Pending, Resolved and Drafts were all the same grey, and the picked tab was teal, the same teal as Pending. The title and the tabs are now one block with the line under the tabs, and each state has one colour — Pending teal (as the marks drawn on the file), Resolved green, Drafts grey and dashed: each tab carries its state's dot and count, and each annotation a coloured left edge and a state label with a dot; the picked tab is a raised pill in plain text. An empty list is no longer a grey bubble and a line but the app's usual empty state, with the faded mark, a title and a line on what would be there, different for each tab ("No drafts", "Nothing resolved yet"…); a file no Bot handed over says it cannot be annotated.
+
 ## 0.1.0-rc.13 — 2026-10-06
 
 Unsigned macOS rc with an experimental unsigned Windows installer beside the `.dmg`s. This is not a supported signed installer; Gatekeeper or SmartScreen may block it. Prefer running from source.
