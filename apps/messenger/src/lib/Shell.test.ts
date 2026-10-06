@@ -2565,3 +2565,48 @@ test('a failed setup save lets go of the wizard, so it leaves once setup is comp
   flushSync();
   expect(host.querySelector('.onboarding-screen')).toBeNull();
 });
+
+/**
+ * A file a card's chip opens lies over the whole app, as an enlarged picture does: Escape puts it
+ * away, except when it was typed into the file's own editor.
+ */
+test("Escape closes a file opened over the app from a card, but not from inside its editor", async () => {
+  localStorage.removeItem('real-bot-workbench-layout');
+  const session = aGroup({ id: 'g-card', name: 'Team' });
+  const card = aMessage({
+    id: 'card', session_id: session.id, kind: 'system', author: 'user',
+    body: 'job 的任务 01「稿子」交上来了（draft.md）。\n看过之后，放行或者退回。',
+    attachments: [anAttachment({ id: 'att-draft', message_id: 'card', workspace_relpath: 'work/job/draft.md', original_filename: 'draft.md', mime: 'text/markdown' })],
+    control: { kind: 'review_item', submission_id: 'sub-1', task_id: 'plan-1', ticket_id: 'ticket-1', requirement_ids: [], check_ids: [], offer: ['approve', 'reject'] } as never,
+  });
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [session], messages: [card],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+  }, { selectedId: session.id }));
+  runtime.client = {
+    kind: 'local',
+    getAttachmentBlob: async () => new Blob(['# draft'], { type: 'text/markdown' }),
+    getWorkspaceFileBlob: async () => new Blob(['# draft'], { type: 'text/markdown' }),
+  } as never;
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  await settle();
+  const escape = (target: EventTarget) => target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  const overlay = () => host.querySelector('.msg-file-overlay');
+
+  click(host.querySelector('[data-message-id="card"] .attachment-file-btn'));
+  await settle();
+  expect(overlay()).not.toBeNull();
+  const editor = document.createElement('div');
+  editor.className = 'monaco-editor';
+  overlay()!.querySelector('.msg-file-body')!.append(editor);
+  escape(editor);
+  await settle();
+  expect(overlay()).not.toBeNull();
+  escape(document.body);
+  await settle();
+  expect(overlay()).toBeNull();
+  // Nothing else went with it: the conversation is still on screen and no pane opened.
+  expect(host.querySelector('[data-message-id="card"]')).not.toBeNull();
+  expect(runtime.previewRelpath).toBeNull();
+});

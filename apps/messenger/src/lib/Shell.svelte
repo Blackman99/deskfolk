@@ -76,7 +76,7 @@
 	import { topLayer, type MobileDestination } from './mobile-route.ts';
 	import { closeEnlargedImage, imageEnlarged } from './chat/enlarged-images.ts';
 	import { closeMessageText, messageTextOpen } from './chat/message-text-pages.ts';
-	import { closeFullscreenPreview } from './overlays/fullscreen-preview.ts';
+	import { closeFullscreenPreview, fullscreenPreviewOpen } from './overlays/fullscreen-preview.ts';
 	import { pageSlide } from './mobile-page-slide.ts';
 	import { updateChecker } from './update-checker.svelte.ts';
 	import { spendCopyFor } from './spend/spend-copy.ts';
@@ -1113,7 +1113,10 @@
 
 <svelte:window
 	onkeydown={(e) => {
-		if (e.key === 'Escape' && !e.isComposing && closeFullscreenPreview()) {
+		if (e.key === 'Escape' && !e.isComposing && fullscreenPreviewOpen()) {
+			// Escape typed into a file's editor is the editor's, as in the conversation's preview.
+			if ((e.target as HTMLElement | null)?.closest?.('.monaco-editor, .editor-widget.find-widget, .artifact-cm')) return;
+			closeFullscreenPreview();
 			e.preventDefault();
 			e.stopImmediatePropagation();
 			return;

@@ -19,6 +19,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 - Opening a file from a Bot's message used to fill the tree beside the preview with every file the whole job had referenced: after a job of several rounds that was dozens of files, with the two or three this message spoke of lost among them. Opened from a message, the tree now holds only the files that message names — its attachments and the paths its text points to. The job's files are still listed when you open a file card on the flow board. A preview already open from before the update switches over the next time you open it from the message.
 
+### Files on the app's cards say what they are and open over the whole app
+
+- A card the app posts (the one waiting for your approval, say) listed every file handed over, each with the same page icon, so a video and a JSON file looked alike; a chip opened the preview beside the chat, and only a picture was enlarged over the whole app. A chip's icon now follows the extension (video, image, JSON, Markdown, code…; a picture still shows its thumbnail), and with many files only the first five are listed; after them always comes the same entry a Bot's message ends with, reading "N files", which opens every file of the card in the preview beside the chat. A chip opens its file over the whole app, the way a picture is: that one file with no file tree, where a video plays, a document reads and annotations work as usual; Escape, a click outside, the close button or the phone's Back puts it away. In the dark theme the grey icons of Markdown and plain text are lifted so they show, in the file tree too.
+
 ## 0.1.0-rc.13 — 2026-10-06
 
 Unsigned macOS rc with an experimental unsigned Windows installer beside the `.dmg`s. This is not a supported signed installer; Gatekeeper or SmartScreen may block it. Prefer running from source.

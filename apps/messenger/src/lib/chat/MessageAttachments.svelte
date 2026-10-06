@@ -4,6 +4,8 @@
 	import type { MessengerApi } from '../messenger-api.ts';
 	import { artifactKind, handedOverPaths, isInlineImageName, svgDisplayBlob } from '../overlays/artifacts.ts';
 	import { buildCitedPathTree, citedBundleName, countCitedFiles } from '../overlays/artifact-tree.ts';
+	import FileIcon from '../overlays/FileIcon.svelte';
+	import { fileIconFor } from '../overlays/file-icon.ts';
 	import { onDestroy } from 'svelte';
 	import { whenVisible } from '../when-visible.ts';
 
@@ -16,16 +18,18 @@
 		onPreview: (att: Attachment) => void;
 		/** A picture stays in the app. `from` is the control the picture grows out of. */
 		onOpenImage?: (att: Attachment, from?: HTMLElement) => void;
+		/** Any other file opened from its own chip, over the whole app the way a picture is. */
+		onOpenFile?: (att: Attachment) => void;
 		/**
-		 * Each file its own chip, a few of them at least: a hand-over's card is where you decide, so its
-		 * files are there to open, not folded into one folder to open first.
+		 * The app's own cards: the first few files each a chip, to open one by one where you decide,
+		 * and after them the same entry a Bot's message ends with, to all of them beside the chat.
 		 */
-		expand?: boolean;
+		cards?: boolean;
 	}
 
-	let { attachments, body = null, api, t, onPreview, onOpenImage, expand = false }: Props = $props();
-	/** How many files a card that shows each still shows one by one. */
-	const EXPANDED_MAX = 6;
+	let { attachments, body = null, api, t, onPreview, onOpenImage, onOpenFile, cards = false }: Props = $props();
+	/** How many files an app card shows as chips; the entry after them opens every one. */
+	const CARD_CHIPS = 5;
 
 	let thumbs = $state<Record<string, string>>({});
 	let missing = $state<Record<string, true>>({});
@@ -35,7 +39,8 @@
 	const tree = $derived(buildCitedPathTree(rows.map((row) => row.workspace_relpath)));
 	const fileCount = $derived(countCitedFiles(tree));
 	const bundle = $derived(citedBundleName(tree));
-	const collapse = $derived(rows.length > 1 && !(expand && rows.length <= EXPANDED_MAX));
+	const collapse = $derived(!cards && rows.length > 1);
+	const chips = $derived(cards ? rows.slice(0, CARD_CHIPS) : rows);
 	const previewTarget = $derived(rows.length > 0 ? firstPreviewable(rows) : null);
 
 	function withHandoffRows(stored: Attachment[], source: string | null): Attachment[] {
@@ -114,29 +119,37 @@
 			onOpenImage(att, ev.currentTarget instanceof HTMLElement ? ev.currentTarget : undefined);
 			return;
 		}
+		if (onOpenFile && !att.is_dir) {
+			onOpenFile(att);
+			return;
+		}
 		onPreview(att);
 	}
 </script>
 
+{#snippet bundleEntry()}
+	<button
+		type="button"
+		class="attachment-bundle-btn mt-4"
+		onclick={openBundle}
+		title={rows.map((row) => row.workspace_relpath).join("\n")}
+	>
+		<div class="file-icon-box text-accent flex items-center" aria-hidden="true">
+			<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
+		</div>
+		<div class="file-meta-col flex flex-col min-w-0 max-w-[170px]">
+			<span class="file-title text-12 font-semibold overflow-hidden text-ellipsis whitespace-nowrap">{bundle ?? t.stream.artifactBundle}</span>
+			<span class="file-sub text-10 text-muted overflow-hidden text-ellipsis whitespace-nowrap">{t.stream.artifactBundleCount(fileCount)}</span>
+		</div>
+	</button>
+{/snippet}
+
 {#if rows.length > 0}
 	{#if collapse}
-		<button
-			type="button"
-			class="attachment-bundle-btn mt-4"
-			onclick={openBundle}
-			title={rows.map((row) => row.workspace_relpath).join("\n")}
-		>
-			<div class="file-icon-box text-accent flex items-center" aria-hidden="true">
-				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
-			</div>
-			<div class="file-meta-col flex flex-col min-w-0 max-w-[170px]">
-				<span class="file-title text-12 font-semibold overflow-hidden text-ellipsis whitespace-nowrap">{bundle ?? t.stream.artifactBundle}</span>
-				<span class="file-sub text-10 text-muted overflow-hidden text-ellipsis whitespace-nowrap">{t.stream.artifactBundleCount(fileCount)}</span>
-			</div>
-		</button>
+		{@render bundleEntry()}
 	{:else}
 		<div class="msg-attachments-grid flex flex-wrap gap-4 mt-4">
-			{#each rows as att (att.id)}
+			{#each chips as att (att.id)}
 				{@const thumb = thumbs[att.id]}
 				{@const thumbPending = !thumb && pendingThumbs[att.id] === true}
 				<!-- A picture is fetched once its chip is scrolled near, not when the transcript loads. A
@@ -158,8 +171,8 @@
 							<span class="sr-only">{t.stream.artifactLoading}</span>
 						</span>
 					{:else}
-						<div class="file-icon-box text-accent flex items-center">
-							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+						<div class="file-icon-box flex items-center">
+							<FileIcon icon={fileIconFor(att.workspace_relpath, { isDir: att.is_dir })} size={18} />
 						</div>
 					{/if}
 					<div class="file-meta-col flex flex-col min-w-0 max-w-[170px]">
@@ -169,6 +182,9 @@
 				</button>
 			{/each}
 		</div>
+		{#if cards}
+			{@render bundleEntry()}
+		{/if}
 	{/if}
 {/if}
 

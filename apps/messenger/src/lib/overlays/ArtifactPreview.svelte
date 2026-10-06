@@ -87,7 +87,9 @@
 		/** Starts a terminal in this folder (absolute); without it the tree offers none. */
 		onOpenTerminal?: (dir: string) => void;
 		forceTree?: boolean;
-		/** The work dir this message belongs to; its whole job is listed, not just this message. */
+		/** One file and nothing beside it: a file opened over the whole app has no tree, however deep. */
+		noTree?: boolean;
+		/** The job the flow chart opened this from: its whole job is listed, not just this step. */
 		taskId?: string | null;
 		/** 挂到谁：the Bot message this preview hangs on; null means nothing can be annotated here. */
 		target?: AnnotationTarget | null;
@@ -122,6 +124,7 @@
 		onSelectWorkspacePath,
 		onOpenTerminal,
 		forceTree = false,
+		noTree = false,
 		taskId = null,
 		target = null,
 		annotations = [],
@@ -594,10 +597,11 @@
 	let truncatedHint = $state(false);
 	let tree = $derived(mode === 'workspace' ? workspaceTree : citedTree);
 	let showTree = $derived(
-		mode === 'workspace' ||
-			forceTree || Boolean(taskId) ||
-			tree.length > 1 ||
-			tree.some((node) => node.kind === 'dir')
+		!noTree &&
+			(mode === 'workspace' ||
+				forceTree || Boolean(taskId) ||
+				tree.length > 1 ||
+				tree.some((node) => node.kind === 'dir'))
 	);
 	let titleName = $derived(
 		attachment?.original_filename ??

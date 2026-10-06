@@ -178,3 +178,73 @@ test("a thumbnail is a background read that leaving the chat cancels", () => {
   close();
   expect(seen[0]!.signal?.aborted).toBe(true);
 });
+
+/** A chip says what kind of file it is, the way the file tree does, not one page icon for all. */
+test("a chip's icon follows the file's extension", () => {
+  const rows = ["master.mp4", "edl.json", "script.md"].map((name) =>
+    anAttachment({ id: name, original_filename: name, workspace_relpath: `work/edit/${name}` }));
+  const { host, close } = render(MessageAttachments, { attachments: rows, api: null, t, onPreview: () => {}, cards: true });
+  try {
+    const glyphs = [...host.querySelectorAll(".attachment-file-btn .file-glyph")];
+    expect(glyphs).toHaveLength(3);
+    // The video's camera, JSON's braces, Markdown's own mark: three different glyphs.
+    expect(glyphs[0]!.querySelector("svg path")?.getAttribute("d")).toBe("m16 10 6-3v10l-6-3z");
+    expect(glyphs[1]!.textContent?.trim()).toBe("{}");
+    expect(glyphs[2]!.querySelector("svg path")?.getAttribute("d")).toBe("M3 5h18v14H3z");
+  } finally {
+    close();
+  }
+});
+
+function mountCard(names: string[]) {
+  const opened: string[] = [];
+  const images: string[] = [];
+  const files: string[] = [];
+  const rows = names.map((name) => anAttachment({ id: name, original_filename: name, workspace_relpath: `work/job/${name}` }));
+  const view = render(MessageAttachments, {
+    attachments: rows,
+    api: null,
+    t,
+    cards: true,
+    onPreview: (att) => opened.push(att.id),
+    onOpenImage: (att) => images.push(att.id),
+    onOpenFile: (att) => files.push(att.id),
+  });
+  return { ...view, opened, images, files };
+}
+
+/** An app card shows its first five files and, after them, the entry a Bot's message ends with. */
+test("an app card shows five chips and always the entry to every file", () => {
+  const many = mountCard(["a.md", "b.md", "c.md", "d.md", "e.md", "f.md", "g.md"]);
+  try {
+    expect([...many.host.querySelectorAll(".attachment-file-btn .file-title")].map((el) => el.textContent)).toEqual(["a.md", "b.md", "c.md", "d.md", "e.md"]);
+    expect(many.host.querySelector(".attachment-bundle-btn")?.textContent).toContain("7 个文件");
+  } finally {
+    many.close();
+  }
+  const one = mountCard(["only.md"]);
+  try {
+    expect(one.host.querySelectorAll(".attachment-file-btn")).toHaveLength(1);
+    expect(one.host.querySelector(".attachment-bundle-btn")?.textContent).toContain("1 个文件");
+  } finally {
+    one.close();
+  }
+});
+
+test("on an app card a chip opens its file over the app, and the entry opens them beside the chat", () => {
+  const { host, close, opened, images, files } = mountCard(["shot.png", "master.mp4", "notes.md"]);
+  try {
+    const chips = [...host.querySelectorAll(".attachment-file-btn")];
+    click(chips[0]);
+    click(chips[1]);
+    click(chips[2]);
+    expect(images).toEqual(["shot.png"]);
+    expect(files).toEqual(["master.mp4", "notes.md"]);
+    expect(opened).toEqual([]);
+    // The entry opens on the first file, with every one in the tree beside it.
+    click(host.querySelector(".attachment-bundle-btn"));
+    expect(opened).toEqual(["shot.png"]);
+  } finally {
+    close();
+  }
+});

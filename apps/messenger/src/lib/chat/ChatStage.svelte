@@ -6,6 +6,7 @@
 	import Composer from './Composer.svelte';
 	import MessageAttachments from './MessageAttachments.svelte';
 	import MessageImageLightbox, { type ImageOrigin } from './MessageImageLightbox.svelte';
+	import MessageFileOverlay from './MessageFileOverlay.svelte';
 	import { copyableImageAt } from '../image-context.ts';
 	import { desktopPlatform } from '../platform.ts';
 	import ReplyingIndicator from './ReplyingIndicator.svelte';
@@ -224,6 +225,16 @@
 	const shownImage = $derived(
 		inlineImage && inlineImage.sessionId === (selected?.id ?? null) ? inlineImage : null
 	);
+	/** Any other file opened from a card's chip, over the whole app the way a picture is. */
+	let inlineFile = $state<{
+		sessionId: string | null;
+		attachment: Attachment | null;
+		relpath: string;
+		messageId: string;
+	} | null>(null);
+	const shownFile = $derived(
+		inlineFile && inlineFile.sessionId === (selected?.id ?? null) ? inlineFile : null
+	);
 
 	function pictureOrigin(from?: HTMLElement | null): ImageOrigin | null {
 		const picture =
@@ -242,6 +253,17 @@
 	function pictureStandIn(from?: HTMLElement | null): string | null {
 		const img = from instanceof HTMLImageElement ? from : from?.querySelector('img');
 		return img instanceof HTMLImageElement && img.complete && img.naturalWidth > 0 ? img.currentSrc || img.src : null;
+	}
+
+	function openInlineFile(att: Attachment, messageId: string): void {
+		inlineFile = {
+			sessionId: selected?.id ?? null,
+			// A file the card only names has no row of its own; the workspace has the bytes.
+			attachment: att.id.startsWith('handoff:') ? null : att,
+			relpath: att.workspace_relpath,
+			messageId
+		};
+		closeMessageContextMenu();
 	}
 
 	function openInlineImage(attachment: Attachment | null, relpath: string | null, from?: HTMLElement | null): void {
@@ -1461,7 +1483,8 @@
 										{t}
 										onPreview={(att) => onOpenArtifact(att.workspace_relpath, att, singleMsg.message.id)}
 										onOpenImage={(att, from) => openInlineImage(att, att.workspace_relpath, from)}
-										expand={singleMsg.message.control?.kind === 'review_item'}
+										onOpenFile={appLine ? (att) => openInlineFile(att, singleMsg.message.id) : undefined}
+										cards={appLine}
 									/>
 								{/if}
 								{#if singleMsg.message.control}
@@ -2081,6 +2104,17 @@
 			api={runtime.client}
 			{t}
 			onClose={() => (inlineImage = null)}
+		/>
+	{/if}
+
+	{#if shownFile}
+		<MessageFileOverlay
+			{runtime}
+			{t}
+			attachment={shownFile.attachment}
+			relpath={shownFile.relpath}
+			messageId={shownFile.messageId}
+			onClose={() => (inlineFile = null)}
 		/>
 	{/if}
 

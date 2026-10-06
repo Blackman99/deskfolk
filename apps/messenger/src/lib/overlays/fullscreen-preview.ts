@@ -9,6 +9,10 @@ export function holdFullscreenPreview(close: () => void): () => void {
   };
 }
 
+export function fullscreenPreviewOpen(): boolean {
+  return previews.length > 0;
+}
+
 export function closeFullscreenPreview(): boolean {
   const close = previews.pop();
   if (!close) return false;
