@@ -75,6 +75,7 @@
 	import MobileNavigation from './MobileNavigation.svelte';
 	import { topLayer, type MobileDestination } from './mobile-route.ts';
 	import { closeEnlargedImage, imageEnlarged } from './chat/enlarged-images.ts';
+	import { closeMessageText, messageTextOpen } from './chat/message-text-pages.ts';
 	import { closeFullscreenPreview } from './overlays/fullscreen-preview.ts';
 	import { pageSlide } from './mobile-page-slide.ts';
 	import { updateChecker } from './update-checker.svelte.ts';
@@ -262,6 +263,7 @@
 		if (closeFullscreenPreview()) return true;
 		switch (topLayer({
 			imageOpen: imageEnlarged(),
+			messageTextOpen: messageTextOpen(),
 			toolsMenuOpen,
 			createMenuOpen,
 			dangerConfirm: danger.dangerConfirm !== null,
@@ -284,6 +286,9 @@
 			case 'image':
 				// Not a screen: it goes back into the picture it grew out of, and the page stays.
 				return closeEnlargedImage();
+			case 'message-text':
+				// Not a screen either: the conversation it was opened from is still under it.
+				return closeMessageText();
 			case 'tools-menu':
 				toolsMenuOpen = false;
 				return true;

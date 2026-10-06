@@ -58,6 +58,7 @@
 	import { classifySession, isFileDropSession, presentBotIds, youBotPeer } from '../sidebar/session-groups.ts';
 	import { canQuoteReply, draftWithQuoteMention, quotePreview, quotedBotName } from './quote-reply.ts';
 	import MessageContextMenu from './MessageContextMenu.svelte';
+	import MessageTextSheet from './MessageTextSheet.svelte';
 	import { extractAssociatedFiles } from './message-context-menu.ts';
 	import { handedOverPaths } from '../overlays/artifacts.ts';
 	import { messageDisplayBody } from './message-body.ts';
@@ -976,8 +977,13 @@
 		x: number;
 		y: number;
 		selectedText: string | null;
+		/** Opened by a touch, where the press could not select: the menu offers the text on a page. */
+		touch: boolean;
 	} | null>(null);
 	const selectedMessageId = $derived(messageContextMenu?.message.id ?? null);
+	/** The message whose text is open on a page of its own, to select part of it. */
+	let textSheetId = $state<string | null>(null);
+	const textSheetMessage = $derived(textSheetId ? (snapshot.messages.find((row) => row.id === textSheetId) ?? null) : null);
 
 	let lastTouchTimestamp = 0;
 
@@ -1027,7 +1033,8 @@
 			message,
 			x: e.clientX,
 			y: e.clientY,
-			selectedText: isSelectionInside ? (selection ?? null) : null
+			selectedText: isSelectionInside ? (selection ?? null) : null,
+			touch: isMobile
 		};
 	}
 
@@ -2136,7 +2143,38 @@
 			onAttribution={!fileDrop && attributable(activeMenu.message) && connected && !lockedComposer
 				? () => { attributionEditId = activeMenu.message.id; }
 				: undefined}
+			onSelectText={activeMenu.touch ? () => { textSheetId = activeMenu.message.id; } : undefined}
 		/>
+	{/if}
+	{#if textSheetMessage}
+		{@const shown = textSheetMessage}
+		<MessageTextSheet
+			{t}
+			subject={`${isAppLine(shown) ? t.chat.appName : who(shown)} · ${formatMessageTime(shown.created_at)}`}
+			onClose={() => (textSheetId = null)}
+		>
+			<!-- As the conversation draws it: a reply or a line of yours as markdown, the rest as it is. -->
+			{#if shown.kind === 'user' || shown.kind === 'bot'}
+				<MarkdownBody
+					source={messageBody(shown)}
+					options={markdownOpts(shown)}
+					copyLabel={t.chat.copyCode}
+					copiedLabel={t.chat.copied}
+					onOpenArtifact={(path) => {
+						textSheetId = null;
+						onOpenArtifact(path, undefined, shown.id);
+					}}
+					onOpenImage={(path, from) => openBodyImage(shown, path, from)}
+					loadArtifactImage={loadBodyImage}
+					onOpenProfile={(id) => {
+						textSheetId = null;
+						onOpenProfile(id);
+					}}
+				/>
+			{:else}
+				<div class="whitespace-pre-wrap">{shown.body}</div>
+			{/if}
+		</MessageTextSheet>
 	{/if}
 	{#if attributionTarget}
 		{@const target = attributionTarget}

@@ -300,6 +300,49 @@ for (const kind of ["user", "bot", "ask", "system"] as const) {
       close();
     }
   });
+
+  test(`${kind} message opens its text on a page to select from, from a long-press only`, () => {
+    const session = aGroup({ id: "sess-1" });
+    const message = aMessage({
+      id: `select-text-${kind}`, session_id: session.id, kind,
+      author: kind === "user" ? "user" : "bot-1", body: "第一句。**第二句**要单独复制。",
+    });
+    const runtime = reactive(fakeRuntime({
+      bots: [aBot({ id: "bot-1" })], sessions: [session], messages: [message], turns: [],
+    }, { selectedId: session.id }));
+    const { host, close } = render(ChatStage, {
+      runtime, t, selected: session,
+      onOpenProfile: () => {}, onOpenArtifact: () => {}, onCreateBot: () => {},
+    });
+    const selectText = () => [...host.querySelectorAll<HTMLButtonElement>(".msg-context-menu-item")]
+      .find((button) => button.textContent?.trim() === t.chat.selectText);
+    try {
+      const segment = host.querySelector(`[data-message-id="select-text-${kind}"]`)!;
+      // A mouse selects in the bubble itself, so its menu has nothing to add.
+      segment.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 }));
+      flushSync();
+      expect(host.querySelector(".msg-context-menu")).not.toBeNull();
+      expect(selectText()).toBeUndefined();
+
+      segment.dispatchEvent(new Event("touchstart", { bubbles: true, cancelable: true }));
+      segment.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+      flushSync();
+      click(selectText());
+      expect(host.querySelector(".msg-context-menu")).toBeNull();
+      const page = host.querySelector(".message-text");
+      expect(page).not.toBeNull();
+      if (kind === "user" || kind === "bot") {
+        // As the bubble draws it: the markdown rendered, not its source.
+        expect(page?.querySelector(".md-body strong")?.textContent).toBe("第二句");
+      } else {
+        expect(page?.textContent?.trim()).toBe(message.body);
+      }
+      click(host.querySelector(".message-text-dialog .modal-back"));
+      expect(host.querySelector(".message-text")).toBeNull();
+    } finally {
+      close();
+    }
+  });
 }
 
 test("left clicking a message does not add is-selected class, right clicking selects it", async () => {

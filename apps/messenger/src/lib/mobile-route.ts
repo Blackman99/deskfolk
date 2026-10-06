@@ -125,6 +125,7 @@ export function stackAfter(stack: readonly string[], search: string, replaced: b
  */
 export type BackLayer =
   | "image"
+  | "message-text"
   | "tools-menu"
   | "create-menu"
   | "danger"
@@ -146,6 +147,7 @@ export type BackLayer =
 
 export type LayerState = {
   imageOpen: boolean;
+  messageTextOpen: boolean;
   toolsMenuOpen: boolean;
   createMenuOpen: boolean;
   dangerConfirm: boolean;
@@ -169,6 +171,10 @@ export type LayerState = {
 const LAYER_ORDER: ReadonlyArray<[BackLayer, keyof LayerState]> = [
   // An enlarged picture covers everything, whatever it was opened from; Back puts it away first.
   ["image", "imageOpen"],
+  // A message opened to select from lies over its conversation with no URL of its own, so Back
+  // closes it there instead of leaving the conversation under it. A picture opened from it is
+  // over it, so the picture goes first.
+  ["message-text", "messageTextOpen"],
   // Close the tools menu before navigating.
   ["tools-menu", "toolsMenuOpen"],
   // The phone's + menu, like any other menu: over everything, gone at the first Back.

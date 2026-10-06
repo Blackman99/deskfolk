@@ -1077,6 +1077,12 @@ const zh = {
     today: "今天",
     yesterday: "昨天",
     copyMessage: "复制内容",
+    /**
+     * On a phone a long-press opens a message's menu, so the message itself never selects. This
+     * page shows its text with nothing in the way of the phone's own selection.
+     */
+    selectText: "选择文本",
+    selectTextHint: "长按文字开始选择，拖动两端调整范围。",
     copyMessageId: "复制消息 ID",
     copied: "已复制",
     copyCode: "复制代码",
@@ -2966,6 +2972,8 @@ const en: CopyShape<typeof zh> = {
     today: "Today",
     yesterday: "Yesterday",
     copyMessage: "Copy message",
+    selectText: "Select text",
+    selectTextHint: "Touch and hold to start selecting; drag either end to adjust.",
     copyMessageId: "Copy message ID",
     copied: "Copied",
     copyCode: "Copy code",

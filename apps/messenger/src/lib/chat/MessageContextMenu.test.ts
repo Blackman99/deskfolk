@@ -28,10 +28,12 @@ function openMessageMenu(
   opts: {
     lockedComposer?: boolean;
     attribution?: boolean;
+    selectText?: boolean;
   } = {},
 ) {
   const calls = {
     attribution: 0,
+    selectText: 0,
     close: 0,
     reply: 0,
     copy: 0,
@@ -69,6 +71,7 @@ function openMessageMenu(
       calls.reaction.push(emoji);
     },
     ...(opts.attribution ? { onAttribution: () => { calls.attribution += 1; } } : {}),
+    ...(opts.selectText ? { onSelectText: () => { calls.selectText += 1; } } : {}),
   });
 
   return { ...view, calls };
@@ -141,4 +144,24 @@ test("a line that can be filed offers 「改归属…」, which opens the attrib
   const without = openMessageMenu(createTestMessage());
   expect([...without.host.querySelectorAll("button")].some((b) => b.textContent?.trim() === t.attribution.menuItem)).toBe(false);
   without.close();
+});
+
+test("a menu opened by a touch offers 「选择文本」 under copy, which opens the text and closes the menu; one opened by a mouse does not", () => {
+  const touch = openMessageMenu(createTestMessage(), { selectText: true });
+  const labels = [...touch.host.querySelectorAll(".msg-context-menu-item")].map((b) => b.textContent?.trim());
+  expect(labels.indexOf(t.chat.selectText)).toBe(labels.indexOf(t.chat.copyMessage) + 1);
+  click(buttonByText(touch.host, t.chat.selectText));
+  expect(touch.calls.selectText).toBe(1);
+  expect(touch.calls.close).toBe(1);
+  expect(touch.calls.copy).toBe(0);
+  touch.close();
+  const mouse = openMessageMenu(createTestMessage());
+  expect([...mouse.host.querySelectorAll("button")].some((b) => b.textContent?.trim() === t.chat.selectText)).toBe(false);
+  mouse.close();
+});
+
+test("a message with no text has nothing to select", () => {
+  const { host, close } = openMessageMenu(createTestMessage({ body: "" }), { selectText: true });
+  expect([...host.querySelectorAll("button")].some((b) => b.textContent?.trim() === t.chat.selectText)).toBe(false);
+  close();
 });

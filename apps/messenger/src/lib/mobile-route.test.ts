@@ -119,6 +119,7 @@ test("the stack follows the URL: back pops, a replacement rewrites the top, anyt
 function layers(over: Partial<LayerState> = {}): LayerState {
   return {
     imageOpen: false,
+    messageTextOpen: false,
     createMenuOpen: false,
     dangerConfirm: false,
     createBotOpen: false,
@@ -203,6 +204,14 @@ test("an enlarged picture is put away before anything else, menus included", () 
   // Opened from a preview or a thread, it is still over them; Back must not leave the page under it.
   expect(topLayer(layers({ imageOpen: true, artifactPreview: true }))).toBe("image");
   expect(topLayer(layers({ imageOpen: true, threadOpen: true, toolsMenuOpen: true }))).toBe("image");
+});
+
+test("a message opened to select from closes before the conversation under it, after a picture over it", () => {
+  expect(topLayer(layers({ messageTextOpen: true }))).toBe("message-text");
+  // It is in no URL, so whatever the conversation has open under it waits for the next Back.
+  expect(topLayer(layers({ messageTextOpen: true, threadOpen: true, artifactPreview: true }))).toBe("message-text");
+  // A picture opened from its text lies over it.
+  expect(topLayer(layers({ messageTextOpen: true, imageOpen: true }))).toBe("image");
 });
 
 test("the phone's tools menu is a menu: it goes before anything Back would navigate to", () => {

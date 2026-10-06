@@ -656,6 +656,46 @@ test('mounted Shell: Back puts an enlarged picture away and leaves the conversat
   }
 });
 
+test('mounted Shell: Back closes a message opened to select from and stays in the conversation', () => {
+  const previousMatchMedia = window.matchMedia;
+  window.matchMedia = ((query: string) => ({
+    matches: query === '(max-width: 680px)' || query === '(pointer: coarse)' || query === '(prefers-reduced-motion: reduce)',
+    media: query, onchange: null,
+    addListener: () => {}, removeListener: () => {},
+    addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false,
+  })) as typeof window.matchMedia;
+  try {
+    const session = aDirect({ id: 'bot-1', participants: [
+      { member: 'user', joined_at: 'now', left_at: null },
+      { member: 'bot-1', joined_at: 'now', left_at: null },
+    ] });
+    const runtime = reactive(fakeRuntime({
+      bots: [aBot({ id: 'bot-1', name: 'Alpha' })], sessions: [session],
+      messages: [aMessage({ id: 'msg-text', session_id: session.id, kind: 'bot', author: 'bot-1', body: 'One line to take out of a long reply.' })],
+      settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+    }, { selectedId: session.id }));
+    const { host, app, close } = render(Shell, { runtime }); cleanups.push(close);
+    const back = (app as unknown as { backMobileLayer: () => boolean }).backMobileLayer;
+    const t = copyFor('en');
+
+    // A long-press: the menu, then its Select text.
+    const segment = host.querySelector('[data-message-id="msg-text"]')!;
+    segment.dispatchEvent(new Event('touchstart', { bubbles: true }));
+    segment.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    flushSync();
+    click(buttonByText(host, t.chat.selectText));
+    expect(host.querySelector('.message-text')).not.toBeNull();
+    // The page is in no URL: Back closes it here, and the conversation is still open under it.
+    expect(back()).toBe(true);
+    flushSync();
+    expect(host.querySelector('.message-text')).toBeNull();
+    expect(runtime.selectedId).toBe(session.id);
+    expect(back()).toBe(false);
+  } finally {
+    window.matchMedia = previousMatchMedia;
+  }
+});
+
 test('mounted Shell: the drawer ✕ closes the open section before the drawer itself', () => {
   const previousMatchMedia = window.matchMedia;
   window.matchMedia = ((query: string) => ({

@@ -20,7 +20,8 @@
 		onShowTrace,
 		onCopyId,
 		onReaction,
-		onAttribution
+		onAttribution,
+		onSelectText
 	}: {
 		message: Message;
 		x: number;
@@ -37,6 +38,11 @@
 		onReaction: (emoji: string) => void;
 		/** Present when this line can be filed somewhere else. */
 		onAttribution?: () => void;
+		/**
+		 * Present when the menu came from a touch: the long-press that opened it could not select,
+		 * so copying part of the message needs the text on a page of its own.
+		 */
+		onSelectText?: () => void;
 	} = $props();
 
 	let menuEl = $state<HTMLElement | null>(null);
@@ -234,6 +240,25 @@
 		</svg>
 		<span>{t.chat.copyMessage}</span>
 	</button>
+
+	{#if onSelectText && data.canCopy}
+		<button
+			type="button"
+			class="msg-context-menu-item"
+			role="menuitem"
+			onclick={() => {
+				onSelectText();
+				onClose();
+			}}
+		>
+			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+				<path d="M17 22h-1a4 4 0 0 1-4-4V6a4 4 0 0 1 4-4h1"></path>
+				<path d="M7 22h1a4 4 0 0 0 4-4v-1"></path>
+				<path d="M7 2h1a4 4 0 0 1 4 4v1"></path>
+			</svg>
+			<span>{t.chat.selectText}</span>
+		</button>
+	{/if}
 
 	<button
 		type="button"
