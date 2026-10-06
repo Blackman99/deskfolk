@@ -1,29 +1,24 @@
 <script lang="ts">
-	import type { ActivityCopy, TurnSteps } from './turn-activity.ts';
+	import type { StepRow } from './turn-activity.ts';
 	import { commandOutput } from './command-output.ts';
 
+	/**
+	 * What a working message's last line opens onto: the steps going on now, each said whole, and
+	 * what a running command is printing as it prints it.
+	 */
 	interface Props {
 		id: string;
-		/** The Bot whose turn this is. */
-		name: string;
-		steps: TurnSteps;
-		copy: ActivityCopy;
+		/** Who is doing it, and how many things: the list's heading and its region name. */
+		title: string;
+		rows: StepRow[];
 		/** What a command has printed, while this conversation is the one watching it. */
 		outputOf?: (callId: string) => string | null;
-		isUser?: boolean;
-		/** Its heading, when it lists something other than the whole turn. */
-		title?: string;
 		onClose: () => void;
 	}
 
-	let { id, name, steps, copy, outputOf, isUser = false, title, onClose }: Props = $props();
+	let { id, title, rows, outputOf, onClose }: Props = $props();
 
-	const total = $derived(steps.rows.length + steps.dropped);
-	const heading = $derived(title ?? copy.stepsTitle(name, total));
-	/** A finished command's output opens on demand; the running one shows it as it goes. */
-	let opened = $state<string | null>(null);
-
-	/** Follow the end of the list and of a running command's output, the way a terminal does. */
+	/** Follow the end of the list, the way a terminal does. */
 	function pin(node: HTMLElement, _changed: unknown) {
 		const stick = () => {
 			node.scrollTop = node.scrollHeight;
@@ -36,45 +31,27 @@
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
 	class="turn-steps"
-	class:is-user={isUser}
 	{id}
 	role="region"
-	aria-label={heading}
+	aria-label={title}
 	onkeydown={(event) => {
 		if (event.key !== 'Escape') return;
 		event.stopPropagation();
 		onClose();
 	}}
 >
-	<div class="turn-steps-head">{heading}</div>
-	{#if steps.missedStart}
-		<p class="turn-steps-note">{copy.missedStart}</p>
-	{/if}
-	{#if steps.dropped}
-		<p class="turn-steps-note">{copy.dropped(steps.dropped)}</p>
-	{/if}
-	<ol class="turn-steps-list" use:pin={steps.rows.length}>
-		{#each steps.rows as row (row.id)}
+	<div class="turn-steps-head">{title}</div>
+	<ol class="turn-steps-list" use:pin={rows.length}>
+		{#each rows as row (row.id)}
 			{@const output = row.shell && outputOf ? outputOf(row.id) : null}
-			<li class="turn-step is-{row.state}">
-				<span class="turn-step-mark" aria-hidden="true">
-					{#if row.state === 'running'}<span class="turn-step-pulse"></span>{:else if row.state === 'failed'}✕{:else}✓{/if}
-				</span>
+			<li class="turn-step">
+				<span class="turn-step-mark" aria-hidden="true"><span class="turn-step-pulse"></span></span>
 				<span class="turn-step-text">{row.text}</span>
 				<span class="turn-step-meta mono">
-					{#if row.exitCode !== null}<span class="turn-step-exit">{copy.exit(row.exitCode)}</span>{/if}
 					{#if row.time}<span>{row.time}</span>{/if}
 				</span>
-				{#if output && row.state !== 'running'}
-					<button
-						type="button"
-						class="turn-step-output-toggle"
-						aria-expanded={opened === row.id}
-						onclick={() => (opened = opened === row.id ? null : row.id)}
-					>{copy.output}</button>
-				{/if}
-				{#if output && (row.state === 'running' || opened === row.id)}
-					<pre class="turn-step-output code-out mono" use:commandOutput={{ text: output, command: null, live: row.state === 'running' }}></pre>
+				{#if output}
+					<pre class="turn-step-output code-out mono" use:commandOutput={{ text: output, command: null, live: true }}></pre>
 				{/if}
 			</li>
 		{/each}
@@ -96,10 +73,6 @@
 		animation: stepsIn 0.16s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
-	.turn-steps.is-user {
-		align-self: flex-end;
-	}
-
 	.turn-steps-head {
 		font-size: 12px;
 		font-weight: 600;
@@ -107,14 +80,8 @@
 		margin-bottom: 6px;
 	}
 
-	.turn-steps-note {
-		margin: 0 0 6px;
-		font-size: 11px;
-		color: var(--muted);
-	}
-
 	.turn-steps-list {
-		/* A dozen rows: enough to see where it has been, not a log viewer pushing the transcript away. */
+		/* Steps side by side are few; a running command's output scrolls inside its own box. */
 		max-height: 18em;
 		margin: 0;
 		padding: 0;
@@ -139,11 +106,6 @@
 		text-align: center;
 	}
 
-	.turn-step.is-failed .turn-step-mark,
-	.turn-step-exit {
-		color: var(--danger);
-	}
-
 	.turn-step-pulse {
 		display: inline-block;
 		width: 6px;
@@ -160,10 +122,6 @@
 		white-space: pre-wrap;
 	}
 
-	.turn-step.is-done .turn-step-text {
-		color: var(--ink-secondary);
-	}
-
 	.turn-step-meta {
 		display: inline-flex;
 		gap: 6px;
@@ -171,23 +129,6 @@
 		color: var(--muted);
 		font-variant-numeric: tabular-nums;
 		white-space: nowrap;
-	}
-
-	.turn-step-output-toggle {
-		grid-column: 2 / -1;
-		justify-self: start;
-		padding: 0;
-		border: 0;
-		background: transparent;
-		color: var(--muted);
-		font-size: 11px;
-		text-decoration: underline dotted;
-		cursor: pointer;
-	}
-
-	.turn-step-output-toggle:focus-visible {
-		outline: 2px solid var(--accent);
-		outline-offset: 1px;
 	}
 
 	.turn-step-output {

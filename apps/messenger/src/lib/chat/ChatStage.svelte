@@ -67,8 +67,8 @@
 	import { sessionTitle } from '../sidebar/session-title.ts';
 	import { getStarterOptions } from './starter-prompts.ts';
 	import { distanceFromBottom, isNearBottom, maxScrollTop, stickAfterScroll } from './stream-scroll.ts';
-	import { composeTranscript, isLiveStatus, isPendingAsk, transcriptItemKey, type ReplyingEntry } from './transcript.ts';
-	import { describeStep, turnSteps, type StepLine, type TurnSteps } from './turn-activity.ts';
+	import { composeTranscript, isLiveStatus, isPendingAsk, transcriptItemKey } from './transcript.ts';
+	import { describeStep, stepRow, type StepLine, type StepRow } from './turn-activity.ts';
 	import { HISTORY_WINDOW_INITIAL, HISTORY_WINDOW_STEP, windowForIndex, windowedItems } from './history-window.ts';
 	import { deferWhileDragging } from '../workbench/pane-resize.svelte.ts';
 	import { INDEX_MIN_MARKS, activeIndexMark, messageIndexMarks, type IndexMark } from './message-index.ts';
@@ -640,32 +640,17 @@
 		}
 	});
 
-	/** What a thinking Bot is doing, once its turn has started a step: see turn-activity.ts. */
-	function stepLineOf(entry: ReplyingEntry): StepLine | null {
-		if (!entry.turn_id) return null;
-		const step = runtime.stepOf(entry.turn_id);
+	/** What a working turn is doing, once it has started a step: see turn-activity.ts. */
+	function stepLineOf(turnId: string): StepLine | null {
+		const step = runtime.stepOf(turnId);
 		return step ? describeStep(step, t.chat.activity, nowMs) : null;
 	}
 
-	/** Every step behind that line, for the list a click on it opens. */
-	function stepsOfEntry(entry: ReplyingEntry): TurnSteps | null {
-		if (!entry.turn_id) return null;
-		return turnSteps(
-			runtime.stepsOf(entry.turn_id),
-			runtime.droppedStepsOf(entry.turn_id),
-			entry.created_at,
-			runtime.listeningSince,
-			t.chat.activity,
-			nowMs
-		);
-	}
-
 	/** What one of its commands has printed, if this conversation was watching when it ran. */
-	function commandOutput(entry: ReplyingEntry, callId: string): string | null {
-		if (!entry.turn_id) return null;
+	function commandOutput(turnId: string, callId: string): string | null {
 		void runtime.activityRevision;
-		const id = `${entry.turn_id}:${callId}`;
-		return runtime.activity.forTurn(entry.turn_id).find((row) => row.id === id)?.text || null;
+		const id = `${turnId}:${callId}`;
+		return runtime.activity.forTurn(turnId).find((row) => row.id === id)?.text || null;
 	}
 
 	/**
@@ -677,11 +662,6 @@
 		return runtime.activity.forTurn(turnId);
 	}
 
-	/** A running turn as the step helpers read it, the way the thinking line read its entry. */
-	function workingEntry(turn: Turn): ReplyingEntry {
-		return { bot_id: turn.bot_id, created_at: turn.created_at, source: 'turn', turn_id: turn.id };
-	}
-
 	/** The working bubble whose steps are open: one at a time, and it goes with its turn. */
 	let openStepsTurn = $state<string | null>(null);
 
@@ -689,20 +669,18 @@
 	 * What a working bubble's last line opens onto: only what is going on now. What has finished is
 	 * in the command card above it, or done with; listing the whole turn there repeated the card.
 	 */
-	function liveSteps(entry: ReplyingEntry): TurnSteps | null {
-		const all = stepsOfEntry(entry);
-		const rows = all?.rows.filter((row) => row.state === 'running') ?? [];
-		return rows.length ? { rows, dropped: 0, missedStart: false } : null;
+	function liveSteps(turnId: string): StepRow[] | null {
+		const rows = runtime.stepsOf(turnId).filter((step) => step.running).map((step) => stepRow(step, t.chat.activity, nowMs));
+		return rows.length ? rows : null;
 	}
 
 	/**
 	 * Whether opening the line shows more than it says: another step going on beside it, or what a
 	 * running command is printing. A lone step with nothing to show is just a line.
 	 */
-	function opensMore(entry: ReplyingEntry): boolean {
-		if (!entry.turn_id) return false;
-		const running = runtime.stepsOf(entry.turn_id).filter((step) => step.running);
-		return running.length > 1 || running.some((step) => step.name === 'shell' && Boolean(commandOutput(entry, step.id)));
+	function opensMore(turnId: string): boolean {
+		const running = runtime.stepsOf(turnId).filter((step) => step.running);
+		return running.length > 1 || running.some((step) => step.name === 'shell' && Boolean(commandOutput(turnId, step.id)));
 	}
 
 	function toggleSteps(turnId: string): void {
@@ -1200,10 +1178,6 @@
 							{botsById}
 							isUser={false}
 							thinkingText={statusLabels.running}
-							stepLine={stepLineOf}
-							stepsOf={stepsOfEntry}
-							outputOf={commandOutput}
-							activityCopy={t.chat.activity}
 							deletedText={t.top.deleted}
 							{onOpenProfile}
 						/>
@@ -1526,10 +1500,6 @@
 										{botsById}
 										isUser={false}
 										thinkingText={statusLabels.running}
-										stepLine={stepLineOf}
-										stepsOf={stepsOfEntry}
-										outputOf={commandOutput}
-										activityCopy={t.chat.activity}
 										deletedText={t.top.deleted}
 										{onOpenProfile}
 									/>
@@ -1701,10 +1671,6 @@
 													{botsById}
 													isUser={true}
 													thinkingText={statusLabels.running}
-													stepLine={stepLineOf}
-													stepsOf={stepsOfEntry}
-													outputOf={commandOutput}
-													activityCopy={t.chat.activity}
 													deletedText={t.top.deleted}
 													{onOpenProfile}
 												/>
@@ -1833,8 +1799,7 @@
 									{/if}
 
 									{#if item.type === 'streaming'}
-										{@const entry = workingEntry(item.turn)}
-										{@const step = stepLineOf(entry)}
+										{@const step = stepLineOf(item.turn.id)}
 										{@const said = Boolean(item.turn.partial_text?.trim())}
 										<article class="msg is-stream is-reply">
 											<div class="who">{botAuthor?.name ?? t.top.deleted}</div>
@@ -1865,7 +1830,7 @@
 											<div class="stream-foot">
 												<span class="pulse"></span>
 												{#if step}
-													{#if opensMore(entry)}
+													{#if opensMore(item.turn.id)}
 														<button
 															type="button"
 															class="stream-step is-toggle"
@@ -1888,15 +1853,13 @@
 												</span>
 											</div>
 											{#if openStepsTurn === item.turn.id}
-												{@const steps = liveSteps(entry)}
-												{#if steps}
+												{@const rows = liveSteps(item.turn.id)}
+												{#if rows}
 													<TurnStepList
 														id={`turn-steps-${item.turn.id}`}
-														name={botAuthor?.name ?? t.top.deleted}
-														title={t.chat.activity.nowTitle(botAuthor?.name ?? t.top.deleted, steps.rows.length)}
-														{steps}
-														copy={t.chat.activity}
-														outputOf={(callId) => commandOutput(entry, callId)}
+														title={t.chat.activity.nowTitle(botAuthor?.name ?? t.top.deleted, rows.length)}
+														{rows}
+														outputOf={(callId) => commandOutput(item.turn.id, callId)}
 														onClose={() => (openStepsTurn = null)}
 													/>
 												{/if}
@@ -2044,10 +2007,6 @@
 													{botsById}
 													isUser={false}
 													thinkingText={statusLabels.running}
-													stepLine={stepLineOf}
-													stepsOf={stepsOfEntry}
-													outputOf={commandOutput}
-													activityCopy={t.chat.activity}
 													deletedText={t.top.deleted}
 													{onOpenProfile}
 												/>

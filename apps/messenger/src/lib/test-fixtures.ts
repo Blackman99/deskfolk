@@ -513,8 +513,6 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     // Not recorded: the transcript reads it on every render. A test stubs it to show a step.
     stepOf: () => null,
     stepsOf: () => [],
-    droppedStepsOf: () => 0,
-    listeningSince: 0,
     traceOpen: false,
     traceTaskId: null,
     traceSessionId: null,

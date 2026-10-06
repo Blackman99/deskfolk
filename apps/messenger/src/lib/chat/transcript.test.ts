@@ -131,7 +131,6 @@ test("a pending judgement appears as compact replying as soon as thinking starts
     entries: [
       expect.objectContaining({
         bot_id: "researcher",
-        source: "judgement",
         judgement_id: "pj1",
       }),
     ],

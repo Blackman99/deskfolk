@@ -8,12 +8,14 @@ import {
   type TurnStatus,
 } from "@real-bot/protocol";
 
+/**
+ * A Bot still deciding whether to join in on a line. A Bot at work is a streaming item of its own,
+ * whatever runs it and whether it has said anything (2026-10-06), so this is all the compact row shows.
+ */
 export type ReplyingEntry = {
   bot_id: string;
   created_at: string;
-  source: "turn" | "judgement";
-  turn_id?: string;
-  judgement_id?: string;
+  judgement_id: string;
 };
 
 export type TranscriptItem =
@@ -108,7 +110,6 @@ export function composeTranscript(
     addEntry(pending.message_id, {
       bot_id: pending.bot_id,
       created_at: pending.created_at,
-      source: "judgement",
       judgement_id: pending.id,
     });
   }

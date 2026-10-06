@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { ToolFrame } from "@real-bot/protocol";
 import { COPY } from "../copy.ts";
-import { LONG_STEP_MS, MAX_STEPS, TurnActivity, describeStep, stepRow, stepText, turnSteps, type ToolStep } from "./turn-activity.ts";
+import { LONG_STEP_MS, MAX_STEPS, TurnActivity, describeStep, stepRow, stepText, type ToolStep } from "./turn-activity.ts";
 
 const zh = COPY.zh.chat.activity;
 const en = COPY.en.chat.activity;
@@ -107,33 +107,20 @@ test("the whole turn is kept in order, each step with how long the daemon says i
   expect(activity.stepsFor("other")).toEqual([]);
 });
 
-test("a very long turn keeps its latest steps and counts the ones it let go", () => {
+test("a very long turn keeps its latest steps", () => {
   const activity = new TurnActivity();
   for (let i = 0; i < MAX_STEPS + 3; i++) activity.applyTool(frame({ id: `c${i}` }));
   expect(activity.stepsFor("T")).toHaveLength(MAX_STEPS);
   expect(activity.stepsFor("T")[0]!.id).toBe("c3");
-  expect(activity.droppedFor("T")).toBe(3);
   activity.forget("T");
-  expect(activity.droppedFor("T")).toBe(0);
+  expect(activity.stepsFor("T")).toEqual([]);
 });
 
-test("a row in the list says the whole thing, how long it took and how it ended", () => {
+test("a row in the list says the whole step going on, and how long it has taken", () => {
   const command = "pnpm build\npnpm test";
-  expect(stepRow(step({ name: "shell", target: command, running: false, exitCode: 2, durationMs: 12_300 }), zh, 0)).toEqual({
-    id: "c", state: "failed", text: `跑完 ${command}`, time: "12s", exitCode: 2, shell: true,
-  });
-  expect(stepRow(step({ target: "a.ts", running: false, exitCode: null, durationMs: 30 }), zh, 0))
-    .toMatchObject({ state: "done", text: "读了 a.ts", time: null, exitCode: null, shell: false });
-  expect(stepRow(step({ target: "a.ts", startedAt: 0 }), en, 65_000)).toMatchObject({ state: "running", text: "Reading a.ts", time: "1m 5s" });
-  expect(stepRow(step({ name: "mcp_x", mcp: { server: "GitHub", tool: "create-issue" }, running: false }), zh, 0).text)
-    .toBe("调用了 GitHub · create-issue");
-});
-
-test("a turn that began before this client listened may be missing its first steps", () => {
-  const listening = Date.parse("2026-09-19T02:00:10.000Z");
-  expect(turnSteps([], 0, "2026-09-19T02:00:00.000Z", listening, zh, 0).missedStart).toBe(true);
-  // A moment's disagreement between two clocks is not a gap.
-  expect(turnSteps([], 0, "2026-09-19T02:00:09.000Z", listening, zh, 0).missedStart).toBe(false);
-  expect(turnSteps([], 0, "2026-09-19T02:00:30.000Z", listening, zh, 0).missedStart).toBe(false);
-  expect(turnSteps([step({})], 4, "2026-09-19T02:00:30.000Z", listening, zh, 0)).toMatchObject({ dropped: 4, rows: [{ id: "c" }] });
+  expect(stepRow(step({ name: "shell", target: command }), zh, 12_300)).toEqual({ id: "c", text: `运行 ${command}`, time: "12s", shell: true });
+  // Under a second it says nothing about time.
+  expect(stepRow(step({ target: "a.ts" }), zh, 300)).toEqual({ id: "c", text: "读取 a.ts", time: null, shell: false });
+  expect(stepRow(step({ target: "a.ts" }), en, 65_000)).toMatchObject({ text: "Reading a.ts", time: "1m 5s" });
+  expect(stepRow(step({ name: "mcp_x", mcp: { server: "GitHub", tool: "create-issue" } }), zh, 0).text).toBe("调用 GitHub · create-issue");
 });

@@ -207,15 +207,9 @@ test("clicking the line lists only what is going on now, and clicking again fold
     expect(toggle?.getAttribute("aria-expanded")).toBe("true");
     expect(toggle?.getAttribute("aria-controls")).toBe(panel?.id);
     expect(panel?.querySelector(".turn-steps-head")?.textContent).toBe(`${aBot().name} 正在做的 2 件事`);
-    const rows = [...panel!.querySelectorAll(".turn-step")].map((row) => [
-      row.className.match(/is-(running|done|failed)/)?.[1],
-      row.querySelector(".turn-step-text")?.textContent,
-    ]);
+    const rows = [...panel!.querySelectorAll(".turn-step .turn-step-text")].map((row) => row.textContent);
     // What has finished is not repeated here: the commands are in the card, the rest is done with.
-    expect(rows).toEqual([
-      ["running", "运行 pnpm build"],
-      ["running", "读取 notes.md"],
-    ]);
+    expect(rows).toEqual(["运行 pnpm build", "读取 notes.md"]);
 
     click(toggle);
     expect(host.querySelector(".turn-steps")).toBeNull();
@@ -234,20 +228,6 @@ test("Escape inside the list folds it", () => {
     panel.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     flushSync();
     expect(host.querySelector(".turn-steps")).toBeNull();
-  } finally {
-    close();
-  }
-});
-
-test("what is going on now carries no note about the steps before the page connected", () => {
-  const session = aDirect();
-  const turn = aTurn({ session_id: session.id, created_at: "2026-09-19T02:00:00.000Z" });
-  const { host, close } = stage(session, [turn], { "turn-1": aStep() }, { "turn-1": [aStep({ id: "r1", name: "shell", target: "pnpm build" }), aStep({ id: "r2", target: "notes.md" })] }, { listeningSince: Date.parse("2026-09-19T02:05:00.000Z") });
-  try {
-    flushSync();
-    click(host.querySelector("button.stream-step"));
-    expect(host.querySelector(".turn-steps")).not.toBeNull();
-    expect(host.querySelector(".turn-steps-note")).toBeNull();
   } finally {
     close();
   }

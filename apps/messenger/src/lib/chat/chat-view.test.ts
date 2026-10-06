@@ -353,7 +353,7 @@ describe("chat-view helpers", () => {
           type: "replying",
           trigger_message_id: "cut-1",
           entries: [
-            { bot_id: "bot-1", source: "turn", turn_id: "turn-next", created_at: "2026-09-15T13:54:02.000Z" },
+            { bot_id: "bot-1", judgement_id: "pj-next", created_at: "2026-09-15T13:54:02.000Z" },
           ],
         },
       ];
@@ -364,7 +364,7 @@ describe("chat-view helpers", () => {
       expect(msgItem.type).toBe("message");
       if (msgItem.type === "message") {
         expect(msgItem.replying).toEqual([
-          { bot_id: "bot-1", source: "turn", turn_id: "turn-next", created_at: "2026-09-15T13:54:02.000Z" },
+          { bot_id: "bot-1", judgement_id: "pj-next", created_at: "2026-09-15T13:54:02.000Z" },
         ]);
       }
     });
@@ -376,8 +376,8 @@ describe("chat-view helpers", () => {
           type: "replying",
           trigger_message_id: "u1",
           entries: [
-            { bot_id: "bot-1", source: "turn", turn_id: "turn-1", created_at: "2026-09-15T13:54:01.000Z" },
-            { bot_id: "bot-2", source: "judgement", judgement_id: "pj1", created_at: "2026-09-15T13:54:01.000Z" },
+            { bot_id: "bot-1", judgement_id: "pj0", created_at: "2026-09-15T13:54:01.000Z" },
+            { bot_id: "bot-2", judgement_id: "pj1", created_at: "2026-09-15T13:54:01.000Z" },
           ],
         },
       ];
@@ -389,8 +389,8 @@ describe("chat-view helpers", () => {
       expect(msgItem.type).toBe("message");
       if (msgItem.type === "message") {
         expect(msgItem.replying).toEqual([
-          { bot_id: "bot-1", source: "turn", turn_id: "turn-1", created_at: "2026-09-15T13:54:01.000Z" },
-          { bot_id: "bot-2", source: "judgement", judgement_id: "pj1", created_at: "2026-09-15T13:54:01.000Z" },
+          { bot_id: "bot-1", judgement_id: "pj0", created_at: "2026-09-15T13:54:01.000Z" },
+          { bot_id: "bot-2", judgement_id: "pj1", created_at: "2026-09-15T13:54:01.000Z" },
         ]);
       }
     });
@@ -401,7 +401,7 @@ describe("chat-view helpers", () => {
           type: "replying",
           trigger_message_id: "missing-trigger",
           entries: [
-            { bot_id: "bot-1", source: "turn", turn_id: "turn-1", created_at: "2026-09-15T13:54:01.000Z" },
+            { bot_id: "bot-1", judgement_id: "pj0", created_at: "2026-09-15T13:54:01.000Z" },
           ],
         },
       ];

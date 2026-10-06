@@ -31,8 +31,6 @@ export const MAX_STEPS = 100;
 
 export class TurnActivity {
   private readonly steps = new Map<string, ToolStep[]>();
-  /** Steps a long turn has made beyond {@link MAX_STEPS}, dropped from the front. */
-  private readonly dropped = new Map<string, number>();
 
   applyTool(frame: ToolFrame, now = Date.now()): void {
     const list = this.steps.get(frame.turn_id) ?? [];
@@ -48,10 +46,7 @@ export class TurnActivity {
         exitCode: null,
         durationMs: null,
       });
-      if (list.length > MAX_STEPS) {
-        list.splice(0, list.length - MAX_STEPS);
-        this.dropped.set(frame.turn_id, (this.dropped.get(frame.turn_id) ?? 0) + 1);
-      }
+      if (list.length > MAX_STEPS) list.splice(0, list.length - MAX_STEPS);
       this.steps.set(frame.turn_id, list);
       return;
     }
@@ -75,18 +70,12 @@ export class TurnActivity {
     return this.steps.get(turnId) ?? [];
   }
 
-  droppedFor(turnId: string): number {
-    return this.dropped.get(turnId) ?? 0;
-  }
-
   forget(turnId: string): void {
     this.steps.delete(turnId);
-    this.dropped.delete(turnId);
   }
 
   clear(): void {
     this.steps.clear();
-    this.dropped.clear();
   }
 }
 
@@ -179,61 +168,29 @@ export function stepText(line: StepLine): string {
   return line.elapsed ? `${line.text} · ${line.elapsed}` : line.text;
 }
 
-/** One row of a turn's step list: what it did, whole, and how it went. */
+/**
+ * One row of the list a working message's last line opens: a step going on now, said whole. Only
+ * running steps get there; what has finished is in the command card, or done with.
+ */
 export type StepRow = {
   /** The tool call id, which with the turn id also names its command output. */
   id: string;
-  state: "running" | "done" | "failed";
   /** The whole phrase, the command every line of it: the list wraps where the line under a message clips. */
   text: string;
-  /** How long it took, or has taken so far; nothing under a second, where it would only be noise. */
+  /** How long it has taken so far; nothing under a second, where it would only be noise. */
   time: string | null;
-  /** A failed command's exit code. */
-  exitCode: number | null;
   shell: boolean;
 };
 
 export function stepRow(step: ToolStep, copy: ActivityCopy, nowMs: number): StepRow {
   const verb = copy.verbs[VERBS[step.name] ?? "call"];
   const subject = step.mcp ? `${step.mcp.server} · ${step.mcp.tool}` : step.target?.trim() || (VERBS[step.name] ? null : step.name);
-  const form = step.running ? verb.doing : verb.done;
-  const failed = !step.running && step.exitCode !== null && step.exitCode !== 0;
-  const ms = step.running ? nowMs - step.startedAt : step.durationMs;
+  const ms = nowMs - step.startedAt;
   return {
     id: step.id,
-    state: step.running ? "running" : failed ? "failed" : "done",
-    text: subject ? `${form} ${subject}` : form,
-    time: ms !== null && ms >= 1000 ? formatElapsed(ms) : null,
-    exitCode: failed ? step.exitCode : null,
+    text: subject ? `${verb.doing} ${subject}` : verb.doing,
+    time: ms >= 1000 ? formatElapsed(ms) : null,
     shell: step.name === "shell",
-  };
-}
-
-export type TurnSteps = {
-  /** Oldest first. */
-  rows: StepRow[];
-  /** Earlier steps past the list's limit. */
-  dropped: number;
-  /** The turn began before this client was listening, so its first steps may be missing. */
-  missedStart: boolean;
-};
-
-/** A phone's clock and the Mac's can disagree by a moment; a turn this close counts as seen. */
-const CLOCK_SLACK_MS = 2000;
-
-export function turnSteps(
-  steps: readonly ToolStep[],
-  dropped: number,
-  turnCreatedAt: string,
-  listeningSince: number,
-  copy: ActivityCopy,
-  nowMs: number,
-): TurnSteps {
-  const created = Date.parse(turnCreatedAt);
-  return {
-    rows: steps.map((step) => stepRow(step, copy, nowMs)),
-    dropped,
-    missedStart: Number.isFinite(created) && created < listeningSince - CLOCK_SLACK_MS,
   };
 }
 

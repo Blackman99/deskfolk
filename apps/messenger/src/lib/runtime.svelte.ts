@@ -484,11 +484,6 @@ export class MessengerRuntime {
    */
   private readonly turnActivity = new TurnActivity();
   toolRevision = $state(0);
-  /**
-   * When this client last started listening for tool frames. They are not replayed, so a turn
-   * that began earlier may have steps it never saw.
-   */
-  listeningSince = Date.now();
   private timer: ReturnType<typeof setTimeout> | null = null;
   /** When the loop owes its next attempt. A wake-up may bring the timer here, never past it. */
   private nextAttemptAt = 0;
@@ -3272,7 +3267,6 @@ export class MessengerRuntime {
     this.notificationCenter.clearBoundedReads();
     // A step that ended while the link was down would read as running forever.
     this.turnActivity.clear();
-    this.listeningSince = Date.now();
     this.toolRevision += 1;
     this.connectFailures += 1;
     this.connection = this.connectFailures >= CONNECTING_ATTEMPTS ? "disconnected" : "connecting";
@@ -3365,12 +3359,6 @@ export class MessengerRuntime {
   stepsOf(turnId: string): readonly ToolStep[] {
     void this.toolRevision;
     return this.turnActivity.stepsFor(turnId);
-  }
-
-  /** Earlier steps of a long turn that fell off the front of {@link stepsOf}. */
-  droppedStepsOf(turnId: string): number {
-    void this.toolRevision;
-    return this.turnActivity.droppedFor(turnId);
   }
 
   /** Whether this turn belongs to the conversation on screen. */
