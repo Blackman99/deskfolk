@@ -6,8 +6,9 @@
  * to its memories and skills that carry that forward. The app writes those changes, checking each.
  */
 import type { DueRetrospective } from "../store/retrospectives";
+import { fill } from "./fill";
 
-export function retrospectiveSystem(locale: "zh" | "en"): string {
+function retrospectiveText(locale: "zh" | "en"): string {
   if (locale === "en") {
     return [
       "You are looking back on a job the user has just accepted and that is now delivered: where you tripped up in it, which of your ways made the user keep giving feedback and sending work back, and what you should do again next time you do something like it. Then carry what is worth keeping into your memories and skills — correcting, merging and sharpening what is already there, not piling on.",
@@ -102,6 +103,25 @@ export function retrospectiveSystem(locale: "zh" | "en"): string {
     "  ]",
     "}",
   ].join("\n");
+}
+
+/** Where the fixed answer format starts: from this line to the end the parser reads it (ADR 0064). */
+const RETROSPECTIVE_FORMAT_START = { zh: "只回答一个 JSON 对象，不要别的文字：", en: "Answer with exactly one JSON object and nothing else:" } as const;
+
+/** The JSON the app reads back; an edited prompt keeps it where `{format}` sits. */
+export function retrospectiveFormat(locale: "zh" | "en"): string {
+  const text = retrospectiveText(locale);
+  return text.slice(text.indexOf(RETROSPECTIVE_FORMAT_START[locale]));
+}
+
+/** The editable part of the retrospective's prompt, with `{format}` where its answer format goes. */
+export function retrospectiveTemplate(locale: "zh" | "en"): string {
+  const text = retrospectiveText(locale);
+  return `${text.slice(0, text.indexOf(RETROSPECTIVE_FORMAT_START[locale]))}{format}`;
+}
+
+export function retrospectiveSystem(locale: "zh" | "en"): string {
+  return fill(retrospectiveTemplate(locale), { format: retrospectiveFormat(locale) });
 }
 
 export function retrospectivePayload(due: DueRetrospective): string {

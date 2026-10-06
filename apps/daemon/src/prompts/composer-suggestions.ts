@@ -1,19 +1,25 @@
+import { fill } from "./fill";
+
 /**
  * Short, tool-less call that proposes the user's next composer drafts from the current transcript.
  * Failure is silent: the composer bar just stays empty.
  */
-export const COMPOSER_SUGGEST_SYSTEM = `你在给用户写下一步要发进输入框的草稿，不是回答群里的人，也不是替 Bot 说话。没有工具，不能发言，不能读工作区。
+export const COMPOSER_SUGGEST_TEMPLATE = `你在给用户写下一步要发进输入框的草稿，不是回答群里的人，也不是替 Bot 说话。没有工具，不能发言，不能读工作区。
 
 根据用户消息这份 JSON 里的 session、members、situation、plan、recent_messages 决定用户现在最该发什么。plan 是这个会话正在推进的规划（没有则为 null）：goal 是目标，acceptance 是怎么算完成，open_tickets 是还没做完的任务。草稿要朝着把它做完、验收它的方向去，不要把已经提过的要求再说一遍。
 
-只输出一个 JSON 对象。不要 markdown 围栏，不要前言后语，不要 tool-call。
+{format}
+
+策略：看 recent_messages 和 situation，写用户这一个座位现在该说的话。群里点名会让对方必须下场，所以只在确实要叫醒某人时才在 prompt 里写 @名字 或 @everyone，名字必须从 members 原样抄。私聊不要写 @。不要复述 Bot 刚说过的长段，不要替 Bot 起草回复。会话还没有消息时，建议一句能让在场的人开始干活的开场。`;
+/** Composer suggestions. Fixed: the parser reads it, so an edited prompt keeps it where `{format}` sits (ADR 0064). */
+export const COMPOSER_SUGGEST_FORMAT = `只输出一个 JSON 对象。不要 markdown 围栏，不要前言后语，不要 tool-call。
 
 - suggestions：0 到 4 条。每条都有 label 和 prompt。
   - label：芯片上的短句，中文大约 18 字以内，英文大约 36 字符以内。
   - prompt：点芯片后原样填进输入框的完整草稿，就是用户接下来会发出去的那一条。
-- 没有值得建议的下一步时返回空数组，不要硬凑寒暄。
+- 没有值得建议的下一步时返回空数组，不要硬凑寒暄。`;
+export const COMPOSER_SUGGEST_SYSTEM = fill(COMPOSER_SUGGEST_TEMPLATE, { format: COMPOSER_SUGGEST_FORMAT });
 
-策略：看 recent_messages 和 situation，写用户这一个座位现在该说的话。群里点名会让对方必须下场，所以只在确实要叫醒某人时才在 prompt 里写 @名字 或 @everyone，名字必须从 members 原样抄。私聊不要写 @。不要复述 Bot 刚说过的长段，不要替 Bot 起草回复。会话还没有消息时，建议一句能让在场的人开始干活的开场。`;
 
 export const COMPOSER_SUGGEST_RECENT = 8;
 export const COMPOSER_SUGGEST_BODY = 400;

@@ -16,7 +16,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AcceptanceCheck, Locale } from "@real-bot/protocol";
 import type { CheckVerdict } from "./acceptance-eval";
-import { resolveFfmpegBins, runProcess } from "./seams-check";
+import { fill } from "./prompts/fill";
+import { resolveFfmpegBins, runProcess, seamsRulesText } from "./seams-check";
 import { ENV_WHITELIST } from "./terminal-env";
 import { classifyPath } from "./workspace-paths";
 
@@ -101,13 +102,21 @@ function present(root: string, paths: readonly string[]): string[] {
   });
 }
 
-/** The system prompt: what is compared, the plan's rules, and the JSON it answers with. */
-export function standardJudgePrompt(item: string, rules: readonly string[], locale: Locale): string {
-  const zh = locale !== "en";
-  const rulesText = rules.length ? rules.map((rule) => `- ${rule}`).join("\n") : zh ? "（这个规划没有定过额外规则）" : "(this plan has no extra rules)";
-  if (zh) {
+/** The JSON the standard judge answers with. Fixed: the parser reads it (ADR 0064). */
+export function standardJudgeFormat(locale: Locale): string {
+  return locale !== "en"
+    ? `只输出 JSON，不要 markdown 围栏，不要前言后语：{"ok":true,"issues":[]}。ok 是这次是否达到样片的水准；没达到时 issues 每条一句话，说清这次哪里不如样片、在哪（第几帧、哪一段）。`
+    : `Answer with JSON only, no markdown fences, no preamble: {"ok":true,"issues":[]}. ok is whether this keeps the sample's standard; when it does not, issues has one line each saying where this falls short of the sample (which frame, which passage).`;
+}
+
+/**
+ * The standard judge's editable instructions (ADR 0064): `{item}` is the acceptance line, `{rules}`
+ * the plan's rules, `{format}` where the fixed answer format goes.
+ */
+export function standardJudgeTemplate(locale: Locale): string {
+  if (locale !== "en") {
     return [
-      `你在核对一件大活里的一部分有没有达到用户放行的样片的水准，为这条验收作证：${item}`,
+      `你在核对一件大活里的一部分有没有达到用户放行的样片的水准，为这条验收作证：{item}`,
       "先给的是样片（用户亲自看过并放行，就是要达到的水准），后给的是这次交上来的那一部分。两者内容不同是正常的（不同的场、章、页）；只比做工和形式：",
       [
         "1. 形式：样片是什么东西，这次是不是同样的东西。样片画面在动，这次却大多是静止图片加推拉摇移，就是没达到；样片是成段的正文，这次只有提纲，也是没达到。",
@@ -115,13 +124,13 @@ export function standardJudgePrompt(item: string, rules: readonly string[], loca
         "3. 完整：样片有的东西（声音、对白、字幕、配色、排版、清晰度），这次也要有。",
         "4. 质量：画面清楚、人物和画风前后一致、文字通顺，不比样片明显差。",
       ].join("\n"),
-      `这个规划定过的规则：\n${rulesText}`,
+      "这个规划定过的规则：\n{rules}",
       "拿不准就判达到：只有看得出、说得出的差距才算没达到。",
-      `只输出 JSON，不要 markdown 围栏，不要前言后语：{"ok":true,"issues":[]}。ok 是这次是否达到样片的水准；没达到时 issues 每条一句话，说清这次哪里不如样片、在哪（第几帧、哪一段）。`,
+      "{format}",
     ].join("\n\n");
   }
   return [
-    `You are checking whether one part of a large job keeps the standard of the sample the user approved, to prove this acceptance line: ${item}`,
+    `You are checking whether one part of a large job keeps the standard of the sample the user approved, to prove this acceptance line: {item}`,
     "First comes the sample (the user looked at it and approved it: it is the bar), then the part handed over now. Their content differs, as it should (another scene, chapter or page); compare only the craft and the form:",
     [
       "1. Form: is this the same kind of thing as the sample? Mostly still pictures under camera moves where the sample's picture moves falls short; an outline where the sample is finished prose falls short.",
@@ -129,10 +138,15 @@ export function standardJudgePrompt(item: string, rules: readonly string[], loca
       "3. Completeness: what the sample has (sound, dialogue, subtitles, colour, layout, sharpness), this has too.",
       "4. Quality: clear pictures, characters and style consistent, readable text — not clearly worse than the sample.",
     ].join("\n"),
-    `Rules this plan has settled on:\n${rulesText}`,
+    "Rules this plan has settled on:\n{rules}",
     "When unsure, pass it: only a gap you can see and name falls short.",
-    `Answer with JSON only, no markdown fences, no preamble: {"ok":true,"issues":[]}. ok is whether this keeps the sample's standard; when it does not, issues has one line each saying where this falls short of the sample (which frame, which passage).`,
+    "{format}",
   ].join("\n\n");
+}
+
+/** The system prompt: what is compared, the plan's rules, and the JSON it answers with. */
+export function standardJudgePrompt(item: string, rules: readonly string[], locale: Locale): string {
+  return fill(standardJudgeTemplate(locale), { item, rules: seamsRulesText(rules, locale), format: standardJudgeFormat(locale) });
 }
 
 /** Strict: valid JSON with a boolean `ok`; issues kept as strings. Null when it does not read. */

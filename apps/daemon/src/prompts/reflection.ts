@@ -5,8 +5,9 @@
  * detector code: the app turns the answer into a card, and only your 采用 makes it hold.
  */
 import type { DueReflection } from "../store/reflection";
+import { fill } from "./fill";
 
-export function reflectionSystem(locale: "zh" | "en"): string {
+function reflectionText(locale: "zh" | "en"): string {
   if (locale === "en") {
     return [
       "You are looking back at one ticket of yours that went wrong, to keep it from happening again.",
@@ -25,6 +26,29 @@ export function reflectionSystem(locale: "zh" | "en"): string {
     '- {"kind":"none","reason":"…"}：学不到可推广的东西时（口味问题、一次性的、要求变了）。',
     "宁可 none，也不要含糊的条目。不要提议换模型、更用心，或任何要用户去做的事。",
   ].join("\n");
+}
+
+/** The three answer shapes, one per line; the parser reads them, so they stay fixed (ADR 0064). */
+function reflectionLines(locale: "zh" | "en"): { lines: string[]; from: number; to: number } {
+  const lines = reflectionText(locale).split("\n");
+  const from = lines.findIndex((line) => line.startsWith('- {"kind":"checklist"'));
+  const to = lines.findIndex((line) => line.startsWith('- {"kind":"none"')) + 1;
+  return { lines, from, to };
+}
+
+export function reflectionFormat(locale: "zh" | "en"): string {
+  const { lines, from, to } = reflectionLines(locale);
+  return lines.slice(from, to).join("\n");
+}
+
+/** The editable part of the reflection's prompt, with `{format}` where its answer shapes go. */
+export function reflectionTemplate(locale: "zh" | "en"): string {
+  const { lines, from, to } = reflectionLines(locale);
+  return [...lines.slice(0, from), "{format}", ...lines.slice(to)].join("\n");
+}
+
+export function reflectionSystem(locale: "zh" | "en"): string {
+  return fill(reflectionTemplate(locale), { format: reflectionFormat(locale) });
 }
 
 export function reflectionPayload(due: DueReflection): string {

@@ -36,6 +36,7 @@ import type { AcceptanceCheck, Locale } from "@real-bot/protocol";
 import type { CheckVerdict } from "./acceptance-eval";
 import { checkEnv } from "./acceptance-eval";
 import { globToRegExp, isGlobPattern, splitGlobDir } from "./glob";
+import { fill } from "./prompts/fill";
 import { takeCodePoints } from "./text";
 import { classifyPath, classifyShell } from "./workspace-paths";
 
@@ -119,72 +120,61 @@ function say(locale: Locale): (zh: string, en: string) => string {
 /** Which prompt/JSON contract a call needs: judging a batch of image seams, text seams, or the one whole-set digest. */
 export type SeamJudgeMode = "image" | "text" | "digest";
 
-/** The system prompt sent with every judge call: the acceptance line, the plan's rules, the fixed checklist, and the strict JSON contract. */
-export function seamsJudgePrompt(item: string, rules: readonly string[], locale: Locale, mode: SeamJudgeMode): string {
+/** The plan's rules as a judge reads them: a bullet each, or a line saying there are none. */
+export function seamsRulesText(rules: readonly string[], locale: Locale): string {
+  if (rules.length) return rules.map((rule) => `- ${rule}`).join("\n");
+  return locale !== "en" ? "（这个规划没有定过额外规则）" : "(this plan has no extra rules)";
+}
+
+/** The JSON a judge call answers with. Fixed: the parser reads it (ADR 0064). */
+export function seamsJudgeFormat(locale: Locale, mode: SeamJudgeMode): string {
+  if (locale !== "en") {
+    return mode === "digest"
+      ? `只输出 JSON，不要 markdown 围栏，不要前言后语：{"overall":{"ok":true,"issues":[]}}。ok 是整份交付物是否前后一致，issues 是具体问题的一句话列表（一致时给空数组）。`
+      : `只输出 JSON，不要 markdown 围栏，不要前言后语：{"pairs":[{"n":1,"ok":true,"issues":[]}]}。n 是证据的序号，ok 是这一处是否衔接一致，issues 是具体问题的一句话列表（一致时给空数组）。`;
+  }
+  return mode === "digest"
+    ? `Answer with JSON only, no markdown fences, no preamble: {"overall":{"ok":true,"issues":[]}}. ok is whether the whole deliverable holds together, issues is a list of one-line problems (an empty array when it is fine).`
+    : `Answer with JSON only, no markdown fences, no preamble: {"pairs":[{"n":1,"ok":true,"issues":[]}]}. n is the evidence's number, ok is whether that seam holds together, issues is a list of one-line problems (an empty array when it is fine).`;
+}
+
+/**
+ * A judge call's editable instructions for one mode (ADR 0064): `{item}` is the acceptance line,
+ * `{rules}` the plan's rules, `{format}` where the fixed answer format goes.
+ */
+export function seamsJudgeTemplate(locale: Locale, mode: SeamJudgeMode): string {
   const zh = locale !== "en";
   const checklist = zh ? CHECKLIST_ZH : CHECKLIST_EN;
   const checklistText = checklist.map((line, i) => `${i + 1}. ${line}`).join("\n");
-  const rulesText = zh
-    ? rules.length
-      ? rules.map((rule) => `- ${rule}`).join("\n")
-      : "（这个规划没有定过额外规则）"
-    : rules.length
-      ? rules.map((rule) => `- ${rule}`).join("\n")
-      : "(this plan has no extra rules)";
-
   if (zh) {
-    const intro = `你在核对一份由几部分拼起来的交付物：各部分之间衔接得上、前后一致，为这条验收作证：${item}`;
-    const rulesLine = `这个规划定过的规则：\n${rulesText}`;
+    const intro = "你在核对一份由几部分拼起来的交付物：各部分之间衔接得上、前后一致，为这条验收作证：{item}";
+    const rulesLine = "这个规划定过的规则：\n{rules}";
     if (mode === "digest") {
-      return [
-        intro,
-        rulesLine,
-        `下面是这份交付物每一部分的摘要（标题/首段，以及其中出现的数字单位和专有名词），不是逐部分的原文。通篇检查同一件事在各部分里说的名字、编号、数字单位、口径是否前后一致：\n${checklistText}`,
-        `只输出 JSON，不要 markdown 围栏，不要前言后语：{"overall":{"ok":true,"issues":[]}}。ok 是整份交付物是否前后一致，issues 是具体问题的一句话列表（一致时给空数组）。`,
-      ].join("\n\n");
+      return [intro, rulesLine, `下面是这份交付物每一部分的摘要（标题/首段，以及其中出现的数字单位和专有名词），不是逐部分的原文。通篇检查同一件事在各部分里说的名字、编号、数字单位、口径是否前后一致：\n${checklistText}`, "{format}"].join("\n\n");
     }
     const evidenceLine =
       mode === "image"
         ? `每张图是相邻两部分的衔接处对照（左边是前一部分，右边是后一部分；视频截取剪切点前后帧，图片就是两张原图缩放后并排）。逐条对照检查：\n${checklistText}`
         : `每段文字是相邻两部分的衔接处摘录（前一部分结尾 + 后一部分开头）。逐条对照检查：\n${checklistText}`;
-    const seamNote =
-      mode === "image"
-        ? `两侧几乎一样是好事：说明衔接严丝合缝，不是问题，也不算重复内容。只有看得出的不一致才写进 issues。`
-        : null;
-    return [
-      intro,
-      rulesLine,
-      evidenceLine,
-      ...(seamNote ? [seamNote] : []),
-      `只输出 JSON，不要 markdown 围栏，不要前言后语：{"pairs":[{"n":1,"ok":true,"issues":[]}]}。n 是证据的序号，ok 是这一处是否衔接一致，issues 是具体问题的一句话列表（一致时给空数组）。`,
-    ].join("\n\n");
+    const seamNote = mode === "image" ? `两侧几乎一样是好事：说明衔接严丝合缝，不是问题，也不算重复内容。只有看得出的不一致才写进 issues。` : null;
+    return [intro, rulesLine, evidenceLine, ...(seamNote ? [seamNote] : []), "{format}"].join("\n\n");
   }
-
-  const intro = `You are checking a deliverable assembled from several parts: whether the parts fit together and stay consistent, to prove this acceptance line: ${item}`;
-  const rulesLine = `Rules this plan has settled on:\n${rulesText}`;
+  const intro = "You are checking a deliverable assembled from several parts: whether the parts fit together and stay consistent, to prove this acceptance line: {item}";
+  const rulesLine = "Rules this plan has settled on:\n{rules}";
   if (mode === "digest") {
-    return [
-      intro,
-      rulesLine,
-      `Below is a digest of every part of this deliverable (its heading/opening, plus any numbers-with-units and proper names found in it) — not each part's full text. Check whether the same thing is named, numbered and described consistently across every part:\n${checklistText}`,
-      `Answer with JSON only, no markdown fences, no preamble: {"overall":{"ok":true,"issues":[]}}. ok is whether the whole deliverable holds together, issues is a list of one-line problems (an empty array when it is fine).`,
-    ].join("\n\n");
+    return [intro, rulesLine, `Below is a digest of every part of this deliverable (its heading/opening, plus any numbers-with-units and proper names found in it) — not each part's full text. Check whether the same thing is named, numbered and described consistently across every part:\n${checklistText}`, "{format}"].join("\n\n");
   }
   const evidenceLine =
     mode === "image"
       ? `Each image is a side-by-side pair of two adjacent parts (left is the earlier part, right is the later one; for video these are the frame just before and just after the cut, for images they are the two images themselves). Check each of the following:\n${checklistText}`
       : `Each text block is one seam's excerpt (the end of the earlier part plus the start of the later one). Check each of the following:\n${checklistText}`;
-  const seamNote =
-    mode === "image"
-      ? `Two nearly identical sides are good news: the seam is seamless, not a problem, and not repeated content. Only put visible inconsistencies in issues.`
-      : null;
-  return [
-    intro,
-    rulesLine,
-    evidenceLine,
-    ...(seamNote ? [seamNote] : []),
-    `Answer with JSON only, no markdown fences, no preamble: {"pairs":[{"n":1,"ok":true,"issues":[]}]}. n is the evidence's number, ok is whether that seam holds together, issues is a list of one-line problems (an empty array when it is fine).`,
-  ].join("\n\n");
+  const seamNote = mode === "image" ? `Two nearly identical sides are good news: the seam is seamless, not a problem, and not repeated content. Only put visible inconsistencies in issues.` : null;
+  return [intro, rulesLine, evidenceLine, ...(seamNote ? [seamNote] : []), "{format}"].join("\n\n");
+}
+
+/** The system prompt sent with every judge call: the acceptance line, the plan's rules, the fixed checklist, and the strict JSON contract. */
+export function seamsJudgePrompt(item: string, rules: readonly string[], locale: Locale, mode: SeamJudgeMode): string {
+  return fill(seamsJudgeTemplate(locale, mode), { item, rules: seamsRulesText(rules, locale), format: seamsJudgeFormat(locale, mode) });
 }
 
 type JudgePair = { n: number; ok: boolean; issues: string[] };

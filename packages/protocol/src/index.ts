@@ -2901,6 +2901,7 @@ export * from "./boring-avatars.ts";
 export * from "./cited-path.ts";
 export * from "./mentions.ts";
 export * from "./notifications.ts";
+export * from "./text-diff.ts";
 
 /**
  * One command a turn ran, for the card under its reply once the turn has ended

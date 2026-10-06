@@ -12,9 +12,11 @@ import {
   formatSkillCatalog,
   systemText,
   type McpPromptGuide,
+  type TurnPromptTexts,
   type MemoryPromptEntry,
   type SkillPromptEntry,
 } from "./system";
+import { fill } from "./fill";
 
 /** The in-process MCP server the app's tools are offered under; Claude sees `mcp__deskfolk__<tool>`. */
 export const AGENT_MCP_SERVER = "deskfolk";
@@ -23,6 +25,7 @@ export function agentToolName(name: string): string {
   return `mcp__${AGENT_MCP_SERVER}__${name}`;
 }
 
+/** The Claude Agent preface (built-in prompt `agent.preface`, ADR 0064); `{workspace}` and `{cwd}` are filled per turn. */
 const PREFACE_ZH = `# 在这一轮里
 
 这一轮由用户自己的 Claude Code 运行。下面「系统指令」里写的 Deskfolk 工具都在 mcp__deskfolk__ 下：send_message 就是 mcp__deskfolk__send_message，end_turn、ask_user、check_back、work_on、delegate、submit、review、plan_items、remember、read_skill 等同理。
@@ -43,6 +46,8 @@ This turn is run by the user's own Claude Code. Every Deskfolk tool the System s
 - Your last reply in this turn that calls no tool is the message you post, and it passes the closing check the System section describes.
 - Never read, change or print Claude Code's own settings or credentials (~/.claude, ~/.claude.json, the keychain), never run the claude command, and do not use background tasks: run commands and subtasks to the end in the foreground.`;
 
+export const AGENT_PREFACE: Record<Locale, string> = { zh: PREFACE_ZH, en: PREFACE_EN };
+
 export function agentSystemPrompt(input: {
   locale: Locale;
   name: string;
@@ -54,23 +59,25 @@ export function agentSystemPrompt(input: {
   skills?: SkillPromptEntry[];
   memories?: MemoryPromptEntry[];
   mcpGuides?: McpPromptGuide[];
+  /** Built-in prompts you edited (ADR 0064): the System section and the section notes, and this preface. */
+  texts?: TurnPromptTexts & { preface?: string };
 }): string {
   const en = input.locale === "en";
+  const texts = input.texts ?? {};
   const profile = en
     ? `# Profile\n\n## Name\n\n${input.name}\n\n## Duties\n\n${input.duties}\n\n## Boundaries\n\n${input.boundaries}`
     : `# 人设\n\n## 名字\n\n${input.name}\n\n## 职责\n\n${input.duties}\n\n## 边界\n\n${input.boundaries}`;
-  const preface = (en ? PREFACE_EN : PREFACE_ZH).replaceAll("{workspace}", input.workspace).replaceAll("{cwd}", input.cwd);
-  const system = en
-    ? `# System\n\n${systemText("en", "sh", input.engineLevel)}`
-    : `# 系统指令\n\n${systemText("zh", "sh", input.engineLevel)}`;
-  const skills = formatSkillCatalog(input.locale, input.skills ?? []);
+  const preface = fill(texts.preface ?? AGENT_PREFACE[input.locale], { workspace: input.workspace, cwd: input.cwd });
+  const systemBody = texts.system ?? systemText(input.locale, "sh", input.engineLevel);
+  const system = en ? `# System\n\n${systemBody}` : `# 系统指令\n\n${systemBody}`;
+  const skills = formatSkillCatalog(input.locale, input.skills ?? [], texts.skills);
   // The shared MCP servers' tools are reached under the deskfolk MCP server here.
   const guides = (input.mcpGuides ?? []).map((guide) => ({
     ...guide,
     tools: guide.tools.map((tool) => ({ ...tool, modelName: agentToolName(tool.modelName) })),
   }));
-  const mcp = formatMcpGuides(input.locale, guides);
-  const memory = formatMemoryDigest(input.locale, input.memories ?? []);
+  const mcp = formatMcpGuides(input.locale, guides, texts.mcp);
+  const memory = formatMemoryDigest(input.locale, input.memories ?? [], texts.memory);
   // Memory changes most often, so it goes last, as in the app's own prompt.
   return [profile, skills, preface, system, mcp, memory].filter(Boolean).join("\n\n");
 }

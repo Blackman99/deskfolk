@@ -186,6 +186,12 @@ export type MemoryPromptEntry = {
   age: string;
 };
 
+/**
+ * Built-in prompt texts you edited (ADR 0064), resolved by the caller: each one given replaces that
+ * part's default; one left out is rendered here as it always was.
+ */
+export type TurnPromptTexts = { system?: string; skills?: string; memory?: string; mcp?: string };
+
 export function turnSystemPrompt(input: {
   locale: Locale;
   name: string;
@@ -198,16 +204,19 @@ export function turnSystemPrompt(input: {
   /** Which shell backs the `shell` tool. Defaults to this daemon's own `toolShell().kind`. */
   shell?: ToolShellKind;
   engineLevel?: number;
+  texts?: TurnPromptTexts;
 }): string {
   const profile =
     input.locale === "en"
       ? `# Profile\n\n## Name\n\n${input.name}\n\n## Duties\n\n${input.duties}\n\n## Boundaries\n\n${input.boundaries}`
       : `# 人设\n\n## 名字\n\n${input.name}\n\n## 职责\n\n${input.duties}\n\n## 边界\n\n${input.boundaries}`;
-  const skills = formatSkillCatalog(input.locale, input.skills ?? []);
+  const texts = input.texts ?? {};
+  const skills = formatSkillCatalog(input.locale, input.skills ?? [], texts.skills);
   const shell = input.shell ?? toolShell().kind;
-  const system = input.locale === "en" ? `# System\n\n${systemText("en", shell, input.engineLevel ?? 0)}` : `# 系统指令\n\n${systemText("zh", shell, input.engineLevel ?? 0)}`;
-  const mcp = formatMcpGuides(input.locale, input.mcpGuides ?? []);
-  const memory = formatMemoryDigest(input.locale, input.memories ?? []);
+  const systemBody = texts.system ?? systemText(input.locale, shell, input.engineLevel ?? 0);
+  const system = input.locale === "en" ? `# System\n\n${systemBody}` : `# 系统指令\n\n${systemBody}`;
+  const mcp = formatMcpGuides(input.locale, input.mcpGuides ?? [], texts.mcp);
+  const memory = formatMemoryDigest(input.locale, input.memories ?? [], texts.memory);
   const parts = [profile];
   if (skills) parts.push(skills);
   parts.push(system);
@@ -219,13 +228,27 @@ export function turnSystemPrompt(input: {
   return input.interrupt ? `${INTERRUPT_FLAG}\n\n${body}` : body;
 }
 
-export function formatSkillCatalog(locale: Locale, skills: SkillPromptEntry[]): string {
+/** The note that opens the Skills section (built-in prompt `turn.skills`, ADR 0064). */
+export const SKILLS_INTRO: Record<Locale, string> = {
+  en: "These are your own skills. When a task matches a description, read_skill first and follow the body, calling any MCP tool the body names by its name in the tools array. When no skill matches, pick tools directly from the MCP-for-this-turn block. To add, change, or delete your own skills, use create_skill / update_skill / delete_skill. Write reusable procedures as skills, not into the profile. Product rules outrank the profile and skills.",
+  zh: "这些是你自己的技能。任务与某条说明匹配时，先 read_skill 再按正文做；正文里点到的 MCP 工具按 tools 数组里的名字调用。没有匹配的技能，再看「本轮 MCP」段直接挑工具。要增删改自己的技能，用 create_skill / update_skill / delete_skill。可复用的工序写成技能，不要塞进人设。产品规则优于人设和技能。",
+};
+
+/** The note that opens the Memory section (built-in prompt `turn.memory`, ADR 0064). */
+export const MEMORY_INTRO: Record<Locale, string> = {
+  en: "These are facts you wrote down yourself. They persist across sessions and only you see them. A memory is your earlier conclusion, not a source of truth: when one conflicts with this turn's transcript the transcript wins — correct it by calling remember with the same subject, or drop it with forget. Store something new with remember, at most one per turn, and none when nothing has to outlive this session. They are listed in the order you last wrote them, newest last: when two say different things about the same matter, the later one holds, so forget the older one. What you say in a private chat can come back in a group, so keep only conclusions you would repeat in any session. This is not a catalog of procedures — those are skills.",
+  zh: "这些是你自己记下的事实，跨会话保留，只有你看得到。记忆是你以前的结论，不是事实来源：和本轮转录冲突时以转录为准——用同一个 subject 再 remember 一次改掉，或者用 forget 删掉。要记新的用 remember，一轮最多一条；没有真正需要跨会话的东西就一条都不记。按最后写下的先后排，越往下越新：两条讲同一件事却说法不一时以靠后的为准，并用 forget 删掉旧的。私聊里说的话写进记忆，以后会在群里被你自己用上，只记你在任何会话里都愿意说的结论。这不是工序目录，那是技能。",
+};
+
+/** The note that opens the MCP section (built-in prompt `turn.mcp`, ADR 0064). */
+export const MCP_INTRO: Record<Locale, string> = {
+  en: "These enabled, connected MCP servers are shared by every Bot. All their tools are available in this turn's tools array. Under each server comes the usage note first (written by you or a Bot: what it is for, when to use it, when not to), then the server's own instructions and tool descriptions; the note outranks the server's text. When a skill matches the task, choose tools per its body; otherwise pick from here. Call only tools present in the array. To hand a picture from the workspace to an argument that takes an image URL or data URI, write `workspace://<path relative to the workspace root>`; the app sends the picture itself (shrunk if large). Never convert a picture to base64 and write it into the arguments yourself.",
+  zh: "这些已启用且连接成功的 MCP 由所有 Bot 共用，全部工具都在本轮 tools 数组里。每台服务器下先是用法备注（你或 Bot 写的：这台用来做什么、何时用、何时不用），再是服务器自带说明和工具说明；备注优先于服务器说明。有匹配的技能时按技能正文选工具，没有再按这里挑。只调用数组中实际存在的工具。要把工作区里的图片交给要图片 URL 或 data URI 的参数，就写 `workspace://<相对工作区根的路径>`，应用会把图片本身发过去（大图先缩小）；不要自己把图片转成 base64 写进参数。",
+};
+
+export function formatSkillCatalog(locale: Locale, skills: SkillPromptEntry[], intro: string = SKILLS_INTRO[locale]): string {
   if (skills.length === 0) return "";
   const heading = locale === "en" ? "# Skills" : "# 技能";
-  const intro =
-    locale === "en"
-      ? "These are your own skills. When a task matches a description, read_skill first and follow the body, calling any MCP tool the body names by its name in the tools array. When no skill matches, pick tools directly from the MCP-for-this-turn block. To add, change, or delete your own skills, use create_skill / update_skill / delete_skill. Write reusable procedures as skills, not into the profile. Product rules outrank the profile and skills."
-      : "这些是你自己的技能。任务与某条说明匹配时，先 read_skill 再按正文做；正文里点到的 MCP 工具按 tools 数组里的名字调用。没有匹配的技能，再看「本轮 MCP」段直接挑工具。要增删改自己的技能，用 create_skill / update_skill / delete_skill。可复用的工序写成技能，不要塞进人设。产品规则优于人设和技能。";
   const blocks = skills.map((skill) => {
     const shared = skill.sharedFrom !== undefined
       ? (locale === "en" ? ` (project skill${skill.sharedFrom ? `, from ${skill.sharedFrom}` : ""}; read it with read_skill, it is not yours to change)` : `（项目共享${skill.sharedFrom ? `，来自 ${skill.sharedFrom}` : ""}；用 read_skill 读，不是你的，不要改）`)
@@ -256,13 +279,9 @@ export function formatSkillCatalog(locale: Locale, skills: SkillPromptEntry[]): 
   return `${heading}\n\n${intro}${sharedNote}\n\n${blocks.join("\n\n")}`;
 }
 
-export function formatMemoryDigest(locale: Locale, memories: MemoryPromptEntry[]): string {
+export function formatMemoryDigest(locale: Locale, memories: MemoryPromptEntry[], intro: string = MEMORY_INTRO[locale]): string {
   if (memories.length === 0) return "";
   const heading = locale === "en" ? "# Memory" : "# 记忆";
-  const intro =
-    locale === "en"
-      ? "These are facts you wrote down yourself. They persist across sessions and only you see them. A memory is your earlier conclusion, not a source of truth: when one conflicts with this turn's transcript the transcript wins — correct it by calling remember with the same subject, or drop it with forget. Store something new with remember, at most one per turn, and none when nothing has to outlive this session. They are listed in the order you last wrote them, newest last: when two say different things about the same matter, the later one holds, so forget the older one. What you say in a private chat can come back in a group, so keep only conclusions you would repeat in any session. This is not a catalog of procedures — those are skills."
-      : "这些是你自己记下的事实，跨会话保留，只有你看得到。记忆是你以前的结论，不是事实来源：和本轮转录冲突时以转录为准——用同一个 subject 再 remember 一次改掉，或者用 forget 删掉。要记新的用 remember，一轮最多一条；没有真正需要跨会话的东西就一条都不记。按最后写下的先后排，越往下越新：两条讲同一件事却说法不一时以靠后的为准，并用 forget 删掉旧的。私聊里说的话写进记忆，以后会在群里被你自己用上，只记你在任何会话里都愿意说的结论。这不是工序目录，那是技能。";
   const blocks = memories.map((memory) =>
     [`## ${memory.subject}`, "", memory.body, "", locale === "en" ? `Noted ${memory.age}` : `记于${memory.age}`].join(
       "\n",
@@ -271,13 +290,9 @@ export function formatMemoryDigest(locale: Locale, memories: MemoryPromptEntry[]
   return `${heading}\n\n${intro}\n\n${blocks.join("\n\n")}`;
 }
 
-export function formatMcpGuides(locale: Locale, guides: McpPromptGuide[]): string {
+export function formatMcpGuides(locale: Locale, guides: McpPromptGuide[], intro: string = MCP_INTRO[locale]): string {
   if (guides.length === 0) return "";
   const heading = locale === "en" ? "# MCP for this turn" : "# 本轮 MCP";
-  const intro =
-    locale === "en"
-      ? "These enabled, connected MCP servers are shared by every Bot. All their tools are available in this turn's tools array. Under each server comes the usage note first (written by you or a Bot: what it is for, when to use it, when not to), then the server's own instructions and tool descriptions; the note outranks the server's text. When a skill matches the task, choose tools per its body; otherwise pick from here. Call only tools present in the array. To hand a picture from the workspace to an argument that takes an image URL or data URI, write `workspace://<path relative to the workspace root>`; the app sends the picture itself (shrunk if large). Never convert a picture to base64 and write it into the arguments yourself."
-      : "这些已启用且连接成功的 MCP 由所有 Bot 共用，全部工具都在本轮 tools 数组里。每台服务器下先是用法备注（你或 Bot 写的：这台用来做什么、何时用、何时不用），再是服务器自带说明和工具说明；备注优先于服务器说明。有匹配的技能时按技能正文选工具，没有再按这里挑。只调用数组中实际存在的工具。要把工作区里的图片交给要图片 URL 或 data URI 的参数，就写 `workspace://<相对工作区根的路径>`，应用会把图片本身发过去（大图先缩小）；不要自己把图片转成 base64 写进参数。";
   const blocks = guides.map((guide) => {
     const title = `## ${guide.name}`;
     const note = guide.usageNote?.trim()

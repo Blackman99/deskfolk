@@ -27,6 +27,7 @@ import {
   type Task,
 } from "../store";
 import { takeCodePoints } from "../text";
+import { fill } from "./fill";
 
 /**
  * The organizer's own part in stopping, from before stops were holds (the 09-29 fix): a line asking
@@ -38,14 +39,13 @@ import { takeCodePoints } from "../text";
  */
 const ORGANIZER_STOP_RULE = `- 叫停：用户叫停（停下、停掉、暂停、先别做、不要再生成……）就把这件事标 parked。用户说「你没停」「还在进行」「私聊里的没停」「怎么还在做」，是在催 Bot 真的停下，不是让接着做：保持或改成 parked，不要当成「接着做完」。已经 parked 的事，只有用户明说继续、接着做、恢复，才改回 active；settle 时不要把 parked 改回 active。`;
 
-export const ORGANIZER_SYSTEM = `你在替这个会话整理「规划」和「任务」，不是回答用户，也不能发言。没有工具，不能读工作区。
+export const ORGANIZER_TEMPLATE = `你在替这个会话整理「规划」和「任务」，不是回答用户，也不能发言。没有工具，不能读工作区。
 
 规划是一个会话里正在推进的一件事，有要点：kind（类别）、goal（现在到底要做什么）、process（这件事定下来的做法、谁负责哪段；Bot 自己定的做法和限制也写在这里，写明是谁定的）、progress（done / open / blocked）、status（active / done / parked）。要点里的 acceptance（怎么算完成）和 rules（口径、约束）只由用户在流程图上写，你只读不写，答案里不要这两项；用户话里的要求由应用另外记下。任务是规划下能独立交付的一块：title、spec（要交出什么、怎么算完成）、status（todo / doing / review / done / parked）、worker（谁负责，写 Bot 名字：建任务时按分工先填，之后按 trace 里实际在做的人改；没人就 null）。
 
 根据用户消息这份 JSON 决定。mode 是 message（用户刚发了一句，message 就是那句）或 settle（这件事的轮都结束了，只记交接，decision 必须是 continue）。current_plan 是这个会话当前的规划及其任务（可能为 null）；current_plan.checks 是这个规划当前的验收检查——应用自己在本机跑出来的证据，每条有 id、item（对应哪条 acceptance）、kind、what（人话描述）、source（organizer 还是 user）、ticket（任务序号或 null）、last（上一次运行：outcome、detail、at、output，或 null 表示还没跑过）；current_plan.user_lines 是这件事里用户说过、但不在 since_last_revision.messages 里的话，早的在前（via 是 message 的是用户发的话，answer 是用户对 Bot 提问的回答，asked 是那个问题；太多时省掉中间的，user_lines_omitted 是省了几条）；current_plan.goal_user_typed 为 true 的 goal 是用户在流程图里亲手写的，tickets[].spec_user_typed 为 true 的任务说明也是；recent_plans 是这个会话之前推进过的规划，只有 resume 会用到；elsewhere_plans 是这个会话里的 Bot 正在别的会话推进的事（home 是它开在哪，working 是此刻谁在哪做它，said_here 是这个会话里之前归到它的几句），只有 join 会用到；kinds 是已有的类别标签，能对上就原样用，对不上才起一个短的；since_last_revision 是上一版要点之后发生的事：messages（谁说了什么：from 是 user 的是用户说的，bot 是 Bot 说的，app 是应用的提示；kind 是 ask 的是 Bot 的提问，answer 是用户的回答）、artifacts（谁交出了什么文件，归在哪个任务）、trace（谁做了什么、停在哪）、commands（这些轮真正跑过的命令和工具，带退出码和实际跑的目录 cwd）；current_plan.tickets[].files 是落在各任务目录里、被消息引用过的文件。
 
-只输出一个 JSON 对象，不要 markdown 围栏，不要前言后语，不要 tool-call：
-{"decision": "continue" | "new" | "resume" | "join", "resume_plan_id": "…或 null", "join_plan_id": "…或 null", "plan": {"kind": "…", "goal": "…", "process": ["…"], "progress": {"done": ["…"], "open": ["…"], "blocked": ["…"]}, "status": "active"}, "tickets": [{"id": "已有任务的 id 或 new-1、new-2…", "title": "…", "spec": "…", "status": "todo", "worker": "Bot 名字或 null"}], "message_ticket": "这条消息在说哪个任务的 id 或 new-N，或 null", "checks": [{"id": "已有检查的 id 或 new-1、new-2…", "remove": true, "item": "对应哪条 acceptance", "ticket": "任务 id、new-N 或 null", "kind": "exists" | "contains" | "matches" | "command" | "continuity", "path": "…", "pattern": "…", "negate": false, "command": "…", "cwd": "…", "expect_exit": 0, "expect_stdout": "…", "timeout_sec": 120}]}
+{format}
 
 策略：
 - decision：同一件事的后续、追问、改要求、问进度，都是 continue；明显换了一件不相干的事才 new；用户说回到之前那件、且 recent_plans 里有对得上的，才 resume 并给 resume_plan_id；这句明显在说 elsewhere_plans 里的某件事（说到它的内容、产物、进展、做法，或接着 said_here 往下说），而不是 current_plan，才 join 并给 join_plan_id。current_plan 为 null 时只能 new 或 join。拿不准就 continue。
@@ -62,9 +62,15 @@ ${ORGANIZER_STOP_RULE}
 - plan.status 标 done 时，每个任务也要在这次答案里标成 done 或 parked；还有待做或进行中的任务，这件事就没做完。
 - message_ticket：mode 是 message 时，这条消息在说哪个任务；一句泛泛的话或问进度就 null。settle 时 null。
 - 一切都写短：goal 一句话，列表每条一句。`;
+/** The organizer's answer. Fixed: the parser reads it, so an edited prompt keeps it where `{format}` sits (ADR 0064). */
+export const ORGANIZER_FORMAT = `只输出一个 JSON 对象，不要 markdown 围栏，不要前言后语，不要 tool-call：
+{"decision": "continue" | "new" | "resume" | "join", "resume_plan_id": "…或 null", "join_plan_id": "…或 null", "plan": {"kind": "…", "goal": "…", "process": ["…"], "progress": {"done": ["…"], "open": ["…"], "blocked": ["…"]}, "status": "active"}, "tickets": [{"id": "已有任务的 id 或 new-1、new-2…", "title": "…", "spec": "…", "status": "todo", "worker": "Bot 名字或 null"}], "message_ticket": "这条消息在说哪个任务的 id 或 new-N，或 null", "checks": [{"id": "已有检查的 id 或 new-1、new-2…", "remove": true, "item": "对应哪条 acceptance", "ticket": "任务 id、new-N 或 null", "kind": "exists" | "contains" | "matches" | "command" | "continuity", "path": "…", "pattern": "…", "negate": false, "command": "…", "cwd": "…", "expect_exit": 0, "expect_stdout": "…", "timeout_sec": 120}]}`;
+export const ORGANIZER_SYSTEM = fill(ORGANIZER_TEMPLATE, { format: ORGANIZER_FORMAT });
 
-/** The organizer's system once holds are on: the same, with nothing about stopping (see {@link ORGANIZER_STOP_RULE}). */
-export const ORGANIZER_SYSTEM_UNDER_HOLDS = ORGANIZER_SYSTEM.replace(`${ORGANIZER_STOP_RULE}\n`, "");
+
+/** The organizer's instructions once holds are on: the same, with nothing about stopping (see {@link ORGANIZER_STOP_RULE}). */
+export const ORGANIZER_TEMPLATE_UNDER_HOLDS = ORGANIZER_TEMPLATE.replace(`${ORGANIZER_STOP_RULE}\n`, "");
+export const ORGANIZER_SYSTEM_UNDER_HOLDS = fill(ORGANIZER_TEMPLATE_UNDER_HOLDS, { format: ORGANIZER_FORMAT });
 
 export const ORGANIZER_MESSAGES_LIMIT = 30;
 export const ORGANIZER_BODY_LIMIT = 600;

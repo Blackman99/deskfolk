@@ -24,8 +24,9 @@ import {
 } from "../line-reading";
 import type { LineToFile } from "../store";
 import { takeCodePoints } from "../text";
+import { fill } from "./fill";
 
-export const READ_USER_LINE_SYSTEM = `你在替一个多 Bot 协作应用读用户说的一句话，判断应用该怎么处理它。不是回答用户，也不能发言；没有工具。
+export const READ_USER_LINE_TEMPLATE = `你在替一个多 Bot 协作应用读用户说的一句话，判断应用该怎么处理它。不是回答用户，也不能发言；没有工具。
 
 输入是一个 JSON：said 是这句话；where 是 group（群）或 direct（和一个 Bot 的私聊）；replying_to 是它回复的那句（可能没有）；recent 是这句之前的几句（author 是 user 或 Bot 的名字）。
 
@@ -40,10 +41,14 @@ export const READ_USER_LINE_SYSTEM = `你在替一个多 Bot 协作应用读用�
 3. status_only：这句话是不是只在问工作进行到哪了（「怎么样了」「进度呢」「做完了吗」「到哪一步了」），没有别的要求。带着要求、催促做某事、或问的是具体某个东西的细节，就是 false。
 4. objections：这句话里对已经交出来的成果「现在这样」不满意的分句，原样摘自 said（不改写、不拼接，可以只摘一部分）。包括：指出毛病（太假、不对、穿帮、太短、跳帧、和要求对不上）、不满意、要求重做或从头再做、说之前的作废。不算：夸奖（「C07 很好」）；不用重做（「别重做了」「不用从头再做」）；条件（「如果太短就告诉我」）；说的是别的版本或别的时候（「上一版那个问题已经解决了」「下集别这么长」）；提问；客套（「有问题随时找我」）；只是提一个新要求而没说现在的成果哪里不好。没有就输出 []。
 
-只输出一个 JSON 对象，不要 markdown 围栏，不要前言后语：
+{format}`;
+/** A reading of your line. Fixed: the parser reads it, so an edited prompt keeps it where `{format}` sits (ADR 0064). */
+export const READ_USER_LINE_FORMAT = `只输出一个 JSON 对象，不要 markdown 围栏，不要前言后语：
 {"control": "none", "control_only": false, "status_only": false, "objections": []}`;
+export const READ_USER_LINE_SYSTEM = fill(READ_USER_LINE_TEMPLATE, { format: READ_USER_LINE_FORMAT });
 
-export const READ_BOT_LINE_SYSTEM = `你在替一个多 Bot 协作应用读一个 Bot 发出的一条消息，判断应用该怎么处理它。不是回答，也不能发言；没有工具。
+
+export const READ_BOT_LINE_TEMPLATE = `你在替一个多 Bot 协作应用读一个 Bot 发出的一条消息，判断应用该怎么处理它。不是回答，也不能发言；没有工具。
 
 输入是一个 JSON：said 是这条消息。
 
@@ -55,10 +60,14 @@ export const READ_BOT_LINE_SYSTEM = `你在替一个多 Bot 协作应用读一�
 4. bare_status：消息是不是只有一句应答（「好的」「收到」）、一句完成的说法（「母带剪好了」「已完成，请查收」）、一句在等（「在等审片员」）或一句很短的「我看看」「马上弄」，除此之外没有任何实质内容。带着真正的内容（一段文字、一份清单、一个标题、具体结论）就是 false。
 5. go_ahead：消息是不是只在请用户点头，好接着做用户已经要它做的事：请用户确认、批准、过目做到一半的东西（「请确认关键帧板是否符合预期，确认后将正式启动视频生成」「方案没问题的话我就开始做」「要我继续吗」「可以开始剪辑了吗」）。不算（是 false）：要用户给只有用户有的东西（账号、密码、密钥、授权、只有用户知道的信息）；要用户在几个具体方案里选一个、而选哪个是用户的取舍（「横版还是竖版」「先做第 3 话还是第 5 话」）；指出做不下去的具体障碍；没有在问用户。
 
-只输出一个 JSON 对象，不要 markdown 围栏，不要前言后语：
+{format}`;
+/** A reading of a Bot's line. Fixed: the parser reads it, so an edited prompt keeps it where `{format}` sits (ADR 0064). */
+export const READ_BOT_LINE_FORMAT = `只输出一个 JSON 对象，不要 markdown 围栏，不要前言后语：
 {"later": null, "claims_verified": false, "no_work": false, "bare_status": false, "go_ahead": false}`;
+export const READ_BOT_LINE_SYSTEM = fill(READ_BOT_LINE_TEMPLATE, { format: READ_BOT_LINE_FORMAT });
 
-export const READ_FILING_SYSTEM = `你在替一个多 Bot 协作应用判断用户刚说的一句话是在说哪件事，好把它交给做那件事的 Bot。不是回答用户，也不能发言；没有工具。
+
+export const READ_FILING_TEMPLATE = `你在替一个多 Bot 协作应用判断用户刚说的一句话是在说哪件事，好把它交给做那件事的 Bot。不是回答用户，也不能发言；没有工具。
 
 输入是一个 JSON：
 - said 是这句话；where 是 group（群）或 direct（用户和一个 Bot 的私聊）。
@@ -76,8 +85,12 @@ export const READ_FILING_SYSTEM = `你在替一个多 Bot 协作应用判断用�
 - 紧接在 Bot 的一句之后说的，多半是在回应那一句（before 里它的 job）；内容明显是另一件新要求时仍是 new。
 - 一件事目标之内的下一步（同一部片子的下一个镜头、同一份报告的下一节）算那件事；目标之外的新成果是 new。
 
-只输出一个 JSON 对象，不要 markdown 围栏，不要前言后语：
+{format}`;
+/** Which job a line is about. Fixed: the parser reads it, so an edited prompt keeps it where `{format}` sits (ADR 0064). */
+export const READ_FILING_FORMAT = `只输出一个 JSON 对象，不要 markdown 围栏，不要前言后语：
 {"about": "jobs", "jobs": [{"job": "J1", "ticket": null, "parts": []}]}`;
+export const READ_FILING_SYSTEM = fill(READ_FILING_TEMPLATE, { format: READ_FILING_FORMAT });
+
 
 /** As much of a line as a reading sends; past it the line is cut, and what matters is near the start or the end. */
 export const READ_TEXT_MAX = 2000;
@@ -218,7 +231,7 @@ export function parseBotLineAnswer(raw: string, body: string): BotLineReading | 
   return parsed ? checkBotReading(parsed, body) : null;
 }
 
-export const READ_SCALE_SYSTEM = `你在替一个多 Bot 协作应用判断用户交代的一件事是不是「大活」：成品由很多同类的部分组成，要先拆成几件、先做一件样片给用户看过再铺开，才做得好的事。不是回答用户，也不能发言；没有工具。
+export const READ_SCALE_TEMPLATE = `你在替一个多 Bot 协作应用判断用户交代的一件事是不是「大活」：成品由很多同类的部分组成，要先拆成几件、先做一件样片给用户看过再铺开，才做得好的事。不是回答用户，也不能发言；没有工具。
 
 输入是一个 JSON：job 是这件事（title 名字，goal 目标）；said 是用户对这件事说过的话，从早到晚；facts（有时有）是这件事做到现在的情况：segments 是 Bot 已经做了几段，handed_back 是交上去被退回或没过检查几次。
 
@@ -233,8 +246,12 @@ large 为 false：一件东西一次就能做完——一张海报、一段几�
 
 quote 抄用户原话里说明它大的那几个字（没有就写 null）；unit 用几个字写一件该有多大（「一场」「一章」「一页」「十张图」），判 false 时写 null。
 
-只输出一个 JSON 对象，不要 markdown 围栏，不要前言后语：
+{format}`;
+/** Whether a job is a large one. Fixed: the parser reads it, so an edited prompt keeps it where `{format}` sits (ADR 0064). */
+export const READ_SCALE_FORMAT = `只输出一个 JSON 对象，不要 markdown 围栏，不要前言后语：
 {"large": true, "quote": "<原话里的几个字>", "unit": "一章"}`;
+export const READ_SCALE_SYSTEM = fill(READ_SCALE_TEMPLATE, { format: READ_SCALE_FORMAT });
+
 
 /** As much of each line of yours about a job as a reading of its size sends; at most this many lines, the newest. */
 const SCALE_LINE_MAX = 300;
