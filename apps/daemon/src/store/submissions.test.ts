@@ -298,7 +298,7 @@ test("a review: required items (raised twice, about the picture) need a pass wit
   expect(f.store.db.query("SELECT wakes, source FROM inbox_items WHERE bot_id = ? AND source = 'review'").all(f.producer.id)).toEqual([{ wakes: 0, source: "review" }]);
 });
 
-test("a same-model pass on what you raised twice, with no passing check behind it, waits on you; your word on the card approves it", () => {
+test("a same-model pass on what you raised twice, with no passing check behind it, waits on your one 放行 card, the measurement on it", () => {
   const f = fixture();
   const { submission } = handedOver(f, { reviewer: true, model: "same-model" });
   const said = requirement(f, "R-9", { times: 2 });
@@ -312,35 +312,42 @@ test("a same-model pass on what you raised twice, with no passing check behind i
   expect(result.reasons.join(" ")).toContain("107.00 秒，要时长 108–132 秒");
   const card = result.card!;
   expect(card.control).toEqual({ kind: "review_item", submission_id: submission.id, task_id: f.plan.id, ticket_id: f.ticket.id,
-    requirement_ids: ["R-9"], check_ids: [offer.id], checks_passing: false, offer: ["confirm_check", "confirm_item", "remove_item"] });
-  expect(card.body).toContain("107.00 秒，要时长 108–132 秒");
+    requirement_ids: ["R-9"], check_ids: [], offer: ["approve", "reject"] });
+  // The reviewer's word, what you said twice and what the app measured on it, all on the one card.
+  expect(card.body).toContain("Reviewer审过了，判通过");
+  expect(card.body).toContain("放行就算这几条做到了：\n- 「要求 R-9」（你说过 2 次）——应用量到：「时长约 2 分钟」：不通过——107.00 秒，要时长 108–132 秒（用户还没确认）");
+  expect(card.body).toEndWith("看过之后，放行或者退回。");
   // The ball is yours; the producer is told nothing, and nothing asks it to recut.
   expect(f.store.ballHolder({ ticketId: f.ticket.id })).toEqual({ kind: "user", reason: "review", ref: card.id });
   expect(f.store.db.query("SELECT COUNT(*) AS n FROM inbox_items WHERE bot_id = ? AND source = 'review'").get(f.producer.id)).toEqual({ n: 0 });
-  expect(f.store.getSubmission(submission.id)).toMatchObject({ state: "in_review", awaiting: { requirement_ids: ["R-9"], message_id: card.id } });
+  expect(f.store.getSubmission(submission.id)).toMatchObject({ state: "in_review", awaiting: { kind: "approval", requirement_ids: ["R-9"], message_id: card.id } });
   expect(f.store.db.query("SELECT kind, action_state FROM notifications WHERE semantic_key = ?").get(`review_item:${card.id}`)).toEqual({ kind: "ask", action_state: "open" });
   // A second review of it is not taken while it waits on you.
   expect(() => f.store.reviewSubmission({ turnId: reviewing.id, outcome: "approve" })).toThrow("waits on the user");
 
-  const answered = f.store.answerReviewCard(card.id, "confirm_item");
+  // 放行 takes what you said twice as met, and the reviewer's approve with it.
+  const answered = f.store.answerReviewCard(card.id, "approve");
   expect(answered.submission).toMatchObject({ state: "approved", awaiting: null, reviews: [{ same_model: true, outcome: "approve" }] });
-  expect(answered.message.control).toMatchObject({ acted: ["confirm_item"] });
+  expect(answered.message.control).toMatchObject({ acted: ["approve"] });
   expect(ticketRow(f)).toEqual({ status: "done", stage: "approved" });
   expect(f.store.db.query("SELECT action_state FROM notifications WHERE semantic_key = ?").get(`review_item:${card.id}`)).toEqual({ action_state: "resolved" });
-  expect(() => f.store.answerReviewCard(card.id, "remove_item")).toThrow("no longer offers");
+  expect(() => f.store.answerReviewCard(card.id, "reject")).toThrow("no longer offers");
+  expect(reviewCards(f)).toBe(1);
 });
-
-test("removing the item on the card stops requiring it here and approves; a passing check behind it needs no card at all", () => {
+test("a required-items card from before keeps its buttons: removing the item stops requiring it here; a passing check behind it needs no card at all", () => {
   const f = fixture();
-  const { submission } = handedOver(f, { reviewer: true, model: "same-model" });
+  const { submission } = handedOver(f);
+  gate(f, "pass");
   requirement(f, "R-9", { times: 2 });
-  const reviewing = segment(f, f.reviewer.id);
-  onModel(f, reviewing.id, "same-model");
-  const result = f.store.reviewSubmission({ turnId: reviewing.id, outcome: "approve", verdicts: [{ requirement_id: "R-9", verdict: "pass", evidence: ["看过"] }] });
-  if (result.ok || result.code !== "awaiting_user") throw new Error("expected to wait on you");
-  expect(result.card!.control).toMatchObject({ offer: ["confirm_item", "remove_item"], check_ids: [] });
-  expect(f.store.answerReviewCard(result.card!.id, "remove_item").submission.state).toBe("approved");
+  // A card an earlier build put up, still waiting.
+  const card = f.store.insertMessage({ sessionId: f.room.id, kind: "system", author: f.producer.id, body: "下面这几条没有东西撑着", hiddenFromBots: true,
+    control: { kind: "review_item", submission_id: submission.id, task_id: f.plan.id, ticket_id: f.ticket.id, requirement_ids: ["R-9"], check_ids: [],
+      offer: ["confirm_item", "remove_item"] } });
+  f.store.db.run("UPDATE submissions SET awaiting = ? WHERE id = ?", [JSON.stringify({ requirement_ids: ["R-9"], check_ids: [], message_id: card.id, review: null,
+    at: isoNow(), kind: "items" }), submission.id]);
+  expect(f.store.answerReviewCard(card.id, "remove_item").submission.state).toBe("approved");
   expect(f.store.db.query("SELECT status FROM requirements WHERE id = 'R-9'").get()).toEqual({ status: "waived" });
+  expect(reviewCards(f)).toBe(1);
 
   const g = fixture();
   const backed = handedOver(g, { reviewer: true, model: "same-model" });
@@ -355,8 +362,8 @@ test("removing the item on the card stops requiring it here and approves; a pass
   const checks = g.store.submissionCheckResults([offer.id], backed.submission.created_at);
   expect(g.store.reviewSubmission({ turnId: reviewer.id, outcome: "approve", checks, verdicts: [{ requirement_id: "R-9", verdict: "pass", evidence: ["120 秒"] }] }))
     .toMatchObject({ ok: true, submission: { id: backed.submission.id, state: "approved" } });
+  expect(reviewCards(g)).toBe(0);
 });
-
 test("with a reviewer set only it reviews; with none, only a Bot in the plan's conversation; never the producer", () => {
   const f = fixture();
   const third = f.store.createBot({ name: "Third", duties: "help", boundaries: "none" }).bot;
@@ -434,28 +441,91 @@ test("from level 8 a gate that fails at the tick, not at hand-over, is filed onc
   expect(f.store.listQualityEvents().map((row) => [row.kind, row.category, row.bot_id, row.submission_id])).toEqual([["checks_failed", "unclear", f.producer.id, submission.id]]);
 });
 
-test("with no reviewer, a required item nothing backs asks you; dropping it on the board lets the next tick approve", () => {
+test("with no reviewer, a required item nothing backs comes to your 放行 card even past a passing check of yours; dropping it on the board lets the next tick approve", () => {
   const f = fixture();
   const { submission } = handedOver(f);
+  gate(f, "pass");
   requirement(f, "R-picture", { category: "画面" });
   const tick = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
-  expect(tick.moved).toMatchObject([{ id: submission.id, state: "submitted", awaiting: { requirement_ids: ["R-picture"], review: null } }]);
+  expect(tick.moved).toMatchObject([{ id: submission.id, state: "submitted", awaiting: { kind: "approval", requirement_ids: ["R-picture"], review: null } }]);
   expect(tick.messages).toHaveLength(1);
-  expect(tick.messages[0]!.body).toContain("没有审查者");
+  const card = tick.messages[0]!;
+  expect(card.control).toMatchObject({ kind: "review_item", requirement_ids: ["R-picture"], offer: ["approve", "reject"] });
+  expect(card.body).toContain("你确认过的检查都过了，但它们管不到下面这几条，所以要你来定。\n放行就算这几条做到了：\n- 「要求 R-picture」（关于画面）");
   // The next tick asks nothing new.
   expect(superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 2_000)).messages).toEqual([]);
   expect(f.store.db.query("SELECT COUNT(*) AS n FROM inbox_items WHERE bot_id = ?").get(f.producer.id)).toEqual({ n: 0 });
-  // You drop the requirement on the board, not on the card: taken up again — a file hand-over with
-  // no active gate still waits on your approve/reject card, not an automatic approval;
-  // the required-items card is let go either way.
+  // You drop the requirement on the board, not on the card: your check backs the rest, so the next
+  // tick lets it through, and the card says so in place of its buttons.
   f.store.waiveRequirement("R-picture", { taskId: f.plan.id });
   const next = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 3_000));
-  expect(next.moved).toMatchObject([{ id: submission.id, state: "submitted", awaiting: { kind: "approval" } }]);
-  expect(f.store.getMessage(tick.messages[0]!.id).control).toMatchObject({ kind: "review_item", offer: [] });
-  const approvalCardId = f.store.getSubmission(submission.id).awaiting!.message_id!;
-  expect(f.store.answerReviewCard(approvalCardId, "approve").submission.state).toBe("approved");
+  expect(next).toMatchObject({ moved: [{ id: submission.id, state: "approved" }], messages: [] });
+  expect(f.store.getMessage(card.id).control).toMatchObject({ kind: "review_item", offer: [], result: "已放行。" });
+
+  // With nothing of yours behind it, dropping the item leaves the same card waiting on your press.
+  const g = fixture();
+  const loose = handedOver(g);
+  requirement(g, "R-picture", { category: "画面" });
+  const [asked] = superviseSubmissions(g.ctx, later(UNREVIEWED_AFTER_MS + 1_000)).messages;
+  expect(asked!.body).toContain("没有审查者，也没有你确认过的检查替你把关");
+  g.store.waiveRequirement("R-picture", { taskId: g.plan.id });
+  expect(superviseSubmissions(g.ctx, later(UNREVIEWED_AFTER_MS + 2_000))).toMatchObject({ moved: [], messages: [] });
+  expect(g.store.getSubmission(loose.submission.id)).toMatchObject({ state: "submitted", awaiting: { kind: "approval", message_id: asked!.id } });
+  expect(g.store.answerReviewCard(asked!.id, "approve").submission.state).toBe("approved");
+  expect(reviewCards(g)).toBe(1);
 });
 
+test("a hand-over waits on you on one card: what nothing backs is listed on 放行/退回, and a line read while it waits adds no card", () => {
+  // 2026-10-07 19:37: one hand-over of 「生成一张猫坐在阳台的图片」 asked three times in 26 s — your opening
+  // line (about the picture) on a card of its own, then 「把猫改成橘猫」, said while it waited and read
+  // after the first card, on another, then 放行 on a third. Each was pressed within seven seconds.
+  const f = fixture();
+  const { submission } = handedOver(f);
+  requirement(f, "R-cat", { category: "画面内容" });
+  requirement(f, "R-said", { times: 2 });
+  const tick = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
+  expect(tick.messages).toHaveLength(1);
+  const card = tick.messages[0]!;
+  expect(card.control).toEqual({ kind: "review_item", submission_id: submission.id, task_id: f.plan.id, ticket_id: f.ticket.id,
+    requirement_ids: ["R-cat", "R-said"], check_ids: [], offer: ["approve", "reject"] });
+  expect(card.body).toBe([
+    "EP01 的任务 01「06 母带」交上来了（EP01_MASTER.mp4）。没有审查者，也没有你确认过的检查替你把关，所以要你来定。",
+    "放行就算这几条做到了：",
+    "- 「要求 R-cat」（关于画面）",
+    "- 「要求 R-said」（你说过 2 次）",
+    "看过之后，放行或者退回。",
+  ].join("\n"));
+  expect(f.store.getSubmission(submission.id)).toMatchObject({ awaiting: { kind: "approval", requirement_ids: ["R-cat", "R-said"], message_id: card.id } });
+  // Another line about the picture, read while the card waits: the card stands, nothing more asks.
+  requirement(f, "R-orange", { category: "画面内容" });
+  expect(superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 2_000))).toMatchObject({ moved: [], messages: [] });
+  // 放行 lets it through.
+  expect(f.store.answerReviewCard(card.id, "approve").submission).toMatchObject({ state: "approved", awaiting: null });
+  expect(ticketRow(f)).toEqual({ status: "done", stage: "approved" });
+  expect(reviewCards(f)).toBe(1);
+});
+
+test("an item that only repeats the job's name is not listed again on the card; one with a measurement on it is", () => {
+  const f = fixture();
+  handedOver(f);
+  for (const [id, quote] of [["R-job", "EP01"], ["R-ticket", "06 母带"]] as const) {
+    requirement(f, id, { category: "画面" });
+    f.store.db.run("UPDATE requirements SET quote = ? WHERE id = ?", [quote, id]);
+  }
+  const [card] = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000)).messages;
+  // Both are still what 放行 takes as met; the words just do not say the job's name a third time.
+  expect(card!.control).toMatchObject({ requirement_ids: ["R-job", "R-ticket"], offer: ["approve", "reject"] });
+  expect(card!.body).not.toContain("放行就算这几条做到了");
+  expect(card!.body).toBe("EP01 的任务 01「06 母带」交上来了（EP01_MASTER.mp4）。没有审查者，也没有你确认过的检查替你把关，所以要你来定。\n看过之后，放行或者退回。");
+
+  const g = fixture();
+  handedOver(g);
+  const named = requirement(g, "R-job", { category: "画面" });
+  g.store.db.run("UPDATE requirements SET quote = 'EP01' WHERE id = 'R-job'");
+  run(g, proposal(g, named.quote).id, "fail", "107.00 秒，要时长 108–132 秒");
+  const [measured] = superviseSubmissions(g.ctx, later(UNREVIEWED_AFTER_MS + 1_000)).messages;
+  expect(measured!.body).toContain("- 「EP01」（关于画面）——应用量到：「时长约 2 分钟」：不通过——107.00 秒，要时长 108–132 秒（用户还没确认）");
+});
 test("nothing is approved under a stop of yours over the job, nor in a dormant plan", () => {
   const f = fixture();
   const { submission } = handedOver(f);
@@ -568,7 +638,7 @@ function organizerSettlesDone(f: Fixture, ticketId: string) {
     source: { messageId: null, turnId: null, messageBody: "" }, settle: true });
 }
 
-test("the organizer's done on a ticket nothing was handed over on goes the no-reviewer way — checks, a card for an unbacked required item, never straight to approved", () => {
+test("the organizer's done on a ticket nothing was handed over on goes the no-reviewer way — checks, one card naming an unbacked required item, never straight to approved", () => {
   const f = fixture();
   const settleDone = (ticketId: string) => organizerSettlesDone(f, ticketId);
   settleDone(f.ticket.id);
@@ -578,20 +648,21 @@ test("the organizer's done on a ticket nothing was handed over on goes the no-re
   // Said again, nothing more is made.
   settleDone(f.ticket.id);
   expect(f.store.listSubmissions({ ticketId: f.ticket.id })).toHaveLength(1);
-  // A required item about the picture with nothing behind it: the next tick asks you, with no reviewer to ask instead.
+  // A required item about the picture with nothing behind it: the next tick asks you, with no
+  // reviewer to ask instead — on the one card an organizer's reading always gets, the item listed.
   requirement(f, "R-picture", { category: "画面" });
   const tick = superviseSubmissions(f.ctx, later(1_000));
   expect(tick.messages).toHaveLength(1);
-  expect(f.store.getSubmission(reading!.id)).toMatchObject({ state: "submitted", awaiting: { requirement_ids: ["R-picture"], review: null, kind: "items" } });
-  // Confirming the item backs it, but an organizer's reading with no reviewer still never jumps
-  // straight to approved: a second card asks you to approve it outright.
-  const confirmed = f.store.answerReviewCard(tick.messages[0]!.id, "confirm_item");
-  expect(confirmed.submission).toMatchObject({ state: "submitted", awaiting: { requirement_ids: [], kind: "approval" } });
+  expect(f.store.getSubmission(reading!.id)).toMatchObject({ state: "submitted", awaiting: { requirement_ids: ["R-picture"], review: null, kind: "approval" } });
+  expect(tick.messages[0]!.control).toMatchObject({ kind: "review_item", requirement_ids: ["R-picture"], check_ids: [], offer: ["approve", "reject"] });
+  expect(tick.messages[0]!.body).toContain("整理跳认为这张任务做完了。\n放行就算这几条做到了：\n- 「要求 R-picture」（关于画面）");
+  // Dropping the item does not let an organizer's reading through by itself: nobody made it.
+  f.store.waiveRequirement("R-picture", { taskId: f.plan.id });
+  expect(superviseSubmissions(f.ctx, later(2_000)).moved).toEqual([]);
   expect(ticketRow(f)).toEqual({ status: "review", stage: "submitted" });
-  const approvalCardId = confirmed.submission.awaiting!.message_id!;
-  expect(f.store.getMessage(approvalCardId).control).toMatchObject({ kind: "review_item", requirement_ids: [], check_ids: [], offer: ["approve", "reject"] });
-  expect(f.store.answerReviewCard(approvalCardId, "approve").submission.state).toBe("approved");
+  expect(f.store.answerReviewCard(tick.messages[0]!.id, "approve").submission.state).toBe("approved");
   expect(ticketRow(f)).toEqual({ status: "done", stage: "approved" });
+  expect(reviewCards(f)).toBe(1);
 
   // Nothing required and no reviewer: still a card, not an automatic approval — a failing gate sends it back instead.
   const g = fixture();
@@ -717,7 +788,7 @@ test("the review request for an answer names the words themselves, not an empty 
   expect(body).not.toContain("：。");
 });
 
-test("a passing check from your words, not confirmed, backs nothing — the card shows it, with 确认这条检查 first", () => {
+test("a passing check from your words, not confirmed, backs nothing — the 放行 card shows what it measured, and nothing approves on it", () => {
   const f = fixture();
   const { submission } = handedOver(f, { reviewer: true, model: "same-model" });
   const said = requirement(f, "R-misread", { times: 2 });
@@ -729,8 +800,8 @@ test("a passing check from your words, not confirmed, backs nothing — the card
   const result = f.store.reviewSubmission({ turnId: reviewing.id, outcome: "approve", verdicts: [{ requirement_id: "R-misread", verdict: "pass", evidence: ["约 2 分钟"] }] });
   expect(result).toMatchObject({ ok: false, code: "awaiting_user" });
   if (result.ok || result.code !== "awaiting_user") throw new Error("expected to wait on you");
-  expect(result.card!.control).toMatchObject({ check_ids: [offer.id], offer: ["confirm_check", "confirm_item", "remove_item"] });
-  expect(result.card!.body).toContain("90.00 秒");
+  expect(result.card!.control).toMatchObject({ requirement_ids: ["R-misread"], check_ids: [], offer: ["approve", "reject"] });
+  expect(result.card!.body).toContain("「时长约 2 分钟」：通过——90.00 秒（用户还没确认）");
   expect(f.store.getSubmission(submission.id).state).toBe("in_review");
 
   // With no reviewer, the same: a card, not an approval.
@@ -740,9 +811,8 @@ test("a passing check from your words, not confirmed, backs nothing — the card
   run(g, proposal(g, quote.quote).id, "pass", "90.00 秒");
   const tick = superviseSubmissions(g.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
   expect(tick.messages).toHaveLength(1);
-  expect(g.store.getSubmission(loose.submission.id)).toMatchObject({ state: "submitted", awaiting: { requirement_ids: ["R-misread"] } });
+  expect(g.store.getSubmission(loose.submission.id)).toMatchObject({ state: "submitted", awaiting: { kind: "approval", requirement_ids: ["R-misread"] } });
 });
-
 test("a gate that has not finished running by the tick is waited for, not read as a failure", () => {
   const f = fixture();
   const { submission } = handedOver(f);
@@ -873,6 +943,23 @@ test("with no reviewer, a hand-over made in one go — one ticket, one segment, 
   f.store.settleSubmissionChecks(change.id);
   superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 2_000));
   expect(f.store.getSubmission(change.id).state).toBe("approved");
+  expect(reviewCards(f)).toBe(0);
+});
+
+test("made in one go, it goes through at the tick even with what you said about the picture, or twice, behind nothing", () => {
+  // 2026-10-07 19:36: 「生成一张猫坐在阳台的图片」 was made and handed over by the segment it opened. The
+  // line itself is about the picture, with nothing behind it, so a card asked about it; 「把猫改成橘猫」,
+  // said while it waited, was read after that card and got another; then came the 放行 card.
+  const f = fixture();
+  requirement(f, "R-cat", { category: "画面内容" });
+  requirement(f, "R-said", { times: 2 });
+  const { submission } = inOneGo(f);
+  segment(f);
+  requirement(f, "R-orange", { category: "画面内容" });
+  const tick = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
+  expect(tick.messages).toEqual([]);
+  expect(f.store.getSubmission(submission.id)).toMatchObject({ state: "approved", awaiting: null });
+  expect(f.store.listWorkEvents({ kind: "submission.approved" }).map((event) => event.payload)).toMatchObject([{ submission_id: submission.id, by: "one_go" }]);
   expect(reviewCards(f)).toBe(0);
 });
 

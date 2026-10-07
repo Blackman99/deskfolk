@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A hand-over asks you once, and work made in one go not at all
+
+- A hand-over waiting on you could ask several times. First a card asked about what you had said about the picture, or said twice, that nothing checked ("nothing backs these" — Confirm the check, Count them as met, Stop requiring them), then another for each such line read while it waited, and only then Approve or Send back. Asking for a picture of a cat on a balcony, then saying "make the cat orange" while it waited, brought three cards in 26 seconds. Now a hand-over waits on one card, Approve or Send back: what nothing checks is listed on it with what the app measured, and approving counts it as met. A line read while the card waits adds no card. Confirming a check from your words is on the flow board; a card already out keeps its buttons.
+- Work made in one go goes through with no card even when something you said about the picture has nothing checking it. The line that opens a picture job is always such a requirement, so a picture made in one go still came to a card.
+
 ### A prompt's history: there and back are a change each, and you can see which characters changed
 
 - Adding a space in a prompt's editor, pausing, and deleting it left one "you · Edited" line in its history that opened onto nothing and whose Undo did nothing: the saves of one sitting fold into one change, and after the delete that change recorded no change at all. Now the way there and the way back are a change each — one for the space added, one for it taken out — and anything typed after starts another; typing on within a sitting still folds into one change.

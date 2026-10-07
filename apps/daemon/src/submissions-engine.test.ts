@@ -272,7 +272,7 @@ test("a closing reply whose hand-over fails its checks hears why, and the ticket
   expect(heard).toContain("分镜写到第 3 镜");
 });
 
-test("a card's 确认 on the check runs it as a gate and takes the hand-over up again; its pass approves", async () => {
+test("a check you confirm on the board while the hand-over waits on its card runs as a gate; its pass lets the hand-over through at the next tick", async () => {
   const h = await scenario();
   const j = job(h);
   h.store.patchTicketByUser(j.ticket.id, { reviewerBotId: j.reviewer.id });
@@ -291,16 +291,21 @@ test("a card's 确认 on the check runs it as a gate and takes the hand-over up 
   // Both Bots run on the scenario's one model, and the unconfirmed check measured a failure: the
   // approval waits on you, and the failure held nothing back.
   expect(h.store.listSubmissions({ taskId: j.plan.id })).toMatchObject([{ state: "in_review", checks: [{ check_id: check.id, gate: false, outcome: "fail" }] }]);
+  // One card: 放行 or 退回, what you said twice and the failing measurement on it.
   const card = h.messages(j.room).find((message) => message.control?.kind === "review_item");
-  expect(card?.control).toMatchObject({ check_ids: [check.id] });
-  // The file it measures is right by the time you confirm (you fixed it yourself).
+  expect(card?.control).toMatchObject({ requirement_ids: [entry.id], check_ids: [], offer: ["approve", "reject"] });
+  expect(card?.body).toContain("「写到第 3 镜」：不通过");
+  // The file it measures is right by the time you confirm the check on the board (you fixed it yourself).
   writeFileSync(join(h.root, j.ticket.dir, "board.md"), "1. 雪原\n2. 塔\n3. 灯");
-  h.engine.control(card!.id, { action: "confirm_check" });
+  h.engine.confirmDerivedCheck(check.id);
   await h.waitIdle();
   expect(h.store.getCheck(check.id)).toMatchObject({ derived_state: "active", last_run: { outcome: "pass" } });
+  // What the card waited on is backed now: the next tick lets it through, and the card says so.
+  h.tick(new Date(Date.now() + 20_000));
+  await h.waitIdle();
   expect(h.store.listSubmissions({ taskId: j.plan.id })).toMatchObject([{ state: "approved", awaiting: null, reviews: [{ same_model: true }] }]);
   expect(stageOf(h, j.ticket.id)).toEqual({ stage: "approved", status: "done" });
-  expect(h.store.getMessage(card!.id).control).toMatchObject({ acted: ["confirm_check"] });
+  expect(h.store.getMessage(card!.id).control).toMatchObject({ offer: [], result: "已放行。" });
 });
 
 // A real answer, with real content rather than a status line.

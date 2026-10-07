@@ -10,8 +10,8 @@
  * have not confirmed never blocks anything. What a review must judge are the requirements you
  * raised twice or more and those about the picture. A pass on one you raised twice from a reviewer
  * on the producer's own model, or no review at all, is not enough without a passing check standing
- * on it or your word: then the ball comes to you, on a card — never back to the producer to chase
- * a number you have not confirmed.
+ * on it or your word: then the ball comes to you, on the hand-over's one 放行/退回 card — never back
+ * to the producer to chase a number you have not confirmed.
  *
  * The store side is synchronous: preparing a submission, reading what its checks said, judging a
  * review, the supervisor's part. Hashing files, running checks and waking Bots is the engine's
@@ -92,12 +92,13 @@ export type ReviewRecord = {
 };
 export type SubmissionClaim = { requirement_id: string; claim: string; evidence: string };
 /**
- * An approval waiting on you: the required items nothing backs yet, the card that asks you, and
- * the review it would complete (null when there is no reviewer). `kind` tells the two cards this
- * module writes apart: `items` (the default, omitted on older rows) asks about required items
- * nothing backs; `approval` asks you to approve or send back a hand-over with no reviewer and
- * nothing required, or one nothing you confirmed backs (an `answer` or `organizer` submission is
- * never approved on its own say) — a later tick never turns that one into an approval by itself.
+ * An approval waiting on you: the required items nothing backs, the card that asks you, and the
+ * review it would complete (null when there is no reviewer). `kind` tells the cards apart:
+ * `approval` asks you to approve or send back the hand-over — one nothing you confirmed backs (an
+ * `answer` or `organizer` submission is never approved on its own say), or one with the required
+ * items in `requirement_ids` on nothing, which 放行 takes as met. A later tick never turns it into an
+ * approval by itself, unless the listed items were all it waited on and they are met some other way.
+ * `items` (the default, omitted on older rows) is the required-items card written until 2026-10-07.
  */
 export type AwaitingYou = {
   requirement_ids: string[]; check_ids: string[]; message_id: string | null; review: ReviewRecord | null; at: string; kind?: "items" | "approval";
@@ -912,9 +913,10 @@ function assertMayReview(ctx: StoreContext, botId: string, submission: Submissio
  * app runs it again (`checks`, from the engine), when a required item (raised twice or more, or about
  * the picture) has no pass with evidence, or when something about the picture passed with no frame
  * of this job read after the submission. When the reviewer runs on the producer's own model and
- * passes something you raised twice or more that no passing check backs and you have not confirmed,
- * the approval waits on you instead: a card asks you to confirm the check or the item, or to drop
- * it, and the ball is yours (`awaiting_user`). Unconfirmed checks from your words never block.
+ * passes something you raised twice or more that no passing check backs, or when nothing of yours
+ * stands behind the hand-over, the approval waits on you instead: one card asks you to 放行 or 退回,
+ * listing what it passed on nothing but its word, and the ball is yours (`awaiting_user`).
+ * Unconfirmed checks from your words never block.
  */
 export function reviewSubmission(ctx: StoreContext, input: {
   turnId: string; submissionId?: unknown; verdicts?: unknown; outcome: unknown; note?: unknown; model?: string | null;
@@ -970,37 +972,27 @@ export function reviewSubmission(ctx: StoreContext, input: {
       }
       // A routine's run is approved on a clean review, with nothing put to you (see takeUpAwaiting).
       const routine = routinePlan(ctx, submission.task_id);
-      if (sameModel && !routine) {
-        const open = unbackedItems(ctx, { ...submission, checks }, "raised");
-        if (open.length > 0) {
-          ctx.db.run("UPDATE submissions SET checks = ?, updated_at = ? WHERE id = ?", [JSON.stringify(checks), now, submission.id]);
-          const card = askYou(ctx, getSubmission(ctx, submission.id), open, record, now);
-          const waiting = open.map((item) => `requirement ${item.requirement_id} 「${item.quote}」 was raised ${item.times_raised} times, and you run on the producer's own model: your pass needs a passing check or the user's word${item.checks.length > 0 ? ` (the app measured: ${checkLines(item.checks, "en").join("; ")})` : ""}`);
-          recordWorkEvent(ctx, { kind: "review.awaiting_user", actor: turn.bot_id, botId: turn.bot_id, taskId: submission.task_id, ticketId: submission.ticket_id,
-            turnId: turn.id, payload: { submission_id: submission.id, requirement_ids: open.map((item) => item.requirement_id), message_id: card?.id ?? null } });
-          return { ok: false, code: "awaiting_user", reasons: waiting, submission: getSubmission(ctx, submission.id), card };
-        }
-      }
-      // An organizer's reading or an answer is never approved on a reviewer's word alone: nobody
-      // made the words. Nor is a hand-over no confirmed check backs, when the reviewer runs on the
-      // producer's own model or gave no evidence for anything — one Bot passing another's claim.
-      // Either way the clean approve moves it to your approve/reject card, its verdict shown there.
+      // What you raised twice or more that a pass on the producer's own model leaves on nothing; an
+      // organizer's reading or an answer, which nobody made; a hand-over no confirmed check backs,
+      // when the reviewer runs on the producer's own model or gave no evidence for anything — one
+      // Bot passing another's claim; a large job's sample or last part (ADR 0060). Any of these moves
+      // the clean approve to your one 放行/退回 card, its verdict and those items shown there.
       // (Every gate passed by here: a failing or unrun one refused the approval above.)
-      const unbacked = !checks.some(backs) && (sameModel || !hasEvidence(ctx, submission, verdicts));
-      // A large job's sample and its last hand-over are yours past any review (ADR 0060).
-      const yours = yoursToApprove(ctx, submission.ticket_id);
-      if (!routine && (ORIGIN_NEEDS_USER.includes(submission.origin) || unbacked || yours)) {
+      const open = sameModel && !routine ? unbackedItems(ctx, { ...submission, checks }, "raised") : [];
+      const needed = !routine && needsYourApproval(ctx, submission, checks, record);
+      if (open.length > 0 || needed) {
         ctx.db.run("UPDATE submissions SET checks = ?, updated_at = ? WHERE id = ?", [JSON.stringify(checks), now, submission.id]);
-        const card = askApproval(ctx, getSubmission(ctx, submission.id), now, record);
+        const card = askApproval(ctx, getSubmission(ctx, submission.id), now, record, { items: open, backed: checks.some(backs) });
         recordWorkEvent(ctx, { kind: "review.awaiting_user", actor: turn.bot_id, botId: turn.bot_id, taskId: submission.task_id, ticketId: submission.ticket_id,
-          turnId: turn.id, payload: { submission_id: submission.id, requirement_ids: [], message_id: card?.id ?? null } });
-        const why = ORIGIN_NEEDS_USER.includes(submission.origin)
-          ? `submission ${submission.id} is a ${submission.origin === "answer" ? "words" : "organizer"} hand-over`
+          turnId: turn.id, payload: { submission_id: submission.id, requirement_ids: open.map((item) => item.requirement_id), message_id: card?.id ?? null } });
+        const items = open.map((item) => `requirement ${item.requirement_id} 「${item.quote}」 was raised ${item.times_raised} times, and you run on the producer's own model: your pass needs a passing check or the user's word${item.checks.length > 0 ? ` (the app measured: ${checkLines(item.checks, "en").join("; ")})` : ""}`);
+        const yours = yoursToApprove(ctx, submission.ticket_id);
+        const why = ORIGIN_NEEDS_USER.includes(submission.origin) ? `submission ${submission.id} is a ${submission.origin === "answer" ? "words" : "organizer"} hand-over`
           : yours === "sample" ? `submission ${submission.id} is the job's sample, which sets the standard for the rest`
           : yours === "last" ? `submission ${submission.id} is the large job's last hand-over, which delivers it`
           : `no check the user confirmed backs submission ${submission.id}, and ${sameModel ? "you run on the producer's own model" : "your verdicts carry no evidence"}`;
         return { ok: false, code: "awaiting_user",
-          reasons: [`${why}: a review's approve moves it to the user's approve/reject card, never straight to approved`],
+          reasons: [...items, ...(needed ? [`${why}: a review's approve moves it to the user's approve/reject card, never straight to approved`] : [])],
           submission: getSubmission(ctx, submission.id), card };
       }
       approve(ctx, submission, record, checks, now, routine ? "routine" : "no_reviewer");
@@ -1081,73 +1073,35 @@ function tellProducer(ctx: StoreContext, submission: Submission, review: ReviewR
   refreshHeldInbox(ctx, { botId: submission.bot_id });
 }
 
+/** A required item nothing backs, with what the app measured on it (checks from your words, not confirmed). */
+type UnbackedItem = RequiredItem & { checks: SubmissionCheck[] };
+
 /**
- * The card that asks you about required items nothing backs (ADR 0046): what each item is, what the
- * app measured on it (a check from your words, not confirmed), and three ways on — confirm the check
- * (it is then a gate and decides), say the item is met for this hand-over, or stop requiring it.
- * The approval waits on it, and the ball is yours. One card per submission and set of items.
+ * Whether a hand-over waits on your 放行 with every required item met: nobody made it (an
+ * organizer's reading, words handed over), it is a large job's sample or last part (ADR 0060), or
+ * nothing stands behind it — no gate of yours passed, and no reviewer on another model gave evidence
+ * on what you asked (ADR 0046).
  */
-function askYou(ctx: StoreContext, submission: Submission, items: ReadonlyArray<RequiredItem & { checks: SubmissionCheck[] }>, review: ReviewRecord | null, now: string): Message | null {
-  const requirementIds = items.map((item) => item.requirement_id).sort();
-  const proposed = [...new Set(items.flatMap((item) => item.checks.filter((check) => !check.gate).map((check) => check.check_id)))];
-  // A misread proposal that PASSES the wrong cut (ADR 0042): the card still shows it, but
-  // 「确认这条检查」 is never the one button offered by default for it.
-  const checksPassing = items.some((item) => item.checks.some((check) => !check.gate && check.outcome === "pass"));
-  const previous = submission.awaiting;
-  if (previous && JSON.stringify([...previous.requirement_ids].sort()) === JSON.stringify(requirementIds)) {
-    if (review && !previous.review) ctx.db.run("UPDATE submissions SET awaiting = ? WHERE id = ?", [JSON.stringify({ ...previous, review }), submission.id]);
-    // The checks measured since may have moved (a proposal that failed now passes, or the reverse):
-    // the card's own read of that stays current even when nothing else about it changed.
-    if (previous.message_id) {
-      try {
-        const card = getMessage(ctx, previous.message_id);
-        if (card.control?.kind === "review_item" && Boolean(card.control.checks_passing) !== checksPassing) {
-          setMessageControl(ctx, previous.message_id, { ...card.control, checks_passing: checksPassing });
-        }
-      } catch {
-        // the card is gone: nothing to refresh
-      }
-    }
-    return null;
-  }
-  if (previous?.message_id) letGoOfCard(ctx, previous.message_id, { reason: "replaced" });
-  const plan = ctx.db.query<{ session_id: string | null; title: string }, [string]>("SELECT session_id, title FROM tasks WHERE id = ?").get(submission.task_id);
-  const ticket = stagedTicket(ctx, submission.ticket_id);
-  let message: Message | null = null;
-  if (plan?.session_id) {
-    const en = locale(ctx) === "en";
-    const number = String(ticket.seq).padStart(2, "0");
-    const who = review ? ctx.db.query<{ name: string }, [string]>("SELECT name FROM bots WHERE id = ?").get(review.reviewer_bot_id)?.name ?? review.reviewer_bot_id : null;
-    const lines = items.map((item) => {
-      const measured = item.checks.length > 0 ? (en ? ` — measured: ${checkLines(item.checks, "en").join("; ")}` : `——应用量到：${checkLines(item.checks, "zh").join("；")}`) : "";
-      const why = item.reasons.includes("raised") ? (en ? `you said it ${item.times_raised} times` : `你说过 ${item.times_raised} 次`) : (en ? "about the picture" : "关于画面");
-      return en ? `- "${item.quote}" (${why})${measured}` : `- 「${item.quote}」（${why}）${measured}`;
-    });
-    const head = en
-      ? review
-        ? `Ticket ${number} "${ticket.title}" of ${plan.title}: ${who} passed submission ${submission.id}, but ${modelKnown(review, submission) ? "on the producer's own model" : "with no telling whether on the producer's own model"}, and nothing backs these:`
-        : `Ticket ${number} "${ticket.title}" of ${plan.title}: submission ${submission.id} passed its checks and has no reviewer, and nothing backs these:`
-      : review
-        ? `${plan.title} 的任务 ${number}「${ticket.title}」：${who}放行了交付 ${submission.id}，但${modelKnown(review, submission) ? "它和做的 Bot 是同一个模型" : "看不出它和做的 Bot 是不是同一个模型"}，下面这几条没有东西撑着：`
-        : `${plan.title} 的任务 ${number}「${ticket.title}」：交付 ${submission.id} 检查都过了、没有审查者，下面这几条没有东西撑着：`;
-    const tail = en
-      ? "Confirm the check to let it decide, say these are met, or stop requiring them."
-      : "确认那条检查让它来判，说一声这几条做到了，或者不再要这几条。";
-    const place = cardPlace(ctx, submission, plan.session_id);
-    const isDirect = ctx.db.query<{ kind: string }, [string]>("SELECT kind FROM sessions WHERE id = ?").get(place)?.kind === "direct"
-      && producerIsBot(ctx, submission);
-    message = insertMessage(ctx, {
-      sessionId: place, kind: "system", author: isDirect ? submission.bot_id : USER_MEMBER, hiddenFromBots: true,
-      body: [head, ...lines, tail].join("\n"),
-      control: { kind: "review_item", submission_id: submission.id, task_id: submission.task_id, ticket_id: submission.ticket_id,
-        requirement_ids: requirementIds, check_ids: proposed, checks_passing: checksPassing,
-        offer: [...(proposed.length > 0 ? ["confirm_check" as const] : []), "confirm_item", "remove_item"] },
-    });
-    createNotification(ctx, { semantic_key: `review_item:${message.id}`, kind: "ask", session_id: place, message_id: message.id, action_state: "open" });
-  }
-  const awaiting: AwaitingYou = { requirement_ids: requirementIds, check_ids: proposed, message_id: message?.id ?? null, review, at: now, kind: "items" };
-  ctx.db.run("UPDATE submissions SET awaiting = ?, updated_at = ? WHERE id = ?", [JSON.stringify(awaiting), now, submission.id]);
-  return message;
+function needsYourApproval(ctx: StoreContext, submission: Submission, checks: readonly SubmissionCheck[], review: ReviewRecord | null): boolean {
+  if (ORIGIN_NEEDS_USER.includes(submission.origin) || yoursToApprove(ctx, submission.ticket_id)) return true;
+  if (checks.some(backs)) return false;
+  return !review || review.same_model || !hasEvidence(ctx, submission, review.verdicts);
+}
+
+/**
+ * The required items nothing backs, as the 放行 card lists them: what each is, why it must be judged,
+ * what the app measured on it. One that only repeats the job's or the ticket's name, which the
+ * card's first line already gives, with nothing measured on it, is left out of the words.
+ */
+function unbackedLines(items: readonly UnbackedItem[], titles: readonly string[], en: boolean): string[] {
+  const named = new Set(titles.map((title) => title.trim()));
+  const shown = items.filter((item) => item.checks.length > 0 || !named.has(item.quote.trim()));
+  if (shown.length === 0) return [];
+  return [en ? "Approving it counts these as met:" : "放行就算这几条做到了：", ...shown.map((item) => {
+    const measured = item.checks.length > 0 ? (en ? ` — measured: ${checkLines(item.checks, "en").join("; ")}` : `——应用量到：${checkLines(item.checks, "zh").join("；")}`) : "";
+    const why = item.reasons.includes("raised") ? (en ? `you said it ${item.times_raised} times` : `你说过 ${item.times_raised} 次`) : (en ? "about the picture" : "关于画面");
+    return en ? `- "${item.quote}" (${why})${measured}` : `- 「${item.quote}」（${why}）${measured}`;
+  })];
 }
 
 /** The reviewer's verdict, for a card that shows it rather than acting on it: name, model, whether it ran on the producer's own, and its notes. */
@@ -1184,16 +1138,6 @@ function reviewerVerdictLine(ctx: StoreContext, review: ReviewRecord, submission
 }
 
 /**
- * The card for a hand-over that is never approved on its own say — not the organizer's word, not a
- * reviewer's with nothing standing behind it, not an automatic measurement with nothing standing
- * behind it (ADR 0046). Shown for an `answer` or `organizer` submission once its checks and required
- * items clear, reviewed or not; for a `submit`/`implicit` file hand-over no active (confirmed) gate
- * backs, when no reviewer judged it, or when the reviewer ran on the producer's own model or gave no
- * evidence. `review`, when given, is the reviewer's own clean approve — shown on the card, not acted
- * on; your two buttons are the submission's own outcome (`approve`, `reject` — `answerReviewCard`),
- * not a required item's.
- */
-/**
  * Where a card about a hand-over goes: where you last spoke about its job — a group, or your direct
  * with the Bot that made it — else the job's home (see `spokenFor`).
  */
@@ -1206,10 +1150,25 @@ function fileNames(submission: Pick<Submission, "artifacts">, en: boolean): stri
   return submission.artifacts.map((artifact) => artifact.path.split("/").pop() ?? artifact.path).join(en ? ", " : "、");
 }
 
-function askApproval(ctx: StoreContext, submission: Submission, now: string, review: ReviewRecord | null = null): Message | null {
+/**
+ * The one card a hand-over waits on you with: 放行 or 退回 (ADR 0046, ADR 0058 §13). Shown for an
+ * `answer` or `organizer` submission, reviewed or not; for a `submit`/`implicit` file hand-over no
+ * active (confirmed) gate backs, when no reviewer judged it, or when the reviewer ran on the
+ * producer's own model or gave no evidence; and for one with required items nothing backs (`items`:
+ * said twice or more, or about the picture), which it lists with what the app measured on them —
+ * 放行 takes them as met. Until 2026-10-07 those items had a card of their own first, and each item
+ * read after it another: 「生成一张猫坐在阳台的图片」 asked three times in 26 s, the last time to 放行.
+ * `review`, when given, is the reviewer's own clean approve — shown on the card, not acted on; your
+ * two buttons are the submission's own outcome (`approve`, `reject` — `answerReviewCard`). `backed`:
+ * a gate of yours passed, so only the items are yours to decide.
+ */
+function askApproval(ctx: StoreContext, submission: Submission, now: string, review: ReviewRecord | null = null,
+  opts: { items?: readonly UnbackedItem[]; backed?: boolean } = {}): Message | null {
   const previous = submission.awaiting;
   if (previous?.kind === "approval") return null;
   if (previous?.message_id) letGoOfCard(ctx, previous.message_id, { reason: "replaced" });
+  const items = opts.items ?? [];
+  const requirementIds = items.map((item) => item.requirement_id).sort();
   const plan = ctx.db.query<{ session_id: string | null; title: string }, [string]>("SELECT session_id, title FROM tasks WHERE id = ?").get(submission.task_id);
   const ticket = stagedTicket(ctx, submission.ticket_id);
   let message: Message | null = null;
@@ -1233,10 +1192,13 @@ function askApproval(ctx: StoreContext, submission: Submission, now: string, rev
         : review
           ? (en ? `Ticket ${number} "${ticket.title}" of ${plan.title} is in (${fileNames(submission, en)}), and it is yours to decide.`
             : `${plan.title} 的任务 ${number}「${ticket.title}」交上来了（${fileNames(submission, en)}），等你定。`)
-          : (en ? `Ticket ${number} "${ticket.title}" of ${plan.title} is in (${fileNames(submission, en)}). Nobody reviews it and no check you confirmed stands behind it, so it is yours to decide.`
-            : `${plan.title} 的任务 ${number}「${ticket.title}」交上来了（${fileNames(submission, en)}）。没有审查者，也没有你确认过的检查替你把关，所以要你来定。`);
+          : opts.backed && items.length > 0
+            ? (en ? `Ticket ${number} "${ticket.title}" of ${plan.title} is in (${fileNames(submission, en)}). The checks you confirmed passed, but they do not cover what is below, so it is yours to decide.`
+              : `${plan.title} 的任务 ${number}「${ticket.title}」交上来了（${fileNames(submission, en)}）。你确认过的检查都过了，但它们管不到下面这几条，所以要你来定。`)
+            : (en ? `Ticket ${number} "${ticket.title}" of ${plan.title} is in (${fileNames(submission, en)}). Nobody reviews it and no check you confirmed stands behind it, so it is yours to decide.`
+              : `${plan.title} 的任务 ${number}「${ticket.title}」交上来了（${fileNames(submission, en)}）。没有审查者，也没有你确认过的检查替你把关，所以要你来定。`);
     const tail = en ? "Have a look, then approve it or send it back." : "看过之后，放行或者退回。";
-    const body = [head + verdict, tail].join("\n");
+    const body = [head + verdict, ...unbackedLines(items, [plan.title, ticket.title], en), tail].join("\n");
     const place = cardPlace(ctx, submission, plan.session_id);
     const isDirect = ctx.db.query<{ kind: string }, [string]>("SELECT kind FROM sessions WHERE id = ?").get(place)?.kind === "direct"
       && producerIsBot(ctx, submission);
@@ -1246,11 +1208,11 @@ function askApproval(ctx: StoreContext, submission: Submission, now: string, rev
       sessionId: place, kind: "system", author: isDirect ? submission.bot_id : USER_MEMBER, hiddenFromBots: true, body,
       ...(paths && paths.length > 0 ? { paths } : {}),
       control: { kind: "review_item", submission_id: submission.id, task_id: submission.task_id, ticket_id: submission.ticket_id,
-        requirement_ids: [], check_ids: [], offer: ["approve", "reject"] },
+        requirement_ids: requirementIds, check_ids: [], offer: ["approve", "reject"] },
     });
     createNotification(ctx, { semantic_key: `review_item:${message.id}`, kind: "ask", session_id: place, message_id: message.id, action_state: "open" });
   }
-  const awaiting: AwaitingYou = { requirement_ids: [], check_ids: [], message_id: message?.id ?? null, review, at: now, kind: "approval" };
+  const awaiting: AwaitingYou = { requirement_ids: requirementIds, check_ids: [], message_id: message?.id ?? null, review, at: now, kind: "approval" };
   ctx.db.run("UPDATE submissions SET awaiting = ?, updated_at = ? WHERE id = ?", [JSON.stringify(awaiting), now, submission.id]);
   return message;
 }
@@ -1350,30 +1312,43 @@ function takeUpAwaiting(ctx: StoreContext, submission: Submission, now: string):
     approve(ctx, submission, submission.awaiting?.review ?? null, checks, now, "routine");
     return { submission: getSubmission(ctx, submission.id), unrun: [] };
   }
-  // Your approve/reject card waits on your press alone; a later tick never approves it by itself.
-  // A 放行 you already pressed, waiting on a gate, resolves here once every gate has run — one
-  // added while it waited included, which the press's own run never saw.
-  if (submission.awaiting?.kind === "approval") {
-    return { submission: submission.awaiting.pending ? resolveApproval(ctx, submission, checks, now) : submission, unrun: [] };
+  const awaiting = submission.awaiting;
+  const review = awaiting?.review ?? null;
+  if (awaiting?.kind === "approval") {
+    // A 放行 you already pressed, waiting on a gate, resolves here once every gate has run — one
+    // added while it waited included, which the press's own run never saw.
+    if (awaiting.pending) return { submission: resolveApproval(ctx, submission, checks, now), unrun: [] };
+    // Otherwise your card waits on your press alone, and a later tick never approves it by itself —
+    // unless all it waited on were the required items it lists: once you have dropped them on the
+    // board, or a check you confirmed passes on them, and nothing else needs your 放行, it lets the
+    // hand-over through, as the required-items card it replaced did.
+    if (awaiting.requirement_ids.length > 0 && !needsYourApproval(ctx, submission, checks, review)
+      && unbackedItems(ctx, submission, review ? "raised" : "all").length === 0) {
+      approve(ctx, submission, review, checks, now);
+    }
+    return { submission: getSubmission(ctx, submission.id), unrun: [] };
   }
-  const review = submission.awaiting?.review ?? null;
-  const open = unbackedItems(ctx, submission, review ? "raised" : "all");
-  if (open.length > 0) {
-    askYou(ctx, submission, open, review, now);
+  // Made in one go, by the one segment since the job opened or was last let through: approved now,
+  // with no card — you asked, the Bot did it, and it is there where you asked. That holds for what
+  // you said about the picture too: the line that opened a picture job is always such an item, and
+  // it put every one made in one go on a card (2026-10-07). A large job's sample and last part are
+  // always yours (ADR 0060).
+  if (!review && doneInOneGo(ctx, submission) && !yoursToApprove(ctx, submission.ticket_id)) {
+    approve(ctx, submission, null, checks, now, checks.some(backs) ? "no_reviewer" : "one_go");
     return { submission: getSubmission(ctx, submission.id), unrun: [] };
   }
   // An organizer's reading or an answer always ends on your approve/reject card: nobody made the
-  // words, reviewed or not. A file hand-over (submit/implicit) with no reviewer auto-approves only
-  // when at least one gate you wrote or confirmed backs it and all gates pass — by here every gate
-  // that ran did (the first check above sent a failure back) — or when it was made in one go; with
-  // neither, it waits on the same card instead.
-  // A large job's sample and its last hand-over are always yours (ADR 0060), whatever backs them.
-  const oneGo = !review && !checks.some(backs) && doneInOneGo(ctx, submission);
-  if (ORIGIN_NEEDS_USER.includes(submission.origin) || (!review && !checks.some(backs) && !oneGo) || yoursToApprove(ctx, submission.ticket_id)) {
-    askApproval(ctx, submission, now, review);
+  // words, reviewed or not. A file hand-over (submit/implicit) with no reviewer is approved only when
+  // at least one gate you wrote or confirmed backs it and all gates pass — by here every gate that
+  // ran did (the first check above sent a failure back). What you said twice or more, or about the
+  // picture, with nothing behind it is yours as well: it is listed on the same card, one card for the
+  // hand-over, and 放行 takes it as met.
+  const open = unbackedItems(ctx, submission, review ? "raised" : "all");
+  if (open.length > 0 || needsYourApproval(ctx, submission, checks, review)) {
+    askApproval(ctx, submission, now, review, { items: open, backed: checks.some(backs) });
     return { submission: getSubmission(ctx, submission.id), unrun: [] };
   }
-  approve(ctx, submission, review, checks, now, oneGo ? "one_go" : "no_reviewer");
+  approve(ctx, submission, review, checks, now);
   return { submission: getSubmission(ctx, submission.id), unrun: [] };
 }
 
@@ -1437,14 +1412,15 @@ export function takeUpPendingApproval(ctx: StoreContext, submissionId: string, n
 }
 
 /**
- * Your answer on a card, once per card. On a required-items card: confirming the item says it is
- * met for this hand-over; removing it stops requiring it in this plan (waived, or not held here
- * when it is the conversation's or standing); confirming the check makes it a gate, and the engine
- * then runs it and takes the submission up again (returned in `checkIds`). On an approve/reject
- * card: `approve` resolves it on its checks as the
- * no-reviewer path always did, with a gate still `not_run` waited for first (its check ids come
- * back in `checkIds`, for the engine to run before taking it up again — `takeUpPendingApproval`);
- * `reject` sends it back to rework and wakes its producer, the way a reviewer's reject does.
+ * Your answer on a card, once per card. On the approve/reject card: `approve` resolves it on its
+ * checks as the no-reviewer path always did — the required items it lists taken as met — with a gate
+ * still `not_run` waited for first (its check ids come back in `checkIds`, for the engine to run
+ * before taking it up again — `takeUpPendingApproval`); `reject` sends it back to rework and wakes
+ * its producer, the way a reviewer's reject does. On a required-items card from before 2026-10-07,
+ * still out: confirming the item says it is met for this hand-over; removing it stops requiring it
+ * in this plan (waived, or not held here when it is the conversation's or standing); confirming the
+ * check makes it a gate, and the engine then runs it and takes the submission up again (returned in
+ * `checkIds`).
  */
 export function answerReviewCard(ctx: StoreContext, messageId: string, action: unknown, opts: { note?: unknown } = {}): { submission: Submission; checkIds: string[]; message: Message } {
   const note = sendBackNote(opts.note);
@@ -1589,9 +1565,10 @@ export function settlePlanStage(ctx: StoreContext, taskId: string, now: string =
  * The supervisor's part (§5.3.7), each tick, outside your stops and dormant plans: a submission
  * checked and handed over with no reviewer for longer than one tick goes to the ticket's reviewer if
  * it has one by now; else the app reads its checks as they are now (a gate failing sends it back to
- * its producer) and approves it, unless a required item (raised twice or more, or about the
- * picture) has nothing behind it — then a card asks you. A submission waiting on you is taken up
- * again each tick against what is true now. Returns what it moved and the cards it wrote.
+ * its producer) and approves it when a gate of yours backs it or it was made in one go — otherwise,
+ * or when a required item (raised twice or more, or about the picture) has nothing behind it, one
+ * card asks you. A submission waiting on you is taken up again each tick against what is true now.
+ * Returns what it moved and the cards it wrote.
  */
 export function superviseSubmissions(ctx: StoreContext, now: string = isoNow()): {
   moved: Submission[]; messages: Message[]; toRun: Array<{ taskId: string; checkIds: string[] }>;

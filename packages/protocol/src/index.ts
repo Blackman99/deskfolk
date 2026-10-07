@@ -1637,12 +1637,13 @@ export type MessageControl =
     }
   | {
       /**
-       * A hand-over's approval waiting on you (ADR 0046): required items nothing backs — no passing
-       * check, a reviewer on the producer's own model or none — or, with no required items left open,
-       * an organizer's reading or an answer with no reviewer, which is never approved on its own say.
-       * `confirm_check` makes the checks from your words in `check_ids` gates, `confirm_item` says the
-       * items are met for this hand-over, `remove_item` stops requiring them in this plan; `approve`
-       * and `reject` (empty `requirement_ids`/`check_ids`) decide the submission itself.
+       * A hand-over waiting on you (ADR 0046; one card per hand-over, ADR 0058 §13): `approve` or
+       * `reject` decide the submission itself. `requirement_ids` are the required items nothing backs
+       * that the card lists — said twice or more, or about the picture, with no passing check or
+       * reviewer standing on them; empty when there are none — and `approve` takes them as met. A
+       * card written before 2026-10-07 may ask about those items alone: `confirm_check` makes the
+       * checks from your words in `check_ids` gates, `confirm_item` says the items are met for this
+       * hand-over, `remove_item` stops requiring them in this plan.
        */
       kind: "review_item";
       submission_id: string;

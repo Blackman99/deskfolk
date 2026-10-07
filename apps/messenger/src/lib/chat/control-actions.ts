@@ -80,9 +80,9 @@ export function controlBar(control: MessageControl | undefined, holds: readonly 
     });
     return buttons.length > 0 ? { state: "ask", prompt: null, buttons } : { state: "none" };
   }
-  // A hand-over's approval waiting on you (ADR 0046): confirm the check from your words, count the
-  // items as met, stop requiring them, or — a hand-over with no reviewer and nothing required —
-  // approve it or send it back. Stops play no part.
+  // A hand-over waiting on you (ADR 0046): approve it or send it back — what it lists as backed by
+  // nothing counts as met on 放行. A card from before 2026-10-07 may ask about those items alone:
+  // confirm the check from your words, count the items as met, or stop requiring them. Stops play no part.
   if (control.kind === "review_item") {
     // A misread proposal that PASSES the wrong cut (ADR 0042) is shown, but never pre-selected:
     // 确认这条检查 is neither primary nor the first button when that is what it would confirm.

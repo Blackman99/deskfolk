@@ -263,7 +263,7 @@ export function createSubmissions(deps: SubmissionsDeps): Submissions {
       dispatchQueued();
       if (!result.ok && result.code === "awaiting_user") {
         if (result.card) publishMessage(result.card);
-        return { ok: false, error: { code: result.code, message: `approval of submission ${result.submission.id} waits on the user: ${result.reasons.join(" | ")}. A card asks the user to confirm the check or the item, or to drop it; there is nothing more for you to do on this submission — end your turn.` },
+        return { ok: false, error: { code: result.code, message: `approval of submission ${result.submission.id} waits on the user: ${result.reasons.join(" | ")}. A card asks the user to approve it or send it back; there is nothing more for you to do on this submission — end your turn.` },
           data: { submission_id: result.submission.id, waiting_on: "user" }, emitted: [] };
       }
       if (!result.ok) {
@@ -312,10 +312,11 @@ export function createSubmissions(deps: SubmissionsDeps): Submissions {
   }
 
   /**
-   * Your answer on a card about a hand-over's required items. Confirming the item or removing it
-   * takes the submission up at once (approved when nothing else is open); confirming the check makes
-   * it a gate, and the submission is taken up again once it has run — a failing gate sends the
-   * hand-over back to its producer, now against a number you confirmed.
+   * Your answer on a hand-over's card. 放行 approves it once its gates have run (a gate not run yet
+   * is run first, then the press resolves); 退回 sends it back. On a required-items card from before
+   * 2026-10-07: confirming the item or removing it takes the submission up at once; confirming the
+   * check makes it a gate, and the submission is taken up again once it has run — a failing gate
+   * sends the hand-over back to its producer, now against a number you confirmed.
    */
   function act(message: Message, input: { action: unknown; note?: unknown }): ControlActionResult {
     const answered = store.answerReviewCard(message.id, input.action, { note: input.note });

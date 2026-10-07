@@ -20,10 +20,11 @@
  *   `submit`, it goes to 审片员 as the ticket's reviewer, and 审片员 — on the same model — passes it
  *   「约 2 分钟」 and approves. A same-model pass on what you said twice needs a passing check or your
  *   word: the check from your words measures 107.00 s and is not confirmed, so the approval is
- *   refused with that measurement and the ball comes to you, on a card — confirm the check, say it
- *   is met, or drop it. The producer is told nothing about a number you have not confirmed. You
- *   confirm the check: now a gate, measured again, failing — the master goes back to 视频导演 against
- *   the number you confirmed. A text 「PASSED」 moves nothing at any point.
+ *   refused with that measurement and the ball comes to you, on the hand-over's one card — 放行 or
+ *   退回, the reviewer's word, 「片长约2分钟」 and the 107.00 s on it. The producer is told nothing about
+ *   a number you have not confirmed. You confirm the check on the board: now a gate, measured again,
+ *   failing — at the next tick the master goes back to 视频导演 against the number you confirmed, and
+ *   the card says why in place of its buttons. A text 「PASSED」 moves nothing at any point.
  *
  * The 107-second master is made with ffmpeg, and the check reads it with ffprobe: where they are not
  * installed the first test is skipped, since there is no file to deliver or to measure.
@@ -183,7 +184,9 @@ test.skipIf(!FFMPEG)("an approval over the failing check is refused, and says wh
   expect(replies[0]!.content).toContain("awaiting_user");
   expect(replies[0]!.content).toContain("107.00 秒，要时长 108–132 秒");
   const card = h.messages(room).find((message) => message.control?.kind === "review_item")!;
-  expect(card.control).toMatchObject({ kind: "review_item", submission_id: submission!.id, requirement_ids: [entry.id], offer: ["confirm_check", "confirm_item", "remove_item"] });
+  expect(card.control).toMatchObject({ kind: "review_item", submission_id: submission!.id, requirement_ids: [entry.id], offer: ["approve", "reject"] });
+  expect(card.body).toContain("审片员审过了，判通过");
+  expect(card.body).toContain("- 「片长约2分钟」（你说过 2 次）——应用量到：");
   expect(card.body).toContain("107.00 秒，要时长 108–132 秒");
   expect(h.store.ballHolder({ ticketId: master.id })).toEqual({ kind: "user", reason: "review", ref: card.id });
   // The 「PASSED」 in words moved nothing, and nobody told 视频导演 to recut to an unconfirmed number.
@@ -191,13 +194,18 @@ test.skipIf(!FFMPEG)("an approval over the failing check is refused, and says wh
   expect(h.store.getTicket(master.id)).toMatchObject({ stage: "in_review", status: "review" });
   expect(h.store.db.query("SELECT COUNT(*) AS n FROM inbox_items WHERE bot_id = ? AND source = 'review'").get(director.id)).toEqual({ n: 0 });
 
-  // You confirm the check: a gate now, measured again, failing — the master goes back to 视频导演.
+  // You confirm the check on the board: a gate now, measured again, failing — at the next tick the
+  // master goes back to 视频导演, and the card says why.
   h.script(director).reply(call(tool("end_turn", { reason: "nothing_new" })));
-  h.engine.control(card.id, { action: "confirm_check" });
+  const [offered] = h.store.listChecks(plan.id);
+  h.engine.confirmDerivedCheck(offered!.id);
   await h.waitIdle();
   const [check] = h.store.listChecks(plan.id);
   expect(check).toMatchObject({ derived_state: "active", last_run: { outcome: "fail", detail: "107.00 秒，要时长 108–132 秒" } });
+  h.tick();
+  await h.waitIdle();
   expect(h.store.getSubmission(submission!.id).state).toBe("checks_failed");
+  expect(h.store.getMessage(card.id).control).toMatchObject({ offer: [], result: expect.stringContaining("检查没过，已退回") });
   expect(h.store.getTicket(master.id)).toMatchObject({ stage: "rework", status: "doing" });
   const told = h.store.db.query<{ body_snapshot: string }, [string]>("SELECT body_snapshot FROM inbox_items WHERE bot_id = ? AND source = 'review'").all(director.id);
   expect(told).toHaveLength(1);
