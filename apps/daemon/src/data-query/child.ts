@@ -5,7 +5,7 @@
  * it on its deadline without stalling anything of its own. The database is opened read-only.
  */
 import { Database } from "bun:sqlite";
-import { checkPlan, deniedTable, scanSql, type PlanRow, type RootPages } from "./guard";
+import { checkPlan, deniedTable, namedWords, scanSql, type PlanRow, type RootPages } from "./guard";
 
 export type QueryRequest = { mode: "query"; db: string; sql: string; params: Array<string | number | null>; maxRows: number };
 export type DescribeRequest = { mode: "describe"; db: string; table: string | null; budgetMs: number };
@@ -41,6 +41,17 @@ function rootPages(db: Database): RootPages {
   return new Map(rows.map((row) => [row.rootpage!, { name: row.name, table: row.type === "index" ? row.tbl_name : row.name }]));
 }
 
+/** For a column a table does not have: the columns of every table the query names, so the next try can be right. */
+function columnHint(db: Database, sql: string): string {
+  const named = new Set(namedWords(sql));
+  const tables = db.query<{ name: string }, []>("SELECT name FROM sqlite_schema WHERE type IN ('table', 'view') ORDER BY name").all()
+    .map((row) => row.name)
+    .filter((name) => named.has(name.toLowerCase()) && !deniedTable(name));
+  if (tables.length === 0) return "";
+  const columns = (name: string) => db.query<{ name: string }, []>(`PRAGMA table_info("${name.replaceAll('"', '""')}")`).all().map((col) => col.name).join(", ");
+  return `. Columns: ${tables.map((name) => `${name}(${columns(name)})`).join("; ")}`;
+}
+
 /** How json_each and json_tree show in this connection's plans: each is one virtual table per connection. */
 function jsonTables(db: Database): Set<string> {
   const out = new Set<string>();
@@ -67,7 +78,8 @@ export function runQuery(request: QueryRequest): QueryAnswer {
     try {
       plan = db.query<PlanRow, Array<string | number | null>>(`EXPLAIN ${request.sql}`).all(...request.params);
     } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+      const message = error instanceof Error ? error.message : String(error);
+      return { ok: false, error: /^no such column/i.test(message) ? `${message}${columnHint(db, request.sql)}` : message };
     }
     const read = checkPlan(plan, rootPages(db), jsonTables(db));
     if (!read.ok) return { ok: false, error: read.reason };

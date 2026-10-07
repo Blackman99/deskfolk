@@ -65,6 +65,8 @@ test("the query plan refuses what the words do not show: a view over a denied ta
   if (!view.ok) expect(view.error).toBe("no such table: remote_push_subs");
   expect(query("SELECT 1 FROM messages WHERE body = (SELECT 'x')").ok).toBe(true);
   expect(query("SELECT * FROM nowhere").ok).toBe(false);
+  // A wrong column is answered with the named tables' columns; a table it never names is not listed.
+  expect(query("SELECT m.created_at FROM messages AS m")).toEqual({ ok: false, error: "no such column: m.created_at. Columns: messages(id, body, raw)" });
   // SQLite reads a quoted string as a table's name where only a name fits; the words miss it, the plan does not.
   expect(scanSql("SELECT * FROM 'terminals'")).toEqual({ ok: true });
   expect(query("SELECT * FROM 'terminals'")).toEqual({ ok: false, error: "no such table: terminals" });

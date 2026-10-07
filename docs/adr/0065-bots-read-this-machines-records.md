@@ -8,7 +8,7 @@ You put it this way (2026-10-06): every record the system keeps should be readab
 
 ## 决定 / Decisions
 
-1. **三个只读工具 / Three read-only tools.** `describe_data` 列出表、列、行数，主要的表附一句说明（`data-query/catalog.ts`）；`query_data` 在本机记录上跑一条只读的 SQLite 查询（单条 SELECT 或 WITH … SELECT，参数按 `?` 绑定，默认 100 行、上限 1000，长格子截断，二进制只给字节数）；`read_data_log` 读守护进程日志的末尾（`daemon.log`、开发版的 `daemon-dev.stderr.log`），可以 grep。三者都没有副作用：叫停中、只读段里也能用，不出批准卡——它们读的是应用自己的记录，由应用把关，不是越界读文件。Claude Agent 跑的 Bot 也经 `mcp__deskfolk__` 拿到它们。/ `describe_data` lists tables, columns, row counts and a line on the main ones; `query_data` runs one read-only SQLite query (a single SELECT or WITH … SELECT, `?` bound in order, 100 rows by default and 1000 at most, long cells cut, blobs shown by size); `read_data_log` reads the end of the daemon's logs, with grep. None has a side effect: they work under a hold and in read-only segments, and raise no approval card — they read the app's own records through the app, not files outside the workspace. Claude Agent Bots get them under `mcp__deskfolk__` too.
+1. **三个只读工具 / Three read-only tools.** `describe_data` 列出表和行数，主要的表附一句说明（`data-query/catalog.ts`），给 `table` 才列那一张的列——全部的列一次列出来有一万五千字，超过工具结果留在上下文里的上限；`query_data` 在本机记录上跑一条只读的 SQLite 查询（单条 SELECT 或 WITH … SELECT，参数按 `?` 绑定，默认 100 行、上限 1000，长格子截断，二进制只给字节数；列名写错时，错误里带上查询点到的那几张表的列）；`read_data_log` 读守护进程日志的末尾（`daemon.log`、开发版的 `daemon-dev.stderr.log`），可以 grep。三者都没有副作用：叫停中、只读段里也能用，不出批准卡——它们读的是应用自己的记录，由应用把关，不是越界读文件。Claude Agent 跑的 Bot 也经 `mcp__deskfolk__` 拿到它们。/ `describe_data` lists tables and row counts with a line on the main ones, and one table's columns on request (every column at once runs to some 15,000 characters, past what a tool result keeps in context); `query_data` runs one read-only SQLite query (a single SELECT or WITH … SELECT, `?` bound in order, 100 rows by default and 1000 at most, long cells cut, blobs shown by size; a wrong column name comes back with the columns of the tables the query named); `read_data_log` reads the end of the daemon's logs, with grep. None has a side effect: they work under a hold and in read-only segments, and raise no approval card — they read the app's own records through the app, not files outside the workspace. Claude Agent Bots get them under `mcp__deskfolk__` too.
 
 2. **只读，在子进程里跑 / Read-only, in a child process.** SQLite 的查询是同步的，Bun 也没有办法中途打断它：放在守护进程里跑，一条大查询就会卡住所有的轮。所以查询在守护进程自己再起的一个子进程里跑（`--query-data`，编译版只有一个文件，带不了别的脚本），用只读连接加 `PRAGMA query_only` 打开库，10 秒没答完就杀掉，同时最多两个。/ A SQLite query is synchronous and Bun cannot interrupt it; run in the daemon, one heavy query would stall every turn. So it runs in a child the daemon starts from itself (`--query-data`; the compiled binary is one file), on a read-only `query_only` connection, killed at 10 seconds, two at most at once.
 
@@ -19,6 +19,20 @@ You put it this way (2026-10-06): every record the system keeps should be readab
 5. **修订 ADR 0021 / This amends ADR 0021.** 记忆仍然只进它自己那个 Bot 的上下文，别的 Bot 也写不了它；但别的 Bot 现在能经本机记录读到它。不把别人的记忆抄成自己的，除非你要。同样，「整理跳的运行记录」以前写明不给 Bot 看，现在能查（仍然不进手机的白名单）。/ A memory still enters only its own Bot's context and no other Bot writes it; another Bot can now read it through the records, and copies it into its own only if you ask. The organizer run log, once "not for Bots", can be queried too (still not on the phone's whitelist).
 
 6. **只在你开口时 / Only when you ask.** 系统指令写明：要依据时用这三个工具，查不到的就是不给 Bot 看的；只在你要它分析、改进时才做。它拿到的依据用来提改动——自己的做法改进自己的技能和记忆，每个 Bot 都该照做的走 ADR 0064 的批准卡改内置提示词。/ The System section says: use these for evidence; what you cannot find is not for Bots; only when the user asks for analysis or improvement. The evidence feeds proposals — a Bot's own ways into its skills and memories, what every Bot should do into a built-in prompt through ADR 0064's approval card.
+
+## 实测 / Measured
+
+2026-10-07，在这台机器真实库的副本上（工作区换成临时目录、MCP 关掉、不跑调度），一个一次性 Bot 用 gemini-3.8-flash-high（思考 low）收到「查一下最近哪类活被退回最多，提一处提示词改进」：
+
+- 第一版：43 次工具调用（6 条查询猜错列名，1 次用 shell 读落进文件的表清单），43 次模型调用、159 万输入 token，273 秒后出批准卡：给 `end_turn` 的说明加一句「有交付物先 submit 再 done」，依据是 `end.rejected` 里 30 次 `unfinished_obligations`。
+- 表清单不再带列、列名写错时错误里带上对的列之后：26 次工具调用（4 条猜错，下一步都改对了），21 次模型调用、58 万输入 token，114 秒后出卡：给系统指令加一句「改编类的视听产物交付前先核实原作设定」，依据是《全职猎人》短片退回 3 次和它的复盘。这一条只关于做视频的那几个 Bot，更该写进它们的技能——批准卡就是让你在这时说不。
+- 工具选择评估（22 条，各跑 2 次）：gemini-3.8-flash-high 和 grok-4.7-build-fast 上，原有 16 条改动前后都是 32/32，新加的 6 条 12/12。
+
+On 2026-10-07, on a copy of this machine's real database (workspace moved to a scratch folder, MCP off, no scheduler), a throwaway Bot on gemini-3.8-flash-high (thinking low) was asked which work was sent back most and to propose one prompt improvement:
+
+- First version: 43 tool calls (6 queries guessed a column, one shell read of the table list that had spilled to a file), 43 model calls, 1.59M input tokens; after 273 s a card proposed one sentence for `end_turn` (with something to hand over, submit before done), from 30 `unfinished_obligations` rejections.
+- With the table list without columns and wrong-column errors naming the right ones: 26 tool calls (4 guessed wrong, each fixed at the next step), 21 model calls, 0.58M input tokens; after 114 s a card proposed checking an adaptation's source before delivering audiovisual work, from a short sent back three times and its retrospective. That one concerns only the video Bots and belongs in their skills — the card is where you say no.
+- Tool-selection eval (22 cases, twice each): on gemini-3.8-flash-high and grok-4.7-build-fast the 16 existing cases were 32/32 before and after the change; the 6 new ones 12/12.
 
 ## 缺口 / Not done
 

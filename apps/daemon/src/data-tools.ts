@@ -45,14 +45,15 @@ export async function describeData(ctx: ToolCtx, args: Record<string, unknown>):
     ok: true,
     data: {
       note: locale === "en"
-        ? "Times are ISO 8601 UTC strings; ids are ULIDs; JSON columns are read with json_extract. Tables not listed are not for Bots."
-        : "时间是 ISO 8601 UTC 字符串；id 是 ULID；JSON 列用 json_extract 读。没列出来的表不给 Bot 看。",
+        ? "Give table to see a table's columns. Times are ISO 8601 UTC strings; ids are ULIDs; JSON columns are read with json_extract. Tables not listed are not for Bots."
+        : "给 table 看一张表的列。时间是 ISO 8601 UTC 字符串；id 是 ULID；JSON 列用 json_extract 读。没列出来的表不给 Bot 看。",
       tables: answer.tables.map((shape) => ({
         name: shape.name,
         ...(shape.kind === "view" ? { kind: "view" } : {}),
         ...(tableNote(shape.name, locale) ? { about: tableNote(shape.name, locale) } : {}),
         rows: shape.rows,
-        columns: table ? shape.columns : shape.columns.map((column) => column.name),
+        // Every table's columns at once run past what a tool result holds in context; one at a time.
+        ...(table ? { columns: shape.columns } : {}),
       })),
     },
     emitted: [],

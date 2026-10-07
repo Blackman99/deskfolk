@@ -25,7 +25,10 @@ afterAll(() => {
 test("describe_data lists the tables Bots may read, with a line on the main ones, and none they may not", async () => {
   const all = await runCollabTool(ctx, "describe_data", {});
   expect(all.ok).toBe(true);
-  const tables = all.data!.tables as Array<{ name: string; about?: string; rows: number | null; columns: string[] }>;
+  const tables = all.data!.tables as Array<{ name: string; about?: string; rows: number | null; columns?: unknown }>;
+  // Names, notes and row counts only: every table's columns at once would not stay in context.
+  expect(tables.some((table) => "columns" in table)).toBe(false);
+  expect(JSON.stringify(all.data).length).toBeLessThan(8000);
   const names = tables.map((table) => table.name);
   expect(names).toContain("messages");
   expect(names).toContain("work_events");
@@ -34,7 +37,7 @@ test("describe_data lists the tables Bots may read, with a line on the main ones
   expect(names.some((name) => name.startsWith("remote_") || name.startsWith("sqlite_"))).toBe(false);
   expect(tables.find((table) => table.name === "messages")).toMatchObject({ about: expect.stringContaining("消息"), rows: 1 });
   const one = await runCollabTool(ctx, "describe_data", { table: "turns" });
-  expect((one.data!.tables as Array<{ columns: Array<{ name: string }> }>)[0]!.columns.map((c) => c.name)).toContain("status");
+  expect((one.data!.tables as Array<{ columns: Array<{ name: string; type: string }> }>)[0]!.columns).toContainEqual({ name: "status", type: "TEXT" });
   expect((await runCollabTool(ctx, "describe_data", { table: "terminals" })).error?.code).toBe("not_found");
 });
 
@@ -49,6 +52,10 @@ test("query_data reads what is there, only reads, and never a denied table", asy
   }
   expect((await runCollabTool(ctx, "query_data", { sql: "SELECT * FROM terminals" })).error?.message).toBe("no such table: terminals");
   expect((await runCollabTool(ctx, "query_data", { sql: "SELECT 1", params: [{}] })).error?.code).toBe("invalid_args");
+  // A column guessed wrong comes back with the columns of the tables the query named.
+  const guessed = await runCollabTool(ctx, "query_data", { sql: "SELECT e.created_at FROM work_events e JOIN turns t ON t.id = e.turn_id" });
+  expect(guessed.error?.message).toStartWith("no such column: e.created_at. Columns: turns(id, session_id, bot_id, status");
+  expect(guessed.error?.message).toContain("work_events(seq, at, kind");
   expect(store.db.query("SELECT COUNT(*) AS n FROM messages").get()).toEqual({ n: 1 });
 });
 

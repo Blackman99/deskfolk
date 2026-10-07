@@ -104,6 +104,13 @@ export function scanSql(sql: string): GuardResult {
   return { ok: true };
 }
 
+/** Every name a query mentions, lowercased: its words and quoted names, not its strings. */
+export function namedWords(sql: string): string[] {
+  const list = tokens(sql);
+  if (typeof list === "string") return [];
+  return list.filter((token) => token.kind === "word" || token.kind === "quoted").map((token) => token.text.toLowerCase());
+}
+
 /** One row of `EXPLAIN <query>`. */
 export type PlanRow = { opcode: string; p1: number; p2: number; p3: number; p4: unknown; p5: number };
 /** `sqlite_schema` rows by root page: the table, or the table an index belongs to. */
