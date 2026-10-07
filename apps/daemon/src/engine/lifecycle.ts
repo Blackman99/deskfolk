@@ -1014,6 +1014,9 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
           signal: live.abort.signal,
           maxTokens: limits.maxTokens,
           wallMs: limits.wallMs,
+          // One Bot's conversation in one session stays on one account of a proxy, so each hop
+          // reuses the prompt cache the hop before it left there.
+          affinity: `deskfolk-${current.session_id}-${current.bot_id}`,
           onEvent(chunk) {
             if (!active(turnId, live)) return;
             const choices = chunk.choices;

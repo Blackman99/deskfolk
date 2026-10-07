@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createCompletionsClient, type CompletionRequest } from "./completions";
+import { createCompletionsClient, type CompletionRequest, type FetchLike, type JudgeRequest } from "./completions";
 import type { WakeWatch } from "./wake";
 
 function sseChunk(payload: unknown): string {
@@ -895,5 +895,44 @@ describe("judge token cap", () => {
     expect(whole.truncated).toBeUndefined();
     // A proxy passing Gemini's own reason through.
     expect((await answering("MAX_TOKENS", []).judge(ask())).truncated).toBe(true);
+  });
+});
+
+describe("the conversation a request belongs to", () => {
+  function headersOf(sent: Headers[]): FetchLike {
+    return async (_url, init) => {
+      sent.push(new Headers(init?.headers));
+      const json = init?.body && String(init.body).includes('"stream":true');
+      return json
+        ? new Response(textSse("ok"), { headers: { "Content-Type": "text/event-stream" } })
+        : new Response(JSON.stringify({ choices: [{ index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" }] }), { status: 200, headers: { "Content-Type": "application/json" } });
+    };
+  }
+  const judgeAsk = (over: Partial<JudgeRequest> = {}): JudgeRequest => ({
+    baseUrl: "http://127.0.0.1:1/v1",
+    apiKey: "sk-test",
+    model: "test-model",
+    messages: [{ role: "user", content: "go" }],
+    signal: new AbortController().signal,
+    ...over,
+  });
+
+  test("a hop names its conversation, so a proxy keeps it on one account; none named, none sent", async () => {
+    const sent: Headers[] = [];
+    const client = createCompletionsClient({ fetch: headersOf(sent) });
+    await client.complete({ ...request("http://127.0.0.1:1/v1"), affinity: "deskfolk-01SESSION-01BOT" });
+    await client.complete(request("http://127.0.0.1:1/v1"));
+    // fetch would throw on a header that is not printable ASCII; such a value is not sent at all.
+    await client.complete({ ...request("http://127.0.0.1:1/v1"), affinity: "会话" });
+    expect(sent.map((headers) => headers.get("X-Session-ID"))).toEqual(["deskfolk-01SESSION-01BOT", null, null]);
+  });
+
+  test("the app's own calls are named by their built-in prompt, except a reading you wait on", async () => {
+    const sent: Headers[] = [];
+    const client = createCompletionsClient({ fetch: headersOf(sent) });
+    await client.judge(judgeAsk({ prompt: { id: "call.organizer", locale: "zh", revision_id: null } }));
+    await client.judge(judgeAsk({ prompt: { id: "call.read_user_line", locale: "zh", revision_id: null }, lane: "reading" }));
+    await client.judge(judgeAsk());
+    expect(sent.map((headers) => headers.get("X-Session-ID"))).toEqual(["deskfolk-call.organizer", null, null]);
   });
 });

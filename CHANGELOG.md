@@ -55,6 +55,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 - In a direct, a Bot could end its turn having said nothing at all. Asked where to get the OpenSSF criticality score, 通识 took one step and put its whole answer into a field of its end-of-turn call that only ever reaches a Bot that asked it something: nothing was posted, and the line sat there with no reply and no sign of why. Now, when a line of yours in a direct opens a turn that is about to end with nothing in front of you — no reply, no message or file of its own, nothing handed over — the Bot is sent back once to reply in the conversation, and is told why its words did not reach you. If it still says nothing, the turn ends with a line in the conversation: "<Bot> ended its turn without replying to you. Say it again to have it answer." Lines in a group, read-only answers and routines are as before.
 
+### Bots on a multi-account proxy reuse their prompt cache
+
+- Every request to a model now names its conversation (`X-Session-ID`: one Bot in one conversation, or one kind of the app's own calls). A proxy that spreads requests over several accounts, such as CLIProxyAPI, keeps a conversation on one account by it once its session affinity is on, so each step reuses the cache the step before left there. Measured on gemini-3.8-flash-high through CLIProxyAPI: a 24-step turn read 22% of its input from the cache before and 70% with affinity on, which means faster first tokens and less quota on every step. An endpoint that does not know the header ignores it.
+
 ## 0.1.0-rc.13 — 2026-10-06
 
 Unsigned macOS rc with an experimental unsigned Windows installer beside the `.dmg`s. This is not a supported signed installer; Gatekeeper or SmartScreen may block it. Prefer running from source.

@@ -84,6 +84,12 @@ export type CompletionRequest = {
    * first-byte and idle timers bound it.
    */
   wallMs?: number;
+  /**
+   * Which conversation this request belongs to, sent as `X-Session-ID`. A proxy that spreads
+   * requests over several accounts (CLIProxyAPI with `routing.session-affinity`) keeps one
+   * conversation on one account by it, and the account's prompt cache is what a step reuses.
+   */
+  affinity?: string;
   onEvent?: (chunk: Record<string, unknown>) => void;
   onToken?: (text: string) => void;
 };
@@ -120,8 +126,9 @@ export type JudgeRequest = {
   lane?: "reading";
   /**
    * Which built-in prompt the system message is, and which revision of yours it ran on (ADR 0064).
-   * Never sent to the endpoint: a failed reading is recorded against it, and tests tell calls apart
-   * by it rather than by their text, which you may have changed.
+   * A failed reading is recorded against it, and tests tell calls apart by it rather than by their
+   * text, which you may have changed. Only its id goes to the endpoint, as the call's `X-Session-ID`
+   * (see `CompletionRequest.affinity`): calls of one kind share their fixed system message.
    */
   prompt?: PromptRef;
 };
@@ -190,6 +197,14 @@ export function createCompletionsClient(
       return completeJudge(fetchImpl, clock, request.lane === "reading" ? readingGate : gate, request);
     },
   };
+}
+
+/**
+ * The `X-Session-ID` header for a request's conversation. A value that is not plain printable
+ * ASCII is left out rather than sent: `fetch` throws on such a header, and every hop would fail.
+ */
+export function sessionHeader(affinity: string | undefined): Record<string, string> {
+  return affinity && /^[\x21-\x7e]{1,128}$/.test(affinity) ? { "X-Session-ID": affinity } : {};
 }
 
 function completionsUrl(baseUrl: string): string {
@@ -339,6 +354,7 @@ async function oneStreamAttempt(
       headers: {
         Authorization: `Bearer ${request.apiKey}`,
         "Content-Type": "application/json",
+        ...sessionHeader(request.affinity),
       },
       body: JSON.stringify({
         model: request.model,
@@ -743,6 +759,8 @@ async function completeJudgeBody(
       headers: {
         Authorization: `Bearer ${request.apiKey}`,
         "Content-Type": "application/json",
+        // A reading you wait on is short and not worth keeping on one account: it would queue there.
+        ...sessionHeader(request.prompt && request.lane !== "reading" ? `deskfolk-${request.prompt.id}` : undefined),
       },
       body: JSON.stringify({
         model: request.model,
