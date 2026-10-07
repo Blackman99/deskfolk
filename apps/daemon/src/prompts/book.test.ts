@@ -13,6 +13,7 @@ import {
   undoPromptRevision,
 } from "./book";
 import { renderDefault, slotDef } from "./registry";
+import { promptDetail } from "./views";
 
 function fresh(): Store {
   return new Store();
@@ -63,6 +64,40 @@ describe("saving your version", () => {
     // Another sitting is another change.
     savePromptText(store, { id: "turn.skills", locale: "en", text: "A. B. C.", ifRevision: two.id, editSession: "s2", actor: "user" });
     expect(store.listPromptRevisions("turn.skills", "en")).toHaveLength(2);
+  });
+
+  test("typing a change back out is a change too: there and back are two, and the sitting goes on in a third", () => {
+    const store = fresh();
+    const base = defaultOf(store, "agent.preface", "zh");
+    // A space typed, a pause long enough to save, the space taken out again.
+    const there = savePromptText(store, { id: "agent.preface", locale: "zh", text: `${base} `, ifRevision: null, editSession: "s1", actor: "user" })!;
+    const back = savePromptText(store, { id: "agent.preface", locale: "zh", text: base, ifRevision: there.id, editSession: "s1", actor: "user" })!;
+    expect(back.id).not.toBe(there.id);
+    expect(store.listPromptRevisions("agent.preface", "zh")).toMatchObject([
+      { id: back.id, op: "edit", before_text: `${base} `, after_text: null },
+      { id: there.id, op: "edit", before_text: null, after_text: `${base} ` },
+    ]);
+    expect(store.promptOverride("agent.preface", "zh")).toBeNull();
+    // The way back is the latest change, and it can be taken back.
+    expect(promptDetail(store, "agent.preface", "zh").revisions.map((row) => row.undoable)).toEqual([true, false]);
+    // Typing on in the same sitting does not fold into the way back.
+    const more = savePromptText(store, { id: "agent.preface", locale: "zh", text: `${base}多一句。`, ifRevision: back.id, editSession: "s1", actor: "user" })!;
+    const further = savePromptText(store, { id: "agent.preface", locale: "zh", text: `${base}多一句，再一句。`, ifRevision: more.id, editSession: "s1", actor: "user" })!;
+    expect(further.id).toBe(more.id);
+    expect(store.listPromptRevisions("agent.preface", "zh").map((row) => row.id)).toEqual([more.id, back.id, there.id]);
+  });
+
+  test("back to your own version within a sitting: the change there and the change back, on top of yours", () => {
+    const store = fresh();
+    const mine = savePromptText(store, { id: "turn.skills", locale: "en", text: "Mine.", ifRevision: null, editSession: "s1", actor: "user" })!;
+    const there = savePromptText(store, { id: "turn.skills", locale: "en", text: "Mine, longer.", ifRevision: mine.id, editSession: "s2", actor: "user" })!;
+    const back = savePromptText(store, { id: "turn.skills", locale: "en", text: "Mine.", ifRevision: there.id, editSession: "s2", actor: "user" })!;
+    expect(store.listPromptRevisions("turn.skills", "en").map((row) => [row.before_text, row.after_text])).toEqual([
+      ["Mine, longer.", "Mine."],
+      ["Mine.", "Mine, longer."],
+      [null, "Mine."],
+    ]);
+    expect(store.promptOverride("turn.skills", "en")).toMatchObject({ text: "Mine.", revision_id: back.id });
   });
 
   test("text that says exactly what the default says is the default again", () => {

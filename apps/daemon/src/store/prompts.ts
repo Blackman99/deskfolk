@@ -151,9 +151,10 @@ export type WritePromptInput = {
 
 /**
  * Writes a slot's new text and records the change. A change of yours in the same editor sitting as
- * the latest one updates that change instead of adding another. Any change keeps a conflict that is
- * already marked, except keep-mine (you chose your text over the newer default) and a slot put back
- * on its default; `conflictDefault` marks one.
+ * the latest one updates that change instead of adding another, until a save takes the text back to
+ * what it was before that change: going back is a change of its own, and the sitting's next save
+ * starts another. Any change keeps a conflict that is already marked, except keep-mine (you chose
+ * your text over the newer default) and a slot put back on its default; `conflictDefault` marks one.
  */
 export function writePrompt(ctx: StoreContext, input: WritePromptInput): PromptRevisionRow | null {
   const head = promptHead(ctx, input.id, input.locale);
@@ -168,8 +169,12 @@ export function writePrompt(ctx: StoreContext, input: WritePromptInput): PromptR
     return head;
   }
   if (current === null && input.text === null) return head;
-  const fold = input.actor === "user" && input.editSession && head && head.actor === "user" && head.op === "edit"
+  const sitting = input.actor === "user" && input.editSession && head && head.actor === "user" && head.op === "edit"
     && head.edit_session === input.editSession && (current?.revision_id ?? null) === head.id;
+  // Typed back to what the sitting's change started from: folding would leave a change of nothing,
+  // so the way back is recorded on its own, and nothing after it folds into it.
+  const back = sitting && input.text === head!.before_text && afterBase === head!.before_base;
+  const fold = sitting && !back;
   let revision: PromptRevisionRow;
   if (fold) {
     ctx.db.run("UPDATE prompt_revisions SET after_text = ?, after_base = ?, updated_at = ? WHERE id = ?", [input.text, afterBase, now, head!.id]);
@@ -184,7 +189,7 @@ export function writePrompt(ctx: StoreContext, input: WritePromptInput): PromptR
       .get(
         ulid(), input.id, input.locale, input.op, input.actor, input.botId ?? null, input.turnId ?? null, input.approvalId ?? null,
         input.messageId ?? null, input.reason ?? null, current?.text ?? null, current?.base_text ?? null, input.text, afterBase,
-        input.undoes ?? null, input.editSession ?? null, now, now,
+        input.undoes ?? null, back ? null : (input.editSession ?? null), now, now,
       )!;
   }
   if (input.text === null) {

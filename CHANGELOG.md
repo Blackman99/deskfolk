@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A prompt's history: there and back are a change each, and you can see which characters changed
+
+- Adding a space in a prompt's editor, pausing, and deleting it left one "you · Edited" line in its history that opened onto nothing and whose Undo did nothing: the saves of one sitting fold into one change, and after the delete that change recorded no change at all. Now the way there and the way back are a change each — one for the space added, one for it taken out — and anything typed after starts another; typing on within a sitting still folds into one change.
+
 ### Opening a built-in prompt on the phone no longer drops the connection
 
 - On the phone, in Settings › Prompts, tapping any prompt flashed the page and landed back on the settings home. A request from the phone could not hold a dot in its path, and every prompt's id has one (`turn.system`, `tool.shell`): the Mac could not read the request and closed the whole link, and the phone, reconnecting, started settings over. Saving or restoring a prompt from the phone failed the same way. A path segment may now hold a dot (a lone `.` or `..` still may not), so opening, editing and restoring work; the editor also slides in from the right, as the MCP and endpoint editors do.
