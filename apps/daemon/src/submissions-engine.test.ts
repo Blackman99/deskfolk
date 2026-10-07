@@ -86,6 +86,40 @@ test("a closing reply that hands a file of the ticket over is an implicit submis
   expect(h.store.listSubmissions({ taskId: j.plan.id })).toHaveLength(1);
 });
 
+test("what you say while a hand-over waits on your card takes the card down as the maker goes to work on it; what it hands over next is what you are asked about", async () => {
+  // 2026-10-07: 「把猫改成橘猫」, said while a picture waited, was followed by a card to let the old picture
+  // through while the Bot was already making the orange one.
+  const h = await scenario();
+  const j = job(h);
+  workedOnBefore(h, j);
+  h.script(j.maker).reply(call(writeFile(`${j.ticket.dir}/cat.png`, "灰猫")), say("猫画好了"));
+  await ask(h, j, "@Maker 画一只猫");
+  h.tick(new Date(Date.now() + 20_000));
+  await h.waitIdle();
+  const [first] = h.store.listSubmissions({ taskId: j.plan.id });
+  const card = h.messages(j.room).find((message) => message.control?.kind === "review_item")!;
+  expect(card.control).toMatchObject({ submission_id: first!.id, offer: ["approve", "reject"] });
+
+  // You say what to change instead of pressing anything. While the maker is at it, the card is down.
+  let whileWorking: unknown = null;
+  h.script(j.maker).reply(call(writeFile(`${j.ticket.dir}/cat.png`, "橘猫")), () => {
+    whileWorking = h.store.getMessage(card.id).control;
+    return say("改成橘猫了");
+  });
+  await ask(h, j, "@Maker 把猫改成橘猫");
+  expect(whileWorking).toMatchObject({ offer: [], result: "你又说了这件事，等Maker按你说的做完再问你。" });
+  // The orange one superseded the waiting hand-over; the next tick asks about it, on one card.
+  const [newer, older] = h.store.listSubmissions({ taskId: j.plan.id });
+  expect([older!.id, older!.state, newer!.state]).toEqual([first!.id, "superseded", "submitted"]);
+  h.tick(new Date(Date.now() + 40_000));
+  await h.waitIdle();
+  const cards = h.messages(j.room).filter((message) => message.control?.kind === "review_item");
+  expect(cards.map((message) => message.control)).toMatchObject([
+    { submission_id: first!.id, offer: [], result: "你又说了这件事，等Maker按你说的做完再问你。" },
+    { submission_id: newer!.id, offer: ["approve", "reject"] },
+  ]);
+});
+
 test("a file hand-over with no reviewer still auto-approves when an active gate backs it and it passes", async () => {
   const h = await scenario();
   const j = job(h);
@@ -546,12 +580,17 @@ test("a card a newer hand-over or your board edit took over says so, with no but
   const h = await scenario();
   const j = job(h);
   workedOnBefore(h, j);
-  for (const version of ["v1", "v2"]) {
-    h.script(j.maker).reply(call(writeFile(`${j.ticket.dir}/cut.md`, version)), call(tool("submit", { artifacts: ["cut.md"] })));
-    await ask(h, j, `@Maker 交 ${version}`);
-    h.tick(new Date(Date.now() + (version === "v1" ? 20_000 : 40_000)));
-    await h.waitIdle();
-  }
+  h.script(j.maker).reply(call(writeFile(`${j.ticket.dir}/cut.md`, "v1")), call(tool("submit", { artifacts: ["cut.md"] })));
+  await ask(h, j, "@Maker 交 v1");
+  h.tick(new Date(Date.now() + 20_000));
+  await h.waitIdle();
+  // A newer version no line of yours asked for (another Bot did): it takes the first one's place.
+  // (Asked for by you, the first card came down already, as you spoke: see the test above.)
+  h.script(j.maker).reply(call(writeFile(`${j.ticket.dir}/cut.md`, "v2")), call(tool("submit", { artifacts: ["cut.md"] })));
+  h.postBot(j.reviewer, j.room, "@Maker 交 v2", { taskId: j.plan.id, ticketId: j.ticket.id });
+  await h.waitIdle();
+  h.tick(new Date(Date.now() + 40_000));
+  await h.waitIdle();
   const [first, second] = h.messages(j.room).filter((message) => message.control?.kind === "review_item");
   expect(first!.control).toMatchObject({ offer: [], acted: [], result: "已被新的交付取代。" });
   expect(second!.control).toMatchObject({ offer: ["approve", "reject"] });

@@ -679,6 +679,7 @@ export class Store {
   readonly answerModelDefaultCard = this.bind(modelDefaults.answerModelDefaultCard);
   readonly visionRefusal = this.bind(submissions.visionRefusal);
   readonly takeUpSubmission = this.bind(submissions.takeUpSubmission);
+  readonly holdForYourLine = this.bind(submissions.holdForYourLine);
   readonly takeUpPendingApproval = this.bind(submissions.takeUpPendingApproval);
   readonly handOverHint = this.bind(submissions.handOverHint);
   readonly answerHint = this.bind(submissions.answerHint);

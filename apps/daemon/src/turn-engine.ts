@@ -836,6 +836,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         } else {
           await core.track(participation.handleParticipation(filed, { fromUser, fork: opts?.fork, opened: routed }));
         }
+        // A hand-over of the job waiting on your card comes down once its Bot is at work on what you
+        // just said: what it makes of the line is what you will be asked about.
+        if (fromUser && store.capabilities().engine_level >= ENGINE_LEVELS.work_items) store.holdForYourLine(filed.id);
         // The stopped work your line did not reach goes on from it, and hears it as work already at the job would have.
         const resumed = stops.goOnFromYourLine(filed, lifted);
         if (resumed.length > 0) lifecycle.hearAcross(filed, { turnIds: resumed.map((turn) => turn.id) });

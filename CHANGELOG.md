@@ -10,6 +10,7 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 - A hand-over waiting on you could ask several times. First a card asked about what you had said about the picture, or said twice, that nothing checked ("nothing backs these" — Confirm the check, Count them as met, Stop requiring them), then another for each such line read while it waited, and only then Approve or Send back. Asking for a picture of a cat on a balcony, then saying "make the cat orange" while it waited, brought three cards in 26 seconds. Now a hand-over waits on one card, Approve or Send back: what nothing checks is listed on it with what the app measured, and approving counts it as met. A line read while the card waits adds no card. Confirming a check from your words is on the flow board; a card already out keeps its buttons.
 - Work made in one go goes through with no card even when something you said about the picture has nothing checking it. The line that opens a picture job is always such a requirement, so a picture made in one go still came to a card.
+- Saying more about a job while its hand-over waits ("make the cat orange") no longer brings a card to approve the old version while the Bot works on what you said: none is put up, and one already up comes down, saying it will ask once the Bot is done. What the Bot hands over next is what you are asked about; if it hands over nothing new, the old version comes back to you.
 
 ### A prompt's history: there and back are a change each, and you can see which characters changed
 

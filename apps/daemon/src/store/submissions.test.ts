@@ -963,6 +963,132 @@ test("made in one go, it goes through at the tick even with what you said about 
   expect(reviewCards(f)).toBe(0);
 });
 
+/** The master handed over after another segment, with the segment that handed it over ended: it waits for its tick. */
+function waiting(f: Fixture) {
+  const { produced, submission } = handedOver(f);
+  f.store.setTurnStatus(produced.id, "completed");
+  f.store.db.run("UPDATE work_items SET state = 'idle' WHERE id = ?", [produced.work_item_id]);
+  return submission;
+}
+
+/** A line of yours, filed under the ticket (or the job as a whole), and the segment of `botId`'s it opens there, still running. */
+function saidMore(f: Fixture, opts: { body?: string; botId?: string; ticketId?: string | null; mode?: "work" | "readonly" } = {}) {
+  const ticketId = opts.ticketId === undefined ? f.ticket.id : opts.ticketId;
+  const line = f.store.postMessage(f.room.id, { body: opts.body ?? "把猫改成橘猫" });
+  f.store.fileMessage(line.id, { explicit: [{ taskId: f.plan.id, ...(ticketId ? { ticketId } : {}) }] });
+  const turn = f.store.createTurn({ sessionId: f.room.id, botId: opts.botId ?? f.producer.id, triggerMessageId: line.id, taskId: f.plan.id, ticketId,
+    ...(opts.mode ? { mode: opts.mode } : {}) });
+  return { line, turn };
+}
+
+/** The segment ends, its work idle again: done with what it was doing. */
+function ends(f: Fixture, turn: { id: string; work_item_id?: string | null }) {
+  f.store.setTurnStatus(turn.id, "completed");
+  if (turn.work_item_id) f.store.db.run("UPDATE work_items SET state = 'idle' WHERE id = ?", [turn.work_item_id]);
+}
+
+test("a line of yours while a hand-over waits, which its Bot is at work on, holds it: no card meanwhile, and nothing newer puts it to you once that work is done", () => {
+  // 2026-10-07: 「把猫改成橘猫」 came 14 s after a picture was handed over; 7 s later a card asked you to
+  // let the old picture through while the Bot was already making the orange one.
+  const f = fixture();
+  const submission = waiting(f);
+  const { turn } = saidMore(f);
+  expect(superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000))).toMatchObject({ moved: [], messages: [] });
+  expect(f.store.getSubmission(submission.id)).toMatchObject({ state: "submitted", awaiting: null });
+  // It asked you something about the change: still its work on your line.
+  f.store.setTurnStatus(turn.id, "completed");
+  f.store.db.run("UPDATE work_items SET state = 'blocked' WHERE id = ?", [turn.work_item_id ?? null]);
+  expect(superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 2_000)).messages).toEqual([]);
+  expect(reviewCards(f)).toBe(0);
+  // Done, with nothing newer handed over: this one is put to you after all.
+  ends(f, turn);
+  const tick = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 3_000));
+  expect(tick.messages).toHaveLength(1);
+  expect(tick.messages[0]!.control).toMatchObject({ submission_id: submission.id, offer: ["approve", "reject"] });
+  expect(reviewCards(f)).toBe(1);
+});
+
+test("what its Bot hands over for your line supersedes the held hand-over, and only that one is put to you", () => {
+  const f = fixture();
+  const submission = waiting(f);
+  const { turn } = saidMore(f);
+  superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
+  const { submission: newer } = submit(f, turn.id, [[`${f.ticket.dir}/EP01_MASTER.mp4`, HASH_B]])!;
+  f.store.settleSubmissionChecks(newer.id);
+  ends(f, turn);
+  expect(f.store.getSubmission(submission.id).state).toBe("superseded");
+  const tick = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 30_000));
+  expect(tick.messages.map((card) => card.control)).toMatchObject([{ submission_id: newer.id, offer: ["approve", "reject"] }]);
+  expect(reviewCards(f)).toBe(1);
+});
+
+test("a card already up comes down when you say more and its Bot goes to work on that, at once; with nothing newer, one card asks again", () => {
+  const f = fixture();
+  const submission = waiting(f);
+  const [card] = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000)).messages;
+  expect(card!.control).toMatchObject({ offer: ["approve", "reject"] });
+  const { line, turn } = saidMore(f);
+  // From the line's arrival, not the next tick.
+  expect(f.store.holdForYourLine(line.id).map((message) => message.id)).toEqual([card!.id]);
+  expect(f.store.getMessage(card!.id).control).toMatchObject({ offer: [], result: "你又说了这件事，等Director按你说的做完再问你。" });
+  expect(f.store.db.query("SELECT action_state FROM notifications WHERE semantic_key = ?").get(`review_item:${card!.id}`)).toEqual({ action_state: "resolved" });
+  expect(f.store.getSubmission(submission.id)).toMatchObject({ state: "submitted", awaiting: { kind: "approval", message_id: null, held: true } });
+  expect(() => f.store.answerReviewCard(card!.id, "approve")).toThrow();
+  // Said again, nothing more comes down; while it works, the ticks change nothing.
+  expect(f.store.holdForYourLine(line.id)).toEqual([]);
+  expect(superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 2_000))).toMatchObject({ moved: [], messages: [] });
+  // Done, with nothing newer: the same hand-over on one new card, and 放行 lets it through.
+  ends(f, turn);
+  const again = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 3_000)).messages;
+  expect(again.map((message) => message.control)).toMatchObject([{ submission_id: submission.id, offer: ["approve", "reject"] }]);
+  // It says why the same hand-over is back.
+  expect(again[0]!.body).toStartWith("Director这次没交新的一版。\nEP01 的任务 01「06 母带」交上来了（EP01_MASTER.mp4）。");
+  const after = f.store.getSubmission(submission.id).awaiting!;
+  expect(after).toMatchObject({ kind: "approval", message_id: again[0]!.id });
+  expect(after.held).toBeUndefined();
+  expect(f.store.answerReviewCard(again[0]!.id, "approve").submission.state).toBe("approved");
+});
+
+test("not held: a line about another ticket, one another Bot is at work on, a segment that only reads, or a 放行 you already pressed", () => {
+  const cases: Array<[string, (f: Fixture) => { line: { id: string } }]> = [
+    ["another ticket", (f) => saidMore(f, { ticketId: f.store.createTicket({ taskId: f.plan.id, title: "07 字幕", worker: f.producer.id }).id })],
+    ["another Bot at work", (f) => saidMore(f, { botId: f.reviewer.id })],
+    ["only reads", (f) => saidMore(f, { body: "母带多长？", mode: "readonly" })],
+  ];
+  for (const [name, say] of cases) {
+    const f = fixture();
+    const submission = waiting(f);
+    const [card] = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000)).messages;
+    const { line } = say(f);
+    expect({ name, taken: f.store.holdForYourLine(line.id) }).toEqual({ name, taken: [] });
+    expect({ name, ...f.store.getSubmission(submission.id).awaiting }).toMatchObject({ name, message_id: card!.id });
+  }
+  // A 放行 waiting on a gate that had not run: your press stands.
+  const g = fixture();
+  const submission = waiting(g);
+  const [card] = superviseSubmissions(g.ctx, later(UNREVIEWED_AFTER_MS + 1_000)).messages;
+  const now = isoNow();
+  g.store.db.run(`INSERT INTO acceptance_checks (id, task_id, ticket_id, item, kind, path, source, created_at, updated_at, defined_at)
+    VALUES ('late-gate', ?, ?, '母带存在', 'exists', ?, 'user', ?, ?, ?)`, [g.plan.id, g.ticket.id, `${g.ticket.dir}/EP01_MASTER.mp4`, now, now, now]);
+  g.store.beginCheckRun("late-gate", "settle");
+  expect(g.store.answerReviewCard(card!.id, "approve").checkIds).toEqual(["late-gate"]);
+  const { line } = saidMore(g);
+  expect(g.store.holdForYourLine(line.id)).toEqual([]);
+  expect(superviseSubmissions(g.ctx, later(UNREVIEWED_AFTER_MS + 2_000)).toRun).toEqual([{ taskId: g.plan.id, checkIds: ["late-gate"] }]);
+  run(g, "late-gate", "pass");
+  superviseSubmissions(g.ctx, later(UNREVIEWED_AFTER_MS + 3_000));
+  expect(g.store.getSubmission(submission.id).state).toBe("approved");
+});
+
+test("made in one go, a hand-over is approved at the tick even while its Bot is at work on a line of yours said since", () => {
+  const f = fixture();
+  const { submission } = inOneGo(f);
+  saidMore(f);
+  superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
+  expect(f.store.getSubmission(submission.id)).toMatchObject({ state: "approved", awaiting: null });
+  expect(reviewCards(f)).toBe(0);
+});
+
 /** The job's first hand-over, made after another segment on it, so it comes to your card; `answer` is your press. */
 function cardedFirst(f: Fixture, answer: "approve" | "reject") {
   const earlier = segment(f);

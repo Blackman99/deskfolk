@@ -104,6 +104,11 @@ export type AwaitingYou = {
   requirement_ids: string[]; check_ids: string[]; message_id: string | null; review: ReviewRecord | null; at: string; kind?: "items" | "approval";
   /** An approval card whose 放行 you already pressed, waiting on a gate that had not run yet: resolves once every gate has, never asks again. */
   pending?: boolean;
+  /**
+   * Its card was taken down: you said more on the job after it was handed over and its Bot went to
+   * work on that. Once that work is done with nothing newer handed over, it is put to you again.
+   */
+  held?: boolean;
 };
 
 export type Submission = {
@@ -1165,7 +1170,8 @@ function fileNames(submission: Pick<Submission, "artifacts">, en: boolean): stri
 function askApproval(ctx: StoreContext, submission: Submission, now: string, review: ReviewRecord | null = null,
   opts: { items?: readonly UnbackedItem[]; backed?: boolean } = {}): Message | null {
   const previous = submission.awaiting;
-  if (previous?.kind === "approval") return null;
+  // One card per hand-over: put up again only after the last one came down for a line of yours (`held`).
+  if (previous?.kind === "approval" && !previous.held) return null;
   if (previous?.message_id) letGoOfCard(ctx, previous.message_id, { reason: "replaced" });
   const items = opts.items ?? [];
   const requirementIds = items.map((item) => item.requirement_id).sort();
@@ -1198,7 +1204,10 @@ function askApproval(ctx: StoreContext, submission: Submission, now: string, rev
             : (en ? `Ticket ${number} "${ticket.title}" of ${plan.title} is in (${fileNames(submission, en)}). Nobody reviews it and no check you confirmed stands behind it, so it is yours to decide.`
               : `${plan.title} 的任务 ${number}「${ticket.title}」交上来了（${fileNames(submission, en)}）。没有审查者，也没有你确认过的检查替你把关，所以要你来定。`);
     const tail = en ? "Have a look, then approve it or send it back." : "看过之后，放行或者退回。";
-    const body = [head + verdict, ...unbackedLines(items, [plan.title, ticket.title], en), tail].join("\n");
+    // Put to you again after its card came down for a line of yours: why the same hand-over is back.
+    const bot = previous?.held ? ctx.db.query<{ name: string }, [string]>("SELECT name FROM bots WHERE id = ?").get(submission.bot_id)?.name ?? submission.bot_id : null;
+    const again = bot ? [en ? `${bot} handed over nothing new this time.` : `${bot}这次没交新的一版。`] : [];
+    const body = [...again, head + verdict, ...unbackedLines(items, [plan.title, ticket.title], en), tail].join("\n");
     const place = cardPlace(ctx, submission, plan.session_id);
     const isDirect = ctx.db.query<{ kind: string }, [string]>("SELECT kind FROM sessions WHERE id = ?").get(place)?.kind === "direct"
       && producerIsBot(ctx, submission);
@@ -1255,6 +1264,7 @@ function doneInOneGo(ctx: StoreContext, submission: Submission): boolean {
 type LetGo =
   | { reason: "superseded"; by: "submission" | "board" | "complaint" }
   | { reason: "checks_failed"; lines: readonly string[] }
+  | { reason: "said_more"; bot: string }
   | { reason: "approved" | "replaced" };
 
 function letGoLine(ctx: StoreContext, why: LetGo): string {
@@ -1269,6 +1279,8 @@ function letGoLine(ctx: StoreContext, why: LetGo): string {
     case "checks_failed":
       return en ? `Its checks failed, so it was sent back${why.lines.length > 0 ? `: ${why.lines.join("; ")}` : "."}`
         : `检查没过，已退回${why.lines.length > 0 ? `：${why.lines.join("；")}` : "。"}`;
+    case "said_more":
+      return en ? `You said more about it, so this waits until ${why.bot} is done with that.` : `你又说了这件事，等${why.bot}按你说的做完再问你。`;
     case "approved":
       return en ? "Approved." : "已放行。";
     case "replaced":
@@ -1287,6 +1299,66 @@ function letGoOfCard(ctx: StoreContext, messageId: string, why: LetGo): void {
   if (control?.kind !== "review_item") return;
   if ((control.acted ?? []).length === 0) setMessageControl(ctx, messageId, { ...control, offer: [], acted: [], result: letGoLine(ctx, why) });
   updateNotificationActionState(ctx, `review_item:${messageId}`, "resolved", why.reason, true);
+}
+
+/**
+ * Whether the Bot that handed this over is at work on something you said about its job since: a line
+ * of yours filed under its ticket, or under the job as a whole, after the hand-over, which that Bot
+ * has not finished with — a segment of its on the ticket (or the whole job) it opened or was heard in
+ * still running, its work there still going on (asked you something, waiting on a job of its own,
+ * queued again), or the line still queued for it. What it makes of your line is the next thing to
+ * look at, not this (2026-10-07: 「把猫改成橘猫」, said 14 s after a picture was handed over, was
+ * followed by a card to let that picture through while the Bot was making the orange one).
+ * Segments that only read never count; work stopped or stuck (needs attention) is over.
+ */
+function workOnYourLine(ctx: StoreContext, submission: Pick<Submission, "task_id" | "ticket_id" | "bot_id" | "created_at">): boolean {
+  return Boolean(ctx.db.query(`WITH yours AS (
+      SELECT DISTINCT f.message_id AS id FROM message_filings f JOIN messages m ON m.id = f.message_id
+      WHERE f.task_id = ?1 AND (f.ticket_id = ?2 OR f.ticket_id IS NULL) AND m.kind = 'user' AND m.created_at > ?4),
+    heard AS (
+      SELECT u.status, u.work_item_id FROM turns u WHERE u.bot_id = ?3 AND u.task_id = ?1 AND (u.ticket_id = ?2 OR u.ticket_id IS NULL)
+        AND u.mode IS NOT 'readonly' AND (u.trigger_message_id IN (SELECT id FROM yours)
+          OR u.id IN (SELECT delivered_turn_id FROM inbox_items WHERE bot_id = ?3 AND message_id IN (SELECT id FROM yours))))
+    SELECT 1 FROM heard WHERE status IN ('running', 'waiting_approval', 'waiting_ask')
+      OR work_item_id IN (SELECT id FROM work_items WHERE state IN ('queued', 'running', 'waiting', 'blocked'))
+    UNION ALL SELECT 1 FROM inbox_items WHERE bot_id = ?3 AND state = 'queued' AND message_id IN (SELECT id FROM yours)
+    LIMIT 1`).get(submission.task_id, submission.ticket_id, submission.bot_id, submission.created_at));
+}
+
+/**
+ * Holds a hand-over while its Bot works on what you said since ({@link workOnYourLine}): a card up for
+ * it is taken down, saying it waits for that, and the hand-over is put to you again — on a new card,
+ * by the next tick — only if that work ends with nothing newer handed over. A newer hand-over
+ * supersedes it as always. Returns the card taken down, if any.
+ */
+function holdForWork(ctx: StoreContext, submission: Submission, now: string): Message | null {
+  const awaiting = submission.awaiting;
+  if (!awaiting?.message_id) return null;
+  const bot = ctx.db.query<{ name: string }, [string]>("SELECT name FROM bots WHERE id = ?").get(submission.bot_id)?.name ?? submission.bot_id;
+  letGoOfCard(ctx, awaiting.message_id, { reason: "said_more", bot });
+  ctx.db.run("UPDATE submissions SET awaiting = ?, updated_at = ? WHERE id = ?", [JSON.stringify({ ...awaiting, message_id: null, held: true }), now, submission.id]);
+  return getMessage(ctx, awaiting.message_id);
+}
+
+/**
+ * Your line, once it has woken whom it wakes: a hand-over of the job it is filed under that waits on
+ * your card is taken down at once when its Bot is now at work on what you said, rather than at the
+ * next tick. A 放行 you already pressed is left alone. Returns the cards taken down.
+ */
+export function holdForYourLine(ctx: StoreContext, messageId: string, now: string = isoNow()): Message[] {
+  return ctx.commit(() => {
+    if (!supervised(ctx)) return [];
+    const rows = ctx.db.query<SubmissionRow, [string]>(`SELECT s.* FROM submissions s WHERE s.state IN ('submitted', 'in_review') AND s.awaiting IS NOT NULL
+      AND EXISTS (SELECT 1 FROM message_filings f WHERE f.message_id = ?1 AND f.task_id = s.task_id AND (f.ticket_id = s.ticket_id OR f.ticket_id IS NULL))
+      ORDER BY s.created_at, s.rowid`).all(messageId).map(toSubmission);
+    const taken: Message[] = [];
+    for (const submission of rows) {
+      if (!submission.awaiting?.message_id || submission.awaiting.pending || !workOnYourLine(ctx, submission)) continue;
+      const card = holdForWork(ctx, submission, now);
+      if (card) taken.push(card);
+    }
+    return taken;
+  });
 }
 
 /**
@@ -1314,27 +1386,34 @@ function takeUpAwaiting(ctx: StoreContext, submission: Submission, now: string):
   }
   const awaiting = submission.awaiting;
   const review = awaiting?.review ?? null;
-  if (awaiting?.kind === "approval") {
-    // A 放行 you already pressed, waiting on a gate, resolves here once every gate has run — one
-    // added while it waited included, which the press's own run never saw.
-    if (awaiting.pending) return { submission: resolveApproval(ctx, submission, checks, now), unrun: [] };
-    // Otherwise your card waits on your press alone, and a later tick never approves it by itself —
-    // unless all it waited on were the required items it lists: once you have dropped them on the
-    // board, or a check you confirmed passes on them, and nothing else needs your 放行, it lets the
-    // hand-over through, as the required-items card it replaced did.
+  // A 放行 you already pressed, waiting on a gate, resolves here once every gate has run — one
+  // added while it waited included, which the press's own run never saw.
+  if (awaiting?.kind === "approval" && awaiting.pending) return { submission: resolveApproval(ctx, submission, checks, now), unrun: [] };
+  // Made in one go, by the one segment since the job opened or was last let through: approved now,
+  // with no card — you asked, the Bot did it, and it is there where you asked. That holds for what
+  // you said about the picture too: the line that opened a picture job is always such an item, and
+  // it put every one made in one go on a card (2026-10-07). A line of yours said since does not hold
+  // it either: what the Bot makes of that goes the same way once this one is through. A large job's
+  // sample and last part are always yours (ADR 0060).
+  if (!awaiting && doneInOneGo(ctx, submission) && !yoursToApprove(ctx, submission.ticket_id)) {
+    approve(ctx, submission, null, checks, now, checks.some(backs) ? "no_reviewer" : "one_go");
+    return { submission: getSubmission(ctx, submission.id), unrun: [] };
+  }
+  // You said more on the job since it was handed over, and its Bot is at work on that: no card for
+  // this one meanwhile, and one already up comes down.
+  if (workOnYourLine(ctx, submission)) {
+    holdForWork(ctx, submission, now);
+    return { submission: getSubmission(ctx, submission.id), unrun: [] };
+  }
+  if (awaiting?.kind === "approval" && !awaiting.held) {
+    // Your card waits on your press alone, and a later tick never approves it by itself — unless all
+    // it waited on were the required items it lists: once you have dropped them on the board, or a
+    // check you confirmed passes on them, and nothing else needs your 放行, it lets the hand-over
+    // through, as the required-items card it replaced did.
     if (awaiting.requirement_ids.length > 0 && !needsYourApproval(ctx, submission, checks, review)
       && unbackedItems(ctx, submission, review ? "raised" : "all").length === 0) {
       approve(ctx, submission, review, checks, now);
     }
-    return { submission: getSubmission(ctx, submission.id), unrun: [] };
-  }
-  // Made in one go, by the one segment since the job opened or was last let through: approved now,
-  // with no card — you asked, the Bot did it, and it is there where you asked. That holds for what
-  // you said about the picture too: the line that opened a picture job is always such an item, and
-  // it put every one made in one go on a card (2026-10-07). A large job's sample and last part are
-  // always yours (ADR 0060).
-  if (!review && doneInOneGo(ctx, submission) && !yoursToApprove(ctx, submission.ticket_id)) {
-    approve(ctx, submission, null, checks, now, checks.some(backs) ? "no_reviewer" : "one_go");
     return { submission: getSubmission(ctx, submission.id), unrun: [] };
   }
   // An organizer's reading or an answer always ends on your approve/reject card: nobody made the
@@ -1603,7 +1682,7 @@ export function superviseSubmissions(ctx: StoreContext, now: string = isoNow()):
       continue;
     }
     const after = taken.submission;
-    if (after.state !== submission.state || after.awaiting?.message_id !== card) out.moved.push(after);
+    if (after.state !== submission.state || (after.awaiting?.message_id ?? null) !== card) out.moved.push(after);
     if (after.awaiting?.message_id && after.awaiting.message_id !== card) out.messages.push(getMessage(ctx, after.awaiting.message_id));
   }
   return out;
