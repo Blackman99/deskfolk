@@ -10,12 +10,12 @@ import ChatStage from "./ChatStage.svelte";
 
 const t = copyFor("zh");
 
-for (const [label, session, showAvatars] of [
+for (const [label, session, ownAvatar] of [
   ["user-Bot direct", aDirect(), false],
   ["group", aGroup(), true],
   ["Bot-Bot direct", aBotDirect(), true],
 ] as const) {
-  test(`${label} uses the correct avatars for messages and streaming replies`, () => {
+  test(`${label} puts a face beside every other speaker's line, and yours only outside a direct`, () => {
     const messages = (["user", "bot", "ask", "system"] as const).map((kind, index) => aMessage({
       id: `avatar-${kind}`, session_id: session.id, kind,
       author: kind === "user" ? "user" : "bot-1",
@@ -36,12 +36,12 @@ for (const [label, session, showAvatars] of [
       for (const message of messages) {
         const row = host.querySelector(`[data-message-id="${message.id}"]`)?.closest(".msg-wrap");
         expect(row).not.toBeNull();
-        expect(Boolean(row?.querySelector(".avatar-col"))).toBe(showAvatars);
+        expect(Boolean(row?.querySelector(".avatar-col"))).toBe(message.kind === "user" ? ownAvatar : true);
         expect(row?.textContent).toContain(message.body);
       }
       const streamingRow = host.querySelector(".is-streaming-wrap");
       expect(streamingRow).not.toBeNull();
-      expect(Boolean(streamingRow?.querySelector(".avatar-col"))).toBe(showAvatars);
+      expect(streamingRow?.querySelector(".avatar-col .bot-avatar")).not.toBeNull();
       expect(streamingRow?.textContent).toContain("Streaming reply");
       host.querySelector<HTMLButtonElement>(".is-bot .sender-name")?.click();
       expect(openedProfile).toBe("bot-1");

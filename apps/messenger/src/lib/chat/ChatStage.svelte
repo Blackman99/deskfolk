@@ -141,7 +141,10 @@
 		? snapshot.delegations.filter((row) => row.thread_session_id === stageSessionId) : []);
 	const linkedDelegationMessages = $derived(new Set(delegations.flatMap((row) =>
 		[row.request_message_id, row.result_message_id].filter((id): id is string => id !== null))));
-	const showMessageAvatars = $derived(selectedKind !== 'you-bot');
+	// The other side always shows who is talking: in a direct the app's lines sit among the
+	// Bot's, and without the mark beside them a receipt reads as the Bot speaking. Your own side
+	// in a direct is only ever you, so your portrait there would just repeat the 你 above it.
+	const showOwnAvatar = $derived(selectedKind !== 'you-bot');
 	const selectedPeer = $derived(selected ? youBotPeer(selected) : null);
 	const selectedPeerBot = $derived(selectedPeer ? (botsById.get(selectedPeer) ?? null) : null);
 	const sessionSettingsLabel = $derived(
@@ -1300,8 +1303,7 @@
 						ontouchstart={handleMessageTouchStart}
 						oncontextmenu={(e) => handleMessageContextMenu(e, singleMsg.message)}
 					>
-						{#if showMessageAvatars}
-					<div class="avatar-col">
+						<div class="avatar-col">
 							{#if askBot}
 								<button
 									type="button"
@@ -1322,7 +1324,6 @@
 								</div>
 							{/if}
 						</div>
-						{/if}
 						<div class="msg-content">
 							<div class="msg-header">
 								{#if askBot}
@@ -1467,8 +1468,7 @@
 						ontouchstart={handleMessageTouchStart}
 						oncontextmenu={(e) => handleMessageContextMenu(e, singleMsg.message)}
 					>
-						{#if showMessageAvatars}
-					<div class="avatar-col">
+						<div class="avatar-col">
 							{#if appLine}
 								<div class="app-avatar" aria-hidden="true">
 									<BrandMark size={20} />
@@ -1493,7 +1493,6 @@
 								</div>
 							{/if}
 						</div>
-						{/if}
 						<div class="msg-content">
 							<div class="msg-header">
 								{#if appLine}
@@ -1859,12 +1858,12 @@
 							{/each}
 						</div>
 					</div>
-					{#if showMessageAvatars}
-					<div class="avatar-col">
-						<div class="user-avatar" title={t.common.you}>
-							{rosterLetter(t.common.you)}
+					{#if showOwnAvatar}
+						<div class="avatar-col">
+							<div class="user-avatar" title={t.common.you}>
+								{rosterLetter(t.common.you)}
+							</div>
 						</div>
-					</div>
 					{/if}
 				</div>
 			{:else}
@@ -1877,7 +1876,6 @@
 					class:is-group={isMulti}
 					class:is-streaming-wrap={hasStreaming}
 				>
-					{#if showMessageAvatars}
 					<div class="avatar-col">
 						{#if botAuthor}
 							<button
@@ -1905,7 +1903,6 @@
 							</div>
 						{/if}
 					</div>
-					{/if}
 					<div class="msg-content">
 						<div class="msg-header">
 							{#if botAuthor}

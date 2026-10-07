@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Faces beside the messages in a direct with a Bot again
+
+- A direct with a Bot showed no avatars beside its messages, since only that Bot spoke on the left. But the app's own lines (a handed-over job waiting for your approval, a stop receipt, a progress answer) sit on the left too, between the Bot's, and only the small "App" tag after the name told them apart, so at a glance they read as the Bot talking. Now every line on the left shows who said it: the Bot's face beside its replies, questions and interruption notes, Deskfolk's mark beside the app's lines, as in a group. Your own lines on the right still carry none — that side is only ever you.
+
 ### What a Bot writes to you is no longer lost as its turn ends
 
 - Asked something in your direct, a Bot sometimes answered with nothing but a folder card: it had written the answer, you had even seen it in its working bubble, and it was gone when the turn ended. On 10-07, 4 of 8 questions you asked 视频导演 went that way the first time. Now:

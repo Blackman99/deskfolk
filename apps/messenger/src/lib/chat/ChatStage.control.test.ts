@@ -106,14 +106,15 @@ test("the app's answer to 「怎么样了」 reads as the app's too, with no but
   }
 });
 
-test("in your direct, where no line carries a face, the app's receipt still says it is the app's", () => {
+test("in your direct, the app's receipt among the Bot's lines carries the app's mark, not the Bot's face", () => {
   const session = aDirect();
   const control: MessageControl = { kind: "receipt", verb: "continue", hold_ids: ["hold-1"], offer: [], scopes: [{ scope: "bot", id: "bot-1" }] };
   const receipt = aMessage({ id: "receipt", session_id: session.id, kind: "system", author: "bot-1", body: "已解除叫停：视频导演的全部工作。", control });
   const { host, close } = stage(session, { messages: [receipt], holdsOn: true });
   try {
     const row = host.querySelector('[data-message-id="receipt"]')!;
-    expect(row.querySelector(".avatar-col")).toBeNull();
+    expect(row.querySelector(".avatar-col .app-avatar .brand-mark")).not.toBeNull();
+    expect(row.querySelector(".bot-avatar")).toBeNull();
     expect(row.querySelector(".msg-header .sender-name")?.textContent?.trim()).toBe("Deskfolk");
     expect(row.querySelector(".msg-header .bot-badge")).toBeNull();
     expect(row.querySelector("article.msg")?.getAttribute("aria-label")).toBe("来自 Deskfolk 应用的消息");
