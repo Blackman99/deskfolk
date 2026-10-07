@@ -35,7 +35,7 @@ import { MODEL_FAIL_SHAPES } from "../store/quality";
 import type { TurnExecution } from "../store/routing";
 import { ENGINE_LEVELS } from "../store/schema-gate";
 import type { Store } from "../store";
-import { checkInNote, emptyReplyNote, lastHopNote, turnPace } from "../turn-pace";
+import { checkInNote, emptyReplyNote, lastHopNote, replyOutNote, turnPace } from "../turn-pace";
 import { inboxLabel, inTicketDir } from "../store";
 import { heardNote, recentToolCalls, redirectCarryNote, type HeardItem } from "../turn-inbox";
 import { recordHeard } from "./inbox-record";
@@ -122,7 +122,7 @@ export type LifecycleDeps = {
   agentQuery?: AgentQuery;
   openApprovalCard: Tools["openApprovalCard"];
   beforeEffect: Tools["beforeEffect"];
-  noteWrittenPaths: Tools["noteWrittenPaths"];
+  noteWrites: Tools["noteWrites"];
 };
 
 export type Lifecycle = {
@@ -1147,7 +1147,9 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
    * the end contract, then the post, the completed status and whoever it wakes. Shared by the app's
    * own hop loop and a Claude Agent turn (ADR 0061). `bounce` is a line the Bot answers in one more
    * step; `ended` means the reply went out and the turn is completed; `inactive` means the turn
-   * stopped meanwhile, and whatever stopped it wrote its end.
+   * stopped meanwhile, and whatever stopped it wrote its end. Only the closing check holds the words
+   * back; what the hand-over or the end contract sends back is about the work, so a reply that passed
+   * its own checks is already out by then, and the bounce says so.
    */
   async function settleClosingReply(
     turnId: string,
@@ -1190,7 +1192,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
         const hint = !settled ? store.handOverHint({ turnId, paths: produced }) : null;
         if (hint) {
           if (posted && !live.parentId && current.mode !== "readonly") void track(handleParticipation(posted, { fromUser: false }));
-          return { kind: "bounce", note: hint };
+          return { kind: "bounce", note: posted ? replyOutNote(live.locale, hint) : hint };
         }
       } catch (error) {
         console.error(`[turn ${turnId}] could not hand its files over`, error);
@@ -1201,9 +1203,10 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       if (settled?.state === "checks_failed") {
         const lines = settled.failures.map((check) => live.locale === "en" ? `"${check.item}": ${check.detail || "fail"}` : `「${check.item}」：${check.detail || "不通过"}`);
         if (posted && !live.parentId && current.mode !== "readonly") void track(handleParticipation(posted, { fromUser: false }));
-        return { kind: "bounce", note: live.locale === "en"
+        const failed = live.locale === "en"
           ? `(app) What you handed over failed its checks, so the ticket did not move: ${lines.join("; ")}. Fix it, or end_turn saying what blocks you.`
-          : `（应用）你交出的东西没过检查，任务没往前走：${lines.join("；")}。改好再交，或者用 end_turn 说明卡在哪。` };
+          : `（应用）你交出的东西没过检查，任务没往前走：${lines.join("；")}。改好再交，或者用 end_turn 说明卡在哪。`;
+        return { kind: "bounce", note: posted ? replyOutNote(live.locale, failed) : failed };
       }
     }
     let endingLine: string | null = null;
@@ -1212,8 +1215,14 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       if (!active(turnId, live)) return { kind: "inactive" };
       const finished = store.finishWork({ turnId, reason: "done" }, { pureText: true, closing: rawBody, lastWord, written: live.producedPaths ?? live.writtenPaths });
       if (finished.bounce) {
+        // The ending is weighed on the work (files of an approved ticket not handed over, a ticket
+        // still open), not on the words, and a Bot takes a reply it wrote for said. Held back, it
+        // never went out: on 2026-10-07 视频导演's answers to two of your questions waited on an
+        // approved_changed bounce, it handed the files over as told, submit ended the segment, and
+        // only the files were left. So the words go out now, before the Bot hears about the work.
+        if (posted === undefined && rawBody.trim()) posted = publishCitedBotMessage(current, live, turnId, rawBody);
         if (posted && !live.parentId && current.mode !== "readonly") void track(handleParticipation(posted, { fromUser: false }));
-        return { kind: "bounce", note: finished.bounce };
+        return { kind: "bounce", note: posted ? replyOutNote(live.locale, finished.bounce) : finished.bounce };
       }
       if (finished.notice || finished.ask) endingLine = finished.ask?.body ?? finished.notice!.body;
     }
@@ -1376,7 +1385,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     executeTools,
     openApprovalCard: deps.openApprovalCard,
     beforeEffect: deps.beforeEffect,
-    noteWrittenPaths: deps.noteWrittenPaths,
+    noteWrites: deps.noteWrites,
     settleClosingReply,
     completeSilent,
     saidNothing,

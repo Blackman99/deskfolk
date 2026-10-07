@@ -123,8 +123,13 @@ const TIMEOUT_SENTENCE_WIN_EN = "start a long-running process with a time limit 
 export function systemText(locale: Locale, shell: ToolShellKind, engineLevel = 0): string {
   let text = locale === "en" ? SYSTEM_EN : SYSTEM_ZH;
   if (engineLevel >= 3) {
+    // Which words reach the user, said once and plainly: replacing the line above with "end_turn
+    // supplies an explicit ending reason" left no word that a reply with no tool call is the reply,
+    // and Bots wrote their answers beside end_turn or submit, where nothing is sent (2026-10-07).
     text = text.replace(locale === "en" ? "send_message ends this turn, and so does a reply without tool calls:" : "send_message 会结束本轮，不调工具的回复也一样：",
-      locale === "en" ? "send_message reports progress without ending the segment; end_turn supplies an explicit ending reason:" : "send_message 只发进度，不结束执行段；end_turn 明确声明结束原因：");
+      locale === "en"
+        ? "Your reply to the user is the text of your last step, the one that calls no tool: it goes out once it passes the closing check, and ends the segment. Text written in the same step as tool calls (beside end_turn or submit too) is only shown while you work and is never sent, and end_turn's note and answer never show as a reply. send_message posts progress without ending the segment. For both:"
+        : "你给用户的回复，就是最后一步不调用任何工具时写的文字：过了收尾检查就发出，并结束本段。和工具调用写在同一步的文字（写在 end_turn、submit 旁边的也一样）只在你干活时显示，不会发出；end_turn 的 note、answer 也不会作为回复出现。send_message 只发进度，不结束本段。对这两者：");
     text = text.replace(locale === "en" ? "@Name in the body forces that teammate to take the floor" : "正文里的 @Name 会让对方必须下场",
       locale === "en" ? "In a group, @Name wakes that teammate; in a Bot pair's thread, use delegate for new work rather than @" : "群里 @Name 叫醒队友；Bot 对线程里要它动手用 delegate，不用 @");
     text = text.replace(locale === "en" ? "In a Bot↔Bot direct every line you post wakes the other Bot:" : "Bot↔Bot 私聊里你发的每句话都会叫醒对方：",
@@ -134,8 +139,8 @@ export function systemText(locale: Locale, shell: ToolShellKind, engineLevel = 0
       ? (locale === "en" ? "Use delegate for another Bot's work. The app keeps a real delegation wait; an answer, or a review of something not handed over with submit, is returned with end_turn(reason:'answered',answer:...); words posted in the thread are not a reply. A timer check_back is for an independent later check and cannot replace a delegation wait." : "队友的工作用 delegate 委派，应用持久等它交回；回答，或对没用 submit 交出的东西的审查结论，用 end_turn(reason:'answered',answer:...) 交回；线程里发的话不算交回。check_back 定时回看用于独立的稍后检查，不会替代委派等待。")
       : paragraph).join("\n\n");
     text += locale === "en"
-      ? "\n\nWork-item contract: end_turn requires reason done/answered/nothing_new/blocked/gave_up. blocked is only for what the user alone can give, and needs needs_from_user, which reaches the user as a question. Waiting on another Bot is not blocked: delegate to it, or end with nothing_new. gave_up needs note. Give dispositions for every user inbox item. You may post at most three progress lines, then continue working. Do not use prose to claim an unfinished ticket is complete."
-      : "\n\n工作项结束契约：end_turn 的 reason 是 done/answered/nothing_new/blocked/gave_up。blocked 只用于只有用户能给的东西，必须写 needs_from_user，它会作为提问发给用户；等别的 Bot 不算 blocked，要么 delegate 给它，要么用 nothing_new 结束。gave_up 必须写 note。用户收件逐条处置；每段最多三条进度话，然后接着干。不能用纯文字把没交出的任务当成完成。";
+      ? "\n\nWork-item contract: to reply to the user, write a reply that calls no tool; it is the ending and closes the segment. end_turn posts nothing: use it when there is nothing to say, to end blocked or gave_up, or to answer a delegation. end_turn requires reason done/answered/nothing_new/blocked/gave_up. blocked is only for what the user alone can give, and needs needs_from_user, which reaches the user as a question. Waiting on another Bot is not blocked: delegate to it, or end with nothing_new. gave_up needs note. Give dispositions for every user inbox item. You may post at most three progress lines, then continue working. Do not use prose to claim an unfinished ticket is complete."
+      : "\n\n工作项结束契约：回复用户就写一段不调工具的回复，它就是收尾，结束本段；end_turn 不发任何话，没话可说、要以 blocked 或 gave_up 结束、或回答委派时才用它。end_turn 的 reason 是 done/answered/nothing_new/blocked/gave_up。blocked 只用于只有用户能给的东西，必须写 needs_from_user，它会作为提问发给用户；等别的 Bot 不算 blocked，要么 delegate 给它，要么用 nothing_new 结束。gave_up 必须写 note。用户收件逐条处置；每段最多三条进度话，然后接着干。不能用纯文字把没交出的任务当成完成。";
   }
   if (engineLevel >= 5) {
     text += locale === "en"

@@ -239,8 +239,8 @@ export const DELEGATE: ToolDef = {
 export const SUBMIT: ToolDef = {
   name: "submit",
   description: {
-    zh: "把本任务的成果交出去，等审查。artifacts 列出交付的文件（在本规划目录里）。应用当场跑挂在这些文件上的检查：不过就原样返回细节，任务不前进，改好再交；通过后任务进「已交付」，有审查者就排给它审，没有就由应用在检查全过时放行。默认交完本段结束；还要接着做别的分件时传 continue:true。不调也行：本段引用过的新文件会在结束时自动交一次。",
-    en: "Hand this ticket's work over for review. artifacts lists the delivered files (inside this plan's folder). The app runs the checks on them at once: if any fails you get the details back, the ticket does not move, and you fix it and submit again; if they pass the ticket is submitted, queued for its reviewer, or approved by the app when there is none and every check passed. This segment ends after submitting unless you pass continue:true to go on with other parts. Not calling it is fine too: new files this segment cited are submitted for you when it ends.",
+    zh: "把本任务的成果交出去，等审查。artifacts 列出交付的文件（在本规划目录里）。应用当场跑挂在这些文件上的检查：不过就原样返回细节，任务不前进，改好再交；通过后任务进「已交付」，有审查者就排给它审，没有就由应用在检查全过时放行。submit 不替你说话：用户在私聊里的一句话开出的这一段，还没有一句话回到他那里时，交完不结束，接着写一段不调工具的回复，说清交了什么、发现了什么；否则默认交完本段结束，还要接着做别的分件时传 continue:true。不调也行：本段引用过的新文件会在结束时自动交一次。",
+    en: "Hand this ticket's work over for review. artifacts lists the delivered files (inside this plan's folder). The app runs the checks on them at once: if any fails you get the details back, the ticket does not move, and you fix it and submit again; if they pass the ticket is submitted, queued for its reviewer, or approved by the app when there is none and every check passed. submit says nothing for you: when the user's line in your direct opened this segment and no word of yours has reached them yet, it does not end the segment, and you reply next in a step that calls no tool, saying what you handed over and what you found. Otherwise this segment ends after submitting unless you pass continue:true to go on with other parts. Not calling it is fine too: new files this segment cited are submitted for you when it ends.",
   },
   properties: {
     artifacts: { type: "array", items: { type: "string" }, description: { zh: "交付的文件路径，相对工作区或你的工作目录。", en: "The delivered files, relative to the workspace or your work dir." } },

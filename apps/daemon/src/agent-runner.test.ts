@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HookCallbackMatcher, Options, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
@@ -9,6 +9,7 @@ import type { ClaudeCodeProbe } from "./claude-code/probe";
 import type { AgentQuery, AgentSession, AgentToolBridge } from "./engine/agent-runner";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";
+import { ENGINE_LEVELS, SCHEMA_LEVEL } from "./store/schema-gate";
 import { createTurnEngine } from "./turn-engine";
 
 function judged(content: string): JudgeResult {
@@ -172,7 +173,7 @@ async function harness(script: Script, opts: { status?: ClaudeCodeStatus; runner
   const lines = (kind: string) => store.db
     .query<{ body: string }, [string, string]>(`SELECT body FROM messages WHERE session_id = ? AND kind = ? ORDER BY created_at, rowid`)
     .all(session, kind).map((row) => row.body);
-  return { store, engine, root, bot, session, events, seen, post, lines };
+  return { store, engine, root, bot, session, events, seen, post, lines, completed };
 }
 
 test("a Claude Agent Bot's turn is Claude Code's: its closing reply is posted and the turn completes", async () => {
@@ -416,4 +417,91 @@ test("only the user chooses what runs a Bot", () => {
   expect(() => store.patchBot(bot.bot.id, { agent_effort: "extreme" as never })).toThrow("agent_effort");
   expect(() => store.patchBot(bot.bot.id, { agent_model: "rm -rf" })).toThrow("Claude model name");
   store.close();
+});
+
+/** The text of a user message the session reads next: a bounce comes back as one. */
+function textOf(message: SDKUserMessage | null): string {
+  const content = message?.message.content;
+  return Array.isArray(content) ? content.map((part) => (part.type === "text" ? part.text : "")).join("\n") : String(content ?? "");
+}
+
+test("at level 8, a reply about clips written into its approved ticket's folder goes out with them, and handing them over ends the segment", async () => {
+  // 2026-10-07 13:45: 视频导演, run by Claude Code, was asked 「这个视频生成跟 Grok 的比哪个好」 in a job
+  // whose one ticket you had approved. It wrote three clips into that ticket's folder with Bash and
+  // answered in words, but the segment stayed on the whole job: the answer was held back by the
+  // approved_changed bounce, it handed the clips over as told, submit ended the segment, and only the
+  // clips were left. Writing there puts the segment on its ticket now, as on the app's own loop.
+  let ticketDir = "";
+  let heard = "";
+  let handed = "";
+  const h = await harness(async function* ({ useTool, next, deskfolk, root }) {
+    const clip = `${ticketDir}/grok_cmp_cat.mp4`;
+    const used = await useTool("Bash", { command: "ffmpeg -i grok.mp4 -c copy grok_cmp_cat.mp4" }, () => {
+      mkdirSync(join(root, ticketDir), { recursive: true });
+      writeFileSync(join(root, clip), "clip");
+    });
+    expect(used.allowed).toBe(true);
+    yield result("两者整体差不多，做连续镜头更推荐 Grok：对比片子是 grok_cmp_cat.mp4。");
+    heard = textOf(await next());
+    handed = (await deskfolk.call("submit", { artifacts: [clip] })).text;
+    yield result("这一句不该发出去");
+  });
+  for (const key of ["engine_level", "schema_min_compatible"]) {
+    const value = key === "schema_min_compatible" ? Math.min(ENGINE_LEVELS.learning, SCHEMA_LEVEL) : ENGINE_LEVELS.learning;
+    h.store.db.run("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [key, String(value)]);
+  }
+  const plan = h.store.openTask({ sessionId: h.session, title: "测试百炼端点能否生成视频" });
+  const ticket = h.store.createTicket({ taskId: plan.id, title: "测试百炼端点能否生成视频", worker: h.bot.bot.id });
+  ticketDir = ticket.dir;
+  h.store.patchTicketByUser(ticket.id, { status: "done" });
+  // Your follow-up question, filed under the whole job.
+  const line = h.store.insertMessage({ sessionId: h.session, kind: "user", author: "user", body: "这个视频生成跟 Grok 的比哪个好" });
+  h.store.fileMessage(line.id, { explicit: [{ taskId: plan.id }] });
+  const done = h.completed();
+  await h.engine.handleInboundMessage(h.store.getMessage(line.id), { fromUser: true });
+  await done;
+
+  const replies = h.store.listMessages(h.session, { limit: 100 }).items.filter((message) => message.kind === "bot");
+  expect(replies.map((message) => [message.body.includes("更推荐 Grok"), message.attachments.map((file) => file.workspace_relpath)])).toEqual([
+    [true, [`${ticket.dir}/grok_cmp_cat.mp4`]],
+  ]);
+  expect(heard).toContain("你的回复已经原样发出");
+  expect(heard).toContain("in the folder of a ticket the user already approved");
+  expect(handed).toContain("\"ended\":true");
+  // On its ticket from the write itself, before the ending was weighed — not only once submit bound it.
+  const order = h.store.db.query<{ kind: string }, []>("SELECT kind FROM work_events WHERE kind IN ('work.bound', 'end.rejected') ORDER BY seq").all();
+  expect(order.map((row) => row.kind)).toEqual(["work.bound", "end.rejected"]);
+  expect(h.store.listWorkEvents({ kind: "work.bound" }).map((event) => event.payload)).toContainEqual({ by: "write", path: `${ticket.dir}/grok_cmp_cat.mp4` });
+  expect(h.store.db.query("SELECT origin, state FROM submissions").all()).toEqual([{ origin: "submit", state: "submitted" }]);
+});
+
+test("at level 8, a reply citing a file a Claude Agent made in its own ticket's folder hands it over, as on the app's own loop", async () => {
+  let ticketDir = "";
+  const h = await harness(async function* ({ useTool, root }) {
+    const board = `${ticketDir}/board.md`;
+    const used = await useTool("Bash", { command: "pandoc notes.md -o board.md" }, () => {
+      mkdirSync(join(root, ticketDir), { recursive: true });
+      writeFileSync(join(root, board), "S01 怪人砸楼");
+    });
+    expect(used.allowed).toBe(true);
+    yield result("关键帧板做好了：board.md，S01 是怪人砸楼。");
+  });
+  for (const key of ["engine_level", "schema_min_compatible"]) {
+    const value = key === "schema_min_compatible" ? Math.min(ENGINE_LEVELS.learning, SCHEMA_LEVEL) : ENGINE_LEVELS.learning;
+    h.store.db.run("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [key, String(value)]);
+  }
+  const plan = h.store.openTask({ sessionId: h.session, title: "做《一拳超人》关键帧" });
+  const ticket = h.store.createTicket({ taskId: plan.id, title: "关键帧板", worker: h.bot.bot.id });
+  ticketDir = ticket.dir;
+  const line = h.store.insertMessage({ sessionId: h.session, kind: "user", author: "user", body: "先出关键帧板" });
+  h.store.fileMessage(line.id, { explicit: [{ taskId: plan.id }] });
+  const done = h.completed();
+  await h.engine.handleInboundMessage(h.store.getMessage(line.id), { fromUser: true });
+  await done;
+
+  // The reply goes out with the file and hands it over; nothing sends the ending back for a ticket left open.
+  const replies = h.store.listMessages(h.session, { limit: 100 }).items.filter((message) => message.kind === "bot");
+  expect(replies.map((message) => message.attachments.map((file) => file.workspace_relpath))).toEqual([[`${ticket.dir}/board.md`]]);
+  expect(h.store.db.query("SELECT origin FROM submissions").all()).toEqual([{ origin: "implicit" }]);
+  expect(h.store.listWorkEvents({ kind: "end.rejected" })).toEqual([]);
 });

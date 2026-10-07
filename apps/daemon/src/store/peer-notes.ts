@@ -19,6 +19,16 @@ export function uncitedTurnPaths(ctx: StoreContext, turnId: string, paths: reado
   return paths.filter((path) => !cited.has(path));
 }
 
+/**
+ * Whether this segment already posted these exact words. Told its reply went out before the ending was
+ * sent back, a Bot may still write the same reply again; it goes out once (2026-10-07).
+ */
+export function saidInSegment(ctx: StoreContext, turnId: string, body: string): boolean {
+  const words = body.trim();
+  if (!words) return false;
+  return Boolean(ctx.db.query(`SELECT 1 FROM messages WHERE turn_id = ? AND kind = 'bot' AND trim(body) = ? LIMIT 1`).get(turnId, words));
+}
+
 export function recordPeerNote(ctx: StoreContext, message: Message, toBotId: string): InboxItem {
   return ctx.commit(() => {
     const session = ctx.db.query<{ kind: string; thread_task_id: string | null }, [string]>("SELECT kind, thread_task_id FROM sessions WHERE id = ?").get(message.session_id);

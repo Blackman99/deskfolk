@@ -876,6 +876,44 @@ test("with no reviewer, a hand-over made in one go — one ticket, one segment, 
   expect(reviewCards(f)).toBe(0);
 });
 
+/** The job's first hand-over, made after another segment on it, so it comes to your card; `answer` is your press. */
+function cardedFirst(f: Fixture, answer: "approve" | "reject") {
+  const earlier = segment(f);
+  f.store.setTurnStatus(earlier.id, "completed");
+  const { submission } = inOneGo(f);
+  superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
+  const card = f.store.db.query<{ id: string }, []>(`SELECT id FROM messages WHERE json_valid(control) AND json_extract(control, '$.kind') = 'review_item'`).get()!;
+  f.store.answerReviewCard(card.id, answer);
+  superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 2_000));
+  return submission;
+}
+
+test("once a hand-over of the job is approved, what one segment hands over next goes through at the tick, card before or not", () => {
+  // 2026-10-07: each follow-up question on a one-ticket job came back as a 放行 card, five in half an
+  // hour, all let through, because the job's first hand-over had come to your card.
+  const f = fixture();
+  expect(f.store.getSubmission(cardedFirst(f, "approve").id).state).toBe("approved");
+  const next = segment(f);
+  const { submission } = submit(f, next.id, [[`${f.ticket.dir}/compare.mp4`, HASH_B]])!;
+  f.store.settleSubmissionChecks(submission.id);
+  f.store.setTurnStatus(next.id, "completed");
+  superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 3_000));
+  expect(f.store.getSubmission(submission.id)).toMatchObject({ state: "approved", awaiting: null });
+  expect(f.store.listWorkEvents({ kind: "submission.approved" }).map((event) => event.payload).at(-1)).toMatchObject({ submission_id: submission.id, by: "one_go" });
+  expect(reviewCards(f)).toBe(1);
+});
+
+test("a job whose hand-over you sent back on its card keeps its card for the next one", () => {
+  const f = fixture();
+  expect(f.store.getSubmission(cardedFirst(f, "reject").id).state).toBe("rejected");
+  const next = segment(f);
+  const { submission } = submit(f, next.id, [[`${f.ticket.dir}/avatar.jpg`, HASH_B]])!;
+  f.store.settleSubmissionChecks(submission.id);
+  f.store.setTurnStatus(next.id, "completed");
+  superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 3_000));
+  expect(f.store.getSubmission(submission.id)).toMatchObject({ state: "submitted", awaiting: { kind: "approval" } });
+});
+
 test("not in one go — a second ticket, words handed over, or a job once on your card — it comes to your card", () => {
   const cases: Array<[string, (f: Fixture) => void]> = [
     ["second ticket", (f) => { f.store.createTicket({ taskId: f.plan.id, title: "07 字幕", worker: f.producer.id }); }],

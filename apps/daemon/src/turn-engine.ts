@@ -582,7 +582,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     agentQuery: options.agentQuery,
     openApprovalCard: tools.openApprovalCard,
     beforeEffect: tools.beforeEffect,
-    noteWrittenPaths: tools.noteWrittenPaths,
+    noteWrites: tools.noteWrites,
   });
 
   // Level 5's hand-overs and reviews (ADR 0046): checks run as a settle would, through the plan's runner.

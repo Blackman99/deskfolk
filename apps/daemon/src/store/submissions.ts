@@ -1261,26 +1261,32 @@ function routinePlan(ctx: StoreContext, taskId: string): boolean {
 }
 
 /**
- * A file hand-over made in one go: on a job with one ticket that has never come to your card, by the
- * only segment on it since it opened or since its last approved hand-over. You asked, the Bot did it,
+ * A file hand-over made in one go: on a job with one ticket that has never come to your card or has
+ * had a hand-over approved, by the only segment on it since it opened or since its last approved hand-over. You asked, the Bot did it,
  * and it is there where you asked; a card asking you to let it through adds nothing a word from you
  * would not do (2026-10-06: 「根据你的职责，生成图片更新你的头像」 opened, made and handed over an
  * avatar in 31 s, then waited on a 放行 card). A job of several tickets (a large one is laid out in
  * several), one that took more segments or one you were asked about once still comes to your card:
  * the three hand-overs of 《全职猎人》 you sent back with notes each came after four or more segments.
  * Segments that start after the hand-over (your next line while it waits) do not count against it.
+ *
+ * Once a hand-over of the job is approved, what one segment makes after it goes the same way, card
+ * before or not: on 2026-10-07 each follow-up question in a one-ticket job came back as a 放行 card,
+ * five in half an hour, all let through, because the job's first hand-over had been carded. A hand-over
+ * sent back is still followed by a card: the segment that made it counts against the next one.
  */
 function doneInOneGo(ctx: StoreContext, submission: Submission): boolean {
   if (!submission.turn_id || (submission.origin !== "submit" && submission.origin !== "implicit")) return false;
-  const job = ctx.db.query<{ tickets: number; asked: number; others: number }, [string, string, string]>(`SELECT
+  const job = ctx.db.query<{ tickets: number; asked: number; approved: number; others: number }, [string, string, string]>(`SELECT
       (SELECT COUNT(*) FROM tickets t WHERE t.task_id = ?1 AND ${STAGE_SQL("t")} <> 'dropped') AS tickets,
       (SELECT COUNT(*) FROM messages WHERE json_valid(control) AND json_extract(control, '$.kind') = 'review_item'
         AND json_extract(control, '$.task_id') = ?1) AS asked,
+      (SELECT COUNT(*) FROM submissions a WHERE a.task_id = ?1 AND a.state = 'approved' AND a.id <> ?3) AS approved,
       (SELECT COUNT(*) FROM turns u, submissions s WHERE s.id = ?3 AND u.task_id = ?1 AND u.id <> ?2
         AND u.mode IS NOT 'readonly' AND u.created_at <= s.created_at
         AND u.created_at > COALESCE((SELECT MAX(a.created_at) FROM submissions a WHERE a.task_id = ?1
           AND a.state = 'approved' AND a.id <> ?3), '')) AS others`).get(submission.task_id, submission.turn_id, submission.id);
-  return job?.tickets === 1 && job.asked === 0 && job.others === 0;
+  return job?.tickets === 1 && job.others === 0 && (job.asked === 0 || job.approved > 0);
 }
 
 /** Why a card no longer waits on you, as it then reads in place of its buttons. */

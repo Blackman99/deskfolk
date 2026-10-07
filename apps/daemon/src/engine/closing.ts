@@ -273,7 +273,12 @@ export function createClosing(deps: ClosingDeps): Closing {
     // Same correction `send_message` makes: a file named from the shell's cwd is linked where it is.
     const body = resolveBodyPathsToWorkDir(rawBody, live.workDir, (relpath) => pathExists(store, relpath));
     const linked = linkifyWorkspacePaths(body, live.writtenPaths);
-    if (!linked.trim() && live.writtenPaths.length === 0) return null;
+    // A file a line of this segment already carries is not carried again: a reply after `submit`,
+    // which shows what it hands over on a line of its own, would draw the same files twice.
+    const paths = store.uncitedTurnPaths(turnId, mergeCitedPaths(live.writtenPaths, attachmentLinePaths(body)));
+    if (!linked.trim() && paths.length === 0) return null;
+    // The same words this segment already posted, with nothing new to carry: they went out once.
+    if (paths.length === 0 && store.saidInSegment(turnId, linked)) return null;
     // A plan call-back that only says again what this Bot already said here moves nothing. The
     // turn ends without the second copy; the plan watch then tells you the plan stopped.
     if (
@@ -289,7 +294,7 @@ export function createClosing(deps: ClosingDeps): Closing {
       kind: "bot",
       author: turn.bot_id,
       body: linked,
-      paths: mergeCitedPaths(live.writtenPaths, attachmentLinePaths(body)),
+      paths,
     });
     publishMessage(message);
     live.spoke = true;

@@ -50,6 +50,8 @@ test("stopping only for your OK to go on is sent back once, and the Bot goes on 
     refused.push(...results.filter((result) => result.name === "end_turn" && !result.ok));
     if (hop === 1) return call(tool("end_turn", { reason: "blocked", needs_from_user: SIGN_OFF }));
     if (hop === 2) return call(writeFile(`${plan.dir}/clips.md`, "C01 埼玉出场"));
+    // A segment your line opened in your direct says something to you before it ends.
+    if (hop === 3) return call(tool("send_message", { body: "分镜先写在 clips.md，接着出视频片段。" }));
     return call(tool("end_turn", { reason: "nothing_new" }));
   });
   await start("做个《一拳超人》动画");

@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { Store } from ".";
 import { KeyCache, type StoreContext } from "./shared";
 import { Transactions } from "./transactions";
-import { finishWork } from "./end-contract";
+import { endAfterSubmit, finishWork, segmentLastWord } from "./end-contract";
 import { createHold, holdsCovering } from "./holds";
 import { HttpError } from "../errors";
 import { delegateWork, getDelegation, getDelegationWait } from "./delegations";
@@ -542,15 +542,13 @@ test("a segment that put something in front of you, or that no line of yours in 
     expect(result).toMatchObject({ ended: true, endReason: opts.pureText ? expect.any(String) : reason });
     expect(result.notice).toBeUndefined();
   };
-  // A message of its own there, a reply about to go out, files it wrote, something it handed over.
+  // A message of its own there with words in it, a reply about to go out, words handed over for your card.
   const said = fixture();
   const reply = yourLine(said);
   said.store.insertMessage({ sessionId: said.room.id, sourceTurnId: reply.id, kind: "bot", author: said.bot.id, body: "可以从公开数据集获取。" });
   ends(said, reply.id, "answered");
   const prose = fixture();
   ends(prose, yourLine(prose).id, "done", { pureText: true, closing: "可以从公开数据集获取。" });
-  const files = fixture();
-  ends(files, yourLine(files).id, "answered", { written: ["work/score/sources.md"] });
   const handed = fixture("done");
   const words = yourLine(handed, "给这份报告起个标题", { taskId: handed.plan.id, ticketId: handed.ticket.id });
   handed.store.db.run(`INSERT INTO submissions (id, work_item_id, task_id, ticket_id, bot_id, turn_id, origin, artifacts, content, state, created_at, updated_at)
@@ -571,4 +569,61 @@ test("a segment that put something in front of you, or that no line of yours in 
   const room = group.store.createGroup({ name: "Team", members: [group.bot.id, peer.id] });
   const named = group.store.postMessage(room.id, { body: "@Writer 看一下" });
   ends(group, group.store.createTurn({ sessionId: room.id, botId: group.bot.id, triggerMessageId: named.id, taskId: null, ticketId: null }).id, "answered");
+});
+
+test("files alone are no reply: written, carried on a line with no words, or handed over, the ending is sent back once", () => {
+  // 2026-10-07: 视频导演 answered 「水印去不掉吗」 with a video and 「它支持传参考图吗」 with two, not a
+  // word to either; files it wrote, a line carrying only them and a hand-over each let the ending through.
+  const written = fixture();
+  const first = finishWork(written.ctx, { turnId: yourLine(written, "水印去不掉吗").id, reason: "answered" }, { written: ["work/clips/nowm.mp4"] });
+  expect(first).toMatchObject({ ended: false, code: "said_nothing" });
+  expect(first.bounce).toContain("You ended with files and no words");
+  expect(first.bounce).toContain("write the reply as plain text, with no tool call");
+
+  const shown = fixture();
+  const line = yourLine(shown, "水印去不掉吗");
+  shown.store.insertMessage({ sessionId: shown.room.id, turnId: line.id, kind: "bot", author: shown.bot.id, body: "", paths: ["work/clips/nowm.mp4"] });
+  expect(finishWork(shown.ctx, { turnId: line.id, reason: "answered" })).toMatchObject({ ended: false, code: "said_nothing" });
+
+  const handed = fixture("done");
+  const clips = yourLine(handed, "它支持传参考图吗", { taskId: handed.plan.id, ticketId: handed.ticket.id });
+  handed.store.db.run(`INSERT INTO submissions (id, work_item_id, task_id, ticket_id, bot_id, turn_id, origin, artifacts, state, created_at, updated_at)
+    VALUES ('sub-clips', ?, ?, ?, ?, ?, 'submit', ?, 'submitted', '2026-10-07T00:00:00.000Z', '2026-10-07T00:00:00.000Z')`,
+    [clips.work_item_id ?? null, handed.plan.id, handed.ticket.id, handed.bot.id, clips.id, JSON.stringify([{ path: `${handed.ticket.dir}/i2v.mp4`, sha256: "a".repeat(64) }])]);
+  const third = finishWork(handed.ctx, { turnId: clips.id, reason: "done" });
+  expect(third).toMatchObject({ ended: false, code: "said_nothing" });
+  expect(third.bounce).toContain("You ended with files and no words");
+});
+
+test("submit does not end a segment your line opened in your direct before a word of it reaches you; once one has, it does", () => {
+  // 2026-10-07 13:45: 「这个视频生成跟 Grok 的比哪个好」 got three clips handed over, submit ended the
+  // segment there, and the answer the Bot had written never went out.
+  const f = fixture("done");
+  const turn = yourLine(f, "这个视频生成跟 Grok 的比哪个好", { taskId: f.plan.id, ticketId: f.ticket.id });
+  f.store.insertMessage({ sessionId: f.room.id, turnId: turn.id, kind: "bot", author: f.bot.id, body: "", paths: [`${f.ticket.dir}/grok_cmp_cat.mp4`] });
+  const held = endAfterSubmit(f.ctx, turn.id);
+  expect(held.ended).toBe(false);
+  expect(held.reason).toContain("no word of yours has reached them");
+  expect(held.reason).toContain("plain text, with no tool call");
+  // Nothing is counted against it, and the segment goes on.
+  expect(f.store.db.query("SELECT COUNT(*) AS n FROM work_events WHERE turn_id = ? AND kind = 'end.rejected'").get(turn.id)).toEqual({ n: 0 });
+  expect(f.store.db.query("SELECT status, end_reason FROM turns WHERE id = ?").get(turn.id)).toEqual({ status: "running", end_reason: null });
+
+  f.store.insertMessage({ sessionId: f.room.id, turnId: turn.id, kind: "bot", author: f.bot.id, body: "两者整体差不多，做连续镜头更推荐 Grok。" });
+  expect(endAfterSubmit(f.ctx, turn.id)).toEqual({ ended: true });
+
+  // A segment no line of yours opened ends at submit as before.
+  const g = fixture("done");
+  g.store.db.run("UPDATE turns SET status = 'completed', end_reason = 'answered' WHERE id = ?", [g.turn.id]);
+  const due = g.store.insertMessage({ sessionId: g.room.id, kind: "system", author: g.bot.id, body: "回看：对比片子" });
+  const woken = g.store.createTurn({ sessionId: g.room.id, botId: g.bot.id, triggerMessageId: due.id, taskId: g.plan.id, ticketId: g.ticket.id });
+  expect(endAfterSubmit(g.ctx, woken.id)).toEqual({ ended: true });
+});
+
+test("the segment's last word is the newest line that says something, not one that only carries files", () => {
+  const f = fixture();
+  const turn = yourLine(f, "对比结果呢");
+  f.store.insertMessage({ sessionId: f.room.id, turnId: turn.id, kind: "bot", author: f.bot.id, body: "结论随后发你。" });
+  f.store.insertMessage({ sessionId: f.room.id, turnId: turn.id, kind: "bot", author: f.bot.id, body: "", paths: ["work/clips/a.mp4"] });
+  expect(segmentLastWord(f.ctx, turn.id)).toBe("结论随后发你。");
 });

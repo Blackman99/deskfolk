@@ -702,6 +702,7 @@ export class Store {
   readonly recordPeerNote = this.bind(peerNotes.recordPeerNote);
   readonly progressMessagesSent = this.bind(peerNotes.progressMessagesSent);
   readonly uncitedTurnPaths = this.bind(peerNotes.uncitedTurnPaths);
+  readonly saidInSegment = this.bind(peerNotes.saidInSegment);
   readonly delegateWork = this.bind(delegations.delegateWork);
   readonly getDelegation = this.bind(delegations.getDelegation);
   readonly listDelegations = this.bind(delegations.listDelegations);

@@ -119,6 +119,8 @@ export type ToolsDeps = {
 
 export type Tools = {
   noteWrittenPaths: (live: Live, toolName: string, result: ToolResult) => void;
+  /** What a call wrote, noted, and the segment put on its own ticket when it wrote in that ticket's folder. */
+  noteWrites: (turnId: string, live: Live, toolName: string, result: ToolResult) => void;
   executeTools: (turnId: string, calls: ToolCall[]) => Promise<"wait" | "noop" | "more" | "spoke">;
   recordRun: (turnId: string, live: Live, name: string, args: Record<string, unknown>, result: ToolResult) => void;
   admitPicture: (live: Live, pictures: LoopPicture[], result: ToolResult) => Record<string, unknown> | undefined;
@@ -1006,6 +1008,7 @@ export function createTools(deps: ToolsDeps): Tools {
 
   return {
     noteWrittenPaths,
+    noteWrites,
     executeTools,
     recordRun,
     admitPicture,

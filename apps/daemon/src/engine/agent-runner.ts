@@ -100,7 +100,7 @@ export type AgentRunnerDeps = {
   executeTools: Tools["executeTools"];
   openApprovalCard: Tools["openApprovalCard"];
   beforeEffect: Tools["beforeEffect"];
-  noteWrittenPaths: Tools["noteWrittenPaths"];
+  noteWrites: Tools["noteWrites"];
   settleClosingReply: (turnId: string, live: Live, current: Turn, content: string) => Promise<{ kind: "bounce"; note: string } | { kind: "ended" } | { kind: "inactive" }>;
   completeSilent: (turnId: string) => void;
   saidNothing: (turn: Turn, live: Live) => void;
@@ -414,6 +414,14 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
       state.ended = true;
       input.close();
     };
+    /** The turn's row as it is now, or the one in hand when it is gone (whatever ended it says so). */
+    const refreshed = (turn: Turn): Turn => {
+      try {
+        return store.getTurn(turnId);
+      } catch {
+        return turn;
+      }
+    };
 
     // --- the app's tools, through executeTools, one at a time --------------------------------
     const bridge: AgentToolBridge = {
@@ -549,14 +557,19 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
           toolCallId: id, durationMs: entry ? Date.now() - entry.startedAt : null, output: responseText || null });
         if (!failed && live.workDir) {
           const produced = producedPaths(root, live.workDir, entry?.snapshot ?? null);
-          if (produced.paths?.length) deps.noteWrittenPaths(live, "shell", { ok: true, data: { paths: produced.paths }, emitted: [] });
+          if (produced.paths?.length) deps.noteWrites(turnId, live, "shell", { ok: true, data: { paths: produced.paths }, emitted: [] });
         }
       }
       const written = writtenPathOf(args);
       if (!failed && written && appName === "write_file") {
         const classified = classifyPath(root, written);
-        if (classified.zone === "inside") deps.noteWrittenPaths(live, "write_file", { ok: true, data: { path: classified.rel }, emitted: [] });
+        if (classified.zone === "inside") deps.noteWrites(turnId, live, "write_file", { ok: true, data: { path: classified.rel }, emitted: [] });
       }
+      // Writing in one of its own tickets' folders puts a segment on the whole job onto that ticket, as
+      // on the app's own loop: its closing reply then goes out with those files and hands them over.
+      // Left on the whole job, 视频导演's answers about an approved ticket's clips were held back by
+      // the ending's bounce and never sent (2026-10-07).
+      if (!failed && (raw.tool_name === "Bash" || appName === "write_file")) current = refreshed(current);
       if (!failed && raw.tool_name === "Read" && written && PICTURE.test(written)) {
         // Claude Code looked at the picture itself: a review approving pictures counts that (ADR 0046 §10).
         const classified = classifyPath(root, written);
@@ -833,6 +846,8 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
             input.push(userMessage(note));
             return;
           }
+          // The row as it is now: a write or a work_on since the session started may have put it on a ticket.
+          current = refreshed(current);
           const settled = await deps.settleClosingReply(turnId, live, current, reply);
           if (settled.kind === "bounce") {
             live.loop.push({ role: "user", content: settled.note });

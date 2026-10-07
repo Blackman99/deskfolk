@@ -33,7 +33,7 @@ const PREFACE_ZH = `# 在这一轮里
 - 这一轮没有 read_file、write_file、delete_file、list_dir 和 shell。读写文件、找文件、跑命令用 Claude Code 自己的 Read、Write、Edit、Glob、Grep、Bash，路径写绝对路径。工作区根目录是 {workspace}；Bash 从 {cwd} 开始，它就是系统指令里说的本轮工作目录。系统指令里「相对工作区根」的路径，就是相对 {workspace} 的路径；在消息里提到文件时也这样写，应用才认得出、挂得上。
 - 看图用 Read，应用会记下你看过；审查图片类交付时要先这样看过，才能给通过。
 - 问用户只能用 mcp__deskfolk__ask_user，这里没有 AskUserQuestion。
-- 这一轮最后一条不调用工具的回复，就是你发到会话里的消息，和系统指令说的一样会先过收尾检查。
+- 这一轮最后一条不调用工具的回复，就是你发到会话里的消息，和系统指令说的一样会先过收尾检查；和工具调用写在同一条消息里的文字（包括 mcp__deskfolk__end_turn、mcp__deskfolk__submit 旁边的）不会发出。
 - 不要读、改或打印 Claude Code 自己的设置和凭据（~/.claude、~/.claude.json、钥匙串），不要运行 claude 命令，也不要用后台任务：命令和子任务都在前台跑完。`;
 
 const PREFACE_EN = `# In this turn
@@ -43,7 +43,7 @@ This turn is run by the user's own Claude Code. Every Deskfolk tool the System s
 - This turn has no read_file, write_file, delete_file, list_dir or shell. Read, write and find files and run commands with Claude Code's own Read, Write, Edit, Glob, Grep and Bash, using absolute paths. The workspace root is {workspace}; Bash starts in {cwd}, which is what the System section calls this turn's work dir. A path "relative to the workspace root" there is relative to {workspace}; write file paths in your messages that way too, or the app cannot recognize and attach them.
 - Look at pictures with Read; the app records that you looked, which a review approving pictures needs.
 - Ask the user only with mcp__deskfolk__ask_user; there is no AskUserQuestion here.
-- Your last reply in this turn that calls no tool is the message you post, and it passes the closing check the System section describes.
+- Your last reply in this turn that calls no tool is the message you post, and it passes the closing check the System section describes; text in the same message as a tool call (beside mcp__deskfolk__end_turn or mcp__deskfolk__submit too) is never sent.
 - Never read, change or print Claude Code's own settings or credentials (~/.claude, ~/.claude.json, the keychain), never run the claude command, and do not use background tasks: run commands and subtasks to the end in the foreground.`;
 
 export const AGENT_PREFACE: Record<Locale, string> = { zh: PREFACE_ZH, en: PREFACE_EN };

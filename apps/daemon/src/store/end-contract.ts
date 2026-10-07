@@ -198,8 +198,9 @@ function ticketClosed(ctx: StoreContext, ticketId: string): boolean {
 /**
  * A segment that handed its ticket's work over with `submit` ends with it (§5.2: submit ends the
  * segment by default): its work goes idle — closed once the ticket is approved — unless something
- * still holds it open: a line of yours it read and has not answered for, an open request of its
- * own, or a wait. Then it does not end, and the Bot is told why; nothing is counted against it.
+ * still holds it open: a line of yours it read and has not answered for, the line of yours in your
+ * direct that opened it while no word has reached you, an open request of its own, or a wait. Then
+ * it does not end, and the Bot is told why; nothing is counted against it.
  */
 export function endAfterSubmit(ctx: StoreContext, turnId: string): { ended: boolean; reason?: string } {
   return ctx.commit(() => {
@@ -207,6 +208,12 @@ export function endAfterSubmit(ctx: StoreContext, turnId: string): { ended: bool
     const unacknowledged = turnInbox(ctx, turn.id).filter((mail) => mail.delivered_turn_id === turn.id
       && mail.state === "delivered" && ["user", "annotation"].includes(mail.source)).map(inboxLabel);
     if (unacknowledged.length > 0) return { ended: false, reason: `answer for the user's lines you read first (${unacknowledged.join(", ")}), then end_turn` };
+    // What it handed over is not a reply: ended here, 「这个视频生成跟 Grok 的比哪个好」 got three clips
+    // and no answer (2026-10-07). The reply it writes next ends the segment.
+    if (lineStandsUnanswered(ctx, turn)) {
+      return { ended: false, reason: "the user's line opened this segment and no word of yours has reached them: write your reply as plain text, "
+        + "with no tool call, saying what you handed over and what you found; that reply ends the segment" };
+    }
     const facts = obligations(ctx, turn);
     if (facts.outgoingDelegations.length + facts.incomingDelegations.length + facts.waits.length > 0 || facts.tickets.length > 0) {
       return { ended: false, reason: "this work still has open requests, waits or tickets: carry on, or end_turn saying what you wait for" };
@@ -295,14 +302,19 @@ function noProgressNotice(ctx: StoreContext, turn: Actor): string {
   return noProgressNoticeBody(locale, { job: supervisorJobLabel(locale, { plan, ticket }), bot });
 }
 
+/** A Bot message that says something: a line carrying only files has an empty body. */
+const WORDED = `trim(m.body, ' ' || char(9) || char(10) || char(13)) <> ''`;
+
 /**
  * The segment's last word to the user: the pure-text reply about to go out (`closing`), else its
- * newest message (`send_message` or an earlier closing reply). Null when it said nothing.
+ * newest message with words in it (`send_message` or an earlier closing reply; a line that only
+ * carries files says nothing). Null when it said nothing.
  */
 export function segmentLastWord(ctx: StoreContext, turnId: string, closing?: string): string | null {
   if (closing?.trim()) return closing;
   return ctx.db.query<{ body: string }, [string]>(`SELECT m.body FROM messages m JOIN turns t ON t.id = ?1
-    WHERE (m.turn_id = ?1 OR m.source_turn_id = ?1) AND m.author = t.bot_id AND m.kind = 'bot' ORDER BY m.message_seq DESC LIMIT 1`).get(turnId)?.body ?? null;
+    WHERE (m.turn_id = ?1 OR m.source_turn_id = ?1) AND m.author = t.bot_id AND m.kind = 'bot' AND ${WORDED}
+    ORDER BY m.message_seq DESC LIMIT 1`).get(turnId)?.body ?? null;
 }
 
 /**
@@ -332,32 +344,53 @@ function promisedLaterNotice(ctx: StoreContext, turn: Actor, said: string): stri
 }
 
 /**
- * Whether the segment was opened by a line of yours in your direct with the Bot and has put nothing in
- * front of you there: no reply about to go out, no message of its own in that conversation (a reply, a
- * progress line, files), no file it wrote (those go out with the ending), nothing it handed over. In a
- * direct every line of yours is said to the Bot, so such an ending leaves it standing unanswered — and
- * what a Bot writes into end_turn reaches nobody there: 通识 put a whole answer into `answer`, which
- * goes only to a Bot that asked, and your line got no reply and no sign of why (2026-10-07).
+ * Whether the segment was opened by a line of yours in your direct with the Bot and no word of it has
+ * reached you there: no reply about to go out, no message of its own with words in that conversation
+ * (a reply, a progress line), no words it handed over for your card. In a direct every line of yours
+ * is said to the Bot, so such an ending leaves it standing unanswered — and what a Bot writes into
+ * end_turn reaches nobody there: 通识 put a whole answer into `answer`, which goes only to a Bot that
+ * asked, and your line got no reply and no sign of why (2026-10-07).
  */
 function leftLineUnanswered(ctx: StoreContext, turn: Actor, opts: FinishWorkOptions): boolean {
-  if (turn.mode === "readonly" || opts.closing?.trim() || (opts.written?.length ?? 0) > 0) return false;
+  if (opts.closing?.trim()) return false;
+  return lineStandsUnanswered(ctx, turn);
+}
+
+/**
+ * The line of yours in your direct that opened the segment, with no word of it to you yet. Files are
+ * no reply: they go out on a line that says nothing, and the same day 视频导演 answered 「水印去不掉吗」
+ * and 「它支持传参考图吗」 with a video each and not a word — written files, a folder card and a
+ * hand-over all counted as something put in front of you then.
+ */
+function lineStandsUnanswered(ctx: StoreContext, turn: Actor): boolean {
+  if (turn.mode === "readonly") return false;
   const opened = ctx.db.query(`SELECT 1 FROM turns t JOIN messages line ON line.id = t.trigger_message_id JOIN sessions s ON s.id = t.session_id
     WHERE t.id = ? AND line.kind = 'user' AND line.session_id = t.session_id AND s.kind = 'direct'`).get(turn.id);
   if (!opened) return false;
-  if (ctx.db.query(`SELECT 1 FROM messages WHERE (turn_id = ?1 OR source_turn_id = ?1) AND session_id = ?2 AND author = ?3 AND kind = 'bot' LIMIT 1`)
-    .get(turn.id, turn.session_id, turn.bot_id)) return false;
-  const handedOver = ctx.db.query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'submissions'").get()
-    && ctx.db.query("SELECT 1 FROM submissions WHERE turn_id = ? LIMIT 1").get(turn.id);
-  return !handedOver;
+  if (ctx.db.query(`SELECT 1 FROM messages m WHERE (m.turn_id = ?1 OR m.source_turn_id = ?1) AND m.session_id = ?2 AND m.author = ?3
+    AND m.kind = 'bot' AND ${WORDED} LIMIT 1`).get(turn.id, turn.session_id, turn.bot_id)) return false;
+  // Words handed over on a ticket whose work is words come to your card with them.
+  const handedWords = ctx.db.query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'submissions'").get()
+    && ctx.db.query("SELECT 1 FROM submissions WHERE turn_id = ? AND origin = 'answer' LIMIT 1").get(turn.id);
+  return !handedWords;
+}
+
+/** Whether the segment made files you are shown — written ones, or a hand-over of its own — for what the bounce says. */
+function madeFiles(ctx: StoreContext, turn: Actor, opts: FinishWorkOptions): boolean {
+  if ((opts.written?.length ?? 0) > 0) return true;
+  return Boolean(ctx.db.query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'submissions'").get()
+    && ctx.db.query("SELECT 1 FROM submissions WHERE turn_id = ? AND origin <> 'answer' LIMIT 1").get(turn.id));
 }
 
 /** What a Bot hears when it ends with nothing said to the line of yours that opened the segment. */
-function saidNothingBounce(input: { answer: boolean; pureText: boolean }): string {
+function saidNothingBounce(input: { answer: boolean; pureText: boolean; files: boolean }): string {
   const why = input.answer
     ? "Your answer reached nobody: answer only goes to a Bot that asked you through delegate (or, with done, is handed over on a ticket whose work is words), and neither applies here."
     : input.pureText
       ? "Your reply did not go out: it was empty, or only said there was nothing to do or that it was already answered."
-      : "You ended without a word to the user: what you write into end_turn (note, inbox) is a record they never see.";
+      : input.files
+        ? "You ended with files and no words: the files are shown in the conversation, but they are not a reply, and what you write into end_turn (note, inbox) is a record the user never sees."
+        : "You ended without a word to the user: what you write into end_turn (note, inbox) is a record they never see.";
   return `${why} The user's line opened this segment and nothing you said reached them, so it stands unanswered. `
     + "Reply to them in this conversation: write the reply as plain text, with no tool call — that reply ends the segment. If their line needs no answer, a short reply is enough.";
 }
@@ -514,7 +547,8 @@ export function finishWork(ctx: StoreContext, input: FinishWorkInput, opts: Fini
     // you it did not reply. Words that do reach a Bot that asked are a reply, and leave this alone.
     const unheard = ["done", "answered", "nothing_new"].includes(reason) && !(answer && answerable.length > 0) && leftLineUnanswered(ctx, turn, opts);
     if (unheard && rejectionsFor(ctx, turn.id, "said_nothing") === 0 && bounceLeft(ctx, turn.id, opts)) {
-      return rejectEnd(ctx, turn, base, opts, "said_nothing", saidNothingBounce({ answer: Boolean(answer), pureText: opts.pureText === true }));
+      return rejectEnd(ctx, turn, base, opts, "said_nothing", saidNothingBounce({ answer: Boolean(answer), pureText: opts.pureText === true,
+        files: madeFiles(ctx, turn, opts) }));
     }
     // Saying the work is under way, then ending with nothing open on it: nothing wakes the Bot
     // again, and the conversation reads as work going on (2026-10-03: 「正在编写…」 then done, on

@@ -50,6 +50,17 @@ export function emptyReplyNote(locale: Locale): string {
     : "（应用提示）你刚才的回复是空的：没有文字，也没有调用工具。这件事还没交代完：接着做下一步（该写的文件写出来），或者直接回复做完了什么、卡在哪。确实没有要补充的，就回复「无新工作」。";
 }
 
+/**
+ * What comes before a note that sends an ending back once the closing reply it was weighed on has
+ * already gone out: the Bot otherwise reads the bounce as a reply refused, and either says it again or
+ * takes the next step for the reply (2026-10-07: a withheld answer, then a submit that ended in silence).
+ */
+export function replyOutNote(locale: Locale, note: string): string {
+  return locale === "en"
+    ? `(App note) Your reply has gone out to the conversation as written; do not say it again. What follows is about the work, not the reply. ${note}`
+    : `（应用提示）你的回复已经原样发出，不要再说一遍。下面说的是这件事的活，不是回复：${note}`;
+}
+
 export function lastHopNote(locale: Locale): string {
   return locale === "en"
     ? `(App note) This turn has reached ${TURN_HOP_LIMIT} tool calls and its tools have been taken away. Reply now, directly: what is done, what is not, where it is stuck and what you need from whom to finish. This reply ends the turn.`

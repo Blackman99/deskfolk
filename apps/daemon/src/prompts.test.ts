@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { LOOP_PICTURES_MAX } from "./loop-pictures";
 import { builtinTools, COMPOSER_SUGGEST_SYSTEM, JUDGEMENT_SYSTEM, turnSystemPrompt, unknownMentionBody } from "./prompts";
+import { AGENT_PREFACE } from "./prompts/agent-system";
 
 describe("prompts", () => {
   test("judgement system has no opening brace", () => {
@@ -379,6 +380,30 @@ describe("prompts", () => {
     const en = turnSystemPrompt({ ...profile, locale: "en" });
     expect(en).toContain("call end_turn to end the turn with no transcript message");
     expect(en).toContain("In a Bot↔Bot direct every line you post wakes the other Bot");
+  });
+
+  test("from level 3 one rule says which words reach the user: a step with no tool call, never words beside end_turn or submit", () => {
+    // 2026-10-07: the level-3 text said only that end_turn states the ending's reason, and Bots wrote
+    // their answers beside end_turn or submit, or into answer, where nothing reaches you.
+    const profile = { name: "Writer", duties: "draft", boundaries: "stay", interrupt: false, engineLevel: 8 };
+    const zh = turnSystemPrompt({ ...profile, locale: "zh" });
+    expect(zh).toContain("你给用户的回复，就是最后一步不调用任何工具时写的文字");
+    expect(zh).toContain("写在 end_turn、submit 旁边的也一样");
+    expect(zh).toContain("对这两者：不要拿它们预告「我会排查」");
+    expect(zh).toContain("end_turn 不发任何话");
+    expect(zh).not.toContain("end_turn 明确声明结束原因");
+    const en = turnSystemPrompt({ ...profile, locale: "en" });
+    expect(en).toContain("Your reply to the user is the text of your last step, the one that calls no tool");
+    expect(en).toContain("For both: do not use either to announce");
+    expect(en).toContain("end_turn posts nothing");
+    for (const locale of ["zh", "en"] as const) {
+      const tools = builtinTools(locale, 8);
+      const said = (name: string) => tools.find((tool) => tool.function.name === name)!.function.description ?? "";
+      expect(said("end_turn")).toContain(locale === "zh" ? "结束本段，不发任何消息" : "End this segment without posting anything");
+      expect(said("send_message")).not.toContain(locale === "zh" ? "最后 end_turn(reason) 明确收尾" : "end explicitly with end_turn(reason)");
+      expect(said("submit")).toContain(locale === "zh" ? "submit 不替你说话" : "submit says nothing for you");
+      expect(AGENT_PREFACE[locale]).toContain(locale === "zh" ? "不会发出" : "is never sent");
+    }
   });
 
   test("send_message tool copy says mention forces a new turn", () => {

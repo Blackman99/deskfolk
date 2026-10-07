@@ -7,7 +7,7 @@
  */
 import { afterEach, expect, test } from "bun:test";
 import { openPlan, planSpec, videoTeam } from "./video-team";
-import { call, createScenario, fileUnder, tool, writeFile, type Scenario } from "../test-kit/scenario";
+import { call, createScenario, fileUnder, say, tool, writeFile, type Scenario } from "../test-kit/scenario";
 
 const open: Scenario[] = [];
 afterEach(async () => {
@@ -130,7 +130,10 @@ test("work you send back from your direct with the Bot that made it is redone th
   h.script(director).handle(({ turn, hop }) => {
     if (turn?.trigger_message_id && h.store.getMessage(turn.trigger_message_id).kind === "user") {
       return hop === 1 ? call(tool("work_on", { plan: plan.id, ticket: shots.id }))
-        : hop === 2 ? call(writeFile(`${shots.dir}/board.md`, "S01 怪人砸楼")) : call(tool("submit", { artifacts: [`${shots.dir}/board.md`] }));
+        : hop === 2 ? call(writeFile(`${shots.dir}/board.md`, "S01 怪人砸楼"))
+          : hop === 3 ? call(tool("submit", { artifacts: [`${shots.dir}/board.md`] }))
+            // Handed in, with no word to your line yet: submit leaves it to reply.
+            : say("关键帧板改好交了：S01 加了怪人砸楼的城市破坏。");
     }
     return call(tool("end_turn", { reason: "nothing_new" }));
   });
