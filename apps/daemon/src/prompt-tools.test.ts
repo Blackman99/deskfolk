@@ -4,6 +4,7 @@ import { HttpError } from "./errors";
 import { savePromptText } from "./prompts/book";
 import { applyPromptEdits, PROMPT_EDIT_KIND } from "./prompt-tools";
 import { Store } from "./store";
+import { codePointCount } from "./text";
 
 const stores: Store[] = [];
 afterEach(() => {
@@ -103,4 +104,36 @@ test("a reset waits for the card too, and there is nothing to reset on a default
   await proposed.waitApproval!.run({ approval_id: "card" });
   expect(store.promptOverride("turn.mcp", "en")).toBeNull();
   expect(store.promptHead("turn.mcp", "en")).toMatchObject({ op: "reset", actor: "bot", approval_id: "card" });
+});
+
+test("a prompt too long for one answer comes as an outline and is read by paragraph, exactly as written", async () => {
+  const { store, ctx } = setup();
+  const size = (data: unknown) => codePointCount(JSON.stringify({ ok: true, data }));
+  const outline = await runCollabTool(ctx, "read_prompt", { id: "turn.system", locale: "en" });
+  expect(outline.ok).toBe(true);
+  expect(outline.data!.text).toBeUndefined();
+  expect((outline.data!.outline as unknown[]).length).toBe(outline.data!.parts as number);
+  expect(size(outline.data)).toBeLessThan(8000);
+  // The Chinese System section at level 8 is just past what one answer holds.
+  store.db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('engine_level', '8')");
+  const zh = await runCollabTool(ctx, "read_prompt", { id: "turn.system", locale: "zh" });
+  expect(zh.data!.outline).toBeDefined();
+  expect(size(zh.data)).toBeLessThan(8000);
+  // find gives the paragraph holding the phrase, part the same paragraph by number.
+  const found = await runCollabTool(ctx, "read_prompt", { id: "turn.system", locale: "en", find: "Claim only what you ran" });
+  const [paragraph] = found.data!.parts as Array<{ part: number; text: string }>;
+  expect(paragraph!.text).toContain("Claim only what you ran:");
+  expect(found.data!.matched).toEqual([paragraph!.part]);
+  const byNumber = await runCollabTool(ctx, "read_prompt", { id: "turn.system", locale: "en", part: [paragraph!.part] });
+  expect((byNumber.data!.parts as Array<{ text: string }>)[0]!.text).toBe(paragraph!.text);
+  // What was read is the text itself, so it anchors an edit.
+  const anchor = paragraph!.text.slice(paragraph!.text.indexOf("Claim only what you ran:"), paragraph!.text.indexOf("Claim only what you ran:") + 24);
+  const proposed = await runCollabTool(ctx, "edit_prompt", { id: "turn.system", locale: "en", edits: [{ after: anchor, add: " Name the command." }], reason: "Hand-overs left out the command." });
+  expect(proposed.waitApproval?.kind_key).toBe(PROMPT_EDIT_KIND);
+  expect((await runCollabTool(ctx, "read_prompt", { id: "turn.system", part: [0] })).error?.code).toBe("invalid_args");
+  expect((await runCollabTool(ctx, "read_prompt", { id: "turn.system", part: [1, 2, 3, 4, 5, 6] })).error?.code).toBe("invalid_args");
+  // A default read with its default says so instead of sending the same text twice.
+  const retro = await runCollabTool(ctx, "read_prompt", { id: "call.retrospective", locale: "en", with_default: true });
+  expect(retro.data!.default_same).toBe(true);
+  expect(size(retro.data)).toBeLessThan(8000);
 });

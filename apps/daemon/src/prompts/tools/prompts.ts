@@ -30,6 +30,8 @@ export const READ_PROMPT: ToolDef = {
     id: { type: "string", description: { zh: "提示词的 id，如 turn.system、tool.send_message、call.organizer（见 list_prompts）。", en: "The prompt's id, e.g. turn.system, tool.send_message, call.organizer (see list_prompts)." } },
     locale: { type: "string", enum: ["zh", "en"], description: { zh: "哪个语言的版本；不填用应用的语言（只有一种语言的就用那一种）。", en: "Which language's version; left out, the app's language (or the only one it comes in)." } },
     with_default: { type: "boolean", description: { zh: "附上默认原文。", en: "Include the default text." } },
+    part: { type: "array", items: { type: "integer" }, description: { zh: "按段号读，最多 5 段（很长的提示词先给目录）。", en: "Paragraph numbers to read, up to 5 (a long prompt answers with an outline first)." } },
+    find: { type: "string", description: { zh: "只读含这段原文的段落。", en: "Read only the paragraphs holding this exact text." } },
   },
   required: ["id"],
 };

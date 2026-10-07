@@ -1,3 +1,4 @@
+import { RECIPES } from "../../data-query/catalog";
 import type { ToolDef } from "../tool-schema";
 
 /** This machine's records, read-only (ADR 0065): what happened, for the evidence behind an improvement. */
@@ -21,10 +22,10 @@ export const QUERY_DATA: ToolDef = {
   },
   properties: {
     sql: { type: "string", description: { zh: "一条只读的 SQL。", en: "One read-only SQL statement." } },
+    recipe: { type: "string", enum: RECIPES.map((recipe) => recipe.id), description: { zh: "跑一条现成的查询（describe_data 列着），代替 sql。", en: "Run a ready-made query (describe_data lists them) instead of sql." } },
     params: { type: "array", items: { type: ["string", "number", "null"] }, description: { zh: "按顺序绑定到 ? 的值。", en: "Values bound to ? in order." } },
     max_rows: { type: "integer", description: { zh: "最多返回几行（默认 100，上限 1000）。", en: "At most this many rows (100 by default, 1000 at most)." } },
   },
-  required: ["sql"],
 };
 
 export const READ_DATA_LOG: ToolDef = {

@@ -76,7 +76,7 @@
 - Bot 创建其他 Bot、创建群组并管理成员。
 - Bot 管理 provider、模型名单与 MCP server；危险配置需要用户批准。
 - 内置提示词：你在设置里直接改；Bot 用 `edit_prompt` 提，批准卡放行，能撤销（[ADR 0064](docs/adr/0064-built-in-prompts-you-and-your-bots-can-edit.md)）。
-- 本机记录：Bot 用 `describe_data` / `query_data` / `read_data_log` 只读地查应用存下的记录和守护进程日志，拿依据分析、提改动；密钥、远程访问和你的终端查不到（[ADR 0065](docs/adr/0065-bots-read-this-machines-records.md)）。
+- 本机记录：Bot 用 `describe_data` / `query_data` / `read_data_log` 只读地查应用存下的记录和守护进程日志，拿依据分析、提改动，常问的几种分析有现成的查询；密钥、远程访问和你的终端查不到（[ADR 0065](docs/adr/0065-bots-read-this-machines-records.md)）。
 - Bot 发消息、点名和交接，主动推进其他 Bot 的工作。
 
 接下来：
@@ -85,7 +85,6 @@
 - 验证配置更新在当前轮次、其他 Bot、私聊、群聊与日程中一致生效。
 - 在扩大自主操作范围时保留用户批准、拒绝、Stop、密钥输入和执行记录；自主不等于自动放宽权限。
 - 局面块、回路里的提示、转录与控制文案也做成内置提示词；给「读不懂几次」加上分母；用你改过的提示词跑评估。
-- 常问的分析（哪类活返工多、哪段调用常读不懂）做成现成的视图，Bot 不用每次自己写 SQL。
 
 ## 4. 远程访问（实验，默认关闭）
 

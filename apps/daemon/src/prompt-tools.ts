@@ -12,12 +12,19 @@ import { hostPromptEnv, promptProblemsError, promptSlot, resetPromptText, savePr
 import { PLACEHOLDER_MEANING, renderDefault, SLOTS, slotLocale, type SlotDef } from "./prompts/registry";
 import { validatePromptText } from "./prompts/validate";
 import { listPromptSummaries } from "./prompts/views";
+import { codePointCount } from "./text";
 
 export const PROMPT_EDIT_KIND = "prompt-edit";
 const EDITS_MAX = 10;
 const REASON_MAX = 500;
 const SUMMARY_MAX = 3000;
 const HUNK_LINE_MAX = 400;
+/**
+ * Past this many code points a whole answer would come close to the 8000 a tool result keeps in
+ * context (tool-results.ts); a prompt that long is answered with an outline and read by paragraph.
+ */
+const READ_BUDGET = 7000;
+const PARTS_MAX = 5;
 
 type Edit = { old?: string; new?: string; after?: string; add?: string };
 
@@ -173,31 +180,97 @@ export function listPrompts(ctx: ToolCtx, args: Record<string, unknown>): ToolRe
   return { ok: true, data, emitted: [] };
 }
 
+/** A prompt's paragraphs, split at blank lines and kept exactly as written, so any phrase in one is in the text. */
+function paragraphsOf(text: string): string[] {
+  return text.split(/\n[ \t]*\n/);
+}
+
+function askedParts(raw: unknown, count: number): number[] | null {
+  if (raw === undefined) return null;
+  const list = Array.isArray(raw) ? raw : [raw];
+  if (list.length === 0 || list.length > PARTS_MAX || !list.every((n) => Number.isInteger(n) && n >= 1 && n <= count)) {
+    throw new HttpError(422, "invalid_args", `part is 1 to ${PARTS_MAX} paragraph numbers between 1 and ${count}`);
+  }
+  return [...new Set(list as number[])];
+}
+
 export function readPrompt(ctx: ToolCtx, args: Record<string, unknown>): ToolResult {
   const slot = requireSlot(args.id);
   const locale = pickLocale(ctx, slot, args.locale);
   const { text, defaultText } = currentText(ctx, slot, locale);
   const row = ctx.store.promptOverride(slot.id, locale);
   const ui = uiLocale(ctx);
+  const state = row ? (row.conflict_default !== null ? "conflict" : "edited") : "default";
+  const withDefault = args.with_default === true;
+  const parts = paragraphsOf(text);
+  const find = typeof args.find === "string" && args.find.trim() ? args.find : null;
+  const asked = askedParts(args.part, parts.length);
+  if (find !== null || asked !== null) {
+    // Paragraphs by number, or every one holding the phrase; past the budget the rest are only named.
+    const wanted = asked ?? parts.flatMap((part, i) => (part.includes(find!) ? [i + 1] : []));
+    const shown: Array<{ part: number; text: string }> = [];
+    const more: number[] = [];
+    let size = 0;
+    for (const n of wanted) {
+      const chars = codePointCount(parts[n - 1]!);
+      if (shown.length > 0 && size + chars > READ_BUDGET - 1000) more.push(n);
+      else {
+        shown.push({ part: n, text: parts[n - 1]! });
+        size += chars;
+      }
+    }
+    return {
+      ok: true,
+      data: {
+        id: slot.id,
+        locale,
+        state,
+        of: parts.length,
+        parts: shown,
+        ...(find !== null ? { matched: wanted } : {}),
+        ...(more.length ? { more } : {}),
+        ...(withDefault && find !== null ? { default_parts: paragraphsOf(defaultText).filter((part) => part.includes(find)) } : {}),
+      },
+      emitted: [],
+    };
+  }
   const recent = ctx.store.listPromptRevisions(slot.id, locale, 5).map((revision) => ({
     op: revision.op,
     by: revision.actor === "bot" ? (ctx.store.promptRevisionSource(revision).bot_name ?? "a Bot") : revision.actor,
     reason: revision.reason,
     at: revision.created_at,
   }));
+  const fixed = {
+    fixed_format: slot.format ? slot.format(locale, hostPromptEnv(ctx.store)) : null,
+    placeholders: slot.placeholders.map((name) => ({ name: `{${name}}`, meaning: PLACEHOLDER_MEANING[name][ui], keep: name === "format" ? "exactly once" : "at least once" })),
+  };
+  const head = { id: slot.id, locale, title: slot.title[ui], summary: slot.summary[ui], state };
+  const full = {
+    ...head,
+    text,
+    ...fixed,
+    ...(withDefault ? (state === "default" ? { default_same: true } : { default_text: defaultText }) : {}),
+    ...(row?.conflict_default ? { newer_default_not_merged: row.conflict_default } : {}),
+    recent_changes: recent,
+  };
+  if (codePointCount(JSON.stringify({ ok: true, data: full })) <= READ_BUDGET) return { ok: true, data: full, emitted: [] };
+  // Too long for one answer: an outline to pick paragraphs from, and what differs from the defaults by number.
+  const differing = (other: string) => {
+    const kept = new Set(paragraphsOf(other));
+    return parts.flatMap((part, i) => (kept.has(part) ? [] : [i + 1]));
+  };
   return {
     ok: true,
     data: {
-      id: slot.id,
-      locale,
-      title: slot.title[ui],
-      summary: slot.summary[ui],
-      state: row ? (row.conflict_default !== null ? "conflict" : "edited") : "default",
-      text,
-      fixed_format: slot.format ? slot.format(locale, hostPromptEnv(ctx.store)) : null,
-      placeholders: slot.placeholders.map((name) => ({ name: `{${name}}`, meaning: PLACEHOLDER_MEANING[name][ui], keep: name === "format" ? "exactly once" : "at least once" })),
-      ...(args.with_default === true ? { default_text: defaultText } : {}),
-      ...(row?.conflict_default ? { newer_default_not_merged: row.conflict_default } : {}),
+      ...head,
+      parts: parts.length,
+      outline: parts.map((part, i) => ({ part: i + 1, chars: codePointCount(part), starts: [...part.replace(/\s+/g, " ").trim()].slice(0, 40).join("") })),
+      how: ui === "en"
+        ? "Too long for one answer: read paragraphs with part (numbers from this outline, up to 5) or find (an exact phrase)."
+        : "太长，一次给不完：用 part（这份目录的段号，最多 5 个）或 find（一段原文）按段读。",
+      ...fixed,
+      ...(withDefault ? (state === "default" ? { default_same: true } : { changed_from_default: differing(defaultText) }) : {}),
+      ...(row?.conflict_default ? { changed_from_newer_default: differing(row.conflict_default) } : {}),
       recent_changes: recent,
     },
     emitted: [],

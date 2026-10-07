@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { runCollabTool, type ToolCtx } from "./collab-tools";
 import { queryRecords } from "./data-query/runner";
 import { redactSecrets } from "./data-tools";
+import { codePointCount } from "./text";
 import { Store } from "./store";
 
 const dir = mkdtempSync(join(tmpdir(), "records-tools-"));
@@ -28,7 +29,14 @@ test("describe_data lists the tables Bots may read, with a line on the main ones
   const tables = all.data!.tables as Array<{ name: string; about?: string; rows: number | null; columns?: unknown }>;
   // Names, notes and row counts only: every table's columns at once would not stay in context.
   expect(tables.some((table) => "columns" in table)).toBe(false);
-  expect(JSON.stringify(all.data).length).toBeLessThan(8000);
+  expect((all.data!.recipes as Array<{ id: string; about: string }>).map((recipe) => recipe.id)).toContain("sent_back_by_kind");
+  // Under the 8000 a tool result keeps in context, with room for bigger row counts, in either language.
+  for (const locale of ["zh", "en"] as const) {
+    store.patchSettingsSync({ locale });
+    const overview = await runCollabTool(ctx, "describe_data", {});
+    expect(codePointCount(JSON.stringify({ ok: true, data: overview.data }))).toBeLessThan(7000);
+  }
+  store.patchSettingsSync({ locale: "zh" });
   const names = tables.map((table) => table.name);
   expect(names).toContain("messages");
   expect(names).toContain("work_events");
@@ -52,6 +60,12 @@ test("query_data reads what is there, only reads, and never a denied table", asy
   }
   expect((await runCollabTool(ctx, "query_data", { sql: "SELECT * FROM terminals" })).error?.message).toBe("no such table: terminals");
   expect((await runCollabTool(ctx, "query_data", { sql: "SELECT 1", params: [{}] })).error?.code).toBe("invalid_args");
+  // A ready-made query runs by name and says what it ran; it is one or the other, and takes no params.
+  const recipe = await runCollabTool(ctx, "query_data", { recipe: "endings_refused" });
+  expect(recipe).toMatchObject({ ok: true, data: { recipe: "endings_refused", sql: expect.stringContaining("end.rejected"), columns: expect.arrayContaining(["code", "times"]) } });
+  for (const args of [{ recipe: "nope" }, { recipe: "endings_refused", sql: "SELECT 1" }, { recipe: "endings_refused", params: [] }, {}]) {
+    expect((await runCollabTool(ctx, "query_data", args)).error?.code).toBe("invalid_args");
+  }
   // A column guessed wrong comes back with the columns of the tables the query named.
   const guessed = await runCollabTool(ctx, "query_data", { sql: "SELECT e.created_at FROM work_events e JOIN turns t ON t.id = e.turn_id" });
   expect(guessed.error?.message).toStartWith("no such column: e.created_at. Columns: turns(id, session_id, bot_id, status");

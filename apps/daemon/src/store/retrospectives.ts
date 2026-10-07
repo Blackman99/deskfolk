@@ -70,7 +70,8 @@ export const RETROSPECTIVES_SQL = `CREATE TABLE IF NOT EXISTS retrospectives (
   changes TEXT NOT NULL DEFAULT '[]',
   -- Why it was set aside or failed, or that it changed nothing.
   note TEXT,
-  -- The model's answer as it came, for the maintainer; never shown to a Bot.
+  -- The model's answer as it came, for the maintainer; never put into a Bot's context (a Bot can read it
+  -- through the records, ADR 0065).
   raw TEXT,
   created_at TEXT NOT NULL,
   finished_at TEXT

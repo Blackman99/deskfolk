@@ -617,7 +617,7 @@ Bot 在哪读到它：每一轮的局面里都有「用户要求」一段，列�
 
 Bot 能只读地查这台机器上应用自己存下的东西，拿依据分析、提改进（[ADR 0065](adr/0065-bots-read-this-machines-records.md)）：
 
-- **三个工具**：`describe_data` 列出表和行数，主要的表附一句说明，给 `table` 看那一张的列和类型；`query_data` 跑一条只读的 SQLite 查询——单条 SELECT 或 WITH … SELECT，`?` 按 `params` 顺序绑定，默认 100 行、上限 1000，长格子截断，二进制只给字节数，10 秒没答完就停，列名写错时错误里带上点到的表的列；`read_data_log` 读 `daemon.log`（或开发版的 `daemon-dev.stderr.log`）的末尾，可以 grep。都没有副作用：不出批准卡，叫停中、只读段里也能用。Claude Agent 跑的 Bot 也有。
+- **三个工具**：`describe_data` 列出表和行数，主要的表附一句说明，后面附几条现成的查询（`recipes`），给 `table` 看那一张的列和类型；`query_data` 跑一条只读的 SQLite 查询，或用 `recipe` 按名字跑现成的那几条——单条 SELECT 或 WITH … SELECT，`?` 按 `params` 顺序绑定，默认 100 行、上限 1000，长格子截断，二进制只给字节数，10 秒没答完就停，列名写错时错误里带上点到的表的列；`read_data_log` 读 `daemon.log`（或开发版的 `daemon-dev.stderr.log`）的末尾，可以 grep。都没有副作用：不出批准卡，叫停中、只读段里也能用。Claude Agent 跑的 Bot 也有。
 - **怎么跑**：查询在守护进程另起的子进程里跑（`--query-data`），只读连接加 `query_only`，同时最多两个；超时直接杀掉，不卡守护进程。
 - **查不到的**：`remote_*`、`pending_keys`、`request_receipts`（远程访问的密钥和回执）、`notification_push_config`、`notification_devices`（推送）、`terminals`（你的终端）、`sqlite_*`。名单上的表回「no such table」；经视图、索引碰到它们，或想打开别的库、写库的，按查询计划拦下。数据目录里只读两份日志，不跟软链，日志里像密钥的抹掉。
 - **读得到的也包括**别的 Bot 的私聊和记忆（只读，不进你的上下文）、你在聊天里贴过的任何东西——密钥该贴在批准卡上，别贴进聊天。

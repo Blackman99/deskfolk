@@ -37,7 +37,7 @@ On 2026-10-07, on a copy of this machine's real database (workspace moved to a s
 ## 缺口 / Not done
 
 - 手机上不能查；也不能读两份日志以外的文件（工作区里的文件本来就能读）。/ Not from the phone; no file besides the two logs (workspace files were always readable).
-- 没有预先算好的分析视图（返工率、读不懂率）：现在由 Bot 自己写 SQL。/ No ready-made analysis views (rework rates, unreadable rates): Bots write the SQL.
+- 没有预先算好的分析视图：常问的几种（每类活退回多少、收尾为什么被拦、出过的错按类型、哪段调用读不懂、最近的复盘、哪些工具常失败）附了现成的查询，`query_data { recipe }` 按名字跑，回答里带着那条 SQL；不是视图，不改库；别的问题仍由 Bot 自己写 SQL。/ No ready-made analysis views: the questions asked most (rework per kind of work, refused endings, trouble by kind, unreadable answers, recent retrospectives, failing tools) come as ready-made queries, run by name with `query_data { recipe }` and returning their SQL; they are queries, not views, and the schema is untouched. Anything else is still the Bot's own SQL.
 
 ## 取舍 / Trade-offs
 

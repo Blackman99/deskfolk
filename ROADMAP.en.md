@@ -76,7 +76,7 @@ Groundwork in place:
 - Bots create other Bots, create groups and manage their members.
 - Bots manage providers, model lists and MCP servers; dangerous configuration needs the user's approval.
 - Built-in prompts: you change them in settings; a Bot proposes with `edit_prompt`, you let it through on the approval card, and it can be undone ([ADR 0064](docs/adr/0064-built-in-prompts-you-and-your-bots-can-edit.md)).
-- Records: Bots read what the app keeps and the daemon's log with `describe_data` / `query_data` / `read_data_log`, read-only, for the evidence behind an analysis or a change; keys, remote access and your terminals stay out of reach ([ADR 0065](docs/adr/0065-bots-read-this-machines-records.md)).
+- Records: Bots read what the app keeps and the daemon's log with `describe_data` / `query_data` / `read_data_log`, read-only, for the evidence behind an analysis or a change, with ready-made queries for the questions asked most; keys, remote access and your terminals stay out of reach ([ADR 0065](docs/adr/0065-bots-read-this-machines-records.md)).
 - Bots send messages, mention and hand off, and actively move other Bots' work forward.
 
 Next:
@@ -85,7 +85,6 @@ Next:
 - Verify that configuration updates take effect consistently in the current turn, for other Bots, and in directs, groups and routines.
 - As the range of autonomous operations widens, keep user approval, denial, Stop, key entry and execution records; autonomy does not mean permissions loosen automatically.
 - Make the situation block, in-loop notes and transcript and control lines built-in prompts too; give the unreadable-answer count a denominator; run evaluations on your edited prompts.
-- Ready-made views for the questions asked most (which work is reworked, which call fails to read), so Bots need not write the SQL each time.
 
 ## 4. Remote access (experimental, off by default)
 

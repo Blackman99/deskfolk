@@ -9,7 +9,7 @@ import { closeSync, constants, lstatSync, openSync, readSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Locale } from "@real-bot/protocol";
 import type { ToolCtx, ToolResult } from "./collab-tools";
-import { tableNote } from "./data-query/catalog";
+import { RECIPES, tableNote } from "./data-query/catalog";
 import { describeRecords, queryRecords } from "./data-query/runner";
 
 const ROWS_DEFAULT = 100;
@@ -55,6 +55,7 @@ export async function describeData(ctx: ToolCtx, args: Record<string, unknown>):
         // Every table's columns at once run past what a tool result holds in context; one at a time.
         ...(table ? { columns: shape.columns } : {}),
       })),
+      ...(table ? {} : { recipes: RECIPES.map((recipe) => ({ id: recipe.id, about: recipe[locale] })) }),
     },
     emitted: [],
   };
@@ -63,9 +64,15 @@ export async function describeData(ctx: ToolCtx, args: Record<string, unknown>):
 export async function queryData(ctx: ToolCtx, args: Record<string, unknown>): Promise<ToolResult> {
   const db = databaseOf(ctx);
   if (!db) return fail("unavailable", "these records are not kept in a file here");
-  const sql = typeof args.sql === "string" ? args.sql.trim() : "";
-  if (!sql) return fail("invalid_args", "sql is required: one SELECT");
+  const written = typeof args.sql === "string" ? args.sql.trim() : "";
+  const named = typeof args.recipe === "string" ? args.recipe.trim() : "";
+  if (written && named) return fail("invalid_args", "give sql or recipe, not both");
+  const recipe = named ? RECIPES.find((candidate) => candidate.id === named) : undefined;
+  if (named && !recipe) return fail("invalid_args", `recipe is one of ${RECIPES.map((candidate) => candidate.id).join(", ")}`);
+  const sql = recipe ? recipe.sql : written;
+  if (!sql) return fail("invalid_args", "sql (one SELECT) or recipe is required");
   if (sql.length > SQL_MAX) return fail("invalid_args", `sql is at most ${SQL_MAX} characters`);
+  if (recipe && args.params !== undefined) return fail("invalid_args", "a recipe takes no params");
   const params = args.params === undefined ? [] : args.params;
   if (!Array.isArray(params) || params.length > PARAMS_MAX || !params.every((p) => p === null || typeof p === "string" || typeof p === "number")) {
     return fail("invalid_args", `params is a list of at most ${PARAMS_MAX} strings, numbers or nulls, bound to ? in order`);
@@ -76,7 +83,10 @@ export async function queryData(ctx: ToolCtx, args: Record<string, unknown>): Pr
   if (!answer.ok) return fail("query_failed", answer.error);
   return {
     ok: true,
-    data: { columns: answer.columns, rows: answer.rows, row_count: answer.rows.length, truncated: answer.truncated, elapsed_ms: answer.elapsed_ms },
+    data: {
+      ...(recipe ? { recipe: recipe.id, sql: recipe.sql } : {}),
+      columns: answer.columns, rows: answer.rows, row_count: answer.rows.length, truncated: answer.truncated, elapsed_ms: answer.elapsed_ms,
+    },
     emitted: [],
   };
 }
