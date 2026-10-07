@@ -285,13 +285,13 @@ const zh: Dict = {
       },
       {
         dim: 'Bot 形态',
-        live: '持久名册、私聊、多 Bot 群、@ 点名、参与判断、异步交接；出了问题按类型记成质量事件，教训由应用在调用前执行，不靠事后复盘写进记忆',
+        live: '持久名册、私聊、多 Bot 群、@ 点名、参与判断、异步交接；出了问题按类型记成质量事件，教训由应用在调用前执行；你接受的活交付后，在里面出过错的 Bot 复盘一次，改进自己的记忆和技能',
         wip: '用长活实测这些保证：叫停之后还有没有副作用、规则丢没丢、打扰了你几次',
         avoid: '用完即弃的对话框、中央裁决路由、轮数熔断'
       },
       {
         dim: '模型与工具',
-        live: '多个 OpenAI 兼容端点；stdio 与 Streamable HTTP MCP；每个 Bot 有默认模型（按近 7 天用量推断，可以钉），要看图的活避开看不了图的模型，卡住了先提思考档、再沿你排的阶梯换模型；每轮的模型和原因记在流程图那一轮的卡片上',
+        live: '多个 OpenAI 兼容端点，也可以让你本机登录的 Claude Code 跑一个 Bot（Claude Agent）；stdio 与 Streamable HTTP MCP；每个 Bot 有默认模型（按近 7 天用量推断，可以钉），要看图的活避开看不了图的模型，卡住了先提思考档、再沿你排的阶梯换模型；每轮的模型和原因记在流程图那一轮的卡片上',
         wip: '阶梯和提档在真实长活里的效果，还没有实测',
         avoid: '绑定单一厂商、供应商目录、假装兼容所有实现'
       },
@@ -306,6 +306,12 @@ const zh: Dict = {
         live: '改人设和技能、建 Bot 和群、配端点、模型名单和 MCP，都可由 Bot 通过工具完成',
         wip: '全部应用操作的对话覆盖（含首启向导）',
         avoid: '每件事都要手点深层菜单'
+      },
+      {
+        dim: '工作方式模板',
+        live: '每一轮的系统指令、工具说明，以及整理、读句这些应用自己的调用，都是内置提示词：在设置里能改、能撤销、能恢复默认；Bot 能只读地查本机记录，拿依据提改动，在批准卡上由你放行；代码要读的输出格式锁着',
+        wip: '局面块、回路里的提示和转录文案也做成可改的提示词；用你改过的提示词跑评估',
+        avoid: '没人开口就在后台自我调优、Bot 不经你放行就改提示词、用提示词放宽批准或门禁'
       },
       {
         dim: '远程访问',
@@ -350,7 +356,7 @@ const zh: Dict = {
   seo: {
     title: 'Deskfolk — 交出去，离开，回来看结果',
     description:
-      'macOS 本机的 agent 协作应用（Windows 为预览版）：把多天、多步、要返工的活交给 Bot，你可以离开。模型负责干活，应用负责当真：你的原话原样存档、需求只增不删，任务要过应用自己跑的检查和有依据的审查才算做完，叫停是只有你能解除的状态，停在半路有监督器去追，只在需要你时才找你。会话和文件在本机，模型端点和 MCP 工具由你接入，危险动作先等你批准。面向会自己配模型端点的独立开发者与小工作室。MIT 开源，Alpha 阶段。',
+      'macOS 本机的 agent 协作应用（Windows 为预览版）：把多天、多步、要返工的活交给 Bot，你可以离开。模型负责干活，应用负责当真：你的原话原样存档、需求只增不删，任务要过应用自己跑的检查和有依据的审查才算做完，叫停是只有你能解除的状态，停在半路有监督器去追，只在需要你时才找你。这些规矩写在代码里；Bot 怎么干活写在应用自带的提示词里：在设置里就能改，也可以让 Bot 查本机记录、拿依据提改动，在批准卡上由你放行。会话和文件在本机，模型端点和 MCP 工具由你接入，危险动作先等你批准。面向会自己配模型端点的独立开发者与小工作室。MIT 开源，Alpha 阶段。',
     imageAlt: 'Deskfolk：一个窗口里并排着群聊、这件事的流程图和做好的宣传短片'
   },
   docs: {
@@ -573,13 +579,13 @@ const en: Dict = {
       },
       {
         dim: 'Bots',
-        live: 'Persistent roster, direct chats, multi-bot groups, @mentions, judgement, async handoffs; what goes wrong is filed by type as a quality event, and lessons are enforced by the app before a call instead of written into memory by a review afterwards',
+        live: 'Persistent roster, direct chats, multi-bot groups, @mentions, judgement, async handoffs; what goes wrong is filed by type as a quality event, with lessons enforced by the app before a call; once a job you accepted is delivered, each Bot that tripped up in it looks back once and improves its own memories and skills',
         wip: 'Measuring these guarantees on long jobs: side effects after a stop, rules lost, how often you were interrupted',
         avoid: 'Disposable chat boxes, a central dispatcher, turn-count breakers'
       },
       {
         dim: 'Models and tools',
-        live: 'Multiple OpenAI-compatible endpoints; stdio and Streamable HTTP MCP; each Bot has a default model (inferred from the last 7 days of use, or pinned), work that needs to see images skips models that cannot, and a stuck job thinks harder, then climbs the ladder of models you order; each turn\'s model and why are kept on its card in the flow',
+        live: 'Multiple OpenAI-compatible endpoints, or a Bot run by your own signed-in Claude Code (Claude Agent); stdio and Streamable HTTP MCP; each Bot has a default model (inferred from the last 7 days of use, or pinned), work that needs to see images skips models that cannot, and a stuck job thinks harder, then climbs the ladder of models you order; each turn\'s model and why are kept on its card in the flow',
         wip: 'How the ladder and stepping up do on real long jobs, not measured yet',
         avoid: 'Vendor lock-in, a provider catalogue, pretending every implementation is compatible'
       },
@@ -594,6 +600,12 @@ const en: Dict = {
         live: 'Bots edit profiles and skills, create bots and groups, configure endpoints, model lists and MCP through tools',
         wip: 'Conversational coverage of every operation, including first-run setup',
         avoid: 'Deep menus for everyday configuration'
+      },
+      {
+        dim: 'Way-of-working template',
+        live: 'Every turn\'s System section, the tool descriptions and the app\'s own calls, such as the organizer and the line readings, are built-in prompts: change them in Settings, undo a change or restore the default; a Bot reads this machine\'s records, read-only, and proposes a change from them that you let through on its approval card; the answer formats code reads stay locked',
+        wip: 'Making the situation block, in-loop notes and transcript lines editable prompts too; running evaluations on your edited prompts',
+        avoid: 'Tuning itself in the background unasked, Bots changing a prompt without your OK, prompts that loosen approvals or gates'
       },
       {
         dim: 'Remote access',
@@ -638,7 +650,7 @@ const en: Dict = {
   seo: {
     title: 'Deskfolk — Hand it off, walk away, return to results',
     description:
-      'A local agent app for macOS (Windows in preview): hand Bots the multi-day, multi-step jobs that need rework, and walk away. The model does the work; the app holds it to account: your words are kept as you said them, requirements are only ever added, a job is done only after checks the app runs itself and a review backed by evidence, a stop is a state only you can lift, a supervisor chases stalls, and the app comes to you only when it needs you. Chats and files stay on your Mac; you plug in the model endpoints and MCP tools, and risky actions wait for your approval. For solo developers and small studios who bring their own model endpoint. MIT, alpha.',
+      'A local agent app for macOS (Windows in preview): hand Bots the multi-day, multi-step jobs that need rework, and walk away. The model does the work; the app holds it to account: your words are kept as you said them, requirements are only ever added, a job is done only after checks the app runs itself and a review backed by evidence, a stop is a state only you can lift, a supervisor chases stalls, and the app comes to you only when it needs you. Those rules are code; how Bots work is written in prompts the app ships: change them in Settings, or let a Bot propose a change, backed by this machine\'s records, that you let through on its approval card. Chats and files stay on your Mac; you plug in the model endpoints and MCP tools, and risky actions wait for your approval. For solo developers and small studios who bring their own model endpoint. MIT, alpha.',
     imageAlt: 'Deskfolk: a group chat, the job’s flow and the finished promo film side by side in one window'
   },
   docs: {

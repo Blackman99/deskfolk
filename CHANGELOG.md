@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### The README and the site say no prompt loosens the four guarantees
+
+- "Why you can hand it over" in the README now says the four points are rules in code, not prompts: you can change how Bots work, but no prompt loosens them. The site's search description and the glossary's opening paragraph say the same, and that how Bots work is written in built-in prompts you and your Bots can change. The headline and the line under it are unchanged.
+- The site's boundaries table has a new row, Way-of-working template: built-in prompts you change in Settings, or that a Bot proposes from this machine's records for you to let through on its approval card. Making the situation block, in-loop notes and transcript lines prompts too is in progress; Not doing lists tuning in the background unasked and prompts that loosen approvals or gates. The Models and tools row lists Claude Agent.
+- The README and the site no longer say that nothing is reviewed afterwards: with the retrospective, once a job you accepted is delivered, each Bot that tripped up in it looks back once and improves its own memories and skills. The README lists it under "What it does".
+
 ### A hand-over asks you once, and work made in one go not at all
 
 - A hand-over waiting on you could ask several times. First a card asked about what you had said about the picture, or said twice, that nothing checked ("nothing backs these" — Confirm the check, Count them as met, Stop requiring them), then another for each such line read while it waited, and only then Approve or Send back. Asking for a picture of a cat on a balcony, then saying "make the cat orange" while it waited, brought three cards in 26 seconds. Now a hand-over waits on one card, Approve or Send back: what nothing checks is listed on it with what the app measured, and approving counts it as met. A line read while the card waits adds no card. Confirming a check from your words is on the flow board; a card already out keeps its buttons.
