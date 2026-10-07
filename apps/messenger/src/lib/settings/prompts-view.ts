@@ -1,4 +1,4 @@
-import type { Locale, PromptGroup, PromptLocaleState, PromptRevision, PromptSummary } from '@real-bot/protocol';
+import type { DiffLine, Locale, PromptGroup, PromptLocaleState, PromptRevision, PromptSummary } from '@real-bot/protocol';
 import type { Copy } from '../copy.ts';
 
 type PromptsCopy = Copy['prompts'];
@@ -96,6 +96,47 @@ export function promptErrorText(error: unknown, c: PromptsCopy): string {
 	if (typeof entry === 'function') return entry(first.detail);
 	if (typeof entry === 'string') return entry;
 	return c.errors.other;
+}
+
+/** A line of a diff, and when it is one of a changed pair, the part of it that changed. */
+export type MarkedLine = DiffLine & { mark?: { start: number; end: number } };
+
+const isHigh = (code: number) => code >= 0xd800 && code <= 0xdbff;
+const isLow = (code: number) => code >= 0xdc00 && code <= 0xdfff;
+
+/**
+ * Lines taken out and put in at one place are paired in order, and each pair marks only what differs
+ * between them, past their shared start and before their shared end: a space added to a paragraph is
+ * otherwise two lines that look the same. A pair with nothing in common is left whole, unless all
+ * that changed is blank (a space on an empty line), which is marked so it shows.
+ */
+export function markChanges(lines: readonly DiffLine[]): MarkedLine[] {
+	const out: MarkedLine[] = lines.map((line) => ({ ...line }));
+	let at = 0;
+	while (at < out.length) {
+		let end = at;
+		while (end < out.length && (out[end]!.kind === 'del' || out[end]!.kind === 'add')) end += 1;
+		const run = out.slice(at, end);
+		const dels = run.filter((line) => line.kind === 'del');
+		const adds = run.filter((line) => line.kind === 'add');
+		for (let k = 0; k < Math.min(dels.length, adds.length); k += 1) {
+			const a = dels[k]!.text;
+			const b = adds[k]!.text;
+			let start = 0;
+			while (start < a.length && start < b.length && a[start] === b[start]) start += 1;
+			// Never between the two halves of one character.
+			if (start > 0 && isHigh(a.charCodeAt(start - 1))) start -= 1;
+			let tail = 0;
+			while (tail < a.length - start && tail < b.length - start && a[a.length - 1 - tail] === b[b.length - 1 - tail]) tail += 1;
+			if (tail > 0 && isLow(a.charCodeAt(a.length - tail))) tail -= 1;
+			const blank = !a.slice(start, a.length - tail).trim() && !b.slice(start, b.length - tail).trim();
+			if (start + tail === 0 && !blank) continue;
+			dels[k]!.mark = { start, end: a.length - tail };
+			adds[k]!.mark = { start, end: b.length - tail };
+		}
+		at = Math.max(end, at + 1);
+	}
+	return out;
 }
 
 export type PromptCardHunk = { title: string; lines: Array<{ kind: 'del' | 'add'; text: string }> };

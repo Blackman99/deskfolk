@@ -5,7 +5,7 @@
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { formatFullTimestamp, formatMessageTime } from '../chat/chat-view.ts';
 	import { ApiError } from '../api.ts';
-	import { changedBy, promptErrorText, type PromptView } from './prompts-view.ts';
+	import { changedBy, markChanges, promptErrorText, type MarkedLine, type PromptView } from './prompts-view.ts';
 
 	interface Props {
 		runtime: MessengerRuntime;
@@ -49,8 +49,8 @@
 
 	const dirty = $derived(detail !== null && text !== detail.text);
 	const edited = $derived(detail?.base_text != null);
-	const compare = $derived(detail && view === 'compare' ? changedLines(detail.default_text, text) : []);
-	const conflictDiff = $derived(detail?.conflict_default && detail.base_text != null && showConflict ? changedLines(detail.base_text, detail.conflict_default) : []);
+	const compare = $derived(detail && view === 'compare' ? markChanges(changedLines(detail.default_text, text)) : []);
+	const conflictDiff = $derived(detail?.conflict_default && detail.base_text != null && showConflict ? markChanges(changedLines(detail.base_text, detail.conflict_default)) : []);
 	const failures = $derived(detail?.locales.find((state) => state.locale === locale)?.parse_failures ?? null);
 
 	async function load(keepTyping = false): Promise<void> {
@@ -214,6 +214,9 @@
 	});
 </script>
 
+<!-- A changed line with the part that changed marked, so a space added or taken out shows. -->
+{#snippet diffText(line: MarkedLine)}{#if line.kind === 'gap'}⋯{:else if line.mark}{line.text.slice(0, line.mark.start)}<mark>{line.text.slice(line.mark.start, line.mark.end)}</mark>{line.text.slice(line.mark.end)}{:else}{line.text || ' '}{/if}{/snippet}
+
 <div class="prompt-editor" aria-busy={busy}>
 	{#if !detail}
 		<p class="muted prompt-loading" role="status">{loadFailed ? c.loadFailed : ''}</p>
@@ -261,7 +264,7 @@
 					{#if showConflict}
 						<ol class="prompt-diff">
 							{#each conflictDiff as line, at (at)}
-								<li class="diff-{line.kind}">{line.kind === 'gap' ? '⋯' : line.text || ' '}</li>
+								<li class="diff-{line.kind}">{@render diffText(line)}</li>
 							{/each}
 						</ol>
 					{/if}
@@ -357,7 +360,7 @@
 				{:else}
 					<ol class="prompt-diff is-full">
 						{#each compare as line, at (at)}
-							<li class="diff-{line.kind}">{line.kind === 'gap' ? '⋯' : line.text || ' '}</li>
+							<li class="diff-{line.kind}">{@render diffText(line)}</li>
 						{/each}
 					</ol>
 				{/if}
@@ -394,8 +397,8 @@
 								</div>
 								{#if opened === revision.id && changesText(revision)}
 									<ol class="prompt-diff">
-										{#each changedLines(revision.before_text ?? detail.default_text, revision.after_text ?? detail.default_text) as line, at (at)}
-											<li class="diff-{line.kind}">{line.kind === 'gap' ? '⋯' : line.text || ' '}</li>
+										{#each markChanges(changedLines(revision.before_text ?? detail.default_text, revision.after_text ?? detail.default_text)) as line, at (at)}
+											<li class="diff-{line.kind}">{@render diffText(line)}</li>
 										{/each}
 									</ol>
 								{/if}
@@ -797,6 +800,20 @@
 
 	.prompt-diff .diff-gap {
 		color: var(--muted);
+	}
+
+	.prompt-diff mark {
+		padding: 0;
+		border-radius: 2px;
+		color: inherit;
+	}
+
+	.prompt-diff .diff-del mark {
+		background: var(--danger-line);
+	}
+
+	.prompt-diff .diff-add mark {
+		background: var(--ok-line);
 	}
 
 	.prompt-history ul {

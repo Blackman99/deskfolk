@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import type { PromptSummary } from "@real-bot/protocol";
 import { ApiError } from "../api.ts";
 import { copyFor } from "../copy.ts";
-import { editedCount, failuresOf, firstLocale, groupPrompts, overallState, parsePromptCard, promptCardTarget, promptErrorText, stateChip } from "./prompts-view.ts";
+import { editedCount, failuresOf, firstLocale, groupPrompts, markChanges, overallState, parsePromptCard, promptCardTarget, promptErrorText, stateChip } from "./prompts-view.ts";
 
 const c = copyFor("zh").prompts;
 
@@ -83,6 +83,25 @@ test("the approval card's text reads back as its head, reason and changes", () =
     ],
     more: "…还有 1 处改动未显示",
   });
+});
+
+test("a changed line marks only the part that changed, so a lone space shows", () => {
+  const marks = (lines: Array<{ kind: "same" | "del" | "add" | "gap"; text: string }>) => markChanges(lines).map((line) => line.mark ?? null);
+  // A space at the end, and one in the middle of a sentence.
+  expect(marks([{ kind: "del", text: "守则。" }, { kind: "add", text: "守则。 " }])).toEqual([{ start: 3, end: 3 }, { start: 3, end: 4 }]);
+  expect(marks([{ kind: "del", text: "你好 世界" }, { kind: "add", text: "你好世界" }])).toEqual([{ start: 2, end: 3 }, { start: 2, end: 2 }]);
+  // Lines with nothing in common stay whole; a space on an empty line is still marked.
+  expect(marks([{ kind: "del", text: "foo" }, { kind: "add", text: "bar" }])).toEqual([null, null]);
+  expect(marks([{ kind: "del", text: "" }, { kind: "add", text: " " }])).toEqual([{ start: 0, end: 0 }, { start: 0, end: 1 }]);
+  // Pairs go in order within a change, and a kept line or a gap starts the next change.
+  expect(marks([
+    { kind: "del", text: "a1" }, { kind: "del", text: "b1" }, { kind: "add", text: "a2" }, { kind: "add", text: "b2" },
+    { kind: "gap", text: "" }, { kind: "add", text: "new" },
+  ])).toEqual([{ start: 1, end: 2 }, { start: 1, end: 2 }, { start: 1, end: 2 }, { start: 1, end: 2 }, null, null]);
+  // Never half a character: an emoji that changed is marked whole.
+  const [before, after] = markChanges([{ kind: "del", text: "a😀b" }, { kind: "add", text: "a😃b" }]);
+  expect(before!.text.slice(before!.mark!.start, before!.mark!.end)).toBe("😀");
+  expect(after!.text.slice(after!.mark!.start, after!.mark!.end)).toBe("😃");
 });
 
 test("a card names its prompt as id:locale, and anything else names none", () => {

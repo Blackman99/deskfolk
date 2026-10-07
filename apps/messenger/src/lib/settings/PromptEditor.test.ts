@@ -226,3 +226,27 @@ test("a prompt with one language says so in a word, and arrow keys walk the view
   close();
 });
 
+test("a space added and taken out again: two changes in the history, each showing the space", async () => {
+  const runtime = fakeRuntime({}, {
+    client: {
+      getPrompt: async () => detail({
+        head_revision_id: "r2",
+        revisions: [
+          { id: "r2", op: "edit", actor: "user", bot_id: null, bot_name: null, turn_id: null, session_id: null, message_id: null, approval_id: null, reason: null, before_text: "你是书记员。 \n\n{format}", after_text: null, created_at: "2026-10-07T10:01:00.000Z", undoable: true },
+          { id: "r1", op: "edit", actor: "user", bot_id: null, bot_name: null, turn_id: null, session_id: null, message_id: null, approval_id: null, reason: null, before_text: null, after_text: "你是书记员。 \n\n{format}", created_at: "2026-10-07T10:00:00.000Z", undoable: false },
+        ],
+      }),
+    },
+  });
+  const { host, close } = render(PromptEditor, { runtime, t, id: "call.scribe", locale: "zh", onLocale: () => {}, onOpenMessage: () => {}, view: "history" });
+  await sleep(10);
+  flushSync();
+  const [back, there] = [...host.querySelectorAll<HTMLElement>(".prompt-revision")];
+  // Adding it: the new line marks the space. Taking it out: the old line does.
+  click(buttonByText(there!, t.prompts.showChange));
+  expect(there!.querySelector(".diff-add mark")?.textContent).toBe(" ");
+  click(buttonByText(back!, t.prompts.showChange));
+  expect(back!.querySelector(".diff-del mark")?.textContent).toBe(" ");
+  expect(back!.querySelector(".diff-add")?.textContent).toBe("你是书记员。");
+  close();
+});
