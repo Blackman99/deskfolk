@@ -255,6 +255,25 @@
       "mcp": ["github"],
       "trigger": "Did the daemon log any errors in the last hour?",
       "expect": { "first": ["read_data_log", "query_data", "describe_data"], "forbid": ["mcp_*", "shell", "read_file"] }
+    },
+    {
+      "id": "builtin-zh-lesson-for-one-kind",
+      "category": "builtin",
+      "locale": "zh",
+      "skills": ["daily-report"],
+      "mcp": ["github"],
+      "trigger": "复盘说做视频的几个 Bot 改编动漫时老把画风做成写实、配音性别也不对，以后怎么避免？",
+      "expect": { "first": ["reply", "list_bots", "describe_data", "query_data"], "forbid": ["edit_prompt", "reset_prompt", "list_prompts", "read_prompt", "create_skill", "update_skill", "remember"] },
+      "note": "只关于一类活的教训属于做那类活的 Bot 的技能（完工复盘会写），不改所有 Bot 共用的提示词，也不写进自己的技能或记忆；先查是哪几个 Bot（list_bots）也对。"
+    },
+    {
+      "id": "builtin-en-lesson-for-one-kind",
+      "category": "builtin",
+      "locale": "en",
+      "skills": ["release-en"],
+      "mcp": ["github"],
+      "trigger": "The retrospective says the video Bots keep turning anime adaptations into live-action looks and giving characters the wrong voices. How do we stop that?",
+      "expect": { "first": ["reply", "list_bots", "describe_data", "query_data"], "forbid": ["edit_prompt", "reset_prompt", "list_prompts", "read_prompt", "create_skill", "update_skill", "remember"] }
     }
   ]
 }

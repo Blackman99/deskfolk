@@ -45,3 +45,14 @@ test("once allowed, the card can take the change back while it is still the late
   expect(opened).toBe(1);
   close();
 });
+
+test("the card says how far the change reaches, under its title; an older card without the line shows none", () => {
+  const reaching = ["改内置提示词：系统指令 · 中文", "理由：交付没有附命令输出", "影响：所有 Bot 每一步都读", "@@ 第 1 处 · 末尾追加", "+ 附上命令。"].join("\n");
+  const withReach = render(PromptEditCard, { body: reaching, t, approval: approval("pending"), api: null, onOpenSettings: () => {} });
+  expect(withReach.host.querySelector(".prompt-card-reach")?.textContent).toBe("影响：所有 Bot 每一步都读");
+  expect(withReach.host.querySelector(".prompt-card-reason")?.textContent).toBe("理由：交付没有附命令输出");
+  withReach.close();
+  const older = render(PromptEditCard, { body, t, approval: approval("pending"), api: null, onOpenSettings: () => {} });
+  expect(older.host.querySelector(".prompt-card-reach")).toBeNull();
+  older.close();
+});

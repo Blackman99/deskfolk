@@ -6,8 +6,8 @@ import type { ToolDef } from "../tool-schema";
 export const DESCRIBE_DATA: ToolDef = {
   name: "describe_data",
   description: {
-    zh: "看本机记录有哪些表：表名、行数，主要的表附一句说明（消息、轮次与工具调用、工作记录、质量事件、规划与任务、交付与审查、需求台账、整理跳记录、判断、花费、复盘、记忆与技能、内置提示词的修改……）。给 table 看那一张的列和类型；写 SQL 前先看要用的那几张。查不到的表就是不给 Bot 看的。只读。",
-    en: "See what tables this machine's records hold: names and row counts, with a line on the main ones (messages, turns and tool calls, the work log, quality events, plans and tickets, hand-overs and reviews, the requirements ledger, organizer runs, judgements, spend, retrospectives, memories and skills, built-in prompt changes…). Give table to see that table's columns and types; look at the ones you will query before writing SQL. A table you cannot find is not for Bots. Read-only.",
+    zh: "看本机记录有哪些表：表名、行数、主要表的说明，和现成的查询（recipes）。给 table 看那张表的列和类型；写 SQL 前先看。",
+    en: "See what this machine's records hold: tables, row counts, a line on the main ones, and ready-made queries (recipes). Give table for its columns and types; look before writing SQL.",
   },
   properties: {
     table: { type: "string", description: { zh: "看这一张表的列。", en: "See this table's columns." } },
@@ -17,26 +17,26 @@ export const DESCRIBE_DATA: ToolDef = {
 export const QUERY_DATA: ToolDef = {
   name: "query_data",
   description: {
-    zh: "在本机记录上跑一条只读的 SQLite 查询：单条 SELECT（或 WITH … SELECT），参数用 ? 按 params 的顺序绑定。默认最多 100 行、上限 1000，长的格子会截断，二进制只给字节数，跑过 10 秒就停。尽量在 SQL 里 COUNT / GROUP BY 先聚合，少拉原始行；时间是 ISO 8601 UTC 字符串，JSON 列用 json_extract 读。先用 describe_data 看表和列；列名写错时，错误里会列出你点到的表的列。互不依赖的几条查询在同一步里一起发。只在用户要你分析、改进时用。只读。",
-    en: "Run one read-only SQLite query on this machine's records: a single SELECT (or WITH … SELECT), with ? bound to params in order. At most 100 rows by default, 1000 at most; long cells are cut, binary shows only its size, and a query past 10 seconds is stopped. Aggregate in SQL (COUNT, GROUP BY) rather than pulling raw rows; times are ISO 8601 UTC strings, JSON columns are read with json_extract. Look at the tables with describe_data first; if a column name is wrong, the error lists the columns of the tables you named. Send queries that do not depend on each other together in one step. Use it only when the user asks you to analyze or improve something. Read-only.",
+    zh: "跑一条只读 SQLite 查询（单条 SELECT 或 WITH … SELECT，? 按 params 顺序绑定），或用 recipe 跑现成的。默认 100 行、上限 1000，10 秒就停。先在 SQL 里聚合；时间是 ISO 8601 UTC，JSON 列用 json_extract；列名写错会告诉你对的。互不依赖的查询同一步一起发。",
+    en: "Run one read-only SQLite query (a single SELECT or WITH … SELECT; ? bound to params in order), or a ready-made one with recipe. 100 rows by default, 1000 at most, stopped at 10 s. Aggregate in SQL; times are ISO 8601 UTC, JSON columns need json_extract; a wrong column name comes back with the right ones. Send independent queries together in one step.",
   },
   properties: {
     sql: { type: "string", description: { zh: "一条只读的 SQL。", en: "One read-only SQL statement." } },
-    recipe: { type: "string", enum: RECIPES.map((recipe) => recipe.id), description: { zh: "跑一条现成的查询（describe_data 列着），代替 sql。", en: "Run a ready-made query (describe_data lists them) instead of sql." } },
+    recipe: { type: "string", enum: RECIPES.map((recipe) => recipe.id), description: { zh: "现成查询的名字（describe_data 列着），代替 sql。", en: "A ready-made query by name (describe_data lists them), instead of sql." } },
     params: { type: "array", items: { type: ["string", "number", "null"] }, description: { zh: "按顺序绑定到 ? 的值。", en: "Values bound to ? in order." } },
-    max_rows: { type: "integer", description: { zh: "最多返回几行（默认 100，上限 1000）。", en: "At most this many rows (100 by default, 1000 at most)." } },
+    max_rows: { type: "integer", description: { zh: "最多几行（默认 100，上限 1000）。", en: "At most this many rows (100 by default, 1000 at most)." } },
   },
 };
 
 export const READ_DATA_LOG: ToolDef = {
   name: "read_data_log",
   description: {
-    zh: "读守护进程日志的末尾：daemon.log（启动、重启、整理跳和读句没读懂这类记录），开发版的 daemon-dev.stderr.log。grep 只留含这段文字的行（不分大小写）；像密钥的内容会抹掉。只读。",
-    en: "Read the end of the daemon's log: daemon.log (starts, restarts, what the organizer and line readings could not read), and the development build's daemon-dev.stderr.log. grep keeps only lines containing that text (any case); anything that looks like a key is blanked out. Read-only.",
+    zh: "读守护进程日志的末尾：daemon.log（启动、重启、读不懂的回答）或开发版的 daemon-dev.stderr.log。grep 只留含这段文字的行；像密钥的会抹掉。",
+    en: "Read the end of the daemon's log: daemon.log (starts, restarts, unreadable answers) or the development build's daemon-dev.stderr.log. grep keeps matching lines; anything like a key is blanked.",
   },
   properties: {
-    name: { type: "string", enum: ["daemon.log", "daemon-dev.stderr.log", "daemon-dev.stderr.log.1"], description: { zh: "哪一份日志；不填是 daemon.log。", en: "Which log; daemon.log when left out." } },
-    tail_lines: { type: "integer", description: { zh: "最后几行（默认 200，上限 2000）。", en: "How many of the last lines (200 by default, 2000 at most)." } },
-    grep: { type: "string", description: { zh: "只留含这段文字的行。", en: "Keep only lines containing this text." } },
+    name: { type: "string", enum: ["daemon.log", "daemon-dev.stderr.log", "daemon-dev.stderr.log.1"], description: { zh: "哪一份；不填是 daemon.log。", en: "Which log; daemon.log when left out." } },
+    tail_lines: { type: "integer", description: { zh: "最后几行（默认 200，上限 2000）。", en: "How many last lines (200 by default, 2000 at most)." } },
+    grep: { type: "string", description: { zh: "只留含这段文字的行。", en: "Keep the lines holding this text." } },
   },
 };

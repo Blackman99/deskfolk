@@ -27,12 +27,16 @@ You put it this way (2026-10-06): every record the system keeps should be readab
 - 第一版：43 次工具调用（6 条查询猜错列名，1 次用 shell 读落进文件的表清单），43 次模型调用、159 万输入 token，273 秒后出批准卡：给 `end_turn` 的说明加一句「有交付物先 submit 再 done」，依据是 `end.rejected` 里 30 次 `unfinished_obligations`。
 - 表清单不再带列、列名写错时错误里带上对的列之后：26 次工具调用（4 条猜错，下一步都改对了），21 次模型调用、58 万输入 token，114 秒后出卡：给系统指令加一句「改编类的视听产物交付前先核实原作设定」，依据是《全职猎人》短片退回 3 次和它的复盘。这一条只关于做视频的那几个 Bot，更该写进它们的技能——批准卡就是让你在这时说不。
 - 工具选择评估（22 条，各跑 2 次）：gemini-3.8-flash-high 和 grok-4.7-build-fast 上，原有 16 条改动前后都是 32/32，新加的 6 条 12/12。
+- 第三次（2026-10-07，加了现成查询、按段读、改提示词前那一问，CPA 也打开了会话亲和）：22 次工具调用（先用 4 条现成查询，分两步一起发；3 次列名猜错下一步都改对），20 次模型调用、43 万输入 token，其中 76% 走缓存，114 秒。这次 Bot 没出批准卡：依据仍只关于做视频的 Bot，它把建议写成文字、指出要改的那一段，说要落地再用 edit_prompt 提。
+- 同一次改动后的工具选择评估（24 条，各 2 次）：原有 16 条两个模型仍全对；新加的「只关于一类活的教训」两条，gemini 先查是哪几个 Bot（list_bots），算对之后 4/4，grok 4 次里 3 次（另一次顺手读了一下提示词列表）；grok 在「查返工」那条 6 次里有 2 次在同一步顺手读了一个不相干的技能，可能是「互不依赖的查询同一步一起发」这句带出来的，多读一次，不影响结果。
 
 On 2026-10-07, on a copy of this machine's real database (workspace moved to a scratch folder, MCP off, no scheduler), a throwaway Bot on gemini-3.8-flash-high (thinking low) was asked which work was sent back most and to propose one prompt improvement:
 
 - First version: 43 tool calls (6 queries guessed a column, one shell read of the table list that had spilled to a file), 43 model calls, 1.59M input tokens; after 273 s a card proposed one sentence for `end_turn` (with something to hand over, submit before done), from 30 `unfinished_obligations` rejections.
 - With the table list without columns and wrong-column errors naming the right ones: 26 tool calls (4 guessed wrong, each fixed at the next step), 21 model calls, 0.58M input tokens; after 114 s a card proposed checking an adaptation's source before delivering audiovisual work, from a short sent back three times and its retrospective. That one concerns only the video Bots and belongs in their skills — the card is where you say no.
 - Tool-selection eval (22 cases, twice each): on gemini-3.8-flash-high and grok-4.7-build-fast the 16 existing cases were 32/32 before and after the change; the 6 new ones 12/12.
+- Third run (2026-10-07, with the ready-made queries, reading by paragraph and the question before a prompt edit, and session affinity on at the proxy): 22 tool calls (4 ready-made queries first, sent two at a time; 3 wrong column names, each fixed at the next step), 20 model calls, 0.43M input tokens, 76% of them from the cache, 114 s. No card this time: the evidence still concerned only the video Bots, so it wrote the proposal out, named the paragraph, and offered to submit it with edit_prompt.
+- Tool-selection eval after that change (24 cases, twice each): the 16 existing cases still all pass on both models; the two new "lesson about one kind of work" cases pass 4/4 on gemini once looking up the Bots (list_bots) counts, 3/4 on grok (once it also listed the prompts). On the rework-records case grok read an unrelated skill in the same step in 2 of 6 attempts, likely prompted by "send independent queries together" — one extra read, same answer.
 
 ## 缺口 / Not done
 

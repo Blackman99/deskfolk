@@ -78,17 +78,20 @@ export type PromptCardHunk = { title: string; lines: Array<{ kind: 'del' | 'add'
  * The approval card's body (prompt-tools.ts `promptEditSummary`): a head line, a reason line, then
  * each change as `@@ …` with its `- ` / `+ ` lines, and possibly a closing "… more" line.
  */
-export function parsePromptCard(body: string): { head: string; reason: string; hunks: PromptCardHunk[]; more: string | null } {
+export function parsePromptCard(body: string): { head: string; reason: string; reach: string | null; hunks: PromptCardHunk[]; more: string | null } {
 	const lines = body.split('\n');
 	const head = lines[0] ?? '';
 	const reason = lines[1] ?? '';
 	const hunks: PromptCardHunk[] = [];
+	let reach: string | null = null;
 	let more: string | null = null;
 	for (const line of lines.slice(2)) {
-		if (line.startsWith('@@ ')) hunks.push({ title: line.slice(3), lines: [] });
+		// Who the change reaches, said before the first change; a card from before it says nothing here.
+		if (!hunks.length && (line.startsWith('影响：') || line.startsWith('Reach: '))) reach = line;
+		else if (line.startsWith('@@ ')) hunks.push({ title: line.slice(3), lines: [] });
 		else if (line.startsWith('- ') && hunks.length) hunks.at(-1)!.lines.push({ kind: 'del', text: line.slice(2) });
 		else if (line.startsWith('+ ') && hunks.length) hunks.at(-1)!.lines.push({ kind: 'add', text: line.slice(2) });
 		else if (line.startsWith('…')) more = line;
 	}
-	return { head, reason, hunks, more };
+	return { head, reason, reach, hunks, more };
 }

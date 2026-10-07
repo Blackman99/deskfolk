@@ -61,10 +61,21 @@ test("the approval card's text reads back as its head, reason and changes", () =
   expect(parsePromptCard(body)).toEqual({
     head: "改内置提示词：系统指令 · 中文",
     reason: "理由：上周三次交付没有附命令输出",
+    reach: null,
     hunks: [
       { title: "第 1 处 · 替换", lines: [{ kind: "del", text: "旧的一句" }, { kind: "del", text: "- 叫停：一条要点" }, { kind: "add", text: "新的一句" }] },
       { title: "第 2 处 · 末尾追加", lines: [{ kind: "add", text: "补一段" }] },
     ],
     more: "…还有 1 处改动未显示",
   });
+});
+
+test("the card's reach line is found by its prefix before the first change, in either language", () => {
+  const zh = ["改内置提示词：系统指令 · 中文", "理由：交付没有附命令输出", "影响：所有 Bot 每一步都读", "@@ 第 1 处 · 末尾追加", "+ 补一段"].join("\n");
+  expect(parsePromptCard(zh)).toMatchObject({ reason: "理由：交付没有附命令输出", reach: "影响：所有 Bot 每一步都读", hunks: [{ title: "第 1 处 · 末尾追加" }] });
+  const en = ["Change a built-in prompt: System instructions · English", "Reason: no output", "Reach: every Bot, every step", "@@ Change 1 · append at the end", "+ Name the command."].join("\n");
+  expect(parsePromptCard(en).reach).toBe("Reach: every Bot, every step");
+  // A changed line that happens to start the same way is a change, not the reach.
+  const inHunk = ["改内置提示词：系统指令 · 中文", "理由：x", "@@ 第 1 处 · 末尾追加", "+ 影响：不是范围"].join("\n");
+  expect(parsePromptCard(inHunk).reach).toBeNull();
 });

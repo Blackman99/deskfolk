@@ -66,6 +66,7 @@
 
 <div class="prompt-card">
 	<p class="prompt-card-head">{card.head}</p>
+	{#if card.reach}<p class="prompt-card-reach">{card.reach}</p>{/if}
 	{#if card.reason}<p class="prompt-card-reason">{card.reason}</p>{/if}
 	{#each shownHunks() as hunk, at (at)}
 		<div class="prompt-card-hunk">
@@ -111,6 +112,7 @@
 		overflow-wrap: anywhere;
 	}
 
+	.prompt-card-reach,
 	.prompt-card-reason,
 	.prompt-card-more,
 	.prompt-card-note {
@@ -118,6 +120,11 @@
 		font-size: 12px;
 		color: var(--ink-secondary);
 		overflow-wrap: anywhere;
+	}
+
+	/* How far the change reaches is what to weigh before allowing it. */
+	.prompt-card-reach {
+		color: var(--ink);
 	}
 
 	.prompt-card-hunk-title {

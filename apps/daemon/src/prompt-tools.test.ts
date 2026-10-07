@@ -2,7 +2,8 @@ import { afterEach, expect, test } from "bun:test";
 import { runCollabTool, type ToolCtx } from "./collab-tools";
 import { HttpError } from "./errors";
 import { savePromptText } from "./prompts/book";
-import { applyPromptEdits, PROMPT_EDIT_KIND } from "./prompt-tools";
+import { applyPromptEdits, PROMPT_EDIT_KIND, promptReach } from "./prompt-tools";
+import { slotDef } from "./prompts/registry";
 import { Store } from "./store";
 import { codePointCount } from "./text";
 
@@ -136,4 +137,24 @@ test("a prompt too long for one answer comes as an outline and is read by paragr
   const retro = await runCollabTool(ctx, "read_prompt", { id: "call.retrospective", locale: "en", with_default: true });
   expect(retro.data!.default_same).toBe(true);
   expect(size(retro.data)).toBeLessThan(8000);
+});
+
+test("the card says how far a change reaches, on its own line after a reason kept to one line", async () => {
+  const reach = (id: string, en = true) => promptReach(slotDef(id)!, en);
+  expect(reach("turn.system")).toBe("Reach: every Bot, every step");
+  expect(reach("turn.system", false)).toBe("影响：所有 Bot 每一步都读");
+  expect(reach("turn.memory")).toBe("Reach: every Bot that has memories, every step");
+  expect(reach("agent.preface", false)).toBe("影响：由你的 Claude Code 跑的 Bot 每一步都读");
+  expect(reach("tool.send_message")).toBe("Reach: every Bot, every step");
+  // Claude Code brings its own file tools, so their descriptions never reach the Bots it runs.
+  expect(reach("tool.shell")).toBe("Reach: every Bot, every step (not the Bots your Claude Code runs)");
+  expect(reach("call.organizer")).toBe("Reach: this one of the app's own calls, in every conversation");
+  const { ctx } = setup();
+  const proposed = await runCollabTool(ctx, "edit_prompt", {
+    id: "turn.system",
+    edits: [{ after: "Claim only what you ran:", add: " Name the command." }],
+    reason: "Three hand-overs\nhad no output.",
+  });
+  const lines = proposed.waitApproval!.summary.split("\n");
+  expect(lines.slice(0, 3)).toEqual(["Change a built-in prompt: System instructions · English", "Reason: Three hand-overs had no output.", "Reach: every Bot, every step"]);
 });

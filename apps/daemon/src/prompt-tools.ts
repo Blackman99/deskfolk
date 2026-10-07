@@ -9,6 +9,7 @@ import type { Locale } from "@real-bot/protocol";
 import { runCollabTool, type ToolCtx, type ToolResult } from "./collab-tools";
 import { HttpError } from "./errors";
 import { hostPromptEnv, promptProblemsError, promptSlot, resetPromptText, savePromptText } from "./prompts/book";
+import { OWN_FILE_TOOLS } from "./prompts/builtin-tools";
 import { PLACEHOLDER_MEANING, renderDefault, SLOTS, slotLocale, type SlotDef } from "./prompts/registry";
 import { validatePromptText } from "./prompts/validate";
 import { listPromptSummaries } from "./prompts/views";
@@ -100,13 +101,33 @@ function clip(line: string): string {
  * What the approval card says: which prompt, why, and each change as `-` / `+` lines, so a bullet in
  * the prompt itself (`- 叫停：…`) is never mistaken for one. The card renders it (PromptEditCard).
  */
+/** Who reads a prompt, said on its approval card so the reach of a change is plain before it is allowed. */
+export function promptReach(slot: SlotDef, en: boolean): string {
+  const turn: Record<string, [string, string]> = {
+    "turn.system": ["所有 Bot 每一步都读", "every Bot, every step"],
+    "turn.skills": ["有技能的 Bot 每一步都读", "every Bot that has skills, every step"],
+    "turn.memory": ["有记忆的 Bot 每一步都读", "every Bot that has memories, every step"],
+    "turn.mcp": ["接了 MCP 的 Bot 每一步都读", "every Bot with MCP servers, every step"],
+    "agent.preface": ["由你的 Claude Code 跑的 Bot 每一步都读", "the Bots your Claude Code runs, every step"],
+  };
+  const [zh, english] = turn[slot.id]
+    ?? (slot.group === "tool"
+      ? (OWN_FILE_TOOLS.has(slot.id.slice("tool.".length))
+        ? ["所有 Bot 每一步都带着（由你的 Claude Code 跑的 Bot 除外）", "every Bot, every step (not the Bots your Claude Code runs)"]
+        : ["所有 Bot 每一步都带着", "every Bot, every step"])
+      : ["应用自己的这一种调用，所有会话都用", "this one of the app's own calls, in every conversation"]);
+  return en ? `Reach: ${english}` : `影响：${zh}`;
+}
+
 export function promptEditSummary(slot: SlotDef, locale: Locale, edits: readonly Edit[] | null, reason: string, ui: Locale): string {
   const en = ui === "en";
   const language = locale === "en" ? "English" : en ? "Chinese" : "中文";
   const head = edits === null
     ? (en ? `Put a built-in prompt back on its default: ${slot.title.en} · ${language}` : `内置提示词恢复默认：${slot.title.zh} · ${language}`)
     : (en ? `Change a built-in prompt: ${slot.title.en} · ${language}` : `改内置提示词：${slot.title.zh} · ${language}`);
-  const lines = [head, en ? `Reason: ${reason}` : `理由：${reason}`];
+  // One line each: the card reads the second line as the reason and finds the reach line by its prefix.
+  const said = reason.replace(/\s*\n\s*/g, " ");
+  const lines = [head, en ? `Reason: ${said}` : `理由：${said}`, promptReach(slot, en)];
   const hunks = (edits ?? []).map((edit, at) => {
     const n = at + 1;
     const out: string[] = [];

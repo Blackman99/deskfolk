@@ -31,12 +31,25 @@ export type ChatTool = {
   };
 };
 
+/** An array's items: their properties' descriptions in the locale, when they come in both. */
+function localizeItems(items: unknown, locale: Locale): unknown {
+  if (!items || typeof items !== "object" || !("properties" in items)) return items;
+  const { properties, ...rest } = items as { properties: Record<string, Record<string, unknown>> };
+  return {
+    ...rest,
+    properties: Object.fromEntries(Object.entries(properties).map(([key, child]) => {
+      const description = child.description as Localized | string | undefined;
+      return [key, description && typeof description === "object" ? { ...child, description: description[locale] } : child];
+    })),
+  };
+}
+
 function localizeProp(prop: ToolProp, locale: Locale): Record<string, unknown> {
   const schema: Record<string, unknown> = {
     type: prop.type,
     description: prop.description[locale],
   };
-  if (prop.items) schema.items = prop.items;
+  if (prop.items) schema.items = localizeItems(prop.items, locale);
   if (prop.enum) schema.enum = prop.enum;
   if (prop.properties) {
     const nested: Record<string, unknown> = {};

@@ -165,4 +165,7 @@ export function builtinTools(locale: Locale, engineLevel = 0, edited?: (name: st
   return tools;
 }
 
+/** The app's own tools Claude Code has its own versions of: never offered to a Bot it runs (agent-runner.ts). */
+export const OWN_FILE_TOOLS: ReadonlySet<string> = new Set(["read_file", "write_file", "delete_file", "list_dir", "shell"]);
+
 export const COLLAB_TOOL_NAMES = ALL_TOOL_DEFS.map((t) => t.name);

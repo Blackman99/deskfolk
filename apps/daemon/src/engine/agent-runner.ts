@@ -34,7 +34,7 @@ import type { ClaudeCodeProbe } from "../claude-code/probe";
 import { AGENT_READONLY_TOOLS, AGENT_WORK_TOOLS, appToolName, decideAgentCall } from "../claude-code/policy";
 import { assembleAgentTurnInput, memoryDigest } from "../context";
 import type { ToolCall } from "../completions";
-import { INTERRUPT_FLAG, builtinTools, type ChatTool, type FailKind } from "../prompts";
+import { INTERRUPT_FLAG, OWN_FILE_TOOLS, builtinTools, type ChatTool, type FailKind } from "../prompts";
 import { agentSystemPrompt, AGENT_MCP_SERVER, agentToolName } from "../prompts/agent-system";
 import { classifyMessage } from "../route-decision";
 import { recordLiveProc } from "../live-procs";
@@ -81,8 +81,6 @@ const WIND_DOWN_MS = 10_000;
 /** The tool results the redirect carry and the hold receipts read back stay short. */
 const LOOP_RESULT_MAX = 2_000;
 const STDERR_KEEP = 8 * 1024;
-/** The app's own tools Claude Code has its own versions of. */
-const OWN_FILE_TOOLS = new Set(["read_file", "write_file", "delete_file", "list_dir", "shell"]);
 
 export type AgentRunnerDeps = {
   store: Store;
