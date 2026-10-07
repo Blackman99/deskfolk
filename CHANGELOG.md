@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Opening a built-in prompt on the phone no longer drops the connection
+
+- On the phone, in Settings › Prompts, tapping any prompt flashed the page and landed back on the settings home. A request from the phone could not hold a dot in its path, and every prompt's id has one (`turn.system`, `tool.shell`): the Mac could not read the request and closed the whole link, and the phone, reconnecting, started settings over. Saving or restoring a prompt from the phone failed the same way. A path segment may now hold a dot (a lone `.` or `..` still may not), so opening, editing and restoring work; the editor also slides in from the right, as the MCP and endpoint editors do.
+
 ### Open in settings on an approval card goes straight to that prompt's history
 
 - On the approval card for a Bot's change to a built-in prompt, Open in settings, once allowed, only opened settings on whatever tab you last looked at, leaving you to find Prompts and then the prompt. It now opens that prompt's editor at its History, with this change already opened and Undo, Restore and Open the message beside it.

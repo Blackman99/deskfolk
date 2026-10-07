@@ -1840,3 +1840,23 @@ test("the direct path hands the offer to the helper and returns its answer; medi
   await Bun.sleep(50);
   expect((await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/remote/screen/status", body: { session_id: session } })).body.error.code).toBe("screen_session_gone");
 });
+
+
+test("a phone reads, edits and resets a built-in prompt, whose id has a dot, and the link stays up", async () => {
+  const f = await fixture(), d = await f.pair(), c = await f.connect(d);
+  const rpc = (method: "GET" | "PUT" | "POST", path: string, body?: Record<string, unknown>) =>
+    c.rpc({ v: 1, id: ulid(), method, path, ...(body ? { body } : {}) });
+  expect((await rpc("GET", "/v1/prompts")).status).toBe(200);
+  // These used to fail the path check, and a request the host cannot read closes the link.
+  const shell = await rpc("GET", "/v1/prompts/tool.shell/zh");
+  expect(shell.status).toBe(200);
+  expect(shell.body).toMatchObject({ id: "tool.shell", locale: "zh", revisions: [] });
+  expect((await rpc("GET", "/v1/prompts/turn.system/en")).body.text.length).toBeGreaterThan(10_000);
+  const saved = await rpc("PUT", "/v1/prompts/tool.shell/zh", { text: `${shell.body.text}\n多一句。`, if_revision: null, edit_session: "s1" });
+  expect(saved.status).toBe(200);
+  expect(saved.body.revisions).toHaveLength(1);
+  const reset = await rpc("POST", "/v1/prompts/tool.shell/zh/reset", { if_revision: saved.body.head_revision_id });
+  expect(reset.status).toBe(200);
+  expect(reset.body.text).toBe(shell.body.text);
+  expect((await rpc("GET", "/v1/settings")).status).toBe(200);
+}, 60000);

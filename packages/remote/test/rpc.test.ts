@@ -13,6 +13,11 @@ test('shared RPC requires canonical bounded exact envelope and never arbitrary H
   ]) expect(() => parseRemoteRequest(canonicalBytes(changed))).toThrow();
   expect(() => parseRemoteRequest(utf8(JSON.stringify(request)))).toThrow();
   expect(() => parseRemoteRequest(utf8('{"v":1,"v":1}'))).toThrow();
+  // A dot inside a segment names a built-in prompt; a segment of dots never passes.
+  const prompt = { v: 1, id, method: 'GET', path: '/v1/prompts/turn.system/zh' } as const;
+  expect(parseRemoteRequest(canonicalBytes(prompt))).toEqual(prompt);
+  for (const path of ['/v1/./bots', '/v1/prompts/../settings', '/v1/prompts/..', '/v1/.', '/remote/../v1/bots'])
+    expect(() => parseRemoteRequest(canonicalBytes({ ...prompt, path }))).toThrow();
   expect(() => parseRemoteRequest(new Uint8Array(1024 * 1024 + 1))).toThrow();
   const id26 = '01ARZ3NDEKTSV4RRFFQ69G5FAV';
   const stacked = {

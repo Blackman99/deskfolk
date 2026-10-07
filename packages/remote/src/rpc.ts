@@ -43,7 +43,10 @@ export function parseRemoteRequest(bytes: Uint8Array): RemoteRequest {
   check(Object.keys(value).every(k => ['v', 'id', 'method', 'path', 'query', 'body', 'ifMatch'].includes(k)), 'unexpected RPC field');
   check(value.v === 1, 'RPC version'); id(value.id);
   check(['GET', 'POST', 'PATCH', 'PUT', 'DELETE'].includes(value.method), 'RPC method');
-  check(typeof value.path === 'string' && /^\/(?:v1|remote)\/[A-Za-z0-9_/-]+$/.test(value.path) && value.path.length <= 256, 'RPC path');
+  // A dot may sit inside a segment (a built-in prompt is `/v1/prompts/turn.system/zh`); a segment that is
+  // only `.` or `..` is refused, so a path cannot walk out of the route it names.
+  check(typeof value.path === 'string' && /^\/(?:v1|remote)\/[A-Za-z0-9_./-]+$/.test(value.path)
+    && !/(?:^|\/)\.{1,2}(?:\/|$)/.test(value.path) && value.path.length <= 256, 'RPC path');
   if (value.query !== undefined) {
     check(value.query !== null && typeof value.query === 'object' && !Array.isArray(value.query), 'RPC query');
     const keys = Object.keys(value.query);

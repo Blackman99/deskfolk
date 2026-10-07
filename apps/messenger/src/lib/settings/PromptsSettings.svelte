@@ -691,6 +691,7 @@
 			-webkit-backdrop-filter: none;
 		}
 
+		/* It slides in over the list, one level deeper, as the MCP and endpoint editors do. */
 		.modal-dialog.prompt-editor-modal {
 			width: 100%;
 			max-width: none;
@@ -699,6 +700,7 @@
 			border: 0;
 			border-radius: 0;
 			box-shadow: none;
+			animation: prompt-subpage-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 			background: var(--sidebar-bg);
 		}
 
@@ -741,5 +743,10 @@
 		.settings-subpage-back:active {
 			background: var(--row-hover);
 		}
+	}
+
+	@keyframes prompt-subpage-in {
+		from { transform: translateX(20%); opacity: 0.72; }
+		to { transform: translateX(0); opacity: 1; }
 	}
 </style>
