@@ -5,7 +5,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { call, createScenario, endTurn, failed, fileUnder, tool, type Scenario, type ToolOutcome } from "./test-kit/scenario";
+import { call, createScenario, endTurn, failed, fileUnder, sendMessage, tool, type Scenario, type ToolOutcome } from "./test-kit/scenario";
 import { openPlan, planSpec } from "./scenarios/video-team";
 
 const open: Scenario[] = [];
@@ -162,6 +162,8 @@ function onTicket(h: Scenario) {
 }
 
 const LEVELS = ["none", "low", "medium", "high"];
+/** The opening line the Writer ends with: a segment your line opened says something before it ends. */
+const OPENING = "开场白：夜色把城市的边角磨圆了。";
 const stepsOf = (h: Scenario, botId: string) => h.hops(botId).map((hop) => LEVELS.indexOf(String(hop.request.thinkingLevel)));
 const escalations = (h: Scenario) => h.store.db.query<{ reason: string; to: number }, []>(
   "SELECT json_extract(payload, '$.reason') AS reason, json_extract(payload, '$.to') AS \"to\" FROM work_events WHERE kind = 'model.escalated' ORDER BY seq").all();
@@ -171,7 +173,7 @@ test("tool arguments that are not JSON twice in a row step the job up for the re
   open.push(h);
   const { writer, dm } = onTicket(h);
   h.script(writer, dm).reply(call({ name: "read_file", raw: "{\"path\": " }), call({ name: "read_file", raw: "[1]" }),
-    call({ name: "read_file", raw: "still not" }), call({ name: "read_file", raw: "nor this" }), call(endTurn()));
+    call({ name: "read_file", raw: "still not" }), call({ name: "read_file", raw: "nor this" }), call(sendMessage(OPENING), endTurn()));
   h.postUser(dm, "写一句开场白");
   await h.waitIdle();
   const steps = stepsOf(h, writer.id);
@@ -204,7 +206,7 @@ test("a thinking level you pinned is not moved by trouble inside the turn, and n
   open.push(h);
   const { writer, dm } = onTicket(h);
   h.store.patchBot(writer.id, { model: "scenario", thinking_level: "low" });
-  h.script(writer, dm).reply(call({ name: "read_file", raw: "{" }), call({ name: "read_file", raw: "{" }), call(endTurn()));
+  h.script(writer, dm).reply(call({ name: "read_file", raw: "{" }), call({ name: "read_file", raw: "{" }), call(sendMessage(OPENING), endTurn()));
   h.postUser(dm, "写一句开场白");
   await h.waitIdle();
   expect(stepsOf(h, writer.id)).toEqual([1, 1, 1]);

@@ -99,6 +99,16 @@ const LEVEL3_DESCRIPTIONS: Record<string, Localized> = {
   },
 };
 
+/**
+ * What end_turn's `answer` is for, from level 3. Parameters are described in code, never edited (ADR
+ * 0064). A Bot read 「回答…用 answered，回复写进 answer」 as the way to answer you, and the words went
+ * nowhere: they reach only a Bot that asked, or a ticket whose work is words (2026-10-07).
+ */
+const END_TURN_ANSWER: Localized = {
+  zh: "回答委派你的 Bot（请你回答，或没有提交可审的审查）的话，或在成果是文字的任务上用 done 交出的那段话。它不会作为回复出现在对话里：回复用户就直接在对话里写。",
+  en: "Your reply to a Bot that asked you through delegate (for an answer, or a review with nothing submitted to review), or, with done, the words you hand over on a ticket whose work is words. It never shows in the conversation as a reply: to reply to the user, write in the conversation.",
+};
+
 /** Tools whose description is written for the shell behind `shell` (see `tools/files.ts`). */
 const SHELL_TOOLS: Record<string, (shell: ToolShellKind) => ToolDef> = {
   read_file: readFileTool,
@@ -140,7 +150,8 @@ export function builtinTools(locale: Locale, engineLevel = 0, edited?: (name: st
       } else if (tool.function.name === "end_turn") {
         tool.function.description = LEVEL3_DESCRIPTIONS.end_turn![locale];
         tool.function.parameters.properties.reason = { type: "string", enum: ["done", "answered", "nothing_new", "blocked", "gave_up"] };
-        for (const key of ["note", "needs_from_user", "answer"]) tool.function.parameters.properties[key] = { type: "string" };
+        for (const key of ["note", "needs_from_user"]) tool.function.parameters.properties[key] = { type: "string" };
+        tool.function.parameters.properties.answer = { type: "string", description: END_TURN_ANSWER[locale] };
         tool.function.parameters.required = ["reason"];
       }
     }

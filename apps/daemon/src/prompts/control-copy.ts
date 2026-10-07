@@ -425,6 +425,16 @@ export function promisedLaterNoticeBody(locale: Locale, input: { job: string | n
     : `${head}${input.bot}说「${input.said}」，但这一轮已经结束了，没有人接着做。要它继续，@ ${input.bot}。`;
 }
 
+/**
+ * The line your direct gets when a Bot ended the segment your line opened without a word to you, after
+ * the end contract's one bounce (ADR 0044): without it the line would just sit there unanswered.
+ */
+export function saidNothingNoticeBody(locale: Locale, input: { bot: string }): string {
+  return locale === "en"
+    ? `${input.bot} ended its turn without replying to you. Say it again to have it answer.`
+    : `${input.bot}这一轮没有回复你就结束了。要它回答，再说一次。`;
+}
+
 export function supervisorNoticeBody(
   locale: Locale,
   input: {

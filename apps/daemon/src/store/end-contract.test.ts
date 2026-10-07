@@ -12,6 +12,14 @@ import { recordWorkEvent } from "./work-events";
 const stores: Store[] = [];
 afterEach(() => { for (const store of stores.splice(0)) store.close(); });
 
+/**
+ * The Bot has said something to you in this segment, as nearly every segment does. The other rules are
+ * weighed with it; a segment your line opened in your direct and ended with nothing said is its own case.
+ */
+function replied(store: Store, turn: { id: string; session_id: string; bot_id: string }) {
+  store.insertMessage({ sessionId: turn.session_id, turnId: turn.id, kind: "bot", author: turn.bot_id, body: "The report is written." });
+}
+
 function fixture(status: "todo" | "doing" | "review" | "done" | "parked" = "doing") {
   const store = new Store();
   stores.push(store);
@@ -23,6 +31,7 @@ function fixture(status: "todo" | "doing" | "review" | "done" | "parked" = "doin
   const ticket = store.createTicket({ taskId: plan.id, title: "Draft", status });
   const line = store.postMessage(room.id, { body: "Write the report" });
   const turn = store.createTurn({ sessionId: room.id, botId: bot.id, triggerMessageId: line.id, taskId: plan.id, ticketId: ticket.id });
+  replied(store, turn);
   const ctx: StoreContext = {
     db: store.db, keys: new KeyCache({ get: async () => null, set: async () => {}, delete: async () => {} }, store.db),
     commit: (work) => store.transaction(work), tx: new Transactions(store.db), inboxRoot: "", activeStages: new Set(),
@@ -118,6 +127,7 @@ test("the outcome table closes a desk or completed ticket, blocks explicit block
   desk.store.db.run("UPDATE turns SET status = 'completed', end_reason = 'answered' WHERE id = ?", [desk.turn.id]);
   const line = desk.store.postMessage(desk.room.id, { body: "Hello" });
   const turn = desk.store.createTurn({ sessionId: desk.room.id, botId: desk.bot.id, triggerMessageId: line.id, taskId: null, ticketId: null });
+  replied(desk.store, turn);
   expect(finishWork(desk.ctx, { turnId: turn.id, reason: "answered" })).toMatchObject({ ended: true, state: "closed", endReason: "answered" });
 });
 
@@ -244,7 +254,8 @@ test("pure text bounces once on facts, then releases idle, while desk text defau
   desk.store.db.run("UPDATE turns SET status = 'completed', end_reason = 'answered' WHERE id = ?", [desk.turn.id]);
   const line = desk.store.postMessage(desk.room.id, { body: "Hello" });
   const turn = desk.store.createTurn({ sessionId: desk.room.id, botId: desk.bot.id, triggerMessageId: line.id, taskId: null, ticketId: null });
-  expect(finishWork(desk.ctx, { turnId: turn.id, reason: "done" }, { pureText: true })).toMatchObject({ ended: true, endReason: "answered", state: "closed" });
+  expect(finishWork(desk.ctx, { turnId: turn.id, reason: "done" }, { pureText: true, closing: "Hello. What can I do for you?" }))
+    .toMatchObject({ ended: true, endReason: "answered", state: "closed" });
 });
 
 test("the third contract rejection ends needs_attention using durable local and parent-wide budgets", () => {
@@ -264,7 +275,9 @@ test("the third contract rejection ends needs_attention using durable local and 
 function nextTurn(f: ReturnType<typeof fixture>) {
   f.store.db.run("UPDATE turns SET status = 'completed' WHERE work_item_id = ? AND status = 'running'", [f.itemId]);
   const line = f.store.postMessage(f.room.id, { body: "Continue" });
-  return f.store.createTurn({ sessionId: f.room.id, botId: f.bot.id, triggerMessageId: line.id, taskId: f.plan.id, ticketId: f.ticket.id });
+  const turn = f.store.createTurn({ sessionId: f.room.id, botId: f.bot.id, triggerMessageId: line.id, taskId: f.plan.id, ticketId: f.ticket.id });
+  replied(f.store, turn);
+  return turn;
 }
 
 test("two consecutive no-progress endings block the same work item, with one persisted ending per segment", () => {
@@ -482,4 +495,80 @@ test("mail queued on the work while its segment ran keeps the work queued at the
   // With nothing queued it goes idle as before.
   const g = fixture();
   expect(finishWork(g.ctx, { turnId: g.turn.id, reason: "answered" })).toMatchObject({ state: "idle" });
+});
+
+/** A segment a line of yours opens in your direct, which has said nothing to you yet. */
+function yourLine(f: ReturnType<typeof fixture>, body = "OpenSSF criticality score 从哪里获取", job: { taskId: string; ticketId: string } | null = null) {
+  f.store.db.run("UPDATE turns SET status = 'completed', end_reason = 'answered' WHERE id = ?", [f.turn.id]);
+  const line = f.store.postMessage(f.room.id, { body });
+  return f.store.createTurn({ sessionId: f.room.id, botId: f.bot.id, triggerMessageId: line.id, taskId: job?.taskId ?? null, ticketId: job?.ticketId ?? null });
+}
+
+test("a segment your line opened in your direct that ends with nothing said to you bounces once, then ends with a line you see", () => {
+  // 2026-10-07: 通识 ended answered with its whole answer in end_turn's answer, which goes only to a
+  // Bot that asked; the contract took it, nothing was posted, and the line stood with no reply.
+  const f = fixture();
+  const turn = yourLine(f);
+  const first = finishWork(f.ctx, { turnId: turn.id, reason: "answered", answer: "从 ossf/criticality_score 的公开数据集获取",
+    inbox: [{ id: "U13", disposition: "answered" }] });
+  expect(first).toMatchObject({ ended: false, code: "said_nothing" });
+  expect(first.bounce).toContain("Your answer reached nobody");
+  expect(first.bounce).toContain("write the reply as plain text, with no tool call");
+  expect(f.store.db.query("SELECT status, end_reason FROM turns WHERE id = ?").get(turn.id)).toEqual({ status: "running", end_reason: null });
+  const second = finishWork(f.ctx, { turnId: turn.id, reason: "answered" });
+  expect(second).toMatchObject({ ended: true, endReason: "answered", state: "closed", notice: { code: "said_nothing" } });
+  expect(second.notice!.body).toBe("Writer这一轮没有回复你就结束了。要它回答，再说一次。");
+});
+
+test("the bounce says why nothing reached you, and with no bounce left the ending goes through with the line at once", () => {
+  const prose = fixture();
+  const thanks = yourLine(prose, "谢谢");
+  // A reply that was empty, or only said it was already answered, goes out as nothing.
+  expect(finishWork(prose.ctx, { turnId: thanks.id, reason: "done" }, { pureText: true, closing: "" }).bounce).toContain("Your reply did not go out");
+  const ended = fixture();
+  const line = yourLine(ended);
+  expect(finishWork(ended.ctx, { turnId: line.id, reason: "nothing_new", note: "已回答" }).bounce).toContain("You ended without a word to the user");
+  const spent = fixture();
+  const late = yourLine(spent);
+  for (const code of ["inbox_unacknowledged", "unfinished_obligations"]) {
+    recordWorkEvent(spent.ctx, { kind: "end.rejected", actor: "app", turnId: late.id, payload: { code } });
+  }
+  expect(finishWork(spent.ctx, { turnId: late.id, reason: "answered" })).toMatchObject({ ended: true, endReason: "answered", notice: { code: "said_nothing" } });
+});
+
+test("a segment that put something in front of you, or that no line of yours in your direct opened, ends as before", () => {
+  const ends = (f: ReturnType<typeof fixture>, turnId: string, reason: "answered" | "done", opts: Parameters<typeof finishWork>[2] = {}) => {
+    const result = finishWork(f.ctx, { turnId, reason }, opts);
+    expect(result).toMatchObject({ ended: true, endReason: opts.pureText ? expect.any(String) : reason });
+    expect(result.notice).toBeUndefined();
+  };
+  // A message of its own there, a reply about to go out, files it wrote, something it handed over.
+  const said = fixture();
+  const reply = yourLine(said);
+  said.store.insertMessage({ sessionId: said.room.id, sourceTurnId: reply.id, kind: "bot", author: said.bot.id, body: "可以从公开数据集获取。" });
+  ends(said, reply.id, "answered");
+  const prose = fixture();
+  ends(prose, yourLine(prose).id, "done", { pureText: true, closing: "可以从公开数据集获取。" });
+  const files = fixture();
+  ends(files, yourLine(files).id, "answered", { written: ["work/score/sources.md"] });
+  const handed = fixture("done");
+  const words = yourLine(handed, "给这份报告起个标题", { taskId: handed.plan.id, ticketId: handed.ticket.id });
+  handed.store.db.run(`INSERT INTO submissions (id, work_item_id, task_id, ticket_id, bot_id, turn_id, origin, artifacts, content, state, created_at, updated_at)
+    VALUES ('sub-words', ?, ?, ?, ?, ?, 'answer', '[]', '季度报告', 'approved', '2026-10-07T00:00:00.000Z', '2026-10-07T00:00:00.000Z')`,
+    [words.work_item_id ?? null, handed.plan.id, handed.ticket.id, handed.bot.id, words.id]);
+  ends(handed, words.id, "done");
+  // A read-only answer has its own line; a routine's line, or a line in a group, is not your direct.
+  const held = fixture();
+  held.store.db.run("UPDATE turns SET status = 'completed', end_reason = 'answered' WHERE id = ?", [held.turn.id]);
+  const asked = held.store.postMessage(held.room.id, { body: "进展如何？" });
+  ends(held, held.store.createTurn({ sessionId: held.room.id, botId: held.bot.id, triggerMessageId: asked.id, mode: "readonly" }).id, "answered");
+  const routine = fixture();
+  routine.store.db.run("UPDATE turns SET status = 'completed', end_reason = 'answered' WHERE id = ?", [routine.turn.id]);
+  const due = routine.store.insertMessage({ sessionId: routine.room.id, kind: "system", author: routine.bot.id, body: "日程「每日简报」：汇总今日动态" });
+  ends(routine, routine.store.createTurn({ sessionId: routine.room.id, botId: routine.bot.id, triggerMessageId: due.id, taskId: null, ticketId: null }).id, "answered");
+  const group = fixture();
+  const peer = group.store.createBot({ name: "Reader", duties: "read", boundaries: "none" }).bot;
+  const room = group.store.createGroup({ name: "Team", members: [group.bot.id, peer.id] });
+  const named = group.store.postMessage(room.id, { body: "@Writer 看一下" });
+  ends(group, group.store.createTurn({ sessionId: room.id, botId: group.bot.id, triggerMessageId: named.id, taskId: null, ticketId: null }).id, "answered");
 });

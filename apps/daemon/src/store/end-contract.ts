@@ -11,7 +11,7 @@ import { disposeInboxItems, NO_SUCH_MAIL, NOT_READ_HERE, inboxLabel, turnInbox }
 import { listDelegations, replyDelegation, type Delegation } from "./delegations";
 import { isReservedTaskPath } from "./tasks";
 import { settingsCached } from "./settings";
-import { noProgressNoticeBody, promisedLaterNoticeBody } from "../prompts/control-copy";
+import { noProgressNoticeBody, promisedLaterNoticeBody, saidNothingNoticeBody } from "../prompts/control-copy";
 import { supervisorJobLabel } from "../prompts/transcript-copy";
 import { LATER_QUOTE_MAX, laterWorkSentence } from "../later-words";
 import { parseMentions } from "../mentions";
@@ -75,7 +75,7 @@ export type FinishWorkResult = {
   endReason?: EndReason | "needs_attention";
   /** The engine creates the visible question/notification after this transaction commits. */
   ask?: { body: string };
-  notice?: { code: "gave_up" | "no_progress" | "promised_later"; body: string };
+  notice?: { code: "gave_up" | "no_progress" | "promised_later" | "said_nothing"; body: string };
   noProgressCount?: number;
 };
 type Actor = {
@@ -331,6 +331,44 @@ function promisedLaterNotice(ctx: StoreContext, turn: Actor, said: string): stri
   return promisedLaterNoticeBody(locale, { job: plan === null ? null : supervisorJobLabel(locale, { plan, ticket }), bot, said });
 }
 
+/**
+ * Whether the segment was opened by a line of yours in your direct with the Bot and has put nothing in
+ * front of you there: no reply about to go out, no message of its own in that conversation (a reply, a
+ * progress line, files), no file it wrote (those go out with the ending), nothing it handed over. In a
+ * direct every line of yours is said to the Bot, so such an ending leaves it standing unanswered — and
+ * what a Bot writes into end_turn reaches nobody there: 通识 put a whole answer into `answer`, which
+ * goes only to a Bot that asked, and your line got no reply and no sign of why (2026-10-07).
+ */
+function leftLineUnanswered(ctx: StoreContext, turn: Actor, opts: FinishWorkOptions): boolean {
+  if (turn.mode === "readonly" || opts.closing?.trim() || (opts.written?.length ?? 0) > 0) return false;
+  const opened = ctx.db.query(`SELECT 1 FROM turns t JOIN messages line ON line.id = t.trigger_message_id JOIN sessions s ON s.id = t.session_id
+    WHERE t.id = ? AND line.kind = 'user' AND line.session_id = t.session_id AND s.kind = 'direct'`).get(turn.id);
+  if (!opened) return false;
+  if (ctx.db.query(`SELECT 1 FROM messages WHERE (turn_id = ?1 OR source_turn_id = ?1) AND session_id = ?2 AND author = ?3 AND kind = 'bot' LIMIT 1`)
+    .get(turn.id, turn.session_id, turn.bot_id)) return false;
+  const handedOver = ctx.db.query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'submissions'").get()
+    && ctx.db.query("SELECT 1 FROM submissions WHERE turn_id = ? LIMIT 1").get(turn.id);
+  return !handedOver;
+}
+
+/** What a Bot hears when it ends with nothing said to the line of yours that opened the segment. */
+function saidNothingBounce(input: { answer: boolean; pureText: boolean }): string {
+  const why = input.answer
+    ? "Your answer reached nobody: answer only goes to a Bot that asked you through delegate (or, with done, is handed over on a ticket whose work is words), and neither applies here."
+    : input.pureText
+      ? "Your reply did not go out: it was empty, or only said there was nothing to do or that it was already answered."
+      : "You ended without a word to the user: what you write into end_turn (note, inbox) is a record they never see.";
+  return `${why} The user's line opened this segment and nothing you said reached them, so it stands unanswered. `
+    + "Reply to them in this conversation: write the reply as plain text, with no tool call — that reply ends the segment. If their line needs no answer, a short reply is enough.";
+}
+
+/** The line your direct gets when a Bot ended anyway with nothing said to your line, naming the Bot. */
+function saidNothingNotice(ctx: StoreContext, turn: Actor): string {
+  const locale = settingsCached(ctx).locale === "en" ? "en" : "zh";
+  const bot = ctx.db.query<{ name: string }, [string]>("SELECT name FROM bots WHERE id = ?").get(turn.bot_id)?.name ?? turn.bot_id;
+  return saidNothingNoticeBody(locale, { bot });
+}
+
 /** Whether the contract may still send this ending back, or has used its two bounces and would end it needing attention. */
 function bounceLeft(ctx: StoreContext, turnId: string, opts: FinishWorkOptions): boolean {
   const count = ctx.db.query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM work_events WHERE turn_id = ? AND kind = 'end.rejected'").get(turnId)!.n;
@@ -471,6 +509,13 @@ export function finishWork(ctx: StoreContext, input: FinishWorkInput, opts: Fini
         `Unfinished obligations: ${[...facts.tickets.map((ticket) => ticket.id), ...facts.outgoingDelegations, ...facts.incomingDelegations, ...facts.waits].join(", ")}. Continue. If you are waiting on another Bot's work, delegate it to that Bot and wait for the reply, or end_turn with reason nothing_new; blocked is only for something the user alone can give, and needs_from_user reaches the user as a question.`
           + (toAnswer.length ? ` To answer ${toAnswer.join(", ")}, end with reason answered and your reply in answer.` : ""));
     }
+    // A line of yours in your direct, and the segment it opened ending with nothing said to you: sent
+    // back once to reply in the conversation; an ending after that goes through, with a line telling
+    // you it did not reply. Words that do reach a Bot that asked are a reply, and leave this alone.
+    const unheard = ["done", "answered", "nothing_new"].includes(reason) && !(answer && answerable.length > 0) && leftLineUnanswered(ctx, turn, opts);
+    if (unheard && rejectionsFor(ctx, turn.id, "said_nothing") === 0 && bounceLeft(ctx, turn.id, opts)) {
+      return rejectEnd(ctx, turn, base, opts, "said_nothing", saidNothingBounce({ answer: Boolean(answer), pureText: opts.pureText === true }));
+    }
     // Saying the work is under way, then ending with nothing open on it: nothing wakes the Bot
     // again, and the conversation reads as work going on (2026-10-03: 「正在编写…」 then done, on
     // a plan whose one ticket still read handed over). Open work is the obligations' bounce above,
@@ -496,6 +541,7 @@ export function finishWork(ctx: StoreContext, input: FinishWorkInput, opts: Fini
     const state = ended === "idle" && turn.work_item_id && ctx.db.query(`SELECT 1 FROM inbox_items WHERE work_item_id = ?
       AND state = 'queued' AND wakes = 1`).get(turn.work_item_id) ? "queued" : ended;
     const result = persistEnd(ctx, turn, base, endReason, state, count, {
+      ...(unheard ? { notice: { code: "said_nothing" as const, body: saidNothingNotice(ctx, turn) } } : {}),
       ...(promised ? { notice: { code: "promised_later" as const, body: promisedLaterNotice(ctx, turn, promised) } } : {}),
       ...(reason === "blocked" ? { ask: { body: needsFromUser! } } : {}),
       ...(reason === "gave_up" ? { notice: { code: "gave_up" as const, body: note! } } : {}),

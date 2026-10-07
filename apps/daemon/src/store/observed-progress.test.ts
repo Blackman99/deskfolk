@@ -11,12 +11,14 @@ test("an actual observed ticket stage change is progress, so the following quiet
   const ticket = store.createTicket({ taskId: plan.id, title: "Draft", worker: made.bot.id });
   const first = store.postMessage(made.direct_session.id, { body: "Write" });
   const turn = store.createTurn({ sessionId: first.session_id, botId: made.bot.id, triggerMessageId: first.id, taskId: plan.id, ticketId: ticket.id });
+  store.insertMessage({ sessionId: first.session_id, turnId: turn.id, kind: "bot", author: made.bot.id, body: "The report is written." });
   store.observeTicketWork({ ticketId: ticket.id, botId: made.bot.id, turnId: turn.id, seen: "working" });
   const productive = store.finishWork({ turnId: turn.id, reason: "nothing_new" });
   expect(productive.noProgressCount).toBe(0);
   store.setTurnStatus(turn.id, "completed");
   const later = store.postMessage(first.session_id, { body: "Check" });
   const next = store.createTurn({ sessionId: later.session_id, botId: made.bot.id, triggerMessageId: later.id, taskId: plan.id, ticketId: ticket.id });
+  store.insertMessage({ sessionId: later.session_id, turnId: next.id, kind: "bot", author: made.bot.id, body: "Still the same draft." });
   const quiet = store.finishWork({ turnId: next.id, reason: "nothing_new" });
   expect(quiet.state).toBe("idle");
   expect(quiet.noProgressCount).toBe(1);

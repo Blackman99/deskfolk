@@ -15,6 +15,7 @@ import {
   fileUnder,
   requestText,
   say,
+  sendMessage,
   tool,
   writeFile,
   type HopContext,
@@ -601,7 +602,8 @@ describe("D12: two endings without progress, with work still open", () => {
       const plan = h.store.openTask({ sessionId: dm, title: "Report" });
       const ticket = h.store.createTicket({ taskId: plan.id, title: "Draft", worker: bot!.id });
       const seed = seedLine(h, dm, bot!.id, plan.id, ticket.id, "草稿目录建好了");
-      h.script(bot!).handle(({ request }) => call(tool("end_turn", {
+      // It answers your line, then ends with nothing moved: the no-progress count is about the work, not words.
+      h.script(bot!).handle(({ request }) => call(sendMessage("这段先不动。"), tool("end_turn", {
         reason: "nothing_new", inbox: yourLabels(request).map((id) => ({ id, disposition: "deferred" })),
       })));
       h.postUser(dm, "开始写", { parentId: seed.id });

@@ -8,7 +8,7 @@
  * A word about mail the segment never had records nothing and asks for nothing.
  */
 import { afterEach, expect, test } from "bun:test";
-import { call, createScenario, tool, type Scenario } from "../test-kit/scenario";
+import { call, createScenario, sendMessage, tool, type Scenario } from "../test-kit/scenario";
 import { openPlan, planSpec } from "./video-team";
 
 const open: Scenario[] = [];
@@ -24,7 +24,8 @@ test("an ending that gives a disposition for the line that woke it ends the firs
   const job = openPlan(h, dm, "每日AI重点新闻简报", planSpec("每日AI重点新闻简报"));
   h.store.createTicket({ taskId: job.id, title: "2026-10-03", status: "doing", worker: bot!.id });
   h.script(bot!, dm).reply(
-    ({ turn }) => call(tool("end_turn", { reason: "nothing_new", inbox: [{ id: turn!.trigger_message_id, disposition: "adopted", note: "已放大并对齐" }] })),
+    ({ turn }) => call(sendMessage("已放大标题和 LOGO，并对齐。"),
+      tool("end_turn", { reason: "nothing_new", inbox: [{ id: turn!.trigger_message_id, disposition: "adopted", note: "已放大并对齐" }] })),
   );
   h.postUser(dm, "标题跟 LOGO 没有对齐，而且太小");
   await h.waitIdle();
