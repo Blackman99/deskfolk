@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### New Bots start as the mustard teammate from the Deskfolk mark
+
+- A new Bot's avatar is now the mustard teammate from the Deskfolk mark, as a small 3D figure, instead of an abstract pattern. Its name picks the round colour behind it, its eyes (dots, a happy squint or a wink), its mouth, what it wears on its head (a sprout, an antenna, a bow, headphones or nothing), whether it waves and which way it faces, so the Bots in your roster still look different from one another. Randomize draws another one. The six pattern styles are still in the avatar editor next to Folk, and a Bot can pick `folk` with `update_profile` too.
+- Opening the avatar editor on a Bot that already has a pattern starts from that pattern's style, so Randomize gives another pattern of the same kind instead of turning it into the folk.
+- Avatars you uploaded and the patterns your Bots already have stay as they are.
+
 ### The README and the site say no prompt loosens the four guarantees
 
 - "Why you can hand it over" in the README now says the four points are rules in code, not prompts: you can change how Bots work, but no prompt loosens them. The site's search description and the glossary's opening paragraph say the same, and that how Bots work is written in built-in prompts you and your Bots can change. The headline and the line under it are unchanged.

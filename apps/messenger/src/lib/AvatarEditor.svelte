@@ -6,6 +6,7 @@
 		fileToAvatarDataUri,
 		followGeneratedAvatar,
 		generateBoringAvatar,
+		generatedAvatarVariant,
 		isCustomAvatar,
 		BORING_AVATAR_VARIANTS,
 		type AvatarImageError,
@@ -22,7 +23,8 @@
 
 	let { name, avatar = $bindable(''), t, onchange }: Props = $props();
 
-	let variant = $state<BoringAvatarVariant>('beam');
+	// Start from the style the avatar was drawn in, so Randomize keeps it; a new Bot starts on the folk.
+	let variant = $state<BoringAvatarVariant>(initialVariant());
 	let seed = $state(0);
 	let lastGenerated = $state('');
 	let uploadError = $state<AvatarImageError | null>(null);
@@ -31,6 +33,7 @@
 	let customMode = $derived(isCustomAvatar(avatar));
 
 	const variantLabels: Record<BoringAvatarVariant, { zh: string; en: string }> = {
+		folk: { zh: '小人', en: 'Folk' },
 		beam: { zh: '表情', en: 'Beam' },
 		marble: { zh: '大理石', en: 'Marble' },
 		pixel: { zh: '像素', en: 'Pixel' },
@@ -54,6 +57,10 @@
 			onchange?.();
 		}
 	});
+
+	function initialVariant(): BoringAvatarVariant {
+		return generatedAvatarVariant(avatar) ?? 'folk';
+	}
 
 	function applyGenerated(nextVariant: BoringAvatarVariant = variant, nextSeed = seed): void {
 		uploadError = null;

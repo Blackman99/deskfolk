@@ -1,4 +1,7 @@
+import { renderFolk } from "./folk-avatar.ts";
+
 export type BoringAvatarVariant =
+  | "folk"
   | "beam"
   | "marble"
   | "pixel"
@@ -7,6 +10,7 @@ export type BoringAvatarVariant =
   | "ring";
 
 export const BORING_AVATAR_VARIANTS: readonly BoringAvatarVariant[] = [
+  "folk",
   "beam",
   "marble",
   "pixel",
@@ -331,15 +335,26 @@ function renderRing(name: string, colors: readonly string[], size: number, squar
     `</svg>`;
 }
 
+/** The style a generated avatar was drawn in, read from its mask id; null for anything else. */
+export function generatedAvatarVariant(avatar: string | null | undefined): BoringAvatarVariant | null {
+  const match = avatar?.trim().startsWith("<svg") ? /\bmask_([a-z]+)_/.exec(avatar) : null;
+  const variant = match?.[1];
+  return variant && (BORING_AVATAR_VARIANTS as readonly string[]).includes(variant)
+    ? (variant as BoringAvatarVariant)
+    : null;
+}
+
 export function generateBoringAvatar(options: BoringAvatarOptions): string {
   const name = (options.name ?? "").trim() || "bot";
-  const variant = options.variant ?? "beam";
+  const variant = options.variant ?? "folk";
   const colors = options.colors && options.colors.length > 0 ? options.colors : DEFAULT_COLORS;
   const square = Boolean(options.square);
   const title = Boolean(options.title);
   const size = options.size ?? (variant === "beam" ? 36 : 80);
 
   switch (variant) {
+    case "folk":
+      return renderFolk(hashCode(name), size, square, title ? `<title>${escapeXml(name)}</title>` : "");
     case "beam":
       return renderBeam(name, colors, size, square, title);
     case "marble":

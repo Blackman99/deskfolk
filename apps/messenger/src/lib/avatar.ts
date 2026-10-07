@@ -1,5 +1,6 @@
 import {
   generateBoringAvatar,
+  generatedAvatarVariant,
   BORING_AVATAR_VARIANTS,
   DEFAULT_BORING_PALETTES,
   DEFAULT_COLORS,
@@ -12,6 +13,7 @@ import { activeMembers } from "./sidebar/session-groups.ts";
 
 export {
   generateBoringAvatar,
+  generatedAvatarVariant,
   BORING_AVATAR_VARIANTS,
   DEFAULT_BORING_PALETTES,
   DEFAULT_COLORS,

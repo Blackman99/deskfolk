@@ -38,10 +38,10 @@ export function updateProfileTool(shell: ToolShellKind = toolShell().kind): Tool
       boundaries: { type: "string", description: { zh: "新的边界。", en: "New boundaries." } },
       avatar_style: {
         type: "string",
-        enum: ["beam", "marble", "pixel", "sunset", "bauhaus", "ring"],
+        enum: ["folk", "beam", "marble", "pixel", "sunset", "bauhaus", "ring"],
         description: {
-          zh: "生成头像的风格：beam、marble、pixel、sunset、bauhaus、ring。",
-          en: "Generated avatar style: beam, marble, pixel, sunset, bauhaus, or ring.",
+          zh: "生成头像的风格：folk（Deskfolk 的芥末小人，表情和小物件随名字变，新 Bot 的默认）、beam、marble、pixel、sunset、bauhaus、ring。",
+          en: "Generated avatar style: folk (the Deskfolk mustard teammate, its face and accessory varying with the name; a new Bot's default), beam, marble, pixel, sunset, bauhaus, or ring.",
         },
       },
       avatar_seed: {
