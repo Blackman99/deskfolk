@@ -63,6 +63,7 @@ import type { TraceFocus } from "./overlays/task-trace.ts";
 import type { PaneContent } from "./workbench/pane-content.ts";
 import { isLiveStatus, stopTarget } from "./chat/transcript.ts";
 import type { UrlOverlay } from "./session-url.ts";
+import type { PromptTarget } from "./settings/prompts-view.ts";
 import { HOSTED_MESSENGER } from "./remote/mode.ts";
 import type { LocalApi } from "./local-api.ts";
 import type { MessengerApi } from "./messenger-api.ts";
@@ -345,6 +346,11 @@ export class MessengerRuntime {
   spendRevision = $state(0);
   /** Bumped on every `prompt.changed` (ADR 0064): the prompts settings reload on it. */
   promptsRevision = $state(0);
+  /**
+   * Settings asked to open on the prompts tab, and at one prompt's editor when there is one (a card's
+   * 「在设置里看」); the prompts tab takes it once it shows.
+   */
+  promptsTarget = $state<{ prompt: PromptTarget | null } | null>(null);
   workspaceSelected = $state("");
   threadOpen = $state(false);
   searchQuery = $state("");
@@ -917,6 +923,12 @@ export class MessengerRuntime {
     this.terminalOpen = false;
     this.screenOpen = false;
     this.settingsOpen = !this.settingsOpen;
+  }
+
+  /** Settings at the prompts tab, and at one prompt's history when the card knows which (ADR 0064). */
+  openPromptSettings(prompt: PromptTarget | null): void {
+    if (!this.settingsOpen) this.openSettings();
+    this.promptsTarget = { prompt };
   }
 
   openWorkspace(selected?: string | null): void {

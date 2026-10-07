@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import type { PromptSummary } from "@real-bot/protocol";
 import { ApiError } from "../api.ts";
 import { copyFor } from "../copy.ts";
-import { editedCount, failuresOf, firstLocale, groupPrompts, overallState, parsePromptCard, promptErrorText, stateChip } from "./prompts-view.ts";
+import { editedCount, failuresOf, firstLocale, groupPrompts, overallState, parsePromptCard, promptCardTarget, promptErrorText, stateChip } from "./prompts-view.ts";
 
 const c = copyFor("zh").prompts;
 
@@ -83,6 +83,15 @@ test("the approval card's text reads back as its head, reason and changes", () =
     ],
     more: "…还有 1 处改动未显示",
   });
+});
+
+test("a card names its prompt as id:locale, and anything else names none", () => {
+  expect(promptCardTarget("turn.system:zh")).toEqual({ id: "turn.system", locale: "zh" });
+  expect(promptCardTarget("call.read_user_line:en")).toEqual({ id: "call.read_user_line", locale: "en" });
+  expect(promptCardTarget("turn.system")).toBeNull();
+  expect(promptCardTarget("turn.system:fr")).toBeNull();
+  expect(promptCardTarget(":zh")).toBeNull();
+  expect(promptCardTarget(null)).toBeNull();
 });
 
 test("the card's reach line is found by its prefix before the first change, in either language", () => {

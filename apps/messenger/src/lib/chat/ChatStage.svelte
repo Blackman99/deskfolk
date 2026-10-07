@@ -1373,7 +1373,7 @@
 							<div class="who">{t.stream.approval} · {who(singleMsg.message)}</div>
 							{#if isPromptEdit(card?.kind_key)}
 								<!-- A Bot's change to a built-in prompt (ADR 0064): the change itself, and once allowed, its Undo. -->
-								<PromptEditCard body={singleMsg.message.body} {t} approval={card ?? null} api={runtime.client} onOpenSettings={() => runtime.openSettings()} />
+								<PromptEditCard body={singleMsg.message.body} {t} approval={card ?? null} api={runtime.client} onOpenSettings={(target) => runtime.openPromptSettings(target)} />
 							{:else}
 								<div class="body">{singleMsg.message.body}</div>
 							{/if}

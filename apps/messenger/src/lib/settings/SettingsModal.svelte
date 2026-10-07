@@ -227,6 +227,14 @@
 		mobileSettingsDetail = typeof window !== 'undefined' && window.matchMedia('(max-width: 720px)').matches;
 	}
 
+	// Asked to open at the prompts (a card's 「在设置里看」): the tab shows, and it opens the prompt itself.
+	$effect(() => {
+		const target = runtime.promptsTarget;
+		if (!runtime.settingsOpen || !target) return;
+		openSettingsTab('prompts');
+		if (!target.prompt) runtime.promptsTarget = null;
+	});
+
 	function settingsTabLabel(tab: SettingsTab): string {
 		return tab === 'general'
 			? t.settings.tabGeneral

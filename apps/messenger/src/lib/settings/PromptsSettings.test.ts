@@ -135,3 +135,27 @@ test("switching the language keeps the editor on the view you were reading", asy
   close();
 });
 
+test("sent from a card, the prompt opens at its history with that change open, and the request is taken", async () => {
+  const runtime = fakeRuntime({}, {
+    promptsTarget: { prompt: { id: "call.scribe", locale: "zh", revisionId: "r7" } },
+    client: {
+      getPrompt: async () => ({
+        id: "call.scribe", group: "call", title: items[4]!.title, summary: items[4]!.summary, locales: items[4]!.locales, locale: "zh",
+        text: "记下来。", format: null, default_text: "记。", base_text: "记。", conflict_default: null, placeholders: [], no_brace: false,
+        max_chars: 2000, head_revision_id: "r7", env: { level: 8, shell: "sh" },
+        revisions: [{ id: "r7", op: "edit", actor: "bot", bot_id: "b1", bot_name: "调优员", turn_id: "t", session_id: "s1", message_id: "m1", approval_id: "a1", reason: "更清楚", before_text: null, after_text: "记下来。", created_at: "2026-10-07T08:00:00.000Z", undoable: true }],
+      }),
+    },
+  });
+  const { close } = render(PromptsSettings, { runtime, t, items });
+  await sleep(10);
+  flushSync();
+  expect(runtime.promptsTarget).toBeNull();
+  const editor = document.querySelector(".prompt-editor-modal")!;
+  expect(editor.querySelector("h2")?.textContent).toBe("标题 call.scribe");
+  expect(editor.querySelector('[data-view="history"]')?.getAttribute("aria-selected")).toBe("true");
+  expect(editor.querySelector('[data-revision="r7"] .prompt-diff .diff-add')?.textContent).toBe("记下来。");
+  // Keyboard focus came along from the card, so Escape closes this editor.
+  expect(document.activeElement?.classList.contains("prompt-editor-backdrop")).toBe(true);
+  close();
+});

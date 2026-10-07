@@ -6,6 +6,18 @@ type PromptsCopy = Copy['prompts'];
 /** What the editor shows: the text you edit, what it changes from the default, or every change so far. */
 export type PromptView = 'text' | 'compare' | 'history';
 
+/** One built-in prompt to open settings at: its editor, at the change a card let through when known. */
+export type PromptTarget = { id: string; locale: Locale; revisionId: string | null };
+
+/** The prompt a `prompt-edit` card is about, from its approval's `id:locale` target (prompt-tools.ts). */
+export function promptCardTarget(target: string | null | undefined): { id: string; locale: Locale } | null {
+	if (!target) return null;
+	const at = target.lastIndexOf(':');
+	const locale = target.slice(at + 1);
+	if (at <= 0 || (locale !== 'zh' && locale !== 'en')) return null;
+	return { id: target.slice(0, at), locale };
+}
+
 /** The order the settings tab lists them in: the tool descriptions last, since there are fifty of them. */
 export const PROMPT_GROUPS: readonly PromptGroup[] = ['turn', 'agent', 'call', 'tool'];
 

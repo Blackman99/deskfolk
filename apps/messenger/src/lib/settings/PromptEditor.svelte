@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy, tick } from 'svelte';
+	import { onDestroy, tick, untrack } from 'svelte';
 	import { changedLines, type Locale, type PromptDetail, type PromptRevision } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
@@ -18,9 +18,11 @@
 		onOpenMessage: (sessionId: string, messageId: string) => void;
 		/** The view shown; bound, so switching the language keeps you where you were. */
 		view?: PromptView;
+		/** A change to show opened, and scrolled to, in the history when it first loads. */
+		revealRevision?: string | null;
 	}
 
-	let { runtime, t, id, locale, onLocale, onOpenMessage, view = $bindable('text') }: Props = $props();
+	let { runtime, t, id, locale, onLocale, onOpenMessage, view = $bindable('text'), revealRevision = null }: Props = $props();
 	const c = $derived(t.prompts);
 	const ui = $derived<Locale>(runtime.snapshot.settings.locale === 'en' ? 'en' : 'zh');
 
@@ -42,7 +44,7 @@
 	let showConflict = $state(false);
 	let confirmingReset = $state(false);
 	let busy = $state(false);
-	let opened = $state<string | null>(null);
+	let opened = $state<string | null>(untrack(() => revealRevision));
 	let timer: ReturnType<typeof setTimeout> | null = null;
 
 	const dirty = $derived(detail !== null && text !== detail.text);
@@ -75,6 +77,18 @@
 		problem = null;
 		stale = null;
 		void load();
+	});
+
+	// The change you were sent to: in view once the history first shows it.
+	let revealed = false;
+	$effect(() => {
+		if (revealed || !detail || view !== 'history' || !revealRevision) return;
+		revealed = true;
+		const target = revealRevision;
+		void tick().then(() => {
+			const row = [...document.querySelectorAll<HTMLElement>('.prompt-revision')].find((el) => el.dataset.revision === target);
+			row?.scrollIntoView?.({ block: 'nearest' });
+		});
 	});
 
 	// A change from anywhere (a Bot's approved edit, the phone, a merge): reload unless you are mid-edit.
@@ -181,6 +195,11 @@
 		showView(next);
 		await tick();
 		document.getElementById(`prompt-tab-${next}`)?.focus();
+	}
+
+	/** Whether a change changed the words at all: keeping your version over a newer default does not. */
+	function changesText(revision: PromptRevision): boolean {
+		return (revision.before_text ?? detail!.default_text) !== (revision.after_text ?? detail!.default_text);
 	}
 
 	function revisionTitle(revision: PromptRevision): string {
@@ -360,7 +379,9 @@
 									<p class="prompt-revision-reason">{revision.reason}</p>
 								{/if}
 								<div class="prompt-actions">
-									<button type="button" class="prompt-link" onclick={() => (opened = opened === revision.id ? null : revision.id)}>{opened === revision.id ? c.hideChange : c.showChange}</button>
+									{#if changesText(revision)}
+										<button type="button" class="prompt-link" onclick={() => (opened = opened === revision.id ? null : revision.id)}>{opened === revision.id ? c.hideChange : c.showChange}</button>
+									{/if}
 									{#if revision.undoable}
 										<button type="button" class="prompt-link" disabled={busy} onclick={() => void act(() => runtime.client!.undoPromptRevision(revision.id))}>{c.undo}</button>
 									{/if}
@@ -371,7 +392,7 @@
 										<button type="button" class="prompt-link" onclick={() => onOpenMessage(revision.session_id!, revision.message_id!)}>{c.openMessage}</button>
 									{/if}
 								</div>
-								{#if opened === revision.id}
+								{#if opened === revision.id && changesText(revision)}
 									<ol class="prompt-diff">
 										{#each changedLines(revision.before_text ?? detail.default_text, revision.after_text ?? detail.default_text) as line, at (at)}
 											<li class="diff-{line.kind}">{line.kind === 'gap' ? '⋯' : line.text || ' '}</li>

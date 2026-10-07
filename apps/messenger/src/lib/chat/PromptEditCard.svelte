@@ -2,7 +2,7 @@
 	import type { Approval, PromptRevisionRef } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
-	import { parsePromptCard } from '../settings/prompts-view.ts';
+	import { parsePromptCard, promptCardTarget, type PromptTarget } from '../settings/prompts-view.ts';
 
 	interface Props {
 		/** The card's text: what changes, as the daemon wrote it (prompt-tools.ts). */
@@ -10,7 +10,8 @@
 		t: Copy;
 		approval: Approval | null;
 		api: MessengerApi | null;
-		onOpenSettings: () => void;
+		/** Settings at this prompt's history, at the change the card let through; null when the card names none. */
+		onOpenSettings: (target: PromptTarget | null) => void;
 	}
 
 	let { body, t, approval, api, onOpenSettings }: Props = $props();
@@ -49,6 +50,11 @@
 		} finally {
 			busy = false;
 		}
+	}
+
+	function openInSettings(): void {
+		const prompt = revision ? { id: revision.prompt_id, locale: revision.locale } : promptCardTarget(approval?.target);
+		onOpenSettings(prompt ? { ...prompt, revisionId: revision?.id ?? null } : null);
 	}
 
 	function shownHunks() {
@@ -91,7 +97,7 @@
 			{:else if revision?.undoable}
 				<button type="button" class="prompt-card-link" disabled={busy} onclick={() => void undo()}>{c.undo}</button>
 			{/if}
-			<button type="button" class="prompt-card-link" onclick={onOpenSettings}>{c.openSettings}</button>
+			<button type="button" class="prompt-card-link" onclick={openInSettings}>{c.openSettings}</button>
 		</div>
 	{/if}
 </div>

@@ -13,7 +13,7 @@ import SettingsModal from "./SettingsModal.svelte";
 const t = copyFor("zh");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function open(over: { providers?: ReturnType<typeof aProvider>[]; client?: unknown } = {}) {
+function open(over: { providers?: ReturnType<typeof aProvider>[]; client?: unknown; promptsTarget?: unknown } = {}) {
   const provider = over.providers?.[0] ?? aProvider();
   const runtime = fakeRuntime({
     providers: over.providers ?? [provider],
@@ -33,6 +33,7 @@ function open(over: { providers?: ReturnType<typeof aProvider>[]; client?: unkno
   });
   runtime.settingsOpen = true;
   if (over.client) runtime.client = over.client as never;
+  if (over.promptsTarget) runtime.promptsTarget = over.promptsTarget as never;
   const view = render(SettingsModal, {
     runtime,
     t,
@@ -159,6 +160,27 @@ test("built-in prompts have a tab of their own, before About, counting what you 
   expect(host.querySelector(".settings-main-title")?.textContent).toContain(t.settings.tabPrompts);
   expect(host.querySelector('[data-settings-tab="prompts"] .tab-count')?.textContent).toBe("1");
   expect(host.querySelector('[data-prompt="turn.system"]')).toBeTruthy();
+  close();
+});
+
+test("asked from a card, settings open on the prompts tab and leave the prompt to it", async () => {
+  const client = {
+    // The list arrives a moment after settings open, as it does over the wire.
+    listPrompts: () => new Promise((resolve) => setTimeout(() => resolve([
+      { id: "turn.system", group: "turn", title: { zh: "系统指令", en: "System instructions" }, summary: { zh: "守则", en: "Rules" },
+        locales: [{ locale: "zh", state: "edited", last_actor: "bot", last_bot_id: null, updated_at: null, parse_failures: null }] },
+    ]), 20)),
+    listLessons: async () => [],
+    getPrompt: () => new Promise(() => {}),
+  };
+  const { host, runtime, close } = open({ client, promptsTarget: { prompt: { id: "turn.system", locale: "zh", revisionId: null } } });
+  await sleep(60);
+  flushSync();
+  expect(host.querySelector(".settings-main-title")?.textContent).toContain(t.settings.tabPrompts);
+  expect(runtime.promptsTarget).toBeNull();
+  expect(document.querySelector(".prompt-editor-modal h2")?.textContent).toBe("系统指令");
+  // The list came in after settings opened; focus still reached the editor once it showed.
+  expect(document.activeElement?.classList.contains("prompt-editor-backdrop")).toBe(true);
   close();
 });
 

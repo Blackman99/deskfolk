@@ -32,8 +32,8 @@ test("once allowed, the card can take the change back while it is still the late
       return {};
     },
   };
-  let opened = 0;
-  const { host, close } = render(PromptEditCard, { body, t, approval: approval("allowed_once"), api: api as never, onOpenSettings: () => (opened += 1) });
+  const opened: unknown[] = [];
+  const { host, close } = render(PromptEditCard, { body, t, approval: approval("allowed_once"), api: api as never, onOpenSettings: (target: unknown) => opened.push(target) });
   await sleep(10);
   flushSync();
   click(buttonByText(host, t.prompts.card.undo));
@@ -41,8 +41,18 @@ test("once allowed, the card can take the change back while it is still the late
   flushSync();
   expect(undone).toEqual(["r1"]);
   expect(host.textContent).toContain(t.prompts.card.undone);
+  // In settings, at this prompt's history and the change this card let through.
   click(buttonByText(host, t.prompts.card.openSettings));
-  expect(opened).toBe(1);
+  expect(opened).toEqual([{ id: "turn.system", locale: "zh", revisionId: "r1" }]);
+  close();
+});
+
+test("before the change it made is known, the link still opens the prompt the card names", () => {
+  const opened: unknown[] = [];
+  const api = { promptRevisionForApproval: () => new Promise(() => {}) };
+  const { host, close } = render(PromptEditCard, { body, t, approval: approval("allowed_once"), api: api as never, onOpenSettings: (target: unknown) => opened.push(target) });
+  click(buttonByText(host, t.prompts.card.openSettings));
+  expect(opened).toEqual([{ id: "turn.system", locale: "zh", revisionId: null }]);
   close();
 });
 

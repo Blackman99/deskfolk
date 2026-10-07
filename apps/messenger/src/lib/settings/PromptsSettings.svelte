@@ -26,6 +26,10 @@
 	let toolsOpen = $state(false);
 	let open = $state<{ id: string; locale: Locale } | null>(null);
 	let editorView = $state<PromptView>('text');
+	/** A change to open in the history the first time the editor shows it (a card's 「在设置里看」). */
+	let editorReveal = $state<string | null>(null);
+	/** Opened from a card: focus goes into the editor once it shows. */
+	let focusEditor = false;
 	let editor = $state<PromptEditor>();
 	let returnFocus: HTMLElement | null = null;
 
@@ -45,9 +49,30 @@
 		return stateChip(shown, shown.last_bot_id ? (botNames.get(shown.last_bot_id) ?? null) : null, c);
 	}
 
+	// Sent here from a card's 「在设置里看」: that prompt's history, at the change the card let through.
+	$effect(() => {
+		const target = runtime.promptsTarget?.prompt;
+		if (!target) return;
+		returnFocus = null;
+		editorView = 'history';
+		editorReveal = target.revisionId;
+		open = { id: target.id, locale: target.locale };
+		focusEditor = true;
+		runtime.promptsTarget = null;
+	});
+
+	// Focus was on the card under settings: once the editor is up (the list may still be loading),
+	// it moves there, so Escape and Tab work in the editor rather than behind it.
+	$effect(() => {
+		if (!focusEditor || !open || !openItem) return;
+		focusEditor = false;
+		void tick().then(() => document.querySelector<HTMLElement>('.prompt-editor-backdrop')?.focus());
+	});
+
 	async function openEditor(item: PromptSummary, event: MouseEvent): Promise<void> {
 		returnFocus = event.currentTarget as HTMLElement;
 		editorView = 'text';
+		editorReveal = null;
 		open = { id: item.id, locale: firstLocale(item, ui) };
 		await tick();
 		document.querySelector<HTMLTextAreaElement>('.prompt-editor-modal .prompt-text')?.focus();
@@ -213,7 +238,11 @@
 						{t}
 						id={open.id}
 						locale={open.locale}
-						onLocale={(locale) => (open = { id: open!.id, locale })}
+						revealRevision={editorReveal}
+						onLocale={(locale) => {
+							editorReveal = null;
+							open = { id: open!.id, locale };
+						}}
 						onOpenMessage={openMessage}
 					/>
 				{/key}

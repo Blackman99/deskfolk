@@ -187,6 +187,29 @@ test("the views: the text stays put while you compare it with the default, and l
   close();
 });
 
+test("a change that kept the words offers nothing to open; a change you were sent to starts open", async () => {
+  const kept = detail({
+    text: "我的。\n\n{format}",
+    base_text: "新默认。\n\n{format}",
+    head_revision_id: "r3",
+    revisions: [
+      { id: "r3", op: "keep_mine", actor: "user", bot_id: null, bot_name: null, turn_id: null, session_id: null, message_id: null, approval_id: null, reason: null, before_text: "我的。\n\n{format}", after_text: "我的。\n\n{format}", created_at: "2026-10-07T08:00:00.000Z", undoable: true },
+      { id: "r2", op: "edit", actor: "bot", bot_id: "b1", bot_name: "调优员", turn_id: "t", session_id: "s1", message_id: "m1", approval_id: "a", reason: "更短", before_text: null, after_text: "我的。\n\n{format}", created_at: "2026-10-06T08:00:00.000Z", undoable: false },
+    ],
+  });
+  const runtime = fakeRuntime({}, { client: { getPrompt: async () => kept } });
+  const { host, close } = render(PromptEditor, { runtime, t, id: "call.scribe", locale: "zh", onLocale: () => {}, onOpenMessage: () => {}, view: "history", revealRevision: "r2" });
+  await sleep(10);
+  flushSync();
+  const [keep, bot] = [...host.querySelectorAll<HTMLElement>(".prompt-revision")];
+  expect([...keep!.querySelectorAll("button")].map((b) => b.textContent?.trim())).not.toContain(t.prompts.showChange);
+  expect(keep!.querySelector(".prompt-diff")).toBeNull();
+  // The Bot's change the card was about is open already.
+  expect(buttonByText(bot!, t.prompts.hideChange)).toBeTruthy();
+  expect(bot!.querySelector(".prompt-diff .diff-add")?.textContent).toBe("我的。");
+  close();
+});
+
 test("a prompt with one language says so in a word, and arrow keys walk the views", async () => {
   const { host, close } = open({ getPrompt: async () => detail() });
   await sleep(10);

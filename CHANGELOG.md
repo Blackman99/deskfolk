@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Open in settings on an approval card goes straight to that prompt's history
+
+- On the approval card for a Bot's change to a built-in prompt, Open in settings, once allowed, only opened settings on whatever tab you last looked at, leaving you to find Prompts and then the prompt. It now opens that prompt's editor at its History, with this change already opened and Undo, Restore and Open the message beside it.
+
 ### A lighter Prompts tab in settings
 
 - The Prompts tab took nearly three screens of scrolling: a long paragraph at the top, then a two-line card per prompt, each wearing the same "Default"; the editor opened over settings with a small text box, and under it, one after another, placeholders, the answer format, the comparison and the history. Now the top is one sentence and the search stays put; each group is one card, one line per prompt (title and what it is, aligned in two columns), a default carries no mark at all, and only an edited one says who edited it, any conflict and how many answers did not read. While anything is edited, an All / Edited filter beside the search finds what changed. The fifty tool descriptions moved to the end and open into a grid of tool names, with the one sentence they all share said once for the group.
