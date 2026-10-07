@@ -1020,7 +1020,7 @@
 					>✕</button>
 				</div>
 
-			<div class="modal-body" class:is-mcp={activeSettingsTab === 'mcp'} class:is-models={activeSettingsTab === 'models'}>
+			<div class="modal-body" class:is-mcp={activeSettingsTab === 'mcp'} class:is-prompts={activeSettingsTab === 'prompts'} class:is-models={activeSettingsTab === 'models'}>
 				{#if !providerEditor && (runtime.pendingMutation || credentialOps.length)}<div role="region" aria-label="Pending credentials">{@render pendingCredentials()}</div>{/if}
 				{#if saveFailed}
 					<p class="field-error">{t.settings.saveFailed}</p>
@@ -2290,7 +2290,8 @@ void runtime.setPushEnabled(enabled);
 		padding: 20px 24px;
 	}
 
-	.settings-main > .modal-body.is-mcp {
+	.settings-main > .modal-body.is-mcp,
+	.settings-main > .modal-body.is-prompts {
 		min-height: 0;
 		overflow: hidden;
 		padding: 18px 24px;
@@ -3428,7 +3429,8 @@ void runtime.setPushEnabled(enabled);
 	}
 
 	/* MCP settings */
-	.settings-modal .modal-body.is-mcp {
+	.settings-modal .modal-body.is-mcp,
+	.settings-modal .modal-body.is-prompts {
 		min-height: 0;
 		overflow: hidden;
 	}
@@ -3647,7 +3649,8 @@ void runtime.setPushEnabled(enabled);
 			overscroll-behavior: contain;
 		}
 
-		.settings-main > .modal-body.is-mcp {
+		.settings-main > .modal-body.is-mcp,
+		.settings-main > .modal-body.is-prompts {
 			padding: 14px 12px max(20px, env(safe-area-inset-bottom));
 		}
 

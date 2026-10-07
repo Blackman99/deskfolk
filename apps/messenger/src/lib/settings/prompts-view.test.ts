@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import type { PromptSummary } from "@real-bot/protocol";
 import { ApiError } from "../api.ts";
 import { copyFor } from "../copy.ts";
-import { editedCount, firstLocale, groupPrompts, overallState, parsePromptCard, promptErrorText, stateChip } from "./prompts-view.ts";
+import { editedCount, failuresOf, firstLocale, groupPrompts, overallState, parsePromptCard, promptErrorText, stateChip } from "./prompts-view.ts";
 
 const c = copyFor("zh").prompts;
 
@@ -15,12 +15,27 @@ function summary(id: string, group: PromptSummary["group"], states: Array<"defau
   };
 }
 
-test("prompts group in the registry's order and a search matches ids, titles and summaries in either language", () => {
+test("prompts group with the tool descriptions last and a search matches ids, titles and summaries in either language", () => {
   const items = [summary("call.scribe", "call", ["default"], ["zh"]), summary("turn.system", "turn", ["edited"]), summary("tool.shell", "tool", [])];
-  expect(groupPrompts(items, "").map((row) => row.group)).toEqual(["turn", "tool", "call"]);
+  expect(groupPrompts(items, "").map((row) => row.group)).toEqual(["turn", "call", "tool"]);
   expect(groupPrompts(items, "Title call").map((row) => row.items.map((item) => item.id))).toEqual([["call.scribe"]]);
   expect(groupPrompts(items, "说明 tool.").flatMap((row) => row.items.map((item) => item.id))).toEqual(["tool.shell"]);
   expect(groupPrompts(items, "nothing")).toEqual([]);
+});
+
+test("only the edited ones, when asked, and a search narrows those further", () => {
+  const items = [summary("turn.system", "turn", ["default", "edited"]), summary("turn.memory", "turn", ["default"]), summary("tool.shell", "tool", ["conflict"]), summary("call.scribe", "call", ["default"], ["zh"])];
+  expect(groupPrompts(items, "", true).map((row) => row.items.map((item) => item.id))).toEqual([["turn.system"], ["tool.shell"]]);
+  expect(groupPrompts(items, "shell", true).flatMap((row) => row.items.map((item) => item.id))).toEqual(["tool.shell"]);
+  expect(groupPrompts(items, "memory", true)).toEqual([]);
+});
+
+test("unreadable answers count since your edit, else over the last 7 days, across languages", () => {
+  const base = summary("call.seams_text", "call", ["edited", "default"]);
+  base.locales[0]!.parse_failures = { since_edit: 2, last_7_days: 9 };
+  base.locales[1]!.parse_failures = { since_edit: null, last_7_days: 1 };
+  expect(failuresOf(base)).toBe(3);
+  expect(failuresOf(summary("turn.system", "turn", ["default"]))).toBe(0);
 });
 
 test("a prompt's state is its worst language, and the tab counts edits and flags a conflict", () => {

@@ -134,6 +134,12 @@ test("restoring the default asks first; the history offers Undo only on the late
   const { host, close } = render(PromptEditor, { runtime, t, id: "call.scribe", locale: "zh", onLocale: () => {}, onOpenMessage: (s: string, m: string) => opened.push([s, m]) });
   await sleep(10);
   flushSync();
+  // The history is a view of its own, and its tab says how many changes there are.
+  expect(host.querySelector(".prompt-revision")).toBeNull();
+  const historyTab = host.querySelector('[data-view="history"]')!;
+  expect(historyTab.textContent).toContain("2");
+  click(historyTab);
+  expect(historyTab.getAttribute("aria-selected")).toBe("true");
   const revisions = [...host.querySelectorAll(".prompt-revision")];
   expect(revisions[0]?.textContent).toContain("调优员 · 修改");
   expect(revisions[0]?.textContent).toContain("更短");
@@ -149,3 +155,51 @@ test("restoring the default asks first; the history offers Undo only on the late
   expect(resets).toEqual([["call.scribe", "zh", "r2"]]);
   close();
 });
+
+test("the views: the text stays put while you compare it with the default, and leaving it saves", async () => {
+  const puts: PutPromptRequest[] = [];
+  let current = detail();
+  const { host, close } = open({
+    getPrompt: async () => current,
+    putPrompt: async (_id: string, _locale: string, body: PutPromptRequest) => {
+      puts.push(body);
+      current = detail({ text: body.text, base_text: current.default_text, head_revision_id: "r1" });
+      return current;
+    },
+  });
+  await sleep(10);
+  flushSync();
+  const box = host.querySelector<HTMLTextAreaElement>(".prompt-text")!;
+  fill(box, "你是书记员。只记用户的话。\n\n{format}");
+  click(host.querySelector('[data-view="compare"]'));
+  // Leaving the text saved it at once rather than a second later.
+  await sleep(10);
+  expect(puts).toHaveLength(1);
+  // The same textarea is still there, only hidden, so its own undo and scroll survive.
+  expect(host.querySelector(".prompt-text")).toBe(box);
+  expect(host.querySelector("#prompt-panel-text")?.hasAttribute("hidden")).toBe(true);
+  const lines = [...host.querySelectorAll("#prompt-panel-compare li")].map((li) => [li.classList.contains("diff-del") ? "del" : li.classList.contains("diff-add") ? "add" : "same", li.textContent]);
+  expect(lines).toContainEqual(["del", "你是书记员。"]);
+  expect(lines).toContainEqual(["add", "你是书记员。只记用户的话。"]);
+  click(host.querySelector('[data-view="text"]'));
+  expect(host.querySelector("#prompt-panel-text")?.hasAttribute("hidden")).toBe(false);
+  expect(host.querySelector("#prompt-panel-compare")).toBeNull();
+  close();
+});
+
+test("a prompt with one language says so in a word, and arrow keys walk the views", async () => {
+  const { host, close } = open({ getPrompt: async () => detail() });
+  await sleep(10);
+  flushSync();
+  const only = host.querySelector(".prompt-only")!;
+  expect(only.textContent).toBe("只有中文版");
+  expect(only.getAttribute("title")).toBe(t.prompts.onlyLanguage("中文"));
+  const text = host.querySelector<HTMLButtonElement>('[data-view="text"]')!;
+  text.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
+  await sleep(10);
+  flushSync();
+  expect(host.querySelector('[data-view="history"]')?.getAttribute("aria-selected")).toBe("true");
+  expect(host.textContent).toContain(t.prompts.noHistory);
+  close();
+});
+

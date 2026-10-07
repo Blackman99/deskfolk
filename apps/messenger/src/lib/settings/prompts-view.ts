@@ -3,14 +3,23 @@ import type { Copy } from '../copy.ts';
 
 type PromptsCopy = Copy['prompts'];
 
-export const PROMPT_GROUPS: readonly PromptGroup[] = ['turn', 'agent', 'tool', 'call'];
+/** What the editor shows: the text you edit, what it changes from the default, or every change so far. */
+export type PromptView = 'text' | 'compare' | 'history';
 
-/** The prompts that match a search (id, title or summary, either language), by group in the registry's order. */
-export function groupPrompts(items: readonly PromptSummary[], query: string): Array<{ group: PromptGroup; items: PromptSummary[] }> {
+/** The order the settings tab lists them in: the tool descriptions last, since there are fifty of them. */
+export const PROMPT_GROUPS: readonly PromptGroup[] = ['turn', 'agent', 'call', 'tool'];
+
+/**
+ * The prompts that match a search (id, title or summary, either language), and only the edited ones
+ * when asked, by group in the tab's order; each group keeps the registry's order.
+ */
+export function groupPrompts(items: readonly PromptSummary[], query: string, onlyEdited = false): Array<{ group: PromptGroup; items: PromptSummary[] }> {
 	const q = query.trim().toLowerCase();
-	const hits = q
-		? items.filter((item) => [item.id, item.title.zh, item.title.en, item.summary.zh, item.summary.en].some((text) => text.toLowerCase().includes(q)))
-		: items;
+	const hits = items.filter(
+		(item) =>
+			(!onlyEdited || overallState(item) !== 'default') &&
+			(!q || [item.id, item.title.zh, item.title.en, item.summary.zh, item.summary.en].some((text) => text.toLowerCase().includes(q)))
+	);
 	return PROMPT_GROUPS.map((group) => ({ group, items: hits.filter((item) => item.group === group) })).filter((row) => row.items.length > 0);
 }
 
@@ -19,6 +28,11 @@ export function overallState(item: PromptSummary): PromptLocaleState['state'] {
 	if (item.locales.some((locale) => locale.state === 'conflict')) return 'conflict';
 	if (item.locales.some((locale) => locale.state === 'edited')) return 'edited';
 	return 'default';
+}
+
+/** Answers that did not read, over its languages: since your edit, or in the last 7 days on a default. */
+export function failuresOf(item: Pick<PromptSummary, 'locales'>): number {
+	return item.locales.reduce((sum, state) => sum + (state.parse_failures ? (state.parse_failures.since_edit ?? state.parse_failures.last_7_days) : 0), 0);
 }
 
 /** How many prompts are edited, and whether any has a newer default it did not merge with, for the tab. */

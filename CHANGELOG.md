@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A lighter Prompts tab in settings
+
+- The Prompts tab took nearly three screens of scrolling: a long paragraph at the top, then a two-line card per prompt, each wearing the same "Default"; the editor opened over settings with a small text box, and under it, one after another, placeholders, the answer format, the comparison and the history. Now the top is one sentence and the search stays put; each group is one card, one line per prompt (title and what it is, aligned in two columns), a default carries no mark at all, and only an edited one says who edited it, any conflict and how many answers did not read. While anything is edited, an All / Edited filter beside the search finds what changed. The fifty tool descriptions moved to the end and open into a grid of tool names, with the one sentence they all share said once for the group.
+- The editor has three views — Text, Diff vs default and History: the text fills the page (the System section alone runs to several pages), the placeholders sit in one line under it and the answer format is folded; Restore default and the save state sit at the right of the row of views. Switching language keeps the view you are on, and leaving Text saves at once. On a wide window the editor has only ✕; a phone keeps Back.
+
 ### Faces beside the messages in a direct with a Bot again
 
 - A direct with a Bot showed no avatars beside its messages, since only that Bot spoke on the left. But the app's own lines (a handed-over job waiting for your approval, a stop receipt, a progress answer) sit on the left too, between the Bot's, and only the small "App" tag after the name told them apart, so at a glance they read as the Bot talking. Now every line on the left shows who said it: the Bot's face beside its replies, questions and interruption notes, Deskfolk's mark beside the app's lines, as in a group. Your own lines on the right still carry none — that side is only ever you.
