@@ -1,0 +1,178 @@
+import type { CopyShape } from "./shape.ts";
+
+export const zh = {
+  cardTitle: "模型选择",
+  cardToggle: "看这一轮怎么选的模型",
+  filterFeedback: "有反馈",
+  filterBlamed: "归咎模型",
+  endpoint: "端点",
+  jump: "跳到这条消息",
+  thinkingPrefix: "思考",
+  kindLabel: "消息类别",
+  thinking: { none: "无", low: "低", medium: "中", high: "高", xhigh: "极高", max: "最大", minimal: "最低" },
+  pickReason: "为什么选它",
+  reasonLabel: "为什么是它",
+  reasonCode: {
+    pin: "你钉的",
+    default: "Bot 的默认模型",
+    endpoint_default: "端点默认",
+    pin_unlisted: "钉的模型不在名单上，先用端点默认",
+    ticket_override: "这张任务指定的",
+    capability_filter: "这件活要看图，换了能看图的",
+    escalation: "接连没过或出错，提了一档思考",
+    escalation_model: "接连没过、思考档已到顶，换到阶梯上往上一个模型"
+  } as Record<string, string>,
+  markModel: "记为模型问题",
+  markedModel: "已记为模型问题",
+  markModelHint: "记一条模型类的质量事件：只进模型报表，不写记忆，也不改它跑在哪个模型上",
+  markModelFailed: "没记上，再试一次",
+  reviewTitle: "复盘",
+  reviewRounds: (rounds: number) => `改了 ${rounds} 轮`,
+  execution: (hops: number, errors: number) => `${hops} 跳 · ${errors} 次工具错误`,
+  effectFollowed: "已照做",
+  effectCleaner: "纠正变少",
+  effectRetired: "已退出：照做两次仍无改善",
+  effectUnused: "未用于选路",
+  learnedMemory: (label: string) => `记下了：${label}`,
+  learnedSkill: (label: string) => `改了技能：${label}`,
+  learnedNone: "没有可留的结论",
+  fault: {
+    model: "模型的问题",
+    task: "事情本身难",
+    prompt: "需求没说清",
+    none: "没有不满"
+  },
+  direction: {
+    stronger: "该更强",
+    lighter: "该更轻",
+    faster: "该更快",
+    cheaper: "该更便宜",
+    same: "不用动"
+  },
+  feedbackCount: (count: number) => `${count} 条模型反馈`,
+  outcome: {
+    live: "进行中",
+    completed: "完成",
+    failed: "补全失败",
+    stopped: "被 Stop",
+    redirected: "改道",
+    interrupted: "中断"
+  },
+  signature: {
+    coding: "写代码",
+    writing: "写作",
+    reasoning: "推理",
+    simple: "简单",
+    general: "通用"
+  },
+  failReason: {
+    unreachable: "连不上端点",
+    first_byte: "等不到第一条回复",
+    stalled: "回复中途没有下文了",
+    busy: "端点忙",
+    refused: "端点拒绝了这次补全",
+    endpoint_error: "端点出错",
+    incomplete: "回复不完整",
+    repeat: "回复一直在重复同一句",
+    declined: "模型拒答了",
+    truncated: "回复写到输出上限，接着写还是没写完",
+    overtime: "回复写了太久，超过了时间上限",
+    no_model: "没有可用的模型",
+    context_full: "提示词超出了模型的上下文窗口",
+    stuck: "卡住了，很久没有任何进展",
+    crashed: "运行时出错",
+    agent_missing: "这台电脑上没找到 Claude Code",
+    agent_signed_out: "本机的 Claude Code 没通过认证",
+    agent_limit: "Claude 的用量额度用完了",
+    agent_exited: "Claude Code 中途退出了"
+  }
+};
+
+export const en: CopyShape<typeof zh> = {
+  cardTitle: "Model choice",
+  cardToggle: "How this turn's model was chosen",
+  filterFeedback: "Feedback",
+  filterBlamed: "Model blamed",
+  endpoint: "Endpoint",
+  jump: "Jump to this message",
+  thinkingPrefix: "Thinking",
+  kindLabel: "Message kind",
+  thinking: { none: "None", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max", minimal: "Minimal" },
+  pickReason: "Why this one",
+  reasonLabel: "Why this model",
+  reasonCode: {
+    pin: "Your pin",
+    default: "The Bot's default model",
+    endpoint_default: "The endpoint's default",
+    pin_unlisted: "The pinned model is not listed; the endpoint's default meanwhile",
+    ticket_override: "Set on this ticket",
+    capability_filter: "The work needs pictures seen; moved to a model that sees them",
+    escalation: "Kept failing; one thinking level higher",
+    escalation_model: "Kept failing at the top thinking level; one model up the ladder"
+  } as Record<string, string>,
+  markModel: "Mark as the model's problem",
+  markedModel: "Marked as the model's problem",
+  markModelHint: "Files a quality event in the model category: it feeds the model report only — no memory, no change to what it runs on",
+  markModelFailed: "Not marked; try again",
+  reviewTitle: "Review",
+  reviewRounds: (rounds: number) => `${rounds} ${rounds === 1 ? "round" : "rounds"} of corrections`,
+  execution: (hops: number, errors: number) =>
+    `${hops} ${hops === 1 ? "hop" : "hops"} · ${errors} tool ${errors === 1 ? "error" : "errors"}`,
+  effectFollowed: "Followed",
+  effectCleaner: "Fewer corrections",
+  effectRetired: "Retired: followed twice without improving",
+  effectUnused: "Not used for routing",
+  learnedMemory: (label: string) => `Remembered: ${label}`,
+  learnedSkill: (label: string) => `Updated skill: ${label}`,
+  learnedNone: "Nothing worth keeping",
+  fault: {
+    model: "The model",
+    task: "The job itself",
+    prompt: "The request",
+    none: "No complaint"
+  },
+  direction: {
+    stronger: "go stronger",
+    lighter: "go lighter",
+    faster: "go faster",
+    cheaper: "go cheaper",
+    same: "leave it"
+  },
+  feedbackCount: (count: number) => `${count} model ${count === 1 ? "note" : "notes"}`,
+  outcome: {
+    live: "Still running",
+    completed: "Completed",
+    failed: "Completion failed",
+    stopped: "Stopped",
+    redirected: "Redirected",
+    interrupted: "Interrupted"
+  },
+  signature: {
+    coding: "Coding",
+    writing: "Writing",
+    reasoning: "Reasoning",
+    simple: "Simple",
+    general: "General"
+  },
+  failReason: {
+    unreachable: "Couldn’t reach the endpoint",
+    first_byte: "No first reply arrived",
+    stalled: "The reply stalled mid-stream",
+    busy: "Endpoint is busy",
+    refused: "Endpoint refused this completion",
+    endpoint_error: "Endpoint error",
+    incomplete: "Incomplete reply",
+    repeat: "The reply kept repeating itself",
+    declined: "The model declined to answer",
+    truncated: "The reply hit the output limit, even after carrying on",
+    overtime: "The reply ran past its time limit",
+    no_model: "No model is configured",
+    context_full: "The prompt is larger than the model's context window",
+    stuck: "It stopped making progress",
+    crashed: "The runtime errored",
+    agent_missing: "Claude Code was not found on this computer",
+    agent_signed_out: "Your Claude Code could not authenticate",
+    agent_limit: "Claude usage limit reached",
+    agent_exited: "Claude Code exited mid-turn"
+  }
+};
