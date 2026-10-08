@@ -1,9 +1,9 @@
 <p align="center">
-  <a href="https://blackman99.github.io/deskfolk/media/deskfolk-promo-en.mp4">
-    <img alt="Watch the Deskfolk film (1:26): hand it off, walk away, return to results. The model does the work; the app holds it to account: nothing you ask for gets lost, a cut that fails its checks goes back for rework, only you can lift a stop, and work a restart stalled gets chased" src="docs/assets/promo-en.jpg">
+  <a href="https://blackman99.github.io/deskfolk/media/deskfolk-mascots-en.mp4">
+    <img alt="Watch the Deskfolk film (0:30): the mascots Mochi (you) and Pudding (your Bot). Mochi hands Pudding a job; Pudding takes it from there and stops to ask before touching anything outside the workspace; you walk away and come back to work that is done, and checked." src="docs/assets/mascots.jpg">
   </a>
   <br>
-  <sub>Also in <a href="https://blackman99.github.io/deskfolk/media/deskfolk-promo-zh.mp4">中文</a></sub>
+  <sub>Also in <a href="https://blackman99.github.io/deskfolk/media/deskfolk-mascots-zh.mp4">中文</a> · <a href="https://blackman99.github.io/deskfolk/media/deskfolk-promo-en.mp4">The full tour (1:26)</a></sub>
 </p>
 
 <h1 align="center">Deskfolk</h1>

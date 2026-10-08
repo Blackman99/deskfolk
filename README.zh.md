@@ -1,9 +1,9 @@
 <p align="center">
-  <a href="https://blackman99.github.io/deskfolk/media/deskfolk-promo-zh.mp4">
-    <img alt="观看 Deskfolk 宣传片（1:26）：交出去，离开，回来看结果。模型负责干活，应用负责当真：你的要求不会丢，交上来的片子没过检查就退回返工，叫停只有你能解除，重启后停在半路的活有人去追" src="docs/assets/promo-zh.jpg">
+  <a href="https://blackman99.github.io/deskfolk/media/deskfolk-mascots-zh.mp4">
+    <img alt="观看 Deskfolk 宣传片（0:30）：吉祥物麻薯（你）把活交给布丁（你的 Bot）；布丁接着干，要动工作区以外的东西先停下来问你；你离开，回来时活做完了，也查过了。" src="docs/assets/mascots.jpg">
   </a>
   <br>
-  <sub>另有 <a href="https://blackman99.github.io/deskfolk/media/deskfolk-promo-en.mp4">English</a> 版</sub>
+  <sub>另有 <a href="https://blackman99.github.io/deskfolk/media/deskfolk-mascots-en.mp4">English</a> 版 · <a href="https://blackman99.github.io/deskfolk/media/deskfolk-promo-zh.mp4">完整介绍（1:26）</a></sub>
 </p>
 
 <h1 align="center">Deskfolk</h1>
