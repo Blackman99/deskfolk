@@ -1,7 +1,9 @@
 <script lang="ts">
 	import type { SessionSummary } from '@real-bot/protocol';
 	import SessionAvatar from '../SessionAvatar.svelte';
-	import { avatarSrc, botAvatarColor } from '../avatar.ts';
+	import FolkAvatar from '../FolkAvatar.svelte';
+	import { avatarSrc, botAvatarColor, isFolkAvatar } from '../avatar.ts';
+	import { folkMotion } from '../folk-motion.ts';
 	import type { Copy } from '../copy.ts';
 	import { isSessionPinned } from '../sidebar/pinned-sessions.ts';
 	import { rosterLetter } from '../sidebar/roster-letter.ts';
@@ -151,11 +153,18 @@
 				{#if selectedKind === 'you-bot' && selectedPeerBot}
 					{@const pal = botAvatarColor(selectedPeerBot.id)}
 					{@const peerStatus = botStatusOf(selectedPeerBot.id)}
+					{@const acting = isFolkAvatar(selectedPeerBot.avatar)}
 					<span
 						class="top-avatar"
-						style="background: {pal.bg}; color: {pal.text}; border-color: {pal.border};"
+						class:is-folk={acting}
+						style={acting ? undefined : `background: ${pal.bg}; color: ${pal.text}; border-color: ${pal.border};`}
 					>
-						{#if avatarSrc(selectedPeerBot.avatar)}
+						{#if acting && selectedPeerBot.avatar}
+							<FolkAvatar
+								avatar={selectedPeerBot.avatar}
+								motion={selectedPeerBot.archived_at ? 'idle' : folkMotion(peerStatus.kind)}
+							/>
+						{:else if avatarSrc(selectedPeerBot.avatar)}
 							<img src={avatarSrc(selectedPeerBot.avatar)} alt={selectedPeerBot.name} class="avatar-img" />
 						{:else}
 							{rosterLetter(selectedPeerBot.name)}

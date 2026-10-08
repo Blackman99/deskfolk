@@ -1,15 +1,17 @@
 """Pack the folk avatar layers rendered by render.py into src/folk-avatar-assets.ts.
 
 Run: python3 build.py LAYER_DIR   (needs Pillow)
-Each 512 px PNG is scaled to EDGE px and stored as a lossy WebP with its alpha intact.
+Each 512 px PNG is scaled to EDGE px and stored as a lossy WebP with its alpha intact. The points
+the messenger animates about (shoulders from meta.json, the mouth's centre from its layer) are
+written next to the layers as fractions of the square.
 """
-import base64, io, os, sys
+import base64, io, json, os, sys
 from PIL import Image
 
 EDGE = 160  # the largest avatar on screen is 56 CSS px; this covers it at 2x with room
 LAYERS = [
-    'body-rest', 'body-wave',
-    'eyes-dot', 'eyes-happy', 'eyes-wink',
+    'body', 'arm-l', 'arm-r',
+    'eyes-dot', 'eyes-happy', 'eyes-wink', 'eyes-closed',
     'mouth-smile', 'mouth-open', 'mouth-cat',
     'acc-sprout', 'acc-antenna', 'acc-bow', 'acc-headphones',
 ]
@@ -33,7 +35,23 @@ for name in LAYERS:
     b64 = base64.b64encode(buf.getvalue()).decode()
     total += len(b64)
     lines.append(f'  "{name}": "{b64}",')
-lines += ['} as const;', '', 'export type FolkLayer = keyof typeof FOLK_LAYERS;', '']
+meta = json.load(open(os.path.join(src, 'meta.json')))
+mouth = Image.open(os.path.join(src, 'mouth-smile.png')).getchannel('A').point(lambda v: 255 if v > 24 else 0)
+x0, y0, x1, y1 = mouth.getbbox()
+geometry = {
+    'shoulderL': meta['shoulder_l'],
+    'shoulderR': meta['shoulder_r'],
+    'mouth': [round((x0 + x1) / 2 / mouth.width, 4), round((y0 + y1) / 2 / mouth.height, 4)],
+}
+lines += [
+    '} as const;',
+    '',
+    'export type FolkLayer = keyof typeof FOLK_LAYERS;',
+    '',
+    '/** Where the parts turn and flip, as [x, y] fractions of the square from its top-left corner. */',
+    'export const FOLK_GEOMETRY = ' + json.dumps(geometry) + ' as const;',
+    '',
+]
 with open(out, 'w') as f:
     f.write('\n'.join(lines))
 print(f'wrote {os.path.normpath(out)}: {len(LAYERS)} layers, {total} base64 chars')

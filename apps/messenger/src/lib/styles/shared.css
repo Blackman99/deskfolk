@@ -19,6 +19,26 @@
   display: block;
 }
 
+/*
+ * A folk avatar stands on its own: no disc behind it, no ring, nothing clipped round it, so a hop
+ * or a wave may reach past its box. A slot that animates one (FolkAvatar.svelte) marks itself
+ * `.is-folk`; a slot showing the still picture is found by the picture, whose SVG carries
+ * `mask_folk_`. One rule here instead of one per avatar slot, `!important` because the slots set
+ * their palette inline.
+ */
+.is-folk,
+:has(> img[src*="mask_folk_"]) {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+
+img[src*="mask_folk_"] {
+  border-radius: 0 !important;
+  object-fit: contain !important;
+}
+
 .field-error {
   margin: 5px 0 0;
   font-size: 12px;

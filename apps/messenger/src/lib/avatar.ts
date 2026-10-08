@@ -1,6 +1,8 @@
 import {
+  folkHash,
   generateBoringAvatar,
   generatedAvatarVariant,
+  renderFolk,
   BORING_AVATAR_VARIANTS,
   DEFAULT_BORING_PALETTES,
   DEFAULT_COLORS,
@@ -276,9 +278,14 @@ function blobToDataUri(blob: Blob): Promise<string> {
   });
 }
 
+const folkSrcs = new Map<number, string>();
+
 /**
  * Returns a URL/data URI string suitable for an <img src="..."> element,
  * or null if no valid avatar is present.
+ *
+ * A folk avatar is drawn again from its name hash, so one stored before the current layers (the
+ * first folk stood on a round fill) shows as today's folk and matches the animated one.
  */
 export function avatarSrc(avatar: string | null | undefined): string | null {
   if (!avatar) return null;
@@ -288,9 +295,21 @@ export function avatarSrc(avatar: string | null | undefined): string | null {
     return trimmed;
   }
   if (trimmed.startsWith("<svg")) {
-    return `data:image/svg+xml;utf8,${encodeURIComponent(trimmed)}`;
+    const folk = folkHash(trimmed);
+    if (folk === null) return `data:image/svg+xml;utf8,${encodeURIComponent(trimmed)}`;
+    let src = folkSrcs.get(folk);
+    if (!src) {
+      src = `data:image/svg+xml;utf8,${encodeURIComponent(renderFolk(folk, 80, ""))}`;
+      folkSrcs.set(folk, src);
+    }
+    return src;
   }
   return null;
+}
+
+/** Whether the stored avatar is a folk (generated, see `folkHash`), which stands without a fill. */
+export function isFolkAvatar(avatar: string | null | undefined): boolean {
+  return folkHash(avatar) !== null;
 }
 
 export type CompositeAvatarLayoutType = "empty" | "single" | "pair" | "triad" | "quad";
@@ -341,11 +360,11 @@ export function compositeAvatarLayout<T extends { name: string | null }>(
 export function sessionAvatars(
   session: SessionSummary,
   bots: ReadonlyMap<string, Bot>,
-): { id: string; name: string | null; src: string | null }[] {
+): { id: string; name: string | null; src: string | null; avatar: string | null }[] {
   return activeMembers(session.participants)
     .filter((id) => id !== USER_MEMBER)
     .map((id) => {
       const bot = bots.get(id);
-      return { id, name: bot?.name ?? null, src: avatarSrc(bot?.avatar) };
+      return { id, name: bot?.name ?? null, src: avatarSrc(bot?.avatar), avatar: bot?.avatar ?? null };
     });
 }

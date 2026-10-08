@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### The folk on a Bot's avatar acts out what the Bot is doing
+
+- The default folk avatar no longer stands on a round fill, and the figure fills its avatar. In the conversation list, the rail, the tabs and at the top of a conversation it acts out the Bot's status: it sways with three dots over its head while thinking, types and talks while replying, hops and waves while it waits for your approval or your answer, slumps with a drop of sweat when a turn failed or was interrupted, sleeps with z's drifting up when you stopped it, and only blinks when idle. The status dot stays. Everywhere else, in the transcript, mentions and search, it is the still picture. With reduced motion on, each status keeps a still pose.
+- A Bot still deciding whether to join in on a line shows its folk thinking there.
+- A default avatar is now stored and sent as a few hundred characters instead of some 15,000, and the app draws the folk from its name. Since the folk became the default, each one had travelled whole in the Bot list, over the phone's link and in the results of the Bots' own `list_bots`, `create_bot` and `update_profile` tools; with 40 Bots the list could outgrow what the phone's link sends in one go. Folks saved whole before go out small too, and nothing in the database is rewritten.
+
 ### New Bots start as the mustard teammate from the Deskfolk mark
 
 - A new Bot's avatar is now the mustard teammate from the Deskfolk mark, as a small 3D figure, instead of an abstract pattern. Its name picks the round colour behind it, its eyes (dots, a happy squint or a wink), its mouth, what it wears on its head (a sprout, an antenna, a bow, headphones or nothing), whether it waves and which way it faces, so the Bots in your roster still look different from one another. Randomize draws another one. The six pattern styles are still in the avatar editor next to Folk, and a Bot can pick `folk` with `update_profile` too.

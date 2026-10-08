@@ -1,14 +1,17 @@
 """Render the layers of the folk avatar: the mustard teammate from the Deskfolk mark, in 3D.
 
-Each layer is a transparent 512 px PNG of one part, framed identically, so the generator in
-src/folk-avatar.ts can stack any body, eyes, mouth and accessory into one avatar. Parts that sit
-on the body are rendered with the body as a holdout, so the body hides whatever is behind it.
+Each layer is a transparent 512 px PNG of one part, framed identically, so src/folk-avatar.ts can
+stack any body, arms, eyes, mouth and accessory into one avatar, and the messenger can move the
+parts on their own (arms turn about the shoulders written to meta.json). Parts that sit on the
+body are rendered with the body as a holdout, so the body hides whatever is behind it. The ground
+shadow is not a layer: the messenger draws it, so a hopping folk leaves it on the ground.
 
 Run with Blender 5.2 (headless):
   Blender -b --factory-startup --python render.py -- OUT_DIR
 then `python3 build.py OUT_DIR` writes src/folk-avatar-assets.ts.
 """
-import bpy, bmesh, math, os, sys, glob
+import bpy, bmesh, math, os, sys, glob, json
+from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Vector, Matrix
 
 argv = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
@@ -20,8 +23,8 @@ MUSTARD = '#f0ab3d'
 # brings the rendered body's average back to the mark's colour.
 BODY = '#ef9f2c'
 TEAL = '#146a7c'
-FRAME = 0.25    # orthographic frame width, metres; the body is 0.19 tall
-CENTER_Z = 0.105
+FRAME = 0.225   # orthographic frame width, metres; the body is 0.19 tall
+CENTER_Z = 0.11
 EXPOSURE = float(os.environ.get('FOLK_EXPOSURE', '-2.55'))  # Standard view transform keeps the brand colours as authored
 
 
@@ -158,7 +161,7 @@ class Folk:
             out.append(base + X * (rx * math.sin(t)) + Z * dz)
         return out
 
-    def body(self, wave):
+    def body(self):
         M, r, sz, c = self.M, self.r, self.sz, self.c
         bm = bmesh.new()
         bmesh.ops.create_uvsphere(bm, u_segments=48, v_segments=24, radius=r, matrix=S(1, 1, sz))
@@ -169,15 +172,18 @@ class Folk:
             p, n = self.surface_point(self.dir(s * 0.58, 0.02))
             self.sphere('Cheek', 0.015, p - n * 0.0025, M['cheek'], 'body', scale=(1, 0.25, 0.62),
                         quat=n.to_track_quat('-Y', 'Z'))
-            p, n = self.surface_point(self.dir(s * 1.45, -0.12))
-            if wave and s == 1:
-                d = Vector((0.75, -0.25, 1.0)).normalized()
-            else:
-                d = Vector((s * 0.5, -0.15, -1.0)).normalized()
-            self.sphere('Arm', 0.021, p - n * 0.008 + d * 0.026, M['body'], 'body', scale=(1, 1, 1.75),
-                        quat=d.to_track_quat('Z', 'Y'))
             self.sphere('Foot', 0.024, Vector((s * 0.034, -0.045, 0.011)), M['body'], 'body',
                         scale=(1.05, 1.35, 0.55))
+
+    def shoulder(self, s):
+        return self.surface_point(self.dir(s * 1.42, -0.06))
+
+    def arm(self, s, layer):
+        """A stubby arm hanging close to the body, from the shoulder at side s (+1 is image right)."""
+        p, n = self.shoulder(s)
+        d = Vector((s * 0.3, -0.2, -1.0)).normalized()
+        self.sphere('Arm', 0.021, p - n * 0.006 + d * 0.024, self.M['body'], layer, scale=(1, 1, 1.75),
+                    quat=d.to_track_quat('Z', 'Y'))
 
     def eyes(self, style):
         up = Vector((0, 0, 1))
@@ -185,6 +191,10 @@ class Folk:
             az = s * 0.3
             kind = style if style != 'wink' else ('dot' if s == -1 else 'happy')
             p, n = self.surface_point(self.dir(az, 0.2))
+            if kind == 'closed':
+                X = Vector((math.cos(az), math.sin(az), 0))
+                self.surface_tube('Eye', self.arc(p - up * 0.003, X, up, 0.0095, 0.0055, -1.2, 1.2, False), 0.0024, 'part')
+                continue
             if kind == 'dot':
                 self.sphere('Eye', 0.0115, p - n * 0.004, self.M['eye'], 'part', scale=(1, 0.55, 1.2),
                             quat=n.to_track_quat('-Y', 'Z'))
@@ -218,7 +228,7 @@ class Folk:
                 self.sphere('Sprout leaf', 0.016, path[-1] + Vector((s * 0.013, 0, 0.004)), M['leaf2'], 'part',
                             scale=(1.0, 0.32, 0.55), rot=(0, -s * 0.55, 0))
         elif kind == 'antenna':
-            path = [top + Vector((0.006 * (i / 8) ** 2, 0, -0.004 + 0.036 * i / 8)) for i in range(9)]
+            path = [top + Vector((0.006 * (i / 8) ** 2, 0, -0.004 + 0.03 * i / 8)) for i in range(9)]
             self.tube('Antenna', path, 0.0022, M['graphite'], 'part')
             self.sphere('Antenna ball', 0.0095, path[-1] + Vector((0, 0, 0.006)), M['teal'], 'part')
         elif kind == 'bow':
@@ -281,15 +291,6 @@ def setup_scene():
         world.node_tree.links.new(env.outputs['Color'], bg.inputs['Color'])
     bg.inputs['Strength'].default_value = float(os.environ.get('FOLK_WORLD', '0.9'))
 
-    bm = bmesh.new()
-    bmesh.ops.create_cube(bm, size=1.0, matrix=T(0, 0, -0.001) @ S(3, 3, 0.002))
-    me = bpy.data.meshes.new('Ground')
-    bm.to_mesh(me)
-    bm.free()
-    ground = bpy.data.objects.new('Ground', me)
-    col.objects.link(ground)
-    ground.is_shadow_catcher = True
-
     el = math.radians(8)
     cd = bpy.data.cameras.new('Camera')
     cd.type, cd.ortho_scale = 'ORTHO', FRAME
@@ -317,33 +318,49 @@ def setup_scene():
         print('GPU setup failed, rendering on CPU:', e)
     scene.view_settings.view_transform = 'Standard'
     scene.view_settings.exposure = EXPOSURE
-    return scene, ground
+    return scene
 
 
-def render(name, build, part_only):
-    scene, ground = setup_scene()
+def render(name, build, holdout):
+    scene = setup_scene()
     folk = Folk()
     build(folk)
     for o, layer in folk.objects:
-        o.is_holdout = part_only and layer == 'body'
-    ground.hide_render = part_only
+        o.is_holdout = holdout and layer == 'body'
     scene.render.filepath = os.path.join(OUT, name + '.png')
     bpy.ops.render.render(write_still=True)
     print('rendered', name)
 
 
-LAYERS = [
-    ('body-rest', lambda f: f.body(False), False),
-    ('body-wave', lambda f: f.body(True), False),
-]
-for style in ('dot', 'happy', 'wink'):
-    LAYERS.append((f'eyes-{style}', lambda f, s=style: (f.body(False), f.eyes(s)), True))
+LAYERS = [('body', lambda f: f.body(), False)]
+for side, s_ in (('l', -1), ('r', 1)):
+    LAYERS.append((f'arm-{side}', lambda f, s_=s_: (f.body(), f.arm(s_, 'part')), True))
+for style in ('dot', 'happy', 'wink', 'closed'):
+    LAYERS.append((f'eyes-{style}', lambda f, s=style: (f.body(), f.eyes(s)), True))
 for style in ('smile', 'open', 'cat'):
-    LAYERS.append((f'mouth-{style}', lambda f, s=style: (f.body(False), f.mouth(s)), True))
+    LAYERS.append((f'mouth-{style}', lambda f, s=style: (f.body(), f.mouth(s)), True))
 for kind in ('sprout', 'antenna', 'bow', 'headphones'):
-    LAYERS.append((f'acc-{kind}', lambda f, k=kind: (f.body(False), f.accessory(k)), True))
+    LAYERS.append((f'acc-{kind}', lambda f, k=kind: (f.body(), f.accessory(k)), True))
 
 only = set(argv[1].split(',')) if len(argv) > 1 else None
-for name, build, part_only in LAYERS:
+for name, build, holdout in LAYERS:
     if only is None or name in only:
-        render(name, build, part_only)
+        render(name, build, holdout)
+
+# Where the animation pivots sit on the image, as fractions from the top-left corner.
+scene = setup_scene()
+folk = Folk()
+cam = scene.camera
+bpy.context.view_layer.update()
+def at(point):
+    v = world_to_camera_view(scene, cam, point)
+    return [round(v.x, 4), round(1 - v.y, 4)]
+meta = {
+    'shoulder_l': at(folk.shoulder(-1)[0]),
+    'shoulder_r': at(folk.shoulder(1)[0]),
+    'eyes': at(folk.surface_point(folk.dir(0, 0.2))[0]),
+    'head_top': at(folk.c + Vector((0, 0, folk.r * folk.sz))),
+    'feet': at(Vector((0, 0, 0))),
+}
+json.dump(meta, open(os.path.join(OUT, 'meta.json'), 'w'), indent=1)
+print('meta', meta)

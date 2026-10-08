@@ -1,6 +1,8 @@
 <script lang="ts">
 	import type { Bot, SessionSummary } from '@real-bot/protocol';
-	import { botAvatarColor, compositeAvatarLayout, sessionAvatars } from './avatar.ts';
+	import { botAvatarColor, compositeAvatarLayout, isFolkAvatar, sessionAvatars } from './avatar.ts';
+	import FolkAvatar from './FolkAvatar.svelte';
+	import { folkMotion } from './folk-motion.ts';
 	import { rosterLetter } from './sidebar/roster-letter.ts';
 	import { youBotPeer } from './sidebar/session-groups.ts';
 	import type { SessionStatusResult } from './sidebar/session-status.ts';
@@ -57,12 +59,16 @@
 	{:else}
 		{#each plan.visible as avatar, i (avatar.id)}
 			{@const palette = botAvatarColor(avatar.id)}
+			{@const acting = plan.layout === 'single' && isFolkAvatar(avatar.avatar)}
 			<span
 				class="row-avatar-bot slot-{i}"
-				style="background: {palette.bg}; color: {palette.text}; border-color: {palette.border};"
+				class:is-folk={acting}
+				style={acting ? undefined : `background: ${palette.bg}; color: ${palette.text}; border-color: ${palette.border};`}
 				title={avatar.name ?? 'Bot'}
 			>
-				{#if avatar.src && failedSources[avatar.id] !== avatar.src}
+				{#if acting && avatar.avatar}
+					<FolkAvatar avatar={avatar.avatar} motion={folkMotion(statusResult?.kind)} />
+				{:else if avatar.src && failedSources[avatar.id] !== avatar.src}
 					<img
 						src={avatar.src}
 						alt={avatar.name ?? ''}

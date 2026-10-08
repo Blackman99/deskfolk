@@ -1,6 +1,7 @@
 import {
   CLAUDE_EFFORTS,
   USER_MEMBER,
+  folkHash,
   generateBoringAvatar,
   isBotRunner,
   isClaudeEffort,
@@ -172,6 +173,9 @@ export function patchBot(
     } else if (patch.avatar === null || (typeof patch.avatar === "string" && patch.avatar.trim().length === 0)) {
       avatar = generateBoringAvatar({ name });
     }
+    // The panel sends back the folk it was shown, in the small form: the same folk is no change.
+    const same = folkHash(avatar);
+    if (avatar !== row.avatar && same !== null && same === folkHash(row.avatar)) avatar = row.avatar;
   }
   const runner = "runner" in patch ? incomingRunner(patch.runner) : (isBotRunner(row.runner) ? row.runner : null);
   assertRunnerActor(actor, runner !== (isBotRunner(row.runner) ? row.runner : null));

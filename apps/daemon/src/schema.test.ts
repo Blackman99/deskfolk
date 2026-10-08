@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { generateBoringAvatar } from "@real-bot/protocol";
+import { generateBoringAvatar, hashCode, renderFolk } from "@real-bot/protocol";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -250,6 +250,23 @@ describe("schema", () => {
     expect(regenerated.avatar).toContain("<svg");
     expect(regenerated.avatar).toBe(generateBoringAvatar({ name: "CustomAvatarBot" }));
 
+    store.close();
+  });
+
+  test("a folk saved in full goes out small, and sending the small one back changes nothing", () => {
+    const store = new Store();
+    const { bot } = store.createBot({ name: "FolkBot", duties: "test", boundaries: "test" });
+    expect(bot.avatar).toBe(generateBoringAvatar({ name: "FolkBot" }));
+    const full = renderFolk(hashCode("FolkBot"), 80, "");
+    store.db.run("UPDATE bots SET avatar = ? WHERE id = ?", [full, bot.id]);
+    expect(store.getBot(bot.id).avatar).toBe(generateBoringAvatar({ name: "FolkBot" }));
+    const before = store.listProfileRevisions(bot.id).length;
+    store.patchBot(bot.id, { duties: "new duties", avatar: store.getBot(bot.id).avatar });
+    const row = store.db.query<{ avatar: string }, [string]>("SELECT avatar FROM bots WHERE id = ?").get(bot.id)!;
+    expect(row.avatar).toBe(full);
+    const revisions = store.listProfileRevisions(bot.id);
+    expect(revisions).toHaveLength(before + 1);
+    expect(revisions.at(-1)?.avatar).toBe(full);
     store.close();
   });
 

@@ -12,10 +12,11 @@ import {
   fileToAvatarDataUri,
   followGeneratedAvatar,
   isCustomAvatar,
+  isFolkAvatar,
   mimeFromAvatarFile,
   sessionAvatars,
 } from "./avatar.ts";
-import { generateBoringAvatar, type Bot, type SessionSummary } from "@real-bot/protocol";
+import { folkLayerSrc, generateBoringAvatar, hashCode, type Bot, type SessionSummary } from "@real-bot/protocol";
 
 describe("botAvatarColor", () => {
   test("is deterministic for the same seed", () => {
@@ -197,6 +198,26 @@ describe("coverDrawParams", () => {
   });
 });
 
+describe("folk avatars", () => {
+  // The first folk avatars stood on a round fill; their mask id carries the name hash.
+  const firstFolk = `<svg viewBox="0 0 160 160" fill="none" role="img" xmlns="http://www.w3.org/2000/svg" width="80" height="80"><mask id="mask_folk_${hashCode("Writer").toString(36)}" maskUnits="userSpaceOnUse" x="0" y="0" width="160" height="160"><rect width="160" height="160" rx="320" fill="#FFFFFF" /></mask><g mask="url(#mask_folk_${hashCode("Writer").toString(36)})"><rect width="160" height="160" fill="#cbe1e6" /></g></svg>`;
+
+  test("a stored folk is drawn again from its name hash, so an old one shows as today's", () => {
+    const src = avatarSrc(firstFolk);
+    expect(src).toBe(avatarSrc(generateBoringAvatar({ name: "Writer" })));
+    expect(src).not.toContain(encodeURIComponent("#cbe1e6"));
+    expect(src).toContain(encodeURIComponent(folkLayerSrc("arm-l")));
+  });
+
+  test("only generated folks count as folk avatars", () => {
+    expect(isFolkAvatar(firstFolk)).toBe(true);
+    expect(isFolkAvatar(generateBoringAvatar({ name: "Writer" }))).toBe(true);
+    expect(isFolkAvatar(generateBoringAvatar({ name: "Writer", variant: "beam" }))).toBe(false);
+    expect(isFolkAvatar("data:image/jpeg;base64,/9j/4AAQ")).toBe(false);
+    expect(isFolkAvatar(null)).toBe(false);
+  });
+});
+
 describe("sessionAvatars", () => {
   const writer: Bot = {
     id: "writer",
@@ -230,22 +251,22 @@ describe("sessionAvatars", () => {
 
   test("you↔Bot shows only the Bot's saved avatar", () => {
     expect(sessionAvatars(direct(["user", "writer"]), bots)).toEqual([
-      { id: "writer", name: "Writer", src: avatarSrc(writer.avatar) },
+      { id: "writer", name: "Writer", src: avatarSrc(writer.avatar), avatar: writer.avatar },
     ]);
   });
 
   test("Bot↔Bot shows both avatars in participant order", () => {
     expect(sessionAvatars(direct(["reviewer", "writer"]), bots)).toEqual([
-      { id: "reviewer", name: "审查员", src: reviewer.avatar },
-      { id: "writer", name: "Writer", src: avatarSrc(writer.avatar) },
+      { id: "reviewer", name: "审查员", src: reviewer.avatar, avatar: reviewer.avatar },
+      { id: "writer", name: "Writer", src: avatarSrc(writer.avatar), avatar: writer.avatar },
     ]);
   });
 
   test("groups show member bot avatars in participant order", () => {
     const group = { ...direct(["user", "writer", "reviewer"]), kind: "group" as const, name: "Brief" };
     expect(sessionAvatars(group, bots)).toEqual([
-      { id: "writer", name: "Writer", src: avatarSrc(writer.avatar) },
-      { id: "reviewer", name: "审查员", src: reviewer.avatar },
+      { id: "writer", name: "Writer", src: avatarSrc(writer.avatar), avatar: writer.avatar },
+      { id: "reviewer", name: "审查员", src: reviewer.avatar, avatar: reviewer.avatar },
     ]);
   });
 
@@ -263,7 +284,7 @@ describe("sessionAvatars", () => {
 
   test("deleted Bots retain a placeholder without exposing their id as a name", () => {
     expect(sessionAvatars(direct(["user", "deleted-bot"]), bots)).toEqual([
-      { id: "deleted-bot", name: null, src: null },
+      { id: "deleted-bot", name: null, src: null, avatar: null },
     ]);
   });
 
@@ -271,7 +292,7 @@ describe("sessionAvatars", () => {
     for (const avatar of [null, undefined, "", "invalid"]) {
       const withoutAvatar = new Map([[writer.id, { ...writer, avatar }]]);
       expect(sessionAvatars(direct(["user", "writer"]), withoutAvatar)).toEqual([
-        { id: "writer", name: "Writer", src: null },
+        { id: "writer", name: "Writer", src: null, avatar: avatar ?? null },
       ]);
     }
   });
@@ -281,7 +302,7 @@ describe("sessionAvatars", () => {
     const updated = new Map(bots);
     updated.set("writer", { ...writer, name: "Editor", avatar: reviewer.avatar });
     expect(sessionAvatars(session, updated)).toEqual([
-      { id: "writer", name: "Editor", src: reviewer.avatar },
+      { id: "writer", name: "Editor", src: reviewer.avatar, avatar: reviewer.avatar },
     ]);
   });
 });

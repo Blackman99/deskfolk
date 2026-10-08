@@ -1,7 +1,8 @@
 <script lang="ts">
 	import type { Bot } from '@real-bot/protocol';
 	import type { ReplyingEntry } from './transcript.ts';
-	import { avatarSrc, botAvatarColor } from '../avatar.ts';
+	import { avatarSrc, botAvatarColor, isFolkAvatar } from '../avatar.ts';
+	import FolkAvatar from '../FolkAvatar.svelte';
 	import { rosterLetter } from '../sidebar/roster-letter.ts';
 
 	/**
@@ -24,6 +25,7 @@
 {#snippet identity(entry: ReplyingEntry)}
 	{@const replyBot = botsById.get(entry.bot_id)}
 	{@const pal = botAvatarColor(entry.bot_id)}
+	{@const acting = isFolkAvatar(replyBot?.avatar)}
 	{#if onOpenProfile && replyBot}
 		<button
 			type="button"
@@ -33,9 +35,12 @@
 		>
 			<div
 				class="attached-replying-avatar"
-				style="background: {pal.bg}; color: {pal.text}; border-color: {pal.border};"
+				class:is-folk={acting}
+				style={acting ? undefined : `background: ${pal.bg}; color: ${pal.text}; border-color: ${pal.border};`}
 			>
-				{#if avatarSrc(replyBot.avatar)}
+				{#if acting && replyBot.avatar}
+					<FolkAvatar avatar={replyBot.avatar} motion="running" />
+				{:else if avatarSrc(replyBot.avatar)}
 					<img src={avatarSrc(replyBot.avatar)} alt="" class="avatar-img" />
 				{:else}
 					{rosterLetter(replyBot.name)}
@@ -47,10 +52,13 @@
 		<div class="attached-replying-chip">
 			<div
 				class="attached-replying-avatar"
-				style="background: {pal.bg}; color: {pal.text}; border-color: {pal.border};"
+				class:is-folk={acting}
+				style={acting ? undefined : `background: ${pal.bg}; color: ${pal.text}; border-color: ${pal.border};`}
 				title={replyBot?.name ?? deletedText}
 			>
-				{#if avatarSrc(replyBot?.avatar)}
+				{#if acting && replyBot?.avatar}
+					<FolkAvatar avatar={replyBot.avatar} motion="running" />
+				{:else if avatarSrc(replyBot?.avatar)}
 					<img src={avatarSrc(replyBot?.avatar)} alt="" class="avatar-img" />
 				{:else}
 					{rosterLetter(replyBot?.name ?? '?')}

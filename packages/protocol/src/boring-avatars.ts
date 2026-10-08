@@ -1,4 +1,4 @@
-import { renderFolk } from "./folk-avatar.ts";
+import { folkAvatar } from "./folk-avatar.ts";
 
 export type BoringAvatarVariant =
   | "folk"
@@ -354,7 +354,7 @@ export function generateBoringAvatar(options: BoringAvatarOptions): string {
 
   switch (variant) {
     case "folk":
-      return renderFolk(hashCode(name), size, square, title ? `<title>${escapeXml(name)}</title>` : "");
+      return folkAvatar(hashCode(name), size, title ? `<title>${escapeXml(name)}</title>` : "");
     case "beam":
       return renderBeam(name, colors, size, square, title);
     case "marble":

@@ -10,6 +10,7 @@ import { join } from "node:path";
 import type { Database } from "bun:sqlite";
 import {
   USER_MEMBER,
+  compactFolkAvatar,
   generateBoringAvatar,
   isBotRunner,
   isClaudeEffort,
@@ -441,7 +442,8 @@ export function toBot(row: BotRow): Bot {
     name: row.name,
     duties: row.duties,
     boundaries: row.boundaries,
-    avatar: row.avatar ?? generateBoringAvatar({ name: row.name }),
+    // A folk saved in full before folks were stored small goes out small too (folkAvatar).
+    avatar: compactFolkAvatar(row.avatar ?? generateBoringAvatar({ name: row.name })),
     model: row.model,
     provider_id: row.provider_id,
     thinking_level: parseStoredThinkingLevel(row.thinking_level),
