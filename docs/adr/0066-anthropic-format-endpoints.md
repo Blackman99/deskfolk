@@ -31,6 +31,7 @@ You put it this way (2026-10-08): endpoints compatible with Anthropic's format. 
 - grok-4.7-build-fast（思考 low）：「读文件、追加一行、再读、说有几行」，10 跳 108 秒完成，每跳 1.5–4.5 秒；从第 2 跳起缓存命中（17,202 输入里 17,024 读自缓存）。
 - grok 每跳的缓存命中一路涨，说明跳与跳之间系统提示词、局面块和历史一字不差，只在末尾追加——Anthropic 新模型的「历史不许改」检查要的正是这个。但这是 CPA 和 grok 上的证据，不是 Anthropic 自己的检查。
 - 读句、整理跳（带规划文档的长回答）都走 Messages 正常返回；首轮里两次读句超时退回了词表，是因为当时 gemini 那一跳占着连接、而 gemini 又慢。
+- 百炼 Token Plan 的 `https://token-plan.cn-beijing.maas.aliyuncs.com/apps/anthropic`，同样两件事：glm-5.3 思考档 medium，第一跳的 `effort: medium` 被拒（「'reasoning_effort' must be one of: 'low', 'high', 'max'」，HTTP 400 带一个 SSE 错误事件），当场退到 `budget_tokens: 8192` 发成功，之后 13 跳都用它，12 跳 154 秒完成；deepseek-v4.1-flash 思考 low，新形式直接收。两个模型第 2 跳起都走缓存（glm 15,492 里 14,848、deepseek 15,273 里 15,104）。百炼的思考块签名是空串，跟着工具调用原样发回去（回路里最多 8 个）照收。`x-api-key` 直接认。这条地址没有 `/v1/models`（404），模型名要手填。
 - 设置界面（WebKit）：端点卡片显示「cpa.westlakedata.xyz · Anthropic」；编辑时选中 Anthropic 兼容，地址提示和占位跟着变；新建一个、切到 Anthropic 兼容、填完自动保存，存下来的是 `api_format: anthropic`；页面没有报错。
 
 On 2026-10-08 an isolated runtime (its own data folder and port; the running dev instance untouched) was pointed at CPA's (CLIProxyAPI) Messages address `https://cpa.westlakedata.xyz` with the format set to Anthropic-compatible:
@@ -40,12 +41,12 @@ On 2026-10-08 an isolated runtime (its own data folder and port; the running dev
 - grok-4.7-build-fast (thinking low), asked to read the file, append a line, read it again and count the lines: done in 10 hops and 108 s, 1.5–4.5 s a hop, with cache hits from hop 2 (17,024 of 17,202 input tokens read from the cache).
 - grok's cache hits grew hop by hop, so the system prompt, the situation block and the history stayed byte for byte the same between hops, only appended to — what the history-editing check of Anthropic's newer models needs. That is evidence from CPA and grok, not from Anthropic's own check.
 - Readings and the organizer (a long answer carrying a plan document) came back over Messages; two readings in the first turn timed out to the word lists, while a slow gemini hop held the connection.
+- Bailian's Token Plan at `https://token-plan.cn-beijing.maas.aliyuncs.com/apps/anthropic`, the same two chores: glm-5.3 at thinking medium had its first hop's `effort: medium` refused ("'reasoning_effort' must be one of: 'low', 'high', 'max'", an HTTP 400 carrying an SSE error event), stepped down at once to `budget_tokens: 8192`, which went through and served the next 13 hops; 12 hops, 154 s. deepseek-v4.1-flash at thinking low took the new form as is. Both read from the cache from hop 2 (glm 14,848 of 15,492, deepseek 15,104 of 15,273). Bailian's thinking blocks carry an empty signature and were taken back with the tool calls as they were (up to 8 in the loop). `x-api-key` was accepted. This address has no `/v1/models` (404), so model names are typed in.
 - Settings (WebKit): the endpoint's card reads "cpa.westlakedata.xyz · Anthropic"; editing it shows Anthropic-compatible selected, with the address hint and placeholder to match; a new one switched to Anthropic-compatible and filled in saved itself with `api_format: anthropic`; no page errors.
 
 ## 没测的 / Not tested
 
 - Anthropic 自己的 `api.anthropic.com`：这台机器上没有它的 API key。/ Anthropic's own `api.anthropic.com`: there is no API key for it on this machine.
-- 百炼的 Token Plan：条款只许交互式编码工具用，不许指给 Deskfolk 的 Bot。/ Bailian's Token Plan: its terms allow interactive coding tools only, not Deskfolk's Bots.
 
 ## 没做的 / Not done
 
