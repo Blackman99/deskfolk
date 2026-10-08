@@ -42,9 +42,31 @@ export function usageAccountShortLabels(accounts: ClaudeAccountUsage[], t: Copy)
   });
 }
 
-/** An account's name in full, for the opened meter and the card. */
+/** An account's name in full, for the opened meter and the card: its plan, then its email. */
 export function usageAccountLabel(account: ClaudeAccountUsage, t: Copy): string {
-  return account.email ?? account.config_dir ?? t.claudeAgent.usage.own;
+  const plan = account.plan?.replace(/^claude\s+/i, "").trim();
+  const who = account.email ?? account.config_dir ?? t.claudeAgent.usage.own;
+  return plan ? `${plan.charAt(0).toUpperCase()}${plan.slice(1)} · ${who}` : who;
+}
+
+/**
+ * What an account's group says after its short name: its email (else its directory), with its plan
+ * first when the short name is not the plan already.
+ */
+export function usageAccountDetail(account: ClaudeAccountUsage, shortLabel: string): string | null {
+  const plan = account.plan?.replace(/^claude\s+/i, "").trim() ?? "";
+  const parts = [plan && plan.toLowerCase() !== shortLabel.toLowerCase() ? `${plan.charAt(0).toUpperCase()}${plan.slice(1)}` : "", account.email ?? account.config_dir ?? ""];
+  const detail = parts.filter(Boolean).join(" · ");
+  return detail || null;
+}
+
+/** When the newest of these answers came; null when none ever did. */
+export function usageLatestCheck(accounts: ReadonlyArray<{ checked_at: string | null }>): string | null {
+  let latest: string | null = null;
+  for (const { checked_at: at } of accounts) {
+    if (at && !Number.isNaN(Date.parse(at)) && (!latest || Date.parse(at) > Date.parse(latest))) latest = at;
+  }
+  return latest;
 }
 
 /** Why an account shows no windows, in the card's and the meter's words; null when it has some. */
@@ -56,15 +78,16 @@ export function usageAccountNote(account: ClaudeAccountUsage, t: Copy): string |
   return null;
 }
 
-/** The two windows the closed meter shows, the plan's own. */
-export function headlineWindows(usage: Pick<ClaudeUsage, "windows">): ClaudeUsageWindow[] {
-  return usage.windows.filter((window) => window.kind !== "model");
+/** How much of a window is left, from how much is used: rounded down, so a window in use never reads 100%. */
+export function usageLeft(percentUsed: number): number {
+  return Math.min(100, Math.max(0, 100 - percentUsed));
 }
 
-/** Whole percent, never 0 for a window that has started filling. */
-export function usagePercentText(percent: number): string {
-  if (percent > 0 && percent < 1) return "<1%";
-  return `${Math.round(percent)}%`;
+/** What is left as the strip and the rows say it: whole percent rounded down, `<1%` for a sliver. */
+export function usageLeftText(percentUsed: number): string {
+  const left = usageLeft(percentUsed);
+  if (left > 0 && left < 1) return "<1%";
+  return `${Math.floor(left)}%`;
 }
 
 /** How full a window is, for its colour: worth a look from three quarters, nearly gone from nine tenths. */

@@ -1,9 +1,13 @@
 <script lang="ts">
 	import type { ClaudeUsage } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
-	import { usageCheckedTime, usageLevel, usagePercentText, usageResetText, usageWindowLabel } from './claude-usage.ts';
+	import { usageLeft, usageLeftText, usageLevel, usageResetText, usageWindowLabel } from './claude-usage.ts';
+	import ClaudeUsageFoot from './ClaudeUsageFoot.svelte';
 
-	/** Every window of your Claude plan with its bar and when it starts over (ADR 0061). */
+	/**
+	 * Every window of your Claude plan (ADR 0061), two lines each: its name, when it starts over and
+	 * how much is left of it, then a bar of what is left.
+	 */
 	interface Props {
 		usage: Omit<ClaudeUsage, 'accounts'>;
 		t: Copy;
@@ -11,13 +15,12 @@
 		/** The clock the reset times count from, ticked by whoever shows this. */
 		now: number;
 		busy: boolean;
-		/** Absent: no button, for every account but the last when several are shown, so one refresh asks them all. */
 		onRefresh?: () => void;
+		/** Whether to say when these were read, with the refresh button; off inside an account's group, whose list has one foot for all. */
+		foot?: boolean;
 	}
 
-	let { usage, t, locale, now, busy, onRefresh }: Props = $props();
-
-	const checked = $derived(usageCheckedTime(usage.checked_at, locale));
+	let { usage, t, locale, now, busy, onRefresh, foot = true }: Props = $props();
 </script>
 
 <div class="usage-rows" data-claude-usage-rows>
@@ -26,20 +29,16 @@
 			{@const reset = usageResetText(window.resets_at, now, t, locale)}
 			<li class="usage-row is-{usageLevel(window.percent)}" data-usage-window={window.kind}>
 				<span class="usage-name">{usageWindowLabel(window, t)}</span>
-				<span class="usage-percent">{usagePercentText(window.percent)}</span>
-				<span class="usage-bar" aria-hidden="true"><span style:width="{window.percent}%"></span></span>
-				{#if reset}<span class="usage-reset">{reset}</span>{/if}
+				<span class="usage-reset">{reset ?? ''}</span>
+				<span class="usage-percent">{t.claudeAgent.usage.left(usageLeftText(window.percent))}</span>
+				<!-- Filled with what is left, so an empty bar is a window spent. -->
+				<span class="usage-bar" aria-hidden="true"><span style:width="{usageLeft(window.percent)}%"></span></span>
 			</li>
 		{/each}
 	</ul>
-	<div class="usage-foot">
-		<span class="usage-checked" class:is-stale={usage.error !== null}>
-			{#if usage.error !== null && checked}{t.claudeAgent.usage.stale(checked)}{:else if checked}{t.claudeAgent.usage.checkedAt(checked)}{/if}
-		</span>
-		{#if onRefresh}
-			<button type="button" class="btn-xs" disabled={busy} onclick={onRefresh}>{busy ? t.claudeAgent.usage.refreshing : t.claudeAgent.usage.refresh}</button>
-		{/if}
-	</div>
+	{#if foot}
+		<ClaudeUsageFoot checkedAt={usage.checked_at} stale={usage.error !== null} {t} {locale} {busy} {onRefresh} />
+	{/if}
 </div>
 
 <style>
@@ -59,10 +58,11 @@
 		gap: 8px;
 	}
 
+	/* Name, when it starts over, what is left; the bar under all three. */
 	.usage-row {
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) max-content;
-		gap: 3px 8px;
+		grid-template-columns: max-content minmax(0, 1fr) max-content;
+		gap: 4px 8px;
 		align-items: baseline;
 		font-size: 12px;
 		min-width: 0;
@@ -113,31 +113,11 @@
 	}
 
 	.usage-reset {
-		grid-column: 1 / -1;
-		color: var(--muted);
-		font-size: 11px;
-	}
-
-	.usage-foot {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 8px;
-		min-width: 0;
-	}
-
-	.usage-checked {
 		min-width: 0;
 		color: var(--muted);
 		font-size: 11px;
-		line-height: 1.4;
-	}
-
-	.usage-checked.is-stale {
-		color: var(--warn-text);
-	}
-
-	.usage-foot .btn-xs {
-		flex-shrink: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 </style>

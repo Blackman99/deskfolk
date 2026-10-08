@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { ClaudeUsage } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
-import { headlineWindows, usageAccountShortLabels, usageLevel, usagePercentText, usageResetText, usageWindowLabel } from "../settings/claude-usage.ts";
+import { usageAccountDetail, usageAccountLabel, usageAccountShortLabels, usageLatestCheck, usageLeftText, usageLevel, usageResetText, usageWindowLabel } from "../settings/claude-usage.ts";
 import { aBot, fakeRuntime } from "../test-fixtures.ts";
 import { reactive } from "../test-reactive.svelte.ts";
 import { click, render } from "../test-render.ts";
@@ -35,12 +35,15 @@ function open(options: { runner?: "claude_code" | null; answer?: () => Promise<C
   return { ...view, asked };
 }
 
-test("the plan's two windows at a glance; the model's own and the reset times once opened", async () => {
+test("what is left of the plan's two windows at a glance, under Claude's mark; the model's own and the reset times once opened", async () => {
   const view = open();
   await sleep(0);
   expect(view.asked).toEqual([false]);
   const chips = [...view.host.querySelectorAll("[data-usage-chip]")].map((chip) => chip.textContent?.replace(/\s+/g, " ").trim());
-  expect(chips).toEqual(["5小时 2%", "7天 91%"]);
+  expect(chips).toEqual(["5小时 剩98%", "7天 剩9%"]);
+  // The mark stands where the word was.
+  expect(view.host.querySelector(".usage-summary [data-claude-spark]")).not.toBeNull();
+  expect(view.host.querySelector(".usage-summary")?.textContent).not.toContain("Claude");
   // Nine tenths gone reads as nearly out.
   expect(view.host.querySelector('[data-usage-chip="seven_day"]')?.classList.contains("is-danger")).toBe(true);
   expect(view.host.querySelector("[data-claude-usage-rows]")).toBeNull();
@@ -51,6 +54,7 @@ test("the plan's two windows at a glance; the model's own and the reset times on
   await sleep(0);
   const names = [...view.host.querySelectorAll(".usage-name")].map((name) => name.textContent);
   expect(names).toEqual(["5 小时", "7 天", "Fable · 7 天"]);
+  expect([...view.host.querySelectorAll(".usage-percent")].map((left) => left.textContent)).toEqual(["剩98%", "剩9%", "剩96%"]);
   expect(view.host.querySelectorAll(".usage-reset")).toHaveLength(3);
 
   // A refresh asks the daemon for a younger answer.
@@ -92,11 +96,16 @@ test("a window resets in so long within a day, on a weekday and time after that"
 });
 
 test("labels, percents and levels", () => {
-  expect(headlineWindows(usage).map((window) => window.kind)).toEqual(["five_hour", "seven_day"]);
   expect(usageWindowLabel(usage.windows[2]!, en)).toBe("Fable · 7-day");
-  expect(usagePercentText(0)).toBe("0%");
-  expect(usagePercentText(0.4)).toBe("<1%");
-  expect(usagePercentText(26.96)).toBe("27%");
+  // What is left rounds down: a window in use never reads full.
+  expect([usageLeftText(0), usageLeftText(0.4), usageLeftText(26.96), usageLeftText(99.6), usageLeftText(100), usageLeftText(120)]).toEqual(["100%", "99%", "73%", "<1%", "0%", "0%"]);
+  expect(en.claudeAgent.usage.left("73%")).toBe("73% left");
+  expect(usageAccountLabel({ ...usage, config_dir: null, email: "a@b.c", plan: "claude team" }, t)).toBe("Team · a@b.c");
+  // A group named by its plan says the email; one named by its email says the plan too.
+  expect(usageAccountDetail({ ...usage, config_dir: null, email: "a@b.c", plan: "team" }, "Team")).toBe("a@b.c");
+  expect(usageAccountDetail({ ...usage, config_dir: "/x/.claude-b", email: null, plan: "max" }, "me")).toBe("Max · /x/.claude-b");
+  expect(usageLatestCheck([{ checked_at: "2026-10-08T11:00:00.000Z" }, { checked_at: null }, { checked_at: "2026-10-08T11:05:00.000Z" }])).toBe("2026-10-08T11:05:00.000Z");
+  expect(usageLatestCheck([{ checked_at: null }])).toBeNull();
   expect([usageLevel(74), usageLevel(75), usageLevel(89.9), usageLevel(90)]).toEqual(["normal", "warn", "warn", "danger"]);
 });
 
@@ -109,11 +118,19 @@ test("Bots on two Claude accounts: a line for each, named by its email, and each
   const lines = [...view.host.querySelectorAll(".usage-line")].map((line) =>
     [line.querySelector(".usage-title"), ...line.querySelectorAll("[data-usage-chip]")].map((part) => part?.textContent?.replace(/\s+/g, " ").trim()).join(" "));
   // Their plans tell them apart, so the plans name them; the opened meter has the emails.
-  expect(lines).toEqual(["Pro 5小时 2% 7天 91%", "Team 5小时 80% 7天 30%"]);
+  expect(lines).toEqual(["Pro 5小时 剩98% 7天 剩9%", "Team 5小时 剩20% 7天 剩70%"]);
+  // One mark for the strip, on its first line.
+  expect(view.host.querySelectorAll(".usage-summary [data-claude-spark]")).toHaveLength(1);
   expect(view.host.querySelector('[data-usage-account="/Users/you/.claude-b"] [data-usage-chip="five_hour"]')?.classList.contains("is-warn")).toBe(true);
   click(view.host.querySelector<HTMLButtonElement>(".usage-summary")!);
   await sleep(0);
-  expect([...view.host.querySelectorAll(".usage-detail-account")].map((label) => label.textContent)).toEqual(["pro@example.com", "team@example.com"]);
+  // Each account a group of its own, named as on its closed line, its email under the name.
+  const groups = [...view.host.querySelectorAll("[data-usage-account-group]")];
+  expect(groups.map((group) => group.querySelector(".usage-account-name")?.textContent)).toEqual(["Pro", "Team"]);
+  expect(groups.map((group) => group.querySelector(".usage-account-detail")?.textContent)).toEqual(["pro@example.com", "team@example.com"]);
+  expect(groups.map((group) => group.querySelectorAll("[data-usage-window]").length)).toEqual([3, 2]);
+  // One line under all of them says when, with one refresh.
+  expect(view.host.querySelectorAll(".usage-foot")).toHaveLength(1);
   expect(view.host.querySelectorAll(".usage-foot button")).toHaveLength(1);
   view.close();
 });

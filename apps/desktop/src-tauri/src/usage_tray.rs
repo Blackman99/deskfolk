@@ -1,14 +1,17 @@
-//! Your Claude plan's usage at the top of the menu bar menu (ADR 0061): the same
+//! What is left of your Claude plan at the top of the menu bar menu (ADR 0061): the same
 //! `GET /v1/claude-usage` the sidebar reads, asked once a minute while the daemon is up. The
 //! daemon keeps each answer for five minutes, so this starts at most one `claude` per five
-//! minutes, and none at all until a Bot runs on Claude Agent. With Bots on more than one Claude
-//! account, each account's lines come under its own name. The lines go away when there is
-//! nothing to show; a click on one shows the window.
+//! minutes, and none at all until a Bot runs on Claude Agent. Each account is a group of its own,
+//! set off by separators: its name under Claude's mark, then a line per window with a ring as full
+//! as what is left of it. The lines go away when there is nothing to show; a click on one shows
+//! the window.
 
 use serde::Deserialize;
+use std::f64::consts::TAU;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::image::Image;
+use tauri::menu::{IconMenuItem, Menu, PredefinedMenuItem};
 use tauri::{AppHandle, Manager, Wry};
 
 use crate::supervisor::Endpoint;
@@ -18,9 +21,18 @@ const POLL: Duration = Duration::from_secs(60);
 const FETCH_TIMEOUT: Duration = Duration::from_secs(40);
 pub const ITEM_PREFIX: &str = "usage-";
 
+/// Menu icons are drawn at 18 pt; these are 36 px, for a Retina screen.
+const ICON_PX: u32 = 36;
+/// Anthropic's Claude Spark in its own colour (as `ClaudeSpark.svelte` draws it), 30 px inside a
+/// transparent 36 px square, as raw RGBA: rendered from that SVG path once, since a menu icon
+/// takes pixels and this crate has no image decoder.
+static CLAUDE_SPARK: &[u8] = include_bytes!("claude-spark-36.rgba");
+
 #[derive(Debug, Deserialize)]
 pub struct Usage {
     pub available: bool,
+    #[serde(default)]
+    pub plan: Option<String>,
     #[serde(default)]
     pub windows: Vec<UsageWindow>,
     /// Each account some Bot runs on; absent from a daemon older than accounts.
@@ -36,6 +48,8 @@ pub struct AccountUsage {
     #[serde(default)]
     pub windows: Vec<UsageWindow>,
     #[serde(default)]
+    pub plan: Option<String>,
+    #[serde(default)]
     pub email: Option<String>,
     #[serde(default)]
     pub config_dir: Option<String>,
@@ -49,12 +63,39 @@ pub struct UsageWindow {
     pub resets_at: Option<String>,
 }
 
+/// One row of the usage part of the menu.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Entry {
+    /// An account's name, under Claude's mark.
+    Account(String),
+    /// A window and how much of it is left, under a ring as full as that.
+    Window {
+        text: String,
+        left: f64,
+        level: Level,
+    },
+    Separator,
+}
+
+/// How full a window is, for its ring's colour: as the sidebar colours it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Level {
+    Normal,
+    Warn,
+    Danger,
+}
+
+enum Placed {
+    Item(IconMenuItem<Wry>),
+    Separator(PredefinedMenuItem<Wry>),
+}
+
 #[derive(Default)]
 struct Shown {
     menu: Option<Menu<Wry>>,
-    items: Vec<MenuItem<Wry>>,
-    separator: Option<PredefinedMenuItem<Wry>>,
-    lines: Vec<String>,
+    /// What is in the menu now, the separator under the last group included.
+    placed: Vec<Placed>,
+    entries: Vec<Entry>,
 }
 
 /// The menu the lines go into and what is in it now. Only the worker thread below locks this,
@@ -74,15 +115,15 @@ pub fn start(
     })));
     let handle = app.clone();
     std::thread::spawn(move || loop {
-        let lines = match endpoint(&handle) {
+        let entries = match endpoint(&handle) {
             // A failed ask keeps the lines already shown; the next minute asks again.
             Some(endpoint) => match fetch(&endpoint) {
-                Some(usage) => usage_lines(&usage, now_secs()),
-                None => current_lines(&handle),
+                Some(usage) => usage_entries(&usage, now_secs()),
+                None => current_entries(&handle),
             },
             None => Vec::new(),
         };
-        show(&handle, lines);
+        show(&handle, entries);
         std::thread::sleep(POLL);
     });
 }
@@ -100,54 +141,103 @@ fn fetch(endpoint: &Endpoint) -> Option<Usage> {
         .ok()
 }
 
-fn current_lines(app: &AppHandle) -> Vec<String> {
+fn current_entries(app: &AppHandle) -> Vec<Entry> {
     let state = app.state::<UsageTray>();
-    let lines = state.0.lock().map(|s| s.lines.clone()).unwrap_or_default();
-    lines
+    let entries = state
+        .0
+        .lock()
+        .map(|s| s.entries.clone())
+        .unwrap_or_default();
+    entries
 }
 
-/// Puts `lines` at the top of the menu with a separator under them: renamed in place when as many
-/// as before, rebuilt otherwise, nothing at all when there are none.
-fn show(app: &AppHandle, lines: Vec<String>) {
+fn icon_of(entry: &Entry) -> Option<Image<'static>> {
+    match entry {
+        Entry::Account(_) => Some(Image::new(CLAUDE_SPARK, ICON_PX, ICON_PX)),
+        Entry::Window { left, level, .. } => {
+            Some(Image::new_owned(ring_rgba(*left, *level), ICON_PX, ICON_PX))
+        }
+        Entry::Separator => None,
+    }
+}
+
+fn text_of(entry: &Entry) -> &str {
+    match entry {
+        Entry::Account(text) | Entry::Window { text, .. } => text,
+        Entry::Separator => "",
+    }
+}
+
+/// Puts `entries` at the top of the menu with a separator under them: changed in place when they
+/// have the same shape as before (so an open menu does not jump), rebuilt otherwise, nothing at
+/// all when there are none.
+fn show(app: &AppHandle, entries: Vec<Entry>) {
     let state = app.state::<UsageTray>();
     let Ok(mut shown) = state.0.lock() else {
         return;
     };
-    if shown.lines == lines {
+    if shown.entries == entries {
         return;
     }
     let Some(menu) = shown.menu.clone() else {
         return;
     };
-    if lines.len() == shown.items.len() {
-        for (item, line) in shown.items.iter().zip(&lines) {
-            let _ = item.set_text(line);
-        }
-    } else {
-        for item in shown.items.drain(..) {
-            let _ = menu.remove(&item);
-        }
-        if let Some(separator) = shown.separator.take() {
-            let _ = menu.remove(&separator);
-        }
-        for (i, line) in lines.iter().enumerate() {
-            if let Ok(item) =
-                MenuItem::with_id(app, format!("{ITEM_PREFIX}{i}"), line, true, None::<&str>)
-            {
-                if menu.insert(&item, i).is_ok() {
-                    shown.items.push(item);
-                }
+    let same_shape = shown.entries.len() == entries.len()
+        && shown
+            .entries
+            .iter()
+            .zip(&entries)
+            .all(|(a, b)| std::mem::discriminant(a) == std::mem::discriminant(b));
+    if same_shape && !entries.is_empty() {
+        for (placed, entry) in shown.placed.iter().zip(&entries) {
+            if let Placed::Item(item) = placed {
+                let _ = item.set_text(text_of(entry));
+                let _ = item.set_icon(icon_of(entry));
             }
         }
-        if !shown.items.is_empty() {
+    } else {
+        for placed in shown.placed.drain(..) {
+            let _ = match placed {
+                Placed::Item(item) => menu.remove(&item),
+                Placed::Separator(separator) => menu.remove(&separator),
+            };
+        }
+        let mut position = 0;
+        for (i, entry) in entries.iter().enumerate() {
+            let placed = match entry {
+                Entry::Separator => PredefinedMenuItem::separator(app)
+                    .ok()
+                    .map(Placed::Separator),
+                _ => IconMenuItem::with_id(
+                    app,
+                    format!("{ITEM_PREFIX}{i}"),
+                    text_of(entry),
+                    true,
+                    icon_of(entry),
+                    None::<&str>,
+                )
+                .ok()
+                .map(Placed::Item),
+            };
+            let Some(placed) = placed else { continue };
+            let inserted = match &placed {
+                Placed::Item(item) => menu.insert(item, position),
+                Placed::Separator(separator) => menu.insert(separator, position),
+            };
+            if inserted.is_ok() {
+                shown.placed.push(placed);
+                position += 1;
+            }
+        }
+        if !entries.is_empty() {
             if let Ok(separator) = PredefinedMenuItem::separator(app) {
-                if menu.insert(&separator, shown.items.len()).is_ok() {
-                    shown.separator = Some(separator);
+                if menu.insert(&separator, position).is_ok() {
+                    shown.placed.push(Placed::Separator(separator));
                 }
             }
         }
     }
-    shown.lines = lines;
+    shown.entries = entries;
 }
 
 fn now_secs() -> i64 {
@@ -157,60 +247,173 @@ fn now_secs() -> i64 {
         .unwrap_or(0)
 }
 
-/// One line per window, the plan's own first, as the daemon orders them; none when unavailable.
-/// With several accounts, each one's windows come under a line naming it (its email, else its
-/// config directory, else the default account), and one signed out says so on that line.
-pub fn usage_lines(usage: &Usage, now: i64) -> Vec<String> {
-    if usage.accounts.len() > 1 {
-        if !usage.accounts.iter().any(|account| account.available) {
-            return Vec::new();
+/// The usage part of the menu: a group per account some Bot runs on, set off by separators, each
+/// its name under Claude's mark (`Claude Pro · you@example.com`; one signed out says so there and
+/// has no windows), then a line per window — the plan's own first, as the daemon orders them —
+/// with how much of it is left and when it starts over. Nothing when no account has windows.
+pub fn usage_entries(usage: &Usage, now: i64) -> Vec<Entry> {
+    // A daemon older than accounts answers for one, with no name to give it.
+    let single;
+    let accounts: Vec<&AccountUsage> = if usage.accounts.is_empty() {
+        single = AccountUsage {
+            available: usage.available,
+            reason: None,
+            windows: Vec::new(),
+            plan: usage.plan.clone(),
+            email: None,
+            config_dir: None,
+        };
+        vec![&single]
+    } else {
+        usage.accounts.iter().collect()
+    };
+    let windows_of = |index: usize| -> &[UsageWindow] {
+        if usage.accounts.is_empty() {
+            &usage.windows
+        } else {
+            &usage.accounts[index].windows
         }
-        let mut lines = Vec::new();
-        for account in &usage.accounts {
-            let label = account
-                .email
-                .as_deref()
-                .or(account.config_dir.as_deref())
-                .unwrap_or("默认账号");
-            if account.available {
-                lines.push(format!("Claude · {label}"));
-                lines.extend(window_lines(&account.windows, now, ""));
-            } else if account.reason.as_deref() == Some("signed_out") {
-                lines.push(format!("Claude · {label}：未登录"));
-            }
-        }
-        return lines;
-    }
-    if !usage.available {
+    };
+    if !accounts.iter().any(|account| account.available) {
         return Vec::new();
     }
-    window_lines(&usage.windows, now, "Claude ")
+    let several = accounts.len() > 1;
+    let mut entries = Vec::new();
+    for (index, account) in accounts.iter().enumerate() {
+        let signed_out = account.reason.as_deref() == Some("signed_out");
+        if !account.available && !signed_out {
+            continue;
+        }
+        if !entries.is_empty() {
+            entries.push(Entry::Separator);
+        }
+        let plan = account.plan.as_deref().map(plan_name).unwrap_or_default();
+        let who = account
+            .email
+            .as_deref()
+            .or(account.config_dir.as_deref())
+            .or(several.then_some("默认账号"));
+        let name = match (plan.is_empty(), who) {
+            (false, Some(who)) => format!("Claude {plan} · {who}"),
+            (false, None) => format!("Claude {plan}"),
+            (true, Some(who)) => format!("Claude · {who}"),
+            (true, None) => "Claude".to_string(),
+        };
+        if account.available {
+            entries.push(Entry::Account(name));
+            entries.extend(window_entries(windows_of(index), now));
+        } else {
+            entries.push(Entry::Account(format!("{name}：未登录")));
+        }
+    }
+    entries
 }
 
-/// A line per window; `prefix` goes before the plan's own two (`Claude 5 小时`).
-fn window_lines(windows: &[UsageWindow], now: i64, prefix: &str) -> Vec<String> {
+/// A line per window with how much of it is left; a model's own weekly window is named for it.
+fn window_entries(windows: &[UsageWindow], now: i64) -> Vec<Entry> {
     windows
         .iter()
         .map(|window| {
             let name = match window.kind.as_str() {
-                "five_hour" => format!("{prefix}5 小时"),
-                "seven_day" => format!("{prefix}7 天"),
+                "five_hour" => "5 小时".to_string(),
+                "seven_day" => "7 天".to_string(),
                 _ => format!("{} 7 天", window.model.as_deref().unwrap_or("Claude")),
             };
-            let percent = percent_text(window.percent);
-            match window.resets_at.as_deref().and_then(parse_rfc3339) {
-                Some(at) => format!("{name}：{percent}（{}）", reset_text(at - now)),
-                None => format!("{name}：{percent}"),
+            let left = left_text(window.percent);
+            let text = match window.resets_at.as_deref().and_then(parse_rfc3339) {
+                Some(at) => format!("{name}：剩 {left}（{}）", reset_text(at - now)),
+                None => format!("{name}：剩 {left}"),
+            };
+            Entry::Window {
+                text,
+                left: (100.0 - window.percent).clamp(0.0, 100.0),
+                level: level_of(window.percent),
             }
         })
         .collect()
 }
 
-fn percent_text(percent: f64) -> String {
-    if percent > 0.0 && percent < 1.0 {
+/// Worth a look from three quarters used, nearly gone from nine tenths, as in the sidebar.
+fn level_of(used: f64) -> Level {
+    if used >= 90.0 {
+        Level::Danger
+    } else if used >= 75.0 {
+        Level::Warn
+    } else {
+        Level::Normal
+    }
+}
+
+/// A ring filled clockwise from twelve o'clock as far as `left` percent, the rest a faint track,
+/// as 36 px RGBA. The colours read on a light and a dark menu alike: a menu icon cannot be a
+/// template image here, so it does not take the menu's own colour.
+fn ring_rgba(left: f64, level: Level) -> Vec<u8> {
+    let (r, g, b) = match level {
+        Level::Normal => (0x8b, 0x98, 0x9e),
+        Level::Warn => (0xf5, 0x9e, 0x0b),
+        Level::Danger => (0xef, 0x44, 0x44),
+    };
+    let size = ICON_PX as usize;
+    let center = size as f64 / 2.0;
+    let (outer, inner) = (13.0, 9.0);
+    let sweep = left.clamp(0.0, 100.0) / 100.0 * TAU;
+    let mut rgba = vec![0u8; size * size * 4];
+    for y in 0..size {
+        for x in 0..size {
+            // Sixteen samples a pixel, so the edges are smooth.
+            let (mut filled, mut track) = (0u32, 0u32);
+            for sy in 0..4 {
+                for sx in 0..4 {
+                    let dx = x as f64 + (sx as f64 + 0.5) / 4.0 - center;
+                    let dy = y as f64 + (sy as f64 + 0.5) / 4.0 - center;
+                    let distance = (dx * dx + dy * dy).sqrt();
+                    if distance < inner || distance > outer {
+                        continue;
+                    }
+                    let mut angle = dx.atan2(-dy);
+                    if angle < 0.0 {
+                        angle += TAU;
+                    }
+                    if angle < sweep {
+                        filled += 1;
+                    } else {
+                        track += 1;
+                    }
+                }
+            }
+            let alpha = (filled as f64 + track as f64 * 0.35) / 16.0 * 255.0;
+            if alpha > 0.0 {
+                let at = (y * size + x) * 4;
+                rgba[at..at + 4].copy_from_slice(&[r, g, b, alpha.round() as u8]);
+            }
+        }
+    }
+    rgba
+}
+
+/// What is left of a window from how much is used: rounded down, so a window in use never reads
+/// 100%, and `<1%` for a sliver.
+fn left_text(used: f64) -> String {
+    let left = (100.0 - used).clamp(0.0, 100.0);
+    if left > 0.0 && left < 1.0 {
         return "<1%".to_string();
     }
-    format!("{}%", percent.clamp(0.0, 100.0).round() as i64)
+    format!("{}%", left.floor() as i64)
+}
+
+/// `pro` or `claude max` as Claude names the plan: `Pro`, `Max`.
+fn plan_name(plan: &str) -> String {
+    let plan = plan.trim();
+    let plan = plan
+        .strip_prefix("claude ")
+        .or_else(|| plan.strip_prefix("Claude "))
+        .unwrap_or(plan)
+        .trim();
+    let mut chars = plan.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+        None => String::new(),
+    }
 }
 
 /// How long until a window starts over, in the menu's words.
@@ -287,6 +490,17 @@ mod tests {
         serde_json::from_str(json).unwrap()
     }
 
+    fn texts(entries: &[Entry]) -> Vec<String> {
+        entries
+            .iter()
+            .map(|entry| match entry {
+                Entry::Account(text) => format!("[Claude] {text}"),
+                Entry::Window { text, .. } => format!("[ring] {text}"),
+                Entry::Separator => "---".to_string(),
+            })
+            .collect()
+    }
+
     #[test]
     fn reads_claude_codes_timestamps() {
         assert_eq!(parse_rfc3339("1970-01-01T00:00:00Z"), Some(0));
@@ -304,65 +518,120 @@ mod tests {
     }
 
     #[test]
-    fn one_line_per_window_with_when_it_resets() {
+    fn one_account_its_name_then_what_is_left_of_each_window() {
         let now = parse_rfc3339("2026-10-08T11:00:00Z").unwrap();
+        // As a daemon older than accounts answers: no name beyond the plan.
         let answer = usage(
             r#"{"available":true,"reason":null,"plan":"pro","checked_at":"2026-10-08T11:00:00.000Z","error":null,"windows":[
               {"kind":"five_hour","model":null,"percent":2,"resets_at":"2026-10-08T15:50:00.000Z"},
               {"kind":"seven_day","model":null,"percent":91.4,"resets_at":"2026-10-11T02:00:00+00:00"},
               {"kind":"model","model":"Fable","percent":0.4,"resets_at":null},
-              {"kind":"model","model":"Opus","percent":40,"resets_at":"2026-10-08T11:20:00Z"}]}"#,
+              {"kind":"model","model":"Opus","percent":76,"resets_at":"2026-10-08T11:20:00Z"}]}"#,
         );
+        let entries = usage_entries(&answer, now);
         assert_eq!(
-            usage_lines(&answer, now),
+            texts(&entries),
             vec![
-                "Claude 5 小时：2%（4 小时 50 分后重置）",
-                "Claude 7 天：91%（2 天 15 小时后重置）",
-                "Fable 7 天：<1%",
-                "Opus 7 天：40%（20 分钟后重置）",
+                "[Claude] Claude Pro",
+                "[ring] 5 小时：剩 98%（4 小时 50 分后重置）",
+                "[ring] 7 天：剩 8%（2 天 15 小时后重置）",
+                "[ring] Fable 7 天：剩 99%",
+                "[ring] Opus 7 天：剩 24%（20 分钟后重置）",
             ]
+        );
+        let levels: Vec<Level> = entries
+            .iter()
+            .filter_map(|entry| match entry {
+                Entry::Window { level, .. } => Some(*level),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            levels,
+            vec![Level::Normal, Level::Danger, Level::Normal, Level::Warn]
         );
     }
 
     #[test]
-    fn several_accounts_each_under_its_name() {
+    fn each_account_a_group_of_its_own() {
         let now = parse_rfc3339("2026-10-08T11:00:00Z").unwrap();
         let answer = usage(
             r#"{"available":true,"windows":[{"kind":"five_hour","model":null,"percent":2,"resets_at":null}],"accounts":[
-              {"available":true,"reason":null,"config_dir":null,"email":"pro@a.c","windows":[
+              {"available":true,"reason":null,"config_dir":null,"plan":"pro","email":"pro@a.c","windows":[
                 {"kind":"five_hour","model":null,"percent":2,"resets_at":null},
                 {"kind":"seven_day","model":null,"percent":91,"resets_at":"2026-10-08T11:20:00Z"}]},
-              {"available":true,"reason":null,"config_dir":"/Users/a/.claude-b","email":null,"windows":[
+              {"available":true,"reason":null,"config_dir":"/Users/a/.claude-b","plan":"claude team","email":null,"windows":[
                 {"kind":"five_hour","model":null,"percent":40,"resets_at":null},
-                {"kind":"model","model":"Fable","percent":0.4,"resets_at":null}]},
-              {"available":false,"reason":"signed_out","config_dir":"/Users/a/.claude-c","email":null,"windows":[]}]}"#,
+                {"kind":"model","model":"Fable","percent":99.6,"resets_at":null}]},
+              {"available":false,"reason":"signed_out","config_dir":"/Users/a/.claude-c","email":null,"windows":[]},
+              {"available":false,"reason":"failed","config_dir":"/Users/a/.claude-d","email":null,"windows":[]}]}"#,
         );
         assert_eq!(
-            usage_lines(&answer, now),
+            texts(&usage_entries(&answer, now)),
             vec![
-                "Claude · pro@a.c",
-                "5 小时：2%",
-                "7 天：91%（20 分钟后重置）",
-                "Claude · /Users/a/.claude-b",
-                "5 小时：40%",
-                "Fable 7 天：<1%",
-                "Claude · /Users/a/.claude-c：未登录",
+                "[Claude] Claude Pro · pro@a.c",
+                "[ring] 5 小时：剩 98%",
+                "[ring] 7 天：剩 9%（20 分钟后重置）",
+                "---",
+                "[Claude] Claude Team · /Users/a/.claude-b",
+                "[ring] 5 小时：剩 60%",
+                "[ring] Fable 7 天：剩 <1%",
+                "---",
+                "[Claude] Claude · /Users/a/.claude-c：未登录",
             ]
         );
-        // One account in the list reads as before.
+        // One account in the list reads as before, under its name.
         let one = usage(
-            r#"{"available":true,"windows":[{"kind":"five_hour","model":null,"percent":2,"resets_at":null}],"accounts":[
-              {"available":true,"config_dir":null,"email":"pro@a.c","windows":[{"kind":"five_hour","model":null,"percent":2,"resets_at":null}]}]}"#,
+            r#"{"available":true,"windows":[],"accounts":[
+              {"available":true,"config_dir":null,"plan":"max","email":"me@a.c","windows":[{"kind":"five_hour","model":null,"percent":2,"resets_at":null}]}]}"#,
         );
-        assert_eq!(usage_lines(&one, now), vec!["Claude 5 小时：2%"]);
+        assert_eq!(
+            texts(&usage_entries(&one, now)),
+            vec!["[Claude] Claude Max · me@a.c", "[ring] 5 小时：剩 98%"]
+        );
     }
 
     #[test]
     fn nothing_to_show_is_no_lines() {
         let none = usage(
-            r#"{"available":false,"reason":"unused","plan":null,"windows":[],"checked_at":null,"error":null}"#,
+            r#"{"available":false,"reason":"unused","plan":null,"windows":[],"checked_at":null,"error":null,"accounts":[]}"#,
         );
-        assert!(usage_lines(&none, 0).is_empty());
+        assert!(usage_entries(&none, 0).is_empty());
+        let out = usage(
+            r#"{"available":false,"windows":[],"accounts":[{"available":false,"reason":"signed_out","windows":[]}]}"#,
+        );
+        assert!(usage_entries(&out, 0).is_empty());
         assert_eq!(reset_text(30), "即将重置");
+    }
+
+    #[test]
+    fn the_ring_is_as_full_as_what_is_left() {
+        let alpha = |rgba: &[u8], x: usize, y: usize| rgba[(y * 36 + x) * 4 + 3];
+        // Twelve o'clock, three, six and nine, on the ring's middle.
+        let full = ring_rgba(100.0, Level::Normal);
+        let quarter = ring_rgba(30.0, Level::Danger);
+        let empty = ring_rgba(0.0, Level::Normal);
+        assert_eq!(alpha(&full, 18, 6), 255);
+        assert_eq!(alpha(&full, 6, 18), 255);
+        assert_eq!(alpha(&quarter, 29, 18), 255);
+        assert_eq!(
+            &quarter[(18 * 36 + 29) * 4..(18 * 36 + 29) * 4 + 3],
+            &[0xef, 0x44, 0x44]
+        );
+        assert!(alpha(&quarter, 18, 29) < 100 && alpha(&quarter, 18, 29) > 0);
+        assert!(alpha(&empty, 18, 6) < 100);
+        // Nothing drawn outside the ring.
+        assert_eq!(alpha(&full, 18, 18), 0);
+        assert_eq!(alpha(&full, 0, 0), 0);
+    }
+
+    #[test]
+    fn claudes_mark_is_a_36_px_square() {
+        assert_eq!(CLAUDE_SPARK.len(), 36 * 36 * 4);
+        assert_eq!(
+            &CLAUDE_SPARK[(18 * 36 + 18) * 4..(18 * 36 + 18) * 4 + 4],
+            &[217, 119, 87, 255]
+        );
+        assert_eq!(CLAUDE_SPARK[3], 0);
     }
 }

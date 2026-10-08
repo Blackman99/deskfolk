@@ -4,8 +4,9 @@
 	import type { Copy } from '../copy.ts';
 	import { localeTag } from '../locale-tag.ts';
 	import { claudeAccountLabel, claudeAgentPaysPerToken } from './claude-agent.ts';
-	import { usageAccountLabel, usageAccountNote, usageAccounts } from './claude-usage.ts';
+	import { usageAccountNote, usageAccounts } from './claude-usage.ts';
 	import ClaudeSpark from './ClaudeSpark.svelte';
+	import ClaudeUsageAccounts from './ClaudeUsageAccounts.svelte';
 	import ClaudeUsageRows from './ClaudeUsageRows.svelte';
 
 	/**
@@ -185,17 +186,13 @@
 		{#if usageShown.some((entry) => entry.available || entry.reason === 'no_plan' || entry.reason === 'failed')}
 			<div class="claude-usage" data-claude-card-usage>
 				<h4>{t.claudeAgent.usage.heading}</h4>
-				{#each usageShown as entry, index (entry.config_dir ?? '')}
-					{#if usageShown.length > 1}
-						<p class="claude-usage-account" data-usage-account={entry.config_dir ?? ''}>{usageAccountLabel(entry, t)}</p>
-					{/if}
-					{#if entry.available}
-						<ClaudeUsageRows usage={entry} {t} locale={localeTag(locale)} {now} busy={usageBusy}
-							onRefresh={index === usageShown.length - 1 ? () => void loadUsage(true) : undefined} />
-					{:else}
-						<p class="claude-note">{usageAccountNote(entry, t)}</p>
-					{/if}
-				{/each}
+				{#if usageShown.length > 1}
+					<ClaudeUsageAccounts accounts={usageShown} {t} locale={localeTag(locale)} {now} busy={usageBusy} onRefresh={() => void loadUsage(true)} />
+				{:else if usageShown[0]?.available}
+					<ClaudeUsageRows usage={usageShown[0]} {t} locale={localeTag(locale)} {now} busy={usageBusy} onRefresh={() => void loadUsage(true)} />
+				{:else if usageShown[0]}
+					<p class="claude-note">{usageAccountNote(usageShown[0], t)}</p>
+				{/if}
 			</div>
 		{/if}
 		<div class="claude-path">
@@ -299,14 +296,6 @@
 		font-size: 12px;
 		font-weight: 600;
 		color: var(--muted);
-	}
-
-	.claude-usage-account {
-		margin: 4px 0 0;
-		font-size: 12px;
-		font-weight: 600;
-		color: var(--ink);
-		overflow-wrap: anywhere;
 	}
 
 	.claude-accounts {

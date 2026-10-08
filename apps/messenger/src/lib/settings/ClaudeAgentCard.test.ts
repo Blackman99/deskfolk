@@ -67,7 +67,7 @@ test("the card shows the plan's usage under the facts, or says the sign-in has n
   await sleep(0);
   const block = shown.host.querySelector("[data-claude-card-usage]");
   expect(block?.querySelector(".usage-name")?.textContent).toBe(t.claudeAgent.usage.fiveHour);
-  expect(block?.querySelector(".usage-percent")?.textContent).toBe("18%");
+  expect(block?.querySelector(".usage-percent")?.textContent).toBe("剩82%");
   expect(refreshes).toEqual([false]);
   shown.close();
 
@@ -137,7 +137,8 @@ test("with Bots on two accounts the card shows each account's usage under its em
   const view = render(ClaudeAgentCard, { api: { ...apiOf(async () => status()), claudeUsage: async () => ({ ...one, accounts: [one, two] }) }, t });
   await sleep(0);
   const block = view.host.querySelector("[data-claude-card-usage]")!;
-  expect([...block.querySelectorAll(".claude-usage-account")].map((label) => label.textContent)).toEqual(["you@example.com", "team@example.com"]);
+  expect([...block.querySelectorAll(".usage-account-name")].map((label) => label.textContent)).toEqual(["Pro", "Team"]);
+  expect([...block.querySelectorAll(".usage-account-detail")].map((label) => label.textContent)).toEqual(["you@example.com", "team@example.com"]);
   expect(block.querySelectorAll("[data-claude-usage-rows]")).toHaveLength(2);
   expect(block.querySelectorAll(".usage-foot button")).toHaveLength(1);
   view.close();

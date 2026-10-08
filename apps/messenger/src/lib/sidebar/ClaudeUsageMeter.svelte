@@ -5,24 +5,26 @@
 	import type { MessengerApi } from '../messenger-api.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { localeTag } from '../locale-tag.ts';
+	import ClaudeSpark from '../settings/ClaudeSpark.svelte';
+	import ClaudeUsageAccounts from '../settings/ClaudeUsageAccounts.svelte';
 	import ClaudeUsageRows from '../settings/ClaudeUsageRows.svelte';
 	import {
 		CLAUDE_USAGE_POLL_MS,
 		claudeAgentInUse,
-		headlineWindows,
 		usageAccountLabel,
 		usageAccountNote,
 		usageAccountShortLabels,
 		usageAccounts,
-		usageLevel,
-		usagePercentText
+		usageLeftText,
+		usageLevel
 	} from '../settings/claude-usage.ts';
 
 	/**
-	 * Your Claude plan's usage above the list's foot (ADR 0061), once a Bot runs on Claude Agent: the
-	 * plan's 5-hour and 7-day windows at a glance, every window and when it starts over when opened.
-	 * With Bots on more than one Claude account, a line for each, named by its email.
-	 * Asked every few minutes while the window is in front; the daemon keeps answers as long.
+	 * Your Claude plan's usage above the list's foot (ADR 0061), once a Bot runs on Claude Agent,
+	 * under Claude's mark: how much of the plan's 5-hour and 7-day windows is left at a glance, every
+	 * window and when it starts over when opened. With Bots on more than one Claude account, a line
+	 * for each, named by its plan or email. Asked every few minutes while the window is in front;
+	 * the daemon keeps answers as long.
 	 */
 	interface Props {
 		runtime: MessengerRuntime;
@@ -93,16 +95,24 @@
 			aria-label={open ? t.claudeAgent.usage.collapse : t.claudeAgent.usage.expand}
 			onclick={() => (open = !open)}
 		>
+			<!-- One grid, every line the same cells (mark, name, 5-hour, 7-day, caret), so the columns line up. -->
 			{#each shown as account, index (account.config_dir ?? '')}
 				<span class="usage-line" data-usage-account={account.config_dir ?? ''}>
-					<span class="usage-title" title={several ? usageAccountLabel(account, t) : undefined}>{several ? shortLabels[index] : 'Claude'}</span>
+					<span class="usage-mark">{#if index === 0}<ClaudeSpark size={14} />{/if}</span>
+					{#if several}
+						<span class="usage-title" title={usageAccountLabel(account, t)}>{shortLabels[index]}</span>
+					{/if}
 					{#if account.available}
-						{#each headlineWindows(account) as window (window.kind)}
-							<span class="usage-chip is-{usageLevel(window.percent)}" data-usage-chip={window.kind}>
-								<span class="usage-chip-label">{window.kind === 'five_hour' ? t.claudeAgent.usage.fiveHourShort : t.claudeAgent.usage.sevenDayShort}</span>
-								<span class="usage-chip-bar" aria-hidden="true"><span style:width="{window.percent}%"></span></span>
-								<span class="usage-chip-percent">{usagePercentText(window.percent)}</span>
-							</span>
+						{#each ['five_hour', 'seven_day'] as const as kind (kind)}
+							{@const window = account.windows.find((entry) => entry.kind === kind)}
+							{#if window}
+								<span class="usage-chip is-{usageLevel(window.percent)}" data-usage-chip={kind}>
+									<span class="usage-chip-label">{kind === 'five_hour' ? t.claudeAgent.usage.fiveHourShort : t.claudeAgent.usage.sevenDayShort}</span>
+									<span class="usage-chip-percent">{t.claudeAgent.usage.left(usageLeftText(window.percent))}</span>
+								</span>
+							{:else}
+								<span class="usage-chip" aria-hidden="true"></span>
+							{/if}
 						{/each}
 					{:else}
 						<span class="usage-line-note">{usageAccountNote(account, t)}</span>
@@ -112,25 +122,18 @@
 							<path d="m18 15-6-6-6 6"></path>
 						</svg>
 					{:else}
-						<!-- The caret's room on the other lines too, so the columns line up. -->
-						<span class="usage-caret usage-caret-room" aria-hidden="true"></span>
+						<span class="usage-caret" aria-hidden="true"></span>
 					{/if}
 				</span>
 			{/each}
 		</button>
 		{#if open}
 			<div class="usage-detail">
-				{#each shown as account, index (account.config_dir ?? '')}
-					{#if several}
-						<p class="usage-detail-account">{usageAccountLabel(account, t)}</p>
-					{/if}
-					{#if account.available}
-						<ClaudeUsageRows usage={account} {t} {locale} {now} {busy}
-							onRefresh={index === shown.length - 1 ? () => client && void load(client, true) : undefined} />
-					{:else}
-						<p class="usage-detail-note">{usageAccountNote(account, t)}</p>
-					{/if}
-				{/each}
+				{#if several}
+					<ClaudeUsageAccounts accounts={shown} {t} {locale} {now} {busy} onRefresh={() => client && void load(client, true)} />
+				{:else}
+					<ClaudeUsageRows usage={shown[0]!} {t} {locale} {now} {busy} onRefresh={() => client && void load(client, true)} />
+				{/if}
 			</div>
 		{/if}
 	</section>
@@ -140,26 +143,31 @@
 	.usage-meter {
 		border-top: 1px solid var(--line);
 		background: var(--glass-footer);
-		container: usage-meter / inline-size;
 		position: relative;
 		z-index: 20;
 	}
 
 	.usage-summary {
-		display: flex;
-		flex-direction: column;
-		align-items: stretch;
-		justify-content: center;
-		gap: 4px;
+		display: grid;
+		/* Mark, 5-hour, 7-day, then the caret pushed to the end. */
+		grid-template-columns: 14px max-content max-content minmax(12px, 1fr);
+		align-items: center;
+		column-gap: 10px;
+		row-gap: 5px;
 		width: 100%;
 		min-height: 32px;
-		padding: 6px 12px;
+		padding: 7px 12px;
 		border: 0;
 		background: transparent;
 		color: var(--muted);
 		font: 500 11px/1 var(--font);
 		cursor: pointer;
 		text-align: left;
+	}
+
+	/* Several accounts: a name after the mark, cut short before any number is. */
+	.usage-meter.is-several .usage-summary {
+		grid-template-columns: 14px minmax(0, max-content) max-content max-content minmax(12px, 1fr);
 	}
 
 	.usage-summary:hover {
@@ -173,79 +181,30 @@
 	}
 
 	.usage-line {
+		display: contents;
+	}
+
+	.usage-mark {
 		display: flex;
 		align-items: center;
-		gap: 10px;
-		min-width: 0;
+		width: 14px;
+		height: 14px;
 	}
 
 	.usage-title {
+		min-width: 0;
 		color: var(--ink);
 		font-weight: 600;
-		flex-shrink: 0;
-	}
-
-	/* Several accounts: the names line up in one column, cut short when the list is narrow. */
-	.usage-meter.is-several .usage-title {
-		flex: 0 1 4.5em;
-		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-	}
-
-	.usage-line-note {
-		color: var(--muted);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		min-width: 0;
-	}
-
-	.usage-detail-account {
-		margin: 8px 0 6px;
-		font: 600 12px/1.3 var(--font);
-		color: var(--ink);
-		overflow-wrap: anywhere;
-	}
-
-	.usage-detail-account:first-child {
-		margin-top: 0;
-	}
-
-	.usage-detail-note {
-		margin: 0 0 4px;
-		font-size: 12px;
-		color: var(--muted);
 	}
 
 	.usage-chip {
 		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		min-width: 0;
+		align-items: baseline;
+		gap: 4px;
 		white-space: nowrap;
-	}
-
-	/* Short of room, the name gives way, never the numbers. */
-	.usage-meter.is-several .usage-chip {
-		flex-shrink: 0;
-	}
-
-	.usage-chip-bar {
-		width: 28px;
-		height: 4px;
-		border-radius: var(--radius-full);
-		background: var(--line);
-		overflow: hidden;
-		flex-shrink: 0;
-	}
-
-	.usage-chip-bar > span {
-		display: block;
-		height: 100%;
-		border-radius: inherit;
-		background: var(--muted);
 	}
 
 	.usage-chip-percent {
@@ -253,25 +212,27 @@
 		font-variant-numeric: tabular-nums;
 	}
 
-	.usage-chip.is-warn .usage-chip-bar > span {
-		background: var(--warn);
-	}
-
 	.usage-chip.is-warn .usage-chip-percent {
 		color: var(--warn-text);
-	}
-
-	.usage-chip.is-danger .usage-chip-bar > span {
-		background: var(--danger);
 	}
 
 	.usage-chip.is-danger .usage-chip-percent {
 		color: var(--danger-text);
 	}
 
+	/* A line without windows says why across both of their columns. */
+	.usage-line-note {
+		grid-column: span 2;
+		min-width: 0;
+		color: var(--muted);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
 	.usage-caret {
-		margin-left: auto;
-		flex-shrink: 0;
+		justify-self: end;
+		width: 12px;
 		transform: rotate(180deg);
 	}
 
@@ -279,29 +240,8 @@
 		transform: none;
 	}
 
-	.usage-caret-room {
-		width: 12px;
-	}
-
 	.usage-detail {
 		padding: 2px 12px 10px;
 	}
 
-	/* With a name on each line, a list as narrow as the desktop's drops the little bars sooner. */
-	@container usage-meter (max-width: 299px) {
-		.usage-meter.is-several .usage-chip-bar {
-			display: none;
-		}
-	}
-
-	/* A narrow list keeps the words and numbers and drops the little bars. */
-	@container usage-meter (max-width: 239px) {
-		.usage-line {
-			gap: 8px;
-		}
-
-		.usage-chip-bar {
-			display: none;
-		}
-	}
 </style>

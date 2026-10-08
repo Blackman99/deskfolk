@@ -3,7 +3,8 @@
 	 * The Claude Spark, Anthropic's mark for Claude, as it is in Anthropic's press kit
 	 * (anthropic.com/press-kit, "Claude Spark - Clay.svg"): same path, same colour, only sized. It
 	 * is Anthropic's trademark, not covered by this repository's licence (THIRD_PARTY_NOTICES.md),
-	 * and stands next to the words "Claude Agent", never in place of the app's own marks.
+	 * and marks Claude's own things — next to the words "Claude Agent", in front of your Claude
+	 * plan's usage — never in place of the app's own marks.
 	 */
 	interface Props {
 		size?: number;
