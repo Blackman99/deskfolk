@@ -13,6 +13,7 @@ mod remote_native;
 mod remote_setup;
 mod supervisor;
 mod updates;
+mod usage_tray;
 mod window_state;
 
 use std::path::PathBuf;
@@ -739,6 +740,7 @@ pub fn run() {
             // The pane commands belong to the messenger: it holds the arrangement, so it is the
             // only thing that can say what "close this" means right now.
             id if id.starts_with("pane-") || id == "view-spend" => send_pane_command(app, id),
+            id if id.starts_with(usage_tray::ITEM_PREFIX) => show_main(app),
             _ => {}
         })
         .build(app_context())
@@ -902,7 +904,18 @@ fn install_tray(app: &AppHandle) -> tauri::Result<()> {
     if let Ok(mut state) = state.lock() {
         state.stop_item = Some(stop);
     }
+    usage_tray::start(app, menu, connected_endpoint);
     Ok(())
+}
+
+/// The daemon the window is talking to, for the menu bar's usage lines; None while it is not.
+fn connected_endpoint(app: &AppHandle) -> Option<Endpoint> {
+    let state = app.state::<Mutex<AppState>>();
+    let guard = state.lock().ok()?;
+    if !guard.supervisor.is_connected() {
+        return None;
+    }
+    guard.supervisor.endpoint().cloned()
 }
 
 /// WebView2's own Ctrl+R / F5 reload, Ctrl+P print, Ctrl+F find and zoom

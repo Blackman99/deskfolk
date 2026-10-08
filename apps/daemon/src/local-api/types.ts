@@ -1,6 +1,7 @@
 import type { ClientEvent, RuntimeResponse, RuntimeSnapshot, ToolFrame } from "@real-bot/protocol";
 import type { Ablation } from "../ablation";
 import type { ClaudeCodeProbe } from "../claude-code/probe";
+import type { ClaudeUsageProbe } from "../claude-code/usage";
 import type { CompletionsClient } from "../completions";
 import type { AgentQuery } from "../engine/agent-runner";
 import type { RuntimeLifecycle } from "../lifecycle";
@@ -80,6 +81,8 @@ export type LocalApiOptions = {
   log?: (line: string) => void;
   /** What the daemon knows of the user's own Claude Code (ADR 0061); one is made when absent. */
   claudeCode?: ClaudeCodeProbe;
+  /** Your Claude plan's usage, asked of that Claude Code; one is made when absent. */
+  claudeUsage?: ClaudeUsageProbe;
   /** Stands in for the Agent SDK's `query` in tests, so no Claude Code is started. */
   agentQuery?: AgentQuery;
 };

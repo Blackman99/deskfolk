@@ -1,5 +1,6 @@
 import type {
   ClaudeCodeStatus,
+  ClaudeUsage,
   ClearSessionRequest,
   CatchupResponse,
   EventCursor,
@@ -506,6 +507,11 @@ export class RemoteApi extends ApiBase<PendingRemote> {
 
   async setClaudeCodePath(_path: string | null): Promise<ClaudeCodeStatus> {
     throw new ApiError(404, "not_found", "Claude Code is only visible on the Mac");
+  }
+
+  /** The plan's usage is only read, never set: a phone sees the meter too. */
+  async claudeUsage(refresh = false): Promise<ClaudeUsage> {
+    return this.get<ClaudeUsage>(`/v1/claude-usage${refresh ? "?refresh=1" : ""}`);
   }
 
   /** One plan whole: the switcher row plus its spec, revision and tickets with their artifacts. */

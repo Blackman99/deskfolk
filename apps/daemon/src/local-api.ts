@@ -1,6 +1,7 @@
 import { isNonReceiptPath, LOCAL_API_NAME, type CapabilitiesResponse, type ClientEvent, type HealthResponse, type NotificationFilter, type RuntimeSnapshot, type SessionSnapshot, type StreamFrame, type ToolFrame, type WsAuthMessage } from "@real-bot/protocol";
 import { warmDisplayAvatar } from "./avatar-display";
 import { createClaudeCodeProbe } from "./claude-code/probe";
+import { createClaudeUsageProbe } from "./claude-code/usage";
 import { HttpError } from "./errors";
 import { emptyResponse, fromError, jsonResponse, matchPath, readBearer, readJson, responseRecord } from "./http";
 import { ulid } from "./ids";
@@ -48,6 +49,10 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
     claudeCode: options.claudeCode ?? createClaudeCodeProbe({ setting: () => options.store.claudeCodePath() }),
   };
   const claudeCode = options.claudeCode!;
+  options.claudeUsage ??= createClaudeUsageProbe({
+    claudeCode,
+    inUse: () => options.store.listBots().some((bot) => bot.runner === "claude_code"),
+  });
   const sockets = new Set<Bun.ServerWebSocket<SocketData>>();
   const timers = new Map<Bun.ServerWebSocket<SocketData>, ReturnType<typeof setTimeout>>();
 

@@ -90,6 +90,40 @@ export type ClaudeCodeStatus = {
   error: string | null;
 };
 
+/** One of your Claude plan's usage windows (`GET /v1/claude-usage`). */
+export type ClaudeUsageWindow = {
+  /** `five_hour` and `seven_day` are the whole plan's; `model` is one model's own weekly window. */
+  kind: "five_hour" | "seven_day" | "model";
+  /** The model a `model` window is for, as Claude names it (e.g. `Opus`); null otherwise. */
+  model: string | null;
+  /** How much of the window is used, 0–100. */
+  percent: number;
+  /** When the window starts over; null when Claude Code did not say. */
+  resets_at: string | null;
+};
+
+/**
+ * Your Claude plan's usage, asked of your own Claude Code: the data behind its `/usage`, which
+ * Claude Code fetches from claude.ai itself (ADR 0061). Deskfolk never reads its credentials.
+ */
+export type ClaudeUsage = {
+  /** Whether there are windows to show. */
+  available: boolean;
+  /**
+   * Why not, when not: no Bot runs on Claude Agent (`unused`; nothing is asked then), no `claude`
+   * was found, it is signed out, its sign-in has no plan limits (an API key, a third-party platform:
+   * `no_plan`), or asking failed before any answer came.
+   */
+  reason: "unused" | "missing" | "signed_out" | "no_plan" | "failed" | null;
+  /** e.g. `pro`, `max`; null when Claude Code did not say. */
+  plan: string | null;
+  windows: ClaudeUsageWindow[];
+  /** When Claude Code gave these windows; null before it ever did. */
+  checked_at: string | null;
+  /** Why the latest ask failed, in English; the windows are then the last answer that came. */
+  error: string | null;
+};
+
 export type ProfileRevision = {
   id: string;
   bot_id: string;

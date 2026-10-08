@@ -1,6 +1,7 @@
 import { isLocalEndpoint, LOCAL_API_BIND, type ApiFormat, type CreateProviderRequest, type PatchProviderRequest, type RuntimeResponse } from "@real-bot/protocol";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { CLAUDE_USAGE_REFRESH_MIN_MS } from "../../claude-code/usage";
 import { HttpError } from "../../errors";
 import { listHostDir } from "../../host-paths";
 import { emptyResponse, jsonResponse, matchPath } from "../../http";
@@ -34,6 +35,13 @@ export function systemRoutes(ctx: RouteCtx): Response | Promise<Response> | null
   // Unlike /v1/runtime, this is on the remote whitelist (remote/routes.ts): a phone reads it too.
   if (method === "GET" && path === "/v1/capabilities") {
     return jsonResponse(store.capabilities(), 200, null);
+  }
+
+  // Your Claude plan's usage (ADR 0061): read-only, so a phone sees the meter too. It never points
+  // the daemon at a program or touches a credential, unlike /v1/runtime/claude-code.
+  if (method === "GET" && path === "/v1/claude-usage" && options.claudeUsage) {
+    const refresh = url.searchParams.get("refresh") === "1";
+    return options.claudeUsage.current(refresh ? CLAUDE_USAGE_REFRESH_MIN_MS : undefined).then((usage) => jsonResponse(usage, 200, null));
   }
 
   if (method === "POST" && path === "/v1/runtime/quit") {

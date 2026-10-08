@@ -45,6 +45,8 @@ get("quality/events", { bot_id: string, ticket_id: string, category: one("model"
 get("quality/report", { days: v => typeof v === "string" && /^[1-9][0-9]?$/.test(v) });
 get("lessons", { status: one("candidate", "active", "retired") });
 get("shared-skills");
+// ADR 0061: your Claude plan's usage, as your Claude Code reads it.
+get("claude-usage", { refresh: one("1") });
 const pageLimit: Check = v => typeof v === "string" && /^[1-9][0-9]{0,2}$/.test(v) && Number(v) <= 200;
 get("sessions/:id/snapshot", { limit: pageLimit });
 get("sessions/:id/messages", { cursor: v => typeof v === "string" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z\|[0-9A-HJKMNP-TV-Z]{26}$/.test(v), limit: pageLimit });

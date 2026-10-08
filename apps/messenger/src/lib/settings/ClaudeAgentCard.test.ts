@@ -54,3 +54,35 @@ test("over the relay the card only says it lives on the Mac", async () => {
   expect(view.host.querySelector("[data-claude-network]")).toBeNull();
   view.close();
 });
+
+test("the card shows the plan's usage under the facts, or says the sign-in has no plan to show", async () => {
+  const usage = {
+    available: true, reason: null, plan: "pro", checked_at: "2026-10-08T11:00:00.000Z", error: null,
+    windows: [{ kind: "five_hour" as const, model: null, percent: 18, resets_at: "2026-10-08T15:40:00.000Z" }],
+  };
+  const refreshes: boolean[] = [];
+  const shown = render(ClaudeAgentCard, {
+    api: { ...apiOf(async () => status()), claudeUsage: async (refresh = false) => { refreshes.push(refresh); return usage; } }, t,
+  });
+  await sleep(0);
+  const block = shown.host.querySelector("[data-claude-card-usage]");
+  expect(block?.querySelector(".usage-name")?.textContent).toBe(t.claudeAgent.usage.fiveHour);
+  expect(block?.querySelector(".usage-percent")?.textContent).toBe("18%");
+  expect(refreshes).toEqual([false]);
+  shown.close();
+
+  const noPlan = render(ClaudeAgentCard, {
+    api: { ...apiOf(async () => status({ auth_method: "api_key" })), claudeUsage: async () => ({ ...usage, available: false, reason: "no_plan" as const, windows: [] }) }, t,
+  });
+  await sleep(0);
+  expect(noPlan.host.querySelector("[data-claude-card-usage]")?.textContent).toContain(t.claudeAgent.usage.noPlan);
+  noPlan.close();
+
+  // No Bot runs on Claude Agent: the card says nothing about usage.
+  const unused = render(ClaudeAgentCard, {
+    api: { ...apiOf(async () => status()), claudeUsage: async () => ({ ...usage, available: false, reason: "unused" as const, windows: [] }) }, t,
+  });
+  await sleep(0);
+  expect(unused.host.querySelector("[data-claude-card-usage]")).toBeNull();
+  unused.close();
+});

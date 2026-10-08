@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Your Claude usage in the sidebar and the menu bar
+
+- Once a Bot runs on Claude Agent, the sidebar shows your Claude plan's usage above its foot: how much of the 5-hour and 7-day windows is used, amber from three quarters and red from nine tenths. Open it for every window — a model's own weekly one too, such as Fable's — with when each resets and a Refresh button; the phone shows it as well. The same windows are on the Claude Agent card in Settings › Agents, and the menu bar icon's menu lists them at the top (a click shows the window).
+- The numbers come from your own Claude Code, which fetches them from claude.ai itself — the data behind its `/usage`, asked in a session started without a prompt and closed at once. No model is called, no usage is spent and Deskfolk reads none of Claude Code's credentials. `claude` starts at most once every 5 minutes for all of this, and not at all while no Bot runs on Claude Agent; an API key or a third-party platform has no plan windows, so nothing is shown. The request is marked experimental in the Agent SDK: a Claude Code that does not know it shows no strip, and the card says the usage could not be read. Read by `GET /v1/claude-usage` (`?refresh=1` for a fresh one), from the phone too ([ADR 0061](docs/adr/0061-claude-agent-runner.md), 2026-10-08 addendum).
+
 ### Changing a model setting in your direct no longer opens a job
 
 - Asking a Bot in your direct to change the app's settings — an endpoint, a model's context window, the default endpoint, the reading model, the model ladder, an MCP server — no longer opens a job for your line. Asked 「你能根据已经配置的模型补一下它们的上下文大小配置吗」, 工作区文件助手 set the missing window and said so, but that settings call had opened a job whose ticket nothing could ever be handed over on: ten minutes later the app called the Bot back to finish it, the Bot posted the same answer again, and a line said it had ended twice without progress and had stopped to wait for you. Now such a change is made where you asked, the reply ends the turn, and nothing is left for the app to chase. A stop still refuses it, and a new endpoint still waits for your approval. Writing files, running commands and the like open a job as before. [ADR 0057](docs/adr/0057-the-job-a-line-is-about-is-read.md)

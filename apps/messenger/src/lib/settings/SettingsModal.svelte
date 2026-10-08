@@ -456,7 +456,7 @@
 				{:else if activeSettingsTab === 'agents'}
 					<!-- Agents that run a Bot's turns themselves (ADR 0061): today your own Claude Code. -->
 					<div class="settings-tab-pane">
-						<ClaudeAgentCard api={runtime.client} {t} />
+						<ClaudeAgentCard api={runtime.client} {t} {locale} />
 					</div>
 				{:else if activeSettingsTab === 'mcp'}
 					<McpSettings bind:this={mcpSettings} {runtime} {t} {closeSettings} />

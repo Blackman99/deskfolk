@@ -39,6 +39,7 @@ import type {
   BotRunner,
   ClaudeEffort,
   ClaudeCodeStatus,
+  ClaudeUsage,
   TaskArtifacts,
   TaskDetail,
   TaskSpecRevision,
@@ -332,6 +333,11 @@ export class LocalApi extends ApiBase<PendingRequest> {
   /** Points the daemon at a `claude` executable; null lets it look for one again. */
   async setClaudeCodePath(path: string | null): Promise<ClaudeCodeStatus> {
     return this.put<ClaudeCodeStatus>("/v1/runtime/claude-code/path", { path });
+  }
+
+  /** Your Claude plan's usage, as your Claude Code reads it; `refresh` asks for a younger answer. */
+  async claudeUsage(refresh = false): Promise<ClaudeUsage> {
+    return this.get<ClaudeUsage>(`/v1/claude-usage${refresh ? "?refresh=1" : ""}`);
   }
 
   /** One plan whole: the switcher row plus its spec, revision and tickets with their artifacts. */

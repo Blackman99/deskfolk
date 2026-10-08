@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import type { ClaudeCodeStatus } from '@real-bot/protocol';
+	import type { ClaudeCodeStatus, ClaudeUsage } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
+	import { localeTag } from '../locale-tag.ts';
 	import { claudeAccountLabel, claudeAgentPaysPerToken } from './claude-agent.ts';
 	import ClaudeSpark from './ClaudeSpark.svelte';
+	import ClaudeUsageRows from './ClaudeUsageRows.svelte';
 
 	/**
 	 * Your own Claude Code as the daemon finds it (ADR 0061): where it is, which version, which
@@ -14,20 +16,26 @@
 		claudeCode: () => Promise<ClaudeCodeStatus>;
 		detectClaudeCode: () => Promise<ClaudeCodeStatus>;
 		setClaudeCodePath: (path: string | null) => Promise<ClaudeCodeStatus>;
+		/** Your plan's usage, as that Claude Code reads it; absent from an older client. */
+		claudeUsage?: (refresh?: boolean) => Promise<ClaudeUsage>;
 	};
 
 	interface Props {
 		api: ClaudeAgentApi | null;
 		t: Copy;
+		locale?: 'zh' | 'en';
 	}
 
-	let { api, t }: Props = $props();
+	let { api, t, locale = 'zh' }: Props = $props();
 
 	let status = $state<ClaudeCodeStatus | null>(null);
 	let busy = $state(false);
 	let failed = $state(false);
 	let unavailable = $state(false);
 	let pathDraft = $state('');
+	let usage = $state<ClaudeUsage | null>(null);
+	let usageBusy = $state(false);
+	let now = $state(Date.now());
 
 	async function run(work: (api: ClaudeAgentApi) => Promise<ClaudeCodeStatus>): Promise<void> {
 		if (!api || busy) return;
@@ -46,11 +54,27 @@
 		}
 	}
 
+	async function loadUsage(refresh: boolean): Promise<void> {
+		if (!api?.claudeUsage || usageBusy) return;
+		usageBusy = true;
+		try {
+			usage = await api.claudeUsage(refresh);
+		} catch {
+			// Not there over the relay from an older daemon: the card simply shows no usage.
+		} finally {
+			usageBusy = false;
+			now = Date.now();
+		}
+	}
+
 	// Asks once per client. `run` reads and writes `busy`, so it runs untracked: tracked, every
 	// answer would set off the next ask.
 	$effect(() => {
 		if (!api) return;
-		untrack(() => void run((client) => client.claudeCode()));
+		untrack(() => {
+			void run((client) => client.claudeCode());
+			void loadUsage(false);
+		});
 	});
 
 	const account = $derived(status && status.path && status.logged_in !== false ? claudeAccountLabel(status, t) : null);
@@ -94,6 +118,16 @@
 					<p class="claude-note">{t.claudeAgent.outdated(status.sdk_version)}</p>
 				{/if}
 			{/if}
+		{/if}
+		{#if usage && (usage.available || usage.reason === 'no_plan' || usage.reason === 'failed')}
+			<div class="claude-usage" data-claude-card-usage>
+				<h4>{t.claudeAgent.usage.heading}</h4>
+				{#if usage.available}
+					<ClaudeUsageRows {usage} {t} locale={localeTag(locale)} {now} busy={usageBusy} onRefresh={() => void loadUsage(true)} />
+				{:else}
+					<p class="claude-note">{usage.reason === 'no_plan' ? t.claudeAgent.usage.noPlan : t.claudeAgent.usage.failed}</p>
+				{/if}
+			</div>
 		{/if}
 		<div class="claude-path">
 			<input
@@ -179,6 +213,21 @@
 	/* Svelte drops a tag's leading space, so the gap after the path is a margin. */
 	.claude-source {
 		margin-left: 0.4em;
+		color: var(--muted);
+	}
+
+	.claude-usage {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		padding-top: 10px;
+		border-top: 1px solid var(--line);
+	}
+
+	.claude-usage h4 {
+		margin: 0;
+		font-size: 12px;
+		font-weight: 600;
 		color: var(--muted);
 	}
 

@@ -19,6 +19,7 @@
 	import SessionRow from './SessionRow.svelte';
 	import PinnedRoster from './PinnedRoster.svelte';
 	import SidebarFoot from './SidebarFoot.svelte';
+	import ClaudeUsageMeter from './ClaudeUsageMeter.svelte';
 	import CreateFab from './CreateFab.svelte';
 	import WorkingFilter from './WorkingFilter.svelte';
 	import MobileArchivedHead from './MobileArchivedHead.svelte';
@@ -509,6 +510,7 @@
 		{/if}
 	</div>
 	</div>
+	<ClaudeUsageMeter {runtime} {t} />
 	{#if !phone}
 		<SidebarFoot
 			{runtime}
