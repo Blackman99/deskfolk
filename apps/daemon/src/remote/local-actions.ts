@@ -5,7 +5,7 @@ import { isAbsoluteHostPath } from "../workspace-paths";
 import { isUlid } from "../ids";
 import type { RemoteNativeProvider } from "./controller";
 import { RemoteTrust, deny } from "./trust";
-import { deletePushSubs } from "./push";
+import { deletePushSubs } from "./push-subs";
 import type { RelayConfig } from "./relay";
 
 export type TrustChange = { kind: "reset_identity" | "change_relay"; config: RelayConfig } |

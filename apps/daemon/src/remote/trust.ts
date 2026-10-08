@@ -2,7 +2,7 @@ import { base64url, canonicalHash, fromBase64url, type PairingRequest, type Repl
 import { HttpError } from "../errors";
 import type { Store } from "../store";
 import type { RemoteNativeClient } from "../remote-native";
-import { deletePushSubs } from "./push";
+import { deletePushSubs } from "./push-subs";
 
 export type RemoteHost = { host_id: string; relay_origin: string; relay_id: string; generation: number };
 export type TrustedDevice = {

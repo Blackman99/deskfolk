@@ -92,6 +92,7 @@ import * as skills from "./skills";
 import * as spend from "./spend";
 import * as planSpec from "./plan-spec";
 import * as tasks from "./tasks";
+import * as taskTraces from "./task-trace";
 import * as terminals from "./terminals";
 import * as tickets from "./tickets";
 import * as turnRuns from "./turn-runs";
@@ -437,7 +438,7 @@ export class Store {
   readonly turnWorkDir = this.bind(tasks.turnWorkDir);
   readonly tasksClosedBefore = this.bind(tasks.tasksClosedBefore);
   readonly taskArtifacts = this.bind(tasks.taskArtifacts);
-  readonly taskTrace = this.bind(tasks.taskTrace);
+  readonly taskTrace = this.bind(taskTraces.taskTrace);
   readonly sessionTasks = this.bind(tasks.sessionTasks);
   readonly sessionCurrentTask = this.bind(tasks.sessionCurrentTask);
   readonly sessionRecentTasks = this.bind(tasks.sessionRecentTasks);
