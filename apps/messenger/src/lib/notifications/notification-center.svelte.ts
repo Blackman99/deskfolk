@@ -6,6 +6,7 @@ import type { MessengerApi } from "../messenger-api.ts";
 import { RemoteApi } from "../remote/api.ts";
 import { disablePush, enablePush, pushPermission, refreshPush, type DisablePushResult, type PushPermission } from "../remote/push.ts";
 import type { Snapshot } from "../snapshot.ts";
+import type { NotificationOpenIntent } from "./tab-ownership.svelte.ts";
 import type { Connection } from "../runtime.svelte.ts";
 import { readTauriInternals } from "../tauri.ts";
 import {
@@ -112,15 +113,15 @@ export class NotificationCenter {
    * sent again once, after the notification lands.
    */
   private noticeMarks = $state<Record<string, number>>({});
-  private notificationIntentHandler: ((intent: { sessionId?: string | null; messageId?: string | null; openInbox: boolean }) => void) | null = null;
+  private notificationIntentHandler: ((intent: NotificationOpenIntent) => void) | null = null;
 
   constructor(private readonly host: NotificationCenterHost) {}
 
-  setNotificationIntentHandler(handler: ((intent: { sessionId?: string | null; messageId?: string | null; openInbox: boolean }) => void) | null): void {
+  setNotificationIntentHandler(handler: ((intent: NotificationOpenIntent) => void) | null): void {
     this.notificationIntentHandler = handler;
   }
 
-  dispatchNotificationIntent(intent: { sessionId?: string | null; messageId?: string | null; openInbox: boolean }): void {
+  dispatchNotificationIntent(intent: NotificationOpenIntent): void {
     if (this.notificationIntentHandler) {
       this.notificationIntentHandler(intent);
       return;
@@ -132,7 +133,7 @@ export class NotificationCenter {
    * A system banner or a PWA push click lands on the conversation it belongs to. A generic
    * pending push has no session in it, so it returns to the chat list, where that state shows.
    */
-  applyNotificationIntent(intent: { sessionId?: string | null; messageId?: string | null; openInbox: boolean }): void {
+  applyNotificationIntent(intent: NotificationOpenIntent): void {
     this.host.closeSheets();
     if (!intent.sessionId) {
       this.host.selectedId = null;

@@ -2,6 +2,7 @@
 	import { tick, untrack } from 'svelte';
 	import { SPEND_CATEGORY_OF, spendLineOf } from '@real-bot/protocol';
 	import SpendTrend from './SpendTrend.svelte';
+	import { localeTag } from '../locale-tag.ts';
 	import type { SpendDetail, SpendGroup, SpendLine, SpendSummary, SpendTotals } from '@real-bot/protocol';
 	import type { MessengerApi } from '../messenger-api.ts';
 	import { formatTokens, formatUsd } from '../spend-format.ts';
@@ -489,11 +490,11 @@
 	}
 
 	function dateLabel(value: string): string {
-		return new Intl.DateTimeFormat(locale === 'zh' ? 'zh-CN' : 'en-US', { timeZone, month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(value));
+		return new Intl.DateTimeFormat(localeTag(locale), { timeZone, month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(value));
 	}
 
 	function timeLabel(value: string): string {
-		return new Intl.DateTimeFormat(locale === 'zh' ? 'zh-CN' : 'en-US', { timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(value));
+		return new Intl.DateTimeFormat(localeTag(locale), { timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(value));
 	}
 </script>
 

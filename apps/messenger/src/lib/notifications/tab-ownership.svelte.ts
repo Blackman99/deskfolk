@@ -8,6 +8,9 @@ import {
   supportsWebLocks,
 } from "./tab-owner.ts";
 
+/** Where a notification, or an "inbox" broadcast, should take the person: a conversation, a message, or the inbox. */
+export type NotificationOpenIntent = { sessionId?: string | null; messageId?: string | null; openInbox: boolean };
+
 /**
  * What this sub-store reaches back into the runtime for: the connection loop a takeover has to
  * restart, and the notification queue an "inbox" broadcast or a completed takeover has to reach.
@@ -16,7 +19,7 @@ import {
 export interface TabOwnershipHost {
   resetConnection(): void;
   tick(): Promise<void>;
-  dispatchNotificationIntent(intent: { sessionId?: string | null; messageId?: string | null; openInbox: boolean }): void;
+  dispatchNotificationIntent(intent: NotificationOpenIntent): void;
 }
 
 /**

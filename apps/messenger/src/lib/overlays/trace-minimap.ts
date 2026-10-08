@@ -8,6 +8,7 @@
  * It draws the board and wherever the view is, together: a view panned off the board still has its
  * frame on the map, beside a board drawn smaller, which is how you see which way to go back.
  */
+import { forgetStored, readStored, writeStored } from "../storage.ts";
 import type { TraceView } from "./task-trace.ts";
 
 export type TraceRect = { x: number; y: number; width: number; height: number };
@@ -128,28 +129,13 @@ const STORAGE_KEY = "real-bot-trace-minimap";
 
 /** Shown unless you put it away; the choice is per-browser, like the side panel's. */
 export function loadTraceMinimap(): boolean {
-  if (typeof window === "undefined" || !window.localStorage) return true;
-  try {
-    return window.localStorage.getItem(STORAGE_KEY) !== "off";
-  } catch {
-    return true;
-  }
+  return readStored(STORAGE_KEY) !== "off";
 }
 
 export function saveTraceMinimap(shown: boolean): void {
-  if (typeof window === "undefined" || !window.localStorage) return;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, shown ? "on" : "off");
-  } catch {
-    // A private window or blocked storage: the minimap just comes back shown next time.
-  }
+  writeStored(STORAGE_KEY, shown ? "on" : "off");
 }
 
 export function forgetTraceMinimap(): void {
-  if (typeof window === "undefined" || !window.localStorage) return;
-  try {
-    window.localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // Nothing kept, nothing to forget.
-  }
+  forgetStored(STORAGE_KEY);
 }

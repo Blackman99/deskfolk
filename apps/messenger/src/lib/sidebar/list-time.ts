@@ -1,3 +1,5 @@
+import { localeTag } from "../locale-tag.ts";
+
 /**
  * The time a chat list shows next to a name: the clock for today, a word for yesterday, the
  * weekday for the rest of the week, then a date. It is the same ladder every messenger uses,
@@ -9,7 +11,7 @@ export function formatListTime(iso: string | null | undefined, nowMs: number, lo
   const time = at.getTime();
   if (!Number.isFinite(time)) return "";
   const now = new Date(nowMs);
-  const tag = locale === "zh" ? "zh-CN" : "en-US";
+  const tag = localeTag(locale);
 
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   if (time >= startOfToday) {

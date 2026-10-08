@@ -1,4 +1,5 @@
 import type { Approval, PendingJudgement, SessionSummary, Turn } from "@real-bot/protocol";
+import { forgetStored, readStored, writeStored } from "../storage.ts";
 import { classifySession } from "./session-groups.ts";
 import { workingSessionIds } from "./session-status.ts";
 import { sessionUnreadCount } from "./unread.ts";
@@ -7,22 +8,12 @@ const STORAGE_KEY = "real-bot-sidebar-working-only";
 
 /** Whether the session list shows only the conversations a Bot is working in, or with unread messages. */
 export function loadWorkingOnly(): boolean {
-  if (typeof window === "undefined" || !window.localStorage) return false;
-  try {
-    return window.localStorage.getItem(STORAGE_KEY) === "1";
-  } catch {
-    return false;
-  }
+  return readStored(STORAGE_KEY) === "1";
 }
 
 export function saveWorkingOnly(on: boolean): void {
-  if (typeof window === "undefined" || !window.localStorage) return;
-  try {
-    if (on) window.localStorage.setItem(STORAGE_KEY, "1");
-    else window.localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // ignore
-  }
+  if (on) writeStored(STORAGE_KEY, "1");
+  else forgetStored(STORAGE_KEY);
 }
 
 /**

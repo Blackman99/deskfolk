@@ -1,4 +1,5 @@
 import type { Theme } from "@real-bot/protocol";
+import { readStored, writeStored } from "./storage.ts";
 
 export type ResolvedTheme = "light" | "dark";
 
@@ -20,30 +21,16 @@ export function nextTheme(current: Theme): Theme {
 
 /** Reads the cached theme preference from localStorage with safe fallback to 'system' */
 export function getStoredThemePreference(): Theme {
-  if (typeof window === "undefined" || !window.localStorage) {
-    return "system";
-  }
-  try {
-    const raw = window.localStorage.getItem(THEME_STORAGE_KEY);
-    if (raw === "light" || raw === "dark" || raw === "system") {
-      return raw;
-    }
-  } catch {
-    // Ignore localStorage access errors
+  const raw = readStored(THEME_STORAGE_KEY);
+  if (raw === "light" || raw === "dark" || raw === "system") {
+    return raw;
   }
   return "system";
 }
 
 /** Saves the theme preference to localStorage */
 export function saveStoredThemePreference(theme: Theme): void {
-  if (typeof window === "undefined" || !window.localStorage) {
-    return;
-  }
-  try {
-    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
-  } catch {
-    // Ignore localStorage write errors
-  }
+  writeStored(THEME_STORAGE_KEY, theme);
 }
 
 /** Applies resolved theme attributes and classes to the root document element */

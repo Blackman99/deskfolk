@@ -1,6 +1,7 @@
 /** What the spend view asks the daemon for. Range and dimension persist; drill filters do not. */
 import type { SpendCategory, SpendFilter, SpendLine, SpendSummaryQuery } from "@real-bot/protocol";
 import { SPEND_CATEGORY_OF, SPEND_PURPOSE_KIND } from "@real-bot/protocol";
+import { isRecord } from "../is-record.ts";
 
 export const SPEND_STORAGE_KEY = "deskfolk.spend.view";
 export const SPEND_PAGE_SIZE = 50;
@@ -245,10 +246,6 @@ export function spendSearchParams(
   if (filter.cursor) params.set("cursor", filter.cursor);
   const text = params.toString();
   return text ? `?${text}` : "";
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object";
 }
 
 /** Whatever was stored, or the defaults when it is missing or from another build. */

@@ -1,7 +1,9 @@
+import { localeTag } from "../locale-tag.ts";
+
 export function formatDeviceLastActive(lastActiveUnix: number, nowMs: number, locale: "zh" | "en"): string {
   const deltaSeconds = Math.min(0, Math.round(lastActiveUnix - nowMs / 1000));
   const age = Math.abs(deltaSeconds);
-  const formatter = new Intl.RelativeTimeFormat(locale === "zh" ? "zh-CN" : "en", { numeric: "auto" });
+  const formatter = new Intl.RelativeTimeFormat(localeTag(locale, "en"), { numeric: "auto" });
 
   if (age < 45) return formatter.format(0, "second");
   if (age < 90) return formatter.format(-1, "minute");

@@ -1,10 +1,11 @@
+import { readStored, writeStored } from "../storage.ts";
+
 export const PINNED_STORAGE_KEY = "real_bot_pinned_sessions";
 
 export function loadPinnedIds(): string[] {
-  if (typeof window === "undefined" || !window.localStorage) return [];
+  const raw = readStored(PINNED_STORAGE_KEY);
+  if (!raw) return [];
   try {
-    const raw = window.localStorage.getItem(PINNED_STORAGE_KEY);
-    if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
     return parsed.filter((id): id is string => typeof id === "string" && id.length > 0);
@@ -14,12 +15,7 @@ export function loadPinnedIds(): string[] {
 }
 
 export function savePinnedIds(ids: readonly string[]): void {
-  if (typeof window === "undefined" || !window.localStorage) return;
-  try {
-    window.localStorage.setItem(PINNED_STORAGE_KEY, JSON.stringify(ids));
-  } catch {
-    // ignore
-  }
+  writeStored(PINNED_STORAGE_KEY, JSON.stringify(ids));
 }
 
 export function togglePinnedId(ids: readonly string[], targetId: string): string[] {

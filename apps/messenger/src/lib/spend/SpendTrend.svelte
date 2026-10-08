@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { SpendCategory, SpendGroup } from '@real-bot/protocol';
+	import { localeTag } from '../locale-tag.ts';
 	import { formatTokens, formatUsd } from '../spend-format.ts';
 	import { spendCopyFor } from './spend-copy.ts';
 	import {
@@ -88,7 +89,7 @@
 		if (!id || !/^\d{4}-\d{2}-\d{2}$/.test(id)) return copy.dash;
 		const [year, month, day] = id.split('-').map(Number);
 		const date = new Date(Date.UTC(year!, month! - 1, day));
-		return new Intl.DateTimeFormat(locale === 'en' ? 'en-US' : 'zh-CN', {
+		return new Intl.DateTimeFormat(localeTag(locale), {
 			month: 'short',
 			day: 'numeric',
 			...(withYear ? { year: 'numeric' as const } : {}),

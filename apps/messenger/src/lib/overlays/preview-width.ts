@@ -1,32 +1,23 @@
-const STORAGE_KEY = "real-bot-preview-width";
+import { persistedWidth } from "../storage.ts";
+
 export const PREVIEW_MIN = 280;
 export const PREVIEW_DEFAULT = 420;
 
+const width = persistedWidth({
+  key: "real-bot-preview-width",
+  min: PREVIEW_MIN,
+  default: PREVIEW_DEFAULT,
+  ratio: 0.62,
+});
+
 export function loadPreviewWidth(): number {
-  if (typeof window === "undefined" || !window.localStorage) return PREVIEW_DEFAULT;
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    const n = raw ? Number(raw) : NaN;
-    if (!Number.isFinite(n)) return PREVIEW_DEFAULT;
-    return clampPreviewWidth(n);
-  } catch {
-    return PREVIEW_DEFAULT;
-  }
+  return width.load();
 }
 
-export function savePreviewWidth(width: number): void {
-  if (typeof window === "undefined" || !window.localStorage) return;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, String(Math.round(width)));
-  } catch {
-    // ignore
-  }
+export function savePreviewWidth(w: number): void {
+  width.save(w);
 }
 
-export function clampPreviewWidth(
-  width: number,
-  shellWidth: number = Number.POSITIVE_INFINITY,
-): number {
-  const max = Math.max(PREVIEW_MIN, Math.floor(shellWidth * 0.62));
-  return Math.min(max, Math.max(PREVIEW_MIN, Math.round(width)));
+export function clampPreviewWidth(w: number, shellWidth?: number): number {
+  return width.clamp(w, shellWidth);
 }

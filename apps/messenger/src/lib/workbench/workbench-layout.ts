@@ -22,6 +22,7 @@ import { WORKBENCH_LAYOUT_VERSION } from "./layout-types.ts";
 import { emptyLayout, isLeaf, makeLeaf, normalise, pickActiveAfterClose, renormalise, tiledLeaves } from "./layout-tree.ts";
 import { clampFrame, isFrame } from "./float-frame.ts";
 import type { PaneMin } from "./layout-types.ts";
+import { forgetStored, readStored, writeStored } from "../storage.ts";
 
 const STORAGE_KEY = "real-bot-workbench-layout";
 
@@ -144,10 +145,9 @@ export function parseWorkbenchLayout(raw: unknown): WorkbenchLayout | null {
 }
 
 export function loadWorkbenchLayout(): WorkbenchLayout | null {
-  if (typeof window === "undefined" || !window.localStorage) return null;
+  const raw = readStored(STORAGE_KEY);
+  if (!raw) return null;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
     return parseWorkbenchLayout(JSON.parse(raw));
   } catch {
     return null;
@@ -155,21 +155,15 @@ export function loadWorkbenchLayout(): WorkbenchLayout | null {
 }
 
 export function saveWorkbenchLayout(layout: WorkbenchLayout): void {
-  if (typeof window === "undefined" || !window.localStorage) return;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(layout));
+    writeStored(STORAGE_KEY, JSON.stringify(layout));
   } catch {
     // A window that refuses storage still keeps the arrangement for this run.
   }
 }
 
 export function clearWorkbenchLayout(): void {
-  if (typeof window === "undefined" || !window.localStorage) return;
-  try {
-    window.localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // Nothing to do; the next save overwrites it anyway.
-  }
+  forgetStored(STORAGE_KEY);
 }
 
 // ------------------------------------------------------------------ healing

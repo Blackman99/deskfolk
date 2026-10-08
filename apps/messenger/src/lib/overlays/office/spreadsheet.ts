@@ -34,15 +34,12 @@ export type Spreadsheet = {
 };
 
 import type { Cell, Row, Worksheet } from "exceljs";
+import { isRecord } from "../../is-record.ts";
 
 type ExcelCell = Cell;
 type ExcelRow = Row;
 type ExcelWorksheet = Worksheet;
 type ValueTypes = typeof import("exceljs").ValueType;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
 
 /** Zero-based column index to an Excel letter: 0 → A, 25 → Z, 26 → AA. */
 export function columnName(index: number): string {

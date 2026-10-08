@@ -108,7 +108,7 @@ import {
   recordAskError,
 } from "./notifications/ask-state.ts";
 import { NotificationCenter, type NotificationCenterHost } from "./notifications/notification-center.svelte.ts";
-import { TabOwnership, type TabOwnershipHost } from "./notifications/tab-ownership.svelte.ts";
+import { TabOwnership, type NotificationOpenIntent, type TabOwnershipHost } from "./notifications/tab-ownership.svelte.ts";
 import { RemoteAdmin, type RemoteAdminHost } from "./remote/remote-admin.svelte.ts";
 
 /**
@@ -2386,15 +2386,15 @@ export class MessengerRuntime {
     }
   }
 
-  setNotificationIntentHandler(handler: ((intent: { sessionId?: string | null; messageId?: string | null; openInbox: boolean }) => void) | null): void {
+  setNotificationIntentHandler(handler: ((intent: NotificationOpenIntent) => void) | null): void {
     this.notificationCenter.setNotificationIntentHandler(handler);
   }
 
-  private dispatchNotificationIntent(intent: { sessionId?: string | null; messageId?: string | null; openInbox: boolean }): void {
+  private dispatchNotificationIntent(intent: NotificationOpenIntent): void {
     this.notificationCenter.dispatchNotificationIntent(intent);
   }
 
-  applyNotificationIntent(intent: { sessionId?: string | null; messageId?: string | null; openInbox: boolean }): void {
+  applyNotificationIntent(intent: NotificationOpenIntent): void {
     this.notificationCenter.applyNotificationIntent(intent);
   }
 

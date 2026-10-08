@@ -1,5 +1,6 @@
 <script lang="ts">
 	import BrandMark from '../BrandMark.svelte';
+	import { localeTag } from '../locale-tag.ts';
 	import { untrack } from 'svelte';
 	import { pageSlide } from '../mobile-page-slide.ts';
 	import McpSettings from './McpSettings.svelte';
@@ -1665,7 +1666,7 @@
 												<li>
 													<div class="device-copy">
 														<strong>{device.name}</strong>
-														<span lang={locale === 'zh' ? 'zh-CN' : 'en'}>{device.lastActiveAt ? t.remote.lastActive(formatDeviceLastActive(device.lastActiveAt, relativeTimeNow, locale)) : t.remote.lastActiveUnknown}</span>
+														<span lang={localeTag(locale, 'en')}>{device.lastActiveAt ? t.remote.lastActive(formatDeviceLastActive(device.lastActiveAt, relativeTimeNow, locale)) : t.remote.lastActiveUnknown}</span>
 													</div>
 													<div class="device-actions">
 														<button type="button" class="btn-xs" data-testid={`host-remove-${device.id}`} disabled={runtime.hostDevicesBusy} onclick={() => { runtime.hostRemoveDeviceId = device.id; }}>{t.remote.removeDevice}</button>

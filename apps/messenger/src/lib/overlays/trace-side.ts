@@ -1,3 +1,5 @@
+import { forgetStored, readStored, writeStored } from "../storage.ts";
+
 /**
  * What opens beside the flow on a wide board: the plan's spec, its tickets, or nothing.
  *
@@ -12,31 +14,16 @@ const STORAGE_KEY = "real-bot-trace-side";
 export const TRACE_SIDE_DEFAULT: TraceSide = "tickets";
 
 export function loadTraceSide(): TraceSide {
-  if (typeof window === "undefined" || !window.localStorage) return TRACE_SIDE_DEFAULT;
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw === "spec" || raw === "tickets") return raw;
-    if (raw === "none") return null;
-    return TRACE_SIDE_DEFAULT;
-  } catch {
-    return TRACE_SIDE_DEFAULT;
-  }
+  const raw = readStored(STORAGE_KEY);
+  if (raw === "spec" || raw === "tickets") return raw;
+  if (raw === "none") return null;
+  return TRACE_SIDE_DEFAULT;
 }
 
 export function saveTraceSide(side: TraceSide): void {
-  if (typeof window === "undefined" || !window.localStorage) return;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, side ?? "none");
-  } catch {
-    // A private window or blocked storage: the panel just opens on the default next time.
-  }
+  writeStored(STORAGE_KEY, side ?? "none");
 }
 
 export function forgetTraceSide(): void {
-  if (typeof window === "undefined" || !window.localStorage) return;
-  try {
-    window.localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // Nothing kept, nothing to forget.
-  }
+  forgetStored(STORAGE_KEY);
 }
