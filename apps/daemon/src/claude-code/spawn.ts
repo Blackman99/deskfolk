@@ -6,7 +6,7 @@
  * `claude.cmd` is a batch file, which only cmd.exe runs, its arguments escaped as for an MCP
  * server's `npx`.
  */
-import { windowsSpawnPlan } from "../mcp-host";
+import { windowsSpawnPlan } from "../mcp-host/stdio-session";
 import { killProcessTree } from "../platform";
 
 export type ClaudeLaunch = { command: string; args: string[]; verbatim: boolean };

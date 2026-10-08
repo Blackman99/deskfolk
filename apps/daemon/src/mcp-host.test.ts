@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import { childEnv, createMcpHost, windowsSpawnPlan, type McpHost } from "./mcp-host";
+import { childEnv, createMcpHost, type McpHost } from "./mcp-host";
+import { windowsSpawnPlan } from "./mcp-host/stdio-session";
 
 const fixture = join(import.meta.dir, "mcp-fixture.ts");
 
