@@ -642,7 +642,7 @@ sequenceDiagram
 
 - [领域定义](../CONTEXT.md)、[项目指令](../Agents.md)、[贡献规范](../CONTRIBUTING.md)、[开发说明](development.md)。
 - [远控协议与激活门](remote-protocol.md)、[自托管部署](deploy-remote.md)、[独立运行时 ADR](adr/0023-independent-runtime.md)。
-- [通知常量、轮次及同步类型](../packages/protocol/src/index.ts)。
+- [通知常量](../packages/protocol/src/constants.ts)、[轮次](../packages/protocol/src/sessions.ts)及[同步类型](../packages/protocol/src/sync.ts)。
 - [PushService 与分类](../apps/daemon/src/remote/push.ts)、[Push 单测](../apps/daemon/src/remote/push.test.ts)、[远程 dispatcher](../apps/daemon/src/remote/dispatch.ts)、[controller 准入](../apps/daemon/src/remote/controller.ts)、[设备信任](../apps/daemon/src/remote/trust.ts)。
 - [Store 提交](../apps/daemon/src/store/transactions.ts)、[journal 映射](../apps/daemon/src/store/events.ts)、[会话已读](../apps/daemon/src/store/sessions.ts)、[消息](../apps/daemon/src/store/messages.ts)、[批准](../apps/daemon/src/store/approvals.ts)、[轮次恢复](../apps/daemon/src/store/turns.ts)、[日程领取](../apps/daemon/src/store/routines.ts)、[引擎失败 / 提问 / 日程](../apps/daemon/src/engine/)、[退出顺序](../apps/daemon/src/runtime.ts)、[信号入口](../apps/daemon/src/main.ts)。
 - [信使 runtime](../apps/messenger/src/lib/runtime.svelte.ts)、[未读](../apps/messenger/src/lib/sidebar/unread.ts)、[转录滚动](../apps/messenger/src/lib/chat/ChatStage.svelte)、[URL](../apps/messenger/src/lib/session-url.ts)、[设置](../apps/messenger/src/lib/settings/SettingsModal.svelte)。

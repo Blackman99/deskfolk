@@ -1,4 +1,4 @@
-import type { EventCursor } from "./index.ts";
+import type { EventCursor } from "./sync.ts";
 
 export type NotificationKind =
   | "approval"

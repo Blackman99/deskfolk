@@ -13,7 +13,7 @@
 | `@real-bot/messenger` | `apps/messenger` | Node `>=22` · SvelteKit SPA |
 | `@real-bot/desktop` | `apps/desktop` | Tauri 2 壳 |
 | `@real-bot/landing` | `apps/landing` | SvelteKit 静态落地页（GitHub Pages） |
-| `@real-bot/protocol` | `packages/protocol` | 本机接口类型（含通知 DTO 与游标编解码），加上点名解析和工作区路径判定（无 I/O） |
+| `@real-bot/protocol` | `packages/protocol` | 本机接口类型（含通知 DTO 与游标编解码），加上点名解析和工作区路径判定（无 I/O）；`src/index.ts` 只做再导出，类型按主题分文件（`constants`、`sessions`、`messages`、`control`、`plans`、`checks`、`holds`、`sync`、`events` 等），导入一律走包根 |
 | `@real-bot/remote` | `packages/remote` | 浏览器/Bun 纯密码与编码接口；实验性、默认关闭，见[协议契约](remote-protocol.md) |
 | `RuntimeHelper` | `apps/runtime-helper` | Swift 6 · macOS 13+ 专属，原生远控凭据/认证（默认禁用），以及终端会话的 pty（`real-bot-pty`） |
 | `real-bot-conpty` | `apps/conpty-helper` | Rust · Windows 专属，终端会话的 pty（`real-bot-pty.exe`，走 ConPTY）；没有远控凭据的等价物 |

@@ -2,7 +2,7 @@
  * The built-in prompts as the settings tab and the local API show them (ADR 0064): every text the
  * app ships to a model that you, or a Bot with your approval, can rewrite.
  */
-import type { Locale } from "./index.ts";
+import type { Locale } from "./constants.ts";
 
 /** Where a prompt sits: every turn, the Claude Agent preface, tool descriptions, the app's own calls. */
 export type PromptGroup = "turn" | "agent" | "tool" | "call";

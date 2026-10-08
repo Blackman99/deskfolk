@@ -4,7 +4,7 @@
  * (the Tauri dev-server plugin resolves the same default on the Vite/Node side). Callers own
  * reading `REAL_BOT_DATA_DIR`; this only computes the fallback.
  */
-import { APP_SUPPORT_DIRNAME } from "./index.ts";
+import { APP_SUPPORT_DIRNAME } from "./constants.ts";
 
 export type AppDataDirOptions = {
   platform: string;

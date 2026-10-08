@@ -16,7 +16,6 @@
     "apps/messenger/src/lib/runtime.svelte.ts": 3850,
     "apps/messenger/src/lib/settings/SettingsModal.svelte": 4050,
     "apps/messenger/src/lib/sidebar/Sidebar.svelte": 2300,
-    "apps/messenger/src/lib/spend/SpendView.svelte": 2850,
-    "packages/protocol/src/index.ts": 3100
+    "apps/messenger/src/lib/spend/SpendView.svelte": 2850
   }
 }

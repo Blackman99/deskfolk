@@ -77,7 +77,7 @@ test.skipIf(process.platform !== "darwin")("the compiled daemon starts outside t
       plugins: [{
         name: "test-port",
         setup(build) {
-          build.onLoad({ filter: /packages\/protocol\/src\/index\.ts$/ }, async (args) => ({
+          build.onLoad({ filter: /packages\/protocol\/src\/constants\.ts$/ }, async (args) => ({
             contents: (await Bun.file(args.path).text()).replaceAll("17890", port),
             loader: "ts",
           }));
