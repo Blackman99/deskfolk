@@ -97,7 +97,7 @@
 	import ChatHeader from './chat/ChatHeader.svelte';
 	import ChatTabLabel from './chat/ChatTabLabel.svelte';
 	import ChatStage from './chat/ChatStage.svelte';
-	// SettingsModal.svelte (~3.5k lines, plus its provider/MCP/notification sub-panels) is
+	// SettingsModal.svelte (with its tabs, provider/MCP/notification sub-panels and editor flyout) is
 	// loaded lazily below on first `runtime.settingsOpen`, and stays mounted after that — its own
 	// template is already gated on `runtime.settingsOpen` (an `{#if runtime.settingsOpen}` inside
 	// that file), so deferring the mount changes nothing but when the bytes are fetched.

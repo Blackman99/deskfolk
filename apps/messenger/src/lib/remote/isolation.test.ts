@@ -45,15 +45,33 @@ test("service worker source caches immutable assets only", () => {
   expect(sw).not.toContain("caches.open(\"chat");
 });
 
+/** The settings modal and the pieces it was split into; the remote session's card lives in its own file. */
+const settingsSource = (name: string) => readFileSync(new URL(`../settings/${name}`, import.meta.url), "utf8");
+const SETTINGS_FILES = [
+  "SettingsModal.svelte",
+  "SettingsNav.svelte",
+  "GeneralTab.svelte",
+  "ProvidersTab.svelte",
+  "RemoteTab.svelte",
+  "RemoteSessionSettings.svelte",
+  "AboutTab.svelte",
+  "ProviderEditorFlyout.svelte",
+  "IndependentConfirm.svelte",
+  "provider-editor.svelte.ts",
+  "independent-runtime.svelte.ts",
+];
+
 test("hosted and remote settings omit workspace_path from PATCH", () => {
-  const modal = readFileSync(new URL("../settings/SettingsModal.svelte", import.meta.url), "utf8");
+  const modal = settingsSource("SettingsModal.svelte");
+  const general = settingsSource("GeneralTab.svelte");
+  const remoteSession = settingsSource("RemoteSessionSettings.svelte");
   expect(modal).toContain("workspaceReadOnly = $derived(runtime.hosted && !runtime.remote)");
   expect(modal).toContain("if (workspaceReadOnly || runtime.remote)");
-  expect(modal).toContain("t.settings.workspaceHostOnly");
-  expect(modal).toContain("workspaceRemoteBrowse");
+  expect(general).toContain("t.settings.workspaceHostOnly");
+  expect(general).toContain("workspaceRemoteBrowse");
   expect(modal).toMatch(/patchSettings\(\{\s*workspace_path:/);
-  expect(modal).toContain("remote-push-toggle");
-  expect(modal).toContain("setPushEnabled");
+  expect(remoteSession).toContain("remote-push-toggle");
+  expect(remoteSession).toContain("setPushEnabled");
 });
 
 test("hosted and remote onboarding skip the workspace step and omit workspace_path from PATCH", () => {
@@ -66,11 +84,15 @@ test("hosted and remote onboarding skip the workspace step and omit workspace_pa
 });
 
 test("push opt-in lives on the remote settings card and does not add restart or file-browser UI", () => {
-  const modal = readFileSync(new URL("../settings/SettingsModal.svelte", import.meta.url), "utf8");
-  expect(modal).toContain('id="remote-push-toggle"');
-  expect(modal).toContain("t.remote.pushDenied");
-  expect(modal).not.toContain("file-browser");
-  expect(modal).not.toContain("runtime/restart");
+  const remoteSession = settingsSource("RemoteSessionSettings.svelte");
+  expect(settingsSource("RemoteTab.svelte")).toContain("<RemoteSessionSettings {runtime} {t} />");
+  expect(remoteSession).toContain('id="remote-push-toggle"');
+  expect(remoteSession).toContain("t.remote.pushDenied");
+  for (const name of SETTINGS_FILES) {
+    const source = settingsSource(name);
+    expect(source).not.toContain("file-browser");
+    expect(source).not.toContain("runtime/restart");
+  }
 });
 
 test("hosted layout registers the worker from the compile flag, not import.meta.env", () => {
