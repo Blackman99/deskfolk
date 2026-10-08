@@ -6,8 +6,10 @@ import {
   estimateTokens,
   nextBytesPerToken,
   overWindow,
+  pictureCount,
   promptBytes,
   promptWasCut,
+  readLessThanBefore,
   readLlamaCppProps,
   readLmStudioModels,
   readLocalModels,
@@ -16,6 +18,32 @@ import {
   serverRoot,
   stripLeadingThink,
 } from "./local-model";
+
+describe("readLessThanBefore", () => {
+  // Ollama 0.40 on 2026-10-08: 32,680 tokens read, then 32,581 for a prompt about 4 KB longer.
+  const before = { bytes: 110_000, read: 32_680, pictures: 0 };
+
+  test("a longer prompt of the same conversation read as fewer tokens was cut", () => {
+    expect(readLessThanBefore(before, 114_400, 32_581, 0)).toBe(true);
+    expect(readLessThanBefore(before, 114_400, 33_900, 0)).toBe(false);
+  });
+
+  test("nothing to judge: no request before, a shorter prompt, a small one, or other pictures", () => {
+    expect(readLessThanBefore(undefined, 114_400, 32_581, 0)).toBe(false);
+    expect(readLessThanBefore(before, 90_000, 26_000, 0)).toBe(false);
+    expect(readLessThanBefore({ bytes: 9_000, read: 3_000, pictures: 0 }, MIN_CHECKED_BYTES - 1, 2_900, 0)).toBe(false);
+    // A picture the window let go of takes its tokens and no bytes.
+    expect(readLessThanBefore(before, 114_400, 32_000, 1)).toBe(false);
+  });
+
+  test("pictures are counted across the request", () => {
+    expect(pictureCount([
+      { role: "user", content: [{ type: "text", text: "a" }, { type: "image_url", image_url: { url: "data:image/png;base64,AA==" } }] },
+      { role: "tool", tool_call_id: "c", content: "{}" },
+      { role: "user", content: [{ type: "image_url", image_url: { url: "data:image/png;base64,AA==" } }] },
+    ])).toBe(2);
+  });
+});
 
 describe("promptBytes", () => {
   test("counts text, tool calls and tool definitions, not pictures", () => {

@@ -16,6 +16,7 @@ import { seamsJudgeFormat, seamsJudgeTemplate, type SeamJudgeMode } from "../sea
 import { standardJudgeFormat, standardJudgeTemplate } from "../standard-check";
 import { AGENT_PREFACE } from "./agent-system";
 import { ALL_TOOL_DEFS, toolDescription } from "./builtin-tools";
+import { COMPACT_TEMPLATE } from "./compaction";
 import { COMPOSER_SUGGEST_FORMAT, COMPOSER_SUGGEST_TEMPLATE } from "./composer-suggestions";
 import type { Placeholder } from "./fill";
 import { JUDGEMENT_FORMAT, JUDGEMENT_TEMPLATE } from "./judgement";
@@ -54,7 +55,10 @@ export type SlotDef = {
   summary: Localized;
   /** Placeholders the code fills in; `format` must appear exactly once, the others at least once. */
   placeholders: readonly Placeholder[];
-  /** The fixed answer format filled in at `{format}`, for a call whose answer code parses. */
+  /**
+   * The fixed answer format filled in at `{format}`, for a call whose answer code parses. A call
+   * whose answer is read as plain text (the context compaction, ADR 0068) has none.
+   */
   format?: (locale: Locale, env: PromptEnv) => string;
   /** The text once filled must hold no `{`: its answer is read from the first `{…}` (ADR 0012). */
   noBrace?: true;
@@ -241,6 +245,19 @@ const CALL_SLOTS: SlotDef[] = [
     (l) => retrospectiveTemplate(l),
     (l) => retrospectiveFormat(l),
   ),
+  // Its answer is the summary itself, handed back to the Bot as written: no format to lock (ADR 0068).
+  {
+    id: "call.compact",
+    group: "call",
+    locales: BOTH,
+    title: { zh: "上下文压缩", en: "Context compaction" },
+    summary: {
+      zh: "一轮的工作在上下文里快放不下时，把前面的工具调用和结果压成摘要，Bot 从摘要接着做。",
+      en: "When a turn's work nears the model's context limit, condenses its earlier tool calls and results into a summary the Bot carries on from.",
+    },
+    placeholders: [],
+    defaultText: (l) => COMPACT_TEMPLATE[l],
+  },
   seams(
     "image",
     { zh: "衔接检查：画面", en: "Seams check: pictures" },

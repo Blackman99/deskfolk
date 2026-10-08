@@ -908,7 +908,8 @@ function migrateSpendPurpose(db: Database): void {
 
 /**
  * `spend.purpose` gained `reader` (ADR 0055: reading a line for what the app acts on), then
- * `retrospect` (ADR 0062: a Bot's retrospective of a delivered plan). Its CHECK is a fixed
+ * `retrospect` (ADR 0062: a Bot's retrospective of a delivered plan), then `compact` (ADR 0068: a
+ * turn's context compaction). Its CHECK is a fixed
  * `IN (...)` list, which SQLite cannot widen with `ALTER TABLE`, so a ledger whose list lacks one
  * of {@link SPEND_PURPOSES} is rebuilt the way `migrateNullableTaskSession` rebuilds tasks: the
  * stored definition with the missing ones added to the list, every row copied into it in one

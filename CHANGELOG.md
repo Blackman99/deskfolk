@@ -37,6 +37,13 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 - `measure_model` runs the same speed test as **Test** in Settings: how fast the model writes and whether it calls a tool it is given.
 - `update_model_settings` changes which endpoint is the default, the model that reads your lines and the model ladder; `list_endpoints` now shows the reading model and the ladder too. They run without an approval card, like changing an endpoint's default model: they only choose among endpoints and models you configured. The default can only move to an endpoint that has a key (or needs none) and lists models. Other Bots' pinned models, the workspace, Always-allow rules, remote access, notifications and appearance stay yours alone. [ADR 0014](docs/adr/0014-bot-catalog-tools.md)
 
+### A long turn is compacted instead of stopping at the context limit
+
+- A Bot's turn sends all its earlier steps again on every step, so a long one — reading dozens of files, say — used to run into the model's context limit and stop with "The prompt is larger than the model's context window", with everything it had read lost. Now its earlier steps are condensed into a summary by the same model and it carries on: when the endpoint refuses a step as too long, the step goes again with the summary in place of the older steps; when the model's **Context window** is known (filled in for local models, or set in a model's attributes), this happens before a step reaches three quarters of it. The newest steps stay as they were. The turn still stops when even the instructions, the conversation and the tool definitions do not fit.
+- The summary is written from a built-in prompt, **Context compaction**, in Settings › Prompts: edit it like any other. The summary calls show in Spend as their own line, **Context compaction**, under the turn they condensed.
+- A local server that quietly drops the oldest messages of a long turn to fit its window (Ollama does once a prompt is just over it) is now noticed too, where before the Bot carried on without the request that started it; the turn compacts instead, and the server's window is recorded on the model.
+- An endpoint in Anthropic's format that refuses a step as "prompt is too long", or stops a reply because the context is full, is now read as a full context rather than "Endpoint refused this completion" or a reply cut at the output limit. [ADR 0068](docs/adr/0068-compact-a-turn-that-outgrows-the-context.md)
+
 ## 0.1.0-rc.14 — 2026-10-08
 
 Unsigned macOS rc with an experimental unsigned Windows installer beside the `.dmg`s. This is not a supported signed installer; Gatekeeper or SmartScreen may block it. Prefer running from source.

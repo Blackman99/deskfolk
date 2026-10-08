@@ -295,6 +295,28 @@ describe("Anthropic Messages: a hop", () => {
     expect(sent[2]!.body.max_tokens).toBe(32_768);
   });
 
+  test("a prompt over the context once the cap is out of the way is context_full, not a bare refusal (ADR 0068)", async () => {
+    const tooLong = new Response(JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: "prompt is too long: 210000 tokens > 200000 maximum" } }), { status: 400 });
+    const { sent, fetch } = recorder(() => tooLong.clone());
+    const client = createCompletionsClient({ fetch, clock: quick });
+    expect(await client.complete(hop("https://api.anthropic.com"))).toMatchObject({ ok: false, failKind: "context_full" });
+    // Not sent again: the same prompt would meet the same window.
+    expect(sent).toHaveLength(1);
+
+    const other = recorder(() => new Response(JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: "messages: roles must alternate" } }), { status: 400 }));
+    const refused = createCompletionsClient({ fetch: other.fetch, clock: quick });
+    expect(await refused.complete(hop("https://api.anthropic.com"))).toMatchObject({ ok: false, failKind: "refused" });
+  });
+
+  test("a stream stopped at a full context is context_full, not a reply cut at the cap (ADR 0068)", async () => {
+    const { fetch } = recorder(() => stream(textStream("写到一半", "model_context_window_exceeded")));
+    const client = createCompletionsClient({ fetch, clock: quick });
+    expect(await client.complete(hop("https://api.anthropic.com"))).toMatchObject({ ok: false, failKind: "context_full", hadChoices: true });
+    const cut = recorder(() => stream(textStream("写到上限", "max_tokens")));
+    expect(await createCompletionsClient({ fetch: cut.fetch, clock: quick }).complete(hop("https://api.anthropic.com")))
+      .toMatchObject({ ok: true, finishReason: "length" });
+  });
+
   test("a key refused as x-api-key goes as a Bearer token, and stays that way for the endpoint", async () => {
     const { sent, fetch } = recorder((one) => one.headers["x-api-key"]
       ? new Response(JSON.stringify({ error: { message: "invalid x-api-key" } }), { status: 401 })

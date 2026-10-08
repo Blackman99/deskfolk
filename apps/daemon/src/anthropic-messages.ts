@@ -282,14 +282,16 @@ function toolInput(args: string): Block {
 
 /**
  * A stop reason in Chat Completions terms: `end_turn` and `stop_sequence` are `stop`, `tool_use` is
- * `tool_calls`, a reply at the cap or a full context is `length`, and `refusal` stays a refusal (see
- * `declinedFinish`). Anything else is passed on lower-cased.
+ * `tool_calls`, a reply at the cap is `length`, a full context is `context_window` (ADR 0068: the
+ * prompt has to shrink, so carrying on from the cut reply would only meet the same window), and
+ * `refusal` stays a refusal (see `declinedFinish`). Anything else is passed on lower-cased.
  */
 export function anthropicFinish(reason: string): string {
   const lower = reason.toLowerCase();
   if (lower === "end_turn" || lower === "stop_sequence") return "stop";
   if (lower === "tool_use") return "tool_calls";
-  if (lower === "max_tokens" || lower === "model_context_window_exceeded") return "length";
+  if (lower === "max_tokens") return "length";
+  if (lower === "model_context_window_exceeded") return "context_window";
   return lower;
 }
 

@@ -22,7 +22,8 @@ import {
   resolveBodyPathsToWorkDir,
 } from "../artifact-paths";
 import { pathExists } from "../collab-tools/args";
-import type { CompletionsClient } from "../completions";
+import type { ChatMessage, CompletionsClient } from "../completions";
+import { capacityBytes, compactNote, hopsIn, nearWindow, planCompaction } from "../compaction";
 import { assembleTurnMessages, sessionLabel } from "../context";
 import { planTagger, type PlanRef } from "../context/transcript";
 import { HttpError } from "../errors";
@@ -33,6 +34,7 @@ import { readBotLineByWords, readsAsNoWork, type BotLineContext, type BotLineRea
 import type { McpHost } from "../mcp-host";
 import type { TurnAdmission } from "../quiesce";
 import { isoNow } from "../ids";
+import { promptBytes } from "../local-model";
 import { MODEL_FAIL_SHAPES } from "../store/quality";
 import type { TurnExecution } from "../store/routing";
 import { ENGINE_LEVELS } from "../store/schema-gate";
@@ -50,11 +52,13 @@ import type { PlanWatch } from "./plan-watch";
 import type { Routing } from "./routing";
 import type { SpendTracker } from "./spend";
 import { readOnlyTools, type Tools } from "./tools";
-import type { InboxEntry, Live } from "./types";
+import type { InboxEntry, Live, ResolvedTarget, SpendOwner } from "./types";
+import { summarizeLoop } from "./compaction";
 import type { Spend } from "@real-bot/protocol";
 import type { ClaudeCodeProbe } from "../claude-code/probe";
 import { createAgentRunner, type AgentQuery } from "./agent-runner";
 import { editedToolDescription, promptPage } from "../prompts/book";
+import { codePointCount, takeCodePoints } from "../text";
 
 /** How many of a segment's written files are hashed for progress, newest first, and up to what size each. */
 const ARTIFACTS_HASHED_MAX = 50;
@@ -87,6 +91,8 @@ export type LifecycleDeps = {
   spendOwner: SpendTracker["spendOwner"];
   callOf: SpendTracker["callOf"];
   recordSpend: SpendTracker["recordSpend"];
+  /** A short call's spend: the context compaction's summary call bills to its turn this way (ADR 0068). */
+  recordResponseSpend: SpendTracker["recordResponseSpend"];
   closeChain: Chains["closeChain"];
   holdChain: Chains["holdChain"];
   chainTurnEnded: Chains["turnEnded"];
@@ -188,6 +194,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     spendOwner,
     callOf,
     recordSpend,
+    recordResponseSpend,
     closeChain,
     holdChain,
     chainTurnEnded,
@@ -979,7 +986,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       }
       const listed = mcp ? await mcp.listForTurn() : { tools: [], guides: [] };
       if (!active(turnId, live)) return;
-      const messages = assembleTurnMessages(store, {
+      const assemble = () => assembleTurnMessages(store, {
         sessionId: current.session_id,
         botId: current.bot_id,
         turnId,
@@ -989,6 +996,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
         loop: live.loop,
         mcpGuides: listed.guides,
       });
+      let messages = assemble();
       // Tool descriptions you edited (ADR 0064) replace the shipped ones from this hop on.
       const offered = pace === "last" ? [] : [...builtinTools(target.locale, store.capabilities().engine_level, editedToolDescription(promptPage(store, target.locale))), ...listed.tools];
       // A read-only turn is not shown what it may not call (ADR 0040 I3); the gate refuses them anyway.
@@ -1000,6 +1008,16 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       live.mcpTools = new Map(listed.guides.flatMap((guide) =>
         guide.tools.map((tool) => [tool.modelName, { server: guide.name, tool: tool.toolName ?? tool.modelName, readOnly: tool.readOnly === true,
           params: params.get(tool.modelName) ?? [] }] as const)));
+      let sentBytes = promptBytes(messages, tools);
+      // Near the window the model's entry names, the older hops are condensed before this one goes (ADR 0068).
+      if (!live.compacted && nearWindow(sentBytes, store.contextWindowOf(target.baseUrl, target.model), live.bytesPerToken)) {
+        const compacted = await compactTurn(turnId, live, current, target, turnOwner, sentBytes, "near");
+        if (!active(turnId, live)) return;
+        if (compacted) {
+          messages = assemble();
+          sentBytes = promptBytes(messages, tools);
+        }
+      }
       // What it last said while working stays up through the next hop, as a Claude Agent Bot's
       // does: a hop that only calls tools does not wipe the line above them (2026-10-06).
       publishTurn(current, live.partial);
@@ -1071,6 +1089,13 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       }
       // The sweep measures from here again, now that the stream no longer holds it off.
       store.touchTurn(turnId);
+      // What went through is known to fit, and says how many bytes this model reads to a token (ADR 0068).
+      if (result.ok) {
+        live.fitBytes = Math.max(live.fitBytes ?? 0, sentBytes);
+        const read = result.usage?.input_tokens;
+        if (read && read > 0) live.bytesPerToken = sentBytes / read;
+        live.compacted = false;
+      }
 
       if (result.hadChoices && live.interrupt && !live.burned) {
         live.burned = true;
@@ -1078,8 +1103,15 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       }
 
       if (!result.ok) {
-        // Not a retry: the same prompt would meet the same window (ADR 0067).
         if (result.failKind === "context_full") {
+          // Over the model's context: the older hops are condensed and the hop goes again (ADR 0068).
+          // Over it again before a hop went through, the turn fails: the same prompt is not sent
+          // again, as it would meet the same window (ADR 0067).
+          if (!live.compacted && (await compactTurn(turnId, live, current, target, turnOwner, sentBytes, "full"))) {
+            if (!active(turnId, live)) return;
+            continue;
+          }
+          if (!active(turnId, live)) return;
           failTurn(turnId, "context_full", contextFullDetail(live.locale, result.contextFull));
           return;
         }
@@ -1300,6 +1332,73 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
    * line in the session. The endpoint failing outright ends the turn at once: the client has already
    * asked again. True when the hop goes again.
    */
+  /**
+   * Condenses the older hops of a turn's loop into a summary on the turn's own model, and puts the
+   * summary in their place at the head of the loop (ADR 0068). True when the loop changed; false
+   * when nothing there was worth condensing, compacting could not make room, or the summary call
+   * gave nothing back.
+   */
+  async function compactTurn(
+    turnId: string,
+    live: Live,
+    current: Turn,
+    target: ResolvedTarget,
+    owner: SpendOwner,
+    sentBytes: number,
+    why: "near" | "full",
+  ): Promise<boolean> {
+    const plan = planCompaction(live.loop, {
+      capacity: capacityBytes(store.contextWindowOf(target.baseUrl, target.model), live.bytesPerToken, live.fitBytes ?? 0),
+      fixed: Math.max(0, sentBytes - promptBytes(live.loop, [])),
+      bytesPerToken: live.bytesPerToken,
+    });
+    if (!plan) return false;
+    let trigger = "";
+    try {
+      trigger = store.getMessage(current.trigger_message_id).body;
+    } catch {
+      trigger = "";
+    }
+    store.touchTurn(turnId);
+    live.streaming = true;
+    let summary: string | null;
+    try {
+      summary = await summarizeLoop({ completions, recordResponseSpend, callOf }, {
+        turnId,
+        target,
+        owner,
+        locale: live.locale,
+        signal: live.abort.signal,
+        page: promptPage(store, live.locale),
+        plan,
+        trigger,
+        earlier: live.summary ?? null,
+      });
+    } catch {
+      summary = null;
+    } finally {
+      live.streaming = false;
+    }
+    if (!summary || !active(turnId, live)) return false;
+    const note: ChatMessage = { role: "user", content: compactNote(live.locale, summary) };
+    live.loop.splice(0, live.loop.length, note, ...plan.tail);
+    live.summary = note;
+    live.compacted = true;
+    store.touchTurn(turnId);
+    if (store.learningOn()) {
+      try {
+        store.recordWorkEvent({ kind: "turn.compacted", actor: "app", botId: current.bot_id, taskId: current.task_id, ticketId: current.ticket_id,
+          turnId, sessionId: current.session_id,
+          payload: { why, hops: hopsIn(plan.old), kept_hops: hopsIn(plan.tail), bytes_before: sentBytes, summary_chars: codePointCount(summary),
+            // What the Bot was left with, for when it later seems to have forgotten something.
+            summary: takeCodePoints(summary, 8_000).text } });
+      } catch {
+        // the work log is best effort
+      }
+    }
+    return true;
+  }
+
   function retryOrFail(turnId: string, live: Live, kind: FailKind): boolean {
     if (isRetriedFailure(kind) && !live.retried) {
       live.retried = true;

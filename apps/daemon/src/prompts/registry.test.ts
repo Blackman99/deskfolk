@@ -34,9 +34,10 @@ describe("the slots", () => {
         expect(slot.title[l].length).toBeGreaterThan(0);
         expect(slot.summary[l].length).toBeGreaterThan(0);
       }
-      // Only the app's own calls have an answer the code parses, and so a fixed format.
-      expect(slot.format !== undefined).toBe(slot.group === "call");
-      expect(slot.placeholders.includes("format")).toBe(slot.group === "call");
+      // Only the app's own calls have an answer the code parses, and so a fixed format; the
+      // compaction's answer is the summary itself (ADR 0068).
+      expect(slot.format !== undefined).toBe(slot.group === "call" && slot.id !== "call.compact");
+      expect(slot.placeholders.includes("format")).toBe(slot.format !== undefined);
     }
   });
 

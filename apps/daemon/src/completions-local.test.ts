@@ -109,6 +109,27 @@ describe("a prompt the local server cut", () => {
     if (!second.ok) expect(second.failKind).toBe("context_full");
   });
 
+  test("within one conversation, a longer prompt read as fewer tokens was cut: the server dropped its oldest messages (ADR 0068)", async () => {
+    let promptTokens = 29_000;
+    const windows: Array<[string, string, number]> = [];
+    const { fetch } = recorder((entry) => {
+      if (entry.url.endsWith("/api/tags")) return Response.json({ models: [{ name: "qwen3:8b", details: { context_length: 40_960 } }] });
+      if (entry.url.endsWith("/api/ps")) return Response.json({ models: [{ name: "qwen3:8b", context_length: 32_768 }] });
+      if (entry.url.endsWith("/chat/completions")) return reply("ok", promptTokens);
+      return new Response("", { status: 404 });
+    });
+    const client = createCompletionsClient({ fetch, onWindow: (...args) => windows.push(args) });
+    const hop = (grown: number, affinity = "deskfolk-s-alpha") =>
+      bigHop(OLLAMA, { affinity, messages: [{ role: "system", content: "rule ".repeat(20_000 + grown) }, { role: "user", content: "go" }] });
+    expect((await client.complete(hop(0))).ok).toBe(true);
+    // A few hundred tokens fewer for 4 KB more: well within the bytes-per-token rule, which misses it.
+    promptTokens = 28_900;
+    // Another conversation on the same model says nothing about this one.
+    expect((await client.complete(hop(800, "deskfolk-s-beta"))).ok).toBe(true);
+    expect(await client.complete(hop(800))).toMatchObject({ ok: false, failKind: "context_full", contextFull: { read: 28_900, window: 32_768 } });
+    expect(windows).toEqual([[OLLAMA, "qwen3:8b", 32_768]]);
+  });
+
   test("a request clearly over the window on record is not sent", async () => {
     const { seen, fetch } = recorder(() => reply("ok", 10));
     const client = createCompletionsClient({ fetch, windowOf: () => 8192 });

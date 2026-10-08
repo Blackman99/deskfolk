@@ -1059,9 +1059,9 @@ CREATE TABLE IF NOT EXISTS spend (
   ),
   -- What the call was for where the kind is shared (ADR 0042): the scribe, a reflection, a
   -- reading of a line (ADR 0055) and a retrospective (ADR 0062) bill as organize, a judgement of
-  -- pictures as acceptance_check.
+  -- pictures as acceptance_check, a turn's context compaction (ADR 0068) as the turn.
   -- Added by migrate.ts on older ledgers, and widened there when a purpose is added.
-  purpose TEXT CHECK (purpose IS NULL OR purpose IN ('scribe', 'vision', 'reflect', 'reader', 'retrospect')),
+  purpose TEXT CHECK (purpose IS NULL OR purpose IN ('scribe', 'vision', 'reflect', 'reader', 'retrospect', 'compact')),
   chain_id TEXT,
   provider_id TEXT,
   provider_name TEXT,

@@ -20,10 +20,13 @@ import {
   estimateTokens,
   nextBytesPerToken,
   overWindow,
+  pictureCount,
   promptBytes,
   promptWasCut,
+  readLessThanBefore,
   readLocalModels,
   stripLeadingThink,
+  type ThreadReading,
 } from "./local-model";
 import type { WakeWatch } from "./wake";
 import type { PromptRef } from "./prompts/registry";
@@ -195,9 +198,9 @@ export type JudgeResult = {
   usage: MappedUsage | null;
   failKind: FailKind | null;
   /**
-   * The answer stopped at the token cap (`finish_reason: "length"`), so what came back is only its
-   * start. Absent is false. It is not a failure here: a short verdict cut off can still read, so
-   * each caller decides what a cut-off answer is worth.
+   * The answer stopped at the token cap (`finish_reason: "length"`) or at a full context, so what
+   * came back is only its start. Absent is false. It is not a failure here: a short verdict cut off
+   * can still read, so each caller decides what a cut-off answer is worth.
    */
   truncated?: boolean;
 };
@@ -280,6 +283,7 @@ export function createCompletionsClient(options: CompletionsOptions = {}): Compl
   const forms: Forms = { cap: new Map(), think: new Map(), auth: new Map() };
   const sizing: LocalSizing = {
     bytesPerToken: new Map(),
+    lastRead: new Map(),
     noThinkOff: new Set(),
     fetchImpl,
     windowOf: options.windowOf,
@@ -301,11 +305,13 @@ export function createCompletionsClient(options: CompletionsOptions = {}): Compl
 
 /**
  * What the client keeps about the local models it sends to (ADR 0067): the bytes per token each
- * read its last whole requests at (by base URL and model), the models that refused to have their
- * thinking turned off, and where to read and record a model's window.
+ * read its last whole requests at (by base URL and model), how each conversation's last whole
+ * request was read (by base URL, model and affinity; ADR 0068), the models that refused to have
+ * their thinking turned off, and where to read and record a model's window.
  */
 type LocalSizing = {
   bytesPerToken: Map<string, number>;
+  lastRead: Map<string, ThreadReading>;
   noThinkOff: Set<string>;
   fetchImpl: FetchLike;
   windowOf?: (baseUrl: string, model: string) => number | undefined;
@@ -322,21 +328,26 @@ function preflight(sizing: LocalSizing, request: { baseUrl: string; model: strin
 
 /**
  * After a local request went through: whether the tokens it reports reading say the server cut the
- * prompt (then the window it runs with, asked of the server and recorded), else what this request
- * teaches about the model's bytes per token.
+ * prompt — far fewer than its bytes come to, or, within one conversation (`affinity`), fewer than
+ * the request before it although it sent more — and then the window the server runs with, asked
+ * of it and recorded; else what this request teaches about the model's bytes per token.
  */
 async function afterLocal(
   sizing: LocalSizing,
-  request: { baseUrl: string; model: string; signal: AbortSignal },
+  request: { baseUrl: string; model: string; signal: AbortSignal; messages: readonly ChatMessage[]; affinity?: string },
   bytes: number,
   usage: MappedUsage | null,
 ): Promise<ContextFull | null> {
   const key = `${request.baseUrl} ${request.model}`;
   const ratio = sizing.bytesPerToken.get(key);
   const read = usage?.input_tokens ?? null;
-  if (!promptWasCut(bytes, read, ratio)) {
+  const thread = request.affinity ? `${key} ${request.affinity}` : null;
+  const pictures = pictureCount(request.messages);
+  const before = thread ? sizing.lastRead.get(thread) : undefined;
+  if (!promptWasCut(bytes, read, ratio) && !readLessThanBefore(before, bytes, read, pictures)) {
     const next = nextBytesPerToken(ratio, bytes, read);
     if (next !== undefined) sizing.bytesPerToken.set(key, next);
+    if (thread && read && read > 0) sizing.lastRead.set(thread, { bytes, read, pictures });
     return null;
   }
   const facts = await readLocalModels(sizing.fetchImpl, request.baseUrl, [request.model], { signal: request.signal });
@@ -535,6 +546,12 @@ async function oneStreamAttempt(
       });
     } catch {
       return fail("unreachable", { retryable: !request.signal.aborted, retryBurned: false });
+    }
+    // A prompt over the model's context ("prompt is too long: 210000 tokens > 200000 maximum"),
+    // once the cap is out of the way, reads as it does on Chat Completions (ADR 0068).
+    if (response.status === 400) {
+      const refusal = await response.text().catch(() => "");
+      return fail(PROMPT_OVER_CONTEXT.test(refusal) ? "context_full" : "refused", { retryable: false, retryBurned: false });
     }
     return streamResponse(response, clock, request, wallAt, sleptThrough, local);
   }
@@ -1079,6 +1096,9 @@ function classifyHop(
   if (finishReason === null && !finished) return { ok: false, failKind: "incomplete" };
   // OpenRouter ends a stream this way when the model behind it failed partway: what came is half.
   if (finishReason === "error") return { ok: false, failKind: "incomplete" };
+  // The prompt and the reply together filled the model's context: what came is cut, and only a
+  // smaller prompt can go on from here (ADR 0068).
+  if (finishReason === "context_window") return { ok: false, failKind: "context_full" };
   const valid = toolCalls.every((c) => c.id && c.name && parseJson(c.arguments) !== undefined);
   // At the output cap the last call's arguments are usually cut mid-way. Such a call cannot run; the
   // turn asks for it in smaller parts instead.
@@ -1093,15 +1113,19 @@ function classifyHop(
 }
 
 /** Finish reasons that mean the reply reached a length limit. */
-const CAP_FINISH: ReadonlySet<string> = new Set(["length", "max_tokens", "model_length"]);
+const CAP_FINISH: ReadonlySet<string> = new Set(["length", "max_tokens"]);
+/** Finish reasons that mean the prompt and the reply together filled the model's context. */
+const CONTEXT_FINISH: ReadonlySet<string> = new Set(["model_length", "model_context_window_exceeded", "context_window"]);
 
 /**
  * The finish reason as this client reads it: lower-cased, with the other names for a length limit
- * read as `length`. Some OpenAI-compatible proxies pass a provider's own reasons through as they
- * are, like Gemini's `STOP` and `MAX_TOKENS`, and Mistral calls a full context `model_length`.
+ * read as `length` and those for a full context as `context_window`. Some OpenAI-compatible proxies
+ * pass a provider's own reasons through as they are, like Gemini's `STOP` and `MAX_TOKENS`;
+ * Mistral calls a full context `model_length`, Anthropic `model_context_window_exceeded`.
  */
 function normalizeFinish(reason: string): string {
   const lower = reason.toLowerCase();
+  if (CONTEXT_FINISH.has(lower)) return "context_window";
   return CAP_FINISH.has(lower) ? "length" : lower;
 }
 
@@ -1241,7 +1265,7 @@ async function completeJudgeBody(
       toolCalls: message.toolCalls,
       usage: message.usage,
       failKind: null,
-      ...(message.finish === "length" ? { truncated: true } : {}),
+      ...(message.finish === "length" || message.finish === "context_window" ? { truncated: true } : {}),
     });
   }
   const usage = mapUsage(body.usage);
@@ -1259,7 +1283,7 @@ async function completeJudgeBody(
     toolCalls: judgeToolCalls(message.tool_calls),
     usage,
     failKind: null,
-    ...(typeof choice.finish_reason === "string" && normalizeFinish(choice.finish_reason) === "length" ? { truncated: true } : {}),
+    ...(typeof choice.finish_reason === "string" && ["length", "context_window"].includes(normalizeFinish(choice.finish_reason)) ? { truncated: true } : {}),
   });
 }
 

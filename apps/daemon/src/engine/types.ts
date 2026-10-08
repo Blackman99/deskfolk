@@ -97,6 +97,14 @@ export type Live = {
   retried?: boolean;
   /** The last reply was cut off at the output cap and the turn carried on from it; cut again in a row, it fails. */
   continued?: boolean;
+  /** Bytes of the largest request a hop of this turn went through with: what is known to fit (ADR 0068). */
+  fitBytes?: number;
+  /** Bytes per token the last hop that reported its usage was read at. */
+  bytesPerToken?: number;
+  /** The loop was compacted since the last hop that went through; over the context again, the turn fails. */
+  compacted?: boolean;
+  /** The note the latest compaction left at the head of the loop, folded into the next summary. */
+  summary?: ChatMessage;
   toolCalls: number;
   toolErrors: number;
   /** Failed calls whose name and arguments match an earlier failure in this turn. */

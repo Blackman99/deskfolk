@@ -13,11 +13,12 @@ export type SpendKind =
  * What a call was for, where its kind is shared (ADR 0042): the scribe bills as `organize`, a
  * judgement of pictures (a `continuity` check looking at frames) as `acceptance_check`, and a
  * reflection, once there is one, as `organize`, and so does reading a line for what the app acts
- * on (`reader`, ADR 0055) and a Bot's retrospective of a delivered plan (`retrospect`, ADR 0062).
- * The kind stays the nearest old value, so an older build still reads the row; every other row has
- * no purpose.
+ * on (`reader`, ADR 0055) and a Bot's retrospective of a delivered plan (`retrospect`, ADR 0062);
+ * condensing a long turn's earlier work into a summary (`compact`, ADR 0068) bills as the `turn` it
+ * belongs to. The kind stays the nearest old value, so an older build still reads the row; every
+ * other row has no purpose.
  */
-export type SpendPurpose = "scribe" | "vision" | "reflect" | "reader" | "retrospect";
+export type SpendPurpose = "scribe" | "vision" | "reflect" | "reader" | "retrospect" | "compact";
 
 export const SPEND_PURPOSE_KIND: Record<SpendPurpose, SpendKind> = {
   scribe: "organize",
@@ -25,6 +26,7 @@ export const SPEND_PURPOSE_KIND: Record<SpendPurpose, SpendKind> = {
   reflect: "organize",
   reader: "organize",
   retrospect: "organize",
+  compact: "turn",
 };
 
 /** One line of the view's breakdown: a kind, or a purpose split out of the kind it bills as. */
@@ -55,6 +57,7 @@ export const SPEND_CATEGORY_OF: Record<SpendLine, SpendCategory> = {
   reflect: "feedback",
   reader: "other",
   retrospect: "feedback",
+  compact: "turn",
 };
 
 /**

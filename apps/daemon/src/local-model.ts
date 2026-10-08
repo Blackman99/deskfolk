@@ -62,6 +62,31 @@ export function promptWasCut(bytes: number, promptTokens: number | null | undefi
   return observed > Math.max(bytesPerToken * CUT_FACTOR, 4);
 }
 
+/** A request of one conversation as the server read it, for {@link readLessThanBefore}. */
+export type ThreadReading = { bytes: number; read: number; pictures: number };
+
+/**
+ * Whether a request reads fewer tokens than the one before it in the same conversation although it
+ * sent more: the mark of a server that drops the oldest messages to fit its window. Ollama 0.40 did
+ * so on 2026-10-08 (ADR 0068): 32,680 tokens read, then 32,581 for a prompt 4 KB longer, the
+ * request that started the turn gone. It cuts only what is over, so the bytes per token barely move
+ * and {@link promptWasCut} misses it. Judged only between requests carrying as many pictures: a
+ * picture let go of takes its tokens with it and no bytes.
+ */
+export function readLessThanBefore(before: ThreadReading | undefined, bytes: number, read: number | null | undefined, pictures: number): boolean {
+  if (!before || !read || read <= 0 || bytes < MIN_CHECKED_BYTES || pictures !== before.pictures) return false;
+  return bytes > before.bytes && read < before.read;
+}
+
+/** Pictures a request carries. */
+export function pictureCount(messages: readonly ChatMessage[]): number {
+  let count = 0;
+  for (const message of messages) {
+    if (Array.isArray(message.content)) count += message.content.filter((part) => part.type === "image_url").length;
+  }
+  return count;
+}
+
 /**
  * The bytes-per-token reading a request that was not cut leaves for the next one: the new reading
  * folded into the old, so one request heavy on code or Chinese does not swing it. A reading no

@@ -573,13 +573,12 @@ describe("output caps and failure shapes", () => {
   });
 
   test("a finish reason is read case-folded, and a proxy's other names for the cap are length", async () => {
-    // Proxies in front of Gemini pass its own reasons through (STOP, MAX_TOKENS); Mistral says model_length.
+    // Proxies in front of Gemini pass its own reasons through (STOP, MAX_TOKENS).
     for (const [finish, read] of [
       ["STOP", "stop"],
       ["end_turn", "end_turn"],
       ["max_tokens", "length"],
       ["MAX_TOKENS", "length"],
-      ["model_length", "length"],
     ] as const) {
       let attempts = 0;
       const client = createCompletionsClient({
@@ -593,6 +592,25 @@ describe("output caps and failure shapes", () => {
         finish,
         attempts: 1,
         result: ["写到这里", read],
+      });
+    }
+  });
+
+  test("a full context is not the cap: the hop fails as context_full and is not sent again (ADR 0068)", async () => {
+    // Mistral says model_length; a proxy in front of Claude may pass model_context_window_exceeded through.
+    for (const finish of ["model_length", "MODEL_CONTEXT_WINDOW_EXCEEDED"]) {
+      let attempts = 0;
+      const client = createCompletionsClient({
+        fetch: async () => {
+          attempts += 1;
+          return sse(delta({ content: "写到这里" }) + delta({}, finish) + "data: [DONE]\n\n");
+        },
+      });
+      const result = await client.complete(request("http://127.0.0.1/v1"));
+      expect({ finish, attempts, result: !result.ok && [result.failKind, result.hadChoices] }).toEqual({
+        finish,
+        attempts: 1,
+        result: ["context_full", true],
       });
     }
   });

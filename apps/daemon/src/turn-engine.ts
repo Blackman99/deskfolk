@@ -596,6 +596,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     spendOwner: spend.spendOwner,
     callOf: spend.callOf,
     recordSpend: spend.recordSpend,
+    recordResponseSpend: spend.recordResponseSpend,
     closeChain: chains.closeChain,
     holdChain: chains.holdChain,
     chainTurnEnded: chains.turnEnded,
