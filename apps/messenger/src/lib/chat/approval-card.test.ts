@@ -109,3 +109,11 @@ test("a card is pending only while the approval row is pending", () => {
   expect(isPendingApproval(card, [approval({ id: "a1", status: "allowed_once" })])).toBe(false);
   expect(isPendingApproval(message({ kind: "ask" }), [approval({ id: "a1" })])).toBe(false);
 });
+
+test("adding a local model server offers the key field without requiring it (ADR 0067)", () => {
+  const local = approval({ id: "a-local", kind_key: "endpoint-add", target: "http://localhost:11434/v1", requires_api_key: false });
+  expect(approvalNeedsSecret(local)).toBe(true);
+  expect(approvalSecretRequired(local)).toBe(false);
+  const cloud = approval({ id: "a-cloud", kind_key: "endpoint-add", target: "https://api.example.com/v1", requires_api_key: true });
+  expect(approvalSecretRequired(cloud)).toBe(true);
+});

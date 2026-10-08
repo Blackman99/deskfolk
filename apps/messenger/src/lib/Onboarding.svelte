@@ -26,7 +26,7 @@
 		type CreateBotDraft,
 		type CreateBotFieldErrors
 	} from './panels/create-form.ts';
-	import type { ApiFormat, CreateProviderRequest, ProbedModel } from '@real-bot/protocol';
+	import { isLocalEndpoint, type ApiFormat, type CreateProviderRequest, type ProbedModel } from '@real-bot/protocol';
 
 	interface Props {
 		runtime: MessengerRuntime;
@@ -141,13 +141,31 @@
 			models: ['anthropic/claude-3.5-sonnet', 'google/gemini-2.0-flash-001'],
 			defaultModel: 'anthropic/claude-3.5-sonnet'
 		},
+		// Model servers on this computer (ADR 0067): no key, and the list is read from what is
+		// installed rather than guessed — a name the server has not pulled only fails at the first turn.
 		{
 			id: 'ollama',
 			name: 'Ollama',
 			url: 'http://localhost:11434/v1',
 			format: 'openai',
-			models: ['llama3', 'qwen2.5'],
-			defaultModel: 'llama3'
+			models: [],
+			defaultModel: ''
+		},
+		{
+			id: 'lmstudio',
+			name: 'LM Studio',
+			url: 'http://localhost:1234/v1',
+			format: 'openai',
+			models: [],
+			defaultModel: ''
+		},
+		{
+			id: 'llamacpp',
+			name: 'llama.cpp',
+			url: 'http://localhost:8080/v1',
+			format: 'openai',
+			models: [],
+			defaultModel: ''
 		},
 		{
 			id: 'custom',
@@ -159,6 +177,10 @@
 		}
 	] as const;
 
+	const LOCAL_PRESETS = new Set(['ollama', 'lmstudio', 'llamacpp']);
+	/** A model server on this computer or network: no key needed, and the list can be read without one. */
+	const keyless = $derived(isLocalEndpoint(runtime.endpointUrl));
+
 	function applyPreset(preset: (typeof PRESETS)[number]): void {
 		activePreset = preset.id;
 		if (preset.format) apiFormat = preset.format;
@@ -168,6 +190,7 @@
 			availableDiscoveredModels = Array.from(new Set([...preset.models, ...availableDiscoveredModels]));
 			runtime.endpointModelsText = preset.models.join('\n');
 			runtime.endpointDefaultModel = preset.defaultModel;
+			if (LOCAL_PRESETS.has(preset.id)) runtime.endpointKey = '';
 		} else {
 			providerName = t.onboarding.presetCustom;
 		}
@@ -191,7 +214,7 @@
 			delete next.defaultModel;
 			fieldErrors = next;
 		}
-		if (runtime.endpointUrl && runtime.endpointKey) {
+		if (runtime.endpointUrl && (runtime.endpointKey || isLocalEndpoint(runtime.endpointUrl))) {
 			void fetchModels();
 		}
 	}
@@ -209,7 +232,7 @@
 			fieldErrors = next;
 		}
 		if (autoFetchTimer) clearTimeout(autoFetchTimer);
-		if (runtime.endpointUrl.trim().startsWith('http') && runtime.endpointKey.trim()) {
+		if (runtime.endpointUrl.trim().startsWith('http') && (runtime.endpointKey.trim() || isLocalEndpoint(runtime.endpointUrl))) {
 			autoFetchTimer = setTimeout(() => {
 				void fetchModels();
 			}, 700);
@@ -268,7 +291,7 @@
 	function advanceFromStep2(): void {
 		if (!validateConnection()) return;
 		currentStep = 3;
-		if (availableDiscoveredModels.length <= 6 && runtime.endpointUrl && runtime.endpointKey) {
+		if (availableDiscoveredModels.length <= 6 && runtime.endpointUrl && (runtime.endpointKey || keyless)) {
 			void fetchModels();
 		}
 	}
@@ -639,6 +662,9 @@
 							</button>
 						{/each}
 					</div>
+					{#if LOCAL_PRESETS.has(activePreset)}
+						<p class="muted field-hint">{t.onboarding.localPresetHint}</p>
+					{/if}
 
 					<div class="modal-section">
 						<span class="field-head" id="onboarding-format-label">{t.settings.apiFormat}</span>
@@ -716,12 +742,14 @@
 							id="onboarding-endpoint-key"
 							type="password"
 							autocomplete="off"
-							placeholder={t.settings.keyEmpty}
+							placeholder={keyless ? t.settings.keyLocalPlaceholder : t.settings.keyEmpty}
 							bind:value={runtime.endpointKey}
 							oninput={onEndpointOrKeyInput}
 						/>
 						{#if fieldErrors.endpointKey}
 							<p class="field-error">{t.settings.keyEmpty}</p>
+						{:else if keyless}
+							<p class="muted field-hint">{t.settings.keyLocalHint}</p>
 						{/if}
 					</div>
 

@@ -541,3 +541,55 @@ test("whether a model takes pictures is carried, saved, and cleared back to not 
   const unset = { ...current, model_catalog: [gpt4o] };
   expect(planPatchProvider(unset, draftFromProvider(unset))).toEqual({ ok: true, patch: {} });
 });
+
+// ADR 0067: a model server on this computer or network.
+
+test("a local endpoint saves and probes without a key; a cloud one still needs one", () => {
+  const local = draft({ name: "Ollama", baseUrl: "http://localhost:11434/v1", models: [], defaultModel: "" });
+  const plan = planCreateProvider(local, true);
+  expect(plan.ok).toBe(true);
+  if (plan.ok) expect(plan.body.api_key).toBeUndefined();
+  expect(probeSignature(local, false)).toBe("openai\nhttp://localhost:11434/v1\n");
+  expect(planCreateProvider(draft({ models: [], defaultModel: "" }), true)).toEqual({ ok: false, errors: { endpointKey: "empty" } });
+  expect(probeSignature(draft(), false)).toBeNull();
+});
+
+test("what a local server said fills the window and pictures, and a value you typed stays", () => {
+  const base = draft({ baseUrl: "http://localhost:11434/v1", models: ["qwen3:8b"], defaultModel: "qwen3:8b" });
+  const probed = applyProbedModels(withSyncedDefaultModel(base), {
+    models: ["qwen3:8b", "llava:7b"],
+    catalog: [
+      { name: "qwen3:8b", thinking_levels: [], context_window: 40960, input_image: false, tools: true },
+      { name: "llava:7b", thinking_levels: [], context_window: 4096, input_image: true, tools: false },
+    ],
+  });
+  expect(probed.modelAttrs["qwen3:8b"]).toMatchObject({ contextWindow: "40960", inputImage: false });
+  expect(probed.probedFacts?.["llava:7b"]).toEqual({ context_window: 4096, input_image: true, tools: false });
+  // Enabling a model the server described fills it in from what it said.
+  expect(toggleDraftModel(probed, "llava:7b").modelAttrs["llava:7b"]).toMatchObject({ contextWindow: "4096", inputImage: true });
+  // The model got loaded with a smaller window: a field still showing the old reading follows it.
+  const reloaded = applyProbedModels(probed, { catalog: [{ name: "qwen3:8b", thinking_levels: [], context_window: 32768 }] });
+  expect(reloaded.modelAttrs["qwen3:8b"]?.contextWindow).toBe("32768");
+  // One you typed does not.
+  const typed = { ...probed, modelAttrs: { ...probed.modelAttrs, "qwen3:8b": { ...probed.modelAttrs["qwen3:8b"]!, contextWindow: "65536" } } };
+  expect(applyProbedModels(typed, { catalog: [{ name: "qwen3:8b", thinking_levels: [], context_window: 32768 }] }).modelAttrs["qwen3:8b"]?.contextWindow).toBe("65536");
+});
+
+test("the window is saved, kept when untouched, cleared when emptied and refused when not a whole number", () => {
+  const current = {
+    name: "Ollama",
+    base_url: "http://localhost:11434/v1",
+    models: ["qwen3:8b"],
+    model_catalog: [{ name: "qwen3:8b", price: null, thinking_levels: [...ALL_LEVELS], strengths: [], context_window: 32768, stream_tps_p10: 17.4 }],
+    default_model: "qwen3:8b",
+  };
+  const loaded = draftFromProvider(current);
+  expect(loaded.modelAttrs["qwen3:8b"]).toMatchObject({ contextWindow: "32768", recordedTps: 17.4 });
+  expect(planPatchProvider(current, loaded)).toEqual({ ok: true, patch: {} });
+  const set = (value: string) => ({ ...loaded, modelAttrs: { "qwen3:8b": { ...loaded.modelAttrs["qwen3:8b"]!, contextWindow: value } } });
+  const raised = planPatchProvider(current, set("65536"));
+  expect(raised.ok && raised.patch.models).toEqual([{ name: "qwen3:8b", price: null, thinking_levels: [...ALL_LEVELS], strengths: [], context_window: 65536 }]);
+  const cleared = planPatchProvider(current, set(""));
+  expect(cleared.ok && cleared.patch.models).toEqual([{ name: "qwen3:8b", price: null, thinking_levels: [...ALL_LEVELS], strengths: [], context_window: null }]);
+  expect(planPatchProvider(current, set("32k"))).toEqual({ ok: false, errors: { contextWindow: "invalid" } });
+});

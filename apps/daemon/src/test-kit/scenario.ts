@@ -875,6 +875,8 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
   function buildEngine(host: McpHost | undefined, gate: TurnAdmission): TurnEngine {
     return createTurnEngine({
       store,
+      // The scenario's endpoint stands for any cloud one; ADR 0067's local handling is tested on its own.
+      localEndpoint: () => false,
       publish(event) {
         events.push(event);
         if (event.event === "turn.tool" && event.phase === "started") {

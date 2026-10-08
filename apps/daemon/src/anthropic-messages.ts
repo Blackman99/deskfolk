@@ -35,7 +35,8 @@ export type AnthropicAuth = "x-api-key" | "bearer";
 
 export function anthropicHeaders(apiKey: string, auth: AnthropicAuth): Record<string, string> {
   return {
-    ...(auth === "bearer" ? { Authorization: `Bearer ${apiKey}` } : { "x-api-key": apiKey }),
+    // A keyless local server (ADR 0067) gets no key header at all rather than an empty one.
+    ...(!apiKey ? {} : auth === "bearer" ? { Authorization: `Bearer ${apiKey}` } : { "x-api-key": apiKey }),
     "anthropic-version": ANTHROPIC_VERSION,
     "Content-Type": "application/json",
   };

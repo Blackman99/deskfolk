@@ -139,7 +139,8 @@ async function fixture(completions?: import("../completions").CompletionsClient,
   const endpointKeys = memoryKeyStore();
   const store = new Store({ filename: join(root, "host.sqlite"), endpointKey: endpointKeys });
   await store.patchSettings({ workspace_path: root });
-  const api = createLocalApi({ store, token: "fixture", schedule: false, completions });
+  // The fake endpoints here stand for cloud ones; ADR 0067's local handling is tested on its own.
+  const api = createLocalApi({ store, token: "fixture", schedule: false, completions, localEndpoint: () => false });
   const native = nativeFixture();
   const bootstrap = base64url(randomBytes(32));
   const relay = startRelay({ hostname: "127.0.0.1", port: 0, database: join(root, "relay.sqlite"), bootstrap,

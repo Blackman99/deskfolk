@@ -38,6 +38,8 @@ export type RuntimeOptions = {
   token?: string;
   endpointKey?: EndpointKeyStore;
   completions?: CompletionsClient;
+  /** Which endpoints are model servers on this computer or network (ADR 0067); tests with a fake cloud on 127.0.0.1 turn it off. */
+  localEndpoint?: (baseUrl: string) => boolean;
   schedule?: boolean;
   onQuit?: () => void;
   exitProcess?: boolean;
@@ -309,6 +311,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
         return devPairing(remote, request);
       }),
       completions: options.completions,
+      localEndpoint: options.localEndpoint,
       schedule: options.schedule,
       ablation: options.ablation,
       agentQuery: options.agentQuery,

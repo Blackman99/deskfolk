@@ -8,6 +8,7 @@
  */
 import {
   attachmentLinePaths,
+  isLocalEndpoint,
   USER_MEMBER,
   type ClientEvent,
   type Message,
@@ -26,7 +27,7 @@ import { assembleTurnMessages, planTagger, sessionLabel, type PlanRef } from "..
 import { HttpError } from "../errors";
 import { continueNote, hopLimits, isRetriedFailure, replyFailure, retryNote } from "../hop-limits";
 import { troubleCount } from "./trouble";
-import { completionFailBody, builtinTools, type FailKind } from "../prompts";
+import { completionFailBody, contextFullDetail, builtinTools, type FailKind } from "../prompts";
 import { readBotLineByWords, readsAsNoWork, type BotLineContext, type BotLineReading } from "../line-reading";
 import type { McpHost } from "../mcp-host";
 import type { TurnAdmission } from "../quiesce";
@@ -62,6 +63,8 @@ const USER_FIX_FAILS: ReadonlySet<FailKind> = new Set<FailKind>(["agent_missing"
 
 export type LifecycleDeps = {
   store: Store;
+  /** Which endpoints are model servers on this computer or network (ADR 0067). */
+  localEndpoint?: (baseUrl: string) => boolean;
   publish: (event: ClientEvent) => void;
   publishMessage: (message: Message) => void;
   publishTurn: (turn: Turn, partial?: string | null) => void;
@@ -865,6 +868,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     };
     const limits = hopLimits(
       store.catalogEntries().find((row) => row.providerId === target.providerId && row.name === target.model),
+      (deps.localEndpoint ?? isLocalEndpoint)(target.baseUrl),
     );
     live.routing = routingTarget(creds);
     live.locale = target.locale;
@@ -1073,6 +1077,11 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       }
 
       if (!result.ok) {
+        // Not a retry: the same prompt would meet the same window (ADR 0067).
+        if (result.failKind === "context_full") {
+          failTurn(turnId, "context_full", contextFullDetail(live.locale, result.contextFull));
+          return;
+        }
         if (retryOrFail(turnId, live, result.failKind)) continue;
         return;
       }

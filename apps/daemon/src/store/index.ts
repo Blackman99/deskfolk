@@ -381,6 +381,9 @@ export class Store {
   readonly patchProvider = this.bind(providers.patchProvider, true);
   readonly deleteProvider = this.bind(providers.deleteProvider, true);
   readonly catalogEntries = this.bind(providers.catalogEntries);
+  readonly recordModelFacts = this.bind(providers.recordModelFacts);
+  readonly recordContextWindow = this.bind(providers.recordContextWindow);
+  readonly contextWindowOf = this.bind(providers.contextWindowOf);
 
   // Roster ---------------------------------------------------------------------------------
   readonly listBots = this.bind(bots.listBots);

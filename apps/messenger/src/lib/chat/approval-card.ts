@@ -1,4 +1,4 @@
-import type { Approval, Message } from "@real-bot/protocol";
+import { isLocalEndpoint, type Approval, type Message } from "@real-bot/protocol";
 
 /** Kinds that may be written to `allow_rules`. Matches the matrix in 危险动作矩阵和 Always allow 种类. */
 const ALWAYS_ALLOW_KINDS = new Set([
@@ -27,9 +27,10 @@ export function needsEndpointKey(
 
 export function endpointKeyRequired(
   kindKey: string | null | undefined,
-  _target?: string | null,
+  target?: string | null,
 ): boolean {
-  return kindKey === "endpoint-add";
+  // A model server on this computer or network takes no key (ADR 0067): the field stays, optional.
+  return kindKey === "endpoint-add" && !isLocalEndpoint(target);
 }
 
 export function isHttpMcpApproval(

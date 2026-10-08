@@ -5,7 +5,7 @@
  * there is no routing agent to ask or nothing for it to read. Everything downstream that needs a
  * target for a call — a turn, a judgement, the organizer, a chain review — goes through here.
  */
-import { thinkingLevelRank, type ThinkingLevel } from "@real-bot/protocol";
+import { isLocalEndpoint, thinkingLevelRank, type ThinkingLevel } from "@real-bot/protocol";
 import { NO_ABLATION, type Ablation } from "../ablation";
 import type { CompletionsClient } from "../completions";
 import { classifyMessage, messageSignature, pickThinkingLevel } from "../route-decision";
@@ -64,8 +64,9 @@ export function createRouting(deps: RoutingDeps): Routing {
     const ready: Creds["providers"] = [];
     for (const provider of providers) {
       if (!provider.base_url) continue;
-      const apiKey = await store.endpointKey(provider.id);
-      if (!apiKey) continue;
+      // A model server on this computer or network takes no key (ADR 0067); any other endpoint needs one.
+      const apiKey = (await store.endpointKey(provider.id)) ?? "";
+      if (!apiKey && !isLocalEndpoint(provider.base_url)) continue;
       ready.push({
         id: provider.id,
         name: provider.name,

@@ -43,6 +43,8 @@ async function startApi(
     token,
     schedule: false,
     completions: extra?.completions,
+    // The fixture endpoints on 127.0.0.1 stand for cloud ones; ADR 0067's local handling is tested on its own.
+    localEndpoint: () => false,
   });
   const server = Bun.serve({
     hostname: "127.0.0.1",

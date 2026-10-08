@@ -5,6 +5,7 @@ import {
   USER_MEMBER,
   attachmentLinePaths,
   generateBoringAvatar,
+  isLocalEndpoint,
   isThinkingLevel,
   type ApiFormat,
   type BoringAvatarVariant,
@@ -1091,7 +1092,8 @@ async function addEndpoint(ctx: ToolCtx, args: Record<string, unknown>): Promise
         kind_key: "endpoint-add",
         target: baseUrl,
         summary: endpointAddSummary(name, baseUrl, apiFormat, catalog.map((row) => row.name)),
-        requiresApiKey: true,
+        // A model server on this computer or network may take none (ADR 0067); the card still offers the field.
+        requiresApiKey: !isLocalEndpoint(baseUrl),
         run: (opts) =>
           runCollabTool({ ...ctx, approved: true, approvalApiKey: opts?.api_key }, "add_endpoint", args),
       },
@@ -1099,7 +1101,7 @@ async function addEndpoint(ctx: ToolCtx, args: Record<string, unknown>): Promise
     };
   }
   const apiKey = ctx.approvalApiKey?.trim() ?? "";
-  if (!apiKey) {
+  if (!apiKey && !isLocalEndpoint(baseUrl)) {
     throw new HttpError(422, "invalid_args", "api_key is required");
   }
   const previousBots = snapshotBotPins(ctx.store);
@@ -1107,7 +1109,7 @@ async function addEndpoint(ctx: ToolCtx, args: Record<string, unknown>): Promise
     name,
     base_url: baseUrl,
     api_format: apiFormat,
-    api_key: apiKey,
+    ...(apiKey ? { api_key: apiKey } : {}),
     models: models === undefined ? undefined : (models as Provider["model_catalog"]),
     default_model: defaultModel,
   }));
@@ -1144,7 +1146,7 @@ async function updateEndpoint(ctx: ToolCtx, args: Record<string, unknown>): Prom
         kind_key: "endpoint-edit",
         target,
         summary: endpointEditSummary(nextName ?? current.name, target, nextFormat ?? current.api_format ?? "openai", catalog.map((row) => row.name)),
-        requiresApiKey: !current.key_set,
+        requiresApiKey: !current.key_set && !isLocalEndpoint(target),
         run: (opts) =>
           runCollabTool({ ...ctx, approved: true, approvalApiKey: opts?.api_key }, "update_endpoint", args),
       },
@@ -1153,7 +1155,7 @@ async function updateEndpoint(ctx: ToolCtx, args: Record<string, unknown>): Prom
   }
   if (connectionChanging) {
     const apiKey = ctx.approvalApiKey?.trim() ?? "";
-    if (!current.key_set && !apiKey) {
+    if (!current.key_set && !apiKey && !isLocalEndpoint(nextUrl ?? current.base_url)) {
       throw new HttpError(422, "invalid_args", "api_key is required");
     }
   }

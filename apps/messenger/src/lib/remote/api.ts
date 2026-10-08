@@ -44,6 +44,7 @@ import type {
   PatchProviderRequest,
   PatchRoutineRequest,
   PatchSkillRequest,
+  ModelSpeed,
   ProbeModelsResponse,
   Provider,
   ResolveApprovalRequest,
@@ -499,6 +500,9 @@ export class RemoteApi {
     provider_id?: string;
   }): Promise<ProbeModelsResponse> {
     return this.post<ProbeModelsResponse>("/v1/models/probe", body);
+  }
+  async speedTest(providerId: string, model: string): Promise<ModelSpeed> {
+    return this.post<ModelSpeed>(`/v1/providers/${providerId}/speed-test`, { model });
   }
   async providers(): Promise<Provider[]> {
     return (await this.get<ListPage<Provider>>("/v1/providers")).items;

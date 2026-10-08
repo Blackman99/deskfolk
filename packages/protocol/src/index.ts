@@ -239,6 +239,12 @@ export type EndpointModel = {
   /** Measured streaming speed, 10th percentile, in tokens per second; sizes how long one hop may stream. */
   stream_tps_p10?: number;
   /**
+   * Tokens the model reads per request, as its server said (a local one, read when the list was
+   * fetched or when a prompt came back cut) or as you set it; absent is not known (ADR 0067). A
+   * request to a model server on this computer or network clearly bigger than this is not sent.
+   */
+  context_window?: number;
+  /**
    * Whether raising the thinking level actually buys more reasoning past a tool loop's first two
    * hops (the model-probe's measure: none vs high, hop ≥3 reasoning-token share); absent means
    * unmeasured. Stored only for now — P5's escalation ladder reads it before deciding whether to
@@ -262,6 +268,7 @@ export type EndpointModelInput = string | {
   /** Left out, a saved entry keeps the value it had; null clears it. */
   max_output?: number | null;
   stream_tps_p10?: number | null;
+  context_window?: number | null;
   reasoning_effective?: boolean | null;
   input_image?: boolean | null;
 };
@@ -270,6 +277,30 @@ export type EndpointModelInput = string | {
 export type ProbedModel = {
   name: string;
   thinking_levels: ThinkingLevel[];
+  /**
+   * What a model server on this computer or network said about the model besides (ADR 0067):
+   * Ollama's `/api/tags` and `/api/ps`, LM Studio's `/api/v0/models`, llama.cpp's `/props`. Each is
+   * absent when it did not say. `context_window` is the loaded window when the model is loaded,
+   * else the model's own limit.
+   */
+  context_window?: number;
+  input_image?: boolean;
+  /** False when the server says the model cannot call tools: a Bot cannot work on it. */
+  tools?: boolean;
+};
+
+/**
+ * `POST /v1/providers/:id/speed-test` (ADR 0067): how fast a model writes and whether it calls a
+ * tool when offered one. `recorded_tps` is the speed written into its entry as `stream_tps_p10`
+ * (a share of the measured one, which a short prompt overstates); null when nothing was recorded.
+ * `failed` names how a request failed, when one did.
+ */
+export type ModelSpeed = {
+  tokens_per_second: number | null;
+  first_byte_ms: number | null;
+  tool_call: boolean | null;
+  recorded_tps: number | null;
+  failed: string | null;
 };
 
 export type ProbeModelsResponse = {
@@ -2706,11 +2737,14 @@ export type Terminal = {
  * first is still in flight, which looks exactly like a terminal dropping characters.
  *
  * `/v1/workspace/trash` moves files, not rows, so no transaction could hold it together with a
- * receipt; a repeat is harmless instead, since a path already gone is reported as trashed.
+ * receipt; a repeat is harmless instead, since a path already gone is reported as trashed. A speed
+ * test (ADR 0067) streams for up to minutes before it records anything, and a repeat only measures
+ * again.
  */
 export function isNonReceiptPath(path: string): boolean {
   const withoutQuery = path.split("?")[0] ?? "";
   return withoutQuery === "/v1/models/probe"
+    || /^\/v1\/providers\/[^/]+\/speed-test$/.test(withoutQuery)
     || withoutQuery === "/v1/workspace/trash"
     || withoutQuery === "/v1/notification-presence"
     || withoutQuery === "/v1/terminals"
@@ -2922,6 +2956,7 @@ export * from "./boring-avatars.ts";
 export * from "./folk-avatar.ts";
 export { FOLK_GEOMETRY, type FolkLayer } from "./folk-avatar-assets.ts";
 export * from "./cited-path.ts";
+export * from "./local-endpoint.ts";
 export * from "./mentions.ts";
 export * from "./notifications.ts";
 export * from "./prompts.ts";

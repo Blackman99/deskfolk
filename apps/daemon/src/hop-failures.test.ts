@@ -147,6 +147,18 @@ test("half a stream goes again once, then fails; an endpoint that cannot be reac
   expect(lines(h, dm, "system")).toEqual([completionFailBody("zh", "incomplete"), completionFailBody("zh", "unreachable")]);
 });
 
+test("a prompt over the model's window fails the turn at once, with the numbers (ADR 0067)", async () => {
+  const { h, alpha, dm } = await oneBot();
+  h.script(alpha, dm).reply({ ...failed("context_full"), hadChoices: true, contextFull: { estimated: 15_313, read: 4_098, window: 8_192 } });
+  h.postUser(dm, "建个文件");
+  await h.waitIdle();
+  // Not sent again: the same prompt would meet the same window.
+  expect(h.hops(alpha)).toHaveLength(1);
+  expect(lines(h, dm, "system")).toEqual([
+    completionFailBody("zh", "context_full", "这一步约 15,313 token，端点只读进了 4,098 token，窗口是 8,192"),
+  ]);
+});
+
 test("the one retry is for failures in a row: a usable hop in between earns another", async () => {
   const { h, alpha, dm } = await oneBot();
   h.script(alpha, dm).reply(say(REFUSAL), call(tool("list_dir", { path: "." })), say(REFUSAL), say("看完了，目录是空的。"));

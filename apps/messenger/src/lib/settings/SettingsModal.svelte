@@ -9,7 +9,7 @@
 	import ModelLadderCard from './ModelLadderCard.svelte';
 	import ReaderModelCard from './ReaderModelCard.svelte';
 	import ClaudeAgentCard from './ClaudeAgentCard.svelte';
-	import type { Lesson, PromptSummary } from '@real-bot/protocol';
+	import { isLocalEndpoint, type Lesson, type PromptSummary } from '@real-bot/protocol';
 	import { backdropClick } from '../click-outside.ts';
 	import WorkspacePicker from './WorkspacePicker.svelte';
 	import ProviderForm from './ProviderForm.svelte';
@@ -352,6 +352,7 @@
 					providerEditor.errors.endpointKey ||
 					providerEditor.errors.models ||
 					providerEditor.errors.pricing ||
+					providerEditor.errors.contextWindow ||
 					providerEditor.errors.defaultModel)
 		)
 	);
@@ -614,6 +615,16 @@
 	}
 
 	/** Asks the endpoint for its models once the URL and key are usable, a moment after typing stops. */
+	/** A key is in place, or none is needed: a model server on this computer or network (ADR 0067). */
+	function keyReady(provider: { key_set: boolean; base_url: string | null }): boolean {
+		return provider.key_set || isLocalEndpoint(provider.base_url);
+	}
+
+	function keyLabel(provider: { key_set: boolean; base_url: string | null }): string {
+		if (provider.key_set) return t.settings.keySet;
+		return isLocalEndpoint(provider.base_url) ? t.settings.keyNotNeeded : t.settings.keyUnset;
+	}
+
 	function scheduleProviderProbe(target: 'add' | string, draft: ProviderDraft, keySet: boolean): void {
 		const signature = probeSignature(draft, keySet);
 		if (providerProbeTimer) clearTimeout(providerProbeTimer);
@@ -1337,9 +1348,9 @@
 															<span>{t.settings.providerDefault}</span>
 														</span>
 													{/if}
-													<span class="provider-badge-key" class:is-set={provider.key_set} title={provider.key_set ? t.settings.keySet : t.settings.keyUnset}>
-														<span class="provider-status-dot w-3 h-3 rounded-[50%] bg-warn shrink-0" class:is-set={provider.key_set}></span>
-														<span>{provider.key_set ? t.settings.keySet : t.settings.keyUnset}</span>
+													<span class="provider-badge-key" class:is-set={keyReady(provider)} title={keyLabel(provider)}>
+														<span class="provider-status-dot w-3 h-3 rounded-[50%] bg-warn shrink-0" class:is-set={keyReady(provider)}></span>
+														<span>{keyLabel(provider)}</span>
 													</span>
 												</span>
 												{#if host}
@@ -2026,6 +2037,7 @@ void runtime.setPushEnabled(enabled);
 					{t}
 					onchange={setProviderDraft}
 					onfetch={() => void fetchProviderModels()}
+					measure={providerEditor.target === 'add' ? undefined : (model) => runtime.speedTest(providerEditor!.target, model)}
 				/>
 				{/key}
 			</div>

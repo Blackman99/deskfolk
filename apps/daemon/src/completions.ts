@@ -1,4 +1,4 @@
-import type { ApiFormat, ThinkingLevel } from "@real-bot/protocol";
+import { isLocalEndpoint, type ApiFormat, type ThinkingLevel } from "@real-bot/protocol";
 import {
   ANTHROPIC_DEFAULT_CAP,
   AnthropicStream,
@@ -15,6 +15,16 @@ import {
 } from "./anthropic-messages";
 import type { FailKind } from "./prompts";
 import { declinedFinish, RepeatWatch } from "./hop-limits";
+import {
+  ThinkStrip,
+  estimateTokens,
+  nextBytesPerToken,
+  overWindow,
+  promptBytes,
+  promptWasCut,
+  readLocalModels,
+  stripLeadingThink,
+} from "./local-model";
 import type { WakeWatch } from "./wake";
 import type { PromptRef } from "./prompts/registry";
 
@@ -81,7 +91,16 @@ export type CompletionFail = {
   hadChoices: boolean;
   usage: MappedUsage | null;
   missingReason: "stream_interrupted" | "endpoint_omitted" | null;
+  /** With `context_full`: the numbers behind it, for the line the turn fails with (ADR 0067). */
+  contextFull?: ContextFull;
 };
+
+/**
+ * A prompt the model's context window could not hold. `estimated` is the request's size by the
+ * bytes sent; `read` is what the endpoint reported reading when it cut the prompt instead of
+ * refusing it; `window` is the window the server runs with, when it said.
+ */
+export type ContextFull = { estimated: number; read?: number; window?: number };
 
 export type CompletionResult = CompletionOk | CompletionFail;
 
@@ -120,6 +139,11 @@ export type CompletionRequest = {
   affinity?: string;
   onEvent?: (chunk: Record<string, unknown>) => void;
   onToken?: (text: string) => void;
+  /**
+   * `reading`: something you wait on that must not queue behind the Bots' hops in the app's own
+   * per-origin slots — a speed test you pressed (ADR 0067). Takes the readings' slots.
+   */
+  lane?: "reading";
 };
 
 export type JudgeRequest = {
@@ -192,6 +216,23 @@ const DEFAULT_CLOCK: Clock = {
   idleMs: 180_000,
 };
 
+/**
+ * A model server on this computer or network (ADR 0067) gets longer: before its first byte it may
+ * load the model (Ollama allows five minutes), wait behind another request (Ollama serves one at a
+ * time unless told otherwise) and read a prompt of tens of thousands of tokens at a few hundred a
+ * second — 57 s for 49,837 tokens on an 8B model, 2026-10-08.
+ */
+export const LOCAL_FIRST_BYTE_MS = 15 * 60_000;
+export const LOCAL_IDLE_MS = 5 * 60_000;
+/** A short call to a local server that the app does not wait on gets at least this long. */
+export const LOCAL_JUDGE_MS = 10 * 60_000;
+/**
+ * Streams sent at once to one local server. It serves one request at a time by default, and a
+ * request queued there runs out its first-byte time behind a hop of twenty minutes; queued here it
+ * waits without a clock.
+ */
+const LOCAL_STREAM_LIMIT = 1;
+
 const MAX_ATTEMPTS = 3;
 /** Failures that only say the network was not there: the ones a sleep produces. */
 const NETWORK_FAILS: ReadonlySet<FailKind> = new Set<FailKind>(["unreachable", "first_byte", "stalled"]);
@@ -206,27 +247,102 @@ type OriginGate = {
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
-export function createCompletionsClient(
-  options: { fetch?: FetchLike; clock?: Partial<Clock>; originLimit?: number; wake?: WakeWatch } = {},
-): CompletionsClient {
+export type CompletionsOptions = {
+  fetch?: FetchLike;
+  clock?: Partial<Clock>;
+  originLimit?: number;
+  wake?: WakeWatch;
+  /** Whether a base URL is a model server on this computer or network; tests turn it off. */
+  local?: (baseUrl: string) => boolean;
+  /** A model's context window as its endpoint entry has it (ADR 0067), checked before a local request is sent. */
+  windowOf?: (baseUrl: string, model: string) => number | undefined;
+  /** The window a local server said it runs a model with, read when a prompt came back cut. */
+  onWindow?: (baseUrl: string, model: string, window: number) => void;
+};
+
+export function createCompletionsClient(options: CompletionsOptions = {}): CompletionsClient {
   const fetchImpl = options.fetch ?? ((input, init) => fetch(input, init));
   const clock: Clock = { ...DEFAULT_CLOCK };
   if (options.clock?.now) clock.now = options.clock.now;
   if (options.clock?.sleep) clock.sleep = options.clock.sleep;
   if (options.clock?.firstByteMs) clock.firstByteMs = options.clock.firstByteMs;
   if (options.clock?.idleMs) clock.idleMs = options.clock.idleMs;
+  // A clock a test set stays as set; otherwise a local server gets its own, longer timers.
+  const localClock: Clock = {
+    ...clock,
+    firstByteMs: options.clock?.firstByteMs ?? LOCAL_FIRST_BYTE_MS,
+    idleMs: options.clock?.idleMs ?? LOCAL_IDLE_MS,
+  };
+  const isLocal = options.local ?? isLocalEndpoint;
   const gate = createOriginGate(options.originLimit ?? ORIGIN_STREAM_LIMIT);
+  const localGate = createOriginGate(options.originLimit ?? LOCAL_STREAM_LIMIT);
   const readingGate = createOriginGate(options.originLimit ?? ORIGIN_STREAM_LIMIT);
   const forms: Forms = { cap: new Map(), think: new Map(), auth: new Map() };
+  const sizing: LocalSizing = {
+    bytesPerToken: new Map(),
+    noThinkOff: new Set(),
+    fetchImpl,
+    windowOf: options.windowOf,
+    onWindow: options.onWindow,
+  };
 
   return {
     async complete(request) {
-      return completeStreaming(fetchImpl, clock, gate, request, forms, options.wake);
+      if (!isLocal(request.baseUrl)) return completeStreaming(fetchImpl, clock, request.lane === "reading" ? readingGate : gate, request, forms, options.wake);
+      return completeStreaming(fetchImpl, localClock, request.lane === "reading" ? readingGate : localGate, request, forms, options.wake, sizing);
     },
     async judge(request) {
-      return completeJudge(fetchImpl, clock, request.lane === "reading" ? readingGate : gate, request, forms);
+      const local = isLocal(request.baseUrl);
+      const laneGate = request.lane === "reading" ? readingGate : local ? localGate : gate;
+      return completeJudge(fetchImpl, clock, laneGate, request, forms, local ? sizing : undefined);
     },
   };
+}
+
+/**
+ * What the client keeps about the local models it sends to (ADR 0067): the bytes per token each
+ * read its last whole requests at (by base URL and model), the models that refused to have their
+ * thinking turned off, and where to read and record a model's window.
+ */
+type LocalSizing = {
+  bytesPerToken: Map<string, number>;
+  noThinkOff: Set<string>;
+  fetchImpl: FetchLike;
+  windowOf?: (baseUrl: string, model: string) => number | undefined;
+  onWindow?: (baseUrl: string, model: string, window: number) => void;
+};
+
+/** A local request clearly too big for the window its entry names: refused unsent, with the numbers. */
+function preflight(sizing: LocalSizing, request: { baseUrl: string; model: string }, bytes: number): ContextFull | null {
+  const window = sizing.windowOf?.(request.baseUrl, request.model);
+  const ratio = sizing.bytesPerToken.get(`${request.baseUrl} ${request.model}`);
+  if (!overWindow(bytes, ratio, window)) return null;
+  return { estimated: estimateTokens(bytes, ratio), ...(window ? { window } : {}) };
+}
+
+/**
+ * After a local request went through: whether the tokens it reports reading say the server cut the
+ * prompt (then the window it runs with, asked of the server and recorded), else what this request
+ * teaches about the model's bytes per token.
+ */
+async function afterLocal(
+  sizing: LocalSizing,
+  request: { baseUrl: string; model: string; signal: AbortSignal },
+  bytes: number,
+  usage: MappedUsage | null,
+): Promise<ContextFull | null> {
+  const key = `${request.baseUrl} ${request.model}`;
+  const ratio = sizing.bytesPerToken.get(key);
+  const read = usage?.input_tokens ?? null;
+  if (!promptWasCut(bytes, read, ratio)) {
+    const next = nextBytesPerToken(ratio, bytes, read);
+    if (next !== undefined) sizing.bytesPerToken.set(key, next);
+    return null;
+  }
+  const facts = await readLocalModels(sizing.fetchImpl, request.baseUrl, [request.model], { signal: request.signal });
+  const window = facts.get(request.model)?.context_window;
+  if (window) sizing.onWindow?.(request.baseUrl, request.model, window);
+  return { estimated: estimateTokens(bytes, ratio), read: read!, ...(window ? { window } : {}) };
 }
 
 /**
@@ -235,6 +351,11 @@ export function createCompletionsClient(
  */
 export function sessionHeader(affinity: string | undefined): Record<string, string> {
   return affinity && /^[\x21-\x7e]{1,128}$/.test(affinity) ? { "X-Session-ID": affinity } : {};
+}
+
+/** The key as a Bearer token; a keyless local server (ADR 0067) gets no `Authorization` header at all. */
+function bearer(apiKey: string): Record<string, string> {
+  return apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
 }
 
 function completionsUrl(baseUrl: string): string {
@@ -312,6 +433,7 @@ async function completeStreaming(
   request: CompletionRequest,
   forms: Forms,
   wake?: WakeWatch,
+  sizing?: LocalSizing,
 ): Promise<CompletionResult> {
   let lastFail: FailKind = "unreachable";
   let lastUsage: MappedUsage | null = null;
@@ -319,6 +441,11 @@ async function completeStreaming(
   let lastHadChoices = false;
   const key = originKey(request.baseUrl);
   let wakeRetries = 0;
+  // A local server cuts a prompt past its window instead of refusing it (ADR 0067): one clearly too
+  // big for the window on record is not sent at all, and one that came back cut fails the hop.
+  const bytes = sizing ? promptBytes(request.messages, request.tools) : 0;
+  const tooBig = sizing ? preflight(sizing, request, bytes) : null;
+  if (tooBig) return { ok: false, failKind: "context_full", hadChoices: false, usage: null, missingReason: null, contextFull: tooBig };
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     if (request.signal.aborted) {
@@ -337,7 +464,7 @@ async function completeStreaming(
     const startedAt = clock.now();
     const sleptThrough = wake ? () => wake.sleptBetween(startedAt, clock.now()) > 0 : undefined;
     try {
-      result = await oneStreamAttempt(fetchImpl, clock, request, forms, sleptThrough);
+      result = await oneStreamAttempt(fetchImpl, clock, request, forms, sleptThrough, sizing !== undefined);
     } finally {
       gate.release(key);
     }
@@ -345,6 +472,10 @@ async function completeStreaming(
     lastUsage = result.usage;
     lastMissing = result.missingReason;
     lastHadChoices = result.hadChoices;
+    if (result.ok && sizing) {
+      const cut = await afterLocal(sizing, request, bytes, result.usage);
+      if (cut) return { ok: false, failKind: "context_full", hadChoices: true, usage: result.usage, missingReason: result.missingReason, contextFull: cut };
+    }
     if (result.ok) return result;
     if (!result.retryable) return result;
     // The Mac slept through this attempt, or woke and sent it before Wi-Fi was back: none of that
@@ -386,6 +517,7 @@ async function oneStreamAttempt(
   request: CompletionRequest,
   forms: Forms,
   sleptThrough?: () => boolean,
+  local = false,
 ): Promise<Attempt> {
   const wallAt = request.wallMs ? clock.now() + request.wallMs : Number.POSITIVE_INFINITY;
   const capForms = forms.cap;
@@ -404,19 +536,19 @@ async function oneStreamAttempt(
     } catch {
       return fail("unreachable", { retryable: !request.signal.aborted, retryBurned: false });
     }
-    return streamResponse(response, clock, request, wallAt, sleptThrough);
+    return streamResponse(response, clock, request, wallAt, sleptThrough, local);
   }
   const post = (form: CapForm) =>
     fetchImpl(completionsUrl(request.baseUrl), {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${request.apiKey}`,
+        ...bearer(request.apiKey),
         "Content-Type": "application/json",
         ...sessionHeader(request.affinity),
       },
       body: JSON.stringify({
         model: request.model,
-        reasoning_effort: request.thinkingLevel,
+        ...(request.thinkingLevel ? { reasoning_effort: request.thinkingLevel } : {}),
         [form.field]: capSent(form, request.maxTokens),
         messages: toApiMessages(request.messages),
         tools: request.tools.length ? request.tools : undefined,
@@ -426,6 +558,8 @@ async function oneStreamAttempt(
       signal: request.signal,
     });
   let response: Response;
+  // The refusal last read, which says whether the prompt itself is over the model's context.
+  let refusal: string | null = null;
   try {
     let form = capForms.get(capKey) ?? { field: "max_tokens" };
     response = await post(form);
@@ -433,11 +567,17 @@ async function oneStreamAttempt(
     // renames the field once or lowers the cap, so a few are enough: a reasoning model may want the
     // other name and then a lower limit, and a full context comes on top of either.
     for (let refits = 0; refits < 3 && response.status === 400; refits++) {
-      const refit = refitCap(await response.text(), form, request.maxTokens);
+      refusal = await response.text();
+      const refit = refitCap(refusal, form, request.maxTokens);
       if (!refit) break;
       form = refit.form;
       if (refit.keep) capForms.set(capKey, form);
       response = await post(form);
+      refusal = null;
+    }
+    if (response.status === 400) {
+      refusal ??= await response.text().catch(() => "");
+      if (PROMPT_OVER_CONTEXT.test(refusal)) return fail("context_full", { retryable: false, retryBurned: false });
     }
   } catch {
     if (request.signal.aborted) {
@@ -445,8 +585,16 @@ async function oneStreamAttempt(
     }
     return fail("unreachable", { retryable: true, retryBurned: false });
   }
-  return streamResponse(response, clock, request, wallAt, sleptThrough);
+  return streamResponse(response, clock, request, wallAt, sleptThrough, local);
 }
+
+/**
+ * A refusal that says the prompt is over the model's context, once the cap is out of the way:
+ * OpenAI's "maximum context length", llama.cpp's "exceeds the available context size", vLLM's,
+ * Anthropic's "prompt is too long". Read as `context_full`, which names what to change, rather than
+ * a bare refusal.
+ */
+const PROMPT_OVER_CONTEXT = /context[ _]?(?:length|window|size)|maximum context|exceeds? (?:the )?(?:available )?context|prompt is too long|too many (?:input )?tokens|上下文(?:长度|窗口|限制)|超(?:出|过)[^，。,.]{0,8}上下文/i;
 
 /** What a streaming request's response is worth: a failure by its status, or its stream read. */
 function streamResponse(
@@ -455,6 +603,7 @@ function streamResponse(
   request: CompletionRequest,
   wallAt: number,
   sleptThrough?: () => boolean,
+  local = false,
 ): Promise<Attempt> | Attempt {
   if (response.status === 429) {
     return fail("busy", {
@@ -474,7 +623,7 @@ function streamResponse(
     return fail("incomplete", { retryable: false, retryBurned: false, hadChoices: false });
   }
 
-  return readSse(response.body, clock, request, wallAt, sleptThrough);
+  return readSse(response.body, clock, request, wallAt, sleptThrough, local);
 }
 
 /**
@@ -657,6 +806,7 @@ async function readSse(
   request: CompletionRequest,
   wallAt: number,
   sleptThrough?: () => boolean,
+  local = false,
 ): Promise<Attempt> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -673,6 +823,11 @@ async function readSse(
   // Watched as it streams, so a reply that loops is cut off within seconds instead of running on
   // to the cap (see hop-limits.ts).
   const repeats = new RepeatWatch();
+  // A reasoning model's thinking left in the reply text (llama.cpp, LM Studio, vLLM without a
+  // reasoning parser) is not the reply, and a small local model can loop inside its thinking as
+  // well as in its reply; both are read here (ADR 0067).
+  const think = new ThinkStrip();
+  const thoughtRepeats = local ? new RepeatWatch({ sameSentenceOnly: true }) : null;
   // A Messages stream is read event by event into the same state a Chat Completions one fills.
   const anthropic = request.apiFormat === "anthropic" ? new AnthropicStream() : null;
   let streamError: FailKind | null = null;
@@ -769,10 +924,16 @@ async function readSse(
     if (typeof choice.finish_reason === "string" && choice.finish_reason.trim() !== "") finishReason = normalizeFinish(choice.finish_reason);
     const delta = (choice.delta ?? choice.message ?? {}) as Record<string, unknown>;
     if (typeof delta.content === "string" && delta.content.length > 0) {
-      content += delta.content;
-      request.onToken?.(delta.content);
-      if (repeats.feed(delta.content)) return "repeat";
+      const visible = think.feed(delta.content);
+      if (visible.length > 0) {
+        content += visible;
+        request.onToken?.(visible);
+        if (repeats.feed(visible)) return "repeat";
+      }
     }
+    // Ollama sends a model's thinking as `reasoning`, DeepSeek and vLLM as `reasoning_content`.
+    const thought = typeof delta.reasoning_content === "string" ? delta.reasoning_content : delta.reasoning;
+    if (thoughtRepeats && typeof thought === "string" && thoughtRepeats.feed(thought)) return "repeat";
     const calls = delta.tool_calls;
     if (Array.isArray(calls)) mergeToolDeltas(tools, calls);
     return null;
@@ -841,6 +1002,7 @@ async function readSse(
     }
   }
 
+  content = think.finish(content);
   const toolCalls = [...tools.entries()]
     .sort((a, b) => a[0] - b[0])
     .map(([, v]) => v);
@@ -966,31 +1128,69 @@ async function completeJudge(
   gate: OriginGate,
   request: JudgeRequest,
   forms: Forms,
+  sizing?: LocalSizing,
 ): Promise<JudgeResult> {
   const acquired = await gate.acquire(originKey(request.baseUrl), request.signal);
   if (!acquired) {
     return { content: null, toolCalls: [], hadToolCalls: false, usage: null, failKind: "unreachable" };
   }
   try {
-    return await completeJudgeBody(fetchImpl, clock, request, forms);
+    return await completeJudgeBody(fetchImpl, clock, request, forms, sizing);
   } finally {
     gate.release(originKey(request.baseUrl));
   }
 }
+
+/**
+ * Wording of a 400 about the thinking level a short call sent: a local model whose thinking cannot
+ * be turned off (`reasoning_effort: "none"`) refuses it, and is asked again without one.
+ */
+const THINK_OFF_REFUSED = /reasoning|effort|think/i;
 
 async function completeJudgeBody(
   fetchImpl: FetchLike,
   clock: Clock,
   request: JudgeRequest,
   forms: Forms,
+  sizing?: LocalSizing,
 ): Promise<JudgeResult> {
   let response: Response;
-  const signal = AbortSignal.any([request.signal, AbortSignal.timeout(request.timeoutMs ?? clock.firstByteMs)]);
+  // A local server may be busy with a Bot's hop for many minutes; a call nobody waits on waits it
+  // out instead of failing (ADR 0067). A reading keeps its own short limit: the line it reads waits.
+  const wait = request.timeoutMs ?? clock.firstByteMs;
+  const timeoutMs = sizing && request.lane !== "reading" ? Math.max(wait, LOCAL_JUDGE_MS) : wait;
+  const signal = AbortSignal.any([request.signal, AbortSignal.timeout(timeoutMs)]);
   const maxTokens = request.maxTokens ?? (request.tools?.length ? 512 : 256);
+  // A short call that names no thinking level lets the endpoint think as it likes. A local reasoning
+  // model then spends the whole cap thinking and answers nothing (qwen3:8b: 256 of 256 tokens,
+  // empty reply), so a local one is asked not to think unless the model refused that before.
+  const modelKey = `${request.baseUrl} ${request.model}`;
+  const thinkOff = Boolean(sizing && !request.thinkingLevel && !sizing.noThinkOff.has(modelKey));
+  const bytes = sizing ? promptBytes(request.messages, request.tools) : 0;
+  const tooBig = sizing ? preflight(sizing, request, bytes) : null;
+  if (tooBig) return judgeResult({ content: null, toolCalls: [], usage: null, failKind: "context_full" });
+  const sendOpenai = (thinkingLevel: ThinkingLevel | undefined) => fetchImpl(completionsUrl(request.baseUrl), {
+    method: "POST",
+    headers: {
+      ...bearer(request.apiKey),
+      "Content-Type": "application/json",
+      ...sessionHeader(judgeAffinity(request)),
+    },
+    body: JSON.stringify({
+      model: request.model,
+      ...(thinkingLevel ? { reasoning_effort: thinkingLevel } : {}),
+      messages: toApiMessages(request.messages),
+      temperature: 0,
+      max_tokens: maxTokens,
+      stream: false,
+      ...(request.tools?.length ? { tools: request.tools } : {}),
+    }),
+    signal,
+  });
   try {
-    response = request.apiFormat === "anthropic"
+    if (request.apiFormat === "anthropic") {
       // No `temperature: 0` here: Anthropic's current models refuse any sampling setting.
-      ? await postAnthropic(fetchImpl, request, forms, {
+      response = await postAnthropic(fetchImpl, thinkOff ? { ...request, thinkingLevel: "none" } : request, forms, {
         stream: false,
         tools: request.tools ?? [],
         maxTokens,
@@ -998,25 +1198,19 @@ async function completeJudgeBody(
         cacheLoop: false,
         affinity: judgeAffinity(request),
         signal,
-      })
-      : await fetchImpl(completionsUrl(request.baseUrl), {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${request.apiKey}`,
-          "Content-Type": "application/json",
-          ...sessionHeader(judgeAffinity(request)),
-        },
-        body: JSON.stringify({
-          model: request.model,
-          ...(request.thinkingLevel ? { reasoning_effort: request.thinkingLevel } : {}),
-          messages: toApiMessages(request.messages),
-          temperature: 0,
-          max_tokens: maxTokens,
-          stream: false,
-          ...(request.tools?.length ? { tools: request.tools } : {}),
-        }),
-        signal,
       });
+    } else {
+      response = await sendOpenai(thinkOff ? "none" : request.thinkingLevel);
+      if (thinkOff && response.status === 400) {
+        const refusal = await response.text().catch(() => "");
+        if (THINK_OFF_REFUSED.test(refusal)) {
+          sizing!.noThinkOff.add(modelKey);
+          response = await sendOpenai(undefined);
+        } else {
+          response = new Response(refusal, { status: 400 });
+        }
+      }
+    }
   } catch (error) {
     const timeout = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
     return judgeResult({
@@ -1027,16 +1221,21 @@ async function completeJudgeBody(
     });
   }
   if (response.status >= 400) {
-    const usage = request.apiFormat === "anthropic" ? null : mapUsageFromResponse(await peekJson(response));
-    return judgeResult({ content: null, toolCalls: [], usage, failKind: "endpoint_error" });
+    const text = response.bodyUsed ? "" : await response.text().catch(() => "");
+    const usage = request.apiFormat === "anthropic" ? null : mapUsageFromResponse(parseJson(text));
+    const failKind: FailKind = response.status === 400 && PROMPT_OVER_CONTEXT.test(text) ? "context_full" : "endpoint_error";
+    return judgeResult({ content: null, toolCalls: [], usage, failKind });
   }
   const body = (await peekJson(response)) as Record<string, unknown> | null;
   if (!body) {
     return judgeResult({ content: null, toolCalls: [], usage: null, failKind: "incomplete" });
   }
+  const cutOff = async (usage: MappedUsage | null): Promise<boolean> =>
+    Boolean(sizing && (await afterLocal(sizing, request, bytes, usage)));
   if (request.apiFormat === "anthropic") {
     const message = readAnthropicMessage(body);
     if (!message) return judgeResult({ content: null, toolCalls: [], usage: mapAnthropicUsage(body.usage), failKind: "incomplete" });
+    if (await cutOff(message.usage)) return judgeResult({ content: null, toolCalls: [], usage: message.usage, failKind: "context_full" });
     return judgeResult({
       content: message.content,
       toolCalls: message.toolCalls,
@@ -1050,11 +1249,13 @@ async function completeJudgeBody(
   if (!Array.isArray(choices) || !choices[0] || typeof choices[0] !== "object") {
     return judgeResult({ content: null, toolCalls: [], usage, failKind: "incomplete" });
   }
+  if (await cutOff(usage)) return judgeResult({ content: null, toolCalls: [], usage, failKind: "context_full" });
   const choice = choices[0] as { message?: Record<string, unknown>; finish_reason?: unknown };
   const message = choice.message ?? {};
   const content = message.content;
   return judgeResult({
-    content: typeof content === "string" ? content : content == null ? null : String(content),
+    // A reasoning model's `<think>` left in the reply is not the verdict, and would not parse as one.
+    content: typeof content === "string" ? stripLeadingThink(content) : content == null ? null : String(content),
     toolCalls: judgeToolCalls(message.tool_calls),
     usage,
     failKind: null,

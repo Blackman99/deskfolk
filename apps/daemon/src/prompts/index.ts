@@ -28,6 +28,7 @@ export {
   statusQuestionBody,
   unknownMentionBody,
   completionFailBody,
+  contextFullDetail,
 } from "./transcript-copy";
 export type {
   FailingCheckLine,

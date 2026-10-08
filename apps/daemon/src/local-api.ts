@@ -6,6 +6,7 @@ import {
   type SharedSkillsResponse,
   type QualityCategory,
   FILE_DROP_SESSION_ID,
+  isLocalEndpoint,
   LOCAL_API_BIND,
   LOCAL_API_NAME,
   REACTION_EMOJI,
@@ -64,7 +65,8 @@ import { startScheduler, type Scheduler } from "./scheduler";
 import { createTurnEngine, type TurnEngine } from "./turn-engine";
 import { createClaudeCodeProbe, type ClaudeCodeProbe } from "./claude-code/probe";
 import type { AgentQuery } from "./engine/agent-runner";
-import { probeEndpointModels } from "./probe-models";
+import { probeEndpointModels, withLocalFacts } from "./probe-models";
+import { readLocalModels } from "./local-model";
 import type { FileCommit } from "./store/files";
 import type { RouteLearningRow, RouteReviewRow } from "./store/routing";
 import { ENGINE_LEVEL, type SharedInstall } from "./store/schema-gate";
@@ -106,6 +108,12 @@ export type LocalApiOptions = {
   onQuit?: () => void;
   engine?: TurnEngine;
   completions?: CompletionsClient;
+  /**
+   * Which endpoints are model servers on this computer or network (ADR 0067): probed for their
+   * models' windows, given local time limits and checked for cut prompts. Tests that stand a fake
+   * cloud endpoint up on 127.0.0.1 turn it off.
+   */
+  localEndpoint?: (baseUrl: string) => boolean;
   sleep?: (ms: number) => Promise<void>;
   mcp?: McpHost;
   /** Skip the calendar ticker (tests that drive `engine.fireRoutine` themselves). */
@@ -343,6 +351,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
       store: options.store,
       publish,
       completions: options.completions,
+      localEndpoint: options.localEndpoint,
       sleep: options.sleep,
       mcp,
       admission: options.admission,
@@ -1177,7 +1186,12 @@ function dispatch(
       request.signal.throwIfAborted();
       const probed = await probeEndpointModels(baseUrl, apiKey, fetch, request.signal, { guard: scope?.guard, apiFormat });
       scope?.guard?.();
-      return jsonResponse({ models: probed.models, catalog: probed.catalog }, 200, null);
+      // A model server on this computer or network also says each model's window and what it can
+      // do (ADR 0067); a cloud endpoint's `/models` is all there is.
+      const catalog = (options.localEndpoint ?? isLocalEndpoint)(baseUrl) && apiFormat !== "anthropic"
+        ? withLocalFacts(probed.catalog, await readLocalModels(fetch, baseUrl, probed.models, { signal: request.signal }))
+        : probed.catalog;
+      return jsonResponse({ models: probed.models, catalog }, 200, null);
     })();
   }
 
@@ -1212,6 +1226,12 @@ function dispatch(
     const at = occurred();
     publishBotModelChanges(store, previousBots, at, publish);
     return jsonResponse(provider, 200, null);
+  }
+  const speedTest = matchPath(path, "/v1/providers/:id/speed-test");
+  if (speedTest && method === "POST") {
+    const body = (input.body ?? {}) as { model?: unknown };
+    if (typeof body.model !== "string" || !body.model.trim()) throw new HttpError(422, "invalid_args", "model is required");
+    return engine.measureModel(speedTest.id!, body.model.trim(), request.signal).then((value) => jsonResponse(value, 200, null));
   }
   if (params && method === "DELETE") {
     const previousBots = store.listBots().map((bot) => ({ id: bot.id, model: bot.model, provider_id: bot.provider_id }));

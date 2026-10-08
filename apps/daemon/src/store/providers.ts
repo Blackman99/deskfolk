@@ -224,6 +224,48 @@ export function toProviderCached(ctx: StoreContext, row: ProviderRow): Provider 
   };
 }
 
+/**
+ * Writes what was measured or read about one model into its endpoint's list (ADR 0067): its speed
+ * from a speed test, its window from what its server said. Only the named fields change; a model
+ * the endpoint does not list is left alone. True when anything changed.
+ */
+export function recordModelFacts(
+  ctx: StoreContext,
+  providerId: string,
+  model: string,
+  facts: { stream_tps_p10?: number; context_window?: number },
+): boolean {
+  const row = requireProvider(ctx, providerId);
+  const catalog = parseStoredCatalog(row.models);
+  let changed = false;
+  const next = catalog.map((item) => {
+    if (item.name !== model) return item;
+    const updated = { ...item, ...facts };
+    changed = updated.stream_tps_p10 !== item.stream_tps_p10 || updated.context_window !== item.context_window;
+    return updated;
+  });
+  if (!changed) return false;
+  ctx.commit(() => ctx.db.run(`UPDATE providers SET models = ?, updated_at = ? WHERE id = ?`, [serializeCatalog(next), isoNow(), providerId]));
+  return true;
+}
+
+/** The window a local server said it runs a model with, on every endpoint at that address listing it. */
+export function recordContextWindow(ctx: StoreContext, baseUrl: string, model: string, window: number): void {
+  for (const row of providerRows(ctx)) {
+    if (row.base_url === baseUrl) recordModelFacts(ctx, row.id, model, { context_window: window });
+  }
+}
+
+/** A model's window as the endpoint at that address has it on record, for the check before a local request. */
+export function contextWindowOf(ctx: StoreContext, baseUrl: string, model: string): number | undefined {
+  for (const row of providerRows(ctx)) {
+    if (row.base_url !== baseUrl) continue;
+    const window = parseStoredCatalog(row.models).find((item) => item.name === model)?.context_window;
+    if (window) return window;
+  }
+  return undefined;
+}
+
 export function catalogEntries(ctx: StoreContext): CatalogEntry[] {
   const out: CatalogEntry[] = [];
   for (const row of providerRows(ctx)) {

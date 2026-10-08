@@ -18,6 +18,11 @@ export const FAIL_REASON = {
   truncated: { zh: "回复写到输出上限，接着写还是没写完", en: "The reply hit the output limit, even after carrying on" },
   overtime: { zh: "回复写了太久，超过了时间上限", en: "The reply ran past its time limit" },
   no_model: { zh: "没有可用的模型", en: "No model is configured" },
+  // ADR 0067: a local server cuts a prompt past its window and answers anyway; the turn fails here instead.
+  context_full: {
+    zh: "提示词超出了模型的上下文窗口，把模型服务的上下文调大（如 Ollama 的 OLLAMA_CONTEXT_LENGTH）或换上下文更长的模型",
+    en: "The prompt is larger than the model's context window; raise the model server's context (e.g. Ollama's OLLAMA_CONTEXT_LENGTH) or pick a model with a longer one",
+  },
   stuck: { zh: "卡住了，很久没有任何进展", en: "It stopped making progress" },
   crashed: { zh: "运行时出错", en: "The runtime errored" },
   // A Claude Agent turn's own (ADR 0061): about the user's Claude Code, not an endpoint or a model.
@@ -40,6 +45,20 @@ export function unknownMentionBody(locale: Locale, tokens: string[], members: st
   const list = tokens.map((token) => `@${token}`).join("、");
   const who = members.length > 0 ? members.join("、") : "（无）";
   return `${list} 没有匹配到群成员。在场：${who}。点名请逐字写全名。`;
+}
+
+/**
+ * The numbers behind a `context_full` failure (ADR 0067): about how big this step's prompt is, what
+ * the endpoint read of it when it cut it, and the window the server runs with, when it said.
+ */
+export function contextFullDetail(locale: Locale, cut: { estimated: number; read?: number; window?: number } | undefined): string | null {
+  if (!cut) return null;
+  const n = (value: number) => value.toLocaleString("en-US");
+  const en = locale === "en";
+  const parts = [en ? `this step is about ${n(cut.estimated)} tokens` : `这一步约 ${n(cut.estimated)} token`];
+  if (cut.read) parts.push(en ? `the endpoint read only ${n(cut.read)} of them` : `端点只读进了 ${n(cut.read)} token`);
+  if (cut.window) parts.push(en ? `its window is ${n(cut.window)}` : `窗口是 ${n(cut.window)}`);
+  return parts.join(en ? "; " : "，");
 }
 
 /** `detail` says more where the kind alone cannot, e.g. when a usage limit resets. */

@@ -13,6 +13,7 @@ import {
   type PatchMemoryRequest,
   type CreateProviderRequest,
   type PatchProviderRequest,
+  type ModelSpeed,
   type ProbeModelsResponse,
   type ResolveApprovalRequest,
   type ComposerSuggestion,
@@ -1362,6 +1363,20 @@ export class MessengerRuntime {
       if (this.api !== api) return { ok: false, error: "Connection changed" };
       const msg = error instanceof Error ? error.message : String(error);
       return { ok: false, error: msg };
+    }
+  }
+
+  /** Times a saved endpoint's model and checks it calls tools (ADR 0067); the error text when it could not run. */
+  async speedTest(providerId: string, model: string): Promise<{ ok: true; speed: ModelSpeed } | { ok: false; error: string }> {
+    const api = this.api;
+    if (!api) return { ok: false, error: "Not connected" };
+    try {
+      const speed = await api.speedTest(providerId, model);
+      if (this.api !== api) return { ok: false, error: "Connection changed" };
+      return { ok: true, speed };
+    } catch (error) {
+      if (this.api !== api) return { ok: false, error: "Connection changed" };
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
 

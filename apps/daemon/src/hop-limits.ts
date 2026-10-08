@@ -38,9 +38,16 @@ export type HopLimits = {
   wallMs: number;
 };
 
-export function hopLimits(model: Pick<EndpointModel, "max_output" | "stream_tps_p10"> | undefined): HopLimits {
+/**
+ * The speed a model on this computer or network is taken to write at when nothing was measured
+ * (ADR 0067). Ten minutes is not enough there: an 8B model wrote about 29 tokens a second on an
+ * M4 Pro, so the default cap takes 19 minutes, and a larger model on a smaller Mac is slower still.
+ */
+export const LOCAL_ASSUMED_TPS = 10;
+
+export function hopLimits(model: Pick<EndpointModel, "max_output" | "stream_tps_p10"> | undefined, local = false): HopLimits {
   const maxTokens = model?.max_output ?? DEFAULT_MAX_OUTPUT;
-  const tps = model?.stream_tps_p10;
+  const tps = model?.stream_tps_p10 ?? (local ? LOCAL_ASSUMED_TPS : undefined);
   const measured = tps ? Math.ceil((maxTokens / tps) * STREAM_WALL_SLACK * 1000) : 0;
   return { maxTokens, wallMs: Math.max(MIN_STREAM_WALL_MS, measured) };
 }
@@ -94,6 +101,13 @@ export class RepeatWatch {
   private closed = 0;
   private lastNew = 0;
   private looped = false;
+
+  /**
+   * `sameSentenceOnly` keeps the first rule alone: a model's thinking is full of short restated
+   * lines (「好的。」「再看一下。」) that are not a loop, so only the same long sentence over and
+   * over counts there (ADR 0067).
+   */
+  constructor(private readonly options: { sameSentenceOnly?: boolean } = {}) {}
 
   /** Takes the next piece of body text; true once the reply is looping, and from then on. */
   feed(text: string): boolean {
@@ -192,7 +206,7 @@ export class RepeatWatch {
     if (Math.min(copies, this.counts.get(key)!) >= REPEAT_SAME_SENTENCE && [...key].length >= REPEAT_MIN_SENTENCE) {
       this.looped = true;
     }
-    if (this.window.length >= REPEAT_MIN_SENTENCES && this.counts.size / this.window.length < REPEAT_MIN_DISTINCT) {
+    if (!this.options.sameSentenceOnly && this.window.length >= REPEAT_MIN_SENTENCES && this.counts.size / this.window.length < REPEAT_MIN_DISTINCT) {
       this.looped = true;
     }
   }

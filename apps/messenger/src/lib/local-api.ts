@@ -47,6 +47,7 @@ import type {
   PatchMemoryRequest,
   PatchProviderRequest,
   PatchSkillRequest,
+  ModelSpeed,
   ProbeModelsResponse,
   Provider,
   ResolveApprovalRequest,
@@ -277,6 +278,11 @@ export class LocalApi {
     provider_id?: string;
   }): Promise<ProbeModelsResponse> {
     return this.post<ProbeModelsResponse>("/v1/models/probe", body);
+  }
+
+  /** Times one enabled model and checks it calls tools; the speed is recorded on the endpoint (ADR 0067). */
+  async speedTest(providerId: string, model: string): Promise<ModelSpeed> {
+    return this.post<ModelSpeed>(`/v1/providers/${providerId}/speed-test`, { model });
   }
 
   async providers(): Promise<Provider[]> {

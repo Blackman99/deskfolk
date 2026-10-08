@@ -1,5 +1,6 @@
 import {
   THINKING_LEVELS,
+  isLocalEndpoint,
   isThinkingLevel,
   sortThinkingLevels,
   type ApiFormat,
@@ -23,7 +24,17 @@ export type ModelAttrDraft = {
   strengths: string[];
   /** Whether it takes pictures (ADR 0049): true, false, or null for "not known" (clears a saved value); absent keeps what was saved. */
   inputImage?: boolean | null;
+  /**
+   * Raw text of the context window field, in tokens (ADR 0067): empty clears a saved one, absent
+   * keeps what was saved. Filled from what a local model server said when the list was fetched.
+   */
+  contextWindow?: string;
+  /** The speed on record (`stream_tps_p10`), shown beside the speed test; never sent back. */
+  recordedTps?: number;
 };
+
+/** What a model server on this computer or network said about a model when the list was fetched (ADR 0067). */
+export type ProbedFacts = Pick<ProbedModel, "context_window" | "input_image" | "tools">;
 
 export type ProviderDraft = {
   name: string;
@@ -37,6 +48,8 @@ export type ProviderDraft = {
   availableModels: string[];
   /** Thinking levels `/models` advertised per name; empty when that object did not say. */
   advertisedThinking: Record<string, ThinkingLevel[]>;
+  /** What a local server said per name (window, pictures, tools); absent for a cloud endpoint. */
+  probedFacts?: Record<string, ProbedFacts>;
   defaultModel: string;
   modelAttrs: Record<string, ModelAttrDraft>;
 };
@@ -47,6 +60,7 @@ export type ProviderFieldErrors = {
   endpointKey?: "empty";
   models?: "empty";
   pricing?: "invalid";
+  contextWindow?: "invalid";
   defaultModel?: "empty" | "invalid";
 };
 
@@ -102,7 +116,7 @@ export function emptyProviderDraft(): ProviderDraft {
 
 export function withSyncedDefaultModel(draft: ProviderDraft): ProviderDraft {
   const models = uniqueNames(draft.models);
-  const modelAttrs = pruneAttrs(draft.modelAttrs, models, draft.advertisedThinking);
+  const modelAttrs = pruneAttrs(draft.modelAttrs, models, draft.advertisedThinking, draft.probedFacts);
   const next = { ...draft, models, modelAttrs };
   if (next.defaultModel && models.includes(next.defaultModel)) return next;
   if (!next.defaultModel) return next;
@@ -123,7 +137,15 @@ export function applyProbedModels(
   const availableModels = uniqueNames(catalog.map((row) => row.name));
   const advertisedThinking = { ...draft.advertisedThinking };
   const modelAttrs = { ...draft.modelAttrs };
+  const probedFacts = { ...draft.probedFacts };
   for (const row of catalog) {
+    const facts = factsOf(row);
+    if (facts) {
+      const before = draft.probedFacts?.[row.name];
+      probedFacts[row.name] = facts;
+      const current = modelAttrs[row.name];
+      if (current) modelAttrs[row.name] = withProbedFacts(current, facts, before);
+    }
     if (row.thinking_levels.length === 0) continue;
     advertisedThinking[row.name] = [...row.thinking_levels];
     const current = modelAttrs[row.name];
@@ -135,7 +157,44 @@ export function applyProbedModels(
     draft.models.length === 0 && availableModels.length > 0 && availableModels.length <= AUTO_ENABLE_MAX
       ? [...availableModels]
       : draft.models;
-  return withSyncedDefaultModel({ ...draft, availableModels, advertisedThinking, models, modelAttrs });
+  return withSyncedDefaultModel({
+    ...draft,
+    availableModels,
+    advertisedThinking,
+    ...(Object.keys(probedFacts).length > 0 ? { probedFacts } : {}),
+    models,
+    modelAttrs,
+  });
+}
+
+function factsOf(row: ProbedModel): ProbedFacts | null {
+  const facts: ProbedFacts = {
+    ...(row.context_window !== undefined ? { context_window: row.context_window } : {}),
+    ...(row.input_image !== undefined ? { input_image: row.input_image } : {}),
+    ...(row.tools !== undefined ? { tools: row.tools } : {}),
+  };
+  return Object.keys(facts).length > 0 ? facts : null;
+}
+
+/**
+ * A model's attributes with what its server said filled in: the window where the field is empty or
+ * still shows what the server said before, pictures where nothing was set. What you typed stays.
+ */
+function withProbedFacts(attr: ModelAttrDraft, facts: ProbedFacts, before?: ProbedFacts): ModelAttrDraft {
+  let next = attr;
+  const window = facts.context_window;
+  const followsServer = attr.contextWindow === undefined || attr.contextWindow === "" ||
+    (before?.context_window !== undefined && attr.contextWindow === String(before.context_window));
+  if (window !== undefined && followsServer && attr.contextWindow !== String(window)) next = { ...next, contextWindow: String(window) };
+  if (facts.input_image !== undefined && (attr.inputImage === undefined || attr.inputImage === null)) next = { ...next, inputImage: facts.input_image };
+  return next;
+}
+
+/** Whether a context window field holds something other than nothing or a whole number of tokens. */
+export function invalidContextWindow(attr: ModelAttrDraft | undefined): boolean {
+  const raw = attr?.contextWindow?.trim() ?? "";
+  if (raw.length === 0) return false;
+  return !/^\d+$/.test(raw) || Number(raw) <= 0;
 }
 
 /** Rows the picker shows: the probed list in endpoint order, then enabled names the endpoint did not list. */
@@ -169,7 +228,8 @@ export function probeSignature(draft: ProviderDraft, keySet: boolean): string | 
   const baseUrl = draft.baseUrl.trim();
   if (!isHttpOrHttpsUrl(baseUrl)) return null;
   const apiKey = draft.apiKey.trim();
-  if (apiKey.length === 0 && !keySet) return null;
+  // A model server on this computer or network answers without a key (ADR 0067).
+  if (apiKey.length === 0 && !keySet && !isLocalEndpoint(baseUrl)) return null;
   return `${draft.apiFormat}\n${baseUrl}\n${apiKey}`;
 }
 
@@ -260,6 +320,8 @@ export function draftFromProvider(input: {
       thinkingLevels: [...row.thinking_levels],
       strengths: [...row.strengths],
       ...(row.input_image !== undefined ? { inputImage: row.input_image } : {}),
+      ...(row.context_window !== undefined ? { contextWindow: String(row.context_window) } : {}),
+      ...(row.stream_tps_p10 !== undefined ? { recordedTps: row.stream_tps_p10 } : {}),
     };
   }
   return {
@@ -380,12 +442,13 @@ function parseProviderDraft(
   if (name.length === 0) errors.name = "empty";
   if (baseUrl.length === 0) errors.endpoint = "empty";
   else if (!isHttpOrHttpsUrl(baseUrl)) errors.endpoint = "invalid";
-  if (requireKey && draft.apiKey.length === 0) errors.endpointKey = "empty";
+  if (requireKey && draft.apiKey.length === 0 && !isLocalEndpoint(baseUrl)) errors.endpointKey = "empty";
   if (names.length === 0 && !options.allowEmptyModels) errors.models = "empty";
   if (defaultModel.length === 0) {
     if (!options.allowEmptyModels) errors.defaultModel = "empty";
   } else if (!names.includes(defaultModel)) errors.defaultModel = "invalid";
   if (names.some((name) => invalidBilling(draft.modelAttrs[name]))) errors.pricing = "invalid";
+  if (names.some((name) => invalidContextWindow(draft.modelAttrs[name]))) errors.contextWindow = "invalid";
   if (Object.keys(errors).length > 0) {
     return { ok: false, errors };
   }
@@ -403,8 +466,13 @@ function parseProviderDraft(
 
 /** The entry as saved: as `catalogFromAttr` reads it, plus a null that clears "takes pictures" when set back to not known. */
 function requestItemFromAttr(name: string, attr: ModelAttrDraft | undefined): EndpointModelInput {
-  const row = catalogFromAttr(name, attr);
-  return attr?.inputImage === null ? { ...row, input_image: null } : row;
+  const row: EndpointModelInput = catalogFromAttr(name, attr);
+  return {
+    ...row,
+    ...(attr?.inputImage === null ? { input_image: null } : {}),
+    // An emptied window field clears the saved one; a field never shown leaves it as it was.
+    ...(attr?.contextWindow !== undefined && attr.contextWindow.trim() === "" ? { context_window: null } : {}),
+  };
 }
 
 function catalogFromAttr(name: string, attr: ModelAttrDraft | undefined): EndpointModel {
@@ -419,7 +487,13 @@ function catalogFromAttr(name: string, attr: ModelAttrDraft | undefined): Endpoi
     thinking_levels: levels.length > 0 ? levels : [...THINKING_LEVELS],
     strengths: uniqueTags(source.strengths),
     ...(typeof source.inputImage === "boolean" ? { input_image: source.inputImage } : {}),
+    ...(windowOf(source) !== undefined ? { context_window: windowOf(source) } : {}),
   };
+}
+
+function windowOf(attr: ModelAttrDraft): number | undefined {
+  const raw = attr.contextWindow?.trim() ?? "";
+  return /^\d+$/.test(raw) && Number(raw) > 0 ? Number(raw) : undefined;
 }
 
 function billingValues(attr: ModelAttrDraft | undefined): string[] {
@@ -473,10 +547,12 @@ function pruneAttrs(
   attrs: Record<string, ModelAttrDraft>,
   names: readonly string[],
   advertised: Record<string, ThinkingLevel[]> | undefined,
+  facts?: Record<string, ProbedFacts>,
 ): Record<string, ModelAttrDraft> {
   const next: Record<string, ModelAttrDraft> = {};
   for (const name of names) {
-    next[name] = attrs[name] ?? attrFromAdvertised(advertised?.[name]);
+    const said = facts?.[name];
+    next[name] = attrs[name] ?? (said ? withProbedFacts(attrFromAdvertised(advertised?.[name]), said) : attrFromAdvertised(advertised?.[name]));
   }
   return next;
 }
@@ -516,6 +592,9 @@ function probedCatalog(
       out.push({
         name,
         thinking_levels: sortThinkingLevels(row.thinking_levels.filter((level: string) => isThinkingLevel(level))),
+        ...(row.context_window !== undefined ? { context_window: row.context_window } : {}),
+        ...(row.input_image !== undefined ? { input_image: row.input_image } : {}),
+        ...(row.tools !== undefined ? { tools: row.tools } : {}),
       });
     }
     return out;
@@ -540,6 +619,7 @@ function catalogItemFromInput(item: EndpointModelInput): EndpointModel {
     thinkingLevels: [...(item.thinking_levels ?? THINKING_LEVELS)],
     strengths: [...(item.strengths ?? [])],
     ...(typeof item.input_image === "boolean" ? { inputImage: item.input_image } : {}),
+    ...(typeof item.context_window === "number" ? { contextWindow: String(item.context_window) } : {}),
   });
 }
 
@@ -556,7 +636,8 @@ function sameCatalog(a: readonly EndpointModelInput[], b: readonly EndpointModel
       left.pricing?.cached_input === right.pricing?.cached_input &&
       sameList(left.thinking_levels, right.thinking_levels) &&
       sameList(left.strengths, right.strengths) &&
-      left.input_image === (right.input_image ?? undefined)
+      left.input_image === (right.input_image ?? undefined) &&
+      left.context_window === (right.context_window ?? undefined)
     );
   });
 }

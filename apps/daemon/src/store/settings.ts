@@ -6,6 +6,7 @@
 import {
   KEYCHAIN_NAME,
   KEYCHAIN_REF,
+  isLocalEndpoint,
   providerKeychainName,
   type PatchProviderRequest,
   type Provider,
@@ -89,7 +90,7 @@ export function settingsCached(ctx: StoreContext): Settings {
     launch_at_login,
     locale,
     theme,
-    wizard_complete: Boolean(workspace_path && providers.some((provider) => provider.base_url && provider.key_set)),
+    wizard_complete: Boolean(workspace_path && providers.some((provider) => provider.base_url && (provider.key_set || isLocalEndpoint(provider.base_url)))),
   };
 }
 

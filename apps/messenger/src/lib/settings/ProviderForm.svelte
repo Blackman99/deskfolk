@@ -11,6 +11,7 @@
 		emptyModelAttr,
 		hasCustomAttrs,
 		invalidBilling,
+		invalidContextWindow,
 		pickerModels,
 		thinkingChipOptions,
 		probeSignature,
@@ -23,6 +24,7 @@
 		type ProviderFieldErrors
 	} from './provider-form.ts';
 	import { thinkingLevelLabel } from '../copy.ts';
+	import { isLocalEndpoint, type ModelSpeed } from '@real-bot/protocol';
 
 	interface Props {
 		draft: ProviderDraft;
@@ -39,6 +41,11 @@
 		t: Copy;
 		onchange: (draft: ProviderDraft) => void;
 		onfetch: () => void;
+		/**
+		 * Times a saved model and checks it calls tools (ADR 0067). Present only while editing a saved
+		 * endpoint: the daemon tests what it has on record.
+		 */
+		measure?: (model: string) => Promise<{ ok: true; speed: ModelSpeed } | { ok: false; error: string }>;
 	}
 
 	let {
@@ -53,8 +60,27 @@
 		detailModel = $bindable(null),
 		t,
 		onchange,
-		onfetch
+		onfetch,
+		measure
 	}: Props = $props();
+
+	/** Speed tests by model name: running, or what the last one found. */
+	let speed = $state<Record<string, { running: boolean; result?: ModelSpeed; error?: string }>>({});
+
+	async function runSpeedTest(name: string): Promise<void> {
+		if (!measure || speed[name]?.running) return;
+		speed = { ...speed, [name]: { running: true } };
+		const res = await measure(name);
+		speed = { ...speed, [name]: res.ok ? { running: false, result: res.speed } : { running: false, error: res.error } };
+	}
+
+	function speedLine(result: ModelSpeed): string {
+		const parts: string[] = [];
+		if (result.tokens_per_second !== null) parts.push(t.settings.modelSpeedRate(result.tokens_per_second));
+		if (result.first_byte_ms !== null) parts.push(t.settings.modelSpeedFirstByte(Math.round(result.first_byte_ms / 100) / 10));
+		if (result.tool_call === true) parts.push(t.settings.modelSpeedTools);
+		return parts.join(t.settings.modelSpeedJoin);
+	}
 
 	const phone = new MediaQuery('(max-width: 720px)');
 	const TOOLBAR_MIN_ROWS = 6;
@@ -76,6 +102,8 @@
 	const enabled = $derived(new Set(draft.models));
 	const available = $derived(new Set(draft.availableModels));
 	const canProbe = $derived(probeSignature(draft, Boolean(keySet)) !== null);
+	/** A model server on this computer or network takes no key (ADR 0067). */
+	const keyless = $derived(isLocalEndpoint(draft.baseUrl));
 	const showToolbar = $derived(phone.current || rows.length > TOOLBAR_MIN_ROWS);
 	const visibleRows = $derived.by(() => {
 		const q = filterQuery.trim().toLowerCase();
@@ -286,6 +314,47 @@
 				{/each}
 			</div>
 		</div>
+		<div class="attr-field attr-field-window">
+			<label for={`${fieldPrefix}-window-${name}`}>{t.settings.modelContextWindow}</label>
+			<input
+				id={`${fieldPrefix}-window-${name}`}
+				class="attr-price-input attr-window-input"
+				type="text"
+				inputmode="numeric"
+				placeholder={t.settings.modelContextWindowPlaceholder}
+				value={attr.contextWindow ?? ''}
+				aria-invalid={invalidContextWindow(attr)}
+				oninput={(ev) => patchAttr(name, { ...attr, contextWindow: (ev.currentTarget as HTMLInputElement).value.replace(/[\s,_]/g, '') })}
+			/>
+			<p class="billing-hint">{keyless ? t.settings.modelContextWindowLocalHint : t.settings.modelContextWindowHint}</p>
+			{#if invalidContextWindow(attr)}<p class="field-error" role="status">{t.settings.modelContextWindowInvalid}</p>{/if}
+		</div>
+		{#if measure}
+			{@const state = speed[name]}
+			<div class="attr-field attr-field-speed">
+				<span class="attr-field-label">{t.settings.modelSpeed}</span>
+				<div class="speed-row flex flex-wrap items-center gap-2">
+					<button type="button" class="btn-chip" disabled={state?.running} onclick={() => void runSpeedTest(name)}>
+						{state?.running ? t.settings.modelSpeedRunning : t.settings.modelSpeedRun}
+					</button>
+					{#if !state?.result && !state?.error && attr.recordedTps !== undefined}
+						<span class="speed-note">{t.settings.modelSpeedRecorded(attr.recordedTps)}</span>
+					{/if}
+				</div>
+				{#if state?.result}
+					<p class="speed-note" role="status">{speedLine(state.result)}</p>
+					{#if state.result.tool_call === false}
+						<p class="field-error" role="status">{t.settings.modelSpeedNoTools}</p>
+					{/if}
+					{#if state.result.failed}
+						<p class="field-error" role="status">{t.settings.modelSpeedFailed((t.routes.failReason as Record<string, string>)[state.result.failed] ?? state.result.failed)}</p>
+					{/if}
+				{:else if state?.error}
+					<p class="field-error" role="status">{t.settings.modelSpeedError(state.error)}</p>
+				{/if}
+				<p class="billing-hint">{t.settings.modelSpeedHint}</p>
+			</div>
+		{/if}
 		<div class="attr-field attr-field-strengths">
 			<span class="attr-field-label">{t.settings.modelStrengths}</span>
 			<div class="chip-row flex flex-wrap items-center gap-2 min-h-11" role="group" aria-label={t.settings.modelStrengths}>
@@ -405,8 +474,8 @@
 	<div class="field-head-row">
 		<label for={`${fieldPrefix}-key`}>{t.settings.endpointKey}</label>
 		{#if keySet !== undefined}
-			<span class="key-status-badge" class:is-set={keySet}>
-				{keySet ? t.settings.keySet : t.settings.keyUnset}
+			<span class="key-status-badge" class:is-set={keySet || keyless}>
+				{keySet ? t.settings.keySet : keyless ? t.settings.keyNotNeeded : t.settings.keyUnset}
 			</span>
 		{/if}
 	</div>
@@ -414,12 +483,14 @@
 		id={`${fieldPrefix}-key`}
 		type="password"
 		autocomplete="off"
-		placeholder={keySet ? '••••••••' : ''}
+		placeholder={keySet ? '••••••••' : keyless ? t.settings.keyLocalPlaceholder : ''}
 		value={draft.apiKey}
 		oninput={(ev) => patch({ apiKey: (ev.currentTarget as HTMLInputElement).value })}
 	/>
 	{#if errors.endpointKey}
 		<p class="field-error">{t.settings.keyEmpty}</p>
+	{:else if keyless && !keySet}
+		<p class="muted field-hint">{t.settings.keyLocalHint}</p>
 	{/if}
 </div>
 {:else}
@@ -525,6 +596,9 @@
 								<span class="model-row-name mono flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-13">{name}</span>
 								{#if !available.has(name)}
 									<span class="model-custom-tag">{t.settings.modelCustomBadge}</span>
+								{/if}
+								{#if draft.probedFacts?.[name]?.tools === false}
+									<span class="model-custom-tag is-warn" title={t.settings.modelNoToolsTitle}>{t.settings.modelNoTools}</span>
 								{/if}
 							</button>
 							{#if on}
@@ -866,6 +940,12 @@
 	.attr-field-strengths {
 		grid-column: 1 / -1;
 	}
+
+	.attr-field-window,
+	.attr-field-speed { grid-column: 1 / -1; }
+	.attr-window-input { max-width: 160px; }
+	.speed-note { margin: 0; font-size: 12px; color: var(--ink-secondary); line-height: 1.5; overflow-wrap: anywhere; }
+	.model-custom-tag.is-warn { color: var(--warn); border-color: var(--warn); background: transparent; }
 
 	.attr-field :global(label),
 

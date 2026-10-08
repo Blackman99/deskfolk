@@ -1,10 +1,12 @@
 import {
   USER_MEMBER,
+  isLocalEndpoint,
   type ClientEvent,
   type ComposerSuggestion,
   type ControlActionResult,
   type Hold,
   type Message,
+  type ModelSpeed,
   type PendingJudgement,
   type RestartCause,
   type Turn,
@@ -38,6 +40,7 @@ import { createStatusQuestion } from "./engine/status-question";
 import { createStop, type HoldRequest } from "./engine/stop";
 import { createTools } from "./engine/tools";
 import { HttpError } from "./errors";
+import { measureModel, RECORDED_SHARE } from "./model-speed";
 import { isoNow } from "./ids";
 import type { McpHost } from "./mcp-host";
 import { createOrganizer } from "./organizer";
@@ -157,6 +160,8 @@ export type TurnEngine = {
   /** Runs the next due retrospective of a delivered plan (ADR 0062, level 8), one at a time. */
   retrospect: (now?: Date) => void;
   suggestComposer: (sessionId: string, signal?: AbortSignal, guard?: () => void) => Promise<ComposerSuggestion[]>;
+  /** Times one model and checks it calls tools, recording the speed in its entry (ADR 0067). */
+  measureModel: (providerId: string, model: string, signal: AbortSignal) => Promise<ModelSpeed>;
   drain: () => Promise<void>;
   close: () => Promise<void>;
 };
@@ -165,6 +170,8 @@ export type TurnEngineOptions = {
   store: Store;
   publish: (event: ClientEvent) => void;
   completions?: CompletionsClient;
+  /** Which endpoints are model servers on this computer or network (ADR 0067); `isLocalEndpoint` when absent. */
+  localEndpoint?: (baseUrl: string) => boolean;
   sleep?: (ms: number) => Promise<void>;
   mcp?: McpHost;
   admission?: TurnAdmission;
@@ -219,9 +226,23 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   const store = options.store;
   const publish = options.publish;
   const wake = options.wake ?? processWake();
+  const localEndpoint = options.localEndpoint ?? isLocalEndpoint;
   const completions =
     options.completions ??
-    createCompletionsClient({ ...(options.sleep ? { clock: { sleep: options.sleep } } : {}), wake });
+    createCompletionsClient({
+      ...(options.sleep ? { clock: { sleep: options.sleep } } : {}),
+      wake,
+      local: localEndpoint,
+      // A local model's window (ADR 0067): checked before a request is sent, recorded once its server says.
+      windowOf: (baseUrl, model) => store.contextWindowOf(baseUrl, model),
+      onWindow: (baseUrl, model, window) => {
+        try {
+          store.recordContextWindow(baseUrl, model, window);
+        } catch (error) {
+          console.error(`[local-model] could not record the window of ${model}:`, error);
+        }
+      },
+    });
   const mcp = options.mcp;
   const ablation = options.ablation ?? NO_ABLATION;
   if (ablation.size > 0) console.error(`[ablation] off: ${ablationList(ablation).join(", ")}`);
@@ -537,6 +558,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   const lifecycle = createLifecycle({
     store,
     publish,
+    localEndpoint,
     publishMessage: core.publishMessage,
     publishTurn: core.publishTurn,
     occurred: core.occurred,
@@ -920,6 +942,20 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     },
     fireRoutine: fire.fireRoutine,
     fireCheckBack: fire.fireCheckBack,
+    async measureModel(providerId, model, signal) {
+      const creds = await routing.credentials();
+      const provider = creds?.providers.find((row) => row.id === providerId);
+      if (!provider) throw new HttpError(409, "conflict", "this endpoint has no key yet");
+      if (!provider.models.includes(model)) throw new HttpError(422, "invalid_args", "model is not enabled on this endpoint");
+      const measured = await measureModel(
+        completions,
+        { baseUrl: provider.baseUrl, apiKey: provider.apiKey, apiFormat: provider.apiFormat, model },
+        signal,
+      );
+      const recorded = measured.tokens_per_second ? Math.max(0.1, Math.round(measured.tokens_per_second * RECORDED_SHARE * 10) / 10) : null;
+      if (recorded) store.recordModelFacts(providerId, model, { stream_tps_p10: recorded });
+      return { ...measured, recorded_tps: recorded };
+    },
     assertAskPending,
     resolveApproval(id, action, scope, apiKey) {
       const rowForGate = store.getApproval(id);

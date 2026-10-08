@@ -6,6 +6,7 @@ import {
 } from "@real-bot/protocol";
 import { anthropicHeaders, anthropicUrl, type AnthropicAuth } from "./anthropic-messages";
 import { HttpError } from "./errors";
+import type { LocalModelFacts } from "./local-model";
 
 export type { ProbedModel };
 
@@ -13,6 +14,24 @@ export type ProbeResult = {
   models: string[];
   catalog: ProbedModel[];
 };
+
+/**
+ * The probed list with what a local model server said about each model (ADR 0067) folded in: its
+ * window, whether it takes pictures, whether it calls tools. A name the server said nothing about
+ * stays as `/models` gave it.
+ */
+export function withLocalFacts(catalog: readonly ProbedModel[], facts: ReadonlyMap<string, LocalModelFacts>): ProbedModel[] {
+  return catalog.map((row) => {
+    const said = facts.get(row.name);
+    if (!said) return row;
+    return {
+      ...row,
+      ...(said.context_window !== undefined ? { context_window: said.context_window } : {}),
+      ...(said.input_image !== undefined ? { input_image: said.input_image } : {}),
+      ...(said.tools !== undefined ? { tools: said.tools } : {}),
+    };
+  });
+}
 
 export function extractModelIds(data: unknown): string[] {
   return extractProbedModels(data).models;

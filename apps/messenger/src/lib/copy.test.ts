@@ -533,6 +533,7 @@ test("the model choice log covers every fail kind the daemon can record", () => 
     "agent_missing",
     "agent_signed_out",
     "busy",
+    "context_full",
     "crashed",
     "declined",
     "endpoint_error",
