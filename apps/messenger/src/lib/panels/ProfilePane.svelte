@@ -9,6 +9,7 @@
 	import SkillEditor from './SkillEditor.svelte';
 	import BotActionsCard from './BotActionsCard.svelte';
 	import { untrack } from 'svelte';
+	import { Autosave } from '../autosave.svelte.ts';
 	import type { Bot, ClaudeCodeStatus } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import {
@@ -113,10 +114,8 @@
 	let profileDraft = $state<ProfileFields>(untrack(() => emptyProfile(bot)));
 	let profileBaseline = $state<ProfileFields>(untrack(() => emptyProfile(bot)));
 	let profileErrors = $state<CreateBotFieldErrors>({});
-	let profileSaving = $state(false);
-	/** Bumped on every accepted save so the header can say 「已自动保存」. */
-	let profileSavedTick = $state(0);
-	let profileSaveTimer: ReturnType<typeof setTimeout> | null = null;
+	/** `saving`, and `savedTick`, bumped on every accepted save so the header can say 「已自动保存」. */
+	const autosave = new Autosave();
 	let profileSaveQueued = false;
 	/** Cleared on unmount: a save that fails after the pane is gone must not flag the next one. */
 	let mounted = true;
@@ -292,23 +291,17 @@
 	}
 
 	function scheduleProfileSave(delay = 600): void {
-		if (profileSaveTimer) clearTimeout(profileSaveTimer);
-		profileSaveTimer = setTimeout(() => {
-			profileSaveTimer = null;
-			void saveProfile();
-		}, delay);
+		autosave.schedule(() => void saveProfile(), delay);
 	}
 
 	/** Sends a pending autosave now: on close, on switching Bots, or when the panel goes away. */
 	function flushProfileSave(): void {
-		if (!profileSaveTimer) return;
-		clearTimeout(profileSaveTimer);
-		profileSaveTimer = null;
+		if (!autosave.cancel()) return;
 		void saveProfile();
 	}
 
 	async function saveProfile(): Promise<void> {
-		if (profileSaving) {
+		if (autosave.saving) {
 			profileSaveQueued = true;
 			return;
 		}
@@ -319,14 +312,14 @@
 			profileErrors = plan.errors;
 			return;
 		}
-		profileSaving = true;
+		autosave.saving = true;
 		profileFailed = false;
 		profileErrors = {};
 		const error = await runtime.patchBot(bot.id, plan.body);
-		profileSaving = false;
+		autosave.saving = false;
 		if (!error) {
 			profileBaseline = sent;
-			profileSavedTick += 1;
+			autosave.savedTick += 1;
 		} else if (mounted) {
 			const mapped = mapCreateBotError(error.status, error.message);
 			if ('top' in mapped) profileFailed = true;
@@ -502,9 +495,9 @@
 	{t}
 	bind:profileDraft
 	{profileErrors}
-	{profileSaving}
+	profileSaving={autosave.saving}
 	{profileFailed}
-	{profileSavedTick}
+	profileSavedTick={autosave.savedTick}
 	{profileModelOptions}
 	{unlistedPin}
 	{claudeStatus}

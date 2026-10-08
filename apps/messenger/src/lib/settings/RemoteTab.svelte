@@ -1,4 +1,6 @@
 <script lang="ts">
+	import SettingsCard from './SettingsCard.svelte';
+	import SettingsCardHeader from './SettingsCardHeader.svelte';
 	import { localeTag } from '../locale-tag.ts';
 	import type { Copy } from '../copy.ts';
 	import { copyText } from '../clipboard.ts';
@@ -80,16 +82,12 @@
 </script>
 
 <div class="settings-tab-pane">
-	<div class="settings-card settings-card-remote">
-		<div class="settings-card-header">
-			<div class="settings-card-header-main">
-				<div>
-					<h3 class="settings-card-title">{t.settings.remoteSection}</h3>
-					<p class="settings-card-subtitle">{runtime.remote ? t.settings.remoteSubtitle : t.settings.remoteSubtitleHost}</p>
-				</div>
+	<SettingsCard class="settings-card-remote">
+		<SettingsCardHeader title={t.settings.remoteSection} subtitle={runtime.remote ? t.settings.remoteSubtitle : t.settings.remoteSubtitleHost}>
+			{#snippet after()}
 				<span class="settings-badge-{remoteTone}" data-testid="remote-state">{remoteLabel}</span>
-			</div>
-		</div>
+			{/snippet}
+		</SettingsCardHeader>
 		{#if remoteExplains}
 			<p class="muted">{remoteLabel === t.remote.statusGated ? t.remote.experimental : remoteExplains}</p>
 		{/if}
@@ -297,7 +295,7 @@
 		{#if runtime.remote}
 			<RemoteSessionSettings {runtime} {t} />
 		{/if}
-	</div>
+	</SettingsCard>
 </div>
 
 <style>
@@ -305,38 +303,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: 14px;
-	}
-
-	.settings-card {
-		background: var(--pane);
-		border: 1px solid var(--line);
-		border-radius: var(--radius-lg);
-		padding: 16px 18px;
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
-		box-shadow: var(--shadow-xs);
-	}
-
-	.settings-card-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-	}
-
-	.settings-card-header-main {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		min-width: 0;
-	}
-
-	.settings-card-subtitle {
-		margin: 2px 0 0;
-		font-size: 12px;
-		color: var(--muted);
-		line-height: 1.35;
 	}
 
 	.settings-badge-ok,
@@ -653,12 +619,6 @@
 	@media (max-width: 720px) {
 		.settings-tab-pane {
 			gap: 12px;
-		}
-
-		.settings-card {
-			border-radius: var(--radius-lg);
-			padding: 15px;
-			box-shadow: none;
 		}
 	}
 

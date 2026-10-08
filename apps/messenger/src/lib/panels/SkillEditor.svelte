@@ -2,6 +2,9 @@
 	import type { Bot } from '@real-bot/protocol';
 	import SettingsSubject from './SettingsSubject.svelte';
 	import Switch from '../Switch.svelte';
+	import EditorOwnerBadge from './EditorOwnerBadge.svelte';
+	import EditorSwitchRow from './EditorSwitchRow.svelte';
+	import RequiredStar from './RequiredStar.svelte';
 	import { backdropClick } from '../click-outside.ts';
 	import { pageSlide } from '../mobile-page-slide.ts';
 	import type { Copy } from '../copy.ts';
@@ -114,15 +117,9 @@
 				<div class="skill-form-card">
 					<div class="skill-card-header">
 						<label for="skill-name" class="field-label">
-							{t.sidebar.skillName} <span class="required-star">*</span>
+							{t.sidebar.skillName} <RequiredStar />
 						</label>
-						<span class="skill-owner-badge" title={`${t.routines.owner}: ${bot.name}`}>
-							<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-								<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-								<circle cx="12" cy="7" r="4"></circle>
-							</svg>
-							<span>{bot.name}</span>
-						</span>
+						<EditorOwnerBadge name={bot.name} title={`${t.routines.owner}: ${bot.name}`} />
 					</div>
 					<div class="form-group">
 						<input
@@ -143,7 +140,7 @@
 				<div class="skill-form-card">
 					<div class="skill-card-header">
 						<label for="skill-description" class="field-label">
-							{t.sidebar.skillDescription} <span class="required-star">*</span>
+							{t.sidebar.skillDescription} <RequiredStar />
 						</label>
 						<span class="skill-card-hint">何时自动调用</span>
 					</div>
@@ -166,7 +163,7 @@
 				<div class="skill-form-card">
 					<div class="skill-card-header">
 						<label for="skill-body" class="field-label">
-							{t.sidebar.skillBody} <span class="required-star">*</span>
+							{t.sidebar.skillBody} <RequiredStar />
 						</label>
 						<span class="skill-card-hint">Markdown 指令</span>
 					</div>
@@ -206,17 +203,11 @@
 
 				<!-- Card 5: 启用状态开关 -->
 				<div class="skill-form-card skill-status-card">
-					<div class="skill-switch-row">
-						<div class="skill-switch-copy">
-							<span class="skill-switch-title">{t.sidebar.skillEnabled}</span>
-							<span class="skill-switch-desc">
-								{skillDraft.enabled ? '已启用，Bot 在匹配任务中将自动读取并执行' : '已停用，Bot 将暂时忽略此技能'}
-							</span>
-						</div>
+					<EditorSwitchRow title={t.sidebar.skillEnabled} desc={skillDraft.enabled ? '已启用，Bot 在匹配任务中将自动读取并执行' : '已停用，Bot 将暂时忽略此技能'}>
 						<Switch disabled={skillBusy}>
 							<input type="checkbox" bind:checked={skillDraft.enabled} disabled={skillBusy} />
 						</Switch>
-					</div>
+					</EditorSwitchRow>
 				</div>
 
 				<!-- Card 6: 移动端危险区域 / 删除技能 (仅编辑时显示) -->
@@ -321,19 +312,6 @@
 		margin: 0;
 	}
 
-	.skill-owner-badge {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		font-size: 12px;
-		font-weight: 500;
-		color: var(--muted);
-		background: var(--sidebar-bg);
-		border: 1px solid var(--line);
-		padding: 2px 8px;
-		border-radius: var(--radius-full);
-	}
-
 	.skill-card-hint {
 		font-size: 12px;
 		color: var(--muted);
@@ -347,31 +325,6 @@
 
 	.skill-status-card {
 		padding: 12px 14px;
-	}
-
-	.skill-switch-row {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-		min-height: 40px;
-	}
-
-	.skill-switch-copy {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-	}
-
-	.skill-switch-title {
-		font-size: 14px;
-		font-weight: 600;
-		color: var(--ink);
-	}
-
-	.skill-switch-desc {
-		font-size: 12px;
-		color: var(--muted);
 	}
 
 	.skill-danger-card {
@@ -399,11 +352,6 @@
 	.skill-page-delete:hover:not(:disabled) {
 		background: color-mix(in srgb, var(--danger) 10%, transparent);
 		border-color: color-mix(in srgb, var(--danger) 40%, transparent);
-	}
-
-	.required-star {
-		color: var(--danger);
-		font-weight: 700;
 	}
 
 	.skill-body-textarea {

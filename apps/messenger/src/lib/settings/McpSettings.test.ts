@@ -52,6 +52,32 @@ test("closing the editor before the debounce still sends the name", async () => 
   close();
 });
 
+test("leaving the page with the debounce pending still sends the name", async () => {
+  const { host, runtime, close } = open();
+  click(host.querySelector(".mcp-server-open"));
+  fill(host.querySelector("#mcp-editor-name"), "只打了一半");
+  close();
+  await sleep(50);
+  const saves = runtime.calls.filter((c) => c.name === "patchMcpServer");
+  expect(saves).toHaveLength(1);
+  expect((saves[0]!.args[1] as { name: string }).name).toBe("只打了一半");
+});
+
+test("a save the server refuses says so in the head, and no second one goes out", async () => {
+  let asked = 0;
+  const runtime = fakeRuntime({ mcpServers: [anMcpServer()] }, { patchMcpServer: async () => ((asked += 1), { message: "boom" }) });
+  const { host, close } = render(McpSettings, { runtime, t, closeSettings: () => {} });
+  click(host.querySelector(".mcp-server-open"));
+  fill(host.querySelector("#mcp-editor-name"), "files");
+  await sleep(750);
+  const label = host.querySelector(".mcp-editor-modal .settings-save-state");
+  expect(label?.textContent?.trim()).toBe(t.settings.saveFailed);
+  expect(label?.classList.contains("is-error")).toBe(true);
+  expect(host.querySelector(".mcp-editor-modal .field-error")?.textContent?.trim()).toBe(t.settings.saveFailed);
+  expect(asked).toBe(1);
+  close();
+});
+
 test("the MCP editor exposes mobile subpage navigation", () => {
   const { host, close } = open();
   click(host.querySelector(".mcp-server-open"));

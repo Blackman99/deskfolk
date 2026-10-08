@@ -1,6 +1,8 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { backdropClick } from '../click-outside.ts';
+	import AutosaveState from './AutosaveState.svelte';
+	import SettingsSubpageButton from './SettingsSubpageButton.svelte';
 	import ProviderForm from './ProviderForm.svelte';
 	import type { Copy } from '../copy.ts';
 	import { providerHost, type ProviderDraft, type ProviderEditorState } from './provider-form.ts';
@@ -61,14 +63,11 @@
 	>
 		<div class="modal-dialog provider-editor-modal settings-subpage">
 			<div class="modal-head settings-subpage-head">
-				<button
-					type="button"
-					class="settings-subpage-back"
-					aria-label={providerDetailModel ? t.common.back : locale === 'en' ? 'Back to model providers' : '返回模型服务'}
+				<SettingsSubpageButton
+					kind="back"
+					label={providerDetailModel ? t.common.back : locale === 'en' ? 'Back to model providers' : '返回模型服务'}
 					onclick={backFromProviderEditor}
-				>
-					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
-				</button>
+				/>
 				<h2>
 					{#if providerDetailModel}
 						{t.settings.modelSettings}
@@ -80,17 +79,7 @@
 						{t.settings.providerConnection}
 					{/if}
 				</h2>
-				<span class="settings-save-state text-12 text-muted whitespace-nowrap" class:is-error={providerEditor.failed} aria-live="polite">
-					{#if providerSaving}
-						{t.sidebar.autoSaving}
-					{:else if providerEditor.failed}
-						{t.settings.saveFailed}
-					{:else if providerSavedTick > 0}
-						{t.sidebar.autoSaved}
-					{:else}
-						{t.sidebar.autoSaveHint}
-					{/if}
-				</span>
+				<AutosaveState {t} saving={providerSaving} failed={providerEditor.failed} saved={providerSavedTick > 0} />
 				<button
 					type="button"
 					class="modal-close provider-editor-dismiss"
@@ -98,12 +87,7 @@
 					onclick={closeProviderEditor}
 				>✕</button>
 				<!-- ✕ closes this editor; the list and settings behind it stay where they were. -->
-				<button
-					type="button"
-					class="modal-close settings-subpage-close"
-					title={t.common.close}
-					onclick={backFromProviderEditor}
-				>✕</button>
+				<SettingsSubpageButton kind="close" title={t.common.close} onclick={backFromProviderEditor} />
 			</div>
 			<div class="modal-body provider-editor-body">
 				{@render pendingCredentials()}
@@ -143,19 +127,6 @@
 {/if}
 
 <style>
-	.settings-subpage-back,
-	.settings-subpage-close {
-		display: none;
-	}
-
-	.settings-save-state {
-		font-weight: 500;
-	}
-
-	.settings-save-state.is-error {
-		color: var(--danger);
-	}
-
 	.provider-editor-modal :global(.modal-head) {
 		display: flex;
 		align-items: center;
@@ -165,13 +136,6 @@
 	.provider-editor-modal :global(.modal-head h2) {
 		flex: 1;
 		min-width: 0;
-	}
-
-	.settings-subpage-back,
-	.settings-subpage-close {
-		align-items: center;
-		justify-content: center;
-		flex-shrink: 0;
 	}
 
 	.provider-editor-context, .provider-mobile-status { display: none; }
@@ -218,31 +182,9 @@
 			font-weight: 650;
 		}
 
-		.provider-editor-modal > .settings-subpage-head .settings-save-state,
+		.provider-editor-modal > .settings-subpage-head :global(.settings-save-state),
 		.provider-editor-dismiss {
 			display: none;
-		}
-
-		.settings-subpage-back,
-		.settings-subpage-close {
-			display: inline-flex;
-			width: 40px;
-			height: 44px;
-			border: 0;
-			border-radius: var(--radius-md);
-			background: transparent;
-			color: var(--accent);
-			cursor: pointer;
-		}
-
-		.settings-subpage-close {
-			font-size: 16px;
-			color: var(--muted);
-		}
-
-		.settings-subpage-back:active,
-		.settings-subpage-close:active {
-			background: var(--row-hover);
 		}
 
 		.provider-editor-modal > :global(.modal-body) {
@@ -264,6 +206,6 @@
 		.provider-mobile-status { display: flex; flex-shrink: 0; align-items: center; justify-content: center; gap: 12px; min-height: calc(52px + env(safe-area-inset-bottom)); padding: 4px 16px calc(4px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--pane); color: var(--muted); font-size: 12px; }
 		.provider-mobile-status.is-error { color: var(--danger-text); }
 		.provider-mobile-status button { min-height: 44px; padding: 4px 12px; border: 0; border-radius: var(--radius-sm); background: var(--danger-bg); color: var(--danger-text); }
-		.settings-subpage-back, .settings-subpage-close { width: 44px; }
+		.provider-editor-modal :global(.settings-subpage-back), .provider-editor-modal :global(.settings-subpage-close) { width: 44px; }
 	}
 </style>

@@ -125,6 +125,31 @@ test("closing the endpoint editor before the debounce still sends the edit", asy
   close();
 });
 
+test("leaving settings with the endpoint editor's debounce pending still sends the edit", async () => {
+  const { host, runtime, close } = open();
+  openModels(host);
+  click(host.querySelector(".btn-provider-edit"));
+  fill(host.querySelector("#provider-prov-1-name"), "只打了一半");
+  close();
+  await sleep(50);
+  const saves = runtime.calls.filter((c) => c.name === "patchProvider");
+  expect(saves).toHaveLength(1);
+  expect((saves[0]!.args[1] as { name: string }).name).toBe("只打了一半");
+});
+
+test("an endpoint edit the server refuses says so in the editor's head", async () => {
+  const { host, runtime, close } = open();
+  (runtime as unknown as { patchProvider: unknown }).patchProvider = async () => ({ message: "boom" });
+  openModels(host);
+  click(host.querySelector(".btn-provider-edit"));
+  fill(host.querySelector("#provider-prov-1-name"), "改名");
+  await sleep(750);
+  const label = host.querySelector(".provider-editor-modal .settings-save-state");
+  expect(label?.textContent?.trim()).toBe(t.settings.saveFailed);
+  expect(label?.classList.contains("is-error")).toBe(true);
+  close();
+});
+
 test("Claude Agent has a category of its own, Agent, and is no longer under models", async () => {
   const { host, runtime, close } = open();
   const status = {

@@ -9,6 +9,8 @@
 	import DangerDialog from '../overlays/DangerDialog.svelte';
 	import SettingsSubject from './SettingsSubject.svelte';
 	import Switch from '../Switch.svelte';
+	import EditorOwnerBadge from './EditorOwnerBadge.svelte';
+	import EditorSwitchRow from './EditorSwitchRow.svelte';
 	import { WEEKDAYS, planRoutine, routineDirty, routineDraft, routineError, routineRepeatLabel } from './routine-form.ts';
 
 	let { runtime, bot, t }: { runtime: MessengerRuntime; bot: Bot; t: Copy } = $props();
@@ -347,10 +349,7 @@
 	<div class="routine-form-card">
 		<div class="routine-card-header">
 			<label for="routine-title" class="routine-card-title">{t.routines.name}</label>
-			<span class="routine-owner-badge" title={`${t.routines.owner}: ${bot.name}`}>
-				<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-				<span>{bot.name}</span>
-			</span>
+			<EditorOwnerBadge name={bot.name} title={`${t.routines.owner}: ${bot.name}`} />
 		</div>
 		<div class="form-group">
 			<input
@@ -451,17 +450,11 @@
 
 	<!-- Group 4: 运行状态 -->
 	<div class="routine-form-card routine-status-card">
-		<div class="routine-switch-row">
-			<div class="routine-switch-copy">
-				<span class="routine-switch-title">{t.routines.enabled}</span>
-				<span class="routine-switch-desc">
-					{draft.enabled ? '已开启，将按设定周期自动准时触发' : '已暂停，日程暂时不会自动触发'}
-				</span>
-			</div>
+		<EditorSwitchRow title={t.routines.enabled} desc={draft.enabled ? '已开启，将按设定周期自动准时触发' : '已暂停，日程暂时不会自动触发'}>
 			<Switch disabled={disabled}>
 				<input type="checkbox" bind:checked={draft.enabled} disabled={disabled} />
 			</Switch>
-		</div>
+		</EditorSwitchRow>
 	</div>
 
 	<!-- Group 5: 运行环境提示 -->
@@ -545,8 +538,6 @@
 	.routine-card-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 	.routine-card-title { font-size: 13px; font-weight: 650; color: var(--ink); margin: 0; }
 	.routine-card-hint { font-size: 12px; color: var(--muted); }
-	.routine-owner-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 500; color: var(--muted); background: var(--sidebar-bg); border: 1px solid var(--line); padding: 2px 8px; border-radius: var(--radius-full); }
-
 	fieldset { padding: 0; margin: 0; border: 0; min-width: 0; }
 	.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0; }
 	.routine-sublabel { font-size: 12px; font-weight: 600; color: var(--ink-secondary); margin: 0; }
@@ -575,11 +566,7 @@
 	.routine-time-control input[type='time'] { min-width: 120px; font-variant-numeric: tabular-nums; font-size: 16px; font-weight: 650; }
 
 	.routine-status-card { padding: 12px 14px; }
-	.routine-switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
-	.routine-switch-copy { display: flex; flex-direction: column; gap: 2px; }
-	.routine-switch-title { font-size: 14px; font-weight: 600; color: var(--ink); }
-	.routine-switch-desc { font-size: 12px; color: var(--muted); }
-
+	.routine-status-card :global(.editor-switch-row) { min-height: 44px; }
 	.routine-notice-card { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; border-radius: var(--radius-md); background: var(--sidebar-bg); border: 1px solid var(--line-subtle, var(--line)); color: var(--muted); font-size: 12px; line-height: 1.5; }
 	.routine-notice-card svg { flex-shrink: 0; margin-top: 1px; }
 	.routine-notice-card p { margin: 0; }

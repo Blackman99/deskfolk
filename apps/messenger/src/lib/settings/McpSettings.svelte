@@ -4,6 +4,7 @@
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { backdropClick } from '../click-outside.ts';
+	import { Autosave } from '../autosave.svelte.ts';
 	import {
 		formatMcpArgs,
 		formatMcpHeaders,
@@ -16,6 +17,8 @@
 		type McpFieldErrors
 	} from './mcp-form.ts';
 	import { filterMcpServers, mcpConnectionSummary } from './mcp-list.ts';
+	import AutosaveState from './AutosaveState.svelte';
+	import SettingsSubpageButton from './SettingsSubpageButton.svelte';
 
 	let { runtime, t, closeSettings }: { runtime: MessengerRuntime; t: Copy; closeSettings?: () => void } = $props();
 	const locale = $derived(runtime.snapshot.settings.locale === 'en' ? 'en' : 'zh');
@@ -32,12 +35,10 @@
 	let failed = $state(false);
 	let listFailed = $state(false);
 	let busy = $state(false);
-	let savingSafe = $state(false);
-	let savedTick = $state(0);
+	const autosave = new Autosave();
 	let toggling = $state<string[]>([]);
 	let addButton: HTMLButtonElement;
 	let returnFocus: HTMLElement | null = null;
-	let saveTimer: ReturnType<typeof setTimeout> | null = null;
 	let saveQueued: { id: string; draft: McpDraft } | null = null;
 	let latestEditor: { id: string; draft: McpDraft } | null = null;
 	const connectionDirty = $derived(editing ? mcpConnectionDirty(editing, draft) : false);
@@ -53,10 +54,7 @@
 	});
 
 	$effect(() => () => {
-		if (saveTimer) {
-			clearTimeout(saveTimer);
-			saveTimer = null;
-		}
+		autosave.cancel();
 		if (latestEditor) void persistSafeFields(latestEditor.id, latestEditor.draft);
 	});
 
@@ -82,11 +80,8 @@
 		phase = 'edit';
 		errors = {};
 		failed = false;
-		savedTick = 0;
-		if (saveTimer) {
-			clearTimeout(saveTimer);
-			saveTimer = null;
-		}
+		autosave.savedTick = 0;
+		autosave.cancel();
 		editor = server?.id ?? 'add';
 		await tick();
 		document.getElementById('mcp-editor-name')?.focus();
@@ -106,7 +101,7 @@
 		phase = 'edit';
 		errors = {};
 		failed = false;
-		savedTick = 0;
+		autosave.savedTick = 0;
 		if (returnFocus?.isConnected) returnFocus.focus();
 		else addButton?.focus();
 	}
@@ -125,25 +120,20 @@
 	}
 
 	function scheduleSafeSave(delay = 600): void {
-		if (saveTimer) clearTimeout(saveTimer);
-		saveTimer = setTimeout(() => {
-			saveTimer = null;
+		autosave.schedule(() => {
 			if (editor && editor !== 'add') void persistSafeFields(editor, draft);
 		}, delay);
 	}
 
 	function flushSafeSave(id: string, current: McpDraft): void {
-		if (saveTimer) {
-			clearTimeout(saveTimer);
-			saveTimer = null;
-		}
+		autosave.cancel();
 		void persistSafeFields(id, current);
 	}
 
 	async function persistSafeFields(id: string, current: McpDraft): Promise<void> {
 		const server = runtime.snapshot.mcpServers.find((row) => row.id === id);
 		if (!server) return;
-		if (savingSafe || busy) {
+		if (autosave.saving || busy) {
 			saveQueued = { id, draft: current };
 			return;
 		}
@@ -153,10 +143,10 @@
 			return;
 		}
 		if (Object.keys(plan.patch).length === 0) return;
-		savingSafe = true;
+		autosave.saving = true;
 		failed = false;
 		const error = await runtime.patchMcpServer(id, plan.patch);
-		savingSafe = false;
+		autosave.saving = false;
 		if (error) {
 			const mapped = mapMcpError(error.message);
 			if (editor === id) {
@@ -166,7 +156,7 @@
 				listFailed = true;
 			}
 		} else if (editor === id) {
-			savedTick += 1;
+			autosave.savedTick += 1;
 		}
 		if (saveQueued) {
 			const queued = saveQueued;
@@ -333,32 +323,19 @@
 	>
 		<form class="modal-dialog mcp-editor-modal settings-subpage" onsubmit={(event) => { event.preventDefault(); void submit(); }} aria-busy={busy}>
 			<div class="modal-head settings-subpage-head">
-				<button
-					type="button"
-					class="settings-subpage-back"
-					aria-label={locale === 'en' ? 'Back to MCP servers' : '返回 MCP 扩展'}
+				<SettingsSubpageButton
+					kind="back"
+					label={locale === 'en' ? 'Back to MCP servers' : '返回 MCP 扩展'}
 					disabled={busy}
 					onclick={closeEditor}
-				>
-					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
-				</button>
+				/>
 				<h2 id="mcp-editor-title">{editor === 'add' ? t.settings.sectionMcpAdd : t.settings.mcpEdit}</h2>
 				{#if editor !== 'add'}
-					<span class="settings-save-state text-12 text-muted whitespace-nowrap" class:is-error={failed} aria-live="polite">
-						{#if savingSafe}
-							{t.sidebar.autoSaving}
-						{:else if failed}
-							{t.settings.saveFailed}
-						{:else if savedTick > 0}
-							{t.sidebar.autoSaved}
-						{:else}
-							{t.sidebar.autoSaveHint}
-						{/if}
-					</span>
+					<AutosaveState {t} saving={autosave.saving} {failed} saved={autosave.savedTick > 0} />
 				{/if}
 				<button type="button" class="modal-close mcp-editor-dismiss" aria-label={t.common.close} disabled={busy} onclick={closeEditor}>✕</button>
 				<!-- ✕ closes this editor; what is under it stays where it was. -->
-				<button type="button" class="modal-close settings-subpage-close" aria-label={t.common.close} disabled={busy} onclick={closeEditor}>✕</button>
+				<SettingsSubpageButton kind="close" label={t.common.close} disabled={busy} onclick={closeEditor} />
 			</div>
 			<div class="modal-body">
 				<p class="muted mcp-confirm-hint m-0 text-12">{t.settings.mcpMustConfirm}</p>
@@ -600,22 +577,6 @@
 		color: var(--ink);
 	}
 
-	.settings-save-state {
-		font-weight: 500;
-	}
-
-	.settings-save-state.is-error {
-		color: var(--danger);
-	}
-
-	.settings-subpage-back,
-	.settings-subpage-close {
-		display: none;
-		align-items: center;
-		justify-content: center;
-		flex-shrink: 0;
-	}
-
 	.mcp-editor-modal > :global(.modal-body) {
 		min-height: 0;
 	}
@@ -673,28 +634,6 @@
 		.mcp-editor-modal :global(.settings-subpage-head .settings-save-state),
 		.mcp-editor-dismiss {
 			display: none;
-		}
-
-		.settings-subpage-back,
-		.settings-subpage-close {
-			display: inline-flex;
-			width: 40px;
-			height: 44px;
-			border: 0;
-			border-radius: var(--radius-md);
-			background: transparent;
-			color: var(--accent);
-			cursor: pointer;
-		}
-
-		.settings-subpage-close {
-			font-size: 16px;
-			color: var(--muted);
-		}
-
-		.settings-subpage-back:active,
-		.settings-subpage-close:active {
-			background: var(--row-hover);
 		}
 
 		.mcp-editor-modal > :global(.modal-body) {

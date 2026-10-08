@@ -1,4 +1,6 @@
 <script lang="ts">
+	import SettingsCard from './SettingsCard.svelte';
+	import SettingsCardHeader from './SettingsCardHeader.svelte';
 	import WorkspacePicker from './WorkspacePicker.svelte';
 	import SettingsRow from './SettingsRow.svelte';
 	import SettingsSwitch from './SettingsSwitch.svelte';
@@ -62,25 +64,23 @@
 
 <div class="settings-tab-pane">
 	<!-- Workspace Directory Section -->
-	<div class="settings-card settings-card-workspace">
-		<div class="settings-card-header">
-			<div class="settings-card-header-main">
+	<SettingsCard class="settings-card-workspace">
+		<SettingsCardHeader title={t.settings.sectionWorkspace} subtitle={t.settings.workspaceSubtitle}>
+			{#snippet icon()}
 				<div class="settings-header-icon-wrap" aria-hidden="true">
 					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 						<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
 					</svg>
 				</div>
-				<div>
-					<h3 class="settings-card-title">{t.settings.sectionWorkspace}</h3>
-					<p class="settings-card-subtitle">{t.settings.workspaceSubtitle}</p>
-				</div>
-			</div>
-			{#if runtime.workspacePath}
-				<span class="settings-badge-ok">{t.settings.workspaceConfigured}</span>
-			{:else}
-				<span class="settings-badge-warn">{t.settings.workspaceUnsetNotice}</span>
-			{/if}
-		</div>
+			{/snippet}
+			{#snippet end()}
+				{#if runtime.workspacePath}
+					<span class="settings-badge-ok">{t.settings.workspaceConfigured}</span>
+				{:else}
+					<span class="settings-badge-warn">{t.settings.workspaceUnsetNotice}</span>
+				{/if}
+			{/snippet}
+		</SettingsCardHeader>
 
 		<div class="settings-workspace-box flex flex-col gap-5 mt-2">
 			{#if workspaceReadOnly}
@@ -141,11 +141,11 @@
 				</div>
 			</div>
 		</div>
-	</div>
+	</SettingsCard>
 	<!-- Preferences: one page with the workspace, which alone used to fill a tab of its own. -->
-	<div class="settings-card settings-card-preferences">
-		<div class="settings-card-header">
-			<div class="settings-card-header-main">
+	<SettingsCard class="settings-card-preferences">
+		<SettingsCardHeader title={t.settings.sectionPreferences} subtitle={t.settings.preferencesSubtitle}>
+			{#snippet icon()}
 				<div class="settings-header-icon-wrap" aria-hidden="true">
 					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 						<line x1="4" y1="21" x2="4" y2="14"></line>
@@ -159,12 +159,8 @@
 						<line x1="17" y1="16" x2="23" y2="16"></line>
 					</svg>
 				</div>
-				<div>
-					<h3 class="settings-card-title">{t.settings.sectionPreferences}</h3>
-					<p class="settings-card-subtitle">{t.settings.preferencesSubtitle}</p>
-				</div>
-			</div>
-		</div>
+			{/snippet}
+		</SettingsCardHeader>
 
 		<div class="settings-rows">
 			<!-- Theme Row -->
@@ -286,7 +282,7 @@
 				</SettingsSwitch>
 			</SettingsRow>
 		</div>
-	</div>
+	</SettingsCard>
 </div>
 
 <style>
@@ -294,31 +290,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: 14px;
-	}
-
-	.settings-card {
-		background: var(--pane);
-		border: 1px solid var(--line);
-		border-radius: var(--radius-lg);
-		padding: 16px 18px;
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
-		box-shadow: var(--shadow-xs);
-	}
-
-	.settings-card-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-	}
-
-	.settings-card-header-main {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		min-width: 0;
 	}
 
 	.settings-header-icon-wrap {
@@ -331,13 +302,6 @@
 		align-items: center;
 		justify-content: center;
 		flex-shrink: 0;
-	}
-
-	.settings-card-subtitle {
-		margin: 2px 0 0;
-		font-size: 12px;
-		color: var(--muted);
-		line-height: 1.35;
 	}
 
 	.settings-badge-ok,
@@ -482,12 +446,6 @@
 	@media (max-width: 720px) {
 		.settings-tab-pane {
 			gap: 12px;
-		}
-
-		.settings-card {
-			border-radius: var(--radius-lg);
-			padding: 15px;
-			box-shadow: none;
 		}
 	}
 </style>

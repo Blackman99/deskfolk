@@ -4,6 +4,7 @@
  * stays the shell's bindable `providerEditor`, read and written here through the getter and setter
  * the modal hands over, never copied, so the shell's Escape cascade still sees the flyout.
  */
+import { Autosave } from "../autosave.svelte.ts";
 import type { Copy } from "../copy.ts";
 import type { MessengerRuntime } from "../runtime.svelte.ts";
 import type { Snapshot } from "../snapshot.ts";
@@ -44,9 +45,13 @@ export class ProviderEditorController {
   private providerProbeTimer: ReturnType<typeof setTimeout> | null = null;
   /** URL + key the open editor last asked the endpoint about; the same pair is not probed twice. */
   private providerProbedSignature: string | null = null;
-  private providerSaveTimer: ReturnType<typeof setTimeout> | null = null;
-  providerSaving = $state(false);
-  providerSavedTick = $state(0);
+  private readonly autosave = new Autosave();
+  get providerSaving(): boolean {
+    return this.autosave.saving;
+  }
+  get providerSavedTick(): number {
+    return this.autosave.savedTick;
+  }
   /** Latest editor draft, so a parent that nulls `providerEditor` still has something to flush. */
   private latestProviderEditor: ProviderEditorState | null = null;
   private persistQueue: ProviderEditorState[] = [];
@@ -127,7 +132,7 @@ export class ProviderEditorController {
     const editor = this.providerEditor;
     if (!editor) return;
     const synced = withSyncedDefaultModel(draft);
-    this.providerSavedTick = 0;
+    this.autosave.savedTick = 0;
     this.providerEditor = { ...editor, draft: synced, errors: {}, failed: false };
     this.scheduleProviderProbe(editor.target, synced, this.editorKeySet(editor.target));
     this.scheduleProviderSave();
@@ -140,18 +145,13 @@ export class ProviderEditorController {
   }
 
   private scheduleProviderSave(delay = 600): void {
-    if (this.providerSaveTimer) clearTimeout(this.providerSaveTimer);
-    this.providerSaveTimer = setTimeout(() => {
-      this.providerSaveTimer = null;
+    this.autosave.schedule(() => {
       if (this.providerEditor) void this.persistProviderEditor(this.providerEditor);
     }, delay);
   }
 
   private flushProviderEditor(editor: ProviderEditorState): void {
-    if (this.providerSaveTimer) {
-      clearTimeout(this.providerSaveTimer);
-      this.providerSaveTimer = null;
-    }
+    this.autosave.cancel();
     void this.persistProviderEditor(editor);
   }
 
@@ -170,19 +170,19 @@ export class ProviderEditorController {
       const signature = this.createSignature(editor);
       if (!signature) return;
       if (signature === this.lastCreatedSignature) return;
-      this.providerSaving = true;
+      this.autosave.saving = true;
       this.setSaveFailed(false);
       this.patchProviderEditor("add", { failed: false, errors: {} });
       const plan = planCreateProvider(editor.draft, true);
       if (!plan.ok) {
-        this.providerSaving = false;
+        this.autosave.saving = false;
         this.patchProviderEditor("add", { errors: plan.errors });
         this.drainPersistQueue();
         return;
       }
       const before = new Set(this.snapshot.providers.map((row) => row.id));
       const error = await this.runtime.createProvider(plan.body);
-      this.providerSaving = false;
+      this.autosave.saving = false;
       if (error) {
         const mapped = mapProviderError(error.message);
         if ("top" in mapped) {
@@ -195,7 +195,7 @@ export class ProviderEditorController {
         return;
       }
       this.lastCreatedSignature = signature;
-      this.providerSavedTick += 1;
+      this.autosave.savedTick += 1;
       this.persistQueue = [];
       const created = this.snapshot.providers.find((row) => !before.has(row.id));
       if (created && this.providerEditor?.target === "add") {
@@ -223,11 +223,11 @@ export class ProviderEditorController {
       return;
     }
     if (Object.keys(plan.patch).length === 0) return;
-    this.providerSaving = true;
+    this.autosave.saving = true;
     this.setSaveFailed(false);
     if (this.providerEditor?.target === id) this.patchProviderEditor(id, { failed: false, errors: {} });
     const error = await this.runtime.patchProvider(id, plan.patch);
-    this.providerSaving = false;
+    this.autosave.saving = false;
     if (error) {
       const mapped = mapProviderError(error.message);
       if ("top" in mapped) {
@@ -239,7 +239,7 @@ export class ProviderEditorController {
       this.drainPersistQueue();
       return;
     }
-    this.providerSavedTick += 1;
+    this.autosave.savedTick += 1;
     this.drainPersistQueue();
   }
 
@@ -264,12 +264,9 @@ export class ProviderEditorController {
 
   private openProviderEditor(target: "add" | string, draft: ProviderDraft): void {
     this.resetProviderProbe();
-    if (this.providerSaveTimer) {
-      clearTimeout(this.providerSaveTimer);
-      this.providerSaveTimer = null;
-    }
+    this.autosave.cancel();
     this.lastCreatedSignature = null;
-    this.providerSavedTick = 0;
+    this.autosave.savedTick = 0;
     this.providerDetailModel = null;
     this.providerEditor = {
       target,

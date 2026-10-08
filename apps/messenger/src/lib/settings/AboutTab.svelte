@@ -1,4 +1,5 @@
 <script lang="ts">
+	import SettingsCard from './SettingsCard.svelte';
 	import BrandMark from '../BrandMark.svelte';
 	import type { Copy } from '../copy.ts';
 	import { updateChecker } from '../update-checker.svelte.ts';
@@ -29,7 +30,7 @@
 </script>
 
 <div class="settings-tab-pane">
-	<div class="settings-card settings-card-about">
+	<SettingsCard class="settings-card-about">
 		<!-- One block: the pane is already titled About, so the card leads with the app itself. -->
 		<div class="about-identity">
 			<BrandMark size={44} />
@@ -168,7 +169,7 @@
 				</div>
 			{/if}
 		{/if}
-	</div>
+	</SettingsCard>
 </div>
 
 <style>
@@ -176,17 +177,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: 14px;
-	}
-
-	.settings-card {
-		background: var(--pane);
-		border: 1px solid var(--line);
-		border-radius: var(--radius-lg);
-		padding: 16px 18px;
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
-		box-shadow: var(--shadow-xs);
 	}
 
 	.settings-row-info {
@@ -418,12 +408,6 @@
 	@media (max-width: 720px) {
 		.settings-tab-pane {
 			gap: 12px;
-		}
-
-		.settings-card {
-			border-radius: var(--radius-lg);
-			padding: 15px;
-			box-shadow: none;
 		}
 	}
 

@@ -28,6 +28,7 @@
 	import AboutTab from './AboutTab.svelte';
 	import ProviderEditorFlyout from './ProviderEditorFlyout.svelte';
 	import IndependentConfirm from './IndependentConfirm.svelte';
+	import AutosaveState from './AutosaveState.svelte';
 	import { IndependentRuntimeController } from './independent-runtime.svelte.ts';
 	import { ProviderEditorController } from './provider-editor.svelte.ts';
 
@@ -392,17 +393,7 @@
 					</button>
 					<div class="settings-main-head-left flex items-center gap-5">
 						<h3 class="settings-main-title">{settingsTabLabel(activeSettingsTab)}</h3>
-						<span class="settings-save-state text-12 text-muted whitespace-nowrap" class:is-error={saveFailed} aria-live="polite">
-							{#if settingsSaving}
-								{t.sidebar.autoSaving}
-							{:else if saveFailed}
-								{t.settings.saveFailed}
-							{:else if settingsSavedTick > 0}
-								{t.sidebar.autoSaved}
-							{:else}
-								{t.sidebar.autoSaveHint}
-							{/if}
-						</span>
+						<AutosaveState {t} saving={settingsSaving} failed={saveFailed} saved={settingsSavedTick > 0} />
 					</div>
 					<button
 						type="button"
@@ -567,14 +558,6 @@
 		color: var(--ink);
 	}
 
-	.settings-save-state {
-		font-weight: 500;
-	}
-
-	.settings-save-state.is-error {
-		color: var(--danger);
-	}
-
 	.settings-main > :global(.modal-body) {
 		flex: 1;
 		min-height: 0;
@@ -702,7 +685,7 @@
 			font-weight: 650;
 		}
 
-		.settings-main-head .settings-save-state {
+		.settings-main-head :global(.settings-save-state) {
 			display: none;
 		}
 

@@ -6,6 +6,9 @@
 	import { pageSlide } from '../mobile-page-slide.ts';
 	import SettingsSubject from './SettingsSubject.svelte';
 	import Switch from '../Switch.svelte';
+	import EditorOwnerBadge from './EditorOwnerBadge.svelte';
+	import EditorSwitchRow from './EditorSwitchRow.svelte';
+	import RequiredStar from './RequiredStar.svelte';
 	import {
 		draftFromMemory,
 		mapMemoryError,
@@ -318,14 +321,8 @@
 				<!-- Card 1: 记忆主题 -->
 				<div class="memory-form-card">
 					<div class="memory-card-header">
-						<label for="memory-subject" class="memory-field-label">{t.sidebar.memorySubject} <span class="required-star">*</span></label>
-						<span class="memory-owner-badge" title={`${t.routines.owner}: ${bot.name}`}>
-							<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-								<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-								<circle cx="12" cy="7" r="4"></circle>
-							</svg>
-							<span>{bot.name}</span>
-						</span>
+						<label for="memory-subject" class="memory-field-label">{t.sidebar.memorySubject} <RequiredStar /></label>
+						<EditorOwnerBadge name={bot.name} title={`${t.routines.owner}: ${bot.name}`} />
 					</div>
 					<div class="form-group">
 						<input
@@ -343,7 +340,7 @@
 				<!-- Card 2: 记住了什么 -->
 				<div class="memory-form-card">
 					<div class="memory-card-header">
-						<label for="memory-body" class="memory-field-label">{t.sidebar.memoryBody} <span class="required-star">*</span></label>
+						<label for="memory-body" class="memory-field-label">{t.sidebar.memoryBody} <RequiredStar /></label>
 						<span class="memory-card-hint">长期有效的事实或偏好</span>
 					</div>
 					<div class="form-group">
@@ -402,13 +399,7 @@
 
 					<!-- Card 4: 记忆状态开关 -->
 					<div class="memory-form-card memory-status-card">
-						<div class="memory-switch-row">
-							<div class="memory-switch-copy">
-								<span class="memory-switch-title">{t.sidebar.memoryEnabled}</span>
-								<span class="memory-switch-desc">
-									{editingMemory.enabled ? '已启用，Bot 每轮对话都将参考此事实' : '已停用，Bot 将暂时不读取此记忆'}
-								</span>
-							</div>
+						<EditorSwitchRow title={t.sidebar.memoryEnabled} desc={editingMemory.enabled ? '已启用，Bot 每轮对话都将参考此事实' : '已停用，Bot 将暂时不读取此记忆'}>
 							<Switch disabled={busy}>
 								<input
 									type="checkbox"
@@ -423,7 +414,7 @@
 									}}
 								/>
 							</Switch>
-						</div>
+						</EditorSwitchRow>
 					</div>
 
 					<!-- Card 5: 危险区域 / 删除记忆 -->
@@ -672,24 +663,6 @@
 		margin: 0;
 	}
 
-	.required-star {
-		color: var(--danger);
-		font-weight: 700;
-	}
-
-	.memory-owner-badge {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		font-size: 12px;
-		font-weight: 500;
-		color: var(--muted);
-		background: var(--sidebar-bg);
-		border: 1px solid var(--line);
-		padding: 2px 8px;
-		border-radius: var(--radius-full);
-	}
-
 	.memory-card-hint {
 		font-size: 12px;
 		color: var(--muted);
@@ -763,31 +736,6 @@
 
 	.memory-status-card {
 		padding: 12px 14px;
-	}
-
-	.memory-switch-row {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-		min-height: 40px;
-	}
-
-	.memory-switch-copy {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-	}
-
-	.memory-switch-title {
-		font-size: 14px;
-		font-weight: 600;
-		color: var(--ink);
-	}
-
-	.memory-switch-desc {
-		font-size: 12px;
-		color: var(--muted);
 	}
 
 	.memory-danger-card {

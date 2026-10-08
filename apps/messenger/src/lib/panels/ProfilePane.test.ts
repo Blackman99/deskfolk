@@ -65,6 +65,27 @@ test("closing the pane before the debounce still sends the edit", async () => {
   expect((saves[0]!.args[1] as { name: string }).name).toBe("只打了一半");
 });
 
+test("a save the server refuses says so beside the title, and the next edit tries again", async () => {
+  const bot = aBot();
+  let asked = 0;
+  const runtime = fakeRuntime({ bots: [bot], skills: [] }, { patchBot: async () => ((asked += 1), { status: 500, message: "boom" }) });
+  runtime.profileBotId = bot.id;
+  const { host, close } = render(ProfilePane, {
+    runtime, bot, t, modelOptions: [], selectedKind: "you-bot", profileFailed: false, initialTab: "basics",
+    openDangerConfirm: () => {}, clearDanger: () => {}, onDeleteBot: () => {}, onClearHistory: () => {},
+  });
+  fill(host.querySelector("#profile-name"), "Researcher 2");
+  await sleep(750);
+  const label = host.querySelector(".profile-save-state");
+  expect(label?.textContent?.trim()).toBe(t.sidebar.saveFailed);
+  expect(label?.classList.contains("is-error")).toBe(true);
+  fill(host.querySelector("#profile-name"), "Researcher 3");
+  expect(host.querySelector(".profile-save-state")?.classList.contains("is-error")).toBe(false);
+  await sleep(750);
+  expect(asked).toBe(2);
+  close();
+});
+
 test("on the workbench, where the drawer's profileBotId stays unset, picking a model still saves it", async () => {
   const bot = aBot();
   const runtime = fakeRuntime({ bots: [bot] });
