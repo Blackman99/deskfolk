@@ -4,6 +4,15 @@
 
 开发态：`pnpm install` 然后 `pnpm dev`（并行守护进程 + Tauri 窗；信使由窗拉起）。`pnpm test` / `pnpm typecheck`。细节见 [`docs/development.md`](docs/development.md)。贡献规范见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
 
+## 写代码之前
+
+先读 [`docs/agents/code-structure.md`](docs/agents/code-structure.md)。要点：
+
+- 源码文件不超过 2000 行（`scripts/line-budget.ts`，`pnpm test` 第一步）；已经拆开的地方新代码进子模块，入口文件只装配和转发。
+- 动手写之前先找现成的共用件（清单在那份文档里），只合并逐字相同的副本。
+- 拆文件、抽重复和改行为分开提交；副本之间的差别不要顺手统一，那份文档列了已知的、有意没动的差别。
+- `pnpm dev` 跑着时，改 daemon 在 worktree 里改，合入前确认没有活轮。
+
 ## Agent skills
 
 - Issue tracker: [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md)

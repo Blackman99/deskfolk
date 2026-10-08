@@ -63,6 +63,7 @@ pnpm --filter @real-bot/messenger build
 6. 提交前检查文件清单，排除密钥、运行数据、日志、个人路径、截图中的隐私和临时产物。
 7. PR 中附验证结果及未完成项；建议使用 `docs:`、`fix:`、`feat:` 等清晰的提交前缀，不附自动生成署名。
 8. 一条工作流一个分支（本机并行开发时用 `git worktree`），小步合入，CI 绿了再合；不要在同一个工作区里攒一大坨跨主题的改动再事后拆。
+9. 源码文件不超过 2000 行（`pnpm test` 先跑 `scripts/line-budget.ts`）。拆文件、抽重复逻辑和行为修改分开提交：拆的那个提交只挪位置，不改行为；放哪、怎么拆、怎么证明是纯搬迁，见 [代码结构守则](docs/agents/code-structure.md)。
 
 ## 发布节奏
 
@@ -87,7 +88,7 @@ pnpm --filter @real-bot/messenger build
 
 Deskfolk is WIP. Issues and pull requests in Chinese or English are welcome. Keep changes focused, discuss major architectural or security changes first, and provide reproducible, redacted reports. Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
 
-Until the core completion rate is published and good enough, peripheral features (remote access, Office previews, annotations, floating/drag-split panes, routines, the spend view, global search, the landing page) take bug fixes only. Changes to the core loop come with a before/after golden-path benchmark table (`eval:golden-path:combine`). One branch (or worktree) per stream of work, small merges, green CI; cut a snapshot release only when the completion numbers move or a user-visible problem is fixed.
+Until the core completion rate is published and good enough, peripheral features (remote access, Office previews, annotations, floating/drag-split panes, routines, the spend view, global search, the landing page) take bug fixes only. Changes to the core loop come with a before/after golden-path benchmark table (`eval:golden-path:combine`). One branch (or worktree) per stream of work, small merges, green CI; keep every source file at or under 2,000 lines (`scripts/line-budget.ts` runs first in `pnpm test`), and commit splits and de-duplication apart from behaviour changes, as [the code structure guide](docs/agents/code-structure.md) describes; cut a snapshot release only when the completion numbers move or a user-visible problem is fixed.
 
 Run all four verification commands above before submitting a PR; also build the landing page when those files change. GitHub Actions repeats those checks on pull requests and `main`, but does not replace local UI or native macOS verification; `windows.yml` runs the Windows unit checks and builds an unsigned installer on pull requests and `main` too (its daemon suite is informational on Windows). Exercise behavior changes end to end, including shared state and edge cases; check desktop and narrow viewports for layout changes and the native macOS app for desktop integration (and a Windows machine for Windows-only paths, or say in the PR that they are unverified). Documentation-only changes need link, command, and factual checks rather than UI interaction.
 
