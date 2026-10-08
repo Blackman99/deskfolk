@@ -4,7 +4,6 @@
     "apps/daemon/src/local-api.test.ts": 2450,
     "apps/daemon/src/local-api.ts": 2900,
     "apps/daemon/src/store/submissions.ts": 2450,
-    "apps/daemon/src/turn-engine.test.ts": 5300,
     "apps/messenger/src/lib/Shell.svelte": 2550,
     "apps/messenger/src/lib/Shell.test.ts": 2850,
     "apps/messenger/src/lib/chat/ChatStage.svelte": 3800,
