@@ -1,6 +1,4 @@
 {
   "limit": 2000,
-  "allow": {
-    "apps/messenger/src/lib/Shell.svelte": 2550
-  }
+  "allow": {}
 }

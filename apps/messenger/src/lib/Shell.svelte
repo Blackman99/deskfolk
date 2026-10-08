@@ -1,7 +1,6 @@
 <script lang="ts">
 	import {
 		USER_MEMBER,
-		type Attachment,
 		type Bot,
 		type SessionSummary,
 		type SearchHit
@@ -13,7 +12,6 @@
 	import WorkspaceDragGhost from './WorkspaceDragGhost.svelte';
 	import { dangerCopy, shouldDropConfirm } from './overlays/danger-confirm.ts';
 	import { ShellDangerConfirm } from './overlays/danger-confirm.svelte.ts';
-	import { findAttachmentById, findAttachmentByPath, siblingsForPath } from './overlays/artifact-lookup.ts';
 	import {
 		modelSelectValue,
 		type ProviderEditorState
@@ -37,21 +35,12 @@
 		youBotPeer
 	} from './sidebar/session-groups.ts';
 	import { sessionTitle } from './sidebar/session-title.ts';
-	import { sanitizePreviewPath } from './session-url.ts';
 	import { backdropClick } from './click-outside.ts';
 	import type { MessengerRuntime } from './runtime.svelte.ts';
 	import Onboarding from './Onboarding.svelte';
 	import SessionContextMenu from './sidebar/SessionContextMenu.svelte';
-	import { deriveSessionContextMenu } from './sidebar/session-context-menu.ts';
-	// ArtifactPreview.svelte is lazy-loaded below (see the artifactPreview block): it only
-	// mounts once a file is actually opened.
-	import { targetFor } from './annotations/model.ts';
 	import WorkspaceExplorer from './overlays/WorkspaceExplorer.svelte';
-	import {
-		clampPreviewWidth,
-		loadPreviewWidth,
-		savePreviewWidth
-	} from './overlays/preview-width.ts';
+	import ShellPreview from './overlays/ShellPreview.svelte';
 	import {
 		clampSidebarWidth,
 		loadSidebarCollapsed,
@@ -63,10 +52,8 @@
 	import DangerDialog from './overlays/DangerDialog.svelte';
 	import CreateBotSheet from './sidebar/CreateBotSheet.svelte';
 	import CreateGroupSheet from './sidebar/CreateGroupSheet.svelte';
-	import GroupPane from './panels/GroupPane.svelte';
+	import SessionSettingsDrawer from './panels/SessionSettingsDrawer.svelte';
 	import type { GroupDetailDraft } from './panels/group-edit.ts';
-	import ProfilePane from './panels/ProfilePane.svelte';
-	import SettingsHead from './panels/SettingsHead.svelte';
 	import Sidebar from './sidebar/Sidebar.svelte';
 	import SidebarRail from './sidebar/SidebarRail.svelte';
 	import GlobalSearch from './search/GlobalSearch.svelte';
@@ -85,6 +72,7 @@
 	import Workbench from './workbench/Workbench.svelte';
 	import PaneContentHost from './workbench/PaneContentHost.svelte';
 	import PaneTabLabel from './workbench/PaneTabLabel.svelte';
+	import NewPaneMenu from './workbench/NewPaneMenu.svelte';
 	import { isWorkbenchSurface, sidebarFolds, watchNarrow } from './workbench/surface.ts';
 	import { paneMin } from './workbench/pane-mins.ts';
 	import { contentOfTab, contentToParams } from './workbench/pane-content.ts';
@@ -94,6 +82,8 @@
 	import { activateTab, focusLeaf, replaceTabParams } from './workbench/layout-tree.ts';
 	import type { TabAction, WorkbenchTab } from './workbench/layout-types.ts';
 	import { ShellWorkbench } from './workbench/shell-workbench.svelte.ts';
+	import { ShellSessionMenu } from './sidebar/session-menu-actions.svelte.ts';
+	import { ShellArtifact } from './overlays/shell-artifact.svelte.ts';
 	import ChatHeader from './chat/ChatHeader.svelte';
 	import ChatTabLabel from './chat/ChatTabLabel.svelte';
 	import ChatStage from './chat/ChatStage.svelte';
@@ -130,7 +120,7 @@
 
 	onMount(() => {
 		runtime.setNotificationIntentHandler((intent) => {
-			guardNotificationNavigation(() => {
+			artifact.guardNotificationNavigation(() => {
 				runtime.applyNotificationIntent(intent);
 			});
 		});
@@ -162,7 +152,7 @@
 		searchOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 		toolsMenuOpen = false;
 		createMenuOpen = false;
-		contextMenu = null;
+		sessionMenu.contextMenu = null;
 		runtime.closeSearch();
 		searchOpen = true;
 	}
@@ -182,7 +172,7 @@
 		const open = () => {
 			closeSettings();
 			if (!wide) { runtime.closeSessionSettings(); runtime.closeTerminal(); runtime.closeRemoteScreen(); runtime.closeTrace(); runtime.threadOpen = false; }
-			if (path) openArtifactPath(path);
+			if (path) artifact.openArtifactPath(path);
 			else if (jump && 'routineId' in jump) void runtime.openRoutine(jump.botId, jump.routineId);
 			else if (jump) void runtime.selectSession(jump.sessionId, { messageId: jump.messageId });
 			void tick().then(() => {
@@ -192,7 +182,7 @@
 			});
 		};
 		if (wide) open();
-		else guardNotificationNavigation(open);
+		else artifact.guardNotificationNavigation(open);
 	}
 
 	onMount(() => {
@@ -281,7 +271,7 @@
 			spendOpen: runtime.spendOpen,
 			threadOpen: runtime.threadOpen,
 			workspaceOpen: runtime.workspaceOpen,
-			artifactPreview: artifactPreview !== null
+			artifactPreview: artifact.artifactPreview !== null
 		})) {
 			case 'image':
 				// Not a screen: it goes back into the picture it grew out of, and the page stays.
@@ -336,10 +326,10 @@
 				// The flow is one entry in history, and nothing done on it adds another. A file opened
 				// from a card lies over the page without an entry of its own, so Back puts it away here,
 				// the way Escape does, and only the next Back leaves the flow for the conversation.
-				if (artifactPreview) {
+				if (artifact.artifactPreview) {
 					if (!previewPane?.closeFind()) {
 						if (previewPane) previewPane.requestCloseFromParent();
-						else closeArtifactPreview();
+						else artifact.closeArtifactPreview();
 					}
 					return true;
 				}
@@ -414,20 +404,33 @@
 		savePinnedIds(next);
 	}
 
-	let contextMenu = $state<{
-		session: SessionSummary;
-		x: number;
-		y: number;
-	} | null>(null);
-	let contextMenuEpoch = 0;
+	/** The session context menu and its items. See `sidebar/session-menu-actions.svelte.ts`. */
+	const sessionMenu = new ShellSessionMenu({
+		runtime: () => runtime,
+		botsById: () => botsById,
+		danger: () => danger,
+		togglePin,
+		openProfile
+	});
 	let workspacePane = $state<{ requestCloseFromParent: (afterClose?: () => void) => void; closeFind: () => boolean; blocksClose: () => boolean } | null>(null);
-	let previewPreferred = $state(loadPreviewWidth());
-	let previewDragging = $state(false);
+	/**
+	 * The artifact preview and the workspace explorer: what the preview shows, opening and closing
+	 * both, the preview column's width, and the ways out that ask them first. See
+	 * `overlays/shell-artifact.svelte.ts`.
+	 */
+	const artifact = new ShellArtifact({
+		runtime: () => runtime,
+		selected: () => selected,
+		wide: () => wide,
+		shellEl: () => shellEl,
+		shellWidth: () => shellWidth,
+		workspacePane: () => workspacePane,
+		previewPane: () => previewPane
+	});
 	let sidebarPreferred = $state(loadSidebarWidth());
 	let sidebarDragging = $state(false);
 	let shellEl = $state<HTMLElement | null>(null);
 	let shellWidth = $state(Number.POSITIVE_INFINITY);
-	const previewWidth = $derived(clampPreviewWidth(previewPreferred, shellWidth));
 	const sidebarWidth = $derived(clampSidebarWidth(sidebarPreferred, shellWidth));
 	const isMobile = $derived(shellWidth <= 680);
 	/**
@@ -496,92 +499,6 @@
 		observer.observe(el);
 		return () => observer.disconnect();
 	});
-
-	function openContextMenu(e: MouseEvent, session: SessionSummary): void {
-		e.preventDefault();
-		e.stopPropagation();
-		contextMenuEpoch += 1;
-		contextMenu = {
-			session,
-			x: e.clientX,
-			y: e.clientY
-		};
-	}
-
-	/**
-	 * Deferred so the click that picked a menu item does not fall through onto the session row
-	 * underneath once the menu unmounts. The epoch ignores a stale close after a new menu opens.
-	 */
-	function closeContextMenu(): void {
-		const epoch = contextMenuEpoch;
-		setTimeout(() => {
-			if (contextMenuEpoch === epoch) contextMenu = null;
-		}, 0);
-	}
-
-	function closeContextMenuNow(): void {
-		contextMenuEpoch += 1;
-		contextMenu = null;
-	}
-
-	function handleMenuTogglePin(sessionId: string): void {
-		togglePin(sessionId);
-	}
-
-	async function handleMenuViewInfo(session: SessionSummary): Promise<void> {
-		if (isFileDropSession(session)) return;
-		if (runtime.selectedId !== session.id) {
-			await runtime.selectSession(session.id);
-		}
-		const kind = classifySession(session);
-		if (kind === 'you-bot') {
-			const peer = youBotPeer(session);
-			if (peer) {
-				openProfile(peer);
-				return;
-			}
-		}
-		runtime.openSessionSettings();
-	}
-
-	function handleMenuClearHistory(session: SessionSummary): void {
-		closeContextMenuNow();
-		danger.openClearHistoryConfirm(session.id, 'menu');
-	}
-
-	async function handleMenuToggleArchive(session: SessionSummary): Promise<void> {
-		if (session.kind === 'group') {
-			if (session.archived_at) {
-				await runtime.restoreSession(session.id);
-			} else {
-				await runtime.archiveSession(session.id);
-			}
-			return;
-		}
-		const peerId = youBotPeer(session);
-		if (!peerId) return;
-		const bot = botsById.get(peerId);
-		if (!bot) return;
-		if (bot.archived_at) {
-			await runtime.restoreBot(bot.id);
-		} else {
-			await runtime.archiveBot(bot.id);
-		}
-	}
-
-	function handleMenuDelete(session: SessionSummary): void {
-		closeContextMenuNow();
-		const data = deriveSessionContextMenu(session, false, botsById);
-		if (data.delete.kind === 'group' && data.delete.targetId) {
-			danger.openDeleteGroupConfirm(data.delete.targetId, 'menu');
-			return;
-		}
-		if (data.delete.kind === 'bot' && data.delete.targetId) {
-			danger.openDeleteBotConfirm(data.delete.targetId, 'menu');
-		}
-	}
-
-
 
 	const selected = $derived(snapshot.sessions.find((s) => s.id === runtime.selectedId) ?? null);
 	const connected = $derived(runtime.connection === 'connected');
@@ -753,158 +670,7 @@
 	}
 
 
-	const artifactPreview = $derived.by(() => {
-		if (runtime.hosted) {
-			const id = runtime.previewAttachmentId;
-			if (!id) return null;
-			const attachment = findAttachmentById(snapshot.messages, id) ?? runtime.previewSiblings?.find((s) => s.id === id);
-			if (!attachment) return null;
-			const owner = snapshot.messages.find((message) => message.id === attachment.message_id);
-			return {
-				relpath: attachment.workspace_relpath,
-				attachment,
-				siblings: siblingsForPath(snapshot.messages, attachment.workspace_relpath, attachment, undefined, runtime.previewSiblings),
-				forceTree: runtime.forceArtifactTree,
-				taskId: runtime.previewTaskId ?? null,
-				// 挂到谁, the same way as below: the job this preview lists is where a delivery is looked for first.
-				target: targetFor(snapshot.messages, attachment.workspace_relpath, owner, {
-					sessionId: runtime.selectedId,
-					taskId: runtime.previewTaskId ?? owner?.task_id ?? null
-				})
-			};
-		}
-		const relpath = runtime.previewRelpath;
-		if (!relpath) return null;
-		const attachment = findAttachmentByPath(snapshot.messages, relpath) ?? runtime.previewSiblings?.find((s) => s.workspace_relpath === relpath);
-		const owner = runtime.previewMessageId
-			? snapshot.messages.find((message) => message.id === runtime.previewMessageId)
-			: undefined;
-		return {
-			relpath,
-			attachment: attachment ?? null,
-			siblings: siblingsForPath(snapshot.messages, relpath, attachment, runtime.previewMessageId, runtime.previewSiblings),
-			forceTree: runtime.forceArtifactTree,
-			// A message's entry lists that message's files; only the flow chart names a job to list.
-			taskId: runtime.previewTaskId ?? null,
-			// 挂到谁：the message this was opened from when it handed this very path over — the tree
-			// keeps that message while you walk to other files — else the latest Bot message in this
-			// conversation that did, in this job first.
-			target: targetFor(snapshot.messages, relpath, owner, {
-				sessionId: runtime.selectedId,
-				taskId: runtime.previewTaskId ?? owner?.task_id ?? null
-			})
-		};
-	});
-
-	function openArtifactPath(
-		relpath: string,
-		att?: Attachment,
-		messageId?: string | null,
-		forceTree = false,
-		taskId?: string | null,
-		siblings?: Attachment[] | null,
-		sessionId?: string | null
-	): void {
-		if (runtime.paneOpener) {
-			const sourceMessageId = messageId ?? att?.message_id ?? null;
-			const owner = snapshot.messages.find((row) => row.id === sourceMessageId);
-			runtime.paneOpener({
-				kind: 'preview',
-				// Whose preview this is decides which pane turns: every conversation has one.
-				sessionId: sessionId ?? owner?.session_id ?? selected?.id ?? null,
-				relpath: sanitizePreviewPath(relpath),
-				attachmentId: att?.id ?? null,
-				messageId: sourceMessageId,
-				taskId: taskId ?? null,
-				forceTree,
-				siblings: siblings ?? siblingsForPath(snapshot.messages, relpath, att, sourceMessageId, runtime.previewSiblings)
-			});
-			return;
-		}
-		if (runtime.hosted) {
-			// A remote URL never carries a file path, so the preview goes by attachment id.
-			runtime.previewRelpath = null;
-			runtime.previewAttachmentId = att?.id ?? findAttachmentByPath(snapshot.messages, relpath)?.id ?? null;
-			runtime.previewMessageId = messageId ?? att?.message_id ?? null;
-			runtime.forceArtifactTree = forceTree;
-			runtime.previewTaskId = taskId ?? null;
-			runtime.previewSiblings = siblings ?? null;
-			return;
-		}
-		runtime.previewAttachmentId = null;
-		runtime.previewRelpath = sanitizePreviewPath(relpath);
-		runtime.previewMessageId = messageId ?? att?.message_id ?? null;
-		runtime.forceArtifactTree = forceTree;
-		runtime.previewTaskId = taskId ?? null;
-		runtime.previewSiblings = siblings ?? null;
-	}
-
-	function closeArtifactPreview(): void {
-		runtime.previewRelpath = null;
-		runtime.previewAttachmentId = null;
-		runtime.previewMessageId = null;
-		runtime.forceArtifactTree = false;
-		runtime.previewTaskId = null;
-		runtime.previewSiblings = null;
-		runtime.annotationFocusId = null;
-	}
-
-	function toggleWorkspaceExplorer(): void {
-		if (!snapshot.settings.workspace_path) return;
-		if (runtime.workspaceOpen) {
-			workspacePane?.requestCloseFromParent();
-			return;
-		}
-		runtime.openWorkspace(artifactPreview?.relpath ?? runtime.workspaceSelected);
-		if (!artifactPreview?.relpath) void selectCurrentWorkDir();
-	}
-
-	/**
-	 * Opening the explorer cold lands on this session's current work dir rather than wherever it
-	 * was left days ago. Only the dir is known server-side, so it is a pull; a failure just leaves
-	 * the previous selection, which is what the explorer did before.
-	 */
-	async function selectCurrentWorkDir(): Promise<void> {
-		const client = runtime.client;
-		const taskId = [...snapshot.messages].reverse().find((message) => message.task_id)?.task_id;
-		if (!client || !taskId) return;
-		try {
-			const task = await client.taskArtifacts(taskId);
-			if (runtime.workspaceOpen) runtime.workspaceSelected = task.dir;
-		} catch {
-			// the explorer keeps whatever it had
-		}
-	}
-
-	function closeWorkspaceExplorer(): void {
-		runtime.closeWorkspace();
-	}
-
-	function openWorkspaceFile(path: string): void {
-		runtime.workspaceSelected = sanitizePreviewPath(path) ?? '';
-	}
-
 	let previewPane = $state<{ requestCloseFromParent: (afterClose?: () => void) => void; closeFind: () => boolean; blocksClose: () => boolean } | null>(null);
-
-	function startPreviewResize(ev: PointerEvent): void {
-		if (!artifactPreview) return;
-		ev.preventDefault();
-		previewDragging = true;
-		const originX = ev.clientX;
-		const originW = previewWidth;
-		const onMove = (move: PointerEvent) => {
-			const shellW = shellEl?.clientWidth ?? 1200;
-			previewPreferred = clampPreviewWidth(originW - (move.clientX - originX), shellW);
-		};
-		const onUp = () => {
-			previewDragging = false;
-			savePreviewWidth(previewPreferred);
-			window.removeEventListener('pointermove', onMove);
-			window.removeEventListener('pointerup', onUp);
-		};
-		window.addEventListener('pointermove', onMove);
-		window.addEventListener('pointerup', onUp);
-	}
 
 	function startSidebarResize(ev: PointerEvent): void {
 		if (ev.button !== 0) return;
@@ -1046,31 +812,6 @@
 		runtime.openCreateGroup();
 	}
 
-	function guardNotificationNavigation(perform: () => void): void {
-		if (artifactPreview && previewPane?.requestCloseFromParent) {
-			previewPane.requestCloseFromParent(() => {
-				closeArtifactPreview();
-				if (runtime.workspaceOpen && workspacePane?.requestCloseFromParent) {
-					workspacePane.requestCloseFromParent(() => {
-						closeWorkspaceExplorer();
-						perform();
-					});
-					return;
-				}
-				perform();
-			});
-			return;
-		}
-		if (runtime.workspaceOpen && workspacePane?.requestCloseFromParent) {
-			workspacePane.requestCloseFromParent(() => {
-				closeWorkspaceExplorer();
-				perform();
-			});
-			return;
-		}
-		perform();
-	}
-
 	const mobileNavigationVisible = $derived(
 		!searchOpen &&
 		!runtime.routinesOpen &&
@@ -1081,37 +822,8 @@
 		!runtime.screenOpen &&
 		!runtime.createBotOpen && !runtime.createGroupOpen && !runtime.sessionSettingsOpen &&
 		!runtime.profileBotId && !danger.dangerConfirm &&
-		(runtime.settingsOpen ? !mobileSettingsDetail && !providerEditor : runtime.workspaceOpen || (!selected && !artifactPreview))
+		(runtime.settingsOpen ? !mobileSettingsDetail && !providerEditor : runtime.workspaceOpen || (!selected && !artifact.artifactPreview))
 	);
-
-	function openRoutinesFromUi(): void {
-		const open = () => runtime.openRoutines();
-		if (runtime.workspaceOpen && workspacePane) workspacePane.requestCloseFromParent(open);
-		else open();
-	}
-
-	function openSpendFromUi(): void {
-		const open = () => runtime.openSpend();
-		if (runtime.workspaceOpen && workspacePane) workspacePane.requestCloseFromParent(open);
-		else open();
-	}
-
-	/**
-	 * A terminal asked for from a file tree opens in the workbench or, on a phone, as the terminal
-	 * page. A tree drawn over the screen would hide it either way, so that one closes first,
-	 * asking about an unsaved edit the way leaving it any other way does.
-	 */
-	function openTerminalFromWorkspace(dir: string): void {
-		const open = () => void runtime.openTerminalAt(dir);
-		if (runtime.workspaceOpen && workspacePane) workspacePane.requestCloseFromParent(open);
-		else open();
-	}
-
-	function openTerminalFromPreview(dir: string): void {
-		const open = () => void runtime.openTerminalAt(dir);
-		if (!wide && previewPane) previewPane.requestCloseFromParent(open);
-		else open();
-	}
 </script>
 
 <svelte:window
@@ -1157,7 +869,7 @@
 				runtime.closeTerminal();
 			} else if (runtime.screenOpen) {
 				runtime.closeRemoteScreen();
-			} else if (runtime.traceOpen && !artifactPreview) {
+			} else if (runtime.traceOpen && !artifact.artifactPreview) {
 				// A file opened from the flow lies over it, so the preview below closes first.
 				runtime.closeTrace();
 			} else if (runtime.routinesOpen) {
@@ -1173,7 +885,7 @@
 				} else {
 					runtime.closeWorkspace();
 				}
-			} else if (artifactPreview) {
+			} else if (artifact.artifactPreview) {
 				const target = e.target as HTMLElement | null;
 				if (previewPane?.closeFind()) {
 					e.preventDefault();
@@ -1181,7 +893,7 @@
 				} else if (target?.closest('.monaco-editor, .editor-widget.find-widget, .artifact-cm')) {
 					return;
 				} else if (previewPane) previewPane.requestCloseFromParent();
-				else closeArtifactPreview();
+				else artifact.closeArtifactPreview();
 			}
 		}
 		if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'o') {
@@ -1189,7 +901,7 @@
 			if (isTypingTarget(target)) return;
 			if (!snapshot.settings.workspace_path) return;
 			e.preventDefault();
-			toggleWorkspaceExplorer();
+			artifact.toggleWorkspaceExplorer();
 			return;
 		}
 		// From anywhere, typing included, but not out of a terminal off the Mac (see matchesSidebarToggle).
@@ -1253,55 +965,34 @@
 	scrim closes it.
 -->
 {#snippet paneSettings(sessionId: string, botId: string | null)}
-	{@const paneSession = sessionsById.get(sessionId)}
-	{@const paneKind = paneSession ? classifySession(paneSession) : null}
-	{@const shownBotId = botId ?? (paneKind === 'you-bot' && paneSession ? youBotPeer(paneSession) : null)}
-	{@const paneBot = shownBotId ? botsById.get(shownBotId) : undefined}
-	<div class="sheet session-settings is-beside" class:is-mobile-detail={paneMobileDetail}>
-		<SettingsHead
-			group={paneKind === 'group' && !paneBot}
-			nested={false}
-			onBack={() => {}}
-			onClose={() => closePaneSide(sessionId)}
-			groupSession={paneKind === 'group' && !paneBot && paneSession ? paneSession : null}
-			{t}
-			{narrow}
-			{runtime}
-			{botsById}
-			bind:detail={groupDetail}
-		/>
-		{#if paneBot}
-			{#key paneBot.id}
-				<ProfilePane
-					bind:this={profilePane}
-					{runtime}
-					bot={paneBot}
-					{t}
-					modelOptions={availableModelOptions}
-					selectedKind={paneKind}
-					bind:profileFailed
-					bind:mobileDetail={paneMobileDetail}
-					openDangerConfirm={(kind, run) => (danger.dangerConfirm = { kind, run, source: 'drawer' })}
-					clearDanger={(kind) => danger.clearDanger(kind)}
-					onDeleteBot={() => danger.openDeleteBotConfirm(paneBot.id)}
-					onClearHistory={() => danger.openClearHistoryConfirm(sessionId)}
-				/>
-			{/key}
-		{:else if paneSession}
-			<GroupPane
-				{runtime}
-				selected={paneSession}
-				{t}
-				bind:detail={groupDetail}
-				bind:mobileDetail={paneMobileDetail}
-				onOpenProfile={(id) => openProfile(id, sessionId)}
-				onDeleteGroup={() => danger.openDeleteGroupConfirm(sessionId)}
-				onClearHistory={() => danger.openClearHistoryConfirm(sessionId)}
-			/>
-		{:else}
-			<p class="pane-settings-gone">{t.top.deleted}</p>
-		{/if}
-	</div>
+	{@render sessionSettings({ sessionId, botId })}
+{/snippet}
+
+<!-- The drawer over the shell when `beside` is null; see `panels/SessionSettingsDrawer.svelte`. -->
+{#snippet sessionSettings(beside: { sessionId: string; botId: string | null } | null)}
+	<SessionSettingsDrawer
+		{beside}
+		{runtime}
+		{t}
+		{narrow}
+		{botsById}
+		{sessionsById}
+		{availableModelOptions}
+		{danger}
+		{openProfile}
+		{closePaneSide}
+		{selected}
+		{selectedKind}
+		{nestedProfile}
+		{profileBot}
+		{profileBackdrop}
+		{closeNestedProfile}
+		{closeCurrentDrawerScreen}
+		bind:profilePane
+		bind:profileFailed
+		bind:paneMobileDetail
+		bind:groupDetail
+	/>
 {/snippet}
 
 {#if showOnboarding}
@@ -1321,13 +1012,13 @@
 	class:has-spend={runtime.spendOpen}
 	class:has-terminal={runtime.terminalOpen}
 	class:has-screen={runtime.screenOpen}
-	class:is-preview={Boolean(artifactPreview)}
-	class:is-preview-dragging={previewDragging}
+	class:is-preview={Boolean(artifact.artifactPreview)}
+	class:is-preview-dragging={artifact.previewDragging}
 	class:is-layered={!wide}
 	class:is-sidebar-dragging={sidebarDragging}
 	class:is-sidebar-collapsed={sidebarHidden}
 	bind:this={shellEl}
-	style:--preview-width="{previewWidth}px"
+	style:--preview-width="{artifact.previewWidth}px"
 	style:--sidebar-width="{sidebarHidden ? SIDEBAR_RAIL : sidebarWidth}px"
 	style:--sidebar-split={sidebarHidden ? '0px' : undefined}
 >
@@ -1338,13 +1029,13 @@
 			{pinnedSessionIds}
 			bind:toolsMenuOpen
 			workspaceOpen={runtime.workspaceOpen}
-			contextMenuSessionId={contextMenu?.session.id ?? null}
-			onOpenContextMenu={openContextMenu}
+			contextMenuSessionId={sessionMenu.contextMenu?.session.id ?? null}
+			onOpenContextMenu={sessionMenu.openContextMenu}
 			onExpand={toggleSidebar}
 			onOpenSearch={openGlobalSearch}
-			onToggleWorkspace={toggleWorkspaceExplorer}
-			onOpenRoutines={openRoutinesFromUi}
-			onOpenSpend={openSpendFromUi}
+			onToggleWorkspace={artifact.toggleWorkspaceExplorer}
+			onOpenRoutines={artifact.openRoutinesFromUi}
+			onOpenSpend={artifact.openSpendFromUi}
 			workbench={wide}
 			onNewTerminal={() => void workbench.openNewTerminal(null)}
 			onOpenArchived={openArchivedFromRail}
@@ -1362,11 +1053,11 @@
 			onOpenSearch={openGlobalSearch}
 			bind:createMenuOpen
 			workspaceOpen={runtime.workspaceOpen}
-			contextMenuSessionId={contextMenu?.session.id ?? null}
-			onOpenContextMenu={openContextMenu}
-			onToggleWorkspace={toggleWorkspaceExplorer}
-			onOpenRoutines={openRoutinesFromUi}
-			onOpenSpend={openSpendFromUi}
+			contextMenuSessionId={sessionMenu.contextMenu?.session.id ?? null}
+			onOpenContextMenu={sessionMenu.openContextMenu}
+			onToggleWorkspace={artifact.toggleWorkspaceExplorer}
+			onOpenRoutines={artifact.openRoutinesFromUi}
+			onOpenSpend={artifact.openSpendFromUi}
 			workbench={wide}
 			onNewTerminal={() => void workbench.openNewTerminal(null)}
 			onOpenSettings={() => runtime.openSettings()}
@@ -1403,7 +1094,7 @@
 						{runtime}
 						{t}
 						onOpenProfile={openProfile}
-						onOpenArtifact={openArtifactPath}
+						onOpenArtifact={artifact.openArtifactPath}
 						onRemoveTab={workbench.onPaneCloseTab}
 						onBindTerminal={workbench.bindTerminalTab}
 						onUpdateContent={(content) =>
@@ -1453,94 +1144,7 @@
 					</button>
 				{/snippet}
 				{#snippet menuActions(leafId: string, query: string)}
-					{@const needle = query.trim().toLowerCase()}
-					{@const listed = needle
-						? workbench.untabbedTerminals.filter((row) =>
-								`${workbench.terminalName(row)} ${row.cwd}`.toLowerCase().includes(needle))
-						: workbench.untabbedTerminals}
-					<button
-						type="button"
-						class="wb-menu-row"
-						role="menuitem"
-						onclick={() => void workbench.openNewTerminal(leafId)}
-					>
-						<span class="wb-menu-mark" aria-hidden="true">
-							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-								<polyline points="4 17 10 11 4 5"></polyline>
-								<line x1="12" y1="19" x2="20" y2="19"></line>
-							</svg>
-						</span>
-						<span class="wb-menu-name">{t.terminal.newTab}</span>
-					</button>
-					<button
-						type="button"
-						class="wb-menu-row"
-						role="menuitem"
-						disabled={!snapshot.settings.workspace_path}
-						onclick={() => workbench.openInPane(leafId, { kind: 'workspace', selected: null })}
-					>
-						<span class="wb-menu-mark is-quiet" aria-hidden="true">
-							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-								<path d="M3 7.5 12 3l9 4.5-9 4.5L3 7.5Z"></path>
-								<path d="M3 12l9 4.5 9-4.5"></path>
-								<path d="M3 16.5 12 21l9-4.5"></path>
-							</svg>
-						</span>
-						<span class="wb-menu-name">{t.sidebar.workspace}</span>
-					</button>
-					<button
-						type="button"
-						class="wb-menu-row"
-						role="menuitem"
-						onclick={() => workbench.openInPane(leafId, { kind: 'routines' })}
-					>
-						<span class="wb-menu-mark is-quiet" aria-hidden="true">
-							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-								<rect x="3" y="5" width="18" height="16" rx="2"></rect>
-								<line x1="3" y1="10" x2="21" y2="10"></line>
-								<line x1="8" y1="3" x2="8" y2="7"></line>
-								<line x1="16" y1="3" x2="16" y2="7"></line>
-							</svg>
-						</span>
-						<span class="wb-menu-name">{t.routines.title}</span>
-					</button>
-					<button
-						type="button"
-						class="wb-menu-row"
-						role="menuitem"
-						onclick={() => workbench.openInPane(leafId, { kind: 'spend' })}
-					>
-						<span class="wb-menu-mark is-quiet" aria-hidden="true">
-							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-								<line x1="12" y1="1" x2="12" y2="23"></line>
-								<path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-							</svg>
-						</span>
-						<span class="wb-menu-name">{spendCopyFor(runtime.snapshot.settings.locale === 'en' ? 'en' : 'zh').title}</span>
-					</button>
-					<div class="wb-menu-section" role="presentation">{t.pane.runningTerminals}</div>
-					{#each listed as row (row.id)}
-						<button
-							type="button"
-							class="wb-menu-row"
-							role="menuitem"
-							title={row.cwd}
-							onclick={() => workbench.openInPane(leafId, { kind: 'terminal', terminalId: row.id })}
-						>
-							<span class="wb-menu-mark is-quiet" aria-hidden="true">
-								<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-									<polyline points="4 17 10 11 4 5"></polyline>
-									<line x1="12" y1="19" x2="20" y2="19"></line>
-								</svg>
-							</span>
-							<span class="wb-menu-copy">
-								<span class="wb-menu-name">{workbench.terminalName(row)}</span>
-								<span class="wb-menu-meta">{row.cwd}</span>
-							</span>
-						</button>
-					{:else}
-						<p class="wb-menu-empty">{needle ? t.sidebar.emptySearch : t.pane.noRunningTerminals}</p>
-					{/each}
+					<NewPaneMenu {runtime} {t} {workbench} {leafId} {query} />
 				{/snippet}
 			</Workbench>
 		{:else if runtime.routinesOpen}
@@ -1600,7 +1204,7 @@
 			{t}
 			{selected}
 			onOpenProfile={openProfile}
-			onOpenArtifact={openArtifactPath}
+			onOpenArtifact={artifact.openArtifactPath}
 			onCreateBot={openCreateBot}
 		/>
 		</div>
@@ -1624,68 +1228,12 @@
 			{t}
 			{selected}
 			onOpenProfile={openProfile}
-			onOpenArtifact={openArtifactPath}
+			onOpenArtifact={artifact.openArtifactPath}
 			onCreateBot={openCreateBot}
 		/>
 		{/if}
 	</section>
-	{#if artifactPreview}
-		{#if wide}
-			<button
-				type="button"
-				class="preview-split"
-				aria-label={t.stream.artifactResize}
-				onpointerdown={startPreviewResize}
-			></button>
-		{/if}
-		{#await import('./overlays/ArtifactPreview.svelte') then { default: ArtifactPreview }}
-			<ArtifactPreview
-				bind:this={previewPane}
-				attachment={artifactPreview.attachment}
-				relpath={artifactPreview.relpath}
-				siblings={artifactPreview.siblings}
-				api={runtime.client}
-				workspacePath={snapshot.settings.workspace_path}
-				forceTree={artifactPreview.forceTree}
-				taskId={artifactPreview.taskId}
-				target={artifactPreview.target}
-				sheet={!wide}
-				annotations={snapshot.annotations}
-				annotationFocusId={runtime.annotationFocusId}
-				annotationFileKey={runtime.annotationFileKeys[artifactPreview.relpath] ?? null}
-				bots={botsById}
-				{locale}
-				sessions={snapshot.sessions}
-				viewedSessionId={runtime.selectedId}
-				onLoadAnnotations={(path) => void runtime.loadAnnotations({ relpath: path })}
-				onCreateAnnotation={(input) => runtime.createAnnotation(input)}
-				onPatchAnnotation={(id, patch) => runtime.patchAnnotation(id, patch)}
-				onDeleteAnnotation={(id) => runtime.deleteAnnotation(id)}
-				onSendAnnotations={(sessionId, summary, ids) => runtime.sendAnnotations(sessionId, summary, ids)}
-				{t}
-				onOpenTerminal={openTerminalFromPreview}
-				onClose={closeArtifactPreview}
-				onSelect={(att) =>
-					openArtifactPath(
-						att.workspace_relpath,
-						att,
-						runtime.previewMessageId,
-						runtime.forceArtifactTree,
-						runtime.previewTaskId,
-						runtime.previewSiblings
-					)}
-				onSelectWorkspacePath={(path) =>
-					openArtifactPath(
-						path,
-						undefined,
-						runtime.previewMessageId,
-						runtime.forceArtifactTree,
-						runtime.previewTaskId,
-						runtime.previewSiblings
-					)}
-			/>
-		{/await}
-	{/if}
+	<ShellPreview {runtime} {t} {wide} {locale} {botsById} {artifact} bind:previewPane />
 	{#if runtime.traceOpen && selected}
 		{#await import('./overlays/TaskTrace.svelte') then { default: TaskTraceView }}
 			<TaskTraceView
@@ -1705,7 +1253,7 @@
 				reloadToken={runtime.traceReload}
 				onClose={() => runtime.closeTrace()}
 				onJump={jumpFromTracePage}
-				onOpenArtifact={openArtifactPath}
+				onOpenArtifact={artifact.openArtifactPath}
 				holds={snapshot.holdsOn ? snapshot.holds : null}
 				onStop={(choice) => runtime.stopScope(choice.scope, choice.id, runtime.traceSessionId || selected.id)}
 				onLift={(hold) => runtime.liftHold(hold.id)}
@@ -1723,10 +1271,10 @@
 			workspacePath={snapshot.settings.workspace_path}
 			selected={runtime.workspaceSelected}
 			{t}
-			onClose={closeWorkspaceExplorer}
+			onClose={artifact.closeWorkspaceExplorer}
 			onOpenSettings={() => navigateMobile('settings')}
-			onOpenTerminal={openTerminalFromWorkspace}
-			onSelect={openWorkspaceFile}
+			onOpenTerminal={artifact.openTerminalFromWorkspace}
+			onSelect={artifact.openWorkspaceFile}
 		/>
 	{/if}
 	<aside class="thread">
@@ -1738,76 +1286,7 @@
 			<p class="muted">{t.thread.none}</p>
 		</div>
 	</aside>
-	{#if runtime.sessionSettingsOpen && selected}
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<div
-			class="profile-backdrop"
-			role="dialog"
-			aria-modal="true"
-			tabindex="-1"
-			onmousedowncapture={profileBackdrop.press}
-			onclick={(e) => {
-				if (danger.drawerHasDanger) return;
-				if (profileBackdrop.isOutside(e)) runtime.closeSessionSettings();
-			}}
-			onkeydown={(e) => {
-				if (e.key === 'Escape') {
-					if (danger.drawerHasDanger) danger.dismissDangerConfirm();
-					else if (nestedProfile && narrow) runtime.closeSessionSettings();
-					else if (nestedProfile) closeNestedProfile();
-					else if (profilePane?.backFromEditor()) e.stopPropagation();
-					else runtime.closeSessionSettings();
-				}
-			}}
-		>
-			<div class="sheet is-right session-settings" class:is-mobile-detail={paneMobileDetail}>
-				<SettingsHead
-					group={selectedKind === 'group'}
-					nested={nestedProfile}
-					onBack={() => (narrow ? runtime.closeSessionSettings() : closeNestedProfile())}
-					onClose={closeCurrentDrawerScreen}
-					groupSession={selectedKind === 'group' && !nestedProfile && selected ? selected : null}
-					subjectBot={profileBot}
-					subjectSession={selected}
-					{t}
-					{narrow}
-					{runtime}
-					{botsById}
-					bind:detail={groupDetail}
-				/>
-
-				{#if profileBot}
-					{#key profileBot.id}
-						<ProfilePane
-							bind:this={profilePane}
-							{runtime}
-							bot={profileBot}
-							{t}
-							modelOptions={availableModelOptions}
-							{selectedKind}
-							bind:profileFailed
-							bind:mobileDetail={paneMobileDetail}
-							openDangerConfirm={(kind, run) => (danger.dangerConfirm = { kind, run, source: 'drawer' })}
-							clearDanger={(kind) => danger.clearDanger(kind)}
-							onDeleteBot={() => danger.openDeleteBotConfirm()}
-							onClearHistory={() => danger.openClearHistoryConfirm()}
-						/>
-					{/key}
-				{:else}
-					<GroupPane
-						{runtime}
-						{selected}
-						{t}
-						bind:detail={groupDetail}
-						bind:mobileDetail={paneMobileDetail}
-						onOpenProfile={openProfile}
-						onDeleteGroup={() => danger.openDeleteGroupConfirm()}
-						onClearHistory={() => danger.openClearHistoryConfirm()}
-					/>
-				{/if}
-			</div>
-		</div>
-	{/if}
+	{@render sessionSettings(null)}
 	{#if dangerConfirmCopy}
 		<DangerDialog
 			copy={dangerConfirmCopy}
@@ -1856,8 +1335,8 @@
 		/>
 	{/if}
 
-	{#if contextMenu}
-		{@const activeMenu = contextMenu}
+	{#if sessionMenu.contextMenu}
+		{@const activeMenu = sessionMenu.contextMenu}
 		<SessionContextMenu
 			session={activeMenu.session}
 			{botsById}
@@ -1865,12 +1344,12 @@
 			x={activeMenu.x}
 			y={activeMenu.y}
 			{t}
-			onClose={closeContextMenu}
-			onTogglePin={() => handleMenuTogglePin(activeMenu.session.id)}
-			onViewInfo={() => void handleMenuViewInfo(activeMenu.session)}
-			onClearHistory={() => handleMenuClearHistory(activeMenu.session)}
-			onToggleArchive={() => void handleMenuToggleArchive(activeMenu.session)}
-			onDelete={() => handleMenuDelete(activeMenu.session)}
+			onClose={sessionMenu.closeContextMenu}
+			onTogglePin={() => sessionMenu.handleMenuTogglePin(activeMenu.session.id)}
+			onViewInfo={() => void sessionMenu.handleMenuViewInfo(activeMenu.session)}
+			onClearHistory={() => sessionMenu.handleMenuClearHistory(activeMenu.session)}
+			onToggleArchive={() => void sessionMenu.handleMenuToggleArchive(activeMenu.session)}
+			onDelete={() => sessionMenu.handleMenuDelete(activeMenu.session)}
 		/>
 	{/if}
 </div>
@@ -1880,33 +1359,6 @@
 	@media (max-width: 680px) {
 		.shell.has-mobile-navigation > :global(.side) { padding-bottom: calc(60px + env(safe-area-inset-bottom)); }
 
-	}
-
-	/* The drawer's sheet, sliding over one pane instead of over the whole window. */
-	.sheet.session-settings.is-beside {
-		position: relative;
-		inset: auto;
-		width: 100%;
-		height: 100%;
-		min-height: 0;
-		box-sizing: border-box;
-		padding: 0;
-		display: flex;
-		flex-direction: column;
-		overflow: hidden;
-		border-right: 0;
-		box-shadow: none;
-		background: var(--bg);
-		z-index: auto;
-		animation: none;
-	}
-	.pane-settings-gone {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		height: 100%;
-		color: var(--muted);
-		font-size: 13px;
 	}
 
 	.pane-open {
@@ -1924,30 +1376,6 @@
 	}
 	.pane-open:not(:disabled):hover {
 		background: var(--row-hover);
-	}
-
-	.preview-split {
-		width: 8px;
-		padding: 0;
-		border: 0;
-		cursor: col-resize;
-		position: relative;
-		background: transparent;
-		z-index: 2;
-	}
-
-	.preview-split::before {
-		content: "";
-		position: absolute;
-		inset: 0 3px;
-		background: var(--line);
-		border-radius: var(--radius-full);
-	}
-
-	.preview-split:hover::before,
-	.shell.is-preview-dragging .preview-split::before {
-		background: var(--accent);
-		inset: 0 2px;
 	}
 
 	.sidebar-split {
@@ -1979,65 +1407,6 @@
 	.shell.is-sidebar-collapsed .sidebar-split {
 		visibility: hidden;
 		pointer-events: none;
-	}
-
-	/* Form Groups & Inputs in Panel */
-	.sheet.session-settings :global(.form-group) {
-		margin-bottom: 14px;
-	}
-
-	.sheet.session-settings :global(.form-group:last-child) {
-		margin-bottom: 0;
-	}
-
-	.sheet.session-settings :global(.form-group) :global(label),
-
-	.sheet.session-settings :global(.form-group) :global(.field-label) {
-		display: block;
-		font-size: 12px;
-		font-weight: 600;
-		color: var(--ink-secondary);
-		margin-bottom: 6px;
-		letter-spacing: 0.02em;
-	}
-
-	/* Group Members List */
-	.sheet.session-settings :global(.members) {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		padding: 0;
-	}
-
-	.sheet.session-settings :global(.member) {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-		padding: 8px 10px;
-		border-radius: var(--radius-md);
-		background: var(--line-subtle);
-		border: 1px solid transparent;
-		transition: 0.15s ease;
-		transition-property: var(--transition-props);
-	}
-
-	.sheet.session-settings :global(.member:hover) {
-		border-color: var(--line);
-		background: var(--pane);
-		box-shadow: var(--shadow-xs);
-	}
-
-	.sheet.session-settings :global(.deny) {
-		background: var(--btn-secondary-bg);
-		color: var(--danger);
-		border: 1px solid var(--danger-line);
-	}
-
-	.sheet.session-settings :global(.deny:hover:not(:disabled)) {
-		background: var(--danger-bg);
-		border-color: var(--danger);
-		color: var(--danger);
 	}
 
 	/* Thread drawer, sidebar flyouts, profile drawer, session details, panel cards. */
@@ -2085,84 +1454,6 @@
 		flex: 1;
 		overflow-y: auto;
 		padding: 16px;
-	}
-
-	/* Persona / Profile Drawer Backdrop & Right Sidebar */
-	.profile-backdrop {
-		position: fixed;
-		inset: 0;
-		background: var(--modal-backdrop);
-		backdrop-filter: blur(6px);
-		-webkit-backdrop-filter: blur(6px);
-		display: flex;
-		justify-content: flex-end;
-		z-index: 80;
-		animation: backdropFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-		overflow: hidden;
-	}
-
-	.sheet.is-right {
-		position: relative;
-		inset: auto;
-		width: 340px;
-		max-width: 90vw;
-		height: 100%;
-		border-right: none;
-		border-left: 1px solid var(--line);
-		box-shadow: var(--shadow-sheet-end);
-		z-index: auto;
-		animation: slideInRight 0.22s cubic-bezier(0.16, 1, 0.3, 1);
-	}
-
-	/*
-	 * A phone already has a back chevron on every other settings page. The words ("返回群组设置")
-	 * stay for a wider window, where this control is a labelled link, and for the button's name.
-	 * The rest of `.sheet-back`'s own styling lives with its markup, in `panels/SettingsHead.svelte`.
-	 */
-	@media (max-width: 680px) {
-		/* The same inset and gap as a section's own head, so what follows Back lines up with its title. */
-		.sheet.session-settings:has(:global(.sheet-back)) :global(.sheet-head) {
-			padding-left: 4px;
-			gap: 4px;
-		}
-	}
-
-	.sheet.is-right.session-settings {
-		width: 460px;
-		max-width: 94vw;
-		height: 100%;
-		max-height: 100vh;
-		box-sizing: border-box;
-		padding: 0;
-		display: flex;
-		flex-direction: column;
-		overflow: hidden;
-		background: var(--bg);
-	}
-
-	.sheet.session-settings :global(.sheet-head) {
-		padding: 16px 20px;
-		margin-bottom: 0;
-		border-bottom: 1px solid var(--line);
-		background: var(--pane);
-		min-height: 56px;
-		box-sizing: border-box;
-	}
-
-	.sheet.session-settings :global(.sheet-head) :global(h2) {
-		font-size: 15px;
-		font-weight: 700;
-		color: var(--ink);
-		letter-spacing: -0.01em;
-		margin: 0;
-	}
-
-	.sheet.session-settings :global(.profile-pane) {
-		flex: 1 1 0;
-		min-height: 0;
-		display: flex;
-		flex-direction: column;
-		overflow: hidden;
 	}
 
 	/*
@@ -2256,31 +1547,6 @@
 	 * width, leaving a 200px list beside a dead strip.
 	 */
 	@media (max-width: 680px) {
-		/* Bot and group settings are a page here, not a drawer peeking past a backdrop. */
-		.profile-backdrop {
-			background: var(--bg);
-			backdrop-filter: none;
-			-webkit-backdrop-filter: none;
-		}
-
-		.sheet.is-right.session-settings {
-			width: 100%;
-			max-width: 100%;
-			border-left: 0;
-			box-shadow: none;
-			animation: none;
-		}
-
-		.sheet.session-settings :global(.sheet-head) {
-			min-height: calc(56px + env(safe-area-inset-top));
-			padding: env(safe-area-inset-top) 12px 0 16px;
-		}
-
-		/* One header per screen: the section brings its own, with the way back in it. */
-		.sheet.session-settings.is-mobile-detail :global(.sheet-head) {
-			display: none;
-		}
-
 		.shell,
 		.shell.is-thread,
 		.shell.is-preview,
