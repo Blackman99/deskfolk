@@ -285,8 +285,9 @@ export function createTools(deps: ToolsDeps): Tools {
       if (betweenCalls && live.toolCalls > 0) await betweenCalls(turnId);
       if (!active(turnId, live)) return "wait";
       // Between calls: a line of yours that asks for a change postpones the calls still waiting.
-      // A question is read at the next hop and postpones nothing (ADR 0040 P4a).
-      if (store.queuedForTurn(turnId).some((row) => row.priority === 1 && row.kind === "change" && !queuedAtStart.has(row.seq))) deferRest = true;
+      // A question is read at the next hop and postpones nothing (ADR 0040 P4a) — unless you asked
+      // for it to be read now (直接插入, ADR 0069), which postpones them whatever the line is.
+      if (live.readNow || store.queuedForTurn(turnId).some((row) => row.priority === 1 && row.kind === "change" && !queuedAtStart.has(row.seq))) deferRest = true;
       if (deferRest) {
         live.loop.push({
           role: "tool",

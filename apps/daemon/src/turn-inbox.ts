@@ -64,21 +64,27 @@ function heardEntry(item: HeardItem, en: boolean, label?: string): string {
  * calls when a line of yours arrived mid-hop. It names each line by its inbox id, and asks the Bot
  * to say what it did with each one in `end_turn`.
  */
-export function heardNote(locale: Locale, items: readonly (HeardItem & { label?: string })[]): string {
+export function heardNote(locale: Locale, items: readonly (HeardItem & { label?: string })[], opts: { cut?: boolean } = {}): string {
   const en = locale === "en";
   const lines = items.map((item) => heardEntry(item, en, item.label));
   const deal = en
     ? "Say what you did with each line of the user's, by its id, in end_turn's inbox: adopted, answered, declined (say why), or deferred."
     : "用户的话逐条处置：照改 / 已回答 / 不采纳并说明理由（写进 end_turn 的 inbox，带上每条的 id）。";
+  // 直接插入 (ADR 0069): the step it was on was stopped for these, so say so — it just saw its call
+  // refused "by the user", which is not a no to the work.
   if (en) {
     return [
-      `(App note) ${items.length} line${items.length === 1 ? "" : "s"} came in. This turn was not interrupted.`,
+      opts.cut
+        ? `(App note) ${items.length} line${items.length === 1 ? "" : "s"} came in, and the user asked for them to be read now: the step you were on was stopped for that, not refused. A command that was running did not finish; run it again if you still need it.`
+        : `(App note) ${items.length} line${items.length === 1 ? "" : "s"} came in. This turn was not interrupted.`,
       ...lines,
       deal,
     ].join("\n");
   }
   return [
-    `（应用提示）收件 ${items.length} 条（这一段没有被打断）：`,
+    opts.cut
+      ? `（应用提示）收件 ${items.length} 条，用户要你马上读：刚才那一步是为这个停下的，不是用户拒绝了它。正在跑的命令没跑完，还需要的话重跑。`
+      : `（应用提示）收件 ${items.length} 条（这一段没有被打断）：`,
     ...lines,
     deal,
   ].join("\n");

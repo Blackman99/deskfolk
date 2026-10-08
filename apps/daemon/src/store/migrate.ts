@@ -13,6 +13,7 @@ import { HELD_TURN_TRIGGERS } from "./holds";
 import { migrateLargeJobs } from "./large-job-migration";
 import { migrateLessons } from "./lessons";
 import { migrateMessageEdits } from "./message-edits";
+import { migrateMessageWithdraw } from "./message-withdraw";
 import { backfillQuotes, migrateAnnotations, migrateAskChoices, migrateMessageControl } from "./message-migration";
 import { migrateModelDefaults } from "./model-defaults";
 import { migrateNotifications } from "./notification-migration";
@@ -285,6 +286,7 @@ export function migrateSchema(db: Database): void {
   migrateAskChoices(db);
   migrateMessageControl(db);
   migrateMessageEdits(db);
+  migrateMessageWithdraw(db);
   if (!tables.includes("terminals")) {
     db.run(`
       CREATE TABLE IF NOT EXISTS terminals (

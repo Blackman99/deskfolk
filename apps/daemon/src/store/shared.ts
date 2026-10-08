@@ -212,6 +212,8 @@ export type MessageRow = {
   edited_at?: string | null;
   /** A line of yours the app carried out itself, or took as your answer to a question. */
   taken_as?: "app" | "answer" | null;
+  /** When you took this line of yours back, before any Bot read it (ADR 0069). */
+  withdrawn_at?: string | null;
   created_at: string;
 };
 

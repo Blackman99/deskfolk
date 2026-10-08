@@ -62,6 +62,8 @@ export type Snapshot = {
   linesInOrder: boolean;
   /** Whether a line of yours can be changed after it went out (ADR 0063). */
   messageEdits: boolean;
+  /** Whether a line of yours no Bot has read yet can be taken back, or read by the working Bot now (ADR 0069). */
+  queuedLineActions: boolean;
 };
 
 export function emptySnapshot(): Snapshot {
@@ -102,6 +104,7 @@ export function emptySnapshot(): Snapshot {
     turnInbox: false,
     linesInOrder: false,
     messageEdits: false,
+    queuedLineActions: false,
   };
 }
 
@@ -116,6 +119,7 @@ export function fromRuntimeSnapshot(snapshot: RuntimeSnapshot): Snapshot {
     turnInbox: snapshot.turnInbox === true,
     linesInOrder: snapshot.linesInOrder === true,
     messageEdits: snapshot.messageEdits === true,
+    queuedLineActions: snapshot.queuedLineActions === true,
   };
 }
 

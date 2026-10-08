@@ -158,6 +158,7 @@ type FilingMessage = {
   id: string; session_id: string; created_at: string; body: string; kind: string; author: string;
   parent_id: string | null; turn_id: string | null; task_id: string | null; ticket_id: string | null;
   control: string | null; filing_state: FilingState | null; filing_candidates: string | null; message_seq: number;
+  withdrawn_at?: string | null;
 };
 
 export function fileMessage(ctx: StoreContext, messageId: string, input: FileMessageInput = {}): {
@@ -543,6 +544,7 @@ export function refileMessage(ctx: StoreContext, messageId: string, input: Refil
   return ctx.commit(() => {
     const message = ctx.db.query<FilingMessage, [string]>('SELECT * FROM messages WHERE id = ?').get(messageId);
     if (!message) throw new HttpError(404, 'not_found', 'no such message');
+    if (message.withdrawn_at) throw new HttpError(422, 'withdrawn', 'you took this line back');
     if ('filings' in input && !input.userActionId.trim()) throw new HttpError(422, 'invalid_args', 'user action id required');
     const targets = [...new Map(('filings' in input ? input.filings : [input]).map((t) => [targetKey(t), t])).values()];
     for (const target of targets) validTarget(ctx, target);

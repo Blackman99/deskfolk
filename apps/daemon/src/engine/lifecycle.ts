@@ -404,12 +404,15 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
    */
   function reopenForUnheard(turn: Turn, live: Live): void {
     if (live.inbox.length === 0 || admission?.draining) return;
-    // What it had not read says what the rows now say: a line you changed meanwhile (ADR 0063).
-    for (const entry of live.inbox) {
-      if (entry.seq === undefined) continue;
+    // What it had not read says what the rows now say: a line you changed meanwhile (ADR 0063). A
+    // line read after all, or one you took back (ADR 0069), leaves nothing to open a turn for.
+    live.inbox = live.inbox.filter((entry) => {
+      if (entry.seq === undefined) return true;
       const row = store.getInboxItem(entry.seq);
+      if (row && row.state !== "queued" && row.state !== "held") return false;
       if (row && row.body_snapshot !== entry.item.body) entry.item = { ...entry.item, body: row.body_snapshot };
-    }
+      return true;
+    });
     // A line heard from another session was answered there; it opens nothing here.
     const pending = live.inbox.filter((entry) => !entry.elsewhere);
     live.inbox = [];

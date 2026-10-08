@@ -92,6 +92,8 @@ export function createHopLoop(deps: LifecycleDeps, endings: TurnEndings, closing
         drop();
         return;
       }
+      // Cut for a line of yours (直接插入, ADR 0069): the next hop opens by reading it.
+      if (result === "cut") continue;
       const next = await takeReply(turnId, live, current, target, turnOwner, sentBytes, result);
       if (next === "drop") drop();
       if (next !== "next") return;
@@ -230,6 +232,8 @@ export function createHopLoop(deps: LifecycleDeps, endings: TurnEndings, closing
     // What was said to this Bot since the last hop, read out now: the turn goes on with it.
     // What was said to this Bot since the last hop. The tool loop delivers at the end of a hop, so
     // this only reads what arrived with no hop between — before the first one, or while a hop waited.
+    // A line you asked to be read now (直接插入) is read here, so the ask is spent.
+    live.readNow = false;
     if (live.inbox.length > 0) {
       const heard = live.inbox.splice(0);
       const seqs = heard.flatMap((entry) => (entry.seq === undefined ? [] : [entry.seq]));
@@ -262,7 +266,10 @@ export function createHopLoop(deps: LifecycleDeps, endings: TurnEndings, closing
     return tools;
   }
 
-  /** One hop's model call, announcing tool calls as they stream. Null when a stop or redirect aborted it. */
+  /**
+   * One hop's model call, announcing tool calls as they stream. Null when a stop or redirect aborted
+   * it; `cut` when 直接插入 cut this one call short (ADR 0069), whose output is not kept.
+   */
   async function callModel(
     turnId: string,
     live: Live,
@@ -271,13 +278,16 @@ export function createHopLoop(deps: LifecycleDeps, endings: TurnEndings, closing
     limits: HopLimits,
     messages: ChatMessage[],
     tools: ChatTool[],
-  ): Promise<CompletionResult | null> {
+  ): Promise<CompletionResult | "cut" | null> {
     // Tokens no longer count as progress: a hop that streamed one sentence for 17 minutes looked
     // alive the whole time. The stream's own time limit bounds it instead, and the stale sweep
     // leaves the turn alone while it runs.
     live.streaming = true;
+    // 直接插入 cuts this one completion, not the turn: `signal` stays the turn's own.
+    const step = new AbortController();
+    live.step = step;
     try {
-      return await completions.complete({
+      const result = await completions.complete({
         baseUrl: target.baseUrl,
         apiKey: target.apiKey,
         apiFormat: target.apiFormat,
@@ -286,6 +296,7 @@ export function createHopLoop(deps: LifecycleDeps, endings: TurnEndings, closing
         messages,
         tools,
         signal: live.abort.signal,
+        cut: step.signal,
         maxTokens: limits.maxTokens,
         wallMs: limits.wallMs,
         // One Bot's conversation in one session stays on one account of a proxy, so each hop
@@ -313,12 +324,15 @@ export function createHopLoop(deps: LifecycleDeps, endings: TurnEndings, closing
           }
         },
       });
+      return step.signal.aborted && !live.abort.signal.aborted ? "cut" : result;
     } catch (error) {
       // Stop and redirect already wrote the turn's end state; anything else is a crash.
       if (live.abort.signal.aborted) return null;
+      if (step.signal.aborted) return "cut";
       throw error;
     } finally {
       live.streaming = false;
+      live.step = undefined;
     }
   }
 

@@ -91,6 +91,19 @@ export type Live = {
   emptyNudged?: boolean;
   /** A completion is in flight. Its own time limit bounds it, so the stale sweep leaves the turn alone meanwhile. */
   streaming?: boolean;
+  /**
+   * 直接插入 (ADR 0069): a line of yours waiting for this turn is to be read now. On the app's own
+   * loop `step` cuts the completion in flight, and `readNow` postpones the calls of the hop still
+   * waiting to run (one already running finishes); the next hop reads the line and clears it.
+   */
+  step?: AbortController;
+  readNow?: boolean;
+  /**
+   * Set by a Claude Agent segment while it runs: stops what Claude Code is doing — a command it
+   * runs included — and hands it the lines waiting for this turn, once the stop went through.
+   * False when there is nothing to stop or nothing to hand over.
+   */
+  sendNow?: () => boolean;
   /** A Claude Agent turn (ADR 0061): Claude Code runs it, not the hop loop; no model ladder applies. */
   agent?: boolean;
   /** The last hop failed and went again with a note (hop-limits.ts); failing again in a row ends the turn. */

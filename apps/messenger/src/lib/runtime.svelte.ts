@@ -734,6 +734,9 @@ export class MessengerRuntime {
   startEdit(sessionId: string, message: Message): void { this.messageEdits.startEdit(sessionId, message); }
   cancelEdit(sessionId: string): void { this.messageEdits.cancelEdit(sessionId); }
   saveEdit(sessionId: string): Promise<boolean> { return this.messageEdits.saveEdit(sessionId); }
+  withdrawLine(sessionId: string, message: Message): Promise<boolean> { return this.messageEdits.withdrawLine(sessionId, message); }
+  refillLine(sessionId: string, message: Message, opts?: { append?: boolean }): boolean { return this.messageEdits.refill(sessionId, message, opts); }
+  insertLine(sessionId: string, message: Message): Promise<boolean> { return this.messageEdits.insertLine(sessionId, message); }
   messageVersions(id: string, editedAt: string): Promise<MessageVersion[] | null> { return this.messageEdits.messageVersions(id, editedAt); }
   patchMessageAttribution(id: string, filings: PatchMessageAttributionRequest["filings"]): Promise<ApiError | null> { return this.messageEdits.patchMessageAttribution(id, filings); }
   newJobFromMessage(id: string): Promise<ApiError | null> { return this.messageEdits.newJobFromMessage(id); }

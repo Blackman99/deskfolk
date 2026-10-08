@@ -28,4 +28,4 @@ On 2026-10-06 you asked for two things: to change a line you had already sent, a
 
 - **iPhone 上没有编辑入口**：Safari 不出长按菜单（回复、复制也一样）。Android 和桌面有。 / No way to edit on an iPhone: Safari opens no long-press menu (reply and copy share the gap). Android and the desktop have it.
 - **一轮可能瞥见还没路由的那句**：它在转录窗里读到过旧字，之后读到新字时没有「你改了」提示。 / A turn may have glimpsed a line not yet routed in its transcript window, and later reads the new words with no note that they changed.
-- **上一条还在路上时仍不能发下一条**（手机经中继、或附件上传中）；你的话下面「Bot 读到没有」仍不画。 / Send still waits while the last line is on its way (over the relay, or uploading files); whether a Bot has read a line of yours is still not drawn under it.
+- **上一条还在路上时仍不能发下一条**（手机经中继、或附件上传中）；你的话下面「Bot 读到没有」仍不画（2026-10-08 起还没读到的话下面有一行，能撤回或直接插入：[ADR 0069](0069-take-back-or-insert-a-line-not-read-yet.md)）。 / Send still waits while the last line is on its way (over the relay, or uploading files); whether a Bot has read a line of yours is still not drawn under it (from 2026-10-08 a line not read yet has a row under it, and can be taken back or inserted now: [ADR 0069](0069-take-back-or-insert-a-line-not-read-yet.md)).

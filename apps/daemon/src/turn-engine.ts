@@ -147,6 +147,13 @@ export type TurnEngine = {
    * has the words you changed read as yours.
    */
   noteEdited: (result: EditMessageResult) => void;
+  /** A line of yours was taken back before any Bot read it (ADR 0069): what was read of it is forgotten. */
+  noteWithdrawn: (messageId: string) => void;
+  /**
+   * 直接插入 (ADR 0069): the working turns a line of yours waits in read it now, cutting short the
+   * step each is on. How many were cut; 0 when none of them works in this process any more.
+   */
+  insertNow: (messageId: string) => number;
   /**
    * One supervisor tick (ADR 0045), from the scheduler's: the store's repairs, pick-ups and
    * call-backs, then the segments it continues and the queue it dispatches. Off below the
@@ -746,6 +753,36 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     derivedChecks.noteLine(messageId);
   }
 
+  /**
+   * 直接插入 (ADR 0069). Each turn of this process the line is queued for, at work — not waiting on
+   * you, not a read-only answer — is cut short: a Claude Agent segment has Claude Code stop what it
+   * is doing, a command included, and hands it the lines; the app's own loop drops the completion
+   * in flight and postpones the calls still waiting, and a command already running there finishes.
+   * Either way it reads every line waiting for it, in order, not only this one.
+   */
+  function insertNow(messageId: string): number {
+    let cut = 0;
+    for (const turnId of store.turnsAwaitingLine(messageId)) {
+      const live = core.lives.get(turnId);
+      if (!live || live.abort.signal.aborted) continue;
+      let turn: Turn;
+      try {
+        turn = store.getTurn(turnId);
+      } catch {
+        continue;
+      }
+      if (turn.status !== "running" || turn.mode === "readonly") continue;
+      if (live.agent) {
+        if (live.sendNow?.()) cut += 1;
+        continue;
+      }
+      live.readNow = true;
+      live.step?.abort();
+      cut += 1;
+    }
+    return cut;
+  }
+
   const engine: TurnEngine = {
     async handleInboundMessage(arrived, opts) {
       let message = arrived;
@@ -919,6 +956,10 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     dispatchQueuedWork: lifecycle.dispatchQueued,
     noteFiled,
     noteEdited,
+    noteWithdrawn(messageId) {
+      reader.forget(messageId);
+    },
+    insertNow,
     pollJobs(at = new Date()) {
       if (options.admission?.draining) return;
       jobPoller.poll(at);

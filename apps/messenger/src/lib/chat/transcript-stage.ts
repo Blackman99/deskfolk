@@ -1,4 +1,5 @@
 import type { Annotation, Attachment, Bot, ControlOffer, Message, MessageVersion, SessionSummary, Turn } from "@real-bot/protocol";
+import type { QueuedLine } from "./queued-line.ts";
 import type { MessengerRuntime } from "../runtime.svelte.ts";
 import type { SessionView } from "../session-view.svelte.ts";
 import type { RenderMarkdownOptions } from "../markdown.ts";
@@ -69,6 +70,14 @@ export type TranscriptStage = {
   editable: (message: Message) => boolean;
   editingHere: (message: Message) => boolean;
   startEdit: (message: Message) => void;
+  /** A line of yours no Bot has read yet (ADR 0069): the row under it, taking it back, reading it now. */
+  queuedLine: (message: Message) => QueuedLine | null;
+  withdrawLine: (message: Message) => Promise<void>;
+  reEditLine: (message: Message) => void;
+  insertLine: (message: Message) => void;
+  lineBusy: (message: Message) => boolean;
+  insertTitle: (message: Message) => string;
+  lineNoteText: (message: Message) => string | null;
   toggleVersions: (message: Message) => Promise<void>;
   copyMessageBody: (id: string, text: string, event?: MouseEvent) => void;
   startQuoteReply: (message: Message) => void;

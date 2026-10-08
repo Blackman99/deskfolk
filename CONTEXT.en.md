@@ -295,7 +295,7 @@ A line of yours that only asks how things stand ("how's it going", "where is epi
 _Avoid_: waking the whole group for a "how's it going", interrupting a working Bot to ask for status, filing "how's it going" as a new job, having a model write the status, taking a line with an instruction for a status question
 
 **Turn**:
-One Bot's execution segment triggered by a message or wake: working, choosing attribution at a desk, or answering read-only under a hold; waiting for your approval or answer still belongs to that segment. Ending it does not mean the job is delivered or accepted. Lines you send in a row are taken in the order they came: the first opens the turn, the next are read at its next step. Details: [Behavior · Turn](docs/behavior.en.md#turn).
+One Bot's execution segment triggered by a message or wake: working, choosing attribution at a desk, or answering read-only under a hold; waiting for your approval or answer still belongs to that segment. Ending it does not mean the job is delivered or accepted. Lines you send in a row are taken in the order they came: the first opens the turn, the next are read at its next step; one not read yet can be taken back, or inserted to be read now ([ADR 0069](docs/adr/0069-take-back-or-insert-a-line-not-read-yet.md)). Details: [Behavior · Turn](docs/behavior.en.md#turn).
 _Avoid_: turn as ticket, a turn ending means acceptance, a peer line clones same-plan work, endless tool calls, a later line overtaking an earlier one as the trigger
 
 **Archive**:

@@ -512,9 +512,9 @@ export function hydrateMessage(ctx: StoreContext, row: MessageRow): Message {
     .query<Reaction, [string]>(`SELECT * FROM reactions WHERE message_id = ?`)
     .all(row.id);
   const { ask_spec, ask_answer, hidden_from_bots: _hiddenFromBots, bot_only: _botOnly, control,
-    filing_state, filing_candidates: _candidates, filing_reading: _reading, edited_at, taken_as, ...base } = row;
-  // Only a line you changed, or one the app took, says so: every other line reads as before.
-  const rest = { ...base, ...(edited_at ? { edited_at } : {}), ...(taken_as ? { taken_as } : {}),
+    filing_state, filing_candidates: _candidates, filing_reading: _reading, edited_at, taken_as, withdrawn_at, ...base } = row;
+  // Only a line you changed, took back, or one the app took, says so: every other line reads as before.
+  const rest = { ...base, ...(edited_at ? { edited_at } : {}), ...(taken_as ? { taken_as } : {}), ...(withdrawn_at ? { withdrawn_at } : {}),
     ...(filing_state ? { filing_state, filings: filingsOfMessage(ctx, row.id).map((filing) => ({
     task_id: filing.taskId, ticket_id: filing.ticketId, part_key: filing.partKey,
     filed_by: filing.filedBy, strength: filing.strength, is_primary: filing.isPrimary,

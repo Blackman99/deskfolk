@@ -71,6 +71,8 @@ add("POST", `${prompt}/(reset|keep-mine)`, { if_revision: nullable(string) }, ["
 add("POST", "prompt-revisions/:id/(undo|restore)", {});
 // Changing a line of yours after it went out, and what it said before (ADR 0063).
 add("PATCH", "messages/:id", { body: string }, ["body"]);
+// ADR 0069: take back a line no Bot has read yet, or have the working Bot read it now.
+add("POST", "messages/:id/(withdraw|insert)", {});
 get("messages/:id/versions");
 add("PUT", "sessions/:id/lead", { bot_id: nullable(id), confirmed: one(true) }, ["bot_id", "confirmed"]);
 const partKey: Check = v => typeof v === "string" && v.length > 0 && v.length <= 200;

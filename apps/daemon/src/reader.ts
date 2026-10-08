@@ -258,7 +258,7 @@ export function createReader(deps: ReaderDeps): Reader {
       }
       const recent = store.db
         .query<{ kind: Message["kind"]; author: string; body: string }, [string, string, string, number]>(
-          `SELECT kind, author, body FROM messages WHERE session_id = ? AND created_at <= ? AND id != ? AND kind IN ('user', 'bot')
+          `SELECT kind, author, body FROM messages WHERE session_id = ? AND created_at <= ? AND id != ? AND kind IN ('user', 'bot') AND hidden_from_bots = 0
            ORDER BY created_at DESC, rowid DESC LIMIT ?`,
         )
         .all(message.session_id, message.created_at, message.id, RECENT_LINES)

@@ -954,3 +954,36 @@ describe("the conversation a request belongs to", () => {
     expect(sent.map((headers) => headers.get("X-Session-ID"))).toEqual(["deskfolk-call.organizer", null, null]);
   });
 });
+
+describe("cutting one call short (直接插入, ADR 0069)", () => {
+  test("`cut` ends the stream in flight and is not tried again, while the turn's own signal stays whole", async () => {
+    const turn = new AbortController();
+    const cut = new AbortController();
+    let attempts = 0;
+    let seen: AbortSignal | null = null;
+    const client = createCompletionsClient({
+      fetch: async (_url, init) => {
+        attempts += 1;
+        const signal = (init as { signal?: AbortSignal }).signal!;
+        seen = signal;
+        // As a real fetch does: the body errors once the request's signal aborts.
+        const encoder = new TextEncoder();
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(encoder.encode(sseChunk({ id: "c", choices: [{ index: 0, delta: { content: "一半" }, finish_reason: null }] })));
+            signal.addEventListener("abort", () => controller.error(new DOMException("aborted", "AbortError")), { once: true });
+          },
+        });
+        return new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+      },
+    });
+    const pending = client.complete({ ...request("https://api.example.test/v1", turn.signal), cut: cut.signal });
+    await Bun.sleep(20);
+    cut.abort();
+    const result = await pending;
+    expect(result.ok).toBe(false);
+    expect(attempts).toBe(1);
+    expect(seen!.aborted).toBe(true);
+    expect(turn.signal.aborted).toBe(false);
+  });
+});

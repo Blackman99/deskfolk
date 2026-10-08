@@ -34,6 +34,7 @@
 	import MessageContextMenu from './MessageContextMenu.svelte';
 	import MessageTextSheet from './MessageTextSheet.svelte';
 	import { canEditMessage, lastEditableLine } from './message-edit.ts';
+	import { queuedLine as queuedLineOf, type QueuedLine } from './queued-line.ts';
 	import { extractAssociatedFiles } from './message-context-menu.ts';
 	import { handedOverPaths } from '../overlays/artifacts.ts';
 	import { messageDisplayBody } from './message-body.ts';
@@ -652,6 +653,57 @@
 		return true;
 	}
 
+	/** Where a line of yours waits while no Bot has read it (ADR 0069), for the row under it. */
+	function queuedLine(message: Message): QueuedLine | null {
+		return queuedLineOf(message, { queuedLineActions: snapshot.queuedLineActions, connected, lockedComposer, turnsHere: liveTurnsHere });
+	}
+
+	/** 撤回: the line taken back; its words wait in the box, ready to send again. */
+	async function withdrawLine(message: Message): Promise<void> {
+		if (!selected) return;
+		if (await runtime.withdrawLine(selected.id, message)) void tick().then(() => composer?.focus());
+	}
+
+	/** 重新编辑 on a line you took back: its words in the box again, after whatever is typed there. */
+	function reEditLine(message: Message): void {
+		if (!selected || lockedComposer) return;
+		runtime.refillLine(selected.id, message, { append: true });
+		void tick().then(() => composer?.focus());
+	}
+
+	/** 直接插入: the working Bot reads the line now. */
+	function insertLine(message: Message): void {
+		if (!selected) return;
+		void runtime.insertLine(selected.id, message);
+	}
+
+	function lineBusy(message: Message): boolean {
+		return view?.lineAction?.id === message.id;
+	}
+
+	/** What 直接插入 cuts depends on who runs the Bot: Claude Code stops a running command too. */
+	function insertTitle(message: Message): string {
+		const bot = message.delivery ? botsById.get(message.delivery.bot_id) : undefined;
+		return bot?.runner === 'claude_code' ? t.chat.insertNowAgentTitle : t.chat.insertNowLoopTitle;
+	}
+
+	function lineNoteText(message: Message): string | null {
+		const note = view?.lineNote;
+		if (!note || note.id !== message.id) return null;
+		return note.code === 'already_read' ? t.chat.lineAlreadyRead : note.code === 'not_now' ? t.chat.lineNotNow : t.chat.lineActionFailed;
+	}
+
+	/** What came of taking a line back or reading it now answers the press; it does not stay. */
+	$effect(() => {
+		const current = view;
+		const note = current?.lineNote;
+		if (!current || !note) return;
+		const timer = setTimeout(() => {
+			if (current.lineNote === note) current.lineNote = null;
+		}, 6000);
+		return () => clearTimeout(timer);
+	});
+
 	const editErrorText = $derived(
 		view?.editError === 'not_editable'
 			? t.chat.editNotEditable
@@ -845,6 +897,13 @@
 		editable,
 		editingHere,
 		startEdit,
+		queuedLine,
+		withdrawLine,
+		reEditLine,
+		insertLine,
+		lineBusy,
+		insertTitle,
+		lineNoteText,
 		toggleVersions,
 		copyMessageBody,
 		startQuoteReply,

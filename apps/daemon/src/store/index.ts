@@ -52,6 +52,7 @@ import * as mcp from "./mcp";
 import * as memories from "./memories";
 import * as messages from "./messages";
 import * as messageEdits from "./message-edits";
+import * as messageWithdraw from "./message-withdraw";
 import { migrateSchema } from "./migrate";
 import * as notifications from "./notifications";
 import * as organizerRuns from "./organizer-runs";
@@ -372,6 +373,8 @@ export class Store {
       // last one is read; and a line of yours can be changed after it went out (ADR 0063).
       linesInOrder: true as const,
       messageEdits: true as const,
+      // A line of yours no Bot has read yet can be taken back, or read by the working Bot now (ADR 0069).
+      queuedLineActions: true as const,
       notificationSummary: notifications.getNotificationSummary(this.ctx),
       notificationPolicy: notifications.getNotificationPolicy(this.ctx),
     };
@@ -546,6 +549,7 @@ export class Store {
   readonly adoptWaitingInbox = this.bind(inbox.adoptWaitingInbox);
   readonly deliverInboxItems = this.bind(inbox.deliverInboxItems);
   readonly queuedForTurn = this.bind(inbox.queuedForTurn);
+  readonly turnsAwaitingLine = this.bind(inbox.turnsAwaitingLine);
   readonly releaseTurnInbox = this.bind(inbox.releaseTurnInbox);
   readonly releaseEndedInbox = this.bind(inbox.releaseEndedInbox);
   readonly holdInboxItems = this.bind(inbox.holdInboxItems);
@@ -742,6 +746,7 @@ export class Store {
   readonly messageVersions = this.bind(messageEdits.messageVersions);
   readonly markLineTaken = this.bind(messageEdits.markLineTaken);
   readonly clearLineTaken = this.bind(messageEdits.clearLineTaken);
+  readonly withdrawMessage = this.bind(messageWithdraw.withdrawMessage);
   readonly resumePlan = this.bind(filing.resumePlan);
   readonly closeWorkItemIfIdle = this.bind(workItems.closeWorkItemIfIdle);
 

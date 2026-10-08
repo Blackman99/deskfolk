@@ -106,6 +106,98 @@ export class MessageEdits {
     }
   }
 
+  /**
+   * Takes back a line of yours no Bot has read yet (撤回, ADR 0069). It comes back marked so and
+   * shows at once; with nothing typed in the box, its words go back there — and the line it quoted
+   * with them — to send again as they are or changed. A Bot that read it meanwhile is said under it.
+   */
+  async withdrawLine(sessionId: string, message: Message): Promise<boolean> {
+    const view = this.host.viewFor(sessionId);
+    if (!view || view.lineAction) return false;
+    const api = this.host.api;
+    if (!api || this.host.connection !== "connected") {
+      view.lineNote = { id: message.id, code: "failed" };
+      return false;
+    }
+    view.lineAction = { id: message.id, kind: "withdraw" };
+    view.lineNote = null;
+    try {
+      const taken = await this.lineWrite(message.id, api, () => api.withdrawMessage(message.id));
+      if (!taken) return false;
+      this.refill(sessionId, message);
+      return true;
+    } catch (error) {
+      const failure = this.host.sheetFailure(error, api);
+      view.lineNote = { id: message.id, code: failure?.code === "already_read" ? "already_read" : "failed" };
+      return false;
+    } finally {
+      view.lineAction = null;
+    }
+  }
+
+  /**
+   * A line you took back, in the box again. Taking it back fills only an empty box, so nothing typed
+   * is lost; 重新编辑 (`append`) puts the words after what is there — once: words already in the box
+   * are not put there twice.
+   */
+  refill(sessionId: string, message: Message, opts: { append?: boolean } = {}): boolean {
+    const view = this.host.viewFor(sessionId);
+    if (!view) return false;
+    const typed = view.draft.trim();
+    if (typed && (!opts.append || typed.includes(message.body.trim()))) return false;
+    view.draft = typed ? `${view.draft.trimEnd()}\n${message.body}` : message.body;
+    if (!typed && message.parent_id) view.replyingToId = message.parent_id;
+    return true;
+  }
+
+  /**
+   * Has the working Bot read a line of yours now (直接插入, ADR 0069), cutting short the step it is
+   * on. When no step could be cut — it is wrapping up, or the turn ended — the line still waits
+   * for the next one, and that is said under it.
+   */
+  async insertLine(sessionId: string, message: Message): Promise<boolean> {
+    const view = this.host.viewFor(sessionId);
+    if (!view || view.lineAction) return false;
+    const api = this.host.api;
+    if (!api || this.host.connection !== "connected") {
+      view.lineNote = { id: message.id, code: "failed" };
+      return false;
+    }
+    view.lineAction = { id: message.id, kind: "insert" };
+    view.lineNote = null;
+    try {
+      let inserted = 0;
+      const line = await this.lineWrite(message.id, api, async () => {
+        const result = await api.insertMessageNow(message.id);
+        inserted = result.inserted;
+        return result.message;
+      });
+      if (!line) return false;
+      if (inserted === 0) view.lineNote = { id: message.id, code: "not_now" };
+      return inserted > 0;
+    } catch (error) {
+      this.host.sheetFailure(error, api);
+      view.lineNote = { id: message.id, code: "failed" };
+      return false;
+    } finally {
+      view.lineAction = null;
+    }
+  }
+
+  /** A write about one line whose answer is that line: shown unless the stream already said newer. */
+  private async lineWrite(id: string, api: MessengerApi, write: () => Promise<Message>): Promise<Message | null> {
+    const revision = this.attributionRevision.get(id) ?? 0;
+    const snapshotRevision = this.messageSnapshotRevision;
+    const invalidationSeq = this.messageInvalidationSeq;
+    const message = await write();
+    if (this.host.api !== api) return null;
+    if ((this.attributionRevision.get(id) ?? 0) === revision && this.messageSnapshotRevision === snapshotRevision &&
+        (this.messageSessionInvalidated.get(message.session_id) ?? 0) <= invalidationSeq) {
+      this.host.snapshot = applyEvent(this.host.snapshot, { ...message, event: "message.upsert", occurred_at: new Date().toISOString() });
+    }
+    return message;
+  }
+
   private readonly versionsRead = new Map<string, { editedAt: string; versions: MessageVersion[] }>();
 
   /** What a line you changed said before, oldest first: read once per change of it, then kept. */

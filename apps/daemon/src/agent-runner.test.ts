@@ -36,6 +36,10 @@ type Script = (ctx: {
   first: SDKUserMessage;
   next: () => Promise<SDKUserMessage | null>;
   useTool: (name: string, input: Record<string, unknown>, run?: () => void) => Promise<ToolUse>;
+  /** A call Claude Code lets through and starts, and never reports back on: one an interrupt cuts. */
+  begin: (name: string, input: Record<string, unknown>) => Promise<ToolUse & { id: string }>;
+  /** Settles once the session is interrupted, as Esc does in Claude Code. */
+  interrupted: () => Promise<void>;
   deskfolk: AgentToolBridge;
   options: Options;
   root: string;
@@ -71,6 +75,14 @@ function scripted(script: Script, seen: { options?: Options; firstText?: string;
       await runHook("PostToolBatch", { tool_calls: [{ tool_name: name, tool_input: input, tool_use_id: id }] }, id);
       return { allowed: true };
     };
+    const begin = async (name: string, input: Record<string, unknown>): Promise<ToolUse & { id: string }> => {
+      const id = `toolu_${++toolSeq}`;
+      const pre = await runHook("PreToolUse", { tool_name: name, tool_input: input, tool_use_id: id }, id);
+      const decision = pre.hookSpecificOutput?.permissionDecision ?? "ask";
+      return { id, allowed: decision === "allow", reason: pre.hookSpecificOutput?.permissionDecisionReason };
+    };
+    let interrupt!: () => void;
+    const interruption = new Promise<void>((resolve) => { interrupt = resolve; });
     let closed = false;
     const generator = (async function* () {
       const first = await iterator.next();
@@ -84,6 +96,8 @@ function scripted(script: Script, seen: { options?: Options; firstText?: string;
           return item.done ? null : item.value;
         },
         useTool,
+        begin,
+        interrupted: () => interruption,
         deskfolk,
         options,
         root,
@@ -95,7 +109,10 @@ function scripted(script: Script, seen: { options?: Options; firstText?: string;
       }
     })();
     const session = generator as unknown as AgentSession;
-    session.interrupt = async () => undefined;
+    session.interrupt = async () => {
+      interrupt();
+      return undefined;
+    };
     session.close = () => {
       closed = true;
       seen.closed = true;
@@ -530,4 +547,120 @@ test("at level 8, a reply citing a file a Claude Agent made in its own ticket's 
   expect(replies.map((message) => message.attachments.map((file) => file.workspace_relpath))).toEqual([[`${ticket.dir}/board.md`]]);
   expect(h.store.db.query("SELECT origin FROM submissions").all()).toEqual([{ origin: "implicit" }]);
   expect(h.store.listWorkEvents({ kind: "end.rejected" })).toEqual([]);
+});
+
+/** The result Claude Code ends a step with when an interrupt cut it: no words, and no answer to anything. */
+function cutResult(): SDKMessage {
+  return {
+    type: "result", subtype: "error_during_execution", is_error: true, num_turns: 1, duration_ms: 1, duration_api_ms: 1,
+    total_cost_usd: 0, usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+    modelUsage: {}, permission_denials: [], errors: ["[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=tool_use"],
+    uuid: crypto.randomUUID(), session_id: "s", stop_reason: "tool_use", terminal_reason: "aborted_tools",
+  } as unknown as SDKMessage;
+}
+
+test("直接插入: the command running is cut, the line goes in at once, and the step's own end is no reply and no failure", async () => {
+  // 2026-10-08: 视频导演 (Claude Code) heard lines sent during a long render only at steps 39, 45 and 61.
+  let running!: () => void;
+  const started = new Promise<void>((resolve) => { running = resolve; });
+  let heard: SDKUserMessage | null = null;
+  const h = await harness(async function* ({ begin, interrupted, next }) {
+    const render = await begin("Bash", { command: "sleep 600 && echo rendered" });
+    expect(render.allowed).toBe(true);
+    running();
+    await interrupted();
+    yield cutResult();
+    heard = await next();
+    yield assistant("好，换真模型重做。");
+    yield { ...(result("好，换真模型重做。") as object), user_message_uuid: heard?.uuid } as unknown as SDKMessage;
+  });
+  const done = h.post("把这段渲染出来");
+  await started;
+  const line = h.store.insertMessage({ sessionId: h.session, kind: "user", author: "user", body: "模型要用真一点的" });
+  await h.engine.handleInboundMessage(line, { fromUser: true });
+  expect(h.store.getMessage(line.id).delivery?.state).toBe("queued");
+
+  expect(h.engine.insertNow(line.id)).toBe(1);
+  await done;
+
+  const text = textOf(heard);
+  expect(text).toContain("模型要用真一点的");
+  expect(text).toContain("用户要你马上读");
+  expect(heard!.uuid).toBeTruthy();
+  // The step's own end posted nothing and failed nothing; the answer to the line is the reply.
+  expect(h.lines("bot")).toEqual(["好，换真模型重做。"]);
+  const turn = h.store.db.query<{ status: string }, []>(`SELECT status FROM turns ORDER BY created_at LIMIT 1`).get();
+  expect(turn?.status).toBe("completed");
+  expect(h.store.getMessage(line.id).delivery?.state).not.toBe("queued");
+  // The cut command is closed as stopped: its frame exits, and the turn's card says so.
+  const tools = h.events.filter((event) => event.event === "turn.tool") as Array<{ name?: string; phase?: string; ok?: boolean }>;
+  expect(tools.map((event) => `${event.name}:${event.phase}:${event.ok ?? ""}`)).toEqual(["shell:started:", "shell:exited:false"]);
+  const run = h.store.db.query<{ command: string; ok: number; error: string | null; output: string | null }, []>(`SELECT command, ok, error, output FROM turn_runs`).get();
+  expect(run).toMatchObject({ command: "sleep 600 && echo rendered", ok: 0 });
+  expect(run!.error).toContain("停下");
+  expect(run!.output).toContain("停下");
+  // Read at once, it opens no turn of its own once this one ends.
+  await Bun.sleep(100);
+  const turns = h.store.db.query<{ trigger_message_id: string }, []>(`SELECT trigger_message_id FROM turns`).all();
+  expect(turns.map((row) => row.trigger_message_id)).not.toContain(line.id);
+});
+
+
+test("a line heard after a batch of calls opens no turn of its own once the segment ends", async () => {
+  // 2026-10-08: 「模型还是要用真一点的」 was read at step 61 and adopted, and when the segment ended
+  // at 12:15 one more turn opened on it, which found nothing new. Read lines stay read.
+  let atWork!: () => void;
+  const working = new Promise<void>((resolve) => { atWork = resolve; });
+  let queued!: () => void;
+  const lineIn = new Promise<void>((resolve) => { queued = resolve; });
+  const h = await harness(async function* ({ useTool }) {
+    atWork();
+    await lineIn;
+    const used = await useTool("Bash", { command: "true" });
+    expect(used.allowed).toBe(true);
+    yield result("改好了");
+  });
+  const done = h.post("先做第一版");
+  await working;
+  const line = h.store.insertMessage({ sessionId: h.session, kind: "user", author: "user", body: "第三镜换成夜景" });
+  await h.engine.handleInboundMessage(line, { fromUser: true });
+  expect(h.store.getMessage(line.id).delivery?.state).toBe("queued");
+  queued();
+  await done;
+  expect(h.store.getMessage(line.id).delivery?.state).not.toBe("queued");
+  await Bun.sleep(100);
+  const turns = h.store.db.query<{ trigger_message_id: string }, []>(`SELECT trigger_message_id FROM turns`).all();
+  expect(turns).toHaveLength(1);
+  expect(turns.map((row) => row.trigger_message_id)).not.toContain(line.id);
+});
+
+test("直接插入 as a stop lands: the turn ends with the stop, and the line is held for the lift", async () => {
+  let running!: () => void;
+  const started = new Promise<void>((resolve) => { running = resolve; });
+  let heard: SDKUserMessage | null = null;
+  const h = await harness(async function* ({ begin, interrupted, next }) {
+    await begin("Bash", { command: "sleep 600" });
+    running();
+    await interrupted();
+    yield cutResult();
+    heard = await next();
+  });
+  const done = h.post("把这段渲染出来");
+  await started;
+  // Stops come with a later engine level: raised once the turn is at work, so it opened as the others here.
+  h.store.raiseEngineLevel(null);
+  const turn = h.store.db.query<{ id: string }, []>(`SELECT id FROM turns WHERE status = 'running'`).get()!;
+  const line = h.store.insertMessage({ sessionId: h.session, kind: "user", author: "user", body: "模型要用真一点的" });
+  h.store.queueInboxItem({ botId: h.bot.bot.id, sessionId: h.session, turnId: turn.id, taskId: null, ticketId: null, messageId: line.id,
+    author: "user", body: line.body, source: "user", kind: "change", priority: 1 });
+  // Pressed, and a stop on the Bot made in the same moment, before the interrupt went through.
+  expect(h.engine.insertNow(line.id)).toBe(1);
+  h.engine.createHold({ scope: "bot", scopeId: h.bot.bot.id, action: "pause" });
+  for (let i = 0; i < 200 && h.store.db.query(`SELECT 1 FROM turns WHERE status = 'running'`).get(); i++) await Bun.sleep(10);
+  void done;
+  // The stopped turn's end puts what it never read to the holds, once it has unwound.
+  for (let i = 0; i < 100 && h.store.getMessage(line.id).delivery?.state === "queued"; i++) await Bun.sleep(10);
+  // Nothing went in after the stop: the line waits, held, for the lift.
+  expect(heard).toBeNull();
+  expect(h.store.getMessage(line.id).delivery?.state).toBe("held");
 });

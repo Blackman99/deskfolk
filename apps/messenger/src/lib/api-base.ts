@@ -16,6 +16,7 @@ import type {
   CredentialOperation,
   DelegationView,
   EditMessageRequest,
+  InsertMessageResponse,
   GroupLeadState,
   Hold,
   Lesson,
@@ -574,6 +575,16 @@ export abstract class ApiBase<Row extends PendingRow> {
 
   editMessage(id: string, body: string): Promise<Message> {
     return this.patch<Message>(`/v1/messages/${encodeURIComponent(id)}`, { body } satisfies EditMessageRequest);
+  }
+
+  /** Takes back a line of yours no Bot has read yet (ADR 0069): it comes back marked so. */
+  withdrawMessage(id: string): Promise<Message> {
+    return this.post<Message>(`/v1/messages/${encodeURIComponent(id)}/withdraw`, {});
+  }
+
+  /** Has the working Bot read a line of yours now, cutting short the step it is on (ADR 0069). */
+  insertMessageNow(id: string): Promise<InsertMessageResponse> {
+    return this.post<InsertMessageResponse>(`/v1/messages/${encodeURIComponent(id)}/insert`, {});
   }
 
   messageVersions(id: string): Promise<MessageVersionsResponse> {

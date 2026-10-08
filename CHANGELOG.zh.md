@@ -11,6 +11,14 @@
 - 这台电脑上登录了不止一个 Claude 账号时——每个账号一个 Claude Code 配置目录，就是 `CLAUDE_CONFIG_DIR` 分开它们的那种——在设置 › Agent 的 Claude Agent 卡片「其他账号」里加上其他账号的目录，再在 Bot 面板里、Claude 模型和思考强度旁边，给这个 Bot 选它花哪个账号。每个账号都写着 Claude Code 报的套餐和邮箱，没登录的写着登录它的命令（`CLAUDE_CONFIG_DIR=~/.claude-b claude auth login`）；登录照旧在终端里做，Deskfolk 只记目录。没选的 Bot 照旧用应用自己的环境里 Claude Code 找到的那个账号。只有你能把 Bot 换到别的账号，手机上能在列出的账号之间换；有 Bot 在用的账号要先把 Bot 换走才能从列表里移除，往列表里加只能在电脑上。
 - 这个 Bot 的每一轮、开跑前的登录检查和用量都用那个目录跑 Claude Code——目录是 `~/.claude` 本身时则去掉 `CLAUDE_CONFIG_DIR`：把它写明会让 Claude Code 去找另一条钥匙串记录，读成没登录。Bot 的账号没登录时，这一轮开跑前就停下，写明是哪个账号。Bot 分在两个账号上时，侧边栏的用量条每个账号一行，标套餐名（套餐相同时标邮箱 @ 前面那段），两个窗口各剩多少并排；点开后和卡片里每个账号一块：块头是同一个简称，后面是邮箱，下面每个窗口两行，所有块下面一行说几点查的、一个刷新；菜单栏里每个账号一组、组与组之间有分隔线。两条其实是同一个目录的只问一次。列表里的每个目录和 `~/.claude` 一样，Bot 的文件工具和命令都碰不到。接口：`PUT /v1/runtime/claude-code/accounts` 设列表（只在这台 Mac 上），`GET /v1/runtime/claude-code` 和 `GET /v1/claude-usage` 多了 `accounts`（[ADR 0061](docs/adr/0061-claude-agent-runner.md) 账号补记）。
 
+### 还没读到的话：撤回和直接插入
+
+- Bot 干活时你发的话还没被读到前，气泡下面有一行说它在哪等：「排队中 · 它下一步读到」「排队中 · 轮到时读到」，或「叫停中 · 解除后读到」；读到了这一行就没了。
+- 「撤回」：这句不再送给任何 Bot，也不进它们读的转录；由它记下的原话和要求一起撤掉。转录里留一行「你撤回了这句话 · 重新编辑」，字放回输入框，改了再发。已经有 Bot 读到的撤不回，会说一声，可以改它。
+- 「直接插入」：不等下一步，让 Bot 马上读。Claude Code 跑的 Bot 和在 Claude Code 里按 Esc 一样被打断，正在跑的命令会停掉，然后马上读到这句（连同排在它前面的）；应用自己跑的 Bot 切掉正在进行的那次模型调用，已经在跑的命令跑完。
+- 修了一个毛病：Claude Code 跑的 Bot 在一批调用后读到的话，这一段结束时还会为它再开一轮，什么新东西都没有。
+- 手机上也有。接口是 `POST /v1/messages/:id/withdraw` 和 `POST /v1/messages/:id/insert`。[ADR 0069](docs/adr/0069-take-back-or-insert-a-line-not-read-yet.md)
+
 ### 侧边栏和菜单栏里看 Claude 用量
 
 - 有 Bot 用 Claude Agent 跑之后，侧边栏底部会在 Claude 标志后面显示你 Claude 套餐的用量：5 小时和 7 天窗口各还剩多少，剩四分之一起标黄、剩一成起标红。点开能看每个窗口——包括某个模型自己的周额度，比如 Fable——剩多少（条按剩的画）、多久后重置，还能刷新；手机上也有。设置 › Agent 的 Claude Agent 卡片里列着同样的窗口；菜单栏图标的菜单顶上也有：账号名前面是 Claude 标志，每个窗口一行，前面一个按剩余填满的小圆环，颜色同上（点一下打开窗口）。

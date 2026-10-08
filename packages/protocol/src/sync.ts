@@ -83,6 +83,11 @@ export type RuntimeSnapshot = EventCursor & {
   linesInOrder?: true;
   /** Present from a daemon that lets you change a line of yours after sending it (ADR 0063). */
   messageEdits?: true;
+  /**
+   * Present from a daemon that lets you take back a line of yours still waiting for a Bot to read
+   * it, or have the working Bot read it now (ADR 0069).
+   */
+  queuedLineActions?: true;
 };
 
 export type SessionSnapshot = EventCursor & {

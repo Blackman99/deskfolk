@@ -317,7 +317,9 @@ CREATE TABLE IF NOT EXISTS messages (
   edited_at TEXT,
   -- A line of yours the app carried out itself ('app': a stop, a go on, a status question it
   -- answered) or took as your answer to a Bot's question ('answer'). Neither can be edited.
-  taken_as TEXT CHECK (taken_as IS NULL OR taken_as IN ('app', 'answer'))
+  taken_as TEXT CHECK (taken_as IS NULL OR taken_as IN ('app', 'answer')),
+  -- When you took this line back, before any Bot read it (ADR 0069); null on every other line.
+  withdrawn_at TEXT
 );
 
 -- What a line of yours said before each change you made to it (ADR 0063): the transcript's own
@@ -752,7 +754,8 @@ CREATE TABLE IF NOT EXISTS inbox_items (
   priority INTEGER NOT NULL,
   -- 0: read only when the Bot next wakes, never waking it; nothing writes 0 yet.
   wakes INTEGER NOT NULL DEFAULT 1,
-  state TEXT NOT NULL CHECK (state IN ('queued', 'held', 'delivered', 'adopted', 'answered', 'declined', 'deferred', 'unacked', 'merged', 'superseded')),
+  -- 'withdrawn': you took the line back before it was read (ADR 0069).
+  state TEXT NOT NULL CHECK (state IN ('queued', 'held', 'delivered', 'adopted', 'answered', 'declined', 'deferred', 'unacked', 'merged', 'superseded', 'withdrawn')),
   possible_control INTEGER NOT NULL DEFAULT 0,
   delivered_turn_id TEXT,
   delivered_hop INTEGER,

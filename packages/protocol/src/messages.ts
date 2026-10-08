@@ -98,6 +98,12 @@ export type Message = {
    * (`answer`). Neither can be edited: the stop was made, the question was answered once.
    */
   taken_as?: MessageTakenAs | null;
+  /**
+   * On a line of yours you took back while it still waited for a Bot to read it (ADR 0069): when.
+   * No Bot reads it any more; the transcript shows that you took it back. Absent on every other
+   * line, and from a daemon that cannot take a line back.
+   */
+  withdrawn_at?: string | null;
 };
 
 /** What became of a line of yours that never reached a Bot as a line (`Message.taken_as`). */
@@ -105,6 +111,13 @@ export type MessageTakenAs = "app" | "answer";
 
 /** `PATCH /v1/messages/:id`: the new words of a line of yours (ADR 0063). */
 export type EditMessageRequest = { body: string };
+
+/**
+ * `POST /v1/messages/:id/insert` (ADR 0069): a line of yours waiting for the working Bot's next step
+ * is read now — the step it is on is cut short. `inserted` is how many working turns were cut for
+ * it; 0 when none was working on it any more (it is read when its turn comes, or already was).
+ */
+export type InsertMessageResponse = { message: Message; inserted: number };
 
 /** One earlier wording of a line you changed, and when it was written. */
 export type MessageVersion = { body: string; created_at: string };
@@ -117,6 +130,7 @@ export type MessageVersionsResponse = { versions: MessageVersion[] };
  * stop of yours covers it; it waits for the lift. `delivered`: the turn read it, at `hop`. Then what
  * the Bot said it did with it — `adopted`, `answered`, `declined`, `deferred` — or `unacked` when
  * the turn ended without saying. `merged` and `superseded` are the app's: taken up some other way.
+ * `withdrawn`: you took the line back before any Bot read it (ADR 0069).
  */
 export type InboxState =
   | "queued"
@@ -128,7 +142,8 @@ export type InboxState =
   | "deferred"
   | "unacked"
   | "merged"
-  | "superseded";
+  | "superseded"
+  | "withdrawn";
 
 /** What a Bot says it did with a line of yours, in `end_turn`'s `inbox`. */
 export type InboxDisposition = "adopted" | "answered" | "declined" | "deferred";

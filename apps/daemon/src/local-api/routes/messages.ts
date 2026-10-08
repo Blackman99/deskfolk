@@ -225,6 +225,27 @@ export function messageRoutes(ctx: RouteCtx): Response | Promise<Response> | nul
     }
     return jsonResponse(result.message, 200, null);
   }
+  // Take back a line of yours no Bot has read yet (撤回, ADR 0069): every copy of it waiting in an
+  // inbox ends, and it stays in the transcript as taken back.
+  params = matchPath(path, "/v1/messages/:id/withdraw");
+  if (params && method === "POST") {
+    const result = store.withdrawMessage(params.id!, { userActionId: scope?.requestId ?? ulid() });
+    if (result.withdrawn > 0) {
+      store.afterCommit(() => engine.noteWithdrawn(result.message.id));
+      publish({ event: "message.upsert", occurred_at: occurred(), ...result.message });
+    }
+    return jsonResponse(result.message, 200, null);
+  }
+  // Have the working Bot read a line of yours now (直接插入, ADR 0069) instead of at its next step.
+  params = matchPath(path, "/v1/messages/:id/insert");
+  if (params && method === "POST") {
+    const line = store.getMessage(params.id!);
+    if (line.kind !== "user" || line.author !== USER_MEMBER) throw new HttpError(422, "invalid_args", "only a line of yours is read now");
+    if (line.withdrawn_at) throw new HttpError(422, "withdrawn", "you took this line back");
+    if (line.delivery?.state === "held") throw new HttpError(409, "held", "a stop holds this line until it lifts");
+    const inserted = engine.insertNow(line.id);
+    return jsonResponse({ message: store.getMessage(line.id), inserted }, 200, null);
+  }
   // What a line you changed said before, oldest first.
   params = matchPath(path, "/v1/messages/:id/versions");
   if (params && method === "GET") return jsonResponse({ versions: store.messageVersions(params.id!) }, 200, null);

@@ -463,6 +463,10 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
       view.editDraft = "";
     },
     saveEdit: record("saveEdit", true),
+    // A line of yours no Bot has read yet (ADR 0069): taken back, read now, or its words back in the box.
+    withdrawLine: record("withdrawLine", true),
+    insertLine: record("insertLine", true),
+    refillLine: record("refillLine", true),
     messageVersions: record("messageVersions", []),
     newJobFromMessage: record("newJobFromMessage"),
     controlAction: record("controlAction"),

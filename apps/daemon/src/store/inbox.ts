@@ -247,6 +247,16 @@ export function releaseTurnInbox(ctx: StoreContext, turnId: string, now: string 
  * Boot: the turns the last run left live are over, so the same as {@link releaseTurnInbox} for each
  * of them — and for any turn that ended without it, a cleared one included.
  */
+/** The turns a line of yours waits in, unread: what 直接插入 cuts short (ADR 0069). */
+export function turnsAwaitingLine(ctx: StoreContext, messageId: string): string[] {
+  return ctx.db
+    .query<{ turn_id: string }, [string]>(
+      `SELECT DISTINCT turn_id FROM inbox_items WHERE message_id = ? AND state = 'queued' AND turn_id IS NOT NULL ORDER BY turn_id`,
+    )
+    .all(messageId)
+    .map((row) => row.turn_id);
+}
+
 /** What is queued for a live turn, oldest first: the copy `Live.inbox` is built from. */
 export function queuedForTurn(ctx: StoreContext, turnId: string): InboxItem[] {
   return ctx.db.query<InboxItem, [string]>(`SELECT * FROM inbox_items WHERE turn_id = ? AND state = 'queued' ORDER BY seq`).all(turnId);

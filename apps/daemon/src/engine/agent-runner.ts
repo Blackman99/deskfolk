@@ -411,15 +411,27 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
       stderr: "",
       model: bot.agent_model as string | null,
       hopIds: new Set<string>(),
+      /** Something went in that Claude Code has not answered with a result yet: an interrupt now cuts a step. */
+      busy: false,
+      /**
+       * 直接插入 (ADR 0069): the lines went in under `uuid` after an interrupt. Results until the one
+       * answering them are the cut step's — the one step, when no result carries the uuid.
+       */
+      cut: null as { uuid: string; expect: number } | null,
     };
     /** What the effect gate and the approvals decided per tool call, read back when Claude Code asks. */
-    const pending = new Map<string, { approval?: { kind_key: string; target: string; summary: string }; appName: string; effect: boolean; snapshot?: Map<string, number> | null; begun?: boolean; startedAt: number }>();
+    const pending = new Map<string, { approval?: { kind_key: string; target: string; summary: string }; appName: string; effect: boolean; snapshot?: Map<string, number> | null; begun?: boolean; startedAt: number; command?: string }>();
     let session: AgentSession | null = null;
 
     const end = () => {
       if (state.ended) return;
       state.ended = true;
       input.close();
+    };
+    /** Everything Claude Code is given goes in here: it is busy until a result answers it. */
+    const send = (message: SDKUserMessage) => {
+      state.busy = true;
+      input.push(message);
     };
     /** The turn's row as it is now, or the one in hand when it is gone (whatever ended it says so). */
     const refreshed = (turn: Turn): Turn => {
@@ -511,6 +523,8 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
       }
       const snapshot = raw.tool_name === "Bash" && live.workDir ? snapshotWorkDir(root, live.workDir) : null;
       pending.set(id, { appName: decision.appName, effect: decision.effect, snapshot, startedAt: Date.now(),
+        ...(raw.tool_name === "Bash" && typeof (raw.tool_input as { command?: unknown } | undefined)?.command === "string"
+          ? { command: (raw.tool_input as { command: string }).command } : {}),
         ...(decision.kind === "ask" ? { approval: decision.approval } : {}) });
       if (decision.kind === "ask") {
         return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "ask", permissionDecisionReason: decision.approval.summary, ...(context ? { additionalContext: context } : {}) } };
@@ -603,7 +617,7 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
     };
 
     /** Lines said to this Bot while it works, heard after the batch of calls that was running. */
-    const heard = (): string | null => {
+    const heard = (opts: { cut?: boolean } = {}): string | null => {
       if (current.mode === "readonly") return null;
       const queued = store.queuedForTurn(turnId);
       if (queued.length === 0) return null;
@@ -618,12 +632,81 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
       });
       const { delivered } = store.deliverInboxItems(items.map((entry) => entry.seq), turnId, live.hops);
       const kept = new Set(delivered.map((row) => row.seq));
+      // Read now, so not left for the turn's end to open another turn on (`reopenForUnheard`): every
+      // line heard mid-segment used to open one more, which found nothing new (2026-10-08).
+      live.inbox = live.inbox.filter((entry) => entry.seq === undefined || !kept.has(entry.seq));
       const labels = new Map(delivered.map((row) => [row.seq, inboxLabel(row)]));
       const shown = items.filter((entry) => kept.has(entry.seq));
       if (shown.length === 0) return null;
-      const note = heardNote(locale, shown.map((entry) => ({ ...entry.item, label: labels.get(entry.seq) })));
+      const note = heardNote(locale, shown.map((entry) => ({ ...entry.item, label: labels.get(entry.seq) })), opts);
       live.loop.push({ role: "user", content: note });
       return note;
+    };
+
+    /**
+     * Calls an interrupt cut short: Claude Code reports nothing more of them — no PostToolUse — so
+     * they are closed here, as a stop closes what it cuts: the effect's outcome unknown, the command
+     * on the turn's card as stopped, the frame exited.
+     */
+    const closeCutTools = () => {
+      for (const [id, entry] of pending) {
+        pending.delete(id);
+        if (entry.begun) {
+          try {
+            store.finishToolExecution({ turnId, toolCallId: id, outcome: "unknown", errorCode: "cut_for_line" });
+          } catch {
+            // the ledger row may already be closed by a stop
+          }
+        }
+        const stopped = en ? "stopped to read a line of the user's" : "为读用户的一句话停下了";
+        if (entry.command) {
+          try {
+            // The card shows a run's output, not its error: the reason it stopped is said there.
+            store.recordTurnRun({ turnId, tool: "shell", command: entry.command, exitCode: null, ok: false, error: stopped,
+              cwd: null, toolCallId: id, durationMs: Date.now() - entry.startedAt, output: `(${stopped})` });
+          } catch {
+            // the card is a record, not the work
+          }
+        }
+        if (live.runningTool?.id === id) live.runningTool = null;
+        publish({ event: "turn.tool", occurred_at: occurred(), turn_id: turnId, id, name: entry.appName, phase: "exited",
+          duration_ms: Date.now() - entry.startedAt, exit_code: null, ok: false });
+        live.loop.push({ role: "tool", tool_call_id: id, content: `(${stopped})` });
+      }
+    };
+
+    /**
+     * 直接插入 (ADR 0069): what Claude Code is doing stops — a command it runs is cut, as Esc does in
+     * Claude Code — and the lines waiting for this turn go in as what it reads next, under a uuid the
+     * result answering them carries. The step it was on ends in a result of its own, which is no
+     * reply: `cut` consumes it. Delivered only once the interrupt went through, so a failed one
+     * leaves the lines waiting as they were.
+     */
+    live.sendNow = () => {
+      // Idle, Claude Code has nothing to cut: the app is settling its reply, and the lines go to
+      // whatever comes next — the step a bounce opens, or the next turn.
+      const running = session;
+      if (state.ended || !running || !state.busy || current.mode === "readonly" || state.cut || !active(turnId, live)) return false;
+      if (store.queuedForTurn(turnId).length === 0) return false;
+      const uuid = crypto.randomUUID();
+      state.cut = { uuid, expect: 1 };
+      void (async () => {
+        try {
+          await running.interrupt();
+        } catch {
+          // Not stopped: the lines stay queued for the end of the batch, as before.
+          state.cut = null;
+          return;
+        }
+        if (state.ended || !active(turnId, live)) return;
+        closeCutTools();
+        // Taken back meanwhile, the lines leave nothing to read: it goes on with what it was doing.
+        const note = heard({ cut: true }) ?? (en
+          ? "(App note) The step you were on was stopped, and nothing is waiting for you after all. Carry on; run again whatever was cut short if you still need it."
+          : "（应用提示）刚才那一步被停下了，但没有要你读的话了。接着做；被打断没跑完的，需要的话重跑。");
+        send({ ...userMessage(note), uuid });
+      })();
+      return true;
     };
 
     const postToolBatch = async (raw: HookInput): Promise<HookJSONOutput> => {
@@ -669,9 +752,9 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
         content.push({ type: "image", source: { type: "base64", media_type: part.mediaType as "image/png", data: part.data } });
       }
     }
-    input.push(userMessage(content));
+    send(userMessage(content));
     const early = heard();
-    if (early) input.push(userMessage(early));
+    if (early) send(userMessage(early));
 
     const skills = [
       ...store.listEnabledSkills(current.bot_id).map((skill) => ({ name: skill.name, description: skill.description, uses: skill.uses })),
@@ -826,8 +909,24 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
         }
         case "result": {
           state.lastResult = message;
+          state.busy = false;
           recordAgentSpend(turnId, current, message, state);
           if (state.ended) return;
+          if (state.cut) {
+            const stamped = message as { user_message_uuid?: string; user_message_uuids?: string[] };
+            const uuids = [stamped.user_message_uuid, ...(stamped.user_message_uuids ?? [])].filter(Boolean);
+            const answers = uuids.includes(state.cut.uuid) || (uuids.length === 0 && state.cut.expect === 0);
+            // Any later result, stamped or not, has the lines: the cut step's end came first.
+            if (!answers) {
+              // The step 直接插入 cut short (or one that ended just before the cut): no reply, no failure.
+              // What it said stays in the loop; the result answering your lines is the one that counts.
+              if (state.cut.expect > 0) state.cut.expect -= 1;
+              const said = message.subtype === "success" ? message.result ?? "" : "";
+              if (said.trim()) live.loop.push({ role: "assistant", content: said });
+              return;
+            }
+            state.cut = null;
+          }
           if ((message.subtype !== "success" || message.is_error) && !state.failure && state.limit && !state.limit.carried) {
             state.failure = { kind: "agent_limit", detail: state.limit.reset };
           }
@@ -851,7 +950,7 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
             state.emptyNudged = true;
             const note = emptyReplyNote(locale);
             live.loop.push({ role: "user", content: note });
-            input.push(userMessage(note));
+            send(userMessage(note));
             return;
           }
           // The row as it is now: a write or a work_on since the session started may have put it on a ticket.
@@ -859,7 +958,7 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
           const settled = await deps.settleClosingReply(turnId, live, current, reply);
           if (settled.kind === "bounce") {
             live.loop.push({ role: "user", content: settled.note });
-            input.push(userMessage(settled.note));
+            send(userMessage(settled.note));
             return;
           }
           // Ended (posted and completed) or stopped meanwhile: either way the session is done.

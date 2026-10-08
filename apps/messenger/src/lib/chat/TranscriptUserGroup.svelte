@@ -41,6 +41,39 @@
 	>{t.chat.edited}</button>
 {/snippet}
 
+{#snippet queuedRow(message: Message)}
+	<!-- Still unread (ADR 0069): where it waits, and what you can do about it before a Bot reads it. -->
+	{@const queued = stage.queuedLine(message)}
+	{#if queued}
+		<div class="msg-queued-row" data-wait={queued.wait}>
+			<span class="msg-queued-state">
+				{queued.wait === 'held' ? t.chat.queuedHeld : queued.wait === 'next_step' ? t.chat.queuedNextStep : t.chat.queuedItsTurn}
+			</span>
+			{#if queued.canInsert}
+				<button
+					type="button"
+					class="msg-line-btn"
+					title={stage.insertTitle(message)}
+					disabled={stage.lineBusy(message)}
+					onclick={() => stage.insertLine(message)}
+				>{t.chat.insertNow}</button>
+			{/if}
+			{#if queued.canWithdraw}
+				<button
+					type="button"
+					class="msg-line-btn"
+					title={t.chat.withdrawLineTitle}
+					disabled={stage.lineBusy(message)}
+					onclick={() => void stage.withdrawLine(message)}
+				>{t.chat.withdrawLine}</button>
+			{/if}
+		</div>
+	{/if}
+	{#if stage.lineNoteText(message)}
+		<div class="msg-line-note" role="status">{stage.lineNoteText(message)}</div>
+	{/if}
+{/snippet}
+
 <div class="msg-wrap is-user" class:is-group={isMulti}>
 	<div class="msg-content">
 		<div class="msg-header is-right">
@@ -78,173 +111,184 @@
 								</span>
 							</div>
 						{/if}
-						<article class="msg is-you" class:is-editing={stage.editingHere(item.message)}>
-							<div class="who">{stage.who(item.message)}</div>
-							<div class="msg-toolbar">
-								<div class="msg-toolbar-pill">
-									{#if canQuoteReply(item.message) && !stage.lockedComposer}
-										<button
-											type="button"
-											class="act-btn"
-											title={t.chat.replyMessage}
-											onclick={() => stage.startQuoteReply(item.message)}
-										>
-											<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>
-										</button>
-									{/if}
-									{#if stage.editable(item.message)}
-										<button
-											type="button"
-											class="act-btn"
-											title={t.chat.editMessage}
-											aria-label={t.chat.editThisLine}
-											onclick={() => stage.startEdit(item.message)}
-										>
-											<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
-										</button>
-									{/if}
-									<button
-										type="button"
-										class="act-btn"
-										class:is-copied={stage.copiedMessageId === item.message.id}
-										title={t.chat.copyMessage}
-										onclick={(e) => stage.copyMessageBody(item.message.id, item.message.body, e)}
-									>
-										{#if stage.copiedMessageId === item.message.id}
-											<span class="copied-badge text-11 font-semibold text-ok">✓ {t.chat.copied}</span>
-										{:else}
-											<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-										{/if}
-									</button>
-								</div>
-							</div>
-							<QuoteRef message={item.message} {t} {runtime} selected={stage.selected} messageLookup={stage.messageLookup} who={stage.who} />
-							{#if stage.editingHere(item.message) && stage.view && stage.selected}
-								{@const editingIn = stage.selected.id}
-								<MessageEditor
-									{t}
-									value={stage.view.editDraft}
-									saving={stage.view.editSaving}
-									error={stage.editErrorText}
-									onInput={(value) => {
-										if (stage.view) {
-											stage.view.editDraft = value;
-											stage.view.editError = null;
-										}
-									}}
-									onSave={() => void runtime.saveEdit(editingIn)}
-									onCancel={() => runtime.cancelEdit(editingIn)}
-								/>
-							{:else}
-								<MarkdownBody
-									source={stage.messageBody(item.message)}
-									options={stage.markdownOpts(item.message)}
-									copyLabel={t.chat.copyCode}
-									copiedLabel={t.chat.copied}
-									inverted
-									onOpenArtifact={(path) => stage.onOpenArtifact(path, undefined, item.message.id)}
-									onOpenImage={(path, from) => stage.openBodyImage(item.message, path, from)}
-									loadArtifactImage={stage.loadBodyImage}
-									onOpenProfile={stage.onOpenProfile}
-								/>
-							{/if}
-							{#if stage.messageShowsAttachments(item.message)}
-								<MessageAttachments
-									attachments={item.message.attachments}
-									body={item.message.body}
-									api={runtime.client}
-									{t}
-									onPreview={(att) => stage.onOpenArtifact(att.workspace_relpath, att, item.message.id)}
-									onOpenImage={(att, from) => stage.openInlineImage(att, att.workspace_relpath, from)}
-								/>
-							{/if}
-							{#if stage.annotationIndex.get(item.message.id)}
-								<AnnotationCards
-									annotations={stage.annotationIndex.get(item.message.id) ?? []}
-									{t}
-									locale={stage.locale}
-									bots={stage.botsById}
-									onOpen={stage.openAnnotation}
-									onToggleStatus={stage.lockedComposer ? undefined : (row, status) => void stage.toggleAnnotation(item.message.id, row, status)}
-									error={stage.cardErrors[item.message.id] ?? null}
-									sourceLabel={stage.annotationSourceLabel(item.message)}
-									onOpenSource={() => stage.openAnnotationSource(item.message)}
-								/>
-							{/if}
-						</article>
-						{#if item.message.edited_at}
-							<!-- Under the bubble, where what it said before opens: the hover bar above it would cover a mark by the time. -->
-							<div class="msg-edited-row">{@render editedMark(item.message)}</div>
-						{/if}
-						{#if stage.versionsShown[item.message.id] && stage.versionsShown[item.message.id]!.at === (item.message.edited_at ?? '')}
-							{@const shown = stage.versionsShown[item.message.id]!}
-							<div class="msg-versions" role="region" aria-label={t.chat.earlierVersions}>
-								<div class="msg-versions-title">{t.chat.earlierVersions}</div>
-								{#if shown.loading}
-									<div class="msg-versions-note">{t.chat.versionsLoading}</div>
-								{:else if shown.failed}
-									<div class="msg-versions-note">{t.chat.versionsFailed}</div>
-								{:else}
-									{#each [...shown.versions].reverse() as version (version.created_at + version.body)}
-										<div class="msg-version">
-											<span class="msg-version-time mono" title={formatFullTimestamp(version.created_at)}>{formatMessageTime(version.created_at)}</span>
-											<span class="msg-version-body">{version.body}</span>
-										</div>
-									{/each}
+						{#if item.message.withdrawn_at}
+							<!-- Taken back before any Bot read it (ADR 0069): the words wait for you, not for a Bot. -->
+							<div class="msg-withdrawn">
+								<span>{t.chat.lineWithdrawn}</span>
+								{#if !stage.lockedComposer}
+									<button type="button" class="msg-line-btn" onclick={() => stage.reEditLine(item.message)}>{t.chat.reEditLine}</button>
 								{/if}
 							</div>
-						{/if}
-						{#if !stage.fileDrop && !item.message.control && stage.attributionChips.has(item.message.id)}
-							<MessageAttribution
-								message={item.message} {t}
-								plans={runtime.attributionPlans[item.message.session_id] ?? []}
-								disabled={!stage.connected || stage.lockedComposer}
-								onOpen={() => { stage.attributionEditId = item.message.id; }}
-							/>
-						{/if}
-						{#if item.message.control?.kind === 'possible_control' && !stage.lockedComposer}
-							<ControlActions
-								control={item.message.control}
-								holds={stage.snapshot.holds}
-								botName={stage.botNameOf}
-								{t}
-								align="end"
-								disabled={!stage.connected}
-								onAct={(action, taskId) => runtime.controlAction(item.message.id, action, taskId)}
-							/>
-						{/if}
-						<ReactionRow message={item.message} right lockedComposer={stage.lockedComposer} {runtime} />
-						{#if item.replying && item.replying.length > 0}
-							<div class="msg-attached-replying is-user" aria-live="polite">
-								<ReplyingIndicator
-									entries={item.replying}
-									botsById={stage.botsById}
-									isUser={true}
-									thinkingText={stage.statusLabels.running}
-									deletedText={t.top.deleted}
-									onOpenProfile={stage.onOpenProfile}
+						{:else}
+							<article class="msg is-you" class:is-editing={stage.editingHere(item.message)}>
+								<div class="who">{stage.who(item.message)}</div>
+								<div class="msg-toolbar">
+									<div class="msg-toolbar-pill">
+										{#if canQuoteReply(item.message) && !stage.lockedComposer}
+											<button
+												type="button"
+												class="act-btn"
+												title={t.chat.replyMessage}
+												onclick={() => stage.startQuoteReply(item.message)}
+											>
+												<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>
+											</button>
+										{/if}
+										{#if stage.editable(item.message)}
+											<button
+												type="button"
+												class="act-btn"
+												title={t.chat.editMessage}
+												aria-label={t.chat.editThisLine}
+												onclick={() => stage.startEdit(item.message)}
+											>
+												<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
+											</button>
+										{/if}
+										<button
+											type="button"
+											class="act-btn"
+											class:is-copied={stage.copiedMessageId === item.message.id}
+											title={t.chat.copyMessage}
+											onclick={(e) => stage.copyMessageBody(item.message.id, item.message.body, e)}
+										>
+											{#if stage.copiedMessageId === item.message.id}
+												<span class="copied-badge text-11 font-semibold text-ok">✓ {t.chat.copied}</span>
+											{:else}
+												<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+											{/if}
+										</button>
+									</div>
+								</div>
+								<QuoteRef message={item.message} {t} {runtime} selected={stage.selected} messageLookup={stage.messageLookup} who={stage.who} />
+								{#if stage.editingHere(item.message) && stage.view && stage.selected}
+									{@const editingIn = stage.selected.id}
+									<MessageEditor
+										{t}
+										value={stage.view.editDraft}
+										saving={stage.view.editSaving}
+										error={stage.editErrorText}
+										onInput={(value) => {
+											if (stage.view) {
+												stage.view.editDraft = value;
+												stage.view.editError = null;
+											}
+										}}
+										onSave={() => void runtime.saveEdit(editingIn)}
+										onCancel={() => runtime.cancelEdit(editingIn)}
+									/>
+								{:else}
+									<MarkdownBody
+										source={stage.messageBody(item.message)}
+										options={stage.markdownOpts(item.message)}
+										copyLabel={t.chat.copyCode}
+										copiedLabel={t.chat.copied}
+										inverted
+										onOpenArtifact={(path) => stage.onOpenArtifact(path, undefined, item.message.id)}
+										onOpenImage={(path, from) => stage.openBodyImage(item.message, path, from)}
+										loadArtifactImage={stage.loadBodyImage}
+										onOpenProfile={stage.onOpenProfile}
+									/>
+								{/if}
+								{#if stage.messageShowsAttachments(item.message)}
+									<MessageAttachments
+										attachments={item.message.attachments}
+										body={item.message.body}
+										api={runtime.client}
+										{t}
+										onPreview={(att) => stage.onOpenArtifact(att.workspace_relpath, att, item.message.id)}
+										onOpenImage={(att, from) => stage.openInlineImage(att, att.workspace_relpath, from)}
+									/>
+								{/if}
+								{#if stage.annotationIndex.get(item.message.id)}
+									<AnnotationCards
+										annotations={stage.annotationIndex.get(item.message.id) ?? []}
+										{t}
+										locale={stage.locale}
+										bots={stage.botsById}
+										onOpen={stage.openAnnotation}
+										onToggleStatus={stage.lockedComposer ? undefined : (row, status) => void stage.toggleAnnotation(item.message.id, row, status)}
+										error={stage.cardErrors[item.message.id] ?? null}
+										sourceLabel={stage.annotationSourceLabel(item.message)}
+										onOpenSource={() => stage.openAnnotationSource(item.message)}
+									/>
+								{/if}
+							</article>
+							{@render queuedRow(item.message)}
+							{#if item.message.edited_at}
+								<!-- Under the bubble, where what it said before opens: the hover bar above it would cover a mark by the time. -->
+								<div class="msg-edited-row">{@render editedMark(item.message)}</div>
+							{/if}
+							{#if stage.versionsShown[item.message.id] && stage.versionsShown[item.message.id]!.at === (item.message.edited_at ?? '')}
+								{@const shown = stage.versionsShown[item.message.id]!}
+								<div class="msg-versions" role="region" aria-label={t.chat.earlierVersions}>
+									<div class="msg-versions-title">{t.chat.earlierVersions}</div>
+									{#if shown.loading}
+										<div class="msg-versions-note">{t.chat.versionsLoading}</div>
+									{:else if shown.failed}
+										<div class="msg-versions-note">{t.chat.versionsFailed}</div>
+									{:else}
+										{#each [...shown.versions].reverse() as version (version.created_at + version.body)}
+											<div class="msg-version">
+												<span class="msg-version-time mono" title={formatFullTimestamp(version.created_at)}>{formatMessageTime(version.created_at)}</span>
+												<span class="msg-version-body">{version.body}</span>
+											</div>
+										{/each}
+									{/if}
+								</div>
+							{/if}
+							{#if !stage.fileDrop && !item.message.control && stage.attributionChips.has(item.message.id)}
+								<MessageAttribution
+									message={item.message} {t}
+									plans={runtime.attributionPlans[item.message.session_id] ?? []}
+									disabled={!stage.connected || stage.lockedComposer}
+									onOpen={() => { stage.attributionEditId = item.message.id; }}
 								/>
-							</div>
-						{/if}
-						{#if stage.botDmIndex.get(item.message.id)}
-							<div class="msg-attached-botdm is-user">
-								<BotDmEntry
-									sessions={stage.botDmIndex.get(item.message.id) ?? []}
-									botsById={stage.botsById}
-									turns={stage.snapshot.turns}
-									approvals={stage.snapshot.approvals}
-									pendingJudgements={stage.snapshot.pendingJudgements}
-									isUser={true}
-									statusLabels={stage.statusLabels}
-									rosterLabels={stage.rosterLabels}
-									openedText={t.chat.botDmOpened}
-									onOpen={(id) => void runtime.selectSession(id)}
-									traceLabel={item.message.task_id ? t.chat.showTrace : undefined}
-									onShowTrace={item.message.task_id
-										? () => stage.showMessageTrace(item.message)
-										: undefined}
+							{/if}
+							{#if item.message.control?.kind === 'possible_control' && !stage.lockedComposer}
+								<ControlActions
+									control={item.message.control}
+									holds={stage.snapshot.holds}
+									botName={stage.botNameOf}
+									{t}
+									align="end"
+									disabled={!stage.connected}
+									onAct={(action, taskId) => runtime.controlAction(item.message.id, action, taskId)}
 								/>
-							</div>
+							{/if}
+							<ReactionRow message={item.message} right lockedComposer={stage.lockedComposer} {runtime} />
+							{#if item.replying && item.replying.length > 0}
+								<div class="msg-attached-replying is-user" aria-live="polite">
+									<ReplyingIndicator
+										entries={item.replying}
+										botsById={stage.botsById}
+										isUser={true}
+										thinkingText={stage.statusLabels.running}
+										deletedText={t.top.deleted}
+										onOpenProfile={stage.onOpenProfile}
+									/>
+								</div>
+							{/if}
+							{#if stage.botDmIndex.get(item.message.id)}
+								<div class="msg-attached-botdm is-user">
+									<BotDmEntry
+										sessions={stage.botDmIndex.get(item.message.id) ?? []}
+										botsById={stage.botsById}
+										turns={stage.snapshot.turns}
+										approvals={stage.snapshot.approvals}
+										pendingJudgements={stage.snapshot.pendingJudgements}
+										isUser={true}
+										statusLabels={stage.statusLabels}
+										rosterLabels={stage.rosterLabels}
+										openedText={t.chat.botDmOpened}
+										onOpen={(id) => void runtime.selectSession(id)}
+										traceLabel={item.message.task_id ? t.chat.showTrace : undefined}
+										onShowTrace={item.message.task_id
+											? () => stage.showMessageTrace(item.message)
+											: undefined}
+									/>
+								</div>
+							{/if}
 						{/if}
 					</div>
 				{/if}
@@ -368,6 +412,70 @@
 		color: var(--ink);
 		text-decoration: underline;
 		text-underline-offset: 2px;
+	}
+
+	/* Still unread (ADR 0069): one quiet line under the bubble, its two actions in the interaction colour. */
+	.msg-queued-row {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: flex-end;
+		align-items: baseline;
+		gap: 2px 10px;
+		margin-top: 3px;
+		padding: 0 2px;
+		font-size: 11px;
+		line-height: 1.4;
+		color: var(--muted);
+	}
+
+	.msg-line-btn {
+		padding: 0;
+		border: 0;
+		background: none;
+		font-size: 11px;
+		line-height: inherit;
+		color: var(--accent);
+		cursor: pointer;
+		transition-property: color;
+		transition-duration: 0.15s;
+	}
+
+	.msg-line-btn:hover:not(:disabled) {
+		color: var(--accent-hover);
+		text-decoration: underline;
+		text-underline-offset: 2px;
+	}
+
+	.msg-line-btn:disabled {
+		color: var(--muted);
+		cursor: default;
+	}
+
+	/* A finger needs more than the words: the same line, a larger target around each. */
+	@media (pointer: coarse) {
+		.msg-line-btn {
+			padding: 10px 4px;
+			margin: -10px -4px;
+		}
+	}
+
+	.msg-line-note {
+		margin-top: 2px;
+		padding: 0 2px;
+		font-size: 11px;
+		color: var(--muted);
+		text-align: right;
+	}
+
+	/* Taken back: no bubble, only what happened and the way back to the words. */
+	.msg-withdrawn {
+		display: flex;
+		align-items: baseline;
+		justify-content: flex-end;
+		gap: 10px;
+		padding: 2px 2px;
+		font-size: 12px;
+		color: var(--muted);
 	}
 
 	/* A line being changed is a field, not a bubble: the column's width, neutral, with the focus colour. */

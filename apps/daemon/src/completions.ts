@@ -100,6 +100,11 @@ export type CompletionRequest = {
   tools: unknown[];
   signal: AbortSignal;
   /**
+   * Ends this one call and nothing else (直接插入, ADR 0069), where `signal` is the whole turn's: kept
+   * apart so `signal` stays the one object every hop and tool call of a turn carries.
+   */
+  cut?: AbortSignal;
+  /**
    * Sent as `max_tokens`, or as `max_completion_tokens` to a model that asked for that name. A model
    * that allows less gets the limit its endpoint named when it refused this one, or no cap. Absent
    * leaves the cap to the endpoint.
@@ -255,7 +260,8 @@ export function createCompletionsClient(options: CompletionsOptions = {}): Compl
   };
 
   return {
-    async complete(request) {
+    async complete(asked) {
+      const request = asked.cut ? { ...asked, signal: AbortSignal.any([asked.signal, asked.cut]) } : asked;
       if (!isLocal(request.baseUrl)) return completeStreaming(fetchImpl, clock, request.lane === "reading" ? readingGate : gate, request, forms, options.wake);
       return completeStreaming(fetchImpl, localClock, request.lane === "reading" ? readingGate : localGate, request, forms, options.wake, sizing);
     },

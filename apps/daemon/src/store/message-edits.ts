@@ -67,6 +67,7 @@ export function migrateMessageEdits(db: Database): void {
  */
 export function editRefusal(ctx: StoreContext, row: MessageRow): string | null {
   if (row.kind !== "user" || row.author !== USER_MEMBER || row.bot_only) return "only a line of yours can be changed";
+  if (row.withdrawn_at) return "you took this line back; send it again instead";
   if (row.taken_as === "answer") return "this line was your answer to a question, and a question is answered once";
   if (row.taken_as === "app") return "the app already carried this line out";
   if (row.annotation_source_message_id || ctx.db.query(`SELECT 1 FROM annotations WHERE message_id = ? LIMIT 1`).get(row.id)) {
