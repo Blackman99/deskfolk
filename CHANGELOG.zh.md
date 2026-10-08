@@ -6,6 +6,12 @@
 
 ## Unreleased
 
+（无）
+
+## 0.1.0-rc.14 — 2026-10-08
+
+未签名的 macOS rc，`.dmg` 旁边附实验性、同样未签名的 Windows 安装包。不是受支持的签名安装包；Gatekeeper 或 SmartScreen 可能拦截。优先从源码运行。
+
 ### README 开头换成麻薯和布丁的 30 秒宣传片
 
 - README 顶部的宣传片换成了一支 30 秒短片，由两个吉祥物把应用演一遍：麻薯把活交给布丁，布丁接着干，要动工作区以外的东西先停下来问；麻薯离开，回来时活做完了，也查过了。原来 86 秒的完整介绍链接在它下面。中英两版都放在官网上：`media/deskfolk-mascots-zh.mp4`、`media/deskfolk-mascots-en.mp4`。

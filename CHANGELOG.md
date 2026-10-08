@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+(none)
+
+## 0.1.0-rc.14 — 2026-10-08
+
+Unsigned macOS rc with an experimental unsigned Windows installer beside the `.dmg`s. This is not a supported signed installer; Gatekeeper or SmartScreen may block it. Prefer running from source.
+
 ### The README opens with a 30-second film of Mochi and Pudding
 
 - The film at the top of the README is now a 30-second short in which the two mascots act out the app: Mochi hands Pudding a job, Pudding takes it from there and stops to ask before touching anything outside the workspace, and Mochi walks away and comes back to work that is done, and checked. The 86-second tour is linked under it. Both languages are on the site, at `media/deskfolk-mascots-zh.mp4` and `media/deskfolk-mascots-en.mp4`.
