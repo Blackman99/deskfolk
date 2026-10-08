@@ -316,7 +316,7 @@ test("migration imports stale done plans as delivered+dormant once, preserving r
   expect(store.db.query('SELECT filing_state FROM messages WHERE id = ?').get(message.id)).toEqual({ filing_state: 'none' });
 });
 
-const read = (about: 'jobs' | 'new' | 'unclear', targets: Array<{ taskId: string; ticketId?: string | null; partKey?: string | null }> = []) =>
+const read = (about: 'jobs' | 'new' | 'in_place' | 'unclear', targets: Array<{ taskId: string; ticketId?: string | null; partKey?: string | null }> = []) =>
   ({ source: 'model' as const, about, targets: targets.map((t) => ({ taskId: t.taskId, ticketId: t.ticketId ?? null, partKey: t.partKey ?? null })) });
 
 test("with nothing locked, a line goes where the reading puts it, as a default; with no reading, nowhere — not even to the one job open (ADR 0057)", () => {
@@ -336,10 +336,17 @@ test("with nothing locked, a line goes where the reading puts it, as a default; 
   const fresh = store.postMessage(direct, { body: "帮我写首诗" });
   expect(filing.fileMessage(ctx, fresh.id, { botId: bot.id, read: read("new") }).state).toBe("undetermined");
   expect(filing.lineReadAsNew(ctx, fresh.id)).toBe(true);
+  expect(filing.lineReadInPlace(ctx, fresh.id)).toBe(false);
+  // Read as done in place, about none of them either: left for the desk, marked so — its effects open no job.
+  const aside = store.postMessage(direct, { body: "把模型窗口改成 20 万" });
+  expect(filing.fileMessage(ctx, aside.id, { botId: bot.id, read: read("in_place") }).state).toBe("undetermined");
+  expect(filing.lineReadInPlace(ctx, aside.id)).toBe(true);
+  expect(filing.lineReadAsNew(ctx, aside.id)).toBe(false);
   // No telling which: left for the desk, unmarked.
   const unclear = store.postMessage(direct, { body: "这个呢" });
   expect(filing.fileMessage(ctx, unclear.id, { botId: bot.id, read: read("unclear") }).state).toBe("undetermined");
   expect(filing.lineReadAsNew(ctx, unclear.id)).toBe(false);
+  expect(filing.lineReadInPlace(ctx, unclear.id)).toBe(false);
   // A job closed since the reading is no place for it.
   const b = store.openTask({ sessionId: direct, title: "旧片" });
   store.db.run("UPDATE tasks SET stage = 'accepted' WHERE id = ?", [b.id]);
@@ -377,12 +384,13 @@ test("what a reading is shown: the jobs a line may be about, a routine's include
   // Read as the brief's: filed under the routine's job and today's ticket.
   filing.fileMessage(ctx, line.id, { botId: bot.id, read: read("jobs", [{ taskId: standing.id, ticketId: today.id }]) });
   expect(filing.filingsOfMessage(ctx, line.id)).toMatchObject([{ taskId: standing.id, ticketId: today.id, filedBy: "reader" }]);
-  // Nothing to read once it is filed; nor for a quoted reply, a pure stop, or a conversation with no job.
+  // Nothing to read once it is filed, nor for a quoted reply or a pure stop.
   expect(filing.lineToFile(ctx, line.id)).toBeNull();
   const quoted = store.postMessage(direct, { body: "这句再改", parent_id: brief.id });
   expect(filing.lineToFile(ctx, quoted.id)).toBeNull();
+  // A conversation with no job is read too, with nothing to choose: new work, or something done in place.
   const other = store.createBot({ name: "空闲", duties: "none", boundaries: "none" });
-  expect(filing.lineToFile(ctx, store.postMessage(other.direct_session.id, { body: "你好" }).id)).toBeNull();
+  expect(filing.lineToFile(ctx, store.postMessage(other.direct_session.id, { body: "你好" }).id)).toMatchObject({ said: "你好", jobs: [] });
 });
 
 test("locked annotation, quote, path and bound-work signals accumulate in order before any default", () => {

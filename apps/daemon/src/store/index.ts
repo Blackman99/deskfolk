@@ -569,6 +569,7 @@ export class Store {
   readonly fileMessage = this.bind(filing.fileMessage);
   readonly lineToFile = this.bind(filing.lineToFile);
   readonly lineReadAsNew = this.bind(filing.lineReadAsNew);
+  readonly lineReadInPlace = this.bind(filing.lineReadInPlace);
   readonly planCandidates = this.bind(filing.planCandidates);
   readonly lineCandidates = this.bind(filing.lineCandidates);
   readonly planCandidateEvidence = this.bind(filing.candidateOf);

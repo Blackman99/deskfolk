@@ -106,12 +106,16 @@ export function situationUserMessage(
       } catch { return `${id} · ${locale === "en" ? "no longer available" : "已不可用"}`; }
     });
     job.push(locale === "en"
-      ? "Desk segment: read and reply before choosing a job. To change the app's settings (endpoints, model settings, MCP servers), call their tools here: that opens no job. work_on selects only the captured candidates below."
-      : "桌面段：先读与回答。要改应用的设置（端点、模型设置、MCP 服务器），在这里直接调用对应的工具，不会开新事。work_on 只可选本轮已列出的候选。",
+      ? "Desk segment: read and reply before choosing a job; work_on selects only the captured candidates below."
+      : "桌面段：先读与回答，work_on 只可选本轮已列出的候选。",
       ...candidates.map((line) => `- ${line}`));
-    // The line was read as about none of these jobs (ADR 0057): the first effect opens one for it.
+    // The line was read as done in place (ADR 0057): its effects open no job. As new work, about none
+    // of these jobs: the first effect opens one for it.
     const request = store.originalUserRequest(turnId);
-    if (candidates.length > 0 && request && store.lineReadAsNew(request.id)) job.push(locale === "en"
+    if (request && store.lineReadInPlace(request.id)) job.push(locale === "en"
+      ? "The app read the user's line as something done right here, the reply saying how it went (a question, a look-up, a setting, a small action): your calls open no job. If it turns out to be work with something to hand over, open one with work_on({new}) quoting the user first."
+      : "应用读出这句话是当场做完、在回复里说清楚就行的事（问题、查询、改设置、小操作）：你的调用不会开新事。做下去发现要交出成果的，先 work_on({new}) 引用用户原话开一件。");
+    else if (candidates.length > 0 && request && store.lineReadAsNew(request.id)) job.push(locale === "en"
       ? "The app read the user's line as about none of these jobs: your first effect opens a new job for it. If it is about one of them after all, choose that one with work_on first."
       : "应用读出这句话不是在说上面哪一件：第一次有副作用的调用会为它新开一件事；其实是在说其中某件的话，先用 work_on 选它。");
     else if (candidates.length === 1) job.push(locale === "en"

@@ -70,23 +70,27 @@ export const READ_BOT_LINE_FORMAT = `只输出一个 JSON 对象，不要 markdo
 export const READ_BOT_LINE_SYSTEM = fill(READ_BOT_LINE_TEMPLATE, { format: READ_BOT_LINE_FORMAT });
 
 
-export const READ_FILING_TEMPLATE = `你在替一个多 Bot 协作应用判断用户刚说的一句话是在说哪件事，好把它交给做那件事的 Bot。不是回答用户，也不能发言；没有工具。
+export const READ_FILING_TEMPLATE = `你在替一个多 Bot 协作应用判断用户刚说的一句话是在说哪件事，好把它交给做那件事的 Bot；不是在说其中哪件的，再判断它要不要开成一件新的事。不是回答用户，也不能发言；没有工具。
 
 输入是一个 JSON：
 - said 是这句话；where 是 group（群）或 direct（用户和一个 Bot 的私聊）。
 - before 是这句之前的几句，从早到晚：author 是 user 或 Bot 的名字，ago 是多久以前说的，job 是那一句归在哪件事（没归的不写）。
-- jobs 是此刻可选的事：ref 是它的编号，title 是名字，goal 是目标，stage 是进行中或已交付（交了、等用户看），home 是它开在哪个会话（开在这里的不写），last_active 是多久以前有过动静，tickets 是它的任务（ref、title、state 状态、owner 谁在做、parts 它的分件），recent_files 是最近交出的文件，user_last_said 是用户最近对它说的一句。
+- jobs 是此刻可选的事（可能一件也没有）：ref 是它的编号，title 是名字，goal 是目标，stage 是进行中或已交付（交了、等用户看），home 是它开在哪个会话（开在这里的不写），last_active 是多久以前有过动静，tickets 是它的任务（ref、title、state 状态、owner 谁在做、parts 它的分件），recent_files 是最近交出的文件，user_last_said 是用户最近对它说的一句。
 
 回答 about：
 - "jobs"：这句话在说 jobs 里的一件或几件——接着做、补充或改要求、指出问题、要求返工、问它的细节、回应 Bot 刚说的那件事。jobs 里每件写 {"job": "<ref>", "ticket": "<ref 或 null>", "parts": ["<key>"]}：明确落到其中某张任务时才写 ticket；明确说到其中几个分件（「第三镜」「C07」「片尾」）时才写 parts，用它列出的 key，只写这句话要求改、指出问题或问到的，只是夸一句的不写。拿不准就写 null 和 []。
-- "new"：不是在说其中任何一件。要做一件新的事（哪怕别的事还开着，哪怕和某件是同一类：又一张海报、另一篇文章），或者和这些事都无关（问候、闲聊、问别的问题、一次性的小忙）。
+- "new"：不是在说其中任何一件，而是要开始一件新的活：要做出交给用户的东西（文件、图、视频、文章、方案、代码），或者要做很久、过后还要跟进进度的事。哪怕别的事还开着，哪怕和某件是同一类（又一张海报、另一篇文章）。
+- "in_place"：不是在说其中任何一件，而且是当场做完、回复本身就是结果的事，没有要交出来让用户验收的成果：问候、闲聊、问一个问题、查一下某个情况、改应用里的设置或配置（端点、模型的参数、默认模型、MCP 服务器、Bot 自己的资料；一项或几项都算）、做一次性的小操作（看看磁盘、删几个临时文件、连一下某个服务）。Bot 要为此查资料、跑命令、改设置，也还是 in_place。
 - "unclear"：像是在说其中某件，但看不出是哪一件。
+
+jobs 为空时，只在 "new" 和 "in_place" 里选。
 
 怎么判断：
 - 看说的是什么、接在什么后面，不看措辞：「另外」「再」「顺便」开头的也可能是在改原来那件，「继续」也可能说的是另一件。
 - 只开着一件事，不等于这句话就在说它。
-- 紧接在 Bot 的一句之后说的，多半是在回应那一句（before 里它的 job）；内容明显是另一件新要求时仍是 new。
+- 紧接在 Bot 的一句之后说的，多半是在回应那一句（before 里它的 job）；内容明显是另一件新要求时仍是 new 或 in_place。
 - 一件事目标之内的下一步（同一部片子的下一个镜头、同一份报告的下一节）算那件事；目标之外的新成果是 new。
+- new 和 in_place 看做完之后有什么：有一个要交给用户的东西，或者还要过一阵才做完，是 new；Bot 当场做完、在回复里说清楚就结束，是 in_place。只看这句话本身要什么：做的过程中才发现要交东西的，Bot 会自己开一件。
 
 {format}`;
 /** Which job a line is about. Fixed: the parser reads it, so an edited prompt keeps it where `{format}` sits (ADR 0064). */

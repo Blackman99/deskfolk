@@ -221,8 +221,9 @@ export function fileMessage(ctx: StoreContext, messageId: string, input: FileMes
     const state: FilingState = decisions.length ? 'filed' : input.none || control ? 'none' : 'undetermined';
     replaceFilings(ctx, message, decisions, state, candidates);
     if (message.kind === 'user') {
+      const about = input.read?.about;
       ctx.db.run('UPDATE messages SET filing_reading = ? WHERE id = ?',
-        [state === 'undetermined' && input.read?.about === 'new' ? 'new' : null, message.id]);
+        [state === 'undetermined' && (about === 'new' || about === 'in_place') ? about : null, message.id]);
     }
     return { filings: filingsOfMessage(ctx, messageId), candidates, state };
   });
@@ -281,9 +282,17 @@ function openTarget(ctx: StoreContext, target: FilingTarget): boolean {
   return Boolean(ctx.db.query(`SELECT 1 FROM tickets t WHERE t.id = ? AND ${STAGE_SQL('t')} <> 'dropped'`).get(target.ticketId));
 }
 
-/** Whether a line of yours was read as about none of the jobs it might have been (ADR 0057), and is still unplaced. */
+/** Whether a line of yours was read as new work, about none of the jobs it might have been (ADR 0057), and is still unplaced. */
 export function lineReadAsNew(ctx: StoreContext, messageId: string): boolean {
   return Boolean(ctx.db.query(`SELECT 1 FROM messages WHERE id = ? AND filing_reading = 'new' AND filing_state = 'undetermined'`).get(messageId));
+}
+
+/**
+ * Whether a line of yours was read as something done where it was asked — a question, a look-up, a
+ * setting, a small action — about none of the jobs, and is still unplaced: its effects open no job.
+ */
+export function lineReadInPlace(ctx: StoreContext, messageId: string): boolean {
+  return Boolean(ctx.db.query(`SELECT 1 FROM messages WHERE id = ? AND filing_reading = 'in_place' AND filing_state = 'undetermined'`).get(messageId));
 }
 
 /** How many jobs, and tickets per job, a reading of where a line belongs is shown. */
@@ -315,8 +324,9 @@ export type LineToFile = {
 
 /**
  * The line and the jobs it may be about, for the reading of where it belongs; null when there is
- * nothing for a reading to decide: not a line of yours, filed already, only a stop or a go on, a
- * locked signal places it, or no job is open for it.
+ * nothing for a reading to decide: not a line of yours, filed already, only a stop or a go on, or a
+ * locked signal places it. With no job open for it the line is read all the same, with no jobs to
+ * choose from: whether it is new work or something done in place is the reading's to say too.
  */
 export function lineToFile(ctx: StoreContext, messageId: string): LineToFile | null {
   const message = ctx.db.query<FilingMessage, [string]>("SELECT * FROM messages WHERE id = ?").get(messageId);
@@ -330,7 +340,6 @@ export function lineToFile(ctx: StoreContext, messageId: string): LineToFile | n
   const candidates = lineCandidates(ctx, { sessionId: message.session_id, messageId })
     .sort((a, b) => (a.lastActivityAt < b.lastActivityAt ? 1 : a.lastActivityAt > b.lastActivityAt ? -1 : 0))
     .slice(0, JOBS_TO_READ);
-  if (candidates.length === 0) return null;
   const nameOf = (author: string): string => author === 'user' ? 'user'
     : ctx.db.query<{ name: string }, [string]>('SELECT name FROM bots WHERE id = ?').get(author)?.name ?? author;
   const jobs = candidates.map((candidate): JobToFile => {

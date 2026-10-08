@@ -190,7 +190,7 @@ const CALL_SLOTS: SlotDef[] = [
   call(
     "call.read_filing",
     { zh: "读句：说的是哪件事", en: "Line reading: which job" },
-    { zh: "读你的一句话在说哪件事，好交给做那件事的 Bot。", en: "Reads which job a line of yours is about, so it reaches the Bot doing it." },
+    { zh: "读你的一句话在说哪件事，好交给做那件事的 Bot；不在说哪件的，读它是新的活还是当场做完的事。", en: "Reads which job a line of yours is about, so it reaches the Bot doing it; about none, whether it is new work or something done on the spot." },
     ZH,
     () => READ_FILING_TEMPLATE,
     () => READ_FILING_FORMAT,

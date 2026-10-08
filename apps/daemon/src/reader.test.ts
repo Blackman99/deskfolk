@@ -198,14 +198,17 @@ test("where a line of yours belongs is read once, shown the jobs it may be about
     raw: JSON.stringify({ about: "jobs", jobs: [{ job: "J1", ticket: "T1", parts: [] }] }) }]);
 });
 
-test("where a line belongs is not read when nothing is left to decide: no job open, or a reference places it", async () => {
-  const h = harness(() => judged(STOP));
-  expect(await h.reader.filing(h.store.postMessage(h.direct, { body: "你好" }))).toBeNull();
+test("where a line belongs is not read when a reference places it; with no job open it is read with none to choose from", async () => {
+  const h = harness(() => judged(JSON.stringify({ about: "in_place" })));
+  // Nothing to choose, but whether it is new work or done in place is still the reading's to say.
+  expect(await h.reader.filing(h.store.postMessage(h.direct, { body: "把模型窗口改成 20 万" }))).toEqual({ source: "model", about: "in_place", targets: [] });
+  expect(h.requests).toHaveLength(1);
+  expect(JSON.parse(String(h.requests[0]!.messages.at(-1)!.content))).toMatchObject({ said: "把模型窗口改成 20 万", jobs: [] });
   const film = h.store.openTask({ sessionId: h.direct, title: "回响纪元" });
   const said = h.store.postMessage(h.direct, { body: "做片子" });
   h.store.fileMessage(said.id, { explicit: [{ taskId: film.id }] });
   expect(await h.reader.filing(h.store.postMessage(h.direct, { body: "再快一点", parent_id: said.id }))).toBeNull();
-  expect(h.requests).toEqual([]);
+  expect(h.requests).toHaveLength(1);
 });
 
 test("no word list stands in for where a line belongs: with no model, a failed call or no reading, it is unread and left for the Bot's desk", async () => {

@@ -88,9 +88,10 @@ export type Reader = {
   /** A Bot's line, read once per text and the line it answers (`context`). Never rejects. */
   botLine: (body: string, sessionId: string | null, context?: BotLineContext) => Promise<BotLineReading>;
   /**
-   * Which job a line of yours is about (ADR 0057), read once. Null when there is nothing to read:
-   * a locked signal places the line, it is only a stop or a go on, or no job is open for it. Never
-   * rejects; what no model could read comes back `unread`, for the Bot's desk.
+   * Which job a line of yours is about (ADR 0057) — or, about none, whether it is new work or
+   * something done in place — read once. Null when there is nothing to read: a locked signal places
+   * the line, or it is only a stop or a go on. Never rejects; what no model could read comes back
+   * `unread`, for the Bot's desk.
    */
   filing: (message: Message) => Promise<FilingReading | null>;
   /**

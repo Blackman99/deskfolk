@@ -125,8 +125,9 @@ test("refs it was not shown are dropped: a wrong ticket or part leaves the job, 
   expect(checkFilingReading({ about: "jobs" }, REFS)).toEqual({ source: "model", about: "unclear", targets: [] });
 });
 
-test("new and unclear carry no targets, whatever else the answer says; anything else is no reading", () => {
+test("new, in_place and unclear carry no targets, whatever else the answer says; anything else is no reading", () => {
   expect(checkFilingReading({ about: "new", jobs: [{ job: "J1" }] }, REFS)).toEqual({ source: "model", about: "new", targets: [] });
+  expect(checkFilingReading({ about: "in_place", jobs: [{ job: "J1" }] }, REFS)).toEqual({ source: "model", about: "in_place", targets: [] });
   expect(checkFilingReading({ about: "unclear" }, REFS)).toEqual({ source: "model", about: "unclear", targets: [] });
   expect(checkFilingReading({ about: "J1" }, REFS)).toBeNull();
   expect(checkFilingReading({ jobs: [{ job: "J1" }] }, REFS)).toBeNull();

@@ -67,25 +67,6 @@ const NO_EFFECT_TOOLS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Calls that change the app's own settings — its endpoints, model settings and MCP servers (ADR
- * 0014) — and nothing in the workspace. They are effects, refused under a hold like any other, but
- * not work on a job: a desk makes them where it was asked and opens no job for them, since nothing
- * could ever be handed over on its ticket. On 2026-10-08 「你能根据已经配置的模型补一下它们的上下文大小
- * 配置吗」 opened one at update_endpoint: the window was set and said, the ticket stayed 待做, the
- * plan watch called the Bot back to say it again, and two endings with no progress stopped it.
- */
-const SETTINGS_TOOLS: ReadonlySet<string> = new Set([
-  "add_endpoint",
-  "update_endpoint",
-  "delete_endpoint",
-  "measure_model",
-  "update_model_settings",
-  "add_mcp_server",
-  "update_mcp_server",
-  "delete_mcp_server",
-]);
-
-/**
  * The tools a read-only turn is given: those that change nothing, and the MCP tools their server
  * marks read-only in this hop's list.
  */
@@ -636,15 +617,20 @@ export function createTools(deps: ToolsDeps): Tools {
     name: string,
     callId?: string,
   ): Promise<{ ok: true; turn: Turn } | { ok: false; result: ToolResult }> {
-    // Desk segments may read, reply and change the app's settings, but choosing a job precedes the
-    // first effect on the workspace or the world outside.
+    // Desk segments may read and reply, but choosing a job precedes the first effect — unless your
+    // line was read as something done where it was asked (ADR 0057).
     turn = store.getTurn(turn.id);
-    const deskAllowed = NO_EFFECT_TOOLS.has(name) || SETTINGS_TOOLS.has(name) || name === "send_message" || name === "ask_user" || name === "work_on" || live.mcpTools.get(name)?.readOnly === true;
-    if (turn.mode === "desk" && !deskAllowed) {
+    const deskAllowed = NO_EFFECT_TOOLS.has(name) || name === "send_message" || name === "ask_user" || name === "work_on" || live.mcpTools.get(name)?.readOnly === true;
+    const trigger = turn.mode === "desk" && !deskAllowed ? store.originalUserRequest(turn.id) ?? store.getMessage(turn.trigger_message_id) : null;
+    // Read as done in place — a question, a look-up, a setting, a small action — its effects run at
+    // the desk under the same holds and open no job: nothing would ever be handed over on its ticket.
+    // On 2026-10-08 「你能根据已经配置的模型补一下它们的上下文大小配置吗」 opened one at update_endpoint;
+    // the window was set and said, the ticket stayed 待做, the plan watch called the Bot back to say it
+    // again, and two endings with no progress stopped it. What no model read keeps the rule below.
+    if (trigger && !(trigger.kind === "user" && store.lineReadInPlace(trigger.id))) {
       const candidates = store.deskCandidateIds(turn.id);
-      const trigger = store.originalUserRequest(turn.id) ?? store.getMessage(turn.trigger_message_id);
-      // A line of yours read as about none of these jobs (ADR 0057) gets a job of its own at the
-      // first effect, as a line with no candidates does — unless the Bot chose one with work_on first.
+      // A line of yours read as new work, about none of these jobs (ADR 0057), gets a job of its own
+      // at the first effect, as a line with no candidates does — unless the Bot chose one with work_on first.
       const readNew = trigger.kind === "user" && store.lineReadAsNew(trigger.id);
       if (candidates.length > 1 && !readNew) {
         store.noteFilingBounce(turn.id);
@@ -669,7 +655,7 @@ export function createTools(deps: ToolsDeps): Tools {
     if (hasEffect(live, name) && name !== "work_on" && name !== "send_message" && name !== "ask_user") {
       // Binding may have changed which hold applies; check the target immediately before acting.
       if (!mayAct(store, turn.id)) return { ok: false, result: toolFail("held", HELD_CALL) };
-      if (turn.task_id && !SETTINGS_TOOLS.has(name)) store.markWorkDirectoryUsed(turn.id);
+      if (turn.task_id) store.markWorkDirectoryUsed(turn.id);
       if (name === "write_file" || name === "delete_file" || name === "shell" || live.mcpTools.has(name)) {
         store.recordNewPlanEffectStarted({ turnId: turn.id, tool: name, toolCallId: callId });
       }

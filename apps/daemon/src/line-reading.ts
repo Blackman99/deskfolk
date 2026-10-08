@@ -113,13 +113,18 @@ export function botLineByWords(body: string, answering?: string | null): BotLine
 /**
  * Where a line of yours belongs, as a model read it (ADR 0057). Nothing stands in for the model
  * here: a line it could not read (`unread`) is the Bot's to place at its desk, as is one it read as
- * about none of the jobs (`new`) or could not tell which (`unclear`).
+ * new work (`new`), as something done in place (`in_place`) or could not tell which (`unclear`).
  */
 export type FilingReading = {
   /** `unread` when no model read it: none set, the call failed or ran out of time, or the answer did not read. */
   source: "model" | "unread";
-  /** `jobs`: about the jobs in `targets`; `new`: about none of the jobs it might have been; `unclear`: no telling which. */
-  about: "jobs" | "new" | "unclear";
+  /**
+   * `jobs`: about the jobs in `targets`; `new`: new work with something to hand over or carry on with,
+   * about none of the jobs it might have been; `in_place`: about none of them either, and done where
+   * it was asked, the reply saying how it went — a question, a look-up, a setting, a small action, a
+   * greeting; `unclear`: about one of the jobs, no telling which.
+   */
+  about: "jobs" | "new" | "in_place" | "unclear";
   /** What it is about, when `jobs`: a job, a ticket of it, a part of that ticket. */
   targets: Array<{ taskId: string; ticketId: string | null; partKey: string | null }>;
 };
@@ -130,7 +135,7 @@ export type FilingRefs = Array<{ ref: string; taskId: string; tickets: Array<{ r
 /** Where a line goes when no model read it: nowhere yet, for the Bot's desk. */
 export const UNREAD_FILING: FilingReading = { source: "unread", about: "unclear", targets: [] };
 
-const ABOUT = ["jobs", "new", "unclear"] as const;
+const ABOUT = ["jobs", "new", "in_place", "unclear"] as const;
 /** At most this many targets one reading files a line under. */
 const FILED_MAX = 6;
 
