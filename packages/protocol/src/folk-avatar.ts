@@ -105,8 +105,8 @@ export function compactFolkAvatar(avatar: string): string {
 }
 
 /**
- * The folk drawn: the Deskfolk mark's mustard teammate, rendered in 3D and varied by name. It has
- * no fill and fills its square; the mask only carries the name hash.
+ * The folk drawn: Pudding, the Deskfolk mascot (the mark's mustard teammate), rendered in 3D and
+ * varied by name. It has no fill and fills its square; the mask only carries the name hash.
  */
 export function renderFolk(hash: number, size: number, titleTag: string): string {
   const look = folkLook(hash);

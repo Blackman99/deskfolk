@@ -33,7 +33,7 @@
 	let customMode = $derived(isCustomAvatar(avatar));
 
 	const variantLabels: Record<BoringAvatarVariant, { zh: string; en: string }> = {
-		folk: { zh: '小人', en: 'Folk' },
+		folk: { zh: '布丁', en: 'Pudding' },
 		beam: { zh: '表情', en: 'Beam' },
 		marble: { zh: '大理石', en: 'Marble' },
 		pixel: { zh: '像素', en: 'Pixel' },

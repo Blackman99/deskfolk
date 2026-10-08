@@ -1,8 +1,9 @@
 <script lang="ts">
 	/**
-	 * The Deskfolk mark: a message bubble holding two stacked teammates, the mustard one ringed in
-	 * the bubble's colour so it cuts into the white one. Colours come from tokens.css, so the mark
-	 * steps lighter in dark mode instead of being a fixed-hex copy per screen.
+	 * The Deskfolk mark: a message bubble holding two stacked teammates, the mascots Mochi (white)
+	 * and Pudding (mustard), Pudding ringed in the bubble's colour so it cuts into Mochi. Colours
+	 * come from tokens.css, so the mark steps lighter in dark mode instead of being a fixed-hex
+	 * copy per screen.
 	 *
 	 * `art` is the faded mark an empty state draws: a tint bubble, a ringed pane-coloured circle,
 	 * and only the mustard teammate left solid.
