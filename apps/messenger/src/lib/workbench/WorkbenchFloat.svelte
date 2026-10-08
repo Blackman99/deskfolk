@@ -4,6 +4,7 @@
 	import type { Copy } from '../copy.ts';
 	import { clampFrame, moveFrame, resizeFrame, type Handle } from './float-frame.ts';
 	import { dragGate } from './pane-resize.svelte.ts';
+	import { trackPointerDrag } from '../pointer-drag.ts';
 	import WorkbenchLeaf from './WorkbenchLeaf.svelte';
 
 	type Props = {
@@ -116,9 +117,6 @@
 			root.style.transform = `translate3d(${latest.x - origin.x}px, ${latest.y - origin.y}px, 0)`;
 		};
 		const finish = () => {
-			target.removeEventListener('pointermove', move);
-			target.removeEventListener('pointerup', finish);
-			target.removeEventListener('pointercancel', finish);
 			if (!resize) {
 				root.style.left = `${latest.x}px`;
 				root.style.top = `${latest.y}px`;
@@ -138,9 +136,7 @@
 				moving = false;
 			}
 		};
-		target.addEventListener('pointermove', move);
-		target.addEventListener('pointerup', finish);
-		target.addEventListener('pointercancel', finish);
+		trackPointerDrag(target, { move, end: finish });
 	}
 </script>
 

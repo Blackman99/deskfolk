@@ -2,6 +2,7 @@
 	import type { Copy } from './copy.ts';
 	import { copyRenderedImage } from './clipboard.ts';
 	import { computeContextMenuPosition } from './sidebar/session-context-menu.ts';
+	import { dismissOnOutside } from './dismissable-menu.ts';
 
 	interface Props {
 		src: string;
@@ -37,24 +38,7 @@
 	$effect(() => {
 		const menu = menuEl;
 		if (!menu) return;
-		queueMicrotask(() => menu.querySelector<HTMLElement>('[role="menuitem"]')?.focus({ preventScroll: true }));
-		const onDown = (event: PointerEvent) => {
-			if (!menu.contains(event.target as Node)) onClose();
-		};
-		const onScroll = (event: Event) => {
-			if (!menu.contains(event.target as Node)) onClose();
-		};
-		const dismiss = () => onClose();
-		window.addEventListener('pointerdown', onDown, true);
-		window.addEventListener('scroll', onScroll, true);
-		window.addEventListener('resize', dismiss);
-		window.addEventListener('blur', dismiss);
-		return () => {
-			window.removeEventListener('pointerdown', onDown, true);
-			window.removeEventListener('scroll', onScroll, true);
-			window.removeEventListener('resize', dismiss);
-			window.removeEventListener('blur', dismiss);
-		};
+		return dismissOnOutside(menu, () => onClose());
 	});
 
 	function onKey(event: KeyboardEvent): void {

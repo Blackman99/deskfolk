@@ -87,6 +87,7 @@
 	import ChatHeader from './chat/ChatHeader.svelte';
 	import ChatTabLabel from './chat/ChatTabLabel.svelte';
 	import ChatStage from './chat/ChatStage.svelte';
+	import { trackPointerDrag } from './pointer-drag.ts';
 	// SettingsModal.svelte (with its tabs, provider/MCP/notification sub-panels and editor flyout) is
 	// loaded lazily below on first `runtime.settingsOpen`, and stays mounted after that — its own
 	// template is already gated on `runtime.settingsOpen` (an `{#if runtime.settingsOpen}` inside
@@ -687,13 +688,8 @@
 		const onUp = () => {
 			sidebarDragging = false;
 			saveSidebarWidth(sidebarPreferred);
-			handle.removeEventListener('pointermove', onMove);
-			handle.removeEventListener('pointerup', onUp);
-			handle.removeEventListener('pointercancel', onUp);
 		};
-		handle.addEventListener('pointermove', onMove);
-		handle.addEventListener('pointerup', onUp);
-		handle.addEventListener('pointercancel', onUp);
+		trackPointerDrag(handle, { move: onMove, end: onUp });
 	}
 
 

@@ -4,6 +4,8 @@
 	import type { Copy } from '../copy.ts';
 	import { formatShortcut } from '../keymap.ts';
 	import { computeContextMenuPosition } from '../sidebar/session-context-menu.ts';
+	import { dismissOnOutside } from '../dismissable-menu.ts';
+	import { roveArrows } from '../menu-roving.ts';
 	import { SPLIT_TOWARDS } from './workbench-commands.ts';
 
 	type Props = {
@@ -126,25 +128,7 @@
 	$effect(() => {
 		const menu = menuEl;
 		if (!menu) return;
-		queueMicrotask(() => enabledItems()[0]?.focus({ preventScroll: true }));
-		const onDown = (event: PointerEvent) => {
-			const target = event.target as Node;
-			if (!menu.contains(target) && !anchor?.contains(target)) onClose();
-		};
-		const onScroll = (event: Event) => {
-			if (!menu.contains(event.target as Node)) onClose();
-		};
-		const dismiss = () => onClose();
-		window.addEventListener('pointerdown', onDown, true);
-		window.addEventListener('scroll', onScroll, true);
-		window.addEventListener('resize', dismiss);
-		window.addEventListener('blur', dismiss);
-		return () => {
-			window.removeEventListener('pointerdown', onDown, true);
-			window.removeEventListener('scroll', onScroll, true);
-			window.removeEventListener('resize', dismiss);
-			window.removeEventListener('blur', dismiss);
-		};
+		return dismissOnOutside(menu, () => onClose(), { first: () => enabledItems()[0], anchor: () => anchor });
 	});
 
 	function enabledItems(): HTMLElement[] {
@@ -157,7 +141,6 @@
 	 */
 	function onKey(event: KeyboardEvent): void {
 		const list = enabledItems();
-		const index = list.indexOf(document.activeElement as HTMLElement);
 		if (event.key === 'Escape') {
 			event.preventDefault();
 			event.stopPropagation();
@@ -170,12 +153,7 @@
 		} else if (event.key === 'Tab') {
 			onClose();
 		} else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-			event.preventDefault();
-			event.stopPropagation();
-			if (list.length === 0) return;
-			const step = event.key === 'ArrowDown' ? 1 : -1;
-			const next = index < 0 ? (step > 0 ? 0 : list.length - 1) : (index + step + list.length) % list.length;
-			list[next]!.focus();
+			roveArrows(event, list);
 		} else if (event.key === 'Home' || event.key === 'End') {
 			event.preventDefault();
 			list[event.key === 'Home' ? 0 : list.length - 1]?.focus();

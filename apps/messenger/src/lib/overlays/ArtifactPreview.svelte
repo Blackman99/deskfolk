@@ -49,6 +49,7 @@
 	import ArtifactAnnotBar from './ArtifactAnnotBar.svelte';
 	import ArtifactBody from './ArtifactBody.svelte';
 	import ArtifactDirtyDialog from './ArtifactDirtyDialog.svelte';
+	import { trackPointerDrag } from '../pointer-drag.ts';
 
 	interface Props {
 		attachment: Attachment | null;
@@ -484,11 +485,8 @@
 		const onUp = () => {
 			treeDragging = false;
 			saveArtifactTreeWidth(treePreferred);
-			window.removeEventListener('pointermove', onMove);
-			window.removeEventListener('pointerup', onUp);
 		};
-		window.addEventListener('pointermove', onMove);
-		window.addEventListener('pointerup', onUp);
+		trackPointerDrag(window, { move: onMove, end: onUp, cancel: false });
 	}
 
 	function onPaneKey(ev: KeyboardEvent): void {

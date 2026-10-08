@@ -57,6 +57,7 @@
 	import WorkbenchFloat from './WorkbenchFloat.svelte';
 	import WorkbenchLeaf from './WorkbenchLeaf.svelte';
 	import PaneContextMenu from './PaneContextMenu.svelte';
+	import { trackPointerDrag } from '../pointer-drag.ts';
 	import { paneEditAt, type PaneEdit } from './pane-edit.ts';
 
 	type Props = {
@@ -270,9 +271,6 @@
 			paint(drag, delta);
 		};
 		const finish = (endEvent: PointerEvent) => {
-			target.removeEventListener('pointermove', move);
-			target.removeEventListener('pointerup', finish);
-			target.removeEventListener('pointercancel', finish);
 			clearPaint([drag.branchId]);
 			dragging = false;
 			draggingSash = null;
@@ -286,9 +284,7 @@
 				dragGate.end();
 			}
 		};
-		target.addEventListener('pointermove', move);
-		target.addEventListener('pointerup', finish);
-		target.addEventListener('pointercancel', finish);
+		trackPointerDrag(target, { move, end: finish });
 	}
 
 	function startJunction(event: PointerEvent, junctionId: string): void {
@@ -316,9 +312,6 @@
 			for (const stem of drag.stems) paint(stem, delta.along);
 		};
 		const finish = (endEvent: PointerEvent) => {
-			target.removeEventListener('pointermove', move);
-			target.removeEventListener('pointerup', finish);
-			target.removeEventListener('pointercancel', finish);
 			clearPaint(touched);
 			dragging = false;
 			try {
@@ -331,9 +324,7 @@
 				dragGate.end();
 			}
 		};
-		target.addEventListener('pointermove', move);
-		target.addEventListener('pointerup', finish);
-		target.addEventListener('pointercancel', finish);
+		trackPointerDrag(target, { move, end: finish });
 	}
 
 	/**
@@ -393,9 +384,6 @@
 			if (!scrolling && typeof requestAnimationFrame === 'function') scrolling = requestAnimationFrame(scrollRow);
 		};
 		const finish = (endEvent: PointerEvent) => {
-			target.removeEventListener('pointermove', move);
-			target.removeEventListener('pointerup', finish);
-			target.removeEventListener('pointercancel', finish);
 			if (scrolling) cancelAnimationFrame(scrolling);
 			scrolling = 0;
 			if (!current.started) return;
@@ -418,9 +406,7 @@
 			});
 			if (next !== layout) onLayout(next);
 		};
-		target.addEventListener('pointermove', move);
-		target.addEventListener('pointerup', finish);
-		target.addEventListener('pointercancel', finish);
+		trackPointerDrag(target, { move, end: finish });
 	}
 
 	function pointFrom(event: PointerEvent): { x: number; y: number } {

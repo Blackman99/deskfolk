@@ -13,6 +13,7 @@ import type { MessengerRuntime } from "../runtime.svelte.ts";
 import { sanitizePreviewPath } from "../session-url.ts";
 import { findAttachmentById, findAttachmentByPath, siblingsForPath } from "./artifact-lookup.ts";
 import { clampPreviewWidth, loadPreviewWidth, savePreviewWidth } from "./preview-width.ts";
+import { trackPointerDrag } from "../pointer-drag.ts";
 
 /** What the shell binds the workspace explorer and the preview to: both can ask before they close. */
 type PaneHandle = {
@@ -208,11 +209,8 @@ export class ShellArtifact {
     const onUp = () => {
       this.previewDragging = false;
       savePreviewWidth(this.previewPreferred);
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
     };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
+    trackPointerDrag(window, { move: onMove, end: onUp, cancel: false });
   };
 
   guardNotificationNavigation = (perform: () => void): void => {
