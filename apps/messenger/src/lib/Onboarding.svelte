@@ -61,6 +61,7 @@
 	let activePreset = $state<string>('');
 	let fetchingModels = $state(false);
 	let fetchError = $state<string | null>(null);
+	let fetchNotice = $state<string | null>(null);
 	/** What the endpoint actually returned; saved with the endpoint so Settings can show it again. */
 	let probedModels = $state<string[]>([]);
 	let probedCatalog = $state<ProbedModel[]>([]);
@@ -209,6 +210,7 @@
 		}
 		fetchingModels = true;
 		fetchError = null;
+		fetchNotice = null;
 		const res = await runtime.probeModels(baseUrl, apiKey);
 		fetchingModels = false;
 		if (!res.ok) {
@@ -226,6 +228,7 @@
 			if (!nextSelected.includes(runtime.endpointDefaultModel)) {
 				runtime.endpointDefaultModel = nextSelected[0] ?? '';
 			}
+			fetchNotice = t.settings.modelsFetched(res.models.length);
 		}
 	}
 
@@ -686,7 +689,11 @@
 
 					{#if fetchError}
 						<div class="models-fetch-tip">
-							<span class="muted">{fetchError}</span>
+							<span class="field-error">{fetchError}</span>
+						</div>
+					{:else if fetchNotice}
+						<div class="models-fetch-tip">
+							<span class="muted">{fetchNotice}</span>
 						</div>
 					{/if}
 
