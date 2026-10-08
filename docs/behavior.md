@@ -588,7 +588,7 @@ Bot 在哪读到它：每一轮的局面里都有「用户要求」一段，列�
 
 流式输出不再算作这一轮在推进：以前每来一段就刷新一次这一轮的动静，一跳写多久都不会被当成卡住。现在补全由自己的时间上限管，卡住清扫（20 分钟没有任何动静）只管补全之外的时候。
 
-名单里的 `max_output` 在设置里看不到；`stream_tps_p10` 由模型属性里的「测一下」写入，`context_window`（上下文窗口，token）在模型属性里能看能改。从设置再保存名单时，没带的这几个值照旧保留，通过接口传 `null` 才会清掉（窗口栏清空就是传 `null`）。存着的名单里这几个值哪个不合法（比如 0 或者字符串），只忽略这一个值，模型照常留在名单里，用它的 Bot 也不受影响。
+名单里的 `max_output` 在设置里看不到；`stream_tps_p10` 由模型属性里的「测一下」写入，`context_window`（上下文窗口，token）在模型属性里能看能改。Bot 用 `update_endpoint` 也能改 `context_window`、`input_image` 和 `max_output`，用 `measure_model` 测速，用 `update_model_settings` 改默认端点、读句用的模型和模型阶梯，都直接执行（[ADR 0014](adr/0014-bot-catalog-tools.md)）。从设置再保存名单时，没带的这几个值照旧保留，通过接口传 `null` 才会清掉（窗口栏清空就是传 `null`）。存着的名单里这几个值哪个不合法（比如 0 或者字符串），只忽略这一个值，模型照常留在名单里，用它的 Bot 也不受影响。
 
 **Anthropic 兼容的端点。** 端点的格式选了 Anthropic 兼容（[ADR 0066](adr/0066-anthropic-format-endpoints.md)），这一节的规矩照旧，只是发出去的样子不同：
 

@@ -23,6 +23,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 - **Test** in a model's attributes times it (tokens per second, time to the first token) and checks it calls a tool it is given; the speed sizes how long a step may write.
 - Local models get time limits that fit them: up to 15 minutes for the first token, one request at a time per server, and short background calls ask the model not to think — a reasoning model otherwise spent all 256 tokens thinking and answered nothing. A leading `<think>` block is no longer shown as part of a reply. The README has a **Local models** section on context size, tool calls and mixing local with cloud. [ADR 0067](docs/adr/0067-local-model-servers.md)
 
+### Bots can change model settings
+
+- A Bot can now set a model's **context window**, whether it takes pictures and its output cap when it edits an endpoint's model list, and the tool spells out what each list entry keeps or resets when left out — sending just a model's name resets its prices, thinking levels and strengths, so a Bot copies the whole entry and changes one field.
+- `measure_model` runs the same speed test as **Test** in Settings: how fast the model writes and whether it calls a tool it is given.
+- `update_model_settings` changes which endpoint is the default, the model that reads your lines and the model ladder; `list_endpoints` now shows the reading model and the ladder too. They run without an approval card, like changing an endpoint's default model: they only choose among endpoints and models you configured. The default can only move to an endpoint that has a key (or needs none) and lists models. Other Bots' pinned models, the workspace, Always-allow rules, remote access, notifications and appearance stay yours alone. [ADR 0014](docs/adr/0014-bot-catalog-tools.md)
+
 ## 0.1.0-rc.14 — 2026-10-08
 
 Unsigned macOS rc with an experimental unsigned Windows installer beside the `.dmg`s. This is not a supported signed installer; Gatekeeper or SmartScreen may block it. Prefer running from source.

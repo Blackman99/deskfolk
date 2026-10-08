@@ -4,7 +4,7 @@
  * tool actually wrote to the workspace is tracked here too, since that is what a closing check and
  * a delivered message both cite.
  */
-import type { AskAnswer, ClientEvent, McpServer, Message, Turn } from "@real-bot/protocol";
+import type { AskAnswer, ClientEvent, McpServer, Message, ModelSpeed, Turn } from "@real-bot/protocol";
 import { askAnswerText } from "../ask";
 import { runCollabTool, type ToolCtx, type ToolResult } from "../collab-tools";
 import { toolFail } from "../tool-result";
@@ -89,6 +89,8 @@ const FAILURE_ERROR_MAX = 240;
 
 export type ToolsDeps = {
   store: Store;
+  /** The speed test, for a Bot's measure_model (ADR 0067). */
+  measureModel?: (providerId: string, model: string, signal: AbortSignal) => Promise<ModelSpeed>;
   /** Overrides the shell's 10-minute timeout; tests use a short one. */
   shellTimeoutMs?: number;
   publish: (event: ClientEvent) => void;
@@ -731,6 +733,7 @@ export function createTools(deps: ToolsDeps): Tools {
               availableToolNames: live.toolNames,
               admission,
               signal: live.abort.signal,
+              ...(deps.measureModel ? { measure: deps.measureModel } : {}),
             },
             name,
             args,

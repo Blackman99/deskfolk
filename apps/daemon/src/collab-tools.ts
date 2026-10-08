@@ -15,6 +15,7 @@ import {
   type McpServer,
   type McpTransport,
   type Memory,
+  type ModelSpeed,
   type Message,
   type Provider,
   type Routine,
@@ -127,6 +128,11 @@ export type ToolCtx = {
   admission?: TurnAdmission;
   signal?: AbortSignal;
   /**
+   * Times a model and checks it calls tools, recording its speed (ADR 0067): the engine's speed
+   * test, for measure_model. Absent where no engine runs the call; the tool then says so.
+   */
+  measure?: (providerId: string, model: string, signal: AbortSignal) => Promise<ModelSpeed>;
+  /**
    * What the call's words say, as the engine read them before it runs (ADR 0055): `noWork` for a
    * `send_message` body that is only a no-work closer; `lastWord` for an `end_turn`, the segment's
    * last word and the sentence in which it says the work is still going; `goAhead` for a question
@@ -219,6 +225,10 @@ export async function runCollabTool(
         return await updateEndpoint(ctx, args);
       case "delete_endpoint":
         return await deleteEndpoint(ctx, args);
+      case "measure_model":
+        return await measureModelTool(ctx, args);
+      case "update_model_settings":
+        return await updateModelSettings(ctx, args);
       case "list_mcp_servers":
         return await listMcpServers(ctx);
       case "add_mcp_server":
@@ -1074,8 +1084,77 @@ async function listEndpoints(ctx: ToolCtx): Promise<ToolResult> {
     ok: true,
     data: {
       endpoints: providers.map((provider) => serializeEndpoint(provider, defaultId)),
+      ...modelSettingsView(ctx.store, (await ctx.store.settings()).reader_model ?? null),
     },
     emitted: [],
+  };
+}
+
+/** The app-wide model settings as the Bot's tools name them: endpoint ids, not provider ids. */
+function modelSettingsView(store: Store, reader: { provider_id: string; model: string } | null) {
+  return {
+    reader_model: reader ? { endpoint_id: reader.provider_id, model: reader.model } : null,
+    model_ladder: store.modelLadder().map((rung) => ({ endpoint_id: rung.provider_id, model: rung.model })),
+  };
+}
+
+/** A `{ endpoint_id, model }` from a tool argument, as the store takes it. */
+function endpointModelOf(value: unknown, field: string): { provider_id: string; model: string } {
+  const row = value as { endpoint_id?: unknown; model?: unknown } | null;
+  if (!row || typeof row !== "object" || typeof row.endpoint_id !== "string" || typeof row.model !== "string") {
+    throw new HttpError(422, "invalid_args", `${field} must be { endpoint_id, model }`);
+  }
+  return { provider_id: row.endpoint_id, model: row.model };
+}
+
+/** The speed test of the model's settings (ADR 0067), run by a Bot. */
+async function measureModelTool(ctx: ToolCtx, args: Record<string, unknown>): Promise<ToolResult> {
+  const endpointId = requireString(args.endpoint_id, "endpoint_id");
+  const model = requireString(args.model, "model");
+  if (!ctx.measure) return fail("failed", "measuring a model needs the app's engine; it is not available here");
+  const speed = await ctx.measure(endpointId, model, ctx.signal ?? new AbortController().signal);
+  assertActive(ctx);
+  const provider = await ctx.store.getProvider(endpointId);
+  return { ok: true, data: { ...speed }, emitted: speed.recorded_tps ? [{ kind: "provider", provider }] : [] };
+}
+
+/**
+ * The default endpoint, the reading model and the model ladder (ADR 0014, 2026-10-08). They choose
+ * among endpoints and models you already configured, so they run at once, as changing one
+ * endpoint's default model does: no key or URL goes anywhere new. Validated as one change — the
+ * ladder and the settings are written in one transaction, or neither.
+ */
+async function updateModelSettings(ctx: ToolCtx, args: Record<string, unknown>): Promise<ToolResult> {
+  const given = (key: string) => args[key] !== undefined;
+  if (!given("default_endpoint_id") && !given("reader_model") && !given("model_ladder")) {
+    throw new HttpError(422, "invalid_args", "give default_endpoint_id, reader_model or model_ladder");
+  }
+  const patch: { default_provider_id?: string; reader_model?: { provider_id: string; model: string } | null } = {};
+  if (given("default_endpoint_id")) {
+    const id = requireString(args.default_endpoint_id, "default_endpoint_id");
+    const provider = await ctx.store.getProvider(id);
+    // An endpoint the app cannot call would leave every unpinned Bot with nothing to run on.
+    if (!provider.key_set && !isLocalEndpoint(provider.base_url)) {
+      throw new HttpError(409, "conflict", "that endpoint has no key yet; the user adds it in Settings");
+    }
+    if (provider.models.length === 0) throw new HttpError(409, "conflict", "that endpoint lists no models yet");
+    patch.default_provider_id = id;
+  }
+  if (given("reader_model")) patch.reader_model = args.reader_model === null ? null : endpointModelOf(args.reader_model, "reader_model");
+  let ladder: Array<{ provider_id: string; model: string }> | undefined;
+  if (given("model_ladder")) {
+    if (!Array.isArray(args.model_ladder)) throw new HttpError(422, "invalid_args", "model_ladder must be a list of { endpoint_id, model }");
+    ladder = args.model_ladder.map((rung) => endpointModelOf(rung, "model_ladder"));
+  }
+  const previousBots = snapshotBotPins(ctx.store);
+  const settings = await mutateConfiguration(ctx, () => {
+    if (ladder) ctx.store.setModelLadder(ladder);
+    return ctx.store.patchSettingsSync(patch);
+  });
+  return {
+    ok: true,
+    data: { default_endpoint_id: settings.default_provider_id, ...modelSettingsView(ctx.store, settings.reader_model ?? null) },
+    emitted: [{ kind: "settings" }, ...botPinEmits(ctx.store, previousBots)],
   };
 }
 

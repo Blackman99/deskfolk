@@ -116,6 +116,8 @@ const VERBS: Readonly<Record<string, ActivityVerb>> = {
   add_endpoint: "editSettings",
   update_endpoint: "editSettings",
   delete_endpoint: "editSettings",
+  measure_model: "editSettings",
+  update_model_settings: "editSettings",
   list_mcp_servers: "settings",
   add_mcp_server: "editSettings",
   update_mcp_server: "editSettings",

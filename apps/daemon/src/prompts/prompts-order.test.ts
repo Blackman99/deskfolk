@@ -37,6 +37,8 @@ describe("builtinTools order", () => {
       "add_endpoint",
       "update_endpoint",
       "delete_endpoint",
+      "measure_model",
+      "update_model_settings",
       "list_mcp_servers",
       "add_mcp_server",
       "update_mcp_server",

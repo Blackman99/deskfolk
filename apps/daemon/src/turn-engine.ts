@@ -498,8 +498,25 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     ablation,
   });
 
+  /** The speed test (ADR 0067), from the settings' button or a Bot's measure_model. */
+  async function measureEndpointModel(providerId: string, model: string, signal: AbortSignal): Promise<ModelSpeed> {
+    const creds = await routing.credentials();
+    const provider = creds?.providers.find((row) => row.id === providerId);
+    if (!provider) throw new HttpError(409, "conflict", "this endpoint has no key yet");
+    if (!provider.models.includes(model)) throw new HttpError(422, "invalid_args", "model is not enabled on this endpoint");
+    const measured = await measureModel(
+      completions,
+      { baseUrl: provider.baseUrl, apiKey: provider.apiKey, apiFormat: provider.apiFormat, model },
+      signal,
+    );
+    const recorded = measured.tokens_per_second ? Math.max(0.1, Math.round(measured.tokens_per_second * RECORDED_SHARE * 10) / 10) : null;
+    if (recorded) store.recordModelFacts(providerId, model, { stream_tps_p10: recorded });
+    return { ...measured, recorded_tps: recorded };
+  }
+
   const tools = createTools({
     store,
+    measureModel: measureEndpointModel,
     ...(options.shellTimeoutMs !== undefined ? { shellTimeoutMs: options.shellTimeoutMs } : {}),
     publish,
     publishMessage: core.publishMessage,
@@ -942,20 +959,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     },
     fireRoutine: fire.fireRoutine,
     fireCheckBack: fire.fireCheckBack,
-    async measureModel(providerId, model, signal) {
-      const creds = await routing.credentials();
-      const provider = creds?.providers.find((row) => row.id === providerId);
-      if (!provider) throw new HttpError(409, "conflict", "this endpoint has no key yet");
-      if (!provider.models.includes(model)) throw new HttpError(422, "invalid_args", "model is not enabled on this endpoint");
-      const measured = await measureModel(
-        completions,
-        { baseUrl: provider.baseUrl, apiKey: provider.apiKey, apiFormat: provider.apiFormat, model },
-        signal,
-      );
-      const recorded = measured.tokens_per_second ? Math.max(0.1, Math.round(measured.tokens_per_second * RECORDED_SHARE * 10) / 10) : null;
-      if (recorded) store.recordModelFacts(providerId, model, { stream_tps_p10: recorded });
-      return { ...measured, recorded_tps: recorded };
-    },
+    measureModel: measureEndpointModel,
     assertAskPending,
     resolveApproval(id, action, scope, apiKey) {
       const rowForGate = store.getApproval(id);

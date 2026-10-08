@@ -58,3 +58,5 @@ A short call (`max_tokens` 256, no thinking level): qwen3:8b spent all 256 token
 - 不替你调大服务的窗口，也不在本地端点上自动裁历史：窗口不够时说清楚、停下，由你调大或换模型。/ The app does not raise the server's window or trim history for it; it says so and stops.
 - 一次只发一条：设了 `OLLAMA_NUM_PARALLEL` 的也一样，两个 Bot 同时干活时轮流用。/ One stream at a time even when the server allows more.
 - 读句排在本地服务正在写的一跳后面时会超时退回词表；读句、整理用云端模型、Bot 用本地模型的混合配置写在 README 里。/ A reading queued behind a local step times out to the word lists; the README recommends readings on a cloud model and Bots on the local one.
+
+2026-10-08 补 / Addendum: Bot 也能做第 4、8 条里你在设置里做的事：`update_endpoint` 的名单项可以带 `context_window`、`input_image`、`max_output`，`measure_model` 跑同一个测速。见 [ADR 0014](0014-bot-catalog-tools.md)。/ A Bot can do what decisions 4 and 8 give you in Settings: `update_endpoint` entries take `context_window`, `input_image` and `max_output`, and `measure_model` runs the same speed test.

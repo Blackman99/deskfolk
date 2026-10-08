@@ -1,10 +1,52 @@
 import type { ToolDef } from "../tool-schema";
 
+/**
+ * One entry of an endpoint's model list, as add_endpoint and update_endpoint take it. The window,
+ * pictures and output cap (ADR 0067) are the Bot's to set as well as yours; the measured speed is
+ * written by measure_model only.
+ */
+const MODEL_ENTRY = {
+  anyOf: [
+    { type: "string" },
+    {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        price: { type: "number" },
+        pricing: {
+          type: "object",
+          properties: {
+            input: { type: "number", minimum: 0 },
+            output: { type: "number", minimum: 0 },
+            cached_input: { type: "number", minimum: 0 },
+          },
+          required: ["input", "output"],
+        },
+        thinking_levels: {
+          type: "array",
+          items: { type: "string" },
+        },
+        strengths: { type: "array", items: { type: "string" } },
+        context_window: { type: ["integer", "null"], minimum: 1 },
+        input_image: { type: ["boolean", "null"] },
+        max_output: { type: ["integer", "null"], minimum: 1 },
+      },
+      required: ["name"],
+    },
+  ],
+};
+
+/** What every entry's fields do when left out, said the same way in both tools. */
+const MODEL_ENTRY_RULES = {
+  zh: "每项是名字字符串，或 { name, price?, pricing?: { input, output, cached_input? }, thinking_levels?, strengths?, context_window?, input_image?, max_output? }。price 是选路参考价；pricing 是 USD / 百万 token 计费单价；context_window 是模型每次能读的 token 数（本地模型服务超出会截断提示词）；input_image 是能不能看图；max_output 是每一步最多写多少 token（不填是 32768）。每一项都会整项替换这个模型原来的设置：没写的 price、pricing 会清空，thinking_levels 回到 none/low/medium/high，strengths 清空；context_window、input_image、max_output 和测出的速度没写就保留，写 null 才清掉。只想改一个字段时，从 list_endpoints 的 model_catalog 把这一项整个抄过来再改那一个字段；只写名字字符串会把这个模型的价格、思考等级和擅长领域都重置掉。",
+  en: "Each item is a name string or { name, price?, pricing?: { input, output, cached_input? }, thinking_levels?, strengths?, context_window?, input_image?, max_output? }. price is a routing reference; pricing is USD per million tokens; context_window is how many tokens the model reads per request (a local model server cuts a prompt past it); input_image is whether it takes pictures; max_output is the most tokens one step may write (32768 when unset). Each item replaces that model's settings as a whole: price and pricing left out are cleared, thinking_levels go back to none/low/medium/high, strengths are emptied; context_window, input_image, max_output and the measured speed left out are kept, and null clears them. To change one field, copy the item whole from list_endpoints' model_catalog and change only that field; a bare name string resets the model's prices, thinking levels and strengths.",
+};
+
 export const LIST_ENDPOINTS: ToolDef = {
   name: "list_endpoints",
   description: {
-    zh: "列出名册级端点。返回 id、名称、URL、接口格式、是否已配密钥、模型名单和是否为默认端点。永不返回密钥。",
-    en: "List roster-level endpoints. Returns id, name, URL, API format, whether a key is set, the model list, and whether it is the default endpoint. Never returns secrets.",
+    zh: "列出名册级端点和模型设置。每个端点返回 id、名称、URL、接口格式、是否已配密钥、模型名单（model_catalog 里每个模型的价格、思考等级、上下文窗口、能否看图、输出上限和测出的速度）和是否为默认端点；另返回读句用的模型 reader_model（null 表示跟默认模型走）和模型阶梯 model_ladder（从弱到强）。永不返回密钥。",
+    en: "List roster-level endpoints and the model settings. Each endpoint comes with id, name, URL, API format, whether a key is set, its model list (model_catalog: each model's prices, thinking levels, context window, whether it takes pictures, output cap and measured speed) and whether it is the default endpoint; also reader_model, the model that reads lines (null follows the default model), and model_ladder, weaker to stronger. Never returns secrets.",
   },
   properties: {},
 };
@@ -34,36 +76,10 @@ export const ADD_ENDPOINT: ToolDef = {
     },
     models: {
       type: "array",
-      items: {
-        anyOf: [
-          { type: "string" },
-          {
-            type: "object",
-            properties: {
-              name: { type: "string" },
-              price: { type: "number" },
-              pricing: {
-                type: "object",
-                properties: {
-                  input: { type: "number", minimum: 0 },
-                  output: { type: "number", minimum: 0 },
-                  cached_input: { type: "number", minimum: 0 },
-                },
-                required: ["input", "output"],
-              },
-              thinking_levels: {
-                type: "array",
-                items: { type: "string" },
-              },
-              strengths: { type: "array", items: { type: "string" } },
-            },
-            required: ["name"],
-          },
-        ],
-      },
+      items: MODEL_ENTRY,
       description: {
-        zh: "整份模型名单。每项是名字字符串，或 { name, price?, pricing?: { input, output, cached_input? }, thinking_levels?, strengths? }。price 是选路参考价；pricing 是 USD / 百万 token 计费单价。省略则为空名单。",
-        en: "The full model list. Each item is a name string or { name, price?, pricing?: { input, output, cached_input? }, thinking_levels?, strengths? }. price is a routing reference; pricing is USD per million tokens. Omit for an empty list.",
+        zh: `整份模型名单。${MODEL_ENTRY_RULES.zh}省略则为空名单。`,
+        en: `The full model list. ${MODEL_ENTRY_RULES.en} Omit for an empty list.`,
       },
     },
     default_model: {
@@ -100,36 +116,10 @@ export const UPDATE_ENDPOINT: ToolDef = {
     },
     models: {
       type: "array",
-      items: {
-        anyOf: [
-          { type: "string" },
-          {
-            type: "object",
-            properties: {
-              name: { type: "string" },
-              price: { type: "number" },
-              pricing: {
-                type: "object",
-                properties: {
-                  input: { type: "number", minimum: 0 },
-                  output: { type: "number", minimum: 0 },
-                  cached_input: { type: "number", minimum: 0 },
-                },
-                required: ["input", "output"],
-              },
-              thinking_levels: {
-                type: "array",
-                items: { type: "string" },
-              },
-              strengths: { type: "array", items: { type: "string" } },
-            },
-            required: ["name"],
-          },
-        ],
-      },
+      items: MODEL_ENTRY,
       description: {
-        zh: "整份新名单。pricing 的 input / output / cached_input 是 USD / 百万 token 计费单价；省略 pricing 清空单价。省略 models 则不改名单。",
-        en: "The full new list. pricing input / output / cached_input rates are USD per million tokens; omit pricing to clear rates. Omit models to leave the list unchanged.",
+        zh: `整份新名单：没列上的模型会从这个端点去掉。${MODEL_ENTRY_RULES.zh}省略 models 则不改名单。`,
+        en: `The full new list: a model left off it is removed from this endpoint. ${MODEL_ENTRY_RULES.en} Omit models to leave the list unchanged.`,
       },
     },
     default_model: {
@@ -150,6 +140,60 @@ export const DELETE_ENDPOINT: ToolDef = {
     id: { type: "string", description: { zh: "端点 id。", en: "Endpoint id." } },
   },
   required: ["id"],
+};
+
+export const MEASURE_MODEL: ToolDef = {
+  name: "measure_model",
+  description: {
+    zh: "测一个已启用模型：先让它流式写一段，量首字时间和每秒 token，再给它一个工具看会不会调用。测到速度的六成记进这个模型的条目，定每一步最多写多久。本地模型服务最需要；要几秒到几分钟，服务正忙时还要等它手上的请求。不调工具的模型做不了 Bot 的活。直接执行。",
+    en: "Test one enabled model: it streams a short reply to time the first token and the tokens per second, then is offered a tool to see whether it calls it. 60% of the measured speed is recorded on the model's entry and sizes how long one step may write. Local model servers need it most; it takes seconds to minutes, longer while the server is busy. A model that does not call tools cannot do a Bot's work. Runs immediately.",
+  },
+  properties: {
+    endpoint_id: { type: "string", description: { zh: "端点 id，来自 list_endpoints。", en: "Endpoint id from list_endpoints." } },
+    model: { type: "string", description: { zh: "这个端点名单上的模型名。", en: "A model name on that endpoint's list." } },
+  },
+  required: ["endpoint_id", "model"],
+};
+
+export const UPDATE_MODEL_SETTINGS: ToolDef = {
+  name: "update_model_settings",
+  description: {
+    zh: "改全局的模型设置：哪个端点是默认端点、读句用哪个模型、模型阶梯。至少给一项；只能在已配置的端点和名单上的模型里选。直接执行，不等批准：所有没钉模型的 Bot、读句（没单独设时）、整理和判断都跟着默认端点的默认模型走，改之前先 list_endpoints 看清现状，改完告诉用户改了什么。",
+    en: "Change the app-wide model settings: which endpoint is the default, which model reads lines, and the model ladder. Give at least one; choose only among configured endpoints and the models on their lists. Runs immediately, without approval: every Bot not pinned to a model, the readings (unless set apart), organizing and judgements follow the default endpoint's default model, so check list_endpoints first and tell the user what you changed.",
+  },
+  properties: {
+    default_endpoint_id: {
+      type: "string",
+      description: { zh: "设为默认端点的端点 id。", en: "Id of the endpoint to make the default." },
+    },
+    reader_model: {
+      type: ["object", "null"],
+      properties: {
+        endpoint_id: { type: "string", description: { zh: "端点 id。", en: "Endpoint id." } },
+        model: { type: "string", description: { zh: "那个端点名单上的模型名。", en: "A model name on that endpoint's list." } },
+      },
+      required: ["endpoint_id", "model"],
+      description: {
+        zh: "读你每一句话用的模型 { endpoint_id, model }，须在那个端点的名单上；null 回到跟默认模型走。用户在等它读完才会被处理，选个快的。",
+        en: "The model that reads each of the user's lines, { endpoint_id, model }, on that endpoint's list; null goes back to following the default model. The user's line waits for it, so pick a fast one.",
+      },
+    },
+    model_ladder: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          endpoint_id: { type: "string" },
+          model: { type: "string" },
+        },
+        required: ["endpoint_id", "model"],
+      },
+      description: {
+        zh: "整份模型阶梯，从弱到强，最多 8 级，每个模型一次：一件事在当前模型上反复失败时往上换一级。[] 清空阶梯。需要引擎第 7 级。",
+        en: "The whole model ladder, weaker to stronger, at most 8 rungs, each model once: a job that keeps failing on its model moves one rung up. [] removes the ladder. Needs engine level 7.",
+      },
+    },
+  },
 };
 
 export const LIST_MCP_SERVERS: ToolDef = {
