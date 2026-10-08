@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { isOutside } from '../click-outside.ts';
+	import { roveFocus } from '../menu-roving.ts';
 	import { screenCopy, type Copy } from '../copy.ts';
 	import { spendCopyFor } from '../spend/spend-copy.ts';
 
@@ -141,13 +142,7 @@
 			close();
 			return;
 		}
-		if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
-		e.preventDefault();
-		const items = itemsOf();
-		if (!items.length) return;
-		const index = items.indexOf(document.activeElement as HTMLButtonElement);
-		const next = e.key === 'Home' ? 0 : e.key === 'End' ? items.length - 1 : e.key === 'ArrowDown' ? index + 1 : index - 1;
-		items[(next + items.length) % items.length]?.focus();
+		roveFocus(e, itemsOf);
 	}
 
 	/**

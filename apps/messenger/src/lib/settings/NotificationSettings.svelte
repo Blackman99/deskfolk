@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 	import type { Copy } from '../copy.ts';
+	import SettingsSwitch from './SettingsSwitch.svelte';
 	import { ApiError } from '../api.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { classifyPushHealth, closeCopyKey } from '../notifications/tab-owner.ts';
@@ -331,17 +332,14 @@
 						</div>
 					</div>
 					<div class="category-action">
-						<span class="switch-toggle" class:is-disabled={policyLoading}>
+						<SettingsSwitch tag="span" disabled={policyLoading}>
 							<input
 								type="checkbox"
 								checked={cat.checked}
 								disabled={policyLoading}
 								onchange={() => void toggleCategory(cat.key)}
 							/>
-							<span class="switch-track" aria-hidden="true">
-								<span class="switch-thumb"></span>
-							</span>
-						</span>
+						</SettingsSwitch>
 					</div>
 				</label>
 			{/each}
@@ -379,17 +377,14 @@
 						</span>
 					</div>
 					<div class="settings-row-action">
-						<span class="switch-toggle" class:is-disabled={policyLoading}>
+						<SettingsSwitch tag="span" disabled={policyLoading}>
 							<input
 								type="checkbox"
 								checked={policy?.quiet_hours.enabled ?? false}
 								disabled={policyLoading}
 								onchange={() => void toggleQuietHours()}
 							/>
-							<span class="switch-track" aria-hidden="true">
-								<span class="switch-thumb"></span>
-							</span>
-						</span>
+						</SettingsSwitch>
 					</div>
 				</label>
 			</div>
@@ -509,17 +504,14 @@
 							</span>
 						</div>
 						<div class="settings-row-action">
-							<span class="switch-toggle" class:is-disabled={deviceLoading}>
+							<SettingsSwitch tag="span" disabled={deviceLoading}>
 								<input
 									type="checkbox"
 									checked={device?.enabled ?? false}
 									disabled={deviceLoading}
 									onchange={(event) => void handleDeviceToggle(event)}
 								/>
-								<span class="switch-track" aria-hidden="true">
-									<span class="switch-thumb"></span>
-								</span>
-							</span>
+							</SettingsSwitch>
 						</div>
 					</label>
 				</div>
@@ -599,17 +591,14 @@
 								</span>
 							</div>
 							<div class="settings-row-action">
-								<span class="switch-toggle" class:is-disabled={deviceLoading}>
+								<SettingsSwitch tag="span" disabled={deviceLoading}>
 									<input
 										type="checkbox"
 										checked={device?.enabled ?? false}
 										disabled={deviceLoading}
 										onchange={(event) => void handleDeviceToggle(event)}
 									/>
-									<span class="switch-track" aria-hidden="true">
-										<span class="switch-thumb"></span>
-									</span>
-								</span>
+								</SettingsSwitch>
 							</div>
 						</label>
 					</div>
@@ -691,16 +680,13 @@
 							</span>
 						</div>
 						<div class="settings-row-action">
-							<span class="switch-toggle">
+							<SettingsSwitch tag="span">
 								<input
 									type="checkbox"
 									checked={device.badge}
 									onchange={(e) => void runtime.patchNotificationDevice({ badge: (e.currentTarget as HTMLInputElement).checked })}
 								/>
-								<span class="switch-track" aria-hidden="true">
-									<span class="switch-thumb"></span>
-								</span>
-							</span>
+							</SettingsSwitch>
 						</div>
 					</label>
 				</div>
@@ -1008,8 +994,11 @@
 		flex-shrink: 0;
 	}
 
-	/* Switch Toggle (macOS / iOS style) */
-	.switch-toggle {
+	/*
+	 * Switch Toggle (macOS / iOS style): `SettingsSwitch`. Here it is a span inside a row label, so
+	 * it lays itself out and shows the hand (and, dimmed, not-allowed) on its own.
+	 */
+	.notification-settings :global(.switch-toggle) {
 		position: relative;
 		display: inline-flex;
 		align-items: center;
@@ -1017,53 +1006,7 @@
 		user-select: none;
 	}
 
-	.switch-toggle input {
-		position: absolute;
-		opacity: 0;
-		width: 0;
-		height: 0;
-		margin: 0;
-		pointer-events: none;
-	}
-
-	.switch-track {
-		display: block;
-		width: 40px;
-		height: 22px;
-		border-radius: var(--radius-full);
-		background: var(--chip-line);
-		transition: background-color 0.2s ease, box-shadow 0.2s ease;
-		position: relative;
-		box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.08);
-	}
-
-	.switch-thumb {
-		position: absolute;
-		top: 2px;
-		left: 2px;
-		width: 18px;
-		height: 18px;
-		border-radius: 50%;
-		background: #ffffff;
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
-		transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-	}
-
-	.switch-toggle input:checked + .switch-track {
-		background: var(--accent);
-	}
-
-	.switch-toggle input:checked + .switch-track .switch-thumb {
-		transform: translateX(18px);
-	}
-
-	.switch-toggle input:focus-visible + .switch-track {
-		outline: 2px solid var(--accent);
-		outline-offset: 2px;
-	}
-
-	.switch-toggle.is-disabled {
-		opacity: 0.55;
+	.notification-settings :global(.switch-toggle.is-disabled) {
 		cursor: not-allowed;
 	}
 

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { isOutside } from '../click-outside.ts';
+	import { roveFocus } from '../menu-roving.ts';
 	import type { Copy } from '../copy.ts';
 	import type { StopMenuItem } from './stop-menu.ts';
 
@@ -70,13 +71,7 @@
 			close();
 			return;
 		}
-		if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
-		e.preventDefault();
-		const list = entries();
-		if (!list.length) return;
-		const index = list.indexOf(document.activeElement as HTMLButtonElement);
-		const next = e.key === 'Home' ? 0 : e.key === 'End' ? list.length - 1 : e.key === 'ArrowDown' ? index + 1 : index - 1;
-		list[(next + list.length) % list.length]?.focus();
+		roveFocus(e, entries);
 	}
 
 	function onWindowClick(e: MouseEvent): void {

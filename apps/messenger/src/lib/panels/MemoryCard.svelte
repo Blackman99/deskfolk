@@ -5,6 +5,7 @@
 	import type { DangerAction } from '../overlays/danger-confirm.ts';
 	import { pageSlide } from '../mobile-page-slide.ts';
 	import SettingsSubject from './SettingsSubject.svelte';
+	import Switch from '../Switch.svelte';
 	import {
 		draftFromMemory,
 		mapMemoryError,
@@ -200,10 +201,7 @@
 							</button>
 						</div>
 						<div class="memory-mobile-toggle">
-							<!-- svelte-ignore a11y_click_events_have_key_events -->
-							<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-							<label
-								class="switch-toggle"
+							<Switch
 								title={memory.enabled ? t.sidebar.memoryEnabled : '已停用'}
 								onclick={(e) => e.stopPropagation()}
 							>
@@ -216,8 +214,7 @@
 											enabled: (ev.currentTarget as HTMLInputElement).checked
 										})}
 								/>
-								<span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
-							</label>
+							</Switch>
 						</div>
 					</div>
 					<p class="memory-body">{memory.body}</p>
@@ -412,7 +409,7 @@
 									{editingMemory.enabled ? '已启用，Bot 每轮对话都将参考此事实' : '已停用，Bot 将暂时不读取此记忆'}
 								</span>
 							</div>
-							<label class="switch-toggle" class:is-disabled={busy}>
+							<Switch disabled={busy}>
 								<input
 									type="checkbox"
 									checked={editingMemory.enabled}
@@ -425,8 +422,7 @@
 										}
 									}}
 								/>
-								<span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
-							</label>
+							</Switch>
 						</div>
 					</div>
 
@@ -842,14 +838,11 @@
 		display: none;
 	}
 
-	.switch-toggle { position: relative; display: inline-flex; align-items: center; margin: 0; cursor: pointer; }
-	.switch-toggle input { position: absolute; opacity: 0; width: 0; height: 0; margin: 0; }
-	.switch-track { display: block; width: 44px; height: 24px; border-radius: var(--radius-full); background: var(--chip-line, var(--line)); position: relative; transition: background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
-	.switch-thumb { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
-	.switch-toggle input:checked + .switch-track { background: var(--accent); }
-	.switch-toggle input:checked + .switch-track .switch-thumb { transform: translateX(20px); }
-	.switch-toggle input:focus-visible + .switch-track { outline: 2px solid var(--accent); outline-offset: 2px; }
-	.switch-toggle.is-disabled { opacity: 0.55; cursor: default; }
+	/*
+	 * The editor's switch checkbox is a `.memory-form-card input` too. The switch's width wins over
+	 * the card's on a wide window and the card's wins on a phone, as when both rules sat here.
+	 */
+	.memory-form-card :global(.switch-toggle input) { width: 0; }
 
 	@media (max-width: 680px) {
 		.memory-card {
@@ -988,6 +981,10 @@
 			box-sizing: border-box;
 			font-size: 16px;
 			color: var(--ink);
+		}
+
+		.memory-form-card :global(.switch-toggle input) {
+			width: 100%;
 		}
 
 		.memory-form-card textarea {

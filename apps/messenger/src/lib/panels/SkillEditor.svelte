@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Bot } from '@real-bot/protocol';
 	import SettingsSubject from './SettingsSubject.svelte';
+	import Switch from '../Switch.svelte';
 	import { backdropClick } from '../click-outside.ts';
 	import { pageSlide } from '../mobile-page-slide.ts';
 	import type { Copy } from '../copy.ts';
@@ -212,10 +213,9 @@
 								{skillDraft.enabled ? '已启用，Bot 在匹配任务中将自动读取并执行' : '已停用，Bot 将暂时忽略此技能'}
 							</span>
 						</div>
-						<label class="switch-toggle" class:is-disabled={skillBusy}>
+						<Switch disabled={skillBusy}>
 							<input type="checkbox" bind:checked={skillDraft.enabled} disabled={skillBusy} />
-							<span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
-						</label>
+						</Switch>
 					</div>
 				</div>
 
@@ -457,15 +457,6 @@
 	.skill-modal-foot-right .btn-primary:hover:not(:disabled) {
 		background: var(--accent-hover);
 	}
-
-	.switch-toggle { position: relative; display: inline-flex; align-items: center; margin: 0; cursor: pointer; }
-	.switch-toggle input { position: absolute; opacity: 0; width: 0; height: 0; margin: 0; }
-	.switch-track { display: block; width: 44px; height: 24px; border-radius: var(--radius-full); background: var(--chip-line, var(--line)); position: relative; transition: background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
-	.switch-thumb { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
-	.switch-toggle input:checked + .switch-track { background: var(--accent); }
-	.switch-toggle input:checked + .switch-track .switch-thumb { transform: translateX(20px); }
-	.switch-toggle input:focus-visible + .switch-track { outline: 2px solid var(--accent); outline-offset: 2px; }
-	.switch-toggle.is-disabled { opacity: 0.55; cursor: default; }
 
 	@media (max-width: 680px) {
 		/* Mobile Skill Full Page Editor */

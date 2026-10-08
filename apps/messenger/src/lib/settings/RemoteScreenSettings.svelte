@@ -24,6 +24,7 @@
 <script lang="ts">
 	import type { RemoteScreenStatus } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
+	import SettingsSwitch from './SettingsSwitch.svelte';
 	import type { LocalApi } from '../local-api.ts';
 	import { desktopPlatform } from '../platform.ts';
 	import { isTauri, readTauriInternals } from '../tauri.ts';
@@ -124,7 +125,7 @@
 			<span class="settings-row-desc">{t.screen.macToggleDesc}</span>
 		</div>
 		<div class="settings-row-action">
-			<label class="switch-toggle relative inline-flex items-center cursor-pointer select-none" for="remote-screen-toggle" aria-labelledby="remote-screen-label">
+			<SettingsSwitch class="relative inline-flex items-center cursor-pointer select-none" for="remote-screen-toggle" labelledby="remote-screen-label">
 				<input
 					id="remote-screen-toggle"
 					type="checkbox"
@@ -137,10 +138,7 @@
 						void update({ enabled });
 					}}
 				/>
-				<span class="switch-track" aria-hidden="true">
-					<span class="switch-thumb"></span>
-				</span>
-			</label>
+			</SettingsSwitch>
 		</div>
 	</div>
 	{#if failed}
@@ -204,7 +202,7 @@
 		border-top: 1px solid var(--line-subtle);
 	}
 
-	/* The settings panel's row and switch, as NotificationSettings carries them: styles are scoped. */
+	/* The settings panel's row, as NotificationSettings carries it: styles are scoped. */
 	.settings-row {
 		display: flex;
 		align-items: center;
@@ -241,60 +239,8 @@
 		flex-shrink: 0;
 	}
 
-	.switch-toggle {
-		position: relative;
-		display: inline-flex;
-		align-items: center;
-		cursor: pointer;
-		user-select: none;
-	}
-
-	.switch-toggle input {
-		position: absolute;
-		opacity: 0;
-		width: 0;
-		height: 0;
-		margin: 0;
-		pointer-events: none;
-	}
-
-	.switch-track {
-		display: block;
-		width: 40px;
-		height: 22px;
-		border-radius: var(--radius-full);
-		background: var(--chip-line);
-		transition: background-color 0.2s ease, box-shadow 0.2s ease;
-		position: relative;
-		box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.08);
-	}
-
-	.switch-thumb {
-		position: absolute;
-		top: 2px;
-		left: 2px;
-		width: 18px;
-		height: 18px;
-		border-radius: 50%;
-		background: #ffffff;
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
-		transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-	}
-
-	.switch-toggle input:checked + .switch-track {
-		background: var(--accent);
-	}
-
-	.switch-toggle input:checked + .switch-track .switch-thumb {
-		transform: translateX(18px);
-	}
-
-	.switch-toggle input:focus-visible + .switch-track {
-		outline: 2px solid var(--accent);
-		outline-offset: 2px;
-	}
-
-	.switch-toggle input:disabled + .switch-track {
+	/* `SettingsSwitch`, dimmed here by its checkbox's `disabled` rather than by `is-disabled`. */
+	.remote-screen-settings :global(.switch-toggle input:disabled + .switch-track) {
 		opacity: 0.55;
 		cursor: not-allowed;
 	}

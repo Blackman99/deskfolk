@@ -8,6 +8,7 @@
 	import { pageSlide } from '../mobile-page-slide.ts';
 	import DangerDialog from '../overlays/DangerDialog.svelte';
 	import SettingsSubject from './SettingsSubject.svelte';
+	import Switch from '../Switch.svelte';
 	import { WEEKDAYS, planRoutine, routineDirty, routineDraft, routineError, routineRepeatLabel } from './routine-form.ts';
 
 	let { runtime, bot, t }: { runtime: MessengerRuntime; bot: Bot; t: Copy } = $props();
@@ -235,7 +236,7 @@
 							</span>
 						</span>
 					</button>
-					<label class="switch-toggle routine-toggle" class:is-disabled={disabled} title={row.enabled ? t.routines.pause : t.routines.resume}>
+					<Switch class="routine-toggle" disabled={disabled} title={row.enabled ? t.routines.pause : t.routines.resume}>
 						<input
 							type="checkbox"
 							checked={row.enabled}
@@ -247,8 +248,7 @@
 								void mutate(() => runtime.patchRoutine(row.id, { enabled: !row.enabled, if_revision: row.updated_at }), () => {});
 							}}
 						/>
-						<span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
-					</label>
+					</Switch>
 					<button type="button" class="routine-remove" disabled={disabled} title={t.routines.remove} aria-label={`${t.routines.remove}: ${row.title}`} onclick={() => { deleting = row; failure = ''; }}>
 						<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
 					</button>
@@ -458,10 +458,9 @@
 					{draft.enabled ? '已开启，将按设定周期自动准时触发' : '已暂停，日程暂时不会自动触发'}
 				</span>
 			</div>
-			<label class="switch-toggle" class:is-disabled={disabled}>
+			<Switch disabled={disabled}>
 				<input type="checkbox" bind:checked={draft.enabled} disabled={disabled} />
-				<span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
-			</label>
+			</Switch>
 		</div>
 	</div>
 
@@ -518,7 +517,7 @@
 	.routine-copy-sub { display: flex; align-items: center; gap: 5px; min-width: 0; color: var(--muted); font-size: 12px; }
 	.routine-copy-sub span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.routine-sub-icon { opacity: 0.7; flex-shrink: 0; }
-	.routine-toggle { flex-shrink: 0; }
+	.routine-row :global(.routine-toggle) { flex-shrink: 0; }
 	.routine-remove { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 32px; height: 32px; padding: 0; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--muted); cursor: pointer; transition: color 0.15s, background-color 0.15s; }
 	.routine-remove:hover:not(:disabled) { color: var(--danger-text); background: var(--danger-bg); }
 	.routine-remove:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -580,15 +579,6 @@
 	.routine-switch-copy { display: flex; flex-direction: column; gap: 2px; }
 	.routine-switch-title { font-size: 14px; font-weight: 600; color: var(--ink); }
 	.routine-switch-desc { font-size: 12px; color: var(--muted); }
-
-	.switch-toggle { position: relative; display: inline-flex; align-items: center; margin: 0; cursor: pointer; }
-	.switch-toggle input { position: absolute; opacity: 0; width: 0; height: 0; margin: 0; }
-	.switch-track { display: block; width: 44px; height: 24px; border-radius: var(--radius-full); background: var(--chip-line, var(--line)); position: relative; transition: background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
-	.switch-thumb { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
-	.switch-toggle input:checked + .switch-track { background: var(--accent); }
-	.switch-toggle input:checked + .switch-track .switch-thumb { transform: translateX(20px); }
-	.switch-toggle input:focus-visible + .switch-track { outline: 2px solid var(--accent); outline-offset: 2px; }
-	.switch-toggle.is-disabled { opacity: 0.55; cursor: default; }
 
 	.routine-notice-card { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; border-radius: var(--radius-md); background: var(--sidebar-bg); border: 1px solid var(--line-subtle, var(--line)); color: var(--muted); font-size: 12px; line-height: 1.5; }
 	.routine-notice-card svg { flex-shrink: 0; margin-top: 1px; }
@@ -706,7 +696,7 @@
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		.switch-thumb { transition: none; }
-		.switch-track { transition: none; }
+		.routine-row :global(.switch-thumb), .routine-status-card :global(.switch-thumb) { transition: none; }
+		.routine-row :global(.switch-track), .routine-status-card :global(.switch-track) { transition: none; }
 	}
 </style>

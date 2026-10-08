@@ -795,18 +795,6 @@
 		color: var(--warn-text);
 	}
 
-	.sr-only {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		padding: 0;
-		margin: -1px;
-		overflow: hidden;
-		clip: rect(0, 0, 0, 0);
-		white-space: nowrap;
-		border-width: 0;
-	}
-
 	/* Roster filter: one closed control. The list opens over the grid. */
 	.calendar-filter-bar {
 		display: flex;
@@ -1390,15 +1378,6 @@
 		backdrop-filter: blur(6px);
 		-webkit-backdrop-filter: blur(6px);
 		animation: backdropFadeIn 0.18s ease-out;
-	}
-
-	@keyframes backdropFadeIn {
-		from {
-			opacity: 0;
-		}
-		to {
-			opacity: 1;
-		}
 	}
 
 	.detail {

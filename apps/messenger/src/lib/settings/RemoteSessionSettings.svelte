@@ -1,5 +1,7 @@
 <script lang="ts">
 	import type { Copy } from '../copy.ts';
+	import SettingsRow from './SettingsRow.svelte';
+	import SettingsSwitch from './SettingsSwitch.svelte';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 
 	type Props = {
@@ -90,32 +92,23 @@
 		</ul>
 	{/if}
 </div>
-<div class="settings-row">
-	<div class="settings-row-info">
-		<span class="settings-row-title" id="push-setting-label">{t.remote.push}</span>
-		<span class="settings-row-desc">{t.remote.pushDesc}</span>
-	</div>
-	<div class="settings-row-action">
-		<label class="switch-toggle relative inline-flex items-center cursor-pointer select-none" for="remote-push-toggle" aria-labelledby="push-setting-label">
-			<input
-				id="remote-push-toggle"
-				type="checkbox"
-				checked={runtime.pushEnabled}
-				disabled={runtime.pushBusy || runtime.pushPermission === 'unsupported'}
-				onchange={(ev) =>
-					{
+<SettingsRow title={t.remote.push} titleId="push-setting-label" desc={t.remote.pushDesc}>
+	<SettingsSwitch class="relative inline-flex items-center cursor-pointer select-none" for="remote-push-toggle" labelledby="push-setting-label">
+		<input
+			id="remote-push-toggle"
+			type="checkbox"
+			checked={runtime.pushEnabled}
+			disabled={runtime.pushBusy || runtime.pushPermission === 'unsupported'}
+			onchange={(ev) =>
+				{
 const input = ev.currentTarget as HTMLInputElement;
 const enabled = input.checked;
 input.checked = runtime.pushEnabled;
 void runtime.setPushEnabled(enabled);
 }}
-			/>
-			<span class="switch-track" aria-hidden="true">
-				<span class="switch-thumb"></span>
-			</span>
-		</label>
-	</div>
-</div>
+		/>
+	</SettingsSwitch>
+</SettingsRow>
 {#if runtime.pushPermission === 'denied'}
 	<p class="muted">{t.remote.pushDenied}</p>
 {/if}
@@ -151,102 +144,6 @@ void runtime.setPushEnabled(enabled);
 		border: 1px solid var(--line);
 		border-radius: var(--radius-md);
 		background: var(--sidebar-bg);
-	}
-
-	.settings-row {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 16px;
-		padding: 12px 2px;
-		border-bottom: 1px solid var(--line-subtle);
-		transition: background 0.15s ease;
-	}
-
-	.settings-row:last-child {
-		border-bottom: none;
-		padding-bottom: 2px;
-	}
-
-	.settings-row-info {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		min-width: 0;
-		flex: 1;
-	}
-
-	.settings-row-title {
-		font-size: 13px;
-		font-weight: 500;
-		color: var(--ink);
-		line-height: 1.3;
-	}
-
-	.settings-row-desc {
-		font-size: 12px;
-		color: var(--muted);
-		line-height: 1.35;
-	}
-
-	.settings-row-action {
-		display: flex;
-		align-items: center;
-		flex-shrink: 0;
-	}
-
-	.switch-toggle :global(input) {
-		position: absolute;
-		opacity: 0;
-		width: 0;
-		height: 0;
-		margin: 0;
-		pointer-events: none;
-	}
-
-	.switch-track {
-		display: block;
-		width: 40px;
-		height: 22px;
-		border-radius: var(--radius-full);
-		background: var(--chip-line);
-		transition: background-color 0.2s ease, box-shadow 0.2s ease;
-		position: relative;
-		box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.08);
-	}
-
-	.switch-thumb {
-		position: absolute;
-		top: 2px;
-		left: 2px;
-		width: 18px;
-		height: 18px;
-		border-radius: 50%;
-		background: #ffffff;
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
-		transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-	}.switch-toggle input:checked + .switch-track{
-		background: var(--accent);
-	}.switch-toggle input:checked + .switch-track .switch-thumb{
-		transform: translateX(18px);
-	}.switch-toggle input:focus-visible + .switch-track{
-		outline: 2px solid var(--accent);
-		outline-offset: 2px;
-	}
-
-	@media (max-width: 540px) {
-	.settings-row {
-	flex-direction: column;
-	align-items: flex-start;
-	gap: 8px;
-	}
-	}
-
-	@media (max-width: 540px) {
-	.settings-row-action {
-	width: 100%;
-	justify-content: flex-end;
-	}
 	}
 
 	@media (max-width: 540px) {
