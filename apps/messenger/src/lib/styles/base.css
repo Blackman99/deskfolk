@@ -27,6 +27,14 @@ body {
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   overflow: hidden;
+  /*
+   * A pinch or a double tap on a phone or iPad zoomed the whole remote app, and nothing in it
+   * puts the page back. Panning stays, so a list still scrolls. This only stops the browser's
+   * own zoom: a preview that pinches (a PDF, the flow board, the Mac's screen) listens for the
+   * gesture itself. iOS Safari ignores the viewport lock, so `page-zoom.ts` cancels the gesture
+   * there too.
+   */
+  touch-action: pan-x pan-y;
 }
 
 button,

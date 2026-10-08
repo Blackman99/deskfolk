@@ -10,3 +10,7 @@
  * and runs before the app starts, so there is nothing to race.
  */
 import 'virtual:uno.css';
+import { lockPageZoom } from './lib/page-zoom.ts';
+
+// Before the first paint's gestures: a pinch on iPad or a phone would otherwise scale the page.
+lockPageZoom();

@@ -10,6 +10,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 - The film at the top of the README is now a 30-second short in which the two mascots act out the app: Mochi hands Pudding a job, Pudding takes it from there and stops to ask before touching anything outside the workspace, and Mochi walks away and comes back to work that is done, and checked. The 86-second tour is linked under it. Both languages are on the site, at `media/deskfolk-mascots-zh.mp4` and `media/deskfolk-mascots-en.mp4`.
 
+### The remote app on a phone or iPad no longer pinches to zoom
+
+- Opening Deskfolk on a phone or an iPad let a pinch, or a double tap, scale the whole page, with nothing in the app to put it back. The page now stays the size it opened at. A PDF, the flow board and the Mac's screen still pinch to zoom themselves.
+
 ### Any tab can float on its own; a floating pane moves by its tab bar and resizes from every edge
 
 - A pane's right-click menu and a tab's ⋯ now offer Float this tab: the tab right-clicked (on the content, the one showing) lifts out into a floating pane of its own, where it was and a little smaller, while the pane's other tabs stay put. A pane left with no tabs closes up and the others fill in; the only tiled pane stays behind empty. A tab in a floating pane that holds others can be floated on its own too. Before, the only way was dragging a tab out with ⌥ held; the menu had no entry.
