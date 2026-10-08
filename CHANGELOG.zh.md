@@ -6,6 +6,10 @@
 
 ## Unreleased
 
+### 在私聊里让 Bot 改模型设置，不再开一件事
+
+- 在私聊里让 Bot 改应用的设置——端点、模型的上下文窗口、默认端点、读句模型、模型阶梯、MCP 服务器——不再为你这句话开一件事。问「你能根据已经配置的模型补一下它们的上下文大小配置吗」，工作区文件助手补上了缺的窗口也说了，可改设置的那一下为这句话开了一件事，任务上永远交不出东西：十分钟后应用把它叫回来收尾，它把同样的回答又发了一遍，接着一条提示说它连续两次结束都没有进展、先停下等你。现在这类改动就地完成，回复就结束这一轮，不留下让应用去催的事。叫停时照样不能改，新加端点照样等你批准。写文件、跑命令这些仍和以前一样会开事。[ADR 0057](docs/adr/0057-the-job-a-line-is-about-is-read.md)
+
 ### 兼容 Anthropic 格式的模型端点
 
 - 端点现在除了 OpenAI 的 Chat Completions，也能说 Anthropic 的 Messages：在设置里新建或编辑端点时把「接口格式」选成「Anthropic 兼容」（首次向导里也多了 Anthropic 预设），地址照 Claude Code 的 `ANTHROPIC_BASE_URL` 填——`https://api.anthropic.com`，或者 DeepSeek、百炼、智谱、Kimi、MiniMax 给的 `…/anthropic` 地址，或者转发的地址。Bot、它们的判断和读句在上面照常跑：思考档、工具调用、看图、模型阶梯和花费都管用，有 `/v1/models` 的就从那里拉模型名单。请求带缓存标记，长的一轮后面几跳从缓存读前面的内容，不再全价重读。Bot 用 `add_endpoint` 加的时候传 `api_format: "anthropic"`；改端点的格式和改 URL 一样要你批准。已有的端点都还是 OpenAI 兼容。[ADR 0066](docs/adr/0066-anthropic-format-endpoints.md)

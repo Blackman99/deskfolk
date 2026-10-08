@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Changing a model setting in your direct no longer opens a job
+
+- Asking a Bot in your direct to change the app's settings — an endpoint, a model's context window, the default endpoint, the reading model, the model ladder, an MCP server — no longer opens a job for your line. Asked 「你能根据已经配置的模型补一下它们的上下文大小配置吗」, 工作区文件助手 set the missing window and said so, but that settings call had opened a job whose ticket nothing could ever be handed over on: ten minutes later the app called the Bot back to finish it, the Bot posted the same answer again, and a line said it had ended twice without progress and had stopped to wait for you. Now such a change is made where you asked, the reply ends the turn, and nothing is left for the app to chase. A stop still refuses it, and a new endpoint still waits for your approval. Writing files, running commands and the like open a job as before. [ADR 0057](docs/adr/0057-the-job-a-line-is-about-is-read.md)
+
 ### Endpoints in Anthropic's format
 
 - An endpoint can now speak Anthropic's Messages API as well as OpenAI's Chat Completions: pick **API format › Anthropic-compatible** when adding or editing one in Settings (the first-run wizard has an Anthropic preset too), and give the address the way Claude Code takes it as `ANTHROPIC_BASE_URL` — `https://api.anthropic.com`, or the `…/anthropic` addresses DeepSeek, Bailian, Zhipu, Kimi or MiniMax publish, or a proxy's. Bots, their judgements and the readings of your lines run on it like on any endpoint: thinking levels, tool calls, pictures, the model ladder and spend all work, and the model list is fetched from its `/v1/models` where it has one. Requests carry cache marks, so a long turn reads its earlier steps from the cache instead of paying for them again. A Bot can add one with `api_format: "anthropic"`; changing an endpoint's format waits for your approval like changing its URL. Every endpoint you already have stays OpenAI-compatible. [ADR 0066](docs/adr/0066-anthropic-format-endpoints.md)

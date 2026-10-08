@@ -1257,8 +1257,8 @@ function situationUserMessage(
       } catch { return `${id} · ${locale === "en" ? "no longer available" : "已不可用"}`; }
     });
     job.push(locale === "en"
-      ? "Desk segment: read and reply before choosing a job; work_on selects only the captured candidates below."
-      : "桌面段：先读与回答，work_on 只可选本轮已列出的候选。",
+      ? "Desk segment: read and reply before choosing a job. To change the app's settings (endpoints, model settings, MCP servers), call their tools here: that opens no job. work_on selects only the captured candidates below."
+      : "桌面段：先读与回答。要改应用的设置（端点、模型设置、MCP 服务器），在这里直接调用对应的工具，不会开新事。work_on 只可选本轮已列出的候选。",
       ...candidates.map((line) => `- ${line}`));
     // The line was read as about none of these jobs (ADR 0057): the first effect opens one for it.
     const request = store.originalUserRequest(turnId);
