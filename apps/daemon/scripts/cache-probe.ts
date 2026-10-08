@@ -21,7 +21,7 @@
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { isThinkingLevel, type ThinkingLevel } from "@real-bot/protocol";
-import { mapUsage } from "../src/completions";
+import { mapUsage } from "../src/completions/wire";
 import { buildEvalTurn, validateCases } from "../src/tool-selection-eval";
 
 type Options = {

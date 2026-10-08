@@ -266,7 +266,7 @@ export function createHold(
   const liftOnNext = input.liftOnNextUserMessage ?? false;
   if (typeof liftOnNext !== "boolean") throw new HttpError(422, "invalid_args", "lift_on_next_user_message must be a boolean");
   // A Stop's hold goes when you next speak in that job, and so does one from a group's stop menu
-  // when you next speak there (engine/stop.ts `stopsAbout`). A stop on everything, or on one
+  // when you next speak there (engine/stop/reach.ts `stopsAbout`). A stop on everything, or on one
   // ticket, stays until you lift it: no one line of yours is about all of it.
   if (liftOnNext && scope !== "bot_plan" && scope !== "turn" && scope !== "bot" && scope !== "session" && scope !== "plan") {
     throw new HttpError(422, "invalid_args", "a hold on everything or on a ticket does not lift on your next line");
