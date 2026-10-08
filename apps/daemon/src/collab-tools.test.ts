@@ -3,7 +3,8 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { USER_MEMBER, generateBoringAvatar } from "@real-bot/protocol";
-import { runCollabTool, staleMcpToolNames, type ToolCtx } from "./collab-tools";
+import { runCollabTool, type ToolCtx } from "./collab-tools";
+import { staleMcpToolNames } from "./collab-tools/skills";
 import { runWorkspaceTool } from "./workspace-tools";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";

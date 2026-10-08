@@ -17,7 +17,7 @@ import {
   mergeCitedPaths,
   resolveBodyPathsToWorkDir,
 } from "../artifact-paths";
-import { pathExists } from "../collab-tools";
+import { pathExists } from "../collab-tools/args";
 import { closingNote, describeFailingCheck, FAILING_CHECKS_LIMIT } from "../closing-check";
 import type { CompletionsClient } from "../completions";
 import { evaluateFileCheck } from "../acceptance-eval";

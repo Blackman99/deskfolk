@@ -21,7 +21,7 @@ import {
   mergeCitedPaths,
   resolveBodyPathsToWorkDir,
 } from "../artifact-paths";
-import { pathExists } from "../collab-tools";
+import { pathExists } from "../collab-tools/args";
 import type { CompletionsClient } from "../completions";
 import { assembleTurnMessages, planTagger, sessionLabel, type PlanRef } from "../context";
 import { HttpError } from "../errors";
