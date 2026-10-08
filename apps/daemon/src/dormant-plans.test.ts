@@ -16,6 +16,7 @@ import { ORGANIZER_SYSTEM, type OrganizerPayload } from "./prompts/organizer";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";
 import type { PlanSpec } from "./store/plan-shape";
+import { until } from "./test-kit/until";
 import { createTurnEngine } from "./turn-engine";
 
 const closes: Array<() => Promise<void> | void> = [];
@@ -31,13 +32,6 @@ function say(content: string): CompletionOk {
   return { ok: true, content, toolCalls: [], finishReason: "stop", hadChoices: true, usage: null, missingReason: null };
 }
 
-async function until(check: () => boolean, ms = 3000): Promise<void> {
-  const deadline = Date.now() + ms;
-  while (!check()) {
-    if (Date.now() > deadline) throw new Error("condition not met in time");
-    await Bun.sleep(5);
-  }
-}
 
 function spec(over: Partial<PlanSpec> = {}): PlanSpec {
   return {

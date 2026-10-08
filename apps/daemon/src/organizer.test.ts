@@ -11,6 +11,7 @@ import { ORGANIZER_SYSTEM, ORGANIZER_SYSTEM_UNDER_HOLDS, type OrganizerPayload }
 import { memoryKeyStore } from "./secrets";
 import { parsePlanSpec, PLAN_MAP_FILE, Store, TICKET_FILE } from "./store";
 import { PLAN_NUDGES_UNANSWERED_MAX } from "./engine/plan-watch";
+import { until } from "./test-kit/until";
 import { createTurnEngine } from "./turn-engine";
 import {
   asksToStop,
@@ -32,13 +33,6 @@ function textOf(message: ChatMessage): string {
   return typeof message.content === "string" ? message.content : "";
 }
 
-async function until(check: () => boolean, ms = 3000): Promise<void> {
-  const deadline = Date.now() + ms;
-  while (!check()) {
-    if (Date.now() > deadline) throw new Error("condition not met in time");
-    await Bun.sleep(5);
-  }
-}
 
 /** What the organizer answers for a payload; null means the call itself fails. */
 type Answer = (payload: OrganizerPayload) => string | null;

@@ -9,67 +9,38 @@ import { JUDGEMENT_SYSTEM } from "./prompts/judgement";
 import { READ_BOT_LINE_SYSTEM, READ_USER_LINE_SYSTEM } from "./prompts/reader";
 import { SCRIBE_SYSTEM } from "./prompts/scribe";
 import { ROUTE_LEARN_SYSTEM, ROUTE_PICK_SYSTEM, ROUTE_REVIEW_SYSTEM } from "./prompts/routing";
-import { createLocalApi } from "./local-api";
 import { runCollabTool } from "./collab-tools";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";
 import { createTurnEngine } from "./turn-engine";
+import {
+  createGroupWithBots,
+  createWriter,
+  fixtures,
+  harnesses,
+  jsonAuth as auth,
+  registerLocalApiCleanup,
+  sse,
+  startLocalApi,
+  subscribe,
+  waitFor,
+  type Harness,
+} from "./test-kit/local-api-harness";
 import type { WakeWatch } from "./wake";
 
-type Harness = {
-  origin: string;
-  token: string;
-  store: Store;
-  engine: import("./turn-engine").TurnEngine;
-  close: () => Promise<void>;
-};
+registerLocalApiCleanup();
 
-const harnesses: Harness[] = [];
-const fixtures: Array<{ close: () => Promise<void> }> = [];
-
-afterEach(async () => {
-  while (harnesses.length) await harnesses.pop()?.close();
-  while (fixtures.length) await fixtures.pop()?.close();
-});
-
-async function startApi(
+function startApi(
   store?: Store,
   extra?: { completions?: import("./completions").CompletionsClient },
 ): Promise<Harness> {
-  const token = "test-token";
-  const nextStore = store ?? new Store({ endpointKey: memoryKeyStore("sk-test") });
-  const api = createLocalApi({
-    store: nextStore,
-    token,
-    schedule: false,
+  return startLocalApi({
+    store,
+    key: "sk-test",
     completions: extra?.completions,
     // The fixture endpoints on 127.0.0.1 stand for cloud ones; ADR 0067's local handling is tested on its own.
     localEndpoint: () => false,
   });
-  const server = Bun.serve({
-    hostname: "127.0.0.1",
-    port: 0,
-    fetch: api.fetch,
-    websocket: api.websocket,
-  });
-  const harness: Harness = {
-    origin: `http://${server.hostname}:${server.port}`,
-    token,
-    store: nextStore,
-    engine: api.engine,
-    close: async () => {
-      api.scheduler?.stop();
-      await api.engine.close();
-      nextStore.close();
-      await server.stop(true);
-    },
-  };
-  harnesses.push(harness);
-  return harness;
-}
-
-function auth(h: Harness): Record<string, string> {
-  return { Authorization: `Bearer ${h.token}`, "Content-Type": "application/json" };
 }
 
 type FixtureHandler = (request: {
@@ -127,13 +98,6 @@ async function startFixture(
   return { origin };
 }
 
-function sse(chunks: unknown[]): Response {
-  const lines = chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join("") + "data: [DONE]\n\n";
-  return new Response(lines, {
-    headers: { "Content-Type": "text/event-stream" },
-  });
-}
-
 function textChunks(text: string, usage?: Record<string, number>): unknown[] {
   const chunks: unknown[] = [
     {
@@ -149,106 +113,6 @@ function textChunks(text: string, usage?: Record<string, number>): unknown[] {
     chunks.push({ id: "chatcmpl-1", choices: [], usage });
   }
   return chunks;
-}
-
-async function subscribe(h: Harness): Promise<{ events: Array<Record<string, unknown>>; close: () => void }> {
-  const events: Array<Record<string, unknown>> = [];
-  const ws = new WebSocket(`${h.origin.replace("http", "ws")}/v1/events`);
-  await new Promise<void>((resolve) => ws.addEventListener("open", () => resolve()));
-  ws.addEventListener("message", (ev) => {
-    events.push(JSON.parse(String(ev.data)) as Record<string, unknown>);
-  });
-  ws.send(JSON.stringify({ type: "auth", token: h.token }));
-  await Bun.sleep(20);
-  return {
-    events,
-    close: () => ws.close(),
-  };
-}
-
-async function waitFor(
-  events: Array<Record<string, unknown>>,
-  predicate: (event: Record<string, unknown>) => boolean,
-  timeoutMs = 2000,
-): Promise<Record<string, unknown>> {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    const found = events.find(predicate);
-    if (found) return found;
-    await Bun.sleep(10);
-  }
-  throw new Error(`timeout waiting for event; saw ${JSON.stringify(events)}`);
-}
-
-async function createWriter(
-  h: Harness,
-  fixtureOrigin: string,
-): Promise<{ botId: string; sessionId: string }> {
-  mkdirSync("/tmp/real-bot-ws", { recursive: true });
-  await fetch(`${h.origin}/v1/settings`, {
-    method: "PATCH",
-    headers: auth(h),
-    body: JSON.stringify({
-      workspace_path: "/tmp/real-bot-ws",
-      endpoint_base_url: fixtureOrigin,
-      endpoint_api_key: "sk-test",
-      endpoint_models: ["test-model"],
-      endpoint_default_model: "test-model",
-    }),
-  });
-  const created = await fetch(`${h.origin}/v1/bots`, {
-    method: "POST",
-    headers: auth(h),
-    body: JSON.stringify({
-      name: "Writer",
-      duties: "write the report",
-      boundaries: "stay in the workspace",
-    }),
-  });
-  expect(created.status).toBe(201);
-  const body = (await created.json()) as {
-    bot: { id: string };
-    direct_session: { id: string };
-  };
-  return { botId: body.bot.id, sessionId: body.direct_session.id };
-}
-
-async function createGroupWithBots(
-  h: Harness,
-  fixtureOrigin: string,
-  names: Array<{ name: string; duties: string }>,
-): Promise<{ bots: Array<{ id: string; name: string }>; groupId: string }> {
-  mkdirSync("/tmp/real-bot-ws", { recursive: true });
-  await fetch(`${h.origin}/v1/settings`, {
-    method: "PATCH",
-    headers: auth(h),
-    body: JSON.stringify({
-      workspace_path: "/tmp/real-bot-ws",
-      endpoint_base_url: fixtureOrigin,
-      endpoint_api_key: "sk-test",
-      endpoint_models: ["test-model"],
-      endpoint_default_model: "test-model",
-    }),
-  });
-  const bots: Array<{ id: string; name: string }> = [];
-  for (const row of names) {
-    const created = (await (
-      await fetch(`${h.origin}/v1/bots`, {
-        method: "POST",
-        headers: auth(h),
-        body: JSON.stringify({ name: row.name, duties: row.duties, boundaries: "stay" }),
-      })
-    ).json()) as { bot: { id: string; name: string } };
-    bots.push(created.bot);
-  }
-  const group = (await (
-    await fetch(`${h.origin}/v1/sessions`, {
-      method: "POST",
-      headers: auth(h),
-      body: JSON.stringify({ name: "Brief", members: bots.map((b) => b.id) }),
-    })
-  ).json()) as { id: string };
-  return { bots, groupId: group.id };
 }
 
 function isJudgementRequest(body: Record<string, unknown>): boolean {

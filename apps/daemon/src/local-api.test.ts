@@ -1,72 +1,20 @@
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FILE_DROP_SESSION_ID, LOCAL_API_NAME } from "@real-bot/protocol";
 import { ulid } from "./ids";
-import { createLocalApi, type LocalApi } from "./local-api";
+import { createLocalApi } from "./local-api";
 import { memoryKeyStore } from "./secrets";
 import { noisePng } from "./test-images";
 import { warmDisplayAvatar } from "./avatar-display";
 import { Store } from "./store";
-import { ENGINE_LEVEL, SCHEMA_LEVEL, type SharedInstall } from "./store/schema-gate";
-import type { TrashMover } from "./workspace-trash";
+import { ENGINE_LEVEL, SCHEMA_LEVEL } from "./store/schema-gate";
+import { auth, registerLocalApiCleanup, startLocalApi, type Harness } from "./test-kit/local-api-harness";
 
-type Harness = {
-  origin: string;
-  token: string;
-  store: Store;
-  api: LocalApi;
-  close: () => Promise<void>;
-};
+registerLocalApiCleanup();
 
-const harnesses: Harness[] = [];
-
-async function start(
-  opts: {
-    token?: string;
-    key?: string | null;
-    onQuit?: () => void;
-    trash?: TrashMover;
-    installedApp?: () => SharedInstall | null;
-    log?: (line: string) => void;
-  } = {},
-): Promise<Harness> {
-  const token = opts.token ?? "test-token";
-  const store = new Store({ endpointKey: memoryKeyStore(opts.key ?? null) });
-  const api = createLocalApi({ store, token, onQuit: opts.onQuit, schedule: false, trash: opts.trash, installedApp: opts.installedApp, log: opts.log });
-  const server = Bun.serve({
-    hostname: "127.0.0.1",
-    port: 0,
-    fetch: api.fetch,
-    websocket: api.websocket,
-  });
-  const harness: Harness = {
-    origin: `http://${server.hostname}:${server.port}`,
-    token,
-    store,
-    api,
-    close: async () => {
-      api.scheduler?.stop();
-      await api.engine.close();
-      store.close();
-      await server.stop(true);
-    },
-  };
-  harnesses.push(harness);
-  return harness;
-}
-
-afterEach(async () => {
-  while (harnesses.length) {
-    const h = harnesses.pop();
-    await h?.close();
-  }
-});
-
-function auth(h: Harness, extra: Record<string, string> = {}): Record<string, string> {
-  return { Authorization: `Bearer ${h.token}`, ...extra };
-}
+const start = (opts: Parameters<typeof startLocalApi>[0] = {}) => startLocalApi(opts);
 
 describe("routine write boundaries", () => {
   test("PATCH and DELETE compare the current updated_at and remain legacy compatible", async () => {

@@ -34,6 +34,7 @@ import { SCRIBE_SYSTEM } from "./prompts/scribe";
 import { ROUTE_LEARN_SYSTEM, ROUTE_PICK_SYSTEM, ROUTE_REVIEW_SYSTEM } from "./prompts/routing";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";
+import { until } from "./test-kit/until";
 import { createTurnEngine } from "./turn-engine";
 
 function say(content: string): CompletionOk {
@@ -60,13 +61,6 @@ function textOf(message: ChatMessage): string {
   return typeof message.content === "string" ? message.content : "";
 }
 
-async function until(check: () => boolean, ms = 3000): Promise<void> {
-  const deadline = Date.now() + ms;
-  while (!check()) {
-    if (Date.now() > deadline) throw new Error("condition not met in time");
-    await Bun.sleep(5);
-  }
-}
 
 /** A closed chain's age, so `sweepStaleChains` finds it without a 3-minute real wait (see `turn-engine.test.ts`). */
 function ageChain(store: Store, quietMs: number): void {
