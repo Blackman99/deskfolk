@@ -308,7 +308,8 @@ Claude Agent（[ADR 0061](adr/0061-claude-agent-runner.md)）：找 `claude` 时
 pnpm install
 pnpm dev        # 并行守护进程 + tauri dev（信使由窗拉起）
 pnpm dev:steady # 同上，但守护进程不跟着 apps/daemon 的改动重启：拿开发版干长活时用
-pnpm test       # remote（含 Rust snow）/ relay / protocol / daemon / messenger / desktop / landing
+pnpm test       # 行数守卫，然后 remote（含 Rust snow）/ relay / protocol / daemon / messenger / desktop / landing
+bun scripts/line-budget.ts  # 单跑行数守卫：源码文件不超过 2000 行；已超的列在 scripts/line-budget.json，只能变小，拆到 2000 以下就删掉那一条
 pnpm typecheck  # remote / relay / protocol / daemon / desktop scripts tsc；信使与落地页 svelte-check；不跑 cargo check
 cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml  # 桌面监督与线程锁回归
 pnpm --filter @real-bot/daemon check:db   # 用当前代码打开本机真库的副本（改过 schema/migrate 必跑）
