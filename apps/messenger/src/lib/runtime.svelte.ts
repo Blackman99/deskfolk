@@ -1,77 +1,60 @@
-import {
-  FILE_DROP_SESSION_ID,
-  USER_MEMBER,
-  type ApiFormat,
-  type Attachment,
-  type CatchupResponse,
-  type ClientEvent,
-  type EventCursor,
-  type SyncFrame,
-  type SequencedEvent,
-  type CreateBotRequest,
-  type CreateGroupRequest,
-  type PatchMemoryRequest,
-  type CreateProviderRequest,
-  type PatchProviderRequest,
-  type ModelSpeed,
-  type ProbeModelsResponse,
-  type ResolveApprovalRequest,
-  type ComposerSuggestion,
-  type ControlActionResult,
-  type ControlOffer,
-  type SearchHit,
-  type SessionDetail,
-  type SettingsPatch,
-  type ThinkingLevel,
-  type BotRunner,
-  type ClaudeEffort,
-  type CreateSkillRequest,
-  type PatchSkillRequest,
-  type CreateRoutineRequest,
-  type PatchRoutineRequest,
-  type RuntimeSnapshot,
-  type StreamFrame,
-  type Terminal,
-  type ToolFrame,
-  type Annotation,
-  type AnnotationFilter,
-  type CreateAnnotationRequest,
-  type PatchAnnotationRequest,
-  type Message,
-  type MessageVersion,
-  type PatchMessageAttributionRequest,
-  type GroupLeadState,
-  type WorkAnswerResult,
+import type {
+  ApiFormat,
+  Attachment,
+  ClientEvent,
+  SequencedEvent,
+  CreateBotRequest,
+  CreateGroupRequest,
+  PatchMemoryRequest,
+  CreateProviderRequest,
+  PatchProviderRequest,
+  ModelSpeed,
+  ProbeModelsResponse,
+  ResolveApprovalRequest,
+  ComposerSuggestion,
+  ControlActionResult,
+  ControlOffer,
+  SearchHit,
+  SettingsPatch,
+  ThinkingLevel,
+  BotRunner,
+  ClaudeEffort,
+  CreateSkillRequest,
+  PatchSkillRequest,
+  CreateRoutineRequest,
+  PatchRoutineRequest,
+  RuntimeSnapshot,
+  StreamFrame,
+  Terminal,
+  AnnotationFilter,
+  CreateAnnotationRequest,
+  PatchAnnotationRequest,
+  Message,
+  MessageVersion,
+  PatchMessageAttributionRequest,
+  GroupLeadState,
+  WorkAnswerResult,
 } from "@real-bot/protocol";
-import { ApiError, probeHealth } from "./api.ts";
-import { attributable, messageFilings, type AttributedMessage, type AttributionPlan } from "./chat/attribution.ts";
-import type { FileProgress } from "./file-progress.ts";
-import { CommandActivity, type CommandRow } from "./chat/command-activity.ts";
-import { TurnActivity, type ToolStep } from "./chat/turn-activity.ts";
-import { parseStreamFrame, parseToolFrame } from "./ephemeral-frames.ts";
-import type { LocalEndpoint } from "./discovery.ts";
-import { classifyHealth } from "./health.ts";
-import { collectUntilMessage } from "./sidebar/search-jump.ts";
-import { classifySession, isFileDropSession, youBotSession } from "./sidebar/session-groups.ts";
-import { applyEvent, emptySnapshot, fromRuntimeSnapshot, type Snapshot } from "./snapshot.ts";
-import { canonicalRelpath, mergeAnnotationRows } from "./annotations/model.ts";
-import { EventSync } from "./event-sync.ts";
+import type { ApiError } from "./api.ts";
+import type { AttributedMessage, AttributionPlan } from "./chat/attribution.ts";
+import type { CommandActivity, CommandRow } from "./chat/command-activity.ts";
+import type { TurnActivity, ToolStep } from "./chat/turn-activity.ts";
+import { classifySession, isFileDropSession } from "./sidebar/session-groups.ts";
+import { applyEvent, emptySnapshot, type Snapshot } from "./snapshot.ts";
+import type { EventSync } from "./event-sync.ts";
 import { SessionView } from "./session-view.svelte.ts";
 import type { TraceFocus } from "./overlays/task-trace.ts";
 import type { PaneContent } from "./workbench/pane-content.ts";
-import { isLiveStatus, stopTarget } from "./chat/transcript.ts";
+import { isLiveStatus } from "./chat/transcript.ts";
 import type { UrlOverlay } from "./session-url.ts";
 import type { PromptTarget } from "./settings/prompts-view.ts";
 import { HOSTED_MESSENGER } from "./remote/mode.ts";
-import type { LocalApi } from "./local-api.ts";
 import type { MessengerApi } from "./messenger-api.ts";
 import { RemoteApi, type DurablePendingRequest, type RemoteDeviceRow, type RemoteMaintenanceStatus } from "./remote/api.ts";
-import { loadEnrollment, type StoredEnrollment } from "./remote/idb.ts";
 import { isInboxMessage, pushPermission } from "./remote/push.ts";
 import type { DisablePushResult, PushPermission } from "./remote/push.ts";
 import type { PairingProgress } from "./remote/pairing.ts";
 import type { HostDevice, HostRelay } from "./remote/pairing-host.ts";
-import { supportsWebLocks } from "./notifications/tab-owner.ts";
 import type { TabRole } from "./notifications/tab-owner.ts";
 import type { InboxState } from "./notifications/inbox-state.ts";
 import type {
@@ -91,21 +74,22 @@ import type {
   PushTransport,
   SendAskResult,
 } from "./notifications/types.ts";
-import {
-  parseNotificationCapabilities,
-  parseNotificationPolicy,
-  parseNotificationSummary,
-} from "./notifications/parse.ts";
-import {
-  askSubmitAllowed,
-  classifySendAskFailure,
-  clearAskIfMatching,
-  nextDraftVersion,
-  recordAskError,
-} from "./notifications/ask-state.ts";
 import { NotificationCenter, type NotificationCenterHost } from "./notifications/notification-center.svelte.ts";
 import { TabOwnership, type NotificationOpenIntent, type TabOwnershipHost } from "./notifications/tab-ownership.svelte.ts";
 import { RemoteAdmin, type RemoteAdminHost } from "./remote/remote-admin.svelte.ts";
+import { AdminMutations, type AdminMutationsHost } from "./admin-mutations.svelte.ts";
+import { AnnotationStore, type AnnotationStoreHost } from "./annotations/annotation-store.svelte.ts";
+import { ChatActivity, type ChatActivityHost } from "./chat/activity.svelte.ts";
+import { ChatActions, type ChatActionsHost } from "./chat/chat-actions.svelte.ts";
+import { MessageEdits, type MessageEditsHost } from "./chat/message-edits.svelte.ts";
+import { SessionHistory, type SessionHistoryHost } from "./chat/session-history.svelte.ts";
+import { ThreadState, type ThreadStateHost } from "./chat/thread-state.svelte.ts";
+import { ConnectionLoop, type ConnectionLoopHost } from "./connection/connection-loop.svelte.ts";
+import { OverlayState, type OverlayStateHost } from "./overlays/overlay-state.svelte.ts";
+import { TerminalList, type TerminalListHost } from "./overlays/terminal-list.svelte.ts";
+import { SearchStore, type SearchStoreHost } from "./search/search-store.svelte.ts";
+
+export { nextRemoteRetry } from "./connection/connection-loop.svelte.ts";
 
 /**
  * `connecting` is a real state, not a flavour of `disconnected`: a page that is still trying
@@ -116,30 +100,6 @@ export type Connection = "connecting" | "connected" | "disconnected";
 export type HostUnreachable = "runtime" | "host";
 /** A draft kept across a dropped connection, and the conversation it was being written in. */
 export type DraftReconnect = { sessionId: string; draft: string; confirm: boolean } | null;
-
-const RETRY_MS = 1000;
-/**
- * A remote retry is a WebSocket handshake at the relay, and the relay allows ten per minute from
- * one address. Retrying every second during a host outage spends that budget in ten seconds and
- * then gets refused for the rest of the minute — the harder the device tries, the longer it takes
- * to come back once the Mac is up. So remote attempts back off, with jitter so several devices on
- * one address do not line up, and reset the moment a connection succeeds.
- */
-const REMOTE_RETRY_MIN_MS = 1000;
-const REMOTE_RETRY_MAX_MS = 20_000;
-
-export function nextRemoteRetry(previous: number, random = Math.random): number {
-  const grown = Math.min(previous * 2, REMOTE_RETRY_MAX_MS);
-  const jitter = 0.8 + random() * 0.4;
-  return Math.round(Math.min(grown * jitter, REMOTE_RETRY_MAX_MS));
-}
-/** Attempts that still read as "connecting" before the page says the host cannot be reached. */
-const CONNECTING_ATTEMPTS = 3;
-/**
- * Past this many missed events a phone takes the snapshot instead: replaying hundreds of frames
- * costs about what the snapshot does, and the snapshot also re-reads the open conversation.
- */
-const RESUME_MAX_EVENTS = 300;
 
 export type HostPairing =
   | null
@@ -158,6 +118,20 @@ export type HostPairing =
     }
   | { phase: "paired"; deviceId: string }
   | { phase: "failed"; error: string };
+
+/** Everything the sub-stores below reach back into the runtime for: each one's host, together. */
+type SubStoreHost =
+  & OverlayStateHost
+  & TerminalListHost
+  & ConnectionLoopHost
+  & SessionHistoryHost
+  & AdminMutationsHost
+  & ThreadStateHost
+  & MessageEditsHost
+  & ChatActivityHost
+  & AnnotationStoreHost
+  & ChatActionsHost
+  & SearchStoreHost;
 
 export class MessengerRuntime {
   /**
@@ -211,9 +185,164 @@ export class MessengerRuntime {
     };
   }
 
+  /**
+   * The overlays, the terminal list, the connection loop, a conversation's history, the sheets'
+   * writes, the thread panes, line edits, live activity, annotations, the chat's actions and search
+   * live in their own classes too, and share one host adapter: they reach for much the same state,
+   * and the connection loop reaches for most of it. Its getters read `runtime.x` fresh on every
+   * call, like the adapters above. A call to a method the runtime still answers to by name goes
+   * through the runtime, so a component or a test that replaces one there (`selectSession`,
+   * `closeSessionSettings`, the loop's `tick`) is seen from inside the sub-stores as well; what
+   * only a sub-store has is reached on that sub-store.
+   */
+  private readonly subStoreHost: SubStoreHost = this.buildSubStoreHost();
+  private readonly overlayState = new OverlayState(this.subStoreHost);
+  private readonly terminalList = new TerminalList(this.subStoreHost);
+  private readonly connectionLoop = new ConnectionLoop(this.subStoreHost);
+  private readonly sessionHistory = new SessionHistory(this.subStoreHost);
+  private readonly adminMutations = new AdminMutations(this.subStoreHost);
+  private readonly threadState = new ThreadState(this.subStoreHost);
+  private readonly messageEdits = new MessageEdits(this.subStoreHost);
+  private readonly chatActivity = new ChatActivity(this.subStoreHost);
+  private readonly annotationStore = new AnnotationStore(this.subStoreHost);
+  private readonly chatActions = new ChatActions(this.subStoreHost);
+  private readonly searchStore = new SearchStore(this.subStoreHost);
+
+  private buildSubStoreHost(): SubStoreHost {
+    const runtime = this;
+    return {
+      get selectedId() { return runtime.selectedId; },
+      set selectedId(value) { runtime.selectedId = value; },
+      get remote() { return runtime.remote; },
+      get snapshot() { return runtime.snapshot; },
+      set snapshot(value) { runtime.snapshot = value; },
+      get api() { return runtime.api; },
+      set api(value) { runtime.api = value; },
+      get stopped() { return runtime.stopped; },
+      get connection() { return runtime.connection; },
+      set connection(value) { runtime.connection = value; },
+      get hostUnreachable() { return runtime.hostUnreachable; },
+      set hostUnreachable(value) { runtime.hostUnreachable = value; },
+      get enrolled() { return runtime.enrolled; },
+      set enrolled(value) { runtime.enrolled = value; },
+      get tabRole() { return runtime.tabRole; },
+      get draft() { return runtime.draft; },
+      get draftReconnect() { return runtime.draftReconnect; },
+      set draftReconnect(value) { runtime.draftReconnect = value; },
+      get sync() { return runtime.sync; },
+      set sync(value) { runtime.sync = value; },
+      get delegationSnapshotEpoch() { return runtime.delegationSnapshotEpoch; },
+      set delegationSnapshotEpoch(value) { runtime.delegationSnapshotEpoch = value; },
+      get delegationEventRevisions() { return runtime.delegationEventRevisions; },
+      get delegationReadSeq() { return runtime.threadState.delegationReadSeq; },
+      get delegationLoading() { return runtime.delegationLoading; },
+      set delegationLoading(value) { runtime.delegationLoading = value; },
+      get delegationLoadError() { return runtime.delegationLoadError; },
+      set delegationLoadError(value) { runtime.delegationLoadError = value; },
+      get delegationUnsupported() { return runtime.delegationUnsupported; },
+      set delegationUnsupported(value) { runtime.delegationUnsupported = value; },
+      get messageSnapshotRevision() { return runtime.messageEdits.messageSnapshotRevision; },
+      set messageSnapshotRevision(value) { runtime.messageEdits.messageSnapshotRevision = value; },
+      get remoteStatus() { return runtime.remoteStatus; },
+      set remoteStatus(value) { runtime.remoteStatus = value; },
+      get notificationCapabilities() { return runtime.notificationCapabilities; },
+      set notificationCapabilities(value) { runtime.notificationCapabilities = value; },
+      get notificationSummary() { return runtime.notificationSummary; },
+      set notificationSummary(value) { runtime.notificationSummary = value; },
+      get notificationPolicy() { return runtime.notificationPolicy; },
+      set notificationPolicy(value) { runtime.notificationPolicy = value; },
+      get isDesktopShell() { return runtime.isDesktopShell; },
+      get endpointKey() { return runtime.endpointKey; },
+      set endpointKey(value) { runtime.endpointKey = value; },
+      get views() { return runtime.views; },
+      get durablePending() { return runtime.durablePending; },
+      set durablePending(value) { runtime.durablePending = value; },
+      get uvReady() { return runtime.uvReady; },
+      set uvReady(value) { runtime.uvReady = value; },
+      get turnActivity() { return runtime.turnActivity; },
+      get toolRevision() { return runtime.toolRevision; },
+      set toolRevision(value) { runtime.toolRevision = value; },
+      get pendingMutation() { return runtime.pendingMutation; },
+      set pendingMutation(value) { runtime.pendingMutation = value; },
+      get sessionLoad() { return runtime.sessionHistory.sessionLoad; },
+      set sessionLoad(value) { runtime.sessionHistory.sessionLoad = value; },
+      get searchSeq() { return runtime.searchStore.searchSeq; },
+      set searchSeq(value) { runtime.searchStore.searchSeq = value; },
+      get searchHits() { return runtime.searchHits; },
+      set searchHits(value) { runtime.searchHits = value; },
+      get searchLoading() { return runtime.searchLoading; },
+      set searchLoading(value) { runtime.searchLoading = value; },
+      get searchError() { return runtime.searchError; },
+      set searchError(value) { runtime.searchError = value; },
+      get connectionSeq() { return runtime.connectionSeq; },
+      set connectionSeq(value) { runtime.connectionSeq = value; },
+      get activeView() { return runtime.activeView; },
+      get spendOpen() { return runtime.spendOpen; },
+      get terminalOpen() { return runtime.terminalOpen; },
+      get traceOpen() { return runtime.traceOpen; },
+      get traceSessionId() { return runtime.traceSessionId; },
+      set traceSessionId(value) { runtime.traceSessionId = value; },
+      get threadOpen() { return runtime.threadOpen; },
+      set threadOpen(value) { runtime.threadOpen = value; },
+      get focusedTurnId() { return runtime.focusedTurnId; },
+      set focusedTurnId(value) { runtime.focusedTurnId = value; },
+      get historyLoading() { return runtime.historyLoading; },
+      set historyLoading(value) { runtime.historyLoading = value; },
+      get profileBotId() { return runtime.profileBotId; },
+      get traceReload() { return runtime.traceReload; },
+      set traceReload(value) { runtime.traceReload = value; },
+      get workspacePath() { return runtime.workspacePath; },
+      closeSessionSettings: () => runtime.closeSessionSettings(),
+      refreshTerminals: () => runtime.refreshTerminals(),
+      closeSheets: () => runtime.closeSheets(),
+      selectSession: (id, opts) => runtime.selectSession(id, opts),
+      sessionView: (id) => runtime.sessionView(id),
+      openProfile: (botId) => runtime.openProfile(botId),
+      openSettings: () => runtime.openSettings(),
+      openRemoteScreen: () => runtime.openRemoteScreen(),
+      startTerminal: (cwd) => runtime.startTerminal(cwd),
+      toPane: (content) => runtime.overlayState.toPane(content),
+      openTerminal: () => runtime.openTerminal(),
+      pump: () => runtime.pump(),
+      tickRemote: () => runtime.tickRemote(),
+      markDisconnected: () => runtime.markDisconnected(),
+      acquireTabLock: () => runtime.acquireTabLock(),
+      syncAppBadge: () => runtime.syncAppBadge(),
+      pollDesktopNativeState: () => runtime.pollDesktopNativeState(),
+      reportDesktopNotificationView: (atLatest) => runtime.reportDesktopNotificationView(atLatest),
+      refreshMaintenance: () => runtime.refreshMaintenance(),
+      loadPushState: () => runtime.loadPushState(),
+      reconcilePendingMutation: (api) => runtime.reconcilePendingMutation(api),
+      syncSettingsDraft: (settings) => runtime.syncSettingsDraft(settings),
+      ingest: (event, frame) => runtime.ingest(event, frame),
+      resetConnection: () => runtime.resetConnection(),
+      installSnapshot: (api, sync, snapshot) => runtime.installSnapshot(api, sync, snapshot),
+      acceptEphemeral: (value) => runtime.chatActivity.acceptEphemeral(value),
+      reconnectNow: () => runtime.reconnectNow(),
+      clearBoundedReads: () => runtime.notificationCenter.clearBoundedReads(),
+      tick: () => runtime.tick(),
+      closeRoutines: () => runtime.closeRoutines(),
+      closeSpend: () => runtime.closeSpend(),
+      closeTerminal: () => runtime.closeTerminal(),
+      closeRemoteScreen: () => runtime.closeRemoteScreen(),
+      setHighlightedMessage: (messageId, sessionId) => runtime.setHighlightedMessage(messageId, sessionId),
+      loadAnnotations: (filter) => runtime.loadAnnotations(filter),
+      markSessionRead: (id) => runtime.markSessionRead(id),
+      openSpend: () => runtime.openSpend(),
+      closeProfile: () => runtime.closeProfile(),
+      clearHighlight: (view) => runtime.clearHighlight(view),
+      sheetFailure: (error, api) => runtime.adminMutations.sheetFailure(error, api),
+      loadAttributionPlans: (sessionId, messageId) => runtime.loadAttributionPlans(sessionId, messageId),
+      viewFor: (sessionId) => runtime.viewFor(sessionId),
+      cancelEdit: (sessionId) => runtime.cancelEdit(sessionId),
+      loadAttributionFor: (message) => runtime.loadAttributionFor(message),
+      noteAnnotationWrite: (id) => runtime.noteAnnotationWrite(id),
+      claimFocus: (sessionId, triggerMessageId, turnId) => runtime.claimFocus(sessionId, triggerMessageId, turnId),
+      keepUnknownRequest: (error, api) => runtime.adminMutations.keepUnknownRequest(error, api),
+    };
+  }
+
   connection = $state<Connection>("connecting");
-  /** Consecutive failed attempts since the last connection; the first few are still "connecting". */
-  private connectFailures = 0;
   snapshot = $state<Snapshot>(emptySnapshot());
   private selectedIdValue = $state<string | null>(null);
   /**
@@ -288,55 +417,8 @@ export class MessengerRuntime {
   get olderLoading(): boolean { return this.activeView?.olderLoading ?? false; }
   set olderLoading(value: boolean) { const view = this.activeView; if (view) view.olderLoading = value; }
 
-  private get sessionMessageNext(): string | null { return this.activeView?.messageNext ?? null; }
-  private set sessionMessageNext(value: string | null) { const view = this.activeView; if (view) view.messageNext = value; }
-
-  private get sessionDetailId(): string | null {
-    const view = this.activeView;
-    return view?.detailLoaded ? view.sessionId : null;
-  }
-  private set sessionDetailId(value: string | null) {
-    const view = this.activeView;
-    if (view) view.detailLoaded = value === view.sessionId;
-  }
-  /** Workspace-relative path of the open artifact preview, or null when the pane is closed. */
-  previewRelpath = $state<string | null>(null);
-  previewMessageId = $state<string | null>(null);
-  /** The annotation a card or a row asked the preview to scroll to; cleared with the preview. */
-  annotationFocusId = $state<string | null>(null);
-  /**
-   * The file each previewed path resolves to, as the daemon named it on the rows it returned for
-   * that path: how a preview recognises annotations made on another spelling of the same file.
-   */
-  annotationFileKeys = $state<Record<string, string>>({});
-  forceArtifactTree = $state(false);
-  previewTaskId = $state<string | null>(null);
-  previewSiblings = $state<Attachment[] | null>(null);
-  settingsOpen = $state(false);
-  createBotOpen = $state(false);
-  createGroupOpen = $state(false);
-  sessionSettingsOpen = $state(false);
-  /** The job whose trace is open. Null while closed; an empty string asks for the session's latest. */
-  traceTaskId = $state<string | null>(null);
-  /** The session the trace was opened from. The chat can move on; the window stays on this job. */
-  traceSessionId = $state<string | null>(null);
-  /**
-   * The message the open board should centre, and which request it was.
-   *
-   * The token climbs each time a message asks, so asking again for the card already on screen
-   * still moves there. The header's board has neither.
-   */
-  traceFocus = $state<TraceFocus | null>(null);
-  traceFocusToken = $state(0);
   /** Bumped when a turn or message of the open job changes, so the trace pulls again. */
   traceReload = $state(0);
-  profileBotId = $state<string | null>(null);
-  profileRoutineId = $state<string | null>(null);
-  workspaceOpen = $state(false);
-  /** The roster calendar. It replaces the main column; it is not a fourth phone destination. */
-  routinesOpen = $state(false);
-  /** The spend ledger, same shape as the calendar: one pane on the desktop, a page below 680. */
-  spendOpen = $state(false);
   /**
    * Climbs on `spend.created` and `spend.repriced`. The rows themselves are not kept: a view that is open debounces
    * a reload of the summary off this, and one that is closed reads it when it next opens.
@@ -344,24 +426,12 @@ export class MessengerRuntime {
   spendRevision = $state(0);
   /** Bumped on every `prompt.changed` (ADR 0064): the prompts settings reload on it. */
   promptsRevision = $state(0);
-  /**
-   * Settings asked to open on the prompts tab, and at one prompt's editor when there is one (a card's
-   * 「在设置里看」); the prompts tab takes it once it shows.
-   */
-  promptsTarget = $state<{ prompt: PromptTarget | null } | null>(null);
-  workspaceSelected = $state("");
-  threadOpen = $state(false);
-  searchQuery = $state("");
-  searchHits = $state<SearchHit[]>([]);
-  searchLoading = $state(false);
-  searchError = $state(false);
   pendingMutation = $state<{ id: string; code: string } | null>(null);
   workspacePath = $state("");
   endpointUrl = $state("");
   endpointKey = $state("");
   endpointModelsText = $state("");
   endpointDefaultModel = $state("");
-  previewAttachmentId = $state<string | null>(null);
   hosted = HOSTED_MESSENGER;
   // --- Forwarded to `remoteAdmin` (pairing, host pairing/devices, draft-reconnect, maintenance). ---
   get pairing(): PairingProgress { return this.remoteAdmin.pairing; }
@@ -385,8 +455,6 @@ export class MessengerRuntime {
   set hostSetupBusy(value: boolean) { this.remoteAdmin.hostSetupBusy = value; }
   get hostSetupError(): string | null { return this.remoteAdmin.hostSetupError; }
   set hostSetupError(value: string | null) { this.remoteAdmin.hostSetupError = value; }
-  /** How long to wait before the next relay handshake; grows while the Mac is unreachable. */
-  private remoteRetryMs = REMOTE_RETRY_MIN_MS;
   get enrolled(): boolean { return this.remoteAdmin.enrolled; }
   set enrolled(value: boolean) { this.remoteAdmin.enrolled = value; }
   get hostUnreachable(): HostUnreachable { return this.remoteAdmin.hostUnreachable; }
@@ -447,7 +515,6 @@ export class MessengerRuntime {
   get isDesktopShell(): boolean {
     return !HOSTED_MESSENGER && typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
   }
-  askDrafts = $state<Map<string, AskDraftRecord>>(new Map());
   get instanceId(): string { return this.notificationCenter.instanceId; }
   // --- Forwarded to `tabOwnership`. ---
   get tabRole(): TabRole { return this.tabOwnership.tabRole; }
@@ -463,68 +530,325 @@ export class MessengerRuntime {
   private get presenceTimer(): ReturnType<typeof setInterval> | null { return this.notificationCenter.presenceTimer; }
   private set presenceTimer(value: ReturnType<typeof setInterval> | null) { this.notificationCenter.presenceTimer = value; }
 
+  // --- Forwarded to `overlayState` (sheets, pages and panes over the chat, and the trace board). ---
+  get previewRelpath(): string | null { return this.overlayState.previewRelpath; }
+  set previewRelpath(value: string | null) { this.overlayState.previewRelpath = value; }
+  get previewMessageId(): string | null { return this.overlayState.previewMessageId; }
+  set previewMessageId(value: string | null) { this.overlayState.previewMessageId = value; }
+  get forceArtifactTree(): boolean { return this.overlayState.forceArtifactTree; }
+  set forceArtifactTree(value: boolean) { this.overlayState.forceArtifactTree = value; }
+  get previewTaskId(): string | null { return this.overlayState.previewTaskId; }
+  set previewTaskId(value: string | null) { this.overlayState.previewTaskId = value; }
+  get previewSiblings(): Attachment[] | null { return this.overlayState.previewSiblings; }
+  set previewSiblings(value: Attachment[] | null) { this.overlayState.previewSiblings = value; }
+  get settingsOpen(): boolean { return this.overlayState.settingsOpen; }
+  set settingsOpen(value: boolean) { this.overlayState.settingsOpen = value; }
+  get createBotOpen(): boolean { return this.overlayState.createBotOpen; }
+  set createBotOpen(value: boolean) { this.overlayState.createBotOpen = value; }
+  get createGroupOpen(): boolean { return this.overlayState.createGroupOpen; }
+  set createGroupOpen(value: boolean) { this.overlayState.createGroupOpen = value; }
+  get sessionSettingsOpen(): boolean { return this.overlayState.sessionSettingsOpen; }
+  set sessionSettingsOpen(value: boolean) { this.overlayState.sessionSettingsOpen = value; }
+  get traceTaskId(): string | null { return this.overlayState.traceTaskId; }
+  set traceTaskId(value: string | null) { this.overlayState.traceTaskId = value; }
+  get traceSessionId(): string | null { return this.overlayState.traceSessionId; }
+  set traceSessionId(value: string | null) { this.overlayState.traceSessionId = value; }
+  get traceFocus(): TraceFocus | null { return this.overlayState.traceFocus; }
+  set traceFocus(value: TraceFocus | null) { this.overlayState.traceFocus = value; }
+  get traceFocusToken(): number { return this.overlayState.traceFocusToken; }
+  set traceFocusToken(value: number) { this.overlayState.traceFocusToken = value; }
+  get profileBotId(): string | null { return this.overlayState.profileBotId; }
+  set profileBotId(value: string | null) { this.overlayState.profileBotId = value; }
+  get profileRoutineId(): string | null { return this.overlayState.profileRoutineId; }
+  set profileRoutineId(value: string | null) { this.overlayState.profileRoutineId = value; }
+  get workspaceOpen(): boolean { return this.overlayState.workspaceOpen; }
+  set workspaceOpen(value: boolean) { this.overlayState.workspaceOpen = value; }
+  get routinesOpen(): boolean { return this.overlayState.routinesOpen; }
+  set routinesOpen(value: boolean) { this.overlayState.routinesOpen = value; }
+  get spendOpen(): boolean { return this.overlayState.spendOpen; }
+  set spendOpen(value: boolean) { this.overlayState.spendOpen = value; }
+  get promptsTarget(): { prompt: PromptTarget | null } | null { return this.overlayState.promptsTarget; }
+  set promptsTarget(value: { prompt: PromptTarget | null } | null) { this.overlayState.promptsTarget = value; }
+  get workspaceSelected(): string { return this.overlayState.workspaceSelected; }
+  set workspaceSelected(value: string) { this.overlayState.workspaceSelected = value; }
+  get threadOpen(): boolean { return this.overlayState.threadOpen; }
+  set threadOpen(value: boolean) { this.overlayState.threadOpen = value; }
+  get previewAttachmentId(): string | null { return this.overlayState.previewAttachmentId; }
+  set previewAttachmentId(value: string | null) { this.overlayState.previewAttachmentId = value; }
+  openCreateBot(): void { this.overlayState.openCreateBot(); }
+  openCreateGroup(): void { this.overlayState.openCreateGroup(); }
+  openSessionSettings(): void { this.overlayState.openSessionSettings(); }
+  get paneOpener(): ((content: PaneContent) => void) | null { return this.overlayState.paneOpener; }
+  set paneOpener(value: ((content: PaneContent) => void) | null) { this.overlayState.paneOpener = value; }
+  get terminalOpen(): boolean { return this.overlayState.terminalOpen; }
+  set terminalOpen(value: boolean) { this.overlayState.terminalOpen = value; }
+  openTerminal(): void { this.overlayState.openTerminal(); }
+  closeTerminal(): void { this.overlayState.closeTerminal(); }
+  get screenOpen(): boolean { return this.overlayState.screenOpen; }
+  set screenOpen(value: boolean) { this.overlayState.screenOpen = value; }
+  openRemoteScreen(): void { this.overlayState.openRemoteScreen(); }
+  closeRemoteScreen(): void { this.overlayState.closeRemoteScreen(); }
+  watchTrace(taskId: string): () => void { return this.overlayState.watchTrace(taskId); }
+  openTrace(taskId: string | null = null, focus: TraceFocus | null = null): void { this.overlayState.openTrace(taskId, focus); }
+  closeTrace(): void { this.overlayState.closeTrace(); }
+  get traceOpen(): boolean { return this.overlayState.traceOpen; }
+  openRoutine(botId: string, routineId: string): Promise<void> { return this.overlayState.openRoutine(botId, routineId); }
+  openProfile(botId: string): void { this.overlayState.openProfile(botId); }
+  closeProfile(): void { this.overlayState.closeProfile(); }
+  closeSessionSettings(): void { this.overlayState.closeSessionSettings(); }
+  openSettings(): void { this.overlayState.openSettings(); }
+  openPromptSettings(prompt: PromptTarget | null): void { this.overlayState.openPromptSettings(prompt); }
+  openWorkspace(selected?: string | null): void { this.overlayState.openWorkspace(selected); }
+  closeWorkspace(): void { this.overlayState.closeWorkspace(); }
+  openRoutines(): void { this.overlayState.openRoutines(); }
+  closeRoutines(): void { this.overlayState.closeRoutines(); }
+  openSpend(): void { this.overlayState.openSpend(); }
+  closeSpend(): void { this.overlayState.closeSpend(); }
+  applyOverlay(overlay: UrlOverlay): void { this.overlayState.applyOverlay(overlay); }
+  closeSheets(): void { this.overlayState.closeSheets(); }
+
+  // --- Forwarded to `terminalList` (the daemon's terminal sessions). ---
+  get terminals(): Terminal[] { return this.terminalList.terminals; }
+  set terminals(value: Terminal[]) { this.terminalList.terminals = value; }
+  get terminalsLoaded(): boolean { return this.terminalList.terminalsLoaded; }
+  set terminalsLoaded(value: boolean) { this.terminalList.terminalsLoaded = value; }
+  startTerminal(cwd?: string): Promise<Terminal | null> { return this.terminalList.startTerminal(cwd); }
+  openTerminalAt(cwd: string): Promise<void> { return this.terminalList.openTerminalAt(cwd); }
+  refreshTerminals(): Promise<void> { return this.terminalList.refreshTerminals(); }
+
+  // --- Forwarded to `connectionLoop` (the loop that keeps the link). ---
+  retryConnection(): void { this.connectionLoop.retryConnection(); }
+
+  // --- Forwarded to `sessionHistory` (selecting a conversation and paging its history). ---
+  openChat(id: string, opts?: { messageId?: string }): Promise<void> { return this.sessionHistory.openChat(id, opts); }
+  selectSession(id: string, opts?: { messageId?: string; preservePage?: boolean }): Promise<void> { return this.sessionHistory.selectSession(id, opts); }
+  get hasOlderMessages(): boolean { return this.sessionHistory.hasOlderMessages; }
+  loadOlderMessages(sessionId?: string): Promise<void> { return this.sessionHistory.loadOlderMessages(sessionId); }
+  markSessionRead(id: string): Promise<void> { return this.sessionHistory.markSessionRead(id); }
+
+  // --- Forwarded to `adminMutations` (the sheets' writes). ---
+  patchSettings(patch: SettingsPatch): Promise<ApiError | null> { return this.adminMutations.patchSettings(patch); }
+  probeModels(
+    baseUrl?: string,
+    apiKey?: string,
+    providerId?: string,
+    apiFormat?: ApiFormat,
+  ): Promise<{ ok: true } & ProbeModelsResponse | { ok: false; error: string }> { return this.adminMutations.probeModels(baseUrl, apiKey, providerId, apiFormat); }
+  speedTest(providerId: string, model: string): Promise<{ ok: true; speed: ModelSpeed } | { ok: false; error: string }> { return this.adminMutations.speedTest(providerId, model); }
+  createBot(body: CreateBotRequest): Promise<ApiError | null> { return this.adminMutations.createBot(body); }
+  createGroup(body: CreateGroupRequest): Promise<ApiError | null> { return this.adminMutations.createGroup(body); }
+  createSkill(body: CreateSkillRequest): Promise<ApiError | null> { return this.adminMutations.createSkill(body); }
+  patchSkill(id: string, body: PatchSkillRequest): Promise<ApiError | null> { return this.adminMutations.patchSkill(id, body); }
+  deleteSkill(id: string): Promise<ApiError | null> { return this.adminMutations.deleteSkill(id); }
+  createRoutine(body: CreateRoutineRequest): Promise<ApiError | null> { return this.adminMutations.createRoutine(body); }
+  patchRoutine(id: string, body: PatchRoutineRequest): Promise<ApiError | null> { return this.adminMutations.patchRoutine(id, body); }
+  deleteRoutine(id: string, ifRevision: string): Promise<ApiError | null> { return this.adminMutations.deleteRoutine(id, ifRevision); }
+  patchMemory(id: string, body: PatchMemoryRequest): Promise<ApiError | null> { return this.adminMutations.patchMemory(id, body); }
+  deleteMemory(id: string): Promise<ApiError | null> { return this.adminMutations.deleteMemory(id); }
+  patchBot(
+    id: string,
+    body: {
+      name?: string;
+      duties?: string;
+      boundaries?: string;
+      avatar?: string | null;
+      model?: string | null;
+      provider_id?: string | null;
+      thinking_level?: ThinkingLevel | null;
+      runner?: BotRunner | null;
+      agent_model?: string | null;
+      agent_effort?: ClaudeEffort | null;
+    },
+  ): Promise<ApiError | null> { return this.adminMutations.patchBot(id, body); }
+  archiveBot(id: string): Promise<ApiError | null> { return this.adminMutations.archiveBot(id); }
+  restoreBot(id: string): Promise<ApiError | null> { return this.adminMutations.restoreBot(id); }
+  deleteBot(id: string): Promise<ApiError | null> { return this.adminMutations.deleteBot(id); }
+  patchSession(id: string, body: { name: string }): Promise<ApiError | null> { return this.adminMutations.patchSession(id, body); }
+  addMember(sessionId: string, botId: string): Promise<ApiError | null> { return this.adminMutations.addMember(sessionId, botId); }
+  removeMember(sessionId: string, botId: string): Promise<ApiError | null> { return this.adminMutations.removeMember(sessionId, botId); }
+  archiveSession(id: string): Promise<ApiError | null> { return this.adminMutations.archiveSession(id); }
+  restoreSession(id: string): Promise<ApiError | null> { return this.adminMutations.restoreSession(id); }
+  deleteSession(id: string, opts: { eraseQuotes?: boolean } = {}): Promise<ApiError | null> { return this.adminMutations.deleteSession(id, opts); }
+  clearSessionHistory(id: string, opts: { eraseQuotes?: boolean } = {}): Promise<ApiError | null> { return this.adminMutations.clearSessionHistory(id, opts); }
+  retryPendingMutation(): Promise<ApiError | null> { return this.adminMutations.retryPendingMutation(); }
+  resolveCredentialOperation(id: string, action: "repair" | "cancel", value?: string): Promise<boolean> { return this.adminMutations.resolveCredentialOperation(id, action, value); }
+  createProvider(body: CreateProviderRequest): Promise<ApiError | null> { return this.adminMutations.createProvider(body); }
+  patchProvider(id: string, body: PatchProviderRequest): Promise<ApiError | null> { return this.adminMutations.patchProvider(id, body); }
+  deleteProvider(id: string): Promise<ApiError | null> { return this.adminMutations.deleteProvider(id); }
+  createMcpServer(body: {
+    name: string;
+    transport?: "stdio" | "http";
+    command?: string;
+    args?: string[];
+    url?: string;
+    headers?: Array<{ name: string; value: string }>;
+    auth?: string;
+    enabled: boolean;
+    usage_note?: string;
+  }): Promise<ApiError | null> { return this.adminMutations.createMcpServer(body); }
+  patchMcpServer(
+    id: string,
+    body: {
+      name?: string;
+      transport?: "stdio" | "http";
+      command?: string;
+      args?: string[];
+      url?: string;
+      headers?: Array<{ name: string; value: string }>;
+      auth?: string;
+      enabled?: boolean;
+      usage_note?: string | null;
+    },
+  ): Promise<ApiError | null> { return this.adminMutations.patchMcpServer(id, body); }
+  deleteMcpServer(id: string): Promise<ApiError | null> { return this.adminMutations.deleteMcpServer(id); }
+
+  // --- Forwarded to `threadState` (delegations, group leads, attribution plans). ---
+  get delegationLoading(): Record<string, boolean> { return this.threadState.delegationLoading; }
+  set delegationLoading(value: Record<string, boolean>) { this.threadState.delegationLoading = value; }
+  get delegationLoadError(): Record<string, boolean> { return this.threadState.delegationLoadError; }
+  set delegationLoadError(value: Record<string, boolean>) { this.threadState.delegationLoadError = value; }
+  get delegationUnsupported(): Record<string, boolean> { return this.threadState.delegationUnsupported; }
+  set delegationUnsupported(value: Record<string, boolean>) { this.threadState.delegationUnsupported = value; }
+  get delegationSnapshotEpoch(): number { return this.threadState.delegationSnapshotEpoch; }
+  set delegationSnapshotEpoch(value: number) { this.threadState.delegationSnapshotEpoch = value; }
+  loadDelegations(sessionId: string): Promise<void> { return this.threadState.loadDelegations(sessionId); }
+  get groupLeads(): Record<string, GroupLeadState> { return this.threadState.groupLeads; }
+  set groupLeads(value: Record<string, GroupLeadState>) { this.threadState.groupLeads = value; }
+  get groupLeadLoading(): Record<string, boolean> { return this.threadState.groupLeadLoading; }
+  set groupLeadLoading(value: Record<string, boolean>) { this.threadState.groupLeadLoading = value; }
+  get groupLeadLoadError(): Record<string, boolean> { return this.threadState.groupLeadLoadError; }
+  set groupLeadLoadError(value: Record<string, boolean>) { this.threadState.groupLeadLoadError = value; }
+  get groupLeadUnsupported(): Record<string, boolean> { return this.threadState.groupLeadUnsupported; }
+  set groupLeadUnsupported(value: Record<string, boolean>) { this.threadState.groupLeadUnsupported = value; }
+  loadGroupLead(sessionId: string): Promise<void> { return this.threadState.loadGroupLead(sessionId); }
+  confirmGroupLead(sessionId: string, botId: string | null): Promise<ApiError | null> { return this.threadState.confirmGroupLead(sessionId, botId); }
+  get attributionPlans(): Record<string, AttributionPlan[]> { return this.threadState.attributionPlans; }
+  set attributionPlans(value: Record<string, AttributionPlan[]>) { this.threadState.attributionPlans = value; }
+  get attributionLoading(): Record<string, boolean> { return this.threadState.attributionLoading; }
+  set attributionLoading(value: Record<string, boolean>) { this.threadState.attributionLoading = value; }
+  get attributionLoadError(): Record<string, boolean> { return this.threadState.attributionLoadError; }
+  set attributionLoadError(value: Record<string, boolean>) { this.threadState.attributionLoadError = value; }
+  loadAttributionPlans(sessionId: string, messageId?: string): Promise<void> { return this.threadState.loadAttributionPlans(sessionId, messageId); }
+
+  // --- Forwarded to `messageEdits` (line edits, refiling, work answers). ---
+  startEdit(sessionId: string, message: Message): void { this.messageEdits.startEdit(sessionId, message); }
+  cancelEdit(sessionId: string): void { this.messageEdits.cancelEdit(sessionId); }
+  saveEdit(sessionId: string): Promise<boolean> { return this.messageEdits.saveEdit(sessionId); }
+  messageVersions(id: string, editedAt: string): Promise<MessageVersion[] | null> { return this.messageEdits.messageVersions(id, editedAt); }
+  patchMessageAttribution(id: string, filings: PatchMessageAttributionRequest["filings"]): Promise<ApiError | null> { return this.messageEdits.patchMessageAttribution(id, filings); }
+  newJobFromMessage(id: string): Promise<ApiError | null> { return this.messageEdits.newJobFromMessage(id); }
+  answerWorkQuestion(id: string, body: string): Promise<WorkAnswerResult | ApiError> { return this.messageEdits.answerWorkQuestion(id, body); }
+
+  // --- Forwarded to `chatActivity` (live commands, kept commands, tool steps, streams). ---
+  get activity(): CommandActivity { return this.chatActivity.activity; }
+  get activityRevision(): number { return this.chatActivity.activityRevision; }
+  set activityRevision(value: number) { this.chatActivity.activityRevision = value; }
+  get keptCommandsRevision(): number { return this.chatActivity.keptCommandsRevision; }
+  set keptCommandsRevision(value: number) { this.chatActivity.keptCommandsRevision = value; }
+  get toolRevision(): number { return this.chatActivity.toolRevision; }
+  set toolRevision(value: number) { this.chatActivity.toolRevision = value; }
+  commandsOf(turnId: string): CommandRow[] { return this.chatActivity.commandsOf(turnId); }
+  loadTurnCommands(turnId: string): void { this.chatActivity.loadTurnCommands(turnId); }
+  stepOf(turnId: string): ToolStep | null { return this.chatActivity.stepOf(turnId); }
+  stepsOf(turnId: string): readonly ToolStep[] { return this.chatActivity.stepsOf(turnId); }
+  onStream(id: string, sink: (frame: StreamFrame) => void): () => void { return this.chatActivity.onStream(id, sink); }
+
+  // --- Forwarded to `annotationStore` (annotations). ---
+  get annotationFocusId(): string | null { return this.annotationStore.annotationFocusId; }
+  set annotationFocusId(value: string | null) { this.annotationStore.annotationFocusId = value; }
+  get annotationFileKeys(): Record<string, string> { return this.annotationStore.annotationFileKeys; }
+  set annotationFileKeys(value: Record<string, string>) { this.annotationStore.annotationFileKeys = value; }
+  loadAnnotations(filter: AnnotationFilter & { target_session_id?: string }): Promise<void> { return this.annotationStore.loadAnnotations(filter); }
+  createAnnotation(input: CreateAnnotationRequest): Promise<ApiError | null> { return this.annotationStore.createAnnotation(input); }
+  patchAnnotation(id: string, patch: PatchAnnotationRequest): Promise<ApiError | null> { return this.annotationStore.patchAnnotation(id, patch); }
+  deleteAnnotation(id: string): Promise<ApiError | null> { return this.annotationStore.deleteAnnotation(id); }
+  sendAnnotations(sessionId: string, summary: string, ids: string[]): Promise<ApiError | null> { return this.annotationStore.sendAnnotations(sessionId, summary, ids); }
+
+  // --- Forwarded to `chatActions` (send, ask drafts and answers, reactions, stops, interrupts, approvals). ---
+  get askDrafts(): Map<string, AskDraftRecord> { return this.chatActions.askDrafts; }
+  set askDrafts(value: Map<string, AskDraftRecord>) { this.chatActions.askDrafts = value; }
+  send(opts?: { attachments?: File[]; paths?: string[]; sessionId?: string }): Promise<boolean> { return this.chatActions.send(opts); }
+  getAskDraft(askId: string): AskDraftRecord | undefined { return this.chatActions.getAskDraft(askId); }
+  setAskDraft(askId: string, body: string): void { this.chatActions.setAskDraft(askId, body); }
+  setAskSelection(askId: string, selected: readonly string[]): void { this.chatActions.setAskSelection(askId, selected); }
+  clearAskDraft(askId: string, submittedVersion: number): void { this.chatActions.clearAskDraft(askId, submittedVersion); }
+  setAskError(askId: string, error: string): void { this.chatActions.setAskError(askId, error); }
+  sendAsk(askId: string, answer: { selected?: readonly string[]; custom?: string }, sessionId?: string): Promise<SendAskResult> { return this.chatActions.sendAsk(askId, answer, sessionId); }
+  toggleReaction(messageId: string, emoji: string): Promise<void> { return this.chatActions.toggleReaction(messageId, emoji); }
+  stopTurn(sessionId?: string, turnId?: string): Promise<void> { return this.chatActions.stopTurn(sessionId, turnId); }
+  stopScope(
+    scope: "global" | "bot" | "session" | "plan",
+    scopeId: string | null,
+    sessionId?: string | null,
+    opts: { liftOnNext?: boolean } = {},
+  ): Promise<ApiError | null> { return this.chatActions.stopScope(scope, scopeId, sessionId, opts); }
+  liftHold(holdId: string): Promise<ApiError | null> { return this.chatActions.liftHold(holdId); }
+  controlAction(messageId: string, action: ControlOffer, taskId?: string, note?: string): Promise<ApiError | { partial: NonNullable<ControlActionResult["partial"]> } | null> { return this.chatActions.controlAction(messageId, action, taskId, note); }
+  continueInterrupt(messageId: string, sessionId?: string): Promise<void> { return this.chatActions.continueInterrupt(messageId, sessionId); }
+  resolveApproval(
+    id: string,
+    action: ResolveApprovalRequest["action"],
+    apiKey?: string,
+    sessionId?: string,
+  ): Promise<ApiError | null> { return this.chatActions.resolveApproval(id, action, apiKey, sessionId); }
+
+  // --- Forwarded to `searchStore` (global search). ---
+  get searchQuery(): string { return this.searchStore.searchQuery; }
+  set searchQuery(value: string) { this.searchStore.searchQuery = value; }
+  get searchHits(): SearchHit[] { return this.searchStore.searchHits; }
+  set searchHits(value: SearchHit[]) { this.searchStore.searchHits = value; }
+  get searchLoading(): boolean { return this.searchStore.searchLoading; }
+  set searchLoading(value: boolean) { this.searchStore.searchLoading = value; }
+  get searchError(): boolean { return this.searchStore.searchError; }
+  set searchError(value: boolean) { this.searchStore.searchError = value; }
+  clearSearchHighlight(): void { this.searchStore.clearSearchHighlight(); }
+  closeSearch(): void { this.searchStore.closeSearch(); }
+  runSearch(q: string): Promise<void> { return this.searchStore.runSearch(q); }
+
+  // --- Private, forwarded: `ingest`, `start`/`destroy`, the window handlers and the tests reach these by name. ---
+  private get traceWatchers(): Map<string, number> { return this.overlayState.traceWatchers; }
+  private set traceWatchers(value: Map<string, number>) { this.overlayState.traceWatchers = value; }
+  private boardShows(taskId: string | null | undefined): boolean { return this.overlayState.boardShows(taskId); }
+  private get connectFailures(): number { return this.connectionLoop.connectFailures; }
+  private set connectFailures(value: number) { this.connectionLoop.connectFailures = value; }
+  private get remoteRetryMs(): number { return this.connectionLoop.remoteRetryMs; }
+  private set remoteRetryMs(value: number) { this.connectionLoop.remoteRetryMs = value; }
+  private get timer(): ReturnType<typeof setTimeout> | null { return this.connectionLoop.timer; }
+  private set timer(value: ReturnType<typeof setTimeout> | null) { this.connectionLoop.timer = value; }
+  private get nextAttemptAt(): number { return this.connectionLoop.nextAttemptAt; }
+  private set nextAttemptAt(value: number) { this.connectionLoop.nextAttemptAt = value; }
+  private tick(): Promise<void> { return this.connectionLoop.tick(); }
+  private tickRemote(): Promise<void> { return this.connectionLoop.tickRemote(); }
+  private installSnapshot(api: MessengerApi, sync: EventSync, snapshot: RuntimeSnapshot): Promise<void> { return this.connectionLoop.installSnapshot(api, sync, snapshot); }
+  private resetConnection(): void { this.connectionLoop.resetConnection(); }
+  private reconnectNow(): void { this.connectionLoop.reconnectNow(); }
+  private pump(): void { this.connectionLoop.pump(); }
+  private reconcilePendingMutation(api: MessengerApi): void { this.adminMutations.reconcilePendingMutation(api); }
+  private get delegationEventSeq(): number { return this.threadState.delegationEventSeq; }
+  private set delegationEventSeq(value: number) { this.threadState.delegationEventSeq = value; }
+  private get delegationEventRevisions(): Map<string, number> { return this.threadState.delegationEventRevisions; }
+  private get groupLeadSeq(): Map<string, number> { return this.threadState.groupLeadSeq; }
+  private get groupLeadRevision(): Map<string, number> { return this.threadState.groupLeadRevision; }
+  private loadAttributionFor(message: AttributedMessage & { id: string; session_id: string }): void { this.threadState.loadAttributionFor(message); }
+  private renameAttributionPlan(id: string, title: string): void { this.threadState.renameAttributionPlan(id, title); }
+  private get attributionRevision(): Map<string, number> { return this.messageEdits.attributionRevision; }
+  private get messageInvalidationSeq(): number { return this.messageEdits.messageInvalidationSeq; }
+  private set messageInvalidationSeq(value: number) { this.messageEdits.messageInvalidationSeq = value; }
+  private get messageSessionInvalidated(): Map<string, number> { return this.messageEdits.messageSessionInvalidated; }
+  private get keptCommands(): Map<string, CommandRow[]> { return this.chatActivity.keptCommands; }
+  private get keptCommandsRead(): Set<string> { return this.chatActivity.keptCommandsRead; }
+  private get turnActivity(): TurnActivity { return this.chatActivity.turnActivity; }
+  private noteAnnotationWrite(id: string): void { this.annotationStore.noteAnnotationWrite(id); }
+
   private api: MessengerApi | null = null;
-  private ws: WebSocket | null = null;
-  /**
-   * The readers of each live stream id — a terminal session, or a Bot's running command. A set
-   * rather than one sink: the same terminal can be shown in two places at once, and a second
-   * reader used to replace the first silently instead of joining it.
-   */
-  private readonly streamSinks = new Map<string, Set<(frame: StreamFrame) => void>>();
-  /**
-   * What the Bots' commands are printing right now. Not `$state` itself — it is a plain map that
-   * a frame mutates many times a second; {@link activityRevision} is what the view watches.
-   */
-  readonly activity = new CommandActivity();
-  activityRevision = $state(0);
-  /**
-   * What finished turns ran, for the command card under each one's reply: read from the Mac when
-   * the reply comes near the screen, and filled from the live rows the moment a turn ends so the
-   * card does not blink out while that read is out. A plain map; {@link keptCommandsRevision} is
-   * what the view watches.
-   */
-  private readonly keptCommands = new Map<string, CommandRow[]>();
-  private readonly keptCommandsRead = new Set<string>();
-  keptCommandsRevision = $state(0);
-  /**
-   * The step each running turn is in, or last finished — the line that replaces a bare "思考中".
-   * Its own revision: command output moves {@link activityRevision} many times a second, and the
-   * lines under every message need not follow that.
-   */
-  private readonly turnActivity = new TurnActivity();
-  toolRevision = $state(0);
-  private timer: ReturnType<typeof setTimeout> | null = null;
-  /** When the loop owes its next attempt. A wake-up may bring the timer here, never past it. */
-  private nextAttemptAt = 0;
-  private ticking = false;
   private stopped = false;
-  private searchSeq = 0;
   private sync: EventSync | null = null;
-  /**
-   * Where the page was when its last remote link went: the event cursor it had applied and each
-   * open conversation's history state. Coming back to the same Mac, it replays only what it
-   * missed from here — a few KB — instead of the whole snapshot and every open transcript.
-   */
-  private resumePoint: {
-    cursor: EventCursor;
-    views: Map<SessionView, { detailLoaded: boolean; messageNext: string | null }>;
-  } | null = null;
-  private sessionLoad = Promise.resolve();
   /**
    * Bumped when the connection is replaced. The per-conversation counters say "a newer read of
    * this conversation started"; this one says "every read in flight belongs to a dead socket".
    * They were one counter, which is why loading a second conversation cancelled the first.
    */
   private connectionSeq = 0;
-  /**
-   * While an annotation list is on its way, the ids an event or a write's reply changed since, by
-   * a running count: the list was read before them, so for those rows the snapshot is the newer
-   * word. Only kept while a list is in flight.
-   */
-  private annotationWriteSeq = 0;
-  private readonly annotationWrites = new Map<string, number>();
-  private annotationLoads = 0;
-  private profileNavigation = 0;
   private durablePending: DurablePendingRequest[] = [];
 
   start(): void {
@@ -573,39 +897,6 @@ export class MessengerRuntime {
     for (const view of this.views.values()) this.clearHighlightTimer(view);
   }
 
-  /** The commands a finished turn ran, as its reply's card shows them; empty until read. */
-  commandsOf(turnId: string): CommandRow[] {
-    void this.keptCommandsRevision;
-    return this.keptCommands.get(turnId) ?? [];
-  }
-
-  /**
-   * Reads a finished turn's commands from the Mac, once. A Mac from before the record, or a turn
-   * since cleared, answers with an error: the card then stays as it was, empty or what was seen.
-   */
-  loadTurnCommands(turnId: string): void {
-    const api = this.api;
-    if (!api || this.keptCommandsRead.has(turnId)) return;
-    this.keptCommandsRead.add(turnId);
-    void api.turnCommands(turnId).then(
-      (items) => {
-        this.keptCommands.set(turnId, items.map((item) => ({
-          id: `${turnId}:${item.id}`,
-          turnId,
-          name: "shell",
-          command: item.command,
-          running: false,
-          exitCode: item.exit_code,
-          ok: item.ok,
-          durationMs: item.duration_ms,
-          text: item.output ?? "",
-        })));
-        this.keptCommandsRevision += 1;
-      },
-      () => {},
-    );
-  }
-
   get client(): MessengerApi | null {
     return this.api;
   }
@@ -626,1760 +917,6 @@ export class MessengerRuntime {
     void this.connection;
     const api = this.api;
     return api?.kind === "remote" ? api.screenHost : "mac";
-  }
-
-  openCreateBot(): void {
-    this.settingsOpen = false;
-    this.createGroupOpen = false;
-    this.closeSessionSettings();
-    this.workspaceOpen = false;
-    this.routinesOpen = false;
-    this.spendOpen = false;
-    this.terminalOpen = false;
-    this.screenOpen = false;
-    this.createBotOpen = true;
-  }
-
-  openCreateGroup(): void {
-    this.settingsOpen = false;
-    this.createBotOpen = false;
-    this.closeSessionSettings();
-    this.workspaceOpen = false;
-    this.routinesOpen = false;
-    this.spendOpen = false;
-    this.terminalOpen = false;
-    this.screenOpen = false;
-    this.createGroupOpen = true;
-  }
-
-  openSessionSettings(): void {
-    if (this.selectedId && this.toPane({ kind: "chat", sessionId: this.selectedId, side: { kind: "settings", botId: null } })) return;
-    this.profileNavigation++;
-    this.profileRoutineId = null;
-    this.settingsOpen = false;
-    this.createBotOpen = false;
-    this.createGroupOpen = false;
-    this.threadOpen = false;
-    this.workspaceOpen = false;
-    this.routinesOpen = false;
-    this.spendOpen = false;
-    this.terminalOpen = false;
-    this.screenOpen = false;
-    this.profileBotId = null;
-    this.sessionSettingsOpen = true;
-  }
-
-  /** The model choice log is its own overlay, not a card inside the session panel. */
-  /**
-   * Where an "open this" goes.
-   *
-   * The desktop shell sets this while the workbench is on. Openers use panes rather than narrow
-   * overlays; Spend also mirrors its active pane into the URL so history can restore it.
-   */
-  paneOpener: ((content: PaneContent) => void) | null = null;
-
-  private toPane(content: PaneContent): boolean {
-    const open = this.paneOpener;
-    if (!open) return false;
-    open(content);
-    return true;
-  }
-
-  /** Sessions the daemon holds. Lifecycle only; the bytes are a stream, not state. */
-  terminals = $state<Terminal[]>([]);
-  /** Whether `terminals` has been read at all. An empty list before that means "not asked yet". */
-  terminalsLoaded = $state(false);
-  terminalOpen = $state(false);
-
-  /**
-   * The phone's terminal page. A wide window still opens a pane; below the breakpoint this is a
-   * page in the URL, the way the calendar is.
-   */
-  openTerminal(): void {
-    void this.refreshTerminals();
-    if (this.toPane({ kind: "terminal", terminalId: null })) return;
-    this.settingsOpen = false;
-    this.createBotOpen = false;
-    this.createGroupOpen = false;
-    this.closeSessionSettings();
-    this.workspaceOpen = false;
-    this.routinesOpen = false;
-    this.spendOpen = false;
-    this.clearTrace();
-    this.threadOpen = false;
-    this.previewRelpath = null;
-    this.previewAttachmentId = null;
-    this.previewTaskId = null;
-    this.previewSiblings = null;
-    void this.refreshTerminals();
-    this.screenOpen = false;
-    this.terminalOpen = true;
-  }
-
-  /**
-   * A new shell in the workspace (or in `cwd`, a folder in it), in the list before the next read
-   * comes back: a desktop tab bound to it must not be healed away for naming a session nobody has
-   * heard of yet. Null when there is no workspace or the daemon would not start one; the tab says
-   * so itself.
-   */
-  async startTerminal(cwd?: string): Promise<Terminal | null> {
-    const api = this.api;
-    const root = this.snapshot.settings.workspace_path;
-    const where = cwd ?? root;
-    if (!api || !root || !where) return null;
-    try {
-      const created = await api.openTerminal(where, 24, 80);
-      if (this.api === api && !this.terminals.some((row) => row.id === created.id)) {
-        this.terminals = [...this.terminals, created];
-      }
-      return created;
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * A shell started in `cwd` and put in front of you: a tab of its own on the desktop, the phone's
-   * terminal page elsewhere, which shows the newest live session first. Nothing opens when the
-   * shell would not start.
-   */
-  async openTerminalAt(cwd: string): Promise<void> {
-    const created = await this.startTerminal(cwd);
-    if (!created) return;
-    if (this.toPane({ kind: "terminal", terminalId: created.id, cwd: created.cwd })) return;
-    this.openTerminal();
-  }
-
-  /** The daemon is the list's source of truth; events keep it fresh after this first read. */
-  async refreshTerminals(): Promise<void> {
-    const api = this.api;
-    if (!api) return;
-    try {
-      const items = await api.terminals();
-      if (this.api === api) {
-        this.terminals = items;
-        this.terminalsLoaded = true;
-      }
-    } catch {
-      // A list that will not load is not worth a banner; the pane shows its own failure.
-    }
-  }
-
-  closeTerminal(): void {
-    this.terminalOpen = false;
-  }
-
-  /**
-   * The remote screen: the Mac's own screen on this phone, through macOS Screen Sharing. Only a
-   * phone reaches its Mac this way, so it is a page in the URL and never a desktop pane.
-   */
-  screenOpen = $state(false);
-
-  openRemoteScreen(): void {
-    if (!this.remote) return;
-    this.settingsOpen = false;
-    this.createBotOpen = false;
-    this.createGroupOpen = false;
-    this.closeSessionSettings();
-    this.workspaceOpen = false;
-    this.routinesOpen = false;
-    this.spendOpen = false;
-    this.terminalOpen = false;
-    this.clearTrace();
-    this.threadOpen = false;
-    this.previewRelpath = null;
-    this.previewAttachmentId = null;
-    this.previewTaskId = null;
-    this.previewSiblings = null;
-    this.screenOpen = true;
-  }
-
-  closeRemoteScreen(): void {
-    this.screenOpen = false;
-  }
-
-  /** Jobs whose board is on screen outside the narrow overlay — a workbench pane — by job. */
-  private traceWatchers = new Map<string, number>();
-
-  /**
-   * Keep a board shown outside the overlay current the way the overlay is: every turn and message
-   * of its job reloads it, model choices and all. Returns the function that stops watching.
-   */
-  watchTrace(taskId: string): () => void {
-    this.traceWatchers.set(taskId, (this.traceWatchers.get(taskId) ?? 0) + 1);
-    return () => {
-      const left = (this.traceWatchers.get(taskId) ?? 1) - 1;
-      if (left > 0) this.traceWatchers.set(taskId, left);
-      else this.traceWatchers.delete(taskId);
-    };
-  }
-
-  private boardShows(taskId: string | null | undefined): boolean {
-    if (!taskId) return false;
-    return (this.traceOpen && taskId === this.traceTaskId) || this.traceWatchers.has(taskId);
-  }
-
-  /**
-   * `taskId` null opens whatever job this session touched most recently.
-   * `focus` is the message whose card the board should move to.
-   */
-  openTrace(taskId: string | null = null, focus: TraceFocus | null = null): void {
-    if (!this.selectedId) return;
-    const token = focus ? (this.traceFocusToken += 1) : 0;
-    if (this.toPane({
-      kind: "trace",
-      sessionId: this.selectedId,
-      taskId,
-      focus,
-      focusNonce: token || null,
-    })) return;
-    this.closeSheets();
-    this.threadOpen = false;
-    this.routinesOpen = false;
-    this.spendOpen = false;
-    this.terminalOpen = false;
-    this.screenOpen = false;
-    this.traceSessionId = this.selectedId;
-    this.traceTaskId = taskId ?? "";
-    this.traceFocus = focus;
-    this.traceFocusToken = token;
-  }
-
-  closeTrace(): void {
-    this.clearTrace();
-  }
-
-  private clearTrace(): void {
-    this.traceTaskId = null;
-    this.traceSessionId = null;
-    this.traceFocus = null;
-  }
-
-  get traceOpen(): boolean {
-    return this.traceTaskId !== null;
-  }
-
-  async openRoutine(botId: string, routineId: string): Promise<void> {
-    let navigation = ++this.profileNavigation;
-    if (!this.snapshot.bots.some((bot) => bot.id === botId)) return;
-    // The profile URL needs the selected conversation's navigation to settle first.
-    if (!this.selectedId) {
-      const session = youBotSession(this.snapshot.sessions, botId);
-      if (!session) return;
-      const api = this.api;
-      const loading = this.selectSession(session.id);
-      navigation = this.profileNavigation;
-      const view = this.sessionView(session.id);
-      const selection = view.loadSeq;
-      await loading;
-      if (this.api !== api || this.selectedId !== session.id || view.loadSeq !== selection ||
-        this.profileNavigation !== navigation) return;
-    }
-    if (!this.snapshot.bots.some((bot) => bot.id === botId)) return;
-    this.openProfile(botId);
-    this.profileRoutineId = routineId;
-  }
-
-  openProfile(botId: string): void {
-    if (this.selectedId && this.toPane({ kind: "chat", sessionId: this.selectedId, side: { kind: "settings", botId } })) return;
-    this.profileNavigation++;
-    this.profileRoutineId = null;
-    this.settingsOpen = false;
-    this.createBotOpen = false;
-    this.createGroupOpen = false;
-    this.threadOpen = false;
-    this.workspaceOpen = false;
-    this.routinesOpen = false;
-    this.spendOpen = false;
-    this.terminalOpen = false;
-    this.screenOpen = false;
-    this.profileBotId = botId;
-    this.sessionSettingsOpen = true;
-  }
-
-  closeProfile(): void {
-    this.profileNavigation++;
-    this.profileRoutineId = null;
-    this.profileBotId = null;
-  }
-
-  closeSessionSettings(): void {
-    this.profileNavigation++;
-    this.profileRoutineId = null;
-    this.sessionSettingsOpen = false;
-    this.profileBotId = null;
-  }
-
-  /** The settings panel loads its own device list, from wherever it was opened; see the card. */
-  openSettings(): void {
-    this.createBotOpen = false;
-    this.createGroupOpen = false;
-    this.closeSessionSettings();
-    this.workspaceOpen = false;
-    this.routinesOpen = false;
-    this.spendOpen = false;
-    this.terminalOpen = false;
-    this.screenOpen = false;
-    this.settingsOpen = !this.settingsOpen;
-  }
-
-  /** Settings at the prompts tab, and at one prompt's history when the card knows which (ADR 0064). */
-  openPromptSettings(prompt: PromptTarget | null): void {
-    if (!this.settingsOpen) this.openSettings();
-    this.promptsTarget = { prompt };
-  }
-
-  openWorkspace(selected?: string | null): void {
-    if (this.toPane({ kind: "workspace", selected: selected ?? null })) return;
-    this.settingsOpen = false;
-    this.createGroupOpen = false;
-    this.closeSessionSettings();
-    this.routinesOpen = false;
-    this.spendOpen = false;
-    this.terminalOpen = false;
-    this.screenOpen = false;
-    this.workspaceOpen = true;
-    if (selected) this.workspaceSelected = selected;
-  }
-
-  closeWorkspace(): void {
-    this.workspaceOpen = false;
-  }
-
-  /**
-   * Open the roster calendar. The caller has already settled an unsaved workspace file.
-   * A preview open beside the chat would cover the grid, so it goes too.
-   */
-  openRoutines(): void {
-    if (this.toPane({ kind: "routines" })) return;
-    this.settingsOpen = false;
-    this.createBotOpen = false;
-    this.createGroupOpen = false;
-    this.closeSessionSettings();
-    this.workspaceOpen = false;
-    this.spendOpen = false;
-    this.terminalOpen = false;
-    this.screenOpen = false;
-    this.clearTrace();
-    this.threadOpen = false;
-    this.previewRelpath = null;
-    this.previewAttachmentId = null;
-    this.previewTaskId = null;
-    this.previewSiblings = null;
-    this.routinesOpen = true;
-  }
-
-  closeRoutines(): void {
-    this.routinesOpen = false;
-  }
-
-  /** The spend ledger. One pane, like the calendar; below the breakpoint it is a page. */
-  openSpend(): void {
-    this.settingsOpen = false;
-    this.createBotOpen = false;
-    this.createGroupOpen = false;
-    this.closeSessionSettings();
-    this.workspaceOpen = false;
-    this.routinesOpen = false;
-    this.terminalOpen = false;
-    this.screenOpen = false;
-    this.clearTrace();
-    this.threadOpen = false;
-    this.previewRelpath = null;
-    this.previewAttachmentId = null;
-    this.previewTaskId = null;
-    this.previewSiblings = null;
-    this.spendOpen = true;
-    this.toPane({ kind: "spend" });
-  }
-
-  closeSpend(): void {
-    this.spendOpen = false;
-  }
-
-  /** Restore settings, the session drawer, or the workspace overlay from the URL. */
-  applyOverlay(overlay: UrlOverlay): void {
-    this.profileNavigation++;
-    if (overlay.kind === "settings") {
-      this.createBotOpen = false;
-      this.createGroupOpen = false;
-      this.closeSessionSettings();
-      this.workspaceOpen = false;
-      this.routinesOpen = false;
-      this.spendOpen = false;
-      this.terminalOpen = false;
-      this.screenOpen = false;
-      this.settingsOpen = true;
-      return;
-    }
-    if (overlay.kind === "session") {
-      this.settingsOpen = false;
-      this.createBotOpen = false;
-      this.createGroupOpen = false;
-      this.threadOpen = false;
-      this.workspaceOpen = false;
-      this.routinesOpen = false;
-      this.spendOpen = false;
-      this.terminalOpen = false;
-      this.screenOpen = false;
-      this.profileBotId = null;
-      this.sessionSettingsOpen = true;
-      return;
-    }
-    if (overlay.kind === "bot") {
-      this.settingsOpen = false;
-      this.createBotOpen = false;
-      this.createGroupOpen = false;
-      this.threadOpen = false;
-      this.workspaceOpen = false;
-      this.routinesOpen = false;
-      this.spendOpen = false;
-      this.terminalOpen = false;
-      this.screenOpen = false;
-      this.profileBotId = overlay.botId;
-      this.sessionSettingsOpen = true;
-      return;
-    }
-    if (overlay.kind === "workspace") {
-      this.settingsOpen = false;
-      this.createGroupOpen = false;
-      this.closeSessionSettings();
-      this.clearTrace();
-      this.routinesOpen = false;
-      this.spendOpen = false;
-      this.terminalOpen = false;
-      this.screenOpen = false;
-      this.workspaceOpen = true;
-      this.workspaceSelected = overlay.selected ?? "";
-      return;
-    }
-    if (overlay.kind === "trace") {
-      this.settingsOpen = false;
-      this.createBotOpen = false;
-      this.createGroupOpen = false;
-      this.threadOpen = false;
-      this.closeSessionSettings();
-      this.workspaceOpen = false;
-      this.routinesOpen = false;
-      this.spendOpen = false;
-      this.terminalOpen = false;
-      this.screenOpen = false;
-      this.traceSessionId = this.traceSessionId ?? this.selectedId;
-      this.traceTaskId = overlay.taskId ?? "";
-      return;
-    }
-    if (overlay.kind === "routines") {
-      this.settingsOpen = false;
-      this.createBotOpen = false;
-      this.createGroupOpen = false;
-      this.closeSessionSettings();
-      this.workspaceOpen = false;
-      this.spendOpen = false;
-      this.terminalOpen = false;
-      this.screenOpen = false;
-      this.clearTrace();
-        this.threadOpen = false;
-      this.previewRelpath = null;
-      this.previewAttachmentId = null;
-      this.previewTaskId = null;
-      this.previewSiblings = null;
-      this.routinesOpen = true;
-      return;
-    }
-    if (overlay.kind === "spend") {
-      this.settingsOpen = false;
-      this.createBotOpen = false;
-      this.createGroupOpen = false;
-      this.closeSessionSettings();
-      this.workspaceOpen = false;
-      this.routinesOpen = false;
-      this.terminalOpen = false;
-      this.screenOpen = false;
-      this.clearTrace();
-      this.threadOpen = false;
-      this.previewRelpath = null;
-      this.previewAttachmentId = null;
-      this.previewTaskId = null;
-      this.previewSiblings = null;
-      this.spendOpen = true;
-      return;
-    }
-    if (overlay.kind === "terminal") {
-      this.settingsOpen = false;
-      this.createBotOpen = false;
-      this.createGroupOpen = false;
-      this.closeSessionSettings();
-      this.workspaceOpen = false;
-      this.routinesOpen = false;
-      this.spendOpen = false;
-      this.clearTrace();
-      this.threadOpen = false;
-      this.previewRelpath = null;
-      this.previewAttachmentId = null;
-      this.previewTaskId = null;
-      this.previewSiblings = null;
-      this.screenOpen = false;
-      this.terminalOpen = true;
-      return;
-    }
-    if (overlay.kind === "screen") {
-      this.openRemoteScreen();
-      return;
-    }
-    this.settingsOpen = false;
-    this.closeSessionSettings();
-    this.workspaceOpen = false;
-    this.clearTrace();
-    this.routinesOpen = false;
-    this.spendOpen = false;
-    this.terminalOpen = false;
-    this.screenOpen = false;
-  }
-
-  closeSheets(): void {
-    this.settingsOpen = false;
-    this.createBotOpen = false;
-    this.createGroupOpen = false;
-    this.closeSessionSettings();
-    this.clearTrace();
-    this.workspaceOpen = false;
-    this.routinesOpen = false;
-    this.spendOpen = false;
-    this.terminalOpen = false;
-    this.screenOpen = false;
-  }
-
-  /** A ledger or search link can outlive the conversation it names. */
-  async openChat(id: string, opts?: { messageId?: string }): Promise<void> {
-    if (!this.snapshot.sessions.some((session) => session.id === id)) return;
-    await this.selectSession(id, opts);
-  }
-
-  async selectSession(id: string, opts?: { messageId?: string; preservePage?: boolean }): Promise<void> {
-    const previousId = this.selectedId;
-    const previousSpend = this.spendOpen;
-    const previousTerminal = this.terminalOpen;
-    if (!opts?.preservePage) {
-      this.closeRoutines();
-      this.closeSpend();
-      this.closeTerminal();
-      this.closeRemoteScreen();
-      // Selecting the conversation already underneath a pane must still bring it forward.
-      if (this.selectedId === id) this.toPane({ kind: "chat", sessionId: id });
-    }
-    const api = this.api;
-    const sync = this.sync;
-    const view = this.sessionView(id);
-    const connection = this.connectionSeq;
-    const selection = ++view.loadSeq;
-    const messageId = opts?.messageId;
-    this.setHighlightedMessage(messageId ?? null, id);
-    // The window stays open across conversations and follows the one on screen.
-    if (this.traceOpen && this.selectedId !== id) this.traceSessionId = id;
-    if (this.selectedId !== id) {
-      this.closeSessionSettings();
-      this.threadOpen = false;
-    }
-    // A selected row may still have only summary data, not its history cursor.
-    if (this.selectedId === id && this.sessionDetailId === id && messageId) {
-      const revision = view.revision;
-      await this.ensureMessageLoaded(id, messageId);
-      if (this.api !== api || this.sync !== sync || this.connectionSeq !== connection ||
-        selection !== view.loadSeq || this.selectedId !== id || revision !== view.revision) return;
-      this.setHighlightedMessage(messageId, id);
-      return;
-    }
-    this.selectedId = id;
-    this.sessionDetailId = null;
-    this.sessionMessageNext = null;
-    // The reply you were aiming and the chips offered stay with the conversation, like its draft:
-    // clicking into another pane is not leaving this one. Opening one drafts nothing: that is ✨.
-    if (this.focusedTurnId) {
-      const focused = this.snapshot.turns.find((turn) => turn.id === this.focusedTurnId);
-      if (!focused || focused.session_id !== id) this.focusedTurnId = null;
-    }
-    if (!this.notificationCapabilities.bounded_read_v1) {
-      this.snapshot = {
-        ...this.snapshot,
-        sessions: this.snapshot.sessions.map((s) =>
-          s.id === id ? { ...s, unread_count: 0 } : s,
-        ),
-      };
-    }
-    if (!api || !sync) return;
-    this.historyLoading = true;
-    this.sessionLoad = this.sessionLoad.catch(() => {}).then(async () => {
-      if (selection !== view.loadSeq || this.connectionSeq !== connection ||
-        this.api !== api || this.sync !== sync) return;
-      sync.pause();
-      let readingDetail = true;
-      try {
-        const detail = await api.sessionSnapshot(id);
-        readingDetail = false;
-        if (this.api !== api || this.sync !== sync) return;
-        const ready = await sync.waitThrough(detail);
-        if (this.api !== api || this.sync !== sync) return;
-        if (!ready) throw new Error("event instance changed");
-        const frames = sync.install();
-        if (!frames) throw new Error("event gap");
-        for (const frame of frames) this.ingest(frame.payload, frame);
-        if (selection !== view.loadSeq || this.connectionSeq !== connection) return;
-        const unread = this.notificationCapabilities.bounded_read_v1 ? detail.session.unread_count : 0;
-        this.applySessionDetail(id, { ...detail.session, unread_count: unread }, detail.judgements);
-        // Pulled, not in the snapshot: what was sent here, and what hangs on this conversation's
-        // deliveries (drafts on a Bot↔Bot artifact live in your direct but belong to this view).
-        // The file drop has no Bot, so nothing there can be annotated or annotated from.
-        if (id !== FILE_DROP_SESSION_ID) {
-          void this.loadAnnotations({ session_id: id });
-          void this.loadAnnotations({ target_session_id: id });
-        }
-        for (const frame of frames) {
-          if (frame.event_instance_id !== detail.event_instance_id) throw new Error("event instance changed");
-          if (frame.seq > detail.watermark_seq) this.ingest(frame.payload, frame);
-        }
-        if (messageId) {
-          const revision = view.revision;
-          await this.ensureMessageLoaded(id, messageId);
-          if (this.api !== api || this.sync !== sync || this.connectionSeq !== connection ||
-            selection !== view.loadSeq || this.selectedId !== id || revision !== view.revision) return;
-          this.setHighlightedMessage(messageId, id);
-        }
-        if (this.api !== api || this.sync !== sync || this.connectionSeq !== connection ||
-          selection !== view.loadSeq || this.selectedId !== id) return;
-        if (!this.notificationCapabilities.bounded_read_v1) {
-          await this.markSessionRead(id);
-        }
-      } catch (error) {
-        if (this.api !== api || this.sync !== sync) return;
-        if (readingDetail && error instanceof ApiError && error.status === 404 && error.code === "not_found") {
-          // Resume the event stream even when a stale ledger link has no detail to install.
-          const frames = sync.install();
-          if (!frames) { this.markDisconnected(); return; }
-          const stillSelected = this.selectedId === id;
-          for (const frame of frames) this.ingest(frame.payload, frame);
-          if (stillSelected && selection === view.loadSeq) {
-            this.selectedId = previousId && previousId !== id && this.snapshot.sessions.some((session) => session.id === previousId)
-              ? previousId : null;
-            if (previousSpend) this.openSpend();
-            if (previousTerminal) this.openTerminal();
-          }
-          return;
-        }
-        this.markDisconnected();
-      } finally {
-        // Only the newest read of this conversation owns its flag; an older one must not clear it.
-        if (selection === view.loadSeq && this.connectionSeq === connection) view.historyLoading = false;
-      }
-    });
-    await this.sessionLoad;
-  }
-
-  /** The transcript holds everything that was fetched for it, and the Mac has more behind it. */
-  get hasOlderMessages(): boolean {
-    return this.sessionMessageNext !== null;
-  }
-
-  /**
-   * One page further back. The cursor belongs to the fetch that produced it, so a page landing
-   * after the selection moved, the history was cleared, or the connection was replaced is
-   * dropped rather than mixed into a transcript it does not belong to.
-   */
-  async loadOlderMessages(sessionId?: string): Promise<void> {
-    const api = this.api;
-    const sync = this.sync;
-    const id = sessionId ?? this.selectedId;
-    if (!api || !id) return;
-    // A pane scrolled to its top pages its own conversation back, in front or not.
-    const view = this.sessionView(id);
-    const cursor = view.messageNext;
-    if (!cursor || view.olderLoading) return;
-    const connection = this.connectionSeq;
-    const selection = view.loadSeq;
-    const revision = view.revision;
-    view.olderLoading = true;
-    try {
-      const page = await api.messages(id, { cursor });
-      if (this.api !== api || this.sync !== sync ||
-        this.connectionSeq !== connection || view.loadSeq !== selection || view.revision !== revision) return;
-      view.messageNext = page.next ?? null;
-      const known = new Set(this.snapshot.messages.map((message) => message.id));
-      const added = page.items.filter((message) => !known.has(message.id));
-      if (added.length > 0) {
-        this.snapshot = { ...this.snapshot, messages: [...this.snapshot.messages, ...added] };
-      }
-    } catch {
-      // What is on screen stays; a real drop surfaces as the socket closing.
-    } finally {
-      view.olderLoading = false;
-    }
-  }
-
-  async markSessionRead(id: string): Promise<void> {
-    const api = this.api;
-    if (!api) return;
-    try {
-      await api.markSessionRead(id);
-    } catch {
-      // The selected session is already shown as read; socket failure owns reconnection.
-    }
-  }
-
-  async patchSettings(patch: SettingsPatch): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api) return null;
-    try {
-      await api.patchSettings(patch);
-      if (this.api !== api) return null;
-      this.reconcilePendingMutation(api);
-      if (patch.endpoint_api_key !== undefined) this.endpointKey = "";
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api);
-    }
-  }
-
-  async probeModels(
-    baseUrl?: string,
-    apiKey?: string,
-    providerId?: string,
-    apiFormat?: ApiFormat,
-  ): Promise<{ ok: true } & ProbeModelsResponse | { ok: false; error: string }> {
-    const api = this.api;
-    if (!api) return { ok: false, error: "Not connected" };
-    try {
-      const res = await api.probeModels({
-        endpoint_base_url: baseUrl,
-        endpoint_api_key: apiKey,
-        ...(apiFormat ? { api_format: apiFormat } : {}),
-        provider_id: providerId,
-      });
-      if (this.api !== api) return { ok: false, error: "Connection changed" };
-      return { ok: true, models: res.models, catalog: res.catalog ?? [] };
-    } catch (error) {
-      if (this.api !== api) return { ok: false, error: "Connection changed" };
-      const msg = error instanceof Error ? error.message : String(error);
-      return { ok: false, error: msg };
-    }
-  }
-
-  /** Times a saved endpoint's model and checks it calls tools (ADR 0067); the error text when it could not run. */
-  async speedTest(providerId: string, model: string): Promise<{ ok: true; speed: ModelSpeed } | { ok: false; error: string }> {
-    const api = this.api;
-    if (!api) return { ok: false, error: "Not connected" };
-    try {
-      const speed = await api.speedTest(providerId, model);
-      if (this.api !== api) return { ok: false, error: "Connection changed" };
-      return { ok: true, speed };
-    } catch (error) {
-      if (this.api !== api) return { ok: false, error: "Connection changed" };
-      return { ok: false, error: error instanceof Error ? error.message : String(error) };
-    }
-  }
-
-  async createBot(body: CreateBotRequest): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api) return null;
-    try {
-      const created = await api.createBot(body);
-      if (this.api !== api) return null;
-      this.closeSheets();
-      await this.selectSession(created.direct_session.id);
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api);
-    }
-  }
-
-  async createGroup(body: CreateGroupRequest): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api) return null;
-    try {
-      const session = await api.createGroup(body);
-      if (this.api !== api) return null;
-      this.closeSheets();
-      await this.selectSession(session.id);
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api);
-    }
-  }
-
-  async createSkill(body: CreateSkillRequest): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api) return null;
-    try {
-      await api.createSkill(body);
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api);
-    }
-  }
-
-  async patchSkill(id: string, body: PatchSkillRequest): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api) return null;
-    try {
-      await api.patchSkill(id, body);
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api);
-    }
-  }
-
-  async deleteSkill(id: string): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api) return null;
-    try {
-      await api.deleteSkill(id);
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api);
-    }
-  }
-
-  async createRoutine(body: CreateRoutineRequest): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api) return new ApiError(0, "disconnected", "Not connected");
-    try {
-      await api.createRoutine(body);
-      this.reconcilePendingMutation(api);
-      return this.api === api ? null : new ApiError(0, "disconnected", "Connection changed");
-    } catch (error) {
-      return this.routineFailure(error, api);
-    }
-  }
-
-  async patchRoutine(id: string, body: PatchRoutineRequest): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api) return new ApiError(0, "disconnected", "Not connected");
-    try {
-      await api.patchRoutine(id, body);
-      this.reconcilePendingMutation(api);
-      return this.api === api ? null : new ApiError(0, "disconnected", "Connection changed");
-    } catch (error) {
-      return this.routineFailure(error, api);
-    }
-  }
-
-  async deleteRoutine(id: string, ifRevision: string): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api) return new ApiError(0, "disconnected", "Not connected");
-    try {
-      await api.deleteRoutine(id, ifRevision);
-      this.reconcilePendingMutation(api);
-      return this.api === api ? null : new ApiError(0, "disconnected", "Connection changed");
-    } catch (error) {
-      return this.routineFailure(error, api);
-    }
-  }
-
-  private routineFailure(error: unknown, api: MessengerApi): ApiError {
-    if (this.api !== api) return new ApiError(0, "disconnected", "Connection changed");
-    if (error instanceof ApiError && error.status >= 400 && error.status < 500 && !error.requestId) return error;
-    return this.sheetFailure(error, api) ?? new ApiError(0, "disconnected", "Save result unknown");
-  }
-
-  /** Correcting a memory, not creating one — the Bot is the only writer. */
-  async patchMemory(id: string, body: PatchMemoryRequest): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api) return null;
-    try {
-      await api.patchMemory(id, body);
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api);
-    }
-  }
-
-  async deleteMemory(id: string): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api) return null;
-    try {
-      await api.deleteMemory(id);
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api);
-    }
-  }
-
-  // Annotations ----------------------------------------------------------------------------
-  /**
-   * Pull the annotations one filter names and put them in the snapshot in place of whatever it
-   * held for that filter — a draft deleted from another device is gone here too. Events keep
-   * them current afterwards; a failed pull keeps what is on screen.
-   */
-  async loadAnnotations(filter: AnnotationFilter & { target_session_id?: string }): Promise<void> {
-    const api = this.api;
-    if (!api) return;
-    const since = this.annotationWriteSeq;
-    this.annotationLoads++;
-    try {
-      const rows = await api.listAnnotations(filter);
-      if (this.api !== api) return;
-      const fetched = new Set(rows.map((row) => row.id));
-      if (filter.relpath) {
-        const key = rows.find((row) => row.file_key)?.file_key;
-        if (key && this.annotationFileKeys[filter.relpath] !== key) this.annotationFileKeys = { ...this.annotationFileKeys, [filter.relpath]: key };
-      }
-      // The daemon folds a path filter (absolute, `./`, `//`) and also matches the file's resolved
-      // spelling, so a row it returned is in scope whatever this filter looked like, and the rest
-      // are compared folded the same way — else a reload would keep the old copy beside the new.
-      const wantPath = filter.relpath ? canonicalRelpath(filter.relpath, this.workspacePath || null) : null;
-      const scoped = (row: Annotation): boolean =>
-        (!filter.relpath || fetched.has(row.id) || row.relpath === filter.relpath || canonicalRelpath(row.relpath, this.workspacePath || null) === wantPath) &&
-        (!filter.session_id || row.session_id === filter.session_id) &&
-        (!filter.target_session_id || row.target_session_id === filter.target_session_id) &&
-        (!filter.message_id || row.message_id === filter.message_id) &&
-        (!filter.target_message_id || row.target_message_id === filter.target_message_id) &&
-        (!filter.status || row.status === filter.status);
-      // What the filter covers is replaced (a draft deleted elsewhere is gone), but a row an event
-      // or a write's reply touched while the list was on its way stays as it left it: one created
-      // after the read is kept, one deleted after it is not brought back, and an updated one keeps
-      // the newer copy.
-      const touched = (id: string): boolean => (this.annotationWrites.get(id) ?? 0) > since;
-      const current = this.snapshot.annotations;
-      const held = new Set(current.map((row) => row.id));
-      const kept = current.filter((row) => !scoped(row) && !fetched.has(row.id));
-      const inScope = current.filter(scoped);
-      const merged = mergeAnnotationRows(
-        inScope.filter((row) => fetched.has(row.id) || touched(row.id)),
-        rows.filter((row) => held.has(row.id) || !touched(row.id)),
-        "replace",
-      );
-      // One row per id, whatever else went wrong: every keyed list over annotations relies on it.
-      this.snapshot = { ...this.snapshot, annotations: mergeAnnotationRows(kept, merged, "replace") };
-    } catch {
-      // Keep what is on screen.
-    } finally {
-      if (--this.annotationLoads === 0) this.annotationWrites.clear();
-    }
-  }
-
-  /** An event or a write's reply changed (or removed) this row; see {@link annotationWrites}. */
-  private noteAnnotationWrite(id: string): void {
-    if (this.annotationLoads > 0) this.annotationWrites.set(id, ++this.annotationWriteSeq);
-  }
-
-  async createAnnotation(input: CreateAnnotationRequest): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api) return null;
-    try {
-      const row = await api.createAnnotation(input);
-      if (this.api !== api) return null;
-      // The event follows; showing the draft now spares the pane a flicker.
-      this.snapshot = { ...this.snapshot, annotations: mergeAnnotationRows(this.snapshot.annotations, [row]) };
-      this.noteAnnotationWrite(row.id);
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api);
-    }
-  }
-
-  delegationLoading = $state<Record<string, boolean>>({});
-  delegationLoadError = $state<Record<string, boolean>>({});
-  delegationUnsupported = $state<Record<string, boolean>>({});
-  private readonly delegationReadSeq = new Map<string, number>();
-  private delegationEventSeq = 0;
-  private readonly delegationEventRevisions = new Map<string, number>();
-  /** Full snapshots omit thread collections: visible panes re-read once per installation. */
-  delegationSnapshotEpoch = $state(0);
-
-  /** These are persisted views, never inferred from a Bot's text. */
-  async loadDelegations(sessionId: string): Promise<void> {
-    const api = this.api;
-    if (!api || this.connection !== "connected") return;
-    const seq = (this.delegationReadSeq.get(sessionId) ?? 0) + 1;
-    this.delegationReadSeq.set(sessionId, seq);
-    const epoch = this.delegationSnapshotEpoch;
-    const eventSeq = this.delegationEventSeq;
-    const changed = (id: string) => (this.delegationEventRevisions.get(id) ?? 0) > eventSeq;
-    const current = () => this.api === api && this.delegationReadSeq.get(sessionId) === seq && this.delegationSnapshotEpoch === epoch;
-    this.delegationLoading = { ...this.delegationLoading, [sessionId]: true };
-    this.delegationLoadError = { ...this.delegationLoadError, [sessionId]: false };
-    try {
-      const { items } = await api.delegations(sessionId);
-      if (!current()) return;
-      // Events received during this unsequenced GET win; untouched siblings still hydrate.
-      // A subsequent read can refresh linked IDs and history-cleared projections.
-      this.snapshot = { ...this.snapshot, delegations: [
-        ...this.snapshot.delegations.filter((row) => row.thread_session_id !== sessionId || changed(row.id)),
-        ...items.filter((row) => row.thread_session_id === sessionId && !changed(row.id)),
-      ] };
-      this.delegationUnsupported = { ...this.delegationUnsupported, [sessionId]: false };
-    } catch (error) {
-      if (!current()) return;
-      if (this.snapshot.delegations.some((row) => row.thread_session_id === sessionId && changed(row.id))) return;
-      const unsupported = error instanceof ApiError && error.status === 404;
-      this.delegationUnsupported = { ...this.delegationUnsupported, [sessionId]: unsupported };
-      this.delegationLoadError = { ...this.delegationLoadError, [sessionId]: !unsupported };
-    } finally {
-      if (current()) this.delegationLoading = { ...this.delegationLoading, [sessionId]: false };
-    }
-  }
-
-  groupLeads = $state<Record<string, GroupLeadState>>({});
-  groupLeadLoading = $state<Record<string, boolean>>({});
-  groupLeadLoadError = $state<Record<string, boolean>>({});
-  groupLeadUnsupported = $state<Record<string, boolean>>({});
-  private readonly groupLeadSeq = new Map<string, number>();
-  private readonly groupLeadWrites = new Map<string, number>();
-  private readonly groupLeadPending = new Set<string>();
-  private readonly groupLeadRevision = new Map<string, number>();
-
-  /** Reading evidence never confirms a leader. A PUT can supersede an older GET. */
-  async loadGroupLead(sessionId: string): Promise<void> {
-    const api = this.api;
-    if (!api || this.connection !== "connected" || this.groupLeadPending.has(sessionId)) return;
-    const seq = (this.groupLeadSeq.get(sessionId) ?? 0) + 1;
-    this.groupLeadSeq.set(sessionId, seq);
-    this.groupLeadLoading = { ...this.groupLeadLoading, [sessionId]: true };
-    this.groupLeadLoadError = { ...this.groupLeadLoadError, [sessionId]: false };
-    try {
-      const state = await api.groupLead(sessionId);
-      if (this.api === api && this.groupLeadSeq.get(sessionId) === seq) {
-        this.groupLeads = { ...this.groupLeads, [sessionId]: state };
-        this.groupLeadUnsupported = { ...this.groupLeadUnsupported, [sessionId]: false };
-      }
-    } catch (error) {
-      if (this.api === api && this.groupLeadSeq.get(sessionId) === seq) {
-        const unsupported = error instanceof ApiError && error.status === 404;
-        this.groupLeadUnsupported = { ...this.groupLeadUnsupported, [sessionId]: unsupported };
-        this.groupLeadLoadError = { ...this.groupLeadLoadError, [sessionId]: !unsupported };
-      }
-    } finally {
-      if (this.groupLeadSeq.get(sessionId) === seq) this.groupLeadLoading = { ...this.groupLeadLoading, [sessionId]: false };
-    }
-  }
-
-  async confirmGroupLead(sessionId: string, botId: string | null): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api || this.connection !== "connected") return new ApiError(0, "disconnected", "Group lead not saved");
-    const revision = this.groupLeadRevision.get(sessionId) ?? 0;
-    const seq = (this.groupLeadWrites.get(sessionId) ?? 0) + 1;
-    this.groupLeadWrites.set(sessionId, seq);
-    this.groupLeadPending.add(sessionId);
-    this.groupLeadSeq.set(sessionId, (this.groupLeadSeq.get(sessionId) ?? 0) + 1);
-    this.groupLeadLoading = { ...this.groupLeadLoading, [sessionId]: false };
-    try {
-      const state = await api.confirmGroupLead(sessionId, botId);
-      if (this.api !== api || this.groupLeadWrites.get(sessionId) !== seq) return new ApiError(0, "disconnected", "Group lead result unconfirmed");
-      if ((this.groupLeadRevision.get(sessionId) ?? 0) === revision) this.groupLeads = { ...this.groupLeads, [sessionId]: state };
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api) ?? new ApiError(0, "disconnected", "Group lead result unconfirmed");
-    } finally {
-      if (this.groupLeadWrites.get(sessionId) === seq) this.groupLeadPending.delete(sessionId);
-    }
-  }
-
-  attributionPlans = $state<Record<string, AttributionPlan[]>>({});
-  attributionLoading = $state<Record<string, boolean>>({});
-  attributionLoadError = $state<Record<string, boolean>>({});
-  private readonly attributionLoadSeq = new Map<string, number>();
-
-  /** Manual choices include untouched and dormant plans, not just routing candidates. */
-  async loadAttributionPlans(sessionId: string, messageId?: string): Promise<void> {
-    const api = this.api;
-    const message = messageId ?? this.snapshot.messages.find((row) => row.session_id === sessionId && (row.kind === "user" || row.kind === "bot" || row.control?.kind === "work_question"))?.id;
-    if (!api || this.connection !== "connected" || !message) return;
-    const seq = (this.attributionLoadSeq.get(sessionId) ?? 0) + 1;
-    this.attributionLoadSeq.set(sessionId, seq);
-    this.attributionLoading = { ...this.attributionLoading, [sessionId]: true };
-    this.attributionLoadError = { ...this.attributionLoadError, [sessionId]: false };
-    try {
-      const { items: plans } = await api.attributionPlans(message);
-      if (this.api !== api || this.attributionLoadSeq.get(sessionId) !== seq) return;
-      this.attributionPlans = { ...this.attributionPlans, [sessionId]: plans };
-    } catch {
-      if (this.api === api && this.attributionLoadSeq.get(sessionId) === seq) this.attributionLoadError = { ...this.attributionLoadError, [sessionId]: true };
-    } finally {
-      if (this.attributionLoadSeq.get(sessionId) === seq) this.attributionLoading = { ...this.attributionLoading, [sessionId]: false };
-    }
-  }
-
-  /** Jobs a reload of a conversation's list was already asked for: one the list still lacks is not asked about again. */
-  private readonly attributionAsked = new Map<string, Set<string>>();
-
-  /**
-   * A tag names its job from its conversation's list, loaded when the conversation opened: the
-   * first line of a conversation that had none (2026-10-03, the first line in a new group), or a
-   * line on a job opened since, read 「一件事」 until a reload. A line on a job the list lacks loads
-   * the list again, from that line, once per job.
-   */
-  private loadAttributionFor(message: AttributedMessage & { id: string; session_id: string }): void {
-    if (!attributable(message)) return;
-    const plans = this.attributionPlans[message.session_id];
-    const missing = messageFilings(message).map((row) => row.task_id).filter((id) => !plans?.some((plan) => plan.id === id));
-    const asked = this.attributionAsked.get(message.session_id) ?? new Set<string>();
-    const fresh = missing.filter((id) => !asked.has(id));
-    if (fresh.length === 0) return;
-    for (const id of fresh) asked.add(id);
-    this.attributionAsked.set(message.session_id, asked);
-    void this.loadAttributionPlans(message.session_id, message.id);
-  }
-
-  private renameAttributionPlan(id: string, title: string): void {
-    let changed = false;
-    const next: Record<string, AttributionPlan[]> = {};
-    for (const [session, plans] of Object.entries(this.attributionPlans)) {
-      next[session] = plans.map((plan) => {
-        if (plan.id !== id || plan.title === title) return plan;
-        changed = true;
-        return { ...plan, title };
-      });
-    }
-    if (changed) this.attributionPlans = next;
-  }
-
-  private readonly attributionRevision = new Map<string, number>();
-  private messageSnapshotRevision = 0;
-  private messageInvalidationSeq = 0;
-  private readonly messageSessionInvalidated = new Map<string, number>();
-
-  /** Opens a line of yours for changing, in its bubble (ADR 0063). */
-  startEdit(sessionId: string, message: Message): void {
-    const view = this.viewFor(sessionId);
-    if (!view || view.editSaving) return;
-    view.editingMessageId = message.id;
-    view.editDraft = message.body;
-    view.editError = null;
-  }
-
-  /** Leaves the line as it was: nothing is sent. */
-  cancelEdit(sessionId: string): void {
-    const view = this.viewFor(sessionId);
-    if (!view || view.editSaving) return;
-    view.editingMessageId = null;
-    view.editDraft = "";
-    view.editError = null;
-  }
-
-  /**
-   * Sends the new words of the line open in its bubble. It comes back as it now reads and shows at
-   * once, and the bubble closes; the same words close it with nothing sent. A refusal, or a link
-   * that dropped, is said under the editor, and the words you typed stay there.
-   */
-  async saveEdit(sessionId: string): Promise<boolean> {
-    const view = this.viewFor(sessionId);
-    const id = view?.editingMessageId ?? null;
-    if (!view || !id || view.editSaving) return false;
-    const current = this.snapshot.messages.find((message) => message.id === id) ?? null;
-    if (current && view.editDraft.trim() === current.body.trim()) {
-      this.cancelEdit(sessionId);
-      return true;
-    }
-    if (!view.editDraft.trim() && !(current?.attachments.length)) {
-      view.editError = "empty";
-      return false;
-    }
-    const api = this.api;
-    if (!api || this.connection !== "connected") {
-      view.editError = "failed";
-      return false;
-    }
-    const revision = this.attributionRevision.get(id) ?? 0;
-    const snapshotRevision = this.messageSnapshotRevision;
-    const invalidationSeq = this.messageInvalidationSeq;
-    view.editSaving = true;
-    view.editError = null;
-    try {
-      const message = await api.editMessage(id, view.editDraft);
-      if (this.api !== api) return false;
-      // The sequenced stream is newer than an in-flight, unsequenced HTTP response.
-      if ((this.attributionRevision.get(id) ?? 0) === revision && this.messageSnapshotRevision === snapshotRevision &&
-          (this.messageSessionInvalidated.get(message.session_id) ?? 0) <= invalidationSeq) {
-        this.snapshot = applyEvent(this.snapshot, { ...message, event: "message.upsert", occurred_at: new Date().toISOString() });
-      }
-      if (view.editingMessageId === id) {
-        view.editingMessageId = null;
-        view.editDraft = "";
-      }
-      return true;
-    } catch (error) {
-      const failure = this.sheetFailure(error, api);
-      view.editError = failure?.code === "not_editable" ? "not_editable" : failure?.code === "invalid_args" ? "empty" : "failed";
-      return false;
-    } finally {
-      view.editSaving = false;
-    }
-  }
-
-  private readonly versionsRead = new Map<string, { editedAt: string; versions: MessageVersion[] }>();
-
-  /** What a line you changed said before, oldest first: read once per change of it, then kept. */
-  async messageVersions(id: string, editedAt: string): Promise<MessageVersion[] | null> {
-    const kept = this.versionsRead.get(id);
-    if (kept && kept.editedAt === editedAt) return kept.versions;
-    const api = this.api;
-    if (!api) return null;
-    try {
-      const { versions } = await api.messageVersions(id);
-      this.versionsRead.set(id, { editedAt, versions });
-      return versions;
-    } catch {
-      return null;
-    }
-  }
-
-  /** Refile only after an acknowledged write; a refusal never changes the shown selection. */
-  async patchMessageAttribution(id: string, filings: PatchMessageAttributionRequest["filings"]): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api || this.connection !== "connected") return new ApiError(0, "disconnected", "Attribution not saved");
-    const revision = this.attributionRevision.get(id) ?? 0;
-    const snapshotRevision = this.messageSnapshotRevision;
-    const invalidationSeq = this.messageInvalidationSeq;
-    try {
-      const message = await api.patchMessageAttribution(id, filings);
-      if (this.api !== api) return new ApiError(0, "disconnected", "Attribution result unconfirmed");
-      // The sequenced stream is newer than an in-flight, unsequenced HTTP response.
-      if ((this.attributionRevision.get(id) ?? 0) === revision && this.messageSnapshotRevision === snapshotRevision &&
-          (this.messageSessionInvalidated.get(message.session_id) ?? 0) <= invalidationSeq) {
-        this.snapshot = applyEvent(this.snapshot, { ...message, event: "message.upsert", occurred_at: new Date().toISOString() });
-      }
-      this.traceReload += 1;
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api) ?? new ApiError(0, "disconnected", "Attribution result unconfirmed");
-    }
-  }
-
-  /**
-   * 「新开一件事」: a line of yours opens a job of its own and is filed there (the Bots that read it
-   * start on it there). The message comes back as it now stands, and the job's name loads with it.
-   */
-  async newJobFromMessage(id: string): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api || this.connection !== "connected") return new ApiError(0, "disconnected", "Attribution not saved");
-    try {
-      const message = await api.newJobFromMessage(id);
-      if (this.api !== api) return new ApiError(0, "disconnected", "Attribution result unconfirmed");
-      this.snapshot = applyEvent(this.snapshot, { ...message, event: "message.upsert", occurred_at: new Date().toISOString() });
-      this.loadAttributionFor(message);
-      this.traceReload += 1;
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api) ?? new ApiError(0, "disconnected", "Attribution result unconfirmed");
-    }
-  }
-
-  /** A durable question belongs to ended work, not a live legacy ask. Never lift a hold here. */
-  async answerWorkQuestion(id: string, body: string): Promise<WorkAnswerResult | ApiError> {
-    const api = this.api;
-    if (!api || this.connection !== "connected") return new ApiError(0, "disconnected", "Answer not saved");
-    if (!body.trim()) return new ApiError(422, "invalid", "Enter an answer");
-    const revision = this.attributionRevision.get(id) ?? 0;
-    const snapshotRevision = this.messageSnapshotRevision;
-    const invalidationSeq = this.messageInvalidationSeq;
-    try {
-      // Generic post owns the canonical receipt and reuses its request id on an explicit retry.
-      const result = await api.answerWorkQuestion(id, body);
-      if (this.api !== api) return new ApiError(0, "disconnected", "Answer result unconfirmed");
-      if ((this.attributionRevision.get(id) ?? 0) === revision && this.messageSnapshotRevision === snapshotRevision &&
-          (this.messageSessionInvalidated.get(result.message.session_id) ?? 0) <= invalidationSeq) {
-        this.snapshot = applyEvent(this.snapshot, { ...result.message, event: "message.upsert", occurred_at: new Date().toISOString() });
-      }
-      return result;
-    } catch (error) {
-      return this.sheetFailure(error, api) ?? new ApiError(0, "disconnected", "Answer result unconfirmed");
-    }
-  }
-
-  async patchAnnotation(id: string, patch: PatchAnnotationRequest): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api) return null;
-    try {
-      const row = await api.patchAnnotation(id, patch);
-      if (this.api !== api) return null;
-      if (this.snapshot.annotations.some((a) => a.id === row.id)) {
-        this.snapshot = { ...this.snapshot, annotations: mergeAnnotationRows(this.snapshot.annotations, [row]) };
-        this.noteAnnotationWrite(row.id);
-      }
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api);
-    }
-  }
-
-  async deleteAnnotation(id: string): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api) return null;
-    try {
-      await api.deleteAnnotation(id);
-      if (this.api !== api) return null;
-      this.snapshot = { ...this.snapshot, annotations: this.snapshot.annotations.filter((a) => a.id !== id) };
-      this.noteAnnotationWrite(id);
-      if (this.annotationFocusId === id) this.annotationFocusId = null;
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api);
-    }
-  }
-
-  /**
-   * Send a batch: one reply the Mac composes, quoting the delivery and naming the Bot. The
-   * transcript follows the new message the way `send()` does; a batch that lands in another
-   * conversation (a Bot↔Bot artifact) takes you there.
-   */
-  async sendAnnotations(sessionId: string, summary: string, ids: string[]): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api || ids.length === 0) return null;
-    try {
-      const sent = await api.sendAnnotations({ session_id: sessionId, body: summary, annotation_ids: ids });
-      if (this.api !== api) return null;
-      // A quick Bot may have resolved the batch before this reply landed; its events are newer.
-      const held = new Set(this.snapshot.annotations.map((a) => a.id));
-      this.snapshot = {
-        ...this.snapshot,
-        annotations: mergeAnnotationRows(this.snapshot.annotations, sent.annotations.filter((row) => held.has(row.id))),
-      };
-      for (const row of sent.annotations) if (held.has(row.id)) this.noteAnnotationWrite(row.id);
-      this.annotationFocusId = null;
-      // The conversation the reply landed in follows the turn it wakes, whichever pane shows it.
-      const landed = sent.message.session_id;
-      this.sessionView(landed).pendingFocusTrigger = sent.message.id;
-      this.claimFocus(landed, sent.message.id);
-      if (landed === this.selectedId) this.setHighlightedMessage(sent.message.id, landed);
-      else void this.selectSession(landed, { messageId: sent.message.id });
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api);
-    }
-  }
-
-  async patchBot(
-    id: string,
-    body: {
-      name?: string;
-      duties?: string;
-      boundaries?: string;
-      avatar?: string | null;
-      model?: string | null;
-      provider_id?: string | null;
-      thinking_level?: ThinkingLevel | null;
-      runner?: BotRunner | null;
-      agent_model?: string | null;
-      agent_effort?: ClaudeEffort | null;
-    },
-  ): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api) return null;
-    try {
-      await api.patchBot(id, body);
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api);
-    }
-  }
-
-  async archiveBot(id: string): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api) return null;
-    try {
-      await api.archiveBot(id);
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api);
-    }
-  }
-
-  async restoreBot(id: string): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api) return null;
-    try {
-      await api.restoreBot(id);
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api);
-    }
-  }
-
-  async deleteBot(id: string): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api) return null;
-    try {
-      await api.deleteBot(id);
-      if (this.api !== api) return null;
-      if (this.profileBotId === id) this.closeProfile();
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api);
-    }
-  }
-
-  async patchSession(id: string, body: { name: string }): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api) return null;
-    try {
-      await api.patchSession(id, body);
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api);
-    }
-  }
-
-  async addMember(sessionId: string, botId: string): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api) return null;
-    try {
-      await api.addMember(sessionId, botId);
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api);
-    }
-  }
-
-  async removeMember(sessionId: string, botId: string): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api) return null;
-    try {
-      await api.removeMember(sessionId, botId);
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api);
-    }
-  }
-
-  async archiveSession(id: string): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api) return null;
-    try {
-      await api.archiveSession(id);
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api);
-    }
-  }
-
-  async restoreSession(id: string): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api) return null;
-    try {
-      await api.restoreSession(id);
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api);
-    }
-  }
-
-  /** `eraseQuotes` erases what you said in the group as well; without it that is kept (ADR 0040). */
-  async deleteSession(id: string, opts: { eraseQuotes?: boolean } = {}): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api) return null;
-    try {
-      await api.deleteSession(id, opts);
-      if (this.api !== api) return null;
-      const view = this.views.get(id);
-      if (view) view.focusedTurnId = null;
-      if (this.selectedId === id) {
-        this.selectedId = null;
-        this.closeSessionSettings();
-      }
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api);
-    }
-  }
-
-  /** `eraseQuotes` erases what you said here as well; without it that is kept (ADR 0040). */
-  async clearSessionHistory(id: string, opts: { eraseQuotes?: boolean } = {}): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api) return null;
-    try {
-      await api.clearSessionHistory(id, opts);
-      if (this.api !== api) return null;
-      // That conversation's own view, whether or not it is the one in front.
-      const view = this.views.get(id);
-      if (view) {
-        view.focusedTurnId = null;
-        view.messageNext = null;
-        this.clearHighlight(view);
-      }
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api);
-    }
-  }
-
-  async retryPendingMutation(): Promise<ApiError | null> {
-    const api = this.api;
-    const pending = this.pendingMutation;
-    if (!api || !pending) return new ApiError(0, "disconnected", "No pending request");
-    try {
-      await api.retryPending(pending.id);
-      if (this.api !== api) return new ApiError(0, "disconnected", "Connection changed");
-      if (this.pendingMutation?.id === pending.id) this.pendingMutation = null;
-      this.rememberDurablePending(api);
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api) ?? new ApiError(0, "disconnected", "Retry result unconfirmed");
-    }
-  }
-
-  async resolveCredentialOperation(id: string, action: "repair" | "cancel", value?: string): Promise<boolean> {
-    const api = this.api;
-    if (!api) return false;
-    try {
-      await api.resolveCredential(id, action, value);
-      if (this.api !== api) return false;
-      this.reconcilePendingMutation(api);
-      return true;
-    } catch (error) { this.sheetFailure(error, api); return false; }
-  }
-
-  async createProvider(body: CreateProviderRequest): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api) return null;
-    try {
-      await api.createProvider(body);
-      this.reconcilePendingMutation(api);
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api);
-    }
-  }
-
-  async patchProvider(id: string, body: PatchProviderRequest): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api) return null;
-    try {
-      await api.patchProvider(id, body);
-      this.reconcilePendingMutation(api);
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api);
-    }
-  }
-
-  async deleteProvider(id: string): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api) return null;
-    try {
-      await api.deleteProvider(id);
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api);
-    }
-  }
-
-  async createMcpServer(body: {
-    name: string;
-    transport?: "stdio" | "http";
-    command?: string;
-    args?: string[];
-    url?: string;
-    headers?: Array<{ name: string; value: string }>;
-    auth?: string;
-    enabled: boolean;
-    usage_note?: string;
-  }): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api) return null;
-    try {
-      await api.createMcpServer(body);
-      this.reconcilePendingMutation(api);
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api);
-    }
-  }
-
-  async patchMcpServer(
-    id: string,
-    body: {
-      name?: string;
-      transport?: "stdio" | "http";
-      command?: string;
-      args?: string[];
-      url?: string;
-      headers?: Array<{ name: string; value: string }>;
-      auth?: string;
-      enabled?: boolean;
-      usage_note?: string | null;
-    },
-  ): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api) return null;
-    try {
-      await api.patchMcpServer(id, body);
-      this.reconcilePendingMutation(api);
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api);
-    }
-  }
-
-  async deleteMcpServer(id: string): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api) return null;
-    try {
-      await api.deleteMcpServer(id);
-      return null;
-    } catch (error) {
-      return this.sheetFailure(error, api);
-    }
-  }
-
-  /**
-   * Send what is drafted in a conversation — the one named, or the selected one. On the workbench
-   * a pane always names its own: the selected conversation is whichever pane has the keyboard.
-   * True once the Mac has the message; the composer keeps what it staged until then.
-   */
-  async send(opts?: { attachments?: File[]; paths?: string[]; sessionId?: string }): Promise<boolean> {
-    const api = this.api;
-    const id = opts?.sessionId ?? this.selectedId;
-    const view = this.viewFor(id);
-    if (!view) return false;
-    const body = view.draft.trim();
-    const hasAttachments = Boolean(opts?.attachments && opts.attachments.length > 0);
-    const hasPaths = Boolean(opts?.paths && opts.paths.length > 0);
-    if (!api || !id || (!body && !hasAttachments && !hasPaths) || view.sending) return false;
-    const kept = this.draftReconnect;
-    if (kept && !kept.confirm && kept.sessionId === id) return false;
-    const parentId = view.replyingToId;
-    view.sending = true;
-    view.upload = null;
-    const files = opts?.attachments ?? [];
-    try {
-      const message = await api.postMessage(id, body, {
-        attachments: opts?.attachments,
-        ...(hasPaths ? { paths: opts?.paths } : {}),
-        parentId,
-        ...(hasAttachments ? { onUploadProgress: (progress: FileProgress) => { view.upload = { files, loaded: progress.loaded }; } } : {}),
-      });
-      if (this.draftReconnect?.confirm && this.draftReconnect.sessionId === id) this.draftReconnect = null;
-      if (this.api !== api) return true;
-      view.draft = "";
-      view.replyingToId = null;
-      view.pendingFocusTrigger = message.id;
-      this.claimFocus(id, message.id);
-      return true;
-    } catch (error) {
-      if (this.api !== api) return false;
-      if (error instanceof ApiError && error.status === 422) return false;
-      this.keepUnknownRequest(error, api);
-      this.markDisconnected();
-      return false;
-    } finally {
-      if (this.api === api) {
-        view.sending = false;
-        view.upload = null;
-      }
-    }
-  }
-
-  getAskDraft(askId: string): AskDraftRecord | undefined {
-    return this.askDrafts.get(askId);
-  }
-
-  setAskDraft(askId: string, body: string): void {
-    const current = this.askDrafts.get(askId);
-    const updated = { ...nextDraftVersion(current, body), askId };
-    const nextMap = new Map(this.askDrafts);
-    nextMap.set(askId, updated);
-    this.askDrafts = nextMap;
-  }
-
-  /** The choices ticked on a question so far; the text you wrote stays as it was. */
-  setAskSelection(askId: string, selected: readonly string[]): void {
-    const current = this.askDrafts.get(askId);
-    const updated = { ...nextDraftVersion(current, current?.body ?? "", selected), askId };
-    const nextMap = new Map(this.askDrafts);
-    nextMap.set(askId, updated);
-    this.askDrafts = nextMap;
-  }
-
-  clearAskDraft(askId: string, submittedVersion: number): void {
-    const current = this.askDrafts.get(askId);
-    const turn = this.snapshot.turns.find((t) => t.pending_ask_id === askId);
-    const stillCurrent = Boolean(turn && turn.status === "waiting_ask" && turn.pending_ask_id === askId);
-    const cleared = clearAskIfMatching(current, submittedVersion, stillCurrent);
-    const nextMap = new Map(this.askDrafts);
-    if (!cleared) nextMap.delete(askId);
-    else nextMap.set(askId, cleared);
-    this.askDrafts = nextMap;
-  }
-
-  setAskError(askId: string, error: string): void {
-    const current = this.askDrafts.get(askId);
-    const updated = recordAskError(current, askId, current?.body ?? "", error);
-    const nextMap = new Map(this.askDrafts);
-    nextMap.set(askId, updated);
-    this.askDrafts = nextMap;
-  }
-
-  /**
-   * Your answer to a question: the choices you ticked, what you wrote, or both. It is written onto
-   * the question, which comes back already answered, so the card turns over without waiting for
-   * the event.
-   */
-  async sendAsk(askId: string, answer: { selected?: readonly string[]; custom?: string }, sessionId?: string): Promise<SendAskResult> {
-    const api = this.api;
-    const id = sessionId ?? this.selectedId;
-    const view = this.viewFor(id);
-    const sending = view?.sending ?? false;
-    const text = (answer.custom ?? "").trim();
-    const selected = [...(answer.selected ?? [])];
-    const existingDraft = this.askDrafts.get(askId);
-    const turn = this.snapshot.turns.find((t) => t.pending_ask_id === askId);
-    if (this.notificationCapabilities.pending_ask_v1) {
-      const pendingId = turn ? (turn.pending_ask_id ?? null) : null;
-      const notAllowed = askSubmitAllowed(
-        this.connection === "connected",
-        sending,
-        text,
-        pendingId,
-        askId,
-        true,
-        selected.length,
-      );
-      if (notAllowed) return notAllowed;
-    } else {
-      if (!text && selected.length === 0) return { status: "not_submitted", reason: "empty" };
-      if (this.connection !== "connected") return { status: "not_submitted", reason: "disconnected" };
-      if (sending) return { status: "not_submitted", reason: "busy" };
-    }
-    if (!api || !id || !view) return { status: "not_submitted", reason: "disconnected" };
-
-    const reqId = existingDraft?.requestId;
-    view.sending = true;
-    try {
-      const res = await api.answerAsk(askId, { selected, custom: text || null }, reqId ? { requestId: reqId } : {});
-      if (this.api === api && res?.id === askId) {
-        this.snapshot = applyEvent(this.snapshot, { event: "message.upsert", occurred_at: new Date().toISOString(), ...res });
-      }
-      return {
-        status: "accepted",
-        request_id: reqId,
-        message_id: res?.id,
-      };
-    } catch (error) {
-      if (this.api !== api) return { status: "not_submitted", reason: "stale_connection" };
-      if (error instanceof ApiError) {
-        if (error.status === 422 || error.status === 409) {
-          void this.selectSession(id);
-          const stillCurrent = Boolean(turn && turn.status === "waiting_ask" && turn.pending_ask_id === askId);
-          return classifySendAskFailure(error, stillCurrent);
-        }
-        if (error.code === "request_unknown" || error.code === "request_pending") {
-          this.keepUnknownRequest(error, api);
-          const activeRequestId = error.requestId ?? reqId;
-          const draft = existingDraft ?? { ...nextDraftVersion(undefined, text, selected), askId };
-          draft.requestId = activeRequestId;
-          draft.error = error.message;
-          const nextMap = new Map(this.askDrafts);
-          nextMap.set(askId, draft);
-          this.askDrafts = nextMap;
-          return { status: "unknown", request_id: activeRequestId, error };
-        }
-        this.keepUnknownRequest(error, api);
-        this.markDisconnected();
-        return { status: "rejected", error };
-      }
-      const apiError = new ApiError(500, "failed", error instanceof Error ? error.message : "request failed");
-      return { status: "rejected", error: apiError };
-    } finally {
-      if (this.api === api) view.sending = false;
-    }
   }
 
   setNotificationIntentHandler(handler: ((intent: NotificationOpenIntent) => void) | null): void {
@@ -2509,184 +1046,6 @@ export class MessengerRuntime {
     return this.tabOwnership.requestTabTakeover();
   }
 
-  async toggleReaction(messageId: string, emoji: string): Promise<void> {
-    const api = this.api;
-    if (!api) return;
-    const message = this.snapshot.messages.find((m) => m.id === messageId);
-    const hasReacted = message?.reactions.some((r) => r.actor === USER_MEMBER && r.emoji === emoji);
-    try {
-      if (hasReacted) {
-        await api.deleteReaction(messageId, emoji);
-      } else {
-        await api.putReaction(messageId, emoji);
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  /**
-   * Stop the turn a conversation is on — the one named, or the selected one. In a group, where
-   * several Bots may be at work, the Stop on one Bot's reply names that turn.
-   */
-  async stopTurn(sessionId?: string, turnId?: string): Promise<void> {
-    const api = this.api;
-    if (!api || this.connection !== "connected") return;
-    const id = sessionId ?? this.selectedId;
-    const session = this.snapshot.sessions.find((row) => row.id === id);
-    const target =
-      turnId ??
-      stopTarget(
-        this.snapshot.turns,
-        id,
-        this.viewFor(id)?.focusedTurnId ?? null,
-        session?.kind ?? null,
-      );
-    if (!target) return;
-    try {
-      await api.stop(target);
-    } catch {
-      if (this.api === api) this.markDisconnected();
-    }
-  }
-
-  /**
-   * A stop chosen from a menu: everything, one Bot, a conversation or a plan. The receipt goes to
-   * the conversation it was chosen in, when one is named. A refusal comes back to show; a dropped
-   * link marks the connection.
-   */
-  async stopScope(
-    scope: "global" | "bot" | "session" | "plan",
-    scopeId: string | null,
-    sessionId?: string | null,
-    opts: { liftOnNext?: boolean } = {},
-  ): Promise<ApiError | null> {
-    return this.controlCall((api) =>
-      api.createHold({
-        scope,
-        scope_id: scopeId,
-        ...(sessionId ? { session_id: sessionId } : {}),
-        ...(opts.liftOnNext ? { lift_on_next_user_message: true } : {}),
-      }),
-    );
-  }
-
-  /** Your lift of one stop, from the list of them or the board. */
-  async liftHold(holdId: string): Promise<ApiError | null> {
-    return this.controlCall((api) => api.liftHold(holdId));
-  }
-
-  /** A button on a line about your stops; `taskId` names the plan a widen or narrow button is about. */
-  /**
-   * A button on a line's control row. Resolves to a refusal to show; to `{ partial }` when a
-   * restart notice's 继续 went on with some of its turns and a stop of yours holds the rest; or null.
-   */
-  async controlAction(messageId: string, action: ControlOffer, taskId?: string, note?: string): Promise<ApiError | { partial: NonNullable<ControlActionResult["partial"]> } | null> {
-    const answer: { partial?: ControlActionResult["partial"] } = {};
-    const refused = await this.controlCall(async (api) => {
-      answer.partial = (await api.controlAction(messageId, { action, ...(taskId ? { task_id: taskId } : {}), ...(note ? { note } : {}) })).partial;
-    });
-    return refused ?? (answer.partial ? { partial: answer.partial } : null);
-  }
-
-  private async controlCall(call: (api: MessengerApi) => Promise<unknown>): Promise<ApiError | null> {
-    const api = this.api;
-    if (!api || this.connection !== "connected") return null;
-    try {
-      await call(api);
-      return null;
-    } catch (error) {
-      if (this.api !== api) return null;
-      if (error instanceof ApiError && error.status >= 400 && error.status < 500) return error;
-      this.markDisconnected();
-      return null;
-    }
-  }
-
-  async continueInterrupt(messageId: string, sessionId?: string): Promise<void> {
-    const api = this.api;
-    const view = this.viewFor(sessionId);
-    if (!api || !view || this.connection !== "connected" || view.sending) return;
-    view.sending = true;
-    try {
-      const turn = await api.continueInterrupt(messageId);
-      if (this.api === api) view.focusedTurnId = turn.id;
-    } catch (error) {
-      if (this.api !== api) return;
-      if (error instanceof ApiError && error.status === 422) return;
-      this.markDisconnected();
-    } finally {
-      if (this.api === api) view.sending = false;
-    }
-  }
-
-  async resolveApproval(
-    id: string,
-    action: ResolveApprovalRequest["action"],
-    apiKey?: string,
-    sessionId?: string,
-  ): Promise<ApiError | null> {
-    const api = this.api;
-    const view = this.viewFor(sessionId);
-    if (!api || !view || view.sending) return null;
-    view.sending = true;
-    try {
-      const body: ResolveApprovalRequest = { action };
-      if (typeof apiKey === "string" && apiKey.length > 0) body.api_key = apiKey;
-      await api.resolveApproval(id, body);
-      return null;
-    } catch (error) {
-      if (this.api !== api) return null;
-      if (error instanceof ApiError && (error.status === 422 || error.status === 409)) return error;
-      this.markDisconnected();
-      return null;
-    } finally {
-      if (this.api === api) view.sending = false;
-    }
-  }
-
-  clearSearchHighlight(): void {
-    this.setHighlightedMessage(null);
-  }
-
-  closeSearch(): void {
-    this.searchQuery = "";
-    this.searchHits = [];
-    this.searchLoading = false;
-    this.searchError = false;
-    this.searchSeq++;
-  }
-
-  /** Clearing a query invalidates in-flight replies too; results belong to one connection. */
-  async runSearch(q: string): Promise<void> {
-    this.searchQuery = q;
-    this.searchHits = [];
-    this.searchError = false;
-    const seq = ++this.searchSeq;
-    const api = this.api;
-    const connection = this.connectionSeq;
-    const trimmed = q.trim();
-    if (!api || this.connection !== "connected" || !trimmed) {
-      this.searchLoading = false;
-      return;
-    }
-    this.searchLoading = true;
-    const current = () =>
-      seq === this.searchSeq && this.api === api && this.connectionSeq === connection;
-    try {
-      const hits = await api.search(trimmed);
-      if (!current()) return;
-      this.searchHits = hits;
-      this.searchError = false;
-    } catch {
-      if (!current()) return;
-      this.searchHits = [];
-      this.searchError = true;
-    } finally {
-      if (current()) this.searchLoading = false;
-    }
-  }
-
   async submitPairing(raw: string): Promise<PairingProgress> {
     return this.remoteAdmin.submitPairing(raw);
   }
@@ -2727,16 +1086,6 @@ export class MessengerRuntime {
   /** The person compared the fingerprint on the device; this is the local confirmation. */
   async confirmHostPairing(): Promise<void> {
     return this.remoteAdmin.confirmHostPairing();
-  }
-
-  /** The button on the unreachable screen: try now, and look like it. */
-  retryConnection(): void {
-    if (this.stopped || this.connection === "connected") return;
-    this.connectFailures = 0;
-    this.remoteRetryMs = REMOTE_RETRY_MIN_MS;
-    this.connection = "connecting";
-    if (this.timer) clearTimeout(this.timer);
-    this.pump();
   }
 
   /** Closing the card abandons the window; it still expires on the host by itself. */
@@ -2806,314 +1155,8 @@ export class MessengerRuntime {
     return this.notificationCenter.setPushEnabled(enabled);
   }
 
-  private async tick(): Promise<void> {
-    if (this.stopped) return;
-    if (this.connection !== "connected") {
-      this.connection = this.connectFailures >= CONNECTING_ATTEMPTS ? "disconnected" : "connecting";
-    }
-    if (HOSTED_MESSENGER) {
-      await this.tickRemote();
-      return;
-    }
-    const { discoverEndpoint } = await import("./local-discovery.ts");
-    const endpoint = await discoverEndpoint();
-    if (!endpoint) {
-      this.hostUnreachable = "runtime";
-      this.markDisconnected();
-      this.schedule();
-      return;
-    }
-    if (this.stopped) return;
-    const health = await probeHealth(endpoint.origin);
-    if (this.stopped) return;
-    if (classifyHealth(health.status, health.body) !== "ours") {
-      this.hostUnreachable = "runtime";
-      this.markDisconnected();
-      this.schedule();
-      return;
-    }
-    if (this.connection === "connected" && this.api && this.api.kind === "local" && sameEndpoint(this.api.endpoint, endpoint)) {
-      this.schedule();
-      return;
-    }
-    try {
-      await this.connectLocal(endpoint);
-    } catch {
-      this.hostUnreachable = "runtime";
-      this.markDisconnected();
-    }
-    this.schedule();
-  }
-
-  private async tickRemote(): Promise<void> {
-    // Clearing site data under a live page force-closes the IndexedDB connection, so the next
-    // read throws. That is the state right after someone wipes a dead enrollment by hand: treat
-    // it as not enrolled and let the pairing screen come back.
-    let enrollment: StoredEnrollment | null = null;
-    try {
-      enrollment = await loadEnrollment();
-    } catch {
-      enrollment = null;
-    }
-    this.enrolled = Boolean(enrollment);
-    if (!enrollment) {
-      this.hostUnreachable = "host";
-      this.markDisconnected();
-      // Nothing to reconnect to, so this is a cheap local poll, not a relay handshake.
-      this.remoteRetryMs = REMOTE_RETRY_MIN_MS;
-      this.schedule();
-      return;
-    }
-    if (this.connection === "connected" && this.api instanceof RemoteApi && this.api.enrollment.deviceId === enrollment.deviceId) {
-      this.remoteRetryMs = REMOTE_RETRY_MIN_MS;
-      this.schedule();
-      return;
-    }
-    if (this.tabRole === "standby") {
-      this.schedule(this.remoteRetryMs);
-      return;
-    }
-    if (this.tabRole !== "owner" && typeof navigator !== "undefined" && supportsWebLocks(navigator.locks)) {
-      const acquired = await this.acquireTabLock();
-      if (!acquired) {
-        this.schedule(this.remoteRetryMs);
-        return;
-      }
-    }
-    try {
-      await this.connectRemote(enrollment);
-      // The Mac is back: the next drop starts from the short delay again.
-      this.remoteRetryMs = REMOTE_RETRY_MIN_MS;
-      this.schedule();
-      return;
-    } catch {
-      this.hostUnreachable = "host";
-      this.markDisconnected();
-    }
-    this.schedule(this.remoteRetryMs);
-    this.remoteRetryMs = nextRemoteRetry(this.remoteRetryMs);
-  }
-
-  private rememberDraftOnDisconnect(): void {
-    const id = this.selectedId;
-    const draft = this.draft.trim();
-    if (id && draft && !this.draftReconnect) this.draftReconnect = { sessionId: id, draft, confirm: false };
-  }
-
   private syncAppBadge(): void {
     this.notificationCenter.syncAppBadge();
-  }
-
-  private async installSnapshot(api: MessengerApi, sync: EventSync, snapshot: RuntimeSnapshot): Promise<void> {
-    if (this.stopped || this.api !== api || this.sync !== sync) return;
-    if (api instanceof RemoteApi) api.observeSnapshot(snapshot);
-    const frames = sync.install(snapshot);
-    if (!frames) throw new Error("event gap during snapshot");
-    this.delegationSnapshotEpoch++;
-    this.delegationEventRevisions.clear();
-    this.delegationReadSeq.clear();
-    this.delegationLoading = {};
-    this.delegationLoadError = {};
-    this.delegationUnsupported = {};
-    this.messageSnapshotRevision++;
-    this.snapshot = fromRuntimeSnapshot(snapshot);
-    this.remoteStatus = snapshot.remoteStatus ?? null;
-    if (snapshot.notificationCapabilities) {
-      this.notificationCapabilities = parseNotificationCapabilities(snapshot.notificationCapabilities);
-    }
-    if (snapshot.notificationSummary) {
-      this.notificationSummary = parseNotificationSummary(snapshot.notificationSummary);
-      this.syncAppBadge();
-    }
-    if (snapshot.notificationPolicy) {
-      const parsed = parseNotificationPolicy(snapshot.notificationPolicy);
-      if (parsed) this.notificationPolicy = parsed;
-    }
-    if (this.isDesktopShell) {
-      void this.pollDesktopNativeState();
-      void this.reportDesktopNotificationView(false);
-    }
-    if (api instanceof RemoteApi) {
-      void this.refreshMaintenance();
-      void this.loadPushState();
-    }
-    this.reconcilePendingMutation(api);
-    this.syncSettingsDraft(snapshot.settings);
-    for (const frame of frames) this.ingest(frame.payload, frame);
-    this.endpointKey = "";
-    this.connection = "connected";
-    this.connectFailures = 0;
-    for (const view of this.views.values()) {
-      view.focusedTurnId = null;
-      view.pendingFocusTrigger = null;
-    }
-    // Back into the conversation it was written in, whichever pane has the keyboard now.
-    const kept = this.draftReconnect;
-    if (kept && !kept.confirm) this.sessionView(kept.sessionId).draft = kept.draft;
-    const selected = this.selectedId;
-    if (selected && this.snapshot.sessions.some((s) => s.id === selected)) {
-      void this.selectSession(selected, { preservePage: true });
-    } else if (selected) {
-      this.selectedId = null;
-    }
-  }
-
-  private async connectLocal(endpoint: LocalEndpoint): Promise<void> {
-    const { LocalApi } = await import("./local-api.ts");
-    this.resetConnection();
-    const api = new LocalApi(endpoint);
-    const sync = new EventSync();
-    this.api = api;
-    this.sync = sync;
-    this.hostUnreachable = "runtime";
-    await this.openSocket(api, sync);
-    const snapshot = await api.snapshot();
-    await this.installSnapshot(api, sync, snapshot);
-  }
-
-  private async connectRemote(enrollment: StoredEnrollment): Promise<void> {
-    this.resetConnection();
-    const api = new RemoteApi(enrollment, {}, this.durablePending);
-    const sync = new EventSync();
-    this.api = api;
-    this.sync = sync;
-    this.hostUnreachable = "host";
-    const ready = await api.connect((frame) => {
-      if (this.api !== api || this.sync !== sync) return;
-      // The relay carries stream and tool frames on the same channel as events. Letting one
-      // reach `EventSync` reads as a cursor mismatch and drops the link, which is what "the
-      // host is unreachable" looked like the moment a terminal was opened on a phone.
-      if (this.acceptEphemeral(frame)) return;
-      const frames = sync.receive(frame);
-      if (!frames) {
-        this.markDisconnected();
-        return;
-      }
-      for (const event of frames) this.ingest(event.payload, event);
-    }, () => {
-      // The link went without being asked to: the relay closed it, the Mac went away, the phone
-      // changed network. Nobody is going to type to find out, so the page notices by itself and
-      // the loop tries again on its own delay.
-      if (this.api !== api) return;
-      this.markDisconnected();
-      this.reconnectNow();
-    });
-    const frames = sync.receive(ready);
-    if (!frames) throw new Error("invalid remote ready");
-    if (await this.resumeRemote(api, sync, ready)) {
-      this.uvReady = api.uvReady;
-      return;
-    }
-    this.resumePoint = null;
-    const snapshot = await api.snapshot();
-    await this.installSnapshot(api, sync, snapshot);
-    this.uvReady = api.uvReady;
-  }
-
-  /**
-   * Back on the Mac this page left — the same event instance — it asks for the events it missed
-   * and keeps everything on screen. A restarted Mac, a ring that rolled over, too many missed
-   * events or any gap: false, and the caller takes the snapshot.
-   */
-  private async resumeRemote(api: RemoteApi, sync: EventSync, ready: SyncFrame): Promise<boolean> {
-    const point = this.resumePoint;
-    if (!point || ready.type !== "ready" || ready.event_instance_id !== point.cursor.event_instance_id) return false;
-    const missed = ready.watermark_seq - point.cursor.watermark_seq;
-    if (missed < 0 || missed > RESUME_MAX_EVENTS) return false;
-    let caught: CatchupResponse;
-    try {
-      caught = await api.catchup(point.cursor);
-    } catch {
-      return false;
-    }
-    if (this.stopped || this.api !== api || this.sync !== sync) return true;
-    if (caught.resnapshot || caught.event_instance_id !== point.cursor.event_instance_id) return false;
-    const frames = sync.resume(point.cursor, caught.events);
-    if (!frames) return false;
-    this.resumePoint = null;
-    for (const [view, kept] of point.views) {
-      if (this.views.get(view.sessionId) !== view) continue;
-      view.detailLoaded = kept.detailLoaded;
-      view.messageNext = kept.messageNext;
-    }
-    // A new link is a new client: it learns the revisions edits carry from what is on screen.
-    api.observeSnapshot(this.snapshot);
-    this.reconcilePendingMutation(api);
-    for (const frame of frames) this.ingest(frame.payload, frame);
-    void this.refreshMaintenance();
-    void this.loadPushState();
-    this.endpointKey = "";
-    this.connection = "connected";
-    this.connectFailures = 0;
-    for (const view of this.views.values()) {
-      view.focusedTurnId = null;
-      view.pendingFocusTrigger = null;
-      // Streamed text is not an event, so a reply that ran while the link was down is missing
-      // what arrived meanwhile: its conversation reads its history again.
-      if (this.snapshot.turns.some((turn) => turn.session_id === view.sessionId && turn.status === "running")) {
-        view.detailLoaded = false;
-      }
-    }
-    const kept = this.draftReconnect;
-    if (kept && !kept.confirm) this.sessionView(kept.sessionId).draft = kept.draft;
-    const selected = this.selectedId;
-    if (selected && this.snapshot.sessions.some((s) => s.id === selected)) {
-      if (!this.views.get(selected)?.detailLoaded) void this.selectSession(selected, { preservePage: true });
-    } else if (selected) {
-      this.selectedId = null;
-    }
-    return true;
-  }
-
-  private openSocket(api: LocalApi, sync: EventSync): Promise<void> {
-    const ws = new WebSocket(api.eventsUrl());
-    this.ws = ws;
-    return new Promise((resolve, reject) => {
-      let ready = false;
-      const timeout = setTimeout(() => {
-        reject(new Error("event subscription timeout"));
-        ws.close();
-      }, 5000);
-      ws.addEventListener("open", () => ws.send(api.authFrame()));
-      ws.addEventListener("message", (ev) => {
-        if (this.ws !== ws) return;
-        const raw = String(ev.data);
-        // Ephemeral frames ride the same socket but not the event cursor, so they have to leave
-        // before the sequenced path, which reads anything without an instance id as a gap.
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(raw);
-        } catch {
-          parsed = null;
-        }
-        if (this.acceptEphemeral(parsed)) return;
-        const frame = api.parseSyncFrame(raw);
-        if (!frame || (!ready && frame.type !== "ready")) {
-          reject(new Error("invalid event stream"));
-          this.markDisconnected();
-          return;
-        }
-        if (frame.type === "ready") {
-          ready = true;
-          clearTimeout(timeout);
-          resolve();
-          return;
-        }
-        const frames = sync.receive(frame);
-        if (!frames) {
-          reject(new Error("event gap"));
-          this.markDisconnected();
-          return;
-        }
-        for (const event of frames) this.ingest(event.payload, event);
-      });
-      ws.addEventListener("close", () => {
-        clearTimeout(timeout);
-        reject(new Error("event socket closed"));
-        if (this.ws === ws) this.markDisconnected();
-      });
-      ws.addEventListener("error", () => ws.close());
-    });
   }
 
   private syncSettingsDraft(settings: {
@@ -3126,115 +1169,6 @@ export class MessengerRuntime {
     this.endpointUrl = settings.endpoint_base_url ?? "";
     this.endpointModelsText = settings.endpoint_models.join("\n");
     this.endpointDefaultModel = settings.endpoint_default_model ?? "";
-  }
-
-  private rememberDurablePending(api: MessengerApi): void {
-    if (api instanceof RemoteApi) this.durablePending = api.durablePending();
-  }
-
-  private reconcilePendingMutation(api: MessengerApi): void {
-    if (this.api !== api) return;
-    if (this.pendingMutation && !api.hasPendingRequest(this.pendingMutation.id)) this.pendingMutation = null;
-    this.rememberDurablePending(api);
-  }
-
-  private keepUnknownRequest(error: unknown, api: MessengerApi): boolean {
-    if (!(error instanceof ApiError) || !error.requestId) return false;
-    const pending = api.hasPendingRequest(error.requestId);
-    const resumable = ["key_write_pending", "request_pending", "request_unknown"].includes(error.code);
-    if (pending && resumable) this.pendingMutation = { id: error.requestId, code: error.code };
-    else if (this.pendingMutation?.id === error.requestId) this.pendingMutation = null;
-    this.rememberDurablePending(api);
-    return pending && resumable;
-  }
-
-  private sheetFailure(error: unknown, api: MessengerApi): ApiError | null {
-    if (this.api !== api) return null;
-    if (error instanceof ApiError && error.requestId) {
-      const pending = this.keepUnknownRequest(error, api);
-      if (!pending && ["key_write_pending", "request_pending", "request_unknown"].includes(error.code)) return null;
-    }
-    if (
-      error instanceof ApiError &&
-      (error.status === 422 || error.status === 404 || error.status === 409 || ["key_write_pending", "request_pending", "request_unknown"].includes(error.code))
-    ) {
-      return error;
-    }
-    this.markDisconnected();
-    return null;
-  }
-
-  private async ensureMessageLoaded(sessionId: string, messageId: string): Promise<void> {
-    const api = this.api;
-    const sync = this.sync;
-    const view = this.sessionView(sessionId);
-    const connection = this.connectionSeq;
-    const selection = view.loadSeq;
-    const revision = view.revision;
-    if (!api) return;
-    const loaded = this.snapshot.messages.filter((m) => m.session_id === sessionId);
-    if (loaded.some((m) => m.id === messageId)) return;
-    const result = await collectUntilMessage(
-      loaded,
-      messageId,
-      (cursor) => api.messages(sessionId, { cursor }),
-      this.sessionMessageNext,
-    );
-    if (this.selectedId !== sessionId || this.api !== api || this.sync !== sync ||
-      this.connectionSeq !== connection || view.loadSeq !== selection || view.revision !== revision) return;
-    this.sessionMessageNext = result.next;
-    const current = new Map(this.snapshot.messages.map((message) => [message.id, message]));
-    for (const message of result.messages) if (!current.has(message.id)) current.set(message.id, message);
-    this.snapshot = { ...this.snapshot, messages: [...current.values()] };
-  }
-
-  private applySessionDetail(
-    id: string,
-    detail: SessionDetail,
-    judgements: Snapshot["judgements"],
-  ): void {
-    this.sessionDetailId = id;
-    this.sessionMessageNext = detail.messages.next ?? null;
-    this.snapshot = {
-      ...this.snapshot,
-      sessions: this.snapshot.sessions.map((s) =>
-        s.id === id
-          ? {
-              id: detail.id,
-              kind: detail.kind,
-              name: detail.name,
-              last_read_at: detail.last_read_at ?? s.last_read_at ?? null,
-              archived_at: detail.archived_at ?? s.archived_at ?? null,
-              origin_session_id: detail.origin_session_id ?? s.origin_session_id ?? null,
-              origin_message_id: detail.origin_message_id ?? s.origin_message_id ?? null,
-              created_at: detail.created_at,
-              updated_at: detail.updated_at,
-              participants: detail.participants,
-              last_message: s.last_message,
-              live_turns: s.live_turns,
-              unread_count: detail.unread_count ?? s.unread_count ?? 0,
-              waiting_on_you: s.waiting_on_you ?? null,
-              notification_preference: detail.notification_preference ?? s.notification_preference,
-            }
-          : s,
-      ),
-      messages: [
-        ...this.snapshot.messages.filter((m) => m.session_id !== id),
-        ...detail.messages.items,
-      ],
-      turns: [
-        ...this.snapshot.turns.filter((t) => t.session_id !== id),
-        ...detail.turns,
-      ],
-      judgements: [
-        ...this.snapshot.judgements.filter((j) => j.session_id !== id),
-        ...judgements,
-      ],
-      pendingJudgements: [
-        ...this.snapshot.pendingJudgements.filter((j) => j.session_id !== id),
-        ...(detail.pending_judgements ?? []),
-      ],
-    };
   }
 
   private ingest(event: ClientEvent, frame?: SequencedEvent): void {
@@ -3373,152 +1307,6 @@ export class MessengerRuntime {
     view.pendingFocusTrigger = null;
   }
 
-  private resetConnection(): void {
-    // Only a remote link that had applied events leaves a point to resume from; an attempt that
-    // never got that far keeps the previous one.
-    const cursor = this.api instanceof RemoteApi ? (this.sync?.snapshotCursor() ?? null) : null;
-    if (cursor) {
-      this.resumePoint = {
-        cursor,
-        views: new Map([...this.views.values()].map((view) => [view, { detailLoaded: view.detailLoaded, messageNext: view.messageNext }])),
-      };
-    }
-    this.rememberDraftOnDisconnect();
-    this.notificationCenter.clearBoundedReads();
-    // A step that ended while the link was down would read as running forever.
-    this.turnActivity.clear();
-    this.toolRevision += 1;
-    this.connectFailures += 1;
-    this.connection = this.connectFailures >= CONNECTING_ATTEMPTS ? "disconnected" : "connecting";
-    this.teardownSocket();
-    if (this.api instanceof RemoteApi) {
-      this.durablePending = this.api.durablePending();
-      this.api.close();
-    } else if (this.api) {
-      this.pendingMutation = null;
-      this.durablePending = [];
-    }
-    this.api = null;
-    this.sync?.close();
-    this.sync = null;
-    this.sessionLoad = Promise.resolve();
-    this.delegationReadSeq.clear();
-    this.delegationLoading = {};
-    this.searchSeq++;
-    this.searchHits = [];
-    this.searchLoading = false;
-    this.searchError = false;
-    // Every open conversation reads its history again from the next connection, not only the selected one.
-    for (const view of this.views.values()) {
-      view.detailLoaded = false;
-      view.messageNext = null;
-    }
-    this.connectionSeq++;
-    for (const view of this.views.values()) {
-      view.sending = false;
-      view.upload = null;
-    }
-  }
-
-  /**
-   * Receive one stream's bytes until the caller lets go. Watching is asked for over HTTP; this
-   * only says where the frames should land once they arrive.
-   */
-  /**
-   * Take a stream or tool frame off the socket. True means it was one and the sequenced reader
-   * must not see it.
-   */
-  private acceptEphemeral(value: unknown): value is StreamFrame | ToolFrame {
-    const stream = parseStreamFrame(value);
-    if (stream) {
-      // A copy: a reader that lets go while the frame is being delivered must not skip its peers.
-      for (const sink of [...(this.streamSinks.get(stream.id) ?? [])]) sink(stream);
-      this.activity.applyStream(stream);
-      this.activityRevision += 1;
-      return true;
-    }
-    const tool = parseToolFrame(value);
-    if (!tool) return false;
-    this.activity.applyTool(tool);
-    this.activityRevision += 1;
-    this.turnActivity.applyTool(tool);
-    this.toolRevision += 1;
-    // A command's bytes are only worth carrying while someone can see them run — and only for
-    // the conversation that is open. A phone on a radio should not receive the output of a
-    // build happening in a session nobody is looking at.
-    const streamId = `${tool.turn_id}:${tool.id}`;
-    if (tool.phase === "started" && this.watchesTurn(tool.turn_id)) void this.watchCommand(streamId);
-    if (tool.phase === "exited") void this.unwatchCommand(streamId);
-    return true;
-  }
-
-  /**
-   * The step this turn is in or last finished; reading it follows the next tool frame. A window
-   * that saw no frame of it (opened after the call started, a phone back from the background)
-   * has the call the daemon said the turn was running when this conversation was read.
-   */
-  stepOf(turnId: string): ToolStep | null {
-    void this.toolRevision;
-    const seen = this.turnActivity.latestFor(turnId);
-    if (seen) return seen;
-    const running = this.snapshot.turns.find((turn) => turn.id === turnId)?.running_tool;
-    if (!running) return null;
-    return {
-      id: running.id,
-      name: running.name,
-      target: running.target ?? null,
-      mcp: running.mcp_server && running.mcp_tool ? { server: running.mcp_server, tool: running.mcp_tool } : null,
-      running: true,
-      startedAt: Date.parse(running.started_at),
-      exitCode: null,
-      durationMs: null,
-    };
-  }
-
-  /** Every step this client has seen the turn take, oldest first. */
-  stepsOf(turnId: string): readonly ToolStep[] {
-    void this.toolRevision;
-    return this.turnActivity.stepsFor(turnId);
-  }
-
-  /** Whether this turn belongs to the conversation on screen. */
-  private watchesTurn(turnId: string): boolean {
-    if (!this.selectedId) return false;
-    return this.snapshot.turns.some((turn) => turn.id === turnId && turn.session_id === this.selectedId);
-  }
-
-  /** Ask the daemon to send a command's bytes. Nothing is sent to a client that never asks. */
-  private async watchCommand(id: string): Promise<void> {
-    try {
-      await this.api?.watchCommand(id, 0);
-    } catch {
-      // A command whose output cannot be followed still runs; the turn is what matters.
-    }
-  }
-
-  private async unwatchCommand(id: string): Promise<void> {
-    try {
-      await this.api?.unwatchCommand(id);
-    } catch {
-      // Nothing to undo: the stream ends with the command either way.
-    }
-  }
-
-  onStream(id: string, sink: (frame: StreamFrame) => void): () => void {
-    let sinks = this.streamSinks.get(id);
-    if (!sinks) {
-      sinks = new Set();
-      this.streamSinks.set(id, sinks);
-    }
-    sinks.add(sink);
-    return () => {
-      const current = this.streamSinks.get(id);
-      if (!current?.delete(sink)) return;
-      // The id is dropped only once nobody is left, so a second reader keeps the entry alive.
-      if (current.size === 0) this.streamSinks.delete(id);
-    };
-  }
-
   private markDisconnected(): void {
     this.resetConnection();
     this.closeSheets();
@@ -3602,62 +1390,4 @@ export class MessengerRuntime {
     clearTimeout(view.highlightTimer);
     view.highlightTimer = null;
   }
-
-  private teardownSocket(): void {
-    if (!this.ws) return;
-    const ws = this.ws;
-    this.ws = null;
-    ws.onopen = null;
-    ws.onmessage = null;
-    ws.onclose = null;
-    ws.onerror = null;
-    try {
-      ws.close();
-    } catch {
-      // already closed
-    }
-  }
-
-  private schedule(delay = RETRY_MS): void {
-    if (this.stopped) return;
-    // One timer, always the newest: a drop landing while a tick is in flight must not leave two
-    // loops running, which on a relay that allows ten handshakes a minute is a way to be refused.
-    if (this.timer) clearTimeout(this.timer);
-    this.nextAttemptAt = Date.now() + delay;
-    this.timer = setTimeout(() => {
-      this.pump();
-    }, delay);
-  }
-
-  /**
-   * Try now — as soon as the delay the loop already owes allows it. A phone comes back from a
-   * dropped link, a locked screen or a changed network with its timers frozen and no interaction
-   * to ride on, and asking again is worth nothing if the relay refuses it: the handshake budget
-   * is spent per minute, so a page that just tried still waits, and one frozen for an hour does
-   * not.
-   */
-  private reconnectNow(): void {
-    if (this.stopped || this.connection === "connected") return;
-    this.schedule(Math.max(0, this.nextAttemptAt - Date.now()));
-  }
-
-  /** A tick that throws must still leave a timer behind, or the page never reconnects. */
-  private pump(): void {
-    // An attempt already running owns the next one; a second pass would open a second socket for
-    // the same device, which the relay refuses while the first route is still there.
-    if (this.ticking) return;
-    this.ticking = true;
-    void this.tick()
-      .catch(() => {
-        this.markDisconnected();
-        this.schedule();
-      })
-      .finally(() => {
-        this.ticking = false;
-      });
-  }
-}
-
-function sameEndpoint(a: LocalEndpoint, b: LocalEndpoint): boolean {
-  return a.origin === b.origin && a.token === b.token;
 }

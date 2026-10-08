@@ -6,7 +6,6 @@
     "apps/messenger/src/lib/overlays/ArtifactPreview.svelte": 2600,
     "apps/messenger/src/lib/overlays/PdfViewer.svelte": 2150,
     "apps/messenger/src/lib/panels/ProfilePane.svelte": 2400,
-    "apps/messenger/src/lib/runtime.svelte.ts": 3850,
     "apps/messenger/src/lib/settings/SettingsModal.svelte": 4050,
     "apps/messenger/src/lib/spend/SpendView.svelte": 2850
   }

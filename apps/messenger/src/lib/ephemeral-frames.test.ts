@@ -68,7 +68,7 @@ test("an ephemeral frame handed to the sequenced reader would drop the connectio
  * the thing that actually went wrong, and a second reader added later will trip it.
  */
 test("every reader of the event channel routes ephemeral frames out first", () => {
-  const source = readFileSync(new URL("./runtime.svelte.ts", import.meta.url), "utf8");
+  const source = readFileSync(new URL("./connection/connection-loop.svelte.ts", import.meta.url), "utf8");
   const readers = [...source.matchAll(/sync\.receive\(/g)];
   // The two live readers, plus the one-shot `ready` frame each of them starts from.
   expect(readers.length).toBeGreaterThanOrEqual(2);
