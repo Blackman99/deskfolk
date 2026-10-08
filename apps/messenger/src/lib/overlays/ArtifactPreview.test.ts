@@ -1,10 +1,9 @@
 import { expect, mock, test } from "bun:test";
 import { flushSync } from "svelte";
 import { SvelteMap } from "svelte/reactivity";
+import { mockMonacoCss } from "../test-mocks.ts";
 
-mock.module("monaco-editor-css", () => ({}));
-mock.module("monaco-editor/esm/vs/platform/hover/browser/hover.css", () => ({}));
-mock.module("monaco-editor/esm/vs/base/browser/ui/contextview/contextview.css", () => ({}));
+mockMonacoCss();
 const { default: ArtifactPreview } = await import("./ArtifactPreview.svelte");
 import { copyFor } from "../copy.ts";
 import type { FileLoadOptions, FileProgressHandler } from "../file-progress.ts";

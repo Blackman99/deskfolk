@@ -1,16 +1,14 @@
 import { expect, mock, test } from "bun:test";
-import { flushSync } from "svelte";
 import type { MediaSourceHandle } from "../remote/media-source.ts";
 import { copyFor } from "../copy.ts";
 import { render } from "../test-render.ts";
 import { anAttachment } from "../test-fixtures.ts";
+import { mockMonacoCss } from "../test-mocks.ts";
+import { settle } from "../test-async.ts";
 
-mock.module("monaco-editor-css", () => ({}));
-mock.module("monaco-editor/esm/vs/platform/hover/browser/hover.css", () => ({}));
-mock.module("monaco-editor/esm/vs/base/browser/ui/contextview/contextview.css", () => ({}));
+mockMonacoCss();
 const { default: ArtifactPreview } = await import("./ArtifactPreview.svelte");
 const t = copyFor("zh");
-async function settle() { await new Promise((resolve) => setTimeout(resolve, 0)); flushSync(); }
 
 for (const kind of ["video", "audio"] as const) {
   for (const mode of ["cited", "workspace"] as const) {

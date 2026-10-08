@@ -8,6 +8,7 @@ import RoutineCard from './panels/RoutineCard.svelte';
 import { copyFor } from './copy.ts';
 import { aBot, aDirect, aGroup, aRoutine } from "./test-fixtures.ts";
 import { emptySnapshot } from "./snapshot.ts";
+import { fakeSyncSocket, localApiFetch } from "./test-sync-harness.ts";
 import { overlayFromFlags, overlayFromUrl } from "./session-url.ts";
 
 const page = reactive({ url: new URL("http://localhost/") });
@@ -48,16 +49,7 @@ const originalFetch = globalThis.fetch;
 const OriginalSocket = globalThis.WebSocket;
 let close: (() => void) | null = null;
 const cursor = { event_instance_id: "a".repeat(32), watermark_seq: 0 };
-class Socket extends EventTarget {
-  constructor(_url: string) {
-    super();
-    queueMicrotask(() => this.dispatchEvent(new Event("open")));
-  }
-  send() {
-    queueMicrotask(() => this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({ type: "ready", ...cursor }) })));
-  }
-  close() { this.dispatchEvent(new Event("close")); }
-}
+const Socket = fakeSyncSocket(cursor);
 
 async function until(predicate: () => boolean) {
   for (let i = 0; i < 100; i++) {
@@ -85,13 +77,10 @@ afterEach(() => {
 test('page cancels browser Back only when a layer above the URL consumes the step', async () => {
   page.url = new URL('http://localhost/?o=settings');
   globalThis.WebSocket = Socket as unknown as typeof WebSocket;
-  globalThis.fetch = (async (url: string | URL | Request) => {
-    const path = String(url);
-    if (path === '/__local-api') return Response.json({ port: 17893, token: 'fixture' });
-    if (path.endsWith('/v1/health')) return Response.json({ ok: true, name: 'real-bot' });
-    if (path.endsWith('/v1/snapshot')) return Response.json({ ...emptySnapshot(), ...cursor });
-    return Response.json({ items: [] });
-  }) as typeof fetch;
+  globalThis.fetch = localApiFetch({
+    port: 17893,
+    snapshot: () => ({ ...emptySnapshot(), ...cursor }),
+  });
   close = render(Page, {}).close;
   const runtime = (window as unknown as { __runtime: MessengerRuntime }).__runtime;
   await until(() => runtime.connection === 'connected');
@@ -115,14 +104,11 @@ test('routine search from the empty stage selects its Bot conversation before op
   page.url = new URL('http://localhost/');
   const initial = emptySnapshot();
   globalThis.WebSocket = Socket as unknown as typeof WebSocket;
-  globalThis.fetch = (async (url: string | URL | Request) => {
-    const path = String(url);
-    if (path === '/__local-api') return Response.json({ port: 17893, token: 'fixture' });
-    if (path.endsWith('/v1/health')) return Response.json({ ok: true, name: 'real-bot' });
-    if (path.endsWith('/v1/snapshot')) return Response.json({ ...initial, ...cursor, bots: [aBot()], sessions: [aDirect()] });
-    if (path.endsWith('/snapshot')) return Response.json({ ...cursor, session: { ...aDirect(), messages: { items: [], next: null }, turns: [] }, judgements: [] });
-    return Response.json({ items: [] });
-  }) as typeof fetch;
+  globalThis.fetch = localApiFetch({
+    port: 17893,
+    snapshot: () => ({ ...initial, ...cursor, bots: [aBot()], sessions: [aDirect()] }),
+    handle: (path) => (path.endsWith('/snapshot') ? { ...cursor, session: { ...aDirect(), messages: { items: [], next: null }, turns: [] }, judgements: [] } : undefined),
+  });
   close = render(Page, {}).close;
   const runtime = (window as unknown as { __runtime: MessengerRuntime }).__runtime;
   await until(() => runtime.connection === 'connected');
@@ -142,18 +128,16 @@ for (const newer of ['routine', 'profile', 'dismiss', 'nested-back', 'settings',
   let requested = false;
   const held = new Promise<void>((resolve) => { release = resolve; });
   globalThis.WebSocket = Socket as unknown as typeof WebSocket;
-  globalThis.fetch = (async (url: string | URL | Request) => {
-    const path = String(url);
-    if (path === '/__local-api') return Response.json({ port: 17893, token: 'fixture' });
-    if (path.endsWith('/v1/health')) return Response.json({ ok: true, name: 'real-bot' });
-    if (path.endsWith('/v1/snapshot')) return Response.json({ ...initial, ...cursor, bots: [aBot(), aBot({ id: 'bot-2' })], sessions: [aDirect()], routines });
-    if (path.endsWith('/snapshot')) {
+  globalThis.fetch = localApiFetch({
+    port: 17893,
+    snapshot: () => ({ ...initial, ...cursor, bots: [aBot(), aBot({ id: 'bot-2' })], sessions: [aDirect()], routines }),
+    handle: async (path) => {
+      if (!path.endsWith('/snapshot')) return undefined;
       requested = true;
       await held;
-      return Response.json({ ...cursor, session: { ...aDirect(), messages: { items: [], next: null }, turns: [] }, judgements: [] });
-    }
-    return Response.json({ items: [] });
-  }) as typeof fetch;
+      return { ...cursor, session: { ...aDirect(), messages: { items: [], next: null }, turns: [] }, judgements: [] };
+    },
+  });
   close = render(Page, {}).close;
   const runtime = (window as unknown as { __runtime: MessengerRuntime }).__runtime;
   await until(() => runtime.connection === 'connected');
@@ -203,17 +187,14 @@ for (const query of [
   let snapshotRequested = false;
   let detailLoaded = false;
   globalThis.WebSocket = Socket as unknown as typeof WebSocket;
-  globalThis.fetch = (async (url: string | URL | Request) => {
-    const path = String(url);
-    if (path === "/__local-api") return Response.json({ port: 17891, token: "fixture" });
-    if (path.endsWith("/v1/health")) return Response.json({ ok: true, name: "real-bot" });
-    if (path.endsWith("/v1/snapshot")) { snapshotRequested = true; return Response.json(await snapshot); }
-    if (path.endsWith("/snapshot")) {
+  globalThis.fetch = localApiFetch({
+    snapshot: async () => { snapshotRequested = true; return await snapshot; },
+    handle: (path) => {
+      if (!path.endsWith("/snapshot")) return undefined;
       detailLoaded = true;
-      return Response.json({ ...cursor, session: { ...aDirect(), messages: { items: [], next: null }, turns: [] }, judgements: [] });
-    }
-    return Response.json({ items: [] });
-  }) as typeof fetch;
+      return { ...cursor, session: { ...aDirect(), messages: { items: [], next: null }, turns: [] }, judgements: [] };
+    },
+  });
   const view = render(Page, {});
   close = view.close;
   const runtime = (window as unknown as { __runtime: MessengerRuntime }).__runtime;
@@ -240,17 +221,15 @@ for (const kind of ['routines', 'spend', 'terminal'] as const) for (const select
   entries[0] = `/${query}`;
   const sessions = [aDirect(), aDirect({ id: 'direct-2' })];
   globalThis.WebSocket = Socket as unknown as typeof WebSocket;
-  globalThis.fetch = (async (url: string | URL | Request) => {
-    const path = String(url);
-    if (path === '/__local-api') return Response.json({ port: 17893, token: 'fixture' });
-    if (path.endsWith('/v1/health')) return Response.json({ ok: true, name: 'real-bot' });
-    if (path.endsWith('/v1/snapshot')) return Response.json({ ...emptySnapshot(), ...cursor, bots: [aBot()], sessions });
-    if (path.endsWith('/snapshot')) {
+  globalThis.fetch = localApiFetch({
+    port: 17893,
+    snapshot: () => ({ ...emptySnapshot(), ...cursor, bots: [aBot()], sessions }),
+    handle: (path) => {
+      if (!path.endsWith('/snapshot')) return undefined;
       const session = sessions.find((item) => path.includes(item.id))!;
-      return Response.json({ ...cursor, session: { ...session, messages: { items: [], next: null }, turns: [] }, judgements: [] });
-    }
-    return Response.json({ items: [] });
-  }) as typeof fetch;
+      return { ...cursor, session: { ...session, messages: { items: [], next: null }, turns: [] }, judgements: [] };
+    },
+  });
   close = render(Page, {}).close;
   const runtime = (window as unknown as { __runtime: MessengerRuntime }).__runtime;
   await until(() => runtime.connection === 'connected');
@@ -271,14 +250,11 @@ test('opening a screen pushes, closing it walks back, and a deep link rewrites i
   page.url = new URL('http://localhost/');
   const initial = emptySnapshot();
   globalThis.WebSocket = Socket as unknown as typeof WebSocket;
-  globalThis.fetch = (async (url: string | URL | Request) => {
-    const path = String(url);
-    if (path === '/__local-api') return Response.json({ port: 17893, token: 'fixture' });
-    if (path.endsWith('/v1/health')) return Response.json({ ok: true, name: 'real-bot' });
-    if (path.endsWith('/v1/snapshot')) return Response.json({ ...initial, ...cursor, bots: [aBot()], sessions: [aDirect()] });
-    if (path.endsWith('/snapshot')) return Response.json({ ...cursor, session: { ...aDirect(), messages: { items: [], next: null }, turns: [] }, judgements: [] });
-    return Response.json({ items: [] });
-  }) as typeof fetch;
+  globalThis.fetch = localApiFetch({
+    port: 17893,
+    snapshot: () => ({ ...initial, ...cursor, bots: [aBot()], sessions: [aDirect()] }),
+    handle: (path) => (path.endsWith('/snapshot') ? { ...cursor, session: { ...aDirect(), messages: { items: [], next: null }, turns: [] }, judgements: [] } : undefined),
+  });
   const previousBack = window.history.back;
   // The real Back lands on the entry underneath, which is what the page's plan counts on.
   window.history.back = () => {
@@ -333,14 +309,11 @@ test('a Bot opened from group settings leaves the conversation underneath, so Ba
   navigationModes.length = 0;
   const group = aGroup({ id: 'g1' });
   globalThis.WebSocket = Socket as unknown as typeof WebSocket;
-  globalThis.fetch = (async (url: string | URL | Request) => {
-    const path = String(url);
-    if (path === '/__local-api') return Response.json({ port: 17893, token: 'fixture' });
-    if (path.endsWith('/v1/health')) return Response.json({ ok: true, name: 'real-bot' });
-    if (path.endsWith('/v1/snapshot')) return Response.json({ ...emptySnapshot(), ...cursor, bots: [aBot(), aBot({ id: 'bot-2', name: 'Beta' })], sessions: [group] });
-    if (path.endsWith('/snapshot')) return Response.json({ ...cursor, session: { ...group, messages: { items: [], next: null }, turns: [] }, judgements: [] });
-    return Response.json({ items: [] });
-  }) as typeof fetch;
+  globalThis.fetch = localApiFetch({
+    port: 17893,
+    snapshot: () => ({ ...emptySnapshot(), ...cursor, bots: [aBot(), aBot({ id: 'bot-2', name: 'Beta' })], sessions: [group] }),
+    handle: (path) => (path.endsWith('/snapshot') ? { ...cursor, session: { ...group, messages: { items: [], next: null }, turns: [] }, judgements: [] } : undefined),
+  });
   const previousBack = window.history.back;
   window.history.back = () => {
     entries.pop();
@@ -371,14 +344,11 @@ test('a Bot opened from group settings leaves the conversation underneath, so Ba
 test('a Back that puts away a file over the flow page rewrites the flow entry once the browser is back on it', async () => {
   page.url = new URL('http://localhost/');
   globalThis.WebSocket = Socket as unknown as typeof WebSocket;
-  globalThis.fetch = (async (url: string | URL | Request) => {
-    const path = String(url);
-    if (path === '/__local-api') return Response.json({ port: 17893, token: 'fixture' });
-    if (path.endsWith('/v1/health')) return Response.json({ ok: true, name: 'real-bot' });
-    if (path.endsWith('/v1/snapshot')) return Response.json({ ...emptySnapshot(), ...cursor, bots: [aBot()], sessions: [aDirect()] });
-    if (path.endsWith('/snapshot')) return Response.json({ ...cursor, session: { ...aDirect(), messages: { items: [], next: null }, turns: [] }, judgements: [] });
-    return Response.json({ items: [] });
-  }) as typeof fetch;
+  globalThis.fetch = localApiFetch({
+    port: 17893,
+    snapshot: () => ({ ...emptySnapshot(), ...cursor, bots: [aBot()], sessions: [aDirect()] }),
+    handle: (path) => (path.endsWith('/snapshot') ? { ...cursor, session: { ...aDirect(), messages: { items: [], next: null }, turns: [] }, judgements: [] } : undefined),
+  });
   close = render(Page, {}).close;
   const runtime = (window as unknown as { __runtime: MessengerRuntime }).__runtime;
   await until(() => runtime.connection === 'connected');
@@ -413,14 +383,11 @@ test('a back step this page asked for is not mistaken for a Back press', async (
   page.url = new URL('http://localhost/');
   const initial = emptySnapshot();
   globalThis.WebSocket = Socket as unknown as typeof WebSocket;
-  globalThis.fetch = (async (url: string | URL | Request) => {
-    const path = String(url);
-    if (path === '/__local-api') return Response.json({ port: 17893, token: 'fixture' });
-    if (path.endsWith('/v1/health')) return Response.json({ ok: true, name: 'real-bot' });
-    if (path.endsWith('/v1/snapshot')) return Response.json({ ...initial, ...cursor, bots: [aBot()], sessions: [aDirect()] });
-    if (path.endsWith('/snapshot')) return Response.json({ ...cursor, session: { ...aDirect(), messages: { items: [], next: null }, turns: [] }, judgements: [] });
-    return Response.json({ items: [] });
-  }) as typeof fetch;
+  globalThis.fetch = localApiFetch({
+    port: 17893,
+    snapshot: () => ({ ...initial, ...cursor, bots: [aBot()], sessions: [aDirect()] }),
+    handle: (path) => (path.endsWith('/snapshot') ? { ...cursor, session: { ...aDirect(), messages: { items: [], next: null }, turns: [] }, judgements: [] } : undefined),
+  });
   const previousBack = window.history.back;
   window.history.back = () => {
     entries.pop();
@@ -466,15 +433,12 @@ for (const restored of [false, true]) test(`real page and Shell keep desktop Spe
   page.url = new URL(`http://localhost/?s=direct-1${restored ? '' : '&o=spend'}`);
   entries[0] = `${page.url.pathname}${page.url.search}`;
   globalThis.WebSocket = Socket as unknown as typeof WebSocket;
-  globalThis.fetch = (async (url: string | URL | Request) => {
-    const path = String(url);
-    if (path === '/__local-api') return Response.json({ port: 17893, token: 'fixture' });
-    if (path.endsWith('/v1/health')) return Response.json({ ok: true, name: 'real-bot' });
-    if (path.endsWith('/v1/snapshot')) return Response.json({ ...emptySnapshot(), ...cursor,
-      settings: { ...emptySnapshot().settings, wizard_complete: true, locale: 'en' }, bots: [aBot()], sessions: [aDirect()] });
-    if (path.endsWith('/snapshot')) return Response.json({ ...cursor, session: { ...aDirect(), messages: { items: [], next: null }, turns: [] }, judgements: [] });
-    return Response.json({ items: [] });
-  }) as typeof fetch;
+  globalThis.fetch = localApiFetch({
+    port: 17893,
+    snapshot: () => ({ ...emptySnapshot(), ...cursor,
+      settings: { ...emptySnapshot().settings, wizard_complete: true, locale: 'en' }, bots: [aBot()], sessions: [aDirect()] }),
+    handle: (path) => (path.endsWith('/snapshot') ? { ...cursor, session: { ...aDirect(), messages: { items: [], next: null }, turns: [] }, judgements: [] } : undefined),
+  });
   const previousBack = window.history.back;
   window.history.back = () => {
     beforeNavigation({ type: 'popstate', delta: -1, cancel() {} });

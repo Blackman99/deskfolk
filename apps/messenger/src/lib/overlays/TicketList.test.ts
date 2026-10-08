@@ -6,6 +6,7 @@ import { copyFor } from "../copy.ts";
 import { aBot } from "../test-fixtures.ts";
 import { click, render } from "../test-render.ts";
 import { reactive } from "../test-reactive.svelte.ts";
+import { settle } from "../test-async.ts";
 
 const t = copyFor("zh");
 
@@ -74,10 +75,6 @@ function aNode(over: Partial<TaskTraceNode> = {}): TaskTraceNode {
   };
 }
 
-async function settle(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  flushSync();
-}
 
 function rowFor(host: HTMLElement, title: string): HTMLElement {
   const found = [...host.querySelectorAll<HTMLElement>(".ticket-row")].find(

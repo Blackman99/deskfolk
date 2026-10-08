@@ -2,10 +2,9 @@ import { afterEach, expect, mock, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { flushSync } from "svelte";
 import { USER_MEMBER, type AcceptanceCheck, type Hold, type PlanRequirement, type RouteRecord, type SessionTaskSummary, type TaskDetail, type TaskTrace } from "@real-bot/protocol";
+import { mockMonacoCss } from "../test-mocks.ts";
 
-mock.module("monaco-editor-css", () => ({}));
-mock.module("monaco-editor/esm/vs/platform/hover/browser/hover.css", () => ({}));
-mock.module("monaco-editor/esm/vs/base/browser/ui/contextview/contextview.css", () => ({}));
+mockMonacoCss();
 const { default: TaskTraceView } = await import("./TaskTrace.svelte");
 const { default: TraceView } = await import("./TraceView.svelte");
 import { copyFor } from "../copy.ts";
@@ -15,6 +14,7 @@ import { forgetKeptBoards } from "./task-trace.ts";
 import { aBot, aDirect, aGroup, aHold } from "../test-fixtures.ts";
 import { buttonByText, click, render } from "../test-render.ts";
 import { reactive } from "../test-reactive.svelte.ts";
+import { settle } from "../test-async.ts";
 
 const t = copyFor("zh");
 
@@ -265,10 +265,6 @@ function open(opts: {
 }
 
 /** Let a press's awaits (the panel swap, the scroll after it) run out, then flush what they changed. */
-async function settle(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  flushSync();
-}
 
 async function until(host: HTMLElement, selector: string): Promise<Element> {
   for (let i = 0; i < 20; i += 1) {

@@ -7,14 +7,11 @@ import ChatStage from "./ChatStage.svelte";
 import { render } from "../test-render.ts";
 import MessageAttachments from "./MessageAttachments.svelte";
 import MessageImageLightbox from "./MessageImageLightbox.svelte";
+import { settle } from "../test-async.ts";
 
 const t = copyFor("zh");
 const picture = anAttachment({ id: "transparent", original_filename: "transparent.png", workspace_relpath: "images/transparent.png" });
 const tokens = readFileSync(new URL("../styles/tokens.css", import.meta.url), "utf8");
-const settle = async () => {
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  flushSync();
-};
 let palette: HTMLStyleElement;
 let previousTheme: string | null;
 

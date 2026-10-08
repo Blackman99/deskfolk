@@ -5,12 +5,9 @@ import { reactive } from "../test-reactive.svelte.ts";
 import { buttonByText, click, fill, press, render } from "../test-render.ts";
 import ProviderForm from "./ProviderForm.svelte";
 import { emptyModelAttr, emptyProviderDraft, type ProviderDraft } from "./provider-form.ts";
+import { settle } from "../test-async.ts";
 
 const t = copyFor("zh");
-const settle = async () => {
-  await new Promise((r) => setTimeout(r, 0));
-  flushSync();
-};
 
 const NAMES = ["grok-4.6", "gemini-3.8-flash", "claude-opus-5", "a-very-long-model-name-that-wraps-on-a-phone"];
 

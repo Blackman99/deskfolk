@@ -1,8 +1,7 @@
 import { expect, mock, test } from "bun:test";
+import { mockMonacoCss } from "../test-mocks.ts";
 
-mock.module("monaco-editor-css", () => ({}));
-mock.module("monaco-editor/esm/vs/platform/hover/browser/hover.css", () => ({}));
-mock.module("monaco-editor/esm/vs/base/browser/ui/contextview/contextview.css", () => ({}));
+mockMonacoCss();
 const { default: Harness } = await import("./ArtifactCodeEditorHarness.svelte");
 import { click, render } from "../test-render.ts";
 

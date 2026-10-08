@@ -7,6 +7,7 @@ import { reactive } from "../test-reactive.svelte.ts";
 import { buttonByText, click, render } from "../test-render.ts";
 import { pressWorkspacePaths, type WorkspaceDragItem } from "../workspace-drag.svelte.ts";
 import Composer from "./Composer.svelte";
+import { settle } from "../test-async.ts";
 
 const t = copyFor("zh");
 
@@ -476,10 +477,6 @@ test("a send that does not land keeps the files and the words where they were", 
   const file = new File(["x"], "clip.mp4", { type: "video/mp4" });
   staged.stagedAttachments = [{ id: "att-1", file, name: "clip.mp4", size: 1, isImage: false, previewUrl: null }];
   flushSync();
-  const settle = async () => {
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    flushSync();
-  };
   const action = view.host.querySelector(".composer-action") as HTMLButtonElement;
   const editor = view.host.querySelector(".composer-input") as HTMLElement;
   action.click();
@@ -609,10 +606,6 @@ test("files dragged in from the tree wait as references, and go out by path with
     { path: "shots/a.png", isDir: false },
     { path: "shots", isDir: true },
   ]);
-  const settle = async () => {
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    flushSync();
-  };
   try {
     const card = view.host.querySelector(".composer-card") as HTMLElement;
     const action = view.host.querySelector(".composer-action") as HTMLButtonElement;

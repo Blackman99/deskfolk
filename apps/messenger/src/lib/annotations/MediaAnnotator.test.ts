@@ -11,6 +11,7 @@ import { reactive } from "../test-reactive.svelte.ts";
 import MediaAnnotator, { type MediaAnnotatorLabels } from "./MediaAnnotator.svelte";
 import type { EncodedCrop } from "./region-box.ts";
 import type { FrameDrawer } from "./media-time.ts";
+import { settleTimers as settle } from "../test-async.ts";
 
 const labels: MediaAnnotatorLabels = {
   markHere: "在此处批注",
@@ -123,7 +124,6 @@ function playable(el: HTMLMediaElement, at: number, size = { width: 1280, height
 }
 
 /** Let queued microtasks and a macrotask run: a seek lands, a crop reaches its drawing. */
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 const png: EncodedCrop = { mime: "image/png", base64: "AAAA" };
 
 test("「在此处批注」 then 「到此为止」 makes a valid span, and seeking back still orders it", () => {

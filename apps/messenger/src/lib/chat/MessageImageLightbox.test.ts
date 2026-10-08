@@ -6,13 +6,10 @@ import type { FileLoadOptions, FileProgressHandler } from "../file-progress.ts";
 import { anAttachment } from "../test-fixtures.ts";
 import { render } from "../test-render.ts";
 import MessageImageLightbox from "./MessageImageLightbox.svelte";
+import { settle } from "../test-async.ts";
 
 const t = copyFor("zh");
 const ORIGINAL = 3_727_854;
-const settle = async () => {
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  flushSync();
-};
 
 function scaledCopy(): Blob {
   const copy = new Blob([new Uint8Array([1, 2, 3])], { type: "image/jpeg" });

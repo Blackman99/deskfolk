@@ -4,10 +4,9 @@ import { copyFor } from '../copy.ts';
 import { anAttachment } from '../test-fixtures.ts';
 import { click, render } from '../test-render.ts';
 import { closeFullscreenPreview } from './fullscreen-preview.ts';
+import { mockMonacoCss } from '../test-mocks.ts';
 
-mock.module('monaco-editor-css', () => ({}));
-mock.module('monaco-editor/esm/vs/platform/hover/browser/hover.css', () => ({}));
-mock.module('monaco-editor/esm/vs/base/browser/ui/contextview/contextview.css', () => ({}));
+mockMonacoCss();
 const { default: ArtifactPreview } = await import('./ArtifactPreview.svelte');
 const t = copyFor('zh');
 

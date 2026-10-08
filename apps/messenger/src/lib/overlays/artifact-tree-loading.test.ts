@@ -4,10 +4,9 @@ import { SvelteMap } from 'svelte/reactivity';
 import type { TaskArtifacts, WorkspaceTreePage } from '@real-bot/protocol';
 import { copyFor } from '../copy.ts';
 import { click, render } from '../test-render.ts';
+import { mockMonacoCss } from '../test-mocks.ts';
 
-mock.module('monaco-editor-css', () => ({}));
-mock.module('monaco-editor/esm/vs/platform/hover/browser/hover.css', () => ({}));
-mock.module('monaco-editor/esm/vs/base/browser/ui/contextview/contextview.css', () => ({}));
+mockMonacoCss();
 const { default: ArtifactPreview } = await import('./ArtifactPreview.svelte');
 const t = copyFor('zh');
 

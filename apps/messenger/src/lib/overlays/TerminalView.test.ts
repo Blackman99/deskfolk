@@ -1,5 +1,6 @@
 import { expect, mock, test } from "bun:test";
 import type { Terminal } from "@real-bot/protocol";
+import { mockXtermAddons } from "../test-mocks.ts";
 
 type KeyHandler = (event: KeyboardEvent) => boolean;
 
@@ -85,10 +86,7 @@ class FakeTerminal {
 
 const searches: Array<{ step: string; query: string }> = [];
 mock.module("@xterm/xterm", () => ({ Terminal: FakeTerminal }));
-mock.module("@xterm/addon-fit", () => ({ FitAddon: class { fit() {} } }));
-mock.module("@xterm/addon-unicode11", () => ({ Unicode11Addon: class {} }));
-mock.module("@xterm/addon-web-links", () => ({ WebLinksAddon: class {} }));
-mock.module("@xterm/addon-webgl", () => ({ WebglAddon: class { onContextLoss() {} dispose() {} } }));
+mockXtermAddons();
 mock.module("@xterm/addon-search", () => ({
   SearchAddon: class {
     private listener: ((r: { resultIndex: number; resultCount: number }) => void) | null = null;
@@ -102,7 +100,6 @@ mock.module("@xterm/addon-search", () => ({
     clearDecorations() { searches.push({ step: "clear", query: "" }); }
   },
 }));
-mock.module("@xterm/xterm/css/xterm.css", () => ({}));
 if (!("ResizeObserver" in globalThis)) {
   (globalThis as { ResizeObserver?: unknown }).ResizeObserver = class { observe() {} disconnect() {} };
 }

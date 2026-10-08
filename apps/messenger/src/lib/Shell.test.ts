@@ -3,10 +3,9 @@ import { flushSync } from 'svelte';
 import { USER_MEMBER, type ClientEvent, type SpendDetail, type SpendSummary, type TaskTrace } from '@real-bot/protocol';
 import { MessengerRuntime } from './runtime.svelte.ts';
 import { overlayFromFlags, sessionUrl, viewFromUrl } from './session-url.ts';
+import { mockMonacoCss, mockXtermAddons } from './test-mocks.ts';
 // Monaco's Vite-only stylesheet alias is unrelated to the mounted confirmation surfaces.
-mock.module('monaco-editor-css', () => ({}));
-mock.module('monaco-editor/esm/vs/platform/hover/browser/hover.css', () => ({}));
-mock.module('monaco-editor/esm/vs/base/browser/ui/contextview/contextview.css', () => ({}));
+mockMonacoCss();
 // A terminal tab mounts xterm, which draws to a canvas happy-dom does not have.
 mock.module('@xterm/xterm', () => ({
   Terminal: class {
@@ -20,12 +19,8 @@ mock.module('@xterm/xterm', () => ({
     hasSelection() { return false; } getSelection() { return ''; } paste() {}
   },
 }));
-mock.module('@xterm/addon-fit', () => ({ FitAddon: class { fit() {} } }));
-mock.module('@xterm/addon-unicode11', () => ({ Unicode11Addon: class {} }));
-mock.module('@xterm/addon-web-links', () => ({ WebLinksAddon: class {} }));
-mock.module('@xterm/addon-webgl', () => ({ WebglAddon: class { onContextLoss() {} dispose() {} } }));
+mockXtermAddons();
 mock.module('@xterm/addon-search', () => ({ SearchAddon: class { onDidChangeResults() {} findNext() { return false; } findPrevious() { return false; } clearDecorations() {} } }));
-mock.module('@xterm/xterm/css/xterm.css', () => ({}));
 const { default: Shell } = await import('./Shell.svelte');
 import { ApiError } from './api.ts';
 import { applyEvent, emptySnapshot } from './snapshot.ts';
@@ -37,10 +32,10 @@ import { makeBranch, makeLeaf } from './workbench/layout-tree.ts';
 import { paneMin, WB_FALLBACK_MIN, WB_STRIP_PX } from './workbench/pane-mins.ts';
 import { PINNED_STORAGE_KEY } from './sidebar/pinned-sessions.ts';
 import { forgetKeptBoards } from './overlays/task-trace.ts';
+import { settle } from './test-async.ts';
 
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const close of cleanups.splice(0)) close(); });
-const settle = async () => { await new Promise((resolve) => setTimeout(resolve, 0)); flushSync(); };
 function deferred() {
   let resolve!: (value: ApiError | null) => void;
   const promise = new Promise<ApiError | null>((done) => { resolve = done; });

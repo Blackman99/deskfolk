@@ -8,10 +8,9 @@ import { afterEach, beforeEach, expect, mock, test } from "bun:test";
 import { flushSync } from "svelte";
 import { SvelteMap } from "svelte/reactivity";
 import type { Annotation, CreateAnnotationRequest, HtmlElementAnchor } from "@real-bot/protocol";
+import { mockMonacoCss } from "../test-mocks.ts";
 
-mock.module("monaco-editor-css", () => ({}));
-mock.module("monaco-editor/esm/vs/platform/hover/browser/hover.css", () => ({}));
-mock.module("monaco-editor/esm/vs/base/browser/ui/contextview/contextview.css", () => ({}));
+mockMonacoCss();
 const { default: ArtifactPreview } = await import("./ArtifactPreview.svelte");
 import { rememberBlobEtag, rememberBlobOriginalSize } from "../api.ts";
 import { copyFor } from "../copy.ts";

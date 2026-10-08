@@ -7,9 +7,9 @@ import { reactive } from "../test-reactive.svelte.ts";
 import { buttonByText, click, fill, render } from "../test-render.ts";
 import RoutineCard from "./RoutineCard.svelte";
 import { planRoutine, routineDraft, routineError, routineRepeatLabel } from "./routine-form.ts";
+import { settle } from "../test-async.ts";
 
 const t = copyFor("en");
-const settle = async () => { await new Promise((r) => setTimeout(r, 0)); flushSync(); };
 function open(rows = [aRoutine()], stubs: Record<string, unknown> = {}) {
   const runtime = reactive(fakeRuntime({ bots: [aBot()], routines: rows }, stubs));
   return { ...render(RoutineCard, { runtime, bot: aBot(), t }), runtime };

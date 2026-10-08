@@ -13,6 +13,8 @@ import { flushSync } from "svelte";
 import RoutineCard from "./panels/RoutineCard.svelte";
 import { copyFor } from "./copy.ts";
 import { buttonByText, click, fill, render } from "./test-render.ts";
+import { deferred } from "./test-async.ts";
+import { fakeSyncSocket, localApiFetch } from "./test-sync-harness.ts";
 
 const instance = "a".repeat(32);
 const cursor = { event_instance_id: instance, watermark_seq: 0 };
@@ -21,39 +23,15 @@ const OriginalSocket = globalThis.WebSocket;
 const runtimes: MessengerRuntime[] = [];
 const fixtureCloses: Array<() => Promise<void>> = [];
 
-class Socket extends EventTarget {
-  static current: Socket;
-  onopen = null; onmessage = null; onclose = null; onerror = null;
-  constructor(_url: string) {
-    super(); Socket.current = this;
-    queueMicrotask(() => this.dispatchEvent(new Event("open")));
-  }
-  send(raw: string) {
-    expect(JSON.parse(raw).protocol).toBe("sync-v1");
-    queueMicrotask(() => this.frame({ type: "ready", ...cursor }));
-  }
-  frame(frame: SyncFrame) { this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(frame) })); }
-  close() { this.dispatchEvent(new Event("close")); }
-}
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (error: Error) => void;
-  const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
-  return { promise, resolve, reject };
-}
+const Socket = fakeSyncSocket(cursor, { checkProtocol: true });
 
 async function reconnect(runtime: MessengerRuntime, initial: RuntimeSnapshot, detailRead?: () => Promise<SessionSnapshot>) {
   const old = runtime.client;
   Socket.current.close();
-  globalThis.fetch = (async (url: string | URL | Request) => {
-    const path = String(url);
-    if (path === "/__local-api") return Response.json({ port: 17891, token: "fixture" });
-    if (path.endsWith("/v1/health")) return Response.json({ ok: true, name: "real-bot" });
-    if (path.endsWith("/v1/snapshot")) return Response.json(initial);
-    if (path.endsWith("/snapshot") && detailRead) return Response.json(await detailRead());
-    return Response.json({ items: [] });
-  }) as typeof fetch;
+  globalThis.fetch = localApiFetch({
+    snapshot: () => initial,
+    handle: async (path) => (path.endsWith("/snapshot") && detailRead ? await detailRead() : undefined),
+  });
   // Drive the actual discovery/connect path without waiting for the retry timer.
   runtime.start();
   await until(() => runtime.connection === "connected" && runtime.client !== old);
@@ -63,16 +41,12 @@ async function connected(snapshotRead?: () => Promise<RuntimeSnapshot>) {
   const initial: RuntimeSnapshot = { ...emptySnapshot(), ...cursor, bots: [aBot()], sessions: [aDirect()] };
   const requested = deferred<void>();
   globalThis.WebSocket = Socket as unknown as typeof WebSocket;
-  globalThis.fetch = (async (url: string | URL | Request) => {
-    const path = String(url);
-    if (path.endsWith("/__local-api") || path === "/__local-api") return Response.json({ port: 17891, token: "fixture" });
-    if (path.endsWith("/v1/health")) return Response.json({ ok: true, name: "real-bot" });
-    if (path.endsWith("/v1/snapshot")) {
+  globalThis.fetch = localApiFetch({
+    snapshot: async () => {
       requested.resolve();
-      return Response.json(snapshotRead ? await snapshotRead() : initial);
-    }
-    return Response.json({ items: [] });
-  }) as typeof fetch;
+      return snapshotRead ? await snapshotRead() : initial;
+    },
+  });
   const runtime = new MessengerRuntime(); runtimes.push(runtime); runtime.start();
   await requested.promise;
   return { runtime, initial };

@@ -9,6 +9,7 @@ import { buttonByText, click, fill, render } from "../test-render.ts";
 import { updateChecker } from "../update-checker.svelte.ts";
 import { IDLE_INSTALL, type UpdateInstallState } from "../updates.ts";
 import SettingsModal from "./SettingsModal.svelte";
+import { settle } from "../test-async.ts";
 
 const t = copyFor("zh");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -435,10 +436,6 @@ test("a copy that cannot replace itself only offers the browser download", () =>
   tauri.restore();
 });
 
-const settle = async () => {
-  await new Promise((r) => setTimeout(r, 0));
-  flushSync();
-};
 
 function choose(el: Element | null | undefined, value: string): void {
   if (!el) throw new Error("choose: no element");

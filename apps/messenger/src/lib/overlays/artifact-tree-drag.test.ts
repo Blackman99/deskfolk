@@ -5,10 +5,9 @@ import { copyFor } from '../copy.ts';
 import { render } from '../test-render.ts';
 import { workspaceDrag, workspaceDropTarget, type WorkspaceDragItem } from '../workspace-drag.svelte.ts';
 import ArtifactTree from './ArtifactTree.svelte';
+import { mockMonacoCss } from '../test-mocks.ts';
 
-mock.module('monaco-editor-css', () => ({}));
-mock.module('monaco-editor/esm/vs/platform/hover/browser/hover.css', () => ({}));
-mock.module('monaco-editor/esm/vs/base/browser/ui/contextview/contextview.css', () => ({}));
+mockMonacoCss();
 const { default: ArtifactPreview } = await import('./ArtifactPreview.svelte');
 const t = copyFor('zh');
 

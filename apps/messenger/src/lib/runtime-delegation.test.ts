@@ -9,6 +9,7 @@ import { render } from "./test-render.ts";
 import ChatStage from "./chat/ChatStage.svelte";
 import { MessengerRuntime } from "./runtime.svelte.ts";
 import { aDelegation } from "./test-delegations.ts";
+import { fakeSyncSocket, localApiFetch } from "./test-sync-harness.ts";
 
 const runtimes: MessengerRuntime[] = [];
 const originalFetch = globalThis.fetch;
@@ -19,14 +20,7 @@ afterEach(() => {
 });
 
 const cursor = { event_instance_id: "d".repeat(32), watermark_seq: 0 };
-class Socket extends EventTarget {
-  static current: Socket;
-  onopen = null; onmessage = null; onclose = null; onerror = null;
-  constructor(_url: string) { super(); Socket.current = this; queueMicrotask(() => this.dispatchEvent(new Event("open"))); }
-  send(_raw: string) { queueMicrotask(() => this.frame({ type: "ready", ...cursor })); }
-  frame(value: SyncFrame) { this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(value) })); }
-  close() { this.dispatchEvent(new Event("close")); }
-}
+const Socket = fakeSyncSocket(cursor);
 
 async function settled(predicate: () => boolean) {
   for (let i = 0; i < 100; i++) { if (predicate()) return; await Promise.resolve(); }
@@ -39,14 +33,12 @@ async function connected() {
   let read: () => Promise<{ items: DelegationView[] }> = async () => ({ items: [] });
   const requests: Array<{ path: string; method: string }> = [];
   globalThis.WebSocket = Socket as unknown as typeof WebSocket;
-  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-    const path = String(input); requests.push({ path, method: init?.method ?? "GET" });
-    if (path === "/__local-api") return Response.json({ port: 17891, token: "synthetic-fixture" });
-    if (path.endsWith("/v1/health")) return Response.json({ ok: true, name: "real-bot" });
-    if (path.endsWith("/v1/snapshot")) return Response.json(initial);
-    if (path.endsWith("/delegations")) return Response.json(await read());
-    return Response.json({ items: [] });
-  }) as typeof fetch;
+  globalThis.fetch = localApiFetch({
+    token: "synthetic-fixture",
+    snapshot: () => initial,
+    onRequest: (path, init) => { requests.push({ path, method: init?.method ?? "GET" }); },
+    handle: async (path) => (path.endsWith("/delegations") ? await read() : undefined),
+  });
   const runtime = new MessengerRuntime(); runtimes.push(runtime); runtime.start();
   await settled(() => runtime.connection === "connected");
   let seq = 0;

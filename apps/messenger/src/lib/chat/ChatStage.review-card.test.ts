@@ -2,10 +2,9 @@ import { expect, test } from "bun:test";
 import { copyFor } from "../copy.ts";
 import { aBot, aGroup, aMessage, anAttachment, fakeRuntime } from "../test-fixtures.ts";
 import { click, render } from "../test-render.ts";
-import { flushSync } from "svelte";
 import ChatStage from "./ChatStage.svelte";
+import { settle } from "../test-async.ts";
 
-const settle = async () => { await new Promise((resolve) => setTimeout(resolve, 0)); flushSync(); };
 
 test("a card asking you to approve a hand-over shows its files, to open before you decide", () => {
   // 2026-10-03: the card named slogans.md only in its words; the file itself was not there to open.

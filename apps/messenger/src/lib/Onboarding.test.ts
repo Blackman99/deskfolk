@@ -6,11 +6,11 @@ import { copyFor } from './copy.ts';
 import { fakeRuntime } from './test-fixtures.ts';
 import { reactive } from './test-reactive.svelte.ts';
 import { buttonByText, click, fieldErrors, fill, render } from './test-render.ts';
+import { settle } from './test-async.ts';
 
 const t = copyFor('zh');
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const close of cleanups.splice(0)) close(); });
-const settle = async () => { await new Promise((resolve) => setTimeout(resolve, 0)); flushSync(); };
 
 function open(stubs: Record<string, unknown> = {}) {
   const fixture = fakeRuntime({}, {

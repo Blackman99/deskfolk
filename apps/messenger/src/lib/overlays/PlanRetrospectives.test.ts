@@ -6,6 +6,7 @@ import { copyFor } from "../copy.ts";
 import { buttonByText, click, render } from "../test-render.ts";
 import { reactive } from "../test-reactive.svelte.ts";
 import { changedLines, reasonText } from "./plan-retrospectives.ts";
+import { settleTimers as settle } from "../test-async.ts";
 
 const t = copyFor("zh");
 const bot = { id: "bot-1", name: "视频导演" } as Bot;
@@ -70,7 +71,6 @@ function open(detail: TaskDetail, answer?: (id: string, index: number) => Promis
   return { ...render(PlanRetrospectives, props as never), props, calls, saved };
 }
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 test("a retrospective reads as what tripped the Bot up, what made you send work back, what to keep, and each change it made", () => {
   const view = open(aDetail([aRetrospective()]));

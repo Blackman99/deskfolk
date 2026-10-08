@@ -5,6 +5,7 @@ import PlanRequirements from "./PlanRequirements.svelte";
 import { copyFor } from "../copy.ts";
 import { buttonByText, click, render } from "../test-render.ts";
 import { reactive } from "../test-reactive.svelte.ts";
+import { settleTimers as settle } from "../test-async.ts";
 
 const t = copyFor("zh");
 
@@ -78,9 +79,6 @@ function open(detail: TaskDetail, answer?: (id: string, body: RequirementActionR
   return { ...view, props, calls, saved, jumps };
 }
 
-async function settle(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
-}
 
 test("the plan's own entries, what it inherits from EP01, what waits for you and the old rules, each with its words and counts", () => {
   const view = open(

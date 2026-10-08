@@ -6,6 +6,7 @@ import { copyFor } from "../copy.ts";
 import { buttonByText, click, fill, render } from "../test-render.ts";
 import { reactive } from "../test-reactive.svelte.ts";
 import { specWithLines } from "./plan-board.ts";
+import { settle } from "../test-async.ts";
 
 const t = copyFor("zh");
 
@@ -121,10 +122,6 @@ async function until(host: HTMLElement, selector: string): Promise<Element> {
   throw new Error(`never saw ${selector}`);
 }
 
-async function settle(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  flushSync();
-}
 
 function listBlock(host: HTMLElement, label: string): HTMLElement {
   const found = [...host.querySelectorAll<HTMLElement>(".plan-spec-list")].find(

@@ -2,13 +2,8 @@ import { afterEach, expect, test } from "bun:test";
 import type { SearchHit } from "@real-bot/protocol";
 import type { MessengerApi } from "../messenger-api.ts";
 import { MessengerRuntime } from "../runtime.svelte.ts";
+import { deferred } from "../test-async.ts";
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (error: Error) => void;
-  const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
-  return { promise, resolve, reject };
-}
 const runtimes: MessengerRuntime[] = [];
 afterEach(() => { for (const rt of runtimes.splice(0)) rt.destroy(); });
 const hit = (id: string): SearchHit => ({ kind: "session", id, snippet: id });
