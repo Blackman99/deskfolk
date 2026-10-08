@@ -6,7 +6,9 @@ import { isoNow } from "../ids";
 import { Store } from ".";
 import { ENGINE_LEVELS } from "./schema-gate";
 import { createHold, liftHold } from "./holds";
-import { checkLines, setTicketStage, settlePlanStage, superviseSubmissions, UNREVIEWED_AFTER_MS } from "./submissions";
+import { checkLines } from "./submission-rows";
+import { setTicketStage, settlePlanStage } from "./ticket-stage";
+import { superviseSubmissions, UNREVIEWED_AFTER_MS } from "./submissions";
 
 const stores: Store[] = [];
 afterEach(() => { for (const store of stores.splice(0)) store.close(); });

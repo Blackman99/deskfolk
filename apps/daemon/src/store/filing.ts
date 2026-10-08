@@ -16,7 +16,7 @@ import { recordWorkEvent } from "./work-events";
 import { heldSql } from "./holds";
 import { externalJobsReadable } from "./external-jobs-migration";
 import { parsePlanSpec } from "./plan-shape";
-import { STAGE_SQL } from "./submissions";
+import { STAGE_SQL } from "./ticket-stage";
 
 export type Filing = { taskId: string; ticketId: string | null };
 export type FilingTarget = { taskId: string; ticketId?: string | null; partKey?: string | null };

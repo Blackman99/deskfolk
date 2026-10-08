@@ -18,7 +18,7 @@ import { botLineByWords } from "../line-reading";
 import { parseMentions } from "../mentions";
 import { takeCodePoints } from "../text";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
-import { STAGE_SQL } from "./submissions";
+import { STAGE_SQL } from "./ticket-stage";
 
 export type EndReason = "done" | "answered" | "nothing_new" | "blocked" | "gave_up";
 export type FinishWorkInput = {

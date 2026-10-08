@@ -17,7 +17,7 @@ import { getMessage, insertMessage, setMessageControl } from "./messages";
 import { updateNotificationActionState } from "./notifications";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import { settingsCached } from "./settings";
-import { requiredItems } from "./submissions";
+import { requiredItems } from "./submission-evidence";
 import type { StoreContext } from "./shared";
 import { recordWorkEvent } from "./work-events";
 

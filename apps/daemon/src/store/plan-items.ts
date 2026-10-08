@@ -15,7 +15,7 @@ import { allJobConversations, confirmedLeadsOf, eligibleInJob, jobConversations 
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import type { StoreContext } from "./shared";
 import { createTicket, getTicket, listTickets, patchTicket } from "./tickets";
-import { setTicketStage } from "./submissions";
+import { setTicketStage } from "./ticket-stage";
 import { recordWorkEvent } from "./work-events";
 import { closeWorkItemIfIdle, findOrCreateWorkItem } from "./work-items";
 import { layoutMissing, planScale, sampleOf, syncStandardChecks, waitOnSample } from "./large-jobs";

@@ -1,7 +1,7 @@
 /** Manual repair choices are not a Bot's fixed candidate snapshot and may include dormant work. */
 import { HttpError } from "../errors";
 import type { StoreContext } from "./shared";
-import { STAGE_SQL } from "./submissions";
+import { STAGE_SQL } from "./ticket-stage";
 
 export function attributionOptions(ctx: Pick<StoreContext, "db">, messageId: string): {
   items: Array<{ id: string; title: string; tickets: Array<{ id: string; title: string }> }>;
