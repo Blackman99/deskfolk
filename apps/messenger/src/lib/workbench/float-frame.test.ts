@@ -48,6 +48,37 @@ test("a corner pulled past the minimum stops instead of sliding the pane away", 
   expect(squeezed.y + squeezed.height).toBe(500);
 });
 
+test("pulling an edge moves that side only, and leaves the other axis alone", () => {
+  const frame = { x: 200, y: 200, width: 400, height: 300 };
+  // The pointer drifting sideways along an east edge does not move it up or down.
+  expect(resizeFrame(frame, "e", 50, 30, traceMin, viewport)).toEqual({ x: 200, y: 200, width: 450, height: 300 });
+  expect(resizeFrame(frame, "s", 30, 40, traceMin, viewport)).toEqual({ x: 200, y: 200, width: 400, height: 340 });
+
+  const west = resizeFrame(frame, "w", -50, 30, traceMin, viewport);
+  expect(west).toEqual({ x: 150, y: 200, width: 450, height: 300 });
+  expect(west.x + west.width).toBe(600);
+
+  const north = resizeFrame(frame, "n", 30, -40, traceMin, viewport);
+  expect(north).toEqual({ x: 200, y: 160, width: 400, height: 340 });
+  expect(north.y + north.height).toBe(500);
+});
+
+test("an edge pulled past the minimum stops, with the side across from it in place", () => {
+  const frame = { x: 200, y: 200, width: 400, height: 300 };
+  const west = resizeFrame(frame, "w", 5000, 0, traceMin, viewport);
+  expect(west.width).toBe(300);
+  expect(west.x + west.width).toBe(600);
+  const north = resizeFrame(frame, "n", 0, 5000, traceMin, viewport);
+  expect(north.height).toBe(280);
+  expect(north.y + north.height).toBe(500);
+});
+
+test("an edge pulled past the window stops at the window", () => {
+  const frame = { x: 200, y: 200, width: 400, height: 300 };
+  expect(resizeFrame(frame, "e", 5000, 0, traceMin, viewport)).toEqual({ x: 200, y: 200, width: 992, height: 300 });
+  expect(resizeFrame(frame, "n", 0, -5000, traceMin, viewport)).toEqual({ x: 200, y: 8, width: 400, height: 492 });
+});
+
 test("moving keeps the pane on screen", () => {
   const frame = { x: 200, y: 200, width: 400, height: 300 };
   expect(moveFrame(frame, 60, -40, traceMin, viewport)).toEqual({ x: 260, y: 160, width: 400, height: 300 });

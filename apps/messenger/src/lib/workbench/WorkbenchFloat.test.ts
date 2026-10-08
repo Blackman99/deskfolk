@@ -20,6 +20,7 @@ const viewport = { x: 0, y: 0, width: 1000, height: 800 };
 
 function mount(placed: { frame?: FloatFrame; viewport?: typeof viewport } = {}) {
   const frames: FloatFrame[] = [];
+  const docked: string[] = [];
   const { host, close } = render(WorkbenchFloat as never, {
     leaf,
     frame: placed.frame ?? frame,
@@ -34,8 +35,9 @@ function mount(placed: { frame?: FloatFrame; viewport?: typeof viewport } = {}) 
     onFocus: () => {},
     onActivate: () => {},
     onCloseTab: () => {},
+    onDock: (id: string) => { docked.push(id); },
   } as never);
-  return { host, close, frames, pane: host.querySelector(".wb-float") as HTMLElement };
+  return { host, close, frames, docked, pane: host.querySelector(".wb-float") as HTMLElement };
 }
 
 function pointer(target: Element, type: string, x: number, y: number): void {
@@ -46,7 +48,7 @@ function pointer(target: Element, type: string, x: number, y: number): void {
 test("moving a floating pane follows the pointer and commits when it is released", () => {
   const { host, close, frames, pane } = mount();
   try {
-    const bar = host.querySelector(".wb-float-bar") as HTMLElement;
+    const bar = host.querySelector(".wb-strip") as HTMLElement;
     pointer(bar, "pointerdown", 10, 10);
     expect(frames).toHaveLength(0);
     pointer(bar, "pointermove", 30, 25);
@@ -60,10 +62,40 @@ test("moving a floating pane follows the pointer and commits when it is released
   }
 });
 
+test("a press on a tab drags the tab, not the pane", () => {
+  const { host, close, frames, pane } = mount();
+  try {
+    const tab = host.querySelector(".wb-tab-button") as HTMLElement;
+    pointer(tab, "pointerdown", 10, 10);
+    pointer(tab, "pointermove", 60, 40);
+    pointer(tab, "pointerup", 60, 40);
+    expect(pane.style.transform).toBe("");
+    expect(frames).toHaveLength(0);
+  } finally {
+    close();
+  }
+});
+
+test("a double click on the strip docks the pane, and on a tab it does not", () => {
+  const { host, close, docked } = mount();
+  try {
+    const dbl = (el: Element) => {
+      el.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+      flushSync();
+    };
+    dbl(host.querySelector(".wb-tab-button")!);
+    expect(docked).toHaveLength(0);
+    dbl(host.querySelector(".wb-strip")!);
+    expect(docked).toEqual(["f"]);
+  } finally {
+    close();
+  }
+});
+
 test("a press on the title bar that does not move does not write the layout", () => {
   const { host, close, frames } = mount();
   try {
-    const bar = host.querySelector(".wb-float-bar") as HTMLElement;
+    const bar = host.querySelector(".wb-strip") as HTMLElement;
     pointer(bar, "pointerdown", 10, 10);
     pointer(bar, "pointerup", 10, 10);
     expect(frames).toHaveLength(0);
@@ -75,7 +107,7 @@ test("a press on the title bar that does not move does not write the layout", ()
 test("pulling a corner resizes on screen and commits when the pointer is released", () => {
   const { host, close, frames, pane } = mount();
   try {
-    const corner = host.querySelector(".wb-float-corner.is-se") as HTMLElement;
+    const corner = host.querySelector(".wb-float-grip.is-se") as HTMLElement;
     pointer(corner, "pointerdown", 0, 0);
     pointer(corner, "pointermove", 40, 20);
     expect(frames).toHaveLength(0);
@@ -83,6 +115,45 @@ test("pulling a corner resizes on screen and commits when the pointer is release
     expect(pane.style.height).toBe("320px");
     pointer(corner, "pointerup", 40, 20);
     expect(frames).toEqual([{ x: 30, y: 40, width: 440, height: 320 }]);
+  } finally {
+    close();
+  }
+});
+
+test("every edge and every corner has a grip", () => {
+  const { host, close } = mount();
+  try {
+    const grips = [...host.querySelectorAll<HTMLElement>(".wb-float-grip")].map((grip) => grip.className.match(/is-(\w+)/)?.[1]);
+    expect(grips.sort()).toEqual(["e", "n", "ne", "nw", "s", "se", "sw", "w"]);
+  } finally {
+    close();
+  }
+});
+
+test("pulling the west edge keeps the east edge where it was", () => {
+  const { host, close, frames, pane } = mount();
+  try {
+    const west = host.querySelector(".wb-float-grip.is-w") as HTMLElement;
+    pointer(west, "pointerdown", 0, 0);
+    pointer(west, "pointermove", -20, 25);
+    expect(pane.style.left).toBe("10px");
+    expect(pane.style.width).toBe("420px");
+    expect(pane.style.height).toBe("300px");
+    pointer(west, "pointerup", -20, 25);
+    expect(frames).toEqual([{ x: 10, y: 40, width: 420, height: 300 }]);
+  } finally {
+    close();
+  }
+});
+
+test("pulling the north edge moves the top only", () => {
+  const { host, close, frames } = mount();
+  try {
+    const north = host.querySelector(".wb-float-grip.is-n") as HTMLElement;
+    pointer(north, "pointerdown", 0, 0);
+    pointer(north, "pointermove", 15, 20);
+    pointer(north, "pointerup", 15, 20);
+    expect(frames).toEqual([{ x: 30, y: 60, width: 400, height: 280 }]);
   } finally {
     close();
   }
@@ -97,7 +168,7 @@ test("a pane left past the edge of a narrower workbench is drawn inside it, and 
   });
   try {
     expect(pane.style.left).toBe("492px");
-    const bar = host.querySelector(".wb-float-bar") as HTMLElement;
+    const bar = host.querySelector(".wb-strip") as HTMLElement;
     pointer(bar, "pointerdown", 10, 10);
     pointer(bar, "pointermove", 0, 10);
     expect(pane.style.transform).toBe("translate3d(-10px, 0px, 0)");

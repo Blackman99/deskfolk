@@ -22,6 +22,8 @@
 		onCloseTab: (leafId: string, tabId: string) => void;
 		/** What a tab's ⋯ offers to close: it, the others, those to its right, all of them. */
 		tabClosing?: (leafId: string, tabId: string) => TabClosing | null;
+		/** What a tab's ⋯ offers for floating it on its own; null where that would change nothing. */
+		tabFloating?: (leafId: string, tabId: string) => (() => void) | null;
 		onClosePane?: (leafId: string) => void;
 		/** The tab being dragged right now, if it is one of these. It stays put, faded. */
 		draggedTab?: string | null;
@@ -53,6 +55,7 @@
 		onActivate,
 		onCloseTab,
 		tabClosing,
+		tabFloating,
 		onClosePane,
 		draggedTab = null,
 		onTabPointerDown,
@@ -450,6 +453,7 @@
 			label={t.pane.tabActions}
 			actions={tabActions(leaf.id, moreTab)}
 			closeTabs={tabClosing?.(leaf.id, moreTab.id) ?? null}
+			onFloat={tabFloating?.(leaf.id, moreTab.id) ?? undefined}
 			anchor={open.anchor}
 			onClose={() => (more = null)}
 		/>

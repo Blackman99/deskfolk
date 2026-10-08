@@ -665,7 +665,8 @@ const zh = {
     closeAllTabs: "关闭所有标签页",
     /** The ⋯ on a tab, and the menu it opens: what the tab offers for what it shows. */
     tabActions: "更多操作",
-    float: "浮动这个窗格",
+    /** One tab out into a floating pane of its own; the pane's other tabs stay where they are. */
+    floatTab: "浮动这个标签页",
     dock: "停靠回布局",
     equalise: "平分",
     reset: "重置布局",
@@ -2726,7 +2727,7 @@ const en: CopyShape<typeof zh> = {
     closeTabsRight: "Close tabs to the right",
     closeAllTabs: "Close all tabs",
     tabActions: "More actions",
-    float: "Float this pane",
+    floatTab: "Float this tab",
     dock: "Dock back into the layout",
     equalise: "Even out",
     reset: "Reset layout",

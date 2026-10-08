@@ -83,7 +83,7 @@ for (const via of ['button', 'menu']) {
     try {
       click(via === 'button'
         ? host.querySelector('[data-leaf="float"] .wb-pane-close')
-        : rightClick(host.querySelector('[data-float="float"] .wb-float-bar')).querySelector('[data-close-pane]'));
+        : rightClick(host.querySelector('[data-float="float"] .wb-strip')).querySelector('[data-close-pane]'));
       expect(state.layout.floating).toHaveLength(0);
       expect(state.layout.root.id).toBe('kept');
       expect(state.layout.focus.leafId).toBe('kept');

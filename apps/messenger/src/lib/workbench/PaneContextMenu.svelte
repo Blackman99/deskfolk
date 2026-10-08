@@ -29,6 +29,11 @@
 		/** Left out, the menu offers no splits: a tab's ⋯ holds only what the tab offers and its closing. */
 		onSplit?: (dir: Direction) => void;
 		onDock?: () => void;
+		/**
+		 * Lifts the tab — the one right-clicked, or the one showing — out into a floating pane of its
+		 * own. Left out, it is not offered.
+		 */
+		onFloat?: () => void;
 		onClosePane?: () => void;
 		/**
 		 * The button that opened the menu. A press on it is left to the button, which closes the
@@ -51,6 +56,7 @@
 		edit = null,
 		onSplit,
 		onDock,
+		onFloat,
 		onClosePane,
 		anchor = null,
 		onClose
@@ -315,9 +321,22 @@
 			<span class="wb-context-label">{t.pane.dock}</span>
 		</button>
 	{/if}
+	{#if onFloat}
+		{@const float = onFloat}
+		{#if actions.length > 0 || closeTabs || edit || onSplit || (floating && onDock)}
+			<div class="wb-context-divider" role="separator"></div>
+		{/if}
+		<button type="button" class="wb-context-item" role="menuitem" data-float-tab onclick={() => pick(float)}>
+			<svg class="wb-context-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+				<rect x="3.5" y="4.5" width="17" height="15" rx="2" opacity="0.45"></rect>
+				<rect x="8" y="8" width="10" height="8" rx="1.5" fill="currentColor"></rect>
+			</svg>
+			<span class="wb-context-label">{t.pane.floatTab}</span>
+		</button>
+	{/if}
 	{#if onClosePane}
 		{@const closePane = onClosePane}
-		{#if actions.length > 0 || closeTabs || edit || onSplit || (floating && onDock)}
+		{#if actions.length > 0 || closeTabs || edit || onSplit || (floating && onDock) || onFloat}
 			<div class="wb-context-divider" role="separator"></div>
 		{/if}
 		<button type="button" class="wb-context-item" role="menuitem" data-close-pane onclick={() => pick(closePane)}>

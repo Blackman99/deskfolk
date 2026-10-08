@@ -52,7 +52,7 @@
 	} from './tab-drag.ts';
 	import { WB_FALLBACK_MIN } from './pane-mins.ts';
 	import { SPLIT_TOWARDS, applyCommand, isTypingTarget } from './workbench-commands.ts';
-	import type { FloatFrame } from './layout-types.ts';
+	import type { FloatFrame, LeafNode, PaneMin } from './layout-types.ts';
 	import WorkbenchBranch from './WorkbenchBranch.svelte';
 	import WorkbenchFloat from './WorkbenchFloat.svelte';
 	import WorkbenchLeaf from './WorkbenchLeaf.svelte';
@@ -401,6 +401,9 @@
 			if (!current.started) return;
 			const zone = endEvent.type === 'pointercancel' ? ({ kind: 'none' } as DropZone) : dropZone;
 			const sourceRect = geometry?.leaves.get(current.leafId);
+			const moved = leafById(layout, current.leafId);
+			const tabId = current.kind === 'tab' ? current.tabId : null;
+			const floatMin = tabId ? mins(moved?.tabs.find((tab) => tab.id === tabId) ?? null) : minOf(moved);
 			paneDrag = null;
 			dropZone = { kind: 'none' };
 			tabRows = new Map();
@@ -410,7 +413,7 @@
 			const next = applyDrop(layout, current, zone, {
 				node: freshId,
 				viewport,
-				floatMin: WB_FALLBACK_MIN,
+				floatMin,
 				sourceRect
 			});
 			if (next !== layout) onLayout(next);
@@ -467,6 +470,44 @@
 			if (row) rows.set(id, row);
 		}
 		return rows;
+	}
+
+	/** A pane's floor is what it is showing, floating or not: a flow board keeps room for its cards. */
+	function minOf(leaf: LeafNode | null): PaneMin {
+		return mins(leaf?.tabs.find((tab) => tab.id === leaf.activeTabId) ?? null);
+	}
+
+	/**
+	 * Lift one tab out into a floating pane of its own — what ⌥-dragging it out does, without the
+	 * drag: a little smaller than the pane it came from, centred on it, so it visibly comes away.
+	 * The pane's other tabs stay where they are; a pane left with none closes up, or, as the only
+	 * tiled one, stays behind empty.
+	 */
+	function floatTab(leafId: string, tabId: string): void {
+		const tab = leafById(layout, leafId)?.tabs.find((candidate) => candidate.id === tabId);
+		const source =
+			geometry?.leaves.get(leafId) ?? layout.floating.find((pane) => pane.leaf.id === leafId)?.frame;
+		if (!tab || !source) return;
+		const centre = { x: source.x + source.width / 2, y: source.y + source.height / 2 };
+		const next = applyDrop(
+			layout,
+			beginTabDrag(leafId, tabId, centre),
+			{ kind: 'float', point: centre },
+			{ node: freshId, viewport, floatMin: mins(tab), sourceRect: source }
+		);
+		if (next !== layout) onLayout(next);
+	}
+
+	/**
+	 * What floating a tab does, or null where it would change nothing: the only tab of a pane that
+	 * already floats is already in a floating pane of its own.
+	 */
+	function tabFloating(leafId: string, tabId: string | null): (() => void) | null {
+		const leaf = tabId ? leafById(layout, leafId) : null;
+		if (!leaf || !tabId || !leaf.tabs.some((tab) => tab.id === tabId)) return null;
+		const floating = layout.floating.some((pane) => pane.leaf.id === leafId);
+		if (floating && leaf.tabs.length === 1) return null;
+		return () => floatTab(leafId, tabId);
 	}
 
 	function onFloatFrame(leafId: string, frame: FloatFrame): void {
@@ -682,6 +723,7 @@
 			onActivate={(leafId, tabId) => onActivate?.(leafId, tabId)}
 			onCloseTab={(leafId, tabId) => onCloseTab?.(leafId, tabId)}
 			tabClosing={closingOf}
+			{tabFloating}
 			onClosePane={closable(layout.root.id) ? closePane : undefined}
 			onSashPointerDown={startSash}
 			{draggingSash}
@@ -704,7 +746,7 @@
 				frame={pane.frame}
 				z={layout.floating.indexOf(pane)}
 				focused={pane.leaf.id === layout.focus.leafId}
-				min={WB_FALLBACK_MIN}
+				min={minOf(pane.leaf)}
 				{viewport}
 				{t}
 				{tabBody}
@@ -714,6 +756,7 @@
 				onActivate={(leafId, tabId) => onActivate?.(leafId, tabId)}
 				onCloseTab={(leafId, tabId) => onCloseTab?.(leafId, tabId)}
 				tabClosing={closingOf}
+				{tabFloating}
 				onClosePane={closePane}
 				{draggedTab}
 				onTabPointerDown={(event, leafId, tabId) =>
@@ -777,6 +820,7 @@
 					edit={open.edit ? { canCopy: open.canCopy, onCopy: open.edit.copy, onPaste: open.edit.paste } : null}
 					onSplit={(dir) => splitTowards(open.leafId, dir)}
 					onDock={() => onDock(open.leafId)}
+					onFloat={tabFloating(open.leafId, open.tabId ?? leafById(layout, open.leafId)?.activeTabId ?? null) ?? undefined}
 					onClosePane={() => closePane(open.leafId)}
 					onClose={() => (paneMenu = null)}
 				/>

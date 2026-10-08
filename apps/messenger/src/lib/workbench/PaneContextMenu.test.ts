@@ -83,7 +83,7 @@ test("right-clicking anywhere in a pane offers a split in each of the four direc
     expect(menu()?.parentElement).toBe(document.body);
     const labels = [...menu()!.querySelectorAll('[role="menuitem"]')].map((row) =>
       row.querySelector(".wb-context-label")?.textContent);
-    expect(labels).toEqual([t.pane.splitUp, t.pane.splitDown, t.pane.splitLeft, t.pane.splitRight, t.pane.close]);
+    expect(labels).toEqual([t.pane.splitUp, t.pane.splitDown, t.pane.splitLeft, t.pane.splitRight, t.pane.floatTab, t.pane.close]);
     for (const dir of ["up", "down", "left", "right"]) expect(item(dir)?.disabled).toBe(false);
     expect(menu()!.style.left).toBe("120px");
     expect(menu()!.style.top).toBe("40px");
@@ -243,7 +243,7 @@ test("inside a terminal, Copy and Paste lead the menu and act on that terminal",
     rightClick(host.querySelector(".xterm-screen"));
     const labels = [...menu()!.querySelectorAll('[role="menuitem"]')].map((row) =>
       row.querySelector(".wb-context-label")?.textContent);
-    expect(labels).toEqual([t.pane.copy, t.pane.paste, t.pane.splitUp, t.pane.splitDown, t.pane.splitLeft, t.pane.splitRight, t.pane.close]);
+    expect(labels).toEqual([t.pane.copy, t.pane.paste, t.pane.splitUp, t.pane.splitDown, t.pane.splitLeft, t.pane.splitRight, t.pane.floatTab, t.pane.close]);
     // Nothing selected: Copy is there but off, and the keyboard lands on Paste.
     const copy = () => menu()!.querySelector<HTMLButtonElement>('[data-edit="copy"]')!;
     const paste = () => menu()!.querySelector<HTMLButtonElement>('[data-edit="paste"]')!;
@@ -320,7 +320,7 @@ test("a floating pane is offered docking, since it does not divide in place", ()
   };
   const { host, close, state } = mountSized(layout);
   try {
-    rightClick(host.querySelector('[data-float="f"] .wb-float-bar'));
+    rightClick(host.querySelector('[data-float="f"] .wb-strip'));
     for (const dir of ["up", "down", "left", "right"]) {
       expect(item(dir)?.disabled).toBe(true);
       expect(item(dir)?.title).toBe(t.pane.dockToSplit);
@@ -328,8 +328,98 @@ test("a floating pane is offered docking, since it does not divide in place", ()
     click(menu()!.querySelector("[data-dock]"));
     expect(menu()).toBeNull();
     expect(state.layout.floating).toHaveLength(0);
-    // Docked the way a double click on its bar docks it: its tab is back in the tiled tree.
+    // Docked the way a double click on its strip docks it: its tab is back in the tiled tree.
     expect(tiledLeaves(state.layout.root).flatMap((leaf) => leaf.tabs.map((tab) => tab.id))).toContain("t2");
+  } finally {
+    close();
+  }
+});
+
+const floatItem = () => menu()?.querySelector<HTMLButtonElement>("[data-float-tab]") ?? null;
+const floatingTabs = (layout: WorkbenchLayout) => layout.floating.map((pane) => pane.leaf.tabs.map((tab) => tab.id));
+
+test("right-clicking a tab floats that tab alone; the pane keeps its other tabs", () => {
+  const layout = layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", [aTab("t1")]),
+    makeLeaf("b", [aTab("t2"), aTab("t3")]),
+  ]));
+  const { host, close, state } = mountSized(layout);
+  try {
+    rightClick(host.querySelector('[data-tab="t3"] [role="tab"]'));
+    expect(floatItem()?.textContent).toContain(t.pane.floatTab);
+    click(floatItem());
+    expect(menu()).toBeNull();
+    expect(floatingTabs(state.layout)).toEqual([["t3"]]);
+    expect(state.layout.focus).toEqual({ zone: "floating", leafId: state.layout.floating[0]!.leaf.id });
+    expect(tiledLeaves(state.layout.root).map((leaf) => leaf.tabs.map((tab) => tab.id))).toEqual([["t1"], ["t2"]]);
+    // From the right-hand column of a 1200-wide workbench: 596 across, 80% of it centred on it.
+    const frame = state.layout.floating[0]!.frame;
+    expect(frame.width).toBe(Math.round(596 * 0.8));
+    expect(frame.height).toBe(640);
+    expect(Math.abs(frame.x + frame.width / 2 - (604 + 596 / 2))).toBeLessThanOrEqual(1);
+    expect(host.querySelector('.wb-float [data-body="t3"]')).not.toBeNull();
+  } finally {
+    close();
+  }
+});
+
+test("right-clicking a pane's content floats the tab it is showing", () => {
+  const leaf = makeLeaf("a", [aTab("t1"), aTab("t2")]);
+  const { host, close, state } = mountSized(layoutOf({ ...leaf, activeTabId: "t2" }));
+  try {
+    rightClick(host.querySelector('[data-body="t2"]'));
+    click(floatItem());
+    expect(floatingTabs(state.layout)).toEqual([["t2"]]);
+    expect(tiledLeaves(state.layout.root)[0]!.tabs.map((tab) => tab.id)).toEqual(["t1"]);
+  } finally {
+    close();
+  }
+});
+
+test("the only tab of the only pane floats too, with an empty pane left under it", () => {
+  const { host, close, state } = mountSized(layoutOf(makeLeaf("a", [aTab("t1")])));
+  try {
+    rightClick(host.querySelector('[data-body="t1"]'));
+    click(floatItem());
+    expect(floatingTabs(state.layout)).toEqual([["t1"]]);
+    expect(state.layout.root.type).toBe("leaf");
+    expect(tiledLeaves(state.layout.root)[0]!.tabs).toHaveLength(0);
+  } finally {
+    close();
+  }
+});
+
+test("a floating pane's tab floats on its own only when the pane holds others", () => {
+  const layout: WorkbenchLayout = {
+    version: 1,
+    root: makeLeaf("a", [aTab("t1")]),
+    floating: [
+      { leaf: makeLeaf("one", [aTab("t2")]), frame: { x: 20, y: 20, width: 300, height: 200 } },
+      { leaf: makeLeaf("two", [aTab("t3"), aTab("t4")]), frame: { x: 400, y: 20, width: 300, height: 200 } },
+    ],
+    focus: { zone: "floating", leafId: "two" },
+  };
+  const { host, close, state } = mountSized(layout);
+  try {
+    // Already a floating pane of its own: there is nothing to lift it out of.
+    rightClick(host.querySelector('[data-tab="t2"] [role="tab"]'));
+    expect(floatItem()).toBeNull();
+    press(item("up"), "Escape");
+    rightClick(host.querySelector('[data-tab="t4"] [role="tab"]'));
+    click(floatItem());
+    expect(floatingTabs(state.layout)).toEqual([["t2"], ["t3"], ["t4"]]);
+  } finally {
+    close();
+  }
+});
+
+test("an empty pane is not offered floating: it has no tab to lift out", () => {
+  const layout = layoutOf(makeBranch("r", "row", [makeLeaf("a", [aTab("t1")]), makeLeaf("b", [])]));
+  const { host, close } = mountSized(layout);
+  try {
+    rightClick(host.querySelector('[data-leaf="b"] .wb-body'));
+    expect(menu()).not.toBeNull();
+    expect(floatItem()).toBeNull();
   } finally {
     close();
   }
@@ -372,11 +462,14 @@ test("arrow keys walk the directions that can be picked", async () => {
   try {
     rightClick(host.querySelector(".wb-strip"));
     await Promise.resolve();
-    // Disabled splits are skipped; closing stays available.
+    // Disabled splits are skipped; floating and closing stay available.
     expect(document.activeElement).toBe(item("up"));
     press(item("up"), "ArrowDown");
     expect(document.activeElement).toBe(item("down"));
     press(item("down"), "ArrowDown");
+    const floatTab = menu()!.querySelector("[data-float-tab]");
+    expect(document.activeElement).toBe(floatTab);
+    press(floatTab, "ArrowDown");
     const closePane = menu()!.querySelector("[data-close-pane]");
     expect(document.activeElement).toBe(closePane);
     press(closePane, "ArrowDown");
@@ -411,10 +504,11 @@ test("right-clicking a tab puts what it offers above the splits", () => {
       t.pane.splitDown,
       t.pane.splitLeft,
       t.pane.splitRight,
+      t.pane.floatTab,
       t.pane.close,
     ]);
     expect(rows[0]!.classList.contains("is-active")).toBe(true);
-    expect(menu()!.querySelectorAll('[role="separator"]')).toHaveLength(3);
+    expect(menu()!.querySelectorAll('[role="separator"]')).toHaveLength(4);
     click(menu()!.querySelector('[data-action="settings"]'));
     expect(ran).toEqual(["a/t1"]);
     expect(menu()).toBeNull();
@@ -422,13 +516,26 @@ test("right-clicking a tab puts what it offers above the splits", () => {
     // A tab with nothing to offer still closes; the body beside it keeps the plain menu.
     rightClick(host.querySelector('[data-tab="t2"] [role="tab"]'));
     expect(menu()!.querySelector("[data-action]")).toBeNull();
-    expect(menu()!.querySelectorAll('[role="menuitem"]')).toHaveLength(9);
+    expect(menu()!.querySelectorAll('[role="menuitem"]')).toHaveLength(10);
     press(item("up"), "Escape");
     rightClick(host.querySelector('[data-body="t1"]'));
     expect(menu()!.querySelector("[data-action]")).toBeNull();
     expect(menu()!.querySelector("[data-close-tabs]")).toBeNull();
-    expect(menu()!.querySelectorAll('[role="menuitem"]')).toHaveLength(5);
+    expect(menu()!.querySelectorAll('[role="menuitem"]')).toHaveLength(6);
     press(item("up"), "Escape");
+  } finally {
+    close();
+  }
+});
+
+test("a tab's ⋯ floats that tab on its own", () => {
+  const { host, close, state } = mountSized(
+    layoutOf(makeLeaf("a", [aTab("t1"), aTab("t2")])), undefined, undefined, offering([]));
+  try {
+    click(host.querySelector('[data-tab="t1"] > .wb-tab-more'));
+    click(floatItem());
+    expect(floatingTabs(state.layout)).toEqual([["t1"]]);
+    expect(tiledLeaves(state.layout.root)[0]!.tabs.map((tab) => tab.id)).toEqual(["t2"]);
   } finally {
     close();
   }
@@ -451,10 +558,11 @@ test("a tab's ⋯ holds what the tab offers and its closing, never the splits; a
     expect(menu()?.parentElement).toBe(document.body);
     expect(menu()!.getAttribute("aria-label")).toBe(t.pane.tabActions);
     const rows = [...menu()!.querySelectorAll('[role="menuitem"]')];
-    expect(rows.map((row) => row.getAttribute("data-action") ?? row.getAttribute("data-close-tabs")))
-      .toEqual(["settings", "tab", "others", "right", "all"]);
+    expect(rows.map((row) =>
+      row.getAttribute("data-action") ?? row.getAttribute("data-close-tabs") ?? (row.hasAttribute("data-float-tab") ? "float" : null)))
+      .toEqual(["settings", "tab", "others", "right", "all", "float"]);
     expect(menu()!.querySelector("[data-split]")).toBeNull();
-    expect(menu()!.querySelectorAll('[role="separator"]')).toHaveLength(1);
+    expect(menu()!.querySelectorAll('[role="separator"]')).toHaveLength(2);
 
     // The press that lands on the ⋯ is the ⋯'s: it closes, rather than closing and reopening.
     more!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));

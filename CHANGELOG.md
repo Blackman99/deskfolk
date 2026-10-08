@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Any tab can float on its own; a floating pane moves by its tab bar and resizes from every edge
+
+- A pane's right-click menu and a tab's ⋯ now offer Float this tab: the tab right-clicked (on the content, the one showing) lifts out into a floating pane of its own, where it was and a little smaller, while the pane's other tabs stay put. A pane left with no tabs closes up and the others fill in; the only tiled pane stays behind empty. A tab in a floating pane that holds others can be floated on its own too. Before, the only way was dragging a tab out with ⌥ held; the menu had no entry.
+- A floating pane now handles like the original flow board window: press the bare part of its tab bar and drag to move it (with a grab cursor), instead of an invisible 10-pixel strip along the top. Tabs still drag as tabs, and a double click on the bare part docks it. However many tabs it holds, some of the bar stays bare to take hold of.
+- Every edge and every corner resizes it, not just the corners. The side across from the one you pull stays put; the grips straddle the edge, half outside, so they do not take the content's scrollbar. The smallest it goes is what it is showing needs (the flow board keeps 300 × 280, a conversation 360 across) instead of one 240 × 160 for everything. The corners and shadow are back to that version's large radius and shadow.
+
 ### The two teammates in the Deskfolk mark have names: Mochi and Pudding
 
 - The two teammates in the Deskfolk mark are now its mascots: the white one is Mochi, standing for you, and the mustard one is Pudding, your Bot teammate. A new Bot's default avatar is Pudding, and the avatar editor calls that style Pudding instead of Folk.

@@ -9,8 +9,11 @@
  */
 import type { FloatFrame, PaneMin, Rect } from "./layout-types.ts";
 
-/** Which corner is being pulled. The one opposite it stays where it is. */
-export type Corner = "nw" | "ne" | "sw" | "se";
+/**
+ * Which edge or corner is being pulled. The side across from it stays where it is: an edge moves
+ * one side, a corner the two it joins.
+ */
+export type Handle = "n" | "s" | "e" | "w" | "nw" | "ne" | "sw" | "se";
 
 /** Kept clear of the window edge so a floating pane never looks welded to it. */
 export const FLOAT_EDGE_GAP = 8;
@@ -37,34 +40,41 @@ export function clampFrame(frame: FloatFrame, min: PaneMin, viewport: Viewport):
 }
 
 /**
- * The frame after pulling a corner by (dx, dy).
+ * The frame after pulling an edge or a corner by (dx, dy).
  *
  * Width and height are limited before the edges are worked out from them; the other way round, a
- * pane squeezed past its minimum starts sliding across the screen instead of stopping.
+ * pane squeezed past its minimum starts sliding across the screen instead of stopping. An edge
+ * leaves the other axis alone: pulling the east edge never moves the pane up or down.
  */
 export function resizeFrame(
   frame: FloatFrame,
-  corner: Corner,
+  handle: Handle,
   dx: number,
   dy: number,
   min: PaneMin,
   viewport: Viewport,
 ): FloatFrame {
-  const west = corner === "nw" || corner === "sw";
-  const north = corner === "nw" || corner === "ne";
+  const west = handle.includes("w");
+  const east = handle.includes("e");
+  const north = handle.includes("n");
+  const south = handle.includes("s");
   const right = frame.x + frame.width;
   const bottom = frame.y + frame.height;
   const gap = FLOAT_EDGE_GAP;
-  const width = fit(
-    west ? frame.width - dx : frame.width + dx,
-    min.width,
-    west ? right - gap : viewport.width - frame.x - gap,
-  );
-  const height = fit(
-    north ? frame.height - dy : frame.height + dy,
-    min.height,
-    north ? bottom - gap : viewport.height - frame.y - gap,
-  );
+  const width = west || east
+    ? fit(
+      west ? frame.width - dx : frame.width + dx,
+      min.width,
+      west ? right - gap : viewport.width - frame.x - gap,
+    )
+    : frame.width;
+  const height = north || south
+    ? fit(
+      north ? frame.height - dy : frame.height + dy,
+      min.height,
+      north ? bottom - gap : viewport.height - frame.y - gap,
+    )
+    : frame.height;
   return clampFrame(
     { x: west ? right - width : frame.x, y: north ? bottom - height : frame.y, width, height },
     min,

@@ -19,6 +19,7 @@
 		onActivate: (leafId: string, tabId: string) => void;
 		onCloseTab: (leafId: string, tabId: string) => void;
 		tabClosing?: (leafId: string, tabId: string) => TabClosing | null;
+		tabFloating?: (leafId: string, tabId: string) => (() => void) | null;
 		onClosePane?: (leafId: string) => void;
 		onSashPointerDown: (event: PointerEvent, sashId: string) => void;
 		/** The divider being dragged right now, so it keeps the accent while the pointer is down. */
@@ -61,6 +62,7 @@
 		onActivate={rest.onActivate}
 		onCloseTab={rest.onCloseTab}
 		tabClosing={rest.tabClosing}
+		tabFloating={rest.tabFloating}
 		onClosePane={rest.onClosePane}
 		draggedTab={rest.draggedTab}
 		onTabPointerDown={rest.onTabPointerDown}
@@ -108,6 +110,7 @@
 				onActivate={rest.onActivate}
 				onCloseTab={rest.onCloseTab}
 				tabClosing={rest.tabClosing}
+				tabFloating={rest.tabFloating}
 				onClosePane={rest.onClosePane}
 				onSashPointerDown={rest.onSashPointerDown}
 				draggingSash={rest.draggingSash}
