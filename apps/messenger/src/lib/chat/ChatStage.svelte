@@ -1156,6 +1156,7 @@
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		class="stream"
+		class:has-selected-message={selectedMessageId !== null}
 		bind:this={streamContainer}
 		onscroll={onStreamScroll}
 		onscrollend={onStreamScrollEnd}
@@ -2732,6 +2733,25 @@
 		border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
 		letter-spacing: 0.02em;
 		line-height: 1.2;
+	}
+
+	/*
+	 * Which reply, or which part of one, the pointer is on. A reply has no bubble, so nothing but
+	 * the dashed seam between parts says where one ends: under the pointer that part takes the same
+	 * faint ground a row does, not the teal tint a selected or found message wears. The ring is
+	 * still what says it was chosen, and the ground steps aside for it: none on the one that has
+	 * one, and none at all while a message's menu is open, so the ring alone says which one it is for.
+	 */
+	@media (hover: hover) {
+		.msg-wrap.is-bot .msg-segment {
+			transition: background-color 0.12s ease;
+		}
+
+		.stream:not(.has-selected-message) .msg-wrap.is-bot .msg-segment:hover:not(.is-selected):not(.is-search-hit) {
+			background: var(--row-hover);
+			/* The dashed seam between parts stays the pane's colour through its gaps. */
+			background-clip: padding-box;
+		}
 	}
 
 	/* Message Cards */

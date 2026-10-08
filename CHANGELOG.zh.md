@@ -10,6 +10,10 @@
 
 - 端点现在除了 OpenAI 的 Chat Completions，也能说 Anthropic 的 Messages：在设置里新建或编辑端点时把「接口格式」选成「Anthropic 兼容」（首次向导里也多了 Anthropic 预设），地址照 Claude Code 的 `ANTHROPIC_BASE_URL` 填——`https://api.anthropic.com`，或者 DeepSeek、百炼、智谱、Kimi、MiniMax 给的 `…/anthropic` 地址，或者转发的地址。Bot、它们的判断和读句在上面照常跑：思考档、工具调用、看图、模型阶梯和花费都管用，有 `/v1/models` 的就从那里拉模型名单。请求带缓存标记，长的一轮后面几跳从缓存读前面的内容，不再全价重读。Bot 用 `add_endpoint` 加的时候传 `api_format: "anthropic"`；改端点的格式和改 URL 一样要你批准。已有的端点都还是 OpenAI 兼容。[ADR 0066](docs/adr/0066-anthropic-format-endpoints.md)
 
+### 鼠标停在哪条回复、哪一段
+
+- 鼠标停在 Bot 的哪条回复上，哪条就铺一层很淡的底，和行悬停一样浅，不是选中或跳转到的消息那种青色。Bot 分几段回复（「3 段输出」）时，只有鼠标所在的那一段变底色。鼠标会让开选中或跳转到的消息：带着描边的那条或那段保持自己的底色，某条消息的菜单开着时哪条都不铺底，只靠描边说明菜单是给哪条消息的。你自己的消息和触屏上不变。
+
 ### Bot 复述你的原文，不再当成它说还要接着做
 
 - Bot 在回复里放回你给的文字（比如翻译时把原文摆在译文上面），原文里的句子会被当成 Bot 自己说「还要接着做」。你在私聊里让专业翻译官翻一段英文，原文最后一句是「The community-site search is still running. Once it's back, I'll compare the two and pick one to build.」，这句被读成了翻译官要接着做：它的结束被退回一次（又空转了 3 分钟），译文下面还多了一行「……但这一轮已经结束了，没有人接着做」。现在读 Bot 的话时会一起看它在回的那句话，从那里一字不差照搬过来（至少 20 个字）的句子不算它的许诺。

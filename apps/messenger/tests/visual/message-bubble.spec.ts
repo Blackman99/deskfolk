@@ -68,5 +68,83 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 			expect(chip.x + chip.width).toBeLessThanOrEqual(bubble.x + bubble.width);
 			await page.close();
 		});
+
+		/**
+		 * A reply in several parts has no bubble to tell one part from the next, so the part under
+		 * the pointer takes a faint ground, lighter than a selected or found message's teal tint.
+		 * The pointer's ground steps aside for those, and for every part while a message's menu is open.
+		 */
+		test('the part of a reply under the pointer is marked apart from a selected one', async ({ baseURL }) => {
+			const page = await browser.newPage({ viewport: { width: 900, height: 820 } });
+			await page.goto(`${baseURL}index.html?story=chat-stage-segments`);
+			await page.waitForSelector('html[data-ready="yes"]');
+			const parts = page.locator('.msg-wrap.is-bot.is-group .msg-segment');
+			await expect(parts).toHaveCount(3);
+			const ground = (i: number) => parts.nth(i).evaluate((el) => getComputedStyle(el).backgroundColor);
+			const tag = (i: number) =>
+				parts.nth(i).locator('.segment-tag').evaluate((el) => getComputedStyle(el).backgroundColor);
+			const ring = (i: number) => parts.nth(i).evaluate((el) => getComputedStyle(el).boxShadow);
+			const idle = await ground(1);
+			const idleTag = await tag(1);
+
+			await parts.nth(1).hover();
+			await expect.poll(() => ground(1)).not.toBe(idle);
+			// The ground fades in; a read before it settles is an in-between colour.
+			await page.waitForTimeout(200);
+			expect(await ground(0)).toBe(idle);
+			expect(await ground(2)).toBe(idle);
+			expect(await ring(1)).toBe('none');
+			expect(await tag(1)).toBe(idleTag);
+			const washed = await ground(1);
+
+			// A found message keeps its own tint and ring, not the pointer's lighter ground. The pulse
+			// animates the ring, so compare presence, not the shadow string.
+			await parts.nth(0).evaluate((el) => el.classList.add('is-search-hit'));
+			await parts.nth(1).evaluate((el) => el.classList.add('is-search-hit'));
+			await expect.poll(() => ring(1)).not.toBe('none');
+			await expect.poll(() => ring(0)).not.toBe('none');
+			await expect.poll(async () => {
+				const [found, underPointer] = await Promise.all([ground(0), ground(1)]);
+				return found === underPointer && found !== washed && found !== idle;
+			}).toBe(true);
+			await parts.nth(0).evaluate((el) => el.classList.remove('is-search-hit'));
+			await parts.nth(1).evaluate((el) => el.classList.remove('is-search-hit'));
+			await expect.poll(() => ring(1)).toBe('none');
+			await expect.poll(() => ground(1)).toBe(washed);
+
+			// With a part's menu open, the ring says which part it is for and no other part is marked.
+			await parts.nth(0).click({ button: 'right', position: { x: 8, y: 8 } });
+			await expect(page.locator('.msg-context-menu')).toBeVisible();
+			await expect.poll(() => ring(0)).not.toBe('none');
+			const last = await parts.nth(2).boundingBox();
+			if (!last) throw new Error('nothing to measure');
+			await page.mouse.move(last.x + last.width - 24, last.y + last.height - 6);
+			await expect.poll(() => ground(2)).toBe(idle);
+			await expect.poll(() => ground(1)).toBe(idle);
+			expect(await tag(2)).toBe(idleTag);
+
+			// Closed, the pointer marks the part again.
+			await page.keyboard.press('Escape');
+			await expect(page.locator('.msg-context-menu')).toHaveCount(0);
+			await page.mouse.move(last.x + last.width - 30, last.y + last.height - 8);
+			await expect.poll(() => ground(2)).toBe(washed);
+			await page.close();
+		});
+
+		/** A reply in one part gets the same ground; only your own bubbles go without. */
+		test('a one-part reply under the pointer is marked too', async ({ baseURL }) => {
+			const page = await openStage(baseURL);
+			const reply = page.locator('.msg-wrap.is-bot:not(.is-group):not(.is-system-row) .msg-segment').first();
+			const ground = () => reply.evaluate((el) => getComputedStyle(el).backgroundColor);
+			const idle = await ground();
+			await reply.hover();
+			await expect.poll(ground).not.toBe(idle);
+			const yours = page.locator('.msg-wrap.is-user .msg-segment').first();
+			const yoursIdle = await yours.evaluate((el) => getComputedStyle(el).backgroundColor);
+			await yours.hover();
+			await expect.poll(ground).toBe(idle);
+			expect(await yours.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(yoursIdle);
+			await page.close();
+		});
 	});
 }

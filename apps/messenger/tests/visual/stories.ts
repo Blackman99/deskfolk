@@ -132,6 +132,39 @@ const settings = {
 
 const world = { bots, sessions, messages, turns, providers, mcpServers, settings, skills: [aSkill()] };
 
+/** One Bot answering in three messages a few seconds apart, which the transcript shows as one reply in parts. */
+const segmentsWorld = {
+	...world,
+	messages: [
+		aMessage({ id: 'msg-1', body: '把这一集的分镜拆一下，分三段给我。' }),
+		aMessage({
+			id: 'seg-1',
+			kind: 'bot',
+			author: 'bot-1',
+			turn_id: 'turn-segments',
+			body: '**开场**\n\n- 远景：清晨的城市\n- 推近到主角的窗口',
+			created_at: '2026-09-19T02:00:05.000Z'
+		}),
+		aMessage({
+			id: 'seg-2',
+			kind: 'bot',
+			author: 'bot-1',
+			turn_id: 'turn-segments',
+			body: '**冲突**\n\n主角收到那封信，镜头停在手上。\n\n1. 特写：信封\n2. 反打：主角的脸\n3. 空镜：窗外',
+			created_at: '2026-09-19T02:00:20.000Z'
+		}),
+		aMessage({
+			id: 'seg-3',
+			kind: 'bot',
+			author: 'bot-1',
+			turn_id: 'turn-segments',
+			body: '**收尾**\n\n回到远景，和开场呼应。',
+			created_at: '2026-09-19T02:00:40.000Z'
+		})
+	],
+	turns: [aTurn({ id: 'turn-segments', status: 'completed', bot_id: 'bot-1', trigger_message_id: 'msg-1' })]
+};
+
 /**
  * Bot↔Bot directs opened from `msg-1`, kept out of `world` so every other baseline stays put.
  * Seven of them, so the sidebar has to cap the list and offer the rest.
@@ -619,6 +652,17 @@ const defs: Record<StoryName, Story> = {
 		component: ChatStage as never,
 		props: {
 			runtime: fakeRuntime(botDmWorld, { selectedId: 'sess-1' }),
+			t,
+			selected: group,
+			onOpenProfile: () => {},
+			onOpenArtifact: () => {},
+			onCreateBot: () => {}
+		}
+	},
+	'chat-stage-segments': {
+		component: ChatStage as never,
+		props: {
+			runtime: fakeRuntime(segmentsWorld, { selectedId: 'sess-1' }),
 			t,
 			selected: group,
 			onOpenProfile: () => {},
