@@ -3,7 +3,7 @@ import { generateBoringAvatar, hashCode, renderFolk } from "@real-bot/protocol";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { MEMORY_AGE_MAX, MEMORY_DIGEST_LIMIT, memoryEntryCost } from "./context";
+import { MEMORY_AGE_MAX, MEMORY_DIGEST_LIMIT, memoryEntryCost } from "./context/memory-digest";
 import { SCHEMA_SQL } from "./schema";
 import { Store } from "./store";
 import {

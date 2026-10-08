@@ -5,7 +5,10 @@ import { join } from "node:path";
 import { USER_MEMBER } from "@real-bot/protocol";
 import type { ChatMessage } from "./completions";
 import { attachPictures } from "./loop-pictures";
-import { assembleComposerSuggestUser, assembleJudgementUser, assembleTurnMessages, EDITED_FLAG, extractJudgement, trimToolContent, SITUATION_HEADING, TRIGGER_FLAG, VISION_WINDOW_BYTES, VISION_WINDOW_IMAGES } from "./context";
+import { assembleComposerSuggestUser, assembleJudgementUser, extractJudgement } from "./context/judgement";
+import { assembleTurnMessages, trimToolContent } from "./context";
+import { EDITED_FLAG, TRIGGER_FLAG, VISION_WINDOW_BYTES, VISION_WINDOW_IMAGES } from "./context/transcript";
+import { SITUATION_HEADING } from "./context/situation";
 import { Store } from "./store";
 
 const PNG_1X1 = Buffer.from(
@@ -863,7 +866,8 @@ describe("memory in the turn context", () => {
 test("a goal written before you renamed the job is said to give way to your words", async () => {
   // 2026-10-04: renamed 「做《一拳超人》动画」, the job's goal still read 「制作一部未来世界题材…的短片」
   // at the head of every turn's picture, and only you edit it, on the board.
-  const { planFacts, planLines } = await import("./context");
+  const { planFacts } = await import("./context/plan-facts");
+  const { planLines } = await import("./context/plan-lines");
   const store = new Store();
   const bot = store.createBot({ name: "视频导演", duties: "", boundaries: "" });
   const plan = store.openTask({ sessionId: bot.direct_session.id, title: "制作一部未来世界题材的短片" });

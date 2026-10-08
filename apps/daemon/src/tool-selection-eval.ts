@@ -1,6 +1,6 @@
 import type { Locale } from "@real-bot/protocol";
 import type { ChatMessage, CompletionResult, ToolCall } from "./completions";
-import { TRIGGER_FLAG } from "./context";
+import { TRIGGER_FLAG } from "./context/transcript";
 import { mapMcpTools, mappedMcpChatTools, type MappedMcpTool } from "./mcp-names";
 import {
   builtinTools,

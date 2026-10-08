@@ -14,7 +14,7 @@ import {
 } from "@real-bot/protocol";
 import { ABLATED_JOIN_REASON, NO_ABLATION, type Ablation } from "../ablation";
 import type { CompletionsClient } from "../completions";
-import { assembleJudgementUser, extractJudgement } from "../context";
+import { assembleJudgementUser, extractJudgement } from "../context/judgement";
 import { isoNow, ulid } from "../ids";
 import { parseMentions } from "../mentions";
 import { isBareRemark } from "../no-work";

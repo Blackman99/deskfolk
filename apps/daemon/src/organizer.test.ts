@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ClientEvent } from "@real-bot/protocol";
 import type { ChatMessage, CompletionOk, CompletionsClient, JudgeRequest, JudgeResult } from "./completions";
-import { SITUATION_HEADING } from "./context";
+import { SITUATION_HEADING } from "./context/situation";
 import { createPlanWatch } from "./engine/plan-watch";
 import { JUDGEMENT_SYSTEM } from "./prompts/judgement";
 import { ORGANIZER_SYSTEM, ORGANIZER_SYSTEM_UNDER_HOLDS, type OrganizerPayload } from "./prompts/organizer";

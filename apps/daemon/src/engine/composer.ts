@@ -6,7 +6,7 @@
 import { USER_MEMBER, type ComposerSuggestion } from "@real-bot/protocol";
 import { composerAnswerReadable, parseComposerSuggestions } from "../composer-suggestions";
 import type { CompletionsClient } from "../completions";
-import { assembleComposerSuggestUser } from "../context";
+import { assembleComposerSuggestUser } from "../context/judgement";
 import { resolveCompletionTarget } from "../models";
 import { promptPage } from "../prompts/book";
 import type { Store } from "../store";

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ClientEvent } from "@real-bot/protocol";
 import type { ChatMessage, CompletionOk } from "./completions";
-import { SITUATION_HEADING } from "./context";
+import { SITUATION_HEADING } from "./context/situation";
 import { startScheduler } from "./scheduler";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";

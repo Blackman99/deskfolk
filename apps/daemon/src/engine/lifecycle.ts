@@ -23,7 +23,8 @@ import {
 } from "../artifact-paths";
 import { pathExists } from "../collab-tools/args";
 import type { CompletionsClient } from "../completions";
-import { assembleTurnMessages, planTagger, sessionLabel, type PlanRef } from "../context";
+import { assembleTurnMessages, sessionLabel } from "../context";
+import { planTagger, type PlanRef } from "../context/transcript";
 import { HttpError } from "../errors";
 import { continueNote, hopLimits, isRetriedFailure, replyFailure, retryNote } from "../hop-limits";
 import { troubleCount } from "./trouble";

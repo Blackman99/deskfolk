@@ -60,7 +60,7 @@ import type {
   MappedUsage,
   ToolCall,
 } from "../completions";
-import { TRIGGER_FLAG } from "../context";
+import { TRIGGER_FLAG } from "../context/transcript";
 import { classifyRestart } from "../engine/restart";
 import { isoNow, isoPlus } from "../ids";
 import { createMcpHost, type McpCallResult, type McpHost } from "../mcp-host";

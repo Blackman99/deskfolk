@@ -4,14 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { USER_MEMBER } from "@real-bot/protocol";
 import type { ChatMessage } from "./completions";
-import {
-  assembleAgentTurnInput,
-  assembleComposerSuggestUser,
-  assembleJudgementUser,
-  assembleTurnMessages,
-  planFacts,
-  SITUATION_HEADING,
-} from "./context";
+import { assembleAgentTurnInput, assembleTurnMessages } from "./context";
+import { assembleComposerSuggestUser, assembleJudgementUser } from "./context/judgement";
+import { planFacts } from "./context/plan-facts";
+import { SITUATION_HEADING } from "./context/situation";
 import { Store } from "./store";
 import { asFolder } from "./workspace-paths";
 

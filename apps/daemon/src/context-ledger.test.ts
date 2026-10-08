@@ -12,7 +12,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { USER_MEMBER } from "@real-bot/protocol";
 import type { ChatMessage } from "./completions";
-import { assembleTurnMessages, QUOTE_LAYER_HEAD, QUOTE_LAYER_TAIL, REQUIREMENT_LINES, SITUATION_HEADING } from "./context";
+import { assembleTurnMessages } from "./context";
+import { QUOTE_LAYER_HEAD, QUOTE_LAYER_TAIL } from "./context/plan-facts";
+import { REQUIREMENT_LINES } from "./context/plan-lines";
+import { SITUATION_HEADING } from "./context/situation";
 import { Store, type PlanSpec } from "./store";
 
 const roots: string[] = [];
