@@ -2,7 +2,6 @@
   "limit": 2000,
   "allow": {
     "apps/daemon/src/local-api.test.ts": 2450,
-    "apps/daemon/src/local-api.ts": 2900,
     "apps/daemon/src/store/submissions.ts": 2450,
     "apps/messenger/src/lib/Shell.svelte": 2550,
     "apps/messenger/src/lib/Shell.test.ts": 2850,
