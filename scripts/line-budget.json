@@ -1,7 +1,6 @@
 {
   "limit": 2000,
   "allow": {
-    "apps/messenger/src/lib/Shell.svelte": 2550,
-    "apps/messenger/src/lib/chat/ChatStage.svelte": 3800
+    "apps/messenger/src/lib/Shell.svelte": 2550
   }
 }
