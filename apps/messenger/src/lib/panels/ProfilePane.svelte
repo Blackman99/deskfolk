@@ -105,7 +105,9 @@
 			thinkingLevel: row.thinking_level ?? '',
 			runner: row.runner ?? '',
 			agentModel: row.agent_model ?? '',
-			agentEffort: row.agent_effort ?? ''
+			agentEffort: row.agent_effort ?? '',
+			// Left out of the save for a daemon that has no accounts, which would refuse the field.
+			agentConfigDir: row.agent_config_dir === undefined ? undefined : (row.agent_config_dir ?? '')
 		};
 	}
 
@@ -173,7 +175,8 @@
 			thinkingLevel: live.thinking_level ?? '',
 			runner: live.runner ?? '',
 			agentModel: live.agent_model ?? '',
-			agentEffort: live.agent_effort ?? ''
+			agentEffort: live.agent_effort ?? '',
+			agentConfigDir: live.agent_config_dir === undefined ? undefined : (live.agent_config_dir ?? '')
 		};
 		const next = reconcileProfileDraft(profileDraft, profileBaseline, incoming);
 		if (profileDraftDirty(profileDraft, next.draft)) profileDraft = next.draft;

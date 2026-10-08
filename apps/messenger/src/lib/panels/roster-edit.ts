@@ -11,6 +11,8 @@ export type ProfileFields = {
   /** Claude Agent's model and effort; `''` leaves them to Claude Code. */
   agentModel?: string;
   agentEffort?: string;
+  /** The Claude account it runs on (a config directory listed in Settings); `''` the daemon's own environment. */
+  agentConfigDir?: string;
 };
 
 /** Raw comparison: any keystroke counts, so a bot.upsert never clobbers text being typed. */
@@ -24,7 +26,8 @@ export function profileDraftDirty(draft: ProfileFields, baseline: ProfileFields)
     draft.thinkingLevel !== baseline.thinkingLevel ||
     (draft.runner ?? "") !== (baseline.runner ?? "") ||
     (draft.agentModel ?? "") !== (baseline.agentModel ?? "") ||
-    (draft.agentEffort ?? "") !== (baseline.agentEffort ?? "")
+    (draft.agentEffort ?? "") !== (baseline.agentEffort ?? "") ||
+    (draft.agentConfigDir ?? "") !== (baseline.agentConfigDir ?? "")
   );
 }
 
@@ -39,7 +42,8 @@ export function profileContentEqual(a: ProfileFields, b: ProfileFields): boolean
     a.thinkingLevel.trim() === b.thinkingLevel.trim() &&
     (a.runner ?? "") === (b.runner ?? "") &&
     (a.agentModel ?? "").trim() === (b.agentModel ?? "").trim() &&
-    (a.agentEffort ?? "") === (b.agentEffort ?? "")
+    (a.agentEffort ?? "") === (b.agentEffort ?? "") &&
+    (a.agentConfigDir ?? "") === (b.agentConfigDir ?? "")
   );
 }
 

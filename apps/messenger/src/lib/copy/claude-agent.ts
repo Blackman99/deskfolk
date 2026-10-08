@@ -22,6 +22,18 @@ export const zh = {
   failed: "没查到，再试一次",
   localOnly: "只能在电脑上查看。",
   subscription: (plan: string) => `Claude ${plan} 订阅`,
+  reads: (dir: string) => `读 ${dir}`,
+  /** The Claude accounts besides the daemon's own environment, each a Claude Code config directory. */
+  accounts: {
+    heading: "其他账号",
+    hint: "这台电脑上登录了不止一个 Claude 账号时（每个账号一个 Claude Code 配置目录，也就是 CLAUDE_CONFIG_DIR），把目录加在这里，再在 Bot 面板里给每个 Bot 选它花哪个账号的额度；没选的 Bot 用上面那个。登录在终端里做，Deskfolk 只记目录。",
+    placeholder: "配置目录，例如 ~/.claude-b",
+    add: "添加",
+    remove: "移除",
+    signedOut: "未登录，在终端里运行：",
+    inUse: "还有 Bot 在用这个账号：先在它的面板里换一个账号，再移除。",
+    invalid: "填配置目录的完整路径（可以 ~/ 开头），不能是主目录本身。"
+  },
   methods: {
     "claude.ai": "Claude 订阅",
     oauth_token: "长期令牌（Claude 订阅）",
@@ -50,7 +62,9 @@ export const zh = {
     expand: "展开 Claude 用量",
     collapse: "收起 Claude 用量",
     noPlan: "这个登录方式没有套餐额度：用量按 token 计费。",
-    failed: "没查到用量：Claude Code 可能太旧，在终端里运行 claude update 后再刷新。"
+    failed: "没查到用量：Claude Code 可能太旧，在终端里运行 claude update 后再刷新。",
+    signedOut: "这个账号还没登录。",
+    own: "默认账号"
   }
 };
 
@@ -76,6 +90,17 @@ export const en: CopyShape<typeof zh> = {
   failed: "Could not check; try again",
   localOnly: "Only visible on the computer itself.",
   subscription: (plan: string) => `Claude ${plan} subscription`,
+  reads: (dir: string) => `reads ${dir}`,
+  accounts: {
+    heading: "Other accounts",
+    hint: "When more than one Claude account is signed in on this computer (each in its own Claude Code config directory, CLAUDE_CONFIG_DIR), add the directories here, then pick in each Bot's panel whose plan it spends; a Bot left alone uses the account above. Signing in happens in a terminal; Deskfolk keeps only the directory.",
+    placeholder: "Config directory, such as ~/.claude-b",
+    add: "Add",
+    remove: "Remove",
+    signedOut: "Not signed in; run in a terminal:",
+    inUse: "A Bot still runs on this account: move it to another one in its panel first.",
+    invalid: "Give the config directory's full path (~/ works), not your home folder itself."
+  },
   methods: {
     "claude.ai": "Claude subscription",
     oauth_token: "Long-lived token (Claude subscription)",
@@ -103,6 +128,8 @@ export const en: CopyShape<typeof zh> = {
     expand: "Show Claude usage",
     collapse: "Hide Claude usage",
     noPlan: "This sign-in has no plan limits: usage is billed per token.",
-    failed: "Could not read the usage: Claude Code may be too old. Run claude update in a terminal, then refresh."
+    failed: "Could not read the usage: Claude Code may be too old. Run claude update in a terminal, then refresh.",
+    signedOut: "This account is not signed in.",
+    own: "Default account"
   }
 };

@@ -335,6 +335,11 @@ export class LocalApi extends ApiBase<PendingRequest> {
     return this.put<ClaudeCodeStatus>("/v1/runtime/claude-code/path", { path });
   }
 
+  /** The Claude accounts besides the daemon's own environment, as their config directories; the whole list. */
+  async setClaudeCodeAccounts(configDirs: string[]): Promise<ClaudeCodeStatus> {
+    return this.put<ClaudeCodeStatus>("/v1/runtime/claude-code/accounts", { config_dirs: configDirs });
+  }
+
   /** Your Claude plan's usage, as your Claude Code reads it; `refresh` asks for a younger answer. */
   async claudeUsage(refresh = false): Promise<ClaudeUsage> {
     return this.get<ClaudeUsage>(`/v1/claude-usage${refresh ? "?refresh=1" : ""}`);

@@ -542,3 +542,53 @@ test("away from the computer the panel says Claude Code's status lives there", a
   expect(phone.host.textContent).toContain("Claude Code 的状态只能在电脑上查看");
   phone.close();
 });
+
+function twoAccounts(over: { teamSignedIn?: boolean } = {}) {
+  const own = { config_dir: null, config_directory: "/Users/you/.claude", logged_in: true, auth_method: "claude.ai", subscription_type: "pro", email: "pro@a.c", error: null, login_command: "claude auth login" };
+  const team = { config_dir: "/Users/you/.claude-b", config_directory: "/Users/you/.claude-b", logged_in: over.teamSignedIn ?? true, auth_method: over.teamSignedIn === false ? "none" : "claude.ai",
+    subscription_type: over.teamSignedIn === false ? null : "team", email: over.teamSignedIn === false ? null : "team@a.c", error: null,
+    login_command: "CLAUDE_CONFIG_DIR=/Users/you/.claude-b claude auth login" };
+  return claudeStatus({ email: "pro@a.c", accounts: [own, team] });
+}
+
+test("a Claude Agent Bot is put on one of your listed Claude accounts, and the panel says whose plan it spends", async () => {
+  const { host, runtime, close } = openOnClaude(aBot({ runner: "claude_code", agent_config_dir: null }), twoAccounts());
+  await sleep(30);
+  expect(host.querySelector("[data-runner-account]")?.textContent).toContain("pro@a.c");
+  click(host.querySelector("#profile-agent-account"));
+  const options = [...host.querySelectorAll("#profile-agent-account-listbox [role=option]")].map((li) => li.textContent?.trim());
+  expect(options).toEqual(["这台电脑的默认账号 · Claude Pro 订阅 · pro@a.c", "Claude Team 订阅 · team@a.c · /Users/you/.claude-b"]);
+  click([...host.querySelectorAll("#profile-agent-account-listbox [role=option]")].find((li) => li.textContent?.includes("team@a.c")) ?? null);
+  await sleep(0);
+  expect(host.querySelector("[data-runner-account]")?.textContent).toContain("team@a.c");
+  await sleep(200);
+  const saves = runtime.calls.filter((c) => c.name === "patchBot");
+  expect(saves).toHaveLength(1);
+  expect((saves[0]!.args[1] as { agent_config_dir: string | null }).agent_config_dir).toBe("/Users/you/.claude-b");
+  close();
+});
+
+test("a Bot on a listed account that is signed out says how to sign that account in", async () => {
+  const view = openOnClaude(aBot({ runner: "claude_code", agent_config_dir: "/Users/you/.claude-b" }), twoAccounts({ teamSignedIn: false }));
+  await sleep(30);
+  expect(view.host.querySelector("[data-runner-signed-out]")?.textContent).toContain("CLAUDE_CONFIG_DIR=/Users/you/.claude-b claude auth login");
+  view.close();
+});
+
+test("away from the computer the account a Bot runs on is still shown and can be set back to the default", async () => {
+  const phone = openOnClaude(aBot({ runner: "claude_code", agent_config_dir: "/Users/you/.claude-b" }), null);
+  await sleep(30);
+  click(phone.host.querySelector("#profile-agent-account"));
+  const options = [...phone.host.querySelectorAll("#profile-agent-account-listbox [role=option]")].map((li) => li.textContent?.trim());
+  expect(options).toEqual(["这台电脑的默认账号", "/Users/you/.claude-b"]);
+  phone.close();
+  // A daemon older than accounts: no picker, and nothing about accounts in the save.
+  const old = openOnClaude(aBot({ runner: "claude_code" }), claudeStatus());
+  await sleep(30);
+  expect(old.host.querySelector("[data-agent-account]")).toBeNull();
+  click(buttonByText(old.host, "高"));
+  await sleep(200);
+  const saved = old.runtime.calls.filter((c) => c.name === "patchBot")[0]!.args[1] as Record<string, unknown>;
+  expect("agent_config_dir" in saved).toBe(false);
+  old.close();
+});

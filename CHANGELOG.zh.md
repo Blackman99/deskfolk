@@ -6,6 +6,11 @@
 
 ## Unreleased
 
+### Claude Agent 的 Bot 各用你指定的 Claude 账号
+
+- 这台电脑上登录了不止一个 Claude 账号时——每个账号一个 Claude Code 配置目录，就是 `CLAUDE_CONFIG_DIR` 分开它们的那种——在设置 › Agent 的 Claude Agent 卡片「其他账号」里加上其他账号的目录，再在 Bot 面板里、Claude 模型和思考强度旁边，给这个 Bot 选它花哪个账号。每个账号都写着 Claude Code 报的套餐和邮箱，没登录的写着登录它的命令（`CLAUDE_CONFIG_DIR=~/.claude-b claude auth login`）；登录照旧在终端里做，Deskfolk 只记目录。没选的 Bot 照旧用应用自己的环境里 Claude Code 找到的那个账号。只有你能把 Bot 换到别的账号，手机上能在列出的账号之间换；有 Bot 在用的账号要先把 Bot 换走才能从列表里移除，往列表里加只能在电脑上。
+- 这个 Bot 的每一轮、开跑前的登录检查和用量都用那个目录跑 Claude Code——目录是 `~/.claude` 本身时则去掉 `CLAUDE_CONFIG_DIR`：把它写明会让 Claude Code 去找另一条钥匙串记录，读成没登录。Bot 的账号没登录时，这一轮开跑前就停下，写明是哪个账号。Bot 分在两个账号上时，侧边栏的用量条每个账号一行、按邮箱标名，卡片和菜单栏也按账号分开列窗口；两条其实是同一个目录的只问一次。列表里的每个目录和 `~/.claude` 一样，Bot 的文件工具和命令都碰不到。接口：`PUT /v1/runtime/claude-code/accounts` 设列表（只在这台 Mac 上），`GET /v1/runtime/claude-code` 和 `GET /v1/claude-usage` 多了 `accounts`（[ADR 0061](docs/adr/0061-claude-agent-runner.md) 账号补记）。
+
 ### 侧边栏和菜单栏里看 Claude 用量
 
 - 有 Bot 用 Claude Agent 跑之后，侧边栏底部会显示你 Claude 套餐的用量：5 小时和 7 天窗口各用了多少，四分之三起标黄、九成起标红。点开能看每个窗口——包括某个模型自己的周额度，比如 Fable——和多久后重置，还能刷新；手机上也有。设置 › Agent 的 Claude Agent 卡片里列着同样的窗口，菜单栏图标的菜单顶上也有（点一下打开窗口）。

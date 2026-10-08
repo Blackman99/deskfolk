@@ -19,6 +19,8 @@ export const CLAUDE_CODE_STATUS_MAX_AGE_MS = 60_000;
 export function createClaudeCodeProbe(deps: {
   /** The path set in Settings, read at each ask. */
   setting: () => string | null;
+  /** The accounts' config directories listed in Settings, read at each ask. */
+  configDirs?: () => string[];
   env?: Record<string, string | undefined>;
   describe?: (deps: DescribeDeps) => Promise<ClaudeCodeStatus>;
   now?: () => number;
@@ -34,7 +36,7 @@ export function createClaudeCodeProbe(deps: {
     if (inFlight) return inFlight;
     inFlight = (async () => {
       try {
-        const status = await describe({ setting: deps.setting(), env: deps.env ?? process.env, ...deps.overrides });
+        const status = await describe({ setting: deps.setting(), configDirs: deps.configDirs?.() ?? [], env: deps.env ?? process.env, ...deps.overrides });
         cached = { status, at: now() };
         return status;
       } finally {

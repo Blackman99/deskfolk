@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { CLAUDE_EFFORTS, CLAUDE_MODEL_ALIASES, type ClaudeCodeStatus } from '@real-bot/protocol';
-	import { claudeAccountLabel, claudeAgentBlocker, claudeAgentPaysPerToken } from '../settings/claude-agent.ts';
+	import { claudeAccountLabel, claudeAccountOf, claudeAgentBlocker, claudeAgentPaysPerToken } from '../settings/claude-agent.ts';
 	import AvatarEditor from '../AvatarEditor.svelte';
 	import Select from '../Select.svelte';
 	import { thinkingLevelLabel, type Copy } from '../copy.ts';
@@ -59,6 +59,29 @@
 			? [{ value: profileDraft.agentModel, label: profileDraft.agentModel }]
 			: [])
 	]);
+
+	/** The account this Bot's turns spend, as Claude Code reports it; the daemon's own while none is picked. */
+	const agentSignIn = $derived(claudeAccountOf(claudeStatus, profileDraft.agentConfigDir) ?? claudeStatus);
+	/** What signs a listed account in, when that is the one picked. */
+	const agentLoginCommand = $derived(
+		profileDraft.agentConfigDir ? (claudeStatus?.accounts?.find((entry) => entry.config_dir === profileDraft.agentConfigDir)?.login_command ?? null) : null
+	);
+	const agentAccountOptions = $derived.by(() => {
+		const own = claudeStatus && claudeStatus.path ? claudeAccountOf(claudeStatus, null) : null;
+		const options = [{ value: '', label: own && own.logged_in !== false ? `${t.sidebar.botAgentAccountDefault} · ${claudeAccountLabel(own, t)}` : t.sidebar.botAgentAccountDefault }];
+		for (const account of claudeStatus?.accounts ?? []) {
+			if (account.config_dir) options.push({ value: account.config_dir, label: `${claudeAccountLabel(account, t)} · ${account.config_dir}` });
+		}
+		// On the phone, or listed no more: the account it runs on is still a choice.
+		const current = profileDraft.agentConfigDir;
+		if (current && !options.some((option) => option.value === current)) options.push({ value: current, label: current });
+		return options;
+	});
+
+	function onProfileAgentAccountChange(value: string): void {
+		profileDraft.agentConfigDir = value;
+		onProfilePick();
+	}
 
 	function onProfileRunnerChange(value: string): void {
 		profileDraft.runner = value === 'claude_code' ? 'claude_code' : '';
@@ -166,12 +189,12 @@
 					<p class="muted field-hint">{t.sidebar.botRunnerClaudeUnavailable}</p>
 				{:else if !claudeStatus}
 					<p class="muted field-hint">{t.sidebar.botRunnerClaudeChecking}</p>
-				{:else if claudeAgentBlocker(claudeStatus) === 'missing'}
+				{:else if claudeAgentBlocker(claudeStatus, agentSignIn) === 'missing'}
 					<p class="field-error" data-runner-missing>{t.sidebar.botRunnerClaudeMissing}</p>
-				{:else if claudeAgentBlocker(claudeStatus) === 'signed_out'}
-					<p class="field-error" data-runner-signed-out>{t.sidebar.botRunnerClaudeSignedOut}</p>
+				{:else if claudeAgentBlocker(claudeStatus, agentSignIn) === 'signed_out'}
+					<p class="field-error" data-runner-signed-out>{agentLoginCommand ? t.sidebar.botRunnerClaudeAccountSignedOut(agentLoginCommand) : t.sidebar.botRunnerClaudeSignedOut}</p>
 				{:else}
-					<p class="muted field-hint" class:runner-pays={claudeAgentPaysPerToken(claudeStatus)} data-runner-account>{t.sidebar.botRunnerClaudeHint(claudeAccountLabel(claudeStatus, t))}</p>
+					<p class="muted field-hint" class:runner-pays={claudeAgentPaysPerToken(agentSignIn)} data-runner-account>{t.sidebar.botRunnerClaudeHint(claudeAccountLabel(agentSignIn ?? claudeStatus, t))}</p>
 				{/if}
 			{:else}
 				<p class="muted field-hint">{t.sidebar.botRunnerAppHint}</p>
@@ -179,6 +202,23 @@
 		</div>
 
 		{#if profileDraft.runner === 'claude_code'}
+		{#if profileDraft.agentConfigDir !== undefined}
+		<div class="form-group" data-agent-account>
+			<label for="profile-agent-account">{t.sidebar.botAgentAccount}</label>
+			<Select
+				id="profile-agent-account"
+				bind:value={profileDraft.agentConfigDir}
+				options={agentAccountOptions}
+				error={!!profileErrors.agentConfigDir}
+				onchange={onProfileAgentAccountChange}
+			/>
+			{#if profileErrors.agentConfigDir}
+				<p class="field-error">{t.sidebar.botAgentAccountInvalid}</p>
+			{:else}
+				<p class="muted field-hint">{t.sidebar.botAgentAccountHint}</p>
+			{/if}
+		</div>
+		{/if}
 		<div class="form-group">
 			<label for="profile-agent-model">{t.sidebar.botAgentModel}</label>
 			<Select

@@ -132,6 +132,7 @@ export type BotRow = {
   runner: string | null;
   agent_model: string | null;
   agent_effort: string | null;
+  agent_config_dir: string | null;
   archived_at: string | null;
   deleted_at: string | null;
   created_at: string;
@@ -455,6 +456,7 @@ export function toBot(row: BotRow): Bot {
     runner: isBotRunner(row.runner) ? row.runner : null,
     agent_model: row.agent_model ?? null,
     agent_effort: isClaudeEffort(row.agent_effort) ? row.agent_effort : null,
+    agent_config_dir: row.agent_config_dir ?? null,
     archived_at: row.archived_at,
     created_at: row.created_at,
     updated_at: row.updated_at,

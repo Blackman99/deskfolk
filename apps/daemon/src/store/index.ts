@@ -621,6 +621,8 @@ export class Store {
   /** Where you pointed the daemon at your own `claude` (ADR 0061); null lets it look for one. */
   readonly claudeCodePath = this.bind(claudeCode.claudeCodePath);
   readonly setClaudeCodePath = this.bind(claudeCode.setClaudeCodePath);
+  readonly claudeCodeConfigDirs = this.bind(claudeCode.claudeCodeConfigDirs);
+  readonly setClaudeCodeConfigDirs = this.bind(claudeCode.setClaudeCodeConfigDirs);
   readonly botDefault = this.bind(modelDefaults.botDefault);
   readonly ensureBotDefault = this.bind(modelDefaults.ensureBotDefault);
   readonly noteModelOnce = this.bind(modelDefaults.noteModelOnce);

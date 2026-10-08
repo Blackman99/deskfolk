@@ -87,7 +87,8 @@ test("with no proxy variables Claude Code is asked through the system proxy, as 
 });
 
 test("signed out reads as signed out; an unreadable answer leaves it unknown", () => {
-  expect(parseAuthStatus('{"loggedIn": false, "authMethod": "none"}')).toEqual({ loggedIn: false, authMethod: "none", subscriptionType: null, email: null });
+  expect(parseAuthStatus('{"loggedIn": false, "authMethod": "none"}')).toEqual({ loggedIn: false, authMethod: "none", subscriptionType: null, email: null, configDirectory: null });
+  expect(parseAuthStatus('{"loggedIn": true, "configDirectory": "/Users/a/.claude-b"}')).toMatchObject({ configDirectory: "/Users/a/.claude-b" });
   expect(parseAuthStatus("not json")).toBeNull();
   expect(parseVersion("2.1.289 (Claude Code)")).toBe("2.1.289");
   expect(compareVersions("2.1.90", "2.1.289")).toBeLessThan(0);
@@ -97,6 +98,42 @@ test("the environment keeps every way Claude Code signs in", () => {
   const env = claudeChildEnv({ ANTHROPIC_API_KEY: "k", CLAUDE_CODE_OAUTH_TOKEN: "t", CLAUDE_CODE_USE_BEDROCK: "1", CLAUDECODE: "1", CLAUDE_CODE_ENTRYPOINT: "cli",
     CLAUDE_CODE_SESSION_ID: "s", CLAUDE_CODE_MESSAGING_SOCKET: "/tmp/x", CLAUDE_PID: "1", REAL_BOT_DATA_DIR: "/d", PATH: "/usr/bin" });
   expect(env).toEqual({ ANTHROPIC_API_KEY: "k", CLAUDE_CODE_OAUTH_TOKEN: "t", CLAUDE_CODE_USE_BEDROCK: "1", PATH: "/usr/bin" });
+});
+
+test("every account is asked on its own: the daemon's environment as it is, ~/.claude with the variable unset, others with it set", async () => {
+  const asked: Array<string | undefined> = [];
+  const emails: Record<string, string> = { "": "pro@a.c", "/Users/a/.claude-b": "team@a.c" };
+  const status = await describeClaudeCode({
+    setting: "/c/claude", isExecutable: () => true, which: () => null, now: () => new Date(0), systemProxy: async () => null,
+    // A daemon started from a shell that picked the second account.
+    env: { PATH: "/usr/bin", CLAUDE_CONFIG_DIR: "/Users/a/.claude-b" },
+    configDirs: ["/Users/a/.claude", "/Users/a/.claude-b", "/Users/a/.claude-c", "/Users/a/.claude-typo"],
+    accountHost: { home: "/Users/a", platform: "darwin" },
+    dirExists: (dir) => dir !== "/Users/a/.claude-typo",
+    run: async (argv, env) => {
+      if (argv[1] === "--version") return { code: 0, stdout: "2.1.294" };
+      asked.push(env.CLAUDE_CONFIG_DIR);
+      const dir = env.CLAUDE_CONFIG_DIR ?? "/Users/a/.claude";
+      if (dir === "/Users/a/.claude-c") return { code: 1, stdout: JSON.stringify({ loggedIn: false, authMethod: "none", configDirectory: dir }) };
+      return { code: 0, stdout: JSON.stringify({ loggedIn: true, authMethod: "claude.ai", subscriptionType: dir.endsWith("-b") ? "team" : "pro",
+        email: emails[env.CLAUDE_CONFIG_DIR === "/Users/a/.claude-b" ? "/Users/a/.claude-b" : ""], configDirectory: dir }) };
+    },
+  });
+  expect(asked).toEqual(["/Users/a/.claude-b", undefined, "/Users/a/.claude-b", "/Users/a/.claude-c"]);
+  expect(status.accounts).toEqual([
+    { config_dir: null, config_directory: "/Users/a/.claude-b", logged_in: true, auth_method: "claude.ai", subscription_type: "team", email: "team@a.c", error: null, login_command: "claude auth login" },
+    { config_dir: "/Users/a/.claude", config_directory: "/Users/a/.claude", logged_in: true, auth_method: "claude.ai", subscription_type: "pro", email: "pro@a.c", error: null,
+      login_command: "env -u CLAUDE_CONFIG_DIR claude auth login" },
+    { config_dir: "/Users/a/.claude-b", config_directory: "/Users/a/.claude-b", logged_in: true, auth_method: "claude.ai", subscription_type: "team", email: "team@a.c", error: null,
+      login_command: "CLAUDE_CONFIG_DIR=/Users/a/.claude-b claude auth login" },
+    { config_dir: "/Users/a/.claude-c", config_directory: "/Users/a/.claude-c", logged_in: false, auth_method: "none", subscription_type: null, email: null, error: null,
+      login_command: "CLAUDE_CONFIG_DIR=/Users/a/.claude-c claude auth login" },
+    // Not there: signed out without asking, since claude would make the directory.
+    { config_dir: "/Users/a/.claude-typo", config_directory: "/Users/a/.claude-typo", logged_in: false, auth_method: "none", subscription_type: null, email: null,
+      error: "the directory does not exist yet", login_command: "CLAUDE_CONFIG_DIR=/Users/a/.claude-typo claude auth login" },
+  ]);
+  // The fields of old are the daemon's own environment's.
+  expect(status).toMatchObject({ logged_in: true, subscription_type: "team", email: "team@a.c", error: null });
 });
 
 test("the SDK's Claude Code version is the one the installed package was built with", () => {

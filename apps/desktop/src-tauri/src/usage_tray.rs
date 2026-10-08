@@ -1,7 +1,8 @@
 //! Your Claude plan's usage at the top of the menu bar menu (ADR 0061): the same
 //! `GET /v1/claude-usage` the sidebar reads, asked once a minute while the daemon is up. The
 //! daemon keeps each answer for five minutes, so this starts at most one `claude` per five
-//! minutes, and none at all until a Bot runs on Claude Agent. The lines go away when there is
+//! minutes, and none at all until a Bot runs on Claude Agent. With Bots on more than one Claude
+//! account, each account's lines come under its own name. The lines go away when there is
 //! nothing to show; a click on one shows the window.
 
 use serde::Deserialize;
@@ -22,6 +23,22 @@ pub struct Usage {
     pub available: bool,
     #[serde(default)]
     pub windows: Vec<UsageWindow>,
+    /// Each account some Bot runs on; absent from a daemon older than accounts.
+    #[serde(default)]
+    pub accounts: Vec<AccountUsage>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AccountUsage {
+    pub available: bool,
+    #[serde(default)]
+    pub reason: Option<String>,
+    #[serde(default)]
+    pub windows: Vec<UsageWindow>,
+    #[serde(default)]
+    pub email: Option<String>,
+    #[serde(default)]
+    pub config_dir: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -141,17 +158,43 @@ fn now_secs() -> i64 {
 }
 
 /// One line per window, the plan's own first, as the daemon orders them; none when unavailable.
+/// With several accounts, each one's windows come under a line naming it (its email, else its
+/// config directory, else the default account), and one signed out says so on that line.
 pub fn usage_lines(usage: &Usage, now: i64) -> Vec<String> {
+    if usage.accounts.len() > 1 {
+        if !usage.accounts.iter().any(|account| account.available) {
+            return Vec::new();
+        }
+        let mut lines = Vec::new();
+        for account in &usage.accounts {
+            let label = account
+                .email
+                .as_deref()
+                .or(account.config_dir.as_deref())
+                .unwrap_or("默认账号");
+            if account.available {
+                lines.push(format!("Claude · {label}"));
+                lines.extend(window_lines(&account.windows, now, ""));
+            } else if account.reason.as_deref() == Some("signed_out") {
+                lines.push(format!("Claude · {label}：未登录"));
+            }
+        }
+        return lines;
+    }
     if !usage.available {
         return Vec::new();
     }
-    usage
-        .windows
+    window_lines(&usage.windows, now, "Claude ")
+}
+
+/// A line per window; `prefix` goes before the plan's own two (`Claude 5 小时`).
+fn window_lines(windows: &[UsageWindow], now: i64, prefix: &str) -> Vec<String> {
+    windows
         .iter()
         .map(|window| {
             let name = match window.kind.as_str() {
-                "five_hour" => "Claude 5 小时".to_string(),
-                "seven_day" => "Claude 7 天".to_string(),
+                "five_hour" => format!("{prefix}5 小时"),
+                "seven_day" => format!("{prefix}7 天"),
                 _ => format!("{} 7 天", window.model.as_deref().unwrap_or("Claude")),
             };
             let percent = percent_text(window.percent);
@@ -279,6 +322,39 @@ mod tests {
                 "Opus 7 天：40%（20 分钟后重置）",
             ]
         );
+    }
+
+    #[test]
+    fn several_accounts_each_under_its_name() {
+        let now = parse_rfc3339("2026-10-08T11:00:00Z").unwrap();
+        let answer = usage(
+            r#"{"available":true,"windows":[{"kind":"five_hour","model":null,"percent":2,"resets_at":null}],"accounts":[
+              {"available":true,"reason":null,"config_dir":null,"email":"pro@a.c","windows":[
+                {"kind":"five_hour","model":null,"percent":2,"resets_at":null},
+                {"kind":"seven_day","model":null,"percent":91,"resets_at":"2026-10-08T11:20:00Z"}]},
+              {"available":true,"reason":null,"config_dir":"/Users/a/.claude-b","email":null,"windows":[
+                {"kind":"five_hour","model":null,"percent":40,"resets_at":null},
+                {"kind":"model","model":"Fable","percent":0.4,"resets_at":null}]},
+              {"available":false,"reason":"signed_out","config_dir":"/Users/a/.claude-c","email":null,"windows":[]}]}"#,
+        );
+        assert_eq!(
+            usage_lines(&answer, now),
+            vec![
+                "Claude · pro@a.c",
+                "5 小时：2%",
+                "7 天：91%（20 分钟后重置）",
+                "Claude · /Users/a/.claude-b",
+                "5 小时：40%",
+                "Fable 7 天：<1%",
+                "Claude · /Users/a/.claude-c：未登录",
+            ]
+        );
+        // One account in the list reads as before.
+        let one = usage(
+            r#"{"available":true,"windows":[{"kind":"five_hour","model":null,"percent":2,"resets_at":null}],"accounts":[
+              {"available":true,"config_dir":null,"email":"pro@a.c","windows":[{"kind":"five_hour","model":null,"percent":2,"resets_at":null}]}]}"#,
+        );
+        assert_eq!(usage_lines(&one, now), vec!["Claude 5 小时：2%"]);
     }
 
     #[test]

@@ -6,7 +6,8 @@ import type { SessionDetail } from "./sessions.ts";
  * Who runs a Bot's turns (ADR 0061). Absent or null: the app's own hop loop on an OpenAI-compatible
  * endpoint. `claude_code`: the user's own installed and signed-in Claude Code, through the Agent
  * SDK — shown as "Claude Agent", on `agent_model` and `agent_effort` (null: Claude Code's own
- * defaults). The endpoint pin stays what the app's own calls about the Bot run on.
+ * defaults) and the account in `agent_config_dir` (null: whichever one Claude Code finds in the
+ * daemon's environment). The endpoint pin stays what the app's own calls about the Bot run on.
  */
 export const BOT_RUNNERS = ["claude_code"] as const;
 export type BotRunner = (typeof BOT_RUNNERS)[number];
@@ -50,6 +51,12 @@ export type Bot = {
   agent_model?: string | null;
   /** The effort a Claude Agent turn asks for; null: Claude Code's default. */
   agent_effort?: ClaudeEffort | null;
+  /**
+   * The Claude Code config directory a Claude Agent turn runs with — which of your Claude accounts
+   * it spends; one of the accounts listed in Settings (`ClaudeCodeStatus.accounts`). Null: the
+   * account Claude Code finds in the daemon's own environment.
+   */
+  agent_config_dir?: string | null;
   archived_at: string | null;
   created_at: string;
   updated_at: string;
@@ -88,6 +95,32 @@ export type ClaudeCodeStatus = {
   checked_at: string;
   /** Why something could not be found or asked, in English, for the card's small print. */
   error: string | null;
+  /**
+   * Your Claude accounts, as Claude Code signs in with each: first the daemon's own environment
+   * (`config_dir` null, the same answer as the fields above), then every config directory you
+   * listed in Settings. Absent from a daemon older than that.
+   */
+  accounts?: ClaudeCodeAccount[];
+};
+
+/**
+ * One Claude account: a Claude Code config directory and what `claude auth status` says of it when
+ * run with that directory (ADR 0061). Deskfolk keeps the directory only; signing in is Claude
+ * Code's own (`claude auth login`, with `CLAUDE_CONFIG_DIR` set to the directory).
+ */
+export type ClaudeCodeAccount = {
+  /** The directory as listed in Settings, absolute; null for the daemon's own environment. */
+  config_dir: string | null;
+  /** The directory Claude Code reports it reads (`configDirectory`); null when it did not say. */
+  config_directory: string | null;
+  logged_in: boolean | null;
+  auth_method: string | null;
+  subscription_type: string | null;
+  email: string | null;
+  /** Why it could not be asked, in English. */
+  error: string | null;
+  /** What to run in a terminal to sign this account in, as this computer's shell takes it. */
+  login_command: string;
 };
 
 /** One of your Claude plan's usage windows (`GET /v1/claude-usage`). */
@@ -122,6 +155,19 @@ export type ClaudeUsage = {
   checked_at: string | null;
   /** Why the latest ask failed, in English; the windows are then the last answer that came. */
   error: string | null;
+  /**
+   * Every account some Bot on Claude Agent runs on, each with its own windows; the fields above are
+   * the first one's, for a client older than accounts. Absent from a daemon older than that.
+   */
+  accounts?: ClaudeAccountUsage[];
+};
+
+/** One account's usage (`ClaudeUsage.accounts`): which account, then the same fields as `ClaudeUsage`. */
+export type ClaudeAccountUsage = Omit<ClaudeUsage, "accounts"> & {
+  /** The Bot's `agent_config_dir`; null for the daemon's own environment. */
+  config_dir: string | null;
+  /** The account's email, as `claude auth status` gave it; null when it did not. */
+  email: string | null;
 };
 
 export type ProfileRevision = {
@@ -147,6 +193,7 @@ export type CreateBotRequest = {
   runner?: BotRunner | null;
   agent_model?: string | null;
   agent_effort?: ClaudeEffort | null;
+  agent_config_dir?: string | null;
 };
 
 export type PatchBotRequest = {
@@ -160,6 +207,7 @@ export type PatchBotRequest = {
   runner?: BotRunner | null;
   agent_model?: string | null;
   agent_effort?: ClaudeEffort | null;
+  agent_config_dir?: string | null;
 };
 
 export type CreateBotResponse = {

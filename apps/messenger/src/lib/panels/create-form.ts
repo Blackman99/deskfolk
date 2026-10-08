@@ -23,6 +23,8 @@ export type CreateBotDraft = {
   /** Claude Agent's model and effort; `''` leaves them to Claude Code. Omit to leave them out. */
   agentModel?: string;
   agentEffort?: string;
+  /** The Claude account (a listed config directory); `''` the daemon's own environment. Omit to leave it out. */
+  agentConfigDir?: string;
 };
 
 export type CreateBotFieldErrors = {
@@ -33,6 +35,7 @@ export type CreateBotFieldErrors = {
   thinkingLevel?: "invalid";
   agentModel?: "invalid";
   agentEffort?: "invalid";
+  agentConfigDir?: "invalid";
 };
 
 export type CreateBotPlan =
@@ -102,6 +105,7 @@ export function planCreateBot(
   if (draft.runner !== undefined) body.runner = draft.runner === "claude_code" ? "claude_code" : null;
   if (agentModel !== undefined) body.agent_model = agentModel.length > 0 ? agentModel : null;
   if (agentEffort !== undefined) body.agent_effort = agentEffort && isClaudeEffort(agentEffort) ? agentEffort : null;
+  if (draft.agentConfigDir !== undefined) body.agent_config_dir = draft.agentConfigDir.trim() || null;
   return {
     ok: true,
     body,
@@ -143,6 +147,7 @@ export function mapCreateBotError(
   if (message.startsWith("thinking_level")) return { thinkingLevel: "invalid" };
   if (message.startsWith("agent_model")) return { agentModel: "invalid" };
   if (message.startsWith("agent_effort")) return { agentEffort: "invalid" };
+  if (message.startsWith("agent_config_dir")) return { agentConfigDir: "invalid" };
   return { top: true };
 }
 

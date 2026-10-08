@@ -1,11 +1,12 @@
 import { expect, test } from "bun:test";
 import type { ClaudeUsage } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
-import { headlineWindows, usageLevel, usagePercentText, usageResetText, usageWindowLabel } from "../settings/claude-usage.ts";
+import { headlineWindows, usageAccountShortLabels, usageLevel, usagePercentText, usageResetText, usageWindowLabel } from "../settings/claude-usage.ts";
 import { aBot, fakeRuntime } from "../test-fixtures.ts";
 import { reactive } from "../test-reactive.svelte.ts";
 import { click, render } from "../test-render.ts";
 import ClaudeUsageMeter from "./ClaudeUsageMeter.svelte";
+import CreateFab from "./CreateFab.svelte";
 
 const t = copyFor("zh");
 const en = copyFor("en");
@@ -97,4 +98,36 @@ test("labels, percents and levels", () => {
   expect(usagePercentText(0.4)).toBe("<1%");
   expect(usagePercentText(26.96)).toBe("27%");
   expect([usageLevel(74), usageLevel(75), usageLevel(89.9), usageLevel(90)]).toEqual(["normal", "warn", "warn", "danger"]);
+});
+
+test("Bots on two Claude accounts: a line for each, named by its email, and each account's windows once opened", async () => {
+  const first = { ...usage, config_dir: null, email: "pro@example.com" };
+  const second = { ...usage, plan: "team", config_dir: "/Users/you/.claude-b", email: "team@example.com",
+    windows: [{ kind: "five_hour" as const, model: null, percent: 80, resets_at: null }, { kind: "seven_day" as const, model: null, percent: 30, resets_at: null }] };
+  const view = open({ answer: async () => ({ ...usage, accounts: [first, second] }) });
+  await sleep(0);
+  const lines = [...view.host.querySelectorAll(".usage-line")].map((line) =>
+    [line.querySelector(".usage-title"), ...line.querySelectorAll("[data-usage-chip]")].map((part) => part?.textContent?.replace(/\s+/g, " ").trim()).join(" "));
+  // Their plans tell them apart, so the plans name them; the opened meter has the emails.
+  expect(lines).toEqual(["Pro 5小时 2% 7天 91%", "Team 5小时 80% 7天 30%"]);
+  expect(view.host.querySelector('[data-usage-account="/Users/you/.claude-b"] [data-usage-chip="five_hour"]')?.classList.contains("is-warn")).toBe(true);
+  click(view.host.querySelector<HTMLButtonElement>(".usage-summary")!);
+  await sleep(0);
+  expect([...view.host.querySelectorAll(".usage-detail-account")].map((label) => label.textContent)).toEqual(["pro@example.com", "team@example.com"]);
+  expect(view.host.querySelectorAll(".usage-foot button")).toHaveLength(1);
+  view.close();
+});
+
+test("two accounts on the same plan are named by their emails before the @", () => {
+  const a = { ...usage, config_dir: null, email: "me@home.example" };
+  const b = { ...usage, config_dir: "/Users/you/.claude-b", email: "me.work@corp.example" };
+  expect(usageAccountShortLabels([a, b], t)).toEqual(["me", "me.work"]);
+  expect(usageAccountShortLabels([{ ...a, plan: "pro" }, { ...b, plan: "Claude Max", email: null }], t)).toEqual(["Pro", "Max"]);
+  expect(usageAccountShortLabels([{ ...a, email: null }, { ...b, email: null }], t)).toEqual([t.claudeAgent.usage.own, ".claude-b"]);
+});
+
+test("on the phone the + button stands over the usage strip, as far up as the strip is tall", () => {
+  const view = render(CreateFab, { t, lift: 44, onCreateBot: () => {}, onCreateGroup: () => {} });
+  expect(view.host.querySelector<HTMLElement>(".fab-wrap")?.style.getPropertyValue("--fab-lift")).toBe("44px");
+  view.close();
 });

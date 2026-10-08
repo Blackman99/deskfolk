@@ -1,11 +1,14 @@
 /**
- * Where the user's own Claude Code lives, when they tell us (ADR 0061). Nothing else about Claude
- * Code is stored: Deskfolk runs it and asks it about itself, it never keeps its credentials.
+ * Where the user's own Claude Code lives, when they tell us, and the config directories their
+ * Claude accounts live in (ADR 0061). Nothing else about Claude Code is stored: Deskfolk runs it and
+ * asks it about itself, it never keeps its credentials.
  */
+import { CLAUDE_CONFIG_DIRS_MAX, normalizeConfigDir, sameConfigDir, tildeDir, tooWideForConfigDir } from "../claude-code/account";
 import { HttpError } from "../errors";
 import { setSetting, type StoreContext } from "./shared";
 
 const KEY = "claude_code_path";
+const DIRS_KEY = "claude_code_config_dirs";
 /** Long enough for any real path, short enough that a pasted blob is refused. */
 const PATH_MAX = 1024;
 
@@ -32,4 +35,47 @@ export function setClaudeCodePath(ctx: StoreContext, value: unknown): string | n
   }
   setSetting(ctx, KEY, trimmed);
   return trimmed;
+}
+
+/** The config directories of the Claude accounts you listed, besides the daemon's own environment. */
+export function claudeCodeConfigDirs(ctx: StoreContext): string[] {
+  const raw = ctx.db.query<{ value: string }, [string]>("SELECT value FROM settings WHERE key = ?").get(DIRS_KEY)?.value ?? "";
+  if (!raw.trim()) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((dir): dir is string => typeof dir === "string" && dir.length > 0) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The whole list, as the Settings card sends it after an add or a removal: each an absolute path
+ * (or one under `~/`), kept absolute and without a trailing separator, each once. One a Bot runs on
+ * stays until that Bot is moved to another account: taking it away would move the Bot's spending
+ * without you choosing.
+ */
+export function setClaudeCodeConfigDirs(ctx: StoreContext, value: unknown): string[] {
+  if (!Array.isArray(value)) throw new HttpError(422, "invalid_args", "config_dirs must be a list of paths");
+  if (value.length > CLAUDE_CONFIG_DIRS_MAX) throw new HttpError(422, "invalid_args", `at most ${CLAUDE_CONFIG_DIRS_MAX} accounts can be listed`);
+  const dirs: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "string") throw new HttpError(422, "invalid_args", "config_dirs must be a list of paths");
+    const dir = normalizeConfigDir(entry);
+    if (!dir) throw new HttpError(422, "invalid_args", `${entry.trim().slice(0, 200)} is not an absolute path`);
+    if (tooWideForConfigDir(dir)) throw new HttpError(422, "invalid_args", `${tildeDir(dir)} is your home folder or holds it: name the account's own directory, such as ~/.claude-b`);
+    if (!dirs.some((kept) => sameConfigDir(kept, dir))) dirs.push(dir);
+  }
+  const removed = claudeCodeConfigDirs(ctx).filter((dir) => !dirs.some((kept) => sameConfigDir(kept, dir)));
+  for (const dir of removed) {
+    const users = ctx.db
+      .query<{ name: string }, [string]>("SELECT name FROM bots WHERE deleted_at IS NULL AND agent_config_dir = ? ORDER BY name COLLATE NOCASE")
+      .all(dir)
+      .map((row) => row.name);
+    if (users.length > 0) {
+      throw new HttpError(409, "conflict", `${tildeDir(dir)} is the Claude account of ${users.join(", ")}: move ${users.length === 1 ? "that Bot" : "those Bots"} to another account first`);
+    }
+  }
+  setSetting(ctx, DIRS_KEY, dirs.length > 0 ? JSON.stringify(dirs) : "");
+  return dirs;
 }

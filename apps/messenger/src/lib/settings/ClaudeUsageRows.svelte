@@ -5,13 +5,14 @@
 
 	/** Every window of your Claude plan with its bar and when it starts over (ADR 0061). */
 	interface Props {
-		usage: ClaudeUsage;
+		usage: Omit<ClaudeUsage, 'accounts'>;
 		t: Copy;
 		locale: string;
 		/** The clock the reset times count from, ticked by whoever shows this. */
 		now: number;
 		busy: boolean;
-		onRefresh: () => void;
+		/** Absent: no button, for every account but the last when several are shown, so one refresh asks them all. */
+		onRefresh?: () => void;
 	}
 
 	let { usage, t, locale, now, busy, onRefresh }: Props = $props();
@@ -35,7 +36,9 @@
 		<span class="usage-checked" class:is-stale={usage.error !== null}>
 			{#if usage.error !== null && checked}{t.claudeAgent.usage.stale(checked)}{:else if checked}{t.claudeAgent.usage.checkedAt(checked)}{/if}
 		</span>
-		<button type="button" class="btn-xs" disabled={busy} onclick={onRefresh}>{busy ? t.claudeAgent.usage.refreshing : t.claudeAgent.usage.refresh}</button>
+		{#if onRefresh}
+			<button type="button" class="btn-xs" disabled={busy} onclick={onRefresh}>{busy ? t.claudeAgent.usage.refreshing : t.claudeAgent.usage.refresh}</button>
+		{/if}
 	</div>
 </div>
 

@@ -66,7 +66,7 @@ test("nothing is asked while no Bot runs on Claude Agent, or when claude is miss
     return answer;
   };
   let inUse = false;
-  const probe = createClaudeUsageProbe({ claudeCode: probeOf(signedIn), inUse: () => inUse, ask });
+  const probe = createClaudeUsageProbe({ claudeCode: probeOf(signedIn), inUse: () => (inUse ? [null] : []), ask });
   expect(await probe.current()).toMatchObject({ available: false, reason: "unused" });
   for (const [status, reason] of [
     [{ ...signedIn, path: null }, "missing"],
@@ -74,7 +74,7 @@ test("nothing is asked while no Bot runs on Claude Agent, or when claude is miss
     [{ ...signedIn, auth_method: "api_key" }, "no_plan"],
     [{ ...signedIn, auth_method: "third_party" }, "no_plan"],
   ] as const) {
-    const other = createClaudeUsageProbe({ claudeCode: probeOf(status), inUse: () => true, ask });
+    const other = createClaudeUsageProbe({ claudeCode: probeOf(status), inUse: () => [null], ask });
     expect(await other.current()).toMatchObject({ available: false, reason });
   }
   expect(asked).toBe(0);
@@ -92,7 +92,7 @@ test("one claude at a time, kept for a while; Claude Code is run with its own en
     return new Promise((done) => (resolve = done));
   };
   const probe = createClaudeUsageProbe({
-    claudeCode: probeOf(signedIn), inUse: () => true, ask, now: () => clock,
+    claudeCode: probeOf(signedIn), inUse: () => [null], ask, now: () => clock,
     env: { PATH: "/usr/bin", CLAUDECODE: "1", REAL_BOT_DEV: "1", CLAUDE_CODE_OAUTH_TOKEN: "theirs" },
   });
   const both = Promise.all([probe.current(), probe.current()]);
@@ -126,7 +126,7 @@ test("a failed ask keeps showing the last windows with its error, and is not ret
     if (fail) throw new Error("Unsupported control request: get_usage");
     return answer;
   };
-  const probe = createClaudeUsageProbe({ claudeCode: probeOf(signedIn), inUse: () => true, ask, now: () => clock });
+  const probe = createClaudeUsageProbe({ claudeCode: probeOf(signedIn), inUse: () => [null], ask, now: () => clock });
   const first = await probe.current();
   fail = true;
   clock += CLAUDE_USAGE_MAX_AGE_MS;
@@ -135,6 +135,37 @@ test("a failed ask keeps showing the last windows with its error, and is not ret
   expect(await probe.current()).toBe(failed);
   expect(asked).toBe(2);
 
-  const never = createClaudeUsageProbe({ claudeCode: probeOf(signedIn), inUse: () => true, ask, now: () => clock });
+  const never = createClaudeUsageProbe({ claudeCode: probeOf(signedIn), inUse: () => [null], ask, now: () => clock });
   expect(await never.current()).toMatchObject({ available: false, reason: "failed", error: "Unsupported control request: get_usage" });
+});
+
+test("each account a Bot runs on is asked with its own config directory, the daemon's own first; one signed out stays out", async () => {
+  const two: ClaudeCodeStatus = { ...signedIn, email: "pro@a.c", accounts: [
+    { config_dir: null, config_directory: "/Users/a/.claude", logged_in: true, auth_method: "claude.ai", subscription_type: "pro", email: "pro@a.c", error: null, login_command: "" },
+    // The same directory listed again: one account, asked and shown once.
+    { config_dir: "/Users/a/.claude", config_directory: "/Users/a/.claude", logged_in: true, auth_method: "claude.ai", subscription_type: "pro", email: "pro@a.c", error: null, login_command: "" },
+    { config_dir: "/opt/claude-b", config_directory: "/opt/claude-b", logged_in: true, auth_method: "claude.ai", subscription_type: "team", email: "team@a.c", error: null, login_command: "" },
+    { config_dir: "/opt/claude-c", config_directory: "/opt/claude-c", logged_in: false, auth_method: "none", subscription_type: null, email: null, error: null, login_command: "" },
+  ] };
+  const dirs: Array<string | undefined> = [];
+  const ask: AskUsage = async (launch) => {
+    dirs.push(launch.env.CLAUDE_CONFIG_DIR);
+    return launch.env.CLAUDE_CONFIG_DIR === "/opt/claude-b" ? { ...answer, subscription_type: "team" } : answer;
+  };
+  let using: Array<string | null> = ["/opt/claude-c", "/opt/claude-b", null, "/Users/a/.claude", null];
+  const probe = createClaudeUsageProbe({ claudeCode: probeOf(two), inUse: () => using, ask, env: { PATH: "/usr/bin" } });
+  const usage = await probe.current();
+  expect(dirs).toEqual([undefined, "/opt/claude-b"]);
+  expect(usage.accounts?.map((account) => [account.config_dir, account.email, account.available, account.reason, account.plan])).toEqual([
+    [null, "pro@a.c", true, null, "pro"],
+    ["/opt/claude-b", "team@a.c", true, null, "team"],
+    ["/opt/claude-c", null, false, "signed_out", null],
+  ]);
+  // The fields of old are the first account's, for a client that knows of one.
+  expect(usage).toMatchObject({ available: true, plan: "pro", windows: usage.accounts![0]!.windows });
+  expect("config_dir" in usage).toBe(false);
+  // Moving Bots between accounts asks again at once, without waiting out the kept answer.
+  using = [null];
+  expect((await probe.current()).accounts).toHaveLength(1);
+  expect(dirs).toEqual([undefined, "/opt/claude-b", undefined]);
 });

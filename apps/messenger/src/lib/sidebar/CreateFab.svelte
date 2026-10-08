@@ -12,14 +12,16 @@
 		createMenuOpen?: boolean;
 		/** The wrapper, for the sidebar's outside-click check. */
 		wrapEl?: HTMLElement | null;
+		/** How far above its usual place it stands: the height of the usage strip above the bottom bar. */
+		lift?: number;
 		onCreateBot: () => void;
 		onCreateGroup: () => void;
 	};
 
-	let { t, createMenuOpen = $bindable(false), wrapEl = $bindable(null), onCreateBot, onCreateGroup }: Props = $props();
+	let { t, createMenuOpen = $bindable(false), wrapEl = $bindable(null), lift = 0, onCreateBot, onCreateGroup }: Props = $props();
 </script>
 
-<div class="fab-wrap" bind:this={wrapEl}>
+<div class="fab-wrap" bind:this={wrapEl} style:--fab-lift="{lift}px">
 	{#if createMenuOpen}
 		<div class="fab-menu" role="menu">
 			<button
@@ -81,7 +83,7 @@
 	.fab-wrap {
 		position: fixed;
 		right: 16px;
-		bottom: calc(60px + env(safe-area-inset-bottom) + 16px);
+		bottom: calc(60px + env(safe-area-inset-bottom) + 16px + var(--fab-lift, 0px));
 		z-index: 12;
 		display: flex;
 		flex-direction: column;

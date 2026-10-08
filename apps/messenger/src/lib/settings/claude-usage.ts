@@ -1,4 +1,4 @@
-import type { ClaudeUsage, ClaudeUsageWindow } from "@real-bot/protocol";
+import type { ClaudeAccountUsage, ClaudeUsage, ClaudeUsageWindow } from "@real-bot/protocol";
 import type { Copy } from "../copy.ts";
 
 /** How often the sidebar asks while the window is in front; the daemon keeps answers as long. */
@@ -16,8 +16,48 @@ export function usageWindowLabel(window: ClaudeUsageWindow, t: Copy): string {
   return t.claudeAgent.usage.model(window.model ?? "?");
 }
 
+/**
+ * Each account some Bot on Claude Agent runs on, with its own usage; a daemon older than accounts
+ * answers for one, which stands in as the daemon's own environment.
+ */
+export function usageAccounts(usage: ClaudeUsage): ClaudeAccountUsage[] {
+  if (usage.accounts && usage.accounts.length > 0) return usage.accounts;
+  const { accounts: _accounts, ...only } = usage;
+  return [{ ...only, config_dir: null, email: null }];
+}
+
+/**
+ * The accounts' names where room is short, in order: their plans (`Pro`, `Team`) when those tell
+ * them apart, otherwise each email before the @, else the directory's last part.
+ */
+export function usageAccountShortLabels(accounts: ClaudeAccountUsage[], t: Copy): string[] {
+  const plans = accounts.map((account) => account.plan?.replace(/^claude\s+/i, "").trim() ?? "");
+  if (plans.every(Boolean) && new Set(plans.map((plan) => plan.toLowerCase())).size === plans.length) {
+    return plans.map((plan) => plan.charAt(0).toUpperCase() + plan.slice(1));
+  }
+  return accounts.map((account) => {
+    if (account.email) return account.email.split("@")[0] || account.email;
+    if (account.config_dir) return account.config_dir.split(/[\\/]/).filter(Boolean).pop() ?? account.config_dir;
+    return t.claudeAgent.usage.own;
+  });
+}
+
+/** An account's name in full, for the opened meter and the card. */
+export function usageAccountLabel(account: ClaudeAccountUsage, t: Copy): string {
+  return account.email ?? account.config_dir ?? t.claudeAgent.usage.own;
+}
+
+/** Why an account shows no windows, in the card's and the meter's words; null when it has some. */
+export function usageAccountNote(account: ClaudeAccountUsage, t: Copy): string | null {
+  if (account.available) return null;
+  if (account.reason === "signed_out") return t.claudeAgent.usage.signedOut;
+  if (account.reason === "no_plan") return t.claudeAgent.usage.noPlan;
+  if (account.reason === "failed") return t.claudeAgent.usage.failed;
+  return null;
+}
+
 /** The two windows the closed meter shows, the plan's own. */
-export function headlineWindows(usage: ClaudeUsage): ClaudeUsageWindow[] {
+export function headlineWindows(usage: Pick<ClaudeUsage, "windows">): ClaudeUsageWindow[] {
   return usage.windows.filter((window) => window.kind !== "model");
 }
 

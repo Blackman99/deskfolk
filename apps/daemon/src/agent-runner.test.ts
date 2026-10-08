@@ -125,7 +125,7 @@ afterEach(async () => {
   while (closes.length) await closes.pop()!();
 });
 
-async function harness(script: Script, opts: { status?: ClaudeCodeStatus; runner?: "claude_code" | null } = {}) {
+async function harness(script: Script, opts: { status?: ClaudeCodeStatus; runner?: "claude_code" | null; configDir?: string } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "agent-runner-")));
   const store = new Store({ endpointKey: memoryKeyStore() });
   const events: ClientEvent[] = [];
@@ -161,7 +161,9 @@ async function harness(script: Script, opts: { status?: ClaudeCodeStatus; runner
     store.close();
     rmSync(root, { recursive: true, force: true });
   });
-  const bot = store.createBot({ name: "Coder", duties: "write code", boundaries: "stay in the workspace", runner: opts.runner === undefined ? "claude_code" : opts.runner, agent_model: "sonnet" });
+  if (opts.configDir) store.setClaudeCodeConfigDirs([opts.configDir]);
+  const bot = store.createBot({ name: "Coder", duties: "write code", boundaries: "stay in the workspace", runner: opts.runner === undefined ? "claude_code" : opts.runner, agent_model: "sonnet",
+    agent_config_dir: opts.configDir ?? null });
   const session = bot.direct_session.id;
   const completed = () => new Promise<void>((resolve) => completedWaiters.push(resolve));
   const post = async (body: string) => {
@@ -352,6 +354,30 @@ test("any other request that failed ends the turn as Claude Code stopping, with 
   await h.post("hi");
   expect(h.lines("bot")).toEqual([]);
   expect(h.lines("system").find((body) => body.includes("中途退出"))).toContain("529 Overloaded");
+});
+
+test("a Bot on another Claude account runs Claude Code with that config directory, which its tools cannot open", async () => {
+  const dir = "/opt/zz-claude-b";
+  const account = { config_dir: dir, config_directory: dir, logged_in: true, auth_method: "claude.ai", subscription_type: "team", email: "team@a.c", error: null, login_command: "" };
+  const own = { ...account, config_dir: null, config_directory: "/x/.claude", subscription_type: "pro", email: "pro@a.c" };
+  let verdict: ToolUse | null = null;
+  const h = await harness(async function* ({ useTool }) {
+    verdict = await useTool("Read", { file_path: `${dir}/.claude.json` });
+    yield result("好了");
+  }, { configDir: dir, status: { ...signedIn, accounts: [own, account] } });
+  await h.post("hi");
+  expect(h.seen.options?.env?.CLAUDE_CONFIG_DIR).toBe(dir);
+  expect(verdict!.allowed).toBe(false);
+  expect(verdict!.reason).toContain("credentials");
+  expect(h.lines("bot")).toEqual(["好了"]);
+
+  // That account signed out stops the turn and names it, though the daemon's own is signed in.
+  const out = await harness(async function* () {
+    yield result("never");
+  }, { configDir: dir, status: { ...signedIn, accounts: [own, { ...account, logged_in: false }] } });
+  await out.post("hi");
+  expect(out.seen.options).toBeUndefined();
+  expect(out.lines("system").some((line) => line.includes(dir) && line.includes("还没登录"))).toBe(true);
 });
 
 test("with no proxy in the daemon's environment, Claude Code gets the system's HTTPS proxy the card shows", async () => {

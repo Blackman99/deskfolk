@@ -115,6 +115,8 @@ export function migrateSchema(db: Database): void {
   if (!botCols.includes("agent_effort")) {
     db.run(`ALTER TABLE bots ADD COLUMN agent_effort TEXT CHECK (agent_effort IS NULL OR agent_effort IN ('low', 'medium', 'high', 'xhigh', 'max'))`);
   }
+  // Which of your Claude accounts its turns spend: NULL is whichever Claude Code finds in the daemon's environment.
+  if (!botCols.includes("agent_config_dir")) db.run(`ALTER TABLE bots ADD COLUMN agent_config_dir TEXT`);
   const revCols = db
     .query<{ name: string }, []>(`PRAGMA table_info(profile_revisions)`)
     .all()

@@ -46,12 +46,15 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
   options = {
     ...options,
     admission: options.admission ?? new TurnAdmission(),
-    claudeCode: options.claudeCode ?? createClaudeCodeProbe({ setting: () => options.store.claudeCodePath() }),
+    claudeCode: options.claudeCode ?? createClaudeCodeProbe({
+      setting: () => options.store.claudeCodePath(),
+      configDirs: () => options.store.claudeCodeConfigDirs(),
+    }),
   };
   const claudeCode = options.claudeCode!;
   options.claudeUsage ??= createClaudeUsageProbe({
     claudeCode,
-    inUse: () => options.store.listBots().some((bot) => bot.runner === "claude_code"),
+    inUse: () => options.store.listBots().filter((bot) => bot.runner === "claude_code").map((bot) => bot.agent_config_dir ?? null),
   });
   const sockets = new Set<Bun.ServerWebSocket<SocketData>>();
   const timers = new Map<Bun.ServerWebSocket<SocketData>, ReturnType<typeof setTimeout>>();
@@ -697,6 +700,13 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
       if (path === "/v1/runtime/claude-code/path" && request.method === "PUT") {
         const body = (await readJson(request)) as Record<string, unknown>;
         options.store.setClaudeCodePath(body.path ?? null);
+        return jsonResponse(await claudeCode.detect(), 200, origin);
+      }
+      // The Claude accounts besides the daemon's own environment: the config directories a Bot may
+      // run on. The whole list each time; one a Bot runs on cannot be taken away (409).
+      if (path === "/v1/runtime/claude-code/accounts" && request.method === "PUT") {
+        const body = (await readJson(request)) as Record<string, unknown>;
+        options.store.setClaudeCodeConfigDirs(body.config_dirs);
         return jsonResponse(await claudeCode.detect(), 200, origin);
       }
       if (request.method === "POST" && path === "/v1/remote/screen/disconnect" && options.screen) {

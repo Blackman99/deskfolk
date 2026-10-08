@@ -148,6 +148,7 @@ CREATE TABLE IF NOT EXISTS bots (
   runner TEXT CHECK (runner IS NULL OR runner IN ('claude_code')),
   agent_model TEXT,
   agent_effort TEXT CHECK (agent_effort IS NULL OR agent_effort IN ('low', 'medium', 'high', 'xhigh', 'max')),
+  agent_config_dir TEXT,
   archived_at TEXT,
   deleted_at TEXT,
   created_at TEXT NOT NULL,

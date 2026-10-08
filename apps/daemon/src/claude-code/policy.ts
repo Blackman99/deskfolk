@@ -40,6 +40,8 @@ export type AgentCall = {
   mode: "work" | "desk" | "readonly";
   workspace: string;
   home?: string;
+  /** Your Claude accounts' config directories listed in Settings: as off limits as `~/.claude`. */
+  configDirs?: string[];
   /** Whether an always-allow rule you made covers this kind of call there. */
   allowed: (kind: string, target: string) => boolean;
   /** Whether a path exists; the disk's own when absent. */
@@ -76,7 +78,7 @@ export function decideAgentCall(call: AgentCall): AgentDecision {
 
   if (call.tool === "Bash") {
     const command = typeof call.input.command === "string" ? call.input.command : "";
-    if (touchesClaudeCredentials(command, home, platform)) {
+    if (touchesClaudeCredentials(command, home, platform, call.configDirs)) {
       return { kind: "deny", reason: "Claude Code's own settings and credentials are off limits" };
     }
     const hit = recursiveSearchGuard(call.workspace, command, call.cwd, host);
@@ -92,7 +94,7 @@ export function decideAgentCall(call: AgentCall): AgentDecision {
   const abs = raw === null ? call.cwd : anchorAt(call.cwd, expandHome(raw, home, platform), platform);
   // A Git Bash spelling (`/c/Users/…`) names the same file to Claude Code as `C:\Users\…` may.
   const named = [abs, ...(platform === "win32" && raw ? [gitBashToWindows(raw)].filter((path): path is string => path !== null) : [])];
-  if (named.some((path) => isClaudeCredentialPath(path, home, platform))) {
+  if (named.some((path) => isClaudeCredentialPath(path, home, platform, call.configDirs))) {
     return { kind: "deny", reason: "Claude Code's own settings and credentials are off limits" };
   }
   // On Windows a path with no drive ("/work/a.md", "/c/Users/…") opens on whichever drive the
@@ -152,11 +154,15 @@ function gitBashToWindows(path: string): string | null {
   return match ? `${match[1]!.toUpperCase()}:\\${(match[2] ?? "").replace(/\//g, "\\")}` : null;
 }
 
-/** `~/.claude`, `~/.claude.json` and the keychains: where Claude Code keeps what signs it in. */
-export function isClaudeCredentialPath(abs: string, home: string, platform: NodeJS.Platform = process.platform): boolean {
+/**
+ * `~/.claude`, `~/.claude.json`, the keychains and the config directories your other Claude accounts
+ * live in (`configDirs`): where Claude Code keeps what signs it in.
+ */
+export function isClaudeCredentialPath(abs: string, home: string, platform: NodeJS.Platform = process.platform, configDirs: string[] = []): boolean {
   if (!isAbsoluteHostPath(abs, platform)) return false;
   const norm = platform === "win32" ? abs : posix.resolve(abs);
   if (platform !== "win32" && (norm.startsWith(`${posix.join(home, "Library", "Keychains")}/`) || norm.startsWith("/Library/Keychains/"))) return true;
+  if (configDirs.some((dir) => isWithinPath(dir, norm, platform))) return true;
   if (!isWithinPath(home, norm, platform)) return false;
   // Names compare as the file system does: regardless of case on Windows.
   const rel = workspaceRelative(home, norm, platform);
@@ -164,8 +170,12 @@ export function isClaudeCredentialPath(abs: string, home: string, platform: Node
   return name === ".claude" || name.startsWith(".claude/") || name === ".claude.json" || name.startsWith(".claude.json.");
 }
 
-/** A command that names Claude Code's own config or asks the keychain for a secret. */
-export function touchesClaudeCredentials(command: string, home: string, platform: NodeJS.Platform = process.platform): boolean {
+/**
+ * A command that names Claude Code's own config — `~/.claude`, `~/.claude.json`, or one of your
+ * accounts' config directories (`configDirs`) — or asks the keychain for a secret.
+ */
+export function touchesClaudeCredentials(command: string, home: string, platform: NodeJS.Platform = process.platform, configDirs: string[] = []): boolean {
+  if (configDirs.some((dir) => namesDir(command, dir, home, platform))) return true;
   if (platform !== "win32") {
     const claude = new RegExp(`(~|\\$HOME|\\$\\{HOME\\}|${escapeRegExp(home)})/\\.claude(\\.json|/|\\b)`);
     if (claude.test(command)) return true;
@@ -177,6 +187,35 @@ export function touchesClaudeCredentials(command: string, home: string, platform
   const drive = /^([A-Za-z]):[\\/](.*)$/s.exec(home);
   if (drive) homes.push(`[\\\\/]${drive[1]}[\\\\/]+${spelled(drive[2]!)}`);
   return new RegExp(`(?:${homes.join("|")})[\\\\/]+\\.claude(?:\\.json|[\\\\/]|\\b)`, "i").test(command);
+}
+
+/**
+ * Whether a command names `dir` or something in it: spelled out, or under your home folder through
+ * `~`, `$HOME` (and on Windows `%USERPROFILE%` and the like), either slash on Windows, any case there.
+ * A longer name that only starts the same (`~/.claude-b2` for `~/.claude-b`) is another directory.
+ */
+function namesDir(command: string, dir: string, home: string, platform: NodeJS.Platform): boolean {
+  const win = platform === "win32";
+  const sep = win ? "[\\\\/]+" : "/+";
+  const spelled = (path: string) => path.split(win ? /[\\/]+/ : /\/+/).filter(Boolean).map(escapeRegExp).join(sep);
+  // Spelled out: `/Users/a/cc`; on Windows `C:\Users\a\cc` with either slash, Git Bash's
+  // `/c/Users/a/cc`, or a share's `\\server\share\cc`.
+  const prefixes: string[] = [];
+  if (!win) prefixes.push(`/${spelled(dir)}`);
+  else if (/^\\\\/.test(dir)) prefixes.push(`[\\\\/]{2}${spelled(dir)}`);
+  else {
+    prefixes.push(spelled(dir));
+    const drive = /^([A-Za-z]):[\\/](.*)$/s.exec(dir);
+    if (drive) prefixes.push(`[\\\\/]${drive[1]}${sep}${spelled(drive[2]!)}`);
+  }
+  if (dir.length > home.length && isWithinPath(home, dir, platform)) {
+    const rel = spelled(dir.slice(home.length));
+    const homes = win
+      ? ["~", "\\$HOME", "\\$\\{HOME\\}", "%USERPROFILE%", "\\$env:USERPROFILE", "\\$\\{env:USERPROFILE\\}", "%HOMEDRIVE%%HOMEPATH%"]
+      : ["~", "\\$HOME", "\\$\\{HOME\\}"];
+    for (const spelling of homes) prefixes.push(`${spelling}${sep}${rel}`);
+  }
+  return new RegExp(`(?:${prefixes.join("|")})(?![A-Za-z0-9._-])`, win ? "i" : "").test(command);
 }
 
 function escapeRegExp(text: string): string {

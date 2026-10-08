@@ -50,6 +50,24 @@ posixTest("a recursive search over the home folder is refused, as for every Bot"
   expect(call.kind).toBe("deny");
 });
 
+posixTest("the config directories of your other Claude accounts are as off limits, whatever they are called", () => {
+  const configDirs = [`${home}/cc-work`, "/opt/claude-acct"];
+  for (const file_path of [`${home}/cc-work/.claude.json`, `${home}/cc-work`, "~/cc-work/settings.json", "/opt/claude-acct/.credentials.json"]) {
+    const call = decideAgentCall({ ...base, configDirs, tool: "Read", input: { file_path } });
+    expect(call.kind).toBe("deny");
+    if (call.kind === "deny") expect(call.reason).toContain("credentials");
+  }
+  // Not listed, it is any other folder outside the workspace.
+  expect(decideAgentCall({ ...base, tool: "Read", input: { file_path: `${home}/cc-work/.claude.json` } }).kind).toBe("ask");
+  for (const command of ["cat ~/cc-work/.claude.json", "ls $HOME/cc-work", "cp ${HOME}/cc-work/x .", `tar cf - ${home}/cc-work`, "cat /opt/claude-acct/.claude.json"]) {
+    expect(touchesClaudeCredentials(command, home, "darwin", configDirs)).toBe(true);
+  }
+  for (const command of ["ls ~/cc-work2", "ls ~/projects/cc-work", "cat /opt/claude-acct-notes"]) {
+    expect(touchesClaudeCredentials(command, home, "darwin", configDirs)).toBe(false);
+  }
+  expect(decideAgentCall({ ...base, configDirs, tool: "Bash", input: { command: "cat ~/cc-work/.claude.json" } }).kind).toBe("deny");
+});
+
 posixTest("Claude Code's own credentials are never reachable", () => {
   expect(decideAgentCall({ ...base, tool: "Read", input: { file_path: `${home}/.claude/.credentials.json` } }).kind).toBe("deny");
   expect(decideAgentCall({ ...base, tool: "Read", input: { file_path: "~/.claude.json" } }).kind).toBe("deny");
@@ -136,6 +154,13 @@ test("on Windows, Claude Code's own credentials are never reachable, however the
     expect([command, decideAgentCall({ ...winBase, tool: "Bash", input: { command } }).kind]).toEqual([command, "deny"]);
   }
   expect(touchesClaudeCredentials("ls ~/.claudex", WIN_HOME, "win32")).toBe(false);
+  const configDirs = [`${WIN_HOME}\\cc-work`, "D:\\claude-acct"];
+  for (const command of ["type %USERPROFILE%\\cc-work\\.claude.json", "Get-Content $env:USERPROFILE/CC-WORK/x", "cat /c/Users/someone/cc-work/x",
+    "cat ~/cc-work/.claude.json", "type d:\\Claude-Acct\\.credentials.json", "cat /d/claude-acct/x"]) {
+    expect(touchesClaudeCredentials(command, WIN_HOME, "win32", configDirs)).toBe(true);
+  }
+  expect(touchesClaudeCredentials("dir %USERPROFILE%\\cc-work2", WIN_HOME, "win32", configDirs)).toBe(false);
+  expect(isClaudeCredentialPath("c:\\users\\someone\\CC-WORK\\.claude.json", WIN_HOME, "win32", configDirs)).toBe(true);
   expect(isClaudeCredentialPath(`${WIN_HOME}\\projects\\.claude-notes`, WIN_HOME, "win32")).toBe(false);
 });
 

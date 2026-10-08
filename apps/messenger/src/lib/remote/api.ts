@@ -509,6 +509,10 @@ export class RemoteApi extends ApiBase<PendingRemote> {
     throw new ApiError(404, "not_found", "Claude Code is only visible on the Mac");
   }
 
+  async setClaudeCodeAccounts(_configDirs: string[]): Promise<ClaudeCodeStatus> {
+    throw new ApiError(404, "not_found", "Claude Code is only visible on the Mac");
+  }
+
   /** The plan's usage is only read, never set: a phone sees the meter too. */
   async claudeUsage(refresh = false): Promise<ClaudeUsage> {
     return this.get<ClaudeUsage>(`/v1/claude-usage${refresh ? "?refresh=1" : ""}`);

@@ -1,10 +1,14 @@
 /**
  * What the user's Claude Code says about itself (ADR 0061): `claude --version` and
- * `claude auth status` (JSON; exit 1 when signed out). That is all Deskfolk asks — it never opens
- * Claude Code's credentials, keychain item or config. The answer is cached and refreshed on demand:
- * a Claude Agent turn reads it before it starts, the Settings card when it opens or you re-check.
+ * `claude auth status` (JSON; exit 1 when signed out), the latter once per account — the daemon's
+ * own environment and every config directory listed in Settings. That is all Deskfolk asks — it
+ * never opens Claude Code's credentials, keychain item or config. The answer is cached and
+ * refreshed on demand: a Claude Agent turn reads it before it starts, the Settings card when it
+ * opens or you re-check.
  */
-import type { ClaudeCodeStatus } from "@real-bot/protocol";
+import { existsSync } from "node:fs";
+import type { ClaudeCodeAccount, ClaudeCodeStatus } from "@real-bot/protocol";
+import { loginCommand, withConfigDir, type AccountHost } from "./account";
 import { locateClaudeCode, type LocateDeps } from "./locate";
 import { killProcessTree } from "../platform";
 import { claudeProxy, maskProxy, withSystemProxy, type SystemProxy } from "./proxy";
@@ -16,7 +20,17 @@ export const AGENT_SDK_CLAUDE_CODE_VERSION = "2.1.289";
 export type RunResult = { code: number | null; stdout: string };
 export type Run = (argv: string[], env: Record<string, string | undefined>) => Promise<RunResult>;
 
-export type DescribeDeps = LocateDeps & { run?: Run; now?: () => Date; systemProxy?: SystemProxy };
+export type DescribeDeps = LocateDeps & {
+  run?: Run;
+  now?: () => Date;
+  systemProxy?: SystemProxy;
+  /** The config directories listed in Settings, each asked on its own after the daemon's own environment. */
+  configDirs?: string[];
+  /** Whose default config directory is whose; this machine's when absent. */
+  accountHost?: AccountHost;
+  /** Whether a listed directory is there; the disk's own when absent. */
+  dirExists?: (dir: string) => boolean;
+};
 
 export async function describeClaudeCode(deps: DescribeDeps): Promise<ClaudeCodeStatus> {
   const run = deps.run ?? runWithTimeout;
@@ -34,24 +48,45 @@ export async function describeClaudeCode(deps: DescribeDeps): Promise<ClaudeCode
     checked_at: checkedAt, error: located.error,
   };
   if (!located.found) return empty;
+  const executable = located.found.path;
+  const platform = (deps.platform ?? process.platform) as NodeJS.Platform;
   // Asked with the environment a turn runs it with.
-  const env = withSystemProxy(claudeChildEnv(deps.env), empty, (deps.platform ?? process.platform) as NodeJS.Platform);
-  const status: ClaudeCodeStatus = { ...empty, path: located.found.path, source: located.found.source, error: null };
-  const version = await run([located.found.path, "--version"], env);
+  const envFor = (dir: string | null) => withSystemProxy(claudeChildEnv(deps.env, dir, deps.accountHost), empty, platform);
+  const status: ClaudeCodeStatus = { ...empty, path: executable, source: located.found.source, error: null };
+  const version = await run([executable, "--version"], envFor(null));
   status.version = parseVersion(version.stdout);
   if (!status.version) status.error = "claude --version gave no version";
   status.outdated = status.version !== null && compareVersions(status.version, AGENT_SDK_CLAUDE_CODE_VERSION) < 0;
-  const auth = await run([located.found.path, "auth", "status"], env);
-  const parsed = parseAuthStatus(auth.stdout);
-  if (parsed) {
-    status.logged_in = parsed.loggedIn;
-    status.auth_method = parsed.authMethod;
-    status.subscription_type = parsed.subscriptionType;
-    status.email = parsed.email;
-  } else if (!status.error) {
-    status.error = "claude auth status gave no answer";
-  }
+  const ask = async (dir: string | null): Promise<ClaudeCodeAccount> => {
+    const login_command = loginCommand(dir, deps.accountHost);
+    // Nothing is signed in where there is no directory, and `claude` would make one (a mistyped
+    // path left behind); signing in makes it.
+    if (dir !== null && !(deps.dirExists ?? existsSync)(dir)) {
+      return { config_dir: dir, config_directory: dir, logged_in: false, auth_method: "none", subscription_type: null, email: null,
+        error: "the directory does not exist yet", login_command };
+    }
+    const auth = await run([executable, "auth", "status"], envFor(dir));
+    const parsed = parseAuthStatus(auth.stdout);
+    if (!parsed) {
+      return { config_dir: dir, config_directory: null, logged_in: null, auth_method: null, subscription_type: null, email: null, error: "claude auth status gave no answer", login_command };
+    }
+    return { config_dir: dir, config_directory: parsed.configDirectory, logged_in: parsed.loggedIn, auth_method: parsed.authMethod,
+      subscription_type: parsed.subscriptionType, email: parsed.email, error: null, login_command };
+  };
+  const accounts = await Promise.all([null, ...(deps.configDirs ?? [])].map(ask));
+  const own = accounts[0]!;
+  status.accounts = accounts;
+  status.logged_in = own.logged_in;
+  status.auth_method = own.auth_method;
+  status.subscription_type = own.subscription_type;
+  status.email = own.email;
+  if (own.error && !status.error) status.error = own.error;
   return status;
+}
+
+/** The account a Bot's `agent_config_dir` names in `status`; undefined when the status has none for it. */
+export function accountOf(status: ClaudeCodeStatus, dir: string | null): ClaudeCodeAccount | undefined {
+  return status.accounts?.find((account) => account.config_dir === dir);
 }
 
 /** `2.1.289 (Claude Code)` → `2.1.289`. */
@@ -70,7 +105,7 @@ export function compareVersions(a: string, b: string): number {
 }
 
 /** The fields Deskfolk shows from `claude auth status`'s JSON; null when it printed none. */
-export function parseAuthStatus(out: string): { loggedIn: boolean; authMethod: string | null; subscriptionType: string | null; email: string | null } | null {
+export function parseAuthStatus(out: string): { loggedIn: boolean; authMethod: string | null; subscriptionType: string | null; email: string | null; configDirectory: string | null } | null {
   const start = out.indexOf("{");
   const end = out.lastIndexOf("}");
   if (start < 0 || end <= start) return null;
@@ -82,6 +117,7 @@ export function parseAuthStatus(out: string): { loggedIn: boolean; authMethod: s
       authMethod: text(json.authMethod),
       subscriptionType: text(json.subscriptionType),
       email: text(json.email),
+      configDirectory: text(json.configDirectory),
     };
   } catch {
     return null;
@@ -93,16 +129,17 @@ export function parseAuthStatus(out: string): { loggedIn: boolean; authMethod: s
  * (`ANTHROPIC_*`, `CLAUDE_CODE_OAUTH_TOKEN` pass through untouched — Deskfolk never takes away a way
  * Claude Code signs in, it only shows which one is in use). Removed: the markers a Claude Code
  * session leaves on processes it starts (a daemon started from one would otherwise read as a nested
- * session) and Deskfolk's own `REAL_BOT_*` switches, which mean nothing to Claude Code.
+ * session) and Deskfolk's own `REAL_BOT_*` switches, which mean nothing to Claude Code. `configDir`
+ * picks the account (`withConfigDir`): absent or null, `CLAUDE_CONFIG_DIR` stays as the daemon has it.
  */
-export function claudeChildEnv(env: Record<string, string | undefined>): Record<string, string> {
+export function claudeChildEnv(env: Record<string, string | undefined>, configDir?: string | null, host?: AccountHost): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(env)) {
     if (value === undefined) continue;
     if (NESTED_SESSION_MARKERS.has(key) || key.startsWith("REAL_BOT_")) continue;
     out[key] = value;
   }
-  return out;
+  return withConfigDir(out, configDir, host);
 }
 
 /**

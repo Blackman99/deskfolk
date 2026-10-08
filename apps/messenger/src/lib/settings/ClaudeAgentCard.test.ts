@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { ClaudeCodeStatus } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
-import { render } from "../test-render.ts";
+import { click, render } from "../test-render.ts";
 import ClaudeAgentCard from "./ClaudeAgentCard.svelte";
 
 const t = copyFor("zh");
@@ -85,4 +85,60 @@ test("the card shows the plan's usage under the facts, or says the sign-in has n
   await sleep(0);
   expect(unused.host.querySelector("[data-claude-card-usage]")).toBeNull();
   unused.close();
+});
+
+test("other accounts are listed with their sign-in, added and removed as a whole list; one a Bot runs on stays", async () => {
+  const own = { config_dir: null, config_directory: "/Users/you/.claude", logged_in: true, auth_method: "claude.ai", subscription_type: "pro", email: "you@example.com", error: null, login_command: "claude auth login" };
+  const team = { config_dir: "/Users/you/.claude-b", config_directory: "/Users/you/.claude-b", logged_in: true, auth_method: "claude.ai", subscription_type: "team", email: "team@example.com", error: null,
+    login_command: "CLAUDE_CONFIG_DIR=/Users/you/.claude-b claude auth login" };
+  const out = { ...team, config_dir: "/Users/you/.claude-c", config_directory: "/Users/you/.claude-c", logged_in: false, auth_method: "none", subscription_type: null, email: null,
+    login_command: "CLAUDE_CONFIG_DIR=/Users/you/.claude-c claude auth login" };
+  const sent: string[][] = [];
+  let refuse = false;
+  const view = render(ClaudeAgentCard, {
+    api: {
+      ...apiOf(async () => status({ accounts: [own, team, out] })),
+      setClaudeCodeAccounts: async (dirs: string[]) => {
+        sent.push(dirs);
+        if (refuse) throw Object.assign(new Error("in use"), { status: 409 });
+        return status({ accounts: [own, ...dirs.map((dir) => ({ ...team, config_dir: dir, config_directory: dir }))] });
+      },
+    },
+    t,
+  });
+  await sleep(0);
+  expect(view.host.querySelector("[data-claude-account]")?.textContent).toContain(t.claudeAgent.reads("/Users/you/.claude"));
+  const rows = [...view.host.querySelectorAll("[data-claude-account-dir]")];
+  expect(rows.map((row) => row.getAttribute("data-claude-account-dir"))).toEqual(["/Users/you/.claude-b", "/Users/you/.claude-c"]);
+  expect(rows[0]!.textContent).toContain("Claude Team 订阅 · team@example.com");
+  expect(rows[1]!.textContent).toContain("CLAUDE_CONFIG_DIR=/Users/you/.claude-c claude auth login");
+
+  const input = view.host.querySelector<HTMLInputElement>("[data-claude-accounts] input")!;
+  input.value = "~/.claude-d";
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  await sleep(0);
+  view.host.querySelector<HTMLFormElement>("[data-claude-accounts] form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  await sleep(0);
+  expect(sent).toEqual([["/Users/you/.claude-b", "/Users/you/.claude-c", "~/.claude-d"]]);
+  expect(input.value).toBe("");
+
+  refuse = true;
+  click(view.host.querySelector<HTMLButtonElement>("[data-claude-account-dir] button")!);
+  await sleep(0);
+  expect(sent[1]).toEqual(["/Users/you/.claude-c", "~/.claude-d"]);
+  expect(view.host.querySelector("[data-claude-account-error]")?.textContent).toBe(t.claudeAgent.accounts.inUse);
+  view.close();
+});
+
+test("with Bots on two accounts the card shows each account's usage under its email, with one refresh", async () => {
+  const windows = [{ kind: "five_hour" as const, model: null, percent: 18, resets_at: null }];
+  const one = { available: true, reason: null, plan: "pro", checked_at: "2026-10-08T11:00:00.000Z", error: null, windows, config_dir: null, email: "you@example.com" };
+  const two = { ...one, plan: "team", config_dir: "/Users/you/.claude-b", email: "team@example.com" };
+  const view = render(ClaudeAgentCard, { api: { ...apiOf(async () => status()), claudeUsage: async () => ({ ...one, accounts: [one, two] }) }, t });
+  await sleep(0);
+  const block = view.host.querySelector("[data-claude-card-usage]")!;
+  expect([...block.querySelectorAll(".claude-usage-account")].map((label) => label.textContent)).toEqual(["you@example.com", "team@example.com"]);
+  expect(block.querySelectorAll("[data-claude-usage-rows]")).toHaveLength(2);
+  expect(block.querySelectorAll(".usage-foot button")).toHaveLength(1);
+  view.close();
 });

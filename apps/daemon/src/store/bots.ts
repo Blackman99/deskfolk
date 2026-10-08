@@ -14,8 +14,10 @@ import {
   type SessionDetail,
   type ThinkingLevel,
 } from "@real-bot/protocol";
+import { normalizeConfigDir, sameConfigDir } from "../claude-code/account";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
+import { claudeCodeConfigDirs } from "./claude-code";
 import {
   carriedThinkingLevel,
   defaultThinkingLevelFor,
@@ -80,8 +82,22 @@ function incomingAgentEffort(value: unknown): ClaudeEffort | null {
 }
 
 /**
- * Which runs a Bot is yours to choose (ADR 0061): a Claude Agent's turns spend your Claude account,
- * so a Bot can neither switch itself or another Bot to it nor off it.
+ * The account a Claude Agent's turns spend (ADR 0061): null or "" for the daemon's own environment,
+ * otherwise one of the config directories listed in Settings, kept as the list keeps it.
+ */
+function incomingAgentConfigDir(ctx: StoreContext, value: unknown): string | null {
+  if (value === undefined || value === null || (typeof value === "string" && !value.trim())) return null;
+  if (typeof value !== "string") throw new HttpError(422, "invalid_args", "agent_config_dir must be a string or null");
+  const dir = normalizeConfigDir(value);
+  const listed = dir ? claudeCodeConfigDirs(ctx).find((kept) => sameConfigDir(kept, dir)) : undefined;
+  if (!listed) throw new HttpError(422, "invalid_args", "agent_config_dir must be one of the Claude accounts listed in Settings");
+  return listed;
+}
+
+/**
+ * Which runs a Bot, and on whose account, is yours to choose (ADR 0061): a Claude Agent's turns
+ * spend your Claude account, so a Bot can neither switch itself or another Bot to it nor off it,
+ * nor move it to another account.
  */
 function assertRunnerActor(actor: string, changed: boolean): void {
   if (changed && actor !== USER_MEMBER) {
@@ -105,6 +121,8 @@ export function createBot(
   assertRunnerActor(actor, runner !== null);
   const agentModel = incomingAgentModel(input.agent_model);
   const agentEffort = incomingAgentEffort(input.agent_effort);
+  const agentConfigDir = incomingAgentConfigDir(ctx, input.agent_config_dir);
+  assertRunnerActor(actor, agentConfigDir !== null);
   const { model, providerId } = resolveIncomingBotTarget(ctx, input.model, input.provider_id);
   // Pinning a model pins a level too: a Bot is either on automatic for both or explicit about both.
   const thinkingLevel =
@@ -117,9 +135,9 @@ export function createBot(
   const revisionId = ulid();
   ctx.db.transaction(() => {
     ctx.db.run(
-      `INSERT INTO bots (id, name, duties, boundaries, avatar, model, provider_id, thinking_level, runner, agent_model, agent_effort, archived_at, deleted_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
-      [botId, name, duties, boundaries, avatar, model, providerId, thinkingLevel, runner, agentModel, agentEffort, now, now],
+      `INSERT INTO bots (id, name, duties, boundaries, avatar, model, provider_id, thinking_level, runner, agent_model, agent_effort, agent_config_dir, archived_at, deleted_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
+      [botId, name, duties, boundaries, avatar, model, providerId, thinkingLevel, runner, agentModel, agentEffort, agentConfigDir, now, now],
     );
     ctx.db.run(
       `INSERT INTO profile_revisions (id, bot_id, name, duties, boundaries, avatar, actor, message_id, created_at)
@@ -159,6 +177,7 @@ export function patchBot(
     runner?: BotRunner | null;
     agent_model?: string | null;
     agent_effort?: ClaudeEffort | null;
+    agent_config_dir?: string | null;
   },
   actor: string = USER_MEMBER,
 ): Bot {
@@ -182,6 +201,14 @@ export function patchBot(
   assertRunnerActor(actor, runner !== (isBotRunner(row.runner) ? row.runner : null));
   const agentModel = "agent_model" in patch ? incomingAgentModel(patch.agent_model) : row.agent_model;
   const agentEffort = "agent_effort" in patch ? incomingAgentEffort(patch.agent_effort) : (isClaudeEffort(row.agent_effort) ? row.agent_effort : null);
+  // The account it already has, sent back with the rest of the profile, is no change: it stays even
+  // if the list no longer reads the same.
+  const storedDir = row.agent_config_dir ?? null;
+  const sentDir = patch.agent_config_dir;
+  const keepsDir = !("agent_config_dir" in patch)
+    || (storedDir === null ? sentDir === null || sentDir === "" : typeof sentDir === "string" && normalizeConfigDir(sentDir) === storedDir);
+  const agentConfigDir = keepsDir ? storedDir : incomingAgentConfigDir(ctx, sentDir);
+  assertRunnerActor(actor, agentConfigDir !== storedDir);
   // The pin it already has, sent back with the rest of the profile (the Bot panel sends it whole, and
   // without the endpoint when it does not know it), is no change. From level 7 a pin outlives its
   // model leaving every list (ADR 0048), and checking it against the lists again here refused every
@@ -207,8 +234,8 @@ export function patchBot(
   const now = isoNow();
   ctx.db.transaction(() => {
     ctx.db.run(
-      `UPDATE bots SET name = ?, duties = ?, boundaries = ?, avatar = ?, model = ?, provider_id = ?, thinking_level = ?, runner = ?, agent_model = ?, agent_effort = ?, updated_at = ? WHERE id = ?`,
-      [name, duties, boundaries, avatar, model, providerId, thinkingLevel, runner, agentModel, agentEffort, now, id],
+      `UPDATE bots SET name = ?, duties = ?, boundaries = ?, avatar = ?, model = ?, provider_id = ?, thinking_level = ?, runner = ?, agent_model = ?, agent_effort = ?, agent_config_dir = ?, updated_at = ? WHERE id = ?`,
+      [name, duties, boundaries, avatar, model, providerId, thinkingLevel, runner, agentModel, agentEffort, agentConfigDir, now, id],
     );
     ctx.db.run(
       `INSERT INTO profile_revisions (id, bot_id, name, duties, boundaries, avatar, actor, message_id, created_at)

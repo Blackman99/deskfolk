@@ -29,7 +29,8 @@ import type {
 import type { ClientEvent, Message, Spend, Turn } from "@real-bot/protocol";
 import { withSystemProxy } from "../claude-code/proxy";
 import { claudeLaunch, killsTree } from "../claude-code/spawn";
-import { claudeChildEnv } from "../claude-code/status";
+import { tildeDir } from "../claude-code/account";
+import { accountOf, claudeChildEnv } from "../claude-code/status";
 import type { ClaudeCodeProbe } from "../claude-code/probe";
 import { AGENT_READONLY_TOOLS, AGENT_WORK_TOOLS, appToolName, decideAgentCall } from "../claude-code/policy";
 import { assembleAgentTurnInput } from "../context";
@@ -315,8 +316,13 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
       deps.failTurn(turnId, "agent_missing");
       return;
     }
-    if (status.logged_in === false) {
-      deps.failTurn(turnId, "agent_signed_out", locale === "en" ? "not signed in" : "还没登录");
+    // The Bot's own account: the daemon's environment, or a config directory listed in Settings.
+    const configDir = bot.agent_config_dir ?? null;
+    if ((accountOf(status, configDir) ?? status).logged_in === false) {
+      const where = configDir ? tildeDir(configDir) : null;
+      deps.failTurn(turnId, "agent_signed_out", locale === "en"
+        ? (where ? `the Claude account in ${where} is not signed in` : "not signed in")
+        : (where ? `${where} 的 Claude 账号还没登录` : "还没登录"));
       return;
     }
     const root = store.workspacePath();
@@ -472,6 +478,7 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
         agentId: raw.agent_id ?? null,
         mode: current.mode === "readonly" ? "readonly" : current.mode === "desk" ? "desk" : "work",
         workspace: root,
+        configDirs: store.claudeCodeConfigDirs(),
         allowed: (kind, target) => store.matchesAllowRule(kind, target),
       });
       if (decision.kind === "deny") return deny(decision.reason);
@@ -684,7 +691,7 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
       PostToolUseFailure: [{ hooks: [(raw, toolUseId) => postToolUse(raw, toolUseId)] }],
       PostToolBatch: [{ hooks: [(raw) => postToolBatch(raw)] }],
     };
-    const env = withSystemProxy(claudeChildEnv(process.env), network);
+    const env = withSystemProxy(claudeChildEnv(process.env, bot.agent_config_dir ?? null), network);
     env.CLAUDE_AGENT_SDK_CLIENT_APP = `deskfolk/${safeVersion()}`;
     env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS = "1";
     env.CLAUDE_CODE_STARTUP_FAILURE_RESULTS = "1";

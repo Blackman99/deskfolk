@@ -6,19 +6,33 @@
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { localeTag } from '../locale-tag.ts';
 	import ClaudeUsageRows from '../settings/ClaudeUsageRows.svelte';
-	import { CLAUDE_USAGE_POLL_MS, claudeAgentInUse, headlineWindows, usageLevel, usagePercentText } from '../settings/claude-usage.ts';
+	import {
+		CLAUDE_USAGE_POLL_MS,
+		claudeAgentInUse,
+		headlineWindows,
+		usageAccountLabel,
+		usageAccountNote,
+		usageAccountShortLabels,
+		usageAccounts,
+		usageLevel,
+		usagePercentText
+	} from '../settings/claude-usage.ts';
 
 	/**
 	 * Your Claude plan's usage above the list's foot (ADR 0061), once a Bot runs on Claude Agent: the
 	 * plan's 5-hour and 7-day windows at a glance, every window and when it starts over when opened.
+	 * With Bots on more than one Claude account, a line for each, named by its email.
 	 * Asked every few minutes while the window is in front; the daemon keeps answers as long.
 	 */
 	interface Props {
 		runtime: MessengerRuntime;
 		t: Copy;
+		/** How tall the strip stands, 0 while it is away: the phone's + button keeps clear of it. */
+		height?: number;
 	}
 
-	let { runtime, t }: Props = $props();
+	let { runtime, t, height = $bindable(0) }: Props = $props();
+	let measured = $state(0);
 
 	let usage = $state<ClaudeUsage | null>(null);
 	let open = $state(false);
@@ -28,7 +42,13 @@
 	const inUse = $derived(claudeAgentInUse(runtime.snapshot.bots));
 	const client = $derived(runtime.connection === 'connected' ? runtime.client : null);
 	const locale = $derived(localeTag(runtime.snapshot.settings.locale === 'en' ? 'en' : 'zh'));
-	const shown = $derived(inUse && usage?.available ? usage : null);
+	const shown = $derived(inUse && usage ? usageAccounts(usage).filter((account) => account.available || account.reason === 'signed_out' || account.reason === 'failed') : []);
+	const several = $derived(shown.length > 1);
+	const visible = $derived(shown.some((account) => account.available));
+	$effect(() => {
+		height = visible ? measured : 0;
+	});
+	const shortLabels = $derived(usageAccountShortLabels(shown, t));
 
 	async function load(api: MessengerApi, refresh: boolean): Promise<void> {
 		if (busy) return;
@@ -64,8 +84,8 @@
 	});
 </script>
 
-{#if shown}
-	<section class="usage-meter" class:is-open={open} aria-label={t.claudeAgent.usage.title} data-claude-usage>
+{#if visible}
+	<section class="usage-meter" class:is-open={open} class:is-several={several} aria-label={t.claudeAgent.usage.title} data-claude-usage bind:clientHeight={measured}>
 		<button
 			type="button"
 			class="usage-summary"
@@ -73,21 +93,44 @@
 			aria-label={open ? t.claudeAgent.usage.collapse : t.claudeAgent.usage.expand}
 			onclick={() => (open = !open)}
 		>
-			<span class="usage-title">Claude</span>
-			{#each headlineWindows(shown) as window (window.kind)}
-				<span class="usage-chip is-{usageLevel(window.percent)}" data-usage-chip={window.kind}>
-					<span class="usage-chip-label">{window.kind === 'five_hour' ? t.claudeAgent.usage.fiveHourShort : t.claudeAgent.usage.sevenDayShort}</span>
-					<span class="usage-chip-bar" aria-hidden="true"><span style:width="{window.percent}%"></span></span>
-					<span class="usage-chip-percent">{usagePercentText(window.percent)}</span>
+			{#each shown as account, index (account.config_dir ?? '')}
+				<span class="usage-line" data-usage-account={account.config_dir ?? ''}>
+					<span class="usage-title" title={several ? usageAccountLabel(account, t) : undefined}>{several ? shortLabels[index] : 'Claude'}</span>
+					{#if account.available}
+						{#each headlineWindows(account) as window (window.kind)}
+							<span class="usage-chip is-{usageLevel(window.percent)}" data-usage-chip={window.kind}>
+								<span class="usage-chip-label">{window.kind === 'five_hour' ? t.claudeAgent.usage.fiveHourShort : t.claudeAgent.usage.sevenDayShort}</span>
+								<span class="usage-chip-bar" aria-hidden="true"><span style:width="{window.percent}%"></span></span>
+								<span class="usage-chip-percent">{usagePercentText(window.percent)}</span>
+							</span>
+						{/each}
+					{:else}
+						<span class="usage-line-note">{usageAccountNote(account, t)}</span>
+					{/if}
+					{#if index === 0}
+						<svg class="usage-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<path d="m18 15-6-6-6 6"></path>
+						</svg>
+					{:else}
+						<!-- The caret's room on the other lines too, so the columns line up. -->
+						<span class="usage-caret usage-caret-room" aria-hidden="true"></span>
+					{/if}
 				</span>
 			{/each}
-			<svg class="usage-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-				<path d="m18 15-6-6-6 6"></path>
-			</svg>
 		</button>
 		{#if open}
 			<div class="usage-detail">
-				<ClaudeUsageRows usage={shown} {t} {locale} {now} {busy} onRefresh={() => client && void load(client, true)} />
+				{#each shown as account, index (account.config_dir ?? '')}
+					{#if several}
+						<p class="usage-detail-account">{usageAccountLabel(account, t)}</p>
+					{/if}
+					{#if account.available}
+						<ClaudeUsageRows usage={account} {t} {locale} {now} {busy}
+							onRefresh={index === shown.length - 1 ? () => client && void load(client, true) : undefined} />
+					{:else}
+						<p class="usage-detail-note">{usageAccountNote(account, t)}</p>
+					{/if}
+				{/each}
 			</div>
 		{/if}
 	</section>
@@ -104,8 +147,10 @@
 
 	.usage-summary {
 		display: flex;
-		align-items: center;
-		gap: 10px;
+		flex-direction: column;
+		align-items: stretch;
+		justify-content: center;
+		gap: 4px;
 		width: 100%;
 		min-height: 32px;
 		padding: 6px 12px;
@@ -127,10 +172,51 @@
 		box-shadow: inset 0 0 0 2px var(--accent-glow);
 	}
 
+	.usage-line {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		min-width: 0;
+	}
+
 	.usage-title {
 		color: var(--ink);
 		font-weight: 600;
 		flex-shrink: 0;
+	}
+
+	/* Several accounts: the names line up in one column, cut short when the list is narrow. */
+	.usage-meter.is-several .usage-title {
+		flex: 0 1 4.5em;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.usage-line-note {
+		color: var(--muted);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		min-width: 0;
+	}
+
+	.usage-detail-account {
+		margin: 8px 0 6px;
+		font: 600 12px/1.3 var(--font);
+		color: var(--ink);
+		overflow-wrap: anywhere;
+	}
+
+	.usage-detail-account:first-child {
+		margin-top: 0;
+	}
+
+	.usage-detail-note {
+		margin: 0 0 4px;
+		font-size: 12px;
+		color: var(--muted);
 	}
 
 	.usage-chip {
@@ -139,6 +225,11 @@
 		gap: 5px;
 		min-width: 0;
 		white-space: nowrap;
+	}
+
+	/* Short of room, the name gives way, never the numbers. */
+	.usage-meter.is-several .usage-chip {
+		flex-shrink: 0;
 	}
 
 	.usage-chip-bar {
@@ -188,13 +279,24 @@
 		transform: none;
 	}
 
+	.usage-caret-room {
+		width: 12px;
+	}
+
 	.usage-detail {
 		padding: 2px 12px 10px;
 	}
 
+	/* With a name on each line, a list as narrow as the desktop's drops the little bars sooner. */
+	@container usage-meter (max-width: 299px) {
+		.usage-meter.is-several .usage-chip-bar {
+			display: none;
+		}
+	}
+
 	/* A narrow list keeps the words and numbers and drops the little bars. */
 	@container usage-meter (max-width: 239px) {
-		.usage-summary {
+		.usage-line {
 			gap: 8px;
 		}
 

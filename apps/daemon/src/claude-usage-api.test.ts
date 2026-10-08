@@ -65,3 +65,29 @@ test("until a Bot runs on Claude Agent, nothing about Claude Code is even looked
   expect(await (await h.get()).json()).toMatchObject({ available: false, reason: "missing" });
   expect(looked).toBe(1);
 });
+
+test("the accounts list is set on the computer only, comes back with each account's sign-in, and keeps one a Bot runs on", async () => {
+  let detected = 0;
+  const claudeCode: ClaudeCodeProbe = {
+    last: () => null,
+    current: async () => ({ path: null } as unknown as ClaudeCodeStatus),
+    detect: async () => { detected += 1; return { path: "/c", accounts: [] } as unknown as ClaudeCodeStatus; },
+  };
+  const h = start({ claudeCode });
+  const put = (config_dirs: unknown) => fetch(`${h.origin}/v1/runtime/claude-code/accounts`, {
+    method: "PUT", headers: { Authorization: "Bearer usage-test", "Content-Type": "application/json" }, body: JSON.stringify({ config_dirs }),
+  });
+  const saved = await put(["/opt/zz-claude-b/"]);
+  expect(saved.status).toBe(200);
+  expect(detected).toBe(1);
+  expect(h.store.claudeCodeConfigDirs()).toEqual(["/opt/zz-claude-b"]);
+  expect((await put(["claude-b"])).status).toBe(422);
+  h.store.createBot({ name: "Coder", duties: "code", boundaries: "stay", runner: "claude_code", agent_config_dir: "/opt/zz-claude-b" });
+  const refused = await put([]);
+  expect(refused.status).toBe(409);
+  expect(JSON.stringify(await refused.json())).toContain("Coder");
+  // A phone can move a Bot between listed accounts, but never list one.
+  const id = ulid();
+  expect(() => validateBusiness({ v: 1, id, method: "PATCH", path: `/v1/bots/${ulid()}`, body: { agent_config_dir: null } })).not.toThrow();
+  expect(() => validateBusiness({ v: 1, id, method: "PUT", path: "/v1/runtime/claude-code/accounts", body: { config_dirs: [] } })).toThrow();
+});
