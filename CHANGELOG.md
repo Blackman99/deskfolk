@@ -10,6 +10,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 - The film at the top of the README is now a 30-second short in which the two mascots act out the app: Mochi hands Pudding a job, Pudding takes it from there and stops to ask before touching anything outside the workspace, and Mochi walks away and comes back to work that is done, and checked. The 86-second tour is linked under it. Both languages are on the site, at `media/deskfolk-mascots-zh.mp4` and `media/deskfolk-mascots-en.mp4`.
 
+### The artifact preview opens as its own screen on a tablet
+
+- On a remote connection wider than a phone, such as an iPad, the artifact preview opened as a column on the right of the chat and could not be closed: no tab named it (the remote app has no workbench at any width), and the bar with a back button was drawn only at phone width. Escape worked, but a tablet has no such key. The phone flow now opens it as a screen of its own at every width, the way a phone does: the pane covers everything and keeps its strip with back and the file name, and that back puts it away.
+
 ### Terminal opens on a tablet
 
 - From something wider than a phone, such as an iPad, Tools › New terminal on a remote connection did nothing. The remote app has no workbench at any width, but the button chose its way by phone width: a tablet is wider, so it opened a new tab in a workbench that was never drawn, and every tap started another shell on the Mac. It now goes by whether there is a workbench: on a remote connection the Terminal page opens at every width, as on a phone (on a wide screen it slides in from the right), and the menu names the pages as a phone does (Terminal, Routine calendar) and marks the one that is open. Shells those taps started are still on the Mac; the Terminal page lists them, and End session closes one you do not need.

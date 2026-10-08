@@ -1320,6 +1320,7 @@
 	class:has-screen={runtime.screenOpen}
 	class:is-preview={Boolean(artifactPreview)}
 	class:is-preview-dragging={previewDragging}
+	class:is-layered={!wide}
 	class:is-sidebar-dragging={sidebarDragging}
 	class:is-sidebar-collapsed={sidebarHidden}
 	bind:this={shellEl}
@@ -1626,12 +1627,14 @@
 		{/if}
 	</section>
 	{#if artifactPreview}
-		<button
-			type="button"
-			class="preview-split"
-			aria-label={t.stream.artifactResize}
-			onpointerdown={startPreviewResize}
-		></button>
+		{#if wide}
+			<button
+				type="button"
+				class="preview-split"
+				aria-label={t.stream.artifactResize}
+				onpointerdown={startPreviewResize}
+			></button>
+		{/if}
 		{#await import('./overlays/ArtifactPreview.svelte') then { default: ArtifactPreview }}
 			<ArtifactPreview
 				bind:this={previewPane}
@@ -1643,6 +1646,7 @@
 				forceTree={artifactPreview.forceTree}
 				taskId={artifactPreview.taskId}
 				target={artifactPreview.target}
+				sheet={!wide}
 				annotations={snapshot.annotations}
 				annotationFocusId={runtime.annotationFocusId}
 				annotationFileKey={runtime.annotationFileKeys[artifactPreview.relpath] ?? null}
@@ -2200,6 +2204,36 @@
 
 	.shell.is-preview.is-thread {
 		grid-template-columns: var(--sidebar-width, 260px) var(--sidebar-split, 8px) minmax(0, 1fr) 8px var(--preview-width, 420px) 320px;
+	}
+
+	/*
+	 * The layered shell — a narrow window, or the hosted messenger at any width — has no workbench,
+	 * so its artifact pane is a screen of its own like the phone's, not a column beside the chat.
+	 * These sit in a min-width media query on purpose: below 680px the phone block further down
+	 * already does all of this, and it wins by being later in the file only while these cannot
+	 * match, since a class here is the more specific selector.
+	 */
+	@media (min-width: 681px) {
+		.shell.is-layered.is-preview,
+		.shell.is-layered.is-preview.is-thread {
+			grid-template-columns: var(--sidebar-width, 260px) var(--sidebar-split, 8px) minmax(0, 1fr) 0fr;
+		}
+
+		.shell.is-layered.is-preview.is-thread {
+			grid-template-columns: var(--sidebar-width, 260px) var(--sidebar-split, 8px) minmax(0, 1fr) 320px;
+		}
+
+		/* Without this the thread would sit in the sixth column the rules above just removed. */
+		.shell.is-layered.is-preview .thread {
+			grid-column: 4;
+		}
+
+		/* Over everything, the way the phone block below lays it: a layer, not a row of the grid. */
+		.shell.is-layered.is-preview :global(.artifact-pane) {
+			position: fixed;
+			inset: 0;
+			z-index: 80;
+		}
 	}
 
 	.shell.is-preview-dragging,

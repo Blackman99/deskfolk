@@ -182,7 +182,7 @@ test("an image preview enlarges over the app from the bytes it already has", asy
 
 test("the desktop preview has no toolbar, and the phone keeps a back bar", () => {
   const viewport = (window as unknown as { happyDOM: { setViewport: (v: { width: number; height: number }) => void } }).happyDOM;
-  const mount = () => {
+  const mount = (sheet = false) => {
     let closed = 0;
     const attachment = anAttachment({
       original_filename: "cover.png",
@@ -201,6 +201,7 @@ test("the desktop preview has no toolbar, and the phone keeps a back bar", () =>
       },
       onSelect: () => {},
       mode: "cited",
+      sheet,
     });
     return { ...view, closed: () => closed };
   };
@@ -213,6 +214,16 @@ test("the desktop preview has no toolbar, and the phone keeps a back bar", () =>
   expect(wide.host.textContent).not.toContain(t.stream.artifactFind);
   expect(wide.host.textContent).not.toContain(t.stream.artifactOpenSystem);
   wide.close();
+
+  // The sheet is the same bar on a window wider than a phone: a hosted tablet gets the phone's
+  // pane as a screen of its own, not a workbench tab, so it can still be closed from here.
+  const sheet = mount(true);
+  const sheetHead = sheet.host.querySelector<HTMLElement>(".artifact-pane-head")!;
+  expect(getComputedStyle(sheetHead).display).toBe("flex");
+  sheet.host.querySelector<HTMLButtonElement>(".artifact-back")!.click();
+  flushSync();
+  expect(sheet.closed()).toBe(1);
+  sheet.close();
 
   viewport.setViewport({ width: 390, height: 844 });
   const phone = mount();

@@ -109,6 +109,11 @@
 		onSendAnnotations?: (sessionId: string, summary: string, ids: string[]) => Promise<ApiError | null>;
 		/** Test seam: how the source editor loads Monaco; happy-dom cannot run the real one. */
 		loadMonaco?: ComponentProps<typeof ArtifactCodeEditor>['loadMonaco'];
+		/**
+		 * The pane is a whole screen of its own: the phone flow, whatever the window width. A hosted
+		 * tablet has no workbench tab to name or close this pane, so it gets the phone's bar back.
+		 */
+		sheet?: boolean;
 	}
 
 	let {
@@ -140,6 +145,7 @@
 		onDeleteAnnotation,
 		onSendAnnotations,
 		loadMonaco,
+		sheet = false,
 	}: Props = $props();
 
 	let blobUrl = $state<string | null>(null);
@@ -1261,6 +1267,7 @@
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <aside
 	class="artifact-pane"
+	class:is-sheet={sheet}
 	class:is-tree-dragging={treeDragging}
 	aria-label={mode === 'workspace' ? t.stream.workspaceExplorer : t.stream.artifactPreview}
 	bind:this={paneEl}
@@ -1268,7 +1275,8 @@
 	onkeydown={onPaneKey}
 >
 	<!--
-		A phone has no workbench tab to name or close this pane, so it keeps one thin bar: back,
+		A phone — or a sheet over the whole app, which is what the phone flow opens on a hosted
+		tablet — has no workbench tab to name or close this pane, so it keeps one thin bar: back,
 		and the file's name. The desktop names the file on its tab and closes it there.
 	-->
 	<header class="artifact-pane-head" class:has-download={canDownload}>
@@ -1783,6 +1791,39 @@
 	 * Keeping it in the document (rather than not rendering it) means a test can still read it.
 	 */
 	.artifact-pane-head {
+		display: none;
+	}
+
+	/*
+	 * The sheet: the phone flow on a window wider than a phone — a hosted tablet, where the pane
+	 * covers everything and there is still no workbench tab to close it. The bar it gets is the
+	 * phone's, so each declaration here repeats the phone block at the bottom word for word: at
+	 * phone width both apply, and this one is the more specific.
+	 */
+	.artifact-pane.is-sheet .artifact-pane-head {
+		display: flex;
+		align-items: stretch;
+		gap: 0;
+		min-height: 64px;
+		padding: 0 16px 0 0;
+		padding-top: env(safe-area-inset-top);
+		border-bottom: 1px solid var(--line);
+		background: var(--pane);
+		flex-shrink: 0;
+	}
+
+	/* Download mirrors back: the same square, at the other end. */
+	.artifact-pane.is-sheet .artifact-pane-head.has-download {
+		padding-right: 0;
+	}
+
+	.artifact-pane.is-sheet .artifact-pane-head :global(.file-download-icon) {
+		align-self: center;
+	}
+
+	/* The phone downloads from its own bar; a bar that would hold only that stays away. */
+	.artifact-pane.is-sheet .artifact-bar-download,
+	.artifact-pane.is-sheet .artifact-annot-bar.is-download-only {
 		display: none;
 	}
 

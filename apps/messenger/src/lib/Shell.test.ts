@@ -2173,6 +2173,65 @@ test('mounted Shell phone flow page: a file opened on it goes at the first Back,
   expect(navigationUrl(runtime)).toBe('/?s=direct-1');
 });
 
+/**
+ * A hosted tablet: the window is wider than a phone, but the app is still the phone flow — the
+ * same shape a paired phone has, just on more glass. The artifact pane there is a screen of its
+ * own, like the phone's, not a column beside the chat: there is no workbench tab to close a
+ * column, and for a while there was no other way out at all.
+ */
+test('the phone flow on a wide window opens the artifact pane as its own screen and closes from its bar', async () => {
+  const setViewport = (window as unknown as { happyDOM: { setViewport: (v: { width: number; height: number }) => void } }).happyDOM.setViewport.bind(
+    (window as unknown as { happyDOM: { setViewport: (v: { width: number; height: number }) => void } }).happyDOM,
+  );
+  setViewport({ width: 1024, height: 768 });
+  // The JS reads "narrow" (the hosted gate, mocked here through the same query the shell watches)
+  // while the stylesheet's own media queries see the real 1024px, which is exactly the split a
+  // hosted tablet lives in.
+  const previousMatchMedia = window.matchMedia;
+  window.matchMedia = ((query: string) => ({
+    matches: query === '(max-width: 680px)' || query === '(prefers-reduced-motion: reduce)',
+    media: query, onchange: null, addListener() {}, removeListener() {},
+    addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false,
+  })) as typeof window.matchMedia;
+  cleanups.push(() => {
+    setViewport({ width: 1024, height: 768 });
+    window.matchMedia = previousMatchMedia;
+  });
+  const session = aDirect();
+  const attachments = ['plan.md', 'notes.md'].map((name, i) => anAttachment({
+    id: `wide-att-${i}`, message_id: 'wide-message', workspace_relpath: `work/${name}`,
+    original_filename: name, mime: 'text/markdown',
+  }));
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()], sessions: [session],
+    messages: [aMessage({ id: 'wide-message', session_id: session.id, kind: 'bot', author: 'bot-1', attachments })],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+  }, { selectedId: session.id }));
+  runtime.client = {
+    kind: 'local',
+    getWorkspaceFileBlob: async () => new Blob(['# file'], { type: 'text/markdown' }),
+    getAttachmentBlob: async () => new Blob(['# file'], { type: 'text/markdown' }),
+  } as never;
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  await settle();
+  click(host.querySelector('.attachment-bundle-btn'));
+  await settle();
+  await settle();
+  expect(runtime.previewRelpath).toBe('work/plan.md');
+  // A screen of its own: over everything, with no column carved out of the conversation beside it.
+  const pane = host.querySelector<HTMLElement>('.artifact-pane')!;
+  expect(getComputedStyle(pane).position).toBe('fixed');
+  expect(host.querySelector('.preview-split')).toBeNull();
+  // The phone's bar: the way back is in the pane, where the wide workbench has it on a tab.
+  const head = host.querySelector<HTMLElement>('.artifact-pane-head')!;
+  expect(getComputedStyle(head).display).toBe('flex');
+  click(host.querySelector('.artifact-back'));
+  await settle();
+  expect(runtime.previewRelpath).toBeNull();
+  expect(host.querySelector('.artifact-pane')).toBeNull();
+});
+
 
 test('closing a pane from its context menu persists the layout and keeps its terminal available to reattach', async () => {
   localStorage.setItem('real-bot-workbench-layout', JSON.stringify({
