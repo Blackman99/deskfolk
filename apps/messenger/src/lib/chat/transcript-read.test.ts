@@ -8,6 +8,15 @@ import { render } from "../test-render.ts";
 const t = copyFor("zh");
 const realSetTimeout = globalThis.setTimeout;
 const settle = () => new Promise((resolve) => realSetTimeout(resolve, 40));
+/**
+ * Waits until `done()` holds, for up to 2 s. One settle was enough here but not on the release
+ * runner, which took longer than 40 ms to send the read for a message that had just arrived. A
+ * check that something does NOT happen still waits a fixed settle.
+ */
+async function until(done: () => boolean): Promise<void> {
+  const deadline = Date.now() + 2000;
+  while (!done() && Date.now() < deadline) await settle();
+}
 
 /** The transcript holds a second before it counts as read; this test is about how often it sends. */
 function hurryTimers(): () => void {
@@ -44,7 +53,7 @@ test("a snapshot that brings no new message does not re-send the read", async ()
     onCreateBot: () => {},
   });
   try {
-    await settle();
+    await until(() => reads().length >= 1);
     expect(reads().length).toBe(1);
 
     runtime.snapshot = { ...runtime.snapshot, sessions: [...runtime.snapshot.sessions] };
@@ -64,7 +73,7 @@ test("a snapshot that brings no new message does not re-send the read", async ()
         }),
       ],
     };
-    await settle();
+    await until(() => reads().length >= 2);
     expect(reads().length).toBe(2);
     expect(reads().at(-1)?.args).toEqual([session.id, "m2", 0]);
   } finally {
@@ -95,7 +104,7 @@ test("a pane that is on screen but not selected reads its own conversation", asy
     onCreateBot: () => {},
   });
   try {
-    await settle();
+    await until(() => reads().length >= 1);
     expect(reads().map((call) => call.args)).toEqual([[session.id, "m1", 0]]);
   } finally {
     restoreTimers();
@@ -125,11 +134,11 @@ test("a notification landing in the conversation on screen sends the read once m
     onCreateBot: () => {},
   });
   try {
-    await settle();
+    await until(() => reads().length >= 1);
     expect(reads().map((call) => call.args)).toEqual([[session.id, "m1", 0]]);
 
     (runtime as unknown as { noticeMarks: Record<string, number> }).noticeMarks = { [session.id]: 7 };
-    await settle();
+    await until(() => reads().length >= 2);
     expect(reads().map((call) => call.args)).toEqual([[session.id, "m1", 0], [session.id, "m1", 7]]);
 
     runtime.snapshot = { ...runtime.snapshot, sessions: [...runtime.snapshot.sessions] };
