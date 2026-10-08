@@ -71,7 +71,7 @@ import type { FileCommit } from "./store/files";
 import type { RouteLearningRow, RouteReviewRow } from "./store/routing";
 import { ENGINE_LEVEL, type SharedInstall } from "./store/schema-gate";
 import { resolveApiFormat } from "./store/shared";
-import { isoNow, ulid } from "./ids";
+import { isUlid, isoNow, ulid } from "./ids";
 import { requestDigest, normalizeFiles, validateRequestPath, type NormalizedFile, type CanonicalEncoder } from "./request-digest";
 import { type RequestScope, type KeyOperation } from "./store/receipts";
 import { fileEtag } from "./file-integrity";
@@ -1513,7 +1513,7 @@ function dispatch(
   // Local only (see dispatchBusiness): the organizer's own trail (ADR 0040 P0's observability).
   if (method === "GET" && path === "/v1/debug/organizer-runs") {
     const taskId = url.searchParams.get("task_id") ?? "";
-    if (!ULID.test(taskId)) throw new HttpError(422, "invalid_args", "task_id is required");
+    if (!isUlid(taskId)) throw new HttpError(422, "invalid_args", "task_id is required");
     return jsonResponse({ items: store.organizerRunsForTask(taskId) }, 200, null);
   }
 
@@ -1834,7 +1834,7 @@ function dispatch(
       body &&
       body.through_message_id !== undefined &&
       (typeof body.through_message_id !== "string" ||
-        !/^[0-9A-HJKMNP-TV-Z]{26}$/.test(body.through_message_id))
+        !isUlid(body.through_message_id))
     ) {
       throw new HttpError(422, "invalid_args", "through_message_id must be a valid ULID");
     }
@@ -1859,7 +1859,7 @@ function dispatch(
       if (
         body.ids.length === 0 ||
         body.ids.length > 100 ||
-        !body.ids.every((id) => typeof id === "string" && /^[0-9A-HJKMNP-TV-Z]{26}$/.test(id))
+        !body.ids.every((id) => typeof id === "string" && isUlid(id))
       ) {
         throw new HttpError(422, "invalid_args", "ids must be 1-100 valid ULIDs");
       }
@@ -2542,7 +2542,6 @@ function dispatch(
 
 /** A `kind` filter names lines: the kinds, and the purposes split out of them (ADR 0042). */
 const SPEND_LINES = new Set<SpendLine>(Object.keys(SPEND_CATEGORY_OF) as SpendLine[]);
-const ULID = /^[0-9A-HJKMNP-TV-Z]{26}$/;
 
 /** Shared by the summary and the detail page. An empty `bot_id` or `model` means the null group. */
 function spendFilterFrom(url: URL): SpendFilter {
@@ -2563,12 +2562,12 @@ function spendFilterFrom(url: URL): SpendFilter {
   if (url.searchParams.has("bot_id")) {
     const botId = url.searchParams.get("bot_id") ?? "";
     if (botId === "") filter.bot_id = null;
-    else if (!ULID.test(botId)) throw new HttpError(422, "invalid_args", "bot_id must be empty or an id");
+    else if (!isUlid(botId)) throw new HttpError(422, "invalid_args", "bot_id must be empty or an id");
     else filter.bot_id = botId;
   }
   const sessionId = url.searchParams.get("session_id");
   if (sessionId) {
-    if (!ULID.test(sessionId)) throw new HttpError(422, "invalid_args", "session_id must be an id");
+    if (!isUlid(sessionId)) throw new HttpError(422, "invalid_args", "session_id must be an id");
     filter.session_id = sessionId;
   }
   if (url.searchParams.has("model")) {
@@ -2577,12 +2576,12 @@ function spendFilterFrom(url: URL): SpendFilter {
   }
   const providerId = url.searchParams.get("provider_id");
   if (providerId) {
-    if (!ULID.test(providerId)) throw new HttpError(422, "invalid_args", "provider_id must be an id");
+    if (!isUlid(providerId)) throw new HttpError(422, "invalid_args", "provider_id must be an id");
     filter.provider_id = providerId;
   }
   const turnId = url.searchParams.get("turn_id");
   if (turnId) {
-    if (!ULID.test(turnId)) throw new HttpError(422, "invalid_args", "turn_id must be an id");
+    if (!isUlid(turnId)) throw new HttpError(422, "invalid_args", "turn_id must be an id");
     filter.turn_id = turnId;
   }
   const tz = url.searchParams.get("tz");

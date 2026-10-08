@@ -18,6 +18,7 @@
  */
 import type { Database } from "bun:sqlite";
 import type { CapabilitiesResponse } from "@real-bot/protocol";
+import { isoPlus } from "../ids";
 
 /**
  * Bumped with each engine level that raises the floor, to that floor: what a database at that
@@ -306,7 +307,7 @@ function sleepLegacyParkedPlans(db: Database, at: string): void {
   const columns = new Set(db.query<{ name: string }, []>("SELECT name FROM pragma_table_info('tasks')").all().map((row) => row.name));
   if (!["status", "stage", "dormant_since", "routine_id", "closed_at"].every((column) => columns.has(column))) return;
   const quotes = db.query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'user_quotes'").get() !== null;
-  const recent = new Date(Date.parse(at) - 2 * 60 * 60 * 1000).toISOString();
+  const recent = isoPlus(at, -(2 * 60 * 60 * 1000));
   const asleep = db.query<{ id: string; session_id: string | null }, [string, string]>(`UPDATE tasks SET dormant_since = ?1, closed_at = COALESCE(closed_at, ?1)
     WHERE status = 'parked' AND stage IS NULL AND dormant_since IS NULL AND routine_id IS NULL
       AND NOT EXISTS (SELECT 1 FROM turns t WHERE t.task_id = tasks.id AND t.status IN ('running', 'waiting_approval', 'waiting_ask'))

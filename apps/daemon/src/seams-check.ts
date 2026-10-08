@@ -37,7 +37,7 @@ import type { CheckVerdict } from "./acceptance-eval";
 import { checkEnv } from "./acceptance-eval";
 import { globToRegExp, isGlobPattern, splitGlobDir } from "./glob";
 import { fill } from "./prompts/fill";
-import { takeCodePoints } from "./text";
+import { sayIn, takeCodePoints } from "./text";
 import { classifyPath, classifyShell } from "./workspace-paths";
 
 /** One seam's evidence, ready to send to the judge. Homogeneous within one batch. */
@@ -112,10 +112,6 @@ const CHECKLIST_EN = [
   "consistent style: for video and images, art style, rendering, color, character design; for text, tone, formatting, numbering",
   "repetition or gaps: whether the next part replays something the previous one already covered (do not flag it when the two pieces of evidence cannot tell), or skips something it should have picked up",
 ];
-
-function say(locale: Locale): (zh: string, en: string) => string {
-  return (zh, en) => (locale === "en" ? en : zh);
-}
 
 /** Which prompt/JSON contract a call needs: judging a batch of image seams, text seams, or the one whole-set digest. */
 export type SeamJudgeMode = "image" | "text" | "digest";
@@ -566,7 +562,7 @@ function extractSignals(text: string): string[] {
 
 /** The whole-set digest (text checks only): every part's label, opening, and cheap signals, capped in total. */
 function buildWholeSetDigest(parts: readonly Part[], locale: Locale): string {
-  const t = say(locale);
+  const t = sayIn(locale);
   const chunks = parts.map((part) => {
     const body = part.text ?? "";
     const head = takeCodePoints(body, DIGEST_PART_HEAD_MAX).text;
@@ -789,7 +785,7 @@ async function resolveParts(
  */
 export async function runSeamsCheck(root: string, check: AcceptanceCheck, deps: SeamsDeps): Promise<CheckVerdict> {
   const locale = deps.locale ?? "zh";
-  const t = say(locale);
+  const t = sayIn(locale);
   const env = deps.env ?? checkEnv(process.env);
   const bins = resolveFfmpegBins(env);
 

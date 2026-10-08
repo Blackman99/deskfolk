@@ -36,6 +36,7 @@ import {
   type SettingRow,
   type StoreContext,
   type TurnRow,
+  LIVE_TURN_STATUSES,
 } from "./shared";
 
 export function createTurn(
@@ -190,7 +191,7 @@ export function listLiveTurns(
   ctx: StoreContext,
   filter: { sessionId?: string; botId?: string } = {},
 ): Turn[] {
-  let sql = `SELECT * FROM turns WHERE status IN ('running', 'waiting_approval', 'waiting_ask')`;
+  let sql = `SELECT * FROM turns WHERE status IN ${LIVE_TURN_STATUSES}`;
   const args: string[] = [];
   if (filter.sessionId) {
     sql += ` AND session_id = ?`;
@@ -237,7 +238,7 @@ function outcomeFor(status: Turn["status"]): RouteOutcome | null {
 }
 
 export function setTurnPartial(ctx: StoreContext, id: string, partial: string | null): void {
-  ctx.db.run("UPDATE turns SET partial_text = ? WHERE id = ? AND status IN ('running', 'waiting_approval', 'waiting_ask') AND partial_text IS NOT ?", [partial, id, partial]);
+  ctx.db.run(`UPDATE turns SET partial_text = ? WHERE id = ? AND status IN ${LIVE_TURN_STATUSES} AND partial_text IS NOT ?`, [partial, id, partial]);
 }
 
 export function voidPendingTurnActions(
@@ -373,7 +374,7 @@ function cutRecordIsOf(ctx: StoreContext, record: CutRecord, run: string | null)
  */
 export function noteTurnsCutByShutdown(ctx: StoreContext, run: string | null): void {
   const live = ctx.db
-    .query<{ id: string }, []>(`SELECT id FROM turns WHERE status IN ('running', 'waiting_approval', 'waiting_ask')`)
+    .query<{ id: string }, []>(`SELECT id FROM turns WHERE status IN ${LIVE_TURN_STATUSES}`)
     .all();
   if (live.length === 0) return;
   const kept = readCutRecord(ctx);
@@ -467,11 +468,11 @@ export function latestStoppableTurn(ctx: StoreContext, opts: { allowGroup?: bool
       .query<{ id: string }, []>(
         opts.allowGroup
           ? `SELECT id FROM turns
-             WHERE status IN ('running', 'waiting_approval', 'waiting_ask')
+             WHERE status IN ${LIVE_TURN_STATUSES}
              ORDER BY last_activity_at DESC LIMIT 1`
           : `SELECT t.id FROM turns t
              JOIN sessions s ON s.id = t.session_id
-             WHERE t.status IN ('running', 'waiting_approval', 'waiting_ask')
+             WHERE t.status IN ${LIVE_TURN_STATUSES}
                AND s.kind = 'direct'
              ORDER BY t.last_activity_at DESC LIMIT 1`,
       )
@@ -534,7 +535,7 @@ export function interruptRunningTurns(
 ): void {
   const live = ctx.db
     .query<TurnRow, []>(
-      `SELECT * FROM turns WHERE status IN ('running', 'waiting_approval', 'waiting_ask')`,
+      `SELECT * FROM turns WHERE status IN ${LIVE_TURN_STATUSES}`,
     )
     .all();
   for (const turn of live) {

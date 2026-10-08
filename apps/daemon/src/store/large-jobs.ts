@@ -17,7 +17,7 @@ import type { PlanScale } from "@real-bot/protocol";
 import { isoNow, ulid } from "../ids";
 import { takeCodePoints } from "../text";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
-import { settingsCached } from "./settings";
+import { localeOf } from "./settings";
 import type { StoreContext } from "./shared";
 import { patchTicket, ticketDependencies } from "./tickets";
 import { recordWorkEvent } from "./work-events";
@@ -34,10 +34,6 @@ const UNIT_MAX = 24;
 
 function on(ctx: StoreContext): boolean {
   return readEngineLevel(ctx.db) >= ENGINE_LEVELS.submissions;
-}
-
-function en(ctx: StoreContext): boolean {
-  return settingsCached(ctx).locale === "en";
 }
 
 function clip(text: string | null | undefined, max: number): string | null {
@@ -215,7 +211,7 @@ export function syncStandardChecks(ctx: StoreContext, taskId: string, now: strin
     // One per ticket and sample, ever: one you deleted stays deleted.
     if (ctx.db.query("SELECT 1 FROM acceptance_checks WHERE ticket_id = ? AND standard_of = ?").get(unit.id, sample.id)) continue;
     const id = ulid(Date.parse(now));
-    const item = en(ctx) ? `Holds to the standard of sample #${nn(sample.seq)} "${sample.title}"` : `达到样片 #${nn(sample.seq)}「${sample.title}」的水准`;
+    const item = localeOf(ctx) === "en" ? `Holds to the standard of sample #${nn(sample.seq)} "${sample.title}"` : `达到样片 #${nn(sample.seq)}「${sample.title}」的水准`;
     ctx.db.run(`INSERT INTO acceptance_checks (id, task_id, ticket_id, item, kind, negate, source, created_at, updated_at, defined_at, origin, standard_of)
       VALUES (?, ?, ?, ?, 'continuity', 0, 'user', ?, ?, ?, 'sample', ?)`, [id, taskId, unit.id, item, now, now, now, sample.id]);
     made.push(id);

@@ -4,6 +4,7 @@ import { fromBase64url, requestDigest, type RemoteRequest, type AssertionWire, t
 import type { LocalApi } from "../local-api";
 import type { AttachmentInput } from "../store";
 import { HttpError } from "../errors";
+import { isUlid } from "../ids";
 import { RemoteTrust, deny } from "./trust";
 import { RemoteUv, type RemotePrincipal } from "./uv";
 import { validateBusiness } from "./routes";
@@ -30,8 +31,8 @@ function operation(value: unknown): PrivilegedOperation {
   if (!value || typeof value !== "object" || Object.keys(value).sort().join() !== "action,requestId,targetId") deny();
   const op = value as PrivilegedOperation;
   if (!["device.revoke", "quiesce.begin", "quiesce.cancel", "quiesce.force", "runtime.restart", "runtime.stop", "diagnostics.download"].includes(op.action) ||
-    !/^[0-9A-HJKMNP-TV-Z]{26}$/.test(op.requestId) || typeof op.targetId !== "string") deny();
-  if (op.action === "device.revoke" ? !/^[0-9A-HJKMNP-TV-Z]{26}$/.test(op.targetId) : op.targetId !== "runtime") deny();
+    !isUlid(op.requestId) || typeof op.targetId !== "string") deny();
+  if (op.action === "device.revoke" ? !isUlid(op.targetId) : op.targetId !== "runtime") deny();
   return op;
 }
 function actionPath(action: PrivilegedOperation["action"]): string {

@@ -9,7 +9,7 @@
  */
 import { isContinuableNote, USER_MEMBER, type Message, type SupervisorControl, type SupervisorNoticeCode } from "@real-bot/protocol";
 import { HttpError } from "../errors";
-import { isoNow, ulid } from "../ids";
+import { isoPlus, ulid } from "../ids";
 import { supervisorNoticeBody, type RestartArrangement } from "../prompts/control-copy";
 import { supervisorJobLabel, supervisorWakeNote } from "../prompts/transcript-copy";
 import { PROGRESS_KINDS } from "./end-contract";
@@ -17,8 +17,8 @@ import { holdsCovering } from "./holds";
 import { getMessage, insertMessage, setMessageControl } from "./messages";
 import { createNotification, updateNotificationActionState } from "./notifications";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
-import { settingsCached } from "./settings";
-import { requireNonEmpty, type StoreContext } from "./shared";
+import { localeOf } from "./settings";
+import { requireNonEmpty, LIVE_TURN_STATUSES, planStageSql, clock, type StoreContext } from "./shared";
 import { isReservedTaskPath } from "./tasks";
 import { ticketDependencies } from "./tickets";
 import { waitingOn } from "./large-jobs";
@@ -100,14 +100,7 @@ type Boot = { seq: number; at: string; boot_id: string | null; cause: RestartRec
 
 /** A plan the supervisor works in: active, not dormant, not a routine's. */
 const ACTIVE_PLAN = (alias: string) => `${alias}.dormant_since IS NULL AND ${alias}.routine_id IS NULL AND ${alias}.session_id IS NOT NULL
-  AND COALESCE(${alias}.stage, CASE WHEN ${alias}.status = 'done' THEN 'delivered' ELSE 'active' END) = 'active'`;
-const LIVE = "('running', 'waiting_ask', 'waiting_approval')";
-
-function clock(now?: string): string {
-  if (now === undefined) return isoNow();
-  if (typeof now !== "string" || !Number.isFinite(Date.parse(now))) throw new HttpError(422, "invalid_args", "now must be a valid timestamp");
-  return new Date(now).toISOString();
-}
+  AND ${planStageSql(alias)} = 'active'`;
 
 function emptyResult(): SupervisorTickResult {
   return { wakes: [], messages: [], repaired: [], deferred: [], unsupported: SUPERVISOR_UNSUPPORTED, approved: [], checksToRun: [] };
@@ -130,13 +123,9 @@ function botName(ctx: StoreContext, id: string): string {
   return ctx.db.query<{ name: string }, [string]>("SELECT name FROM bots WHERE id = ?").get(id)?.name ?? id;
 }
 
-function locale(ctx: StoreContext): "zh" | "en" {
-  return settingsCached(ctx).locale === "en" ? "en" : "zh";
-}
-
 function jobLabel(ctx: StoreContext, taskId: string, ticketId: string | null): string {
   const ticket = ticketId ? ticketRow(ctx, ticketId) : null;
-  return supervisorJobLabel(locale(ctx), { plan: plan(ctx, taskId)?.title ?? taskId, ticket: ticket ? { seq: ticket.seq, title: ticket.title } : null });
+  return supervisorJobLabel(localeOf(ctx), { plan: plan(ctx, taskId)?.title ?? taskId, ticket: ticket ? { seq: ticket.seq, title: ticket.title } : null });
 }
 
 /**
@@ -399,7 +388,7 @@ function currentBoot(ctx: StoreContext): Boot | null {
 /** Whether the daemon also started within {@link DEV_RESTART_WINDOW_MS} before this boot. */
 function restartedJustBefore(ctx: StoreContext, boot: Boot): boolean {
   return Boolean(ctx.db.query(`SELECT 1 FROM work_events WHERE kind = 'daemon.restart' AND seq < ? AND at > ?`)
-    .get(boot.seq, new Date(Date.parse(boot.at) - DEV_RESTART_WINDOW_MS).toISOString()));
+    .get(boot.seq, isoPlus(boot.at, -DEV_RESTART_WINDOW_MS)));
 }
 
 /** Whether you pressed 先放着 on the restart notice that offered this 「中断」 line. */
@@ -520,7 +509,7 @@ function openWait(ctx: StoreContext, work: Work): boolean {
 function repairLostSegments(ctx: StoreContext, result: SupervisorTickResult, now: string): void {
   const running = ctx.db.query<Work, []>(`SELECT w.* FROM work_items w JOIN tasks p ON p.id = w.task_id
     WHERE w.state = 'running' AND ${ACTIVE_PLAN("p")}
-      AND NOT EXISTS (SELECT 1 FROM turns t WHERE t.work_item_id = w.id AND t.status IN ${LIVE})`).all();
+      AND NOT EXISTS (SELECT 1 FROM turns t WHERE t.work_item_id = w.id AND t.status IN ${LIVE_TURN_STATUSES})`).all();
   const since = supervisingSince(ctx);
   for (const work of running) {
     const segment = latestSegment(ctx, work.id);
@@ -553,7 +542,7 @@ function requeueMailInLine(ctx: StoreContext, result: SupervisorTickResult, now:
   const stranded = ctx.db.query<Work, []>(`SELECT w.* FROM work_items w JOIN tasks p ON p.id = w.task_id
     WHERE w.state = 'idle' AND ${ACTIVE_PLAN("p")}
       AND EXISTS (SELECT 1 FROM inbox_items i WHERE i.work_item_id = w.id AND i.state = 'queued' AND i.wakes = 1)
-      AND NOT EXISTS (SELECT 1 FROM turns t WHERE t.work_item_id = w.id AND t.status IN ${LIVE})`).all();
+      AND NOT EXISTS (SELECT 1 FROM turns t WHERE t.work_item_id = w.id AND t.status IN ${LIVE_TURN_STATUSES})`).all();
   for (const work of stranded) {
     ctx.db.run("UPDATE work_items SET state = 'queued', updated_at = ? WHERE id = ? AND state = 'idle'", [now, work.id]);
     ctx.db.run(`INSERT INTO work_events (at, kind, actor, bot_id, task_id, ticket_id, work_item_id, session_id, payload)
@@ -568,7 +557,7 @@ function pickupsInHour(ctx: StoreContext, workItemId: string, now: string): Arra
   // A pick-up the engine could not carry out was voided (see {@link refuseSupervisorPickup}) and is no attempt.
   return ctx.db.query<{ id: string }, [string, string]>(`SELECT id FROM check_backs WHERE work_item_id = ? AND kind = 'supervisor'
     AND voided_at IS NULL AND json_extract(wait_spec, '$.reason') IN ('needs_attention', 'restart', 'wait_invalid') AND created_at > ? ORDER BY created_at, id`)
-    .all(workItemId, new Date(Date.parse(now) - HOUR_MS).toISOString());
+    .all(workItemId, isoPlus(now, -HOUR_MS));
 }
 
 /**
@@ -578,7 +567,7 @@ function pickupsInHour(ctx: StoreContext, workItemId: string, now: string): Arra
  * development restart had the Bot redraw the cut ticket's frames under the next ticket while the notice said it would wait.
  */
 function engaged(ctx: StoreContext, botId: string, taskId: string, ticketId: string | null, exceptWork: string | null): boolean {
-  if (ctx.db.query(`SELECT 1 FROM turns WHERE bot_id = ? AND task_id = ? AND status IN ${LIVE} AND IFNULL(mode, 'work') <> 'readonly'`)
+  if (ctx.db.query(`SELECT 1 FROM turns WHERE bot_id = ? AND task_id = ? AND status IN ${LIVE_TURN_STATUSES} AND IFNULL(mode, 'work') <> 'readonly'`)
     .get(botId, taskId)) return true;
   if (ctx.db.query(`SELECT 1 FROM inbox_items WHERE bot_id = ?1 AND task_id = ?2 AND (ticket_id IS ?3 OR ticket_id IS NULL)
     AND state IN ('queued', 'held')`).get(botId, taskId, ticketId)) return true;
@@ -611,7 +600,7 @@ function pickUpAttention(ctx: StoreContext, result: SupervisorTickResult, now: s
         continue;
       }
     }
-    if (ctx.db.query(`SELECT 1 FROM turns WHERE bot_id = ? AND task_id = ? AND status IN ${LIVE} AND IFNULL(mode, 'work') <> 'readonly'`).get(work.bot_id, taskId)) continue;
+    if (ctx.db.query(`SELECT 1 FROM turns WHERE bot_id = ? AND task_id = ? AND status IN ${LIVE_TURN_STATUSES} AND IFNULL(mode, 'work') <> 'readonly'`).get(work.bot_id, taskId)) continue;
     // Mail held by a stop waits with it. Mail merely in line is no reason to wait: work that needs
     // attention is not dispatched, so a review request queued on work whose segment failed stayed
     // there, and the work was never picked up either (2026-10-04, real-model run). The segment that
@@ -629,7 +618,7 @@ function pickUpAttention(ctx: StoreContext, result: SupervisorTickResult, now: s
       // A restart's own notice already says so; anything else is said here, once per segment.
       if (!restart && segment) notice(ctx, result, { key: `unknown_effect:${work.id}:${segment.id}`, code: "unknown_effect", taskId,
         ticketId: work.ticket_id, workItemId: work.id, botId: work.bot_id, places: [...spokenFor(ctx, taskId, work.bot_id), work.session_id, work.home_session_id, segment.session_id],
-        body: supervisorNoticeBody(locale(ctx), { code: "unknown_effect", job: jobLabel(ctx, taskId, work.ticket_id), bot: botName(ctx, work.bot_id), tool: unknown.at(-1) ?? null }),
+        body: supervisorNoticeBody(localeOf(ctx), { code: "unknown_effect", job: jobLabel(ctx, taskId, work.ticket_id), bot: botName(ctx, work.bot_id), tool: unknown.at(-1) ?? null }),
         now });
       continue;
     }
@@ -638,7 +627,7 @@ function pickUpAttention(ctx: StoreContext, result: SupervisorTickResult, now: s
       result.deferred.push({ workItemId: work.id, reason: "retry_budget" });
       notice(ctx, result, { key: `retry_budget:${work.id}:${recent[0]!.id}`, code: "retry_budget", taskId, ticketId: work.ticket_id,
         workItemId: work.id, botId: work.bot_id, places: [...spokenFor(ctx, taskId, work.bot_id), work.session_id, work.home_session_id, segment?.session_id],
-        body: supervisorNoticeBody(locale(ctx), { code: "retry_budget", job: jobLabel(ctx, taskId, work.ticket_id), bot: botName(ctx, work.bot_id), count: recent.length }),
+        body: supervisorNoticeBody(localeOf(ctx), { code: "retry_budget", job: jobLabel(ctx, taskId, work.ticket_id), bot: botName(ctx, work.bot_id), count: recent.length }),
         now });
       continue;
     }
@@ -652,8 +641,8 @@ function pickUpAttention(ctx: StoreContext, result: SupervisorTickResult, now: s
     const noteId = note && !pickupRefused(ctx, work.id, note) ? note : null;
     const job = jobLabel(ctx, taskId, work.ticket_id);
     const body = reason === "wait_invalid"
-      ? supervisorWakeNote(locale(ctx), { kind: "wait_invalid", job })
-      : supervisorWakeNote(locale(ctx), { kind: "resume", job, reason: detail, lastStep: lastStep(ctx, segment), attempt: recent.length + 1 });
+      ? supervisorWakeNote(localeOf(ctx), { kind: "wait_invalid", job })
+      : supervisorWakeNote(localeOf(ctx), { kind: "resume", job, reason: detail, lastStep: lastStep(ctx, segment), attempt: recent.length + 1 });
     const sessionId = work.thread_session_id ?? work.home_session_id;
     const spec = { reason, detail, boot_id: restart?.boot_id ?? null, turn_id: segment?.id ?? null, note_id: noteId, attempt: recent.length + 1 };
     if (noteId) {
@@ -787,7 +776,7 @@ function callBackOrphans(ctx: StoreContext, result: SupervisorTickResult, now: s
       result.deferred.push({ workItemId: item.id, reason: "unknown_effect" });
       notice(ctx, result, { key: `unknown_effect:${item.id}:${segment.id}`, code: "unknown_effect", taskId: ticket.task_id, ticketId: ticket.id,
         workItemId: item.id, botId: holder.botId, places: [...spokenFor(ctx, ticket.task_id, holder.botId), ticket.session_id, item.home_session_id],
-        body: supervisorNoticeBody(locale(ctx), { code: "unknown_effect", job, bot: botName(ctx, holder.botId), tool: unknown.at(-1) ?? null }), now });
+        body: supervisorNoticeBody(localeOf(ctx), { code: "unknown_effect", job, bot: botName(ctx, holder.botId), tool: unknown.at(-1) ?? null }), now });
       continue;
     }
     const progressSeq = progressCycle(ctx, ticket);
@@ -797,12 +786,12 @@ function callBackOrphans(ctx: StoreContext, result: SupervisorTickResult, now: s
     if (spent.n >= ORPHAN_WAKES_PER_PROGRESS) {
       notice(ctx, result, { key: `stalled:${ticket.id}:${progressSeq}`, code: "stalled", taskId: ticket.task_id, ticketId: ticket.id,
         workItemId: spent.work_item_id, botId: holder.botId, places: [...spokenFor(ctx, ticket.task_id, holder.botId), ticket.session_id],
-        body: supervisorNoticeBody(locale(ctx), { code: "stalled", job, bot: botName(ctx, holder.botId), count: spent.n }), now });
+        body: supervisorNoticeBody(localeOf(ctx), { code: "stalled", job, bot: botName(ctx, holder.botId), count: spent.n }), now });
       continue;
     }
     const ask = holder.kind === "delegation"
       ? ctx.db.query<{ ask: string }, [string]>("SELECT ask FROM delegations WHERE id = ?").get(holder.delegationId)?.ask ?? null : null;
-    const body = supervisorWakeNote(locale(ctx), { kind: "orphan", job, role: holder.kind, ask, submissionId: holder.kind === "reviewer" ? holder.submissionId : null,
+    const body = supervisorWakeNote(localeOf(ctx), { kind: "orphan", job, role: holder.kind, ask, submissionId: holder.kind === "reviewer" ? holder.submissionId : null,
       quietMinutes: Math.max(1, Math.floor((Date.parse(now) - quiet.since) / 60_000)) });
     const sessionId = item ? item.thread_session_id ?? item.home_session_id : conversationFor(ctx, holder.botId, ticket.task_id) ?? ticket.session_id;
     const queued = queueWork(ctx, { botId: holder.botId, sessionId, taskId: ticket.task_id, ticketId: ticket.id, messageId: null, author: "app",

@@ -12,7 +12,7 @@ import type { Database } from "bun:sqlite";
 import { USER_MEMBER, type Message, type ThinkingLevel } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { pictureMime } from "../loop-pictures";
-import { isoNow } from "../ids";
+import { isoNow, isoPlus } from "../ids";
 import { getMessage, insertMessage, setMessageControl } from "./messages";
 import { updateNotificationActionState } from "./notifications";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
@@ -84,7 +84,7 @@ export function botDefault(ctx: StoreContext, botId: string): BotDefault {
  */
 export function inferredDefault(ctx: StoreContext, botId: string, listed: ReadonlyArray<{ providerId: string; model: string }>, now: string = isoNow()):
   { providerId: string; model: string; thinkingLevel: ThinkingLevel; turns: number } | null {
-  const since = new Date(Date.parse(now) - DEFAULT_MODEL_WINDOW_DAYS * 24 * 60 * 60_000).toISOString();
+  const since = isoPlus(now, -(DEFAULT_MODEL_WINDOW_DAYS * 24 * 60 * 60_000));
   const rows = ctx.db.query<{ provider_id: string | null; model: string; thinking_level: string; n: number }, [string, string]>(`SELECT provider_id, model,
     thinking_level, COUNT(*) AS n FROM turn_route_decisions WHERE bot_id = ? AND created_at > ? AND COALESCE(reason_code, '') NOT IN ('ticket_override', 'escalation_model', 'claude_code') AND COALESCE(base_reason_code, '') <> 'ticket_override'
     GROUP BY provider_id, model, thinking_level`).all(botId, since)

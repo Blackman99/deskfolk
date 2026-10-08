@@ -10,6 +10,7 @@ import { statSync } from "node:fs";
 import { join } from "node:path";
 import type { ControlActionResult, Message } from "@real-bot/protocol";
 import type { ToolResult } from "../collab-tools";
+import { toolFail } from "../tool-result";
 import { HttpError } from "../errors";
 import { isoNow } from "../ids";
 import { checkLines, inTicketDir, type SettledSubmission, type Store, type StoredSubmission, type SubmissionCheck } from "../store";
@@ -114,8 +115,8 @@ function notAnAnswerMessage(en: boolean): string {
 }
 
 function failure(error: unknown): ToolResult {
-  if (error instanceof HttpError) return { ok: false, error: { code: error.code, message: error.message }, emitted: [] };
-  return { ok: false, error: { code: "failed", message: error instanceof Error ? error.message : String(error) }, emitted: [] };
+  if (error instanceof HttpError) return toolFail(error.code, error.message);
+  return toolFail("failed", error instanceof Error ? error.message : String(error));
 }
 
 export function createSubmissions(deps: SubmissionsDeps): Submissions {
@@ -197,25 +198,25 @@ export function createSubmissions(deps: SubmissionsDeps): Submissions {
 
   async function submit(turnId: string, args: Record<string, unknown>): Promise<ToolResult> {
     try {
-      if (!on()) return { ok: false, error: { code: "submissions_unavailable", message: "submit is not on at this engine level" }, emitted: [] };
+      if (!on()) return toolFail("submissions_unavailable", "submit is not on at this engine level");
       const raw = Array.isArray(args.artifacts) ? args.artifacts : typeof args.artifacts === "string" ? [args.artifacts] : null;
       if (!raw || raw.length === 0 || raw.some((entry) => typeof entry !== "string" || !entry.trim())) {
-        return { ok: false, error: { code: "invalid_args", message: "artifacts must list the files you hand over" }, emitted: [] };
+        return toolFail("invalid_args", "artifacts must list the files you hand over");
       }
       if (args.continue !== undefined && typeof args.continue !== "boolean") {
-        return { ok: false, error: { code: "invalid_args", message: "continue must be true or false" }, emitted: [] };
+        return toolFail("invalid_args", "continue must be true or false");
       }
       const paths: string[] = [];
       for (const entry of raw as string[]) {
         const path = resolve(turnId, entry.trim());
-        if (!path) return { ok: false, error: { code: "invalid_args", message: `${entry} is not a file in the workspace` }, emitted: [] };
+        if (!path) return toolFail("invalid_args", `${entry} is not a file in the workspace`);
         if (!paths.includes(path)) paths.push(path);
       }
       const artifacts = await hash(paths);
       const missing = paths.filter((path) => !artifacts.some((artifact) => artifact.path === path));
-      if (missing.length > 0) return { ok: false, error: { code: "invalid_args", message: `could not read ${missing.join(", ")}` }, emitted: [] };
+      if (missing.length > 0) return toolFail("invalid_args", `could not read ${missing.join(", ")}`);
       const prepared = store.prepareSubmission({ turnId, origin: "submit", artifacts, parts: args.parts, claims: args.claims, note: args.note });
-      if (!prepared) return { ok: false, error: { code: "failed", message: "nothing to submit" }, emitted: [] };
+      if (!prepared) return toolFail("failed", "nothing to submit");
       // Handed over is shown: the files go out on a line of the segment's (published as it is posted).
       citePaths(turnId, paths);
       const emitted: ToolResult["emitted"] = [];
@@ -247,12 +248,12 @@ export function createSubmissions(deps: SubmissionsDeps): Submissions {
 
   async function review(turnId: string, args: Record<string, unknown>): Promise<ToolResult> {
     try {
-      if (!on()) return { ok: false, error: { code: "submissions_unavailable", message: "review is not on at this engine level" }, emitted: [] };
+      if (!on()) return toolFail("submissions_unavailable", "review is not on at this engine level");
       if (args.submission_id !== undefined && typeof args.submission_id !== "string") {
-        return { ok: false, error: { code: "invalid_args", message: "submission_id must be a string" }, emitted: [] };
+        return toolFail("invalid_args", "submission_id must be a string");
       }
       const target = store.reviewTarget(turnId, (args.submission_id as string | undefined) ?? null);
-      if (!target) return { ok: false, error: { code: "invalid_args", message: "there is no submission here to review: name its submission_id" }, emitted: [] };
+      if (!target) return toolFail("invalid_args", "there is no submission here to review: name its submission_id");
       // An approval stands only on checks run now (§2.8: the app reruns them and its result decides).
       let checks: SubmissionCheck[] | undefined;
       if (args.outcome === "approve" && target.bot_id !== store.getTurn(turnId).bot_id && (target.state === "submitted" || target.state === "in_review")) {

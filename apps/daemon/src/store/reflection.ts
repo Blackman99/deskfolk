@@ -14,7 +14,7 @@
 import type { Database } from "bun:sqlite";
 import { USER_MEMBER, type AcceptanceCheckInput, type Message } from "@real-bot/protocol";
 import { HttpError } from "../errors";
-import { isoNow, ulid } from "../ids";
+import { isoNow, isoPlus, ulid } from "../ids";
 import { createCheckByUser } from "./acceptance-checks";
 import { holdsCovering } from "./holds";
 import type { Lesson } from "./lessons";
@@ -23,7 +23,7 @@ import { getMessage, insertMessage, setMessageControl } from "./messages";
 import { spokenFor } from "./job-conversations";
 import { createNotification, updateNotificationActionState } from "./notifications";
 import { learningOn } from "./quality";
-import { settingsCached } from "./settings";
+import { localeOf } from "./settings";
 import type { StoreContext } from "./shared";
 import { recordWorkEvent } from "./work-events";
 
@@ -84,13 +84,9 @@ export type DueReflection = {
   log: string[];
 };
 
-function locale(ctx: StoreContext): "zh" | "en" {
-  return settingsCached(ctx).locale === "en" ? "en" : "zh";
-}
-
 /** What today's reflections have cost, in USD (local midnight is not worth the subtlety: the last 24 hours). */
 export function reflectionSpendToday(ctx: StoreContext, now: string = isoNow()): number {
-  const since = new Date(Date.parse(now) - 24 * 60 * 60_000).toISOString();
+  const since = isoPlus(now, -(24 * 60 * 60_000));
   return ctx.db.query<{ usd: number | null }, [string]>(
     "SELECT SUM(COALESCE(cost_usd_ticks, estimated_cost_usd_ticks)) / 1e10 AS usd FROM spend WHERE purpose = 'reflect' AND created_at >= ?").get(since)?.usd ?? 0;
 }
@@ -103,12 +99,12 @@ export function reflectionSpendToday(ctx: StoreContext, now: string = isoNow()):
 export function claimDueReflection(ctx: StoreContext, now: string = isoNow()): DueReflection | null {
   if (!learningOn(ctx)) return null;
   if (reflectionSpendToday(ctx, now) >= REFLECT_DAILY_USD) return null;
-  const day = new Date(Date.parse(now) - 24 * 60 * 60_000).toISOString();
+  const day = isoPlus(now, -(24 * 60 * 60_000));
   if (ctx.db.query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM reflections WHERE state IN ('pending', 'done') AND created_at > ?").get(day)!.n >= REFLECT_DAILY_COUNT) return null;
-  const since = new Date(Date.parse(now) - REFLECT_WITHIN_MS).toISOString();
+  const since = isoPlus(now, -REFLECT_WITHIN_MS);
   return ctx.commit(() => {
     ctx.db.run("UPDATE reflections SET state = 'failed', note = 'interrupted', finished_at = ? WHERE state = 'pending' AND created_at < ?",
-      [now, new Date(Date.parse(now) - PENDING_STALE_MS).toISOString()]);
+      [now, isoPlus(now, -PENDING_STALE_MS)]);
     // Every waiting one, oldest first: those under a stop are passed over, and must not crowd out the rest.
     const candidates = ctx.db.query<{ id: string; kind: "review_miss" | "ceiling"; bot_id: string; model: string | null; task_id: string; ticket_id: string;
       submission_id: string | null; message_id: string | null; created_at: string }, [string]>(
@@ -124,7 +120,7 @@ export function claimDueReflection(ctx: StoreContext, now: string = isoNow()): D
       if (holdsCovering(ctx, { botId: event.bot_id, taskId: event.task_id, ticketId: event.ticket_id }).length > 0) continue;
       // One reflection on this ticket by this Bot a day is enough; one that failed does not count.
       const recent = ctx.db.query("SELECT 1 FROM reflections WHERE bot_id = ? AND ticket_id = ? AND state IN ('pending', 'done') AND created_at > ?")
-        .get(event.bot_id, event.ticket_id, new Date(Date.parse(now) - REFLECT_GAP_MS).toISOString());
+        .get(event.bot_id, event.ticket_id, isoPlus(now, -REFLECT_GAP_MS));
       if (recent) {
         skip(event, "once_a_day");
         continue;
@@ -259,7 +255,7 @@ export function recordReflection(ctx: StoreContext, due: DueReflection, outcome:
         payload: { quality_event_id: due.qualityEventId, reason: outcome.reason } });
       return { lesson: null, message: null };
     }
-    const lang = locale(ctx);
+    const lang = localeOf(ctx);
     const id = ulid(Date.parse(now));
     const hook: Lesson["hook"] = outcome.kind === "checklist" ? outcome.hook : due.event === "review_miss" ? "before_review" : "before_submit";
     const text = outcome.kind === "checklist" ? outcome.text : outcome.check.item;
@@ -314,13 +310,13 @@ export function answerLessonCard(ctx: StoreContext, messageId: string, action: u
         const proposed = (lesson.detector as Lesson["detector"] & { check?: AcceptanceCheckInput }).check;
         if (!proposed) throw new HttpError(409, "conflict", "the proposal carries no check");
         try {
-          if (!(PROPOSABLE_CHECKS as readonly string[]).includes(proposed.kind)) throw new Error(locale(ctx) === "en" ? "not a kind a reflection may propose" : "反思不能提这种检查");
+          if (!(PROPOSABLE_CHECKS as readonly string[]).includes(proposed.kind)) throw new Error(localeOf(ctx) === "en" ? "not a kind a reflection may propose" : "反思不能提这种检查");
           const check = createCheckByUser(ctx, control.task_id, proposed, new Date(now));
           // A gate, but not yours: adopting a card is not writing it (it backs no approval until you edit it).
           ctx.db.run("UPDATE acceptance_checks SET origin = 'reflection' WHERE id = ?", [check.id]);
           ctx.db.run("UPDATE lessons SET detector = json_set(detector, '$.check_id', ?) WHERE id = ?", [check.id, lesson.id]);
         } catch (error) {
-          result = locale(ctx) === "en" ? `The check could not be added: ${error instanceof Error ? error.message : "refused"}.` : `检查没加上：${error instanceof Error ? error.message : "被拒绝了"}。`;
+          result = localeOf(ctx) === "en" ? `The check could not be added: ${error instanceof Error ? error.message : "refused"}.` : `检查没加上：${error instanceof Error ? error.message : "被拒绝了"}。`;
         }
       }
       ctx.db.run("UPDATE lessons SET status = ?, confirmed_at = ?, updated_at = ? WHERE id = ?", [result ? "retired" : "active", now, now, lesson.id]);

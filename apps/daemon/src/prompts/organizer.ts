@@ -11,6 +11,7 @@ import { USER_MEMBER, type AcceptanceCheckKind, type Message, type TicketStatus 
 import { describeCheck } from "../acceptance-eval";
 import { DERIVED_CHECKS_MAX } from "../derived-checks";
 import { sessionLabel } from "../context";
+import { isUlid } from "../ids";
 import { extractJsonObject } from "../route-agent";
 import {
   CHECK_KINDS,
@@ -26,7 +27,7 @@ import {
   type Store,
   type Task,
 } from "../store";
-import { takeCodePoints } from "../text";
+import { tailWithEllipsis, takeCodePoints } from "../text";
 import { fill } from "./fill";
 
 /**
@@ -89,12 +90,6 @@ const TICKET_SPEC_PREVIEW = 300;
 const ORGANIZER_CHECK_OUTPUT_PREVIEW = 300;
 /** Entries a `checks` answer may hold; matches the store's own cap on active checks per plan. */
 const ORGANIZER_CHECKS_PAYLOAD_MAX = CHECKS_MAX;
-
-/** The last `limit` code points, marked when something was cut — a run's tail explains a failure, not its head. */
-function tailCodePoints(text: string, limit: number): string {
-  const chars = [...text];
-  return chars.length > limit ? `…${chars.slice(-(limit - 1)).join("")}` : text;
-}
 
 /**
  * Your lines about the plan the organizer reads beyond its window of recent ones: a goal narrowed
@@ -400,7 +395,7 @@ export function organizerPayload(
                     outcome: check.last_run.outcome ?? "error",
                     detail: check.last_run.detail,
                     at: check.last_run.finished_at ?? check.last_run.started_at,
-                    output: check.last_run.output ? tailCodePoints(check.last_run.output, ORGANIZER_CHECK_OUTPUT_PREVIEW) : null,
+                    output: check.last_run.output ? tailWithEllipsis(check.last_run.output, ORGANIZER_CHECK_OUTPUT_PREVIEW) : null,
                   }
                 : null,
             })),
@@ -473,7 +468,6 @@ function elsewherePlan(store: Store, sessionId: string, plan: Task): OrganizerPa
   };
 }
 
-const ULID = /^[0-9A-HJKMNP-TV-Z]{26}$/;
 const NEW_TICKET = /^new-\d+$/;
 
 /**
@@ -494,7 +488,7 @@ export function parseOrganizerChecks(raw: unknown, existing: ReadonlySet<string>
     const row = entry as Record<string, unknown>;
     const id = typeof row.id === "string" ? row.id.trim() : "";
     const opening = NEW_TICKET.test(id);
-    if (!opening && !(ULID.test(id) && existing.has(id))) continue;
+    if (!opening && !(isUlid(id) && existing.has(id))) continue;
     if (row.remove === true) {
       if (!opening) out.push({ id, remove: true });
       continue;
@@ -592,7 +586,7 @@ export function parseOrganizerResult(
       if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
       const row = entry as Record<string, unknown>;
       const id = typeof row.id === "string" ? row.id.trim() : "";
-      if (!ULID.test(id) && !NEW_TICKET.test(id)) continue;
+      if (!isUlid(id) && !NEW_TICKET.test(id)) continue;
       const opening = NEW_TICKET.test(id);
       const title = typeof row.title === "string" ? row.title.replace(/\s+/g, " ").trim() : "";
       // A new ticket needs a name. An existing one is referenced by id with only what changed, so
@@ -611,7 +605,7 @@ export function parseOrganizerResult(
   let messageTicket: string | null = null;
   if (ctx.mode === "message" && typeof parsed.message_ticket === "string") {
     const id = parsed.message_ticket.trim();
-    if (ULID.test(id) || NEW_TICKET.test(id)) messageTicket = id;
+    if (isUlid(id) || NEW_TICKET.test(id)) messageTicket = id;
   }
   const checks = parseOrganizerChecks(parsed.checks, ctx.existingCheckIds ?? new Set());
   return {

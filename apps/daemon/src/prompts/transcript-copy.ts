@@ -1,4 +1,5 @@
 import type { Locale, PlanStatus, TicketStatus } from "@real-bot/protocol";
+import { tailWithEllipsis } from "../text";
 
 export const COMPLETION_FAIL = {
   zh: (reason: string) => `这一轮没写完：${reason}`,
@@ -139,15 +140,10 @@ function ticketLine(locale: Locale, ticket: OpenTicketLine, withWorker = true): 
 /** Code points of a failing check's captured output a nudge or a stalled notice keeps — the tail, not the head. */
 const FAILING_CHECK_OUTPUT_MAX = 400;
 
-function tailCodePoints(text: string, limit: number): string {
-  const chars = [...text];
-  return chars.length > limit ? `…${chars.slice(-(limit - 1)).join("")}` : text;
-}
-
 function failingCheckLines(locale: Locale, failing: readonly FailingCheckLine[]): string {
   return failing
     .map((check) => {
-      const output = check.output ? tailCodePoints(check.output, FAILING_CHECK_OUTPUT_MAX) : "";
+      const output = check.output ? tailWithEllipsis(check.output, FAILING_CHECK_OUTPUT_MAX) : "";
       return locale === "en"
         ? `- "${check.item}" — ${check.what}: ${check.detail}${output ? `\n  ${output}` : ""}`
         : `- 「${check.item}」——${check.what}：${check.detail}${output ? `\n  ${output}` : ""}`;

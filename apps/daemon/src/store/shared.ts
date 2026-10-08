@@ -25,6 +25,7 @@ import {
   type Turn,
 } from "@real-bot/protocol";
 import { HttpError } from "../errors";
+import { isoNow } from "../ids";
 import { isAbsoluteHostPath } from "../workspace-paths";
 import { parseStoredThinkingLevel } from "../models";
 import { Transactions } from "./transactions";
@@ -633,4 +634,30 @@ export function cursorId(cursor: string): string {
   const i = cursor.indexOf("|");
   if (i < 0) throw new HttpError(422, "invalid_args", "bad cursor");
   return cursor.slice(i + 1);
+}
+
+/** The statuses of a live turn, as an SQL list: `status IN ${LIVE_TURN_STATUSES}`. */
+export const LIVE_TURN_STATUSES = "('running', 'waiting_approval', 'waiting_ask')";
+
+/** A plan's stage as SQL, for a plan row that has none stored yet: `done` is delivered, anything else active. */
+export function planStageSql(alias?: string): string {
+  const prefix = alias ? `${alias}.` : "";
+  return `COALESCE(${prefix}stage, CASE WHEN ${prefix}status = 'done' THEN 'delivered' ELSE 'active' END)`;
+}
+
+/** A guarded JSON column: `fallback` when it is empty or does not parse. */
+export function jsonColumnOr<T>(raw: string | null | undefined, fallback: T): T {
+  if (!raw) return fallback;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+/** A caller's `now` as an ISO string: the store's clock when omitted, a 422 when it is not a timestamp. */
+export function clock(now?: string): string {
+  if (now === undefined) return isoNow();
+  if (typeof now !== "string" || !Number.isFinite(Date.parse(now))) throw new HttpError(422, "invalid_args", "now must be a valid timestamp");
+  return new Date(now).toISOString();
 }

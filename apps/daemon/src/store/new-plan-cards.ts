@@ -8,7 +8,7 @@ import { HttpError } from "../errors";
 import { getMessage, insertMessage, setMessageControl } from "./messages";
 import { isoNow } from "../ids";
 import { filingsOfMessage, refileMessage } from "./filing";
-import type { StoreContext } from "./shared";
+import { LIVE_TURN_STATUSES, planStageSql, type StoreContext } from "./shared";
 import { settingsCached } from "./settings";
 import { recordWorkEvent } from "./work-events";
 
@@ -50,14 +50,14 @@ export function actNewPlanCard(ctx: StoreContext, messageId: string,
     }
     if (control.acted?.length) return { made: [], lifted: [] };
     const source = ctx.db.query<{ session_id: string | null; stage: string }, [string]>(`SELECT session_id,
-      COALESCE(stage, CASE WHEN status = 'done' THEN 'delivered' ELSE 'active' END) AS stage FROM tasks WHERE id = ?`).get(control.task_id);
+      ${planStageSql()} AS stage FROM tasks WHERE id = ?`).get(control.task_id);
     if (!source || !["active", "delivered"].includes(source.stage)) {
       throw new HttpError(409, "plan_changed", "the new job has since been accepted or abandoned; use its board instead");
     }
     const targetId = input.action === "merge_plan" && typeof input.taskId === "string" ? input.taskId : null;
     if (input.action === "merge_plan") {
       const target = targetId ? ctx.db.query<{ session_id: string | null; stage: string }, [string]>(`SELECT session_id,
-        COALESCE(stage, CASE WHEN status = 'done' THEN 'delivered' ELSE 'active' END) AS stage FROM tasks WHERE id = ?`).get(targetId) : null;
+        ${planStageSql()} AS stage FROM tasks WHERE id = ?`).get(targetId) : null;
       if (!target || targetId === control.task_id || !source.session_id || target.session_id !== source.session_id
         || !["active", "delivered"].includes(target.stage) || !control.merge_targets.some((t) => t.task_id === targetId)) {
         throw new HttpError(422, "invalid_args", "choose an existing job offered on this card in the same project");
@@ -69,7 +69,7 @@ export function actNewPlanCard(ctx: StoreContext, messageId: string,
     }
     const hold = stopNewPlan(control.task_id);
     const live = ctx.db.query(`SELECT 1 FROM turns WHERE task_id = ? AND mode IS NOT 'readonly'
-      AND status IN ('running', 'waiting_approval', 'waiting_ask') LIMIT 1`).get(control.task_id);
+      AND status IN ${LIVE_TURN_STATUSES} LIMIT 1`).get(control.task_id);
     if (hold.scope !== "plan" || hold.scope_id !== control.task_id || hold.lifted_at || hold.lift_on_next_user_message || live) {
       throw new HttpError(409, "plan_not_stopped", "the new job must be held and stopped before abandoning it");
     }
@@ -114,7 +114,7 @@ export function createNewPlanCard(ctx: StoreContext, input: { turnId: string; ta
     if (previous) return getMessage(ctx, previous.id);
     const targets = ctx.db.query<{ task_id: string; title: string }, [string | null, string]>(`SELECT id AS task_id, title FROM tasks
       WHERE session_id IS ? AND id <> ? AND routine_id IS NULL
-        AND COALESCE(stage, CASE WHEN status = 'done' THEN 'delivered' ELSE 'active' END) IN ('active', 'delivered')
+        AND ${planStageSql()} IN ('active', 'delivered')
       ORDER BY created_at DESC, id DESC`).all(plan.session_id, input.taskId);
     const control: OpenedControl = { kind: "plan_opened", task_id: input.taskId, turn_id: input.turnId,
       quote_message_id: input.quoteMessageId, merge_targets: targets, offer: ["undo_plan", "merge_plan"] };

@@ -9,6 +9,7 @@ import { closeSync, constants, lstatSync, openSync, readSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Locale } from "@real-bot/protocol";
 import type { ToolCtx, ToolResult } from "./collab-tools";
+import { toolFail as fail } from "./tool-result";
 import { RECIPES, tableNote } from "./data-query/catalog";
 import { describeRecords, queryRecords } from "./data-query/runner";
 
@@ -21,10 +22,6 @@ export const DATA_LOGS = ["daemon.log", "daemon-dev.stderr.log", "daemon-dev.std
 const LOG_TAIL_BYTES = 512 * 1024;
 const LOG_LINES_DEFAULT = 200;
 const LOG_LINES_MAX = 2000;
-
-function fail(code: string, message: string): ToolResult {
-  return { ok: false, error: { code, message }, emitted: [] };
-}
 
 function uiLocale(ctx: ToolCtx): Locale {
   return ctx.store.settingsCached().locale === "en" ? "en" : "zh";

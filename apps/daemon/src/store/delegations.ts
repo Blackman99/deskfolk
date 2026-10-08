@@ -6,10 +6,10 @@
 import type { HoldScope, HoldTarget } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { waitingOn } from "./large-jobs";
-import { isoNow, ulid } from "../ids";
+import { ulid } from "../ids";
 import { HOLD_SCOPES, holdsCovering } from "./holds";
 import { holdInboxItems, queueInboxItem, refreshHeldInbox, supersedeInboxItems, type InboxItem } from "./inbox";
-import { aliveBot, isPresent, requireNonEmpty, sessionRow, type StoreContext } from "./shared";
+import { aliveBot, isPresent, requireNonEmpty, sessionRow, LIVE_TURN_STATUSES, clock, type StoreContext } from "./shared";
 import { requirementsBearingOn } from "./requirements";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import type { WorkItem } from "./work-items";
@@ -90,12 +90,6 @@ function actor(ctx: StoreContext, turnId: string): Actor {
   return row;
 }
 
-function clock(now: string | undefined): string {
-  if (now === undefined) return isoNow();
-  if (typeof now !== "string" || !Number.isFinite(Date.parse(now))) throw new HttpError(422, "invalid_args", "now must be a valid timestamp");
-  return new Date(now).toISOString();
-}
-
 function identifiers(value: unknown, field: string): string[] {
   if (value === undefined) return [];
   if (!Array.isArray(value)) throw new HttpError(422, "invalid_args", `${field} must be an array of ids`);
@@ -148,7 +142,7 @@ function resolve(ctx: StoreContext, delegation: Delegation, from: Pick<Actor, "b
     "SELECT bot_id, home_session_id, ticket_id FROM work_items WHERE id = ?").get(delegation.from_work_item_id);
   if (!sender) throw new HttpError(422, "invalid_args", "delegating work item no longer exists");
   const live = ctx.db.query<{ id: string }, [string]>(`SELECT id FROM turns WHERE work_item_id = ?
-    AND status IN ('running', 'waiting_ask', 'waiting_approval') ORDER BY created_at LIMIT 1`).get(delegation.from_work_item_id);
+    AND status IN ${LIVE_TURN_STATUSES} ORDER BY created_at LIMIT 1`).get(delegation.from_work_item_id);
   const queued = queueInboxItem(ctx, { botId: sender.bot_id, sessionId: sender.home_session_id, turnId: live?.id ?? delegation.from_turn_id ?? null,
     sourceTurnId: delegation.from_turn_id,
     workItemId: delegation.from_work_item_id, taskId: delegation.task_id, ticketId: sender.ticket_id,
@@ -437,14 +431,14 @@ export function delegateWork(ctx: StoreContext, input: {
     }
     ctx.db.run(`UPDATE work_items SET thread_session_id = ?, updated_at = ?,
       state = CASE WHEN EXISTS (SELECT 1 FROM turns t WHERE t.work_item_id = work_items.id
-        AND t.status IN ('running', 'waiting_ask', 'waiting_approval')) THEN state ELSE 'queued' END
+        AND t.status IN ${LIVE_TURN_STATUSES}) THEN state ELSE 'queued' END
       WHERE id = ?`, [threadId, now, recipient.id]);
     const id = ulid(Date.parse(now));
     ctx.db.run(`INSERT INTO delegations (id, task_id, ticket_id, from_work_item_id, from_turn_id, to_bot_id, to_work_item_id, thread_session_id, ask, expects, part_keys, requirement_ids, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [id, from.task_id, ticketId, from.work_item_id, from.id, target.id, recipient.id, threadId, ask, input.expects,
         JSON.stringify(partKeys), JSON.stringify(requirementIds), now]);
     const recipientLive = ctx.db.query<{ id: string; session_id: string }, [string]>(`SELECT id, session_id FROM turns
-      WHERE work_item_id = ? AND status IN ('running', 'waiting_ask', 'waiting_approval') ORDER BY created_at LIMIT 1`).get(recipient.id);
+      WHERE work_item_id = ? AND status IN ${LIVE_TURN_STATUSES} ORDER BY created_at LIMIT 1`).get(recipient.id);
     const inbox = queueInboxItem(ctx, { botId: target.id, sessionId: threadId, turnId: recipientLive?.id ?? null, workItemId: recipient.id,
       taskId: from.task_id, ticketId, messageId: null, author: from.bot_id, body: ask, source: "delegation", kind: "change", priority: 3, now });
     ctx.db.run("UPDATE delegations SET request_inbox_seq = ? WHERE id = ?", [inbox.seq, id]);

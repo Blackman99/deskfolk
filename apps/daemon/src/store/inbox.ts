@@ -14,7 +14,7 @@ import { INBOX_DISPOSITIONS, type InboxDisposition, type InboxState, type Messag
 import { isoNow, ulid } from "../ids";
 import { takeCodePoints } from "../text";
 import { heldSql, turnHeldBy, type HeldSubject } from "./holds";
-import type { StoreContext } from "./shared";
+import { LIVE_TURN_STATUSES, type StoreContext } from "./shared";
 
 export type InboxSource = "user" | "annotation" | "delegation" | "delegation_reply" | "review" | "job" | "timer" | "system" | "peer_note";
 export type InboxKind = "change" | "question" | "info" | "result" | "wake" | "control_note";
@@ -51,9 +51,7 @@ export type InboxItem = {
 /** As much of a Bot's word on what it did with a line as is kept. */
 export const DISPOSITION_NOTE_MAX = 500;
 
-/** A live turn's statuses, as SQL. */
-const LIVE = `('running', 'waiting_ask', 'waiting_approval')`;
-const NOT_IN_LIVE_TURN = `(inbox_items.turn_id IS NULL OR NOT EXISTS (SELECT 1 FROM turns t WHERE t.id = inbox_items.turn_id AND t.status IN ${LIVE}))`;
+const NOT_IN_LIVE_TURN = `(inbox_items.turn_id IS NULL OR NOT EXISTS (SELECT 1 FROM turns t WHERE t.id = inbox_items.turn_id AND t.status IN ${LIVE_TURN_STATUSES}))`;
 const YOURS = `inbox_items.source IN ('user', 'annotation')`;
 
 /** What a hold covers, for an item: its Bot, its conversation, the job it is about, the turn it was queued for. */
@@ -240,7 +238,7 @@ export function releaseTurnInbox(ctx: StoreContext, turnId: string, now: string 
       SELECT COALESCE(i.work_item_id, t.work_item_id) FROM inbox_items i JOIN turns t ON t.id = i.turn_id
       WHERE i.turn_id = ? AND i.state = 'queued' AND i.wakes = 1)
       AND state NOT IN ('closed','waiting','blocked','needs_attention')
-      AND NOT EXISTS (SELECT 1 FROM turns t WHERE t.work_item_id = work_items.id AND t.status IN ${LIVE})`, [now, turnId]);
+      AND NOT EXISTS (SELECT 1 FROM turns t WHERE t.work_item_id = work_items.id AND t.status IN ${LIVE_TURN_STATUSES})`, [now, turnId]);
     return ctx.db.query<InboxItem, [string]>(`SELECT * FROM inbox_items WHERE turn_id = ? AND state = 'queued' ORDER BY seq`).all(turnId);
   })();
 }
@@ -259,7 +257,7 @@ export function releaseEndedInbox(ctx: StoreContext, now: string = isoNow()): vo
     ctx.db.run(
       `UPDATE inbox_items SET state = 'unacked', disposed_at = ?
        WHERE state = 'delivered' AND ${YOURS}
-         AND (delivered_turn_id IS NULL OR NOT EXISTS (SELECT 1 FROM turns t WHERE t.id = inbox_items.delivered_turn_id AND t.status IN ${LIVE}))`,
+         AND (delivered_turn_id IS NULL OR NOT EXISTS (SELECT 1 FROM turns t WHERE t.id = inbox_items.delivered_turn_id AND t.status IN ${LIVE_TURN_STATUSES}))`,
       [now],
     );
     refreshHeldInbox(ctx);

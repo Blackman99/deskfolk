@@ -22,7 +22,7 @@
  */
 import type { Database } from "bun:sqlite";
 import { HttpError } from "../errors";
-import { isoNow, ulid } from "../ids";
+import { isoNow, isoPlus, ulid } from "../ids";
 import { recordWorkEvent } from "./work-events";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import type { StoreContext } from "./shared";
@@ -314,7 +314,7 @@ export type QualityReportRow = {
 export function qualityReport(ctx: StoreContext, opts: { days?: number; now?: string } = {}): QualityReportRow[] {
   // Below level 8 turn-backs, complaints and misses are not filed: zeros there would read as counts.
   if (!learningOn(ctx)) return [];
-  const since = new Date(Date.parse(opts.now ?? isoNow()) - Math.max(1, opts.days ?? 7) * 86_400_000).toISOString();
+  const since = isoPlus(opts.now ?? isoNow(), -(Math.max(1, opts.days ?? 7) * 86_400_000));
   const rows = new Map<string, QualityReportRow>();
   const row = (botId: string, model: string | null, kind: string | null): QualityReportRow => {
     const key = JSON.stringify([botId, model, kind]);

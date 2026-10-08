@@ -1,5 +1,6 @@
 import { base64url, canonicalBytes, canonicalize, fromBase64url, randomBytes, signEnrollmentProof, text,
   type EnrollmentChallenge } from "@real-bot/remote";
+import { isUlid } from "../ids";
 
 export type RelayConfig = { origin: string; relayId: string; hostId: string };
 type RecordValue = Record<string, unknown>;
@@ -134,7 +135,7 @@ export class RelayControl {
         } else if (value.type === "route_pending") {
           exact(value, ["type", "route_id", "device_id"]);
           fromBase64url(String(value.route_id), 16);
-          if (!/^[0-9A-HJKMNP-TV-Z]{26}$/.test(String(value.device_id))) throw new Error("relay_device");
+          if (!isUlid(String(value.device_id))) throw new Error("relay_device");
           notification(value);
         } else if (value.type === "route_closed") {
           exact(value, ["type", "route_id"]); fromBase64url(String(value.route_id), 16); notification(value);

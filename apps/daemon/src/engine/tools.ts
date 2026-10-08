@@ -7,6 +7,7 @@
 import type { AskAnswer, ClientEvent, McpServer, Message, Turn } from "@real-bot/protocol";
 import { askAnswerText } from "../ask";
 import { runCollabTool, type ToolCtx, type ToolResult } from "../collab-tools";
+import { toolFail } from "../tool-result";
 import { readBotLineByWords, readsAsNoWork, type BotLineContext, type BotLineReading } from "../line-reading";
 import type { ToolCall } from "../completions";
 import { isoNow } from "../ids";
@@ -330,9 +331,9 @@ export function createTools(deps: ToolsDeps): Tools {
       if (!held && call.name === "send_message") held = !mayAct(store, turnId);
       let result: ToolResult;
       if (held) {
-        result = { ok: false, error: { code: "held", message: HELD_CALL }, emitted: [] };
+        result = toolFail("held", HELD_CALL);
       } else if (bounce) {
-        result = { ok: false, error: { code: "closing_check", message: bounce }, emitted: [] };
+        result = toolFail("closing_check", bounce);
       } else {
         const target = toolTargetOf(call.name, args);
         const mcpTool = live.mcpTools.get(call.name);
@@ -625,10 +626,10 @@ export function createTools(deps: ToolsDeps): Tools {
       const readNew = trigger.kind === "user" && store.lineReadAsNew(trigger.id);
       if (candidates.length > 1 && !readNew) {
         store.noteFilingBounce(turn.id);
-        return { ok: false, result: { ok: false, error: { code: "needs_filing", message: `Choose a job with work_on before this call: one of ${candidates.join(", ")}, or {new:{title, quote_message_id}} quoting the user's line when it is about none of them` }, emitted: [] } };
+        return { ok: false, result: toolFail("needs_filing", `Choose a job with work_on before this call: one of ${candidates.join(", ")}, or {new:{title, quote_message_id}} quoting the user's line when it is about none of them`) };
       }
       if (candidates.length === 0 && trigger.kind !== "user") {
-        return { ok: false, result: { ok: false, error: { code: "needs_filing", message: "Only a user request can open a new job; choose a candidate with work_on" }, emitted: [] } };
+        return { ok: false, result: toolFail("needs_filing", "Only a user request can open a new job; choose a candidate with work_on") };
       }
       const bound = await runCollabTool({ store, botId: turn.bot_id, sessionId: turn.session_id, turnId: turn.id,
         parentId: live.parentId, signal: live.abort.signal, admission }, "work_on", {
@@ -645,7 +646,7 @@ export function createTools(deps: ToolsDeps): Tools {
     live.workDir = store.turnWorkDir(turn.id);
     if (hasEffect(live, name) && name !== "work_on" && name !== "send_message" && name !== "ask_user") {
       // Binding may have changed which hold applies; check the target immediately before acting.
-      if (!mayAct(store, turn.id)) return { ok: false, result: { ok: false, error: { code: "held", message: HELD_CALL }, emitted: [] } };
+      if (!mayAct(store, turn.id)) return { ok: false, result: toolFail("held", HELD_CALL) };
       if (turn.task_id) store.markWorkDirectoryUsed(turn.id);
       if (name === "write_file" || name === "delete_file" || name === "shell" || live.mcpTools.has(name)) {
         store.recordNewPlanEffectStarted({ turnId: turn.id, tool: name, toolCallId: callId });
@@ -673,7 +674,7 @@ export function createTools(deps: ToolsDeps): Tools {
         if (!settled) {
           // Files of a ticket someone else owns are not handed over for this Bot: it hears so once.
           const hint = store.handOverHint({ turnId: turn.id, paths: live.producedPaths ?? [] });
-          if (hint) return { ok: false, error: { code: "not_handed_over", message: hint }, emitted: [] };
+          if (hint) return toolFail("not_handed_over", hint);
           // No new files: the answer it ends with is what it hands over, on a ticket whose work is
           // words — but only when the words themselves read as the deliverable (isAnswerText); a
           // Bot that is not the ticket's producer hears so once instead of a bare obligation.
@@ -681,12 +682,12 @@ export function createTools(deps: ToolsDeps): Tools {
             try {
               settled = await submissions().answer(turn.id, args.answer);
             } catch (error) {
-              if (error instanceof HttpError) return { ok: false, error: { code: error.code, message: error.message }, emitted: [] };
+              if (error instanceof HttpError) return toolFail(error.code, error.message);
               throw error;
             }
             if (!settled) {
               const wordsHint = store.answerHint({ turnId: turn.id });
-              if (wordsHint) return { ok: false, error: { code: "not_handed_over", message: wordsHint }, emitted: [] };
+              if (wordsHint) return toolFail("not_handed_over", wordsHint);
             }
           }
         }
@@ -695,7 +696,7 @@ export function createTools(deps: ToolsDeps): Tools {
       }
       if (settled?.state === "checks_failed") {
         const lines = checkLines(settled.failures, live.locale === "en" ? "en" : "zh");
-        return { ok: false, error: { code: "checks_failed", message: `what you handed over (submission ${settled.submission.id}) failed its checks, so the ticket did not move: ${lines.join("; ")}. Fix it, or end_turn saying what blocks you.` }, emitted: [] };
+        return toolFail("checks_failed", `what you handed over (submission ${settled.submission.id}) failed its checks, so the ticket did not move: ${lines.join("; ")}. Fix it, or end_turn saying what blocks you.`);
       }
     }
     if (isWorkspaceTool(name) || COLLAB_TOOL_NAMES.includes(name)) {
@@ -736,12 +737,12 @@ export function createTools(deps: ToolsDeps): Tools {
           );
     }
     if (!mcp) {
-      return { ok: false, error: { code: "failed", message: `unknown tool: ${name}` }, emitted: [] };
+      return toolFail("failed", `unknown tool: ${name}`);
     }
     // A `workspace://` picture goes out as its data URI; the call the model sees keeps the reference.
     const outgoing = inlineWorkspaceRefs(args, store.workspacePath());
     if (!outgoing.ok) {
-      return { ok: false, error: { code: "invalid_args", message: outgoing.message }, emitted: [] };
+      return toolFail("invalid_args", outgoing.message);
     }
     // External jobs (ADR 0047, from level 6): a media server's submit/check pair is the daemon's to
     // poll. A check on a registered job reads its last known state without reaching the server; the
@@ -752,7 +753,7 @@ export function createTools(deps: ToolsDeps): Tools {
     // generated through a server meanwhile. Reading and checking on a job already running go on.
     if (pair?.kind !== "check" && live.mcpTools.get(name)?.readOnly !== true) {
       const refusal = store.largeJobRefusal(turn.id);
-      if (refusal) return { ok: false, error: { code: refusal.code, message: refusal.message }, emitted: [] };
+      if (refusal) return toolFail(refusal.code, refusal.message);
     }
     const en = live.locale === "en";
     let forwarded = outgoing.args;
@@ -797,7 +798,7 @@ export function createTools(deps: ToolsDeps): Tools {
     }
     if (callId && live.mcpTools.get(name)?.readOnly !== true && store.capabilities().engine_level >= ENGINE_LEVELS.supervision) {
       const started = store.beginToolExecution({ turnId: turn.id, toolCallId: callId, tool: name, sideEffect: true });
-      if (!started.begun) return { ok: false, error: { code: "repeated_effect", message: "this remote call already started; no duplicate submission was sent" }, emitted: [] };
+      if (!started.begun) return toolFail("repeated_effect", "this remote call already started; no duplicate submission was sent");
     }
     const called = await mcp.call(name, forwarded, live.abort.signal);
     if (called.ok && pair?.kind === "submit" && job) {

@@ -10,7 +10,7 @@ import { getMessage, insertMessage } from "./messages";
 import { heldSql } from "./holds";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import { settingsCached } from "./settings";
-import type { StoreContext } from "./shared";
+import { LIVE_TURN_STATUSES, planStageSql, type StoreContext } from "./shared";
 import { recordWorkEvent } from "./work-events";
 
 export type WorkItem = {
@@ -67,7 +67,7 @@ export function queuePlace(
   const working = ctx.db
     .query<{ task_id: string | null }, [string]>(
       `SELECT task_id FROM turns
-       WHERE bot_id = ? AND status IN ('running', 'waiting_approval', 'waiting_ask')
+       WHERE bot_id = ? AND status IN ${LIVE_TURN_STATUSES}
          AND IFNULL(mode, 'work') NOT IN ('readonly', 'desk')`,
     )
     .all(input.botId);
@@ -136,7 +136,7 @@ export function hasWorkAuthority(ctx: StoreContext, turnId: string): boolean {
 /** A lift only removes a stop; it cannot reopen a terminal or dormant plan. */
 export function isPlanRunnable(ctx: StoreContext, taskId: string): boolean {
   return ctx.db.query<{ id: string }, [string]>(`SELECT id FROM tasks WHERE id = ? AND dormant_since IS NULL
-    AND COALESCE(stage, CASE WHEN status = 'done' THEN 'delivered' ELSE 'active' END) IN ('active', 'delivered')`).get(taskId) !== null;
+    AND ${planStageSql()} IN ('active', 'delivered')`).get(taskId) !== null;
 }
 
 export type QueuedWork = Pick<WorkItem, "id" | "bot_id" | "home_session_id" | "task_id" | "ticket_id"> & {
@@ -165,10 +165,10 @@ export function dispatchableWork(ctx: StoreContext): QueuedWork[] {
     JOIN session_participants member ON member.session_id = s.id AND member.member = w.bot_id AND member.left_at IS NULL
     WHERE w.state = 'queued'
       AND (w.task_id IS NULL OR EXISTS (SELECT 1 FROM tasks p WHERE p.id = w.task_id AND p.dormant_since IS NULL
-        AND COALESCE(p.stage, CASE WHEN p.status = 'done' THEN 'delivered' ELSE 'active' END) IN ('active', 'delivered')))
+        AND ${planStageSql("p")} IN ('active', 'delivered')))
       AND i.seq = (SELECT MIN(j.seq) FROM inbox_items j WHERE j.work_item_id = w.id AND j.state = 'queued' AND j.wakes = 1)
       AND NOT EXISTS (SELECT 1 FROM turns t WHERE t.bot_id = w.bot_id AND t.task_id IS w.task_id
-        AND t.status IN ('running', 'waiting_approval', 'waiting_ask') AND IFNULL(t.mode, 'work') <> 'readonly')
+        AND t.status IN ${LIVE_TURN_STATUSES} AND IFNULL(t.mode, 'work') <> 'readonly')
       AND NOT ${heldSql({ bot: "w.bot_id", session: RUNS_IN, task: "w.task_id", ticket: "w.ticket_id", turn: "i.turn_id" })}
     ORDER BY i.priority, i.seq`).all();
   return queued.filter((item) => queuePlace(ctx, { botId: item.bot_id, taskId: item.task_id }) === null);
@@ -210,12 +210,11 @@ export function markSegmentCutOff(ctx: StoreContext, turnId: string, reason: str
   const changed = ctx.db.query<{ id: string }, [string, string, string]>(`UPDATE work_items SET state = 'needs_attention', updated_at = ?
     WHERE id = ? AND state IN ('running', 'queued', 'idle')
       AND NOT EXISTS (SELECT 1 FROM turns t WHERE t.work_item_id = work_items.id AND t.id <> ?3
-        AND t.status IN ('running', 'waiting_approval', 'waiting_ask')) RETURNING id`).get(isoNow(), turn.work_item_id, turnId);
+        AND t.status IN ${LIVE_TURN_STATUSES}) RETURNING id`).get(isoNow(), turn.work_item_id, turnId);
   if (changed) recordWorkEvent(ctx, { kind: "work.needs_attention", actor: "app", botId: turn.bot_id, taskId: turn.task_id,
     ticketId: turn.ticket_id, turnId, sessionId: turn.session_id, payload: { work_item_id: turn.work_item_id, reason } });
 }
 
-const LIVE_SEGMENT = "('running', 'waiting_approval', 'waiting_ask')";
 
 /**
  * A segment ended and its work item still says `running` (ADR 0040 §2.6): at engine level 2 no end
@@ -249,7 +248,7 @@ function settleWorkItems(ctx: StoreContext, only: { workItemId?: string; desksOn
     SET state = CASE WHEN task_id IS NULL THEN 'closed' ELSE 'idle' END,
       closed_at = CASE WHEN task_id IS NULL THEN ?1 ELSE closed_at END, updated_at = ?1
     WHERE state = 'running' AND (?2 IS NULL OR id = ?2) AND (?3 = 0 OR task_id IS NULL)
-      AND NOT EXISTS (SELECT 1 FROM turns t WHERE t.work_item_id = work_items.id AND t.status IN ${LIVE_SEGMENT})
+      AND NOT EXISTS (SELECT 1 FROM turns t WHERE t.work_item_id = work_items.id AND t.status IN ${LIVE_TURN_STATUSES})
     RETURNING id`).all(now, only.workItemId ?? null, only.desksOnly ? 1 : 0).length;
 }
 
@@ -258,7 +257,7 @@ export function closeWorkItemIfIdle(ctx: StoreContext, id: string | null): void 
   if (!id) return;
   const live = ctx.db
     .query<{ n: number }, [string]>(
-      `SELECT COUNT(*) AS n FROM turns WHERE work_item_id = ? AND status IN ('running', 'waiting_approval', 'waiting_ask')`,
+      `SELECT COUNT(*) AS n FROM turns WHERE work_item_id = ? AND status IN ${LIVE_TURN_STATUSES}`,
     )
     .get(id)!.n;
   if (live > 0) return;

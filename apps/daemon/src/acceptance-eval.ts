@@ -20,6 +20,7 @@ import { runStandardCheck, type StandardEvalDeps } from "./standard-check";
 import { ENV_WHITELIST } from "./terminal-env";
 import { classifyPath, classifyShell } from "./workspace-paths";
 import type { WakeWatch } from "./wake";
+import { sayIn } from "./text";
 
 export type CheckVerdict = {
   outcome: AcceptanceCheckOutcome;
@@ -144,16 +145,8 @@ function matchInWorker(pattern: string, body: string): Promise<"match" | "no-mat
 const FILE_READ_MAX = 1_000_000;
 
 /** `exists` / `contains` / `matches`: read from disk, never spawn anything. */
-/**
- * A run's one-line `detail` is shown on the flow board and quoted to the organizer and in call-back
- * notes, so it is written in the app's locale, like every other line the app says.
- */
-function sayer(locale: Locale): (zh: string, en: string) => string {
-  return (zh, en) => (locale === "en" ? en : zh);
-}
-
 export async function evaluateFileCheck(root: string, check: AcceptanceCheck, locale: Locale = "zh"): Promise<CheckVerdict> {
-  const say = sayer(locale);
+  const say = sayIn(locale);
   const path = check.path ?? "";
   if (!path) return { outcome: "error", exitCode: null, detail: say("这条检查没有写路径", "no path set on this check"), output: null };
   let classified;
@@ -307,7 +300,7 @@ export async function runCommandCheck(
   check: AcceptanceCheck,
   opts: { signal?: AbortSignal; wake?: WakeWatch; env?: Record<string, string>; locale?: Locale },
 ): Promise<CheckVerdict> {
-  const say = sayer(opts.locale ?? "zh");
+  const say = sayIn(opts.locale ?? "zh");
   const command = check.command ?? "";
   if (!command.trim()) return { outcome: "error", exitCode: null, detail: say("这条检查没有写命令", "no command set on this check"), output: null };
   const cwd = check.cwd ?? ".";
@@ -365,20 +358,20 @@ export async function evaluateCheck(
   check: AcceptanceCheck,
   opts: { signal?: AbortSignal; wake?: WakeWatch; env?: Record<string, string>; locale?: Locale; continuity?: SeamsEvalDeps; standard?: Omit<StandardEvalDeps, "locale" | "signal" | "env"> } = {},
 ): Promise<CheckVerdict> {
-  if (!root) return { outcome: "blocked", exitCode: null, detail: sayer(opts.locale ?? "zh")("没有打开工作区", "no workspace is open"), output: null };
+  if (!root) return { outcome: "blocked", exitCode: null, detail: sayIn(opts.locale ?? "zh")("没有打开工作区", "no workspace is open"), output: null };
   if (check.kind === "command") return runCommandCheck(root, check, opts);
   if (check.kind === "measure") return runMeasureCheck(root, check, opts);
   // 照样片 (ADR 0060): stored as a seams check an older build reads as one with nothing to compare.
   if (check.standard_of) {
     if (!opts.standard) {
-      return { outcome: "error", exitCode: null, detail: sayer(opts.locale ?? "zh")("照样片检查没有接上判定模型", "standard checks are not wired up here"), output: null };
+      return { outcome: "error", exitCode: null, detail: sayIn(opts.locale ?? "zh")("照样片检查没有接上判定模型", "standard checks are not wired up here"), output: null };
     }
     const { pictures: _pictures, ...verdict } = await runStandardCheck(root, check, { ...opts.standard, locale: opts.locale, signal: opts.signal, env: opts.env });
     return verdict;
   }
   if (check.kind === "continuity") {
     if (!opts.continuity) {
-      return { outcome: "error", exitCode: null, detail: sayer(opts.locale ?? "zh")("衔接检查没有接上判定模型", "seams checks are not wired up here"), output: null };
+      return { outcome: "error", exitCode: null, detail: sayIn(opts.locale ?? "zh")("衔接检查没有接上判定模型", "seams checks are not wired up here"), output: null };
     }
     return runSeamsCheck(root, check, {
       judge: opts.continuity.judge,

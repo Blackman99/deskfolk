@@ -1,12 +1,13 @@
 import { ANNOTATION_REMOTE_CROP_BASE64_MAX, CLIENT_ONLY_CONTROL_OFFERS, CONTROL_NOTE_MAX, CONTROL_OFFERS, FILE_DROP_SESSION_ID } from "@real-bot/protocol";
 import type { RemoteRequest } from "@real-bot/remote";
 import { HttpError } from "../errors";
+import { isUlid } from "../ids";
 
 type Check = (value: unknown) => boolean;
 type Fields = Record<string, Check>;
 const string: Check = v => typeof v === "string";
 const bool: Check = v => typeof v === "boolean";
-const id: Check = v => typeof v === "string" && /^[0-9A-HJKMNP-TV-Z]{26}$/.test(v);
+const id: Check = v => typeof v === "string" && isUlid(v);
 const nullable = (check: Check): Check => v => v === null || check(v);
 const list = (check: Check): Check => v => Array.isArray(v) && v.length <= 1000 && v.every(check);
 const one = (...values: unknown[]): Check => v => values.includes(v);

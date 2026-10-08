@@ -4,7 +4,7 @@ import { HttpError } from "../errors";
 import { queueInboxItem, refreshHeldInbox, type InboxItem } from "./inbox";
 import { findOrCreateWorkItem } from "./work-items";
 import { isPresent } from "./sessions";
-import type { StoreContext } from "./shared";
+import { LIVE_TURN_STATUSES, type StoreContext } from "./shared";
 
 /** Count committed user-visible progress, not answers to labelled questions. */
 export function progressMessagesSent(ctx: StoreContext, turnId: string): number {
@@ -38,7 +38,7 @@ export function recordPeerNote(ctx: StoreContext, message: Message, toBotId: str
     }
     const taskId = session.thread_task_id ?? message.task_id ?? null;
     const live = ctx.db.query<{ id: string; work_item_id: string | null; ticket_id: string | null }, [string, string | null]>(
-      "SELECT id, work_item_id, ticket_id FROM turns WHERE bot_id = ? AND task_id IS ? AND status IN ('running','waiting_ask','waiting_approval') AND mode <> 'readonly' ORDER BY created_at LIMIT 1",
+      `SELECT id, work_item_id, ticket_id FROM turns WHERE bot_id = ? AND task_id IS ? AND status IN ${LIVE_TURN_STATUSES} AND mode <> 'readonly' ORDER BY created_at LIMIT 1`,
     ).get(toBotId, taskId);
     const item = live?.work_item_id ?? findOrCreateWorkItem(ctx, { botId: toBotId, sessionId: message.session_id,
       taskId, ticketId: message.ticket_id ?? null }).id;

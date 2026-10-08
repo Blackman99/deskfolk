@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ToolResult } from "./collab-tools";
+import { toolFail as fail } from "./tool-result";
 import { atomicWrite, withFileLock } from "./file-integrity";
 import { HttpError } from "./errors";
 import { killProcessTree, toolShell } from "./platform";
@@ -620,6 +621,3 @@ function ok(data: Record<string, unknown>): ToolResult {
   return { ok: true, data, emitted: [] };
 }
 
-function fail(code: string, message: string): ToolResult {
-  return { ok: false, error: { code, message }, emitted: [] };
-}

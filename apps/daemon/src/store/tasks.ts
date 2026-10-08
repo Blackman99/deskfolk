@@ -33,7 +33,7 @@ import { takeCodePoints } from "../text";
 import { notBotOnlyLine } from "./check-backs";
 import { holdNamesPlanSql, noteHeldPlansMovedAside, parkHeldPlans, planStatusUnderHolds } from "./holds";
 import { parsePlanSpec, type PlanSpec, type PlanStatus } from "./plan-shape";
-import { sessionRow, type MessageRow, type StoreContext } from "./shared";
+import { sessionRow, LIVE_TURN_STATUSES, type MessageRow, type StoreContext } from "./shared";
 import { recordWorkEvent } from "./work-events";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 
@@ -240,7 +240,7 @@ export function taskLiveTurnCount(ctx: StoreContext, taskId: string): number {
   const row = ctx.db
     .query<{ n: number }, [string]>(
       `SELECT COUNT(*) AS n FROM turns
-       WHERE task_id = ? AND status IN ('running', 'waiting_approval', 'waiting_ask')`,
+       WHERE task_id = ? AND status IN ${LIVE_TURN_STATUSES}`,
     )
     .get(taskId);
   return row?.n ?? 0;
@@ -1051,7 +1051,7 @@ export function elsewherePlans(ctx: StoreContext, sessionId: string, limit = ELS
          AND (
            EXISTS (SELECT 1 FROM turns u
                    WHERE u.task_id = t.id AND u.session_id != ?
-                     AND u.status IN ('running', 'waiting_approval', 'waiting_ask')
+                     AND u.status IN ${LIVE_TURN_STATUSES}
                      AND u.bot_id IN (${marks}))
            OR (t.status = 'active' AND EXISTS (SELECT 1 FROM tickets k
                    WHERE k.task_id = t.id AND k.status IN ('todo', 'doing', 'review')

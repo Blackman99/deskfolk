@@ -2,6 +2,7 @@ import { realpathSync, statSync } from "node:fs";
 import { base64url, canonicalHash, canonicalize, identityPublic } from "@real-bot/remote";
 import type { LocalAction } from "../remote-native";
 import { isAbsoluteHostPath } from "../workspace-paths";
+import { isUlid } from "../ids";
 import type { RemoteNativeProvider } from "./controller";
 import { RemoteTrust, deny } from "./trust";
 import { deletePushSubs } from "./push";
@@ -16,7 +17,7 @@ export function validateRelay(config: RelayConfig): void {
     typeof config.hostId !== "string" || typeof config.relayId !== "string") deny();
   const url = new URL(config.origin);
   if (url.protocol !== "https:" || url.origin !== config.origin || url.username || url.password ||
-    !/^[0-9A-HJKMNP-TV-Z]{26}$/.test(config.hostId) || !/^[A-Za-z0-9_-]{1,64}$/.test(config.relayId)) deny();
+    !isUlid(config.hostId) || !/^[A-Za-z0-9_-]{1,64}$/.test(config.relayId)) deny();
 }
 function workspace(path: string) {
   if (typeof path !== "string" || !isAbsoluteHostPath(path) || path.length > 4096) deny();

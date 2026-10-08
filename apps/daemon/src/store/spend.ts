@@ -17,7 +17,7 @@ import {
   type SpendTotals,
 } from "@real-bot/protocol";
 import { HttpError } from "../errors";
-import { isoNow, ulid } from "../ids";
+import { isUlid, isoNow, ulid } from "../ids";
 import { type CatalogEntry } from "../route-decision";
 import { estimateCostUsdTicks } from "../spend-pricing";
 import { catalogEntries } from "./providers";
@@ -673,7 +673,7 @@ function decodeCursor(cursor: string | null | undefined): { created_at: string; 
   const split = cursor.lastIndexOf("|");
   const createdAt = split > 0 ? cursor.slice(0, split) : "";
   const id = split > 0 ? cursor.slice(split + 1) : "";
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(createdAt) || !/^[0-9A-HJKMNP-TV-Z]{26}$/.test(id)) {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(createdAt) || !isUlid(id)) {
     throw new HttpError(422, "invalid_args", "spend cursor is not a page token");
   }
   return { created_at: createdAt, id };

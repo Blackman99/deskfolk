@@ -35,3 +35,14 @@ export function isoNow(): string {
   lastIsoTime = now > lastIsoTime ? now : lastIsoTime + 1;
   return new Date(lastIsoTime).toISOString();
 }
+
+const ULID_PATTERN = /^[0-9A-HJKMNP-TV-Z]{26}$/;
+
+export function isUlid(value: string): boolean {
+  return ULID_PATTERN.test(value);
+}
+
+/** `iso` moved by `ms` milliseconds (negative for earlier), as an ISO string. */
+export function isoPlus(iso: string, ms: number): string {
+  return new Date(Date.parse(iso) + ms).toISOString();
+}

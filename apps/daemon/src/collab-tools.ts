@@ -44,7 +44,7 @@ import { normalizeModelCatalog } from "./models";
 import { type Store } from "./store";
 import { goAheadBounce } from "./store/end-contract";
 import { ENGINE_LEVELS } from "./store/schema-gate";
-import { resolveApiFormat } from "./store/shared";
+import { normalizeOptionalId, resolveApiFormat } from "./store/shared";
 import {
   extractWorkspacePathsFromBody,
   linkifyWorkspacePaths,
@@ -54,6 +54,7 @@ import {
 import { classifyPath, expandHome } from "./workspace-paths";
 import { editPrompt, listPrompts, readPrompt, resetPrompt } from "./prompt-tools";
 import { describeData, queryData, readDataLog } from "./data-tools";
+import { toolFail as fail } from "./tool-result";
 
 const DEFAULT_ENDPOINT_GUARD =
   "cannot modify the default endpoint's URL, API format or key, or delete it";
@@ -1395,8 +1396,8 @@ async function pinFromArgs(
       ? { model: null, providerId: null }
       : { model: current.currentModel, providerId: current.currentProviderId };
   }
-  const endpointRaw = hasEndpoint ? nullableId(args.endpoint_id, "endpoint_id") : undefined;
-  const modelRaw = hasModel ? nullableId(args.model, "model") : undefined;
+  const endpointRaw = hasEndpoint ? normalizeOptionalId(args.endpoint_id, "endpoint_id") : undefined;
+  const modelRaw = hasModel ? normalizeOptionalId(args.model, "model") : undefined;
   if (hasEndpoint && hasModel && !endpointRaw && !modelRaw) {
     return { model: null, providerId: null };
   }
@@ -1426,19 +1427,12 @@ async function pinFromArgs(
 }
 
 function nullableThinkingLevel(value: unknown): ThinkingLevel | null {
-  const raw = nullableId(value, "thinking_level");
+  const raw = normalizeOptionalId(value, "thinking_level");
   if (raw === null) return null;
   if (!isThinkingLevel(raw)) {
     throw new HttpError(422, "invalid_args", "thinking_level must be a reasoning_effort name");
   }
   return raw;
-}
-
-function nullableId(value: unknown, field: string): string | null {
-  if (value === undefined || value === null) return null;
-  if (typeof value !== "string") throw new HttpError(422, "invalid_args", `${field} must be a string`);
-  const trimmed = value.trim();
-  return trimmed.length === 0 ? null : trimmed;
 }
 
 function serializeEndpoint(provider: Provider, defaultId: string | null): Record<string, unknown> {
@@ -1732,10 +1726,6 @@ function unknownMentionError(tokens: string[], members: string[]): string {
   const list = tokens.map((token) => `@${token}`).join(", ");
   const who = members.length > 0 ? members.join(", ") : "(nobody else)";
   return `${label} ${list}: no member here has that name. Members here: ${who}. Use one of these exact names, or drop the @ and send again.`;
-}
-
-function fail(code: string, message: string): ToolResult {
-  return { ok: false, error: { code, message }, emitted: [] };
 }
 
 const ANNOTATION_LIST_MAX = 100;

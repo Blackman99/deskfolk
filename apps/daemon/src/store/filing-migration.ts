@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { isoNow } from "../ids";
+import { isoNow, isoPlus } from "../ids";
 
 /** Only nullable/new columns: old CHECKs and ordinary field mappings remain unchanged (ADR 0040). */
 export function migrateFiling(db: Database, now: string = isoNow()): void {
@@ -43,7 +43,7 @@ export function migrateFiling(db: Database, now: string = isoNow()): void {
     db.run(`INSERT OR IGNORE INTO user_quote_filings (quote_id, task_id, ticket_id, part_key)
       SELECT id, task_id, ticket_id, part_key FROM user_quotes WHERE task_id IS NOT NULL
         AND NOT EXISTS (SELECT 1 FROM user_quote_filings f WHERE f.quote_id = user_quotes.id)`);
-    const cutoff = new Date(Date.parse(now) - 24 * 60 * 60 * 1000).toISOString();
+    const cutoff = isoPlus(now, -(24 * 60 * 60 * 1000));
     // Only the old done rows, once. This does not reinterpret active/parked or their old CHECKs.
     db.run(`UPDATE tasks SET stage = 'delivered', delivered_at = COALESCE(delivered_at, closed_at, spec_updated_at, created_at),
       dormant_since = CASE WHEN COALESCE((SELECT MAX(created_at) FROM user_quotes WHERE task_id = tasks.id), tasks.created_at) <= ?1

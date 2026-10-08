@@ -23,7 +23,7 @@ import { candidateRows, decideCompletion, type CatalogEntry, type RouteDecision 
 import { REVIEW_CONFIDENCE_FLOOR, type RouteReviewVerdict } from "../route-agent";
 import { chainIsCleaner, choiceFollowed, shouldRetire, taskIsShorter, type ChainWork, type ReviewSubject } from "../route-learning";
 import { catalogEntries } from "./providers";
-import { defaultProviderId, providerRows, type StoreContext, type TurnRow } from "./shared";
+import { defaultProviderId, providerRows, LIVE_TURN_STATUSES, type StoreContext, type TurnRow } from "./shared";
 
 type DecisionRow = {
   turn_id: string;
@@ -855,7 +855,7 @@ export function chainForReview(ctx: StoreContext, chainId: string): ChainForRevi
   const live = ctx.db
     .query<{ n: number }, string[]>(
       `SELECT COUNT(*) AS n FROM turns
-       WHERE id IN (${placeholders}) AND status IN ('running', 'waiting_approval', 'waiting_ask')`,
+       WHERE id IN (${placeholders}) AND status IN ${LIVE_TURN_STATUSES}`,
     )
     .get(...turnIds);
   return {

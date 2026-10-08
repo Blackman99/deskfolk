@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { HttpError } from "../errors";
+import { isUlid } from "../ids";
 import { fromError, responseRecord } from "../http";
 import type { KeyCache } from "./shared";
 import type { Transactions } from "./transactions";
@@ -49,7 +50,7 @@ export class Receipts {
     secrets: Record<string, unknown>, prepare: () => Promise<() => ReceiptResponse>,
     keyOps: KeyOperation[],
   ): Promise<ReceiptResponse> {
-    if (!scope.deviceId || scope.deviceId.length > 200 || !/^[0-9A-HJKMNP-TV-Z]{26}$/.test(scope.requestId)) {
+    if (!scope.deviceId || scope.deviceId.length > 200 || !isUlid(scope.requestId)) {
       throw new HttpError(422, "invalid_args", "request id must be an uppercase ULID");
     }
     const key = JSON.stringify([scope.deviceId, scope.requestId]);

@@ -6,7 +6,7 @@
  * submitted again without a reason. When it finishes, whoever waits on it is woken with the result.
  */
 import { createHash } from "node:crypto";
-import { isoNow, ulid } from "../ids";
+import { isoNow, isoPlus, ulid } from "../ids";
 import { filenamePartNumbers, partNumbers } from "./part-numbers";
 import { refreshHeldInbox } from "./inbox";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
@@ -73,7 +73,7 @@ export function getJob(ctx: StoreContext, id: string): ExternalJob | null {
 
 /** The job these arguments started within {@link JOB_DEDUPE_MS}, still pending or done; null otherwise. */
 export function recentJob(ctx: StoreContext, digest: string, now: string = isoNow()): ExternalJob | null {
-  const since = new Date(Date.parse(now) - JOB_DEDUPE_MS).toISOString();
+  const since = isoPlus(now, -JOB_DEDUPE_MS);
   const row = ctx.db.query<JobRow, [string, string]>(`SELECT * FROM external_jobs WHERE args_digest = ? AND created_at > ?
     AND state IN ('pending', 'completed') ORDER BY created_at DESC, rowid DESC LIMIT 1`).get(digest, since);
   return row ? toJob(row) : null;
@@ -128,7 +128,7 @@ export function registerJob(ctx: StoreContext, input: {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, NULL, ?, ?, 0, ?, NULL, ?, ?, NULL)`,
       [id, input.server, input.submitTool, input.checkTool, input.idParam, input.requestId, input.digest, input.taskId, input.ticketId, input.partNo,
         input.botId, input.workItemId, input.turnId, input.sessionId, input.statusText ?? null, input.resubmitReason ?? null, JSON.stringify(waiters),
-        new Date(Date.parse(now) + POLL_BACKOFF_MS[0]!).toISOString(), now, now]);
+        isoPlus(now, POLL_BACKOFF_MS[0]!), now, now]);
     recordWorkEvent(ctx, { kind: "job.registered", actor: input.botId, botId: input.botId, taskId: input.taskId, ticketId: input.ticketId, turnId: input.turnId,
       payload: { job_id: id, server: input.server, tool: input.submitTool, request_id: input.requestId, part_no: input.partNo, resubmit_reason: input.resubmitReason ?? null } });
     return getJob(ctx, id)!;
@@ -158,7 +158,7 @@ export function claimDueJobs(ctx: StoreContext, now: string = isoNow()): Externa
     for (const job of due) {
       const backoff = POLL_BACKOFF_MS[Math.min(job.polls + 1, POLL_BACKOFF_MS.length - 1)]!;
       ctx.db.run("UPDATE external_jobs SET polls = polls + 1, last_polled_at = ?, next_poll_at = ?, updated_at = ? WHERE id = ?",
-        [now, new Date(Date.parse(now) + backoff).toISOString(), now, job.id]);
+        [now, isoPlus(now, backoff), now, job.id]);
     }
     return due;
   });

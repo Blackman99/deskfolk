@@ -21,13 +21,13 @@
 import type { Database } from "bun:sqlite";
 import { USER_MEMBER, type Retrospective, type RetrospectiveChange, type RetrospectiveSide, type RetrospectiveVerdict } from "@real-bot/protocol";
 import { HttpError } from "../errors";
-import { isoNow, ulid } from "../ids";
+import { isoNow, isoPlus, ulid } from "../ids";
 import { codePointCount } from "../text";
 import { holdsCovering } from "./holds";
 import { MEMORY_MAX_PER_BOT, MEMORY_ROWS_PER_BOT, parseMemoryBody, parseMemorySubject } from "./memories";
 import { learningOn } from "./quality";
 import { SKILL_MAX_PER_BOT, parseSkillBody, parseSkillDescription, parseSkillName } from "./skills";
-import type { MemoryRow, SkillRow, StoreContext } from "./shared";
+import { jsonColumnOr, type MemoryRow, type SkillRow, type StoreContext } from "./shared";
 import { recordWorkEvent } from "./work-events";
 
 /** A delivery is looked back on once it has stayed delivered this long: a complaint right after an approval reopens it first. */
@@ -177,17 +177,8 @@ function clip(text: string | null | undefined, max: number): string {
   return `${[...value].slice(0, max - 1).join("")}…`;
 }
 
-function parseJson<T>(raw: string | null | undefined, fallback: T): T {
-  if (!raw) return fallback;
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
-}
-
 function toRetrospective(row: RetrospectiveRow): Retrospective {
-  const findings = parseJson<{ pitfalls?: string[]; rework_causes?: string[]; keep?: string[]; earlier?: RetrospectiveVerdict[] }>(row.findings, {});
+  const findings = jsonColumnOr<{ pitfalls?: string[]; rework_causes?: string[]; keep?: string[]; earlier?: RetrospectiveVerdict[] }>(row.findings, {});
   return {
     id: row.id,
     task_id: row.task_id,
@@ -200,7 +191,7 @@ function toRetrospective(row: RetrospectiveRow): Retrospective {
     rework_causes: findings.rework_causes ?? [],
     keep: findings.keep ?? [],
     earlier: findings.earlier ?? [],
-    changes: parseJson<RetrospectiveChange[]>(row.changes, []),
+    changes: jsonColumnOr<RetrospectiveChange[]>(row.changes, []),
     note: row.note,
     created_at: row.created_at,
     finished_at: row.finished_at,
@@ -221,7 +212,7 @@ export function listRetrospectives(ctx: StoreContext, taskId: string): Retrospec
 
 /** What the last 24 hours of retrospectives cost, in USD. */
 export function retrospectSpendToday(ctx: StoreContext, now: string = isoNow()): number {
-  const since = new Date(Date.parse(now) - 24 * 60 * 60_000).toISOString();
+  const since = isoPlus(now, -(24 * 60 * 60_000));
   return ctx.db.query<{ usd: number | null }, [string]>(
     "SELECT SUM(COALESCE(cost_usd_ticks, estimated_cost_usd_ticks)) / 1e10 AS usd FROM spend WHERE purpose = 'retrospect' AND created_at >= ?").get(since)?.usd ?? 0;
 }
@@ -253,15 +244,15 @@ function troubleSignals(ctx: StoreContext, taskId: string, botId: string, since:
 export function claimDueRetrospective(ctx: StoreContext, now: string = isoNow()): DueRetrospective | null {
   if (!learningOn(ctx)) return null;
   if (retrospectSpendToday(ctx, now) >= RETRO_DAILY_USD) return null;
-  const day = new Date(Date.parse(now) - 24 * 60 * 60_000).toISOString();
+  const day = isoPlus(now, -(24 * 60 * 60_000));
   if (ctx.db.query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM retrospectives WHERE state IN ('pending', 'done') AND created_at > ?").get(day)!.n >= RETRO_DAILY_COUNT) {
     return null;
   }
-  const quietBefore = new Date(Date.parse(now) - RETRO_QUIET_MS).toISOString();
-  const since = new Date(Date.parse(now) - RETRO_WITHIN_MS).toISOString();
+  const quietBefore = isoPlus(now, -RETRO_QUIET_MS);
+  const since = isoPlus(now, -RETRO_WITHIN_MS);
   return ctx.commit(() => {
     ctx.db.run("UPDATE retrospectives SET state = 'failed', note = 'interrupted', finished_at = ? WHERE state = 'pending' AND created_at < ?",
-      [now, new Date(Date.parse(now) - PENDING_STALE_MS).toISOString()]);
+      [now, isoPlus(now, -PENDING_STALE_MS)]);
     // A routine's plan runs unattended by design and is approved by its gates: no delivery of yours to look back on.
     const plans = ctx.db.query<{ id: string; delivered_at: string }, [string, string]>(
       `SELECT id, delivered_at FROM tasks WHERE stage = 'delivered' AND delivered_at IS NOT NULL AND delivered_at <= ? AND delivered_at >= ?
@@ -322,15 +313,15 @@ export function retrospectiveFacts(ctx: StoreContext, input: { id: string; taskI
   const sendBacks = new Map<string, string>();
   for (const row of ctx.db.query<{ payload: string }, [string, string]>(
     "SELECT payload FROM work_events WHERE task_id = ? AND kind = 'review.recorded' AND actor = ? ORDER BY seq").all(taskId, USER_MEMBER)) {
-    const payload = parseJson<{ submission_id?: unknown; outcome?: unknown; note?: unknown }>(row.payload, {});
+    const payload = jsonColumnOr<{ submission_id?: unknown; outcome?: unknown; note?: unknown }>(row.payload, {});
     if (payload.outcome === "reject" && typeof payload.submission_id === "string") sendBacks.set(payload.submission_id, typeof payload.note === "string" ? payload.note : "");
   }
   const submissions = ctx.db.query<{ id: string; ticket_id: string; bot_id: string; origin: string; state: string; note: string | null; content: string | null;
     checks: string; reviews: string; created_at: string }, [string]>(
     "SELECT id, ticket_id, bot_id, origin, state, note, content, checks, reviews, created_at FROM submissions WHERE task_id = ? ORDER BY created_at, rowid").all(taskId);
   const handOvers = submissions.slice(-24).map((row) => {
-    const checks = parseJson<Array<{ item?: string; gate?: boolean; outcome?: string; detail?: string | null }>>(row.checks, []);
-    const reviews = parseJson<Array<{ reviewer_bot_id?: string; outcome?: string; note?: string | null; verdicts?: Array<{ item?: string; verdict?: string }> }>>(row.reviews, []);
+    const checks = jsonColumnOr<Array<{ item?: string; gate?: boolean; outcome?: string; detail?: string | null }>>(row.checks, []);
+    const reviews = jsonColumnOr<Array<{ reviewer_bot_id?: string; outcome?: string; note?: string | null; verdicts?: Array<{ item?: string; verdict?: string }> }>>(row.reviews, []);
     const said = sendBacks.get(row.id);
     return {
       at: row.created_at.slice(0, 16),
@@ -379,7 +370,7 @@ export function retrospectiveFacts(ctx: StoreContext, input: { id: string; taskI
   for (const row of ctx.db.query<{ tool_failures: string | null }, [string, string]>(
     `SELECT d.tool_failures FROM turns t LEFT JOIN turn_route_decisions d ON d.turn_id = t.id WHERE t.task_id = ? AND t.bot_id = ?`).all(taskId, botId)) {
     turns += 1;
-    for (const failure of parseJson<Array<{ tool?: string; error?: string }>>(row.tool_failures, [])) {
+    for (const failure of jsonColumnOr<Array<{ tool?: string; error?: string }>>(row.tool_failures, [])) {
       const tool = clip(failure.tool ?? "", 40);
       const error = clip(failure.error ?? "", 140);
       const key = `${tool}\u0000${error}`;
@@ -407,13 +398,13 @@ export function retrospectiveFacts(ctx: StoreContext, input: { id: string; taskI
     "SELECT hook, text FROM lessons WHERE scope = 'bot' AND scope_id = ? AND action = 'checklist' AND status = 'active' ORDER BY confirmed_at, rowid LIMIT 12").all(botId)
     .map((row) => ({ moment: row.hook, text: row.text }));
   // This job's earlier delivery, or ones at least a day old: a conclusion written a minute ago on another job has not been put to any test yet.
-  const settled = new Date(Date.parse(input.now ?? isoNow()) - 24 * 60 * 60_000).toISOString();
+  const settled = isoPlus(input.now ?? isoNow(), -(24 * 60 * 60_000));
   const earlier = ctx.db.query<RetrospectiveRow & { plan: string | null }, [string, string, string, string]>(
     `SELECT r.*, t.title AS plan FROM retrospectives r LEFT JOIN tasks t ON t.id = r.task_id WHERE r.bot_id = ? AND r.state = 'done' AND r.id <> ?
        AND (r.task_id = ? OR r.finished_at < ?)
      ORDER BY r.created_at DESC LIMIT 3`).all(botId, input.id, taskId, settled).reverse()
     .map((row) => ({ at: row.created_at.slice(0, 10), plan: row.plan ?? "", summary: row.summary,
-      changes: parseJson<RetrospectiveChange[]>(row.changes, []).filter((change) => change.status !== "not_applied")
+      changes: jsonColumnOr<RetrospectiveChange[]>(row.changes, []).filter((change) => change.status !== "not_applied")
         .map((change) => ({ what: `${change.kind} ${change.op}`, label: change.label,
           // Taken back by you: you did not want it, and it should not come back as it was.
           status: change.status === "undone" ? "undone by the user" : "kept" })) }));
@@ -759,7 +750,7 @@ export function undoRetrospectiveChange(ctx: StoreContext, id: string, index: nu
   return ctx.commit(() => {
     const row = ctx.db.query<RetrospectiveRow, [string]>("SELECT * FROM retrospectives WHERE id = ?").get(id);
     if (!row) throw new HttpError(404, "not_found", "retrospective not found");
-    const changes = parseJson<RetrospectiveChange[]>(row.changes, []);
+    const changes = jsonColumnOr<RetrospectiveChange[]>(row.changes, []);
     const change = Number.isInteger(index) ? changes[index] : undefined;
     if (!change) throw new HttpError(404, "not_found", "no such change");
     if (change.status !== "applied") throw new HttpError(409, "conflict", change.status === "undone" ? "already undone" : "this change was not made");

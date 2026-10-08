@@ -10,6 +10,7 @@ import { checkEnv, type CheckVerdict } from "./acceptance-eval";
 import { ASPECT_TOLERANCE, formatNumber, measureLabel } from "./derived-checks";
 import { resolveFfmpegBins, runProcess } from "./seams-check";
 import { classifyPath } from "./workspace-paths";
+import { sayIn } from "./text";
 
 const PROBE_TIMEOUT_MS = 15_000;
 
@@ -79,7 +80,7 @@ function within(value: number, min: number | null, max: number | null): boolean 
 
 /** The verdict on a probe: pass when its number falls in the measure's range, with the number said. */
 export function measureVerdict(probe: MediaProbe, measure: CheckMeasure, locale: Locale): CheckVerdict {
-  const say = (zh: string, en: string) => (locale === "en" ? en : zh);
+  const say = sayIn(locale);
   const asked = measureLabel(measure, locale);
   const verdict = (ok: boolean, got: string): CheckVerdict => ({
     outcome: ok ? "pass" : "fail",
@@ -116,7 +117,7 @@ export async function runMeasureCheck(
   opts: { signal?: AbortSignal; env?: Record<string, string>; locale?: Locale } = {},
 ): Promise<CheckVerdict> {
   const locale = opts.locale ?? "zh";
-  const say = (zh: string, en: string) => (locale === "en" ? en : zh);
+  const say = sayIn(locale);
   if (!check.measure) return { outcome: "error", exitCode: null, detail: say("这条检查没有写要量什么", "no measure set on this check"), output: null };
   if (!check.path) return { outcome: "blocked", exitCode: null, detail: say("还没对上交付的文件", "not bound to a delivered file yet"), output: null };
   let classified;

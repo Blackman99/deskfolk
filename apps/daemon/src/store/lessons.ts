@@ -21,7 +21,7 @@ import { learningOn } from "./quality";
 import { removeCheckByUser } from "./acceptance-checks";
 import { getMessage, setMessageControl } from "./messages";
 import { updateNotificationActionState } from "./notifications";
-import { settingsCached } from "./settings";
+import { localeOf } from "./settings";
 import type { StoreContext } from "./shared";
 import { recordWorkEvent } from "./work-events";
 
@@ -107,10 +107,6 @@ function seenInTurn(ctx: StoreContext, kind: string, turnId: string | null, less
   return Boolean(ctx.db.query("SELECT 1 FROM work_events WHERE turn_id = ? AND kind = ? AND json_extract(payload, '$.lesson_id') = ?").get(turnId, kind, lessonId));
 }
 
-function locale(ctx: StoreContext): Locale {
-  return settingsCached(ctx).locale === "en" ? "en" : "zh";
-}
-
 const PLACE = {
   zh: { home: "整个家目录", device: "整个磁盘（/）", workspace: "工作区根目录", task: "任务目录", inside: "工作区里", outside: "工作区外", unknown: "没法静态判断的位置" },
   en: { home: "your whole home folder", device: "the whole disk (/)", workspace: "the workspace root", task: "the task folder", inside: "inside the workspace",
@@ -184,7 +180,7 @@ export function noteShellTimeout(
   ctx.db.run(`INSERT INTO lessons (id, scope, scope_id, hook, detector, action, text, evidence, status, created_by, created_at, updated_at)
     VALUES (?, 'project', ?, 'before_tool', ?, 'warn', ?, ?, 'active', 'app', ?, ?)`,
     [id, input.workspace, JSON.stringify({ tool: "shell", signature: input.signature, head: input.head, place: input.place, error: "timeout" }),
-      lessonText(locale(ctx), input.head, input.place, input.seconds), JSON.stringify([{ turn_id: input.turnId, at: now, seconds: input.seconds }]), now, now]);
+      lessonText(localeOf(ctx), input.head, input.place, input.seconds), JSON.stringify([{ turn_id: input.turnId, at: now, seconds: input.seconds }]), now, now]);
   recordWorkEvent(ctx, { kind: "tool.timeout", actor: "app", botId: input.botId, turnId: input.turnId,
     payload: { lesson_id: id, signature: input.signature, seconds: input.seconds } });
   return getLesson(ctx, id);

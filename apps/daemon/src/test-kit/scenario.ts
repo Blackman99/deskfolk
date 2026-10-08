@@ -62,7 +62,7 @@ import type {
 } from "../completions";
 import { TRIGGER_FLAG } from "../context";
 import { classifyRestart } from "../engine/restart";
-import { isoNow } from "../ids";
+import { isoNow, isoPlus } from "../ids";
 import { createMcpHost, type McpCallResult, type McpHost } from "../mcp-host";
 import { COLLAB_TOOL_NAMES, COMPOSER_SUGGEST_SYSTEM, JUDGEMENT_SYSTEM, type FailKind } from "../prompts";
 import { ORGANIZER_SYSTEM, ORGANIZER_SYSTEM_UNDER_HOLDS } from "../prompts/organizer";
@@ -931,7 +931,7 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
    * and running turns last did something `ms` earlier. See the module header for what is not aged.
    */
   function age(ms: number): void {
-    const earlier = (iso: string): string => new Date(Date.parse(iso) - ms).toISOString();
+    const earlier = (iso: string): string => isoPlus(iso, -ms);
     store.transaction(() => {
       const due = store.db
         .query<{ id: string; due_at: string }, []>(`SELECT id, due_at FROM check_backs WHERE fired_at IS NULL AND voided_at IS NULL`)

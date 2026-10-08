@@ -76,6 +76,8 @@ import { ENGINE_LEVELS } from "../store/schema-gate";
 import { recentToolCalls } from "../turn-inbox";
 import type { Lifecycle } from "./lifecycle";
 import type { Live } from "./types";
+import { isoPlus } from "../ids";
+import { LIVE_TURN_STATUSES } from "../store/shared";
 
 export type StopDeps = {
   store: Store;
@@ -305,7 +307,7 @@ export function createStop(deps: StopDeps): Stop {
         parent = null;
       }
     }
-    const since = new Date(Date.parse(message.created_at) - RECENT_WINDOW_MS).toISOString();
+    const since = isoPlus(message.created_at, -RECENT_WINDOW_MS);
     const recent = store.db
       .query<{ kind: Message["kind"]; author: string; created_at: string }, [string, string, string]>(
         `SELECT kind, author, created_at FROM messages WHERE session_id = ? AND created_at >= ? AND id != ? ORDER BY created_at, rowid`,
@@ -504,7 +506,7 @@ export function createStop(deps: StopDeps): Stop {
     if (store.capabilities().engine_level >= ENGINE_LEVELS.delegation) return store.delegationCascadeTargets({ scope, id: scopeId });
     const candidates = store.db
       .query<{ id: string }, []>(
-        `SELECT id FROM turns WHERE status IN ('running', 'waiting_approval', 'waiting_ask')
+        `SELECT id FROM turns WHERE status IN ${LIVE_TURN_STATUSES}
          UNION SELECT turn_id AS id FROM check_backs WHERE fired_at IS NULL AND voided_at IS NULL AND turn_id IS NOT NULL`,
       )
       .all()

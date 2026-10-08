@@ -7,6 +7,7 @@
  */
 import type { Locale } from "@real-bot/protocol";
 import { runCollabTool, type ToolCtx, type ToolResult } from "./collab-tools";
+import { toolFail as fail } from "./tool-result";
 import { HttpError } from "./errors";
 import { hostPromptEnv, promptProblemsError, promptSlot, resetPromptText, savePromptText } from "./prompts/book";
 import { OWN_FILE_TOOLS } from "./prompts/builtin-tools";
@@ -28,10 +29,6 @@ const READ_BUDGET = 7000;
 const PARTS_MAX = 5;
 
 type Edit = { old?: string; new?: string; after?: string; add?: string };
-
-function fail(code: string, message: string): ToolResult {
-  return { ok: false, error: { code, message }, emitted: [] };
-}
 
 function uiLocale(ctx: ToolCtx): Locale {
   return ctx.store.settingsCached().locale === "en" ? "en" : "zh";

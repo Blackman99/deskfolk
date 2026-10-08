@@ -94,6 +94,11 @@ export function settingsCached(ctx: StoreContext): Settings {
   };
 }
 
+/** The language the app speaks to the user in. */
+export function localeOf(ctx: StoreContext): "zh" | "en" {
+  return settingsCached(ctx).locale === "en" ? "en" : "zh";
+}
+
 /** The model a patch names for reading lines (ADR 0055): one an endpoint lists, or null to follow the default. */
 function readerModelOf(ctx: StoreContext, value: unknown): ReaderModel | null {
   if (value === null) return null;

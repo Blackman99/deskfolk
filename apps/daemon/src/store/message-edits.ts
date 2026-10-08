@@ -16,7 +16,7 @@ import { heldSql } from "./holds";
 import { assertUserMayPost, getMessage, withReplyMention } from "./messages";
 import { changedWords, recordQuote, type UserQuote } from "./quotes";
 import { settingsCached } from "./settings";
-import { messageRow, sessionRow, type MessageRow, type StoreContext } from "./shared";
+import { messageRow, sessionRow, LIVE_TURN_STATUSES, type MessageRow, type StoreContext } from "./shared";
 import { lineTicketFor } from "./turns";
 import { recordWorkEvent } from "./work-events";
 import { findOrCreateWorkItem } from "./work-items";
@@ -39,7 +39,6 @@ export type EditMessageResult = {
   told: number;
 };
 
-const LIVE = `('running', 'waiting_ask', 'waiting_approval')`;
 const UNREAD = `('queued', 'held')`;
 /** Every state of an item a turn read (`refileMessage` reads the same list). */
 const READ = `('delivered', 'adopted', 'answered', 'declined', 'deferred', 'unacked', 'merged')`;
@@ -310,20 +309,20 @@ function correctionRoute(ctx: StoreContext, line: MessageRow, reader: Reader): R
   let live: LiveTurn | null = reader.turnId
     ? ctx.db
         .query<LiveTurn, [string]>(
-          `SELECT ${liveCols} FROM turns WHERE id = ? AND status IN ${LIVE} AND IFNULL(mode, 'work') <> 'readonly'`,
+          `SELECT ${liveCols} FROM turns WHERE id = ? AND status IN ${LIVE_TURN_STATUSES} AND IFNULL(mode, 'work') <> 'readonly'`,
         )
         .get(reader.turnId) ?? null
     : null;
   live ??= line.task_id
     ? ctx.db
         .query<LiveTurn, [string, string]>(
-          `SELECT ${liveCols} FROM turns WHERE bot_id = ? AND task_id = ? AND status IN ${LIVE}
+          `SELECT ${liveCols} FROM turns WHERE bot_id = ? AND task_id = ? AND status IN ${LIVE_TURN_STATUSES}
              AND IFNULL(mode, 'work') <> 'readonly' ORDER BY created_at DESC, id DESC LIMIT 1`,
         )
         .get(reader.botId, line.task_id) ?? null
     : ctx.db
         .query<LiveTurn, [string, string]>(
-          `SELECT ${liveCols} FROM turns WHERE bot_id = ? AND session_id = ? AND mode = 'desk' AND status IN ${LIVE}
+          `SELECT ${liveCols} FROM turns WHERE bot_id = ? AND session_id = ? AND mode = 'desk' AND status IN ${LIVE_TURN_STATUSES}
            ORDER BY created_at DESC, id DESC LIMIT 1`,
         )
         .get(reader.botId, line.session_id) ?? null;
@@ -347,7 +346,7 @@ function correctionRoute(ctx: StoreContext, line: MessageRow, reader: Reader): R
   // else, or needing you, reads it when it next runs.
   ctx.db.run(
     `UPDATE work_items SET state = 'queued', updated_at = ? WHERE id = ? AND state NOT IN ('closed', 'waiting', 'blocked', 'needs_attention')
-       AND NOT EXISTS (SELECT 1 FROM turns t WHERE t.work_item_id = work_items.id AND t.status IN ${LIVE})`,
+       AND NOT EXISTS (SELECT 1 FROM turns t WHERE t.work_item_id = work_items.id AND t.status IN ${LIVE_TURN_STATUSES})`,
     [isoNow(), work.id],
   );
   // A job set aside is taken up again by what you said about it, as a new line about it would.

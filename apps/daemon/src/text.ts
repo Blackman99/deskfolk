@@ -1,3 +1,5 @@
+import type { Locale } from "@real-bot/protocol";
+
 /**
  * Walks UTF-16 units instead of spreading: `[...text]` builds one array slot per character, and
  * JavaScriptCore refuses past about 2^28 of them — a 300M-character shell dump threw
@@ -38,6 +40,12 @@ export function tailCodePoints(text: string, limit: number): string {
   return first >= 0xdc00 && first <= 0xdfff ? tail.slice(1) : tail;
 }
 
+/** The last `limit` code points, ellipsis included in the count and marked when something was cut — a run's tail explains a failure, not its head. */
+export function tailWithEllipsis(text: string, limit: number): string {
+  const chars = [...text];
+  return chars.length > limit ? `…${chars.slice(-(limit - 1)).join("")}` : text;
+}
+
 function pairAt(text: string, index: number): boolean {
   const high = text.charCodeAt(index);
   if (high < 0xd800 || high > 0xdbff) return false;
@@ -47,4 +55,16 @@ function pairAt(text: string, index: number): boolean {
 
 export function compactJson(value: unknown): string {
   return JSON.stringify(value);
+}
+
+export function bilingual(locale: Locale, zh: string, en: string): string {
+  return locale === "en" ? en : zh;
+}
+
+/**
+ * A run's one-line `detail` is shown on the flow board and quoted to the organizer and in call-back
+ * notes, so it is written in the app's locale, like every other line the app says.
+ */
+export function sayIn(locale: Locale): (zh: string, en: string) => string {
+  return (zh, en) => bilingual(locale, zh, en);
 }

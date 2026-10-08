@@ -37,6 +37,7 @@ import {
   type SessionRow,
   type StoreContext,
   type TurnRow,
+  LIVE_TURN_STATUSES,
 } from "./shared";
 
 /**
@@ -99,7 +100,7 @@ export function listSessions(ctx: StoreContext): SessionSummary[] {
   const liveTurnRows = ctx.db
     .query<TurnRow, []>(
       `SELECT * FROM turns
-       WHERE status IN ('running', 'waiting_approval', 'waiting_ask')
+       WHERE status IN ${LIVE_TURN_STATUSES}
        ORDER BY last_activity_at DESC, id DESC`,
     )
     .all();
@@ -162,7 +163,7 @@ export function getSession(ctx: StoreContext, id: string, opts: { messageLimit?:
   const turns = ctx.db
     .query<TurnRow, [string]>(
       `SELECT * FROM turns
-       WHERE session_id = ? AND status IN ('running', 'waiting_approval', 'waiting_ask')
+       WHERE session_id = ? AND status IN ${LIVE_TURN_STATUSES}
        ORDER BY last_activity_at DESC`,
     )
     .all(id)

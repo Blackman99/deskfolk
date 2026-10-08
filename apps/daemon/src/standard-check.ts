@@ -21,6 +21,7 @@ import { resolveFfmpegBins, runProcess, seamsRulesText } from "./seams-check";
 import { ENV_WHITELIST } from "./terminal-env";
 import { classifyPath } from "./workspace-paths";
 import type { PromptRef } from "./prompts/registry";
+import { sayIn } from "./text";
 
 export type StandardEvidence = { kind: "text"; text: string } | { kind: "image"; label: string; dataUri: string };
 
@@ -73,10 +74,6 @@ function modalityOf(paths: readonly string[]): Modality | null {
   if (paths.some((path) => IMAGE.has(ext(path)))) return "image";
   if (paths.some((path) => TEXT.has(ext(path)))) return "text";
   return null;
-}
-
-function say(locale: Locale): (zh: string, en: string) => string {
-  return (zh, en) => (locale === "en" ? en : zh);
 }
 
 function envOf(source: Record<string, string | undefined>): Record<string, string> {
@@ -245,7 +242,7 @@ async function longestVideo(bins: Bins, files: readonly string[], env: Record<st
 }
 
 async function videoSide(bins: Bins, label: string, files: readonly string[], dir: string, tag: string, env: Record<string, string>, locale: Locale, signal?: AbortSignal): Promise<StandardEvidence[]> {
-  const t = say(locale);
+  const t = sayIn(locale);
   const video = await longestVideo(bins, files, env, signal);
   if (!video) return [{ kind: "text", text: t(`${label}：里面没有视频。`, `${label}: there is no video in it.`) }];
   const facts = await videoFacts(bins, video.abs, env, signal);
@@ -268,7 +265,7 @@ async function videoSide(bins: Bins, label: string, files: readonly string[], di
 }
 
 async function imageSide(bins: Bins, label: string, files: readonly string[], dir: string, tag: string, env: Record<string, string>, locale: Locale, signal?: AbortSignal): Promise<StandardEvidence[]> {
-  const t = say(locale);
+  const t = sayIn(locale);
   const images = files.filter((file) => IMAGE.has(ext(file))).slice(0, IMAGES_PER_SIDE);
   if (images.length === 0) return [{ kind: "text", text: t(`${label}：里面没有图片。`, `${label}: there are no pictures in it.`) }];
   const evidence: StandardEvidence[] = [{ kind: "text", text: t(`${label}：${files.filter((file) => IMAGE.has(ext(file))).length} 张图，下面是前几张。`,
@@ -281,7 +278,7 @@ async function imageSide(bins: Bins, label: string, files: readonly string[], di
 }
 
 function textSide(label: string, files: readonly string[], locale: Locale): StandardEvidence[] {
-  const t = say(locale);
+  const t = sayIn(locale);
   const texts = files.filter((file) => TEXT.has(ext(file)));
   let main: { abs: string; body: string } | null = null;
   for (const abs of texts) {
@@ -307,7 +304,7 @@ function textSide(label: string, files: readonly string[], locale: Locale): Stan
 /** Runs a standard check: gathers both sides' evidence, asks the judge, reads its answer. */
 export async function runStandardCheck(root: string, check: Pick<AcceptanceCheck, "id" | "item">, deps: StandardEvalDeps): Promise<CheckVerdict & { pictures: boolean }> {
   const locale = deps.locale ?? "zh";
-  const t = say(locale);
+  const t = sayIn(locale);
   const verdict = (outcome: CheckVerdict["outcome"], detail: string, output: string | null = null, pictures = false) =>
     ({ outcome, exitCode: null, detail, output, pictures });
   if (!deps.sides) return verdict("blocked", t("样片还没有放行过的交付", "the sample has no approved hand-over"));

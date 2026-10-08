@@ -21,7 +21,7 @@ import { CONTROL_NOTE_MAX, USER_MEMBER, type Message, type Ticket, type TicketSt
 import { clauseObjects, clausesOf } from "../complaint-words";
 import type { ReadingSource } from "../line-reading";
 import { HttpError } from "../errors";
-import { isoNow, ulid } from "../ids";
+import { isoNow, isoPlus, ulid } from "../ids";
 import { derivedNotGate } from "./acceptance-checks";
 import { deliverDelegations } from "./delegations";
 import { confirmDerivedCheck } from "./derived-checks";
@@ -37,8 +37,8 @@ import { requirementsBearingOn, setRequirementHere, waiveRequirement } from "./r
 import { noteHandOverFailed, resetEscalation } from "./escalation";
 import { learningOn } from "./quality";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
-import { settingsCached } from "./settings";
-import { requireNonEmpty, type StoreContext } from "./shared";
+import { localeOf } from "./settings";
+import { requireNonEmpty, LIVE_TURN_STATUSES, jsonColumnOr, type StoreContext } from "./shared";
 import { getTask, isReservedTaskPath, setTaskSpec } from "./tasks";
 import { getTicket, toTicket, type TicketRow } from "./tickets";
 import { largeJobRefusal, sampleOf, sampleSums, sampleSumsLines, syncStandardChecks, yoursToApprove } from "./large-jobs";
@@ -158,25 +158,16 @@ function truncatedAnswer(content: string): string {
   return points.length > ANSWER_EXCERPT_MAX ? `${points.slice(0, ANSWER_EXCERPT_MAX).join("")}……` : content;
 }
 
-function parse<T>(raw: string | null, fallback: T): T {
-  if (raw === null) return fallback;
-  try { return JSON.parse(raw) as T; } catch { return fallback; }
-}
-
 function toSubmission(row: SubmissionRow): Submission {
   return {
     ...row,
-    part_keys: parse<string[]>(row.part_keys, []),
-    artifacts: parse<SubmissionArtifact[]>(row.artifacts, []),
-    claims: parse<SubmissionClaim[]>(row.claims, []),
-    checks: parse<SubmissionCheck[]>(row.checks, []),
-    reviews: parse<ReviewRecord[]>(row.reviews, []),
-    awaiting: parse<AwaitingYou | null>(row.awaiting, null),
+    part_keys: jsonColumnOr<string[]>(row.part_keys, []),
+    artifacts: jsonColumnOr<SubmissionArtifact[]>(row.artifacts, []),
+    claims: jsonColumnOr<SubmissionClaim[]>(row.claims, []),
+    checks: jsonColumnOr<SubmissionCheck[]>(row.checks, []),
+    reviews: jsonColumnOr<ReviewRecord[]>(row.reviews, []),
+    awaiting: jsonColumnOr<AwaitingYou | null>(row.awaiting, null),
   };
-}
-
-function locale(ctx: StoreContext): "zh" | "en" {
-  return settingsCached(ctx).locale === "en" ? "en" : "zh";
 }
 
 export function getSubmission(ctx: StoreContext, id: string): Submission {
@@ -355,7 +346,7 @@ export function handOverHint(ctx: StoreContext, input: { turnId: string; paths: 
       payload: { paths: files } });
     const owner = ticket.owner_bot_id ?? ticket.worker;
     const name = owner ? ctx.db.query<{ name: string }, [string]>("SELECT name FROM bots WHERE id = ?").get(owner)?.name ?? owner : "";
-    return locale(ctx) === "en"
+    return localeOf(ctx) === "en"
       ? `(app) This ticket is ${name}'s, so the files you made in its folder were not handed over for you: ${files.join(", ")}. If they are the ticket's work, hand them over with submit; then end your turn.`
       : `（应用）这张任务是${name}的，你在它文件夹里做的文件不会替你交：${files.join("、")}。如果它们就是这张任务的成果，用 submit 交出去，再结束本段。`;
   });
@@ -380,7 +371,7 @@ export function answerHint(ctx: StoreContext, input: { turnId: string }): string
     const ticket = stagedTicket(ctx, turn.ticket_id);
     const owner = ticket.owner_bot_id ?? ticket.worker;
     const name = owner ? ctx.db.query<{ name: string }, [string]>("SELECT name FROM bots WHERE id = ?").get(owner)?.name ?? owner : "";
-    return locale(ctx) === "en"
+    return localeOf(ctx) === "en"
       ? `(app) Only this ticket's owner${name ? ` (${name})` : ""} hands over words; write what you mean to hand over to a file in its folder and submit that.`
       : `（应用）只有这张任务的 owner${name ? `（${name}）` : ""}能交出话；把你要交的内容写进它文件夹里的一个文件，再用 submit 交。`;
   });
@@ -528,7 +519,7 @@ function supersedeOpen(ctx: StoreContext, ticketId: string, now: string, by: "su
 export function noteBoardStatus(ctx: StoreContext, ticketId: string, now: string = isoNow()): string[] {
   if (!supervised(ctx)) return [];
   const superseded = supersedeOpen(ctx, ticketId, now, "board");
-  closeCeilingCards(ctx, ticketId, locale(ctx) === "en" ? "You changed the ticket's status on the board, so this no longer asks." : "你在看板上改了这张任务的状态，不再问了。");
+  closeCeilingCards(ctx, ticketId, localeOf(ctx) === "en" ? "You changed the ticket's status on the board, so this no longer asks." : "你在看板上改了这张任务的状态，不再问了。");
   if (superseded.length > 0) {
     const ticket = stagedTicket(ctx, ticketId);
     recordWorkEvent(ctx, { kind: "submission.superseded", actor: USER_MEMBER, taskId: ticket.task_id, ticketId, payload: { submissions: superseded, by: "board" } });
@@ -632,7 +623,7 @@ function requestReview(ctx: StoreContext, submission: Submission, reviewer: stri
     WHERE bot_id = ? AND task_id = ? AND ticket_id IS ? AND state <> 'closed' ORDER BY created_at LIMIT 1`).get(reviewer, submission.task_id, submission.ticket_id);
   const sessionId = home?.home_session_id ?? plan?.session_id;
   if (!sessionId) return;
-  const en = locale(ctx) === "en";
+  const en = localeOf(ctx) === "en";
   // An answer has no file: the review request names the words themselves. An organizer's reading
   // has neither a file nor words of its own; its note says what it is — already a full sentence
   // ("…做完了。"), so its own period goes before it is spliced into the template's.
@@ -653,7 +644,7 @@ function requestReview(ctx: StoreContext, submission: Submission, reviewer: stri
 /** The checks' failure, back to the producer: the submission failed them, the ticket reads rework, and the producer is told (woken). */
 function failOnGates(ctx: StoreContext, submission: Submission, checks: SubmissionCheck[], now: string, tell: boolean): void {
   ctx.db.run("UPDATE submissions SET state = 'checks_failed', checks = ?, awaiting = NULL, updated_at = ? WHERE id = ?", [JSON.stringify(checks), now, submission.id]);
-  if (submission.awaiting?.message_id) letGoOfCard(ctx, submission.awaiting.message_id, { reason: "checks_failed", lines: checkLines(checks.filter(gateFailed), locale(ctx)) });
+  if (submission.awaiting?.message_id) letGoOfCard(ctx, submission.awaiting.message_id, { reason: "checks_failed", lines: checkLines(checks.filter(gateFailed), localeOf(ctx)) });
   const stage = ticketStage(stagedTicket(ctx, submission.ticket_id));
   const back: TicketStage | null = ["submitted", "in_review", "approved"].includes(stage) ? "rework" : stage === "todo" ? "doing" : null;
   if (back) setTicketStage(ctx, { ticketId: submission.ticket_id, stage: back, source: "submission", botId: submission.bot_id, turnId: submission.turn_id,
@@ -668,8 +659,8 @@ function failOnGates(ctx: StoreContext, submission: Submission, checks: Submissi
   const ceiling = checkCeiling(ctx, failed, now);
   noteHandOverFailed(ctx, submission.work_item_id, now);
   if (!tell) return;
-  const lines = checkLines(checks.filter(gateFailed), locale(ctx));
-  tellAfterFailure(ctx, submission, locale(ctx) === "en"
+  const lines = checkLines(checks.filter(gateFailed), localeOf(ctx));
+  tellAfterFailure(ctx, submission, localeOf(ctx) === "en"
     ? { what: `(app) Submission ${submission.id} failed its checks, so the ticket did not move: ${lines.join("; ")}.`, retry: "Fix it and hand it over again." }
     : { what: `（应用）交付 ${submission.id} 没过检查，任务没往前走：${lines.join("；")}。`, retry: "改好再交。" }, ceiling, now);
 }
@@ -684,7 +675,7 @@ function tellAfterFailure(ctx: StoreContext, submission: Submission, said: { wha
   if (!producerIsBot(ctx, submission)) return;
   const sessionId = yourDirectWith(ctx, answeredIn, submission.bot_id) ?? producerSession(ctx, submission);
   if (!sessionId) return;
-  const en = locale(ctx) === "en";
+  const en = localeOf(ctx) === "en";
   const stuck = ceiling.stuck.map((unit) => unit ?? (en ? "the ticket" : "这张任务"));
   const note = stuck.length === 0 ? "" : en
     ? ` ${stuck.join(", ")} hit the capability ceiling: the user is being asked how to go on${ceiling.all ? ", so do not hand it over again until they answer." : "; leave those until they answer."}`
@@ -1048,7 +1039,7 @@ function approve(ctx: StoreContext, submission: Submission, record: ReviewRecord
   if (submission.awaiting?.message_id) letGoOfCard(ctx, submission.awaiting.message_id, { reason: "approved" });
   // The Bot that asked for this work hears it is in, and goes on.
   deliverDelegations(ctx, approved, { ticketApproved: openParts === 0, now });
-  if (openParts === 0) closeCeilingCards(ctx, submission.ticket_id, locale(ctx) === "en" ? "The ticket was approved, so this no longer asks." : "这张任务已通过，不再问了。");
+  if (openParts === 0) closeCeilingCards(ctx, submission.ticket_id, localeOf(ctx) === "en" ? "The ticket was approved, so this no longer asks." : "这张任务已通过，不再问了。");
   // The sample through: the tickets waiting for it are held to it from now on (ADR 0060).
   if (openParts === 0 && sampleOf(ctx, submission.task_id)?.id === submission.ticket_id) syncStandardChecks(ctx, submission.task_id, now);
   settlePlanStage(ctx, submission.task_id, now);
@@ -1063,7 +1054,7 @@ function tellProducer(ctx: StoreContext, submission: Submission, review: ReviewR
   const sessionId = producerSession(ctx, submission);
   if (!sessionId) return;
   const failed = review.verdicts.filter((verdict) => verdict.verdict === "fail").map((verdict) => verdict.requirement_id);
-  const en = locale(ctx) === "en";
+  const en = localeOf(ctx) === "en";
   if (review.outcome === "reject") {
     tellAfterFailure(ctx, submission, en
       ? { what: `(app) Submission ${submission.id} did not pass review${failed.length ? ` (failing: ${failed.join(", ")})` : ""}${review.note ? `: ${review.note}` : "."}`, retry: "Rework it and submit again." }
@@ -1179,7 +1170,7 @@ function askApproval(ctx: StoreContext, submission: Submission, now: string, rev
   const ticket = stagedTicket(ctx, submission.ticket_id);
   let message: Message | null = null;
   if (plan?.session_id) {
-    const en = locale(ctx) === "en";
+    const en = localeOf(ctx) === "en";
     const number = String(ticket.seq).padStart(2, "0");
     const verdict = review ? `\n${reviewerVerdictLine(ctx, review, submission, en)}` : "";
     const yours = submission.origin === "answer" || submission.origin === "organizer" ? null : yoursToApprove(ctx, submission.ticket_id);
@@ -1268,7 +1259,7 @@ type LetGo =
   | { reason: "approved" | "replaced" };
 
 function letGoLine(ctx: StoreContext, why: LetGo): string {
-  const en = locale(ctx) === "en";
+  const en = localeOf(ctx) === "en";
   switch (why.reason) {
     case "superseded":
       return why.by === "board"
@@ -1319,7 +1310,7 @@ function workOnYourLine(ctx: StoreContext, submission: Pick<Submission, "task_id
       SELECT u.status, u.work_item_id FROM turns u WHERE u.bot_id = ?3 AND u.task_id = ?1 AND (u.ticket_id = ?2 OR u.ticket_id IS NULL)
         AND u.mode IS NOT 'readonly' AND (u.trigger_message_id IN (SELECT id FROM yours)
           OR u.id IN (SELECT delivered_turn_id FROM inbox_items WHERE bot_id = ?3 AND message_id IN (SELECT id FROM yours))))
-    SELECT 1 FROM heard WHERE status IN ('running', 'waiting_approval', 'waiting_ask')
+    SELECT 1 FROM heard WHERE status IN ${LIVE_TURN_STATUSES}
       OR work_item_id IN (SELECT id FROM work_items WHERE state IN ('queued', 'running', 'waiting', 'blocked'))
     UNION ALL SELECT 1 FROM inbox_items WHERE bot_id = ?3 AND state = 'queued' AND message_id IN (SELECT id FROM yours)
     LIMIT 1`).get(submission.task_id, submission.ticket_id, submission.bot_id, submission.created_at));
@@ -1445,7 +1436,7 @@ function resolveApproval(ctx: StoreContext, submission: Submission, checks: read
   const failing = checks.filter(gateFailed);
   if (failing.length > 0) {
     failOnGates(ctx, submission, checks as SubmissionCheck[], now, true);
-    if (cardId) markApprovalCard(ctx, cardId, "reject", checkLines(failing, locale(ctx)));
+    if (cardId) markApprovalCard(ctx, cardId, "reject", checkLines(failing, localeOf(ctx)));
   } else {
     approve(ctx, submission, review, checks, now);
     if (cardId) markApprovalCard(ctx, cardId, "approve", []);
@@ -1462,7 +1453,7 @@ function markApprovalCard(ctx: StoreContext, messageId: string, outcome: "approv
     return;
   }
   if (control?.kind !== "review_item") return;
-  const en = locale(ctx) === "en";
+  const en = localeOf(ctx) === "en";
   const result = outcome === "reject"
     ? (en ? `Its checks failed, so it was sent back${failingLines.length > 0 ? `: ${failingLines.join("; ")}` : "."}`
       : `检查没过，已退回${failingLines.length > 0 ? `：${failingLines.join("；")}` : "。"}`)
@@ -1520,7 +1511,7 @@ export function answerReviewCard(ctx: StoreContext, messageId: string, action: u
         // supervisor's tick for a gate added meanwhile) — neither a failure nor an approval yet.
         // The card says it is waiting; only 退回 is left on it, and a second 放行 is refused.
         ctx.db.run("UPDATE submissions SET awaiting = ? WHERE id = ?", [JSON.stringify({ ...submission.awaiting!, pending: true }), submission.id]);
-        const en = locale(ctx) === "en";
+        const en = localeOf(ctx) === "en";
         setMessageControl(ctx, messageId, { ...control, offer: control.offer.filter((offered) => offered === "reject"),
           result: en ? "Waiting for its checks to finish before approving…" : "等检查跑完再放行…" });
         return { submission: getSubmission(ctx, submission.id), checkIds: unrun, message: getMessage(ctx, messageId) };
@@ -1563,7 +1554,7 @@ export function answerReviewCard(ctx: StoreContext, messageId: string, action: u
     // What the press did, in place of a waiting line it may have had (退回 while 放行 was pending);
     // a 退回 with what you want changed says it there.
     const { result: _waiting, ...answered } = control;
-    const said = action === "reject" && note ? { result: locale(ctx) === "en" ? `Sent back: "${note}"` : `已退回：「${note}」` } : {};
+    const said = action === "reject" && note ? { result: localeOf(ctx) === "en" ? `Sent back: "${note}"` : `已退回：「${note}」` } : {};
     setMessageControl(ctx, messageId, { ...answered, ...said, acted: [action as ReviewCardAction] });
     updateNotificationActionState(ctx, `review_item:${messageId}`, "resolved", action as ReviewCardAction, true);
     return { submission: after, checkIds, message: getMessage(ctx, messageId) };
@@ -1593,7 +1584,7 @@ function rejectByUser(ctx: StoreContext, submission: Submission, now: string, no
   noteHandOverFailed(ctx, submission.work_item_id, now);
   recordWorkEvent(ctx, { kind: "review.recorded", actor: USER_MEMBER, taskId: submission.task_id, ticketId: submission.ticket_id,
     payload: { submission_id: submission.id, work_item_id: submission.work_item_id, outcome: "reject", by: "user", ...(note ? { note } : {}) } });
-  const en = locale(ctx) === "en";
+  const en = localeOf(ctx) === "en";
   const what = en
     ? `(app) The user sent submission ${decided.id} back for rework.${note ? ` What they want changed, in their words: "${note}"` : ""}`
     : `（应用）用户把交付 ${decided.id} 退回重做了。${note ? `要改的地方，原话：「${note}」` : ""}`;
@@ -1654,7 +1645,7 @@ export function superviseSubmissions(ctx: StoreContext, now: string = isoNow()):
 } {
   const out = { moved: [] as Submission[], messages: [] as Message[], toRun: [] as Array<{ taskId: string; checkIds: string[] }> };
   if (!supervised(ctx)) return out;
-  const cutoff = new Date(Date.parse(now) - UNREVIEWED_AFTER_MS).toISOString();
+  const cutoff = isoPlus(now, -UNREVIEWED_AFTER_MS);
   const rows = ctx.db.query<SubmissionRow, [string]>(`SELECT * FROM submissions WHERE (state = 'submitted' AND updated_at <= ?)
     OR (state IN ('submitted', 'in_review') AND awaiting IS NOT NULL) ORDER BY created_at, rowid`).all(cutoff).map(toSubmission);
   for (const submission of rows) {
@@ -1722,10 +1713,10 @@ export function organizerSaysDone(ctx: StoreContext, ticketId: string, now: stri
     AND ticket_id = ? AND state <> 'closed' ORDER BY created_at LIMIT 1`).get(producer, ticket.task_id, ticket.id) : null;
   const id = ulid(Date.parse(now));
   // Due at the next tick: the organizer's reading is not one more Bot to wait for.
-  const due = new Date(Date.parse(now) - UNREVIEWED_AFTER_MS).toISOString();
+  const due = isoPlus(now, -UNREVIEWED_AFTER_MS);
   ctx.db.run(`INSERT INTO submissions (id, work_item_id, task_id, ticket_id, part_keys, bot_id, model, turn_id, origin, artifacts, content, claims,
       note, state, created_at, updated_at) VALUES (?, ?, ?, ?, '[]', ?, NULL, NULL, 'organizer', '[]', NULL, '[]', ?, 'submitted', ?, ?)`,
-    [id, work?.id ?? null, ticket.task_id, ticket.id, producer ?? "app", locale(ctx) === "en" ? "The organizer read this ticket as done." : "整理跳认为这张任务做完了。", now, due]);
+    [id, work?.id ?? null, ticket.task_id, ticket.id, producer ?? "app", localeOf(ctx) === "en" ? "The organizer read this ticket as done." : "整理跳认为这张任务做完了。", now, due]);
   setTicketStage(ctx, { ticketId: ticket.id, stage: "submitted", source: "submission", botId: producer, workItemId: work?.id ?? null, submissionId: id, now });
   recordWorkEvent(ctx, { kind: "submission.created", actor: "app", botId: producer, taskId: ticket.task_id, ticketId: ticket.id,
     payload: { submission_id: id, work_item_id: work?.id ?? null, origin: "organizer", artifacts: [], parts: [], superseded: [] } });
@@ -1815,7 +1806,7 @@ export function noteComplaint(
       const control = getMessage(ctx, card.id).control;
       if (control?.kind === "rework" && plans.includes(control.task_id)) continue;
       if (control?.kind === "rework" && control.offer.includes("rework") && (control.acted ?? []).length === 0) {
-        setMessageControl(ctx, card.id, { ...control, offer: [], result: locale(ctx) === "en" ? "That line was filed elsewhere since." : "这句话后来改归别处了。" });
+        setMessageControl(ctx, card.id, { ...control, offer: [], result: localeOf(ctx) === "en" ? "That line was filed elsewhere since." : "这句话后来改归别处了。" });
       }
     }
     const annotated = Boolean(ctx.db.query("SELECT 1 FROM annotations WHERE message_id = ? AND status <> 'draft'").get(messageId));
@@ -1844,7 +1835,7 @@ export function noteComplaint(
       const plan = ctx.db.query<{ session_id: string | null; title: string }, [string]>("SELECT session_id, title FROM tasks WHERE id = ?").get(ticket.task_id);
       if (!plan?.session_id) continue;
       const partKeys = about.parts.size > 0 ? [...about.parts].sort() : [];
-      const en = locale(ctx) === "en";
+      const en = localeOf(ctx) === "en";
       const number = String(ticket.seq).padStart(2, "0");
       const what = partKeys.length > 0 ? (en ? ` (${partKeys.join(", ")})` : `（${partKeys.join("、")}）`) : "";
       // The card answers what you just said, so it is where you said it while you can still answer there.
@@ -1892,7 +1883,7 @@ export function answerReworkCard(ctx: StoreContext, cardId: string, action: unkn
     if (!REWORK_CARD_ACTIONS.includes(action as ReworkCardAction)) throw new HttpError(422, "invalid_args", "unknown action");
     if ((control.acted ?? []).length > 0 || !control.offer.includes(action as ReworkCardAction)) throw new HttpError(409, "conflict", "this line no longer offers that");
     const now = isoNow();
-    const en = locale(ctx) === "en";
+    const en = localeOf(ctx) === "en";
     if (action === "dismiss") {
       updateNotificationActionState(ctx, `rework:${cardId}`, "resolved", "dismiss", true);
       return setMessageControl(ctx, cardId, { ...control, acted: ["dismiss"] });
@@ -2001,7 +1992,7 @@ function undoRework(ctx: StoreContext, cardId: string, control: Extract<Message[
       const title = stagedTicket(ctx, control.ticket_id).title;
       queueInboxItem(ctx, { botId: payload.producer, sessionId: item.session_id, turnId: null, workItemId: item.work_item_id, taskId: control.task_id,
         ticketId: control.ticket_id, messageId: null, author: "app", source: "review", kind: "info", priority: 2, wakes: false, now,
-        body: locale(ctx) === "en" ? `(app) The user took back the rework of "${title}": it stands as before, nothing to change.`
+        body: localeOf(ctx) === "en" ? `(app) The user took back the rework of "${title}": it stands as before, nothing to change.`
           : `（应用）用户撤销了任务「${title}」的返工：照旧算数，不用改了。` });
     }
     refreshHeldInbox(ctx, { botId: payload.producer });
@@ -2176,7 +2167,7 @@ function ceilingCard(ctx: StoreContext, submission: Submission, partKey: string 
   const plan = ctx.db.query<{ session_id: string | null; title: string }, [string]>("SELECT session_id, title FROM tasks WHERE id = ?").get(submission.task_id);
   if (!plan?.session_id) return null;
   const ticket = stagedTicket(ctx, submission.ticket_id);
-  const en = locale(ctx) === "en";
+  const en = localeOf(ctx) === "en";
   const number = String(ticket.seq).padStart(2, "0");
   const unit = partKey ? (en ? ` part ${partKey}` : `分件 ${partKey} `) : "";
   const why = hit.reason === "streak"
@@ -2234,7 +2225,7 @@ export function answerCeilingCard(ctx: StoreContext, messageId: string, action: 
     const producer = ticket.owner_bot_id ?? ticket.worker;
     const plan = ctx.db.query<{ session_id: string | null }, [string]>("SELECT session_id FROM tasks WHERE id = ?").get(ticket.task_id);
     if (producer && plan?.session_id && ctx.db.query("SELECT 1 FROM bots WHERE id = ? AND deleted_at IS NULL").get(producer)) {
-      const en = locale(ctx) === "en";
+      const en = localeOf(ctx) === "en";
       const unit = partKey ? (en ? ` (part ${partKey})` : `（分件 ${partKey}）`) : "";
       const said: Record<CeilingAction, string> = en
         ? { another_way: "do it another way — a different method or tool, not the same attempt again", another_plan: "change the plan to get around the problem",
@@ -2270,7 +2261,7 @@ const TICKS_IN_USD = 10_000_000_000;
  */
 export function visionRefusal(ctx: StoreContext, taskId: string, now: Date = new Date()): string | null {
   if (!supervised(ctx)) return null;
-  const en = locale(ctx) === "en";
+  const en = localeOf(ctx) === "en";
   const plan = ctx.db.query<{ session_id: string | null }, [string]>("SELECT session_id FROM tasks WHERE id = ?").get(taskId);
   if (holdsCovering(ctx, { sessionId: plan?.session_id ?? null, taskId }).length > 0) {
     return en ? "not judged while a stop of yours covers this plan" : "这件事被叫停着，没有看图判定";

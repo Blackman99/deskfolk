@@ -8,10 +8,10 @@
  * and quote columns project only its primary target. Candidate ids are captured with the decision.
  * Dormancy is independent of stage and holds. Engine/API integration belongs to the facade.
  */
-import { isoNow, ulid } from "../ids";
+import { isoNow, isoPlus, ulid } from "../ids";
 import { HttpError } from "../errors";
 import type { FilingReading } from "../line-reading";
-import type { StoreContext } from "./shared";
+import { LIVE_TURN_STATUSES, planStageSql, type StoreContext } from "./shared";
 import { recordWorkEvent } from "./work-events";
 import { heldSql } from "./holds";
 import { externalJobsReadable } from "./external-jobs-migration";
@@ -82,7 +82,7 @@ export function planCandidates(ctx: StoreContext, input: { sessionId: string; bo
         AND IFNULL(mode, 'work') <> 'readonly'
     ) SELECT t.id FROM tasks t JOIN candidate_ids c ON c.id = t.id
       WHERE t.dormant_since IS NULL AND t.routine_id IS NULL
-        AND COALESCE(t.stage, CASE WHEN t.status = 'done' THEN 'delivered' ELSE 'active' END) IN ('active', 'delivered')
+        AND ${planStageSql("t")} IN ('active', 'delivered')
       ORDER BY t.created_at DESC, t.id DESC`).all(input.sessionId, input.botId ?? null, since);
   return rows.map((row) => candidateOf(ctx, row.id));
 }
@@ -122,7 +122,7 @@ export function lineCandidates(ctx: StoreContext, input: { sessionId: string; bo
   for (const line of linesBefore(ctx, input.messageId)) {
     if (!line.taskId || candidates.some((c) => c.id === line.taskId)) continue;
     const open = ctx.db.query(`SELECT 1 FROM tasks WHERE id = ?
-      AND COALESCE(stage, CASE WHEN status = 'done' THEN 'delivered' ELSE 'active' END) IN ('active', 'delivered')`).get(line.taskId);
+      AND ${planStageSql()} IN ('active', 'delivered')`).get(line.taskId);
     if (open) candidates.push(candidateOf(ctx, line.taskId));
   }
   return candidates;
@@ -131,7 +131,7 @@ export function lineCandidates(ctx: StoreContext, input: { sessionId: string; bo
 /** Read evidence only for an already captured id; never widen the desk's candidate set. */
 export function candidateOf(ctx: StoreContext, taskId: string): PlanCandidate {
   const row = ctx.db.query<Omit<PlanCandidate, 'recentArtifacts' | 'lastUserQuote'>, [string]>(`SELECT id, title, dir,
-    COALESCE(stage, CASE WHEN status = 'done' THEN 'delivered' ELSE 'active' END) AS stage,
+    ${planStageSql()} AS stage,
     dormant_since AS dormantSince, MAX(created_at, COALESCE(spec_updated_at, created_at),
       COALESCE((SELECT MAX(last_activity_at) FROM turns WHERE task_id = tasks.id), created_at),
       COALESCE((SELECT MAX(created_at) FROM messages WHERE task_id = tasks.id), created_at),
@@ -275,7 +275,7 @@ function openTarget(ctx: StoreContext, target: FilingTarget): boolean {
     return false;
   }
   const open = ctx.db.query(`SELECT 1 FROM tasks WHERE id = ?
-    AND COALESCE(stage, CASE WHEN status = 'done' THEN 'delivered' ELSE 'active' END) IN ('active', 'delivered')`).get(target.taskId);
+    AND ${planStageSql()} IN ('active', 'delivered')`).get(target.taskId);
   if (!open) return false;
   if (!target.ticketId) return true;
   return Boolean(ctx.db.query(`SELECT 1 FROM tickets t WHERE t.id = ? AND ${STAGE_SQL('t')} <> 'dropped'`).get(target.ticketId));
@@ -489,14 +489,14 @@ export function updatePlanDormancy(ctx: StoreContext, input: {
 } = {}): string[] {
   return ctx.commit(() => {
     const now = input.now ?? isoNow();
-    const twoHours = new Date(Date.parse(now) - 2 * 60 * 60 * 1000).toISOString();
-    const seventyTwoHours = new Date(Date.parse(now) - 72 * 60 * 60 * 1000).toISOString();
+    const twoHours = isoPlus(now, -(2 * 60 * 60 * 1000));
+    const seventyTwoHours = isoPlus(now, -(72 * 60 * 60 * 1000));
     const newPlan = input.newTaskId ? ctx.db.query<{ session_id: string | null; created_at: string }, [string]>('SELECT session_id, created_at FROM tasks WHERE id = ?').get(input.newTaskId) : null;
     if (input.newTaskId && !newPlan) throw new Error('no such new plan');
     // By the columns it reads, not the table's name: a draft's table of that name lacked them (ADR 0040 P4d).
     const externalJobs = externalJobsReadable(ctx.db);
     const rows = ctx.db.query<{ id: string; session_id: string | null; created_at: string; stage: string; delivered_at: string | null; last_user: string; recent_turn: number; open_work: number; pending_job: number }, Array<string | null>>(`SELECT t.id, t.session_id, t.created_at,
-      COALESCE(t.stage, CASE WHEN t.status = 'done' THEN 'delivered' ELSE 'active' END) AS stage,
+      ${planStageSql("t")} AS stage,
       t.delivered_at, MAX(COALESCE((SELECT MAX(q.created_at) FROM user_quotes q WHERE q.task_id = t.id), t.created_at),
         COALESCE((SELECT MAX(q.created_at) FROM user_quote_filings f JOIN user_quotes q ON q.id = f.quote_id
           WHERE f.task_id = t.id), t.created_at),
@@ -504,10 +504,10 @@ export function updatePlanDormancy(ctx: StoreContext, input: {
           AND e.kind IN ('plan.resumed', 'attribution.changed')), t.created_at)) AS last_user,
       EXISTS (SELECT 1 FROM turns s WHERE s.task_id = t.id AND s.last_activity_at > ?1) AS recent_turn,
       (EXISTS (SELECT 1 FROM work_items w WHERE w.task_id = t.id AND w.state NOT IN ('idle', 'closed'))
-        OR EXISTS (SELECT 1 FROM turns s WHERE s.task_id = t.id AND s.status IN ('running', 'waiting_approval', 'waiting_ask'))) AS open_work,
+        OR EXISTS (SELECT 1 FROM turns s WHERE s.task_id = t.id AND s.status IN ${LIVE_TURN_STATUSES})) AS open_work,
       ${externalJobs ? "EXISTS (SELECT 1 FROM external_jobs j WHERE j.task_id = t.id AND j.state = 'pending')" : '0'} AS pending_job
       FROM tasks t WHERE t.dormant_since IS NULL AND t.routine_id IS NULL
-        AND (COALESCE(t.stage, CASE WHEN t.status = 'done' THEN 'delivered' ELSE 'active' END) = 'delivered'
+        AND (${planStageSql("t")} = 'delivered'
           OR t.session_id = ?2 OR t.session_id = ?3)`)
       .all(twoHours, input.clearedSessionId ?? null, newPlan?.session_id ?? null);
     const asleep: string[] = [];
@@ -616,7 +616,7 @@ export function refileMessage(ctx: StoreContext, messageId: string, input: Refil
 function tellSegmentsLeftBehind(ctx: StoreContext, message: FilingMessage, targets: FilingTarget[]): void {
   const segments = ctx.db.query<{ id: string; bot_id: string; session_id: string; task_id: string | null; ticket_id: string | null; work_item_id: string | null }, [string]>(
     `SELECT t.id, t.bot_id, t.session_id, t.task_id, t.ticket_id, t.work_item_id FROM turns t
-     WHERE t.status IN ('running', 'waiting_approval', 'waiting_ask') AND IFNULL(t.mode, 'work') <> 'readonly'
+     WHERE t.status IN ${LIVE_TURN_STATUSES} AND IFNULL(t.mode, 'work') <> 'readonly'
        AND (t.trigger_message_id = ?1 OR EXISTS (SELECT 1 FROM inbox_items i WHERE i.message_id = ?1 AND i.delivered_turn_id = t.id))`).all(message.id);
   const where = targets.length
     ? targets.map((target) => `《${candidateOf(ctx, target.taskId).title}》`).join('、')
@@ -638,7 +638,7 @@ function refileRoute(ctx: StoreContext, botId: string, sessionId: string, target
   // names no ticket (or another ticket). The segment's own binding remains unchanged.
   const live = ctx.db.query<{ id: string; session_id: string; work_item_id: string | null }, [string, string]>(`SELECT id, session_id, work_item_id
     FROM turns WHERE bot_id = ? AND task_id = ? AND IFNULL(mode, 'work') NOT IN ('readonly', 'desk')
-      AND status IN ('running', 'waiting_approval', 'waiting_ask') ORDER BY created_at DESC, id DESC LIMIT 1`).get(botId, target.taskId);
+      AND status IN ${LIVE_TURN_STATUSES} ORDER BY created_at DESC, id DESC LIMIT 1`).get(botId, target.taskId);
   let work = live?.work_item_id ? ctx.db.query<{ id: string; home_session_id: string; thread_session_id: string | null }, [string]>(
     'SELECT id, home_session_id, thread_session_id FROM work_items WHERE id = ?').get(live.work_item_id) : null;
   work ??= ctx.db.query<{ id: string; home_session_id: string; thread_session_id: string | null }, [string, string, string | null]>(`SELECT id, home_session_id, thread_session_id FROM work_items
@@ -650,7 +650,7 @@ function refileRoute(ctx: StoreContext, botId: string, sessionId: string, target
       VALUES (?, ?, ?, ?, ?, 'queued', ?, ?)`, [work.id, botId, target.taskId, target.ticketId ?? null, sessionId, now, now]);
   }
   const turn = live ?? ctx.db.query<{ id: string; session_id: string }, [string, string]>(`SELECT id, session_id FROM turns WHERE work_item_id = ? AND bot_id = ?
-    AND status IN ('running', 'waiting_approval', 'waiting_ask') ORDER BY created_at DESC LIMIT 1`).get(work.id, botId);
+    AND status IN ${LIVE_TURN_STATUSES} ORDER BY created_at DESC LIMIT 1`).get(work.id, botId);
   const destinationSession = turn?.session_id ?? work.thread_session_id ?? work.home_session_id;
   const held = Boolean(ctx.db.query<{ held: number }, Array<string | null>>(`SELECT ${heldSql({ bot: '?1', session: '?2', task: '?3', ticket: '?4', turn: '?5' })} AS held`)
     .get(botId, destinationSession, target.taskId, target.ticketId ?? null, turn?.id ?? null)?.held);

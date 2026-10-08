@@ -15,7 +15,7 @@ import type { AcceptanceCheck, AcceptanceCheckKind, AcceptanceCheckOutcome, Acce
 import { HttpError } from "../errors";
 import { globToRegExp } from "../glob";
 import { isoNow, ulid } from "../ids";
-import { takeCodePoints } from "../text";
+import { tailWithEllipsis, takeCodePoints } from "../text";
 import { normalizeSpecLine } from "./plan-shape";
 import { workspacePath, type StoreContext } from "./shared";
 import { getTask, type Task } from "./tasks";
@@ -25,12 +25,6 @@ import { classifyPath, classifyShell } from "../workspace-paths";
 
 /** The kinds a check can be made or redefined as; `measure` only ever comes from your words. */
 export const CHECK_KINDS: readonly AcceptanceCheckKind[] = ["exists", "contains", "matches", "command", "continuity"];
-
-/** At most `limit` code points total, ellipsis included — a failing command's tail explains it, not its head. */
-function tailCodePoints(text: string, limit: number): string {
-  const chars = [...text];
-  return chars.length > limit ? `…${chars.slice(-(limit - 1)).join("")}` : text;
-}
 
 /** Active checks a plan may hold; past this the plan is asking the app to run a test suite, not proving a line. */
 export const CHECKS_MAX = 10;
@@ -595,7 +589,7 @@ export function finishCheckRun(
   const run = runRow(ctx, runId);
   const at = now.toISOString();
   const detail = takeCodePoints(verdict.detail, CHECK_DETAIL_MAX).text;
-  const output = verdict.output === null || verdict.output === undefined ? null : tailCodePoints(verdict.output, CHECK_OUTPUT_MAX);
+  const output = verdict.output === null || verdict.output === undefined ? null : tailWithEllipsis(verdict.output, CHECK_OUTPUT_MAX);
   ctx.db.transaction(() => {
     ctx.db.run(
       `UPDATE acceptance_check_runs SET finished_at = ?, outcome = ?, exit_code = ?, detail = ?, output = ? WHERE id = ?`,

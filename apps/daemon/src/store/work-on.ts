@@ -12,7 +12,7 @@ import { holdsCovering } from "./holds";
 import { queueInboxItem } from "./inbox";
 import { getMessage } from "./messages";
 import { readEngineLevel, ENGINE_LEVELS } from "./schema-gate";
-import type { StoreContext } from "./shared";
+import { planStageSql, type StoreContext } from "./shared";
 import { getTask, openTask, planTitle } from "./tasks";
 import { createTicket, getTicket } from "./tickets";
 import { getTurn, listLiveTurns } from "./turns";
@@ -75,8 +75,7 @@ export function workOn(ctx: StoreContext, input: WorkOnInput): WorkOnResult {
         }
       }
       const task = getTask(ctx, input.plan);
-      const state = ctx.db.query<{ stage: string }, [string]>(`SELECT COALESCE(stage,
-        CASE WHEN status = 'done' THEN 'delivered' ELSE 'active' END) AS stage FROM tasks WHERE id = ?`).get(task.id);
+      const state = ctx.db.query<{ stage: string }, [string]>(`SELECT ${planStageSql()} AS stage FROM tasks WHERE id = ?`).get(task.id);
       if (!state || !['active', 'delivered'].includes(state.stage)) {
         throw new HttpError(409, 'plan_changed', 'this captured job is no longer runnable');
       }
