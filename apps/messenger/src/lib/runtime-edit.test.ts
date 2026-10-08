@@ -6,6 +6,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { ApiError } from "./api.ts";
 import { MessengerRuntime } from "./runtime.svelte.ts";
+import { fakeApi } from "./test-mocks.ts";
 import { aDirect, aMessage } from "./test-fixtures.ts";
 
 const runtimes: MessengerRuntime[] = [];
@@ -14,7 +15,7 @@ afterEach(() => { for (const runtime of runtimes.splice(0)) runtime.destroy(); }
 function connected(api: object): MessengerRuntime {
   const runtime = new MessengerRuntime();
   runtimes.push(runtime);
-  Reflect.set(runtime, "api", api);
+  Reflect.set(runtime, "api", fakeApi(api));
   runtime.connection = "connected";
   return runtime;
 }
@@ -81,6 +82,6 @@ test("what a line said before is read once per change of it", async () => {
   versions = [...versions, { body: "片长 45 秒", created_at: "t2" }];
   expect(await runtime.messageVersions("msg-1", "t3")).toHaveLength(2);
   expect(paths).toHaveLength(2);
-  Reflect.set(runtime, "api", { get: async () => { throw new Error("down"); } });
+  Reflect.set(runtime, "api", fakeApi({ get: async () => { throw new Error("down"); } }));
   expect(await runtime.messageVersions("msg-2", "t1")).toBeNull();
 });

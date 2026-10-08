@@ -38,13 +38,9 @@ import {
   type CreateAnnotationRequest,
   type PatchAnnotationRequest,
   type Message,
-  type EditMessageRequest,
   type MessageVersion,
-  type MessageVersionsResponse,
   type PatchMessageAttributionRequest,
-  type NewJobFromLineRequest,
   type GroupLeadState,
-  type DelegationView,
   type WorkAnswerResult,
 } from "@real-bot/protocol";
 import { ApiError, probeHealth } from "./api.ts";
@@ -1601,7 +1597,7 @@ export class MessengerRuntime {
     this.delegationLoading = { ...this.delegationLoading, [sessionId]: true };
     this.delegationLoadError = { ...this.delegationLoadError, [sessionId]: false };
     try {
-      const { items } = await api.get<{ items: DelegationView[] }>(`/v1/sessions/${encodeURIComponent(sessionId)}/delegations`);
+      const { items } = await api.delegations(sessionId);
       if (!current()) return;
       // Events received during this unsequenced GET win; untouched siblings still hydrate.
       // A subsequent read can refresh linked IDs and history-cleared projections.
@@ -1639,7 +1635,7 @@ export class MessengerRuntime {
     this.groupLeadLoading = { ...this.groupLeadLoading, [sessionId]: true };
     this.groupLeadLoadError = { ...this.groupLeadLoadError, [sessionId]: false };
     try {
-      const state = await api.get<GroupLeadState>(`/v1/sessions/${encodeURIComponent(sessionId)}/lead`);
+      const state = await api.groupLead(sessionId);
       if (this.api === api && this.groupLeadSeq.get(sessionId) === seq) {
         this.groupLeads = { ...this.groupLeads, [sessionId]: state };
         this.groupLeadUnsupported = { ...this.groupLeadUnsupported, [sessionId]: false };
@@ -1665,7 +1661,7 @@ export class MessengerRuntime {
     this.groupLeadSeq.set(sessionId, (this.groupLeadSeq.get(sessionId) ?? 0) + 1);
     this.groupLeadLoading = { ...this.groupLeadLoading, [sessionId]: false };
     try {
-      const state = await api.put<GroupLeadState>(`/v1/sessions/${encodeURIComponent(sessionId)}/lead`, { bot_id: botId, confirmed: true });
+      const state = await api.confirmGroupLead(sessionId, botId);
       if (this.api !== api || this.groupLeadWrites.get(sessionId) !== seq) return new ApiError(0, "disconnected", "Group lead result unconfirmed");
       if ((this.groupLeadRevision.get(sessionId) ?? 0) === revision) this.groupLeads = { ...this.groupLeads, [sessionId]: state };
       return null;
@@ -1691,7 +1687,7 @@ export class MessengerRuntime {
     this.attributionLoading = { ...this.attributionLoading, [sessionId]: true };
     this.attributionLoadError = { ...this.attributionLoadError, [sessionId]: false };
     try {
-      const { items: plans } = await api.get<{ items: AttributionPlan[] }>(`/v1/messages/${encodeURIComponent(message)}/attribution`);
+      const { items: plans } = await api.attributionPlans(message);
       if (this.api !== api || this.attributionLoadSeq.get(sessionId) !== seq) return;
       this.attributionPlans = { ...this.attributionPlans, [sessionId]: plans };
     } catch {
@@ -1787,7 +1783,7 @@ export class MessengerRuntime {
     view.editSaving = true;
     view.editError = null;
     try {
-      const message = await api.patch<Message>(`/v1/messages/${encodeURIComponent(id)}`, { body: view.editDraft } satisfies EditMessageRequest);
+      const message = await api.editMessage(id, view.editDraft);
       if (this.api !== api) return false;
       // The sequenced stream is newer than an in-flight, unsequenced HTTP response.
       if ((this.attributionRevision.get(id) ?? 0) === revision && this.messageSnapshotRevision === snapshotRevision &&
@@ -1817,7 +1813,7 @@ export class MessengerRuntime {
     const api = this.api;
     if (!api) return null;
     try {
-      const { versions } = await api.get<MessageVersionsResponse>(`/v1/messages/${encodeURIComponent(id)}/versions`);
+      const { versions } = await api.messageVersions(id);
       this.versionsRead.set(id, { editedAt, versions });
       return versions;
     } catch {
@@ -1833,7 +1829,7 @@ export class MessengerRuntime {
     const snapshotRevision = this.messageSnapshotRevision;
     const invalidationSeq = this.messageInvalidationSeq;
     try {
-      const message = await api.patch<Message>(`/v1/messages/${encodeURIComponent(id)}/attribution`, { filings });
+      const message = await api.patchMessageAttribution(id, filings);
       if (this.api !== api) return new ApiError(0, "disconnected", "Attribution result unconfirmed");
       // The sequenced stream is newer than an in-flight, unsequenced HTTP response.
       if ((this.attributionRevision.get(id) ?? 0) === revision && this.messageSnapshotRevision === snapshotRevision &&
@@ -1855,7 +1851,7 @@ export class MessengerRuntime {
     const api = this.api;
     if (!api || this.connection !== "connected") return new ApiError(0, "disconnected", "Attribution not saved");
     try {
-      const message = await api.patch<Message>(`/v1/messages/${encodeURIComponent(id)}/attribution`, { new_plan: {} } satisfies NewJobFromLineRequest);
+      const message = await api.newJobFromMessage(id);
       if (this.api !== api) return new ApiError(0, "disconnected", "Attribution result unconfirmed");
       this.snapshot = applyEvent(this.snapshot, { ...message, event: "message.upsert", occurred_at: new Date().toISOString() });
       this.loadAttributionFor(message);
@@ -1876,7 +1872,7 @@ export class MessengerRuntime {
     const invalidationSeq = this.messageInvalidationSeq;
     try {
       // Generic post owns the canonical receipt and reuses its request id on an explicit retry.
-      const result = await api.post<WorkAnswerResult>(`/v1/messages/${encodeURIComponent(id)}/work-answer`, { body });
+      const result = await api.answerWorkQuestion(id, body);
       if (this.api !== api) return new ApiError(0, "disconnected", "Answer result unconfirmed");
       if ((this.attributionRevision.get(id) ?? 0) === revision && this.messageSnapshotRevision === snapshotRevision &&
           (this.messageSessionInvalidated.get(result.message.session_id) ?? 0) <= invalidationSeq) {

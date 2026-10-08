@@ -8,6 +8,7 @@ import { copyFor } from "./copy.ts";
 import { render } from "./test-render.ts";
 import ChatStage from "./chat/ChatStage.svelte";
 import { MessengerRuntime } from "./runtime.svelte.ts";
+import { fakeApi } from "./test-mocks.ts";
 import { aDelegation } from "./test-delegations.ts";
 import { fakeSyncSocket, localApiFetch } from "./test-sync-harness.ts";
 
@@ -53,7 +54,7 @@ test("visible thread GET hydrates persisted records independently of transcript 
   const runtime = new MessengerRuntime(); runtimes.push(runtime);
   const calls: string[] = [];
   const row = aDelegation({ thread_session_id: "peer/a" });
-  Reflect.set(runtime, "api", { get: async (path: string) => { calls.push(path); return { items: [row] }; } });
+  Reflect.set(runtime, "api", fakeApi({ get: async (path: string) => { calls.push(path); return { items: [row] }; } }));
   runtime.connection = "connected";
   await runtime.loadDelegations("peer/a");
   expect(calls).toEqual(["/v1/sessions/peer%2Fa/delegations"]);
@@ -121,7 +122,7 @@ test("newer same-thread GET wins; older failures, other threads and replacement 
   const second = Promise.withResolvers<{ items: DelegationView[] }>();
   const third = Promise.withResolvers<{ items: DelegationView[] }>();
   let reads = 0;
-  Reflect.set(runtime, "api", { get: () => [first.promise, second.promise, third.promise][reads++] });
+  Reflect.set(runtime, "api", fakeApi({ get: () => [first.promise, second.promise, third.promise][reads++] }));
   const old = runtime.loadDelegations("botbot-1");
   const fresh = runtime.loadDelegations("botbot-1");
   const peer = runtime.loadDelegations("other-thread");
@@ -131,7 +132,7 @@ test("newer same-thread GET wins; older failures, other threads and replacement 
   expect(runtime.snapshot.delegations).toEqual([newest]);
   expect(runtime.delegationUnsupported["botbot-1"]).toBe(false);
   expect(runtime.delegationLoadError["botbot-1"]).toBe(false);
-  Reflect.set(runtime, "api", { get: async () => ({ items: [] }) });
+  Reflect.set(runtime, "api", fakeApi({ get: async () => ({ items: [] }) }));
   third.resolve({ items: [aDelegation({ id: "other", thread_session_id: "other-thread" })] }); await peer;
   expect(runtime.snapshot.delegations).toEqual([newest]);
 });
@@ -185,11 +186,11 @@ test("full snapshot reconnect rehydrates unchanged visible peer and rejects the 
 test("older daemon 404 is hidden without persistent error; a network failure preserves cached records", async () => {
   const runtime = new MessengerRuntime(); runtimes.push(runtime); runtime.connection = "connected";
   runtime.snapshot = { ...runtime.snapshot, delegations: [aDelegation()] };
-  Reflect.set(runtime, "api", { get: async () => { throw new ApiError(404, "not_found", "unsupported"); } });
+  Reflect.set(runtime, "api", fakeApi({ get: async () => { throw new ApiError(404, "not_found", "unsupported"); } }));
   await runtime.loadDelegations("botbot-1");
   expect(runtime.delegationUnsupported["botbot-1"]).toBe(true);
   expect(runtime.delegationLoadError["botbot-1"]).toBe(false);
-  Reflect.set(runtime, "api", { get: async () => { throw new Error("network"); } });
+  Reflect.set(runtime, "api", fakeApi({ get: async () => { throw new Error("network"); } }));
   await runtime.loadDelegations("botbot-1");
   expect(runtime.delegationUnsupported["botbot-1"]).toBe(false);
   expect(runtime.delegationLoadError["botbot-1"]).toBe(true);

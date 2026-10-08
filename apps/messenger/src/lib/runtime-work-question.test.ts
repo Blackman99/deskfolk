@@ -2,6 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import type { WorkAnswerResult, WorkQuestionControl } from "@real-bot/protocol";
 import { ApiError } from "./api.ts";
 import { MessengerRuntime } from "./runtime.svelte.ts";
+import { fakeApi } from "./test-mocks.ts";
 import { aDirect, aHold, aMessage, aTurn } from "./test-fixtures.ts";
 
 const runtimes: MessengerRuntime[] = [];
@@ -14,7 +15,7 @@ const answered = aMessage({ ...original, control: { ...question, answer: { body,
 
 function connected(api: object): MessengerRuntime {
   const runtime = new MessengerRuntime(); runtimes.push(runtime);
-  Reflect.set(runtime, "api", api); runtime.connection = "connected";
+  Reflect.set(runtime, "api", fakeApi(api)); runtime.connection = "connected";
   return runtime;
 }
 

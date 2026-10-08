@@ -2,6 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import type { GroupLeadState } from "@real-bot/protocol";
 import { ApiError } from "./api.ts";
 import { MessengerRuntime } from "./runtime.svelte.ts";
+import { fakeApi } from "./test-mocks.ts";
 
 const runtimes: MessengerRuntime[] = [];
 afterEach(() => { for (const runtime of runtimes.splice(0)) runtime.destroy(); });
@@ -10,10 +11,10 @@ const suggestion: GroupLeadState = { session_id: "group/a", confirmed_bot_id: nu
 test("lead GET proposes only; explicit confirmation and clear PUT update state after success", async () => {
   const calls: unknown[] = [];
   const runtime = new MessengerRuntime(); runtimes.push(runtime);
-  Reflect.set(runtime, "api", {
+  Reflect.set(runtime, "api", fakeApi({
     get: async (path: string) => { calls.push(["GET", path]); return suggestion; },
     put: async (path: string, body: { bot_id: string | null; confirmed: true }) => { calls.push(["PUT", path, body]); return { ...suggestion, confirmed_bot_id: body.bot_id }; },
-  });
+  }));
   runtime.connection = "connected";
   await runtime.loadGroupLead("group/a");
   expect(calls).toEqual([["GET", "/v1/sessions/group%2Fa/lead"]]);
@@ -32,7 +33,7 @@ test("a GET started during confirmation cannot invalidate the acknowledged human
   const runtime = new MessengerRuntime(); runtimes.push(runtime);
   const read = Promise.withResolvers<GroupLeadState>();
   const write = Promise.withResolvers<GroupLeadState>();
-  Reflect.set(runtime, "api", { get: async () => read.promise, put: async () => write.promise });
+  Reflect.set(runtime, "api", fakeApi({ get: async () => read.promise, put: async () => write.promise }));
   runtime.connection = "connected";
   const saving = runtime.confirmGroupLead("group/a", "bot-1");
   const loading = runtime.loadGroupLead("group/a");
@@ -44,7 +45,7 @@ test("a GET started during confirmation cannot invalidate the acknowledged human
 
 test("an older daemon missing the lead route is marked unsupported without a persistent load error", async () => {
   const runtime = new MessengerRuntime(); runtimes.push(runtime);
-  Reflect.set(runtime, "api", { get: async () => { throw new ApiError(404, "not_found", "Route unavailable"); } });
+  Reflect.set(runtime, "api", fakeApi({ get: async () => { throw new ApiError(404, "not_found", "Route unavailable"); } }));
   runtime.connection = "connected";
   await runtime.loadGroupLead("group/a");
   expect(runtime.groupLeadUnsupported["group/a"]).toBe(true);
@@ -53,7 +54,7 @@ test("an older daemon missing the lead route is marked unsupported without a per
 
 test("a refused confirmation keeps the confirmed lead unchanged and offline writes report failure", async () => {
   const runtime = new MessengerRuntime(); runtimes.push(runtime);
-  Reflect.set(runtime, "api", { put: async () => { throw new ApiError(422, "invalid", "Bot left"); } });
+  Reflect.set(runtime, "api", fakeApi({ put: async () => { throw new ApiError(422, "invalid", "Bot left"); } }));
   runtime.connection = "connected";
   runtime.groupLeads = { [suggestion.session_id]: { ...suggestion, confirmed_bot_id: "bot-1" } };
   expect(await runtime.confirmGroupLead(suggestion.session_id, "departed")).toBeInstanceOf(ApiError);

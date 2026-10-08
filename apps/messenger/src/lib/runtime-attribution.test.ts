@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { ApiError } from "./api.ts";
 import { MessengerRuntime } from "./runtime.svelte.ts";
+import { fakeApi } from "./test-mocks.ts";
 import { aDirect, aMessage } from "./test-fixtures.ts";
 
 const runtimes: MessengerRuntime[] = [];
@@ -9,7 +10,7 @@ afterEach(() => { for (const runtime of runtimes.splice(0)) runtime.destroy(); }
 function connected(api: object): MessengerRuntime {
   const runtime = new MessengerRuntime();
   runtimes.push(runtime);
-  Reflect.set(runtime, "api", api);
+  Reflect.set(runtime, "api", fakeApi(api));
   runtime.connection = "connected";
   return runtime;
 }
@@ -41,7 +42,7 @@ test("runtime refuses offline or failed corrections without mutating attribution
   runtime.connection = "disconnected";
   expect(await runtime.patchMessageAttribution(original.id, [])).toBeInstanceOf(ApiError);
   const unfiled = aMessage({ filing_state: "none", filings: [], task_id: null, ticket_id: null });
-  Reflect.set(runtime, "api", { patch: async (_path: string, body: unknown) => { expect(body).toEqual({ filings: [] }); return unfiled; } });
+  Reflect.set(runtime, "api", fakeApi({ patch: async (_path: string, body: unknown) => { expect(body).toEqual({ filings: [] }); return unfiled; } }));
   runtime.connection = "connected";
   expect(await runtime.patchMessageAttribution(original.id, [])).toBeNull();
   expect(runtime.snapshot.messages[0]).toEqual(unfiled);
