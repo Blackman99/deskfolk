@@ -48,6 +48,22 @@ test("a question that only asks for an OK to go on reads as a go-ahead only when
   expect(botLineByWords(asked).goAhead).toBe(false);
 });
 
+test("a promise that repeats the line the Bot answers is that line's, not the Bot's; a phrase both use is still the Bot's", () => {
+  // 2026-10-08: your English paragraph put back above its translation, and a model took its last sentence for the Bot's.
+  const source = "The X search is done. The community-site search is still running. Once it's back, I'll compare the two and pick one to build.";
+  const body = `**${source}**\n\n推荐译法：X 上的调研已经跑完了。社区站点的调研还在跑，等结果出来后，我会对比两边的数据。`;
+  const quoted = { later: "The community-site search is still running. Once it's back, I'll compare the two and pick one to build.", claims_verified: false, no_work: false, bare_status: false };
+  expect(checkBotReading(quoted, body)!.later).toBe("The community-site search is still running. Once it's back, …");
+  expect(checkBotReading(quoted, body, source)!.later).toBeNull();
+  // The word lists hear "I'll get back" in it; repeated from the line answered, it is not the Bot's either.
+  const asked = "The community-site search is still running; I'll get back to you once it's back.";
+  expect(botLineByWords(`${asked}\n\n译文：社区站点的搜索还在跑，等它出来我再回你。`).later).not.toBeNull();
+  expect(botLineByWords(`${asked}\n\n译文：社区站点的搜索还在跑，等它出来我再回你。`, asked).later).toBeNull();
+  // A few words in common are no quote: 「结论随后」 from your line is still the Bot's promise when it says it.
+  expect(checkBotReading({ later: "结论随后" }, "收到，结论随后。", "你先查，结论随后发我")!.later).toBe("结论随后");
+  expect(botLineByWords("收到，结论随后。", "你先查，结论随后发我").later).toBe("收到，结论随后。");
+});
+
 test("a long promise is cut to what a bounce quotes", () => {
   const body = `正在${"逐镜核对".repeat(30)}。`;
   const later = checkBotReading({ later: body }, body)!.later!;

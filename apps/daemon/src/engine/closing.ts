@@ -23,7 +23,7 @@ import type { CompletionsClient } from "../completions";
 import { evaluateFileCheck } from "../acceptance-eval";
 import { runMeasureCheck } from "../measure-check";
 import { parseMentions } from "../mentions";
-import { readBotLineByWords, readsAsNoWork, type BotLineReading } from "../line-reading";
+import { readBotLineByWords, readsAsNoWork, type BotLineContext, type BotLineReading } from "../line-reading";
 import type { TurnAdmission } from "../quiesce";
 import type { TurnExecution } from "../store/routing";
 import { derivedNotGate, type Store } from "../store";
@@ -47,7 +47,7 @@ export type ClosingDeps = {
   /** Benchmark switches (see `ablation.ts`): `closing-check` lets every delivery through unchecked. */
   ablation?: Ablation;
   /** A Bot's line, read for a promise of more to come and a claim of a run (ADR 0055, `reader.ts`); absent, the word lists read it. */
-  readBotLine?: (body: string, sessionId: string | null) => Promise<BotLineReading>;
+  readBotLine?: (body: string, sessionId: string | null, context?: BotLineContext) => Promise<BotLineReading>;
 };
 
 export type Closing = {
@@ -164,7 +164,7 @@ export function createClosing(deps: ClosingDeps): Closing {
     const isDelivery = input.paths.length > 0;
     // What the reply says (ADR 0055): whether it promises more to come, and whether it claims a run.
     const words = input.said ?? input.body;
-    const said = words.trim() ? await readBotLine(words, input.sessionId) : null;
+    const said = words.trim() ? await readBotLine(words, input.sessionId, { answering: store.segmentAnswering(turnId) }) : null;
     if (!active(turnId, live)) return null;
     const isPromise = said?.later != null;
     if (!isDelivery && !isPromise) return null;
@@ -206,7 +206,7 @@ export function createClosing(deps: ClosingDeps): Closing {
     args: Record<string, unknown>,
   ): Promise<string | null> {
     const body = typeof args.body === "string" ? args.body : "";
-    if (await readsAsNoWork(body, (text) => readBotLine(text, turn.session_id))) return null;
+    if (await readsAsNoWork(body, (text) => readBotLine(text, turn.session_id, { answering: store.segmentAnswering(turnId) }))) return null;
     const sessionId = typeof args.session_id === "string" && args.session_id ? args.session_id : turn.session_id;
     const corrected = resolveBodyPathsToWorkDir(body, live.workDir, (relpath) => pathExists(store, relpath));
     const explicit = Array.isArray(args.paths)

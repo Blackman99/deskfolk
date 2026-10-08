@@ -7,7 +7,7 @@
 import type { AskAnswer, ClientEvent, McpServer, Message, Turn } from "@real-bot/protocol";
 import { askAnswerText } from "../ask";
 import { runCollabTool, type ToolCtx, type ToolResult } from "../collab-tools";
-import { readBotLineByWords, readsAsNoWork, type BotLineReading } from "../line-reading";
+import { readBotLineByWords, readsAsNoWork, type BotLineContext, type BotLineReading } from "../line-reading";
 import type { ToolCall } from "../completions";
 import { isoNow } from "../ids";
 import { HttpError } from "../errors";
@@ -114,7 +114,7 @@ export type ToolsDeps = {
   /** Late-bound: `submit`, `review` and the implicit submission before end_turn(done) (ADR 0046, engine level 5). */
   submissions?: () => Submissions;
   /** A Bot's line, read for what the app acts on (ADR 0055, `reader.ts`); absent, the word lists read it. */
-  readBotLine?: (body: string, sessionId: string | null) => Promise<BotLineReading>;
+  readBotLine?: (body: string, sessionId: string | null, context?: BotLineContext) => Promise<BotLineReading>;
 };
 
 export type Tools = {
@@ -175,8 +175,10 @@ export function createTools(deps: ToolsDeps): Tools {
    * only asks their OK to go on (ADR 0058). Undefined for any other call.
    */
   async function readForCall(turn: Turn, name: string, args: Record<string, unknown>): Promise<ToolCtx["read"]> {
-    const read = (text: string) => (deps.readBotLine ?? readBotLineByWords)(text, turn.session_id);
-    if (name === "send_message" && typeof args.body === "string") return { noWork: await readsAsNoWork(args.body, read) };
+    const read = (text: string, context?: BotLineContext) => (deps.readBotLine ?? readBotLineByWords)(text, turn.session_id, context);
+    // Read with what the segment answers, as every reading of its lines is: one reading per line.
+    const answering = () => ({ answering: store.segmentAnswering(turn.id) });
+    if (name === "send_message" && typeof args.body === "string") return { noWork: await readsAsNoWork(args.body, (text) => read(text, answering())) };
     if (store.capabilities().engine_level < ENGINE_LEVELS.delegation || turn.mode === "readonly") return undefined;
     // A question to the user, read unless one was already sent back this segment: then the next is theirs.
     const question = name === "ask_user" ? args.question : name === "end_turn" && args.reason === "blocked" ? args.needs_from_user : null;
@@ -185,7 +187,7 @@ export function createTools(deps: ToolsDeps): Tools {
     }
     if (name !== "end_turn" || !PROMISE_WEIGHED.includes(args.reason as string)) return undefined;
     const said = store.segmentLastWord(turn.id);
-    return said?.trim() ? { lastWord: { said, later: (await read(said)).later } } : undefined;
+    return said?.trim() ? { lastWord: { said, later: (await read(said, answering())).later } } : undefined;
   }
 
   /**

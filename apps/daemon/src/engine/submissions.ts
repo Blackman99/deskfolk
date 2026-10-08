@@ -15,7 +15,7 @@ import { isoNow } from "../ids";
 import { checkLines, inTicketDir, type SettledSubmission, type Store, type StoredSubmission, type SubmissionCheck } from "../store";
 import { ENGINE_LEVELS } from "../store/schema-gate";
 import { classifyPath } from "../workspace-paths";
-import type { BotLineReading, UserLineReading } from "../line-reading";
+import type { BotLineContext, BotLineReading, UserLineReading } from "../line-reading";
 
 /** A file larger than this is not hashed, and so cannot be handed over (the supervisor's artifact limit). */
 const SUBMISSION_HASH_BYTES_MAX = 2 * 1024 ** 3;
@@ -41,7 +41,7 @@ export type SubmissionsDeps = {
   /** A line of yours, read for what it objects to (ADR 0055, `reader.ts`). */
   readUserLine: (message: Message) => Promise<UserLineReading>;
   /** A Bot's words, read for whether they are the deliverable (ADR 0055). */
-  readBotLine: (body: string, sessionId: string | null) => Promise<BotLineReading>;
+  readBotLine: (body: string, sessionId: string | null, context?: BotLineContext) => Promise<BotLineReading>;
   log?: (line: string) => void;
 };
 
@@ -358,7 +358,7 @@ export function createSubmissions(deps: SubmissionsDeps): Submissions {
     } catch {
       sessionId = null;
     }
-    if (!isAnswerText(text, await deps.readBotLine(text.trim(), sessionId))) {
+    if (!isAnswerText(text, await deps.readBotLine(text.trim(), sessionId, { answering: store.segmentAnswering(turnId) }))) {
       throw new HttpError(422, "not_an_answer", notAnAnswerMessage(store.settingsCached().locale === "en"));
     }
     let prepared;

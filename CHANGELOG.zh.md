@@ -10,6 +10,11 @@
 
 - 端点现在除了 OpenAI 的 Chat Completions，也能说 Anthropic 的 Messages：在设置里新建或编辑端点时把「接口格式」选成「Anthropic 兼容」（首次向导里也多了 Anthropic 预设），地址照 Claude Code 的 `ANTHROPIC_BASE_URL` 填——`https://api.anthropic.com`，或者 DeepSeek、百炼、智谱、Kimi、MiniMax 给的 `…/anthropic` 地址，或者转发的地址。Bot、它们的判断和读句在上面照常跑：思考档、工具调用、看图、模型阶梯和花费都管用，有 `/v1/models` 的就从那里拉模型名单。请求带缓存标记，长的一轮后面几跳从缓存读前面的内容，不再全价重读。Bot 用 `add_endpoint` 加的时候传 `api_format: "anthropic"`；改端点的格式和改 URL 一样要你批准。已有的端点都还是 OpenAI 兼容。[ADR 0066](docs/adr/0066-anthropic-format-endpoints.md)
 
+### Bot 复述你的原文，不再当成它说还要接着做
+
+- Bot 在回复里放回你给的文字（比如翻译时把原文摆在译文上面），原文里的句子会被当成 Bot 自己说「还要接着做」。你在私聊里让专业翻译官翻一段英文，原文最后一句是「The community-site search is still running. Once it's back, I'll compare the two and pick one to build.」，这句被读成了翻译官要接着做：它的结束被退回一次（又空转了 3 分钟），译文下面还多了一行「……但这一轮已经结束了，没有人接着做」。现在读 Bot 的话时会一起看它在回的那句话，从那里一字不差照搬过来（至少 20 个字）的句子不算它的许诺。
+- 在你和 Bot 的私聊里，「它停了」那一行不再叫你 @ 它：私聊里你说什么它都收得到，现在结尾是「要它继续，跟它说一声。」；「连续两次没有进展」那一行在私聊里也不再加「或者 @ …」。
+
 ## 0.1.0-rc.14 — 2026-10-08
 
 未签名的 macOS rc，`.dmg` 旁边附实验性、同样未签名的 Windows 安装包。不是受支持的签名安装包；Gatekeeper 或 SmartScreen 可能拦截。优先从源码运行。

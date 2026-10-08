@@ -13,7 +13,8 @@ import { isReservedTaskPath } from "./tasks";
 import { settingsCached } from "./settings";
 import { noProgressNoticeBody, promisedLaterNoticeBody, saidNothingNoticeBody } from "../prompts/control-copy";
 import { supervisorJobLabel } from "../prompts/transcript-copy";
-import { LATER_QUOTE_MAX, laterWorkSentence } from "../later-words";
+import { LATER_QUOTE_MAX } from "../later-words";
+import { botLineByWords } from "../line-reading";
 import { parseMentions } from "../mentions";
 import { takeCodePoints } from "../text";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
@@ -293,13 +294,19 @@ function rejectEnd(ctx: StoreContext, turn: Actor, base: Pick<FinishWorkResult, 
   return { ended: false, workItemId: turn.work_item_id, ...base, code, bounce };
 }
 
+/** Whether the segment's conversation is your direct with the Bot: there, whatever you say reaches it. */
+function inYourDirect(ctx: StoreContext, turn: Actor): boolean {
+  return Boolean(ctx.db.query(`SELECT 1 FROM sessions s JOIN session_participants u ON u.session_id = s.id AND u.member = 'user'
+    AND u.left_at IS NULL WHERE s.id = ? AND s.kind = 'direct'`).get(turn.session_id));
+}
+
 /** The no-progress line, in your language, naming the job and the Bot. */
 function noProgressNotice(ctx: StoreContext, turn: Actor): string {
   const locale = settingsCached(ctx).locale === "en" ? "en" : "zh";
   const plan = turn.task_id ? ctx.db.query<{ title: string }, [string]>("SELECT title FROM tasks WHERE id = ?").get(turn.task_id)?.title ?? turn.task_id : "";
   const ticket = turn.ticket_id ? ctx.db.query<{ seq: number; title: string }, [string]>("SELECT seq, title FROM tickets WHERE id = ?").get(turn.ticket_id) ?? null : null;
   const bot = ctx.db.query<{ name: string }, [string]>("SELECT name FROM bots WHERE id = ?").get(turn.bot_id)?.name ?? turn.bot_id;
-  return noProgressNoticeBody(locale, { job: supervisorJobLabel(locale, { plan, ticket }), bot });
+  return noProgressNoticeBody(locale, { job: supervisorJobLabel(locale, { plan, ticket }), bot, direct: inYourDirect(ctx, turn) });
 }
 
 /** A Bot message that says something: a line carrying only files has an empty body. */
@@ -318,20 +325,34 @@ export function segmentLastWord(ctx: StoreContext, turnId: string, closing?: str
 }
 
 /**
+ * What the segment answers, as one text: the line that opened it (unless the Bot's own) and the mail
+ * it read, oldest first; null when there is none. A sentence of it the Bot repeats — a translation's
+ * source put back above the translation, a quote — is that line's words, not the Bot saying its
+ * work goes on (2026-10-08, `line-reading.ts`).
+ */
+export function segmentAnswering(ctx: StoreContext, turnId: string): string | null {
+  const opened = ctx.db.query<{ body: string }, [string]>(`SELECT m.body FROM turns t JOIN messages m ON m.id = t.trigger_message_id
+    WHERE t.id = ? AND m.kind IN ('user', 'bot') AND m.author <> t.bot_id`).get(turnId)?.body ?? null;
+  const mail = ctx.db.query<{ body: string | null }, [string]>(`SELECT COALESCE(i.body_snapshot, m.body) AS body FROM inbox_items i
+    LEFT JOIN messages m ON m.id = i.message_id
+    WHERE i.delivered_turn_id = ? AND i.source NOT IN ('system', 'timer') ORDER BY i.seq`).all(turnId).map((row) => row.body);
+  const lines = [...new Set([opened, ...mail].filter((body): body is string => Boolean(body?.trim())))];
+  return lines.length ? lines.join("\n\n") : null;
+}
+
+/**
  * The sentence in which the segment's last word to the user says the work is still going, when no
  * Bot is named in it to take that on; null when it promised nothing. Read as the reader read it
  * (`lastWord`), else by the word lists.
  */
 function unbackedPromise(ctx: StoreContext, turn: Actor, opts: FinishWorkOptions): string | null {
   const said = opts.lastWord ? opts.lastWord.said : segmentLastWord(ctx, turn.id, opts.closing);
-  const sentence = opts.lastWord ? opts.lastWord.later : said ? laterWorkSentence(said) : null;
+  const sentence = opts.lastWord ? opts.lastWord.later : said ? botLineByWords(said, segmentAnswering(ctx, turn.id)).later : null;
   if (!said || !sentence) return null;
   const roster = ctx.db.query<{ name: string }, []>("SELECT name FROM bots WHERE deleted_at IS NULL AND archived_at IS NULL").all().map((bot) => bot.name);
   const named = parseMentions(said, roster);
   if (named.everyone || named.mentions.length > 0) return null;
-  if (opts.lastWord) return sentence;
-  const clipped = takeCodePoints(sentence, LATER_QUOTE_MAX);
-  return clipped.truncated ? `${clipped.text}…` : clipped.text;
+  return sentence;
 }
 
 /** The user's line when a Bot ended anyway after saying the work is still going, naming the job and the Bot. */
@@ -340,7 +361,8 @@ function promisedLaterNotice(ctx: StoreContext, turn: Actor, said: string): stri
   const plan = turn.task_id ? ctx.db.query<{ title: string }, [string]>("SELECT title FROM tasks WHERE id = ?").get(turn.task_id)?.title ?? turn.task_id : null;
   const ticket = turn.ticket_id ? ctx.db.query<{ seq: number; title: string }, [string]>("SELECT seq, title FROM tickets WHERE id = ?").get(turn.ticket_id) ?? null : null;
   const bot = ctx.db.query<{ name: string }, [string]>("SELECT name FROM bots WHERE id = ?").get(turn.bot_id)?.name ?? turn.bot_id;
-  return promisedLaterNoticeBody(locale, { job: plan === null ? null : supervisorJobLabel(locale, { plan, ticket }), bot, said });
+  return promisedLaterNoticeBody(locale, { job: plan === null ? null : supervisorJobLabel(locale, { plan, ticket }), bot, said,
+    direct: inYourDirect(ctx, turn) });
 }
 
 /**

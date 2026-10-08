@@ -101,6 +101,60 @@ test("said as a closing reply, the promise goes out first and the line about the
   expect(h.messages(room).at(-1)!.body).toContain("没有人接着做");
 });
 
+/**
+ * 2026-10-08, your direct with 专业翻译官: you gave it an English paragraph to translate, and it put
+ * the paragraph back above its translations. A model read that paragraph's 「The community-site search
+ * is still running. Once it's back, I'll compare the two…」 as the translator's own promise: the
+ * ending was sent back (the translator went on for three more minutes), then a line said nobody was
+ * carrying on with it and to @ it — in a direct. Words repeated from the line it answers are that
+ * line's: the reading is shown the line, and a sentence of it repeated word for word is not the Bot's.
+ */
+const SOURCE = "The X search is done. The strongest signals are all about AI coding tools. The community-site search is still running; I'll get back to you once it's back, and pick one to build.";
+const TRANSLATED = `**${SOURCE}**\n\n推荐译法：X 上的调研已经跑完了，最强烈的需求信号全集中在 AI 编程工具上。社区站点的调研还在跑，结果出来后我会再回复你，挑一个方向动手做。`;
+
+test("in your direct, a translation that puts your text back above it promises nothing of the Bot's", async () => {
+  for (const read of [true, false]) {
+    const h = await createScenario({ submissions: true });
+    open.push(h);
+    const [translator] = h.createBots({ name: "专业翻译官", duties: "中英互译" });
+    const dm = h.direct(translator!);
+    const shown: unknown[] = [];
+    if (read) {
+      // As the model read it that day: the paragraph's own sentence, taken for the translator's.
+      h.judge("read_bot_line").handle(({ payload }) => {
+        shown.push(payload);
+        return { later: "The community-site search is still running; I'll get back to you once it's back, and pick one to build.",
+          claims_verified: false, no_work: false, bare_status: false };
+      });
+    }
+    const heard: string[] = [];
+    h.script(translator!).handle(({ request }) => {
+      heard.push(requestText(request));
+      return say(TRANSLATED);
+    });
+    h.postUser(dm, SOURCE);
+    await h.waitIdle();
+    if (read) expect(shown).toContainEqual({ said: TRANSLATED, replying_to: SOURCE });
+    // Said once, nothing sent back, no line about a stop.
+    expect(heard.some((text) => text.includes("You said 「"))).toBe(false);
+    expect(h.store.listWorkEvents({ kind: "end.rejected" })).toEqual([]);
+    expect(h.messages(dm).filter((message) => message.author !== "user").map((message) => `${message.kind}: ${message.body}`)).toEqual([`bot: ${TRANSLATED}`]);
+  }
+});
+
+test("in your direct, the line about a stop says to tell the Bot, not to @ it", async () => {
+  const h = await createScenario({ submissions: true });
+  open.push(h);
+  const [translator] = h.createBots({ name: "专业翻译官", duties: "中英互译" });
+  const dm = h.direct(translator!);
+  h.script(translator!).handle(() => say("好的，这就去查术语表，结论随后发你。"));
+  h.postUser(dm, "把这份术语表也对一下");
+  await h.waitIdle();
+  expect(h.store.listWorkEvents({ kind: "end.rejected" }).map((event) => event.payload.code)).toEqual(["promised_later"]);
+  expect(h.messages(dm).at(-1)!).toMatchObject({ kind: "system",
+    body: "专业翻译官说「好的，这就去查术语表，结论随后发你。」，但这一轮已经结束了，没有人接着做。要它继续，跟它说一声。" });
+});
+
 test("the start-over line asks to send the handed-over ticket back, and sent back it is the director's again", async () => {
   const h = await createScenario({ submissions: true });
   open.push(h);

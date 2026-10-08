@@ -137,3 +137,9 @@ Now:
 4. The level-3 system text, the `end_turn` / `send_message` / `submit` descriptions and the Claude Agent preface say one thing: your reply is the text of the last step that calls no tool, which goes out once it passes the closing check and ends the segment; words beside a tool call (end_turn's and submit's included) are never sent, and end_turn's note and answer are no reply either.
 
 代价：一次做完、只交文件的小事（「根据你的职责，生成图片更新你的头像」）也要多说一句，即多一次退回；换来的是你问的问题不会只换回一个文件夹。 / The cost: a small job done in one go with files alone (「根据你的职责，生成图片更新你的头像」) has to say a line too, one more bounce; in exchange a question of yours is never answered by a folder alone.
+
+## 2026-10-08 补记：私聊里那一行不叫你 @ 它 / In your direct, the line does not ask you to @ the Bot
+
+「说了还在做就结束」和「连续两次没有进展」那两行原来都以「要它继续，@ 它」「或者 @ 它」结尾，私聊里也一样；可你在和它的私聊里说什么它都收得到，没有要 @ 的人（2026-10-08，专业翻译官的私聊）。现在会话是你和这个 Bot 的私聊时，前者写「要它继续，跟它说一声。」（"To have it go on, tell it."），后者只写「说一句接下来怎么做。」；群里和 Bot 之间的私聊照旧。那天这一行本来就不该出现：它引的是你给它翻译的原文，见 [ADR 0055](0055-lines-read-by-a-model.md) 的 2026-10-08 补记。
+
+The lines for "said it is still going, then ended" and "ended twice without progress" ended with "To have it go on, @ it" and "or @ it", in your direct as well, where whatever you say reaches the Bot and there is nobody to @ (2026-10-08, your direct with 专业翻译官). In your direct with the Bot the first now says "To have it go on, tell it." and the second only "Say how to go on."; groups and Bot↔Bot directs are as before. That day's line should not have been there at all: it quoted the text you gave the Bot to translate, see [ADR 0055](0055-lines-read-by-a-model.md)'s 2026-10-08 addendum.

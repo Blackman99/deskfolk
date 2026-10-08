@@ -18,7 +18,7 @@ import { clauseObjects, clausesOf } from "./complaint-words";
 import { claimsVerification } from "./closing-check";
 import { LATER_QUOTE_MAX, laterWorkSentence } from "./later-words";
 import { isNoWorkCloser, noWorkShape } from "./no-work";
-import { findWords } from "./quote-words";
+import { findWords, quoteWords } from "./quote-words";
 import { takeCodePoints } from "./text";
 
 /** Who read the line: a model, or the word lists when no model could. */
@@ -61,6 +61,26 @@ export type BotLineReading = {
 };
 
 
+/**
+ * How much of a "still going" sentence must stand word for word in the line the Bot was answering
+ * to be that line's own words, as the quote check folds them: a sentence repeated from it, not a
+ * phrase both happen to use (「结论随后」).
+ */
+const REPEATED_MIN = 20;
+
+/**
+ * The sentence in which a Bot's line says the work goes on, unless it repeats the line the Bot was
+ * answering: a translation's source put back above it, a quote, a text it was given to rewrite all
+ * restate what that text promises, and nothing of it is the Bot's to carry on (2026-10-08: 专业翻译官
+ * put your English paragraph back above its translation in your direct, and its 「Once it's back,
+ * I'll compare the two」 was read as the Bot's own promise — sent back once, then a line about it).
+ */
+function ownLater(later: string | null, answering: string | null | undefined): string | null {
+  if (!later || !answering) return later;
+  const repeated = findWords(later, answering);
+  return repeated !== null && quoteWords(repeated).length >= REPEATED_MIN ? null : later;
+}
+
 function clipped(text: string, max: number): string {
   const cut = takeCodePoints(text.trim(), max);
   return cut.truncated ? `${cut.text}…` : cut.text;
@@ -77,9 +97,9 @@ export function userLineByWords(body: string, opts: { statusQuestion: boolean })
   };
 }
 
-/** A Bot's line as the word lists read it. */
-export function botLineByWords(body: string): BotLineReading {
-  const later = laterWorkSentence(body);
+/** A Bot's line as the word lists read it; `answering` is the line it answers, when there is one. */
+export function botLineByWords(body: string, answering?: string | null): BotLineReading {
+  const later = ownLater(laterWorkSentence(body), answering);
   return {
     source: "words",
     later: later ? clipped(later, LATER_QUOTE_MAX) : null,
@@ -175,13 +195,14 @@ export function checkUserReading(answer: Record<string, unknown>, body: string):
 /**
  * A model's answer about a Bot's line, checked. `later` is kept as the words of the line it quotes;
  * a sentence the line does not hold falls back to the one the word lists find, else the line's
- * opening, since the model did say the line promises more. Null when the answer is not a reading.
+ * opening, since the model did say the line promises more; one that repeats `answering`, the line
+ * the Bot answers, is that line's and not the Bot's. Null when the answer is not a reading.
  */
-export function checkBotReading(answer: Record<string, unknown>, body: string): BotLineReading | null {
+export function checkBotReading(answer: Record<string, unknown>, body: string, answering?: string | null): BotLineReading | null {
   const keys = ["later", "claims_verified", "no_work", "bare_status", "go_ahead"];
   if (!keys.some((key) => key in answer)) return null;
   const raw = typeof answer.later === "string" && answer.later.trim() ? answer.later : null;
-  const later = raw === null ? null : findWords(raw, body) ?? laterWorkSentence(body) ?? body;
+  const later = ownLater(raw === null ? null : findWords(raw, body) ?? laterWorkSentence(body) ?? body, answering);
   return {
     source: "model",
     later: later === null || !later.trim() ? null : clipped(later, LATER_QUOTE_MAX),
@@ -203,9 +224,12 @@ export async function readsAsNoWork(body: string, read: (body: string) => Promis
   return (await read(body)).noWork;
 }
 
+/** What a Bot's line answers, for reading it: the line that opened its segment and the mail it read there. */
+export type BotLineContext = { answering?: string | null };
+
 /** A Bot's line read by the word lists only: what a module built without the reader (a test) reads with. */
-export function readBotLineByWords(body: string): Promise<BotLineReading> {
-  return Promise.resolve(botLineByWords(body));
+export function readBotLineByWords(body: string, _sessionId?: string | null, context?: BotLineContext): Promise<BotLineReading> {
+  return Promise.resolve(botLineByWords(body, context?.answering));
 }
 
 /**

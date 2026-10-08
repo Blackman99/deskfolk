@@ -405,24 +405,26 @@ export function restartNoticeBody(
 /**
  * The line a job gets when a Bot ended its segment twice in a row with no progress and work still
  * open (ADR 0044's end contract): the job waits for you as blocked. `job` names it as the
- * supervisor's lines do (任务 03《…》 or 规划「…」).
+ * supervisor's lines do (任务 03《…》 or 规划「…」). In your `direct` with the Bot whatever you say
+ * reaches it, so there is nobody to @.
  */
-export function noProgressNoticeBody(locale: Locale, input: { job: string; bot: string }): string {
+export function noProgressNoticeBody(locale: Locale, input: { job: string; bot: string; direct?: boolean }): string {
   return locale === "en"
-    ? `${input.job}: ${input.bot} ended twice in a row without progress and there is still work open on it, so it waits for you. Say how to go on, or @ ${input.bot}.`
-    : `${input.job}：${input.bot}连续两次结束都没有进展，还有没做完的事，先停下等你。说一句接下来怎么做，或者 @ ${input.bot}。`;
+    ? `${input.job}: ${input.bot} ended twice in a row without progress and there is still work open on it, so it waits for you. Say how to go on${input.direct ? "" : `, or @ ${input.bot}`}.`
+    : `${input.job}：${input.bot}连续两次结束都没有进展，还有没做完的事，先停下等你。说一句接下来怎么做${input.direct ? "" : `，或者 @ ${input.bot}`}。`;
 }
 
 /**
  * The line a job gets when a Bot said the work is still going and then ended its segment anyway,
  * after the end contract's one bounce (ADR 0044): nothing open wakes it, so without this line the
- * conversation would read as work under way. `job` is null for a desk conversation with no plan.
+ * conversation would read as work under way. `job` is null for a desk conversation with no plan. In
+ * your `direct` with the Bot whatever you say reaches it, so it says to tell it rather than to @ it.
  */
-export function promisedLaterNoticeBody(locale: Locale, input: { job: string | null; bot: string; said: string }): string {
+export function promisedLaterNoticeBody(locale: Locale, input: { job: string | null; bot: string; said: string; direct?: boolean }): string {
   const head = input.job ? (locale === "en" ? `${input.job}: ` : `${input.job}：`) : "";
   return locale === "en"
-    ? `${head}${input.bot} said "${input.said}", but its turn has ended and nobody is carrying on with it. To have it go on, @ ${input.bot}.`
-    : `${head}${input.bot}说「${input.said}」，但这一轮已经结束了，没有人接着做。要它继续，@ ${input.bot}。`;
+    ? `${head}${input.bot} said "${input.said}", but its turn has ended and nobody is carrying on with it. To have it go on, ${input.direct ? "tell it" : `@ ${input.bot}`}.`
+    : `${head}${input.bot}说「${input.said}」，但这一轮已经结束了，没有人接着做。要它继续，${input.direct ? "跟它说一声" : `@ ${input.bot}`}。`;
 }
 
 /**

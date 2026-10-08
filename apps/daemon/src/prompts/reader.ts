@@ -50,11 +50,14 @@ export const READ_USER_LINE_SYSTEM = fill(READ_USER_LINE_TEMPLATE, { format: REA
 
 export const READ_BOT_LINE_TEMPLATE = `你在替一个多 Bot 协作应用读一个 Bot 发出的一条消息，判断应用该怎么处理它。不是回答，也不能发言；没有工具。
 
-输入是一个 JSON：said 是这条消息。
+输入是一个 JSON：said 是这条消息；replying_to（有时没有）是它在回的话：用户或别的 Bot 发给它的原文。
 
-要判断五件事：
+要判断六件事：
 
-1. later：消息里说「这件事还在做 / 马上做 / 稍后给」的那一句，原样摘自 said（不改写、不拼接，可以只摘一部分）。例如「正在编写全新第 1 集设定集与剧本分镜方案」「结论随后」「接下来开始写分镜」「我将按照这个方案执行」「稍后发你」「I'm now drafting the outline」「results to follow」。不算：故事、剧本、画面里的人在做什么（「埼玉正在超市买菜」）；说别的 Bot 在做什么；说已经做完的事；只是问用户要不要做。没有就写 null。
+0. restates：said 是不是（整条或大部分）在翻译、转述、改写、润色或总结 replying_to——比如 said 就是 replying_to 的译文、润色稿、摘要，或先贴原文再给译文。没有 replying_to 就是 false。先判断这一项，再判断下面的 later：restates 为 true 时，said 里属于译文、转述、改写的句子都是原文作者在说他自己的事，later 只能摘这个 Bot 在这些之外另外加的、说它自己还要接着做的话，没有就写 null。
+
+1. later：消息里这个 Bot 自己说「这件事还在做 / 马上做 / 稍后给」的那一句，原样摘自 said（不改写、不拼接，可以只摘一部分）。例如「正在编写全新第 1 集设定集与剧本分镜方案」「结论随后」「接下来开始写分镜」「我将按照这个方案执行」「稍后发你」「I'm now drafting the outline」「results to follow」。不算：故事、剧本、画面里的人在做什么（「埼玉正在超市买菜」）；说别的 Bot 在做什么；说已经做完的事；只是问用户要不要做。没有就写 null。
+   said 是在照搬、引用、翻译、润色、改写或总结 replying_to 时（比如 said 就是 replying_to 的译文，或先放原文再给译文），原文和译文里的「正在」「稍后」「还在跑」「will post shortly」都是原文作者在说自己的事，不是这个 Bot 要接着做的事，不算 later；只有它在这些之外另外说了自己还要接着做，才摘那一句。
 2. claims_verified：消息是不是说自己跑过、测试过、验证过、构建过某样东西并且通过了（「测试全部通过」「已验证」「build succeeded」）。同时说了没验证、没跑的，是 false。
 3. no_work：消息是不是只说「这一轮没有要做的 / 没什么要补充 / 不需要回复 / 已经回答过了」，此外什么内容都没有。
 4. bare_status：消息是不是只有一句应答（「好的」「收到」）、一句完成的说法（「母带剪好了」「已完成，请查收」）、一句在等（「在等审片员」）或一句很短的「我看看」「马上弄」，除此之外没有任何实质内容。带着真正的内容（一段文字、一份清单、一个标题、具体结论）就是 false。
@@ -63,7 +66,7 @@ export const READ_BOT_LINE_TEMPLATE = `你在替一个多 Bot 协作应用读一
 {format}`;
 /** A reading of a Bot's line. Fixed: the parser reads it, so an edited prompt keeps it where `{format}` sits (ADR 0064). */
 export const READ_BOT_LINE_FORMAT = `只输出一个 JSON 对象，不要 markdown 围栏，不要前言后语：
-{"later": null, "claims_verified": false, "no_work": false, "bare_status": false, "go_ahead": false}`;
+{"restates": false, "later": null, "claims_verified": false, "no_work": false, "bare_status": false, "go_ahead": false}`;
 export const READ_BOT_LINE_SYSTEM = fill(READ_BOT_LINE_TEMPLATE, { format: READ_BOT_LINE_FORMAT });
 
 
@@ -130,8 +133,9 @@ export function userLinePayload(input: {
   };
 }
 
-export function botLinePayload(body: string): { said: string } {
-  return { said: botText(body) };
+/** A Bot's line and, when there is one, the line it answers (a translation's source, a request). */
+export function botLinePayload(body: string, answering?: string | null): { said: string; replying_to?: string } {
+  return { said: botText(body), ...(answering?.trim() ? { replying_to: botText(answering) } : {}) };
 }
 
 /** As much of a job's goal, or of what you last said about it, as a reading of where a line belongs sends. */
@@ -226,9 +230,9 @@ export function parseUserLineAnswer(raw: string, body: string): UserLineReading 
 }
 
 /** The answer about a Bot's line as a checked reading; null when it is not one. */
-export function parseBotLineAnswer(raw: string, body: string): BotLineReading | null {
+export function parseBotLineAnswer(raw: string, body: string, answering?: string | null): BotLineReading | null {
   const parsed = extractJsonObject(raw);
-  return parsed ? checkBotReading(parsed, body) : null;
+  return parsed ? checkBotReading(parsed, body, answering) : null;
 }
 
 export const READ_SCALE_TEMPLATE = `你在替一个多 Bot 协作应用判断用户交代的一件事是不是「大活」：成品由很多同类的部分组成，要先拆成几件、先做一件样片给用户看过再铺开，才做得好的事。不是回答用户，也不能发言；没有工具。

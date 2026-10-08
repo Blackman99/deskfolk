@@ -26,6 +26,7 @@ import {
   UNREAD_SCALE,
   type ScaleReading,
   userLineByWords,
+  type BotLineContext,
   type BotLineReading,
   type FilingReading,
   type UserLineReading,
@@ -84,8 +85,8 @@ export type Reader = {
   userLine: (message: Message) => Promise<UserLineReading>;
   /** Your answer to a Bot's question, read like a line of yours with nothing around it; `key` names it for the cache. */
   userText: (key: string, body: string, sessionId: string | null) => Promise<UserLineReading>;
-  /** A Bot's line, read once per text. Never rejects. */
-  botLine: (body: string, sessionId: string | null) => Promise<BotLineReading>;
+  /** A Bot's line, read once per text and the line it answers (`context`). Never rejects. */
+  botLine: (body: string, sessionId: string | null, context?: BotLineContext) => Promise<BotLineReading>;
   /**
    * Which job a line of yours is about (ADR 0057), read once. Null when there is nothing to read:
    * a locked signal places the line, it is only a stop or a go on, or no job is open for it. Never
@@ -294,8 +295,11 @@ export function createReader(deps: ReaderDeps): Reader {
     }));
   }
 
-  function botLine(body: string, sessionId: string | null): Promise<BotLineReading> {
-    const key = `bot:${createHash("sha256").update(body).digest("hex")}`;
+  function botLine(body: string, sessionId: string | null, context?: BotLineContext): Promise<BotLineReading> {
+    const answering = context?.answering?.trim() ? context.answering : null;
+    const hash = createHash("sha256").update(body);
+    if (answering) hash.update("\u0000").update(answering);
+    const key = `bot:${hash.digest("hex")}`;
     return remember(key, () => {
       // Nothing to read: no call for it.
       if (!body.trim()) return Promise.resolve(botLineByWords(body));
@@ -305,9 +309,9 @@ export function createReader(deps: ReaderDeps): Reader {
         sessionId,
         messageId: null,
         prompt: "call.read_bot_line",
-        payload: botLinePayload(body),
-        parse: (raw) => parseBotLineAnswer(raw, body),
-        fallback: () => botLineByWords(body),
+        payload: botLinePayload(body, answering),
+        parse: (raw) => parseBotLineAnswer(raw, body, answering),
+        fallback: () => botLineByWords(body, answering),
         fallbackNote: "read by the word lists",
       });
     });

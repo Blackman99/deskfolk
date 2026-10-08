@@ -611,10 +611,11 @@ describe("D12: two endings without progress, with work still open", () => {
       h.postUser(dm, "第二段写得更具体些", { parentId: seed.id });
       await h.waitIdle();
       expect(workState(h, plan.id)).toEqual(["blocked"]);
+      // Your direct with it: whatever you say there reaches it, so there is nobody to @.
       const notices = h.messages(dm).filter((message) => message.kind === "system").map((message) => message.body);
       expect(notices).toEqual([locale === "en"
-        ? `ticket 01 "Draft": Writer ended twice in a row without progress and there is still work open on it, so it waits for you. Say how to go on, or @ Writer.`
-        : "任务 01《Draft》：Writer连续两次结束都没有进展，还有没做完的事，先停下等你。说一句接下来怎么做，或者 @ Writer。"]);
+        ? `ticket 01 "Draft": Writer ended twice in a row without progress and there is still work open on it, so it waits for you. Say how to go on.`
+        : "任务 01《Draft》：Writer连续两次结束都没有进展，还有没做完的事，先停下等你。说一句接下来怎么做。"]);
     });
   }
 });

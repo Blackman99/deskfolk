@@ -10,6 +10,11 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 - An endpoint can now speak Anthropic's Messages API as well as OpenAI's Chat Completions: pick **API format › Anthropic-compatible** when adding or editing one in Settings (the first-run wizard has an Anthropic preset too), and give the address the way Claude Code takes it as `ANTHROPIC_BASE_URL` — `https://api.anthropic.com`, or the `…/anthropic` addresses DeepSeek, Bailian, Zhipu, Kimi or MiniMax publish, or a proxy's. Bots, their judgements and the readings of your lines run on it like on any endpoint: thinking levels, tool calls, pictures, the model ladder and spend all work, and the model list is fetched from its `/v1/models` where it has one. Requests carry cache marks, so a long turn reads its earlier steps from the cache instead of paying for them again. A Bot can add one with `api_format: "anthropic"`; changing an endpoint's format waits for your approval like changing its URL. Every endpoint you already have stays OpenAI-compatible. [ADR 0066](docs/adr/0066-anthropic-format-endpoints.md)
 
+### A Bot that repeats your text is not promising more
+
+- A Bot that put your text back in its reply, such as a translator showing the original above its translation, had a sentence of that text taken for its own promise of more work. In your direct, 专业翻译官 translated an English paragraph ending "The community-site search is still running. Once it's back, I'll compare the two and pick one to build."; that sentence was read as the translator saying it would carry on, so its ending was sent back (it went on idly for three more minutes), and a line under the translation said nobody was carrying on with it. Now the reading of a Bot's line is shown what the Bot was answering, and a sentence it repeats word for word from that (20 characters or more) is not its promise.
+- In your direct with a Bot, the line about a Bot that stopped no longer tells you to @ it: anything you say there reaches it. It now ends "To have it go on, tell it." The line about two endings in a row without progress no longer adds "or @ …" there either.
+
 ## 0.1.0-rc.14 — 2026-10-08
 
 Unsigned macOS rc with an experimental unsigned Windows installer beside the `.dmg`s. This is not a supported signed installer; Gatekeeper or SmartScreen may block it. Prefer running from source.

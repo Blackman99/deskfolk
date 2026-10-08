@@ -27,7 +27,7 @@ import { HttpError } from "../errors";
 import { continueNote, hopLimits, isRetriedFailure, replyFailure, retryNote } from "../hop-limits";
 import { troubleCount } from "./trouble";
 import { completionFailBody, builtinTools, type FailKind } from "../prompts";
-import { readBotLineByWords, readsAsNoWork, type BotLineReading } from "../line-reading";
+import { readBotLineByWords, readsAsNoWork, type BotLineContext, type BotLineReading } from "../line-reading";
 import type { McpHost } from "../mcp-host";
 import type { TurnAdmission } from "../quiesce";
 import { isoNow } from "../ids";
@@ -94,7 +94,7 @@ export type LifecycleDeps = {
   executeTools: Tools["executeTools"];
   closingCheck: Closing["closingCheck"];
   /** A Bot's line, read for what the app acts on (ADR 0055, `reader.ts`); absent, the word lists read it. */
-  readBotLine?: (body: string, sessionId: string | null) => Promise<BotLineReading>;
+  readBotLine?: (body: string, sessionId: string | null, context?: BotLineContext) => Promise<BotLineReading>;
   publishCitedBotMessage: Closing["publishCitedBotMessage"];
   completeSilent: Closing["completeSilent"];
   observeTicket: PlanWatch["observeTicket"];
@@ -220,7 +220,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
   async function readLastWord(turnId: string, turn: Turn, closing: string): Promise<{ said: string; later: string | null } | undefined> {
     const said = store.segmentLastWord(turnId, closing);
     if (!said?.trim()) return undefined;
-    return { said, later: (await readBotLine(said, turn.session_id)).later };
+    return { said, later: (await readBotLine(said, turn.session_id, { answering: store.segmentAnswering(turnId) })).later };
   }
 
   /**
@@ -1160,7 +1160,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     current: Turn,
     content: string,
   ): Promise<{ kind: "bounce"; note: string } | { kind: "ended" } | { kind: "inactive" }> {
-    const closer = await readsAsNoWork(content, (text) => readBotLine(text, current.session_id));
+    const closer = await readsAsNoWork(content, (text) => readBotLine(text, current.session_id, { answering: store.segmentAnswering(turnId) }));
     if (!active(turnId, live)) return { kind: "inactive" };
     const rawBody = closer ? "" : content;
     // A delivery to the user goes out only after one look at what the job asked for. The note
