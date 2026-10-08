@@ -3,7 +3,7 @@
 	// Bun tests, wherever they live, and the helpers only they import: `bun:test` has no types here,
 	// and `bun test` type-checks nothing anyway. Playwright specs under `tests/visual` stay in — they
 	// bring their own types.
-	"exclude": ["src/**/*.test.ts", "tests/*.test.ts", "src/lib/test-mocks.ts", "src/lib/test-sync-harness.ts"],
+	"exclude": ["src/**/*.test.ts", "tests/*.test.ts", "src/lib/test-mocks.ts", "src/lib/test-sync-harness.ts", "src/lib/test-shell-kit.ts"],
 	"compilerOptions": {
 		"rewriteRelativeImportExtensions": true,
 		"allowJs": true,
