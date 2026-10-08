@@ -1,9 +1,22 @@
 import { expect, test } from "bun:test";
-import { NARROW_MAX_WIDTH, NARROW_QUERY, isWorkbenchSurface, watchNarrow } from "./surface.ts";
+import { NARROW_MAX_WIDTH, NARROW_QUERY, isWorkbenchSurface, sidebarFolds, watchNarrow } from "./surface.ts";
 
 test("the workbench is for wide windows and never for narrow ones", () => {
   expect(isWorkbenchSurface(false)).toBe(true);
   expect(isWorkbenchSurface(true)).toBe(false);
+});
+
+/**
+ * The two gates used to be one, so the paired client — which keeps the columns and not the panes —
+ * had no way to put its list away at any width.
+ */
+test("a paired client on a tablet folds its list although it has no workbench", () => {
+  expect(isWorkbenchSurface(false, true)).toBe(false);
+  expect(isWorkbenchSurface(true, true)).toBe(false);
+  // Above the breakpoint the list is a column of the shell, hosted or not.
+  expect(sidebarFolds(false)).toBe(true);
+  // At or below it the list is a screen of its own, so there is nothing to fold.
+  expect(sidebarFolds(true)).toBe(false);
 });
 
 test("the breakpoint is the one the stylesheet uses", () => {

@@ -2399,6 +2399,45 @@ test('the session list folds to a rail of avatars from its own button or ⌘B, a
   expect(localStorage.getItem('real-bot-sidebar-width')).toBe('320');
 });
 
+test('a list that is a screen of its own does not fold, however it was left', async () => {
+  const happyDOM = (window as unknown as { happyDOM: { setViewport: (v: { width: number; height: number }) => void } }).happyDOM;
+  happyDOM.setViewport({ width: 390, height: 844 });
+  // The breakpoint decides this, and the media query is the breakpoint, so it is what the test moves.
+  const previousMatchMedia = window.matchMedia;
+  window.matchMedia = ((query: string) => ({
+    matches: query === '(max-width: 680px)' || query === '(prefers-reduced-motion: reduce)',
+    media: query, onchange: null,
+    addListener: () => {}, removeListener: () => {},
+    addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false,
+  })) as typeof window.matchMedia;
+  // Folded on a tablet, where the list is a column: the same origin remembers it here.
+  localStorage.setItem('real-bot-sidebar-collapsed', '1');
+  cleanups.push(() => {
+    window.matchMedia = previousMatchMedia;
+    happyDOM.setViewport({ width: 1024, height: 768 });
+    localStorage.removeItem('real-bot-sidebar-collapsed');
+  });
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot()],
+    sessions: [aDirect()],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true, workspace_path: '/fixture' },
+  }));
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  await settle();
+  expect(host.querySelector('.side')).not.toBeNull();
+  expect(host.querySelector('.rail')).toBeNull();
+  // ⌘B has nothing to fold here either.
+  host.querySelector('.composer-input')?.dispatchEvent(
+    new KeyboardEvent('keydown', { key: 'b', metaKey: true, bubbles: true, cancelable: true })
+  );
+  flushSync();
+  expect(host.querySelector('.rail')).toBeNull();
+  expect(host.querySelector('.side')).not.toBeNull();
+  // And what the tablet left behind stays for the tablet.
+  expect(localStorage.getItem('real-bot-sidebar-collapsed')).toBe('1');
+});
+
 for (const collapsed of [false, true]) test(`global search is reachable from the ${collapsed ? 'rail' : 'list'} and keyboard without changing the layout`, async () => {
   if (collapsed) localStorage.setItem('real-bot-sidebar-collapsed', '1');
   else localStorage.removeItem('real-bot-sidebar-collapsed');

@@ -14,6 +14,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 - On a remote connection wider than a phone, such as an iPad, the artifact preview opened as a column on the right of the chat and could not be closed: no tab named it (the remote app has no workbench at any width), and the bar with a back button was drawn only at phone width. Escape worked, but a tablet has no such key. The phone flow now opens it as a screen of its own at every width, the way a phone does: the pane covers everything and keeps its strip with back and the file name, and that back puts it away.
 
+### The session list folds on a tablet too
+
+- On a remote connection wider than a phone, such as an iPad, the session list could not be put away: the button that folds it to its rail of avatars was drawn only where the workbench was, and the remote app never has one, so the list kept its column however much room the conversation wanted. Every surface wider than 680px now has that button, and ⌘B works there too: the desktop workbench, a paired tablet, the remote app in another computer's browser. At 680px and below the list is a screen of its own, and there is still nothing to fold. The rail keeps the same conversations with the same counts, and its foot holds Workspace, Tools and Settings as icons.
+
 ### Terminal opens on a tablet
 
 - From something wider than a phone, such as an iPad, Tools › New terminal on a remote connection did nothing. The remote app has no workbench at any width, but the button chose its way by phone width: a tablet is wider, so it opened a new tab in a workbench that was never drawn, and every tap started another shell on the Mac. It now goes by whether there is a workbench: on a remote connection the Terminal page opens at every width, as on a phone (on a wide screen it slides in from the right), and the menu names the pages as a phone does (Terminal, Routine calendar) and marks the one that is open. Shells those taps started are still on the Mac; the Terminal page lists them, and End session closes one you do not need.

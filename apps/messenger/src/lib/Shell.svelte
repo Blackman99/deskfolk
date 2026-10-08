@@ -85,7 +85,7 @@
 	import Workbench from './workbench/Workbench.svelte';
 	import PaneContentHost from './workbench/PaneContentHost.svelte';
 	import PaneTabLabel from './workbench/PaneTabLabel.svelte';
-	import { isWorkbenchSurface, watchNarrow } from './workbench/surface.ts';
+	import { isWorkbenchSurface, sidebarFolds, watchNarrow } from './workbench/surface.ts';
 	import { paneMin } from './workbench/pane-mins.ts';
 	import { contentOfTab, contentToParams } from './workbench/pane-content.ts';
 	import { closeChatSide, settingsSide, toggleChatSide } from './workbench/pane-open.ts';
@@ -439,11 +439,14 @@
 	$effect(() => watchNarrow((value) => (narrow = value)));
 	const wide = $derived(isWorkbenchSurface(narrow));
 	/**
-	 * The session list folded down to a rail of avatars. Only the workbench does it: a phone's
-	 * list is a screen of its own.
+	 * The session list folded down to a rail of avatars. Anywhere the list is a column of the shell
+	 * it can fold: the desktop workbench, and the paired client on a tablet, which keeps the columns
+	 * but not the panes. At or below the breakpoint the list is a screen of its own, and there is
+	 * nothing to fold.
 	 */
 	let sidebarCollapsed = $state(loadSidebarCollapsed());
-	const sidebarHidden = $derived(wide && sidebarCollapsed);
+	const sidebarColumn = $derived(sidebarFolds(narrow));
+	const sidebarHidden = $derived(sidebarColumn && sidebarCollapsed);
 
 	/**
 	 * The list and the rail each carry the button to become the other. Focus that was on either
@@ -1190,7 +1193,7 @@
 			return;
 		}
 		// From anywhere, typing included, but not out of a terminal off the Mac (see matchesSidebarToggle).
-		if (wide && matchesSidebarToggle(e)) {
+		if (sidebarColumn && matchesSidebarToggle(e)) {
 			e.preventDefault();
 			toggleSidebar();
 			return;
@@ -1369,7 +1372,7 @@
 			onOpenSettings={() => runtime.openSettings()}
 			onCreateBot={openCreateBot}
 			onCreateGroup={openCreateGroup}
-			onCollapse={wide ? toggleSidebar : undefined}
+			onCollapse={sidebarColumn ? toggleSidebar : undefined}
 		/>
 	{/if}
 	<button
