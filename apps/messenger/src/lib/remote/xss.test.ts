@@ -55,7 +55,8 @@ test("SVG sanitizer fails closed on bypass forms", () => {
 });
 
 test("chat and markdown SVG thumbs use the same sanitizer as artifact preview", () => {
-  const preview = readFileSync(new URL("../overlays/ArtifactPreview.svelte", import.meta.url), "utf8");
+  // The preview pane's loader is where an SVG is turned into its display blob.
+  const preview = readFileSync(new URL("../overlays/artifact-loader.svelte.ts", import.meta.url), "utf8");
   const attachments = readFileSync(new URL("../chat/MessageAttachments.svelte", import.meta.url), "utf8");
   const markdown = readFileSync(new URL("../MarkdownBody.svelte", import.meta.url), "utf8");
   expect(preview).toContain("svgDisplayBlob");
