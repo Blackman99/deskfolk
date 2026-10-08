@@ -3,7 +3,6 @@
   "allow": {
     "apps/messenger/src/lib/Shell.svelte": 2550,
     "apps/messenger/src/lib/chat/ChatStage.svelte": 3800,
-    "apps/messenger/src/lib/chat/Composer.svelte": 2250,
     "apps/messenger/src/lib/overlays/ArtifactPreview.svelte": 2600,
     "apps/messenger/src/lib/overlays/PdfViewer.svelte": 2150,
     "apps/messenger/src/lib/panels/ProfilePane.svelte": 2400,

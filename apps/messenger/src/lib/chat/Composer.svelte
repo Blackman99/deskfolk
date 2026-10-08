@@ -1,47 +1,36 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import { USER_MEMBER, type Bot, type Message, type SessionSummary } from '@real-bot/protocol';
-	import { formatFileSize, isImageFileName } from './attachments.ts';
-	import { avatarSrc, botAvatarColor } from '../avatar.ts';
+	import type { SessionSummary } from '@real-bot/protocol';
 	import { composerAction, composerLocked, lockedReason } from './composer-mode.ts';
-	import { insertComposerNewline } from './composer-editor.ts';
 	import { keyboardInset } from './composer-inset.ts';
 	import {
-		COMPOSER_IME_IDLE,
-		composerImeKeyAction,
 		composerImeOnEnd,
 		composerImeOnStart,
 		composerImeOnUpdate,
+		COMPOSER_IME_IDLE,
 		type ComposerImeState
 	} from './composer-ime.ts';
 	import type { Copy } from '../copy.ts';
 	import { classifySession, isFileDropSession, presentBotIds, youBotPeer } from '../sidebar/session-groups.ts';
 	import {
 		deleteChipElement,
-		getTextBeforeCaret,
-		handleEditorBackspace,
-		handleEditorDelete,
-		insertMentionChipAtCaret,
-		parseMentionHref,
 		serializeEditorText,
 		setEditorContentFromText
 	} from './mention-chips.ts';
-	import {
-		applyMentionCandidate,
-		detectMentionTrigger,
-		scrollTopToRevealRect,
-		shouldIgnoreKeyUp,
-		updateMentionTrigger
-	} from './mention-popup.ts';
-	import { quotePreview, quotedBotName } from './quote-reply.ts';
-	import { rosterLetter } from '../sidebar/roster-letter.ts';
+	import { shouldIgnoreKeyUp } from './mention-popup.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
-	import type { SessionView, StagedAttachment, StagedWorkspacePath } from '../session-view.svelte.ts';
 	import { isLiveStatus } from './transcript.ts';
-	import { isOutside } from '../click-outside.ts';
-	import { workspaceDrag, workspaceDropTarget, type WorkspaceDragItem } from '../workspace-drag.svelte.ts';
-	import FileIcon from '../overlays/FileIcon.svelte';
-	import { fileIconFor } from '../overlays/file-icon.ts';
+	import { workspaceDropTarget } from '../workspace-drag.svelte.ts';
+	import { ComposerAttachments } from './composer-attachments.svelte.ts';
+	import { handleComposerKey, type ComposerKeyContext } from './composer-keys.ts';
+	import { ComposerMentions } from './composer-mentions.svelte.ts';
+	import ComposerAttachmentsBar from './ComposerAttachments.svelte';
+	import ComposerEditor from './ComposerEditor.svelte';
+	import ComposerQuote from './ComposerQuote.svelte';
+	import ComposerSuggestions from './ComposerSuggestions.svelte';
+	import ScrollBottomButton from './ScrollBottomButton.svelte';
+	import MentionPopup from './MentionPopup.svelte';
+	import SendButton from './SendButton.svelte';
 	import StopMenu from './StopMenu.svelte';
 	import { conversationStopItems, type StopMenuItem } from './stop-menu.ts';
 
@@ -98,14 +87,6 @@
 		selected ? snapshot.pendingJudgements.filter((j) => j.session_id === selected.id) : []
 	);
 
-	type MentionCandidate = {
-		id: string;
-		name: string;
-		isEveryone: boolean;
-		avatar?: string | null;
-		duties?: string;
-	};
-
 	/** Focus from outside: a quote reply or a starter chip lands the caret here. */
 	export function focus(): void {
 		editorEl?.focus();
@@ -115,29 +96,28 @@
 
 	let composerIme = $state<ComposerImeState>(COMPOSER_IME_IDLE);
 
-	/** Staged on the conversation, so they wait there when you look at another one. */
-	const pendingAttachments = $derived(view?.stagedAttachments ?? []);
-	function stageAttachments(next: StagedAttachment[]): void {
-		if (view) view.stagedAttachments = next;
-	}
-	/** Dragged in from the file tree, and staged the same way. */
-	const pendingPaths = $derived(view?.stagedPaths ?? []);
-
-	let fileInputEl = $state<HTMLInputElement | null>(null);
-
-	let showMentionPopup = $state(false);
-
-	let mentionQuery = $state('');
-
-	let mentionAnchorIndex = $state(-1);
-
-	let mentionHighlightIndex = $state(0);
-
-	let mentionDismissed = $state(false);
-
-	let mentionPopupEl = $state<HTMLDivElement | null>(null);
-
 	const lockedComposer = $derived(composerLocked(selected, botsById));
+
+	const mentions = new ComposerMentions({
+		selected: () => selected,
+		editorEl: () => editorEl,
+		fileDrop: () => fileDrop,
+		botsById: () => botsById,
+		visibleBots: () => visibleBots,
+		groupPresent: () => groupPresent,
+		t: () => t,
+		syncDraftFromEditor: () => syncDraftFromEditor()
+	});
+	const attachments = new ComposerAttachments({
+		runtime: () => runtime,
+		selected: () => selected,
+		view: () => view,
+		lockedComposer: () => lockedComposer,
+		connected: () => connected,
+		fileDrop: () => fileDrop,
+		editorEl: () => editorEl
+	});
+
 	/**
 	 * A group's stop menu: the group, each Bot at work in it, this job, every Bot (ADR 0040 P2).
 	 * Only once the daemon has stops, and only while someone in it is at work; Send stays the main
@@ -186,7 +166,7 @@
 
 	/** Something to send: text, or files staged without any. */
 	const hasContent = $derived(
-		Boolean(view?.draft.trim()) || pendingAttachments.length > 0 || pendingPaths.length > 0
+		Boolean(view?.draft.trim()) || attachments.pendingAttachments.length > 0 || attachments.pendingPaths.length > 0
 	);
 
 	const primaryAction = $derived(composerAction({
@@ -211,30 +191,6 @@
 		selectedKind === 'you-bot' && !lockedComposer && Boolean(liveTurn) && primaryAction.kind === 'send'
 	);
 
-	/**
-	 * A send the Mac next door answers at once shows nothing. One still on its way after this long —
-	 * over the relay, behind a picture already downloading, a file uploading — says so on the
-	 * button, where a greyed-out one looked exactly like a composer with nothing to send.
-	 */
-	const SENDING_SHOW_MS = 250;
-	let sendingShown = $state(false);
-	$effect(() => {
-		if (!view?.sending) {
-			sendingShown = false;
-			return;
-		}
-		const timer = setTimeout(() => {
-			sendingShown = true;
-		}, SENDING_SHOW_MS);
-		return () => clearTimeout(timer);
-	});
-	/** 0–1 across every file of the send in flight, once the link reports it. */
-	const uploadFraction = $derived.by(() => {
-		const upload = view?.upload;
-		if (!upload) return null;
-		const total = upload.files.reduce((n, file) => n + file.size, 0);
-		return total > 0 ? Math.min(1, upload.loaded / total) : null;
-	});
 	/** A staged file's own share: the files go out one after the other, in the order they were sent. */
 	function uploadedPercent(file: File): number | null {
 		const upload = view?.upload;
@@ -243,9 +199,6 @@
 		const before = upload.files.slice(0, at).reduce((n, row) => n + row.size, 0);
 		return Math.floor(Math.max(0, Math.min(1, (upload.loaded - before) / file.size)) * 100);
 	}
-	/** The ring drawn on the send button while files upload. */
-	const RING_RADIUS = 8;
-	const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
 
 	/** Somewhere to send what ✨ drafts: not a locked composer, and no Bot reads the file conversation. */
 	const canSuggest = $derived(Boolean(selected) && !lockedComposer && !fileDrop);
@@ -284,152 +237,20 @@
 		return () => clearTimeout(timer);
 	});
 
-	let suggestScrollEl = $state<HTMLDivElement | null>(null);
-	let suggestMoreStart = $state(false);
-	let suggestMoreEnd = $state(false);
-
-	/**
-	 * The chips stay one row and scroll sideways. A mouse wheel only scrolls down, which in a
-	 * narrow pane left the chips past the edge out of reach, so it is turned sideways here; the
-	 * edges fade while there is more that way, rather than a chip ending in a hard cut.
-	 */
-	$effect(() => {
-		const row = suggestScrollEl;
-		void view?.composerSuggestions;
-		if (!row) return;
-		const edges = () => {
-			const max = row.scrollWidth - row.clientWidth;
-			suggestMoreStart = row.scrollLeft > 1;
-			suggestMoreEnd = row.scrollLeft < max - 1;
-		};
-		const onWheel = (e: WheelEvent) => {
-			if (Math.abs(e.deltaY) <= Math.abs(e.deltaX) || row.scrollWidth <= row.clientWidth) return;
-			e.preventDefault();
-			row.scrollLeft += e.deltaY;
-		};
-		edges();
-		row.addEventListener('scroll', edges, { passive: true });
-		row.addEventListener('wheel', onWheel, { passive: false });
-		const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(edges);
-		observer?.observe(row);
-		return () => {
-			row.removeEventListener('scroll', edges);
-			row.removeEventListener('wheel', onWheel);
-			observer?.disconnect();
-		};
-	});
-
-	const mentionCandidates = $derived.by<MentionCandidate[]>(() => {
-		if (!showMentionPopup) return [];
-		const q = mentionQuery.toLowerCase();
-		const results: MentionCandidate[] = [];
-		const isGroup = selected?.kind === 'group';
-		if (isGroup && 'everyone'.includes(q)) {
-			results.push({
-				id: 'everyone',
-				name: 'everyone',
-				isEveryone: true,
-				duties: t.chat.mentionTooltip,
-			});
-		}
-		const botsList = isGroup
-			? groupPresent.map((id) => botsById.get(id)).filter((b): b is Bot => Boolean(b))
-			: visibleBots;
-		for (const b of botsList) {
-			if (b.name.toLowerCase().includes(q) || (b.duties && b.duties.toLowerCase().includes(q))) {
-				results.push({
-					id: b.id,
-					name: b.name,
-					isEveryone: false,
-					avatar: b.avatar,
-					duties: b.duties,
-				});
-			}
-		}
-		return results;
-	});
-
 	const quoteTarget = $derived(
 		view?.replyingToId
 			? (snapshot.messages.find((m) => m.id === view.replyingToId) ?? null)
 			: null
 	);
 
-	function scrollMentionHighlightIntoView(index = mentionHighlightIndex): void {
-		const popup = mentionPopupEl;
-		if (!popup) return;
-		const item = popup.querySelectorAll<HTMLElement>('.autocomplete-item')[index];
-		if (!item) return;
-		const popupRect = popup.getBoundingClientRect();
-		const itemRect = item.getBoundingClientRect();
-		popup.scrollTop = scrollTopToRevealRect(
-			popup.scrollTop,
-			popupRect.top,
-			popupRect.bottom,
-			itemRect.top,
-			itemRect.bottom
-		);
-	}
-
 	function syncDraftFromEditor(): void {
 		if (!editorEl) return;
 		if (view) view.draft = serializeEditorText(editorEl);
 	}
 
-	function checkMentionTrigger(): void {
-		// No Bot reads the file conversation, so there is no one to mention.
-		if (!editorEl || fileDrop) {
-			showMentionPopup = false;
-			mentionDismissed = false;
-			mentionQuery = '';
-			mentionAnchorIndex = -1;
-			return;
-		}
-		const textBefore = getTextBeforeCaret(editorEl);
-		const trigger = detectMentionTrigger(textBefore, textBefore.length);
-		if (!trigger.active) {
-			showMentionPopup = false;
-			mentionQuery = '';
-			mentionAnchorIndex = -1;
-			mentionHighlightIndex = 0;
-			mentionDismissed = false;
-			return;
-		}
-
-		if (
-			mentionDismissed &&
-			trigger.anchorIndex === mentionAnchorIndex &&
-			trigger.query === mentionQuery
-		) {
-			return;
-		}
-
-		const shouldResetHighlight =
-			!showMentionPopup ||
-			trigger.query !== mentionQuery ||
-			trigger.anchorIndex !== mentionAnchorIndex;
-
-		showMentionPopup = true;
-		mentionQuery = trigger.query;
-		mentionAnchorIndex = trigger.anchorIndex;
-		mentionHighlightIndex = shouldResetHighlight ? 0 : mentionHighlightIndex;
-		mentionDismissed = false;
-	}
-
-	function selectMentionCandidate(candidate: MentionCandidate): void {
-		if (!editorEl) return;
-		insertMentionChipAtCaret(editorEl, candidate, botsById);
-		syncDraftFromEditor();
-		showMentionPopup = false;
-		mentionDismissed = false;
-		mentionQuery = '';
-		mentionAnchorIndex = -1;
-		editorEl.focus();
-	}
-
 	function onEditorInput(): void {
 		syncDraftFromEditor();
-		checkMentionTrigger();
+		mentions.checkMentionTrigger();
 	}
 
 	function onEditorClick(ev: MouseEvent): void {
@@ -443,41 +264,13 @@
 				if (chip) {
 					deleteChipElement(chip);
 					syncDraftFromEditor();
-					checkMentionTrigger();
+					mentions.checkMentionTrigger();
 					editorEl?.focus();
 				}
 				return;
 			}
 		}
-		checkMentionTrigger();
-	}
-
-	function addFiles(files: FileList | File[]): void {
-		const next: StagedAttachment[] = [];
-		for (let i = 0; i < files.length; i++) {
-			const file = files[i];
-			if (!file) continue;
-			const isImage = file.type.startsWith('image/');
-			let previewUrl: string | null = null;
-			if (isImage) {
-				previewUrl = URL.createObjectURL(file);
-			}
-			const id = Math.random().toString(36).slice(2) + Date.now().toString(36);
-			let name = file.name;
-			if (!name || name === 'image.png' || name === 'blob') {
-				name = `image-${Date.now().toString().slice(-4)}.png`;
-			}
-			next.push({ id, file, name, size: file.size, isImage, previewUrl });
-		}
-		stageAttachments([...pendingAttachments, ...next]);
-	}
-
-	function removePendingAttachment(id: string): void {
-		const target = pendingAttachments.find((a) => a.id === id);
-		if (target?.previewUrl) {
-			URL.revokeObjectURL(target.previewUrl);
-		}
-		stageAttachments(pendingAttachments.filter((a) => a.id !== id));
+		mentions.checkMentionTrigger();
 	}
 
 	function onComposerPaste(ev: ClipboardEvent): void {
@@ -497,7 +290,7 @@
 			}
 			if (files.length > 0) {
 				ev.preventDefault();
-				addFiles(files);
+				attachments.addFiles(files);
 				return;
 			}
 		}
@@ -519,91 +312,7 @@
 			editorEl.appendChild(document.createTextNode(text));
 		}
 		syncDraftFromEditor();
-		checkMentionTrigger();
-	}
-
-	function onFileInputChange(ev: Event): void {
-		const input = ev.currentTarget as HTMLInputElement;
-		if (input.files && input.files.length > 0) {
-			addFiles(input.files);
-			input.value = '';
-		}
-	}
-
-	function openFilePicker(): void {
-		if (lockedComposer || !connected || !selected || view?.sending) return;
-		fileInputEl?.click();
-	}
-
-	/**
-	 * Whether a drag out of the file tree lands here now. The file conversation takes files from
-	 * elsewhere, not what is already in the workspace; a locked or sending composer takes nothing.
-	 */
-	function takesWorkspaceItems(): boolean {
-		return Boolean(selected && view) && !fileDrop && !lockedComposer && connected && !view?.sending;
-	}
-
-	let cardEl = $state<HTMLElement | null>(null);
-	const treeDrag = $derived(workspaceDrag.current);
-	/** A drag from the tree is on its way and would land here: the card says it can take it. */
-	const dropReady = $derived(Boolean(treeDrag) && takesWorkspaceItems());
-	const dropOver = $derived(Boolean(treeDrag && cardEl && treeDrag.over === cardEl));
-
-	function stageWorkspaceItems(items: WorkspaceDragItem[]): void {
-		const target = view;
-		if (!target) return;
-		const staged = new Set(target.stagedPaths.map((row) => row.path));
-		const next: StagedWorkspacePath[] = [];
-		for (const item of items) {
-			if (staged.has(item.path)) continue;
-			staged.add(item.path);
-			const name = item.path.split('/').pop() || item.path;
-			const id = Math.random().toString(36).slice(2) + Date.now().toString(36);
-			next.push({ id, path: item.path, name, isDir: item.isDir, isImage: !item.isDir && isImageFileName(name), previewUrl: null });
-		}
-		if (next.length === 0) return;
-		target.stagedPaths = [...target.stagedPaths, ...next];
-		for (const row of next) if (row.isImage) void loadPathPreview(target, row.id, row.path);
-		editorEl?.focus();
-	}
-
-	/** The Mac's 256 px copy of a picture, as for one a message names by its path. */
-	async function loadPathPreview(target: SessionView, id: string, path: string): Promise<void> {
-		const client = runtime.client;
-		if (!client) return;
-		let url: string;
-		try {
-			url = URL.createObjectURL(await client.getWorkspaceFileBlob(path, undefined, { background: true, size: 'thumb' }));
-		} catch {
-			return;
-		}
-		// Taken back or sent while it loaded.
-		if (!target.stagedPaths.some((row) => row.id === id)) {
-			URL.revokeObjectURL(url);
-			return;
-		}
-		target.stagedPaths = target.stagedPaths.map((row) => (row.id === id ? { ...row, previewUrl: url } : row));
-	}
-
-	function removePendingPath(id: string): void {
-		if (!view) return;
-		const target = view.stagedPaths.find((row) => row.id === id);
-		if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
-		view.stagedPaths = view.stagedPaths.filter((row) => row.id !== id);
-	}
-
-	function onFileDragOver(ev: DragEvent): void {
-		if (!fileDrop || lockedComposer || !connected || view?.sending) return;
-		if (!ev.dataTransfer?.types.includes('Files')) return;
-		ev.preventDefault();
-	}
-
-	function onFileDrop(ev: DragEvent): void {
-		if (!fileDrop || lockedComposer || !connected || view?.sending) return;
-		const dropped = ev.dataTransfer?.files;
-		if (!dropped || dropped.length === 0) return;
-		ev.preventDefault();
-		addFiles(dropped);
+		mentions.checkMentionTrigger();
 	}
 
 	function onComposerCompositionStart(): void {
@@ -618,110 +327,25 @@
 		composerIme = composerImeOnEnd(performance.now());
 	}
 
+	const keyContext: ComposerKeyContext = {
+		composerIme: () => composerIme,
+		setComposerIme: (next) => {
+			composerIme = next;
+		},
+		lockedComposer: () => lockedComposer,
+		selected: () => selected,
+		mentions,
+		onEditLast: () => onEditLast,
+		hasContent: () => hasContent,
+		view: () => view,
+		editorEl: () => editorEl,
+		syncDraftFromEditor: () => syncDraftFromEditor(),
+		checkMentionTrigger: () => mentions.checkMentionTrigger(),
+		send: () => send()
+	};
+
 	function onComposerKey(ev: KeyboardEvent): void {
-		const imeAction = composerImeKeyAction(
-			{
-				isComposing: ev.isComposing,
-				key: ev.key,
-				keyCode: ev.keyCode,
-				which: ev.which,
-				shiftKey: ev.shiftKey,
-				metaKey: ev.metaKey,
-				ctrlKey: ev.ctrlKey
-			},
-			composerIme,
-			performance.now()
-		);
-		if (imeAction === 'swallow') {
-			ev.preventDefault();
-			composerIme = COMPOSER_IME_IDLE;
-			return;
-		}
-		if (imeAction === 'ignore' || lockedComposer || !selected) return;
-		if (showMentionPopup) {
-			if (mentionCandidates.length > 0) {
-				if (ev.key === 'ArrowDown') {
-					ev.preventDefault();
-					ev.stopPropagation();
-					const next = (mentionHighlightIndex + 1) % mentionCandidates.length;
-					mentionHighlightIndex = next;
-					scrollMentionHighlightIntoView(next);
-					return;
-				}
-				if (ev.key === 'ArrowUp') {
-					ev.preventDefault();
-					ev.stopPropagation();
-					const next =
-						(mentionHighlightIndex - 1 + mentionCandidates.length) % mentionCandidates.length;
-					mentionHighlightIndex = next;
-					scrollMentionHighlightIntoView(next);
-					return;
-				}
-				if (ev.key === 'Enter' || ev.key === 'Tab') {
-					ev.preventDefault();
-					ev.stopPropagation();
-					const candidate = mentionCandidates[mentionHighlightIndex];
-					if (candidate) {
-						selectMentionCandidate(candidate);
-					}
-					return;
-				}
-			}
-			if (ev.key === 'Escape') {
-				ev.preventDefault();
-				ev.stopPropagation();
-				showMentionPopup = false;
-				mentionDismissed = true;
-				return;
-			}
-		}
-
-		// ↑ in an empty box opens your newest line here for changing, as in other chat apps (ADR 0063).
-		if (
-			ev.key === 'ArrowUp' &&
-			!ev.shiftKey && !ev.altKey && !ev.metaKey && !ev.ctrlKey &&
-			onEditLast &&
-			!hasContent &&
-			!(view?.draft ?? '').trim()
-		) {
-			if (onEditLast()) {
-				ev.preventDefault();
-				return;
-			}
-		}
-
-		if (ev.key === 'Backspace' && editorEl) {
-			if (handleEditorBackspace(editorEl)) {
-				ev.preventDefault();
-				ev.stopPropagation();
-				syncDraftFromEditor();
-				checkMentionTrigger();
-				return;
-			}
-		}
-
-		if (ev.key === 'Delete' && editorEl) {
-			if (handleEditorDelete(editorEl)) {
-				ev.preventDefault();
-				ev.stopPropagation();
-				syncDraftFromEditor();
-				checkMentionTrigger();
-				return;
-			}
-		}
-
-		if ((ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey)) || (ev.key === 'Enter' && !ev.shiftKey)) {
-			ev.preventDefault();
-			void send();
-			return;
-		}
-
-		if (ev.key === 'Enter' && ev.shiftKey) {
-			ev.preventDefault();
-			if (editorEl) insertComposerNewline(editorEl);
-			syncDraftFromEditor();
-			return;
-		}
+		handleComposerKey(ev, keyContext);
 	}
 
 	function onComposerKeyUp(ev: KeyboardEvent): void {
@@ -729,45 +353,12 @@
 			return;
 		}
 		syncDraftFromEditor();
-		checkMentionTrigger();
-	}
-
-	function quoteLabel(message: Message): string {
-		if (message.author === USER_MEMBER) return t.chat.replyToYou;
-		const name = quotedBotName(message, botsById);
-		return name ? t.chat.replyTo(name) : t.chat.replyToDeleted;
+		mentions.checkMentionTrigger();
 	}
 
 	function cancelQuoteReply(): void {
 		if (view) view.replyingToId = null;
 	}
-
-	/** Only the mention popup closes on an outside click; Escape order is the shell's. */
-	function onWindowClick(e: MouseEvent): void {
-		const target = e.target as Node | null;
-		if (showMentionPopup && isOutside(target, editorEl, mentionPopupEl)) {
-			showMentionPopup = false;
-			mentionDismissed = false;
-		}
-	}
-
-	/**
-	 * Another conversation in this composer clears whatever was half-typed into the mention popup.
-	 * This one's, not the selected one's: clicking into another pane is not a change here.
-	 */
-	$effect(() => {
-		void selected?.id;
-		showMentionPopup = false;
-		mentionDismissed = false;
-		mentionQuery = '';
-		mentionAnchorIndex = -1;
-	});
-
-	$effect(() => {
-		if (mentionHighlightIndex >= mentionCandidates.length && mentionCandidates.length > 0) {
-			mentionHighlightIndex = mentionCandidates.length - 1;
-		}
-	});
 
 	/** The draft belongs to the conversation; the contenteditable follows it, whoever set it. */
 	$effect(() => {
@@ -793,8 +384,8 @@
 		if (editorEl) syncDraftFromEditor();
 		if (primaryAction.kind !== 'send' || primaryAction.disabled || !view) return;
 		const target = view;
-		const staged = [...pendingAttachments];
-		const stagedPaths = [...pendingPaths];
+		const staged = [...attachments.pendingAttachments];
+		const stagedPaths = [...attachments.pendingPaths];
 		if (!(await onSend(staged.map((a) => a.file), stagedPaths.map((row) => row.path)))) return;
 		for (const a of [...staged, ...stagedPaths]) {
 			if (a.previewUrl) URL.revokeObjectURL(a.previewUrl);
@@ -836,84 +427,30 @@
 	});
 </script>
 
-<svelte:window onclick={onWindowClick} />
+<svelte:window onclick={mentions.onWindowClick} />
 
-		<footer class="composer" bind:this={composerEl} ondragover={onFileDragOver} ondrop={onFileDrop}>
-{#if showMentionPopup && mentionCandidates.length > 0}
-	<div
-		bind:this={mentionPopupEl}
-		class="mention-autocomplete-popup"
-		role="listbox"
-		tabindex="-1"
-		onmousedown={(e) => e.preventDefault()}
-	>
-		<div class="autocomplete-header text-11 font-semibold uppercase text-muted pt-3 px-5 pb-2 tracking-[0.04em]">{t.chat.mentionTooltip}</div>
-		{#each mentionCandidates as cand, idx (cand.id)}
-			{@const pal = !cand.isEveryone ? botAvatarColor(cand.id) : null}
-			<button
-				type="button"
-				role="option"
-				aria-selected={idx === mentionHighlightIndex}
-				class="autocomplete-item"
-				class:is-highlighted={idx === mentionHighlightIndex}
-				onclick={() => selectMentionCandidate(cand)}
-				onmouseenter={() => (mentionHighlightIndex = idx)}
-			>
-				{#if cand.isEveryone}
-					<span class="autocomplete-avatar is-everyone">👥</span>
-				{:else if cand.avatar && avatarSrc(cand.avatar)}
-					<img src={avatarSrc(cand.avatar)} alt="" class="autocomplete-avatar-img w-13 h-13 rounded-[50%] object-cover shrink-0" />
-				{:else if pal}
-					<span class="autocomplete-avatar" style="background: {pal.bg}; color: {pal.text}; border-color: {pal.border}">
-						{rosterLetter(cand.name)}
-					</span>
-				{/if}
-				<div class="autocomplete-info flex flex-col min-w-0 flex-1">
-					<span class="autocomplete-name text-13 font-semibold text-ink">@{cand.name}</span>
-					{#if cand.duties}
-						<span class="autocomplete-desc text-11 text-muted overflow-hidden text-ellipsis whitespace-nowrap">{cand.duties}</span>
-					{/if}
-				</div>
-			</button>
-		{/each}
-	</div>
+		<footer class="composer" bind:this={composerEl} ondragover={attachments.onFileDragOver} ondrop={attachments.onFileDrop}>
+{#if mentions.showMentionPopup && mentions.mentionCandidates.length > 0}
+	<MentionPopup {mentions} {t} />
 {/if}
 
 <div class="composer-dock">
 {#if canSuggest && view && suggestionsShown}
 	<div class="composer-frost-shell composer-suggest-bar" role="group" aria-label={t.chat.suggestNext}>
-		<div
-			bind:this={suggestScrollEl}
-			class="suggest-scroll"
-			class:has-more-start={suggestMoreStart}
-			class:has-more-end={suggestMoreEnd}
-		>
-			{#each view.composerSuggestions as suggestion (suggestion.id)}
-				<button
-					type="button"
-					class="suggest-chip"
-					title={suggestion.prompt}
-					onclick={() => onPickPrompt(suggestion.prompt)}
-				>
-					{suggestion.label}
-				</button>
-			{:else}
-				<span class="suggest-note" role="status">{t.composer.suggestNone}</span>
-			{/each}
-		</div>
+		<ComposerSuggestions suggestions={view.composerSuggestions} {t} {onPickPrompt} />
 	</div>
 {/if}
 
 <div class="composer-card-wrap">
 <div class="composer-frost-shell composer-card-shell">
 <div
-	bind:this={cardEl}
+	bind:this={attachments.cardEl}
 	class="composer-card"
 	class:is-locked={lockedComposer}
-	class:is-drop-ready={dropReady}
-	class:is-drop-over={dropOver}
+	class:is-drop-ready={attachments.dropReady}
+	class:is-drop-over={attachments.dropOver}
 	role="presentation"
-	use:workspaceDropTarget={{ accepts: takesWorkspaceItems, drop: stageWorkspaceItems }}
+	use:workspaceDropTarget={{ accepts: attachments.takesWorkspaceItems, drop: attachments.stageWorkspaceItems }}
 	onclick={(e) => {
 		const target = e.target as HTMLElement | null;
 		if (selected && !lockedComposer && target && !target.closest('button, input, [contenteditable="true"]')) {
@@ -922,21 +459,7 @@
 	}}
 >
 	{#if quoteTarget}
-		<div class="composer-quote-bar">
-			<div class="composer-quote-meta min-w-0 flex-1 flex flex-col gap-1">
-				<span class="composer-quote-who">{quoteLabel(quoteTarget)}</span>
-				<span class="composer-quote-body text-12 text-muted overflow-hidden text-ellipsis whitespace-nowrap">{quotePreview(quoteTarget.body)}</span>
-			</div>
-			<button
-				type="button"
-				class="composer-quote-cancel"
-				title={t.chat.cancelReply}
-				aria-label={t.chat.cancelReply}
-				onclick={cancelQuoteReply}
-			>
-				<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-			</button>
-		</div>
+		<ComposerQuote message={quoteTarget} {t} {botsById} onCancel={cancelQuoteReply} />
 	{/if}
 	{#if lockedComposer}
 		<div class="composer-locked-message flex items-center justify-center gap-4 py-1 px-0 text-muted text-13 font-medium">
@@ -945,71 +468,27 @@
 		</div>
 	{/if}
 
-	{#if dropOver}
+	{#if attachments.dropOver}
 		<div class="composer-drop-hint" aria-hidden="true">{t.composer.dropWorkspaceItems}</div>
 	{/if}
 
-	{#if pendingAttachments.length > 0 || pendingPaths.length > 0}
-		<div class="composer-attachments-bar">
-			{#each pendingAttachments as att (att.id)}
-				{@const uploaded = uploadedPercent(att.file)}
-				<div class="composer-attachment-item" class:is-img={att.isImage}>
-					{#if att.isImage && att.previewUrl}
-						<img src={att.previewUrl} alt={att.name} class="attachment-preview-img" data-copy-image />
-					{:else}
-						<div class="attachment-file-icon">
-							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
-						</div>
-					{/if}
-					<div class="attachment-meta flex flex-col min-w-0 flex-1">
-						<span class="attachment-name text-12 font-medium text-ink overflow-hidden text-ellipsis whitespace-nowrap" title={att.name}>{att.name}</span>
-						<span class="attachment-size mono text-10 text-muted">{formatFileSize(att.size)}{uploaded === null ? '' : ` · ${t.composer.uploaded(uploaded)}`}</span>
-					</div>
-					<button
-						type="button"
-						class="attachment-delete-btn"
-						title={t.composer.removeAttachment}
-						aria-label="Remove attachment {att.name}"
-						disabled={view?.sending}
-						onclick={() => removePendingAttachment(att.id)}
-					>
-						<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-					</button>
-				</div>
-			{/each}
-			{#each pendingPaths as ref (ref.id)}
-				<div class="composer-attachment-item is-workspace-ref" class:is-img={Boolean(ref.previewUrl)} title="{ref.path} · {t.composer.workspaceRef}">
-					{#if ref.previewUrl}
-						<img src={ref.previewUrl} alt={ref.name} class="attachment-preview-img" />
-					{:else}
-						<div class="attachment-file-icon">
-							<FileIcon icon={fileIconFor(ref.path, { isDir: ref.isDir })} size={16} />
-						</div>
-					{/if}
-					<div class="attachment-meta flex flex-col min-w-0 flex-1">
-						<span class="attachment-name text-12 font-medium text-ink overflow-hidden text-ellipsis whitespace-nowrap">{ref.name}</span>
-						<span class="attachment-size mono text-10 text-muted overflow-hidden text-ellipsis whitespace-nowrap">{ref.path}</span>
-					</div>
-					<button
-						type="button"
-						class="attachment-delete-btn"
-						title={t.composer.removeAttachment}
-						aria-label="{t.composer.removeAttachment} {ref.name}"
-						disabled={view?.sending}
-						onclick={() => removePendingPath(ref.id)}
-					>
-						<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-					</button>
-				</div>
-			{/each}
-		</div>
+	{#if attachments.pendingAttachments.length > 0 || attachments.pendingPaths.length > 0}
+		<ComposerAttachmentsBar
+			{t}
+			pendingAttachments={attachments.pendingAttachments}
+			pendingPaths={attachments.pendingPaths}
+			sending={view?.sending}
+			{uploadedPercent}
+			onRemoveAttachment={attachments.removePendingAttachment}
+			onRemovePath={attachments.removePendingPath}
+		/>
 	{/if}
 
 	<div
 		class="composer-row flex items-end gap-2 w-full"
 		class:is-file-drop={fileDrop}
-		ondragover={onFileDragOver}
-		ondrop={onFileDrop}
+		ondragover={attachments.onFileDragOver}
+		ondrop={attachments.onFileDrop}
 	>
 		<button
 			type="button"
@@ -1017,7 +496,7 @@
 			title={t.composer.attach}
 			aria-label={t.composer.attach}
 			disabled={!connected || !selected || lockedComposer || view?.sending}
-			onclick={openFilePicker}
+			onclick={attachments.openFilePicker}
 		>
 			<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 				<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
@@ -1026,32 +505,26 @@
 		<input
 			type="file"
 			multiple
-			bind:this={fileInputEl}
-			onchange={onFileInputChange}
+			bind:this={attachments.fileInputEl}
+			onchange={attachments.onFileInputChange}
 			style="display: none;"
 		/>
-		<div class="composer-editor-wrap" class:is-file-drop={fileDrop}>
-		<div
-			bind:this={editorEl}
-			class="composer-input"
-			class:is-empty={!view?.draft}
-			role="textbox"
-			aria-multiline="true"
-			aria-label={placeholder}
-			aria-describedby={!lockedComposer ? 'composer-hint' : undefined}
-			data-placeholder={placeholder}
-			contenteditable={Boolean(selected) && !lockedComposer}
-			tabindex="0"
-			oninput={onEditorInput}
-			onkeydown={onComposerKey}
-			onkeyup={onComposerKeyUp}
-			oncompositionstart={onComposerCompositionStart}
-			oncompositionupdate={onComposerCompositionUpdate}
-			oncompositionend={onComposerCompositionEnd}
-			onclick={onEditorClick}
-			onpaste={onComposerPaste}
-		></div>
-		</div>
+		<ComposerEditor
+			bind:el={editorEl}
+			{placeholder}
+			empty={!view?.draft}
+			{lockedComposer}
+			editable={Boolean(selected) && !lockedComposer}
+			{fileDrop}
+			onInput={onEditorInput}
+			onKey={onComposerKey}
+			onKeyUp={onComposerKeyUp}
+			onCompositionStart={onComposerCompositionStart}
+			onCompositionUpdate={onComposerCompositionUpdate}
+			onCompositionEnd={onComposerCompositionEnd}
+			onClick={onEditorClick}
+			onPaste={onComposerPaste}
+		/>
 		<!-- Beside send rather than the attachment button, so a thumb has one of them on each side. -->
 		{#if canSuggest}
 			<button
@@ -1076,67 +549,20 @@
 		{#if stopItems.length > 0}
 			<StopMenu items={stopItems} {t} disabled={!connected} onPick={pickStop} />
 		{/if}
-		{#if directStop}
-			<button
-				type="button"
-				class="composer-action stop"
-				disabled={!connected}
-				aria-label={t.composer.stopGeneration}
-				title={t.composer.stopGeneration}
-				onclick={() => void runtime.stopTurn(selected?.id)}
-			>
-				<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
-			</button>
-		{/if}
-		<button
-			type="button"
-			class="composer-action"
-			class:send={primaryAction.kind === 'send'}
-			class:stop={primaryAction.kind === 'stop'}
-			class:is-sending={primaryAction.kind === 'send' && sendingShown}
-			disabled={primaryAction.disabled}
-			aria-busy={primaryAction.kind === 'send' && sendingShown ? 'true' : undefined}
-			aria-label={primaryAction.kind === 'stop' ? t.composer.stopGeneration : sendingShown ? t.composer.sending : t.composer.send}
-			title={primaryAction.kind === 'stop' ? t.composer.stopGeneration : sendingShown ? t.composer.sending : t.chat.sendHintShortcut}
-			onclick={() => primaryAction.kind === 'stop' ? void runtime.stopTurn(selected?.id) : void send()}
-		>
-			{#if primaryAction.kind === 'stop'}
-				<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
-			{:else if sendingShown && uploadFraction !== null}
-				<svg class="send-progress" aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none">
-					<circle class="send-progress-track" cx="10" cy="10" r={RING_RADIUS} stroke-width="2"></circle>
-					<circle
-						class="send-progress-fill"
-						cx="10"
-						cy="10"
-						r={RING_RADIUS}
-						stroke-width="2"
-						stroke-linecap="round"
-						stroke-dasharray={RING_LENGTH}
-						stroke-dashoffset={RING_LENGTH * (1 - uploadFraction)}
-					></circle>
-				</svg>
-			{:else if sendingShown}
-				<svg class="send-spinner" aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.22-8.56"></path></svg>
-			{:else}
-				<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5m-6 6 6-6 6 6"></path></svg>
-			{/if}
-		</button>
+		<SendButton
+			{t}
+			{connected}
+			{primaryAction}
+			{directStop}
+			sending={view?.sending}
+			upload={view?.upload}
+			onStop={() => void runtime.stopTurn(selected?.id)}
+			onSend={() => void send()}
+		/>
 	</div>
 </div>
 </div>
-<div class="scroll-bottom-slot" class:is-shown={showScrollBottom} aria-hidden={showScrollBottom ? undefined : true}>
-	<button
-		type="button"
-		class="scroll-bottom-btn"
-		tabindex={showScrollBottom ? 0 : -1}
-		title={t.chat.scrollToBottom}
-		aria-label={t.chat.scrollToBottom}
-		onclick={() => onScrollToBottom?.()}
-	>
-		<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
-	</button>
-</div>
+<ScrollBottomButton shown={showScrollBottom} {t} {onScrollToBottom} />
 </div>
 {#if !lockedComposer}
 	<div class="composer-hint" id="composer-hint">
@@ -1210,51 +636,8 @@
 		pointer-events: auto;
 	}
 
-	/* The scroller is inside the frost, so fading its edges does not cut the frost's halo off. */
-	.suggest-scroll {
-		position: relative;
-		z-index: 1;
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		flex-wrap: nowrap;
-		min-width: 0;
-		padding: 4px 8px 10px 4px;
-		overflow-x: auto;
-		overflow-y: hidden;
-		overscroll-behavior-x: contain;
-		scrollbar-width: none;
-	}
-
-	.suggest-scroll::-webkit-scrollbar {
-		display: none;
-	}
-
-	.suggest-scroll.has-more-end {
-		-webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
-		mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
-	}
-
-	.suggest-scroll.has-more-start {
-		-webkit-mask-image: linear-gradient(to right, transparent, #000 28px);
-		mask-image: linear-gradient(to right, transparent, #000 28px);
-	}
-
-	.suggest-scroll.has-more-start.has-more-end {
-		-webkit-mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent);
-		mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent);
-	}
-
-	.suggest-note {
-		padding: 4px 6px;
-		font-size: 12px;
-		line-height: 1.3;
-		color: var(--muted);
-		white-space: nowrap;
-	}
-
 	/* Stop the chip row before the jump button. Padding inside a full-width bar would still cover it. */
-	.composer-dock:has(.scroll-bottom-slot.is-shown) .composer-suggest-bar {
+	.composer-dock:has(:global(.scroll-bottom-slot.is-shown)) .composer-suggest-bar {
 		max-width: calc(100% - 52px);
 	}
 
@@ -1262,93 +645,10 @@
 		inset: -8px -8px 4px -8px;
 		border-radius: 22px 22px var(--radius-md) var(--radius-md);
 	}
-
-	.suggest-chip {
-		position: relative;
-		z-index: 1;
-		pointer-events: auto;
-		flex: 0 0 auto;
-		max-width: none;
-		padding: 4px 10px;
-		border-radius: var(--radius-full);
-		font-size: 12px;
-		font-weight: 500;
-		line-height: 1.3;
-		background: var(--chip);
-		border: 1px solid var(--line);
-		color: var(--ink);
-		cursor: pointer;
-		transition: 0.12s ease;
-		transition-property: var(--transition-props);
-		text-align: left;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
-	.suggest-chip:hover {
-		background: var(--accent-tint);
-		border-color: var(--accent-border);
-		color: var(--accent);
-	}
-
 	/* The jump control floats above the card's top-right and grows out of the card. */
 	.composer-card-wrap {
 		position: relative;
 		width: 100%;
-	}
-
-	.scroll-bottom-slot {
-		position: absolute;
-		/* Above the card's frost, under the card, so the circle sinks behind the input. */
-		z-index: 1;
-		/* 32px circle, 12px of air, then 32px of travel behind the card. The slot's own clip stays inside the card. */
-		top: -44px;
-		right: 8px;
-		width: 32px;
-		height: 76px;
-		overflow: hidden;
-		pointer-events: none;
-	}
-
-	.scroll-bottom-btn {
-		width: 32px;
-		height: 32px;
-		padding: 0;
-		border: 1px solid var(--line);
-		border-radius: 50%;
-		background: var(--input-bg);
-		/* The slot is this box exactly. An outer shadow is clipped into a square halo. */
-		box-shadow: none;
-		color: var(--muted);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		cursor: pointer;
-		pointer-events: none;
-		transform: translateY(76px);
-		transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
-	}
-
-	.scroll-bottom-slot.is-shown {
-		pointer-events: auto;
-	}
-
-	.scroll-bottom-slot.is-shown .scroll-bottom-btn {
-		transform: translateY(0);
-		pointer-events: auto;
-	}
-
-	.scroll-bottom-btn:hover {
-		color: var(--accent);
-		background: var(--line-subtle);
-	}
-
-	.scroll-bottom-btn:focus-visible {
-		/* Same clip: an offset outline or outer glow is cut into a square. Draw the ring inside. */
-		outline: none;
-		border-color: transparent !important;
-		box-shadow: inset 0 0 0 2px var(--accent);
 	}
 
 	.composer-card-shell {
@@ -1428,55 +728,6 @@
 		display: none;
 	}
 
-	.composer-editor-wrap {
-		position: relative;
-		flex: 1;
-		min-width: 0;
-	}
-
-	.composer .composer-input {
-		position: relative;
-		flex: 1;
-		min-width: 0;
-		min-height: 34px;
-		max-height: 180px;
-		border: 0;
-		outline: none;
-		box-shadow: none;
-		padding: 6px 6px 6px 4px;
-		background: transparent;
-		color: var(--ink);
-		font-size: 14px;
-		line-height: 22px;
-		overflow-y: auto;
-		overflow-wrap: anywhere;
-		white-space: pre-wrap;
-		scrollbar-width: thin;
-	}
-
-	.composer .composer-input.is-empty::before {
-		content: attr(data-placeholder);
-		color: var(--muted);
-		pointer-events: none;
-		position: absolute;
-		top: 6px;
-		left: 4px;
-		right: 6px;
-		line-height: 22px;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
-	.composer .composer-input:focus-visible {
-		outline: none !important;
-	}
-
-	.composer .composer-input[contenteditable="false"] {
-		opacity: 0.45;
-		cursor: not-allowed;
-	}
-
 	.attach-btn,
 	.suggest-btn {
 		background: transparent;
@@ -1534,75 +785,6 @@
 		}
 	}
 
-	.composer-action {
-		width: 34px;
-		height: 34px;
-		flex: 0 0 34px;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		padding: 0;
-		border: 1px solid transparent;
-		border-radius: 50%;
-		margin-bottom: 0;
-		transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
-	}
-
-	.composer-action:active:not(:disabled) {
-		transform: scale(0.96);
-	}
-
-	.composer-action.send {
-		background: var(--accent);
-		color: var(--on-accent);
-	}
-
-	.composer-action.send:hover:not(:disabled) {
-		background: var(--accent-hover);
-	}
-
-	.composer-action.stop {
-		background: var(--ink);
-		color: var(--pane);
-	}
-
-	.composer-action.stop:hover:not(:disabled) {
-		background: var(--ink-secondary);
-	}
-
-	.composer-action:disabled {
-		background: var(--chip);
-		color: var(--muted);
-		cursor: not-allowed;
-	}
-
-	/* On its way: still the send button, not a composer with nothing to send. */
-	.composer-action.is-sending:disabled {
-		background: var(--accent);
-		color: var(--on-accent);
-		cursor: progress;
-	}
-
-	.send-spinner {
-		animation: suggestSpin 0.9s linear infinite;
-	}
-
-	/* Filled clockwise from twelve o'clock. */
-	.send-progress {
-		transform: rotate(-90deg);
-	}
-
-	.send-progress-track {
-		stroke: currentColor;
-		opacity: 0.35;
-	}
-
-	.send-progress-fill {
-		stroke: currentColor;
-		transition: stroke-dashoffset 0.2s linear;
-	}
-
-	.composer-action:focus-visible,
 	.composer .attach-btn:focus-visible,
 	.composer .suggest-btn:focus-visible {
 		outline: 2px solid var(--accent);
@@ -1634,313 +816,6 @@
 		font-size: 11px;
 		color: var(--muted);
 		opacity: 0.92;
-	}
-
-
-
-
-
-
-
-
-
-	/* Mention Autocomplete Popup */
-	.mention-autocomplete-popup {
-		position: absolute;
-		bottom: calc(100% - 6px);
-		left: max(24px, calc(50% - (var(--chat-max-width) / 2)));
-		width: min(380px, calc(100% - 48px));
-		max-height: 240px;
-		overflow-y: auto;
-		background: var(--pane);
-		border: 1px solid var(--line);
-		border-radius: var(--radius-lg);
-		box-shadow: 0 10px 30px rgba(18, 28, 32, 0.12), 0 1px 3px rgba(18, 28, 32, 0.08);
-		padding: 6px;
-		z-index: 100;
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		pointer-events: auto;
-	}
-
-	.autocomplete-item {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		padding: 8px 10px;
-		border-radius: var(--radius-md);
-		border: none;
-		background: transparent;
-		width: 100%;
-		text-align: left;
-		cursor: pointer;
-		transition: background 0.12s ease;
-	}
-
-	.autocomplete-item:hover,
-	.autocomplete-item.is-highlighted {
-		background: var(--accent-tint);
-	}
-
-	.autocomplete-avatar {
-		width: 26px;
-		height: 26px;
-		border-radius: 50%;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-size: 12px;
-		font-weight: 700;
-		flex-shrink: 0;
-		border: 1px solid var(--line);
-	}
-
-	.autocomplete-avatar.is-everyone {
-		background: var(--chip);
-		font-size: 14px;
-	}
-
-	/* Inline Mention Chip inside Composer Input */
-	/*
-	 * The chips are built by `mention-chips.ts` and dropped into the contenteditable,
- so they
-	 * never carry a scope class — `:global` is the only thing that reaches them. Anchoring on
-	 * `.composer-input` keeps them the composer's business rather than the whole app's.
-	 */
-	.composer-input :global(.inline-mention-chip) {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		padding: 1px 6px 1px 3px;
-		margin: 0 2px;
-		background: var(--accent-tint);
-		border: 1px solid var(--accent-border);
-		border-radius: var(--radius-full);
-		font-size: 13px;
-		color: var(--accent-hover);
-		font-weight: 600;
-		line-height: 1.2;
-		vertical-align: middle;
-		user-select: none;
-		cursor: default;
-		animation: chipIn 0.12s ease;
-	}
-
-	.composer-input :global(.inline-mention-chip .chip-avatar-icon) {
-		font-size: 12px;
-		line-height: 1;
-	}
-
-	.composer-input :global(.inline-mention-chip .chip-avatar-img) {
-		width: 16px;
-		height: 16px;
-		border-radius: 50%;
-		object-fit: cover;
-		display: block;
-	}
-
-	.composer-input :global(.inline-mention-chip .chip-avatar-letter) {
-		width: 16px;
-		height: 16px;
-		border-radius: 50%;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		font-size: 10px;
-		font-weight: 700;
-		border: 1px solid transparent;
-	}
-
-	.composer-input :global(.inline-mention-chip .chip-name) {
-		line-height: 1;
-		white-space: nowrap;
-	}
-
-	.composer-input :global(.inline-mention-chip .chip-close-btn) {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 14px;
-		height: 14px;
-		border-radius: 50%;
-		border: none;
-		background: color-mix(in srgb, var(--accent) 12%, transparent);
-		color: var(--accent);
-		cursor: pointer;
-		padding: 0;
-		margin-left: 2px;
-		transition: 0.1s ease;
-		transition-property: var(--transition-props);
-	}
-
-	.composer-input :global(.inline-mention-chip .chip-close-btn:hover) {
-		background: color-mix(in srgb, var(--accent) 25%, transparent);
-		color: var(--accent-hover);
-	}
-
-	.composer-input :global(.chip-close-btn) {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 16px;
-		height: 16px;
-		border-radius: 50%;
-		border: none;
-		background: color-mix(in srgb, var(--accent) 12%, transparent);
-		color: var(--accent);
-		cursor: pointer;
-		padding: 0;
-		transition: 0.12s ease;
-		transition-property: var(--transition-props);
-	}
-
-	.composer-input :global(.chip-close-btn:hover) {
-		background: var(--accent);
-		color: var(--on-accent);
-	}
-
-	/* Pending Attachments in Composer */
-	.composer-attachments-bar {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 8px;
-		padding: 6px 4px;
-		border-bottom: 1px solid var(--line-subtle);
-		margin-bottom: 4px;
-	}
-
-	.composer-attachment-item {
-		position: relative;
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		background: var(--chip);
-		border: 1px solid var(--line);
-		border-radius: var(--radius-md);
-		padding: 4px 8px 4px 6px;
-		max-width: 220px;
-	}
-
-	.composer-attachment-item.is-img {
-		padding: 4px 8px 4px 4px;
-	}
-
-	.attachment-preview-img {
-		width: 36px;
-		height: 36px;
-		border-radius: var(--radius-sm);
-		object-fit: cover;
-		border: 1px solid var(--line);
-		flex-shrink: 0;
-	}
-
-	.attachment-file-icon {
-		width: 32px;
-		height: 32px;
-		border-radius: var(--radius-sm);
-		background: var(--pane);
-		border: 1px solid var(--line);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		color: var(--muted);
-		flex-shrink: 0;
-	}
-
-	.attachment-delete-btn {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 18px;
-		height: 18px;
-		border-radius: 50%;
-		border: none;
-		background: rgba(18, 28, 32, 0.08);
-		color: var(--muted);
-		cursor: pointer;
-		padding: 0;
-		flex-shrink: 0;
-		transition: 0.12s ease;
-		transition-property: var(--transition-props);
-	}
-
-	.attachment-delete-btn:hover:not(:disabled) {
-		background: var(--danger);
-		color: #ffffff;
-	}
-
-	/* On its way to the Mac: the chip stays as the sign of it, and cannot be taken back. */
-	.attachment-delete-btn:disabled {
-		opacity: 0.4;
-		cursor: default;
-	}
-
-	@keyframes chipIn {
-		from { opacity: 0; transform: scale(0.92); }
-		to { opacity: 1; transform: scale(1); }
-	}
-
-	.composer-input :global(.chip-avatar-icon) {
-		font-size: 13px;
-		line-height: 1;
-	}
-
-	.composer-input :global(.chip-avatar-img) {
-		width: 18px;
-		height: 18px;
-		border-radius: 50%;
-		object-fit: cover;
-	}
-
-	.composer-input :global(.chip-avatar-letter) {
-		width: 18px;
-		height: 18px;
-		border-radius: 50%;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		font-size: 10px;
-		font-weight: 700;
-		border: 1px solid transparent;
-	}
-
-	.composer-input :global(.chip-name) {
-		line-height: 1;
-	}
-
-	.composer-quote-bar {
-		display: flex;
-		align-items: flex-start;
-		gap: 8px;
-		padding: 8px 10px 8px 12px;
-		margin: 0 0 4px;
-		border-bottom: 1px solid var(--line-subtle);
-		border-left: 2px solid var(--accent);
-	}
-
-	.composer-quote-who {
-		font-size: 12px;
-		font-weight: 650;
-		color: var(--accent);
-	}
-
-	.composer-quote-cancel {
-		flex-shrink: 0;
-		width: 22px;
-		height: 22px;
-		display: grid;
-		place-items: center;
-		border: none;
-		border-radius: var(--radius-sm);
-		background: transparent;
-		color: var(--muted);
-		cursor: pointer;
-	}
-
-	.composer-quote-cancel:hover {
-		background: var(--line-subtle);
-		color: var(--ink);
 	}
 
 	/*
@@ -1987,18 +862,6 @@
 			border-radius: 0;
 		}
 
-		.suggest-scroll {
-			flex: 1;
-			padding: 8px 10px 2px;
-		}
-
-		.suggest-chip {
-			min-height: 30px;
-			max-width: 85%;
-			padding: 4px 10px;
-			font-size: 12px;
-		}
-
 		.composer-card-shell,
 		.composer-card,
 		.composer-card.is-locked {
@@ -2020,19 +883,6 @@
 			padding: 12px 14px;
 		}
 
-		.composer .composer-input {
-			font-size: 15px;
-			max-height: min(120px, 25dvh);
-			padding: 6px 4px;
-		}
-
-		.composer .composer-input.is-empty::before {
-			left: 4px;
-			right: 4px;
-			top: 6px;
-		}
-
-		.composer .composer-action,
 		.composer .attach-btn,
 		.composer .suggest-btn {
 			width: 34px;
@@ -2042,13 +892,6 @@
 
 		.composer-hint {
 			display: none;
-		}
-
-		/* Clear of the bar's top edge, which it used to overlap by the card's rounding. */
-		.mention-autocomplete-popup {
-			bottom: calc(100% + 6px);
-			left: 10px;
-			width: calc(100% - 20px);
 		}
 
 		/*
@@ -2069,12 +912,6 @@
 				padding: 6px max(16px, env(safe-area-inset-right, 0px)) 12px max(16px, env(safe-area-inset-left, 0px));
 			}
 
-			.suggest-scroll {
-				padding-left: max(16px, env(safe-area-inset-left, 0px));
-				padding-right: max(16px, env(safe-area-inset-right, 0px));
-			}
-
-			.composer .composer-action,
 			.composer .attach-btn,
 			.composer .suggest-btn {
 				width: 40px;
@@ -2085,45 +922,19 @@
 			.composer .suggest-btn {
 				margin-right: 4px;
 			}
-
-			.composer .composer-input {
-				min-height: 40px;
-				padding-top: 9px;
-				padding-bottom: 9px;
-			}
-
-			.composer .composer-input.is-empty::before {
-				top: 9px;
-			}
-
-			/* Centred over send, and off the curve with it. */
-			.scroll-bottom-slot {
-				right: max(20px, calc(env(safe-area-inset-right, 0px) + 4px));
-			}
-
-			.mention-autocomplete-popup {
-				left: 16px;
-				width: calc(100% - 32px);
-			}
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.composer,
 		.composer-card,
-		.composer-action,
 		.composer .attach-btn,
-		.composer .suggest-btn,
-		.scroll-bottom-btn {
+		.composer .suggest-btn {
 			transition: none;
 		}
 
-		.suggest-spinner,
-		.send-spinner {
+		.suggest-spinner {
 			animation: none;
-		}
-
-		.send-progress-fill {
-			transition: none;
 		}
 	}
 </style>
+
