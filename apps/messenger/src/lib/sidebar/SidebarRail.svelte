@@ -34,6 +34,8 @@
 		onToggleWorkspace: () => void;
 		onOpenRoutines: () => void;
 		onOpenSpend: () => void;
+		/** Whether the workbench is on screen; a tablet on a remote connection folds its list without one. */
+		workbench: boolean;
 		onNewTerminal: () => void;
 		/** The archived list is a view of the full list; this opens the list already on it. */
 		onOpenArchived: () => void;
@@ -54,6 +56,7 @@
 		onToggleWorkspace,
 		onOpenRoutines,
 		onOpenSpend,
+		workbench,
 		onNewTerminal,
 		onOpenArchived,
 		onOpenSettings,
@@ -300,14 +303,20 @@
 	{t}
 	locale={snapshot.settings.locale === 'en' ? 'en' : 'zh'}
 	phone={false}
+	pages={!workbench}
 	anchor={toolsBtnEl}
 	bind:open={toolsMenuOpen}
 	bind:focusLast={toolsFocusLast}
 	placement="flyout"
 	{archivedCount}
+	current={{
+		routines: !workbench && runtime.routinesOpen,
+		spend: !workbench && runtime.spendOpen,
+		terminal: !workbench && runtime.terminalOpen
+	}}
 	{onOpenRoutines}
 	{onOpenSpend}
-	onOpenTerminal={onNewTerminal}
+	onOpenTerminal={() => (workbench ? onNewTerminal() : runtime.openTerminal())}
 	{onOpenArchived}
 />
 

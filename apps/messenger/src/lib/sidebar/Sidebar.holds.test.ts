@@ -38,6 +38,7 @@ function open(over: Partial<Snapshot>, refusal: unknown = null) {
     onToggleWorkspace: () => {},
     onOpenRoutines: () => {},
     onOpenSpend: () => {},
+    workbench: true,
     onNewTerminal: () => {},
     onOpenSettings: () => {},
     onCreateBot: () => {},

@@ -40,6 +40,12 @@
 		onToggleWorkspace: () => void;
 		onOpenRoutines: () => void;
 		onOpenSpend: () => void;
+		/**
+		 * Whether the workbench is on screen, so the tools open as its tabs. Not the same as "wider
+		 * than a phone": the app reached from a tablet is wider and still has no workbench, so its
+		 * tools open the phone's pages.
+		 */
+		workbench: boolean;
 		onNewTerminal: () => void;
 		onOpenSettings: () => void;
 		onCreateBot: () => void;
@@ -63,6 +69,7 @@
 		onToggleWorkspace,
 		onOpenRoutines,
 		onOpenSpend,
+		workbench,
 		onNewTerminal,
 		onOpenSettings,
 		onCreateBot,
@@ -698,20 +705,21 @@
 		{t}
 		locale={snapshot.settings.locale === 'en' ? 'en' : 'zh'}
 		{phone}
+		pages={!workbench}
 		anchor={toolsToggleBtnEl}
 		bind:open={toolsMenuOpen}
 		bind:focusLast={toolsFocusLast}
 		archivedCount={archivedSessions.length}
 		current={{
-			routines: phone && runtime.routinesOpen,
-			spend: phone && runtime.spendOpen,
-			terminal: phone && runtime.terminalOpen,
+			routines: !workbench && runtime.routinesOpen,
+			spend: !workbench && runtime.spendOpen,
+			terminal: !workbench && runtime.terminalOpen,
 			screen: runtime.screenOpen,
 			archived: viewingArchived
 		}}
 		{onOpenRoutines}
 		{onOpenSpend}
-		onOpenTerminal={() => (phone ? runtime.openTerminal() : onNewTerminal())}
+		onOpenTerminal={() => (workbench ? onNewTerminal() : runtime.openTerminal())}
 		onOpenScreen={runtime.screenOffered ? () => runtime.openRemoteScreen() : null}
 		screenHost={runtime.screenHost}
 		onOpenArchived={() => (viewingArchived = true)}

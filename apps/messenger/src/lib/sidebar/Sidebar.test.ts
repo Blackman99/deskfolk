@@ -24,7 +24,8 @@ function botDms(count: number) {
   });
 }
 
-function open(sessions: ReturnType<typeof aBotDirect>[], selectedId: string | null = null, live = false, created: string[] = [], pinnedSessionIds: string[] = []) {
+/** `workbench` defaults to what the desktop app has: a workbench wherever the list is wider than a phone. */
+function open(sessions: ReturnType<typeof aBotDirect>[], selectedId: string | null = null, live = false, created: string[] = [], pinnedSessionIds: string[] = [], workbench = !window.matchMedia("(max-width: 680px)").matches) {
   const stub = fakeRuntime({
     bots: [aBot({ id: "bot-1", name: "Writer" }), aBot({ id: "bot-2", name: "Researcher" })],
     sessions: [aGroup({ id: "sess-1", name: "视频组" }), ...sessions],
@@ -50,6 +51,7 @@ function open(sessions: ReturnType<typeof aBotDirect>[], selectedId: string | nu
     onToggleWorkspace: () => created.push("workspace"),
     onOpenRoutines: () => created.push("routines"),
     onOpenSpend: () => created.push("spend"),
+    workbench,
     onNewTerminal: () => created.push("terminal"),
     onOpenSettings: () => created.push("settings"),
     onCreateBot: () => created.push("bot"),
@@ -406,6 +408,24 @@ test('desktop footer exposes three labelled entries and dispatches each tool', (
   close();
 });
 
+test("a tablet on the remote app is wider than a phone but has no workbench, so the terminal opens as a page", () => {
+  // A new tab there would start a shell on the Mac in a layout nothing draws: the tap does nothing.
+  const { host, runtime, created, close } = open([], null, true, [], [], false);
+  const tools = [...host.querySelectorAll<HTMLButtonElement>('.foot button')][1];
+  click(tools);
+  // Named as a phone names them: the page that opens, not a tab.
+  const items = [...host.querySelectorAll<HTMLButtonElement>('.tools-menu-item')];
+  expect(items.slice(0, 3).map((item) => item.textContent?.trim())).toEqual([t.calendar.open, spendCopyFor('zh').open, t.terminal.title]);
+  click(items[2]);
+  expect(runtime.calls.some((call) => call.name === 'openTerminal')).toBe(true);
+  expect(created).not.toContain('terminal');
+  // Its pages are marked in the menu the way a phone's are.
+  flushSync(() => { runtime.spendOpen = true; });
+  click(tools);
+  expect(host.querySelector('.tools-menu-item[aria-current="true"]')?.textContent?.trim()).toBe(spendCopyFor('zh').open);
+  close();
+});
+
 test('desktop tools support arrows, Home, End, Escape, Tab and outside dismissal', () => {
   const { host, close } = open([]);
   const toggle = host.querySelector<HTMLButtonElement>('.tools-entry')!;
@@ -596,6 +616,7 @@ function openWorking(over: Partial<Snapshot> = {}, pinnedSessionIds: string[] = 
     onToggleWorkspace: () => {},
     onOpenRoutines: () => {},
     onOpenSpend: () => {},
+    workbench: true,
     onNewTerminal: () => {},
     onOpenSettings: () => {},
     onCreateBot: () => {},
@@ -722,6 +743,7 @@ test("the list opens already filtered when it was left that way", () => {
     onToggleWorkspace: () => {},
     onOpenRoutines: () => {},
     onOpenSpend: () => {},
+    workbench: true,
     onNewTerminal: () => {},
     onOpenSettings: () => {},
     onCreateBot: () => {},

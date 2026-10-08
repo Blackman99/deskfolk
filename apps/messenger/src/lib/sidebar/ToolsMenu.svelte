@@ -16,8 +16,14 @@
 	type Props = {
 		t: Copy;
 		locale: 'zh' | 'en';
-		/** Phone labels name the page; desktop labels name the tab. */
+		/** Hangs under its button on a phone, over it elsewhere. */
 		phone: boolean;
+		/**
+		 * The tools open pages, not workbench tabs, so the labels name the page rather than the tab.
+		 * A phone's do, and so do a tablet's on a remote connection, which is wider and still has no
+		 * workbench.
+		 */
+		pages: boolean;
 		/** The button that opened it: the menu hangs off it and gives focus back to it. */
 		anchor: HTMLElement | null;
 		open: boolean;
@@ -50,6 +56,7 @@
 		t,
 		locale,
 		phone,
+		pages,
 		anchor,
 		open = $bindable(false),
 		placement = 'stack',
@@ -178,7 +185,7 @@
 				<line x1="8" y1="2" x2="8" y2="6"></line>
 				<line x1="16" y1="2" x2="16" y2="6"></line>
 			</svg>
-			<span>{phone ? t.calendar.open : t.routines.title}</span>
+			<span>{pages ? t.calendar.open : t.routines.title}</span>
 		</button>
 		<button
 			type="button"
@@ -204,7 +211,7 @@
 				<polyline points="4 17 10 11 4 5"></polyline>
 				<line x1="12" y1="19" x2="20" y2="19"></line>
 			</svg>
-			<span>{phone ? t.terminal.title : t.terminal.newTab}</span>
+			<span>{pages ? t.terminal.title : t.terminal.newTab}</span>
 		</button>
 		{#if onOpenScreen}
 			<button

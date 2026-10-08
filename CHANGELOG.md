@@ -10,6 +10,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 - The film at the top of the README is now a 30-second short in which the two mascots act out the app: Mochi hands Pudding a job, Pudding takes it from there and stops to ask before touching anything outside the workspace, and Mochi walks away and comes back to work that is done, and checked. The 86-second tour is linked under it. Both languages are on the site, at `media/deskfolk-mascots-zh.mp4` and `media/deskfolk-mascots-en.mp4`.
 
+### Terminal opens on a tablet
+
+- From something wider than a phone, such as an iPad, Tools › New terminal on a remote connection did nothing. The remote app has no workbench at any width, but the button chose its way by phone width: a tablet is wider, so it opened a new tab in a workbench that was never drawn, and every tap started another shell on the Mac. It now goes by whether there is a workbench: on a remote connection the Terminal page opens at every width, as on a phone (on a wide screen it slides in from the right), and the menu names the pages as a phone does (Terminal, Routine calendar) and marks the one that is open. Shells those taps started are still on the Mac; the Terminal page lists them, and End session closes one you do not need.
+
 ### The remote app on a phone or iPad no longer pinches to zoom
 
 - Opening Deskfolk on a phone or an iPad let a pinch, or a double tap, scale the whole page, with nothing in the app to put it back. The page now stays the size it opened at. A PDF, the flow board and the Mac's screen still pinch to zoom themselves.

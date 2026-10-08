@@ -485,6 +485,8 @@ const defs: Record<StoryName, Story> = {
 			onCreateBot: () => {},
 			onCreateGroup: () => {},
 			onOpenArtifact: () => {},
+			// A 300px story: the phone's list, so its tools open the phone's pages.
+			workbench: false,
 			onNewTerminal: () => {}
 		}
 	},
@@ -512,6 +514,8 @@ const defs: Record<StoryName, Story> = {
 			onToggleWorkspace: () => {},
 			onOpenRoutines: () => {},
 			onOpenSpend: () => {},
+			// The desktop rail: its tools open workbench tabs, not pages.
+			workbench: true,
 			onNewTerminal: () => {},
 			onOpenArchived: () => {},
 			onOpenSettings: () => {}

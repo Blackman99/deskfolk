@@ -11,7 +11,7 @@ import SidebarRail from "./SidebarRail.svelte";
 
 const t = copyFor("en");
 
-function open(selectedId: string | null = null, workspacePath: string | null = null, pinnedSessionIds = ["direct-pin"]) {
+function open(selectedId: string | null = null, workspacePath: string | null = null, pinnedSessionIds = ["direct-pin"], workbench = true) {
   const runtime = fakeRuntime({
     bots: [aBot({ id: "bot-1", name: "Writer" }), aBot({ id: "bot-2", name: "Researcher" })],
     sessions: [
@@ -51,6 +51,7 @@ function open(selectedId: string | null = null, workspacePath: string | null = n
     onToggleWorkspace: () => tools.push("workspace"),
     onOpenRoutines: () => tools.push("routines"),
     onOpenSpend: () => tools.push("spend"),
+    workbench,
     onNewTerminal: () => tools.push("terminal"),
     onOpenArchived: () => tools.push("archived"),
     onOpenSettings: () => (settings += 1),
@@ -60,6 +61,18 @@ function open(selectedId: string | null = null, workspacePath: string | null = n
 }
 
 const item = (host: HTMLElement, id: string) => host.querySelector(`.rail-item[data-session="${id}"]`) as HTMLElement | null;
+
+test("folded on a tablet's remote connection, which has no workbench, the tools open a phone's pages", () => {
+  // A new tab there would start a shell on the Mac in a layout nothing draws: the tap does nothing.
+  const view = open(null, "/fixture", ["direct-pin"], false);
+  click([...view.host.querySelectorAll<HTMLButtonElement>(".rail-foot button")][1]);
+  const items = [...view.host.querySelectorAll<HTMLButtonElement>(".tools-menu-item")];
+  expect(items.slice(0, 3).map((item) => item.querySelector("span")?.textContent)).toEqual([t.calendar.open, spendCopyFor("zh").open, t.terminal.title]);
+  click(items[2]);
+  expect(view.runtime.calls.some((call) => call.name === "openTerminal")).toBe(true);
+  expect(view.tools).not.toContain("terminal");
+  view.close();
+});
 
 test("the rail keeps the list's order and sections, avatars only, and leaves out what the list leaves out", () => {
   const view = open("direct-1");
@@ -389,6 +402,7 @@ test("a rail folded with the filter on opens filtered, with every working direct
     onToggleWorkspace: () => {},
     onOpenRoutines: () => {},
     onOpenSpend: () => {},
+    workbench: true,
     onNewTerminal: () => {},
     onOpenArchived: () => {},
     onOpenSettings: () => {},

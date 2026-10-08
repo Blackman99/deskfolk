@@ -1341,6 +1341,7 @@
 			onToggleWorkspace={toggleWorkspaceExplorer}
 			onOpenRoutines={openRoutinesFromUi}
 			onOpenSpend={openSpendFromUi}
+			workbench={wide}
 			onNewTerminal={() => void workbench.openNewTerminal(null)}
 			onOpenArchived={openArchivedFromRail}
 			onOpenSettings={() => runtime.openSettings()}
@@ -1362,6 +1363,7 @@
 			onToggleWorkspace={toggleWorkspaceExplorer}
 			onOpenRoutines={openRoutinesFromUi}
 			onOpenSpend={openSpendFromUi}
+			workbench={wide}
 			onNewTerminal={() => void workbench.openNewTerminal(null)}
 			onOpenSettings={() => runtime.openSettings()}
 			onCreateBot={openCreateBot}
