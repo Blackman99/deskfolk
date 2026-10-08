@@ -75,6 +75,7 @@ export function createComposer(deps: ComposerDeps): Composer {
       result = await completions.judge({
         baseUrl: provider.baseUrl,
         apiKey: provider.apiKey,
+        apiFormat: provider.apiFormat,
         model: lightModel,
         prompt: prompt.ref,
         messages: [

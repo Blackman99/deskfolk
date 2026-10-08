@@ -203,7 +203,7 @@ const zh: Dict = {
       {
         title: '先选工作区和模型端点',
         body:
-          '首次打开就是向导：选一个本机目录做共享工作区，再接一个 OpenAI 兼容端点，拉取它的模型列表、选好默认模型。之后不用每轮自选：每个 Bot 有自己的默认模型，可以钉，卡住了沿你排的阶梯往上换。',
+          '首次打开就是向导：选一个本机目录做共享工作区，再接一个 OpenAI 兼容或 Anthropic 兼容的端点，拉取它的模型列表、选好默认模型。之后不用每轮自选：每个 Bot 有自己的默认模型，可以钉，卡住了沿你排的阶梯往上换。',
         callout: '密钥只在这一格里填，交给系统保管，不进聊天。'
       },
       {
@@ -291,7 +291,7 @@ const zh: Dict = {
       },
       {
         dim: '模型与工具',
-        live: '多个 OpenAI 兼容端点，也可以让你本机登录的 Claude Code 跑一个 Bot（Claude Agent）；stdio 与 Streamable HTTP MCP；每个 Bot 有默认模型（按近 7 天用量推断，可以钉），要看图的活避开看不了图的模型，卡住了先提思考档、再沿你排的阶梯换模型；每轮的模型和原因记在流程图那一轮的卡片上',
+        live: '多个 OpenAI 兼容或 Anthropic 兼容的端点，也可以让你本机登录的 Claude Code 跑一个 Bot（Claude Agent）；stdio 与 Streamable HTTP MCP；每个 Bot 有默认模型（按近 7 天用量推断，可以钉），要看图的活避开看不了图的模型，卡住了先提思考档、再沿你排的阶梯换模型；每轮的模型和原因记在流程图那一轮的卡片上',
         wip: '阶梯和提档在真实长活里的效果，还没有实测',
         avoid: '绑定单一厂商、供应商目录、假装兼容所有实现'
       },
@@ -330,7 +330,7 @@ const zh: Dict = {
     step2: '并行启动守护进程与桌面窗',
     firstRun: [
       '选一个本机目录作为共享工作区，建议独立于源码仓库；不存在会自动创建。',
-      '首次打开的设置向导里选好工作区文件夹，再填 OpenAI 兼容端点 URL 和 API key，配好模型名单与默认模型。',
+      '首次打开的设置向导里选好工作区文件夹，再选接口格式（OpenAI 兼容或 Anthropic 兼容），填端点 URL 和 API key，配好模型名单与默认模型。',
       '向导最后一步建第一个 Bot：名称、职责和边界已按通用助手填好，可直接创建或改成你要的样子，随即开始私聊。',
       '让它创建其他 Bot、组群或提出 MCP 配置；需要批准时在应用里审核。'
     ],
@@ -497,7 +497,7 @@ const en: Dict = {
       {
         title: 'Set the workspace and a model endpoint',
         body:
-          'The first run is a wizard: pick a local folder as the shared workspace, add an OpenAI-compatible endpoint, fetch its models and choose the default. From then on nobody asks you turn by turn: each Bot has its own default model, which you can pin, and climbs the ladder you order when it gets stuck.',
+          'The first run is a wizard: pick a local folder as the shared workspace, add an OpenAI-compatible or Anthropic-compatible endpoint, fetch its models and choose the default. From then on nobody asks you turn by turn: each Bot has its own default model, which you can pin, and climbs the ladder you order when it gets stuck.',
         callout: 'The key goes in this one field, into the system\'s credential store, never the chat.'
       },
       {
@@ -585,7 +585,7 @@ const en: Dict = {
       },
       {
         dim: 'Models and tools',
-        live: 'Multiple OpenAI-compatible endpoints, or a Bot run by your own signed-in Claude Code (Claude Agent); stdio and Streamable HTTP MCP; each Bot has a default model (inferred from the last 7 days of use, or pinned), work that needs to see images skips models that cannot, and a stuck job thinks harder, then climbs the ladder of models you order; each turn\'s model and why are kept on its card in the flow',
+        live: 'Multiple OpenAI-compatible or Anthropic-compatible endpoints, or a Bot run by your own signed-in Claude Code (Claude Agent); stdio and Streamable HTTP MCP; each Bot has a default model (inferred from the last 7 days of use, or pinned), work that needs to see images skips models that cannot, and a stuck job thinks harder, then climbs the ladder of models you order; each turn\'s model and why are kept on its card in the flow',
         wip: 'How the ladder and stepping up do on real long jobs, not measured yet',
         avoid: 'Vendor lock-in, a provider catalogue, pretending every implementation is compatible'
       },
@@ -624,7 +624,7 @@ const en: Dict = {
     step2: 'Start the daemon and the desktop window in parallel',
     firstRun: [
       'Pick a local folder as the shared workspace, ideally outside the source checkout; missing folders are created.',
-      'In the setup wizard that opens on first launch, choose the workspace folder, then enter an OpenAI-compatible endpoint URL and API key, then the model list and default model.',
+      'In the setup wizard that opens on first launch, choose the workspace folder, then pick the API format (OpenAI-compatible or Anthropic-compatible) and enter the endpoint URL and API key, then the model list and default model.',
       'The wizard\'s last step creates the first bot: its name, duties and boundaries come filled in for a general assistant, to create as is or make your own, and its direct chat opens.',
       'Ask it to create other bots, form groups or propose MCP configuration; approve dangerous actions in the app.'
     ],

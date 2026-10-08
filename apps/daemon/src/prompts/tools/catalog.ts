@@ -3,8 +3,8 @@ import type { ToolDef } from "../tool-schema";
 export const LIST_ENDPOINTS: ToolDef = {
   name: "list_endpoints",
   description: {
-    zh: "列出名册级端点。返回 id、名称、URL、是否已配密钥、模型名单和是否为默认端点。永不返回密钥。",
-    en: "List roster-level endpoints. Returns id, name, URL, whether a key is set, the model list, and whether it is the default endpoint. Never returns secrets.",
+    zh: "列出名册级端点。返回 id、名称、URL、接口格式、是否已配密钥、模型名单和是否为默认端点。永不返回密钥。",
+    en: "List roster-level endpoints. Returns id, name, URL, API format, whether a key is set, the model list, and whether it is the default endpoint. Never returns secrets.",
   },
   properties: {},
 };
@@ -12,14 +12,25 @@ export const LIST_ENDPOINTS: ToolDef = {
 export const ADD_ENDPOINT: ToolDef = {
   name: "add_endpoint",
   description: {
-    zh: "新建一个名册级 OpenAI 兼容端点。不要传密钥：批准卡上由用户粘贴。新建端点和改 URL 会停下来等批准。空名单合法。有名单则 default_model 须在名单里，省略则用第一项。",
-    en: "Create a roster-level OpenAI-compatible endpoint. Do not pass a key; the user pastes it on the approval card. Adding an endpoint or changing a URL pauses for approval. An empty model list is allowed. If a list is given, default_model must be on it; omit to use the first name.",
+    zh: "新建一个名册级端点（OpenAI 兼容或 Anthropic 兼容）。不要传密钥：批准卡上由用户粘贴。新建端点和改 URL 或接口格式会停下来等批准。空名单合法。有名单则 default_model 须在名单里，省略则用第一项。",
+    en: "Create a roster-level endpoint (OpenAI-compatible or Anthropic-compatible). Do not pass a key; the user pastes it on the approval card. Adding an endpoint or changing a URL or API format pauses for approval. An empty model list is allowed. If a list is given, default_model must be on it; omit to use the first name.",
   },
   properties: {
     name: { type: "string", description: { zh: "端点名称。", en: "Endpoint name." } },
     base_url: {
       type: "string",
-      description: { zh: "OpenAI 兼容的 http 或 https URL。", en: "OpenAI-compatible http or https URL." },
+      description: {
+        zh: "http 或 https URL。OpenAI 兼容的通常以 /v1 结尾；Anthropic 兼容的填 Claude Code 的 ANTHROPIC_BASE_URL 那种（如 https://api.anthropic.com），不带 /v1/messages。",
+        en: "http or https URL. An OpenAI-compatible one usually ends in /v1; an Anthropic-compatible one is what Claude Code takes as ANTHROPIC_BASE_URL (e.g. https://api.anthropic.com), without /v1/messages.",
+      },
+    },
+    api_format: {
+      type: "string",
+      enum: ["openai", "anthropic"],
+      description: {
+        zh: "接口格式：openai 是 Chat Completions，anthropic 是 Anthropic Messages。省略为 openai。",
+        en: "API format: openai is Chat Completions, anthropic is Anthropic Messages. Omit for openai.",
+      },
     },
     models: {
       type: "array",
@@ -69,8 +80,8 @@ export const ADD_ENDPOINT: ToolDef = {
 export const UPDATE_ENDPOINT: ToolDef = {
   name: "update_endpoint",
   description: {
-    zh: "改一个已有端点。id 来自 list_endpoints。提供 models 就是整份新名单。改 URL 会停下来等批准；改名、名单、该端点默认模型直接执行。默认端点不能改 URL。不能换密钥。",
-    en: "Change an existing endpoint. id comes from list_endpoints. Providing models replaces the whole list. Changing the URL pauses for approval; renaming, replacing the list, or changing that endpoint's default model runs immediately. You cannot change the default endpoint's URL. You cannot rotate keys.",
+    zh: "改一个已有端点。id 来自 list_endpoints。提供 models 就是整份新名单。改 URL 或接口格式会停下来等批准；改名、名单、该端点默认模型直接执行。默认端点不能改 URL 和接口格式。不能换密钥。",
+    en: "Change an existing endpoint. id comes from list_endpoints. Providing models replaces the whole list. Changing the URL or API format pauses for approval; renaming, replacing the list, or changing that endpoint's default model runs immediately. You cannot change the default endpoint's URL or API format. You cannot rotate keys.",
   },
   properties: {
     id: { type: "string", description: { zh: "端点 id。", en: "Endpoint id." } },
@@ -78,6 +89,14 @@ export const UPDATE_ENDPOINT: ToolDef = {
     base_url: {
       type: "string",
       description: { zh: "新的 http 或 https URL。默认端点不能改。", en: "New http or https URL. Forbidden on the default endpoint." },
+    },
+    api_format: {
+      type: "string",
+      enum: ["openai", "anthropic"],
+      description: {
+        zh: "新的接口格式：openai（Chat Completions）或 anthropic（Anthropic Messages）。默认端点不能改。",
+        en: "New API format: openai (Chat Completions) or anthropic (Anthropic Messages). Forbidden on the default endpoint.",
+      },
     },
     models: {
       type: "array",

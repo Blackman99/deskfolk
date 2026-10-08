@@ -43,7 +43,7 @@ function phoneMedia(): () => void {
   };
 }
 
-function open(draft: ProviderDraft, over: { fetchError?: string | null; fetching?: boolean } = {}) {
+function open(draft: ProviderDraft, over: { fetchError?: string | null; fetching?: boolean; view?: "connection" | "models" } = {}) {
   const restore = phoneMedia();
   const state = reactive({
     draft,
@@ -65,7 +65,7 @@ function open(draft: ProviderDraft, over: { fetchError?: string | null; fetching
     },
     fieldPrefix: "provider-prov-1",
     keySet: true,
-    view: "models",
+    view: over.view ?? "models",
     get detailModel() {
       return state.detailModel;
     },
@@ -240,5 +240,25 @@ test("phone billing attributes accept both rates, retain the draft and clear tog
   expect(host.textContent).not.toContain(t.settings.modelBillingInvalid);
   click(buttonByText(host, t.settings.modelBillingClear));
   expect(state.draft.modelAttrs["grok-4.6"]).toMatchObject({ billingInput: "", billingOutput: "", billingCachedInput: "" });
+  close();
+});
+
+test("the connection view picks the API format, and the URL hint and placeholder follow it", async () => {
+  const { host, state, close } = open({ ...emptyProviderDraft(), name: "Claude" }, { view: "connection" });
+  const url = () => host.querySelector<HTMLInputElement>("#provider-prov-1-url")!;
+  const hint = () => host.querySelector(".field-hint")?.textContent?.trim();
+  const radios = () => [...host.querySelectorAll<HTMLButtonElement>('[role="radiogroup"] [role="radio"]')];
+  expect(radios().map((b) => [b.textContent?.trim(), b.getAttribute("aria-checked")])).toEqual([
+    [t.settings.apiFormatOpenai, "true"],
+    [t.settings.apiFormatAnthropic, "false"],
+  ]);
+  expect(url().placeholder).toBe("https://api.openai.com/v1");
+  expect(hint()).toBe(t.settings.apiFormatOpenaiHint);
+  click(buttonByText(host, t.settings.apiFormatAnthropic));
+  await settle();
+  expect(state.draft.apiFormat).toBe("anthropic");
+  expect(radios().map((b) => b.getAttribute("aria-checked"))).toEqual(["false", "true"]);
+  expect(url().placeholder).toBe("https://api.anthropic.com");
+  expect(hint()).toBe(t.settings.apiFormatAnthropicHint);
   close();
 });

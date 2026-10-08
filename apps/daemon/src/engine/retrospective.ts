@@ -49,6 +49,7 @@ export function createRetrospector(deps: {
         const result = await deps.completions.judge({
           baseUrl: routed.target.baseUrl,
           apiKey: routed.target.apiKey,
+          apiFormat: routed.target.apiFormat,
           model: routed.target.model,
           prompt: prompt.ref,
           messages: [

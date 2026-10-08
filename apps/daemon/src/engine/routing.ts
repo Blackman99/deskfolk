@@ -14,7 +14,7 @@ import { ROUTE_PICK_SYSTEM, routePickPayload } from "../prompts/routing";
 import { resolveCompletionTarget } from "../models";
 import type { Store } from "../store";
 import type { SpendTracker } from "./spend";
-import type { CallTarget, Creds, Routed, SpendOwner } from "./types";
+import type { CallTarget, Creds, EndpointTarget, Routed, SpendOwner } from "./types";
 
 export type RoutingDeps = {
   store: Store;
@@ -31,7 +31,7 @@ export type Routing = {
    * The routing agent cannot route itself, so it always runs on the default endpoint's default
    * model. That is the one job the roster-wide default model still has.
    */
-  routingTarget: (creds: Creds) => (CallTarget & { baseUrl: string; apiKey: string }) | null;
+  routingTarget: (creds: Creds) => (EndpointTarget) | null;
   /** The message a reviewed turn was opened by, trimmed to what the picker needs to recognise it. */
   triggerOf: (turnId: string) => string;
   agentRoute: (
@@ -71,6 +71,7 @@ export function createRouting(deps: RoutingDeps): Routing {
         name: provider.name,
         baseUrl: provider.base_url,
         apiKey,
+        apiFormat: provider.api_format ?? "openai",
         models: provider.models,
         defaultModel: provider.default_model,
       });
@@ -83,7 +84,7 @@ export function createRouting(deps: RoutingDeps): Routing {
     };
   }
 
-  function routingTarget(creds: Creds): (CallTarget & { baseUrl: string; apiKey: string }) | null {
+  function routingTarget(creds: Creds): (EndpointTarget) | null {
     const provider =
       creds.providers.find((row) => row.id === creds.defaultProviderId) ?? creds.providers[0];
     const model = provider?.defaultModel ?? provider?.models[0] ?? null;
@@ -91,6 +92,7 @@ export function createRouting(deps: RoutingDeps): Routing {
     return {
       baseUrl: provider.baseUrl,
       apiKey: provider.apiKey,
+      apiFormat: provider.apiFormat,
       providerId: provider.id,
       providerName: provider.name,
       model,
@@ -175,6 +177,7 @@ export function createRouting(deps: RoutingDeps): Routing {
       result = await completions.judge({
         baseUrl: routing.baseUrl,
         apiKey: routing.apiKey,
+        apiFormat: routing.apiFormat,
         model: routing.model,
         messages: [
           { role: "system", content: ROUTE_PICK_SYSTEM },
@@ -204,6 +207,7 @@ export function createRouting(deps: RoutingDeps): Routing {
         target: {
           baseUrl: provider.baseUrl,
           apiKey: provider.apiKey,
+          apiFormat: provider.apiFormat,
           providerId: provider.id,
           providerName: provider.name,
           model: pick.model,
@@ -243,6 +247,7 @@ export function createRouting(deps: RoutingDeps): Routing {
           target: {
             baseUrl: provider.baseUrl,
             apiKey: provider.apiKey,
+            apiFormat: provider.apiFormat,
             providerId: provider.id,
             providerName: provider.name,
             model: routed.model,
@@ -274,6 +279,7 @@ export function createRouting(deps: RoutingDeps): Routing {
       target: {
         baseUrl: provider.baseUrl,
         apiKey: provider.apiKey,
+        apiFormat: provider.apiFormat,
         providerId: provider.id,
         providerName: provider.name,
         model: resolved.model,
@@ -322,7 +328,7 @@ export function createRouting(deps: RoutingDeps): Routing {
     const thinkingLevel = supported.length === 0 ? routed.target.thinkingLevel
       : supported.find((level) => level.toLowerCase() === String(routed.target.thinkingLevel).toLowerCase()) ?? pickThinkingLevel(classifyMessage(text), supported);
     return {
-      target: { ...routed.target, baseUrl: provider.baseUrl, apiKey: provider.apiKey, providerId: provider.id, providerName: provider.name, model: able.model, thinkingLevel },
+      target: { ...routed.target, baseUrl: provider.baseUrl, apiKey: provider.apiKey, apiFormat: provider.apiFormat, providerId: provider.id, providerName: provider.name, model: able.model, thinkingLevel },
       decision: { ...routed.decision, model: able.model, providerId: provider.id, thinkingLevel, reasonCode: "capability_filter" },
     };
   }
@@ -391,7 +397,7 @@ export function createRouting(deps: RoutingDeps): Routing {
     const supported = catalog.find((entry) => entry.providerId === rung.provider_id && entry.name === rung.model)?.thinking_levels ?? [];
     const thinkingLevel = supported.length === 0 ? routed.target.thinkingLevel : pickThinkingLevel(classifyMessage(text), supported);
     return { short: rungs > above.length, routed: {
-      target: { ...routed.target, baseUrl: provider.baseUrl, apiKey: provider.apiKey, providerId: provider.id, providerName: provider.name, model: rung.model, thinkingLevel },
+      target: { ...routed.target, baseUrl: provider.baseUrl, apiKey: provider.apiKey, apiFormat: provider.apiFormat, providerId: provider.id, providerName: provider.name, model: rung.model, thinkingLevel },
       decision: { ...routed.decision, model: rung.model, providerId: provider.id, thinkingLevel, reasonCode: "escalation_model" },
     } };
   }
@@ -430,7 +436,7 @@ export function createRouting(deps: RoutingDeps): Routing {
       if (!provider) return null;
       const thinkingLevel = levelFor(providerId, model, wanted);
       return {
-        target: { baseUrl: provider.baseUrl, apiKey: provider.apiKey, providerId, providerName: provider.name, model, thinkingLevel, locale: creds.locale },
+        target: { baseUrl: provider.baseUrl, apiKey: provider.apiKey, apiFormat: provider.apiFormat, providerId, providerName: provider.name, model, thinkingLevel, locale: creds.locale },
         decision: { model, thinkingLevel, providerId, signature: classifyMessage(text), reasonCode },
       };
     };

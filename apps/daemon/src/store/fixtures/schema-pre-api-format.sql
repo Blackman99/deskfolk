@@ -1,8 +1,7 @@
-import { DELEGATIONS_SQL } from "./store/delegation-migration";
-import { TOOL_EXECUTIONS_SQL } from "./store/tool-execution-migration";
-import { SUBMISSIONS_SQL } from "./store/submission-migration";
+-- The schema as it shipped before Anthropic-format endpoints (git HEAD at the time this was taken).
+-- A test opens a database built from this file with the current `Store` and expects it to come
+-- up. Do not edit: it is a record of a shape that exists on real machines, not a live schema.
 
-export const SCHEMA_SQL = `
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS remote_host (
@@ -127,7 +126,6 @@ CREATE TABLE IF NOT EXISTS providers (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   base_url TEXT NOT NULL,
-  api_format TEXT NOT NULL DEFAULT 'openai',
   models TEXT NOT NULL,
   available_models TEXT NOT NULL DEFAULT '[]',
   default_model TEXT,
@@ -793,9 +791,82 @@ CREATE UNIQUE INDEX IF NOT EXISTS work_items_one_open_desk
   ON work_items (bot_id, home_session_id)
   WHERE task_id IS NULL AND state <> 'closed';
 
-${DELEGATIONS_SQL}
-${TOOL_EXECUTIONS_SQL}
-${SUBMISSIONS_SQL}
+
+CREATE TABLE IF NOT EXISTS delegations (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL,
+  ticket_id TEXT,
+  part_keys TEXT NOT NULL DEFAULT '[]',
+  from_work_item_id TEXT NOT NULL,
+  from_turn_id TEXT,
+  to_bot_id TEXT NOT NULL,
+  to_work_item_id TEXT NOT NULL,
+  thread_session_id TEXT NOT NULL,
+  ask TEXT NOT NULL,
+  expects TEXT NOT NULL CHECK (expects IN ('deliverable', 'review', 'answer')),
+  requirement_ids TEXT NOT NULL DEFAULT '[]',
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'replied', 'cancelled')),
+  reply_ref TEXT,
+  request_inbox_seq INTEGER,
+  result_inbox_seq INTEGER,
+  due_at TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS delegations_from_work ON delegations (from_work_item_id, status);
+CREATE INDEX IF NOT EXISTS delegations_to_work ON delegations (to_work_item_id, status);
+CREATE INDEX IF NOT EXISTS delegations_thread ON delegations (thread_session_id, created_at);
+
+
+CREATE TABLE IF NOT EXISTS tool_executions (
+  id TEXT PRIMARY KEY,
+  work_item_id TEXT,
+  task_id TEXT,
+  ticket_id TEXT,
+  bot_id TEXT NOT NULL,
+  turn_id TEXT NOT NULL,
+  tool_call_id TEXT NOT NULL,
+  tool TEXT NOT NULL,
+  side_effect INTEGER NOT NULL CHECK (side_effect IN (0, 1)),
+  started_at TEXT NOT NULL,
+  finished_at TEXT,
+  outcome TEXT CHECK (outcome IN ('succeeded', 'refused', 'failed', 'unknown')),
+  error_code TEXT,
+  UNIQUE (turn_id, tool_call_id),
+  CHECK ((finished_at IS NULL AND outcome IS NULL) OR (finished_at IS NOT NULL AND outcome IS NOT NULL))
+);
+CREATE INDEX IF NOT EXISTS tool_executions_work ON tool_executions (work_item_id, started_at);
+CREATE INDEX IF NOT EXISTS tool_executions_pending ON tool_executions (turn_id) WHERE finished_at IS NULL;
+
+
+CREATE TABLE IF NOT EXISTS submissions (
+  id TEXT PRIMARY KEY,
+  work_item_id TEXT,
+  task_id TEXT NOT NULL,
+  ticket_id TEXT NOT NULL,
+  part_keys TEXT NOT NULL DEFAULT '[]',
+  bot_id TEXT NOT NULL,
+  -- The model the producing segment ran on, kept here so a review's "same model" survives a cleared transcript.
+  model TEXT,
+  turn_id TEXT,
+  -- 'submit' / 'implicit': files; 'answer': words handed over in place of a file (a ticket whose work is
+  -- an answer); 'organizer': the organizer read a ticket nothing was ever handed over on as done.
+  origin TEXT NOT NULL CHECK (origin IN ('submit', 'implicit', 'answer', 'organizer')),
+  artifacts TEXT NOT NULL,
+  -- The words handed over, for an 'answer'.
+  content TEXT,
+  claims TEXT NOT NULL DEFAULT '[]',
+  note TEXT,
+  state TEXT NOT NULL CHECK (state IN ('checking', 'checks_failed', 'submitted', 'in_review', 'approved', 'rejected', 'superseded')),
+  checks TEXT NOT NULL DEFAULT '[]',
+  reviews TEXT NOT NULL DEFAULT '[]',
+  -- An approval waiting on you (JSON: the required items nothing backs, the card asking you, the review it would complete); null otherwise.
+  awaiting TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS submissions_ticket ON submissions (ticket_id, created_at);
+CREATE INDEX IF NOT EXISTS submissions_open ON submissions (task_id, state);
+
 
 CREATE TABLE IF NOT EXISTS skills (
   id TEXT PRIMARY KEY,
@@ -1244,4 +1315,3 @@ CREATE TABLE IF NOT EXISTS notification_delivery_items (
   notification_id TEXT NOT NULL REFERENCES notifications (id) ON DELETE CASCADE,
   PRIMARY KEY (delivery_id, notification_id)
 );
-`;

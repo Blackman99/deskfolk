@@ -590,6 +590,19 @@ Bot 在哪读到它：每一轮的局面里都有「用户要求」一段，列�
 
 名单里的 `max_output` 和 `stream_tps_p10` 在设置里看不到；从设置再保存名单时，这两个值照旧保留，通过接口传 `null` 才会清掉。存着的名单里这两个值哪个不合法（比如 0 或者字符串），只忽略这一个值，模型照常留在名单里，用它的 Bot 也不受影响。
 
+**Anthropic 兼容的端点。** 端点的格式选了 Anthropic 兼容（[ADR 0066](adr/0066-anthropic-format-endpoints.md)），这一节的规矩照旧，只是发出去的样子不同：
+
+- **地址和密钥**：请求发到 base URL 后面的 `/v1/messages`；base URL 已经以 `/v1` 结尾的只补 `/messages`。所以填的就是 Claude Code 的 `ANTHROPIC_BASE_URL` 那种地址（`https://api.anthropic.com`、`https://api.deepseek.com/anthropic`）。密钥放在 `x-api-key`，带 `anthropic-version: 2023-06-01`；被 401 或 403 拒掉就改放 `Authorization: Bearer` 再发一次（有些厂商和转发只认这种），成了，这个端点之后都这么发；两种都被拒，就是密钥不对。
+- **消息**：应用内部照旧按 Chat Completions 的样子组织回路，发出前转换：所有 system 消息合进顶层 `system`；工具结果变成用户回合里的 `tool_result`，同一回合里结果排在文字前面；相邻的同角色消息合成一个回合；开头是 Bot 自己那句时，前面补一个只有「…」的用户回合；工具调用的 id 只留字母、数字、`_` 和 `-`（回路里可能有 OpenAI 兼容端点给的 id）；图片的 data URI 变成 base64 图片块。
+- **思考档**：先按 Anthropic 新模型的形式发，`thinking: {type: "adaptive"}` 加 `output_config.effort`（`none` 只发 `effort: low`：新模型的思考关不掉，没有 `thinking` 字段的旧模型本来就不想）；400 里点名 thinking、effort、budget_tokens 这几个字段的，退到 `thinking: {type: "enabled", budget_tokens}`（低 2048、中 8192、高 16384，不超过输出上限的一半，不到 1024 就不发）；再被拒，就不带思考字段。退到的那一档发成功了，这个端点上的这个模型之后都用它；退了还是被拒，不记。说的是回路里的思考块（「Expected `thinking` … but found `tool_use`」、签名对不上）的 400 不算拒思考字段，不退。输出上限小到放不下思考的判断调用（256、512 token），新形式只发 `effort`，旧形式不发预算。
+- **思考块跟着工具调用**：模型想过之后调工具的，它的思考块（连同签名）原样跟着那次调用留在这一轮的回路里，下一跳一起发回去，不然下一跳会被拒。只发回给写它的那个端点和模型：中途换了模型（提档换阶梯、看图换模型）的那一跳不带。
+- **上限**：这个格式每次都要带 `max_tokens`，所以没有「不带上限重发」这一步。报错说上下文满了（「190000 + 32768 > 200000」这样写着已用的、上限和上下文），只这一次按剩下的空间重发；报错里写了模型自己的上限的，照上面的规矩以后都按那个数发。
+- **判断类调用**不带 `temperature: 0`：Anthropic 的新模型不接受任何采样参数。
+- **缓存**：系统提示词末尾打一个缓存标记，一跳的回路末尾再打一个，下一跳就能从缓存读到那里。Anthropic 不打标记就不缓存；自己会缓存的转发不理这个标记。
+- **用量**：读缓存和写缓存的 token 都算进输入，读缓存的同时记为缓存命中，和 Chat Completions 的口径一样，花费照旧按名单里的单价估算。
+- **结束原因**：`end_turn` 记为正常结束，`tool_use` 是要调工具，`max_tokens` 是写到上限，`refusal` 算拒答。流里来了 `error` 事件（常见的是 `overloaded_error`），这一次算没写完，按上面的规矩再试。
+- **模型名单**从 `…/v1/models?limit=1000` 拉，密钥的放法同上。不少兼容端点没有这个接口，拉不到就手填模型名。
+
 <a id="artifact"></a>
 ## 产物（Artifact）
 

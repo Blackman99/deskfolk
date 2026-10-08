@@ -183,6 +183,7 @@ export function createReader(deps: ReaderDeps): Reader {
       result = await deps.completions.judge({
         baseUrl: routing.baseUrl,
         apiKey: routing.apiKey,
+        apiFormat: routing.apiFormat,
         model: routing.model,
         prompt: prompt.ref,
         messages: [

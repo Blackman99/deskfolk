@@ -1,8 +1,10 @@
 import {
   isThinkingLevel,
   sortThinkingLevels,
+  type ApiFormat,
   type ProbedModel,
 } from "@real-bot/protocol";
+import { anthropicHeaders, anthropicUrl, type AnthropicAuth } from "./anthropic-messages";
 import { HttpError } from "./errors";
 
 export type { ProbedModel };
@@ -36,6 +38,8 @@ export type ProbeOptions = {
   timeoutMs?: number;
   /** Runs immediately before every outbound fetch, the retry's included; throwing stops the probe. */
   guard?: () => void;
+  /** The endpoint's wire format; absent is `openai`. */
+  apiFormat?: ApiFormat;
 };
 
 export async function probeEndpointModels(
@@ -45,14 +49,21 @@ export async function probeEndpointModels(
   signal?: AbortSignal,
   options: ProbeOptions = {},
 ): Promise<ProbeResult> {
+  const anthropic = options.apiFormat === "anthropic";
   const cleanBase = baseUrl.replace(/\/+$/, "");
-  const url = `${cleanBase}/models`;
-  const headers: Record<string, string> = {
-    Accept: "application/json",
+  // Anthropic's list comes in pages of 20 unless asked for more; 1000 is the most it gives at once.
+  const url = anthropic ? `${anthropicUrl(cleanBase, "models")}?limit=1000` : `${cleanBase}/models`;
+  const headersFor = (auth: AnthropicAuth): Record<string, string> => {
+    if (anthropic) {
+      const { "Content-Type": _json, ...rest } = anthropicHeaders(apiKey, auth);
+      return { Accept: "application/json", ...rest };
+    }
+    return { Accept: "application/json", ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) };
   };
-  if (apiKey) {
-    headers.Authorization = `Bearer ${apiKey}`;
-  }
+  // An Anthropic-format endpoint that refuses the key as `x-api-key` is asked once more with it as
+  // a Bearer token, as completions do.
+  let auth: AnthropicAuth = "x-api-key";
+  let headers = headersFor(auth);
   const timeoutMs = options.timeoutMs ?? PROBE_TIMEOUT_MS;
 
   // A relay that has to ask upstream for its list with a valid key can stall one request and
@@ -62,7 +73,13 @@ export async function probeEndpointModels(
   for (;;) {
     tries += 1;
     options.guard?.();
-    const probed = await probeOnce(url, headers, fetchImpl, signal, timeoutMs);
+    const probed = await probeOnce(url, headers, fetchImpl, signal, timeoutMs, anthropic && auth === "x-api-key" && Boolean(apiKey));
+    if (probed === "auth_refused") {
+      auth = "bearer";
+      headers = headersFor(auth);
+      tries -= 1;
+      continue;
+    }
     if (probed !== "timed_out") return probed;
     if (tries >= 2) {
       throw new HttpError(
@@ -74,14 +91,18 @@ export async function probeEndpointModels(
   }
 }
 
-/** One GET of `/models`; `"timed_out"` only when this try's own clock ran out, not the caller's. */
+/**
+ * One GET of `/models`; `"timed_out"` only when this try's own clock ran out, not the caller's, and
+ * `"auth_refused"` for a 401 or 403 when `authRetry` says the key may be sent another way.
+ */
 async function probeOnce(
   url: string,
   headers: Record<string, string>,
   fetchImpl: typeof fetch,
   signal: AbortSignal | undefined,
   timeoutMs: number,
-): Promise<ProbeResult | "timed_out"> {
+  authRetry = false,
+): Promise<ProbeResult | "timed_out" | "auth_refused"> {
   const timeout = AbortSignal.timeout(timeoutMs);
   let res: Response;
   try {
@@ -97,6 +118,10 @@ async function probeOnce(
     throw new HttpError(422, "probe_failed", `Failed to connect to ${url}: ${msg}`);
   }
 
+  if (authRetry && (res.status === 401 || res.status === 403)) {
+    await res.body?.cancel().catch(() => {});
+    return "auth_refused";
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new HttpError(

@@ -1,4 +1,18 @@
-import type { ThinkingLevel } from "@real-bot/protocol";
+import type { ApiFormat, ThinkingLevel } from "@real-bot/protocol";
+import {
+  ANTHROPIC_DEFAULT_CAP,
+  AnthropicStream,
+  anthropicBody,
+  anthropicHeaders,
+  anthropicUrl,
+  carryKey,
+  mapAnthropicUsage,
+  readAnthropicMessage,
+  refitThinking,
+  thinkingFields,
+  type AnthropicAuth,
+  type ThinkForm,
+} from "./anthropic-messages";
 import type { FailKind } from "./prompts";
 import { declinedFinish, RepeatWatch } from "./hop-limits";
 import type { WakeWatch } from "./wake";
@@ -21,7 +35,17 @@ export type ChatMessage = {
   content?: string | ChatContentPart[] | null;
   tool_calls?: ToolCall[];
   tool_call_id?: string;
+  /** What the endpoint that wrote this assistant line needs back with it (see `ReplyCarry`). */
+  carry?: ReplyCarry;
 };
+
+/**
+ * Parts of a reply that only its own endpoint reads, kept with the assistant line for the rest of
+ * the turn: an Anthropic-format model that thought before calling tools refuses the next hop unless
+ * its thinking blocks come back unchanged with the calls. `key` is the endpoint and model that wrote
+ * them; any other one is sent the line without them.
+ */
+export type ReplyCarry = { key: string; blocks: unknown[] };
 
 export type MappedUsage = {
   input_tokens: number | null;
@@ -47,6 +71,8 @@ export type CompletionOk = {
    * go on. Absent is false.
    */
   toolArgsCut?: boolean;
+  /** Present when the endpoint wants parts of this reply back on the next hop (see `ReplyCarry`). */
+  carry?: ReplyCarry;
 };
 
 export type CompletionFail = {
@@ -67,6 +93,8 @@ export type CompletionsClient = {
 export type CompletionRequest = {
   baseUrl: string;
   apiKey: string;
+  /** The endpoint's wire format; absent is `openai` (Chat Completions). */
+  apiFormat?: ApiFormat;
   model: string;
   thinkingLevel: ThinkingLevel;
   messages: ChatMessage[];
@@ -97,6 +125,8 @@ export type CompletionRequest = {
 export type JudgeRequest = {
   baseUrl: string;
   apiKey: string;
+  /** The endpoint's wire format; absent is `openai` (Chat Completions). */
+  apiFormat?: ApiFormat;
   model: string;
   messages: ChatMessage[];
   signal: AbortSignal;
@@ -187,14 +217,14 @@ export function createCompletionsClient(
   if (options.clock?.idleMs) clock.idleMs = options.clock.idleMs;
   const gate = createOriginGate(options.originLimit ?? ORIGIN_STREAM_LIMIT);
   const readingGate = createOriginGate(options.originLimit ?? ORIGIN_STREAM_LIMIT);
-  const capForms: CapForms = new Map();
+  const forms: Forms = { cap: new Map(), think: new Map(), auth: new Map() };
 
   return {
     async complete(request) {
-      return completeStreaming(fetchImpl, clock, gate, request, capForms, options.wake);
+      return completeStreaming(fetchImpl, clock, gate, request, forms, options.wake);
     },
     async judge(request) {
-      return completeJudge(fetchImpl, clock, request.lane === "reading" ? readingGate : gate, request);
+      return completeJudge(fetchImpl, clock, request.lane === "reading" ? readingGate : gate, request, forms);
     },
   };
 }
@@ -264,12 +294,23 @@ type CapForm = {
 /** Keyed by base URL and model. */
 type CapForms = Map<string, CapForm>;
 
+/**
+ * What this client learned about how each endpoint takes a request, from the requests it refused:
+ * the output cap (by base URL and model), and for the Anthropic format the thinking fields (by base
+ * URL and model) and the key header (by base URL). Kept for the daemon's life.
+ */
+type Forms = {
+  cap: CapForms;
+  think: Map<string, ThinkForm>;
+  auth: Map<string, AnthropicAuth>;
+};
+
 async function completeStreaming(
   fetchImpl: FetchLike,
   clock: Clock,
   gate: OriginGate,
   request: CompletionRequest,
-  capForms: CapForms,
+  forms: Forms,
   wake?: WakeWatch,
 ): Promise<CompletionResult> {
   let lastFail: FailKind = "unreachable";
@@ -296,7 +337,7 @@ async function completeStreaming(
     const startedAt = clock.now();
     const sleptThrough = wake ? () => wake.sleptBetween(startedAt, clock.now()) > 0 : undefined;
     try {
-      result = await oneStreamAttempt(fetchImpl, clock, request, capForms, sleptThrough);
+      result = await oneStreamAttempt(fetchImpl, clock, request, forms, sleptThrough);
     } finally {
       gate.release(key);
     }
@@ -343,11 +384,28 @@ async function oneStreamAttempt(
   fetchImpl: FetchLike,
   clock: Clock,
   request: CompletionRequest,
-  capForms: CapForms,
+  forms: Forms,
   sleptThrough?: () => boolean,
 ): Promise<Attempt> {
   const wallAt = request.wallMs ? clock.now() + request.wallMs : Number.POSITIVE_INFINITY;
+  const capForms = forms.cap;
   const capKey = `${request.baseUrl} ${request.model}`;
+  if (request.apiFormat === "anthropic") {
+    let response: Response;
+    try {
+      response = await postAnthropic(fetchImpl, request, forms, {
+        stream: true,
+        tools: request.tools,
+        maxTokens: request.maxTokens ?? ANTHROPIC_DEFAULT_CAP,
+        refitCap: true,
+        cacheLoop: true,
+        affinity: request.affinity,
+      });
+    } catch {
+      return fail("unreachable", { retryable: !request.signal.aborted, retryBurned: false });
+    }
+    return streamResponse(response, clock, request, wallAt, sleptThrough);
+  }
   const post = (form: CapForm) =>
     fetchImpl(completionsUrl(request.baseUrl), {
       method: "POST",
@@ -387,7 +445,17 @@ async function oneStreamAttempt(
     }
     return fail("unreachable", { retryable: true, retryBurned: false });
   }
+  return streamResponse(response, clock, request, wallAt, sleptThrough);
+}
 
+/** What a streaming request's response is worth: a failure by its status, or its stream read. */
+function streamResponse(
+  response: Response,
+  clock: Clock,
+  request: CompletionRequest,
+  wallAt: number,
+  sleptThrough?: () => boolean,
+): Promise<Attempt> | Attempt {
   if (response.status === 429) {
     return fail("busy", {
       retryable: true,
@@ -407,6 +475,109 @@ async function oneStreamAttempt(
   }
 
   return readSse(response.body, clock, request, wallAt, sleptThrough);
+}
+
+/**
+ * One Messages request, sent again at once while the endpoint refuses it for how it was asked: the
+ * key header (401/403, tried the other way once per base URL), the thinking fields (400 naming them,
+ * one form down) and, for a hop, the output cap (as for Chat Completions). Messages takes no request
+ * without a cap, so a cap the refit would leave out stays as it was.
+ */
+async function postAnthropic(
+  fetchImpl: FetchLike,
+  request: CompletionRequest | JudgeRequest,
+  forms: Forms,
+  opts: {
+    stream: boolean;
+    tools: unknown[];
+    maxTokens: number;
+    refitCap: boolean;
+    cacheLoop: boolean;
+    affinity: string | undefined;
+    signal?: AbortSignal;
+  },
+): Promise<Response> {
+  const key = `${request.baseUrl} ${request.model}`;
+  const authKey = request.baseUrl;
+  let auth: AnthropicAuth = forms.auth.get(authKey) ?? "x-api-key";
+  let think: ThinkForm = forms.think.get(key) ?? "adaptive";
+  let cap: CapForm = (opts.refitCap ? forms.cap.get(key) : undefined) ?? { field: "max_tokens" };
+  let triedAuth = false;
+  const capOf = (form: CapForm) => capSent(form, opts.maxTokens) ?? opts.maxTokens;
+  const post = () => {
+    const maxTokens = capOf(cap);
+    const thinking = thinkingFields(think, request.thinkingLevel, maxTokens);
+    return {
+      thinking,
+      response: fetchImpl(anthropicUrl(request.baseUrl, "messages"), {
+        method: "POST",
+        headers: { ...anthropicHeaders(request.apiKey, auth), ...sessionHeader(opts.affinity) },
+        body: JSON.stringify(anthropicBody({
+          model: request.model,
+          messages: request.messages,
+          tools: opts.tools,
+          maxTokens,
+          thinking,
+          stream: opts.stream,
+          carryKey: carryKey(request.baseUrl, request.model),
+          cacheLoop: opts.cacheLoop,
+        })),
+        signal: opts.signal ?? request.signal,
+      }),
+    };
+  };
+  let sent = post();
+  let response = await sent.response;
+  // A thinking form a refusal stepped down to is kept for the model only once a request in it got
+  // past the 400: one that failed anyway says nothing about the form.
+  let thinkStepped = false;
+  for (let refits = 0; refits < 5; refits++) {
+    if ((response.status === 401 || response.status === 403) && !triedAuth) {
+      triedAuth = true;
+      const first = auth;
+      auth = first === "x-api-key" ? "bearer" : "x-api-key";
+      const retry = post();
+      const answer = await retry.response;
+      if (answer.status === 401 || answer.status === 403) {
+        // Refused the other way too: the key itself is wrong, and the first answer says so.
+        await answer.body?.cancel().catch(() => {});
+        auth = first;
+        break;
+      }
+      forms.auth.set(authKey, auth);
+      sent = retry;
+      response = answer;
+      continue;
+    }
+    if (response.status !== 400) break;
+    const body = await response.text();
+    const nextThink = refitThinking(body, think, sent.thinking);
+    if (nextThink) {
+      think = nextThink;
+      thinkStepped = true;
+    } else {
+      const refit = opts.refitCap ? refitCap(body, cap, opts.maxTokens) : null;
+      if (!refit || capOf(refit.form) === capOf(cap)) {
+        response = new Response(body, { status: 400, headers: response.headers });
+        break;
+      }
+      cap = refit.form;
+      if (refit.keep) forms.cap.set(key, cap);
+    }
+    sent = post();
+    response = await sent.response;
+  }
+  if (thinkStepped && response.status !== 400) forms.think.set(key, think);
+  return response;
+}
+
+/**
+ * The `X-Session-ID` of a judge call: calls of one kind share their fixed system message (see
+ * `JudgeRequest.prompt`). A reading you wait on is short and not worth keeping on one account: it
+ * would queue there.
+ */
+function judgeAffinity(request: JudgeRequest): string | undefined {
+  return request.prompt && request.lane !== "reading" ? `deskfolk-${request.prompt.id}` : undefined;
 }
 
 function capSent(form: CapForm, maxTokens: number | undefined): number | undefined {
@@ -453,6 +624,13 @@ function refitCap(body: string, form: CapForm, maxTokens: number | undefined): {
   // a cap the endpoint writes into what room is left, as it did before hops had one. The next
   // prompt may fit, so this is for this request only.
   if (new RegExp(`\\b${sent} in the completion\\b`).test(body)) return { form: { ...form, limit: null }, keep: false };
+  // Anthropic's own wording of the same: "input length and `max_tokens` exceed context limit:
+  // 190000 + 32000 > 200000". What is left of the context is the cap that fits, this time.
+  const sum = /(\d+)\s*\+\s*(\d+)\s*>\s*(\d+)/.exec(body);
+  if (sum && Number(sum[2]) === sent && CAP_NAMED.test(body)) {
+    const room = Number(sum[3]) - Number(sum[1]);
+    return { form: { ...form, limit: room >= 1 && room < sent ? room : null }, keep: false };
+  }
   if (CAP_NAMED.test(body) && CONTEXT_FULL.test(body)) return { form: { ...form, limit: null }, keep: false };
   if (!CAP_NAMED.test(body)) return null;
   if (form.field === "max_tokens" && body.includes("max_completion_tokens") && /not supported|unsupported|instead/i.test(body)) {
@@ -495,6 +673,9 @@ async function readSse(
   // Watched as it streams, so a reply that loops is cut off within seconds instead of running on
   // to the cap (see hop-limits.ts).
   const repeats = new RepeatWatch();
+  // A Messages stream is read event by event into the same state a Chat Completions one fills.
+  const anthropic = request.apiFormat === "anthropic" ? new AnthropicStream() : null;
+  let streamError: FailKind | null = null;
 
   const nextDeadline = () => clock.now() + (first ? clock.firstByteMs : clock.idleMs);
   const stopped = (retryable: boolean, unreachable = false): Attempt =>
@@ -512,9 +693,49 @@ async function readSse(
   // model was still writing, so the same request would only run as long again; a Mac that slept
   // through it goes back to the idle path, which waits for the network and asks again.
   const timedOut = (): Attempt => (clock.now() >= wallAt && !sleptThrough?.() ? endAs("overtime") : stopped(true));
+  // The endpoint reported a failure inside the stream (Messages' `error` event, often "overloaded"):
+  // what came so far is half a reply, and the same request may go through on another try.
+  const streamFailed = (): Attempt =>
+    fail(streamError ?? "endpoint_error", {
+      retryable: true,
+      retryBurned,
+      hadChoices,
+      usage,
+      missingReason: missingForStream(content, tools, usage, sawUsagePacket, true),
+    });
 
-  // One server-sent event: "done" at `[DONE]`, "repeat" once the body text loops.
-  const take = (raw: string): "done" | "repeat" | null => {
+  const takeAnthropic = (event: Record<string, unknown>): "done" | "repeat" | "error" | null => {
+    const step = anthropic!.feed(event);
+    if (step.started) hadChoices = true;
+    if (step.usage) {
+      usage = step.usage;
+      sawUsagePacket = true;
+    }
+    if (step.finish) finishReason = normalizeFinish(step.finish);
+    if (step.toolCalls) {
+      mergeToolDeltas(tools, step.toolCalls);
+      // The turn announces a call from its first delta, which it reads in Chat Completions' shape.
+      request.onEvent?.({ choices: [{ index: 0, delta: { tool_calls: step.toolCalls } }] });
+    }
+    if (step.text) {
+      content += step.text;
+      request.onToken?.(step.text);
+      if (repeats.feed(step.text)) return "repeat";
+    }
+    if (step.error) {
+      streamError = step.error;
+      return "error";
+    }
+    if (step.done) {
+      sawDone = true;
+      return "done";
+    }
+    return null;
+  };
+
+  // One server-sent event: "done" at `[DONE]` (or Messages' `message_stop`), "repeat" once the body
+  // text loops, "error" at a Messages `error` event.
+  const take = (raw: string): "done" | "repeat" | "error" | null => {
     const dataLines = raw
       .split("\n")
       .filter((line) => line.startsWith("data:"))
@@ -533,6 +754,7 @@ async function readSse(
     } catch {
       return null;
     }
+    if (anthropic) return takeAnthropic(parsed);
     request.onEvent?.(parsed);
     const mapped = mapUsage(parsed.usage);
     if (mapped) {
@@ -592,12 +814,17 @@ async function readSse(
         }
         const ended = take(raw);
         if (ended === "repeat") return endAs("repeat");
+        if (ended === "error") return streamFailed();
         if (ended === "done") break;
       }
     }
     // An endpoint may close the stream right after its last event, without the blank line that
     // ends it. That event may carry the finish reason, so it is read like the others.
-    if (!sawDone && buf.trim().length > 0 && take(buf) === "repeat") return endAs("repeat");
+    if (!sawDone && buf.trim().length > 0) {
+      const ended = take(buf);
+      if (ended === "repeat") return endAs("repeat");
+      if (ended === "error") return streamFailed();
+    }
   } catch {
     if (request.signal.aborted) return stopped(false);
     return stopped(true, first);
@@ -629,6 +856,9 @@ async function readSse(
       usage,
       missingReason,
       ...(classified.toolArgsCut ? { toolArgsCut: true } : {}),
+      ...(anthropic && anthropic.thinking.length > 0 && classified.toolCalls.length > 0
+        ? { carry: { key: carryKey(request.baseUrl, request.model), blocks: anthropic.thinking } }
+        : {}),
       retryable: false,
       retryBurned,
     };
@@ -735,13 +965,14 @@ async function completeJudge(
   clock: Clock,
   gate: OriginGate,
   request: JudgeRequest,
+  forms: Forms,
 ): Promise<JudgeResult> {
   const acquired = await gate.acquire(originKey(request.baseUrl), request.signal);
   if (!acquired) {
     return { content: null, toolCalls: [], hadToolCalls: false, usage: null, failKind: "unreachable" };
   }
   try {
-    return await completeJudgeBody(fetchImpl, clock, request);
+    return await completeJudgeBody(fetchImpl, clock, request, forms);
   } finally {
     gate.release(originKey(request.baseUrl));
   }
@@ -751,31 +982,41 @@ async function completeJudgeBody(
   fetchImpl: FetchLike,
   clock: Clock,
   request: JudgeRequest,
+  forms: Forms,
 ): Promise<JudgeResult> {
   let response: Response;
+  const signal = AbortSignal.any([request.signal, AbortSignal.timeout(request.timeoutMs ?? clock.firstByteMs)]);
+  const maxTokens = request.maxTokens ?? (request.tools?.length ? 512 : 256);
   try {
-    response = await fetchImpl(completionsUrl(request.baseUrl), {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${request.apiKey}`,
-        "Content-Type": "application/json",
-        // A reading you wait on is short and not worth keeping on one account: it would queue there.
-        ...sessionHeader(request.prompt && request.lane !== "reading" ? `deskfolk-${request.prompt.id}` : undefined),
-      },
-      body: JSON.stringify({
-        model: request.model,
-        ...(request.thinkingLevel ? { reasoning_effort: request.thinkingLevel } : {}),
-        messages: toApiMessages(request.messages),
-        temperature: 0,
-        max_tokens: request.maxTokens ?? (request.tools?.length ? 512 : 256),
+    response = request.apiFormat === "anthropic"
+      // No `temperature: 0` here: Anthropic's current models refuse any sampling setting.
+      ? await postAnthropic(fetchImpl, request, forms, {
         stream: false,
-        ...(request.tools?.length ? { tools: request.tools } : {}),
-      }),
-      signal: AbortSignal.any([
-        request.signal,
-        AbortSignal.timeout(request.timeoutMs ?? clock.firstByteMs),
-      ]),
-    });
+        tools: request.tools ?? [],
+        maxTokens,
+        refitCap: false,
+        cacheLoop: false,
+        affinity: judgeAffinity(request),
+        signal,
+      })
+      : await fetchImpl(completionsUrl(request.baseUrl), {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${request.apiKey}`,
+          "Content-Type": "application/json",
+          ...sessionHeader(judgeAffinity(request)),
+        },
+        body: JSON.stringify({
+          model: request.model,
+          ...(request.thinkingLevel ? { reasoning_effort: request.thinkingLevel } : {}),
+          messages: toApiMessages(request.messages),
+          temperature: 0,
+          max_tokens: maxTokens,
+          stream: false,
+          ...(request.tools?.length ? { tools: request.tools } : {}),
+        }),
+        signal,
+      });
   } catch (error) {
     const timeout = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
     return judgeResult({
@@ -785,15 +1026,24 @@ async function completeJudgeBody(
       failKind: timeout && !request.signal.aborted ? "first_byte" : "unreachable",
     });
   }
-  if (response.status >= 500) {
-    return judgeResult({ content: null, toolCalls: [], usage: mapUsageFromResponse(await peekJson(response)), failKind: "endpoint_error" });
-  }
   if (response.status >= 400) {
-    return judgeResult({ content: null, toolCalls: [], usage: mapUsageFromResponse(await peekJson(response)), failKind: "endpoint_error" });
+    const usage = request.apiFormat === "anthropic" ? null : mapUsageFromResponse(await peekJson(response));
+    return judgeResult({ content: null, toolCalls: [], usage, failKind: "endpoint_error" });
   }
   const body = (await peekJson(response)) as Record<string, unknown> | null;
   if (!body) {
     return judgeResult({ content: null, toolCalls: [], usage: null, failKind: "incomplete" });
+  }
+  if (request.apiFormat === "anthropic") {
+    const message = readAnthropicMessage(body);
+    if (!message) return judgeResult({ content: null, toolCalls: [], usage: mapAnthropicUsage(body.usage), failKind: "incomplete" });
+    return judgeResult({
+      content: message.content,
+      toolCalls: message.toolCalls,
+      usage: message.usage,
+      failKind: null,
+      ...(message.finish === "length" ? { truncated: true } : {}),
+    });
   }
   const usage = mapUsage(body.usage);
   const choices = body.choices;

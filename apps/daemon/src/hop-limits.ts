@@ -208,12 +208,13 @@ export function repeatsItself(text: string): boolean {
 // ── Refusals ───────────────────────────────────────────────────────────────────────────────────
 
 /**
- * Finish reasons that mean the endpoint withheld the answer: OpenAI's `content_filter`, and the
- * reasons Gemini's own API uses, which some OpenAI-compatible proxies pass through as they are
- * (`RECITATION` withholds text too close to a source; it reads the same from here).
+ * Finish reasons that mean the endpoint withheld the answer: OpenAI's `content_filter`, Anthropic's
+ * `refusal`, and the reasons Gemini's own API uses, which some OpenAI-compatible proxies pass through
+ * as they are (`RECITATION` withholds text too close to a source; it reads the same from here).
  */
 const DECLINED_FINISH: ReadonlySet<string> = new Set([
   "content_filter",
+  "refusal",
   "safety",
   "prohibited_content",
   "blocklist",

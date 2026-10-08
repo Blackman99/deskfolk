@@ -475,6 +475,7 @@ export function createParticipation(deps: ParticipationDeps): Participation {
       const result = await completions.judge({
         baseUrl: target.baseUrl,
         apiKey: target.apiKey,
+        apiFormat: target.apiFormat,
         model: target.model,
         prompt: prompt.ref,
         messages: [

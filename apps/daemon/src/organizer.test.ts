@@ -989,6 +989,7 @@ function bareOrganizer(answers: Array<JudgeResult | Error | (() => JudgeResult)>
     routing: async () => ({
       baseUrl: "http://127.0.0.1:1/v1",
       apiKey: "fixture",
+      apiFormat: "openai",
       providerId: "p",
       providerName: "fixture",
       model: "fixture",

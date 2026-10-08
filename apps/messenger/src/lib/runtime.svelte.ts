@@ -1,6 +1,7 @@
 import {
   FILE_DROP_SESSION_ID,
   USER_MEMBER,
+  type ApiFormat,
   type Attachment,
   type CatchupResponse,
   type ClientEvent,
@@ -1344,6 +1345,7 @@ export class MessengerRuntime {
     baseUrl?: string,
     apiKey?: string,
     providerId?: string,
+    apiFormat?: ApiFormat,
   ): Promise<{ ok: true } & ProbeModelsResponse | { ok: false; error: string }> {
     const api = this.api;
     if (!api) return { ok: false, error: "Not connected" };
@@ -1351,6 +1353,7 @@ export class MessengerRuntime {
       const res = await api.probeModels({
         endpoint_base_url: baseUrl,
         endpoint_api_key: apiKey,
+        ...(apiFormat ? { api_format: apiFormat } : {}),
         provider_id: providerId,
       });
       if (this.api !== api) return { ok: false, error: "Connection changed" };

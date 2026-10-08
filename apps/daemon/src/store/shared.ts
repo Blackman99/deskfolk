@@ -9,11 +9,14 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Database } from "bun:sqlite";
 import {
+  API_FORMATS,
   USER_MEMBER,
   compactFolkAvatar,
   generateBoringAvatar,
+  isApiFormat,
   isBotRunner,
   isClaudeEffort,
+  type ApiFormat,
   type Approval,
   type Bot,
   type Message,
@@ -234,6 +237,7 @@ export type ProviderRow = {
   id: string;
   name: string;
   base_url: string;
+  api_format?: string | null;
   models: string;
   available_models?: string | null;
   default_model: string | null;
@@ -599,6 +603,16 @@ export function resolveEndpointUrl(value: unknown): string {
     throw new HttpError(422, "invalid_args", "endpoint_base_url must be an http or https URL");
   }
   return parsed.href;
+}
+
+/** The stored format of an endpoint; anything unknown reads as Chat Completions, as every row did before. */
+export function storedApiFormat(raw: string | null | undefined): ApiFormat {
+  return isApiFormat(raw) ? raw : "openai";
+}
+
+export function resolveApiFormat(value: unknown): ApiFormat {
+  if (!isApiFormat(value)) throw new HttpError(422, "invalid_args", `api_format must be one of ${API_FORMATS.join(", ")}`);
+  return value;
 }
 
 export function clampLimit(limit: number | undefined): number {

@@ -1,4 +1,5 @@
 import {
+  type ApiFormat,
   type LessonPatch,
   type TurnCommandsResponse,
   type ModelLadderResponse,
@@ -67,6 +68,7 @@ import { probeEndpointModels } from "./probe-models";
 import type { FileCommit } from "./store/files";
 import type { RouteLearningRow, RouteReviewRow } from "./store/routing";
 import { ENGINE_LEVEL, type SharedInstall } from "./store/schema-gate";
+import { resolveApiFormat } from "./store/shared";
 import { isoNow, ulid } from "./ids";
 import { requestDigest, normalizeFiles, validateRequestPath, type NormalizedFile, type CanonicalEncoder } from "./request-digest";
 import { type RequestScope, type KeyOperation } from "./store/receipts";
@@ -1149,17 +1151,21 @@ function dispatch(
       const body = (input.body) as {
         endpoint_base_url?: string;
         endpoint_api_key?: string;
+        /** The format the form shows; absent, the saved endpoint's (or `openai`). */
+        api_format?: string;
         provider_id?: string;
       };
       const settings = await store.settings();
       let baseUrl = body.endpoint_base_url?.trim() ?? "";
       let apiKey = body.endpoint_api_key?.trim() ?? "";
-      if (!baseUrl || !apiKey) {
+      let apiFormat: ApiFormat | undefined = body.api_format === undefined ? undefined : resolveApiFormat(body.api_format);
+      if (!baseUrl || !apiKey || !apiFormat) {
         const providerId = body.provider_id?.trim() || settings.default_provider_id;
         if (providerId) {
           const provider = await store.getProvider(providerId);
           if (!baseUrl) baseUrl = provider.base_url?.trim() ?? "";
           if (!apiKey) apiKey = (await store.endpointKey(providerId))?.trim() ?? "";
+          apiFormat ??= provider.api_format;
         } else if (!baseUrl) {
           baseUrl = settings.endpoint_base_url?.trim() ?? "";
           if (!apiKey) apiKey = (await store.endpointKey())?.trim() ?? "";
@@ -1169,7 +1175,7 @@ function dispatch(
         throw new HttpError(422, "invalid_args", "endpoint_base_url is required");
       }
       request.signal.throwIfAborted();
-      const probed = await probeEndpointModels(baseUrl, apiKey, fetch, request.signal, { guard: scope?.guard });
+      const probed = await probeEndpointModels(baseUrl, apiKey, fetch, request.signal, { guard: scope?.guard, apiFormat });
       scope?.guard?.();
       return jsonResponse({ models: probed.models, catalog: probed.catalog }, 200, null);
     })();

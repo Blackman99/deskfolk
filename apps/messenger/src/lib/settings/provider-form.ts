@@ -2,6 +2,7 @@ import {
   THINKING_LEVELS,
   isThinkingLevel,
   sortThinkingLevels,
+  type ApiFormat,
   type CreateProviderRequest,
   type EndpointModel,
   type EndpointModelInput,
@@ -27,6 +28,8 @@ export type ModelAttrDraft = {
 export type ProviderDraft = {
   name: string;
   baseUrl: string;
+  /** Chat Completions or Anthropic Messages; decides the path, the key header and the request shape. */
+  apiFormat: ApiFormat;
   apiKey: string;
   /** Enabled names, in the order they were picked. */
   models: string[];
@@ -87,6 +90,7 @@ export function emptyProviderDraft(): ProviderDraft {
   return {
     name: "",
     baseUrl: "",
+    apiFormat: "openai",
     apiKey: "",
     models: [],
     availableModels: [],
@@ -166,7 +170,7 @@ export function probeSignature(draft: ProviderDraft, keySet: boolean): string | 
   if (!isHttpOrHttpsUrl(baseUrl)) return null;
   const apiKey = draft.apiKey.trim();
   if (apiKey.length === 0 && !keySet) return null;
-  return `${baseUrl}\n${apiKey}`;
+  return `${draft.apiFormat}\n${baseUrl}\n${apiKey}`;
 }
 
 /** Toggles a level, keeping at least one so a name never claims to support nothing. */
@@ -241,6 +245,7 @@ export function providerHost(baseUrl: string | null | undefined): string {
 export function draftFromProvider(input: {
   name: string;
   base_url: string | null;
+  api_format?: ApiFormat;
   models: readonly string[];
   model_catalog?: readonly EndpointModel[];
   available_models?: readonly string[];
@@ -260,6 +265,7 @@ export function draftFromProvider(input: {
   return {
     name: input.name,
     baseUrl: input.base_url ?? "",
+    apiFormat: input.api_format ?? "openai",
     apiKey: "",
     models: [...input.models],
     availableModels: [...(input.available_models ?? [])],
@@ -279,6 +285,8 @@ export function planCreateProvider(draft: ProviderDraft, requireKey: boolean): P
     api_key: parsed.apiKey || undefined,
     models: parsed.models,
   };
+  // Left out for Chat Completions, which is what a daemon reads when none is given.
+  if (draft.apiFormat !== "openai") body.api_format = draft.apiFormat;
   if (parsed.defaultModel) body.default_model = parsed.defaultModel;
   if (parsed.availableModels.length > 0) body.available_models = parsed.availableModels;
   return { ok: true, body };
@@ -288,6 +296,7 @@ export function planPatchProvider(
   current: {
     name: string;
     base_url: string | null;
+    api_format?: ApiFormat;
     models: readonly string[];
     model_catalog?: readonly EndpointModel[];
     available_models?: readonly string[];
@@ -301,6 +310,7 @@ export function planPatchProvider(
   const patch: PatchProviderRequest = {};
   if (parsed.name !== current.name) patch.name = parsed.name;
   if (parsed.baseUrl !== (current.base_url ?? "")) patch.base_url = parsed.baseUrl;
+  if (draft.apiFormat !== (current.api_format ?? "openai")) patch.api_format = draft.apiFormat;
   const currentCatalog = current.model_catalog ?? current.models.map(defaultCatalogItem);
   if (!sameCatalog(parsed.models, currentCatalog)) patch.models = parsed.models;
   if (!sameList(parsed.availableModels, current.available_models ?? [])) {
@@ -315,6 +325,15 @@ export function planPatchProvider(
     patch.default_model = "";
   }
   return { ok: true, patch };
+}
+
+/**
+ * The format a probe names: the draft's when it is not what the daemon would read by itself (the
+ * saved endpoint's, or Chat Completions for a new one), so a daemon from before formats still takes
+ * every probe a Chat Completions endpoint makes.
+ */
+export function probeFormat(draft: ProviderDraft, saved: ApiFormat | undefined): ApiFormat | undefined {
+  return draft.apiFormat !== (saved ?? "openai") || draft.apiFormat !== "openai" ? draft.apiFormat : undefined;
 }
 
 export function mapProviderError(message: string): ProviderFieldErrors | { top: true } {

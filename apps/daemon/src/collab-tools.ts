@@ -6,6 +6,7 @@ import {
   attachmentLinePaths,
   generateBoringAvatar,
   isThinkingLevel,
+  type ApiFormat,
   type BoringAvatarVariant,
   type Bot,
   type ThinkingLevel,
@@ -42,6 +43,7 @@ import { normalizeModelCatalog } from "./models";
 import { type Store } from "./store";
 import { goAheadBounce } from "./store/end-contract";
 import { ENGINE_LEVELS } from "./store/schema-gate";
+import { resolveApiFormat } from "./store/shared";
 import {
   extractWorkspacePathsFromBody,
   linkifyWorkspacePaths,
@@ -53,7 +55,7 @@ import { editPrompt, listPrompts, readPrompt, resetPrompt } from "./prompt-tools
 import { describeData, queryData, readDataLog } from "./data-tools";
 
 const DEFAULT_ENDPOINT_GUARD =
-  "cannot modify the default endpoint's URL or key, or delete it";
+  "cannot modify the default endpoint's URL, API format or key, or delete it";
 
 export type ToolResult = {
   ok: boolean;
@@ -1078,6 +1080,7 @@ async function listEndpoints(ctx: ToolCtx): Promise<ToolResult> {
 async function addEndpoint(ctx: ToolCtx, args: Record<string, unknown>): Promise<ToolResult> {
   const name = requireString(args.name, "name");
   const baseUrl = requireString(args.base_url, "base_url");
+  const apiFormat = args.api_format === undefined ? "openai" : resolveApiFormat(args.api_format);
   const models = args.models === undefined ? undefined : args.models;
   const defaultModel = optionalString(args.default_model);
   if (!ctx.approved) {
@@ -1087,7 +1090,7 @@ async function addEndpoint(ctx: ToolCtx, args: Record<string, unknown>): Promise
       waitApproval: {
         kind_key: "endpoint-add",
         target: baseUrl,
-        summary: endpointAddSummary(name, baseUrl, catalog.map((row) => row.name)),
+        summary: endpointAddSummary(name, baseUrl, apiFormat, catalog.map((row) => row.name)),
         requiresApiKey: true,
         run: (opts) =>
           runCollabTool({ ...ctx, approved: true, approvalApiKey: opts?.api_key }, "add_endpoint", args),
@@ -1103,6 +1106,7 @@ async function addEndpoint(ctx: ToolCtx, args: Record<string, unknown>): Promise
   const provider = await mutateConfiguration(ctx, () => ctx.store.createProviderSync({
     name,
     base_url: baseUrl,
+    api_format: apiFormat,
     api_key: apiKey,
     models: models === undefined ? undefined : (models as Provider["model_catalog"]),
     default_model: defaultModel,
@@ -1123,18 +1127,23 @@ async function updateEndpoint(ctx: ToolCtx, args: Record<string, unknown>): Prom
   const nextName = args.name !== undefined ? requireString(args.name, "name") : undefined;
   const nextUrl = args.base_url !== undefined ? requireString(args.base_url, "base_url") : undefined;
   const urlChanging = nextUrl !== undefined && nextUrl !== (current.base_url ?? "");
-  if (urlChanging && isDefault) {
+  const nextFormat = args.api_format !== undefined ? resolveApiFormat(args.api_format) : undefined;
+  // Another format sends the key to another path in another shape: as weighty as another URL.
+  const formatChanging = nextFormat !== undefined && nextFormat !== (current.api_format ?? "openai");
+  const connectionChanging = urlChanging || formatChanging;
+  if (connectionChanging && isDefault) {
     return fail("failed", DEFAULT_ENDPOINT_GUARD);
   }
-  if (urlChanging && !ctx.approved) {
+  if (connectionChanging && !ctx.approved) {
     const catalog =
       args.models !== undefined ? normalizeModelCatalog(args.models) : current.model_catalog;
+    const target = nextUrl ?? current.base_url ?? "";
     return {
       ok: false,
       waitApproval: {
         kind_key: "endpoint-edit",
-        target: nextUrl!,
-        summary: endpointEditSummary(nextName ?? current.name, nextUrl!, catalog.map((row) => row.name)),
+        target,
+        summary: endpointEditSummary(nextName ?? current.name, target, nextFormat ?? current.api_format ?? "openai", catalog.map((row) => row.name)),
         requiresApiKey: !current.key_set,
         run: (opts) =>
           runCollabTool({ ...ctx, approved: true, approvalApiKey: opts?.api_key }, "update_endpoint", args),
@@ -1142,7 +1151,7 @@ async function updateEndpoint(ctx: ToolCtx, args: Record<string, unknown>): Prom
       emitted: [],
     };
   }
-  if (urlChanging) {
+  if (connectionChanging) {
     const apiKey = ctx.approvalApiKey?.trim() ?? "";
     if (!current.key_set && !apiKey) {
       throw new HttpError(422, "invalid_args", "api_key is required");
@@ -1151,17 +1160,19 @@ async function updateEndpoint(ctx: ToolCtx, args: Record<string, unknown>): Prom
   const patch: {
     name?: string;
     base_url?: string;
+    api_format?: ApiFormat;
     api_key?: string;
     models?: Provider["model_catalog"];
     default_model?: string | null;
   } = {};
   if (nextName !== undefined) patch.name = nextName;
   if (urlChanging) patch.base_url = nextUrl;
+  if (formatChanging) patch.api_format = nextFormat;
   if (args.models !== undefined) patch.models = args.models as Provider["model_catalog"];
   if (args.default_model !== undefined) {
     patch.default_model = optionalString(args.default_model) ?? null;
   }
-  if (urlChanging && ctx.approvalApiKey && ctx.approvalApiKey.trim().length > 0) {
+  if (connectionChanging && ctx.approvalApiKey && ctx.approvalApiKey.trim().length > 0) {
     patch.api_key = ctx.approvalApiKey.trim();
   }
   const previousBots = snapshotBotPins(ctx.store);
@@ -1433,6 +1444,7 @@ function serializeEndpoint(provider: Provider, defaultId: string | null): Record
     id: provider.id,
     name: provider.name,
     base_url: provider.base_url,
+    api_format: provider.api_format ?? "openai",
     key_set: provider.key_set,
     models: provider.models,
     model_catalog: provider.model_catalog,
@@ -1589,14 +1601,19 @@ function mcpTarget(spec: McpToolSpec): string {
   return `${spec.command} ${spec.args.join(" ")}`.trim();
 }
 
-function endpointAddSummary(name: string, url: string, models: string[]): string {
+function endpointAddSummary(name: string, url: string, format: ApiFormat, models: string[]): string {
   const list = models.length > 0 ? models.join(", ") : "(none)";
-  return `endpoint-add ${name}\n${url}\nmodels: ${list}`;
+  return `endpoint-add ${name}\n${url}${formatNote(format)}\nmodels: ${list}`;
 }
 
-function endpointEditSummary(name: string, url: string, models: string[]): string {
+function endpointEditSummary(name: string, url: string, format: ApiFormat, models: string[]): string {
   const list = models.length > 0 ? models.join(", ") : "(none)";
-  return `endpoint-edit ${name}\n${url}\nmodels: ${list}`;
+  return `endpoint-edit ${name}\n${url}${formatNote(format)}\nmodels: ${list}`;
+}
+
+/** The format beside the URL on an approval card; Chat Completions, as every endpoint was before, goes unsaid. */
+function formatNote(format: ApiFormat): string {
+  return format === "anthropic" ? " (Anthropic Messages)" : "";
 }
 
 function mcpAddSummary(name: string, spec: McpToolSpec): string {

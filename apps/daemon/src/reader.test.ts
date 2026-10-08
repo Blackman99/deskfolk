@@ -15,7 +15,7 @@ afterEach(() => {
   while (stores.length) stores.pop()!.close();
 });
 
-const ROUTING: OrganizerRouting = { baseUrl: "http://127.0.0.1:1/v1", apiKey: "k", providerId: "p", providerName: "Default", model: "reader-model", thinkingLevel: null };
+const ROUTING: OrganizerRouting = { baseUrl: "http://127.0.0.1:1/v1", apiKey: "k", apiFormat: "openai", providerId: "p", providerName: "Default", model: "reader-model", thinkingLevel: null };
 
 function judged(content: string | null, over: Partial<JudgeResult> = {}): JudgeResult {
   return { content, toolCalls: [], hadToolCalls: false, usage: null, failKind: null, ...over };

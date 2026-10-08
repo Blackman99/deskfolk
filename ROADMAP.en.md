@@ -25,7 +25,7 @@ Groundwork in place:
 
 - Persistent Bots, directs and groups, mentions, participation judgement and asynchronous handoffs; lines sent in a row taken in order, and a line you sent changeable, the Bots going by the new words.
 - A local daemon, a shared folder, file tools, shell, approval for dangerous actions, and Stop.
-- Multiple OpenAI-compatible Chat Completions endpoints; stdio / Streamable HTTP MCP tools.
+- Multiple endpoints, OpenAI-compatible (Chat Completions) or Anthropic-compatible (Messages, [ADR 0066](docs/adr/0066-anthropic-format-endpoints.md)); stdio / Streamable HTTP MCP tools.
 - One flow board per job: the groups, directs and Bot↔Bot directs that share a work dir are drawn on the same board by who woke whom, one card per turn, with the files handed over attached to the cards.
 - A desktop pane workbench: the main area splits freely across and down, each pane holds a set of tabs, and a tab holds a session (together with its one preview and flow board), a terminal, the routine calendar or the workspace; the arrangement is remembered only on this Mac, and narrow screens and phones still show one screen at a time.
 - Your own terminal sessions: held by the daemon, they keep running when the window closes, and after you quit and reopen they come back to the same directory and screen; a command a Bot runs scrolls under its message bubble while it runs and folds into one line when it finishes.
@@ -36,7 +36,7 @@ Next:
 
 - Verify the full path from the task you put in, through Bots collaborating on their own, to delivered files, both for a team assembled by hand and for a Bot creating its own teammates.
 - Keep verifying compatibility, error recovery and collaboration consistency across different models and MCP servers.
-- Promise only OpenAI-compatible Chat Completions endpoints, MCP (stdio / Streamable HTTP), and Bots run by the Claude Code you installed and signed in to (Claude Agent, [ADR 0061](docs/adr/0061-claude-agent-runner.md)) for models and tools, with the interface constraints written down; no promise of compatibility with any model or any tool.
+- Promise only OpenAI-compatible Chat Completions endpoints and Anthropic-compatible Messages endpoints, MCP (stdio / Streamable HTTP), and Bots run by the Claude Code you installed and signed in to (Claude Agent, [ADR 0061](docs/adr/0061-claude-agent-runner.md)) for models and tools, with the interface constraints written down; no promise of compatibility with any model or any tool.
 
 ## 2. Plans, tickets and done-when: the app holds it to account (main focus of current work)
 

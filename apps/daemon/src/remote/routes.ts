@@ -21,7 +21,8 @@ const schedule: Check = v => object({ kind: one("daily"), time: string }, ["kind
   object({ kind: one("weekly"), time: string, weekdays: list(string) }, ["kind", "time", "weekdays"])(v);
 const bot = { name: string, duties: string, boundaries: string, avatar: nullable(string), model: nullable(string), provider_id: nullable(id), thinking_level: nullable(string), runner: nullable(one("claude_code")), agent_model: nullable(string),
   agent_effort: nullable(one("low", "medium", "high", "xhigh", "max")) };
-const provider = { name: string, base_url: string, api_key: string, models, available_models: list(string), default_model: nullable(string) };
+const apiFormat = one("openai", "anthropic");
+const provider = { name: string, base_url: string, api_format: apiFormat, api_key: string, models, available_models: list(string), default_model: nullable(string) };
 const mcp = { name: string, transport: one("stdio", "http"), command: string, args: list(string), url: string,
   headers: list(object({ name: string, value: string }, ["name", "value"])), auth: string, enabled: bool, usage_note: nullable(string) };
 const skill = { name: string, description: string, body: string, uses: list(string), enabled: bool };
@@ -169,7 +170,7 @@ get("notifications", { filter: one("actionable", "unread", "all"), limit: v => t
 get("notifications/:id");
 get("notification-policy");
 get("notification-device");
-add("POST", "models/probe", { endpoint_base_url: string, endpoint_api_key: string, provider_id: id });
+add("POST", "models/probe", { endpoint_base_url: string, endpoint_api_key: string, api_format: apiFormat, provider_id: id });
 add("POST", "bots", bot, ["name", "duties", "boundaries"]);
 add("POST", "providers", provider, ["name", "base_url"]);
 add("POST", "mcp-servers", mcp, ["name"]);

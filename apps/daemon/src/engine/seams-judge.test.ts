@@ -28,7 +28,7 @@ test("a seams call that sends frames is billed with the vision purpose; a text o
   } as unknown as CompletionsClient;
   const judge = createSeamsJudge({
     completions,
-    routing: async () => ({ baseUrl: "http://127.0.0.1:1/v1", apiKey: "k", providerId: "p", providerName: "P", model: "seer", thinkingLevel: null }),
+    routing: async () => ({ baseUrl: "http://127.0.0.1:1/v1", apiKey: "k", apiFormat: "openai", providerId: "p", providerName: "P", model: "seer", thinkingLevel: null }),
     spend: createSpend({ store, publishSpend: () => {} }),
   });
 

@@ -6,7 +6,9 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
-(none)
+### Endpoints in Anthropic's format
+
+- An endpoint can now speak Anthropic's Messages API as well as OpenAI's Chat Completions: pick **API format › Anthropic-compatible** when adding or editing one in Settings (the first-run wizard has an Anthropic preset too), and give the address the way Claude Code takes it as `ANTHROPIC_BASE_URL` — `https://api.anthropic.com`, or the `…/anthropic` addresses DeepSeek, Bailian, Zhipu, Kimi or MiniMax publish, or a proxy's. Bots, their judgements and the readings of your lines run on it like on any endpoint: thinking levels, tool calls, pictures, the model ladder and spend all work, and the model list is fetched from its `/v1/models` where it has one. Requests carry cache marks, so a long turn reads its earlier steps from the cache instead of paying for them again. A Bot can add one with `api_format: "anthropic"`; changing an endpoint's format waits for your approval like changing its URL. Every endpoint you already have stays OpenAI-compatible. [ADR 0066](docs/adr/0066-anthropic-format-endpoints.md)
 
 ## 0.1.0-rc.14 — 2026-10-08
 

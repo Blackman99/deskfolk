@@ -23,7 +23,7 @@
  */
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { USER_MEMBER, type AcceptanceCheck, type AcceptanceCheckOutcome, type Message, type OrganizerRun, type ThinkingLevel, type Ticket, type Turn } from "@real-bot/protocol";
+import { USER_MEMBER, type AcceptanceCheck, type ApiFormat, type AcceptanceCheckOutcome, type Message, type OrganizerRun, type ThinkingLevel, type Ticket, type Turn } from "@real-bot/protocol";
 import { NO_ABLATION, type Ablation } from "./ablation";
 import { describeCheck } from "./acceptance-eval";
 import type { CompletionsClient, MappedUsage } from "./completions";
@@ -72,6 +72,7 @@ function finishOrganizerRun(
 export type OrganizerRouting = {
   baseUrl: string;
   apiKey: string;
+  apiFormat: ApiFormat;
   providerId: string;
   providerName: string;
   model: string;
@@ -273,6 +274,7 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
       result = await deps.completions.judge({
         baseUrl: routing.baseUrl,
         apiKey: routing.apiKey,
+        apiFormat: routing.apiFormat,
         model: routing.model,
         prompt: prompt.ref,
         messages: [

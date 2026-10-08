@@ -14,6 +14,7 @@ import {
   pickerModels,
   planCreateProvider,
   planPatchProvider,
+  probeFormat,
   probeSignature,
   providerHost,
   setDraftModels,
@@ -30,6 +31,7 @@ function draft(overrides: Partial<ProviderDraft> = {}): ProviderDraft {
   return {
     name: "OpenAI",
     baseUrl: "https://api.openai.com/v1",
+    apiFormat: "openai",
     apiKey: "",
     models: ["gpt-4o"],
     availableModels: [],
@@ -344,10 +346,33 @@ test("toggling, bulk-setting, and hand-adding names keep the default in range", 
 test("probe signature needs an http URL and a key, typed or already stored", () => {
   expect(probeSignature(draft({ baseUrl: "api.openai.com" , apiKey: "sk" }), false)).toBeNull();
   expect(probeSignature(draft({ apiKey: "" }), false)).toBeNull();
-  expect(probeSignature(draft({ apiKey: "" }), true)).toBe("https://api.openai.com/v1\n");
+  expect(probeSignature(draft({ apiKey: "" }), true)).toBe("openai\nhttps://api.openai.com/v1\n");
   expect(probeSignature(draft({ baseUrl: " https://api.openai.com/v1 ", apiKey: " sk " }), false)).toBe(
-    "https://api.openai.com/v1\nsk",
+    "openai\nhttps://api.openai.com/v1\nsk",
   );
+  // Another format asks another path: the list is asked for again.
+  expect(probeSignature(draft({ apiFormat: "anthropic", apiKey: "sk" }), false)).toBe("anthropic\nhttps://api.openai.com/v1\nsk");
+});
+
+test("the API format: sent only when it is not Chat Completions or when it changed", () => {
+  const anthropic = draft({ name: "Claude", baseUrl: "https://api.anthropic.com", apiFormat: "anthropic", apiKey: "sk-ant" });
+  const created = planCreateProvider(anthropic, true);
+  expect(created.ok && created.body.api_format).toBe("anthropic");
+  const plain = planCreateProvider(draft({ apiKey: "sk" }), true);
+  expect(plain.ok && "api_format" in plain.body).toBe(false);
+
+  const saved = { name: "Claude", base_url: "https://api.anthropic.com", api_format: "anthropic" as const, models: ["gpt-4o"], default_model: "gpt-4o" };
+  const reopened = draftFromProvider(saved);
+  expect(reopened.apiFormat).toBe("anthropic");
+  expect(planPatchProvider(saved, reopened)).toEqual({ ok: true, patch: {} });
+  expect(planPatchProvider(saved, { ...reopened, apiFormat: "openai" })).toEqual({ ok: true, patch: { api_format: "openai" } });
+  // One saved by a daemon from before formats reads as Chat Completions.
+  expect(draftFromProvider({ ...saved, api_format: undefined }).apiFormat).toBe("openai");
+
+  expect(probeFormat(draft(), undefined)).toBeUndefined();
+  expect(probeFormat(draft(), "openai")).toBeUndefined();
+  expect(probeFormat(anthropic, undefined)).toBe("anthropic");
+  expect(probeFormat(draft(), "anthropic")).toBe("openai");
 });
 
 test("thinking levels toggle in canonical order and never empty out", () => {

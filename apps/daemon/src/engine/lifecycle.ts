@@ -1007,6 +1007,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
         result = await completions.complete({
           baseUrl: target.baseUrl,
           apiKey: target.apiKey,
+          apiFormat: target.apiFormat,
           model: target.model,
           thinkingLevel: target.thinkingLevel,
           messages,
@@ -1101,6 +1102,8 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
           role: "assistant",
           content: result.content || null,
           tool_calls: result.toolCalls,
+          // An Anthropic-format model that thought before these calls wants its thinking back with them.
+          ...(result.carry ? { carry: result.carry } : {}),
         });
         // What it says beside its tool calls ("let me check the file first") is shown while it
         // works, the same as a Claude Agent Bot's narration. Only these lines: a reply with no

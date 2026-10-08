@@ -152,6 +152,7 @@ export function migrateSchema(db: Database): void {
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         base_url TEXT NOT NULL,
+        api_format TEXT NOT NULL DEFAULT 'openai',
         models TEXT NOT NULL,
         available_models TEXT NOT NULL DEFAULT '[]',
         default_model TEXT,
@@ -166,6 +167,10 @@ export function migrateSchema(db: Database): void {
     .map((row) => row.name);
   if (!providerCols.includes("available_models")) {
     db.run(`ALTER TABLE providers ADD COLUMN available_models TEXT NOT NULL DEFAULT '[]'`);
+  }
+  // Every endpoint before this column spoke Chat Completions.
+  if (!providerCols.includes("api_format")) {
+    db.run(`ALTER TABLE providers ADD COLUMN api_format TEXT NOT NULL DEFAULT 'openai'`);
   }
   if (!tables.includes("turn_route_decisions")) {
     db.run(`

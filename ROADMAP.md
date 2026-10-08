@@ -25,7 +25,7 @@
 
 - 持久 Bot、私聊与群组、点名、参与判断和异步交接；连发的几句按顺序处理，发出去的话能改，Bot 照改后的做。
 - 本机守护进程、共享目录、文件工具、shell、危险动作批准与 Stop。
-- 多个 OpenAI 兼容 Chat Completions 端点，stdio / Streamable HTTP MCP 工具。
+- 多个端点，OpenAI 兼容（Chat Completions）或 Anthropic 兼容（Messages，[ADR 0066](docs/adr/0066-anthropic-format-endpoints.md)），stdio / Streamable HTTP MCP 工具。
 - 一件事一张流程图：共用工作目录的群、私聊和 Bot↔Bot 私聊按谁叫醒了谁画在同一张板上，一轮一张卡片，交出的文件挂在卡片上。
 - 桌面窗格工作台：主栏任意纵横分割，一块窗格一组标签页，标签装会话（连同它唯一的一块预览和流程图）、终端、日程图或工作区；排法只记在本机，窄屏和手机仍一次一屏。
 - 你自己的终端会话：守护进程持有，关窗不停，退出再开回到原来的目录和屏幕；Bot 跑的命令边跑边在它那条气泡下滚动，跑完折成一行。
@@ -36,7 +36,7 @@
 
 - 验证从任务输入、Bot 自主协作到交付文件的完整路径，包括人工组队与 Bot 创建队友两种方式。
 - 持续验证不同模型与 MCP 的兼容性、错误恢复和协作一致性。
-- 模型与工具只承诺 OpenAI 兼容的 Chat Completions 端点、MCP（stdio / Streamable HTTP），以及由你本机安装并登录的 Claude Code 跑的 Bot（Claude Agent，[ADR 0061](docs/adr/0061-claude-agent-runner.md)），写清接口约束；不承诺兼容任何模型、任何工具。
+- 模型与工具只承诺 OpenAI 兼容的 Chat Completions 端点和 Anthropic 兼容的 Messages 端点、MCP（stdio / Streamable HTTP），以及由你本机安装并登录的 Claude Code 跑的 Bot（Claude Agent，[ADR 0061](docs/adr/0061-claude-agent-runner.md)），写清接口约束；不承诺兼容任何模型、任何工具。
 
 ## 2. 规划、任务与验收：应用当真（重点建设中）
 

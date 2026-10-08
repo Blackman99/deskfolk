@@ -110,6 +110,31 @@ function fixtureNames(): string[] {
     .sort();
 }
 
+describe("endpoints from before Anthropic-format ones", () => {
+  test("every endpoint already there speaks Chat Completions, and a new one can speak Messages", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "real-bot-migrate-"));
+    const file = join(dir, "state.sqlite");
+    try {
+      const old = new Database(file, { create: true, strict: true });
+      old.exec(readFileSync(join(FIXTURES, "schema-pre-api-format.sql"), "utf8"));
+      old.run(`INSERT INTO providers (id, name, base_url, models, created_at, updated_at) VALUES (?, 'Old', 'https://api.openai.com/v1', '[]', ?, ?)`,
+        [ulid(), isoNow(), isoNow()]);
+      old.close();
+      const store = new Store({ filename: file });
+      const [existing] = await store.listProviders();
+      expect(existing?.api_format).toBe("openai");
+      const created = store.createProviderSync({ name: "Claude", base_url: "https://api.anthropic.com", api_format: "anthropic" });
+      expect(created.api_format).toBe("anthropic");
+      expect(store.patchProviderSync(created.id, { name: "Claude 2" }).api_format).toBe("anthropic");
+      expect(store.patchProviderSync(created.id, { api_format: "openai" }).api_format).toBe("openai");
+      expect(() => store.patchProviderSync(created.id, { api_format: "gemini" as never })).toThrow("api_format must be one of openai, anthropic");
+      store.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("a database an earlier build created", () => {
   test("there is at least one shipped shape to open", () => {
     // Without this, deleting the fixtures would turn the suite below into a silent no-op.

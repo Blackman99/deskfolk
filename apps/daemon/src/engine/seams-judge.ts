@@ -13,7 +13,7 @@ import type { ChatContentPart, CompletionsClient } from "../completions";
 import { parseSeamsJudgeAnswer, SEAMS_JUDGE_TIMEOUT_MS, seamsJudgePrompt, seamsRulesText, type JudgeSeams, type SeamEvidence } from "../seams-check";
 import type { JudgeStandard, StandardEvidence } from "../standard-check";
 import type { SpendTracker } from "./spend";
-import type { CallTarget } from "./types";
+import type { CallTarget, EndpointTarget } from "./types";
 import { promptPage } from "../prompts/book";
 import type { Store } from "../store";
 
@@ -22,7 +22,7 @@ export type SeamsJudgeDeps = {
   /** Where your edits to the judges' prompts come from (ADR 0064), and where an unreadable answer is noted. */
   store?: Store;
   /** Resolves the default endpoint's default model; null when none is configured. */
-  routing: () => Promise<(CallTarget & { baseUrl: string; apiKey: string }) | null>;
+  routing: () => Promise<(EndpointTarget) | null>;
   spend: SpendTracker;
 };
 
@@ -53,6 +53,7 @@ export function createSeamsJudge(deps: SeamsJudgeDeps): JudgeSeams {
     const result = await deps.completions.judge({
       baseUrl: target.baseUrl,
       apiKey: target.apiKey,
+      apiFormat: target.apiFormat,
       model: target.model,
       ...(prompt ? { prompt: prompt.ref } : {}),
       messages: [
@@ -104,6 +105,7 @@ export function createStandardJudge(deps: SeamsJudgeDeps): JudgeStandard {
     const result = await deps.completions.judge({
       baseUrl: target.baseUrl,
       apiKey: target.apiKey,
+      apiFormat: target.apiFormat,
       model: target.model,
       messages: [
         { role: "system", content: system },

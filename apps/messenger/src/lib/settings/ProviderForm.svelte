@@ -363,6 +363,23 @@
 	{/if}
 </div>
 <div class="modal-section">
+	<span class="field-head" id={`${fieldPrefix}-format-label`}>{t.settings.apiFormat}</span>
+	<div class="chip-row flex flex-wrap items-center gap-2 min-h-11" role="radiogroup" aria-labelledby={`${fieldPrefix}-format-label`}>
+		{#each [['openai', t.settings.apiFormatOpenai], ['anthropic', t.settings.apiFormatAnthropic]] as const as [format, label] (format)}
+			<button
+				type="button"
+				class="btn-chip"
+				role="radio"
+				class:active={draft.apiFormat === format}
+				aria-checked={draft.apiFormat === format}
+				onclick={() => patch({ apiFormat: format })}
+			>
+				{label}
+			</button>
+		{/each}
+	</div>
+</div>
+<div class="modal-section">
 	<label for={`${fieldPrefix}-url`}>{t.settings.endpoint}</label>
 	<input
 		id={`${fieldPrefix}-url`}
@@ -372,7 +389,7 @@
 		autocapitalize="off"
 		autocorrect="off"
 		spellcheck="false"
-		placeholder="https://api.openai.com/v1"
+		placeholder={draft.apiFormat === 'anthropic' ? 'https://api.anthropic.com' : 'https://api.openai.com/v1'}
 		value={draft.baseUrl}
 		oninput={(ev) => patch({ baseUrl: (ev.currentTarget as HTMLInputElement).value })}
 	/>
@@ -380,6 +397,8 @@
 		<p class="field-error">
 			{fieldCopy(errors.endpoint, t.settings.endpointEmpty, t.settings.endpointInvalid)}
 		</p>
+	{:else}
+		<p class="muted field-hint">{draft.apiFormat === 'anthropic' ? t.settings.apiFormatAnthropicHint : t.settings.apiFormatOpenaiHint}</p>
 	{/if}
 </div>
 <div class="modal-section">

@@ -25,7 +25,7 @@ import type { TurnAdmission } from "../quiesce";
 import type { Store } from "../store";
 import type { Routing } from "./routing";
 import type { SpendTracker } from "./spend";
-import type { CallTarget } from "./types";
+import type { CallTarget, EndpointTarget } from "./types";
 
 export type ChainsDeps = {
   store: Store;
@@ -164,6 +164,7 @@ export function createChains(deps: ChainsDeps): Chains {
       result = await completions.judge({
         baseUrl: routing.baseUrl,
         apiKey: routing.apiKey,
+        apiFormat: routing.apiFormat,
         model: routing.model,
         messages: [
           { role: "system", content: ROUTE_REVIEW_SYSTEM },
@@ -221,7 +222,7 @@ export function createChains(deps: ChainsDeps): Chains {
    */
   async function learnFromChain(
     chain: NonNullable<ReturnType<Store["chainForReview"]>>,
-    routing: CallTarget & { baseUrl: string; apiKey: string },
+    routing: EndpointTarget,
     verdict: { fault: string; direction: string; reason: string },
     mode: "experience" | "clarification" = "experience",
   ): Promise<void> {
@@ -276,6 +277,7 @@ export function createChains(deps: ChainsDeps): Chains {
         result = await completions.judge({
           baseUrl: routing.baseUrl,
           apiKey: routing.apiKey,
+          apiFormat: routing.apiFormat,
           model: routing.model,
           messages,
           tools,

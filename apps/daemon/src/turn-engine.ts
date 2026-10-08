@@ -294,7 +294,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       const chosen = store.settingsCached().reader_model;
       const provider = chosen ? creds.providers.find((row) => row.id === chosen.provider_id) : undefined;
       const target = provider && chosen
-        ? { baseUrl: provider.baseUrl, apiKey: provider.apiKey, providerId: provider.id, providerName: provider.name, model: chosen.model, thinkingLevel: null }
+        ? { baseUrl: provider.baseUrl, apiKey: provider.apiKey, apiFormat: provider.apiFormat, providerId: provider.id, providerName: provider.name, model: chosen.model, thinkingLevel: null }
         : routing.routingTarget(creds);
       return target && { ...target, thinkingLevel: store.lightestThinkingLevelFor(target.model, target.providerId) };
     },

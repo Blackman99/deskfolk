@@ -6,7 +6,9 @@
 
 ## Unreleased
 
-（无）
+### 兼容 Anthropic 格式的模型端点
+
+- 端点现在除了 OpenAI 的 Chat Completions，也能说 Anthropic 的 Messages：在设置里新建或编辑端点时把「接口格式」选成「Anthropic 兼容」（首次向导里也多了 Anthropic 预设），地址照 Claude Code 的 `ANTHROPIC_BASE_URL` 填——`https://api.anthropic.com`，或者 DeepSeek、百炼、智谱、Kimi、MiniMax 给的 `…/anthropic` 地址，或者转发的地址。Bot、它们的判断和读句在上面照常跑：思考档、工具调用、看图、模型阶梯和花费都管用，有 `/v1/models` 的就从那里拉模型名单。请求带缓存标记，长的一轮后面几跳从缓存读前面的内容，不再全价重读。Bot 用 `add_endpoint` 加的时候传 `api_format: "anthropic"`；改端点的格式和改 URL 一样要你批准。已有的端点都还是 OpenAI 兼容。[ADR 0066](docs/adr/0066-anthropic-format-endpoints.md)
 
 ## 0.1.0-rc.14 — 2026-10-08
 

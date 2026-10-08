@@ -26,6 +26,7 @@
 		mapProviderError,
 		planCreateProvider,
 		planPatchProvider,
+		probeFormat,
 		probeSignature,
 		providerHost,
 		withSyncedDefaultModel,
@@ -687,10 +688,12 @@
 		const requested = probeSignature(editor.draft, keySet);
 		patchProviderEditor(target, { fetching: true, fetchError: null });
 		const api = runtime.client;
+		const saved = target === 'add' ? undefined : snapshot.providers.find((row) => row.id === target)?.api_format;
 		const res = await runtime.probeModels(
 			baseUrl,
 			editor.draft.apiKey,
-			target === 'add' ? undefined : target
+			target === 'add' ? undefined : target,
+			probeFormat(editor.draft, saved)
 		);
 		// The editor may have closed or moved to another URL / key while the request was out.
 		const open = providerEditor;
@@ -1342,7 +1345,7 @@
 												{#if host}
 													<span class="provider-card-host mono inline-flex items-center gap-[5px] text-12 text-muted overflow-hidden text-ellipsis whitespace-nowrap max-w-full" title={provider.base_url ?? ''}>
 														<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-														<span>{host}</span>
+														<span>{host}{provider.api_format === 'anthropic' ? ` · ${t.settings.apiFormatAnthropicShort}` : ''}</span>
 													</span>
 												{/if}
 											</span>

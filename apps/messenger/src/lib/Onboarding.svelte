@@ -26,7 +26,7 @@
 		type CreateBotDraft,
 		type CreateBotFieldErrors
 	} from './panels/create-form.ts';
-	import type { CreateProviderRequest, ProbedModel } from '@real-bot/protocol';
+	import type { ApiFormat, CreateProviderRequest, ProbedModel } from '@real-bot/protocol';
 
 	interface Props {
 		runtime: MessengerRuntime;
@@ -58,6 +58,7 @@
 	let fieldErrors = $state<SettingsFieldErrors & ProviderFieldErrors>({});
 	let saveFailed = $state(false);
 	let providerName = $state('Default');
+	let apiFormat = $state<ApiFormat>('openai');
 	let activePreset = $state<string>('');
 	let fetchingModels = $state(false);
 	let fetchError = $state<string | null>(null);
@@ -81,6 +82,7 @@
 		...emptyProviderDraft(),
 		name: providerName,
 		baseUrl: runtime.endpointUrl,
+		apiFormat,
 		apiKey: runtime.endpointKey.trim()
 	}, true));
 	const selectedModels = $derived(parseModelLines(runtime.endpointModelsText));
@@ -111,13 +113,23 @@
 			id: 'openai',
 			name: 'OpenAI',
 			url: 'https://api.openai.com/v1',
+			format: 'openai',
 			models: ['gpt-4o', 'gpt-4o-mini'],
 			defaultModel: 'gpt-4o'
+		},
+		{
+			id: 'anthropic',
+			name: 'Anthropic',
+			url: 'https://api.anthropic.com',
+			format: 'anthropic',
+			models: ['claude-opus-5-5', 'claude-sonnet-5-5'],
+			defaultModel: 'claude-opus-5-5'
 		},
 		{
 			id: 'deepseek',
 			name: 'DeepSeek',
 			url: 'https://api.deepseek.com/v1',
+			format: 'openai',
 			models: ['deepseek-chat', 'deepseek-reasoner'],
 			defaultModel: 'deepseek-chat'
 		},
@@ -125,6 +137,7 @@
 			id: 'openrouter',
 			name: 'OpenRouter',
 			url: 'https://openrouter.ai/api/v1',
+			format: 'openai',
 			models: ['anthropic/claude-3.5-sonnet', 'google/gemini-2.0-flash-001'],
 			defaultModel: 'anthropic/claude-3.5-sonnet'
 		},
@@ -132,6 +145,7 @@
 			id: 'ollama',
 			name: 'Ollama',
 			url: 'http://localhost:11434/v1',
+			format: 'openai',
 			models: ['llama3', 'qwen2.5'],
 			defaultModel: 'llama3'
 		},
@@ -139,6 +153,7 @@
 			id: 'custom',
 			name: '自定义',
 			url: '',
+			format: null,
 			models: [],
 			defaultModel: ''
 		}
@@ -146,6 +161,7 @@
 
 	function applyPreset(preset: (typeof PRESETS)[number]): void {
 		activePreset = preset.id;
+		if (preset.format) apiFormat = preset.format;
 		if (preset.id !== 'custom') {
 			providerName = preset.name;
 			runtime.endpointUrl = preset.url;
@@ -209,7 +225,7 @@
 		}
 		fetchingModels = true;
 		fetchError = null;
-		const res = await runtime.probeModels(baseUrl, apiKey);
+		const res = await runtime.probeModels(baseUrl, apiKey, undefined, apiFormat === 'anthropic' ? apiFormat : undefined);
 		fetchingModels = false;
 		if (!res.ok) {
 			fetchError = `${t.settings.modelsFetchFailed} (${res.error})`;
@@ -348,6 +364,7 @@
 					...emptyProviderDraft(),
 					name: providerName,
 					baseUrl: runtime.endpointUrl,
+					apiFormat,
 					apiKey: runtime.endpointKey,
 					models: selectedModels,
 					availableModels: probedModels,
@@ -392,6 +409,7 @@
 			? await runtime.patchProvider(existing.id, {
 					name: provider.name,
 					base_url: provider.base_url,
+					...(apiFormat !== (existing.api_format ?? 'openai') ? { api_format: apiFormat } : {}),
 					api_key: provider.api_key,
 					models: provider.models,
 					available_models: provider.available_models,
@@ -623,6 +641,27 @@
 					</div>
 
 					<div class="modal-section">
+						<span class="field-head" id="onboarding-format-label">{t.settings.apiFormat}</span>
+						<div class="chip-row flex flex-wrap items-center gap-2 min-h-11" role="radiogroup" aria-labelledby="onboarding-format-label">
+							{#each [['openai', t.settings.apiFormatOpenai], ['anthropic', t.settings.apiFormatAnthropic]] as const as [format, label] (format)}
+								<button
+									type="button"
+									class="btn-chip"
+									role="radio"
+									class:active={apiFormat === format}
+									aria-checked={apiFormat === format}
+									onclick={() => {
+										apiFormat = format;
+										onEndpointOrKeyInput();
+									}}
+								>
+									{label}
+								</button>
+							{/each}
+						</div>
+					</div>
+
+					<div class="modal-section">
 						<label for="onboarding-provider-name">{t.settings.providerName}</label>
 						<input
 							id="onboarding-provider-name"
@@ -644,7 +683,7 @@
 						<input
 							id="onboarding-endpoint"
 							type="text"
-							placeholder="https://api.openai.com/v1"
+							placeholder={apiFormat === 'anthropic' ? 'https://api.anthropic.com' : 'https://api.openai.com/v1'}
 							bind:value={runtime.endpointUrl}
 							oninput={onEndpointOrKeyInput}
 						/>
@@ -656,6 +695,8 @@
 									t.settings.endpointInvalid
 								)}
 							</p>
+						{:else if apiFormat === 'anthropic'}
+							<p class="muted field-hint">{t.settings.apiFormatAnthropicHint}</p>
 						{/if}
 					</div>
 

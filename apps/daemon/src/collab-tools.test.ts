@@ -344,8 +344,11 @@ describe("endpoint and MCP catalog tools", () => {
     });
     expect(url).toMatchObject({
       ok: false,
-      error: { code: "failed", message: "cannot modify the default endpoint's URL or key, or delete it" },
+      error: { code: "failed", message: "cannot modify the default endpoint's URL, API format or key, or delete it" },
     });
+    const format = await runCollabTool(ctx, "update_endpoint", { id: first.id, api_format: "anthropic" });
+    expect(format.error?.code).toBe("failed");
+    expect((await store.getProvider(first.id)).api_format).toBe("openai");
     const del = await runCollabTool(ctx, "delete_endpoint", { id: first.id });
     expect(del.error?.code).toBe("failed");
     const renamed = await runCollabTool(ctx, "update_endpoint", {
@@ -358,6 +361,32 @@ describe("endpoint and MCP catalog tools", () => {
     expect(renamed.data?.models).toEqual(["gpt-4o", "gpt-4o-mini"]);
     const removed = await runCollabTool(ctx, "delete_endpoint", { id: extra.id });
     expect(removed.ok).toBe(true);
+    store.close();
+  });
+
+  test("an Anthropic-format endpoint: the format is on the approval card, and changing it waits for one", async () => {
+    const store = new Store({ endpointKey: memoryKeyStore() });
+    await store.createProvider({ name: "Home", base_url: "https://api.openai.com/v1", api_key: "sk-home", models: ["gpt-4o"] });
+    const created = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const ctx = ctxFor(store, created.bot.id, created.direct_session.id);
+    const args = { name: "Claude", base_url: "https://api.anthropic.com", api_format: "anthropic", models: ["claude-opus-5-5"] };
+    const parked = await runCollabTool(ctx, "add_endpoint", args);
+    expect(parked.waitApproval?.summary).toBe("endpoint-add Claude\nhttps://api.anthropic.com (Anthropic Messages)\nmodels: claude-opus-5-5");
+    const written = await runCollabTool({ ...ctx, approved: true, approvalApiKey: "sk-ant" }, "add_endpoint", args);
+    expect(written.data?.api_format).toBe("anthropic");
+    const id = written.data?.id as string;
+    expect((await store.getProvider(id)).api_format).toBe("anthropic");
+
+    const back = await runCollabTool(ctx, "update_endpoint", { id, api_format: "openai" });
+    expect(back.waitApproval?.kind_key).toBe("endpoint-edit");
+    expect(back.waitApproval?.target).toBe("https://api.anthropic.com/");
+    expect((await store.getProvider(id)).api_format).toBe("anthropic");
+    const approved = await runCollabTool({ ...ctx, approved: true }, "update_endpoint", { id, api_format: "openai" });
+    expect(approved.data?.api_format).toBe("openai");
+    // The same format again is no change, and runs without a card.
+    expect((await runCollabTool(ctx, "update_endpoint", { id, api_format: "openai", name: "Claude 2" })).ok).toBe(true);
+    const wrong = await runCollabTool(ctx, "update_endpoint", { id, api_format: "gemini" });
+    expect(wrong.ok).toBe(false);
     store.close();
   });
 

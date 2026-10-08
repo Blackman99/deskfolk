@@ -3,7 +3,7 @@
  * and routing types that flow from `credentials()` through to a billed call. Nothing here runs
  * anything; it is the vocabulary the other files share.
  */
-import type { AskAnswer, Locale, Message, ThinkingLevel } from "@real-bot/protocol";
+import type { ApiFormat, AskAnswer, Locale, Message, ThinkingLevel } from "@real-bot/protocol";
 import type { ToolResult } from "../collab-tools";
 import type { ChatMessage } from "../completions";
 import type { RouteDecision } from "../route-decision";
@@ -75,6 +75,7 @@ export type Live = {
   routing: {
     baseUrl: string;
     apiKey: string;
+    apiFormat: ApiFormat;
     providerId: string;
     providerName: string;
     model: string;
@@ -130,6 +131,7 @@ export type Creds = {
     name: string;
     baseUrl: string;
     apiKey: string;
+    apiFormat: ApiFormat;
     models: string[];
     defaultModel: string | null;
   }>;
@@ -138,6 +140,7 @@ export type Creds = {
 export type ResolvedTarget = {
   baseUrl: string;
   apiKey: string;
+  apiFormat: ApiFormat;
   providerId: string;
   providerName: string;
   model: string;
@@ -152,6 +155,9 @@ export type CallTarget = {
   model: string;
   thinkingLevel: ThinkingLevel | null;
 };
+
+/** A call's target with the endpoint it goes to. */
+export type EndpointTarget = CallTarget & { baseUrl: string; apiKey: string; apiFormat: ApiFormat };
 
 /** Session and Bot as they are before the call. Names are snapshotted here; a delete during the call cannot rewrite them. */
 export type SpendOwner = {

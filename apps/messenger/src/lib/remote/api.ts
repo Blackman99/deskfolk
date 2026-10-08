@@ -1,4 +1,5 @@
 import type {
+  ApiFormat,
   QualityReportRow,
   SharedSkill,
   SharedSkillsResponse,
@@ -494,6 +495,7 @@ export class RemoteApi {
   async probeModels(body: {
     endpoint_base_url?: string;
     endpoint_api_key?: string;
+    api_format?: ApiFormat;
     provider_id?: string;
   }): Promise<ProbeModelsResponse> {
     return this.post<ProbeModelsResponse>("/v1/models/probe", body);
