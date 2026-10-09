@@ -6,7 +6,7 @@ import { copyFor } from "../copy.ts";
 import { aBot } from "../test-fixtures.ts";
 import { click, render } from "../test-render.ts";
 import { reactive } from "../test-reactive.svelte.ts";
-import { settle } from "../test-async.ts";
+import { deferred, settle } from "../test-async.ts";
 
 const t = copyFor("zh");
 
@@ -176,15 +176,15 @@ test("a stage the status does not say shows in its place, with how many of the t
       ],
     }),
   });
-  const rows = [...view.host.querySelectorAll(".ticket-row")];
-  expect(rows.map((r) => r.querySelector(".ticket-status")?.textContent?.trim())).toEqual([
+  const statusOf = (title: string) => rowFor(view.host, title).querySelector(".ticket-status")?.textContent?.trim();
+  expect([statusOf("分镜"), statusOf("母带"), statusOf("旧任务")]).toEqual([
     t.plan.ticketStage.in_review,
     t.plan.ticketStage.rework,
     t.plan.ticketStatus.review,
   ]);
   // The colour still follows the status the stage reads as.
-  expect(rows[1]?.querySelector(".ticket-status")?.classList.contains("is-doing")).toBe(true);
-  expect(rows.map((r) => r.querySelector(".ticket-parts")?.textContent ?? null)).toEqual(["11/12 已通过", null, null]);
+  expect(rowFor(view.host, "母带").querySelector(".ticket-status")?.classList.contains("is-doing")).toBe(true);
+  expect(["分镜", "母带", "旧任务"].map((title) => rowFor(view.host, title).querySelector(".ticket-parts")?.textContent ?? null)).toEqual(["11/12 已通过", null, null]);
   view.close();
 });
 
@@ -321,11 +321,11 @@ test("another error on a status change shows saveFailed under that row", async (
       },
     },
   });
-  const row = rowFor(view.host, "收集资料");
-  pickStatus(row, t.plan.ticketStatus.done);
+  pickStatus(rowFor(view.host, "收集资料"), t.plan.ticketStatus.done);
   await settle();
   expect(view.conflicts).toEqual([]);
-  expect(row.querySelector(".ticket-error")?.textContent).toBe(t.plan.saveFailed);
+  // The card moves, then comes back, so the note is read from the card in its own column, not the node it left.
+  expect(rowFor(view.host, "收集资料").querySelector(".ticket-error")?.textContent).toBe(t.plan.saveFailed);
   view.close();
 });
 
@@ -480,7 +480,7 @@ test("the picked ticket says what it meets: nothing yet on a plan with no spec, 
   view.close();
 });
 
-test("a filter set from outside narrows even a short list, and shows the bar to undo it", () => {
+test("a status named from outside lights that column and keeps every card, and the column clears it", () => {
   const props = reactive({
     api: null,
     detail: aDetail({ tickets: [aTicket(), aTicket({ id: "ticket-2", seq: 2, title: "写结论", status: "todo" })] }),
@@ -498,15 +498,18 @@ test("a filter set from outside narrows even a short list, and shows the bar to 
     statusFilter: "all" as string,
   });
   const view = render(TicketList, props as never);
-  // Two tickets: no bar of its own.
   expect(view.host.querySelector(".ticket-filters")).toBeNull();
+  expect(view.host.querySelectorAll(".ticket-row")).toHaveLength(2);
   props.statusFilter = "todo";
   flushSync();
-  expect([...view.host.querySelectorAll(".ticket-row .ticket-title")].map((title) => title.textContent)).toEqual(["写结论"]);
-  click(view.host.querySelector(".ticket-filter-btn"));
+  // Lighting a column hides nothing: both cards stay, and only that column is marked.
+  expect([...view.host.querySelectorAll(".ticket-row .ticket-title")].map((title) => title.textContent).sort()).toEqual(["写结论", "收集资料"]);
+  expect(view.host.querySelector("[data-board-status='todo']")?.classList.contains("is-focused")).toBe(true);
+  expect(view.host.querySelector("[data-board-status='doing']")?.classList.contains("is-focused")).toBe(false);
+  click(view.host.querySelector(".ticket-column-clear"));
   flushSync();
   expect(props.statusFilter).toBe("all");
-  expect(view.host.querySelectorAll(".ticket-row")).toHaveLength(2);
+  expect(view.host.querySelector(".is-focused")).toBeNull();
   view.close();
 });
 
@@ -535,7 +538,7 @@ test("an approved ticket says who made it, a dropped one is nobody's, and neithe
     ],
   });
   const view = open({ detail });
-  const who = [...view.host.querySelectorAll(".ticket-row")].map((row) => row.querySelector(".ticket-who-text")?.textContent?.trim() ?? null);
+  const who = ["做一张海报", "三句宣传语", "竖版海报"].map((title) => rowFor(view.host, title).querySelector(".ticket-who-text")?.textContent?.trim() ?? null);
   expect(who).toEqual([null, t.plan.worker("制片", true), t.plan.workerDone("制片")]);
   expect(rowFor(view.host, "竖版海报").querySelector(".ticket-depends")).toBeNull();
   view.close();
@@ -557,5 +560,211 @@ test("a large job's sample carries its tag, and a ticket waiting for it says it 
   expect(rowFor(view.host, "第二场").querySelector(".ticket-sample")).toBeNull();
   expect(rowFor(view.host, "第二场").querySelector(".ticket-ball")?.textContent).toBe("等样片 #02 你放行");
   expect(rowFor(view.host, "配乐").querySelector(".ticket-ball")?.textContent).toBe("等 #01 先交");
+  view.close();
+});
+
+test("three tickets of different statuses sit in their columns, and every card keeps its row", () => {
+  const view = open({
+    detail: aDetail({
+      tickets: [
+        aTicket({ id: "t1", seq: 1, title: "收集资料", status: "todo" }),
+        aTicket({ id: "t2", seq: 2, title: "画分镜", status: "doing" }),
+        aTicket({ id: "t3", seq: 3, title: "写结论", status: "done" }),
+      ],
+    }),
+  });
+  expect(view.host.querySelectorAll(".ticket-row")).toHaveLength(3);
+  expect(view.host.querySelectorAll("[data-board-status]")).toHaveLength(5);
+  for (const [title, status] of [["收集资料", "todo"], ["画分镜", "doing"], ["写结论", "done"]] as const) {
+    const column = rowFor(view.host, title).closest("[data-board-status]");
+    expect(column?.getAttribute("data-board-status")).toBe(status);
+    expect(rowFor(view.host, title).dataset.ticketId).toBeTruthy();
+  }
+  view.close();
+});
+
+test("a ticket handed over or in review asks before its status changes, and leaving it sends nothing", async () => {
+  const view = open({
+    detail: aDetail({ tickets: [aTicket({ id: "t1", status: "review", stage: "submitted" })] }),
+  });
+  pickStatus(rowFor(view.host, "收集资料"), t.plan.ticketStatus.done);
+  await settle();
+  expect(view.patchCalls).toEqual([]);
+  expect(rowFor(view.host, "收集资料").querySelector(".ticket-confirm")?.textContent).toContain(t.plan.board.pendingMove(t.plan.ticketStatus.done));
+  click(rowFor(view.host, "收集资料").querySelector(".ticket-confirm-keep"));
+  await settle();
+  expect(view.patchCalls).toEqual([]);
+  expect(rowFor(view.host, "收集资料").querySelector(".ticket-confirm")).toBeNull();
+  view.close();
+
+  const reviewing = open({
+    detail: aDetail({ tickets: [aTicket({ id: "t1", status: "review", stage: "in_review" })] }),
+  });
+  pickStatus(rowFor(reviewing.host, "收集资料"), t.plan.ticketStatus.doing);
+  click(rowFor(reviewing.host, "收集资料").querySelector(".ticket-confirm-go"));
+  await settle();
+  expect(reviewing.patchCalls).toEqual([{ ticketId: "t1", body: { status: "doing", if_revision: 3 } }]);
+  reviewing.close();
+});
+
+test("a second status change waits for the first, stays drawn in its column, then goes with the new revision", async () => {
+  const first = deferred<Ticket>();
+  let revision = 4;
+  const view = open({
+    detail: aDetail({
+      revision,
+      tickets: [
+        aTicket({ id: "t1", seq: 1, title: "收集资料", status: "todo" }),
+        aTicket({ id: "t2", seq: 2, title: "画分镜", status: "todo" }),
+      ],
+    }),
+    api: {
+      patchTicket: async (ticketId, body) => {
+        if (ticketId === "t1") return first.promise;
+        const status = (body as { status: Ticket["status"] }).status;
+        return aTicket({ id: ticketId, seq: 2, title: "画分镜", status });
+      },
+    },
+  });
+  pickStatus(rowFor(view.host, "收集资料"), t.plan.ticketStatus.doing);
+  pickStatus(rowFor(view.host, "画分镜"), t.plan.ticketStatus.review);
+  await settle();
+  expect(view.patchCalls.map((call) => call.ticketId)).toEqual(["t1"]);
+  // The second card is already painted in the column it is going to, before its request goes.
+  expect(rowFor(view.host, "画分镜").closest("[data-board-status]")?.getAttribute("data-board-status")).toBe("review");
+
+  view.props.detail = aDetail({
+    revision,
+    tickets: [
+      aTicket({ id: "t1", seq: 1, title: "收集资料", status: "todo" }),
+      aTicket({ id: "t2", seq: 2, title: "画分镜", status: "todo" }),
+    ],
+  });
+  flushSync();
+  expect(rowFor(view.host, "画分镜").closest("[data-board-status]")?.getAttribute("data-board-status")).toBe("review");
+
+  revision = 5;
+  first.resolve(aTicket({ id: "t1", status: "doing" }));
+  view.props.detail = aDetail({
+    revision,
+    tickets: [
+      aTicket({ id: "t1", seq: 1, title: "收集资料", status: "doing" }),
+      aTicket({ id: "t2", seq: 2, title: "画分镜", status: "todo" }),
+    ],
+  });
+  await settle();
+  await settle();
+  expect(view.patchCalls[1]).toEqual({ ticketId: "t2", body: { status: "review", if_revision: 5 } });
+  view.close();
+});
+
+test("a 409 drops the queue and says the moves that had not gone through are back", async () => {
+  const view = open({
+    detail: aDetail({
+      tickets: [
+        aTicket({ id: "t1", seq: 1, title: "收集资料", status: "todo" }),
+        aTicket({ id: "t2", seq: 2, title: "画分镜", status: "todo" }),
+      ],
+    }),
+    api: {
+      patchTicket: async () => {
+        throw { status: 409, message: "stale" };
+      },
+    },
+  });
+  pickStatus(rowFor(view.host, "收集资料"), t.plan.ticketStatus.doing);
+  pickStatus(rowFor(view.host, "画分镜"), t.plan.ticketStatus.review);
+  await settle();
+  await settle();
+  expect(view.conflicts).toEqual([1]);
+  expect(view.patchCalls).toHaveLength(1);
+  expect(view.host.querySelector(".ticket-board-conflict")?.textContent).toBe(t.plan.board.conflictDropped);
+  // The conflict line says it once for every card; no card says 「保存失败」 as well.
+  expect(view.host.querySelector(".ticket-error")).toBeNull();
+  expect(rowFor(view.host, "画分镜").closest("[data-board-status]")?.getAttribute("data-board-status")).toBe("todo");
+  view.close();
+});
+
+test("a status move made while a reviewer change is on its way goes out once that change is back", async () => {
+  const other = aBot({ id: "bot-2", name: "审片" });
+  const reviewer = deferred<Ticket>();
+  const view = open({
+    bots: [writer, other],
+    detail: aDetail({
+      submissions_on: true,
+      reviewer_ids: ["bot-1", "bot-2"],
+      tickets: [
+        aTicket({ id: "t1", seq: 1, title: "收集资料", status: "todo", worker: "bot-1" }),
+        aTicket({ id: "t2", seq: 2, title: "画分镜", status: "todo" }),
+      ],
+    }),
+    api: {
+      patchTicket: async (ticketId, body) => {
+        if ((body as { reviewer_bot_id?: unknown }).reviewer_bot_id !== undefined) return reviewer.promise;
+        return aTicket({ id: ticketId, seq: 2, title: "画分镜", status: (body as { status: Ticket["status"] }).status });
+      },
+    },
+  });
+  const row = rowFor(view.host, "收集资料");
+  click(row.querySelector(".ticket-main"));
+  flushSync();
+  click(row.querySelectorAll(".real-select-trigger")[1]);
+  click([...row.querySelectorAll<HTMLElement>(".real-select-option")].find((el) => el.textContent?.includes("审片"))!);
+  pickStatus(rowFor(view.host, "画分镜"), t.plan.ticketStatus.doing);
+  await settle();
+  // Sent beside the reviewer change, one of the two would be refused: it waits, drawn where it goes.
+  expect(view.patchCalls.map((call) => call.ticketId)).toEqual(["t1"]);
+  expect(rowFor(view.host, "画分镜").closest("[data-board-status]")?.getAttribute("data-board-status")).toBe("doing");
+  reviewer.resolve(aTicket({ id: "t1", seq: 1, title: "收集资料", status: "todo", worker: "bot-1", reviewer_bot_id: "bot-2" }));
+  await settle();
+  await settle();
+  expect(view.patchCalls.map((call) => [call.ticketId, (call.body as { status?: string }).status ?? null])).toEqual([["t1", null], ["t2", "doing"]]);
+  view.close();
+});
+
+test("a card moved from its menu keeps the focus in its new column, unless you went elsewhere before it came back", async () => {
+  const first = deferred<Ticket>();
+  const failing = deferred<Ticket>();
+  const view = open({
+    detail: aDetail({
+      tickets: [
+        aTicket({ id: "t1", seq: 1, title: "收集资料", status: "todo" }),
+        aTicket({ id: "t2", seq: 2, title: "画分镜", status: "todo" }),
+      ],
+    }),
+    api: {
+      patchTicket: async (ticketId) => (ticketId === "t2" ? failing.promise : first.promise),
+    },
+  });
+  rowFor(view.host, "收集资料").querySelector<HTMLElement>(".real-select-trigger")!.focus();
+  pickStatus(rowFor(view.host, "收集资料"), t.plan.ticketStatus.doing);
+  await settle();
+  // Drawn in its new column while the move is on its way, and the focus went with it.
+  const moved = rowFor(view.host, "收集资料");
+  expect(moved.closest("[data-board-status]")?.getAttribute("data-board-status")).toBe("doing");
+  expect(document.activeElement).toBe(moved.querySelector(".ticket-main"));
+  first.resolve(aTicket({ id: "t1", seq: 1, title: "收集资料", status: "doing" }));
+  view.props.detail = aDetail({
+    tickets: [
+      aTicket({ id: "t1", seq: 1, title: "收集资料", status: "doing" }),
+      aTicket({ id: "t2", seq: 2, title: "画分镜", status: "todo" }),
+    ],
+  });
+  await settle();
+
+  // You went on typing elsewhere while the move was on its way: its bounce back leaves you there.
+  rowFor(view.host, "画分镜").querySelector<HTMLElement>(".real-select-trigger")!.focus();
+  pickStatus(rowFor(view.host, "画分镜"), t.plan.ticketStatus.review);
+  await settle();
+  const elsewhere = document.createElement("input");
+  document.body.append(elsewhere);
+  elsewhere.focus();
+  failing.reject({ status: 500, message: "boom" });
+  await settle();
+  await settle();
+  expect(rowFor(view.host, "画分镜").closest("[data-board-status]")?.getAttribute("data-board-status")).toBe("todo");
+  expect(rowFor(view.host, "画分镜").querySelector(".ticket-error")?.textContent).toBe(t.plan.saveFailed);
+  expect(document.activeElement).toBe(elsewhere);
+  elsewhere.remove();
   view.close();
 });

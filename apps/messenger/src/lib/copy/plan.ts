@@ -178,11 +178,24 @@ export const zh = {
   changeStatus: "改状态",
   segmentSpec: "要点",
   segmentTickets: "任务",
+  segmentBoard: "看板",
   segmentTrace: "经过",
   showSpec: "在旁边看要点",
   hideSpec: "收起要点",
   showTickets: "在旁边看任务",
   hideTickets: "收起任务",
+  showBoard: "看板上的五列占满这块区域",
+  hideBoard: "收回看板，看流程图",
+  /** The five columns, and a move that waits because a hand-over is still open. */
+  board: {
+    emptyColumn: "没有任务",
+    focusClear: "不再只看这一列",
+    dragHint: "拖到另一列改状态；触控用状态下拉",
+    pendingMove: (column: string) => `移到「${column}」会作废还在等你放行或退回的交付；移到已完成会直接变成已通过。`,
+    moveAnyway: "仍然移动",
+    keep: "留下",
+    conflictDropped: "规划刚变过，没移成的已放回。"
+  },
   /** How the plan's spec and its tickets point at each other: every ticket meets the spec, some lines hold for one ticket alone. */
   links: {
     ticketsHint: "每个任务都要满足要点里的验收、规则和你的要求；点一个任务，流程图点亮它的轮，并列出它要满足的。",
@@ -475,11 +488,24 @@ export const en: CopyShape<typeof zh> = {
   changeStatus: "Change status",
   segmentSpec: "Plan",
   segmentTickets: "Tickets",
+  segmentBoard: "Board",
   segmentTrace: "Trace",
   showSpec: "Show the plan alongside",
   hideSpec: "Hide the plan",
   showTickets: "Show tickets alongside",
   hideTickets: "Hide tickets",
+  showBoard: "The five columns take the whole area",
+  hideBoard: "Put the board away and see the trace",
+  /** The five columns, and a move that waits because a hand-over is still open. */
+  board: {
+    emptyColumn: "No tickets",
+    focusClear: "Don't just show this column",
+    dragHint: "Drag a card to another column to change its status; on touch, use the status menu",
+    pendingMove: (column: string) => `Moving it to “${column}” drops the hand-over still waiting for you to approve or send back; moving it to done marks it approved.`,
+    moveAnyway: "Move it anyway",
+    keep: "Leave it",
+    conflictDropped: "The plan just changed, so the moves that had not gone through are back."
+  },
   links: {
     ticketsHint: "Every ticket meets the plan’s done-when lines, rules and what you asked for. Pick one: the board lights its turns and it lists what it has to meet.",
     heldTo: "Has to meet",

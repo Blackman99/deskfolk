@@ -164,6 +164,11 @@
 	 */
 	let side = $state<TraceSide>(loadTraceSide());
 	let segment = $state<'spec' | 'trace' | 'tickets'>('trace');
+	/**
+	 * The wide board: the five columns take the whole pane, hiding the trace. Not remembered — a
+	 * fresh look at a plan starts on the trace, and losing the tickets puts it away.
+	 */
+	let board = $state(false);
 	/** The status the ticket list is narrowed to; the spec's ticket states set it when they open the list. */
 	let ticketFilter = $state<TicketStatus | 'all'>('all');
 	/** The side panels, so a ticket shown from the spec can be scrolled to. */
@@ -395,6 +400,8 @@
 	/** Tickets asked for on a plan that has none yet leave the board to itself. */
 	const sideShown = $derived<TraceSide>(!detail || (side === 'tickets' && !hasTickets) ? null : side);
 	const segmentShown = $derived(!detail || (segment === 'tickets' && !hasTickets) ? 'trace' : segment);
+	/** The board only while there are tickets to put in it. */
+	const boardShown = $derived(board && hasTickets);
 	const planStatus = $derived<PlanStatus>(detail?.status ?? (trace?.closed_at ? 'done' : 'active'));
 	/** 「上次变化 X 前」 ages while the board is open, so the clock it reads ticks now and then. */
 	let nowMs = $state(Date.now());
@@ -629,6 +636,7 @@
 				selectedTicket = kept?.selectedTicket ?? null;
 				segment = 'trace';
 				ticketFilter = 'all';
+				board = false;
 				foldChoice = kept?.foldChoice ?? {};
 				if (kept) {
 					notableOnly = kept.notableOnly;
@@ -774,11 +782,20 @@
 	</svg>
 {/snippet}
 
+{#snippet boardIcon()}
+	<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+		<rect x="3" y="3" width="5" height="18" rx="1"></rect>
+		<rect x="10" y="3" width="5" height="12" rx="1"></rect>
+		<rect x="17" y="3" width="4" height="8" rx="1"></rect>
+	</svg>
+{/snippet}
+
 <div
 	class="trace-pane"
 	class:is-page={host === 'page'}
 	class:has-side={sideShown !== null}
 	class:has-segment={segmentShown !== 'trace'}
+	class:has-board={boardShown}
 >
 	<div class="trace-top">
 		<header class="trace-header">
@@ -856,6 +873,16 @@
 								{@render ticketsIcon()}
 								<span>{t.plan.segmentTickets}</span>
 								<span class="trace-side-count mono">{detail.tickets.length}</span>
+							</button>
+							<button
+								type="button"
+								class="trace-side-toggle"
+								aria-pressed={boardShown}
+								title={boardShown ? t.plan.hideBoard : t.plan.showBoard}
+								onclick={() => (board = !board)}
+							>
+								{@render boardIcon()}
+								<span>{t.plan.segmentBoard}</span>
 							</button>
 						{/if}
 					</div>
@@ -1091,7 +1118,7 @@
 					/>
 				</div>
 				{#if hasTickets}
-					<div class="trace-side-panel" class:is-side-on={sideShown === 'tickets'} class:is-segment-on={segmentShown === 'tickets'}>
+					<div class="trace-side-panel is-tickets" class:is-side-on={sideShown === 'tickets'} class:is-segment-on={segmentShown === 'tickets'} class:is-board-on={boardShown}>
 						<TicketList
 							{api}
 							{detail}
@@ -1310,6 +1337,33 @@
 		display: flex;
 	}
 
+	/*
+	 * The wide board takes the whole pane: the trace hides and the tickets fill it. The panel stops
+	 * scrolling itself, so each column can scroll in the height left under the list's heading.
+	 * Wide only: a pane pulled under 720px is the tabs' again, whatever the board was left as.
+	 */
+	@container trace (width > 720px) {
+		.trace-pane.has-board .trace-stage {
+			display: none;
+		}
+
+		.trace-pane.has-board .trace-side {
+			display: flex;
+			width: 100%;
+			border-left: 0;
+		}
+
+		.trace-pane.has-board .trace-side-panel.is-board-on {
+			display: flex;
+			flex-direction: column;
+			overflow: hidden;
+		}
+
+		.trace-pane.has-board .trace-side-panel.is-side-on:not(.is-board-on) {
+			display: none;
+		}
+	}
+
 	.trace-side-panel {
 		display: none;
 		flex: 1;
@@ -1357,6 +1411,13 @@
 
 		.trace-side-panel.is-segment-on {
 			display: block;
+		}
+
+		/* The "任务" tab is the same five columns, so its panel stops scrolling itself too; the other tabs do not. */
+		.trace-pane.has-segment .trace-side-panel.is-tickets.is-segment-on {
+			display: flex;
+			flex-direction: column;
+			overflow: hidden;
 		}
 	}
 

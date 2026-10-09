@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### The tickets beside the trace are a board
+
+- A card can be dragged to another column to change its status. The status menu asks first too, when the ticket is handed over or in review: the hand-over still waiting for you to approve or send back is dropped, and moving it to done marks it approved.
+- On a wide window a Board button puts the five columns across the whole trace, each scrolling on its own. On a narrow one the Tickets tab is the same five columns. The rail beside the trace stays a vertical stack.
+- The status filters are gone. A status in the plan now brings that column into view and marks it; the other tickets stay.
+
 ### A stop is only "stop for now"
 
 - Every stop of yours — Stop on a reply, a typed "stop" / "stop X" / "stop every Bot", the group and tools menus, the flow board — now only stops the work now, and until you speak holds what would start a Bot again by itself: its check-backs, other Bots' lines, job completions, the supervisor's resumes. Nothing you say or do to a Bot is held any more: a line said to it, a change to your line, Insert now, Send back, your answer to its question, Continue on an interrupted or restart notice, "continue" and Lift all make it go on. Before, a typed "stop", the menus and the board waited for you to lift them, and whatever you said to the Bot meanwhile got only a read-only answer.

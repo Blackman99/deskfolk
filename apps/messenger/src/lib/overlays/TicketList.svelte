@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import type { Bot, Provider, TaskDetail, TaskTraceNode, Ticket, TicketStatus, TicketWithArtifacts } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
@@ -8,7 +9,6 @@
 		actorFace,
 		actorName,
 		completionPercentage,
-		countsEntries,
 		latestTurnOfTicket,
 		openTicketCount,
 		ticketObligations,
@@ -16,6 +16,8 @@
 		totalTicketCount,
 		type TicketObligations
 	} from './plan-board.ts';
+	import { boardColumns, enqueueMove, nextQueuedMove } from './ticket-board.ts';
+	import { beginCardDrag, type CardDrag } from './ticket-board-drag.ts';
 	import { badgeOf, describeCheck } from './acceptance-checks.ts';
 
 	interface Props {
@@ -35,10 +37,15 @@
 		onOpenArtifacts: (ticket: TicketWithArtifacts) => void;
 		onPatched: (ticket: Ticket) => void;
 		onConflict: () => void;
-		/** The status the list is narrowed to; the board sets it when the spec's ticket states open the list. */
+		/** The column the spec asked to bring into view; 'all' lights none. Cards are never hidden by it. */
 		statusFilter?: TicketStatus | 'all';
 		/** Open the spec the tickets answer to, keeping the picked ticket picked. */
 		onShowSpec?: () => void;
+		/**
+		 * Draw the five columns across, for a story that has no flow pane around it. The product
+		 * never sets this: a wide board and a narrow "任务" tab turn the columns across in CSS.
+		 */
+		forceColumns?: boolean;
 	}
 
 	let {
@@ -57,22 +64,57 @@
 		onPatched,
 		onConflict,
 		statusFilter = $bindable('all'),
-		onShowSpec
+		onShowSpec,
+		forceColumns = false
 	}: Props = $props();
 
 	const botsById = $derived(new Map(bots.map((bot) => [bot.id, bot] as const)));
 	const tickets = $derived([...detail.tickets].sort((a, b) => a.seq - b.seq));
 	const statusOptions = TICKET_STATUS_ORDER.map((status) => ({ value: status, label: t.plan.ticketStatus[status] }));
 
+	/** The card whose patch is on its way, so its own controls wait. Reviewer, model and depends edits set it too. */
 	let patchingId = $state<string | null>(null);
+	/**
+	 * Requests on their way, of any kind. The plan's revision is one number for every card, so a
+	 * queued move goes out only when none is: sent beside another, one of the two would be refused.
+	 */
+	let requestsOut = 0;
 	let errorId = $state<string | null>(null);
+	/** Where a card should go, until its own request comes back. A reload of the plan does not clear it. */
+	let pending = $state<Map<string, TicketStatus>>(new Map());
+	/** Where a card is drawn while its move has not come back. Separate from `pending`, cleared per card. */
+	let optimistic = $state<Map<string, TicketStatus>>(new Map());
+	/** A hand-over still waiting (submitted, in review) asked before the move goes out. */
+	let confirming = $state<{ id: string; status: TicketStatus } | null>(null);
+	/** Set when a 409 drops the queue, until the next move that lands or the plan changes. */
+	let conflictNote = $state(false);
+	/** The card under the pointer, once the press has travelled far enough to be a drag. */
+	let drag = $state<CardDrag | null>(null);
+	/** The column elements, so a lit column can be scrolled into view. */
+	let columnFocus = $state<Partial<Record<TicketStatus, HTMLElement>>>({});
+	/** This list. Cards are looked up inside it: another pane can show the same plan. */
+	let rootEl = $state<HTMLElement | null>(null);
 
 	const totalTickets = $derived(totalTicketCount(detail.ticket_counts));
 	const completionPct = $derived(completionPercentage(detail.ticket_counts));
+	const columns = $derived(boardColumns(tickets, optimistic));
 
-	const displayedTickets = $derived(
-		statusFilter === 'all' ? tickets : tickets.filter((tk) => tk.status === statusFilter)
-	);
+	$effect(() => {
+		if (statusFilter === 'all') return;
+		columnFocus[statusFilter]?.scrollIntoView?.({ inline: 'nearest', block: 'nearest' });
+	});
+
+	/** The plan the conflict line belongs to. A different one clears the line; the first read only records it. */
+	let conflictFor = $state<string | null>(null);
+	$effect(() => {
+		const id = detail.id;
+		if (conflictFor === null || id === conflictFor) {
+			conflictFor = id;
+			return;
+		}
+		conflictFor = id;
+		conflictNote = false;
+	});
 
 	/**
 	 * The status menu, its current entry named as the row reads (a stage in its place: 审查中, 返工), so
@@ -128,6 +170,7 @@
 	async function changeReviewer(ticket: TicketWithArtifacts, reviewer: string): Promise<void> {
 		if (!api || reviewer === (ticket.reviewer_bot_id ?? '')) return;
 		patchingId = ticket.id;
+		requestsOut += 1;
 		errorId = null;
 		try {
 			const result = await api.patchTicket(ticket.id, { reviewer_bot_id: reviewer || null, if_revision: detail.revision });
@@ -139,8 +182,11 @@
 				errorId = ticket.id;
 			}
 		} finally {
+			requestsOut -= 1;
 			patchingId = null;
 		}
+		// A status move queued while this was on its way waits for it.
+		void pump();
 	}
 
 	/** Who an open ticket waits on (ADR 0045, from level 4), in the board's words. */
@@ -197,6 +243,7 @@
 		const current = ticket.depends_on ?? [];
 		const next = current.includes(otherId) ? current.filter((id) => id !== otherId) : [...current, otherId];
 		patchingId = ticket.id;
+		requestsOut += 1;
 		errorId = null;
 		try {
 			const result = await api.patchTicket(ticket.id, { depends_on: next, if_revision: detail.revision });
@@ -208,8 +255,11 @@
 				errorId = ticket.id;
 			}
 		} finally {
+			requestsOut -= 1;
 			patchingId = null;
 		}
+		// A status move queued while this was on its way waits for it.
+		void pump();
 	}
 
 	/** The models a ticket can be given (ADR 0049, level 7): every model an endpoint lists, named with its endpoint when there are several. */
@@ -232,6 +282,7 @@
 	async function changeModel(ticket: TicketWithArtifacts, value: string): Promise<void> {
 		if (!api || value === modelValue(ticket)) return;
 		patchingId = ticket.id;
+		requestsOut += 1;
 		errorId = null;
 		try {
 			const result = await api.patchTicket(ticket.id, { model_override: value ? (JSON.parse(value) as { provider_id: string; model: string }) : null, if_revision: detail.revision });
@@ -243,30 +294,158 @@
 				errorId = ticket.id;
 			}
 		} finally {
+			requestsOut -= 1;
 			patchingId = null;
 		}
+		// A status move queued while this was on its way waits for it.
+		void pump();
+	}
+
+	/** A stage a hand-over is still waiting in (ADR 0046). Moving it drops that hand-over, so it asks first. */
+	function awaitingReview(ticket: TicketWithArtifacts): boolean {
+		return ticket.stage === 'submitted' || ticket.stage === 'in_review';
+	}
+
+	/**
+	 * Send the next queued move, one at a time: the plan's revision is one number for every card,
+	 * so a second request sent before the first comes back is refused.
+	 */
+	async function pump(): Promise<void> {
+		if (requestsOut > 0) return;
+		const next = nextQueuedMove(pending, detail.tickets, null);
+		if (!next || !api) return;
+		const ticket = detail.tickets.find((row) => row.id === next.id);
+		if (!ticket) {
+			pending = new Map([...pending].filter(([id]) => id !== next.id));
+			optimistic = new Map([...optimistic].filter(([id]) => id !== next.id));
+			return;
+		}
+		patchingId = next.id;
+		requestsOut += 1;
+		errorId = null;
+		try {
+			const result = await api.patchTicket(next.id, { status: next.status, if_revision: detail.revision });
+			pending = settled(pending, next);
+			optimistic = settled(optimistic, next);
+			conflictNote = false;
+			onPatched(result);
+		} catch (err) {
+			pending = settled(pending, next);
+			if (errorStatus(err) === 409) {
+				// The conflict line says it for every card; 「保存失败」 would say it twice.
+				pending = new Map();
+				optimistic = new Map();
+				confirming = null;
+				conflictNote = true;
+				onConflict();
+			} else {
+				const focused = cardHasFocus(next.id);
+				optimistic = settled(optimistic, next);
+				// Set after the card is back in its own column, so the note is not left on the node that unmounted.
+				errorId = next.id;
+				if (focused) void keepFocus(next.id);
+			}
+		} finally {
+			requestsOut -= 1;
+			// Another edit may have taken patchingId meanwhile; it frees it itself.
+			if (patchingId === next.id) patchingId = null;
+		}
+		void pump();
+	}
+
+	/** The map without this move — unless the card was moved again meanwhile: that later move stays. */
+	function settled(map: ReadonlyMap<string, TicketStatus>, move: { id: string; status: TicketStatus }): Map<string, TicketStatus> {
+		const next = new Map(map);
+		if (next.get(move.id) === move.status) next.delete(move.id);
+		return next;
+	}
+
+	/** A status from the menu or a drop. A card still in review asks before it is queued. */
+	function requestStatus(ticket: TicketWithArtifacts, status: TicketStatus): void {
+		if (!api || status === columnOfTicket(ticket)) return;
+		conflictNote = false;
+		if (awaitingReview(ticket)) {
+			confirming = { id: ticket.id, status };
+			return;
+		}
+		queueMove(ticket.id, status);
+	}
+
+	function columnOfTicket(ticket: TicketWithArtifacts): TicketStatus {
+		return optimistic.get(ticket.id) ?? ticket.status;
+	}
+
+	function queueMove(ticketId: string, status: TicketStatus): void {
+		const focused = cardHasFocus(ticketId);
+		confirming = confirming?.id === ticketId ? null : confirming;
+		pending = enqueueMove(pending, ticketId, status);
+		optimistic = enqueueMove(optimistic, ticketId, status);
+		errorId = errorId === ticketId ? null : errorId;
+		if (focused) void keepFocus(ticketId);
+		void pump();
+	}
+
+	function keepCard(ticketId: string): void {
+		if (confirming?.id === ticketId) confirming = null;
+	}
+
+	function cardRow(ticketId: string): HTMLElement | null {
+		return rootEl?.querySelector<HTMLElement>(`[data-ticket-id="${ticketId}"]`) ?? null;
+	}
+
+	function cardHasFocus(ticketId: string): boolean {
+		const row = cardRow(ticketId);
+		return !!row && row.contains(document.activeElement);
+	}
+
+	async function focusCard(ticketId: string): Promise<void> {
+		await tick();
+		cardRow(ticketId)?.querySelector<HTMLElement>('.ticket-main')?.focus();
+	}
+
+	/**
+	 * A card that had the focus mounts again in its new column, so the focus is put back on it —
+	 * unless something else took it meanwhile (you went on typing elsewhere): that one keeps it.
+	 */
+	async function keepFocus(ticketId: string): Promise<void> {
+		await tick();
+		const active = document.activeElement;
+		if (active && active !== document.body && active.isConnected) return;
+		cardRow(ticketId)?.querySelector<HTMLElement>('.ticket-main')?.focus();
 	}
 
 	async function changeStatus(ticket: TicketWithArtifacts, status: string): Promise<void> {
-		if (!api || status === ticket.status) return;
-		patchingId = ticket.id;
-		errorId = null;
-		try {
-			const result = await api.patchTicket(ticket.id, { status: status as Ticket['status'], if_revision: detail.revision });
-			onPatched(result);
-		} catch (err) {
-			if (errorStatus(err) === 409) {
-				onConflict();
-			} else {
-				errorId = ticket.id;
-			}
-		} finally {
-			patchingId = null;
-		}
+		requestStatus(ticket, status as TicketStatus);
+	}
+
+	/** A press on the card. Touch scrolls the board; it does not drag. */
+	function pressCard(event: PointerEvent, ticket: TicketWithArtifacts): void {
+		if (!api) return;
+		beginCardDrag(event, ticket.id, {
+			from: () => columnOfTicket(ticket),
+			busy: () => patchingId === ticket.id,
+			onDrag: (next) => (drag = next),
+			onDrop: (status) => requestStatus(ticket, status)
+		});
+	}
+
+	/** Left and right move the focus to the neighbouring column. They do not change a status. */
+	function moveFocus(event: KeyboardEvent, ticket: TicketWithArtifacts): void {
+		if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+		const drawn = columnOfTicket(ticket);
+		const index = TICKET_STATUS_ORDER.indexOf(drawn);
+		const next = TICKET_STATUS_ORDER[index + (event.key === 'ArrowRight' ? 1 : -1)];
+		if (!next) return;
+		event.preventDefault();
+		const column = columns.find((entry) => entry.status === next);
+		const at = column?.tickets.findIndex((row) => row.seq >= ticket.seq) ?? -1;
+		const target = column?.tickets[at >= 0 ? at : 0];
+		if (!target) return;
+		void focusCard(target.id);
 	}
 </script>
 
-<section class="ticket-list" aria-label={t.plan.tickets}>
+<section class="ticket-list" aria-label={t.plan.tickets} bind:this={rootEl}>
 	<div class="ticket-list-header-group">
 		<div class="ticket-list-head">
 			<div class="ticket-list-title-wrap">
@@ -293,44 +472,36 @@
 		{#if tickets.length > 0}
 			<p class="ticket-list-hint">{t.plan.links.ticketsHint}</p>
 		{/if}
-
-		<!-- A short list needs no filter, unless one is on: the spec's ticket states can narrow it too. -->
-		{#if tickets.length > 2 || statusFilter !== 'all'}
-			<div class="ticket-filters" role="tablist" aria-label="Filter status">
-				<button
-					type="button"
-					class="ticket-filter-btn"
-					class:is-active={statusFilter === 'all'}
-					onclick={() => (statusFilter = 'all')}
-				>
-					<span>全部</span>
-					<span class="ticket-filter-badge mono">{tickets.length}</span>
-				</button>
-				{#each countsEntries(detail.ticket_counts) as entry (entry.status)}
-					<button
-						type="button"
-						class="ticket-filter-btn is-{entry.status}"
-						class:is-active={statusFilter === entry.status}
-						onclick={() => (statusFilter = statusFilter === entry.status ? 'all' : entry.status)}
-					>
-						<span>{t.plan.ticketStatus[entry.status]}</span>
-						<span class="ticket-filter-badge mono">{entry.count}</span>
-					</button>
-				{/each}
-			</div>
+		{#if conflictNote}
+			<p class="ticket-board-conflict">{t.plan.board.conflictDropped}</p>
 		{/if}
 	</div>
 
 	{#if tickets.length === 0}
 		<p class="ticket-list-empty">{t.plan.ticketsNone}</p>
-	{:else if displayedTickets.length === 0}
-		<div class="ticket-list-empty-filter">
-			<p>当前筛选下无任务</p>
-			<button type="button" class="ticket-reset-filter" onclick={() => (statusFilter = 'all')}>查看全部</button>
-		</div>
 	{:else}
-		<div class="ticket-rows">
-			{#each displayedTickets as ticket (ticket.id)}
+		<div class="ticket-board" class:is-force-columns={forceColumns}>
+			{#each columns as column (column.status)}
+				<section
+					class="ticket-column is-{column.status}"
+					class:is-focused={statusFilter === column.status}
+					class:is-drop={drag?.over === column.status && drag.from !== column.status}
+					data-board-status={column.status}
+					bind:this={columnFocus[column.status]}
+					aria-label={t.plan.ticketStatus[column.status]}
+				>
+					<header class="ticket-column-head">
+						<span class="ticket-column-name">{t.plan.ticketStatus[column.status]}</span>
+						<span class="ticket-column-count mono">{column.tickets.length}</span>
+						{#if statusFilter === column.status}
+							<button type="button" class="ticket-column-clear" onclick={() => (statusFilter = 'all')}>{t.plan.board.focusClear}</button>
+						{/if}
+					</header>
+					<div class="ticket-column-cards">
+						{#if column.tickets.length === 0}
+							<p class="ticket-column-empty">{t.plan.board.emptyColumn}</p>
+						{/if}
+			{#each column.tickets as ticket (ticket.id)}
 				{@const face = actorFace(ticket.worker ?? '', botsById, youLabel, deletedLabel)}
 				{@const node = latestTurnOfTicket(nodes, ticket.id)}
 				{@const picked = ticket.id === selectedId}
@@ -338,9 +509,18 @@
 				<!-- A closed ticket waits on nothing and nobody is still on it: 「已通过 · 设计师在做 · 要等 #02」 read as contradictory (2026-10-03). -->
 				{@const closed = ticket.status === 'done' || ticket.status === 'parked'}
 				{@const waits = closed ? null : dependsLabel(ticket)}
-				<div class="ticket-row is-{ticket.status}" class:is-selected={picked} data-ticket-id={ticket.id}>
+				<!-- A press on the card drags it; from the keyboard the status menu moves it. -->
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div
+					class="ticket-row is-{columnOfTicket(ticket)}"
+					class:is-selected={picked}
+					class:is-dragging={drag?.ticketId === ticket.id}
+					data-ticket-id={ticket.id}
+					title={api ? t.plan.board.dragHint : undefined}
+					onpointerdown={(event) => pressCard(event, ticket)}
+				>
 					<div class="ticket-head">
-						<button type="button" class="ticket-main" aria-pressed={picked} onclick={() => select(ticket.id)}>
+						<button type="button" class="ticket-main" aria-pressed={picked} onclick={() => select(ticket.id)} onkeydown={(event) => moveFocus(event, ticket)}>
 							<span class="ticket-tag mono">{ticketTag(ticket.seq)}</span>
 							<span class="ticket-title">{ticket.title}</span>
 							{#if ticket.sample}<span class="ticket-sample" title={t.plan.sampleHint}>{t.plan.sample}</span>{/if}
@@ -532,12 +712,34 @@
 							{/each}
 						</div>
 					{/if}
+					{#if confirming?.id === ticket.id}
+						<div class="ticket-confirm" role="group" aria-label={t.plan.board.pendingMove(t.plan.ticketStatus[confirming.status])}>
+							<p>{t.plan.board.pendingMove(t.plan.ticketStatus[confirming.status])}</p>
+							<div class="ticket-confirm-actions">
+								<button type="button" class="ticket-confirm-go" onclick={() => confirming && queueMove(ticket.id, confirming.status)}>{t.plan.board.moveAnyway}</button>
+								<button type="button" class="ticket-confirm-keep" onclick={() => keepCard(ticket.id)}>{t.plan.board.keep}</button>
+							</div>
+						</div>
+					{/if}
 					{#if errorId === ticket.id}
 						<p class="ticket-error">{t.plan.saveFailed}</p>
 					{/if}
 				</div>
+						{/each}
+					</div>
+				</section>
 			{/each}
 		</div>
+	{/if}
+	{#if drag}
+		{@const dragging = drag}
+		{@const ghost = tickets.find((row) => row.id === dragging.ticketId)}
+		{#if ghost}
+			<div class="ticket-ghost" style:left="{dragging.x}px" style:top="{dragging.y}px">
+				<span class="ticket-tag mono">{ticketTag(ghost.seq)}</span>
+				<span>{ghost.title}</span>
+			</div>
+		{/if}
 	{/if}
 </section>
 
@@ -627,55 +829,6 @@
 		transition: width 0.3s ease;
 	}
 
-	/* Filters */
-	.ticket-filters {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		overflow-x: auto;
-		padding: 2px 0 4px;
-		scrollbar-width: none;
-	}
-
-	.ticket-filters::-webkit-scrollbar {
-		display: none;
-	}
-
-	.ticket-filter-btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		flex: none;
-		border: 1px solid var(--line);
-		border-radius: var(--radius-full);
-		background: var(--pane);
-		color: var(--muted);
-		font-size: 11px;
-		font-weight: 500;
-		padding: 2px 7px;
-		cursor: pointer;
-		transition: 0.15s ease;
-		transition-property: var(--transition-props);
-		user-select: none;
-	}
-
-	.ticket-filter-btn:hover {
-		border-color: var(--line-hover);
-		color: var(--ink);
-	}
-
-	.ticket-filter-btn.is-active {
-		border-color: var(--accent-border);
-		background: var(--accent-tint);
-		color: var(--accent);
-		font-weight: 600;
-	}
-
-	.ticket-filter-badge {
-		font-size: 10px;
-		opacity: 0.8;
-	}
-
 	/* Empty state */
 	.ticket-list-empty {
 		margin: 12px 0;
@@ -685,42 +838,6 @@
 		background: var(--line-subtle);
 		font-size: 12px;
 		color: var(--muted);
-	}
-
-	.ticket-list-empty-filter {
-		margin: 8px 0;
-		padding: 12px;
-		text-align: center;
-		border-radius: var(--radius-md);
-		background: var(--line-subtle);
-		font-size: 12px;
-		color: var(--muted);
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 6px;
-	}
-
-	.ticket-list-empty-filter p {
-		margin: 0;
-	}
-
-	.ticket-reset-filter {
-		border: none;
-		background: none;
-		padding: 0;
-		color: var(--accent);
-		font-size: 11px;
-		cursor: pointer;
-		font-weight: 500;
-	}
-
-	/* Ticket rows */
-	.ticket-rows {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		min-width: 0;
 	}
 
 	.ticket-row {
@@ -1197,6 +1314,225 @@
 		font-size: 11px;
 		line-height: 1.45;
 		color: var(--muted-light);
+	}
+
+	.ticket-board-conflict {
+		margin: 0;
+		font-size: 11px;
+		line-height: 1.45;
+		color: var(--warn-text);
+	}
+
+	/*
+	 * Stacked by default, which is the side rail: one scroll for the whole rail, so a column does
+	 * not scroll on its own and its head does not stick. Across only when the flow pane asks
+	 * (a wide board, or the narrow "任务" tab) or a story forces it. The pane's classes live in
+	 * TraceView, so they have to be :global or Svelte drops the rule.
+	 */
+	.ticket-board {
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+		min-width: 0;
+	}
+
+	.ticket-column {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		min-width: 0;
+	}
+
+	.ticket-column.is-focused > .ticket-column-head {
+		color: var(--accent);
+	}
+
+	.ticket-column.is-drop {
+		outline: 1px dashed var(--accent-border);
+		outline-offset: 2px;
+		border-radius: var(--radius-md);
+	}
+
+	.ticket-column-head {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
+		font-size: 11px;
+		font-weight: 650;
+		color: var(--muted);
+	}
+
+	.ticket-column-count {
+		font-size: 10px;
+		color: var(--muted-light);
+	}
+
+	.ticket-column-clear {
+		margin-left: auto;
+		border: none;
+		background: none;
+		padding: 0;
+		color: var(--accent);
+		font: inherit;
+		font-size: 11px;
+		cursor: pointer;
+	}
+
+	.ticket-column-cards {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		min-width: 0;
+	}
+
+	.ticket-column-empty {
+		margin: 0;
+		font-size: 11px;
+		color: var(--muted-light);
+	}
+
+	.ticket-confirm {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		padding: 6px 8px;
+		border-radius: var(--radius-sm);
+		background: var(--warn-bg);
+		color: var(--warn-text);
+		font-size: 11px;
+		line-height: 1.45;
+	}
+
+	.ticket-confirm p {
+		margin: 0;
+	}
+
+	.ticket-confirm-actions {
+		display: flex;
+		gap: 8px;
+	}
+
+	.ticket-confirm-go,
+	.ticket-confirm-keep {
+		border: 1px solid var(--line);
+		border-radius: var(--radius-sm);
+		background: var(--pane);
+		padding: 2px 8px;
+		font: inherit;
+		font-size: 11px;
+		cursor: pointer;
+	}
+
+	.ticket-confirm-go {
+		border-color: var(--warn-line);
+		color: var(--warn-text);
+		font-weight: 600;
+	}
+
+	.ticket-row.is-dragging {
+		opacity: 0.45;
+	}
+
+	/* Follows the pointer. It must not catch the pointer, or the drop lands on it instead of a column. */
+	.ticket-ghost {
+		position: fixed;
+		z-index: 50;
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		max-width: 220px;
+		padding: 6px 8px;
+		border: 1px solid var(--accent-border);
+		border-radius: var(--radius-md);
+		background: var(--pane);
+		box-shadow: var(--shadow-md);
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--ink);
+		pointer-events: none;
+		transform: translate(-16px, -12px);
+	}
+
+	:global(.trace-pane.has-board) .ticket-board,
+	.ticket-board.is-force-columns {
+		display: grid;
+		grid-auto-flow: column;
+		grid-auto-columns: minmax(220px, 1fr);
+		grid-template-rows: minmax(0, 1fr);
+		flex: 1;
+		min-height: 0;
+		gap: 8px;
+		overflow-x: auto;
+		overflow-y: hidden;
+	}
+
+	:global(.trace-pane.has-board) .ticket-column,
+	.ticket-board.is-force-columns .ticket-column {
+		min-height: 0;
+		overflow-y: auto;
+		padding: 8px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		background: var(--line-subtle);
+	}
+
+	:global(.trace-pane.has-board) .ticket-column-head,
+	.ticket-board.is-force-columns .ticket-column-head {
+		position: sticky;
+		top: 0;
+		z-index: 1;
+		padding-bottom: 4px;
+		background: var(--line-subtle);
+	}
+
+	:global(.trace-pane.has-board) .ticket-list,
+	.ticket-list:has(.ticket-board.is-force-columns) {
+		display: flex;
+		flex-direction: column;
+		flex: 1;
+		min-height: 0;
+		height: 100%;
+	}
+
+	/* The narrow "任务" tab is the same five columns. It has to beat a wide board left open. */
+	@container trace (max-width: 720px) {
+		:global(.trace-pane.has-segment) :global(.is-tickets) .ticket-board {
+			display: grid;
+			grid-auto-flow: column;
+			grid-auto-columns: minmax(220px, 1fr);
+			grid-template-rows: minmax(0, 1fr);
+			flex: 1;
+			min-height: 0;
+			gap: 8px;
+			overflow-x: auto;
+			overflow-y: hidden;
+		}
+
+		:global(.trace-pane.has-segment) :global(.is-tickets) .ticket-column {
+			min-height: 0;
+			overflow-y: auto;
+			padding: 8px;
+			border: 1px solid var(--line);
+			border-radius: var(--radius-md);
+			background: var(--line-subtle);
+		}
+
+		:global(.trace-pane.has-segment) :global(.is-tickets) .ticket-column-head {
+			position: sticky;
+			top: 0;
+			z-index: 1;
+			padding-bottom: 4px;
+			background: var(--line-subtle);
+		}
+
+		:global(.trace-pane.has-segment) :global(.is-tickets) .ticket-list {
+			display: flex;
+			flex-direction: column;
+			flex: 1;
+			min-height: 0;
+			height: 100%;
+		}
 	}
 
 	/* The picked ticket's obligations: the spec it meets with every ticket, and what is its alone. */
