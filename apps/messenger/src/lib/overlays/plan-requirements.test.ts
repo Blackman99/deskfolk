@@ -48,6 +48,23 @@ test("entries group into the plan's own, what it inherits by the plan that set i
   expect(groups.proposed.map((entry) => entry.id)).toEqual(["change"]);
   expect(groups.unverified.map((entry) => entry.id)).toEqual(["old"]);
   expect(groups.excluded.map((entry) => entry.id)).toEqual(["aside"]);
+  expect(groups.withdrawn).toEqual([]);
+});
+
+test("an entry whose words an edit of yours took out waits for you on its own, ahead of the rest", () => {
+  // IG MV, 2026-10-09: R275 stood on words edited out of the line a minute later.
+  const edit = { edit_id: "e1", at: "2026-10-09T00:54:30.405Z" };
+  const groups = requirementGroups([
+    anEntry({ id: "own-1", seq: 1 }),
+    anEntry({ id: "fallback", seq: 2, withdraw_proposed: edit }),
+    anEntry({ id: "proposed-gone", seq: 3, status: "proposed", withdraw_proposed: edit }),
+  ]);
+  expect(groups.withdrawn.map((entry) => entry.id)).toEqual(["fallback", "proposed-gone"]);
+  expect(groups.own.map((entry) => entry.id)).toEqual(["own-1"]);
+  expect(groups.proposed).toEqual([]);
+  const withSession = { session_id: "direct-1" };
+  expect(requirementActions(anEntry({ withdraw_proposed: edit }), withSession)).toEqual(["waive", "keep"]);
+  expect(requirementActions(anEntry({ status: "proposed", withdraw_proposed: edit }), withSession)).toEqual(["reject", "keep"]);
 });
 
 test("each entry offers only what the daemon takes for it", () => {

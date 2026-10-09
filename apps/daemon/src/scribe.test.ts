@@ -198,9 +198,11 @@ test("words erased while the call was out are not written; an answer to a questi
 });
 
 test("an answer reads as a patch: lists as written, none as empty, anything else as no answer at all", () => {
-  expect(parseScribeAnswer("none")).toEqual({ adds: [], raises: [], supersedes: [] });
-  expect(parseScribeAnswer('{"none": true}')).toEqual({ adds: [], raises: [], supersedes: [] });
-  expect(parseScribeAnswer('```json\n{"adds": [{"quote": "x"}], "raises": "no"}\n```')).toEqual({ adds: [{ quote: "x" }], raises: [], supersedes: [] });
+  expect(parseScribeAnswer("none")).toEqual({ adds: [], raises: [], supersedes: [], withdraws: [] });
+  expect(parseScribeAnswer('{"none": true}')).toEqual({ adds: [], raises: [], supersedes: [], withdraws: [] });
+  expect(parseScribeAnswer('```json\n{"adds": [{"quote": "x"}], "raises": "no"}\n```')).toEqual({ adds: [{ quote: "x" }], raises: [], supersedes: [], withdraws: [] });
+  // An edit's answer may carry withdraws alone.
+  expect(parseScribeAnswer('{"withdraws": [{"requirement_id": "R1"}]}')).toEqual({ adds: [], raises: [], supersedes: [], withdraws: [{ requirement_id: "R1" }] });
   expect(parseScribeAnswer('{"decision": "join"}')).toBeNull();
   expect(parseScribeAnswer("我不知道")).toBeNull();
 });
@@ -282,4 +284,64 @@ test("a line changed before the scribe got to it is read as you sent it, then fo
   expect(h.requests.map((request) => h.payloadOf(request).said.body)).toEqual(["片长 30 秒，加字幕", "片长 45 秒"]);
   await h.scribe.noteLine(line.id, h.scribe.handedOverAt());
   expect(h.requests).toHaveLength(2);
+});
+
+test("an edit is read for the entries its earlier words stand on; the ones it took back are put to you on the board, and nothing leaves force by itself", async () => {
+  // IG MV, 2026-10-09 00:53/00:54: 「如果自己整不了模型就改成 2D 动画风格…也可以」 was taken out of the line
+  // a minute after it was sent; the entry on those words (R275) stayed open beside the 3D direction.
+  let fallback: { id: string } | null = null;
+  const h = harness((request) => {
+    const payload = JSON.parse(String(request.messages[1]!.content)) as ScribePayload;
+    if (!payload.edit) return judged(JSON.stringify({ adds: [], raises: [], supersedes: [] }));
+    const said = payload.edit.earlier.map((entry) => entry.id);
+    return judged(JSON.stringify({ withdraws: [{ requirement_id: fallback!.id }, { requirement_id: "not-shown" }, { requirement_id: fallback!.id }], said }));
+  });
+  const { line, noted, quote } = h.say("改成 3D 还原，如果自己整不了模型就改成 2D 动画风格，运镜要连续");
+  await noted;
+  fallback = h.store.addRequirement({ scope: "plan", scopeId: h.planId, quote: "如果自己整不了模型就改成 2D 动画风格", sourceKind: "message", sourceQuoteId: quote.id, addedBy: "scribe" });
+  const camera = h.store.addRequirement({ scope: "plan", scopeId: h.planId, quote: "运镜要连续", sourceKind: "message", sourceQuoteId: quote.id, addedBy: "scribe" });
+  // Said again in another line: the edit cannot have taken it back, so the scribe is not shown it.
+  const again = h.say("运镜要连续，别跳");
+  await again.noted;
+  h.store.raiseRequirement(camera.id, { quoteId: again.quote.id, actor: "scribe" });
+  const before = h.requests.length;
+
+  // Only words taken out: no new quote, yet the scribe reads the edit.
+  const edited = h.store.editMessage(line.id, { body: "改成 3D 还原，运镜要连续", userActionId: "edit-1" });
+  expect(edited.quote).toBeNull();
+  await h.scribe.noteEdit(edited.edit!.id);
+  expect(h.requests).toHaveLength(before + 1);
+  const payload = h.payloadOf(h.requests.at(-1)!);
+  expect(payload.edit).toMatchObject({ before: "改成 3D 还原，如果自己整不了模型就改成 2D 动画风格，运镜要连续", after: "改成 3D 还原，运镜要连续" });
+  expect(payload.edit!.earlier.map((entry) => entry.id)).toEqual([fallback!.id]);
+  expect(payload.open).toEqual([]);
+
+  // Marked for you, still in force; an id it was not shown, or named twice, is dropped and logged.
+  expect(h.store.getRequirement(fallback!.id)).toMatchObject({ status: "open", withdraw_edit_id: edited.edit!.id });
+  expect(h.store.listWorkEvents({ kind: "requirement.withdraw_proposed" }).map((event) => event.payload)).toMatchObject([
+    { requirement: fallback!.id, edit: edited.edit!.id, message: line.id },
+  ]);
+  expect(h.store.listWorkEvents({ kind: "scribe.rejected" }).map((event) => event.payload.reason)).toEqual(["not_offered", "duplicate"]);
+  expect(h.store.listWorkEvents({ kind: "scribe.answer" }).at(-1)!.payload).toMatchObject({ edit: edited.edit!.id, fail: null });
+
+  // Read once: the same edit again makes no call.
+  await h.scribe.noteEdit(edited.edit!.id);
+  expect(h.requests).toHaveLength(before + 1);
+
+  // Keeping it clears the question and leaves it in force; retiring it is an ordinary waive that clears it too.
+  expect(h.store.keepAfterEdit(fallback!.id, { taskId: h.planId })).toMatchObject({ status: "open", withdraw_edit_id: null });
+  expect(h.store.listWorkEvents({ kind: "requirement.withdraw_dismissed" })).toHaveLength(1);
+  h.store.db.run("UPDATE requirements SET withdraw_edit_id = ? WHERE id = ?", [edited.edit!.id, fallback!.id]);
+  expect(h.store.waiveRequirement(fallback!.id, { taskId: h.planId })).toMatchObject({ status: "waived", withdraw_edit_id: null });
+});
+
+test("an edit of a line whose words stand behind nothing makes no call", async () => {
+  const h = harness(() => judged(JSON.stringify({ adds: [], raises: [], supersedes: [] })));
+  const { line, noted } = h.say("今天先这样");
+  await noted;
+  const before = h.requests.length;
+  const edited = h.store.editMessage(line.id, { body: "今天先这样吧", userActionId: "edit-quiet" });
+  await h.scribe.noteEdit(edited.edit!.id);
+  expect(h.requests.filter((request) => h.payloadOf(request).edit)).toHaveLength(0);
+  expect(h.requests.length - before).toBeLessThanOrEqual(1);
 });

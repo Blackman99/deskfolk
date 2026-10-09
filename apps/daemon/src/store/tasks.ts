@@ -92,6 +92,27 @@ export function taskTitle(body: string): string {
   return takeCodePoints(body.replace(/\s+/g, " ").trim(), TITLE_MAX).text;
 }
 
+/** What a job opened with no words to name it is called, in the app's language. */
+function untitled(ctx: StoreContext): string {
+  const locale = ctx.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'locale'").get()?.value;
+  return locale === "en" ? "(attachments only)" : "（只有附件）";
+}
+
+/**
+ * The words a job opened by a line of yours is named from: the line, else its file (and how many
+ * more), else that it had only attachments. A screenshot sent with no words opened a job named
+ * "" — a blank row in the switcher and a blank tab (2026-10-09).
+ */
+export function lineTitleSource(ctx: StoreContext, line: { id?: string | null; body: string }): string {
+  if (line.body.trim()) return line.body;
+  const files = line.id
+    ? ctx.db.query<{ name: string }, [string]>("SELECT original_filename AS name FROM attachments WHERE message_id = ? ORDER BY created_at, rowid").all(line.id)
+    : [];
+  if (files.length === 0) return untitled(ctx);
+  const en = ctx.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'locale'").get()?.value === "en";
+  return files.length === 1 ? files[0]!.name : en ? `${files[0]!.name} and ${files.length - 1} more` : `${files[0]!.name} 等 ${files.length} 个文件`;
+}
+
 /**
  * A new job's title without the Bots it names: 「@Alpha 做一个 logo」 opens 「做一个 logo」. A title
  * that is nothing but names keeps them.
@@ -462,7 +483,8 @@ export function openTask(
   const at = input.now ?? new Date();
   const now = isoNow();
   const id = ulid(at.getTime());
-  const title = taskTitle(input.title);
+  // Whatever named it, a job is never left with no name.
+  const title = taskTitle(input.title) || untitled(ctx);
   const brief = takeCodePoints((input.brief ?? input.title).trim(), BRIEF_MAX).text;
   const spec = input.spec ?? null;
   const kind = spec?.kind ?? input.kind ?? null;
@@ -871,7 +893,7 @@ export function resolveTurnTask(
   return {
     taskId: openTask(ctx, {
       sessionId: input.sessionId,
-      title: input.trigger.body,
+      title: lineTitleSource(ctx, input.trigger),
       brief: input.trigger.body,
       now: input.now ?? new Date(),
     }).id,

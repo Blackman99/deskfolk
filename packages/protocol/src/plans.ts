@@ -303,8 +303,9 @@ export type RequirementScope = "part" | "ticket" | "plan" | "project" | "standin
  * - `waive`: an entry in force no longer holds.
  * - `not_here` / `here_again`: an entry this plan inherits does not hold for it, or holds again.
  * - `whole_project`: an entry of this plan holds for every plan of its conversation from now on.
+ * - `keep`: an entry whose words an edit of yours took out stays as it is, and is not asked about again.
  */
-export type RequirementAction = "confirm" | "reject" | "waive" | "not_here" | "here_again" | "whole_project";
+export type RequirementAction = "confirm" | "reject" | "waive" | "not_here" | "here_again" | "whole_project" | "keep";
 
 /** `POST /v1/requirements/:id/action`: the plan the board shows it on. Returns that plan's `TaskDetail`. */
 export type RequirementActionRequest = { action: RequirementAction; task_id: string };
@@ -346,6 +347,11 @@ export type PlanRequirement = {
   excluded: boolean;
   /** A proposed replacement: the entry it would replace, which stays in force until you choose. */
   supersedes: { id: string; seq: number; quote: string } | null;
+  /**
+   * You took its words out of your line in an edit, as the scribe read it: retire it or keep it (ADR
+   * 0063, 2026-10-10). Absent or null otherwise, and from a daemon older than that.
+   */
+  withdraw_proposed?: { edit_id: string; at: string } | null;
 };
 
 /**

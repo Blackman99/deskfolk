@@ -180,8 +180,11 @@ export function planRoutes(ctx: RouteCtx): Response | Promise<Response> | null {
       case "whole_project":
         store.widenRequirement(id, { to: "project", taskId: task.id });
         break;
+      case "keep":
+        store.keepAfterEdit(id, { taskId: task.id });
+        break;
       default:
-        throw new HttpError(422, "invalid_args", "action must be confirm, reject, waive, not_here, here_again or whole_project");
+        throw new HttpError(422, "invalid_args", "action must be confirm, reject, waive, not_here, here_again, whole_project or keep");
     }
     return jsonResponse(store.taskDetail(task.id, store.citedPathExists), 200, null);
   }

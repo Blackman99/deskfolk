@@ -7,10 +7,12 @@
  * no delete and no whole list to replace, and no change lands by itself: a change becomes a
  * proposed replacement beside the entry, which stays open until you choose. A change to a number
  * you gave (the line gives one other number for the entry's dimension) is proposed whatever
- * category the scribe named; the same number again only raises the entry; any other change is
- * proposed only beside an entry of the same category, or one with no category to tell by (a line
- * you typed on the board, an old rule), and one aimed at another category is dropped. So whatever
- * the scribe answers, every entry open before it is open after it (I9).
+ * category the scribe named; the same number again only raises the entry. A change aimed at an
+ * entry of another category is proposed too, in the scribe's own category — dropping it had dropped
+ * the new words with it (IG MV, 2026-10-09: the job's new direction was never recorded, the one it
+ * replaced stayed in force) — unless the same words were already proposed in this answer for an
+ * entry of their own category, which marks the aim at another one as the scribe's misfire. So
+ * whatever the scribe answers, every entry open before it is open after it (I9).
  *
  * The fallback capture is here too: a line that complains about a job that has already delivered,
  * which the scribe filed nothing for, is kept whole as a proposed entry, so a complaint is not lost
@@ -75,7 +77,13 @@ export function quoteTooShort(words: string, line: string): boolean {
 }
 
 /** The scribe's answer as parsed: each list as the model wrote it, every item still to be checked. */
-export type ScribePatch = { adds: unknown[]; raises: unknown[]; supersedes: unknown[] };
+export type ScribePatch = {
+  adds: unknown[];
+  raises: unknown[];
+  supersedes: unknown[];
+  /** Only for an edit of yours: entries its earlier words stood on that it took back (see `edit-withdrawals.ts`); never applied here. */
+  withdraws?: unknown[];
+};
 
 export type ScribeOutcome = {
   added: string[];
@@ -101,9 +109,10 @@ function sameCategory(a: string | null, b: string | null): boolean {
 }
 
 /**
- * Whether a change the scribe gives may be proposed beside `entry` by category: the category it
- * named is the entry's, or the entry has none (typed on the board, or an old rule taken in), so
- * nothing tells that the change is about something else. A proposal takes nothing out of force.
+ * Whether a change the scribe gives is aimed within the entry's own category: the category it named
+ * is the entry's, or the entry has none (typed on the board, or an old rule taken in), so nothing
+ * tells that the change is about something else. One that is not is weighed after the rest of the
+ * answer (see `applyScribePatch`). A proposal takes nothing out of force.
  */
 function mayReplaceByCategory(named: string | null, entry: Requirement): boolean {
   return entry.category === null || sameCategory(named, entry.category);
@@ -164,6 +173,31 @@ export function applyScribePatch(
     };
 
     const proposedFor = new Set<string>();
+    /** The words of each proposal so far, as `quoteWords` reads them. */
+    const proposedWords = new Set<string>();
+    /** Changes aimed across categories, weighed once the answer's own-category ones are in. */
+    const across: Array<{ index: number; entry: Requirement; words: string; item: Record<string, unknown> }> = [];
+    const propose = (entry: Requirement, words: string, item: Record<string, unknown>, over: Partial<Parameters<typeof addRequirement>[1]> = {}): void => {
+      proposedFor.add(entry.id);
+      proposedWords.add(quoteWords(words));
+      const proposal = addRequirement(ctx, {
+        scope: entry.scope,
+        scopeId: entry.scope_id,
+        domain: entry.domain,
+        quote: words,
+        restated: text(item.restated, REQUIREMENT_QUOTE_MAX),
+        category: entry.category,
+        polarity: entry.polarity,
+        sourceKind,
+        sourceQuoteId: quote.id,
+        addedBy: SCRIBE_WRITER,
+        status: "proposed",
+        supersedes: entry.id,
+        nature: natureOf(item) ?? entry.nature,
+        ...over,
+      });
+      outcome.proposed.push(proposal.id);
+    };
     patch.supersedes.forEach((raw, index) => {
       const item = asRecord(raw);
       const said = item ? text(item.quote, Number.MAX_SAFE_INTEGER) : null;
@@ -181,28 +215,32 @@ export function applyScribePatch(
       // category the scribe named, since the number says what it replaces. Anything else only
       // beside an entry of the same category, or of none.
       const number = newNumberFor(entry, words);
-      if (!number && !mayReplaceByCategory(text(item.category, CATEGORY_MAX), entry)) return reject("supersede", index, "other_category", entry.id);
+      if (!number && !mayReplaceByCategory(text(item.category, CATEGORY_MAX), entry)) {
+        across.push({ index, entry, words, item });
+        return;
+      }
       if (!number && tooShort(words)) return reject("supersede", index, "quote_too_short", entry.id);
       if (proposedFor.has(entry.id)) return reject("supersede", index, "duplicate", entry.id);
-      proposedFor.add(entry.id);
-      const proposal = addRequirement(ctx, {
-        scope: entry.scope,
-        scopeId: entry.scope_id,
-        domain: entry.domain,
-        quote: words,
-        restated: text(item.restated, REQUIREMENT_QUOTE_MAX),
-        category: entry.category,
-        polarity: entry.polarity,
-        ...(number ? { dimension: number.dimension, value: dimensionValueJson(number) } : {}),
-        sourceKind,
-        sourceQuoteId: quote.id,
-        addedBy: SCRIBE_WRITER,
-        status: "proposed",
-        supersedes: entry.id,
-        nature: natureOf(item) ?? entry.nature,
-      });
-      outcome.proposed.push(proposal.id);
+      propose(entry, words, item, number ? { dimension: number.dimension, value: dimensionValueJson(number) } : {});
     });
+    // Across categories: proposed in the scribe's own category and nature (it is another
+    // requirement, which would take the old one's place), unless these words already went to an
+    // entry of their own category in this answer — then aiming them here too is the misfire.
+    for (const { index, entry, words, item } of across) {
+      if (tooShort(words)) {
+        reject("supersede", index, "quote_too_short", entry.id);
+        continue;
+      }
+      if (proposedFor.has(entry.id) || proposedWords.has(quoteWords(words))) {
+        reject("supersede", index, "duplicate", entry.id);
+        continue;
+      }
+      propose(entry, words, item, {
+        category: text(item.category, CATEGORY_MAX),
+        polarity: item.polarity === "must_not" ? "must_not" : item.polarity === "must" ? "must" : entry.polarity,
+        nature: natureOf(item),
+      });
+    }
 
     patch.raises.forEach((raw, index) => {
       const item = asRecord(raw);

@@ -118,7 +118,7 @@
 	const ATTENTION_CHECKS = 3;
 	const failing = $derived(bySeverity(failingChecks(checks), ticketSeq));
 	const waitingRequirements = $derived(
-		(detail.requirements ?? []).filter((entry) => !entry.excluded && (entry.status === 'proposed' || entry.status === 'unverified')).length
+		(detail.requirements ?? []).filter((entry) => !entry.excluded && (entry.status === 'proposed' || entry.status === 'unverified' || entry.withdraw_proposed)).length
 	);
 	const needsYou = $derived(failing.length > 0 || (detail.spec?.progress.blocked.length ?? 0) > 0 || waitingRequirements > 0);
 	let sectionEl = $state<HTMLElement | null>(null);

@@ -9,6 +9,8 @@ import type { Copy } from "../copy.ts";
  * what the Bots read in their situation.
  */
 export type RequirementGroups = {
+  /** Entries whose words an edit of yours took out: retire or keep, first of what waits for you. */
+  withdrawn: PlanRequirement[];
   own: PlanRequirement[];
   inherited: Array<{ taskId: string; title: string; entries: PlanRequirement[] }>;
   proposed: PlanRequirement[];
@@ -22,10 +24,11 @@ function byWeight(a: PlanRequirement, b: PlanRequirement): number {
 }
 
 export function requirementGroups(entries: readonly PlanRequirement[]): RequirementGroups {
-  const groups: RequirementGroups = { own: [], inherited: [], proposed: [], unverified: [], excluded: [] };
+  const groups: RequirementGroups = { withdrawn: [], own: [], inherited: [], proposed: [], unverified: [], excluded: [] };
   const from = new Map<string, RequirementGroups["inherited"][number]>();
   for (const entry of entries) {
     if (entry.excluded) groups.excluded.push(entry);
+    else if (entry.withdraw_proposed) groups.withdrawn.push(entry);
     else if (entry.status === "proposed") groups.proposed.push(entry);
     else if (entry.status === "unverified") groups.unverified.push(entry);
     else if (entry.inherited_from) {
@@ -48,10 +51,12 @@ export function requirementGroups(entries: readonly PlanRequirement[]): Requirem
  * one or an old rule is confirmed or turned down; one it inherits can be set not to hold here, and
  * back; one of its own can be let go — except a line you typed on this board, which goes when you
  * take it out of the rules or Done when — and one that holds for this plan only can be made to hold
- * for the whole conversation, when there is one.
+ * for the whole conversation, when there is one. One whose words an edit of yours took out is
+ * retired (turned down, when only proposed) or kept.
  */
 export function requirementActions(entry: PlanRequirement, detail: Pick<TaskDetail, "session_id">): RequirementAction[] {
   if (entry.excluded) return ["here_again"];
+  if (entry.withdraw_proposed) return [entry.status === "open" ? "waive" : "reject", "keep"];
   const inherits = entry.scope === "project" || entry.scope === "standing";
   if (entry.status === "proposed" || entry.status === "unverified") {
     return inherits && entry.inherited_from ? ["confirm", "reject", "not_here"] : ["confirm", "reject"];

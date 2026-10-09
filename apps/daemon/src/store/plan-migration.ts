@@ -262,6 +262,7 @@ export function migrateRequirements(db: Database): void {
   if (!cols.includes("seq")) db.run("ALTER TABLE requirements ADD COLUMN seq INTEGER");
   if (!cols.includes("origin_task_id")) db.run("ALTER TABLE requirements ADD COLUMN origin_task_id TEXT");
   if (!cols.includes("nature")) db.run("ALTER TABLE requirements ADD COLUMN nature TEXT");
+  if (!cols.includes("withdraw_edit_id")) db.run("ALTER TABLE requirements ADD COLUMN withdraw_edit_id TEXT");
   const unnumbered = db
     .query<{ id: string }, []>("SELECT id FROM requirements WHERE seq IS NULL ORDER BY created_at ASC, rowid ASC")
     .all();

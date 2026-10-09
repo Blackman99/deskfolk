@@ -19,7 +19,7 @@ import { NO_ABLATION, type Ablation } from "./ablation";
 import type { CompletionsClient, JudgeResult, MappedUsage } from "./completions";
 import type { UserLineReading } from "./line-reading";
 import type { OrganizerRouting } from "./organizer";
-import { parseScribeAnswer, scribePayload } from "./prompts/scribe";
+import { parseScribeAnswer, scribeEditPayload, scribePayload, type ScribePayload } from "./prompts/scribe";
 import { promptPage } from "./prompts/book";
 import { SCRIBE_WRITER, type ScribeOutcome, type Store, type Task, type UserQuote } from "./store";
 
@@ -66,6 +66,12 @@ export type Scribe = {
   noteLine: (messageId: string, handedOver: HandedOver) => Promise<void>;
   /** You answered a Bot's question; the same, for the answer. Called as the answer lands, before the turn goes on. */
   noteAnswer: (askId: string) => Promise<void>;
+  /**
+   * You edited a line of yours: after the line's own words are read, the edit is read for the
+   * entries it took back, which the board then asks you to retire or keep (ADR 0063, 2026-10-10).
+   * Once per edit; no call when the line's earlier words stand behind nothing. Never rejects.
+   */
+  noteEdit: (editId: string) => Promise<void>;
   /** Shutting down: the call in flight is abandoned and lines still queued are dropped, with nothing written for them. */
   stop: () => void;
 };
@@ -80,6 +86,8 @@ export function createScribe(deps: ScribeDeps): Scribe {
   const inFlight = new Set<AbortController>();
   /** Quotes this run has read against a plan (or captured), so a later filing of the same line reads it no second time. */
   const read = new Set<string>();
+  /** Edits this run has read, the same way. */
+  const editsRead = new Set<string>();
 
   function handedOverAt(): HandedOver {
     return store.plansHandedOver();
@@ -131,6 +139,34 @@ export function createScribe(deps: ScribeDeps): Scribe {
     if (mine !== generation) return;
     if (!routing) return capture(quote, handedOver);
     const { payload, offered } = scribePayload(store, quote, task);
+    const answer = await ask({ routing, payload, sessionId: quote.session_id, taskId: task.id, mine, about: { quote: quote.id } });
+    if (!answer) return;
+    const { patch, fail } = answer;
+    if (!patch) {
+      log(`[scribe] quote ${quote.id}: ${fail ? `the call failed (${fail})` : "the answer did not read as a patch"}, nothing filed`);
+      return capture(quote, handedOver);
+    }
+    // Read again: what you said may have been erased, or filed elsewhere, while the call was out.
+    const now = store.getQuote(quote.id);
+    if (!now || now.redacted_at || now.task_id !== quote.task_id) return;
+    const outcome = store.applyScribePatch({ quote: now, offered: offered.map((entry) => entry.id), patch });
+    if (!landed(outcome)) return capture(now, handedOver);
+    deps.onFiled?.(now, outcome);
+  }
+
+  /**
+   * One scribe call on `payload`, its spend recorded and its answer logged as `scribe.answer` (with
+   * `about`, which says what it read); null when `stop` came while it was out.
+   */
+  async function ask(input: {
+    routing: OrganizerRouting;
+    payload: ScribePayload;
+    sessionId: string | null;
+    taskId: string;
+    mine: number;
+    about: { quote: string } | { edit: string };
+  }): Promise<{ patch: ReturnType<typeof parseScribeAnswer>; fail: string | null } | null> {
+    const { routing } = input;
     const prompt = promptPage(store, "zh").resolve("call.scribe");
     const controller = new AbortController();
     inFlight.add(controller);
@@ -146,7 +182,7 @@ export function createScribe(deps: ScribeDeps): Scribe {
         prompt: prompt.ref,
         messages: [
           { role: "system", content: prompt.text },
-          { role: "user", content: JSON.stringify(payload) },
+          { role: "user", content: JSON.stringify(input.payload) },
         ],
         signal: controller.signal,
         timeoutMs: SCRIBE_TIMEOUT_MS,
@@ -157,11 +193,11 @@ export function createScribe(deps: ScribeDeps): Scribe {
     } finally {
       inFlight.delete(controller);
     }
-    if (mine !== generation) return;
-    if (result && quote.session_id) {
+    if (input.mine !== generation) return null;
+    if (result && input.sessionId) {
       try {
         deps.recordSpend({
-          sessionId: quote.session_id,
+          sessionId: input.sessionId,
           target: routing,
           usage: result.usage,
           responded: result.failKind === null || result.failKind === "incomplete",
@@ -179,25 +215,46 @@ export function createScribe(deps: ScribeDeps): Scribe {
           : null;
     const patch = fail ? null : parseScribeAnswer(result!.content ?? "");
     if (!fail && !patch) {
-      store.notePromptParseFailure({ prompt: prompt.ref.id, locale: prompt.ref.locale, revision: prompt.ref.revision_id, reason: "unreadable", sessionId: quote.session_id, taskId: task.id });
+      store.notePromptParseFailure({ prompt: prompt.ref.id, locale: prompt.ref.locale, revision: prompt.ref.revision_id, reason: "unreadable", sessionId: input.sessionId, taskId: input.taskId });
     }
     store.recordWorkEvent({
       kind: "scribe.answer",
       actor: SCRIBE_WRITER,
-      taskId: task.id,
-      sessionId: quote.session_id,
-      payload: { quote: quote.id, model: routing.model, fail: fail ?? (patch ? null : "unreadable"), raw: result?.content ?? null },
+      taskId: input.taskId,
+      sessionId: input.sessionId,
+      payload: { ...input.about, model: routing.model, fail: fail ?? (patch ? null : "unreadable"), raw: result?.content ?? null },
     });
-    if (!patch) {
-      log(`[scribe] quote ${quote.id}: ${fail ? `the call failed (${fail})` : "the answer did not read as a patch"}, nothing filed`);
-      return capture(quote, handedOver);
+    return { patch, fail };
+  }
+
+  /** One edit of yours, read for the entries it took back (see `noteEdit`). */
+  async function scribeEdit(editId: string, mine: number): Promise<void> {
+    const edit = store.getMessageEdit(editId);
+    if (!edit || editsRead.has(editId) || store.editScribed(editId)) return;
+    let task: Task;
+    let sessionId: string | null;
+    try {
+      const line = store.getMessage(edit.message_id);
+      if (!line.task_id) return;
+      sessionId = line.session_id;
+      task = store.getTask(line.task_id);
+    } catch {
+      return;
     }
-    // Read again: what you said may have been erased, or filed elsewhere, while the call was out.
-    const now = store.getQuote(quote.id);
-    if (!now || now.redacted_at || now.task_id !== quote.task_id) return;
-    const outcome = store.applyScribePatch({ quote: now, offered: offered.map((entry) => entry.id), patch });
-    if (!landed(outcome)) return capture(now, handedOver);
-    deps.onFiled?.(now, outcome);
+    if (deps.draining()) return;
+    const earlier = store.editEarlierEntries(edit.message_id);
+    editsRead.add(editId);
+    if (earlier.length === 0 || ablation.has("scribe")) return;
+    const routing = await deps.routing().catch(() => null);
+    if (mine !== generation || !routing) return;
+    const payload = scribeEditPayload(store, { edit: { before: edit.body_before, after: edit.body_after, at: edit.created_at }, sessionId, task, earlier });
+    const answer = await ask({ routing, payload, sessionId, taskId: task.id, mine, about: { edit: editId } });
+    if (!answer?.patch) {
+      if (answer) log(`[scribe] edit ${editId}: ${answer.fail ? `the call failed (${answer.fail})` : "the answer did not read as a patch"}, nothing marked`);
+      return;
+    }
+    const marked = store.proposeEditWithdrawals({ edit, taskId: task.id, sessionId, offered: earlier.map((entry) => entry.id), withdraws: answer.patch.withdraws ?? [] });
+    if (marked.length > 0) log(`[scribe] edit ${editId}: asked about ${marked.length} entr${marked.length === 1 ? "y" : "ies"} its words took back`);
   }
 
   return {
@@ -210,6 +267,19 @@ export function createScribe(deps: ScribeDeps): Scribe {
       // Read here: the turn the answer resumes has not run on yet.
       const answer = store.quoteOfMessage(askId, "ask_answer");
       return enqueue(() => store.quoteOfMessage(askId, "ask_answer"), answer ? handedOverAt() : null);
+    },
+    noteEdit: (editId) => {
+      const mine = generation;
+      const run = chain.then(async () => {
+        if (mine !== generation) return;
+        try {
+          await scribeEdit(editId, mine);
+        } catch (error) {
+          log(`[scribe] ${error instanceof Error ? error.message : String(error)}`);
+        }
+      });
+      chain = run;
+      return run;
     },
     stop() {
       generation += 1;

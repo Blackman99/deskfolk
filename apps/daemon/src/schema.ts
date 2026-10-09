@@ -693,7 +693,10 @@ CREATE TABLE IF NOT EXISTS requirements (
   origin_task_id TEXT,
   -- What it is about, as the scribe read your words (ADR 0055): craft, look, series or other; null
   -- when nothing read it so. Checked in code, not here, so a new kind needs no rebuild.
-  nature TEXT
+  nature TEXT,
+  -- The edit of yours (message_edits.id) that took its words out of your line, as the scribe read
+  -- it: the board asks whether to retire it. Nothing changes until you answer (ADR 0063, 2026-10-10).
+  withdraw_edit_id TEXT
 );
 
 CREATE INDEX IF NOT EXISTS requirements_scope ON requirements (scope, scope_id, status);

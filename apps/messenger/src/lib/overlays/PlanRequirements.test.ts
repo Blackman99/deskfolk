@@ -231,3 +231,16 @@ test("past ten of the plan's own entries the rest are a press away, and back; a 
   expect(view.host.querySelector(".plan-reqs-more")).toBeNull();
   view.close();
 });
+
+test("words an edit of yours took out are asked about first: retire them, or keep them", async () => {
+  const gone = anEntry({ id: "r275", seq: 275, quote: "如果自己整不了模型就改成 2D 动画风格", withdraw_proposed: { edit_id: "e1", at: "2026-10-09T00:54:30.405Z" } });
+  const view = open(aDetail([anEntry(), gone]));
+  const group = view.host.querySelector(".plan-reqs-group.is-withdrawn")!;
+  expect(group.textContent).toContain(t.plan.requirements.withdrawn);
+  expect(group.textContent).toContain("如果自己整不了模型就改成 2D 动画风格");
+  // It is no longer listed among what is in force.
+  expect(view.host.querySelectorAll('[data-requirement="r275"]')).toHaveLength(1);
+  click(buttonByText(group, t.plan.requirements.keep));
+  await settle();
+  expect(view.calls).toEqual([["r275", { action: "keep", task_id: "task-9ag7" }]]);
+});

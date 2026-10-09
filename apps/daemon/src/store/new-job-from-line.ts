@@ -8,7 +8,7 @@
 import { HttpError } from "../errors";
 import { refileMessage, updatePlanDormancy, type RefileMessageResult } from "./filing";
 import type { StoreContext } from "./shared";
-import { openTask, planTitle } from "./tasks";
+import { lineTitleSource, openTask, planTitle } from "./tasks";
 import { createTicket } from "./tickets";
 import { recordWorkEvent } from "./work-events";
 
@@ -19,8 +19,7 @@ export function newJobFromLine(ctx: StoreContext, messageId: string, input: { ti
     if (!line) throw new HttpError(404, "not_found", "no such message");
     if (line.withdrawn_at) throw new HttpError(422, "withdrawn", "you took this line back");
     if (line.kind !== "user" || line.author !== "user") throw new HttpError(422, "invalid_args", "only a line of yours opens a new job");
-    const said = (input.title ?? "").trim() || line.body.trim();
-    if (!said) throw new HttpError(422, "invalid_args", "a line with no words names no job");
+    const said = (input.title ?? "").trim() || lineTitleSource(ctx, line);
     const title = planTitle(ctx, said);
     const task = openTask(ctx, { sessionId: line.session_id, title, brief: line.body });
     // In your direct the one Bot is on it; in a group the lead lays it out.

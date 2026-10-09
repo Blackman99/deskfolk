@@ -119,6 +119,17 @@ describe("empty roster and settings", () => {
     expect((await act(old.id, { action: "waive" })).status).toBe(404);
     expect((await act(old.id, { action: "waive", task_id: plan })).status).toBe(200);
     expect(h.store.getRequirement(old.id).status).toBe("waived");
+
+    // One an edit of yours took the words of is shown so, and kept from the board.
+    const kept = h.store.addRequirement({ scope: "plan", scopeId: plan, quote: "整不了就做 2D", sourceKind: "message", addedBy: "scribe" });
+    const edited = h.store.editMessage(line.id, { body: "做 EP01，3D", userActionId: "edit-api" });
+    h.store.db.run("UPDATE requirements SET withdraw_edit_id = ? WHERE id = ?", [edited.edit!.id, kept.id]);
+    const board = (await (await fetch(`${h.origin}/v1/tasks/${plan}`, { headers: auth(h) })).json()) as { requirements: Array<{ id: string; withdraw_proposed: unknown }> };
+    expect(board.requirements.find((entry) => entry.id === kept.id)?.withdraw_proposed).toEqual({ edit_id: edited.edit!.id, at: edited.edit!.created_at });
+    const keptBack = await act(kept.id, { action: "keep", task_id: plan });
+    expect(keptBack.status).toBe(200);
+    expect(((await keptBack.json()) as { requirements: Array<{ id: string; withdraw_proposed: unknown }> }).requirements.find((entry) => entry.id === kept.id)?.withdraw_proposed).toBeNull();
+    expect(h.store.getRequirement(kept.id)).toMatchObject({ status: "open", withdraw_edit_id: null });
   });
 
   test("erasing what you said takes the checks made from it with it, at once", async () => {

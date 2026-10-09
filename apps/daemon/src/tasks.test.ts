@@ -44,6 +44,26 @@ describe("plan dir naming", () => {
   });
 });
 
+describe("a job opened by a line with no words", () => {
+  test("is named after the line's file, or says it had only attachments, never left blank", () => {
+    // 2026-10-09 07:15: a screenshot sent with no words opened a job named "" — a blank row in the
+    // switcher and a blank tab.
+    const { store, bot, session } = fixture();
+    const shot = store.insertMessage({ sessionId: session.id, kind: "user", author: "user", body: "" });
+    store.db.run("INSERT INTO attachments (id, message_id, workspace_relpath, original_filename, created_at) VALUES ('a1', ?, 'inbox/x.png', '头像截图.png', ?)", [shot.id, shot.created_at]);
+    store.db.run("INSERT INTO attachments (id, message_id, workspace_relpath, original_filename, created_at) VALUES ('a2', ?, 'inbox/y.png', '第二张.png', ?)", [shot.id, shot.created_at]);
+    const named = store.getTask(store.createTurn({ sessionId: session.id, botId: bot.id, triggerMessageId: shot.id }).task_id!);
+    expect(named.title).toBe("头像截图.png 等 2 个文件");
+    expect(named.dir).not.toMatch(/\/-/);
+
+    const other = store.createBot({ name: "Other", duties: "x", boundaries: "y" });
+    const bare = store.insertMessage({ sessionId: other.direct_session.id, kind: "user", author: "user", body: "  " });
+    const placeholder = store.getTask(store.createTurn({ sessionId: other.direct_session.id, botId: other.bot.id, triggerMessageId: bare.id }).task_id!);
+    expect(placeholder.title).toBe("（只有附件）");
+    store.close();
+  });
+});
+
 describe("reserved subdirs", () => {
   const dir = "work/x-7f3k";
 

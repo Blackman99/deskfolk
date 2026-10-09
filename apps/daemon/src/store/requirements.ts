@@ -56,6 +56,8 @@ export type Requirement = {
   origin_task_id: string | null;
   /** What it is about, as the scribe read it; null when nothing read it so. */
   nature: RequirementNature | null;
+  /** The edit of yours that took its words out of your line, waiting on you to retire it or keep it; null otherwise. */
+  withdraw_edit_id: string | null;
 };
 
 type RequirementRow = Omit<Requirement, "value"> & { value: string | null };
@@ -391,7 +393,7 @@ export function rejectRequirement(
 ): Requirement {
   return ctx.db.transaction(() => {
     entryIn(ctx, id, ["proposed", "unverified"]);
-    ctx.db.run(`UPDATE requirements SET status = 'not_requirement', updated_at = ? WHERE id = ?`, [input.now ?? isoNow(), id]);
+    ctx.db.run(`UPDATE requirements SET status = 'not_requirement', withdraw_edit_id = NULL, updated_at = ? WHERE id = ?`, [input.now ?? isoNow(), id]);
     recordWorkEvent(ctx, {
       kind: "requirement.reject",
       actor: "user",
@@ -413,7 +415,7 @@ export function waiveRequirement(
 ): Requirement {
   return ctx.db.transaction(() => {
     entryIn(ctx, id, ["open"]);
-    ctx.db.run(`UPDATE requirements SET status = 'waived', updated_at = ? WHERE id = ?`, [input.now ?? isoNow(), id]);
+    ctx.db.run(`UPDATE requirements SET status = 'waived', withdraw_edit_id = NULL, updated_at = ? WHERE id = ?`, [input.now ?? isoNow(), id]);
     recordWorkEvent(ctx, {
       kind: "requirement.waive",
       actor: "user",

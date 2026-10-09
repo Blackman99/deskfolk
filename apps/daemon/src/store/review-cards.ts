@@ -58,6 +58,37 @@ function reviewerVerdictLine(ctx: StoreContext, review: ReviewRecord, submission
   return `${said}${why}`;
 }
 
+/** A card this long after its hand-over says which version it asks about, when its Bot has sent newer files since. */
+export const LATE_CARD_AFTER_MS = 10 * 60_000;
+
+/**
+ * Which version a card asks about, when it goes up long after the hand-over and its Bot has sent
+ * other files in the job since: when it was handed over, and that the newer files are not in it.
+ * IG MV, 2026-10-09: the 2D cut handed over at 00:39 waited three hours for its card (its Bot was at
+ * work), which came up 16 s under the Bot's new 3D sample shot — 放行 was pressed on the old cut, and
+ * a line about the 3D shot then sent the approved cut back. Times and paths only.
+ */
+function olderVersionLine(ctx: StoreContext, submission: Submission, now: string, en: boolean): string | null {
+  if (Date.parse(now) - Date.parse(submission.created_at) < LATE_CARD_AFTER_MS) return null;
+  const handed = new Set(submission.artifacts.map((artifact) => artifact.path));
+  const newer = ctx.db.query<{ path: string }, [string, string, string]>(
+    `SELECT a.workspace_relpath AS path FROM attachments a JOIN messages m ON m.id = a.message_id JOIN turns t ON t.id = m.turn_id
+     WHERE t.task_id = ? AND m.kind = 'bot' AND m.author = ? AND a.created_at > ? ORDER BY a.created_at DESC, a.rowid DESC`,
+  ).all(submission.task_id, submission.bot_id, submission.created_at).map((row) => row.path).filter((path) => !handed.has(path));
+  const files = [...new Set(newer)];
+  if (files.length === 0) return null;
+  const at = new Date(submission.created_at);
+  const today = new Date(now);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const clock = `${pad(at.getHours())}:${pad(at.getMinutes())}`;
+  const when = at.toDateString() === today.toDateString() ? clock : `${pad(at.getMonth() + 1)}-${pad(at.getDate())} ${clock}`;
+  const bot = ctx.db.query<{ name: string }, [string]>("SELECT name FROM bots WHERE id = ?").get(submission.bot_id)?.name ?? submission.bot_id;
+  const latest = files[0]!.split("/").at(-1)!;
+  return en
+    ? `This is the version handed over at ${when}; ${bot} has sent ${files.length} more file${files.length === 1 ? "" : "s"} since (latest: ${latest}), which this approval does not cover.`
+    : `这是 ${when} 交的那一版；之后 ${bot} 又发了 ${files.length} 个文件（最近：${latest}），不在这次放行里。`;
+}
+
 /**
  * The one card a hand-over waits on you with: 放行 or 退回 (ADR 0046, ADR 0058 §13). Shown for an
  * `answer` or `organizer` submission, reviewed or not; for a `submit`/`implicit` file hand-over no
@@ -110,7 +141,8 @@ export function askApproval(ctx: StoreContext, submission: Submission, now: stri
     // Put to you again after its card came down for a line of yours: why the same hand-over is back.
     const bot = previous?.held ? ctx.db.query<{ name: string }, [string]>("SELECT name FROM bots WHERE id = ?").get(submission.bot_id)?.name ?? submission.bot_id : null;
     const again = bot ? [en ? `${bot} handed over nothing new this time.` : `${bot}这次没交新的一版。`] : [];
-    const body = [...again, head + verdict, ...unbackedLines(items, [plan.title, ticket.title], en), tail].join("\n");
+    const older = olderVersionLine(ctx, submission, now, en);
+    const body = [...(older ? [older] : []), ...again, head + verdict, ...unbackedLines(items, [plan.title, ticket.title], en), tail].join("\n");
     const place = cardPlace(ctx, submission, plan.session_id);
     const isDirect = ctx.db.query<{ kind: string }, [string]>("SELECT kind FROM sessions WHERE id = ?").get(place)?.kind === "direct"
       && producerIsBot(ctx, submission);

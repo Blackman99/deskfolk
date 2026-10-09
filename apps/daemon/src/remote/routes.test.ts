@@ -231,7 +231,7 @@ test("a phone can confirm new-plan undo or quoted-message merge without forging 
 
 test("a phone can act on an entry of the requirements ledger from the board, naming the plan", () => {
   const ok = (request: Omit<RemoteRequest, "v" | "id">) => validateBusiness({ v: 1, id, ...request });
-  for (const action of ["confirm", "reject", "waive", "not_here", "here_again", "whole_project"]) {
+  for (const action of ["confirm", "reject", "waive", "not_here", "here_again", "whole_project", "keep"]) {
     expect(() => ok({ method: "POST", path: `/v1/requirements/${id}/action`, body: { action, task_id: id } })).not.toThrow();
   }
   expect(() => ok({ method: "POST", path: `/v1/requirements/${id}/action`, body: { action: "confirm" } })).toThrow();

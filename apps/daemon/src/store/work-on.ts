@@ -13,7 +13,7 @@ import { queueInboxItem } from "./inbox";
 import { getMessage } from "./messages";
 import { readEngineLevel, ENGINE_LEVELS } from "./schema-gate";
 import { planStageSql, type StoreContext } from "./shared";
-import { getTask, openTask, planTitle } from "./tasks";
+import { getTask, lineTitleSource, openTask, planTitle } from "./tasks";
 import { createTicket, getTicket } from "./tickets";
 import { getTurn, listLiveTurns } from "./turns";
 import { recordWorkEvent } from "./work-events";
@@ -91,7 +91,7 @@ export function workOn(ctx: StoreContext, input: WorkOnInput): WorkOnResult {
         throw new HttpError(409, "work_dir_fixed", "this working segment already acted in its directory; open the other job in a separate segment");
       }
       taskId = openTask(ctx, { sessionId: quote.session_id,
-        title: planTitle(ctx, typeof fresh.title === "string" && fresh.title.trim() ? fresh.title : quote.body), brief: quote.body }).id;
+        title: planTitle(ctx, typeof fresh.title === "string" && fresh.title.trim() ? fresh.title : lineTitleSource(ctx, quote)), brief: quote.body }).id;
       // A new job in a conversation puts its older jobs nobody is on to sleep (ADR 0040 §2.6 ②).
       updatePlanDormancy(ctx, { newTaskId: taskId });
     } else {

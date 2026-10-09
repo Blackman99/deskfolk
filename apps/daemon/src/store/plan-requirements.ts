@@ -75,6 +75,15 @@ export function planRequirements(ctx: StoreContext, taskId: string): PlanRequire
     if (!titles.has(id)) titles.set(id, ctx.db.query<{ title: string }, [string]>(`SELECT title FROM tasks WHERE id = ?`).get(id)?.title ?? null);
     return titles.get(id)!;
   };
+  const edits = new Map(
+    ctx.db
+      .query<{ id: string; edit_id: string; at: string }, [string]>(
+        `SELECT r.id, e.id AS edit_id, e.created_at AS at FROM requirements r JOIN message_edits e ON e.id = r.withdraw_edit_id
+         WHERE r.id IN (SELECT value FROM json_each(?1))`,
+      )
+      .all(ids)
+      .map(({ id, ...edit }) => [id, edit]),
+  );
   const byId = new Map(entries.map((entry) => [entry.id, entry]));
   const replaced = (id: string | null): PlanRequirement["supersedes"] => {
     if (!id) return null;
@@ -105,6 +114,7 @@ export function planRequirements(ctx: StoreContext, taskId: string): PlanRequire
       inherited_from: inherited !== null && entry.origin_task_id ? { task_id: entry.origin_task_id, title: inherited } : null,
       excluded: entry.excluded,
       supersedes: replaced(entry.supersedes),
+      withdraw_proposed: edits.get(entry.id) ?? null,
     };
   });
 }

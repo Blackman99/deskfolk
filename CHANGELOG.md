@@ -6,6 +6,13 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Your requirements keep up with what you change
+
+- A change of direction the scribe filed against a requirement of another kind used to be dropped with all its words; it is now kept as a replacement waiting for you, and the old requirement stays in force until you confirm. On one job, "rebuild it with the League map, champion models and real player models" had gone unrecorded this way.
+- When you change a line you sent, words you took out are no longer silently kept: the requirements standing on them are listed first in the plan's "What you asked for" as "Words you took out", with "No longer holds" and "Keep it". Nothing changes until you press.
+- A job opened by a line with no words (only a picture or a file) is named after its first file instead of being left blank.
+- An approval card that went up long after its hand-over, when the Bot has sent other files since, now says which version it is and that the newer files are not in it.
+
 ### A job's progress no longer calls what you sent back passed
 
 - The job's plan used to write a version you had just sent back as done: "matches the sample", "passed". It now sees each ticket's stage and how its newest hand-over came out — who decided it, your words when you sent it back, whether it is waiting on you — and every approval and send-back since its last version. A ticket in rework, or whose newest hand-over you sent back, goes under to do with what you want changed; a passing sample check is no longer taken as your approval.

@@ -19,6 +19,7 @@ import { settingsMap, type StoreContext } from "./shared";
 import {
   elsewherePlans,
   getTask,
+  lineTitleSource,
   openTask,
   reopenTask,
   sessionRecentTasks,
@@ -492,7 +493,7 @@ export function applyOrganizerResult(
       const body = input.source.messageBody.trim();
       target = openTask(ctx, {
         sessionId: input.sessionId,
-        title: result.spec.goal || body,
+        title: result.spec.goal || lineTitleSource(ctx, { id: input.source.messageId, body }),
         brief: body || result.spec.goal,
         kind: result.spec.kind,
         spec: filedSpec(result.spec, null, false, []),

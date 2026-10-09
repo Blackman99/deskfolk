@@ -522,6 +522,27 @@ test("a hand-over waits on you on one card: what nothing backs is listed on 放�
     .map((event) => ({ actor: event.actor, source: event.payload.source }))).toEqual([{ actor: "user", source: "user" }]);
 });
 
+test("a card put up long after its hand-over, with newer files from its Bot since, says which version it is", () => {
+  // IG MV, 2026-10-09: the 2D cut handed over at 00:39 waited three hours for its card, which came up
+  // 16 s under the Bot's new 3D sample shot; 放行 was pressed on the old cut.
+  const f = fixture();
+  const { submission } = handedOver(f);
+  const later3d = segment(f);
+  f.store.insertMessage({ sessionId: f.room.id, turnId: later3d.id, kind: "bot", author: f.producer.id, body: "先做了一条 3D 样镜",
+    paths: [`${f.plan.dir}/3d/ning_gank/master.mp4`] });
+  f.store.setTurnStatus(later3d.id, "completed");
+  const handed = new Date(submission.created_at);
+  const clock = `${String(handed.getHours()).padStart(2, "0")}:${String(handed.getMinutes()).padStart(2, "0")}`;
+  const [card] = superviseSubmissions(f.ctx, later(3 * 3_600_000)).messages;
+  expect(card!.body.split("\n")[0]).toBe(`这是 ${clock} 交的那一版；之后 Director 又发了 1 个文件（最近：master.mp4），不在这次放行里。`);
+
+  // Put up soon after, or with nothing newer since: no such line.
+  const g = fixture();
+  handedOver(g);
+  const [prompt] = superviseSubmissions(g.ctx, later(UNREVIEWED_AFTER_MS + 1_000)).messages;
+  expect(prompt!.body).not.toContain("交的那一版");
+});
+
 test("an item that only repeats the job's name is not listed again on the card; one with a measurement on it is", () => {
   const f = fixture();
   handedOver(f);

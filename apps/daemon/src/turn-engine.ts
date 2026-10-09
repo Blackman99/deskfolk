@@ -746,9 +746,13 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     reader.forget(messageId);
     stops.liftOnYourChange(result.message, result.edit.id);
     lifecycle.dispatchQueued();
-    if (!result.quote) return;
-    void core.track(scribe.noteLine(messageId, scribe.handedOverAt()));
-    derivedChecks.noteLine(messageId);
+    if (result.quote) {
+      void core.track(scribe.noteLine(messageId, scribe.handedOverAt()));
+      derivedChecks.noteLine(messageId);
+    }
+    // What the edit took back, read after the line's own words — an edit that only removed words
+    // has no quote, and left the entries standing on them in force (R275 on IG MV, 2026-10-09).
+    void core.track(scribe.noteEdit(result.edit.id));
   }
 
   /**

@@ -342,7 +342,7 @@ describe("a change", () => {
     store.close();
   });
 
-  test("of another category is dropped, and of the same category is only proposed: the entry stays open beside it", () => {
+  test("of the same category is only proposed: the entry stays open beside it; words already proposed for their own category are not aimed at another", () => {
     const { store, say, entry, apply } = fixture();
     const arm = entry("机械臂必须是左手", "角色设定");
     const transition = entry("每次过门都要有过渡镜头", "转场");
@@ -357,7 +357,35 @@ describe("a change", () => {
     expect(outcome.proposed).toHaveLength(1);
     expect(store.getRequirement(outcome.proposed[0]!)).toMatchObject({ status: "proposed", supersedes: transition.id, category: "转场", restated: "过门直接硬切" });
     expect([arm, transition].map((row) => store.getRequirement(row.id).status)).toEqual(["open", "open"]);
-    expect(store.listWorkEvents({ kind: "scribe.rejected" }).map((row) => row.payload.reason)).toEqual(["other_category", "duplicate"]);
+    // The same words aimed at the arm too: the scribe's misfire, not a second proposal.
+    expect(store.listWorkEvents({ kind: "scribe.rejected" }).map((row) => [row.payload.reason, row.payload.requirement])).toEqual([
+      ["duplicate", transition.id],
+      ["duplicate", arm.id],
+    ]);
+    store.close();
+  });
+
+  test("of another category is proposed beside the entry it would replace, in the scribe's own category, and nothing leaves force without you", () => {
+    // IG MV, 2026-10-09 00:53: 「改成基于英雄联盟地图 + 英雄模型 + 真人模型的形式来还原」, aimed by the scribe at
+    // R248 「原创风格化角色」 (角色设定) under 风格, was dropped as other_category — and the new
+    // direction with it: R248 stayed open and nothing recorded the change.
+    const { store, planId, say, entry, apply } = fixture();
+    const stylized = entry("原创风格化角色", "角色设定");
+    const quote = say("改成基于英雄联盟地图 + 英雄模型 + 真人模型的形式来还原，别用视频生成");
+    const outcome = apply(quote, {
+      supersedes: [{ requirement_id: stylized.id, quote: "改成基于英雄联盟地图 + 英雄模型 + 真人模型的形式来还原",
+        restated: "改成用英雄联盟地图、英雄模型和真人模型来还原", category: "风格", nature: "look" }],
+    });
+    expect(outcome).toMatchObject({ added: [], raised: [], rejected: 0 });
+    expect(outcome.proposed).toHaveLength(1);
+    expect(store.getRequirement(outcome.proposed[0]!)).toMatchObject({
+      status: "proposed", supersedes: stylized.id, category: "风格", nature: "look",
+      quote: "改成基于英雄联盟地图 + 英雄模型 + 真人模型的形式来还原", restated: "改成用英雄联盟地图、英雄模型和真人模型来还原",
+    });
+    expect(store.getRequirement(stylized.id).status).toBe("open");
+    // Taking it up replaces the old one, as for any proposal.
+    store.confirmRequirement(outcome.proposed[0]!, { taskId: planId });
+    expect(store.getRequirement(stylized.id)).toMatchObject({ status: "superseded", superseded_by: outcome.proposed[0] });
     store.close();
   });
 
@@ -467,7 +495,7 @@ const CATEGORIES = ["时长", "角色设定", "背景连贯", "台词", "分辨�
 
 describe("I9: the open entries never shrink", () => {
   test("for any scribe answer, over random ledgers and lines, adversarial changes included", () => {
-    const counts = { added: 0, raised: 0, proposed: 0, proposedByNumber: 0, rejected: 0 };
+    const counts = { added: 0, raised: 0, proposed: 0, proposedByNumber: 0, proposedAcross: 0, rejected: 0 };
     for (let seed = 1; seed <= I9_SEEDS; seed++) {
       const rand = mulberry32(seed);
       const pick = <T,>(items: readonly T[]): T => items[Math.floor(rand() * items.length)]!;
@@ -547,9 +575,11 @@ describe("I9: the open entries never shrink", () => {
               const was = { dimension: old.dimension, ...(old.value as object) } as DimensionValue;
               expect(sameDimensionValue(was, reading[0]!), context).toBe(false);
               counts.proposedByNumber += 1;
-            } else {
-              expect(old.category, context).toBe(row.category);
+            } else if (old.category === null || old.category === row.category) {
               counts.proposed += 1;
+            } else {
+              // Of another category: proposed beside it all the same (2026-10-10), the old entry still open.
+              counts.proposedAcross += 1;
             }
           }
           // …and on enough of them, unless they are one number for a dimension (the number is what they

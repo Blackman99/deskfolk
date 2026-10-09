@@ -53,6 +53,7 @@
 		if (action === 'waive') return r.waive;
 		if (action === 'not_here') return r.notHere;
 		if (action === 'here_again') return r.hereAgain;
+		if (action === 'keep') return r.keep;
 		return r.wholeProject;
 	}
 
@@ -157,6 +158,15 @@
 				</ul>
 			</div>
 		{/each}
+		{#if groups.withdrawn.length > 0}
+			<div class="plan-reqs-group is-aside is-withdrawn">
+				<span class="plan-reqs-group-title">{t.plan.requirements.withdrawn}</span>
+				<span class="plan-reqs-group-hint">{t.plan.requirements.withdrawnHint}</span>
+				<ul class="plan-reqs-list">
+					{#each groups.withdrawn as entry (entry.id)}{@render row(entry)}{/each}
+				</ul>
+			</div>
+		{/if}
 		{#if groups.proposed.length > 0}
 			<div class="plan-reqs-group is-aside">
 				<span class="plan-reqs-group-title">{t.plan.requirements.proposed}</span>

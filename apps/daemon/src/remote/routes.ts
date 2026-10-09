@@ -133,7 +133,7 @@ add("DELETE", "checks/:id", revision);
 // A check from your words, put in force (ADR 0040 P3).
 add("POST", "checks/:id/confirm", {});
 // An entry of the requirements ledger, from the plan's board (ADR 0040 P3).
-add("POST", "requirements/:id/action", { action: one("confirm", "reject", "waive", "not_here", "here_again", "whole_project"), task_id: id }, ["action", "task_id"]);
+add("POST", "requirements/:id/action", { action: one("confirm", "reject", "waive", "not_here", "here_again", "whole_project", "keep"), task_id: id }, ["action", "task_id"]);
 add("POST", "tasks/:id/checks/run", { check_id: nullable(id) });
 get("workspace/tree", { path: string }); get("workspace/file", { path: string, size: one("thumb", "preview"), range: string }, ["path"]);
 get("host/tree", { path: string });
