@@ -140,7 +140,7 @@
 		</div>
 
 		<div class="msg-segments flex flex-col gap-2 w-full">
-			{#each group.items as item (transcriptItemKey(item))}
+			{#each group.items as item, idx (transcriptItemKey(item))}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div
@@ -228,10 +228,26 @@
 							{/if}
 						</article>
 					{:else if item.type === 'message'}
+						{@const tagged = !stage.fileDrop && item.message.kind === 'bot' && !item.message.control && stage.attributionChips.has(item.message.id)}
+						{@const ranIn = item.message.turn_id && stage.commandHosts.has(item.message.id) ? item.message.turn_id : null}
+						{@const duration = calculateBotDuration(item.message, stage.snapshot.messages, stage.snapshot.turns, stage.messageLookup)}
+						<!--
+							A part before the last whose end would hold nothing but its time gives that line up: the
+							time shows with the hover actions, so the parts of one reply sit close together.
+						-->
+						{@const quietFoot = idx < group.items.length - 1 && !tagged && !(ranIn && runtime.commandsOf(ranIn).length)}
 						<article class="msg is-reply">
 							<div class="who">{stage.who(item.message)}</div>
 							<div class="msg-toolbar">
 								<div class="msg-toolbar-pill">
+									{#if quietFoot}
+										<span class="msg-when is-peek">
+											{#if duration}
+												<span class="duration-badge mono" title={t.chat.replyTime(duration.formatted)}>{duration.formatted}</span>
+											{/if}
+											<span class="msg-time mono" title={formatFullTimestamp(item.message.created_at)}>{formatMessageTime(item.message.created_at)}</span>
+										</span>
+									{/if}
 									{#if canQuoteReply(item.message) && !stage.lockedComposer}
 										<button
 											type="button"
@@ -292,9 +308,6 @@
 								/>
 							{/if}
 						</article>
-						{@const tagged = !stage.fileDrop && item.message.kind === 'bot' && !item.message.control && stage.attributionChips.has(item.message.id)}
-						{@const ranIn = item.message.turn_id && stage.commandHosts.has(item.message.id) ? item.message.turn_id : null}
-						{@const duration = calculateBotDuration(item.message, stage.snapshot.messages, stage.snapshot.turns, stage.messageLookup)}
 						{#snippet tail()}
 							{#if tagged}
 								<MessageAttribution
@@ -322,6 +335,7 @@
 							long it took: one line while they fit, wrapping where they do not. What a finished turn
 							ran stays under its last reply, read when it comes near.
 						-->
+						{#if !quietFoot}
 						<div class="msg-foot" use:whenVisible={() => { if (ranIn) runtime.loadTurnCommands(ranIn); }}>
 							{#if ranIn && runtime.commandsOf(ranIn).length}
 								<CommandActivity rows={runtime.commandsOf(ranIn)} {t} beside={tail} />
@@ -329,6 +343,9 @@
 								<div class="msg-foot-line">{@render tail()}</div>
 							{/if}
 						</div>
+						{:else if ranIn}
+							<span use:whenVisible={() => runtime.loadTurnCommands(ranIn)}></span>
+						{/if}
 						<ReactionRow message={item.message} lockedComposer={stage.lockedComposer} {runtime} />
 						{#if item.replying && item.replying.length > 0}
 							<div class="msg-attached-replying" aria-live="polite">
@@ -701,6 +718,12 @@
 		gap: 8px;
 		margin-left: auto;
 		white-space: nowrap;
+	}
+
+	/* A middle part's time, beside the hover actions instead of on a line of its own. */
+	.msg-when.is-peek {
+		margin: 0 6px 0 4px;
+		gap: 6px;
 	}
 
 	.msg-foot :global(.command-activity) {

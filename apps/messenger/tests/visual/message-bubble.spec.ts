@@ -84,8 +84,13 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 			const ring = (i: number) => parts.nth(i).evaluate((el) => getComputedStyle(el).boxShadow);
 			const idle = await ground(1);
 
+			// A part before the last has no time line of its own; its time shows with the hover actions.
+			await expect(parts.nth(1).locator('.msg-foot')).toHaveCount(0);
+			await expect(parts.nth(2).locator('.msg-foot .msg-time')).toBeVisible();
 			await parts.nth(1).hover();
 			await expect.poll(() => ground(1)).not.toBe(idle);
+			await expect(parts.nth(1).locator('.msg-toolbar .msg-when.is-peek .msg-time')).toHaveText(/^\d{1,2}:\d{2}$/);
+			await expect.poll(() => parts.nth(1).locator('.msg-toolbar').evaluate((el) => getComputedStyle(el).opacity)).toBe('1');
 			// The ground fades in; a read before it settles is an in-between colour.
 			await page.waitForTimeout(200);
 			expect(await ground(0)).toBe(idle);

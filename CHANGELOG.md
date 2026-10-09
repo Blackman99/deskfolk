@@ -8,7 +8,7 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ### A reply in several parts reads as one
 
-- A Bot's reply sent in several parts no longer carries an "N outputs" badge or a "Part N" tag on each part, and the dashed rules between parts are gone: the parts stack closer under one header, each still ending with its own time.
+- A Bot's reply sent in several parts no longer carries an "N outputs" badge or a "Part N" tag on each part, and the dashed rules between parts are gone: the parts stack close under one header. Only the last part keeps a line for its time; an earlier part's time (and how long it took) shows beside its reply and copy buttons when the pointer is on it, unless that part ends with its commands or its tag.
 
 ### Trace, Board and Plan are tabs of their own
 

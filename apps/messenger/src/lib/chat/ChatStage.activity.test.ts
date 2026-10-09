@@ -451,7 +451,9 @@ test("a Bot message ends on one line with its commands, its tag and its time; a 
     // Still running: its commands are in its working bubble, not under the line it sent on the way.
     const progress = host.querySelector('[data-message-id="progress"]')!;
     expect(progress.querySelector(".command-activity")).toBeNull();
-    expect(progress.querySelector(".msg-foot .msg-time")).not.toBeNull();
+    // A part with the working bubble after it gives up its time line: the time is with the hover actions.
+    expect(progress.querySelector(".msg-foot")).toBeNull();
+    expect(progress.querySelector(".msg-toolbar .msg-when.is-peek .msg-time")?.textContent?.trim()).toMatch(/^\d{1,2}:\d{2}$/);
   } finally {
     close();
   }
