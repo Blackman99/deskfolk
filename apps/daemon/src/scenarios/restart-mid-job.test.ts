@@ -122,38 +122,28 @@ test("after a crash at the supervisor's level the job waits a minute of steady r
   expect(submitsOf(h, "EP01 片尾")).toBe(1);
 });
 
-test("a development daemon restarting again within five minutes leaves the job for your 继续", async () => {
+test("a development daemon restarting again and again goes on once it has run five minutes without starting again", async () => {
   const h = await createScenario({ durable: true, media: true, supervision: true });
   open.push(h);
-  const { director, room } = await askedToCut(h);
+  const { director, room, ep01 } = await askedToCut(h);
   h.script(director).handle(() => say("接着拼母带"));
   const downAt = isoNow();
 
   await h.restart({ clean: true, dev: true });
   await h.restart({ clean: true, dev: true });
   await h.waitIdle();
-  h.tick(new Date(Date.now() + 10 * 60_000));
+  // Saves come in bursts: nothing asks you, and nothing goes on while they may still be coming.
+  expect(h.messages(room).filter((message) => message.control?.kind === "restart")).toEqual([]);
+  h.tick(new Date(Date.now() + 4 * 60_000));
   await h.waitIdle();
-
-  // The first restart said nothing, the job being due to go on after a minute; the second, seconds
-  // later, cut nothing new, but it is what keeps the job waiting — so it tells you, once.
-  const notices = h.messages(room).filter((message) => message.control?.kind === "restart");
-  expect(notices).toHaveLength(1);
-  expect(notices[0]!.body).toContain("还没来得及自动接着做，守护进程又启动了一次");
-  const cutNote = h.messages(room).find((message) => message.kind === "system" && message.body === "中断")!;
-  expect(notices[0]!.control).toMatchObject({ kind: "restart", cause: "dev", notes: [cutNote.id] });
-  expect(h.store.db.query("SELECT kind, action_state FROM notifications WHERE semantic_key = ?").get(`restart:${notices[0]!.id}`))
-    .toEqual({ kind: "interrupted", action_state: "open" });
   expect(h.turns(director).filter((turn) => turn.created_at > downAt)).toEqual([]);
-  expect(h.store.db.query("SELECT state FROM work_items WHERE bot_id = ? AND task_id IS NOT NULL").all(director.id)).toEqual([{ state: "needs_attention" }]);
 
-  // A third restart does not tell it again; 继续 on the notice takes it up from its 「中断」 line.
-  await h.restart({ clean: true, dev: true });
+  h.tick(new Date(Date.now() + 6 * 60_000));
   await h.waitIdle();
-  expect(h.messages(room).filter((message) => message.control?.kind === "restart")).toHaveLength(1);
-  h.engine.control(notices[0]!.id, { action: "resume" });
+  h.tick(new Date(Date.now() + 6 * 60_000 + 1_000));
   await h.waitIdle();
-  expect(h.turns(director).filter((turn) => turn.created_at > downAt)).toHaveLength(1);
+  expect(h.turns(director).filter((turn) => turn.created_at > downAt).map((turn) => turn.task_id)).toEqual([ep01.id]);
+  expect(submitsOf(h, "EP01 片尾")).toBe(1);
 });
 
 test("a crash in the middle of an external call never repeats it on its own", async () => {

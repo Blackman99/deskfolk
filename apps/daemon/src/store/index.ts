@@ -715,7 +715,6 @@ export class Store {
   readonly supervisorTick = this.bind(supervisor.supervisorTick);
   readonly recordSupervisorRestart = this.bind(supervisor.recordSupervisorRestart);
   readonly settleRestartNotices = this.bind(supervisor.settleRestartNotices);
-  readonly workLeftByEarlierRestart = () => supervisor.workLeftByEarlierRestart(this.ctx, this.bootId);
   readonly supervisorTakesUp = this.bind(supervisor.supervisorTakesUp);
   readonly refuseSupervisorPickup = this.bind(supervisor.refuseSupervisorPickup);
   readonly recordArtifactProgress = this.bind(supervisor.recordArtifactProgress);

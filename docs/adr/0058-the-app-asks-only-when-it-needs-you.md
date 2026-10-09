@@ -149,3 +149,7 @@ You said the app kept slipping approval cards in while 视频导演 was working,
 - 「停下」只看记录，不看 Bot 说了什么：它说「接下来做 06」却结束了、什么都没排，卡就来；它不说话但作业还在等，卡就不来。 / "Stopped" is read from the records, never from the Bot's words: if it says it will do 06 next but ends with nothing queued, the card comes; if it says nothing while its job is still out, the card waits.
 - 只管出卡：不出卡就放行的路（你确认过的检查撑着、门禁都过）不等 Bot 停下，干到一半的一次隐式交付照旧可能这样被放行。这条早就如此，这次没改。 / Only the card waits: the no-card approval (a check you confirmed backs it and every gate passes) does not wait for the Bot to stop, so a sweep made mid-work can still be approved that way. It already could; this does not change it.
 - 10-08 你按的两次放行（13:56:56、15:51:22）批准的都是顶上来的片段、抽帧那版，不是它交的母带那版；母带文件都在，记录照你按的留着，不改写。 / Your two presses on 10-08 (13:56:56, 15:51:22) approved the swept clips and frames, not the master the Bot submitted; the master files are on disk, and the records stay as you pressed them, not rewritten.
+
+## 2026-10-09 补记 / Addendum
+
+§3 的 `dev_burst`、`restarted_again` 和 `supervisor.workLeftByEarlierRestart` 去掉了：开发版重启打断的活在守护进程连续 5 分钟不再启动后自己接着做（`after_quiet`，不发通知），见 [ADR 0045](0045-supervisor.md) 2026-10-09 补记。 / §3's `dev_burst`, `restarted_again` and `supervisor.workLeftByEarlierRestart` are gone: work a development restart cut off goes on by itself once the daemon has run five minutes without starting again (`after_quiet`, no notice); see ADR 0045's 2026-10-09 addendum.

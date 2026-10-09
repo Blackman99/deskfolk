@@ -27,7 +27,7 @@ import { restartNoticeBody, type ControlTurnLine, type RestartArrangement } from
 import type { Store } from "../store";
 
 /** How a cut-off turn goes on with nothing from you: the supervisor picks it up, or it waits on a stop you made. */
-const GOES_ON_WITHOUT_YOU: ReadonlySet<RestartArrangement> = new Set(["now", "after_stable", "held"]);
+const GOES_ON_WITHOUT_YOU: ReadonlySet<RestartArrangement> = new Set(["now", "after_stable", "after_quiet", "held"]);
 
 export type RestartDeps = {
   store: Store;
@@ -87,17 +87,7 @@ export function createRestart(deps: RestartDeps): Restart {
       (supervised ? store.recordSupervisorRestart({ bootId: store.bootId, cause, interruptedTurnIds: cut.map((row) => row.turn.id) }) : [])
         .map((row): [string, RestartArrangement] => [row.turnId, row.arrangement]),
     );
-    // Work an earlier development restart cut off and left unsaid, as it was to go on after a
-    // minute, that this restart now keeps from going on by itself: told here, beside this one's.
     const rows = [...cut];
-    for (const left of supervised ? store.workLeftByEarlierRestart() : []) {
-      try {
-        rows.push({ turn: store.getTurn(left.turnId), note: store.getMessage(left.noteId) });
-        arrangements.set(left.turnId, "restarted_again");
-      } catch {
-        // gone with a cleared conversation since
-      }
-    }
     // One line per job and place: a plan's turns go to the plan's conversation, turns on no plan to
     // wherever each is told, so the turns of one plan cut in three directs make one line.
     const jobs = new Map<string, { where: string; plan: string | null; cut: typeof cut }>();

@@ -394,38 +394,45 @@ function cutByRestart(f: Fixture, bootId: string, cause: "clean" | "crash" | "de
   return { turn, note, arranged };
 }
 
-test("a clean restart picks up at once; a crash or a development restart after a minute of steady running, once", () => {
+test("a clean restart picks up at once, a crash after a minute of steady running, a development restart after five, once", () => {
   for (const cause of ["clean", "crash", "dev"] as const) {
     const f = fixture();
     const { turn, note, arranged } = cutByRestart(f, `boot-${cause}`, cause);
-    expect(arranged).toEqual([{ turnId: turn.id, workItemId: turn.work_item_id, arrangement: cause === "clean" ? "now" : "after_stable" }]);
+    expect(arranged).toEqual([{ turnId: turn.id, workItemId: turn.work_item_id, arrangement: ({ clean: "now", crash: "after_stable", dev: "after_quiet" } as const)[cause] }]);
     // Recording the same boot again records nothing more.
     f.store.recordSupervisorRestart({ bootId: `boot-${cause}`, cause, interruptedTurnIds: [turn.id], now: at(0) });
     expect(f.store.listWorkEvents({ kind: "supervisor.restart" })).toHaveLength(1);
     const early = f.store.supervisorTick({ now: at(59_999) });
     expect(early.wakes).toEqual(cause === "clean" ? [expect.objectContaining({ cause: "restart", noteId: note.id })] : []);
-    if (cause !== "clean") {
-      expect(early.deferred).toContainEqual({ workItemId: turn.work_item_id, reason: "restart_stability" });
-      expect(f.store.supervisorTick({ now: at(60_000) }).wakes).toMatchObject([{ cause: "restart", noteId: note.id }]);
+    if (cause !== "clean") expect(early.deferred).toContainEqual({ workItemId: turn.work_item_id, reason: "restart_stability" });
+    if (cause === "dev") {
+      expect(f.store.supervisorTick({ now: at(5 * MIN - 1) }).deferred).toContainEqual({ workItemId: turn.work_item_id, reason: "dev_restart_window" });
+      expect(f.store.supervisorTick({ now: at(5 * MIN) }).wakes).toMatchObject([{ cause: "restart", noteId: note.id }]);
     }
+    if (cause === "crash") expect(f.store.supervisorTick({ now: at(60_000) }).wakes).toMatchObject([{ cause: "restart", noteId: note.id }]);
     // Picked up once for this boot: the next pick-up of the same segment is ordinary attention.
-    expect(f.store.supervisorTick({ now: at(2 * MIN) }).wakes).toMatchObject([{ cause: "needs_attention" }]);
+    expect(f.store.supervisorTick({ now: at(7 * MIN) }).wakes).toMatchObject([{ cause: "needs_attention" }]);
   }
 });
 
-test("a development restart soon after another, or followed by one, waits for your 继续", () => {
+test("work a development restart cut off goes on once the daemon has run five minutes without starting again, however many restarts came", () => {
+  // 2026-10-08: 视频导演's second part, cut by a development restart at 23:13, waited for a 继续 after the next restart came
+  // first, and kept waiting through two more; with it the Bot was never called to the job's third part either.
   const f = fixture();
   boot(f, "dev-old", "dev", at(-MIN));
-  const { turn, arranged } = cutByRestart(f, "dev-new", "dev");
-  expect(arranged[0]!.arrangement).toBe("dev_burst");
-  const tick = f.store.supervisorTick({ now: at(10 * MIN) });
-  expect(tick.wakes).toEqual([]);
-  expect(tick.deferred).toContainEqual({ workItemId: turn.work_item_id, reason: "dev_restart_window" });
+  const { turn, note, arranged } = cutByRestart(f, "dev-new", "dev");
+  expect(arranged[0]!.arrangement).toBe("after_quiet");
+  expect(f.store.supervisorTick({ now: at(4 * MIN) }).deferred).toContainEqual({ workItemId: turn.work_item_id, reason: "dev_restart_window" });
+  expect(f.store.supervisorTick({ now: at(5 * MIN) }).wakes).toMatchObject([{ cause: "restart", noteId: note.id }]);
 
+  // Started again before it went on: the five minutes run from the latest start, of whatever kind.
   const g = fixture();
   const cut = cutByRestart(g, "dev-a", "dev");
-  boot(g, "later", "clean", at(30_000));
-  expect(g.store.supervisorTick({ now: at(10 * MIN) }).deferred).toContainEqual({ workItemId: cut.turn.work_item_id, reason: "dev_restart_window" });
+  boot(g, "dev-b", "dev", at(4 * MIN));
+  expect(g.store.supervisorTick({ now: at(8 * MIN) }).deferred).toContainEqual({ workItemId: cut.turn.work_item_id, reason: "dev_restart_window" });
+  boot(g, "later", "clean", at(8 * MIN));
+  expect(g.store.supervisorTick({ now: at(12 * MIN) }).deferred).toContainEqual({ workItemId: cut.turn.work_item_id, reason: "dev_restart_window" });
+  expect(g.store.supervisorTick({ now: at(13 * MIN) }).wakes).toMatchObject([{ cause: "restart", noteId: cut.note.id }]);
 });
 
 test("先放着 on the restart notice, a stop, or an external call with no known outcome keeps work a restart cut off where it is", () => {

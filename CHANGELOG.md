@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Work a development restart cut off goes on by itself
+
+- Work cut off by a restart of the development daemon now goes on once the daemon has run five minutes without starting again, however many restarts came first, and no notice asks you to press Continue. It used to wait for your Continue whenever another restart followed, and one stopped part also kept its Bot from being called to the job's other parts: on 2026-10-08 a video job sat for nine hours that way.
+
 ### After Stop, the Bot goes on from what you do next
 
 - You pressed Stop and then changed the line the Bot was working on: the change waited under the Stop and the Bot stayed stopped, with no banner or button to lift it, until you typed another line. A change now counts as your next line, as a new line does: the Stop lifts and the Bot opens a new turn that reads "You changed this line" and goes on from it. A stop that stays until you lift it (Stop all Bots, the board, the tools menu) still holds the change until you do. [ADR 0063](docs/adr/0063-edit-a-line-and-lines-in-order.md), 2026-10-09 addendum.

@@ -59,8 +59,10 @@ test("work a restart cut off is told where you last spoke about its job", async 
   h.postUser(dm, "但是打斗画面要有张力");
   await h.waitFor(() => mid, { what: "the director to be mid-hop" });
 
-  // Two development restarts in a row: the job waits for you, so it is told (one that goes on by itself is not).
-  await h.restart({ clean: false, dev: true });
+  // Cut in the middle of an external call: the job waits for you, so it is told (one that goes on by itself is not).
+  const cut = h.store.listLiveTurns({ sessionId: dm, botId: director.id })[0]!;
+  h.store.db.run(`INSERT INTO tool_executions (id, work_item_id, task_id, ticket_id, bot_id, turn_id, tool_call_id, tool, side_effect, started_at)
+    VALUES ('exec-cut', ?, ?, ?, ?, ?, 'call-cut', 'mcp_submit_video', 1, ?)`, [cut.work_item_id ?? null, cut.task_id ?? null, cut.ticket_id ?? null, director.id, cut.id, cut.created_at]);
   await h.restart({ clean: false, dev: true });
   await h.waitIdle();
 

@@ -39,9 +39,9 @@ export const ORPHAN_QUIET_AFTER_BOT_MS = 10 * 60_000;
 export const ORPHAN_WAKES_PER_PROGRESS = 2;
 /** Automatic pick-ups of one work item within an hour (interruptions, failures, broken waits, restarts). */
 export const PICKUPS_PER_HOUR = 3;
-/** How long a crashed or development daemon must run before work a restart cut off picks up. */
+/** How long a crashed daemon must run before work a restart cut off picks up. */
 export const RESTART_STABLE_MS = 60_000;
-/** A development restart this soon after the one before waits for your 继续. */
+/** How long a development daemon must run without starting again before work a restart cut off picks up: saves come in bursts. */
 export const DEV_RESTART_WINDOW_MS = 5 * 60_000;
 const HOUR_MS = 60 * 60_000;
 /** What the supervisor cannot do yet, said with every tick rather than guessed at (ADR 0045); reviewers come with level 5 (ADR 0046). */
@@ -388,12 +388,6 @@ function currentBoot(ctx: StoreContext): Boot | null {
     cause: payload.cause === "clean" || payload.cause === "crash" || payload.cause === "dev" ? payload.cause : null };
 }
 
-/** Whether the daemon also started within {@link DEV_RESTART_WINDOW_MS} before this boot. */
-function restartedJustBefore(ctx: StoreContext, boot: Boot): boolean {
-  return Boolean(ctx.db.query(`SELECT 1 FROM work_events WHERE kind = 'daemon.restart' AND seq < ? AND at > ?`)
-    .get(boot.seq, isoPlus(boot.at, -DEV_RESTART_WINDOW_MS)));
-}
-
 /** Whether you pressed 先放着 on the restart notice that offered this 「中断」 line. */
 function leftByYou(ctx: StoreContext, noteId: string | null): boolean {
   if (!noteId) return false;
@@ -407,8 +401,13 @@ function restartDefers(ctx: StoreContext, record: RestartRecord, now: string): s
   if (leftByYou(ctx, record.note_id)) return "left_by_user";
   if (record.cause === "clean") return null;
   const boot = currentBoot(ctx) ?? { seq: record.seq, at: record.at, boot_id: record.boot_id, cause: record.cause };
-  if (Date.parse(now) - Date.parse(boot.at) < RESTART_STABLE_MS) return "restart_stability";
-  if (record.cause === "dev" && (boot.boot_id !== record.boot_id || restartedJustBefore(ctx, boot))) return "dev_restart_window";
+  const steady = Date.parse(now) - Date.parse(boot.at);
+  if (steady < RESTART_STABLE_MS) return "restart_stability";
+  // A development daemon restarts on every save, in bursts: once it has run this long without
+  // starting again the burst is over, whichever of its restarts cut the work off. It used to wait
+  // for your 继续 once another restart came first, and on 2026-10-08 a part cut at 23:13 stayed cut
+  // through two later restarts — and kept its Bot from being called to the job's other parts.
+  if (record.cause === "dev" && steady < DEV_RESTART_WINDOW_MS) return "dev_restart_window";
   return null;
 }
 
@@ -850,7 +849,6 @@ export function recordSupervisorRestart(ctx: StoreContext, input: {
     const now = clock(input.now);
     const out: Array<{ turnId: string; workItemId: string | null; arrangement: RestartArrangement }> = [];
     const supervised = readEngineLevel(ctx.db) >= ENGINE_LEVELS.supervision;
-    const boot = currentBoot(ctx);
     for (const turnId of input.interruptedTurnIds) {
       const turn = ctx.db.query<{ work_item_id: string | null; task_id: string | null; status: string }, [string]>(
         "SELECT work_item_id, task_id, status FROM turns WHERE id = ?").get(requireNonEmpty("interruptedTurnId", turnId));
@@ -872,7 +870,7 @@ export function recordSupervisorRestart(ctx: StoreContext, input: {
         : heldWork(ctx, work) ? "held"
           : uncertainEffects(ctx, segment, true).length > 0 ? "unknown_effect"
             : input.cause === "clean" ? "now"
-              : input.cause === "dev" && boot && boot.boot_id === bootId && restartedJustBefore(ctx, boot) ? "dev_burst"
+              : input.cause === "dev" ? "after_quiet"
                 : "after_stable";
       out.push({ turnId, workItemId: work.id, arrangement });
     }
@@ -890,31 +888,6 @@ export function supervisorTakesUp(ctx: StoreContext, turnId: string): boolean {
   if (readEngineLevel(ctx.db) < ENGINE_LEVELS.supervision) return false;
   return Boolean(ctx.db.query(`SELECT 1 FROM turns t JOIN work_items w ON w.id = t.work_item_id JOIN tasks p ON p.id = w.task_id
     WHERE t.id = ? AND w.state = 'needs_attention' AND ${ACTIVE_PLAN("p")}`).get(turnId));
-}
-
-/**
- * Work an earlier development restart cut off that has not been picked up and now never will be on
- * its own — the daemon started again first, and §5.6 leaves work cut by a development restart to you
- * once another restart came before its pick-up — with no restart notice naming its 「中断」 line:
- * its own boot said nothing, since it was to go on after a minute (2026-10-04). The boot that strands
- * it tells you instead (engine/restart.ts). Turn and note ids, oldest first.
- */
-export function workLeftByEarlierRestart(ctx: StoreContext, bootId: string): Array<{ turnId: string; noteId: string }> {
-  if (readEngineLevel(ctx.db) < ENGINE_LEVELS.supervision) return [];
-  const items = ctx.db.query<Work, []>(`SELECT w.* FROM work_items w JOIN tasks p ON p.id = w.task_id
-    WHERE w.state = 'needs_attention' AND ${ACTIVE_PLAN("p")} ORDER BY w.updated_at, w.id`).all();
-  const out: Array<{ turnId: string; noteId: string }> = [];
-  for (const work of items) {
-    const segment = latestSegment(ctx, work.id);
-    const record = restartRecord(ctx, work, segment);
-    if (!segment || !record || record.cause !== "dev" || record.boot_id === bootId || record.turn_id !== segment.id) continue;
-    const noteId = continuableNote(ctx, segment);
-    if (!noteId || noteId !== record.note_id) continue;
-    if (ctx.db.query(`SELECT 1 FROM messages m WHERE json_valid(m.control) AND json_extract(m.control, '$.kind') = 'restart'
-      AND EXISTS (SELECT 1 FROM json_each(json_extract(m.control, '$.notes')) n WHERE n.value = ?)`).get(noteId)) continue;
-    out.push({ turnId: segment.id, noteId });
-  }
-  return out;
 }
 
 /**
