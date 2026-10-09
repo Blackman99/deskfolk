@@ -51,9 +51,9 @@ export function columnAt(x: number, y: number, board: Element | null = null): Ti
   return isStatus(status) ? status : null;
 }
 
-/** Whether an element scrolls up and down by itself (a column across), rather than with its rail. */
+/** Whether a column has more cards than it shows, so it can scroll up and down. */
 function scrollsDown(element: HTMLElement): boolean {
-  return getComputedStyle(element).overflowY === "auto" && element.scrollHeight > element.clientHeight;
+  return element.scrollHeight > element.clientHeight;
 }
 
 /**
@@ -83,7 +83,7 @@ export function beginCardDrag(event: PointerEvent, ticketId: string, handlers: C
 
   /**
    * Near an edge, the board moves under a held pointer: sideways when its columns run past the
-   * pane, up and down in the column under the pointer (across) or in the rail around it (stacked).
+   * pane, up and down in the column under the pointer.
    * The column under the pointer is read again after each step, since it is a different one now.
    */
   const edgeScroll = (): void => {
@@ -97,7 +97,7 @@ export function beginCardDrag(event: PointerEvent, ticketId: string, handlers: C
         else if (drag.x > box.right - SCROLL_EDGE_PX) board.scrollLeft += SCROLL_STEP_PX;
       }
       const column = columnElementAt(drag.x, drag.y, board);
-      const scroller = column && scrollsDown(column) ? column : board?.closest<HTMLElement>(".trace-side-panel") ?? null;
+      const scroller = column && scrollsDown(column) ? column : null;
       if (scroller) {
         const box = scroller.getBoundingClientRect();
         if (drag.y < box.top + SCROLL_EDGE_PX) scroller.scrollTop -= SCROLL_STEP_PX;

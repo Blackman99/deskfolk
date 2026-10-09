@@ -12,7 +12,7 @@ function ticket(over: Partial<TicketWithArtifacts>): TicketWithArtifacts {
 }
 
 /** Synthetic board ticket list at engine level 5 (ADR 0046): stages beside statuses, parts passed; no daemon or real data. */
-export function ticketStagesStory(locale: 'zh' | 'en', forceColumns = false) {
+export function ticketStagesStory(locale: 'zh' | 'en', tall = false) {
   const t = copyFor(locale);
   const detail = {
     id: 'fixture-plan', dir: 'work/fixture', title: 'Synthetic film', session_id: 'group-1', closed_at: null,
@@ -25,8 +25,8 @@ export function ticketStagesStory(locale: 'zh' | 'en', forceColumns = false) {
       ticket({ id: 't3', seq: 3, title: '配乐', status: 'review', stage: 'submitted' }),
       ticket({ id: 't4', seq: 4, title: '海报', status: 'done', stage: 'approved', parts: { total: 3, approved: 3 } }),
       ticket({ id: 't5', seq: 5, title: '字幕', status: 'todo', worker: null }),
-      // Extra cards of one status, so a column forced across is taller than the pane and can scroll.
-      ...(forceColumns ? Array.from({ length: 8 }, (_, index) => ticket({ id: `more-${index}`, seq: 6 + index, title: `补充 ${index + 1}`, status: 'todo', worker: null })) : []),
+      // Extra cards of one status, so that column is taller than the pane and scrolls on its own.
+      ...(tall ? Array.from({ length: 8 }, (_, index) => ticket({ id: `more-${index}`, seq: 6 + index, title: `补充 ${index + 1}`, status: 'todo', worker: null })) : []),
     ],
   } as unknown as TaskDetail;
   // Reactive, so picking a row shows its settings the way the board does.
@@ -36,7 +36,6 @@ export function ticketStagesStory(locale: 'zh' | 'en', forceColumns = false) {
     detail, nodes: [], bots: [aBot({ id: 'bot-1', name: '视频导演' }), aBot({ id: 'bot-2', name: '审片员' })], youLabel: locale === 'en' ? 'You' : '你',
     deletedLabel: locale === 'en' ? 'Deleted' : '已删除', t, selectedId: null as string | null,
     onSelect: (id: string | null) => { props.selectedId = id; }, onJump: () => {}, onOpenArtifacts: () => {}, onPatched: () => {}, onConflict: () => {},
-    forceColumns,
   });
   return {
     component: TicketList as never,
@@ -46,8 +45,8 @@ export function ticketStagesStory(locale: 'zh' | 'en', forceColumns = false) {
     afterMount(host: HTMLElement) {
       document.body.style.width = '100vw';
       host.style.width = '100vw';
-      // Across, the columns only scroll on their own inside a fixed height. Stacked, the list grows.
-      host.style.height = forceColumns ? '700px' : 'auto';
+      // The columns only scroll on their own inside a fixed height; otherwise the list grows to fit.
+      host.style.height = tall ? '700px' : 'auto';
     },
   };
 }

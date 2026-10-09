@@ -19,6 +19,7 @@
 	import AcceptanceCheckForm from './AcceptanceCheckForm.svelte';
 	import PlanRequirements from './PlanRequirements.svelte';
 	import PlanRetrospectives from './PlanRetrospectives.svelte';
+	import PlanSpecOverview from './PlanSpecOverview.svelte';
 
 	interface Props {
 		api: MessengerApi | null;
@@ -91,6 +92,12 @@
 	const orphanedChecks = $derived(orphanChecks(checks, acceptanceLines));
 	const fromYourWords = $derived(derivedChecks(checks));
 	const checksTotal = $derived(checkSummary(checks));
+	/** The written progress, counted, for the overview at the top. */
+	const progressCounts = $derived({
+		done: detail.spec?.progress.done.length ?? 0,
+		open: detail.spec?.progress.open.length ?? 0,
+		blocked: detail.spec?.progress.blocked.length ?? 0
+	});
 	const anyCheckRunning = $derived(checks.some((check) => check.running));
 
 	async function runAllChecks(): Promise<void> {
@@ -372,62 +379,48 @@
 	</section>
 {:else}
 <section class="plan-spec" aria-label={t.plan.spec.title}>
-	<div class="plan-spec-head">
-		{@render title()}
-		<div class="plan-spec-head-badges">
-			{#if detail.kind}
-				<span class="plan-spec-kind-badge" title={t.plan.kind}>{detail.kind}</span>
-			{/if}
-			<span class="plan-spec-rev-badge">{t.plan.revision(detail.revision)}</span>
-		</div>
-	</div>
-
-	<div class="plan-spec-body">
-		{#if !detail.spec}
-			{@render nameBlock()}
-			<div class="plan-spec-empty-card">
-				<p class="plan-spec-empty">{t.plan.noSpec}</p>
-				{#if detail.brief}
-					<p class="plan-spec-brief"><strong>{t.plan.brief}：</strong>{detail.brief}</p>
+	{#if detail.spec && focusTicket}
+		<!-- The ticket picked on the board, read against the spec it has to meet. -->
+		<div class="plan-spec-focus" role="status">
+			<div class="plan-spec-focus-line">
+				<span class="plan-spec-focus-label">{t.plan.links.focus}</span>
+				{#if onShowTicket}
+					<button
+						type="button"
+						class="plan-spec-focus-ticket"
+						title={t.plan.links.showTicket(`${ticketTag(focusTicket.seq)} ${focusTicket.title}`)}
+						onclick={() => onShowTicket(focusTicket.id)}
+					>
+						<span class="plan-spec-ticket-ref mono">{ticketTag(focusTicket.seq)}</span>
+						<span class="plan-spec-focus-title">{focusTicket.title}</span>
+					</button>
+				{:else}
+					<span class="plan-spec-focus-ticket">
+						<span class="plan-spec-ticket-ref mono">{ticketTag(focusTicket.seq)}</span>
+						<span class="plan-spec-focus-title">{focusTicket.title}</span>
+					</span>
+				{/if}
+				{#if onClearTicket}
+					<button type="button" class="plan-spec-focus-clear" aria-label={t.plan.links.clearFocus} title={t.plan.links.clearFocus} onclick={onClearTicket}>
+						<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<line x1="18" y1="6" x2="6" y2="18"></line>
+							<line x1="6" y1="6" x2="18" y2="18"></line>
+						</svg>
+					</button>
 				{/if}
 			</div>
-			{@render retrospectives()}
-		{:else}
+			<p class="plan-spec-focus-hint">{t.plan.links.focusHint}</p>
+		</div>
+	{/if}
+	<!--
+		A page, not a strip: the goal and the contract (done-when, rules, how it is split, what you
+		asked) read down the main column; where it stands, what the job is and its versions sit beside
+		it. Narrow, the two make one column, the overview right under the goal.
+	-->
+	<div class="plan-spec-grid">
+		<div class="plan-spec-col is-main">
+		{#if detail.spec}
 			{@const spec = detail.spec}
-			{#if focusTicket}
-				<!-- The ticket picked on the board, read against the spec it has to meet. -->
-				<div class="plan-spec-focus" role="status">
-					<div class="plan-spec-focus-line">
-						<span class="plan-spec-focus-label">{t.plan.links.focus}</span>
-						{#if onShowTicket}
-							<button
-								type="button"
-								class="plan-spec-focus-ticket"
-								title={t.plan.links.showTicket(`${ticketTag(focusTicket.seq)} ${focusTicket.title}`)}
-								onclick={() => onShowTicket(focusTicket.id)}
-							>
-								<span class="plan-spec-ticket-ref mono">{ticketTag(focusTicket.seq)}</span>
-								<span class="plan-spec-focus-title">{focusTicket.title}</span>
-							</button>
-						{:else}
-							<span class="plan-spec-focus-ticket">
-								<span class="plan-spec-ticket-ref mono">{ticketTag(focusTicket.seq)}</span>
-								<span class="plan-spec-focus-title">{focusTicket.title}</span>
-							</span>
-						{/if}
-						{#if onClearTicket}
-							<button type="button" class="plan-spec-focus-clear" aria-label={t.plan.links.clearFocus} title={t.plan.links.clearFocus} onclick={onClearTicket}>
-								<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-									<line x1="18" y1="6" x2="6" y2="18"></line>
-									<line x1="6" y1="6" x2="18" y2="18"></line>
-								</svg>
-							</button>
-						{/if}
-					</div>
-					<p class="plan-spec-focus-hint">{t.plan.links.focusHint}</p>
-				</div>
-			{/if}
-			{@render nameBlock()}
 			<!-- Hero: Plan Goal -->
 			<div class="plan-spec-goal">
 				<div class="plan-spec-goal-top">
@@ -464,55 +457,160 @@
 				{/if}
 			</div>
 
-			{@render retrospectives()}
 
-			<!-- What you asked for: the requirements ledger, the list the Bots read too (ADR 0040 P3). -->
-			{#if detail.requirements}
-				<PlanRequirements {api} {detail} {t} {onSaved} {onJump} selectedTicket={focusTicket?.id ?? null} {onShowTicket} />
-			{/if}
+		{/if}
 
-			<!-- Section: Guidelines (Acceptance, Rules, Process) -->
-			<div class="plan-spec-section is-guidelines">
-				{#each GUIDELINE_FIELDS as field (field)}
-					{@const lines = specLines(spec, field)}
-					{@const count = lines.length}
-					<div class="plan-spec-list is-{field}">
-						<div class="plan-spec-list-head">
-							<div class="plan-spec-list-meta">
-								{#if field === 'acceptance'}
-									<svg class="plan-spec-field-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-										<polyline points="9 11 12 14 22 4"></polyline>
-										<path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
-									</svg>
-								{:else if field === 'rules'}
-									<svg class="plan-spec-field-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-										<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-									</svg>
-								{:else}
-									<svg class="plan-spec-field-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-										<line x1="6" y1="3" x2="6" y2="15"></line>
-										<circle cx="18" cy="6" r="3"></circle>
-										<circle cx="6" cy="18" r="3"></circle>
-										<path d="M18 9a9 9 0 0 1-9 9"></path>
-									</svg>
-								{/if}
-								<span class="plan-spec-list-label">{fieldLabel(field)}</span>
-								{#if count > 0}
-									<span class="plan-spec-field-count mono">{count}</span>
-								{/if}
-								{#if field === 'acceptance' && checksTotal.total > 0}
-									<span class="plan-spec-checks-summary mono">{t.plan.checks.summary(checksTotal.pass, checksTotal.total)}</span>
-								{/if}
-							</div>
-							<div class="plan-spec-list-actions">
-								{#if field === 'acceptance' && api}
-									{#if checksTotal.total > 0}
-										<button type="button" class="plan-spec-checks-run-btn" onclick={runAllChecks} disabled={runningAll || anyCheckRunning}>
-											<span aria-hidden="true">▶</span> {t.plan.checks.run}
+		<div class="plan-spec-body plan-spec-main">
+			{#if !detail.spec}
+				<div class="plan-spec-empty-card">
+					<p class="plan-spec-empty">{t.plan.noSpec}</p>
+					{#if detail.brief}
+						<p class="plan-spec-brief"><strong>{t.plan.brief}：</strong>{detail.brief}</p>
+					{/if}
+				</div>
+			{:else}
+				{@const spec = detail.spec}
+				<!-- Section: Guidelines (Acceptance, Rules, Process) -->
+				<div class="plan-spec-section is-guidelines">
+					{#each GUIDELINE_FIELDS as field (field)}
+						{@const lines = specLines(spec, field)}
+						{@const count = lines.length}
+						<div class="plan-spec-list is-{field}">
+							<div class="plan-spec-list-head">
+								<div class="plan-spec-list-meta">
+									{#if field === 'acceptance'}
+										<svg class="plan-spec-field-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+											<polyline points="9 11 12 14 22 4"></polyline>
+											<path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+										</svg>
+									{:else if field === 'rules'}
+										<svg class="plan-spec-field-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+											<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+										</svg>
+									{:else}
+										<svg class="plan-spec-field-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+											<line x1="6" y1="3" x2="6" y2="15"></line>
+											<circle cx="18" cy="6" r="3"></circle>
+											<circle cx="6" cy="18" r="3"></circle>
+											<path d="M18 9a9 9 0 0 1-9 9"></path>
+										</svg>
+									{/if}
+									<span class="plan-spec-list-label">{fieldLabel(field)}</span>
+									{#if count > 0}
+										<span class="plan-spec-field-count mono">{count}</span>
+									{/if}
+									{#if field === 'acceptance' && checksTotal.total > 0}
+										<span class="plan-spec-checks-summary mono">{t.plan.checks.summary(checksTotal.pass, checksTotal.total)}</span>
+									{/if}
+								</div>
+								<div class="plan-spec-list-actions">
+									{#if field === 'acceptance' && api}
+										{#if checksTotal.total > 0}
+											<button type="button" class="plan-spec-checks-run-btn" onclick={runAllChecks} disabled={runningAll || anyCheckRunning}>
+												<span aria-hidden="true">▶</span> {t.plan.checks.run}
+											</button>
+										{/if}
+										<button type="button" class="plan-spec-checks-add-btn" onclick={openAddCheck}>{t.plan.checks.add}</button>
+									{/if}
+									{#if api && editing !== field}
+										<button type="button" class="plan-spec-edit-btn" onclick={() => startEditField(field)} title={t.plan.edit}>
+											<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+												<path d="M12 20h9"></path>
+												<path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+											</svg>
+											<span>{t.plan.edit}</span>
 										</button>
 									{/if}
-									<button type="button" class="plan-spec-checks-add-btn" onclick={openAddCheck}>{t.plan.checks.add}</button>
+								</div>
+							</div>
+
+							{#if field === 'acceptance' && runError}<p class="plan-spec-error">{runError}</p>{/if}
+
+							{#if editing === field}
+								<textarea class="plan-spec-textarea" bind:value={draft} placeholder={t.plan.linesHint} disabled={saving}></textarea>
+								{#if field === 'acceptance'}<p class="plan-spec-checks-hint">{t.plan.checks.editHint}</p>{/if}
+								<div class="plan-spec-edit-actions">
+									<button type="button" class="plan-spec-save-btn" onclick={save} disabled={saving}>{t.plan.save}</button>
+									<button type="button" class="plan-spec-cancel-btn" onclick={cancelEdit} disabled={saving}>{t.plan.cancel}</button>
+								</div>
+								{#if saveError}<p class="plan-spec-error">{saveError}</p>{/if}
+							{:else}
+								{@const lines = specLines(spec, field)}
+								{#if lines.length > 0}
+									<ul class="plan-spec-ul">
+										{#each lines as line}<li>{line}{#if field === 'acceptance' && checksForLine(checks, line).length > 0}<span class="plan-spec-checks-pills">{#each checksForLine(checks, line) as check (check.id)}{@render checkItem(check)}{/each}</span>{/if}</li>{/each}
+									</ul>
+								{:else}
+									<p class="plan-spec-empty-line">{t.plan.empty}</p>
 								{/if}
+
+								{#if field === 'acceptance' && fromYourWords.length > 0}
+									<div class="plan-spec-checks-orphans">
+										<span class="plan-spec-checks-orphans-title">{t.plan.checks.derivedTitle}</span>
+										<ul class="plan-spec-ul">
+											{#each fromYourWords as check (check.id)}<li>{check.item}<span class="plan-spec-checks-pills">{@render checkItem(check)}</span></li>{/each}
+										</ul>
+									</div>
+								{/if}
+
+								{#if field === 'acceptance' && orphanedChecks.length > 0}
+									<div class="plan-spec-checks-orphans">
+										<span class="plan-spec-checks-orphans-title">{t.plan.checks.orphansTitle}</span>
+										<span class="plan-spec-checks-pills">
+											{#each orphanedChecks as check (check.id)}
+												{@render checkItem(check)}
+											{/each}
+										</span>
+									</div>
+								{/if}
+
+								{#if field === 'acceptance' && addingCheck && api}
+									<AcceptanceCheckForm {api} {detail} {t} editing={null} onSaved={checkSaved} onCancel={() => (addingCheck = false)} />
+								{/if}
+							{/if}
+						</div>
+					{/each}
+				</div>
+
+
+				<!-- What you asked for: the requirements ledger, the list the Bots read too (ADR 0040 P3). -->
+				{#if detail.requirements}
+					<PlanRequirements {api} {detail} {t} {onSaved} {onJump} selectedTicket={focusTicket?.id ?? null} {onShowTicket} />
+				{/if}
+			{/if}
+		</div>
+
+		</div>
+
+		<div class="plan-spec-col is-side plan-spec-side">
+			{#if detail.spec}
+				<div class="plan-spec-overview-slot">
+					<PlanSpecOverview {t} {ticketStates} checks={checksTotal} progress={progressCounts} {onShowTickets} />
+				</div>
+			{/if}
+			{#if detail.spec}
+				{@const spec = detail.spec}
+				<!-- Section: Progress Dashboard (Done, Open, Blocked) -->
+				<div class="plan-spec-section is-progress">
+					{#each PROGRESS_FIELDS as field (field)}
+						{@const isBlocked = field === 'progress.blocked'}
+						{@const isDone = field === 'progress.done'}
+						{@const lines = specLines(spec, field)}
+						<div class="plan-spec-list is-{field.replace('.', '-')} {isBlocked && lines.length > 0 ? 'is-alert' : ''}">
+							<div class="plan-spec-list-head">
+								<div class="plan-spec-list-meta">
+									{#if isDone}
+										<span class="plan-spec-status-dot is-done" aria-hidden="true">✓</span>
+									{:else if isBlocked}
+										<span class="plan-spec-status-dot is-blocked" aria-hidden="true">!</span>
+									{:else}
+										<span class="plan-spec-status-dot is-open" aria-hidden="true">●</span>
+									{/if}
+									<span class="plan-spec-list-label">{fieldLabel(field)}</span>
+									{#if lines.length > 0}
+										<span class="plan-spec-field-count mono">{lines.length}</span>
+									{/if}
+								</div>
 								{#if api && editing !== field}
 									<button type="button" class="plan-spec-edit-btn" onclick={() => startEditField(field)} title={t.plan.edit}>
 										<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -523,214 +621,213 @@
 									</button>
 								{/if}
 							</div>
-						</div>
 
-						{#if field === 'acceptance' && runError}<p class="plan-spec-error">{runError}</p>{/if}
-
-						{#if editing === field}
-							<textarea class="plan-spec-textarea" bind:value={draft} placeholder={t.plan.linesHint} disabled={saving}></textarea>
-							{#if field === 'acceptance'}<p class="plan-spec-checks-hint">{t.plan.checks.editHint}</p>{/if}
-							<div class="plan-spec-edit-actions">
-								<button type="button" class="plan-spec-save-btn" onclick={save} disabled={saving}>{t.plan.save}</button>
-								<button type="button" class="plan-spec-cancel-btn" onclick={cancelEdit} disabled={saving}>{t.plan.cancel}</button>
-							</div>
-							{#if saveError}<p class="plan-spec-error">{saveError}</p>{/if}
-						{:else}
-							{@const lines = specLines(spec, field)}
-							{#if lines.length > 0}
+							{#if editing === field}
+								<textarea class="plan-spec-textarea" bind:value={draft} placeholder={t.plan.linesHint} disabled={saving}></textarea>
+								<div class="plan-spec-edit-actions">
+									<button type="button" class="plan-spec-save-btn" onclick={save} disabled={saving}>{t.plan.save}</button>
+									<button type="button" class="plan-spec-cancel-btn" onclick={cancelEdit} disabled={saving}>{t.plan.cancel}</button>
+								</div>
+								{#if saveError}<p class="plan-spec-error">{saveError}</p>{/if}
+							{:else if lines.length > 0}
 								<ul class="plan-spec-ul">
-									{#each lines as line}<li>{line}{#if field === 'acceptance' && checksForLine(checks, line).length > 0}<span class="plan-spec-checks-pills">{#each checksForLine(checks, line) as check (check.id)}{@render checkItem(check)}{/each}</span>{/if}</li>{/each}
+									{#each lines as line}<li>{line}</li>{/each}
 								</ul>
 							{:else}
 								<p class="plan-spec-empty-line">{t.plan.empty}</p>
 							{/if}
-
-							{#if field === 'acceptance' && fromYourWords.length > 0}
-								<div class="plan-spec-checks-orphans">
-									<span class="plan-spec-checks-orphans-title">{t.plan.checks.derivedTitle}</span>
-									<ul class="plan-spec-ul">
-										{#each fromYourWords as check (check.id)}<li>{check.item}<span class="plan-spec-checks-pills">{@render checkItem(check)}</span></li>{/each}
-									</ul>
-								</div>
-							{/if}
-
-							{#if field === 'acceptance' && orphanedChecks.length > 0}
-								<div class="plan-spec-checks-orphans">
-									<span class="plan-spec-checks-orphans-title">{t.plan.checks.orphansTitle}</span>
-									<span class="plan-spec-checks-pills">
-										{#each orphanedChecks as check (check.id)}
-											{@render checkItem(check)}
-										{/each}
-									</span>
-								</div>
-							{/if}
-
-							{#if field === 'acceptance' && addingCheck && api}
-								<AcceptanceCheckForm {api} {detail} {t} editing={null} onSaved={checkSaved} onCancel={() => (addingCheck = false)} />
-							{/if}
-						{/if}
-					</div>
-				{/each}
-			</div>
-
-			<!--
-				Where the tickets stand, above the organizer's written progress: the two describe the same
-				work, and the tickets' own states are the ones to go by.
-			-->
-			{#if ticketStates.length > 0}
-				<div class="plan-spec-ticket-states">
-					<div class="plan-spec-ticket-states-line">
-						<span class="plan-spec-ticket-states-label">{t.plan.links.ticketStates}</span>
-						{#each ticketStates as entry (entry.status)}
-							{#if onShowTickets}
-								<button type="button" class="plan-spec-ticket-state is-{entry.status}" onclick={() => onShowTickets(entry.status)}>
-									<span>{t.plan.ticketStatus[entry.status]}</span>
-									<span class="mono">{entry.count}</span>
-								</button>
-							{:else}
-								<span class="plan-spec-ticket-state is-{entry.status}">
-									<span>{t.plan.ticketStatus[entry.status]}</span>
-									<span class="mono">{entry.count}</span>
-								</span>
-							{/if}
-						{/each}
-					</div>
-					<p class="plan-spec-ticket-states-hint">{t.plan.links.progressHint}</p>
-				</div>
-			{/if}
-
-			<!-- Section: Progress Dashboard (Done, Open, Blocked) -->
-			<div class="plan-spec-section is-progress">
-				{#each PROGRESS_FIELDS as field (field)}
-					{@const isBlocked = field === 'progress.blocked'}
-					{@const isDone = field === 'progress.done'}
-					{@const lines = specLines(spec, field)}
-					<div class="plan-spec-list is-{field.replace('.', '-')} {isBlocked && lines.length > 0 ? 'is-alert' : ''}">
-						<div class="plan-spec-list-head">
-							<div class="plan-spec-list-meta">
-								{#if isDone}
-									<span class="plan-spec-status-dot is-done" aria-hidden="true">✓</span>
-								{:else if isBlocked}
-									<span class="plan-spec-status-dot is-blocked" aria-hidden="true">!</span>
-								{:else}
-									<span class="plan-spec-status-dot is-open" aria-hidden="true">●</span>
-								{/if}
-								<span class="plan-spec-list-label">{fieldLabel(field)}</span>
-								{#if lines.length > 0}
-									<span class="plan-spec-field-count mono">{lines.length}</span>
-								{/if}
-							</div>
-							{#if api && editing !== field}
-								<button type="button" class="plan-spec-edit-btn" onclick={() => startEditField(field)} title={t.plan.edit}>
-									<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-										<path d="M12 20h9"></path>
-										<path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-									</svg>
-									<span>{t.plan.edit}</span>
-								</button>
-							{/if}
-						</div>
-
-						{#if editing === field}
-							<textarea class="plan-spec-textarea" bind:value={draft} placeholder={t.plan.linesHint} disabled={saving}></textarea>
-							<div class="plan-spec-edit-actions">
-								<button type="button" class="plan-spec-save-btn" onclick={save} disabled={saving}>{t.plan.save}</button>
-								<button type="button" class="plan-spec-cancel-btn" onclick={cancelEdit} disabled={saving}>{t.plan.cancel}</button>
-							</div>
-							{#if saveError}<p class="plan-spec-error">{saveError}</p>{/if}
-						{:else if lines.length > 0}
-							<ul class="plan-spec-ul">
-								{#each lines as line}<li>{line}</li>{/each}
-							</ul>
-						{:else}
-							<p class="plan-spec-empty-line">{t.plan.empty}</p>
-						{/if}
-					</div>
-				{/each}
-			</div>
-		{/if}
-	</div>
-
-	<div class="plan-spec-foot">
-		<div class="plan-spec-foot-meta">
-			<span class="plan-spec-rev mono">{t.plan.revision(detail.revision)}</span>
-			<span class="plan-spec-dot" aria-hidden="true">·</span>
-			<span class="plan-spec-actor">{actorLabel(detail.revision_actor, detail.revision_cause)}</span>
-			{#if detail.spec_updated_at}
-				<span class="plan-spec-dot" aria-hidden="true">·</span>
-				<span class="plan-spec-time" title={formatFullTimestamp(detail.spec_updated_at)}>
-					<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-						<circle cx="12" cy="12" r="10"></circle>
-						<polyline points="12 6 12 12 16 14"></polyline>
-					</svg>
-					<span>{formatMessageTime(detail.spec_updated_at)}</span>
-				</span>
-			{/if}
-		</div>
-		{#if api}
-			<button type="button" class="plan-spec-history-toggle" aria-expanded={historyOpen} onclick={toggleHistory}>
-				<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<circle cx="12" cy="12" r="10"></circle>
-					<polyline points="12 6 12 12 14 14"></polyline>
-					<path d="M3.05 11a9 9 0 0 1 .5-2m-.5 2H7"></path>
-				</svg>
-				<span>{t.plan.history}</span>
-			</button>
-		{/if}
-	</div>
-
-	{#if historyOpen}
-		<div class="plan-spec-history">
-			{#if historyLoading}
-				<p class="plan-spec-history-loading">{t.plan.history}…</p>
-			{:else if historyFailed}
-				<p class="plan-spec-error">{t.plan.saveFailed}</p>
-			{:else if history.length === 0}
-				<p class="plan-spec-history-none">{t.plan.historyNone}</p>
-			{:else}
-				<div class="plan-spec-history-list">
-					{#each history as rev (rev.id)}
-						<div class="plan-spec-revision">
-							<div class="plan-spec-revision-header">
-								<span class="plan-spec-revision-n mono">{t.plan.revision(rev.revision)}</span>
-								<span class="plan-spec-revision-actor" class:is-hold={rev.cause === 'hold'}>{actorLabel(rev.actor, rev.cause)}</span>
-								<span class="plan-spec-revision-time" title={formatFullTimestamp(rev.created_at)}>
-									{formatMessageTime(rev.created_at)}
-								</span>
-								{#if rev.source_message_id && rev.session_id}
-									<button
-										type="button"
-										class="plan-spec-revision-jump"
-										onclick={() => onJump(rev.session_id!, rev.source_message_id!)}
-									>
-										<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-											<polyline points="15 3 21 3 21 9"></polyline>
-											<line x1="10" y1="14" x2="21" y2="3"></line>
-										</svg>
-										<span>{t.plan.jumpToMessage}</span>
-									</button>
-								{/if}
-							</div>
-							<div class="plan-spec-revision-goal">{rev.spec.goal}</div>
 						</div>
 					{/each}
 				</div>
 			{/if}
+
+			<!-- What the job is: its name, kind and scale, and the versions of this spec. -->
+			<div class="plan-spec-about">
+				<h4 class="plan-spec-about-title">{t.trace.title}</h4>
+				{@render nameBlock()}
+				{#if detail.kind}
+					<div class="plan-spec-about-row">
+						<span class="plan-spec-about-label">{t.plan.kind}</span>
+						<span class="plan-spec-kind-badge">{detail.kind}</span>
+					</div>
+				{/if}
+				<div class="plan-spec-foot">
+					<div class="plan-spec-foot-meta">
+						<span class="plan-spec-about-label">{t.plan.spec.version}</span>
+						<span class="plan-spec-rev-badge">{t.plan.revision(detail.revision)}</span>
+						<span class="plan-spec-actor">{actorLabel(detail.revision_actor, detail.revision_cause)}</span>
+						{#if detail.spec_updated_at}
+							<span class="plan-spec-dot" aria-hidden="true">·</span>
+							<span class="plan-spec-time" title={formatFullTimestamp(detail.spec_updated_at)}>{formatMessageTime(detail.spec_updated_at)}</span>
+						{/if}
+					</div>
+					{#if api}
+						<button type="button" class="plan-spec-history-toggle" aria-expanded={historyOpen} onclick={toggleHistory}>
+							<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+								<circle cx="12" cy="12" r="10"></circle>
+								<polyline points="12 6 12 12 14 14"></polyline>
+								<path d="M3.05 11a9 9 0 0 1 .5-2m-.5 2H7"></path>
+							</svg>
+							<span>{t.plan.history}</span>
+						</button>
+					{/if}
+				</div>
+				{#if historyOpen}
+					<div class="plan-spec-history">
+						{#if historyLoading}
+							<p class="plan-spec-history-loading">{t.plan.history}…</p>
+						{:else if historyFailed}
+							<p class="plan-spec-error">{t.plan.saveFailed}</p>
+						{:else if history.length === 0}
+							<p class="plan-spec-history-none">{t.plan.historyNone}</p>
+						{:else}
+							<div class="plan-spec-history-list">
+								{#each history as rev (rev.id)}
+									<div class="plan-spec-revision">
+										<div class="plan-spec-revision-header">
+											<span class="plan-spec-revision-n mono">{t.plan.revision(rev.revision)}</span>
+											<span class="plan-spec-revision-actor" class:is-hold={rev.cause === 'hold'}>{actorLabel(rev.actor, rev.cause)}</span>
+											<span class="plan-spec-revision-time" title={formatFullTimestamp(rev.created_at)}>
+												{formatMessageTime(rev.created_at)}
+											</span>
+											{#if rev.source_message_id && rev.session_id}
+												<button
+													type="button"
+													class="plan-spec-revision-jump"
+													onclick={() => onJump(rev.session_id!, rev.source_message_id!)}
+												>
+													<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+														<polyline points="15 3 21 3 21 9"></polyline>
+														<line x1="10" y1="14" x2="21" y2="3"></line>
+													</svg>
+													<span>{t.plan.jumpToMessage}</span>
+												</button>
+											{/if}
+										</div>
+										<div class="plan-spec-revision-goal">{rev.spec.goal}</div>
+									</div>
+								{/each}
+							</div>
+						{/if}
+					</div>
+				{/if}
+			</div>
+
+			{@render retrospectives()}
 		</div>
-	{/if}
+	</div>
 </section>
 {/if}
 
 <style>
 	/* Flat, like the ticket list it takes turns with: the side panel or the tab is its frame. */
 	.plan-spec {
+		container: spec / inline-size;
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+		min-width: 0;
+		max-width: 1240px;
+		margin: 0 auto;
+		padding: 16px 18px 28px;
+		font: 13px/1.55 var(--font);
+		color: var(--ink-secondary);
+	}
+
+	/*
+	 * One column on a narrow pane: the goal, where it stands, the contract, then the rest. The two
+	 * columns give their parts up to it and the parts are put in that order. With room for both,
+	 * the goal and the contract read down a main column, and where it stands, what the job is and
+	 * its versions go down a side column; each column runs on by itself, not row by row.
+	 */
+	.plan-spec-grid {
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+		min-width: 0;
+	}
+
+	.plan-spec-col {
+		display: contents;
+	}
+
+	/* Everything else, a child component's card included, comes after the contract. */
+	.plan-spec-col > :global(*) {
+		order: 4;
+	}
+
+	.plan-spec-col > .plan-spec-goal {
+		order: 1;
+	}
+
+	.plan-spec-col > .plan-spec-overview-slot {
+		order: 2;
+	}
+
+	.plan-spec-col > .plan-spec-main {
+		order: 3;
+	}
+
+	@container spec (min-width: 880px) {
+		.plan-spec-grid {
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+			column-gap: 20px;
+			align-items: start;
+		}
+
+		.plan-spec-col {
+			display: flex;
+			flex-direction: column;
+			gap: 14px;
+			min-width: 0;
+		}
+	}
+
+	.plan-spec-overview-slot {
+		display: flex;
+		min-width: 0;
+	}
+
+	.plan-spec-overview-slot > :global(.plan-overview) {
+		flex: 1;
+	}
+
+	.plan-spec-main {
+		min-width: 0;
+	}
+
+	/* What the job is: its name, its kind, its scale and the versions of the spec, as one card. */
+	.plan-spec-about {
 		display: flex;
 		flex-direction: column;
 		gap: 10px;
 		min-width: 0;
-		padding: 12px 10px 20px;
-		font: 12px/1.5 var(--font);
-		color: var(--ink-secondary);
+		padding: 12px 14px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		background: var(--pane);
+	}
+
+	.plan-spec-about-title {
+		margin: 0;
+		font-size: 12px;
+		font-weight: 700;
+		color: var(--ink);
+	}
+
+	.plan-spec-about-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		min-width: 0;
+	}
+
+	.plan-spec-about-label {
+		flex: none;
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--muted);
 	}
 
 	.plan-spec-head {
@@ -760,13 +857,6 @@
 		font-weight: 700;
 		color: var(--ink);
 		letter-spacing: -0.01em;
-	}
-
-	.plan-spec-head-badges {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		min-width: 0;
 	}
 
 	.plan-spec-kind-badge {
@@ -863,8 +953,8 @@
 	.plan-spec-goal {
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
-		padding: 10px 12px;
+		gap: 10px;
+		padding: 14px 16px;
 		border-radius: var(--radius-md);
 		border: 1px solid var(--accent-border);
 		background: linear-gradient(135deg, var(--accent-tint) 0%, var(--pane) 60%);
@@ -895,9 +985,9 @@
 
 	.plan-spec-goal-text {
 		color: var(--ink);
-		font-size: 14px;
+		font-size: 17px;
 		font-weight: 600;
-		line-height: 1.45;
+		line-height: 1.5;
 		overflow-wrap: anywhere;
 	}
 
@@ -908,7 +998,7 @@
 	}
 
 	.plan-spec-section.is-guidelines {
-		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+		grid-template-columns: minmax(0, 1fr);
 	}
 
 	.plan-spec-section.is-progress {
@@ -1226,84 +1316,6 @@
 		color: var(--muted);
 	}
 
-	/* The tickets' own states, above the written progress that describes the same work. */
-	.plan-spec-ticket-states {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-		min-width: 0;
-	}
-
-	.plan-spec-ticket-states-line {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 4px;
-		min-width: 0;
-	}
-
-	.plan-spec-ticket-states-label {
-		flex: none;
-		margin-right: 2px;
-		font-size: 12px;
-		font-weight: 600;
-		color: var(--muted);
-	}
-
-	.plan-spec-ticket-state {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		flex: none;
-		border: 1px solid var(--line);
-		border-radius: var(--radius-full);
-		background: var(--pane);
-		color: var(--ink-secondary);
-		font: inherit;
-		font-size: 11px;
-		line-height: 1.4;
-		padding: 1px 8px;
-	}
-
-	button.plan-spec-ticket-state {
-		cursor: pointer;
-	}
-
-	button.plan-spec-ticket-state:hover {
-		border-color: var(--accent-border);
-		color: var(--accent);
-	}
-
-	.plan-spec-ticket-state::before {
-		content: "";
-		width: 6px;
-		height: 6px;
-		border-radius: 50%;
-		background: var(--muted-light);
-	}
-
-	.plan-spec-ticket-state.is-doing::before {
-		background: var(--accent);
-	}
-
-	.plan-spec-ticket-state.is-review::before {
-		background: var(--purple);
-	}
-
-	.plan-spec-ticket-state.is-done::before {
-		background: var(--ok);
-	}
-
-	.plan-spec-ticket-state.is-parked::before {
-		background: var(--muted);
-	}
-
-	.plan-spec-ticket-states-hint {
-		margin: 0;
-		font-size: 11px;
-		color: var(--muted-light);
-	}
-
 	.plan-spec-checks-orphans {
 		display: flex;
 		flex-direction: column;
@@ -1441,15 +1453,15 @@
 		overflow-wrap: anywhere;
 	}
 
-	/* Footer */
+	/* The version row: which version, who made it and when, and its history a press away. */
 	.plan-spec-foot {
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
 		justify-content: space-between;
 		gap: 8px;
-		padding: 8px 2px 0;
-		border-top: 1px solid var(--line);
+		padding-top: 10px;
+		border-top: 1px solid var(--line-subtle);
 		font-size: 11px;
 		color: var(--muted);
 	}
@@ -1460,11 +1472,6 @@
 		align-items: center;
 		gap: 6px;
 		min-width: 0;
-	}
-
-	.plan-spec-rev {
-		font-weight: 600;
-		color: var(--ink-secondary);
 	}
 
 	.plan-spec-actor {

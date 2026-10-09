@@ -1080,7 +1080,7 @@ export const rc11Stories = {
   'ticket24a-en': delegationStory('en'),
   'ticket26a': ticketStagesStory('zh'),
   'ticket26a-en': ticketStagesStory('en'),
-  'ticket26a-columns': ticketStagesStory('zh', true),
+  'ticket26a-tall': ticketStagesStory('zh', true),
   'ticket-board': ticketBoardStory(),
   'ticket23d': {
     component: ChatStage as never,

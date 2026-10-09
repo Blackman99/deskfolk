@@ -34,19 +34,20 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
         // Nothing spills sideways, at either width.
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
         expect(overflow).toBeLessThanOrEqual(0);
-        // Stacked, every head fits the width. Across, only the columns actually in view are checked.
-        for (const row of await page.locator('.ticket-head, .ticket-settings').all()) {
-          const box = await row.boundingBox();
-          if (!box || box.x >= width) continue;
-          expect(box.x + box.width).toBeLessThanOrEqual(width + 1);
-        }
+        // The columns run on sideways; what must not happen is a card's head spilling out of its card.
+        const spills = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>('.ticket-head, .ticket-settings')].flatMap((part) => {
+          const card = part.closest<HTMLElement>('.ticket-row')!.getBoundingClientRect();
+          const box = part.getBoundingClientRect();
+          return box.right > card.right + 1 ? [`${part.className}: ${Math.round(box.right)} > ${Math.round(card.right)}`] : [];
+        }));
+        expect(spills).toEqual([]);
         expect(errors).toEqual([]);
         await page.close();
       }
 
       if (name === 'webkit') {
         const page = await browser.newPage({ viewport: { width: 1100, height: 700 } });
-        await page.goto(`${baseURL}index.html?story=ticket26a-columns`);
+        await page.goto(`${baseURL}index.html?story=ticket26a-tall`);
         await expect(page.locator('[data-board-status]')).toHaveCount(5, { timeout: 3000 });
         const layout = await page.evaluate(() => {
           const columns = [...document.querySelectorAll<HTMLElement>('[data-board-status]')];

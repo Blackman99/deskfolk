@@ -41,11 +41,8 @@
 		statusFilter?: TicketStatus | 'all';
 		/** Open the spec the tickets answer to, keeping the picked ticket picked. */
 		onShowSpec?: () => void;
-		/**
-		 * Draw the five columns across, for a story that has no flow pane around it. The product
-		 * never sets this: a wide board and a narrow "任务" tab turn the columns across in CSS.
-		 */
-		forceColumns?: boolean;
+		/** Show the picked ticket's work on the trace: its rounds lit, its newest card in view. */
+		onShowInTrace?: (ticketId: string) => void;
 	}
 
 	let {
@@ -65,7 +62,7 @@
 		onConflict,
 		statusFilter = $bindable('all'),
 		onShowSpec,
-		forceColumns = false
+		onShowInTrace
 	}: Props = $props();
 
 	const botsById = $derived(new Map(bots.map((bot) => [bot.id, bot] as const)));
@@ -480,7 +477,7 @@
 	{#if tickets.length === 0}
 		<p class="ticket-list-empty">{t.plan.ticketsNone}</p>
 	{:else}
-		<div class="ticket-board" class:is-force-columns={forceColumns}>
+		<div class="ticket-board">
 			{#each columns as column (column.status)}
 				<section
 					class="ticket-column is-{column.status}"
@@ -591,7 +588,7 @@
 							<p class="ticket-spec">{ticket.spec}</p>
 						{/if}
 					</div>
-					{#if ticket.artifacts.length > 0 || node}
+					{#if ticket.artifacts.length > 0 || node || (picked && onShowInTrace)}
 						<div class="ticket-links">
 							{#if ticket.artifacts.length > 0}
 								<button type="button" class="ticket-artifacts" onclick={() => onOpenArtifacts(ticket)}>
@@ -609,6 +606,18 @@
 										<path d="M20 4v7a4 4 0 0 1-4 4H4"></path>
 									</svg>
 									<span>{t.plan.jumpToTurn}</span>
+								</button>
+							{/if}
+							{#if picked && node && onShowInTrace}
+								<!-- The board hides the trace; this brings it back on the picked ticket's rounds. -->
+								<button type="button" class="ticket-jump ticket-show-trace" onclick={() => onShowInTrace(ticket.id)}>
+									<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+										<rect x="9" y="3" width="6" height="5" rx="1"></rect>
+										<rect x="3" y="16" width="6" height="5" rx="1"></rect>
+										<rect x="15" y="16" width="6" height="5" rx="1"></rect>
+										<path d="M12 8v4M6 16v-2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2"></path>
+									</svg>
+									<span>{t.plan.links.showInTrace}</span>
 								</button>
 							{/if}
 						</div>
@@ -744,12 +753,16 @@
 </section>
 
 <style>
+	/* The list fills its view: the heading on top, the board in all the height left under it. */
 	.ticket-list {
 		display: flex;
 		flex-direction: column;
+		flex: 1;
 		gap: 10px;
 		min-width: 0;
-		padding: 12px 10px 20px;
+		min-height: 0;
+		height: 100%;
+		padding: 12px 14px 14px;
 		font: 12px/1.5 var(--font);
 		color: var(--ink-secondary);
 	}
@@ -911,18 +924,23 @@
 	}
 
 	/* Title row: the title picks the ticket; the status beside it is its own menu. */
+	/*
+	 * A card is a column wide: the title keeps room to be read, and the status menu goes under it
+	 * when both do not fit on one line — a long stage name never squeezes the title to nothing.
+	 */
 	.ticket-head {
 		display: flex;
-		align-items: center;
-		gap: 6px;
+		flex-wrap: wrap;
+		align-items: flex-start;
+		gap: 4px 6px;
 		min-width: 0;
 	}
 
 	.ticket-main {
 		display: flex;
-		align-items: center;
+		align-items: flex-start;
 		gap: 6px;
-		flex: 1 1 auto;
+		flex: 1 1 140px;
 		min-width: 0;
 		padding: 0;
 		background: none;
@@ -948,13 +966,18 @@
 		line-height: 14px;
 	}
 
+	/* Two lines before it gives up: a ticket's title is most of what a card says. */
 	.ticket-title {
 		flex: 1 1 auto;
 		min-width: 0;
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
 		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		overflow-wrap: anywhere;
 		font-size: 13px;
+		line-height: 1.4;
 		font-weight: 600;
 		color: var(--ink);
 		letter-spacing: -0.01em;
@@ -1324,16 +1347,20 @@
 	}
 
 	/*
-	 * Stacked by default, which is the side rail: one scroll for the whole rail, so a column does
-	 * not scroll on its own and its head does not stick. Across only when the flow pane asks
-	 * (a wide board, or the narrow "任务" tab) or a story forces it. The pane's classes live in
-	 * TraceView, so they have to be :global or Svelte drops the rule.
+	 * The board: five columns across, each scrolling on its own under a head that stays put. Too
+	 * many for the pane, the board scrolls sideways; a card held at its edge scrolls it too.
 	 */
 	.ticket-board {
-		display: flex;
-		flex-direction: column;
-		gap: 14px;
+		display: grid;
+		grid-auto-flow: column;
+		grid-auto-columns: minmax(220px, 1fr);
+		grid-template-rows: minmax(0, 1fr);
+		flex: 1;
 		min-width: 0;
+		min-height: 0;
+		gap: 8px;
+		overflow-x: auto;
+		overflow-y: hidden;
 	}
 
 	.ticket-column {
@@ -1341,6 +1368,12 @@
 		flex-direction: column;
 		gap: 8px;
 		min-width: 0;
+		min-height: 0;
+		overflow-y: auto;
+		padding: 8px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		background: var(--line-subtle);
 	}
 
 	.ticket-column.is-focused > .ticket-column-head {
@@ -1354,10 +1387,15 @@
 	}
 
 	.ticket-column-head {
+		position: sticky;
+		top: 0;
+		z-index: 1;
 		display: flex;
 		align-items: center;
 		gap: 6px;
 		min-width: 0;
+		padding-bottom: 4px;
+		background: var(--line-subtle);
 		font-size: 11px;
 		font-weight: 650;
 		color: var(--muted);
@@ -1452,87 +1490,6 @@
 		color: var(--ink);
 		pointer-events: none;
 		transform: translate(-16px, -12px);
-	}
-
-	:global(.trace-pane.has-board) .ticket-board,
-	.ticket-board.is-force-columns {
-		display: grid;
-		grid-auto-flow: column;
-		grid-auto-columns: minmax(220px, 1fr);
-		grid-template-rows: minmax(0, 1fr);
-		flex: 1;
-		min-height: 0;
-		gap: 8px;
-		overflow-x: auto;
-		overflow-y: hidden;
-	}
-
-	:global(.trace-pane.has-board) .ticket-column,
-	.ticket-board.is-force-columns .ticket-column {
-		min-height: 0;
-		overflow-y: auto;
-		padding: 8px;
-		border: 1px solid var(--line);
-		border-radius: var(--radius-md);
-		background: var(--line-subtle);
-	}
-
-	:global(.trace-pane.has-board) .ticket-column-head,
-	.ticket-board.is-force-columns .ticket-column-head {
-		position: sticky;
-		top: 0;
-		z-index: 1;
-		padding-bottom: 4px;
-		background: var(--line-subtle);
-	}
-
-	:global(.trace-pane.has-board) .ticket-list,
-	.ticket-list:has(.ticket-board.is-force-columns) {
-		display: flex;
-		flex-direction: column;
-		flex: 1;
-		min-height: 0;
-		height: 100%;
-	}
-
-	/* The narrow "任务" tab is the same five columns. It has to beat a wide board left open. */
-	@container trace (max-width: 720px) {
-		:global(.trace-pane.has-segment) :global(.is-tickets) .ticket-board {
-			display: grid;
-			grid-auto-flow: column;
-			grid-auto-columns: minmax(220px, 1fr);
-			grid-template-rows: minmax(0, 1fr);
-			flex: 1;
-			min-height: 0;
-			gap: 8px;
-			overflow-x: auto;
-			overflow-y: hidden;
-		}
-
-		:global(.trace-pane.has-segment) :global(.is-tickets) .ticket-column {
-			min-height: 0;
-			overflow-y: auto;
-			padding: 8px;
-			border: 1px solid var(--line);
-			border-radius: var(--radius-md);
-			background: var(--line-subtle);
-		}
-
-		:global(.trace-pane.has-segment) :global(.is-tickets) .ticket-column-head {
-			position: sticky;
-			top: 0;
-			z-index: 1;
-			padding-bottom: 4px;
-			background: var(--line-subtle);
-		}
-
-		:global(.trace-pane.has-segment) :global(.is-tickets) .ticket-list {
-			display: flex;
-			flex-direction: column;
-			flex: 1;
-			min-height: 0;
-			height: 100%;
-		}
 	}
 
 	/* The picked ticket's obligations: the spec it meets with every ticket, and what is its alone. */

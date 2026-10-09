@@ -31,11 +31,12 @@
 	import TraceRound from './TraceRound.svelte';
 	import TraceRouteDetail from './TraceRouteDetail.svelte';
 	import { loadTraceMinimap, saveTraceMinimap } from './trace-minimap.ts';
-	import { loadTraceSide, saveTraceSide, type TraceSide } from './trace-side.ts';
+	import { loadTraceView, saveTraceView, type TraceViewKind } from './trace-view.ts';
 	import {
 		actorFace,
 		actorName,
 		firstPreviewable,
+		latestTurnOfTicket,
 		openTicketCount,
 		planTitle,
 		ticketArtifactAttachments,
@@ -158,22 +159,16 @@
 	/** The ticket whose cards are lit; the rest of the board dims. One at a time, like a highlight. */
 	let selectedTicket = $state<string | null>(null);
 	/**
-	 * Nothing lies over the board. On a wide host the spec or the tickets open beside it, one at a
-	 * time or neither, and the choice outlives the pane. On a narrow one there is no room beside it,
-	 * so the spec, the tree and the tickets take turns as tabs, starting on the tree.
+	 * What fills the pane: the trace, the tickets' board or the spec — one at a time, each with the
+	 * whole pane, at every width. The choice outlives the pane; a pane opened on a message's card
+	 * opens on the trace, whatever was left.
 	 */
-	let side = $state<TraceSide>(loadTraceSide());
-	let segment = $state<'spec' | 'trace' | 'tickets'>('trace');
-	/**
-	 * The wide board: the five columns take the whole pane, hiding the trace. Not remembered — a
-	 * fresh look at a plan starts on the trace, and losing the tickets puts it away.
-	 */
-	let board = $state(false);
-	/** The status the ticket list is narrowed to; the spec's ticket states set it when they open the list. */
+	let view = $state<TraceViewKind>(untrack(() => (focus ? 'trace' : loadTraceView())));
+	/** The board's column the spec asked to bring into view; 'all' lights none. */
 	let ticketFilter = $state<TicketStatus | 'all'>('all');
-	/** The side panels, so a ticket shown from the spec can be scrolled to. */
-	let sideEl = $state<HTMLElement>();
-	/** The minimap in the corner, until you put it away; per-browser, like the side panel. */
+	/** The board view, so a ticket shown from the spec can be scrolled to. */
+	let boardEl = $state<HTMLElement>();
+	/** The minimap in the corner, until you put it away; per-browser, like the view. */
 	let minimapShown = $state(loadTraceMinimap());
 	/** The card whose model choice is unfolded under it. One at a time. */
 	let openRoute = $state<string | null>(null);
@@ -256,6 +251,9 @@
 			const asked = focus && shown ? focusNode(shown.nodes, focus) : null;
 			const root = asked ? rounds.find((round) => round.members.includes(asked))?.root : undefined;
 			if (root && foldChoice[root]) foldChoice = { ...foldChoice, [root]: false };
+			// The card is on the trace: a pane left on the board or the spec turns back to it. Not
+			// remembered — the view you chose is still the one the next plan opens on.
+			if (focus) view = 'trace';
 			canvas.syncFocusToken();
 		});
 	});
@@ -395,13 +393,10 @@
 	);
 	const lighting = $derived(highlight && highlightCounts[highlight] > 0 ? highlight : null);
 	const ticketsById = $derived(new Map((detail?.tickets ?? []).map((ticket) => [ticket.id, ticket])));
-	/** An empty ticket list is a quarter of the board saying nothing; it comes with the first ticket. */
+	/** A board of no tickets says nothing; it comes with the first ticket. */
 	const hasTickets = $derived((detail?.tickets.length ?? 0) > 0);
-	/** Tickets asked for on a plan that has none yet leave the board to itself. */
-	const sideShown = $derived<TraceSide>(!detail || (side === 'tickets' && !hasTickets) ? null : side);
-	const segmentShown = $derived(!detail || (segment === 'tickets' && !hasTickets) ? 'trace' : segment);
-	/** The board only while there are tickets to put in it. */
-	const boardShown = $derived(board && hasTickets);
+	/** Without a plan there is only the trace; without tickets, no board. Either falls back to the trace. */
+	const viewShown = $derived<TraceViewKind>(!detail || (view === 'board' && !hasTickets) ? 'trace' : view);
 	const planStatus = $derived<PlanStatus>(detail?.status ?? (trace?.closed_at ? 'done' : 'active'));
 	/** 「上次变化 X 前」 ages while the board is open, so the clock it reads ticks now and then. */
 	let nowMs = $state(Date.now());
@@ -467,54 +462,48 @@
 	}
 
 	/**
-	 * Open the spec or the tickets beside the board, or put them away. The viewport narrows or
-	 * widens by the panel, so the board keeps its middle where it was — or, while it is still on
-	 * the view it opened on, opens again on the new size.
+	 * A view picked in the switch, or reached from another view. Remembered: the next plan opens on
+	 * it. The trace keeps its camera while it is away — it is only hidden, never resized — so coming
+	 * back finds it where it was.
 	 */
-	async function toggleSide(kind: 'spec' | 'tickets'): Promise<void> {
-		const next = sideShown === kind ? null : kind;
-		const before = canvas.viewportBox().width;
-		const opened = canvas.stillOpened();
-		side = next;
-		saveTraceSide(next);
-		await tick();
-		const after = canvas.viewportBox().width;
-		if (!before || !after || after === before) return;
-		if (opened) {
-			canvas.openBoard();
-			return;
-		}
-		canvas.stopGlide();
-		canvas.view = { ...canvas.view, x: canvas.view.x + (after - before) / 2 };
-	}
-
-	/**
-	 * Bring the spec or the tickets up: beside the board on a wide host, as the tab on a narrow one.
-	 * Already up, it stays — unlike the toggle, which would put it away.
-	 */
-	async function revealPanel(kind: 'spec' | 'tickets'): Promise<void> {
-		segment = kind;
-		if (sideShown !== kind) await toggleSide(kind);
+	function chooseView(next: TraceViewKind): void {
+		view = next;
+		saveTraceView(next);
 	}
 
 	/**
 	 * A line of the spec held to one ticket, or the picked ticket's own strip, shows that ticket: it
-	 * is picked — its cards light on the board — and its row is brought into view in the list.
+	 * is picked — its cards light on the trace — and the board comes up with its card in view.
 	 */
 	async function showTicket(id: string): Promise<void> {
 		selectTicket(id);
 		const ticket = ticketsById.get(id);
 		if (ticketFilter !== 'all' && ticket?.status !== ticketFilter) ticketFilter = 'all';
-		await revealPanel('tickets');
+		chooseView('board');
 		await tick();
-		const row = [...(sideEl?.querySelectorAll<HTMLElement>('.ticket-row') ?? [])].find((el) => el.dataset.ticketId === id);
-		row?.scrollIntoView?.({ block: 'nearest' });
+		const row = [...(boardEl?.querySelectorAll<HTMLElement>('.ticket-row') ?? [])].find((el) => el.dataset.ticketId === id);
+		row?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
 	}
 
-	/** The spec's ticket states open the list on that status. */
+	/** The spec's ticket states bring the board up on that column. */
 	function showTickets(status: TicketStatus | 'all'): void {
 		ticketFilter = status;
-		void revealPanel('tickets');
+		chooseView('board');
+	}
+
+	/**
+	 * A ticket picked on the board, seen where its work happened: the trace comes up with its rounds
+	 * lit and open, and slides to the newest card made for it.
+	 */
+	async function showInTrace(id: string): Promise<void> {
+		selectTicket(id);
+		chooseView('trace');
+		await tick();
+		const latest = latestTurnOfTicket(shown?.nodes ?? [], id);
+		const placed = latest ? flow?.placements.find((placement) => placement.node.turn_id === latest.turn_id) : undefined;
+		if (!placed) return;
+		const height = boxes[placed.node.turn_id]?.height ?? 0;
+		canvas.centreOn({ x: placed.x + TRACE_CARD_WIDTH / 2, y: placed.y + height / 2 }, true);
 	}
 
 	function toggleMinimap(): void {
@@ -634,9 +623,7 @@
 				const kept = keptBoard(session, next);
 				openRoute = kept?.openRoute ?? null;
 				selectedTicket = kept?.selectedTicket ?? null;
-				segment = 'trace';
 				ticketFilter = 'all';
-				board = false;
 				foldChoice = kept?.foldChoice ?? {};
 				if (kept) {
 					notableOnly = kept.notableOnly;
@@ -782,6 +769,15 @@
 	</svg>
 {/snippet}
 
+{#snippet traceIcon()}
+	<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+		<rect x="9" y="3" width="6" height="5" rx="1"></rect>
+		<rect x="3" y="16" width="6" height="5" rx="1"></rect>
+		<rect x="15" y="16" width="6" height="5" rx="1"></rect>
+		<path d="M12 8v4M6 16v-2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2"></path>
+	</svg>
+{/snippet}
+
 {#snippet boardIcon()}
 	<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 		<rect x="3" y="3" width="5" height="18" rx="1"></rect>
@@ -790,13 +786,7 @@
 	</svg>
 {/snippet}
 
-<div
-	class="trace-pane"
-	class:is-page={host === 'page'}
-	class:has-side={sideShown !== null}
-	class:has-segment={segmentShown !== 'trace'}
-	class:has-board={boardShown}
->
+<div class="trace-pane" class:is-page={host === 'page'} data-view={viewShown}>
 	<div class="trace-top">
 		<header class="trace-header">
 			<div class="trace-titles">
@@ -845,47 +835,29 @@
 					{/if}
 				{/if}
 			</div>
+			{#if detail}
+				<!-- The three views of the job, each with the whole pane. On a narrow host the switch takes a row of its own. -->
+				<div class="trace-views" role="tablist" aria-label={t.plan.views}>
+					<button type="button" role="tab" class="trace-view-tab" aria-selected={viewShown === 'trace'} onclick={() => chooseView('trace')}>
+						{@render traceIcon()}
+						<span>{t.plan.segmentTrace}</span>
+					</button>
+					{#if hasTickets}
+						<button type="button" role="tab" class="trace-view-tab" aria-selected={viewShown === 'board'} onclick={() => chooseView('board')}>
+							{@render boardIcon()}
+							<span>{t.plan.segmentBoard}</span>
+							<span class="trace-view-count mono">{detail.tickets.length}</span>
+						</button>
+					{/if}
+					<button type="button" role="tab" class="trace-view-tab" aria-selected={viewShown === 'spec'} onclick={() => chooseView('spec')}>
+						{@render specIcon()}
+						<span>{t.plan.segmentSpec}</span>
+					</button>
+				</div>
+			{/if}
 			<div class="trace-header-end">
 				{#if stopItems.length > 0 && onStop}
 					<StopMenu items={stopItems} {t} placement="below" size="sm" label={t.control.stop} disabled={controlsDisabled} onPick={(item) => onStop(item.choice)} />
-				{/if}
-				{#if detail}
-					<!-- Only a wide host shows these: there the spec and the tickets open beside the board. -->
-					<div class="trace-side-toggles">
-						<button
-							type="button"
-							class="trace-side-toggle"
-							aria-pressed={sideShown === 'spec'}
-							title={sideShown === 'spec' ? t.plan.hideSpec : t.plan.showSpec}
-							onclick={() => void toggleSide('spec')}
-						>
-							{@render specIcon()}
-							<span>{t.plan.segmentSpec}</span>
-						</button>
-						{#if hasTickets}
-							<button
-								type="button"
-								class="trace-side-toggle"
-								aria-pressed={sideShown === 'tickets'}
-								title={sideShown === 'tickets' ? t.plan.hideTickets : t.plan.showTickets}
-								onclick={() => void toggleSide('tickets')}
-							>
-								{@render ticketsIcon()}
-								<span>{t.plan.segmentTickets}</span>
-								<span class="trace-side-count mono">{detail.tickets.length}</span>
-							</button>
-							<button
-								type="button"
-								class="trace-side-toggle"
-								aria-pressed={boardShown}
-								title={boardShown ? t.plan.hideBoard : t.plan.showBoard}
-								onclick={() => (board = !board)}
-							>
-								{@render boardIcon()}
-								<span>{t.plan.segmentBoard}</span>
-							</button>
-						{/if}
-					</div>
 				{/if}
 				{#if onClose}
 				<button type="button" class="sheet-close" title={t.common.close} onclick={onClose}>
@@ -897,21 +869,14 @@
 				{/if}
 			</div>
 		</header>
-		{#if detail}
-			<!-- Only a narrow host shows these: there the spec, the tree and the tickets take turns. -->
-			<div class="trace-segments" role="tablist" aria-label={t.trace.title}>
-				<button type="button" role="tab" aria-selected={segmentShown === 'spec'} class:is-on={segmentShown === 'spec'} onclick={() => (segment = 'spec')}>{t.plan.segmentSpec}</button>
-				<button type="button" role="tab" aria-selected={segmentShown === 'trace'} class:is-on={segmentShown === 'trace'} onclick={() => (segment = 'trace')}>{t.plan.segmentTrace}</button>
-				{#if hasTickets}
-					<button type="button" role="tab" aria-selected={segmentShown === 'tickets'} class:is-on={segmentShown === 'tickets'} onclick={() => (segment = 'tickets')}>
-						{t.plan.segmentTickets}<span class="trace-side-count mono">{detail.tickets.length}</span>
-					</button>
-				{/if}
-			</div>
-		{/if}
 	</div>
+	<!--
+		All three views stay mounted while the plan is on screen, so an edit half-typed in the spec
+		survives a look at the board. The one not shown is hidden in place, never resized, so the
+		trace keeps its camera while you are away from it.
+	-->
 	<div class="trace-body">
-		<div class="trace-stage">
+		<div class="trace-stage trace-view" class:is-on={viewShown === 'trace'} inert={viewShown !== 'trace'}>
 		{#if trace && trace.nodes.length > 0}
 			<div class="trace-tools">
 				<div class="trace-tools-start">
@@ -1095,51 +1060,45 @@
 		{/if}
 		</div>
 		{#if detail}
-			<!--
-				Both panels stay mounted while the plan is on screen, so an edit half-typed in the spec
-				survives a look at the tickets, and the window growing or shrinking across the narrow
-				width keeps them. Which one shows is the host width's business, in the styles.
-			-->
-			<aside class="trace-side" bind:this={sideEl}>
-				<div class="trace-side-panel" class:is-side-on={sideShown === 'spec'} class:is-segment-on={segmentShown === 'spec'}>
-					<PlanSpecPanel
+			<div class="trace-view trace-spec-view" class:is-on={viewShown === 'spec'} inert={viewShown !== 'spec'}>
+				<PlanSpecPanel
+					{api}
+					{detail}
+					{t}
+					onSaved={(next) => (detail = next)}
+					onConflict={reloadPlan}
+					{onJump}
+					{selectedTicket}
+					onShowTicket={(id) => void showTicket(id)}
+					onClearTicket={() => selectTicket(null)}
+					onShowTickets={showTickets}
+					{bots}
+					{deletedLabel}
+				/>
+			</div>
+			{#if hasTickets}
+				<div class="trace-view trace-board-view" class:is-on={viewShown === 'board'} inert={viewShown !== 'board'} bind:this={boardEl}>
+					<TicketList
 						{api}
 						{detail}
-						{t}
-						onSaved={(next) => (detail = next)}
-						onConflict={reloadPlan}
-						{onJump}
-						{selectedTicket}
-						onShowTicket={(id) => void showTicket(id)}
-						onClearTicket={() => selectTicket(null)}
-						onShowTickets={showTickets}
+						{providers}
+						nodes={shown?.nodes ?? []}
 						{bots}
+						{youLabel}
 						{deletedLabel}
+						{t}
+						selectedId={selectedTicket}
+						onSelect={selectTicket}
+						{onJump}
+						onOpenArtifacts={openTicketArtifacts}
+						onPatched={ticketPatched}
+						onConflict={reloadPlan}
+						bind:statusFilter={ticketFilter}
+						onShowSpec={() => chooseView('spec')}
+						onShowInTrace={(id) => void showInTrace(id)}
 					/>
 				</div>
-				{#if hasTickets}
-					<div class="trace-side-panel is-tickets" class:is-side-on={sideShown === 'tickets'} class:is-segment-on={segmentShown === 'tickets'} class:is-board-on={boardShown}>
-						<TicketList
-							{api}
-							{detail}
-							{providers}
-							nodes={shown?.nodes ?? []}
-							{bots}
-							{youLabel}
-							{deletedLabel}
-							{t}
-							selectedId={selectedTicket}
-							onSelect={selectTicket}
-							{onJump}
-							onOpenArtifacts={openTicketArtifacts}
-							onPatched={ticketPatched}
-							onConflict={reloadPlan}
-							bind:statusFilter={ticketFilter}
-							onShowSpec={() => void revealPanel('spec')}
-						/>
-					</div>
-				{/if}
-			</aside>
+			{/if}
 		{/if}
 	</div>
 </div>
@@ -1221,47 +1180,55 @@
 		color: var(--muted);
 	}
 
-	/* Beside the board: the spec, the tickets, or neither. Pressed is open; press again to put it away. */
-	.trace-side-toggles {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-	}
-
-	.trace-side-toggle {
+	/*
+	 * The three views of the job: one segmented switch, the view on screen raised out of the track.
+	 * Teal is reserved for what you act on, so the raised tab is ink on the pane, not teal.
+	 */
+	.trace-views {
+		flex: none;
 		display: inline-flex;
 		align-items: center;
-		gap: 5px;
-		min-height: 28px;
-		padding: 3px 10px;
+		gap: 2px;
+		padding: 3px;
 		border: 1px solid var(--line);
 		border-radius: var(--radius-full);
 		background: var(--chip);
-		color: var(--ink-secondary);
+	}
+
+	.trace-view-tab {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 5px;
+		min-width: 0;
+		min-height: 28px;
+		padding: 3px 12px;
+		border: 0;
+		border-radius: var(--radius-full);
+		background: transparent;
+		color: var(--muted);
 		font: 600 12px/1.2 var(--font);
 		cursor: pointer;
 		user-select: none;
-		transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+		transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 	}
 
-	.trace-side-toggle:hover {
-		border-color: var(--line-hover);
+	.trace-view-tab:hover {
 		color: var(--ink);
 	}
 
-	.trace-side-toggle[aria-pressed='true'] {
-		border-color: var(--accent-border);
-		background: var(--accent-tint);
-		color: var(--accent);
+	.trace-view-tab[aria-selected='true'] {
+		background: var(--pane);
+		color: var(--ink);
+		box-shadow: var(--shadow-xs);
 	}
 
-	.trace-side-toggle:focus-visible,
-	.trace-segments button:focus-visible {
+	.trace-view-tab:focus-visible {
 		outline: 2px solid var(--accent);
 		outline-offset: 1px;
 	}
 
-	.trace-side-count {
+	.trace-view-count {
 		padding: 0 5px;
 		border-radius: var(--radius-full);
 		background: var(--line-subtle);
@@ -1271,153 +1238,70 @@
 		line-height: 15px;
 	}
 
-	.trace-side-toggle[aria-pressed='true'] .trace-side-count,
-	.trace-segments button.is-on .trace-side-count {
+	.trace-view-tab[aria-selected='true'] .trace-view-count {
 		background: var(--accent-tint);
 		color: var(--accent);
 	}
 
-	/* A narrow host's tabs: a row of their own under the title, each an equal share of it. */
-	.trace-segments {
-		display: none;
-		align-items: center;
-		max-width: 480px;
-		margin: 0 12px 10px;
-		padding: 3px;
-		border: 1px solid var(--line);
-		border-radius: var(--radius-full);
-		background: var(--chip);
-		gap: 2px;
-	}
-
-	.trace-segments button {
-		flex: 1 1 0;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 5px;
-		min-width: 0;
-		min-height: 32px;
-		padding: 4px 11px;
-		border: 0;
-		border-radius: var(--radius-full);
-		background: transparent;
-		color: var(--muted);
-		font: 600 13px/1.2 var(--font);
-		cursor: pointer;
-		transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
-		user-select: none;
-	}
-
-	.trace-segments button.is-on {
-		background: var(--pane);
-		color: var(--ink);
-		box-shadow: var(--shadow-xs);
-	}
-
-	/* The picture and, beside it, the plan's spec or its tickets — beside, never over it. */
-	.trace-stage {
-		position: relative;
-		flex: 1;
-		min-width: 0;
-		min-height: 0;
-	}
-
-	.trace-side {
-		display: none;
-		flex: none;
-		flex-direction: column;
-		width: clamp(260px, 34%, 360px);
-		min-height: 0;
-		border-left: 1px solid var(--line);
-		background: var(--sidebar-bg);
-	}
-
-	.trace-pane.has-side .trace-side {
-		display: flex;
-	}
-
 	/*
-	 * The wide board takes the whole pane: the trace hides and the tickets fill it. The panel stops
-	 * scrolling itself, so each column can scroll in the height left under the list's heading.
-	 * Wide only: a pane pulled under 720px is the tabs' again, whatever the board was left as.
+	 * Each view has the whole body. The ones not on screen are hidden where they are, at full size:
+	 * the trace's camera never sees its viewport shrink to nothing and grow back, so it is where you
+	 * left it, and a column the spec asked for can be scrolled to before the board comes up.
 	 */
-	@container trace (width > 720px) {
-		.trace-pane.has-board .trace-stage {
-			display: none;
-		}
-
-		.trace-pane.has-board .trace-side {
-			display: flex;
-			width: 100%;
-			border-left: 0;
-		}
-
-		.trace-pane.has-board .trace-side-panel.is-board-on {
-			display: flex;
-			flex-direction: column;
-			overflow: hidden;
-		}
-
-		.trace-pane.has-board .trace-side-panel.is-side-on:not(.is-board-on) {
-			display: none;
-		}
+	.trace-view {
+		position: absolute;
+		inset: 0;
+		min-width: 0;
+		min-height: 0;
 	}
 
-	.trace-side-panel {
-		display: none;
-		flex: 1;
-		min-height: 0;
+	.trace-view:not(.is-on) {
+		visibility: hidden;
+		pointer-events: none;
+	}
+
+	/* The picture: the trace's view, under the tools and the minimap that float over it. */
+	.trace-stage {
+		overflow: hidden;
+	}
+
+	/* The spec reads as a page: it scrolls, the rest of the pane stays put. */
+	.trace-spec-view {
 		overflow-y: auto;
 		overscroll-behavior: contain;
 		-webkit-overflow-scrolling: touch;
+		background: var(--pane);
 	}
 
-	.trace-side-panel.is-side-on {
-		display: block;
+	/* The board scrolls inside its columns and sideways, never as a whole. */
+	.trace-board-view {
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+		background: var(--pane);
 	}
 
 	/*
-	 * Narrow by the board's own width, not the window's: a narrow pane is a phone. Below 720px a
-	 * panel beside the board would leave it a strip, so the panel gives way to tabs, and a tab other
-	 * than the tree takes the whole body.
+	 * Narrow by the board's own width, not the window's: a narrow pane is a phone. There the switch
+	 * leaves the title row for a row of its own, each view an equal share of it.
 	 */
 	@container trace (max-width: 720px) {
-		.trace-side-toggles {
-			display: none;
+		.trace-header {
+			flex-wrap: wrap;
+			row-gap: 10px;
 		}
 
-		.trace-segments {
+		.trace-views {
+			order: 3;
+			flex: 1 0 100%;
 			display: flex;
+			max-width: 480px;
 		}
 
-		.trace-pane.has-side .trace-side {
-			display: none;
-		}
-
-		.trace-pane.has-segment .trace-side {
-			display: flex;
-			width: 100%;
-			border-left: 0;
-		}
-
-		.trace-pane.has-segment .trace-stage {
-			display: none;
-		}
-
-		.trace-side-panel.is-side-on {
-			display: none;
-		}
-
-		.trace-side-panel.is-segment-on {
-			display: block;
-		}
-
-		/* The "任务" tab is the same five columns, so its panel stops scrolling itself too; the other tabs do not. */
-		.trace-pane.has-segment .trace-side-panel.is-tickets.is-segment-on {
-			display: flex;
-			flex-direction: column;
-			overflow: hidden;
+		.trace-view-tab {
+			flex: 1 1 0;
+			min-height: 32px;
+			font-size: 13px;
 		}
 	}
 
@@ -1443,7 +1327,9 @@
 		user-select: none;
 	}
 
+	/* The title takes what is left: on a narrow host it never pushes the stop and close buttons onto a row of their own. */
 	.trace-titles {
+		flex: 1 1 0;
 		min-width: 0;
 		display: flex;
 		flex-direction: column;

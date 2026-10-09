@@ -10,11 +10,11 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 - The closed strip under the conversation list no longer leaves the rest of each account's row empty. Each account stays on its own line. When the strip is wide enough, the account's email follows its plan, and each window's spare width is a bar as full as what is left (empty means spent). The numbers read the same.
 
-### The tickets beside the trace are a board
+### A job's pane is three views: Trace, Board and Plan
 
-- A card can be dragged to another column to change its status. The status menu asks first too, when the ticket is handed over or in review: the hand-over still waiting for you to approve or send back is dropped, and moving it to done marks it approved.
-- On a wide window a Board button puts the five columns across the whole trace, each scrolling on its own. On a narrow one the Tickets tab is the same five columns. The rail beside the trace stays a vertical stack.
-- The status filters are gone. A status in the plan now brings that column into view and marks it; the other tickets stay.
+- A "Trace / Board / Plan" switch at the end of the title picks one view, which fills the pane at every width (narrow, the switch takes a row under the title). The rail beside the trace, its Plan and Tickets toggles and the separate Board button are gone. The view you left is remembered; a message asking for its card always opens the trace.
+- The board is five columns across, each scrolling on its own, the whole board scrolling sideways when they do not fit. Drag a card — by its title too — to another column to change its status; held at the edge, the board scrolls there. The status menu still works. A ticket handed over or in review asks first either way: the hand-over still waiting for you to approve or send back is dropped, and moving it to done marks it approved. A card's title takes up to two lines instead of being squeezed out by its status. A picked card offers "See it on the trace": the trace comes back with its rounds lit, at its newest one.
+- The plan is laid out as a page: the goal on top; on a wide pane a main column with done-when, rules, process and what you asked for, and a side column with an overview (tickets by state, checks passed, progress counted), the written progress, the job itself (name, kind, scale, versions and history) and retrospectives; narrow, one column with the overview right under the goal. A ticket number or a ticket state in the plan brings up the board on that card or column; the status filters are gone and every ticket stays.
 
 ### A stop is only "stop for now"
 

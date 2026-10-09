@@ -8,7 +8,7 @@ async function columnsAcross(page: Page): Promise<boolean> {
   });
 }
 
-test('webkit: the wide board and the narrow tickets tab are five columns across', async ({ baseURL }) => {
+test('webkit: the pane switches between the trace, the board and the spec, each filling it at both widths', async ({ baseURL }) => {
   const browser = await webkit.launch();
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
@@ -16,29 +16,53 @@ test('webkit: the wide board and the narrow tickets tab are five columns across'
     page.on('pageerror', (error) => errors.push(error.message));
     await page.goto(`${baseURL}index.html?story=ticket-board`);
     await expect(page.locator('.trace-stage')).toBeVisible({ timeout: 5000 });
+    // One switch, at the title's end on a wide pane: the trace, the board, the spec.
+    await expect(page.getByRole('tab')).toHaveText([/流程/, /看板\s*15/, /要点/]);
+    const pane = await page.locator('.trace-pane').boundingBox();
+    // Moved by hand first, so coming back can show the camera was kept, not reopened.
+    const opened = await cameraOf(page);
+    await panTrace(page, { x: 160, y: 90 });
+    await expect.poll(() => cameraOf(page)).not.toBe(opened);
+    const moved = await cameraOf(page);
 
-    await page.getByRole('button', { name: '看板' }).click();
+    await page.getByRole('tab', { name: /看板/ }).click();
     await expect(page.locator('.trace-stage')).toBeHidden();
     expect(await columnsAcross(page)).toBe(true);
+    const board = await page.locator('.trace-board-view').boundingBox();
+    expect(board!.width).toBeGreaterThan(pane!.width - 2);
     const scrolls = await page.evaluate(() => {
       const column = document.querySelector<HTMLElement>('[data-board-status="todo"]');
       return !!column && getComputedStyle(column).overflowY === 'auto' && column.scrollHeight > column.clientHeight;
     });
     expect(scrolls).toBe(true);
 
-    // Pulled under 720px, the wide board gives way to the tabs and the trace comes back.
-    await page.setViewportSize({ width: 700, height: 800 });
-    await expect(page.locator('.trace-stage')).toBeVisible();
+    // The spec as a page: the goal over the contract in a main column, the overview beside it.
+    await page.getByRole('tab', { name: /要点/ }).click();
+    await expect(page.locator('.trace-spec-view')).toBeVisible();
+    const wide = await specColumns(page);
+    expect(wide.side.x).toBeGreaterThan(wide.main.x + wide.main.width);
+    expect(wide.overview.y).toBeLessThan(wide.goal.y + wide.goal.height);
 
+    // Back on the trace, the camera is where it was: it was hidden, not resized.
+    await page.getByRole('tab', { name: /流程/ }).click();
+    await expect(page.locator('.trace-stage')).toBeVisible();
+    expect(await cameraOf(page)).toBe(moved);
+
+    // A narrow pane: the switch takes a row of its own; the board is the same five columns, sideways.
     await page.setViewportSize({ width: 390, height: 800 });
-    await page.getByRole('tab', { name: /任务/ }).click();
-    await expect(page.locator('.trace-stage')).toBeHidden();
+    const switcher = await page.locator('.trace-views').boundingBox();
+    const title = await page.locator('.trace-titles').boundingBox();
+    expect(switcher!.y).toBeGreaterThan(title!.y + title!.height - 1);
+    await page.getByRole('tab', { name: /看板/ }).click();
     expect(await columnsAcross(page)).toBe(true);
-    const scrollsAcross = await page.evaluate(() => {
-      const board = document.querySelector<HTMLElement>('.ticket-board');
-      return !!board && board.scrollWidth > board.clientWidth;
-    });
-    expect(scrollsAcross).toBe(true);
+    expect(await page.locator('.ticket-board').evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+    // And the spec is one column: the goal, the overview, then the contract.
+    await page.getByRole('tab', { name: /要点/ }).click();
+    const narrow = await specColumns(page);
+    expect(narrow.overview.y).toBeGreaterThan(narrow.goal.y + narrow.goal.height - 1);
+    expect(narrow.main.y).toBeGreaterThan(narrow.overview.y + narrow.overview.height - 1);
+    expect(narrow.overview.x).toBeLessThan(narrow.goal.x + 2);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
 
     expect(errors).toEqual([]);
     await page.close();
@@ -46,6 +70,32 @@ test('webkit: the wide board and the narrow tickets tab are five columns across'
     await browser.close();
   }
 });
+
+/** The trace's camera: the board's transform under the fixed viewport. */
+async function cameraOf(page: Page): Promise<string> {
+  return page.evaluate(() => document.querySelector<HTMLElement>('.trace-flow')?.style.transform ?? '');
+}
+
+/** Drag the trace by `by`, as a person pans it. */
+async function panTrace(page: Page, by: { x: number; y: number }): Promise<void> {
+  const box = (await page.locator('.trace-viewport').boundingBox())!;
+  const from = { x: box.x + box.width / 2 + 200, y: box.y + box.height / 2 + 150 };
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x + by.x, from.y + by.y, { steps: 8 });
+  await page.mouse.up();
+}
+
+/** Where the spec page's parts sit: its goal, its overview, its contract and its side. */
+async function specColumns(page: Page) {
+  const box = async (selector: string) => (await page.locator(selector).first().boundingBox())!;
+  return {
+    goal: await box('.plan-spec-goal'),
+    overview: await box('.plan-overview'),
+    main: await box('.plan-spec-main'),
+    side: await box('.plan-spec-about'),
+  };
+}
 
 const centre = (box: { x: number; y: number; width: number; height: number }) => ({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
 
@@ -75,7 +125,7 @@ test('webkit: a card dragged by its title changes status; a short move is a clic
   const browser = await webkit.launch();
   try {
     const page = await browser.newPage({ viewport: { width: 1100, height: 700 } });
-    await page.goto(`${baseURL}index.html?story=ticket26a-columns`);
+    await page.goto(`${baseURL}index.html?story=ticket26a-tall`);
     await expect(page.locator('[data-board-status]')).toHaveCount(5, { timeout: 3000 });
     const patches = () => page.evaluate(() => JSON.parse(document.body.dataset.ticketPatches ?? '[]'));
     const selected = () => page.evaluate(() => document.querySelector('.ticket-row.is-selected')?.getAttribute('data-ticket-id') ?? null);
@@ -126,7 +176,7 @@ test('webkit: on a board wider than the pane, a card held at the edge scrolls it
     const page = await browser.newPage({ viewport: { width: 1000, height: 800 } });
     await page.goto(`${baseURL}index.html?story=ticket-board`);
     await expect(page.locator('.trace-stage')).toBeVisible({ timeout: 5000 });
-    await page.getByRole('button', { name: '看板' }).click();
+    await page.getByRole('tab', { name: /看板/ }).click();
     const board = page.locator('.ticket-board');
     const parkedInView = () => page.evaluate(() => document.querySelector('[data-board-status="parked"]')!.getBoundingClientRect().right <= window.innerWidth);
     expect(await board.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
@@ -147,19 +197,33 @@ test('webkit: on a board wider than the pane, a card held at the edge scrolls it
   }
 });
 
-test('webkit: a narrow pane shows the spec tab even when the wide board was left on over the spec', async ({ baseURL }) => {
+test('webkit: a card picked on the board shows its rounds on the trace, and the spec shows a ticket on the board', async ({ baseURL }) => {
   const browser = await webkit.launch();
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     await page.goto(`${baseURL}index.html?story=ticket-board`);
     await expect(page.locator('.trace-stage')).toBeVisible({ timeout: 5000 });
-    await page.locator('.trace-side-toggle').first().click();
-    await page.getByRole('button', { name: '看板' }).click();
-    await expect(page.locator('.trace-stage')).toBeHidden();
-    await page.setViewportSize({ width: 390, height: 800 });
+    // The trace panned off its cards, so bringing a ticket's round back has somewhere to go.
+    await panTrace(page, { x: -400, y: -250 });
+    const away = await cameraOf(page);
+    // The spec's ticket states bring the board up on that column.
     await page.getByRole('tab', { name: /要点/ }).click();
-    await expect(page.locator('.trace-side-panel:not(.is-tickets)')).toBeVisible();
-    await expect(page.locator('.trace-side-panel.is-tickets')).toBeHidden();
+    await page.locator('.plan-overview button.plan-spec-ticket-state.is-doing').click();
+    await expect(page.locator('.trace-board-view')).toBeVisible();
+    await expect(page.locator('[data-board-status="doing"]')).toHaveClass(/is-focused/);
+    // A picked card goes back to the trace, its round lit there.
+    await page.locator('[data-ticket-id="tk-2"] .ticket-main').click();
+    await page.locator('[data-ticket-id="tk-2"] .ticket-show-trace').click();
+    await expect(page.locator('.trace-stage')).toBeVisible();
+    expect(await page.getByRole('tab', { name: /流程/ }).getAttribute('aria-selected')).toBe('true');
+    await expect(page.locator('.trace-card.is-lit')).toHaveCount(1);
+    // And the camera slides to that card: it ends up in the middle of the view.
+    await expect.poll(() => cameraOf(page)).not.toBe(away);
+    const view = (await page.locator('.trace-viewport').boundingBox())!;
+    await expect.poll(async () => {
+      const card = (await page.locator('.trace-card.is-lit').boundingBox())!;
+      return Math.abs(card.x + card.width / 2 - (view.x + view.width / 2)) < 40 && Math.abs(card.y + card.height / 2 - (view.y + view.height / 2)) < 40;
+    }, { timeout: 3000 }).toBe(true);
     await page.close();
   } finally {
     await browser.close();

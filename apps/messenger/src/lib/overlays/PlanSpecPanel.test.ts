@@ -252,14 +252,22 @@ test("renders the goal and every spec list, in order", () => {
   view.close();
 });
 
-test("the panel reads whole: no fold of its own — the side panel or the tab is the fold — with its kind and version in the head", () => {
+test("the spec reads as a page: the goal over the contract, and where it stands, its kind and its version beside it", () => {
   const view = open();
   expect(view.host.querySelector(".plan-spec-toggle")).toBeNull();
-  expect(view.host.querySelector(".plan-spec-body")).not.toBeNull();
-  const head = view.host.querySelector(".plan-spec-head")!;
-  expect(head.querySelector(".plan-spec-title")?.textContent).toBe(t.plan.spec.title);
-  expect(head.querySelector(".plan-spec-kind-badge")?.textContent).toBe("调研");
-  expect(head.querySelector(".plan-spec-rev-badge")?.textContent).toBe(t.plan.revision(3));
+  // The view's own switch names it; the page carries no title row of its own.
+  expect(view.host.querySelector(".plan-spec-head")).toBeNull();
+  const main = view.host.querySelector(".plan-spec-col.is-main")!;
+  expect(main.querySelector(".plan-spec-goal")).not.toBeNull();
+  expect(main.querySelector(".plan-spec-body .plan-spec-section.is-guidelines")).not.toBeNull();
+  const side = view.host.querySelector(".plan-spec-col.is-side")!;
+  expect(side.querySelector(".plan-overview")).not.toBeNull();
+  expect(side.querySelector(".plan-spec-section.is-progress")).not.toBeNull();
+  const about = side.querySelector(".plan-spec-about")!;
+  expect(about.querySelector(".plan-spec-about-title")?.textContent).toBe(t.trace.title);
+  expect(about.querySelector(".plan-spec-kind-badge")?.textContent).toBe("调研");
+  expect(about.querySelector(".plan-spec-rev-badge")?.textContent).toBe(t.plan.revision(3));
+  expect(about.querySelector(".plan-spec-history-toggle")).not.toBeNull();
   view.close();
 });
 
@@ -698,8 +706,8 @@ test("a picked ticket heads the spec it meets; a check filed under another ticke
   expect(strip.querySelector(".plan-spec-ticket-ref")?.textContent).toBe("01");
   expect(strip.querySelector(".plan-spec-focus-title")?.textContent).toBe("收集资料");
   expect(strip.querySelector(".plan-spec-focus-hint")?.textContent).toBe(t.plan.links.focusHint);
-  // It sits above the goal: the spec is read against it.
-  expect(view.host.querySelector(".plan-spec-body")?.firstElementChild?.classList.contains("plan-spec-focus")).toBe(true);
+  // It heads the page, above the goal: the spec is read against it.
+  expect(view.host.querySelector(".plan-spec")?.firstElementChild?.classList.contains("plan-spec-focus")).toBe(true);
   const checks = [...view.host.querySelectorAll<HTMLElement>(".plan-spec-check")];
   expect(checks.map((check) => check.querySelector(".plan-spec-ticket-ref")?.textContent ?? null)).toEqual(["02", null]);
   expect(checks[0]?.classList.contains("is-ticket-other")).toBe(true);
@@ -707,10 +715,10 @@ test("a picked ticket heads the spec it meets; a check filed under another ticke
   click(checks[0]?.querySelector("button.plan-spec-ticket-ref"));
   click(strip.querySelector(".plan-spec-focus-ticket"));
   expect(shownTickets).toEqual(["tk-2", "tk-1"]);
-  // Above the written progress, where the tickets themselves stand.
-  const states = [...view.host.querySelectorAll<HTMLButtonElement>(".plan-spec-ticket-state")];
+  // In the overview, above the written progress, where the tickets themselves stand.
+  const states = [...view.host.querySelectorAll<HTMLButtonElement>(".plan-overview .plan-spec-ticket-state")];
   expect(states.map((state) => state.textContent?.replace(/\s+/g, ""))).toEqual(["待做1", "进行中1"]);
-  expect(view.host.querySelector(".plan-spec-ticket-states + .plan-spec-section.is-progress")).not.toBeNull();
+  expect(view.host.querySelector(".plan-spec-overview-slot + .plan-spec-section.is-progress")).not.toBeNull();
   click(states[0]);
   expect(statuses).toEqual(["todo"]);
   // The strip puts the ticket down; nothing steps back any more.

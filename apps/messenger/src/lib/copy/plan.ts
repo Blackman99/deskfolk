@@ -66,7 +66,10 @@ export const zh = {
     progress: "进展",
     done: "已完成",
     open: "待做",
-    blocked: "卡住"
+    blocked: "卡住",
+    /** The spec view's summary at the top, and the label its versions go under. */
+    overview: "概况",
+    version: "版本"
   },
   checks: {
     title: "检查",
@@ -176,16 +179,11 @@ export const zh = {
   artifacts: (n: number) => `${n} 个产物`,
   jumpToTurn: "跳到这一轮",
   changeStatus: "改状态",
-  segmentSpec: "要点",
-  segmentTickets: "任务",
+  /** The three views of a job's pane, in the order the switch shows them. */
+  views: "视图",
+  segmentTrace: "流程",
   segmentBoard: "看板",
-  segmentTrace: "经过",
-  showSpec: "在旁边看要点",
-  hideSpec: "收起要点",
-  showTickets: "在旁边看任务",
-  hideTickets: "收起任务",
-  showBoard: "看板上的五列占满这块区域",
-  hideBoard: "收回看板，看流程图",
+  segmentSpec: "要点",
   /** The five columns, and a move that waits because a hand-over is still open. */
   board: {
     emptyColumn: "没有任务",
@@ -208,6 +206,7 @@ export const zh = {
     planWideNone: "要点里还没有验收和规则，也还没记下你的要求。",
     onlyThis: "只管这个任务的",
     showSpec: "在要点里看",
+    showInTrace: "在流程里看",
     focus: "正在看任务",
     focusHint: "它要满足下面的验收、规则和你的要求；只管别的任务的已变暗。",
     showTicket: (label: string) => `看任务 ${label}`,
@@ -377,7 +376,10 @@ export const en: CopyShape<typeof zh> = {
     progress: "Progress",
     done: "Done",
     open: "Open",
-    blocked: "Blocked"
+    blocked: "Blocked",
+    /** The spec view's summary at the top, and the label its versions go under. */
+    overview: "At a glance",
+    version: "Version"
   },
   checks: {
     title: "Checks",
@@ -486,16 +488,11 @@ export const en: CopyShape<typeof zh> = {
   artifacts: (n: number) => `${n} file${n === 1 ? "" : "s"}`,
   jumpToTurn: "Jump to this turn",
   changeStatus: "Change status",
-  segmentSpec: "Plan",
-  segmentTickets: "Tickets",
-  segmentBoard: "Board",
+  /** The three views of a job's pane, in the order the switch shows them. */
+  views: "Views",
   segmentTrace: "Trace",
-  showSpec: "Show the plan alongside",
-  hideSpec: "Hide the plan",
-  showTickets: "Show tickets alongside",
-  hideTickets: "Hide tickets",
-  showBoard: "The five columns take the whole area",
-  hideBoard: "Put the board away and see the trace",
+  segmentBoard: "Board",
+  segmentSpec: "Plan",
   /** The five columns, and a move that waits because a hand-over is still open. */
   board: {
     emptyColumn: "No tickets",
@@ -517,6 +514,7 @@ export const en: CopyShape<typeof zh> = {
     planWideNone: "The plan has no done-when lines or rules yet, and nothing you asked for is written down.",
     onlyThis: "For this ticket alone",
     showSpec: "See in the plan",
+    showInTrace: "See it on the trace",
     focus: "Looking at ticket",
     focusHint: "It has to meet the lines below; those held to another ticket alone are dimmed.",
     showTicket: (label: string) => `Show ticket ${label}`,

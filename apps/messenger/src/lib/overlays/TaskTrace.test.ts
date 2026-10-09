@@ -9,7 +9,7 @@ const { default: TaskTraceView } = await import("./TaskTrace.svelte");
 const { default: TraceView } = await import("./TraceView.svelte");
 import { copyFor } from "../copy.ts";
 import { forgetTraceMinimap, loadTraceMinimap } from "./trace-minimap.ts";
-import { forgetTraceSide, loadTraceSide } from "./trace-side.ts";
+import { forgetTraceView, loadTraceView, saveTraceView } from "./trace-view.ts";
 import { forgetKeptBoards } from "./task-trace.ts";
 import { aBot, aDirect, aGroup, aHold } from "../test-fixtures.ts";
 import { buttonByText, click, render } from "../test-render.ts";
@@ -886,8 +886,24 @@ test("a node with a single attachment renders 1 file button and opens through pr
   view.close();
 });
 
-test("the header reads the plan — its name, status, kind, ticket counts — and the tickets open beside the board, the spec a press away", async () => {
-  forgetTraceSide();
+/** The view switch's tabs, as they read: 流程, 看板 with its count, 要点. */
+function viewTabs(host: HTMLElement): HTMLButtonElement[] {
+  return [...host.querySelectorAll<HTMLButtonElement>(".trace-views [role='tab']")];
+}
+
+function viewTab(host: HTMLElement, label: string): HTMLButtonElement {
+  const found = viewTabs(host).find((tab) => tab.textContent?.replace(/\s+/g, "").startsWith(label));
+  if (!found) throw new Error(`no view tab ${label}`);
+  return found;
+}
+
+/** Which view fills the pane: trace, board or spec. */
+function viewOn(host: HTMLElement): string | null {
+  return host.querySelector(".trace-pane")?.getAttribute("data-view") ?? null;
+}
+
+test("the header reads the plan — its name, status, kind, ticket counts — and the switch offers the trace, the board and the spec, opening on the trace", async () => {
+  forgetTraceView();
   const view = open({ pane: true });
   await until(view.host, ".ticket-row");
   // Its name, as its tags and the Bots call it; the goal is in the spec.
@@ -896,19 +912,18 @@ test("the header reads the plan — its name, status, kind, ticket counts — an
   expect(meta.querySelector(".plan-status.is-active")?.textContent).toBe(t.plan.status.active);
   expect(meta.textContent).toContain("分镜");
   expect(meta.textContent).toContain(t.plan.ticketCounts(2, 2));
-  // Nothing sits above the board any more: the spec and the tickets share the panel beside it.
+  // Nothing sits above the trace: the spec and the board are views of their own.
   expect(view.host.querySelector(".trace-top .plan-spec")).toBeNull();
-  const toggles = [...view.host.querySelectorAll(".trace-side-toggle")];
-  expect(toggles.map((toggle) => toggle.textContent?.replace(/\s+/g, ""))).toEqual([t.plan.segmentSpec, `${t.plan.segmentTickets}2`, t.plan.segmentBoard]);
-  expect(toggles.map((toggle) => toggle.getAttribute("aria-pressed"))).toEqual(["false", "true", "false"]);
-  expect(view.host.querySelector(".trace-pane")?.classList.contains("has-side")).toBe(true);
-  const [specPanel, ticketsPanel] = [...view.host.querySelectorAll(".trace-side .trace-side-panel")];
-  expect(ticketsPanel?.classList.contains("is-side-on")).toBe(true);
-  expect(specPanel?.classList.contains("is-side-on")).toBe(false);
-  // The spec is mounted with it, read in full once it is opened.
-  expect(specPanel?.textContent).toContain("12 格草图交到 board.pdf");
-  expect(specPanel?.textContent).toContain("不要真人");
-  // The rail, in order, with who is on what.
+  expect(viewTabs(view.host).map((tab) => tab.textContent?.replace(/\s+/g, ""))).toEqual([t.plan.segmentTrace, `${t.plan.segmentBoard}2`, t.plan.segmentSpec]);
+  expect(viewTabs(view.host).map((tab) => tab.getAttribute("aria-selected"))).toEqual(["true", "false", "false"]);
+  expect(viewOn(view.host)).toBe("trace");
+  expect(view.host.querySelector(".trace-stage")?.classList.contains("is-on")).toBe(true);
+  const specView = view.host.querySelector(".trace-spec-view");
+  expect(specView?.classList.contains("is-on")).toBe(false);
+  // The spec is mounted with it, read in full once it is shown.
+  expect(specView?.textContent).toContain("12 格草图交到 board.pdf");
+  expect(specView?.textContent).toContain("不要真人");
+  // The board, in order, with who is on what.
   const rowOf = (title: string) => [...view.host.querySelectorAll(".ticket-row")].find((row) => row.textContent?.includes(title));
   expect(["分镜草图", "配乐"].map((title) => rowOf(title)?.querySelector(".ticket-tag")?.textContent)).toEqual(["01", "02"]);
   expect(rowOf("分镜草图")?.textContent).toContain(t.plan.worker("分镜师"));
@@ -924,9 +939,12 @@ test("the header reads the plan — its name, status, kind, ticket counts — an
   view.close();
 });
 
-test("a ticket picked in the rail lights its cards and dims the rest; Escape lets go of it", async () => {
+test("a ticket picked on the board lights its cards on the trace and dims the rest; Escape lets go of it", async () => {
+  forgetTraceView();
   const view = open({ pane: true });
   await until(view.host, ".ticket-row");
+  click(viewTab(view.host, t.plan.segmentBoard));
+  expect(viewOn(view.host)).toBe("board");
   const sketch = [...view.host.querySelectorAll(".ticket-row")].find((row) => row.textContent?.includes("分镜草图"))!;
   click(sketch.querySelector(".ticket-main"));
   expect(view.host.querySelector(".ticket-row.is-selected .ticket-tag")?.textContent).toBe("01");
@@ -942,7 +960,16 @@ test("a ticket picked in the rail lights its cards and dims the rest; Escape let
   // And its latest turn is one click away.
   click(sketch.querySelector(".ticket-jump"));
   expect(view.jumps).toEqual([["direct-1", "m3"]]);
+  // Picked again, it offers its rounds on the trace: the trace comes up with them lit.
+  click(sketch.querySelector(".ticket-main"));
+  expect(sketch.querySelector(".ticket-show-trace")?.textContent?.trim()).toBe(t.plan.links.showInTrace);
+  click(sketch.querySelector(".ticket-show-trace"));
+  await settle();
+  expect(viewOn(view.host)).toBe("trace");
+  expect(loadTraceView()).toBe("trace");
+  expect(view.host.querySelector(".trace-card.is-running")?.classList.contains("is-lit")).toBe(true);
   view.close();
+  forgetTraceView();
 });
 
 function aRequirement(over: Partial<PlanRequirement> = {}): PlanRequirement {
@@ -1007,10 +1034,10 @@ function linkedDetail(): TaskDetail {
 }
 
 test("the picked ticket lists what it meets — the spec, as every ticket does, and what is its alone — and opens the spec on it", async () => {
-  forgetTraceSide();
+  forgetTraceView();
   const view = open({ pane: true, detail: linkedDetail() });
   await until(view.host, ".ticket-row");
-  const shown = () => [...view.host.querySelectorAll(".trace-side .trace-side-panel")].map((panel) => panel.classList.contains("is-side-on"));
+  click(viewTab(view.host, t.plan.segmentBoard));
   // The list says how its tickets stand to the spec before anything is picked.
   expect(view.host.querySelector(".ticket-list-hint")?.textContent).toBe(t.plan.links.ticketsHint);
   expect(view.host.querySelector(".ticket-owes")).toBeNull();
@@ -1025,10 +1052,10 @@ test("the picked ticket lists what it meets — the spec, as every ticket does, 
   expect([...owes.querySelectorAll(".ticket-owes-list li")].map((row) => row.textContent)).toEqual([
     `${t.plan.checks.status.none}work/先出分镜-7f3k/01-分镜草图/board.pdf 存在且不为空`,
   ]);
-  // The spec opens in the tickets' place, still on 01: its check stands out, 02's requirement steps back.
+  // The spec comes up in the board's place, still on 01: its check stands out, 02's requirement steps back.
   click(owes.querySelector(".ticket-owes-spec"));
   await settle();
-  expect(shown()).toEqual([true, false]);
+  expect(viewOn(view.host)).toBe("spec");
   expect(view.host.querySelector(".ticket-row.is-selected .ticket-tag")?.textContent).toBe("01");
   const focusStrip = view.host.querySelector(".plan-spec-focus")!;
   expect(focusStrip.querySelector(".plan-spec-ticket-ref")?.textContent).toBe("01");
@@ -1037,37 +1064,36 @@ test("the picked ticket lists what it meets — the spec, as every ticket does, 
   const reqClass = (id: string) => view.host.querySelector(`.plan-req[data-requirement="${id}"]`)?.className ?? "";
   expect(reqClass("req-plan")).not.toContain("is-ticket");
   expect(reqClass("req-02")).toContain("is-ticket-other");
-  // The board still lights 01's cards.
+  // The trace still lights 01's cards.
   expect(view.host.querySelector(".trace-card.is-running")?.classList.contains("is-lit")).toBe(true);
   view.close();
-  forgetTraceSide();
+  forgetTraceView();
 });
 
-test("a line of the spec held to one ticket shows that ticket, picked, in the list; the strip lets go of it", async () => {
-  forgetTraceSide();
+test("a line of the spec held to one ticket shows that ticket, picked, on the board; the strip lets go of it", async () => {
+  forgetTraceView();
   const view = open({ pane: true, detail: linkedDetail() });
   await until(view.host, ".ticket-row");
-  const shown = () => [...view.host.querySelectorAll(".trace-side .trace-side-panel")].map((panel) => panel.classList.contains("is-side-on"));
-  click(view.host.querySelectorAll<HTMLButtonElement>(".trace-side-toggle")[0]);
+  click(viewTab(view.host, t.plan.segmentSpec));
   await settle();
-  expect(shown()).toEqual([true, false]);
+  expect(viewOn(view.host)).toBe("spec");
   // The requirement held to 02 names it; pressing the name shows 02.
   const scope = view.host.querySelector<HTMLButtonElement>('.plan-req[data-requirement="req-02"] .plan-req-ticket')!;
   expect(scope.textContent).toBe(t.plan.requirements.scope.ticket("02 配乐"));
   click(scope);
   await settle();
-  expect(shown()).toEqual([false, true]);
+  expect(viewOn(view.host)).toBe("board");
   expect(view.host.querySelector(".ticket-row.is-selected .ticket-tag")?.textContent).toBe("02");
   // The check filed under 01 wears its number, and that shows 01.
-  click(view.host.querySelectorAll<HTMLButtonElement>(".trace-side-toggle")[0]);
+  click(viewTab(view.host, t.plan.segmentSpec));
   await settle();
   expect(view.host.querySelector(".plan-spec-check.is-ticket-other")).not.toBeNull();
   click(view.host.querySelector(".plan-spec-check button.plan-spec-ticket-ref"));
   await settle();
-  expect(shown()).toEqual([false, true]);
+  expect(viewOn(view.host)).toBe("board");
   expect(view.host.querySelector(".ticket-row.is-selected .ticket-tag")?.textContent).toBe("01");
-  // Back on the spec, the strip puts the ticket down: nothing dims there or on the board.
-  click(view.host.querySelectorAll<HTMLButtonElement>(".trace-side-toggle")[0]);
+  // Back on the spec, the strip puts the ticket down: nothing dims there or on the trace.
+  click(viewTab(view.host, t.plan.segmentSpec));
   await settle();
   click(view.host.querySelector(".plan-spec-focus-clear"));
   await settle();
@@ -1076,27 +1102,27 @@ test("a line of the spec held to one ticket shows that ticket, picked, in the li
   expect(view.host.querySelector(".plan-spec-check.is-ticket-other, .plan-req.is-ticket-other")).toBeNull();
   expect(view.host.querySelector(".trace-card.is-dim")).toBeNull();
   view.close();
-  forgetTraceSide();
+  forgetTraceView();
 });
 
-test("the spec's ticket states sit above the written progress and open the list on that status", async () => {
-  forgetTraceSide();
+test("the spec's ticket states sit above the written progress and bring up the board on that column", async () => {
+  forgetTraceView();
   const view = open({ pane: true, detail: linkedDetail() });
   await until(view.host, ".ticket-row");
-  click(view.host.querySelectorAll<HTMLButtonElement>(".trace-side-toggle")[0]);
+  click(viewTab(view.host, t.plan.segmentSpec));
   await settle();
   const states = [...view.host.querySelectorAll<HTMLButtonElement>(".plan-spec-ticket-state")];
   expect(states.map((state) => state.textContent?.replace(/\s+/g, ""))).toEqual([`${t.plan.ticketStatus.todo}1`, `${t.plan.ticketStatus.doing}1`]);
   expect(view.host.querySelector(".plan-spec-ticket-states-hint")?.textContent).toBe(t.plan.links.progressHint);
   click(states[1]);
   await settle();
-  expect([...view.host.querySelectorAll(".trace-side .trace-side-panel")].map((panel) => panel.classList.contains("is-side-on"))).toEqual([false, true]);
+  expect(viewOn(view.host)).toBe("board");
   // Naming a status lights that column and hides nothing: both cards stay.
   expect([...view.host.querySelectorAll(".ticket-row .ticket-tag")].map((tag) => tag.textContent).sort()).toEqual(["01", "02"]);
   expect(view.host.querySelector("[data-board-status='doing']")?.classList.contains("is-focused")).toBe(true);
   expect(view.host.querySelector(".ticket-filter-btn")).toBeNull();
   // A ticket of another status, shown from the spec, lets the column go.
-  click(view.host.querySelectorAll<HTMLButtonElement>(".trace-side-toggle")[0]);
+  click(viewTab(view.host, t.plan.segmentSpec));
   await settle();
   click(view.host.querySelector('.plan-req[data-requirement="req-02"] .plan-req-ticket'));
   await settle();
@@ -1104,119 +1130,86 @@ test("the spec's ticket states sit above the written progress and open the list 
   expect(view.host.querySelector(".ticket-row.is-selected .ticket-tag")?.textContent).toBe("02");
   expect(view.host.querySelector("[data-board-status='doing']")?.classList.contains("is-focused")).toBe(false);
   view.close();
-  forgetTraceSide();
+  forgetTraceView();
 });
 
-test("on a phone, the spec's links move between its tabs", async () => {
+test("a phone has the same three views in the same switch, and the spec's links move between them", async () => {
+  forgetTraceView();
   const view = open({ detail: linkedDetail() });
   await until(view.host, ".ticket-row");
-  const tabs = () => [...view.host.querySelectorAll<HTMLButtonElement>(".trace-segments [role='tab']")];
-  click(tabs()[0]);
+  const selected = () => viewTabs(view.host).map((tab) => tab.getAttribute("aria-selected"));
+  expect(viewTabs(view.host).map((tab) => tab.textContent?.replace(/\s+/g, ""))).toEqual([t.plan.segmentTrace, `${t.plan.segmentBoard}2`, t.plan.segmentSpec]);
+  expect(selected()).toEqual(["true", "false", "false"]);
+  click(viewTab(view.host, t.plan.segmentSpec));
   click(view.host.querySelector('.plan-req[data-requirement="req-02"] .plan-req-ticket'));
   await settle();
-  expect(tabs().map((tab) => tab.getAttribute("aria-selected"))).toEqual(["false", "false", "true"]);
+  expect(selected()).toEqual(["false", "true", "false"]);
   expect(view.host.querySelector(".ticket-row.is-selected .ticket-tag")?.textContent).toBe("02");
   click(view.host.querySelector(".ticket-row.is-selected .ticket-owes-spec"));
   await settle();
-  expect(tabs().map((tab) => tab.getAttribute("aria-selected"))).toEqual(["true", "false", "false"]);
+  expect(selected()).toEqual(["false", "false", "true"]);
   expect(view.host.querySelector(".plan-spec-focus .plan-spec-ticket-ref")?.textContent).toBe("02");
   view.close();
-  forgetTraceSide();
+  forgetTraceView();
 });
 
-test("the spec and the tickets open beside the board one at a time, and a panel put away stays away", async () => {
-  forgetTraceSide();
+test("one view at a time has the pane; the others are hidden in place, and the one picked is the next plan's too", async () => {
+  forgetTraceView();
   const view = open({ pane: true });
   await until(view.host, ".ticket-row");
-  const pane = () => view.host.querySelector(".trace-pane")!;
-  const toggles = () => [...view.host.querySelectorAll<HTMLButtonElement>(".trace-side-toggle")];
-  const shown = () => [...view.host.querySelectorAll(".trace-side .trace-side-panel")].map((panel) => panel.classList.contains("is-side-on"));
-  // The spec takes the tickets' place rather than stacking on them.
-  click(toggles()[0]);
-  await Promise.resolve();
-  expect(toggles().map((toggle) => toggle.getAttribute("aria-pressed"))).toEqual(["true", "false", "false"]);
-  expect(shown()).toEqual([true, false]);
-  expect(toggles()[0]?.title).toBe(t.plan.hideSpec);
-  // Pressed again, it goes: the board has the body to itself.
-  click(toggles()[0]);
-  await Promise.resolve();
-  expect(pane().classList.contains("has-side")).toBe(false);
-  expect(shown()).toEqual([false, false]);
-  expect(toggles()[1]?.title).toBe(t.plan.showTickets);
-  expect(loadTraceSide()).toBeNull();
+  const on = () => [".trace-stage", ".trace-board-view", ".trace-spec-view"].map((selector) => view.host.querySelector(selector)?.classList.contains("is-on"));
+  expect(on()).toEqual([true, false, false]);
+  click(viewTab(view.host, t.plan.segmentBoard));
+  expect(on()).toEqual([false, true, false]);
+  expect(view.host.querySelector(".trace-stage")?.hasAttribute("inert")).toBe(true);
+  click(viewTab(view.host, t.plan.segmentSpec));
+  expect(on()).toEqual([false, false, true]);
+  expect(loadTraceView()).toBe("spec");
   view.close();
   // The next board opens the way this one was left.
   const again = open({ pane: true });
   await until(again.host, ".ticket-row");
-  expect(again.host.querySelector(".trace-pane")?.classList.contains("has-side")).toBe(false);
+  expect(viewOn(again.host)).toBe("spec");
   again.close();
-  forgetTraceSide();
+  forgetTraceView();
 });
 
-test("the board button hides the trace behind the five columns, and a plan with no tickets puts it away", async () => {
-  forgetTraceSide();
-  const view = open({ pane: true });
+test("a message asking for its card opens the trace, whatever view was left, without changing the one remembered", async () => {
+  saveTraceView("board");
+  const view = open({ pane: true, focus: { messageId: "m3", turnId: "t-artist" }, focusToken: 1 });
   await until(view.host, ".ticket-row");
-  const pane = () => view.host.querySelector(".trace-pane")!;
-  const board = [...view.host.querySelectorAll<HTMLButtonElement>(".trace-side-toggle")].find((button) => button.textContent?.trim() === t.plan.segmentBoard)!;
-  expect(board.getAttribute("aria-pressed")).toBe("false");
-  expect(pane().classList.contains("has-board")).toBe(false);
-  click(board);
-  expect(board.getAttribute("aria-pressed")).toBe("true");
-  expect(pane().classList.contains("has-board")).toBe(true);
-  // Opening the board does not change which side panel is remembered.
-  expect(loadTraceSide()).toBe("tickets");
+  expect(viewOn(view.host)).toBe("trace");
+  // Moved on to the board, a later request brings the trace back again.
+  click(viewTab(view.host, t.plan.segmentBoard));
+  expect(viewOn(view.host)).toBe("board");
+  view.props.focus = { messageId: "m3", turnId: "t-artist" };
+  view.props.focusToken = 2;
+  await settle();
+  expect(viewOn(view.host)).toBe("trace");
+  expect(loadTraceView()).toBe("board");
   view.close();
-
-  const empty = open({ pane: true, detail: { ...detail(), tickets: [] } });
-  await until(empty.host, ".trace-side-toggle");
-  expect(empty.host.querySelector(".trace-pane")?.classList.contains("has-board")).toBe(false);
-  empty.close();
-  forgetTraceSide();
+  forgetTraceView();
 });
 
-test("a plan with no tickets yet has no tickets to open beside the board, and leaves it alone", async () => {
-  forgetTraceSide();
+test("a plan with no tickets yet has no board to switch to, and a board left on falls back to the trace", async () => {
+  saveTraceView("board");
   const view = open({ pane: true, detail: { ...detail(), tickets: [] } });
-  await until(view.host, ".trace-side-toggle");
-  expect([...view.host.querySelectorAll(".trace-side-toggle")].map((toggle) => toggle.textContent?.trim())).toEqual([t.plan.segmentSpec]);
-  expect(view.host.querySelector(".trace-pane")?.classList.contains("has-side")).toBe(false);
-  expect([...view.host.querySelectorAll(".trace-segments [role='tab']")].map((tab) => tab.textContent?.trim())).toEqual([
-    t.plan.segmentSpec,
-    t.plan.segmentTrace,
-  ]);
+  await until(view.host, ".trace-views");
+  expect(viewTabs(view.host).map((tab) => tab.textContent?.trim())).toEqual([t.plan.segmentTrace, t.plan.segmentSpec]);
+  expect(viewOn(view.host)).toBe("trace");
+  expect(view.host.querySelector(".trace-board-view")).toBeNull();
   view.close();
+  forgetTraceView();
 });
 
-test("a phone shows the spec, the tree and the tickets as tabs, starting on the tree", async () => {
-  const view = open();
-  await until(view.host, ".ticket-row");
-  const pane = () => view.host.querySelector(".trace-pane")!;
-  const tabs = () => [...view.host.querySelectorAll<HTMLButtonElement>(".trace-segments [role='tab']")];
-  const shown = () => [...view.host.querySelectorAll(".trace-side .trace-side-panel")].map((panel) => panel.classList.contains("is-segment-on"));
-  expect(tabs().map((tab) => tab.textContent?.replace(/\s+/g, ""))).toEqual([t.plan.segmentSpec, t.plan.segmentTrace, `${t.plan.segmentTickets}2`]);
-  expect(tabs().map((tab) => tab.getAttribute("aria-selected"))).toEqual(["false", "true", "false"]);
-  expect(pane().classList.contains("has-segment")).toBe(false);
-  click(tabs()[0]);
-  expect(pane().classList.contains("has-segment")).toBe(true);
-  expect(shown()).toEqual([true, false]);
-  click(tabs()[2]);
-  expect(shown()).toEqual([false, true]);
-  expect(tabs()[2]?.getAttribute("aria-selected")).toBe("true");
-  click(tabs()[1]);
-  expect(pane().classList.contains("has-segment")).toBe(false);
-  expect(shown()).toEqual([false, false]);
-  view.close();
-});
-
-test("a daemon that predates plans still draws the tree, without the spec or the rail", async () => {
+test("a daemon that predates plans still draws the tree, without the spec, the board or the switch", async () => {
   const view = open({ detail: false, pane: true });
   await until(view.host, ".trace-slot");
   expect(view.host.querySelector(".trace-titles h2")?.textContent).toContain("先出分镜");
   expect(view.host.querySelector(".plan-spec")).toBeNull();
-  expect(view.host.querySelector(".trace-side")).toBeNull();
-  expect(view.host.querySelector(".trace-side-toggles")).toBeNull();
-  expect(view.host.querySelector(".trace-segments")).toBeNull();
+  expect(view.host.querySelector(".trace-views")).toBeNull();
+  expect(view.host.querySelector(".trace-spec-view")).toBeNull();
+  expect(view.host.querySelector(".trace-board-view")).toBeNull();
   expect(view.host.querySelectorAll(".trace-card")).toHaveLength(3);
   view.close();
 });

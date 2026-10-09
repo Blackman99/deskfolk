@@ -148,7 +148,7 @@ From 2026-10-09 it no longer asks you either, nor answers for a Bot ([ADR 0070](
 
 Cards of these kinds already out still take their buttons.
 
-**The retrospective** (from level 8, 2026-10-06) does not ask you either: the memory and skill changes it makes are only listed in that job's board side panel, each one undoable ([Quality event, Lesson](#learning)).
+**The retrospective** (from level 8, 2026-10-06) does not ask you either: the memory and skill changes it makes are only listed in that job's Plan view on the trace, each one undoable ([Quality event, Lesson](#learning)).
 
 <a id="work-item"></a>
 ## Work item
