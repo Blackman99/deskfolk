@@ -44,6 +44,9 @@ export const zh = {
   providerSetDefault: "设为默认",
   providerModelCount: (count: number) => (count === 1 ? "1 个模型" : `${count} 个模型`),
   providersHint: "管理模型端点，选择各端点的默认模型。",
+  modelsSectionEndpoints: "端点",
+  modelsEndpointsSummary: (count: number, defaultName: string | null) =>
+    `${count} 个端点${defaultName ? ` · 默认 ${defaultName}` : ""}`,
   providerConnection: "连接",
   providerModels: "名单",
   providerDefaultModel: (name: string) => `默认模型 ${name}`,
@@ -294,6 +297,9 @@ export const en: CopyShape<typeof zh> = {
   providerSetDefault: "Set as default",
   providerModelCount: (count: number) => (count === 1 ? "1 model" : `${count} models`),
   providersHint: "Manage your endpoints and choose a default model for each.",
+  modelsSectionEndpoints: "Endpoints",
+  modelsEndpointsSummary: (count: number, defaultName: string | null) =>
+    `${count === 1 ? "1 endpoint" : `${count} endpoints`}${defaultName ? ` · default ${defaultName}` : ""}`,
   providerConnection: "Connection",
   providerModels: "Models",
   providerDefaultModel: (name: string) => `Default model ${name}`,

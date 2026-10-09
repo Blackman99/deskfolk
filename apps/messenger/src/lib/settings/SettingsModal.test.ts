@@ -59,6 +59,82 @@ function openModels(host: HTMLElement): void {
   click(host.querySelector<HTMLButtonElement>('[data-settings-tab="models"]'));
 }
 
+/** Models, then its endpoints: on a phone that is the first row of Models' own list. */
+function openEndpoints(host: HTMLElement): void {
+  openModels(host);
+  click(host.querySelector<HTMLButtonElement>('[data-models-section="endpoints"]'));
+}
+
+/** A client whose engine level has a model ladder, holding two rungs. */
+const ladderClient = () => ({
+  listLessons: async () => [],
+  listPrompts: async () => [],
+  claudeCode: async () => { throw new Error("404"); },
+  modelLadder: async () => ({
+    items: [{ provider_id: "prov-1", model: "gemini-3.8-flash" }, { provider_id: "prov-1", model: "grok-4.6" }],
+    available: true,
+  }),
+  setModelLadder: async (items: unknown) => ({ items, available: true }),
+});
+
+const sectionTabs = (host: HTMLElement) =>
+  [...host.querySelectorAll<HTMLButtonElement>('.models-tabs [role="tab"]')].map((tab) => tab.dataset.modelsSection);
+
+test("Models shows its endpoints, model ladder and reading model as tabs over one page", async () => {
+  const { host, close } = open({ client: ladderClient() });
+  openModels(host);
+  await sleep(0);
+  flushSync();
+  expect(sectionTabs(host)).toEqual(["endpoints", "ladder", "reader"]);
+  expect(host.querySelector('[data-models-section="endpoints"]')?.getAttribute("aria-selected")).toBe("true");
+  expect(host.querySelector('[data-models-section="ladder"] .models-tab-count')?.textContent).toBe("2");
+  expect(host.querySelector(".provider-card")).toBeTruthy();
+  expect(host.querySelector("[data-model-ladder]")).toBeNull();
+  expect(host.querySelector("[data-reader-model]")).toBeNull();
+  click(host.querySelector('[data-models-section="ladder"]'));
+  expect(host.querySelector(".provider-card")).toBeNull();
+  expect([...host.querySelectorAll(".ladder-name")].map((el) => el.textContent)).toEqual(["gemini-3.8-flash", "grok-4.6"]);
+  expect(host.querySelector(".models-intro")?.textContent).toBe(t.modelLadder.hint);
+  click(host.querySelector('[data-models-section="reader"]'));
+  expect(host.querySelector('[data-models-section="reader"]')?.getAttribute("aria-selected")).toBe("true");
+  expect(host.querySelector("[data-reader-model]")).toBeTruthy();
+  expect(host.querySelector("[data-model-ladder]")).toBeNull();
+  // A wide window has no inner page here: the head still names Models.
+  expect(host.querySelector(".settings-main-title")?.textContent).toContain(t.settings.tabModels);
+  close();
+});
+
+test("before setup is done, its banner shows on Models too, inside the page under the tabs", () => {
+  const runtime = fakeRuntime({ providers: [aProvider()], settings: { wizard_complete: false } });
+  runtime.settingsOpen = true;
+  const { host, close } = render(SettingsModal, {
+    runtime, t, saveFailed: false, providerEditor: null, confirmingProvider: false,
+    patchImmediate: async () => true, openDeleteProviderConfirm: () => {}, closeSettings: () => {},
+  });
+  openModels(host);
+  expect(host.querySelectorAll(".wizard-banner")).toHaveLength(1);
+  expect(host.querySelector(".models-scroll > .wizard-banner")).toBeTruthy();
+  click(host.querySelector('[data-models-section="reader"]'));
+  expect(host.querySelector(".models-scroll > .wizard-banner")).toBeTruthy();
+  close();
+});
+
+test("an engine level without a ladder has no ladder tab, and with no endpoint there are no tabs", async () => {
+  const withEndpoint = open();
+  openModels(withEndpoint.host);
+  await sleep(0);
+  flushSync();
+  expect(sectionTabs(withEndpoint.host)).toEqual(["endpoints", "reader"]);
+  withEndpoint.close();
+  const empty = open({ providers: [] });
+  openModels(empty.host);
+  await sleep(0);
+  flushSync();
+  expect(empty.host.querySelector(".models-tabs")).toBeNull();
+  expect(empty.host.textContent).toContain(t.settings.providerEmpty);
+  empty.close();
+});
+
 test("editing an endpoint name saves itself a moment later", async () => {
   const { host, runtime, close } = open();
   openModels(host);
@@ -238,6 +314,72 @@ function withMobileViewport(run: () => void | Promise<void>): void | Promise<voi
   window.matchMedia = previousMatchMedia;
 }
 
+test("on a phone, Models lists its sections with what each is set to, and opens one a level deeper", async () => {
+  await withMobileViewport(async () => {
+    const provider = aProvider();
+    const runtime = fakeRuntime({ providers: [provider], settings: { default_provider_id: provider.id } });
+    runtime.settingsOpen = true;
+    runtime.client = ladderClient() as never;
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const app = mount(SettingsModal, { target: host, props: {
+      runtime, t, saveFailed: false, providerEditor: null,
+      confirmingProvider: false, confirmingIndependent: false,
+      patchImmediate: async () => true, openDeleteProviderConfirm: () => {},
+      closeSettings: () => {},
+    } });
+    flushSync();
+    try {
+      const title = () => host.querySelector(".settings-main-title")?.textContent;
+      openModels(host);
+      await sleep(0);
+      flushSync();
+      expect(host.querySelector(".models-tabs")).toBeNull();
+      const rows = [...host.querySelectorAll<HTMLButtonElement>(".models-index-row")];
+      expect(rows.map((row) => row.dataset.modelsSection)).toEqual(["endpoints", "ladder", "reader"]);
+      expect(rows.map((row) => row.querySelector(".models-index-summary")?.textContent)).toEqual([
+        t.settings.modelsEndpointsSummary(1, "Default"),
+        "gemini-3.8-flash → grok-4.6",
+        t.readerModel.followDefault(null),
+      ]);
+      expect(host.querySelector(".provider-card")).toBeNull();
+      click(rows[1]);
+      expect(title()).toContain(t.modelLadder.title);
+      expect(host.querySelector(".models-index")).toBeNull();
+      expect(host.querySelector("[data-model-ladder]")).toBeTruthy();
+      // Back from a section goes to Models' list, then to the settings list.
+      click(host.querySelector(".settings-mobile-back"));
+      expect(title()).toContain(t.settings.tabModels);
+      expect(host.querySelectorAll(".models-index-row")).toHaveLength(3);
+      expect(host.querySelector(".settings-modal.is-mobile-detail")).toBeTruthy();
+      click(host.querySelector('[data-models-section="reader"]'));
+      expect(title()).toContain(t.readerModel.title);
+      expect(app.backWithinSettings()).toBe(true);
+      flushSync();
+      expect(title()).toContain(t.settings.tabModels);
+      expect(app.backWithinSettings()).toBe(true);
+      flushSync();
+      expect(host.querySelector(".settings-modal.is-mobile-detail")).toBeNull();
+    } finally {
+      void unmount(app);
+      flushSync();
+      host.remove();
+    }
+  });
+});
+
+test("on a phone with no endpoint yet, Models opens straight on the endpoints", () => {
+  withMobileViewport(() => {
+    const { host, close } = open({ providers: [] });
+    openModels(host);
+    expect(host.querySelector(".models-index")).toBeNull();
+    expect(host.textContent).toContain(t.settings.providerEmpty);
+    click(host.querySelector(".settings-mobile-back"));
+    expect(host.querySelector(".settings-modal")?.classList.contains("is-mobile-detail")).toBe(false);
+    close();
+  });
+});
+
 test("mobile settings use a root list and drill into a detail screen", () => {
   withMobileViewport(() => {
     const { host, close } = open();
@@ -255,7 +397,7 @@ test("mobile settings use a root list and drill into a detail screen", () => {
 test("mobile provider editing opens a full settings subpage with list and settings exits", () => {
   withMobileViewport(() => {
     const { host, close } = open();
-    openModels(host);
+    openEndpoints(host);
     click(host.querySelector(".btn-provider-edit"));
     const editor = host.querySelector(".provider-editor-modal");
     expect(editor?.classList.contains("settings-subpage")).toBe(true);
@@ -294,13 +436,16 @@ test("mobile history back unwinds editors and categories before leaving settings
         expect(back()).toBe(true);
         expect(host.querySelector(".settings-modal.is-mobile-detail")).toBeNull();
       }
-      openModels(host);
+      openEndpoints(host);
       click(host.querySelector(".btn-provider-edit"));
       expect(back()).toBe(true);
       expect(host.querySelector(".provider-editor-modal")).toBeNull();
       expect(host.querySelector(".settings-modal.is-mobile-detail")).toBeTruthy();
       click(host.querySelector(".btn-provider-add"));
       expect(back()).toBe(true);
+      // Out of the endpoints, to Models' list of sections.
+      expect(back()).toBe(true);
+      expect(host.querySelector(".models-index")).toBeTruthy();
       expect(back()).toBe(true);
       click(host.querySelector('[data-settings-tab="mcp"]'));
       click(host.querySelector(".btn-mcp-add"));
@@ -501,7 +646,7 @@ test("the phone default picker sends only the chosen model", async () => {
       openDeleteProviderConfirm: () => {},
       closeSettings: () => {},
     });
-    openModels(host);
+    openEndpoints(host);
     choose(host.querySelector("#default-model-prov-1"), "gemini-3.8-flash");
     await settle();
     expect(runtime.calls.filter((call) => call.name === "patchProvider")).toEqual([
@@ -529,7 +674,7 @@ test("leaving the model list flushes a cleared default before the page closes", 
     });
     flushSync();
     try {
-      openModels(host);
+      openEndpoints(host);
       click(host.querySelector(".provider-model-manage"));
       click(host.querySelector('.model-row-toggle[aria-label="grok-4.6"]'));
       const back = () => {
@@ -551,7 +696,7 @@ test("leaving the model list flushes a cleared default before the page closes", 
   });
 });
 
-test("phone back walks attributes, the model list, model services, then settings", () => {
+test("phone back walks attributes, the model list, the endpoints, model services, then settings", () => {
   withMobileViewport(() => {
     const runtime = fakeRuntime({ providers: [aProvider()] });
     runtime.settingsOpen = true;
@@ -574,7 +719,7 @@ test("phone back walks attributes, the model list, model services, then settings
         flushSync();
         return handled;
       };
-      openModels(host);
+      openEndpoints(host);
       click(host.querySelector(".provider-model-manage"));
       click(host.querySelector(".model-row-attrs"));
       expect(host.querySelector(".provider-editor-modal h2")?.textContent).toContain(t.settings.modelSettings);
@@ -583,6 +728,8 @@ test("phone back walks attributes, the model list, model services, then settings
       expect(host.querySelector(".model-picker")).toBeTruthy();
       expect(back()).toBe(true);
       expect(host.querySelector(".provider-editor-modal")).toBeNull();
+      expect(host.querySelector(".settings-main-title")?.textContent).toContain(t.settings.modelsSectionEndpoints);
+      expect(back()).toBe(true);
       expect(host.querySelector(".settings-main-title")?.textContent).toContain(t.settings.tabModels);
       expect(back()).toBe(true);
       expect(host.querySelector(".settings-modal.is-mobile-detail")).toBeNull();
@@ -608,7 +755,7 @@ test("the default picker waits for a closing list save to finish", async () => {
       patchImmediate: async () => true, openDeleteProviderConfirm: () => {}, closeSettings: () => {},
     });
     try {
-      openModels(host);
+      openEndpoints(host);
       click(host.querySelector(".provider-model-manage"));
       click(host.querySelector('.model-row-toggle[aria-label="claude-opus-5"]'));
       click(host.querySelector(".settings-subpage-back"));
@@ -645,7 +792,7 @@ test("a failed model-list save can be sent again", async () => {
       openDeleteProviderConfirm: () => {},
       closeSettings: () => {},
     });
-    openModels(host);
+    openEndpoints(host);
     click(host.querySelector(".provider-model-manage"));
     click(host.querySelector('.model-row-toggle[aria-label="claude-opus-5"]'));
     await sleep(650);
@@ -665,14 +812,18 @@ test("a failed model-list save can be sent again", async () => {
 test("✕ closes the page it sits on, not the settings behind it", () => {
   withMobileViewport(() => {
     const { host, close } = open();
-    openModels(host);
+    openEndpoints(host);
     const modal = host.querySelector(".settings-modal");
-    // Inside the endpoint editor: ✕ leaves the editor, the section list stays.
+    // Inside the endpoint editor: ✕ leaves the editor, the endpoints stay.
     click(host.querySelector(".btn-provider-edit"));
     click(host.querySelector(".settings-subpage-close"));
     expect(host.querySelector(".provider-editor-modal")).toBeNull();
     expect(modal?.classList.contains("is-mobile-detail")).toBe(true);
-    // In a section: ✕ goes back to the list of sections.
+    // On the endpoints: ✕ goes back to Models' list of sections.
+    click(host.querySelector(".settings-main-head > .modal-close"));
+    expect(host.querySelector(".models-index")).toBeTruthy();
+    expect(modal?.classList.contains("is-mobile-detail")).toBe(true);
+    // On that list: ✕ goes back to the list of settings.
     click(host.querySelector(".settings-main-head > .modal-close"));
     expect(modal?.classList.contains("is-mobile-detail")).toBe(false);
     expect(host.querySelector(".settings-modal")).not.toBeNull();

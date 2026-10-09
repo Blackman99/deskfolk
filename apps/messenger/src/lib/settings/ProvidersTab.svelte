@@ -1,18 +1,13 @@
 <script lang="ts">
-	import ModelLadderCard from './ModelLadderCard.svelte';
-	import ReaderModelCard from './ReaderModelCard.svelte';
 	import { connectorFor, isLocalEndpoint } from '@real-bot/protocol';
 	import ConnectorLogo from './ConnectorLogo.svelte';
-	import SpeechCard from './SpeechCard.svelte';
 	import type { Copy } from '../copy.ts';
 	import { providerHost } from './provider-form.ts';
 	import { botAvatarColor } from '../avatar.ts';
 	import { rosterLetter } from '../sidebar/roster-letter.ts';
-	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import type { Snapshot } from '../snapshot.ts';
 
 	type Props = {
-		runtime: MessengerRuntime;
 		t: Copy;
 		snapshot: Snapshot;
 		providerSaving: boolean;
@@ -25,7 +20,6 @@
 	};
 
 	let {
-		runtime,
 		t,
 		snapshot,
 		providerSaving,
@@ -190,19 +184,6 @@
 			</div>
 		{/each}
 	</div>
-	{#if snapshot.providers.length > 0}
-		<ModelLadderCard api={runtime.client} providers={snapshot.providers} {t} />
-		<ReaderModelCard
-			providers={snapshot.providers}
-			chosen={snapshot.settings.reader_model ?? null}
-			defaultModel={snapshot.settings.endpoint_default_model}
-			patch={(patch) => runtime.patchSettings(patch)}
-			claudeCode={runtime.client ? () => runtime.client!.claudeCode() : null}
-			{t}
-		/>
-	{/if}
-	<!-- Speech needs no chat endpoint of its own: it has its own service and key (ADR 0073). -->
-	<SpeechCard speech={snapshot.settings.speech ?? null} providers={snapshot.providers} patch={(patch) => runtime.patchSpeech(patch)} {t} />
 </div>
 
 <style>

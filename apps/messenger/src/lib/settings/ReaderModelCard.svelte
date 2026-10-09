@@ -15,7 +15,8 @@
 	/**
 	 * Which model reads each line for what the app acts on (读句, ADR 0055): any model an endpoint
 	 * lists, a Claude model run through your own Claude Code (ADR 0061), or the default model. Your
-	 * line waits on the reading, so this is where a fast one goes.
+	 * line waits on the reading, so this is where a fast one goes. The card is that setting's own
+	 * page, whose intro says so.
 	 */
 	interface Props {
 		providers: readonly Provider[];
@@ -113,10 +114,6 @@
 </script>
 
 <section class="reader-card" aria-label={t.readerModel.title} data-reader-model>
-	<div class="reader-head">
-		<h3>{t.readerModel.title}</h3>
-		<p>{t.readerModel.hint}</p>
-	</div>
 	{#if failed}
 		<p class="reader-error" role="alert">{t.readerModel.failed}</p>
 	{/if}
@@ -147,20 +144,6 @@
 		min-width: 0;
 	}
 
-	.reader-head h3 {
-		margin: 0;
-		font-size: 14px;
-		font-weight: 600;
-		color: var(--ink);
-	}
-
-	.reader-head p {
-		margin: 4px 0 0;
-		font-size: 12px;
-		line-height: 1.45;
-		color: var(--muted);
-	}
-
 	.reader-error {
 		margin: 0;
 		font-size: 12px;
@@ -176,6 +159,18 @@
 		display: flex;
 		flex-direction: column;
 		gap: 4px;
+	}
+
+	@media (max-width: 720px) {
+		.reader-card {
+			padding: 12px;
+			box-shadow: none;
+		}
+
+		.reader-pick,
+		.reader-account {
+			max-width: none;
+		}
 	}
 
 	.reader-account-label,

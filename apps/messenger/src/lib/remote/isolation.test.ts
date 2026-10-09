@@ -51,6 +51,7 @@ const SETTINGS_FILES = [
   "SettingsModal.svelte",
   "SettingsNav.svelte",
   "GeneralTab.svelte",
+  "ModelsTab.svelte",
   "ProvidersTab.svelte",
   "RemoteTab.svelte",
   "RemoteSessionSettings.svelte",
@@ -59,6 +60,7 @@ const SETTINGS_FILES = [
   "IndependentConfirm.svelte",
   "provider-editor.svelte.ts",
   "independent-runtime.svelte.ts",
+  "model-ladder.svelte.ts",
 ];
 
 test("hosted and remote settings omit workspace_path from PATCH", () => {

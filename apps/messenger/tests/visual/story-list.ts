@@ -55,6 +55,8 @@ export const STORY_SIZES = {
 	'chat-stage-annotations': { width: 900, height: 820 },
 	'settings-general': { width: 1000, height: 720 },
 	'settings-providers': { width: 1000, height: 720 },
+	'settings-models-ladder': { width: 1000, height: 720 },
+	'settings-models-narrow': { width: 390, height: 844 },
 	'settings-agents': { width: 1000, height: 720 },
 	'settings-mcp': { width: 1000, height: 720 },
 	'settings-about': { width: 1000, height: 720 },

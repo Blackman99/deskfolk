@@ -20,7 +20,7 @@ if (!story) {
 	document.body.style.cssText = `margin:0;width:${story.width}px;height:${story.height}px;background:var(--bg)`;
 	host.style.cssText = `width:${story.width}px;height:${story.height}px;position:relative;overflow:hidden`;
 	mount(story.component as never, { target: host, props: story.props as never });
-	story.afterMount?.(host);
+	const after = story.afterMount?.(host);
 	// Monaco arrives on a dynamic import, so the camera has to be told to wait for it.
 	if (host.querySelector('.artifact-cm')) {
 		void (async () => {
@@ -43,6 +43,9 @@ if (!story) {
 	}
 	flushSync();
 	if (!host.querySelector('.artifact-cm') && !host.querySelector('.artifact-pane')) {
-		document.documentElement.dataset.ready = 'yes';
+		void Promise.resolve(after).then(() => {
+			flushSync();
+			document.documentElement.dataset.ready = 'yes';
+		});
 	}
 }

@@ -56,8 +56,8 @@ const t = copyFor('zh');
 export type Story = {
 	component: Component<never, Record<string, never>, string>;
 	props: Record<string, unknown>;
-	/** Runs after mount, before the shot: for state a pane only exposes through its own UI. */
-	afterMount?: (host: HTMLElement) => void;
+	/** Runs after mount, before the shot: for state a pane only exposes through its own UI. The shot waits for it. */
+	afterMount?: (host: HTMLElement) => void | Promise<void>;
 };
 
 /** One world every story draws from, so the panes agree with each other. */
@@ -303,6 +303,30 @@ const annotatedWorld = {
 /** By name: which tabs show depends on the runtime (Remote access only with a remote status). */
 const settingsTab = (tab: string) => (host: HTMLElement) => {
 	host.querySelector<HTMLButtonElement>(`[data-settings-tab="${tab}"]`)?.click();
+};
+
+/** Models once its ladder has been read and its sections are there; then one of them, if named. */
+const modelsSection = (section?: string) => async (host: HTMLElement) => {
+	settingsTab('models')(host);
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	flushSync();
+	if (section) host.querySelector<HTMLButtonElement>(`[data-models-section="${section}"]`)?.click();
+};
+
+/** A client on an engine level with a model ladder, two models on it: Models has all three sections. */
+const ladderClient = {
+	listLessons: async () => [],
+	listPrompts: async () => [],
+	claudeCode: async () => claudeStatus,
+	modelLadder: async () => ({
+		items: [
+			{ provider_id: 'prov-1', model: 'gemini-3.8-flash' },
+			{ provider_id: 'prov-1', model: 'grok-4.6' },
+			{ provider_id: 'prov-2', model: 'grok-4.6' }
+		],
+		available: true
+	}),
+	setModelLadder: async (items: unknown) => ({ items, available: true })
 };
 
 const settingsProps = (over: Record<string, unknown> = {}) => ({
@@ -903,6 +927,18 @@ const defs: Record<StoryName, Story> = {
 	},
 	'settings-general': { component: SettingsModal as never, props: settingsProps(), afterMount: settingsTab('general') },
 	'settings-providers': { component: SettingsModal as never, props: settingsProps(), afterMount: settingsTab('models') },
+	// The model ladder's own tab, on an engine level that has one.
+	'settings-models-ladder': {
+		component: SettingsModal as never,
+		props: settingsProps({ runtime: fakeRuntime(world, { settingsOpen: true, client: ladderClient }) }),
+		afterMount: modelsSection('ladder')
+	},
+	// On a phone, Models is a list of its three sections, each saying what it is set to.
+	'settings-models-narrow': {
+		component: SettingsModal as never,
+		props: settingsProps({ runtime: fakeRuntime(world, { settingsOpen: true, client: ladderClient }) }),
+		afterMount: modelsSection()
+	},
 	'settings-agents': {
 		component: SettingsModal as never,
 		props: settingsProps({

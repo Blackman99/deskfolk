@@ -24,6 +24,7 @@
 	import SettingsNav, { type SettingsTab } from './SettingsNav.svelte';
 	import GeneralTab from './GeneralTab.svelte';
 	import ProvidersTab from './ProvidersTab.svelte';
+	import ModelsTab from './ModelsTab.svelte';
 	import RemoteTab from './RemoteTab.svelte';
 	import AboutTab from './AboutTab.svelte';
 	import ProviderEditorFlyout from './ProviderEditorFlyout.svelte';
@@ -118,6 +119,7 @@
 	}
 
 	let mcpSettings = $state<McpSettings>();
+	let modelsTab = $state<ModelsTab>();
 
 	// Lessons the app learned (ADR 0050, engine level 8): the tab is there once there is one.
 	let lessons = $state<Lesson[]>([]);
@@ -180,6 +182,7 @@
 		}
 		if (mcpSettings?.backFromEditor()) return true;
 		if (promptsSettings?.backFromEditor()) return true;
+		if (activeSettingsTab === 'models' && modelsTab?.backFromSection()) return true;
 		if (!mobileSettingsDetail) return false;
 		mobileSettingsDetail = false;
 		return true;
@@ -222,6 +225,10 @@
 							? t.settings.tabRemote
 							: t.settings.tabAbout;
 	}
+	/** On a phone, a section of Models opened from its list names the page. */
+	const mainTitle = $derived(
+		(activeSettingsTab === 'models' ? modelsTab?.sectionTitle() : null) ?? settingsTabLabel(activeSettingsTab)
+	);
 	const independentRuntime = new IndependentRuntimeController({
 		runtime: () => runtime,
 		t: () => t,
@@ -329,6 +336,19 @@
 	}
 </script>
 
+{#snippet settingsNotices()}
+	{#if !providerEditor && (runtime.pendingMutation || credentialOps.length)}<div role="region" aria-label="Pending credentials">{@render pendingCredentials()}</div>{/if}
+	{#if saveFailed}
+		<p class="field-error">{t.settings.saveFailed}</p>
+	{/if}
+	{#if !snapshot.settings.wizard_complete}
+		<div class="wizard-banner">
+			<p class="muted">{t.settings.wizardHint}</p>
+			<p class="muted">{t.settings.wizardIncomplete}</p>
+		</div>
+	{/if}
+{/snippet}
+
 {#snippet pendingCredentials()}
 	{#if runtime.pendingMutation}
 		<p role="status">{locale === 'en' ? 'Credential/request result pending. Retry only when ready; no automatic replay.' : '凭据或请求结果待确认。准备好后手动重试，不会自动重放。'}</p>
@@ -388,12 +408,12 @@
 						type="button"
 						class="settings-mobile-back"
 						aria-label={locale === 'en' ? 'Back to settings' : '返回设置'}
-						onclick={() => (mobileSettingsDetail = false)}
+						onclick={() => void backWithinSettings()}
 					>
 						<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
 					</button>
 					<div class="settings-main-head-left flex items-center gap-5">
-						<h3 class="settings-main-title">{settingsTabLabel(activeSettingsTab)}</h3>
+						<h3 class="settings-main-title">{mainTitle}</h3>
 						<AutosaveState {t} saving={settingsSaving} failed={saveFailed} saved={settingsSavedTick > 0} />
 					</div>
 					<button
@@ -405,16 +425,8 @@
 				</div>
 
 			<div class="modal-body" class:is-mcp={activeSettingsTab === 'mcp'} class:is-prompts={activeSettingsTab === 'prompts'} class:is-models={activeSettingsTab === 'models'}>
-				{#if !providerEditor && (runtime.pendingMutation || credentialOps.length)}<div role="region" aria-label="Pending credentials">{@render pendingCredentials()}</div>{/if}
-				{#if saveFailed}
-					<p class="field-error">{t.settings.saveFailed}</p>
-				{/if}
-				{#if !snapshot.settings.wizard_complete}
-					<div class="wizard-banner">
-						<p class="muted">{t.settings.wizardHint}</p>
-						<p class="muted">{t.settings.wizardIncomplete}</p>
-					</div>
-				{/if}
+				<!-- Models scrolls its own page under its tabs, so it shows these there. -->
+				{#if activeSettingsTab !== 'models'}{@render settingsNotices()}{/if}
 
 				{#if activeSettingsTab === 'general'}
 					<GeneralTab
@@ -433,18 +445,21 @@
 						requestIndependent={(next) => independentRuntime.requestIndependent(next)}
 					/>
 				{:else if activeSettingsTab === 'models'}
-					<ProvidersTab
-						{runtime}
-						{t}
-						{snapshot}
-						providerSaving={providerEditorController.providerSaving}
-						openAddProvider={() => providerEditorController.openAddProvider()}
-						openEditProvider={(id) => providerEditorController.openEditProvider(id)}
-						openProviderModels={(id) => providerEditorController.openProviderModels(id)}
-						{openDeleteProviderConfirm}
-						{setDefaultProvider}
-						setProviderDefaultModel={(id, model) => providerEditorController.setProviderDefaultModel(id, model)}
-					/>
+					<ModelsTab bind:this={modelsTab} {runtime} {t} {snapshot} notices={settingsNotices}>
+						{#snippet endpoints()}
+							<ProvidersTab
+								{t}
+								{snapshot}
+								providerSaving={providerEditorController.providerSaving}
+								openAddProvider={() => providerEditorController.openAddProvider()}
+								openEditProvider={(id) => providerEditorController.openEditProvider(id)}
+								openProviderModels={(id) => providerEditorController.openProviderModels(id)}
+								{openDeleteProviderConfirm}
+								{setDefaultProvider}
+								setProviderDefaultModel={(id, model) => providerEditorController.setProviderDefaultModel(id, model)}
+							/>
+						{/snippet}
+					</ModelsTab>
 				{:else if activeSettingsTab === 'agents'}
 					<!-- Agents that run a Bot's turns themselves (ADR 0061): today your own Claude Code. -->
 					<div class="settings-tab-pane">
@@ -572,6 +587,14 @@
 		min-height: 0;
 		overflow: hidden;
 		padding: 18px 24px;
+	}
+
+	/* Models keeps its section tabs above a scroll of its own. */
+	.settings-main > .modal-body.is-models {
+		padding: 0;
+		overflow: hidden;
+		display: flex;
+		flex-direction: column;
 	}
 
 	.settings-tab-pane {
@@ -710,10 +733,5 @@
 		.settings-tab-pane {
 			gap: 12px;
 		}
-	}
-
-	@media (max-width: 720px) {
-		.settings-main > .modal-body.is-models { padding: 20px 16px max(28px, env(safe-area-inset-bottom)); scrollbar-width: none; }
-		.settings-main > .modal-body.is-models::-webkit-scrollbar { display: none; }
 	}
 </style>

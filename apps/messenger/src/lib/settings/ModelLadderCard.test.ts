@@ -3,6 +3,7 @@ import type { ModelLadderRung, Provider } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
 import { click, render } from "../test-render.ts";
 import ModelLadderCard from "./ModelLadderCard.svelte";
+import { ModelLadder, type ModelLadderApi } from "./model-ladder.svelte.ts";
 
 const t = copyFor("zh");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -27,11 +28,18 @@ function fakeApi(items: ModelLadderRung[], opts: { available?: boolean; fail?: b
   };
 }
 
+/** The card as Models shows it: the ladder read by the page that holds it. */
+function card(api: ModelLadderApi) {
+  const ladder = new ModelLadder(() => api);
+  void ladder.load();
+  return render(ModelLadderCard, { ladder, providers, t });
+}
+
 const names = (host: HTMLElement) => [...host.querySelectorAll(".ladder-name")].map((el) => el.textContent);
 
 test("nothing shows below level 7", async () => {
   const { api } = fakeApi([], { available: false });
-  const view = render(ModelLadderCard, { api, providers, t });
+  const view = card(api);
   await sleep(0);
   expect(view.host.querySelector("[data-model-ladder]")).toBeNull();
   view.close();
@@ -39,7 +47,7 @@ test("nothing shows below level 7", async () => {
 
 test("rungs read weaker to stronger, move and come off, each change saved in your order", async () => {
   const { api, saved } = fakeApi([{ provider_id: "p1", model: "light" }, { provider_id: "p1", model: "mid" }, { provider_id: "p2", model: "heavy" }]);
-  const view = render(ModelLadderCard, { api, providers, t });
+  const view = card(api);
   await sleep(0);
   expect(names(view.host)).toEqual(["light · Default", "mid · Default", "heavy · Other"]);
   expect(view.host.querySelector(`[aria-label="${t.modelLadder.up("light")}"]`)?.hasAttribute("disabled")).toBe(true);
@@ -57,7 +65,7 @@ test("rungs read weaker to stronger, move and come off, each change saved in you
 
 test("a model is added at the strong end from what is listed and not on it yet", async () => {
   const { api, saved } = fakeApi([{ provider_id: "p1", model: "light" }]);
-  const view = render(ModelLadderCard, { api, providers, t });
+  const view = card(api);
   await sleep(0);
   click(view.host.querySelector(".ladder-add .real-select-trigger")!);
   await sleep(0);
@@ -71,7 +79,7 @@ test("a model is added at the strong end from what is listed and not on it yet",
 
 test("a change that is not saved goes back, and says so", async () => {
   const { api } = fakeApi([{ provider_id: "p1", model: "light" }, { provider_id: "p1", model: "mid" }], { fail: true });
-  const view = render(ModelLadderCard, { api, providers, t });
+  const view = card(api);
   await sleep(0);
   click(view.host.querySelector(`[aria-label="${t.modelLadder.remove("light")}"]`)!);
   await sleep(0);

@@ -10,6 +10,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 - In Settings › Notifications, the six categories no longer run past the right edge of their card, where the switches sat on its border and the page scrolled sideways. A longer description wraps onto a second line instead, and in a narrow settings window the categories stack in one column.
 
+### Settings › Models in three sections
+
+- Models is split into Endpoints, Model ladder and Model that reads lines, instead of one long page with the ladder and the reader below every endpoint card. A wide window shows them as tabs at the top of Models (endpoints and ladder rungs counted on theirs); each section scrolls on its own under them.
+- On a phone, Models lists the three, each with what it is set to: how many endpoints and the default one, the models on the ladder, the model that reads lines. Tap one to open its page; Back, the arrow at the top and ✕ go to that list first, then to Settings. With no endpoint yet, Models opens straight on the endpoints.
+- On a phone the ladder's buttons are big enough to tap, and the endpoint is written under each model instead of cutting its name short.
+
 ### Voice input, through a speech service you choose
 
 - Settings → Models has a new Speech recognition card. Pick a service — OpenAI, Groq, SiliconFlow, Alibaba Bailian (pay-as-you-go Qwen ASR, or Token Plan), Deepgram, ElevenLabs — or Custom for any address in one of their formats, such as a Whisper server on your own computer (no key needed there). Picking one fills in its address and model; everything, including the language to expect, can be changed, and saves as you go. The key goes to the Keychain with the endpoints' keys and is never shown again. An Alibaba Bailian endpoint you already added (Token Plan or pay-as-you-go) is offered on the card: one press uses its key for speech, so the same key is not entered twice, and a new key on the endpoint is the one speech uses next.
