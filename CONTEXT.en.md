@@ -126,7 +126,7 @@ _Avoid_: fixing a miss by adding words to a list, a reading writing state itself
 
 **Organizer**:
 Background organizing of a conversation's plan notes and ticket handovers, not a working Bot and not the source of user requirements. The new work-item path does not use it to choose message attribution; older migration-compatibility paths and quiet-plan handover organizing remain. Details: [Behavior · Organizer](docs/behavior.en.md#organizer).
-_Avoid_: every message waiting for organizing first, retained compatibility code described as deleted, organizer rewriting user requirements, a Bot's claim treated as acceptance
+_Avoid_: every message waiting for organizing first, retained compatibility code described as deleted, organizer rewriting user requirements, a Bot's claim treated as acceptance, a hand-over you sent back written up as passed, a passing sample check taken as your approval
 
 **Mirror files**:
 `map.md` in the plan folder (the plan's fields plus a ticket index) and `ticket.md` in each ticket folder (that ticket's fields, with the plan's Done when and Rules attached), rewritten by the daemon after every organizing pass and after every edit you make to the plan. They are the app's own files: a Bot may read them with `read_file`, but may not edit them or hand them over, and they are not artifacts; the plan folder is created the first time the plan is written up. To change their content, edit the plan or the tickets on the flow board.

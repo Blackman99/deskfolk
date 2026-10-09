@@ -1366,6 +1366,30 @@ function quietPlan(store: Store) {
   return { session, plan, ticket, spec };
 }
 
+test("a settle reads a Bot's turn that said nothing as silent, and one that only handed over files as that, never as the line that woke it", async () => {
+  // IG MV, 2026-10-09: the organizer read 「【视频导演】（应用）用户把交付…退回重做了」 — the notice that woke a
+  // turn which said nothing — as the director's own words.
+  const answers: Array<JudgeResult | Error | (() => JudgeResult)> = [];
+  const h = bareOrganizer(answers);
+  const { session, plan, ticket, spec } = quietPlan(h.store);
+  const writer = h.store.getTicket(ticket.id).worker!;
+  const notice = h.store.insertMessage({ sessionId: session, kind: "system", author: "app", body: "（应用）用户把交付 S1 退回重做了。" });
+  const silent = h.store.createTurn({ sessionId: session, botId: writer, triggerMessageId: notice.id, taskId: plan.id, ticketId: ticket.id });
+  h.store.setTurnStatus(silent.id, "interrupted");
+  const again = h.store.insertMessage({ sessionId: session, kind: "system", author: "app", body: "回看：再交一版" });
+  const filesOnly = h.store.createTurn({ sessionId: session, botId: writer, triggerMessageId: again.id, taskId: plan.id, ticketId: ticket.id });
+  h.store.insertMessage({ sessionId: session, turnId: filesOnly.id, kind: "bot", author: writer, body: "", paths: [`${ticket.dir}/draft_v2.md`] });
+  h.store.setTurnStatus(filesOnly.id, "completed");
+  answers.push(judged(JSON.stringify({ decision: "continue", plan: spec, tickets: [] })));
+  expect(await h.organizer.settlePlan(plan.id)).toBe(true);
+  const seen = JSON.parse(String(h.requests[0]!.messages[1]!.content)) as { since_last_revision: { trace: string[] } };
+  expect(seen.since_last_revision.trace.slice(-3)).toEqual([
+    "【Writer】初稿在 draft.md，审稿先冻结",
+    "【Writer】（这一轮没说话，状态 interrupted）",
+    "【Writer】（只交出 1 个文件）",
+  ]);
+});
+
 function planSpecOf(store: Store, taskId: string): { goal: string; acceptance: string[]; rules: string[]; progress: { done: string[] } } {
   return JSON.parse(store.getTask(taskId).spec!);
 }

@@ -1,5 +1,5 @@
 import type { AcceptanceCheck } from "./checks.ts";
-import type { USER_MEMBER } from "./constants.ts";
+import { USER_MEMBER } from "./constants.ts";
 import type { Hold } from "./holds.ts";
 import type { Retrospective } from "./quality.ts";
 import type { RouteLearning, RouteRecord, RouteReview } from "./routing.ts";
@@ -204,9 +204,12 @@ export type TaskTraceNode = {
    */
   woken_elsewhere: { actor: string; message_id: string } | null;
   trigger_message_id: string;
-  /** The message to scroll to: the 中断 note on a cut turn, else this turn's last word, else the trigger. */
+  /**
+   * The message to scroll to: the 中断 note on a cut turn, else the question or approval waiting on
+   * you, else this turn's last part with words in it, else its last part (files only), else the trigger.
+   */
   focus_message_id: string;
-  /** One line, already clipped. */
+  /** One line, already clipped: the turn's last words; empty when it only handed over files. */
   summary: string;
   created_at: string;
   /** `exists` is set by the trace endpoint; absent from a daemon that predates it. */
@@ -224,6 +227,21 @@ export type TaskTraceNode = {
    */
   route?: TaskTraceRoute | null;
 };
+
+/**
+ * A Bot's turn that left no part of its own — moved on to a newer message, or finished without
+ * speaking. Its summary is then the line that woke it, which on a card (or in the organizer's read of
+ * the trace) reads as the Bot saying what the card above it said.
+ */
+export function traceNodeSaidNothing(node: Pick<TaskTraceNode, "actor" | "status" | "ask" | "approval" | "focus_message_id" | "trigger_message_id">): boolean {
+  return (
+    node.actor !== USER_MEMBER &&
+    node.status !== "running" &&
+    !node.ask &&
+    !node.approval &&
+    node.focus_message_id === node.trigger_message_id
+  );
+}
 
 /** One card's model choice: the record, and the review and learning of the chain it started. */
 export type TaskTraceRoute = {

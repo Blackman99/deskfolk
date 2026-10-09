@@ -17,7 +17,7 @@
  * conversation reads.
  */
 import dagre from "@dagrejs/dagre";
-import { USER_MEMBER, type TaskTrace, type TaskTraceNode, type TurnStatus } from "@real-bot/protocol";
+import { USER_MEMBER, traceNodeSaidNothing, type TaskTrace, type TaskTraceNode, type TurnStatus } from "@real-bot/protocol";
 
 /** Stages past this stop drawing connectors and say who woke them in words. */
 export const TRACE_EDGE_LIMIT = 40;
@@ -475,20 +475,8 @@ export function backOnBoard(
   };
 }
 
-/**
- * A Bot's turn that left no line of its own — moved on to a newer message, or finished without
- * speaking. The daemon then fills its summary with the line that woke it, which on the card read
- * as the Bot saying what the card above it said.
- */
-export function saidNothing(node: TaskTraceNode): boolean {
-  return (
-    node.actor !== USER_MEMBER &&
-    node.status !== "running" &&
-    !node.ask &&
-    !node.approval &&
-    node.focus_message_id === node.trigger_message_id
-  );
-}
+/** A Bot's turn that left no part of its own (see `traceNodeSaidNothing`, shared with the organizer). */
+export const saidNothing: (node: TaskTraceNode) => boolean = traceNodeSaidNothing;
 
 /** The message a context-menu "show this job" was opened from. */
 export type TraceFocus = { messageId: string; turnId: string | null };

@@ -608,11 +608,13 @@ export function reviewSubmission(ctx: StoreContext, input: {
 }
 
 /**
- * An approval: by a review (`record`) or, with none, by the app on its checks — `by` says why the app
- * needed nobody for it. The ticket and its parts are approved; the plan may be delivered.
+ * An approval: by a review (`record`), by your 放行 (`by: "user"`), or, with neither, by the app on its
+ * checks — `by` then says why the app needed nobody for it. The ticket and its parts are approved; the
+ * plan may be delivered.
  */
 function approve(ctx: StoreContext, submission: Submission, record: ReviewRecord | null, checks: readonly SubmissionCheck[], now: string,
-  by: "no_reviewer" | "routine" | "one_go" = "no_reviewer"): void {
+  by: "no_reviewer" | "routine" | "one_go" | "user" = "no_reviewer"): void {
+  const yours = by === "user";
   ctx.db.run("UPDATE submissions SET state = 'approved', reviews = ?, checks = ?, awaiting = NULL, updated_at = ? WHERE id = ?",
     [JSON.stringify(record ? [...submission.reviews, record] : submission.reviews), JSON.stringify(checks), now, submission.id]);
   const approved = getSubmission(ctx, submission.id);
@@ -621,8 +623,8 @@ function approve(ctx: StoreContext, submission: Submission, record: ReviewRecord
   // at the ceiling, in rework or not made yet keeps it going). One of no part is the whole ticket.
   const openParts = submission.part_keys.length === 0 ? 0 : ctx.db.query<{ n: number }, [string]>(
     "SELECT COUNT(*) AS n FROM ticket_parts WHERE ticket_id = ? AND stage NOT IN ('approved', 'waived')").get(submission.ticket_id)!.n;
-  setTicketStage(ctx, { ticketId: submission.ticket_id, stage: openParts === 0 ? "approved" : "doing", source: record ? "review" : "supervisor",
-    botId: record?.reviewer_bot_id ?? null, turnId: record?.turn_id ?? null, workItemId: submission.work_item_id, submissionId: submission.id, now });
+  setTicketStage(ctx, { ticketId: submission.ticket_id, stage: openParts === 0 ? "approved" : "doing", source: yours ? "user" : record ? "review" : "supervisor",
+    botId: yours ? null : record?.reviewer_bot_id ?? null, turnId: yours ? null : record?.turn_id ?? null, workItemId: submission.work_item_id, submissionId: submission.id, now });
   // A job runs on its own level again once the ticket is through, not on one part of it (ADR 0049).
   if (openParts === 0) resetEscalation(ctx, submission.work_item_id);
   if (record) {
@@ -630,9 +632,12 @@ function approve(ctx: StoreContext, submission: Submission, record: ReviewRecord
       ticketId: submission.ticket_id, turnId: record.turn_id, payload: { submission_id: submission.id, work_item_id: submission.work_item_id, outcome: "approve",
         same_model: record.same_model, ...(by === "routine" ? { by } : {}) } });
     tellProducer(ctx, approved, record, now);
-  } else {
-    recordWorkEvent(ctx, { kind: "submission.approved", actor: "app", botId: submission.bot_id, taskId: submission.task_id, ticketId: submission.ticket_id,
-      payload: { submission_id: submission.id, work_item_id: submission.work_item_id, by } });
+  }
+  // Yours is logged as yours even after a reviewer's approve: the review moved it to your card, your
+  // 放行 let it through.
+  if (!record || yours) {
+    recordWorkEvent(ctx, { kind: "submission.approved", actor: yours ? USER_MEMBER : "app", botId: submission.bot_id, taskId: submission.task_id,
+      ticketId: submission.ticket_id, payload: { submission_id: submission.id, work_item_id: submission.work_item_id, by } });
   }
   if (submission.awaiting?.message_id) letGoOfCard(ctx, submission.awaiting.message_id, { reason: "approved" });
   // The Bot that asked for this work hears it is in, and goes on.
@@ -852,7 +857,8 @@ function resolveApproval(ctx: StoreContext, submission: Submission, checks: read
     failOnGates(ctx, submission, checks as SubmissionCheck[], now, true);
     if (cardId) markApprovalCard(ctx, cardId, "reject", checkLines(failing, localeOf(ctx)));
   } else {
-    approve(ctx, submission, review, checks, now);
+    // Only ever reached from your 放行 (pressed now, or waiting on a gate that has since run).
+    approve(ctx, submission, review, checks, now, "user");
     if (cardId) markApprovalCard(ctx, cardId, "approve", []);
   }
   return getSubmission(ctx, submission.id);

@@ -23,7 +23,7 @@
  */
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { USER_MEMBER, type AcceptanceCheck, type ApiFormat, type AcceptanceCheckOutcome, type Message, type OrganizerRun, type ThinkingLevel, type Ticket, type Turn } from "@real-bot/protocol";
+import { USER_MEMBER, traceNodeSaidNothing, type AcceptanceCheck, type ApiFormat, type AcceptanceCheckOutcome, type Message, type OrganizerRun, type ThinkingLevel, type Ticket, type Turn } from "@real-bot/protocol";
 import { NO_ABLATION, type Ablation } from "./ablation";
 import { describeCheck } from "./acceptance-eval";
 import type { CompletionsClient, MappedUsage } from "./completions";
@@ -214,12 +214,23 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     }
   }
 
+  /**
+   * The plan's last cards as the organizer reads them: who, and what they said. A Bot's turn that
+   * said nothing is said to have said nothing — its summary is the line that woke it, which read as
+   * the Bot saying 「（应用）用户把交付…退回」 itself — and one that only handed over files says so.
+   */
   function traceLines(taskId: string): string[] {
     try {
       return store
         .taskTrace(taskId)
         .nodes.slice(-TRACE_LIMIT)
-        .map((node) => `【${node.actor === USER_MEMBER ? "user" : nameOf(node.actor)}】${node.summary}`);
+        .map((node) => {
+          if (node.actor === USER_MEMBER) return `【user】${node.summary}`;
+          const who = nameOf(node.actor);
+          if (traceNodeSaidNothing(node)) return `【${who}】（这一轮没说话，状态 ${node.status}）`;
+          if (!node.summary && node.artifacts.length > 0) return `【${who}】（只交出 ${node.artifacts.length} 个文件）`;
+          return `【${who}】${node.summary}`;
+        });
     } catch {
       return [];
     }

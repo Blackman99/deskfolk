@@ -130,7 +130,7 @@ describe("what the organizer reads", () => {
     const { store, group } = fixture();
     const empty = organizerPayload(store, { mode: "message", sessionId: group.id, message: store.postMessage(group.id, { body: "你好" }), current: null });
     expect(empty.current_plan).toBeNull();
-    expect(empty.since_last_revision).toEqual({ messages: [], artifacts: [], trace: [], commands: [] });
+    expect(empty.since_last_revision).toEqual({ messages: [], artifacts: [], trace: [], commands: [], reviews: [] });
     expect(empty.recent_plans).toEqual([]);
     expect(empty.elsewhere_plans).toEqual([]);
     const plan = store.openTask({ sessionId: group.id, title: "写周报", spec: spec() });
@@ -372,6 +372,85 @@ describe("what the organizer reads", () => {
     expect(ORGANIZER_SYSTEM).not.toContain("user_spoke");
     expect(ORGANIZER_SYSTEM).not.toContain("_user_typed 里");
     expect(ORGANIZER_SYSTEM).toContain("settle 时只记交接");
+  });
+});
+
+describe("how hand-overs came out", () => {
+  /** A hand-over row as the store keeps one, with nothing else around it. */
+  function handOver(store: Store, input: { id: string; taskId: string; ticketId: string; botId: string; state: string; at: string; awaiting?: object | null }) {
+    store.db.run(`INSERT INTO submissions (id, task_id, ticket_id, bot_id, origin, artifacts, state, awaiting, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 'submit', '[]', ?, ?, ?, ?)`,
+    [input.id, input.taskId, input.ticketId, input.botId, input.state, input.awaiting ? JSON.stringify(input.awaiting) : null, input.at, input.at]);
+  }
+
+  /** A work event at a moment of the test's choosing. */
+  function event(store: Store, input: { kind: string; actor: string; taskId: string; ticketId: string; at: string; payload: object }) {
+    store.db.run("INSERT INTO work_events (at, kind, actor, task_id, ticket_id, payload) VALUES (?, ?, ?, ?, ?, ?)",
+      [input.at, input.kind, input.actor, input.taskId, input.ticketId, JSON.stringify(input.payload)]);
+  }
+
+  test("each ticket's stage, its newest hand-over and who decided it, and the decisions since the last version, your words with yours", () => {
+    // IG MV, 2026-10-09: four versions sent back on their cards, each read into progress.done as
+    // 「对照样片通过」 — the organizer saw the ticket as "doing" and none of the send-backs.
+    const { store, writer, reviewer, group } = fixture();
+    const plan = store.openTask({ sessionId: group.id, title: "MV", spec: spec() });
+    store.recordSpecRevision({ taskId: plan.id, spec: spec(), actor: "app", now: "2026-10-09T08:00:00.000Z" });
+    const sample = store.createTicket({ taskId: plan.id, title: "Ning 样镜", worker: writer.id });
+    const opening = store.createTicket({ taskId: plan.id, title: "开场", worker: writer.id });
+    const credits = store.createTicket({ taskId: plan.id, title: "片尾", worker: writer.id });
+    const untouched = store.createTicket({ taskId: plan.id, title: "组装", worker: writer.id });
+    store.db.run("UPDATE tickets SET stage = 'rework', status = 'doing' WHERE id = ?", [sample.id]);
+    store.db.run("UPDATE tickets SET stage = 'approved', status = 'done' WHERE id = ?", [opening.id]);
+    store.db.run("UPDATE tickets SET stage = 'submitted', status = 'review' WHERE id = ?", [credits.id]);
+    // The sample: an older version superseded, the newest sent back by you with a note.
+    handOver(store, { id: "s-old", taskId: plan.id, ticketId: sample.id, botId: writer.id, state: "superseded", at: "2026-10-09T08:40:00.000Z" });
+    handOver(store, { id: "s-v7", taskId: plan.id, ticketId: sample.id, botId: writer.id, state: "rejected", at: "2026-10-09T18:12:41.000Z" });
+    event(store, { kind: "review.recorded", actor: "user", taskId: plan.id, ticketId: sample.id, at: "2026-10-09T18:12:41.000Z",
+      payload: { submission_id: "s-v7", outcome: "reject", by: "user", note: "人物还是跟原来的人长得不一样" } });
+    // The opening: a reviewer approved, then your 放行 on the card it put up — logged before presses
+    // were yours (`by: no_reviewer`), told by the card your press marked.
+    handOver(store, { id: "s-open", taskId: plan.id, ticketId: opening.id, botId: writer.id, state: "approved", at: "2026-10-09T09:00:00.000Z" });
+    event(store, { kind: "review.recorded", actor: reviewer.id, taskId: plan.id, ticketId: opening.id, at: "2026-10-09T08:59:00.000Z",
+      payload: { submission_id: "s-open", outcome: "approve" } });
+    event(store, { kind: "submission.approved", actor: "app", taskId: plan.id, ticketId: opening.id, at: "2026-10-09T09:00:00.000Z",
+      payload: { submission_id: "s-open", by: "no_reviewer" } });
+    store.db.run("INSERT INTO messages (id, session_id, kind, author, body, created_at, control) VALUES ('card-open', ?, 'system', 'app', '放行卡', ?, ?)",
+      [group.id, "2026-10-09T08:59:30.000Z", JSON.stringify({ kind: "review_item", submission_id: "s-open", task_id: plan.id, ticket_id: opening.id,
+        requirement_ids: [], check_ids: [], offer: [], acted: ["approve"], result: "已放行。" })]);
+    // The credits: handed over, its card out.
+    handOver(store, { id: "s-credits", taskId: plan.id, ticketId: credits.id, botId: writer.id, state: "submitted", at: "2026-10-09T10:00:00.000Z",
+      awaiting: { kind: "approval", requirement_ids: [], check_ids: [], message_id: "card-credits", review: null, at: "2026-10-09T10:00:00.000Z" } });
+    // A line of yours that put the opening back to rework, then undone; another that stood.
+    const line = store.postMessage(group.id, { body: "开场人物太粗糙" });
+    event(store, { kind: "complaint.rework", actor: "user", taskId: plan.id, ticketId: opening.id, at: "2026-10-09T11:00:00.000Z",
+      payload: { message_id: line.id, card_id: "c-1" } });
+    event(store, { kind: "complaint.rework_undone", actor: "user", taskId: plan.id, ticketId: opening.id, at: "2026-10-09T11:01:00.000Z",
+      payload: { card_id: "c-1" } });
+
+    const payload = organizerPayload(store, { mode: "settle", sessionId: group.id, message: null, current: store.getTask(plan.id) });
+    const bySeq = new Map(payload.current_plan!.tickets.map((ticket) => [ticket.seq, ticket]));
+    expect(bySeq.get(sample.seq)).toMatchObject({ status: "doing", stage: "rework",
+      last_handover: { state: "rejected", decided_by: "user", user_note: "人物还是跟原来的人长得不一样" } });
+    expect(bySeq.get(opening.seq)).toMatchObject({ stage: "approved", last_handover: { state: "approved", decided_by: "user" } });
+    expect(bySeq.get(credits.seq)).toMatchObject({ stage: "submitted", last_handover: { state: "submitted", decided_by: null, waiting_on_user: true } });
+    expect(bySeq.get(untouched.seq)).toMatchObject({ stage: "todo" });
+    expect(bySeq.get(untouched.seq)).not.toHaveProperty("last_handover");
+    expect(payload.since_last_revision.reviews).toEqual([
+      { ticket: opening.seq, outcome: "approve", by: "user", at: "2026-10-09T08:59:00.000Z" },
+      { ticket: opening.seq, outcome: "approve", by: "user", at: "2026-10-09T09:00:00.000Z" },
+      { ticket: sample.seq, outcome: "reject", by: "user", note: "人物还是跟原来的人长得不一样", at: "2026-10-09T18:12:41.000Z" },
+    ]);
+    // A reviewer's own decisions stay the reviewer's.
+    event(store, { kind: "review.recorded", actor: reviewer.id, taskId: plan.id, ticketId: credits.id, at: "2026-10-09T19:00:00.000Z",
+      payload: { submission_id: "s-credits", outcome: "reject" } });
+    expect(organizerPayload(store, { mode: "settle", sessionId: group.id, message: null, current: store.getTask(plan.id) })
+      .since_last_revision.reviews.at(-1)).toEqual({ ticket: credits.seq, outcome: "reject", by: "reviewer", at: "2026-10-09T19:00:00.000Z" });
+    store.close();
+  });
+
+  test("the prompt says your send-back outweighs a Bot's word and a passing sample check", () => {
+    expect(ORGANIZER_SYSTEM).toContain("用户的退回比 Bot 的话、比 checks 都算数");
+    expect(ORGANIZER_SYSTEM).toContain("照样片检查通过只说明和样片对得上，不等于用户放行");
   });
 });
 

@@ -472,6 +472,32 @@ describe("a job's trace", () => {
     store.close();
   });
 
+  test("a reply whose last part is files only keeps its words on the card; a turn that only handed over files shows them", () => {
+    // IG MV, 2026-10-08 15:59: 「决赛段素材已备好…」 (281 characters, 97 files) drew a blank card — the
+    // turn's last bot row was the attachment-only part of its reply, and the card took that one.
+    const { store, bot, session } = fixture();
+    const trigger = store.postMessage(session.id, { body: "做决赛段" });
+    const turn = store.createTurn({ sessionId: session.id, botId: bot.id, triggerMessageId: trigger.id });
+    const dir = store.getTask(turn.task_id!).dir;
+    const said = store.insertMessage({ sessionId: session.id, turnId: turn.id, kind: "bot", author: bot.id, body: "决赛段素材已备好" });
+    const files = store.insertMessage({ sessionId: session.id, turnId: turn.id, kind: "bot", author: bot.id, body: "", paths: [`${dir}/master.mp4`] });
+    store.setTurnStatus(turn.id, "completed");
+    const card = store.taskTrace(turn.task_id!).nodes[1]!;
+    expect(card.summary).toBe("决赛段素材已备好");
+    expect(card.focus_message_id).toBe(said.id);
+    expect(card.artifacts.map((file) => ({ path: file.path, message_id: file.message_id }))).toEqual([{ path: `${dir}/master.mp4`, message_id: files.id }]);
+
+    // A turn that said nothing and only handed over files: no words, but its files, not the line that woke it.
+    const again = store.postMessage(session.id, { body: "再渲一版" });
+    const quiet = store.createTurn({ sessionId: session.id, botId: bot.id, triggerMessageId: again.id });
+    const only = store.insertMessage({ sessionId: session.id, turnId: quiet.id, kind: "bot", author: bot.id, body: "", paths: [`${dir}/master_v2.mp4`] });
+    store.setTurnStatus(quiet.id, "completed");
+    const quietCard = store.taskTrace(turn.task_id!).nodes.find((node) => node.turn_id === quiet.id)!;
+    expect(quietCard.summary).toBe("");
+    expect(quietCard.focus_message_id).toBe(only.id);
+    store.close();
+  });
+
   test("a handoff into another session stays on the same picture, and so does a Bot↔Bot direct", () => {
     const { store, bot, session } = fixture();
     const reviewer = store.createBot({ name: "Reviewer", duties: "review", boundaries: "none" });

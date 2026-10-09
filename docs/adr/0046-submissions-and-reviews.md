@@ -153,3 +153,13 @@ The approval card always attached the hand-over's files, but the messenger drew 
 规划只在所有没作废的任务都通过时交付，但没有回退：交付后你提意见、负责人让人重交，任务回到审查中，规划却还写着已交付，监督器（只追进行中的规划）不会追这次审查。现在任务从「已通过」变成审查中、返工或进行中时，已交付的规划回到进行中（`plan.reopened`），再全部通过就再交付。开事时折掉的那张任务写成「作废」阶段，看板上不再显示成谁在做的「搁置」。
 
 A plan is delivered once every ticket not dropped is approved, but nothing took that back: when, after delivery, you complained and the lead had the work handed in again, the ticket was in review while the plan still read delivered, and the supervisor, which chases only active plans, would not chase that review. Now a ticket leaving approved for review, rework or work puts a delivered plan back to active (`plan.reopened`), delivered again once all are through. The opening ticket folded by `plan_items` is set to the dropped stage, so the board no longer shows it as parked work someone is on.
+
+## 2026-10-10 补记：你的放行记在你名下，整理跳读交付的结局 / Your approval is logged as yours; the organizer reads how hand-overs came out
+
+你在卡片上按的放行，此前和应用自己放行记成同一件事（`submission.approved`，`actor: app`、`by: no_reviewer`，任务阶段 `source: supervisor`）：dev 库里 43 条放行没有一条记在你名下，而卡片上能看到 16 次是你按的。现在 `resolveApproval`（只由你的按键走到）记 `by: user`、`actor: user`，阶段变化记 `source: user`；审查者先通过、再由你放行的，审查记录照旧，另记一条你的放行。历史数据不改，读历史时以卡片 `control.acted` 为准。
+
+整理跳以前只看任务状态，看不到阶段，也看不到你的退回：退回的原话只在 `review.recorded` 和一条只给 Bot 的提示里。IG MV 那件事（2026-10-09），它四次把你刚退回的样镜写进进展「对照样片通过」。现在它的输入里每个任务带阶段和最近一次交付的结局（谁定的、你的原话、是否等你），以及上一版之后的放行、退回和一句话打回返工；提示词新加一行：你的退回比 Bot 的话和检查都算数，照样片检查过了不等于你放行。
+
+An approval you pressed on a card was logged the same as the app approving on its own (`submission.approved`, `actor: app`, `by: no_reviewer`, the stage change `source: supervisor`): of 43 approvals on the dev database none was logged as yours, while the cards show 16 presses. `resolveApproval`, which only your press reaches, now logs `by: user` and `actor: user`, the stage change `source: user`; when a reviewer approved first and you let it through, the review is kept and your approval is logged beside it. History is left as it is; read it from the card's `control.acted`.
+
+The organizer read a ticket's status and nothing else — not its stage, not your send-backs, whose words lived only in `review.recorded` and a Bot-only notice. On the IG MV job (2026-10-09) it wrote "matches the sample" into the progress four times, each minutes after you sent that shot back. Its input now gives each ticket its stage and how its newest hand-over came out (who decided, your words, whether it waits on you), and the approvals, send-backs and lines putting a ticket back to rework since the last version; one new prompt line says your send-back outweighs a Bot's word and the checks, and a passing sample check is not your approval.

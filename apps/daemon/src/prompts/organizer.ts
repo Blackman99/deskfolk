@@ -7,7 +7,7 @@
  *
  * The prompt and the payload live here; the engine-side orchestration is in `organizer.ts`.
  */
-import { USER_MEMBER, type AcceptanceCheckKind, type Message, type TicketStatus } from "@real-bot/protocol";
+import { USER_MEMBER, type AcceptanceCheckKind, type Message, type TicketStage, type TicketStatus } from "@real-bot/protocol";
 import { describeCheck } from "../acceptance-eval";
 import { DERIVED_CHECKS_MAX } from "../derived-checks";
 import { sessionLabel } from "../context";
@@ -19,6 +19,8 @@ import {
   isTicketStatus,
   normalizePlanSpec,
   parsePlanSpec,
+  ticketStage,
+  type HandOverOutcome,
   type OrganizerCheckInput,
   type OrganizerResult,
   type OrganizerTicketInput,
@@ -59,6 +61,7 @@ ${ORGANIZER_STOP_RULE}
 - settle 时只记交接：任务的 status 和 worker、新交出来的任务、progress、process 里的做法和因此卡住的事、做完没有。goal 和 kind 照抄，已有任务的 title 和 spec 不改，规划不改成 parked；改了这几项，应用也会退回。
 - tickets：把要交付的东西拆成任务，一个任务是能独立交出的一块，不要把一句话拆成好几个，也不要每条消息都新建。几个人各做一部分、合起来才是一个能用的东西时，另开一个「联调并给出启动方式」的任务，并在 process 里写明最终交付放在哪个目录。已有任务用它的 id 引用（join 时是那件事的任务），只写 id 和变了的字段，例如 {"id": "…", "status": "review"}；没变的任务不用列，不列的不动。新任务用 new-1、new-2，要写 title。不能删任务，只能改成 done 或 parked。spec 写这个任务要交出什么、怎么算完成；不写进展（进 progress），也不写 Bot 给自己定的禁令（进 process）。交付物没变就不改 spec；spec_user_typed 是 true 的，除非用户这句就在改它，不改。
 - 依据：Bot 说「已完成」「测试通过」「验收通过」不算依据。任务标 review 要有这个任务交出的文件；标 done 要有文件，而且说跑过、测过的要在 commands 里找得到（退出码 0）。只有文档、报告、没有能跑的东西，不能把「做出能用的东西」的任务标 done。有人交出了属于某任务的文件，至少标 review，并写上 worker。
+- 交接结果：current_plan.tickets[].stage 是应用记的阶段（submitted、in_review 是交出了等审；rework 是被退回重做；approved 是通过了；dropped 是放下不做了），last_handover 是这个任务最近一次交出的结局（decided_by 是 user 就是用户本人定的，user_note 是用户退回时的原话，waiting_on_user 是正等用户放行或退回）；since_last_revision.reviews 是上一版要点之后的每次放行、退回，和用户一句话把任务打回返工（outcome 是 rework，note 是那句话）。用户的退回比 Bot 的话、比 checks 都算数：stage 是 rework、或最近一次被用户退回的任务就是没通过，progress.done 里不写它通过、合格或「对照样片通过」，把用户要改的写进 progress.open（带上 user_note 的意思）；照样片检查通过只说明和样片对得上，不等于用户放行；只有 approved 才写交付通过；之后又交出来正等用户看的，也不写成通过。
 - checks（可选，缺省当空数组）：current_plan.checks 是应用自己跑出来的证据，比 Bot 自称「测试通过」「验收通过」更可信，也比 commands 里的命令记录更可信。只要有一条 checks 是 fail，这个规划就不能标 done，它对应的那个任务也不能标 done（已经是 done 的这次改回 doing）；blocked 或 error 既不算通过也不算失败，算卡住，写进 progress.blocked，不要据此判定完成或失败。只在确定的情况下才提议新检查（id 写 new-1、new-2…），一条 acceptance 最多配 0～2 条，item 写它验证的是 current_plan.spec.acceptance 里的哪一条，没有对得上的就写一句它验证什么：exists/contains/matches 的 path 要能在 files、artifacts 或规则里找到出处；command 必须原样抄自 since_last_revision.commands 里退出码是 0 的那条，连 cwd 一起抄，不能凭空编；也可以是用户自己在消息里写下的命令或文件路径。交付物是由几个 Bot 分头做出的几部分拼起来的（章节、镜头、图片、幻灯片……），而 acceptance 或 rules 里提到「连贯」「衔接」「风格一致」「前后一致」这类跨部分的要求时，可以提一条 continuity（衔接一致）：path 是那份交付物，或者是能匹配到各部分的通配（同样要能在 files、artifacts 或规则里找到出处），或者 command 是能按顺序列出各部分的命令（同样必须抄自 commands 里跑成功过的那条），二者至少一个；不要凭空写一个从没出现过的文件或命令。代码要联调，仍然按前面「联调并给出启动方式」的做法开一条 command 检查，不用 continuity。只能新增，或者按 id 改动、删除 source 是 organizer 的检查（remove: true 是删除，其余字段不写就是不变）；source 是 user 的检查不要碰，也不要用同样的定义再开一条新的。这次答案如果新增或改了 checks，这次就不要把规划或它对应的任务标成 done——等它跑出结果再决定。
 - plan.status 标 done 时，每个任务也要在这次答案里标成 done 或 parked；还有待做或进行中的任务，这件事就没做完。
 - message_ticket：mode 是 message 时，这条消息在说哪个任务；一句泛泛的话或问进度就 null。settle 时 null。
@@ -78,6 +81,8 @@ export const ORGANIZER_BODY_LIMIT = 600;
 export const ORGANIZER_TICKETS_LIMIT = 40;
 export const ORGANIZER_ARTIFACTS_LIMIT = 30;
 export const ORGANIZER_TRACE_LIMIT = 12;
+/** Decisions on hand-overs since the last version the organizer sees; one settle can span several. */
+export const ORGANIZER_REVIEWS_LIMIT = 12;
 export const ORGANIZER_RECENT_PLANS = 8;
 /** Runs since the last version the organizer sees: enough to tell a test run from a claim. */
 export const ORGANIZER_RUNS_LIMIT = 40;
@@ -107,6 +112,12 @@ export const ORGANIZER_USER_LINES_SCAN = 200;
 /** As much of the question behind an answer of yours as the organizer sees. */
 const ASKED_PREVIEW = 120;
 
+/** A ticket's newest hand-over as the organizer reads it: your words clipped like any line of yours. */
+function lastHandOver(outcome: HandOverOutcome | undefined): { last_handover?: HandOverOutcome } {
+  if (!outcome) return {};
+  return { last_handover: outcome.user_note ? { ...outcome, user_note: clipBody(outcome.user_note, ORGANIZER_BODY_LIMIT).text } : outcome };
+}
+
 /** A ticket's description as the organizer is shown it: one line, clipped. */
 export function ticketSpecPreview(spec: string): string {
   return clipBody(spec, TICKET_SPEC_PREVIEW).text;
@@ -131,6 +142,10 @@ export type OrganizerPayload = {
       seq: number;
       title: string;
       status: TicketStatus;
+      /** Where the app has it (ADR 0046): status alone reads a ticket you sent back as merely "doing". */
+      stage: TicketStage;
+      /** How its newest hand-over came out, and who decided; absent when nothing was handed over. */
+      last_handover?: HandOverOutcome;
       worker: string | null;
       spec: string;
       /** You wrote this description yourself on the board, and nobody has changed it since. */
@@ -195,6 +210,8 @@ export type OrganizerPayload = {
     trace: string[];
     /** What the plan's turns actually ran, oldest first: who, under which ticket, where, and how it exited. */
     commands: Array<{ by: string; ticket: number | null; command: string; cwd: string | null; exit_code: number | null; ok: boolean; error?: string }>;
+    /** Every 放行, 退回 and line of yours putting a ticket back to rework since then, oldest first: yours with your words. */
+    reviews: Array<{ ticket: number | null; outcome: "approve" | "reject" | "rework"; by: "user" | "reviewer" | "app"; note?: string; at: string }>;
   };
 };
 
@@ -325,6 +342,16 @@ export function organizerPayload(
     }
   }
   const seqOf = new Map(currentTickets.map((ticket) => [ticket.id, ticket.seq]));
+  const handOvers = current ? store.ticketHandOvers(current.id) : new Map<string, HandOverOutcome>();
+  const reviews: OrganizerPayload["since_last_revision"]["reviews"] = current
+    ? store.handOverDecisionsSince(current.id, since, ORGANIZER_REVIEWS_LIMIT).map((decision) => ({
+        ticket: decision.ticket_id ? (seqOf.get(decision.ticket_id) ?? null) : null,
+        outcome: decision.outcome,
+        by: decision.by,
+        ...(decision.note ? { note: clipBody(decision.note, ORGANIZER_BODY_LIMIT).text } : {}),
+        at: decision.at,
+      }))
+    : [];
   const commands: OrganizerPayload["since_last_revision"]["commands"] = current
     ? store.taskRunsSince(current.id, since, ORGANIZER_RUNS_LIMIT).map((run) => {
         const item: OrganizerPayload["since_last_revision"]["commands"][number] = {
@@ -374,6 +401,8 @@ export function organizerPayload(
               seq: ticket.seq,
               title: ticket.title,
               status: ticket.status,
+              stage: ticketStage(ticket),
+              ...lastHandOver(handOvers.get(ticket.id)),
               worker: ticket.worker ? nameOf(store, ticket.worker) : null,
               spec: ticketSpecPreview(ticket.spec),
               ...(typed.ticketIds.includes(ticket.id) ? { spec_user_typed: true as const } : {}),
@@ -423,6 +452,7 @@ export function organizerPayload(
       artifacts,
       trace: (input.trace ?? []).slice(-ORGANIZER_TRACE_LIMIT),
       commands,
+      reviews,
     },
   };
 }

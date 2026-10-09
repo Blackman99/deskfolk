@@ -71,14 +71,20 @@ export function taskTrace(ctx: StoreContext, taskId: string): TaskTrace {
        ORDER BY created_at ASC, id ASC`,
     )
     .all(taskId);
+  // A reply in several parts often ends on its files alone: the card says the last part with words
+  // in it (IG MV, 2026-10-08: nine cards drew blank, seven of them over words the Bot had said).
   const lastWord = new Map<string, TraceMessageRow>();
+  const lastPart = new Map<string, TraceMessageRow>();
   const askByTurn = new Map<string, TraceMessageRow>();
   // The 中断 line is what a cut turn leaves behind. It is written after the last word, so a
   // card that still points at that word lands one row above the note it is about.
   const interruptByTurn = new Map<string, TraceMessageRow>();
   for (const row of spoken) {
     if (!turnIds.has(row.turn_id)) continue;
-    if (row.kind === "bot") lastWord.set(row.turn_id, row);
+    if (row.kind === "bot") {
+      lastPart.set(row.turn_id, row);
+      if (oneLine(row.body)) lastWord.set(row.turn_id, row);
+    }
     else if (row.kind === "ask") askByTurn.set(row.turn_id, row);
     else if (row.body === INTERRUPT_NOTE_BODY) interruptByTurn.set(row.turn_id, row);
   }
@@ -183,15 +189,19 @@ export function taskTrace(ctx: StoreContext, taskId: string): TaskTrace {
       ? null
       : { actor: turn.trigger_author, message_id: turn.trigger_message_id };
     const word = lastWord.get(turn.id);
+    const part = lastPart.get(turn.id);
     const ask = turn.status === "waiting_ask" ? askByTurn.get(turn.id) : undefined;
     const pending = turn.status === "waiting_approval" ? approvalByTurn.get(turn.id) : undefined;
     const cut = turn.status === "interrupted" ? interruptByTurn.get(turn.id) : undefined;
-    // Only a turn still writing shows its partial. Waiting on you already has a sentence to show.
+    // Only a turn still writing shows its partial. Waiting on you already has a sentence to show. A
+    // turn that handed over files and said nothing has no words: the line that woke it is not its own.
     const summary = turn.status === "running" && turn.partial_text?.trim()
       ? oneLine(turn.partial_text)
       : word
         ? oneLine(word.body)
-        : oneLine(turn.trigger_body);
+        : part
+          ? ""
+          : oneLine(turn.trigger_body);
     nodes.push({
       turn_id: turn.id,
       session_id: turn.session_id,
@@ -200,7 +210,7 @@ export function taskTrace(ctx: StoreContext, taskId: string): TaskTrace {
       woken_by_turn_id: wokenBy,
       woken_elsewhere: elsewhere,
       trigger_message_id: turn.trigger_message_id,
-      focus_message_id: cut?.id ?? ask?.id ?? word?.id ?? turn.trigger_message_id,
+      focus_message_id: cut?.id ?? ask?.id ?? word?.id ?? part?.id ?? turn.trigger_message_id,
       summary,
       created_at: turn.created_at,
       artifacts: filesByTurn.get(turn.id) ?? [],

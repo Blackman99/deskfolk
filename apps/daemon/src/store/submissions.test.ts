@@ -514,6 +514,12 @@ test("a hand-over waits on you on one card: what nothing backs is listed on 放�
   expect(f.store.answerReviewCard(card.id, "approve").submission).toMatchObject({ state: "approved", awaiting: null });
   expect(ticketRow(f)).toEqual({ status: "done", stage: "approved" });
   expect(reviewCards(f)).toBe(1);
+  // The press is logged as yours, not as the app approving on its own (every 放行 read "no_reviewer"
+  // on the dev DB until 2026-10-10, so nothing could tell your approvals apart).
+  expect(f.store.listWorkEvents({ kind: "submission.approved" }).map((event) => ({ actor: event.actor, ...event.payload })))
+    .toMatchObject([{ actor: "user", submission_id: submission.id, by: "user" }]);
+  expect(f.store.listWorkEvents({ kind: "ticket.stage_changed" }).filter((event) => event.payload.after === "approved")
+    .map((event) => ({ actor: event.actor, source: event.payload.source }))).toEqual([{ actor: "user", source: "user" }]);
 });
 
 test("an item that only repeats the job's name is not listed again on the card; one with a measurement on it is", () => {
@@ -1090,6 +1096,8 @@ test("not held: a line about another ticket, one another Bot is at work on, a se
   run(g, "late-gate", "pass");
   superviseSubmissions(g.ctx, later(UNREVIEWED_AFTER_MS + 3_000));
   expect(g.store.getSubmission(submission.id).state).toBe("approved");
+  // Resolved by the supervisor's tick, but it was your press that let it through.
+  expect(g.store.listWorkEvents({ kind: "submission.approved" }).at(-1)).toMatchObject({ actor: "user", payload: { submission_id: submission.id, by: "user" } });
 });
 
 /** The segment ends at `at`, as its row says. */

@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A job's progress no longer calls what you sent back passed
+
+- The job's plan used to write a version you had just sent back as done: "matches the sample", "passed". It now sees each ticket's stage and how its newest hand-over came out — who decided it, your words when you sent it back, whether it is waiting on you — and every approval and send-back since its last version. A ticket in rework, or whose newest hand-over you sent back, goes under to do with what you want changed; a passing sample check is no longer taken as your approval.
+- An approval you press on a card is now recorded as yours. Before, every approval was recorded as the app letting it through on its own.
+- Fixed: a Bot's card on the trace drew blank when its reply ended on a part with files only; it now shows the turn's last words. When a turn said nothing, the plan's organizer no longer reads the message that woke it as the Bot's own words.
+
 ### Choose where each kind of window opens
 
 - Settings has a new tab, Behavior, after General, with the card Where windows open. Conversations, Bot ↔ Bot directs, the trace, board and plan, artifacts, the workspace, terminals, the calendar and spend each get a choice of where they go when they are not open yet. It is kept on this machine; narrow windows and phones do not have it. A change applies to the next window opened; changed ones say so, and one button puts the defaults back.
