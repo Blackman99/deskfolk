@@ -5,7 +5,7 @@
  */
 import type { HoldScope, HoldTarget } from "@real-bot/protocol";
 import { HttpError } from "../errors";
-import { waitingOn } from "./large-jobs";
+import { droppedWhy, waitingOn } from "./large-jobs";
 import { ulid } from "../ids";
 import { HOLD_SCOPES, holdsCovering } from "./holds";
 import { holdInboxItems, queueInboxItem, refreshHeldInbox, supersedeInboxItems, type InboxItem } from "./inbox";
@@ -348,6 +348,26 @@ export function cancelDelegationsForBot(ctx: StoreContext, input: { botId: strin
   });
 }
 
+/**
+ * A ticket its lead dropped (作废): the open delegations on it are cancelled, each answered with why,
+ * and nobody is woken for it — the lead knows, and a delegate at work on it hears it is dropped.
+ */
+export function cancelDelegationsForTicket(ctx: StoreContext, input: { ticketId: string; why: string; now?: string }): DelegationCancellation {
+  return ctx.commit(() => {
+    const now = clock(input.now);
+    const affected = ctx.db.query<DelegationRow, [string]>(`SELECT d.* FROM delegations d WHERE d.status = 'open' AND d.ticket_id = ?
+      ORDER BY d.created_at, d.rowid`).all(input.ticketId).map(toDelegation);
+    const result: DelegationCancellation = { delegations: [], inbox: [] };
+    for (const delegation of affected) {
+      const inbox = resolve(ctx, delegation, { bot_id: "app" }, { answer: `Delegation cancelled: the ticket was dropped (${input.why}) — ${delegation.ask}`,
+        replyRef: `ticket_dropped:${input.ticketId}`, now, status: 'cancelled', wakes: false });
+      result.delegations.push(getDelegation(ctx, delegation.id));
+      result.inbox.push(inbox);
+    }
+    return result;
+  });
+}
+
 /** Clearing/deleting a context records cancellation but deliberately schedules no new execution. */
 export function cancelDelegationsForSession(ctx: StoreContext, input: { sessionId: string; now?: string }): DelegationCancellation {
   return ctx.commit(() => {
@@ -412,6 +432,9 @@ export function delegateWork(ctx: StoreContext, input: {
     const requirementIds = identifiers(input.requirementIds, "requirementIds");
     validateBindings(ctx, from.task_id, ticketId, partKeys, requirementIds);
     refuseOwnTicket(ctx, { botId: from.bot_id, ticketId, expects: input.expects, partKeys });
+    // Nothing is asked for on a ticket its lead dropped (作废).
+    const dropped = ticketId ? droppedWhy(ctx, ticketId) : null;
+    if (dropped !== null) throw new HttpError(409, "dropped", `that ticket was dropped (${dropped}): ask on another ticket of the job`);
     // Asking for a ticket's deliverable starts it: not while it waits for another (ADR 0060).
     const waited = input.expects === "deliverable" && ticketId ? waitingOn(ctx, ticketId) : null;
     if (waited) {

@@ -6,6 +6,14 @@
  * and parts are only added, and a ticket that is closed or approved is not touched. The whole call
  * stands or falls together. Only a lead that does not shift with who ran most is let in: the stored
  * one, the group lead you confirmed, or the one Bot of a direct.
+ *
+ * When you turn a job's direction (2026-10-10), the same call lays it out again: `drop` takes the
+ * tickets of the old direction out (作废, each with why — its reminders, delegations and queued work
+ * go with it), an item marked `sample` moves the sample to it (the old sample's checks come down; you
+ * approve the new one), and the ticket the job opened with is folded in even when work was done on
+ * it. The IG MV job (2026-10-09) went from 2D to 3D with its 2D tickets, its opening ticket and its
+ * 2D sample all still standing beside the new 3D ones: 14 tickets, 7 of them of a direction you had
+ * turned down, and every 3D ticket held to the 2D sample.
  */
 import type { Ticket } from "@real-bot/protocol";
 import { HttpError } from "../errors";
@@ -14,16 +22,19 @@ import { filenamePartNumbers } from "./part-numbers";
 import { allJobConversations, confirmedLeadsOf, eligibleInJob, jobConversations } from "./job-conversations";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import type { StoreContext } from "./shared";
+import { cancelDelegationsForTicket } from "./delegations";
 import { createTicket, getTicket, listTickets, patchTicket } from "./tickets";
 import { setTicketStage } from "./ticket-stage";
 import { recordWorkEvent } from "./work-events";
-import { closeWorkItemIfIdle, findOrCreateWorkItem } from "./work-items";
-import { layoutMissing, planScale, sampleOf, syncStandardChecks, waitOnSample } from "./large-jobs";
+import { closeWorkItemIfIdle, findOrCreateWorkItem, queueWork } from "./work-items";
+import { layoutMissing, planScale, resample, sampleOf, syncStandardChecks, waitOnSample } from "./large-jobs";
 
 /** At most this many items in one call; a plan holds at most `TICKETS_MAX` tickets anyway. */
 export const PLAN_ITEMS_MAX = 20;
 /** At most this many parts declared on one ticket. */
 const PARTS_MAX = 60;
+/** A dropped ticket's reason, and a resample's, as the lead writes it. */
+const REASON_MAX = 200;
 
 export type PlanItemsResult = {
   tickets: Array<{
@@ -33,8 +44,14 @@ export type PlanItemsResult = {
     /** What was asked but left as it was: an owner or reviewer already set. */
     kept?: Array<"owner" | "reviewer">;
   }>;
-  /** The ticket the job opened with, dropped because the layout left it out and nothing was done on it. */
+  /** The ticket the job opened with, folded into the job because the layout left it out. */
   folded?: string;
+  /** The opening ticket the layout left out but could not fold now: why (a hand-over in review, a delegation, another Bot at work on it). */
+  opening_kept?: { ticket_id: string; seq: number; why: "in_review" | "delegation" | "live_turn" };
+  /** What `drop` took out: each ticket with its reason, and the tickets that waited for it. */
+  dropped?: Array<{ ticket_id: string; seq: number; reason: string; waited_on_by: number[] }>;
+  /** The sample moved: from the old one (null when there was none) to the new one. */
+  resampled?: { from: string | null; to: string; removed_checks: number };
 };
 
 type Item = { title: string; owner: string | null; reviewer: string | null; dependsOn: string[]; parts: Array<{ key: string; title: string }>; sample: boolean };
@@ -105,7 +122,8 @@ function memberResolver(ctx: StoreContext, taskId: string): (ref: string, field:
  * third ticket nobody would hand in, owned by the lead, that the supervisor chased and that kept the
  * job from being delivered (2026-10-03). It is dropped, and a segment on it goes on the whole job.
  */
-function foldOpeningTicket(ctx: StoreContext, input: { taskId: string; turnId: string; laidOut: readonly string[]; now: string }): string | null {
+function foldOpeningTicket(ctx: StoreContext, input: { taskId: string; turnId: string; laidOut: readonly string[]; layout: boolean; now: string }):
+  { folded: string } | { kept: NonNullable<PlanItemsResult["opening_kept"]> } | null {
   const opened = ctx.db.query<{ ticket_id: string | null }, [string]>(`SELECT ticket_id FROM work_events WHERE task_id = ? AND kind = 'plan.opened'
     ORDER BY seq LIMIT 1`).get(input.taskId)?.ticket_id ?? null;
   if (!opened || input.laidOut.includes(opened)) return null;
@@ -116,21 +134,73 @@ function foldOpeningTicket(ctx: StoreContext, input: { taskId: string; turnId: s
     UNION ALL SELECT 1 FROM messages m JOIN attachments a ON a.message_id = m.id WHERE m.ticket_id = ?1 AND m.kind = 'bot'
     UNION ALL SELECT 1 FROM turn_runs r JOIN turns t ON t.id = r.turn_id WHERE t.ticket_id = ?1
     UNION ALL SELECT 1 FROM delegations WHERE ticket_id = ?1 AND status = 'open' LIMIT 1`).get(opened);
-  if (touched) return null;
-  // Dropped, not parked: it reads 「作废」 on the board, not as work set aside that someone is on.
-  setTicketStage(ctx, { ticketId: opened, stage: "dropped", source: "supervisor", now: input.now });
-  liftToJob(ctx, input.taskId, opened);
+  // Worked on: folded only by a call that lays the job out (several tickets, a sample, or drops) —
+  // a single ticket added beside it leaves it — and only while nothing is under way on it.
+  if (touched) {
+    if (!input.layout) return null;
+    const why = ctx.db.query("SELECT 1 FROM submissions WHERE ticket_id = ? AND state IN ('checking', 'submitted', 'in_review')").get(opened) ? "in_review"
+      : ctx.db.query("SELECT 1 FROM delegations WHERE ticket_id = ? AND status = 'open'").get(opened) ? "delegation"
+        : ctx.db.query(`SELECT 1 FROM turns WHERE ticket_id = ? AND id <> ? AND status IN ('running', 'waiting_approval', 'waiting_ask')`).get(opened, input.turnId)
+          ? "live_turn" : null;
+    if (why) return { kept: { ticket_id: opened, seq: ticket.seq, why } };
+  }
+  const en = ctx.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'locale'").get()?.value === "en";
+  dropTicket(ctx, { taskId: input.taskId, ticketId: opened, why: en ? "folded into the whole job (the ticket it opened with, left out of the layout)" : "并入整件事（开头那张，拆分里没有它）",
+    byBot: null, turnId: input.turnId, lift: true, now: input.now });
+  recordWorkEvent(ctx, { kind: "ticket.folded", actor: "app", taskId: input.taskId, ticketId: opened, turnId: input.turnId,
+    payload: { into: input.laidOut, touched: Boolean(touched) } });
+  return { folded: opened };
+}
+
+/** A segment on a ticket that is going away goes on the whole job instead. */
+function moveTurnToJob(ctx: StoreContext, input: { taskId: string; ticketId: string; turnId: string; now: string }): void {
   const turn = ctx.db.query<{ bot_id: string; session_id: string; ticket_id: string | null; work_item_id: string | null }, [string]>(
     "SELECT bot_id, session_id, ticket_id, work_item_id FROM turns WHERE id = ?").get(input.turnId);
-  if (turn && turn.ticket_id === opened) {
-    ctx.db.run("UPDATE turns SET ticket_id = NULL, work_item_id = NULL, updated_at = ? WHERE id = ?", [input.now, input.turnId]);
-    const item = findOrCreateWorkItem(ctx, { botId: turn.bot_id, sessionId: turn.session_id, taskId: input.taskId, ticketId: null });
-    ctx.db.run("UPDATE turns SET work_item_id = ? WHERE id = ?", [item.id, input.turnId]);
-    if (turn.work_item_id && turn.work_item_id !== item.id) closeWorkItemIfIdle(ctx, turn.work_item_id);
+  if (!turn || turn.ticket_id !== input.ticketId) return;
+  ctx.db.run("UPDATE turns SET ticket_id = NULL, work_item_id = NULL, updated_at = ? WHERE id = ?", [input.now, input.turnId]);
+  const item = findOrCreateWorkItem(ctx, { botId: turn.bot_id, sessionId: turn.session_id, taskId: input.taskId, ticketId: null });
+  ctx.db.run("UPDATE turns SET work_item_id = ? WHERE id = ?", [item.id, input.turnId]);
+  if (turn.work_item_id && turn.work_item_id !== item.id) closeWorkItemIfIdle(ctx, turn.work_item_id);
+}
+
+/**
+ * A ticket taken out of the job (作废) with why: dropped, not parked, so it reads 作废 on the board
+ * and holds nothing up (`waitingOn` reads it through). What was still to come on it goes with it:
+ * reminders booked on it or its work (the IG MV 2D reminder fired after the job had turned to 3D),
+ * open delegations (cancelled, answered with why), queued mail (superseded) and its idle work.
+ * The calling segment, if on it, goes on the whole job; another Bot at work on it is told, not cut
+ * off — and from then on is refused generating, handing over or delegating on it.
+ */
+export function dropTicket(ctx: StoreContext, input: { taskId: string; ticketId: string; why: string; byBot: string | null; turnId: string | null; lift: boolean; now: string }):
+  { voided: number; cancelled: number; told: string[] } {
+  setTicketStage(ctx, { ticketId: input.ticketId, stage: "dropped", source: "supervisor", botId: input.byBot, turnId: input.turnId, now: input.now });
+  ctx.db.run("UPDATE tickets SET dropped_why = ?, updated_at = ? WHERE id = ?", [input.why, input.now, input.ticketId]);
+  const works = ctx.db.query<{ id: string }, [string]>("SELECT id FROM work_items WHERE ticket_id = ?").all(input.ticketId).map((row) => row.id);
+  const voided = ctx.db.run(`UPDATE check_backs SET voided_at = ?, suspended_at = NULL
+    WHERE (ticket_id = ? OR work_item_id IN (SELECT value FROM json_each(?))) AND fired_at IS NULL AND voided_at IS NULL AND IFNULL(kind, '') <> 'delegation_wait'`,
+  [input.now, input.ticketId, JSON.stringify(works)]).changes;
+  const cancelled = cancelDelegationsForTicket(ctx, { ticketId: input.ticketId, why: input.why, now: input.now }).delegations.length;
+  if (works.length > 0) {
+    ctx.db.run(`UPDATE inbox_items SET state = 'superseded', disposition_note = ? WHERE state IN ('queued', 'held') AND work_item_id IN (SELECT value FROM json_each(?))`,
+      [input.why, JSON.stringify(works)]);
   }
-  recordWorkEvent(ctx, { kind: "ticket.folded", actor: "app", taskId: input.taskId, ticketId: opened, turnId: input.turnId,
-    payload: { into: input.laidOut } });
-  return opened;
+  if (input.turnId) moveTurnToJob(ctx, { taskId: input.taskId, ticketId: input.ticketId, turnId: input.turnId, now: input.now });
+  const seq = getTicket(ctx, input.ticketId).seq;
+  const en = ctx.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'locale'").get()?.value === "en";
+  const told: string[] = [];
+  for (const live of ctx.db.query<{ id: string; bot_id: string; session_id: string }, [string, string]>(
+    `SELECT id, bot_id, session_id FROM turns WHERE ticket_id = ? AND id <> ? AND status IN ('running', 'waiting_approval', 'waiting_ask')`).all(input.ticketId, input.turnId ?? "")) {
+    queueWork(ctx, { botId: live.bot_id, sessionId: live.session_id, taskId: input.taskId, ticketId: null, messageId: null, author: "app",
+      body: en ? `(app) Ticket ${String(seq).padStart(2, "0")} was dropped by the plan's lead: ${input.why}. Do not generate or hand over anything more on it.`
+        : `（应用）任务 ${String(seq).padStart(2, "0")} 被负责人作废了：${input.why}。别再在这张任务上出图、出视频或交付。`,
+      source: "system", kind: "change", priority: 2, wakes: false, notice: false });
+    told.push(live.bot_id);
+  }
+  for (const id of works) closeWorkItemIfIdle(ctx, id);
+  if (input.lift) liftToJob(ctx, input.taskId, input.ticketId);
+  recordWorkEvent(ctx, { kind: "ticket.dropped", actor: input.byBot ?? "app", botId: input.byBot, taskId: input.taskId, ticketId: input.ticketId, turnId: input.turnId,
+    payload: { reason: input.why, voided_check_backs: voided, cancelled_delegations: cancelled, told } });
+  return { voided, cancelled, told };
 }
 
 /**
@@ -157,7 +227,7 @@ function liftToJob(ctx: StoreContext, taskId: string, ticketId: string): void {
   ctx.db.run("UPDATE requirements SET scope = 'plan', scope_id = ? WHERE scope = 'ticket' AND scope_id = ?", [taskId, ticketId]);
 }
 
-export function planItems(ctx: StoreContext, input: { turnId: string; items: unknown }, now: string = isoNow()): PlanItemsResult {
+export function planItems(ctx: StoreContext, input: { turnId: string; items: unknown; drop?: unknown; resample_reason?: unknown }, now: string = isoNow()): PlanItemsResult {
   if (readEngineLevel(ctx.db) < ENGINE_LEVELS.submissions) throw new HttpError(409, "conflict", "plan_items needs engine level 5");
   const turn = ctx.db.query<{ bot_id: string; task_id: string | null }, [string]>("SELECT bot_id, task_id FROM turns WHERE id = ?").get(input.turnId);
   if (!turn) throw new HttpError(404, "not_found", "turn not found");
@@ -169,7 +239,16 @@ export function planItems(ctx: StoreContext, input: { turnId: string; items: unk
   const lead = stableLead(ctx, taskId);
   if (!lead) throw new HttpError(403, "forbidden", "this plan has no confirmed lead: the user confirms one for the group, then that Bot lays out the tickets");
   if (lead !== turn.bot_id) throw new HttpError(403, "forbidden", "only the plan's lead lays out its tickets; ask the lead, or delegate to it");
-  if (!Array.isArray(input.items) || input.items.length === 0) throw new HttpError(422, "invalid_args", "items must be a non-empty list");
+  // Tickets of a direction you turned down, each named (id, number or title) with why (作废).
+  if (input.drop !== undefined && input.drop !== null && !Array.isArray(input.drop)) throw new HttpError(422, "invalid_args", "drop is a list of {ticket, reason}");
+  const drops = ((input.drop as unknown[] | undefined) ?? []).map((raw, index) => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new HttpError(422, "invalid_args", `drop ${index + 1} must be {ticket, reason}`);
+    const entry = raw as Record<string, unknown>;
+    const ref = typeof entry.ticket === "number" ? String(entry.ticket) : entry.ticket;
+    return { ref: text(ref, `drop ${index + 1}: ticket`, 120), reason: text(entry.reason, `drop ${index + 1}: reason`, REASON_MAX) };
+  });
+  const resampleReason = input.resample_reason === undefined || input.resample_reason === null ? null : text(input.resample_reason, "resample_reason", REASON_MAX);
+  if (!Array.isArray(input.items) || (input.items.length === 0 && drops.length === 0)) throw new HttpError(422, "invalid_args", "items must be a non-empty list (or drop some tickets)");
   if (input.items.length > PLAN_ITEMS_MAX) throw new HttpError(422, "invalid_args", `at most ${PLAN_ITEMS_MAX} items in one call`);
   const member = memberResolver(ctx, taskId);
   const items: Item[] = input.items.map((raw, index) => {
@@ -198,6 +277,25 @@ export function planItems(ctx: StoreContext, input: { turnId: string; items: unk
   if (items.filter((item) => item.sample).length > 1) throw new HttpError(422, "invalid_args", "a job has one sample: mark one item sample: true");
 
   return ctx.commit(() => {
+    // Dropped first: what the old direction left is out of the way before the new layout lands.
+    const before = listTickets(ctx, taskId);
+    const dropped: NonNullable<PlanItemsResult["dropped"]> = [];
+    for (const [index, drop] of drops.entries()) {
+      const lower = drop.ref.toLowerCase();
+      const seq = /^#?0*(\d{1,3})$/.exec(drop.ref)?.[1];
+      const ticket = before.find((row) => row.id === drop.ref || row.title.toLowerCase() === lower || (seq !== undefined && row.seq === Number(seq)));
+      if (!ticket) throw new HttpError(422, "invalid_args", `drop ${index + 1}: "${drop.ref}" names no ticket of this plan`);
+      if (titles.includes(ticket.title.toLowerCase())) throw new HttpError(422, "invalid_args", `drop ${index + 1}: ticket ${String(ticket.seq).padStart(2, "0")} is also among the items`);
+      const stage = ticket.stage ?? ({ todo: "todo", doing: "doing", review: "submitted", done: "approved", parked: "dropped" } as const)[ticket.status];
+      if (stage === "dropped" || dropped.some((row) => row.ticket_id === ticket.id)) continue;
+      if (stage === "approved") throw new HttpError(409, "conflict", `drop ${index + 1}: ticket ${String(ticket.seq).padStart(2, "0")} "${ticket.title}" is approved; the user reopens it on the board`);
+      if (stage === "submitted" || stage === "in_review" || ctx.db.query("SELECT 1 FROM submissions WHERE ticket_id = ? AND state IN ('checking', 'submitted', 'in_review')").get(ticket.id)) {
+        throw new HttpError(409, "conflict", `drop ${index + 1}: ticket ${String(ticket.seq).padStart(2, "0")} "${ticket.title}" has a hand-over waiting on review or the user's card; wait for it, or ask the user to send it back`);
+      }
+      const waitedOnBy = before.filter((row) => row.id !== ticket.id && (row.depends_on ?? []).includes(ticket.id)).map((row) => row.seq);
+      dropTicket(ctx, { taskId, ticketId: ticket.id, why: drop.reason, byBot: turn.bot_id, turnId: input.turnId, lift: false, now });
+      dropped.push({ ticket_id: ticket.id, seq: ticket.seq, reason: drop.reason, waited_on_by: waitedOnBy });
+    }
     // Same title in the plan: the same ticket (rework never opens a second one).
     const existing = new Map(listTickets(ctx, taskId).map((ticket) => [ticket.title.toLowerCase(), ticket] as const));
     const made: Array<{ item: Item; ticket: Ticket; created: boolean }> = items.map((item, index) => {
@@ -253,18 +351,24 @@ export function planItems(ctx: StoreContext, input: { turnId: string; items: unk
       out.push({ ticket_id: after.id, seq: after.seq, title: after.title, owner: after.owner_bot_id ?? after.worker, reviewer: after.reviewer_bot_id ?? null,
         depends_on: after.depends_on ?? [], parts: item.parts.map((part) => part.key), created, ...(kept.length > 0 ? { kept } : {}) });
     }
-    // The sample (样片, ADR 0060): one per job, made first; everything else not before it waits for it.
+    // The sample (样片, ADR 0060): one at a time, made first; everything else not before it waits for
+    // it. Another item marked sample moves it there (a direction you turned down): the old sample's
+    // checks come down, and you approve the new one.
     const chosen = made.find((row) => row.item.sample);
+    let resampled: PlanItemsResult["resampled"];
     if (chosen) {
       const current = sampleOf(ctx, taskId);
-      if (current && current.id !== chosen.ticket.id) {
-        throw new HttpError(409, "conflict", `this job's sample is already ticket ${String(current.seq).padStart(2, "0")} "${current.title}"; leave sample out, or the user changes it on the board`);
-      }
       if (!current) ctx.db.run("UPDATE tickets SET sample = 1, updated_at = ? WHERE id = ?", [now, chosen.ticket.id]);
+      else if (current.id !== chosen.ticket.id) {
+        const moved = resample(ctx, { taskId, to: chosen.ticket.id, reason: resampleReason, actor: turn.bot_id, turnId: input.turnId, now });
+        resampled = { from: moved.from, to: chosen.ticket.id, removed_checks: moved.removedChecks.length };
+      }
       const row = out.find((entry) => entry.ticket_id === chosen.ticket.id);
       if (row) row.sample = true;
     }
-    const folded = foldOpeningTicket(ctx, { taskId, turnId: input.turnId, laidOut: out.map((row) => row.ticket_id), now });
+    const layout = made.filter((row) => row.created).length >= 2 || Boolean(chosen) || dropped.length > 0;
+    const fold = foldOpeningTicket(ctx, { taskId, turnId: input.turnId, laidOut: out.map((row) => row.ticket_id), layout, now });
+    const folded = fold && "folded" in fold ? fold.folded : null;
     const waiting = waitOnSample(ctx, taskId, now);
     for (const row of out) {
       if (waiting.includes(row.ticket_id)) row.depends_on = getTicket(ctx, row.ticket_id).depends_on ?? [];
@@ -278,7 +382,9 @@ export function planItems(ctx: StoreContext, input: { turnId: string; items: unk
     syncStandardChecks(ctx, taskId, now);
     recordWorkEvent(ctx, { kind: "plan.items", actor: turn.bot_id, botId: turn.bot_id, taskId, turnId: input.turnId,
       payload: { created: out.filter((row) => row.created).map((row) => row.ticket_id), updated: out.filter((row) => !row.created).map((row) => row.ticket_id),
-        ...(folded ? { folded } : {}), ...(chosen ? { sample: chosen.ticket.id } : {}) } });
-    return { tickets: out, ...(folded ? { folded } : {}) };
+        ...(folded ? { folded } : {}), ...(chosen ? { sample: chosen.ticket.id } : {}),
+        ...(dropped.length > 0 ? { dropped: dropped.map((row) => row.ticket_id) } : {}), ...(resampled ? { resampled } : {}) } });
+    return { tickets: out, ...(folded ? { folded } : {}), ...(fold && "kept" in fold ? { opening_kept: fold.kept } : {}),
+      ...(dropped.length > 0 ? { dropped } : {}), ...(resampled ? { resampled } : {}) };
   });
 }

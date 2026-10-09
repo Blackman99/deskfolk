@@ -296,8 +296,8 @@ export const REVIEW: ToolDef = {
 export const PLAN_ITEMS: ToolDef = {
   name: "plan_items",
   description: {
-    zh: "只给规划负责人（存下的或用户确认的，私聊里就是你）：一次把这件事拆成任务——每张写标题、谁做（owner，新任务必填）、谁审（reviewer，可省略，不能是做的人）、要等哪些任务先完成（depends_on，写其他任务的标题或编号），以及分件（parts，如「Shot 07」）。大活（局面里写着的）要标一件 sample: true 作样片：先做、按整件事的水准做足、由用户放行；其余各件自动等它，放行后交上来时拿它对照。样片之前要先有的（设定、提纲）可以让样片 depends_on 它们。一件事只有一个样片。标题和规划里已有的任务相同时就是那张任务：只补空着的谁做、谁审（已经有人的不换，结果里 kept 会写明），依赖和分件只加不减；已完成、搁置或已通过的任务不动。全部合法才一起生效。负责人之外的 Bot 不能用：要拆活，委派给负责人。",
-    en: "For the plan's lead only (the stored one or the one the user confirmed; in a direct, you): lay the plan out as tickets in one call — each with a title, who makes it (owner, required for a new ticket), who reviews it (reviewer, optional, never the owner), which tickets it waits for (depends_on: other tickets' titles or numbers) and its parts (parts, such as \"Shot 07\"). A large job (your situation says so) marks one item sample: true — made first, to the full standard of the whole job, approved by the user; the other tickets wait for it, and once it is approved each is compared with it when handed over. What the sample needs before it (a style sheet, an outline) can be its depends_on. A job has one sample. A title the plan already has is that ticket: only an empty owner or reviewer is filled in (one already set stays, and kept says so), and dependencies and parts are only added; a ticket that is done, parked or approved is not touched. The call stands only if every item does. Other Bots cannot use it: to split work, delegate to the lead.",
+    zh: "只给规划负责人（存下的或用户确认的，私聊里就是你）：一次把这件事拆成任务——每张写标题、谁做（owner，新任务必填）、谁审（reviewer，可省略，不能是做的人）、要等哪些任务先完成（depends_on，写其他任务的标题或编号），以及分件（parts，如「Shot 07」）。大活（局面里写着的）要标一件 sample: true 作样片：先做、按整件事的水准做足、由用户放行；其余各件自动等它，放行后交上来时拿它对照。样片之前要先有的（设定、提纲）可以让样片 depends_on 它们。同一时间只有一个样片：用户否掉了样片定下的方向时，把新方向的那一项标 sample: true（可以在 resample_reason 写为什么换），原样片不再是样片，照它的检查作废，新样片仍由用户放行；旧方向留下的任务用 drop 作废，每张写清 reason。标题和规划里已有的任务相同时就是那张任务：只补空着的谁做、谁审（已经有人的不换，结果里 kept 会写明），依赖和分件只加不减；已完成、搁置或已通过的任务不动（drop 也不能作废已通过或正等审的）。只 drop 不加任务时 items 可以是空列表。全部合法才一起生效。负责人之外的 Bot 不能用：要拆活，委派给负责人。",
+    en: "For the plan's lead only (the stored one or the one the user confirmed; in a direct, you): lay the plan out as tickets in one call — each with a title, who makes it (owner, required for a new ticket), who reviews it (reviewer, optional, never the owner), which tickets it waits for (depends_on: other tickets' titles or numbers) and its parts (parts, such as \"Shot 07\"). A large job (your situation says so) marks one item sample: true — made first, to the full standard of the whole job, approved by the user; the other tickets wait for it, and once it is approved each is compared with it when handed over. What the sample needs before it (a style sheet, an outline) can be its depends_on. A job has one sample at a time: when the user turned down the direction the sample set, mark the item of the new direction sample: true (resample_reason may say why) — the old sample stops being one, the checks held to it come down, and the user approves the new one; drop the tickets the old direction left, each with its reason. A title the plan already has is that ticket: only an empty owner or reviewer is filled in (one already set stays, and kept says so), and dependencies and parts are only added; a ticket that is done, parked or approved is not touched (nor can drop take out one approved or waiting on review). items may be empty when you only drop. The call stands only if every item does. Other Bots cannot use it: to split work, delegate to the lead.",
   },
   properties: {
     items: {
@@ -317,6 +317,25 @@ export const PLAN_ITEMS: ToolDef = {
           sample: { type: "boolean" },
         },
         required: ["title"],
+      },
+    },
+    drop: {
+      type: "array",
+      description: {
+        zh: "作废的任务，每项：ticket（任务的 id、编号或标题）和 reason（为什么作废，一句话，用户会在看板上看到）。只作废还没交、没通过的；它上面排着的回看、委派和工作一并取消。",
+        en: "Tickets to drop, each: ticket (its id, number or title) and reason (one line, shown to the user on the board). Only ones not handed over or approved; the reminders, delegations and queued work on it go with it.",
+      },
+      items: {
+        type: "object",
+        properties: { ticket: { type: "string" }, reason: { type: "string" } },
+        required: ["ticket", "reason"],
+      },
+    },
+    resample_reason: {
+      type: "string",
+      description: {
+        zh: "把样片换到另一项时，为什么换（一句话）。",
+        en: "When the sample moves to another item, why (one line).",
       },
     },
   },

@@ -283,3 +283,93 @@ test("the sample card's sums leave the model's cost unsaid when the endpoint rep
   expect(sampleSumsLines({ minutes: 4, segments: 1, modelUsd: 0, externalCalls: 0, remaining: 0 }, "en"))
     .toBe("The sample took about 4 min of work (1 segment).");
 });
+
+/** The checks held to `sampleId` still standing, by the ticket each is on. */
+function standardChecks(f: Fixture, sampleId: string) {
+  return f.store.db.query<{ ticket_id: string; removed_by: string | null }, [string]>(
+    "SELECT ticket_id, removed_by FROM acceptance_checks WHERE standard_of = ? AND removed_at IS NULL ORDER BY ticket_id").all(sampleId);
+}
+
+test("a turned-down direction is laid out again: the old tickets dropped with why, the sample moved, its checks down, the rest waiting for the new one", () => {
+  // IG MV, 2026-10-09: 2D → 3D left the 2D tickets and 2D sample standing beside the 3D ones, and the
+  // 3D tickets were held to the 2D sample (which "passed" four 3D versions you sent back).
+  const f = fixture();
+  large(f);
+  const { sheet, sample, two, three, cut } = layOut(f);
+  sheetDone(f, sheet.ticket_id);
+  sampleApproved(f, sample.ticket_id);
+  expect(standardChecks(f, sample.ticket_id).map((row) => row.ticket_id).sort()).toEqual([two.ticket_id, three.ticket_id, cut.ticket_id].sort());
+  // A reminder booked on the old scene's work, and mail queued for it.
+  const old = f.turnOf(f.lead.id, two.ticket_id);
+  const work = f.store.db.query<{ work_item_id: string }, [string]>("SELECT work_item_id FROM turns WHERE id = ?").get(old)!.work_item_id;
+  f.store.setTurnStatus(old, "completed");
+  f.store.db.run(`INSERT INTO check_backs (id, bot_id, session_id, task_id, note, due_at, created_at, work_item_id, kind)
+    VALUES ('cb-2d', ?, ?, ?, '核对第二场 2D 返工', ?, ?, ?, NULL)`, [f.lead.id, f.room.id, f.plan.id, later(3_600_000), isoNow(), work]);
+
+  const result = f.store.planItems({
+    turnId: f.turnOf(f.lead.id),
+    items: [
+      { title: "3D 样镜", owner: "导演", sample: true },
+      { title: "3D 第二场", owner: "导演" },
+      { title: "3D 组装", owner: "导演", depends_on: ["3D 第二场"] },
+    ],
+    drop: [{ ticket: "#03", reason: "改成 3D，2D 第二场不做了" }, { ticket: three.title, reason: "改成 3D" }, { ticket: cut.ticket_id, reason: "改成 3D 组装" }],
+    resample_reason: "用户否掉了 2D 方向",
+  });
+  const newSample = result.tickets.find((row) => row.title === "3D 样镜")!;
+  expect(result.dropped?.map((row) => [row.seq, row.reason])).toEqual([[3, "改成 3D，2D 第二场不做了"], [4, "改成 3D"], [5, "改成 3D 组装"]]);
+  expect(result.resampled).toEqual({ from: sample.ticket_id, to: newSample.ticket_id, removed_checks: 3 });
+  for (const id of [two.ticket_id, three.ticket_id, cut.ticket_id]) {
+    expect(f.store.getTicket(id)).toMatchObject({ status: "parked", stage: "dropped" });
+  }
+  expect(f.store.getTicket(two.ticket_id).dropped_why).toBe("改成 3D，2D 第二场不做了");
+  // One sample, the old one's checks down (kept with their runs), the new tickets waiting for the new one.
+  expect(f.store.db.query("SELECT id FROM tickets WHERE task_id = ? AND sample = 1").all(f.plan.id)).toEqual([{ id: newSample.ticket_id }]);
+  expect(standardChecks(f, sample.ticket_id)).toEqual([]);
+  expect(f.store.db.query("SELECT COUNT(*) AS n FROM acceptance_checks WHERE standard_of = ? AND removed_by = 'resample'").get(sample.ticket_id)).toEqual({ n: 3 });
+  const second = result.tickets.find((row) => row.title === "3D 第二场")!;
+  expect(f.store.getTicket(second.ticket_id).depends_on).toContain(newSample.ticket_id);
+  expect(f.store.getTicket(second.ticket_id).depends_on).not.toContain(sample.ticket_id);
+  // The reminder on the dropped scene's work does not fire.
+  expect(f.store.db.query<{ voided_at: string | null }, []>("SELECT voided_at FROM check_backs WHERE id = 'cb-2d'").get()!.voided_at).not.toBeNull();
+  expect(f.store.listWorkEvents({ kind: "plan.resampled" }).map((event) => event.payload)).toMatchObject([{ from: sample.ticket_id, to: newSample.ticket_id, reason: "用户否掉了 2D 方向" }]);
+  // Nothing more on a dropped ticket: working on it, delegating it, generating or handing over there.
+  const late = f.turnOf(f.writer.id);
+  expect(() => f.store.workOn({ turnId: late, plan: f.plan.id, ticket: three.ticket_id })).toThrow("dropped");
+  // Your board reopening it clears the reason: it is work again, not 作废.
+  f.store.patchTicketByUser(three.ticket_id, { status: "todo" });
+  expect(f.store.getTicket(three.ticket_id).dropped_why).toBeNull();
+});
+
+test("what cannot be dropped or moved: an approved ticket, one waiting on review, a sample with its hand-over out", () => {
+  const f = fixture();
+  large(f);
+  const { sheet, sample, two } = layOut(f);
+  sheetDone(f, sheet.ticket_id);
+  const lead = f.turnOf(f.lead.id);
+  expect(() => f.store.planItems({ turnId: lead, items: [], drop: [{ ticket: sheet.ticket_id, reason: "x" }] })).toThrow("approved");
+  // The sample handed over and waiting on your card: it cannot be moved, nor dropped.
+  handOver(f, sample.ticket_id, f.lead.id, 3);
+  const again = f.turnOf(f.lead.id);
+  expect(() => f.store.planItems({ turnId: again, items: [{ title: two.title, owner: "导演", sample: true }] })).toThrow("waiting on review or the user's card");
+  expect(() => f.store.planItems({ turnId: again, items: [], drop: [{ ticket: sample.ticket_id, reason: "x" }] })).toThrow("waiting on review");
+  expect(() => f.store.planItems({ turnId: again, items: [], drop: [{ ticket: "#09", reason: "x" }] })).toThrow("names no ticket");
+  expect(() => f.store.planItems({ turnId: again, items: [], drop: [{ ticket: two.title }] })).toThrow("reason is required");
+});
+
+test("the board can make another ticket the sample: the same move, and the new one is yours to approve", () => {
+  const f = fixture();
+  large(f);
+  const { sheet, sample, two, three } = layOut(f);
+  sheetDone(f, sheet.ticket_id);
+  sampleApproved(f, sample.ticket_id);
+  f.store.patchTicketByUser(three.ticket_id, { sample: true });
+  expect(f.store.getTicket(three.ticket_id).sample).toBe(true);
+  expect(f.store.getTicket(sample.ticket_id).sample).toBe(false);
+  expect(standardChecks(f, sample.ticket_id)).toEqual([]);
+  expect(f.store.getTicket(two.ticket_id).depends_on).toContain(three.ticket_id);
+  expect(() => f.store.patchTicketByUser(two.ticket_id, { sample: false })).toThrow("only ever set to true");
+  // Back to the first one: its checks come back, since the app took them down, not you.
+  f.store.patchTicketByUser(sample.ticket_id, { sample: true });
+  expect(standardChecks(f, sample.ticket_id).length).toBeGreaterThan(0);
+});

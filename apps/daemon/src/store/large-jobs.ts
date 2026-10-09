@@ -14,6 +14,7 @@
  * stages and `plan_items` exists.
  */
 import type { PlanScale } from "@real-bot/protocol";
+import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { takeCodePoints } from "../text";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
@@ -133,7 +134,7 @@ export function waitingOn(ctx: StoreContext, ticketId: string): Waited | null {
   return null;
 }
 
-export type LargeJobRefusal = { code: "layout_first" | "waits_for"; message: string };
+export type LargeJobRefusal = { code: "layout_first" | "waits_for" | "dropped"; message: string };
 
 /**
  * What a segment is refused, before it generates anything through a server (an MCP call with side
@@ -156,6 +157,11 @@ export function largeJobRefusal(ctx: StoreContext, turnId: string): LargeJobRefu
       + "Reading files, writing notes and scripts and running local commands go on as usual; if you are not the lead, end your turn saying so." };
   }
   if (turn.ticket_id) {
+    const dropped = droppedWhy(ctx, turn.ticket_id);
+    if (dropped !== null) {
+      return { code: "dropped", message: `this ticket was dropped (${dropped}): nothing is generated or handed over on it. `
+        + "Go on with the job's other tickets (work_on one), or end your turn." };
+    }
     const dep = waitingOn(ctx, turn.ticket_id);
     if (dep) {
       return { code: "waits_for", message: dep.sample
@@ -208,8 +214,10 @@ export function syncStandardChecks(ctx: StoreContext, taskId: string, now: strin
   const made: string[] = [];
   for (const unit of waitingFor(ctx, taskId, sample.id)) {
     if (unit.stage === "approved") continue;
-    // One per ticket and sample, ever: one you deleted stays deleted.
-    if (ctx.db.query("SELECT 1 FROM acceptance_checks WHERE ticket_id = ? AND standard_of = ?").get(unit.id, sample.id)) continue;
+    // One per ticket and sample, ever: one you deleted stays deleted. One the app took down when the
+    // sample changed comes back if the sample changes back.
+    if (ctx.db.query("SELECT 1 FROM acceptance_checks WHERE ticket_id = ? AND standard_of = ? AND (removed_at IS NULL OR removed_by IS NOT 'resample')")
+      .get(unit.id, sample.id)) continue;
     const id = ulid(Date.parse(now));
     const item = localeOf(ctx) === "en" ? `Holds to the standard of sample #${nn(sample.seq)} "${sample.title}"` : `达到样片 #${nn(sample.seq)}「${sample.title}」的水准`;
     ctx.db.run(`INSERT INTO acceptance_checks (id, task_id, ticket_id, item, kind, negate, source, created_at, updated_at, defined_at, origin, standard_of)
@@ -218,6 +226,60 @@ export function syncStandardChecks(ctx: StoreContext, taskId: string, now: strin
   }
   if (made.length > 0) recordWorkEvent(ctx, { kind: "plan.standard_checks", actor: "app", taskId, ticketId: sample.id, payload: { checks: made } });
   return made;
+}
+
+/**
+ * Why a ticket was dropped (作废) by its lead or folded by the app; null otherwise — a ticket you set
+ * aside on the board is not one, and an explicit hand-over may still take it up again.
+ */
+export function droppedWhy(ctx: StoreContext, ticketId: string): string | null {
+  const row = ctx.db.query<{ stage: string; dropped_why: string | null }, [string]>(
+    `SELECT ${STAGE("t")} AS stage, t.dropped_why FROM tickets t WHERE t.id = ?`).get(ticketId);
+  return row && row.stage === "dropped" ? row.dropped_why : null;
+}
+
+/**
+ * The job's sample moves to another ticket: when you turned down the direction the old one set, the
+ * lead lays the job out again around a new one (`plan_items`), or you pick it on the board. Before
+ * 2026-10-10 a job had one sample for good: the IG MV job, gone from 2D to 3D, kept its 2D sample,
+ * and every 3D ticket was held to it — those checks passed four 3D versions you sent back.
+ *
+ * Refused while the old sample has a hand-over out (its card would still say "sample"). The old one
+ * stops being the sample; tickets still open stop waiting for it (the new one is then put ahead of
+ * them by `waitOnSample`); its standard checks are taken down (`removed_by = 'resample'`, their runs
+ * kept). The new sample is yours to approve like any, and the rest are held to it once you do.
+ * Returns the old sample's id and the checks taken down; nothing when the sample is already `to`.
+ */
+export function resample(ctx: StoreContext, input: { taskId: string; to: string; reason: string | null; actor: string; turnId?: string | null; now?: string }):
+  { from: string | null; removedChecks: string[] } {
+  const now = input.now ?? isoNow();
+  const current = sampleOf(ctx, input.taskId);
+  if (current?.id === input.to) return { from: null, removedChecks: [] };
+  const target = ctx.db.query<{ id: string; seq: number; stage: string }, [string, string]>(
+    `SELECT t.id, t.seq, ${STAGE("t")} AS stage FROM tickets t WHERE t.id = ? AND t.task_id = ?`).get(input.to, input.taskId);
+  if (!target) throw new HttpError(404, "not_found", "ticket not found in this plan");
+  if (target.stage === "dropped") throw new HttpError(409, "conflict", `ticket ${nn(target.seq)} is dropped; a dropped ticket cannot be the sample`);
+  if (current && ctx.db.query("SELECT 1 FROM submissions WHERE ticket_id = ? AND state IN ('checking', 'submitted', 'in_review')").get(current.id)) {
+    throw new HttpError(409, "conflict", `the current sample, ticket ${nn(current.seq)} "${current.title}", has a hand-over waiting on review or the user's card; change the sample once it is decided`);
+  }
+  ctx.db.run("UPDATE tickets SET sample = 0, updated_at = ? WHERE task_id = ? AND sample = 1", [now, input.taskId]);
+  ctx.db.run("UPDATE tickets SET sample = 1, updated_at = ? WHERE id = ?", [now, input.to]);
+  const removedChecks: string[] = [];
+  if (current) {
+    const open = ctx.db.query<{ id: string; depends_on: string }, [string]>(
+      `SELECT t.id, t.depends_on FROM tickets t WHERE t.task_id = ? AND ${STAGE("t")} NOT IN ('approved', 'dropped')`).all(input.taskId);
+    for (const ticket of open) {
+      const deps = ticketDependencies(ticket.depends_on);
+      if (deps.includes(current.id)) patchTicket(ctx, ticket.id, { dependsOn: deps.filter((id) => id !== current.id) }, { now: new Date(now) });
+    }
+    for (const row of ctx.db.query<{ id: string }, [string]>("SELECT id FROM acceptance_checks WHERE standard_of = ? AND removed_at IS NULL").all(current.id)) {
+      removedChecks.push(row.id);
+    }
+    ctx.db.run("UPDATE acceptance_checks SET removed_at = ?, removed_by = 'resample', updated_at = ? WHERE standard_of = ? AND removed_at IS NULL", [now, now, current.id]);
+  }
+  recordWorkEvent(ctx, { kind: "plan.resampled", actor: input.actor, taskId: input.taskId, ticketId: input.to, turnId: input.turnId ?? null,
+    payload: { from: current?.id ?? null, to: input.to, reason: input.reason, removed_checks: removedChecks } });
+  return { from: current?.id ?? null, removedChecks };
 }
 
 /**

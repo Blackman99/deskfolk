@@ -196,11 +196,18 @@ export function recordJobPoll(ctx: StoreContext, jobId: string, outcome: { state
       : state === "failed"
         ? (en ? `(app) Job ${job.request_id} failed: ${result ?? outcome.statusText ?? "no details"}` : `（应用）作业 ${job.request_id} 失败了：${result ?? outcome.statusText ?? "没有附带细节"}`)
         : (en ? `(app) Job ${job.request_id} was still not done after three hours; the app stopped waiting on it.` : `（应用）作业 ${job.request_id} 三个小时还没完成，应用不再等它了。`);
+    // A job on a ticket its lead dropped since (作废) wakes nobody back onto it: its result is heard
+    // with the job's next work. On IG MV (2026-10-09 01:50) a 2D video job finishing woke the director
+    // on the 2D ticket, and the 3D work it did next was filed there for five hours.
+    const dropped = job.ticket_id ? ctx.db.query<{ dropped_why: string | null; stage: string | null; status: string }, [string]>(
+      "SELECT dropped_why, stage, status FROM tickets WHERE id = ?").get(job.ticket_id) : null;
+    const onDropped = Boolean(dropped && dropped.dropped_why !== null && (dropped.stage === "dropped" || dropped.status === "parked"));
     for (const waiter of job.waiters) {
       if (!waiter.session_id || !ctx.db.query("SELECT 1 FROM bots WHERE id = ? AND deleted_at IS NULL").get(waiter.bot_id)) continue;
       if (!ctx.db.query("SELECT 1 FROM sessions WHERE id = ?").get(waiter.session_id)) continue;
-      queueWork(ctx, { botId: waiter.bot_id, sessionId: waiter.session_id, taskId: job.task_id, ticketId: job.ticket_id, messageId: null, author: "app",
-        body: said, source: "job", kind: "result", priority: 2, notice: false });
+      queueWork(ctx, { botId: waiter.bot_id, sessionId: waiter.session_id, taskId: job.task_id, ticketId: onDropped ? null : job.ticket_id, messageId: null, author: "app",
+        body: onDropped ? `${said}${en ? " (Its ticket was dropped since; nothing more is needed for it.)" : "（这张任务已经作废，不用再接着做。）"}` : said,
+        source: "job", kind: "result", priority: 2, notice: false, ...(onDropped ? { wakes: false } : {}) });
       refreshHeldInbox(ctx, { botId: waiter.bot_id });
     }
     return getJob(ctx, jobId);

@@ -4,7 +4,7 @@
  */
 import type { Message } from "@real-bot/protocol";
 import { HttpError } from "../errors";
-import { waitingOn } from "./large-jobs";
+import { droppedWhy, waitingOn } from "./large-jobs";
 import { isoNow } from "../ids";
 import { assertDeskCandidate, originalUserRequest } from "./desk";
 import { fileMessage, updatePlanDormancy } from "./filing";
@@ -116,6 +116,9 @@ export function workOn(ctx: StoreContext, input: WorkOnInput): WorkOnResult {
     if (holdsCovering(ctx, { botId: turn.bot_id, sessionId: turn.session_id, taskId, ticketId, turnId: turn.id }).length) {
       throw new HttpError(409, "held", "a stop of yours covers this work");
     }
+    // A ticket its lead dropped (作废) is not taken up again by working on it.
+    const dropped = ticketId ? droppedWhy(ctx, ticketId) : null;
+    if (dropped !== null) throw new HttpError(409, "dropped", `that ticket was dropped (${dropped}): work on another ticket of the job, or on the job as a whole`);
     // A ticket waiting for another not through yet — the sample until the user approves it (ADR 0060) — is not started.
     const waited = ticketId ? waitingOn(ctx, ticketId) : null;
     if (waited) {

@@ -5,7 +5,7 @@
  * too, in one transaction with the spec, so a plan is never half-updated.
  */
 import { ballHolder } from "./supervisor";
-import { planScale } from "./large-jobs";
+import { planScale, resample, syncStandardChecks, waitOnSample } from "./large-jobs";
 import { listRetrospectives } from "./retrospectives";
 import type { AcceptanceCheck, TaskDetail, TaskSpecRevision, Ticket, TicketBall, TicketStatus } from "@real-bot/protocol";
 import { HttpError } from "../errors";
@@ -223,17 +223,28 @@ export function setPlanSpecByUser(
 export function patchTicketByUser(
   ctx: StoreContext,
   ticketId: string,
-  patch: { title?: unknown; spec?: unknown; status?: unknown; worker?: string | null; dependsOn?: unknown; reviewerBotId?: unknown; modelOverride?: unknown },
+  patch: { title?: unknown; spec?: unknown; status?: unknown; worker?: string | null; dependsOn?: unknown; reviewerBotId?: unknown; modelOverride?: unknown; sample?: unknown },
   ifRevision?: unknown,
 ): { ticket: Ticket; revision: SpecRevisionRow | null } {
   return ctx.db.transaction(() => {
     const before = ctx.db.query<TicketRow, [string]>(`SELECT * FROM tickets WHERE id = ?`).get(ticketId);
     if (!before) throw new HttpError(404, "not_found", "ticket not found");
     assertRevision(ctx, before.task_id, ifRevision);
-    const ticket = patchTicket(ctx, ticketId, patch, { stage: { source: "user" } });
+    if (patch.sample !== undefined && patch.sample !== true) throw new HttpError(422, "invalid_args", "sample is only ever set to true: pick the ticket that is the sample now");
+    const { sample, ...rest } = patch;
+    // Yours on the board: this ticket is the sample now (the same move as a lead's plan_items).
+    let moved = false;
+    if (sample === true && before.sample !== 1) {
+      resample(ctx, { taskId: before.task_id, to: ticketId, reason: null, actor: "user" });
+      waitOnSample(ctx, before.task_id);
+      // A sample already approved holds the rest to it at once.
+      syncStandardChecks(ctx, before.task_id);
+      moved = true;
+    }
+    const ticket = patchTicket(ctx, ticketId, rest, { stage: { source: "user" } });
     // From level 5 your status stands over hand-overs still waiting on it (ADR 0046).
     if (ticket.status !== before.status) noteBoardStatus(ctx, ticketId);
-    const changed =
+    const changed = moved ||
       ticket.title !== before.title || ticket.spec !== before.spec || ticket.status !== before.status || ticket.worker !== before.worker
       || JSON.stringify(ticket.depends_on ?? []) !== JSON.stringify(ticketDependencies(before.depends_on))
       || (ticket.reviewer_bot_id ?? null) !== ((before as { reviewer_bot_id?: string | null }).reviewer_bot_id ?? null)

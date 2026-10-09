@@ -111,7 +111,7 @@ export async function runCollabTool(
         return sendMessage(ctx, args);
       case "plan_items": {
         if (!ctx.turnId) return fail("invalid_args", "plan_items needs a turn");
-        return { ok: true, data: ctx.store.planItems({ turnId: ctx.turnId, items: args.items }), emitted: [] };
+        return { ok: true, data: ctx.store.planItems({ turnId: ctx.turnId, items: args.items, drop: args.drop, resample_reason: args.resample_reason }), emitted: [] };
       }
       case "create_bot":
         return await createBot(ctx, args);

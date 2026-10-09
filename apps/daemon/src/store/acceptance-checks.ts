@@ -761,7 +761,8 @@ function definitionActiveElsewhere(ctx: StoreContext, taskId: string, key: strin
 /** A definition the user tombstoned on purpose: the organizer must not quietly bring it back. */
 function definitionTombstonedByUser(ctx: StoreContext, taskId: string, key: string): boolean {
   return ctx.db
-    .query<AcceptanceCheckRow, [string]>(`SELECT * FROM acceptance_checks WHERE task_id = ? AND source = 'user' AND removed_at IS NOT NULL`)
+    .query<AcceptanceCheckRow, [string]>(`SELECT * FROM acceptance_checks WHERE task_id = ? AND source = 'user' AND removed_at IS NOT NULL
+      AND removed_by IS NOT 'resample'`)
     .all(taskId)
     .some((row) => checkDefinitionKey(rowDefinition(row)) === key);
 }

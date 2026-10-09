@@ -205,7 +205,7 @@ export function planRoutes(ctx: RouteCtx): Response | Promise<Response> | null {
     const { ticket } = store.patchTicketByUser(
       params.id!,
       { title: body.title, spec: body.spec, status: body.status, worker: body.worker, dependsOn: body.depends_on, reviewerBotId: body.reviewer_bot_id,
-        modelOverride: body.model_override },
+        modelOverride: body.model_override, sample: body.sample },
       body.if_revision,
     );
     engine.renderPlanMirrors(ticket.task_id);

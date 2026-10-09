@@ -132,6 +132,11 @@ export type Ticket = {
    * other tickets wait for and are compared with; you approve it yourself. Absent from older daemons.
    */
   sample?: boolean;
+  /**
+   * Why its lead dropped it (作废), as the lead wrote it with `plan_items`, or why the app folded it
+   * into the job; null otherwise — a ticket you set aside on the board has none. Absent from older daemons.
+   */
+  dropped_why?: string | null;
   created_at: string;
   updated_at: string;
   closed_at: string | null;
@@ -446,5 +451,10 @@ export type PatchTicketRequest = {
   reviewer_bot_id?: string | null;
   /** The model this ticket's turns run on (level 7), or null to go back to the Bot's own. */
   model_override?: TicketModel | null;
+  /**
+   * `true`: this ticket is the job's sample from now on (ADR 0060, 2026-10-10) — the old one stops
+   * being it and the checks held to it come down; you approve the new one. Only `true` is taken.
+   */
+  sample?: true;
   if_revision?: number;
 };

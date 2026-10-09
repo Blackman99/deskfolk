@@ -39,8 +39,8 @@ function largeJobLines(large: NonNullable<PlanFacts["large"]>, locale: Locale): 
   if (large.sample) {
     const approved = large.sample.stage === "approved";
     lines.push(en
-      ? `Sample: ticket #${n(large.sample.seq)} "${large.sample.title}" — ${approved ? "approved by the user; every other unit is compared with it when handed over" : "not approved yet; the units waiting for it do not start until the user approves it"}.`
-      : `样片：任务 #${n(large.sample.seq)}「${large.sample.title}」——${approved ? "用户已放行；其余各件交上来时拿它对照水准" : "还没放行；等它的各件在用户放行前不开工"}。`);
+      ? `Sample: ticket #${n(large.sample.seq)} "${large.sample.title}" — ${approved ? "approved by the user; every other unit is compared with it when handed over. If the user turns down the direction it set, lay the job out again with plan_items: mark the new direction's item sample: true and drop the tickets of the old one" : "not approved yet; the units waiting for it do not start until the user approves it"}.`
+      : `样片：任务 #${n(large.sample.seq)}「${large.sample.title}」——${approved ? "用户已放行；其余各件交上来时拿它对照水准。用户否掉了它定下的方向时，用 plan_items 重新拆：新方向的那一项标 sample: true，旧方向留下的任务用 drop 作废" : "还没放行；等它的各件在用户放行前不开工"}。`);
   }
   if (large.waiting_on) {
     lines.push(en
@@ -91,6 +91,10 @@ function ticketWord(ticket: Pick<PlanTicketFact, "status" | "stage">, locale: Lo
 function ticketLine(ticket: PlanTicketFact, locale: Locale): string {
   const en = locale === "en";
   const number = String(ticket.seq).padStart(2, "0");
+  // Dropped by its lead: why, and nobody on it.
+  if (ticket.dropped_why) {
+    return en ? `${number} ${ticket.title} (dropped: ${ticket.dropped_why})` : `${number} ${ticket.title}（作废：${ticket.dropped_why}）`;
+  }
   const bits = [ticketWord(ticket, locale)];
   // Who is on it only while it is open: an approved one says who made it, one set aside nobody's.
   const closed = ticket.stage === "approved" || (!ticket.stage && ticket.status === "done");

@@ -138,3 +138,48 @@ test("an owner is never made the reviewer, from either side; a parked ticket is 
     VALUES ('sub-r', NULL, ?, ?, '[]', ?, NULL, NULL, 'submit', '[]', NULL, '[]', '', 'in_review', '2026-10-03', '2026-10-03')`, [f.plan.id, animation.id, f.maker.id]);
   expect(f.store.planItems({ turnId: turn, items: [{ title: "动画", reviewer: "审片员" }] }).tickets[0]).toMatchObject({ reviewer: null, kept: ["reviewer"] });
 });
+
+/** The ticket the job opened with, named as the job, and worked on: a file handed over under it. */
+function touchedOpening(f: ReturnType<typeof fixture>) {
+  const opening = f.store.createTicket({ taskId: f.plan.id, title: "EP01", worker: f.lead.id });
+  f.store.recordWorkEvent({ kind: "plan.opened", actor: f.lead.id, taskId: f.plan.id, ticketId: opening.id, payload: {} });
+  const turn = f.turnOf(f.lead.id);
+  f.store.db.run("UPDATE turns SET ticket_id = ? WHERE id = ?", [opening.id, turn]);
+  f.store.insertMessage({ sessionId: f.room.id, turnId: turn, kind: "bot", author: f.lead.id, body: "先试了一版", paths: [`${opening.dir}/try.mp4`] });
+  f.store.db.run("UPDATE messages SET ticket_id = ? WHERE turn_id = ?", [opening.id, turn]);
+  f.store.setTurnStatus(turn, "completed");
+  return opening;
+}
+
+test("the opening ticket, worked on, is folded into the job by a layout — not by a single ticket added beside it, nor while a hand-over waits on it", () => {
+  // IG MV: ticket 01, named as the whole job, held the first 2D attempt's 42 files and stood 待做 for good.
+  const f = fixture();
+  const opening = touchedOpening(f);
+  const one = f.store.planItems({ turnId: f.turnOf(f.lead.id), items: [{ title: "配乐", owner: "视频导演" }] });
+  expect(one.folded).toBeUndefined();
+  expect(f.store.getTicket(opening.id).status).toBe("todo");
+  const laid = f.store.planItems({ turnId: f.turnOf(f.lead.id), items: [{ title: "分镜", owner: "视频导演" }, { title: "动画", owner: "动画师" }] });
+  expect(laid.folded).toBe(opening.id);
+  expect(f.store.getTicket(opening.id)).toMatchObject({ status: "parked", stage: "dropped", dropped_why: "并入整件事（开头那张，拆分里没有它）" });
+  expect(f.store.listWorkEvents({ kind: "ticket.folded" }).at(-1)!.payload).toMatchObject({ touched: true });
+
+  // With a hand-over of it waiting on review: left, and the lead is told why.
+  const g = fixture();
+  const kept = touchedOpening(g);
+  g.store.db.run(`INSERT INTO submissions (id, task_id, ticket_id, bot_id, origin, artifacts, state, created_at, updated_at)
+    VALUES ('s-open', ?, ?, ?, 'submit', '[]', 'submitted', ?, ?)`, [g.plan.id, kept.id, g.lead.id, "2026-10-09T00:00:00.000Z", "2026-10-09T00:00:00.000Z"]);
+  const result = g.store.planItems({ turnId: g.turnOf(g.lead.id), items: [{ title: "分镜", owner: "视频导演" }, { title: "动画", owner: "动画师" }] });
+  expect(result.folded).toBeUndefined();
+  expect(result.opening_kept).toEqual({ ticket_id: kept.id, seq: kept.seq, why: "in_review" });
+});
+
+test("drop alone, without new items, takes tickets out; one also among the items is refused", () => {
+  const f = fixture();
+  const turn = f.turnOf(f.lead.id);
+  const [storyboard, animation] = f.store.planItems({ turnId: turn, items: [{ title: "分镜", owner: "视频导演" }, { title: "动画", owner: "动画师", depends_on: ["分镜"] }] }).tickets;
+  expect(() => f.store.planItems({ turnId: turn, items: [{ title: "分镜", owner: "视频导演" }], drop: [{ ticket: "分镜", reason: "不要了" }] })).toThrow("also among the items");
+  const dropped = f.store.planItems({ turnId: turn, items: [], drop: [{ ticket: 1, reason: "不要分镜了" }] });
+  expect(dropped.dropped).toEqual([{ ticket_id: storyboard!.ticket_id, seq: 1, reason: "不要分镜了", waited_on_by: [animation!.seq] }]);
+  expect(f.store.getTicket(storyboard!.ticket_id)).toMatchObject({ stage: "dropped", dropped_why: "不要分镜了" });
+  expect(f.store.listWorkEvents({ kind: "ticket.dropped" }).map((event) => event.payload)).toMatchObject([{ reason: "不要分镜了" }]);
+});

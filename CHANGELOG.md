@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A job laid out again when you change its direction
+
+- When you turn down a job's direction, its lead can now lay it out again: tickets of the old direction are dropped with a reason, which the board shows as Dropped and leaves out of the totals; reminders, delegations and queued work on them go too, and a render still running on one no longer wakes its Bot back onto it.
+- The sample can move to the new direction's ticket, by the lead or with "Make it the sample" on the board. The checks held to the old sample come down, and you approve the new one.
+- The ticket a job opened with is folded into the job by such a layout even when work was done on it.
+
 ### Choose the model that organizes the board, trace and plan
 
 - Settings → Models has a new page, Organizing model. Pick a model from any endpoint's list, or follow the default model as before. It runs the organizer that keeps the plan, tickets and progress in order, the scribe that notes your requirements, and the picture checks against a sample and between parts. Organizing reads and rewrites the whole plan, so pick a strong model: on Opus one settle is about 20k tokens in and 6k out.

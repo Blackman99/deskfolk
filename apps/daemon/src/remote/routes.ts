@@ -112,7 +112,7 @@ add("POST", "holds/:id/lift", {});
 const sentControlOffers = CONTROL_OFFERS.filter((offer) => !CLIENT_ONLY_CONTROL_OFFERS.includes(offer));
 add("POST", "messages/:id/control", { action: one(...sentControlOffers), task_id: id, note: v => typeof v === "string" && [...v].length <= CONTROL_NOTE_MAX }, ["action"]);
 add("PATCH", "tickets/:id", { title: string, spec: string, status: ticketStatus, worker: nullable(id), depends_on: list(id), reviewer_bot_id: nullable(id),
-  model_override: nullable(object({ provider_id: id, model: string }, ["provider_id", "model"])), if_revision: specRevision }, [], true);
+  model_override: nullable(object({ provider_id: id, model: string }, ["provider_id", "model"])), sample: one(true), if_revision: specRevision }, [], true);
 const checkKind: Check = one("exists", "contains", "matches", "command");
 const checkInput = {
   item: string,

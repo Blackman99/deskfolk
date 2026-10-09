@@ -25,6 +25,8 @@ export type PlanTicketFact = {
   worker: string | null;
   /** Up to a few of the files filed under it, newest cited first. */
   artifacts: string[];
+  /** Why its lead dropped it (作废), when it did. */
+  dropped_why?: string;
 };
 
 /** One thing the user said in the job, as the quote layer shows it: when, where, and the words. */
@@ -212,6 +214,7 @@ export function planFacts(
       ...(ticket.stage ? { stage: ticket.stage } : {}),
       worker: ticket.worker ? botDisplayName(store, ticket.worker) : null,
       artifacts: byTicket.get(ticket.id) ?? [],
+      ...(ticket.dropped_why ? { dropped_why: ticket.dropped_why } : {}),
     }))
     .sort((a, b) => TICKET_ORDER[a.status] - TICKET_ORDER[b.status] || a.seq - b.seq);
   const allChecks = store.listChecks(input.taskId);

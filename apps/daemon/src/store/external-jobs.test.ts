@@ -138,3 +138,18 @@ test("from level 6 the hourly cap is per job, and a booking a stop suspended doe
   f.store.db.run("UPDATE check_backs SET suspended_at = ? WHERE task_id = ?", [isoNow(), f.plan.id]);
   expect(book(third, 9)).not.toThrow();
 });
+
+test("a job on a ticket its lead dropped since wakes nobody back onto that ticket: its result is heard with the job's next work", () => {
+  // IG MV, 2026-10-09 01:50: a 2D video job finishing woke the director on the 2D ticket after the job
+  // had turned to 3D, and the 3D work it did next was filed under that ticket for five hours.
+  const f = fixture();
+  const running = job(f, "j-2d");
+  f.store.db.run("UPDATE tickets SET status = 'parked', stage = 'dropped', dropped_why = '改成 3D' WHERE id = ?", [f.ticket.id]);
+  f.store.recordJobPoll(running.id, { state: "completed", statusText: "completed", result: "url: https://x/2d.mp4" }, at(60_000));
+  const told = f.store.db.query<{ wakes: number; body: string; work_item_id: string }, [string]>(
+    "SELECT wakes, body_snapshot AS body, work_item_id FROM inbox_items WHERE bot_id = ? AND source = 'job'").all(f.director.id);
+  expect(told).toHaveLength(1);
+  expect(told[0]!.wakes).toBe(0);
+  expect(told[0]!.body).toContain("这张任务已经作废");
+  expect(f.store.db.query<{ ticket_id: string | null }, [string]>("SELECT ticket_id FROM work_items WHERE id = ?").get(told[0]!.work_item_id)!.ticket_id).toBeNull();
+});
