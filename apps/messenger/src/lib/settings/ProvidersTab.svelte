@@ -202,7 +202,7 @@
 		/>
 	{/if}
 	<!-- Speech needs no chat endpoint of its own: it has its own service and key (ADR 0073). -->
-	<SpeechCard speech={snapshot.settings.speech ?? null} patch={(patch) => runtime.patchSpeech(patch)} {t} />
+	<SpeechCard speech={snapshot.settings.speech ?? null} providers={snapshot.providers} patch={(patch) => runtime.patchSpeech(patch)} {t} />
 </div>
 
 <style>

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { SpeechSettings } from "@real-bot/protocol";
 import { HttpError } from "./errors";
-import { heardText, isSpeechMime, speechEndpoint, speechFilename, transcribe } from "./speech";
+import { dashscopeEndpoint, heardText, isSpeechMime, speechEndpoint, speechFilename, transcribe } from "./speech";
 
 const audio = new Uint8Array([1, 2, 3, 4]);
 
@@ -13,6 +13,7 @@ function speech(over: Partial<SpeechSettings> = {}): SpeechSettings {
     base_url: "https://api.openai.com/v1",
     model: "gpt-4o-mini-transcribe",
     language: null,
+    key_provider_id: null,
     key_set: true,
     ...over,
   };
@@ -122,6 +123,33 @@ describe("the wire, per format", () => {
     const form = seen[0]!.init.body as FormData;
     expect(form.get("model_id")).toBe("scribe_v2");
     expect(form.get("language_code")).toBe("en");
+  });
+
+  test("dashscope: DashScope's own call, the container named in format, the text from output.text", async () => {
+    const { seen, fetch } = answering({ output: { sentence: { text: "你好" }, text: "你好，世界。" }, usage: { duration: 5 }, request_id: "r" });
+    const text = await transcribe({
+      speech: speech({ preset: "bailian_token_plan", format: "dashscope", base_url: "https://token-plan.cn-beijing.maas.aliyuncs.com", model: "qwen-audio-3.0-asr-flash", language: "zh" }),
+      key: "sk-tp", audio, mime: "audio/webm;codecs=opus", fetch,
+    });
+    expect(text).toBe("你好，世界。");
+    expect(seen[0]!.url).toBe("https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation");
+    const headers = seen[0]!.init.headers as Record<string, string>;
+    expect(headers.Authorization).toBe("Bearer sk-tp");
+    expect(headers["X-DashScope-SSE"]).toBe("disable");
+    const body = JSON.parse(seen[0]!.init.body as string);
+    expect(body.model).toBe("qwen-audio-3.0-asr-flash");
+    expect(body.input.messages[0].content[0]).toEqual({ type: "input_audio", input_audio: { data: `data:audio/webm;base64,${Buffer.from(audio).toString("base64")}` } });
+    // Required, or the service answers 400 {}; the language is ignored by it, so not sent.
+    expect(body.parameters).toEqual({ format: "webm", sample_rate: "16000" });
+  });
+
+  test("dashscope: the address a console hands out, with /compatible-mode/v1, reaches the same call", () => {
+    const path = "/api/v1/services/aigc/multimodal-generation/generation";
+    expect(dashscopeEndpoint("https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1")).toBe(`https://token-plan.cn-beijing.maas.aliyuncs.com${path}`);
+    expect(dashscopeEndpoint("https://dashscope.aliyuncs.com/api/v1/")).toBe(`https://dashscope.aliyuncs.com${path}`);
+    expect(dashscopeEndpoint(`https://dashscope.aliyuncs.com${path}`)).toBe(`https://dashscope.aliyuncs.com${path}`);
+    expect(heardText("dashscope", { output: { sentence: { text: "只有句子" } } })).toBe("只有句子");
+    expect(heardText("dashscope", { output: {} })).toBeNull();
   });
 
   test("a full path pasted in is kept, a trailing slash is not doubled", () => {

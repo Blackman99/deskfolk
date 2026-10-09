@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { PatchSpeechRequest, SpeechSettings } from "@real-bot/protocol";
+import type { PatchSpeechRequest, Provider, SpeechSettings } from "@real-bot/protocol";
 import { flushSync } from "svelte";
 import { copyFor } from "../copy.ts";
 import { click, fill, render } from "../test-render.ts";
@@ -15,6 +15,7 @@ const groq: SpeechSettings = {
   base_url: "https://api.groq.com/openai/v1",
   model: "whisper-large-v3-turbo",
   language: null,
+  key_provider_id: null,
   key_set: false,
 };
 
@@ -105,5 +106,54 @@ test("a save that fails says so", async () => {
   await pick(view.host, 0, t.speech.presets.openai);
   flushSync();
   expect(view.host.querySelector(".speech-error")?.textContent).toBe(t.speech.failed);
+  view.close();
+});
+
+const tokenPlan = {
+  id: "p-tp", name: "阿里百炼", base_url: "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1", api_format: "openai",
+  key_set: true, models: ["qwen3.6-plus"], model_catalog: [], available_models: [], default_model: null, created_at: "", updated_at: "",
+} as Provider;
+
+test("a Bailian Token Plan endpoint is offered as a shortcut: one press points speech at it, with its key", async () => {
+  const { sent, patch } = fakePatch();
+  const view = render(SpeechCard, { speech: null, providers: [tokenPlan], patch, t });
+  const offer = view.host.querySelector("[data-speech-shortcut='p-tp']");
+  expect(offer?.textContent).toContain(t.speech.shortcut("阿里百炼", t.connectors.plan["qwen:token-plan"]));
+  click(offer?.querySelector("button"));
+  await sleep(0);
+  expect(sent).toEqual([{
+    enabled: true, preset: "bailian_token_plan", format: "dashscope",
+    base_url: "https://token-plan.cn-beijing.maas.aliyuncs.com", model: "qwen-audio-3.0-asr-flash", key_provider_id: "p-tp",
+  }]);
+  view.close();
+});
+
+test("speech taking an endpoint's key says whose, offers no shortcut to itself, and can stop taking it", async () => {
+  const { sent, patch } = fakePatch();
+  const linked: SpeechSettings = { ...groq, preset: "bailian_token_plan", format: "dashscope", base_url: "https://token-plan.cn-beijing.maas.aliyuncs.com", model: "qwen-audio-3.0-asr-flash", key_provider_id: "p-tp", key_set: true };
+  const view = render(SpeechCard, { speech: linked, providers: [tokenPlan], patch, t });
+  expect(view.host.querySelector("[data-speech-shortcut]")).toBeNull();
+  expect(view.host.querySelector('input[type="password"]')).toBeNull();
+  const row = view.host.querySelector("[data-speech-key-linked]");
+  expect(row?.textContent).toContain(t.speech.keyLinked("阿里百炼"));
+  expect(view.host.querySelector("[data-speech-status]")?.textContent).toBe(t.speech.ready);
+  click(row?.querySelector("button"));
+  await sleep(0);
+  expect(sent).toEqual([{ key_provider_id: null }]);
+  view.close();
+});
+
+test("no Bailian endpoint, or one without a key, offers nothing", () => {
+  const { patch } = fakePatch();
+  const view = render(SpeechCard, { speech: groq, providers: [{ ...tokenPlan, key_set: false }, { ...tokenPlan, id: "x", base_url: "https://api.openai.com/v1" }], patch, t });
+  expect(view.host.querySelector("[data-speech-shortcut]")).toBeNull();
+  view.close();
+});
+
+test("DashScope's own API shows the host hint and no language, which it ignores", () => {
+  const { patch } = fakePatch();
+  const view = render(SpeechCard, { speech: { ...groq, preset: "bailian_token_plan", format: "dashscope", base_url: "https://token-plan.cn-beijing.maas.aliyuncs.com", model: "qwen-audio-3.0-asr-flash" }, patch, t });
+  expect(view.host.querySelector(".speech-note")?.textContent).toBe(t.speech.baseUrlHintDashscope);
+  expect([...view.host.querySelectorAll(".speech-label")].map((el) => el.textContent)).not.toContain(t.speech.language);
   view.close();
 });

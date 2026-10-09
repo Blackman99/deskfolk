@@ -47,6 +47,18 @@ export function speechEndpoint(baseUrl: string, path: string): string {
   return trimmed.toLowerCase().endsWith(path) ? trimmed : `${trimmed}${path}`;
 }
 
+export const DASHSCOPE_SPEECH_PATH = "/api/v1/services/aigc/multimodal-generation/generation";
+
+/**
+ * DashScope's own API hangs off the host, not off `/compatible-mode/v1`, which is the address its
+ * consoles hand out: whatever follows `/compatible-mode`, `/api/` or `/apps/` is dropped.
+ */
+export function dashscopeEndpoint(baseUrl: string): string {
+  const trimmed = baseUrl.trim().replace(/\/+$/, "");
+  if (trimmed.toLowerCase().endsWith(DASHSCOPE_SPEECH_PATH)) return trimmed;
+  return `${trimmed.replace(/\/(?:compatible-mode|api|apps)(?:\/.*)?$/i, "")}${DASHSCOPE_SPEECH_PATH}`;
+}
+
 function requestFor(speech: SpeechSettings, key: string | null, audio: Uint8Array<ArrayBuffer>, mime: string): { url: string; init: RequestInit } {
   const base = speech.base_url!;
   const model = speech.model!;
@@ -80,6 +92,23 @@ function requestFor(speech: SpeechSettings, key: string | null, audio: Uint8Arra
       else url.searchParams.set("detect_language", "true");
       return { url: url.href, init: { method: "POST", body: audio, headers: { "Content-Type": type, ...(key ? { Authorization: `Token ${key}` } : {}) } } };
     }
+    case "dashscope": {
+      // `format` names the container (webm, ogg, mp4, wav…); without it, and the rate, the call is a 400 `{}`.
+      // The rate is a hint: a 48 kHz webm read as 16000 comes out the same. No language: it is ignored.
+      const body = {
+        model,
+        input: { messages: [{ role: "user", content: [{ type: "input_audio", input_audio: { data: `data:${type};base64,${Buffer.from(audio).toString("base64")}` } }] }] },
+        parameters: { format: speechFilename(mime).slice("speech.".length), sample_rate: "16000" },
+      };
+      return {
+        url: dashscopeEndpoint(base),
+        init: {
+          method: "POST",
+          body: JSON.stringify(body),
+          headers: { "Content-Type": "application/json", "X-DashScope-SSE": "disable", ...(key ? { Authorization: `Bearer ${key}` } : {}) },
+        },
+      };
+    }
     case "elevenlabs": {
       const form = new FormData();
       form.append("file", blob(), speechFilename(mime));
@@ -106,6 +135,11 @@ export function heardText(format: SpeechSettings["format"], body: unknown): stri
       return content.map((part) => (typeof part === "string" ? part : String(record(part)?.text ?? ""))).join("");
     }
     return null;
+  }
+  if (format === "dashscope") {
+    const output = record(root.output);
+    const text = output?.text ?? record(output?.sentence)?.text ?? root.text;
+    return typeof text === "string" ? text : null;
   }
   if (format === "deepgram") {
     const channels = record(root.results)?.channels;

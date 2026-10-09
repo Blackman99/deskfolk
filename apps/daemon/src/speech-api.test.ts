@@ -37,6 +37,7 @@ describe("setting the speech endpoint up", () => {
       base_url: "https://api.groq.com/openai/v1",
       model: "whisper-large-v3-turbo",
       language: null,
+      key_provider_id: null,
       key_set: true,
     });
     expect(await h.store.speechKey()).toBe("gsk-secret");
@@ -74,6 +75,50 @@ describe("setting the speech endpoint up", () => {
     const settings = (await (await fetch(`${h.origin}/v1/settings`, { headers: auth(h) })).json()) as Settings;
     expect(settings.speech?.key_set).toBe(true);
   });
+});
+
+test("a Bailian endpoint's key serves speech, read at each call, until a key of its own is typed in", async () => {
+  const seen: Array<{ url: string; auth: string }> = [];
+  const h = await startLocalApi({
+    speechFetch: (async (url: string | URL | Request, init?: RequestInit) => {
+      seen.push({ url: String(url), auth: (init?.headers as Record<string, string>).Authorization });
+      return Response.json({ output: { text: "百炼听到的" } });
+    }) as typeof fetch,
+  });
+  const created = await fetch(`${h.origin}/v1/providers`, {
+    method: "POST", headers: { ...jsonAuth(h), "X-Request-Id": ulid() },
+    body: JSON.stringify({ name: "阿里百炼", base_url: "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1", api_key: "sk-tp-1", models: ["qwen3.6-plus"] }),
+  });
+  const provider = (await created.json()) as { id: string };
+  const linked = (await (await patchSpeech(h, { preset: "bailian_token_plan", key_provider_id: provider.id })).json()) as Settings;
+  expect(linked.speech).toMatchObject({ preset: "bailian_token_plan", format: "dashscope", base_url: "https://token-plan.cn-beijing.maas.aliyuncs.com", model: "qwen-audio-3.0-asr-flash", key_provider_id: provider.id, key_set: true });
+  expect(await (await transcribeVia(h, { audio, mime: "audio/webm" })).json()).toEqual({ text: "百炼听到的" });
+  expect(seen[0]).toEqual({ url: "https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation", auth: "Bearer sk-tp-1" });
+
+  // The endpoint's new key is the one used next.
+  await fetch(`${h.origin}/v1/providers/${provider.id}`, { method: "PATCH", headers: { ...jsonAuth(h), "X-Request-Id": ulid() }, body: JSON.stringify({ api_key: "sk-tp-2" }) });
+  await transcribeVia(h, { audio, mime: "audio/webm" });
+  expect(seen[1]!.auth).toBe("Bearer sk-tp-2");
+
+  const own = (await (await patchSpeech(h, { api_key: "sk-own" })).json()) as Settings;
+  expect(own.speech).toMatchObject({ key_provider_id: null, key_set: true });
+  await transcribeVia(h, { audio, mime: "audio/webm" });
+  expect(seen[2]!.auth).toBe("Bearer sk-own");
+});
+
+test("an endpoint that is not there cannot lend its key, and one deleted stops lending it", async () => {
+  const h = await startLocalApi();
+  expect((await patchSpeech(h, { preset: "openai", key_provider_id: "01J00000000000000000000000" })).status).toBe(404);
+  const created = await fetch(`${h.origin}/v1/providers`, {
+    method: "POST", headers: { ...jsonAuth(h), "X-Request-Id": ulid() },
+    body: JSON.stringify({ name: "百炼二号", base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1", api_key: "sk-1", models: ["qwen-plus"] }),
+  });
+  const provider = (await created.json()) as { id: string; updated_at: string };
+  await patchSpeech(h, { preset: "bailian", key_provider_id: provider.id });
+  expect(h.store.settingsCached().speech).toMatchObject({ key_provider_id: provider.id, key_set: true });
+  const gone = await fetch(`${h.origin}/v1/providers/${provider.id}`, { method: "DELETE", headers: { ...jsonAuth(h), "X-Request-Id": ulid() }, body: JSON.stringify({ if_revision: provider.updated_at }) });
+  expect(gone.status).toBeLessThan(300);
+  expect(h.store.settingsCached().speech).toMatchObject({ key_provider_id: null, key_set: false });
 });
 
 test("a speech key whose keychain write did not finish is listed for repair as kind speech", async () => {
@@ -143,12 +188,15 @@ describe("over the remote link", () => {
 
   test("setting up and transcribing are on the list, with every field declared", () => {
     expect(() => validateBusiness({ v: 1, id, method: "PATCH", path: "/v1/speech", body: { preset: "bailian", base_url: "https://x", model: "qwen3-asr-flash", language: null, api_key: "k", enabled: true, format: "qwen_asr", if_revision: 3 } })).not.toThrow();
+    expect(() => validateBusiness({ v: 1, id, method: "PATCH", path: "/v1/speech", body: { preset: "bailian_token_plan", format: "dashscope", key_provider_id: "01J00000000000000000000000" } })).not.toThrow();
+    expect(() => validateBusiness({ v: 1, id, method: "PATCH", path: "/v1/speech", body: { key_provider_id: null } })).not.toThrow();
     expect(() => validateBusiness({ v: 1, id, method: "POST", path: "/v1/speech/transcribe", body: { audio, mime: "audio/webm" } })).not.toThrow();
   });
 
   test("anything else is refused", () => {
     expect(() => validateBusiness({ v: 1, id, method: "PATCH", path: "/v1/speech", body: { if_revision: 3 } })).toThrow();
     expect(() => validateBusiness({ v: 1, id, method: "PATCH", path: "/v1/speech", body: { preset: "nope" } })).toThrow();
+    expect(() => validateBusiness({ v: 1, id, method: "PATCH", path: "/v1/speech", body: { key_provider_id: "not-an-id" } })).toThrow();
     expect(() => validateBusiness({ v: 1, id, method: "POST", path: "/v1/speech/transcribe", body: { audio } })).toThrow();
     expect(() => validateBusiness({ v: 1, id, method: "POST", path: "/v1/speech/transcribe", body: { audio: "A".repeat(SPEECH_AUDIO_BASE64_MAX + 1), mime: "audio/webm" } })).toThrow();
     expect(() => validateBusiness({ v: 1, id, method: "POST", path: "/v1/speech/transcribe", body: { audio, mime: "audio/webm", files: [] } })).toThrow();

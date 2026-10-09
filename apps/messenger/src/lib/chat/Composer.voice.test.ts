@@ -18,6 +18,7 @@ const ready: SpeechSettings = {
   base_url: "https://api.openai.com/v1",
   model: "gpt-4o-mini-transcribe",
   language: null,
+  key_provider_id: null,
   key_set: true,
 };
 

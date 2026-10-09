@@ -7,9 +7,11 @@
 		speechPreset,
 		speechReady,
 		type PatchSpeechRequest,
+		type Provider,
 		type SpeechPresetId,
 		type SpeechSettings
 	} from '@real-bot/protocol';
+	import { offeredShortcuts, type SpeechShortcut } from './speech-shortcut.ts';
 	import Select from '../Select.svelte';
 	import { Autosave } from '../autosave.svelte.ts';
 	import type { Copy } from '../copy.ts';
@@ -18,16 +20,19 @@
 
 	/**
 	 * The speech endpoint the composer's microphone sends to (ADR 0073). Picking a service fills in
-	 * its format, address and model; every field saves as it changes, the key when you leave it.
+	 * its format, address and model; every field saves as it changes, the key when you leave it. A
+	 * Bailian endpoint already set up is offered as a shortcut: speech then takes that endpoint's key.
 	 */
 	interface Props {
 		/** As the daemon has it; null until a service is picked. */
 		speech: SpeechSettings | null;
+		/** The model endpoints, for a Bailian one whose key speech can take. */
+		providers?: readonly Provider[];
 		patch: (patch: PatchSpeechRequest) => Promise<unknown | null>;
 		t: Copy;
 	}
 
-	let { speech, patch, t }: Props = $props();
+	let { speech, providers = [], patch, t }: Props = $props();
 
 	const s = $derived(t.speech);
 	const autosave = new Autosave();
@@ -45,6 +50,9 @@
 	});
 
 	const preset = $derived(speech ? speechPreset(speech.preset) : null);
+	const shortcuts = $derived(offeredShortcuts(providers, speech));
+	/** The endpoint whose key speech takes, when it takes one. */
+	const keyProvider = $derived(speech?.key_provider_id ? (providers.find((row) => row.id === speech.key_provider_id) ?? null) : null);
 	const local = $derived(isLocalEndpoint(baseUrl.trim()));
 	const presetOptions = $derived(SPEECH_PRESETS.map((row) => ({ value: row.id, label: s.presets[row.id] })));
 	const formatOptions = $derived(SPEECH_FORMATS.map((format) => ({ value: format, label: s.formats[format] })));
@@ -72,6 +80,12 @@
 		} finally {
 			autosave.saving = false;
 		}
+	}
+
+	function useShortcut(shortcut: SpeechShortcut): void {
+		autosave.cancel();
+		editing = { base_url: false, model: false };
+		void save(shortcut.patch);
 	}
 
 	/** A service fills in its own format, address and model; custom keeps what is there to edit. */
@@ -122,6 +136,13 @@
 		{/if}
 	</div>
 
+	{#each shortcuts as shortcut (shortcut.provider.id)}
+		<div class="speech-shortcut" data-speech-shortcut={shortcut.provider.id}>
+			<span class="speech-shortcut-text">{s.shortcut(shortcut.provider.name, t.connectors.plan[shortcut.planKey as keyof typeof t.connectors.plan] ?? shortcut.planKey)}</span>
+			<button type="button" class="speech-shortcut-use" disabled={autosave.saving} onclick={() => useShortcut(shortcut)}>{s.shortcutUse}</button>
+		</div>
+	{/each}
+
 	<div class="speech-grid">
 		<div class="speech-field">
 			<span class="speech-label">{s.service}</span>
@@ -163,7 +184,7 @@
 						if (autosave.cancel()) void flush();
 					}}
 				/>
-				<span class="speech-note">{s.baseUrlHint}</span>
+				<span class="speech-note">{speech.format === 'dashscope' ? s.baseUrlHintDashscope : s.baseUrlHint}</span>
 			</label>
 			<label class="speech-field">
 				<span class="speech-label">{s.model}</span>
@@ -183,17 +204,28 @@
 					{#each preset?.models ?? [] as name (name)}<option value={name}></option>{/each}
 				</datalist>
 			</label>
-			<div class="speech-field">
-				<span class="speech-label">{s.language}</span>
-				<Select
-					value={speech.language ?? ''}
-					options={languageOptions}
-					size="sm"
-					ariaLabel={s.language}
-					disabled={autosave.saving}
-					onchange={(value) => void save({ language: value || null })}
-				/>
-			</div>
+			{#if speech.format !== 'dashscope'}
+				<div class="speech-field">
+					<span class="speech-label">{s.language}</span>
+					<Select
+						value={speech.language ?? ''}
+						options={languageOptions}
+						size="sm"
+						ariaLabel={s.language}
+						disabled={autosave.saving}
+						onchange={(value) => void save({ language: value || null })}
+					/>
+				</div>
+			{/if}
+			{#if keyProvider}
+				<div class="speech-field speech-wide">
+					<span class="speech-label">{s.apiKey}</span>
+					<span class="speech-key-row" data-speech-key-linked>
+						<span class="speech-key-linked">{s.keyLinked(keyProvider.name)}</span>
+						<button type="button" class="speech-key-clear" disabled={autosave.saving} onclick={() => void save({ key_provider_id: null })}>{s.keyUnlink}</button>
+					</span>
+				</div>
+			{:else}
 			<label class="speech-field speech-wide">
 				<span class="speech-label">{s.apiKey}</span>
 				<span class="speech-key-row">
@@ -212,6 +244,7 @@
 					{/if}
 				</span>
 			</label>
+			{/if}
 		{/if}
 	</div>
 
@@ -309,6 +342,46 @@
 		outline: none;
 		border-color: var(--accent);
 		box-shadow: 0 0 0 3px var(--accent-glow);
+	}
+
+	.speech-shortcut {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 8px 10px;
+		border: 1px solid var(--accent-border);
+		border-radius: var(--radius-sm);
+		background: var(--accent-tint);
+	}
+
+	.speech-shortcut-text {
+		flex: 1;
+		min-width: 0;
+		font-size: 12px;
+		line-height: 1.45;
+		color: var(--ink-secondary);
+	}
+
+	.speech-shortcut-use {
+		flex-shrink: 0;
+		padding: 5px 10px;
+		border-radius: var(--radius-sm);
+		background: var(--accent);
+		color: var(--on-accent);
+		font-size: 12px;
+		font-weight: 600;
+	}
+
+	.speech-shortcut-use:disabled {
+		opacity: 0.55;
+	}
+
+	.speech-key-linked {
+		flex: 1;
+		min-width: 0;
+		padding: 6px 0;
+		font-size: 13px;
+		color: var(--ink);
 	}
 
 	.speech-key-row {

@@ -224,7 +224,7 @@ add("PATCH", "settings", { endpoint_base_url: string, endpoint_api_key: string, 
 // The speech endpoint (ADR 0073): set up like the settings, under their revision; a transcription
 // carries its recording as base64, bounded under the link's one-megabyte message.
 add("PATCH", "speech", { enabled: bool, preset: one(...SPEECH_PRESET_IDS), format: one(...SPEECH_FORMATS), base_url: string, model: string,
-  language: nullable(string), api_key: string, if_revision: v => typeof v === "number" && Number.isSafeInteger(v) && v >= 0 }, [], true);
+  language: nullable(string), key_provider_id: nullable(id), api_key: string, if_revision: v => typeof v === "number" && Number.isSafeInteger(v) && v >= 0 }, [], true);
 add("POST", "speech/transcribe", { audio: v => typeof v === "string" && v.length > 0 && v.length <= SPEECH_AUDIO_BASE64_MAX, mime: string }, ["audio", "mime"]);
 for (const [name, fields] of Object.entries({ bots: bot, providers: provider, "mcp-servers": mcp, skills: skill, routines: routine,
   memories: { subject: string, body: string, enabled: bool }, sessions: { name: string } } as Record<string, Fields>)) add("PATCH", `${name}/:id`, { ...fields, ...revision }, [], true);
