@@ -312,7 +312,54 @@ const modelsSection = (section?: string) => async (host: HTMLElement) => {
 	settingsTab('models')(host);
 	await new Promise((resolve) => setTimeout(resolve, 0));
 	flushSync();
-	if (section) host.querySelector<HTMLButtonElement>(`[data-models-section="${section}"]`)?.click();
+	if (section) host.querySelector<HTMLButtonElement>(`[data-section="${section}"]`)?.click();
+};
+
+/** Prompts on a group's tab once the list has come in; then another group, if named. */
+const promptsSection = (section?: string) => async (host: HTMLElement) => {
+	settingsTab('prompts')(host);
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	flushSync();
+	if (section) host.querySelector<HTMLButtonElement>(`[data-section="${section}"]`)?.click();
+};
+
+const promptState = (state: 'default' | 'edited' | 'conflict' = 'default', over: Record<string, unknown> = {}) => ({
+	locale: 'zh',
+	state,
+	last_actor: state === 'default' ? null : 'user',
+	last_bot_id: null,
+	updated_at: null,
+	parse_failures: null,
+	...over
+});
+const aPrompt = (id: string, group: string, title: string, summary: string, locales = [promptState()]) => ({
+	id,
+	group,
+	title: { zh: title, en: title },
+	summary: { zh: summary, en: summary },
+	locales
+});
+
+/** The built-in prompts, a few of each group: one turn prompt edited by you, a call a Bot edited that has unreadable answers, a tool in conflict. */
+const promptsClient = {
+	listLessons: async () => [],
+	listPrompts: async () => [
+		aPrompt('turn.system', 'turn', '系统指令', '每个 Bot 每一跳都读的工作守则：遇到障碍怎么办、怎么交接、怎么说话、批准和边界。', [promptState('edited'), promptState('default', { locale: 'en' })]),
+		aPrompt('turn.skills', 'turn', '技能段的开头', '技能目录前的说明：先读匹配的技能再动手，技能和 MCP 怎么分工。'),
+		aPrompt('turn.memory', 'turn', '记忆段的开头', '记忆列表前的说明：记忆是以前的结论，和转录冲突时以转录为准，怎么记、怎么删。'),
+		aPrompt('turn.mcp', 'turn', '本轮 MCP 段的开头', 'MCP 服务器列表前的说明：用法备注优先，怎么挑工具，怎么把工作区里的图片交给工具。'),
+		aPrompt('agent.preface', 'agent', 'Claude Agent 前言', '由你的 Claude Code 跑的 Bot 每一轮多读的一段：应用的工具在 mcp__deskfolk__ 下。'),
+		aPrompt('call.organizer', 'call', '整理跳', '替会话记录规划要点和任务交接的后台调用。', [promptState('default', { parse_failures: { since_edit: null, last_7_days: 0 } })]),
+		aPrompt('call.read_user_line', 'call', '读句：你的话', '读你的一句话：是不是叫停或继续、是不是只问进度、哪几句在挑已交付成果的毛病。'),
+		aPrompt('call.scribe', 'call', '书记员', '把你话里的要求记进需求台账的补丁。', [
+			promptState('edited', { last_actor: 'bot', last_bot_id: 'bot-1', parse_failures: { since_edit: 2, last_7_days: 2 } })
+		]),
+		aPrompt('call.judgement', 'call', '参与判断', '群里没点名时，Bot 判断要不要下场。'),
+		aPrompt('call.composer', 'call', '输入建议', '给你下一句要发的话起草建议。'),
+		...['read_file', 'write_file', 'delete_file', 'list_dir', 'shell', 'send_message', 'create_bot', 'list_bots'].map((name) =>
+			aPrompt(`tool.${name}`, 'tool', name, '', [promptState(name === 'shell' ? 'conflict' : 'default')])
+		)
+	]
 };
 
 /** A client on an engine level with a model ladder, two models on it: Models has all four sections. */
@@ -1028,6 +1075,18 @@ const defs: Record<StoryName, Story> = {
 		afterMount: settingsTab('agents')
 	},
 	'settings-mcp': { component: SettingsModal as never, props: settingsProps(), afterMount: settingsTab('mcp') },
+	// Prompts by group, on the app's own calls: each tab counts what is edited in it.
+	'settings-prompts': {
+		component: SettingsModal as never,
+		props: settingsProps({ runtime: fakeRuntime(world, { settingsOpen: true, client: promptsClient }) }),
+		afterMount: promptsSection('call')
+	},
+	// On a phone, Prompts is a list of its groups, each saying how many it holds and how many are edited.
+	'settings-prompts-narrow': {
+		component: SettingsModal as never,
+		props: settingsProps({ runtime: fakeRuntime(world, { settingsOpen: true, client: promptsClient }) }),
+		afterMount: promptsSection()
+	},
 	// The remote access tab before the Mac has a relay, with the deploy-your-own guide unfolded.
 	'settings-remote-guide': {
 		component: SettingsModal as never,

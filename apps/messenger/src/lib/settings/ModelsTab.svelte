@@ -11,6 +11,8 @@
 	import type { Snapshot } from '../snapshot.ts';
 	import ModelLadderCard from './ModelLadderCard.svelte';
 	import ReaderModelCard from './ReaderModelCard.svelte';
+	import SettingsSectionList from './SettingsSectionList.svelte';
+	import SettingsSectionTabs from './SettingsSectionTabs.svelte';
 	import SpeechCard, { speechMissing } from './SpeechCard.svelte';
 	import { ModelLadder } from './model-ladder.svelte.ts';
 
@@ -115,7 +117,7 @@
 </script>
 
 {#snippet icon(of: ModelsSection, size: number)}
-	<svg class="models-icon" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+	<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 		{#if of === 'endpoints'}
 			<path d="M12 22v-5"></path>
 			<path d="M9 8V2"></path>
@@ -139,47 +141,13 @@
 
 <div class="models-tab">
 	{#if !phone.current && sections.length > 1}
-		<div class="models-tabs" role="tablist" aria-label={t.settings.tabModels}>
-			{#each sections as of (of)}
-				<button
-					type="button"
-					role="tab"
-					id={`models-tab-${of}`}
-					aria-controls="models-panel"
-					aria-selected={section === of}
-					class="models-tab-btn"
-					class:is-active={section === of}
-					data-models-section={of}
-					onclick={(event) => {
-						open(of);
-						event.currentTarget.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
-					}}
-				>
-					{@render icon(of, 15)}
-					<span>{label(of)}</span>
-					{#if count(of) > 0}
-						<span class="models-tab-count">{count(of)}</span>
-					{/if}
-				</button>
-			{/each}
-		</div>
+		<SettingsSectionTabs id="models" {sections} active={section} {label} {count} {icon} ariaLabel={t.settings.tabModels} onpick={open} />
 	{/if}
 
 	<div class="models-scroll" bind:this={scroller}>
 		{@render notices?.()}
 		{#if listing}
-			<nav class="models-index" aria-label={t.settings.tabModels}>
-				{#each sections as of (of)}
-					<button type="button" class="models-index-row" data-models-section={of} onclick={() => open(of)}>
-						{@render icon(of, 19)}
-						<span class="models-index-text">
-							<span class="models-index-name">{label(of)}</span>
-							<span class="models-index-summary">{summary(of)}</span>
-						</span>
-						<span class="models-index-chevron" aria-hidden="true"></span>
-					</button>
-				{/each}
-			</nav>
+			<SettingsSectionList {sections} {label} {summary} {icon} ariaLabel={t.settings.tabModels} onpick={open} />
 		{:else}
 			<div
 				class="models-panel"
@@ -222,88 +190,6 @@
 		flex-direction: column;
 	}
 
-	/*
-	 * Four tabs fill a narrow window, more so in English: the row scrolls sideways rather than push
-	 * the dialog wider. The rule under it is a shadow, not a border, so the scroll does not clip the
-	 * active tab's underline drawn over it.
-	 */
-	.models-tabs {
-		flex: none;
-		display: flex;
-		align-items: stretch;
-		gap: 6px;
-		padding: 0 16px;
-		box-shadow: inset 0 -1px 0 var(--line);
-		background: var(--pane);
-		overflow-x: auto;
-		scrollbar-width: none;
-	}
-
-	.models-tabs::-webkit-scrollbar {
-		display: none;
-	}
-
-	.models-tab-btn {
-		flex: none;
-		display: inline-flex;
-		align-items: center;
-		gap: 7px;
-		min-height: 44px;
-		padding: 10px 8px 8px;
-		border: 0;
-		border-bottom: 2px solid transparent;
-		border-radius: 0;
-		background: transparent;
-		color: var(--ink-secondary);
-		font-size: 13px;
-		font-weight: 500;
-		white-space: nowrap;
-		cursor: pointer;
-		transition-property: color, border-color;
-	}
-
-	.models-tab-btn:hover {
-		color: var(--ink);
-	}
-
-	.models-tab-btn:focus-visible {
-		outline: 2px solid var(--accent);
-		outline-offset: -2px;
-	}
-
-	.models-tab-btn.is-active {
-		color: var(--accent);
-		font-weight: 600;
-		border-bottom-color: var(--accent);
-	}
-
-	.models-tab-btn :global(.models-icon) {
-		flex: none;
-		color: var(--muted);
-	}
-
-	.models-tab-btn.is-active :global(.models-icon) {
-		color: var(--accent);
-	}
-
-	.models-tab-count {
-		min-width: 18px;
-		padding: 0 5px;
-		border-radius: var(--radius-full);
-		background: var(--chip);
-		color: var(--ink-secondary);
-		font-size: 11px;
-		font-weight: 600;
-		line-height: 16px;
-		text-align: center;
-		font-variant-numeric: tabular-nums;
-	}
-
-	.models-tab-btn.is-active .models-tab-count {
-		background: var(--accent-tint);
-		color: var(--accent);
-	}
-
 	.models-scroll {
 		flex: 1;
 		min-height: 0;
@@ -337,84 +223,6 @@
 
 		.models-scroll::-webkit-scrollbar {
 			display: none;
-		}
-
-		/* The rows read as the settings list one level up: one rounded group, a hairline between rows. */
-		.models-index {
-			display: flex;
-			flex-direction: column;
-			border-radius: var(--radius-lg);
-			overflow: hidden;
-			background: var(--pane);
-		}
-
-		.models-index-row {
-			position: relative;
-			display: flex;
-			align-items: center;
-			gap: 12px;
-			width: 100%;
-			min-height: 64px;
-			padding: 10px 14px;
-			border: 0;
-			border-radius: 0;
-			background: var(--pane);
-			color: var(--ink);
-			text-align: left;
-			cursor: pointer;
-			transition-property: background-color;
-		}
-
-		.models-index-row + .models-index-row::before {
-			content: '';
-			position: absolute;
-			left: 45px;
-			right: 0;
-			top: 0;
-			height: 1px;
-			background: var(--line);
-		}
-
-		.models-index-row:active {
-			background: var(--row-hover);
-		}
-
-		.models-index-row :global(.models-icon) {
-			flex: none;
-			color: var(--muted);
-		}
-
-		.models-index-text {
-			flex: 1;
-			min-width: 0;
-			display: flex;
-			flex-direction: column;
-			gap: 3px;
-		}
-
-		.models-index-name {
-			font-size: 15px;
-			font-weight: 500;
-			line-height: 1.3;
-		}
-
-		.models-index-summary {
-			overflow: hidden;
-			text-overflow: ellipsis;
-			white-space: nowrap;
-			font-size: 13px;
-			line-height: 1.35;
-			color: var(--muted);
-		}
-
-		.models-index-chevron {
-			flex: none;
-			width: 8px;
-			height: 8px;
-			margin: 0 3px 0 5px;
-			border-top: 1.8px solid var(--muted);
-			border-right: 1.8px solid var(--muted);
-			transform: rotate(45deg);
 		}
 
 		.models-intro {

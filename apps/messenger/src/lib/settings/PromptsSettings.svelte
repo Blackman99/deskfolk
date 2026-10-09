@@ -1,12 +1,21 @@
 <script lang="ts">
-	import { tick } from 'svelte';
-	import type { Locale, PromptSummary } from '@real-bot/protocol';
+	import { tick, type Snippet } from 'svelte';
+	import { MediaQuery } from 'svelte/reactivity';
+	import type { Locale, PromptGroup, PromptSummary } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { backdropClick } from '../click-outside.ts';
 	import PromptEditor from './PromptEditor.svelte';
+	import SettingsSectionList from './SettingsSectionList.svelte';
+	import SettingsSectionTabs from './SettingsSectionTabs.svelte';
 	import { editedCount, failuresOf, firstLocale, groupPrompts, overallState, stateChip, type PromptView } from './prompts-view.ts';
 
+	/**
+	 * Settings › Prompts, by group as Models is by section: a wide window shows the groups as tabs
+	 * under the search, a phone lists them and opens one as a page of its own. A search or the
+	 * edited filter looks through every group, so while one is on, what it keeps shows by group in
+	 * one list instead.
+	 */
 	interface Props {
 		runtime: MessengerRuntime;
 		t: Copy;
@@ -14,16 +23,18 @@
 		items: readonly PromptSummary[];
 		loadFailed?: boolean;
 		closeSettings?: () => void;
+		/** What the dialog says over any page: pending credentials, a failed save, setup not done. */
+		notices?: Snippet;
 	}
 
-	let { runtime, t, items, loadFailed = false, closeSettings }: Props = $props();
+	let { runtime, t, items, loadFailed = false, closeSettings, notices }: Props = $props();
 	const c = $derived(t.prompts);
 	const ui = $derived<Locale>(runtime.snapshot.settings.locale === 'en' ? 'en' : 'zh');
 	const editorBackdrop = backdropClick();
 
+	const phone = new MediaQuery('(max-width: 720px)');
 	let query = $state('');
 	let onlyEdited = $state(false);
-	let toolsOpen = $state(false);
 	let open = $state<{ id: string; locale: Locale } | null>(null);
 	let editorView = $state<PromptView>('text');
 	/** A change to open in the history the first time the editor shows it (a card's 「在设置里看」). */
@@ -37,10 +48,50 @@
 	// The filter is there only while something is edited, so restoring the last one shows them all again.
 	const editedOnly = $derived(onlyEdited && counts.edited > 0);
 	const groups = $derived(groupPrompts(items, query, editedOnly));
-	// A search or the filter shows every tool it keeps; otherwise the fifty stay folded.
 	const narrowed = $derived(query.trim() !== '' || editedOnly);
+	/** Every prompt by group, whatever the search: the tabs, and the phone's list of groups. */
+	const byGroup = $derived(groupPrompts(items, ''));
+	const sections = $derived(byGroup.map((row) => row.group));
+	let picked = $state<PromptGroup>('turn');
+	const section = $derived(sections.includes(picked) ? picked : (sections[0] ?? 'turn'));
+	/** On a phone, a group's page is open over the list of them. */
+	let opened = $state(false);
+	let scroller = $state<HTMLElement>();
+	const sectioned = $derived(sections.length > 1 && !narrowed);
+	const listing = $derived(phone.current && sectioned && !opened);
+	const inGroup = $derived(phone.current && sectioned && opened);
 	const botNames = $derived(new Map(runtime.snapshot.bots.map((bot) => [bot.id, bot.name])));
 	const openItem = $derived(open ? items.find((item) => item.id === open!.id) : undefined);
+
+	const itemsOf = (group: PromptGroup) => byGroup.find((row) => row.group === group)?.items ?? [];
+	/** A tab counts what you edited in its group, as Prompts in the settings list does over all of them. */
+	const editedIn = (group: PromptGroup) => editedCount(itemsOf(group)).edited;
+	const conflictIn = (group: PromptGroup) => editedCount(itemsOf(group)).conflict;
+
+	/** A group's line on the phone's list: how many prompts, and how many of them are edited. */
+	function summary(group: PromptGroup): string {
+		const list = itemsOf(group);
+		const counted = editedCount(list);
+		return c.groupSummary(list.length, counted.edited, counted.conflict);
+	}
+
+	function openSection(next: PromptGroup): void {
+		picked = next;
+		opened = true;
+		if (scroller) scroller.scrollTop = 0;
+	}
+
+	/** The open group's name for the page head on a phone; null on the list, and on a wide window. */
+	export function sectionTitle(): string | null {
+		return inGroup ? c.groups[section] : null;
+	}
+
+	/** Back on a phone from a group's page goes to the list of groups. */
+	export function backFromSection(): boolean {
+		if (!inGroup) return false;
+		opened = false;
+		return true;
+	}
 
 	/** A prompt's mark in the list: who edited it, or the conflict; a default carries none. */
 	function chipOf(item: PromptSummary): ReturnType<typeof stateChip> {
@@ -66,11 +117,16 @@
 	$effect(() => {
 		if (!focusEditor || !open || !openItem) return;
 		focusEditor = false;
+		// Under the editor, its group: where closing it, or Back on a phone, lands.
+		picked = openItem.group;
+		opened = true;
 		void tick().then(() => document.querySelector<HTMLElement>('.prompt-editor-backdrop')?.focus());
 	});
 
 	async function openEditor(item: PromptSummary, event: MouseEvent): Promise<void> {
 		returnFocus = event.currentTarget as HTMLElement;
+		// Opened from a search, its group is the tab showing once the search is cleared.
+		picked = item.group;
 		editorView = 'text';
 		editorReveal = null;
 		open = { id: item.id, locale: firstLocale(item, ui) };
@@ -106,102 +162,143 @@
 	}
 </script>
 
-<div class="prompts-settings">
-	<div class="prompts-top">
-		<p class="prompts-intro">{c.intro}</p>
-		<div class="prompts-toolbar">
-			<input class="prompts-search" type="search" aria-label={c.search} placeholder={c.search} bind:value={query} />
-			{#if counts.edited > 0}
-				<div class="prompts-filter" role="group" aria-label={c.filter.edited}>
-					<button type="button" class="prompts-filter-btn" class:is-active={!editedOnly} aria-pressed={!editedOnly} onclick={() => (onlyEdited = false)}>{c.filter.all}</button>
-					<button type="button" class="prompts-filter-btn" class:is-active={editedOnly} aria-pressed={editedOnly} data-prompts-filter="edited" onclick={() => (onlyEdited = true)}>
-						{c.filter.edited}
-						<span class="prompts-filter-count" class:is-warn={counts.conflict}>{counts.edited}</span>
+{#snippet icon(of: PromptGroup, size: number)}
+	<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+		{#if of === 'turn'}
+			<polyline points="17 1 21 5 17 9"></polyline>
+			<path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+			<polyline points="7 23 3 19 7 15"></polyline>
+			<path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+		{:else if of === 'agent'}
+			<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+			<polyline points="7 9 10 12 7 15"></polyline>
+			<line x1="12" y1="15" x2="17" y2="15"></line>
+		{:else if of === 'call'}
+			<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+		{:else}
+			<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
+		{/if}
+	</svg>
+{/snippet}
+
+<!-- A group's prompts: one line each, or for the tool descriptions, their names in a grid. -->
+{#snippet groupBody(group: PromptGroup, list: PromptSummary[])}
+	{#if group === 'tool'}
+		<p class="prompts-group-note">{c.toolsNote}</p>
+		<ul class="prompts-tools">
+			{#each list as item (item.id)}
+				{@const chip = chipOf(item)}
+				<li>
+					<button
+						type="button"
+						class="prompts-tool"
+						data-prompt={item.id}
+						title={chip.tone === 'default' ? undefined : chip.label}
+						onclick={(event) => void openEditor(item, event)}
+					>
+						<span class="prompts-tool-name">{item.title[ui]}</span>
+						{#if chip.tone !== 'default'}
+							<span class="prompts-dot is-{chip.tone}" aria-hidden="true"></span>
+							<span class="sr-only">{chip.label}</span>
+						{/if}
 					</button>
-				</div>
+				</li>
+			{/each}
+		</ul>
+	{:else}
+		<ul class="prompts-list">
+			{#each list as item (item.id)}
+				{@const chip = chipOf(item)}
+				{@const failures = failuresOf(item)}
+				<li>
+					<button type="button" class="prompts-row" data-prompt={item.id} onclick={(event) => void openEditor(item, event)}>
+						<span class="prompts-row-title">{item.title[ui]}</span>
+						<span class="prompts-row-summary" title={item.summary[ui]}>{item.summary[ui]}</span>
+						<span class="prompts-row-end">
+							{#if chip.tone !== 'default'}
+								<span class="prompts-chip is-{chip.tone}">{chip.label}</span>
+							{/if}
+							{#if failures > 0}
+								<span class="prompts-chip is-warn">{c.parseFailures(failures)}</span>
+							{/if}
+							<svg class="prompts-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg>
+						</span>
+					</button>
+				</li>
+			{/each}
+		</ul>
+	{/if}
+{/snippet}
+
+<div class="prompts-settings">
+	<!-- The search sits over the groups, not in one: it looks through all of them. On a phone it is on the list of groups. -->
+	{#if !inGroup}
+		<div class="prompts-top">
+			{@render notices?.()}
+			<p class="prompts-intro">{c.intro}</p>
+			<div class="prompts-toolbar">
+				<input class="prompts-search" type="search" aria-label={c.search} placeholder={c.search} bind:value={query} />
+				{#if counts.edited > 0}
+					<div class="prompts-filter" role="group" aria-label={c.filter.edited}>
+						<button type="button" class="prompts-filter-btn" class:is-active={!editedOnly} aria-pressed={!editedOnly} onclick={() => (onlyEdited = false)}>{c.filter.all}</button>
+						<button type="button" class="prompts-filter-btn" class:is-active={editedOnly} aria-pressed={editedOnly} data-prompts-filter="edited" onclick={() => (onlyEdited = true)}>
+							{c.filter.edited}
+							<span class="prompts-filter-count" class:is-warn={counts.conflict}>{counts.edited}</span>
+						</button>
+					</div>
+				{/if}
+			</div>
+			{#if loadFailed}
+				<p class="field-error" role="alert">{c.loadFailed}</p>
 			{/if}
 		</div>
-		{#if loadFailed}
-			<p class="field-error" role="alert">{c.loadFailed}</p>
-		{/if}
-	</div>
+	{/if}
 
-	<div class="prompts-scroll" role="region" aria-label={t.settings.tabPrompts}>
-		{#if items.length > 0 && groups.length === 0}
-			<p class="muted prompts-empty" role="status">{c.noMatch}</p>
+	{#if !phone.current && sectioned}
+		<SettingsSectionTabs
+			id="prompts"
+			{sections}
+			active={section}
+			label={(of) => c.groups[of]}
+			count={editedIn}
+			warn={conflictIn}
+			{icon}
+			ariaLabel={t.settings.tabPrompts}
+			onpick={openSection}
+		/>
+	{/if}
+
+	<div class="prompts-scroll" role="region" aria-label={t.settings.tabPrompts} bind:this={scroller}>
+		{#if inGroup}
+			{@render notices?.()}
 		{/if}
-		{#each groups as row (row.group)}
-			<section class="prompts-group" data-prompt-group={row.group}>
-				{#if row.group === 'tool'}
-					{@const toolsShown = toolsOpen || narrowed}
-					{@const toolsEdited = row.items.filter((item) => overallState(item) !== 'default').length}
-					{#if narrowed}
-						<div class="prompts-group-head">
-							<h4 class="prompts-group-title">{c.groups.tool}</h4>
-							<span class="prompts-group-count">{row.items.length}</span>
-						</div>
-					{:else}
-						<button type="button" class="prompts-group-head prompts-group-toggle" aria-expanded={toolsOpen} onclick={() => (toolsOpen = !toolsOpen)}>
-							<span class="prompts-group-title">{c.groups.tool}</span>
-							<span class="prompts-group-count">{row.items.length}</span>
-							{#if toolsEdited > 0}
-								<span class="prompts-chip is-edited">{c.filter.edited} {toolsEdited}</span>
-							{/if}
-							<svg class="prompts-caret" class:is-open={toolsOpen} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg>
-						</button>
-					{/if}
-					{#if toolsShown}
-						<p class="prompts-group-note">{c.toolsNote}</p>
-						<ul class="prompts-tools">
-							{#each row.items as item (item.id)}
-								{@const chip = chipOf(item)}
-								<li>
-									<button
-										type="button"
-										class="prompts-tool"
-										data-prompt={item.id}
-										title={chip.tone === 'default' ? undefined : chip.label}
-										onclick={(event) => void openEditor(item, event)}
-									>
-										<span class="prompts-tool-name">{item.title[ui]}</span>
-										{#if chip.tone !== 'default'}
-											<span class="prompts-dot is-{chip.tone}" aria-hidden="true"></span>
-											<span class="sr-only">{chip.label}</span>
-										{/if}
-									</button>
-								</li>
-							{/each}
-						</ul>
-					{/if}
-				{:else}
+		{#if listing}
+			<SettingsSectionList {sections} label={(of) => c.groups[of]} {summary} {icon} ariaLabel={t.settings.tabPrompts} onpick={openSection} />
+		{:else if sectioned}
+			<div
+				class="prompts-panel"
+				class:is-subpage={phone.current}
+				id="prompts-panel"
+				role={phone.current ? undefined : 'tabpanel'}
+				aria-labelledby={phone.current ? undefined : `prompts-tab-${section}`}
+				data-prompt-group={section}
+			>
+				{@render groupBody(section, itemsOf(section))}
+			</div>
+		{:else}
+			{#if items.length > 0 && groups.length === 0}
+				<p class="muted prompts-empty" role="status">{c.noMatch}</p>
+			{/if}
+			{#each groups as row (row.group)}
+				<section class="prompts-group" data-prompt-group={row.group}>
 					<div class="prompts-group-head">
 						<h4 class="prompts-group-title">{c.groups[row.group]}</h4>
 						<span class="prompts-group-count">{row.items.length}</span>
 					</div>
-					<ul class="prompts-list">
-						{#each row.items as item (item.id)}
-							{@const chip = chipOf(item)}
-							{@const failures = failuresOf(item)}
-							<li>
-								<button type="button" class="prompts-row" data-prompt={item.id} onclick={(event) => void openEditor(item, event)}>
-									<span class="prompts-row-title">{item.title[ui]}</span>
-									<span class="prompts-row-summary" title={item.summary[ui]}>{item.summary[ui]}</span>
-									<span class="prompts-row-end">
-										{#if chip.tone !== 'default'}
-											<span class="prompts-chip is-{chip.tone}">{chip.label}</span>
-										{/if}
-										{#if failures > 0}
-											<span class="prompts-chip is-warn">{c.parseFailures(failures)}</span>
-										{/if}
-										<svg class="prompts-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg>
-									</span>
-								</button>
-							</li>
-						{/each}
-					</ul>
-				{/if}
-			</section>
-		{/each}
+					{@render groupBody(row.group, row.items)}
+				</section>
+			{/each}
+		{/if}
 	</div>
 </div>
 
@@ -252,14 +349,16 @@
 {/if}
 
 <style>
-	/* The list scrolls under a fixed search row, as the MCP list does (the modal body stops scrolling). */
+	/*
+	 * The groups scroll under a fixed search row and their tabs, as Models' sections do under theirs
+	 * (the modal body stops scrolling and leaves its padding to this page).
+	 */
 	:global(.modal-body) > .prompts-settings {
 		flex: 1;
 		min-height: 0;
 		min-width: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 12px;
 	}
 
 	.prompts-top {
@@ -267,6 +366,7 @@
 		flex-direction: column;
 		gap: 10px;
 		flex: none;
+		padding: 18px 24px 12px;
 	}
 
 	.prompts-intro {
@@ -349,13 +449,26 @@
 	.prompts-scroll {
 		flex: 1;
 		min-height: 0;
+		overflow-x: hidden;
 		overflow-y: auto;
 		overscroll-behavior: contain;
 		scrollbar-gutter: stable;
 		display: flex;
 		flex-direction: column;
 		gap: 18px;
-		padding: 2px 2px 8px;
+		padding: 16px 24px 20px;
+	}
+
+	/* Straight under the search, with no tabs between: the list starts where it always did. */
+	.prompts-top + .prompts-scroll {
+		padding-top: 2px;
+	}
+
+	.prompts-panel {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		min-width: 0;
 	}
 
 	.prompts-empty {
@@ -389,31 +502,6 @@
 		font-size: 11px;
 		font-variant-numeric: tabular-nums;
 		color: var(--muted);
-	}
-
-	.prompts-group-toggle {
-		align-self: flex-start;
-		margin: 0 -4px;
-		padding: 2px 8px;
-		border: 0;
-		border-radius: var(--radius-sm);
-		background: none;
-		text-align: left;
-		cursor: pointer;
-		transition-property: background-color, color;
-	}
-
-	.prompts-group-toggle:hover {
-		background: var(--row-hover);
-	}
-
-	.prompts-caret {
-		color: var(--muted);
-		transition: transform 0.15s ease;
-	}
-
-	.prompts-caret.is-open {
-		transform: rotate(90deg);
 	}
 
 	.prompts-group-note {
@@ -470,7 +558,6 @@
 
 	.prompts-row:focus-visible,
 	.prompts-tool:focus-visible,
-	.prompts-group-toggle:focus-visible,
 	.prompts-filter-btn:focus-visible {
 		outline: 2px solid var(--accent);
 		outline-offset: -2px;
@@ -643,8 +730,24 @@
 	}
 
 	@media (max-width: 720px) {
+		.prompts-top {
+			padding: 14px 16px 12px;
+		}
+
 		.prompts-scroll {
 			gap: 16px;
+			padding: 16px 16px max(20px, env(safe-area-inset-bottom));
+			scrollbar-gutter: auto;
+			scrollbar-width: none;
+		}
+
+		.prompts-scroll::-webkit-scrollbar {
+			display: none;
+		}
+
+		/* A group opened from the list comes in from the side, as Models' sections do. */
+		.prompts-panel.is-subpage {
+			animation: prompt-subpage-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 		}
 
 		/* A row is the title over one line of what it is; marks stay on the right. */

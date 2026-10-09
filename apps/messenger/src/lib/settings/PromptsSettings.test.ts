@@ -22,30 +22,46 @@ const items = [item("turn.system", "turn", "edited"), item("turn.memory", "turn"
 
 const shown = (host: HTMLElement) => [...host.querySelectorAll("[data-prompt]")].map((el) => el.getAttribute("data-prompt"));
 
-test("prompts list by group with the tools last and folded; only edits and unreadable answers are marked", () => {
+const tabs = (host: HTMLElement) => [...host.querySelectorAll<HTMLButtonElement>('.section-tabs [role="tab"]')];
+const tab = (host: HTMLElement, group: string) => host.querySelector<HTMLButtonElement>(`.section-tabs [data-section="${group}"]`);
+
+test("prompts show one group a tab, the tools last as a grid of names; only edits and unreadable answers are marked", () => {
   const runtime = fakeRuntime({ bots: [{ id: "b1", name: "调优员" } as never] });
   const { host, close } = render(PromptsSettings, { runtime, t, items });
-  const groups = [...host.querySelectorAll("[data-prompt-group]")].map((el) => el.getAttribute("data-prompt-group"));
-  expect(groups).toEqual(["turn", "call", "tool"]);
-  // Tool descriptions are folded until you open them.
-  expect(host.querySelector('[data-prompt="tool.shell"]')).toBeNull();
-  click(host.querySelector(".prompts-group-toggle"));
-  expect(host.querySelector('[data-prompt="tool.shell"]')).toBeTruthy();
-  // What every tool's text is, said once for the group rather than on each of them.
-  expect(host.querySelectorAll(".prompts-group-note")).toHaveLength(1);
-  expect(host.querySelector('[data-prompt="tool.shell"]')!.textContent?.trim()).toBe("标题 tool.shell");
-  const scribe = host.querySelector('[data-prompt="call.scribe"]')!;
-  expect(scribe.textContent).toContain("已改 · 调优员改的");
-  expect(scribe.textContent).toContain("读不懂 3 次");
+  // Groups with no prompt have no tab; the first one is open.
+  expect(tabs(host).map((el) => el.dataset.section)).toEqual(["turn", "call", "tool"]);
+  // Each counts what you edited in it, and a group with nothing edited shows no number.
+  expect(tabs(host).map((el) => el.querySelector(".section-tab-count")?.textContent ?? null)).toEqual(["1", "1", null]);
+  expect(tab(host, "turn")?.getAttribute("aria-selected")).toBe("true");
+  expect(host.querySelector('[role="tabpanel"]')?.getAttribute("aria-labelledby")).toBe("prompts-tab-turn");
+  expect(shown(host)).toEqual(["turn.system", "turn.memory"]);
+  // The tab names the group, so its page has no heading of its own.
+  expect(host.querySelector(".prompts-group-head")).toBeNull();
   // A default says nothing about being one.
   expect(host.querySelector('[data-prompt="turn.memory"] .prompts-chip')).toBeNull();
   expect(host.textContent).not.toContain(t.prompts.state.default);
-  // A search opens every group it matches.
-  click(host.querySelector(".prompts-group-toggle"));
+  click(tab(host, "call"));
+  expect(shown(host)).toEqual(["call.scribe"]);
+  const scribe = host.querySelector('[data-prompt="call.scribe"]')!;
+  expect(scribe.textContent).toContain("已改 · 调优员改的");
+  expect(scribe.textContent).toContain("读不懂 3 次");
+  // The tools are open on their own tab: what every tool's text is, said once, then their names.
+  click(tab(host, "tool"));
+  expect(shown(host)).toEqual(["tool.shell", "tool.send_message"]);
+  expect(host.querySelectorAll(".prompts-group-note")).toHaveLength(1);
+  expect(host.querySelector('[data-prompt="tool.shell"]')!.textContent?.trim()).toBe("标题 tool.shell");
+  // A search looks through every group, and shows what it keeps by group in one list.
+  fill(host.querySelector(".prompts-search"), "turn.");
+  expect(host.querySelector(".section-tabs")).toBeNull();
+  expect([...host.querySelectorAll(".prompts-group-title")].map((el) => el.textContent)).toEqual([t.prompts.groups.turn]);
+  expect(shown(host)).toEqual(["turn.system", "turn.memory"]);
   fill(host.querySelector(".prompts-search"), "send_message");
   expect(shown(host)).toEqual(["tool.send_message"]);
   fill(host.querySelector(".prompts-search"), "nothing like it");
   expect(host.textContent).toContain(t.prompts.noMatch);
+  // Cleared, the tabs are back on the group you were reading.
+  fill(host.querySelector(".prompts-search"), "");
+  expect(tab(host, "tool")?.getAttribute("aria-selected")).toBe("true");
   close();
 });
 
@@ -53,23 +69,35 @@ test("the edited filter keeps only what changed, tools included, and is gone whe
   const runtime = fakeRuntime({ bots: [{ id: "b1", name: "调优员" } as never] });
   const withTool = [...items.slice(0, 3), item("tool.send_message", "tool", "conflict"), items[4]!];
   const { host, close } = render(PromptsSettings, { runtime, t, items: withTool });
-  // The folded tools say one of them changed.
-  expect(host.querySelector(".prompts-group-toggle")?.textContent).toContain(`${t.prompts.filter.edited} 1`);
+  // Each tab counts what changed in its group; a newer default in conflict counts in the warning colour.
+  expect(tab(host, "tool")?.querySelector(".section-tab-count")?.textContent).toBe("1");
+  expect(tab(host, "tool")?.querySelector(".section-tab-count.is-warn")).toBeTruthy();
+  expect(tab(host, "turn")?.querySelector(".section-tab-count.is-warn")).toBeNull();
   const edited = host.querySelector<HTMLButtonElement>('[data-prompts-filter="edited"]')!;
   expect(edited.textContent).toContain("3");
   click(edited);
   expect(edited.getAttribute("aria-pressed")).toBe("true");
+  expect(host.querySelector(".section-tabs")).toBeNull();
   expect(shown(host)).toEqual(["turn.system", "call.scribe", "tool.send_message"]);
   // An edited tool is marked in the grid, and says how in words for a screen reader.
   expect(host.querySelector('[data-prompt="tool.send_message"] .prompts-dot.is-conflict')).toBeTruthy();
   expect(host.querySelector('[data-prompt="tool.send_message"]')?.textContent).toContain(t.prompts.state.conflict);
   click(host.querySelector(".prompts-filter-btn"));
-  expect(shown(host)).toEqual(["turn.system", "turn.memory", "call.scribe"]);
+  expect(tab(host, "turn")?.getAttribute("aria-selected")).toBe("true");
+  expect(shown(host)).toEqual(["turn.system", "turn.memory"]);
   close();
 
   const plain = render(PromptsSettings, { runtime, t, items: [item("turn.memory", "turn"), item("tool.shell", "tool")] });
   expect(plain.host.querySelector(".prompts-filter")).toBeNull();
   plain.close();
+});
+
+test("a lone group needs no tabs", () => {
+  const { host, close } = render(PromptsSettings, { runtime: fakeRuntime(), t, items: [item("turn.memory", "turn")] });
+  expect(host.querySelector(".section-tabs")).toBeNull();
+  expect(host.querySelector(".prompts-group-title")?.textContent).toBe(t.prompts.groups.turn);
+  expect(shown(host)).toEqual(["turn.memory"]);
+  close();
 });
 
 test("a row opens its editor as a subpage, and back closes it", async () => {
@@ -147,10 +175,12 @@ test("sent from a card, the prompt opens at its history with that change open, a
       }),
     },
   });
-  const { close } = render(PromptsSettings, { runtime, t, items });
+  const { host, close } = render(PromptsSettings, { runtime, t, items });
   await sleep(10);
   flushSync();
   expect(runtime.promptsTarget).toBeNull();
+  // Under it, its group's tab: where closing the editor lands.
+  expect(tab(host, "call")?.getAttribute("aria-selected")).toBe("true");
   const editor = document.querySelector(".prompt-editor-modal")!;
   expect(editor.querySelector("h2")?.textContent).toBe("标题 call.scribe");
   expect(editor.querySelector('[data-view="history"]')?.getAttribute("aria-selected")).toBe("true");

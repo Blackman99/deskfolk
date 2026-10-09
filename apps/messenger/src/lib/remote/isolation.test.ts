@@ -53,6 +53,8 @@ const SETTINGS_FILES = [
   "GeneralTab.svelte",
   "ModelsTab.svelte",
   "ProvidersTab.svelte",
+  "SettingsSectionTabs.svelte",
+  "SettingsSectionList.svelte",
   "RemoteTab.svelte",
   "RemoteSessionSettings.svelte",
   "AboutTab.svelte",

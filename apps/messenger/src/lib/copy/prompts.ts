@@ -7,6 +7,8 @@ export const zh = {
   filter: { all: "全部", edited: "已改" },
   groups: { turn: "每一轮的系统指令", agent: "Claude Agent", tool: "工具说明", call: "应用自己的调用" },
   toolsNote: "模型看到的每个工具是做什么的；参数的说明不在这里。",
+  groupSummary: (count: number, edited: number, conflict: boolean) =>
+    `${count} 条${edited > 0 ? ` · 已改 ${edited}` : ""}${conflict ? " · 有冲突" : ""}`,
   state: { default: "默认", edited: "已改", conflict: "默认已更新 · 有冲突" },
   editedBy: (who: string) => `${who}改的`,
   you: "你",
@@ -82,6 +84,8 @@ export const en: CopyShape<typeof zh> = {
   filter: { all: "All", edited: "Edited" },
   groups: { turn: "Every turn", agent: "Claude Agent", tool: "Tool descriptions", call: "The app's own calls" },
   toolsNote: "What each tool is for, as models see it; parameter descriptions are not here.",
+  groupSummary: (count: number, edited: number, conflict: boolean) =>
+    `${count === 1 ? "1 prompt" : `${count} prompts`}${edited > 0 ? ` · ${edited} edited` : ""}${conflict ? " · conflict" : ""}`,
   state: { default: "Default", edited: "Edited", conflict: "New default · conflict" },
   editedBy: (who: string) => `by ${who}`,
   you: "you",

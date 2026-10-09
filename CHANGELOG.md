@@ -6,6 +6,13 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Settings › Prompts in sections, as Models is
+
+- Prompts is split by group the way Models is: Every turn, Claude Agent, The app's own calls and Tool descriptions. A wide window shows them as tabs under the search, each counting the prompts edited in it (in the warning colour when one is in conflict with a newer default); each group scrolls on its own under them.
+- On a phone, Prompts lists the groups, each saying how many prompts it holds, how many are edited and whether one is in conflict. Tap one to open its page; Back, the arrow at the top and ✕ go from a prompt to its group, then to that list, then to Settings.
+- The search and the All / Edited filter still look through every group: while either is on, the tabs give way to everything found, by group, and clearing it goes back to the group you were reading. A prompt opened from an approval card's Open in settings lands on its group's tab.
+- The tool descriptions are no longer folded: on their own tab they are a grid of tool names straight away.
+
 ### Notification categories stay inside their card
 
 - In Settings › Notifications, the six categories no longer run past the right edge of their card, where the switches sat on its border and the page scrolled sideways. A longer description wraps onto a second line instead, and in a narrow settings window the categories stack in one column.

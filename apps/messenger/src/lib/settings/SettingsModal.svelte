@@ -183,6 +183,7 @@
 		if (mcpSettings?.backFromEditor()) return true;
 		if (promptsSettings?.backFromEditor()) return true;
 		if (activeSettingsTab === 'models' && modelsTab?.backFromSection()) return true;
+		if (activeSettingsTab === 'prompts' && promptsSettings?.backFromSection()) return true;
 		if (!mobileSettingsDetail) return false;
 		mobileSettingsDetail = false;
 		return true;
@@ -225,9 +226,13 @@
 							? t.settings.tabRemote
 							: t.settings.tabAbout;
 	}
-	/** On a phone, a section of Models opened from its list names the page. */
+	/** On a phone, a section of Models or a group of Prompts opened from its list names the page. */
 	const mainTitle = $derived(
-		(activeSettingsTab === 'models' ? modelsTab?.sectionTitle() : null) ?? settingsTabLabel(activeSettingsTab)
+		(activeSettingsTab === 'models'
+			? modelsTab?.sectionTitle()
+			: activeSettingsTab === 'prompts'
+				? promptsSettings?.sectionTitle()
+				: null) ?? settingsTabLabel(activeSettingsTab)
 	);
 	const independentRuntime = new IndependentRuntimeController({
 		runtime: () => runtime,
@@ -425,8 +430,8 @@
 				</div>
 
 			<div class="modal-body" class:is-mcp={activeSettingsTab === 'mcp'} class:is-prompts={activeSettingsTab === 'prompts'} class:is-models={activeSettingsTab === 'models'}>
-				<!-- Models scrolls its own page under its tabs, so it shows these there. -->
-				{#if activeSettingsTab !== 'models'}{@render settingsNotices()}{/if}
+				<!-- Models and Prompts scroll their own page under their tabs, so they show these there. -->
+				{#if activeSettingsTab !== 'models' && activeSettingsTab !== 'prompts'}{@render settingsNotices()}{/if}
 
 				{#if activeSettingsTab === 'general'}
 					<GeneralTab
@@ -468,7 +473,7 @@
 				{:else if activeSettingsTab === 'mcp'}
 					<McpSettings bind:this={mcpSettings} {runtime} {t} {closeSettings} />
 				{:else if activeSettingsTab === 'prompts'}
-					<PromptsSettings bind:this={promptsSettings} {runtime} {t} items={promptItems} loadFailed={promptsFailed} {closeSettings} />
+					<PromptsSettings bind:this={promptsSettings} {runtime} {t} items={promptItems} loadFailed={promptsFailed} {closeSettings} notices={settingsNotices} />
 				{:else if activeSettingsTab === 'notifications'}
 					<NotificationSettings {runtime} {t} />
 				{:else if activeSettingsTab === 'lessons' && lessonsTabVisible}
@@ -582,15 +587,15 @@
 		padding: 20px 24px;
 	}
 
-	.settings-main > .modal-body.is-mcp,
-	.settings-main > .modal-body.is-prompts {
+	.settings-main > .modal-body.is-mcp {
 		min-height: 0;
 		overflow: hidden;
 		padding: 18px 24px;
 	}
 
-	/* Models keeps its section tabs above a scroll of its own. */
-	.settings-main > .modal-body.is-models {
+	/* Models and Prompts keep their tabs above a scroll of their own. */
+	.settings-main > .modal-body.is-models,
+	.settings-main > .modal-body.is-prompts {
 		padding: 0;
 		overflow: hidden;
 		display: flex;
@@ -725,8 +730,7 @@
 			overscroll-behavior: contain;
 		}
 
-		.settings-main > .modal-body.is-mcp,
-		.settings-main > .modal-body.is-prompts {
+		.settings-main > .modal-body.is-mcp {
 			padding: 14px 12px max(20px, env(safe-area-inset-bottom));
 		}
 

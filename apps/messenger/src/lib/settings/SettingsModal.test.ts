@@ -64,7 +64,7 @@ function openModels(host: HTMLElement): void {
 /** Models, then its endpoints: on a phone that is the first row of Models' own list. */
 function openEndpoints(host: HTMLElement): void {
   openModels(host);
-  click(host.querySelector<HTMLButtonElement>('[data-models-section="endpoints"]'));
+  click(host.querySelector<HTMLButtonElement>('[data-section="endpoints"]'));
 }
 
 /** A client whose engine level has a model ladder, holding two rungs. */
@@ -80,7 +80,7 @@ const ladderClient = () => ({
 });
 
 const sectionTabs = (host: HTMLElement) =>
-  [...host.querySelectorAll<HTMLButtonElement>('.models-tabs [role="tab"]')].map((tab) => tab.dataset.modelsSection);
+  [...host.querySelectorAll<HTMLButtonElement>('.section-tabs [role="tab"]')].map((tab) => tab.dataset.section);
 
 test("Models shows its endpoints, model ladder, reading model and speech recognition as tabs over one page", async () => {
   const { host, close } = open({ client: ladderClient() });
@@ -88,23 +88,23 @@ test("Models shows its endpoints, model ladder, reading model and speech recogni
   await sleep(0);
   flushSync();
   expect(sectionTabs(host)).toEqual(["endpoints", "ladder", "reader", "speech"]);
-  expect(host.querySelector('[data-models-section="endpoints"]')?.getAttribute("aria-selected")).toBe("true");
-  expect(host.querySelector('[data-models-section="ladder"] .models-tab-count')?.textContent).toBe("2");
+  expect(host.querySelector('[data-section="endpoints"]')?.getAttribute("aria-selected")).toBe("true");
+  expect(host.querySelector('[data-section="ladder"] .section-tab-count')?.textContent).toBe("2");
   expect(host.querySelector(".provider-card")).toBeTruthy();
   expect(host.querySelector("[data-model-ladder]")).toBeNull();
   expect(host.querySelector("[data-reader-model]")).toBeNull();
   expect(host.querySelector("[data-speech-settings]")).toBeNull();
-  click(host.querySelector('[data-models-section="ladder"]'));
+  click(host.querySelector('[data-section="ladder"]'));
   expect(host.querySelector(".provider-card")).toBeNull();
   expect([...host.querySelectorAll(".ladder-name")].map((el) => el.textContent)).toEqual(["gemini-3.8-flash", "grok-4.6"]);
   expect(host.querySelector(".models-intro")?.textContent).toBe(t.modelLadder.hint);
-  click(host.querySelector('[data-models-section="reader"]'));
-  expect(host.querySelector('[data-models-section="reader"]')?.getAttribute("aria-selected")).toBe("true");
+  click(host.querySelector('[data-section="reader"]'));
+  expect(host.querySelector('[data-section="reader"]')?.getAttribute("aria-selected")).toBe("true");
   expect(host.querySelector("[data-reader-model]")).toBeTruthy();
   expect(host.querySelector("[data-model-ladder]")).toBeNull();
   // Speech recognition is a section of its own, not a card under the endpoints.
-  click(host.querySelector('[data-models-section="speech"]'));
-  expect(host.querySelector('[data-models-section="speech"]')?.getAttribute("aria-selected")).toBe("true");
+  click(host.querySelector('[data-section="speech"]'));
+  expect(host.querySelector('[data-section="speech"]')?.getAttribute("aria-selected")).toBe("true");
   expect(host.querySelector("[data-speech-settings]")).toBeTruthy();
   expect(host.querySelector(".models-intro")?.textContent).toBe(t.speech.hint);
   expect(host.querySelector("[data-reader-model]")).toBeNull();
@@ -123,8 +123,12 @@ test("before setup is done, its banner shows on Models too, inside the page unde
   openModels(host);
   expect(host.querySelectorAll(".wizard-banner")).toHaveLength(1);
   expect(host.querySelector(".models-scroll > .wizard-banner")).toBeTruthy();
-  click(host.querySelector('[data-models-section="reader"]'));
+  click(host.querySelector('[data-section="reader"]'));
   expect(host.querySelector(".models-scroll > .wizard-banner")).toBeTruthy();
+  // Prompts shows it once too, over its search and tabs.
+  click(host.querySelector<HTMLButtonElement>('[data-settings-tab="prompts"]'));
+  expect(host.querySelectorAll(".wizard-banner")).toHaveLength(1);
+  expect(host.querySelector(".prompts-top > .wizard-banner")).toBeTruthy();
   close();
 });
 
@@ -323,6 +327,83 @@ function withMobileViewport(run: () => void | Promise<void>): void | Promise<voi
   window.matchMedia = previousMatchMedia;
 }
 
+const promptRow = (id: string, group: string, state: "default" | "edited" | "conflict" = "default") => ({
+  id, group, title: { zh: `标题 ${id}`, en: `Title ${id}` }, summary: { zh: `说明 ${id}`, en: `About ${id}` },
+  locales: [{ locale: "zh", state, last_actor: state === "default" ? null : "user", last_bot_id: null, updated_at: null, parse_failures: null }],
+});
+
+test("on a phone, Prompts lists its groups with how many each holds, and Back walks out of a prompt one level at a time", async () => {
+  await withMobileViewport(async () => {
+    const runtime = fakeRuntime({ providers: [aProvider()] });
+    runtime.settingsOpen = true;
+    runtime.client = {
+      listLessons: async () => [],
+      listPrompts: async () => [
+        promptRow("turn.system", "turn", "edited"), promptRow("turn.memory", "turn"),
+        promptRow("call.scribe", "call", "conflict"), promptRow("tool.shell", "tool"),
+      ],
+      getPrompt: () => new Promise(() => {}),
+    } as never;
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const app = mount(SettingsModal, { target: host, props: {
+      runtime, t, saveFailed: false, providerEditor: null,
+      confirmingProvider: false, confirmingIndependent: false,
+      patchImmediate: async () => true, openDeleteProviderConfirm: () => {},
+      closeSettings: () => {},
+    } });
+    flushSync();
+    try {
+      const title = () => host.querySelector(".settings-main-title")?.textContent;
+      click(host.querySelector<HTMLButtonElement>('[data-settings-tab="prompts"]'));
+      await sleep(10);
+      flushSync();
+      expect(host.querySelector(".section-tabs")).toBeNull();
+      const rows = [...host.querySelectorAll<HTMLButtonElement>(".section-list-row")];
+      expect(rows.map((row) => row.dataset.section)).toEqual(["turn", "call", "tool"]);
+      expect(rows.map((row) => row.querySelector(".section-list-summary")?.textContent)).toEqual([
+        t.prompts.groupSummary(2, 1, false),
+        t.prompts.groupSummary(1, 1, true),
+        t.prompts.groupSummary(1, 0, false),
+      ]);
+      // The search is on the list of groups, over all of them.
+      expect(host.querySelector(".prompts-search")).toBeTruthy();
+      expect(host.querySelector("[data-prompt]")).toBeNull();
+      click(rows[1]);
+      expect(title()).toContain(t.prompts.groups.call);
+      expect(host.querySelector(".section-list")).toBeNull();
+      expect(host.querySelector(".prompts-search")).toBeNull();
+      expect(host.querySelector('[data-prompt-group="call"] [data-prompt="call.scribe"]')).toBeTruthy();
+      click(host.querySelector('[data-prompt="call.scribe"]'));
+      await sleep(10);
+      flushSync();
+      expect(document.querySelector(".prompt-editor-modal")).toBeTruthy();
+      // Back: out of the prompt to its group, then to the groups, then to Settings.
+      expect(app.backWithinSettings()).toBe(true);
+      await sleep(10);
+      flushSync();
+      expect(document.querySelector(".prompt-editor-modal")).toBeNull();
+      expect(title()).toContain(t.prompts.groups.call);
+      click(host.querySelector(".settings-mobile-back"));
+      expect(title()).toContain(t.settings.tabPrompts);
+      expect(host.querySelectorAll(".section-list-row")).toHaveLength(3);
+      expect(host.querySelector(".settings-modal.is-mobile-detail")).toBeTruthy();
+      // A search shows what it finds straight away, by group, in place of the list of groups.
+      fill(host.querySelector(".prompts-search"), "memory");
+      expect(host.querySelector(".section-list")).toBeNull();
+      expect([...host.querySelectorAll("[data-prompt]")].map((el) => el.getAttribute("data-prompt"))).toEqual(["turn.memory"]);
+      fill(host.querySelector(".prompts-search"), "");
+      expect(app.backWithinSettings()).toBe(true);
+      flushSync();
+      expect(host.querySelector(".settings-modal.is-mobile-detail")).toBeNull();
+    } finally {
+      void unmount(app);
+      flushSync();
+      host.remove();
+    }
+  });
+});
+
 test("on a phone, Models lists its sections with what each is set to, and opens one a level deeper", async () => {
   await withMobileViewport(async () => {
     const provider = aProvider();
@@ -343,10 +424,10 @@ test("on a phone, Models lists its sections with what each is set to, and opens 
       openModels(host);
       await sleep(0);
       flushSync();
-      expect(host.querySelector(".models-tabs")).toBeNull();
-      const rows = [...host.querySelectorAll<HTMLButtonElement>(".models-index-row")];
-      expect(rows.map((row) => row.dataset.modelsSection)).toEqual(["endpoints", "ladder", "reader", "speech"]);
-      expect(rows.map((row) => row.querySelector(".models-index-summary")?.textContent)).toEqual([
+      expect(host.querySelector(".section-tabs")).toBeNull();
+      const rows = [...host.querySelectorAll<HTMLButtonElement>(".section-list-row")];
+      expect(rows.map((row) => row.dataset.section)).toEqual(["endpoints", "ladder", "reader", "speech"]);
+      expect(rows.map((row) => row.querySelector(".section-list-summary")?.textContent)).toEqual([
         t.settings.modelsEndpointsSummary(1, "Default"),
         "gemini-3.8-flash → grok-4.6",
         t.readerModel.followDefault(null),
@@ -355,14 +436,14 @@ test("on a phone, Models lists its sections with what each is set to, and opens 
       expect(host.querySelector(".provider-card")).toBeNull();
       click(rows[1]);
       expect(title()).toContain(t.modelLadder.title);
-      expect(host.querySelector(".models-index")).toBeNull();
+      expect(host.querySelector(".section-list")).toBeNull();
       expect(host.querySelector("[data-model-ladder]")).toBeTruthy();
       // Back from a section goes to Models' list, then to the settings list.
       click(host.querySelector(".settings-mobile-back"));
       expect(title()).toContain(t.settings.tabModels);
-      expect(host.querySelectorAll(".models-index-row")).toHaveLength(4);
+      expect(host.querySelectorAll(".section-list-row")).toHaveLength(4);
       expect(host.querySelector(".settings-modal.is-mobile-detail")).toBeTruthy();
-      click(host.querySelector('[data-models-section="reader"]'));
+      click(host.querySelector('[data-section="reader"]'));
       expect(title()).toContain(t.readerModel.title);
       expect(app.backWithinSettings()).toBe(true);
       flushSync();
@@ -382,14 +463,14 @@ test("on a phone with no endpoint yet, Models lists the endpoints and speech rec
   withMobileViewport(() => {
     const { host, close } = open({ providers: [] });
     openModels(host);
-    const rows = [...host.querySelectorAll<HTMLButtonElement>(".models-index-row")];
-    expect(rows.map((row) => row.dataset.modelsSection)).toEqual(["endpoints", "speech"]);
-    expect(rows.map((row) => row.querySelector(".models-index-summary")?.textContent)).toEqual([t.settings.providerEmpty, t.speech.unset]);
+    const rows = [...host.querySelectorAll<HTMLButtonElement>(".section-list-row")];
+    expect(rows.map((row) => row.dataset.section)).toEqual(["endpoints", "speech"]);
+    expect(rows.map((row) => row.querySelector(".section-list-summary")?.textContent)).toEqual([t.settings.providerEmpty, t.speech.unset]);
     click(rows[0]);
-    expect(host.querySelector(".models-index")).toBeNull();
+    expect(host.querySelector(".section-list")).toBeNull();
     expect(host.textContent).toContain(t.settings.providerEmpty);
     click(host.querySelector(".settings-mobile-back"));
-    expect(host.querySelectorAll(".models-index-row")).toHaveLength(2);
+    expect(host.querySelectorAll(".section-list-row")).toHaveLength(2);
     click(host.querySelector(".settings-mobile-back"));
     expect(host.querySelector(".settings-modal")?.classList.contains("is-mobile-detail")).toBe(false);
     close();
@@ -410,7 +491,7 @@ test("on a phone, speech recognition's row names the service and model, or what 
     const summary = (speech: SpeechSettings) => {
       const { host, close } = open({ speech });
       openModels(host);
-      const text = host.querySelector('[data-models-section="speech"] .models-index-summary')?.textContent;
+      const text = host.querySelector('[data-section="speech"] .section-list-summary')?.textContent;
       close();
       return text;
     };
@@ -485,7 +566,7 @@ test("mobile history back unwinds editors and categories before leaving settings
       expect(back()).toBe(true);
       // Out of the endpoints, to Models' list of sections.
       expect(back()).toBe(true);
-      expect(host.querySelector(".models-index")).toBeTruthy();
+      expect(host.querySelector(".section-list")).toBeTruthy();
       expect(back()).toBe(true);
       click(host.querySelector('[data-settings-tab="mcp"]'));
       click(host.querySelector(".btn-mcp-add"));
@@ -861,7 +942,7 @@ test("✕ closes the page it sits on, not the settings behind it", () => {
     expect(modal?.classList.contains("is-mobile-detail")).toBe(true);
     // On the endpoints: ✕ goes back to Models' list of sections.
     click(host.querySelector(".settings-main-head > .modal-close"));
-    expect(host.querySelector(".models-index")).toBeTruthy();
+    expect(host.querySelector(".section-list")).toBeTruthy();
     expect(modal?.classList.contains("is-mobile-detail")).toBe(true);
     // On that list: ✕ goes back to the list of settings.
     click(host.querySelector(".settings-main-head > .modal-close"));
