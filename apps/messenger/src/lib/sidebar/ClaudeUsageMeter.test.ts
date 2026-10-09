@@ -92,7 +92,8 @@ test("a window resets in so long within a day, on a weekday and time after that"
   expect(usageResetText("2026-10-08T15:50:00.000Z", now, t, "zh-CN")).toBe("4 小时 50 分后重置");
   expect(usageResetText("2026-10-08T11:20:00.000Z", now, en, "en-US")).toBe("Resets in 20 min");
   expect(usageResetText("2026-10-08T11:00:30.000Z", now, t, "zh-CN")).toBe("即将重置");
-  expect(usageResetText("2026-10-11T02:00:00.000Z", now, t, "zh-CN")).toMatch(/^周. \d\d:\d\d 重置$/);
+  // Whether a space follows the weekday is the ICU data's call: macOS's has one, the ICU bun ships on Linux not.
+  expect(usageResetText("2026-10-11T02:00:00.000Z", now, t, "zh-CN")).toMatch(/^周. ?\d\d:\d\d 重置$/);
   expect(usageResetText("2026-10-11T01:59:59.984805+00:00", now, t, "zh-CN")).toBe(usageResetText("2026-10-11T02:00:00+00:00", now, t, "zh-CN"));
   expect(usageResetText(null, now, t, "zh-CN")).toBeNull();
   expect(usageResetText("soon", now, t, "zh-CN")).toBeNull();
