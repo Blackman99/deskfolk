@@ -480,7 +480,7 @@ One content area in the desktop window. A pane is a group of tabs; a tab can be 
 - New tab in the background: in the current pane, without bringing it forward.
 - Split up, down, left or right: the current pane is divided that way; a new tab when there is no room or the current pane floats.
 - The pane above, below, left or right: into the pane on that side; into the current pane when it is itself on that side; otherwise a pane is split off that way.
-- Floating: a floating pane in the middle, stepped down and right past the floats already there, back to the middle after six.
+- Floating: a floating pane over the layout. Where this kind of window was last moved or resized while floating, it opens there again at that size (pulled inside a smaller window, and stepped off a float sitting exactly there); one never moved opens in the middle, stepped down and right past the floats already there, back to the middle after six. The places are kept per kind on this machine, and back to defaults forgets them.
 
 The defaults:
 - A conversation replaces the same kind. Going through conversations in the sidebar does not pile up tabs, and in a split window the one replaced is the conversation you were reading, not the artifacts column beside it. A terminal, the workspace and the like are never pushed out.

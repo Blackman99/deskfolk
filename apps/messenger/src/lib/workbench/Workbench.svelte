@@ -73,6 +73,8 @@
 		onLayout: (next: WorkbenchLayout) => void;
 		/** The workbench's own box, each time it is measured anew: what opening a split or a float is sized against. */
 		onViewport?: (viewport: Rect) => void;
+		/** A floating pane moved or resized by hand, with the frame it was left at. */
+		onFloatAdjusted?: (leafId: string, frame: FloatFrame) => void;
 		onActivate?: (leafId: string, tabId: string) => void;
 		onCloseTab?: (leafId: string, tabId: string) => void;
 		/**
@@ -99,6 +101,7 @@
 		tabName,
 		onLayout,
 		onViewport,
+		onFloatAdjusted,
 		onActivate,
 		onCloseTab,
 		onCloseTabs,
@@ -503,6 +506,7 @@
 	function onFloatFrame(leafId: string, frame: FloatFrame): void {
 		const next = setFloatFrame(layout, leafId, frame);
 		if (next !== layout) onLayout(next);
+		onFloatAdjusted?.(leafId, frame);
 	}
 
 	function onDock(leafId: string): void {

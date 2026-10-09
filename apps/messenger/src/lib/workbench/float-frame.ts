@@ -42,6 +42,23 @@ export function frameForOpen(viewport: Viewport, min: PaneMin, floatingCount: nu
   );
 }
 
+/**
+ * Step a frame down and right past floats already sitting exactly there, so a second window
+ * opening at the same remembered spot is not hidden under the first. A few steps at most.
+ */
+export function stepPastFloats(frame: FloatFrame, taken: readonly FloatFrame[], min: PaneMin, viewport: Viewport): FloatFrame {
+  let next = frame;
+  for (let i = 0; i < 6; i += 1) {
+    const covered = taken.some((other) => Math.abs(other.x - next.x) < 1 && Math.abs(other.y - next.y) < 1);
+    if (!covered) return next;
+    const stepped = clampFrame({ ...next, x: next.x + FLOAT_OPEN_STEP, y: next.y + FLOAT_OPEN_STEP }, min, viewport);
+    // Against the window's corner already: no further to go.
+    if (stepped.x === next.x && stepped.y === next.y) return next;
+    next = stepped;
+  }
+  return next;
+}
+
 /** Pull a frame back inside the window and up to a size that still shows something. */
 export function clampFrame(frame: FloatFrame, min: PaneMin, viewport: Viewport): FloatFrame {
   const gap = FLOAT_EDGE_GAP;

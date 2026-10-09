@@ -12,7 +12,7 @@ import { forgetKeptBoards } from './overlays/task-trace.ts';
 import { settle } from './test-async.ts';
 import { aTerminal, loadShell, menuRow, storedTabs } from './test-shell-kit.ts';
 import { openPlacements } from './workbench/open-placement-store.svelte.ts';
-import { forgetOpenPlacements } from './workbench/open-placement.ts';
+import { forgetFloatFrames, forgetOpenPlacements, loadFloatFrames } from './workbench/open-placement.ts';
 
 const Shell = await loadShell();
 
@@ -714,5 +714,50 @@ test('a window kind set to float in the settings opens floating the next time', 
   expect(saved.root.tabs.map((tab: { kind: string }) => tab.kind)).toEqual(['chat']);
   expect(saved.floating.map((pane: { leaf: { tabs: { kind: string }[] } }) => pane.leaf.tabs.map((tab) => tab.kind))).toEqual([['spend']]);
   expect(saved.focus.zone).toBe('floating');
+});
+
+test('a kind set to float opens where you last moved it, after it was closed', async () => {
+  localStorage.setItem('real-bot-workbench-layout', JSON.stringify({
+    version: 1,
+    root: makeLeaf('a', [{ id: 't-d', kind: 'chat', params: { sessionId: 'direct-1' } }]),
+    floating: [{ leaf: makeLeaf('f', [{ id: 't-s', kind: 'spend', params: {} }]), frame: { x: 100, y: 80, width: 500, height: 400 } }],
+    focus: { zone: 'floating', leafId: 'f' },
+  }));
+  cleanups.push(() => {
+    localStorage.removeItem('real-bot-workbench-layout');
+    forgetOpenPlacements();
+    forgetFloatFrames();
+    openPlacements.reload();
+  });
+  openPlacements.set('spend', 'float');
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot({ name: 'Researcher' })], sessions: [aDirect()],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true },
+  }, { selectedId: 'direct-1' }));
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  await settle();
+  // happy-dom has no layout: the workbench is handed its box.
+  (host.querySelector('.wb-root') as HTMLElement).getBoundingClientRect = () =>
+    ({ x: 0, y: 0, width: 1200, height: 800, top: 0, left: 0, right: 1200, bottom: 800, toJSON() { return {}; } }) as DOMRect;
+  window.dispatchEvent(new Event('resize'));
+  await settle();
+  const bar = host.querySelector('.wb-float .wb-strip') as HTMLElement;
+  const at = (type: string, x: number, y: number) =>
+    bar.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, clientX: x, clientY: y, button: 0 }));
+  at('pointerdown', 10, 10);
+  at('pointermove', 50, 40);
+  at('pointerup', 50, 40);
+  await settle();
+  expect(loadFloatFrames().spend).toEqual({ x: 140, y: 110, width: 500, height: 400 });
+
+  // Closed, then asked for again: back where it was left, not in the middle.
+  (host.querySelector('.wb-float .wb-tab-close') as HTMLElement).click();
+  await settle();
+  expect(JSON.parse(localStorage.getItem('real-bot-workbench-layout')!).floating).toEqual([]);
+  runtime.paneOpener?.({ kind: 'spend' });
+  await settle();
+  const saved = JSON.parse(localStorage.getItem('real-bot-workbench-layout')!);
+  expect(saved.floating.map((pane: { frame: unknown }) => pane.frame)).toEqual([{ x: 140, y: 110, width: 500, height: 400 }]);
 });
 

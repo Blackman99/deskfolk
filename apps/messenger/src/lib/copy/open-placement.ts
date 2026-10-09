@@ -33,6 +33,7 @@ export const zh = {
   },
   changed: "已改",
   reset: "恢复默认",
+  floatMemory: "设成浮窗的，再打开时回到你上次拖到的位置和大小；恢复默认也会忘掉这些位置。",
   notListed:
     "不在这里的：会话设置和 Bot 资料是会话标签里的侧栏；设置、搜索、新建 Bot 和群这些是弹窗；从某块窗格的「＋」或空窗格里挑的，就放进那一块。",
 };
@@ -69,6 +70,7 @@ export const en: CopyShape<typeof zh> = {
   },
   changed: "Changed",
   reset: "Back to defaults",
+  floatMemory: "A kind set to float opens where you last moved and sized it; back to defaults forgets those places too.",
   notListed:
     "Not here: a conversation's settings and a Bot's profile slide out inside its tab; settings, search, new Bot and new group are dialogs; what you pick from a pane's + or an empty pane goes into that pane.",
 };

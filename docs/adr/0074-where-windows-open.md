@@ -18,7 +18,7 @@ Status: implemented 2026-10-10, desktop workbench only. Amends one rule of [ADR 
    - 标签页：新标签页；替换同类标签；后台新标签页（不切过去，键盘留在原处）。
    - 分屏（新开一块）：向右、向下、向左、向上。当前窗格是浮窗，或切开后放不下（`canSplit`），就退成新标签页。
    - 相邻窗格：右、下、左、上侧窗格。那一侧有窗格就放进去；当前窗格本身就在那一侧（例如在右栏里又开一个文件）就放进当前窗格；都不是才往那一侧分出一块。连开几个文件不会把窗口越切越碎。
-   - 浮窗：居中浮在布局上，约工作台的 60% × 70%，不小于内容要的最小尺寸；已有浮窗时往右下错开 28 px，错开六次后回到正中。
+   - 浮窗：浮在布局上。这种窗口上次浮着时你拖过或调过大小（松手那一下），就回到那个位置和大小，按当前窗口收一收；正好压在一块已有浮窗上就往右下错开。没拖过的居中，约工作台的 60% × 70%，不小于内容要的最小尺寸；已有浮窗时往右下错开 28 px，错开六次后回到正中。
 
    没有「新的系统窗口」：应用只有一个 Tauri 窗口，浮窗也不是第二个系统窗口（0025）。/ No "new OS window": there is one Tauri window.
 
@@ -38,7 +38,7 @@ Status: implemented 2026-10-10, desktop workbench only. Amends one rule of [ADR 
 
    和以前比，有两处默认行为变了：分屏时点侧栏会话是替换正读的那条，而不是新开标签；产物、流程三视图、工作区、终端、Bot ↔ Bot 私聊不再进当前窗格，而是开到旁边或下面。/ Two defaults changed: a sidebar click in a split window replaces the conversation in front, and a conversation's own things open beside or under it.
 
-6. **只记在这台机器上 / Kept on this machine.** 和布局一样存在 `localStorage`（`real-bot-open-placement`），只存和默认不同的项，以后默认改得更好，没改过的人直接拿到。不进守护进程，不跨设备：它摆的是这台机器上的窗格（0025）。窄屏、手机和平板（托管页）没有窗格，设置里也就没有这一项。/ Per machine, like the layout; only changed choices are stored.
+6. **只记在这台机器上 / Kept on this machine.** 和布局一样存在 `localStorage`（`real-bot-open-placement`），只存和默认不同的项，以后默认改得更好，没改过的人直接拿到。浮窗最后被拖到的位置和大小按窗口种类另存在 `real-bot-open-float-frames`，记的是浮窗前面那个标签的种类；你说的是（2026-10-10）「如果某个行为设置了浮窗打开，要记得住最后调整的位置跟大小」。恢复默认两样一起清。不进守护进程，不跨设备：它摆的是这台机器上的窗格（0025）。窄屏、手机和平板（托管页）没有窗格，设置里也就没有这一项。/ Per machine, like the layout; only changed choices are stored.
 
 7. **在哪设 / Where it is set.** 设置里单独一个「行为」页签（排在「通用」后面），里面是「窗口打开方式」卡片，这一页签只在桌面工作台开着时出现：每种窗口一行，写着它从哪些入口打开，右边一个下拉，四组选项；改过的标「已改」，卡片头上「恢复默认」。改了下一次打开就生效。/ A Settings tab of its own, Behavior, after General, there only with the workbench; a change applies to the next window opened.
 

@@ -4,8 +4,11 @@ import {
   OPEN_PLACEMENT_DEFAULTS,
   OPEN_PLACEMENT_GROUPS,
   OPEN_PLACEMENTS,
+  forgetFloatFrames,
   forgetOpenPlacements,
+  loadFloatFrames,
   loadOpenPlacements,
+  rememberFloatFrame,
   openKindOf,
   saveOpenPlacements,
 } from "./open-placement.ts";
@@ -13,6 +16,7 @@ import { openPlacements } from "./open-placement-store.svelte.ts";
 
 afterEach(() => {
   forgetOpenPlacements();
+  forgetFloatFrames();
   openPlacements.reload();
 });
 
@@ -78,3 +82,29 @@ test("the shared value is what the next open reads, and back to defaults clears 
   expect(openPlacements.get("preview")).toBe("side-right");
   expect(window.localStorage.getItem("real-bot-open-placement")).toBeNull();
 });
+
+test("where a kind last floated is kept per kind, and a broken or unknown entry is dropped", () => {
+  expect(loadFloatFrames()).toEqual({});
+  rememberFloatFrame("preview", { x: 120, y: 80, width: 640, height: 480 });
+  rememberFloatFrame("spend", { x: 10, y: 20, width: 300, height: 200 });
+  rememberFloatFrame("preview", { x: 200, y: 90, width: 600, height: 500 });
+  expect(loadFloatFrames()).toEqual({
+    preview: { x: 200, y: 90, width: 600, height: 500 },
+    spend: { x: 10, y: 20, width: 300, height: 200 },
+  });
+  window.localStorage.setItem(
+    "real-bot-open-float-frames",
+    JSON.stringify({ preview: { x: 1, y: 2, width: 0, height: 5 }, spend: { x: "a" }, hologram: { x: 1, y: 1, width: 9, height: 9 }, terminal: { x: 5, y: 6, width: 400, height: 300 } }),
+  );
+  expect(loadFloatFrames()).toEqual({ terminal: { x: 5, y: 6, width: 400, height: 300 } });
+  window.localStorage.setItem("real-bot-open-float-frames", "nope");
+  expect(loadFloatFrames()).toEqual({});
+});
+
+test("back to defaults forgets where windows last floated as well", () => {
+  rememberFloatFrame("preview", { x: 120, y: 80, width: 640, height: 480 });
+  openPlacements.set("preview", "float");
+  openPlacements.reset();
+  expect(loadFloatFrames()).toEqual({});
+});
+

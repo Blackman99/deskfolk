@@ -9,6 +9,8 @@
  */
 import type { SessionGroup } from "../sidebar/session-groups.ts";
 import { forgetStored, readStored, writeStored } from "../storage.ts";
+import { isFrame } from "./float-frame.ts";
+import type { FloatFrame } from "./layout-types.ts";
 import type { PaneContent } from "./pane-content.ts";
 
 /**
@@ -152,3 +154,39 @@ export function saveOpenPlacements(choices: OpenPlacements): void {
 export function forgetOpenPlacements(): void {
   forgetStored(STORAGE_KEY);
 }
+
+const FRAMES_KEY = "real-bot-open-float-frames";
+
+export type FloatFrames = Partial<Record<OpenKind, FloatFrame>>;
+
+/**
+ * Where each kind of window last floated, as you left it: the frame a move or a resize of a
+ * floating pane ended on, by the kind of the tab in front of it. A kind set to open floating opens
+ * there again. Per machine, like the layout it is part of.
+ */
+export function loadFloatFrames(): FloatFrames {
+  const raw = readStored(FRAMES_KEY);
+  if (!raw) return {};
+  try {
+    const kept: unknown = JSON.parse(raw);
+    if (!kept || typeof kept !== "object" || Array.isArray(kept)) return {};
+    const frames: FloatFrames = {};
+    for (const [kind, frame] of Object.entries(kept)) {
+      if (KIND_SET.has(kind) && isFrame(frame) && frame.width > 0 && frame.height > 0) {
+        frames[kind as OpenKind] = { x: frame.x, y: frame.y, width: frame.width, height: frame.height };
+      }
+    }
+    return frames;
+  } catch {
+    return {};
+  }
+}
+
+export function rememberFloatFrame(kind: OpenKind, frame: FloatFrame): void {
+  writeStored(FRAMES_KEY, JSON.stringify({ ...loadFloatFrames(), [kind]: { ...frame } }));
+}
+
+export function forgetFloatFrames(): void {
+  forgetStored(FRAMES_KEY);
+}
+

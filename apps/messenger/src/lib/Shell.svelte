@@ -1092,6 +1092,7 @@
 				tabActions={chatTabActions}
 				onLayout={workbench.commitLayout}
 				onViewport={workbench.setViewport}
+				onFloatAdjusted={workbench.rememberFloat}
 				onActivate={(leafId, tabId) => workbench.commitLayout(activateTab(workbench.layout, leafId, tabId))}
 				onCloseTab={workbench.onPaneCloseTab}
 				onCloseTabs={workbench.onPaneCloseTabs}

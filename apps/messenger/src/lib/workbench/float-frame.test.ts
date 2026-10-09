@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { PaneMin } from "./layout-types.ts";
-import { clampFrame, FLOAT_OPEN_STEP, frameForOpen, frameForTearOut, isFrame, moveFrame, resizeFrame } from "./float-frame.ts";
+import { clampFrame, FLOAT_OPEN_STEP, frameForOpen, frameForTearOut, isFrame, moveFrame, resizeFrame, stepPastFloats } from "./float-frame.ts";
 
 const viewport = { width: 1200, height: 800 };
 /** The trace window's own minimum, so the cases carried over from it still mean the same thing. */
@@ -119,3 +119,17 @@ test("a window that opens floating sits in the middle, most of the workbench, st
   expect(big.x + big.width).toBeLessThanOrEqual(700 - 8);
   expect(big.y + big.height).toBeLessThanOrEqual(500 - 8);
 });
+
+test("a window reopening where another float already sits steps past it, and stops at the window's corner", () => {
+  const viewport = { width: 1000, height: 800 };
+  const min: PaneMin = { width: 200, height: 150 };
+  const at = { x: 100, y: 100, width: 400, height: 300 };
+  expect(stepPastFloats(at, [], min, viewport)).toEqual(at);
+  expect(stepPastFloats(at, [{ x: 300, y: 300, width: 10, height: 10 }], min, viewport)).toEqual(at);
+  expect(stepPastFloats(at, [at], min, viewport)).toEqual({ ...at, x: 100 + FLOAT_OPEN_STEP, y: 100 + FLOAT_OPEN_STEP });
+  const step = (n: number) => ({ ...at, x: 100 + n * FLOAT_OPEN_STEP, y: 100 + n * FLOAT_OPEN_STEP });
+  expect(stepPastFloats(at, [step(0), step(1)], min, viewport)).toEqual(step(2));
+  const corner = { x: 592, y: 492, width: 400, height: 300 };
+  expect(stepPastFloats(corner, [corner], min, viewport)).toEqual(corner);
+});
+

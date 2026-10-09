@@ -16,6 +16,7 @@ All notable changes to Deskfolk are documented in this file. The project is curr
   - Floating.
 
   Something already open is still only brought forward, never opened twice, and what you pick from a pane's + or an empty pane still goes into that pane.
+- A kind set to float opens where you last moved and sized it (kept per kind, pulled inside a smaller window); one never moved opens in the middle. Back to defaults forgets those places too.
 - The defaults:
   - Conversations replace the same kind.
   - Bot ↔ Bot directs, the trace, board and plan, artifacts and the workspace open in the pane on the right.

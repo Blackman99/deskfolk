@@ -5,6 +5,7 @@
 import {
   OPEN_KINDS,
   OPEN_PLACEMENT_DEFAULTS,
+  forgetFloatFrames,
   loadOpenPlacements,
   saveOpenPlacements,
   type OpenKind,
@@ -34,9 +35,11 @@ class OpenPlacementStore {
     return OPEN_KINDS.some((kind) => !this.isDefault(kind));
   }
 
+  /** Back to how a new install opens things: the choices, and where floats were last left. */
   reset(): void {
     this.current = { ...OPEN_PLACEMENT_DEFAULTS };
     saveOpenPlacements(this.current);
+    forgetFloatFrames();
   }
 
   /** Read storage again: for tests, which change it under the store. */

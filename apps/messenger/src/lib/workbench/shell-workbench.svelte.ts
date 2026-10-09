@@ -31,7 +31,7 @@ import {
 import { healLayout, loadWorkbenchLayout, saveWorkbenchLayout } from "./workbench-layout.ts";
 import { contentOfTab, contentsEqual, PANE_KIND_SET, tabFor, type PaneContent } from "./pane-content.ts";
 import { paneMin, WB_FALLBACK_MIN } from "./pane-mins.ts";
-import type { Rect, WorkbenchLayout, WorkbenchTab } from "./layout-types.ts";
+import type { FloatFrame, Rect, WorkbenchLayout, WorkbenchTab } from "./layout-types.ts";
 import {
   activeSessionId,
   dropDuplicateBoundTabs,
@@ -42,8 +42,8 @@ import {
   type PlaceContext,
 } from "./pane-open.ts";
 import { canSplit, computeGeometry, neighbourLeaf } from "./layout-geometry.ts";
-import { frameForOpen } from "./float-frame.ts";
-import { openKindOf } from "./open-placement.ts";
+import { clampFrame, frameForOpen, stepPastFloats } from "./float-frame.ts";
+import { loadFloatFrames, openKindOf, rememberFloatFrame } from "./open-placement.ts";
 import { openPlacements } from "./open-placement-store.svelte.ts";
 import type { PreviewHandle } from "./preview-context.ts";
 import {
@@ -321,6 +321,17 @@ export class ShellWorkbench {
     this.commitLayout(openContent(focused, content, { id: this.freshPaneId }));
   };
 
+  /**
+   * A floating pane moved or resized by hand: the kind of window in front of it remembers the frame,
+   * so it opens there the next time it opens floating.
+   */
+  rememberFloat = (leafId: string, frame: FloatFrame): void => {
+    const pane = this.layout.floating.find((candidate) => candidate.leaf.id === leafId);
+    const tab = pane?.leaf.tabs.find((candidate) => candidate.id === pane.leaf.activeTabId);
+    const content = tab ? contentOfTab(tab) : null;
+    if (content) rememberFloatFrame(this.openKind(content), frame);
+  };
+
   /** What the workbench measured itself at, so a split or a float is sized against the real box. */
   setViewport = (viewport: Rect): void => {
     this.viewport = viewport;
@@ -353,7 +364,13 @@ export class ShellWorkbench {
     return {
       neighbour: (layout, leafId, dir) => neighbourLeaf(computeGeometry(layout, viewport, paneMin), leafId, dir),
       fits: (layout, leafId, axis, content) => canSplit(layout, leafId, axis, viewport, paneMin, minOf(content)),
-      floatFrame: (layout, content) => frameForOpen(viewport, minOf(content), layout.floating.length),
+      floatFrame: (layout, content) => {
+        // Where this kind was last left floating, pulled inside the window as it is now; else the middle.
+        const min = minOf(content);
+        const kept = loadFloatFrames()[this.openKind(content)];
+        if (!kept) return frameForOpen(viewport, min, layout.floating.length);
+        return stepPastFloats(clampFrame(kept, min, viewport), layout.floating.map((pane) => pane.frame), min, viewport);
+      },
       holdsEdit: (tabId) => this.previewPanes.get(tabId)?.blocksClose() ?? false,
       kindOf: this.openKind,
     };

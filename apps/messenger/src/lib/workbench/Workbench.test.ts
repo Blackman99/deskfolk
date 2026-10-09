@@ -666,3 +666,44 @@ test("the + menu is lifted above the pane under it while it is open", () => {
     close();
   }
 });
+
+test("a floating pane moved by hand is reported with the frame it was left at, once, on release", () => {
+  const adjusted: Array<[string, unknown]> = [];
+  const layout: WorkbenchLayout = {
+    ...layoutOf(makeLeaf("a", [aTab("t1")])),
+    floating: [{ leaf: makeLeaf("f", [aTab("t2")]), frame: { x: 100, y: 80, width: 300, height: 200 } }],
+    focus: { zone: "floating", leafId: "f" },
+  };
+  const state = reactive({ layout });
+  const { host, close } = render(Workbench as never, {
+    get layout() { return state.layout; },
+    mins: flatMins,
+    t,
+    wide: true,
+    tabBody,
+    tabLabel,
+    onLayout: (next: WorkbenchLayout) => { state.layout = next; },
+    onFloatAdjusted: (leafId: string, frame: unknown) => adjusted.push([leafId, frame]),
+    onActivate: () => {},
+    onCloseTab: () => {},
+  } as never);
+  try {
+    (host.querySelector(".wb-root") as HTMLElement).getBoundingClientRect = () => box(800, 600);
+    window.dispatchEvent(new Event("resize"));
+    flushSync();
+    const bar = host.querySelector(".wb-float .wb-strip") as HTMLElement;
+    const at = (type: string, x: number, y: number) => {
+      bar.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, clientX: x, clientY: y, button: 0 }));
+      flushSync();
+    };
+    at("pointerdown", 10, 10);
+    at("pointermove", 50, 40);
+    expect(adjusted).toHaveLength(0);
+    at("pointerup", 50, 40);
+    expect(adjusted).toEqual([["f", { x: 140, y: 110, width: 300, height: 200 }]]);
+    expect(state.layout.floating[0]!.frame).toEqual({ x: 140, y: 110, width: 300, height: 200 });
+  } finally {
+    close();
+  }
+});
+

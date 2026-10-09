@@ -82,6 +82,7 @@
 			</SettingsRow>
 		{/each}
 	</div>
+	<p class="open-placement-note">{t.openPlacement.floatMemory}</p>
 	<p class="open-placement-note">{t.openPlacement.notListed}</p>
 </SettingsCard>
 
