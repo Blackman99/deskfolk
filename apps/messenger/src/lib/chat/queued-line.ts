@@ -9,7 +9,7 @@ export type QueuedLineWait = "next_step" | "its_turn" | "held";
 
 export type QueuedLine = {
   wait: QueuedLineWait;
-  /** 直接插入: its Bot is at work on a step that can be cut for it. */
+  /** 直接插入: its Bot is at work on a step that can be cut for it, or a stop holds it — a Stop goes with it (ADR 0063 #6). */
   canInsert: boolean;
   /** 撤回: still unread, and this is somewhere you can write. */
   canWithdraw: boolean;
@@ -29,7 +29,8 @@ export function queuedLine(
   const delivery = message.delivery;
   if (!delivery || (delivery.state !== "queued" && delivery.state !== "held")) return null;
   const writable = opts.connected && !opts.lockedComposer;
-  if (delivery.state === "held") return { wait: "held", canInsert: false, canWithdraw: writable };
+  // Under a Stop, reading it now lifts the Stop; a stop that stays until you lift it is refused, and said so.
+  if (delivery.state === "held") return { wait: "held", canInsert: writable, canWithdraw: writable };
   const working = opts.turnsHere.some(
     (turn) => turn.bot_id === delivery.bot_id && turn.status === "running" && turn.mode !== "readonly",
   );

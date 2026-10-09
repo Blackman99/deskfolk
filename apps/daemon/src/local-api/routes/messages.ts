@@ -242,8 +242,9 @@ export function messageRoutes(ctx: RouteCtx): Response | Promise<Response> | nul
     const line = store.getMessage(params.id!);
     if (line.kind !== "user" || line.author !== USER_MEMBER) throw new HttpError(422, "invalid_args", "only a line of yours is read now");
     if (line.withdrawn_at) throw new HttpError(422, "withdrawn", "you took this line back");
-    if (line.delivery?.state === "held") throw new HttpError(409, "held", "a stop holds this line until it lifts");
     const inserted = engine.insertNow(line.id);
+    // A Stop holding it goes with 直接插入; a stop that stays until you lift it does not.
+    if (store.getMessage(line.id).delivery?.state === "held") throw new HttpError(409, "held", "a stop holds this line until you lift it");
     return jsonResponse({ message: store.getMessage(line.id), inserted }, 200, null);
   }
   // What a line you changed said before, oldest first.

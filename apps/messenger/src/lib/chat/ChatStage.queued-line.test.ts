@@ -1,6 +1,6 @@
 /**
  * A line of yours no Bot has read yet (ADR 0069): the row under it says where it waits and offers
- * 直接插入 while its Bot works and 撤回 until a Bot reads it; a line taken back shows that, with
+ * 直接插入 while its Bot works or a stop holds it, and 撤回 until a Bot reads it; a line taken back shows that, with
  * 重新编辑 to put its words back in the box.
  */
 import { expect, test } from "bun:test";
@@ -71,12 +71,12 @@ test("what 直接插入 cuts is said for who runs the Bot: Claude Code stops a r
   }
 });
 
-test("held by a stop, or waiting for the Bot's next turn, it can only be taken back", () => {
-  const held = stage([waiting("held")], { turns: [working()] });
+test("held by a stop it can be read now, lifting the Stop, or taken back; waiting for the Bot's next turn, only taken back", () => {
+  const held = stage([waiting("held")], { turns: [] });
   try {
     const row = held.segment("line-1").querySelector(".msg-queued-row")!;
     expect(row.textContent).toContain(t.chat.queuedHeld);
-    expect(row.textContent).not.toContain(t.chat.insertNow);
+    expect(buttonByText(row as HTMLElement, t.chat.insertNow).title).toBe(t.chat.insertNowHeldTitle);
     expect(row.textContent).toContain(t.chat.withdrawLine);
   } finally {
     held.close();
@@ -128,6 +128,9 @@ test("what came of the press is said under the line", () => {
     s.runtime.sessionView(s.session.id).lineNote = { id: "line-1", code: "already_read" };
     flushSync();
     expect(s.segment("line-1").querySelector(".msg-line-note")!.textContent).toBe(t.chat.lineAlreadyRead);
+    s.runtime.sessionView(s.session.id).lineNote = { id: "line-1", code: "held" };
+    flushSync();
+    expect(s.segment("line-1").querySelector(".msg-line-note")!.textContent).toBe(t.chat.lineHeld);
     s.runtime.sessionView(s.session.id).lineAction = { id: "line-1", kind: "withdraw" };
     flushSync();
     for (const button of s.segment("line-1").querySelectorAll<HTMLButtonElement>(".msg-queued-row button")) expect(button.disabled).toBe(true);

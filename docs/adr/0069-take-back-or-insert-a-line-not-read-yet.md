@@ -24,6 +24,8 @@ On 2026-10-08 you asked for queued lines to be undoable and insertable. A line y
 
 4. **读过的话不再多开一轮 / A line read is not read again.** Claude Code 跑的一轮在一批调用后读到的话，原来留在这一轮内存里的待读列表上，段结束时被当成没读过、为它再开一轮。现在读到就从列表上拿掉；段结束时只为收件箱里还在排着或被扣着的行开轮，撤回的也不开。 / A line a Claude Code turn read after a batch of calls stayed on the turn's in-memory list of unread lines, so the end of the segment took it for unread and opened another turn on it. It now leaves the list once read, and the segment's end opens a turn only for rows still queued or held in the inbox — never for one taken back.
 
+2026-10-09 补记 / addendum：被你按的停止扣着的那句也能「直接插入」——停止随之解除，Bot 马上开一轮读它，`inserted` 是读它的 Bot 数；要你自己解除的叫停扣着时照旧 409 `held`，这句下面说「这个叫停要你自己解除」（[ADR 0063](0063-edit-a-line-and-lines-in-order.md) #7）。 / A line a Stop of yours holds can be inserted too: the Stop lifts and the Bot opens a turn on it, `inserted` counting the Bots that read it; under a stop that stays until you lift it the answer is still 409 `held`, said under the line (ADR 0063 #7).
+
 ## 为什么用 interrupt，不用 `priority: 'now'` / Why interrupt, not `priority: 'now'`
 
 Agent SDK 的用户消息可以带 `priority: 'now'`。2026-10-08 实测（SDK 0.3.289，本机 Claude Code）：后台任务关着时——应用就是这样跑 Claude Code 的——`now` 会等正在跑的前台命令跑完再打断，和一批调用结束时读到没有区别；`interrupt()` 立刻停掉命令（工具结果是「用户不想继续这次调用」），会话不断，接着处理下一条消息。

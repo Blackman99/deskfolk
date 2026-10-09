@@ -56,7 +56,7 @@ export class SessionView {
   /** A line of yours being taken back or read now (ADR 0069): its buttons wait for the answer. */
   lineAction = $state<{ id: string; kind: "withdraw" | "insert" } | null>(null);
   /** What came of the last of those, said under that line: refused as read, nothing to cut, or no answer. */
-  lineNote = $state<{ id: string; code: "already_read" | "not_now" | "failed" } | null>(null);
+  lineNote = $state<{ id: string; code: "already_read" | "not_now" | "held" | "failed" } | null>(null);
   /** The turn the transcript is following, set when you send and when a Bot wakes for you. */
   focusedTurnId = $state<string | null>(null);
   /** Flashed after a jump — a search hit, a trace node, a notification. */

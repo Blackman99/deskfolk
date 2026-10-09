@@ -871,6 +871,71 @@ describe("Stop on a turn's card", () => {
     expect(h.messages(dm).at(-1)!.body).toBe("好，片头改成慢速");
   });
 
+  test("a line sent while it worked, held by the Stop: 直接插入 lifts the Stop and the Bot reads it now", async () => {
+    const h = await scenario();
+    const { director } = videoTeam(h);
+    const dm = h.direct(director);
+    openPlan(h, dm, "片头", planSpec("片头动画"));
+    const turn = await atWork(h, director, dm, () => h.postUser(dm, "做片头"));
+    const line = h.postUser(dm, "片头改成慢速");
+    await h.routed();
+    h.engine.stop(turn.id, { button: true });
+    await h.waitIdle();
+    const [hold] = holds(h);
+    expect(h.store.getMessage(line.id).delivery?.state).toBe("held");
+    h.script(director, dm).reply(say("好，改慢速"));
+
+    expect(h.engine.insertNow(line.id)).toBe(1);
+    await h.waitIdle();
+
+    expect(h.store.getHold(hold!.id)).toMatchObject({ lifted_by: "user_button", lifted_message_id: line.id });
+    const opened = h.turns(director).filter((row) => row.id !== turn.id);
+    expect(opened.map(({ trigger_message_id, mode }) => ({ trigger_message_id, mode }))).toEqual([{ trigger_message_id: line.id, mode: "work" }]);
+    expect(h.messages(dm).at(-1)!.body).toBe("好，改慢速");
+  });
+
+  test("a line sent while it worked, held by the Stop, is read once the Stop is lifted by its button", async () => {
+    const h = await scenario();
+    const { director } = videoTeam(h);
+    const dm = h.direct(director);
+    openPlan(h, dm, "片头", planSpec("片头动画"));
+    const turn = await atWork(h, director, dm, () => h.postUser(dm, "做片头"));
+    const line = h.postUser(dm, "片头改成慢速");
+    await h.routed();
+    h.engine.stop(turn.id, { button: true });
+    await h.waitIdle();
+    const [hold] = holds(h);
+    h.script(director, dm).reply(say("好，改慢速"));
+
+    h.engine.liftHold(hold!.id);
+    await h.waitIdle();
+
+    // Before, the line went back to 「排队中」 on work left idle when the Stop ended its turn, and nothing took it up.
+    const opened = h.turns(director).filter((row) => row.id !== turn.id);
+    expect(opened.map(({ trigger_message_id, mode }) => ({ trigger_message_id, mode }))).toEqual([{ trigger_message_id: line.id, mode: "work" }]);
+  });
+
+  test("直接插入 under a stop that stays until you lift it reads nothing now: the line stays held", async () => {
+    const h = await scenario();
+    const { director } = videoTeam(h);
+    const dm = h.direct(director);
+    openPlan(h, dm, "片头", planSpec("片头动画"));
+    await atWork(h, director, dm, () => h.postUser(dm, "做片头"));
+    const line = h.postUser(dm, "片头改成慢速");
+    await h.routed();
+    h.engine.createHold({ scope: "bot", scopeId: director.id });
+    await h.waitIdle();
+    const done = h.turns(director);
+    expect(h.store.getMessage(line.id).delivery?.state).toBe("held");
+
+    expect(h.engine.insertNow(line.id)).toBe(0);
+    await h.waitIdle();
+
+    expect(holds(h).map(({ scope, lifted_at }) => ({ scope, lifted_at }))).toEqual([{ scope: "bot", lifted_at: null }]);
+    expect(h.store.getMessage(line.id).delivery?.state).toBe("held");
+    expect(h.turns(director)).toEqual(done);
+  });
+
   test("a stop that stays until you lift it keeps holding a change to a line the Bot read", async () => {
     const h = await scenario();
     const { director } = videoTeam(h);

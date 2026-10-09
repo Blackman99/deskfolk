@@ -125,6 +125,10 @@ export type Stop = {
    * lift it keeps holding them.
    */
   liftOnYourChange: (line: Message, editId: string) => Hold[];
+  /** 直接插入 on a line of yours a Stop holds: the Stop goes, so the Bot reads it now. */
+  liftOnYourInsert: (line: Message) => Hold[];
+  /** 退回 on a hand-over's card: a Stop on that Bot's work in the job goes, so it reworks. */
+  liftOnSendBack: (card: Message, producer: string, taskId: string, ticketId: string | null) => Hold[];
   /**
    * Once your line to a whole group has woken whom it wakes: the work the stops it lifted had ended
    * that it did not reach goes on from it too — a Bot's stopped in a conversation of its own while
@@ -173,7 +177,7 @@ export function createStop(deps: StopDeps): Stop {
   const { on, holdsToLift, stopsAbout, stopsOnBots, stopBefore, scopeHolds } = reach;
   const { stopByLine, stopByButton, hold, enforce } = carry;
   const { answerStatus, statusLine, unanswered, heldLinesFor } = answers;
-  const { continueByLine, liftOnYourLine, liftOnYourChange, goOnFromYourLine, lift } = goOn;
+  const { continueByLine, liftOnYourLine, liftOnYourChange, liftOnYourInsert, liftOnSendBack, goOnFromYourLine, lift } = goOn;
   const { act } = buttons;
 
   // ── Reading the line ──────────────────────────────────────────────────────────────────────────
@@ -301,6 +305,6 @@ export function createStop(deps: StopDeps): Stop {
     store.transaction(() => store.setMessageControl(message.id, { kind: "possible_control", offer, scopes }));
   }
 
-  return { on, ruleLine, readLine, liftOnYourLine, liftOnYourChange, goOnFromYourLine, unanswered, stopByButton, hold, act, lift, enforce, heldLines: heldLinesFor };
+  return { on, ruleLine, readLine, liftOnYourLine, liftOnYourChange, liftOnYourInsert, liftOnSendBack, goOnFromYourLine, unanswered, stopByButton, hold, act, lift, enforce, heldLines: heldLinesFor };
 }
 

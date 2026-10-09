@@ -21,14 +21,17 @@ test("a line waiting for its working Bot's next step can be read now or taken ba
   expect(queuedLine(line(), here)).toEqual({ wait: "next_step", canInsert: true, canWithdraw: true });
 });
 
-test("waiting for the Bot's next turn, or held by a stop, it can only be taken back", () => {
+test("waiting for the Bot's next turn it can only be taken back; held by a stop it can be read now too", () => {
   expect(queuedLine(line(), { ...here, turnsHere: [] })).toEqual({ wait: "its_turn", canInsert: false, canWithdraw: true });
   // A read-only answer, or a turn waiting on you, has no step to cut for it; nor has another Bot's.
   for (const other of [turn({ mode: "readonly" }), turn({ status: "waiting_approval" }), turn({ bot_id: "b2" })]) {
     expect(queuedLine(line(), { ...here, turnsHere: [other] })?.canInsert).toBe(false);
   }
   const held = line({ delivery: { bot_id: "b1", state: "held", hop: null, note: null } });
-  expect(queuedLine(held, here)).toEqual({ wait: "held", canInsert: false, canWithdraw: true });
+  // Read now, a Stop holding it goes (ADR 0063 #6); the daemon refuses a stop that stays until you lift it.
+  expect(queuedLine(held, here)).toEqual({ wait: "held", canInsert: true, canWithdraw: true });
+  expect(queuedLine(held, { ...here, turnsHere: [] })).toEqual({ wait: "held", canInsert: true, canWithdraw: true });
+  expect(queuedLine(held, { ...here, connected: false })).toEqual({ wait: "held", canInsert: false, canWithdraw: false });
 });
 
 test("a line read, taken back, carried out by the app, or not yours shows no row", () => {

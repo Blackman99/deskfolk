@@ -152,8 +152,9 @@ export class MessageEdits {
 
   /**
    * Has the working Bot read a line of yours now (直接插入, ADR 0069), cutting short the step it is
-   * on. When no step could be cut — it is wrapping up, or the turn ended — the line still waits
-   * for the next one, and that is said under it.
+   * on; a line a Stop holds is read now too, the Stop lifted. When no step could be cut — it is
+   * wrapping up, or the turn ended — the line still waits for the next one, and that is said under
+   * it; so is a stop that stays until you lift it.
    */
   async insertLine(sessionId: string, message: Message): Promise<boolean> {
     const view = this.host.viewFor(sessionId);
@@ -176,8 +177,8 @@ export class MessageEdits {
       if (inserted === 0) view.lineNote = { id: message.id, code: "not_now" };
       return inserted > 0;
     } catch (error) {
-      this.host.sheetFailure(error, api);
-      view.lineNote = { id: message.id, code: "failed" };
+      const failure = this.host.sheetFailure(error, api);
+      view.lineNote = { id: message.id, code: failure?.code === "held" ? "held" : "failed" };
       return false;
     } finally {
       view.lineAction = null;

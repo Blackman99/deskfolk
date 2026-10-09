@@ -76,3 +76,11 @@ test("read now: nothing to say when a step was cut, and a note when none could b
   expect(await runtime.insertLine(session, line)).toBe(false);
   expect(runtime.sessionView(session).lineNote).toEqual({ id: "msg-1", code: "not_now" });
 });
+
+test("read now under a stop that stays until you lift it: the refusal says so under the line", async () => {
+  const line = queued();
+  const runtime = connected({ post: async () => { throw new ApiError(409, "held", "a stop holds this line until you lift it"); } });
+  runtime.snapshot.messages = [line];
+  expect(await runtime.insertLine(session, line)).toBe(false);
+  expect(runtime.sessionView(session)).toMatchObject({ lineNote: { id: "msg-1", code: "held" }, lineAction: null });
+});

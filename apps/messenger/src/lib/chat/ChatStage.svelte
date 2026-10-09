@@ -683,6 +683,7 @@
 
 	/** What 直接插入 cuts depends on who runs the Bot: Claude Code stops a running command too. */
 	function insertTitle(message: Message): string {
+		if (message.delivery?.state === 'held') return t.chat.insertNowHeldTitle;
 		const bot = message.delivery ? botsById.get(message.delivery.bot_id) : undefined;
 		return bot?.runner === 'claude_code' ? t.chat.insertNowAgentTitle : t.chat.insertNowLoopTitle;
 	}
@@ -690,7 +691,7 @@
 	function lineNoteText(message: Message): string | null {
 		const note = view?.lineNote;
 		if (!note || note.id !== message.id) return null;
-		return note.code === 'already_read' ? t.chat.lineAlreadyRead : note.code === 'not_now' ? t.chat.lineNotNow : t.chat.lineActionFailed;
+		return note.code === 'already_read' ? t.chat.lineAlreadyRead : note.code === 'not_now' ? t.chat.lineNotNow : note.code === 'held' ? t.chat.lineHeld : t.chat.lineActionFailed;
 	}
 
 	/** What came of taking a line back or reading it now answers the press; it does not stay. */

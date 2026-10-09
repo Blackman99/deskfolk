@@ -153,7 +153,8 @@ export type TurnEngine = {
   noteWithdrawn: (messageId: string) => void;
   /**
    * 直接插入 (ADR 0069): the working turns a line of yours waits in read it now, cutting short the
-   * step each is on. How many were cut; 0 when none of them works in this process any more.
+   * step each is on; a Stop holding it goes, and its Bot opens a turn on it. How many Bots read it
+   * now; 0 when none works in this process any more, or a stop that stays until you lift it holds it.
    */
   insertNow: (messageId: string) => number;
   /**
@@ -768,9 +769,25 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
    * you, not a read-only answer — is cut short: a Claude Agent segment has Claude Code stop what it
    * is doing, a command included, and hands it the lines; the app's own loop drops the completion
    * in flight and postpones the calls still waiting, and a command already running there finishes.
-   * Either way it reads every line waiting for it, in order, not only this one.
+   * Either way it reads every line waiting for it, in order, not only this one. A line a Stop holds
+   * — sent while it worked, Stop pressed before it read it — is read now too: the Stop goes, and
+   * its Bot opens a turn on the line.
    */
   function insertNow(messageId: string): number {
+    let line: Message;
+    try {
+      line = store.getMessage(messageId);
+    } catch {
+      return 0;
+    }
+    // Taken up by a turn it opens: there is no step of that turn to cut.
+    if (line.delivery?.state === "held") {
+      if (stops.liftOnYourInsert(line).length === 0) return 0;
+      lifecycle.dispatchQueued();
+      return store.db
+        .query<{ n: number }, [string]>(`SELECT count(DISTINCT bot_id) AS n FROM inbox_items WHERE message_id = ? AND state NOT IN ('held', 'superseded', 'withdrawn')`)
+        .get(messageId)!.n;
+    }
     let cut = 0;
     for (const turnId of store.turnsAwaitingLine(messageId)) {
       const live = core.lives.get(turnId);
@@ -1115,7 +1132,12 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       return turn;
     },
     createHold: stops.hold,
-    liftHold: stops.lift,
+    liftHold(id) {
+      const lifted = stops.lift(id);
+      // What it held is handed back: a line of yours it held opens its Bot's turn now, not at the next tick.
+      lifecycle.dispatchQueued();
+      return lifted;
+    },
     control(messageId, input) {
       // A restart notice's buttons, and those on a line about checks from your words or about the
       // requirements ledger, work at any engine level; every other line's are about stops.
@@ -1129,6 +1151,16 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       if (message.control?.kind === "requirement") return requirementCards.act(message, input);
       if (message.control?.kind === "review_item") {
         const acted = submissions.act(message, input);
+        // 退回 is your word to the Bot that made it: a Stop on its work in the job goes, so it reworks now.
+        if (input.action === "reject") {
+          const card = message.control;
+          const producer = store.getSubmission(card.submission_id).bot_id;
+          const lifted = stops.liftOnSendBack(message, producer, card.task_id, card.ticket_id);
+          if (lifted.length > 0) {
+            lifecycle.dispatchQueued();
+            acted.lifted.push(...lifted);
+          }
+        }
         // A note sent back with 退回 is read like an answer on a question card: into the ledger, and for numbers to check.
         if (input.action === "reject" && store.quoteOfMessage(message.id, "ask_answer")) {
           void core.track(scribe.noteAnswer(message.id));

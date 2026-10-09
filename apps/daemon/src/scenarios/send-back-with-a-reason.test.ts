@@ -92,3 +92,31 @@ test("what you say with 退回 is your word on the job: the ledger reads it, and
   expect(h.store.db.query("SELECT via, body FROM user_quotes WHERE message_id = ?").all(card.id)).toEqual([{ via: "ask_answer", body: "每句都要提到店名「巷口」" }]);
   expect(read.some((payload) => payload.includes("每句都要提到店名「巷口」"))).toBe(true);
 });
+
+test("退回 after you pressed Stop on that Bot's work is your word to rework: the Stop goes and it reworks", async () => {
+  // 2026-10-09: Stop pressed while 文案 worked, the card up once it stopped, 退回 with a note — and
+  // 文案 never moved: the rework waited under the Stop for a line you had no reason to write.
+  const { h, writer, card } = await cardWaitingOnYou();
+  const control = card.control as { task_id: string };
+  const stop = h.store.createHold({ scope: "bot_plan", scopeId: `${writer.id}:${control.task_id}`, source: "user_button", liftOnNextUserMessage: true });
+
+  h.engine.control(card.id, { action: "reject", note: "第三句太长，改到 8 个字以内" });
+  await h.waitIdle({ timeoutMs: 15_000 });
+
+  expect(h.store.getHold(stop.id)).toMatchObject({ lifted_by: "user_button" });
+  const [, rework] = h.turns(writer);
+  expect(rework).toBeDefined();
+  const first = h.hops(writer).find((hop) => hop.turnId === rework!.id && hop.hop === 1)!;
+  expect(requestText(first.request)).toContain("要改的地方，原话：「第三句太长，改到 8 个字以内」");
+});
+
+test("退回 under a stop that stays until you lift it waits for the lift", async () => {
+  const { h, writer, card } = await cardWaitingOnYou();
+  const stop = h.store.createHold({ scope: "bot", scopeId: writer.id, source: "user_button" });
+
+  h.engine.control(card.id, { action: "reject", note: "第三句太长" });
+  await h.waitIdle({ timeoutMs: 15_000 });
+
+  expect(h.store.getHold(stop.id).lifted_at).toBeNull();
+  expect(h.turns(writer)).toHaveLength(1);
+});

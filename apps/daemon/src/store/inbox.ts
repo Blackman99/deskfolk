@@ -298,6 +298,15 @@ export function refreshHeldInbox(ctx: StoreContext, only: { botId?: string; sess
   const scope = [only.botId ? `AND inbox_items.bot_id = $bot` : "", only.sessionId ? `AND inbox_items.session_id = $session` : ""].join(" ");
   const params = { ...(only.botId ? { bot: only.botId } : {}), ...(only.sessionId ? { session: only.sessionId } : {}) } as Record<string, string>;
   ctx.db.query(`UPDATE inbox_items SET state = 'held' WHERE state = 'queued' AND ${NOT_IN_LIVE_TURN} ${scope} AND ${INBOX_HELD}`).run(params);
+  // What a stop no longer holds wakes its Bot as unread mail does when its turn ends
+  // (`releaseTurnInbox`): its work is queued again — not work waiting on something else, needing
+  // you, or at work. A turn the stop ended had held its unread lines and left that work idle, so a
+  // line of yours sent just before Stop stayed 「排队中」 for good once the stop lifted.
+  ctx.db.query(`UPDATE work_items SET state = 'queued', updated_at = $now WHERE id IN (
+      SELECT inbox_items.work_item_id FROM inbox_items WHERE state = 'held' AND wakes = 1 AND work_item_id IS NOT NULL
+        AND ${NOT_IN_LIVE_TURN} ${scope} AND NOT ${INBOX_HELD})
+    AND state NOT IN ('closed', 'waiting', 'blocked', 'needs_attention')
+    AND NOT EXISTS (SELECT 1 FROM turns t WHERE t.work_item_id = work_items.id AND t.status IN ${LIVE_TURN_STATUSES})`).run({ ...params, now: isoNow() });
   ctx.db.query(`UPDATE inbox_items SET state = 'queued' WHERE state = 'held' ${scope} AND NOT ${INBOX_HELD}`).run(params);
 }
 

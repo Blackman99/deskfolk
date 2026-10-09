@@ -275,12 +275,41 @@ export function createStopGoOn(deps: StopDeps, reach: StopReach, words: StopWord
    * until you lift it — 「停下所有 Bot」, the board, the tools menu — keeps holding them.
    */
   function liftOnYourChange(line: Message, editId: string): Hold[] {
-    if (line.kind !== "user" || !on()) return [];
+    if (line.kind !== "user") return [];
+    return liftStops(stopsHoldingLine(line.id), { by: "user_text", messageId: line.id, sessionId: line.session_id, payload: { edit: editId } });
+  }
+
+  /**
+   * 直接插入 (ADR 0069) on a line of yours a Stop holds — one you sent while the Bot worked, and
+   * pressed Stop before it read it: you want it read now, so the Stops holding it go and the Bot
+   * opens a turn on it. Before, the button was off under a stop and nothing but another line ever
+   * lifted a Stop, so the line sat 「叫停中 · 解除后读到」 with the Bot at nothing.
+   */
+  function liftOnYourInsert(line: Message): Hold[] {
+    if (line.kind !== "user") return [];
+    return liftStops(stopsHoldingLine(line.id), { by: "user_button", messageId: line.id, sessionId: line.session_id, payload: { insert: line.id } });
+  }
+
+  /**
+   * 退回 on a hand-over's card is your word to the Bot that made it to go back to work: a Stop on
+   * its work in that job goes, as at a new line of yours about it. Before, the rework waited under
+   * the Stop for a line you had no reason to write.
+   */
+  function liftOnSendBack(card: Message, producer: string, taskId: string, ticketId: string | null): Hold[] {
+    const ids = store
+      .holdsCovering({ botId: producer, taskId, ticketId })
+      .filter((hold) => hold.lift_on_next_user_message)
+      .map((hold) => hold.id);
+    return liftStops(ids, { by: "user_button", messageId: null, sessionId: card.session_id, payload: { send_back: card.id } });
+  }
+
+  /** The Stops — holds that lift at your next line — holding a copy of the line, or a note about it. */
+  function stopsHoldingLine(lineId: string): string[] {
     const held = store.db
       .query<{ bot_id: string; session_id: string | null; task_id: string | null; ticket_id: string | null; turn_id: string | null }, [string]>(
         `SELECT bot_id, session_id, task_id, ticket_id, turn_id FROM inbox_items WHERE message_id = ? AND state = 'held'`,
       )
-      .all(line.id);
+      .all(lineId);
     const ids = new Set<string>();
     for (const item of held) {
       const covering = store.holdsCovering({
@@ -292,11 +321,18 @@ export function createStopGoOn(deps: StopDeps, reach: StopReach, words: StopWord
       });
       for (const hold of covering) if (hold.lift_on_next_user_message) ids.add(hold.id);
     }
-    if (ids.size === 0) return [];
+    return [...ids];
+  }
+
+  function liftStops(
+    ids: string[],
+    how: { by: "user_text" | "user_button"; messageId: string | null; sessionId: string | null; payload: Record<string, unknown> },
+  ): Hold[] {
+    if (ids.length === 0 || !on()) return [];
     return store.transaction(() =>
-      [...ids].map((id) => {
-        const lifted = store.liftHold(id, { by: "user_text", messageId: line.id });
-        store.recordWorkEvent({ kind: "control.lift", actor: "user", sessionId: line.session_id, payload: { hold: id, by: "user_text", edit: editId } });
+      ids.map((id) => {
+        const lifted = store.liftHold(id, { by: how.by, messageId: how.messageId });
+        store.recordWorkEvent({ kind: "control.lift", actor: "user", sessionId: how.sessionId, payload: { hold: id, by: how.by, ...how.payload } });
         return lifted;
       }),
     );
@@ -386,7 +422,7 @@ export function createStopGoOn(deps: StopDeps, reach: StopReach, words: StopWord
     });
   }
 
-  return { continueByLine, resumeLifted, lift, liftOnYourLine, liftOnYourChange, goOnFromYourLine, takeUp, continueReceiptLine };
+  return { continueByLine, resumeLifted, lift, liftOnYourLine, liftOnYourChange, liftOnYourInsert, liftOnSendBack, goOnFromYourLine, takeUp, continueReceiptLine };
 }
 
 export type StopGoOn = ReturnType<typeof createStopGoOn>;

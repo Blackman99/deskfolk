@@ -6,9 +6,11 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
-### Changing a line after Stop sets the Bot going again
+### After Stop, the Bot goes on from what you do next
 
 - You pressed Stop and then changed the line the Bot was working on: the change waited under the Stop and the Bot stayed stopped, with no banner or button to lift it, until you typed another line. A change now counts as your next line, as a new line does: the Stop lifts and the Bot opens a new turn that reads "You changed this line" and goes on from it. A stop that stays until you lift it (Stop all Bots, the board, the tools menu) still holds the change until you do. [ADR 0063](docs/adr/0063-edit-a-line-and-lines-in-order.md), 2026-10-09 addendum.
+- A line you sent while the Bot worked, then pressed Stop before it read it, said "Held by a stop · read once it lifts" with Insert now off, and stayed unread for good: even once the stop lifted, it went back to "Queued" with nothing to take it up. Insert now works on it: the Stop lifts and the Bot opens a turn on the line. Lifting a stop also hands back every line it held, so the Bot reads them. Under a stop that stays until you lift it, Insert now says so under the line.
+- Send back on a hand-over's card after you pressed Stop on that Bot's work reworked nothing: the rework waited under the Stop. Send back now lifts that Stop, and the Bot reworks with what you wrote.
 
 ### Read lines with a Claude model of Claude Agent
 
