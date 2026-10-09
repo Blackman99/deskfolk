@@ -13,8 +13,9 @@ export function createStopWords(deps: StopDeps, reach: StopReach) {
   }
 
   /** What the line that lifts `hold` has to be about, as its receipt says it; false for none. */
-  function nextLineAbout(hold: Hold | undefined): false | "job" | "group" | "bot" {
+  function nextLineAbout(hold: Hold | undefined): false | "job" | "group" | "bot" | "everyone" {
     if (!hold) return false;
+    if (hold.scope === "global") return "everyone";
     if (hold.scope === "session") return "group";
     if (hold.scope === "bot") return "bot";
     return "job";
@@ -57,6 +58,17 @@ export function createStopWords(deps: StopDeps, reach: StopReach) {
         return en ? `${turn ? botName(turn.bot_id) : "a Bot"}'s turn` : `${turn ? botName(turn.bot_id) : "一个 Bot"}的这一段`;
       }
     }
+  }
+
+  /**
+   * A hold your go on acted on, in words: its scope, and for one over more Bots that it only let go
+   * of some (ADR 0071), whom — 「所有 Bot 的工作（放开了 视频导演）」.
+   */
+  function liftedLabel(hold: Hold, here: string): string {
+    const scope = scopeLabel(hold, here);
+    if (hold.lifted_at || !hold.effect.released_bots?.length) return scope;
+    const names = hold.effect.released_bots.map((id) => botName(id));
+    return locale() === "en" ? `${scope} (for ${names.join(", ")})` : `${scope}（放开了 ${names.join("、")}）`;
   }
 
   /** What you asked about, in words. */
@@ -159,7 +171,7 @@ export function createStopWords(deps: StopDeps, reach: StopReach) {
     return named?.scope === "bot" ? named.id : USER_MEMBER;
   }
 
-  return { locale, nextLineAbout, turnLine, headingBots, scopeLabel, aboutLabel, holdSaid, planTag, ticketLabel, botName, planTitle, safeTurn, authorIn };
+  return { locale, nextLineAbout, turnLine, headingBots, scopeLabel, liftedLabel, aboutLabel, holdSaid, planTag, ticketLabel, botName, planTitle, safeTurn, authorIn };
 }
 
 export type StopWords = ReturnType<typeof createStopWords>;

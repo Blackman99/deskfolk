@@ -215,7 +215,8 @@ describe("after a restart", () => {
     expect(notification(h, `restart:${notice!.id}`)).toMatchObject({ session_id: dm, action_state: "open" });
   });
 
-  test("a stop over the job refuses 继续 until you lift it", async () => {
+  test("继续 is your word to the Bots: a stop of yours over the job goes on past it", async () => {
+    // ADR 0071: a stop is only "stop for now"; pressing 继续 is what going on is.
     const h = await scenario({ holds: true });
     const { director, reviewer, room } = videoTeam(h);
     const ep01 = openPlan(h, room, "EP01", planSpec("EP01 动画成片"));
@@ -225,6 +226,27 @@ describe("after a restart", () => {
     await h.waitIdle();
     const [notice] = notices(h, room);
     const hold = h.engine.createHold({ scope: "bot", scopeId: director.id });
+    const pressedAt = isoNow();
+    h.script(director, thread).reply(call(endTurn()));
+
+    h.engine.control(notice!.id, { action: "resume" });
+    await h.waitIdle();
+
+    expect(h.store.getHold(hold.id)).toMatchObject({ lifted_by: "user_button" });
+    expect(turnsAfter(h, director, pressedAt)).toHaveLength(1);
+    expect(h.store.getMessage(notice!.id).control).toMatchObject({ acted: ["resume"] });
+  });
+
+  test("a hold of the app's over the job refuses 继续 until it is lifted", async () => {
+    const h = await scenario({ holds: true });
+    const { director, reviewer, room } = videoTeam(h);
+    const ep01 = openPlan(h, room, "EP01", planSpec("EP01 动画成片"));
+    const thread = h.botDirect(director, reviewer);
+    await atWork(h, director, thread, () => h.postBot(reviewer, thread, "母带重新拼一遍", { taskId: ep01.id }));
+    await h.restart({ clean: false });
+    await h.waitIdle();
+    const [notice] = notices(h, room);
+    const hold = h.store.createHold({ scope: "bot", scopeId: director.id, source: "migration" });
     const pressedAt = isoNow();
 
     expect(() => h.engine.control(notice!.id, { action: "resume" })).toThrow(expect.objectContaining({ status: 409, code: "held" }));
@@ -238,7 +260,7 @@ describe("after a restart", () => {
     expect(turnsAfter(h, director, pressedAt)).toHaveLength(1);
   });
 
-  test("a stop over some of the job's turns lets 继续 take the rest, says how many it holds, and 继续 takes those after the lift", async () => {
+  test("a hold of the app's over some of the job's turns lets 继续 take the rest, says how many it holds, and 继续 takes those after the lift", async () => {
     const h = await scenario({ holds: true });
     const { director, reviewer, writer, room } = videoTeam(h);
     const ep01 = openPlan(h, room, "EP01", planSpec("EP01 动画成片"));
@@ -249,7 +271,7 @@ describe("after a restart", () => {
     await h.restart({ clean: false });
     await h.waitIdle();
     const [notice] = notices(h, room);
-    const hold = h.engine.createHold({ scope: "bot", scopeId: director.id });
+    const hold = h.store.createHold({ scope: "bot", scopeId: director.id, source: "migration" });
     h.script(writer, boarding).reply(call(endTurn()));
     const pressedAt = isoNow();
 

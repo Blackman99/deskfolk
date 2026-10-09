@@ -33,7 +33,7 @@ export type RestartDeps = {
   store: Store;
   publishMessage: (message: Message) => void;
   /** Continue on an interrupted turn's 「中断」 line, as its own Continue does (holds and all). */
-  continueFromInterrupt: (messageId: string) => Turn;
+  continueFromInterrupt: (messageId: string, opts?: { byYou?: boolean }) => Turn;
 };
 
 /** What a boot told you: the jobs it put a line in for, and the turns in them (none for jobs that go on without you). */
@@ -155,10 +155,10 @@ export function createRestart(deps: RestartDeps): Restart {
       // Each turn goes on the way its own Continue would. One that cannot any more — continued
       // already (from its own 「中断」 line, say: then a press with nothing left to do is a quiet
       // success), its Bot already at work there, the conversation or Bot gone — is left as it is.
-      // A drain fails the press so it can be pressed again once it is over. A turn a stop of yours
-      // holds stays stopped: with nothing else to go on, the press fails with the stop's 409; beside
-      // turns that did go on, it says how many of each and stays unanswered, so 继续 takes the rest
-      // once the stop is lifted.
+      // A drain fails the press so it can be pressed again once it is over. Your press is your word
+      // to the Bots (ADR 0071): a stop of yours over a turn goes on past it. One the app holds stays
+      // stopped: with nothing else to go on, the press fails with the hold's 409; beside turns that
+      // did go on, it says how many of each and stays unanswered, so 继续 takes the rest later.
       let refused: unknown = null;
       let held: unknown = null;
       let heldCount = 0;
@@ -166,7 +166,7 @@ export function createRestart(deps: RestartDeps): Restart {
       for (const noteId of control.notes) {
         try {
           if (store.getMessage(noteId).source_turn_id) continue;
-          continueFromInterrupt(noteId);
+          continueFromInterrupt(noteId, { byYou: true });
           continued += 1;
         } catch (error) {
           if (error instanceof HttpError && (error.status === 422 || error.status === 404)) continue;

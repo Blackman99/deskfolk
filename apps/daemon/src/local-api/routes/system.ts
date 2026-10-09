@@ -70,7 +70,8 @@ export function systemRoutes(ctx: RouteCtx): Response | Promise<Response> | null
     if (typeof body.message_id !== "string" || body.message_id.trim().length === 0) {
       throw new HttpError(422, "invalid_args", "message_id is required");
     }
-    const turn = engine.continueFromInterrupt(body.message_id.trim());
+    // Your press: a stop of yours over that work goes on past it (ADR 0071).
+    const turn = engine.continueFromInterrupt(body.message_id.trim(), { byYou: true });
     return jsonResponse(turn, 200, null);
   }
 

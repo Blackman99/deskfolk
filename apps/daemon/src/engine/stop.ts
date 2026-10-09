@@ -18,12 +18,12 @@
  * groups are aborted.
  *
  * A go on lifts your stops that keep the Bots it is said to from the job it is filed under, and
- * wakes them like any line: they go on from it and say so themselves. A stop on another job stays,
- * and so does one wider than the conversation made elsewhere, or one on everything: those are for
- * their buttons. A Stop's hold goes with your next line to its Bot about its job. A line or a go on
- * to one Bot leaves the other Bots' Stops alone. A group's stop menu stops the same way, on the
- * group, a Bot or a job: your next line there is what the Bots go on from. Your line to a Bot a
- * stop that stays still holds gets a read-only answer, from the Bot.
+ * wakes them like any line: they go on from it and say so themselves. A stop on another job stays.
+ * Every stop of yours is only "stop for now" (ADR 0071): your next line to a Bot about what it covers
+ * lifts one on that Bot's work, and lets that Bot go from one over more Bots — everything, a group,
+ * a job — which holds the rest until you speak to them or lift it. A line or a go on to one Bot
+ * leaves the other Bots' stops alone. Your line to a Bot only a hold of the app's covers gets a
+ * read-only answer, from the Bot.
  *
  * The app's lines about your stops carry buttons (`MessageControl`), and `act` carries them out:
  * undo a stop (a line read as one then reaches the Bots as any line), widen it to every Bot or to
@@ -99,16 +99,16 @@ export type Stop = {
    */
   readLine: (message: Message, reading: UserLineReading) => boolean;
   /**
-   * Your line, once filed: a Stop's hold on the job it is about, on a Bot the line is said to, goes
-   * before the line wakes anyone, so the Bot goes on from what you said; so does a group stop
-   * menu's hold, on the group, a Bot or a job, that the line is about. Only a line said after the
-   * stop counts.
+   * Your line, once filed, is your word to the Bots it is said to (ADR 0071): before it wakes anyone,
+   * a stop of yours on one Bot's work it is about goes, and one over more Bots lets go of those Bots,
+   * so they go on from what you said. Only a line said after the stop counts, and a line read as only
+   * asking where the work stands lifts nothing. Returns the holds it lifted or let a Bot go from.
    */
-  liftOnYourLine: (message: Message) => Hold[];
+  liftOnYourLine: (message: Message, reading?: UserLineReading | null) => Hold[];
   /**
-   * Your line, changed: a Stop holding a copy of it, or the note of what you changed, goes, as it
-   * would at a new line of yours, so the Bot goes on from the change. A stop that stays until you
-   * lift it keeps holding them.
+   * Your line, changed: a stop of yours holding a copy of it, or the note of what you changed, goes
+   * on past it for that copy's Bot, as at a new line of yours, so the Bot goes on from the change.
+   * A hold of the app's keeps holding them.
    */
   liftOnYourChange: (line: Message, editId: string) => Hold[];
   /** 直接插入 on a line of yours a Stop holds: the Stop goes, so the Bot reads it now. */

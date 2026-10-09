@@ -70,7 +70,7 @@ test("a card emitted while its source is finishing cannot answer until that segm
   expect(answerWorkQuestion(h.ctx, question.id, { body: "Answer", userActionId: "answer" }).answered).toBe(true);
 });
 
-test("an answer retains a source conversation's hold when the work's public home is somewhere else", () => {
+test("an answer goes on past your stop on the source conversation, though the work's public home is somewhere else", () => {
   const h = fixture();
   h.store.setTurnStatus(h.turn.id, "completed");
   h.store.db.run("UPDATE work_items SET home_session_id = ? WHERE id = ?", [h.group.id, h.turn.work_item_id!]);
@@ -80,11 +80,12 @@ test("an answer retains a source conversation's hold when the work's public home
   h.store.setTurnStatus(from.id, "completed");
   const question = createWorkQuestion(h.ctx, { turnId: from.id, body: "Choose" });
   const hold = h.store.createHold({ scope: "session", scopeId: h.thread.id, source: "user_button" });
+  // Your answer is your word to the Bot (ADR 0071): a stop of yours over the conversation releases it.
   const answered = answerWorkQuestion(h.ctx, question.id, { body: "Answer", userActionId: "answer" });
-  expect(answered.inbox_state).toBe("held");
+  expect(answered.inbox_state).toBe("queued");
   h.store.refreshHeldInbox({ botId: h.bot.bot.id });
-  expect(h.store.getInboxItem(answered.message.control?.kind === "work_question" ? answered.message.control.answer!.inbox_seq : 0)?.state).toBe("held");
-  expect(h.store.getHold(hold.id).lifted_at).toBeNull();
+  expect(h.store.getInboxItem(answered.message.control?.kind === "work_question" ? answered.message.control.answer!.inbox_seq : 0)?.state).toBe("queued");
+  expect(h.store.getHold(hold.id).effect.released_bots).toContain(h.bot.bot.id);
 });
 
 test("closed work and transcript-erased questions cannot resurrect or accept an answer", () => {

@@ -375,7 +375,7 @@ describe("D5: a line in your direct with a Bot and a group plan it never worked 
 });
 
 describe("D6: a job stopped with Stop and let go with the button", () => {
-  test("level 4: is called back once quiet, rather than left running with nobody to move it", async () => {
+  test("level 4: goes on at once on a note when the button lifts it, and is called back once quiet if left unfinished", async () => {
     const h = await scenario({ supervision: true });
     const [bot] = h.createBots("Writer");
     const dm = h.direct(bot!);
@@ -398,10 +398,12 @@ describe("D6: a job stopped with Stop and let go with the button", () => {
     await h.waitIdle();
     for (const hold of h.store.listHolds({ inForce: true })) h.engine.liftHold(hold.id);
     await h.waitIdle();
-    expect(workState(h, plan.id)).toEqual(["idle"]);
+    // Lifting is going on (ADR 0071): the stopped work opens again on a note at once.
+    expect(h.turns(bot!).map((turn) => turn.status)).toEqual(["stopped", "completed"]);
     h.tick(new Date(Date.now() + 3 * 60_000));
     await h.waitIdle();
-    expect(h.turns(bot!).map((turn) => turn.status)).toEqual(["stopped", "completed"]);
+    // It went on and ended with the ticket still open: the supervisor calls it back, as for any work left quiet.
+    expect(h.turns(bot!).map((turn) => turn.status)).toEqual(["stopped", "completed", "completed"]);
     expect(h.store.db.query("SELECT json_extract(wait_spec, '$.reason') AS reason FROM check_backs WHERE kind = 'supervisor'").all())
       .toEqual([{ reason: "orphan" }]);
   });

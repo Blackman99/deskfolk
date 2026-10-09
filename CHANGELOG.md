@@ -6,6 +6,13 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A stop is only "stop for now"
+
+- Every stop of yours — Stop on a reply, a typed "stop" / "stop X" / "stop every Bot", the group and tools menus, the flow board — now only stops the work now, and until you speak holds what would start a Bot again by itself: its check-backs, other Bots' lines, job completions, the supervisor's resumes. Nothing you say or do to a Bot is held any more: a line said to it, a change to your line, Insert now, Send back, your answer to its question, Continue on an interrupted or restart notice, "continue" and Lift all make it go on. Before, a typed "stop", the menus and the board waited for you to lift them, and whatever you said to the Bot meanwhile got only a read-only answer.
+- Under a stop over more Bots (every Bot, a group, a job), your word releases only the Bot you speak to; the rest stay stopped until you speak to them or lift it, and once every Bot it covers is released it is lifted. A line only asking where the work stands releases nobody: the Bot answers, still stopped.
+- Lift is going on: the work a stop ended opens again on a note, a Stop's too (lifting a Stop by its button used to reopen nothing).
+- Every stop of yours is listed above the conversation list while it holds something, with the Bots your word released after it ("Every Bot's work (going on: 文案)") and a Lift. The tools menu's Stop everything says "Stops for now: speak to a Bot and it goes on". This replaces "a stop that stays until you lift it" in the entries below. [ADR 0071](docs/adr/0071-a-stop-is-only-stop-for-now.md).
+
 ### The app stays out of the conversation
 
 - Every line of yours goes to the Bot you say it to, and the app no longer answers in its place. A question about where the work stands goes to the Bot — into its inbox if it is working, without cutting it off, or waking it if not — and the Bot answers; the app's status block is gone. Nor does the app write a line in place of a read-only answer that said nothing, or a receipt for a go on: the Bot that goes on says so. The app still writes the cards that need you and a stop's receipt.

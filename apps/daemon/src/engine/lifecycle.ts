@@ -139,7 +139,7 @@ export type Lifecycle = {
   hearAcross: (message: Message, opts?: { turnIds?: readonly string[] }) => Turn[];
   dispatchQueued: () => void;
   attachLive: (turn: Turn, carry?: string | null) => void;
-  continueFromInterrupt: (messageId: string) => Turn;
+  continueFromInterrupt: (messageId: string, opts?: { byYou?: boolean }) => Turn;
   abortLive: (turnId: string) => void;
   drainLives: () => Promise<void>;
   executionOf: (live: Live | undefined) => TurnExecution | null;
@@ -596,9 +596,11 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
   /**
    * Continue on an interrupted or failed turn: a new turn on the same job, from the line it left. A
    * hold over that job answers 409 `held` instead, so the button can ask whether to lift it; the
-   * database refuses the row too (I2), since this path writes it without `createTurn`.
+   * database refuses the row too (I2), since this path writes it without `createTurn`. Pressed by
+   * you (`byYou`), it is your word to the Bot (ADR 0071): a stop of yours over that work goes on past
+   * it first. The supervisor's own resume is no word of yours, and a stop still holds it.
    */
-  function continueFromInterrupt(messageId: string): Turn {
+  function continueFromInterrupt(messageId: string, opts: { byYou?: boolean } = {}): Turn {
     admission?.assertNew();
     const note = store.getMessage(messageId);
     let cut: Turn | null = null;
@@ -615,6 +617,12 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       ticketId: cut?.ticket_id ?? null,
       turnId: note.turn_id,
     };
+    if (opts.byYou) {
+      store.goOnForYourWord(
+        { botId: wake.botId, sessionId: wake.sessionId, taskId: wake.taskId, ticketId: wake.ticketId, turnId: wake.turnId },
+        { by: "user_button", payload: { continue: messageId } },
+      );
+    }
     if (!mayWake(store, wake)) {
       throw new HttpError(409, "held", "a stop of yours covers this job: lift it before continuing");
     }

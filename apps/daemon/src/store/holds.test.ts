@@ -132,9 +132,11 @@ describe("making a hold", () => {
     expect(make({ action: "stop" })?.status).toBe(422);
     expect(make({ targets: [{ scope: "global", id: "x" }] })?.status).toBe(422);
     expect(make({ targets: "session" })?.status).toBe(422);
-    // A Stop's hold, and one from a group's stop menu, goes when you next speak; one on everything
-    // or on a ticket waits for you to lift it.
-    expect(make({ scope: "global", scopeId: null, liftOnNextUserMessage: true })?.status).toBe(422);
+    // Every stop of yours is a stop for now (ADR 0071): what you next say to a Bot it covers goes on,
+    // a stop on everything or on a ticket included. Dropping a job, and the app's own holds, wait.
+    expect(store.createHold({ source: "user_button", scope: "global", scopeId: null }).lift_on_next_user_message).toBe(true);
+    expect(store.createHold({ source: "user_button", scope: "plan", scopeId: plan.id, action: "cancel" }).lift_on_next_user_message).toBe(false);
+    expect(store.createHold({ source: "migration", scope: "plan", scopeId: plan.id }).lift_on_next_user_message).toBe(false);
     expect(make({ scope: "turn", scopeId: turn.id, liftOnNextUserMessage: true })).toBeNull();
     expect(make({ liftOnNextUserMessage: true })).toBeNull();
     expect(make({ scope: "session", scopeId: room.id, liftOnNextUserMessage: true })).toBeNull();

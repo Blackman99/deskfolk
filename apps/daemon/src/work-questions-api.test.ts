@@ -57,17 +57,26 @@ test("an ended blocked segment's question is answered durably once with the user
   expect((await h.answer({ body }, "01ARZ3NDEKTSV4RRFFQ69G5FAW")).status).toBe(409);
 });
 
-test("answering under a source-turn hold queues held mail without lifting it or starting a legacy ask turn", async () => {
+test("answering under your Stop on the source turn is your word to the Bot: the Stop goes, the work is queued, no legacy ask turn", async () => {
+  // ADR 0071: a stop is only "stop for now"; your answer is what the Bot goes on from.
   const h = start();
   const stop = h.store.createHold({ scope: "turn", scopeId: h.turn.id, source: "user_button" });
   const response = await h.answer({ body: "Edition 3" });
   expect(response.status).toBe(200);
-  expect(await response.json()).toMatchObject({ inbox_state: "held" });
-  expect(h.store.getHold(stop.id).lifted_at).toBeNull();
-  expect(h.store.db.query("SELECT state FROM inbox_items WHERE message_id = ?").get(h.question.id)).toEqual({ state: "held" });
+  expect(await response.json()).toMatchObject({ inbox_state: "queued" });
+  expect(h.store.getHold(stop.id)).toMatchObject({ lifted_by: "user_button" });
+  expect(h.store.db.query("SELECT state FROM inbox_items WHERE message_id = ?").get(h.question.id)).toEqual({ state: "queued" });
   expect(h.store.db.query("SELECT id FROM turns WHERE status = 'waiting_ask'").all()).toEqual([]);
   expect(h.store.db.query("SELECT state FROM work_items WHERE id = ?").get(h.turn.work_item_id!)).toEqual({ state: "queued" });
-  h.store.liftHold(stop.id, { by: "user_button" });
+});
+
+test("answering under a hold that is not a stop of yours queues held mail and lifts nothing", async () => {
+  const h = start();
+  const parked = h.store.createHold({ scope: "turn", scopeId: h.turn.id, source: "migration" });
+  const response = await h.answer({ body: "Edition 3" });
+  expect(await response.json()).toMatchObject({ inbox_state: "held" });
+  expect(h.store.getHold(parked.id).lifted_at).toBeNull();
+  h.store.liftHold(parked.id, { by: "user_button" });
   expect(h.store.db.query("SELECT state FROM inbox_items WHERE message_id = ?").get(h.question.id)).toEqual({ state: "queued" });
 });
 

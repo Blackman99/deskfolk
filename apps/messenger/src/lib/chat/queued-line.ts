@@ -29,7 +29,7 @@ export function queuedLine(
   const delivery = message.delivery;
   if (!delivery || (delivery.state !== "queued" && delivery.state !== "held")) return null;
   const writable = opts.connected && !opts.lockedComposer;
-  // Under a Stop, reading it now lifts the Stop; a stop that stays until you lift it is refused, and said so.
+  // Under a stop of yours, reading it now goes on past it (ADR 0071); under a hold of the app's (a parked plan) it is refused, and said so.
   if (delivery.state === "held") return { wait: "held", canInsert: writable, canWithdraw: writable };
   const working = opts.turnsHere.some(
     (turn) => turn.bot_id === delivery.bot_id && turn.status === "running" && turn.mode !== "readonly",

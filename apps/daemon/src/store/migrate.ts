@@ -9,7 +9,7 @@ import { migrateDelegations } from "./delegation-migration";
 import { migrateEndReasons } from "./end-reason-migration";
 import { migrateExternalJobs, migrateStrayExternalJobs } from "./external-jobs-migration";
 import { migrateFiling } from "./filing-migration";
-import { HELD_TURN_TRIGGERS } from "./holds";
+import { HELD_TURN_TRIGGERS, migrateStopsForNow } from "./holds";
 import { migrateLargeJobs } from "./large-job-migration";
 import { migrateLessons } from "./lessons";
 import { migrateMessageEdits } from "./message-edits";
@@ -347,6 +347,8 @@ export function migrateSchema(db: Database): void {
   // After every column tasks gains above (the rebuild copies the table as it then stands), and
   // before the triggers below, which are made again over the rebuilt table.
   migrateNullableTaskSession(db);
+  // Every stop of yours is a stop for now (ADR 0071).
+  migrateStopsForNow(db);
   // Made again on every open rather than if missing, so the triggers are always this build's own.
   // Last, after every column they read (tasks.dormant_since comes in migratePlans).
   for (const trigger of [...HELD_TURN_TRIGGERS, ...QUOTE_TRIGGERS, ...REQUIREMENT_TRIGGERS, ...DORMANT_PLAN_TRIGGERS, ...SUBMISSION_TRIGGERS, ...WORK_QUESTION_TRIGGERS, ...REQUIREMENT_CARD_TRIGGERS]) {

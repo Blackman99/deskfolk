@@ -10,6 +10,7 @@ import type { Database } from "bun:sqlite";
 import { USER_MEMBER, type Message, type WorkAnswerResult, type WorkQuestionControl } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow } from "../ids";
+import { goOnForYourWord } from "./holds";
 import { queueInboxItem, refreshHeldInbox, getInboxItem } from "./inbox";
 import { insertMessage, getMessage, assertUserMayPost } from "./messages";
 import { createNotification, updateNotificationActionState } from "./notifications";
@@ -103,11 +104,14 @@ export function answerWorkQuestion(ctx: StoreContext, messageId: string, input: 
     if (!source || source.work_item_id !== work.id || source.end_reason !== "blocked") throw new HttpError(409, "conflict", "the question's blocked source is no longer available");
     if (["running", "waiting_ask", "waiting_approval"].includes(source.status)) throw new HttpError(409, "conflict", "the question's source segment is still ending");
     const now = isoNow();
-    // In the conversation the blocked segment ran in, from that segment: a stop over either holds it,
-    // wherever the card was answered, and lifting it is what lets the work go on.
+    // In the conversation the blocked segment ran in, from that segment. Your answer is your word to
+    // the Bot (ADR 0071): a stop of yours over that work goes on past it, so the work goes on; only
+    // one that stays until you lift it — the app's own, or dropping the job — still holds it.
     const inbox = queueInboxItem(ctx, { botId: work.bot_id, sessionId: source.session_id, turnId: null, sourceTurnId: message.source_turn_id,
       workItemId: work.id, taskId: work.task_id, ticketId: work.ticket_id, messageId: message.id, author: USER_MEMBER,
       body: input.body, saidIn: message.session_id, source: "user", kind: "result", priority: 1, now });
+    goOnForYourWord(ctx, { botId: work.bot_id, sessionId: source.session_id, taskId: work.task_id, ticketId: work.ticket_id, turnId: message.source_turn_id },
+      { by: "user_button", sessionId: message.session_id, payload: { work_answer: message.id } });
     refreshHeldInbox(ctx, { botId: work.bot_id });
     recordQuote(ctx, { via: "ask_answer", body: input.body, messageId: message.id, sessionId: message.session_id, taskId: work.task_id, ticketId: work.ticket_id, now });
     updateNotificationActionState(ctx, `work_question:${message.id}`, "resolved", "answered", true);

@@ -42,6 +42,12 @@ export type HoldEffect = {
   answered_lines?: AnsweredLine[];
   /** On lifting: the turns opened on lines of yours it had turned into read-only answers. */
   taken_up_turns?: string[];
+  /**
+   * The Bots your word released from it, a stop over more than one of them (ADR 0071): a line said
+   * to the Bot, a change to your line, 直接插入, 退回. It no longer holds their work, and still
+   * holds the rest's until you speak to them or lift it.
+   */
+  released_bots?: string[];
 };
 
 /** A line of yours a Bot could only answer read-only while a hold covered it, and the turn that answered it. */

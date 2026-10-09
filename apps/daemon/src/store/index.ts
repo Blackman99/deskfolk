@@ -533,6 +533,8 @@ export class Store {
   // Holds (叫停) ----------------------------------------------------------------------------
   readonly createHold = this.bind(holds.createHold);
   readonly liftHold = this.bind(holds.liftHold);
+  readonly releaseHold = this.bind(holds.releaseHold);
+  readonly goOnForYourWord = this.bind(holds.goOnForYourWord);
   readonly cancelHolds = this.bind(holds.cancelHolds);
   readonly getHold = this.bind(holds.getHold);
   readonly listHolds = this.bind(holds.listHolds);

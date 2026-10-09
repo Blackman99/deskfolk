@@ -4,15 +4,14 @@ import { classifySession, presentBotIds, youBotPeer } from "./session-groups.ts"
 import { sessionTitle, type RosterLabels } from "./session-title.ts";
 
 /**
- * Your stops as the list shows them: the ones you made, by word, button or menu, that stay until
- * you lift them. A Stop (the button on a reply), and a stop from a group's menu on the group, a
- * Bot or the job, lifts itself with your next line there, and the conversation already holds its
- * receipt with an undo, so it is not listed — a banner that clears itself is one nobody needs to
- * read, and one that stays after you have moved on reads as stuck. A plan parked before holds
- * existed, taken over as one, is shown where it lives — parked on the board — and not here.
+ * Your stops as the list shows them: every one you made, by word, button or menu, while it still
+ * holds something (ADR 0071). A stop is only "stop for now": whatever you say to a Bot lifts it for
+ * that Bot, and until you do, this is where you see the Bot is stopped and go on with 解除. A plan
+ * parked before holds existed, taken over as one, is shown where it lives — parked on the board —
+ * and not here.
  */
 export function listedHolds(holds: readonly Hold[]): Hold[] {
-  return holds.filter((hold) => (hold.source === "user_text" || hold.source === "user_button") && !hold.lift_on_next_user_message);
+  return holds.filter((hold) => hold.source === "user_text" || hold.source === "user_button");
 }
 
 /** A stop in words, from the snapshot alone: whose work, which conversation, which job. */
@@ -22,6 +21,18 @@ export function holdLabel(
 ): string {
   const { t } = ctx;
   const botName = (id: string | undefined) => (id ? (ctx.bots.get(id)?.name ?? ctx.roster.deleted) : ctx.roster.deleted);
+  const released = hold.effect.released_bots ?? [];
+  const what = scopeLabel(hold, ctx, botName);
+  // The Bots you spoke to since are at work again (ADR 0071); the stop holds the rest.
+  return released.length > 0 ? `${what}${t.released(released.map((id) => botName(id)).join(t.join))}` : what;
+}
+
+function scopeLabel(
+  hold: Hold,
+  ctx: { sessions: ReadonlyMap<string, SessionSummary>; bots: ReadonlyMap<string, Bot>; roster: RosterLabels; t: Copy["control"] },
+  botName: (id: string | undefined) => string,
+): string {
+  const { t } = ctx;
   const plan = hold.plan_title ?? null;
   const id = hold.scope_id ?? "";
   switch (hold.scope) {

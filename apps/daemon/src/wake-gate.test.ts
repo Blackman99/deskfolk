@@ -45,13 +45,17 @@ async function scenario(options?: Parameters<typeof createScenario>[0]): Promise
 
 /** Legacy phase 0–2 wake paths: raising holds mid-turn must not activate P4c end contracts
  * against the pre-work-item segment, or replace peer wakes/report-back with delegations. */
-function hold(h: Scenario, scope: HoldScope, scopeId: string | null): Hold {
+/**
+ * A hold over `scope`: yours by default (a stop for now, ADR 0071), or the app's (`migration`) where a
+ * test is about what a hold that waits to be lifted turns away from your own lines too.
+ */
+function hold(h: Scenario, scope: HoldScope, scopeId: string | null, source: "user_button" | "migration" = "user_button"): Hold {
   if (h.store.capabilities().engine_level < ENGINE_LEVELS.holds) {
     for (const key of ["engine_level", "schema_min_compatible"]) {
       h.store.db.run("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [key, String(ENGINE_LEVELS.holds)]);
     }
   }
-  return h.store.createHold({ scope, scopeId, source: "user_button" });
+  return h.store.createHold({ scope, scopeId, source });
 }
 
 /** How the note a live turn hears a line in starts: the line reaching the turn, not just its transcript. */
@@ -95,11 +99,13 @@ test("current P4c peer notes have wakes=0 and neither wake a held Bot nor lift i
 });
 
 describe("legacy phase 0–2 holds turn every old wake away, and say so in the work log", () => {
+  // Tests 1, 2 and 6 are about your own lines, which a stop of yours never holds (ADR 0071): they use
+  // a hold of the app's, the one kind that still answers your line read-only (stop.test.ts has yours).
   test("1. your line in a held Bot's direct opens only a read-only turn: it reads and answers, and does nothing else", async () => {
     const h = await scenario();
     const { director } = videoTeam(h);
     const dm = h.direct(director);
-    hold(h, "bot", director.id);
+    hold(h, "bot", director.id, "migration");
     h.script(director, dm).reply(call(shell("ls"), tool("list_dir", { path: "." })), say("停着呢，恢复后换夜景"));
 
     h.postUser(dm, "第三镜换成夜景");
@@ -121,7 +127,7 @@ describe("legacy phase 0–2 holds turn every old wake away, and say so in the w
   test("2. your line in a group opens only a read-only turn for a held Bot it names, and a held Bot is not asked to judge it", async () => {
     const h = await scenario();
     const { director, reviewer, writer, room } = videoTeam(h);
-    const stop = hold(h, "bot", director.id);
+    const stop = hold(h, "bot", director.id, "migration");
 
     h.postUser(room, "@视频导演 第三镜换成夜景");
     await h.waitIdle();
@@ -206,7 +212,7 @@ describe("legacy phase 0–2 holds turn every old wake away, and say so in the w
       h.postBot(reviewer, thread, "EP01 母带按新的转场重新拼一遍", { taskId: ep01.id });
     });
     const [threadTurn] = h.turns(director);
-    const stop = hold(h, "bot", director.id);
+    const stop = hold(h, "bot", director.id, "migration");
     const dm = h.direct(director);
 
     const line = h.postUser(dm, "EP01 片尾字幕换成白色");
@@ -473,7 +479,7 @@ describe("legacy phase 0–2 holds turn every old wake away, and say so in the w
     expect(h.turns(director)).toHaveLength(1);
   });
 
-  test("12. Continue on a held Bot's interrupted turn answers held and opens nothing, until the hold is lifted", async () => {
+  test("12. The app's own Continue on a held Bot's interrupted turn answers held and opens nothing, until the hold is lifted", async () => {
     const h = await scenario();
     const { director } = videoTeam(h);
     const dm = h.direct(director);
@@ -497,6 +503,23 @@ describe("legacy phase 0–2 holds turn every old wake away, and say so in the w
     const continued = h.engine.continueFromInterrupt(note.id);
     await h.waitIdle();
     expect(continued.trigger_message_id).toBe(note.id);
+  });
+
+  test("12b. Your Continue on a stopped Bot's interrupted turn is your word to it: your stop goes and the turn goes on", async () => {
+    // ADR 0071: a stop is only "stop for now". The supervisor's resume (no `byYou`) is still held, above.
+    const h = await scenario();
+    const { director } = videoTeam(h);
+    const dm = h.direct(director);
+    const line = h.store.postMessage(dm, { body: "导出 EP01 母带" });
+    const cut = h.store.createTurn({ sessionId: dm, botId: director.id, triggerMessageId: line.id });
+    const { note } = h.store.interruptTurnRecord(cut.id)!;
+    const stop = hold(h, "bot", director.id);
+
+    const continued = h.engine.continueFromInterrupt(note.id, { byYou: true });
+    await h.waitIdle();
+
+    expect(continued.trigger_message_id).toBe(note.id);
+    expect(h.store.getHold(stop.id)).toMatchObject({ lifted_by: "user_button" });
   });
 
   test("a hold on one plan turns away only the wakes about that plan", async () => {

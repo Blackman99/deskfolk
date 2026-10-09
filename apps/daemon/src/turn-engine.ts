@@ -117,7 +117,7 @@ export type TurnEngine = {
   announceRestart: (cause: RestartCause) => RestartSummary;
   /** Ends every live turn a hold covers, after a write that may have made one (a plan parked on the board). */
   enforceHolds: () => void;
-  continueFromInterrupt: (messageId: string) => Turn;
+  continueFromInterrupt: (messageId: string, opts?: { byYou?: boolean }) => Turn;
   abortAll: () => void;
   /** Includes interrupted runners and approved effects that have not settled yet. */
   unsettledTurnIds: () => string[];
@@ -153,7 +153,7 @@ export type TurnEngine = {
   /**
    * 直接插入 (ADR 0069): the working turns a line of yours waits in read it now, cutting short the
    * step each is on; a Stop holding it goes, and its Bot opens a turn on it. How many Bots read it
-   * now; 0 when none works in this process any more, or a stop that stays until you lift it holds it.
+   * now; 0 when none works in this process any more, or a hold of the app's holds it (ADR 0071).
    */
   insertNow: (messageId: string) => number;
   /**
@@ -915,7 +915,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
           // before the line wakes anyone: what you say next is what the Bot goes on from. A go on
           // also lifts your other stops that keep its Bots from this job, and only this job's.
           wentOn = stops.goOnWithLine(filed, fresh ? reading : null);
-          lifted = stops.liftOnYourLine(filed);
+          lifted = stops.liftOnYourLine(filed, fresh ? reading : null);
           // The job's turns in other sessions hear it before any turn opens here, so the one that
           // opens can be told they already have it.
           lifecycle.hearAcross(filed);
@@ -939,7 +939,12 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         // The stopped work your line did not reach goes on from it, and hears it as work already at the job would have.
         // What a go on lifted is about the job wherever it stopped; what the line lifted otherwise goes
         // on only as far as the line reached (a group's stop, for 「@X 继续」, is X's alone to go on from).
-        const resumed = [...stops.goOnFromYourLine(filed, lifted), ...stops.goOnFromYourLine(filed, wentOn, true)];
+        // A go on that let one Bot go from a stop over more (ADR 0071) is about that Bot's stopped job too.
+        const letGo = fresh && reading?.control === "go_on" ? lifted.filter((hold) => !hold.lifted_at) : [];
+        const resumed = [
+          ...stops.goOnFromYourLine(filed, lifted.filter((hold) => hold.lifted_at)),
+          ...stops.goOnFromYourLine(filed, [...wentOn, ...letGo], true),
+        ];
         if (resumed.length > 0) lifecycle.hearAcross(filed, { turnIds: resumed.map((turn) => turn.id) });
       } finally {
         routed();

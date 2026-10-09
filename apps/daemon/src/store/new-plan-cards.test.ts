@@ -57,7 +57,7 @@ test("Undo stops the newly opened job before abandonment, preserves its words/re
   const stop = (taskId: string) => {
     expect(h.store.db.query("SELECT COALESCE(stage, 'active') AS stage FROM tasks WHERE id = ?").get(taskId)).toEqual({ stage: "active" });
     stopped++;
-    const hold = h.store.createHold({ scope: "plan", scopeId: taskId, action: "cancel", source: "user_button" });
+    const hold = h.store.createHold({ scope: "plan", scopeId: taskId, action: "cancel", source: "user_button", liftOnNextUserMessage: false });
     h.store.stopTurn(h.turn.id, { allowGroup: true, keepCheckBacks: true });
     return hold;
   };
@@ -85,7 +85,7 @@ test("started effects in any segment of the new job are retained honestly, inclu
   cards.recordNewPlanEffectStarted(h.ctx, { turnId: followup.id, tool: "write_file", toolCallId: "write-1" });
   cards.recordNewPlanEffectStarted(h.ctx, { turnId: followup.id, tool: "write_file", toolCallId: "write-1" });
   const result = cards.actNewPlanCard(h.ctx, card.id, { action: "undo_plan", userActionId: "stop-retain" }, (taskId) => {
-    const hold = h.store.createHold({ scope: "plan", scopeId: taskId, source: "user_button" });
+    const hold = h.store.createHold({ scope: "plan", scopeId: taskId, source: "user_button", liftOnNextUserMessage: false });
     h.store.stopTurn(followup.id, { allowGroup: true, keepCheckBacks: true });
     return hold;
   });
@@ -101,9 +101,9 @@ test("Merge corrects only the quoted message via refile, preserves other filings
   const other = h.store.openTask({ sessionId: h.line.session_id, title: "Shared" });
   h.store.refileMessage(h.line.id, { filings: [{ taskId: h.taskId }, { taskId: other.id }], userActionId: "multi" });
   const card = cards.createNewPlanCard(h.ctx, { turnId: h.turn.id, taskId: h.taskId, quoteMessageId: h.line.id });
-  const hold = h.store.createHold({ scope: "plan", scopeId: h.existing.id, source: "user_button" });
+  const hold = h.store.createHold({ scope: "plan", scopeId: h.existing.id, source: "user_button", liftOnNextUserMessage: false });
   cards.actNewPlanCard(h.ctx, card.id, { action: "merge_plan", taskId: h.existing.id, userActionId: "merge" }, (taskId) => {
-    const stop = h.store.createHold({ scope: "plan", scopeId: taskId, source: "user_button" });
+    const stop = h.store.createHold({ scope: "plan", scopeId: taskId, source: "user_button", liftOnNextUserMessage: false });
     h.store.stopTurn(h.turn.id, { allowGroup: true, keepCheckBacks: true });
     return stop;
   });
@@ -158,7 +158,7 @@ test("a quickly delivered new job still accepts Undo or quoted-message Merge wit
     h.store.setTurnStatus(h.turn.id, "completed");
     h.store.db.run("UPDATE tasks SET stage = 'delivered', status = 'done' WHERE id = ?", [h.taskId]);
     const result = cards.actNewPlanCard(h.ctx, card.id, { action, taskId: action === "merge_plan" ? h.existing.id : undefined,
-      userActionId: "delivered-correction" }, (taskId) => h.store.createHold({ scope: "plan", scopeId: taskId, source: "user_button" }));
+      userActionId: "delivered-correction" }, (taskId) => h.store.createHold({ scope: "plan", scopeId: taskId, source: "user_button", liftOnNextUserMessage: false }));
     expect(result.lifted).toEqual([]);
     expect(h.store.db.query("SELECT stage FROM tasks WHERE id = ?").get(h.taskId)).toEqual({ stage: "abandoned" });
     expect(h.store.getTurn(h.turn.id)).toMatchObject({ task_id: h.taskId, status: "completed" });
@@ -191,7 +191,7 @@ test("a persistent card, kept file and its acted provenance survive database reo
     await Bun.write(artifact, "kept draft");
     store.recordNewPlanEffectStarted({ turnId: turn.id, tool: "write_file", toolCallId: "file" });
     store.actNewPlanCard(card.id, { action: "undo_plan", userActionId: "persisted" }, (id) => {
-      const hold = store.createHold({ scope: "plan", scopeId: id, source: "user_button" });
+      const hold = store.createHold({ scope: "plan", scopeId: id, source: "user_button", liftOnNextUserMessage: false });
       store.stopTurn(turn.id, { allowGroup: true, keepCheckBacks: true });
       return hold;
     });
@@ -209,7 +209,7 @@ test("failed stop cannot abandon the job and rolls back its hold", async () => {
   const h = await fixture();
   const card = cards.createNewPlanCard(h.ctx, { turnId: h.turn.id, taskId: h.taskId, quoteMessageId: h.line.id });
   expect(() => cards.actNewPlanCard(h.ctx, card.id, { action: "undo_plan", userActionId: "not-stopped" }, (taskId) =>
-    h.store.createHold({ scope: "plan", scopeId: taskId, source: "user_button" }))).toThrow("held and stopped");
+    h.store.createHold({ scope: "plan", scopeId: taskId, source: "user_button", liftOnNextUserMessage: false }))).toThrow("held and stopped");
   expect(h.store.listHolds()).toEqual([]);
   expect(h.store.getTask(h.taskId).status).toBe("active");
   expect(h.store.getMessage(card.id).control?.acted).toBeUndefined();

@@ -110,9 +110,10 @@ test("退回 after you pressed Stop on that Bot's work is your word to rework: t
   expect(requestText(first.request)).toContain("要改的地方，原话：「第三句太长，改到 8 个字以内」");
 });
 
-test("退回 under a stop that stays until you lift it waits for the lift", async () => {
+test("退回 under a hold of the app's waits for the lift", async () => {
+  // Every stop of yours goes on past your word (ADR 0071); only the app's own holds wait.
   const { h, writer, card } = await cardWaitingOnYou();
-  const stop = h.store.createHold({ scope: "bot", scopeId: writer.id, source: "user_button" });
+  const stop = h.store.createHold({ scope: "bot", scopeId: writer.id, source: "migration" });
 
   h.engine.control(card.id, { action: "reject", note: "第三句太长" });
   await h.waitIdle({ timeoutMs: 15_000 });

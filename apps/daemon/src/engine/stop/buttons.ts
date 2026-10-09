@@ -187,7 +187,8 @@ export function createStopButtons(deps: StopDeps, reach: StopReach, carry: StopC
       for (const hold of lifted) {
         store.recordWorkEvent({ kind: "control.lift", actor: "user", sessionId: message.session_id, payload: { hold: hold.id, by: "user_button", narrowed_to: taskId } });
       }
-      const resumed = resumeLifted(lifted, null, { stops: false });
+      // Its other work goes on (ADR 0071: lifting is going on, whatever kind of stop it was).
+      const resumed = resumeLifted(lifted, null, { stops: true });
       const scopes = wide.map((hold) => ({ scope: "bot" as const, id: hold.scope_id! }));
       const line = continueReceiptLine(message.session_id, scopes, lifted, resumed, made.map((hold) => store.getHold(hold.id)));
       return { made, lifted: lifted.map((hold) => store.getHold(hold.id)), line };

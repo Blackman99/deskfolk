@@ -79,7 +79,7 @@ export function stopReceiptBody(
      * A hold that goes when you next speak, and about what: a Stop's, about that job (`job`); a
      * group stop menu's, in that group (`group`) or to that Bot (`bot`). False: until you lift it.
      */
-    liftOnNextLine: false | "job" | "group" | "bot";
+    liftOnNextLine: false | "job" | "group" | "bot" | "everyone";
     /** Everything is stopped, routines too. */
     global: boolean;
   },
@@ -136,14 +136,23 @@ export function stopReceiptBody(
   return lines.join("\n");
 }
 
-/** How a stop that goes with your next line says so, by what that line has to be about. */
-function nextLineLifts(locale: Locale, about: "job" | "group" | "bot"): string {
+/**
+ * How a stop says it is only "stop for now" (ADR 0071), by whom your next line goes on for: the Bot
+ * it is said to, and for a stop over more Bots only the ones it is said to.
+ */
+function nextLineLifts(locale: Locale, about: "job" | "group" | "bot" | "everyone"): string {
   const en = locale === "en";
   switch (about) {
+    case "everyone":
+      return en
+        ? `Say something to a Bot and it goes on from what you say; the rest stay stopped. Say "all bots continue" to lift it.`
+        : "你对哪个 Bot 说话，它就从你这句接着往下，其余的接着停着；说「所有 Bot 继续」全部解除。";
     case "job":
       return en ? "Say anything more about this job and it goes on from there." : "你在这件事上再说话，它就接着往下。";
     case "group":
-      return en ? "Say anything more in this group and the Bots go on from what you say." : "你在这个群里再说话就解除，Bot 从你这句接着往下。";
+      return en
+        ? "Say anything more in this group and the Bots you say it to go on from it (everyone, when you name nobody)."
+        : "你在这个群里再说话，说到的 Bot 就从你这句接着往下（不点名就是所有人）。";
     case "bot":
       return en ? "Say anything more to it and it goes on from what you say." : "你再对它说话就解除，它从你这句接着往下。";
   }
@@ -309,14 +318,25 @@ export function resumeNote(
   return parts.join("\n");
 }
 
-/** The first line of a read-only turn's situation: the stop over it, and what the turn may do. */
+/**
+ * The first line of a read-only turn's situation: the stop over it, and what the turn may do. Under a
+ * stop of yours (ADR 0071) only a line asking where the work stands, or one sent before the stop,
+ * is answered so; your next word, or Lift in the sidebar, sets the Bot going. A hold of the app's (a
+ * plan parked before holds existed, no line of yours) goes on from its flow board.
+ */
 export function readOnlyLine(locale: Locale, said: SaidLine): string {
   if (locale === "en") {
     const source = said ? ` (they said at ${said.at}: ${quoted(locale, said)})` : "";
-    return `The user has stopped this work${source}. This turn can only answer: read files and reply; it changes nothing and wakes nobody. If they told you to go on, say plainly that their stop still holds and is lifted on its receipt; do not say you are going on.`;
+    const way = said
+      ? "If they want you to go on, say plainly that it is still stopped: telling you the next step, or Lift in the sidebar, sets you going; do not say you are going on."
+      : "If they want you to go on, say plainly that this job is parked: they let it go on from its flow board; do not say you are going on.";
+    return `The user has stopped this work${source}. This turn can only answer: read files and reply; it changes nothing and wakes nobody. ${way}`;
   }
   const source = said ? `（用户 ${said.at} 说的${quoted(locale, said)}）` : "";
-  return `用户已叫停这件工作${source}，这一段只能回答：可以读文件、回复用户，改不了任何东西，也叫不动别人。用户要你接着做的话，直说这个叫停还在、要在它的回执上解除，别说你在接着做。`;
+  const way = said
+    ? "用户要你接着做的话，直说它还停着：直接告诉你下一步、或在侧栏按解除，你就接着做；别说你在接着做。"
+    : "用户要你接着做的话，直说这件事搁置着：要到它的流程图上让它继续；别说你在接着做。";
+  return `用户已叫停这件工作${source}，这一段只能回答：可以读文件、回复用户，改不了任何东西，也叫不动别人。${way}`;
 }
 
 /**

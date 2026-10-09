@@ -73,23 +73,22 @@ test("your stops in force sit above the list, each with its lift; a plan parked 
   }
 });
 
-test("a Stop on a reply clears itself with your next line, so it is not listed; a stop that waits for you is", () => {
+test("every stop of yours is listed while it holds something, a Stop on a reply too, and says whom your word released", () => {
+  // ADR 0071: a stop is only "stop for now"; the list is where you see a Bot is stopped and go on.
   const holds = [
     aHold({ id: "h-stop", scope: "bot_plan", scope_id: "bot-1:task-1", plan_title: "EP01", lift_on_next_user_message: true }),
-    aHold({ id: "h-turn", scope: "turn", scope_id: "turn-1", lift_on_next_user_message: true }),
     aHold({ id: "h-menu", scope: "bot", scope_id: "bot-2" }),
+    aHold({ id: "h-all", scope: "global", scope_id: null, effect: { released_bots: ["bot-1"] } }),
   ];
   const { host, close } = open({ holds, holdsOn: true });
   try {
-    expect([...host.querySelectorAll(".holds-row .holds-label")].map((label) => label.textContent)).toEqual(["审片员的全部工作"]);
+    expect([...host.querySelectorAll(".holds-row .holds-label")].map((label) => label.textContent)).toEqual([
+      "视频导演在「EP01」上的工作",
+      "审片员的全部工作",
+      "所有 Bot 的工作（已放开 视频导演）",
+    ]);
   } finally {
     close();
-  }
-  const only = open({ holds: holds.slice(0, 2), holdsOn: true });
-  try {
-    expect(only.host.querySelector(".holds")).toBeNull();
-  } finally {
-    only.close();
   }
 });
 
@@ -119,13 +118,13 @@ test("the tools menu stops everything, and while everything is stopped lets it a
   }
 });
 
-test("the tools menu's stop says it keeps the Bots and routines stopped until you lift it, so it is there with nothing at work", () => {
+test("the tools menu's stop says it stops for now and lets go of the Bot you speak to, and is there with nothing at work", () => {
   const { host, runtime, close } = open({ holdsOn: true });
   try {
     click(host.querySelector(".tools-entry"));
     const item = everythingItem(host, "全部停下");
     const hint = host.querySelector(`#${item.getAttribute("aria-describedby")}`);
-    expect(hint?.textContent).toBe("Bot 和日程都停到你解除");
+    expect(hint?.textContent).toBe("先停下：对哪个 Bot 说话就放开哪个");
     expect(item.contains(hint)).toBe(true);
     runtime.snapshot = { ...runtime.snapshot, holds: [aHold({ id: "h-all", scope: "global", scope_id: null })] };
     flushSync();

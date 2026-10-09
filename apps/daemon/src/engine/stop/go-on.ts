@@ -2,6 +2,7 @@
 import { type Message, type Session, type ControlScope, type HeldTurn, type Hold, type ControlOffer, type Turn, type AnsweredLine, USER_MEMBER } from "@real-bot/protocol";
 import type { UserLineReading } from "../../line-reading";
 import { saidOf, continueReceiptBody, type SaidLine, resumeNote } from "../../prompts";
+import { onOneBot } from "../../store/holds";
 import type { StopDeps } from "../stop";
 import type { StopReach } from "./reach";
 import type { StopWords } from "./words";
@@ -9,8 +10,8 @@ import type { StopAnswers } from "./answers";
 
 export function createStopGoOn(deps: StopDeps, reach: StopReach, words: StopWords, answers: StopAnswers) {
   const { store, publishMessage, admission, startTurn, hearOrStart, wakes } = deps;
-  const { holdsToLift, stopsAbout, isWide, stopOnBot, stopBefore, stopsOnBots, scopeHolds, heldAbout, on, saidTo, landedPlan, messageSession } = reach;
-  const { authorIn, locale, scopeLabel, holdSaid, turnLine, headingBots, botName, planTitle, planTag } = words;
+  const { holdsToLift, stopsAbout, isWide, stopOnBot, stopBefore, stopsOnBots, scopeHolds, heldAbout, on, saidTo, saidToBots, landedPlan, messageSession } = reach;
+  const { authorIn, locale, scopeLabel, liftedLabel, holdSaid, turnLine, headingBots, botName, planTitle, planTag } = words;
   const { answerStatus } = answers;
 
   // ── Going on ──────────────────────────────────────────────────────────────────────────────────
@@ -36,10 +37,11 @@ export function createStopGoOn(deps: StopDeps, reach: StopReach, words: StopWord
     const away = (everything ? store.listHolds({ inForce: true }).filter((hold) => stopBefore(hold, message)) : stopsOnBots(message, scopes)).filter(
       (hold) => !withLine.has(hold.id),
     );
-    if (named.length === 0 && away.length === 0) {
+    // The stops the line itself is about count too: a line that may have meant a stop was passed by
+    // `liftOnYourLine`, so its 继续 is the word that lets them go (ADR 0071).
+    if (named.length === 0 && away.length === 0 && about.length === 0) {
       // Nothing the words lift, and nothing wider holding what they name: 「继续」 is how you tell a
-      // Bot to go on with its next step, an ordinary line. A Stop's hold on the job it is about
-      // goes with it once it is filed (`liftOnYourLine`), and the Bot goes on from it.
+      // Bot to go on with its next step, an ordinary line.
       if (!scopes.some((scope) => scopeHolds(scope, message).some((hold) => !withLine.has(hold.id)))) return false;
       answerStatus(message, scopes, { offerStop: false, offerContinue: true });
       return true;
@@ -49,11 +51,23 @@ export function createStopGoOn(deps: StopDeps, reach: StopReach, words: StopWord
     const ids = new Set([...named, ...about, ...away].map((hold) => hold.id));
     // Oldest first, the way they were made.
     const toLift = store.listHolds({ inForce: true }).reverse().filter((hold) => ids.has(hold.id));
+    // Words that name everything lift everything; otherwise a stop over more Bots lets go of the Bots
+    // the words name, or the line is said to (ADR 0071), and the rest stay stopped.
+    const goingOn = namedBots.length > 0 ? namedBots : saidToBots(message);
     const { receipt, resumed } = store.transaction(() => {
       const said = saidOf(message);
-      const lifted = toLift.map((hold) => store.liftHold(hold.id, { by, messageId: message.id }));
+      const lifted = toLift.map((hold) =>
+        everything || onOneBot(hold) || goingOn.length === 0
+          ? store.liftHold(hold.id, { by, messageId: message.id })
+          : store.releaseHold(hold.id, goingOn, { by, messageId: message.id }),
+      );
       for (const hold of lifted) {
-        store.recordWorkEvent({ kind: "control.lift", actor: "user", sessionId: message.session_id, payload: { hold: hold.id, by } });
+        store.recordWorkEvent({
+          kind: hold.lifted_at ? "control.lift" : "control.release",
+          actor: "user",
+          sessionId: message.session_id,
+          payload: { hold: hold.id, by, ...(hold.lifted_at ? {} : { bots: goingOn }) },
+        });
       }
       const resumed = resumeLifted(lifted, said, { stops: true, leave: othersOnWide });
       const current = lifted.map((hold) => store.getHold(hold.id));
@@ -63,7 +77,7 @@ export function createStopGoOn(deps: StopDeps, reach: StopReach, words: StopWord
         kind: "system",
         author: authorIn(message.session_id, scopes),
         body: continueReceiptBody(locale(), {
-          lifted: current.map((hold) => ({ scope: scopeLabel(hold, message.session_id), said: holdSaid(hold) })),
+          lifted: current.map((hold) => ({ scope: liftedLabel(hold, message.session_id), said: holdSaid(hold) })),
           resumed: resumed.filter((row) => !row.line).map((row) => turnLine(row.record, message.session_id, headingBots(scopes))),
           takenUp: resumed.flatMap((row) => (row.line ? [{ bot: botName(row.record.bot_id), said: saidOf(row.line) }] : [])),
           resumedCheckBacks: current.reduce((sum, hold) => sum + (hold.effect.resumed_check_backs?.length ?? 0), 0),
@@ -250,25 +264,43 @@ export function createStopGoOn(deps: StopDeps, reach: StopReach, words: StopWord
 
   function lift(id: string): Hold {
     return store.transaction(() => {
-      // Lifting one already lifted changes nothing, and opens nothing again.
+      // Lifting one already lifted changes nothing, and opens nothing again. Lifting is going on
+      // (ADR 0071): the work it ended opens again on a note, a Stop's too.
       if (store.getHold(id).lifted_at) return store.getHold(id);
       const lifted = store.liftHold(id, { by: "user_button" });
-      resumeLifted([lifted], null, { stops: false });
+      resumeLifted([lifted], null, { stops: true });
       store.recordWorkEvent({ kind: "control.lift", actor: "user", payload: { hold: id, by: "user_button" } });
       return store.getHold(id);
     });
   }
 
-  function liftOnYourLine(message: Message): Hold[] {
+  /**
+   * Your line is your word to the Bots it is said to (ADR 0071): a stop is only "stop for now". One of
+   * yours on one Bot's work the line is about is lifted; one over more Bots — everything, a group, a
+   * job, a ticket — lets go of the Bots the line is said to, and is lifted once it has let go of every
+   * Bot it covers. Returns the holds it lifted or let go of the Bots from, as they now read. A line
+   * read as only asking where the work stands lifts none: asking is not telling it to go on, and the
+   * Bot answers it read-only, still stopped.
+   */
+  function liftOnYourLine(message: Message, reading: UserLineReading | null = null): Hold[] {
     // A line that may have meant a stop lifts none: its buttons say which (a complaint it sent back is no such line).
     if (message.kind !== "user" || message.control?.kind === "possible_control" || !on()) return [];
+    if (reading?.statusOnly) return [];
     const about = stopsAbout(message);
     if (about.length === 0) return [];
+    const bots = saidToBots(message);
     return store.transaction(() =>
-      about.map((hold) => {
-        const lifted = store.liftHold(hold.id, { by: "user_text", messageId: message.id });
-        store.recordWorkEvent({ kind: "control.lift", actor: "user", sessionId: message.session_id, payload: { hold: hold.id, by: "user_text", next_line: true } });
-        return lifted;
+      about.flatMap((hold) => {
+        const after = onOneBot(hold)
+          ? store.liftHold(hold.id, { by: "user_text", messageId: message.id })
+          : store.releaseHold(hold.id, bots, { by: "user_text", messageId: message.id });
+        store.recordWorkEvent({
+          kind: after.lifted_at ? "control.lift" : "control.release",
+          actor: "user",
+          sessionId: message.session_id,
+          payload: { hold: hold.id, by: "user_text", next_line: true, ...(after.lifted_at ? {} : { bots }) },
+        });
+        return [after];
       }),
     );
   }
@@ -319,12 +351,12 @@ export function createStopGoOn(deps: StopDeps, reach: StopReach, words: StopWord
    * A line of yours changed (ADR 0063) after you pressed Stop on what it set going: the change is
    * what you say next to that Bot about it, as a new line is (`liftOnYourLine`), so the Stops
    * holding a copy of the line, or the note of what you changed, go, and the Bot goes on from the
-   * change. Whatever is in force when the change lands was pressed before it. A stop that stays
-   * until you lift it — 「停下所有 Bot」, the board, the tools menu — keeps holding them.
+   * change. Whatever is in force when the change lands was pressed before it. A stop over more Bots
+   * lets go of that copy's Bot only (ADR 0071); a hold of the app's keeps holding them.
    */
   function liftOnYourChange(line: Message, editId: string): Hold[] {
-    if (line.kind !== "user") return [];
-    return liftStops(stopsHoldingLine(line.id), { by: "user_text", messageId: line.id, sessionId: line.session_id, payload: { edit: editId } });
+    if (line.kind !== "user" || !on()) return [];
+    return goOnForHeldCopies(line, { by: "user_text", payload: { edit: editId } });
   }
 
   /**
@@ -334,8 +366,8 @@ export function createStopGoOn(deps: StopDeps, reach: StopReach, words: StopWord
    * lifted a Stop, so the line sat 「叫停中 · 解除后读到」 with the Bot at nothing.
    */
   function liftOnYourInsert(line: Message): Hold[] {
-    if (line.kind !== "user") return [];
-    return liftStops(stopsHoldingLine(line.id), { by: "user_button", messageId: line.id, sessionId: line.session_id, payload: { insert: line.id } });
+    if (line.kind !== "user" || !on()) return [];
+    return goOnForHeldCopies(line, { by: "user_button", payload: { insert: line.id } });
   }
 
   /**
@@ -344,45 +376,28 @@ export function createStopGoOn(deps: StopDeps, reach: StopReach, words: StopWord
    * the Stop for a line you had no reason to write.
    */
   function liftOnSendBack(card: Message, producer: string, taskId: string, ticketId: string | null): Hold[] {
-    const ids = store
-      .holdsCovering({ botId: producer, taskId, ticketId })
-      .filter((hold) => hold.lift_on_next_user_message)
-      .map((hold) => hold.id);
-    return liftStops(ids, { by: "user_button", messageId: null, sessionId: card.session_id, payload: { send_back: card.id } });
+    if (!on()) return [];
+    return store.goOnForYourWord({ botId: producer, taskId, ticketId }, { by: "user_button", sessionId: card.session_id, payload: { send_back: card.id } });
   }
 
-  /** The Stops — holds that lift at your next line — holding a copy of the line, or a note about it. */
-  function stopsHoldingLine(lineId: string): string[] {
+  /**
+   * Your word about a line of yours — its change, 直接插入 — goes on past every stop of yours holding
+   * a copy of it, or the note of what you changed, for that copy's Bot (`goOnForYourWord`): one on
+   * that Bot alone is lifted, one over more Bots lets go of it.
+   */
+  function goOnForHeldCopies(line: Message, how: { by: "user_text" | "user_button"; payload: Record<string, unknown> }): Hold[] {
     const held = store.db
       .query<{ bot_id: string; session_id: string | null; task_id: string | null; ticket_id: string | null; turn_id: string | null }, [string]>(
         `SELECT bot_id, session_id, task_id, ticket_id, turn_id FROM inbox_items WHERE message_id = ? AND state = 'held'`,
       )
-      .all(lineId);
-    const ids = new Set<string>();
-    for (const item of held) {
-      const covering = store.holdsCovering({
-        botId: item.bot_id,
-        sessionId: item.session_id,
-        taskId: item.task_id,
-        ticketId: item.ticket_id,
-        turnId: item.turn_id,
-      });
-      for (const hold of covering) if (hold.lift_on_next_user_message) ids.add(hold.id);
-    }
-    return [...ids];
-  }
-
-  function liftStops(
-    ids: string[],
-    how: { by: "user_text" | "user_button"; messageId: string | null; sessionId: string | null; payload: Record<string, unknown> },
-  ): Hold[] {
-    if (ids.length === 0 || !on()) return [];
+      .all(line.id);
     return store.transaction(() =>
-      ids.map((id) => {
-        const lifted = store.liftHold(id, { by: how.by, messageId: how.messageId });
-        store.recordWorkEvent({ kind: "control.lift", actor: "user", sessionId: how.sessionId, payload: { hold: id, by: how.by, ...how.payload } });
-        return lifted;
-      }),
+      held.flatMap((item) =>
+        store.goOnForYourWord(
+          { botId: item.bot_id, sessionId: item.session_id, taskId: item.task_id, ticketId: item.ticket_id, turnId: item.turn_id },
+          { by: how.by, messageId: line.id, sessionId: line.session_id, payload: how.payload },
+        ),
+      ),
     );
   }
 
@@ -406,9 +421,14 @@ export function createStopGoOn(deps: StopDeps, reach: StopReach, words: StopWord
     }
     const woken = new Set(wakes(message));
     if (!goOn && (!group || store.presentBotIds(message.session_id).some((id) => !woken.has(id)))) return [];
+    // A go on is about the stopped job itself: its work opens again unless the line's own turn is
+    // on that job — a 「继续」 to a Bot at its desk does not leave the job it stopped where it was
+    // (ADR 0071). Any other line reached a Bot it woke, whatever that turn is on.
     const reached = (record: HeldTurn) =>
       store.listLiveTurns({ botId: record.bot_id }).some(
-        (turn) => turn.mode !== "readonly" && (turn.trigger_message_id === message.id || (record.task_id !== null && turn.task_id === record.task_id)),
+        (turn) => turn.mode !== "readonly" && (goOn && record.task_id !== null
+          ? turn.task_id === record.task_id
+          : turn.trigger_message_id === message.id || (record.task_id !== null && turn.task_id === record.task_id)),
       );
     const resumed = store.transaction(() =>
       resumeLifted(

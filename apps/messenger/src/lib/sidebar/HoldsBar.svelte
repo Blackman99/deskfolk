@@ -51,7 +51,7 @@
 			<ul class="holds-list">
 				{#each holds as hold (hold.id)}
 					<li class="holds-row" title={hold.lift_on_next_user_message ? t.control.liftOnNext : formatFullTimestamp(hold.created_at)}>
-						<span class="holds-label">{label(hold)}</span>
+						<span class="holds-label" title={label(hold)}>{label(hold)}</span>
 						{#if hold.action === 'cancel'}
 							<span class="holds-tag">{t.control.dropped}</span>
 						{/if}

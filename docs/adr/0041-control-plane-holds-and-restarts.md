@@ -9,6 +9,9 @@
 - [ADR 0016](0016-group-one-live-turn-per-bot.md) 的「群仍无 Stop」：群里每个 Bot 正在写的回复都有 Stop，整个群也能从停止菜单或一句「停下」叫停。一人一轮、点名听进已有活轮不变。
 - [ADR 0031](0031-heard-in-the-live-turn-and-plans-closed-on-evidence.md) 把「搁置」当成停下的做法：它写明群里没有 Stop、你说话改道是唯一的停法，叫停靠整理跳把规划标成搁置，规划对账只看规划是不是进行中。现在停下是一条只有你能解除的叫停记录；规划对账被叫停挡下时不改叫别人，只记一条挡下的叫醒。09-29 之后临时加在整理跳上的补丁（叫停句不重开搁置的规划、settle 不把搁置改回进行中、提示词里的叫停段）到了叫停这一级就不再用。
 
+
+> 2026-10-09：你的叫停只是「先停下」，你对 Bot 的话从不被挡；覆盖多个 Bot 的叫停只放开你说到的那个，见 [ADR 0071](0071-a-stop-is-only-stop-for-now.md)。 / Your stops are only "stop for now" and never hold your word to a Bot; one over more Bots releases the Bot you speak to — see ADR 0071.
+
 ## 现在
 
 **叫停是一行记录。** `holds` 表：范围（全部、Bot、会话、规划、任务、某个 Bot 在某件规划里的活、某一轮）、建立时定下的额外覆盖 `targets`、来源（你的话 `user_text`、按钮 `user_button`、启动时接管的旧搁置 `legacy`、删群时分出来的 `migration`）、做了什么 `effect`（只增不改）。只有你能解除（I7：`user_text` 必须指向一条你的话）；记录从不删除，清空聊天只把它指向的那句话置空。`held_scopes` 视图是「这个被叫停了吗」的唯一判据，store、叫醒闸和 turns 上的触发器都读它。库的地板随开始写叫停的那一级 `engine_level` 抬高，不随补列补表的迁移：空的 `holds` 表和新列旧版本读不错，读错的是开始往里写。启动时核对：状态和要点里的状态都是搁置的规划接成 `legacy` 叫停；只被新规划挤下当前位置的（要点里仍是进行中）不接，否则每件被挤开的规划都会冻住；叫停覆盖着却没搁置的规划、没挂起的回看补上，写进 daemon.log。

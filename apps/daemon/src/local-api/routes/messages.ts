@@ -120,7 +120,8 @@ export function messageRoutes(ctx: RouteCtx): Response | Promise<Response> | nul
     return jsonResponse(state, 200, null);
   }
 
-  // A blocked work question survives its ended segment; answering does not lift stops or resolve approvals.
+  // A blocked work question survives its ended segment; answering is your word to the Bot, so a stop of
+  // yours over that work goes on past it (ADR 0071), and it resolves no approval.
   params = matchPath(path, "/v1/messages/:id/work-answer");
   if (params && method === "POST") {
     const body = input.body;
@@ -243,7 +244,7 @@ export function messageRoutes(ctx: RouteCtx): Response | Promise<Response> | nul
     if (line.kind !== "user" || line.author !== USER_MEMBER) throw new HttpError(422, "invalid_args", "only a line of yours is read now");
     if (line.withdrawn_at) throw new HttpError(422, "withdrawn", "you took this line back");
     const inserted = engine.insertNow(line.id);
-    // A Stop holding it goes with 直接插入; a stop that stays until you lift it does not.
+    // A stop of yours holding it goes on past 直接插入 (ADR 0071); a hold of the app's does not.
     if (store.getMessage(line.id).delivery?.state === "held") throw new HttpError(409, "held", "a stop holds this line until you lift it");
     return jsonResponse({ message: store.getMessage(line.id), inserted }, 200, null);
   }

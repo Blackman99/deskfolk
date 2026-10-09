@@ -225,10 +225,20 @@ export function createStopReach(deps: StopDeps) {
           return saidTo(message, hold.scope_id);
         case "plan":
           return message.task_id === hold.scope_id || wakes(message).some((botId) => landedPlan(message, botId) === hold.scope_id);
+        case "ticket":
+          return message.ticket_id === hold.scope_id && saidToBots(message).length > 0;
         default:
           return false;
       }
-    });
+    }).concat(
+      // A stop on everything is a stop for now too (ADR 0071): any line said to a Bot is about it.
+      store.listHolds({ inForce: true }).filter((hold) => hold.scope === "global" && stopBefore(hold, message) && saidToBots(message).length > 0),
+    );
+  }
+
+  /** The Bots here your line is said to (`saidTo`): the ones a stop over more than one of them lets go of. */
+  function saidToBots(message: Message): string[] {
+    return store.presentBotIds(message.session_id).filter((botId) => saidTo(message, botId));
   }
 
   /**
@@ -337,7 +347,7 @@ export function createStopReach(deps: StopDeps) {
     return hold.scope === "global" || hold.scope === "session" || hold.scope === "plan";
   }
 
-  return { on, scopeHolds, landedPlan, lineScopes, handedOn, turnRow, heldTurn, holdsToLift, messageSession, directWithYou, stopsAbout, saidTo, stopsOnBots, stopBefore, workOnHere, heldAbout, stopOnBot, inScope, botsNamed, isWide };
+  return { on, scopeHolds, landedPlan, lineScopes, handedOn, turnRow, heldTurn, holdsToLift, messageSession, directWithYou, stopsAbout, saidTo, saidToBots, stopsOnBots, stopBefore, workOnHere, heldAbout, stopOnBot, inScope, botsNamed, isWide };
 }
 
 export type StopReach = ReturnType<typeof createStopReach>;

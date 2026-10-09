@@ -154,7 +154,7 @@ export class MessageEdits {
    * Has the working Bot read a line of yours now (直接插入, ADR 0069), cutting short the step it is
    * on; a line a Stop holds is read now too, the Stop lifted. When no step could be cut — it is
    * wrapping up, or the turn ended — the line still waits for the next one, and that is said under
-   * it; so is a stop that stays until you lift it.
+   * it; so is a hold of the app's, which your word does not go past (ADR 0071).
    */
   async insertLine(sessionId: string, message: Message): Promise<boolean> {
     const view = this.host.viewFor(sessionId);
@@ -257,7 +257,7 @@ export class MessageEdits {
     }
   }
 
-  /** A durable question belongs to ended work, not a live legacy ask. Never lift a hold here. */
+  /** A durable question belongs to ended work, not a live legacy ask. The daemon decides what your answer lifts (ADR 0071). */
   async answerWorkQuestion(id: string, body: string): Promise<WorkAnswerResult | ApiError> {
     const api = this.host.api;
     if (!api || this.host.connection !== "connected") return new ApiError(0, "disconnected", "Answer not saved");
