@@ -35,6 +35,14 @@ test('webkit: the pane switches between the trace, the board and the spec, each 
       return !!column && getComputedStyle(column).overflowY === 'auto' && column.scrollHeight > column.clientHeight;
     });
     expect(scrolls).toBe(true);
+    // Scrolled, the head sits flush with the column's top edge: no gap above it for cards to show through.
+    const headGap = await page.evaluate(() => {
+      const column = document.querySelector<HTMLElement>('[data-board-status="todo"]')!;
+      column.scrollTop = 120;
+      const head = column.querySelector<HTMLElement>('.ticket-column-head')!;
+      return head.getBoundingClientRect().top - (column.getBoundingClientRect().top + column.clientTop);
+    });
+    expect(Math.abs(headGap)).toBeLessThan(1);
 
     // The spec as a page: the goal over the contract in a main column, the overview beside it.
     await page.getByRole('tab', { name: /要点/ }).click();

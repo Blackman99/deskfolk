@@ -16,6 +16,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 - In Settings › Models › Endpoints, a card no longer lists every enabled model as a row to click. Its default model is one picker beside "Default model", with Models and the enabled count at the right of the same line, so a card stays two lines high however many models it has. A phone keeps its own layout.
 
+### Board column heads no longer let cards show above them
+
+- On the plan board, a column scrolled down no longer shows a strip of the cards above its head: the head now sits flush with the column's top edge.
+
 ### Settings › Prompts in sections, as Models is
 
 - Prompts is split by group the way Models is: Every turn, Claude Agent, The app's own calls and Tool descriptions. A wide window shows them as tabs under the search, each counting the prompts edited in it (in the warning colour when one is in conflict with a newer default); each group scrolls on its own under them.

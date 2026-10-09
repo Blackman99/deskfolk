@@ -1361,7 +1361,8 @@
 		min-width: 0;
 		min-height: 0;
 		overflow-y: auto;
-		padding: 8px;
+		/* No top padding: the sticky head carries it, or cards scroll into view above the head. */
+		padding: 0 8px 8px;
 		border: 1px solid var(--line);
 		border-radius: var(--radius-md);
 		background: var(--line-subtle);
@@ -1385,7 +1386,7 @@
 		align-items: center;
 		gap: 6px;
 		min-width: 0;
-		padding-bottom: 4px;
+		padding: 8px 0 4px;
 		background: var(--line-subtle);
 		font-size: 11px;
 		font-weight: 650;
