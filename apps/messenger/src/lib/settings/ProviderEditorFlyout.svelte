@@ -4,6 +4,8 @@
 	import AutosaveState from './AutosaveState.svelte';
 	import SettingsSubpageButton from './SettingsSubpageButton.svelte';
 	import ProviderForm from './ProviderForm.svelte';
+	import ConnectorPicker from './ConnectorPicker.svelte';
+	import type { ConnectorId } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import { providerHost, type ProviderDraft, type ProviderEditorState } from './provider-form.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
@@ -24,6 +26,8 @@
 		closeProviderEditor: () => void;
 		editorKeySet: (target: 'add' | string) => boolean;
 		setProviderDraft: (draft: ProviderDraft) => void;
+		/** Adding: a built-in connector picked, or null for a custom endpoint (ADR 0072). */
+		pickConnector: (id: ConnectorId | null) => void;
 		fetchProviderModels: () => Promise<void>;
 		persistProviderEditor: (editor: ProviderEditorState) => Promise<void>;
 	};
@@ -42,6 +46,7 @@
 		closeProviderEditor,
 		editorKeySet,
 		setProviderDraft,
+		pickConnector,
 		fetchProviderModels,
 		persistProviderEditor
 	}: Props = $props();
@@ -97,6 +102,9 @@
 						<span>{providerHost(providerEditor.draft.baseUrl)}</span>
 					</div>
 				{/if}
+				{#if providerEditor.picking}
+				<ConnectorPicker {t} onpick={pickConnector} />
+				{:else}
 				{#key `${providerEditor.target}:${providerEditor.view}`}
 				<ProviderForm
 					bind:this={providerForm}
@@ -117,6 +125,7 @@
 					measure={providerEditor.target === 'add' ? undefined : (model) => runtime.speedTest(providerEditor!.target, model)}
 				/>
 				{/key}
+				{/if}
 			</div>
 			<div class="provider-mobile-status" class:is-error={providerEditor.failed || Object.values(providerEditor.errors).some(Boolean)}>
 				<span role="status">{providerSaving ? t.sidebar.autoSaving : providerEditor.failed || Object.values(providerEditor.errors).some(Boolean) ? t.settings.saveFailed : providerSavedTick > 0 ? t.sidebar.autoSaved : t.sidebar.autoSaveHint}</span>

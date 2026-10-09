@@ -291,6 +291,7 @@ export function createHopLoop(deps: LifecycleDeps, endings: TurnEndings, closing
         baseUrl: target.baseUrl,
         apiKey: target.apiKey,
         apiFormat: target.apiFormat,
+        workspaceId: target.workspaceId,
         model: target.model,
         thinkingLevel: target.thinkingLevel,
         messages,

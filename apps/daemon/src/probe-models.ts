@@ -6,6 +6,7 @@ import {
 } from "@real-bot/protocol";
 import { anthropicHeaders, anthropicUrl, type AnthropicAuth } from "./anthropic-messages";
 import { HttpError } from "./errors";
+import { takeCodePoints } from "./text";
 import type { LocalModelFacts } from "./local-model";
 
 export type { ProbedModel };
@@ -59,6 +60,8 @@ export type ProbeOptions = {
   guard?: () => void;
   /** The endpoint's wire format; absent is `openai`. */
   apiFormat?: ApiFormat;
+  /** The Anthropic workspace to name (ADR 0072); only sent in Anthropic's format. */
+  workspaceId?: string | null;
 };
 
 export async function probeEndpointModels(
@@ -74,7 +77,7 @@ export async function probeEndpointModels(
   const url = anthropic ? `${anthropicUrl(cleanBase, "models")}?limit=1000` : `${cleanBase}/models`;
   const headersFor = (auth: AnthropicAuth): Record<string, string> => {
     if (anthropic) {
-      const { "Content-Type": _json, ...rest } = anthropicHeaders(apiKey, auth);
+      const { "Content-Type": _json, ...rest } = anthropicHeaders(apiKey, auth, options.workspaceId);
       return { Accept: "application/json", ...rest };
     }
     return { Accept: "application/json", ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) };
@@ -146,7 +149,7 @@ async function probeOnce(
     throw new HttpError(
       res.status === 401 ? 401 : 422,
       "probe_failed",
-      `Endpoint returned ${res.status}: ${text.slice(0, 150)}`,
+      `Endpoint returned ${res.status}: ${refusalText(text)}`,
     );
   }
 
@@ -158,6 +161,32 @@ async function probeOnce(
     throw new HttpError(422, "no_models", "No models found in endpoint response");
   }
   return probed;
+}
+
+/**
+ * What a refused `/models` said, for the form's banner: the error's own message when the body is the
+ * usual JSON error (Anthropic's, OpenAI's, Bailian's), which is what says how to fix it, and the
+ * start of the raw body otherwise. Cut off at 150 characters, the advice at the end of a long message
+ * was lost (2026-10-09: "…or use an API key that is scoped to a workspace").
+ */
+export function refusalText(body: string): string {
+  let parsed: unknown = null;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    // Not JSON: an HTML error page, plain text.
+  }
+  const rec = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+  const error = rec?.error && typeof rec.error === "object" && !Array.isArray(rec.error) ? (rec.error as Record<string, unknown>) : null;
+  const message = [error?.message, typeof rec?.error === "string" ? rec.error : undefined, rec?.message]
+    .find((value): value is string => typeof value === "string" && value.trim().length > 0);
+  if (message) return clipText(message.trim().replace(/\s+/g, " "), 400);
+  return clipText(body.trim().replace(/\s+/g, " "), 150);
+}
+
+function clipText(text: string, max: number): string {
+  const taken = takeCodePoints(text, max);
+  return taken.truncated ? `${taken.text}…` : taken.text;
 }
 
 function modelItems(data: unknown): unknown[] {

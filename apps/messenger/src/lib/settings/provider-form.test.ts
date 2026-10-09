@@ -4,10 +4,13 @@ import {
   addAttrThinkingLevel,
   addDraftModel,
   applyProbedModels,
+  connectorDraft,
+  connectorSignature,
   draftFromProvider,
   emptyModelAttr,
   emptyProviderDraft,
   hasCustomAttrs,
+  keyIsWorkspaceId,
   mapProviderError,
   modelSelectValue,
   parseModelSelectValue,
@@ -18,6 +21,7 @@ import {
   probeSignature,
   providerHost,
   setDraftModels,
+  showsWorkspace,
   toggleAttrStrength,
   toggleAttrThinkingLevel,
   toggleDraftModel,
@@ -32,6 +36,8 @@ function draft(overrides: Partial<ProviderDraft> = {}): ProviderDraft {
     name: "OpenAI",
     baseUrl: "https://api.openai.com/v1",
     apiFormat: "openai",
+    connector: null,
+    workspaceId: "",
     apiKey: "",
     models: ["gpt-4o"],
     availableModels: [],
@@ -592,4 +598,62 @@ test("the window is saved, kept when untouched, cleared when emptied and refused
   const cleared = planPatchProvider(current, set(""));
   expect(cleared.ok && cleared.patch.models).toEqual([{ name: "qwen3:8b", price: null, thinking_levels: [...ALL_LEVELS], strengths: [], context_window: null }]);
   expect(planPatchProvider(current, set("32k"))).toEqual({ ok: false, errors: { contextWindow: "invalid" } });
+});
+
+test("a connector draft has its format and name, and no address until a plan takes the key", () => {
+  expect(connectorDraft("anthropic", "Anthropic")).toMatchObject({ connector: "anthropic", apiFormat: "anthropic", name: "Anthropic", baseUrl: "" });
+  expect(connectorDraft("qwen", "千问")).toMatchObject({ connector: "qwen", apiFormat: "openai", baseUrl: "" });
+  expect(planCreateProvider({ ...connectorDraft("qwen", "千问"), apiKey: "sk-x" }, true)).toEqual({ ok: false, errors: { endpoint: "empty" } });
+});
+
+test("an endpoint reopened at a connector's address is that connector's form", () => {
+  const saved = { name: "小米", base_url: "https://token-plan-cn.xiaomimimo.com/v1", models: [], default_model: null };
+  expect(draftFromProvider(saved).connector).toBe("xiaomi");
+  expect(draftFromProvider({ ...saved, base_url: "https://cpa.example.com/v1" }).connector).toBeNull();
+  expect(draftFromProvider({ ...saved, base_url: "https://api.anthropic.com/", api_format: "anthropic", workspace_id: "wrkspc_01A" })).toMatchObject({
+    connector: "anthropic",
+    workspaceId: "wrkspc_01A",
+  });
+});
+
+test("the workspace field is offered for Anthropic's own address only", () => {
+  expect(showsWorkspace(connectorDraft("anthropic", "Anthropic"))).toBe(true);
+  expect(showsWorkspace(connectorDraft("xiaomi", "小米"))).toBe(false);
+  expect(showsWorkspace(draft({ baseUrl: "https://api.anthropic.com", apiFormat: "anthropic" }))).toBe(true);
+  expect(showsWorkspace(draft({ baseUrl: "https://cpa.example.com", apiFormat: "anthropic" }))).toBe(false);
+});
+
+test("a workspace is sent when set, validated, and cleared with null", () => {
+  const anthropic = draft({ name: "Anthropic", baseUrl: "https://api.anthropic.com", apiFormat: "anthropic", apiKey: "k" });
+  const created = planCreateProvider({ ...anthropic, workspaceId: " wrkspc_01A " }, true);
+  expect(created.ok && created.body.workspace_id).toBe("wrkspc_01A");
+  const without = planCreateProvider(anthropic, true);
+  expect(without.ok && "workspace_id" in without.body).toBe(false);
+  expect(planCreateProvider({ ...anthropic, workspaceId: "01A" }, true)).toEqual({ ok: false, errors: { anthropicWorkspace: "invalid" } });
+  const saved = { name: "Anthropic", base_url: "https://api.anthropic.com", api_format: "anthropic" as const, workspace_id: "wrkspc_01A", models: ["gpt-4o"], default_model: "gpt-4o" };
+  const reopened = draftFromProvider(saved);
+  expect(planPatchProvider(saved, reopened)).toEqual({ ok: true, patch: {} });
+  expect(planPatchProvider(saved, { ...reopened, workspaceId: "wrkspc_02B" })).toEqual({ ok: true, patch: { workspace_id: "wrkspc_02B" } });
+  expect(planPatchProvider(saved, { ...reopened, workspaceId: "" })).toEqual({ ok: true, patch: { workspace_id: null } });
+  expect(mapProviderError("workspace_id must be an Anthropic workspace id (wrkspc_…)")).toEqual({ anthropicWorkspace: "invalid" });
+});
+
+test("a connector's search depends on its key and workspace, not on the plan picked", () => {
+  const xiaomi = { ...connectorDraft("xiaomi", "小米"), apiKey: "tp-1" };
+  expect(connectorSignature({ ...xiaomi, apiKey: "" }, false)).toBeNull();
+  expect(connectorSignature({ ...xiaomi, apiKey: "" }, true)).not.toBeNull();
+  expect(connectorSignature({ ...xiaomi, baseUrl: "https://api.xiaomimimo.com/v1" }, false)).toBe(connectorSignature(xiaomi, false));
+  expect(connectorSignature({ ...xiaomi, apiKey: "tp-2" }, false)).not.toBe(connectorSignature(xiaomi, false));
+  expect(connectorSignature(draft(), false)).toBeNull();
+  expect(probeSignature(draft({ apiKey: "k", workspaceId: "wrkspc_01A" }), false)).toBe("openai\nhttps://api.openai.com/v1\nk\nwrkspc_01A");
+});
+
+test("a workspace id where Anthropic's key goes is caught, and nothing is searched with it", () => {
+  const anthropic = { ...connectorDraft("anthropic", "Anthropic"), apiKey: "wrkspc_01KScB9" };
+  expect(keyIsWorkspaceId(anthropic)).toBe(true);
+  expect(connectorSignature(anthropic, false)).toBeNull();
+  expect(keyIsWorkspaceId({ ...anthropic, apiKey: "sk-ant-usr-1" })).toBe(false);
+  expect(keyIsWorkspaceId({ ...connectorDraft("qwen", "千问"), apiKey: "wrkspc_01KScB9" })).toBe(false);
+  expect(connectorSignature({ ...anthropic, apiKey: "sk-ant-usr-1", workspaceId: "wrkspc" }, false)).toBeNull();
+  expect(connectorSignature({ ...anthropic, apiKey: "sk-ant-usr-1", workspaceId: "wrkspc_01A" }, false)).toBe("anthropic\nsk-ant-usr-1\nwrkspc_01A");
 });

@@ -73,6 +73,7 @@ export function createRouting(deps: RoutingDeps): Routing {
         baseUrl: provider.base_url,
         apiKey,
         apiFormat: provider.api_format ?? "openai",
+        workspaceId: provider.workspace_id ?? null,
         models: provider.models,
         defaultModel: provider.default_model,
       });
@@ -94,6 +95,7 @@ export function createRouting(deps: RoutingDeps): Routing {
       baseUrl: provider.baseUrl,
       apiKey: provider.apiKey,
       apiFormat: provider.apiFormat,
+      workspaceId: provider.workspaceId,
       providerId: provider.id,
       providerName: provider.name,
       model,
@@ -179,6 +181,7 @@ export function createRouting(deps: RoutingDeps): Routing {
         baseUrl: routing.baseUrl,
         apiKey: routing.apiKey,
         apiFormat: routing.apiFormat,
+        workspaceId: routing.workspaceId,
         model: routing.model,
         messages: [
           { role: "system", content: ROUTE_PICK_SYSTEM },
@@ -209,6 +212,7 @@ export function createRouting(deps: RoutingDeps): Routing {
           baseUrl: provider.baseUrl,
           apiKey: provider.apiKey,
           apiFormat: provider.apiFormat,
+          workspaceId: provider.workspaceId,
           providerId: provider.id,
           providerName: provider.name,
           model: pick.model,
@@ -249,6 +253,7 @@ export function createRouting(deps: RoutingDeps): Routing {
             baseUrl: provider.baseUrl,
             apiKey: provider.apiKey,
             apiFormat: provider.apiFormat,
+            workspaceId: provider.workspaceId,
             providerId: provider.id,
             providerName: provider.name,
             model: routed.model,
@@ -281,6 +286,7 @@ export function createRouting(deps: RoutingDeps): Routing {
         baseUrl: provider.baseUrl,
         apiKey: provider.apiKey,
         apiFormat: provider.apiFormat,
+        workspaceId: provider.workspaceId,
         providerId: provider.id,
         providerName: provider.name,
         model: resolved.model,
@@ -329,7 +335,7 @@ export function createRouting(deps: RoutingDeps): Routing {
     const thinkingLevel = supported.length === 0 ? routed.target.thinkingLevel
       : supported.find((level) => level.toLowerCase() === String(routed.target.thinkingLevel).toLowerCase()) ?? pickThinkingLevel(classifyMessage(text), supported);
     return {
-      target: { ...routed.target, baseUrl: provider.baseUrl, apiKey: provider.apiKey, apiFormat: provider.apiFormat, providerId: provider.id, providerName: provider.name, model: able.model, thinkingLevel },
+      target: { ...routed.target, baseUrl: provider.baseUrl, apiKey: provider.apiKey, apiFormat: provider.apiFormat, workspaceId: provider.workspaceId, providerId: provider.id, providerName: provider.name, model: able.model, thinkingLevel },
       decision: { ...routed.decision, model: able.model, providerId: provider.id, thinkingLevel, reasonCode: "capability_filter" },
     };
   }
@@ -398,7 +404,7 @@ export function createRouting(deps: RoutingDeps): Routing {
     const supported = catalog.find((entry) => entry.providerId === rung.provider_id && entry.name === rung.model)?.thinking_levels ?? [];
     const thinkingLevel = supported.length === 0 ? routed.target.thinkingLevel : pickThinkingLevel(classifyMessage(text), supported);
     return { short: rungs > above.length, routed: {
-      target: { ...routed.target, baseUrl: provider.baseUrl, apiKey: provider.apiKey, apiFormat: provider.apiFormat, providerId: provider.id, providerName: provider.name, model: rung.model, thinkingLevel },
+      target: { ...routed.target, baseUrl: provider.baseUrl, apiKey: provider.apiKey, apiFormat: provider.apiFormat, workspaceId: provider.workspaceId, providerId: provider.id, providerName: provider.name, model: rung.model, thinkingLevel },
       decision: { ...routed.decision, model: rung.model, providerId: provider.id, thinkingLevel, reasonCode: "escalation_model" },
     } };
   }
@@ -437,7 +443,7 @@ export function createRouting(deps: RoutingDeps): Routing {
       if (!provider) return null;
       const thinkingLevel = levelFor(providerId, model, wanted);
       return {
-        target: { baseUrl: provider.baseUrl, apiKey: provider.apiKey, apiFormat: provider.apiFormat, providerId, providerName: provider.name, model, thinkingLevel, locale: creds.locale },
+        target: { baseUrl: provider.baseUrl, apiKey: provider.apiKey, apiFormat: provider.apiFormat, workspaceId: provider.workspaceId, providerId, providerName: provider.name, model, thinkingLevel, locale: creds.locale },
         decision: { model, thinkingLevel, providerId, signature: classifyMessage(text), reasonCode },
       };
     };

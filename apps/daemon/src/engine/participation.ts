@@ -476,6 +476,7 @@ export function createParticipation(deps: ParticipationDeps): Participation {
         baseUrl: target.baseUrl,
         apiKey: target.apiKey,
         apiFormat: target.apiFormat,
+        workspaceId: target.workspaceId,
         model: target.model,
         prompt: prompt.ref,
         messages: [

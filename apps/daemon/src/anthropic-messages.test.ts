@@ -398,6 +398,17 @@ describe("Anthropic Messages: a judge", () => {
   });
 });
 
+describe("Anthropic Messages: the workspace", () => {
+  test("a completion names the workspace by header, and none without one", async () => {
+    const named = recorder(() => stream(textStream("hi")));
+    await createCompletionsClient({ fetch: named.fetch, clock: quick }).complete(hop("https://api.anthropic.com", { workspaceId: "wrkspc_01Test" }));
+    expect(named.sent[0]!.headers["anthropic-workspace-id"]).toBe("wrkspc_01Test");
+    const plain = recorder(() => stream(textStream("hi")));
+    await createCompletionsClient({ fetch: plain.fetch, clock: quick }).complete(hop("https://api.anthropic.com", { workspaceId: null }));
+    expect(plain.sent[0]!.headers).not.toHaveProperty("anthropic-workspace-id");
+  });
+});
+
 describe("Anthropic Messages: the model list", () => {
   test("probed at /v1/models with the Messages headers, falling back to Bearer", async () => {
     const seen: Array<{ url: string; headers: Record<string, string> }> = [];

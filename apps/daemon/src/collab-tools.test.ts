@@ -345,7 +345,7 @@ describe("endpoint and MCP catalog tools", () => {
     });
     expect(url).toMatchObject({
       ok: false,
-      error: { code: "failed", message: "cannot modify the default endpoint's URL, API format or key, or delete it" },
+      error: { code: "failed", message: "cannot modify the default endpoint's URL, API format, workspace or key, or delete it" },
     });
     const format = await runCollabTool(ctx, "update_endpoint", { id: first.id, api_format: "anthropic" });
     expect(format.error?.code).toBe("failed");
@@ -388,6 +388,40 @@ describe("endpoint and MCP catalog tools", () => {
     expect((await runCollabTool(ctx, "update_endpoint", { id, api_format: "openai", name: "Claude 2" })).ok).toBe(true);
     const wrong = await runCollabTool(ctx, "update_endpoint", { id, api_format: "gemini" });
     expect(wrong.ok).toBe(false);
+    store.close();
+  });
+
+  test("an Anthropic workspace id: on the approval card, and changing or clearing it waits for one", async () => {
+    const store = new Store({ endpointKey: memoryKeyStore() });
+    await store.createProvider({ name: "Home", base_url: "https://api.openai.com/v1", api_key: "sk-home", models: ["gpt-4o"] });
+    const created = store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const ctx = ctxFor(store, created.bot.id, created.direct_session.id);
+    const args = { name: "Claude", base_url: "https://api.anthropic.com", api_format: "anthropic", workspace_id: "wrkspc_01Test", models: ["claude-opus-5-5"] };
+    const parked = await runCollabTool(ctx, "add_endpoint", args);
+    expect(parked.waitApproval?.summary).toBe("endpoint-add Claude\nhttps://api.anthropic.com (Anthropic Messages) [workspace wrkspc_01Test]\nmodels: claude-opus-5-5");
+    const written = await runCollabTool({ ...ctx, approved: true, approvalApiKey: "sk-ant" }, "add_endpoint", args);
+    expect(written.data?.workspace_id).toBe("wrkspc_01Test");
+    const id = written.data?.id as string;
+    expect((await store.getProvider(id)).workspace_id).toBe("wrkspc_01Test");
+    expect(JSON.stringify(written.data)).not.toContain("sk-ant");
+
+    const moved = await runCollabTool(ctx, "update_endpoint", { id, workspace_id: "wrkspc_02Other" });
+    expect(moved.waitApproval?.kind_key).toBe("endpoint-edit");
+    expect(moved.waitApproval?.summary).toContain("[workspace wrkspc_02Other]");
+    expect((await store.getProvider(id)).workspace_id).toBe("wrkspc_01Test");
+    const approved = await runCollabTool({ ...ctx, approved: true }, "update_endpoint", { id, workspace_id: "wrkspc_02Other" });
+    expect(approved.data?.workspace_id).toBe("wrkspc_02Other");
+    // The same id again is no change.
+    expect((await runCollabTool(ctx, "update_endpoint", { id, workspace_id: "wrkspc_02Other", name: "Claude 2" })).ok).toBe(true);
+    const clearing = await runCollabTool(ctx, "update_endpoint", { id, workspace_id: "" });
+    expect(clearing.waitApproval?.kind_key).toBe("endpoint-edit");
+    const cleared = await runCollabTool({ ...ctx, approved: true }, "update_endpoint", { id, workspace_id: "" });
+    expect(cleared.data?.workspace_id).toBeNull();
+    const wrong = await runCollabTool(ctx, "update_endpoint", { id, workspace_id: "ws-1" });
+    expect(wrong.ok).toBe(false);
+    // The default endpoint's workspace is as fixed as its URL.
+    const first = (await store.listProviders())[0]!;
+    expect((await runCollabTool(ctx, "update_endpoint", { id: first.id, workspace_id: "wrkspc_01Test" })).error?.code).toBe("failed");
     store.close();
   });
 

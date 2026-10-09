@@ -984,6 +984,7 @@ function bareOrganizer(answers: Array<JudgeResult | Error | (() => JudgeResult)>
       baseUrl: "http://127.0.0.1:1/v1",
       apiKey: "fixture",
       apiFormat: "openai",
+      workspaceId: null,
       providerId: "p",
       providerName: "fixture",
       model: "fixture",

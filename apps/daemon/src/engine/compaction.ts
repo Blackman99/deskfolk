@@ -46,6 +46,7 @@ export async function summarizeLoop(deps: SummarizeDeps, input: SummarizeInput):
       baseUrl: input.target.baseUrl,
       apiKey: input.target.apiKey,
       apiFormat: input.target.apiFormat,
+      workspaceId: input.target.workspaceId,
       model: input.target.model,
       prompt: prompt.ref,
       messages: [

@@ -1,7 +1,8 @@
 <script lang="ts">
 	import ModelLadderCard from './ModelLadderCard.svelte';
 	import ReaderModelCard from './ReaderModelCard.svelte';
-	import { isLocalEndpoint } from '@real-bot/protocol';
+	import { connectorFor, isLocalEndpoint } from '@real-bot/protocol';
+	import ConnectorLogo from './ConnectorLogo.svelte';
 	import type { Copy } from '../copy.ts';
 	import { providerHost } from './provider-form.ts';
 	import { botAvatarColor } from '../avatar.ts';
@@ -64,15 +65,20 @@
 			{@const isDefault = snapshot.settings.default_provider_id === provider.id}
 			{@const palette = botAvatarColor(provider.id)}
 			{@const host = providerHost(provider.base_url)}
+			{@const builtIn = connectorFor(provider.base_url, provider.api_format)}
 			<div class="provider-card" class:is-default={isDefault}>
 				<div class="provider-card-head flex items-center justify-between gap-5 min-w-0">
 					<div class="provider-card-identity">
-						<span
-							class="provider-card-mark"
-							style:background={palette.bg}
-							style:color={palette.text}
-							style:border-color={palette.border}
-						>{rosterLetter(provider.name)}</span>
+						{#if builtIn}
+							<span class="provider-card-logo" title={t.connectors.name[builtIn.connector.id]}><ConnectorLogo id={builtIn.connector.id} /></span>
+						{:else}
+							<span
+								class="provider-card-mark"
+								style:background={palette.bg}
+								style:color={palette.text}
+								style:border-color={palette.border}
+							>{rosterLetter(provider.name)}</span>
+						{/if}
 						<span class="provider-identity-text min-w-0 flex flex-col gap-[3px] flex-1">
 							<span class="provider-name-row flex items-center gap-4 flex-wrap min-w-0">
 								<span class="provider-card-name text-14 font-semibold text-ink leading-[1.2]">{provider.name}</span>
@@ -90,7 +96,10 @@
 							{#if host}
 								<span class="provider-card-host mono inline-flex items-center gap-[5px] text-12 text-muted overflow-hidden text-ellipsis whitespace-nowrap max-w-full" title={provider.base_url ?? ''}>
 									<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-									<span>{host}{provider.api_format === 'anthropic' ? ` · ${t.settings.apiFormatAnthropicShort}` : ''}</span>
+									<span class="provider-card-host-text">{host}{provider.api_format === 'anthropic' && !builtIn ? ` · ${t.settings.apiFormatAnthropicShort}` : ''}</span>
+									{#if builtIn && builtIn.connector.plans.length > 1}
+										<span class="provider-plan-chip">{t.connectors.plan[`${builtIn.connector.id}:${builtIn.plan.id}` as keyof typeof t.connectors.plan] ?? builtIn.plan.id}</span>
+									{/if}
 								</span>
 							{/if}
 						</span>
@@ -279,6 +288,30 @@
 		font-weight: 700;
 		flex: 0 0 auto;
 		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+	}
+
+	.provider-card-logo {
+		display: inline-flex;
+		flex: 0 0 auto;
+	}
+
+	/* A long address gives way to the plan beside it. */
+	.provider-card-host-text {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.provider-plan-chip {
+		flex: 0 0 auto;
+		padding: 0 6px;
+		border-radius: var(--radius-full);
+		background: var(--chip);
+		border: 1px solid var(--chip-line);
+		font-family: var(--font);
+		font-size: 11px;
+		line-height: 16px;
+		color: var(--ink-secondary);
 	}
 
 	.provider-badge-default {
@@ -472,6 +505,7 @@
 		.provider-card-head { display: contents; }
 		.provider-card-identity { align-items: flex-start; gap: 12px; padding: 18px 16px 16px; }
 		.provider-card-mark { width: 40px; height: 40px; border-radius: var(--radius-md); font-size: 18px; box-shadow: none; }
+		.provider-card-logo { --connector-logo-size: 40px; }
 		.provider-name-row { gap: 6px; }
 		.provider-card-name { flex: 1 0 100%; font-size: 18px; line-height: 1.4; overflow-wrap: anywhere; }
 		.provider-badge-default, .provider-badge-key { padding: 3px 6px; font-size: 11px; }

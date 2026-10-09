@@ -69,12 +69,14 @@ export class AdminMutations {
     }
   }
 
+  /** `status` is the daemon's answer when it gave one: a 401 means the endpoint refused the key. */
   async probeModels(
     baseUrl?: string,
     apiKey?: string,
     providerId?: string,
     apiFormat?: ApiFormat,
-  ): Promise<{ ok: true } & ProbeModelsResponse | { ok: false; error: string }> {
+    workspaceId?: string | null,
+  ): Promise<{ ok: true } & ProbeModelsResponse | { ok: false; error: string; status?: number }> {
     const api = this.host.api;
     if (!api) return { ok: false, error: "Not connected" };
     try {
@@ -82,6 +84,7 @@ export class AdminMutations {
         endpoint_base_url: baseUrl,
         endpoint_api_key: apiKey,
         ...(apiFormat ? { api_format: apiFormat } : {}),
+        ...(workspaceId !== undefined ? { workspace_id: workspaceId } : {}),
         provider_id: providerId,
       });
       if (this.host.api !== api) return { ok: false, error: "Connection changed" };
@@ -89,7 +92,7 @@ export class AdminMutations {
     } catch (error) {
       if (this.host.api !== api) return { ok: false, error: "Connection changed" };
       const msg = error instanceof Error ? error.message : String(error);
-      return { ok: false, error: msg };
+      return { ok: false, error: msg, ...(error instanceof ApiError ? { status: error.status } : {}) };
     }
   }
 

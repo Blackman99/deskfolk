@@ -76,6 +76,7 @@ export type Live = {
     baseUrl: string;
     apiKey: string;
     apiFormat: ApiFormat;
+    workspaceId: string | null;
     providerId: string;
     providerName: string;
     model: string;
@@ -153,6 +154,7 @@ export type Creds = {
     baseUrl: string;
     apiKey: string;
     apiFormat: ApiFormat;
+    workspaceId: string | null;
     models: string[];
     defaultModel: string | null;
   }>;
@@ -162,6 +164,7 @@ export type ResolvedTarget = {
   baseUrl: string;
   apiKey: string;
   apiFormat: ApiFormat;
+  workspaceId: string | null;
   providerId: string;
   providerName: string;
   model: string;
@@ -178,7 +181,7 @@ export type CallTarget = {
 };
 
 /** A call's target with the endpoint it goes to. */
-export type EndpointTarget = CallTarget & { baseUrl: string; apiKey: string; apiFormat: ApiFormat };
+export type EndpointTarget = CallTarget & { baseUrl: string; apiKey: string; apiFormat: ApiFormat; workspaceId: string | null };
 
 /** Session and Bot as they are before the call. Names are snapshotted here; a delete during the call cannot rewrite them. */
 export type SpendOwner = {

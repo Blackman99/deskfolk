@@ -633,7 +633,8 @@ export class MessengerRuntime {
     apiKey?: string,
     providerId?: string,
     apiFormat?: ApiFormat,
-  ): Promise<{ ok: true } & ProbeModelsResponse | { ok: false; error: string }> { return this.adminMutations.probeModels(baseUrl, apiKey, providerId, apiFormat); }
+    workspaceId?: string | null,
+  ): Promise<{ ok: true } & ProbeModelsResponse | { ok: false; error: string; status?: number }> { return this.adminMutations.probeModels(baseUrl, apiKey, providerId, apiFormat, workspaceId); }
   speedTest(providerId: string, model: string): Promise<{ ok: true; speed: ModelSpeed } | { ok: false; error: string }> { return this.adminMutations.speedTest(providerId, model); }
   createBot(body: CreateBotRequest): Promise<ApiError | null> { return this.adminMutations.createBot(body); }
   createGroup(body: CreateGroupRequest): Promise<ApiError | null> { return this.adminMutations.createGroup(body); }

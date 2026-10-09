@@ -44,6 +44,7 @@ export function createReflector(deps: {
           baseUrl: routed.target.baseUrl,
           apiKey: routed.target.apiKey,
           apiFormat: routed.target.apiFormat,
+          workspaceId: routed.target.workspaceId,
           model: routed.target.model,
           prompt: prompt.ref,
           messages: [

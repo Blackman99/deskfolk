@@ -30,6 +30,7 @@ import * as sharedSkillsText from "./copy/shared-skills.ts";
 import * as modelLadderText from "./copy/model-ladder.ts";
 import * as claudeAgentText from "./copy/claude-agent.ts";
 import * as readerModelText from "./copy/reader-model.ts";
+import * as connectorsText from "./copy/connectors.ts";
 import * as lessonsText from "./copy/lessons.ts";
 import * as promptsText from "./copy/prompts.ts";
 import * as notificationsText from "./copy/notifications.ts";
@@ -71,6 +72,7 @@ const zh = {
   modelLadder: modelLadderText.zh,
   claudeAgent: claudeAgentText.zh,
   readerModel: readerModelText.zh,
+  connectors: connectorsText.zh,
   lessons: lessonsText.zh,
   prompts: promptsText.zh,
   notifications: notificationsText.zh,
@@ -107,6 +109,7 @@ const en: CopyShape<typeof zh> = {
   modelLadder: modelLadderText.en,
   claudeAgent: claudeAgentText.en,
   readerModel: readerModelText.en,
+  connectors: connectorsText.en,
   lessons: lessonsText.en,
   prompts: promptsText.en,
   notifications: notificationsText.en,

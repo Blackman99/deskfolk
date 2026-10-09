@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { extractModelIds, extractProbedModels, probeEndpointModels } from "./probe-models";
+import { extractModelIds, extractProbedModels, probeEndpointModels, refusalText } from "./probe-models";
 
 describe("extractModelIds", () => {
   test("extracts from OpenAI format", () => {
@@ -220,6 +220,80 @@ describe("probeEndpointModels", () => {
       }),
     ).rejects.toThrow("revoked");
     expect(order).toEqual(["guard", "fetch", "guard"]);
+  });
+});
+
+describe("probeEndpointModels: the Anthropic workspace", () => {
+  const modelsBody = { data: [{ type: "model", id: "claude-opus-5-5" }], has_more: false };
+  function recording(answer: (headers: Record<string, string>) => Response) {
+    const seen: Array<Record<string, string>> = [];
+    const fetchImpl = (async (_url: string, init?: RequestInit) => {
+      const headers = { ...(init?.headers as Record<string, string>) };
+      seen.push(headers);
+      return answer(headers);
+    }) as unknown as typeof fetch;
+    return { seen, fetchImpl };
+  }
+
+  test("an Anthropic probe names the workspace, on the Bearer retry too", async () => {
+    const { seen, fetchImpl } = recording((headers) => (headers["x-api-key"] ? new Response("{}", { status: 401 }) : Response.json(modelsBody)));
+    await probeEndpointModels("https://api.anthropic.com", "sk-ant-usr-x", fetchImpl, undefined, { apiFormat: "anthropic", workspaceId: "wrkspc_01Test" });
+    expect(seen).toHaveLength(2);
+    expect(seen[0]!["x-api-key"]).toBe("sk-ant-usr-x");
+    expect(seen[1]!.Authorization).toBe("Bearer sk-ant-usr-x");
+    expect(seen.map((headers) => headers["anthropic-workspace-id"])).toEqual(["wrkspc_01Test", "wrkspc_01Test"]);
+  });
+
+  test("without a workspace no such header goes", async () => {
+    const { seen, fetchImpl } = recording(() => Response.json(modelsBody));
+    await probeEndpointModels("https://api.anthropic.com", "sk-ant", fetchImpl, undefined, { apiFormat: "anthropic", workspaceId: null });
+    expect(seen[0]).not.toHaveProperty("anthropic-workspace-id");
+  });
+
+  test("an OpenAI-format probe never sends it", async () => {
+    const { seen, fetchImpl } = recording(() => Response.json({ data: [{ id: "gpt-4o" }] }));
+    await probeEndpointModels("https://api.openai.com/v1", "sk", fetchImpl, undefined, { apiFormat: "openai", workspaceId: "wrkspc_01Test" });
+    expect(seen[0]).not.toHaveProperty("anthropic-workspace-id");
+    expect(seen[0]!.Authorization).toBe("Bearer sk");
+  });
+
+  test("a refused probe says why, in the endpoint's own words", async () => {
+    const message = "This API key is not scoped to a workspace, so this request must include the anthropic-workspace-id header with the ID of the workspace to use. Add the header, or use an API key that is scoped to a workspace.";
+    const body = JSON.stringify({ type: "error", error: { type: "invalid_request_error", message } });
+    const { fetchImpl } = recording(() => new Response(body, { status: 400 }));
+    const err = await probeEndpointModels("https://api.anthropic.com", "sk-ant-usr-x", fetchImpl, undefined, { apiFormat: "anthropic" }).catch((e: unknown) => e);
+    expect((err as Error).message).toBe(`Endpoint returned 400: ${message}`);
+    const unauthorized = recording(() => new Response(JSON.stringify({ error: { message: "Invalid API Key" } }), { status: 401 }));
+    const refused = await probeEndpointModels("https://api.openai.com/v1", "bad", unauthorized.fetchImpl).catch((e: unknown) => e);
+    expect((refused as Error).message).toBe("Endpoint returned 401: Invalid API Key");
+  });
+});
+
+describe("refusalText", () => {
+  test("an Anthropic error comes back whole, past 150 characters", () => {
+    const message = "This API key is not scoped to a workspace, so this request must include the anthropic-workspace-id header with the ID of the workspace to use. Add the header, or use an API key that is scoped to a workspace.";
+    expect(message.length).toBeGreaterThan(150);
+    expect(refusalText(JSON.stringify({ type: "error", error: { type: "invalid_request_error", message } }))).toBe(message);
+  });
+
+  test("an OpenAI-style error", () => {
+    expect(refusalText(JSON.stringify({ error: { message: "Invalid API Key", type: "invalid_request_error", code: "invalid_api_key" } }))).toBe("Invalid API Key");
+  });
+
+  test("a Bailian-style error", () => {
+    expect(refusalText(JSON.stringify({ code: "InvalidApiKey", message: "Invalid API-key provided." }))).toBe("Invalid API-key provided.");
+  });
+
+  test("a body that is not JSON falls back to its first 150 code points", () => {
+    const html = `<html><body>${"x".repeat(300)}</body></html>`;
+    const text = refusalText(html);
+    expect(text).toBe(`${html.slice(0, 150)}…`);
+    expect(refusalText("Bad Gateway")).toBe("Bad Gateway");
+  });
+
+  test("a very long message is cut at 400 code points", () => {
+    const text = refusalText(JSON.stringify({ error: { message: "y".repeat(500) } }));
+    expect(text).toBe(`${"y".repeat(400)}…`);
   });
 });
 

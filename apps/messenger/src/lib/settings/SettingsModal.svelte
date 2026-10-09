@@ -157,6 +157,7 @@
 
 	export function backFromProviderEditor(): void {
 		if (providerForm?.backFromDetails()) return;
+		if (providerEditorController.backToConnectorPicker()) return;
 		providerEditorController.closeProviderEditor();
 	}
 
@@ -490,6 +491,7 @@
 	closeProviderEditor={() => providerEditorController.closeProviderEditor()}
 	editorKeySet={(target) => providerEditorController.editorKeySet(target)}
 	setProviderDraft={(draft) => providerEditorController.setProviderDraft(draft)}
+	pickConnector={(id) => providerEditorController.pickConnector(id)}
 	fetchProviderModels={() => providerEditorController.fetchProviderModels()}
 	persistProviderEditor={(editor) => providerEditorController.persistProviderEditor(editor)}
 />

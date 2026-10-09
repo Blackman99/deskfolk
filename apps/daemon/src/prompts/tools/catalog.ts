@@ -54,8 +54,8 @@ export const LIST_ENDPOINTS: ToolDef = {
 export const ADD_ENDPOINT: ToolDef = {
   name: "add_endpoint",
   description: {
-    zh: "新建一个名册级端点（OpenAI 兼容或 Anthropic 兼容）。不要传密钥：批准卡上由用户粘贴。新建端点和改 URL 或接口格式会停下来等批准。空名单合法。有名单则 default_model 须在名单里，省略则用第一项。",
-    en: "Create a roster-level endpoint (OpenAI-compatible or Anthropic-compatible). Do not pass a key; the user pastes it on the approval card. Adding an endpoint or changing a URL or API format pauses for approval. An empty model list is allowed. If a list is given, default_model must be on it; omit to use the first name.",
+    zh: "新建一个名册级端点（OpenAI 兼容或 Anthropic 兼容）。不要传密钥：批准卡上由用户粘贴。新建端点和改 URL、接口格式或工作区 id 会停下来等批准。空名单合法。有名单则 default_model 须在名单里，省略则用第一项。",
+    en: "Create a roster-level endpoint (OpenAI-compatible or Anthropic-compatible). Do not pass a key; the user pastes it on the approval card. Adding an endpoint or changing a URL, API format or workspace id pauses for approval. An empty model list is allowed. If a list is given, default_model must be on it; omit to use the first name.",
   },
   properties: {
     name: { type: "string", description: { zh: "端点名称。", en: "Endpoint name." } },
@@ -72,6 +72,13 @@ export const ADD_ENDPOINT: ToolDef = {
       description: {
         zh: "接口格式：openai 是 Chat Completions，anthropic 是 Anthropic Messages。省略为 openai。",
         en: "API format: openai is Chat Completions, anthropic is Anthropic Messages. Omit for openai.",
+      },
+    },
+    workspace_id: {
+      type: "string",
+      description: {
+        zh: "Anthropic 工作区 id（wrkspc_…），只对 anthropic 格式有意义：不限定工作区的个人 API 密钥必须带它，否则请求被拒。省略则不设。",
+        en: "Anthropic workspace id (wrkspc_…), only meaningful for the anthropic format: a personal API key not scoped to one workspace needs it or its requests are refused. Omit for none.",
       },
     },
     models: {
@@ -96,8 +103,8 @@ export const ADD_ENDPOINT: ToolDef = {
 export const UPDATE_ENDPOINT: ToolDef = {
   name: "update_endpoint",
   description: {
-    zh: "改一个已有端点。id 来自 list_endpoints。提供 models 就是整份新名单。改 URL 或接口格式会停下来等批准；改名、名单、该端点默认模型直接执行。默认端点不能改 URL 和接口格式。不能换密钥。",
-    en: "Change an existing endpoint. id comes from list_endpoints. Providing models replaces the whole list. Changing the URL or API format pauses for approval; renaming, replacing the list, or changing that endpoint's default model runs immediately. You cannot change the default endpoint's URL or API format. You cannot rotate keys.",
+    zh: "改一个已有端点。id 来自 list_endpoints。提供 models 就是整份新名单。改 URL、接口格式或工作区 id 会停下来等批准；改名、名单、该端点默认模型直接执行。默认端点不能改 URL、接口格式和工作区 id。不能换密钥。",
+    en: "Change an existing endpoint. id comes from list_endpoints. Providing models replaces the whole list. Changing the URL, API format or workspace id pauses for approval; renaming, replacing the list, or changing that endpoint's default model runs immediately. You cannot change the default endpoint's URL, API format or workspace id. You cannot rotate keys.",
   },
   properties: {
     id: { type: "string", description: { zh: "端点 id。", en: "Endpoint id." } },
@@ -112,6 +119,13 @@ export const UPDATE_ENDPOINT: ToolDef = {
       description: {
         zh: "新的接口格式：openai（Chat Completions）或 anthropic（Anthropic Messages）。默认端点不能改。",
         en: "New API format: openai (Chat Completions) or anthropic (Anthropic Messages). Forbidden on the default endpoint.",
+      },
+    },
+    workspace_id: {
+      type: "string",
+      description: {
+        zh: "Anthropic 工作区 id（wrkspc_…），只对 anthropic 格式有意义：不限定工作区的个人 API 密钥必须带它，否则请求被拒。空字符串清除。默认端点不能改。",
+        en: "Anthropic workspace id (wrkspc_…), only meaningful for the anthropic format: a personal API key not scoped to one workspace needs it or its requests are refused. An empty string clears it. Forbidden on the default endpoint.",
       },
     },
     models: {

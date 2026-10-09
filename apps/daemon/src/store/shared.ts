@@ -14,6 +14,7 @@ import {
   compactFolkAvatar,
   generateBoringAvatar,
   isApiFormat,
+  isWorkspaceId,
   isBotRunner,
   isClaudeEffort,
   type ApiFormat,
@@ -242,6 +243,7 @@ export type ProviderRow = {
   name: string;
   base_url: string;
   api_format?: string | null;
+  workspace_id?: string | null;
   models: string;
   available_models?: string | null;
   default_model: string | null;
@@ -618,6 +620,21 @@ export function storedApiFormat(raw: string | null | undefined): ApiFormat {
 export function resolveApiFormat(value: unknown): ApiFormat {
   if (!isApiFormat(value)) throw new HttpError(422, "invalid_args", `api_format must be one of ${API_FORMATS.join(", ")}`);
   return value;
+}
+
+/** An Anthropic workspace id as given (ADR 0072): null or blank clears it; anything else must be a `wrkspc_…` id. */
+export function resolveWorkspaceId(value: unknown): string | null {
+  if (value === null) return null;
+  if (typeof value !== "string") throw new HttpError(422, "invalid_args", "workspace_id must be a string");
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return null;
+  if (!isWorkspaceId(trimmed)) throw new HttpError(422, "invalid_args", "workspace_id must be an Anthropic workspace id (wrkspc_…)");
+  return trimmed;
+}
+
+/** The stored workspace id, or null for none (or a value this build would not have written). */
+export function storedWorkspaceId(raw: string | null | undefined): string | null {
+  return isWorkspaceId(raw) ? raw : null;
 }
 
 export function clampLimit(limit: number | undefined): number {

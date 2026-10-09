@@ -199,6 +199,7 @@ export function createReader(deps: ReaderDeps): Reader {
           baseUrl: endpoint.baseUrl,
           apiKey: endpoint.apiKey,
           apiFormat: endpoint.apiFormat,
+          workspaceId: endpoint.workspaceId,
           model: endpoint.model,
           prompt: prompt.ref,
           messages: [

@@ -1,9 +1,13 @@
 import {
   THINKING_LEVELS,
+  connectorById,
+  connectorFor,
   isLocalEndpoint,
   isThinkingLevel,
+  isWorkspaceId,
   sortThinkingLevels,
   type ApiFormat,
+  type ConnectorId,
   type CreateProviderRequest,
   type EndpointModel,
   type EndpointModelInput,
@@ -41,6 +45,13 @@ export type ProviderDraft = {
   baseUrl: string;
   /** Chat Completions or Anthropic Messages; decides the path, the key header and the request shape. */
   apiFormat: ApiFormat;
+  /**
+   * The built-in connector the form is for (ADR 0072): it shows the key alone and finds the address
+   * by trying the key on each of the connector's plans. Null is a custom endpoint, address typed in.
+   */
+  connector: ConnectorId | null;
+  /** Anthropic's `wrkspc_…`, sent with every request; empty for none. */
+  workspaceId: string;
   apiKey: string;
   /** Enabled names, in the order they were picked. */
   models: string[];
@@ -58,6 +69,8 @@ export type ProviderFieldErrors = {
   name?: "empty";
   endpoint?: "empty" | "invalid";
   endpointKey?: "empty";
+  /** Anthropic's workspace id, not the folder the Bots work in. */
+  anthropicWorkspace?: "invalid";
   models?: "empty";
   pricing?: "invalid";
   contextWindow?: "invalid";
@@ -88,6 +101,8 @@ export function emptyModelAttr(): ModelAttrDraft {
 export type ProviderEditorState = {
   /** `"add"`, or the id of the endpoint being edited. */
   target: "add" | string;
+  /** Adding, before a service is picked: the connector tiles show instead of the form. */
+  picking?: boolean;
   /**
    * Which layer of the editor is showing. `connection` is the name, URL and key; `models` is the
    * enable list and per-model attributes. The default model is picked on the list, not here.
@@ -105,6 +120,8 @@ export function emptyProviderDraft(): ProviderDraft {
     name: "",
     baseUrl: "",
     apiFormat: "openai",
+    connector: null,
+    workspaceId: "",
     apiKey: "",
     models: [],
     availableModels: [],
@@ -112,6 +129,44 @@ export function emptyProviderDraft(): ProviderDraft {
     advertisedThinking: {},
     modelAttrs: {},
   };
+}
+
+/**
+ * A new endpoint for a built-in connector. The address stays empty until a plan takes the key, so
+ * nothing is created for a key no plan takes.
+ */
+export function connectorDraft(id: ConnectorId, name: string): ProviderDraft {
+  const connector = connectorById(id);
+  return { ...emptyProviderDraft(), name, connector: id, apiFormat: connector?.apiFormat ?? "openai" };
+}
+
+/** Whether the form offers a workspace: Anthropic's own address, picked or typed in. */
+export function showsWorkspace(draft: ProviderDraft): boolean {
+  const connector = draft.connector ? connectorById(draft.connector) : connectorFor(draft.baseUrl, draft.apiFormat)?.connector;
+  return connector?.workspace === true;
+}
+
+/**
+ * What a connector form's plan search depends on: the key (or, editing, the one on file) and the
+ * workspace. A change starts the search again; a plan picked by hand does not.
+ */
+export function connectorSignature(draft: ProviderDraft, keySet: boolean): string | null {
+  if (!draft.connector) return null;
+  const apiKey = draft.apiKey.trim();
+  if (apiKey.length === 0 && !keySet) return null;
+  // Not worth a request: a workspace id where the key goes, or a workspace field that holds no id.
+  if (keyIsWorkspaceId(draft)) return null;
+  const workspaceId = draft.workspaceId.trim();
+  if (workspaceId.length > 0 && !isWorkspaceId(workspaceId)) return null;
+  return `${draft.connector}\n${apiKey}\n${workspaceId}`;
+}
+
+/**
+ * An Anthropic workspace id typed where the key goes. It happened (2026-10-09): with nowhere else to
+ * put the id, it was saved over the key, and every request then failed as an invalid key.
+ */
+export function keyIsWorkspaceId(draft: ProviderDraft): boolean {
+  return showsWorkspace(draft) && isWorkspaceId(draft.apiKey.trim());
 }
 
 export function withSyncedDefaultModel(draft: ProviderDraft): ProviderDraft {
@@ -230,7 +285,8 @@ export function probeSignature(draft: ProviderDraft, keySet: boolean): string | 
   const apiKey = draft.apiKey.trim();
   // A model server on this computer or network answers without a key (ADR 0067).
   if (apiKey.length === 0 && !keySet && !isLocalEndpoint(baseUrl)) return null;
-  return `${draft.apiFormat}\n${baseUrl}\n${apiKey}`;
+  const workspaceId = draft.workspaceId.trim();
+  return `${draft.apiFormat}\n${baseUrl}\n${apiKey}${workspaceId ? `\n${workspaceId}` : ""}`;
 }
 
 /** Toggles a level, keeping at least one so a name never claims to support nothing. */
@@ -306,6 +362,7 @@ export function draftFromProvider(input: {
   name: string;
   base_url: string | null;
   api_format?: ApiFormat;
+  workspace_id?: string | null;
   models: readonly string[];
   model_catalog?: readonly EndpointModel[];
   available_models?: readonly string[];
@@ -328,6 +385,8 @@ export function draftFromProvider(input: {
     name: input.name,
     baseUrl: input.base_url ?? "",
     apiFormat: input.api_format ?? "openai",
+    connector: connectorFor(input.base_url, input.api_format)?.connector.id ?? null,
+    workspaceId: input.workspace_id ?? "",
     apiKey: "",
     models: [...input.models],
     availableModels: [...(input.available_models ?? [])],
@@ -349,6 +408,7 @@ export function planCreateProvider(draft: ProviderDraft, requireKey: boolean): P
   };
   // Left out for Chat Completions, which is what a daemon reads when none is given.
   if (draft.apiFormat !== "openai") body.api_format = draft.apiFormat;
+  if (parsed.workspaceId) body.workspace_id = parsed.workspaceId;
   if (parsed.defaultModel) body.default_model = parsed.defaultModel;
   if (parsed.availableModels.length > 0) body.available_models = parsed.availableModels;
   return { ok: true, body };
@@ -359,6 +419,7 @@ export function planPatchProvider(
     name: string;
     base_url: string | null;
     api_format?: ApiFormat;
+    workspace_id?: string | null;
     models: readonly string[];
     model_catalog?: readonly EndpointModel[];
     available_models?: readonly string[];
@@ -373,6 +434,7 @@ export function planPatchProvider(
   if (parsed.name !== current.name) patch.name = parsed.name;
   if (parsed.baseUrl !== (current.base_url ?? "")) patch.base_url = parsed.baseUrl;
   if (draft.apiFormat !== (current.api_format ?? "openai")) patch.api_format = draft.apiFormat;
+  if (parsed.workspaceId !== (current.workspace_id ?? "")) patch.workspace_id = parsed.workspaceId || null;
   const currentCatalog = current.model_catalog ?? current.models.map(defaultCatalogItem);
   if (!sameCatalog(parsed.models, currentCatalog)) patch.models = parsed.models;
   if (!sameList(parsed.availableModels, current.available_models ?? [])) {
@@ -405,6 +467,7 @@ export function mapProviderError(message: string): ProviderFieldErrors | { top: 
   if (message.startsWith("endpoint_models")) return { models: "empty" };
   if (message.startsWith("endpoint_default_model")) return { defaultModel: "invalid" };
   if (message.startsWith("api_key")) return { endpointKey: "empty" };
+  if (message.startsWith("workspace_id")) return { anthropicWorkspace: "invalid" };
   return { top: true };
 }
 
@@ -429,6 +492,7 @@ function parseProviderDraft(
       name: string;
       baseUrl: string;
       apiKey: string;
+      workspaceId: string;
       models: EndpointModelInput[];
       availableModels: string[];
       defaultModel: string;
@@ -443,6 +507,8 @@ function parseProviderDraft(
   if (baseUrl.length === 0) errors.endpoint = "empty";
   else if (!isHttpOrHttpsUrl(baseUrl)) errors.endpoint = "invalid";
   if (requireKey && draft.apiKey.length === 0 && !isLocalEndpoint(baseUrl)) errors.endpointKey = "empty";
+  const workspaceId = draft.workspaceId.trim();
+  if (workspaceId.length > 0 && !isWorkspaceId(workspaceId)) errors.anthropicWorkspace = "invalid";
   if (names.length === 0 && !options.allowEmptyModels) errors.models = "empty";
   if (defaultModel.length === 0) {
     if (!options.allowEmptyModels) errors.defaultModel = "empty";
@@ -458,6 +524,7 @@ function parseProviderDraft(
     name,
     baseUrl,
     apiKey: draft.apiKey,
+    workspaceId,
     models,
     availableModels: uniqueNames(draft.availableModels),
     defaultModel,

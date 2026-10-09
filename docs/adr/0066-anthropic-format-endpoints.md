@@ -46,7 +46,7 @@ On 2026-10-08 an isolated runtime (its own data folder and port; the running dev
 
 ## 没测的 / Not tested
 
-- Anthropic 自己的 `api.anthropic.com`：这台机器上没有它的 API key。/ Anthropic's own `api.anthropic.com`: there is no API key for it on this machine.
+- Anthropic 自己的 `api.anthropic.com`：这台机器上没有它的 API key。2026-10-09 有了一把个人 key，它要求每个请求都带工作区 ID，见 [ADR 0072](0072-built-in-connectors.md)。/ Anthropic's own `api.anthropic.com`: there is no API key for it on this machine. A personal key came on 2026-10-09; it needs a workspace ID on every request, see [ADR 0072](0072-built-in-connectors.md).
 
 ## 没做的 / Not done
 

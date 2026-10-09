@@ -76,6 +76,7 @@ export function createComposer(deps: ComposerDeps): Composer {
         baseUrl: provider.baseUrl,
         apiKey: provider.apiKey,
         apiFormat: provider.apiFormat,
+        workspaceId: provider.workspaceId,
         model: lightModel,
         prompt: prompt.ref,
         messages: [

@@ -9,6 +9,7 @@ export * from "./plans.ts";
 export * from "./checks.ts";
 export * from "./holds.ts";
 export * from "./providers.ts";
+export * from "./connectors.ts";
 export * from "./bots.ts";
 export * from "./sessions.ts";
 export * from "./messages.ts";

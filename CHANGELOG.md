@@ -6,6 +6,13 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Anthropic, Xiaomi MiMo and Qwen are built in: paste a key
+
+- Adding an endpoint starts on four tiles: Anthropic, Xiaomi MiMo, Qwen and Custom. The three built-in ones ask only for a key: the app tries it on each of that vendor's plans (Xiaomi's Token Plan for China, Singapore and Europe and pay-as-you-go; Bailian's Token Plan and pay-as-you-go in Beijing and international) and keeps the one that takes it, with its models. Nothing is saved for a key no plan takes. The plan can also be picked by hand.
+- Endpoints at those addresses, including ones you already have, show the vendor's logo on their card, with the plan beside the address. The first-run wizard has Xiaomi MiMo and Qwen presets too.
+- An Anthropic endpoint takes an Anthropic workspace ID (`wrkspc_…`), sent with every request. A personal key (`sk-ant-usr-…`) not scoped to a workspace is refused without one, and the form now says so; a workspace ID pasted into the key field is pointed out on the spot instead of being saved over the key. Bots can set it with `add_endpoint` / `update_endpoint`, with the same approval as a URL change.
+- When a model list cannot be fetched, the banner shows the vendor's whole message instead of the first 150 characters of the reply, which used to cut off the half that said how to fix it.
+
 ### The Claude usage strip uses its spare width
 
 - The closed strip under the conversation list no longer leaves the rest of each account's row empty. Each account stays on its own line. When the strip is wide enough, the account's email follows its plan, and each window has a small ring as full as what is left (empty means spent), which does not take the row's width. Opening and closing it slides. The numbers read the same.

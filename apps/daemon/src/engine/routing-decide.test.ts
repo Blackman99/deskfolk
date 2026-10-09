@@ -23,8 +23,8 @@ function fixture(models: Array<Record<string, unknown>>, opts: { picture?: boole
   const trigger = store.insertMessage({ sessionId: bot.direct_session.id, kind: "system", author: bot.bot.id, body: "工作", ...(opts.picture ? { paths: ["frame.png"] } : {}) });
   const turn = store.createTurn({ sessionId: bot.direct_session.id, botId: bot.bot.id, triggerMessageId: trigger.id, taskId: plan.id, ticketId: ticket.id });
   const routing = createRouting({ store, completions: {} as never, recordResponseSpend: () => null, spendOwner: () => ({ sessionId: "", sessionName: null, botId: null, botName: null }) as never });
-  const creds: Creds = { locale: "zh", defaultProviderId: "p-1", providers: [{ id: "p-1", name: "P", baseUrl: "http://x", apiKey: "k", apiFormat: "openai", models: models.map((m) => m.name as string), defaultModel: models[0]!.name as string },
-    ...(opts.other ? [{ id: "p-2", name: "Q", baseUrl: "http://y", apiKey: "k", apiFormat: "openai" as const, models: opts.other.map((m) => m.name as string), defaultModel: opts.other[0]!.name as string }] : [])] };
+  const creds: Creds = { locale: "zh", defaultProviderId: "p-1", providers: [{ id: "p-1", name: "P", baseUrl: "http://x", apiKey: "k", apiFormat: "openai", workspaceId: null, models: models.map((m) => m.name as string), defaultModel: models[0]!.name as string },
+    ...(opts.other ? [{ id: "p-2", name: "Q", baseUrl: "http://y", apiKey: "k", apiFormat: "openai" as const, workspaceId: null, models: opts.other.map((m) => m.name as string), defaultModel: opts.other[0]!.name as string }] : [])] };
   return { store, bot: bot.bot, turn, routing, creds, dm: bot.direct_session.id };
 }
 

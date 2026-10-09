@@ -157,6 +157,7 @@ export function migrateSchema(db: Database): void {
         name TEXT NOT NULL,
         base_url TEXT NOT NULL,
         api_format TEXT NOT NULL DEFAULT 'openai',
+        workspace_id TEXT,
         models TEXT NOT NULL,
         available_models TEXT NOT NULL DEFAULT '[]',
         default_model TEXT,
@@ -175,6 +176,10 @@ export function migrateSchema(db: Database): void {
   // Every endpoint before this column spoke Chat Completions.
   if (!providerCols.includes("api_format")) {
     db.run(`ALTER TABLE providers ADD COLUMN api_format TEXT NOT NULL DEFAULT 'openai'`);
+  }
+  // An Anthropic workspace to act in (ADR 0072); no endpoint before it had one.
+  if (!providerCols.includes("workspace_id")) {
+    db.run(`ALTER TABLE providers ADD COLUMN workspace_id TEXT`);
   }
   if (!tables.includes("turn_route_decisions")) {
     db.run(`

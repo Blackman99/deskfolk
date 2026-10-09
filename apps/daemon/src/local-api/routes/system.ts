@@ -8,7 +8,7 @@ import { emptyResponse, jsonResponse, matchPath } from "../../http";
 import { parseImageVariant } from "../../image-variant";
 import { readLocalModels } from "../../local-model";
 import { probeEndpointModels, withLocalFacts } from "../../probe-models";
-import { resolveApiFormat } from "../../store/shared";
+import { resolveApiFormat, resolveWorkspaceId } from "../../store/shared";
 import { listWorkspaceDir, locateWorkspaceFile, writeWorkspaceFile } from "../../workspace-browse";
 import { trashWorkspacePaths } from "../../workspace-trash";
 import { fileResponse, occurred, publishBotModelChanges } from "../helpers";
@@ -139,6 +139,8 @@ export function systemRoutes(ctx: RouteCtx): Response | Promise<Response> | null
         endpoint_api_key?: string;
         /** The format the form shows; absent, the saved endpoint's (or `openai`). */
         api_format?: string;
+        /** The Anthropic workspace the form shows, "" or null for none; absent, the named endpoint's (ADR 0072). */
+        workspace_id?: string | null;
         provider_id?: string;
       };
       const settings = await store.settings();
@@ -160,8 +162,13 @@ export function systemRoutes(ctx: RouteCtx): Response | Promise<Response> | null
       if (!baseUrl) {
         throw new HttpError(422, "invalid_args", "endpoint_base_url is required");
       }
+      // Only the endpoint the form names lends its workspace: the default one's has nothing to do
+      // with an address being added.
+      let workspaceId = body.workspace_id === undefined ? undefined : resolveWorkspaceId(body.workspace_id);
+      const namedProvider = body.provider_id?.trim();
+      if (workspaceId === undefined && namedProvider) workspaceId = (await store.getProvider(namedProvider)).workspace_id ?? null;
       request.signal.throwIfAborted();
-      const probed = await probeEndpointModels(baseUrl, apiKey, fetch, request.signal, { guard: scope?.guard, apiFormat });
+      const probed = await probeEndpointModels(baseUrl, apiKey, fetch, request.signal, { guard: scope?.guard, apiFormat, workspaceId });
       scope?.guard?.();
       // A model server on this computer or network also says each model's window and what it can
       // do (ADR 0067); a cloud endpoint's `/models` is all there is.

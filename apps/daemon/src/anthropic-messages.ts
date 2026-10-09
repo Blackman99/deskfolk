@@ -33,11 +33,13 @@ export function anthropicUrl(baseUrl: string, resource: "messages" | "models"): 
  */
 export type AnthropicAuth = "x-api-key" | "bearer";
 
-export function anthropicHeaders(apiKey: string, auth: AnthropicAuth): Record<string, string> {
+export function anthropicHeaders(apiKey: string, auth: AnthropicAuth, workspaceId?: string | null): Record<string, string> {
   return {
     // A keyless local server (ADR 0067) gets no key header at all rather than an empty one.
     ...(!apiKey ? {} : auth === "bearer" ? { Authorization: `Bearer ${apiKey}` } : { "x-api-key": apiKey }),
     "anthropic-version": ANTHROPIC_VERSION,
+    // Anthropic refuses a key not scoped to one workspace unless the request names one (ADR 0072).
+    ...(workspaceId ? { "anthropic-workspace-id": workspaceId } : {}),
     "Content-Type": "application/json",
   };
 }

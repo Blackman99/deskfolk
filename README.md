@@ -101,7 +101,7 @@ pnpm dev
 
 For long jobs on a source build (a multi-shot video, say), run `pnpm dev:steady` instead of `pnpm dev`: the daemon does not restart when the code changes or you `git pull`, so turns in progress are not interrupted.
 
-First run: the setup wizard walks you through picking a workspace folder, adding an endpoint and key, and creating the first Bot; then let it hire the rest.
+First run: the setup wizard walks you through picking a workspace folder, adding an endpoint and key, and creating the first Bot; then let it hire the rest. Anthropic, Xiaomi MiMo and Qwen (Alibaba Cloud Model Studio) are built in: pick one and paste a key, and the app finds which of the vendor's plans it belongs to. A personal Anthropic key not scoped to a workspace also needs the workspace ID (`wrkspc_…`, from Console → Settings → Workspaces); see [ADR 0072](docs/adr/0072-built-in-connectors.md).
 
 ### Local models
 

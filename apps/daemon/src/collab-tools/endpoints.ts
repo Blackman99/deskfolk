@@ -4,14 +4,14 @@ import { runCollabTool, type ToolCtx, type ToolResult } from "../collab-tools";
 import { HttpError } from "../errors";
 import { normalizeModelCatalog } from "../models";
 import type { Store } from "../store";
-import { resolveApiFormat } from "../store/shared";
+import { resolveApiFormat, resolveWorkspaceId } from "../store/shared";
 import { toolFail as fail } from "../tool-result";
 import { optionalString, requireString } from "./args";
 import { assertActive, mutateConfiguration } from "./guards";
 import { botPinEmits, snapshotBotPins } from "./roster";
 
 const DEFAULT_ENDPOINT_GUARD =
-  "cannot modify the default endpoint's URL, API format or key, or delete it";
+  "cannot modify the default endpoint's URL, API format, workspace or key, or delete it";
 
 export async function listEndpoints(ctx: ToolCtx): Promise<ToolResult> {
   const providers = await ctx.store.listProviders();
@@ -105,6 +105,7 @@ export async function addEndpoint(ctx: ToolCtx, args: Record<string, unknown>): 
   const name = requireString(args.name, "name");
   const baseUrl = requireString(args.base_url, "base_url");
   const apiFormat = args.api_format === undefined ? "openai" : resolveApiFormat(args.api_format);
+  const workspaceId = args.workspace_id === undefined ? null : resolveWorkspaceId(args.workspace_id);
   const models = args.models === undefined ? undefined : args.models;
   const defaultModel = optionalString(args.default_model);
   if (!ctx.approved) {
@@ -114,7 +115,7 @@ export async function addEndpoint(ctx: ToolCtx, args: Record<string, unknown>): 
       waitApproval: {
         kind_key: "endpoint-add",
         target: baseUrl,
-        summary: endpointAddSummary(name, baseUrl, apiFormat, catalog.map((row) => row.name)),
+        summary: endpointAddSummary(name, baseUrl, apiFormat, workspaceId, catalog.map((row) => row.name)),
         // A model server on this computer or network may take none (ADR 0067); the card still offers the field.
         requiresApiKey: !isLocalEndpoint(baseUrl),
         run: (opts) =>
@@ -132,6 +133,7 @@ export async function addEndpoint(ctx: ToolCtx, args: Record<string, unknown>): 
     name,
     base_url: baseUrl,
     api_format: apiFormat,
+    ...(workspaceId ? { workspace_id: workspaceId } : {}),
     ...(apiKey ? { api_key: apiKey } : {}),
     models: models === undefined ? undefined : (models as Provider["model_catalog"]),
     default_model: defaultModel,
@@ -155,7 +157,10 @@ export async function updateEndpoint(ctx: ToolCtx, args: Record<string, unknown>
   const nextFormat = args.api_format !== undefined ? resolveApiFormat(args.api_format) : undefined;
   // Another format sends the key to another path in another shape: as weighty as another URL.
   const formatChanging = nextFormat !== undefined && nextFormat !== (current.api_format ?? "openai");
-  const connectionChanging = urlChanging || formatChanging;
+  const nextWorkspace = args.workspace_id !== undefined ? resolveWorkspaceId(args.workspace_id) : undefined;
+  // The workspace id picks whose workspace the key bills: as weighty as the URL the key goes to.
+  const workspaceChanging = nextWorkspace !== undefined && nextWorkspace !== (current.workspace_id ?? null);
+  const connectionChanging = urlChanging || formatChanging || workspaceChanging;
   if (connectionChanging && isDefault) {
     return fail("failed", DEFAULT_ENDPOINT_GUARD);
   }
@@ -168,7 +173,7 @@ export async function updateEndpoint(ctx: ToolCtx, args: Record<string, unknown>
       waitApproval: {
         kind_key: "endpoint-edit",
         target,
-        summary: endpointEditSummary(nextName ?? current.name, target, nextFormat ?? current.api_format ?? "openai", catalog.map((row) => row.name)),
+        summary: endpointEditSummary(nextName ?? current.name, target, nextFormat ?? current.api_format ?? "openai", nextWorkspace !== undefined ? nextWorkspace : current.workspace_id ?? null, catalog.map((row) => row.name)),
         requiresApiKey: !current.key_set && !isLocalEndpoint(target),
         run: (opts) =>
           runCollabTool({ ...ctx, approved: true, approvalApiKey: opts?.api_key }, "update_endpoint", args),
@@ -186,6 +191,7 @@ export async function updateEndpoint(ctx: ToolCtx, args: Record<string, unknown>
     name?: string;
     base_url?: string;
     api_format?: ApiFormat;
+    workspace_id?: string | null;
     api_key?: string;
     models?: Provider["model_catalog"];
     default_model?: string | null;
@@ -193,6 +199,7 @@ export async function updateEndpoint(ctx: ToolCtx, args: Record<string, unknown>
   if (nextName !== undefined) patch.name = nextName;
   if (urlChanging) patch.base_url = nextUrl;
   if (formatChanging) patch.api_format = nextFormat;
+  if (workspaceChanging) patch.workspace_id = nextWorkspace;
   if (args.models !== undefined) patch.models = args.models as Provider["model_catalog"];
   if (args.default_model !== undefined) {
     patch.default_model = optionalString(args.default_model) ?? null;
@@ -231,6 +238,7 @@ function serializeEndpoint(provider: Provider, defaultId: string | null): Record
     name: provider.name,
     base_url: provider.base_url,
     api_format: provider.api_format ?? "openai",
+    workspace_id: provider.workspace_id ?? null,
     key_set: provider.key_set,
     models: provider.models,
     model_catalog: provider.model_catalog,
@@ -240,17 +248,22 @@ function serializeEndpoint(provider: Provider, defaultId: string | null): Record
   };
 }
 
-function endpointAddSummary(name: string, url: string, format: ApiFormat, models: string[]): string {
+function endpointAddSummary(name: string, url: string, format: ApiFormat, workspaceId: string | null, models: string[]): string {
   const list = models.length > 0 ? models.join(", ") : "(none)";
-  return `endpoint-add ${name}\n${url}${formatNote(format)}\nmodels: ${list}`;
+  return `endpoint-add ${name}\n${url}${formatNote(format)}${workspaceNote(workspaceId)}\nmodels: ${list}`;
 }
 
-function endpointEditSummary(name: string, url: string, format: ApiFormat, models: string[]): string {
+function endpointEditSummary(name: string, url: string, format: ApiFormat, workspaceId: string | null, models: string[]): string {
   const list = models.length > 0 ? models.join(", ") : "(none)";
-  return `endpoint-edit ${name}\n${url}${formatNote(format)}\nmodels: ${list}`;
+  return `endpoint-edit ${name}\n${url}${formatNote(format)}${workspaceNote(workspaceId)}\nmodels: ${list}`;
 }
 
 /** The format beside the URL on an approval card; Chat Completions, as every endpoint was before, goes unsaid. */
 function formatNote(format: ApiFormat): string {
   return format === "anthropic" ? " (Anthropic Messages)" : "";
+}
+
+/** The Anthropic workspace beside the URL on an approval card; none goes unsaid. */
+function workspaceNote(workspaceId: string | null): string {
+  return workspaceId ? ` [workspace ${workspaceId}]` : "";
 }

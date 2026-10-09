@@ -4,6 +4,9 @@
 	import { COPY, JAIL_COPY } from './copy.ts';
 	import Select from './Select.svelte';
 	import WorkspacePicker from './settings/WorkspacePicker.svelte';
+	import ConnectorLogo from './settings/ConnectorLogo.svelte';
+	import WorkspaceField from './settings/WorkspaceField.svelte';
+	import { asksForWorkspace, planOrder, searchPlans } from './settings/connector-detect.ts';
 	import type { MessengerRuntime } from './runtime.svelte.ts';
 	import {
 		planWorkspaceSave,
@@ -26,7 +29,7 @@
 		type CreateBotDraft,
 		type CreateBotFieldErrors
 	} from './panels/create-form.ts';
-	import { isLocalEndpoint, type ApiFormat, type CreateProviderRequest, type ProbedModel } from '@real-bot/protocol';
+	import { connectorById, connectorFor, isLocalEndpoint, type ApiFormat, type CreateProviderRequest, type ProbedModel } from '@real-bot/protocol';
 
 	interface Props {
 		runtime: MessengerRuntime;
@@ -59,6 +62,8 @@
 	let saveFailed = $state(false);
 	let providerName = $state('Default');
 	let apiFormat = $state<ApiFormat>('openai');
+	/** Anthropic's `wrkspc_…` for a key not scoped to one workspace (ADR 0072); empty for none. */
+	let anthropicWorkspace = $state('');
 	let activePreset = $state<string>('');
 	let fetchingModels = $state(false);
 	let fetchError = $state<string | null>(null);
@@ -83,6 +88,7 @@
 		name: providerName,
 		baseUrl: runtime.endpointUrl,
 		apiFormat,
+		workspaceId: anthropicWorkspace,
 		apiKey: runtime.endpointKey.trim()
 	}, true));
 	const selectedModels = $derived(parseModelLines(runtime.endpointModelsText));
@@ -124,6 +130,24 @@
 			format: 'anthropic',
 			models: ['claude-opus-5-5', 'claude-sonnet-5-5'],
 			defaultModel: 'claude-opus-5-5'
+		},
+		// Built-in connectors with several plans (ADR 0072): the first plan is filled in, and the
+		// key finds the right one when the list is fetched.
+		{
+			id: 'xiaomi',
+			name: 'Xiaomi MiMo',
+			url: connectorById('xiaomi')!.plans[0]!.baseUrl,
+			format: 'openai',
+			models: [],
+			defaultModel: ''
+		},
+		{
+			id: 'qwen',
+			name: 'Qwen',
+			url: connectorById('qwen')!.plans[0]!.baseUrl,
+			format: 'openai',
+			models: [],
+			defaultModel: ''
 		},
 		{
 			id: 'deepseek',
@@ -185,7 +209,8 @@
 		activePreset = preset.id;
 		if (preset.format) apiFormat = preset.format;
 		if (preset.id !== 'custom') {
-			providerName = preset.name;
+			const connector = connectorById(preset.id);
+			providerName = connector ? t.connectors.name[connector.id] : preset.name;
 			runtime.endpointUrl = preset.url;
 			availableDiscoveredModels = Array.from(new Set([...preset.models, ...availableDiscoveredModels]));
 			runtime.endpointModelsText = preset.models.join('\n');
@@ -248,10 +273,43 @@
 		}
 		fetchingModels = true;
 		fetchError = null;
-		const res = await runtime.probeModels(baseUrl, apiKey, undefined, apiFormat === 'anthropic' ? apiFormat : undefined);
+		const workspaceId = anthropicWorkspace.trim() || null;
+		const connector = connectorById(activePreset);
+		let res: Awaited<ReturnType<typeof runtime.probeModels>>;
+		if (connector && connector.plans.length > 1 && connectorFor(baseUrl, apiFormat)?.connector.id === connector.id) {
+			// A connector preset's key is tried on each of its plans (ADR 0072); the one taking it is kept.
+			const outcome = await searchPlans(
+				planOrder(connector, baseUrl),
+				(plan) => runtime.probeModels(plan.baseUrl, apiKey, undefined, connector.apiFormat),
+				() => runtime.endpointKey.trim() === apiKey && activePreset === connector.id
+			);
+			if (outcome.kind === 'stale') {
+				fetchingModels = false;
+				return;
+			}
+			if (outcome.kind === 'found') runtime.endpointUrl = outcome.plan.baseUrl;
+			res =
+				outcome.kind === 'found'
+					? outcome.result
+					: outcome.kind === 'refused'
+						? { ok: false, error: '', status: 401 }
+						: { ok: false, error: outcome.error };
+			if (outcome.kind === 'refused') {
+				fetchingModels = false;
+				fetchError = t.connectors.keyRefused(
+					t.connectors.name[connector.id],
+					connector.plans.map((plan) => t.connectors.plan[`${connector.id}:${plan.id}` as keyof typeof t.connectors.plan] ?? plan.id).join(t.connectors.listSeparator)
+				);
+				return;
+			}
+		} else {
+			res = await runtime.probeModels(baseUrl, apiKey, undefined, apiFormat === 'anthropic' ? apiFormat : undefined, workspaceId);
+		}
 		fetchingModels = false;
 		if (!res.ok) {
-			fetchError = `${t.settings.modelsFetchFailed} (${res.error})`;
+			fetchError = connectorFor(baseUrl, apiFormat)?.connector.workspace && asksForWorkspace(res.error)
+				? t.connectors.workspaceNeeded
+				: `${t.settings.modelsFetchFailed} (${res.error})`;
 			return;
 		}
 		if (res.models.length > 0) {
@@ -284,6 +342,7 @@
 		delete errs.name;
 		delete errs.endpoint;
 		delete errs.endpointKey;
+		delete errs.anthropicWorkspace;
 		fieldErrors = connectionPlan.ok ? errs : { ...errs, ...connectionPlan.errors };
 		return connectionPlan.ok;
 	}
@@ -388,6 +447,7 @@
 					name: providerName,
 					baseUrl: runtime.endpointUrl,
 					apiFormat,
+					workspaceId: anthropicWorkspace,
 					apiKey: runtime.endpointKey,
 					models: selectedModels,
 					availableModels: probedModels,
@@ -433,6 +493,7 @@
 					name: provider.name,
 					base_url: provider.base_url,
 					...(apiFormat !== (existing.api_format ?? 'openai') ? { api_format: apiFormat } : {}),
+					...(provider.workspace_id ? { workspace_id: provider.workspace_id } : {}),
 					api_key: provider.api_key,
 					models: provider.models,
 					available_models: provider.available_models,
@@ -655,10 +716,17 @@
 							<button
 								type="button"
 								class="preset-chip"
+								class:has-logo={Boolean(connectorById(preset.id))}
 								class:is-active={activePreset === preset.id}
 								onclick={() => applyPreset(preset)}
 							>
-								{preset.id === 'custom' ? t.onboarding.presetCustom : preset.name}
+								{#if connectorById(preset.id)}
+									{@const connector = connectorById(preset.id)!}
+									<ConnectorLogo id={connector.id} size={16} />
+									{t.connectors.name[connector.id]}
+								{:else}
+									{preset.id === 'custom' ? t.onboarding.presetCustom : preset.name}
+								{/if}
 							</button>
 						{/each}
 					</div>
@@ -752,6 +820,22 @@
 							<p class="muted field-hint">{t.settings.keyLocalHint}</p>
 						{/if}
 					</div>
+
+					{#if connectorFor(runtime.endpointUrl, apiFormat)?.connector.workspace}
+						<WorkspaceField
+							id="onboarding-workspace"
+							value={anthropicWorkspace}
+							invalid={fieldErrors.anthropicWorkspace === 'invalid'}
+							{t}
+							oninput={(value) => {
+								anthropicWorkspace = value;
+								const next = { ...fieldErrors };
+								delete next.anthropicWorkspace;
+								fieldErrors = next;
+								onEndpointOrKeyInput();
+							}}
+						/>
+					{/if}
 
 					{#if fetchError}
 						<div class="models-fetch-tip">
@@ -1239,6 +1323,21 @@
 		transition: 0.15s ease;
 		transition-property: var(--transition-props);
 		cursor: pointer;
+	}
+
+	/* A built-in connector's chip leads with its logo, without growing taller than the others. */
+	.preset-chip.has-logo {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding-left: 6px;
+		white-space: nowrap;
+	}
+
+	.preset-chip.has-logo :global(.connector-logo) {
+		margin: -2px 0;
+		border-radius: 50%;
+		padding: 2px;
 	}
 
 	.preset-chip:hover {

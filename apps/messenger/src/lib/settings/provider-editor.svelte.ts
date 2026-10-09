@@ -4,12 +4,16 @@
  * stays the shell's bindable `providerEditor`, read and written here through the getter and setter
  * the modal hands over, never copied, so the shell's Escape cascade still sees the flyout.
  */
+import { connectorById, type Connector, type ConnectorId } from "@real-bot/protocol";
 import { Autosave } from "../autosave.svelte.ts";
 import type { Copy } from "../copy.ts";
 import type { MessengerRuntime } from "../runtime.svelte.ts";
 import type { Snapshot } from "../snapshot.ts";
+import { asksForWorkspace, planOrder, searchPlans } from "./connector-detect.ts";
 import {
   applyProbedModels,
+  connectorDraft,
+  connectorSignature,
   draftFromProvider,
   emptyProviderDraft,
   mapProviderError,
@@ -45,6 +49,9 @@ export class ProviderEditorController {
   private providerProbeTimer: ReturnType<typeof setTimeout> | null = null;
   /** URL + key the open editor last asked the endpoint about; the same pair is not probed twice. */
   private providerProbedSignature: string | null = null;
+  private connectorSearchTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Key + workspace a connector form last searched its plans with (ADR 0072). */
+  private connectorSearchedSignature: string | null = null;
   private readonly autosave = new Autosave();
   get providerSaving(): boolean {
     return this.autosave.saving;
@@ -134,7 +141,9 @@ export class ProviderEditorController {
     const synced = withSyncedDefaultModel(draft);
     this.autosave.savedTick = 0;
     this.providerEditor = { ...editor, draft: synced, errors: {}, failed: false };
-    this.scheduleProviderProbe(editor.target, synced, this.editorKeySet(editor.target));
+    const keySet = this.editorKeySet(editor.target);
+    if (synced.connector) this.scheduleConnectorSearch(editor.target, synced, keySet);
+    else this.scheduleProviderProbe(editor.target, synced, keySet);
     this.scheduleProviderSave();
   }
 
@@ -142,6 +151,9 @@ export class ProviderEditorController {
     if (this.providerProbeTimer) clearTimeout(this.providerProbeTimer);
     this.providerProbeTimer = null;
     this.providerProbedSignature = null;
+    if (this.connectorSearchTimer) clearTimeout(this.connectorSearchTimer);
+    this.connectorSearchTimer = null;
+    this.connectorSearchedSignature = null;
   }
 
   private scheduleProviderSave(delay = 600): void {
@@ -262,7 +274,90 @@ export class ProviderEditorController {
     }, 700);
   }
 
-  private openProviderEditor(target: "add" | string, draft: ProviderDraft): void {
+  /**
+   * A connector form searches its plans again when the key or workspace changes; a plan picked by
+   * hand changes only the address, so that one plan is asked, as any endpoint is.
+   */
+  private scheduleConnectorSearch(target: "add" | string, draft: ProviderDraft, keySet: boolean): void {
+    const signature = connectorSignature(draft, keySet);
+    if (this.connectorSearchTimer) clearTimeout(this.connectorSearchTimer);
+    this.connectorSearchTimer = null;
+    if (!signature || signature === this.connectorSearchedSignature) {
+      this.scheduleProviderProbe(target, draft, keySet);
+      return;
+    }
+    if (this.providerProbeTimer) clearTimeout(this.providerProbeTimer);
+    this.providerProbeTimer = null;
+    this.connectorSearchTimer = setTimeout(() => {
+      this.connectorSearchTimer = null;
+      if (this.providerEditor?.target !== target) return;
+      void this.searchConnectorPlans();
+    }, 700);
+  }
+
+  /**
+   * Tries the key on each of the connector's plans (ADR 0072) and moves the endpoint to the first
+   * that takes it, with that plan's models. A new endpoint has no address until then, so the
+   * autosave creates nothing for a key no plan takes.
+   */
+  async searchConnectorPlans(): Promise<void> {
+    const editor = this.providerEditor;
+    const connector = editor?.draft.connector ? connectorById(editor.draft.connector) : null;
+    if (!editor || !connector) return;
+    const { target, draft } = editor;
+    const keySet = this.editorKeySet(target);
+    const requested = connectorSignature(draft, keySet);
+    if (!requested) return;
+    this.connectorSearchedSignature = requested;
+    this.patchProviderEditor(target, { fetching: true, fetchError: null });
+    const api = this.runtime.client;
+    const workspaceId = draft.workspaceId.trim() || null;
+    const outcome = await searchPlans(
+      planOrder(connector, draft.baseUrl),
+      (plan) => this.runtime.probeModels(plan.baseUrl, draft.apiKey, target === "add" ? undefined : target, connector.apiFormat, workspaceId),
+      () => {
+        const open = this.providerEditor;
+        return this.runtime.client === api && this.runtime.settingsOpen && open?.target === target && connectorSignature(open.draft, keySet) === requested;
+      },
+    );
+    const open = this.providerEditor;
+    if (outcome.kind === "stale" || !open) return;
+    if (outcome.kind === "found") {
+      const found = applyProbedModels({ ...open.draft, baseUrl: outcome.plan.baseUrl }, outcome.result);
+      // The plan just answered for this address and key; the plain probe need not ask again.
+      this.providerProbedSignature = probeSignature(found, keySet);
+      this.providerEditor = { ...open, fetching: false, fetchError: null, draft: found, errors: {} };
+      this.scheduleProviderSave();
+      return;
+    }
+    const fetchError =
+      outcome.kind === "refused"
+        ? this.connectorRefusal(connector)
+        : this.connectorFailure(connector, outcome.error, undefined) ?? `${this.t.settings.modelsFetchFailed} (${outcome.error})`;
+    this.providerEditor = { ...open, fetching: false, fetchError };
+  }
+
+  /** Every plan of the connector refused the key (401). */
+  private connectorRefusal(connector: Connector): string {
+    const name = this.t.connectors.name[connector.id];
+    if (connector.plans.length > 1) {
+      const plans = connector.plans.map((plan) => this.t.connectors.plan[`${connector.id}:${plan.id}` as keyof Copy["connectors"]["plan"]] ?? plan.id);
+      return this.t.connectors.keyRefused(name, plans.join(this.t.connectors.listSeparator));
+    }
+    // A workspace id saved over the key is refused as an invalid key (2026-10-09).
+    return connector.workspace
+      ? `${this.t.connectors.keyRefusedSingle(name)} ${this.t.connectors.keyMayBeWorkspace}`
+      : this.t.connectors.keyRefusedSingle(name);
+  }
+
+  /** What a connector's refusal means in its own words, or null to show the vendor's message. */
+  private connectorFailure(connector: Connector, error: string, status: number | undefined): string | null {
+    if (status === 401) return this.connectorRefusal(connector);
+    if (connector.workspace && asksForWorkspace(error)) return this.t.connectors.workspaceNeeded;
+    return null;
+  }
+
+  private openProviderEditor(target: "add" | string, draft: ProviderDraft, picking = false): void {
     this.resetProviderProbe();
     this.autosave.cancel();
     this.lastCreatedSignature = null;
@@ -270,6 +365,7 @@ export class ProviderEditorController {
     this.providerDetailModel = null;
     this.providerEditor = {
       target,
+      ...(picking ? { picking: true } : {}),
       view: "connection",
       draft,
       errors: {},
@@ -285,8 +381,23 @@ export class ProviderEditorController {
     if (this.providerEditor?.target === id) this.providerEditor = { ...this.providerEditor, view: "models" };
   }
 
+  /** Adding starts on the connector tiles (ADR 0072); the form follows the pick. */
   openAddProvider(): void {
-    this.openProviderEditor("add", emptyProviderDraft());
+    this.openProviderEditor("add", emptyProviderDraft(), true);
+  }
+
+  pickConnector(id: ConnectorId | null): void {
+    const editor = this.providerEditor;
+    if (editor?.target !== "add") return;
+    this.openProviderEditor("add", id ? connectorDraft(id, this.t.connectors.name[id]) : emptyProviderDraft());
+  }
+
+  /** Back from a new endpoint's form, before it was created, is back to the tiles; true when it was. */
+  backToConnectorPicker(): boolean {
+    const editor = this.providerEditor;
+    if (editor?.target !== "add" || editor.picking) return false;
+    this.openProviderEditor("add", emptyProviderDraft(), true);
+    return true;
   }
 
   openEditProvider(id: string): void {
@@ -297,6 +408,7 @@ export class ProviderEditorController {
     // The stored URL + key count as already asked, so only changing one of them probes again.
     const signature = probeSignature(draft, provider.key_set);
     this.providerProbedSignature = signature;
+    this.connectorSearchedSignature = connectorSignature(draft, provider.key_set);
     // Endpoints saved before the list was kept have nothing to show yet; ask once on open.
     if (provider.available_models.length === 0 && signature) void this.fetchProviderModels();
   }
@@ -326,15 +438,17 @@ export class ProviderEditorController {
       editor.draft.apiKey,
       target === "add" ? undefined : target,
       probeFormat(editor.draft, saved),
+      editor.draft.workspaceId.trim() || null,
     );
     // The editor may have closed or moved to another URL / key while the request was out.
     const open = this.providerEditor;
     if (this.runtime.client !== api || !this.runtime.settingsOpen || !open || open.target !== target || probeSignature(open.draft, keySet) !== requested) return;
     if (!res.ok) {
+      const connector = open.draft.connector ? connectorById(open.draft.connector) : null;
       this.providerEditor = {
         ...open,
         fetching: false,
-        fetchError: `${this.t.settings.modelsFetchFailed} (${res.error})`,
+        fetchError: (connector && this.connectorFailure(connector, res.error, res.status)) ?? `${this.t.settings.modelsFetchFailed} (${res.error})`,
       };
       return;
     }

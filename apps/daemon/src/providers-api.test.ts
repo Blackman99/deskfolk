@@ -260,6 +260,59 @@ describe("empty roster and settings", () => {
     }
   });
 
+  test("a provider's Anthropic workspace round-trips, clears with null or an empty string, and refuses a malformed id", async () => {
+    const h = await start();
+    const send = (method: string, path: string, body: unknown) =>
+      fetch(`${h.origin}${path}`, { method, headers: auth(h, { "Content-Type": "application/json" }), body: JSON.stringify(body) });
+    const created = await send("POST", "/v1/providers", { name: "Claude", base_url: "https://api.anthropic.com", api_format: "anthropic", api_key: "sk-ant-usr-x", workspace_id: "wrkspc_01Test", models: ["claude-opus-5-5"] });
+    expect(created.status).toBe(201);
+    const made = (await created.json()) as { id: string; workspace_id: string | null };
+    expect(made.workspace_id).toBe("wrkspc_01Test");
+    const listed = (await (await fetch(`${h.origin}/v1/providers`, { headers: auth(h) })).json()) as { items: Array<{ id: string; workspace_id: string | null }> };
+    expect(listed.items.find((row) => row.id === made.id)?.workspace_id).toBe("wrkspc_01Test");
+    // A patch that leaves it out leaves it be.
+    const renamed = await send("PATCH", `/v1/providers/${made.id}`, { name: "Claude 2" });
+    expect(((await renamed.json()) as { workspace_id: string | null }).workspace_id).toBe("wrkspc_01Test");
+    const bad = await send("PATCH", `/v1/providers/${made.id}`, { workspace_id: "ws-1" });
+    expect(bad.status).toBe(422);
+    expect((await send("POST", "/v1/providers", { name: "Bad", base_url: "https://api.anthropic.com", workspace_id: "nope" })).status).toBe(422);
+    const cleared = await send("PATCH", `/v1/providers/${made.id}`, { workspace_id: "" });
+    expect(((await cleared.json()) as { workspace_id: string | null }).workspace_id).toBeNull();
+    await send("PATCH", `/v1/providers/${made.id}`, { workspace_id: "wrkspc_02Other" });
+    const nulled = await send("PATCH", `/v1/providers/${made.id}`, { workspace_id: null });
+    expect(((await nulled.json()) as { workspace_id: string | null }).workspace_id).toBeNull();
+    const plain = await send("POST", "/v1/providers", { name: "Plain", base_url: "https://api.openai.com/v1" });
+    expect(((await plain.json()) as { workspace_id: string | null }).workspace_id).toBeNull();
+  });
+
+  test("POST /v1/models/probe sends the form's workspace, or the named endpoint's saved one", async () => {
+    const h = await start();
+    const send = (path: string, body: unknown) =>
+      fetch(`${h.origin}${path}`, { method: "POST", headers: auth(h, { "Content-Type": "application/json" }), body: JSON.stringify(body) });
+    const created = await send("/v1/providers", { name: "Claude", base_url: "https://api.anthropic.com", api_format: "anthropic", api_key: "sk-ant-usr-x", workspace_id: "wrkspc_01Saved", models: ["claude-opus-5-5"] });
+    const id = ((await created.json()) as { id: string }).id;
+    const originalFetch = globalThis.fetch;
+    const seen: Array<string | undefined> = [];
+    try {
+      globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+        if (!String(url).includes("/v1/models")) return originalFetch(url, init);
+        seen.push((init?.headers as Record<string, string>)["anthropic-workspace-id"]);
+        return Response.json({ data: [{ type: "model", id: "claude-opus-5-5" }], has_more: false });
+      }) as unknown as typeof fetch;
+      const probe = (body: unknown) => originalFetch(`${h.origin}/v1/models/probe`, { method: "POST", headers: auth(h, { "Content-Type": "application/json" }), body: JSON.stringify(body) });
+      const base = { endpoint_base_url: "https://api.anthropic.com", endpoint_api_key: "sk-ant-usr-x", api_format: "anthropic" };
+      expect((await probe({ ...base, workspace_id: "wrkspc_01Form" })).status).toBe(200);
+      expect((await probe({ ...base, provider_id: id })).status).toBe(200);
+      expect((await probe({ ...base, provider_id: id, workspace_id: "" })).status).toBe(200);
+      expect((await probe({ ...base, provider_id: id, workspace_id: null })).status).toBe(200);
+      expect((await probe({ ...base })).status).toBe(200);
+      expect((await probe({ ...base, workspace_id: "bad" })).status).toBe(422);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    expect(seen).toEqual(["wrkspc_01Form", "wrkspc_01Saved", undefined, undefined, undefined]);
+  });
+
   test("POST /v1/models/probe hands the scope's guard to the probe, so a revoke during key hydration sends nothing", async () => {
     const store = new Store({ endpointKey: memoryKeyStore() });
     const api = createLocalApi({ store, token: "test-token", schedule: false });

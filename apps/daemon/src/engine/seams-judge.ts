@@ -54,6 +54,7 @@ export function createSeamsJudge(deps: SeamsJudgeDeps): JudgeSeams {
       baseUrl: target.baseUrl,
       apiKey: target.apiKey,
       apiFormat: target.apiFormat,
+      workspaceId: target.workspaceId,
       model: target.model,
       ...(prompt ? { prompt: prompt.ref } : {}),
       messages: [
@@ -106,6 +107,7 @@ export function createStandardJudge(deps: SeamsJudgeDeps): JudgeStandard {
       baseUrl: target.baseUrl,
       apiKey: target.apiKey,
       apiFormat: target.apiFormat,
+      workspaceId: target.workspaceId,
       model: target.model,
       messages: [
         { role: "system", content: system },

@@ -77,6 +77,7 @@ test("an incomplete add draft does not POST", async () => {
   const { host, runtime, close } = open({ providers: [] });
   openModels(host);
   click(buttonByText(host, t.settings.providerAdd));
+  click([...host.querySelectorAll(".connector-pick")].find((tile) => tile.classList.contains("is-custom")));
   fill(host.querySelector("#provider-add-name"), "CPA");
   await sleep(750);
   expect(runtime.calls.filter((c) => c.name === "createProvider")).toHaveLength(0);

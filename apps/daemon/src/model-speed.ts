@@ -37,7 +37,7 @@ export function writingSpeed(input: { sentAt: number; firstAt: number | null; en
   return Math.round(((tokens - 1) / seconds) * 10) / 10;
 }
 
-export type SpeedTarget = Pick<CompletionRequest, "baseUrl" | "apiKey" | "apiFormat" | "model">;
+export type SpeedTarget = Pick<CompletionRequest, "baseUrl" | "apiKey" | "apiFormat" | "workspaceId" | "model">;
 
 /** Runs both requests one after the other on `target`. Never throws; what failed comes back null. */
 export async function measureModel(

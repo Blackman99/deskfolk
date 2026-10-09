@@ -128,6 +128,7 @@ CREATE TABLE IF NOT EXISTS providers (
   name TEXT NOT NULL,
   base_url TEXT NOT NULL,
   api_format TEXT NOT NULL DEFAULT 'openai',
+  workspace_id TEXT,
   models TEXT NOT NULL,
   available_models TEXT NOT NULL DEFAULT '[]',
   default_model TEXT,

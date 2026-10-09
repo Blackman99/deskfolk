@@ -165,6 +165,7 @@ export function createChains(deps: ChainsDeps): Chains {
         baseUrl: routing.baseUrl,
         apiKey: routing.apiKey,
         apiFormat: routing.apiFormat,
+        workspaceId: routing.workspaceId,
         model: routing.model,
         messages: [
           { role: "system", content: ROUTE_REVIEW_SYSTEM },
@@ -278,6 +279,7 @@ export function createChains(deps: ChainsDeps): Chains {
           baseUrl: routing.baseUrl,
           apiKey: routing.apiKey,
           apiFormat: routing.apiFormat,
+          workspaceId: routing.workspaceId,
           model: routing.model,
           messages,
           tools,

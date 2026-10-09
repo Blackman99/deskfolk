@@ -73,6 +73,7 @@ export type OrganizerRouting = {
   baseUrl: string;
   apiKey: string;
   apiFormat: ApiFormat;
+  workspaceId: string | null;
   providerId: string;
   providerName: string;
   model: string;
@@ -275,6 +276,7 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
         baseUrl: routing.baseUrl,
         apiKey: routing.apiKey,
         apiFormat: routing.apiFormat,
+        workspaceId: routing.workspaceId,
         model: routing.model,
         prompt: prompt.ref,
         messages: [

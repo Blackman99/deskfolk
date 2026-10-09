@@ -16,6 +16,8 @@
 		thinkingChipOptions,
 		probeSignature,
 		setDraftModels,
+		keyIsWorkspaceId,
+		showsWorkspace,
 		toggleAttrStrength,
 		toggleAttrThinkingLevel,
 		toggleDraftModel,
@@ -25,6 +27,8 @@
 	} from './provider-form.ts';
 	import { thinkingLevelLabel } from '../copy.ts';
 	import { isLocalEndpoint, type ModelSpeed } from '@real-bot/protocol';
+	import ConnectorFields from './ConnectorFields.svelte';
+	import WorkspaceField from './WorkspaceField.svelte';
 
 	interface Props {
 		draft: ProviderDraft;
@@ -417,7 +421,9 @@
 {#if failed}
 	<p class="field-error">{t.settings.saveFailed}</p>
 {/if}
-{#if view === 'connection'}
+{#if view === 'connection' && draft.connector}
+<ConnectorFields connectorId={draft.connector} {draft} {errors} {fieldPrefix} {keySet} {fetching} {fetchError} {t} {patch} />
+{:else if view === 'connection'}
 <div class="modal-section">
 	<label for={`${fieldPrefix}-name`}>{t.settings.providerName}</label>
 	<input
@@ -487,12 +493,23 @@
 		value={draft.apiKey}
 		oninput={(ev) => patch({ apiKey: (ev.currentTarget as HTMLInputElement).value })}
 	/>
-	{#if errors.endpointKey}
+	{#if keyIsWorkspaceId(draft)}
+		<p class="field-error">{t.connectors.keyIsWorkspace}</p>
+	{:else if errors.endpointKey}
 		<p class="field-error">{t.settings.keyEmpty}</p>
 	{:else if keyless && !keySet}
 		<p class="muted field-hint">{t.settings.keyLocalHint}</p>
 	{/if}
 </div>
+{#if showsWorkspace(draft)}
+	<WorkspaceField
+		id={`${fieldPrefix}-workspace`}
+		value={draft.workspaceId}
+		invalid={errors.anthropicWorkspace === 'invalid'}
+		{t}
+		oninput={(value) => patch({ workspaceId: value })}
+	/>
+{/if}
 {:else}
 <div class="modal-section model-list-section" class:has-detail={Boolean(detailModel)} inert={Boolean(detailModel)}>
 	<div class="field-head-row model-list-heading">

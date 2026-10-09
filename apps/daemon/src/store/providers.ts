@@ -47,8 +47,10 @@ import {
   requireProvider,
   resolveApiFormat,
   resolveEndpointUrl,
+  resolveWorkspaceId,
   setSetting,
   storedApiFormat,
+  storedWorkspaceId,
   keyMutation,
   planKey,
 } from "./shared";
@@ -93,12 +95,13 @@ export function createProviderSync(ctx: StoreContext, input: CreateProviderReque
       ? normalizeDefaultModel(input.default_model, models)
       : (models[0] ?? null);
   const apiFormat = input.api_format !== undefined ? resolveApiFormat(input.api_format) : "openai";
+  const workspaceId = input.workspace_id !== undefined ? resolveWorkspaceId(input.workspace_id) : null;
   const now = isoNow();
   const id = ulid();
   ctx.commit(() => ctx.db.run(
-    `INSERT INTO providers (id, name, base_url, api_format, models, available_models, default_model, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, name, baseUrl, apiFormat, serializeCatalog(catalog), JSON.stringify(availableModels), defaultModel, now, now],
+    `INSERT INTO providers (id, name, base_url, api_format, workspace_id, models, available_models, default_model, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, name, baseUrl, apiFormat, workspaceId, serializeCatalog(catalog), JSON.stringify(availableModels), defaultModel, now, now],
   ));
   if (input.api_key !== undefined && typeof input.api_key !== "string") throw new HttpError(422, "invalid_args", "api_key must be a string");
   if (typeof input.api_key === "string" && input.api_key.length > 0) {
@@ -129,6 +132,7 @@ export function patchProviderSync(ctx: StoreContext, id: string, patch: PatchPro
   const baseUrl =
     patch.base_url !== undefined ? resolveEndpointUrl(patch.base_url) : current.base_url;
   const apiFormat = patch.api_format !== undefined ? resolveApiFormat(patch.api_format) : storedApiFormat(current.api_format);
+  const workspaceId = patch.workspace_id !== undefined ? resolveWorkspaceId(patch.workspace_id) : storedWorkspaceId(current.workspace_id);
   const before = parseStoredCatalog(current.models);
   let catalog = before;
   if (patch.models !== undefined) {
@@ -158,8 +162,8 @@ export function patchProviderSync(ctx: StoreContext, id: string, patch: PatchPro
       dropUnknownLadderModels(ctx, id, models);
     }
     ctx.db.run(
-      `UPDATE providers SET name = ?, base_url = ?, api_format = ?, models = ?, available_models = ?, default_model = ?, updated_at = ? WHERE id = ?`,
-      [name, baseUrl, apiFormat, serializeCatalog(catalog), JSON.stringify(availableModels), defaultModel, now, id],
+      `UPDATE providers SET name = ?, base_url = ?, api_format = ?, workspace_id = ?, models = ?, available_models = ?, default_model = ?, updated_at = ? WHERE id = ?`,
+      [name, baseUrl, apiFormat, workspaceId, serializeCatalog(catalog), JSON.stringify(availableModels), defaultModel, now, id],
     );
     repriceSpend(ctx, repriced);
     mirrorDefaultProvider(ctx);
@@ -214,6 +218,7 @@ export function toProviderCached(ctx: StoreContext, row: ProviderRow): Provider 
     name: row.name,
     base_url: emptyToNull(row.base_url),
     api_format: storedApiFormat(row.api_format),
+    workspace_id: storedWorkspaceId(row.workspace_id),
     key_set: ctx.keyPlan?.find((op) => op.name === providerKeychainName(row.id))?.value.length ? true : ctx.keyPlan?.some((op) => op.name === providerKeychainName(row.id)) ? false : ctx.keys.peek(providerKeychainName(row.id)) != null,
     models,
     model_catalog: catalog,

@@ -94,6 +94,8 @@ export type CompletionRequest = {
   apiKey: string;
   /** The endpoint's wire format; absent is `openai` (Chat Completions). */
   apiFormat?: ApiFormat;
+  /** Anthropic workspace id sent as `anthropic-workspace-id`; needed by keys not scoped to one workspace. */
+  workspaceId?: string | null;
   model: string;
   thinkingLevel: ThinkingLevel;
   messages: ChatMessage[];
@@ -136,6 +138,8 @@ export type JudgeRequest = {
   apiKey: string;
   /** The endpoint's wire format; absent is `openai` (Chat Completions). */
   apiFormat?: ApiFormat;
+  /** Anthropic workspace id sent as `anthropic-workspace-id`; needed by keys not scoped to one workspace. */
+  workspaceId?: string | null;
   model: string;
   messages: ChatMessage[];
   signal: AbortSignal;

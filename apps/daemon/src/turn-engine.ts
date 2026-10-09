@@ -326,7 +326,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       if (!creds) return null;
       const provider = chosen ? creds.providers.find((row) => row.id === chosen.provider_id) : undefined;
       const target = provider && chosen
-        ? { baseUrl: provider.baseUrl, apiKey: provider.apiKey, apiFormat: provider.apiFormat, providerId: provider.id, providerName: provider.name, model: chosen.model, thinkingLevel: null }
+        ? { baseUrl: provider.baseUrl, apiKey: provider.apiKey, apiFormat: provider.apiFormat, workspaceId: provider.workspaceId, providerId: provider.id, providerName: provider.name, model: chosen.model, thinkingLevel: null }
         : routing.routingTarget(creds);
       return target && { ...target, thinkingLevel: store.lightestThinkingLevelFor(target.model, target.providerId) };
     },
@@ -517,7 +517,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     if (!provider.models.includes(model)) throw new HttpError(422, "invalid_args", "model is not enabled on this endpoint");
     const measured = await measureModel(
       completions,
-      { baseUrl: provider.baseUrl, apiKey: provider.apiKey, apiFormat: provider.apiFormat, model },
+      { baseUrl: provider.baseUrl, apiKey: provider.apiKey, apiFormat: provider.apiFormat, workspaceId: provider.workspaceId, model },
       signal,
     );
     const recorded = measured.tokens_per_second ? Math.max(0.1, Math.round(measured.tokens_per_second * RECORDED_SHARE * 10) / 10) : null;

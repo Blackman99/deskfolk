@@ -301,6 +301,34 @@ SOFTWARE.
 
 The Claude Agent card in Settings › Agents shows the Claude Spark next to the words "Claude Agent" (`apps/messenger/src/lib/settings/ClaudeSpark.svelte`): Anthropic's mark for Claude, taken unaltered — same path and colour, only sized — from Anthropic's press kit (https://anthropic.com/press-kit, "Claude Spark - Clay.svg"). It is a trademark of Anthropic PBC and is not covered by this repository's MIT license; Anthropic's trademark guidelines govern its use (https://www.anthropic.com/legal/trademark-guidelines).
 
+## Connector logos
+
+The built-in connectors' marks (`apps/messenger/src/lib/settings/ConnectorLogo.svelte`) — Anthropic's, Xiaomi MiMo's and Qwen's — use the SVG paths of [lobe-icons](https://github.com/lobehub/lobe-icons) (`@lobehub/icons-static-svg` 1.90.0: `anthropic.svg`, `xiaomimimo.svg`, `qwen-color.svg`), unaltered and placed on each brand's colour. The marks themselves are trademarks of Anthropic PBC, Xiaomi Corporation and Alibaba Group respectively, shown only to name the service a connector reaches; they are not covered by this repository's MIT license. The drawings are released under the MIT license:
+
+```text
+MIT License
+
+Copyright (c) 2023 LobeHub
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ## Office previews
 
 Office previews in `apps/messenger` use these dynamically loaded packages:

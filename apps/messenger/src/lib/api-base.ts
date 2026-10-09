@@ -196,6 +196,8 @@ export abstract class ApiBase<Row extends PendingRow> {
     endpoint_base_url?: string;
     endpoint_api_key?: string;
     api_format?: ApiFormat;
+    /** Anthropic's `wrkspc_…`; "" or null for none, absent for the named endpoint's own. */
+    workspace_id?: string | null;
     provider_id?: string;
   }): Promise<ProbeModelsResponse> {
     return this.post<ProbeModelsResponse>("/v1/models/probe", body);

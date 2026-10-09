@@ -141,6 +141,7 @@ export function createScribe(deps: ScribeDeps): Scribe {
         baseUrl: routing.baseUrl,
         apiKey: routing.apiKey,
         apiFormat: routing.apiFormat,
+        workspaceId: routing.workspaceId,
         model: routing.model,
         prompt: prompt.ref,
         messages: [

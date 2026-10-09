@@ -38,7 +38,7 @@ export async function postAnthropic(
       thinking,
       response: fetchImpl(anthropicUrl(request.baseUrl, "messages"), {
         method: "POST",
-        headers: { ...anthropicHeaders(request.apiKey, auth), ...sessionHeader(opts.affinity) },
+        headers: { ...anthropicHeaders(request.apiKey, auth, request.workspaceId), ...sessionHeader(opts.affinity) },
         body: JSON.stringify(anthropicBody({
           model: request.model,
           messages: request.messages,
