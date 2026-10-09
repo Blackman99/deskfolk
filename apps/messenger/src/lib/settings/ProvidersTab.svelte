@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { connectorFor, isLocalEndpoint } from '@real-bot/protocol';
 	import ConnectorLogo from './ConnectorLogo.svelte';
+	import Select from '../Select.svelte';
 	import type { Copy } from '../copy.ts';
 	import { providerHost } from './provider-form.ts';
 	import { botAvatarColor } from '../avatar.ts';
@@ -141,35 +142,18 @@
 						{#each provider.models as model (model)}<option value={model}>{model}</option>{/each}
 					</select>
 				</div>
-				<div class="provider-model-rail" role="radiogroup" aria-label={t.settings.defaultModel}>
-					{#if provider.models.length === 0}
-						<button
-							type="button"
-							class="provider-model-empty"
-							onclick={() => openProviderModels(provider.id)}
-						>
-							{t.settings.providerNoDefault}
-						</button>
-					{:else}
-						{#each provider.models as model (model)}
-							{@const chosen = model === provider.default_model}
-							<button
-								type="button"
-								class="provider-model-pick mono"
-								class:is-default={chosen}
-								role="radio"
-								disabled={providerSaving}
-								aria-checked={chosen}
-								aria-label={chosen
-									? t.settings.providerDefaultModel(model)
-									: t.settings.providerPickDefault}
-								onclick={() => void setProviderDefaultModel(provider.id, model)}
-							>
-								<span class="provider-model-mark" aria-hidden="true"></span>
-								<span class="provider-model-pick-name">{model}</span>
-							</button>
-						{/each}
-					{/if}
+				<div class="provider-model-rail">
+					<span class="provider-model-label">{t.settings.defaultModel}</span>
+					<Select
+						class="provider-default-select"
+						size="sm"
+						value={provider.default_model ?? ''}
+						options={provider.models}
+						placeholder={provider.models.length ? t.settings.providerChooseDefault : t.settings.providerEnableFirst}
+						disabled={provider.models.length === 0 || providerSaving}
+						ariaLabel={`${t.settings.defaultModel}: ${provider.name}`}
+						onchange={(model) => void setProviderDefaultModel(provider.id, model)}
+					/>
 					<button
 						type="button"
 						class="provider-model-manage"
@@ -178,7 +162,7 @@
 					>
 						<span>{t.settings.providerModels}</span>
 						<span class="provider-model-manage-count">{t.settings.modelsEnabledCount(provider.models.length)}</span>
-						<svg class="provider-manage-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
+						<svg class="provider-manage-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
 					</button>
 				</div>
 			</div>
@@ -193,7 +177,7 @@
 		gap: 14px;
 	}
 
-	.provider-mobile-default, .provider-manage-chevron { display: none; }
+	.provider-mobile-default { display: none; }
 
 	.provider-list-head :global(.muted) {
 		margin: 0;
@@ -385,88 +369,53 @@
 		border-color: var(--danger-line);
 	}
 
-	/* The default model is a row you click. Connection and the enable list live behind their own buttons. */
+	/* One line whatever the model count: the default model picker, and the way into the list. */
 	.provider-model-rail {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		padding-top: 8px;
-		border-top: 1px solid var(--line);
-	}
-
-	.provider-model-pick,
-	.provider-model-empty,
-	.provider-model-manage {
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		width: 100%;
-		min-height: 32px;
-		padding: 4px 8px;
+		padding-top: 10px;
+		border-top: 1px solid var(--line);
+	}
+
+	.provider-model-label {
+		flex: none;
+		font-size: 12px;
+		color: var(--muted);
+	}
+
+	.provider-model-rail :global(.provider-default-select) {
+		flex: 0 1 260px;
+		min-width: 0;
+	}
+
+	.provider-model-manage {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		margin-left: auto;
+		flex: none;
+		min-height: 28px;
+		padding: 4px 6px 4px 8px;
 		border: none;
 		border-radius: var(--radius-sm);
 		background: transparent;
-		color: var(--ink-secondary);
-		font-size: 13px;
-		text-align: left;
+		color: var(--accent);
+		font-size: 12px;
+		font-weight: 600;
 		cursor: pointer;
 	}
 
-	.provider-model-pick:hover,
-	.provider-model-empty:hover,
 	.provider-model-manage:hover {
 		background: var(--line-subtle);
-		color: var(--ink);
 	}
 
-	.provider-model-pick:focus-visible,
-	.provider-model-empty:focus-visible,
 	.provider-model-manage:focus-visible {
 		outline: 2px solid var(--accent);
 		outline-offset: -2px;
 	}
 
-	.provider-model-mark {
-		flex: none;
-		width: 14px;
-		height: 14px;
-		border-radius: 50%;
-		border: 1.5px solid var(--line-hover);
-		background: var(--input-bg);
-		box-sizing: border-box;
-	}
-
-	.provider-model-pick.is-default {
-		color: var(--ink);
-		font-weight: 600;
-	}
-
-	.provider-model-pick.is-default .provider-model-mark {
-		border-color: var(--accent);
-		background: radial-gradient(circle, var(--accent) 0 4px, transparent 4.5px);
-	}
-
-	.provider-model-pick-name {
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.provider-model-empty {
-		color: var(--muted);
-		font-size: 12px;
-		line-height: 1.4;
-	}
-
-	.provider-model-manage {
-		color: var(--accent);
-		font-weight: 600;
-		font-size: 12px;
-	}
-
 	.provider-model-manage-count {
-		margin-left: auto;
 		font-weight: 500;
 		color: var(--muted);
 		font-variant-numeric: tabular-nums;
@@ -505,9 +454,9 @@
 		.provider-mobile-default label { font-size: 12px; font-weight: 500; color: var(--muted); }
 		.provider-mobile-default select { width: 100%; min-width: 0; min-height: 48px; padding: 10px 12px; font-family: var(--font); font-size: 16px; color: var(--ink); background: var(--sidebar-bg); border: 1px solid var(--line); border-radius: var(--radius-md); text-overflow: ellipsis; }
 		.provider-model-rail { gap: 0; padding: 0; }
-		.provider-model-pick, .provider-model-empty { display: none; }
-		.provider-model-manage { min-height: 56px; padding: 12px 16px; border-radius: 0; font-size: 15px; color: var(--ink); }
-		.provider-model-manage-count { font-size: 12px; }
-		.provider-manage-chevron { display: block; flex-shrink: 0; color: var(--muted); }
+		.provider-model-label, .provider-model-rail :global(.provider-default-select) { display: none; }
+		.provider-model-manage { flex: 1; gap: 8px; margin-left: 0; min-height: 56px; padding: 12px 16px; border-radius: 0; font-size: 15px; color: var(--ink); }
+		.provider-model-manage-count { margin-left: auto; font-size: 12px; }
+		.provider-manage-chevron { width: 18px; height: 18px; flex-shrink: 0; color: var(--muted); }
 	}
 </style>

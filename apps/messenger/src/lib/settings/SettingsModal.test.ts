@@ -173,13 +173,16 @@ test("an incomplete add draft does not POST", async () => {
   close();
 });
 
-test("clicking an enabled model sets it as that endpoint's default", async () => {
+test("each endpoint picks its default from its enabled models in one picker", async () => {
   const { host, runtime, close } = open();
   openModels(host);
-  const picks = [...host.querySelectorAll<HTMLButtonElement>(".provider-model-pick")];
-  expect(picks.map((row) => row.textContent?.trim())).toEqual(["grok-4.6", "gemini-3.8-flash"]);
-  expect(picks[0]?.getAttribute("aria-checked")).toBe("true");
-  click(picks[1]);
+  const picker = host.querySelector<HTMLElement>(".provider-card .provider-default-select")!;
+  expect(picker.querySelector(".real-select-value")?.textContent?.trim()).toBe("grok-4.6");
+  click(picker.querySelector(".real-select-trigger"));
+  await sleep(0);
+  const options = [...picker.querySelectorAll<HTMLElement>(".real-select-option")];
+  expect(options.map((row) => row.textContent?.trim())).toEqual(["grok-4.6", "gemini-3.8-flash"]);
+  click(options[1]);
   await sleep(20);
   expect(runtime.calls.filter((c) => c.name === "patchProvider")).toEqual([
     { name: "patchProvider", args: ["prov-1", { default_model: "gemini-3.8-flash" }] },
@@ -881,7 +884,7 @@ test("the default picker waits for a closing list save to finish", async () => {
       click(host.querySelector('.model-row-toggle[aria-label="claude-opus-5"]'));
       click(host.querySelector(".settings-subpage-back"));
       expect((host.querySelector(".provider-mobile-default select") as HTMLSelectElement).disabled).toBe(true);
-      expect([...host.querySelectorAll<HTMLButtonElement>(".provider-model-pick")].every((button) => button.disabled)).toBe(true);
+      expect(host.querySelector<HTMLButtonElement>(".provider-default-select .real-select-trigger")?.disabled).toBe(true);
       finish();
       await settle();
       expect((host.querySelector(".provider-mobile-default select") as HTMLSelectElement).disabled).toBe(false);

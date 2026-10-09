@@ -95,10 +95,6 @@ test("provider settings chrome lives on settings.*", () => {
   expect(COPY.en.settings.providerConnection).toBe("Connection");
   expect(COPY.zh.settings.providerModels).toBe("名单");
   expect(COPY.en.settings.providerModels).toBe("Models");
-  expect(COPY.zh.settings.providerPickDefault).toBe("设为这个端点的默认模型");
-  expect(COPY.en.settings.providerPickDefault).toBe("Make this the endpoint's default model");
-  expect(COPY.zh.settings.providerDefaultModel("grok-4.6")).toBe("默认模型 grok-4.6");
-  expect(COPY.en.settings.providerDefaultModel("grok-4.6")).toBe("Default model grok-4.6");
 });
 
 test("independent runtime copy stays gated and bilingual", () => {
