@@ -41,6 +41,10 @@
 
 	let usage = $state<ClaudeUsage | null>(null);
 	let open = $state(false);
+	/** The detail stays mounted through the close, so the fold can slide shut before it goes. */
+	let revealed = $state(false);
+	let opening = false;
+	let frame = 0;
 	let busy = $state(false);
 	let now = $state(Date.now());
 
@@ -56,6 +60,30 @@
 	const shortLabels = $derived(usageAccountShortLabels(shown, t));
 	const details = $derived(shown.map((account, index) => usageAccountDetail(account, shortLabels[index] ?? '')));
 	const hasInfo = $derived(details.some((detail) => detail !== null));
+
+	function toggle() {
+		cancelAnimationFrame(frame);
+		// A second press before the opening frame lands takes it back, instead of opening twice.
+		if (open || opening) {
+			const waiting = opening && !open;
+			opening = false;
+			open = false;
+			if (waiting) revealed = false;
+			return;
+		}
+		revealed = true;
+		opening = true;
+		// Mount shut, then open on the next frame, so the height has a start to slide from.
+		frame = requestAnimationFrame(() => {
+			opening = false;
+			open = true;
+		});
+	}
+
+	function onFoldEnd(event: TransitionEvent) {
+		if (event.target !== event.currentTarget || event.propertyName !== 'grid-template-rows' || open) return;
+		revealed = false;
+	}
 
 	async function load(api: MessengerApi, refresh: boolean): Promise<void> {
 		if (busy) return;
@@ -98,7 +126,7 @@
 			class="usage-summary"
 			aria-expanded={open}
 			aria-label={open ? t.claudeAgent.usage.collapse : t.claudeAgent.usage.expand}
-			onclick={() => (open = !open)}
+			onclick={toggle}
 		>
 			<!-- One line per account, columns aligned. A wide strip adds the email and a ring on each window. -->
 			<span class="usage-mark"><ClaudeSpark size={14} /></span>
@@ -138,15 +166,19 @@
 				<path d="m18 15-6-6-6 6"></path>
 			</svg>
 		</button>
-		{#if open}
-			<div class="usage-detail">
-				{#if several}
-					<ClaudeUsageAccounts accounts={shown} {t} {locale} {now} {busy} onRefresh={() => client && void load(client, true)} />
-				{:else}
-					<ClaudeUsageRows usage={shown[0]!} {t} {locale} {now} {busy} onRefresh={() => client && void load(client, true)} />
+			<div class="usage-fold" ontransitionend={onFoldEnd}>
+				{#if revealed}
+					<div class="usage-fold-clip">
+						<div class="usage-detail">
+							{#if several}
+								<ClaudeUsageAccounts accounts={shown} {t} {locale} {now} {busy} onRefresh={() => client && void load(client, true)} />
+							{:else}
+								<ClaudeUsageRows usage={shown[0]!} {t} {locale} {now} {busy} onRefresh={() => client && void load(client, true)} />
+							{/if}
+						</div>
+					</div>
 				{/if}
 			</div>
-		{/if}
 	</section>
 {/if}
 
@@ -290,14 +322,30 @@
 		flex: none;
 		width: 12px;
 		transform: rotate(180deg);
+		transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
 	.usage-meter.is-open .usage-caret {
 		transform: none;
 	}
 
+	.usage-fold {
+		display: grid;
+		grid-template-rows: 0fr;
+		transition: grid-template-rows 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+
+	.usage-meter.is-open .usage-fold {
+		grid-template-rows: 1fr;
+	}
+
+	.usage-fold-clip {
+		min-height: 0;
+		overflow: hidden;
+	}
+
 	.usage-detail {
-		padding: 2px 12px 10px;
+		padding: 10px 12px 10px;
 	}
 
 	/*
