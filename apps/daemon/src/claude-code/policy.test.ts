@@ -57,8 +57,9 @@ posixTest("the config directories of your other Claude accounts are as off limit
     expect(call.kind).toBe("deny");
     if (call.kind === "deny") expect(call.reason).toContain("credentials");
   }
-  // Not listed, it is any other folder outside the workspace.
-  expect(decideAgentCall({ ...base, tool: "Read", input: { file_path: `${home}/cc-work/.claude.json` } }).kind).toBe("ask");
+  // Not listed, it is any other folder outside the workspace. The fake home's top folder is a disk
+  // one here: Linux has no /Users, and a path under a missing top is refused before anyone is asked.
+  expect(decideAgentCall({ ...base, exists: () => true, tool: "Read", input: { file_path: `${home}/cc-work/.claude.json` } }).kind).toBe("ask");
   for (const command of ["cat ~/cc-work/.claude.json", "ls $HOME/cc-work", "cp ${HOME}/cc-work/x .", `tar cf - ${home}/cc-work`, "cat /opt/claude-acct/.claude.json"]) {
     expect(touchesClaudeCredentials(command, home, "darwin", configDirs)).toBe(true);
   }

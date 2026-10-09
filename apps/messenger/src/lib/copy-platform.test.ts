@@ -4,9 +4,10 @@ import { COPY } from "./copy.ts";
 // copy/platform-words.ts reads the platform once, when it loads, and test-setup.ts pins the
 // navigator to the Mac. The Windows wording needs its own instances of copy.ts and the copy/
 // modules, loaded under a Win32 navigator: they leave the module cache for that import, and the
-// Mac ones go back afterwards so the other tests in this process keep theirs.
+// Mac ones go back afterwards so the other tests in this process keep theirs. The cache is keyed
+// by the disk's own path, with backslashes on Windows.
 async function copyOn(platform: string): Promise<typeof COPY> {
-  const kept = Object.entries(require.cache).filter(([key]) => /\/src\/lib\/copy(\.ts$|\/)/.test(key));
+  const kept = Object.entries(require.cache).filter(([key]) => /[\\/]src[\\/]lib[\\/]copy(\.ts$|[\\/])/.test(key));
   for (const [key] of kept) delete require.cache[key];
   Object.defineProperty(navigator, "platform", { configurable: true, value: platform });
   try {
