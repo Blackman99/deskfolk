@@ -24,6 +24,7 @@
 	} from '@real-bot/protocol';
 	import { offeredShortcuts, type SpeechShortcut } from './speech-shortcut.ts';
 	import Select from '../Select.svelte';
+	import { speechServiceSource } from '../model-source.ts';
 	import { Autosave } from '../autosave.svelte.ts';
 	import AutosaveState from './AutosaveState.svelte';
 	import SettingsSwitch from './SettingsSwitch.svelte';
@@ -65,7 +66,7 @@
 	/** The endpoint whose key speech takes, when it takes one. */
 	const keyProvider = $derived(speech?.key_provider_id ? (providers.find((row) => row.id === speech.key_provider_id) ?? null) : null);
 	const local = $derived(isLocalEndpoint(baseUrl.trim()));
-	const presetOptions = $derived(SPEECH_PRESETS.map((row) => ({ value: row.id, label: s.presets[row.id] })));
+	const presetOptions = $derived(SPEECH_PRESETS.map((row) => ({ value: row.id, label: s.presets[row.id], source: speechServiceSource(row.id, t) })));
 	const formatOptions = $derived(SPEECH_FORMATS.map((format) => ({ value: format, label: s.formats[format] })));
 	const languageOptions = $derived([
 		{ value: '', label: s.languageAuto },

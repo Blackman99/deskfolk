@@ -3,11 +3,11 @@
  * this" and not "the database happened to contain that". No daemon, no WebSocket, no real rows.
  */
 import { flushSync, type Component } from 'svelte';
-import type { Annotation } from '@real-bot/protocol';
+import { SPEECH_PRESETS, type Annotation } from '@real-bot/protocol';
 import { STORY_SIZES, type StoryName } from './story-list.ts';
 import { copyFor } from '../../src/lib/copy.ts';
 import Select from '../../src/lib/Select.svelte';
-import { claudeAgentSource, endpointModelOptions } from '../../src/lib/model-source.ts';
+import { claudeAgentSource, endpointModelOptions, speechServiceSource } from '../../src/lib/model-source.ts';
 import {
 	aBot,
 	aBotDirect,
@@ -1050,6 +1050,20 @@ const defs: Record<StoryName, Story> = {
 			box.append(field);
 			field.style.width = '150px';
 			field.querySelector<HTMLButtonElement>('.real-select-trigger')?.click();
+		}
+	},
+	// Speech recognition's service picker open: each service on its vendor's tile, Bailian's on Qwen's, Custom as Custom.
+	'speech-service-picker-open': {
+		component: Select as never,
+		props: {
+			value: 'bailian_token_plan',
+			size: 'sm',
+			options: SPEECH_PRESETS.map((row) => ({ value: row.id, label: t.speech.presets[row.id], source: speechServiceSource(row.id, t) }))
+		},
+		afterMount: (host: HTMLElement) => {
+			host.style.padding = '16px';
+			host.style.boxSizing = 'border-box';
+			host.querySelector<HTMLButtonElement>('.real-select-trigger')?.click();
 		}
 	},
 	// On a phone, Models is a list of its four sections, each saying what it is set to.

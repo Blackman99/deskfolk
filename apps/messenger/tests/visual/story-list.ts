@@ -60,6 +60,7 @@ export const STORY_SIZES = {
 	'settings-models-narrow': { width: 390, height: 844 },
 	'model-picker-open': { width: 380, height: 330 },
 	'model-picker-narrow': { width: 380, height: 240 },
+	'speech-service-picker-open': { width: 380, height: 300 },
 	'settings-agents': { width: 1000, height: 720 },
 	'settings-mcp': { width: 1000, height: 720 },
 	'settings-prompts': { width: 1000, height: 720 },

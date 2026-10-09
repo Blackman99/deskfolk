@@ -3,13 +3,13 @@
 	import ConnectorLogo from './settings/ConnectorLogo.svelte';
 	import ClaudeSpark from './settings/ClaudeSpark.svelte';
 
-	/** Where a model comes from, in front of its name in a picker (see `model-source.ts`). */
+	/** Where a model comes from, or whose a speech service is, in front of its name in a picker (see `model-source.ts`). */
 	type Props = { source: ModelSource };
 	let { source }: Props = $props();
 </script>
 
-<span class="model-source is-{source.kind}" title={source.name} aria-hidden="true" data-model-source={source.kind === 'connector' ? source.id : source.kind}>
-	{#if source.kind === 'connector'}
+<span class="model-source is-{source.kind}" title={source.name} aria-hidden="true" data-model-source={source.kind === 'connector' || source.kind === 'vendor' ? source.id : source.kind}>
+	{#if source.kind === 'connector' || source.kind === 'vendor'}
 		<ConnectorLogo id={source.id} size={16} />
 	{:else if source.kind === 'claude-agent'}
 		<ClaudeSpark size={14} />

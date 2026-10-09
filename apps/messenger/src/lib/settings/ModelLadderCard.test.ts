@@ -87,3 +87,21 @@ test("a change that is not saved goes back, and says so", async () => {
   expect(view.host.querySelector(".ladder-error")?.textContent).toBe(t.modelLadder.failed);
   view.close();
 });
+
+test("each rung shows where its model comes from, as the picker that added it did", async () => {
+  const marked = [
+    { id: "p1", name: "小米", base_url: "https://token-plan-cn.xiaomimimo.com/v1", api_format: "openai", models: ["mimo"] },
+    { id: "p2", name: "My CPA", base_url: "https://cpa.example.com/v1", api_format: "openai", models: ["grok"] },
+  ] as unknown as Provider[];
+  const { api } = fakeApi([{ provider_id: "p1", model: "mimo" }, { provider_id: "p2", model: "grok" }, { provider_id: "gone", model: "old" }]);
+  const ladder = new ModelLadder(() => api);
+  void ladder.load();
+  const view = render(ModelLadderCard, { ladder, providers: marked, t });
+  await sleep(0);
+  const rungs = [...view.host.querySelectorAll(".ladder-rung")];
+  expect(rungs.map((rung) => rung.querySelector("[data-model-source]")?.getAttribute("data-model-source") ?? null)).toEqual(["xiaomi", "custom", null]);
+  expect(rungs[0]!.querySelector(".connector-logo.is-xiaomi")).toBeTruthy();
+  // The mark is drawn, not written: the row still reads as the model and its endpoint.
+  expect(names(view.host)).toEqual(["mimo · 小米", "grok · My CPA", "old · gone"]);
+  view.close();
+});

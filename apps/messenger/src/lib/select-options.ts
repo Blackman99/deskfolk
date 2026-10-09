@@ -7,7 +7,7 @@ export interface SelectOption {
 	hint?: string;
 	/** A heading shown above the first option of a run of options that share it. */
 	group?: string;
-	/** A model's: where it comes from, drawn before its name in the menu and on the closed picker. */
+	/** A model's: where it comes from (a speech service's: whose it is), drawn before its name in the menu and on the closed picker. */
 	source?: ModelSource;
 }
 

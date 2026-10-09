@@ -157,3 +157,18 @@ test("DashScope's own API shows the host hint and no language, which it ignores"
   expect([...view.host.querySelectorAll(".speech-label")].map((el) => el.textContent)).not.toContain(t.speech.language);
   view.close();
 });
+
+test("each service wears its vendor's logo, in the menu and on the closed picker; Bailian's are Qwen's", async () => {
+  const { patch } = fakePatch();
+  const view = render(SpeechCard, { speech: groq, patch, t });
+  const trigger = view.host.querySelector(".speech-field .real-select-trigger")!;
+  expect(trigger.querySelector("[data-model-source]")?.getAttribute("data-model-source")).toBe("groq");
+  click(trigger);
+  await sleep(0);
+  const rows = [...view.host.querySelectorAll(".real-select-option")];
+  expect(rows.map((row) => row.querySelector("[data-model-source]")?.getAttribute("data-model-source"))).toEqual([
+    "openai", "groq", "siliconflow", "qwen", "qwen", "deepgram", "elevenlabs", "custom",
+  ]);
+  expect(rows.map((row) => row.textContent?.trim())).toEqual(Object.values(t.speech.presets));
+  view.close();
+});

@@ -22,6 +22,8 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 - Every model picker (a Bot's model, a ticket's model, the model ladder, the model that reads lines, the first-run default model, a Claude Agent Bot's model) draws each model's source before its name: the vendor's logo for an endpoint of a built-in connector (Anthropic, Xiaomi MiMo, Qwen), the Claude mark for a model run through your own Claude Code, and "Custom" for any other endpoint. The closed picker shows the chosen model's mark too, and its endpoint once there is more than one.
 - Model rows read the same in every picker: the model's name, then its endpoint in grey, instead of "model · endpoint" in some and the endpoint as a hint in others.
 - A built-in connector added later shows in every picker without changing any of them.
+- The model ladder's own rows carry the same mark before each model, not only its Add a model picker.
+- Speech recognition's Service picker draws each service's logo too: OpenAI, Groq, SiliconFlow, Deepgram and ElevenLabs their own, both Alibaba Bailian services the Qwen logo their endpoint already wears, and Custom the "Custom" mark.
 - A picker's menu is as wide as its rows (up to 420px) instead of as wide as the field: a ticket card's model field, a narrow one, no longer cuts every name short. It opens above everything, so the pane it sits in no longer cuts it off, and it slides left to stay inside the window.
 
 ### Settings › Models in four sections

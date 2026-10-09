@@ -303,7 +303,7 @@ The Claude Agent card in Settings › Agents shows the Claude Spark next to the 
 
 ## Connector logos
 
-The built-in connectors' marks (`apps/messenger/src/lib/settings/ConnectorLogo.svelte`) — Anthropic's, Xiaomi MiMo's and Qwen's — use the SVG paths of [lobe-icons](https://github.com/lobehub/lobe-icons) (`@lobehub/icons-static-svg` 1.90.0: `anthropic.svg`, `xiaomimimo.svg`, `qwen-color.svg`), unaltered and placed on each brand's colour. The marks themselves are trademarks of Anthropic PBC, Xiaomi Corporation and Alibaba Group respectively, shown only to name the service a connector reaches; they are not covered by this repository's MIT license. The drawings are released under the MIT license:
+The built-in connectors' marks and the speech services' (`apps/messenger/src/lib/settings/ConnectorLogo.svelte`) — Anthropic's, Xiaomi MiMo's, Qwen's, OpenAI's, Groq's, SiliconFlow's and ElevenLabs' — use the SVG paths of [lobe-icons](https://github.com/lobehub/lobe-icons) (`@lobehub/icons-static-svg` 1.90.0: `anthropic.svg`, `xiaomimimo.svg`, `qwen-color.svg`, `openai.svg`, `groq.svg`, `siliconcloud-color.svg`, `elevenlabs.svg`), unaltered and placed on each brand's colour. Deepgram's uses the SVG path of [Simple Icons](https://simpleicons.org) (`simple-icons` 16.34.0: `deepgram.svg`, released under CC0 1.0 Universal), unaltered and drawn in its listed colour `#13EF93`. The marks themselves are trademarks of Anthropic PBC, Xiaomi Corporation, Alibaba Group, OpenAI, Groq, SiliconFlow, ElevenLabs and Deepgram respectively, shown only to name the service a connector or a speech service reaches; they are not covered by this repository's MIT license. The lobe-icons drawings are released under the MIT license:
 
 ```text
 MIT License

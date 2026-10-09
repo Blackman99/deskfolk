@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { CONNECTORS, type Provider } from "@real-bot/protocol";
+import { CONNECTORS, SPEECH_PRESETS, type Provider } from "@real-bot/protocol";
 import { copyFor } from "./copy.ts";
-import { claudeAgentSource, endpointModelOptions, endpointSource } from "./model-source.ts";
+import { claudeAgentSource, endpointModelOptions, endpointSource, speechServiceSource } from "./model-source.ts";
 import Select from "./Select.svelte";
 import { click, render } from "./test-render.ts";
 
@@ -27,6 +27,19 @@ test("any other endpoint is Custom: another address, a model server on this comp
   expect(endpointSource({ base_url: "https://api.anthropic.com", api_format: "openai" }, t)).toEqual(custom);
   expect(endpointSource({ base_url: null }, t)).toEqual(custom);
   expect(claudeAgentSource(t)).toEqual({ kind: "claude-agent", name: t.claudeAgent.title });
+});
+
+test("every speech service is marked by its vendor: Bailian's by the Qwen connector's logo, Custom as Custom", () => {
+  expect(SPEECH_PRESETS.map((preset) => speechServiceSource(preset.id, t))).toEqual([
+    { kind: "vendor", id: "openai", name: t.speech.presets.openai },
+    { kind: "vendor", id: "groq", name: t.speech.presets.groq },
+    { kind: "vendor", id: "siliconflow", name: t.speech.presets.siliconflow },
+    { kind: "vendor", id: "qwen", name: t.speech.presets.bailian },
+    { kind: "vendor", id: "qwen", name: t.speech.presets.bailian_token_plan },
+    { kind: "vendor", id: "deepgram", name: t.speech.presets.deepgram },
+    { kind: "vendor", id: "elevenlabs", name: t.speech.presets.elevenlabs },
+    { kind: "custom", name: t.connectors.customMark },
+  ]);
 });
 
 test("a picker's rows are the models by name, the endpoint beside them once there are several, each marked", () => {

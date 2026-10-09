@@ -1,25 +1,31 @@
 <script lang="ts">
-	import type { ConnectorId } from '@real-bot/protocol';
+	import type { VendorId } from '../model-source.ts';
 
 	/**
-	 * A built-in connector's mark (ADR 0072), on its brand's own tile so it reads the same in both
-	 * themes. The glyphs are the vendors' logos as drawn by lobe-icons (MIT; see THIRD_PARTY_NOTICES.md);
-	 * the trademarks are their owners'.
+	 * A built-in connector's mark (ADR 0072), or a speech service's (ADR 0073), on its brand's own
+	 * tile so it reads the same in both themes. The glyphs are the vendors' logos as drawn by
+	 * lobe-icons (MIT), Deepgram's by Simple Icons (CC0; both in THIRD_PARTY_NOTICES.md); the
+	 * trademarks are their owners'.
 	 */
-	type Props = { id: ConnectorId; size?: number };
+	type Props = { id: VendorId; size?: number };
 	let { id, size = 36 }: Props = $props();
 	const uid = $props.id();
 	const gradient = `connector-qwen-${uid}`;
 
 	/**
-	 * Each vendor's own tile, the same in both themes: a logo is not themed. Keyed by every connector,
-	 * so one added to the protocol without its mark here fails the type check instead of borrowing
-	 * another vendor's; its glyph goes in the branches below.
+	 * Each vendor's own tile, the same in both themes: a logo is not themed. Keyed by every vendor,
+	 * so a connector added to the protocol without its mark here fails the type check instead of
+	 * borrowing another vendor's; its glyph goes in the branches below.
 	 */
-	const TILE: Record<ConnectorId, { background: string; color?: string; padding?: number }> = {
+	const TILE: Record<VendorId, { background: string; color?: string; padding?: number }> = {
 		anthropic: { background: '#f0eee6', color: '#141413' },
 		xiaomi: { background: '#ff6900', color: '#ffffff', padding: 0.1 },
-		qwen: { background: '#ffffff' }
+		qwen: { background: '#ffffff' },
+		openai: { background: '#ffffff', color: '#000000' },
+		groq: { background: '#f55036', color: '#ffffff' },
+		siliconflow: { background: '#ffffff', color: '#6e29f6' },
+		deepgram: { background: '#000000', color: '#13ef93', padding: 0.2 },
+		elevenlabs: { background: '#ffffff', color: '#000000', padding: 0.22 }
 	};
 	const tile = $derived(TILE[id]);
 </script>
@@ -46,6 +52,16 @@
 			</defs>
 			<path d="M12.604 1.34c.393.69.784 1.382 1.174 2.075a.18.18 0 00.157.091h5.552c.174 0 .322.11.446.327l1.454 2.57c.19.337.24.478.024.837-.26.43-.513.864-.76 1.3l-.367.658c-.106.196-.223.28-.04.512l2.652 4.637c.172.301.111.494-.043.77-.437.785-.882 1.564-1.335 2.34-.159.272-.352.375-.68.37-.777-.016-1.552-.01-2.327.016a.099.099 0 00-.081.05 575.097 575.097 0 01-2.705 4.74c-.169.293-.38.363-.725.364-.997.003-2.002.004-3.017.002a.537.537 0 01-.465-.271l-1.335-2.323a.09.09 0 00-.083-.049H4.982c-.285.03-.553-.001-.805-.092l-1.603-2.77a.543.543 0 01-.002-.54l1.207-2.12a.198.198 0 000-.197 550.951 550.951 0 01-1.875-3.272l-.79-1.395c-.16-.31-.173-.496.095-.965.465-.813.927-1.625 1.387-2.436.132-.234.304-.334.584-.335a338.3 338.3 0 012.589-.001.124.124 0 00.107-.063l2.806-4.895a.488.488 0 01.422-.246c.524-.001 1.053 0 1.583-.006L11.704 1c.341-.003.724.032.9.34zm-3.432.403a.06.06 0 00-.052.03L6.254 6.788a.157.157 0 01-.135.078H3.253c-.056 0-.07.025-.041.074l5.81 10.156c.025.042.013.062-.034.063l-2.795.015a.218.218 0 00-.2.116l-1.32 2.31c-.044.078-.021.118.068.118l5.716.008c.046 0 .08.02.104.061l1.403 2.454c.046.081.092.082.139 0l5.006-8.76.783-1.382a.055.055 0 01.096 0l1.424 2.53a.122.122 0 00.107.062l2.763-.02a.04.04 0 00.035-.02.041.041 0 000-.04l-2.9-5.086a.108.108 0 010-.113l.293-.507 1.12-1.977c.024-.041.012-.062-.035-.062H9.2c-.059 0-.073-.026-.043-.077l1.434-2.505a.107.107 0 000-.114L9.225 1.774a.06.06 0 00-.053-.031zm6.29 8.02c.046 0 .058.02.034.06l-.832 1.465-2.613 4.585a.056.056 0 01-.05.029.058.058 0 01-.05-.029L8.498 9.841c-.02-.034-.01-.052.028-.054l.216-.012 6.722-.012z" fill={`url(#${gradient})`} fill-rule="nonzero"></path>
 		</svg>
+	{:else if id === 'openai'}
+		<svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd"><path d="M9.205 8.658v-2.26c0-.19.072-.333.238-.428l4.543-2.616c.619-.357 1.356-.523 2.117-.523 2.854 0 4.662 2.212 4.662 4.566 0 .167 0 .357-.024.547l-4.71-2.759a.797.797 0 00-.856 0l-5.97 3.473zm10.609 8.8V12.06c0-.333-.143-.57-.429-.737l-5.97-3.473 1.95-1.118a.433.433 0 01.476 0l4.543 2.617c1.309.76 2.189 2.378 2.189 3.948 0 1.808-1.07 3.473-2.76 4.163zM7.802 12.703l-1.95-1.142c-.167-.095-.239-.238-.239-.428V5.899c0-2.545 1.95-4.472 4.591-4.472 1 0 1.927.333 2.712.928L8.23 5.067c-.285.166-.428.404-.428.737v6.898zM12 15.128l-2.795-1.57v-3.33L12 8.658l2.795 1.57v3.33L12 15.128zm1.796 7.23c-1 0-1.927-.332-2.712-.927l4.686-2.712c.285-.166.428-.404.428-.737v-6.898l1.974 1.142c.167.095.238.238.238.428v5.233c0 2.545-1.974 4.472-4.614 4.472zm-5.637-5.303l-4.544-2.617c-1.308-.761-2.188-2.378-2.188-3.948A4.482 4.482 0 014.21 6.327v5.423c0 .333.143.571.428.738l5.947 3.449-1.95 1.118a.432.432 0 01-.476 0zm-.262 3.9c-2.688 0-4.662-2.021-4.662-4.519 0-.19.024-.38.047-.57l4.686 2.71c.286.167.571.167.856 0l5.97-3.448v2.26c0 .19-.07.333-.237.428l-4.543 2.616c-.619.357-1.356.523-2.117.523zm5.899 2.83a5.947 5.947 0 005.827-4.756C22.287 18.339 24 15.84 24 13.296c0-1.665-.713-3.282-1.998-4.448.119-.5.19-.999.19-1.498 0-3.401-2.759-5.947-5.946-5.947-.642 0-1.26.095-1.88.31A5.962 5.962 0 0010.205 0a5.947 5.947 0 00-5.827 4.757C1.713 5.447 0 7.945 0 10.49c0 1.666.713 3.283 1.998 4.448-.119.5-.19 1-.19 1.499 0 3.401 2.759 5.946 5.946 5.946.642 0 1.26-.095 1.88-.309a5.96 5.96 0 004.162 1.713z"></path></svg>
+	{:else if id === 'groq'}
+		<svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd"><path d="M12.036 2c-3.853-.035-7 3-7.036 6.781-.035 3.782 3.055 6.872 6.908 6.907h2.42v-2.566h-2.292c-2.407.028-4.38-1.866-4.408-4.23-.029-2.362 1.901-4.298 4.308-4.326h.1c2.407 0 4.358 1.915 4.365 4.278v6.305c0 2.342-1.944 4.25-4.323 4.279a4.375 4.375 0 01-3.033-1.252l-1.851 1.818A7 7 0 0012.029 22h.092c3.803-.056 6.858-3.083 6.879-6.816v-6.5C18.907 4.963 15.817 2 12.036 2z"></path></svg>
+	{:else if id === 'siliconflow'}
+		<svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd"><path clip-rule="evenodd" d="M22.956 6.521H12.522c-.577 0-1.044.468-1.044 1.044v3.13c0 .577-.466 1.044-1.043 1.044H1.044c-.577 0-1.044.467-1.044 1.044v4.174C0 17.533.467 18 1.044 18h10.434c.577 0 1.044-.467 1.044-1.043v-3.13c0-.578.466-1.044 1.043-1.044h9.391c.577 0 1.044-.467 1.044-1.044V7.565c0-.576-.467-1.044-1.044-1.044z"></path></svg>
+	{:else if id === 'deepgram'}
+		<svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd"><path d="M11.203 24H1.517a.364.364 0 0 1-.258-.62l6.239-6.275a.366.366 0 0 1 .259-.108h3.52c2.723 0 5.025-2.127 5.107-4.845a5.004 5.004 0 0 0-4.999-5.148H7.613v4.646c0 .2-.164.364-.365.364H.968a.365.365 0 0 1-.363-.364V.364C.605.164.768 0 .969 0h10.416c6.684 0 12.111 5.485 12.01 12.187C23.293 18.77 17.794 24 11.202 24z"></path></svg>
+	{:else if id === 'elevenlabs'}
+		<svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd"><path d="M5 0h5v24H5V0zM14 0h5v24h-5V0z"></path></svg>
 	{/if}
 </span>
 

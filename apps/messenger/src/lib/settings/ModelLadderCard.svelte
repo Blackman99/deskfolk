@@ -3,7 +3,8 @@
 	import Select from '../Select.svelte';
 	import type { Copy } from '../copy.ts';
 	import type { ModelLadder } from './model-ladder.svelte.ts';
-	import { endpointModelOptions } from '../model-source.ts';
+	import { endpointModelOptions, endpointSource } from '../model-source.ts';
+	import ModelSourceMark from '../ModelSourceMark.svelte';
 
 	/** The model ladder's own page (ADR 0054). What it says it is for is the page's intro, not this card's. */
 	interface Props {
@@ -16,7 +17,8 @@
 	let { ladder, providers, t }: Props = $props();
 
 	const key = (rung: ModelLadderRung) => JSON.stringify({ provider_id: rung.provider_id, model: rung.model });
-	const providerName = (id: string) => providers.find((provider) => provider.id === id)?.name ?? id;
+	const providerOf = (id: string) => providers.find((provider) => provider.id === id);
+	const providerName = (id: string) => providerOf(id)?.name ?? id;
 	const named = (rung: ModelLadderRung) => (providers.length > 1 ? `${rung.model} · ${providerName(rung.provider_id)}` : rung.model);
 
 	/** What is listed and not on the ladder yet. */
@@ -54,8 +56,13 @@
 		{:else}
 			<ol class="ladder-list">
 				{#each ladder.rungs as rung, index (key(rung))}
+					{@const provider = providerOf(rung.provider_id)}
 					<li class="ladder-rung" data-rung={rung.model}>
 						<span class="ladder-step" aria-hidden="true">{index + 1}</span>
+						<!-- Where the model comes from, as in the picker that added it; an endpoint gone since has none. -->
+						{#if provider}
+							<span class="ladder-source"><ModelSourceMark source={endpointSource(provider, t)} /></span>
+						{/if}
 						<span class="ladder-name" title={named(rung)}><span class="ladder-model">{rung.model}</span>{#if providers.length > 1}<span class="ladder-sep">{' · '}</span><span class="ladder-provider">{providerName(rung.provider_id)}</span>{/if}</span>
 						{#if index === 0 && ladder.rungs.length > 1}
 							<span class="ladder-end">{t.modelLadder.weaker}</span>
@@ -133,6 +140,11 @@
 		color: var(--muted);
 	}
 
+	.ladder-source {
+		flex: none;
+		display: inline-flex;
+	}
+
 	.ladder-name {
 		flex: 1 1 auto;
 		min-width: 0;
@@ -193,7 +205,7 @@
 		/* Weaker / stronger sits under the step number, so the model's name has the row. */
 		.ladder-rung {
 			display: grid;
-			grid-template-columns: 22px minmax(0, 1fr) auto;
+			grid-template-columns: 22px auto minmax(0, 1fr) auto;
 			grid-template-rows: auto auto;
 			align-items: center;
 			column-gap: 8px;
@@ -213,8 +225,13 @@
 			align-self: start;
 		}
 
-		.ladder-name {
+		.ladder-source {
 			grid-column: 2;
+			grid-row: 1 / span 2;
+		}
+
+		.ladder-name {
+			grid-column: 3;
 			grid-row: 1 / span 2;
 			display: flex;
 			flex-direction: column;
@@ -223,7 +240,7 @@
 		}
 
 		.ladder-acts {
-			grid-column: 3;
+			grid-column: 4;
 			grid-row: 1 / span 2;
 		}
 
