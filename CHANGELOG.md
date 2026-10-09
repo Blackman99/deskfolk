@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### The Claude usage strip uses its spare width
+
+- The closed strip under the conversation list no longer leaves the rest of each account's row empty. Each account stays on its own line. When the strip is wide enough, the account's email follows its plan, and each window's spare width is a bar as full as what is left (empty means spent). The numbers read the same.
+
 ### The tickets beside the trace are a board
 
 - A card can be dragged to another column to change its status. The status menu asks first too, when the ticket is handed over or in review: the hand-over still waiting for you to approve or send back is dropped, and moving it to done marks it approved.
