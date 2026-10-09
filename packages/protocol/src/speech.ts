@@ -18,15 +18,18 @@ import { isLocalEndpoint } from "./local-endpoint.ts";
  *   the audio as an `input_audio` data URI with `parameters.format` and `sample_rate` (without
  *   them it answers 400 `{}`), a Bearer key, the text in `output.text`. Qwen-Audio-ASR, the only
  *   way Bailian's Token Plan takes speech.
+ * - `mimo`: Xiaomi MiMo's `POST …/chat/completions`, as `qwen_asr`, but it takes only wav, mp3,
+ *   flac or Ogg, labelled `audio/wav` or `audio/mpeg`, and a language only of zh or en: the
+ *   daemon moves a WebM recording's Opus into Ogg first.
  */
-export const SPEECH_FORMATS = ["openai", "qwen_asr", "deepgram", "elevenlabs", "dashscope"] as const;
+export const SPEECH_FORMATS = ["openai", "qwen_asr", "deepgram", "elevenlabs", "dashscope", "mimo"] as const;
 export type SpeechFormat = (typeof SPEECH_FORMATS)[number];
 
 export function isSpeechFormat(value: unknown): value is SpeechFormat {
   return typeof value === "string" && (SPEECH_FORMATS as readonly string[]).includes(value);
 }
 
-export const SPEECH_PRESET_IDS = ["openai", "groq", "siliconflow", "bailian", "bailian_token_plan", "deepgram", "elevenlabs", "custom"] as const;
+export const SPEECH_PRESET_IDS = ["openai", "groq", "siliconflow", "bailian", "bailian_token_plan", "xiaomi", "deepgram", "elevenlabs", "custom"] as const;
 export type SpeechPresetId = (typeof SPEECH_PRESET_IDS)[number];
 
 export function isSpeechPresetId(value: unknown): value is SpeechPresetId {
@@ -51,6 +54,8 @@ export const SPEECH_PRESETS: readonly SpeechPreset[] = [
   { id: "bailian", format: "qwen_asr", base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3-asr-flash", models: ["qwen3-asr-flash"] },
   // Token Plan's key is its own and works only on its own host; its one speech model speaks DashScope's protocol.
   { id: "bailian_token_plan", format: "dashscope", base_url: "https://token-plan.cn-beijing.maas.aliyuncs.com", model: "qwen-audio-3.0-asr-flash", models: ["qwen-audio-3.0-asr-flash"] },
+  // Every MiMo plan (Token Plan per region, pay-as-you-go) takes speech the same way at its own address.
+  { id: "xiaomi", format: "mimo", base_url: "https://api.xiaomimimo.com/v1", model: "mimo-v2.5-asr", models: ["mimo-v2.5-asr"] },
   { id: "deepgram", format: "deepgram", base_url: "https://api.deepgram.com/v1", model: "nova-3", models: ["nova-3", "nova-2"] },
   { id: "elevenlabs", format: "elevenlabs", base_url: "https://api.elevenlabs.io/v1", model: "scribe_v2", models: ["scribe_v2", "scribe_v1"] },
   { id: "custom", format: "openai", base_url: "", model: "", models: [] },
@@ -75,7 +80,7 @@ export type SpeechSettings = {
   language: string | null;
   /**
    * The model endpoint whose key the speech service is called with, read at each call (a Bailian
-   * endpoint's key serves its speech model too); null uses the speech service's own key. Null as
+   * or Xiaomi MiMo endpoint's key serves its speech model too); null uses the speech service's own key. Null as
    * well once that endpoint is gone.
    */
   key_provider_id: string | null;

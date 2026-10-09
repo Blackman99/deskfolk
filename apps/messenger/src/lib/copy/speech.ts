@@ -13,6 +13,7 @@ export const zh = {
     siliconflow: "硅基流动",
     bailian: "阿里云百炼 · 按量付费（千问 ASR）",
     bailian_token_plan: "阿里云百炼 · Token Plan",
+    xiaomi: "小米 MiMo",
     deepgram: "Deepgram",
     elevenlabs: "ElevenLabs",
     custom: "自定义"
@@ -23,7 +24,8 @@ export const zh = {
     qwen_asr: "千问 ASR · /chat/completions 带音频",
     deepgram: "Deepgram · /listen",
     elevenlabs: "ElevenLabs · /speech-to-text",
-    dashscope: "百炼原生 · multimodal-generation"
+    dashscope: "百炼原生 · multimodal-generation",
+    mimo: "小米 MiMo · /chat/completions 带音频"
   },
   baseUrl: "地址",
   baseUrlHint: "填到版本号为止（如 …/v1），路径由应用补上；贴整条地址也行。本机或局域网里的服务可以不要密钥。",
@@ -34,7 +36,8 @@ export const zh = {
   keyClear: "清除",
   keyLinked: (name: string) => `用端点「${name}」的密钥`,
   keyUnlink: "不再沿用",
-  shortcut: (name: string, plan: string) => `已经接了阿里云百炼端点「${name}」（${plan}）：可以直接用它的密钥识别语音。`,
+  shortcut: (vendor: string, name: string, plan: string) => `已经接了${vendor}「${name}」（${plan}）：可以直接用它的密钥识别语音。`,
+  shortcutVendor: { qwen: "阿里云百炼端点", xiaomi: "小米 MiMo 端点" },
   shortcutUse: "用它识别语音",
   model: "模型",
   modelHint: "可以选建议的，也可以直接填服务支持的模型名。",
@@ -62,6 +65,7 @@ export const zh = {
   micFailed: (detail: string) => `录音出错：${detail}`,
   heardNothing: "没听清，再说一次试试。",
   tooLong: "录音太长了，没法发出去。分几段说吧。",
+  audioUnsupported: "这个浏览器录出的音频格式，小米 MiMo 不收（它收 WebM/Opus、Ogg、MP3、WAV、FLAC）。换个浏览器，或换一个语音识别服务。",
   notSetUp: "语音识别还没设置好：设置 → 模型 → 语音识别。",
   keyMissing: "语音识别端点还没填密钥：设置 → 模型 → 语音识别。",
   rejected: (detail: string) => `语音识别服务报错：${detail}`,
@@ -82,6 +86,7 @@ export const en: CopyShape<typeof zh> = {
     siliconflow: "SiliconFlow",
     bailian: "Alibaba Bailian · pay-as-you-go (Qwen ASR)",
     bailian_token_plan: "Alibaba Bailian · Token Plan",
+    xiaomi: "Xiaomi MiMo",
     deepgram: "Deepgram",
     elevenlabs: "ElevenLabs",
     custom: "Custom"
@@ -92,7 +97,8 @@ export const en: CopyShape<typeof zh> = {
     qwen_asr: "Qwen ASR · /chat/completions with audio",
     deepgram: "Deepgram · /listen",
     elevenlabs: "ElevenLabs · /speech-to-text",
-    dashscope: "Bailian native · multimodal-generation"
+    dashscope: "Bailian native · multimodal-generation",
+    mimo: "Xiaomi MiMo · /chat/completions with audio"
   },
   baseUrl: "Base URL",
   baseUrlHint: "Up to the version (e.g. …/v1); the app adds the path, and a full address pasted in works too. A service on this computer or network needs no key.",
@@ -103,7 +109,8 @@ export const en: CopyShape<typeof zh> = {
   keyClear: "Clear",
   keyLinked: (name: string) => `Uses the key of endpoint "${name}"`,
   keyUnlink: "Stop using it",
-  shortcut: (name: string, plan: string) => `You already have the Alibaba Bailian endpoint "${name}" (${plan}): its key can recognize speech too.`,
+  shortcut: (vendor: string, name: string, plan: string) => `You already have the ${vendor} "${name}" (${plan}): its key can recognize speech too.`,
+  shortcutVendor: { qwen: "Alibaba Bailian endpoint", xiaomi: "Xiaomi MiMo endpoint" },
   shortcutUse: "Use it for speech",
   model: "Model",
   modelHint: "Pick a suggestion, or type any model name the service takes.",
@@ -131,6 +138,7 @@ export const en: CopyShape<typeof zh> = {
   micFailed: (detail: string) => `Recording failed: ${detail}`,
   heardNothing: "Didn't catch that; try again.",
   tooLong: "That recording is too long to send. Say it in parts.",
+  audioUnsupported: "Xiaomi MiMo doesn't take the audio this browser records (it takes WebM/Opus, Ogg, MP3, WAV or FLAC). Try another browser or another speech service.",
   notSetUp: "Speech recognition isn't set up: Settings → Models → Speech recognition.",
   keyMissing: "The speech endpoint has no API key: Settings → Models → Speech recognition.",
   rejected: (detail: string) => `The speech service said: ${detail}`,

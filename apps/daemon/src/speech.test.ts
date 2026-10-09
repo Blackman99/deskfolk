@@ -84,6 +84,43 @@ describe("the wire, per format", () => {
     expect(heardText("qwen_asr", { choices: [{ message: { content: [{ text: "一" }, { text: "二" }] } }] })).toBe("一二");
   });
 
+  test("mimo: a WebM recording goes as Ogg labelled wav, with zh or en in asr_options", async () => {
+    const webm = new Uint8Array(await Bun.file(new URL("./fixtures/recorder-chromium.webm", import.meta.url)).arrayBuffer());
+    const { seen, fetch } = answering({ choices: [{ message: { role: "assistant", content: "你好。" } }] });
+    const text = await transcribe({
+      speech: speech({ preset: "xiaomi", format: "mimo", base_url: "https://token-plan-cn.xiaomimimo.com/v1", model: "mimo-v2.5-asr", language: "zh" }),
+      key: "tp-1", audio: webm, mime: "audio/webm;codecs=opus", fetch,
+    });
+    expect(text).toBe("你好。");
+    expect(seen[0]!.url).toBe("https://token-plan-cn.xiaomimimo.com/v1/chat/completions");
+    expect((seen[0]!.init.headers as Record<string, string>).Authorization).toBe("Bearer tp-1");
+    const body = JSON.parse(seen[0]!.init.body as string);
+    expect(body.model).toBe("mimo-v2.5-asr");
+    expect(body.asr_options).toEqual({ language: "zh" });
+    const data: string = body.messages[0].content[0].input_audio.data;
+    expect(data.startsWith("data:audio/wav;base64,")).toBe(true);
+    expect(Buffer.from(data.slice("data:audio/wav;base64,".length), "base64").subarray(0, 4).toString()).toBe("OggS");
+  });
+
+  test("mimo: a language it does not take is left out; mp3 goes as mpeg, wav as it is", async () => {
+    const { seen, fetch } = answering({ choices: [{ message: { content: "x" } }] });
+    const mimo = speech({ preset: "xiaomi", format: "mimo", base_url: "https://api.xiaomimimo.com/v1", model: "mimo-v2.5-asr", language: "ja" });
+    await transcribe({ speech: mimo, key: "sk", audio, mime: "audio/mpeg", fetch });
+    await transcribe({ speech: mimo, key: "sk", audio, mime: "audio/wav", fetch });
+    const [mp3, wav] = seen.map((row) => JSON.parse(row.init.body as string));
+    expect(mp3.asr_options).toBeUndefined();
+    expect(mp3.messages[0].content[0].input_audio.data).toBe(`data:audio/mpeg;base64,${Buffer.from(audio).toString("base64")}`);
+    expect(wav.messages[0].content[0].input_audio.data).toBe(`data:audio/wav;base64,${Buffer.from(audio).toString("base64")}`);
+  });
+
+  test("mimo: mp4 and an unreadable WebM are refused before the call", async () => {
+    const { seen, fetch } = answering({});
+    const mimo = speech({ preset: "xiaomi", format: "mimo", base_url: "https://api.xiaomimimo.com/v1", model: "mimo-v2.5-asr" });
+    expect((await failure(transcribe({ speech: mimo, key: "sk", audio, mime: "audio/mp4", fetch }))).code).toBe("speech_audio_unsupported");
+    expect((await failure(transcribe({ speech: mimo, key: "sk", audio, mime: "audio/webm", fetch }))).code).toBe("speech_audio_unsupported");
+    expect(seen).toHaveLength(0);
+  });
+
   test("deepgram: raw body, model and detection in the query, Token key", async () => {
     const { seen, fetch } = answering({ results: { channels: [{ alternatives: [{ transcript: "hello there", confidence: 0.9 }] }] } });
     const text = await transcribe({

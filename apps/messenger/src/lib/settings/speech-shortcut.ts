@@ -1,13 +1,16 @@
-import { connectorFor, speechPreset, type PatchSpeechRequest, type Provider, type SpeechSettings } from '@real-bot/protocol';
+import { connectorFor, speechPreset, type PatchSpeechRequest, type Provider, type SpeechPreset, type SpeechSettings } from '@real-bot/protocol';
 
 /**
- * A Bailian endpoint already set up (the built-in Qwen connector, ADR 0072) can lend its key to
- * speech recognition (ADR 0073): one press points speech at the plan's own speech model, the key
- * read from that endpoint at each call. Token Plan takes speech only through DashScope's own API at
- * its host; pay-as-you-go keys take Qwen ASR at the compatible-mode address they were added with.
+ * A Bailian or Xiaomi MiMo endpoint already set up (built-in connectors, ADR 0072) can lend its key
+ * to speech recognition (ADR 0073): one press points speech at the plan's own speech model, the key
+ * read from that endpoint at each call. Bailian's Token Plan takes speech only through DashScope's
+ * own API at its host; its pay-as-you-go keys take Qwen ASR at the compatible-mode address they were
+ * added with. Every MiMo plan takes its speech model at the address its endpoint was added with.
  */
 export type SpeechShortcut = {
 	provider: Provider;
+	/** The connector whose endpoint it is, for its vendor's name. */
+	connector: 'qwen' | 'xiaomi';
 	/** The connector plan, e.g. `qwen:token-plan`, for its label. */
 	planKey: string;
 	patch: PatchSpeechRequest;
@@ -23,11 +26,14 @@ export function speechShortcuts(providers: readonly Provider[]): SpeechShortcut[
 	for (const provider of providers) {
 		if (!provider.key_set || !provider.base_url) continue;
 		const found = connectorFor(provider.base_url, provider.api_format);
-		if (found?.connector.id !== 'qwen') continue;
-		const preset = speechPreset(found.plan.id === 'token-plan' ? 'bailian_token_plan' : 'bailian');
+		const connector = found?.connector.id;
+		if (!found || (connector !== 'qwen' && connector !== 'xiaomi')) continue;
+		const preset: SpeechPreset =
+			connector === 'xiaomi' ? speechPreset('xiaomi') : speechPreset(found.plan.id === 'token-plan' ? 'bailian_token_plan' : 'bailian');
 		out.push({
 			provider,
-			planKey: `qwen:${found.plan.id}`,
+			connector,
+			planKey: `${connector}:${found.plan.id}`,
 			patch: {
 				enabled: true,
 				preset: preset.id,

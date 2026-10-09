@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Xiaomi MiMo for speech recognition
+
+- Settings › Models › Speech recognition has Xiaomi MiMo as a service (`mimo-v2.5-asr`). With a Xiaomi MiMo endpoint already added — any Token Plan region or pay-as-you-go — the card offers "Use it for speech", which points speech at that endpoint's address and takes its key, as Alibaba Bailian's does.
+- MiMo takes only wav, mp3, flac and Ogg, so what the microphone records (WebM/Opus on the desktop and in Chrome) is moved into Ogg before it is sent, without re-encoding. A browser that records only mp4 is told MiMo can't take its audio instead of getting a server error.
+- MiMo understands only Chinese and English, so its language picker offers just those two, and any other language set earlier is left for it to detect.
+
 ### Endpoint cards no longer grow with their models
 
 - In Settings › Models › Endpoints, a card no longer lists every enabled model as a row to click. Its default model is one picker beside "Default model", with Models and the enabled count at the right of the same line, so a card stays two lines high however many models it has. A phone keeps its own layout.

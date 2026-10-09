@@ -39,7 +39,8 @@ export function claudeAgentSource(t: Copy): ModelSource {
 /**
  * Whose logo each speech service wears. Keyed by every service, so one added to the protocol
  * without a vendor here fails the type check. Alibaba Bailian's wear the Qwen connector's, as the
- * Bailian endpoint whose key they can take does; Custom is any address, so it is marked Custom.
+ * Bailian endpoint whose key they can take does, and Xiaomi MiMo the Xiaomi connector's; Custom is
+ * any address, so it is marked Custom.
  */
 const SPEECH_VENDOR: Record<SpeechPresetId, VendorId | null> = {
   openai: "openai",
@@ -47,6 +48,7 @@ const SPEECH_VENDOR: Record<SpeechPresetId, VendorId | null> = {
   siliconflow: "siliconflow",
   bailian: "qwen",
   bailian_token_plan: "qwen",
+  xiaomi: "xiaomi",
   deepgram: "deepgram",
   elevenlabs: "elevenlabs",
   custom: null,

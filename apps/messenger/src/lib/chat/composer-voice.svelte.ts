@@ -79,6 +79,8 @@ export function transcribeFailureText(error: unknown, t: Copy): string {
 				return s.timeout;
 			case 'speech_too_long':
 				return s.tooLong;
+			case 'speech_audio_unsupported':
+				return s.audioUnsupported;
 		}
 		return s.transcribeFailed(detail);
 	}

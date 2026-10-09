@@ -118,7 +118,7 @@ test("a Bailian Token Plan endpoint is offered as a shortcut: one press points s
   const { sent, patch } = fakePatch();
   const view = render(SpeechCard, { speech: null, providers: [tokenPlan], patch, t });
   const offer = view.host.querySelector("[data-speech-shortcut='p-tp']");
-  expect(offer?.textContent).toContain(t.speech.shortcut("阿里百炼", t.connectors.plan["qwen:token-plan"]));
+  expect(offer?.textContent).toContain(t.speech.shortcut(t.speech.shortcutVendor.qwen, "阿里百炼", t.connectors.plan["qwen:token-plan"]));
   click(offer?.querySelector("button"));
   await sleep(0);
   expect(sent).toEqual([{
@@ -126,6 +126,33 @@ test("a Bailian Token Plan endpoint is offered as a shortcut: one press points s
     base_url: "https://token-plan.cn-beijing.maas.aliyuncs.com", model: "qwen-audio-3.0-asr-flash", key_provider_id: "p-tp",
   }]);
   view.close();
+});
+
+test("a Xiaomi MiMo endpoint is offered too, and MiMo's language picker has only Chinese and English", async () => {
+  const { sent, patch } = fakePatch();
+  const mimo = { ...tokenPlan, id: "p-mimo", name: "小米", base_url: "https://token-plan-cn.xiaomimimo.com/v1" } as Provider;
+  const view = render(SpeechCard, { speech: null, providers: [mimo], patch, t });
+  const offer = view.host.querySelector("[data-speech-shortcut='p-mimo']");
+  expect(offer?.textContent).toContain(t.speech.shortcut(t.speech.shortcutVendor.xiaomi, "小米", t.connectors.plan["xiaomi:token-plan-cn"]));
+  click(offer?.querySelector("button"));
+  await sleep(0);
+  expect(sent).toEqual([{
+    enabled: true, preset: "xiaomi", format: "mimo", base_url: "https://token-plan-cn.xiaomimimo.com/v1", model: "mimo-v2.5-asr", key_provider_id: "p-mimo",
+  }]);
+  view.close();
+
+  const japanese = render(SpeechCard, { speech: { ...groq, language: "ja" }, providers: [mimo], patch, t });
+  click(japanese.host.querySelector("[data-speech-shortcut='p-mimo'] button"));
+  await sleep(0);
+  expect(sent.at(-1)).toMatchObject({ preset: "xiaomi", language: null });
+  japanese.close();
+
+  const linked: SpeechSettings = { ...groq, preset: "xiaomi", format: "mimo", base_url: "https://token-plan-cn.xiaomimimo.com/v1", model: "mimo-v2.5-asr", key_provider_id: "p-mimo", key_set: true };
+  const card = render(SpeechCard, { speech: linked, providers: [mimo], patch, t });
+  click(card.host.querySelectorAll(".speech-field .real-select-trigger")[1]!);
+  await sleep(0);
+  expect([...card.host.querySelectorAll(".real-select-option")].map((el) => el.textContent?.trim())).toEqual([t.speech.languageAuto, "中文", "English"]);
+  card.close();
 });
 
 test("speech taking an endpoint's key says whose, offers no shortcut to itself, and can stop taking it", async () => {
@@ -167,7 +194,7 @@ test("each service wears its vendor's logo, in the menu and on the closed picker
   await sleep(0);
   const rows = [...view.host.querySelectorAll(".real-select-option")];
   expect(rows.map((row) => row.querySelector("[data-model-source]")?.getAttribute("data-model-source"))).toEqual([
-    "openai", "groq", "siliconflow", "qwen", "qwen", "deepgram", "elevenlabs", "custom",
+    "openai", "groq", "siliconflow", "qwen", "qwen", "xiaomi", "deepgram", "elevenlabs", "custom",
   ]);
   expect(rows.map((row) => row.textContent?.trim())).toEqual(Object.values(t.speech.presets));
   view.close();

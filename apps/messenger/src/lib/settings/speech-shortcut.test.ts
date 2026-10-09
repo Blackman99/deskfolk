@@ -12,6 +12,7 @@ function provider(over: Partial<Provider>): Provider {
 test("a Token Plan endpoint points speech at DashScope's own API on its host, with its key", () => {
   expect(speechShortcuts([provider({})])).toEqual([{
     provider: provider({}),
+    connector: "qwen",
     planKey: "qwen:token-plan",
     patch: {
       enabled: true, preset: "bailian_token_plan", format: "dashscope",
@@ -24,6 +25,18 @@ test("a pay-as-you-go endpoint takes Qwen ASR at its compatible-mode address", (
   const [only] = speechShortcuts([provider({ id: "p2", base_url: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1" })]);
   expect(only!.planKey).toBe("qwen:payg-intl");
   expect(only!.patch).toMatchObject({ preset: "bailian", format: "qwen_asr", base_url: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", model: "qwen3-asr-flash", key_provider_id: "p2" });
+});
+
+test("a Xiaomi MiMo endpoint takes its speech model at the address it was added with, on every plan", () => {
+  const shortcuts = speechShortcuts([
+    provider({ id: "x1", name: "小米", base_url: "https://token-plan-sgp.xiaomimimo.com/v1" }),
+    provider({ id: "x2", name: "小米按量", base_url: "https://api.xiaomimimo.com/v1" }),
+  ]);
+  expect(shortcuts.map((row) => [row.connector, row.planKey])).toEqual([["xiaomi", "xiaomi:token-plan-sgp"], ["xiaomi", "xiaomi:payg"]]);
+  expect(shortcuts[0]!.patch).toEqual({
+    enabled: true, preset: "xiaomi", format: "mimo", base_url: "https://token-plan-sgp.xiaomimimo.com/v1", model: "mimo-v2.5-asr", key_provider_id: "x1",
+  });
+  expect(shortcuts[1]!.patch.base_url).toBe("https://api.xiaomimimo.com/v1");
 });
 
 test("other vendors, endpoints without a key and Anthropic-format Bailian addresses are not offered", () => {

@@ -1,11 +1,12 @@
 /**
- * Speech to text (ADR 0073): one recording to the speech endpoint, in whichever of the four formats
+ * Speech to text (ADR 0073): one recording to the speech endpoint, in whichever of the formats
  * it speaks, and the text it heard back. Nothing is stored; the audio is in memory only for the
  * length of the call.
  */
 import { STATUS_CODES } from "node:http";
 import { isLocalEndpoint, type SpeechSettings } from "@real-bot/protocol";
 import { HttpError } from "./errors";
+import { RemuxError, webmOpusToOgg } from "./opus-remux";
 
 /** One recording rarely takes a speech endpoint more than a few seconds; a minute is plainly stuck. */
 export const SPEECH_TIMEOUT_MS = 60_000;
@@ -59,6 +60,38 @@ export function dashscopeEndpoint(baseUrl: string): string {
   return `${trimmed.replace(/\/(?:compatible-mode|api|apps)(?:\/.*)?$/i, "")}${DASHSCOPE_SPEECH_PATH}`;
 }
 
+/** `qwen_asr` and `mimo`: chat completions with the audio as an `input_audio` data URI. */
+function chatAudioRequest(base: string, model: string, key: string | null, data: string, language: string | null): { url: string; init: RequestInit } {
+  const body = {
+    model,
+    messages: [{ role: "user", content: [{ type: "input_audio", input_audio: { data } }] }],
+    stream: false,
+    ...(language ? { asr_options: { language } } : {}),
+  };
+  return {
+    url: speechEndpoint(base, "/chat/completions"),
+    init: { method: "POST", body: JSON.stringify(body), headers: { "Content-Type": "application/json", ...(key ? { Authorization: `Bearer ${key}` } : {}) } },
+  };
+}
+
+/**
+ * What MiMo is sent: wav, mp3, Ogg and FLAC as they are, a WebM recording's Opus moved into Ogg.
+ * Anything else (WebKit's older mp4) it answers with a 400 or a 500, so it is refused here.
+ */
+export function mimoAudio(audio: Uint8Array<ArrayBuffer>, type: string): { bytes: Uint8Array<ArrayBuffer>; label: string } {
+  if (type === "audio/mpeg" || type === "audio/mp3") return { bytes: audio, label: "audio/mpeg" };
+  if (["audio/wav", "audio/x-wav", "audio/wave", "audio/ogg", "audio/flac", "audio/x-flac"].includes(type)) return { bytes: audio, label: "audio/wav" };
+  if (type === "audio/webm") {
+    try {
+      return { bytes: webmOpusToOgg(audio), label: "audio/wav" };
+    } catch (error) {
+      if (error instanceof RemuxError) throw new HttpError(422, "speech_audio_unsupported", `the recording could not be prepared for Xiaomi MiMo: ${error.message}`);
+      throw error;
+    }
+  }
+  throw new HttpError(422, "speech_audio_unsupported", `Xiaomi MiMo does not take ${type || "this"} audio; it takes wav, mp3, flac, ogg or a WebM/Opus recording`);
+}
+
 function requestFor(speech: SpeechSettings, key: string | null, audio: Uint8Array<ArrayBuffer>, mime: string): { url: string; init: RequestInit } {
   const base = speech.base_url!;
   const model = speech.model!;
@@ -72,17 +105,14 @@ function requestFor(speech: SpeechSettings, key: string | null, audio: Uint8Arra
       if (speech.language) form.append("language", speech.language);
       return { url: speechEndpoint(base, "/audio/transcriptions"), init: { method: "POST", body: form, headers: key ? { Authorization: `Bearer ${key}` } : {} } };
     }
-    case "qwen_asr": {
-      const body = {
-        model,
-        messages: [{ role: "user", content: [{ type: "input_audio", input_audio: { data: `data:${type};base64,${Buffer.from(audio).toString("base64")}` } }] }],
-        stream: false,
-        ...(speech.language ? { asr_options: { language: speech.language } } : {}),
-      };
-      return {
-        url: speechEndpoint(base, "/chat/completions"),
-        init: { method: "POST", body: JSON.stringify(body), headers: { "Content-Type": "application/json", ...(key ? { Authorization: `Bearer ${key}` } : {}) } },
-      };
+    case "qwen_asr":
+      return chatAudioRequest(base, model, key, `data:${type};base64,${Buffer.from(audio).toString("base64")}`, speech.language);
+    case "mimo": {
+      // MiMo reads the content for itself but turns away any label other than wav or mp3, so Ogg
+      // and FLAC go as `audio/wav`; a language other than zh or en is a 400, so it is left to tell.
+      const { bytes, label } = mimoAudio(audio, type);
+      const language = speech.language === "zh" || speech.language === "en" ? speech.language : null;
+      return chatAudioRequest(base, model, key, `data:${label};base64,${Buffer.from(bytes).toString("base64")}`, language);
     }
     case "deepgram": {
       const url = new URL(speechEndpoint(base, "/listen"));
@@ -127,7 +157,7 @@ function record(value: unknown): Record<string, unknown> | null {
 export function heardText(format: SpeechSettings["format"], body: unknown): string | null {
   const root = record(body);
   if (!root) return typeof body === "string" ? body : null;
-  if (format === "qwen_asr") {
+  if (format === "qwen_asr" || format === "mimo") {
     const choices = Array.isArray(root.choices) ? root.choices : [];
     const content = record(record(choices[0])?.message)?.content;
     if (typeof content === "string") return content;

@@ -32,13 +32,14 @@
 	/**
 	 * The speech endpoint the composer's microphone sends to (ADR 0073). Picking a service fills in
 	 * its format, address and model; every field saves as it changes, the key when you leave it. A
-	 * Bailian endpoint already set up is offered as a shortcut: speech then takes that endpoint's key.
+	 * Bailian or Xiaomi MiMo endpoint already set up is offered as a shortcut: speech then takes that
+	 * endpoint's key.
 	 * It is Settings › Models' Speech recognition section, whose intro says what it is for.
 	 */
 	interface Props {
 		/** As the daemon has it; null until a service is picked. */
 		speech: SpeechSettings | null;
-		/** The model endpoints, for a Bailian one whose key speech can take. */
+		/** The model endpoints, for a Bailian or Xiaomi MiMo one whose key speech can take. */
 		providers?: readonly Provider[];
 		patch: (patch: PatchSpeechRequest) => Promise<unknown | null>;
 		t: Copy;
@@ -68,9 +69,11 @@
 	const local = $derived(isLocalEndpoint(baseUrl.trim()));
 	const presetOptions = $derived(SPEECH_PRESETS.map((row) => ({ value: row.id, label: s.presets[row.id], source: speechServiceSource(row.id, t) })));
 	const formatOptions = $derived(SPEECH_FORMATS.map((format) => ({ value: format, label: s.formats[format] })));
+	/** Xiaomi MiMo takes only Chinese or English; any other it turns away. */
+	const languages = $derived(speech?.format === 'mimo' ? SPEECH_LANGUAGES.filter((code) => code === 'zh' || code === 'en') : SPEECH_LANGUAGES);
 	const languageOptions = $derived([
 		{ value: '', label: s.languageAuto },
-		...SPEECH_LANGUAGES.map((code) => ({ value: code, label: s.languages[code] ?? code }))
+		...languages.map((code) => ({ value: code, label: s.languages[code] ?? code }))
 	]);
 	const status = $derived.by(() => {
 		if (!speech) return null;
@@ -91,10 +94,16 @@
 		}
 	}
 
+	/** A language the new format does not take goes back to detection, so the picker shows what is sent. */
+	function withLanguage(body: PatchSpeechRequest): PatchSpeechRequest {
+		const kept = body.format === 'mimo' ? ['zh', 'en'] : SPEECH_LANGUAGES;
+		return speech?.language && !(kept as readonly string[]).includes(speech.language) ? { ...body, language: null } : body;
+	}
+
 	function useShortcut(shortcut: SpeechShortcut): void {
 		autosave.cancel();
 		editing = { base_url: false, model: false };
-		void save(shortcut.patch);
+		void save(withLanguage(shortcut.patch));
 	}
 
 	/** A service fills in its own format, address and model; custom keeps what is there to edit. */
@@ -102,7 +111,7 @@
 		const next = speechPreset(id as SpeechPresetId);
 		autosave.cancel();
 		editing = { base_url: false, model: false };
-		void save(next.id === 'custom' ? { preset: next.id } : { preset: next.id, format: next.format, base_url: next.base_url, model: next.model });
+		void save(next.id === 'custom' ? { preset: next.id } : withLanguage({ preset: next.id, format: next.format, base_url: next.base_url, model: next.model }));
 	}
 
 	function typed(field: 'base_url' | 'model'): void {
@@ -144,7 +153,7 @@
 
 	{#each shortcuts as shortcut (shortcut.provider.id)}
 		<div class="speech-shortcut" data-speech-shortcut={shortcut.provider.id}>
-			<span class="speech-shortcut-text">{s.shortcut(shortcut.provider.name, t.connectors.plan[shortcut.planKey as keyof typeof t.connectors.plan] ?? shortcut.planKey)}</span>
+			<span class="speech-shortcut-text">{s.shortcut(s.shortcutVendor[shortcut.connector], shortcut.provider.name, t.connectors.plan[shortcut.planKey as keyof typeof t.connectors.plan] ?? shortcut.planKey)}</span>
 			<button type="button" class="speech-shortcut-use" disabled={autosave.saving} onclick={() => useShortcut(shortcut)}>{s.shortcutUse}</button>
 		</div>
 	{/each}
@@ -172,7 +181,7 @@
 						size="sm"
 						ariaLabel={s.format}
 						disabled={autosave.saving}
-						onchange={(value) => void save({ format: value as SpeechSettings['format'] })}
+						onchange={(value) => void save(withLanguage({ format: value as SpeechSettings['format'] }))}
 					/>
 				</div>
 			{/if}
