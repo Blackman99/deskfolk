@@ -6,6 +6,26 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Choose where each kind of window opens
+
+- Settings has a new tab, Behavior, after General, with the card Where windows open. Conversations, Bot ↔ Bot directs, the trace, board and plan, artifacts, the workspace, terminals, the calendar and spend each get a choice of where they go when they are not open yet. It is kept on this machine; narrow windows and phones do not have it. A change applies to the next window opened; changed ones say so, and one button puts the defaults back.
+- The choices:
+  - New tab, replace the same kind, or new tab in the background (not brought forward).
+  - Split up / down / left / right.
+  - The pane above / below / left / right: into the pane on that side, or split one off when there is none, so opening one file after another does not keep dividing the window.
+  - Floating.
+
+  Something already open is still only brought forward, never opened twice, and what you pick from a pane's + or an empty pane still goes into that pane.
+- The defaults:
+  - Conversations replace the same kind.
+  - Bot ↔ Bot directs, the trace, board and plan, artifacts and the workspace open in the pane on the right.
+  - Terminals open in the pane below.
+  - The calendar and spend open in a new tab.
+- What changes from before:
+  - In a split window, a conversation picked in the sidebar replaces the conversation you were reading instead of adding a tab to the current pane.
+  - A message's file, the job's trace, board and plan, the workspace and Bot ↔ Bot directs no longer cover the conversation; they open in a column to its right.
+  - A new terminal opens in a pane below.
+
 ### A reply in several parts reads as one
 
 - A Bot's reply sent in several parts no longer carries an "N outputs" badge or a "Part N" tag on each part, and the dashed rules between parts are gone: the parts stack close under one header. Only the last part keeps a line for its time; an earlier part's time (and how long it took) shows beside its reply and copy buttons when the pointer is on it, unless that part ends with its commands or its tag.

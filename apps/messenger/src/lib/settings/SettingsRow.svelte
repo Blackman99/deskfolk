@@ -11,18 +11,26 @@
 		/** The title's id, for the control's `aria-labelledby`. */
 		titleId?: string;
 		desc: string;
+		/** On the title's line, after it: a short mark that must not make the row taller. */
+		titleAfter?: Snippet;
 		/** More under the description, in the caller's own markup. */
 		notes?: Snippet;
 		/** The control. */
 		children: Snippet;
 	}
 
-	let { title, titleId, desc, notes, children }: Props = $props();
+	let { title, titleId, desc, titleAfter, notes, children }: Props = $props();
 </script>
 
 <div class="settings-row">
 	<div class="settings-row-info">
-		<span class="settings-row-title" id={titleId}>{title}</span>
+		{#if titleAfter}
+			<span class="settings-row-title-line">
+				<span class="settings-row-title" id={titleId}>{title}</span>{@render titleAfter()}
+			</span>
+		{:else}
+			<span class="settings-row-title" id={titleId}>{title}</span>
+		{/if}
 		<span class="settings-row-desc">{desc}</span>{@render notes?.()}
 	</div>
 	<div class="settings-row-action">
@@ -59,6 +67,14 @@
 		font-weight: 500;
 		color: var(--ink);
 		line-height: 1.3;
+	}
+
+	/* The title's own height: what follows it on the line is never taller than the text. */
+	.settings-row-title-line {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
 	}
 
 	.settings-row-desc {

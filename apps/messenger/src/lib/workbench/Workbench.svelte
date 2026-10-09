@@ -71,6 +71,8 @@
 		/** What to call a tab in plain text, for the chip that follows the pointer during a drag. */
 		tabName?: (tab: WorkbenchTab) => string;
 		onLayout: (next: WorkbenchLayout) => void;
+		/** The workbench's own box, each time it is measured anew: what opening a split or a float is sized against. */
+		onViewport?: (viewport: Rect) => void;
 		onActivate?: (leafId: string, tabId: string) => void;
 		onCloseTab?: (leafId: string, tabId: string) => void;
 		/**
@@ -96,6 +98,7 @@
 		tabLabel,
 		tabName,
 		onLayout,
+		onViewport,
 		onActivate,
 		onCloseTab,
 		onCloseTabs,
@@ -176,6 +179,7 @@
 		// handle, and the observer below reports each frame of the sidebar folding.
 		if (box.width === viewport.width && box.height === viewport.height) return;
 		viewport = { x: 0, y: 0, width: box.width, height: box.height };
+		onViewport?.(viewport);
 	}
 
 	$effect(() => {

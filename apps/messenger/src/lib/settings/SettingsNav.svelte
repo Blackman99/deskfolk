@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	export type SettingsTab = 'general' | 'models' | 'agents' | 'mcp' | 'prompts' | 'notifications' | 'lessons' | 'remote' | 'about';
+	export type SettingsTab = 'general' | 'behavior' | 'models' | 'agents' | 'mcp' | 'prompts' | 'notifications' | 'lessons' | 'remote' | 'about';
 </script>
 
 <script lang="ts">
@@ -17,6 +17,8 @@
 		promptCounts: { edited: number; conflict: boolean };
 		lessonsTabVisible: boolean;
 		remoteTabVisible: boolean;
+		/** Only with the desktop workbench: what it holds is where windows open there. */
+		behaviorTabVisible: boolean;
 		closeSettings: () => void;
 	};
 
@@ -30,6 +32,7 @@
 		promptCounts,
 		lessonsTabVisible,
 		remoteTabVisible,
+		behaviorTabVisible,
 		closeSettings
 	}: Props = $props();
 </script>
@@ -73,6 +76,23 @@
 				<span class="tab-badge-error" aria-label="error">!</span>
 			{/if}
 		</button>
+
+		{#if behaviorTabVisible}
+			<button
+				type="button"
+				class="settings-tab-btn"
+				class:is-active={activeSettingsTab === 'behavior'}
+				data-settings-tab="behavior"
+				onclick={() => openSettingsTab('behavior')}
+			>
+				<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<rect x="3" y="4" width="18" height="16" rx="2"></rect>
+					<line x1="12" y1="4" x2="12" y2="20"></line>
+					<line x1="12" y1="12" x2="21" y2="12"></line>
+				</svg>
+				<span class="tab-name">{t.settings.tabBehavior}</span>
+			</button>
+		{/if}
 
 
 		<button

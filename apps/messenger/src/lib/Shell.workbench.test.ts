@@ -11,6 +11,8 @@ import { PINNED_STORAGE_KEY } from './sidebar/pinned-sessions.ts';
 import { forgetKeptBoards } from './overlays/task-trace.ts';
 import { settle } from './test-async.ts';
 import { aTerminal, loadShell, menuRow, storedTabs } from './test-shell-kit.ts';
+import { openPlacements } from './workbench/open-placement-store.svelte.ts';
+import { forgetOpenPlacements } from './workbench/open-placement.ts';
 
 const Shell = await loadShell();
 
@@ -468,17 +470,19 @@ test('a conversation tab’s menu opens its job’s trace, board and plan, each 
     click(menu()!.querySelector(`[data-action="${action}"]`));
   };
   const tabs = () => [...host.querySelectorAll('.wb-tab-button')].map((tab) => tab.textContent?.trim());
-  const active = () => host.querySelector('.wb-tab-button[aria-selected="true"]')?.textContent?.trim();
+  const inFront = () => [...host.querySelectorAll('.wb-tab-button[aria-selected="true"]')].map((tab) => tab.textContent?.trim());
 
-  // Straight to the board: no trace opened first.
+  // Straight to the board: no trace opened first. By default it opens in a column beside the
+  // conversation, which stays in front where it was.
   pick('board');
   await until('.ticket-row');
   expect(tabs()).toEqual(['Researcher', t.pane.boardOf('Researcher')]);
-  expect(active()).toBe(t.pane.boardOf('Researcher'));
+  expect(inFront()).toEqual(['Researcher', t.pane.boardOf('Researcher')]);
   expect(host.querySelector('.trace-pane')?.getAttribute('data-view')).toBe('board');
   // A tab is one view: no switch to the others.
   expect(host.querySelector('.trace-views')).toBeNull();
 
+  // The other two join the board in that column, rather than dividing the window again.
   pick('spec');
   await until('.plan-spec');
   pick('trace');
@@ -489,13 +493,14 @@ test('a conversation tab’s menu opens its job’s trace, board and plan, each 
   pick('board');
   await until('.trace-pane[data-view="board"]');
   expect(tabs()).toHaveLength(4);
-  expect(active()).toBe(t.pane.boardOf('Researcher'));
+  expect(inFront()).toEqual(['Researcher', t.pane.boardOf('Researcher')]);
   const saved = JSON.parse(localStorage.getItem('real-bot-workbench-layout')!);
-  expect(saved.root.tabs.map((tab: { kind: string; params: Record<string, string> }) => [tab.kind, tab.params.view ?? null])).toEqual([
-    ['chat', null],
-    ['trace', 'board'],
-    ['trace', 'spec'],
-    ['trace', null],
+  type Saved = { type: string; axis?: string; tabs?: { kind: string; params: Record<string, string> }[]; children?: Saved[] };
+  expect(saved.root.type).toBe('branch');
+  expect(saved.root.axis).toBe('row');
+  expect((saved.root.children as Saved[]).map((leaf) => leaf.tabs!.map((tab) => [tab.kind, tab.params.view ?? null]))).toEqual([
+    [['chat', null]],
+    [['trace', 'board'], ['trace', 'spec'], ['trace', null]],
   ]);
 });
 
@@ -652,3 +657,62 @@ test('a tab\'s right-click closes the tabs to its right, then the others, and th
   expect(storedTabs().map((tab) => tab.kind)).toEqual(['chat']);
   expect(host.querySelectorAll('.wb-leaf')).toHaveLength(1);
 });
+
+test('with the window split, a conversation picked in the sidebar replaces the one in front, not the file beside it', async () => {
+  const group = aGroup({ id: 'g1', name: 'Alpha group' });
+  localStorage.setItem('real-bot-workbench-layout', JSON.stringify({
+    version: 1,
+    root: makeBranch('r', 'row', [
+      makeLeaf('a', [{ id: 't-d', kind: 'chat', params: { sessionId: 'direct-1' } }]),
+      makeLeaf('b', [{ id: 't-p', kind: 'preview', params: { sessionId: 'direct-1', relpath: 'work/a.md' } }]),
+    ]),
+    floating: [],
+    // The keyboard was last in the file beside the conversation.
+    focus: { zone: 'tiled', leafId: 'b' },
+  }));
+  cleanups.push(() => localStorage.removeItem('real-bot-workbench-layout'));
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot({ name: 'Researcher' })], sessions: [aDirect(), group],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true },
+  }, { selectedId: 'direct-1' }));
+  const { close } = render(Shell, { runtime });
+  cleanups.push(close);
+  await settle();
+  runtime.selectedId = 'g1';
+  await settle();
+  const saved = JSON.parse(localStorage.getItem('real-bot-workbench-layout')!);
+  expect(saved.root.children.map((leaf: { tabs: { kind: string; params: Record<string, string> }[] }) =>
+    leaf.tabs.map((tab) => `${tab.kind}:${tab.params.sessionId}`))).toEqual([
+    ['chat:g1'],
+    ['preview:direct-1'],
+  ]);
+});
+
+test('a window kind set to float in the settings opens floating the next time', async () => {
+  localStorage.setItem('real-bot-workbench-layout', JSON.stringify({
+    version: 1,
+    root: makeLeaf('a', [{ id: 't-d', kind: 'chat', params: { sessionId: 'direct-1' } }]),
+    floating: [],
+    focus: { zone: 'tiled', leafId: 'a' },
+  }));
+  cleanups.push(() => {
+    localStorage.removeItem('real-bot-workbench-layout');
+    forgetOpenPlacements();
+    openPlacements.reload();
+  });
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot({ name: 'Researcher' })], sessions: [aDirect()],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true },
+  }, { selectedId: 'direct-1' }));
+  const { close } = render(Shell, { runtime });
+  cleanups.push(close);
+  await settle();
+  openPlacements.set('spend', 'float');
+  runtime.paneOpener?.({ kind: 'spend' });
+  await settle();
+  const saved = JSON.parse(localStorage.getItem('real-bot-workbench-layout')!);
+  expect(saved.root.tabs.map((tab: { kind: string }) => tab.kind)).toEqual(['chat']);
+  expect(saved.floating.map((pane: { leaf: { tabs: { kind: string }[] } }) => pane.leaf.tabs.map((tab) => tab.kind))).toEqual([['spend']]);
+  expect(saved.focus.zone).toBe('floating');
+});
+

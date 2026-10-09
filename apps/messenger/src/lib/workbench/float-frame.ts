@@ -24,6 +24,24 @@ function fit(value: number, min: number, max: number): number {
   return Math.min(Math.max(min, max), Math.max(min, Math.round(value)));
 }
 
+/** How far each new float is stepped down and right from the last, so none hides another exactly. */
+export const FLOAT_OPEN_STEP = 28;
+
+/**
+ * Where a window that opens floating goes: in the middle of the workbench, most of it, never under
+ * what its content needs, and stepped past the floats already there.
+ */
+export function frameForOpen(viewport: Viewport, min: PaneMin, floatingCount: number): FloatFrame {
+  const width = Math.max(min.width, Math.round(viewport.width * 0.6));
+  const height = Math.max(min.height, Math.round(viewport.height * 0.7));
+  const step = FLOAT_OPEN_STEP * (floatingCount % 6);
+  return clampFrame(
+    { x: (viewport.width - width) / 2 + step, y: (viewport.height - height) / 2 + step, width, height },
+    min,
+    viewport,
+  );
+}
+
 /** Pull a frame back inside the window and up to a size that still shows something. */
 export function clampFrame(frame: FloatFrame, min: PaneMin, viewport: Viewport): FloatFrame {
   const gap = FLOAT_EDGE_GAP;

@@ -54,6 +54,7 @@ export const STORY_SIZES = {
 	// A batch in the transcript: the quoted delivery, the summary, and one card per annotation.
 	'chat-stage-annotations': { width: 900, height: 820 },
 	'settings-general': { width: 1000, height: 720 },
+	'settings-open-placement': { width: 1000, height: 820 },
 	'settings-providers': { width: 1000, height: 720 },
 	'settings-models-ladder': { width: 1000, height: 720 },
 	'settings-models-speech': { width: 1000, height: 720 },

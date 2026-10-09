@@ -4,6 +4,8 @@ import type { CopyShape } from "./shape.ts";
 export const zh = {
   title: "设置",
   tabGeneral: "通用",
+  /** How the app itself behaves on this machine: for now, where windows open on the workbench. */
+  tabBehavior: "行为",
   tabNotifications: "通知",
   tabLessons: "教训",
   tabPrompts: "提示词",
@@ -252,6 +254,7 @@ export const zh = {
 export const en: CopyShape<typeof zh> = {
   title: "Settings",
   tabGeneral: "General",
+  tabBehavior: "Behavior",
   tabNotifications: "Notifications",
   tabLessons: "Lessons",
   tabPrompts: "Prompts",

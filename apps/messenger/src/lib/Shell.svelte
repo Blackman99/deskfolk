@@ -1091,6 +1091,7 @@
 				tabName={workbench.paneTitle}
 				tabActions={chatTabActions}
 				onLayout={workbench.commitLayout}
+				onViewport={workbench.setViewport}
 				onActivate={(leafId, tabId) => workbench.commitLayout(activateTab(workbench.layout, leafId, tabId))}
 				onCloseTab={workbench.onPaneCloseTab}
 				onCloseTabs={workbench.onPaneCloseTabs}
@@ -1329,6 +1330,7 @@
 				{patchImmediate}
 				openDeleteProviderConfirm={(id) => danger.openDeleteProviderConfirm(id)}
 				{closeSettings}
+				workbench={wide}
 			/>
 		{/await}
 	{/if}

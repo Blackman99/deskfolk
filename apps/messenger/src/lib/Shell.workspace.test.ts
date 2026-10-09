@@ -412,8 +412,10 @@ test('opening message attachments in a workbench pane keeps its tree and selects
   click(rows().find((row) => row.title === 'work/notes.md'));
   await settle();
   expect(host.querySelector('.artifact-tree-row.is-selected')?.getAttribute('title')).toBe('work/notes.md');
-  // The preview tab is named for the conversation, and picking another file does not retitle it.
-  expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain("Researcher's artifacts");
+  // The preview tab is named for the conversation, and picking another file does not retitle it. It
+  // opened in a pane beside the conversation, which stays in front where it was.
+  const inFront = () => [...host.querySelectorAll('[role="tab"][aria-selected="true"]')].map((tab) => tab.textContent?.trim());
+  expect(inFront()).toEqual(['Researcher', "Researcher's artifacts"]);
   expect(host.querySelectorAll('[role="tab"]').length).toBe(tabs);
   expect(rows().map((row) => row.title)).toContain('work/plan.md');
 });

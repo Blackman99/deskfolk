@@ -15,7 +15,7 @@ import { settle } from "../test-async.ts";
 const t = copyFor("zh");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function open(over: { providers?: ReturnType<typeof aProvider>[]; client?: unknown; promptsTarget?: unknown; speech?: SpeechSettings } = {}) {
+function open(over: { providers?: ReturnType<typeof aProvider>[]; client?: unknown; promptsTarget?: unknown; speech?: SpeechSettings; workbench?: boolean } = {}) {
   const provider = over.providers?.[0] ?? aProvider();
   const runtime = fakeRuntime({
     providers: over.providers ?? [provider],
@@ -46,9 +46,32 @@ function open(over: { providers?: ReturnType<typeof aProvider>[]; client?: unkno
     patchImmediate: async () => true,
     openDeleteProviderConfirm: () => {},
     closeSettings: () => {},
+    workbench: over.workbench ?? false,
   });
   return { ...view, runtime, provider };
 }
+
+test("where windows open is a Behavior tab of its own, there only while the desktop workbench is on", () => {
+  const wide = open({ workbench: true });
+  // Not in General.
+  expect(wide.host.querySelector(".settings-card-open-placement")).toBeNull();
+  const tab = wide.host.querySelector<HTMLButtonElement>('[data-settings-tab="behavior"]');
+  expect(tab?.textContent?.trim()).toBe(t.settings.tabBehavior);
+  // Right after General.
+  expect([...wide.host.querySelectorAll("[data-settings-tab]")].slice(0, 2).map((el) => el.getAttribute("data-settings-tab"))).toEqual([
+    "general",
+    "behavior",
+  ]);
+  click(tab);
+  expect(wide.host.querySelector(".settings-card-open-placement")?.textContent).toContain(t.openPlacement.title);
+  expect(wide.host.querySelector(".settings-main-head")?.textContent).toContain(t.settings.tabBehavior);
+  wide.close();
+  // A narrow window or a phone has no panes to place anything in, so no tab for it.
+  const narrow = open();
+  expect(narrow.host.querySelector('[data-settings-tab="behavior"]')).toBeNull();
+  expect(narrow.host.querySelector(".settings-card-open-placement")).toBeNull();
+  narrow.close();
+});
 
 test("the settings dialog has no save button", () => {
   const { host, close } = open();

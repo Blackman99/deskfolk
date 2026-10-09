@@ -23,6 +23,7 @@
 	import NotificationSettings from './NotificationSettings.svelte';
 	import SettingsNav, { type SettingsTab } from './SettingsNav.svelte';
 	import GeneralTab from './GeneralTab.svelte';
+	import BehaviorTab from './BehaviorTab.svelte';
 	import ProvidersTab from './ProvidersTab.svelte';
 	import ModelsTab from './ModelsTab.svelte';
 	import RemoteTab from './RemoteTab.svelte';
@@ -51,6 +52,8 @@
 		}) => Promise<boolean>;
 		openDeleteProviderConfirm: (id: string) => void;
 		closeSettings: () => void;
+		/** The desktop workbench is on: the Behavior tab, where its windows open is set, shows. */
+		workbench?: boolean;
 	};
 
 	let {
@@ -63,7 +66,8 @@
 		confirmingIndependent = $bindable(false),
 		patchImmediate,
 		openDeleteProviderConfirm,
-		closeSettings
+		closeSettings,
+		workbench = false
 	}: Props = $props();
 	/** Backdrop presses start outside these sheets; a drag out of one never closes them. */
 	const settingsBackdrop = backdropClick();
@@ -210,6 +214,8 @@
 	function settingsTabLabel(tab: SettingsTab): string {
 		return tab === 'general'
 			? t.settings.tabGeneral
+			: tab === 'behavior'
+				? t.settings.tabBehavior
 			: tab === 'models'
 				? t.settings.tabModels
 				: tab === 'agents'
@@ -277,6 +283,11 @@
 	const remoteTabVisible = $derived(Boolean(runtime.remote || runtime.remoteStatus));
 	$effect(() => {
 		if (activeSettingsTab === 'remote' && !remoteTabVisible) activeSettingsTab = 'general';
+	});
+	/** Behavior is the workbench's for now: a narrow window or a phone has no panes to place things in. */
+	const behaviorTabVisible = $derived(workbench);
+	$effect(() => {
+		if (activeSettingsTab === 'behavior' && !behaviorTabVisible) activeSettingsTab = 'general';
 	});
 	let workspaceSavedTick = $state(0);
 	const providerEditorController = new ProviderEditorController({
@@ -404,6 +415,7 @@
 				{promptCounts}
 				{lessonsTabVisible}
 				{remoteTabVisible}
+				{behaviorTabVisible}
 				{closeSettings}
 			/>
 
@@ -449,6 +461,8 @@
 						independentReason={(status) => independentRuntime.independentReason(status)}
 						requestIndependent={(next) => independentRuntime.requestIndependent(next)}
 					/>
+				{:else if activeSettingsTab === 'behavior' && behaviorTabVisible}
+					<BehaviorTab {t} />
 				{:else if activeSettingsTab === 'models'}
 					<ModelsTab bind:this={modelsTab} {runtime} {t} {snapshot} notices={settingsNotices}>
 						{#snippet endpoints()}

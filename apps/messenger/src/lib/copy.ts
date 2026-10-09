@@ -12,6 +12,7 @@ import * as sidebarText from "./copy/sidebar.ts";
 import * as settingsText from "./copy/settings.ts";
 import * as topText from "./copy/top.ts";
 import * as paneText from "./copy/pane.ts";
+import * as openPlacementText from "./copy/open-placement.ts";
 import * as terminalText from "./copy/terminal.ts";
 import * as screenText from "./copy/screen.ts";
 import * as screenWindowsText from "./copy/screen-windows.ts";
@@ -55,6 +56,7 @@ const zh = {
   settings: settingsText.zh,
   top: topText.zh,
   pane: paneText.zh,
+  openPlacement: openPlacementText.zh,
   terminal: terminalText.zh,
   screen: screenText.zh,
   screenWindows: screenWindowsText.zh,
@@ -93,6 +95,7 @@ const en: CopyShape<typeof zh> = {
   settings: settingsText.en,
   top: topText.en,
   pane: paneText.en,
+  openPlacement: openPlacementText.en,
   terminal: terminalText.en,
   screen: screenText.en,
   screenWindows: screenWindowsText.en,

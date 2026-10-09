@@ -31,10 +31,14 @@ export function aTerminal(id: string, created_at: string) {
   return { id, title: "real-bot", cwd: "/fixture", rows: 24, cols: 80, created_at, status: "live" as const, exit_code: null, stream_end: 0 };
 }
 
+type StoredNode = { tabs?: Array<{ kind: string; params: Record<string, string> }>; children?: StoredNode[] };
+
+/** Every tab the saved layout holds, pane by pane in reading order, floating panes last. */
 export function storedTabs() {
   const saved = JSON.parse(localStorage.getItem("real-bot-workbench-layout")!);
-  const leaves = [saved.root, ...saved.floating.map((pane: { leaf: unknown }) => pane.leaf)];
-  return leaves.flatMap((leaf: { tabs?: Array<{ kind: string; params: Record<string, string> }> }) => leaf.tabs ?? []);
+  const walk = (node: StoredNode): StoredNode[] => (node.children ? node.children.flatMap(walk) : [node]);
+  const leaves = [...walk(saved.root), ...saved.floating.map((pane: { leaf: StoredNode }) => pane.leaf)];
+  return leaves.flatMap((leaf) => leaf.tabs ?? []);
 }
 
 /** A row of the portaled new-tab menu, by the name it shows. */

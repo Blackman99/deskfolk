@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { PaneMin } from "./layout-types.ts";
-import { clampFrame, frameForTearOut, isFrame, moveFrame, resizeFrame } from "./float-frame.ts";
+import { clampFrame, FLOAT_OPEN_STEP, frameForOpen, frameForTearOut, isFrame, moveFrame, resizeFrame } from "./float-frame.ts";
 
 const viewport = { width: 1200, height: 800 };
 /** The trace window's own minimum, so the cases carried over from it still mean the same thing. */
@@ -105,4 +105,17 @@ test("isFrame rejects anything that is not four real numbers", () => {
   expect(isFrame({ x: Number.NaN, y: 2, width: 3, height: 4 })).toBe(false);
   expect(isFrame(null)).toBe(false);
   expect(isFrame("nope")).toBe(false);
+});
+
+test("a window that opens floating sits in the middle, most of the workbench, stepped past the floats already there", () => {
+  const viewport = { width: 1000, height: 800 };
+  const min: PaneMin = { width: 300, height: 268 };
+  expect(frameForOpen(viewport, min, 0)).toEqual({ x: 200, y: 120, width: 600, height: 560 });
+  expect(frameForOpen(viewport, min, 1)).toEqual({ x: 200 + FLOAT_OPEN_STEP, y: 120 + FLOAT_OPEN_STEP, width: 600, height: 560 });
+  // Never under what its content needs, and never out of the window.
+  const big = frameForOpen({ width: 700, height: 500 }, { width: 548, height: 448 }, 3);
+  expect(big.width).toBe(548);
+  expect(big.height).toBe(448);
+  expect(big.x + big.width).toBeLessThanOrEqual(700 - 8);
+  expect(big.y + big.height).toBeLessThanOrEqual(500 - 8);
 });

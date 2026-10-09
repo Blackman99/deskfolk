@@ -204,17 +204,22 @@ export function activateTab(layout: WorkbenchLayout, leafId: NodeId, tabId: TabI
   );
 }
 
+/**
+ * Put a tab in a pane, in front unless `activate` is false — then it waits behind the one in front,
+ * except in an empty pane, which always shows what it has.
+ */
 export function addTab(
   layout: WorkbenchLayout,
   leafId: NodeId,
   tab: WorkbenchTab,
   index?: number,
+  activate = true,
 ): WorkbenchLayout {
   return mapLeaf(layout, leafId, (leaf) => {
     if (leaf.tabs.some((existing) => existing.id === tab.id)) return leaf;
     const tabs = [...leaf.tabs];
     tabs.splice(index ?? tabs.length, 0, tab);
-    return { ...leaf, tabs, activeTabId: tab.id };
+    return { ...leaf, tabs, activeTabId: activate || !leaf.activeTabId ? tab.id : leaf.activeTabId };
   });
 }
 

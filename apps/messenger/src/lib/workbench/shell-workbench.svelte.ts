@@ -29,16 +29,22 @@ import {
   splitLeaf,
 } from "./layout-tree.ts";
 import { healLayout, loadWorkbenchLayout, saveWorkbenchLayout } from "./workbench-layout.ts";
-import { contentOfTab, contentsEqual, PANE_KIND_SET, type PaneContent } from "./pane-content.ts";
+import { contentOfTab, contentsEqual, PANE_KIND_SET, tabFor, type PaneContent } from "./pane-content.ts";
 import { paneMin, WB_FALLBACK_MIN } from "./pane-mins.ts";
-import type { WorkbenchLayout, WorkbenchTab } from "./layout-types.ts";
+import type { Rect, WorkbenchLayout, WorkbenchTab } from "./layout-types.ts";
 import {
   activeSessionId,
   dropDuplicateBoundTabs,
   existingTarget,
   findKind,
   openContent,
+  type OpenOptions,
+  type PlaceContext,
 } from "./pane-open.ts";
+import { canSplit, computeGeometry, neighbourLeaf } from "./layout-geometry.ts";
+import { frameForOpen } from "./float-frame.ts";
+import { openKindOf } from "./open-placement.ts";
+import { openPlacements } from "./open-placement-store.svelte.ts";
 import type { PreviewHandle } from "./preview-context.ts";
 import {
   MENU_COMMANDS,
@@ -67,6 +73,8 @@ export class ShellWorkbench {
   private readonly getT: () => Copy;
 
   layout = $state<WorkbenchLayout>(loadWorkbenchLayout() ?? emptyLayout("wb-root"));
+  /** The workbench's own box as it last measured it; until then, the shell's. */
+  private viewport: Rect | null = null;
   private paneSeq = 0;
   private selectionInitialized = false;
   private spendInitialized = false;
@@ -102,9 +110,8 @@ export class ShellWorkbench {
         // A remembered tool tab is in front of the URL's underlying conversation.
         if (restoring && active && active.kind !== "chat") return;
         if (activeSessionId(this.layout) === id) return;
-        this.commitLayout(
-          openContent(this.layout, { kind: "chat", sessionId: id }, { id: this.freshPaneId, replaceActive: true }),
-        );
+        const content: PaneContent = { kind: "chat", sessionId: id };
+        this.commitLayout(openContent(this.layout, content, this.openOptions(content)));
       });
     });
 
@@ -292,7 +299,7 @@ export class ShellWorkbench {
    * beside it instead" is not on offer; its own save / discard / cancel question decides.
    */
   openGuarded = (content: PaneContent): void => {
-    const open = () => this.commitLayout(openContent(this.layout, content, { id: this.freshPaneId }));
+    const open = () => this.commitLayout(openContent(this.layout, content, this.openOptions(content)));
     const at = existingTarget(this.layout, content);
     const pane = at ? this.previewPanes.get(at.tab.id) : undefined;
     const current = at ? contentOfTab(at.tab) : null;
@@ -305,11 +312,52 @@ export class ShellWorkbench {
     open();
   };
 
-  /** Fill a pane from its own empty state: whatever you pick lands in that pane, not elsewhere. */
+  /**
+   * Fill a pane from its own empty state or its + menu: whatever you pick lands in that pane, as a
+   * tab in front, whatever the placement for its kind — you already said where.
+   */
   openInPane = (leafId: string, content: PaneContent): void => {
     const focused = focusLeaf(this.layout, leafId);
-    this.commitLayout(openContent(focused, content, { id: this.freshPaneId, replaceActive: true }));
+    this.commitLayout(openContent(focused, content, { id: this.freshPaneId }));
   };
+
+  /** What the workbench measured itself at, so a split or a float is sized against the real box. */
+  setViewport = (viewport: Rect): void => {
+    this.viewport = viewport;
+  };
+
+  /**
+   * How a new tab for this content is placed: its kind's choice in the settings, against the
+   * workbench as it is on screen.
+   */
+  openOptions = (content: PaneContent): OpenOptions => ({
+    id: this.freshPaneId,
+    placement: openPlacements.get(this.openKind(content)),
+    place: this.placeContext(),
+  });
+
+  private openKind = (content: PaneContent) =>
+    openKindOf(content, (sessionId) => {
+      const session = this.getSessionsById().get(sessionId);
+      return session ? classifySession(session) : null;
+    });
+
+  private placeContext(): PlaceContext {
+    // The workbench's measured box; before it has one, the shell's; before that (the shell's width
+    // starts unbounded), a common desktop window, so the arithmetic below never meets Infinity.
+    const usable = (box: Rect | null): box is Rect =>
+      !!box && Number.isFinite(box.width) && Number.isFinite(box.height) && box.width > 0 && box.height > 0;
+    const shell = { x: 0, y: 0, width: this.getShellWidth(), height: this.getShellEl()?.clientHeight || 800 };
+    const viewport = usable(this.viewport) ? this.viewport : usable(shell) ? shell : { x: 0, y: 0, width: 1280, height: 800 };
+    const minOf = (content: PaneContent) => paneMin(tabFor(content, "measure"));
+    return {
+      neighbour: (layout, leafId, dir) => neighbourLeaf(computeGeometry(layout, viewport, paneMin), leafId, dir),
+      fits: (layout, leafId, axis, content) => canSplit(layout, leafId, axis, viewport, paneMin, minOf(content)),
+      floatFrame: (layout, content) => frameForOpen(viewport, minOf(content), layout.floating.length),
+      holdsEdit: (tabId) => this.previewPanes.get(tabId)?.blocksClose() ?? false,
+      kindOf: this.openKind,
+    };
+  }
 
   /**
    * A terminal tab is one shell. A new tab starts its own and is bound to it before it shows, so
@@ -323,7 +371,7 @@ export class ShellWorkbench {
       cwd: created?.cwd ?? null,
     };
     if (leafId && leafById(this.layout, leafId)) this.openInPane(leafId, content);
-    else this.commitLayout(openContent(this.layout, content, { id: this.freshPaneId }));
+    else this.commitLayout(openContent(this.layout, content, this.openOptions(content)));
   };
 
   /** Reopen the nearest terminal tab, creating a shell when none is open. */

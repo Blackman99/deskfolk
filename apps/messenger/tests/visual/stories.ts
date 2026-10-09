@@ -52,6 +52,7 @@ import { makeBranch, makeLeaf } from '../../src/lib/workbench/layout-tree.ts';
 import { paneMin } from '../../src/lib/workbench/pane-mins.ts';
 import type { WorkbenchLayout, WorkbenchTab } from '../../src/lib/workbench/layout-types.ts';
 import { createRawSnippet } from 'svelte';
+import { openPlacements } from '../../src/lib/workbench/open-placement-store.svelte.ts';
 
 const t = copyFor('zh');
 
@@ -975,6 +976,16 @@ const defs: Record<StoryName, Story> = {
 		}
 	},
 	'settings-general': { component: SettingsModal as never, props: settingsProps(), afterMount: settingsTab('general') },
+	// The Behavior tab: where each kind of window opens, as a wide window shows it, one choice changed.
+	'settings-open-placement': {
+		component: SettingsModal as never,
+		props: settingsProps({ workbench: true }),
+		afterMount: (host: HTMLElement) => {
+			openPlacements.set('terminal', 'float');
+			settingsTab('behavior')(host);
+			flushSync();
+		}
+	},
 	'settings-providers': { component: SettingsModal as never, props: settingsProps(), afterMount: settingsTab('models') },
 	// The model ladder's own tab, on an engine level that has one.
 	'settings-models-ladder': {

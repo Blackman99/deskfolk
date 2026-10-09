@@ -2,6 +2,9 @@ import { expect, test } from "bun:test";
 import type { WorkbenchLayout } from "./layout-types.ts";
 import { assertInvariants, leafById, makeBranch, makeLeaf, tiledLeaves } from "./layout-tree.ts";
 import { tabFor } from "./pane-content.ts";
+import { computeGeometry, neighbourLeaf } from "./layout-geometry.ts";
+import { paneMin } from "./pane-mins.ts";
+import type { PlaceContext } from "./pane-open.ts";
 import {
   activeSessionId,
   closeChatSide,
@@ -22,6 +25,27 @@ function layoutOf(root: Parameters<typeof tiledLeaves>[0], focusId?: string): Wo
 
 const chat = (sessionId: string) => ({ kind: "chat", sessionId }) as const;
 
+/** A window measured as nothing in particular: no pane next door, every split fits. */
+function noPlace(over: Partial<PlaceContext> = {}): PlaceContext {
+  return {
+    neighbour: () => null,
+    fits: () => true,
+    floatFrame: () => ({ x: 10, y: 20, width: 300, height: 200 }),
+    holdsEdit: () => false,
+    kindOf: (content) => (content.kind === "trace" ? `trace:${content.view ?? "trace"}` : content.kind),
+    ...over,
+  };
+}
+
+/** A 1200×800 workbench, so the pane next door is the one actually drawn there. */
+function measured(over: Partial<PlaceContext> = {}): PlaceContext {
+  const viewport = { x: 0, y: 0, width: 1200, height: 800 };
+  return noPlace({
+    neighbour: (layout, leafId, dir) => neighbourLeaf(computeGeometry(layout, viewport, paneMin), leafId, dir),
+    ...over,
+  });
+}
+
 test("opening something already on screen focuses it and moves nothing", () => {
   const layout = layoutOf(makeBranch("r", "row", [
     makeLeaf("a", [tabFor(chat("s1"), "t-a")]),
@@ -33,57 +57,92 @@ test("opening something already on screen focuses it and moves nothing", () => {
   assertInvariants(next);
 });
 
+const replace = { ...ids, placement: "replace" } as const;
+
 test("a conversation gives way to another conversation in the same pane", () => {
   // Clicking a row in the roster means "go there", not "collect tabs".
   const layout = layoutOf(makeLeaf("a", [tabFor(chat("s1"), "t-a")]));
-  const next = openContent(layout, chat("s2"), { ...ids, replaceActive: true });
+  const next = openContent(layout, chat("s2"), replace);
   const tabs = leafById(next, "a")!.tabs;
   expect(tabs).toHaveLength(1);
   expect(tabs[0]!.params.sessionId).toBe("s2");
   assertInvariants(next);
 });
 
-test("with the window split, a conversation no pane shows is a new tab in the focused pane", () => {
-  // Each pane's tabs were arranged on purpose once there is more than one, so the focused pane
-  // keeps the conversation it was showing and the new one sits beside it.
+test("with the window split, a replace takes the conversation in front in the focused pane", () => {
   const layout = layoutOf(makeBranch("r", "row", [
     makeLeaf("a", [tabFor(chat("s1"), "t-a")]),
     makeLeaf("b", [tabFor(chat("s2"), "t-b")]),
   ]), "b");
-  const next = openContent(layout, chat("s3"), { ...ids, replaceActive: true });
+  const next = openContent(layout, chat("s3"), replace);
   expect(tiledLeaves(next.root).map((leaf) => leaf.tabs.map((tab) => tab.params.sessionId))).toEqual([
     ["s1"],
-    ["s2", "s3"],
+    ["s3"],
   ]);
   expect(next.focus.leafId).toBe("b");
-  expect(leafById(next, "b")!.activeTabId).toBe(leafById(next, "b")!.tabs[1]!.id);
   assertInvariants(next);
 });
 
-test("a floating pane beside the tiled one counts as a split window too", () => {
-  const tiled = makeLeaf("a", [tabFor(chat("s1"), "t-a")]);
+test("from a pane showing no conversation, a replace takes the nearest one that does", () => {
+  // The keyboard was in the file beside the conversation: the conversation is still what you were reading.
+  const layout = layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", [tabFor(chat("s1"), "t-a")]),
+    makeLeaf("b", [tabFor(preview("s1", "a.md"), "t-p")]),
+  ]), "b");
+  const next = openContent(layout, chat("s3"), replace);
+  expect(tiledLeaves(next.root).map((leaf) => leaf.tabs.map((tab) => tab.kind + ":" + (tab.params.sessionId ?? "")))).toEqual([
+    ["chat:s3"],
+    ["preview:s1"],
+  ]);
+  expect(next.focus.leafId).toBe("a");
+  assertInvariants(next);
+});
+
+test("a replace keeps the place of the tab it replaces, and the tabs beside it", () => {
+  const layout = layoutOf({ ...makeLeaf("a", [
+    tabFor({ kind: "terminal", terminalId: "x" }, "t-term"),
+    tabFor(chat("s1"), "t-a"),
+    tabFor(chat("s2"), "t-b"),
+  ]), activeTabId: "t-a" });
+  const next = openContent(layout, chat("s3"), replace);
+  expect(leafById(next, "a")!.tabs.map((tab) => tab.kind + ":" + (tab.params.sessionId ?? ""))).toEqual([
+    "terminal:",
+    "chat:s3",
+    "chat:s2",
+  ]);
+  assertInvariants(next);
+});
+
+test("a replace never throws away an edit not saved yet: the new one goes beside it", () => {
+  const layout = layoutOf(makeLeaf("a", [tabFor(preview("s1", "a.md"), "t-p")]));
+  const next = openContent(layout, preview("s2", "b.md"), { ...replace, place: { ...noPlace(), holdsEdit: (id) => id === "t-p" } });
+  expect(leafById(next, "a")!.tabs.map((tab) => tab.params.relpath)).toEqual(["a.md", "b.md"]);
+});
+
+test("a floating pane is reached last when the focused tiled pane has no conversation in front", () => {
+  const tiled = makeLeaf("a", [tabFor({ kind: "terminal", terminalId: "x" }, "t-a")]);
   const layout: WorkbenchLayout = {
     version: 1,
     root: tiled,
     floating: [{ leaf: makeLeaf("f", [tabFor(chat("s2"), "t-f")]), frame: { x: 40, y: 40, width: 400, height: 300 } }],
     focus: { zone: "tiled", leafId: "a" },
   };
-  const next = openContent(layout, chat("s3"), { ...ids, replaceActive: true });
-  expect(leafById(next, "a")!.tabs.map((tab) => tab.params.sessionId)).toEqual(["s1", "s3"]);
-  expect(leafById(next, "f")!.tabs.map((tab) => tab.params.sessionId)).toEqual(["s2"]);
+  const next = openContent(layout, chat("s3"), replace);
+  expect(leafById(next, "a")!.tabs.map((tab) => tab.kind)).toEqual(["terminal"]);
+  expect(leafById(next, "f")!.tabs.map((tab) => tab.params.sessionId)).toEqual(["s3"]);
   assertInvariants(next);
 });
 
 test("a conversation does not evict a terminal you put there on purpose", () => {
   const layout = layoutOf(makeLeaf("a", [tabFor({ kind: "terminal", terminalId: "term-1" }, "t-a")]));
-  const next = openContent(layout, chat("s1"), { ...ids, replaceActive: true });
+  const next = openContent(layout, chat("s1"), replace);
   const tabs = leafById(next, "a")!.tabs;
   expect(tabs).toHaveLength(2);
   expect(tabs.map((tab) => tab.kind)).toEqual(["terminal", "chat"]);
   assertInvariants(next);
 });
 
-test("without replaceActive a new tab sits beside what is there", () => {
+test("without a placement a new tab sits beside what is there", () => {
   const layout = layoutOf(makeLeaf("a", [tabFor(chat("s1"), "t-a")]));
   const next = openContent(layout, chat("s2"), ids);
   expect(leafById(next, "a")!.tabs).toHaveLength(2);
@@ -91,7 +150,7 @@ test("without replaceActive a new tab sits beside what is there", () => {
 
 test("an empty pane takes the content rather than staying empty", () => {
   const layout = layoutOf(makeLeaf("a", []));
-  const next = openContent(layout, chat("s1"), { ...ids, replaceActive: true });
+  const next = openContent(layout, chat("s1"), replace);
   expect(leafById(next, "a")!.tabs).toHaveLength(1);
   assertInvariants(next);
 });
@@ -406,3 +465,132 @@ test("one tab of each view of a conversation's flow survives the clean-up", () =
   ]);
   assertInvariants(next);
 });
+
+// ------------------------------------------------------------------ placements
+
+const placed = (placement: NonNullable<Parameters<typeof openContent>[2]["placement"]>, place = measured()) =>
+  ({ ...ids, placement, place }) as const;
+
+const shape = (layout: WorkbenchLayout): unknown => {
+  const walk = (node: WorkbenchLayout["root"]): unknown =>
+    node.type === "leaf"
+      ? node.tabs.map((tab) => tab.kind)
+      : { [node.axis]: node.children.map(walk) };
+  return walk(layout.root);
+};
+
+test("a split divides the focused pane that way and the new pane takes the window", () => {
+  const cases = [
+    ["split-right", { row: [["chat"], ["preview"]] }],
+    ["split-left", { row: [["preview"], ["chat"]] }],
+    ["split-down", { column: [["chat"], ["preview"]] }],
+    ["split-up", { column: [["preview"], ["chat"]] }],
+  ] as const;
+  for (const [placement, expected] of cases) {
+    const layout = layoutOf(makeLeaf("a", [tabFor(chat("s1"), "t-a")]));
+    const next = openContent(layout, preview("s1", "a.md"), placed(placement));
+    expect(shape(next)).toEqual(expected);
+    expect(leafById(next, next.focus.leafId)!.tabs.map((tab) => tab.kind)).toEqual(["preview"]);
+    assertInvariants(next);
+  }
+});
+
+test("a split with no room, or from a floating pane, is a new tab where the keyboard is", () => {
+  const layout = layoutOf(makeLeaf("a", [tabFor(chat("s1"), "t-a")]));
+  const cramped = openContent(layout, preview("s1", "a.md"), placed("split-right", measured({ fits: () => false })));
+  expect(shape(cramped)).toEqual(["chat", "preview"]);
+
+  const floating: WorkbenchLayout = {
+    version: 1,
+    root: makeLeaf("a", [tabFor(chat("s1"), "t-a")]),
+    floating: [{ leaf: makeLeaf("f", [tabFor(chat("s2"), "t-f")]), frame: { x: 40, y: 40, width: 400, height: 300 } }],
+    focus: { zone: "floating", leafId: "f" },
+  };
+  const next = openContent(floating, preview("s2", "a.md"), placed("split-right"));
+  expect(leafById(next, "f")!.tabs.map((tab) => tab.kind)).toEqual(["chat", "preview"]);
+  expect(shape(next)).toEqual(["chat"]);
+});
+
+test("the pane on that side takes it; from that pane, it stays there; only a single pane is split", () => {
+  // Three files and the job's board in a row from the conversation: one column beside it, not four.
+  let layout = layoutOf(makeLeaf("a", [tabFor(chat("s1"), "t-a")]));
+  layout = openContent(layout, preview("s1", "a.md"), placed("side-right"));
+  expect(shape(layout)).toEqual({ row: [["chat"], ["preview"]] });
+  const side = layout.focus.leafId;
+  // Back in the conversation, the board goes to the column already beside it.
+  layout = openContent({ ...layout, focus: { zone: "tiled", leafId: "a" } }, { kind: "trace", sessionId: "s1", taskId: "j", view: "board" }, placed("side-right"));
+  expect(layout.focus.leafId).toBe(side);
+  // From the column itself, the spec stays in it.
+  layout = openContent(layout, { kind: "trace", sessionId: "s1", taskId: "j", view: "spec" }, placed("side-right"));
+  expect(shape(layout)).toEqual({ row: [["chat"], ["preview", "trace", "trace"]] });
+  assertInvariants(layout);
+});
+
+test("terminals go under the conversation, and the next one joins them there", () => {
+  let layout = layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", [tabFor(chat("s1"), "t-a")]),
+    makeLeaf("b", [tabFor(preview("s1", "a.md"), "t-p")]),
+  ]), "a");
+  layout = openContent(layout, { kind: "terminal", terminalId: "x" }, placed("side-down"));
+  expect(shape(layout)).toEqual({ row: [{ column: [["chat"], ["terminal"]] }, ["preview"]] });
+  layout = openContent({ ...layout, focus: { zone: "tiled", leafId: "a" } }, { kind: "terminal", terminalId: "y" }, placed("side-down"));
+  expect(shape(layout)).toEqual({ row: [{ column: [["chat"], ["terminal", "terminal"]] }, ["preview"]] });
+  assertInvariants(layout);
+});
+
+test("a float is a pane of its own over the layout, where the shell says, with the keyboard in it", () => {
+  const layout = layoutOf(makeLeaf("a", [tabFor(chat("s1"), "t-a")]));
+  const next = openContent(layout, { kind: "routines" }, placed("float"));
+  expect(shape(next)).toEqual(["chat"]);
+  expect(next.floating).toHaveLength(1);
+  expect(next.floating[0]!.frame).toEqual({ x: 10, y: 20, width: 300, height: 200 });
+  expect(next.floating[0]!.leaf.tabs.map((tab) => tab.kind)).toEqual(["routines"]);
+  expect(next.focus).toEqual({ zone: "floating", leafId: next.floating[0]!.leaf.id });
+  assertInvariants(next);
+});
+
+test("a background tab waits behind the one in front, and the keyboard stays where it was", () => {
+  const layout = layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", [tabFor(chat("s1"), "t-a")]),
+    makeLeaf("b", [tabFor(chat("s2"), "t-b")]),
+  ]), "a");
+  const next = openContent(layout, { kind: "terminal", terminalId: "x" }, placed("tab-background"));
+  expect(leafById(next, "a")!.tabs.map((tab) => tab.kind)).toEqual(["chat", "terminal"]);
+  expect(leafById(next, "a")!.activeTabId).toBe("t-a");
+  expect(next.focus.leafId).toBe("a");
+  // An empty pane shows what it is given, background or not.
+  const empty = openContent(layoutOf(makeLeaf("e", [])), { kind: "spend" }, placed("tab-background"));
+  expect(leafById(empty, "e")!.activeTabId).toBe(leafById(empty, "e")!.tabs[0]!.id);
+  assertInvariants(next);
+});
+
+test("what is already open is only brought forward, whatever its placement says", () => {
+  const layout = layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", [tabFor(chat("s1"), "t-a")]),
+    makeLeaf("b", [tabFor(preview("s1", "a.md"), "t-p")]),
+  ]), "a");
+  for (const placement of ["split-down", "float", "side-left", "tab"] as const) {
+    const next = openContent(layout, preview("s1", "b.md"), placed(placement));
+    expect(shape(next)).toEqual({ row: [["chat"], ["preview"]] });
+    expect(next.floating).toHaveLength(0);
+    expect(leafById(next, "b")!.tabs[0]!.params.relpath).toBe("b.md");
+    expect(next.focus.leafId).toBe("b");
+  }
+  // A conversation open elsewhere is the same: the roster's click goes to it, not a second copy.
+  const chats = openContent(layout, chat("s1"), placed("split-right"));
+  expect(shape(chats)).toEqual({ row: [["chat"], ["preview"]] });
+});
+
+test("a replace only takes the same kind of window: the board never takes the trace's place", () => {
+  const trace = { kind: "trace", sessionId: "s1", taskId: "j", view: "trace" } as const;
+  const layout = layoutOf(makeLeaf("a", [tabFor(trace, "t-trace")]));
+  const next = openContent(layout, { ...trace, sessionId: "s2", view: "board" }, { ...ids, placement: "replace" });
+  expect(leafById(next, "a")!.tabs.map((tab) => tab.params.view ?? "trace")).toEqual(["trace", "board"]);
+  // A conversation and a Bot↔Bot direct are two kinds when the shell can tell them apart.
+  const directs = layoutOf(makeLeaf("a", [tabFor(chat("bb"), "t-bb")]));
+  const kindOf = (content: Parameters<PlaceContext["kindOf"]>[0]) =>
+    content.kind === "chat" && content.sessionId === "bb" ? "bot-bot" : content.kind;
+  const kept = openContent(directs, chat("s1"), { ...ids, placement: "replace", place: noPlace({ kindOf }) });
+  expect(leafById(kept, "a")!.tabs.map((tab) => tab.params.sessionId)).toEqual(["bb", "s1"]);
+});
+
