@@ -86,7 +86,7 @@ import { MessageEdits, type MessageEditsHost } from "./chat/message-edits.svelte
 import { SessionHistory, type SessionHistoryHost } from "./chat/session-history.svelte.ts";
 import { ThreadState, type ThreadStateHost } from "./chat/thread-state.svelte.ts";
 import { ConnectionLoop, type ConnectionLoopHost } from "./connection/connection-loop.svelte.ts";
-import { OverlayState, type OverlayStateHost } from "./overlays/overlay-state.svelte.ts";
+import { OverlayState, type OverlayStateHost, type TraceOpenOptions } from "./overlays/overlay-state.svelte.ts";
 import { TerminalList, type TerminalListHost } from "./overlays/terminal-list.svelte.ts";
 import { SearchStore, type SearchStoreHost } from "./search/search-store.svelte.ts";
 
@@ -590,7 +590,7 @@ export class MessengerRuntime {
   openRemoteScreen(): void { this.overlayState.openRemoteScreen(); }
   closeRemoteScreen(): void { this.overlayState.closeRemoteScreen(); }
   watchTrace(taskId: string): () => void { return this.overlayState.watchTrace(taskId); }
-  openTrace(taskId: string | null = null, focus: TraceFocus | null = null): void { this.overlayState.openTrace(taskId, focus); }
+  openTrace(taskId: string | null = null, focus: TraceFocus | null = null, opts: TraceOpenOptions = {}): void { this.overlayState.openTrace(taskId, focus, opts); }
   closeTrace(): void { this.overlayState.closeTrace(); }
   get traceOpen(): boolean { return this.overlayState.traceOpen; }
   openRoutine(botId: string, routineId: string): Promise<void> { return this.overlayState.openRoutine(botId, routineId); }

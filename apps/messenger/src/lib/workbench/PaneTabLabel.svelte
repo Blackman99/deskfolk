@@ -1,24 +1,28 @@
 <script lang="ts">
 	import type { PaneKind } from './pane-content.ts';
+	import type { TraceViewKind } from '../overlays/trace-view.ts';
 
 	/**
 	 * Every tab that is not a live conversation: its kind's picture before the name. The pictures
 	 * are the ones the app opens these from — the tools menu's terminal, calendar and ledger, the
-	 * workspace button's folder, the header's flow board. Marked `wb-tab-icon` like a
-	 * conversation's avatar, so the strip shows them on the same terms.
+	 * workspace button's folder, the header's flow board — and its board and spec, the pictures their
+	 * switch shows. Marked `wb-tab-icon` like a conversation's avatar, so the strip shows them on the
+	 * same terms.
 	 */
 	type Props = {
 		/** Null for a tab this build cannot read, which keeps its bare name. */
 		kind: PaneKind | null;
+		/** Which view of a job's flow a flow tab is; the trace when left out. */
+		traceView?: TraceViewKind;
 		title: string;
 	};
 
-	let { kind, title }: Props = $props();
+	let { kind, traceView = 'trace', title }: Props = $props();
 </script>
 
 <span class="pane-tab" {title}>
 	{#if kind}
-		<span class="wb-tab-icon pane-tab-icon" data-kind={kind} aria-hidden="true">
+		<span class="wb-tab-icon pane-tab-icon" data-kind={kind} data-view={kind === 'trace' ? traceView : undefined} aria-hidden="true">
 			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 				{#if kind === 'terminal'}
 					<polyline points="4 17 10 11 4 5"></polyline>
@@ -33,6 +37,15 @@
 				{:else if kind === 'spend'}
 					<line x1="12" y1="1" x2="12" y2="23"></line>
 					<path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+				{:else if kind === 'trace' && traceView === 'board'}
+					<rect x="3" y="3" width="5" height="18" rx="1"></rect>
+					<rect x="10" y="3" width="5" height="12" rx="1"></rect>
+					<rect x="17" y="3" width="4" height="8" rx="1"></rect>
+				{:else if kind === 'trace' && traceView === 'spec'}
+					<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+					<polyline points="14 2 14 8 20 8"></polyline>
+					<line x1="16" y1="13" x2="8" y2="13"></line>
+					<line x1="16" y1="17" x2="8" y2="17"></line>
 				{:else if kind === 'trace'}
 					<rect x="8" y="2" width="8" height="6" rx="1.5"></rect>
 					<path d="M12 8v3"></path>

@@ -5,6 +5,8 @@ export type SessionContextMenuData = {
   sessionId: string;
   isPinned: boolean;
   canViewInfo: boolean;
+  /** Its jobs' trace, board and plan can be opened from here: every conversation but the file drop. */
+  canShowJob: boolean;
   canClearHistory: boolean;
   archive: {
     enabled: boolean;
@@ -28,6 +30,7 @@ export function deriveSessionContextMenu(
       sessionId: session.id,
       isPinned,
       canViewInfo: false,
+      canShowJob: false,
       canClearHistory: true,
       archive: { enabled: false, isArchived: false, botId: null },
       delete: { enabled: false, kind: null, targetId: null },
@@ -40,6 +43,7 @@ export function deriveSessionContextMenu(
       sessionId: session.id,
       isPinned,
       canViewInfo: true,
+      canShowJob: true,
       canClearHistory: true,
       archive: {
         enabled: true,
@@ -63,6 +67,7 @@ export function deriveSessionContextMenu(
       sessionId: session.id,
       isPinned,
       canViewInfo: true,
+      canShowJob: true,
       canClearHistory: true,
       archive: {
         enabled: Boolean(peerBot),
@@ -81,6 +86,7 @@ export function deriveSessionContextMenu(
     sessionId: session.id,
     isPinned,
     canViewInfo: true,
+    canShowJob: true,
     canClearHistory: true,
     archive: {
       enabled: false,

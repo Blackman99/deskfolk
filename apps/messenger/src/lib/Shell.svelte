@@ -752,13 +752,18 @@
 				active: pinned,
 				run: () => togglePin(session.id)
 			},
-			{
-				id: 'trace',
-				label: t.trace.topAction,
-				icon: traceIcon,
+			// The latest job's trace, board and plan, each a tab of its own.
+			...([
+				['trace', t.plan.segmentTrace, traceIcon],
+				['board', t.plan.segmentBoard, boardIcon],
+				['spec', t.plan.segmentSpec, specIcon]
+			] as const).map(([view, label, icon]) => ({
+				id: view,
+				label,
+				icon,
 				run: () =>
-					workbench.openGuarded({ kind: 'trace', sessionId: session.id, taskId: null, focus: null, focusNonce: null })
-			},
+					workbench.openGuarded({ kind: 'trace', sessionId: session.id, taskId: null, view, focus: null, focusNonce: null })
+			})),
 			{
 				id: 'settings',
 				label: classifySession(session) === 'group' ? t.top.groupSettings : t.top.botSettings,
@@ -938,6 +943,21 @@
 		<rect x="15" y="14" width="7" height="6" rx="1.5"></rect>
 	</svg>
 {/snippet}
+{#snippet boardIcon()}
+	<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+		<rect x="3" y="3" width="5" height="18" rx="1"></rect>
+		<rect x="10" y="3" width="5" height="12" rx="1"></rect>
+		<rect x="17" y="3" width="4" height="8" rx="1"></rect>
+	</svg>
+{/snippet}
+{#snippet specIcon()}
+	<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+		<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+		<polyline points="14 2 14 8 20 8"></polyline>
+		<line x1="16" y1="13" x2="8" y2="13"></line>
+		<line x1="16" y1="17" x2="8" y2="17"></line>
+	</svg>
+{/snippet}
 {#snippet settingsIcon()}
 	<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 		<circle cx="12" cy="12" r="3"></circle>
@@ -1088,6 +1108,7 @@
 						onBindTerminal={workbench.bindTerminalTab}
 						onUpdateContent={(content) =>
 							workbench.commitLayout(replaceTabParams(workbench.layout, leafId, tab.id, contentToParams(content)))}
+						onOpenContent={workbench.openGuarded}
 						onPreviewPane={workbench.trackPreviewPane}
 						onJump={jumpToTrace}
 						onCloseSide={closePaneSide}
@@ -1100,7 +1121,11 @@
 					{#if tabSession}
 						<ChatTabLabel {runtime} {t} session={tabSession} title={workbench.paneTitle(tab)} />
 					{:else}
-						<PaneTabLabel kind={tabContent?.kind ?? null} title={workbench.paneTitle(tab)} />
+						<PaneTabLabel
+							kind={tabContent?.kind ?? null}
+							traceView={tabContent?.kind === 'trace' ? tabContent.view : undefined}
+							title={workbench.paneTitle(tab)}
+						/>
 					{/if}
 				{/snippet}
 				{#snippet emptyActions(leafId: string)}
@@ -1339,6 +1364,7 @@
 			onClearHistory={() => sessionMenu.handleMenuClearHistory(activeMenu.session)}
 			onToggleArchive={() => void sessionMenu.handleMenuToggleArchive(activeMenu.session)}
 			onDelete={() => sessionMenu.handleMenuDelete(activeMenu.session)}
+			onShowJobView={(view) => void sessionMenu.handleMenuShowJobView(activeMenu.session, view)}
 		/>
 	{/if}
 </div>

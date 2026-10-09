@@ -104,6 +104,8 @@ export const zh = {
   openAssociatedFileTree: "打开关联的文件树",
   noAssociatedFiles: "无关联文件",
   showTrace: "看这件事",
+  /** A message's job, each view of it a tab of its own on a wide window. */
+  jobView: { trace: "这件事的流程", board: "这件事的看板", spec: "这件事的要点" },
   scrollToBottom: "回到底部",
   lockedNotice: "此会话为只读（参与的 Bot 已归档或删除）",
   groupLockedNotice: "此群聊已归档，处于只读状态",
@@ -219,6 +221,7 @@ export const en: CopyShape<typeof zh> = {
   openAssociatedFileTree: "Open associated file tree",
   noAssociatedFiles: "No associated files",
   showTrace: "Show this job",
+  jobView: { trace: "This job's trace", board: "This job's board", spec: "This job's plan" },
   scrollToBottom: "Scroll to bottom",
   lockedNotice: "This session is read-only (participating bots are archived or deleted)",
   groupLockedNotice: "This group is archived and is read-only",

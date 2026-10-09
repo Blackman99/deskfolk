@@ -316,6 +316,66 @@ test("another conversation's board is its own pane", () => {
   expect(leafById(next, "a")!.tabs.map((tab) => tab.params.sessionId)).toEqual(["s1", "s2"]);
 });
 
+const view = (sessionId: string, taskId: string | null, which: "trace" | "board" | "spec") =>
+  ({ kind: "trace", sessionId, taskId, view: which }) as const;
+
+test("each view of a conversation's flow is a tab of its own, beside the one that asked", () => {
+  const layout = layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", [tabFor(chat("s1"), "t-chat")]),
+    makeLeaf("b", [tabFor(trace("s1", "job-1"), "t-trace")]),
+  ]), "b");
+  const withBoard = openContent(layout, view("s1", "job-1", "board"), ids);
+  const tabs = leafById(withBoard, "b")!.tabs;
+  expect(tabs.map((tab) => [tab.id, tab.params.view])).toEqual([
+    ["t-trace", undefined],
+    [tabs[1]!.id, "board"],
+  ]);
+  expect(leafById(withBoard, "b")!.activeTabId).toBe(tabs[1]!.id);
+  const withSpec = openContent(withBoard, view("s1", "job-1", "spec"), ids);
+  expect(leafById(withSpec, "b")!.tabs.map((tab) => tab.params.view ?? "trace")).toEqual(["trace", "board", "spec"]);
+  assertInvariants(withSpec);
+});
+
+test("a message's card turns the trace's own tab and leaves the board and the spec where they are", () => {
+  const layout = layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", [tabFor(view("s1", "job-1", "board"), "t-board"), tabFor(view("s1", "job-1", "spec"), "t-spec")]),
+    makeLeaf("b", [tabFor(trace("s1", "job-1"), "t-trace")]),
+  ]), "a");
+  const next = openContent(layout, {
+    kind: "trace",
+    sessionId: "s1",
+    taskId: "job-2",
+    focus: { messageId: "m9", turnId: "turn-9" },
+    focusNonce: 3,
+  }, ids);
+  expect(leafById(next, "b")!.tabs[0]!.params.taskId).toBe("job-2");
+  expect(leafById(next, "a")!.tabs.map((tab) => tab.params.taskId)).toEqual(["job-1", "job-1"]);
+  expect(next.focus.leafId).toBe("b");
+});
+
+test("a view asked for on the job it is on comes forward as it is; another job, or a ticket, turns it", () => {
+  const layout = layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", [tabFor(trace("s1", "job-1"), "t-trace")]),
+    makeLeaf("b", [tabFor({ ...view("s1", "job-1", "board"), ticket: "tk-1", askNonce: 4 }, "t-board")]),
+  ]), "a");
+  const shown = openContent(layout, view("s1", "job-1", "board"), ids);
+  expect(leafById(shown, "b")!.tabs[0]!.params).toEqual({
+    sessionId: "s1",
+    taskId: "job-1",
+    view: "board",
+    askTicket: "tk-1",
+    askNonce: "4",
+  });
+  expect(shown.focus.leafId).toBe("b");
+
+  const turned = openContent(layout, view("s1", "job-2", "board"), ids);
+  expect(leafById(turned, "b")!.tabs[0]!.params).toEqual({ sessionId: "s1", taskId: "job-2", view: "board" });
+
+  const asked = openContent(layout, { ...view("s1", "job-1", "board"), ticket: "tk-2", askNonce: 5 }, ids);
+  expect(leafById(asked, "b")!.tabs[0]!.params.askTicket).toBe("tk-2");
+  expect(tiledLeaves(asked.root).map((leaf) => leaf.tabs.length)).toEqual([1, 1]);
+});
+
 test("a layout saved with two previews of one conversation keeps the one nearest the keyboard", () => {
   const layout = layoutOf(makeBranch("r", "row", [
     makeLeaf("a", [tabFor(chat("s1"), "t-chat"), tabFor(preview("s1", "old.md"), "t-old")]),
@@ -332,4 +392,17 @@ test("a layout saved with two previews of one conversation keeps the one nearest
   assertInvariants(next);
   // Nothing to drop is the same layout, so the shell does not save a layout that did not change.
   expect(dropDuplicateBoundTabs(next, ids.id)).toBe(next);
+});
+
+test("one tab of each view of a conversation's flow survives the clean-up", () => {
+  const layout = layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", [tabFor(trace("s1", "job-1"), "t-trace"), tabFor(view("s1", "job-1", "board"), "t-board")]),
+    makeLeaf("b", [tabFor(view("s1", "job-1", "spec"), "t-spec"), tabFor(view("s1", "job-2", "board"), "t-board-2")]),
+  ]), "a");
+  const next = dropDuplicateBoundTabs(layout, ids.id);
+  expect(tiledLeaves(next.root).map((leaf) => leaf.tabs.map((tab) => tab.id))).toEqual([
+    ["t-trace", "t-board"],
+    ["t-spec"],
+  ]);
+  assertInvariants(next);
 });

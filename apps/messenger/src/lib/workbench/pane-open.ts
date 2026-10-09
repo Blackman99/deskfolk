@@ -3,13 +3,14 @@
  *
  * The rule everything here follows: **never rearrange the layout behind the person's back.** If a
  * pane already shows what is being asked for, that pane is focused and nothing else moves. A
- * conversation's preview and flow board are one pane each, so a request for another file or job
- * of that conversation turns the one it has; its settings are not a pane at all but a sidebar
+ * conversation's preview and each view of its flow are one pane each, so a request for another file
+ * or job of that conversation turns the one it has; its settings are not a pane at all but a sidebar
  * inside its own tab. Only when nothing shows it does the active pane take it,
  * and even then the layout's shape is untouched — a tab is added or replaced, never a pane opened
  * or closed.
  */
 import type { NodeId, WorkbenchLayout, WorkbenchTab } from "./layout-types.ts";
+import type { TraceViewKind } from "../overlays/trace-view.ts";
 import {
   activateTab,
   addTab,
@@ -102,7 +103,9 @@ const SINGLE_INSTANCE = new Set<PaneContent["kind"]>(["routines", "spend"]);
  *
  * A conversation's preview and its flow board are bound to it. Whatever inside it asks for a file
  * or a job — a message, the preview's own file tree, a card on the board — the pane it already has
- * turns to that, rather than a second one opening beside it. Each conversation keeps its own.
+ * turns to that, rather than a second one opening beside it. Each conversation keeps its own. The
+ * flow is three views, each a tab of its own, so a conversation has one of each: one trace, one
+ * board of tickets, one spec.
  */
 const ONE_PER_SESSION = new Set<PaneContent["kind"]>(["preview", "trace"]);
 
@@ -110,17 +113,26 @@ function boundSession(content: PaneContent): string | null {
   return "sessionId" in content ? content.sessionId : null;
 }
 
-/** The pane holding this conversation's one tab of this kind, the focused pane first. */
+/** Which of a job's views a flow tab is; the same for every other kind. */
+function boundView(content: PaneContent): TraceViewKind | null {
+  return content.kind === "trace" ? (content.view ?? "trace") : null;
+}
+
+/**
+ * The pane holding this conversation's one tab of this kind, the focused pane first. For the flow,
+ * `view` says which of its three tabs; left out, the trace.
+ */
 export function findBound(
   layout: WorkbenchLayout,
   kind: PaneContent["kind"],
   sessionId: string | null,
+  view: TraceViewKind | null = kind === "trace" ? "trace" : null,
 ): Located | null {
   for (const leaf of focusedFirst(layout)) {
     for (const tab of leaf.tabs) {
       if (tab.kind !== kind) continue;
       const its = contentOfTab(tab);
-      if (its && boundSession(its) === sessionId) return { leafId: leaf.id, tab };
+      if (its && boundSession(its) === sessionId && boundView(its) === view) return { leafId: leaf.id, tab };
     }
   }
   return null;
@@ -138,7 +150,9 @@ function retarget(layout: WorkbenchLayout, at: Located, content: PaneContent | n
  */
 export function existingTarget(layout: WorkbenchLayout, content: PaneContent): Located | null {
   if (SINGLE_INSTANCE.has(content.kind)) return findKind(layout, content.kind);
-  if (ONE_PER_SESSION.has(content.kind)) return findBound(layout, content.kind, boundSession(content));
+  if (ONE_PER_SESSION.has(content.kind)) {
+    return findBound(layout, content.kind, boundSession(content), boundView(content));
+  }
   return null;
 }
 
@@ -155,10 +169,10 @@ export function openContent(
   if (content.kind === "chat") return openChat(layout, content, opts);
   const existing = existingTarget(layout, content);
   if (existing) {
-    // Asking for the board with no job in mind is asking to see it, not to move it off the job
-    // it is showing. A message's card is a request to move, so it is applied.
-    const keep = content.kind === "trace" && !content.taskId && !content.focus;
-    return retarget(layout, existing, keep ? null : content);
+    // Asking for the board with no job in mind — or for the job it is already on — is asking to
+    // see it, not to move it. A message's card, or another view asking it to show a ticket, is a
+    // request to move, so it is applied.
+    return retarget(layout, existing, keepsJob(existing, content) ? null : content);
   }
   const found = findContent(layout, content);
   if (found) {
@@ -166,6 +180,14 @@ export function openContent(
     return activateTab(focused, found.leafId, found.tab.id);
   }
   return placeInActivePane(layout, content, opts);
+}
+
+/** A flow tab asked for with nothing to move to: no card, no ticket, and no job or the one it is on. */
+function keepsJob(existing: Located, content: PaneContent): boolean {
+  if (content.kind !== "trace" || content.focus || content.askNonce) return false;
+  if (!content.taskId) return true;
+  const its = contentOfTab(existing.tab);
+  return its?.kind === "trace" && its.taskId === content.taskId;
 }
 
 /** A new tab in the pane the keyboard is in. */
@@ -273,7 +295,7 @@ export function settingsSide(layout: WorkbenchLayout): { sessionId: string; botI
 }
 
 /**
- * Holds a layout to one preview and one flow board per conversation.
+ * Holds a layout to one preview per conversation, and one tab of each view of its flow.
  *
  * Opening never makes a second one, but a layout saved before that rule can carry several. The
  * one nearest the keyboard stays — the focused pane first, then reading order — and the rest
@@ -287,7 +309,7 @@ export function dropDuplicateBoundTabs(layout: WorkbenchLayout, id: () => string
       if (!ONE_PER_SESSION.has(tab.kind as PaneContent["kind"])) continue;
       const its = contentOfTab(tab);
       if (!its) continue;
-      const key = `${its.kind}:${boundSession(its) ?? ""}`;
+      const key = `${its.kind}:${boundSession(its) ?? ""}:${boundView(its) ?? ""}`;
       if (seen.has(key)) extra.push({ leafId: leaf.id, tab });
       else seen.add(key);
     }

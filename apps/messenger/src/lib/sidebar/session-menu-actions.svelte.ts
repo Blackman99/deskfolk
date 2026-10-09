@@ -9,6 +9,7 @@
 import type { Bot, SessionSummary } from "@real-bot/protocol";
 import type { ShellDangerConfirm } from "../overlays/danger-confirm.svelte.ts";
 import type { MessengerRuntime } from "../runtime.svelte.ts";
+import type { TraceViewKind } from "../overlays/trace-view.ts";
 import { deriveSessionContextMenu } from "./session-context-menu.ts";
 import { classifySession, isFileDropSession, youBotPeer } from "./session-groups.ts";
 
@@ -71,6 +72,18 @@ export class ShellSessionMenu {
 
   handleMenuTogglePin = (sessionId: string): void => {
     this.togglePin(sessionId);
+  };
+
+  /**
+   * One view of the row's latest job. On a wide window it is a tab of its own, and the pane on
+   * screen keeps its conversation; a phone opens the job's page over the conversation, so that
+   * one comes up first.
+   */
+  handleMenuShowJobView = async (session: SessionSummary, view: TraceViewKind): Promise<void> => {
+    const runtime = this.getRuntime();
+    if (isFileDropSession(session)) return;
+    if (!runtime.paneOpener && runtime.selectedId !== session.id) await runtime.selectSession(session.id);
+    runtime.openTrace(null, null, { view, sessionId: session.id });
   };
 
   handleMenuViewInfo = async (session: SessionSummary): Promise<void> => {

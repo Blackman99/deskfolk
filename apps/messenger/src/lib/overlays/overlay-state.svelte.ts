@@ -7,6 +7,15 @@ import { youBotSession } from "../sidebar/session-groups.ts";
 import type { Snapshot } from "../snapshot.ts";
 import type { PaneContent } from "../workbench/pane-content.ts";
 import type { TraceFocus } from "./task-trace.ts";
+import { saveTraceView, type TraceViewKind } from "./trace-view.ts";
+
+/** Which view of a job to open, for which conversation, and a ticket for the board to pick. */
+export type TraceOpenOptions = {
+  view?: TraceViewKind;
+  /** The conversation whose job it is; the one on screen when left out. */
+  sessionId?: string;
+  ticket?: string | null;
+};
 
 /**
  * What this sub-store reaches back into the runtime for, read at call time: the conversation the
@@ -222,24 +231,35 @@ export class OverlayState {
   /**
    * `taskId` null opens whatever job this session touched most recently.
    * `focus` is the message whose card the board should move to.
+   *
+   * On a wide window each view of the job is a tab of its own, and `view` says which one opens —
+   * the board with `ticket` picked when there is one. On a phone the job is one page, opened on
+   * that view, and that is the view it opens on next time too.
    */
-  openTrace(taskId: string | null = null, focus: TraceFocus | null = null): void {
-    if (!this.host.selectedId) return;
+  openTrace(taskId: string | null = null, focus: TraceFocus | null = null, opts: TraceOpenOptions = {}): void {
+    const sessionId = opts.sessionId ?? this.host.selectedId;
+    if (!sessionId) return;
+    const view = focus ? "trace" : (opts.view ?? "trace");
     const token = focus ? (this.traceFocusToken += 1) : 0;
+    const ticket = view === "board" ? (opts.ticket ?? null) : null;
     if (this.toPane({
       kind: "trace",
-      sessionId: this.host.selectedId,
+      sessionId,
       taskId,
+      view,
       focus,
       focusNonce: token || null,
+      ticket,
+      askNonce: ticket ? Date.now() : null,
     })) return;
+    if (opts.view) saveTraceView(view);
     this.host.closeSheets();
     this.threadOpen = false;
     this.routinesOpen = false;
     this.spendOpen = false;
     this.terminalOpen = false;
     this.screenOpen = false;
-    this.traceSessionId = this.host.selectedId;
+    this.traceSessionId = sessionId;
     this.traceTaskId = taskId ?? "";
     this.traceFocus = focus;
     this.traceFocusToken = token;

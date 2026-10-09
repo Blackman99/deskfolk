@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { Bot, SessionSummary } from "@real-bot/protocol";
+import { FILE_DROP_SESSION_ID, type Bot, type SessionSummary } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
 import { aBot, aDirect, aGroup } from "../test-fixtures.ts";
 import { buttonByText, click, render } from "../test-render.ts";
@@ -16,7 +16,7 @@ function open(
     onClose: () => void;
   }> = {},
 ) {
-  const calls = { delete: 0, clear: 0, close: 0 };
+  const calls = { delete: 0, clear: 0, close: 0, jobViews: [] as string[] };
   const view = render(SessionContextMenu, {
     session,
     botsById: new Map(bots.map((b) => [b.id, b] as const)),
@@ -39,6 +39,7 @@ function open(
       calls.delete += 1;
       handlers.onDelete?.();
     },
+    onShowJobView: (view: string) => calls.jobViews.push(view),
   });
   return { ...view, calls };
 }
@@ -80,5 +81,26 @@ test("delete on a bot-bot direct stays disabled", () => {
   expect(del.disabled).toBe(true);
   click(del);
   expect(calls.delete).toBe(0);
+  close();
+});
+
+test("a Bot's and a group's row open the latest job's trace, board or plan", () => {
+  for (const session of [aDirect(), aGroup()]) {
+    const { host, calls, close } = open(session, [aBot({ id: "bot-1" }), aBot({ id: "bot-2" })]);
+    expect([...host.querySelectorAll("[data-job-view]")].map((row) => row.textContent?.trim())).toEqual([
+      t.plan.segmentTrace,
+      t.plan.segmentBoard,
+      t.plan.segmentSpec,
+    ]);
+    click(host.querySelector('[data-job-view="board"]'));
+    expect(calls.jobViews).toEqual(["board"]);
+    expect(calls.close).toBe(1);
+    close();
+  }
+});
+
+test("the file drop has no job to open", () => {
+  const { host, close } = open(aDirect({ id: FILE_DROP_SESSION_ID }), [aBot({ id: "bot-1" })]);
+  expect(host.querySelector("[data-job-view]")).toBeNull();
   close();
 });

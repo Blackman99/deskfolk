@@ -189,7 +189,7 @@ test('a conversation tab offers its header\'s actions, each on that tab\'s own c
 
   // The group's tab is not the one in front; its settings bring it forward and open over it.
   click(host.querySelector('[data-tab="t-g"] .wb-tab-more'));
-  expect(actions()).toEqual([t.top.pin, t.trace.topAction, t.top.groupSettings]);
+  expect(actions()).toEqual([t.top.pin, t.plan.segmentTrace, t.plan.segmentBoard, t.plan.segmentSpec, t.top.groupSettings]);
   click(menu()!.querySelector('[data-action="settings"]'));
   await settle();
   expect(host.querySelector('[data-tab="t-g"] [role="tab"]')?.getAttribute('aria-selected')).toBe('true');
@@ -202,7 +202,7 @@ test('a conversation tab offers its header\'s actions, each on that tab\'s own c
 
   // Pinning from a right-click on the direct tab pins that conversation, and the menu then says so.
   rightClick(host.querySelector('[data-tab="t-d"] [role="tab"]'));
-  expect(actions()).toEqual([t.top.pin, t.trace.topAction, t.top.botSettings]);
+  expect(actions()).toEqual([t.top.pin, t.plan.segmentTrace, t.plan.segmentBoard, t.plan.segmentSpec, t.top.botSettings]);
   expect(menu()!.querySelector('[data-split]')).not.toBeNull();
   click(menu()!.querySelector('[data-action="pin"]'));
   expect(JSON.parse(localStorage.getItem(PINNED_STORAGE_KEY) ?? '[]')).toEqual(['d1']);
@@ -228,6 +228,8 @@ test('a conversation’s flow board and artifact preview are named after the con
       { id: 't-trace', kind: 'trace', params: { sessionId: 'direct-1', taskId: 'task-7' } },
       { id: 't-preview', kind: 'preview', params: { sessionId: 'direct-1', relpath: 'work/notes.md' } },
       { id: 't-group', kind: 'trace', params: { sessionId: 'g1', taskId: 'task-9' } },
+      { id: 't-board', kind: 'trace', params: { sessionId: 'direct-1', taskId: 'task-7', view: 'board' } },
+      { id: 't-spec', kind: 'trace', params: { sessionId: 'direct-1', taskId: 'task-7', view: 'spec' } },
     ]),
     floating: [],
     focus: { zone: 'tiled', leafId: 'a' },
@@ -246,6 +248,15 @@ test('a conversation’s flow board and artifact preview are named after the con
     t.pane.flowOf('Researcher'),
     t.pane.artifactsOf('Researcher'),
     t.pane.flowOf('视频组'),
+    t.pane.boardOf('Researcher'),
+    t.pane.specOf('Researcher'),
+  ]);
+  // Each view of the flow wears the picture its switch shows.
+  expect([...host.querySelectorAll('.pane-tab-icon[data-kind="trace"]')].map((icon) => icon.getAttribute('data-view'))).toEqual([
+    'trace',
+    'trace',
+    'board',
+    'spec',
   ]);
   // Switching the file the preview shows does not rename its tab.
   const titles = () => [...host.querySelectorAll('.wb-tab-button')].map((tab) => tab.textContent?.trim());
@@ -393,6 +404,127 @@ test('each conversation’s flow board tab comes back where it was left when bro
   click(tab(0));
   await titled('task-1');
   expect(camera()).toBe(left);
+});
+
+test('a conversation tab’s menu opens its job’s trace, board and plan, each a tab of its own', async () => {
+  localStorage.setItem('real-bot-workbench-layout', JSON.stringify({
+    version: 1,
+    root: makeLeaf('a', [{ id: 't-chat', kind: 'chat', params: { sessionId: 'direct-1' } }]),
+    floating: [],
+    focus: { zone: 'tiled', leafId: 'a' },
+  }));
+  cleanups.push(() => {
+    forgetKeptBoards();
+    localStorage.removeItem('real-bot-workbench-layout');
+  });
+  const job = {
+    id: 'task-1', dir: 'work/task-1', title: 'Storyboard', session_id: 'direct-1', closed_at: null,
+    last_activity_at: '2026-09-22T00:00:00.000Z', goal: 'Draw it', kind: null, status: 'active' as const,
+    ticket_counts: { todo: 1, doing: 0, review: 0, done: 0, parked: 0 },
+  };
+  const known: Record<string, unknown> = {
+    sessionTasks: async () => [job],
+    taskTrace: async (): Promise<TaskTrace> => ({ ...job, nodes: [] }),
+    taskDetail: async () => ({
+      ...job,
+      brief: 'Draw it',
+      spec: { kind: null, goal: 'Draw it', acceptance: [], rules: [], process: [], progress: { done: [], open: [], blocked: [] }, status: 'active' },
+      spec_updated_at: '2026-09-22T00:00:00.000Z',
+      revision: 1,
+      revision_actor: 'app',
+      routine_id: null,
+      tickets: [{
+        id: 'tk-1', task_id: 'task-1', seq: 1, title: 'Sketches', slug: '01-sketches', dir: 'work/task-1/01-sketches',
+        spec: '', status: 'todo', worker: null, created_at: '2026-09-22T00:00:00.000Z',
+        updated_at: '2026-09-22T00:00:00.000Z', closed_at: null, artifacts: [],
+      }],
+    }),
+  };
+  const client = new Proxy(known, {
+    get: (target, key) => (typeof key !== 'string' || key === 'then' ? undefined : key in target ? target[key] : () => new Promise(() => {})),
+  });
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot({ name: 'Researcher' })], sessions: [aDirect()],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true },
+  }, { selectedId: 'direct-1', client }));
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  await settle();
+  const t = copyFor('en');
+  const until = async (selector: string) => {
+    for (let i = 0; i < 40; i += 1) {
+      await settle();
+      const found = host.querySelector(selector);
+      if (found) return found;
+    }
+    throw new Error(`never saw ${selector}`);
+  };
+  const menu = () => document.querySelector<HTMLElement>('[data-testid="wb-context-menu"]');
+  const pick = (action: string) => {
+    host.querySelector('[data-tab="t-chat"] [role="tab"]')?.dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: 40, clientY: 12 }),
+    );
+    flushSync();
+    click(menu()!.querySelector(`[data-action="${action}"]`));
+  };
+  const tabs = () => [...host.querySelectorAll('.wb-tab-button')].map((tab) => tab.textContent?.trim());
+  const active = () => host.querySelector('.wb-tab-button[aria-selected="true"]')?.textContent?.trim();
+
+  // Straight to the board: no trace opened first.
+  pick('board');
+  await until('.ticket-row');
+  expect(tabs()).toEqual(['Researcher', t.pane.boardOf('Researcher')]);
+  expect(active()).toBe(t.pane.boardOf('Researcher'));
+  expect(host.querySelector('.trace-pane')?.getAttribute('data-view')).toBe('board');
+  // A tab is one view: no switch to the others.
+  expect(host.querySelector('.trace-views')).toBeNull();
+
+  pick('spec');
+  await until('.plan-spec');
+  pick('trace');
+  await until('.trace-pane[data-view="trace"]');
+  expect(tabs()).toEqual(['Researcher', t.pane.boardOf('Researcher'), t.pane.specOf('Researcher'), t.pane.flowOf('Researcher')]);
+
+  // Asking for the board again brings its tab forward rather than a second one.
+  pick('board');
+  await until('.trace-pane[data-view="board"]');
+  expect(tabs()).toHaveLength(4);
+  expect(active()).toBe(t.pane.boardOf('Researcher'));
+  const saved = JSON.parse(localStorage.getItem('real-bot-workbench-layout')!);
+  expect(saved.root.tabs.map((tab: { kind: string; params: Record<string, string> }) => [tab.kind, tab.params.view ?? null])).toEqual([
+    ['chat', null],
+    ['trace', 'board'],
+    ['trace', 'spec'],
+    ['trace', null],
+  ]);
+});
+
+test('a row’s right-click in the sidebar opens that conversation’s trace, board or plan', async () => {
+  const group = aGroup({ id: 'g1', name: 'Alpha group' });
+  localStorage.setItem('real-bot-workbench-layout', JSON.stringify({
+    version: 1,
+    root: makeLeaf('a', [{ id: 't-chat', kind: 'chat', params: { sessionId: 'direct-1' } }]),
+    floating: [],
+    focus: { zone: 'tiled', leafId: 'a' },
+  }));
+  cleanups.push(() => localStorage.removeItem('real-bot-workbench-layout'));
+  const runtime = reactive(fakeRuntime({
+    bots: [aBot({ name: 'Researcher' })], sessions: [aDirect(), group],
+    settings: { ...emptySnapshot().settings, locale: 'en', wizard_complete: true },
+  }, { selectedId: 'direct-1' }));
+  const { host, close } = render(Shell, { runtime });
+  cleanups.push(close);
+  await settle();
+  const row = [...host.querySelectorAll<HTMLElement>('button.row')].find((el) => el.textContent?.includes('Alpha group'))!;
+  row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: 40, clientY: 80 }));
+  flushSync();
+  click(document.querySelector('.session-context-menu [data-job-view="spec"]'));
+  await settle();
+  expect(runtime.calls.filter((call) => call.name === 'openTrace').map((call) => call.args)).toEqual([
+    [null, null, { view: 'spec', sessionId: 'g1' }],
+  ]);
+  // On a wide window the pane on screen keeps its conversation.
+  expect(runtime.calls.some((call) => call.name === 'selectSession')).toBe(false);
 });
 
 test('two conversations side by side each keep their own draft, reply and send', async () => {

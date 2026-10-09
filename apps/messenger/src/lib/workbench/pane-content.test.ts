@@ -27,6 +27,9 @@ const samples: PaneContent[] = [
     focus: { messageId: "m1", turnId: "turn-1" },
     focusNonce: 2,
   },
+  { kind: "trace", sessionId: "s1", taskId: "task-1", view: "board" },
+  { kind: "trace", sessionId: "s1", taskId: "task-1", view: "board", ticket: "t-3", column: "review", askNonce: 5 },
+  { kind: "trace", sessionId: "s1", taskId: "task-1", view: "spec", ticket: "t-3", askNonce: 6 },
   { kind: "terminal", terminalId: "term-1", cwd: "/work/real-bot" },
   { kind: "terminal", terminalId: null },
   { kind: "workspace", selected: "work/a.md" },
@@ -168,4 +171,33 @@ test("round tripping an overlay through a pane keeps what the URL carried", () =
     const content = contentFromOverlay(overlay, "s1")!;
     expect(overlaysEqual(overlayFromContent(content), overlay)).toBe(true);
   }
+});
+
+test("each view of a job's flow is its own tab, and a flow tab saved before views is the trace", () => {
+  const board = tabFor({ kind: "trace", sessionId: "s1", taskId: "task-1", view: "board" }, "t1");
+  expect(board.params).toEqual({ sessionId: "s1", taskId: "task-1", view: "board" });
+  // The trace is what every flow tab was, so it is not written and a saved layout reads the same.
+  const trace = tabFor({ kind: "trace", sessionId: "s1", taskId: "task-1", view: "trace" }, "t2");
+  expect(trace.params).toEqual({ sessionId: "s1", taskId: "task-1" });
+  expect(contentOfTab({ id: "t3", kind: "trace", params: { sessionId: "s1", taskId: "task-1" } })).toMatchObject({
+    view: "trace",
+  });
+  expect(contentOfTab({ id: "t4", kind: "trace", params: { sessionId: "s1", view: "sideways" } })).toMatchObject({
+    view: "trace",
+  });
+});
+
+test("what one view asks of another rides on the tab, and a column this build does not know is dropped", () => {
+  const asked = contentOfTab({
+    id: "t1",
+    kind: "trace",
+    params: { sessionId: "s1", taskId: "task-1", view: "board", askTicket: "t-3", askColumn: "review", askNonce: "7" },
+  });
+  expect(asked).toMatchObject({ view: "board", ticket: "t-3", column: "review", askNonce: 7 });
+  const odd = contentOfTab({
+    id: "t2",
+    kind: "trace",
+    params: { sessionId: "s1", view: "board", askColumn: "someday", askNonce: "x" },
+  });
+  expect(odd).toMatchObject({ column: null, askNonce: null });
 });

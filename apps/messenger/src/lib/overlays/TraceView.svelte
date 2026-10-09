@@ -31,7 +31,14 @@
 	import TraceRound from './TraceRound.svelte';
 	import TraceRouteDetail from './TraceRouteDetail.svelte';
 	import { loadTraceMinimap, saveTraceMinimap } from './trace-minimap.ts';
-	import { loadTraceView, saveTraceView, type TraceViewKind } from './trace-view.ts';
+	import {
+		askSpent,
+		loadTraceView,
+		saveTraceView,
+		spendAsk,
+		type TraceViewAsk,
+		type TraceViewKind
+	} from './trace-view.ts';
 	import {
 		actorFace,
 		actorName,
@@ -98,6 +105,18 @@
 		onJump: (sessionId: string, messageId: string) => void;
 		/** The job actually on screen, so the address follows the switcher. */
 		onTask?: (taskId: string) => void;
+		/**
+		 * The one view this copy shows, where each view of the job is a tab of its own (a pane on a
+		 * wide window, opened from a message's or a conversation's menu). It has no switch; its links
+		 * to the other views bring up their tabs through `onShowView`. Left out — the phone's page —
+		 * the switch changes what this copy shows, and the choice is remembered.
+		 */
+		fixedView?: TraceViewKind | null;
+		/** What another view of the job asked this one to show. A new `askToken` is a new request. */
+		ask?: TraceViewAsk | null;
+		askToken?: number;
+		/** Bring up another view of this job, with what it should show there. */
+		onShowView?: (view: TraceViewKind, taskId: string | null, ask: TraceViewAsk) => void;
 		/** Your stops in force; null where the daemon has none, and the board then offers no stop. */
 		holds?: readonly Hold[] | null;
 		/** A choice from the board's stop menu: this job, or every Bot. Resolves to a refusal to show, or nothing. */
@@ -135,6 +154,10 @@
 		onClose,
 		onJump,
 		onTask,
+		fixedView = null,
+		ask = null,
+		askToken = 0,
+		onShowView,
 		onOpenArtifact,
 		holds = null,
 		onStop,
@@ -160,10 +183,12 @@
 	let selectedTicket = $state<string | null>(null);
 	/**
 	 * What fills the pane: the trace, the tickets' board or the spec — one at a time, each with the
-	 * whole pane, at every width. The choice outlives the pane; a pane opened on a message's card
-	 * opens on the trace, whatever was left.
+	 * whole pane, at every width. On the page the choice outlives it; a page opened on a message's
+	 * card opens on the trace, whatever was left. A tab is one view for good.
 	 */
-	let view = $state<TraceViewKind>(untrack(() => (focus ? 'trace' : loadTraceView())));
+	let view = $state<TraceViewKind>(untrack(() => fixedView ?? (focus ? 'trace' : loadTraceView())));
+	/** Which views this copy draws: all three on the page, its own one in a tab. */
+	const drawsTrace = $derived(!fixedView || fixedView === 'trace');
 	/** The board's column the spec asked to bring into view; 'all' lights none. */
 	let ticketFilter = $state<TicketStatus | 'all'>('all');
 	/** The board view, so a ticket shown from the spec can be scrolled to. */
@@ -251,10 +276,42 @@
 			const asked = focus && shown ? focusNode(shown.nodes, focus) : null;
 			const root = asked ? rounds.find((round) => round.members.includes(asked))?.root : undefined;
 			if (root && foldChoice[root]) foldChoice = { ...foldChoice, [root]: false };
-			// The card is on the trace: a pane left on the board or the spec turns back to it. Not
-			// remembered — the view you chose is still the one the next plan opens on.
-			if (focus) view = 'trace';
+			// The card is on the trace: a page left on the board or the spec turns back to it. Not
+			// remembered — the view you chose is still the one the next plan opens on. A tab of the
+			// board or the spec is never asked: a card's request goes to the trace's own tab.
+			if (focus && !fixedView) view = 'trace';
 			canvas.syncFocusToken();
+		});
+	});
+
+	/**
+	 * What another view asked of this tab, until its job is the one on screen. A request is acted on
+	 * once: the tab brought forward again still carries it, and acting on it again would take back
+	 * whatever you picked since. Ahead of the camera's own effect: the ticket is lit, and its rounds
+	 * opened, before the trace places the card that came with the request.
+	 */
+	let pendingAsk = $state<TraceViewAsk | null>(null);
+	let seenAsk = 0;
+	$effect(() => {
+		const token = askToken;
+		if (!fixedView || !token || token === seenAsk) return;
+		seenAsk = token;
+		untrack(() => {
+			if (askSpent(sessionId, fixedView, token)) return;
+			spendAsk(sessionId, fixedView, token);
+			pendingAsk = ask;
+		});
+	});
+	$effect(() => {
+		const wanted = pendingAsk;
+		if (!wanted || loading || !detail || (taskId !== null && currentId !== taskId)) return;
+		pendingAsk = null;
+		untrack(() => {
+			if (wanted.column) ticketFilter = wanted.column;
+			if (!wanted.ticket || !ticketsById.has(wanted.ticket)) return;
+			// The trace's card comes with the request as its focus; lighting the ticket is the rest.
+			if (fixedView === 'board') void revealTicket(wanted.ticket);
+			else selectTicket(wanted.ticket);
 		});
 	});
 
@@ -265,12 +322,21 @@
 	let boardSession: string | null = null;
 
 	/**
+	 * Where this copy keeps what it was left on. A board or a spec in a tab of its own keeps its
+	 * picked ticket and column apart from the trace's tab, which keeps a camera besides.
+	 */
+	function memoryOf(session: string): string {
+		return drawsTrace ? session : `${session}#${fixedView}`;
+	}
+
+	/**
 	 * Keep this job's board as it is, for when it comes back: its tab brought forward again (a tab
-	 * that is not the one showing is unmounted), or the job picked again in the switcher.
+	 * that is not the one showing is unmounted), or the job picked again in the switcher. The
+	 * trace's camera is only worth keeping once it has been placed.
 	 */
 	function keepThisBoard(): void {
-		if (!currentId || !boardSession || canvas.fitted !== currentId) return;
-		keepBoard(boardSession, currentId, {
+		if (!currentId || !boardSession || (drawsTrace && canvas.fitted !== currentId)) return;
+		keepBoard(memoryOf(boardSession), currentId, {
 			...canvas.leaving(),
 			boxes: $state.snapshot(boxes),
 			foldChoice: $state.snapshot(foldChoice),
@@ -395,8 +461,13 @@
 	const ticketsById = $derived(new Map((detail?.tickets ?? []).map((ticket) => [ticket.id, ticket])));
 	/** A board of no tickets says nothing; it comes with the first ticket. */
 	const hasTickets = $derived((detail?.tickets.length ?? 0) > 0);
-	/** Without a plan there is only the trace; without tickets, no board. Either falls back to the trace. */
-	const viewShown = $derived<TraceViewKind>(!detail || (view === 'board' && !hasTickets) ? 'trace' : view);
+	/**
+	 * Without a plan there is only the trace; without tickets, no board. Either falls back to the
+	 * trace on the page. A tab stays what it is, and says so when there is nothing for it yet.
+	 */
+	const viewShown = $derived<TraceViewKind>(
+		fixedView ?? (!detail || (view === 'board' && !hasTickets) ? 'trace' : view)
+	);
 	const planStatus = $derived<PlanStatus>(detail?.status ?? (trace?.closed_at ? 'done' : 'active'));
 	/** 「上次变化 X 前」 ages while the board is open, so the clock it reads ticks now and then. */
 	let nowMs = $state(Date.now());
@@ -462,13 +533,20 @@
 	}
 
 	/**
-	 * A view picked in the switch, or reached from another view. Remembered: the next plan opens on
-	 * it. The trace keeps its camera while it is away — it is only hidden, never resized — so coming
-	 * back finds it where it was.
+	 * A view picked in the switch, or reached from another view. On the page it is remembered: the
+	 * next plan opens on it, and the trace keeps its camera while it is away — it is only hidden,
+	 * never resized — so coming back finds it where it was. In a tab, a link to another view brings
+	 * up that view's own tab, carrying what it should show; true when the view is this one, to go
+	 * on with here.
 	 */
-	function chooseView(next: TraceViewKind): void {
+	function chooseView(next: TraceViewKind, wanted: TraceViewAsk = {}): boolean {
+		if (fixedView) {
+			if (next !== fixedView) onShowView?.(next, currentId ?? taskId, wanted);
+			return next === fixedView;
+		}
 		view = next;
 		saveTraceView(next);
+		return true;
 	}
 
 	/**
@@ -476,10 +554,15 @@
 	 * is picked — its cards light on the trace — and the board comes up with its card in view.
 	 */
 	async function showTicket(id: string): Promise<void> {
+		if (!chooseView('board', { ticket: id })) return;
+		await revealTicket(id);
+	}
+
+	/** The ticket picked on the board, its column let through, its card scrolled into view. */
+	async function revealTicket(id: string): Promise<void> {
 		selectTicket(id);
 		const ticket = ticketsById.get(id);
 		if (ticketFilter !== 'all' && ticket?.status !== ticketFilter) ticketFilter = 'all';
-		chooseView('board');
 		await tick();
 		const row = [...(boardEl?.querySelectorAll<HTMLElement>('.ticket-row') ?? [])].find((el) => el.dataset.ticketId === id);
 		row?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
@@ -487,8 +570,8 @@
 
 	/** The spec's ticket states bring the board up on that column. */
 	function showTickets(status: TicketStatus | 'all'): void {
+		if (!chooseView('board', { column: status === 'all' ? null : status })) return;
 		ticketFilter = status;
-		chooseView('board');
 	}
 
 	/**
@@ -496,10 +579,11 @@
 	 * lit and open, and slides to the newest card made for it.
 	 */
 	async function showInTrace(id: string): Promise<void> {
-		selectTicket(id);
-		chooseView('trace');
-		await tick();
 		const latest = latestTurnOfTicket(shown?.nodes ?? [], id);
+		const card = latest ? { messageId: latest.focus_message_id, turnId: latest.turn_id } : null;
+		if (!chooseView('trace', { ticket: id, focus: card })) return;
+		selectTicket(id);
+		await tick();
 		const placed = latest ? flow?.placements.find((placement) => placement.node.turn_id === latest.turn_id) : undefined;
 		if (!placed) return;
 		const height = boxes[placed.node.turn_id]?.height ?? 0;
@@ -620,7 +704,7 @@
 			// one as it is, to come back to, and takes the next one up as it was left, or fresh.
 			if (next !== currentId) {
 				keepThisBoard();
-				const kept = keptBoard(session, next);
+				const kept = keptBoard(memoryOf(session), next);
 				openRoute = kept?.openRoute ?? null;
 				selectedTicket = kept?.selectedTicket ?? null;
 				ticketFilter = 'all';
@@ -835,8 +919,11 @@
 					{/if}
 				{/if}
 			</div>
-			{#if detail}
-				<!-- The three views of the job, each with the whole pane. On a narrow host the switch takes a row of its own. -->
+			{#if detail && !fixedView}
+				<!--
+					The three views of the job, each with the whole page. On a narrow host the switch takes a
+					row of its own. A tab is one view and has none: each view is a tab of its own.
+				-->
 				<div class="trace-views" role="tablist" aria-label={t.plan.views}>
 					<button type="button" role="tab" class="trace-view-tab" aria-selected={viewShown === 'trace'} onclick={() => chooseView('trace')}>
 						{@render traceIcon()}
@@ -871,11 +958,12 @@
 		</header>
 	</div>
 	<!--
-		All three views stay mounted while the plan is on screen, so an edit half-typed in the spec
-		survives a look at the board. The one not shown is hidden in place, never resized, so the
-		trace keeps its camera while you are away from it.
+		On the page all three views stay mounted while the plan is on screen, so an edit half-typed in
+		the spec survives a look at the board. The one not shown is hidden in place, never resized, so
+		the trace keeps its camera while you are away from it. A tab draws its own view only.
 	-->
 	<div class="trace-body">
+		{#if drawsTrace}
 		<div class="trace-stage trace-view" class:is-on={viewShown === 'trace'} inert={viewShown !== 'trace'}>
 		{#if trace && trace.nodes.length > 0}
 			<div class="trace-tools">
@@ -1059,7 +1147,24 @@
 			</div>
 		{/if}
 		</div>
+		{/if}
+		{#if !drawsTrace && !detail}
+			<!-- A tab of the board or the spec before its plan is here, or on a job without one. -->
+			<div class="trace-view trace-plan-state is-on">
+				{#if loading}
+					<p class="trace-empty">{t.trace.loading}</p>
+				{:else if failed}
+					<p class="trace-empty">
+						{t.trace.failed}
+						<button type="button" onclick={() => void load(currentId ?? taskId)}>{t.trace.retry}</button>
+					</p>
+				{:else}
+					<p class="trace-empty">{t.trace.none}</p>
+				{/if}
+			</div>
+		{/if}
 		{#if detail}
+			{#if !fixedView || fixedView === 'spec'}
 			<div class="trace-view trace-spec-view" class:is-on={viewShown === 'spec'} inert={viewShown !== 'spec'}>
 				<PlanSpecPanel
 					{api}
@@ -1076,7 +1181,8 @@
 					{deletedLabel}
 				/>
 			</div>
-			{#if hasTickets}
+			{/if}
+			{#if fixedView ? fixedView === 'board' : hasTickets}
 				<div class="trace-view trace-board-view" class:is-on={viewShown === 'board'} inert={viewShown !== 'board'} bind:this={boardEl}>
 					<TicketList
 						{api}
@@ -1094,7 +1200,7 @@
 						onPatched={ticketPatched}
 						onConflict={reloadPlan}
 						bind:statusFilter={ticketFilter}
-						onShowSpec={() => chooseView('spec')}
+						onShowSpec={() => chooseView('spec', { ticket: selectedTicket })}
 						onShowInTrace={(id) => void showInTrace(id)}
 					/>
 				</div>
@@ -1659,6 +1765,11 @@
 		flex-direction: column;
 		align-items: stretch;
 		gap: 8px;
+	}
+
+	/* Where a tab's board or spec says there is nothing for it yet, in from the edge as the trace's is. */
+	.trace-plan-state {
+		padding: 0 16px;
 	}
 
 	.trace-empty {

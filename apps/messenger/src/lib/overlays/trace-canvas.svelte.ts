@@ -207,6 +207,9 @@ export class TraceCanvas {
     keepPlacedFocus(this.deps.sessionId(), this.placedFocus);
     if (!placement) return false;
     const next = centerOnNode(placement, box);
+    // From here the view is the card's, not the one the board opened on. A slide only moves on its
+    // first timer, and until then the board would still read as opened and be opened again.
+    this.openedView = null;
     if (this.glideThis) this.glideTo(next);
     else this.view = next;
     this.anchored = {

@@ -6,8 +6,10 @@
  * strings turn back into something the app understands, and it is the only place that knows both
  * sides.
  */
-import type { Attachment } from "@real-bot/protocol";
+import type { Attachment, TicketStatus } from "@real-bot/protocol";
 import type { TraceFocus } from "../overlays/task-trace.ts";
+import { traceViewOf, type TraceViewKind } from "../overlays/trace-view.ts";
+import { TICKET_STATUS_ORDER } from "../overlays/plan-board.ts";
 import type { WorkbenchTab } from "./layout-types.ts";
 import type { UrlOverlay } from "../session-url.ts";
 
@@ -26,9 +28,18 @@ export type PaneContent =
       kind: "trace";
       sessionId: string;
       taskId: string | null;
+      /**
+       * Which view of the job this tab is: its trace, its board of tickets or its spec. Each is a
+       * tab of its own; left out, it is the trace, which every flow tab was before.
+       */
+      view?: TraceViewKind;
       /** The message a "show this job" asked to land on, and which request it was. */
       focus?: TraceFocus | null;
       focusNonce?: number | null;
+      /** What another view of the job asked this one to show — a ticket, a column — and which request. */
+      ticket?: string | null;
+      column?: TicketStatus | null;
+      askNonce?: number | null;
     }
   /**
    * One shell. `cwd` is where it was opened, which is where a restart starts it again when the
@@ -79,11 +90,16 @@ export function contentToParams(content: PaneContent): Record<string, string> {
     case "trace": {
       const params: Record<string, string> = { sessionId: content.sessionId };
       if (content.taskId) params.taskId = content.taskId;
+      // The trace is what a tab without a view has always been, so it is not written.
+      if (content.view && content.view !== "trace") params.view = content.view;
       if (content.focus) {
         params.focusMessageId = content.focus.messageId;
         if (content.focus.turnId) params.focusTurnId = content.focus.turnId;
       }
       if (content.focusNonce) params.focusNonce = String(content.focusNonce);
+      if (content.ticket) params.askTicket = content.ticket;
+      if (content.column) params.askColumn = content.column;
+      if (content.askNonce) params.askNonce = String(content.askNonce);
       return params;
     }
     case "terminal": {
@@ -211,16 +227,25 @@ export function contentFromOverlay(overlay: UrlOverlay, sessionId: string | null
   }
 }
 
-/** A board tab, including the message it was asked to land on. */
+/** A view of a job's flow, including the message it was asked to land on and what another view asked of it. */
 function traceContent(sessionId: string, p: Record<string, string>): PaneContent {
-  const nonce = Number(p.focusNonce);
+  const column = TICKET_STATUS_ORDER.find((status) => status === p.askColumn) ?? null;
   return {
     kind: "trace",
     sessionId,
     taskId: p.taskId ?? null,
+    view: traceViewOf(p.view),
     focus: p.focusMessageId ? { messageId: p.focusMessageId, turnId: p.focusTurnId ?? null } : null,
-    focusNonce: Number.isInteger(nonce) && nonce > 0 ? nonce : null,
+    focusNonce: nonceOf(p.focusNonce),
+    ticket: p.askTicket ?? null,
+    column,
+    askNonce: nonceOf(p.askNonce),
   };
+}
+
+function nonceOf(raw: string | undefined): number | null {
+  const nonce = Number(raw);
+  return Number.isInteger(nonce) && nonce > 0 ? nonce : null;
 }
 
 /** Only settings slide over a conversation; any other value a layout carries is nothing open. */

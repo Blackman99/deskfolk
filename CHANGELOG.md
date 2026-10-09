@@ -6,6 +6,14 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Trace, Board and Plan are tabs of their own
+
+- On a wide window a job's trace, board and plan are each a tab of their own: they can sit side by side, move to another pane, float, or be closed one at a time. The tabs are named "<name> flow", "<name> board" and "<name> plan", each with its own icon. A tab shows its own view only; the "Trace / Board / Plan" switch by the title is gone from tabs.
+- They open straight from a right-click, without opening the trace first: a message's menu has "This job's trace", "This job's board" and "This job's plan" in place of "Show this job" (the trace lands on the message's card, the board picks the message's ticket); a Bot's or a group's row in the sidebar, and a conversation tab's ⋯ and right-click menu, have "Trace", "Board" and "Plan" in place of "Trace" alone, for the conversation's latest job. An open tab is brought forward, otherwise a new tab opens in the current pane; a conversation has one tab of each view, and another job turns that tab.
+- Moving between views goes through the tabs too: a ticket number or ticket state in the plan opens the board on that card or column; "See it on the trace" on the board opens the trace with the ticket's rounds lit, on its newest one; "See in the plan" opens the plan held to that ticket. A message asking for its card turns the trace's tab.
+- A flow tab saved before this opens on the trace. A narrow window or a phone has no tabs and still switches the three views in one page; picking the board or the plan from a message's menu opens the page on that view.
+- Fixed: a trace you had not yet dragged or zoomed stayed put when a message asked for one of its cards; it now slides to the card.
+
 ### Spend on a phone has one quiet top bar
 
 - On a phone, Spend's top is a single bar: a bare back arrow and the title, the period as a soft pill, and a bare refresh icon. Overview and Call details are underline tabs across the full width, resting on the bar's bottom rule, instead of a segmented box that stopped short of the edge.

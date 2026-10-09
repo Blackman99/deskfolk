@@ -5,6 +5,7 @@
 	import type { Attachment } from '@real-bot/protocol';
 	import type { WorkbenchTab } from './layout-types.ts';
 	import { contentOfTab, type PaneContent } from './pane-content.ts';
+	import type { TraceViewAsk, TraceViewKind } from '../overlays/trace-view.ts';
 	import ChatStage from '../chat/ChatStage.svelte';
 	// RoutineCalendar.svelte (svelte5plus-calendar), TraceView.svelte (the flow board, plus
 	// @dagrejs/dagre) and ArtifactPreview.svelte are loaded lazily below, in the branch that
@@ -54,6 +55,11 @@
 		 * comes back to it.
 		 */
 		onUpdateContent?: (content: PaneContent) => void;
+		/**
+		 * Show something else in a tab of its own — where it already is, or beside this one. A view
+		 * of a job brings up the job's other views this way.
+		 */
+		onOpenContent?: (content: PaneContent) => void;
 		/** A terminal tab that started its own shell remembers it. */
 		onBindTerminal: (leafId: string, tabId: string, terminalId: string | null) => void;
 		/** A preview mounted in this tab (or `null` once it is gone). */
@@ -78,6 +84,7 @@
 		onRemoveTab,
 		onBindTerminal,
 		onUpdateContent,
+		onOpenContent,
 		onPreviewPane,
 		onJump,
 		onCloseSide,
@@ -170,6 +177,27 @@
 	function traceTask(taskId: string): void {
 		if (content?.kind !== 'trace' || content.taskId === taskId) return;
 		onUpdateContent?.({ ...content, taskId });
+	}
+
+	/**
+	 * Another view of the job on this tab: its own tab, turned to this job and asked to show what was
+	 * pressed. The request's time tells it apart from the one the tab already acted on.
+	 */
+	function showTraceView(view: TraceViewKind, taskId: string | null, ask: TraceViewAsk): void {
+		if (content?.kind !== 'trace') return;
+		const nonce = Date.now();
+		const asks = Boolean(ask.ticket || ask.column);
+		onOpenContent?.({
+			kind: 'trace',
+			sessionId: content.sessionId,
+			taskId,
+			view,
+			focus: ask.focus ?? null,
+			focusNonce: ask.focus ? nonce : null,
+			ticket: ask.ticket ?? null,
+			column: ask.column ?? null,
+			askNonce: asks ? nonce : null
+		});
 	}
 
 	let previewPane = $state<PreviewHandle | null>(null);
@@ -315,6 +343,10 @@
 				reloadToken={runtime.traceReload}
 				{onJump}
 				onTask={traceTask}
+				fixedView={content.view ?? 'trace'}
+				ask={{ ticket: content.ticket ?? null, column: content.column ?? null }}
+				askToken={content.askNonce ?? 0}
+				onShowView={showTraceView}
 				onOpenArtifact={(relpath, att, messageId, forceTree, taskId, siblings) =>
 					onOpenArtifact(relpath, att, messageId, forceTree, taskId, siblings, content.sessionId)}
 				holds={snapshot.holdsOn ? snapshot.holds : null}

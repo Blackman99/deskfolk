@@ -249,8 +249,12 @@ export class ShellWorkbench {
         return t.routines.title;
       case "spend":
         return spendCopyFor(this.getRuntime().snapshot.settings.locale === "en" ? "en" : "zh").title;
-      case "trace":
-        return t.pane.flowOf(this.sessionName(content.sessionId));
+      case "trace": {
+        const name = this.sessionName(content.sessionId);
+        if (content.view === "board") return t.pane.boardOf(name);
+        if (content.view === "spec") return t.pane.specOf(name);
+        return t.pane.flowOf(name);
+      }
       case "preview":
         return content.sessionId ? t.pane.artifactsOf(this.sessionName(content.sessionId)) : t.pane.title;
     }

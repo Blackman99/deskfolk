@@ -9,7 +9,7 @@ const { default: TaskTraceView } = await import("./TaskTrace.svelte");
 const { default: TraceView } = await import("./TraceView.svelte");
 import { copyFor } from "../copy.ts";
 import { forgetTraceMinimap, loadTraceMinimap } from "./trace-minimap.ts";
-import { forgetTraceView, loadTraceView, saveTraceView } from "./trace-view.ts";
+import { forgetSpentAsks, forgetTraceView, loadTraceView, saveTraceView, type TraceViewAsk, type TraceViewKind } from "./trace-view.ts";
 import { forgetKeptBoards } from "./task-trace.ts";
 import { aBot, aDirect, aGroup, aHold } from "../test-fixtures.ts";
 import { buttonByText, click, render } from "../test-render.ts";
@@ -22,6 +22,7 @@ const t = copyFor("zh");
 afterEach(() => {
   forgetKeptBoards();
   forgetTraceMinimap();
+  forgetSpentAsks();
 });
 
 const writer = aBot({ id: "bot-1", name: "制片" });
@@ -199,6 +200,10 @@ function open(opts: {
   focusToken?: number;
   /** Mount the board itself, the way a pane does, instead of the phone's page around it. */
   pane?: boolean;
+  /** The one view a tab shows. */
+  fixedView?: TraceViewKind;
+  ask?: TraceViewAsk | null;
+  askToken?: number;
 } = {}) {
   const jumps: Array<[string, string]> = [];
   const settled: string[] = [];
@@ -206,6 +211,7 @@ function open(opts: {
   const patched: Array<[string, Record<string, unknown>]> = [];
   let closed = 0;
   const asked: string[] = [];
+  const shown: Array<[TraceViewKind, string | null, TraceViewAsk]> = [];
   const api = {
     sessionTasks: async (sessionId: string) => {
       asked.push(sessionId);
@@ -259,9 +265,17 @@ function open(opts: {
     onOpenArtifact: (relpath: string, _att?: unknown, messageId?: string | null, forceTree?: boolean, taskId?: string | null, siblings?: unknown[] | null) => {
       opened.push({ relpath, messageId, forceTree, taskId, siblings: siblings?.length ?? 0 });
     },
+    ...(opts.fixedView
+      ? {
+          fixedView: opts.fixedView,
+          ask: opts.ask ?? null,
+          askToken: opts.askToken ?? 0,
+          onShowView: (next: TraceViewKind, taskId: string | null, wanted: TraceViewAsk) => shown.push([next, taskId, wanted]),
+        }
+      : {}),
   });
   const view = render(opts.pane ? TraceView : TaskTraceView, props as never);
-  return { ...view, props, jumps, asked, settled, opened, patched, closed: () => closed };
+  return { ...view, props, jumps, asked, settled, opened, patched, shown, closed: () => closed };
 }
 
 /** Let a press's awaits (the panel swap, the scroll after it) run out, then flush what they changed. */
@@ -684,6 +698,78 @@ test("opening from a message centres that message's card", async () => {
         globalThis.setTimeout = setTimer;
         globalThis.clearTimeout = clearTimer;
       }
+      view.close();
+    });
+  } finally {
+    HTMLElement.prototype.getBoundingClientRect = rect;
+  }
+});
+
+test("a board still on the view it opened on slides to the card a message asks for, and stays there", async () => {
+  // The slide's first step is a timer away. The same layout pass that started it used to find the
+  // board still on its opening view and open it again, which put it back where it was.
+  const rect = HTMLElement.prototype.getBoundingClientRect;
+  HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+    if (this.classList.contains("trace-viewport")) {
+      return { x: 0, y: 0, width: 800, height: 600, top: 0, left: 0, right: 800, bottom: 600, toJSON() { return {}; } } as DOMRect;
+    }
+    return rect.call(this);
+  };
+  try {
+    await withMeasuredCards(async () => {
+      const view = open({ pane: true });
+      await until(view.host, ".trace-slot");
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      flushSync();
+      const flow = view.host.querySelector<HTMLElement>(".trace-flow")!;
+      const opened = flow.style.transform;
+      const timers = new Map<number, () => void>();
+      let nextTimer = 1;
+      const setTimer = globalThis.setTimeout;
+      const clearTimer = globalThis.clearTimeout;
+      globalThis.setTimeout = ((fn: () => void) => {
+        const id = nextTimer++;
+        timers.set(id, fn);
+        return id as unknown as ReturnType<typeof setTimeout>;
+      }) as typeof setTimeout;
+      globalThis.clearTimeout = ((id: number) => {
+        timers.delete(id);
+      }) as typeof clearTimeout;
+      const realNow = performance.now.bind(performance);
+      let clock = realNow();
+      performance.now = () => clock;
+      try {
+        view.props.focus = { messageId: "m3", turnId: "t-artist" };
+        view.props.focusToken = 5;
+        flushSync();
+        for (let i = 0; i < 40 && timers.size > 0; i += 1) {
+          clock += 20;
+          const pending = [...timers.entries()];
+          timers.clear();
+          for (const [, fn] of pending) fn();
+          flushSync();
+        }
+      } finally {
+        performance.now = realNow;
+        globalThis.setTimeout = setTimer;
+        globalThis.clearTimeout = clearTimer;
+      }
+      const card = [...view.host.querySelectorAll<HTMLElement>(".trace-card")].find((row) => row.textContent?.includes("分镜师"))!;
+      expect(card.classList.contains("is-focus")).toBe(true);
+      expect(flow.style.transform).not.toBe(opened);
+      const landed = /translate\(([-\d.]+)px,\s*([-\d.]+)px\) scale\(([-\d.]+)\)/.exec(flow.style.transform)!;
+      const [tx, ty, scale] = landed.slice(1).map(Number);
+      const slot = card.parentElement as HTMLElement;
+      const x = Number.parseInt(slot.style.left, 10) + 124;
+      const y = Number.parseInt(slot.style.top, 10) + slot.offsetHeight / 2;
+      expect(Math.abs(tx! + x * scale! - 400)).toBeLessThanOrEqual(1);
+      expect(Math.abs(ty! + y * scale! - 300)).toBeLessThanOrEqual(1);
+      // A card measuring again afterwards does not open the board again either.
+      (view.props as { reloadToken: number }).reloadToken = 1;
+      flushSync();
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      flushSync();
+      expect(flow.style.transform).toBe(`translate(${tx}px, ${ty}px) scale(${scale})`);
       view.close();
     });
   } finally {
@@ -1201,6 +1287,110 @@ test("a plan with no tickets yet has no board to switch to, and a board left on 
   expect(view.host.querySelector(".trace-board-view")).toBeNull();
   view.close();
   forgetTraceView();
+});
+
+test("a tab is one view of the job: it draws that view alone, with no switch to the others", async () => {
+  forgetTraceView();
+  for (const [fixedView, drawn] of [["board", ".trace-board-view"], ["spec", ".trace-spec-view"], ["trace", ".trace-stage"]] as const) {
+    const view = open({ pane: true, fixedView });
+    await until(view.host, drawn);
+    await until(view.host, ".trace-meta");
+    expect(viewOn(view.host)).toBe(fixedView);
+    expect(view.host.querySelector(drawn)?.classList.contains("is-on")).toBe(true);
+    expect([".trace-board-view", ".trace-spec-view", ".trace-stage"].filter((other) => view.host.querySelector(other))).toEqual([drawn]);
+    // Each view is opened as a tab of its own from a message's or a conversation's menu.
+    expect(view.host.querySelector(".trace-views")).toBeNull();
+    view.close();
+  }
+  // Nothing was remembered for the phone's page.
+  expect(loadTraceView()).toBe("trace");
+});
+
+test("in a tab, a ticket's way to the trace or the spec brings up that view's tab, carrying the ticket and its card", async () => {
+  const view = open({ pane: true, fixedView: "board", detail: linkedDetail() });
+  await until(view.host, ".ticket-row");
+  const sketch = [...view.host.querySelectorAll(".ticket-row")].find((row) => row.textContent?.includes("分镜草图"))!;
+  click(sketch.querySelector(".ticket-main"));
+  click(sketch.querySelector(".ticket-show-trace"));
+  click(view.host.querySelector(".ticket-row.is-selected .ticket-owes-spec"));
+  await settle();
+  expect(view.shown).toEqual([
+    ["trace", "task-1", { ticket: "tk-1", focus: { messageId: "m3", turnId: "t-artist" } }],
+    ["spec", "task-1", { ticket: "tk-1" }],
+  ]);
+  expect(viewOn(view.host)).toBe("board");
+  expect(view.host.querySelector(".ticket-row.is-selected .ticket-tag")?.textContent).toBe("01");
+  view.close();
+});
+
+test("in a tab, the spec's ticket numbers and ticket states bring up the board's tab on that card or column", async () => {
+  const view = open({ pane: true, fixedView: "spec", detail: linkedDetail() });
+  await until(view.host, ".plan-spec");
+  expect(view.host.querySelector(".trace-board-view")).toBeNull();
+  click(view.host.querySelector(".plan-spec-check button.plan-spec-ticket-ref"));
+  const states = [...view.host.querySelectorAll<HTMLButtonElement>(".plan-spec-ticket-state")];
+  click(states.find((button) => button.textContent?.includes(t.plan.ticketStatus.todo)) ?? states[0]!);
+  await settle();
+  expect(view.shown[0]).toEqual(["board", "task-1", { ticket: "tk-1" }]);
+  expect(view.shown[1]?.[0]).toBe("board");
+  expect(view.shown[1]?.[2].column).toBeTruthy();
+  expect(viewOn(view.host)).toBe("spec");
+  view.close();
+});
+
+test("a tab opened with a request acts on it once its job is here, and not again when it comes back", async () => {
+  const first = open({ pane: true, fixedView: "board", ask: { ticket: "tk-2" }, askToken: 41 });
+  await until(first.host, ".ticket-row.is-selected");
+  expect(first.host.querySelector(".ticket-row.is-selected .ticket-tag")?.textContent).toBe("02");
+  // You let go of it, and the tab goes to the back.
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  flushSync();
+  expect(first.host.querySelector(".ticket-row.is-selected")).toBeNull();
+  first.close();
+  // Brought forward again, it still carries the same request: it is not acted on twice.
+  const again = open({ pane: true, fixedView: "board", ask: { ticket: "tk-2" }, askToken: 41 });
+  await until(again.host, ".ticket-row");
+  await settle();
+  expect(again.host.querySelector(".ticket-row.is-selected")).toBeNull();
+  // A new request is.
+  again.props.ask = { ticket: "tk-1" };
+  again.props.askToken = 42;
+  await until(again.host, ".ticket-row.is-selected");
+  expect(again.host.querySelector(".ticket-row.is-selected .ticket-tag")?.textContent).toBe("01");
+  again.close();
+});
+
+test("the trace's tab asked to show a ticket lights its cards and comes up on its newest one", async () => {
+  const view = open({
+    pane: true,
+    fixedView: "trace",
+    ask: { ticket: "tk-1" },
+    askToken: 7,
+    focus: { messageId: "m3", turnId: "t-artist" },
+    focusToken: 7,
+  });
+  await until(view.host, ".trace-card.is-lit");
+  expect(view.host.querySelector(".trace-card.is-running")?.classList.contains("is-lit")).toBe(true);
+  expect(view.host.querySelector(".trace-card.is-completed")?.classList.contains("is-dim")).toBe(true);
+  expect(view.host.querySelector(".trace-board-view")).toBeNull();
+  view.close();
+});
+
+test("the spec's tab asked to hold to a ticket opens on it", async () => {
+  const view = open({ pane: true, fixedView: "spec", detail: linkedDetail(), ask: { ticket: "tk-1" }, askToken: 3 });
+  await until(view.host, ".plan-spec-focus");
+  expect(view.host.querySelector(".plan-spec-focus .plan-spec-ticket-ref")?.textContent).toBe("01");
+  view.close();
+});
+
+test("a board's tab stays the board on a plan with no tickets yet, and says so while its plan loads", async () => {
+  const view = open({ pane: true, fixedView: "board", detail: detail({ tickets: [], ticket_counts: { todo: 0, doing: 0, review: 0, done: 0, parked: 0 } }) });
+  expect(view.host.querySelector(".trace-plan-state")?.textContent).toContain(t.trace.loading);
+  await until(view.host, ".trace-board-view");
+  expect(viewOn(view.host)).toBe("board");
+  expect(view.host.querySelector(".trace-stage")).toBeNull();
+  expect(view.host.querySelector(".trace-plan-state")).toBeNull();
+  view.close();
 });
 
 test("a daemon that predates plans still draws the tree, without the spec, the board or the switch", async () => {

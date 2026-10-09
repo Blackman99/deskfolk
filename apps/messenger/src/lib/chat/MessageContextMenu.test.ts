@@ -40,7 +40,7 @@ function openMessageMenu(
     reply: 0,
     copy: 0,
     openFileTree: [] as (string | null)[],
-    showTrace: 0,
+    showTrace: [] as string[],
     copyId: 0,
     reaction: [] as string[],
   };
@@ -63,8 +63,8 @@ function openMessageMenu(
     onOpenFileTree: (path: string | null) => {
       calls.openFileTree.push(path);
     },
-    onShowTrace: () => {
-      calls.showTrace += 1;
+    onShowTrace: (view: string) => {
+      calls.showTrace.push(view);
     },
     onCopyId: () => {
       calls.copyId += 1;
@@ -181,5 +181,29 @@ test("编辑 is offered only where the stage passes it, right after 回复, and 
   click(buttonByText(host, t.chat.editMessage));
   expect(calls.edit).toBe(1);
   expect(calls.close).toBe(1);
+  close();
+});
+
+test("a line in a job opens that job's trace, board or plan, each its own item", () => {
+  const { host, calls, close } = openMessageMenu(createTestMessage({ task_id: "task-1" }));
+  expect([...host.querySelectorAll("[data-job-view]")].map((row) => row.textContent?.trim())).toEqual([
+    t.chat.jobView.trace,
+    t.chat.jobView.board,
+    t.chat.jobView.spec,
+  ]);
+  click(buttonByText(host, t.chat.jobView.board));
+  expect(calls.showTrace).toEqual(["board"]);
+  expect(calls.close).toBe(1);
+  close();
+  const again = openMessageMenu(createTestMessage({ task_id: "task-1" }));
+  click(buttonByText(again.host, t.chat.jobView.spec));
+  click(buttonByText(again.host, t.chat.jobView.trace));
+  expect(again.calls.showTrace).toEqual(["spec", "trace"]);
+  again.close();
+});
+
+test("a line in no job has no job to open", () => {
+  const { host, close } = openMessageMenu(createTestMessage({ task_id: null }));
+  expect(host.querySelector("[data-job-view]")).toBeNull();
   close();
 });
