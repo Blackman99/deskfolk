@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+(none)
+
+## 0.1.0-rc.15 — 2026-10-09
+
+Unsigned macOS rc with an experimental unsigned Windows installer beside the `.dmg`s. This is not a supported signed installer; Gatekeeper or SmartScreen may block it. Prefer running from source.
+
 ### Notification categories stay inside their card
 
 - In Settings › Notifications, the six categories no longer run past the right edge of their card, where the switches sat on its border and the page scrolled sideways. A longer description wraps onto a second line instead, and in a narrow settings window the categories stack in one column.
