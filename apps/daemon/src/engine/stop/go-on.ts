@@ -268,6 +268,41 @@ export function createStopGoOn(deps: StopDeps, reach: StopReach, words: StopWord
   }
 
   /**
+   * A line of yours changed (ADR 0063) after you pressed Stop on what it set going: the change is
+   * what you say next to that Bot about it, as a new line is (`liftOnYourLine`), so the Stops
+   * holding a copy of the line, or the note of what you changed, go, and the Bot goes on from the
+   * change. Whatever is in force when the change lands was pressed before it. A stop that stays
+   * until you lift it — 「停下所有 Bot」, the board, the tools menu — keeps holding them.
+   */
+  function liftOnYourChange(line: Message, editId: string): Hold[] {
+    if (line.kind !== "user" || !on()) return [];
+    const held = store.db
+      .query<{ bot_id: string; session_id: string | null; task_id: string | null; ticket_id: string | null; turn_id: string | null }, [string]>(
+        `SELECT bot_id, session_id, task_id, ticket_id, turn_id FROM inbox_items WHERE message_id = ? AND state = 'held'`,
+      )
+      .all(line.id);
+    const ids = new Set<string>();
+    for (const item of held) {
+      const covering = store.holdsCovering({
+        botId: item.bot_id,
+        sessionId: item.session_id,
+        taskId: item.task_id,
+        ticketId: item.ticket_id,
+        turnId: item.turn_id,
+      });
+      for (const hold of covering) if (hold.lift_on_next_user_message) ids.add(hold.id);
+    }
+    if (ids.size === 0) return [];
+    return store.transaction(() =>
+      [...ids].map((id) => {
+        const lifted = store.liftHold(id, { by: "user_text", messageId: line.id });
+        store.recordWorkEvent({ kind: "control.lift", actor: "user", sessionId: line.session_id, payload: { hold: id, by: "user_text", edit: editId } });
+        return lifted;
+      }),
+    );
+  }
+
+  /**
    * The work a lifted stop had ended that your line to a whole group did not reach, opened again on
    * a note with your words. A Bot your line woke goes on from it there, and one already back at that
    * job is at it; the rest were left with nothing to go on from: on 2026-10-04's walkthrough a
@@ -351,7 +386,7 @@ export function createStopGoOn(deps: StopDeps, reach: StopReach, words: StopWord
     });
   }
 
-  return { continueByLine, resumeLifted, lift, liftOnYourLine, goOnFromYourLine, takeUp, continueReceiptLine };
+  return { continueByLine, resumeLifted, lift, liftOnYourLine, liftOnYourChange, goOnFromYourLine, takeUp, continueReceiptLine };
 }
 
 export type StopGoOn = ReturnType<typeof createStopGoOn>;

@@ -6,6 +6,10 @@
 
 ## Unreleased
 
+### 按停止之后改一句，Bot 会照改后的接着做
+
+- 按了停止、再改它停下时在做的那句话，之前改动被停止扣着，Bot 一直停着，没有横幅也没有解除按钮，只能再打一句话。现在改动和新的一句一样算你的下一句：停止随之解除，Bot 开新一轮，先读「你改了这句」，照改后的话接着做。要你自己解除的叫停（「停下所有 Bot」、流程图、工具菜单）照旧扣着改动，直到你解除。[ADR 0063](docs/adr/0063-edit-a-line-and-lines-in-order.md) 2026-10-09 补记。
+
 ### 读句模型可以选 Claude Agent 的 Claude 模型
 
 - 设置 › 模型的「读句用的模型」里多了一组 Claude Agent：haiku、sonnet、opus、fable（haiku 排在最前，最快）。选了之后，每读一句就在你本机的 Claude Code 上跑一次没有工具、只有一轮的调用；这台电脑登录了不止一个 Claude 账号时，下面可以选用哪个账号。花的是那个 Claude 套餐的额度，卡片下面写着；花费页记作「Claude Agent」，价格是估算。实测 haiku 读一句 3–5 秒（其中起 `claude` 约 1–2 秒），和 grok 差不多，比 deepseek 慢。不占 Bot 的 Claude Agent 名额，自己最多同时读两句。Claude Code 没装、账号没登录、出错时按原来的词表读，工作记录写明 `claude_unavailable` 或 `claude_failed`。只有你能选 Claude 模型来读句，Bot 只能改成端点的模型或跟默认；读句在用的账号要先换掉才能从账号列表里移除。手机上能在 Claude 模型之间换，但不会主动列出这一组。[ADR 0055](docs/adr/0055-lines-read-by-a-model.md) 2026-10-08 补记。

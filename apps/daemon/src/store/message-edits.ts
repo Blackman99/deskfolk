@@ -302,7 +302,8 @@ export function correctionBody(locale: Locale, after: string, before: string): s
  * else its segment on the line's job (its desk in the line's conversation, for a line on no job);
  * else its work on that job, queued so the next turn opens on the line and reads the change first —
  * the work item that turn binds, or the turn's opening would take the row for a stale copy of its
- * trigger. Held while a stop covers it, delivered once the stop lifts.
+ * trigger. Held while a stop covers it, delivered once the stop lifts — a Stop's lifts with the change
+ * itself, as at a new line of yours (engine/stop/go-on.ts `liftOnYourChange`).
  */
 function correctionRoute(ctx: StoreContext, line: MessageRow, reader: Reader): Route | null {
   if (!ctx.db.query(`SELECT 1 FROM bots WHERE id = ? AND deleted_at IS NULL AND archived_at IS NULL`).get(reader.botId)) return null;

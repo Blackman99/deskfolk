@@ -746,15 +746,17 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   }
 
   /**
-   * A line of yours changed (ADR 0063). What was read of the old words is forgotten, the changes
-   * queued for the Bots that read them start, and the words you changed are read as yours: by the
-   * scribe, and for numbers that become checks. Not for a stop, a status question or a complaint —
-   * a change is not read as one — and the line stays filed where it was.
+   * A line of yours changed (ADR 0063). What was read of the old words is forgotten, a Stop you
+   * pressed on what it set going goes as it would at a new line, the changes queued for the Bots
+   * that read them start, and the words you changed are read as yours: by the scribe, and for
+   * numbers that become checks. Not for a stop, a status question or a complaint — a change is not
+   * read as one — and the line stays filed where it was.
    */
   function noteEdited(result: EditMessageResult): void {
     if (!result.edit) return;
     const messageId = result.edit.message_id;
     reader.forget(messageId);
+    stops.liftOnYourChange(result.message, result.edit.id);
     lifecycle.dispatchQueued();
     if (!result.quote) return;
     void core.track(scribe.noteLine(messageId, scribe.handedOverAt()));

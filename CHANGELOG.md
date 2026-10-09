@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Changing a line after Stop sets the Bot going again
+
+- You pressed Stop and then changed the line the Bot was working on: the change waited under the Stop and the Bot stayed stopped, with no banner or button to lift it, until you typed another line. A change now counts as your next line, as a new line does: the Stop lifts and the Bot opens a new turn that reads "You changed this line" and goes on from it. A stop that stays until you lift it (Stop all Bots, the board, the tools menu) still holds the change until you do. [ADR 0063](docs/adr/0063-edit-a-line-and-lines-in-order.md), 2026-10-09 addendum.
+
 ### Read lines with a Claude model of Claude Agent
 
 - Settings › Models › Model that reads lines gains a Claude Agent group: haiku, sonnet, opus and fable (haiku first, the fastest). Chosen, each line is read by one tool-less, single-turn call to your own Claude Code; with more than one Claude account signed in on this computer, pick which one below. It spends that Claude plan's usage, as the card says; the spend page lists it as Claude Agent at an estimated price. Measured, haiku reads a line in 3–5 s (about 1–2 s of it starting `claude`), close to grok and slower than deepseek. It takes none of the Bots' Claude Agent slots and reads at most two lines at once. With Claude Code missing, the account signed out or an error, the line is read by the word lists as before, logged `claude_unavailable` or `claude_failed`. Only you can pick a Claude model for reading; a Bot can only set an endpoint's model or the default, and an account lines are read on must be swapped out before it leaves the list. The phone can switch between Claude models but does not offer the group by itself. [ADR 0055](docs/adr/0055-lines-read-by-a-model.md), 2026-10-08 addendum.

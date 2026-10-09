@@ -845,6 +845,54 @@ describe("Stop on a turn's card", () => {
     expect(opened.map((row) => h.store.getMessage(row.trigger_message_id).id)).toEqual([next.id]);
   });
 
+  test("changing the line it was stopped on is your next line about the job: the hold goes and the Bot reads the change", async () => {
+    const h = await scenario();
+    const { director } = videoTeam(h);
+    const dm = h.direct(director);
+    openPlan(h, dm, "片头", planSpec("片头动画"));
+    let line!: { id: string };
+    const turn = await atWork(h, director, dm, () => (line = h.postUser(dm, "片头用快速剪辑")));
+    h.engine.stop(turn.id, { button: true });
+    await h.waitIdle();
+    const [hold] = holds(h);
+    expect(hold).toMatchObject({ lift_on_next_user_message: true, lifted_at: null });
+    h.script(director, dm).reply(say("好，片头改成慢速"));
+
+    const changed = h.store.editMessage(line.id, { body: "片头用慢速长镜头", userActionId: "after-stop" });
+    h.engine.noteEdited(changed);
+    await h.waitIdle();
+
+    expect(h.store.getHold(hold!.id)).toMatchObject({ lifted_by: "user_text", lifted_message_id: line.id });
+    // It goes on from the change, as it would from a new line: one turn on the line, reading what changed.
+    const opened = h.turns(director).filter((row) => row.id !== turn.id);
+    expect(opened.map(({ trigger_message_id, mode }) => ({ trigger_message_id, mode }))).toEqual([{ trigger_message_id: line.id, mode: "work" }]);
+    const read = requestText(h.hops(director).find((hop) => hop.turnId === opened[0]!.id)!.request);
+    expect(read).toContain("你改了这句。现在是：「片头用慢速长镜头」（原来是：「片头用快速剪辑」）");
+    expect(h.messages(dm).at(-1)!.body).toBe("好，片头改成慢速");
+  });
+
+  test("a stop that stays until you lift it keeps holding a change to a line the Bot read", async () => {
+    const h = await scenario();
+    const { director } = videoTeam(h);
+    const dm = h.direct(director);
+    openPlan(h, dm, "片头", planSpec("片头动画"));
+    h.script(director, dm).reply(say("片头做好了"));
+    const line = h.postUser(dm, "片头用快速剪辑");
+    await h.waitIdle();
+    const done = h.turns(director);
+    h.engine.createHold({ scope: "bot", scopeId: director.id });
+
+    h.engine.noteEdited(h.store.editMessage(line.id, { body: "片头用慢速长镜头", userActionId: "under-hold" }));
+    await h.waitIdle();
+
+    expect(holds(h).map(({ scope, lifted_at }) => ({ scope, lifted_at }))).toEqual([{ scope: "bot", lifted_at: null }]);
+    const told = h.store.db
+      .query<{ state: string }, [string]>(`SELECT state FROM inbox_items WHERE message_id = ? AND edit_id IS NOT NULL`)
+      .all(line.id);
+    expect(told).toEqual([{ state: "held" }]);
+    expect(h.turns(director)).toEqual(done);
+  });
+
   test.each(["继续", "这件事继续"])("「%s」 after it is your next line about the job: the hold goes and the Bot goes on from it", async (words) => {
     const h = await scenario();
     const { director } = videoTeam(h);

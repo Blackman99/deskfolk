@@ -120,6 +120,12 @@ export type Stop = {
    */
   liftOnYourLine: (message: Message) => Hold[];
   /**
+   * Your line, changed: a Stop holding a copy of it, or the note of what you changed, goes, as it
+   * would at a new line of yours, so the Bot goes on from the change. A stop that stays until you
+   * lift it keeps holding them.
+   */
+  liftOnYourChange: (line: Message, editId: string) => Hold[];
+  /**
    * Once your line to a whole group has woken whom it wakes: the work the stops it lifted had ended
    * that it did not reach goes on from it too — a Bot's stopped in a conversation of its own while
    * the group's stop held, the lead taking the line in the group. Returns the turns that opened again.
@@ -167,7 +173,7 @@ export function createStop(deps: StopDeps): Stop {
   const { on, holdsToLift, stopsAbout, stopsOnBots, stopBefore, scopeHolds } = reach;
   const { stopByLine, stopByButton, hold, enforce } = carry;
   const { answerStatus, statusLine, unanswered, heldLinesFor } = answers;
-  const { continueByLine, liftOnYourLine, goOnFromYourLine, lift } = goOn;
+  const { continueByLine, liftOnYourLine, liftOnYourChange, goOnFromYourLine, lift } = goOn;
   const { act } = buttons;
 
   // ── Reading the line ──────────────────────────────────────────────────────────────────────────
@@ -295,6 +301,6 @@ export function createStop(deps: StopDeps): Stop {
     store.transaction(() => store.setMessageControl(message.id, { kind: "possible_control", offer, scopes }));
   }
 
-  return { on, ruleLine, readLine, liftOnYourLine, goOnFromYourLine, unanswered, stopByButton, hold, act, lift, enforce, heldLines: heldLinesFor };
+  return { on, ruleLine, readLine, liftOnYourLine, liftOnYourChange, goOnFromYourLine, unanswered, stopByButton, hold, act, lift, enforce, heldLines: heldLinesFor };
 }
 
