@@ -154,3 +154,22 @@ test("a Bot's measure_model in a turn goes through the engine's completions", as
   expect(result).toContain('\\"tool_call\\":true');
   expect(result).toContain("first_byte_ms");
 });
+
+test("a Claude model that reads lines is shown to a Bot, and only the user can set it", async () => {
+  const { store, ctx, cloud } = await fixture();
+  store.setClaudeCodeConfigDirs(["/opt/claude-b"]);
+  await store.patchSettings({ reader_model: { runner: "claude_code", model: "haiku", config_dir: "/opt/claude-b" } });
+  expect((await runCollabTool(ctx, "list_endpoints", {})).data).toMatchObject({ reader_model: { runner: "claude_code", model: "haiku", config_dir: "/opt/claude-b" } });
+
+  // A Bot spends no Claude plan of the user's: neither on an account nor the default one.
+  expect(await refusal(runCollabTool(ctx, "update_model_settings", { reader_model: { runner: "claude_code", model: "haiku", config_dir: null } }))).toContain("only the user");
+  expect(await refusal(runCollabTool(ctx, "update_model_settings", { reader_model: { runner: "claude_code", model: "sonnet" } }))).toContain("only the user");
+  expect((await store.settings()).reader_model).toEqual({ runner: "claude_code", model: "haiku", config_dir: "/opt/claude-b" });
+
+  // It can still take the user's choice away, for an endpoint's model or for null.
+  const set = await runCollabTool(ctx, "update_model_settings", { reader_model: { endpoint_id: cloud.id, model: "small" } });
+  expect(set.data).toMatchObject({ reader_model: { endpoint_id: cloud.id, model: "small" } });
+  await store.patchSettings({ reader_model: { runner: "claude_code", model: "haiku", config_dir: null } });
+  await runCollabTool(ctx, "update_model_settings", { reader_model: null });
+  expect((await store.settings()).reader_model).toBeNull();
+});

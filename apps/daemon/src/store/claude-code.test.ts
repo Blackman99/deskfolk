@@ -51,3 +51,37 @@ test("a Bot runs on a listed account only, only you move it, and its account sta
   expect(() => store.createBot({ name: "zz-acct-3", duties: "d", boundaries: "b", runner: "claude_code", agent_config_dir: "/opt/claude-b" })).toThrow("listed in Settings");
   store.close();
 });
+
+test("the model that reads lines can be a Claude model on a listed account; the other choice's keys are cleared", async () => {
+  const store = new Store({ endpointKey: memoryKeyStore() });
+  const cloud = await store.createProvider({ name: "Cloud", base_url: "https://api.example.com/v1", api_key: "sk", models: ["small"] });
+  store.setClaudeCodeConfigDirs(["/opt/claude-b"]);
+  const stored = (key: string) => store.db.query<{ value: string }, [string]>("SELECT value FROM settings WHERE key = ?").get(key)?.value;
+
+  expect((await store.patchSettings({ reader_model: { runner: "claude_code", model: "haiku", config_dir: null } })).reader_model)
+    .toEqual({ runner: "claude_code", model: "haiku", config_dir: null });
+  expect((await store.patchSettings({ reader_model: { runner: "claude_code", model: "claude-haiku-4-5", config_dir: "/opt/claude-b/" } })).reader_model)
+    .toEqual({ runner: "claude_code", model: "claude-haiku-4-5", config_dir: "/opt/claude-b" });
+  // Kept as chosen, read back from settings with no endpoint to look up.
+  expect((await store.settings()).reader_model).toEqual({ runner: "claude_code", model: "claude-haiku-4-5", config_dir: "/opt/claude-b" });
+  expect(stored("reader_runner")).toBe("claude_code");
+  expect(stored("reader_provider_id")).toBe("");
+  // Lines are read on that account: it stays listed until reading moves off it.
+  expect(() => store.setClaudeCodeConfigDirs([])).toThrow("lines are read on");
+
+  // Not a Claude model name, an account that is not listed, a runner nobody has.
+  await expect(store.patchSettings({ reader_model: { runner: "claude_code", model: "not a model", config_dir: null } })).rejects.toThrow("Claude model name");
+  await expect(store.patchSettings({ reader_model: { runner: "claude_code", model: "haiku", config_dir: "/opt/claude-x" } })).rejects.toThrow("listed in Settings");
+  await expect(store.patchSettings({ reader_model: { runner: "other", model: "haiku", config_dir: null } })).rejects.toThrow("Claude model name");
+  expect((await store.settings()).reader_model).toEqual({ runner: "claude_code", model: "claude-haiku-4-5", config_dir: "/opt/claude-b" });
+
+  // An endpoint's model clears the Claude keys, and null clears everything.
+  expect((await store.patchSettings({ reader_model: { provider_id: cloud.id, model: "small" } })).reader_model).toEqual({ provider_id: cloud.id, model: "small" });
+  expect(stored("reader_runner")).toBe("");
+  expect(stored("reader_config_dir")).toBe("");
+  await store.patchSettings({ reader_model: { runner: "claude_code", model: "sonnet", config_dir: null } });
+  expect(stored("reader_provider_id")).toBe("");
+  expect((await store.patchSettings({ reader_model: null })).reader_model).toBeNull();
+  expect([stored("reader_model"), stored("reader_runner"), stored("reader_config_dir"), stored("reader_provider_id")]).toEqual(["", "", "", ""]);
+  store.close();
+});

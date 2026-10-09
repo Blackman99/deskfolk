@@ -6,7 +6,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { call, createScenario, say, tool, writeFile, type Scenario, type ToolOutcome } from "./test-kit/scenario";
+import { call, createScenario, failed, say, sendMessage, tool, writeFile, type Scenario, type ToolOutcome } from "./test-kit/scenario";
 
 const open: Scenario[] = [];
 afterEach(async () => {
@@ -84,6 +84,26 @@ test("a closing reply that hands a file of the ticket over is an implicit submis
   expect(h.store.getTask(j.plan.id)).toMatchObject({ stage: "delivered", status: "done" });
   // The same bytes handed over again are not a new submission.
   expect(h.store.listSubmissions({ taskId: j.plan.id })).toHaveLength(1);
+});
+
+test("a segment that fails hands over nothing it cited: half-made files never come to your card", async () => {
+  // 2026-10-08: 视频导演's segment died on an endpoint error mid-rework; the scripts it had cited in its
+  // progress lines went to a 放行 card, 15 s after the notice that the work stopped.
+  const h = await scenario();
+  const j = job(h);
+  workedOnBefore(h, j);
+  h.script(j.maker).reply(
+    call(writeFile(`${j.ticket.dir}/gear.py`, "print('gear')")),
+    call(sendMessage(`在改模型：${j.ticket.dir}/gear.py`)),
+    failed("endpoint_error"), failed("endpoint_error"), failed("endpoint_error"));
+  await ask(h, j);
+  // It did cite the file before it failed.
+  expect(h.messages(j.room).some((message) => message.attachments?.some((attachment) => attachment.workspace_relpath === `${j.ticket.dir}/gear.py`))).toBe(true);
+  expect(h.store.getTurnRoute(h.turns(j.maker).at(-1)!.id)).toMatchObject({ outcome: "failed", fail_kind: "endpoint_error" });
+  expect(h.store.listSubmissions({ taskId: j.plan.id })).toEqual([]);
+  h.tick(new Date(Date.now() + 20_000));
+  await h.waitIdle();
+  expect(h.messages(j.room).filter((message) => message.control?.kind === "review_item")).toEqual([]);
 });
 
 test("what you say while a hand-over waits on your card takes the card down as the maker goes to work on it; what it hands over next is what you are asked about", async () => {

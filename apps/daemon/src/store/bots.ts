@@ -14,10 +14,10 @@ import {
   type SessionDetail,
   type ThinkingLevel,
 } from "@real-bot/protocol";
-import { normalizeConfigDir, sameConfigDir } from "../claude-code/account";
+import { normalizeConfigDir } from "../claude-code/account";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
-import { claudeCodeConfigDirs } from "./claude-code";
+import { listedConfigDir } from "./claude-code";
 import {
   carriedThinkingLevel,
   defaultThinkingLevelFor,
@@ -86,12 +86,7 @@ function incomingAgentEffort(value: unknown): ClaudeEffort | null {
  * otherwise one of the config directories listed in Settings, kept as the list keeps it.
  */
 function incomingAgentConfigDir(ctx: StoreContext, value: unknown): string | null {
-  if (value === undefined || value === null || (typeof value === "string" && !value.trim())) return null;
-  if (typeof value !== "string") throw new HttpError(422, "invalid_args", "agent_config_dir must be a string or null");
-  const dir = normalizeConfigDir(value);
-  const listed = dir ? claudeCodeConfigDirs(ctx).find((kept) => sameConfigDir(kept, dir)) : undefined;
-  if (!listed) throw new HttpError(422, "invalid_args", "agent_config_dir must be one of the Claude accounts listed in Settings");
-  return listed;
+  return listedConfigDir(ctx, value, "agent_config_dir");
 }
 
 /**

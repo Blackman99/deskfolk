@@ -75,7 +75,25 @@ export function setClaudeCodeConfigDirs(ctx: StoreContext, value: unknown): stri
     if (users.length > 0) {
       throw new HttpError(409, "conflict", `${tildeDir(dir)} is the Claude account of ${users.join(", ")}: move ${users.length === 1 ? "that Bot" : "those Bots"} to another account first`);
     }
+    // Reading lines on it as well: taking it away would move that spending without you choosing.
+    const reading = ctx.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'reader_config_dir'").get()?.value ?? "";
+    if (reading && sameConfigDir(reading, dir)) {
+      throw new HttpError(409, "conflict", `${tildeDir(dir)} is the Claude account lines are read on: choose another reader model or account first`);
+    }
   }
   setSetting(ctx, DIRS_KEY, dirs.length > 0 ? JSON.stringify(dirs) : "");
   return dirs;
+}
+
+/**
+ * A config directory a request names for a Claude account: null or "" for the daemon's own
+ * environment, otherwise one of the listed directories, kept as the list keeps it.
+ */
+export function listedConfigDir(ctx: StoreContext, value: unknown, field: string): string | null {
+  if (value === undefined || value === null || (typeof value === "string" && !value.trim())) return null;
+  if (typeof value !== "string") throw new HttpError(422, "invalid_args", `${field} must be a string or null`);
+  const dir = normalizeConfigDir(value);
+  const listed = dir ? claudeCodeConfigDirs(ctx).find((kept) => sameConfigDir(kept, dir)) : undefined;
+  if (!listed) throw new HttpError(422, "invalid_args", `${field} must be one of the Claude accounts listed in Settings`);
+  return listed;
 }

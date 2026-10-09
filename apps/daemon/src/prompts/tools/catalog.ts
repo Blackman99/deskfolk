@@ -45,8 +45,8 @@ const MODEL_ENTRY_RULES = {
 export const LIST_ENDPOINTS: ToolDef = {
   name: "list_endpoints",
   description: {
-    zh: "列出名册级端点和模型设置。每个端点返回 id、名称、URL、接口格式、是否已配密钥、模型名单（model_catalog 里每个模型的价格、思考等级、上下文窗口、能否看图、输出上限和测出的速度）和是否为默认端点；另返回读句用的模型 reader_model（null 表示跟默认模型走）和模型阶梯 model_ladder（从弱到强）。永不返回密钥。",
-    en: "List roster-level endpoints and the model settings. Each endpoint comes with id, name, URL, API format, whether a key is set, its model list (model_catalog: each model's prices, thinking levels, context window, whether it takes pictures, output cap and measured speed) and whether it is the default endpoint; also reader_model, the model that reads lines (null follows the default model), and model_ladder, weaker to stronger. Never returns secrets.",
+    zh: "列出名册级端点和模型设置。每个端点返回 id、名称、URL、接口格式、是否已配密钥、模型名单（model_catalog 里每个模型的价格、思考等级、上下文窗口、能否看图、输出上限和测出的速度）和是否为默认端点；另返回读句用的模型 reader_model（null 表示跟默认模型走；用户选了自己的 Claude 模型时是 { runner: \"claude_code\", model, config_dir }，只读，你改不了）和模型阶梯 model_ladder（从弱到强）。永不返回密钥。",
+    en: "List roster-level endpoints and the model settings. Each endpoint comes with id, name, URL, API format, whether a key is set, its model list (model_catalog: each model's prices, thinking levels, context window, whether it takes pictures, output cap and measured speed) and whether it is the default endpoint; also reader_model, the model that reads lines (null follows the default model; { runner: \"claude_code\", model, config_dir } when the user chose one of their own Claude models, which is read-only for you), and model_ladder, weaker to stronger. Never returns secrets.",
   },
   properties: {},
 };
@@ -174,8 +174,8 @@ export const UPDATE_MODEL_SETTINGS: ToolDef = {
       },
       required: ["endpoint_id", "model"],
       description: {
-        zh: "读你每一句话用的模型 { endpoint_id, model }，须在那个端点的名单上；null 回到跟默认模型走。用户在等它读完才会被处理，选个快的。",
-        en: "The model that reads each of the user's lines, { endpoint_id, model }, on that endpoint's list; null goes back to following the default model. The user's line waits for it, so pick a fast one.",
+        zh: "读你每一句话用的模型 { endpoint_id, model }，须在那个端点的名单上；null 回到跟默认模型走。用户在等它读完才会被处理，选个快的。用户自己的 Claude 模型只有用户能选：你只能把它换成端点上的模型或 null。",
+        en: "The model that reads each of the user's lines, { endpoint_id, model }, on that endpoint's list; null goes back to following the default model. The user's line waits for it, so pick a fast one. A Claude model of the user's own is the user's to choose: you can only replace it with an endpoint's model or null.",
       },
     },
     model_ladder: {

@@ -36,3 +36,24 @@ export function claudeAgentBlocker(status: ClaudeCodeStatus | null, signIn?: Cla
 export function claudeAgentPaysPerToken(status: ClaudeSignIn | null): boolean {
   return status?.auth_method === "api_key" || status?.auth_method === "api_key_helper";
 }
+
+/** Claude Code is installed and at least one of the accounts it knows is signed in: a Claude model can be run. */
+export function claudeReady(status: ClaudeCodeStatus | null): boolean {
+  if (!status?.path) return false;
+  return status.accounts ? status.accounts.some((account) => account.logged_in === true) : status.logged_in === true;
+}
+
+/**
+ * The accounts a Claude model can run on, as the Bot panel's account picker lists them: this
+ * computer's default, then each listed directory; `current` stays a choice even when the list no
+ * longer has it (the phone cannot see the list).
+ */
+export function claudeAccountOptions(status: ClaudeCodeStatus | null, current: string, t: Copy): Array<{ value: string; label: string }> {
+  const own = status?.path ? claudeAccountOf(status, null) : null;
+  const options = [{ value: "", label: own && own.logged_in !== false ? `${t.sidebar.botAgentAccountDefault} · ${claudeAccountLabel(own, t)}` : t.sidebar.botAgentAccountDefault }];
+  for (const account of status?.accounts ?? []) {
+    if (account.config_dir) options.push({ value: account.config_dir, label: `${claudeAccountLabel(account, t)} · ${account.config_dir}` });
+  }
+  if (current && !options.some((option) => option.value === current)) options.push({ value: current, label: current });
+  return options;
+}

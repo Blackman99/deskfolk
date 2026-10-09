@@ -24,6 +24,7 @@ import { ceilingCardOf, checkCeiling, closeCeilingCards, NO_CEILING, openCeiling
 import { deliverDelegations } from "./delegations";
 import { confirmDerivedCheck } from "./derived-checks";
 import { noteHandOverFailed, resetEscalation } from "./escalation";
+import { noteCardDeferred, stillAtWork } from "./hand-over-rest";
 import { holdsCovering } from "./holds";
 import { queueInboxItem, refreshHeldInbox } from "./inbox";
 import { largeJobRefusal, sampleOf, syncStandardChecks, yoursToApprove } from "./large-jobs";
@@ -248,6 +249,11 @@ export function prepareSubmission(ctx: StoreContext, input: {
       }
     }
     if (input.origin === "implicit") {
+      // What the segment handed over itself is its hand-over: the files it merely cited besides do not
+      // take its place. On 2026-10-08 视频导演 submitted the sample's master, and a second later the
+      // ending's sweep of the clips and frames it had cited superseded it — the card asked about those,
+      // and 放行 approved them.
+      if (ctx.db.query("SELECT 1 FROM submissions WHERE turn_id = ? AND ticket_id = ? AND origin = 'submit'").get(turn.id, turn.ticket_id)) return null;
       const known = new Map<string, string>();
       for (const previous of listSubmissions(ctx, { ticketId: turn.ticket_id, limit: 200 }).reverse()) {
         for (const artifact of previous.artifacts) known.set(artifact.path, artifact.sha256);
@@ -698,19 +704,21 @@ function doneInOneGo(ctx: StoreContext, submission: Submission): boolean {
 /**
  * Whether the Bot that handed this over is at work on something you said about its job since: a line
  * of yours filed under its ticket, or under the job as a whole, after the hand-over, which that Bot
- * has not finished with — a segment of its on the ticket (or the whole job) it opened or was heard in
- * still running, its work there still going on (asked you something, waiting on a job of its own,
- * queued again), or the line still queued for it. What it makes of your line is the next thing to
- * look at, not this (2026-10-07: 「把猫改成橘猫」, said 14 s after a picture was handed over, was
- * followed by a card to let that picture through while the Bot was making the orange one).
- * Segments that only read never count; work stopped or stuck (needs attention) is over.
+ * has not finished with — a segment of its on the job it opened or was heard in still running, on
+ * whichever ticket (2026-10-08: your line about 视频导演's second part reached the segment it was
+ * re-rendering the sample in, and the card for that part came back 12 s after it was taken down),
+ * its work there still going on (asked you something, waiting on a job of its own, queued again), or
+ * the line still queued for it. What it makes of your line is the next thing to look at, not this
+ * (2026-10-07: 「把猫改成橘猫」, said 14 s after a picture was handed over, was followed by a card to
+ * let that picture through while the Bot was making the orange one). Segments that only read never
+ * count; work stopped or stuck (needs attention) is over.
  */
 function workOnYourLine(ctx: StoreContext, submission: Pick<Submission, "task_id" | "ticket_id" | "bot_id" | "created_at">): boolean {
   return Boolean(ctx.db.query(`WITH yours AS (
       SELECT DISTINCT f.message_id AS id FROM message_filings f JOIN messages m ON m.id = f.message_id
       WHERE f.task_id = ?1 AND (f.ticket_id = ?2 OR f.ticket_id IS NULL) AND m.kind = 'user' AND m.created_at > ?4),
     heard AS (
-      SELECT u.status, u.work_item_id FROM turns u WHERE u.bot_id = ?3 AND u.task_id = ?1 AND (u.ticket_id = ?2 OR u.ticket_id IS NULL)
+      SELECT u.status, u.work_item_id FROM turns u WHERE u.bot_id = ?3 AND u.task_id = ?1
         AND u.mode IS NOT 'readonly' AND (u.trigger_message_id IN (SELECT id FROM yours)
           OR u.id IN (SELECT delivered_turn_id FROM inbox_items WHERE bot_id = ?3 AND message_id IN (SELECT id FROM yours))))
     SELECT 1 FROM heard WHERE status IN ${LIVE_TURN_STATUSES}
@@ -818,6 +826,12 @@ function takeUpAwaiting(ctx: StoreContext, submission: Submission, now: string):
   // hand-over, and 放行 takes it as met.
   const open = unbackedItems(ctx, submission, review ? "raised" : "all");
   if (open.length > 0 || needsYourApproval(ctx, submission, checks, review)) {
+    // Its Bot is still at work on the job (ADR 0058 §16): no card until it stops. Whatever it hands
+    // over meanwhile supersedes this one, which then never came to you at all.
+    if (stillAtWork(ctx, submission, now)) {
+      noteCardDeferred(ctx, submission);
+      return { submission, unrun: [] };
+    }
     askApproval(ctx, submission, now, review, { items: open, backed: checks.some(backs) });
     return { submission: getSubmission(ctx, submission.id), unrun: [] };
   }
@@ -989,7 +1003,8 @@ export function takeUpSubmission(ctx: StoreContext, submissionId: string, now: s
  * it has one by now; else the app reads its checks as they are now (a gate failing sends it back to
  * its producer) and approves it when a gate of yours backs it or it was made in one go — otherwise,
  * or when a required item (raised twice or more, or about the picture) has nothing behind it, one
- * card asks you. A submission waiting on you is taken up again each tick against what is true now.
+ * card asks you, once its Bot has stopped working on the job (`stillAtWork`). A submission waiting
+ * on you is taken up again each tick against what is true now.
  * Returns what it moved and the cards it wrote.
  */
 export function superviseSubmissions(ctx: StoreContext, now: string = isoNow()): {

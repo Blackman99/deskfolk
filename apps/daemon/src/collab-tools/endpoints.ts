@@ -1,5 +1,5 @@
 /** Endpoint and model tools. */
-import { isLocalEndpoint, type ApiFormat, type Provider } from "@real-bot/protocol";
+import { isLocalEndpoint, isReaderClaudeModel, type ApiFormat, type Provider, type ReaderModel } from "@real-bot/protocol";
 import { runCollabTool, type ToolCtx, type ToolResult } from "../collab-tools";
 import { HttpError } from "../errors";
 import { normalizeModelCatalog } from "../models";
@@ -27,9 +27,11 @@ export async function listEndpoints(ctx: ToolCtx): Promise<ToolResult> {
 }
 
 /** The app-wide model settings as the Bot's tools name them: endpoint ids, not provider ids. */
-function modelSettingsView(store: Store, reader: { provider_id: string; model: string } | null) {
+function modelSettingsView(store: Store, reader: ReaderModel | null) {
   return {
-    reader_model: reader ? { endpoint_id: reader.provider_id, model: reader.model } : null,
+    // A Claude model of the user's (ADR 0061) names no endpoint; it is the user's to set, so it is only shown.
+    reader_model: !reader ? null : isReaderClaudeModel(reader) ? { runner: reader.runner, model: reader.model, config_dir: reader.config_dir }
+      : { endpoint_id: reader.provider_id, model: reader.model },
     model_ladder: store.modelLadder().map((rung) => ({ endpoint_id: rung.provider_id, model: rung.model })),
   };
 }
@@ -75,6 +77,11 @@ export async function updateModelSettings(ctx: ToolCtx, args: Record<string, unk
     }
     if (provider.models.length === 0) throw new HttpError(409, "conflict", "that endpoint lists no models yet");
     patch.default_provider_id = id;
+  }
+  // Only the user spends their Claude plan on a reading, as only the user moves a Bot onto it.
+  const readerArg = args.reader_model as { runner?: unknown } | null | undefined;
+  if (readerArg && typeof readerArg === "object" && "runner" in readerArg) {
+    throw new HttpError(403, "forbidden", "only the user can choose a Claude model to read lines; it spends their Claude plan");
   }
   if (given("reader_model")) patch.reader_model = args.reader_model === null ? null : endpointModelOf(args.reader_model, "reader_model");
   let ladder: Array<{ provider_id: string; model: string }> | undefined;

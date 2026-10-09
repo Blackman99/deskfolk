@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { Provider, SettingsPatch } from "@real-bot/protocol";
+import type { ClaudeCodeStatus, Provider, SettingsPatch } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
 import { click, render } from "../test-render.ts";
 import ReaderModelCard from "./ReaderModelCard.svelte";
@@ -59,4 +59,92 @@ test("a choice that is not saved says so", async () => {
   await sleep(0);
   expect(view.host.querySelector(".reader-error")?.textContent).toBe(t.readerModel.failed);
   view.close();
+});
+
+const own = { logged_in: true, auth_method: "claude.ai", subscription_type: "pro", email: "me@example.com" };
+function claudeStatus(over: Partial<ClaudeCodeStatus> = {}): ClaudeCodeStatus {
+  return {
+    path: "/u/claude", source: "path", version: "2.1.294", sdk_version: "2.1.289", outdated: false, ...own, base_url_set: false,
+    proxy: null, proxy_source: null, checked_at: "2026-10-08T00:00:00.000Z", error: null,
+    accounts: [{ config_dir: null, config_directory: null, ...own, error: null, login_command: "claude auth login" }],
+    ...over,
+  };
+}
+const statusOf = (status: ClaudeCodeStatus | Error) => async () => {
+  if (status instanceof Error) throw status;
+  return status;
+};
+const optionTexts = (host: HTMLElement) => [...host.querySelectorAll(".real-select-option")].map((el) => el.textContent?.trim());
+
+test("with Claude Code signed in, its models are their own group, haiku first, and choosing one saves it on the default account", async () => {
+  const { sent, patch } = fakePatch();
+  const view = render(ReaderModelCard, { providers, chosen: null, defaultModel: null, patch, claudeCode: statusOf(claudeStatus()), t });
+  await sleep(0);
+  expect(view.host.querySelector("[data-reader-account]")).toBeNull();
+  expect(view.host.querySelector("[data-reader-claude-note]")?.textContent).toBe(t.readerModel.claudeNote);
+  click(trigger(view.host));
+  await sleep(0);
+  expect(view.host.querySelector(".real-select-group")?.textContent).toBe(t.sidebar.botRunnerClaude);
+  expect(optionTexts(view.host).slice(-4)).toEqual(["haiku", "sonnet", "opus", "fable"].map((model) => t.readerModel.claudeModel(model)));
+  click([...view.host.querySelectorAll(".real-select-option")].at(-4)!);
+  await sleep(0);
+  expect(sent).toEqual([{ reader_model: { runner: "claude_code", model: "haiku", config_dir: null } }]);
+  view.close();
+});
+
+test("no Claude group while Claude Code is missing, signed out, or cannot be asked, unless a Claude model is already chosen", async () => {
+  for (const status of [claudeStatus({ path: null, accounts: [] }), claudeStatus({ logged_in: false, accounts: [{ config_dir: null, config_directory: null, ...own, logged_in: false, error: null, login_command: "claude auth login" }] }), new Error("404")]) {
+    const view = render(ReaderModelCard, { providers, chosen: null, defaultModel: null, patch: fakePatch().patch, claudeCode: statusOf(status), t });
+    await sleep(0);
+    click(trigger(view.host));
+    await sleep(0);
+    expect(view.host.querySelector(".real-select-group")).toBeNull();
+    expect(view.host.querySelector("[data-reader-claude-note]")).toBeNull();
+    view.close();
+  }
+  // On the phone, which cannot ask: the model chosen on the Mac stays shown, and can be swapped for another.
+  const phone = render(ReaderModelCard, { providers, chosen: { runner: "claude_code", model: "haiku", config_dir: "/opt/claude-b" }, defaultModel: null, patch: fakePatch().patch, claudeCode: statusOf(new Error("404")), t });
+  await sleep(0);
+  expect(trigger(phone.host).textContent).toContain(t.readerModel.claudeModel("haiku"));
+  expect(phone.host.querySelector("[data-reader-account]")).toBeNull();
+  phone.close();
+});
+
+test("with several accounts listed there is an account select; changing it re-saves the chosen Claude model, and picking an endpoint model saves that", async () => {
+  const { sent, patch } = fakePatch();
+  const status = claudeStatus({
+    accounts: [
+      { config_dir: null, config_directory: null, ...own, error: null, login_command: "claude auth login" },
+      { config_dir: "/opt/claude-b", config_directory: "/opt/claude-b", ...own, email: "b@example.com", error: null, login_command: "x" },
+    ],
+  });
+  const view = render(ReaderModelCard, { providers, chosen: { runner: "claude_code", model: "sonnet", config_dir: null }, defaultModel: null, patch, claudeCode: statusOf(status), t });
+  await sleep(0);
+  expect(trigger(view.host).textContent).toContain(t.readerModel.claudeModel("sonnet"));
+  const account = view.host.querySelector("[data-reader-account] .real-select-trigger")!;
+  expect(account.textContent).toContain(t.sidebar.botAgentAccountDefault);
+  click(account);
+  await sleep(0);
+  const accounts = [...view.host.querySelectorAll("[data-reader-account] .real-select-option")];
+  expect(accounts).toHaveLength(2);
+  click(accounts[1]!);
+  await sleep(0);
+  expect(sent).toEqual([{ reader_model: { runner: "claude_code", model: "sonnet", config_dir: "/opt/claude-b" } }]);
+  view.close();
+
+  // With nothing chosen yet, the account picked first is the one a model is then chosen on.
+  const later = fakePatch();
+  const fresh = render(ReaderModelCard, { providers, chosen: null, defaultModel: null, patch: later.patch, claudeCode: statusOf(status), t });
+  await sleep(0);
+  click(fresh.host.querySelector("[data-reader-account] .real-select-trigger")!);
+  await sleep(0);
+  click(fresh.host.querySelectorAll("[data-reader-account] .real-select-option")[1]!);
+  await sleep(0);
+  expect(later.sent).toEqual([]);
+  click(trigger(fresh.host));
+  await sleep(0);
+  click([...fresh.host.querySelectorAll(".reader-pick .real-select-option")].at(-4)!);
+  await sleep(0);
+  expect(later.sent).toEqual([{ reader_model: { runner: "claude_code", model: "haiku", config_dir: "/opt/claude-b" } }]);
+  fresh.close();
 });

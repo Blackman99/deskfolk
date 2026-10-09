@@ -588,6 +588,9 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       if (store.capabilities().engine_level < ENGINE_LEVELS.submissions) return;
       const ended = store.getTurn(turnId);
       if (ended.status !== "completed" || ["blocked", "gave_up", "needs_attention"].includes(ended.end_reason ?? "")) return;
+      // A segment that failed (`failTurn`) also reads `completed`: on 2026-10-08 视频导演's segment
+      // died on an endpoint error mid-rework, and the scripts it had cited so far went to a 放行 card.
+      if (store.getTurnRoute(turnId)?.outcome === "failed") return;
       // The segment is over: a hand-over whose checks fail goes back to its producer as a line.
       await implicitSubmission(turnId, { tell: true });
     } catch (error) {

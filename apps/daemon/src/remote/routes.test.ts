@@ -333,3 +333,14 @@ test("built-in prompts (ADR 0064): read, edit, reset, keep-mine and taking a cha
   refused({ v: 1, id, method: "POST", path: "/v1/prompt-revisions/not-an-id/undo", body: {} });
   refused({ v: 1, id, method: "GET", path: "/v1/prompt-revisions" });
 });
+
+test("the phone saves the model that reads lines as an endpoint's, or as a Claude model on an account", () => {
+  const patch = (reader_model: unknown): RemoteRequest => ({ v: 1, id, method: "PATCH", path: "/v1/settings", body: { reader_model } });
+  for (const good of [null, { provider_id: id, model: "m" }, { runner: "claude_code", model: "haiku", config_dir: null }, { runner: "claude_code", model: "haiku", config_dir: "/opt/claude-b" }]) {
+    expect(() => validateBusiness(patch(good))).not.toThrow();
+  }
+  for (const bad of [{ runner: "claude_code" }, { runner: "other", model: "haiku", config_dir: null }, { runner: "claude_code", model: "haiku", config_dir: 3 },
+    { provider_id: id, model: "m", runner: "claude_code" }, { model: "m" }]) {
+    expect(() => validateBusiness(patch(bad))).toThrow();
+  }
+});

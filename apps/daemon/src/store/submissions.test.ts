@@ -8,6 +8,7 @@ import { ENGINE_LEVELS } from "./schema-gate";
 import { createHold, liftHold } from "./holds";
 import { checkLines } from "./submission-rows";
 import { setTicketStage, settlePlanStage } from "./ticket-stage";
+import { REST_SETTLE_MS } from "./hand-over-rest";
 import { superviseSubmissions, UNREVIEWED_AFTER_MS } from "./submissions";
 
 const stores: Store[] = [];
@@ -117,6 +118,8 @@ function handedOver(f: Fixture, opts: { reviewer?: boolean; model?: string } = {
   if (opts.model) onModel(f, produced.id, opts.model);
   const { submission } = submit(f, produced.id, [[`${f.ticket.dir}/EP01_MASTER.mp4`, HASH_A]])!;
   f.store.settleSubmissionChecks(submission.id);
+  // The segment that made it is over: a card waits for its Bot to stop (ADR 0058 §16).
+  f.store.setTurnStatus(produced.id, "completed");
   return { produced, submission };
 }
 
@@ -159,13 +162,19 @@ test("a submission records its files and parts, moves a todo ticket to doing, an
   expect(ticketRow(f)).toEqual({ status: "doing", stage: "doing" });
   expect(f.store.db.query("SELECT key, attempts, current_artifact, stage FROM ticket_parts WHERE ticket_id = ?").all(f.ticket.id))
     .toEqual([{ key: "shot_07", attempts: 1, current_artifact: `${f.ticket.dir}/EP01_shot_07.mp4`, stage: "in_progress" }]);
+  // What a segment handed over itself is its hand-over: the files it cited besides are not handed over
+  // in its place when it ends (2026-10-08).
+  expect(submit(f, turn.id, [[`${f.ticket.dir}/EP01_shot_07.mp4`, HASH_A], [`${f.ticket.dir}/frames.jpg`, HASH_B]], "implicit")).toBeNull();
+  expect(f.store.getSubmission(named.submission.id).state).toBe("checking");
+  f.store.setTurnStatus(turn.id, "completed");
+  const next = segment(f);
   // One the app hands over for the Bot names none: it is the ticket's as a whole, whatever the file is called.
-  const first = submit(f, turn.id, [[`${f.ticket.dir}/EP01_shot_07.mp4`, HASH_A]], "implicit")!;
+  const first = submit(f, next.id, [[`${f.ticket.dir}/EP01_shot_07.mp4`, HASH_A]], "implicit")!;
   expect(first.submission).toMatchObject({ origin: "implicit", state: "checking", part_keys: [] });
   expect(f.store.getSubmission(named.submission.id).state).toBe("superseded");
   // The same bytes again hand nothing over; new bytes supersede the open one.
-  expect(submit(f, turn.id, [[`${f.ticket.dir}/EP01_shot_07.mp4`, HASH_A]], "implicit")).toBeNull();
-  const second = submit(f, turn.id, [[`${f.ticket.dir}/EP01_shot_07.mp4`, HASH_B]], "implicit")!;
+  expect(submit(f, next.id, [[`${f.ticket.dir}/EP01_shot_07.mp4`, HASH_A]], "implicit")).toBeNull();
+  const second = submit(f, next.id, [[`${f.ticket.dir}/EP01_shot_07.mp4`, HASH_B]], "implicit")!;
   expect(f.store.getSubmission(first.submission.id).state).toBe("superseded");
   expect(second.submission.state).toBe("checking");
   expect(f.store.db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM work_events WHERE kind = 'submission.created'").get()!.n).toBe(3);
@@ -760,6 +769,7 @@ test("words handed over in place of a file — the producer's, on a ticket no fi
   expect(f.store.prepareSubmission({ turnId: turn.id, origin: "answer", artifacts: [], content: "三个选题：雪原、灯塔、潮汐" })).toBeNull();
   expect(f.store.prepareSubmission({ turnId: turn.id, origin: "answer", artifacts: [], content: "  " })).toBeNull();
   f.store.settleSubmissionChecks(answered.submission.id);
+  f.store.setTurnStatus(turn.id, "completed");
   // With no reviewer, an answer still waits on your approve/reject card: never approved on its own.
   const tick = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
   expect(tick.moved).toMatchObject([{ id: answered.submission.id, state: "submitted", awaiting: { kind: "approval" } }]);
@@ -1082,6 +1092,122 @@ test("not held: a line about another ticket, one another Bot is at work on, a se
   expect(g.store.getSubmission(submission.id).state).toBe("approved");
 });
 
+/** The segment ends at `at`, as its row says. */
+function endedAt(f: Fixture, turnId: string, at: string) {
+  f.store.setTurnStatus(turnId, "completed");
+  f.store.db.run("UPDATE turns SET updated_at = ? WHERE id = ?", [at, turnId]);
+}
+
+test("a hand-over comes to your card only once its Bot has stopped working on the job: gone on to the next ticket, waiting on its own render, woken again, or still for less than a tick", () => {
+  // 2026-10-08: 视频导演 reworked the sample segment after segment, each ending to wait for its video
+  // jobs, and each ending's files came to a 放行 card while it went on.
+  const f = fixture();
+  const next = f.store.createTicket({ taskId: f.plan.id, title: "07 字幕", worker: f.producer.id });
+  const { submission } = handedOver(f);
+  const at = (ms: number) => later(UNREVIEWED_AFTER_MS + ms);
+  // Gone straight on to the next ticket of the job: no card while that runs.
+  const onNext = segment(f, f.producer.id, next.id);
+  expect(superviseSubmissions(f.ctx, at(1_000))).toMatchObject({ moved: [], messages: [] });
+  expect(f.store.getSubmission(submission.id)).toMatchObject({ state: "submitted", awaiting: null });
+  // It ends to wait for a render of its own: still at work.
+  f.store.registerJob({ server: "media", submitTool: "submit_video", checkTool: "check_video", idParam: "id", requestId: "r-1", digest: "d-1",
+    taskId: f.plan.id, ticketId: next.id, partNo: null, botId: f.producer.id, workItemId: onNext.work_item_id, turnId: onNext.id, sessionId: f.room.id });
+  endedAt(f, onNext.id, at(0));
+  expect(superviseSubmissions(f.ctx, at(60_000)).messages).toEqual([]);
+  // The render is in, and its result is about to wake the Bot: still at work.
+  f.store.db.run("UPDATE external_jobs SET state = 'completed' WHERE request_id = 'r-1'");
+  const result = f.store.queueInboxItem({ botId: f.producer.id, sessionId: f.room.id, turnId: null, workItemId: onNext.work_item_id, taskId: f.plan.id,
+    ticketId: next.id, messageId: null, author: "app", body: "（应用）作业完成了", source: "job", kind: "result", priority: 2, now: at(60_500) });
+  expect(superviseSubmissions(f.ctx, at(61_000)).messages).toEqual([]);
+  // It wakes on that and ends again: one tick still holds the card, then it is put to you.
+  f.store.db.run("UPDATE inbox_items SET state = 'delivered' WHERE id = ?", [result.id]);
+  const woken = segment(f, f.producer.id, next.id);
+  endedAt(f, woken.id, at(100_000));
+  expect(superviseSubmissions(f.ctx, at(100_000 + REST_SETTLE_MS - 1_000)).messages).toEqual([]);
+  const tick = superviseSubmissions(f.ctx, at(100_000 + REST_SETTLE_MS + 1_000));
+  expect(tick.messages.map((card) => card.control)).toMatchObject([{ submission_id: submission.id, offer: ["approve", "reject"] }]);
+  // The work log says once why it waited.
+  expect(f.store.db.query("SELECT COUNT(*) AS n FROM work_events WHERE kind = 'submission.card_deferred'").get()).toEqual({ n: 1 });
+});
+
+test("a Bot waiting on your answer, a segment that only reads, another Bot at work, or what has sat in its queue for long does not hold the card", () => {
+  const cases: Array<[string, (f: Fixture, ticketId: string) => void]> = [
+    ["asks you", (f, ticketId) => { f.store.db.run("UPDATE turns SET status = 'waiting_ask' WHERE id = ?", [segment(f, f.producer.id, ticketId).id]); }],
+    // 2026-10-08: a send-back of 视频导演's second part sat queued for over an hour behind work that needed attention.
+    ["queued long ago", (f, ticketId) => {
+      f.store.queueInboxItem({ botId: f.producer.id, sessionId: f.room.id, turnId: null, taskId: f.plan.id, ticketId, messageId: null, author: "app",
+        body: "（应用）用户把交付退回重做了。", source: "review", kind: "result", priority: 2, now: new Date(Date.parse(isoNow()) - 60 * 60_000).toISOString() });
+    }],
+    ["only reads", (f, ticketId) => { f.store.db.run("UPDATE turns SET mode = 'readonly' WHERE id = ?", [segment(f, f.producer.id, ticketId).id]); }],
+    ["another Bot", (f, ticketId) => { segment(f, f.reviewer.id, ticketId); }],
+  ];
+  for (const [name, arrange] of cases) {
+    const f = fixture();
+    const next = f.store.createTicket({ taskId: f.plan.id, title: "07 字幕", worker: f.producer.id });
+    const { submission } = handedOver(f);
+    arrange(f, next.id);
+    const cards = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000)).messages.map((card) => card.control);
+    expect({ name, cards }).toMatchObject({ name, cards: [{ submission_id: submission.id }] });
+  }
+});
+
+test("a large job's sample comes to your card once its own ticket is still, while its Bot goes on with the rest", () => {
+  const f = fixture();
+  f.store.db.run("UPDATE tickets SET sample = 1 WHERE id = ?", [f.ticket.id]);
+  const next = f.store.createTicket({ taskId: f.plan.id, title: "07 字幕", worker: f.producer.id });
+  const { submission } = handedOver(f);
+  // Preparing the next part does not hold the sample everything else waits on.
+  segment(f, f.producer.id, next.id);
+  const tick = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
+  expect(tick.messages.map((card) => card.control)).toMatchObject([{ submission_id: submission.id, offer: ["approve", "reject"] }]);
+  // A segment still on the sample itself does.
+  const g = fixture();
+  g.store.db.run("UPDATE tickets SET sample = 1 WHERE id = ?", [g.ticket.id]);
+  handedOver(g);
+  segment(g);
+  expect(superviseSubmissions(g.ctx, later(UNREVIEWED_AFTER_MS + 1_000)).messages).toEqual([]);
+});
+
+test("what its Bot hands over while still at work supersedes the hand-over before any card, and only the last is put to you", () => {
+  const f = fixture();
+  const { submission } = handedOver(f);
+  const again = segment(f);
+  expect(superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000)).messages).toEqual([]);
+  const { submission: newer } = submit(f, again.id, [[`${f.ticket.dir}/EP01_MASTER.mp4`, HASH_B]])!;
+  f.store.settleSubmissionChecks(newer.id);
+  f.store.setTurnStatus(again.id, "completed");
+  expect(f.store.getSubmission(submission.id).state).toBe("superseded");
+  const tick = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 30_000));
+  expect(tick.messages.map((card) => card.control)).toMatchObject([{ submission_id: newer.id }]);
+  expect(reviewCards(f)).toBe(1);
+});
+
+test("your line about a hand-over, heard in its Bot's segment on another ticket of the job, holds it while that work goes on", () => {
+  // 2026-10-08: your line about 视频导演's second part reached the segment re-rendering the sample, and
+  // the second part's card came back 12 s after it was taken down.
+  const f = fixture();
+  const other = f.store.createTicket({ taskId: f.plan.id, title: "07 字幕", worker: f.producer.id });
+  const submission = waiting(f);
+  const [card] = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000)).messages;
+  const busy = segment(f, f.producer.id, other.id);
+  const line = f.store.postMessage(f.room.id, { body: "人物形象还是尽量遵循原人物" });
+  f.store.fileMessage(line.id, { explicit: [{ taskId: f.plan.id, ticketId: f.ticket.id }] });
+  f.store.queueInboxItem({ botId: f.producer.id, sessionId: f.room.id, turnId: busy.id, taskId: f.plan.id, ticketId: f.ticket.id, messageId: line.id,
+    author: "user", body: line.body, source: "user", kind: "change", priority: 1 });
+  expect(f.store.holdForYourLine(line.id).map((message) => message.id)).toEqual([card!.id]);
+  // It hears the line there, then asks you something about it: nothing of it runs, but it is still
+  // its work on your line.
+  f.store.db.run("UPDATE inbox_items SET state = 'delivered', delivered_turn_id = ? WHERE message_id = ?", [busy.id, line.id]);
+  f.store.setTurnStatus(busy.id, "completed");
+  f.store.db.run("UPDATE work_items SET state = 'blocked' WHERE id = ?", [busy.work_item_id]);
+  expect(superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 60_000)).messages).toEqual([]);
+  expect(f.store.getSubmission(submission.id).awaiting).toMatchObject({ message_id: null, held: true });
+  // Answered and done, with nothing newer: the same hand-over on one new card.
+  f.store.db.run("UPDATE work_items SET state = 'idle' WHERE id = ?", [busy.work_item_id]);
+  const again = superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 61_000)).messages;
+  expect(again.map((message) => message.control)).toMatchObject([{ submission_id: submission.id, offer: ["approve", "reject"] }]);
+});
+
 test("made in one go, a hand-over is approved at the tick even while its Bot is at work on a line of yours said since", () => {
   const f = fixture();
   const { submission } = inOneGo(f);
@@ -1122,6 +1248,8 @@ test("a job whose hand-over you sent back on its card keeps its card for the nex
   const f = fixture();
   expect(f.store.getSubmission(cardedFirst(f, "reject").id).state).toBe("rejected");
   const next = segment(f);
+  // The rework wake the rejection queued is what this segment heard.
+  f.store.db.run("UPDATE inbox_items SET state = 'delivered', delivered_turn_id = ? WHERE bot_id = ? AND state = 'queued'", [next.id, f.producer.id]);
   const { submission } = submit(f, next.id, [[`${f.ticket.dir}/avatar.jpg`, HASH_B]])!;
   f.store.settleSubmissionChecks(submission.id);
   f.store.setTurnStatus(next.id, "completed");
@@ -1149,6 +1277,7 @@ test("not in one go — a second ticket, words handed over, or a job once on you
   const produced = segment(f);
   const { submission } = f.store.prepareSubmission({ turnId: produced.id, origin: "answer", artifacts: [], content: "三个选题：雪原、旧城、列车" })!;
   f.store.settleSubmissionChecks(submission.id);
+  f.store.setTurnStatus(produced.id, "completed");
   superviseSubmissions(f.ctx, later(UNREVIEWED_AFTER_MS + 1_000));
   expect(f.store.getSubmission(submission.id)).toMatchObject({ state: "submitted", awaiting: { kind: "approval" } });
 });

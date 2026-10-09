@@ -1,6 +1,7 @@
 import {
   USER_MEMBER,
   isLocalEndpoint,
+  isReaderClaudeModel,
   type ClientEvent,
   type ComposerSuggestion,
   type ControlActionResult,
@@ -30,6 +31,7 @@ import { createFire } from "./engine/fire";
 import { createIntake, INTAKE_CAP_MS } from "./engine/intake";
 import { createLifecycle } from "./engine/lifecycle";
 import type { ClaudeCodeProbe } from "./claude-code/probe";
+import { createClaudeJudge } from "./claude-code/reading";
 import type { AgentQuery } from "./engine/agent-runner";
 import { createParticipation } from "./engine/participation";
 import { createPlanWatch } from "./engine/plan-watch";
@@ -317,9 +319,11 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     // The model chosen for reading in Settings, else the default one; thinking as little as it can,
     // since a line of yours waits on its reading.
     async routing() {
+      const chosen = store.settingsCached().reader_model;
+      // A Claude model of yours runs through your Claude Code, on no endpoint at all (ADR 0061).
+      if (isReaderClaudeModel(chosen)) return { kind: "claude_code" as const, model: chosen.model, configDir: chosen.config_dir };
       const creds = await routing.credentials().catch(() => null);
       if (!creds) return null;
-      const chosen = store.settingsCached().reader_model;
       const provider = chosen ? creds.providers.find((row) => row.id === chosen.provider_id) : undefined;
       const target = provider && chosen
         ? { baseUrl: provider.baseUrl, apiKey: provider.apiKey, apiFormat: provider.apiFormat, providerId: provider.id, providerName: provider.name, model: chosen.model, thinkingLevel: null }
@@ -336,6 +340,10 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         usage,
         responded,
       });
+    },
+    claudeJudge: createClaudeJudge({ claudeCode: options.claudeCode }),
+    recordClaudeSpend({ sessionId, model, usage }) {
+      spend.recordClaudeSpend({ kind: "organize", purpose: "reader", owner: spend.spendOwner(sessionId, null), model, usage });
     },
     draining: () => Boolean(options.admission?.draining),
     ablation,

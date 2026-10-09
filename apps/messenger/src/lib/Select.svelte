@@ -335,6 +335,9 @@
 				</li>
 			{:else}
 				{#each normalizedOptions as opt, idx (opt.value + ':' + opt.label)}
+					{#if opt.group && opt.group !== normalizedOptions[idx - 1]?.group}
+						<li class="real-select-group" role="presentation">{opt.group}</li>
+					{/if}
 					<!-- svelte-ignore a11y_click_events_have_key_events -->
 					<li
 						bind:this={optionEls[idx]}
@@ -514,6 +517,14 @@
 			opacity: 1;
 			transform: scale(1) translateY(0);
 		}
+	}
+
+	.real-select-group {
+		padding: 8px 10px 3px;
+		font-size: 11px;
+		line-height: 1.3;
+		color: var(--muted);
+		user-select: none;
 	}
 
 	.real-select-option {

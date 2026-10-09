@@ -3,6 +3,8 @@ export interface SelectOption {
 	label?: string;
 	disabled?: boolean;
 	hint?: string;
+	/** A heading shown above the first option of a run of options that share it. */
+	group?: string;
 }
 
 export interface NormalizedSelectOption {
@@ -10,6 +12,7 @@ export interface NormalizedSelectOption {
 	label: string;
 	disabled: boolean;
 	hint?: string;
+	group?: string;
 }
 
 /**
@@ -46,7 +49,8 @@ export function normalizeOptions(
 				value: item.value ?? '',
 				label: item.label ?? item.value ?? '',
 				disabled: Boolean(item.disabled),
-				hint: item.hint
+				hint: item.hint,
+				group: item.group
 			});
 		}
 	}

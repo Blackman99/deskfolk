@@ -187,6 +187,7 @@
 			chosen={snapshot.settings.reader_model ?? null}
 			defaultModel={snapshot.settings.endpoint_default_model}
 			patch={(patch) => runtime.patchSettings(patch)}
+			claudeCode={runtime.client ? () => runtime.client!.claudeCode() : null}
 			{t}
 		/>
 	{/if}

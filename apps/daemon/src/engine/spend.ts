@@ -32,6 +32,14 @@ export type SpendTracker = {
     usage: MappedUsage | null;
     responded: boolean;
   }) => Spend | null;
+  /** A call run by the user's own Claude Code: no endpoint, and a price that is an estimate, as a Claude Agent turn's is (ADR 0061). */
+  recordClaudeSpend: (input: {
+    kind: SpendKind;
+    purpose?: SpendPurpose | null;
+    owner: SpendOwner;
+    model: string;
+    usage: { inputTokens: number; outputTokens: number; cachedTokens: number; costUsd: number };
+  }) => Spend | null;
   recordSpend: (
     kind: "turn",
     turnId: string,
@@ -203,5 +211,20 @@ export function createSpend(deps: SpendDeps): SpendTracker {
     return row;
   }
 
-  return { callOf, spendOwner, usageHasDigits, recordResponseSpend, recordSpend, writeSpend };
+  function recordClaudeSpend(input: Parameters<SpendTracker["recordClaudeSpend"]>[0]): Spend | null {
+    const { usage } = input;
+    if (usage.inputTokens <= 0 && usage.outputTokens <= 0 && usage.costUsd <= 0) return null;
+    const row = store.insertSpend({
+      kind: input.kind, purpose: input.purpose ?? null, sessionId: input.owner.sessionId, sessionName: input.owner.sessionName,
+      botId: input.owner.botId, botName: input.owner.botName, turnId: null, judgementId: null, chainId: null,
+      providerId: "", providerName: "Claude Agent", model: input.model, thinkingLevel: null,
+      inputTokens: Math.max(0, usage.inputTokens), outputTokens: Math.max(0, usage.outputTokens),
+      totalTokens: Math.max(0, usage.inputTokens) + Math.max(0, usage.outputTokens), cachedTokens: Math.max(0, usage.cachedTokens),
+      reasoningTokens: null, costUsdTicks: null, estimatedCostUsdTicks: Math.max(0, Math.round(usage.costUsd * 1e10)), missingReason: null,
+    });
+    publishSpend(row);
+    return row;
+  }
+
+  return { callOf, spendOwner, usageHasDigits, recordResponseSpend, recordClaudeSpend, recordSpend, writeSpend };
 }

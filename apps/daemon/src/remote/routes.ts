@@ -217,7 +217,8 @@ add("POST", "notification-presence", { instance_id: string, visible: bool, focus
 add("PATCH", "notification-policy", { categories: object({ approval: bool, ask: bool, failure: bool, interrupted: bool, reply: bool, routine_result: bool }), quiet_hours: object({ enabled: bool, start: string, end: string, time_zone: string }), if_revision: v => typeof v === "number" && Number.isInteger(v) && v >= 0 }, ["if_revision"], true);
 add("PATCH", "notification-device", { badge: bool, sound: one("system"), preview: one("generic"), if_revision: v => typeof v === "number" && Number.isInteger(v) && v >= 0 }, ["if_revision"], true);
 add("PATCH", "settings", { endpoint_base_url: string, endpoint_api_key: string, endpoint_models: models, endpoint_default_model: string,
-  default_provider_id: nullable(id), reader_model: nullable(object({ provider_id: id, model: string }, ["provider_id", "model"])),
+  default_provider_id: nullable(id), reader_model: nullable(v => object({ provider_id: id, model: string }, ["provider_id", "model"])(v) ||
+    object({ runner: one("claude_code"), model: string, config_dir: nullable(string) }, ["runner", "model"])(v)),
   launch_at_login: bool, locale: one("en", "zh"), theme: one("system", "light", "dark"),
   if_revision: v => typeof v === "number" && Number.isSafeInteger(v) && v >= 0 }, [], true);
 for (const [name, fields] of Object.entries({ bots: bot, providers: provider, "mcp-servers": mcp, skills: skill, routines: routine,

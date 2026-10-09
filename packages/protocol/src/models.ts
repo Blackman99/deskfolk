@@ -138,4 +138,17 @@ export type ProbeModelsResponse = {
 };
 
 /** An endpoint and one of its models, for reading lines (`Settings.reader_model`). */
-export type ReaderModel = { provider_id: string; model: string };
+export type ReaderEndpointModel = { provider_id: string; model: string };
+
+/**
+ * A Claude model run through your own Claude Code (ADR 0061), for reading lines: `config_dir` is
+ * one of the Claude accounts listed in Settings, null for the daemon's own environment.
+ */
+export type ReaderClaudeModel = { runner: "claude_code"; model: string; config_dir: string | null };
+
+/** The model that reads lines (`Settings.reader_model`): an endpoint's, or a Claude model of yours. */
+export type ReaderModel = ReaderEndpointModel | ReaderClaudeModel;
+
+export function isReaderClaudeModel(value: ReaderModel | null | undefined): value is ReaderClaudeModel {
+  return Boolean(value) && "runner" in value!;
+}

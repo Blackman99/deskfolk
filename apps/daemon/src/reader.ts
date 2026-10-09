@@ -8,7 +8,9 @@
  *
  * When no model can read it — no default model, the call failed, ran past its time or answered
  * with something that is not a reading — the line is read by the old word lists instead
- * (`line-reading.ts`), and the work log says so.
+ * (`line-reading.ts`), and the work log says so. The model may also be a Claude model of yours, run
+ * through your own Claude Code (ADR 0061); when that cannot read, the work log says
+ * `claude_unavailable` (not installed, or signed out) or `claude_failed`.
  *
  * Which job a line of yours is about (ADR 0057) is a call of its own, made beside the first and
  * shown the jobs the line may be about. It has no word lists behind it: a line no model could
@@ -19,6 +21,7 @@
 import { createHash } from "node:crypto";
 import { USER_MEMBER, type Message } from "@real-bot/protocol";
 import { NO_ABLATION, type Ablation } from "./ablation";
+import type { ClaudeJudge, ClaudeReaderTarget, ClaudeReadingAnswer, ClaudeReadingUsage } from "./claude-code/reading";
 import type { CompletionsClient, JudgeResult, MappedUsage } from "./completions";
 import {
   botLineByWords,
@@ -71,8 +74,11 @@ export type ReaderDeps = {
    * is set. Its `thinkingLevel` is sent with the reading: the lightest the model lists, since a line
    * of yours waits on the reading before it wakes anyone.
    */
-  routing: () => Promise<OrganizerRouting | null>;
+  routing: () => Promise<OrganizerRouting | ClaudeReaderTarget | null>;
   recordSpend: (input: { sessionId: string; target: OrganizerRouting; usage: MappedUsage | null; responded: boolean }) => void;
+  /** One tool-less Claude Code call for a reading, when you chose a Claude model for it; none, and such a reading is `claude_unavailable`. */
+  claudeJudge?: ClaudeJudge;
+  recordClaudeSpend?: (input: { sessionId: string; model: string; usage: ClaudeReadingUsage }) => void;
   draining: () => boolean;
   /** Benchmark switches (see `ablation.ts`): `reader` makes no call, as if it had failed. */
   ablation?: Ablation;
@@ -174,52 +180,68 @@ export function createReader(deps: ReaderDeps): Reader {
     if (deps.draining()) return byWords("draining", null, null);
     const routing = await deps.routing().catch(() => null);
     if (!routing) return byWords("no_model", null, null);
+    const claude = "kind" in routing ? routing : null;
+    const endpoint = "kind" in routing ? null : routing;
+    if (claude && !deps.claudeJudge) return byWords("claude_unavailable", claude.model, null);
     const prompt = promptPage(store, "zh").resolve(asked.prompt);
     const controller = new AbortController();
     inFlight.add(controller);
     // The whole wait, a slot included: the call's own timer only starts once it has one.
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     let result: JudgeResult | null = null;
+    let answered: ClaudeReadingAnswer | null = null;
     let threw: string | null = null;
     try {
-      result = await deps.completions.judge({
-        baseUrl: routing.baseUrl,
-        apiKey: routing.apiKey,
-        apiFormat: routing.apiFormat,
-        model: routing.model,
-        prompt: prompt.ref,
-        messages: [
-          { role: "system", content: prompt.text },
-          { role: "user", content: JSON.stringify(asked.payload) },
-        ],
-        signal: controller.signal,
-        timeoutMs,
-        maxTokens: READER_MAX_TOKENS,
-        ...(routing.thinkingLevel ? { thinkingLevel: routing.thinkingLevel } : {}),
-        lane: "reading",
-      });
+      if (claude) {
+        answered = await deps.claudeJudge!({ target: claude, system: prompt.text, prompt: JSON.stringify(asked.payload), signal: controller.signal });
+      } else if (endpoint) {
+        result = await deps.completions.judge({
+          baseUrl: endpoint.baseUrl,
+          apiKey: endpoint.apiKey,
+          apiFormat: endpoint.apiFormat,
+          model: endpoint.model,
+          prompt: prompt.ref,
+          messages: [
+            { role: "system", content: prompt.text },
+            { role: "user", content: JSON.stringify(asked.payload) },
+          ],
+          signal: controller.signal,
+          timeoutMs,
+          maxTokens: READER_MAX_TOKENS,
+          ...(endpoint.thinkingLevel ? { thinkingLevel: endpoint.thinkingLevel } : {}),
+          lane: "reading",
+        });
+      }
     } catch (error) {
       threw = error instanceof Error ? error.message : String(error);
     } finally {
       clearTimeout(timer);
       inFlight.delete(controller);
     }
-    if (result && asked.sessionId) {
+    if (result && endpoint && asked.sessionId) {
       try {
-        deps.recordSpend({ sessionId: asked.sessionId, target: routing, usage: result.usage,
+        deps.recordSpend({ sessionId: asked.sessionId, target: endpoint, usage: result.usage,
           responded: result.failKind === null || result.failKind === "incomplete" });
       } catch {
         // the ledger of spend is best-effort
       }
     }
-    const fail = threw !== null ? "call_error"
+    if (claude && answered?.usage && asked.sessionId && deps.recordClaudeSpend) {
+      try {
+        deps.recordClaudeSpend({ sessionId: asked.sessionId, model: claude.model, usage: answered.usage });
+      } catch {
+        // the ledger of spend is best-effort
+      }
+    }
+    const fail = threw !== null ? (claude ? "claude_failed" : "call_error")
       : controller.signal.aborted ? (stopped ? "stopped" : "timeout")
-        : result!.failKind && result!.failKind !== "incomplete" ? result!.failKind
-          : null;
-    const raw = result?.content ?? null;
+        : answered ? answered.fail
+          : result!.failKind && result!.failKind !== "incomplete" ? result!.failKind
+            : null;
+    const raw = answered?.content ?? result?.content ?? null;
     const reading = fail ? null : asked.parse(raw ?? "");
     if (!reading) {
-      const why = fail ?? (result!.truncated ? "truncated" : "unreadable");
+      const why = fail ?? (result?.truncated ? "truncated" : "unreadable");
       if (why === "unreadable") {
         store.notePromptParseFailure({ prompt: prompt.ref.id, locale: prompt.ref.locale, revision: prompt.ref.revision_id, reason: why, sessionId: asked.sessionId });
       }

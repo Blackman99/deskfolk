@@ -6,10 +6,14 @@
 import {
   KEYCHAIN_NAME,
   KEYCHAIN_REF,
+  isClaudeModelName,
   isLocalEndpoint,
+  isReaderClaudeModel,
   providerKeychainName,
   type PatchProviderRequest,
   type Provider,
+  type ReaderClaudeModel,
+  type ReaderEndpointModel,
   type ReaderModel,
   type Settings,
   type SettingsPatch,
@@ -24,6 +28,7 @@ import {
   serializeCatalog,
   unionProviderModels,
 } from "../models";
+import { listedConfigDir } from "./claude-code";
 import { createProviderSync, listProviders, patchProviderSync, providersCached } from "./providers";
 import {
   type ProviderRow,
@@ -75,8 +80,11 @@ export function settingsCached(ctx: StoreContext): Settings {
   // Kept as you chose it, read as null while its endpoint is gone or no longer lists the model.
   const readerProvider = providers.find((provider) => provider.id === emptyToNull(map.get("reader_provider_id")));
   const readerModel = emptyToNull(map.get("reader_model"));
-  const reader_model = readerProvider && readerModel && readerProvider.models.includes(readerModel)
-    ? { provider_id: readerProvider.id, model: readerModel } : null;
+  // A Claude model of yours (ADR 0061) is kept as chosen: it names no endpoint to look up.
+  const reader_model: ReaderModel | null = readerModel && map.get("reader_runner") === "claude_code"
+    ? { runner: "claude_code", model: readerModel, config_dir: emptyToNull(map.get("reader_config_dir")) }
+    : readerProvider && readerModel && readerProvider.models.includes(readerModel)
+      ? { provider_id: readerProvider.id, model: readerModel } : null;
   return {
     settings_rev: ctx.db.query<{ settings_rev: number }, []>("SELECT settings_rev FROM request_meta WHERE singleton = 1").get()!.settings_rev,
     workspace_path,
@@ -99,12 +107,22 @@ export function localeOf(ctx: StoreContext): "zh" | "en" {
   return settingsCached(ctx).locale === "en" ? "en" : "zh";
 }
 
-/** The model a patch names for reading lines (ADR 0055): one an endpoint lists, or null to follow the default. */
+/**
+ * The model a patch names for reading lines (ADR 0055): one an endpoint lists, a Claude model of
+ * yours on one of the accounts listed in Settings (ADR 0061), or null to follow the default.
+ */
 function readerModelOf(ctx: StoreContext, value: unknown): ReaderModel | null {
   if (value === null) return null;
-  const row = value as Partial<ReaderModel> | undefined;
+  if (value && typeof value === "object" && "runner" in value) {
+    const claude = value as Partial<ReaderClaudeModel>;
+    if (claude.runner !== "claude_code" || typeof claude.model !== "string" || !isClaudeModelName(claude.model)) {
+      throw new HttpError(422, "invalid_args", "reader_model must be { runner: \"claude_code\", model, config_dir } with a Claude model name");
+    }
+    return { runner: "claude_code", model: claude.model, config_dir: listedConfigDir(ctx, claude.config_dir, "reader_model.config_dir") };
+  }
+  const row = value as Partial<ReaderEndpointModel> | undefined;
   if (!row || typeof row !== "object" || typeof row.provider_id !== "string" || typeof row.model !== "string") {
-    throw new HttpError(422, "invalid_args", "reader_model must be null or { provider_id, model }");
+    throw new HttpError(422, "invalid_args", "reader_model must be null, { provider_id, model } or { runner, model, config_dir }");
   }
   const provider = providersCached(ctx).find((candidate) => candidate.id === row.provider_id);
   if (!provider) throw new HttpError(404, "not_found", "provider not found");
@@ -171,8 +189,12 @@ export function patchSettingsSync(ctx: StoreContext, patch: SettingsPatch | Reco
     }
     if ("reader_model" in patch) {
       const chosen = readerModelOf(ctx, patch.reader_model);
-      setSetting(ctx, "reader_provider_id", chosen?.provider_id ?? "");
+      const claude = isReaderClaudeModel(chosen) ? chosen : null;
+      // One choice at a time: an endpoint's model clears the Claude keys, a Claude model the endpoint's.
+      setSetting(ctx, "reader_provider_id", chosen && !isReaderClaudeModel(chosen) ? chosen.provider_id : "");
       setSetting(ctx, "reader_model", chosen?.model ?? "");
+      setSetting(ctx, "reader_runner", claude ? "claude_code" : "");
+      setSetting(ctx, "reader_config_dir", claude?.config_dir ?? "");
     }
   });
   const touchesEndpoint =
