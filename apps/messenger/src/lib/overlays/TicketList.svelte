@@ -9,9 +9,12 @@
 		TICKET_STATUS_ORDER,
 		actorFace,
 		actorName,
+		boardState,
 		completionPercentage,
+		countedTicketCount,
 		latestTurnOfTicket,
 		openTicketCount,
+		parkedTicketCount,
 		ticketObligations,
 		ticketTag,
 		totalTicketCount,
@@ -94,7 +97,14 @@
 	let rootEl = $state<HTMLElement | null>(null);
 
 	const totalTickets = $derived(totalTicketCount(detail.ticket_counts));
+	/** The tickets the percentage is a share of: dropped and set-aside ones are not work to do. */
+	const countedTickets = $derived(countedTicketCount(detail.ticket_counts));
 	const completionPct = $derived(completionPercentage(detail.ticket_counts));
+	/** The job is over, set aside or dormant: nobody picks up a ticket left open (the daemon's ball does not move in it). */
+	const boardSettled = $derived(boardState(detail));
+	const settledChip = $derived(boardSettled === 'dormant' ? t.plan.dormant : boardSettled === 'parked' ? t.plan.status.parked : t.plan.status.done);
+	/** The hint says tickets are left open, so it waits for one to be. */
+	const hasOpenCards = $derived(tickets.some((row) => row.status === 'todo' || row.status === 'doing' || row.status === 'review'));
 	const columns = $derived(boardColumns(tickets, optimistic));
 
 	$effect(() => {
@@ -123,8 +133,14 @@
 		return statusOptions.map((option) => (option.value === ticket.status ? { ...option, label: current } : option));
 	}
 
-	/** A stage the status alone does not say (ADR 0046) shows in its place: 审查中, 返工, 已交付, 已通过. */
+	/** Dropped by its lead (作废): parked with a reason. A ticket you set aside on the board has none and stays 搁置. */
+	function isDropped(ticket: TicketWithArtifacts): boolean {
+		return ticket.status === 'parked' && ticket.dropped_why != null;
+	}
+
+	/** A stage the status alone does not say (ADR 0046) shows in its place: 审查中, 返工, 已交付, 已通过, 作废. */
 	function stageLabel(ticket: TicketWithArtifacts): string {
+		if (isDropped(ticket)) return t.plan.ticketDropped;
 		const stage = ticket.stage;
 		if (stage === 'submitted' || stage === 'in_review' || stage === 'rework' || stage === 'approved') return t.plan.ticketStage[stage];
 		return t.plan.ticketStatus[ticket.status];
@@ -296,6 +312,37 @@
 		void pump();
 	}
 
+	/**
+	 * Making this ticket the job's sample (ADR 0060) is offered where a sample matters — a large job, or
+	 * one that has one — on a ticket still being made: not the sample already, not through, not parked.
+	 */
+	function canMakeSample(ticket: TicketWithArtifacts): boolean {
+		if (ticket.sample || ticket.status === 'done' || ticket.status === 'parked' || ticket.stage === 'approved') return false;
+		return detail.scale?.value === 'large' || detail.tickets.some((row) => row.sample);
+	}
+
+	async function makeSample(ticket: TicketWithArtifacts): Promise<void> {
+		if (!api) return;
+		patchingId = ticket.id;
+		requestsOut += 1;
+		errorId = null;
+		try {
+			const result = await api.patchTicket(ticket.id, { sample: true, if_revision: detail.revision });
+			onPatched(result);
+		} catch (err) {
+			if (errorStatus(err) === 409) {
+				onConflict();
+			} else {
+				errorId = ticket.id;
+			}
+		} finally {
+			requestsOut -= 1;
+			patchingId = null;
+		}
+		// A status move queued while this was on its way waits for it.
+		void pump();
+	}
+
 	/** A stage a hand-over is still waiting in (ADR 0046). Moving it drops that hand-over, so it asks first. */
 	function awaitingReview(ticket: TicketWithArtifacts): boolean {
 		return ticket.stage === 'submitted' || ticket.stage === 'in_review';
@@ -449,21 +496,28 @@
 					<path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
 				</svg>
 				<span class="ticket-list-title">{t.plan.tickets}</span>
+				{#if boardSettled}
+					<span class="ticket-settled-chip is-{boardSettled}">{settledChip}</span>
+				{/if}
 			</div>
 			<div class="ticket-list-counts-wrap">
-				<span class="ticket-list-counts">{t.plan.ticketCounts(openTicketCount(detail.ticket_counts), totalTickets)}</span>
-				{#if totalTickets > 0}
+				<span class="ticket-list-counts">{t.plan.ticketCounts(openTicketCount(detail.ticket_counts), countedTickets, parkedTicketCount(detail.ticket_counts))}</span>
+				{#if countedTickets > 0}
 					<span class="ticket-completion-pill mono" class:is-done={completionPct === 100}>{completionPct}%</span>
 				{/if}
 			</div>
 		</div>
 
-		{#if totalTickets > 0}
+		{#if countedTickets > 0}
 			<div class="ticket-progress-track" aria-hidden="true">
 				<div class="ticket-progress-fill" style:width="{completionPct}%"></div>
 			</div>
 		{/if}
 
+		{#if boardSettled && hasOpenCards}
+			<!-- Said once, in a line, and it does not promise the job picks up again when a ticket moves. -->
+			<p class="ticket-settled-hint">{t.plan.board.settled[boardSettled]}</p>
+		{/if}
 		{#if tickets.length > 0}
 			<p class="ticket-list-hint">{t.plan.links.ticketsHint}</p>
 		{/if}
@@ -475,7 +529,7 @@
 	{#if tickets.length === 0}
 		<p class="ticket-list-empty">{t.plan.ticketsNone}</p>
 	{:else}
-		<div class="ticket-board">
+		<div class="ticket-board" class:is-settled={boardSettled !== null}>
 			{#each columns as column (column.status)}
 				<section
 					class="ticket-column is-{column.status}"
@@ -504,6 +558,8 @@
 				<!-- A closed ticket waits on nothing and nobody is still on it: 「已通过 · 设计师在做 · 要等 #02」 read as contradictory (2026-10-03). -->
 				{@const closed = ticket.status === 'done' || ticket.status === 'parked'}
 				{@const waits = closed ? null : dependsLabel(ticket)}
+				<!-- Making a ticket the sample is offered on the picked card, where its other actions are. -->
+				{@const sampleable = Boolean(api) && picked && canMakeSample(ticket)}
 				<!-- A press on the card drags it; from the keyboard the status menu moves it. -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div
@@ -581,12 +637,16 @@
 							{#if !picked && detail.routing_on && ticket.model_override}
 								<span class="ticket-meta-item ticket-meta-model mono">{t.plan.onModel(ticket.model_override.model)}</span>
 							{/if}
+							<!-- Why its lead dropped it, on a line of its own: no 「·」 in front of it. -->
+							{#if isDropped(ticket) && ticket.dropped_why}
+								<span class="ticket-dropped-why">{t.plan.droppedWhy(ticket.dropped_why)}</span>
+							{/if}
 						</div>
 						{#if ticket.spec}
 							<p class="ticket-spec">{ticket.spec}</p>
 						{/if}
 					</div>
-					{#if ticket.artifacts.length > 0 || node || (picked && onShowInTrace)}
+					{#if ticket.artifacts.length > 0 || node || (picked && onShowInTrace) || sampleable}
 						<div class="ticket-links">
 							{#if ticket.artifacts.length > 0}
 								<button type="button" class="ticket-artifacts" onclick={() => onOpenArtifacts(ticket)}>
@@ -616,6 +676,14 @@
 										<path d="M12 8v4M6 16v-2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2"></path>
 									</svg>
 									<span>{t.plan.links.showInTrace}</span>
+								</button>
+							{/if}
+							{#if sampleable}
+								<button type="button" class="ticket-jump ticket-make-sample" title={t.plan.makeSampleHint} disabled={patchingId === ticket.id} onclick={() => makeSample(ticket)}>
+									<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+										<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+									</svg>
+									<span>{t.plan.makeSample}</span>
 								</button>
 							{/if}
 						</div>
@@ -824,6 +892,42 @@
 		color: var(--ok-text);
 	}
 
+	/*
+	 * A job nobody works on any more: the board's own word for it, as quiet as the header's status
+	 * pill (the same shape; dormant dashed, like the header's) — it says what is, it asks for nothing.
+	 */
+	.ticket-settled-chip {
+		display: inline-block;
+		padding: 0 6px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-full);
+		background: var(--chip);
+		color: var(--muted);
+		font-size: 11px;
+		font-weight: 600;
+		line-height: 16px;
+		white-space: nowrap;
+	}
+
+	.ticket-settled-chip.is-ended {
+		border-color: var(--ok-line);
+		background: var(--ok-bg);
+		color: var(--ok-text);
+	}
+
+	.ticket-settled-chip.is-dormant {
+		border-style: dashed;
+		border-color: var(--line-hover);
+		background: transparent;
+	}
+
+	.ticket-settled-hint {
+		margin: 0;
+		font-size: 11px;
+		line-height: 1.45;
+		color: var(--muted);
+	}
+
 	/* Progress bar */
 	.ticket-progress-track {
 		width: 100%;
@@ -872,6 +976,26 @@
 	.ticket-row:has(:global(.real-select.is-open)) {
 		position: relative;
 		z-index: 1;
+		opacity: 1;
+	}
+
+	/*
+	 * On a settled board the cards still open are the ones nobody will pick up: they sit back, their
+	 * accent off — a doing or review card drawn as a todo one, only fainter. Moving or opening them
+	 * still works; and the one picked, or whose menu is open, comes forward again.
+	 */
+	.ticket-board.is-settled .ticket-row.is-todo,
+	.ticket-board.is-settled .ticket-row.is-doing,
+	.ticket-board.is-settled .ticket-row.is-review {
+		border-color: var(--line);
+		border-left-color: var(--muted-light);
+		background: var(--pane);
+		opacity: 0.55;
+	}
+
+	/* The one picked, or with its menu open, comes forward: it is the one being read. */
+	.ticket-board.is-settled .ticket-row.is-selected,
+	.ticket-board.is-settled .ticket-row:has(:global(.real-select.is-open)) {
 		opacity: 1;
 	}
 
@@ -1115,6 +1239,14 @@
 
 	.ticket-ball {
 		color: var(--ink-secondary);
+	}
+
+	/* Why its lead dropped it: muted, a line of its own, no leading dot. */
+	.ticket-dropped-why {
+		flex: 1 1 100%;
+		min-width: 0;
+		overflow-wrap: anywhere;
+		color: var(--muted);
 	}
 
 	/* Worker line */

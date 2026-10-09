@@ -701,7 +701,7 @@ export const DORMANT_PLAN_TRIGGERS: ReadonlyArray<{ name: string; sql: string }>
 /** One line on a card. A paragraph would turn the board into the transcript it points at. */
 const SUMMARY_MAX = 80;
 
-type SummaryRow = Task & { last_activity_at: string };
+type SummaryRow = Task & { last_activity_at: string; turn_count: number };
 
 const TICKET_STATUSES_FOR_COUNTS: readonly TicketStatus[] = ["todo", "doing", "review", "done", "parked"];
 
@@ -729,7 +729,13 @@ export function ticketCountsFor(ctx: StoreContext, taskIds: readonly string[]): 
 }
 
 /** The switcher row for one plan: the stored row plus what the organizer says it is for. */
-export function taskSummary(ctx: StoreContext, task: Task, lastActivityAt: string, counts?: Record<TicketStatus, number>): SessionTaskSummary {
+export function taskSummary(
+  ctx: StoreContext,
+  task: Task,
+  lastActivityAt: string,
+  counts?: Record<TicketStatus, number>,
+  turnCount?: number,
+): SessionTaskSummary {
   const spec = parsePlanSpec(task.spec);
   return {
     id: task.id,
@@ -743,6 +749,7 @@ export function taskSummary(ctx: StoreContext, task: Task, lastActivityAt: strin
     status: task.status,
     ticket_counts: counts ?? ticketCountsFor(ctx, [task.id]).get(task.id) ?? emptyTicketCounts(),
     dormant_since: task.dormant_since ?? null,
+    ...(turnCount === undefined ? {} : { turn_count: turnCount }),
   };
 }
 
@@ -766,7 +773,8 @@ export function sessionTasks(ctx: StoreContext, sessionId: string): SessionTaskS
               COALESCE(
                 (SELECT MAX(last_activity_at) FROM turns WHERE turns.task_id = t.id),
                 t.created_at
-              ) AS last_activity_at
+              ) AS last_activity_at,
+              (SELECT COUNT(*) FROM turns WHERE task_id = t.id) AS turn_count
        FROM tasks t
        WHERE EXISTS (SELECT 1 FROM turns WHERE turns.task_id = t.id AND turns.session_id = ?)
           OR EXISTS (SELECT 1 FROM messages WHERE messages.task_id = t.id AND messages.session_id = ?)
@@ -774,7 +782,7 @@ export function sessionTasks(ctx: StoreContext, sessionId: string): SessionTaskS
     )
     .all(sessionId, sessionId);
   const counts = ticketCountsFor(ctx, rows.map((row) => row.id));
-  return rows.map((row) => taskSummary(ctx, row, row.last_activity_at, counts.get(row.id)));
+  return rows.map((row) => taskSummary(ctx, row, row.last_activity_at, counts.get(row.id), row.turn_count));
 }
 
 /** Plans this session could go back to: the ones it took part in, minus routine plans and the current one. */

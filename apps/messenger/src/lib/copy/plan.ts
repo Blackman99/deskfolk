@@ -8,6 +8,9 @@ export const zh = {
   ticketStatus: { todo: "待做", doing: "进行中", review: "待验收", done: "已完成", parked: "搁置" },
   /** A stage the status alone does not say (ADR 0046): shown in its place. */
   ticketStage: { submitted: "已交付", in_review: "审查中", rework: "返工", approved: "已通过" },
+  /** A ticket its lead dropped (作废), as against one you set aside on the board (搁置): it has a reason, and it reads as dropped. */
+  ticketDropped: "作废",
+  droppedWhy: (why: string) => `作废：${why}`,
   partsApproved: (approved: number, total: number) => `${approved}/${total} 已通过`,
   ball: {
     owner: (name: string) => `球在 ${name} 手里`,
@@ -29,6 +32,9 @@ export const zh = {
   ballWaits: (tag: string, sample: boolean) => sample ? `等样片 ${tag} 你放行` : `等 ${tag} 先交`,
   sample: "样片",
   sampleHint: "先做的那一件：按整件事的水准做足、由你放行；其余各件等它，交上来时拿它对照",
+  /** On a card that is not the sample, in a large job or one that has a sample: make it the sample instead. */
+  makeSample: "设为样片",
+  makeSampleHint: "改让这一件当样片：原来的样片不再是样片，挂在它上面的检查也撤下；要你来放行这一件",
   dependsOn: (tags: string) => `要等 ${tags} 先完成`,
   editDepends: "依赖",
   dependsHint: "这张任务要等哪些先完成（监督器不会先叫醒它）",
@@ -179,7 +185,8 @@ export const zh = {
   jumpToMessage: "跳到那条消息",
   tickets: "任务",
   ticketsNone: "还没有拆出任务。",
-  ticketCounts: (open: number, total: number) => `${open} 未完成 · 共 ${total}`,
+  /** 「N 未完成 · 共 M」, and how many of the M were dropped or set aside when any were. */
+  ticketCounts: (open: number, total: number, parked = 0) => `${open} 未完成 · 共 ${total}${parked > 0 ? ` · 作废/搁置 ${parked}` : ""}`,
   /** Who is on a ticket: filled from the division of work when it opens, so a ticket nobody started yet reads as theirs to do. */
   worker: (name: string, started = true) => (started ? `${name}在做` : `${name}来做`),
   /** Who made a ticket that is closed (approved, dropped): nobody is still on it. */
@@ -201,8 +208,16 @@ export const zh = {
     pendingMove: (column: string) => `移到「${column}」会作废还在等你放行或退回的交付；移到已完成会直接变成已通过。`,
     moveAnyway: "仍然移动",
     keep: "留下",
-    conflictDropped: "规划刚变过，没移成的已放回。"
+    conflictDropped: "规划刚变过，没移成的已放回。",
+    /** A job nobody works on any more: its open tickets stay where they are, and nobody picks them up. */
+    settled: {
+      ended: "已结束：没走完的任务不会再有人接着做",
+      dormant: "休眠：没走完的任务不会再有人接着做",
+      parked: "已搁置：没走完的任务不会再有人接着做"
+    }
   },
+  /** The switcher's one row for the jobs that were a single question and its answer. */
+  oneShotJobs: (n: number) => `一问一答 ${n} 件`,
   /** How the plan's spec and its tickets point at each other: every ticket meets the spec, some lines hold for one ticket alone. */
   links: {
     ticketsHint: "每个任务都要满足要点里的验收、规则和你的要求；点一个任务，流程图点亮它的轮，并列出它要满足的。",
@@ -336,6 +351,9 @@ export const en: CopyShape<typeof zh> = {
   status: { active: "In progress", done: "Done", parked: "Parked" },
   ticketStatus: { todo: "To do", doing: "In progress", review: "In review", done: "Done", parked: "Parked" },
   ticketStage: { submitted: "Submitted", in_review: "In review", rework: "Rework", approved: "Approved" },
+  /** A ticket its lead dropped, as against one you set aside on the board: it has a reason, and it reads as dropped. */
+  ticketDropped: "Dropped",
+  droppedWhy: (why: string) => `Dropped: ${why}`,
   partsApproved: (approved: number, total: number) => `${approved}/${total} approved`,
   ball: {
     owner: (name: string) => `With ${name}`,
@@ -356,6 +374,9 @@ export const en: CopyShape<typeof zh> = {
   ballWaits: (tag: string, sample: boolean) => sample ? `Waits for you to approve sample ${tag}` : `Waits for ${tag} to be handed over`,
   sample: "Sample",
   sampleHint: "Made first, to the whole job's standard, for you to approve; the others wait for it and are compared with it",
+  /** On a card that is not the sample, in a large job or one that has a sample: make it the sample instead. */
+  makeSample: "Make it the sample",
+  makeSampleHint: "Make this one the sample instead: the old sample stops being it, the checks held to it come down, and you approve this one",
   dependsOn: (tags: string) => `Waits for ${tags}`,
   editDepends: "Depends on",
   dependsHint: "Which tickets this one waits for (the supervisor wakes nobody to it before they are done)",
@@ -503,7 +524,8 @@ export const en: CopyShape<typeof zh> = {
   jumpToMessage: "Jump to that message",
   tickets: "Tickets",
   ticketsNone: "No tickets yet.",
-  ticketCounts: (open: number, total: number) => `${open} open · ${total} total`,
+  /** "N open · M in all", and how many of the M were dropped or set aside when any were. */
+  ticketCounts: (open: number, total: number, parked = 0) => `${open} open · ${total} in all${parked > 0 ? ` · ${parked} dropped/set aside` : ""}`,
   worker: (name: string, started = true) => (started ? `${name} is on it` : `For ${name}`),
   /** Who made a ticket that is closed (approved, dropped): nobody is still on it. */
   workerDone: (name: string) => `By ${name}`,
@@ -524,8 +546,16 @@ export const en: CopyShape<typeof zh> = {
     pendingMove: (column: string) => `Moving it to “${column}” drops the hand-over still waiting for you to approve or send back; moving it to done marks it approved.`,
     moveAnyway: "Move it anyway",
     keep: "Leave it",
-    conflictDropped: "The plan just changed, so the moves that had not gone through are back."
+    conflictDropped: "The plan just changed, so the moves that had not gone through are back.",
+    /** A job nobody works on any more: its open tickets stay where they are, and nobody picks them up. */
+    settled: {
+      ended: "Settled: no one will pick up the tickets left open",
+      dormant: "Dormant: no one will pick up the tickets left open",
+      parked: "Parked: no one will pick up the tickets left open"
+    }
   },
+  /** The switcher's one row for the jobs that were a single question and its answer. */
+  oneShotJobs: (n: number) => `${n} one-question job${n === 1 ? "" : "s"}`,
   links: {
     ticketsHint: "Every ticket meets the plan’s done-when lines, rules and what you asked for. Pick one: the board lights its turns and it lists what it has to meet.",
     heldTo: "Has to meet",

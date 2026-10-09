@@ -11,6 +11,7 @@ import {
   type Bot,
   type PlanRequirement,
   type PlanSpec,
+  type SessionTaskSummary,
   type TaskDetail,
   type TaskTraceNode,
   type TicketCounts,
@@ -77,12 +78,56 @@ export function totalTicketCount(counts: TicketCounts | null | undefined): numbe
   return TICKET_STATUS_ORDER.reduce((sum, status) => sum + (counts[status] ?? 0), 0);
 }
 
-/** Percentage of tickets in done status (0 to 100, rounded). */
+/** Tickets dropped by their lead or set aside on the board: parked, work nobody is left to do. */
+export function parkedTicketCount(counts: TicketCounts | null | undefined): number {
+  return counts?.parked ?? 0;
+}
+
+/** Every ticket that is not parked: the ones the job's progress is a share of. */
+export function countedTicketCount(counts: TicketCounts | null | undefined): number {
+  return totalTicketCount(counts) - parkedTicketCount(counts);
+}
+
+/**
+ * Percentage of tickets in done status (0 to 100, rounded). A dropped or set-aside ticket is neither
+ * done nor still to do, so it is left out of the whole: a job that finished everything it kept reads 100.
+ */
 export function completionPercentage(counts: TicketCounts | null | undefined): number {
-  const total = totalTicketCount(counts);
+  const total = countedTicketCount(counts);
   if (total === 0) return 0;
   const done = counts?.done ?? 0;
   return Math.min(100, Math.max(0, Math.round((done / total) * 100)));
+}
+
+/**
+ * How a job that is no longer being worked on reads on its board: `dormant` (set aside with its
+ * conversation), `parked` (set aside), `ended` (done); null while it is going. The same order the
+ * daemon's ball goes by (`ballMoves` in plan-spec.ts): in none of these does anyone pick up a ticket
+ * left open.
+ */
+export type BoardState = "dormant" | "parked" | "ended";
+
+export function boardState(detail: Pick<SessionTaskSummary, "status" | "dormant_since">): BoardState | null {
+  if (detail.dormant_since) return "dormant";
+  if (detail.status === "parked") return "parked";
+  if (detail.status === "done") return "ended";
+  return null;
+}
+
+/**
+ * A job that was one question and its answer: no tickets, one turn at most, and closed. The switcher
+ * folds those, so the jobs that were work stay in view. A daemon that does not count turns (no
+ * `turn_count`) never folds a job.
+ */
+export function isOneShot(summary: SessionTaskSummary): boolean {
+  if (summary.turn_count === undefined || summary.turn_count > 1) return false;
+  if (totalTicketCount(summary.ticket_counts) > 0) return false;
+  return summary.status !== "active" || Boolean(summary.closed_at) || Boolean(summary.dormant_since);
+}
+
+/** The job the board opens on when none is asked for: the newest that is not a one-shot, else the newest. `jobs` is newest first. */
+export function defaultJob<T extends SessionTaskSummary>(jobs: readonly T[]): T | null {
+  return jobs.find((job) => !isOneShot(job)) ?? jobs[0] ?? null;
 }
 
 /** The newest node that worked in that ticket — by `created_at`, ties broken by array order. */

@@ -2,7 +2,7 @@
 	import type { PlanStatus, SessionTaskSummary } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import { isOutside } from '../click-outside.ts';
-	import { openTicketCount, planTitle, totalTicketCount } from './plan-board.ts';
+	import { countedTicketCount, isOneShot, openTicketCount, parkedTicketCount, planTitle, totalTicketCount } from './plan-board.ts';
 
 	interface Props {
 		jobs: readonly SessionTaskSummary[];
@@ -18,6 +18,19 @@
 
 	let titleMenuEl = $state<HTMLDivElement | null>(null);
 	let titleTriggerEl = $state<HTMLButtonElement | null>(null);
+
+	/**
+	 * The jobs that were one question and its answer fold into a row of their own, so the jobs that
+	 * were work stay in view. The one on screen never folds: it is where you are.
+	 */
+	const folded = $derived(jobs.filter((job) => job.id !== currentId && isOneShot(job)));
+	const listed = $derived(jobs.filter((job) => !folded.includes(job)));
+	let foldOpen = $state(false);
+
+	// A menu that opens again opens compact.
+	$effect(() => {
+		if (!open) foldOpen = false;
+	});
 
 	/** A row from a daemon that predates plans has neither a status nor counts. */
 	function planStatusOf(job: SessionTaskSummary): PlanStatus {
@@ -76,6 +89,38 @@
 	}
 </script>
 
+{#snippet jobRow(job: SessionTaskSummary)}
+	{@const status = planStatusOf(job)}
+	{@const total = totalTicketCount(job.ticket_counts)}
+	<button
+		type="button"
+		role="option"
+		class="trace-job"
+		class:is-current={job.id === currentId}
+		aria-selected={job.id === currentId}
+		onclick={() => {
+			onSelectJob(job.id);
+			titleTriggerEl?.focus();
+		}}
+	>
+		<span class="trace-job-check" aria-hidden="true">
+			{#if job.id === currentId}
+				<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+					<polyline points="20 6 9 17 4 12"></polyline>
+				</svg>
+			{/if}
+		</span>
+		<div class="trace-job-info">
+			<span class="trace-job-title">{planTitle(job)}</span>
+			<span class="trace-job-meta">
+				<span class="plan-status is-{status}">{t.plan.status[status]}</span>
+				{#if total > 0} · {t.plan.ticketCounts(openTicketCount(job.ticket_counts), countedTicketCount(job.ticket_counts), parkedTicketCount(job.ticket_counts))}{/if}
+				 · <span class="mono">{job.dir}</span>
+			</span>
+		</div>
+	</button>
+{/snippet}
+
 {#if jobs.length > 1}
 	<div class="trace-title-select" bind:this={titleMenuEl}>
 		<button
@@ -112,37 +157,26 @@
 				aria-label={t.trace.title}
 				onkeydown={onMenuKeydown}
 			>
-				{#each jobs as job (job.id)}
-					{@const status = planStatusOf(job)}
-					{@const total = totalTicketCount(job.ticket_counts)}
-					<button
-						type="button"
-						role="option"
-						class="trace-job"
-						class:is-current={job.id === currentId}
-						aria-selected={job.id === currentId}
-						onclick={() => {
-							onSelectJob(job.id);
-							titleTriggerEl?.focus();
-						}}
-					>
+				{#each listed as job (job.id)}
+					{@render jobRow(job)}
+				{/each}
+				{#if folded.length > 0}
+					<button type="button" class="trace-job is-fold" aria-expanded={foldOpen} onclick={() => (foldOpen = !foldOpen)}>
 						<span class="trace-job-check" aria-hidden="true">
-							{#if job.id === currentId}
-								<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
-									<polyline points="20 6 9 17 4 12"></polyline>
-								</svg>
-							{/if}
+							<svg class="trace-job-fold-arrow" class:is-open={foldOpen} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+								<polyline points="9 6 15 12 9 18"></polyline>
+							</svg>
 						</span>
 						<div class="trace-job-info">
-							<span class="trace-job-title">{planTitle(job)}</span>
-							<span class="trace-job-meta">
-								<span class="plan-status is-{status}">{t.plan.status[status]}</span>
-								{#if total > 0} · {t.plan.ticketCounts(openTicketCount(job.ticket_counts), total)}{/if}
-								 · <span class="mono">{job.dir}</span>
-							</span>
+							<span class="trace-job-title">{t.plan.oneShotJobs(folded.length)}</span>
 						</div>
 					</button>
-				{/each}
+					{#if foldOpen}
+						{#each folded as job (job.id)}
+							{@render jobRow(job)}
+						{/each}
+					{/if}
+				{/if}
 			</div>
 		{/if}
 	</div>
@@ -248,6 +282,25 @@
 	.trace-job:focus-visible {
 		background: var(--chip);
 		outline: none;
+	}
+
+	/* The fold row: a quiet line, its arrow turning to point down once it is open. */
+	.trace-job.is-fold {
+		align-items: center;
+		color: var(--muted);
+	}
+
+	.trace-job.is-fold .trace-job-check {
+		margin-top: 0;
+		color: var(--muted);
+	}
+
+	.trace-job-fold-arrow {
+		transition: transform 0.15s ease;
+	}
+
+	.trace-job-fold-arrow.is-open {
+		transform: rotate(90deg);
 	}
 
 	.trace-job.is-current {

@@ -42,9 +42,12 @@
 	import {
 		actorFace,
 		actorName,
+		countedTicketCount,
+		defaultJob,
 		firstPreviewable,
 		latestTurnOfTicket,
 		openTicketCount,
+		parkedTicketCount,
 		planTitle,
 		ticketArtifactAttachments,
 		totalTicketCount
@@ -699,7 +702,8 @@
 			const listed = await api.sessionTasks(session);
 			if (seq !== loadSeq) return;
 			jobs = listed;
-			const next = id && listed.some((job) => job.id === id) ? id : (listed[0]?.id ?? null);
+			// With none asked for, the newest job that was work: a question and its answer is not what you came back to.
+			const next = id && listed.some((job) => job.id === id) ? id : (defaultJob(listed)?.id ?? null);
 			// A refresh of the same plan keeps what you unfolded and lit. Switching plans leaves this
 			// one as it is, to come back to, and takes the next one up as it was left, or fresh.
 			if (next !== currentId) {
@@ -891,7 +895,7 @@
 						{/if}
 						{#if detail?.kind} · {detail.kind}{/if}
 						{#if detail && totalTicketCount(detail.ticket_counts) > 0}
-							 · {t.plan.ticketCounts(openTicketCount(detail.ticket_counts), totalTicketCount(detail.ticket_counts))}
+							 · {t.plan.ticketCounts(openTicketCount(detail.ticket_counts), countedTicketCount(detail.ticket_counts), parkedTicketCount(detail.ticket_counts))}
 						{/if}
 						{#if trace.session_id} · {placeOf({ session_id: trace.session_id })}{/if}
 						 · <span class="mono">{trace.dir}</span>

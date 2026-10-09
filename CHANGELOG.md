@@ -6,6 +6,13 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### The board says what was dropped and when a job has ended
+
+- A ticket its lead dropped now reads "Dropped" on the board, with the reason on its card ("Dropped: …"); one you set aside yourself still reads "Parked". The ticket list's counts and the completion percentage leave both out — "3 open · 8 in all · 2 dropped/set aside" — and the job's header and the switcher count the same way.
+- "Make it the sample" is on a picked ticket in a large job, or one that already has a sample.
+- The job switcher folds the jobs that were one question and its answer into one row, "N one-question jobs", that opens in place. The board opens on your newest real job rather than the latest throwaway question.
+- When a job is done, parked or dormant, its ticket board says so, with a line that no one will pick up the tickets left open, and fades the cards still open. You can still move them.
+
 ### The trace shows your decisions; a requirement holds for the job unless you say otherwise
 
 - The trace now has a card for each decision of yours, under the turn it answers: your answers to a Bot's questions, your approvals and send-backs (with your words), and lines of yours that put a ticket back to rework.

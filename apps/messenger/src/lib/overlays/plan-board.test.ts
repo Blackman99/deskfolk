@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { USER_MEMBER, type AcceptanceCheck, type PlanRequirement, type PlanSpec, type TaskTraceNode, type TicketCounts, type TicketWithArtifacts } from "@real-bot/protocol";
+import { USER_MEMBER, type AcceptanceCheck, type PlanRequirement, type PlanSpec, type SessionTaskSummary, type TaskTraceNode, type TicketCounts, type TicketWithArtifacts } from "@real-bot/protocol";
 import { aBot } from "../test-fixtures.ts";
 import { botAvatarColor } from "../avatar.ts";
 import { rosterLetter } from "../sidebar/roster-letter.ts";
@@ -8,10 +8,15 @@ import {
   TICKET_STATUS_ORDER,
   actorFace,
   actorName,
+  boardState,
+  countedTicketCount,
   countsEntries,
+  defaultJob,
+  isOneShot,
   firstPreviewable,
   latestTurnOfTicket,
   openTicketCount,
+  parkedTicketCount,
   parseSpecLines,
   planTitle,
   specLines,
@@ -132,6 +137,78 @@ test("completionPercentage computes rounded done percentage", () => {
   expect(completionPercentage({ todo: 0, doing: 0, review: 0, done: 3, parked: 0 })).toBe(100);
   expect(completionPercentage({ todo: 1, doing: 0, review: 0, done: 0, parked: 0 })).toBe(0);
   expect(completionPercentage(null)).toBe(0);
+});
+
+test("completionPercentage leaves out tickets that are parked, dropped or set aside: they are not work still to do", () => {
+  // 3 of 4 tickets that count are done; the two parked ones are neither done nor left to do.
+  expect(completionPercentage({ todo: 1, doing: 0, review: 0, done: 3, parked: 2 })).toBe(75);
+  expect(completionPercentage({ todo: 0, doing: 0, review: 0, done: 1, parked: 4 })).toBe(100);
+  // Nothing but parked tickets: nothing to be a share of.
+  expect(completionPercentage({ todo: 0, doing: 0, review: 0, done: 0, parked: 3 })).toBe(0);
+});
+
+test("countedTicketCount is every ticket but the parked, and parkedTicketCount is the rest", () => {
+  const counts: TicketCounts = { todo: 1, doing: 2, review: 3, done: 4, parked: 5 };
+  expect(countedTicketCount(counts)).toBe(10);
+  expect(parkedTicketCount(counts)).toBe(5);
+  expect(countedTicketCount(null)).toBe(0);
+  expect(parkedTicketCount(undefined)).toBe(0);
+});
+
+function aSummary(over: Partial<SessionTaskSummary> = {}): SessionTaskSummary {
+  return {
+    id: "task-1",
+    dir: "work/x",
+    title: "x",
+    session_id: "group-1",
+    closed_at: null,
+    last_activity_at: "2026-09-22T00:00:00.000Z",
+    goal: null,
+    kind: null,
+    status: "active",
+    ticket_counts: { todo: 0, doing: 0, review: 0, done: 0, parked: 0 },
+    ...over,
+  };
+}
+
+test("boardState reads a settled job the way the daemon's ball does: dormant first, then parked, then done", () => {
+  expect(boardState(aSummary())).toBeNull();
+  expect(boardState(aSummary({ status: "done" }))).toBe("ended");
+  expect(boardState(aSummary({ status: "parked" }))).toBe("parked");
+  expect(boardState(aSummary({ dormant_since: "2026-09-23T00:00:00.000Z" }))).toBe("dormant");
+  // Dormancy outranks the status it was set aside under.
+  expect(boardState(aSummary({ status: "done", dormant_since: "2026-09-23T00:00:00.000Z" }))).toBe("dormant");
+  expect(boardState(aSummary({ status: "parked", dormant_since: "2026-09-23T00:00:00.000Z" }))).toBe("dormant");
+  expect(boardState(aSummary({ dormant_since: null }))).toBeNull();
+});
+
+test("isOneShot: a closed job with no tickets and a single turn", () => {
+  const closed = { status: "done" as const, closed_at: "2026-09-22T01:00:00.000Z" };
+  expect(isOneShot(aSummary({ ...closed, turn_count: 1 }))).toBe(true);
+  expect(isOneShot(aSummary({ ...closed, turn_count: 0 }))).toBe(true);
+  // Any one of the three says it is closed.
+  expect(isOneShot(aSummary({ status: "done", turn_count: 1 }))).toBe(true);
+  expect(isOneShot(aSummary({ status: "parked", turn_count: 1 }))).toBe(true);
+  expect(isOneShot(aSummary({ closed_at: "2026-09-22T01:00:00.000Z", turn_count: 1 }))).toBe(true);
+  expect(isOneShot(aSummary({ dormant_since: "2026-09-23T00:00:00.000Z", turn_count: 1 }))).toBe(true);
+});
+
+test("isOneShot is false for a job still going, one that took two turns, one with a ticket, or one with no count", () => {
+  const closed = { status: "done" as const };
+  expect(isOneShot(aSummary({ turn_count: 1 }))).toBe(false);
+  expect(isOneShot(aSummary({ ...closed, turn_count: 2 }))).toBe(false);
+  expect(isOneShot(aSummary({ ...closed, turn_count: 1, ticket_counts: { todo: 0, doing: 0, review: 0, done: 0, parked: 1 } }))).toBe(false);
+  // A daemon that does not count turns never folds a job.
+  expect(isOneShot(aSummary(closed))).toBe(false);
+});
+
+test("defaultJob is the newest job that is not a one-shot, else the newest", () => {
+  const shot = (id: string) => aSummary({ id, status: "done", turn_count: 1 });
+  const real = (id: string) => aSummary({ id, status: "done", turn_count: 5 });
+  expect(defaultJob([shot("a"), shot("b"), real("c"), real("d")])?.id).toBe("c");
+  expect(defaultJob([real("a"), shot("b")])?.id).toBe("a");
+  expect(defaultJob([shot("a"), shot("b")])?.id).toBe("a");
+  expect(defaultJob([])).toBeNull();
 });
 
 test("latestTurnOfTicket finds the newest node worked in that ticket", () => {

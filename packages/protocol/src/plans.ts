@@ -309,6 +309,12 @@ export type SessionTaskSummary = {
    * nothing files or calls back in it until it wakes. Absent from a daemon older than dormancy.
    */
   dormant_since?: string | null;
+  /**
+   * How many turns worked in this plan. The switcher folds a closed plan with no tickets and one
+   * turn at most — a question and its answer. Set on the session's list of plans; absent elsewhere,
+   * and from a daemon older than that.
+   */
+  turn_count?: number;
 };
 
 /**

@@ -723,6 +723,23 @@ describe("a job's trace", () => {
     store.close();
   });
 
+  test("the switcher says how many turns each job took, so a question and its answer can be folded", () => {
+    const { store, bot, session } = fixture();
+    const reviewer = store.createBot({ name: "Reviewer", duties: "review", boundaries: "none" });
+    const first = store.postMessage(session.id, { body: "第一件事" });
+    const one = store.createTurn({ sessionId: session.id, botId: bot.id, triggerMessageId: first.id });
+    const second = store.postMessage(session.id, { body: "第二件事" });
+    const two = store.createTurn({ sessionId: session.id, botId: bot.id, triggerMessageId: second.id, taskId: store.openTask({ sessionId: session.id, title: "另一件事" }).id });
+    const carried = store.insertMessage({ sessionId: reviewer.direct_session.id, turnId: one.id, kind: "bot", author: bot.id, body: "你也看看" });
+    store.createTurn({ sessionId: reviewer.direct_session.id, botId: reviewer.bot.id, triggerMessageId: carried.id });
+
+    // The first job also took the reviewer's turn in the other session: two turns in all; the second one.
+    const counts = new Map(store.sessionTasks(session.id).map((row) => [row.id, row.turn_count] as const));
+    expect(counts.get(one.task_id!)).toBe(2);
+    expect(counts.get(two.task_id!)).toBe(1);
+    store.close();
+  });
+
   test("a summary stops at one line", () => {
     const { store, bot, session } = fixture();
     const trigger = store.postMessage(session.id, { body: `第一行\n${"很".repeat(120)}` });

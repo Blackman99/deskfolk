@@ -768,3 +768,240 @@ test("a card moved from its menu keeps the focus in its new column, unless you w
   elsewhere.remove();
   view.close();
 });
+
+test("a ticket its lead dropped reads 作废 with the reason on its card; one set aside on the board reads 搁置 and says nothing more", () => {
+  const view = open({
+    detail: aDetail({
+      ticket_counts: { todo: 0, doing: 0, review: 0, done: 1, parked: 2 },
+      tickets: [
+        aTicket({ id: "t1", seq: 1, title: "做一张海报", status: "parked", dropped_why: "已并入第二张", stage: "dropped" }),
+        aTicket({ id: "t2", seq: 2, title: "配乐", status: "parked", dropped_why: null }),
+        aTicket({ id: "t3", seq: 3, title: "竖版海报", status: "done" }),
+      ],
+    }),
+  });
+  const dropped = rowFor(view.host, "做一张海报");
+  expect(dropped.querySelector(".ticket-status")?.textContent?.trim()).toBe(t.plan.ticketDropped);
+  expect(t.plan.ticketDropped).toBe("作废");
+  expect(dropped.querySelector(".ticket-dropped-why")?.textContent?.trim()).toBe("作废：已并入第二张");
+  // Still in the 搁置 column.
+  expect(dropped.closest("[data-board-status]")?.getAttribute("data-board-status")).toBe("parked");
+  const setAside = rowFor(view.host, "配乐");
+  expect(setAside.querySelector(".ticket-status")?.textContent?.trim()).toBe(t.plan.ticketStatus.parked);
+  expect(setAside.querySelector(".ticket-dropped-why")).toBeNull();
+  expect(setAside.closest("[data-board-status]")?.getAttribute("data-board-status")).toBe("parked");
+  // Its status menu names the entry the way the card does.
+  expect(dropped.querySelector(".real-select-trigger")?.textContent).toContain("作废");
+  view.close();
+});
+
+test("a dropped ticket reads Dropped in English", () => {
+  const en = copyFor("en");
+  expect(en.plan.ticketDropped).toBe("Dropped");
+  expect(en.plan.droppedWhy("folded into #02")).toBe("Dropped: folded into #02");
+  expect(en.plan.ticketCounts(2, 5, 1)).toBe("2 open · 5 in all · 1 dropped/set aside");
+  expect(en.plan.ticketCounts(2, 5)).toBe("2 open · 5 in all");
+});
+
+test("a dropped ticket without an api reads 作废 too", () => {
+  const view = open({
+    api: null,
+    detail: aDetail({
+      ticket_counts: { todo: 0, doing: 0, review: 0, done: 0, parked: 1 },
+      tickets: [aTicket({ id: "t1", seq: 1, title: "做一张海报", status: "parked", dropped_why: "已并入第二张" })],
+    }),
+  });
+  expect(rowFor(view.host, "做一张海报").querySelector(".ticket-status")?.textContent?.trim()).toBe("作废");
+  view.close();
+});
+
+test("the total and the percentage leave out dropped and set-aside tickets, and the count line says how many there are", () => {
+  const view = open({
+    detail: aDetail({
+      ticket_counts: { todo: 1, doing: 0, review: 0, done: 3, parked: 2 },
+      tickets: [aTicket({ id: "t1", seq: 1, title: "收集资料", status: "todo" })],
+    }),
+  });
+  expect(view.host.querySelector(".ticket-list-counts")?.textContent).toBe("1 未完成 · 共 4 · 作废/搁置 2");
+  expect(view.host.querySelector(".ticket-completion-pill")?.textContent).toBe("75%");
+  expect((view.host.querySelector(".ticket-progress-fill") as HTMLElement).style.width).toBe("75%");
+  view.close();
+
+  // Nothing parked: no such part.
+  const plain = open({ detail: aDetail({ ticket_counts: { todo: 1, doing: 1, review: 0, done: 2, parked: 0 } }) });
+  expect(plain.host.querySelector(".ticket-list-counts")?.textContent).toBe("2 未完成 · 共 4");
+  expect(plain.host.querySelector(".ticket-completion-pill")?.textContent).toBe("50%");
+  plain.close();
+
+  // Nothing but parked tickets: no share to speak of, so no percentage.
+  const none = open({ detail: aDetail({ ticket_counts: { todo: 0, doing: 0, review: 0, done: 0, parked: 2 } }) });
+  expect(none.host.querySelector(".ticket-list-counts")?.textContent).toBe("0 未完成 · 共 0 · 作废/搁置 2");
+  expect(none.host.querySelector(".ticket-completion-pill")).toBeNull();
+  none.close();
+});
+
+/** A picked ticket's 「设为样片」 button, if the card has one. */
+function sampleButton(host: HTMLElement, title: string): HTMLButtonElement | null {
+  return rowFor(host, title).querySelector<HTMLButtonElement>(".ticket-make-sample");
+}
+
+test("on a large job a picked ticket can be made the sample, and the patch asks for exactly that", async () => {
+  const view = open({
+    detail: aDetail({
+      revision: 9,
+      scale: { value: "large", by: "reader", at: "2026-09-24T00:00:00.000Z", why: null, unit: null },
+      tickets: [
+        aTicket({ id: "t1", seq: 1, title: "第一场", status: "doing", sample: true }),
+        aTicket({ id: "t2", seq: 2, title: "第二场", status: "todo" }),
+      ],
+    }),
+  });
+  // Only the card in hand has it, and a card is picked first.
+  expect(sampleButton(view.host, "第二场")).toBeNull();
+  click(rowFor(view.host, "第二场").querySelector(".ticket-main"));
+  const button = sampleButton(view.host, "第二场");
+  expect(button?.textContent?.trim()).toBe(t.plan.makeSample);
+  expect(t.plan.makeSample).toBe("设为样片");
+  click(button);
+  await settle();
+  expect(view.patchCalls).toEqual([{ ticketId: "t2", body: { sample: true, if_revision: 9 } }]);
+  // The board reads the plan again, as it does after any edit.
+  expect(view.patched).toHaveLength(1);
+  view.close();
+});
+
+test("a plan that already has a sample offers it on the others, even when it is not called large", () => {
+  const view = open({
+    detail: aDetail({
+      scale: null,
+      tickets: [
+        aTicket({ id: "t1", seq: 1, title: "第一场", status: "doing", sample: true }),
+        aTicket({ id: "t2", seq: 2, title: "第二场", status: "todo" }),
+      ],
+    }),
+  });
+  view.props.selectedId = "t2";
+  flushSync();
+  expect(sampleButton(view.host, "第二场")).not.toBeNull();
+  // The sample itself does not.
+  view.props.selectedId = "t1";
+  flushSync();
+  expect(sampleButton(view.host, "第一场")).toBeNull();
+  view.close();
+});
+
+test("the sample action is not offered on a plan with no sample that is not large, nor on a ticket that is through, approved or parked", () => {
+  // No sample, not large: nothing to make it instead of, and no reason to have one.
+  const plain = open({ detail: aDetail({ scale: null }) });
+  plain.props.selectedId = "ticket-1";
+  flushSync();
+  expect(sampleButton(plain.host, "收集资料")).toBeNull();
+  plain.close();
+
+  const single = open({ detail: aDetail({ scale: { value: "single", by: "user", at: "2026-09-24T00:00:00.000Z", why: null, unit: null } }) });
+  single.props.selectedId = "ticket-1";
+  flushSync();
+  expect(sampleButton(single.host, "收集资料")).toBeNull();
+  single.close();
+
+  const large = { value: "large" as const, by: "reader" as const, at: "2026-09-24T00:00:00.000Z", why: null, unit: null };
+  const view = open({
+    detail: aDetail({
+      scale: large,
+      tickets: [
+        aTicket({ id: "t1", seq: 1, title: "做完的", status: "done" }),
+        aTicket({ id: "t2", seq: 2, title: "已通过的", status: "review", stage: "approved" }),
+        aTicket({ id: "t3", seq: 3, title: "搁置的", status: "parked" }),
+        aTicket({ id: "t4", seq: 4, title: "待做的", status: "todo" }),
+      ],
+    }),
+  });
+  for (const [id, title, shown] of [["t1", "做完的", false], ["t2", "已通过的", false], ["t3", "搁置的", false], ["t4", "待做的", true]] as const) {
+    view.props.selectedId = id;
+    flushSync();
+    expect(sampleButton(view.host, title) !== null).toBe(shown);
+  }
+  view.close();
+});
+
+test("the sample action needs an api, and a 409 on it tells the parent to reload", async () => {
+  const large = { value: "large" as const, by: "reader" as const, at: "2026-09-24T00:00:00.000Z", why: null, unit: null };
+  const detail = aDetail({ scale: large, tickets: [aTicket({ id: "t1", seq: 1, title: "第一场", status: "todo" })] });
+  const offline = open({ api: null, detail });
+  offline.props.selectedId = "t1";
+  flushSync();
+  expect(sampleButton(offline.host, "第一场")).toBeNull();
+  offline.close();
+
+  const view = open({
+    detail,
+    api: {
+      patchTicket: async () => {
+        throw { status: 409, message: "stale" };
+      },
+    },
+  });
+  view.props.selectedId = "t1";
+  flushSync();
+  click(sampleButton(view.host, "第一场"));
+  await settle();
+  expect(view.conflicts).toEqual([1]);
+  expect(view.patched).toEqual([]);
+  expect(rowFor(view.host, "第一场").querySelector(".ticket-error")).toBeNull();
+  view.close();
+});
+
+test("a job that has ended, gone dormant or been parked says so on its board, and the cards still open are muted but still move", async () => {
+  const tickets = [
+    aTicket({ id: "t1", seq: 1, title: "收集资料", status: "todo" }),
+    aTicket({ id: "t2", seq: 2, title: "画分镜", status: "doing" }),
+    aTicket({ id: "t3", seq: 3, title: "写结论", status: "done" }),
+  ];
+  const counts = { todo: 1, doing: 1, review: 0, done: 1, parked: 0 };
+
+  const live = open({ detail: aDetail({ tickets, ticket_counts: counts }) });
+  expect(live.host.querySelector(".ticket-settled-chip")).toBeNull();
+  expect(live.host.querySelector(".ticket-settled-hint")).toBeNull();
+  expect(live.host.querySelector(".ticket-board")?.classList.contains("is-settled")).toBe(false);
+  live.close();
+
+  const cases = [
+    [aDetail({ tickets, ticket_counts: counts, status: "done" }), t.plan.status.done, "已结束：没走完的任务不会再有人接着做"],
+    [aDetail({ tickets, ticket_counts: counts, dormant_since: "2026-09-25T00:00:00.000Z" }), t.plan.dormant, "休眠：没走完的任务不会再有人接着做"],
+    [aDetail({ tickets, ticket_counts: counts, status: "parked" }), t.plan.status.parked, "已搁置：没走完的任务不会再有人接着做"],
+  ] as const;
+  for (const [detail, chip, hint] of cases) {
+    const view = open({ detail });
+    expect(view.host.querySelector(".ticket-settled-chip")?.textContent?.trim()).toBe(chip);
+    expect(view.host.querySelector(".ticket-settled-hint")?.textContent?.trim()).toBe(hint);
+    expect(view.host.querySelector(".ticket-board")?.classList.contains("is-settled")).toBe(true);
+    view.close();
+  }
+
+  // Nothing is disabled: the status menu still moves a card of a job that has ended.
+  const view = open({ detail: aDetail({ tickets, ticket_counts: counts, status: "done" }) });
+  const row = rowFor(view.host, "收集资料");
+  expect(row.querySelector<HTMLButtonElement>(".real-select-trigger")?.disabled).toBe(false);
+  pickStatus(row, t.plan.ticketStatus.review);
+  await settle();
+  expect(view.patchCalls).toEqual([{ ticketId: "t1", body: { status: "review", if_revision: 3 } }]);
+  view.close();
+});
+
+test("a settled board with nothing left open has no hint to give, and the English hints read as asked", () => {
+  const view = open({
+    detail: aDetail({
+      status: "done",
+      ticket_counts: { todo: 0, doing: 0, review: 0, done: 1, parked: 0 },
+      tickets: [aTicket({ id: "t3", seq: 3, title: "写结论", status: "done" })],
+    }),
+  });
+  expect(view.host.querySelector(".ticket-settled-chip")).not.toBeNull();
+  expect(view.host.querySelector(".ticket-settled-hint")).toBeNull();
+  view.close();
+
+  const en = copyFor("en");
+  expect(en.plan.board.settled.ended).toBe("Settled: no one will pick up the tickets left open");
+  expect(en.plan.board.settled.dormant).toBe("Dormant: no one will pick up the tickets left open");
+  expect(en.plan.board.settled.parked).toBe("Parked: no one will pick up the tickets left open");
+});

@@ -12,7 +12,7 @@ import { forgetTraceMinimap, loadTraceMinimap } from "./trace-minimap.ts";
 import { forgetSpentAsks, forgetTraceView, loadTraceView, saveTraceView, type TraceViewAsk, type TraceViewKind } from "./trace-view.ts";
 import { forgetKeptBoards } from "./task-trace.ts";
 import { aBot, aDirect, aGroup, aHold } from "../test-fixtures.ts";
-import { buttonByText, click, render } from "../test-render.ts";
+import { buttonByText, click, press, render } from "../test-render.ts";
 import { reactive } from "../test-reactive.svelte.ts";
 import { settle } from "../test-async.ts";
 
@@ -204,6 +204,8 @@ function open(opts: {
   fixedView?: TraceViewKind;
   ask?: TraceViewAsk | null;
   askToken?: number;
+  /** The jobs the session lists, newest first; the two stock ones by default. */
+  jobs?: SessionTaskSummary[];
 } = {}) {
   const jumps: Array<[string, string]> = [];
   const settled: string[] = [];
@@ -217,6 +219,7 @@ function open(opts: {
       asked.push(sessionId);
       if (sessionId === "direct-9") return [job({ id: "task-9", title: "另一件事" })];
       if (opts.fail) throw new Error("nope");
+      if (opts.jobs) return opts.jobs;
       return [job({ goal: opts.detail === false ? null : "先出分镜的草图和配乐" }), job({ id: "task-2", title: "上周的排期", closed_at: "2026-09-15T00:00:00.000Z", status: "done" })];
     },
     taskTrace: async (id: string) =>
@@ -553,6 +556,103 @@ test("the switcher opens another job from this session", async () => {
   await until(view.host, ".trace-empty");
   expect(view.host.querySelector(".trace-titles h2")?.textContent).toContain("上周的排期");
   view.close();
+});
+
+/** A job that was one question and its answer: closed, no tickets, one turn. */
+function oneShot(id: string, title: string): SessionTaskSummary {
+  return job({ id, title, status: "done", closed_at: "2026-09-15T00:00:00.000Z", turn_count: 1 });
+}
+
+function jobRows(host: HTMLElement): string[] {
+  return [...host.querySelectorAll(".trace-job")].map((row) => row.querySelector(".trace-job-title")?.textContent?.trim() ?? "");
+}
+
+test("the switcher folds the one-question jobs into a single row that unfolds in place, and the job on screen never folds", async () => {
+  const view = open({
+    jobs: [
+      job({ turn_count: 6 }),
+      oneShot("task-2", "几点了"),
+      job({ id: "task-3", title: "上周的排期", status: "done", closed_at: "2026-09-15T00:00:00.000Z", turn_count: 4 }),
+      oneShot("task-4", "翻译一句话"),
+      // Still going: not folded, however short.
+      job({ id: "task-5", title: "刚开的", turn_count: 1 }),
+      // A ticket makes it work, not a question.
+      job({ id: "task-6", title: "有任务的", status: "done", turn_count: 1, ticket_counts: { todo: 0, doing: 0, review: 0, done: 1, parked: 0 } }),
+    ],
+  });
+  click(await until(view.host, ".trace-title-trigger"));
+  await until(view.host, ".trace-job");
+  expect(jobRows(view.host)).toEqual(["先出分镜", "上周的排期", "刚开的", "有任务的", t.plan.oneShotJobs(2)]);
+  const fold = view.host.querySelector<HTMLButtonElement>(".trace-job.is-fold")!;
+  expect(t.plan.oneShotJobs(2)).toBe("一问一答 2 件");
+  expect(fold.getAttribute("aria-expanded")).toBe("false");
+  // Folding does not choose a job: only the first read of the board has said which is on screen.
+  click(fold);
+  expect(fold.getAttribute("aria-expanded")).toBe("true");
+  expect(view.settled).toEqual(["task-1"]);
+  expect(jobRows(view.host)).toEqual(["先出分镜", "上周的排期", "刚开的", "有任务的", t.plan.oneShotJobs(2), "几点了", "翻译一句话"]);
+  // A folded job opens like any other.
+  click([...view.host.querySelectorAll<HTMLButtonElement>(".trace-job")].find((row) => row.textContent?.includes("翻译一句话")));
+  await until(view.host, ".trace-empty");
+  expect(view.settled).toEqual(["task-1", "task-4"]);
+  view.close();
+});
+
+test("the job on screen stays in the list when it is itself a one-question job; no fold row for none", async () => {
+  const view = open({ taskId: "task-2", jobs: [job(), oneShot("task-2", "几点了"), oneShot("task-4", "翻译一句话")] });
+  click(await until(view.host, ".trace-title-trigger"));
+  await until(view.host, ".trace-job");
+  expect(jobRows(view.host)).toEqual(["先出分镜", "几点了", t.plan.oneShotJobs(1)]);
+  expect(view.host.querySelector(".trace-job.is-current .trace-job-title")?.textContent).toBe("几点了");
+  view.close();
+
+  const plain = open({ jobs: [job(), job({ id: "task-3", title: "上周的排期", status: "done", turn_count: 3 })] });
+  click(await until(plain.host, ".trace-title-trigger"));
+  await until(plain.host, ".trace-job");
+  expect(plain.host.querySelector(".trace-job.is-fold")).toBeNull();
+  plain.close();
+});
+
+test("the arrow keys walk the switcher's rows, the fold row and the folded jobs among them", async () => {
+  const view = open({ jobs: [job({ turn_count: 6 }), oneShot("task-2", "几点了"), oneShot("task-4", "翻译一句话")] });
+  click(await until(view.host, ".trace-title-trigger"));
+  await until(view.host, ".trace-job");
+  const popover = view.host.querySelector(".trace-switcher-popover")!;
+  expect(document.activeElement?.classList.contains("is-current")).toBe(true);
+  press(popover, "ArrowDown");
+  expect(document.activeElement?.classList.contains("is-fold")).toBe(true);
+  click(document.activeElement);
+  press(popover, "ArrowDown");
+  expect(document.activeElement?.textContent).toContain("几点了");
+  press(popover, "ArrowDown");
+  expect(document.activeElement?.textContent).toContain("翻译一句话");
+  press(popover, "ArrowDown");
+  expect(document.activeElement?.classList.contains("is-current")).toBe(true);
+  press(popover, "ArrowUp");
+  expect(document.activeElement?.textContent).toContain("翻译一句话");
+  view.close();
+});
+
+test("with no job asked for, the board opens on the newest job that was not a one-question one", async () => {
+  const view = open({
+    taskId: null,
+    pane: true,
+    jobs: [oneShot("task-2", "几点了"), oneShot("task-4", "翻译一句话"), job({ id: "task-3", title: "上周的排期", status: "done", closed_at: "2026-09-15T00:00:00.000Z", turn_count: 4 }), job()],
+  });
+  await until(view.host, ".trace-titles h2");
+  for (let i = 0; i < 20 && view.settled.length === 0; i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  expect(view.settled).toEqual(["task-3"]);
+  view.close();
+
+  // All of them one-question jobs: the newest, as before.
+  const only = open({ taskId: null, pane: true, jobs: [oneShot("task-2", "几点了"), oneShot("task-4", "翻译一句话")] });
+  for (let i = 0; i < 20 && only.settled.length === 0; i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  expect(only.settled).toEqual(["task-2"]);
+  only.close();
 });
 
 test("pointed at another job from outside, the board turns to it without a second read of its own", async () => {
@@ -1022,6 +1122,17 @@ test("the header reads the plan — its name, status, kind, ticket counts — an
   const jobs = [...view.host.querySelectorAll(".trace-job")];
   expect(jobs[0]?.querySelector(".trace-job-title")?.textContent).toBe("先出分镜");
   expect(jobs[1]?.querySelector(".plan-status.is-done")).not.toBeNull();
+  view.close();
+});
+
+test("the header's ticket counts leave out the dropped and set-aside, and say how many there are", async () => {
+  forgetTraceView();
+  const counts = { todo: 1, doing: 1, review: 0, done: 3, parked: 2 };
+  const view = open({ pane: true, detail: detail({ ticket_counts: counts }), jobs: [job({ ticket_counts: counts }), job({ id: "task-2", title: "上周的排期" })] });
+  await until(view.host, ".ticket-row");
+  expect(view.host.querySelector(".trace-meta")?.textContent).toContain("2 未完成 · 共 5 · 作废/搁置 2");
+  click(await until(view.host, ".trace-title-trigger"));
+  expect(view.host.querySelector(".trace-job .trace-job-meta")?.textContent).toContain(t.plan.ticketCounts(2, 5, 2));
   view.close();
 });
 
