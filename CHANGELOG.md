@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Notification categories stay inside their card
+
+- In Settings › Notifications, the six categories no longer run past the right edge of their card, where the switches sat on its border and the page scrolled sideways. A longer description wraps onto a second line instead, and in a narrow settings window the categories stack in one column.
+
 ### The plan says what needs you first, and empty fields take no room
 
 - Under the goal, "Needs a look" lists the checks that failed (with their ticket and first reason; the ticket opens its card on the board), progress written up as blocked, and your requirements waiting for your word (a press scrolls to them). With none of these it is not drawn; amber when only requirements wait, red when something failed or is blocked.

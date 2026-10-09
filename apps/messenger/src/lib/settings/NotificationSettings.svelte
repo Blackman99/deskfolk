@@ -296,7 +296,7 @@
 
 <div class="notification-settings settings-tab-pane">
 	<!-- Categories Section -->
-	<section class="settings-card">
+	<section class="settings-card category-card">
 		<div class="settings-card-header">
 			<div class="settings-card-header-main">
 				<div class="settings-header-icon-wrap" aria-hidden="true">
@@ -830,11 +830,22 @@
 		border-radius: var(--radius-sm);
 	}
 
-	/* Category Grid */
+	/* Category Grid: two columns while the card has room, one below that.
+	   minmax(0, 1fr) keeps the descriptions from widening a column past the card. */
+	.category-card {
+		container: categories / inline-size;
+	}
+
 	.category-grid {
 		display: grid;
-		grid-template-columns: repeat(2, 1fr);
+		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: 10px;
+	}
+
+	@container categories (max-width: 480px) {
+		.category-grid {
+			grid-template-columns: minmax(0, 1fr);
+		}
 	}
 
 	.category-toggle-item {
@@ -933,9 +944,7 @@
 		font-size: 12px;
 		color: var(--muted);
 		line-height: 1.35;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
+		text-wrap: pretty;
 	}
 
 	.category-action {
@@ -1295,7 +1304,6 @@
 		}
 
 		.category-grid {
-			grid-template-columns: 1fr;
 			gap: 8px;
 		}
 
@@ -1331,14 +1339,6 @@
 		.settings-row {
 			padding: 10px 0;
 			min-height: 48px;
-		}
-
-		.category-desc {
-			white-space: normal;
-			display: -webkit-box;
-			line-clamp: 2;
-			-webkit-line-clamp: 2;
-			-webkit-box-orient: vertical;
 		}
 
 		.time-range-separator {
