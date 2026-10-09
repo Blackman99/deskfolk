@@ -45,21 +45,95 @@ test("nothing shows below level 7", async () => {
   view.close();
 });
 
-test("rungs read weaker to stronger, move and come off, each change saved in your order", async () => {
+const grip = (host: HTMLElement, model: string) => host.querySelector<HTMLElement>(`[aria-label="${t.modelLadder.move(model)}"]`)!;
+const key = (el: HTMLElement, k: string) => el.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true }));
+const steps = (host: HTMLElement) => [...host.querySelectorAll(".ladder-step")].map((el) => el.textContent);
+
+test("rungs read weaker to stronger, move by the grip's arrow keys and come off, each change saved in your order", async () => {
   const { api, saved } = fakeApi([{ provider_id: "p1", model: "light" }, { provider_id: "p1", model: "mid" }, { provider_id: "p2", model: "heavy" }]);
   const view = card(api);
   await sleep(0);
   expect(names(view.host)).toEqual(["light · Default", "mid · Default", "heavy · Other"]);
-  expect(view.host.querySelector(`[aria-label="${t.modelLadder.up("light")}"]`)?.hasAttribute("disabled")).toBe(true);
-  click(view.host.querySelector(`[aria-label="${t.modelLadder.down("light")}"]`)!);
+  // Already the weakest: up does nothing.
+  key(grip(view.host, "light"), "ArrowUp");
+  await sleep(0);
+  expect(saved).toEqual([]);
+  key(grip(view.host, "light"), "ArrowDown");
   await sleep(0);
   expect(names(view.host)).toEqual(["mid · Default", "light · Default", "heavy · Other"]);
+  expect(document.activeElement).toBe(grip(view.host, "light"));
   click(view.host.querySelector(`[aria-label="${t.modelLadder.remove("heavy")}"]`)!);
   await sleep(0);
   expect(saved).toEqual([
     [{ provider_id: "p1", model: "mid" }, { provider_id: "p1", model: "light" }, { provider_id: "p2", model: "heavy" }],
     [{ provider_id: "p1", model: "mid" }, { provider_id: "p1", model: "light" }],
   ]);
+  view.close();
+});
+
+test("each rung's colour runs from the weak end to the strong one by its place", async () => {
+  const { api } = fakeApi([{ provider_id: "p1", model: "light" }, { provider_id: "p1", model: "mid" }, { provider_id: "p2", model: "heavy" }]);
+  const view = card(api);
+  await sleep(0);
+  const rungs = [...view.host.querySelectorAll<HTMLElement>(".ladder-rung")];
+  expect(rungs.map((rung) => rung.style.getPropertyValue("--rung-strength"))).toEqual(["0%", "50%", "100%"]);
+  expect(view.host.querySelector(".ladder-scale")?.textContent?.replace(/\s+/g, "")).toBe(`${t.modelLadder.weaker}${t.modelLadder.stronger}`);
+  view.close();
+});
+
+/** Three rungs 40 px tall, 8 px apart, as the drag reads them when it starts. */
+function laidOut(host: HTMLElement) {
+  [...host.querySelectorAll<HTMLElement>(".ladder-rung")].forEach((row, index) => {
+    const top = index * 48;
+    row.getBoundingClientRect = () => ({ top, bottom: top + 40, height: 40, left: 0, right: 300, width: 300, x: 0, y: top, toJSON: () => ({}) }) as DOMRect;
+  });
+}
+
+const pointer = (target: EventTarget, type: string, clientY: number, pointerType = "touch") =>
+  target.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 7, button: 0, clientX: 280, clientY, pointerType }));
+
+test("a rung dragged by its grip, touch included, lands where it is let go, and the others make room on the way", async () => {
+  const { api, saved } = fakeApi([{ provider_id: "p1", model: "light" }, { provider_id: "p1", model: "mid" }, { provider_id: "p2", model: "heavy" }]);
+  const view = card(api);
+  await sleep(0);
+  laidOut(view.host);
+  pointer(grip(view.host, "light"), "pointerdown", 20);
+  pointer(window, "pointermove", 22);
+  await sleep(0);
+  // Under the threshold: nothing moves yet.
+  expect(view.host.querySelector(".ladder-rung.is-held")).toBeNull();
+  pointer(window, "pointermove", 80);
+  await sleep(0);
+  expect(view.host.querySelector(".ladder-rung.is-held")?.getAttribute("data-rung")).toBe("light");
+  // Past mid's middle: light would be second, so the numbers already read in that order.
+  expect(steps(view.host)).toEqual(["2", "1", "3"]);
+  expect(saved).toEqual([]);
+  pointer(window, "pointerup", 80);
+  await sleep(0);
+  expect(saved).toEqual([[{ provider_id: "p1", model: "mid" }, { provider_id: "p1", model: "light" }, { provider_id: "p2", model: "heavy" }]]);
+  expect(names(view.host)).toEqual(["mid · Default", "light · Default", "heavy · Other"]);
+  view.close();
+});
+
+test("a drag let go where it started, or put back with Escape, saves nothing", async () => {
+  const { api, saved } = fakeApi([{ provider_id: "p1", model: "light" }, { provider_id: "p1", model: "mid" }, { provider_id: "p2", model: "heavy" }]);
+  const view = card(api);
+  await sleep(0);
+  laidOut(view.host);
+  pointer(grip(view.host, "heavy"), "pointerdown", 116, "mouse");
+  pointer(window, "pointermove", 20, "mouse");
+  await sleep(0);
+  expect(steps(view.host)).toEqual(["2", "3", "1"]);
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+  await sleep(0);
+  expect(steps(view.host)).toEqual(["1", "2", "3"]);
+  pointer(window, "pointerup", 20, "mouse");
+  pointer(grip(view.host, "mid"), "pointerdown", 68, "mouse");
+  pointer(window, "pointermove", 74, "mouse");
+  pointer(window, "pointerup", 74, "mouse");
+  await sleep(0);
+  expect(saved).toEqual([]);
+  expect(names(view.host)).toEqual(["light · Default", "mid · Default", "heavy · Other"]);
   view.close();
 });
 

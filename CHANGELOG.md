@@ -10,6 +10,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 - A Bot's reply sent in several parts no longer carries an "N outputs" badge or a "Part N" tag on each part, and the dashed rules between parts are gone: the parts stack close under one header. Only the last part keeps a line for its time; an earlier part's time (and how long it took) shows beside its reply and copy buttons when the pointer is on it, unless that part ends with its commands or its tag.
 
+### Model ladder: colour from weaker to stronger, drag to reorder
+
+- Each rung starts with a numbered node, and the nodes and the rail joining them shade from a pale wash of the accent (weakest) to the accent itself (strongest), with a "Weaker — Stronger" legend above.
+- Rungs are reordered by dragging their grip, with a mouse or a finger; the others make room as you go, the numbers and colours show where it will land, Escape puts it back, and the ladder is saved once on release. With the grip focused, the up and down arrow keys move it one place. The up / down buttons are gone.
+- The model's name has the first line of its rung to itself, so names no longer break in two on a phone and line up whatever their endpoint's mark; the mark and the endpoint go under it.
+
 ### Trace, Board and Plan are tabs of their own
 
 - On a wide window a job's trace, board and plan are each a tab of their own: they can sit side by side, move to another pane, float, or be closed one at a time. The tabs are named "<name> flow", "<name> board" and "<name> plan", each with its own icon. A tab shows its own view only; the "Trace / Board / Plan" switch by the title is gone from tabs.

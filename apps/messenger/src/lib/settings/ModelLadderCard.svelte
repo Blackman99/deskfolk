@@ -1,10 +1,14 @@
 <script lang="ts">
 	import { MODEL_LADDER_MAX, type ModelLadderRung, type Provider } from '@real-bot/protocol';
+	import { tick } from 'svelte';
+	import { flip } from 'svelte/animate';
 	import Select from '../Select.svelte';
 	import type { Copy } from '../copy.ts';
 	import type { ModelLadder } from './model-ladder.svelte.ts';
+	import { beginLadderDrag, ladderPlace, movedTo, type LadderDrag } from './ladder-drag.ts';
 	import { endpointModelOptions, endpointSource } from '../model-source.ts';
 	import ModelSourceMark from '../ModelSourceMark.svelte';
+	import { prefersReducedMotion } from '../reduced-motion.ts';
 
 	/** The model ladder's own page (ADR 0054). What it says it is for is the page's intro, not this card's. */
 	interface Props {
@@ -15,6 +19,10 @@
 	}
 
 	let { ladder, providers, t }: Props = $props();
+
+	let list = $state<HTMLOListElement | null>(null);
+	/** The rung being dragged and where it would land; the others make room while it is held. */
+	let drag = $state<LadderDrag | null>(null);
 
 	const key = (rung: ModelLadderRung) => JSON.stringify({ provider_id: rung.provider_id, model: rung.model });
 	const providerOf = (id: string) => providers.find((provider) => provider.id === id);
@@ -33,11 +41,32 @@
 		)
 	);
 
-	function move(index: number, by: -1 | 1): void {
-		const next = [...ladder.rungs];
-		const [rung] = next.splice(index, 1);
-		next.splice(index + by, 0, rung!);
-		void ladder.save(next);
+	/** Where a rung stands now, counting the place a held rung would land in. */
+	const placeOf = (index: number) => (drag ? ladderPlace(index, drag.from, drag.slot) : index);
+	/** How far up the ladder a place is, 0 at the weakest and 100 at the strongest: the rung's colour. */
+	const strength = (place: number) => (ladder.rungs.length > 1 ? Math.round((place / (ladder.rungs.length - 1)) * 100) : 100);
+	const offsetOf = (index: number) => (!drag ? 0 : index === drag.from ? drag.dy : (placeOf(index) - index) * drag.shift);
+
+	function reorder(from: number, slot: number): void {
+		if (ladder.busy || from === slot || slot < 0 || slot >= ladder.rungs.length) return;
+		void ladder.save(movedTo(ladder.rungs, from, slot));
+	}
+
+	function press(event: PointerEvent, index: number): void {
+		if (ladder.busy || !list) return;
+		const rows = [...list.querySelectorAll<HTMLElement>(':scope > .ladder-rung')];
+		beginLadderDrag(event, index, rows, { onDrag: (next) => (drag = next), onDrop: reorder });
+	}
+
+	/** The grip moves its rung by keyboard too. Moving a rung takes the focus out of the page, so it is put back on the same grip. */
+	async function key_(event: KeyboardEvent, index: number): Promise<void> {
+		const by = event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : 0;
+		if (!by) return;
+		event.preventDefault();
+		if (ladder.busy || index + by < 0 || index + by >= ladder.rungs.length) return;
+		reorder(index, index + by);
+		await tick();
+		list?.querySelectorAll<HTMLElement>('.ladder-grip')[index + by]?.focus();
 	}
 
 	function add(value: string): void {
@@ -54,26 +83,51 @@
 		{#if ladder.rungs.length === 0}
 			<p class="ladder-empty">{t.modelLadder.empty}</p>
 		{:else}
-			<ol class="ladder-list">
+			{#if ladder.rungs.length > 1}
+				<!-- The colours' legend: words too, since a colour alone says nothing to some. -->
+				<div class="ladder-scale" aria-hidden="true">
+					<span>{t.modelLadder.weaker}</span>
+					<span class="ladder-scale-bar"></span>
+					<span>{t.modelLadder.stronger}</span>
+				</div>
+			{/if}
+			<ol class="ladder-list" class:is-dragging={drag !== null} bind:this={list}>
 				{#each ladder.rungs as rung, index (key(rung))}
 					{@const provider = providerOf(rung.provider_id)}
-					<li class="ladder-rung" data-rung={rung.model}>
-						<span class="ladder-step" aria-hidden="true">{index + 1}</span>
-						<!-- Where the model comes from, as in the picker that added it; an endpoint gone since has none. -->
-						{#if provider}
-							<span class="ladder-source"><ModelSourceMark source={endpointSource(provider, t)} /></span>
-						{/if}
-						<span class="ladder-name" title={named(rung)}><span class="ladder-model">{rung.model}</span>{#if providers.length > 1}<span class="ladder-sep">{' · '}</span><span class="ladder-provider">{providerName(rung.provider_id)}</span>{/if}</span>
-						{#if index === 0 && ladder.rungs.length > 1}
-							<span class="ladder-end">{t.modelLadder.weaker}</span>
-						{:else if index === ladder.rungs.length - 1 && ladder.rungs.length > 1}
-							<span class="ladder-end">{t.modelLadder.stronger}</span>
-						{/if}
-						<span class="ladder-acts">
-							<button type="button" class="ladder-button" aria-label={t.modelLadder.up(rung.model)} title={t.modelLadder.up(rung.model)} disabled={ladder.busy || index === 0} onclick={() => move(index, -1)}>↑</button>
-							<button type="button" class="ladder-button" aria-label={t.modelLadder.down(rung.model)} title={t.modelLadder.down(rung.model)} disabled={ladder.busy || index === ladder.rungs.length - 1} onclick={() => move(index, 1)}>↓</button>
-							<button type="button" class="ladder-button" aria-label={t.modelLadder.remove(rung.model)} title={t.modelLadder.remove(rung.model)} disabled={ladder.busy} onclick={() => void ladder.save(ladder.rungs.filter((_, at) => at !== index))}>×</button>
-						</span>
+					{@const place = placeOf(index)}
+					<!-- flip runs as a Web Animation, which the global reduced-motion rule does not reach. -->
+					<li
+						class="ladder-rung"
+						class:is-held={drag?.from === index}
+						class:is-last={index === ladder.rungs.length - 1}
+						class:is-deep={strength(place) > 60}
+						data-rung={rung.model}
+						style:--rung-strength="{strength(place)}%"
+						style:--rung-next="{strength(place + 1)}%"
+						style:transform={drag ? `translateY(${offsetOf(index)}px)` : null}
+						animate:flip={{ duration: prefersReducedMotion() ? 0 : 160 }}
+					>
+						<span class="ladder-step" aria-hidden="true">{place + 1}</span>
+						<div class="ladder-body">
+							<span class="ladder-name" title={named(rung)}><span class="ladder-model">{rung.model}</span>{#if providers.length > 1}<span class="ladder-sep">{' · '}</span><span class="ladder-provider">{providerName(rung.provider_id)}</span>{/if}</span>
+							<!-- Where the model comes from, as in the picker that added it; an endpoint gone since has none. -->
+							{#if provider}
+								<span class="ladder-source"><ModelSourceMark source={endpointSource(provider, t)} /></span>
+							{/if}
+							<button type="button" class="ladder-button ladder-remove" aria-label={t.modelLadder.remove(rung.model)} title={t.modelLadder.remove(rung.model)} disabled={ladder.busy} onclick={() => void ladder.save(ladder.rungs.filter((_, at) => at !== index))}>×</button>
+							<!-- Not disabled while a save is out: the arrow keys would lose the focus they move with. -->
+							<button
+								type="button"
+								class="ladder-button ladder-grip"
+								aria-label={t.modelLadder.move(rung.model)}
+								title={t.modelLadder.move(rung.model)}
+								aria-disabled={ladder.busy}
+								onpointerdown={(event) => press(event, index)}
+								onkeydown={(event) => void key_(event, index)}
+							>
+								<svg viewBox="0 0 10 16" width="10" height="16" aria-hidden="true"><circle cx="2.5" cy="3" r="1.4" /><circle cx="7.5" cy="3" r="1.4" /><circle cx="2.5" cy="8" r="1.4" /><circle cx="7.5" cy="8" r="1.4" /><circle cx="2.5" cy="13" r="1.4" /><circle cx="7.5" cy="13" r="1.4" /></svg>
+							</button>
+						</div>
 					</li>
 				{/each}
 			</ol>
@@ -87,7 +141,10 @@
 {/if}
 
 <style>
+	/* The ladder runs from a pale wash of the accent (weakest) to the accent itself (strongest). */
 	.ladder-card {
+		--ladder-weak: color-mix(in oklch, var(--accent) 22%, var(--pane));
+		--ladder-strong: var(--accent);
 		display: flex;
 		flex-direction: column;
 		gap: 10px;
@@ -112,78 +169,173 @@
 		color: var(--danger-text);
 	}
 
+	.ladder-scale {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		max-width: 240px;
+		font-size: 11px;
+		color: var(--muted);
+	}
+
+	.ladder-scale-bar {
+		flex: 1 1 auto;
+		height: 4px;
+		border-radius: 2px;
+		background: linear-gradient(to right, var(--ladder-weak), var(--ladder-strong));
+	}
+
 	.ladder-list {
+		--ladder-gap: 8px;
+		/* Where a node's middle sits below its rung's top: the middle of a two-line rung. */
+		--ladder-node-middle: 27px;
 		list-style: none;
 		margin: 0;
 		padding: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 6px;
+		gap: var(--ladder-gap);
 	}
 
+	/* A node on the rail, then the rung's card. */
 	.ladder-rung {
+		--rung-color: color-mix(in oklch, var(--ladder-strong) var(--rung-strength), var(--ladder-weak));
+		--rung-next-color: color-mix(in oklch, var(--ladder-strong) var(--rung-next), var(--ladder-weak));
+		position: relative;
 		display: flex;
-		align-items: center;
-		gap: 8px;
+		align-items: flex-start;
+		gap: 10px;
 		min-width: 0;
-		padding: 6px 8px 6px 10px;
-		border: 1px solid var(--line);
-		border-radius: var(--radius-md);
+	}
+
+	/* The rail from this node to the next one, shading on towards it. Nodes sit at one height from their rung's top, so it meets the next node even when a name wraps. */
+	.ladder-rung:not(.is-last)::before {
+		content: '';
+		position: absolute;
+		left: 10px;
+		top: var(--ladder-node-middle);
+		width: 3px;
+		height: calc(100% + var(--ladder-gap));
+		border-radius: 2px;
+		background: linear-gradient(var(--rung-color), var(--rung-next-color));
+	}
+
+	/* While one is held the rungs move apart, and a rail between them would bend. */
+	.ladder-list.is-dragging .ladder-rung::before {
+		opacity: 0;
+	}
+
+	.ladder-list.is-dragging .ladder-rung:not(.is-held) {
+		transition: transform 0.15s ease;
+	}
+
+	.ladder-rung.is-held {
+		z-index: 1;
 	}
 
 	.ladder-step {
-		flex: none;
-		min-width: 18px;
-		font-size: 11px;
-		font-weight: 600;
-		font-variant-numeric: tabular-nums;
-		color: var(--muted);
-	}
-
-	.ladder-source {
+		position: relative;
 		flex: none;
 		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 23px;
+		height: 23px;
+		margin-top: calc(var(--ladder-node-middle) - 11.5px);
+		border-radius: 50%;
+		background: var(--rung-color);
+		color: var(--ink);
+		font-size: 11px;
+		font-weight: 700;
+		font-variant-numeric: tabular-nums;
+		transition: background-color 0.15s ease;
+	}
+
+	/* On the deeper rungs the number goes light, as on any accent fill. */
+	.ladder-rung.is-deep .ladder-step {
+		color: var(--on-accent);
+	}
+
+	/* The model's name has the first line to itself; where it comes from goes under it, so names line up whatever their mark. */
+	.ladder-body {
+		flex: 1 1 auto;
+		min-width: 0;
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr) auto auto;
+		grid-template-rows: auto auto;
+		align-items: center;
+		column-gap: 6px;
+		row-gap: 2px;
+		padding: 7px 4px 7px 12px;
+		background: var(--pane);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		transition: border-color 0.15s ease, box-shadow 0.15s ease;
+	}
+
+	.is-held .ladder-body {
+		border-color: var(--accent-border);
+		box-shadow: var(--shadow-md);
 	}
 
 	.ladder-name {
-		flex: 1 1 auto;
+		display: contents;
+	}
+
+	/* A long model id wraps rather than losing its end, which is often what tells two apart. */
+	.ladder-model {
+		grid-column: 1 / span 2;
+		grid-row: 1;
+		min-width: 0;
+		overflow-wrap: anywhere;
+		font-family: var(--font-mono, ui-monospace, monospace);
+		font-size: 12.5px;
+		line-height: 1.35;
+		color: var(--ink);
+	}
+
+	.ladder-source {
+		grid-column: 1;
+		grid-row: 2;
+		display: inline-flex;
+	}
+
+	.ladder-sep {
+		display: none;
+	}
+
+	.ladder-provider {
+		grid-column: 2;
+		grid-row: 2;
 		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-		font-family: var(--font-mono, ui-monospace, monospace);
 		font-size: 12px;
-		color: var(--ink);
-	}
-
-	.ladder-end {
-		flex: none;
-		font-size: 11px;
 		color: var(--muted);
 	}
 
-	.ladder-acts {
-		flex: none;
-		display: inline-flex;
-		gap: 4px;
-	}
-
 	.ladder-button {
-		width: 26px;
-		height: 26px;
+		grid-row: 1 / span 2;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 30px;
+		height: 30px;
 		padding: 0;
-		border: 1px solid var(--line);
+		border: none;
 		border-radius: var(--radius-sm);
-		background: var(--pane);
-		color: var(--ink-secondary);
-		font-size: 13px;
+		background: transparent;
+		color: var(--muted);
+		font-size: 16px;
 		line-height: 1;
 		cursor: pointer;
+		transition: background-color 0.15s ease, color 0.15s ease;
 	}
 
 	.ladder-button:hover:not(:disabled) {
-		border-color: var(--accent-border);
-		color: var(--accent);
+		background: var(--row-hover);
+		color: var(--ink);
 	}
 
 	.ladder-button:disabled {
@@ -191,89 +343,55 @@
 		opacity: 0.4;
 	}
 
+	.ladder-remove {
+		grid-column: 3;
+	}
+
+	/* Where a rung is taken hold of: a finger on it drags, it never scrolls the page. */
+	.ladder-grip {
+		grid-column: 4;
+		cursor: grab;
+		touch-action: none;
+	}
+
+	.ladder-grip svg {
+		fill: currentColor;
+	}
+
+	.is-held .ladder-grip {
+		cursor: grabbing;
+		color: var(--accent);
+	}
+
 	.ladder-add {
 		max-width: 320px;
 	}
 
-	/* On a phone the endpoint goes under the model, and the buttons are big enough to tap. */
+	/* On a phone the buttons are big enough to tap. */
 	@media (max-width: 720px) {
 		.ladder-card {
 			padding: 12px;
 			box-shadow: none;
 		}
 
-		/* Weaker / stronger sits under the step number, so the model's name has the row. */
+		/* Tight enough that a 21-character model id stays on one line at 347 px. */
 		.ladder-rung {
-			display: grid;
-			grid-template-columns: 22px auto minmax(0, 1fr) auto;
-			grid-template-rows: auto auto;
-			align-items: center;
-			column-gap: 8px;
-			row-gap: 0;
-			padding: 8px 8px 8px 10px;
+			gap: 8px;
 		}
 
-		.ladder-step {
-			grid-column: 1;
-			grid-row: 1;
-			align-self: end;
+		.ladder-body {
+			column-gap: 4px;
+			padding: 7px 2px 7px 10px;
 		}
 
-		.ladder-end {
-			grid-column: 1;
-			grid-row: 2;
-			align-self: start;
-		}
-
-		.ladder-source {
-			grid-column: 2;
-			grid-row: 1 / span 2;
-		}
-
-		.ladder-name {
-			grid-column: 3;
-			grid-row: 1 / span 2;
-			display: flex;
-			flex-direction: column;
-			gap: 2px;
-			white-space: normal;
-		}
-
-		.ladder-acts {
-			grid-column: 4;
-			grid-row: 1 / span 2;
-		}
-
-		/* A long model id wraps rather than losing its end, which is often what tells two apart. */
 		.ladder-model {
 			font-size: 13px;
-			overflow-wrap: anywhere;
-		}
-
-		.ladder-provider {
-			overflow: hidden;
-			text-overflow: ellipsis;
-			white-space: nowrap;
-		}
-
-		.ladder-sep {
-			display: none;
-		}
-
-		.ladder-provider {
-			font-family: var(--font);
-			font-size: 12px;
-			color: var(--muted);
-		}
-
-		.ladder-acts {
-			gap: 4px;
 		}
 
 		.ladder-button {
-			width: 36px;
-			height: 36px;
-			font-size: 15px;
+			width: 34px;
+			height: 38px;
+			font-size: 18px;
 		}
 
 		.ladder-add {
