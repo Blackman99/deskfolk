@@ -81,11 +81,8 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 			const parts = page.locator('.msg-wrap.is-bot.is-group .msg-segment');
 			await expect(parts).toHaveCount(3);
 			const ground = (i: number) => parts.nth(i).evaluate((el) => getComputedStyle(el).backgroundColor);
-			const tag = (i: number) =>
-				parts.nth(i).locator('.segment-tag').evaluate((el) => getComputedStyle(el).backgroundColor);
 			const ring = (i: number) => parts.nth(i).evaluate((el) => getComputedStyle(el).boxShadow);
 			const idle = await ground(1);
-			const idleTag = await tag(1);
 
 			await parts.nth(1).hover();
 			await expect.poll(() => ground(1)).not.toBe(idle);
@@ -94,7 +91,6 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 			expect(await ground(0)).toBe(idle);
 			expect(await ground(2)).toBe(idle);
 			expect(await ring(1)).toBe('none');
-			expect(await tag(1)).toBe(idleTag);
 			const washed = await ground(1);
 
 			// A found message keeps its own tint and ring, not the pointer's lighter ground. The pulse
@@ -121,7 +117,6 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 			await page.mouse.move(last.x + last.width - 24, last.y + last.height - 6);
 			await expect.poll(() => ground(2)).toBe(idle);
 			await expect.poll(() => ground(1)).toBe(idle);
-			expect(await tag(2)).toBe(idleTag);
 
 			// Closed, the pointer marks the part again.
 			await page.keyboard.press('Escape');

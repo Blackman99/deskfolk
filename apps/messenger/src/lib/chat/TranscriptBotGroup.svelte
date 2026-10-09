@@ -137,13 +137,10 @@
 			{#if botAuthor?.model}
 				<span class="model-badge mono">{botAuthor.model}</span>
 			{/if}
-			{#if isMulti}
-				<span class="segment-count-badge mono">{t.chat.segmentCount(group.items.length)}</span>
-			{/if}
 		</div>
 
-		<div class="msg-segments flex flex-col gap-4 w-full">
-			{#each group.items as item, sIdx (transcriptItemKey(item))}
+		<div class="msg-segments flex flex-col gap-2 w-full">
+			{#each group.items as item (transcriptItemKey(item))}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div
@@ -163,12 +160,6 @@
 						if (item.type === 'message') stage.handleMessageContextMenu(e, item.message);
 					}}
 				>
-					{#if isMulti}
-						<div class="segment-meta flex items-center gap-3 mt-[1px] mb-[5px] py-0 px-2 text-11 leading-none">
-							<span class="segment-tag">{t.chat.segmentPart(sIdx + 1)}</span>
-						</div>
-					{/if}
-
 					{#if item.type === 'streaming'}
 						{@const step = stepLineOf(item.turn.id)}
 						{@const said = Boolean(item.turn.partial_text?.trim())}
@@ -511,17 +502,6 @@
 		color: var(--muted);
 	}
 
-	.segment-count-badge {
-		font-size: 10px;
-		font-weight: 600;
-		padding: 1px 6px;
-		border-radius: var(--radius-full);
-		background: var(--chip);
-		border: 1px solid var(--line);
-		color: var(--muted);
-		letter-spacing: 0.01em;
-	}
-
 	.msg-time {
 		font-size: 11px;
 		color: var(--muted);
@@ -539,26 +519,8 @@
 		letter-spacing: -0.01em;
 	}
 
-	.msg-wrap.is-group .msg-segment:not(:first-child) {
-		margin-top: 4px;
-		padding-top: 8px;
-		border-top: 1px dashed var(--line-subtle);
-	}
-
 	.msg-wrap.is-group .msg-segment:not(:first-child) .msg:not(.is-you) {
 		border-radius: var(--radius-md) var(--radius-lg) var(--radius-lg) var(--radius-lg);
-	}
-
-	.segment-tag {
-		font-size: 10px;
-		font-weight: 700;
-		padding: 1.5px 6px;
-		border-radius: var(--radius-xs);
-		background: color-mix(in srgb, var(--accent) 8%, transparent);
-		color: var(--accent);
-		border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
-		letter-spacing: 0.02em;
-		line-height: 1.2;
 	}
 
 	/* The ground a part takes under the pointer fades in; the rule that sets it is the stage's (ChatStage), which knows whether a message's menu is open. */
@@ -931,8 +893,7 @@
 			display: none;
 		}
 
-		.msg-header .bot-badge,
-		.msg-header .segment-count-badge {
+		.msg-header .bot-badge {
 			flex-shrink: 0;
 		}
 

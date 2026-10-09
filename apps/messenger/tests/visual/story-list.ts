@@ -40,7 +40,7 @@ export const STORY_SIZES = {
 	'chat-header': { width: 900, height: 120 },
 	'chat-stage': { width: 900, height: 820 },
 	'chat-stage-botdm': { width: 900, height: 820 },
-	// One Bot reply in three parts: the 「N 段输出」 group, its 「第 N 段」 tags and the seams between them.
+	// One Bot reply in three parts, stacked under one header with no labels or rules between them.
 	'chat-stage-segments': { width: 900, height: 820 },
 	// A conversation as narrow as a phone docks its composer across the bottom instead of floating it.
 	'chat-stage-narrow': { width: 390, height: 844 },

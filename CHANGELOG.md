@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### A reply in several parts reads as one
+
+- A Bot's reply sent in several parts no longer carries an "N outputs" badge or a "Part N" tag on each part, and the dashed rules between parts are gone: the parts stack closer under one header, each still ending with its own time.
+
 ### Trace, Board and Plan are tabs of their own
 
 - On a wide window a job's trace, board and plan are each a tab of their own: they can sit side by side, move to another pane, float, or be closed one at a time. The tabs are named "<name> flow", "<name> board" and "<name> plan", each with its own icon. A tab shows its own view only; the "Trace / Board / Plan" switch by the title is gone from tabs.
