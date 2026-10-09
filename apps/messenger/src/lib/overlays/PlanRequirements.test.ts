@@ -191,3 +191,43 @@ test("without a way to show tickets, an entry's ticket stays plain words", () =>
   expect(view.host.textContent).toContain(t.plan.requirements.scope.ticket("01 粗剪"));
   view.close();
 });
+
+test("an entry is two lines: your words with how often you said them, then the restatement, source, scope and buttons", () => {
+  const view = open(aDetail([anEntry({ id: "twice", restated: "母带约 120 秒", times_raised: 2 })]));
+  const row = view.host.querySelector('[data-requirement="twice"]')!;
+  const line = row.querySelector(".plan-req-line")!;
+  expect(line.querySelector(".plan-req-quote")?.textContent).toBe("「片长约 2 分钟」");
+  expect(line.querySelector(".plan-req-times")?.textContent).toBe(t.plan.requirements.said(2));
+  const sub = row.querySelector(".plan-req-sub")!;
+  expect(sub.querySelector(".plan-req-restated")?.textContent).toBe(t.plan.requirements.restated("母带约 120 秒"));
+  expect(sub.querySelector(".plan-req-meta")?.textContent).toContain(t.plan.requirements.scope.plan);
+  expect([...sub.querySelectorAll(".plan-req-actions .plan-req-btn")].map((el) => el.textContent)).toEqual([
+    t.plan.requirements.wholeProject,
+    t.plan.requirements.waive,
+  ]);
+  // In force: its buttons are the quiet kind. Waiting for you: not.
+  expect(row.classList.contains("is-settled")).toBe(true);
+  view.close();
+  const offered = open(aDetail([anEntry({ id: "offer", status: "proposed" })]));
+  expect(offered.host.querySelector('[data-requirement="offer"]')?.classList.contains("is-settled")).toBe(false);
+  offered.close();
+});
+
+test("past ten of the plan's own entries the rest are a press away, and back; a picked ticket shows them all", () => {
+  const entries = Array.from({ length: 13 }, (_, i) => anEntry({ id: `r${i + 1}`, seq: i + 1, quote: `要求 ${i + 1}` }));
+  const view = open(aDetail(entries));
+  const rows = () => view.host.querySelectorAll(".plan-reqs-list .plan-req").length;
+  expect(rows()).toBe(10);
+  const more = view.host.querySelector<HTMLButtonElement>(".plan-reqs-more")!;
+  expect(more.textContent?.trim()).toBe(t.plan.requirements.showAll(3));
+  click(more);
+  expect(rows()).toBe(13);
+  expect(view.host.querySelector(".plan-reqs-more")?.textContent?.trim()).toBe(t.plan.requirements.showFewer);
+  click(view.host.querySelector(".plan-reqs-more"));
+  expect(rows()).toBe(10);
+  view.props.selectedTicket = "tk-1";
+  flushSync();
+  expect(rows()).toBe(13);
+  expect(view.host.querySelector(".plan-reqs-more")).toBeNull();
+  view.close();
+});

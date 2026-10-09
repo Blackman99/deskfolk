@@ -14,7 +14,18 @@
 		ticketTag,
 		type SpecListField
 	} from './plan-board.ts';
-	import { checkSummary, checksForLine, derivedChecks, orphanChecks } from './acceptance-checks.ts';
+	import {
+		badgeOf,
+		bySeverity,
+		checkSummary,
+		checksByItem,
+		checksForLine,
+		derivedChecks,
+		failingChecks,
+		firstReason,
+		orphanChecks,
+		sampleChecks
+	} from './acceptance-checks.ts';
 	import AcceptanceCheckRow from './AcceptanceCheckRow.svelte';
 	import AcceptanceCheckForm from './AcceptanceCheckForm.svelte';
 	import PlanRequirements from './PlanRequirements.svelte';
@@ -89,16 +100,38 @@
 
 	const checks = $derived(detail.checks ?? []);
 	const acceptanceLines = $derived(detail.spec?.acceptance ?? []);
-	const orphanedChecks = $derived(orphanChecks(checks, acceptanceLines));
+	/** A check under a ticket sorts by that ticket's number among checks in the same state. */
+	const ticketSeq = (check: AcceptanceCheck): number =>
+		(check.ticket_id ? ticketsById.get(check.ticket_id)?.seq : undefined) ?? Number.MAX_SAFE_INTEGER;
+	const orphanedChecks = $derived(bySeverity(orphanChecks(checks, acceptanceLines), ticketSeq));
 	const fromYourWords = $derived(derivedChecks(checks));
+	/** Held to the approved sample (ADR 0060): one line, each ticket's check under it, failures first. */
+	const heldToSample = $derived(checksByItem(sampleChecks(checks)).map((group) => ({ item: group.item, checks: bySeverity(group.checks, ticketSeq) })));
 	const checksTotal = $derived(checkSummary(checks));
-	/** The written progress, counted, for the overview at the top. */
-	const progressCounts = $derived({
-		done: detail.spec?.progress.done.length ?? 0,
-		open: detail.spec?.progress.open.length ?? 0,
-		blocked: detail.spec?.progress.blocked.length ?? 0
-	});
 	const anyCheckRunning = $derived(checks.some((check) => check.running));
+
+	/**
+	 * What needs you, said once, under the goal: the checks that failed, what is written up as
+	 * blocked, and your requirements waiting for your word. On 2026-10-09 the one failed sample
+	 * check sat as the first of eleven like-sized pills and nothing on the page said to look there.
+	 */
+	const ATTENTION_CHECKS = 3;
+	const failing = $derived(bySeverity(failingChecks(checks), ticketSeq));
+	const waitingRequirements = $derived(
+		(detail.requirements ?? []).filter((entry) => !entry.excluded && (entry.status === 'proposed' || entry.status === 'unverified')).length
+	);
+	const needsYou = $derived(failing.length > 0 || (detail.spec?.progress.blocked.length ?? 0) > 0 || waitingRequirements > 0);
+	let sectionEl = $state<HTMLElement | null>(null);
+
+	function showWaitingRequirements(): void {
+		sectionEl?.querySelector('.plan-reqs-group.is-aside')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+	}
+
+	/** Done is folded while anything is still open or blocked; the head says how many. */
+	let doneOpen = $state<boolean | null>(null);
+	const doneShown = $derived(
+		doneOpen ?? ((detail.spec?.progress.open.length ?? 0) + (detail.spec?.progress.blocked.length ?? 0) === 0)
+	);
 
 	async function runAllChecks(): Promise<void> {
 		if (!api || runningAll) return;
@@ -125,7 +158,11 @@
 	}
 
 	const GUIDELINE_FIELDS: readonly SpecListField[] = ['acceptance', 'rules', 'process'];
-	const PROGRESS_FIELDS: readonly SpecListField[] = ['progress.done', 'progress.open', 'progress.blocked'];
+	/** Blocked, open, then done; a field with nothing written goes after those with something. */
+	const PROGRESS_FIELDS: readonly SpecListField[] = ['progress.blocked', 'progress.open', 'progress.done'];
+	const progressFields = $derived(
+		detail.spec ? [...PROGRESS_FIELDS].sort((a, b) => Number(specLines(detail.spec!, a).length === 0) - Number(specLines(detail.spec!, b).length === 0)) : []
+	);
 
 	function fieldLabel(field: SpecListField): string {
 		if (field === 'acceptance') return t.plan.spec.acceptance;
@@ -378,7 +415,7 @@
 		</div>
 	</section>
 {:else}
-<section class="plan-spec" aria-label={t.plan.spec.title}>
+<section class="plan-spec" aria-label={t.plan.spec.title} bind:this={sectionEl}>
 	{#if detail.spec && focusTicket}
 		<!-- The ticket picked on the board, read against the spec it has to meet. -->
 		<div class="plan-spec-focus" role="status">
@@ -457,7 +494,63 @@
 				{/if}
 			</div>
 
-
+			{#if needsYou}
+				<!-- What needs you: drawn only when something does, so its colour means something. -->
+				<section
+					class="plan-spec-attention"
+					class:is-warn={failing.length === 0 && spec.progress.blocked.length === 0}
+					aria-label={t.plan.spec.attention}
+				>
+					<h4 class="plan-spec-attention-title">
+						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+							<line x1="12" y1="9" x2="12" y2="13"></line>
+							<line x1="12" y1="17" x2="12.01" y2="17"></line>
+						</svg>
+						<span>{t.plan.spec.attention}</span>
+					</h4>
+					<ul class="plan-spec-attention-list">
+						{#each failing.slice(0, ATTENTION_CHECKS) as check (check.id)}
+							{@const owner = check.ticket_id ? (ticketsById.get(check.ticket_id) ?? null) : null}
+							{@const badge = badgeOf(check)}
+							{@const why = firstReason(check.last_run?.detail)}
+							<li class="plan-spec-attention-item is-fail">
+								<span class="plan-spec-attention-tag">{badge === 'fail' ? t.plan.spec.attentionFail : `${t.plan.checks.title} · ${t.plan.checks.status[badge]}`}</span>
+								{#if owner && onShowTicket}
+									<button
+										type="button"
+										class="plan-spec-attention-subject"
+										title={t.plan.links.showTicket(`${ticketTag(owner.seq)} ${owner.title}`)}
+										onclick={() => onShowTicket(owner.id)}
+									><span class="plan-spec-ticket-ref mono">{ticketTag(owner.seq)}</span><span class="plan-spec-attention-name">{owner.title}</span></button>
+								{:else if owner}
+									<span class="plan-spec-attention-subject"><span class="plan-spec-ticket-ref mono">{ticketTag(owner.seq)}</span><span class="plan-spec-attention-name">{owner.title}</span></span>
+								{:else}
+									<span class="plan-spec-attention-subject"><span class="plan-spec-attention-name">{check.item}</span></span>
+								{/if}
+								{#if why}<span class="plan-spec-attention-why" title={check.last_run?.detail}>{why}</span>{/if}
+							</li>
+						{/each}
+						{#if failing.length > ATTENTION_CHECKS}
+							<li class="plan-spec-attention-item is-more">{t.plan.spec.attentionMore(failing.length - ATTENTION_CHECKS)}</li>
+						{/if}
+						{#each spec.progress.blocked as line}
+							<li class="plan-spec-attention-item is-blocked">
+								<span class="plan-spec-attention-tag">{t.plan.spec.blocked}</span>
+								<span class="plan-spec-attention-text">{line}</span>
+							</li>
+						{/each}
+						{#if waitingRequirements > 0}
+							<li class="plan-spec-attention-item is-waiting">
+								<span class="plan-spec-attention-tag">{t.plan.requirements.proposed}</span>
+								<button type="button" class="plan-spec-attention-subject" onclick={showWaitingRequirements}>
+									<span class="plan-spec-attention-name">{t.plan.spec.attentionWaiting(waitingRequirements)}</span>
+								</button>
+							</li>
+						{/if}
+					</ul>
+				</section>
+			{/if}
 		{/if}
 
 		<div class="plan-spec-body plan-spec-main">
@@ -475,7 +568,10 @@
 					{#each GUIDELINE_FIELDS as field (field)}
 						{@const lines = specLines(spec, field)}
 						{@const count = lines.length}
-						<div class="plan-spec-list is-{field}">
+						{@const unwritten = count === 0 && editing !== field}
+						<!-- Nothing written and nothing under it: the head alone, its 「无」 in it. -->
+						{@const bare = unwritten && !(field === 'acceptance' && (checks.length > 0 || addingCheck || runError))}
+						<div class="plan-spec-list is-{field}" class:is-bare={bare}>
 							<div class="plan-spec-list-head">
 								<div class="plan-spec-list-meta">
 									{#if field === 'acceptance'}
@@ -498,6 +594,8 @@
 									<span class="plan-spec-list-label">{fieldLabel(field)}</span>
 									{#if count > 0}
 										<span class="plan-spec-field-count mono">{count}</span>
+									{:else if unwritten}
+										<span class="plan-spec-empty-line">{t.plan.empty}</span>
 									{/if}
 									{#if field === 'acceptance' && checksTotal.total > 0}
 										<span class="plan-spec-checks-summary mono">{t.plan.checks.summary(checksTotal.pass, checksTotal.total)}</span>
@@ -540,8 +638,15 @@
 									<ul class="plan-spec-ul">
 										{#each lines as line}<li>{line}{#if field === 'acceptance' && checksForLine(checks, line).length > 0}<span class="plan-spec-checks-pills">{#each checksForLine(checks, line) as check (check.id)}{@render checkItem(check)}{/each}</span>{/if}</li>{/each}
 									</ul>
-								{:else}
-									<p class="plan-spec-empty-line">{t.plan.empty}</p>
+								{/if}
+
+								{#if field === 'acceptance' && heldToSample.length > 0}
+									<div class="plan-spec-checks-orphans is-sample">
+										<span class="plan-spec-checks-orphans-title">{t.plan.checks.sampleTitle}</span>
+										<ul class="plan-spec-ul">
+											{#each heldToSample as group (group.item)}<li>{group.item}<span class="plan-spec-checks-pills is-block">{#each group.checks as check (check.id)}{@render checkItem(check)}{/each}</span></li>{/each}
+										</ul>
+									</div>
 								{/if}
 
 								{#if field === 'acceptance' && fromYourWords.length > 0}
@@ -584,60 +689,82 @@
 
 		<div class="plan-spec-col is-side plan-spec-side">
 			{#if detail.spec}
-				<div class="plan-spec-overview-slot">
-					<PlanSpecOverview {t} {ticketStates} checks={checksTotal} progress={progressCounts} {onShowTickets} />
-				</div>
-			{/if}
-			{#if detail.spec}
 				{@const spec = detail.spec}
-				<!-- Section: Progress Dashboard (Done, Open, Blocked) -->
-				<div class="plan-spec-section is-progress">
-					{#each PROGRESS_FIELDS as field (field)}
-						{@const isBlocked = field === 'progress.blocked'}
-						{@const isDone = field === 'progress.done'}
-						{@const lines = specLines(spec, field)}
-						<div class="plan-spec-list is-{field.replace('.', '-')} {isBlocked && lines.length > 0 ? 'is-alert' : ''}">
-							<div class="plan-spec-list-head">
-								<div class="plan-spec-list-meta">
-									{#if isDone}
-										<span class="plan-spec-status-dot is-done" aria-hidden="true">✓</span>
-									{:else if isBlocked}
-										<span class="plan-spec-status-dot is-blocked" aria-hidden="true">!</span>
-									{:else}
-										<span class="plan-spec-status-dot is-open" aria-hidden="true">●</span>
-									{/if}
-									<span class="plan-spec-list-label">{fieldLabel(field)}</span>
-									{#if lines.length > 0}
-										<span class="plan-spec-field-count mono">{lines.length}</span>
-									{/if}
-								</div>
-								{#if api && editing !== field}
-									<button type="button" class="plan-spec-edit-btn" onclick={() => startEditField(field)} title={t.plan.edit}>
-										<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-											<path d="M12 20h9"></path>
-											<path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-										</svg>
-										<span>{t.plan.edit}</span>
-									</button>
-								{/if}
-							</div>
+				<!-- Where it stands, as one card: the tickets and checks counted, then the written progress. -->
+				<div class="plan-spec-overview-slot">
+					<PlanSpecOverview {t} {ticketStates} checks={checksTotal} {onShowTickets}>
+						<div class="plan-spec-section is-progress">
+							{#each progressFields as field (field)}
+								{@const isBlocked = field === 'progress.blocked'}
+								{@const isDone = field === 'progress.done'}
+								{@const lines = specLines(spec, field)}
+								{@const folded = isDone && !doneShown && editing !== field && lines.length > 0}
+								<div
+									class="plan-spec-list is-{field.replace('.', '-')}"
+									class:is-alert={isBlocked && lines.length > 0}
+									class:is-bare={lines.length === 0 && editing !== field}
+									class:is-folded={folded}
+								>
+									<div class="plan-spec-list-head">
+										{#snippet head()}
+											{#if isDone}
+												<span class="plan-spec-status-dot is-done" aria-hidden="true">✓</span>
+											{:else if isBlocked}
+												<span class="plan-spec-status-dot is-blocked" aria-hidden="true">!</span>
+											{:else}
+												<span class="plan-spec-status-dot is-open" aria-hidden="true">●</span>
+											{/if}
+											<span class="plan-spec-list-label">{fieldLabel(field)}</span>
+											{#if lines.length > 0}
+												<span class="plan-spec-field-count mono">{lines.length}</span>
+											{:else if editing !== field}
+												<span class="plan-spec-empty-line">{t.plan.empty}</span>
+											{/if}
+										{/snippet}
+										{#if isDone && lines.length > 0 && editing !== field}
+											<!-- What is done is folded while anything is still open; its head, count and all, opens it. -->
+											<button
+												type="button"
+												class="plan-spec-list-meta plan-spec-fold-btn"
+												aria-expanded={doneShown}
+												title={doneShown ? t.plan.spec.collapse : t.plan.spec.expand}
+												onclick={() => (doneOpen = !doneShown)}
+											>
+												{@render head()}
+												<svg class="plan-spec-fold-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+													<polyline points="6 9 12 15 18 9"></polyline>
+												</svg>
+											</button>
+										{:else}
+											<div class="plan-spec-list-meta">{@render head()}</div>
+										{/if}
+										{#if api && editing !== field}
+											<button type="button" class="plan-spec-edit-btn" onclick={() => startEditField(field)} title={t.plan.edit}>
+												<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+													<path d="M12 20h9"></path>
+													<path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+												</svg>
+												<span>{t.plan.edit}</span>
+											</button>
+										{/if}
+									</div>
 
-							{#if editing === field}
-								<textarea class="plan-spec-textarea" bind:value={draft} placeholder={t.plan.linesHint} disabled={saving}></textarea>
-								<div class="plan-spec-edit-actions">
-									<button type="button" class="plan-spec-save-btn" onclick={save} disabled={saving}>{t.plan.save}</button>
-									<button type="button" class="plan-spec-cancel-btn" onclick={cancelEdit} disabled={saving}>{t.plan.cancel}</button>
+									{#if editing === field}
+										<textarea class="plan-spec-textarea" bind:value={draft} placeholder={t.plan.linesHint} disabled={saving}></textarea>
+										<div class="plan-spec-edit-actions">
+											<button type="button" class="plan-spec-save-btn" onclick={save} disabled={saving}>{t.plan.save}</button>
+											<button type="button" class="plan-spec-cancel-btn" onclick={cancelEdit} disabled={saving}>{t.plan.cancel}</button>
+										</div>
+										{#if saveError}<p class="plan-spec-error">{saveError}</p>{/if}
+									{:else if lines.length > 0 && !folded}
+										<ul class="plan-spec-ul">
+											{#each lines as line}<li>{line}</li>{/each}
+										</ul>
+									{/if}
 								</div>
-								{#if saveError}<p class="plan-spec-error">{saveError}</p>{/if}
-							{:else if lines.length > 0}
-								<ul class="plan-spec-ul">
-									{#each lines as line}<li>{line}</li>{/each}
-								</ul>
-							{:else}
-								<p class="plan-spec-empty-line">{t.plan.empty}</p>
-							{/if}
+							{/each}
 						</div>
-					{/each}
+					</PlanSpecOverview>
 				</div>
 			{/if}
 
@@ -753,19 +880,23 @@
 
 	/* Everything else, a child component's card included, comes after the contract. */
 	.plan-spec-col > :global(*) {
-		order: 4;
+		order: 5;
 	}
 
 	.plan-spec-col > .plan-spec-goal {
 		order: 1;
 	}
 
-	.plan-spec-col > .plan-spec-overview-slot {
+	.plan-spec-col > .plan-spec-attention {
 		order: 2;
 	}
 
-	.plan-spec-col > .plan-spec-main {
+	.plan-spec-col > .plan-spec-overview-slot {
 		order: 3;
+	}
+
+	.plan-spec-col > .plan-spec-main {
+		order: 4;
 	}
 
 	@container spec (min-width: 880px) {
@@ -985,10 +1116,128 @@
 
 	.plan-spec-goal-text {
 		color: var(--ink);
-		font-size: 17px;
+		font-size: 16px;
 		font-weight: 600;
 		line-height: 1.5;
 		overflow-wrap: anywhere;
+	}
+
+	/* What needs you: the one loud block on the page, and only there when something does. */
+	.plan-spec-attention {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		min-width: 0;
+		padding: 9px 12px 10px;
+		border: 1px solid var(--danger-line);
+		border-left-width: 3px;
+		border-radius: var(--radius-md);
+		background: var(--danger-bg);
+	}
+
+	.plan-spec-attention-title {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		margin: 0;
+		font-size: 12px;
+		font-weight: 700;
+		color: var(--danger-text);
+	}
+
+	.plan-spec-attention-list {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	.plan-spec-attention-item {
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
+		min-width: 0;
+		font-size: 12px;
+		line-height: 1.45;
+		color: var(--ink);
+	}
+
+	.plan-spec-attention-tag {
+		flex: none;
+		padding: 0 6px;
+		border-radius: var(--radius-xs);
+		background: var(--danger-text);
+		color: var(--pane);
+		font-size: 11px;
+		font-weight: 700;
+		line-height: 18px;
+	}
+
+	/* Only your word is waited on, nothing failed: amber, not red. */
+	.plan-spec-attention.is-warn {
+		border-color: var(--warn-line);
+		background: var(--warn-bg);
+	}
+
+	.plan-spec-attention.is-warn .plan-spec-attention-title {
+		color: var(--warn-text);
+	}
+
+	.plan-spec-attention-item.is-waiting .plan-spec-attention-tag {
+		background: var(--warn-text);
+	}
+
+	.plan-spec-attention-subject {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 5px;
+		flex: 0 1 auto;
+		min-width: 0;
+		border: none;
+		background: none;
+		padding: 0;
+		font: inherit;
+		font-weight: 600;
+		color: var(--ink);
+		text-align: left;
+	}
+
+	button.plan-spec-attention-subject {
+		cursor: pointer;
+	}
+
+	button.plan-spec-attention-subject:hover .plan-spec-attention-name {
+		text-decoration: underline;
+	}
+
+	.plan-spec-attention-subject .plan-spec-ticket-ref {
+		align-self: center;
+	}
+
+	.plan-spec-attention-name,
+	.plan-spec-attention-why {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.plan-spec-attention-why {
+		flex: 1 1 0;
+		color: var(--ink-secondary);
+	}
+
+	.plan-spec-attention-text {
+		min-width: 0;
+		overflow-wrap: anywhere;
+	}
+
+	.plan-spec-attention-item.is-more {
+		padding-left: 2px;
+		font-size: 11px;
+		color: var(--danger-text);
 	}
 
 	/* Sections Grids */
@@ -1001,9 +1250,88 @@
 		grid-template-columns: minmax(0, 1fr);
 	}
 
+	/* Inside the overview card: sections divided by a rule, not cards of their own. */
 	.plan-spec-section.is-progress {
-		/* Two columns only where each still fits its label and its edit button: not in a side panel. */
-		grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+		gap: 0;
+		margin-top: 2px;
+	}
+
+	.plan-spec-section.is-progress .plan-spec-list {
+		padding: 8px 0;
+		border: none;
+		border-top: 1px solid var(--line-subtle);
+		border-radius: 0;
+		background: none;
+		box-shadow: none;
+	}
+
+	.plan-spec-section.is-progress .plan-spec-list:last-child {
+		padding-bottom: 0;
+	}
+
+	.plan-spec-section.is-progress .plan-spec-list.is-alert {
+		margin-block: 2px;
+		padding: 8px 9px;
+		border: 1px solid var(--danger-line);
+		border-radius: var(--radius-sm);
+		background: var(--danger-bg);
+	}
+
+	.plan-spec-section.is-progress .plan-spec-list.is-alert + .plan-spec-list {
+		border-top-color: transparent;
+	}
+
+	/* Nothing written: the head alone, quiet, its 「无」 beside the label. */
+	.plan-spec-section.is-guidelines .plan-spec-list.is-bare {
+		padding-block: 6px;
+		border-style: dashed;
+		background: none;
+		box-shadow: none;
+	}
+
+	.plan-spec-section.is-progress .plan-spec-list.is-bare {
+		padding-block: 5px;
+	}
+
+	.plan-spec-list.is-bare .plan-spec-list-head,
+	.plan-spec-list.is-folded .plan-spec-list-head {
+		margin-bottom: 0;
+	}
+
+	.plan-spec-list.is-bare .plan-spec-list-label,
+	.plan-spec-list.is-bare .plan-spec-field-icon,
+	.plan-spec-list.is-bare .plan-spec-status-dot {
+		opacity: 0.7;
+	}
+
+	.plan-spec-list-meta .plan-spec-empty-line {
+		font-size: 11px;
+	}
+
+	.plan-spec-fold-btn {
+		border: none;
+		background: none;
+		padding: 2px 4px;
+		margin: -2px -4px;
+		border-radius: var(--radius-sm);
+		font: inherit;
+		color: inherit;
+		cursor: pointer;
+	}
+
+	.plan-spec-fold-btn:hover {
+		background: var(--line-subtle);
+	}
+
+	.plan-spec-fold-chevron {
+		flex: none;
+		color: var(--muted);
+		transform: rotate(-90deg);
+		transition: transform 0.15s ease;
+	}
+
+	.plan-spec-fold-btn[aria-expanded='true'] .plan-spec-fold-chevron {
+		transform: none;
 	}
 
 	.plan-spec-list {
@@ -1188,6 +1516,12 @@
 		vertical-align: middle;
 	}
 
+	/* Many checks under one line: their own row under it, not trailing after the words. */
+	.plan-spec-checks-pills.is-block {
+		display: flex;
+		margin: 5px 0 0;
+	}
+
 	/* A check and, when it is filed under one ticket, that ticket's number before it. */
 	.plan-spec-check {
 		display: inline-flex;
@@ -1323,6 +1657,13 @@
 		margin-top: 8px;
 		padding-top: 8px;
 		border-top: 1px dashed var(--line);
+	}
+
+	/* No lines above it: nothing to set it apart from. */
+	.plan-spec-list-head + .plan-spec-checks-orphans {
+		margin-top: 0;
+		padding-top: 0;
+		border-top: none;
 	}
 
 	.plan-spec-checks-orphans-title {
@@ -1605,8 +1946,7 @@
 
 	/* Mobile / Narrow Screen Responsiveness */
 	@media (max-width: 560px) {
-		.plan-spec-section.is-guidelines,
-		.plan-spec-section.is-progress {
+		.plan-spec-section.is-guidelines {
 			grid-template-columns: 1fr;
 		}
 

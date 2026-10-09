@@ -69,7 +69,15 @@ export const zh = {
     blocked: "卡住",
     /** The spec view's summary at the top, and the label its versions go under. */
     overview: "概况",
-    version: "版本"
+    version: "版本",
+    /** The strip under the goal: what needs you, and only when something does. */
+    attention: "要留意",
+    attentionFail: "检查没过",
+    attentionMore: (n: number) => `还有 ${n} 条没过`,
+    attentionWaiting: (n: number) => `你的要求 ${n} 条`,
+    attentionSee: "去看",
+    expand: "展开",
+    collapse: "收起"
   },
   checks: {
     title: "检查",
@@ -79,6 +87,7 @@ export const zh = {
     none: "还没有检查",
     orphansTitle: "对不上验收条目的检查",
     derivedTitle: "按你的话加的检查",
+    sampleTitle: "照样片的检查",
     editHint: "改写一条验收时它的检查会跟着这一条；删掉的条目的检查会移到「对不上验收条目的检查」。",
     status: { pass: "通过", fail: "没过", running: "跑着", blocked: "拦下", error: "出错", none: "没跑过", unbound: "未绑定", proposed: "待确认" },
     sourceOrganizer: "整理跳加的",
@@ -258,7 +267,9 @@ export const zh = {
     notHere: "不适用这件事",
     hereAgain: "恢复",
     wholeProject: "对这个会话都适用",
-    failed: "没做成，再试一次。"
+    failed: "没做成，再试一次。",
+    showAll: (n: number) => `再显示 ${n} 条`,
+    showFewer: "收起"
   },
   retrospective: {
     title: "完工复盘",
@@ -379,7 +390,15 @@ export const en: CopyShape<typeof zh> = {
     blocked: "Blocked",
     /** The spec view's summary at the top, and the label its versions go under. */
     overview: "At a glance",
-    version: "Version"
+    version: "Version",
+    /** The strip under the goal: what needs you, and only when something does. */
+    attention: "Needs a look",
+    attentionFail: "Check failed",
+    attentionMore: (n: number) => `${n} more failed`,
+    attentionWaiting: (n: number) => `${n} of your requirements`,
+    attentionSee: "See",
+    expand: "Expand",
+    collapse: "Collapse"
   },
   checks: {
     title: "Checks",
@@ -389,6 +408,7 @@ export const en: CopyShape<typeof zh> = {
     none: "No checks yet",
     orphansTitle: "Checks that don’t match a line",
     derivedTitle: "Checks from what you said",
+    sampleTitle: "Held to the sample",
     editHint: "Rewording a line keeps its checks; a deleted line’s checks move to “Checks that don’t match a line”.",
     status: { pass: "Pass", fail: "Fail", running: "Running", blocked: "Blocked", error: "Error", none: "Never run", unbound: "Not bound", proposed: "To confirm" },
     sourceOrganizer: "Added by the organizer",
@@ -566,7 +586,9 @@ export const en: CopyShape<typeof zh> = {
     notHere: "Not for this job",
     hereAgain: "Restore",
     wholeProject: "For the whole conversation",
-    failed: "That did not work; try again."
+    failed: "That did not work; try again.",
+    showAll: (n: number) => `Show ${n} more`,
+    showFewer: "Show fewer"
   },
   retrospective: {
     title: "Retrospective",

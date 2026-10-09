@@ -55,13 +55,63 @@ export function checksForLine(checks: readonly AcceptanceCheck[], line: string):
   return checks.filter((check) => check.item === line && !isDerived(check));
 }
 
+/** Held to the approved sample (照样片, ADR 0060): one per ticket, under the sample's standard rather than an acceptance line. */
+export function isSample(check: Pick<AcceptanceCheck, "origin">): boolean {
+  return check.origin === "sample";
+}
+
 /**
  * Checks whose line no longer matches any of the plan's current acceptance lines — still run, still
- * count. Checks from your words are listed on their own (`derivedChecks`), whatever their line.
+ * count. Checks from your words and checks held to the sample are listed on their own
+ * (`derivedChecks`, `sampleChecks`), whatever their line.
  */
 export function orphanChecks(checks: readonly AcceptanceCheck[], acceptanceLines: readonly string[]): AcceptanceCheck[] {
   const lines = new Set(acceptanceLines);
-  return checks.filter((check) => !lines.has(check.item) && !isDerived(check));
+  return checks.filter((check) => !lines.has(check.item) && !isDerived(check) && !isSample(check));
+}
+
+/** The checks held to an approved sample, each filed under the ticket it judges. */
+export function sampleChecks(checks: readonly AcceptanceCheck[]): AcceptanceCheck[] {
+  return checks.filter(isSample);
+}
+
+/** Checks that share a line, under it, in the order the lines first appear. */
+export function checksByItem(checks: readonly AcceptanceCheck[]): Array<{ item: string; checks: AcceptanceCheck[] }> {
+  const groups = new Map<string, AcceptanceCheck[]>();
+  for (const check of checks) {
+    const group = groups.get(check.item);
+    if (group) group.push(check);
+    else groups.set(check.item, [check]);
+  }
+  return [...groups].map(([item, group]) => ({ item, checks: group }));
+}
+
+/** What a pill's state asks of you, most first: a failure, then what is still going, then what has not run, then a pass. */
+const SEVERITY: Record<CheckBadge, number> = { fail: 0, error: 1, blocked: 2, running: 3, proposed: 4, none: 5, unbound: 6, pass: 7 };
+
+/**
+ * The checks in the order they need you: failures first, passes last. Ties keep `tieBreak`'s order
+ * (a ticket's number, say), or the order they came in.
+ */
+export function bySeverity(checks: readonly AcceptanceCheck[], tieBreak?: (check: AcceptanceCheck) => number): AcceptanceCheck[] {
+  return checks
+    .map((check, index) => ({ check, index }))
+    .sort((a, b) => SEVERITY[badgeOf(a.check)] - SEVERITY[badgeOf(b.check)] || (tieBreak ? tieBreak(a.check) - tieBreak(b.check) : 0) || a.index - b.index)
+    .map(({ check }) => check);
+}
+
+/** A run's first reason, for one line: what it said up to its first break (「整段没有声音，样片有声音。」). */
+export function firstReason(detail: string | null | undefined): string {
+  return (detail ?? "").split(/[；;\n]/u).map((part) => part.trim()).find(Boolean) ?? "";
+}
+
+/** The checks that count and last came out failed, blocked or broken: what the plan's head calls out. */
+export function failingChecks(checks: readonly AcceptanceCheck[]): AcceptanceCheck[] {
+  return checks.filter((check) => {
+    if (!isGate(check) || check.running) return false;
+    const outcome = check.last_run?.outcome;
+    return outcome === "fail" || outcome === "blocked" || outcome === "error";
+  });
 }
 
 /** The checks the app read from your words, each under the words it took ("时长约 2 分钟"). */

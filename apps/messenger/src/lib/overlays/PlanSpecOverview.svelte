@@ -1,32 +1,32 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import type { TicketStatus } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 
 	/**
 	 * Where the job stands, at a glance, at the top of the spec: its tickets by state (each one opens
-	 * the board on that column), how many of its checks passed, and how the written progress counts.
-	 * The tickets' states come first: they and the written progress describe the same work, and the
-	 * tickets are the ones to go by.
+	 * the board on that column) and how many of its checks passed; then, in the same card, whatever
+	 * the panel puts under them — the written progress, which counts itself. The tickets' states come
+	 * first: they and the written progress describe the same work, and the tickets are the ones to go by.
 	 */
 	interface Props {
 		t: Copy;
 		ticketStates: ReadonlyArray<{ status: TicketStatus; count: number }>;
 		checks: { pass: number; total: number };
-		progress: { done: number; open: number; blocked: number };
 		onShowTickets?: (status: TicketStatus | 'all') => void;
+		children?: Snippet;
 	}
 
-	let { t, ticketStates, checks, progress, onShowTickets }: Props = $props();
+	let { t, ticketStates, checks, onShowTickets, children }: Props = $props();
 
 	const checksPct = $derived(checks.total > 0 ? Math.round((checks.pass / checks.total) * 100) : 0);
-	const hasProgress = $derived(progress.done + progress.open + progress.blocked > 0);
 </script>
 
 <section class="plan-overview" aria-label={t.plan.spec.overview}>
 	<h4 class="plan-overview-title">{t.plan.spec.overview}</h4>
 	{#if ticketStates.length > 0}
 		<div class="plan-spec-ticket-states">
-			<div class="plan-spec-ticket-states-line">
+			<div class="plan-spec-ticket-states-line" title={t.plan.links.progressHint}>
 				<span class="plan-spec-ticket-states-label">{t.plan.links.ticketStates}</span>
 				{#each ticketStates as entry (entry.status)}
 					{#if onShowTickets}
@@ -42,7 +42,6 @@
 					{/if}
 				{/each}
 			</div>
-			<p class="plan-spec-ticket-states-hint">{t.plan.links.progressHint}</p>
 		</div>
 	{/if}
 	{#if checks.total > 0}
@@ -54,18 +53,7 @@
 			<span class="plan-overview-value mono">{checks.pass}/{checks.total}</span>
 		</div>
 	{/if}
-	{#if hasProgress}
-		<div class="plan-overview-row">
-			<span class="plan-overview-label">{t.plan.spec.progress}</span>
-			<span class="plan-overview-counts">
-				<span class="plan-overview-count is-done">{t.plan.spec.done} <b class="mono">{progress.done}</b></span>
-				<span class="plan-overview-count is-open">{t.plan.spec.open} <b class="mono">{progress.open}</b></span>
-				{#if progress.blocked > 0}
-					<span class="plan-overview-count is-blocked">{t.plan.spec.blocked} <b class="mono">{progress.blocked}</b></span>
-				{/if}
-			</span>
-		</div>
-	{/if}
+	{@render children?.()}
 </section>
 
 <style>
@@ -110,13 +98,6 @@
 		font-size: 12px;
 		font-weight: 600;
 		color: var(--muted);
-	}
-
-	.plan-spec-ticket-states-hint {
-		margin: 0;
-		font-size: 11px;
-		line-height: 1.45;
-		color: var(--muted-light);
 	}
 
 	.plan-spec-ticket-state {
@@ -201,24 +182,5 @@
 		font-size: 11px;
 		font-weight: 600;
 		color: var(--ink-secondary);
-	}
-
-	.plan-overview-counts {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 4px 12px;
-		min-width: 0;
-		color: var(--ink-secondary);
-	}
-
-	.plan-overview-count b {
-		margin-left: 2px;
-		font-weight: 700;
-		color: var(--ink);
-	}
-
-	.plan-overview-count.is-blocked,
-	.plan-overview-count.is-blocked b {
-		color: var(--danger-text);
 	}
 </style>

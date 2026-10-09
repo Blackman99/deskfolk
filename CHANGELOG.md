@@ -6,6 +6,14 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### The plan says what needs you first, and empty fields take no room
+
+- Under the goal, "Needs a look" lists the checks that failed (with their ticket and first reason; the ticket opens its card on the board), progress written up as blocked, and your requirements waiting for your word (a press scrolls to them). With none of these it is not drawn; amber when only requirements wait, red when something failed or is blocked.
+- Rules, Done when or Blocked with nothing written are a single row, the label and "(none)", instead of a card each.
+- Checks held to the sample are listed as "Held to the sample": the sample's line, each ticket's check under it, failures first, never-run next, passes last, ties by ticket number. They are no longer called "Checks that don't match a line".
+- The side column's overview and three progress cards are one card: tickets, the checks bar, then the written progress (blocked, open, done), empty parts last. While anything is open or blocked, Done is folded to "Done 5" and opens on a press. The overview's repeated progress counts and its explaining paragraph are gone (the explanation is the tickets row's tooltip).
+- Each of your requirements takes two lines instead of five or six: your words and "said N times" (an amber badge), then the restatement, source, scope and buttons. The 10 said most often show first and "Show N more" brings the rest; an entry in force shows its buttons when the pointer is on it, always on a touch screen.
+
 ### Anthropic, Xiaomi MiMo and Qwen are built in: paste a key
 
 - Adding an endpoint starts on four tiles: Anthropic, Xiaomi MiMo, Qwen and Custom. The three built-in ones ask only for a key: the app tries it on each of that vendor's plans (Xiaomi's Token Plan for China, Singapore and Europe and pay-as-you-go; Bailian's Token Plan and pay-as-you-go in Beijing and international) and keeps the one that takes it, with its models. Nothing is saved for a key no plan takes. The plan can also be picked by hand.

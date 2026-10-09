@@ -37,6 +37,15 @@
 	let pending = $state<string | null>(null);
 	let failed = $state<string | null>(null);
 
+	/**
+	 * The plan's own entries, said most often first, the first few shown; the rest a press away. A
+	 * picked ticket shows them all, so none it is held to is out of sight.
+	 */
+	const SHOWN = 10;
+	let showAll = $state(false);
+	const ownShown = $derived(showAll || selectedTicket ? groups.own : groups.own.slice(0, SHOWN));
+	const ownHidden = $derived(groups.own.length - ownShown.length);
+
 	function label(action: RequirementAction): string {
 		const r = t.plan.requirements;
 		if (action === 'confirm') return r.confirm;
@@ -65,64 +74,80 @@
 	{@const times = requirementTimes(entry, t.plan.requirements)}
 	{@const ownTicket = requirementTicket(entry)}
 	{@const binding = ticketBinding(ownTicket, selectedTicket)}
-	<li class="plan-req" class:is-ticket-mine={binding === 'mine'} class:is-ticket-other={binding === 'other'} data-requirement={entry.id}>
-		<div class="plan-req-line">
-			<span class="plan-req-seq mono">R-{entry.seq}</span>
-			<span class="plan-req-quote">「{entry.quote}」</span>
+	{@const actions = api ? requirementActions(entry, detail) : []}
+	<!--
+		Two lines: your words and how often you said them; then the restatement, where they came from,
+		where they hold and what you can do. In force, the buttons stay quiet until the row is pointed at.
+	-->
+	<li
+		class="plan-req"
+		class:is-ticket-mine={binding === 'mine'}
+		class:is-ticket-other={binding === 'other'}
+		class:is-settled={entry.status === 'open' && !entry.excluded}
+		data-requirement={entry.id}
+	>
+		<span class="plan-req-seq mono">R-{entry.seq}</span>
+		<div class="plan-req-body">
+			<div class="plan-req-line">
+				<span class="plan-req-quote">「{entry.quote}」</span>
+				{#if times}<span class="plan-req-times">{times}</span>{/if}
+			</div>
+			<div class="plan-req-sub">
+				{#if entry.restated}
+					<span class="plan-req-restated">{t.plan.requirements.restated(entry.restated)}</span>
+				{/if}
+				{#if entry.supersedes}
+					<span class="plan-req-restated">{t.plan.requirements.replaces(entry.supersedes.seq, entry.supersedes.quote)}</span>
+				{/if}
+				<span class="plan-req-meta">
+					{#if entry.source?.session_id && entry.source.message_id}
+						<button type="button" class="plan-req-jump" title={t.plan.requirements.jump} onclick={() => onJump(entry.source!.session_id!, entry.source!.message_id!)}>{requirementSource(entry, t.plan.requirements)}</button>
+					{:else}
+						<span>{requirementSource(entry, t.plan.requirements)}</span>
+					{/if}
+					{#if ownTicket && onShowTicket && detail.tickets.some((ticket) => ticket.id === ownTicket)}
+						<button type="button" class="plan-req-ticket" onclick={() => onShowTicket(ownTicket)}>{requirementScope(entry, detail, t.plan.requirements)}</button>
+					{:else}
+						<span>{requirementScope(entry, detail, t.plan.requirements)}</span>
+					{/if}
+				</span>
+				{#if actions.length > 0}
+					<span class="plan-req-actions">
+						{#each actions as action (action)}
+							<button
+								type="button"
+								class="plan-req-btn"
+								class:is-primary={action === 'confirm'}
+								disabled={pending !== null}
+								aria-busy={pending === `${entry.id}:${action}` ? 'true' : undefined}
+								onclick={() => void press(entry, action)}>{label(action)}</button
+							>
+						{/each}
+						{#if failed === entry.id}<span class="plan-req-error" role="status">{t.plan.requirements.failed}</span>{/if}
+					</span>
+				{/if}
+			</div>
 		</div>
-		{#if entry.restated}
-			<div class="plan-req-restated">{t.plan.requirements.restated(entry.restated)}</div>
-		{/if}
-		{#if entry.supersedes}
-			<div class="plan-req-restated">{t.plan.requirements.replaces(entry.supersedes.seq, entry.supersedes.quote)}</div>
-		{/if}
-		<div class="plan-req-meta">
-			{#if entry.source?.session_id && entry.source.message_id}
-				<button type="button" class="plan-req-jump" title={t.plan.requirements.jump} onclick={() => onJump(entry.source!.session_id!, entry.source!.message_id!)}>{requirementSource(entry, t.plan.requirements)}</button>
-			{:else}
-				<span>{requirementSource(entry, t.plan.requirements)}</span>
-			{/if}
-			{#if times}<span class="plan-req-times">{times}</span>{/if}
-			{#if ownTicket && onShowTicket && detail.tickets.some((ticket) => ticket.id === ownTicket)}
-				<button type="button" class="plan-req-ticket" onclick={() => onShowTicket(ownTicket)}>{requirementScope(entry, detail, t.plan.requirements)}</button>
-			{:else}
-				<span>{requirementScope(entry, detail, t.plan.requirements)}</span>
-			{/if}
-		</div>
-		{#if api}
-			{@const actions = requirementActions(entry, detail)}
-			{#if actions.length > 0}
-				<div class="plan-req-actions">
-					{#each actions as action (action)}
-						<button
-							type="button"
-							class="plan-req-btn"
-							class:is-primary={action === 'confirm'}
-							disabled={pending !== null}
-							aria-busy={pending === `${entry.id}:${action}` ? 'true' : undefined}
-							onclick={() => void press(entry, action)}>{label(action)}</button
-						>
-					{/each}
-					{#if failed === entry.id}<span class="plan-req-error" role="status">{t.plan.requirements.failed}</span>{/if}
-				</div>
-			{/if}
-		{/if}
 	</li>
 {/snippet}
 
 <section class="plan-reqs" aria-label={t.plan.requirements.title}>
-	<div class="plan-reqs-head">
+	<div class="plan-reqs-head" title={t.plan.requirements.hint}>
 		<span class="plan-reqs-title">{t.plan.requirements.title}</span>
 		{#if total > 0}<span class="plan-reqs-count mono">{total}</span>{/if}
 	</div>
 	{#if (detail.requirements ?? []).length === 0}
 		<p class="plan-reqs-empty">{t.plan.requirements.none}</p>
 	{:else}
-		<p class="plan-reqs-hint">{t.plan.requirements.hint}</p>
 		{#if groups.own.length > 0}
 			<ul class="plan-reqs-list">
-				{#each groups.own as entry (entry.id)}{@render row(entry)}{/each}
+				{#each ownShown as entry (entry.id)}{@render row(entry)}{/each}
 			</ul>
+			{#if ownHidden > 0 || (showAll && groups.own.length > SHOWN)}
+				<button type="button" class="plan-reqs-more" aria-expanded={showAll} onclick={() => (showAll = !showAll)}>
+					{showAll ? t.plan.requirements.showFewer : t.plan.requirements.showAll(ownHidden)}
+				</button>
+			{/if}
 		{/if}
 		{#each groups.inherited as group (group.taskId)}
 			<div class="plan-reqs-group">
@@ -196,7 +221,6 @@
 		line-height: 15px;
 	}
 
-	.plan-reqs-hint,
 	.plan-reqs-empty,
 	.plan-reqs-group-hint {
 		margin: 0;
@@ -214,7 +238,22 @@
 		list-style: none;
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
+	}
+
+	.plan-reqs-more {
+		align-self: flex-start;
+		border: none;
+		background: none;
+		padding: 2px 0;
+		color: var(--accent);
+		font: inherit;
+		font-size: 11px;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	.plan-reqs-more:hover {
+		text-decoration: underline;
 	}
 
 	.plan-reqs-group {
@@ -231,10 +270,24 @@
 		color: var(--muted);
 	}
 
+	/* The number in its own column; the words, then one line of everything about them. */
 	.plan-req {
+		display: grid;
+		grid-template-columns: 3.4em minmax(0, 1fr);
+		column-gap: 6px;
+		min-width: 0;
+		padding: 6px 0;
+		border-top: 1px solid var(--line-subtle);
+	}
+
+	.plan-req:first-child {
+		border-top: none;
+	}
+
+	.plan-req-body {
 		display: flex;
 		flex-direction: column;
-		gap: 2px;
+		gap: 1px;
 		min-width: 0;
 	}
 
@@ -245,44 +298,64 @@
 
 	.plan-req-line {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: baseline;
-		gap: 6px;
+		gap: 2px 8px;
 		min-width: 0;
 	}
 
 	.plan-req-seq {
-		flex: none;
+		padding-top: 2px;
 		font-size: 10px;
 		font-weight: 700;
+		line-height: 1.45;
 		color: var(--muted);
 	}
 
 	.plan-req-quote {
 		min-width: 0;
-		font-size: 12px;
+		font-size: 13px;
+		font-weight: 500;
 		line-height: 1.45;
 		color: var(--ink);
 		overflow-wrap: anywhere;
 	}
 
-	.plan-req-restated {
+	/* Said more than once: the words you had to repeat are the ones to look at. */
+	.plan-req-times {
+		flex: none;
+		padding: 0 6px;
+		border: 1px solid var(--warn-line);
+		border-radius: var(--radius-full);
+		background: var(--warn-bg);
+		color: var(--warn-text);
+		font-size: 10px;
+		font-weight: 700;
+		line-height: 16px;
+	}
+
+	.plan-req-sub {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 2px 10px;
+		min-width: 0;
 		font-size: 11px;
+		line-height: 1.5;
+	}
+
+	.plan-req-restated {
+		min-width: 0;
 		color: var(--ink-secondary);
 		overflow-wrap: anywhere;
 	}
 
 	.plan-req-meta {
-		display: flex;
+		display: inline-flex;
 		flex-wrap: wrap;
-		align-items: center;
-		gap: 4px 8px;
-		font-size: 11px;
+		align-items: baseline;
+		gap: 2px 8px;
 		color: var(--muted);
-	}
-
-	.plan-req-times {
-		color: var(--ink-secondary);
-		font-weight: 600;
 	}
 
 	.plan-req-jump {
@@ -316,7 +389,7 @@
 	/* A ticket is picked: what is held to it alone stands out, what is held to another steps back. */
 	.plan-req.is-ticket-mine {
 		margin-inline: -6px;
-		padding: 3px 6px;
+		padding-inline: 6px;
 		border-radius: var(--radius-xs);
 		background: var(--accent-tint);
 		box-shadow: inset 2px 0 0 var(--accent);
@@ -327,22 +400,50 @@
 	}
 
 	.plan-req-actions {
-		display: flex;
+		display: inline-flex;
 		flex-wrap: wrap;
 		align-items: center;
-		gap: 5px;
-		margin-top: 3px;
+		gap: 4px;
+		margin-left: auto;
+		transition: opacity 0.15s ease;
+	}
+
+	/*
+	 * In force, an entry's buttons wait to be pointed at, over the end of its second line, so hidden
+	 * they take no room even where they would wrap; on a touch screen they stay in the line.
+	 */
+	@media (hover: hover) {
+		.plan-req.is-settled {
+			position: relative;
+		}
+
+		.plan-req.is-settled .plan-req-actions {
+			position: absolute;
+			right: 0;
+			bottom: 4px;
+			padding-left: 12px;
+			background: linear-gradient(to right, transparent, var(--pane) 12px);
+			opacity: 0;
+			pointer-events: none;
+		}
+
+		.plan-req.is-settled:hover .plan-req-actions,
+		.plan-req.is-settled:focus-within .plan-req-actions {
+			opacity: 1;
+			pointer-events: auto;
+		}
 	}
 
 	.plan-req-btn {
-		min-height: 24px;
-		padding: 2px 8px;
+		min-height: 20px;
+		padding: 1px 7px;
 		border: 1px solid var(--line);
 		border-radius: var(--radius-sm);
 		background: var(--chip);
 		color: var(--ink-secondary);
 		font-size: 11px;
 		font-weight: 500;
+		line-height: 1.4;
 		cursor: pointer;
 		transition: 0.15s ease;
 		transition-property: var(--transition-props);

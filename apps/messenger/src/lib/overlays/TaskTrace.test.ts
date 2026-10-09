@@ -1113,7 +1113,8 @@ test("the spec's ticket states sit above the written progress and bring up the b
   await settle();
   const states = [...view.host.querySelectorAll<HTMLButtonElement>(".plan-spec-ticket-state")];
   expect(states.map((state) => state.textContent?.replace(/\s+/g, ""))).toEqual([`${t.plan.ticketStatus.todo}1`, `${t.plan.ticketStatus.doing}1`]);
-  expect(view.host.querySelector(".plan-spec-ticket-states-hint")?.textContent).toBe(t.plan.links.progressHint);
+  // What the row is for is its tooltip, not a paragraph under it.
+  expect(view.host.querySelector(".plan-spec-ticket-states-line")?.getAttribute("title")).toBe(t.plan.links.progressHint);
   click(states[1]);
   await settle();
   expect(viewOn(view.host)).toBe("board");

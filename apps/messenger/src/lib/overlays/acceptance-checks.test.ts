@@ -13,6 +13,11 @@ import {
   draftToInput,
   emptyDraft,
   orphanChecks,
+  bySeverity,
+  checksByItem,
+  failingChecks,
+  firstReason,
+  sampleChecks,
   type CheckDraft,
 } from "./acceptance-checks.ts";
 
@@ -371,4 +376,48 @@ test("describeCheck: a measure says its range, and what it looks at or waits for
   expect(describeCheck(fromYourWords({ path: "EP01_MASTER.mp4", bind_kind: "glob" }), en)).toBe("Running time 108–132 s: EP01_MASTER.mp4");
   expect(describeCheck(fromYourWords({ measure: { dimension: "resolution", min: 1080, max: null }, path: "a.mp4" }), zh)).toBe("短边 至少 1080 像素：a.mp4");
   expect(describeCheck(fromYourWords({ measure: { dimension: "aspect", ratio: "portrait" }, path: "a.mp4" }), en)).toBe("Portrait (taller than wide): a.mp4");
+});
+
+test("checks held to the sample are listed apart, not as orphans", () => {
+  const sample = aCheck({ id: "s", item: "达到样片的水准", origin: "sample" });
+  const orphan = aCheck({ id: "o", item: "删掉的条目" });
+  expect(orphanChecks([sample, orphan], ["有对比表"]).map((check) => check.id)).toEqual(["o"]);
+  expect(sampleChecks([sample, orphan]).map((check) => check.id)).toEqual(["s"]);
+});
+
+test("checksByItem groups by line in the order the lines first appear", () => {
+  const groups = checksByItem([aCheck({ id: "a", item: "甲" }), aCheck({ id: "b", item: "乙" }), aCheck({ id: "c", item: "甲" })]);
+  expect(groups.map((group) => [group.item, group.checks.map((check) => check.id)])).toEqual([["甲", ["a", "c"]], ["乙", ["b"]]]);
+});
+
+test("bySeverity puts failures first and passes last, ties by the given key, then as they came", () => {
+  const checks = [
+    aCheck({ id: "pass", last_run: aRun({ outcome: "pass" }) }),
+    aCheck({ id: "never-9" }),
+    aCheck({ id: "fail", last_run: aRun({ outcome: "fail" }) }),
+    aCheck({ id: "never-2" }),
+    aCheck({ id: "running", running: true }),
+    aCheck({ id: "error", last_run: aRun({ outcome: "error" }) }),
+  ];
+  const seq: Record<string, number> = { "never-9": 9, "never-2": 2 };
+  expect(bySeverity(checks, (check) => seq[check.id] ?? 0).map((check) => check.id)).toEqual(["fail", "error", "running", "never-2", "never-9", "pass"]);
+  expect(bySeverity(checks).map((check) => check.id)).toEqual(["fail", "error", "running", "never-9", "never-2", "pass"]);
+});
+
+test("failingChecks keeps the counted checks that failed, were blocked or broke; not one running again, nor an offer", () => {
+  const checks = [
+    aCheck({ id: "fail", last_run: aRun({ outcome: "fail" }) }),
+    aCheck({ id: "blocked", last_run: aRun({ outcome: "blocked" }) }),
+    aCheck({ id: "rerunning", running: true, last_run: aRun({ outcome: "fail" }) }),
+    aCheck({ id: "pass", last_run: aRun() }),
+    aCheck({ id: "offer", origin: "derived", derived_state: "proposed", bind_kind: "master", last_run: aRun({ outcome: "fail" }) }),
+  ];
+  expect(failingChecks(checks).map((check) => check.id)).toEqual(["fail", "blocked"]);
+});
+
+test("firstReason takes a run's first reason, up to its first break", () => {
+  expect(firstReason("整段没有声音，样片有声音。；第1至第5帧几乎都是同一张字幕卡")).toBe("整段没有声音，样片有声音。");
+  expect(firstReason("\n  first line\nsecond")).toBe("first line");
+  expect(firstReason("")).toBe("");
+  expect(firstReason(null)).toBe("");
 });

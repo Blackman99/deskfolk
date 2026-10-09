@@ -233,15 +233,15 @@ function open(over: {
   };
 }
 
-test("renders the goal and every spec list, in order", () => {
+test("renders the goal and every spec list, in order: the progress written up first (blocked, open, done), what has none after", () => {
   const view = open();
   const labels = [...view.host.querySelectorAll(".plan-spec-list-label")].map((el) => el.textContent?.trim());
   expect(labels).toEqual([
     t.plan.spec.acceptance,
     t.plan.spec.rules,
     t.plan.spec.process,
-    `${t.plan.spec.progress} · ${t.plan.spec.done}`,
     `${t.plan.spec.progress} · ${t.plan.spec.open}`,
+    `${t.plan.spec.progress} · ${t.plan.spec.done}`,
     `${t.plan.spec.progress} · ${t.plan.spec.blocked}`,
   ]);
   expect(view.host.querySelector(".plan-spec-goal-text")?.textContent).toBe("把三种方案比出高下");
@@ -718,7 +718,8 @@ test("a picked ticket heads the spec it meets; a check filed under another ticke
   // In the overview, above the written progress, where the tickets themselves stand.
   const states = [...view.host.querySelectorAll<HTMLButtonElement>(".plan-overview .plan-spec-ticket-state")];
   expect(states.map((state) => state.textContent?.replace(/\s+/g, ""))).toEqual(["待做1", "进行中1"]);
-  expect(view.host.querySelector(".plan-spec-overview-slot + .plan-spec-section.is-progress")).not.toBeNull();
+  // The written progress sits in the same card, under the tickets and the checks.
+  expect(view.host.querySelector(".plan-spec-overview-slot .plan-overview .plan-spec-section.is-progress")).not.toBeNull();
   click(states[0]);
   expect(statuses).toEqual(["todo"]);
   // The strip puts the ticket down; nothing steps back any more.
@@ -801,4 +802,136 @@ test("a large job says so under its name, with what showed it, and you can call 
   const plain = open();
   expect(plain.host.querySelector(".plan-spec-scale")).toBeNull();
   plain.close();
+});
+
+test("a field with nothing written is its head alone, its 「无」 beside the label, and still yours to edit", () => {
+  const view = open({ detail: aDetail({ spec: aSpec({ rules: [], acceptance: [] }) }) });
+  const rules = listBlock(view.host, t.plan.spec.rules);
+  expect(rules.classList.contains("is-bare")).toBe(true);
+  expect(rules.querySelector(".plan-spec-list-head .plan-spec-empty-line")?.textContent).toBe(t.plan.empty);
+  expect(rules.querySelector("ul")).toBeNull();
+  expect(rules.querySelector(".plan-spec-edit-btn")).not.toBeNull();
+  // Lines written: no 「无」, no bare head.
+  const process = listBlock(view.host, t.plan.spec.process);
+  expect(process.classList.contains("is-bare")).toBe(false);
+  expect(process.querySelector(".plan-spec-empty-line")).toBeNull();
+  // Editing an empty field opens it like any other.
+  click(rules.querySelector(".plan-spec-edit-btn"));
+  expect(rules.classList.contains("is-bare")).toBe(false);
+  expect(rules.querySelector(".plan-spec-textarea")).not.toBeNull();
+  view.close();
+});
+
+test("no acceptance lines but checks under it: the head keeps its 「无」 and the checks show, not bare", () => {
+  const view = open({ detail: aDetail({ spec: aSpec({ acceptance: [] }), checks: [aCheck({ item: "旧条目" })] }) });
+  const acceptance = listBlock(view.host, t.plan.spec.acceptance);
+  expect(acceptance.classList.contains("is-bare")).toBe(false);
+  expect(acceptance.querySelector(".plan-spec-list-head .plan-spec-empty-line")?.textContent).toBe(t.plan.empty);
+  expect(acceptance.querySelector(".plan-spec-checks-orphans .check-pill")).not.toBeNull();
+  view.close();
+});
+
+test("checks held to the sample sit under their one line, failures first and then by ticket, apart from the orphans", () => {
+  const tickets = [1, 2, 3, 4].map((seq) => aTicketRow({ id: `tk-${seq}`, seq, title: `第 ${seq} 段` }));
+  const item = "达到样片 #04 的水准";
+  const sample = (id: string, ticket: string, outcome: "pass" | "fail" | null) =>
+    aCheck({ id, ticket_id: ticket, item, kind: "continuity", origin: "sample", last_run: outcome ? aRun({ check_id: id, outcome }) : null });
+  const view = open({
+    detail: aDetail({
+      spec: aSpec({ acceptance: [] }),
+      tickets,
+      checks: [sample("s3", "tk-3", "pass"), sample("s4", "tk-4", null), sample("s2", "tk-2", "fail"), sample("s1", "tk-1", null)],
+    }),
+  });
+  const acceptance = listBlock(view.host, t.plan.spec.acceptance);
+  const blocks = [...acceptance.querySelectorAll(".plan-spec-checks-orphans")];
+  expect(blocks.map((block) => block.querySelector(".plan-spec-checks-orphans-title")?.textContent)).toEqual([t.plan.checks.sampleTitle]);
+  const lines = [...blocks[0]!.querySelectorAll("li")];
+  expect(lines).toHaveLength(1);
+  expect(lines[0]?.textContent).toContain(item);
+  const order = [...lines[0]!.querySelectorAll(".plan-spec-check")].map((check) => check.querySelector(".plan-spec-ticket-ref")?.textContent);
+  expect(order).toEqual(["02", "01", "04", "03"]);
+  view.close();
+});
+
+test("what needs you is said under the goal: a failed check with its ticket and first reason, a blocked line; nothing to say, no strip", () => {
+  const shown: string[] = [];
+  const failed = aCheck({
+    id: "c-fail",
+    ticket_id: "tk-2",
+    item: "达到样片的水准",
+    last_run: aRun({ outcome: "fail", detail: "整段没有声音，样片有声音。；第1至第5帧几乎都是同一张字幕卡" }),
+  });
+  const props = reactive({
+    api: null,
+    detail: aDetail({
+      tickets: [aTicketRow(), aTicketRow({ id: "tk-2", seq: 2, title: "半决赛" })],
+      spec: aSpec({ progress: { done: [], open: [], blocked: ["等你给素材"] } }),
+      checks: [failed, aCheck({ id: "c-pass", last_run: aRun() })],
+    }),
+    t,
+    onSaved: () => {},
+    onConflict: () => {},
+    onJump: () => {},
+    onShowTicket: (id: string) => shown.push(id),
+  });
+  const view = render(PlanSpecPanel, props as never);
+  const strip = view.host.querySelector(".plan-spec-attention")!;
+  expect(strip.classList.contains("is-warn")).toBe(false);
+  // It sits in the main column right under the goal.
+  expect(view.host.querySelector(".plan-spec-goal + .plan-spec-attention")).toBe(strip);
+  const items = [...strip.querySelectorAll(".plan-spec-attention-item")];
+  expect(items).toHaveLength(2);
+  expect(items[0]?.querySelector(".plan-spec-attention-tag")?.textContent).toBe(t.plan.spec.attentionFail);
+  expect(items[0]?.querySelector(".plan-spec-ticket-ref")?.textContent).toBe("02");
+  expect(items[0]?.querySelector(".plan-spec-attention-name")?.textContent).toBe("半决赛");
+  expect(items[0]?.querySelector(".plan-spec-attention-why")?.textContent).toBe("整段没有声音，样片有声音。");
+  click(items[0]?.querySelector("button.plan-spec-attention-subject"));
+  expect(shown).toEqual(["tk-2"]);
+  expect(items[1]?.textContent).toContain("等你给素材");
+  view.close();
+
+  const calm = open();
+  expect(calm.host.querySelector(".plan-spec-attention")).toBeNull();
+  calm.close();
+});
+
+test("past three failed checks the strip says how many more; requirements waiting for you alone make it amber", () => {
+  const fails = [1, 2, 3, 4, 5].map((n) => aCheck({ id: `f${n}`, last_run: aRun({ check_id: `f${n}`, outcome: "fail", detail: `原因 ${n}` }) }));
+  const loud = open({ detail: aDetail({ checks: fails }) });
+  const items = [...loud.host.querySelectorAll(".plan-spec-attention-item")];
+  expect(items.filter((item) => item.classList.contains("is-fail"))).toHaveLength(3);
+  expect(loud.host.querySelector(".plan-spec-attention-item.is-more")?.textContent).toBe(t.plan.spec.attentionMore(2));
+  loud.close();
+
+  const waiting = {
+    id: "r1", seq: 3, quote: "片长约 2 分钟", restated: null, category: null, polarity: "must", dimension: null, value: null,
+    status: "proposed", scope: "plan", ticket_id: null, domain: null, times_raised: 1, plans_raised: 1,
+    last_raised_at: "2026-09-28T04:02:00.000Z", source_kind: "message", source: null, added_by: "scribe",
+    inherited_from: null, excluded: false, supersedes: null,
+  };
+  const amber = open({ detail: aDetail({ requirements: [waiting as never] }) });
+  const strip = amber.host.querySelector(".plan-spec-attention")!;
+  expect(strip.classList.contains("is-warn")).toBe(true);
+  expect(strip.textContent).toContain(t.plan.spec.attentionWaiting(1));
+  amber.close();
+});
+
+test("done is folded while anything is open, its head says how many and opens it; with nothing open it is shown", () => {
+  const view = open({ detail: aDetail({ spec: aSpec({ progress: { done: ["收集完了", "比完了"], open: ["写结论"], blocked: [] } }) }) });
+  const done = listBlock(view.host, `${t.plan.spec.progress} · ${t.plan.spec.done}`);
+  const fold = done.querySelector<HTMLButtonElement>(".plan-spec-fold-btn")!;
+  expect(fold.getAttribute("aria-expanded")).toBe("false");
+  expect(fold.querySelector(".plan-spec-field-count")?.textContent).toBe("2");
+  expect(done.querySelector("li")).toBeNull();
+  click(fold);
+  expect(fold.getAttribute("aria-expanded")).toBe("true");
+  expect([...done.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["收集完了", "比完了"]);
+  view.close();
+
+  const finished = open({ detail: aDetail({ spec: aSpec({ progress: { done: ["收集完了"], open: [], blocked: [] } }) }) });
+  const all = listBlock(finished.host, `${t.plan.spec.progress} · ${t.plan.spec.done}`);
+  expect(all.querySelector(".plan-spec-fold-btn")?.getAttribute("aria-expanded")).toBe("true");
+  expect([...all.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["收集完了"]);
+  finished.close();
 });
