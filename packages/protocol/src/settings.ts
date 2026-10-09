@@ -1,5 +1,5 @@
 import type { Locale, Theme } from "./constants.ts";
-import type { EndpointModel, EndpointModelInput, ReaderModel } from "./models.ts";
+import type { EndpointModel, EndpointModelInput, ReaderEndpointModel, ReaderModel } from "./models.ts";
 import type { SpeechSettings } from "./speech.ts";
 
 export type Settings = {
@@ -17,6 +17,13 @@ export type Settings = {
    * absent from a daemon older than that ADR.
    */
   reader_model?: ReaderModel | null;
+  /**
+   * The model that organizes the board, trace and plan (ADR 0075): the organizer, the scribe and the
+   * pictures judged against a sample or between parts. An endpoint's model only; null follows the
+   * default endpoint's default model. Null as well once the endpoint is gone or no longer lists it;
+   * absent from a daemon older than that ADR.
+   */
+  organizer_model?: ReaderEndpointModel | null;
   /**
    * The speech endpoint the composer's microphone sends to (ADR 0073), changed through
    * `PATCH /v1/speech`; null until one is set up, absent from a daemon older than that ADR.
@@ -37,6 +44,8 @@ export type SettingsPatch = {
   default_provider_id?: string | null;
   /** Null follows the default model again. */
   reader_model?: ReaderModel | null;
+  /** Null follows the default model again. */
+  organizer_model?: ReaderEndpointModel | null;
   launch_at_login?: boolean;
   locale?: Locale;
   theme?: Theme;

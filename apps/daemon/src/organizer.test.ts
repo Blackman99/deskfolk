@@ -961,7 +961,7 @@ test("a turn filed under a ticket moves it to doing when it starts writing and t
 });
 
 /** The organizer alone, over a store, answering each call with the next of `answers`; a function answers when the call is made. */
-function bareOrganizer(answers: Array<JudgeResult | Error | (() => JudgeResult)>) {
+function bareOrganizer(answers: Array<JudgeResult | Error | (() => JudgeResult)>, thinkingLevel: string | null = null) {
   const store = new Store();
   const requests: JudgeRequest[] = [];
   const lines: string[] = [];
@@ -988,7 +988,7 @@ function bareOrganizer(answers: Array<JudgeResult | Error | (() => JudgeResult)>
       providerId: "p",
       providerName: "fixture",
       model: "fixture",
-      thinkingLevel: null,
+      thinkingLevel,
     }),
     recordSpend: () => null,
     draining: () => false,
@@ -1000,6 +1000,18 @@ function bareOrganizer(answers: Array<JudgeResult | Error | (() => JudgeResult)>
   });
   return { store, organizer, requests, lines };
 }
+
+test("a chosen organizing model is told how hard to think; the default one is told nothing, as before", async () => {
+  for (const level of ["high", null]) {
+    const h = bareOrganizer([judged("我不知道")], level);
+    const writer = h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+    const line = h.store.insertMessage({ sessionId: writer.direct_session.id, kind: "user", author: "user", body: "写一份周报" });
+    await h.organizer.organizeMessage(line);
+    expect(h.requests).toHaveLength(1);
+    expect(h.requests[0]!.thinkingLevel).toBe(level ?? undefined);
+    expect("thinkingLevel" in h.requests[0]!).toBe(level !== null);
+  }
+});
 
 test("the organizer asks for room for a whole plan, a minute for a line and longer to settle", async () => {
   // Every real answer was cut at a verdict's 256 tokens, mid-JSON, so no plan was ever filed; and a

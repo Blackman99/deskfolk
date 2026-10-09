@@ -548,4 +548,54 @@ describe("empty roster and settings", () => {
       endpoint_default_model: "grok-4.5",
     });
   });
+  test("the organizing model is an endpoint's listed model, kept as chosen, and reads as null once its endpoint is gone or no longer lists it", async () => {
+    const h = await start();
+    const patch = (body: unknown) =>
+      fetch(`${h.origin}/v1/settings`, { method: "PATCH", headers: auth(h, { "Content-Type": "application/json" }), body: JSON.stringify(body) });
+    const strong = await h.store.createProvider({ name: "Strong", base_url: "https://strong.example/v1", api_key: "sk-strong", models: ["big", "bigger"] });
+    expect(await (await fetch(`${h.origin}/v1/settings`, { headers: auth(h) })).json()).toMatchObject({ organizer_model: null });
+
+    const set = await patch({ organizer_model: { provider_id: strong.id, model: "big" } });
+    expect(set.status).toBe(200);
+    expect(await set.json()).toMatchObject({ organizer_model: { provider_id: strong.id, model: "big" } });
+    expect((await h.store.settings()).organizer_model).toEqual({ provider_id: strong.id, model: "big" });
+    // The reader's setting is its own.
+    expect((await h.store.settings()).reader_model).toBeNull();
+
+    // An endpoint nobody has is 404, a model it does not list or a shape that is not one is 422.
+    expect((await patch({ organizer_model: { provider_id: "prov_missing", model: "big" } })).status).toBe(404);
+    const unlisted = await patch({ organizer_model: { provider_id: strong.id, model: "elsewhere" } });
+    expect(unlisted.status).toBe(422);
+    expect(((await unlisted.json()) as { error: { message: string } }).error.message).toContain("organizer_model");
+    expect((await patch({ organizer_model: { provider_id: strong.id } })).status).toBe(422);
+    expect((await patch({ organizer_model: "big" })).status).toBe(422);
+    // A Claude model of yours reads lines (ADR 0061); it does not organize.
+    const claude = await patch({ organizer_model: { runner: "claude_code", model: "opus", config_dir: null } });
+    expect(claude.status).toBe(422);
+    expect(((await claude.json()) as { error: { message: string } }).error.message).toContain("organizer_model");
+    // Every refusal left the choice as it was.
+    expect((await h.store.settings()).organizer_model).toEqual({ provider_id: strong.id, model: "big" });
+
+    // The endpoint stops listing the model: the choice reads as none, and the default model organizes.
+    await h.store.patchProvider(strong.id, { models: ["bigger"], default_model: "bigger" });
+    expect((await h.store.settings()).organizer_model).toBeNull();
+    // Listed again, it is the choice again: it was kept as chosen.
+    await h.store.patchProvider(strong.id, { models: ["big", "bigger"], default_model: "bigger" });
+    expect((await h.store.settings()).organizer_model).toEqual({ provider_id: strong.id, model: "big" });
+
+    // Gone with its endpoint.
+    const spare = await h.store.createProvider({ name: "Spare", base_url: "https://spare.example/v1", api_key: "sk-spare", models: ["spare-1"] });
+    await patch({ default_provider_id: spare.id });
+    await h.store.deleteProvider(strong.id);
+    expect((await h.store.settings()).organizer_model).toBeNull();
+
+    // Null follows the default again, and clears what was kept.
+    const again = await patch({ organizer_model: { provider_id: spare.id, model: "spare-1" } });
+    expect(await again.json()).toMatchObject({ organizer_model: { provider_id: spare.id, model: "spare-1" } });
+    const cleared = await patch({ organizer_model: null });
+    expect(cleared.status).toBe(200);
+    expect(await cleared.json()).toMatchObject({ organizer_model: null });
+    const stored = (key: string) => h.store.db.query<{ value: string }, [string]>("SELECT value FROM settings WHERE key = ?").get(key)?.value;
+    expect([stored("organizer_provider_id"), stored("organizer_model")]).toEqual(["", ""]);
+  });
 });

@@ -1,7 +1,7 @@
 /**
  * Wires a `continuity` (衔接一致 / "Seams") acceptance check's judge to the real endpoint: the
- * default endpoint's default model — the same target `routing.routingTarget` resolves for the
- * organizer and the closing check (see `organizer.ts`, `engine/routing.ts`). One call per batch of
+ * organizing model when you chose one that can do the call, else the default endpoint's default
+ * model (see `organizer-target.ts`, `engine/routing.ts`). One call per batch of
  * seam evidence, or one call for the whole-set digest; a text-only or digest call never attaches an
  * `image_url` part, so it never actually requires the model to have vision. Every call bills the
  * ledger as `acceptance_check`, owned by the plan's session, never a Bot — `createPlanChecks` only
@@ -13,6 +13,7 @@ import type { ChatContentPart, CompletionsClient } from "../completions";
 import { parseSeamsJudgeAnswer, SEAMS_JUDGE_TIMEOUT_MS, seamsJudgePrompt, seamsRulesText, type JudgeSeams, type SeamEvidence } from "../seams-check";
 import type { JudgeStandard, StandardEvidence } from "../standard-check";
 import type { SpendTracker } from "./spend";
+import type { OrganizerPurpose } from "./organizer-target";
 import type { CallTarget, EndpointTarget } from "./types";
 import { promptPage } from "../prompts/book";
 import type { Store } from "../store";
@@ -21,8 +22,11 @@ export type SeamsJudgeDeps = {
   completions: CompletionsClient;
   /** Where your edits to the judges' prompts come from (ADR 0064), and where an unreadable answer is noted. */
   store?: Store;
-  /** Resolves the default endpoint's default model; null when none is configured. */
-  routing: () => Promise<(EndpointTarget) | null>;
+  /**
+   * Resolves the model for a call (ADR 0075): `vision` when it is about to send frames, else
+   * `organizer`; null when no endpoint is configured.
+   */
+  routing: (purpose: OrganizerPurpose) => Promise<(EndpointTarget) | null>;
   spend: SpendTracker;
 };
 
@@ -46,9 +50,9 @@ function evidenceContent(evidence: readonly SeamEvidence[], locale: Locale): Cha
 
 export function createSeamsJudge(deps: SeamsJudgeDeps): JudgeSeams {
   return async (evidence, rules, item, locale, sessionId) => {
-    const target = await deps.routing().catch(() => null);
-    if (!target) throw new Error(locale === "en" ? "no model endpoint is configured" : "没有配置模型端点");
     const mode = evidence[0]?.kind === "digest" ? "digest" : evidence[0]?.kind === "text" ? "text" : "image";
+    const target = await deps.routing(mode === "image" ? "vision" : "organizer").catch(() => null);
+    if (!target) throw new Error(locale === "en" ? "no model endpoint is configured" : "没有配置模型端点");
     const prompt = deps.store ? promptPage(deps.store, locale).resolve(`call.seams_${mode}`, { item, rules: seamsRulesText(rules, locale) }) : null;
     const result = await deps.completions.judge({
       baseUrl: target.baseUrl,
@@ -64,6 +68,7 @@ export function createSeamsJudge(deps: SeamsJudgeDeps): JudgeSeams {
       signal: new AbortController().signal,
       timeoutMs: SEAMS_JUDGE_TIMEOUT_MS,
       maxTokens: 1024,
+      ...(target.thinkingLevel ? { thinkingLevel: target.thinkingLevel } : {}),
     });
     if (sessionId) {
       try {
@@ -97,9 +102,9 @@ export function createSeamsJudge(deps: SeamsJudgeDeps): JudgeSeams {
  */
 export function createStandardJudge(deps: SeamsJudgeDeps): JudgeStandard {
   return async (evidence: StandardEvidence[], system: string, sessionId: string | null) => {
-    const target = await deps.routing().catch(() => null);
-    if (!target) throw new Error("no model endpoint is configured");
     const pictures = evidence.some((item) => item.kind === "image");
+    const target = await deps.routing(pictures ? "vision" : "organizer").catch(() => null);
+    if (!target) throw new Error("no model endpoint is configured");
     const content: ChatContentPart[] = evidence.flatMap((item): ChatContentPart[] => item.kind === "image"
       ? [{ type: "text", text: `${item.label}:` }, { type: "image_url", image_url: { url: item.dataUri } }]
       : [{ type: "text", text: item.text }]);
@@ -116,6 +121,7 @@ export function createStandardJudge(deps: SeamsJudgeDeps): JudgeStandard {
       signal: new AbortController().signal,
       timeoutMs: SEAMS_JUDGE_TIMEOUT_MS,
       maxTokens: 1024,
+      ...(target.thinkingLevel ? { thinkingLevel: target.thinkingLevel } : {}),
     });
     if (sessionId) {
       try {

@@ -31,7 +31,7 @@ export const SCRIBE_MAX_TOKENS = 800;
 export type ScribeDeps = {
   store: Store;
   completions: CompletionsClient;
-  /** The default endpoint's default model, resolved when a call is about to be made; null when none is set. */
+  /** The organizing model (ADR 0075), else the default endpoint's default model, resolved when a call is about to be made; null when none is set. */
   routing: () => Promise<OrganizerRouting | null>;
   recordSpend: (input: { sessionId: string; target: OrganizerRouting; usage: MappedUsage | null; responded: boolean }) => void;
   draining: () => boolean;
@@ -187,6 +187,7 @@ export function createScribe(deps: ScribeDeps): Scribe {
         signal: controller.signal,
         timeoutMs: SCRIBE_TIMEOUT_MS,
         maxTokens: SCRIBE_MAX_TOKENS,
+        ...(routing.thinkingLevel ? { thinkingLevel: routing.thinkingLevel } : {}),
       });
     } catch (error) {
       threw = error instanceof Error ? error.message : String(error);

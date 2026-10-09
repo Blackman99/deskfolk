@@ -9,6 +9,7 @@ import {
   type PatchProviderRequest,
   sortThinkingLevels,
   THINKING_LEVELS,
+  thinkingLevelRank,
   type ModelPricing,
   type Provider,
   type ThinkingLevel,
@@ -369,9 +370,37 @@ export function defaultThinkingLevelFor(
  * reading of a line, ADR 0055); null when its catalog names none, so nothing is sent.
  */
 export function lightestThinkingLevelFor(ctx: StoreContext, model: string, providerId: string | null): ThinkingLevel | null {
+  return listedThinkingLevels(ctx, model, providerId)[0] ?? null;
+}
+
+/** The levels a model lists on its endpoint, lightest first; none when its catalog names none. */
+function listedThinkingLevels(ctx: StoreContext, model: string, providerId: string | null): ThinkingLevel[] {
   const rows = providerId ? providerRows(ctx).filter((row) => row.id === providerId) : providerRows(ctx);
   const levels = rows.flatMap((row) => parseStoredCatalog(row.models)).filter((entry) => entry.name === model).flatMap((entry) => entry.thinking_levels);
-  return sortThinkingLevels(levels)[0] ?? null;
+  return sortThinkingLevels(levels);
+}
+
+/**
+ * The level for the model that organizes (ADR 0075), where care is what the call is for: `high`
+ * when the model lists it, else the highest level it lists below that, else (it lists only levels
+ * above `high`) the lightest of those. Never `xhigh` or `max` when `high` is there: a settle's
+ * answer shares its output cap with the thinking. Null when the catalog names no level.
+ */
+export function strongThinkingLevelFor(ctx: StoreContext, model: string, providerId: string | null): ThinkingLevel | null {
+  const levels = listedThinkingLevels(ctx, model, providerId);
+  const high = thinkingLevelRank("high");
+  return levels.filter((level) => thinkingLevelRank(level) <= high).at(-1) ?? levels[0] ?? null;
+}
+
+/**
+ * The level for the scribe on the organizing model (ADR 0075): `low` when listed, else the lightest
+ * level above `none`, else (it lists only `none`) that. The scribe runs on every line and no turn
+ * waits for it, so a little thinking is all it should buy. Null when the catalog names no level.
+ */
+export function scribeThinkingLevelFor(ctx: StoreContext, model: string, providerId: string | null): ThinkingLevel | null {
+  const levels = listedThinkingLevels(ctx, model, providerId);
+  const low = thinkingLevelRank("low");
+  return levels.find((level) => thinkingLevelRank(level) === low) ?? levels.find((level) => thinkingLevelRank(level) > 0) ?? levels[0] ?? null;
 }
 
 /**

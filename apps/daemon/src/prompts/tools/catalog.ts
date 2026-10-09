@@ -45,8 +45,8 @@ const MODEL_ENTRY_RULES = {
 export const LIST_ENDPOINTS: ToolDef = {
   name: "list_endpoints",
   description: {
-    zh: "列出名册级端点和模型设置。每个端点返回 id、名称、URL、接口格式、是否已配密钥、模型名单（model_catalog 里每个模型的价格、思考等级、上下文窗口、能否看图、输出上限和测出的速度）和是否为默认端点；另返回读句用的模型 reader_model（null 表示跟默认模型走；用户选了自己的 Claude 模型时是 { runner: \"claude_code\", model, config_dir }，只读，你改不了）和模型阶梯 model_ladder（从弱到强）。永不返回密钥。",
-    en: "List roster-level endpoints and the model settings. Each endpoint comes with id, name, URL, API format, whether a key is set, its model list (model_catalog: each model's prices, thinking levels, context window, whether it takes pictures, output cap and measured speed) and whether it is the default endpoint; also reader_model, the model that reads lines (null follows the default model; { runner: \"claude_code\", model, config_dir } when the user chose one of their own Claude models, which is read-only for you), and model_ladder, weaker to stronger. Never returns secrets.",
+    zh: "列出名册级端点和模型设置。每个端点返回 id、名称、URL、接口格式、是否已配密钥、模型名单（model_catalog 里每个模型的价格、思考等级、上下文窗口、能否看图、输出上限和测出的速度）和是否为默认端点；另返回读句用的模型 reader_model（null 表示跟默认模型走；用户选了自己的 Claude 模型时是 { runner: \"claude_code\", model, config_dir }，只读，你改不了）、整理用的模型 organizer_model（整理器、书记员和看图判定用的；null 表示跟默认模型走）和模型阶梯 model_ladder（从弱到强）。永不返回密钥。",
+    en: "List roster-level endpoints and the model settings. Each endpoint comes with id, name, URL, API format, whether a key is set, its model list (model_catalog: each model's prices, thinking levels, context window, whether it takes pictures, output cap and measured speed) and whether it is the default endpoint; also reader_model, the model that reads lines (null follows the default model; { runner: \"claude_code\", model, config_dir } when the user chose one of their own Claude models, which is read-only for you), organizer_model, the model that organizes (the organizer, the scribe and the picture checks; null follows the default model), and model_ladder, weaker to stronger. Never returns secrets.",
   },
   properties: {},
 };
@@ -172,8 +172,8 @@ export const MEASURE_MODEL: ToolDef = {
 export const UPDATE_MODEL_SETTINGS: ToolDef = {
   name: "update_model_settings",
   description: {
-    zh: "改全局的模型设置：哪个端点是默认端点、读句用哪个模型、模型阶梯。至少给一项；只能在已配置的端点和名单上的模型里选。直接执行，不等批准：所有没钉模型的 Bot、读句（没单独设时）、整理和判断都跟着默认端点的默认模型走，改之前先 list_endpoints 看清现状，改完告诉用户改了什么。",
-    en: "Change the app-wide model settings: which endpoint is the default, which model reads lines, and the model ladder. Give at least one; choose only among configured endpoints and the models on their lists. Runs immediately, without approval: every Bot not pinned to a model, the readings (unless set apart), organizing and judgements follow the default endpoint's default model, so check list_endpoints first and tell the user what you changed.",
+    zh: "改全局的模型设置：哪个端点是默认端点、读句用哪个模型、整理用哪个模型、模型阶梯。至少给一项；只能在已配置的端点和名单上的模型里选。直接执行，不等批准：所有没钉模型的 Bot、读句和整理（没单独设时）、判断都跟着默认端点的默认模型走，改之前先 list_endpoints 看清现状，改完告诉用户改了什么。",
+    en: "Change the app-wide model settings: which endpoint is the default, which model reads lines, which model organizes, and the model ladder. Give at least one; choose only among configured endpoints and the models on their lists. Runs immediately, without approval: every Bot not pinned to a model, the readings and the organizing (unless set apart) and judgements follow the default endpoint's default model, so check list_endpoints first and tell the user what you changed.",
   },
   properties: {
     default_endpoint_id: {
@@ -190,6 +190,18 @@ export const UPDATE_MODEL_SETTINGS: ToolDef = {
       description: {
         zh: "读你每一句话用的模型 { endpoint_id, model }，须在那个端点的名单上；null 回到跟默认模型走。用户在等它读完才会被处理，选个快的。用户自己的 Claude 模型只有用户能选：你只能把它换成端点上的模型或 null。",
         en: "The model that reads each of the user's lines, { endpoint_id, model }, on that endpoint's list; null goes back to following the default model. The user's line waits for it, so pick a fast one. A Claude model of the user's own is the user's to choose: you can only replace it with an endpoint's model or null.",
+      },
+    },
+    organizer_model: {
+      type: ["object", "null"],
+      properties: {
+        endpoint_id: { type: "string", description: { zh: "端点 id。", en: "Endpoint id." } },
+        model: { type: "string", description: { zh: "那个端点名单上的模型名。", en: "A model name on that endpoint's list." } },
+      },
+      required: ["endpoint_id", "model"],
+      description: {
+        zh: "整理看板、流程和要点用的模型 { endpoint_id, model }：整理器、书记员，以及照样片和衔接的看图判定都用它，须在那个端点的名单上；null 回到跟默认模型走。要选强模型，整理一次大约输入 2 万、输出 6 千 token，比读句贵得多；判定要看图，选的模型没标「能看图」时判定仍用默认模型。只能选端点上的模型。",
+        en: "The model that keeps the board, trace and plan in order, { endpoint_id, model }: the organizer, the scribe, and the picture checks against a sample and between parts all run on it. It must be on that endpoint's list; null goes back to following the default model. Pick a strong one: a settle is about 20k tokens in and 6k out, far more than a reading. The picture checks need a model that takes pictures; one not marked so leaves them on the default model. Endpoint models only.",
       },
     },
     model_ladder: {

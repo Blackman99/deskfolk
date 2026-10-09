@@ -261,6 +261,7 @@ describe("empty roster and settings", () => {
       endpoint_default_model: null,
       default_provider_id: null,
       reader_model: null,
+      organizer_model: null,
       speech: null,
       launch_at_login: true,
       locale: "zh",

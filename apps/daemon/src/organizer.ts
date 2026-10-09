@@ -83,7 +83,7 @@ export type OrganizerRouting = {
 export type OrganizerDeps = {
   store: Store;
   completions: CompletionsClient;
-  /** The default endpoint's default model, resolved when a call is about to be made. */
+  /** The organizing model (ADR 0075), else the default endpoint's default model, resolved when a call is about to be made. */
   routing: () => Promise<OrganizerRouting | null>;
   /** Returns the ledger row's id it billed the call as, or null when nothing was billable (see `engine/spend.ts`). */
   recordSpend: (input: { sessionId: string; target: OrganizerRouting; usage: MappedUsage | null; responded: boolean }) => string | null;
@@ -146,10 +146,12 @@ export const ORGANIZER_TIMEOUT_MS = 60_000;
 /** A settle has nobody waiting on it. */
 export const ORGANIZER_SETTLE_TIMEOUT_MS = 120_000;
 /**
- * Room for the plan and its tickets. A short call's default is sized for a verdict, and 256 tokens
- * stopped every plan partway through its JSON, so nothing was ever filed.
+ * Room for the plan and its tickets, and for the thinking of an organizing model told to think hard
+ * (ADR 0075), which counts inside it. A short call's default is sized for a verdict, and 256 tokens
+ * stopped every plan partway through its JSON, so nothing was ever filed; 4096 left a strong model
+ * at `high` little room above its thinking. A cap, not a spend.
  */
-export const ORGANIZER_MAX_TOKENS = 4096;
+export const ORGANIZER_MAX_TOKENS = 16_384;
 /** Quiet time after a plan's last turn before it is filed, so a fan-out is filed once. */
 export const SETTLE_QUIET_MS = 30_000;
 /** Whether the plan and its tickets are rendered into the workspace. */
@@ -297,6 +299,8 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
         signal: new AbortController().signal,
         timeoutMs: input.mode === "message" ? ORGANIZER_TIMEOUT_MS : ORGANIZER_SETTLE_TIMEOUT_MS,
         maxTokens: ORGANIZER_MAX_TOKENS,
+        // Only the organizing model you chose (ADR 0075) is told how hard to think; the default one thinks as it likes.
+        ...(routing.thinkingLevel ? { thinkingLevel: routing.thinkingLevel } : {}),
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

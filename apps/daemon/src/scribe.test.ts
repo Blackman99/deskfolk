@@ -104,6 +104,15 @@ test("a filed line is read against the plan's open entries; what survives lands,
   expect(h.spent).toEqual([h.direct, h.direct]);
 });
 
+test("a chosen organizing model is told how hard to think; the default one is told nothing, as before", async () => {
+  const chosen = harness(() => judged("{}"), { routing: { ...ROUTING, thinkingLevel: "low" } });
+  await chosen.say("片长约 2 分钟").noted;
+  expect(chosen.requests.map((request) => request.thinkingLevel)).toEqual(["low"]);
+  const dflt = harness(() => judged("{}"));
+  await dflt.say("片长约 2 分钟").noted;
+  expect(dflt.requests.map((request) => "thinkingLevel" in request)).toEqual([false]);
+});
+
 test("with no model set it makes no call and files nothing but the fallback capture", async () => {
   const h = harness(() => judged("{}"), { routing: null });
   await h.say("前三镜背景严重跳跃，太假了").noted;

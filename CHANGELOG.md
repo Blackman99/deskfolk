@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Choose the model that organizes the board, trace and plan
+
+- Settings → Models has a new page, Organizing model. Pick a model from any endpoint's list, or follow the default model as before. It runs the organizer that keeps the plan, tickets and progress in order, the scribe that notes your requirements, and the picture checks against a sample and between parts. Organizing reads and rewrites the whole plan, so pick a strong model: on Opus one settle is about 20k tokens in and 6k out.
+- With one chosen, the organizer and the checks think at high and the scribe at low. A check that sends pictures uses it only when the model is marked "takes pictures" in its attributes, and otherwise stays on the default model; checks that only compare words use it anyway. If the endpoint stops listing the model or is removed, the setting goes back to following the default. Bots can change it too, through `update_model_settings`.
+- Only endpoint models for now; a Claude model through your Claude Code is not offered here. Nothing changes until you choose one.
+
 ### Your requirements keep up with what you change
 
 - A change of direction the scribe filed against a requirement of another kind used to be dropped with all its words; it is now kept as a replacement waiting for you, and the old requirement stays in force until you confirm. On one job, "rebuild it with the League map, champion models and real player models" had gone unrecorded this way.

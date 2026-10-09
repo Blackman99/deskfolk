@@ -18,6 +18,7 @@ import { createCompletionsClient, type CompletionsClient } from "./completions";
 import { createChains } from "./engine/chains";
 import { createPlanChecks } from "./engine/checks";
 import { createClosing } from "./engine/closing";
+import { createOrganizerTarget } from "./engine/organizer-target";
 import { createSeamsJudge, createStandardJudge } from "./engine/seams-judge";
 import { createScaleWatch } from "./engine/scale-watch";
 import { createComposer } from "./engine/composer";
@@ -282,13 +283,13 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     ablation,
   });
 
+  // The model that keeps the board, trace and plan in order (ADR 0075): the one chosen in Settings, else the default.
+  const organizerTarget = createOrganizerTarget({ store, credentials: routing.credentials, routingTarget: routing.routingTarget });
+
   const organizer = createOrganizer({
     store,
     completions,
-    async routing() {
-      const creds = await routing.credentials().catch(() => null);
-      return creds ? routing.routingTarget(creds) : null;
-    },
+    routing: () => organizerTarget("organizer"),
     recordSpend({ sessionId, target, usage, responded }) {
       return spend.recordResponseSpend({
         kind: "organize",
@@ -384,10 +385,7 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   const scribe = createScribe({
     store,
     completions,
-    async routing() {
-      const creds = await routing.credentials().catch(() => null);
-      return creds ? routing.routingTarget(creds) : null;
-    },
+    routing: () => organizerTarget("scribe"),
     // Billed as the organizer's kind (no Bot asked for either), with its own purpose so the spend
     // view shows it apart (ADR 0042).
     recordSpend({ sessionId, target, usage, responded }) {
@@ -408,25 +406,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   // Large jobs (ADR 0060): your lines and the supervisor's signal read whether a job is one.
   const scaleWatch = createScaleWatch({ store, reader, track: core.track });
 
-  const seamsJudge = createSeamsJudge({
-    completions,
-    store,
-    async routing() {
-      const creds = await routing.credentials().catch(() => null);
-      return creds ? routing.routingTarget(creds) : null;
-    },
-    spend,
-  });
+  const seamsJudge = createSeamsJudge({ completions, store, routing: organizerTarget, spend });
 
-  const judgeDeps = {
-    completions,
-    store,
-    async routing() {
-      const creds = await routing.credentials().catch(() => null);
-      return creds ? routing.routingTarget(creds) : null;
-    },
-    spend,
-  };
+  const judgeDeps = { completions, store, routing: organizerTarget, spend };
   const checks = createPlanChecks({
     store,
     admission: options.admission,

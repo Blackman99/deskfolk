@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	export type ModelsSection = 'endpoints' | 'ladder' | 'reader' | 'speech';
+	export type ModelsSection = 'endpoints' | 'ladder' | 'reader' | 'organizer' | 'speech';
 </script>
 
 <script lang="ts">
@@ -10,6 +10,7 @@
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import type { Snapshot } from '../snapshot.ts';
 	import ModelLadderCard from './ModelLadderCard.svelte';
+	import OrganizerModelCard from './OrganizerModelCard.svelte';
 	import ReaderModelCard from './ReaderModelCard.svelte';
 	import SettingsSectionList from './SettingsSectionList.svelte';
 	import SettingsSectionTabs from './SettingsSectionTabs.svelte';
@@ -17,10 +18,11 @@
 	import { ModelLadder } from './model-ladder.svelte.ts';
 
 	/**
-	 * Settings › Models in four sections: the endpoints, the model ladder (ADR 0054), the model that
-	 * reads lines (ADR 0055) and the speech recognition behind the message box's microphone (ADR
-	 * 0073). A wide window shows them as tabs over one page. A phone lists them with what each is set
-	 * to and opens one as a page of its own, one level deeper.
+	 * Settings › Models in five sections: the endpoints, the model ladder (ADR 0054), the model that
+	 * reads lines (ADR 0055), the model that organizes the board (ADR 0075) and the speech
+	 * recognition behind the message box's microphone (ADR 0073). A wide window shows them as tabs
+	 * over one page. A phone lists them with what each is set to and opens one as a page of its own,
+	 * one level deeper.
 	 */
 	type Props = {
 		runtime: MessengerRuntime;
@@ -45,15 +47,15 @@
 	});
 
 	/**
-	 * With no endpoint there is nothing to order or to read with. Speech recognition is there either
-	 * way: it has a service and key of its own, not an endpoint.
+	 * With no endpoint there is nothing to order, to read or to organize with. Speech recognition is
+	 * there either way: it has a service and key of its own, not an endpoint.
 	 */
 	const sections = $derived<ModelsSection[]>(
 		providers.length === 0
 			? ['endpoints', 'speech']
 			: ladder.available
-				? ['endpoints', 'ladder', 'reader', 'speech']
-				: ['endpoints', 'reader', 'speech']
+				? ['endpoints', 'ladder', 'reader', 'organizer', 'speech']
+				: ['endpoints', 'reader', 'organizer', 'speech']
 	);
 	let picked = $state<ModelsSection>('endpoints');
 	const section = $derived(sections.includes(picked) ? picked : 'endpoints');
@@ -65,7 +67,8 @@
 	function label(of: ModelsSection): string {
 		if (of === 'endpoints') return t.settings.modelsSectionEndpoints;
 		if (of === 'ladder') return t.modelLadder.title;
-		return of === 'reader' ? t.readerModel.title : t.speech.title;
+		if (of === 'reader') return t.readerModel.title;
+		return of === 'organizer' ? t.organizerModel.title : t.speech.title;
 	}
 
 	const defaultProvider = $derived(providers.find((provider) => provider.id === snapshot.settings.default_provider_id) ?? null);
@@ -86,6 +89,11 @@
 			if (!speech) return t.speech.unset;
 			if (!speech.enabled) return t.speech.offShort;
 			return speechMissing(speech, t.speech) ?? [t.speech.presets[speech.preset], speech.model].filter(Boolean).join(' · ');
+		}
+		if (of === 'organizer') {
+			const organizing = snapshot.settings.organizer_model ?? null;
+			if (!organizing) return t.organizerModel.followDefault(snapshot.settings.endpoint_default_model);
+			return providers.length > 1 ? `${organizing.model} · ${providerName(organizing.provider_id)}` : organizing.model;
 		}
 		const chosen = snapshot.settings.reader_model ?? null;
 		if (!chosen) return t.readerModel.followDefault(snapshot.settings.endpoint_default_model);
@@ -131,6 +139,11 @@
 			<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
 			<line x1="8" y1="8" x2="16" y2="8"></line>
 			<line x1="8" y1="12" x2="13" y2="12"></line>
+		{:else if of === 'organizer'}
+			<rect x="3" y="3" width="7" height="9" rx="1"></rect>
+			<rect x="14" y="3" width="7" height="5" rx="1"></rect>
+			<rect x="14" y="12" width="7" height="9" rx="1"></rect>
+			<rect x="3" y="16" width="7" height="5" rx="1"></rect>
 		{:else}
 			<rect x="9" y="2" width="6" height="12" rx="3"></rect>
 			<path d="M19 10v1a7 7 0 0 1-14 0v-1"></path>
@@ -170,6 +183,15 @@
 						defaultModel={snapshot.settings.endpoint_default_model}
 						patch={(patch) => runtime.patchSettings(patch)}
 						claudeCode={runtime.client ? () => runtime.client!.claudeCode() : null}
+						{t}
+					/>
+				{:else if section === 'organizer'}
+					<p class="muted models-intro">{t.organizerModel.hint}</p>
+					<OrganizerModelCard
+						{providers}
+						chosen={snapshot.settings.organizer_model ?? null}
+						defaultModel={snapshot.settings.endpoint_default_model}
+						patch={(patch) => runtime.patchSettings(patch)}
 						{t}
 					/>
 				{:else}

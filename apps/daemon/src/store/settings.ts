@@ -87,6 +87,11 @@ export function settingsCached(ctx: StoreContext): Settings {
     ? { runner: "claude_code", model: readerModel, config_dir: emptyToNull(map.get("reader_config_dir")) }
     : readerProvider && readerModel && readerProvider.models.includes(readerModel)
       ? { provider_id: readerProvider.id, model: readerModel } : null;
+  // The organizing model (ADR 0075) is kept the same way: as chosen, read as null while it is not listed.
+  const organizerProvider = providers.find((provider) => provider.id === emptyToNull(map.get("organizer_provider_id")));
+  const organizerModel = emptyToNull(map.get("organizer_model"));
+  const organizer_model: ReaderEndpointModel | null = organizerProvider && organizerModel && organizerProvider.models.includes(organizerModel)
+    ? { provider_id: organizerProvider.id, model: organizerModel } : null;
   return {
     settings_rev: ctx.db.query<{ settings_rev: number }, []>("SELECT settings_rev FROM request_meta WHERE singleton = 1").get()!.settings_rev,
     workspace_path,
@@ -97,6 +102,7 @@ export function settingsCached(ctx: StoreContext): Settings {
     endpoint_default_model,
     default_provider_id: defaultProvider?.id ?? null,
     reader_model,
+    organizer_model,
     speech: speechSettings(ctx),
     launch_at_login,
     locale,
@@ -133,6 +139,22 @@ function readerModelOf(ctx: StoreContext, value: unknown): ReaderModel | null {
   return { provider_id: provider.id, model: row.model };
 }
 
+/**
+ * The model a patch names to organize with (ADR 0075): one an endpoint lists, or null to follow the
+ * default. A Claude model of yours reads lines; it does not organize, so that shape is refused.
+ */
+function organizerModelOf(ctx: StoreContext, value: unknown): ReaderEndpointModel | null {
+  if (value === null) return null;
+  const row = value as Partial<ReaderEndpointModel> | undefined;
+  if (!row || typeof row !== "object" || "runner" in row || typeof row.provider_id !== "string" || typeof row.model !== "string") {
+    throw new HttpError(422, "invalid_args", "organizer_model must be null or { provider_id, model }");
+  }
+  const provider = providersCached(ctx).find((candidate) => candidate.id === row.provider_id);
+  if (!provider) throw new HttpError(404, "not_found", "provider not found");
+  if (!provider.models.includes(row.model)) throw new HttpError(422, "invalid_args", "organizer_model must be a model that endpoint lists");
+  return { provider_id: provider.id, model: row.model };
+}
+
 export async function patchSettings(
   ctx: StoreContext,
   patch: SettingsPatch | Record<string, unknown>,
@@ -156,6 +178,7 @@ export function patchSettingsSync(ctx: StoreContext, patch: SettingsPatch | Reco
       key !== "endpoint_default_model" &&
       key !== "default_provider_id" &&
       key !== "reader_model" &&
+      key !== "organizer_model" &&
       key !== "launch_at_login" &&
       key !== "locale" &&
       key !== "theme"
@@ -198,6 +221,11 @@ export function patchSettingsSync(ctx: StoreContext, patch: SettingsPatch | Reco
       setSetting(ctx, "reader_model", chosen?.model ?? "");
       setSetting(ctx, "reader_runner", claude ? "claude_code" : "");
       setSetting(ctx, "reader_config_dir", claude?.config_dir ?? "");
+    }
+    if ("organizer_model" in patch) {
+      const chosen = organizerModelOf(ctx, patch.organizer_model);
+      setSetting(ctx, "organizer_provider_id", chosen?.provider_id ?? "");
+      setSetting(ctx, "organizer_model", chosen?.model ?? "");
     }
   });
   const touchesEndpoint =

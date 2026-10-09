@@ -344,3 +344,13 @@ test("the phone saves the model that reads lines as an endpoint's, or as a Claud
     expect(() => validateBusiness(patch(bad))).toThrow();
   }
 });
+
+test("the phone saves the model that organizes as an endpoint's, or null", () => {
+  const patch = (organizer_model: unknown): RemoteRequest => ({ v: 1, id, method: "PATCH", path: "/v1/settings", body: { organizer_model } });
+  for (const good of [null, { provider_id: id, model: "m" }]) {
+    expect(() => validateBusiness(patch(good))).not.toThrow();
+  }
+  for (const bad of [{ runner: "claude_code", model: "opus", config_dir: null }, { provider_id: id }, { model: "m" }, "m", { provider_id: id, model: "m", extra: 1 }]) {
+    expect(() => validateBusiness(patch(bad))).toThrow();
+  }
+});

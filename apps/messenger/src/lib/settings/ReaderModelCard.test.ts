@@ -17,7 +17,7 @@ function fakePatch(opts: { fail?: boolean } = {}) {
   return { sent, patch: async (patch: SettingsPatch) => { sent.push(patch); return opts.fail ? { code: "conflict" } : null; } };
 }
 
-const trigger = (host: HTMLElement) => host.querySelector(".reader-pick .real-select-trigger")!;
+const trigger = (host: HTMLElement) => host.querySelector(".side-model-pick .real-select-trigger")!;
 /** What a row or the closed picker reads: the model, then where it runs (an endpoint, or Claude Agent). */
 const text = (el: Element | null | undefined) => el?.textContent?.replace(/\s+/g, " ").trim();
 const claudeRow = (model: string) => `${model} ${t.claudeAgent.title}`;
@@ -62,7 +62,7 @@ test("a choice that is not saved says so", async () => {
   await sleep(0);
   click(view.host.querySelectorAll(".real-select-option")[1]!);
   await sleep(0);
-  expect(view.host.querySelector(".reader-error")?.textContent).toBe(t.readerModel.failed);
+  expect(view.host.querySelector(".side-model-error")?.textContent).toBe(t.readerModel.failed);
   view.close();
 });
 
@@ -85,8 +85,8 @@ test("with Claude Code signed in, its models are their own group, haiku first, a
   const { sent, patch } = fakePatch();
   const view = render(ReaderModelCard, { providers, chosen: null, defaultModel: null, patch, claudeCode: statusOf(claudeStatus()), t });
   await sleep(0);
-  expect(view.host.querySelector("[data-reader-account]")).toBeNull();
-  expect(view.host.querySelector("[data-reader-claude-note]")?.textContent).toBe(t.readerModel.claudeNote);
+  expect(view.host.querySelector("[data-side-model-account]")).toBeNull();
+  expect(view.host.querySelector("[data-side-model-claude-note]")?.textContent).toBe(t.readerModel.claudeNote);
   click(trigger(view.host));
   await sleep(0);
   expect(view.host.querySelector(".real-select-group")?.textContent).toBe(t.sidebar.botRunnerClaude);
@@ -106,14 +106,14 @@ test("no Claude group while Claude Code is missing, signed out, or cannot be ask
     click(trigger(view.host));
     await sleep(0);
     expect(view.host.querySelector(".real-select-group")).toBeNull();
-    expect(view.host.querySelector("[data-reader-claude-note]")).toBeNull();
+    expect(view.host.querySelector("[data-side-model-claude-note]")).toBeNull();
     view.close();
   }
   // On the phone, which cannot ask: the model chosen on the Mac stays shown, and can be swapped for another.
   const phone = render(ReaderModelCard, { providers, chosen: { runner: "claude_code", model: "haiku", config_dir: "/opt/claude-b" }, defaultModel: null, patch: fakePatch().patch, claudeCode: statusOf(new Error("404")), t });
   await sleep(0);
   expect(text(trigger(phone.host))).toBe(claudeRow("haiku"));
-  expect(phone.host.querySelector("[data-reader-account]")).toBeNull();
+  expect(phone.host.querySelector("[data-side-model-account]")).toBeNull();
   phone.close();
 });
 
@@ -128,11 +128,11 @@ test("with several accounts listed there is an account select; changing it re-sa
   const view = render(ReaderModelCard, { providers, chosen: { runner: "claude_code", model: "sonnet", config_dir: null }, defaultModel: null, patch, claudeCode: statusOf(status), t });
   await sleep(0);
   expect(text(trigger(view.host))).toBe(claudeRow("sonnet"));
-  const account = view.host.querySelector("[data-reader-account] .real-select-trigger")!;
+  const account = view.host.querySelector("[data-side-model-account] .real-select-trigger")!;
   expect(account.textContent).toContain(t.sidebar.botAgentAccountDefault);
   click(account);
   await sleep(0);
-  const accounts = [...view.host.querySelectorAll("[data-reader-account] .real-select-option")];
+  const accounts = [...view.host.querySelectorAll("[data-side-model-account] .real-select-option")];
   expect(accounts).toHaveLength(2);
   click(accounts[1]!);
   await sleep(0);
@@ -143,14 +143,14 @@ test("with several accounts listed there is an account select; changing it re-sa
   const later = fakePatch();
   const fresh = render(ReaderModelCard, { providers, chosen: null, defaultModel: null, patch: later.patch, claudeCode: statusOf(status), t });
   await sleep(0);
-  click(fresh.host.querySelector("[data-reader-account] .real-select-trigger")!);
+  click(fresh.host.querySelector("[data-side-model-account] .real-select-trigger")!);
   await sleep(0);
-  click(fresh.host.querySelectorAll("[data-reader-account] .real-select-option")[1]!);
+  click(fresh.host.querySelectorAll("[data-side-model-account] .real-select-option")[1]!);
   await sleep(0);
   expect(later.sent).toEqual([]);
   click(trigger(fresh.host));
   await sleep(0);
-  click([...fresh.host.querySelectorAll(".reader-pick .real-select-option")].at(-4)!);
+  click([...fresh.host.querySelectorAll(".side-model-pick .real-select-option")].at(-4)!);
   await sleep(0);
   expect(later.sent).toEqual([{ reader_model: { runner: "claude_code", model: "haiku", config_dir: "/opt/claude-b" } }]);
   fresh.close();

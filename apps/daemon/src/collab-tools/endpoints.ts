@@ -1,5 +1,5 @@
 /** Endpoint and model tools. */
-import { isLocalEndpoint, isReaderClaudeModel, type ApiFormat, type Provider, type ReaderModel } from "@real-bot/protocol";
+import { isLocalEndpoint, isReaderClaudeModel, type ApiFormat, type Provider, type ReaderEndpointModel, type ReaderModel } from "@real-bot/protocol";
 import { runCollabTool, type ToolCtx, type ToolResult } from "../collab-tools";
 import { HttpError } from "../errors";
 import { normalizeModelCatalog } from "../models";
@@ -20,18 +20,21 @@ export async function listEndpoints(ctx: ToolCtx): Promise<ToolResult> {
     ok: true,
     data: {
       endpoints: providers.map((provider) => serializeEndpoint(provider, defaultId)),
-      ...modelSettingsView(ctx.store, (await ctx.store.settings()).reader_model ?? null),
+      ...modelSettingsView(ctx.store, await ctx.store.settings()),
     },
     emitted: [],
   };
 }
 
 /** The app-wide model settings as the Bot's tools name them: endpoint ids, not provider ids. */
-function modelSettingsView(store: Store, reader: ReaderModel | null) {
+function modelSettingsView(store: Store, settings: { reader_model?: ReaderModel | null; organizer_model?: ReaderEndpointModel | null }) {
+  const reader = settings.reader_model ?? null;
+  const organizer = settings.organizer_model ?? null;
   return {
     // A Claude model of the user's (ADR 0061) names no endpoint; it is the user's to set, so it is only shown.
     reader_model: !reader ? null : isReaderClaudeModel(reader) ? { runner: reader.runner, model: reader.model, config_dir: reader.config_dir }
       : { endpoint_id: reader.provider_id, model: reader.model },
+    organizer_model: organizer ? { endpoint_id: organizer.provider_id, model: organizer.model } : null,
     model_ladder: store.modelLadder().map((rung) => ({ endpoint_id: rung.provider_id, model: rung.model })),
   };
 }
@@ -57,17 +60,21 @@ export async function measureModelTool(ctx: ToolCtx, args: Record<string, unknow
 }
 
 /**
- * The default endpoint, the reading model and the model ladder (ADR 0014, 2026-10-08). They choose
+ * The default endpoint, the reading model, the organizing model (ADR 0075) and the model ladder (ADR 0014, 2026-10-08). They choose
  * among endpoints and models you already configured, so they run at once, as changing one
  * endpoint's default model does: no key or URL goes anywhere new. Validated as one change — the
  * ladder and the settings are written in one transaction, or neither.
  */
 export async function updateModelSettings(ctx: ToolCtx, args: Record<string, unknown>): Promise<ToolResult> {
   const given = (key: string) => args[key] !== undefined;
-  if (!given("default_endpoint_id") && !given("reader_model") && !given("model_ladder")) {
-    throw new HttpError(422, "invalid_args", "give default_endpoint_id, reader_model or model_ladder");
+  if (!given("default_endpoint_id") && !given("reader_model") && !given("organizer_model") && !given("model_ladder")) {
+    throw new HttpError(422, "invalid_args", "give default_endpoint_id, reader_model, organizer_model or model_ladder");
   }
-  const patch: { default_provider_id?: string; reader_model?: { provider_id: string; model: string } | null } = {};
+  const patch: {
+    default_provider_id?: string;
+    reader_model?: { provider_id: string; model: string } | null;
+    organizer_model?: { provider_id: string; model: string } | null;
+  } = {};
   if (given("default_endpoint_id")) {
     const id = requireString(args.default_endpoint_id, "default_endpoint_id");
     const provider = await ctx.store.getProvider(id);
@@ -84,6 +91,8 @@ export async function updateModelSettings(ctx: ToolCtx, args: Record<string, unk
     throw new HttpError(403, "forbidden", "only the user can choose a Claude model to read lines; it spends their Claude plan");
   }
   if (given("reader_model")) patch.reader_model = args.reader_model === null ? null : endpointModelOf(args.reader_model, "reader_model");
+  // The organizing model is an endpoint's only, so a Claude shape falls through to the same refusal as any wrong one.
+  if (given("organizer_model")) patch.organizer_model = args.organizer_model === null ? null : endpointModelOf(args.organizer_model, "organizer_model");
   let ladder: Array<{ provider_id: string; model: string }> | undefined;
   if (given("model_ladder")) {
     if (!Array.isArray(args.model_ladder)) throw new HttpError(422, "invalid_args", "model_ladder must be a list of { endpoint_id, model }");
@@ -96,7 +105,7 @@ export async function updateModelSettings(ctx: ToolCtx, args: Record<string, unk
   });
   return {
     ok: true,
-    data: { default_endpoint_id: settings.default_provider_id, ...modelSettingsView(ctx.store, settings.reader_model ?? null) },
+    data: { default_endpoint_id: settings.default_provider_id, ...modelSettingsView(ctx.store, settings) },
     emitted: [{ kind: "settings" }, ...botPinEmits(ctx.store, previousBots)],
   };
 }

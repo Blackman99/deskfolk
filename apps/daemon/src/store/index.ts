@@ -316,6 +316,8 @@ export class Store {
   readonly deleteMcpServerSync = this.bind(mcp.deleteMcpServerSync);
   readonly providersCached = this.bind(providers.providersCached);
   readonly lightestThinkingLevelFor = this.bind(providers.lightestThinkingLevelFor);
+  readonly strongThinkingLevelFor = this.bind(providers.strongThinkingLevelFor);
+  readonly scribeThinkingLevelFor = this.bind(providers.scribeThinkingLevelFor);
 
   close(): void {
     this.db.close();

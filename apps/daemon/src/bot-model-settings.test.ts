@@ -68,6 +68,33 @@ test("update_endpoint sets a model's window, pictures and output cap; a bare nam
   expect(await refusal(runCollabTool(ctx, "update_endpoint", { id: local.id, models: [{ name: "qwen3:8b", context_window: 1.5 }] }))).toContain("context_window");
 });
 
+test("the model that organizes (ADR 0075) is listed and changed beside the reading model, endpoint models only", async () => {
+  const { store, ctx, cloud, local } = await fixture();
+  expect((await runCollabTool(ctx, "list_endpoints", {})).data).toMatchObject({ organizer_model: null });
+
+  const set = await runCollabTool(ctx, "update_model_settings", { organizer_model: { endpoint_id: cloud.id, model: "big" } });
+  expect(set.ok).toBe(true);
+  expect(set.data).toMatchObject({ organizer_model: { endpoint_id: cloud.id, model: "big" }, reader_model: null });
+  expect(set.emitted).toContainEqual({ kind: "settings" });
+  expect((await store.settings()).organizer_model).toEqual({ provider_id: cloud.id, model: "big" });
+  expect((await store.settings()).reader_model).toBeNull();
+  expect((await runCollabTool(ctx, "list_endpoints", {})).data).toMatchObject({ organizer_model: { endpoint_id: cloud.id, model: "big" } });
+
+  // Refused: a model the endpoint does not list, a shape that is not an endpoint's, an endpoint nobody has.
+  expect(await refusal(runCollabTool(ctx, "update_model_settings", { organizer_model: { endpoint_id: cloud.id, model: "missing" } }))).toContain("organizer_model");
+  expect(await refusal(runCollabTool(ctx, "update_model_settings", { organizer_model: { runner: "claude_code", model: "opus", config_dir: null } }))).toContain("organizer_model");
+  expect(await refusal(runCollabTool(ctx, "update_model_settings", { organizer_model: { endpoint_id: "nope", model: "big" } }))).toContain("not found");
+  // One change or none: a bad ladder takes the organizing model down with it.
+  expect(await refusal(runCollabTool(ctx, "update_model_settings", {
+    organizer_model: { endpoint_id: local.id, model: "qwen3:8b" },
+    model_ladder: [{ endpoint_id: cloud.id, model: "missing" }],
+  }))).toContain("no endpoint lists missing");
+  expect((await store.settings()).organizer_model).toEqual({ provider_id: cloud.id, model: "big" });
+
+  await runCollabTool(ctx, "update_model_settings", { organizer_model: null });
+  expect((await store.settings()).organizer_model).toBeNull();
+});
+
 test("list_endpoints carries the reading model and the ladder; update_model_settings changes them and the default endpoint", async () => {
   const { store, ctx, cloud, local, keyless } = await fixture();
   const listed = await runCollabTool(ctx, "list_endpoints", {});

@@ -110,12 +110,12 @@ test("Models shows its endpoints, model ladder, reading model and speech recogni
   openModels(host);
   await sleep(0);
   flushSync();
-  expect(sectionTabs(host)).toEqual(["endpoints", "ladder", "reader", "speech"]);
+  expect(sectionTabs(host)).toEqual(["endpoints", "ladder", "reader", "organizer", "speech"]);
   expect(host.querySelector('[data-section="endpoints"]')?.getAttribute("aria-selected")).toBe("true");
   expect(host.querySelector('[data-section="ladder"] .section-tab-count')?.textContent).toBe("2");
   expect(host.querySelector(".provider-card")).toBeTruthy();
   expect(host.querySelector("[data-model-ladder]")).toBeNull();
-  expect(host.querySelector("[data-reader-model]")).toBeNull();
+  expect(host.querySelector('[data-side-model="reader"]')).toBeNull();
   expect(host.querySelector("[data-speech-settings]")).toBeNull();
   click(host.querySelector('[data-section="ladder"]'));
   expect(host.querySelector(".provider-card")).toBeNull();
@@ -123,14 +123,20 @@ test("Models shows its endpoints, model ladder, reading model and speech recogni
   expect(host.querySelector(".models-intro")?.textContent).toBe(t.modelLadder.hint);
   click(host.querySelector('[data-section="reader"]'));
   expect(host.querySelector('[data-section="reader"]')?.getAttribute("aria-selected")).toBe("true");
-  expect(host.querySelector("[data-reader-model]")).toBeTruthy();
+  expect(host.querySelector('[data-side-model="reader"]')).toBeTruthy();
   expect(host.querySelector("[data-model-ladder]")).toBeNull();
+  // The organizing model is a section of its own, with its own intro, and offers no Claude models.
+  click(host.querySelector('[data-section="organizer"]'));
+  expect(host.querySelector('[data-section="organizer"]')?.getAttribute("aria-selected")).toBe("true");
+  expect(host.querySelector('[data-side-model="organizer"]')).toBeTruthy();
+  expect(host.querySelector('[data-side-model="reader"]')).toBeNull();
+  expect(host.querySelector(".models-intro")?.textContent).toBe(t.organizerModel.hint);
   // Speech recognition is a section of its own, not a card under the endpoints.
   click(host.querySelector('[data-section="speech"]'));
   expect(host.querySelector('[data-section="speech"]')?.getAttribute("aria-selected")).toBe("true");
   expect(host.querySelector("[data-speech-settings]")).toBeTruthy();
   expect(host.querySelector(".models-intro")?.textContent).toBe(t.speech.hint);
-  expect(host.querySelector("[data-reader-model]")).toBeNull();
+  expect(host.querySelector('[data-side-model="reader"]')).toBeNull();
   // A wide window has no inner page here: the head still names Models.
   expect(host.querySelector(".settings-main-title")?.textContent).toContain(t.settings.tabModels);
   close();
@@ -160,7 +166,7 @@ test("an engine level without a ladder has no ladder tab, and with no endpoint o
   openModels(withEndpoint.host);
   await sleep(0);
   flushSync();
-  expect(sectionTabs(withEndpoint.host)).toEqual(["endpoints", "reader", "speech"]);
+  expect(sectionTabs(withEndpoint.host)).toEqual(["endpoints", "reader", "organizer", "speech"]);
   withEndpoint.close();
   const empty = open({ providers: [] });
   openModels(empty.host);
@@ -452,11 +458,12 @@ test("on a phone, Models lists its sections with what each is set to, and opens 
       flushSync();
       expect(host.querySelector(".section-tabs")).toBeNull();
       const rows = [...host.querySelectorAll<HTMLButtonElement>(".section-list-row")];
-      expect(rows.map((row) => row.dataset.section)).toEqual(["endpoints", "ladder", "reader", "speech"]);
+      expect(rows.map((row) => row.dataset.section)).toEqual(["endpoints", "ladder", "reader", "organizer", "speech"]);
       expect(rows.map((row) => row.querySelector(".section-list-summary")?.textContent)).toEqual([
         t.settings.modelsEndpointsSummary(1, "Default"),
         "gemini-3.8-flash → grok-4.6",
         t.readerModel.followDefault(null),
+        t.organizerModel.followDefault(null),
         t.speech.unset,
       ]);
       expect(host.querySelector(".provider-card")).toBeNull();
@@ -467,7 +474,7 @@ test("on a phone, Models lists its sections with what each is set to, and opens 
       // Back from a section goes to Models' list, then to the settings list.
       click(host.querySelector(".settings-mobile-back"));
       expect(title()).toContain(t.settings.tabModels);
-      expect(host.querySelectorAll(".section-list-row")).toHaveLength(4);
+      expect(host.querySelectorAll(".section-list-row")).toHaveLength(5);
       expect(host.querySelector(".settings-modal.is-mobile-detail")).toBeTruthy();
       click(host.querySelector('[data-section="reader"]'));
       expect(title()).toContain(t.readerModel.title);
