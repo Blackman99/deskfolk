@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	export type ModelsSection = 'endpoints' | 'ladder' | 'reader';
+	export type ModelsSection = 'endpoints' | 'ladder' | 'reader' | 'speech';
 </script>
 
 <script lang="ts">
@@ -11,13 +11,14 @@
 	import type { Snapshot } from '../snapshot.ts';
 	import ModelLadderCard from './ModelLadderCard.svelte';
 	import ReaderModelCard from './ReaderModelCard.svelte';
-	import SpeechCard from './SpeechCard.svelte';
+	import SpeechCard, { speechMissing } from './SpeechCard.svelte';
 	import { ModelLadder } from './model-ladder.svelte.ts';
 
 	/**
-	 * Settings › Models in three sections: the endpoints, the model ladder (ADR 0054) and the model
-	 * that reads lines (ADR 0055). A wide window shows them as tabs over one page. A phone lists them
-	 * with what each is set to and opens one as a page of its own, one level deeper.
+	 * Settings › Models in four sections: the endpoints, the model ladder (ADR 0054), the model that
+	 * reads lines (ADR 0055) and the speech recognition behind the message box's microphone (ADR
+	 * 0073). A wide window shows them as tabs over one page. A phone lists them with what each is set
+	 * to and opens one as a page of its own, one level deeper.
 	 */
 	type Props = {
 		runtime: MessengerRuntime;
@@ -41,9 +42,16 @@
 		void ladder.load();
 	});
 
-	/** With no endpoint there is nothing to order or to read with, so the endpoints are all there is. */
+	/**
+	 * With no endpoint there is nothing to order or to read with. Speech recognition is there either
+	 * way: it has a service and key of its own, not an endpoint.
+	 */
 	const sections = $derived<ModelsSection[]>(
-		providers.length === 0 ? ['endpoints'] : ladder.available ? ['endpoints', 'ladder', 'reader'] : ['endpoints', 'reader']
+		providers.length === 0
+			? ['endpoints', 'speech']
+			: ladder.available
+				? ['endpoints', 'ladder', 'reader', 'speech']
+				: ['endpoints', 'reader', 'speech']
 	);
 	let picked = $state<ModelsSection>('endpoints');
 	const section = $derived(sections.includes(picked) ? picked : 'endpoints');
@@ -53,7 +61,9 @@
 	let scroller = $state<HTMLElement>();
 
 	function label(of: ModelsSection): string {
-		return of === 'endpoints' ? t.settings.modelsSectionEndpoints : of === 'ladder' ? t.modelLadder.title : t.readerModel.title;
+		if (of === 'endpoints') return t.settings.modelsSectionEndpoints;
+		if (of === 'ladder') return t.modelLadder.title;
+		return of === 'reader' ? t.readerModel.title : t.speech.title;
 	}
 
 	const defaultProvider = $derived(providers.find((provider) => provider.id === snapshot.settings.default_provider_id) ?? null);
@@ -68,6 +78,12 @@
 		}
 		if (of === 'ladder') {
 			return ladder.rungs.length === 0 ? t.modelLadder.unset : ladder.rungs.map((rung) => rung.model).join(' → ');
+		}
+		if (of === 'speech') {
+			const speech = snapshot.settings.speech ?? null;
+			if (!speech) return t.speech.unset;
+			if (!speech.enabled) return t.speech.offShort;
+			return speechMissing(speech, t.speech) ?? [t.speech.presets[speech.preset], speech.model].filter(Boolean).join(' · ');
 		}
 		const chosen = snapshot.settings.reader_model ?? null;
 		if (!chosen) return t.readerModel.followDefault(snapshot.settings.endpoint_default_model);
@@ -109,10 +125,14 @@
 			<line x1="6" y1="20" x2="6" y2="15"></line>
 			<line x1="12" y1="20" x2="12" y2="10"></line>
 			<line x1="18" y1="20" x2="18" y2="4"></line>
-		{:else}
+		{:else if of === 'reader'}
 			<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
 			<line x1="8" y1="8" x2="16" y2="8"></line>
 			<line x1="8" y1="12" x2="13" y2="12"></line>
+		{:else}
+			<rect x="9" y="2" width="6" height="12" rx="3"></rect>
+			<path d="M19 10v1a7 7 0 0 1-14 0v-1"></path>
+			<line x1="12" y1="18" x2="12" y2="22"></line>
 		{/if}
 	</svg>
 {/snippet}
@@ -130,7 +150,10 @@
 					class="models-tab-btn"
 					class:is-active={section === of}
 					data-models-section={of}
-					onclick={() => open(of)}
+					onclick={(event) => {
+						open(of);
+						event.currentTarget.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+					}}
 				>
 					{@render icon(of, 15)}
 					<span>{label(of)}</span>
@@ -168,12 +191,10 @@
 			>
 				{#if section === 'endpoints'}
 					{@render endpoints()}
-					<!-- Speech needs no chat endpoint of its own: it has its own service and key (ADR 0073). -->
-					<SpeechCard speech={snapshot.settings.speech ?? null} {providers} patch={(patch) => runtime.patchSpeech(patch)} {t} />
 				{:else if section === 'ladder'}
 					<p class="muted models-intro">{t.modelLadder.hint}</p>
 					<ModelLadderCard {ladder} {providers} {t} />
-				{:else}
+				{:else if section === 'reader'}
 					<p class="muted models-intro">{t.readerModel.hint}</p>
 					<ReaderModelCard
 						{providers}
@@ -183,6 +204,9 @@
 						claudeCode={runtime.client ? () => runtime.client!.claudeCode() : null}
 						{t}
 					/>
+				{:else}
+					<p class="muted models-intro">{t.speech.hint}</p>
+					<SpeechCard speech={snapshot.settings.speech ?? null} {providers} patch={(patch) => runtime.patchSpeech(patch)} {t} />
 				{/if}
 			</div>
 		{/if}
@@ -198,23 +222,34 @@
 		flex-direction: column;
 	}
 
+	/*
+	 * Four tabs fill a narrow window, more so in English: the row scrolls sideways rather than push
+	 * the dialog wider. The rule under it is a shadow, not a border, so the scroll does not clip the
+	 * active tab's underline drawn over it.
+	 */
 	.models-tabs {
 		flex: none;
 		display: flex;
 		align-items: stretch;
 		gap: 6px;
 		padding: 0 16px;
-		border-bottom: 1px solid var(--line);
+		box-shadow: inset 0 -1px 0 var(--line);
 		background: var(--pane);
+		overflow-x: auto;
+		scrollbar-width: none;
+	}
+
+	.models-tabs::-webkit-scrollbar {
+		display: none;
 	}
 
 	.models-tab-btn {
+		flex: none;
 		display: inline-flex;
 		align-items: center;
 		gap: 7px;
 		min-height: 44px;
 		padding: 10px 8px 8px;
-		margin-bottom: -1px;
 		border: 0;
 		border-bottom: 2px solid transparent;
 		border-radius: 0;

@@ -1,3 +1,16 @@
+<script lang="ts" module>
+	import { speechReady, type SpeechSettings } from '@real-bot/protocol';
+	import type { Copy } from '../copy.ts';
+
+	/** What a speech endpoint still lacks before the microphone shows; null once it has it all. */
+	export function speechMissing(speech: SpeechSettings, s: Copy['speech']): string | null {
+		if (speechReady(speech)) return null;
+		if (!speech.base_url) return s.missingUrl;
+		if (!speech.model) return s.missingModel;
+		return s.missingKey;
+	}
+</script>
+
 <script lang="ts">
 	import {
 		SPEECH_FORMATS,
@@ -5,16 +18,13 @@
 		SPEECH_PRESETS,
 		isLocalEndpoint,
 		speechPreset,
-		speechReady,
 		type PatchSpeechRequest,
 		type Provider,
-		type SpeechPresetId,
-		type SpeechSettings
+		type SpeechPresetId
 	} from '@real-bot/protocol';
 	import { offeredShortcuts, type SpeechShortcut } from './speech-shortcut.ts';
 	import Select from '../Select.svelte';
 	import { Autosave } from '../autosave.svelte.ts';
-	import type { Copy } from '../copy.ts';
 	import AutosaveState from './AutosaveState.svelte';
 	import SettingsSwitch from './SettingsSwitch.svelte';
 
@@ -22,6 +32,7 @@
 	 * The speech endpoint the composer's microphone sends to (ADR 0073). Picking a service fills in
 	 * its format, address and model; every field saves as it changes, the key when you leave it. A
 	 * Bailian endpoint already set up is offered as a shortcut: speech then takes that endpoint's key.
+	 * It is Settings › Models' Speech recognition section, whose intro says what it is for.
 	 */
 	interface Props {
 		/** As the daemon has it; null until a service is picked. */
@@ -63,10 +74,7 @@
 	const status = $derived.by(() => {
 		if (!speech) return null;
 		if (!speech.enabled) return s.off;
-		if (speechReady(speech)) return s.ready;
-		if (!speech.base_url) return s.missingUrl;
-		if (!speech.model) return s.missingModel;
-		return s.missingKey;
+		return speechMissing(speech, s) ?? s.ready;
 	});
 
 	async function save(body: PatchSpeechRequest): Promise<boolean> {
@@ -118,12 +126,9 @@
 </script>
 
 <section class="speech-card" aria-label={s.title} data-speech-settings>
-	<div class="speech-head">
-		<div class="speech-head-text">
-			<h3>{s.title}</h3>
-			<p>{s.hint}</p>
-		</div>
-		{#if speech}
+	{#if speech}
+		<div class="speech-head">
+			<span class="speech-head-title">{s.enabled}</span>
 			<SettingsSwitch tag="label" class="speech-switch">
 				<input
 					type="checkbox"
@@ -133,8 +138,8 @@
 					onchange={(event) => void save({ enabled: event.currentTarget.checked })}
 				/>
 			</SettingsSwitch>
-		{/if}
-	</div>
+		</div>
+	{/if}
 
 	{#each shortcuts as shortcut (shortcut.provider.id)}
 		<div class="speech-shortcut" data-speech-shortcut={shortcut.provider.id}>
@@ -273,28 +278,19 @@
 
 	.speech-head {
 		display: flex;
-		align-items: flex-start;
+		align-items: center;
 		justify-content: space-between;
 		gap: 12px;
 	}
 
-	.speech-head h3 {
-		margin: 0;
-		font-size: 14px;
+	.speech-head-title {
+		font-size: 13px;
 		font-weight: 600;
 		color: var(--ink);
 	}
 
-	.speech-head p {
-		margin: 4px 0 0;
-		font-size: 12px;
-		line-height: 1.45;
-		color: var(--muted);
-	}
-
 	.speech-head :global(.speech-switch) {
 		flex-shrink: 0;
-		margin-top: 2px;
 	}
 
 	.speech-grid {

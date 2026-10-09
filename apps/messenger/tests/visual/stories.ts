@@ -315,7 +315,7 @@ const modelsSection = (section?: string) => async (host: HTMLElement) => {
 	if (section) host.querySelector<HTMLButtonElement>(`[data-models-section="${section}"]`)?.click();
 };
 
-/** A client on an engine level with a model ladder, two models on it: Models has all three sections. */
+/** A client on an engine level with a model ladder, two models on it: Models has all four sections. */
 const ladderClient = {
 	listLessons: async () => [],
 	listPrompts: async () => [],
@@ -935,6 +935,23 @@ const defs: Record<StoryName, Story> = {
 		props: settingsProps({ runtime: fakeRuntime(world, { settingsOpen: true, client: ladderClient }) }),
 		afterMount: modelsSection('ladder')
 	},
+	// Speech recognition's own tab, set up and ready: no title of its own under the tab, its switch first.
+	'settings-models-speech': {
+		component: SettingsModal as never,
+		props: settingsProps({
+			runtime: fakeRuntime(
+				{
+					...world,
+					settings: {
+						...world.settings,
+						speech: { enabled: true, preset: 'groq', format: 'openai', base_url: 'https://api.groq.com/openai/v1', model: 'whisper-large-v3-turbo', language: null, key_provider_id: null, key_set: true }
+					}
+				},
+				{ settingsOpen: true, client: ladderClient }
+			)
+		}),
+		afterMount: modelsSection('speech')
+	},
 	// A model picker open over every kind of source: built-in connectors' logos, Custom, Claude Agent.
 	'model-picker-open': {
 		component: Select as never,
@@ -988,7 +1005,7 @@ const defs: Record<StoryName, Story> = {
 			field.querySelector<HTMLButtonElement>('.real-select-trigger')?.click();
 		}
 	},
-	// On a phone, Models is a list of its three sections, each saying what it is set to.
+	// On a phone, Models is a list of its four sections, each saying what it is set to.
 	'settings-models-narrow': {
 		component: SettingsModal as never,
 		props: settingsProps({ runtime: fakeRuntime(world, { settingsOpen: true, client: ladderClient }) }),

@@ -56,6 +56,7 @@ export const STORY_SIZES = {
 	'settings-general': { width: 1000, height: 720 },
 	'settings-providers': { width: 1000, height: 720 },
 	'settings-models-ladder': { width: 1000, height: 720 },
+	'settings-models-speech': { width: 1000, height: 720 },
 	'settings-models-narrow': { width: 390, height: 844 },
 	'model-picker-open': { width: 380, height: 330 },
 	'model-picker-narrow': { width: 380, height: 240 },

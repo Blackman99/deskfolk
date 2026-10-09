@@ -1,5 +1,6 @@
 import { flushSync } from "svelte";
 import { expect, test } from "bun:test";
+import type { SpeechSettings } from "@real-bot/protocol";
 import { flushSync, mount, unmount } from "svelte";
 import { ApiError } from "../api.ts";
 import { copyFor } from "../copy.ts";
@@ -14,7 +15,7 @@ import { settle } from "../test-async.ts";
 const t = copyFor("zh");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function open(over: { providers?: ReturnType<typeof aProvider>[]; client?: unknown; promptsTarget?: unknown } = {}) {
+function open(over: { providers?: ReturnType<typeof aProvider>[]; client?: unknown; promptsTarget?: unknown; speech?: SpeechSettings } = {}) {
   const provider = over.providers?.[0] ?? aProvider();
   const runtime = fakeRuntime({
     providers: over.providers ?? [provider],
@@ -30,6 +31,7 @@ function open(over: { providers?: ReturnType<typeof aProvider>[]; client?: unkno
       locale: "zh",
       theme: "system",
       wizard_complete: true,
+      ...(over.speech ? { speech: over.speech } : {}),
     },
   });
   runtime.settingsOpen = true;
@@ -80,17 +82,18 @@ const ladderClient = () => ({
 const sectionTabs = (host: HTMLElement) =>
   [...host.querySelectorAll<HTMLButtonElement>('.models-tabs [role="tab"]')].map((tab) => tab.dataset.modelsSection);
 
-test("Models shows its endpoints, model ladder and reading model as tabs over one page", async () => {
+test("Models shows its endpoints, model ladder, reading model and speech recognition as tabs over one page", async () => {
   const { host, close } = open({ client: ladderClient() });
   openModels(host);
   await sleep(0);
   flushSync();
-  expect(sectionTabs(host)).toEqual(["endpoints", "ladder", "reader"]);
+  expect(sectionTabs(host)).toEqual(["endpoints", "ladder", "reader", "speech"]);
   expect(host.querySelector('[data-models-section="endpoints"]')?.getAttribute("aria-selected")).toBe("true");
   expect(host.querySelector('[data-models-section="ladder"] .models-tab-count')?.textContent).toBe("2");
   expect(host.querySelector(".provider-card")).toBeTruthy();
   expect(host.querySelector("[data-model-ladder]")).toBeNull();
   expect(host.querySelector("[data-reader-model]")).toBeNull();
+  expect(host.querySelector("[data-speech-settings]")).toBeNull();
   click(host.querySelector('[data-models-section="ladder"]'));
   expect(host.querySelector(".provider-card")).toBeNull();
   expect([...host.querySelectorAll(".ladder-name")].map((el) => el.textContent)).toEqual(["gemini-3.8-flash", "grok-4.6"]);
@@ -99,6 +102,12 @@ test("Models shows its endpoints, model ladder and reading model as tabs over on
   expect(host.querySelector('[data-models-section="reader"]')?.getAttribute("aria-selected")).toBe("true");
   expect(host.querySelector("[data-reader-model]")).toBeTruthy();
   expect(host.querySelector("[data-model-ladder]")).toBeNull();
+  // Speech recognition is a section of its own, not a card under the endpoints.
+  click(host.querySelector('[data-models-section="speech"]'));
+  expect(host.querySelector('[data-models-section="speech"]')?.getAttribute("aria-selected")).toBe("true");
+  expect(host.querySelector("[data-speech-settings]")).toBeTruthy();
+  expect(host.querySelector(".models-intro")?.textContent).toBe(t.speech.hint);
+  expect(host.querySelector("[data-reader-model]")).toBeNull();
   // A wide window has no inner page here: the head still names Models.
   expect(host.querySelector(".settings-main-title")?.textContent).toContain(t.settings.tabModels);
   close();
@@ -119,18 +128,18 @@ test("before setup is done, its banner shows on Models too, inside the page unde
   close();
 });
 
-test("an engine level without a ladder has no ladder tab, and with no endpoint there are no tabs", async () => {
+test("an engine level without a ladder has no ladder tab, and with no endpoint only speech recognition is beside the endpoints", async () => {
   const withEndpoint = open();
   openModels(withEndpoint.host);
   await sleep(0);
   flushSync();
-  expect(sectionTabs(withEndpoint.host)).toEqual(["endpoints", "reader"]);
+  expect(sectionTabs(withEndpoint.host)).toEqual(["endpoints", "reader", "speech"]);
   withEndpoint.close();
   const empty = open({ providers: [] });
   openModels(empty.host);
   await sleep(0);
   flushSync();
-  expect(empty.host.querySelector(".models-tabs")).toBeNull();
+  expect(sectionTabs(empty.host)).toEqual(["endpoints", "speech"]);
   expect(empty.host.textContent).toContain(t.settings.providerEmpty);
   empty.close();
 });
@@ -336,11 +345,12 @@ test("on a phone, Models lists its sections with what each is set to, and opens 
       flushSync();
       expect(host.querySelector(".models-tabs")).toBeNull();
       const rows = [...host.querySelectorAll<HTMLButtonElement>(".models-index-row")];
-      expect(rows.map((row) => row.dataset.modelsSection)).toEqual(["endpoints", "ladder", "reader"]);
+      expect(rows.map((row) => row.dataset.modelsSection)).toEqual(["endpoints", "ladder", "reader", "speech"]);
       expect(rows.map((row) => row.querySelector(".models-index-summary")?.textContent)).toEqual([
         t.settings.modelsEndpointsSummary(1, "Default"),
         "gemini-3.8-flash → grok-4.6",
         t.readerModel.followDefault(null),
+        t.speech.unset,
       ]);
       expect(host.querySelector(".provider-card")).toBeNull();
       click(rows[1]);
@@ -350,7 +360,7 @@ test("on a phone, Models lists its sections with what each is set to, and opens 
       // Back from a section goes to Models' list, then to the settings list.
       click(host.querySelector(".settings-mobile-back"));
       expect(title()).toContain(t.settings.tabModels);
-      expect(host.querySelectorAll(".models-index-row")).toHaveLength(3);
+      expect(host.querySelectorAll(".models-index-row")).toHaveLength(4);
       expect(host.querySelector(".settings-modal.is-mobile-detail")).toBeTruthy();
       click(host.querySelector('[data-models-section="reader"]'));
       expect(title()).toContain(t.readerModel.title);
@@ -368,15 +378,45 @@ test("on a phone, Models lists its sections with what each is set to, and opens 
   });
 });
 
-test("on a phone with no endpoint yet, Models opens straight on the endpoints", () => {
+test("on a phone with no endpoint yet, Models lists the endpoints and speech recognition", () => {
   withMobileViewport(() => {
     const { host, close } = open({ providers: [] });
     openModels(host);
+    const rows = [...host.querySelectorAll<HTMLButtonElement>(".models-index-row")];
+    expect(rows.map((row) => row.dataset.modelsSection)).toEqual(["endpoints", "speech"]);
+    expect(rows.map((row) => row.querySelector(".models-index-summary")?.textContent)).toEqual([t.settings.providerEmpty, t.speech.unset]);
+    click(rows[0]);
     expect(host.querySelector(".models-index")).toBeNull();
     expect(host.textContent).toContain(t.settings.providerEmpty);
     click(host.querySelector(".settings-mobile-back"));
+    expect(host.querySelectorAll(".models-index-row")).toHaveLength(2);
+    click(host.querySelector(".settings-mobile-back"));
     expect(host.querySelector(".settings-modal")?.classList.contains("is-mobile-detail")).toBe(false);
     close();
+  });
+});
+
+test("on a phone, speech recognition's row names the service and model, or what it still needs", () => {
+  withMobileViewport(() => {
+    const groq: SpeechSettings = {
+      enabled: true,
+      preset: "groq",
+      format: "openai",
+      base_url: "https://api.groq.com/openai/v1",
+      model: "whisper-large-v3-turbo",
+      language: null,
+      key_set: false,
+    };
+    const summary = (speech: SpeechSettings) => {
+      const { host, close } = open({ speech });
+      openModels(host);
+      const text = host.querySelector('[data-models-section="speech"] .models-index-summary')?.textContent;
+      close();
+      return text;
+    };
+    expect(summary(groq)).toBe(t.speech.missingKey);
+    expect(summary({ ...groq, key_set: true })).toBe("Groq · whisper-large-v3-turbo");
+    expect(summary({ ...groq, key_set: true, enabled: false })).toBe(t.speech.offShort);
   });
 });
 
