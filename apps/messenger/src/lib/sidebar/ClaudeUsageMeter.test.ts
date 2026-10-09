@@ -41,9 +41,9 @@ test("what is left of the plan's two windows at a glance, under Claude's mark; t
   expect(view.asked).toEqual([false]);
   const chips = [...view.host.querySelectorAll("[data-usage-chip]")].map((chip) => chip.textContent?.replace(/\s+/g, " ").trim());
   expect(chips).toEqual(["5小时 剩98%", "7天 剩9%"]);
-  // Spare width is a bar of what is left — the same number the chip says.
-  expect(view.host.querySelector<HTMLElement>('[data-usage-chip="five_hour"] .usage-chip-bar > span')?.style.width).toBe("98%");
-  expect(view.host.querySelector<HTMLElement>('[data-usage-chip="seven_day"] .usage-chip-bar > span')?.style.width).toBe("9%");
+  // A fixed ring of what is left, the same number the chip says: an empty arc is spent.
+  expect(view.host.querySelector('[data-usage-chip="five_hour"] .usage-ring-fill')?.getAttribute("stroke-dashoffset")).toBe("2");
+  expect(view.host.querySelector('[data-usage-chip="seven_day"] .usage-ring-fill')?.getAttribute("stroke-dashoffset")).toBe("91");
   // The mark stands where the word was.
   expect(view.host.querySelector(".usage-summary [data-claude-spark]")).not.toBeNull();
   expect(view.host.querySelector(".usage-summary")?.textContent).not.toContain("Claude");
@@ -126,7 +126,7 @@ test("Bots on two Claude accounts: a line for each, named by its email, and each
   // One mark for the strip, on its first line.
   expect(view.host.querySelectorAll(".usage-summary [data-claude-spark]")).toHaveLength(1);
   expect(view.host.querySelector('[data-usage-account="/Users/you/.claude-b"] [data-usage-chip="five_hour"]')?.classList.contains("is-warn")).toBe(true);
-  expect(view.host.querySelector<HTMLElement>('[data-usage-account="/Users/you/.claude-b"] [data-usage-chip="five_hour"] .usage-chip-bar > span')?.style.width).toBe("20%");
+  expect(view.host.querySelector('[data-usage-account="/Users/you/.claude-b"] [data-usage-chip="five_hour"] .usage-ring-fill')?.getAttribute("stroke-dashoffset")).toBe("80");
   click(view.host.querySelector<HTMLButtonElement>(".usage-summary")!);
   await sleep(0);
   // Each account a group of its own, named as on its closed line, its email under the name.

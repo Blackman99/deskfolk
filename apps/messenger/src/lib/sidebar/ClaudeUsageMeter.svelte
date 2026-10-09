@@ -26,7 +26,7 @@
 	 * under Claude's mark: how much of the plan's 5-hour and 7-day windows is left at a glance, every
 	 * window and when it starts over when opened. With Bots on more than one Claude account, each named
 	 * by its plan or email, one line each. Where the strip is wide enough, the account's email follows
-	 * the name and the spare width of each window is a bar of what is left. Asked every few minutes
+	 * the name and each window has a small ring as full as what is left. Asked every few minutes
 	 * while the window is in front; the daemon keeps answers as long.
 	 */
 	interface Props {
@@ -100,7 +100,7 @@
 			aria-label={open ? t.claudeAgent.usage.collapse : t.claudeAgent.usage.expand}
 			onclick={() => (open = !open)}
 		>
-			<!-- One line per account, columns aligned. A wide strip adds the email and a bar in each window. -->
+			<!-- One line per account, columns aligned. A wide strip adds the email and a ring on each window. -->
 			<span class="usage-mark"><ClaudeSpark size={14} /></span>
 			<span class="usage-accounts">
 				{#each shown as account, index (account.config_dir ?? '')}
@@ -116,7 +116,11 @@
 									{#if window}
 										<span class="usage-chip is-{usageLevel(window.percent)}" data-usage-chip={kind}>
 											<span class="usage-chip-label">{kind === 'five_hour' ? t.claudeAgent.usage.fiveHourShort : t.claudeAgent.usage.sevenDayShort}</span>
-											<span class="usage-chip-bar" aria-hidden="true"><span style:width="{usageLeft(window.percent)}%"></span></span>
+											<!-- A fixed ring, not a bar: it must not take the width the email uses. -->
+											<svg class="usage-chip-ring" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+												<circle cx="6" cy="6" r="4.25" fill="none" stroke="var(--line)" stroke-width="1.75" />
+												<circle class="usage-ring-fill" cx="6" cy="6" r="4.25" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset={100 - usageLeft(window.percent)} transform="rotate(-90 6 6)" />
+											</svg>
 											<span class="usage-chip-percent">{t.claudeAgent.usage.left(usageLeftText(window.percent))}</span>
 										</span>
 									{:else}
@@ -241,30 +245,21 @@
 		white-space: nowrap;
 	}
 
-	/* Hidden until the strip is wide enough that the bar is room, not a squeeze. */
-	.usage-chip-bar {
+	/* Hidden on a narrow sidebar, where twelve pixels twice would crowd the numbers out. */
+	.usage-chip-ring {
 		display: none;
-		flex: 1 1 0;
-		min-width: 0;
-		height: 4px;
-		border-radius: var(--radius-full);
-		background: var(--line);
-		overflow: hidden;
+		flex: none;
+		width: 12px;
+		height: 12px;
+		color: var(--muted);
 	}
 
-	.usage-chip-bar > span {
-		display: block;
-		height: 100%;
-		border-radius: inherit;
-		background: var(--muted);
+	.usage-chip.is-warn .usage-chip-ring {
+		color: var(--warn);
 	}
 
-	.usage-chip.is-warn .usage-chip-bar > span {
-		background: var(--warn);
-	}
-
-	.usage-chip.is-danger .usage-chip-bar > span {
-		background: var(--danger);
+	.usage-chip.is-danger .usage-chip-ring {
+		color: var(--danger);
 	}
 
 	.usage-chip-percent {
@@ -306,24 +301,24 @@
 	}
 
 	/*
-	 * Wider than a narrow sidebar (a phone, or the list dragged out): the email takes a share of
-	 * the row, and each window's leftover width is a bar of what is left. One line per account.
+	 * Wider than a narrow sidebar (a phone, or the list dragged out): the email takes the spare
+	 * width, and each window keeps a fixed ring of what is left. One line per account.
 	 */
 	@container usage (min-width: 300px) {
 		.usage-meter .usage-title,
 		.usage-meter .usage-info,
-		.usage-chip-bar {
+		.usage-chip-ring {
 			display: block;
 		}
 
 		.usage-meter .usage-accounts,
 		.usage-meter.is-several .usage-accounts {
-			grid-template-columns: minmax(0, max-content) minmax(min-content, 1fr) minmax(min-content, 1fr);
+			grid-template-columns: minmax(0, max-content) max-content max-content;
 		}
 
 		.usage-meter.has-info .usage-accounts,
 		.usage-meter.has-info.is-several .usage-accounts {
-			grid-template-columns: minmax(0, max-content) minmax(0, 2fr) minmax(min-content, 1fr) minmax(min-content, 1fr);
+			grid-template-columns: minmax(0, max-content) minmax(0, 1fr) max-content max-content;
 		}
 	}
 
