@@ -142,6 +142,8 @@ export type PlanFacts = {
    * the user whether to send them back to rework: theirs to decide, not this turn's to act on.
    */
   rework_asked?: Array<{ seq: number; title: string }>;
+  /** The tickets the line that opened this turn sent back to rework, read as a complaint (ADR 0070). */
+  rework_sent?: Array<{ seq: number; title: string }>;
 };
 /** The user's first and latest lines the quote layer carries (ADR 0040 P3). */
 export const QUOTE_LAYER_HEAD = 4;
@@ -377,20 +379,23 @@ function largeJobFacts(store: Store, taskId: string, ticketId: string | null): P
 }
 
 /**
- * The cards still asking the user whether to send a ticket back over the line that opened this
- * turn. The line went to the lead as well as to the card: on 2026-10-04's walkthrough 「第三句不好，
- * 换一句」 after the slogans were approved woke the lead, which was not told a card was asking, and
- * could hand the fix to the writer while the user was about to press 转回返工 — the work twice.
+ * What the line that opened this turn did to work already handed over: a card still asking the user
+ * whether to send a ticket back (from before ADR 0070), or the line itself sending it back, read as a
+ * complaint. The line goes to the lead as well: on 2026-10-04's walkthrough 「第三句不好，换一句」
+ * after the slogans were approved woke the lead, which was not told, and could hand the fix to the
+ * writer while the writer was being told the same — the work twice.
  */
-function reworkAsked(store: Store, triggerMessageId: string | null): Pick<PlanFacts, "rework_asked"> {
+function reworkAsked(store: Store, triggerMessageId: string | null): Pick<PlanFacts, "rework_asked" | "rework_sent"> {
   if (!triggerMessageId) return {};
-  const rows = store.db.query<{ seq: number; title: string }, [string]>(`SELECT t.seq, t.title FROM messages m
+  const rows = (offer: string) => store.db.query<{ seq: number; title: string }, [string, string]>(`SELECT t.seq, t.title FROM messages m
     JOIN tickets t ON t.id = json_extract(m.control, '$.ticket_id')
     WHERE json_extract(m.control, '$.kind') = 'rework' AND json_extract(m.control, '$.message_id') = ?
       AND COALESCE(json_array_length(json_extract(m.control, '$.acted')), 0) = 0
-      AND EXISTS (SELECT 1 FROM json_each(json_extract(m.control, '$.offer')) WHERE value = 'rework')
-    ORDER BY t.seq`).all(triggerMessageId);
-  return rows.length > 0 ? { rework_asked: rows } : {};
+      AND EXISTS (SELECT 1 FROM json_each(json_extract(m.control, '$.offer')) WHERE value = ?)
+    ORDER BY t.seq`).all(triggerMessageId, offer);
+  const asked = rows("rework");
+  const sent = rows("undo");
+  return { ...(asked.length > 0 ? { rework_asked: asked } : {}), ...(sent.length > 0 ? { rework_sent: sent } : {}) };
 }
 
 /**

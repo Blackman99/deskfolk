@@ -138,6 +138,22 @@ test("your line that might have meant a stop asks under it, on its side", () => 
   }
 });
 
+test("your line that sent work back says so under it, on its side, with an undo (ADR 0070)", () => {
+  const session = aDirect();
+  const line = aMessage({ id: "line", session_id: session.id, body: "背景太暗了", control: { kind: "rework", task_id: "job", ticket_id: "ticket", part_keys: [],
+    message_id: "line", offer: ["undo"], result: "已转回返工：头像 的任务 01「头像」。" } });
+  const { host, runtime, close } = stage(session, { messages: [line], holdsOn: true });
+  try {
+    const bar = host.querySelector('[data-message-id="line"] .control-actions')!;
+    expect(bar.classList.contains("is-end")).toBe(true);
+    expect(bar.textContent).toContain("已转回返工：头像 的任务 01「头像」。");
+    click(buttonByText(bar as HTMLElement, "撤销"));
+    expect(runtime.calls.filter((call) => call.name === "controlAction").map((call) => call.args)).toEqual([["line", "undo", undefined]]);
+  } finally {
+    close();
+  }
+});
+
 test("a Bot's streaming reply in a group carries no Stop of its own: the composer's stop menu holds them", () => {
   const session = aGroup();
   const turns = [aTurn({ id: "turn-9", session_id: session.id, bot_id: "bot-2", partial_text: "正在审第三镜" })];

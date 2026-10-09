@@ -98,21 +98,22 @@ test("a hand-over you are waiting on in your direct comes up there; another Bot'
   expect(cards(room)).toEqual([script.id]);
 });
 
-test("the question whether a complaint sends work back comes up where you complained", async () => {
+test("a complaint sends work back on your line, where you said it, and no card comes up anywhere", async () => {
   const h = await createScenario({ learning: true });
   open.push(h);
   const { director, room, plan, dm } = wentOnInYourDirect(h);
   const shots = h.store.createTicket({ taskId: plan.id, title: "关键帧板", worker: director.id });
   h.store.patchTicketByUser(shots.id, { status: "done" });
   h.script(director, dm).reply(call(tool("end_turn", { reason: "nothing_new" })));
-  h.judge("read_user_line").reply({ text: JSON.stringify({ kind: "complaint", objecting: ["打斗没有张力"] }) });
+  h.judge("read_user_line").reply({ control: "none", control_only: false, status_only: false, objections: ["关键帧板的打斗没有张力，不行"] });
 
-  h.postUser(dm, "关键帧板的打斗没有张力，不行");
+  const line = h.postUser(dm, "关键帧板的打斗没有张力，不行");
   await h.waitIdle();
 
-  const asked = (session: string) => h.messages(session).filter((message) => message.control?.kind === "rework");
-  expect(asked(room)).toEqual([]);
-  expect(asked(dm)).toHaveLength(1);
+  const cards = (session: string) => h.messages(session).filter((message) => message.kind === "system" && message.control?.kind === "rework");
+  expect(cards(room)).toEqual([]);
+  expect(cards(dm)).toEqual([]);
+  expect(h.store.getMessage(line.id).control).toMatchObject({ kind: "rework", ticket_id: shots.id, offer: ["undo"] });
 });
 
 test("work you send back from your direct with the Bot that made it is redone there", async () => {

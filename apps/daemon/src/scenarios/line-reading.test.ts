@@ -10,7 +10,7 @@
  * reading that does the work.
  */
 import { afterEach, expect, test } from "bun:test";
-import { call, createScenario, fileUnder, requestText, sendMessage, tool, type HopContext, type Scenario, type ScenarioOptions, type ToolOutcome } from "../test-kit/scenario";
+import { call, createScenario, fileUnder, requestText, say, sendMessage, tool, type HopContext, type Scenario, type ScenarioOptions, type ToolOutcome } from "../test-kit/scenario";
 import { openPlan, planSpec, videoTeam } from "./video-team";
 
 const open: Scenario[] = [];
@@ -60,41 +60,44 @@ test("a stop said beside a request carries the buttons and goes on as any line",
   expect(h.hops(director!).length).toBeGreaterThan(0);
 });
 
-test("a status question the lists do not know is answered from the plan's rows, and wakes nobody", async () => {
+test("a status question goes to the Bot, read as one or not: the app answers none in its place (ADR 0070)", async () => {
   for (const read of [true, false]) {
     const h = await scenario({ workItems: true });
     const { director, room } = videoTeam(h);
     openPlan(h, room, "一拳超人", planSpec("一拳超人风格可播放短片"));
-    if (read) h.judge("read_user_line").reply({ ...NOTHING, status_only: true });
-    h.script(director).handle(() => call(tool("end_turn", { reason: "nothing_new" })));
+    // Read as only asking where the work stands, or not readable at all (the word lists read it then).
+    h.judge("read_user_line").reply(read ? { ...NOTHING, status_only: true } : "not json");
+    h.script(director).handle(() => say("第二集在出分镜，第三镜还差关键帧"));
     h.judge("judgement").handle(() => "join");
-    h.postUser(room, "第二集现在推进到哪一步了");
+    const ask = h.postUser(room, "@视频导演 第二集现在推进到哪一步了");
     await h.waitIdle();
-    const answered = h.messages(room).some((message) => message.kind === "system" && message.body.startsWith("这件事：一拳超人"));
-    expect({ read, answered }).toEqual({ read, answered: read });
-    if (read) expect(h.hops()).toEqual([]);
+    const answered = h.messages(room).some((message) => message.kind === "system" && message.created_at > ask.created_at);
+    expect({ read, answered }).toEqual({ read, answered: false });
+    expect(h.messages(room).at(-1)).toMatchObject({ author: director.id, body: "第二集在出分镜，第三镜还差关键帧" });
   }
 });
 
-test("a complaint the lists miss asks to send the handed-over work back", async () => {
+test("a complaint the reader reads sends the handed-over work back on your line; read by the word lists, nothing moves", async () => {
   for (const read of [true, false]) {
     const h = await scenario({ submissions: true });
     const { director, room } = videoTeam(h);
     const plan = openPlan(h, room, "一拳超人", planSpec("一拳超人风格可播放短片"));
     const ticket = h.store.createTicket({ taskId: plan.id, title: "一拳超人风格可播放短片", status: "review", worker: director.id });
-    if (read) h.judge("read_user_line").reply({ ...NOTHING, objections: ["这版节奏拖沓", "整个推掉吧"] });
+    // Read by the reader, or not readable at all — the word lists read it then, and move nothing (ADR 0070).
+    h.judge("read_user_line").reply(read ? { ...NOTHING, objections: ["这版节奏拖沓", "整个推掉吧"] } : "not json");
     // About the film, either way (ADR 0057): what is read here is whether it objects.
     h.judge("read_filing").reply(fileUnder("一拳超人"));
     h.script(director).handle(() => call(tool("end_turn", { reason: "nothing_new" })));
-    h.postUser(room, "@视频导演 这版节奏拖沓，整个推掉吧");
+    const line = h.postUser(room, "@视频导演 这版节奏拖沓，整个推掉吧");
     await h.waitIdle();
-    const card = h.messages(room).find((message) => message.control?.kind === "rework");
+    const marked = h.store.getMessage(line.id).control;
+    expect(h.messages(room).filter((message) => message.kind === "system" && message.control?.kind === "rework")).toEqual([]);
     if (read) {
-      expect(card?.control).toMatchObject({ ticket_id: ticket.id, offer: ["rework", "dismiss"] });
-      expect(h.store.listWorkEvents({ kind: "complaint.asked" }).map((event) => event.payload.signal)).toEqual(["reading"]);
+      expect(marked).toMatchObject({ kind: "rework", ticket_id: ticket.id, offer: ["undo"] });
+      expect(h.store.listWorkEvents({ kind: "complaint.rework" }).map((event) => event.payload.by)).toEqual(["reading"]);
     } else {
-      // Neither 拖沓 nor 推掉 is a complaint word.
-      expect(card).toBeUndefined();
+      expect(marked).toBeUndefined();
+      expect(h.store.listWorkEvents({ kind: "complaint.rework" })).toEqual([]);
     }
   }
 });

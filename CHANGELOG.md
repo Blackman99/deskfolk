@@ -6,6 +6,14 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### The app stays out of the conversation
+
+- Every line of yours goes to the Bot you say it to, and the app no longer answers in its place. A question about where the work stands goes to the Bot — into its inbox if it is working, without cutting it off, or waking it if not — and the Bot answers; the app's status block is gone. Nor does the app write a line in place of a read-only answer that said nothing, or a receipt for a go on: the Bot that goes on says so. The app still writes the cards that need you and a stop's receipt.
+- Stop and go on are carried out only on the reader's (a model's) reading. The fixed word rules no longer act first; when the reader cannot read a line, nothing is carried out and the line goes to the Bot — the Stop button stops at once. A line read as nothing but a stop still goes ahead of lines still being read.
+- 「继续」 acts on the job it is about: it lifts your stops on that job only, then wakes the Bot, which goes on and answers you. It no longer lifts a stop on another job: on 2026-10-09 「继续」 in 视频导演's direct, about the MV, lifted an old stop on 《一拳超人》 and nothing moved on the MV. Only 「所有 Bot 继续」 lifts every stop. A go on with more in it (「继续做第二集，……」) works the same, without buttons.
+- A complaint the reader reads about work handed over or approved sends it back to rework at once, with what you said as the reason, and lifts a Stop you pressed on its maker's work there, as 退回 on a card does; the card asking 「要转回返工吗？」 is gone. Your line says 「已转回返工：……」 with an undo that puts everything back. Approving still only happens on the card.
+- A question about where the work stands never opens a job of its own.
+
 ### Work a development restart cut off goes on by itself
 
 - Work cut off by a restart of the development daemon now goes on once the daemon has run five minutes without starting again, however many restarts came first, and no notice asks you to press Continue. It used to wait for your Continue whenever another restart followed, and one stopped part also kept its Bot from being called to the job's other parts: on 2026-10-08 a video job sat for nine hours that way.

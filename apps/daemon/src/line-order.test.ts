@@ -11,6 +11,8 @@ import { join } from "node:path";
 import type { Message } from "@real-bot/protocol";
 import type { CompletionOk, CompletionRequest, JudgeResult, ToolCall } from "./completions";
 import { memoryKeyStore } from "./secrets";
+import { READ_USER_LINE_SYSTEM } from "./prompts/reader";
+import { userLineAnswerByRules } from "./test-kit/reading-by-rules";
 import { Store } from "./store";
 import { createTurnEngine, type TurnEngine } from "./turn-engine";
 
@@ -67,7 +69,11 @@ async function harness(opts: {
       },
       async judge(request) {
         await opts.reading?.(saidIn(request.messages));
-        return judged("");
+        // A reading of your line comes back as a model's (ADR 0070: nothing is carried out on the word lists').
+        const system = request.messages.find((row) => row.role === "system")?.content;
+        if (system !== READ_USER_LINE_SYSTEM) return judged("");
+        const payload = request.messages.filter((row) => row.role === "user").at(-1)?.content;
+        return judged(userLineAnswerByRules(store, typeof payload === "string" ? JSON.parse(payload) : null));
       },
     },
   });

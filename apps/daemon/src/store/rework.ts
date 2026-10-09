@@ -1,6 +1,5 @@
-/** Your complaint about delivered work, the rework card it raises, and undoing it. */
+/** Your complaint about delivered work: sent back to rework when the reader reads it as one (ADR 0070), and undoing it. */
 import { USER_MEMBER, type Message } from "@real-bot/protocol";
-import { clauseObjects, clausesOf } from "../complaint-words";
 import { HttpError } from "../errors";
 import { isoNow } from "../ids";
 import type { ReadingSource } from "../line-reading";
@@ -44,58 +43,41 @@ function reworkCards(ctx: StoreContext, messageId: string): Array<{ id: string; 
 }
 
 /**
- * Your complaint about work already handed over or approved (§6.6, ADR 0046) — only ever asked
- * about, never acted on by itself: what a reading makes of a line is still a reading («收到» in a
- * reply, «别重做了», «C07 很好，比上一版那个错乱的好多了»), so a misreading costs a card, not a
- * rework. A line of yours filed under a ticket (or some of its parts) by the rows or by you — not a
- * Bot's pick; or under a plan as a whole whose handed-over work is one ticket with its maker still here —
- * while that ticket is handed over, in review or approved, asks when one of its clauses
- * objects (`objecting`: the clauses a model read as objecting to the work as it stands, ADR 0055;
- * with no reading, `clauseObjects`: a complaint word, no praise, no redo turned down), when it annotates a
- * file, or when the scribe made a part-level entry of it. The parts asked about are those an
- * objecting clause numbers, or every part it was filed under when an objecting clause numbers none
- * (or the signal was not words). One card per line and ticket; on a refile, a card still asking about
- * a ticket the line is no longer filed under stops asking. Returns the new cards.
+ * Your complaint about work already handed over or approved (§6.6, ADR 0046), sent back to rework
+ * as you said it (ADR 0070): the reader read clauses of the line as objecting to the work as it
+ * stands (`objecting`, from a model only — the word lists' reading moves nothing), and the line is
+ * filed under its ticket (or some of its parts) by the rows or by you — not a Bot's pick; or under a
+ * plan as a whole whose handed-over work is one ticket with its maker still here — while that ticket
+ * is handed over, in review or approved. It used to only ask, on a card (「要把…转回返工吗？」): the
+ * app asking what you had just said. The line itself then says what was sent back, with an undo for
+ * a misreading (`control.kind = "rework"` on your line); the Bot hears the line like any other, and
+ * the producer is told to rework. The parts sent back are those the line is filed under, never a
+ * number picked out of its words. Returns your line, changed, when anything was sent back.
  */
 export function noteComplaint(
   ctx: StoreContext,
   messageId: string,
-  input: { scribeAdded?: readonly string[]; objecting?: { clauses: readonly string[]; source: ReadingSource }; now?: string } = {},
+  input: { objecting?: { clauses: readonly string[]; source: ReadingSource }; now?: string } = {},
 ): Message[] {
   return ctx.commit(() => {
     if (!supervised(ctx)) return [];
-    const message = ctx.db.query<{ id: string; kind: string; body: string; session_id: string }, [string]>("SELECT id, kind, body, session_id FROM messages WHERE id = ?").get(messageId);
-    if (!message || message.kind !== "user") return [];
+    if (input.objecting?.source !== "model" || input.objecting.clauses.length === 0) return [];
+    const message = ctx.db.query<{ id: string; kind: string; body: string; session_id: string; control: string | null }, [string]>(
+      "SELECT id, kind, body, session_id, control FROM messages WHERE id = ?").get(messageId);
+    if (!message || message.kind !== "user" || message.control) return [];
     const filings = ctx.db.query<{ ticket_id: string; part_key: string | null }, [string]>(`SELECT ticket_id, part_key FROM message_filings
       WHERE message_id = ? AND ticket_id IS NOT NULL AND strength IN ('locked', 'default', 'user') ORDER BY is_primary DESC, rowid`).all(messageId);
     // Filed under a plan as a whole, no ticket (「从头再做一遍，之前的作废」): about its handed-over work,
     // when that is one ticket whose maker is still here. With more, which one is meant is a guess.
-    const plans = ctx.db.query<{ task_id: string }, [string]>(`SELECT DISTINCT task_id FROM message_filings
-      WHERE message_id = ? AND ticket_id IS NULL AND task_id IS NOT NULL AND strength IN ('locked', 'default', 'user')`).all(messageId).map((row) => row.task_id);
     if (filings.length === 0) {
+      const plans = ctx.db.query<{ task_id: string }, [string]>(`SELECT DISTINCT task_id FROM message_filings
+        WHERE message_id = ? AND ticket_id IS NULL AND task_id IS NOT NULL AND strength IN ('locked', 'default', 'user')`).all(messageId).map((row) => row.task_id);
       for (const taskId of plans) {
         const handed = ctx.db.query<{ id: string }, [string]>(`SELECT t.id FROM tickets t JOIN bots b ON b.id = COALESCE(t.owner_bot_id, t.worker)
           WHERE t.task_id = ? AND ${STAGE_SQL("t")} IN ('submitted', 'in_review', 'approved') AND b.archived_at IS NULL AND b.deleted_at IS NULL`).all(taskId);
         if (handed.length === 1) filings.push({ ticket_id: handed[0]!.id, part_key: null });
       }
     }
-    const existing = reworkCards(ctx, messageId);
-    for (const card of existing) {
-      if (filings.some((filing) => filing.ticket_id === card.ticket_id)) continue;
-      const control = getMessage(ctx, card.id).control;
-      if (control?.kind === "rework" && plans.includes(control.task_id)) continue;
-      if (control?.kind === "rework" && control.offer.includes("rework") && (control.acted ?? []).length === 0) {
-        setMessageControl(ctx, card.id, { ...control, offer: [], result: localeOf(ctx) === "en" ? "That line was filed elsewhere since." : "这句话后来改归别处了。" });
-      }
-    }
-    const annotated = Boolean(ctx.db.query("SELECT 1 FROM annotations WHERE message_id = ? AND status <> 'draft'").get(messageId));
-    const scribed = (input.scribeAdded ?? []).length > 0
-      && Boolean(ctx.db.query("SELECT 1 FROM requirements WHERE scope = 'part' AND id IN (SELECT value FROM json_each(?))").get(JSON.stringify(input.scribeAdded)));
-    const objecting = input.objecting ? [...input.objecting.clauses] : clausesOf(message.body).filter(clauseObjects);
-    if (!annotated && !scribed && objecting.length === 0) return [];
-    // Which parts it is about: the parts it is filed under — what the reading of where it belongs
-    // named, an annotation's file, the line it quotes or your own choice (ADR 0057) — never a
-    // number picked out of its words.
     const byTicket = new Map<string, { whole: boolean; parts: Set<string> }>();
     for (const filing of filings) {
       const entry = byTicket.get(filing.ticket_id) ?? { whole: false, parts: new Set<string>() };
@@ -104,34 +86,25 @@ export function noteComplaint(
       byTicket.set(filing.ticket_id, entry);
     }
     const now = input.now ?? isoNow();
-    const excerpt = truncate(message.body.replace(/\s+/g, " ").trim(), COMPLAINT_EXCERPT_MAX);
-    const cards: Message[] = [];
+    const en = localeOf(ctx) === "en";
+    const sent: Array<{ ticketId: string; taskId: string; partKeys: string[]; label: string }> = [];
     for (const [ticketId, about] of byTicket) {
-      if (existing.some((card) => card.ticket_id === ticketId)) continue;
       if (!about.whole && about.parts.size === 0) continue;
       const ticket = stagedTicket(ctx, ticketId);
       if (!REWORKABLE.includes(ticketStage(ticket))) continue;
       const plan = ctx.db.query<{ session_id: string | null; title: string }, [string]>("SELECT session_id, title FROM tasks WHERE id = ?").get(ticket.task_id);
       if (!plan?.session_id) continue;
       const partKeys = about.parts.size > 0 ? [...about.parts].sort() : [];
-      const en = localeOf(ctx) === "en";
+      sendBack(ctx, { ticketId, partKeys, messageId, refId: messageId, sessionId: message.session_id, by: "reading", now });
       const number = String(ticket.seq).padStart(2, "0");
       const what = partKeys.length > 0 ? (en ? ` (${partKeys.join(", ")})` : `（${partKeys.join("、")}）`) : "";
-      // The card answers what you just said, so it is where you said it while you can still answer there.
-      const place = ctx.db.query(`SELECT 1 FROM sessions s JOIN session_participants u ON u.session_id = s.id AND u.member = 'user'
-        AND u.left_at IS NULL WHERE s.id = ? AND s.archived_at IS NULL`).get(message.session_id) ? message.session_id : plan.session_id;
-      const card = insertMessage(ctx, {
-        sessionId: place, kind: "system", author: USER_MEMBER, hiddenFromBots: true,
-        body: en ? `You said "${excerpt}" — send ticket ${number} "${ticket.title}"${what} of ${plan.title} back to rework?`
-          : `你说「${excerpt}」——要把 ${plan.title} 的任务 ${number}「${ticket.title}」${what}转回返工吗？`,
-        control: { kind: "rework", task_id: ticket.task_id, ticket_id: ticketId, part_keys: partKeys, message_id: messageId, offer: ["rework", "dismiss"] },
-      });
-      createNotification(ctx, { semantic_key: `rework:${card.id}`, kind: "ask", session_id: place, message_id: card.id, action_state: "open" });
-      recordWorkEvent(ctx, { kind: "complaint.asked", actor: "app", taskId: ticket.task_id, ticketId,
-        payload: { message_id: messageId, card_id: card.id, parts: partKeys, signal: annotated ? "annotation" : scribed ? "scribe" : input.objecting?.source === "model" ? "reading" : "words", at: now } });
-      cards.push(card);
+      sent.push({ ticketId, taskId: ticket.task_id, partKeys, label: en ? `ticket ${number} "${ticket.title}"${what} of ${plan.title}` : `${plan.title} 的任务 ${number}「${ticket.title}」${what}` });
     }
-    return cards;
+    if (sent.length === 0) return [];
+    // Your line says what it sent back; undo puts the last back, should the reading have been wrong.
+    const first = sent.at(-1)!;
+    const result = en ? `Sent back to rework: ${sent.map((row) => row.label).join("; ")}.` : `已转回返工：${sent.map((row) => row.label).join("；")}。`;
+    return [setMessageControl(ctx, messageId, { kind: "rework", task_id: first.taskId, ticket_id: first.ticketId, part_keys: first.partKeys, message_id: messageId, offer: ["undo"], result })];
   });
 }
 
@@ -142,6 +115,74 @@ function reopenPlan(ctx: StoreContext, taskId: string, now: string): void {
   setTaskSpec(ctx, taskId, { ...spec, status: "active" }, now);
   ctx.db.run("UPDATE tasks SET stage = 'active', delivered_at = NULL WHERE id = ?", [taskId]);
   recordWorkEvent(ctx, { kind: "plan.reopened", actor: USER_MEMBER, taskId, payload: { by: "complaint" } });
+}
+
+/**
+ * Sends a ticket — the parts named, else the whole — back to rework over your line (§6.6): a
+ * hand-over still waiting is superseded, every review that approved the current hand-over gets a
+ * `review.miss`, a delivered plan is active again, and its producer is woken with what you said.
+ * `refId` is what an undo finds it by: the rework card pressed, or your line itself.
+ */
+function sendBack(ctx: StoreContext, input: { ticketId: string; partKeys: readonly string[]; messageId: string; refId: string; sessionId: string; by: "card" | "reading"; now: string }): void {
+  const now = input.now;
+  const en = localeOf(ctx) === "en";
+  const partKeys = [...input.partKeys];
+  const ticket = stagedTicket(ctx, input.ticketId);
+  const stage = ticketStage(ticket);
+  const plan = ctx.db.query<{ session_id: string | null; stage: string | null; status: string }, [string]>(
+    "SELECT session_id, stage, status FROM tasks WHERE id = ?").get(ticket.task_id)!;
+  const planStage = plan.stage ?? (plan.status === "done" ? "delivered" : "active");
+  const parts = partKeys.length > 0
+    ? ctx.db.query<{ key: string; stage: string }, [string]>("SELECT key, stage FROM ticket_parts WHERE ticket_id = ? ORDER BY key").all(ticket.id)
+      .filter((part) => partKeys.includes(part.key))
+    : [];
+  const open = ctx.db.query<SubmissionRow, [string, string]>("SELECT * FROM submissions WHERE ticket_id = ? AND state IN (SELECT value FROM json_each(?)) ORDER BY created_at, rowid")
+    .all(ticket.id, JSON.stringify(OPEN_STATES)).map(toSubmission);
+  const before: ReworkBefore = { ticket_stage: stage, parts, plan_stage: planStage, submissions: open.map((submission) => ({ id: submission.id, state: submission.state })) };
+  // A hand-over still waiting is no longer what counts: your complaint is.
+  for (const submission of open) {
+    ctx.db.run("UPDATE submissions SET state = 'superseded', awaiting = NULL, updated_at = ? WHERE id = ?", [now, submission.id]);
+    if (submission.awaiting?.message_id) letGoOfCard(ctx, submission.awaiting.message_id, { reason: "superseded", by: "complaint" });
+  }
+  // The reviews that let the current hand-over through missed what you found.
+  const said = ctx.db.query<{ body: string }, [string]>("SELECT body FROM messages WHERE id = ?").get(input.messageId)?.body ?? "";
+  const excerpt = truncate(said.replace(/\s+/g, " ").trim(), COMPLAINT_EXCERPT_MAX);
+  const approved = ctx.db.query<SubmissionRow, [string]>("SELECT * FROM submissions WHERE ticket_id = ? AND state = 'approved' ORDER BY created_at DESC, rowid DESC")
+    .all(ticket.id).map(toSubmission)
+    .find((submission) => partKeys.length === 0 || submission.part_keys.length === 0 || submission.part_keys.some((key) => partKeys.includes(key)));
+  const misses: string[] = [];
+  for (const review of approved?.reviews ?? []) {
+    if (review.outcome !== "approve") continue;
+    const missed = ctx.db.query(`SELECT 1 FROM work_events WHERE kind = 'review.miss' AND json_extract(payload, '$.submission_id') = ?
+      AND json_extract(payload, '$.reviewer_bot_id') = ? AND json_extract(payload, '$.undone') IS NULL`).get(approved!.id, review.reviewer_bot_id);
+    if (missed) continue;
+    recordWorkEvent(ctx, { kind: "review.miss", actor: USER_MEMBER, botId: review.reviewer_bot_id, taskId: ticket.task_id, ticketId: ticket.id,
+      payload: { submission_id: approved!.id, reviewer_bot_id: review.reviewer_bot_id, reviewer_model: review.reviewer_model, same_model: review.same_model,
+        message_id: input.messageId, card_id: input.refId, quote: excerpt, reviewed_at: review.at } });
+    misses.push(review.reviewer_bot_id);
+  }
+  for (const part of parts) {
+    if (part.stage === "rework" || part.stage === "waived") continue;
+    ctx.db.run("UPDATE ticket_parts SET stage = 'rework' WHERE ticket_id = ? AND key = ?", [ticket.id, part.key]);
+    recordWorkEvent(ctx, { kind: "part.stage_changed", actor: USER_MEMBER, taskId: ticket.task_id, ticketId: ticket.id,
+      payload: { part: part.key, before: part.stage, after: "rework", message_id: input.messageId } });
+  }
+  setTicketStage(ctx, { ticketId: ticket.id, stage: "rework", source: "user", now });
+  if (planStage === "delivered") reopenPlan(ctx, ticket.task_id, now);
+  // Its producer hears it and goes back to work on it.
+  const producer = ticket.owner_bot_id ?? ticket.worker;
+  let producerInbox: number | null = null;
+  if (producer && plan.session_id && ctx.db.query("SELECT 1 FROM bots WHERE id = ? AND deleted_at IS NULL").get(producer)) {
+    const what = partKeys.length > 0 ? (en ? ` (${partKeys.join(", ")})` : `（${partKeys.join("、")}）`) : "";
+    producerInbox = queueWork(ctx, { botId: producer, sessionId: yourDirectWith(ctx, input.sessionId, producer) ?? plan.session_id, taskId: ticket.task_id, ticketId: ticket.id, messageId: null, author: "app",
+      body: en ? `(app) The user sent ticket "${ticket.title}"${what} back to rework, saying: "${excerpt}". Fix that and hand it over again.`
+        : `（应用）用户把任务「${ticket.title}」${what}转回返工了，用户说：「${excerpt}」。按这个改好再交。`,
+      source: "review", kind: "change", priority: 2, notice: false }).inbox.seq;
+    refreshHeldInbox(ctx, { botId: producer });
+  }
+  recordWorkEvent(ctx, { kind: "complaint.rework", actor: USER_MEMBER, taskId: ticket.task_id, ticketId: ticket.id,
+    payload: { message_id: input.messageId, card_id: input.refId, by: input.by, parts: partKeys, before, misses, superseded: open.map((submission) => submission.id),
+      producer: producer ?? null, producer_inbox: producerInbox } });
 }
 
 /**
@@ -180,61 +221,7 @@ export function answerReworkCard(ctx: StoreContext, cardId: string, action: unkn
         ? (en ? "A newer version was handed over after your line, so nothing was sent back; say it again if it is still wrong." : "这句话之后又交了新的一版，没有转回；新版还有问题就再说一次。")
         : (en ? "It is no longer handed over or approved, so there was nothing to send back." : "它已经不在交付或通过的状态，没有可转回的。") });
     }
-    const partKeys = control.part_keys;
-    const plan = ctx.db.query<{ session_id: string | null; stage: string | null; status: string }, [string]>(
-      "SELECT session_id, stage, status FROM tasks WHERE id = ?").get(ticket.task_id)!;
-    const planStage = plan.stage ?? (plan.status === "done" ? "delivered" : "active");
-    const parts = partKeys.length > 0
-      ? ctx.db.query<{ key: string; stage: string }, [string]>("SELECT key, stage FROM ticket_parts WHERE ticket_id = ? ORDER BY key").all(ticket.id)
-        .filter((part) => partKeys.includes(part.key))
-      : [];
-    const open = ctx.db.query<SubmissionRow, [string, string]>("SELECT * FROM submissions WHERE ticket_id = ? AND state IN (SELECT value FROM json_each(?)) ORDER BY created_at, rowid")
-      .all(ticket.id, JSON.stringify(OPEN_STATES)).map(toSubmission);
-    const before: ReworkBefore = { ticket_stage: stage, parts, plan_stage: planStage, submissions: open.map((submission) => ({ id: submission.id, state: submission.state })) };
-    // A hand-over still waiting is no longer what counts: your complaint is.
-    for (const submission of open) {
-      ctx.db.run("UPDATE submissions SET state = 'superseded', awaiting = NULL, updated_at = ? WHERE id = ?", [now, submission.id]);
-      if (submission.awaiting?.message_id) letGoOfCard(ctx, submission.awaiting.message_id, { reason: "superseded", by: "complaint" });
-    }
-    // The reviews that let the current hand-over through missed what you found.
-    const said = ctx.db.query<{ body: string }, [string]>("SELECT body FROM messages WHERE id = ?").get(control.message_id)?.body ?? "";
-    const excerpt = truncate(said.replace(/\s+/g, " ").trim(), COMPLAINT_EXCERPT_MAX);
-    const approved = ctx.db.query<SubmissionRow, [string]>("SELECT * FROM submissions WHERE ticket_id = ? AND state = 'approved' ORDER BY created_at DESC, rowid DESC")
-      .all(ticket.id).map(toSubmission)
-      .find((submission) => partKeys.length === 0 || submission.part_keys.length === 0 || submission.part_keys.some((key) => partKeys.includes(key)));
-    const misses: string[] = [];
-    for (const review of approved?.reviews ?? []) {
-      if (review.outcome !== "approve") continue;
-      const missed = ctx.db.query(`SELECT 1 FROM work_events WHERE kind = 'review.miss' AND json_extract(payload, '$.submission_id') = ?
-        AND json_extract(payload, '$.reviewer_bot_id') = ? AND json_extract(payload, '$.undone') IS NULL`).get(approved!.id, review.reviewer_bot_id);
-      if (missed) continue;
-      recordWorkEvent(ctx, { kind: "review.miss", actor: USER_MEMBER, botId: review.reviewer_bot_id, taskId: ticket.task_id, ticketId: ticket.id,
-        payload: { submission_id: approved!.id, reviewer_bot_id: review.reviewer_bot_id, reviewer_model: review.reviewer_model, same_model: review.same_model,
-          message_id: control.message_id, card_id: cardId, quote: excerpt, reviewed_at: review.at } });
-      misses.push(review.reviewer_bot_id);
-    }
-    for (const part of parts) {
-      if (part.stage === "rework" || part.stage === "waived") continue;
-      ctx.db.run("UPDATE ticket_parts SET stage = 'rework' WHERE ticket_id = ? AND key = ?", [ticket.id, part.key]);
-      recordWorkEvent(ctx, { kind: "part.stage_changed", actor: USER_MEMBER, taskId: ticket.task_id, ticketId: ticket.id,
-        payload: { part: part.key, before: part.stage, after: "rework", message_id: control.message_id } });
-    }
-    setTicketStage(ctx, { ticketId: ticket.id, stage: "rework", source: "user", now });
-    if (planStage === "delivered") reopenPlan(ctx, ticket.task_id, now);
-    // Its producer hears it and goes back to work on it.
-    const producer = ticket.owner_bot_id ?? ticket.worker;
-    let producerInbox: number | null = null;
-    if (producer && plan.session_id && ctx.db.query("SELECT 1 FROM bots WHERE id = ? AND deleted_at IS NULL").get(producer)) {
-      const what = partKeys.length > 0 ? (en ? ` (${partKeys.join(", ")})` : `（${partKeys.join("、")}）`) : "";
-      producerInbox = queueWork(ctx, { botId: producer, sessionId: yourDirectWith(ctx, card.session_id, producer) ?? plan.session_id, taskId: ticket.task_id, ticketId: ticket.id, messageId: null, author: "app",
-        body: en ? `(app) The user sent ticket "${ticket.title}"${what} back to rework, saying: "${excerpt}". Fix that and hand it over again.`
-          : `（应用）用户把任务「${ticket.title}」${what}转回返工了，用户说：「${excerpt}」。按这个改好再交。`,
-        source: "review", kind: "change", priority: 2, notice: false }).inbox.seq;
-      refreshHeldInbox(ctx, { botId: producer });
-    }
-    recordWorkEvent(ctx, { kind: "complaint.rework", actor: USER_MEMBER, taskId: ticket.task_id, ticketId: ticket.id,
-      payload: { message_id: control.message_id, card_id: cardId, parts: partKeys, before, misses, superseded: open.map((submission) => submission.id),
-        producer: producer ?? null, producer_inbox: producerInbox } });
+    sendBack(ctx, { ticketId: ticket.id, partKeys: control.part_keys, messageId: control.message_id, refId: cardId, sessionId: card.session_id, by: "card", now });
     updateNotificationActionState(ctx, `rework:${cardId}`, "resolved", "rework", true);
     return setMessageControl(ctx, cardId, { ...control, offer: ["undo"], result: en ? "Sent back to rework." : "已转回返工。" });
   });

@@ -38,7 +38,6 @@ import { createPlanWatch } from "./engine/plan-watch";
 import { createRestart, type RestartSummary } from "./engine/restart";
 import { createRouting } from "./engine/routing";
 import { createSpend } from "./engine/spend";
-import { createStatusQuestion } from "./engine/status-question";
 import { createStop, type HoldRequest } from "./engine/stop";
 import { createTools } from "./engine/tools";
 import { HttpError } from "./errors";
@@ -402,10 +401,6 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       });
     },
     draining: () => Boolean(options.admission?.draining),
-    onFiled: (quote, outcome) => {
-      // A part-level entry the scribe made of a line about delivered work reads as a complaint (§6.6).
-      if (quote.message_id && outcome.added.length > 0) submissions.noteComplaint(quote.message_id, { scribeAdded: outcome.added });
-    },
     readQuote,
     ablation,
   });
@@ -580,14 +575,6 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     planLeftQuietMs: options.planLeftQuietMs,
   });
 
-  const statusQuestion = createStatusQuestion({
-    store,
-    publishMessage: core.publishMessage,
-    admission: options.admission,
-    // Late-bound: `stops` is built after lifecycle; a status question only arrives once it is.
-    heldLines: (taskId) => stops.heldLines(taskId),
-  });
-
   const lifecycle = createLifecycle({
     store,
     publish,
@@ -630,8 +617,6 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     handleParticipation: participation.handleParticipation,
     // Late-bound: the engine below; a line only reaches a waiting segment once it is built.
     answerAsk: (askId, sessionId, custom) => { engine.replyAsk(askId, sessionId, { custom }); },
-    // Late-bound: `stops` is built below; a read-only answer only ends once it is.
-    readOnlyUnanswered: (turn) => stops.unanswered(turn),
     implicitSubmission: (turnId, opts) => submissions.implicit(turnId, opts),
     publishSpend: core.publishSpend,
     claudeCode: options.claudeCode,
@@ -656,6 +641,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     track: core.track,
     readUserLine: reader.userLine,
     readBotLine: reader.botLine,
+    // Late-bound: `stops` is built below; a complaint is only read once it is.
+    liftOnSendBack: (line, producer, taskId, ticketId) => stops.liftOnSendBack(line, producer, taskId, ticketId),
   });
 
   const stops = createStop({
@@ -816,16 +803,6 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
       const fromUser = opts?.fromUser ?? message.author === USER_MEMBER;
       // Sent on again as any line once you undid what was made of it: yours to change again (ADR 0063).
       if (fromUser && opts?.ordinary) store.clearLineTaken(message.id);
-      // 控制句, by the fixed rules: a line that is nothing but a stop or a go on is carried out here
-      // at once and goes nowhere else — no filing, no turn, no model call (ADR 0040 P2). One sent on
-      // again after you undid its stop skips every reading of it as control: you said it was neither.
-      // It waits for no line before it either: a stop goes ahead of whatever is still being read.
-      const ruled = fromUser && !opts?.ordinary ? stops.ruleLine(message) : null;
-      if (ruled?.done) {
-        // Carried out, not handed to any Bot as words: it stays as you said it (ADR 0063).
-        store.markLineTaken(message.id, "app");
-        return;
-      }
       // Read as the line arrives: whether its job had handed something over, which is what a
       // complaint is judged by if the scribe files nothing for it. Its filing, or a turn it wakes,
       // may send that ticket back to doing over the complaint before the scribe gets to it.
@@ -850,12 +827,35 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         handOver();
         place?.release();
       };
-      // Nothing more is done with a line the app answered or carried out, or one cleared while it waited.
+      // Nothing more is done with a line the app carried out, or one cleared while it waited.
       let settled = false;
       try {
+        // 读句 (ADR 0055): what the line means, read once, from the moment it arrives — before it
+        // waits its turn, so a line read as nothing but a stop goes ahead of every line still being
+        // read. A line sent on again after you undid its stop is not read: you said it was no
+        // control, and what else it says (a complaint) is read as its filing asks.
+        const said = message.body;
+        const reading$ = fromUser && !opts?.ordinary ? core.track(reader.userLine(message)) : null;
+        // 控制句 (ADR 0070): only a line the reader read as nothing but a stop is carried out here and
+        // goes nowhere else; one that may have meant a stop carries the buttons and goes on below.
+        // Everything else is the Bots' to answer — a question about where the work stands, a go on,
+        // a line the reader could not read — and the app answers none of it in their place. Changed
+        // while it was read, the reading is of words the line no longer has: nothing is carried out
+        // on it, and it judges no complaint (ADR 0063).
+        let readOut = false;
+        const carriedOut = (reading: UserLineReading | null): boolean => {
+          if (readOut || reading === null || bodyNow(message.id) !== said) return false;
+          readOut = true;
+          if (!stops.readLine(message, reading)) return false;
+          store.markLineTaken(message.id, "app");
+          settled = true;
+          return true;
+        };
         if (place) {
+          const readFirst = reading$ ? await Promise.race([place.ready.then(() => false), reading$.then(() => true)]) : false;
+          if (readFirst && carriedOut(await reading$!)) return;
           await place.ready;
-          // Changed while it waited (ADR 0063): read, filed and routed as it now reads.
+          // Changed while it waited (ADR 0063): filed and routed as it now reads.
           try {
             message = store.getMessage(message.id);
           } catch {
@@ -869,25 +869,12 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         const where = fromUser && store.capabilities().engine_level >= ENGINE_LEVELS.work_items
           ? core.track(reader.filing(message))
           : null;
-        // 读句 (ADR 0055): what the line means, read once, before anything below acts on it. A line
-        // sent on again after you undid its stop is not waited on: you said it was no control, and
-        // what else it says (a complaint) is read as its filing asks.
-        const reading = fromUser && !opts?.ordinary ? await core.track(reader.userLine(message)) : null;
-        // Changed while it was being read: the reading is of words the line no longer has, so it is
-        // not carried out as a stop or a status question, and it judges no complaint (ADR 0063).
-        const fresh = reading !== null && bodyNow(message.id) === message.body;
-        // 进度询问: a line that only asks where a job stands, about a plan this session has one to
-        // report on, is answered from the store's own rows, right here — before anything below would
-        // organize, judge, wake or redirect a turn over it. Then the rest of 控制句: a line read as
-        // nothing but a stop or a go on is carried out like one the rules found, and one that only
-        // may have meant one carries the buttons and goes on below like any other.
-        if (reading && fresh && (statusQuestion.handle(message, reading) || (!ruled?.decided && stops.readLine(message, reading)))) {
-          store.markLineTaken(message.id, "app");
-          settled = true;
-          return;
-        }
+        const reading = reading$ ? await reading$ : null;
+        const fresh = reading !== null && bodyNow(message.id) === said;
+        if (carriedOut(reading)) return;
         let filed = message;
         let lifted: Hold[] = [];
+        let wentOn: Hold[] = [];
         if (fromUser) {
           // From level 8 a reply is no feedback on the route it answers (ADR 0050): quality events are filed by type.
           if (!store.learningOn() && store.collectRouteFeedback(message)) {
@@ -910,18 +897,24 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
           // where the reading says it belongs (ADR 0057); what neither places, the Bot chooses at
           // its desk. A dormant plan is no candidate of its own, so a complaint lands on the job still live.
           if (store.capabilities().engine_level >= ENGINE_LEVELS.work_items) {
-            const read = where ? await where : null;
+            let read = where ? await where : null;
+            // A question about where the work stands opens no job of its own: 「怎么样了」 once opened
+            // a plan of that name that ran 79 turns by itself (status-question.ts). Nor does a go on:
+            // it is never new work, and a job named 「继续」 is what one read as new opened (2026-10-09).
+            if (read?.about === "new" && fresh && (reading?.statusOnly || reading?.control === "go_on")) read = { ...read, about: "in_place" };
             store.updatePlanDormancy();
             store.fileMessage(message.id, read ? { read } : {});
             // From this read until the line is heard or opens its turn nothing waits: a change you
             // make to the line is decided against the rows that leaves (store/message-edits.ts), so
             // every copy written below has the words the line has then.
             filed = store.getMessage(message.id);
-            // A complaint about work handed over or approved asks about it before any turn opens on it.
+            // A complaint about work handed over or approved sends it back before any turn opens on it (ADR 0070).
             submissions.noteComplaint(filed.id, reading && filed.body === message.body ? { reading } : {});
           }
           // A Stop you pressed on this job goes once you say something more about it to that Bot,
-          // before the line wakes anyone: what you say next is what the Bot goes on from.
+          // before the line wakes anyone: what you say next is what the Bot goes on from. A go on
+          // also lifts your other stops that keep its Bots from this job, and only this job's.
+          wentOn = stops.goOnWithLine(filed, fresh ? reading : null);
           lifted = stops.liftOnYourLine(filed);
           // The job's turns in other sessions hear it before any turn opens here, so the one that
           // opens can be told they already have it.
@@ -944,7 +937,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         // just said: what it makes of the line is what you will be asked about.
         if (fromUser && store.capabilities().engine_level >= ENGINE_LEVELS.work_items) store.holdForYourLine(filed.id);
         // The stopped work your line did not reach goes on from it, and hears it as work already at the job would have.
-        const resumed = stops.goOnFromYourLine(filed, lifted);
+        // What a go on lifted is about the job wherever it stopped; what the line lifted otherwise goes
+        // on only as far as the line reached (a group's stop, for 「@X 继续」, is X's alone to go on from).
+        const resumed = [...stops.goOnFromYourLine(filed, lifted), ...stops.goOnFromYourLine(filed, wentOn, true)];
         if (resumed.length > 0) lifecycle.hearAcross(filed, { turnIds: resumed.map((turn) => turn.id) });
       } finally {
         routed();

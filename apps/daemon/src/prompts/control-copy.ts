@@ -313,10 +313,10 @@ export function resumeNote(
 export function readOnlyLine(locale: Locale, said: SaidLine): string {
   if (locale === "en") {
     const source = said ? ` (they said at ${said.at}: ${quoted(locale, said)})` : "";
-    return `The user has stopped this work${source}. This turn can only answer: read files and reply; it changes nothing and wakes nobody.`;
+    return `The user has stopped this work${source}. This turn can only answer: read files and reply; it changes nothing and wakes nobody. If they told you to go on, say plainly that their stop still holds and is lifted on its receipt; do not say you are going on.`;
   }
   const source = said ? `（用户 ${said.at} 说的${quoted(locale, said)}）` : "";
-  return `用户已叫停这件工作${source}，这一段只能回答：可以读文件、回复用户，改不了任何东西，也叫不动别人。`;
+  return `用户已叫停这件工作${source}，这一段只能回答：可以读文件、回复用户，改不了任何东西，也叫不动别人。用户要你接着做的话，直说这个叫停还在、要在它的回执上解除，别说你在接着做。`;
 }
 
 /**

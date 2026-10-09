@@ -619,7 +619,7 @@ test("a card a newer hand-over or your board edit took over says so, with no but
   expect(h.store.listSubmissions({ taskId: j.plan.id }).map((submission) => submission.state)).toEqual(["superseded", "superseded"]);
 });
 
-test("your complaint about approved work asks first; sent back, the producer is woken, and the reviewer reads its calibration record next time", async () => {
+test("your complaint about approved work, read as one, sends it back at once; the producer is woken, and the reviewer reads its calibration record next time", async () => {
   const h = await scenario();
   const j = job(h);
   h.store.patchTicketByUser(j.ticket.id, { reviewerBotId: j.reviewer.id });
@@ -642,13 +642,10 @@ test("your complaint about approved work asks first; sent back, the producer is 
   h.store.fileMessage(line.id, { explicit: [{ taskId: j.plan.id, ticketId: j.ticket.id }] });
   await h.engine.handleInboundMessage(h.store.getMessage(line.id), { fromUser: true });
   await h.waitIdle();
-  const card = h.messages(j.room).find((message) => message.control?.kind === "rework")!;
-  expect(card.control).toMatchObject({ ticket_id: j.ticket.id, offer: ["rework", "dismiss"] });
-  // Asked, not acted on: still approved until you press.
-  expect(stageOf(h, j.ticket.id)).toEqual({ stage: "approved", status: "done" });
-  h.engine.control(card.id, { action: "rework" });
-  await h.waitIdle();
-  expect(h.store.getMessage(card.id).control).toMatchObject({ offer: ["undo"] });
+  // No card asks you (ADR 0070): your line says it went back, with an undo.
+  expect(h.messages(j.room).filter((message) => message.kind === "system" && message.control?.kind === "rework")).toEqual([]);
+  const card = h.store.getMessage(line.id);
+  expect(card.control).toMatchObject({ kind: "rework", ticket_id: j.ticket.id, offer: ["undo"] });
   expect(h.store.reviewMisses({ botId: j.reviewer.id, sessionId: j.room })).toMatchObject([{ quote: expect.stringContaining("第 2 镜反了") }]);
   expect(heard).toContain("你的校准记录");
   expect(heard).toContain("第 2 镜反了");
@@ -657,7 +654,7 @@ test("your complaint about approved work asks first; sent back, the producer is 
   expect(() => h.engine.control(card.id, { action: "undo" })).toThrow();
 });
 
-test("undo on a rework card puts the approval back when nothing moved since", async () => {
+test("undo on your line puts the approval back when nothing moved since", async () => {
   const h = await scenario();
   const j = job(h);
   h.store.createCheckByUser(j.plan.id, { item: "分镜文件存在", kind: "exists", path: `${j.ticket.dir}/board.md`, ticket_id: j.ticket.id });
@@ -671,9 +668,7 @@ test("undo on a rework card puts the approval back when nothing moved since", as
   h.store.fileMessage(line.id, { explicit: [{ taskId: j.plan.id, ticketId: j.ticket.id }] });
   await h.engine.handleInboundMessage(h.store.getMessage(line.id), { fromUser: true });
   await h.waitIdle();
-  const card = h.messages(j.room).find((message) => message.control?.kind === "rework")!;
-  h.engine.control(card.id, { action: "rework" });
-  await h.waitIdle();
+  const card = h.store.getMessage(line.id);
   expect(stageOf(h, j.ticket.id).stage).toBe("rework");
   h.engine.control(card.id, { action: "undo" });
   expect(stageOf(h, j.ticket.id)).toEqual({ stage: "approved", status: "done" });

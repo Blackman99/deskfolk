@@ -88,7 +88,7 @@ describe("the other lines", () => {
 
   test("a read-only turn is told whose stop it is under and that it can only answer", () => {
     expect(readOnlyLine("zh", { at: "10:45", body: "停下你所有的工作" })).toBe(
-      "用户已叫停这件工作（用户 10:45 说的「停下你所有的工作」），这一段只能回答：可以读文件、回复用户，改不了任何东西，也叫不动别人。",
+      "用户已叫停这件工作（用户 10:45 说的「停下你所有的工作」），这一段只能回答：可以读文件、回复用户，改不了任何东西，也叫不动别人。用户要你接着做的话，直说这个叫停还在、要在它的回执上解除，别说你在接着做。",
     );
     expect(readOnlyLine("en", null)).toContain("This turn can only answer");
   });

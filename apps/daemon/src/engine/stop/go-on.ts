@@ -1,5 +1,6 @@
 /** Going on: holds lifted by a line or a button, and the work they ended opened again on a note. */
 import { type Message, type Session, type ControlScope, type HeldTurn, type Hold, type ControlOffer, type Turn, type AnsweredLine, USER_MEMBER } from "@real-bot/protocol";
+import type { UserLineReading } from "../../line-reading";
 import { saidOf, continueReceiptBody, type SaidLine, resumeNote } from "../../prompts";
 import type { StopDeps } from "../stop";
 import type { StopReach } from "./reach";
@@ -8,7 +9,7 @@ import type { StopAnswers } from "./answers";
 
 export function createStopGoOn(deps: StopDeps, reach: StopReach, words: StopWords, answers: StopAnswers) {
   const { store, publishMessage, admission, startTurn, hearOrStart, wakes } = deps;
-  const { holdsToLift, stopsAbout, isWide, stopOnBot, stopBefore, stopsOnBots, scopeHolds, heldAbout, on } = reach;
+  const { holdsToLift, stopsAbout, isWide, stopOnBot, stopBefore, stopsOnBots, scopeHolds, heldAbout, on, saidTo, landedPlan, messageSession } = reach;
   const { authorIn, locale, scopeLabel, holdSaid, turnLine, headingBots, botName, planTitle, planTag } = words;
   const { answerStatus } = answers;
 
@@ -180,7 +181,9 @@ export function createStopGoOn(deps: StopDeps, reach: StopReach, words: StopWord
   /**
    * Your line taken up by `botId` once nothing holds it, as the line would have opened its turn with
    * nothing stopped: in your direct beside whatever the Bot took up there meanwhile, elsewhere heard
-   * by its turn on that job when it has one.
+   * by its turn on that job when it has one. Not by a Bot already back at the line's job in another
+   * conversation — its stopped work opened again there just now: a Bot works one job in one segment
+   * at a time, and a second one beside it could not open; the line stays answered where it was.
    */
   function takeUpLine(line: Message, botId: string): Turn | null {
     if (admission?.draining) return null;
@@ -193,6 +196,8 @@ export function createStopGoOn(deps: StopDeps, reach: StopReach, words: StopWord
     }
     if (!store.isPresent(session.id, botId)) return null;
     const withYou = session.kind !== "group" && store.isPresent(session.id, USER_MEMBER);
+    const job = landedPlan(line, botId);
+    if (job !== null && store.listLiveTurns({ botId }).some((turn) => turn.mode !== "readonly" && turn.task_id === job && turn.session_id !== session.id)) return null;
     return withYou
       ? startTurn(session.id, botId, line, "fork", { cause: "user_line" })
       : hearOrStart(session.id, botId, line, { item: { author: "", body: line.body, checkBack: false } }, { cause: "user_line", otherwise: "fork" });
@@ -255,13 +260,56 @@ export function createStopGoOn(deps: StopDeps, reach: StopReach, words: StopWord
   }
 
   function liftOnYourLine(message: Message): Hold[] {
-    if (message.kind !== "user" || message.control || !on()) return [];
+    // A line that may have meant a stop lifts none: its buttons say which (a complaint it sent back is no such line).
+    if (message.kind !== "user" || message.control?.kind === "possible_control" || !on()) return [];
     const about = stopsAbout(message);
     if (about.length === 0) return [];
     return store.transaction(() =>
       about.map((hold) => {
         const lifted = store.liftHold(hold.id, { by: "user_text", messageId: message.id });
         store.recordWorkEvent({ kind: "control.lift", actor: "user", sessionId: message.session_id, payload: { hold: hold.id, by: "user_text", next_line: true } });
+        return lifted;
+      }),
+    );
+  }
+
+  /**
+   * A go on the reader read (ADR 0070), once the line is filed: your stops that keep each Bot it is
+   * said to from the job it is filed under go — on the Bot's work, on its work in that job or on its
+   * ticket, on one of its turns; on this conversation, or on the job when you stopped it from here,
+   * only when the line is said to every Bot here — and the line then wakes the Bot like any line, so
+   * the Bot goes on from it and says so itself. A stop on another job stays: on 2026-10-09 「继续」 in
+   * 视频导演's direct, about the MV that had stopped there, lifted its stop on 《一拳超人》 instead,
+   * opened nothing, and the MV stayed where it was. So does a stop on everything, or on a job or a
+   * conversation stopped from elsewhere: their buttons lift them. A go on whose words name
+   * everything (`scopes`: 「所有 Bot 继续」) lifts every stop you made. Only stops made before the line.
+   */
+  function goOnWithLine(message: Message, reading: UserLineReading | null, scopes: ControlScope[]): Hold[] {
+    if (message.kind !== "user" || !on() || reading?.source !== "model" || reading.control !== "go_on") return [];
+    const ids = new Set<string>();
+    const present = store.presentBotIds(message.session_id);
+    const bots = present.filter((id) => saidTo(message, id));
+    if (scopes.some((scope) => scope.scope === "global")) {
+      for (const hold of store.listHolds({ inForce: true })) {
+        if (hold.created_at < message.created_at && (hold.source === "user_text" || hold.source === "user_button")) ids.add(hold.id);
+      }
+    }
+    for (const botId of bots) {
+      const covering = store.holdsCovering({ botId, sessionId: message.session_id, taskId: landedPlan(message, botId), ticketId: message.ticket_id ?? null });
+      for (const hold of covering) {
+        if (hold.created_at >= message.created_at || hold.scope === "global") continue;
+        // This conversation's own stop, or a job's you stopped from here.
+        const here = hold.scope === "session" ? hold.scope_id === message.session_id
+          : hold.source_message_id !== null && messageSession(hold.source_message_id) === message.session_id;
+        if ((hold.scope === "session" || hold.scope === "plan") && (!here || bots.length < present.length)) continue;
+        ids.add(hold.id);
+      }
+    }
+    if (ids.size === 0) return [];
+    return store.transaction(() =>
+      store.listHolds({ inForce: true }).reverse().filter((hold) => ids.has(hold.id)).map((hold) => {
+        const lifted = store.liftHold(hold.id, { by: "user_text", messageId: message.id });
+        store.recordWorkEvent({ kind: "control.lift", actor: "user", sessionId: message.session_id, payload: { hold: hold.id, by: "user_text", go_on: true } });
         return lifted;
       }),
     );
@@ -345,9 +393,10 @@ export function createStopGoOn(deps: StopDeps, reach: StopReach, words: StopWord
    * group's stop cut 文案 off in its direct with the lead, 「宣传语改成英文的，海报改横版」 woke only
    * the lead, and 文案 sat stopped until the supervisor called it back three minutes later to
    * "answer" the old request. The receipt had said the Bots go on from your line. A line that names
-   * Bots is for them alone, as 「@X 继续」 is: the others' work stays stopped.
+   * Bots is for them alone, as 「@X 继续」 is: the others' work stays stopped. A go on (`goOn`) is
+   * about the job wherever its work stopped, so it opens that work again in any conversation.
    */
-  function goOnFromYourLine(message: Message, lifted: Hold[]): Turn[] {
+  function goOnFromYourLine(message: Message, lifted: Hold[], goOn = false): Turn[] {
     if (lifted.length === 0 || !on()) return [];
     let group = false;
     try {
@@ -356,7 +405,7 @@ export function createStopGoOn(deps: StopDeps, reach: StopReach, words: StopWord
       return [];
     }
     const woken = new Set(wakes(message));
-    if (!group || store.presentBotIds(message.session_id).some((id) => !woken.has(id))) return [];
+    if (!goOn && (!group || store.presentBotIds(message.session_id).some((id) => !woken.has(id)))) return [];
     const reached = (record: HeldTurn) =>
       store.listLiveTurns({ botId: record.bot_id }).some(
         (turn) => turn.mode !== "readonly" && (turn.trigger_message_id === message.id || (record.task_id !== null && turn.task_id === record.task_id)),
@@ -422,7 +471,7 @@ export function createStopGoOn(deps: StopDeps, reach: StopReach, words: StopWord
     });
   }
 
-  return { continueByLine, resumeLifted, lift, liftOnYourLine, liftOnYourChange, liftOnYourInsert, liftOnSendBack, goOnFromYourLine, takeUp, continueReceiptLine };
+  return { continueByLine, resumeLifted, lift, liftOnYourLine, liftOnYourChange, liftOnYourInsert, liftOnSendBack, goOnWithLine, goOnFromYourLine, takeUp, continueReceiptLine };
 }
 
 export type StopGoOn = ReturnType<typeof createStopGoOn>;

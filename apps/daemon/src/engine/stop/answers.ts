@@ -1,6 +1,5 @@
-/** What the app answers under a stop: where the work stands, a read-only turn that said nothing, and the lines for a plan's status. */
-import type { Message, ControlScope, Turn, ControlOffer } from "@real-bot/protocol";
-import type { UserLineReading } from "../../line-reading";
+/** What the app answers on a stop's buttons — where the work stands — and the lines for a plan's stops. */
+import type { Message, ControlScope, ControlOffer } from "@real-bot/protocol";
 import { controlStatusBody, clockOf, heldLines } from "../../prompts";
 import type { StopDeps } from "../stop";
 import type { StopReach } from "./reach";
@@ -12,31 +11,6 @@ export function createStopAnswers(deps: StopDeps, reach: StopReach, words: StopW
   const { scopeHolds, on, heldAbout, inScope, workOnHere, heldTurn } = reach;
   const { headingBots, authorIn, locale, aboutLabel, scopeLabel, holdSaid, turnLine } = words;
   const { endViolations } = carry;
-
-  /**
-   * A line that only asks where the work stands, which the plan's status answer did not take (no
-   * plan to report on): it takes the path any line takes, unless a stop covers what it asks about.
-   */
-  function statusLine(message: Message, scopes: ControlScope[], line: UserLineReading): boolean {
-    if (!line.statusOnly || !scopes.some((scope) => scopeHolds(scope, message).length > 0)) return false;
-    answerStatus(message, scopes, { offerStop: false });
-    return true;
-  }
-
-  function unanswered(turn: Turn): void {
-    if (!on() || turn.mode !== "readonly") return;
-    let line: Message;
-    try {
-      line = store.getMessage(turn.trigger_message_id);
-    } catch {
-      return;
-    }
-    if (line.kind !== "user") return;
-    const scopes: ControlScope[] = [{ scope: "bot", id: turn.bot_id }];
-    // Lifted meanwhile: nothing stands in the way of saying it again.
-    if (heldAbout(scopes, line.session_id, line).length === 0) return;
-    answerStatus(line, scopes, { offerStop: false, offerContinue: true, unanswered: line.id });
-  }
 
   // ── Answering ─────────────────────────────────────────────────────────────────────────────────
 
@@ -99,7 +73,7 @@ export function createStopAnswers(deps: StopDeps, reach: StopReach, words: StopW
     });
   }
 
-  return { statusLine, unanswered, answerStatus, heldLinesFor };
+  return { answerStatus, heldLinesFor };
 }
 
 export type StopAnswers = ReturnType<typeof createStopAnswers>;

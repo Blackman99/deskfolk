@@ -237,6 +237,12 @@ export function planLines(facts: PlanFacts, locale: Locale): string[] {
       ? `(App) The line that opened this turn reads as a complaint about ${named}, already handed over: a card is asking the user whether to send it back to rework. That is theirs to decide — do not change it or hand the fix to anyone meanwhile; if they send it back, the app wakes its maker with these words.`
       : `（应用）叫醒这一轮的那句话读成了对已交出的 ${named}的意见：卡片正在问用户要不要转回返工。这由用户定——定之前别改它，也别另派人改；用户选了返工，应用会带着这句话叫做的 Bot 改。`);
   }
+  if (facts.rework_sent && facts.rework_sent.length > 0) {
+    const named = facts.rework_sent.map((ticket) => `${String(ticket.seq).padStart(2, "0")}${en ? ` "${ticket.title}"` : `「${ticket.title}」`}`).join(en ? ", " : "、");
+    lines.push(en
+      ? `(App) The line that opened this turn reads as a complaint about ${named}, already handed over, and sent it back to rework: the app has told its maker, with these words. Do not hand the fix to anyone else.`
+      : `（应用）叫醒这一轮的那句话读成了对已交出的 ${named}的意见，已经转回返工：应用已带着这句话告诉做它的 Bot。别另派人改它。`);
+  }
   if (facts.ticket) {
     const number = String(facts.ticket.seq).padStart(2, "0");
     const head = en

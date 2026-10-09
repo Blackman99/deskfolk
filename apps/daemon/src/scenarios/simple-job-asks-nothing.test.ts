@@ -61,7 +61,7 @@ test("a job opened, made and handed over in one go: no 新开 card, no 放行 ca
   expect(h.store.db.query("SELECT COUNT(*) AS n FROM notifications WHERE kind = 'ask' AND action_state = 'open'").get()).toEqual({ n: 0 });
 });
 
-test("delivered in one go, a word from you that it is wrong still asks to send it back", async () => {
+test("delivered in one go, a word from you that it is wrong still sends it back", async () => {
   const { h, direct } = await avatar();
   h.tick(new Date(Date.now() + 60_000));
   await h.waitIdle({ timeoutMs: 15_000 });
@@ -70,11 +70,10 @@ test("delivered in one go, a word from you that it is wrong still asks to send i
 
   // Read as about the avatar job, the one there is (ADR 0057).
   h.judge("read_filing").handle(fileUnder());
-  h.postUser(direct, "背景太暗了");
+  const line = h.postUser(direct, "背景太暗了");
   await h.waitIdle({ timeoutMs: 15_000 });
-  const card = h.messages(direct).find((message) => message.control?.kind === "rework")!;
-  expect(card.control).toMatchObject({ offer: ["rework", "dismiss"] });
-  h.engine.control(card.id, { action: "rework" });
-  await h.waitIdle({ timeoutMs: 15_000 });
+  // Read as a complaint, your line sends it back itself, with an undo; no card asks (ADR 0070).
+  expect(h.store.getMessage(line.id).control).toMatchObject({ kind: "rework", offer: ["undo"] });
+  expect(h.messages(direct).filter((message) => message.kind === "system" && message.control?.kind === "rework")).toEqual([]);
   expect(h.store.getTask(plan.id)).toMatchObject({ stage: "active" });
 });

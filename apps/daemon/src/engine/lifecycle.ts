@@ -98,11 +98,6 @@ export type LifecycleDeps = {
    */
   answerAsk: (askId: string, sessionId: string, custom: string) => void;
   /**
-   * Late-bound: the stops' `unanswered`. A read-only answer under a stop that ended without a word
-   * to you leaves your line unanswered; the app says why in its place, with the buttons to go on.
-   */
-  readOnlyUnanswered?: (turn: Turn) => void;
-  /**
    * Late-bound: the implicit submission (ADR 0046, engine level 5) — new files the segment cited
    * in its ticket's folder, handed over for it, checked, and moved on. Resolves once settled.
    */
@@ -160,7 +155,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
   const hopLoop = createHopLoop(deps, endings, closingReply);
   const hearing = createHearing(deps);
   const { executionOf, crashTurn, interruptTurn, failTurn } = endings;
-  const { settleClosingReply, saidNothing } = closingReply;
+  const { settleClosingReply } = closingReply;
   const { runTurn } = hopLoop;
   const { hearIn, answersAsk, hearAcross } = hearing;
 
@@ -689,7 +684,6 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     noteWrites: deps.noteWrites,
     settleClosingReply,
     completeSilent,
-    saidNothing,
     failTurn,
   });
 

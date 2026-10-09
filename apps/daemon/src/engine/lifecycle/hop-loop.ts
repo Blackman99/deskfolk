@@ -29,7 +29,7 @@ type Listed = Awaited<ReturnType<McpHost["listForTurn"]>>;
 export function createHopLoop(deps: LifecycleDeps, endings: TurnEndings, closingReply: ClosingReply) {
   const { store, publish, publishTurn, occurred, mcp, completions, lives, active, credentials, agentRoute, targetFor, decideRoute, routingTarget, spendOwner, callOf, recordSpend, recordResponseSpend, closeChain, holdChain, inspectForTurn, executeTools, completeSilent } = deps;
   const { failTurn, retryOrFail } = endings;
-  const { saidNothing, settleClosingReply } = closingReply;
+  const { settleClosingReply } = closingReply;
 
   async function runTurn(turnId: string): Promise<void> {
     const live = lives.get(turnId);
@@ -456,7 +456,6 @@ export function createHopLoop(deps: LifecycleDeps, endings: TurnEndings, closing
     }
     if (outcome === "noop" || outcome === "spoke") {
       completeSilent(turnId);
-      saidNothing(current, live);
       return "end";
     }
     return "next";

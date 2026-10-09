@@ -155,7 +155,7 @@ test("in your direct, the line about a stop says to tell the Bot, not to @ it", 
     body: "专业翻译官说「好的，这就去查术语表，结论随后发你。」，但这一轮已经结束了，没有人接着做。要它继续，跟它说一声。" });
 });
 
-test("the start-over line asks to send the handed-over ticket back, and sent back it is the director's again", async () => {
+test("the start-over line sends the handed-over ticket back, and sent back it is the director's again", async () => {
   const h = await createScenario({ submissions: true });
   open.push(h);
   const { director, room } = videoTeam(h);
@@ -163,12 +163,10 @@ test("the start-over line asks to send the handed-over ticket back, and sent bac
   const ticket = h.store.createTicket({ taskId: plan.id, title: "一拳超人风格可播放短片", status: "review", worker: director.id });
   h.script(director).handle(() => call(tool("end_turn", { reason: "nothing_new" })));
   h.judge("read_filing").reply(fileUnder("一拳超人"));
-  h.postUser(room, "@视频导演 从头再做一遍，之前的作废");
+  h.judge("read_user_line").reply({ control: "none", control_only: false, status_only: false, objections: ["从头再做一遍，之前的作废"] });
+  const line = h.postUser(room, "@视频导演 从头再做一遍，之前的作废");
   await h.waitIdle();
-  const card = h.messages(room).find((message) => message.control?.kind === "rework");
-  expect(card?.body).toContain("从头再做一遍，之前的作废");
-  expect(card?.control).toMatchObject({ ticket_id: ticket.id, offer: ["rework", "dismiss"] });
-  h.engine.control(card!.id, { action: "rework" });
-  await h.waitIdle();
+  expect(h.messages(room).filter((message) => message.kind === "system" && message.control?.kind === "rework")).toEqual([]);
+  expect(h.store.getMessage(line.id).control).toMatchObject({ kind: "rework", ticket_id: ticket.id, offer: ["undo"] });
   expect(h.store.getTicket(ticket.id)).toMatchObject({ status: "doing", stage: "rework" });
 });

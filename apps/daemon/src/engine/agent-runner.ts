@@ -105,7 +105,6 @@ export type AgentRunnerDeps = {
   noteWrites: Tools["noteWrites"];
   settleClosingReply: (turnId: string, live: Live, current: Turn, content: string) => Promise<{ kind: "bounce"; note: string } | { kind: "ended" } | { kind: "inactive" }>;
   completeSilent: (turnId: string) => void;
-  saidNothing: (turn: Turn, live: Live) => void;
   failTurn: (turnId: string, kind: FailKind, detail?: string | null) => void;
   /** Spawning Claude Code; the SDK's own spawn, made detached and recorded, unless a test brings one. */
   spawnProcess?: (options: SpawnOptions, turnId: string) => SpawnedProcess;
@@ -845,7 +844,6 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
     if (state.endedByTool) {
       // As the hop loop does when a tool ended the segment (`end_turn`, a merge, a wait).
       deps.completeSilent(turnId);
-      deps.saidNothing(current, live);
       return;
     }
     if (state.failure) {

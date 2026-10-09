@@ -245,7 +245,7 @@
 									onOpen={() => { stage.attributionEditId = item.message.id; }}
 								/>
 							{/if}
-							{#if item.message.control?.kind === 'possible_control' && !stage.lockedComposer}
+							{#if (item.message.control?.kind === 'possible_control' || item.message.control?.kind === 'rework') && !stage.lockedComposer}
 								<ControlActions
 									control={item.message.control}
 									holds={stage.snapshot.holds}

@@ -43,6 +43,11 @@ export type SubmissionsDeps = {
   readUserLine: (message: Message) => Promise<UserLineReading>;
   /** A Bot's words, read for whether they are the deliverable (ADR 0055). */
   readBotLine: (body: string, sessionId: string | null, context?: BotLineContext) => Promise<BotLineReading>;
+  /**
+   * Late-bound: work your line sent back is your word to its maker to go back to it, as 退回 on a
+   * card is — a Stop on its work in that job goes (engine/stop/go-on.ts `liftOnSendBack`).
+   */
+  liftOnSendBack?: (line: Message, producer: string, taskId: string, ticketId: string | null) => unknown[];
   log?: (line: string) => void;
 };
 
@@ -71,7 +76,7 @@ export type Submissions = {
    * about work handed over or approved asks whether to send it back to rework (§6.6). Read as
    * `reading` says, else once it is read. Never throws.
    */
-  noteComplaint: (messageId: string, opts?: { scribeAdded?: readonly string[]; reading?: UserLineReading }) => void;
+  noteComplaint: (messageId: string, opts?: { reading?: UserLineReading }) => void;
   /** Your answer on a rework card: send it back, leave it, or undo. */
   answerRework: (message: Message, input: { action: unknown }) => ControlActionResult;
   /** Your answer on a ceiling card. */
@@ -373,12 +378,19 @@ export function createSubmissions(deps: SubmissionsDeps): Submissions {
     return settle(prepared.submission);
   }
 
-  function noteComplaint(messageId: string, opts: { scribeAdded?: readonly string[]; reading?: UserLineReading } = {}): void {
+  function noteComplaint(messageId: string, opts: { reading?: UserLineReading } = {}): void {
     if (!on()) return;
     const note = (reading: UserLineReading): void => {
       try {
         const objecting = { clauses: reading.objections, source: reading.source };
-        if (store.noteComplaint(messageId, { scribeAdded: opts.scribeAdded, objecting }).length > 0) dispatchQueued();
+        const changed = store.noteComplaint(messageId, { objecting });
+        for (const line of changed) publishMessage(line);
+        if (changed.length === 0) return;
+        const sent = store.db.query<{ task_id: string | null; ticket_id: string | null; producer: string | null }, [string]>(`SELECT task_id, ticket_id,
+          json_extract(payload, '$.producer') AS producer FROM work_events WHERE kind = 'complaint.rework'
+          AND json_extract(payload, '$.message_id') = ? AND json_extract(payload, '$.by') = 'reading'`).all(messageId);
+        for (const row of sent) if (row.producer && row.task_id) deps.liftOnSendBack?.(changed[0]!, row.producer, row.task_id, row.ticket_id);
+        dispatchQueued();
       } catch (error) {
         log(`[submissions] line ${messageId}: could not read it as a complaint: ${error instanceof Error ? error.message : String(error)}`);
       }

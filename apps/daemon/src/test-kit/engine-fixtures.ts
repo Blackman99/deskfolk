@@ -4,6 +4,7 @@ import { READ_BOT_LINE_SYSTEM, READ_USER_LINE_SYSTEM } from "../prompts/reader";
 import { SCRIBE_SYSTEM } from "../prompts/scribe";
 import { ROUTE_LEARN_SYSTEM, ROUTE_PICK_SYSTEM, ROUTE_REVIEW_SYSTEM } from "../prompts/routing";
 import { Store } from "../store";
+import { userLineAnswerByRules } from "./reading-by-rules";
 import { fixtures, startLocalApi, type Harness } from "./local-api-harness";
 
 export function startApi(
@@ -44,6 +45,17 @@ export function isRoutingCall(body: Record<string, unknown>): boolean {
   );
 }
 
+/** A reading of your line, answered as a model reading it by the rules would; null for any other call. */
+function userLineReading(body: Record<string, unknown>): string | null {
+  const messages = body.messages as Array<{ role?: string; content?: string }> | undefined;
+  if (messages?.find((row) => row.role === "system")?.content !== READ_USER_LINE_SYSTEM) return null;
+  try {
+    return userLineAnswerByRules(null, JSON.parse(messages.filter((row) => row.role === "user").at(-1)?.content ?? "")) || null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Every turn now asks a model what to run on, so each test's scripted queue would be eaten by a
  * call it never wrote. Unless a test answers routing itself, those calls get an answer that names
@@ -64,7 +76,9 @@ export async function startFixture(
       }
       const body = (await request.json()) as Record<string, unknown>;
       if (isRoutingCall(body)) {
-        return routing ? routing({ url, body }) : routingAnswer("{}");
+        if (routing) return routing({ url, body });
+        // A reading of your line comes back as a model's: the app carries nothing out on the word lists' (ADR 0070).
+        return routingAnswer(userLineReading(body) ?? "{}");
       }
       return handler({ url, body });
     },

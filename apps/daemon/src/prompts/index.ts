@@ -25,7 +25,6 @@ export {
   supervisorJobLabel,
   supervisorWakeNote,
   routineFireBody,
-  statusQuestionBody,
   unknownMentionBody,
   completionFailBody,
   contextFullDetail,
@@ -34,12 +33,6 @@ export type {
   FailingCheckLine,
   FailKind,
   OpenTicketLine,
-  StatusArtifactLine,
-  StatusCheckBackLine,
-  StatusWaitingLine,
-  StatusCheckSummary,
-  StatusTicketLine,
-  StatusWorkingLine,
 } from "./transcript-copy";
 export { clockOf, continueReceiptBody, controlStatusBody, heldLines, readOnlyLine, restartNoticeBody, resumeNote, saidOf, stopReceiptBody, supervisorNoticeBody } from "./control-copy";
 export type { ControlTurnLine, RestartArrangement, SaidLine } from "./control-copy";

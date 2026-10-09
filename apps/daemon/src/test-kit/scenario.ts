@@ -68,6 +68,7 @@ import { COLLAB_TOOL_NAMES, COMPOSER_SUGGEST_SYSTEM, JUDGEMENT_SYSTEM, type Fail
 import { ORGANIZER_SYSTEM, ORGANIZER_SYSTEM_UNDER_HOLDS } from "../prompts/organizer";
 import { ROUTE_LEARN_SYSTEM, ROUTE_PICK_SYSTEM, ROUTE_REVIEW_SYSTEM } from "../prompts/routing";
 import { READ_BOT_LINE_SYSTEM, READ_FILING_SYSTEM, READ_USER_LINE_SYSTEM } from "../prompts/reader";
+import { userLineAnswerByRules } from "./reading-by-rules";
 import { SCRIBE_SYSTEM } from "../prompts/scribe";
 import { TurnAdmission } from "../quiesce";
 import { startScheduler, type Scheduler } from "../scheduler";
@@ -237,7 +238,11 @@ export type ToolOutcome = { id: string; name: string; ok: boolean | null; error:
 
 export type JudgeKind =
   | "organizer" | "scribe" | "judgement" | "route_pick" | "route_review" | "route_learn" | "composer" | "reflect" | "retrospect"
-  /** 读句 (ADR 0055): a line of yours, a Bot's line. Unscripted, the line is read by the word lists. */
+  /**
+   * 读句 (ADR 0055): a line of yours, a Bot's line. Unscripted, a Bot's line is read by the word
+   * lists, and a line of yours is answered as a model would by the rules (`reading-by-rules.ts`):
+   * the app carries nothing out on a line the word lists read (ADR 0070).
+   */
   | "read_user_line" | "read_bot_line"
   /**
    * Which job a line of yours is about (ADR 0057). The payload's `jobs` carry refs (`J1`, tickets
@@ -821,7 +826,9 @@ export async function createScenario(options: ScenarioOptions = {}): Promise<Sce
           sessionId ? judgeScripts.get(`${kind}|*|${sessionId}`) : undefined,
           judgeScripts.get(`${kind}|*|*`),
         ]);
-        const raw = step === null ? "" : typeof step === "function" ? await step({ kind, request, payload, bot, sessionId }) : step;
+        // A reading of your line nobody scripted is answered as a model reading it by the rules would.
+        const raw = step === null ? (kind === "read_user_line" ? userLineAnswerByRules(store, payload) : "")
+          : typeof step === "function" ? await step({ kind, request, payload, bot, sessionId }) : step;
         const answer = asJudgeResult(kind, raw);
         judgeLog.push({ kind, botId: bot?.id ?? null, sessionId, scripted: step !== null, answer, at: isoNow() });
         return answer;

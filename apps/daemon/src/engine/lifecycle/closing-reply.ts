@@ -11,7 +11,7 @@ import type { LifecycleDeps } from "../lifecycle";
 import type { TurnEndings } from "./endings";
 
 export function createClosingReply(deps: LifecycleDeps, endings: TurnEndings) {
-  const { store, publishMessage, publishTurn, lives, active, track, closingCheck, readBotLine = readBotLineByWords, publishCitedBotMessage, observeTicket, handleParticipation, readOnlyUnanswered, implicitSubmission } = deps;
+  const { store, publishMessage, publishTurn, lives, active, track, closingCheck, readBotLine = readBotLineByWords, publishCitedBotMessage, observeTicket, handleParticipation, implicitSubmission } = deps;
   const { executionOf } = endings;
 
   /**
@@ -138,21 +138,10 @@ export function createClosingReply(deps: LifecycleDeps, endings: TurnEndings) {
     if (message && !live.parentId && current.mode !== "readonly") {
       void track(handleParticipation(message, { fromUser: false }));
     }
-    saidNothing(current, live);
     return { kind: "ended" };
   }
 
-  /**
-   * A read-only answer that ended having said nothing (2026-10-03: nine hops of reading, then an
-   * empty reply): your line would sit there unanswered under a stop you might not know still holds.
-   */
-  function saidNothing(turn: Turn, live: Live): void {
-    if (turn.mode !== "readonly" || live.spoke) return;
-    // Ended as an answer, not stopped or cut off: those say so themselves.
-    if (store.getTurn(turn.id).status === "completed") readOnlyUnanswered?.(turn);
-  }
-
-  return { settleClosingReply, saidNothing };
+  return { settleClosingReply };
 }
 
 export type ClosingReply = ReturnType<typeof createClosingReply>;

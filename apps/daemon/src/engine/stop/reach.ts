@@ -337,7 +337,7 @@ export function createStopReach(deps: StopDeps) {
     return hold.scope === "global" || hold.scope === "session" || hold.scope === "plan";
   }
 
-  return { on, scopeHolds, lineScopes, handedOn, turnRow, heldTurn, holdsToLift, messageSession, directWithYou, stopsAbout, stopsOnBots, stopBefore, workOnHere, heldAbout, stopOnBot, inScope, botsNamed, isWide };
+  return { on, scopeHolds, landedPlan, lineScopes, handedOn, turnRow, heldTurn, holdsToLift, messageSession, directWithYou, stopsAbout, saidTo, stopsOnBots, stopBefore, workOnHere, heldAbout, stopOnBot, inScope, botsNamed, isWide };
 }
 
 export type StopReach = ReturnType<typeof createStopReach>;

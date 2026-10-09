@@ -3,10 +3,12 @@
  * they cover is ended at once, and the app — not a model turn — tells you what it did, from what
  * the holds recorded (`effect`).
  *
- * A line of yours is read first, before anything else happens to it but a status question
- * (`control-line.ts`). Only a line that is nothing but control is acted on here, and nothing else
- * happens with it: no filing, no turn, no model call. A line with more in it goes where any line
- * goes, marked with the buttons it might have meant (`possible_control`).
+ * What a line of yours means is the reader's to say (ADR 0055), and nothing is carried out on a
+ * line the reader could not read (ADR 0070): the word lists are no reading of control any more. A
+ * line the reader read as nothing but a stop is carried out here, and nothing else happens with it:
+ * no filing, no turn. A go on is said to the Bot, so it goes where any line goes, once it has lifted
+ * your stops on the job it is filed under (`goOnWithLine`). A line with more in it goes where any
+ * line goes, marked with the buttons it might have meant (`possible_control`).
  *
  * A stop, in one write: a hold per scope the line names, each with the work the covered Bots handed
  * on and have not had back (`handedOn`); the plans and check-backs it covers are parked and set
@@ -15,16 +17,13 @@
  * the receipt. Once that is written, each ended turn's model call, MCP calls and command process
  * groups are aborted.
  *
- * A go on lifts the holds the words name, and each turn a lifted hold ended opens again on a note
- * with your words and where it was. Nothing held: the line is an ordinary one. Held by something
- * wider the words do not lift (a hold on the group, on everything): the answer says so and offers
- * the buttons. A Stop's hold goes with your next line to its Bot about its job, and a 「继续」 that
- * nothing else holds back is that line; a go on to the Bot said away from that job, or one that
- * names everything, lifts it and opens the work again on the note, like any other. A line or a go
- * on to one Bot leaves the other Bots' Stops alone. A group's stop menu stops the same way, on the
+ * A go on lifts your stops that keep the Bots it is said to from the job it is filed under, and
+ * wakes them like any line: they go on from it and say so themselves. A stop on another job stays,
+ * and so does one wider than the conversation made elsewhere, or one on everything: those are for
+ * their buttons. A Stop's hold goes with your next line to its Bot about its job. A line or a go on
+ * to one Bot leaves the other Bots' Stops alone. A group's stop menu stops the same way, on the
  * group, a Bot or a job: your next line there is what the Bots go on from. Your line to a Bot a
- * stop that stays still holds gets a read-only answer; one that says nothing is answered by the
- * app instead, with the buttons to go on.
+ * stop that stays still holds gets a read-only answer, from the Bot.
  *
  * The app's lines about your stops carry buttons (`MessageControl`), and `act` carries them out:
  * undo a stop (a line read as one then reaches the Bots as any line), widen it to every Bot or to
@@ -50,7 +49,6 @@ import type {
 import { controlScopes, readControlLine, type ControlLineInput } from "../control-line";
 import type { UserLineReading } from "../line-reading";
 import type { TurnAdmission } from "../quiesce";
-import { isStatusQuestion } from "../status-question";
 import type { Store } from "../store";
 import type { TurnExecution } from "../store/routing";
 import type { Lifecycle } from "./lifecycle";
@@ -90,26 +88,14 @@ export type HoldRequest = {
   sessionId?: unknown;
 };
 
-/** What the rules made of a line of yours (see `Stop.ruleLine`). */
-export type RuledLine = { done: boolean; decided: boolean };
-const DONE: RuledLine = { done: true, decided: true };
-const OPEN: RuledLine = { done: false, decided: false };
-
 export type Stop = {
   /** Holds are on: the engine level has reached them (ADR 0040's version gate). */
   on: () => boolean;
   /**
-   * Reads a line of yours by the fixed rules (`control-line.ts`), before any model reads it: a line
-   * that is nothing but a stop, a go on, 「没停」, 「算了」 or a question about stopping is carried
-   * out at once. `done` when nothing else is to happen with the line; `decided` when the rules have
-   * said all there is about it as control, so `readLine` is not asked.
-   */
-  ruleLine: (message: Message) => RuledLine;
-  /**
-   * The rest, once the line is read (ADR 0055): a line the model read as nothing but a stop or a go
-   * on is carried out like one the rules found; one that says it beside something else carries the
-   * buttons; one that only asks where the work stands, under a stop, gets the status answer. Read by
-   * the word lists, the rules' own reading stands. True when nothing else is to happen with it.
+   * A line of yours, once read (ADR 0055): one the reader read as nothing but a stop is carried out,
+   * and true says nothing else is to happen with it; one that says a stop beside something else
+   * carries the buttons. A go on, a question about the work and anything else go to the Bots
+   * (ADR 0070), and so does a line the reader could not read: the word lists carry nothing out.
    */
   readLine: (message: Message, reading: UserLineReading) => boolean;
   /**
@@ -130,16 +116,18 @@ export type Stop = {
   /** 退回 on a hand-over's card: a Stop on that Bot's work in the job goes, so it reworks. */
   liftOnSendBack: (card: Message, producer: string, taskId: string, ticketId: string | null) => Hold[];
   /**
-   * Once your line to a whole group has woken whom it wakes: the work the stops it lifted had ended
-   * that it did not reach goes on from it too — a Bot's stopped in a conversation of its own while
-   * the group's stop held, the lead taking the line in the group. Returns the turns that opened again.
+   * Your line, once filed, when the reader read it as a go on (ADR 0070): your stops that keep the
+   * Bots it is said to from the job it is filed under go before it wakes them — a stop on another
+   * job stays. Returns the holds lifted.
    */
-  goOnFromYourLine: (message: Message, lifted: Hold[]) => Turn[];
+  goOnWithLine: (message: Message, reading: UserLineReading | null) => Hold[];
   /**
-   * A read-only answer under a stop that ended having said nothing: in its place the app says the
-   * Bot is stopped, with the buttons to go on, which also open its work on your line.
+   * Once your line has woken whom it wakes: the work the stops it lifted had ended that it did not
+   * reach goes on from it too — for a line to a whole group, a Bot's stopped in a conversation of
+   * its own while the group's stop held; for a go on, the job's work stopped in other conversations.
+   * Returns the turns that opened again.
    */
-  unanswered: (turn: Turn) => void;
+  goOnFromYourLine: (message: Message, lifted: Hold[], goOn?: boolean) => Turn[];
   /**
    * Stop on a turn's card, in a direct or a group: a hold on this Bot's work in its plan (on the
    * turn, when it has no plan) that your next line about that job lifts, and the turn ends under it.
@@ -176,48 +164,18 @@ export function createStop(deps: StopDeps): Stop {
   const buttons = createStopButtons(deps, reach, carry, answers, goOn);
   const { on, holdsToLift, stopsAbout, stopsOnBots, stopBefore, scopeHolds } = reach;
   const { stopByLine, stopByButton, hold, enforce } = carry;
-  const { answerStatus, statusLine, unanswered, heldLinesFor } = answers;
-  const { continueByLine, liftOnYourLine, liftOnYourChange, liftOnYourInsert, liftOnSendBack, goOnFromYourLine, lift } = goOn;
+  const { heldLinesFor } = answers;
+  const { liftOnYourLine, liftOnYourChange, liftOnYourInsert, liftOnSendBack, goOnFromYourLine, lift } = goOn;
   const { act } = buttons;
 
   // ── Reading the line ──────────────────────────────────────────────────────────────────────────
 
-  function ruleLine(message: Message): RuledLine {
-    if (message.kind !== "user" || admission?.draining || !on()) return OPEN;
-    let session: Session;
-    try {
-      session = store.getSession(message.session_id);
-    } catch {
-      return OPEN;
-    }
-    const reading = readControlLine(lineInput(message, session));
-    switch (reading.kind) {
-      // No control word the rules know, a plain status question, or a control word in a longer
-      // line: what the line means is the reading's to say (`readLine`).
-      case "none":
-      case "possible_control":
-        return OPEN;
-      case "status":
-        if (isStatusQuestion(message)) return OPEN;
-        answerStatus(message, reading.scopes, { offerStop: reading.offerStop });
-        return DONE;
-      case "reaffirm":
-        answerStatus(message, reading.scopes, { offerStop: false });
-        return DONE;
-      case "stop":
-        stopByLine(message, reading.scopes, reading.offerCancel);
-        return DONE;
-      case "continue":
-        return { done: continueByLine(message, session, reading.scopes), decided: true };
-      case "abandon":
-        // 「算了」 alone: nothing is stopped or dropped by text; the buttons ask which you meant.
-        mark(message, ["stop", "cancel"], reading.scopes);
-        return { done: false, decided: true };
-    }
-  }
-
   function readLine(message: Message, line: UserLineReading): boolean {
     if (message.kind !== "user" || admission?.draining || !on()) return false;
+    // Not read by the reader — it failed or timed out, and the word lists read it: nothing is
+    // carried out on it, and the Bots read the line as you said it (ADR 0070). A stop that cannot
+    // wait has the Stop button.
+    if (line.source !== "model" || line.control === null) return false;
     let session: Session;
     try {
       session = store.getSession(message.session_id);
@@ -225,33 +183,37 @@ export function createStop(deps: StopDeps): Stop {
       return false;
     }
     const input = lineInput(message, session);
-    // Read by the word lists: the rules' own reading stands, as it always did.
-    if (line.control === null) {
-      const rules = readControlLine(input);
-      if (rules.kind === "status") return statusLine(message, rules.scopes, line);
-      if (rules.kind === "possible_control") offerButtons(message, session, rules.offer, rules.scopes);
-      return false;
-    }
     const scopes = controlScopes(input);
-    if (line.statusOnly && line.control === "none") return statusLine(message, scopes, line);
     switch (line.control) {
+      // A go on is said to the Bot: once filed it lifts your stops on that job (`goOnWithLine`) and
+      // wakes the Bot like any line, which goes on from it and says so itself.
       case "none":
+      case "go_on":
         return false;
       case "stop":
         if (line.controlOnly) {
-          stopByLine(message, scopes, false);
+          // 「算了，停吧」: the receipt also offers to drop the job. Only offered: nothing is dropped by words.
+          const words = readControlLine(input);
+          stopByLine(message, scopes, words.kind === "stop" && words.offerCancel);
           return true;
         }
         offerButtons(message, session, ["stop"], scopes);
-        return false;
-      case "go_on":
-        if (line.controlOnly) return continueByLine(message, session, scopes);
-        offerButtons(message, session, ["continue"], scopes);
         return false;
       case "both":
         offerButtons(message, session, ["stop", "continue"], scopes);
         return false;
     }
+  }
+
+  function goOnWithLine(message: Message, reading: UserLineReading | null): Hold[] {
+    if (message.kind !== "user" || !on() || reading?.source !== "model" || reading.control !== "go_on") return [];
+    let session: Session;
+    try {
+      session = store.getSession(message.session_id);
+    } catch {
+      return [];
+    }
+    return goOn.goOnWithLine(message, reading, controlScopes(lineInput(message, session)));
   }
 
   /**
@@ -305,6 +267,6 @@ export function createStop(deps: StopDeps): Stop {
     store.transaction(() => store.setMessageControl(message.id, { kind: "possible_control", offer, scopes }));
   }
 
-  return { on, ruleLine, readLine, liftOnYourLine, liftOnYourChange, liftOnYourInsert, liftOnSendBack, goOnFromYourLine, unanswered, stopByButton, hold, act, lift, enforce, heldLines: heldLinesFor };
+  return { on, readLine, liftOnYourLine, liftOnYourChange, liftOnYourInsert, liftOnSendBack, goOnWithLine, goOnFromYourLine, stopByButton, hold, act, lift, enforce, heldLines: heldLinesFor };
 }
 

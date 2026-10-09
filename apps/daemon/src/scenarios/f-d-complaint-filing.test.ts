@@ -125,30 +125,23 @@ test("the complaint is filed under the film and reaches the turn at work on it",
   expect(read.map((request) => requestText(request).includes(COMPLAINT))).toEqual([true]);
 });
 
-test("the complaint sends the approved Shots 01–03 back for rework", async () => {
+test("the complaint sends the approved Shots 01–03 back for rework, said on your line", async () => {
   const h = await createScenario({ submissions: true });
   open.push(h);
   const { firstThree, complaint } = await theMorning(h, { directorAtWork: false });
   const director = h.store.getTicket(firstThree.id).worker!;
-  const card = h.store.db.query<{ id: string }, []>("SELECT id FROM messages WHERE json_extract(control, '$.kind') = 'rework'").get();
-  // Asked first: the card names the three shots and quotes you.
-  expect(h.store.getMessage(card!.id).control).toMatchObject({ ticket_id: firstThree.id, part_keys: ["shot_01", "shot_02", "shot_03"], offer: ["rework", "dismiss"] });
-  expect(h.store.getMessage(card!.id).body).toContain("前三镜背景严重跳跃");
-  const heard: CompletionRequest[] = [];
-  h.script(h.store.getBot(director)).reply(({ request }) => {
-    heard.push(request);
-    return call(endTurn());
-  });
-  h.engine.control(card!.id, { action: "rework" });
-  await h.waitIdle();
+  // No card asks you first (ADR 0070): your line says what went back, quoting the three shots, with an undo.
+  expect(h.store.db.query("SELECT id FROM messages WHERE kind = 'system' AND json_extract(control, '$.kind') = 'rework'").get()).toBeNull();
+  expect(h.store.getMessage(complaint.id).control).toMatchObject({ kind: "rework", ticket_id: firstThree.id, part_keys: ["shot_01", "shot_02", "shot_03"],
+    offer: ["undo"], result: expect.stringContaining("已转回返工") });
 
   // Rework, on the tickets the board still reads (P4e keeps `status` in step: rework is `doing`).
   expect(h.store.getTicket(firstThree.id)).toMatchObject({ status: "doing", stage: "rework" });
-  // The director, who made them, is woken with what you said.
-  expect(heard.map((request) => requestText(request).includes("前三镜背景严重跳跃"))).toEqual([true]);
+  // The director, who made them, is told with what you said.
+  expect(h.store.db.query("SELECT body_snapshot AS body FROM inbox_items WHERE bot_id = ? AND source = 'review' ORDER BY seq DESC LIMIT 1").get(director))
+    .toMatchObject({ body: expect.stringContaining("前三镜背景严重跳跃") });
   // Part by part: the reading named the three shots it was filed under.
   expect(h.store.db.query("SELECT key, stage FROM ticket_parts WHERE ticket_id = ? ORDER BY key").all(firstThree.id))
     .toEqual([{ key: "shot_01", stage: "rework" }, { key: "shot_02", stage: "rework" }, { key: "shot_03", stage: "rework" }]);
-  expect(h.store.getMessage(card!.id).control).toMatchObject({ offer: ["undo"], result: "已转回返工。" });
   expect(h.store.filingsOfMessage(complaint.id).map((filing) => filing.partKey)).toEqual(["shot_01", "shot_02", "shot_03"]);
 });

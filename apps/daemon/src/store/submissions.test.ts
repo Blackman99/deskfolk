@@ -1304,56 +1304,56 @@ function said(f: Fixture, body: string, target: { partKey?: string; parentId?: s
   return line;
 }
 
-const reworkCardsOf = (f: Fixture) => f.store.db.query<{ id: string }, []>("SELECT id FROM messages WHERE json_extract(control, '$.kind') = 'rework' ORDER BY created_at, rowid")
+const reworkCardsOf = (f: Fixture) => f.store.db.query<{ id: string }, []>("SELECT id FROM messages WHERE kind = 'system' AND json_extract(control, '$.kind') = 'rework' ORDER BY created_at, rowid")
   .all().map((row) => f.store.getMessage(row.id));
 
-test("a complaint about approved work only asks; sending it back reworks it, counts a miss, reopens the plan and wakes the producer — undo puts it back", () => {
+/** The reader's reading of a line (ADR 0055): these clauses object to the work as it stands. */
+const objecting = (...clauses: string[]) => ({ objecting: { clauses, source: "model" as const } });
+
+test("a complaint the reader read about approved work sends it back at once, said on your line: reworks it, counts a miss, reopens the plan and wakes the producer — undo puts it back", () => {
   const f = fixture();
   approvedByReviewer(f);
   const line = said(f, "母带太短了，不对");
-  const [card] = f.store.noteComplaint(line.id);
-  // Asked, nothing moved yet.
-  expect(card!.control).toMatchObject({ kind: "rework", ticket_id: f.ticket.id, part_keys: [], message_id: line.id, offer: ["rework", "dismiss"] });
-  expect(card!.body).toContain("母带太短了，不对");
-  expect(ticketRow(f)).toEqual({ status: "done", stage: "approved" });
-  expect(f.store.noteComplaint(line.id)).toEqual([]);
-
-  const sent = f.store.answerReworkCard(card!.id, "rework");
-  expect(sent.control).toMatchObject({ offer: ["undo"], result: "已转回返工。" });
+  const [marked] = f.store.noteComplaint(line.id, objecting("母带太短了，不对"));
+  // No card asks you: your line says what was sent back, with an undo.
+  expect(marked!.id).toBe(line.id);
+  expect(marked!.control).toMatchObject({ kind: "rework", ticket_id: f.ticket.id, part_keys: [], message_id: line.id, offer: ["undo"], result: expect.stringContaining("已转回返工") });
+  expect(reworkCardsOf(f)).toEqual([]);
   expect(ticketRow(f)).toEqual({ status: "doing", stage: "rework" });
   expect(f.store.getTask(f.plan.id).status).not.toBe("done");
   expect(f.store.reviewMisses({ botId: f.reviewer.id, sessionId: f.room.id })).toMatchObject([{ ticket: "06 母带", quote: "母带太短了，不对" }]);
   expect(f.store.db.query("SELECT body_snapshot AS body FROM inbox_items WHERE bot_id = ? ORDER BY seq DESC LIMIT 1").get(f.producer.id))
     .toMatchObject({ body: expect.stringContaining("母带太短了，不对") });
+  expect(f.store.listWorkEvents({ kind: "complaint.rework" }).map((row) => row.payload)).toMatchObject([{ message_id: line.id, card_id: line.id, by: "reading" }]);
+  // Once: the line already says what it did.
+  expect(f.store.noteComplaint(line.id, objecting("母带太短了，不对"))).toEqual([]);
 
-  const undone = f.store.answerReworkCard(card!.id, "undo");
+  const undone = f.store.answerReworkCard(line.id, "undo");
   expect(undone.control).toMatchObject({ acted: ["undo"] });
   expect(ticketRow(f)).toEqual({ status: "done", stage: "approved" });
   expect(f.store.getTask(f.plan.id)).toMatchObject({ status: "done" });
   expect(f.store.reviewMisses({ botId: f.reviewer.id, sessionId: f.room.id })).toEqual([]);
-  expect(() => f.store.answerReworkCard(card!.id, "undo")).toThrow();
+  expect(() => f.store.answerReworkCard(line.id, "undo")).toThrow();
 });
 
-test("praise, a redo turned down, a reply that only acknowledges, a Bot's filing, level 4, or work still being made ask nothing", () => {
+test("the word lists' reading, no objection, a Bot's filing, level 4, or work still being made send nothing back", () => {
   const f = fixture();
   approvedByReviewer(f);
-  const delivery = f.store.insertMessage({ sessionId: f.room.id, kind: "bot", author: f.producer.id, body: "母带在这", paths: [`${f.ticket.dir}/EP01_MASTER.mp4`] });
-  for (const body of ["很好，就这样", "别重做了，就这样", "比上一版那个错乱的好多了"]) expect(f.store.noteComplaint(said(f, body).id)).toEqual([]);
-  for (const body of ["收到", "收到，谢谢", "辛苦了", "👌", "嗯", "我晚点看", "给老板看看"]) {
-    expect(f.store.noteComplaint(said(f, body, { parentId: delivery.id }).id)).toEqual([]);
-  }
+  // Read by the word lists, the reader having failed: nothing moves on it (ADR 0070).
+  expect(f.store.noteComplaint(said(f, "母带太短了，不对").id, { objecting: { clauses: ["母带太短了，不对"], source: "words" } })).toEqual([]);
+  // The reader found nothing objecting (praise, a redo turned down, an acknowledgement).
+  for (const body of ["很好，就这样", "别重做了，就这样", "收到"]) expect(f.store.noteComplaint(said(f, body).id, objecting())).toEqual([]);
   const botFiled = f.store.postMessage(f.room.id, { body: "母带太短了，不对" });
   f.store.db.run(`INSERT INTO message_filings (message_id, task_id, ticket_id, part_key, filed_by, strength, is_primary, created_at)
     VALUES (?, ?, ?, NULL, 'bot:x', 'bot', 1, ?)`, [botFiled.id, f.plan.id, f.ticket.id, isoNow()]);
-  expect(f.store.noteComplaint(botFiled.id)).toEqual([]);
-  expect(reworkCardsOf(f)).toEqual([]);
+  expect(f.store.noteComplaint(botFiled.id, objecting("母带太短了，不对"))).toEqual([]);
   expect(ticketRow(f).stage).toBe("approved");
 
   const low = fixture(ENGINE_LEVELS.supervision);
-  expect(low.store.noteComplaint(said(low, "母带太短了，不对").id)).toEqual([]);
+  expect(low.store.noteComplaint(said(low, "母带太短了，不对").id, objecting("母带太短了，不对"))).toEqual([]);
   const doing = fixture();
   segment(doing);
-  expect(doing.store.noteComplaint(said(doing, "母带太短了，不对").id)).toEqual([]);
+  expect(doing.store.noteComplaint(said(doing, "母带太短了，不对").id, objecting("母带太短了，不对"))).toEqual([]);
 });
 
 /** A line of yours the rows filed under the plan as a whole, no ticket, the way 「从头再做一遍」 was. */
@@ -1364,7 +1364,7 @@ function saidOfPlan(f: Fixture, body: string) {
   return line;
 }
 
-test("starting over, said of the whole plan, asks about its one handed-over ticket whose maker is still here", () => {
+test("starting over, said of the whole plan, sends back its one handed-over ticket whose maker is still here", () => {
   // 2026-10-03: 「从头再做一遍，之前的作废」 was filed under the plan, its one ticket still read handed over
   // (from before submissions, nothing behind it, its reviewer archived), and nothing asked or moved.
   const f = fixture();
@@ -1373,29 +1373,25 @@ test("starting over, said of the whole plan, asks about its one handed-over tick
   f.store.db.run("UPDATE tickets SET status = 'review' WHERE id = ?", [theirs.id]);
   f.store.archiveBot(f.reviewer.id);
   const line = saidOfPlan(f, "从头再做一遍，之前的作废");
-  const cards = f.store.noteComplaint(line.id);
-  // The archived reviewer's own ticket is not asked about: sending it back would wake nobody.
-  expect(cards.map((card) => card.control)).toMatchObject([{ kind: "rework", ticket_id: f.ticket.id, part_keys: [], message_id: line.id }]);
-  expect(cards[0]!.body).toContain("从头再做一遍，之前的作废");
-  f.store.answerReworkCard(cards[0]!.id, "rework");
+  const [marked] = f.store.noteComplaint(line.id, objecting("从头再做一遍，之前的作废"));
+  // The archived reviewer's own ticket is not sent back: that would wake nobody.
+  expect(marked!.control).toMatchObject({ kind: "rework", ticket_id: f.ticket.id, part_keys: [], message_id: line.id });
   expect(ticketRow(f)).toEqual({ status: "doing", stage: "rework" });
+  expect(f.store.db.query("SELECT stage FROM tickets WHERE id = ?").get(theirs.id)).not.toEqual({ stage: "rework" });
   expect(f.store.db.query("SELECT body_snapshot AS body FROM inbox_items WHERE bot_id = ? ORDER BY seq DESC LIMIT 1").get(f.producer.id))
     .toMatchObject({ body: expect.stringContaining("从头再做一遍") });
 });
 
-test("a plan-wide complaint with more than one handed-over ticket, or praise of the plan, asks nothing", () => {
+test("a plan-wide complaint with more than one handed-over ticket sends nothing back: which one is meant would be a guess", () => {
   const f = fixture();
   f.store.db.run("UPDATE tickets SET status = 'review' WHERE id = ?", [f.ticket.id]);
   const second = f.store.createTicket({ taskId: f.plan.id, title: "07 预告", worker: f.producer.id });
   f.store.db.run("UPDATE tickets SET status = 'done' WHERE id = ?", [second.id]);
-  expect(f.store.noteComplaint(saidOfPlan(f, "全部作废，从头再做").id)).toEqual([]);
-  const one = fixture();
-  one.store.db.run("UPDATE tickets SET status = 'review' WHERE id = ?", [one.ticket.id]);
-  expect(one.store.noteComplaint(saidOfPlan(one, "很好，就这样").id)).toEqual([]);
-  expect(reworkCardsOf(one)).toEqual([]);
+  expect(f.store.noteComplaint(saidOfPlan(f, "全部作废，从头再做").id, objecting("全部作废，从头再做"))).toEqual([]);
+  expect(ticketRow(f).stage).not.toBe("rework");
 });
 
-test("a complaint asks about the parts its line is filed under, not every part it mentions; a question asks nothing; dismissing leaves everything as it was", () => {
+test("a complaint sends back the parts its line is filed under, not every part it mentions, and undo brings the hand-over back", () => {
   const f = fixture();
   const produced = segment(f);
   const keys = [shotPart(f, 7), shotPart(f, 8)];
@@ -1409,96 +1405,55 @@ test("a complaint asks about the parts its line is filed under, not every part i
     f.store.fileMessage(line.id, { read: { source: "model", about: "jobs", targets: [{ taskId: f.plan.id, ticketId: f.ticket.id, partKey: keys[0]! }] } });
     return line;
   };
-  /** A line you filed under both parts yourself. */
-  const both = (body: string) => {
-    const line = f.store.postMessage(f.room.id, { body });
-    f.store.fileMessage(line.id, { explicit: keys.map((partKey) => ({ taskId: f.plan.id, ticketId: f.ticket.id, partKey })) });
-    return line;
-  };
-  const [card] = f.store.noteComplaint(aboutC07("C07 跳跃，C08 很好").id);
-  expect(card!.control).toMatchObject({ part_keys: [keys[0]] });
-  expect(f.store.answerReworkCard(card!.id, "dismiss").control).toMatchObject({ acted: ["dismiss"] });
-  expect(ticketRow(f).stage).toBe("in_review");
-  expect(f.store.getSubmission(submission.id).state).toBe("in_review");
-
-  expect(f.store.noteComplaint(aboutC07("C07 是不是太短了？").id)).toEqual([]);
-  // Filed under both by you, both are asked about.
-  const [mine] = f.store.noteComplaint(both("这两镜都太暗").id);
-  expect(mine!.control).toMatchObject({ part_keys: keys });
-  f.store.answerReworkCard(mine!.id, "dismiss");
-  const [asked] = f.store.noteComplaint(aboutC07("C07 好短啊").id);
-  expect(asked!.control).toMatchObject({ part_keys: [keys[0]], offer: ["rework", "dismiss"] });
+  const line = aboutC07("C07 跳跃，C08 很好");
+  const [marked] = f.store.noteComplaint(line.id, objecting("C07 跳跃"));
+  expect(marked!.control).toMatchObject({ part_keys: [keys[0]] });
   // Sending a part in review back supersedes the hand-over, and undo brings it back.
-  f.store.answerReworkCard(asked!.id, "rework");
   expect(f.store.db.query("SELECT key, stage FROM ticket_parts ORDER BY key").all()).toEqual([{ key: keys[0], stage: "rework" }, { key: keys[1], stage: "submitted" }]);
   expect(f.store.getSubmission(submission.id).state).toBe("superseded");
-  f.store.answerReworkCard(asked!.id, "undo");
+  f.store.answerReworkCard(line.id, "undo");
   expect(f.store.getSubmission(submission.id).state).toBe("in_review");
   expect(ticketRow(f).stage).toBe("in_review");
+
+  // Filed under both by you, both go back.
+  const both = f.store.postMessage(f.room.id, { body: "这两镜都太暗" });
+  f.store.fileMessage(both.id, { explicit: keys.map((partKey) => ({ taskId: f.plan.id, ticketId: f.ticket.id, partKey })) });
+  const [mine] = f.store.noteComplaint(both.id, objecting("这两镜都太暗"));
+  expect(mine!.control).toMatchObject({ part_keys: keys });
 });
 
-test("a part-level entry the scribe made asks without complaint words; a refiled line's card stops asking about the ticket it left", () => {
+test("a ticket no longer handed over is not sent back, and undo is refused once there is a newer hand-over", () => {
   const f = fixture();
   approvedByReviewer(f);
-  const line = said(f, "第三秒那里重新剪一下");
-  f.store.db.run(`INSERT INTO requirements (id, scope, scope_id, quote, source_kind, status, times_raised, last_raised_at, added_by, created_at, updated_at, origin_task_id)
-    VALUES ('R-part', 'part', ?, '第三秒重新剪', 'message', 'open', 1, '2026-01-01', 'scribe', '2026-01-01', '2026-01-01', ?)`, [f.ticket.id, f.plan.id]);
-  expect(f.store.noteComplaint(line.id, { scribeAdded: ["R-plan-only"] })).toEqual([]);
-  const [card] = f.store.noteComplaint(line.id, { scribeAdded: ["R-part"] });
-  expect(card).toBeDefined();
-  f.store.db.run("DELETE FROM message_filings WHERE message_id = ?", [line.id]);
-  f.store.noteComplaint(line.id);
-  expect(f.store.getMessage(card!.id).control).toMatchObject({ offer: [], result: "这句话后来改归别处了。" });
-  expect(() => f.store.answerReworkCard(card!.id, "rework")).toThrow();
-});
-
-test("sending back is refused once the ticket moved on, and undo once there is a newer hand-over", () => {
-  const f = fixture();
-  approvedByReviewer(f);
-  const [card] = f.store.noteComplaint(said(f, "母带太短了，不对").id);
-  f.store.answerReworkCard(card!.id, "rework");
+  const line = said(f, "母带太短了，不对");
+  f.store.noteComplaint(line.id, objecting("母带太短了，不对"));
   const again = segment(f);
   submit(f, again.id, [[`${f.ticket.dir}/EP01_MASTER.mp4`, HASH_B]]);
-  expect(() => f.store.answerReworkCard(card!.id, "undo")).toThrow("moved on");
+  expect(() => f.store.answerReworkCard(line.id, "undo")).toThrow("moved on");
 
   const g = fixture();
   approvedByReviewer(g);
-  const [late] = g.store.noteComplaint(said(g, "母带太短了，不对").id);
   g.store.patchTicketByUser(g.ticket.id, { status: "doing" });
-  expect(g.store.answerReworkCard(late!.id, "rework").control).toMatchObject({ offer: [], result: "它已经不在交付或通过的状态，没有可转回的。" });
+  expect(g.store.noteComplaint(said(g, "母带太短了，不对").id, objecting("母带太短了，不对"))).toEqual([]);
   expect(ticketRow(g).stage).toBe("doing");
-
-  // A newer version handed over after the line: the old card does not send that one back.
-  const k = fixture();
-  const { submission, check } = approvedByReviewer(k);
-  const [old] = k.store.noteComplaint(said(k, "母带太短了，不对").id);
-  const redone = segment(k);
-  const { submission: newer } = submit(k, redone.id, [[`${k.ticket.dir}/EP01_MASTER.mp4`, HASH_B]])!;
-  run(k, check.id, "pass");
-  k.store.settleSubmissionChecks(newer.id);
-  expect(ticketRow(k).stage).toBe("in_review");
-  expect(k.store.answerReworkCard(old!.id, "rework").control).toMatchObject({ offer: [], result: expect.stringContaining("又交了新的一版") });
-  expect(k.store.getSubmission(newer.id).state).not.toBe("superseded");
-  expect(k.store.reviewMisses({ botId: k.reviewer.id, sessionId: k.room.id })).toEqual([]);
-  expect(submission.id).not.toBe(newer.id);
 });
 
 test("undoing a rework takes back the producer's call to redo it, or tells it when already read", () => {
   const f = fixture();
   approvedByReviewer(f);
-  const [card] = f.store.noteComplaint(said(f, "母带太短了，不对").id);
-  f.store.answerReworkCard(card!.id, "rework");
+  const line = said(f, "母带太短了，不对");
+  f.store.noteComplaint(line.id, objecting("母带太短了，不对"));
   const call = f.store.db.query<{ seq: number; state: string }, [string]>("SELECT seq, state FROM inbox_items WHERE bot_id = ? ORDER BY seq DESC LIMIT 1").get(f.producer.id)!;
   expect(call.state).toBe("queued");
-  f.store.answerReworkCard(card!.id, "undo");
+  f.store.answerReworkCard(line.id, "undo");
   expect(f.store.db.query("SELECT state FROM inbox_items WHERE seq = ?").get(call.seq)).toEqual({ state: "superseded" });
 
   const g = fixture();
   approvedByReviewer(g);
-  const [read] = g.store.noteComplaint(said(g, "母带太短了，不对").id);
-  g.store.answerReworkCard(read!.id, "rework");
+  const read = said(g, "母带太短了，不对");
+  g.store.noteComplaint(read.id, objecting("母带太短了，不对"));
   g.store.db.run("UPDATE inbox_items SET state = 'delivered' WHERE bot_id = ?", [g.producer.id]);
-  g.store.answerReworkCard(read!.id, "undo");
+  g.store.answerReworkCard(read.id, "undo");
   expect(g.store.db.query("SELECT body_snapshot AS body, wakes FROM inbox_items WHERE bot_id = ? ORDER BY seq DESC LIMIT 1").get(g.producer.id))
     .toEqual({ body: expect.stringContaining("撤销了任务「06 母带」的返工"), wakes: 0 });
 });
