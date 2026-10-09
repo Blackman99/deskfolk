@@ -167,6 +167,14 @@ describe("what is ours to fix and what is theirs", () => {
     expect(error.message).toContain("Incorrect API key provided");
   });
 
+  test("a refusal whose body says nothing reads as its status, not as `{}`", async () => {
+    const { fetch } = answering("{}", 400);
+    const error = await failure(transcribe({ speech: speech({ format: "qwen_asr" }), key: "k", audio, mime: "audio/webm", fetch }));
+    expect(error.message).toBe("the speech endpoint answered 400: Bad Request");
+    const coded = answering({ code: "InvalidParameter" }, 400);
+    expect((await failure(transcribe({ speech: speech(), key: "k", audio, mime: "audio/webm", fetch: coded.fetch }))).message).toContain("400: InvalidParameter");
+  });
+
   test("an answer without text where the format puts it is a refusal", async () => {
     const { fetch } = answering({ choices: [] });
     const error = await failure(transcribe({ speech: speech({ format: "qwen_asr" }), key: "k", audio, mime: "audio/webm", fetch }));

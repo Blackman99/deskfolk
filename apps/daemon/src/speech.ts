@@ -3,6 +3,7 @@
  * it speaks, and the text it heard back. Nothing is stored; the audio is in memory only for the
  * length of the call.
  */
+import { STATUS_CODES } from "node:http";
 import { isLocalEndpoint, type SpeechSettings } from "@real-bot/protocol";
 import { HttpError } from "./errors";
 
@@ -117,15 +118,18 @@ export function heardText(format: SpeechSettings["format"], body: unknown): stri
 
 /** What the endpoint said went wrong, short enough for a line under the composer. */
 function upstreamMessage(text: string): string {
+  let parsed: Record<string, unknown> | null;
   try {
-    const parsed = record(JSON.parse(text));
-    const error = parsed?.error;
-    const message = typeof error === "string" ? error : record(error)?.message ?? parsed?.message ?? record(parsed?.detail)?.message ?? parsed?.detail ?? parsed?.err_msg;
-    if (typeof message === "string" && message.trim()) return message.trim().slice(0, 300);
+    parsed = record(JSON.parse(text));
   } catch {
     // Not JSON: the start of the body says it as well as anything.
+    return text.replace(/\s+/g, " ").trim().slice(0, 300);
   }
-  return text.replace(/\s+/g, " ").trim().slice(0, 300);
+  if (!parsed) return text.replace(/\s+/g, " ").trim().slice(0, 300);
+  const error = parsed.error;
+  const message = typeof error === "string" ? error : record(error)?.message ?? parsed.message ?? record(parsed.detail)?.message ?? parsed.detail ?? parsed.err_msg ?? record(error)?.code ?? parsed.code;
+  // A JSON body that says nothing (Bailian's Token Plan answers an ASR call with `{}`): the status says more.
+  return typeof message === "string" ? message.trim().slice(0, 300) : "";
 }
 
 /**
@@ -154,7 +158,7 @@ export async function transcribe(input: TranscribeInput): Promise<string> {
   }
   const text = await response.text();
   if (!response.ok) {
-    throw new HttpError(502, "speech_rejected", `the speech endpoint answered ${response.status}: ${upstreamMessage(text) || response.statusText}`);
+    throw new HttpError(502, "speech_rejected", `the speech endpoint answered ${response.status}: ${upstreamMessage(text) || response.statusText || STATUS_CODES[response.status] || "no details"}`);
   }
   let body: unknown = text;
   if ((response.headers.get("content-type") ?? "").includes("json") || /^\s*[{[]/.test(text)) {
