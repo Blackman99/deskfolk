@@ -439,7 +439,7 @@ test("from level 7 a ticket's model is set from the endpoints' models, or put ba
   click(view.host.querySelector(".ticket-main"));
   flushSync();
   const wrap = view.host.querySelector(".ticket-model-wrap");
-  expect(wrap?.textContent).toContain("gemini · 主端点");
+  expect(wrap?.querySelector(".real-select-value")?.textContent?.replace(/\s+/g, " ").trim()).toBe("gemini 主端点");
   view.close();
   const below = open({ detail: aDetail({ tickets: [aTicket()] }) });
   below.props.providers = providers;

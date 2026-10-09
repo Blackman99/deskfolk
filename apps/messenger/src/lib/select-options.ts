@@ -1,3 +1,5 @@
+import type { ModelSource } from './model-source.ts';
+
 export interface SelectOption {
 	value: string;
 	label?: string;
@@ -5,6 +7,8 @@ export interface SelectOption {
 	hint?: string;
 	/** A heading shown above the first option of a run of options that share it. */
 	group?: string;
+	/** A model's: where it comes from, drawn before its name in the menu and on the closed picker. */
+	source?: ModelSource;
 }
 
 export interface NormalizedSelectOption {
@@ -13,6 +17,7 @@ export interface NormalizedSelectOption {
 	disabled: boolean;
 	hint?: string;
 	group?: string;
+	source?: ModelSource;
 }
 
 /**
@@ -50,7 +55,8 @@ export function normalizeOptions(
 				label: item.label ?? item.value ?? '',
 				disabled: Boolean(item.disabled),
 				hint: item.hint,
-				group: item.group
+				group: item.group,
+				source: item.source
 			});
 		}
 	}

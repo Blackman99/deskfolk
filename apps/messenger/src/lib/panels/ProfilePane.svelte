@@ -35,6 +35,7 @@
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import type { DangerAction } from '../overlays/danger-confirm.ts';
 	import type { SelectOption } from '../select-options.ts';
+	import { endpointSource } from '../model-source.ts';
 
 	type Props = {
 		runtime: MessengerRuntime;
@@ -79,11 +80,12 @@
 		const value = botModelValue(bot);
 		return value && !modelOptions.some((option) => option.value === value) ? value : null;
 	});
-	const profileModelOptions = $derived(
-		unlistedPin && bot.model
-			? [...modelOptions, { value: unlistedPin, label: bot.model, hint: t.sidebar.botModelUnlisted }]
-			: modelOptions
-	);
+	const profileModelOptions = $derived.by((): SelectOption[] => {
+		if (!unlistedPin || !bot.model) return modelOptions;
+		const endpoint = runtime.snapshot.providers.find((provider) => provider.id === bot.provider_id);
+		const source = endpoint ? endpointSource(endpoint, t) : undefined;
+		return [...modelOptions, { value: unlistedPin, label: bot.model, hint: t.sidebar.botModelUnlisted, source }];
+	});
 	const modelValues = $derived(profileModelOptions.map((option) => option.value));
 	const profileSkills = $derived(snapshot.skills.filter((skill) => skill.bot_id === bot.id));
 	const profileMemories = $derived(snapshot.memories.filter((m) => m.bot_id === bot.id));

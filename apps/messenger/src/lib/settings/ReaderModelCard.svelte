@@ -11,6 +11,8 @@
 	import Select from '../Select.svelte';
 	import type { Copy } from '../copy.ts';
 	import { claudeAccountOptions, claudeReady } from './claude-agent.ts';
+	import { claudeAgentSource, endpointModelOptions } from '../model-source.ts';
+	import type { SelectOption } from '../select-options.ts';
 
 	/**
 	 * Which model reads each line for what the app acts on (读句, ADR 0055): any model an endpoint
@@ -55,9 +57,6 @@
 				? { runner: row.runner, model: row.model }
 				: { provider_id: row.provider_id, model: row.model }
 		);
-	const providerName = (id: string) => providers.find((provider) => provider.id === id)?.name ?? id;
-	const named = (row: { provider_id: string; model: string }) =>
-		providers.length > 1 ? `${row.model} · ${providerName(row.provider_id)}` : row.model;
 
 	/** The Claude models Claude Code resolves itself, the fastest first: a reading holds up your line. */
 	const claudeModels = $derived.by(() => {
@@ -69,19 +68,16 @@
 	const accountOptions = $derived(claudeAccountOptions(claudeStatus, pickedAccount, t));
 	const claudeChosen = $derived(isReaderClaudeModel(chosen) ? chosen : null);
 
-	const options = $derived([
-		{ value: FOLLOW, label: t.readerModel.followDefault(defaultModel), group: undefined as string | undefined },
-		...providers.flatMap((provider) =>
-			provider.models.map((model) => {
-				const row = { provider_id: provider.id, model };
-				return { value: key(row), label: named(row), group: undefined as string | undefined };
-			})
-		),
+	const options = $derived<SelectOption[]>([
+		{ value: FOLLOW, label: t.readerModel.followDefault(defaultModel) },
+		...endpointModelOptions(providers, t, (provider_id, model) => key({ provider_id, model })),
 		...(claudeOffered
 			? claudeModels.map((model) => ({
 					value: key({ runner: 'claude_code', model, config_dir: null }),
-					label: t.readerModel.claudeModel(model),
-					group: t.sidebar.botRunnerClaude as string | undefined
+					label: model,
+					hint: t.claudeAgent.title,
+					group: t.sidebar.botRunnerClaude,
+					source: claudeAgentSource(t)
 				}))
 			: [])
 	]);

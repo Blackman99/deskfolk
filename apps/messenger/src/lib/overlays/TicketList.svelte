@@ -4,6 +4,7 @@
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
 	import Select from '../Select.svelte';
+	import { endpointModelOptions } from '../model-source.ts';
 	import {
 		TICKET_STATUS_ORDER,
 		actorFace,
@@ -259,12 +260,9 @@
 		void pump();
 	}
 
-	/** The models a ticket can be given (ADR 0049, level 7): every model an endpoint lists, named with its endpoint when there are several. */
+	/** The models a ticket can be given (ADR 0049, level 7): every model an endpoint lists. */
 	const modelOptions = $derived(
-		providers.flatMap((provider) => provider.models.map((model) => ({
-			value: JSON.stringify({ provider_id: provider.id, model }),
-			label: providers.length > 1 ? `${model} · ${provider.name}` : model
-		})))
+		endpointModelOptions(providers, t, (provider_id, model) => JSON.stringify({ provider_id, model }))
 	);
 
 	/** The picked ticket has a menu to show below it: a reviewer (level 5), a model (level 7) or what it waits for (level 4). */
@@ -1061,13 +1059,6 @@
 	.ticket-head :global(.ticket-status .real-select-arrow svg) {
 		width: 11px;
 		height: 11px;
-	}
-
-	/* The menu opens under the pill, right-aligned and wide enough for its words. */
-	.ticket-head :global(.ticket-status .real-select-menu) {
-		left: auto;
-		right: 0;
-		min-width: 112px;
 	}
 
 	.ticket-status.is-doing,

@@ -6,6 +6,8 @@ import { flushSync, type Component } from 'svelte';
 import type { Annotation } from '@real-bot/protocol';
 import { STORY_SIZES, type StoryName } from './story-list.ts';
 import { copyFor } from '../../src/lib/copy.ts';
+import Select from '../../src/lib/Select.svelte';
+import { claudeAgentSource, endpointModelOptions } from '../../src/lib/model-source.ts';
 import {
 	aBot,
 	aBotDirect,
@@ -932,6 +934,59 @@ const defs: Record<StoryName, Story> = {
 		component: SettingsModal as never,
 		props: settingsProps({ runtime: fakeRuntime(world, { settingsOpen: true, client: ladderClient }) }),
 		afterMount: modelsSection('ladder')
+	},
+	// A model picker open over every kind of source: built-in connectors' logos, Custom, Claude Agent.
+	'model-picker-open': {
+		component: Select as never,
+		props: {
+			value: 'p-qwen/qwen3.7-plus',
+			size: 'sm',
+			options: [
+				...endpointModelOptions(
+					[
+						{ id: 'p-cpa', name: 'My CPA', base_url: 'https://cpa.example.com/v1', api_format: 'openai', models: ['grok-4.7-build-fast'] },
+						{ id: 'p-anthropic', name: 'Anthropic', base_url: 'https://api.anthropic.com', api_format: 'anthropic', models: ['claude-opus-5-5'] },
+						{ id: 'p-xiaomi', name: '小米', base_url: 'https://token-plan-cn.xiaomimimo.com/v1', api_format: 'openai', models: ['mimo-v2.6-pro'] },
+						{ id: 'p-qwen', name: '阿里百炼', base_url: 'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1', api_format: 'openai', models: ['qwen3.7-plus', 'deepseek-v4.1-flash'] }
+					] as never,
+					t,
+					(id, model) => `${id}/${model}`
+				),
+				{ value: 'claude/haiku', label: 'haiku', hint: t.claudeAgent.title, group: t.sidebar.botRunnerClaude, source: claudeAgentSource(t) }
+			]
+		},
+		afterMount: (host: HTMLElement) => {
+			host.style.padding = '16px';
+			host.style.boxSizing = 'border-box';
+			host.querySelector<HTMLButtonElement>('.real-select-trigger')?.click();
+		}
+	},
+	// The same menu from a field as narrow as a ticket card's, near the window's right edge and inside
+	// a box that clips: it is as wide as its rows, slides left to stay in the window, and is not cut.
+	'model-picker-narrow': {
+		component: Select as never,
+		props: {
+			value: 'p-qwen/qwen3.7-plus',
+			size: 'sm',
+			options: endpointModelOptions(
+				[
+					{ id: 'p-cpa', name: 'My CPA', base_url: 'https://cpa.example.com/v1', api_format: 'openai', models: ['gemini-3.8-flash-high'] },
+					{ id: 'p-anthropic', name: 'Anthropic', base_url: 'https://api.anthropic.com', api_format: 'anthropic', models: ['claude-sonnet-5-5'] },
+					{ id: 'p-qwen', name: '阿里百炼', base_url: 'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1', api_format: 'openai', models: ['qwen3.7-plus'] }
+				] as never,
+				t,
+				(id, model) => `${id}/${model}`
+			)
+		},
+		afterMount: (host: HTMLElement) => {
+			const field = host.querySelector<HTMLElement>('.real-select')!;
+			const box = document.createElement('div');
+			box.style.cssText = 'position:absolute;left:190px;top:16px;width:170px;height:80px;overflow:auto;padding:8px;box-sizing:border-box;border:1px dashed var(--line)';
+			host.append(box);
+			box.append(field);
+			field.style.width = '150px';
+			field.querySelector<HTMLButtonElement>('.real-select-trigger')?.click();
+		}
 	},
 	// On a phone, Models is a list of its three sections, each saying what it is set to.
 	'settings-models-narrow': {

@@ -8,6 +8,7 @@
 		type SelectOption
 	} from './select-options.ts';
 	import { isAltGraph } from './keymap.ts';
+	import ModelSourceMark from './ModelSourceMark.svelte';
 
 	interface Props {
 		value?: string;
@@ -110,6 +111,64 @@
 			computedPlacement = 'bottom';
 		}
 	}
+
+	/** How wide the menu may grow for long names, and how far it keeps from the window's edges. */
+	const MENU_MAX_WIDTH = 420;
+	const MENU_EDGE = 8;
+	const MENU_GAP = 4;
+
+	/**
+	 * In the top layer the menu is placed against the window: under (or over) the field, at least as
+	 * wide as it and as wide as its longest row up to `MENU_MAX_WIDTH`, slid left when it would run
+	 * past the right edge. A narrow field — a ticket card's model — no longer cuts every name short,
+	 * and no pane's scrolling or clipping cuts the menu.
+	 */
+	function placeMenu() {
+		if (!menuEl || !triggerEl || !menuEl.hasAttribute('popover')) return;
+		const rect = triggerEl.getBoundingClientRect();
+		const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+		const style = menuEl.style;
+		style.minWidth = `${rect.width}px`;
+		style.maxWidth = `${Math.max(rect.width, Math.min(MENU_MAX_WIDTH, viewportWidth - 2 * MENU_EDGE))}px`;
+		const width = menuEl.offsetWidth;
+		style.left = `${Math.max(MENU_EDGE, Math.min(rect.left, viewportWidth - MENU_EDGE - width))}px`;
+		if (computedPlacement === 'top') {
+			style.top = 'auto';
+			style.bottom = `${window.innerHeight - rect.top + MENU_GAP}px`;
+		} else {
+			style.bottom = 'auto';
+			style.top = `${rect.bottom + MENU_GAP}px`;
+		}
+	}
+
+	// Open, the menu goes into the top layer and stays where it is in the document, so focus, the
+	// outside-press check and a sheet's own backdrop test still see it as inside this field. Where
+	// there is no top layer it stays a plain dropdown under the field.
+	$effect(() => {
+		const el = menuEl;
+		if (!el || !isOpen || typeof el.showPopover !== 'function') return;
+		el.setAttribute('popover', 'manual');
+		try {
+			el.showPopover();
+		} catch {
+			// Already showing.
+		}
+		placeMenu();
+		return () => {
+			try {
+				el.hidePopover();
+			} catch {
+				// Gone with the menu.
+			}
+			el.removeAttribute('popover');
+		};
+	});
+
+	// Rows that arrive while it is open can widen it.
+	$effect(() => {
+		void normalizedOptions;
+		if (isOpen) placeMenu();
+	});
 
 	function scrollToOption(index: number) {
 		const option = index >= 0 ? optionEls[index] : null;
@@ -244,11 +303,13 @@
 
 		function handleResize() {
 			updatePlacement();
+			placeMenu();
 		}
 
 		function handleScroll(e: Event) {
 			if (menuEl && menuEl.contains(e.target as Node)) return;
 			updatePlacement();
+			placeMenu();
 		}
 
 		document.addEventListener('pointerdown', handlePointerDown);
@@ -287,8 +348,14 @@
 		onclick={toggle}
 		onkeydown={handleKeydown}
 	>
+		{#if selectedOption?.source}
+			<ModelSourceMark source={selectedOption.source} />
+		{/if}
 		<span class="real-select-value {isPlaceholder ? 'is-placeholder' : ''} flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-medium text-ink">
 			{displayLabel}
+			{#if selectedOption?.hint}
+				<span class="real-select-value-hint">{selectedOption.hint}</span>
+			{/if}
 		</span>
 
 		<div class="real-select-actions flex items-center gap-3 shrink-0">
@@ -351,6 +418,9 @@
 							if (!opt.disabled) highlightedIndex = idx;
 						}}
 					>
+						{#if opt.source}
+							<ModelSourceMark source={opt.source} />
+						{/if}
 						<span class="real-select-option-label flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
 							{opt.label}
 							{#if opt.hint}
@@ -444,6 +514,18 @@
 		font-size: 13px;
 	}
 
+	/* On the closed picker too: two endpoints can list a model by the same name. */
+	.real-select-value-hint {
+		margin-left: 6px;
+		font-size: 12px;
+		font-weight: 400;
+		color: var(--muted);
+	}
+
+	.real-select--sm .real-select-value-hint {
+		font-size: 11px;
+	}
+
 	.real-select-value.is-placeholder {
 		color: var(--muted);
 		font-weight: 400;
@@ -479,11 +561,13 @@
 		color: var(--accent);
 	}
 
+	/* As wide as its longest row, never narrower than the field; in the top layer `placeMenu` sets the box. */
 	.real-select-menu {
 		position: absolute;
 		left: 0;
-		right: 0;
 		min-width: 100%;
+		width: max-content;
+		max-width: min(420px, calc(100vw - 16px));
 		z-index: 100;
 		background: var(--pane);
 		border: 1px solid var(--line);
@@ -498,6 +582,14 @@
 		scrollbar-color: var(--muted-light) transparent;
 		box-sizing: border-box;
 		animation: menuIn 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+
+	/* In the top layer: against the window, at the box `placeMenu` gives it. This also undoes the UA's popover box. */
+	.real-select-menu:popover-open {
+		position: fixed;
+		inset: auto;
+		margin: 0;
+		color: var(--ink);
 	}
 
 	.real-select-menu.placement-bottom {

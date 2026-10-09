@@ -30,6 +30,7 @@
 		type CreateBotFieldErrors
 	} from './panels/create-form.ts';
 	import { connectorById, connectorFor, isLocalEndpoint, type ApiFormat, type CreateProviderRequest, type ProbedModel } from '@real-bot/protocol';
+	import { endpointSource } from './model-source.ts';
 
 	interface Props {
 		runtime: MessengerRuntime;
@@ -92,6 +93,11 @@
 		apiKey: runtime.endpointKey.trim()
 	}, true));
 	const selectedModels = $derived(parseModelLines(runtime.endpointModelsText));
+	/** The default model's picker: the models chosen above, marked with the endpoint being set up. */
+	const defaultModelOptions = $derived.by(() => {
+		const source = endpointSource({ base_url: runtime.endpointUrl, api_format: apiFormat }, t);
+		return selectedModels.map((model) => ({ value: model, label: model, source }));
+	});
 	const defaultModel = $derived(runtime.endpointDefaultModel.trim());
 	const modelErrors = $derived.by(() => {
 		const errors: ProviderFieldErrors = {};
@@ -952,7 +958,7 @@
 							bind:value={runtime.endpointDefaultModel}
 							placeholder={t.settings.defaultModelEmpty}
 							emptyLabel={t.settings.defaultModelEmpty}
-							options={selectedModels}
+							options={defaultModelOptions}
 							error={!!fieldErrors.defaultModel}
 							onchange={() => {
 								if (fieldErrors.defaultModel) {

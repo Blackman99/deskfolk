@@ -10,6 +10,13 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 - In Settings › Notifications, the six categories no longer run past the right edge of their card, where the switches sat on its border and the page scrolled sideways. A longer description wraps onto a second line instead, and in a narrow settings window the categories stack in one column.
 
+### Model pickers show where each model comes from
+
+- Every model picker (a Bot's model, a ticket's model, the model ladder, the model that reads lines, the first-run default model, a Claude Agent Bot's model) draws each model's source before its name: the vendor's logo for an endpoint of a built-in connector (Anthropic, Xiaomi MiMo, Qwen), the Claude mark for a model run through your own Claude Code, and "Custom" for any other endpoint. The closed picker shows the chosen model's mark too, and its endpoint once there is more than one.
+- Model rows read the same in every picker: the model's name, then its endpoint in grey, instead of "model · endpoint" in some and the endpoint as a hint in others.
+- A built-in connector added later shows in every picker without changing any of them.
+- A picker's menu is as wide as its rows (up to 420px) instead of as wide as the field: a ticket card's model field, a narrow one, no longer cuts every name short. It opens above everything, so the pane it sits in no longer cuts it off, and it slides left to stay inside the window.
+
 ### Settings › Models in three sections
 
 - Models is split into Endpoints, Model ladder and Model that reads lines, instead of one long page with the ladder and the reader below every endpoint card. A wide window shows them as tabs at the top of Models (endpoints and ladder rungs counted on theirs); each section scrolls on its own under them.

@@ -70,7 +70,7 @@ test("a model is added at the strong end from what is listed and not on it yet",
   click(view.host.querySelector(".ladder-add .real-select-trigger")!);
   await sleep(0);
   const options = [...view.host.querySelectorAll(".real-select-option")];
-  expect(options.map((el) => el.textContent?.trim())).toEqual(["mid · Default", "heavy · Other"]);
+  expect(options.map((el) => el.textContent?.replace(/\s+/g, " ").trim())).toEqual(["mid Default", "heavy Other"]);
   click(options[1]!);
   await sleep(0);
   expect(saved).toEqual([[{ provider_id: "p1", model: "light" }, { provider_id: "p2", model: "heavy" }]]);

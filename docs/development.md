@@ -75,6 +75,8 @@ Tauri `remote_local_setup` 与 `remote_native_confirmation` 都只许 bundled ma
 
 设置的模型服务分三块：端点、模型阶梯（引擎 7 级起才有）、读句用的模型，由 `ModelsTab.svelte` 管。宽窗在内容区顶上放一排分类标签，每块单独一页，在标签下面自己滚动；≤720px 先是这三块的列表，每行写着现在的设置（几个端点和默认端点、阶梯上的模型、读句用哪个模型），点一行进到那一块的页面，标题换成那一块的名字。顶部返回、✕ 和手机历史返回先回到这张列表（`ModelsTab.backFromSection`，接在 `SettingsModal.backWithinSettings` 里），再回设置首页。还没有端点时只有端点一块，不出标签也不出列表。阶梯在 `model-ladder.svelte.ts` 里读和存：列表和标签在打开阶梯页之前就要知道有没有阶梯、上面有什么。
 
+模型下拉统一由 `lib/model-source.ts` 生成选项：`endpointModelOptions` 给出模型名、多于一个端点时的端点名（灰色提示，收起的选择框上也显示），以及来源 `source`；`Select.svelte` 在每一项和收起的选择框前用 `ModelSourceMark.svelte` 画出来——内置连接器的端点画该厂商的 LOGO，经你本机 Claude Code 跑的模型画 Claude 标志，其余端点标「Custom」（文案在 `connectors.customMark`，用 CSS 画出，选项文字仍只是模型名）。来源每次从端点地址用 `connectorFor` 读，和端点卡片一样。新增一个内置连接器只动三处：`packages/protocol/src/connectors.ts` 的 `CONNECTOR_IDS` / `CONNECTORS`，`ConnectorLogo.svelte` 的 `TILE` 和图形分支，`copy/connectors.ts` 的名字、简介和套餐名；漏了任何一处 svelte-check 报错，所有模型下拉自动带上。手机上端点卡片里的默认模型是原生 `select`，画不了图，LOGO 在卡片头上。`Select` 打开时把菜单放进顶层（Popover API，`popover="manual"`，节点不挪位置，焦点、外部点击判断和弹窗的背景点击判断照旧把它算在框内），`placeMenu` 按窗口坐标定位：不窄于选择框，按最长一行变宽到 420px，靠右时左移，离窗口边 8px，滚动和缩放时跟着框走；没有顶层的环境（happy-dom）仍是框下面的普通下拉。
+
 端点这一块在 ≤720px 使用端点卡片：默认模型由原生 `select` 选择，名单入口整行可点，连接和删除操作位于卡片底部。`ProviderForm.svelte` 的名单采用单层页面滚动，搜索始终可用；全选/取消只作用于当前筛选结果。价格、思考等级和擅长领域在手机上进入独立属性页，返回保留名单的搜索、选择与滚动位置；桌面继续行内展开。`SettingsModal.backFromProviderEditor` 统一处理顶部返回、Escape 和手机历史返回，优先退出属性页。底部显示自动保存状态，保存失败提供重试。
 
 已有端点允许空启用名单和空默认模型。`planPatchProvider` 在草稿默认为空且确有修改时显式发送 `default_model: ""`，避免服务端把省略的字段补成第一个模型；无修改仍返回空 patch。启用首项后可回到端点卡片选择默认模型。组件回归覆盖分块切换、搜索、筛选批量操作、手动添加、属性编辑、逐层返回、返回前保存和失败重试。

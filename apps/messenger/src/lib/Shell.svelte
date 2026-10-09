@@ -16,6 +16,7 @@
 		modelSelectValue,
 		type ProviderEditorState
 	} from './settings/provider-form.ts';
+	import { endpointModelOptions } from './model-source.ts';
 	import TerminalPane from './overlays/TerminalPane.svelte';
 	// TaskTrace.svelte (the flow board) drags in @dagrejs/dagre and its own graph-layout code;
 	// it is only ever seen after `runtime.traceOpen` fires, so it is loaded with the same
@@ -511,15 +512,7 @@
 		selectedPeer ? (botsById.get(selectedPeer) ?? null) : null
 	);
 	const lockedComposer = $derived(composerLocked(selected, botsById));
-	const availableModelOptions = $derived(
-		snapshot.providers.flatMap((provider) =>
-			provider.models.map((model) => ({
-				value: modelSelectValue(provider.id, model),
-				label: model,
-				hint: snapshot.providers.length > 1 ? provider.name : undefined
-			}))
-		)
-	);
+	const availableModelOptions = $derived(endpointModelOptions(snapshot.providers, t, modelSelectValue));
 	const profileBot = $derived(
 		runtime.profileBotId
 			? (snapshot.bots.find((bot) => bot.id === runtime.profileBotId) ?? null)

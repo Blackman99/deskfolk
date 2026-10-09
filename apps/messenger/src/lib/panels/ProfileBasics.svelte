@@ -8,6 +8,7 @@
 	import type { ProfileFields } from './roster-edit.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import type { SelectOption } from '../select-options.ts';
+	import { claudeAgentSource } from '../model-source.ts';
 
 	/** The basics tab. The draft and its autosave belong to ProfilePane, which outlives a tab switch. */
 	type Props = {
@@ -52,13 +53,16 @@
 		{ value: '', label: t.sidebar.botRunnerApp },
 		{ value: 'claude_code', label: t.sidebar.botRunnerClaude }
 	]);
-	const agentModelOptions = $derived([
-		{ value: '', label: t.sidebar.botAgentModelDefault },
-		...CLAUDE_MODEL_ALIASES.map((alias) => ({ value: alias, label: alias })),
-		...(profileDraft.agentModel && !(CLAUDE_MODEL_ALIASES as readonly string[]).includes(profileDraft.agentModel)
-			? [{ value: profileDraft.agentModel, label: profileDraft.agentModel }]
-			: [])
-	]);
+	const agentModelOptions = $derived.by((): SelectOption[] => {
+		const source = claudeAgentSource(t);
+		return [
+			{ value: '', label: t.sidebar.botAgentModelDefault },
+			...CLAUDE_MODEL_ALIASES.map((alias) => ({ value: alias, label: alias, source })),
+			...(profileDraft.agentModel && !(CLAUDE_MODEL_ALIASES as readonly string[]).includes(profileDraft.agentModel)
+				? [{ value: profileDraft.agentModel, label: profileDraft.agentModel, source }]
+				: [])
+		];
+	});
 
 	/** The account this Bot's turns spend, as Claude Code reports it; the daemon's own while none is picked. */
 	const agentSignIn = $derived(claudeAccountOf(claudeStatus, profileDraft.agentConfigDir) ?? claudeStatus);

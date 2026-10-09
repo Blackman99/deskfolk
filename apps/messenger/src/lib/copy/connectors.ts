@@ -10,6 +10,8 @@ export const zh = {
     qwen: "阿里云百炼：千问，以及百炼上的 GLM、DeepSeek 等",
   },
   custom: "自定义",
+  /** On a model in a picker whose endpoint is not a built-in one. */
+  customMark: "Custom",
   customBlurb: "任意 OpenAI 兼容或 Anthropic 兼容的地址",
   plan: {
     "anthropic:api": "官方 API",
@@ -52,6 +54,7 @@ export const en: CopyShape<typeof zh> = {
     qwen: "Alibaba Cloud Model Studio: Qwen, and GLM, DeepSeek and more there",
   },
   custom: "Custom",
+  customMark: "Custom",
   customBlurb: "Any OpenAI-compatible or Anthropic-compatible address",
   plan: {
     "anthropic:api": "Anthropic API",

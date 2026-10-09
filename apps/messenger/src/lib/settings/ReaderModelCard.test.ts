@@ -18,6 +18,9 @@ function fakePatch(opts: { fail?: boolean } = {}) {
 }
 
 const trigger = (host: HTMLElement) => host.querySelector(".reader-pick .real-select-trigger")!;
+/** What a row or the closed picker reads: the model, then where it runs (an endpoint, or Claude Agent). */
+const text = (el: Element | null | undefined) => el?.textContent?.replace(/\s+/g, " ").trim();
+const claudeRow = (model: string) => `${model} ${t.claudeAgent.title}`;
 
 test("following the default names the default model; every listed model can be chosen, and the choice is saved", async () => {
   const { sent, patch } = fakePatch();
@@ -26,11 +29,11 @@ test("following the default names the default model; every listed model can be c
   click(trigger(view.host));
   await sleep(0);
   const options = [...view.host.querySelectorAll(".real-select-option")];
-  expect(options.map((el) => el.textContent?.trim())).toEqual([
+  expect(options.map(text)).toEqual([
     t.readerModel.followDefault("grok-4.7-build-fast"),
-    "grok-4.7-build-fast · My CPA",
-    "gemini-3.8-flash-high · My CPA",
-    "deepseek-v4.1-flash · 阿里百炼",
+    "grok-4.7-build-fast My CPA",
+    "gemini-3.8-flash-high My CPA",
+    "deepseek-v4.1-flash 阿里百炼",
   ]);
   click(options[3]!);
   await sleep(0);
@@ -41,7 +44,9 @@ test("following the default names the default model; every listed model can be c
 test("a chosen model shows as chosen, and following the default again saves null", async () => {
   const { sent, patch } = fakePatch();
   const view = render(ReaderModelCard, { providers, chosen: { provider_id: "p2", model: "deepseek-v4.1-flash" }, defaultModel: "grok-4.7-build-fast", patch, t });
-  expect(trigger(view.host).textContent).toContain("deepseek-v4.1-flash · 阿里百炼");
+  expect(text(trigger(view.host))).toBe("deepseek-v4.1-flash 阿里百炼");
+  // Neither endpoint is a built-in one, so the closed picker marks the chosen model Custom.
+  expect(trigger(view.host).querySelector("[data-model-source]")?.getAttribute("data-model-source")).toBe("custom");
   click(trigger(view.host));
   await sleep(0);
   click(view.host.querySelectorAll(".real-select-option")[0]!);
@@ -74,7 +79,7 @@ const statusOf = (status: ClaudeCodeStatus | Error) => async () => {
   if (status instanceof Error) throw status;
   return status;
 };
-const optionTexts = (host: HTMLElement) => [...host.querySelectorAll(".real-select-option")].map((el) => el.textContent?.trim());
+const optionTexts = (host: HTMLElement) => [...host.querySelectorAll(".real-select-option")].map(text);
 
 test("with Claude Code signed in, its models are their own group, haiku first, and choosing one saves it on the default account", async () => {
   const { sent, patch } = fakePatch();
@@ -85,7 +90,9 @@ test("with Claude Code signed in, its models are their own group, haiku first, a
   click(trigger(view.host));
   await sleep(0);
   expect(view.host.querySelector(".real-select-group")?.textContent).toBe(t.sidebar.botRunnerClaude);
-  expect(optionTexts(view.host).slice(-4)).toEqual(["haiku", "sonnet", "opus", "fable"].map((model) => t.readerModel.claudeModel(model)));
+  expect(optionTexts(view.host).slice(-4)).toEqual(["haiku", "sonnet", "opus", "fable"].map(claudeRow));
+  const marks = [...view.host.querySelectorAll(".real-select-option")].map((el) => el.querySelector("[data-model-source]")?.getAttribute("data-model-source") ?? null);
+  expect(marks).toEqual([null, "custom", "custom", "custom", "claude-agent", "claude-agent", "claude-agent", "claude-agent"]);
   click([...view.host.querySelectorAll(".real-select-option")].at(-4)!);
   await sleep(0);
   expect(sent).toEqual([{ reader_model: { runner: "claude_code", model: "haiku", config_dir: null } }]);
@@ -105,7 +112,7 @@ test("no Claude group while Claude Code is missing, signed out, or cannot be ask
   // On the phone, which cannot ask: the model chosen on the Mac stays shown, and can be swapped for another.
   const phone = render(ReaderModelCard, { providers, chosen: { runner: "claude_code", model: "haiku", config_dir: "/opt/claude-b" }, defaultModel: null, patch: fakePatch().patch, claudeCode: statusOf(new Error("404")), t });
   await sleep(0);
-  expect(trigger(phone.host).textContent).toContain(t.readerModel.claudeModel("haiku"));
+  expect(text(trigger(phone.host))).toBe(claudeRow("haiku"));
   expect(phone.host.querySelector("[data-reader-account]")).toBeNull();
   phone.close();
 });
@@ -120,7 +127,7 @@ test("with several accounts listed there is an account select; changing it re-sa
   });
   const view = render(ReaderModelCard, { providers, chosen: { runner: "claude_code", model: "sonnet", config_dir: null }, defaultModel: null, patch, claudeCode: statusOf(status), t });
   await sleep(0);
-  expect(trigger(view.host).textContent).toContain(t.readerModel.claudeModel("sonnet"));
+  expect(text(trigger(view.host))).toBe(claudeRow("sonnet"));
   const account = view.host.querySelector("[data-reader-account] .real-select-trigger")!;
   expect(account.textContent).toContain(t.sidebar.botAgentAccountDefault);
   click(account);

@@ -3,6 +3,7 @@
 	import Select from '../Select.svelte';
 	import type { Copy } from '../copy.ts';
 	import type { ModelLadder } from './model-ladder.svelte.ts';
+	import { endpointModelOptions } from '../model-source.ts';
 
 	/** The model ladder's own page (ADR 0054). What it says it is for is the page's intro, not this card's. */
 	interface Props {
@@ -18,14 +19,15 @@
 	const providerName = (id: string) => providers.find((provider) => provider.id === id)?.name ?? id;
 	const named = (rung: ModelLadderRung) => (providers.length > 1 ? `${rung.model} · ${providerName(rung.provider_id)}` : rung.model);
 
+	/** What is listed and not on the ladder yet. */
 	const addable = $derived(
-		providers.flatMap((provider) =>
-			provider.models
-				.filter((model) => !ladder.rungs.some((rung) => rung.provider_id === provider.id && rung.model === model))
-				.map((model) => {
-					const rung = { provider_id: provider.id, model };
-					return { value: key(rung), label: named(rung) };
-				})
+		endpointModelOptions(
+			providers.map((provider) => ({
+				...provider,
+				models: provider.models.filter((model) => !ladder.rungs.some((rung) => rung.provider_id === provider.id && rung.model === model))
+			})),
+			t,
+			(provider_id, model) => key({ provider_id, model })
 		)
 	);
 
