@@ -7,12 +7,13 @@
  * the new plan started with no rules and no precedent (the kind label did not match), and nothing
  * you had said about how the films are made reached it.
  *
- * Target: in a video job, a requirement about how the work is made (背景连贯, 过门要有过渡) or that
- * stays the same across a series (左手) holds for the conversation the plan lives in — the project
- * — so the new film's turns read them from their first turn, marked 「继承自「EP01…」」. One that
- * does not fit the new film is set aside for it with 不适用这件事 and goes out of its turns, while
- * EP01 keeps it.
- * A requirement about one film only (「片尾字幕用白色」) stays with that film.
+ * Target: a requirement you say holds for the films to come (「以后每部片都要」), as the scribe reads it,
+ * holds for the conversation the plan lives in — the project — so the new film's turns read them
+ * from their first turn, marked 「继承自「EP01…」」. One that does not fit the new film is set aside
+ * for it with 不适用这件事 and goes out of its turns, while EP01 keeps it.
+ * A requirement about one film only (「这一集片尾字幕用白色」) stays with that film. Since 2026-10-10 it is
+ * the scribe's reading that widens, not the kind of requirement: on the IG MV job, entries about that
+ * job alone had been widened for sounding like craft, and showed up in unrelated jobs of the direct.
  */
 import { afterEach, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
@@ -58,16 +59,16 @@ test("craft and series requirements said about EP01 reach the next film of the g
   h.judge("organizer", { session: room }).reply({ decision: "continue", plan: planSpec("EP01 动画成片：BEACON ZERO 第一集"), tickets: [] });
   h.judge("scribe", { session: room }).reply({
     adds: [
-      { quote: "所有镜头背景要连贯", restated: "镜头之间背景连贯", category: "背景连贯", scope_hint: "plan" },
-      { quote: "每次过门都要有过渡镜头", category: "转场", scope_hint: "plan" },
-      { quote: "机械臂必须是左手", category: "角色设定", scope_hint: "plan" },
+      { quote: "所有镜头背景要连贯", restated: "镜头之间背景连贯", category: "背景连贯", scope_hint: "project" },
+      { quote: "每次过门都要有过渡镜头", category: "转场", scope_hint: "project" },
+      { quote: "机械臂必须是左手", category: "角色设定", scope_hint: "project" },
       { quote: "片尾字幕用白色", category: "字幕", scope_hint: "plan" },
     ],
     raises: [],
     supersedes: [],
   });
   h.script(director, room).reply(say("记下了"));
-  h.postUser(room, "@视频导演 所有镜头背景要连贯，每次过门都要有过渡镜头，机械臂必须是左手，片尾字幕用白色");
+  h.postUser(room, "@视频导演 以后每部片都要：所有镜头背景要连贯，每次过门都要有过渡镜头，机械臂必须是左手；这一集片尾字幕用白色");
   await h.waitIdle();
   const entries = h.store.listRequirements();
   expect(entries.map((entry) => [entry.quote, entry.scope, entry.origin_task_id])).toEqual([

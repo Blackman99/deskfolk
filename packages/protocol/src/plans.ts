@@ -231,6 +231,24 @@ export type TaskTraceNode = {
    * older than model choices; absent altogether from a daemon that predates it.
    */
   route?: TaskTraceRoute | null;
+  /**
+   * On a card of yours that is a decision rather than a line that woke someone (2026-10-10): your
+   * answer to a Bot's question, your 放行 or 退回 of a hand-over, or a line of yours that put a ticket
+   * back to rework. `woken_by_turn_id` then names the Bot's card it answers. Absent otherwise, and
+   * from older daemons.
+   */
+  decision?: TaskTraceDecision | null;
+};
+
+/** What a decision card of yours was (see `TaskTraceNode.decision`). */
+export type TaskTraceDecision = {
+  kind: "answer" | "approve" | "reject" | "rework";
+  /** For an answer: the question, one line. */
+  question?: string;
+  /** For a 放行 that did not go through as pressed (its checks failed): what came of it. */
+  result?: string;
+  /** The hand-over it decided, for 放行 / 退回. */
+  submission_id?: string;
 };
 
 /**

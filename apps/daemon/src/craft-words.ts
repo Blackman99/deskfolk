@@ -3,9 +3,10 @@
  * shots that hold together (背景连贯, 过门要有过渡), no extra hands or broken anatomy, no freeze
  * frames to fill the running time, one look kept the same throughout (画风统一, 色调一致); or a
  * choice of what the work looks or sounds like (色调偏冷, 打光要硬, 配音用男声: a value choice);
- * or about what stays the same across a series (a character's left arm, its look). ADR 0042 files
- * all three for the conversation the plan lives in (the project) by default, in a video job, so the
- * next job there starts with them. Only craft is offered to hold for every video job (standing): a
+ * or about what stays the same across a series (a character's left arm, its look). ADR 0042 filed
+ * all three for the conversation the plan lives in (the project) by default, in a video job; since
+ * 2026-10-10 only the scribe's own reading widens a new entry, and these lists are left for old
+ * rules taken in (`conversationWide`) and standing candidates. Only craft is offered to hold for every video job (standing): a
  * value choice is one film's or one series' taste (EP01 cold, EP02 warm), and a series' constants
  * are that series' own. A fixed list of words, read with no model, in the category the scribe gave
  * and in your words themselves.
@@ -78,16 +79,6 @@ export function craftRequirement(category: string | null, words: string): boolea
  */
 export function conversationWide(category: string | null, words: string): boolean {
   return craftRequirement(category, words) || reads(category, words, VALUE_ZH, VALUE_EN) || reads(category, words, SERIES_ZH, SERIES_EN);
-}
-
-/**
- * Whether an entry holds for the plan's whole conversation by default, in a video job: as the
- * scribe read what it is about when it did (`nature`), else by the lists above. Words naming one
- * part never do.
- */
-export function conversationWideEntry(nature: string | null, category: string | null, words: string): boolean {
-  if (nature === null) return conversationWide(category, words);
-  return nature !== "other" && !namesAPart(words);
 }
 
 /** Whether an entry is about how the work is made: as the scribe read it when it did, else by the lists above. */

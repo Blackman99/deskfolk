@@ -1,5 +1,6 @@
 /** A job's flow board read model: its turns, messages, files and approvals in order. */
-import { INTERRUPT_NOTE_BODY, USER_MEMBER, type TaskTrace, type TaskTraceNode, type TurnStatus } from "@real-bot/protocol";
+import { INTERRUPT_NOTE_BODY, USER_MEMBER, type TaskTrace, type TaskTraceDecision, type TaskTraceNode, type TurnStatus } from "@real-bot/protocol";
+import { askAnswerText, readAskAnswer } from "../ask";
 import type { StoreContext } from "./shared";
 import { getTask, isReservedTaskPath, oneLine } from "./tasks";
 
@@ -220,6 +221,7 @@ export function taskTrace(ctx: StoreContext, taskId: string): TaskTrace {
       ticket_id: turn.ticket_id ?? null,
     });
   }
+  nodes.push(...decisionNodes(ctx, taskId, turnIds, nodes));
   nodes.sort((a, b) => a.created_at.localeCompare(b.created_at) || a.turn_id.localeCompare(b.turn_id));
   return {
     id: task.id,
@@ -229,6 +231,119 @@ export function taskTrace(ctx: StoreContext, taskId: string): TaskTrace {
     closed_at: task.closed_at,
     nodes,
   };
+}
+
+function parse(raw: string | null): Record<string, unknown> {
+  try {
+    const value = raw ? (JSON.parse(raw) as unknown) : null;
+    return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Your decisions on this job as cards of yours (2026-10-10): each answer to a Bot's question, each
+ * 放行 and 退回 of a hand-over (from its card: only your press marks one; the work log called every
+ * 放行 the app's until then), and each line of yours that put a ticket back to rework, hung under the
+ * card of the turn it answers. Before, the trace showed only the lines that woke a turn: on the IG MV
+ * job four answers and fourteen card presses — the points the job turned on — were nowhere on it.
+ * A rework line that already has its card (it woke a turn) is marked on that card instead.
+ */
+function decisionNodes(ctx: StoreContext, taskId: string, turnIds: ReadonlySet<string>, cards: TaskTraceNode[]): TaskTraceNode[] {
+  const out: TaskTraceNode[] = [];
+  const onBoard = (turnId: string | null | undefined): string | null => (turnId && turnIds.has(turnId) ? turnId : null);
+  const card = (input: { id: string; sessionId: string; at: string; summary: string; answers: string | null; ticketId: string | null; decision: TaskTraceDecision }): TaskTraceNode => ({
+    turn_id: `decision:${input.id}`,
+    session_id: input.sessionId,
+    actor: USER_MEMBER,
+    status: "completed",
+    woken_by_turn_id: onBoard(input.answers),
+    woken_elsewhere: null,
+    trigger_message_id: input.id,
+    focus_message_id: input.id,
+    summary: input.summary,
+    created_at: input.at,
+    artifacts: [],
+    ask: null,
+    approval: null,
+    passed: 0,
+    ticket_id: input.ticketId,
+    decision: input.decision,
+  });
+
+  // Questions a Bot asked in this job's turns, and your answers.
+  for (const row of ctx.db.query<{ id: string; session_id: string; turn_id: string; ticket_id: string | null; body: string; ask_answer: string }, [string]>(
+    `SELECT m.id, m.session_id, m.turn_id, t.ticket_id, m.body, m.ask_answer FROM messages m JOIN turns t ON t.id = m.turn_id
+     WHERE t.task_id = ? AND m.kind = 'ask' AND m.ask_answer IS NOT NULL`).all(taskId)) {
+    const answer = readAskAnswer(row.ask_answer);
+    if (!answer) continue;
+    out.push(card({ id: row.id, sessionId: row.session_id, at: answer.answered_at, summary: oneLine(askAnswerText(answer)), answers: row.turn_id,
+      ticketId: row.ticket_id, decision: { kind: "answer", question: oneLine(row.body) } }));
+  }
+
+  // Your presses on hand-over cards, and your 退回 with what you said.
+  const submissions = new Map(ctx.db.query<{ id: string; turn_id: string | null; ticket_id: string; updated_at: string }, [string]>(
+    "SELECT id, turn_id, ticket_id, updated_at FROM submissions WHERE task_id = ?").all(taskId).map((row) => [row.id, row]));
+  const events = ctx.db.query<{ at: string; kind: string; actor: string; ticket_id: string | null; payload: string }, [string]>(
+    `SELECT at, kind, actor, ticket_id, payload FROM work_events WHERE task_id = ?
+       AND kind IN ('review.recorded', 'submission.approved', 'complaint.rework', 'complaint.rework_undone') ORDER BY seq`).all(taskId);
+  const rejectedByYou = new Map<string, { at: string; note: string | null }>();
+  const resolvedAt = new Map<string, string>();
+  for (const event of events) {
+    const payload = parse(event.payload);
+    const id = typeof payload.submission_id === "string" ? payload.submission_id : null;
+    if (!id) continue;
+    if (event.kind === "review.recorded" && event.actor === USER_MEMBER && payload.outcome === "reject") {
+      rejectedByYou.set(id, { at: event.at, note: typeof payload.note === "string" ? payload.note : null });
+    } else if (event.kind === "submission.approved" || (event.kind === "review.recorded" && payload.outcome === "approve")) {
+      resolvedAt.set(id, event.at);
+    }
+  }
+  for (const row of ctx.db.query<{ id: string; session_id: string; created_at: string; control: string }, [string]>(
+    `SELECT id, session_id, created_at, control FROM messages WHERE kind = 'system' AND json_valid(control)
+       AND json_extract(control, '$.kind') = 'review_item' AND json_extract(control, '$.task_id') = ?`).all(taskId)) {
+    const control = parse(row.control);
+    const acted = Array.isArray(control.acted) ? control.acted : [];
+    const id = typeof control.submission_id === "string" ? control.submission_id : null;
+    const submission = id ? submissions.get(id) : undefined;
+    if (!id || !submission) continue;
+    const result = typeof control.result === "string" ? control.result : null;
+    if (acted.includes("approve")) {
+      out.push(card({ id: row.id, sessionId: row.session_id, at: resolvedAt.get(id) ?? submission.updated_at, summary: "", answers: submission.turn_id,
+        ticketId: submission.ticket_id, decision: { kind: "approve", submission_id: id } }));
+    } else if (acted.includes("reject")) {
+      const yours = rejectedByYou.get(id);
+      // A 退回 with no word of yours behind it is a 放行 whose checks then failed.
+      out.push(yours
+        ? card({ id: row.id, sessionId: row.session_id, at: yours.at, summary: yours.note ? oneLine(yours.note) : "", answers: submission.turn_id,
+          ticketId: submission.ticket_id, decision: { kind: "reject", submission_id: id } })
+        : card({ id: row.id, sessionId: row.session_id, at: submission.updated_at, summary: "", answers: submission.turn_id, ticketId: submission.ticket_id,
+          decision: { kind: "approve", submission_id: id, ...(result ? { result } : {}) } }));
+    }
+  }
+
+  // Lines of yours that put a ticket back to rework (not ones you undid).
+  const undone = new Set(events.filter((event) => event.kind === "complaint.rework_undone").map((event) => parse(event.payload).card_id).filter(Boolean));
+  for (const event of events) {
+    if (event.kind !== "complaint.rework") continue;
+    const payload = parse(event.payload);
+    if (payload.card_id && undone.has(payload.card_id)) continue;
+    const messageId = typeof payload.message_id === "string" ? payload.message_id : null;
+    if (!messageId) continue;
+    const existing = cards.find((node) => node.turn_id === `user:${messageId}`);
+    if (existing) {
+      existing.decision = { kind: "rework" };
+      continue;
+    }
+    const line = ctx.db.query<{ session_id: string; body: string }, [string]>("SELECT session_id, body FROM messages WHERE id = ?").get(messageId);
+    if (!line) continue;
+    const latest = [...submissions.values()].filter((row) => row.ticket_id === event.ticket_id && row.updated_at <= event.at)
+      .sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0];
+    out.push(card({ id: messageId, sessionId: line.session_id, at: event.at, summary: oneLine(line.body), answers: latest?.turn_id ?? null,
+      ticketId: event.ticket_id, decision: { kind: "rework" } }));
+  }
+  return out;
 }
 
 /** How many Bots watched a trigger instead of joining. A message nobody judged returns nothing. */

@@ -87,6 +87,9 @@
 			{#if node.actor !== USER_MEMBER}
 				<!-- Your own line has no status worth reading: it was sent. -->
 				<span class="trace-status is-{node.status}">{t.trace.status[node.status]}</span>
+			{:else if node.decision}
+				<!-- What you decided here: an answer, a 放行 or 退回, a line sending a ticket back. -->
+				<span class="trace-decision is-{node.decision.kind}">{t.trace.decision[node.decision.kind]}</span>
 			{/if}
 		</span>
 		{#if from}
@@ -100,6 +103,11 @@
 		{/if}
 		{#if node.ask}
 			<span class="trace-wait">{t.trace.waitingAsk} · {node.ask.question}</span>
+		{/if}
+		{#if node.decision?.question}
+			<span class="trace-wait">{t.trace.asked(node.decision.question)}</span>
+		{:else if node.decision?.result}
+			<span class="trace-wait">{node.decision.result}</span>
 		{/if}
 		{#if node.approval}
 			<span class="trace-wait">{t.trace.waitingApproval}{#if node.approval.summary} · {node.approval.summary}{/if}</span>
@@ -345,6 +353,18 @@
 	.trace-status.is-redirected { color: var(--muted); }
 	.trace-status.is-interrupted,
 	.trace-status.is-stopped { color: var(--danger-text); }
+
+	/* A decision of yours: quiet like the status it stands in for, coloured by what it did. */
+	.trace-decision {
+		margin-left: auto;
+		font-size: 11px;
+		color: var(--muted);
+	}
+
+	.trace-decision.is-approve { color: var(--ok-text); }
+	.trace-decision.is-reject,
+	.trace-decision.is-rework { color: var(--danger-text); }
+	.trace-decision.is-answer { color: var(--purple); }
 
 	.trace-summary,
 	.trace-wait,

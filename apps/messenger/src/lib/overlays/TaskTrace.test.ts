@@ -1954,3 +1954,27 @@ test("before the daemon has stops the board offers none", async () => {
   expect(view.host.querySelector(".trace-holds")).toBeNull();
   view.close();
 });
+
+test("your decisions hang under the card they answer: an answer with its question, a 放行, a 退回 with your words", async () => {
+  const base = picture();
+  const decided: TaskTrace = {
+    ...base,
+    nodes: [
+      ...base.nodes,
+      { ...base.nodes[0]!, turn_id: "decision:ask-1", woken_by_turn_id: "t-writer", trigger_message_id: "ask-1", focus_message_id: "ask-1",
+        summary: "粉丝纪念向", created_at: "2026-09-22T00:05:00.000Z", decision: { kind: "answer", question: "这支 MV 打算怎么用？" } },
+      { ...base.nodes[0]!, turn_id: "decision:card-1", woken_by_turn_id: "t-writer", trigger_message_id: "card-1", focus_message_id: "card-1",
+        summary: "人物太粗糙", created_at: "2026-09-22T00:06:00.000Z", decision: { kind: "reject", submission_id: "s1" } },
+      { ...base.nodes[0]!, turn_id: "decision:card-2", woken_by_turn_id: "t-writer", trigger_message_id: "card-2", focus_message_id: "card-2",
+        summary: "", created_at: "2026-09-22T00:07:00.000Z", decision: { kind: "approve", submission_id: "s2", result: "检查没过，已退回" } },
+    ],
+  };
+  const view = open({ trace: decided });
+  await until(view.host, ".trace-decision");
+  const chips = [...view.host.querySelectorAll(".trace-decision")].map((chip) => chip.textContent?.trim());
+  expect(chips).toEqual(["回答", "退回", "放行"]);
+  const cards = [...view.host.querySelectorAll(".trace-card")].filter((card) => card.querySelector(".trace-decision"));
+  expect(cards[0]!.querySelector(".trace-wait")?.textContent).toContain("问：这支 MV 打算怎么用？");
+  expect(cards[1]!.querySelector(".trace-summary")?.textContent).toBe("人物太粗糙");
+  expect(cards[2]!.querySelector(".trace-wait")?.textContent).toContain("检查没过，已退回");
+});

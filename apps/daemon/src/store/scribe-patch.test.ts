@@ -146,24 +146,27 @@ describe("an item is checked against your line", () => {
     store.close();
   });
 
-  test("in a video job, a requirement about how the work is made holds for the whole conversation, unless it names a part or one ticket", () => {
+  test("in a video job too, where an entry holds is the scribe's reading: the whole conversation only when it read 「以后都这样」", () => {
+    // IG MV, 2026-10-09: 19 entries about this job alone (「要还原真实的比赛镜头」「对手的形象」) were widened to
+    // the whole direct because they read as craft or look in a video job, and showed as inherited in
+    // 「Connect to ACE Studio」. The scribe had said plan for them (2026-10-10: its reading decides).
     const { store, direct, planId, say, apply, video } = fixture();
     video();
     const ticket = store.createTicket({ taskId: planId, title: "C09" });
-    const quote = say("背景要前后连贯，C09 背景要干净，字体统一用黑体，片尾加二维码");
+    const quote = say("背景要前后连贯，C09 背景要干净，字体统一用黑体，以后每部片都要有片尾二维码");
     const outcome = apply(quote, {
       adds: [
-        { quote: "背景要前后连贯", category: "背景连贯", scope_hint: "plan" },
+        { quote: "背景要前后连贯", category: "背景连贯", scope_hint: "plan", nature: "craft" },
         { quote: "C09 背景要干净", category: "背景连贯", scope_hint: "plan" },
         { quote: "字体统一用黑体", category: "字幕", scope_hint: "ticket", targets: [ticket.id] },
-        { quote: "片尾加二维码", category: "片尾", scope_hint: "plan" },
+        { quote: "以后每部片都要有片尾二维码", category: "片尾", scope_hint: "project" },
       ],
     });
     expect(outcome.added.map((id) => store.getRequirement(id)).map((entry) => [entry.quote, entry.scope, entry.scope_id])).toEqual([
-      ["背景要前后连贯", "project", direct],
+      ["背景要前后连贯", "plan", planId],
       ["C09 背景要干净", "plan", planId],
       ["字体统一用黑体", "ticket", ticket.id],
-      ["片尾加二维码", "plan", planId],
+      ["以后每部片都要有片尾二维码", "project", direct],
     ]);
     store.close();
   });
@@ -195,8 +198,8 @@ describe("an item is checked against your line", () => {
     const other = apply(say("背景要连贯", c10!.id), { adds: [{ quote: "背景要连贯", category: "背景连贯", scope_hint: "ticket" }] }).added[0]!;
     expect(store.getRequirement(other)).toMatchObject({ scope: "ticket", scope_id: c10!.id });
 
-    // Later, for the whole film: the conversation's own entry, not a third raise of C09's.
-    const outcome = apply(say("所有镜头都是，背景要连贯"), { adds: [{ quote: "背景要连贯", category: "背景连贯", scope_hint: "plan" }] });
+    // Later, for every film here from now on: the conversation's own entry, not a third raise of C09's.
+    const outcome = apply(say("以后每部片都是，背景要连贯"), { adds: [{ quote: "背景要连贯", category: "背景连贯", scope_hint: "project" }] });
     expect(outcome.raised).toEqual([]);
     const [wide] = outcome.added.map((id) => store.getRequirement(id));
     expect(wide).toMatchObject({ scope: "project", scope_id: direct, quote: "背景要连贯" });

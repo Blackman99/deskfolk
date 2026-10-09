@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### The trace shows your decisions; a requirement holds for the job unless you say otherwise
+
+- The trace now has a card for each decision of yours, under the turn it answers: your answers to a Bot's questions, your approvals and send-backs (with your words), and lines of yours that put a ticket back to rework.
+- A requirement said about one job now stays with that job, even in video work, unless you say it holds from now on ("every film from now on"). Before, requirements about how a film looks were carried into every later job of the conversation, unrelated ones included.
+
 ### A job laid out again when you change its direction
 
 - When you turn down a job's direction, its lead can now lay it out again: tickets of the old direction are dropped with a reason, which the board shows as Dropped and leaves out of the totals; reminders, delegations and queued work on them go too, and a render still running on one no longer wakes its Bot back onto it.

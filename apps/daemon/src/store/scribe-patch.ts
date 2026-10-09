@@ -19,7 +19,6 @@
  * to a model that failed or saw nothing in it.
  */
 import { soundsLikeComplaint } from "../complaint-words";
-import { conversationWideEntry } from "../craft-words";
 import { dimensionValueJson, readDimensionSpans, readDimensions } from "../quote-dimensions";
 import { findWords, quoteWords } from "../quote-words";
 import { takeCodePoints } from "../text";
@@ -28,7 +27,6 @@ import {
   addRequirement,
   getRequirement,
   newNumberFor,
-  planDomains,
   raiseRequirement,
   repeatsNumber,
   REQUIREMENT_NATURES,
@@ -256,9 +254,6 @@ export function applyScribePatch(
     let adds = 0;
     // Read once and kept up to date as entries are added: the adds of one answer are weighed against each other too.
     const openHere = requirementsBearingOn(ctx, taskId, ["open"]);
-    // The conversation-wide default is for video work (ADR 0042): 「段落之间要有过渡」 in a report is that report's.
-    let video: boolean | undefined;
-    const isVideo = (): boolean => (video ??= planDomains(ctx, taskId).includes("video"));
     patch.adds.forEach((raw, index) => {
       const item = asRecord(raw);
       const said = item ? text(item.quote, Number.MAX_SAFE_INTEGER) : null;
@@ -268,13 +263,7 @@ export function applyScribePatch(
       if (tooShort(words)) return reject("add", index, "quote_too_short");
       if (adds >= SCRIBE_ADDS_MAX) return reject("add", index, "too_many");
       const category = text(item.category, CATEGORY_MAX);
-      const { scope, scopeId } = addScope(item, {
-        ticketIds,
-        ticketId: quote.ticket_id,
-        taskId,
-        sessionId: task.session_id,
-        wide: conversationWideEntry(natureOf(item), category, words) && isVideo(),
-      });
+      const { scope, scopeId } = addScope(item, { ticketIds, ticketId: quote.ticket_id, taskId, sessionId: task.session_id });
       // The same words already stand as an open entry bearing on the plan that holds at least as
       // far as the new one would: said again, not a second entry. (A proposal does not count: it
       // is about replacing another entry, not this one.) A ticket's entry counts only for an
@@ -320,25 +309,23 @@ function natureOf(item: Record<string, unknown>): RequirementNature | null {
 }
 
 /**
- * Where a new entry holds: a ticket when the scribe names exactly one of this plan's tickets (or the
- * line was filed under one and it names none); the conversation the plan lives in — the project —
- * when it says every job there should keep to it, or, in a video job, when it is about how the work
- * is made, how it looks or sounds, or what stays the same across a series (`wide`: the item's
- * `nature` as the scribe read it, else craft-words.ts: 背景连贯, 过门要有过渡, 色调偏冷, 左手) and not
- * said of one ticket, so the next job there has it
- * from the start (ADR 0042); else the plan.
+ * Where a new entry holds, as the scribe read it: a ticket when it names exactly one of this plan's
+ * tickets (or the line was filed under one and it names none); the conversation the plan lives in —
+ * the project — when it read that every job there should keep to it (「以后都这样」「每部片都要」);
+ * else the plan. Until 2026-10-10 a video job widened anything about craft, look or a series to the
+ * whole conversation whatever the scribe said (ADR 0042): on the IG MV job that carried 19 entries
+ * about those players and that match into 「Connect to ACE Studio」 as inherited requirements.
  */
 function addScope(
   item: Record<string, unknown>,
-  at: { ticketIds: ReadonlySet<string>; ticketId: string | null; taskId: string; sessionId: string | null; wide: boolean },
+  at: { ticketIds: ReadonlySet<string>; ticketId: string | null; taskId: string; sessionId: string | null },
 ): { scope: RequirementScope; scopeId: string } {
   if (item.scope_hint === "ticket") {
     const named = Array.isArray(item.targets) ? [...new Set(item.targets.filter((id): id is string => typeof id === "string" && at.ticketIds.has(id)))] : [];
     if (named.length === 1) return { scope: "ticket", scopeId: named[0]! };
     if (named.length === 0 && at.ticketId && at.ticketIds.has(at.ticketId)) return { scope: "ticket", scopeId: at.ticketId };
   }
-  const wide = item.scope_hint === "project" || (at.wide && item.scope_hint !== "ticket");
-  if (wide && at.sessionId) return { scope: "project", scopeId: at.sessionId };
+  if (item.scope_hint === "project" && at.sessionId) return { scope: "project", scopeId: at.sessionId };
   return { scope: "plan", scopeId: at.taskId };
 }
 

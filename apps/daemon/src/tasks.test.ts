@@ -492,6 +492,45 @@ describe("a job's trace", () => {
     store.close();
   });
 
+  test("your decisions are cards of yours under the turn they answer: an answer, a 放行, a 退回 with your words, a line sending a ticket back", () => {
+    // IG MV: four answers and fourteen card presses — the points the job turned on — were not on the trace.
+    const { store, bot, session } = fixture();
+    const trigger = store.postMessage(session.id, { body: "做 MV" });
+    const turn = store.createTurn({ sessionId: session.id, botId: bot.id, triggerMessageId: trigger.id });
+    const taskId = turn.task_id!;
+    const ticket = store.createTicket({ taskId, title: "样片" });
+    store.db.run("UPDATE turns SET ticket_id = ? WHERE id = ?", [ticket.id, turn.id]);
+    const ask = store.insertMessage({ sessionId: session.id, turnId: turn.id, kind: "ask", author: bot.id, body: "这支 MV 打算怎么用？",
+      ask: { options: [{ label: "粉丝纪念向" }, { label: "商用" }], multi_select: false } as never });
+    store.db.run("UPDATE messages SET ask_answer = ? WHERE id = ?", [JSON.stringify({ selected: ["粉丝纪念向"], custom: null, answered_at: "2026-10-08T10:55:00.000Z" }), ask.id]);
+    store.setTurnStatus(turn.id, "completed");
+    const handed = (id: string, state: string) => store.db.run(`INSERT INTO submissions (id, task_id, ticket_id, bot_id, turn_id, origin, artifacts, state, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 'submit', '[]', ?, '2026-10-08T12:00:00.000Z', '2026-10-08T12:30:00.000Z')`, [id, taskId, ticket.id, bot.id, turn.id, state]);
+    const card = (id: string, submission: string, acted: string[], result: string) => store.db.run(
+      "INSERT INTO messages (id, session_id, kind, author, body, created_at, control) VALUES (?, ?, 'system', 'user', '放行卡', '2026-10-08T12:01:00.000Z', ?)",
+      [id, session.id, JSON.stringify({ kind: "review_item", submission_id: submission, task_id: taskId, ticket_id: ticket.id, requirement_ids: [], check_ids: [], offer: [], acted, result })]);
+    handed("s-ok", "approved");
+    card("card-ok", "s-ok", ["approve"], "已放行。");
+    handed("s-back", "rejected");
+    card("card-back", "s-back", ["reject"], "已退回：「人物太粗糙」");
+    store.db.run(`INSERT INTO work_events (at, kind, actor, task_id, ticket_id, payload) VALUES ('2026-10-08T12:40:00.000Z', 'review.recorded', 'user', ?, ?, ?)`,
+      [taskId, ticket.id, JSON.stringify({ submission_id: "s-back", outcome: "reject", by: "user", note: "人物太粗糙" })]);
+    const line = store.postMessage(session.id, { body: "游戏场景可以，但是人物太粗糙" });
+    store.db.run(`INSERT INTO work_events (at, kind, actor, task_id, ticket_id, payload) VALUES ('2026-10-08T13:00:00.000Z', 'complaint.rework', 'user', ?, ?, ?)`,
+      [taskId, ticket.id, JSON.stringify({ message_id: line.id, card_id: line.id })]);
+
+    const decisions = store.taskTrace(taskId).nodes.filter((node) => node.decision);
+    expect(decisions.map((node) => [node.decision!.kind, node.actor, node.woken_by_turn_id, node.summary])).toEqual([
+      ["answer", "user", turn.id, "粉丝纪念向"],
+      ["approve", "user", turn.id, ""],
+      ["reject", "user", turn.id, "人物太粗糙"],
+      ["rework", "user", turn.id, "游戏场景可以，但是人物太粗糙"],
+    ]);
+    expect(decisions[0]!.decision).toEqual({ kind: "answer", question: "这支 MV 打算怎么用？" });
+    expect(decisions.every((node) => node.ticket_id === ticket.id)).toBe(true);
+    store.close();
+  });
+
   test("a reply whose last part is files only keeps its words on the card; a turn that only handed over files shows them", () => {
     // IG MV, 2026-10-08 15:59: 「决赛段素材已备好…」 (281 characters, 97 files) drew a blank card — the
     // turn's last bot row was the attachment-only part of its reply, and the card took that one.

@@ -143,6 +143,9 @@ test("the one filter keeps what started it, whatever is still going, and whateve
   ];
   expect(filterTrace(trace(nodes), true).nodes.map((row) => row.turn_id)).toEqual(["you", "live", "file"]);
   expect(filterTrace(trace(nodes), false).nodes).toHaveLength(4);
+  // Your decisions are what the job turned on: kept, though they hang under a card.
+  const decided = [...nodes, node({ turn_id: "decision:c1", actor: USER_MEMBER, woken_by_turn_id: "talk", decision: { kind: "reject" }, summary: "人物太粗糙" })];
+  expect(filterTrace(trace(decided), true).nodes.map((row) => row.turn_id)).toEqual(["you", "live", "file", "decision:c1"]);
 });
 
 test("a file chip takes its name from the path and knows a picture", () => {

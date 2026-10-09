@@ -328,7 +328,7 @@ function layRound(
 function estimateHeight(node: TaskTraceNode, home: string | null): number {
   // A turn that said nothing shows one short line in place of the summary.
   const lines = saidNothing(node) ? 1 : Math.min(4, Math.ceil((node.summary?.length ?? 0) / 22));
-  const waiting = node.ask || node.approval ? 1 : 0;
+  const waiting = node.ask || node.approval || node.decision?.question || node.decision?.result ? 1 : 0;
   return (
     TRACE_CARD_FALLBACK_HEIGHT -
     // Only a card from another conversation names where it happened.
@@ -640,7 +640,7 @@ const LIVE: ReadonlySet<TurnStatus> = new Set(["running", "waiting_approval", "w
 /** The one filter the board has: turns still going, and turns that handed a file over. */
 export function notableNodes(nodes: readonly TaskTraceNode[]): TaskTraceNode[] {
   return nodes.filter(
-    (node) => LIVE.has(node.status) || node.artifacts.length > 0 || node.woken_by_turn_id === null,
+    (node) => LIVE.has(node.status) || node.artifacts.length > 0 || node.woken_by_turn_id === null || Boolean(node.decision),
   );
 }
 
