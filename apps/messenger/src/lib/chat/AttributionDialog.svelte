@@ -4,6 +4,7 @@
   import type { Copy } from '../copy.ts';
   import { pageSlide } from '../mobile-page-slide.ts';
   import { formatListTime } from '../sidebar/list-time.ts';
+  import { plainPreview } from '../sidebar/preview-text.ts';
   import { messageFilings, rankPlans, type AttributedMessage, type AttributionInput, type AttributionPlan } from './attribution.ts';
 
   /**
@@ -36,11 +37,9 @@
   const backdrop = backdropClick();
   // The dialog opens on one message and is kept for it: the draft starts from what it is filed under now.
   const filings = untrack(() => messageFilings(message));
+  // The line as read, not as written: no `**` or `#` showing, as in the chat list.
   const preview = untrack(() => {
-    let text = (message.body ?? '').trim();
-    // Strip leading markdown headers e.g. "### ", "> ", "- ", "* "
-    text = text.replace(/^(\s*#{1,6}\s+|>\s*|[-*+]\s+)/gm, '');
-    text = text.replace(/\s+/g, ' ').trim();
+    const text = plainPreview(message.body ?? '', 151);
     return text.length > 150 ? `${text.slice(0, 150)}…` : text;
   });
   // Keep current references even when a plan/ticket no longer appears in the loaded choices.
@@ -187,9 +186,6 @@
     </div>
     <div class="attribution-context-wrapper">
       <p class="attribution-context" role="note" aria-label={t.attribution.message}>
-        <svg class="context-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-        </svg>
         <span class="quote">{preview || t.attribution.noText}</span>
       </p>
     </div>
@@ -342,30 +338,18 @@
     min-height: 0;
   }
 
-  /* Quote context card */
+  /* The line being filed: one quiet quote, a bar and the words — no card, no icon. */
   .attribution-context-wrapper {
     flex: none;
-    padding: 10px 18px 4px;
-    background: var(--sidebar-bg);
-    border-bottom: 1px solid var(--line);
+    padding: 12px 18px 0;
   }
   .attribution-context {
     margin: 0;
-    padding: 8px 12px;
-    background: var(--pane);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-md);
+    padding: 2px 0 2px 10px;
+    border-left: 2px solid var(--accent-border, var(--line));
     font-size: var(--text-caption);
     line-height: 1.5;
     color: var(--ink-secondary);
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-  }
-  .context-icon {
-    flex-shrink: 0;
-    color: var(--muted);
-    margin-top: 2px;
   }
   .quote {
     display: -webkit-box;
@@ -374,9 +358,6 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
     overflow-wrap: anywhere;
-    padding-left: 8px;
-    border-left: 2px solid var(--accent-border, var(--line));
-    color: var(--ink-secondary);
   }
 
   /* Main Body */
@@ -409,7 +390,8 @@
     pointer-events: none;
     color: var(--muted);
   }
-  .attribution-search {
+  /* `.search-wrap` outranks modals.css `.modal-body input[type="search"]`, whose padding ran the text under the icon. */
+  .search-wrap .attribution-search {
     width: 100%;
     min-height: 38px;
     padding: 6px 32px 6px 34px;
@@ -420,13 +402,14 @@
     border-radius: var(--radius-md);
     font: inherit;
     font-size: var(--text-small);
-    transition: all 0.15s ease;
+    box-shadow: none;
+    transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
   }
   .attribution-search::-webkit-search-cancel-button {
     -webkit-appearance: none;
     appearance: none;
   }
-  .attribution-search:focus {
+  .search-wrap .attribution-search:focus {
     background: var(--pane);
     border-color: var(--accent);
     box-shadow: 0 0 0 3px var(--accent-glow);

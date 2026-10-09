@@ -216,6 +216,13 @@ test("it names the line being filed, shortened, so a dialog reached from a menu 
   } finally { empty.close(); }
 });
 
+test("the quoted line reads as plain text, without its markdown", () => {
+  const { host, close } = open(Object.assign(filed([]), { body: "**great demo**, but `not` sure\n\n- [how](https://x.y) to add" }));
+  try {
+    expect(host.querySelector(".attribution-context .quote")!.textContent).toBe("great demo, but not sure how to add");
+  } finally { close(); }
+});
+
 test("Enter on a search takes the first match and clears the search; Arrow Down goes to the list; Enter on an empty search still saves", async () => {
   const { host, saved, checkbox, settle, close } = open(filed([]));
   try {
