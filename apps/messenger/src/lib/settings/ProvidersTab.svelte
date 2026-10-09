@@ -3,7 +3,6 @@
 	import ConnectorLogo from './ConnectorLogo.svelte';
 	import Select from '../Select.svelte';
 	import type { Copy } from '../copy.ts';
-	import { providerHost } from './provider-form.ts';
 	import { botAvatarColor } from '../avatar.ts';
 	import { rosterLetter } from '../sidebar/roster-letter.ts';
 	import type { Snapshot } from '../snapshot.ts';
@@ -32,15 +31,11 @@
 		setProviderDefaultModel
 	}: Props = $props();
 
-	/** A key is in place, or none is needed: a model server on this computer or network (ADR 0067). */
+	/** A key is in place, or none is needed: a model server on this computer or network (ADR 0067). Only a missing key gets a badge. */
 	function keyReady(provider: { key_set: boolean; base_url: string | null }): boolean {
 		return provider.key_set || isLocalEndpoint(provider.base_url);
 	}
 
-	function keyLabel(provider: { key_set: boolean; base_url: string | null }): string {
-		if (provider.key_set) return t.settings.keySet;
-		return isLocalEndpoint(provider.base_url) ? t.settings.keyNotNeeded : t.settings.keyUnset;
-	}
 </script>
 
 <div class="settings-tab-pane provider-settings-pane">
@@ -56,11 +51,10 @@
 			<p class="muted">{t.settings.providerEmpty}</p>
 		</div>
 	{/if}
-	<div class="provider-card-list flex flex-col gap-5">
+	<div class="provider-card-list flex flex-col gap-4">
 		{#each snapshot.providers as provider (provider.id)}
 			{@const isDefault = snapshot.settings.default_provider_id === provider.id}
 			{@const palette = botAvatarColor(provider.id)}
-			{@const host = providerHost(provider.base_url)}
 			{@const builtIn = connectorFor(provider.base_url, provider.api_format)}
 			<div class="provider-card" class:is-default={isDefault}>
 				<div class="provider-card-head flex items-center justify-between gap-5 min-w-0">
@@ -77,27 +71,25 @@
 						{/if}
 						<span class="provider-identity-text min-w-0 flex flex-col gap-[3px] flex-1">
 							<span class="provider-name-row flex items-center gap-4 flex-wrap min-w-0">
-								<span class="provider-card-name text-14 font-semibold text-ink leading-[1.2]">{provider.name}</span>
+								<span class="provider-card-name text-14 font-semibold text-ink leading-[1.2]" title={provider.base_url ?? ''}>{provider.name}</span>
+								{#if builtIn && builtIn.connector.plans.length > 1}
+									<span class="provider-plan-chip">{t.connectors.plan[`${builtIn.connector.id}:${builtIn.plan.id}` as keyof typeof t.connectors.plan] ?? builtIn.plan.id}</span>
+								{:else if provider.api_format === 'anthropic' && !builtIn}
+									<span class="provider-plan-chip">{t.settings.apiFormatAnthropicShort}</span>
+								{/if}
 								{#if isDefault}
 									<span class="provider-badge-default" title={t.settings.providerDefault}>
 										<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
 										<span>{t.settings.providerDefault}</span>
 									</span>
 								{/if}
-								<span class="provider-badge-key" class:is-set={keyReady(provider)} title={keyLabel(provider)}>
-									<span class="provider-status-dot w-3 h-3 rounded-[50%] bg-warn shrink-0" class:is-set={keyReady(provider)}></span>
-									<span>{keyLabel(provider)}</span>
-								</span>
+								{#if !keyReady(provider)}
+									<span class="provider-badge-key" title={t.settings.keyUnset}>
+										<span class="provider-status-dot w-3 h-3 rounded-[50%] bg-warn shrink-0"></span>
+										<span>{t.settings.keyUnset}</span>
+									</span>
+								{/if}
 							</span>
-							{#if host}
-								<span class="provider-card-host mono inline-flex items-center gap-[5px] text-12 text-muted overflow-hidden text-ellipsis whitespace-nowrap max-w-full" title={provider.base_url ?? ''}>
-									<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-									<span class="provider-card-host-text">{host}{provider.api_format === 'anthropic' && !builtIn ? ` · ${t.settings.apiFormatAnthropicShort}` : ''}</span>
-									{#if builtIn && builtIn.connector.plans.length > 1}
-										<span class="provider-plan-chip">{t.connectors.plan[`${builtIn.connector.id}:${builtIn.plan.id}` as keyof typeof t.connectors.plan] ?? builtIn.plan.id}</span>
-									{/if}
-								</span>
-							{/if}
 						</span>
 					</div>
 
@@ -106,6 +98,7 @@
 							<button
 								type="button"
 								class="btn-provider-action btn-provider-setdefault"
+								aria-label={`${t.settings.providerSetDefault}: ${provider.name}`}
 								onclick={() => void setDefaultProvider(provider.id)}
 								title={t.settings.providerSetDefault}
 							>
@@ -214,8 +207,8 @@
 	.provider-card {
 		display: flex;
 		flex-direction: column;
-		gap: 10px;
-		padding: 12px 14px;
+		gap: 8px;
+		padding: 10px 12px;
 		background: var(--pane);
 		border: 1px solid var(--line);
 		border-radius: var(--radius-md);
@@ -245,8 +238,8 @@
 	}
 
 	.provider-card-mark {
-		width: 36px;
-		height: 36px;
+		width: 32px;
+		height: 32px;
 		border-radius: var(--radius-sm);
 		border: 1px solid;
 		display: inline-flex;
@@ -259,15 +252,9 @@
 	}
 
 	.provider-card-logo {
+		--connector-logo-size: 32px;
 		display: inline-flex;
 		flex: 0 0 auto;
-	}
-
-	/* A long address gives way to the plan beside it. */
-	.provider-card-host-text {
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
 	}
 
 	.provider-plan-chip {
@@ -276,7 +263,6 @@
 		border-radius: var(--radius-full);
 		background: var(--chip);
 		border: 1px solid var(--chip-line);
-		font-family: var(--font);
 		font-size: 11px;
 		line-height: 16px;
 		color: var(--ink-secondary);
@@ -310,22 +296,6 @@
 		color: var(--warn-text);
 		flex-shrink: 0;
 		line-height: 1.3;
-	}
-
-	.provider-badge-key.is-set {
-		background: var(--ok-bg);
-		border-color: var(--ok-line);
-		color: var(--ok-text);
-	}
-
-	.provider-status-dot.is-set {
-		background: var(--ok);
-		box-shadow: 0 0 4px var(--ok);
-	}
-
-	.provider-card-host :global(svg) {
-		flex-shrink: 0;
-		opacity: 0.75;
 	}
 
 	.btn-provider-action {
@@ -374,8 +344,8 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		padding-top: 10px;
-		border-top: 1px solid var(--line);
+		padding-top: 8px;
+		border-top: 1px solid var(--line-subtle);
 	}
 
 	.provider-model-label {
@@ -421,6 +391,37 @@
 		font-variant-numeric: tabular-nums;
 	}
 
+	/*
+	 * Wide enough: one line per endpoint — who it is, its default model, its list, its actions.
+	 * The head's two halves join the card's row so the model picker sits between them.
+	 */
+	@media (min-width: 721px) {
+		.provider-card {
+			flex-direction: row;
+			align-items: center;
+			gap: 10px;
+			padding: 8px 8px 8px 12px;
+		}
+		.provider-card-head { display: contents; }
+		.provider-card-identity { order: 1; flex: 1 1 0; }
+		.provider-name-row { flex-wrap: nowrap; }
+		/* Short of room, the plan gives way long before the name does. */
+		.provider-card-name { flex: 0 1 auto; min-width: 2em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+		.provider-plan-chip { flex: 0 1000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+		.provider-badge-default { padding: 3px; }
+		.provider-badge-default span { display: none; }
+		.provider-model-rail { order: 2; flex: none; gap: 2px; padding-top: 0; border-top: none; }
+		/* A fixed width, so every card's picker lines up whether or not it offers "Set as default". */
+		.provider-card-acts { order: 3; width: 122px; justify-content: flex-end; gap: 4px; }
+		.provider-model-label { display: none; }
+		.provider-model-rail :global(.provider-default-select) { flex: none; width: 168px; }
+		.provider-model-manage { margin-left: 0; width: 84px; justify-content: flex-end; }
+		.provider-model-manage > span:first-child { display: none; }
+		.provider-model-manage-count { color: inherit; }
+		.btn-provider-setdefault span { display: none; }
+		.btn-provider-setdefault { padding: 4px 6px; }
+	}
+
 	@media (max-width: 720px) {
 		.settings-tab-pane {
 			gap: 12px;
@@ -442,9 +443,6 @@
 		.provider-name-row { gap: 6px; }
 		.provider-card-name { flex: 1 0 100%; font-size: 18px; line-height: 1.4; overflow-wrap: anywhere; }
 		.provider-badge-default, .provider-badge-key { padding: 3px 6px; font-size: 11px; }
-		.provider-card-host { width: 100%; font-size: 12px; margin-top: 4px; }
-		.provider-card-host span { overflow: hidden; text-overflow: ellipsis; }
-		.provider-status-dot.is-set { box-shadow: none; }
 		.provider-card-acts { order: 3; gap: 0; border-top: 1px solid var(--line); }
 		.btn-provider-action { flex: 1; justify-content: center; gap: 6px; min-height: 48px; padding: 8px; border: 0; border-radius: 0; background: transparent; font-size: 13px; }
 		.btn-provider-action + .btn-provider-action { border-left: 1px solid var(--line); }

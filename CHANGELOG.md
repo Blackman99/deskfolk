@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Endpoint cards are tighter
+
+- Settings › Models › Endpoints no longer marks every endpoint "Configured"; only an endpoint still missing its key carries a badge. The address line is gone too (hover the name to see it), and on a desktop each endpoint is one line: name and plan, default model, model count, then its actions, with every card's picker lined up. "Set as default" is a star button, and the list link reads "3 models".
+
 ### Xiaomi MiMo for speech recognition
 
 - Settings › Models › Speech recognition has Xiaomi MiMo as a service (`mimo-v2.5-asr`). With a Xiaomi MiMo endpoint already added — any Token Plan region or pay-as-you-go — the card offers "Use it for speech", which points speech at that endpoint's address and takes its key, as Alibaba Bailian's does.
