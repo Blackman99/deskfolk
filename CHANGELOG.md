@@ -10,6 +10,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 - The closed strip under the conversation list no longer leaves the rest of each account's row empty. Each account stays on its own line. When the strip is wide enough, the account's email follows its plan, and each window has a small ring as full as what is left (empty means spent), which does not take the row's width. The numbers read the same.
 
+### Long times read in hours, days, weeks, months and years
+
+- How long a reply took, the timer on a working reply, a running step's time and a finished command's time no longer stop at minutes: past an hour they read in their two largest units — "1h 25m", "3d 4h", "2w 1d", "1mo 2w", "1y 3mo" — where a long render used to say "89m 0s". A minute rounded up to sixty seconds no longer reads "1m 60s".
+
 ### A job's pane is three views: Trace, Board and Plan
 
 - A "Trace / Board / Plan" switch at the end of the title picks one view, which fills the pane at every width (narrow, the switch takes a row under the title). The rail beside the trace, its Plan and Tickets toggles and the separate Board button are gone. The view you left is remembered; a message asking for its card always opens the trace.

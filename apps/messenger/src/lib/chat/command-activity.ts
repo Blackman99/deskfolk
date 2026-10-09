@@ -1,5 +1,6 @@
 import type { StreamFrame, ToolFrame } from "@real-bot/protocol";
 import { accept, decodeBase64, startCursor, type StreamCursor } from "../overlays/terminals.ts";
+import { formatSpan } from "./duration.ts";
 
 /**
  * What a Bot's commands look like while a turn is running.
@@ -101,6 +102,5 @@ function strip(entry: Entry): CommandRow {
 export function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
-  const minutes = Math.floor(ms / 60_000);
-  return `${minutes}m${Math.round((ms % 60_000) / 1000)}s`;
+  return formatSpan(Math.round(ms / 1000), "");
 }

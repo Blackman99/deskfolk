@@ -1,6 +1,7 @@
 import type { ToolFrame } from "@real-bot/protocol";
 import type { Copy } from "../copy.ts";
 import { commandLine } from "./command-line.ts";
+import { formatSpan } from "./duration.ts";
 
 /**
  * What each running turn is doing: every tool call this client has seen it make, in order. The
@@ -220,7 +221,5 @@ function clip(subject: string, name: string): string {
 
 /** Whole seconds: the line ticks while it runs, and tenths would make it flicker. */
 function formatElapsed(ms: number): string {
-  const seconds = Math.floor(ms / 1000);
-  if (seconds < 60) return `${seconds}s`;
-  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+  return formatSpan(ms / 1000);
 }

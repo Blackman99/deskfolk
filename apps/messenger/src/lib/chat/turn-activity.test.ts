@@ -56,6 +56,7 @@ test("a running step says what it is doing, and for how long once that is worth 
   // Apart from the text, so clipping a long command never cuts the time off.
   expect(describeStep(reading, zh, LONG_STEP_MS + 2500)).toMatchObject({ text: "读取 src/app.ts", elapsed: "5s" });
   expect(stepText(describeStep(step({ name: "shell", target: "pnpm build" }), zh, 125_000))).toBe("运行 pnpm build · 2m 5s");
+  expect(describeStep(step({ name: "shell", target: "pnpm build" }), zh, 26 * 3_600_000 + 59_999).elapsed).toBe("1d 2h");
   expect(describeStep(step({ running: false }), zh, 125_000).elapsed).toBeNull();
   expect(describeStep(step({ name: "send_message" }), zh, 0).text).toBe("发消息");
 });
@@ -122,5 +123,6 @@ test("a row in the list says the whole step going on, and how long it has taken"
   // Under a second it says nothing about time.
   expect(stepRow(step({ target: "a.ts" }), zh, 300)).toEqual({ id: "c", text: "读取 a.ts", time: null, shell: false });
   expect(stepRow(step({ target: "a.ts" }), en, 65_000)).toMatchObject({ text: "Reading a.ts", time: "1m 5s" });
+  expect(stepRow(step({ name: "shell", target: "render.sh" }), zh, 85 * 60_000 + 50_000).time).toBe("1h 25m");
   expect(stepRow(step({ name: "mcp_x", mcp: { server: "GitHub", tool: "create-issue" } }), zh, 0).text).toBe("调用 GitHub · create-issue");
 });

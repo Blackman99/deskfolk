@@ -91,4 +91,7 @@ test("a duration reads in the unit it is short in", () => {
   expect(formatDuration(450)).toBe("450ms");
   expect(formatDuration(12_340)).toBe("12.3s");
   expect(formatDuration(125_000)).toBe("2m5s");
+  expect(formatDuration(119_600)).toBe("2m0s");
+  expect(formatDuration(2 * 3_600_000 + 5 * 60_000)).toBe("2h5m");
+  expect(formatDuration(26 * 3_600_000)).toBe("1d2h");
 });

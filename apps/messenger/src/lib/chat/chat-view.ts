@@ -9,6 +9,7 @@ import {
   type Reaction,
   type Turn,
 } from "@real-bot/protocol";
+import { formatSpan } from "./duration.ts";
 import { isLiveStatus } from "./transcript.ts";
 import type { TranscriptItem } from "./transcript.ts";
 
@@ -48,15 +49,13 @@ export type ReactionGroup = {
   userReacted: boolean;
 };
 
-/** Formats duration in milliseconds into a concise readable string, e.g. "1.2s", "45s", "1m 12s" */
+/** Formats duration in milliseconds into a concise readable string, e.g. "1.2s", "45.0s", "1m 12s", "2h 5m", "3d 1h" */
 export function formatDurationMs(ms: number): string {
   if (ms < 0) return "0.0s";
   if (ms < 60000) {
     return `${(ms / 1000).toFixed(1)}s`;
   }
-  const mins = Math.floor(ms / 60000);
-  const secs = Math.round((ms % 60000) / 1000);
-  return `${mins}m ${secs}s`;
+  return formatSpan(Math.round(ms / 1000));
 }
 
 /**

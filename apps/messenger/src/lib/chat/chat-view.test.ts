@@ -30,6 +30,15 @@ describe("chat-view helpers", () => {
     expect(formatDurationMs(-100)).toBe("0.0s");
   });
 
+  test("formatDurationMs carries minutes into hours, days, weeks, months and years", () => {
+    expect(formatDurationMs(89 * 60_000)).toBe("1h 29m");
+    expect(formatDurationMs(119_600)).toBe("2m 0s");
+    expect(formatDurationMs(50 * 3_600_000)).toBe("2d 2h");
+    expect(formatDurationMs(10 * 86_400_000)).toBe("1w 3d");
+    expect(formatDurationMs(45 * 86_400_000)).toBe("1mo 2w");
+    expect(formatDurationMs(400 * 86_400_000)).toBe("1y 1mo");
+  });
+
   test("calculateBotDuration computes duration from turn and trigger", () => {
     const trigger: Message = {
       id: "msg-user-1",
