@@ -1,13 +1,14 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import type { ClaudeCodeStatus, ClaudeUsage } from '@real-bot/protocol';
+	import type { ClaudeAccountUsage, ClaudeCodeStatus, ClaudeUsage } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import { localeTag } from '../locale-tag.ts';
 	import { claudeAccountLabel, claudeAgentPaysPerToken } from './claude-agent.ts';
-	import { usageAccountNote, usageAccounts } from './claude-usage.ts';
+	import { usageAccountNote, usageAccounts, usageCheckedTime, usageLatestCheck } from './claude-usage.ts';
 	import ClaudeSpark from './ClaudeSpark.svelte';
-	import ClaudeUsageAccounts from './ClaudeUsageAccounts.svelte';
+	import ClaudeUsageFoot from './ClaudeUsageFoot.svelte';
 	import ClaudeUsageRows from './ClaudeUsageRows.svelte';
+	import HelpTip from './HelpTip.svelte';
 
 	/**
 	 * Your own Claude Code as the daemon finds it (ADR 0061): where it is, which version, which
@@ -108,12 +109,16 @@
 	const listed = $derived(status?.accounts?.filter((entry) => entry.config_dir !== null) ?? []);
 	const listedDirs = $derived(listed.map((entry) => entry.config_dir!));
 	const usageShown = $derived(usage ? usageAccounts(usage) : []);
+	/** An account's usage when there is something to show for it: its windows, or why it has none. */
+	function usageOf(dir: string | null): ClaudeAccountUsage | null {
+		return usageShown.find((entry) => (entry.config_dir ?? null) === dir && (entry.available || entry.reason === 'no_plan' || entry.reason === 'failed')) ?? null;
+	}
+	const usageListed = $derived(status?.path ? [usageOf(null), ...listedDirs.map(usageOf)].filter((entry) => entry !== null) : []);
 </script>
 
 <section class="claude-card" aria-label={t.claudeAgent.title} data-claude-agent>
 	<div class="claude-head">
-		<h3 class="claude-title"><ClaudeSpark size={16} />{t.claudeAgent.title}</h3>
-		<p>{t.claudeAgent.hint}</p>
+		<h3 class="claude-title"><ClaudeSpark size={16} />{t.claudeAgent.title}<HelpTip text={t.claudeAgent.hint} label={t.claudeAgent.help} /></h3>
 	</div>
 	{#if unavailable}
 		<p class="claude-note">{t.claudeAgent.localOnly}</p>
@@ -130,43 +135,60 @@
 					<dd><code>{status.path}</code>{#if status.source}<span class="claude-source">· {t.claudeAgent.source[status.source] ?? status.source}</span>{/if}</dd>
 					<dt>{t.claudeAgent.version}</dt>
 					<dd>{status.version ?? '—'}</dd>
-					<dt>{t.claudeAgent.account}</dt>
-					<dd data-claude-account>{account ?? t.claudeAgent.methods.none}{#if ownDir}<span class="claude-source">· {t.claudeAgent.reads(ownDir)}</span>{/if}</dd>
 					<dt>{t.claudeAgent.network}</dt>
 					<dd data-claude-network>{#if status.proxy}<code>{status.proxy}</code>{#if status.proxy_source}<span class="claude-source">· {t.claudeAgent.proxySource[status.proxy_source] ?? status.proxy_source}</span>{/if}{:else}{t.claudeAgent.direct}{/if}</dd>
 				</dl>
-				{#if status.logged_in === false}
-					<p class="claude-warn" data-claude-signed-out>{t.claudeAgent.signedOut}</p>
-				{/if}
-				{#if claudeAgentPaysPerToken(status)}
-					<p class="claude-warn" data-claude-api-key>{t.claudeAgent.apiKey}</p>
-				{/if}
 				{#if status.base_url_set}
 					<p class="claude-note">{t.claudeAgent.baseUrl}</p>
 				{/if}
 				{#if status.outdated}
 					<p class="claude-note">{t.claudeAgent.outdated(status.sdk_version)}</p>
 				{/if}
-				{#if status.accounts && api?.setClaudeCodeAccounts}
-					<div class="claude-accounts" data-claude-accounts>
-						<h4>{t.claudeAgent.accounts.heading}</h4>
-						<p class="claude-note">{t.claudeAgent.accounts.hint}</p>
-						{#each listed as entry (entry.config_dir)}
-							<div class="claude-account" data-claude-account-dir={entry.config_dir}>
-								<div class="claude-account-main">
-									<code>{entry.config_dir}</code>
-									{#if entry.logged_in === false}
-										<span class="claude-warn">{t.claudeAgent.accounts.signedOut} <code>{entry.login_command}</code></span>
-									{:else}
-										<span>{claudeAccountLabel(entry, t)}</span>
-									{/if}
-								</div>
-								<button type="button" class="btn-xs" disabled={busy} onclick={() => void saveAccounts(listedDirs.filter((dir) => dir !== entry.config_dir))}>{t.claudeAgent.accounts.remove}</button>
+				<div class="claude-accounts" data-claude-accounts>
+					<h4>{t.claudeAgent.accounts.heading}<HelpTip text={t.claudeAgent.accounts.hint} label={t.claudeAgent.accounts.help} /></h4>
+					<section class="claude-account" aria-label={account ?? t.claudeAgent.methods.none} data-claude-account>
+						<div class="claude-account-head">
+							<div class="claude-account-main">
+								<span class="claude-account-name">{account ?? t.claudeAgent.methods.none}<span class="claude-account-tag">{t.claudeAgent.accounts.defaultTag}</span></span>
+								{#if ownDir}<code class="claude-account-dir">{ownDir}</code>{/if}
 							</div>
-						{/each}
-						{#if accountError}
-							<p class="claude-error" role="alert" data-claude-account-error={accountError}>{accountError === 'in_use' ? t.claudeAgent.accounts.inUse : t.claudeAgent.accounts.invalid}</p>
+						</div>
+						{#if status.logged_in === false}
+							<p class="claude-warn" data-claude-signed-out>{t.claudeAgent.signedOut}</p>
 						{/if}
+						{#if claudeAgentPaysPerToken(status)}
+							<p class="claude-warn" data-claude-api-key>{t.claudeAgent.apiKey}</p>
+						{/if}
+						{@render accountUsage(usageOf(null))}
+					</section>
+					{#each listed as entry (entry.config_dir)}
+						<section class="claude-account" aria-label={entry.config_dir} data-claude-account-dir={entry.config_dir}>
+							<div class="claude-account-head">
+								<div class="claude-account-main">
+									{#if entry.logged_in === false}
+										<span class="claude-account-name">{t.claudeAgent.methods.none}</span>
+									{:else}
+										<span class="claude-account-name">{claudeAccountLabel(entry, t)}</span>
+									{/if}
+									<code class="claude-account-dir">{entry.config_dir}</code>
+								</div>
+								{#if api?.setClaudeCodeAccounts}
+									<button type="button" class="btn-xs" disabled={busy} onclick={() => void saveAccounts(listedDirs.filter((dir) => dir !== entry.config_dir))}>{t.claudeAgent.accounts.remove}</button>
+								{/if}
+							</div>
+							{#if entry.logged_in === false}
+								<p class="claude-warn">{t.claudeAgent.accounts.signedOut} <code>{entry.login_command}</code></p>
+							{/if}
+							{@render accountUsage(usageOf(entry.config_dir))}
+						</section>
+					{/each}
+					{#if usageListed.length > 0}
+						<ClaudeUsageFoot checkedAt={usageLatestCheck(usageListed)} stale={false} {t} locale={localeTag(locale)} busy={usageBusy} onRefresh={() => void loadUsage(true)} />
+					{/if}
+					{#if accountError}
+						<p class="claude-error" role="alert" data-claude-account-error={accountError}>{accountError === 'in_use' ? t.claudeAgent.accounts.inUse : t.claudeAgent.accounts.invalid}</p>
+					{/if}
+					{#if status.accounts && api?.setClaudeCodeAccounts}
 						<form class="claude-path" onsubmit={(event) => { event.preventDefault(); if (accountDraft.trim()) void saveAccounts([...listedDirs, accountDraft.trim()]); }}>
 							<input
 								type="text"
@@ -179,21 +201,9 @@
 							/>
 							<button type="submit" class="btn-xs" disabled={busy || !accountDraft.trim()}>{t.claudeAgent.accounts.add}</button>
 						</form>
-					</div>
-				{/if}
+					{/if}
+				</div>
 			{/if}
-		{/if}
-		{#if usageShown.some((entry) => entry.available || entry.reason === 'no_plan' || entry.reason === 'failed')}
-			<div class="claude-usage" data-claude-card-usage>
-				<h4>{t.claudeAgent.usage.heading}</h4>
-				{#if usageShown.length > 1}
-					<ClaudeUsageAccounts accounts={usageShown} {t} locale={localeTag(locale)} {now} busy={usageBusy} onRefresh={() => void loadUsage(true)} />
-				{:else if usageShown[0]?.available}
-					<ClaudeUsageRows usage={usageShown[0]} {t} locale={localeTag(locale)} {now} busy={usageBusy} onRefresh={() => void loadUsage(true)} />
-				{:else if usageShown[0]}
-					<p class="claude-note">{usageAccountNote(usageShown[0], t)}</p>
-				{/if}
-			</div>
 		{/if}
 		<div class="claude-path">
 			<input
@@ -210,6 +220,19 @@
 		</div>
 	{/if}
 </section>
+
+
+{#snippet accountUsage(entry: ClaudeAccountUsage | null)}
+	{#if entry?.available}
+		{@const failedAt = entry.error !== null ? usageCheckedTime(entry.checked_at, localeTag(locale)) : null}
+		<div class="claude-account-usage" data-claude-card-usage>
+			<ClaudeUsageRows usage={entry} {t} locale={localeTag(locale)} {now} busy={usageBusy} foot={false} />
+			{#if failedAt}<p class="claude-stale">{t.claudeAgent.usage.stale(failedAt)}</p>{/if}
+		</div>
+	{:else if entry}
+		<p class="claude-note" data-claude-card-usage>{usageAccountNote(entry, t)}</p>
+	{/if}
+{/snippet}
 
 <style>
 	.claude-card {
@@ -234,7 +257,6 @@
 		color: var(--ink);
 	}
 
-	.claude-head p,
 	.claude-note {
 		margin: 4px 0 0;
 		font-size: 12px;
@@ -282,16 +304,10 @@
 		color: var(--muted);
 	}
 
-	.claude-usage {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		padding-top: 10px;
-		border-top: 1px solid var(--line);
-	}
-
-	.claude-usage h4,
 	.claude-accounts h4 {
+		display: flex;
+		align-items: center;
+		gap: 6px;
 		margin: 0;
 		font-size: 12px;
 		font-weight: 600;
@@ -306,15 +322,27 @@
 		border-top: 1px solid var(--line);
 	}
 
-	.claude-accounts .claude-note {
+	.claude-accounts .claude-note,
+	.claude-account .claude-warn {
 		margin: 0;
 	}
 
+	/* A block per account: who it is, where it lives, then its usage. */
 	.claude-account {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		min-width: 0;
+		padding: 8px 10px 10px;
+		border-radius: var(--radius-md);
+		background: var(--line-subtle);
+		font-size: 12px;
+	}
+
+	.claude-account-head {
 		display: flex;
 		align-items: flex-start;
 		gap: 8px;
-		font-size: 12px;
 	}
 
 	.claude-account-main {
@@ -324,7 +352,34 @@
 		flex: 1 1 auto;
 		min-width: 0;
 		overflow-wrap: anywhere;
+	}
+
+	.claude-account-name {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 6px;
 		color: var(--ink);
+		font: 600 13px/1.3 var(--font);
+	}
+
+	.claude-account-tag {
+		padding: 0 6px;
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		color: var(--muted);
+		font: 500 11px/16px var(--font);
+	}
+
+	.claude-account-dir {
+		color: var(--muted);
+		font-size: 11px;
+	}
+
+	.claude-stale {
+		margin: 4px 0 0;
+		color: var(--warn-text);
+		font-size: 11px;
 	}
 
 	.claude-path {

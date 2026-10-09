@@ -107,7 +107,10 @@ test("other accounts are listed with their sign-in, added and removed as a whole
     t,
   });
   await sleep(0);
-  expect(view.host.querySelector("[data-claude-account]")?.textContent).toContain(t.claudeAgent.reads("/Users/you/.claude"));
+  // The default account is a group of its own, with the directory it reads.
+  const ownGroup = view.host.querySelector("[data-claude-account]")!;
+  expect(ownGroup.textContent).toContain("/Users/you/.claude");
+  expect(ownGroup.textContent).toContain(t.claudeAgent.accounts.defaultTag);
   const rows = [...view.host.querySelectorAll("[data-claude-account-dir]")];
   expect(rows.map((row) => row.getAttribute("data-claude-account-dir"))).toEqual(["/Users/you/.claude-b", "/Users/you/.claude-c"]);
   expect(rows[0]!.textContent).toContain("Claude Team 订阅 · team@example.com");
@@ -130,16 +133,33 @@ test("other accounts are listed with their sign-in, added and removed as a whole
   view.close();
 });
 
-test("with Bots on two accounts the card shows each account's usage under its email, with one refresh", async () => {
+test("with Bots on two accounts each account's usage sits in that account's group, with one refresh", async () => {
   const windows = [{ kind: "five_hour" as const, model: null, percent: 18, resets_at: null }];
   const one = { available: true, reason: null, plan: "pro", checked_at: "2026-10-08T11:00:00.000Z", error: null, windows, config_dir: null, email: "you@example.com" };
   const two = { ...one, plan: "team", config_dir: "/Users/you/.claude-b", email: "team@example.com" };
-  const view = render(ClaudeAgentCard, { api: { ...apiOf(async () => status()), claudeUsage: async () => ({ ...one, accounts: [one, two] }) }, t });
+  const own = { config_dir: null, config_directory: "/Users/you/.claude", logged_in: true, auth_method: "claude.ai", subscription_type: "pro", email: "you@example.com", error: null, login_command: "claude auth login" };
+  const team = { ...own, config_dir: "/Users/you/.claude-b", config_directory: "/Users/you/.claude-b", subscription_type: "team", email: "team@example.com",
+    login_command: "CLAUDE_CONFIG_DIR=/Users/you/.claude-b claude auth login" };
+  const view = render(ClaudeAgentCard, { api: { ...apiOf(async () => status({ accounts: [own, team] })), claudeUsage: async () => ({ ...one, accounts: [one, two] }) }, t });
   await sleep(0);
-  const block = view.host.querySelector("[data-claude-card-usage]")!;
-  expect([...block.querySelectorAll(".usage-account-name")].map((label) => label.textContent)).toEqual(["Pro", "Team"]);
-  expect([...block.querySelectorAll(".usage-account-detail")].map((label) => label.textContent)).toEqual(["you@example.com", "team@example.com"]);
-  expect(block.querySelectorAll("[data-claude-usage-rows]")).toHaveLength(2);
-  expect(block.querySelectorAll(".usage-foot button")).toHaveLength(1);
+  const ownGroup = view.host.querySelector("[data-claude-account]")!;
+  const teamGroup = view.host.querySelector('[data-claude-account-dir="/Users/you/.claude-b"]')!;
+  expect(ownGroup.textContent).toContain("you@example.com");
+  expect(ownGroup.querySelectorAll("[data-claude-usage-rows]")).toHaveLength(1);
+  expect(teamGroup.textContent).toContain("team@example.com");
+  expect(teamGroup.querySelectorAll("[data-claude-usage-rows]")).toHaveLength(1);
+  expect(view.host.querySelectorAll("[data-claude-accounts] .usage-foot button")).toHaveLength(1);
+  view.close();
+});
+
+test("the explanations sit behind a ? and show on hover", async () => {
+  const view = render(ClaudeAgentCard, { api: apiOf(async () => status()), t });
+  await sleep(0);
+  expect(view.host.textContent).not.toContain(t.claudeAgent.hint);
+  const tips = [...view.host.querySelectorAll<HTMLButtonElement>("[data-help-tip]")];
+  expect(tips.map((tip) => tip.getAttribute("aria-label"))).toEqual([t.claudeAgent.help, t.claudeAgent.accounts.help]);
+  click(tips[0]!);
+  await sleep(0);
+  expect(document.querySelector("[data-help-tip-text]")?.textContent).toBe(t.claudeAgent.hint);
   view.close();
 });

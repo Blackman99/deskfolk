@@ -2,10 +2,10 @@ import type { CopyShape } from "./shape.ts";
 
 export const zh = {
   title: "Claude Agent",
+  help: "关于 Claude Agent",
   hint: "让 Bot 由你本机安装并登录的 Claude Code 来跑：在 Bot 面板的「运行方式」里逐个开启。Deskfolk 只启动它、问它自己的状态，不经手你的 Claude 登录和凭据。用量记在它登录的账号上；应用自己的判断（读句、分类、要不要接话）照旧用端点。",
   path: "位置",
   version: "版本",
-  account: "账号",
   network: "网络",
   direct: "直连",
   proxySource: { env: "环境变量", system: "系统代理" } as Record<string, string>,
@@ -22,11 +22,12 @@ export const zh = {
   failed: "没查到，再试一次",
   localOnly: "只能在电脑上查看。",
   subscription: (plan: string) => `Claude ${plan} 订阅`,
-  reads: (dir: string) => `读 ${dir}`,
   /** The Claude accounts besides the daemon's own environment, each a Claude Code config directory. */
   accounts: {
-    heading: "其他账号",
-    hint: "这台电脑上登录了不止一个 Claude 账号时（每个账号一个 Claude Code 配置目录，也就是 CLAUDE_CONFIG_DIR），把目录加在这里，再在 Bot 面板里给每个 Bot 选它花哪个账号的额度；没选的 Bot 用上面那个。登录在终端里做，Deskfolk 只记目录。",
+    heading: "账号",
+    help: "关于账号",
+    hint: "每个账号一个 Claude Code 配置目录（CLAUDE_CONFIG_DIR）。这台电脑上登录了不止一个 Claude 账号时，把其他账号的目录加在这里，再在 Bot 面板里给每个 Bot 选它花哪个账号的额度；没选的 Bot 用默认账号。登录在终端里做，Deskfolk 只记目录。每个账号下是它的用量，只在有 Bot 用它时显示。",
+    defaultTag: "默认",
     placeholder: "配置目录，例如 ~/.claude-b",
     add: "添加",
     remove: "移除",
@@ -45,7 +46,6 @@ export const zh = {
   /** Your Claude plan's usage, as your Claude Code reads it: the sidebar meter and this card. */
   usage: {
     title: "Claude 用量",
-    heading: "用量",
     fiveHour: "5 小时",
     sevenDay: "7 天",
     fiveHourShort: "5小时",
@@ -71,10 +71,10 @@ export const zh = {
 
 export const en: CopyShape<typeof zh> = {
   title: "Claude Agent",
+  help: "About Claude Agent",
   hint: "Let a Bot be run by the Claude Code you installed and signed in to on this computer: turn it on per Bot under \"Runs on\" in the Bot panel. Deskfolk only starts it and asks it about itself; it never handles your Claude sign-in or credentials. Usage counts against the account it is signed in with; the app's own judgements (reading lines, filing, who joins in) still run on your endpoints.",
   path: "Location",
   version: "Version",
-  account: "Account",
   network: "Network",
   direct: "Direct",
   proxySource: { env: "environment", system: "system proxy" } as Record<string, string>,
@@ -91,10 +91,11 @@ export const en: CopyShape<typeof zh> = {
   failed: "Could not check; try again",
   localOnly: "Only visible on the computer itself.",
   subscription: (plan: string) => `Claude ${plan} subscription`,
-  reads: (dir: string) => `reads ${dir}`,
   accounts: {
-    heading: "Other accounts",
-    hint: "When more than one Claude account is signed in on this computer (each in its own Claude Code config directory, CLAUDE_CONFIG_DIR), add the directories here, then pick in each Bot's panel whose plan it spends; a Bot left alone uses the account above. Signing in happens in a terminal; Deskfolk keeps only the directory.",
+    heading: "Accounts",
+    help: "About accounts",
+    hint: "Each account is a Claude Code config directory (CLAUDE_CONFIG_DIR). When more than one Claude account is signed in on this computer, add the others' directories here, then pick in each Bot's panel whose plan it spends; a Bot left alone uses the default account. Signing in happens in a terminal; Deskfolk keeps only the directory. Under each account is its usage, shown once a Bot runs on it.",
+    defaultTag: "Default",
     placeholder: "Config directory, such as ~/.claude-b",
     add: "Add",
     remove: "Remove",
@@ -112,7 +113,6 @@ export const en: CopyShape<typeof zh> = {
   } as Record<string, string>,
   usage: {
     title: "Claude usage",
-    heading: "Usage",
     fiveHour: "5-hour",
     sevenDay: "7-day",
     fiveHourShort: "5h",
