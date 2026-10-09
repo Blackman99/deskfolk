@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Spend on a phone has one quiet top bar
+
+- On a phone, Spend's top is a single bar: a bare back arrow and the title, the period as a soft pill, and a bare refresh icon. Overview and Call details are underline tabs across the full width, resting on the bar's bottom rule, instead of a segmented box that stopped short of the edge.
+
 ### Endpoint cards are tighter
 
 - Settings › Models › Endpoints no longer marks every endpoint "Configured"; only an endpoint still missing its key carries a badge. The address line is gone too (hover the name to see it), and on a desktop each endpoint is one line: name and plan, default model, model count, then its actions, with every card's picker lined up. "Set as default" is a star button, and the list link reads "3 models".

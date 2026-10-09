@@ -477,13 +477,29 @@
 		}
 	}
 
+	/*
+	 * Phone: one quiet app bar. Back and refresh are bare icons, the period is
+	 * a soft pill, and the two sections are underline tabs resting on the
+	 * header's bottom rule, the way Settings and a Bot's tabs read.
+	 */
 	@container spend (max-width: 620px) {
 		.spend-head {
-			padding: max(12px, env(safe-area-inset-top, 0px)) max(14px, env(safe-area-inset-right, 0px)) 0 max(14px, env(safe-area-inset-left, 0px));
+			padding: max(6px, env(safe-area-inset-top, 0px)) max(6px, env(safe-area-inset-right, 0px)) 0 max(6px, env(safe-area-inset-left, 0px));
+			border-bottom: 0;
+			box-shadow: inset 0 -1px 0 var(--line);
 		}
 
 		.spend-toolbar {
-			gap: 10px;
+			gap: 4px;
+			min-height: 48px;
+		}
+
+		.spend-title-area {
+			gap: 2px;
+		}
+
+		.spend-title-area:not(:has(.back)) {
+			padding-left: 8px;
 		}
 
 		.heading p {
@@ -491,52 +507,105 @@
 		}
 
 		h1 {
-			font-size: 18px;
+			font-size: 17px;
+			font-weight: 600;
+			letter-spacing: -0.01em;
+		}
+
+		.spend-header-actions {
+			gap: 2px;
+		}
+
+		.icon-button {
+			width: 44px;
+			height: 44px;
+			border-color: transparent;
+			background: transparent;
+			border-radius: var(--radius-full);
+			color: var(--ink-secondary);
+		}
+
+		.icon-button:hover:not(:disabled) {
+			border-color: transparent;
 		}
 
 		.period-control {
-			border-radius: var(--radius-sm);
+			border-color: transparent;
+			border-radius: var(--radius-full);
+			background: var(--line-subtle);
+		}
+
+		.period-control:hover {
+			border-color: transparent;
 		}
 
 		.period-control select {
 			max-width: 130px;
-			font-size: 12px;
-			height: 44px;
-			padding-left: 28px;
+			font-size: 13px;
+			height: 34px;
+			padding-left: 30px;
 			padding-right: 26px;
 		}
 
 		.period-icon {
-			left: 8px;
+			left: 10px;
 		}
 
 		.period-chevron {
 			right: 8px;
 		}
 
-		.icon-button {
-			width: 44px;
-			height: 44px;
+		.expandable-controls {
+			padding: 0 8px;
 		}
 
 		.spend-navigation {
-			margin-top: 10px;
+			position: relative;
+			margin-top: 2px;
 			padding-top: 0;
 			border-top: 0;
 		}
 
 		.view-tabs {
-			width: 100%;
+			flex: 1;
 			display: flex;
+			gap: 0;
+			padding: 0;
+			background: transparent;
+			border-radius: 0;
 		}
 
 		.tab-btn {
 			flex: 1;
-			min-height: 40px;
+			min-height: 44px;
 			display: flex;
 			align-items: center;
 			justify-content: center;
-			font-size: 13px;
+			padding: 10px 8px 8px;
+			border-bottom: 2px solid transparent;
+			border-radius: 0;
+			color: var(--ink-secondary);
+			font-size: 14px;
+			font-weight: 500;
+		}
+
+		.tab-btn.is-active {
+			background: transparent;
+			box-shadow: none;
+			color: var(--accent);
+			border-bottom-color: var(--accent);
+		}
+
+		.tab-btn:focus-visible {
+			outline-offset: -2px;
+		}
+
+		/* The refresh note must not take width from the tabs. */
+		.update-status {
+			position: absolute;
+			right: 8px;
+			top: -14px;
+			pointer-events: none;
 		}
 
 		.chip {
@@ -568,15 +637,6 @@
 	}
 
 	@container spend (max-width: 360px) {
-		.spend-head {
-			padding-left: 10px;
-			padding-right: 10px;
-		}
-
-		.spend-toolbar {
-			gap: 6px;
-		}
-
 		.period-control select {
 			max-width: 110px;
 			font-size: 12px;
