@@ -48,3 +48,27 @@ test("a rung goes when its endpoint stops listing its model or is deleted; the r
   await store.deleteProvider("p-2");
   expect(store.modelLadder()).toEqual([{ provider_id: "p-1", model: "a" }, { provider_id: "p-1", model: "c" }]);
 });
+
+test("a rung may be a Claude model of yours (ADR 0076): a valid name and effort, on a listed account; one model may climb its own efforts", () => {
+  const store = fixture();
+  store.setClaudeCodeConfigDirs(["/opt/claude-b"]);
+  const rungs = [
+    { provider_id: "p-1", model: "a" },
+    { runner: "claude_code" as const, model: "sonnet", effort: null, config_dir: null },
+    { runner: "claude_code" as const, model: "opus", effort: "high" as const, config_dir: "/opt/claude-b" },
+    { runner: "claude_code" as const, model: "opus", effort: "max" as const, config_dir: "/opt/claude-b" },
+  ];
+  expect(store.setModelLadder(rungs)).toEqual(rungs);
+  expect(store.modelLadder()).toEqual(rungs);
+  expect(() => store.setModelLadder([rungs[1], rungs[1]])).toThrow("twice");
+  expect(() => store.setModelLadder([{ runner: "claude_code", model: "bad name!", effort: null, config_dir: null }])).toThrow("Claude model name");
+  expect(() => store.setModelLadder([{ runner: "claude_code", model: "opus", effort: "huge", config_dir: null }])).toThrow("effort");
+  expect(() => store.setModelLadder([{ runner: "claude_code", model: "opus", effort: null, config_dir: "/opt/elsewhere" }])).toThrow("Claude accounts listed");
+  // An endpoint's model list changing leaves Claude rungs where they are.
+  store.patchProviderSync("p-1", { models: ["b"] });
+  expect(store.modelLadder()).toEqual(rungs.slice(1));
+  // The account a rung spends stays listed until that rung goes.
+  expect(() => store.setClaudeCodeConfigDirs([])).toThrow("model ladder");
+  store.setModelLadder(rungs.slice(1, 2));
+  expect(store.setClaudeCodeConfigDirs([])).toEqual([]);
+});

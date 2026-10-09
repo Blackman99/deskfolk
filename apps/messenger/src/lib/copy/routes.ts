@@ -20,7 +20,8 @@ export const zh = {
     ticket_override: "这张任务指定的",
     capability_filter: "这件活要看图，换了能看图的",
     escalation: "接连没过或出错，提了一档思考",
-    escalation_model: "接连没过、思考档已到顶，换到阶梯上往上一个模型"
+    escalation_model: "接连没过、思考档已到顶，换到阶梯上往上一个模型",
+    claude_code: "由你的 Claude Code 来跑"
   } as Record<string, string>,
   markModel: "记为模型问题",
   markedModel: "已记为模型问题",
@@ -108,7 +109,8 @@ export const en: CopyShape<typeof zh> = {
     ticket_override: "Set on this ticket",
     capability_filter: "The work needs pictures seen; moved to a model that sees them",
     escalation: "Kept failing; one thinking level higher",
-    escalation_model: "Kept failing at the top thinking level; one model up the ladder"
+    escalation_model: "Kept failing at the top thinking level; one model up the ladder",
+    claude_code: "Run by your Claude Code"
   } as Record<string, string>,
   markModel: "Mark as the model's problem",
   markedModel: "Marked as the model's problem",

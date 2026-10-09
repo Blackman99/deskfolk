@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { ModelLadderRung, Provider } from "@real-bot/protocol";
+import type { ClaudeCodeStatus, ModelLadderRung, Provider } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
 import { click, render } from "../test-render.ts";
 import ModelLadderCard from "./ModelLadderCard.svelte";
@@ -29,10 +29,10 @@ function fakeApi(items: ModelLadderRung[], opts: { available?: boolean; fail?: b
 }
 
 /** The card as Models shows it: the ladder read by the page that holds it. */
-function card(api: ModelLadderApi) {
+function card(api: ModelLadderApi, claudeCode: (() => Promise<ClaudeCodeStatus>) | null = null) {
   const ladder = new ModelLadder(() => api);
   void ladder.load();
-  return render(ModelLadderCard, { ladder, providers, t });
+  return render(ModelLadderCard, { ladder, providers, claudeCode, t });
 }
 
 const names = (host: HTMLElement) => [...host.querySelectorAll(".ladder-name")].map((el) => el.textContent);
@@ -178,4 +178,70 @@ test("each rung shows where its model comes from, as the picker that added it di
   // The mark is drawn, not written: the row still reads as the model and its endpoint.
   expect(names(view.host)).toEqual(["mimo · 小米", "grok · My CPA", "old · gone"]);
   view.close();
+});
+
+const own = { logged_in: true, auth_method: "claude.ai", subscription_type: "pro", email: "me@example.com" };
+function claudeStatus(accounts: NonNullable<ClaudeCodeStatus["accounts"]> = [{ config_dir: null, config_directory: null, ...own, error: null, login_command: "claude auth login" }]): ClaudeCodeStatus {
+  return {
+    path: "/u/claude", source: "path", version: "2.1.294", sdk_version: "2.1.289", outdated: false, ...own, base_url_set: false,
+    proxy: null, proxy_source: null, checked_at: "2026-10-08T00:00:00.000Z", error: null, accounts,
+  };
+}
+const optionTexts = (host: HTMLElement) => [...host.querySelectorAll(".real-select-option")].map((el) => el.textContent?.replace(/\s+/g, " ").trim());
+
+test("with Claude Code signed in, the Claude models Agent settings offer can be added (ADR 0076), at the default effort on the default account", async () => {
+  const { api, saved } = fakeApi([{ provider_id: "p1", model: "light" }]);
+  const view = card(api, async () => claudeStatus());
+  await sleep(0);
+  click(view.host.querySelector(".ladder-add .real-select-trigger")!);
+  await sleep(0);
+  expect([...view.host.querySelectorAll(".real-select-group")].at(-1)?.textContent).toBe(t.sidebar.botRunnerClaude);
+  expect(optionTexts(view.host).slice(-4)).toEqual(["sonnet", "opus", "haiku", "fable"].map((model) => `${model} ${t.claudeAgent.title}`));
+  click([...view.host.querySelectorAll(".real-select-option")].at(-3)!);
+  await sleep(0);
+  expect(saved).toEqual([[{ provider_id: "p1", model: "light" }, { runner: "claude_code", model: "opus", effort: null, config_dir: null }]]);
+  view.close();
+
+  // No Claude Code to ask (the phone), or not signed in: none are offered.
+  for (const status of [async () => { throw new Error("404"); }, async () => claudeStatus([{ config_dir: null, config_directory: null, ...own, logged_in: false, error: null, login_command: "x" }])]) {
+    const none = card(fakeApi([]).api, status);
+    await sleep(0);
+    click(none.host.querySelector(".ladder-add .real-select-trigger")!);
+    await sleep(0);
+    expect(optionTexts(none.host)).toEqual(["light Default", "mid Default", "heavy Other"]);
+    none.close();
+  }
+});
+
+test("a Claude rung picks its own effort, and its account when there is more than one; each change saved in place", async () => {
+  const opus = { runner: "claude_code" as const, model: "opus", effort: null, config_dir: null };
+  const { api, saved } = fakeApi([{ provider_id: "p1", model: "light" }, opus]);
+  const view = card(api, async () => claudeStatus([
+    { config_dir: null, config_directory: null, ...own, error: null, login_command: "claude auth login" },
+    { config_dir: "/opt/claude-b", config_directory: "/opt/claude-b", ...own, email: "b@example.com", error: null, login_command: "x" },
+  ]));
+  await sleep(0);
+  expect(names(view.host)).toEqual(["light · Default", "opus"]);
+  const tune = view.host.querySelector("[data-rung-claude]")!;
+  expect(view.host.querySelector('[data-rung="opus"] [data-model-source]')?.getAttribute("data-model-source")).toBe("claude-agent");
+  const [effort, account] = [...tune.querySelectorAll<HTMLElement>(".real-select-trigger")];
+  expect(effort!.textContent).toContain(t.modelLadder.effort(t.sidebar.botAgentEffortDefault));
+  click(effort!);
+  await sleep(0);
+  click([...tune.querySelectorAll(".real-select-option")].at(-1)!);
+  await sleep(0);
+  expect(saved.at(-1)).toEqual([{ provider_id: "p1", model: "light" }, { ...opus, effort: "max" }]);
+  click(view.host.querySelector("[data-rung-claude]")!.querySelectorAll<HTMLElement>(".real-select-trigger")[1]!);
+  await sleep(0);
+  click([...view.host.querySelector("[data-rung-claude]")!.querySelectorAll(".real-select-option")].at(-1)!);
+  await sleep(0);
+  expect(saved.at(-1)).toEqual([{ provider_id: "p1", model: "light" }, { ...opus, effort: "max", config_dir: "/opt/claude-b" }]);
+  expect(account).toBeDefined();
+  view.close();
+
+  // One account only: no account to pick.
+  const single = card(fakeApi([opus]).api, async () => claudeStatus());
+  await sleep(0);
+  expect(single.host.querySelectorAll("[data-rung-claude] .real-select-trigger")).toHaveLength(1);
+  single.close();
 });

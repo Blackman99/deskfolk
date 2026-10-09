@@ -174,7 +174,7 @@
 					{@render endpoints()}
 				{:else if section === 'ladder'}
 					<p class="muted models-intro">{t.modelLadder.hint}</p>
-					<ModelLadderCard {ladder} {providers} {t} />
+					<ModelLadderCard {ladder} {providers} claudeCode={runtime.client ? () => runtime.client!.claudeCode() : null} {t} />
 				{:else if section === 'reader'}
 					<p class="muted models-intro">{t.readerModel.hint}</p>
 					<ReaderModelCard

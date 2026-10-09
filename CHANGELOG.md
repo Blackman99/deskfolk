@@ -6,6 +6,13 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Claude models on the model ladder
+
+- Settings › Models › Model ladder can hold the Claude models Claude Agent settings offer (sonnet, opus, haiku, fable) once your Claude Code is installed and signed in. Each Claude rung picks its own effort and, with several accounts listed, its account; the same model may take another rung at another effort.
+- A job that climbs onto a Claude rung has its next turn worked by your Claude Code on that rung, as a Claude Agent Bot's turns are; a rung above it on an endpoint takes it back. A Claude Agent Bot's own model still does not climb.
+- A Bot's `update_model_settings` can keep, move or drop a Claude rung, never add one. An account a rung spends cannot be taken off the list until that rung is gone.
+- Fixed: a Bot's `update_model_settings` with only `model_ladder` was refused.
+
 ### The board says what was dropped and when a job has ended
 
 - A ticket its lead dropped now reads "Dropped" on the board, with the reason on its card ("Dropped: …"); one you set aside yourself still reads "Parked". The ticket list's counts and the completion percentage leave both out — "3 open · 8 in all · 2 dropped/set aside" — and the job's header and the switcher count the same way.

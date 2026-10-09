@@ -226,6 +226,27 @@ test("a Bot on the app's own loop is untouched by any of it", async () => {
   expect(h.seen.options).toBeUndefined();
 });
 
+test("a Bot on the app's own loop whose job climbed onto a Claude rung of the ladder (ADR 0076) has the turn worked by Claude Code on that rung", async () => {
+  const h = await harness(async function* () {
+    yield result("换 Claude 做完了");
+  }, { runner: null });
+  for (const key of ["engine_level", "schema_min_compatible"]) {
+    const value = key === "schema_min_compatible" ? Math.min(ENGINE_LEVELS.routing, SCHEMA_LEVEL) : ENGINE_LEVELS.routing;
+    h.store.db.run("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [key, String(value)]);
+  }
+  const provider = (await h.store.listProviders())[0]!;
+  h.store.setModelLadder([{ provider_id: provider.id, model: "fixture" }, { runner: "claude_code", model: "opus", effort: "max", config_dir: null }]);
+  // Its hand-overs failed past every thinking level the endpoint's model has to give: up the ladder.
+  Object.defineProperty(h.store, "workEscalation", { value: () => 9 });
+  await h.post("再交一次");
+  expect(h.lines("bot")).toEqual(["换 Claude 做完了"]);
+  expect(h.seen.options?.model).toBe("opus");
+  expect(h.seen.options?.effort).toBe("max");
+  const route = h.store.db.query<{ model: string; thinking_level: string; reason_code: string | null; base_reason_code: string | null }, []>(
+    "SELECT model, thinking_level, reason_code, base_reason_code FROM turn_route_decisions").get();
+  expect(route).toEqual({ model: "opus", thinking_level: "max", reason_code: "claude_code", base_reason_code: "escalation_model" });
+});
+
 test("a write inside the workspace runs without asking and is cited with the reply", async () => {
   const h = await harness(async function* ({ useTool, root }) {
     const file = join(root, "notes.md");

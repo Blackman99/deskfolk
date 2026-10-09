@@ -1,5 +1,5 @@
 /** Endpoint and model tools. */
-import { isLocalEndpoint, isReaderClaudeModel, type ApiFormat, type Provider, type ReaderEndpointModel, type ReaderModel } from "@real-bot/protocol";
+import { isLadderClaudeRung, isLocalEndpoint, isReaderClaudeModel, type ApiFormat, type ModelLadderClaudeRung, type ModelLadderRung, type Provider, type ReaderEndpointModel, type ReaderModel } from "@real-bot/protocol";
 import { runCollabTool, type ToolCtx, type ToolResult } from "../collab-tools";
 import { HttpError } from "../errors";
 import { normalizeModelCatalog } from "../models";
@@ -35,7 +35,9 @@ function modelSettingsView(store: Store, settings: { reader_model?: ReaderModel 
     reader_model: !reader ? null : isReaderClaudeModel(reader) ? { runner: reader.runner, model: reader.model, config_dir: reader.config_dir }
       : { endpoint_id: reader.provider_id, model: reader.model },
     organizer_model: organizer ? { endpoint_id: organizer.provider_id, model: organizer.model } : null,
-    model_ladder: store.modelLadder().map((rung) => ({ endpoint_id: rung.provider_id, model: rung.model })),
+    // A Claude rung (ADR 0076) is shown as the user set it: the Bot may keep, move or drop it, never add one.
+    model_ladder: store.modelLadder().map((rung) => (isLadderClaudeRung(rung) ? { runner: rung.runner, model: rung.model, effort: rung.effort, config_dir: rung.config_dir }
+      : { endpoint_id: rung.provider_id, model: rung.model })),
   };
 }
 
@@ -93,15 +95,25 @@ export async function updateModelSettings(ctx: ToolCtx, args: Record<string, unk
   if (given("reader_model")) patch.reader_model = args.reader_model === null ? null : endpointModelOf(args.reader_model, "reader_model");
   // The organizing model is an endpoint's only, so a Claude shape falls through to the same refusal as any wrong one.
   if (given("organizer_model")) patch.organizer_model = args.organizer_model === null ? null : endpointModelOf(args.organizer_model, "organizer_model");
-  let ladder: Array<{ provider_id: string; model: string }> | undefined;
+  let ladder: ModelLadderRung[] | undefined;
   if (given("model_ladder")) {
     if (!Array.isArray(args.model_ladder)) throw new HttpError(422, "invalid_args", "model_ladder must be a list of { endpoint_id, model }");
-    ladder = args.model_ladder.map((rung) => endpointModelOf(rung, "model_ladder"));
+    const current = ctx.store.modelLadder();
+    ladder = args.model_ladder.map((rung) => {
+      if (!rung || typeof rung !== "object" || !("runner" in rung)) return endpointModelOf(rung, "model_ladder");
+      // Only the user puts their Claude plan on the ladder, as only the user moves a Bot onto it: one already there may stay.
+      const named = rung as ModelLadderClaudeRung;
+      const kept = current.find((existing) => isLadderClaudeRung(existing) && existing.model === named.model
+        && existing.effort === (named.effort ?? null) && existing.config_dir === (named.config_dir ?? null));
+      if (!kept) throw new HttpError(403, "forbidden", "only the user can put a Claude model on the ladder; it spends their Claude plan");
+      return kept;
+    });
   }
   const previousBots = snapshotBotPins(ctx.store);
   const settings = await mutateConfiguration(ctx, () => {
     if (ladder) ctx.store.setModelLadder(ladder);
-    return ctx.store.patchSettingsSync(patch);
+    // The ladder alone changes no setting.
+    return Object.keys(patch).length > 0 ? ctx.store.patchSettingsSync(patch) : ctx.store.settingsCached();
   });
   return {
     ok: true,

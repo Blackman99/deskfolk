@@ -1,12 +1,25 @@
 <script lang="ts">
-	import { MODEL_LADDER_MAX, type ModelLadderRung, type Provider } from '@real-bot/protocol';
-	import { tick } from 'svelte';
+	import {
+		CLAUDE_EFFORTS,
+		CLAUDE_MODEL_ALIASES,
+		isLadderClaudeRung,
+		MODEL_LADDER_MAX,
+		sameLadderRung,
+		type ClaudeCodeStatus,
+		type ClaudeEffort,
+		type ModelLadderClaudeRung,
+		type ModelLadderRung,
+		type Provider
+	} from '@real-bot/protocol';
+	import { onMount, tick } from 'svelte';
 	import { flip } from 'svelte/animate';
 	import Select from '../Select.svelte';
 	import type { Copy } from '../copy.ts';
 	import type { ModelLadder } from './model-ladder.svelte.ts';
 	import { beginLadderDrag, ladderPlace, movedTo, type LadderDrag } from './ladder-drag.ts';
-	import { endpointModelOptions, endpointSource } from '../model-source.ts';
+	import { claudeAgentSource, endpointModelOptions, endpointSource } from '../model-source.ts';
+	import { thinkingLevelLabel } from '../copy.ts';
+	import { claudeAccountOptions, claudeReady } from './claude-agent.ts';
 	import ModelSourceMark from '../ModelSourceMark.svelte';
 	import { prefersReducedMotion } from '../reduced-motion.ts';
 
@@ -15,31 +28,93 @@
 		/** Read and saved by its owner, which also needs it before this page opens. */
 		ladder: ModelLadder;
 		providers: readonly Provider[];
+		/**
+		 * What the daemon finds of your Claude Code (ADR 0076): once it is there and signed in, the
+		 * Claude models Agent settings offer can be rungs too. Absent or failing (the phone cannot ask),
+		 * none are offered, and the ones already on the ladder stay.
+		 */
+		claudeCode?: (() => Promise<ClaudeCodeStatus>) | null;
 		t: Copy;
 	}
 
-	let { ladder, providers, t }: Props = $props();
+	let { ladder, providers, claudeCode = null, t }: Props = $props();
+
+	let claudeStatus = $state<ClaudeCodeStatus | null>(null);
+	onMount(() => {
+		void claudeCode?.().then(
+			(status) => (claudeStatus = status),
+			() => (claudeStatus = null)
+		);
+	});
 
 	let list = $state<HTMLOListElement | null>(null);
 	/** The rung being dragged and where it would land; the others make room while it is held. */
 	let drag = $state<LadderDrag | null>(null);
 
-	const key = (rung: ModelLadderRung) => JSON.stringify({ provider_id: rung.provider_id, model: rung.model });
+	const key = (rung: ModelLadderRung) =>
+		JSON.stringify(
+			isLadderClaudeRung(rung)
+				? { runner: rung.runner, model: rung.model, effort: rung.effort, config_dir: rung.config_dir }
+				: { provider_id: rung.provider_id, model: rung.model }
+		);
 	const providerOf = (id: string) => providers.find((provider) => provider.id === id);
 	const providerName = (id: string) => providerOf(id)?.name ?? id;
-	const named = (rung: ModelLadderRung) => (providers.length > 1 ? `${rung.model} · ${providerName(rung.provider_id)}` : rung.model);
+	const named = (rung: ModelLadderRung) =>
+		isLadderClaudeRung(rung)
+			? `${rung.model} · ${t.claudeAgent.title}`
+			: providers.length > 1
+				? `${rung.model} · ${providerName(rung.provider_id)}`
+				: rung.model;
 
-	/** What is listed and not on the ladder yet. */
-	const addable = $derived(
-		endpointModelOptions(
+	/** Claude models are added at Claude Code's default effort, on this computer's default account; each rung then picks its own. */
+	const claudeRung = (model: string): ModelLadderClaudeRung => ({ runner: 'claude_code', model, effort: null, config_dir: null });
+	const onLadder = (rung: ModelLadderRung) => ladder.rungs.some((kept) => sameLadderRung(kept, rung));
+
+	/** What is listed and not on the ladder yet, then the Claude models Agent settings offer. */
+	const addable = $derived([
+		...endpointModelOptions(
 			providers.map((provider) => ({
 				...provider,
-				models: provider.models.filter((model) => !ladder.rungs.some((rung) => rung.provider_id === provider.id && rung.model === model))
+				models: provider.models.filter((model) => !onLadder({ provider_id: provider.id, model }))
 			})),
 			t,
 			(provider_id, model) => key({ provider_id, model })
-		)
-	);
+		),
+		...(claudeReady(claudeStatus)
+			? CLAUDE_MODEL_ALIASES.filter((model) => !onLadder(claudeRung(model))).map((model) => ({
+					value: key(claudeRung(model)),
+					label: model,
+					hint: t.claudeAgent.title,
+					group: t.sidebar.botRunnerClaude,
+					source: claudeAgentSource(t)
+				}))
+			: [])
+	]);
+
+	const effortOptions = $derived([
+		{ value: '', label: t.modelLadder.effort(t.sidebar.botAgentEffortDefault) },
+		...CLAUDE_EFFORTS.map((level) => ({ value: level, label: t.modelLadder.effort(thinkingLevelLabel(t.sidebar.thinkingLevels, level)) }))
+	]);
+	/**
+	 * The accounts a Claude rung can spend, named short enough to sit beside its effort: this
+	 * computer's default, else the account's email (its directory when there is none).
+	 */
+	const accountOptions = (current: string) =>
+		claudeAccountOptions(claudeStatus, current, t).map((option) => ({
+			value: option.value,
+			label: option.value
+				? (claudeStatus?.accounts?.find((account) => account.config_dir === option.value)?.email ?? option.value)
+				: t.sidebar.botAgentAccountDefault
+		}));
+	/** An account is picked per rung only when there is more than one, or the rung is on one already. */
+	const accountsShown = (rung: ModelLadderClaudeRung) => (claudeStatus?.accounts?.length ?? 0) > 1 || Boolean(rung.config_dir);
+
+	/** A Claude rung's effort or account changed: the ladder is saved with it in its place. */
+	function retune(index: number, change: Partial<Pick<ModelLadderClaudeRung, 'effort' | 'config_dir'>>): void {
+		const rung = ladder.rungs[index];
+		if (ladder.busy || !rung || !isLadderClaudeRung(rung)) return;
+		void ladder.save(ladder.rungs.map((kept, at) => (at === index ? { ...rung, ...change } : kept)));
+	}
 
 	/** Where a rung stands now, counting the place a held rung would land in. */
 	const placeOf = (index: number) => (drag ? ladderPlace(index, drag.from, drag.slot) : index);
@@ -93,7 +168,8 @@
 			{/if}
 			<ol class="ladder-list" class:is-dragging={drag !== null} bind:this={list}>
 				{#each ladder.rungs as rung, index (key(rung))}
-					{@const provider = providerOf(rung.provider_id)}
+					{@const claude = isLadderClaudeRung(rung) ? rung : null}
+					{@const provider = isLadderClaudeRung(rung) ? undefined : providerOf(rung.provider_id)}
 					{@const place = placeOf(index)}
 					<!-- flip runs as a Web Animation, which the global reduced-motion rule does not reach. -->
 					<li
@@ -109,10 +185,36 @@
 					>
 						<span class="ladder-step" aria-hidden="true">{place + 1}</span>
 						<div class="ladder-body">
-							<span class="ladder-name" title={named(rung)}><span class="ladder-model">{rung.model}</span>{#if providers.length > 1}<span class="ladder-sep">{' · '}</span><span class="ladder-provider">{providerName(rung.provider_id)}</span>{/if}</span>
-							<!-- Where the model comes from, as in the picker that added it; an endpoint gone since has none. -->
-							{#if provider}
-								<span class="ladder-source"><ModelSourceMark source={endpointSource(provider, t)} /></span>
+							{#if claude}
+								<!-- A Claude rung (ADR 0076) is tuned as Agent settings tune a Bot: its effort, and the account it spends. -->
+								<span class="ladder-name" title={named(rung)}><span class="ladder-model">{rung.model}</span></span>
+								<span class="ladder-source"><ModelSourceMark source={claudeAgentSource(t)} /></span>
+								<span class="ladder-tune" data-rung-claude>
+									<Select
+										value={claude.effort ?? ''}
+										options={effortOptions}
+										size="sm"
+										ariaLabel={t.modelLadder.effortOf(rung.model)}
+										disabled={ladder.busy}
+										onchange={(value) => retune(index, { effort: (value || null) as ClaudeEffort | null })}
+									/>
+									{#if accountsShown(claude)}
+										<Select
+											value={claude.config_dir ?? ''}
+											options={accountOptions(claude.config_dir ?? '')}
+											size="sm"
+											ariaLabel={t.modelLadder.accountOf(rung.model)}
+											disabled={ladder.busy}
+											onchange={(value) => retune(index, { config_dir: value || null })}
+										/>
+									{/if}
+								</span>
+							{:else if !isLadderClaudeRung(rung)}
+								<span class="ladder-name" title={named(rung)}><span class="ladder-model">{rung.model}</span>{#if providers.length > 1}<span class="ladder-sep">{' · '}</span><span class="ladder-provider">{providerName(rung.provider_id)}</span>{/if}</span>
+								<!-- Where the model comes from, as in the picker that added it; an endpoint gone since has none. -->
+								{#if provider}
+									<span class="ladder-source"><ModelSourceMark source={endpointSource(provider, t)} /></span>
+								{/if}
 							{/if}
 							<button type="button" class="ladder-button ladder-remove" aria-label={t.modelLadder.remove(rung.model)} title={t.modelLadder.remove(rung.model)} disabled={ladder.busy} onclick={() => void ladder.save(ladder.rungs.filter((_, at) => at !== index))}>×</button>
 							<!-- Not disabled while a save is out: the arrow keys would lose the focus they move with. -->
@@ -313,6 +415,24 @@
 		white-space: nowrap;
 		font-size: 12px;
 		color: var(--muted);
+	}
+
+	/* A Claude rung's effort and account, where an endpoint rung names its endpoint. */
+	.ladder-tune {
+		grid-column: 2;
+		grid-row: 2;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px 6px;
+		min-width: 0;
+		padding: 2px 0;
+	}
+
+	/* Each picker as wide as what it says, not the row. */
+	.ladder-tune > :global(.real-select) {
+		width: auto;
+		min-width: 0;
+		max-width: 100%;
 	}
 
 	.ladder-button {

@@ -26,7 +26,7 @@ import type {
   SpawnedProcess,
   SpawnOptions,
 } from "@anthropic-ai/claude-agent-sdk";
-import type { ClientEvent, Message, Spend, Turn } from "@real-bot/protocol";
+import type { ClaudeEffort, ClientEvent, Message, ModelLadderClaudeRung, Spend, Turn } from "@real-bot/protocol";
 import { withSystemProxy } from "../claude-code/proxy";
 import { claudeLaunch, killsTree } from "../claude-code/spawn";
 import { tildeDir } from "../claude-code/account";
@@ -111,8 +111,12 @@ export type AgentRunnerDeps = {
 };
 
 export type AgentRunner = {
-  runAgentTurn(turnId: string): Promise<void>;
+  /** `rung`: a Claude rung of the model ladder the job climbed to (ADR 0076), worked on in place of the Bot's own Claude settings. */
+  runAgentTurn(turnId: string, rung?: ModelLadderClaudeRung): Promise<void>;
 };
+
+/** What a Claude Agent turn asks Claude Code for: the model, the effort, and the account it spends. */
+type AgentSettings = { model: string | null; effort: ClaudeEffort | null; configDir: string | null; climbed: boolean };
 
 type ModelTotals = { input: number; output: number; cached: number; cost: number };
 
@@ -295,7 +299,7 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
     return child as unknown as SpawnedProcess;
   }
 
-  async function runAgentTurn(turnId: string): Promise<void> {
+  async function runAgentTurn(turnId: string, rung?: ModelLadderClaudeRung): Promise<void> {
     const live = lives.get(turnId);
     if (!live) return;
     live.agent = true;
@@ -307,6 +311,9 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
       return;
     }
     const bot = store.getBot(current.bot_id);
+    const settings: AgentSettings = rung
+      ? { model: rung.model, effort: rung.effort, configDir: rung.config_dir, climbed: true }
+      : { model: bot.agent_model ?? null, effort: bot.agent_effort ?? null, configDir: bot.agent_config_dir ?? null, climbed: false };
     const locale = store.settingsCached().locale;
     live.locale = locale;
     const status = deps.claudeCode ? await deps.claudeCode.current() : null;
@@ -315,8 +322,8 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
       deps.failTurn(turnId, "agent_missing");
       return;
     }
-    // The Bot's own account: the daemon's environment, or a config directory listed in Settings.
-    const configDir = bot.agent_config_dir ?? null;
+    // The Bot's own account, or the rung's: the daemon's environment, or a config directory listed in Settings.
+    const configDir = settings.configDir;
     if ((accountOf(status, configDir) ?? status).logged_in === false) {
       const where = configDir ? tildeDir(configDir) : null;
       deps.failTurn(turnId, "agent_signed_out", locale === "en"
@@ -331,7 +338,7 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
     }
     if (!(await slot(turnId, live))) return;
     try {
-      await runSession(turnId, live, current, bot, status.path, status, root);
+      await runSession(turnId, live, current, bot, settings, status.path, status, root);
     } finally {
       release();
     }
@@ -342,6 +349,7 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
     live: Live,
     current: Turn,
     bot: ReturnType<Store["getBot"]>,
+    settings: AgentSettings,
     executable: string,
     network: Parameters<typeof withSystemProxy>[1],
     root: string,
@@ -357,12 +365,12 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
       triggerBody = "";
     }
     // The route row says what the turn ran on, so its hop and failure counts are kept; it never
-    // feeds a Bot's endpoint default (`reason_code` claude_code).
+    // feeds a Bot's endpoint default (`reason_code` claude_code). A climb onto a ladder rung says so beside it.
     try {
       store.recordTurnRoute({
         turnId,
-        decision: { providerId: "", model: bot.agent_model ?? "default", thinkingLevel: bot.agent_effort ?? "default",
-          signature: classifyMessage(triggerBody), reasonCode: "claude_code" },
+        decision: { providerId: "", model: settings.model ?? "default", thinkingLevel: settings.effort ?? "default",
+          signature: classifyMessage(triggerBody), reasonCode: "claude_code", ...(settings.climbed ? { baseReasonCode: "escalation_model" } : {}) },
         continuesPrevious: false,
       });
     } catch {
@@ -408,7 +416,7 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
       /** Per model, what the spend rows already carry: a result's usage is the session's so far. */
       billed: new Map<string, ModelTotals>(),
       stderr: "",
-      model: bot.agent_model as string | null,
+      model: settings.model,
       hopIds: new Set<string>(),
       /** Something went in that Claude Code has not answered with a result yet: an interrupt now cuts a step. */
       busy: false,
@@ -773,7 +781,7 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
       PostToolUseFailure: [{ hooks: [(raw, toolUseId) => postToolUse(raw, toolUseId)] }],
       PostToolBatch: [{ hooks: [(raw) => postToolBatch(raw)] }],
     };
-    const env = withSystemProxy(claudeChildEnv(process.env, bot.agent_config_dir ?? null), network);
+    const env = withSystemProxy(claudeChildEnv(process.env, settings.configDir), network);
     env.CLAUDE_AGENT_SDK_CLIENT_APP = `deskfolk/${safeVersion()}`;
     env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS = "1";
     env.CLAUDE_CODE_STARTUP_FAILURE_RESULTS = "1";
@@ -795,8 +803,8 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
       disallowedTools: ["AskUserQuestion"],
       systemPrompt: { type: "preset", preset: "claude_code", append },
       maxTurns: AGENT_MAX_TURNS,
-      ...(bot.agent_model ? { model: bot.agent_model } : {}),
-      ...(bot.agent_effort ? { effort: bot.agent_effort } : {}),
+      ...(settings.model ? { model: settings.model } : {}),
+      ...(settings.effort ? { effort: settings.effort } : {}),
       hooks,
       canUseTool,
       abortController: live.abort,

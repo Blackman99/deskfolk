@@ -232,3 +232,18 @@ test("the profile sent back with a pin no endpoint lists any more saves, pin and
   expect(f.store.db.query("SELECT provider_id FROM bots WHERE id = ?").get(f.bot.id)).toEqual({ provider_id: "p-1" });
   expect(() => f.store.patchBot(f.bot.id, { model: "zz-never-listed", provider_id: null })).toThrow();
 });
+
+test("a climb onto a Claude rung (ADR 0076) hands the turn to Claude Code on that rung, pictures or not; past it the climb goes on", () => {
+  const f = climbing({ picture: true });
+  const sonnet = { runner: "claude_code" as const, model: "sonnet", effort: "high" as const, config_dir: null };
+  f.store.setModelLadder([{ provider_id: "p-1", model: "light" }, sonnet, { provider_id: "p-2", model: "heavy" }]);
+  f.store.db.run("UPDATE bots SET default_provider_id = 'p-1', default_model = 'light', default_thinking_level = 'low', default_source = 'confirmed' WHERE id = ?", [f.bot.id]);
+  f.store.db.run("UPDATE work_items SET escalation = 2 WHERE id = ?", [f.turn.work_item_id!]);
+  const onRung = f.routing.decideRoute(f.bot.id, f.creds, "看图", f.turn.id)!;
+  expect(onRung.claude).toEqual(sonnet);
+  expect(onRung.decision).toMatchObject({ providerId: "", model: "sonnet", thinkingLevel: "high", reasonCode: "escalation_model" });
+  f.store.db.run("UPDATE work_items SET escalation = 3 WHERE id = ?", [f.turn.work_item_id!]);
+  const past = f.routing.decideRoute(f.bot.id, f.creds, "看图", f.turn.id)!;
+  expect(past.claude).toBeUndefined();
+  expect(past.decision).toMatchObject({ providerId: "p-2", model: "heavy", reasonCode: "escalation_model" });
+});

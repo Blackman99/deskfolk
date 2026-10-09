@@ -186,7 +186,8 @@ add("POST", "sessions", { name: string, members: list(id) }, ["name", "members"]
 add("POST", "allow-rules", { kind_key: string, scope: string }, ["kind_key", "scope"]);
 add("POST", "turns/:id/mark-model"); add("DELETE", "turns/:id/mark-model");
 add("PATCH", "lessons/:id", { status: one("active", "retired"), action: one("warn", "block"), text: string }, [], true);
-get("model-ladder"); add("PUT", "model-ladder", { items: list(object({ provider_id: id, model: string }, ["provider_id", "model"])) }, ["items"]);
+get("model-ladder"); add("PUT", "model-ladder", { items: list(v => object({ provider_id: id, model: string }, ["provider_id", "model"])(v) ||
+  object({ runner: one("claude_code"), model: string, effort: nullable(one("low", "medium", "high", "xhigh", "max")), config_dir: nullable(string) }, ["runner", "model"])(v)) }, ["items"]);
 add("POST", "skills/:id/share"); add("PATCH", "shared-skills/:id", { enabled: bool }, ["enabled"], true); add("DELETE", "shared-skills/:id");
 // ADR 0062: taking back one change a retrospective made, from the plan's board.
 add("POST", "retrospectives/:id/changes/[0-9]{1,2}/undo");

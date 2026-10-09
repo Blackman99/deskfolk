@@ -200,3 +200,24 @@ test("a Claude model that reads lines is shown to a Bot, and only the user can s
   await runCollabTool(ctx, "update_model_settings", { reader_model: null });
   expect((await store.settings()).reader_model).toBeNull();
 });
+
+test("a Claude rung of the ladder (ADR 0076) is shown to a Bot, which can keep, move or drop it but never add one", async () => {
+  const { store, ctx, cloud } = await fixture();
+  store.setClaudeCodeConfigDirs(["/opt/claude-b"]);
+  const opus = { runner: "claude_code" as const, model: "opus", effort: "max" as const, config_dir: "/opt/claude-b" };
+  store.setModelLadder([{ provider_id: cloud.id, model: "small" }, opus]);
+  const shown = { runner: "claude_code", model: "opus", effort: "max", config_dir: "/opt/claude-b" };
+  expect((await runCollabTool(ctx, "list_endpoints", {})).data).toMatchObject({ model_ladder: [{ endpoint_id: cloud.id, model: "small" }, shown] });
+
+  // Moved, as list_endpoints showed it.
+  expect((await runCollabTool(ctx, "update_model_settings", { model_ladder: [shown, { endpoint_id: cloud.id, model: "small" }] })).ok).toBe(true);
+  expect(store.modelLadder()).toEqual([opus, { provider_id: cloud.id, model: "small" }]);
+  // Another effort, another model or another account is a rung the user never put there.
+  for (const added of [{ ...shown, effort: "high" }, { ...shown, model: "fable" }, { ...shown, config_dir: null }]) {
+    expect(await refusal(runCollabTool(ctx, "update_model_settings", { model_ladder: [shown, added] }))).toContain("only the user");
+  }
+  expect(store.modelLadder()).toEqual([opus, { provider_id: cloud.id, model: "small" }]);
+  // Dropped.
+  await runCollabTool(ctx, "update_model_settings", { model_ladder: [{ endpoint_id: cloud.id, model: "small" }] });
+  expect(store.modelLadder()).toEqual([{ provider_id: cloud.id, model: "small" }]);
+});

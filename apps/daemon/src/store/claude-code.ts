@@ -80,9 +80,25 @@ export function setClaudeCodeConfigDirs(ctx: StoreContext, value: unknown): stri
     if (reading && sameConfigDir(reading, dir)) {
       throw new HttpError(409, "conflict", `${tildeDir(dir)} is the Claude account lines are read on: choose another reader model or account first`);
     }
+    // A rung of the model ladder spends it too (ADR 0076).
+    if (ladderConfigDirs(ctx).some((used) => sameConfigDir(used, dir))) {
+      throw new HttpError(409, "conflict", `${tildeDir(dir)} is the Claude account of a rung on the model ladder: take that rung off or move it to another account first`);
+    }
   }
   setSetting(ctx, DIRS_KEY, dirs.length > 0 ? JSON.stringify(dirs) : "");
   return dirs;
+}
+
+/** The accounts the model ladder's Claude rungs spend (ADR 0076). */
+export function ladderConfigDirs(ctx: StoreContext): string[] {
+  try {
+    const rungs = JSON.parse(ctx.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'model_ladder'").get()?.value || "[]") as unknown;
+    return Array.isArray(rungs)
+      ? rungs.flatMap((rung) => (rung && rung.runner === "claude_code" && typeof rung.config_dir === "string" ? [rung.config_dir as string] : []))
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 /**

@@ -152,7 +152,8 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
   const { store, publish, publishMessage, publishTurn, occurred, wake, mcp, admission, lives, tasks, active, trackTurn, spendOwner, closeChain, holdChain, chainTurnEnded, clearChainTimers, clearDirectTimers, clearOrganizerTimers, clearPlanTimers, executeTools, completeSilent, implicitSubmission } = deps;
   const endings = createTurnEndings(deps);
   const closingReply = createClosingReply(deps, endings);
-  const hopLoop = createHopLoop(deps, endings, closingReply);
+  // A job on a Claude rung of the model ladder (ADR 0076) runs its turn as a Claude Agent turn on that rung.
+  const hopLoop = createHopLoop(deps, endings, closingReply, (turnId, rung) => agentRunner.runAgentTurn(turnId, rung));
   const hearing = createHearing(deps);
   const { executionOf, crashTurn, interruptTurn, failTurn } = endings;
   const { settleClosingReply } = closingReply;

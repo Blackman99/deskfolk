@@ -1,3 +1,4 @@
+import type { ClaudeEffort } from "./bots.ts";
 import type { AcceptanceCheck } from "./checks.ts";
 import { USER_MEMBER } from "./constants.ts";
 import type { Hold } from "./holds.ts";
@@ -455,8 +456,36 @@ export type TicketModel = { provider_id: string; model: string };
 /** At most this many rungs on the model ladder: a short climb, not a catalog. */
 export const MODEL_LADDER_MAX = 8;
 
-/** One rung of the model ladder (ADR 0054, level 7): a listed model, in the order you put them, weaker to stronger. */
-export type ModelLadderRung = { provider_id: string; model: string };
+/** A rung on an endpoint: one of the models it lists. */
+export type ModelLadderEndpointRung = { provider_id: string; model: string };
+
+/**
+ * A rung run through your own Claude Code (ADR 0076): a Claude model (alias or full id), the effort
+ * it asks for (null: Claude Code's default) and the account it spends (`config_dir`, one listed in
+ * Settings; null: the daemon's own environment). A job that climbs onto it runs its next turn there.
+ */
+export type ModelLadderClaudeRung = { runner: "claude_code"; model: string; effort: ClaudeEffort | null; config_dir: string | null };
+
+/**
+ * One rung of the model ladder (ADR 0054, level 7): a listed model or a Claude model of yours, in the
+ * order you put them, weaker to stronger.
+ */
+export type ModelLadderRung = ModelLadderEndpointRung | ModelLadderClaudeRung;
+
+export function isLadderClaudeRung(rung: ModelLadderRung | null | undefined): rung is ModelLadderClaudeRung {
+  return Boolean(rung) && "runner" in rung!;
+}
+
+/**
+ * Two rungs are the same when they name the same model on the same endpoint, or the same Claude model
+ * at the same effort on the same account — so one Claude model may climb its own efforts.
+ */
+export function sameLadderRung(a: ModelLadderRung, b: ModelLadderRung): boolean {
+  if (isLadderClaudeRung(a) || isLadderClaudeRung(b)) {
+    return isLadderClaudeRung(a) && isLadderClaudeRung(b) && a.model === b.model && (a.effort ?? null) === (b.effort ?? null) && (a.config_dir ?? null) === (b.config_dir ?? null);
+  }
+  return a.provider_id === b.provider_id && a.model === b.model;
+}
 
 /** `GET /v1/model-ladder` and `PUT /v1/model-ladder {items}`: the ladder, and whether this engine level has one. */
 export type ModelLadderResponse = { items: ModelLadderRung[]; available: boolean };

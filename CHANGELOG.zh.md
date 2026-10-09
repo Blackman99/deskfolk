@@ -6,6 +6,13 @@
 
 ## Unreleased
 
+### 模型阶梯能排 Claude 模型
+
+- 本机的 Claude Code 装好并登录后，设置 › 模型 › 模型阶梯 也能排 Claude Agent 设置里那些 Claude 模型（sonnet、opus、haiku、fable）。每个 Claude 级各自选思考强度，列了几个账号时还能选账号；同一个模型换个思考强度可以再排一级。
+- 一件活爬到 Claude 级时，下一轮交给你的 Claude Code 按这一级来跑，和 Claude Agent 的 Bot 一样；再往上一级是端点上的模型，就换回来。Claude Agent 的 Bot 自己的模型照旧不沿阶梯换。
+- Bot 用 `update_model_settings` 只能保留、挪动或拿掉 Claude 级，不能新加。阶梯上某一级用着的账号，拿掉那一级之前不能从列表里删掉。
+- 修好：Bot 用 `update_model_settings` 只改 `model_ladder` 时会被拒。
+
 ### 看板写明什么作废了，一件事什么时候结束了
 
 - 负责人作废的任务现在在看板上写「作废」，卡片上带着理由（「作废：……」）；你自己放到一边的还是「搁置」。任务清单的数目和完成百分比都不算这两种，写成「3 未完成 · 共 8 · 作废/搁置 2」；流程图头部和切换列表里数法一样。

@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import type { Bot, Provider, RouteRecord } from "@real-bot/protocol";
 import { routeCardRow, routeLogRows, type RouteLogLabels } from "./route-log.ts";
+import { copyFor } from "../copy.ts";
 
 const LABELS: RouteLogLabels = {
   fault: { model: "模型的问题", task: "事情本身难", prompt: "需求没说清", none: "没有不满" },
@@ -323,4 +324,14 @@ test("a turn stepped up or moved for pictures reads why its model was chosen fir
     { bots: BOTS, providers: [], labels },
   );
   expect([overridden!.reasonLabel, climbed!.reasonLabel, plain!.reasonLabel]).toEqual(["这张任务指定的 · 提了一档思考", "Bot 的默认模型 · 换到阶梯上往上一个", "提了一档思考"]);
+});
+
+test("a turn run by your Claude Code says so, and one that climbed onto a Claude rung (ADR 0076) says the climb first", () => {
+  const labels = copyFor("zh").routes;
+  const [agent, climbed] = routeLogRows(
+    [record({ turn_id: "t2", reason_code: "claude_code", base_reason_code: "escalation_model" }),
+      record({ turn_id: "t1", reason_code: "claude_code", base_reason_code: null })],
+    { bots: BOTS, providers: [], labels },
+  );
+  expect([climbed!.reasonLabel, agent!.reasonLabel]).toEqual([`${labels.reasonCode.escalation_model} · ${labels.reasonCode.claude_code}`, labels.reasonCode.claude_code]);
 });

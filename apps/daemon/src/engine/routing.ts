@@ -5,7 +5,7 @@
  * there is no routing agent to ask or nothing for it to read. Everything downstream that needs a
  * target for a call — a turn, a judgement, the organizer, a chain review — goes through here.
  */
-import { isLocalEndpoint, thinkingLevelRank, type ThinkingLevel } from "@real-bot/protocol";
+import { isLadderClaudeRung, isLocalEndpoint, thinkingLevelRank, type ThinkingLevel } from "@real-bot/protocol";
 import { NO_ABLATION, type Ablation } from "../ablation";
 import type { CompletionsClient } from "../completions";
 import { classifyMessage, messageSignature, pickThinkingLevel } from "../route-decision";
@@ -313,7 +313,8 @@ export function createRouting(deps: RoutingDeps): Routing {
   function decideFrom(base: Routed | null, botId: string, creds: Creds, text: string, turnId?: string): Routed | null {
     const pictures = Boolean(base && turnId && store.turnNeedsPictures(turnId));
     const routed = base && turnId ? escalate(base, botId, turnId, creds, text, pictures) : base;
-    if (!base || !routed || !turnId || !pictures) return routed;
+    // A Claude rung sees pictures.
+    if (!base || !routed || !turnId || !pictures || routed.claude) return routed;
     // Its work needs pictures seen (ADR 0049): a model marked as taking none gives way to one that can.
     const catalog = store.catalogEntries();
     const sees = (providerId: string, model: string) => catalog.find((entry) => entry.providerId === providerId && entry.name === model)?.input_image;
@@ -379,7 +380,7 @@ export function createRouting(deps: RoutingDeps): Routing {
     const climbed = climbs ? climb(routed, wanted, creds, text, pictures) : null;
     if (climbed) {
       // On the last rung and failing still: what next is yours.
-      if (climbed.short) store.noteModelOnce(botId, "escalation_top", climbed.routed.target.model);
+      if (climbed.short) store.noteModelOnce(botId, "escalation_top", climbed.routed.decision.model);
       return climbed.routed;
     }
     store.noteModelOnce(botId, "escalation_top", atTop.target.model);
@@ -388,22 +389,30 @@ export function createRouting(deps: RoutingDeps): Routing {
 
   /**
    * `rungs` up the model ladder from the model a turn would run on, past rungs no endpoint lists any
-   * more or, for work that needs pictures seen, marked as taking none. At the last rung there is,
-   * when the climb asks for more (`short`). Null when its model is not on the ladder or nothing is above it.
+   * more or, for work that needs pictures seen, marked as taking none. A Claude rung (ADR 0076) is
+   * always there to climb to: whether Claude Code runs and is signed in is the turn's to find out.
+   * At the last rung there is, when the climb asks for more (`short`). Null when its model is not on
+   * the ladder or nothing is above it.
    */
   function climb(routed: Routed, rungs: number, creds: Creds, text: string, pictures: boolean): { routed: Routed; short: boolean } | null {
     const ladder = store.modelLadder();
-    const at = ladder.findIndex((rung) => rung.provider_id === routed.target.providerId && rung.model === routed.target.model);
+    const at = ladder.findIndex((rung) => !isLadderClaudeRung(rung) && rung.provider_id === routed.target.providerId && rung.model === routed.target.model);
     if (at === -1) return null;
     const catalog = store.catalogEntries();
-    const above = ladder.slice(at + 1).filter((rung) => creds.providers.some((provider) => provider.id === rung.provider_id && provider.models.includes(rung.model))
-      && (!pictures || catalog.find((entry) => entry.providerId === rung.provider_id && entry.name === rung.model)?.input_image !== false));
+    const above = ladder.slice(at + 1).filter((rung) => isLadderClaudeRung(rung)
+      || (creds.providers.some((provider) => provider.id === rung.provider_id && provider.models.includes(rung.model))
+        && (!pictures || catalog.find((entry) => entry.providerId === rung.provider_id && entry.name === rung.model)?.input_image !== false)));
     const rung = above[Math.min(rungs, above.length) - 1];
     if (!rung) return null;
+    const short = rungs > above.length;
+    if (isLadderClaudeRung(rung)) {
+      return { short, routed: { ...routed, claude: rung,
+        decision: { ...routed.decision, model: rung.model, providerId: "", thinkingLevel: rung.effort ?? "default", reasonCode: "escalation_model" } } };
+    }
     const provider = creds.providers.find((row) => row.id === rung.provider_id)!;
     const supported = catalog.find((entry) => entry.providerId === rung.provider_id && entry.name === rung.model)?.thinking_levels ?? [];
     const thinkingLevel = supported.length === 0 ? routed.target.thinkingLevel : pickThinkingLevel(classifyMessage(text), supported);
-    return { short: rungs > above.length, routed: {
+    return { short, routed: {
       target: { ...routed.target, baseUrl: provider.baseUrl, apiKey: provider.apiKey, apiFormat: provider.apiFormat, workspaceId: provider.workspaceId, providerId: provider.id, providerName: provider.name, model: rung.model, thinkingLevel },
       decision: { ...routed.decision, model: rung.model, providerId: provider.id, thinkingLevel, reasonCode: "escalation_model" },
     } };

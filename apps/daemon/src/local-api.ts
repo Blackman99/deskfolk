@@ -1,4 +1,4 @@
-import { isNonReceiptPath, LOCAL_API_NAME, type CapabilitiesResponse, type ClientEvent, type HealthResponse, type NotificationFilter, type RuntimeSnapshot, type SessionSnapshot, type StreamFrame, type ToolFrame, type WsAuthMessage } from "@real-bot/protocol";
+import { isLadderClaudeRung, isNonReceiptPath, LOCAL_API_NAME, type CapabilitiesResponse, type ClientEvent, type HealthResponse, type NotificationFilter, type RuntimeSnapshot, type SessionSnapshot, type StreamFrame, type ToolFrame, type WsAuthMessage } from "@real-bot/protocol";
 import { warmDisplayAvatar } from "./avatar-display";
 import { createClaudeCodeProbe } from "./claude-code/probe";
 import { createClaudeUsageProbe } from "./claude-code/usage";
@@ -55,7 +55,11 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
   const claudeCode = options.claudeCode!;
   options.claudeUsage ??= createClaudeUsageProbe({
     claudeCode,
-    inUse: () => options.store.listBots().filter((bot) => bot.runner === "claude_code").map((bot) => bot.agent_config_dir ?? null),
+    inUse: () => [
+      ...options.store.listBots().filter((bot) => bot.runner === "claude_code").map((bot) => bot.agent_config_dir ?? null),
+      // A Claude rung of the model ladder spends its account too (ADR 0076).
+      ...options.store.modelLadder().flatMap((rung) => (isLadderClaudeRung(rung) ? [rung.config_dir] : [])),
+    ],
   });
   const sockets = new Set<Bun.ServerWebSocket<SocketData>>();
   const timers = new Map<Bun.ServerWebSocket<SocketData>, ReturnType<typeof setTimeout>>();

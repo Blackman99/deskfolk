@@ -410,6 +410,30 @@ const claudeStatus = {
 	error: null
 };
 
+/**
+ * A ladder that climbs from endpoint models onto Claude models of yours (ADR 0076): opus at two
+ * efforts, the stronger on a second account, so each Claude rung shows its effort and account.
+ */
+const ladderClaudeClient = {
+	...ladderClient,
+	claudeCode: async () => ({
+		...claudeStatus,
+		accounts: [
+			{ config_dir: null, config_directory: '/Users/you/.claude', logged_in: true, auth_method: 'claude.ai', subscription_type: 'pro', email: 'you@example.com', error: null, login_command: 'claude auth login' },
+			{ config_dir: '/Users/you/.claude-team', config_directory: '/Users/you/.claude-team', logged_in: true, auth_method: 'claude.ai', subscription_type: 'team', email: 'you@team.example', error: null, login_command: 'CLAUDE_CONFIG_DIR=~/.claude-team claude auth login' }
+		]
+	}),
+	modelLadder: async () => ({
+		items: [
+			{ provider_id: 'prov-1', model: 'gemini-3.8-flash' },
+			{ provider_id: 'prov-2', model: 'grok-4.6' },
+			{ runner: 'claude_code', model: 'opus', effort: 'high', config_dir: null },
+			{ runner: 'claude_code', model: 'opus', effort: 'max', config_dir: '/Users/you/.claude-team' }
+		],
+		available: true
+	})
+};
+
 /** The shared world's Bots all carry an image; this one adds the letter fallback to the shot. */
 const pickerBots = [...bots, aBot({ id: 'bot-4', name: '配音', duties: '配音与混音', avatar: null })];
 
@@ -991,6 +1015,17 @@ const defs: Record<StoryName, Story> = {
 	'settings-models-ladder': {
 		component: SettingsModal as never,
 		props: settingsProps({ runtime: fakeRuntime(world, { settingsOpen: true, client: ladderClient }) }),
+		afterMount: modelsSection('ladder')
+	},
+	// Claude models on the ladder (ADR 0076): each Claude rung picks its effort and, with two accounts, its account.
+	'settings-models-ladder-claude': {
+		component: SettingsModal as never,
+		props: settingsProps({ runtime: fakeRuntime(world, { settingsOpen: true, client: ladderClaudeClient }) }),
+		afterMount: modelsSection('ladder')
+	},
+	'settings-models-ladder-claude-narrow': {
+		component: SettingsModal as never,
+		props: settingsProps({ runtime: fakeRuntime(world, { settingsOpen: true, client: ladderClaudeClient }) }),
 		afterMount: modelsSection('ladder')
 	},
 	// Speech recognition's own tab, set up and ready: no title of its own under the tab, its switch first.
