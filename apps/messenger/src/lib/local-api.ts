@@ -27,6 +27,7 @@ import type {
   SessionDetail,
   SessionSummary,
   Settings,
+  PatchSpeechRequest,
   SettingsPatch,
   Skill,
   Spend,
@@ -137,6 +138,11 @@ export class LocalApi extends ApiBase<PendingRequest> {
 
   async patchSettings(patch: SettingsPatch): Promise<Settings> {
     return this.patch<Settings>("/v1/settings", patch);
+  }
+
+  /** The speech endpoint (ADR 0073); answers with the whole settings, `speech` in them. */
+  async patchSpeech(patch: PatchSpeechRequest): Promise<Settings> {
+    return this.patch<Settings>("/v1/speech", patch);
   }
 
   async providers(): Promise<Provider[]> {

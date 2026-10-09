@@ -7,7 +7,7 @@
 import { chmodSync } from "node:fs";
 import { dirname } from "node:path";
 import { homedir } from "node:os";
-import { defaultAppDataDir, providerKeychainName, mcpAuthKeychainName, type CapabilitiesResponse, type ClientEvent, type RuntimeSnapshot } from "@real-bot/protocol";
+import { SPEECH_KEYCHAIN_NAME, defaultAppDataDir, providerKeychainName, mcpAuthKeychainName, type CapabilitiesResponse, type ClientEvent, type RuntimeSnapshot } from "@real-bot/protocol";
 import { installChangeJournal, committedEvents } from "./events";
 import { Transactions } from "./transactions";
 import { Receipts } from "./receipts";
@@ -63,6 +63,7 @@ import * as planRequirements from "./plan-requirements";
 import * as routines from "./routines";
 import * as routing from "./routing";
 import * as scribePatch from "./scribe-patch";
+import * as speech from "./speech";
 import * as derivedChecks from "./derived-checks";
 import {
   acceptOlderApp,
@@ -273,6 +274,7 @@ export class Store {
 
   readonly settingsCached = this.bind(settings.settingsCached);
   readonly patchSettingsSync = this.bind(settings.patchSettingsSync);
+  readonly patchSpeechSync = this.bind(speech.patchSpeechSync);
   /** `GET /v1/capabilities`: what this build's engine understands, so a phone page (or a messenger
    * built from a newer source tree) can show only what the daemon it is actually talking to supports. */
   readonly capabilities = (): CapabilitiesResponse => capabilitiesOf(this.db);
@@ -335,6 +337,8 @@ export class Store {
         this.db.run("UPDATE request_meta SET settings_rev = settings_rev + 1 WHERE singleton = 1");
       }
       if (server) this.db.run("INSERT INTO event_changes VALUES ('mcp_servers', ?, 'UPDATE', NULL)", [server.id]);
+      // The speech key is read once speech is set up; its `key_set` lives in the settings.
+      if (name === SPEECH_KEYCHAIN_NAME) this.db.run("UPDATE request_meta SET settings_rev = settings_rev + 1 WHERE singleton = 1");
     });
   }
 
@@ -384,6 +388,7 @@ export class Store {
   readonly settings = this.bind(settings.settings, true);
   readonly patchSettings = this.bind(settings.patchSettings, true);
   readonly endpointKey = this.bind(settings.endpointKey, true);
+  readonly speechKey = this.bind(speech.speechKey, true);
   readonly workspacePath = this.bind(workspacePath);
   readonly defaultProviderId = this.bind(defaultProviderId);
   readonly listProviders = this.bind(providers.listProviders, true);

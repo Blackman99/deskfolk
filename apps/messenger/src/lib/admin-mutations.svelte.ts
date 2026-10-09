@@ -13,6 +13,7 @@ import type {
   PatchRoutineRequest,
   PatchSkillRequest,
   ProbeModelsResponse,
+  PatchSpeechRequest,
   SettingsPatch,
   ThinkingLevel,
 } from "@real-bot/protocol";
@@ -63,6 +64,20 @@ export class AdminMutations {
       if (this.host.api !== api) return null;
       this.host.reconcilePendingMutation(api);
       if (patch.endpoint_api_key !== undefined) this.host.endpointKey = "";
+      return null;
+    } catch (error) {
+      return this.sheetFailure(error, api);
+    }
+  }
+
+  /** The speech endpoint (ADR 0073); the key goes with it and is never read back. */
+  async patchSpeech(patch: PatchSpeechRequest): Promise<ApiError | null> {
+    const api = this.host.api;
+    if (!api) return null;
+    try {
+      await api.patchSpeech(patch);
+      if (this.host.api !== api) return null;
+      this.host.reconcilePendingMutation(api);
       return null;
     } catch (error) {
       return this.sheetFailure(error, api);

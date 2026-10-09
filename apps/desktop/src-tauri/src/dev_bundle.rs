@@ -18,6 +18,13 @@ const MARKER: &str = "REAL_BOT_DEV_BUNDLE";
 /// bundle's own, so without this one the window showed a blank app there.
 const ICON_FILE: &str = "icon.icns";
 const ICON: &[u8] = include_bytes!("../icons/icon.icns");
+/// The app's own entitlements: the dev app is signed with the hardened runtime too, which keeps
+/// the microphone shut without them (the composer's voice input, ADR 0073).
+const ENTITLEMENTS: &str = include_str!("../Entitlements.plist");
+/// Same words as `Info.plist`, which only the release bundle gets; macOS refuses the microphone to
+/// an app that does not say why it wants it.
+const MICROPHONE_USAGE: &str =
+    "Deskfolk records what you say into the message box and turns it into text with the speech service you set up.";
 
 pub fn reexec_inside_bundle() {
     if std::env::var_os(MARKER).is_some() {
@@ -106,6 +113,8 @@ fn info_plist(executable: &str) -> String {
   <string>0</string>
   <key>LSUIElement</key>
   <false/>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>{MICROPHONE_USAGE}</string>
 </dict>
 </plist>
 "#
@@ -160,8 +169,15 @@ fn copy_exe(src: &Path, dest: &Path) -> Result<(), String> {
 
 /// Sign the copied executable after Info.plist exists, so the signature covers the bundle id.
 fn sign_dev_app(app: &Path) -> Result<(), String> {
+    // Beside the bundle, not in it: a file inside Contents would have to be sealed too.
+    let entitlements = app.with_file_name("Deskfolk Dev.entitlements");
+    if fs::read_to_string(&entitlements).ok().as_deref() != Some(ENTITLEMENTS) {
+        fs::write(&entitlements, ENTITLEMENTS).map_err(|err| err.to_string())?;
+    }
     let status = Command::new("codesign")
         .args(["--force", "--sign", "-", "--options", "runtime", "--identifier", BUNDLE_ID])
+        .arg("--entitlements")
+        .arg(&entitlements)
         .arg(app)
         .status()
         .map_err(|err| err.to_string())?;
@@ -198,6 +214,14 @@ mod tests {
         assert_eq!(written, include_bytes!("../icons/icon.icns"));
         assert!(info_plist("real-bot-desktop")
             .contains(&format!("<key>CFBundleIconFile</key>\n  <string>{ICON_FILE}</string>")));
+
+        let plist = info_plist("real-bot-desktop");
+        assert!(plist.contains(&format!("<key>NSMicrophoneUsageDescription</key>\n  <string>{MICROPHONE_USAGE}</string>")));
+        assert!(
+            include_str!("../Info.plist").contains(&format!("<string>{MICROPHONE_USAGE}</string>")),
+            "the dev app asks for the microphone in the release bundle's words"
+        );
+        assert!(ENTITLEMENTS.contains("<key>com.apple.security.device.audio-input</key>\n  <true/>"));
 
         let long_ago = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000);
         fs::File::open(&app).unwrap().set_modified(long_ago).unwrap();

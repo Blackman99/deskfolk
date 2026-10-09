@@ -32,7 +32,8 @@
     "resources": { "native/": "native/" },
     "macOS": {
       "minimumSystemVersion": "13.0",
-      "signingIdentity": "-"
+      "signingIdentity": "-",
+      "entitlements": "./Entitlements.plist"
     },
     "icon": [
       "icons/32x32.png",

@@ -1,5 +1,6 @@
 import type { Locale, Theme } from "./constants.ts";
 import type { EndpointModel, EndpointModelInput, ReaderModel } from "./models.ts";
+import type { SpeechSettings } from "./speech.ts";
 
 export type Settings = {
   settings_rev?: number;
@@ -16,6 +17,11 @@ export type Settings = {
    * absent from a daemon older than that ADR.
    */
   reader_model?: ReaderModel | null;
+  /**
+   * The speech endpoint the composer's microphone sends to (ADR 0073), changed through
+   * `PATCH /v1/speech`; null until one is set up, absent from a daemon older than that ADR.
+   */
+  speech?: SpeechSettings | null;
   launch_at_login: boolean;
   locale: Locale;
   theme: Theme;

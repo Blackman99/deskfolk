@@ -3,6 +3,7 @@
 	import ReaderModelCard from './ReaderModelCard.svelte';
 	import { connectorFor, isLocalEndpoint } from '@real-bot/protocol';
 	import ConnectorLogo from './ConnectorLogo.svelte';
+	import SpeechCard from './SpeechCard.svelte';
 	import type { Copy } from '../copy.ts';
 	import { providerHost } from './provider-form.ts';
 	import { botAvatarColor } from '../avatar.ts';
@@ -200,6 +201,8 @@
 			{t}
 		/>
 	{/if}
+	<!-- Speech needs no chat endpoint of its own: it has its own service and key (ADR 0073). -->
+	<SpeechCard speech={snapshot.settings.speech ?? null} patch={(patch) => runtime.patchSpeech(patch)} {t} />
 </div>
 
 <style>

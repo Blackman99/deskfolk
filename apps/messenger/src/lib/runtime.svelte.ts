@@ -15,6 +15,7 @@ import type {
   ControlActionResult,
   ControlOffer,
   SearchHit,
+  PatchSpeechRequest,
   SettingsPatch,
   ThinkingLevel,
   BotRunner,
@@ -628,6 +629,7 @@ export class MessengerRuntime {
 
   // --- Forwarded to `adminMutations` (the sheets' writes). ---
   patchSettings(patch: SettingsPatch): Promise<ApiError | null> { return this.adminMutations.patchSettings(patch); }
+  patchSpeech(patch: PatchSpeechRequest): Promise<ApiError | null> { return this.adminMutations.patchSpeech(patch); }
   probeModels(
     baseUrl?: string,
     apiKey?: string,

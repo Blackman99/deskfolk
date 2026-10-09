@@ -10,6 +10,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 - In Settings › Notifications, the six categories no longer run past the right edge of their card, where the switches sat on its border and the page scrolled sideways. A longer description wraps onto a second line instead, and in a narrow settings window the categories stack in one column.
 
+### Voice input, through a speech service you choose
+
+- Settings → Models has a new Speech recognition card. Pick a service — OpenAI, Groq, SiliconFlow, Alibaba Bailian (Qwen ASR), Deepgram, ElevenLabs — or Custom for any address in one of their formats, such as a Whisper server on your own computer (no key needed there). Picking one fills in its address and model; everything, including the language to expect, can be changed, and saves as you go. The key goes to the Keychain with the endpoints' keys and is never shown again.
+- Once it is ready, a microphone sits beside the message box, on the computer and on a paired phone. Press it and speak, press again to stop: what was heard goes into the box where the caret was, for you to read over and send. "Listening 0:07" above the box can discard the recording; a recording stops by itself after 3 minutes. Nothing heard, no microphone permission, or the service's own error is said in a line above the box. The recording goes through this computer to the service you chose and is not kept. The app now asks macOS for the microphone the first time you use it. Details in [ADR 0073](docs/adr/0073-speech-recognition.md).
+- A relay set up from `deploy/remote` now lets the phone page use the microphone (`Permissions-Policy: microphone=(self)`, was `microphone=()`). A relay you already run needs that header changed and a reload before a phone can record.
+
 ### The plan says what needs you first, and empty fields take no room
 
 - Under the goal, "Needs a look" lists the checks that failed (with their ticket and first reason; the ticket opens its card on the board), progress written up as blocked, and your requirements waiting for your word (a press scrolls to them). With none of these it is not drawn; amber when only requirements wait, red when something failed or is blocked.

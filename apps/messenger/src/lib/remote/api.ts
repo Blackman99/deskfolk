@@ -28,6 +28,7 @@ import type {
   SessionSnapshot,
   SessionSummary,
   Settings,
+  PatchSpeechRequest,
   SettingsPatch,
   Skill,
   Spend,
@@ -381,6 +382,12 @@ export class RemoteApi extends ApiBase<PendingRemote> {
     const body = { ...patch } as SettingsPatch & { if_revision?: number };
     if (body.if_revision === undefined && this.settingsRev !== undefined) body.if_revision = this.settingsRev;
     return this.patch<Settings>("/v1/settings", body);
+  }
+  /** The speech endpoint (ADR 0073), under the settings' revision like any settings change. */
+  async patchSpeech(patch: PatchSpeechRequest): Promise<Settings> {
+    const body = { ...patch } as PatchSpeechRequest & { if_revision?: number };
+    if (body.if_revision === undefined && this.settingsRev !== undefined) body.if_revision = this.settingsRev;
+    return this.patch<Settings>("/v1/speech", body);
   }
   async providers(): Promise<Provider[]> {
     return (await this.get<ListPage<Provider>>("/v1/providers")).items;

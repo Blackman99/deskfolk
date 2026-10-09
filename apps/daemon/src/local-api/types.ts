@@ -37,6 +37,8 @@ export type LocalApiOptions = {
    * cloud endpoint up on 127.0.0.1 turn it off.
    */
   localEndpoint?: (baseUrl: string) => boolean;
+  /** What a transcription reaches the speech endpoint with (ADR 0073); tests answer for it. */
+  speechFetch?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
   mcp?: McpHost;
   /** Skip the calendar ticker (tests that drive `engine.fireRoutine` themselves). */

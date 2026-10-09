@@ -1,0 +1,123 @@
+import { isWindows } from "./platform-words.ts";
+import type { CopyShape } from "./shape.ts";
+
+/** Speech recognition (ADR 0073): the settings card and the composer's microphone. */
+export const zh = {
+  title: "语音识别",
+  hint: "接一个语音转文字的端点后，输入框旁会出现麦克风：点一下开始说，再点一下停，听到的字放进输入框，你看过再发。录音经这台电脑发给你选的服务，转完就丢，不保存。",
+  enabled: "用语音输入",
+  service: "服务",
+  presets: {
+    openai: "OpenAI",
+    groq: "Groq",
+    siliconflow: "硅基流动",
+    bailian: "阿里云百炼（千问 ASR）",
+    deepgram: "Deepgram",
+    elevenlabs: "ElevenLabs",
+    custom: "自定义"
+  },
+  format: "接口格式",
+  formats: {
+    openai: "OpenAI 兼容 · /audio/transcriptions",
+    qwen_asr: "千问 ASR · /chat/completions 带音频",
+    deepgram: "Deepgram · /listen",
+    elevenlabs: "ElevenLabs · /speech-to-text"
+  },
+  baseUrl: "地址",
+  baseUrlHint: "填到版本号为止（如 …/v1），路径由应用补上；贴整条地址也行。本机或局域网里的服务可以不要密钥。",
+  apiKey: "密钥",
+  keySaved: "已保存；留空不改",
+  keyNotNeeded: "本机服务，可不填",
+  keyClear: "清除",
+  model: "模型",
+  modelHint: "可以选建议的，也可以直接填服务支持的模型名。",
+  language: "语言",
+  languageAuto: "自动识别",
+  languages: { zh: "中文", en: "English", ja: "日本語", ko: "한국어", fr: "Français", de: "Deutsch", es: "Español" } as Record<string, string>,
+  ready: "已就绪：输入框旁有麦克风",
+  missingUrl: "还差地址",
+  missingModel: "还差模型",
+  missingKey: "还差密钥",
+  off: "已关闭：输入框旁不显示麦克风",
+  failed: "没存上，再试一次",
+  micStart: "语音输入",
+  micStop: "停下，转成文字",
+  micCancel: "不要这段录音",
+  recording: (time: string) => `正在听 ${time}`,
+  transcribing: "正在转文字…",
+  micDenied: isWindows
+    ? "没拿到麦克风权限。电脑上到「设置 → 隐私和安全性 → 麦克风」里允许桌面应用使用麦克风；手机上在浏览器的网站设置里允许。"
+    : "没拿到麦克风权限。电脑上到「系统设置 → 隐私与安全性 → 麦克风」里允许 Deskfolk；手机上在浏览器的网站设置里允许。",
+  micMissing: "没找到麦克风。",
+  micUnsupported: "这里录不了音：页面要在 HTTPS 或本机地址下打开。",
+  micFailed: (detail: string) => `录音出错：${detail}`,
+  heardNothing: "没听清，再说一次试试。",
+  tooLong: "录音太长了，没法发出去。分几段说吧。",
+  notSetUp: "语音识别还没设置好：设置 → 模型 → 语音识别。",
+  keyMissing: "语音识别端点还没填密钥：设置 → 模型 → 语音识别。",
+  rejected: (detail: string) => `语音识别服务报错：${detail}`,
+  unreachable: "连不上语音识别服务。",
+  timeout: "语音识别服务太久没回，再试一次。",
+  transcribeFailed: (detail: string) => `转文字失败：${detail}`,
+  dismiss: "知道了"
+};
+
+export const en: CopyShape<typeof zh> = {
+  title: "Speech recognition",
+  hint: "With a speech-to-text endpoint set up, a microphone appears beside the message box: press it and speak, press again to stop, and what was heard goes into the box for you to read over before sending. The recording goes through this computer to the service you chose and is dropped once transcribed; nothing is kept.",
+  enabled: "Voice input",
+  service: "Service",
+  presets: {
+    openai: "OpenAI",
+    groq: "Groq",
+    siliconflow: "SiliconFlow",
+    bailian: "Alibaba Bailian (Qwen ASR)",
+    deepgram: "Deepgram",
+    elevenlabs: "ElevenLabs",
+    custom: "Custom"
+  },
+  format: "API format",
+  formats: {
+    openai: "OpenAI-compatible · /audio/transcriptions",
+    qwen_asr: "Qwen ASR · /chat/completions with audio",
+    deepgram: "Deepgram · /listen",
+    elevenlabs: "ElevenLabs · /speech-to-text"
+  },
+  baseUrl: "Base URL",
+  baseUrlHint: "Up to the version (e.g. …/v1); the app adds the path, and a full address pasted in works too. A service on this computer or network needs no key.",
+  apiKey: "API key",
+  keySaved: "Saved; leave empty to keep it",
+  keyNotNeeded: "Local service; optional",
+  keyClear: "Clear",
+  model: "Model",
+  modelHint: "Pick a suggestion, or type any model name the service takes.",
+  language: "Language",
+  languageAuto: "Detect",
+  languages: { zh: "中文", en: "English", ja: "日本語", ko: "한국어", fr: "Français", de: "Deutsch", es: "Español" } as Record<string, string>,
+  ready: "Ready: the microphone is beside the message box",
+  missingUrl: "Needs a base URL",
+  missingModel: "Needs a model",
+  missingKey: "Needs an API key",
+  off: "Off: no microphone beside the message box",
+  failed: "Not saved; try again",
+  micStart: "Voice input",
+  micStop: "Stop and transcribe",
+  micCancel: "Discard this recording",
+  recording: (time: string) => `Listening ${time}`,
+  transcribing: "Transcribing…",
+  micDenied: isWindows
+    ? "No access to the microphone. On this computer, let desktop apps use it under Settings → Privacy & security → Microphone; on a phone, allow it in the browser's site settings."
+    : "No access to the microphone. On this computer, allow Deskfolk under System Settings → Privacy & Security → Microphone; on a phone, allow it in the browser's site settings.",
+  micMissing: "No microphone found.",
+  micUnsupported: "Recording isn't available here: the page has to be open over HTTPS or on this computer.",
+  micFailed: (detail: string) => `Recording failed: ${detail}`,
+  heardNothing: "Didn't catch that; try again.",
+  tooLong: "That recording is too long to send. Say it in parts.",
+  notSetUp: "Speech recognition isn't set up: Settings → Models → Speech recognition.",
+  keyMissing: "The speech endpoint has no API key: Settings → Models → Speech recognition.",
+  rejected: (detail: string) => `The speech service said: ${detail}`,
+  unreachable: "Couldn't reach the speech service.",
+  timeout: "The speech service took too long; try again.",
+  transcribeFailed: (detail: string) => `Transcription failed: ${detail}`,
+  dismiss: "OK"
+};

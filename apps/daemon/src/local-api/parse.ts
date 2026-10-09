@@ -68,7 +68,8 @@ export function checkRevision(store: Store, request: Request, url: URL, body: Re
   if (request.method !== "PATCH" && !destructive) return;
   const revision = body.if_revision;
   if (revision === undefined && !scope.requireRevision) return;
-  if (url.pathname === "/v1/settings") {
+  // The speech endpoint is part of the settings and shares their revision (ADR 0073).
+  if (url.pathname === "/v1/settings" || url.pathname === "/v1/speech") {
     if (!Number.isInteger(revision) || revision !== store.settingsCached().settings_rev) throw new HttpError(409, "conflict", "settings revision changed");
   } else {
     const parts = url.pathname.split("/");

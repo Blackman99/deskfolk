@@ -7,5 +7,8 @@
 	     connection (real-bot-rtc) does, to a paired phone on the same Wi-Fi. -->
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Deskfolk connects your paired phone straight to this Mac's screen when both are on the same network.</string>
+	<!-- The composer's voice input (ADR 0073); also written into tauri dev's Deskfolk Dev.app (dev_bundle.rs). -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Deskfolk records what you say into the message box and turns it into text with the speech service you set up.</string>
 </dict>
 </plist>

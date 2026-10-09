@@ -10,6 +10,9 @@ export const KEYCHAIN_SERVICE = "com.real-bot.daemon" as const;
 export const KEYCHAIN_NAME = "endpoint-api-key" as const;
 export const KEYCHAIN_REF = "keychain:com.real-bot.daemon/endpoint-api-key" as const;
 
+/** The speech endpoint's key (ADR 0073): one, beside the endpoints'. */
+export const SPEECH_KEYCHAIN_NAME = "speech-api-key" as const;
+
 export function providerKeychainName(id: string): string {
   return `${KEYCHAIN_NAME}:${id}`;
 }

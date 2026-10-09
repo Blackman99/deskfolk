@@ -14,6 +14,7 @@ import { messageRoutes } from "./local-api/routes/messages";
 import { notificationRoutes } from "./local-api/routes/notifications";
 import { planRoutes } from "./local-api/routes/plans";
 import { qualityAndPromptRoutes } from "./local-api/routes/quality-and-prompts";
+import { speechRoutes } from "./local-api/routes/speech";
 import { systemRoutes } from "./local-api/routes/system";
 import type { LocalApi, LocalApiOptions, SocketData } from "./local-api/types";
 import { createMcpHost, persistMcpInspect, type McpHost } from "./mcp-host";
@@ -840,7 +841,8 @@ function dispatch(
     ?? qualityAndPromptRoutes(ctx)
     ?? notificationRoutes(ctx)
     ?? messageRoutes(ctx)
-    ?? configRoutes(ctx);
+    ?? configRoutes(ctx)
+    ?? speechRoutes(ctx);
   if (routed !== null) return routed;
 
   return jsonResponse({ error: { code: "not_found", message: "not found" } }, 404, null);

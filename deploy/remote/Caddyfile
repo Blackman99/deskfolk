@@ -35,7 +35,7 @@ https://{$RELAY_DOMAIN} {
 		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options nosniff
 		Referrer-Policy no-referrer
-		Permissions-Policy "camera=(), microphone=(), geolocation=(), publickey-credentials-get=(self)"
+		Permissions-Policy "camera=(), microphone=(self), geolocation=(), publickey-credentials-get=(self)"
 	}
 	header -Server
 	header ?Cache-Control no-store

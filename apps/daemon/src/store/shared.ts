@@ -10,6 +10,7 @@ import { join } from "node:path";
 import type { Database } from "bun:sqlite";
 import {
   API_FORMATS,
+  SPEECH_KEYCHAIN_NAME,
   USER_MEMBER,
   compactFolkAvatar,
   generateBoringAvatar,
@@ -82,7 +83,7 @@ export class KeyCache {
     if (this.pending(name)) throw new HttpError(409, "conflict", "credential write is pending; retry its request id");
     this.db.run("INSERT INTO pending_keys(name, value_sha256, operation_id, device_id, request_id) VALUES (?, ?, ?, ?, ?)", [name, sha256(value), ulid(), owner?.deviceId ?? null, owner?.requestId ?? null]);
     this.versions.set(name, (this.versions.get(name) ?? 0) + 1);
-    if (name.startsWith("endpoint-api-key:")) this.db.run("UPDATE request_meta SET settings_rev = settings_rev + 1 WHERE singleton = 1");
+    if (name.startsWith("endpoint-api-key:") || name === SPEECH_KEYCHAIN_NAME) this.db.run("UPDATE request_meta SET settings_rev = settings_rev + 1 WHERE singleton = 1");
   }
 
   async finishPending(name: string, value: string): Promise<void> {
@@ -100,7 +101,7 @@ export class KeyCache {
   clearPending(name: string): void {
     this.writing.delete(name);
     const changed = this.db.query("DELETE FROM pending_keys WHERE name = ? RETURNING name").get(name);
-    if (changed && name.startsWith("endpoint-api-key:")) this.db.run("UPDATE request_meta SET settings_rev = settings_rev + 1 WHERE singleton = 1");
+    if (changed && (name.startsWith("endpoint-api-key:") || name === SPEECH_KEYCHAIN_NAME)) this.db.run("UPDATE request_meta SET settings_rev = settings_rev + 1 WHERE singleton = 1");
   }
 
   peek(name: string): string | null | undefined {

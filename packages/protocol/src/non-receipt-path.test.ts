@@ -20,6 +20,12 @@ test("moving workspace files to the Trash carries no receipt", () => {
   expect(isNonReceiptPath("/v1/workspace/trashcan")).toBe(false);
 });
 
+/** A transcription stores nothing (ADR 0073); setting the speech endpoint up does. */
+test("a transcription carries no receipt", () => {
+  expect(isNonReceiptPath("/v1/speech/transcribe")).toBe(true);
+  expect(isNonReceiptPath("/v1/speech")).toBe(false);
+});
+
 test("everything that writes a durable row still does", () => {
   for (const path of [
     "/v1/sessions/01J0000000000000000000000B/messages",

@@ -29,6 +29,7 @@ import {
   unionProviderModels,
 } from "../models";
 import { listedConfigDir } from "./claude-code";
+import { hydrateSpeechKey, speechSettings } from "./speech";
 import { createProviderSync, listProviders, patchProviderSync, providersCached } from "./providers";
 import {
   type ProviderRow,
@@ -48,6 +49,7 @@ import {
 export async function settings(ctx: StoreContext): Promise<Settings> {
   await ensureLegacyProvider(ctx);
   await listProviders(ctx);
+  await hydrateSpeechKey(ctx);
   return settingsCached(ctx);
 }
 
@@ -95,6 +97,7 @@ export function settingsCached(ctx: StoreContext): Settings {
     endpoint_default_model,
     default_provider_id: defaultProvider?.id ?? null,
     reader_model,
+    speech: speechSettings(ctx),
     launch_at_login,
     locale,
     theme,

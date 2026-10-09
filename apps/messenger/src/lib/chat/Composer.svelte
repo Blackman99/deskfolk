@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import type { SessionSummary } from '@real-bot/protocol';
+	import { speechReady, type SessionSummary } from '@real-bot/protocol';
 	import { composerAction, composerLocked, lockedReason } from './composer-mode.ts';
 	import { keyboardInset } from './composer-inset.ts';
 	import {
@@ -24,6 +24,7 @@
 	import { ComposerAttachments } from './composer-attachments.svelte.ts';
 	import { handleComposerKey, type ComposerKeyContext } from './composer-keys.ts';
 	import { ComposerMentions } from './composer-mentions.svelte.ts';
+	import { ComposerVoice, caretIn, insertHeardAt, spacedHeard } from './composer-voice.svelte.ts';
 	import ComposerAttachmentsBar from './ComposerAttachments.svelte';
 	import ComposerEditor from './ComposerEditor.svelte';
 	import ComposerQuote from './ComposerQuote.svelte';
@@ -32,6 +33,8 @@
 	import MentionPopup from './MentionPopup.svelte';
 	import SendButton from './SendButton.svelte';
 	import StopMenu from './StopMenu.svelte';
+	import VoiceButton from './VoiceButton.svelte';
+	import VoiceStatus from './VoiceStatus.svelte';
 	import { conversationStopItems, type StopMenuItem } from './stop-menu.ts';
 
 	type Props = {
@@ -117,6 +120,29 @@
 		fileDrop: () => fileDrop,
 		editorEl: () => editorEl
 	});
+
+	/** The microphone (ADR 0073): what is heard goes in where the caret was, in the conversation it was recorded for. */
+	let voiceCaret: Range | null = null;
+	const voice = new ComposerVoice({
+		api: () => runtime.client,
+		t: () => t,
+		sessionId: () => selected?.id ?? null,
+		markCaret: () => (voiceCaret = caretIn(editorEl)),
+		insert: (sessionId, heard) => {
+			const caret = voiceCaret;
+			voiceCaret = null;
+			if (selected?.id === sessionId && editorEl) {
+				insertHeardAt(editorEl, caret, heard);
+				syncDraftFromEditor();
+				return;
+			}
+			const target = runtime.sessionView(sessionId);
+			target.draft = target.draft + spacedHeard(target.draft, heard);
+		}
+	});
+	/** Offered once a speech endpoint is ready, wherever you can type. */
+	const voiceOffered = $derived(speechReady(snapshot.settings.speech) && Boolean(selected) && !lockedComposer);
+	$effect(() => () => voice.cancel());
 
 	/**
 	 * A group's stop menu: the group, each Bot at work in it, this job, every Bot (ADR 0040 P2).
@@ -472,6 +498,10 @@
 		<div class="composer-drop-hint" aria-hidden="true">{t.composer.dropWorkspaceItems}</div>
 	{/if}
 
+	{#if !lockedComposer}
+		<VoiceStatus {voice} {t} />
+	{/if}
+
 	{#if attachments.pendingAttachments.length > 0 || attachments.pendingPaths.length > 0}
 		<ComposerAttachmentsBar
 			{t}
@@ -525,6 +555,9 @@
 			onClick={onEditorClick}
 			onPaste={onComposerPaste}
 		/>
+		{#if voiceOffered || voice.busy}
+			<VoiceButton {voice} {t} disabled={!connected} />
+		{/if}
 		<!-- Beside send rather than the attachment button, so a thumb has one of them on each side. -->
 		{#if canSuggest}
 			<button

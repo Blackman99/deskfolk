@@ -114,12 +114,14 @@ export type SequencedEvent = {
  * `/v1/workspace/trash` moves files, not rows, so no transaction could hold it together with a
  * receipt; a repeat is harmless instead, since a path already gone is reported as trashed. A speed
  * test (ADR 0067) streams for up to minutes before it records anything, and a repeat only measures
- * again.
+ * again. A transcription (ADR 0073) waits on the speech endpoint and stores nothing; a repeat only
+ * transcribes again.
  */
 export function isNonReceiptPath(path: string): boolean {
   const withoutQuery = path.split("?")[0] ?? "";
   return withoutQuery === "/v1/models/probe"
     || /^\/v1\/providers\/[^/]+\/speed-test$/.test(withoutQuery)
+    || withoutQuery === "/v1/speech/transcribe"
     || withoutQuery === "/v1/workspace/trash"
     || withoutQuery === "/v1/notification-presence"
     || withoutQuery === "/v1/terminals"

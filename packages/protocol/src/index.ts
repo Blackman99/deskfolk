@@ -32,4 +32,5 @@ export * from "./local-endpoint.ts";
 export * from "./mentions.ts";
 export * from "./notifications.ts";
 export * from "./prompts.ts";
+export * from "./speech.ts";
 export * from "./text-diff.ts";

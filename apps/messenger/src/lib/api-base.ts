@@ -35,6 +35,8 @@ import type {
   PatchTaskSpecRequest,
   PatchTicketRequest,
   ProbeModelsResponse,
+  TranscribeRequest,
+  TranscribeResponse,
   PromptDetail,
   PromptRevisionRef,
   PromptSummary,
@@ -201,6 +203,11 @@ export abstract class ApiBase<Row extends PendingRow> {
     provider_id?: string;
   }): Promise<ProbeModelsResponse> {
     return this.post<ProbeModelsResponse>("/v1/models/probe", body);
+  }
+
+  /** One recording to the speech endpoint, its text back (ADR 0073). Stores nothing, carries no receipt. */
+  async transcribe(body: TranscribeRequest, signal?: AbortSignal): Promise<TranscribeResponse> {
+    return this.request<TranscribeResponse>("POST", "/v1/speech/transcribe", body, signal);
   }
 
   /** Times one enabled model and checks it calls tools; the speed is recorded on the endpoint (ADR 0067). */

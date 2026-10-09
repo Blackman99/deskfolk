@@ -227,8 +227,8 @@ _Avoid_: 托盘角标, 第二套界面, 守护进程自己做托盘
 _Avoid_: 成员, 租户, 组织, 没有你的纯 Bot 群, 名册里的你
 
 **端点（Model endpoint）**：
-一个模型的 HTTP 接口（base URL + API key），说两种格式之一：OpenAI 兼容（Chat Completions），或 Anthropic 兼容（Anthropic 的 Messages，Anthropic 自己和不少厂商、转发都提供）。格式在端点上选，没选的是 OpenAI 兼容；应用自己的循环和判断在两种格式上一样跑，只是发出去的样子不同。Anthropic、小米 MiMo 和千问（阿里云百炼）是内置连接器：添加时选它就只填密钥，应用拿 key 依次问这家各套餐的地址，用认它的那个；地址是这些套餐之一的端点都按那家显示，带它的 LOGO。Anthropic 自己的地址可以带一个 Anthropic 工作区 ID（`wrkspc_…`，不限定工作区的个人 key 必须带），随每个请求发出；它和 Bot 干活的工作区无关。应用不自带模型。可以配置多个端点；其中一个是默认。补全打到模型所属的那个端点。你在设置里加，Bot 也能用工具加。新建或改已有端点的 URL、格式或 Anthropic 工作区 ID 是危险动作。默认端点不能改 URL / 格式 / 密钥 / 删除。细节见[行为说明·补全](docs/behavior.md#completion)、[ADR 0066](docs/adr/0066-anthropic-format-endpoints.md) 和 [ADR 0072](docs/adr/0072-built-in-connectors.md)。
-_Avoid_: 供应商目录, Binder, 晚绑定, 每 Bot 一套端点, 把 Anthropic 兼容端点当成 Claude Agent, 把内置连接器当成另一种端点存下来, 把 Anthropic 工作区 ID 填进密钥
+一个模型的 HTTP 接口（base URL + API key），说两种格式之一：OpenAI 兼容（Chat Completions），或 Anthropic 兼容（Anthropic 的 Messages，Anthropic 自己和不少厂商、转发都提供）。格式在端点上选，没选的是 OpenAI 兼容；应用自己的循环和判断在两种格式上一样跑，只是发出去的样子不同。Anthropic、小米 MiMo 和千问（阿里云百炼）是内置连接器：添加时选它就只填密钥，应用拿 key 依次问这家各套餐的地址，用认它的那个；地址是这些套餐之一的端点都按那家显示，带它的 LOGO。Anthropic 自己的地址可以带一个 Anthropic 工作区 ID（`wrkspc_…`，不限定工作区的个人 key 必须带），随每个请求发出；它和 Bot 干活的工作区无关。应用不自带模型。可以配置多个端点；其中一个是默认。补全打到模型所属的那个端点。你在设置里加，Bot 也能用工具加。新建或改已有端点的 URL、格式或 Anthropic 工作区 ID 是危险动作。默认端点不能改 URL / 格式 / 密钥 / 删除。细节见[行为说明·补全](docs/behavior.md#completion)、[ADR 0066](docs/adr/0066-anthropic-format-endpoints.md) 和 [ADR 0072](docs/adr/0072-built-in-connectors.md)。输入框语音输入用的语音识别服务不是端点：它单独在设置里配、只有一个、Bot 用不到（[ADR 0073](docs/adr/0073-speech-recognition.md)）。
+_Avoid_: 供应商目录, Binder, 晚绑定, 每 Bot 一套端点, 把 Anthropic 兼容端点当成 Claude Agent, 把内置连接器当成另一种端点存下来, 把 Anthropic 工作区 ID 填进密钥, 把语音识别服务当成端点
 
 **默认模型（Default model）**：
 引擎 7 级起，一个 Bot 在你没给它钉模型时用的模型和思考档：第一次要用时，按它最近 7 天实际跑得最多的、端点名单上还在的那个模型（和它在这个模型上最常用的思考档）定下，之后就一直用，不出卡片问你（想换就给它钉一个模型）。以前出过的卡片［就用这个］［用端点默认］照样能按：选端点默认就不再推断。它取代了每轮开头调一次模型来挑。细节见[行为说明·模型](docs/behavior.md#model)。

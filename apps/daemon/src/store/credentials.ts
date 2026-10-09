@@ -1,18 +1,23 @@
+import { SPEECH_KEYCHAIN_NAME } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { planKey, type StoreContext } from "./shared";
 import { sha256 } from "../request-digest";
 
 type PendingKey = { name: string; operation_id: string; device_id: string | null; request_id: string | null; value_sha256: string };
 
+/** The speech endpoint's one key (ADR 0073) has no entity of its own; it reads as kind `speech`. */
 function canRepair(ctx: StoreContext, row: PendingKey): boolean {
+  if (row.value_sha256 === sha256("")) return false;
+  if (row.name === SPEECH_KEYCHAIN_NAME) return true;
   const match = /^(endpoint-api-key|mcp-auth):([0-9A-HJKMNP-TV-Z]{26})$/.exec(row.name);
-  if (!match || row.value_sha256 === sha256("")) return false;
+  if (!match) return false;
   const table = match[1] === "mcp-auth" ? "mcp_servers" : "providers";
   return Boolean(ctx.db.query(`SELECT 1 FROM ${table} WHERE id = ?`).get(match[2]!));
 }
 
 export function listCredentialOperations(ctx: StoreContext) {
   return ctx.db.query<PendingKey, []>("SELECT name, operation_id, device_id, request_id, value_sha256 FROM pending_keys").all().map((row) => {
+    if (row.name === SPEECH_KEYCHAIN_NAME) return { id: row.operation_id, kind: "speech", entity_id: "speech", request_id: row.request_id, can_repair: canRepair(ctx, row) };
     const match = /^(endpoint-api-key|mcp-auth):(.+)$/.exec(row.name);
     if (!match) throw new Error("unsupported pending credential namespace");
     return { id: row.operation_id, kind: match[1] === "mcp-auth" ? "mcp" : "provider", entity_id: match[2]!, request_id: row.request_id, can_repair: canRepair(ctx, row) };
@@ -25,7 +30,7 @@ export function resolveCredentialOperation(ctx: StoreContext, id: string, input:
   if (input.action === "repair" && (typeof input.value !== "string" || !input.value.length)) throw new HttpError(422, "invalid_args", "credential value is required");
   const row = ctx.db.query<PendingKey, [string]>("SELECT * FROM pending_keys WHERE operation_id = ?").get(id);
   if (!row) throw new HttpError(404, "not_found", "credential operation not found");
-  if (!/^(endpoint-api-key|mcp-auth):[0-9A-HJKMNP-TV-Z]{26}$/.test(row.name)) throw new HttpError(422, "invalid_args", "unsupported credential namespace");
+  if (row.name !== SPEECH_KEYCHAIN_NAME && !/^(endpoint-api-key|mcp-auth):[0-9A-HJKMNP-TV-Z]{26}$/.test(row.name)) throw new HttpError(422, "invalid_args", "unsupported credential namespace");
   if (ctx.keys.isWriting(row.name)) throw new HttpError(409, "conflict", "credential write is in progress");
   if (input.action === "repair" && !canRepair(ctx, row)) throw new HttpError(409, "conflict", "credential is pending deletion; finish clearing it");
   if (row.device_id && row.request_id) {

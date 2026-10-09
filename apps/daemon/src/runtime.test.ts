@@ -328,6 +328,7 @@ describe("local API runtime", () => {
       endpoint_default_model: null,
       default_provider_id: null,
       reader_model: null,
+      speech: null,
       launch_at_login: true,
       locale: "zh",
       theme: "system",

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The window's own entitlements (the daemon's are daemon-entitlements.plist). The app is signed with
+     the hardened runtime, which keeps the microphone shut unless this says otherwise: the composer's
+     voice input records through it (ADR 0073). Also signed into `tauri dev`'s Deskfolk Dev.app. -->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.device.audio-input</key>
+  <true/>
+</dict>
+</plist>

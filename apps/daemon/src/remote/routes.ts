@@ -1,4 +1,4 @@
-import { ANNOTATION_REMOTE_CROP_BASE64_MAX, CLIENT_ONLY_CONTROL_OFFERS, CONTROL_NOTE_MAX, CONTROL_OFFERS, FILE_DROP_SESSION_ID } from "@real-bot/protocol";
+import { ANNOTATION_REMOTE_CROP_BASE64_MAX, CLIENT_ONLY_CONTROL_OFFERS, CONTROL_NOTE_MAX, CONTROL_OFFERS, FILE_DROP_SESSION_ID, SPEECH_AUDIO_BASE64_MAX, SPEECH_FORMATS, SPEECH_PRESET_IDS } from "@real-bot/protocol";
 import type { RemoteRequest } from "@real-bot/remote";
 import { HttpError } from "../errors";
 import { isUlid } from "../ids";
@@ -221,6 +221,11 @@ add("PATCH", "settings", { endpoint_base_url: string, endpoint_api_key: string, 
     object({ runner: one("claude_code"), model: string, config_dir: nullable(string) }, ["runner", "model"])(v)),
   launch_at_login: bool, locale: one("en", "zh"), theme: one("system", "light", "dark"),
   if_revision: v => typeof v === "number" && Number.isSafeInteger(v) && v >= 0 }, [], true);
+// The speech endpoint (ADR 0073): set up like the settings, under their revision; a transcription
+// carries its recording as base64, bounded under the link's one-megabyte message.
+add("PATCH", "speech", { enabled: bool, preset: one(...SPEECH_PRESET_IDS), format: one(...SPEECH_FORMATS), base_url: string, model: string,
+  language: nullable(string), api_key: string, if_revision: v => typeof v === "number" && Number.isSafeInteger(v) && v >= 0 }, [], true);
+add("POST", "speech/transcribe", { audio: v => typeof v === "string" && v.length > 0 && v.length <= SPEECH_AUDIO_BASE64_MAX, mime: string }, ["audio", "mime"]);
 for (const [name, fields] of Object.entries({ bots: bot, providers: provider, "mcp-servers": mcp, skills: skill, routines: routine,
   memories: { subject: string, body: string, enabled: bool }, sessions: { name: string } } as Record<string, Fields>)) add("PATCH", `${name}/:id`, { ...fields, ...revision }, [], true);
 add("DELETE", "sessions/:id", { ...revision, erase_quotes: bool });

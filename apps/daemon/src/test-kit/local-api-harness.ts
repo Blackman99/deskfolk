@@ -40,6 +40,7 @@ export async function startLocalApi(
     installedApp?: () => SharedInstall | null;
     log?: (line: string) => void;
     localEndpoint?: LocalApiOptions["localEndpoint"];
+    speechFetch?: LocalApiOptions["speechFetch"];
   } = {},
 ): Promise<Harness> {
   const token = opts.token ?? "test-token";
@@ -54,6 +55,7 @@ export async function startLocalApi(
     log: opts.log,
     completions: opts.completions,
     localEndpoint: opts.localEndpoint,
+    speechFetch: opts.speechFetch,
   });
   const server = Bun.serve({
     hostname: "127.0.0.1",
