@@ -84,12 +84,18 @@ test("pointing at an agent opens its card with every account; another agent's re
   const rows = [...card.querySelectorAll(".usage-row")];
   expect(rows.map((row) => text(row.querySelector(".usage-name")))).toEqual(["5 小时", "7 天", "Opus · 7 天"]);
   expect(rows.map((row) => text(row.querySelector(".usage-percent")))).toEqual(["剩62%", "剩81%", "剩55%"]);
-  expect(text(card.querySelector(".usage-account-name"))).toBe("Max · a@example.com");
+  expect(text(card.querySelector(".usage-account-plan"))).toBe("Max");
+  expect(text(card.querySelector(".usage-account-who"))).toBe("a@example.com");
+  // One account: no box around it.
+  expect(card.querySelector(".usage-account.is-boxed")).toBeNull();
   expect(text(card.querySelector(".usage-agent-today"))).toBe("今天 31 轮 · 1.2M token");
   hover(view.host.querySelector('[data-usage-bubble="codex:"]'));
   await sleep(200);
   card = view.host.querySelector<HTMLElement>('[data-usage-card="codex:"]')!;
-  expect([...card.querySelectorAll(".usage-account-name")].map(text)).toEqual(["Plus · 默认账号", "Plus · .codex-b"]);
+  expect([...card.querySelectorAll(".usage-account-plan")].map(text)).toEqual(["Plus", "Plus"]);
+  expect([...card.querySelectorAll(".usage-account-who")].map(text)).toEqual(["默认账号", ".codex-b"]);
+  // Several accounts: each in a box of its own, its windows inside it.
+  expect(card.querySelectorAll(".usage-account.is-boxed")).toHaveLength(2);
   // An agent with today's records only: its day and why there is nothing more.
   hover(view.host.querySelector('[data-usage-bubble="grok:"]'));
   await sleep(200);

@@ -31,6 +31,8 @@
 
 	let { agent, t, locale, now, logoSize = 14 }: Props = $props();
 
+	/** Several accounts: each in a box of its own, so its windows read as its. */
+	const several = $derived(agent.accounts.length > 1);
 	const today = $derived(t.usage.today(String(agent.today.turns), usageTokenText(agent.today.tokens)));
 </script>
 
@@ -42,9 +44,13 @@
 	</h3>
 	{#each agent.accounts as account (account.config_dir ?? '')}
 		{@const note = usageAccountNote(account, t)}
-		<div class="usage-account" data-usage-account={account.config_dir ?? ''}>
+		{@const name = usageAccountShortName(agent, account, t)}
+		<div class="usage-account" class:is-boxed={several} data-usage-account={account.config_dir ?? ''}>
 			<div class="usage-account-head">
-				<span class="usage-account-name" title={account.error ?? undefined}>{usageAccountShortName(agent, account, t)}</span>
+				<span class="usage-account-name" title={account.error ?? undefined}>
+					{#if name.plan}<span class="usage-account-plan">{name.plan}</span>{/if}
+					{#if name.who}<span class="usage-account-who">{name.who}</span>{/if}
+				</span>
 				{#if account.credits}<span class="usage-credits">{t.usage.credits(usageCreditsText(account.credits, locale))}</span>{/if}
 			</div>
 			{#if note}
@@ -113,7 +119,15 @@
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
-		padding-left: 20px;
+	}
+
+	/* One box per account when there are several: the account is the group, its windows inside. */
+	.usage-account.is-boxed {
+		gap: 10px;
+		padding: 10px 12px 12px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		background: color-mix(in srgb, var(--ink) 3%, transparent);
 	}
 
 	.usage-account-head {
@@ -125,7 +139,27 @@
 	}
 
 	.usage-account-name {
-		color: var(--ink-secondary);
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
+	}
+
+	/* The plan is what tells accounts apart at a glance; the email is the detail after it. */
+	.usage-account-plan {
+		flex-shrink: 0;
+		padding: 1px 7px;
+		border-radius: var(--radius-full);
+		background: color-mix(in srgb, var(--ink) 9%, transparent);
+		color: var(--ink);
+		font-size: 0.92em;
+		font-weight: 600;
+		line-height: 1.5;
+	}
+
+	.usage-account-who {
+		min-width: 0;
+		color: var(--muted);
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;

@@ -124,11 +124,18 @@ export function usageAccountName(agent: UsageAgent, account: UsageAccount, t: Co
   return account.email || several ? `${named} · ${usageAccountWho(account, t)}` : named;
 }
 
-/** An account under its agent's name in the panel: its plan, then its email (or its directory when the agent has several). */
-export function usageAccountShortName(agent: UsageAgent, account: UsageAccount, t: Copy): string {
-  const several = agent.accounts.length > 1;
-  const parts = [usagePlanName(account.plan), account.email || several ? usageAccountWho(account, t) : null].filter(Boolean);
-  return parts.length > 0 ? parts.join(" · ") : t.usage.own;
+/**
+ * An account under its agent's name in the panel, in two parts: its plan, and its email (or its
+ * directory when the agent has several). One of them is always there.
+ */
+export function usageAccountShortName(
+  agent: UsageAgent,
+  account: UsageAccount,
+  t: Copy,
+): { plan: string | null; who: string | null } {
+  const plan = usagePlanName(account.plan);
+  const who = account.email || agent.accounts.length > 1 ? usageAccountWho(account, t) : null;
+  return { plan, who: plan || who ? who : t.usage.own };
 }
 
 /** Why an account shows no windows; null when it has some. */
