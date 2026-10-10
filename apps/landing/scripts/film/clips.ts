@@ -5,10 +5,11 @@
  * chat, its flow board and the teaser side by side) as the first screen's still. Clips keep the film's pixel density (live.ts records at 2×
  * by default), so the stage, at most 1480 CSS px wide, stays sharp on a high-density screen.
  *
- *   node scripts/film/clips.ts [--from film-out] [--sets zh-light,zh-dark,en-light,en-dark]
+ *   node scripts/film/clips.ts [--from film-out] [--sets zh-light,zh-dark,en-light,en-dark] [--steps 4,6,9]
  *
  * Reads <from>/deskfolk-live-<lang>-<theme>.{silent.mp4,timeline.json} (live.ts film, not the
- * recut) and writes static/media/walkthrough/<lang>-<theme>/{01….mp4,hero.jpg} (one clip a step) plus
+ * recut) and writes static/media/walkthrough/<lang>-<theme>/{04,06,09.mp4,hero.jpg} (a clip for each of the
+ * steps the home page's headline plays, `--steps`; Hero.svelte names the same files) plus
  * src/lib/demo/clips.json, which the walkthrough reads for each clip's speed and length.
  */
 import { execFileSync } from 'node:child_process';
@@ -24,7 +25,8 @@ const LANDING = path.resolve(HERE, '../..');
 const { values: opts } = parseArgs({
   options: {
     from: { type: 'string', default: path.join(LANDING, 'film-out') },
-    sets: { type: 'string', default: 'zh-light,zh-dark,en-light,en-dark' }
+    sets: { type: 'string', default: 'zh-light,zh-dark,en-light,en-dark' },
+    steps: { type: 'string', default: '4,6,9' }
   }
 });
 
@@ -76,6 +78,8 @@ function speedFor(seconds: number): number {
   return Math.ceil((seconds / MAX_SECONDS) * 2) / 2;
 }
 
+const wanted = new Set(opts.steps.split(',').map(Number));
+
 for (const set of opts.sets.split(',').filter(Boolean)) {
   const [lang, theme] = set.split('-');
   const tag = `deskfolk-live-${lang}-${theme}`;
@@ -95,6 +99,8 @@ for (const set of opts.sets.split(',').filter(Boolean)) {
   starts.forEach((from, i) => {
     const length = ends[i] - from;
     const speed = speedFor(length);
+    steps.push({ seconds: Math.round((length / speed) * 10) / 10, speed });
+    if (!wanted.has(i + 1)) return;
     const out = path.join(dir, `${String(i + 1).padStart(2, '0')}.mp4`);
     ffmpeg([
       '-ss', from.toFixed(3), '-t', length.toFixed(3), '-i', film,
@@ -103,7 +109,6 @@ for (const set of opts.sets.split(',').filter(Boolean)) {
       '-pix_fmt', 'yuv420p', '-movflags', '+faststart', out
     ]);
     bytes += statSync(out).size;
-    steps.push({ seconds: Math.round((length / speed) * 10) / 10, speed });
   });
 
   // The first screen: where the last step ends, just before the trust card fades the stage.
@@ -113,7 +118,7 @@ for (const set of opts.sets.split(',').filter(Boolean)) {
 
   manifest.sets[set] = { steps };
   console.log(
-    `[clips] ${set} @${scale}×: ${steps.map((s, i) => `${i + 1}:${s.seconds}s${s.speed > 1 ? `@${s.speed}×` : ''}`).join(' ')} · ${(bytes / 1e6).toFixed(1)} MB`
+    `[clips] ${set} @${scale}×: ${steps.map((s, i) => [s, i] as const).filter(([, i]) => wanted.has(i + 1)).map(([s, i]) => `${i + 1}:${s.seconds}s${s.speed > 1 ? `@${s.speed}×` : ''}`).join(' ')} · ${(bytes / 1e6).toFixed(1)} MB`
   );
 }
 

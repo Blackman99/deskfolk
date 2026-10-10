@@ -166,10 +166,10 @@ const zh: Dict = {
         callout: '每张任务都写明谁来做、谁来审。'
       },
       {
-        title: '工作区外先问你，做完由你来定',
+        title: '工作区外，先问你',
         body:
-          'logo 在工作区外，拷进来的命令停在批准卡上，点「允许一次」才跑。制片把画面交给 Grok Imagine 生成视频，这一段就结束了；应用把你的话整理成「你的要求」，每条都站在你的原话上、只增不删。你说的时长 6 秒和分辨率 1080×1920 成了两条检查提议，点「确认」它们才成为门禁。',
-        callout: '你的原话记成要求；数字成了检查，你点确认。'
+          'logo 在工作区外，拷进来的命令停在批准卡上，点「允许一次」才跑。随后制片把画面交给 Grok Imagine 生成视频，这一段就结束了：等渲染不占着一轮。',
+        callout: '动工作区以外的东西，先停在批准卡上。'
       },
       {
         title: '关窗走开，渲染由应用去查',
@@ -178,22 +178,22 @@ const zh: Dict = {
         callout: '你走开，应用替你盯着渲染。'
       },
       {
-        title: '说停就停，只有你能解除',
+        title: '要点由你来定；先停一下，再说一句就接着做',
         body:
-          '你在群里说「先停一下」：叫停当场生效，压在这件事上，开轮、叫醒和有副作用的调用都过不去。这时再说「片尾的 logo 再大一点」，制片只开一段只读的轮来回你，这句话同时记成一条新要求。说「继续」才解开，活从你最后那句话接着做。',
-        callout: '叫停是一个状态，你说「继续」才解开。'
+          '回来打开「要点」：应用把你的话整理成要求，每条都站在你的原话上、只增不删；你说的时长 6 秒和分辨率 1080×1920 成了两条检查提议，点「确认」它们才成为门禁。然后在群里说「先停一下」，叫停当场生效；再说「片尾的 logo 再大一点」，制片就从你这句接着做，这句话也记成一条新要求。',
+        callout: '叫停是「先停一下」：你再说一句，它就从那句接着做。'
       },
       {
         title: '做完有定义',
         body:
-          '制片交件，应用当场跑你确认过的检查，时长或分辨率不对就退回返工；Bot 说「做完了」不算。检查通过后，审片看过帧，逐条带依据判通过，这张任务才变成「已通过」。主标语是文字，交上来落在你的放行卡上。',
+          '制片交件，应用当场跑你确认过的检查，时长或分辨率不对就退回返工；Bot 说「做完了」不算。检查通过后，审片看过帧，逐条带依据判通过，这张任务才变成「已通过」。改大 logo 的那一版也照样过检查、过审片。',
         callout: '检查、审查、你的放行；Bot 说的不算。'
       },
       {
         title: '回来，看结果',
         body:
-          '回来问一句「怎么样了」，应用按这件事的状态直接回你，不开轮、不叫醒谁。流程图在会话下面，成片在旁边窗格里播放：每张任务过了哪些检查、谁审的、谁放行的，都在上面。',
-        callout: '问一句「怎么样了」，按状态直接回你。'
+          '问一句「怎么样了」，回你的是制片自己：成片在哪、审片怎么判的，应用不替它插话。看板在会话下面，成片在旁边窗格里播放：每张任务过了哪些检查、谁审的、谁放行的，都在上面。',
+        callout: '问一句「怎么样了」，制片自己回你。'
       }
     ]
   },
@@ -201,7 +201,7 @@ const zh: Dict = {
     beats: [
       { line: '交出去。', caption: '一句话交代，它先拆成任务：每张写明谁来做、谁来审。' },
       { line: '离开。', caption: '关窗走开，应用替你盯着渲染。' },
-      { line: '回来看结果。', caption: '检查、审查、你的放行都过了，才算做完。' }
+      { line: '回来看结果。', caption: '检查跑过、审查带依据放行，才算做完；Bot 说的不算。' }
     ],
     stageLabel: 'Deskfolk 真实界面演示',
     download: '下载 Alpha',
@@ -374,10 +374,10 @@ const en: Dict = {
         callout: 'Every ticket names who makes it and who reviews it.'
       },
       {
-        title: 'It asks before leaving the workspace; you define done',
+        title: 'It asks before leaving the workspace',
         body:
-          'The logo lives outside the workspace, so the command that copies it in stops at an approval card until you press Allow once. Once the Producer hands the picture to Grok Imagine, its segment ends, and the app writes your words up as asks, each standing on what you said and only ever added to. The length and size you gave become two proposed checks; they gate the work only once you confirm them.',
-        callout: 'Your words become asks; your numbers, checks you confirm.'
+          'The logo lives outside the workspace, so the command that copies it in stops at an approval card until you press Allow once. Then the Producer hands the picture to Grok Imagine and its segment ends: waiting on a render holds no turn.',
+        callout: 'Anything outside the workspace waits on an approval card.'
       },
       {
         title: 'Walk away; the app watches the render',
@@ -386,22 +386,22 @@ const en: Dict = {
         callout: 'You leave; the app keeps an eye on the render.'
       },
       {
-        title: 'Stop means stop, until you lift it',
+        title: 'You define done; a stop is for now',
         body:
-          'Say “Pause.” in the group: the stop holds the job at once, and no turn, wake-up or side effect gets past it. Say “Make the logo at the end bigger.” while it holds, and the Producer answers in a read-only turn while the line is kept as a new ask. Only “Continue.” lifts the stop, and the work goes on from what you said last.',
-        callout: 'A stop is a state: only “Continue.” lifts it.'
+          'Back at your desk, open the Plan: the app writes your words up as asks, each standing on what you said and only ever added to; the length and size you gave become two proposed checks, which gate the work only once you confirm them. Then say “Pause.” in the group and the work stops at once; say “Make the logo at the end bigger.” and the Producer goes on from that line, which is kept as a new ask.',
+        callout: 'A stop is for now: your next word sets it going again.'
       },
       {
         title: 'Done has a definition',
         body:
-          'When the Producer hands the film in, the app runs the checks you confirmed on the spot, and a wrong length or size sends it back for rework; a Bot saying “done” moves nothing. Once the checks pass, the Reviewer looks at the frames and passes it with evidence for each item, and only then is the ticket approved. The tagline is text, so its hand-in lands on your card.',
+          'When the Producer hands the film in, the app runs the checks you confirmed on the spot, and a wrong length or size sends it back for rework; a Bot saying “done” moves nothing. Once the checks pass, the Reviewer looks at the frames and passes it with evidence for each item, and only then is the ticket approved. The version with the bigger logo goes through the same checks and review.',
         callout: 'Checks, a review and your OK; a Bot’s word moves nothing.'
       },
       {
         title: 'Return to results',
         body:
-          'Back at your desk, ask “How is it going?” and the app answers from the job’s state without starting a turn or waking anyone. The flow sits under the chat and the film plays beside it: every ticket’s checks, reviewer and approval are on it.',
-        callout: 'Ask “How is it going?” and the state answers.'
+          'Ask “How is it going?” and the Producer answers itself: where the film is and how the Reviewer ruled, with no app voice in between. The board sits under the chat and the film plays beside it: every ticket’s checks, reviewer and approval are on it.',
+        callout: 'Ask “How is it going?” and the Producer answers.'
       }
     ]
   },
@@ -409,7 +409,7 @@ const en: Dict = {
     beats: [
       { line: 'Hand it off.', caption: 'One line, and it lays out tickets: who makes each, who reviews it.' },
       { line: 'Walk away.', caption: 'Close the window; the app keeps an eye on the render.' },
-      { line: 'Return to results.', caption: 'Done means checks, a review and your OK all passed.' }
+      { line: 'Return to results.', caption: 'Done means the checks ran and a review passed it with evidence; a Bot’s word moves nothing.' }
     ],
     stageLabel: 'Deskfolk, the real app',
     download: 'Download alpha',

@@ -11,6 +11,7 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 - The home page is one screen: the headline "Hand it off. Walk away. Return to results." is the player, each line lighting up while its clip of the real app plays, round and round; click a line to jump to it. Below it: Download alpha and the 30-second film.
 - The README is pictures and the films only. Its text, the "what is live and what is not" table and the install steps moved to a new **About and install** page (`docs/overview.md`, `/en/overview` on the site), which the nav now links in place of Full walkthrough, Boundaries and Run from source.
 - The 2:15 real-app demo film (`/media/deskfolk-zh.mp4`, `/media/deskfolk-en.mp4`) and the 1:26 motion tour (`/media/deskfolk-promo-<lang>.mp4`) are gone from the site and the README; the 0:30 mascot film is the one film left.
+- The home page's three clips and its first-screen still are re-filmed on today's app: the quieter chat, each view of a job (board, plan) as a tab of its own, a stop that lasts until your next word, and the Producer answering "How is it going?" itself. The README's four screenshots and the share images come from the same recording.
 
 ### Run Bots on Codex, Grok, OpenCode, DSH, ZCode, Antigravity or an ACP agent of your own
 

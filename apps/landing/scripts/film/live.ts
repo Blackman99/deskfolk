@@ -5,8 +5,11 @@
  *
  *   node scripts/film/live.ts shoot [--lang zh]     real models and MCP, recorded to film-out/tape-<lang>/
  *   node scripts/film/live.ts replay [--lang zh]    the same story answered from the tape, no film
- *   node scripts/film/live.ts film [--lang zh] [--theme light] [--music track.mp3]
- *                                                    the replay, composed on /film/<lang>/live and recorded
+ *   node scripts/film/live.ts film [--lang zh] [--theme light] [--music track.mp3] [--live]
+ *                                                    the replay, composed on /film/<lang>/live and recorded;
+ *                                                    with --live, real models instead of the tape (recorded
+ *                                                    to tape-<lang>-<theme>-live/), for a story whose
+ *                                                    off-camera timing a replay cannot keep
  *
  * The shoot spends real money once (your endpoint, and Grok Imagine through your MCP server); keys
  * stay in your Keychain and are only added by demo-tape to upstream requests. The demo's HOME and
@@ -48,7 +51,8 @@ const { values: opts, positionals } = parseArgs({
     // Device pixels per CSS pixel on the film page. At 2 the homepage clips stay sharp on a
     // high-density screen, where a 1× recording is shown enlarged twice over.
     scale: { type: 'string', default: '2' },
-    until: { type: 'string' }
+    until: { type: 'string' },
+    live: { type: 'boolean', default: false }
   }
 });
 const mode = positionals[0] as 'shoot' | 'replay' | 'film';
@@ -60,7 +64,9 @@ const DAEMON = opts.daemon ? path.resolve(opts.daemon) : path.join(REPO, 'apps/d
 const lang: Lang = opts.lang === 'en' ? 'en' : 'zh';
 const theme = opts.theme === 'dark' ? 'dark' : 'light';
 const outDir = path.resolve(opts.out);
-const tapeDir = path.join(outDir, `tape-${lang}`);
+/** Real models: the shoot, or a film shot live. */
+const recording = mode === 'shoot' || (mode === 'film' && opts.live);
+const tapeDir = path.join(outDir, mode === 'film' && opts.live ? `tape-${lang}-${theme}-live` : `tape-${lang}`);
 const logDir = path.join(outDir, 'live', `${lang}-${mode}`);
 // The real path (not /tmp) so the demo shell's prompt shortens the workspace to ~.
 const DEMO_ROOT = '/private/tmp/deskfolk-demo';
@@ -160,12 +166,12 @@ async function openApp(browser: Browser, url: string, viewport: { width: number;
 }
 
 async function main() {
-  if (mode === 'shoot' && existsSync(path.join(tapeDir, 'tape.jsonl'))) {
+  if (recording && existsSync(path.join(tapeDir, 'tape.jsonl'))) {
     const old = `${tapeDir}-${new Date().toISOString().replace(/[:.]/g, '-')}`;
     renameSync(tapeDir, old);
     log(`kept the previous tape at ${old}`);
   }
-  if (mode !== 'shoot' && !existsSync(path.join(tapeDir, 'tape.jsonl'))) throw new Error(`no tape at ${tapeDir}; run the shoot first`);
+  if (!recording && !existsSync(path.join(tapeDir, 'tape.jsonl'))) throw new Error(`no tape at ${tapeDir}; run the shoot first`);
   rmSync(DEMO_ROOT, { recursive: true, force: true });
   rmSync(logDir, { recursive: true, force: true });
   mkdirSync(logDir, { recursive: true });
@@ -177,8 +183,8 @@ async function main() {
   await drawLogo(browser, LOGO);
 
   // The film streams answers faster than a model would; the plain replay keeps the tape's pace.
-  const pace = mode === 'film' ? ['--pace', '0.55'] : [];
-  run('tape', 'bun', [path.join(DAEMON, 'scripts/demo-tape.ts'), mode === 'shoot' ? 'record' : 'replay', '--tape', tapeDir, '--models', MODELS.join(','), ...pace], process.env);
+  const pace = mode === 'film' && !recording ? ['--pace', '0.55'] : [];
+  run('tape', 'bun', [path.join(DAEMON, 'scripts/demo-tape.ts'), recording ? 'record' : 'replay', '--tape', tapeDir, '--models', MODELS.join(','), ...pace], process.env);
   const studioEnv: NodeJS.ProcessEnv = {
     ...process.env,
     HOME: demoHome,
@@ -189,7 +195,7 @@ async function main() {
     REAL_BOT_PTY_HELPER: process.env.REAL_BOT_PTY_HELPER ?? path.join(REPO, 'apps/runtime-helper/.build/debug/real-bot-pty')
   };
   delete studioEnv.ZDOTDIR;
-  if (mode !== 'shoot') studioEnv.REAL_BOT_DEMO_CURLRC = '1';
+  if (!recording) studioEnv.REAL_BOT_DEMO_CURLRC = '1';
   run('studio', 'bun', [path.join(DAEMON, 'scripts/demo-studio.ts')], studioEnv);
   await waitFor('the demo daemon', () => existsSync(path.join(dataDir, 'local-api.json')), 30_000);
   const desc = JSON.parse(readFileSync(path.join(dataDir, 'local-api.json'), 'utf-8')) as { port: number; token: string };

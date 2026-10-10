@@ -396,7 +396,9 @@ function replayStream(a: Assistant, onAbort: () => void, onDone: () => void = ()
         controller.enqueue(sse(chunk({ tool_calls: [{ index, id: tc.id, type: "function", function: { name: tc.name, arguments: tc.arguments } }] }))),
       );
       controller.enqueue(sse(chunk({}, a.finish ?? (a.toolCalls.length ? "tool_calls" : "stop"))));
-      if (a.usage) controller.enqueue(sse({ ...base, choices: [], usage: a.usage }));
+      // No usage: the shoot's token counts belong to the shoot's prompts. A replayed prompt runs a
+      // little longer or shorter, and the daemon reads "sent more, read fewer" as a server cutting
+      // the prompt to fit its window (ADR 0068), failing the turn.
       controller.enqueue(sse("[DONE]"));
       done = true;
       controller.close();

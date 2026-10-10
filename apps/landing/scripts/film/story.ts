@@ -168,6 +168,10 @@ export async function playStory(s: Stage): Promise<void> {
   };
   const detail = async (planId: string) => s.api('GET', `/v1/tasks/${planId}`);
   const holdsInForce = async () => items(await s.api('GET', '/v1/holds'));
+  const groupLines = async (sessionId: string) => {
+    const page = await s.api('GET', `/v1/sessions/${sessionId}/messages?limit=60`);
+    return items(page.items ? page : { items: page.messages ?? page });
+  };
   /** Whether a render of the job is still out. No route lists renders, so the demo daemon's own database is read. */
   const renderOut = (planId: string): boolean => {
     try {
@@ -291,33 +295,48 @@ export async function playStory(s: Stage): Promise<void> {
 
   const tab = (name: RegExp) => app.locator('.wb-tab', { hasText: name }).first();
   const paneOf = (el: Locator) => app.locator('.wb-leaf').filter({ has: el }).first();
-  const flowTab = () => tab(re('流程', ' flow'));
+  /** A view of the job (trace, board or plan), told by its tab's icon: the titles differ by language. */
+  const traceTab = (view?: string) =>
+    app.locator('.wb-tab').filter({ has: app.locator(`.wb-tab-icon[data-kind="trace"]${view ? `[data-view="${view}"]` : ''}`) }).first();
+  const flowTab = () => traceTab();
   const artifactTab = () => tab(re('的产物', 'artifacts'));
   const chatTab = () =>
-    app.locator('.wb-tab', { hasText: t.groupName }).filter({ hasNotText: re('的产物|流程', 'artifacts| flow') }).first();
+    app
+      .locator('.wb-tab', { hasText: t.groupName })
+      .filter({ hasNot: app.locator('.wb-tab-icon[data-kind="trace"]') })
+      .filter({ hasNotText: re('的产物', 'artifacts') })
+      .first();
   const board = () => app.locator('.trace-pane').first();
-  /** The board's Plan / Tickets panel: a tab on a narrow pane, a toggle beside the board on a wide one. */
+  /**
+   * The job's board or plan. Each view of a job is a tab of its own, opened from the conversation
+   * tab's menu; a pane that shows one already switches with its view tabs, if it has them.
+   */
   const boardTab = async (name: RegExp) => {
-    const segment = board().getByRole('tab', { name }).first();
+    const segment = board().locator('.trace-view-tab').filter({ hasText: name }).first();
     if (await segment.count()) {
       if ((await segment.getAttribute('aria-selected')) !== 'true') await s.click(segment);
       return;
     }
-    // By its name: the toggle's text starts with the space before its icon.
-    const toggle = board().locator('.trace-side-toggles').getByRole('button', { name }).first();
-    if ((await toggle.count()) && (await toggle.getAttribute('aria-pressed')) !== 'true') await s.click(toggle);
+    const view = /看板|Board|任务|Tickets/.test(name.source) ? 'board' : 'spec';
+    const open = traceTab(view);
+    if (await open.count()) {
+      await s.click(open.locator('.wb-tab-button').first());
+      return;
+    }
+    await s.hover(chatTab());
+    await s.click(chatTab().locator('.wb-tab-more'));
+    await s.click(app.locator(`[data-testid="wb-context-menu"] [data-action="${view}"]`));
   };
 
   await s.attempt('board', async () => {
     await s.hover(chatTab());
     await s.click(chatTab().locator('.wb-tab-more'));
-    await s.click(app.locator('[data-testid="wb-context-menu"] [data-action="trace"]'));
+    await s.click(app.locator('[data-testid="wb-context-menu"] [data-action="board"]'));
     await board().waitFor({ timeout: 20_000 });
     await s.hold(700);
     await s.drag(flowTab().locator('.wb-tab-button').first(), paneOf(chatTab()), 'south');
     await app.locator('.wb-leaf').nth(1).waitFor({ timeout: 10_000 });
     // The tickets it laid out, the Reviewer on each
-    await boardTab(re('^任务', '^Tickets'));
     const rows = board().locator('.ticket-row');
     await rows.first().waitFor({ timeout: 60_000 });
     await s.focus(rows.first().locator('xpath=..'));
@@ -325,9 +344,31 @@ export async function playStory(s: Stage): Promise<void> {
     await s.focus(null);
   });
 
+  // Off camera: the Reviewer on every ticket the Producer left without one, as soon as the tickets
+  // exist and before anything is handed over, so a replay reaches the same reviews.
+  const nameReviewer = async () => {
+    for (const x of (await detail(plan.id)).tickets ?? []) {
+      if (x.reviewer_bot_id || x.owner_bot_id === reviewer.id) continue;
+      s.log(`naming the Reviewer on ${x.id} off camera`);
+      await s.api('PATCH', `/v1/tickets/${x.id}`, { reviewer_bot_id: reviewer.id }).catch(() => {});
+    }
+  };
+  // The tickets come when the Producer lays them out, mid-segment: watched for beside the story.
+  let watching = true;
+  const reviewerWatch = (async () => {
+    while (watching) {
+      await nameReviewer().catch(() => {});
+      await sleep(300);
+    }
+  })();
+
   /* 5 · Outside the workspace, it asks first; then your asks, written up, and what counts as done */
   const approval = app.locator('.msg.is-approval').filter({ has: app.locator('.approval-acts button') }).first();
-  await until('the approval card', async () => (await approval.count()) > 0, 15 * 60_000);
+  // Questions answered meanwhile, approvals not: this one is pressed on camera.
+  await until('the approval card', async () => {
+    await unblock(false);
+    return (await approval.count()) > 0;
+  }, 15 * 60_000).catch(() => s.log('no approval card came up'));
   await s.scene(5);
   await follow();
   await s.focus(approval);
@@ -335,6 +376,36 @@ export async function playStory(s: Stage): Promise<void> {
   await s.attempt('approve', () => s.click(approval.getByRole('button', { name: re('允许一次', 'Allow once') })));
   await s.focus(null);
   await follow();
+  // The render goes out a moment after the approval and can be back within a minute: catch it out.
+  const rendering = async () => renderOut(plan.id) || ((await detail(plan.id)).tickets ?? []).some((x: any) => x.ball?.kind === 'app' && x.ball?.reason === 'job');
+  const out = await until(
+    'the render out',
+    async () => {
+      await unblock(true);
+      return rendering();
+    },
+    15 * 60_000,
+    500
+  ).catch(() => false);
+
+  /* 6 · You leave; the app polls the render itself */
+  await s.scene(6);
+  await s.leave();
+  if (out) {
+    await s.hold(2400);
+    await until('the render in', async () => {
+      await unblock(true);
+      return !(await rendering());
+    }, 40 * 60_000, 1000).catch(() => {});
+  } else {
+    s.log('no render to wait on: going on from a quiet moment');
+    await s.idle(10 * 60_000).catch(() => {});
+  }
+  await s.hold(1600);
+  await s.back();
+
+  /* 7 · What counts as done, from your words; then a stop for now, and your next word sets it going again */
+  await s.scene(7);
   // The numbers in your line become checks once the segment that filed it ends (it ends handing the
   // render to the app), and the plan is written up after it has been quiet a moment: offers on the
   // board, gates only once you confirm them.
@@ -346,11 +417,10 @@ export async function playStory(s: Stage): Promise<void> {
       const offered = (d.checks ?? []).filter((c: any) => c.origin === 'derived' && c.derived_state === 'proposed').length;
       return Boolean(d.spec) && offered >= 2;
     },
-    // The segment makes its pictures first, and an image can take minutes on a slow day.
     45 * 60_000
   );
   await s.attempt('asks and checks', async () => {
-    await boardTab(re('^要点$', '^Plan$'));
+    await boardTab(re('要点', 'Plan'));
     // Your requirements, each on your own words
     const asks = board().locator('.plan-req').first();
     await asks.waitFor({ timeout: 30_000 });
@@ -376,58 +446,37 @@ export async function playStory(s: Stage): Promise<void> {
     }
     await s.focus(null);
   });
-  // Who reviews: the Producer may have named the Reviewer when it laid out the tickets; any it left
-  // open, you pick on the board.
-  await s.attempt('reviewer', async () => {
-    const tickets = await until('the tickets', async () => {
-      await unblock(true);
-      const d = await detail(plan.id);
-      return d.tickets?.length ? d.tickets : null;
-    }, 10 * 60_000);
-    const open = tickets.filter((x: any) => !x.reviewer_bot_id && x.owner_bot_id !== reviewer.id);
-    if (!open.length) return;
-    await boardTab(re('^任务', '^Tickets'));
-    for (const ticket of open) {
-      const row = board().locator(`.ticket-row[data-ticket-id="${ticket.id}"]`).first();
-      await s.focus(row);
-      await s.click(row.locator('.ticket-main'));
-      const pick = board().getByRole('combobox', { name: re('审查者', 'Reviewer') }).first();
-      await pick.waitFor({ timeout: 10_000 });
-      await s.click(pick);
-      await s.click(app.getByRole('option', { name: t.reviewerName, exact: true }));
-      await s.hold(600);
+  for (const c of (await detail(plan.id)).checks ?? []) {
+    if (c.origin !== 'derived' || c.derived_state !== 'proposed') continue;
+    s.log(`confirming check ${c.id} off camera`);
+    await s.api('POST', `/v1/checks/${c.id}/confirm`).catch(() => {});
+  }
+  watching = false;
+  await reviewerWatch;
+  await nameReviewer();
+  /** Hand-overs waiting on your card, released off camera (step 8 presses them on camera). */
+  const releaseCards = async () => {
+    for (const m of await groupLines(group.id)) {
+      if (m.control?.kind !== 'review_item' || m.control?.acted?.length || !(m.control?.offer ?? []).includes('approve')) continue;
+      s.log(`releasing ${m.id} off camera`);
+      await s.api('POST', `/v1/messages/${m.id}/control`, { action: 'approve' }).catch(() => {});
     }
-    await s.focus(null);
-  });
+  };
+  // Your stop and change land on work at rest: every ticket through, nobody at work, no render out.
+  // Said while a turn runs, they race it, and a replay (answers far faster than a model) would have
+  // the Producer past them before they are said.
+  let restSince = 0;
+  await until('the work at rest', async () => {
+    await unblock(true);
+    await releaseCards();
+    const tickets = (await detail(plan.id)).tickets ?? [];
+    const through = tickets.length > 0 && tickets.every((x: any) => ['approved', 'done', 'dropped'].includes(stageOf(x)));
+    const busy = (await sessions()).some((x: any) => (x.live_turns ?? []).length > 0);
+    const rest = through && !busy && !(await rendering());
+    restSince = rest ? restSince || Date.now() : 0;
+    return rest && Date.now() - restSince > 3000;
+  }, 30 * 60_000, 1000);
 
-  /* 6 · You leave; the app polls the render itself */
-  await s.scene(6);
-  await s.leave();
-  // The stop that follows lands while the Producer waits on the render, with no turn of its to cut.
-  // A picture made another way has no render to wait on: then a quiet moment, held for 10 s.
-  let quietSince = 0;
-  const leftAt = Date.now();
-  await until(
-    'the render the app polls',
-    async () => {
-      await unblock(true);
-      const d = await detail(plan.id);
-      if ((d.tickets ?? []).some((x: any) => x.ball?.kind === 'app' && x.ball?.reason === 'job')) return true;
-      const busy = (await sessions()).some((x: any) => (x.live_turns ?? []).length > 0);
-      quietSince = busy ? 0 : quietSince || Date.now();
-      if (Date.now() - leftAt > 8 * 60_000 && quietSince && Date.now() - quietSince > 10_000) {
-        s.log('no render to wait on: going on from a quiet moment');
-        return true;
-      }
-      return false;
-    },
-    40 * 60_000
-  );
-  await s.hold(2400);
-  await s.back();
-
-  /* 7 · A stop is a state: it holds until you lift it */
-  await s.scene(7);
   await follow();
   // Your stop, told from any hold already standing: a new id in force, then that id lifted.
   const standing = new Set((await holdsInForce()).map((h: any) => h.id));
@@ -437,37 +486,18 @@ export async function playStory(s: Stage): Promise<void> {
   await s.hold(1600);
   await s.type(composer(), t.change);
   await s.press(composer(), 'Enter');
-  await s.idle(5 * 60_000, { approve: false });
+  const changedAt: string = await until(
+    'your change',
+    async () => (await groupLines(group.id)).filter((m: any) => m.kind === 'user' && m.body === t.change).at(-1)?.created_at ?? null,
+    30_000,
+    500
+  );
+  // Your change sets the Producer going again (a stop is for now): let it get to a resting point.
+  await s.idle(5 * 60_000, { approve: false }).catch(() => s.log('still at work after your change'));
   // The render still out when you stopped finishes while the stop holds, and the app keeps its
   // result until you go on. Both shoots had it so, by seconds; waiting makes it the order a replay
   // keeps too, whatever its pace.
   await until('the render in', async () => !renderOut(plan.id), 10 * 60_000, 1000).catch(() => {});
-  await s.hold(1200);
-  await s.type(composer(), t.go);
-  await s.press(composer(), 'Enter');
-  await until('the stop lifted', async () => !(await holdsInForce()).some((h: any) => h.id === stop.id), 60_000, 500);
-  // When you went on, by the daemon's clock, and whether the app handed back what you said while
-  // it was stopped (its receipt says so): then the Producer works your change in, and step 8 waits
-  // for that hand-over, not for tickets approved before the stop.
-  const groupLines = async () => {
-    const page = await s.api('GET', `/v1/sessions/${group.id}/messages?limit=60`);
-    return items(page.items ? page : { items: page.messages ?? page });
-  };
-  const wentOn: string = await until(
-    'your go on',
-    async () => (await groupLines()).filter((m: any) => m.kind === 'user' && m.body === t.go).at(-1)?.created_at ?? null,
-    30_000,
-    500
-  );
-  const handedBack = await until(
-    'the go on receipt',
-    async () => {
-      const receipt = (await groupLines()).find((m: any) => m.kind === 'system' && m.created_at >= wentOn && m.control?.verb === 'continue');
-      return receipt ? { back: /照你叫停期间说的接着做|Going on from what you said while it was stopped/.test(receipt.body) } : null;
-    },
-    30_000,
-    500
-  );
   await s.hold(1200);
 
   /* 8 · Done has a definition: checks the app runs, a review with evidence, your release */
@@ -482,21 +512,30 @@ export async function playStory(s: Stage): Promise<void> {
       const page = await s.api('GET', `/v1/sessions/${group.id}/messages?limit=60`);
       for (const m of items(page.items ? page : { items: page.messages ?? page })) {
         if (m.control?.kind !== 'review_item' || pressed.has(m.id) || m.control?.acted?.length) continue;
-        const release = app.locator(`[data-message-id="${m.id}"] .control-actions button`, { hasText: re('^放行$', '^Approve$') }).first();
-        if (!(await release.count())) continue;
+        if (!(m.control?.offer ?? []).includes('approve')) continue;
         pressed.add(m.id);
+        const release = app.locator(`[data-message-id="${m.id}"] .control-actions button`, { hasText: re('^放行$', '^Approve$') }).first();
         await follow();
-        await s.focus(release);
-        await s.hold(700);
-        await s.click(release);
-        await s.focus(null);
+        const onCamera = (await release.count()) > 0;
+        if (onCamera) {
+          await s.focus(release);
+          await s.hold(700);
+          await s.click(release).catch(() => {});
+          await s.focus(null);
+        }
+        await sleep(1500);
+        const now = (await groupLines(group.id)).find((x: any) => x.id === m.id);
+        if (!now?.control?.acted?.length) {
+          s.log(`releasing ${m.id} off camera`);
+          await s.api('POST', `/v1/messages/${m.id}/control`, { action: 'approve' }).catch(() => {});
+        }
       }
       // A hand-over the checks sent back: the board shows which one failed.
       for (const sub of items(await s.api('GET', `/v1/tasks/${plan.id}/submissions`))) {
         if (sub.state !== 'checks_failed' || seenFailed.has(sub.id)) continue;
         seenFailed.add(sub.id);
         await s.attempt('failed check', async () => {
-          await boardTab(re('^要点$', '^Plan$'));
+          await boardTab(re('要点', 'Plan'));
           const failing = board().locator('.check-pill.is-fail').first();
           await s.focus((await failing.count()) ? failing : board());
           await s.hold(2400);
@@ -506,12 +545,12 @@ export async function playStory(s: Stage): Promise<void> {
       await follow();
       const tickets = (await detail(plan.id)).tickets ?? [];
       const through = tickets.length > 0 && tickets.every((x: any) => ['approved', 'done', 'dropped'].includes(stageOf(x)));
-      if (!handedBack.back) return through;
-      // Your change, handed back on the go on: a hand-over made after it, approved, with nothing
-      // still being checked or reviewed.
+      // Your change: a hand-over made after it, approved, with nothing still being checked or reviewed.
       const subs = items(await s.api('GET', `/v1/tasks/${plan.id}/submissions`));
       const open = subs.some((sub: any) => ['checking', 'submitted', 'in_review'].includes(sub.state));
-      return through && !open && subs.some((sub: any) => sub.created_at > wentOn && sub.state === 'approved');
+      // And no card still waiting on you: coming back, the work is settled.
+      const waiting = (await groupLines(group.id)).some((m: any) => m.control?.kind === 'review_item' && !m.control?.acted?.length && (m.control?.offer ?? []).includes('approve'));
+      return through && !open && !waiting && subs.some((sub: any) => sub.created_at > changedAt && sub.state === 'approved');
     },
     90 * 60_000,
     1500
@@ -525,9 +564,25 @@ export async function playStory(s: Stage): Promise<void> {
   await s.scene(9);
   await s.type(composer(), t.status);
   await s.press(composer(), 'Enter');
-  await sleep(1500);
+  const askedAt: string = await until(
+    'your question',
+    async () => (await groupLines(group.id)).filter((m: any) => m.kind === 'user' && m.body === t.status).at(-1)?.created_at ?? null,
+    30_000,
+    500
+  );
+  const reply = await until(
+    'the answer',
+    async () => {
+      const m = (await groupLines(group.id)).find((x: any) => x.kind !== 'user' && x.kind !== 'system' && x.created_at > askedAt && x.body?.trim());
+      const busy = (await sessions()).some((x: any) => (x.live_turns ?? []).length > 0);
+      return m && !busy ? m : null;
+    },
+    5 * 60_000,
+    500
+  );
   await follow();
-  const answer = chat().locator('[data-message-id]').last();
+  await sleep(800);
+  const answer = chat().locator(`[data-message-id="${reply.id}"]`).or(chat().locator('[data-message-id]').last()).first();
   await s.focus(answer);
   await s.hold(2600);
   await s.attempt('artifact pane', async () => {
@@ -536,10 +591,11 @@ export async function playStory(s: Stage): Promise<void> {
     // a message (`artifact:` + the path URI-encoded, its folders in the text but out of sight), or the
     // chip of a message that hands over that one file (two or more fold into a bundle).
     const film = /\.(mp4|mov|webm)$/;
-    const video = app
-      .locator('[data-message-id] a.md-artifact-link[href*="launch%2F"]', { hasText: film })
-      .or(app.locator('.attachment-file-btn[title*="launch/"]', { has: app.locator('.file-title', { hasText: film }) }))
-      .last();
+    // The hand-over's chip first: a path written in a reply may name a copy that is not there.
+    const chip = app.locator('.attachment-file-btn[title*="launch/"]', { has: app.locator('.file-title', { hasText: film }) }).last();
+    const video = (await chip.count())
+      ? chip
+      : app.locator('[data-message-id] a.md-artifact-link[href*="launch%2F"]', { hasText: film }).last();
     if (!(await video.count())) {
       s.log('no link to a film in launch/ in the chat');
       return;
@@ -551,7 +607,7 @@ export async function playStory(s: Stage): Promise<void> {
     await s.hold(700);
     await s.drag(artifactTab().locator('.wb-tab-button').first(), paneOf(chatTab()), 'east');
     await app.locator('.wb-leaf').nth(2).waitFor({ timeout: 10_000 });
-    await boardTab(re('^任务', '^Tickets'));
+    await boardTab(re('看板', 'Board'));
     const player = app.locator('.artifact-pane video').first();
     if (await player.count()) {
       await s.focus(player);
