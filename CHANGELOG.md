@@ -6,6 +6,28 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+(none)
+
+## 0.1.0-rc.16 — 2026-10-10
+
+Signed and notarized macOS rc, with an experimental, still unsigned Windows installer beside the `.dmg`s.
+
+### Set up on Claude Code, with no endpoint
+
+- Step 2 of the setup wizard is now "Connect a model": a model endpoint (the presets, a custom address, a server on this computer) or the Claude Code on this computer. Choosing Claude Code shows the Claude Agent card (path, version, accounts, Check again) and goes on once a signed-in Claude Code is found.
+- Step 3 then picks one Claude model (sonnet by default) and the account; saving puts every built-in call on it and creates no endpoint, and the first Bot is a Claude Agent on the same account.
+- Setup counts as complete with a workspace and every built-in call but compaction on a Claude model, as it does with a usable endpoint.
+- With no endpoint, Bots' judgements of group lines, reflections and retrospectives now run on the Claude model chosen for them; they used to be skipped without asking for it.
+- Set up this way, later Bots are Claude Agents too: the new-Bot form starts on Claude Agent while there is no endpoint a Bot could run on, and a teammate a Bot hires runs on Claude Code on the same account, instead of an endpoint Bot that could not take a turn.
+- Bots on an endpoint, the model ladder, and learning memories and skills from a conversation still need an endpoint; step 3 says so.
+
+### Signed and notarized on macOS
+
+- The `.dmg`s are signed with Developer ID and notarized by Apple: a download opens with a double-click, with no right-click → Open or `xattr` step. `spctl -a -vv /Applications/Deskfolk.app` says `source=Notarized Developer ID`.
+- The Keychain now knows the app by its Team ID rather than by a hash that changed with every build: the update to this version asks for the login password once more, and later updates do not.
+- The release notes say a release is notarized only when the release run notarizes it; the Windows installer is still unsigned, and the notes say so.
+- The Gatekeeper guide, the README and the site's download section say builds from this version are notarized; the bypass steps stay for older builds.
+
 ### Every built-in model call, on one page
 
 - Settings › Models › Built-in models replaces the two pages "Model that reads lines" and "Organizing model". It lists every model call the app makes on its own, one row each, in four groups: reading your lines (reading); organizing and checking (organizer, scribe, picture checks); the composer (its ✨ suggestions); and as a Bot (joining in, reflection, retrospective, context compaction).
