@@ -1,7 +1,9 @@
 <script lang="ts">
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
-	import UsageView from './UsageView.svelte';
+	import { localeTag } from '../locale-tag.ts';
+	import UsagePanelBody from './UsagePanelBody.svelte';
+	import { usageFeedOf } from './usage-feed.svelte.ts';
 
 	/**
 	 * A phone's usage page (ADR 0080), opened from Tools in place of the list: Back on the left, the
@@ -14,6 +16,16 @@
 	}
 
 	let { runtime, t, onBack }: Props = $props();
+
+	const feed = $derived(usageFeedOf(runtime));
+	const client = $derived(runtime.connection === 'connected' ? runtime.client : null);
+	const locale = $derived(localeTag(runtime.snapshot.settings.locale === 'en' ? 'en' : 'zh'));
+
+	$effect(() => {
+		const api = client;
+		if (!api) return;
+		return feed.watch(api);
+	});
 </script>
 
 <div class="usage-page-head">
@@ -26,7 +38,9 @@
 	<div class="usage-page-spacer" aria-hidden="true"></div>
 </div>
 <div class="usage-page-body" data-usage-page>
-	<UsageView {runtime} {t} />
+	{#if feed.agents}
+		<UsagePanelBody agents={feed.agents} {t} {locale} now={feed.now} busy={feed.busy} failed={feed.failed} onRefresh={() => client && void feed.load(client, true)} />
+	{/if}
 </div>
 
 <style>

@@ -12,6 +12,8 @@ export const zh = {
   close: "关闭用量",
   back: "返回",
   left: (percent: string) => `剩${percent}`,
+  /** Under the number inside a dial on the usage tab. */
+  leftLabel: "剩余",
   hours: (count: number) => `${count} 小时`,
   days: (count: number) => `${count} 天`,
   minutes: (count: number) => `${count} 分钟`,
@@ -51,6 +53,7 @@ export const en: CopyShape<typeof zh> = {
   close: "Close usage",
   back: "Back",
   left: (percent: string) => `${percent} left`,
+  leftLabel: "left",
   hours: (count: number) => `${count}-hour`,
   days: (count: number) => `${count}-day`,
   minutes: (count: number) => `${count}-minute`,

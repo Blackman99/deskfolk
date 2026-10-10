@@ -91,7 +91,9 @@ export const STORY_SIZES = {
 	// (ADR 0080): two Claude accounts, one nearly spent.
 	'usage-widget': { width: 900, height: 640 },
 	// The phone's usage page from Tools, with the same content.
-	'usage-page': { width: 390, height: 844 }
+	'usage-page': { width: 390, height: 844 },
+	// The workbench's usage tab: a card per account across the width, each window a dial.
+	'usage-tab': { width: 1280, height: 720 }
 } as const;
 
 export type StoryName = keyof typeof STORY_SIZES;

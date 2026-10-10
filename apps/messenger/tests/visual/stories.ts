@@ -43,6 +43,7 @@ import SessionContextMenu from '../../src/lib/sidebar/SessionContextMenu.svelte'
 import Sidebar from '../../src/lib/sidebar/Sidebar.svelte';
 import SidebarRail from '../../src/lib/sidebar/SidebarRail.svelte';
 import UsageWidget from '../../src/lib/usage/UsageWidget.svelte';
+import UsageTab from '../../src/lib/usage/UsageTab.svelte';
 import UsagePage from '../../src/lib/usage/UsagePage.svelte';
 import { usageWidget } from '../../src/lib/usage/usage-widget.svelte.ts';
 import type { UsageResponse } from '@real-bot/protocol';
@@ -1375,6 +1376,11 @@ const defs: Record<StoryName, Story> = {
 		component: UsagePage as never,
 		props: { runtime: fakeRuntime(world, { client: { usage: async () => usageStory } }), t, onBack: () => {} },
 		afterMount: (host: HTMLElement) => usageSettled(host, '[data-usage-page] .usage-row')
+	},
+	'usage-tab': {
+		component: UsageTab as never,
+		props: { runtime: fakeRuntime(world, { client: { usage: async () => usageStory } }), t },
+		afterMount: (host: HTMLElement) => usageSettled(host, '[data-usage-tab] .usage-gauge')
 	}
 };
 

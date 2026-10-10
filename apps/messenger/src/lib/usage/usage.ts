@@ -51,20 +51,38 @@ export function usageLevel(percent: number): "normal" | "warn" | "danger" {
   return "normal";
 }
 
-/** When a window starts over: in so long within a day, otherwise the day and time. */
-export function usageResetText(resetsAt: string | null, now: number, t: Copy, locale: string): string | null {
+type UsageReset = { kind: "soon" } | { kind: "in"; wait: string } | { kind: "at"; when: string };
+
+/** When a window starts over, in parts: soon, in so long within a day, otherwise the day and time. */
+function usageReset(resetsAt: string | null, now: number, t: Copy, locale: string): UsageReset | null {
   if (!resetsAt) return null;
   const at = Date.parse(resetsAt);
   if (Number.isNaN(at)) return null;
   const left = at - now;
-  if (left <= 60_000) return t.usage.resetsSoon;
+  if (left <= 60_000) return { kind: "soon" };
   if (left < 24 * 3_600_000) {
     const minutes = Math.ceil(left / 60_000);
-    return t.usage.resetsIn(t.usage.hoursMinutes(Math.floor(minutes / 60), minutes % 60));
+    return { kind: "in", wait: t.usage.hoursMinutes(Math.floor(minutes / 60), minutes % 60) };
   }
   // claude.ai says 01:59:59.98 one time and 02:00:00 the next for the same window: to the nearest minute.
   const when = new Intl.DateTimeFormat(locale, { weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(Math.round(at / 60_000) * 60_000);
-  return t.usage.resetsAt(when);
+  return { kind: "at", when };
+}
+
+/** When a window starts over: in so long within a day, otherwise the day and time. */
+export function usageResetText(resetsAt: string | null, now: number, t: Copy, locale: string): string | null {
+  const reset = usageReset(resetsAt, now, t, locale);
+  if (!reset) return null;
+  if (reset.kind === "soon") return t.usage.resetsSoon;
+  return reset.kind === "in" ? t.usage.resetsIn(reset.wait) : t.usage.resetsAt(reset.when);
+}
+
+/** The same, bare, beside a reset mark under a dial: "3 小时 21 分", "周二 00:00". */
+export function usageResetShort(resetsAt: string | null, now: number, t: Copy, locale: string): string | null {
+  const reset = usageReset(resetsAt, now, t, locale);
+  if (!reset) return null;
+  if (reset.kind === "soon") return t.usage.resetsSoon;
+  return reset.kind === "in" ? reset.wait : reset.when;
 }
 
 /** The clock time an answer is from. */
