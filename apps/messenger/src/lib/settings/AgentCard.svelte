@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { AGENT_KINDS, type AgentStatus, type BotRunner, type CustomAgent } from '@real-bot/protocol';
+	import { AGENT_KINDS, type AgentStatus, type BotRunner, type CustomAgent, type UsageAgent } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
+	import UsageLine from '../usage/UsageLine.svelte';
 	import { agentAccountExample, agentCommand, agentFailure, type AgentFailure } from './agents.ts';
 	import AgentLogo from './AgentLogo.svelte';
 	import HelpTip from './HelpTip.svelte';
@@ -29,9 +30,11 @@
 		onChange?: (status: AgentStatus) => void;
 		/** Opened from Settings › Agents' list, whose row already names it: no heading or frame of its own. */
 		embedded?: boolean;
+		/** Its usage where it reports plan windows (ADR 0080), one line per account something runs on. */
+		usage?: UsageAgent | null;
 	}
 
-	let { status, api, t, custom = null, onChange, embedded = false }: Props = $props();
+	let { status, api, t, custom = null, onChange, embedded = false, usage = null }: Props = $props();
 
 	let busy = $state(false);
 	let failed = $state(false);
@@ -50,6 +53,11 @@
 	/** Your accounts besides the daemon's own environment, which the facts above already show. */
 	const listed = $derived(status.accounts?.filter((entry) => entry.config_dir !== null) ?? []);
 	const listedDirs = $derived(listed.map((entry) => entry.config_dir!));
+	/** An account's usage when something runs on it; signed out is said beside it already. */
+	function usageOf(dir: string | null) {
+		return usage?.accounts.find((entry) => (entry.config_dir ?? null) === dir && entry.reason !== 'signed_out') ?? null;
+	}
+	const ownUsage = $derived(usageOf(null));
 
 	async function run(work: (client: AgentCardApi) => Promise<AgentStatus>, onFail: (error: unknown) => void): Promise<void> {
 		if (!api || busy) return;
@@ -130,6 +138,10 @@
 			<dd data-agent-network>{#if status.proxy}<code>{status.proxy}</code>{#if status.proxy_source}<span class="agent-source">· {t.agents.proxySource[status.proxy_source] ?? status.proxy_source}</span>{/if}{:else}{t.agents.direct}{/if}</dd>
 			<dt>{t.agents.models}</dt>
 			<dd data-agent-models>{status.models.length > 0 ? t.agents.modelsCount(status.models.length, status.default_model) : t.agents.modelsNone}</dd>
+			{#if ownUsage}
+				<dt>{t.usage.title}</dt>
+				<dd data-agent-usage><UsageLine account={ownUsage} {t} /></dd>
+			{/if}
 		</dl>
 	{/if}
 	{#if status.error && status.path}
@@ -145,6 +157,7 @@
 		<div class="agent-accounts" data-agent-accounts>
 			<h4>{t.agents.accounts.heading}<HelpTip text={t.agents.accounts.hint(status.label, configDirVar)} label={t.agents.accounts.help} /></h4>
 			{#each listed as entry (entry.config_dir)}
+				{@const entryUsage = usageOf(entry.config_dir)}
 				<section class="agent-account" aria-label={entry.config_dir} data-agent-account-dir={entry.config_dir}>
 					<div class="agent-account-head">
 						<div class="agent-account-main">
@@ -154,6 +167,7 @@
 						<button type="button" class="btn-xs" disabled={busy} onclick={() => void saveAccounts(listedDirs.filter((dir) => dir !== entry.config_dir))}>{t.agents.accounts.remove}</button>
 					</div>
 					{#if entry.error}<p class="agent-note">{entry.error}</p>{/if}
+					{#if entryUsage}<div data-agent-usage={entry.config_dir}><UsageLine account={entryUsage} {t} /></div>{/if}
 				</section>
 			{/each}
 			{#if accountFailure}

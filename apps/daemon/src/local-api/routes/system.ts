@@ -99,6 +99,12 @@ export function systemRoutes(ctx: RouteCtx): Response | Promise<Response> | null
       return agents.list(0).then((list) => jsonResponse({ ...list, custom_agents: saved }, 200, null));
     }
   }
+  // Every agent's usage in one answer (ADR 0080): what the usage widget, the phone's page and the
+  // menu bar read. The two routes around it stay for clients from before it.
+  if (method === "GET" && path === "/v1/usage" && options.usage) {
+    const refresh = url.searchParams.get("refresh") === "1";
+    return options.usage.current(refresh ? AGENT_USAGE_REFRESH_MIN_MS : undefined).then((usage) => jsonResponse(usage, 200, null));
+  }
   if (method === "GET" && path === "/v1/agent-usage" && options.agentUsage) {
     const refresh = url.searchParams.get("refresh") === "1";
     return options.agentUsage.current(refresh ? AGENT_USAGE_REFRESH_MIN_MS : undefined).then((usage) => jsonResponse(usage, 200, null));

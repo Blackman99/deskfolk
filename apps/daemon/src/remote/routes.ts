@@ -60,6 +60,8 @@ add("PUT", "runtime/agents/path", { runner, path: nullable(string) }, ["runner",
 add("PUT", "runtime/agents/accounts", { runner, config_dirs: list(string) }, ["runner", "config_dirs"]);
 add("PUT", "runtime/custom-agents", { agents: list(object({ id: string, name: string, command: string, args: list(string) }, ["name", "command"])) }, ["agents"]);
 get("agent-usage", { refresh: one("1") });
+// ADR 0080: every agent's usage in one answer, for the phone's usage page.
+get("usage", { refresh: one("1") });
 const pageLimit: Check = v => typeof v === "string" && /^[1-9][0-9]{0,2}$/.test(v) && Number(v) <= 200;
 get("sessions/:id/snapshot", { limit: pageLimit });
 get("sessions/:id/messages", { cursor: v => typeof v === "string" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z\|[0-9A-HJKMNP-TV-Z]{26}$/.test(v), limit: pageLimit });

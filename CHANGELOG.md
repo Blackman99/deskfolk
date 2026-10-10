@@ -6,6 +6,14 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Usage in one place: a floating widget
+
+- Every local agent's usage is in one place now ([ADR 0080](docs/adr/0080-one-usage-view.md)). The two strips at the sidebar's foot are gone; instead a pill floats top right of the window: a ring and what is left of the tightest window for each Claude and Codex account, outlined amber or red once one runs low. Drag it anywhere; drop it by the left or right edge and it docks there, tucked away to a sliver until you point at it. Click it for everything: each account's windows and when they reset, each agent's turns and tokens today, and, set apart, the agents that report no plan. Right-click hides it; Tools › Usage brings it back.
+- On a phone, Tools › Usage opens a page with the same content.
+- The menu bar shows one line per account ("Claude Max · email  5h 62% · 7d 81%"), the agents with no plan on one shared line, four lines at most, then "Show all usage…", which opens the window and the panel.
+- Settings › Agents shows one usage line under each account, Codex's included; the full view is the widget's.
+- A Claude account that only a built-in call runs on is now asked for its usage too, and Claude's turns today are counted.
+
 ### Site and README
 
 - The home page is one screen: the headline "Hand it off. Walk away. Return to results." is the player, each line lighting up while its clip of the real app plays, round and round; click a line to jump to it. Below it: Download alpha and the 30-second film.

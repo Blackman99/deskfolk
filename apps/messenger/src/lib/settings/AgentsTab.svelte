@@ -9,6 +9,7 @@
 	import ClaudeAgentCard, { type ClaudeAgentApi } from './ClaudeAgentCard.svelte';
 	import { claudeAccountLabel } from './claude-agent.ts';
 	import CustomAgentsCard, { type CustomAgentsApi } from './CustomAgentsCard.svelte';
+	import { UsageFeed, type UsageApi } from '../usage/usage-feed.svelte.ts';
 
 	/**
 	 * Settings › Agents (ADR 0061, ADR 0079): every local agent as one line — its logo, whether it can
@@ -20,7 +21,8 @@
 	 */
 	export type AgentsTabApi = ClaudeAgentApi &
 		AgentCardApi &
-		CustomAgentsApi & {
+		CustomAgentsApi &
+		Partial<UsageApi> & {
 			agents: (refresh?: boolean, wait?: boolean) => Promise<AgentsStatusResponse>;
 		};
 
@@ -47,6 +49,10 @@
 	/** The line opened: `claude_code`, an agent's key, or `custom-agents` for your own ACP agents. */
 	let opened = $state<string | null>(null);
 	let missingShown = $state(false);
+	/** Each agent's usage, a line under each account (ADR 0080): asked once when the tab opens. */
+	const usage = new UsageFeed();
+	const usageOf = (runner: BotRunner, customId: string | null = null) =>
+		usage.agents?.find((agent) => agent.runner === runner && (agent.custom_id ?? null) === (customId ?? null)) ?? null;
 
 	/** The ask still out, so a check of all made while the first answer is coming waits for it, then asks again. */
 	let inFlight: Promise<void> | null = null;
@@ -111,6 +117,7 @@
 		untrack(() => {
 			void loadClaude(client);
 			void loadAgents(client);
+			if (client.usage) void usage.load(client as UsageApi);
 		});
 	});
 
@@ -188,11 +195,11 @@
 
 {#snippet detail(row: Row)}
 	{#if row.key === 'claude_code'}
-		<ClaudeAgentCard {api} {t} {locale} embedded onstatus={(status) => (claude = status)} />
+		<ClaudeAgentCard {api} {t} {locale} embedded usage={usageOf('claude_code')} onstatus={(status) => (claude = status)} />
 	{:else if row.key === 'custom-agents' && list}
 		<CustomAgentsCard agents={list.custom_agents} {api} {t} embedded onChange={(response) => (list = response)} />
 	{:else if row.agent}
-		<AgentCard status={row.agent} {api} {t} embedded custom={row.agent.custom_id ? (list?.custom_agents.find((agent) => agent.id === row.agent!.custom_id) ?? null) : null} onChange={changed} />
+		<AgentCard status={row.agent} {api} {t} embedded usage={usageOf(row.agent.runner, row.agent.custom_id)} custom={row.agent.custom_id ? (list?.custom_agents.find((agent) => agent.id === row.agent!.custom_id) ?? null) : null} onChange={changed} />
 	{/if}
 {/snippet}
 

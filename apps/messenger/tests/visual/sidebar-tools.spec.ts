@@ -56,7 +56,7 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 				await expect.poll(() => shownLabels(footer), { message: `${width}px` }).toEqual(words ? 3 : 0);
 			}
 			await toggle.click();
-			await expect(menu.getByRole('menuitem')).toHaveText(['Routines', 'Spend', 'New terminal', 'Archived sessions']);
+			await expect(menu.getByRole('menuitem')).toHaveText(['Routines', 'Spend', 'Usage', 'New terminal', 'Archived sessions']);
 			await expect(menu.getByRole('menuitem').first()).toBeFocused();
 			await page.keyboard.press('End');
 			await expect(menu.getByRole('menuitem').last()).toBeFocused();
@@ -77,7 +77,7 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]] as con
 			await page.setViewportSize({ width: 390, height: 844 });
 			await expect(footer).toHaveCount(0);
 			await toggle.click();
-			await expect(menu.getByRole('menuitem')).toHaveText(['Routine calendar', 'Spend', 'Terminal', 'Archived sessions']);
+			await expect(menu.getByRole('menuitem')).toHaveText(['Routine calendar', 'Spend', 'Usage', 'Terminal', 'Archived sessions']);
 			const box = await menu.boundingBox();
 			expect(box!.x).toBeGreaterThanOrEqual(0);
 			expect(box!.x + box!.width).toBeLessThanOrEqual(390);

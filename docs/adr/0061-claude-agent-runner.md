@@ -1,6 +1,6 @@
 # Claude Agent：由你本机的 Claude Code 跑 Bot / Claude Agent: Bots run by your own Claude Code
 
-Status: implemented 2026-10-05. A per-Bot choice, at every engine level (no level gates it: an older build ignores the column and runs the Bot on its endpoint). Builds on [ADR 0040](0040-agent-kernel-the-job-owns-state.md) (the kernel), [ADR 0044](0044-delegation-and-end-contract.md) (delegation and endings), [ADR 0046](0046-submissions-and-reviews.md) (hand-overs and reviews) and [ADR 0058](0058-the-app-asks-only-when-it-needs-you.md) (asking).
+Status: implemented 2026-10-05. A per-Bot choice, at every engine level (no level gates it: an older build ignores the column and runs the Bot on its endpoint). Builds on [ADR 0040](0040-agent-kernel-the-job-owns-state.md) (the kernel), [ADR 0044](0044-delegation-and-end-contract.md) (delegation and endings), [ADR 0046](0046-submissions-and-reviews.md) (hand-overs and reviews) and [ADR 0058](0058-the-app-asks-only-when-it-needs-you.md) (asking). Where usage is shown (the sidebar meters, the menu bar lines, the settings card) is superseded by [ADR 0080](0080-one-usage-view.md).
 
 2026-10-05，你想在 Deskfolk 里用上自己的 Claude 订阅。应用只认 OpenAI 兼容的 `/chat/completions` 端点和端点密钥；Claude 订阅不是密钥，是 claude.ai 的登录，Anthropic 只让它用在 Claude Code 和自家应用里。直接拿订阅的令牌去调接口（一些第三方工具、代理就是这么做的）违反条款，也被 Anthropic 一直在拦。
 

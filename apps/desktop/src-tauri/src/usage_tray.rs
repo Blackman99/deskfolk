@@ -1,17 +1,16 @@
-//! What is left of your Claude plan at the top of the menu bar menu (ADR 0061), and of your other
-//! local agents' (ADR 0079, `GET /v1/agent-usage`: Codex's own windows, today's records for the
-//! rest, under their names in plain text — no other vendor's mark). The Claude part reads the same
-//! `GET /v1/claude-usage` the sidebar reads, asked once a minute while the daemon is up. The
-//! daemon keeps each answer for five minutes, so this starts at most one `claude` per five
-//! minutes, and none at all until a Bot runs on Claude Agent. Each account is a group of its own,
-//! set off by separators: its name under Claude's mark, then a line per window with a ring as full
-//! as what is left of it. The lines go away when there is nothing to show; a click on one shows
-//! the window.
+//! What is left of your plans at the top of the menu bar menu (ADR 0061, ADR 0079, ADR 0080): one
+//! line per account, read from the one `GET /v1/usage` the usage widget reads, asked once a minute
+//! while the daemon is up. The daemon keeps each answer for five minutes, so this starts at most
+//! one `claude` per five minutes, and none at all until something runs on Claude Agent. An account
+//! with plan windows gets a ring as full as what is left of its tightest window and the 5-hour
+//! and 7-day numbers beside its name; one signed out, or one that could not be read, says so;
+//! agents that only report today's records share one line. At most four lines, then "查看全部用量…",
+//! which shows the window and its usage panel. The lines go away when there is nothing to show.
 
 use serde::Deserialize;
 use std::f64::consts::TAU;
 use std::sync::Mutex;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 use tauri::image::Image;
 use tauri::menu::{IconMenuItem, Menu, PredefinedMenuItem};
 use tauri::{AppHandle, Manager, Wry};
@@ -22,100 +21,74 @@ const POLL: Duration = Duration::from_secs(60);
 /// Starting `claude` and its answer from claude.ai can take a while; the daemon gives up at 30 s.
 const FETCH_TIMEOUT: Duration = Duration::from_secs(40);
 pub const ITEM_PREFIX: &str = "usage-";
+/// The last item, which opens the usage panel; the page is told, not just the window shown.
+pub const ALL_ID: &str = "usage-all";
+/// Lines for accounts and today's records, before "查看全部用量…".
+const MAX_LINES: usize = 4;
 
 /// Menu icons are drawn at 18 pt; these are 36 px, for a Retina screen.
 const ICON_PX: u32 = 36;
-/// Anthropic's Claude Spark in its own colour (as `ClaudeSpark.svelte` draws it), 30 px inside a
-/// transparent 36 px square, as raw RGBA: rendered from that SVG path once, since a menu icon
-/// takes pixels and this crate has no image decoder.
-static CLAUDE_SPARK: &[u8] = include_bytes!("claude-spark-36.rgba");
 
-#[derive(Debug, Deserialize)]
-pub struct Usage {
-    pub available: bool,
+/// `GET /v1/usage` (ADR 0080): each agent something runs on, with its accounts.
+#[derive(Debug, Default, Deserialize)]
+pub struct UsageResponse {
     #[serde(default)]
-    pub plan: Option<String>,
-    #[serde(default)]
-    pub windows: Vec<UsageWindow>,
-    /// Each account some Bot runs on; absent from a daemon older than accounts.
-    #[serde(default)]
-    pub accounts: Vec<AccountUsage>,
+    pub agents: Vec<UsageAgent>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct AccountUsage {
+pub struct UsageAgent {
+    pub runner: String,
+    pub label: String,
+    #[serde(default)]
+    pub today: UsageToday,
+    #[serde(default)]
+    pub accounts: Vec<UsageAccount>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct UsageToday {
+    #[serde(default)]
+    pub turns: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UsageAccount {
+    #[serde(default)]
+    pub config_dir: Option<String>,
+    #[serde(default)]
+    pub email: Option<String>,
     pub available: bool,
     #[serde(default)]
     pub reason: Option<String>,
     #[serde(default)]
+    pub plan: Option<String>,
+    #[serde(default)]
     pub windows: Vec<UsageWindow>,
-    #[serde(default)]
-    pub plan: Option<String>,
-    #[serde(default)]
-    pub email: Option<String>,
-    #[serde(default)]
-    pub config_dir: Option<String>,
-}
-
-/// `GET /v1/agent-usage` (ADR 0079): your other local agents something runs on.
-#[derive(Debug, Default, Deserialize)]
-pub struct AgentUsageResponse {
-    #[serde(default)]
-    pub items: Vec<AgentUsage>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct AgentUsage {
-    pub label: String,
-    pub available: bool,
-    #[serde(default)]
-    pub plan: Option<String>,
-    #[serde(default)]
-    pub windows: Vec<AgentWindow>,
-    #[serde(default)]
-    pub config_dir: Option<String>,
-    pub today: AgentToday,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct AgentWindow {
-    #[serde(default)]
-    pub minutes: Option<f64>,
-    pub percent: f64,
-    #[serde(default)]
-    pub resets_at: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct AgentToday {
-    pub turns: i64,
-    pub tokens: i64,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct UsageWindow {
-    pub kind: String,
+    #[serde(default)]
+    pub minutes: Option<f64>,
+    #[serde(default)]
     pub model: Option<String>,
     pub percent: f64,
-    pub resets_at: Option<String>,
 }
 
 /// One row of the usage part of the menu.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Entry {
-    /// An account's name, under Claude's mark.
-    Account(String),
-    /// Another local agent's name (ADR 0079), as plain text.
-    Agent(String),
-    /// A line with no ring: an agent's day here, when it has no plan windows to show.
-    Note(String),
-    /// A window and how much of it is left, under a ring as full as that.
-    Window {
+    /// An account and how much is left of its tightest window, under a ring as full as that.
+    Line {
         text: String,
         left: f64,
         level: Level,
     },
-    Separator,
+    /// A line with no ring: an account that is signed out, or the agents' day here.
+    Note(String),
+    /// "查看全部用量…", last.
+    All,
 }
 
 /// How full a window is, for its ring's colour: as the sidebar colours it.
@@ -144,6 +117,7 @@ struct Shown {
 #[derive(Default)]
 pub struct UsageTray(Mutex<Shown>);
 
+
 /// Remembers the tray's menu and starts asking. `endpoint` reads the connected daemon, if any.
 pub fn start(
     app: &AppHandle,
@@ -158,9 +132,9 @@ pub fn start(
     std::thread::spawn(move || loop {
         let entries = match endpoint(&handle) {
             // A failed ask keeps the lines already shown; the next minute asks again.
-            Some(endpoint) => match (fetch(&endpoint), fetch_agents(&endpoint)) {
-                (Some(usage), agents) => joined(usage_entries(&usage, now_secs()), agent_entries(&agents.unwrap_or_default(), now_secs())),
-                (None, _) => current_entries(&handle),
+            Some(endpoint) => match fetch(&endpoint) {
+                Some(usage) => usage_entries(&usage),
+                None => current_entries(&handle),
             },
             None => Vec::new(),
         };
@@ -169,8 +143,8 @@ pub fn start(
     });
 }
 
-fn fetch(endpoint: &Endpoint) -> Option<Usage> {
-    let url = format!("{}/v1/claude-usage", endpoint.origin);
+fn fetch(endpoint: &Endpoint) -> Option<UsageResponse> {
+    let url = format!("{}/v1/usage", endpoint.origin);
     ureq::AgentBuilder::new()
         .timeout(FETCH_TIMEOUT)
         .build()
@@ -180,88 +154,6 @@ fn fetch(endpoint: &Endpoint) -> Option<Usage> {
         .ok()?
         .into_json()
         .ok()
-}
-
-/// Your other local agents' usage; an older daemon without the route answers nothing here.
-fn fetch_agents(endpoint: &Endpoint) -> Option<AgentUsageResponse> {
-    let url = format!("{}/v1/agent-usage", endpoint.origin);
-    ureq::AgentBuilder::new()
-        .timeout(FETCH_TIMEOUT)
-        .build()
-        .get(&url)
-        .set("Authorization", &format!("Bearer {}", endpoint.token))
-        .call()
-        .ok()?
-        .into_json()
-        .ok()
-}
-
-/// Claude's groups, then the other agents', a separator between.
-fn joined(mut claude: Vec<Entry>, agents: Vec<Entry>) -> Vec<Entry> {
-    if !claude.is_empty() && !agents.is_empty() {
-        claude.push(Entry::Separator);
-    }
-    claude.extend(agents);
-    claude
-}
-
-/// A group per agent: its name (`Codex Plus`), then what is left of each window it reports, or
-/// one line of its day here (`今天 3 轮 · 12k token`) when it reports none; an agent with neither
-/// a window nor a turn today is left out.
-pub fn agent_entries(usage: &AgentUsageResponse, now: i64) -> Vec<Entry> {
-    let mut entries = Vec::new();
-    for item in &usage.items {
-        let has_windows = item.available && !item.windows.is_empty();
-        if !has_windows && item.today.turns == 0 {
-            continue;
-        }
-        if !entries.is_empty() {
-            entries.push(Entry::Separator);
-        }
-        let plan = item.plan.as_deref().map(plan_name).unwrap_or_default();
-        let name = match (plan.is_empty(), item.config_dir.as_deref()) {
-            (false, Some(dir)) => format!("{} {plan} · {dir}", item.label),
-            (false, None) => format!("{} {plan}", item.label),
-            (true, Some(dir)) => format!("{} · {dir}", item.label),
-            (true, None) => item.label.clone(),
-        };
-        entries.push(Entry::Agent(name));
-        if has_windows {
-            for window in &item.windows {
-                let span = window_span(window.minutes);
-                let left = left_text(window.percent);
-                let text = match window.resets_at.as_deref().and_then(parse_rfc3339) {
-                    Some(at) => format!("{span}：剩 {left}（{}）", reset_text(at - now)),
-                    None => format!("{span}：剩 {left}"),
-                };
-                entries.push(Entry::Window { text, left: (100.0 - window.percent).clamp(0.0, 100.0), level: level_of(window.percent) });
-            }
-        } else {
-            entries.push(Entry::Note(format!("今天 {} 轮 · {} token", item.today.turns, tokens_text(item.today.tokens))));
-        }
-    }
-    entries
-}
-
-/// A window's length in the menu's words: `5 小时`, `7 天`, `30 天`.
-fn window_span(minutes: Option<f64>) -> String {
-    match minutes {
-        Some(m) if m >= 1440.0 => format!("{} 天", (m / 1440.0).round() as i64),
-        Some(m) if m >= 60.0 => format!("{} 小时", (m / 60.0).round() as i64),
-        Some(m) => format!("{} 分钟", m.round() as i64),
-        None => "窗口".to_string(),
-    }
-}
-
-/// Tokens as a menu reads them: `850`, `12k`, `1.2M`.
-fn tokens_text(tokens: i64) -> String {
-    if tokens >= 1_000_000 {
-        format!("{:.1}M", tokens as f64 / 1_000_000.0)
-    } else if tokens >= 1_000 {
-        format!("{}k", tokens / 1_000)
-    } else {
-        tokens.to_string()
-    }
 }
 
 fn current_entries(app: &AppHandle) -> Vec<Entry> {
@@ -276,19 +168,17 @@ fn current_entries(app: &AppHandle) -> Vec<Entry> {
 
 fn icon_of(entry: &Entry) -> Option<Image<'static>> {
     match entry {
-        Entry::Account(_) => Some(Image::new(CLAUDE_SPARK, ICON_PX, ICON_PX)),
-        Entry::Agent(_) | Entry::Note(_) => None,
-        Entry::Window { left, level, .. } => {
+        Entry::Line { left, level, .. } => {
             Some(Image::new_owned(ring_rgba(*left, *level), ICON_PX, ICON_PX))
         }
-        Entry::Separator => None,
+        Entry::Note(_) | Entry::All => None,
     }
 }
 
 fn text_of(entry: &Entry) -> &str {
     match entry {
-        Entry::Account(text) | Entry::Agent(text) | Entry::Note(text) | Entry::Window { text, .. } => text,
-        Entry::Separator => "",
+        Entry::Line { text, .. } | Entry::Note(text) => text,
+        Entry::All => "查看全部用量…",
     }
 }
 
@@ -328,21 +218,20 @@ fn show(app: &AppHandle, entries: Vec<Entry>) {
         }
         let mut position = 0;
         for (i, entry) in entries.iter().enumerate() {
-            let placed = match entry {
-                Entry::Separator => PredefinedMenuItem::separator(app)
-                    .ok()
-                    .map(Placed::Separator),
-                _ => IconMenuItem::with_id(
-                    app,
-                    format!("{ITEM_PREFIX}{i}"),
-                    text_of(entry),
-                    true,
-                    icon_of(entry),
-                    None::<&str>,
-                )
-                .ok()
-                .map(Placed::Item),
+            let id = match entry {
+                Entry::All => ALL_ID.to_string(),
+                _ => format!("{ITEM_PREFIX}{i}"),
             };
+            let placed = IconMenuItem::with_id(
+                app,
+                id,
+                text_of(entry),
+                true,
+                icon_of(entry),
+                None::<&str>,
+            )
+            .ok()
+            .map(Placed::Item);
             let Some(placed) = placed else { continue };
             let inserted = match &placed {
                 Placed::Item(item) => menu.insert(item, position),
@@ -364,97 +253,106 @@ fn show(app: &AppHandle, entries: Vec<Entry>) {
     shown.entries = entries;
 }
 
-fn now_secs() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
-}
-
-/// The usage part of the menu: a group per account some Bot runs on, set off by separators, each
-/// its name under Claude's mark (`Claude Pro · you@example.com`; one signed out says so there and
-/// has no windows), then a line per window — the plan's own first, as the daemon orders them —
-/// with how much of it is left and when it starts over. Nothing when no account has windows.
-pub fn usage_entries(usage: &Usage, now: i64) -> Vec<Entry> {
-    // A daemon older than accounts answers for one, with no name to give it.
-    let single;
-    let accounts: Vec<&AccountUsage> = if usage.accounts.is_empty() {
-        single = AccountUsage {
-            available: usage.available,
-            reason: None,
-            windows: Vec::new(),
-            plan: usage.plan.clone(),
-            email: None,
-            config_dir: None,
-        };
-        vec![&single]
-    } else {
-        usage.accounts.iter().collect()
-    };
-    let windows_of = |index: usize| -> &[UsageWindow] {
-        if usage.accounts.is_empty() {
-            &usage.windows
-        } else {
-            &usage.accounts[index].windows
-        }
-    };
-    if !accounts.iter().any(|account| account.available) {
-        return Vec::new();
-    }
-    let several = accounts.len() > 1;
-    let mut entries = Vec::new();
-    for (index, account) in accounts.iter().enumerate() {
-        let signed_out = account.reason.as_deref() == Some("signed_out");
-        if !account.available && !signed_out {
+/// The usage part of the menu: a line per account with plan windows (`Claude Max · a@x.com　5h 62%
+/// · 7d 81%`, the ring for the tightest window), a note for one signed out or unreadable, one
+/// shared line for agents that only report today's turns; four lines at most, then
+/// "查看全部用量…". Nothing when there is nothing to show.
+pub fn usage_entries(usage: &UsageResponse) -> Vec<Entry> {
+    let mut lines = Vec::new();
+    let mut today = Vec::new();
+    for agent in &usage.agents {
+        if agent.accounts.is_empty() {
+            if agent.today.turns > 0 {
+                today.push(format!("{} {} 轮", agent.label, agent.today.turns));
+            }
             continue;
         }
-        if !entries.is_empty() {
-            entries.push(Entry::Separator);
-        }
-        let plan = account.plan.as_deref().map(plan_name).unwrap_or_default();
-        let who = account
-            .email
-            .as_deref()
-            .or(account.config_dir.as_deref())
-            .or(several.then_some("默认账号"));
-        let name = match (plan.is_empty(), who) {
-            (false, Some(who)) => format!("Claude {plan} · {who}"),
-            (false, None) => format!("Claude {plan}"),
-            (true, Some(who)) => format!("Claude · {who}"),
-            (true, None) => "Claude".to_string(),
-        };
-        if account.available {
-            entries.push(Entry::Account(name));
-            entries.extend(window_entries(windows_of(index), now));
-        } else {
-            entries.push(Entry::Account(format!("{name}：未登录")));
+        let several = agent.accounts.len() > 1;
+        for account in &agent.accounts {
+            let name = account_name(agent, account, several);
+            let shown: Vec<&UsageWindow> = account.windows.iter().filter(|w| w.model.is_none()).collect();
+            if account.available && !account.windows.is_empty() {
+                let tightest = account
+                    .windows
+                    .iter()
+                    .map(|w| w.percent)
+                    .fold(f64::MIN, f64::max);
+                let mut shown = shown;
+                shown.sort_by(|a, b| {
+                    a.minutes
+                        .unwrap_or(f64::MAX)
+                        .total_cmp(&b.minutes.unwrap_or(f64::MAX))
+                });
+                let summary: Vec<String> = shown
+                    .iter()
+                    .map(|w| format!("{} {}", window_span(w.minutes), left_text(w.percent)))
+                    .collect();
+                let text = if summary.is_empty() {
+                    name
+                } else {
+                    format!("{name}　{}", summary.join(" · "))
+                };
+                lines.push(Entry::Line {
+                    text,
+                    left: (100.0 - tightest).clamp(0.0, 100.0),
+                    level: level_of(tightest),
+                });
+            } else if !account.available {
+                match account.reason.as_deref() {
+                    Some("signed_out") => lines.push(Entry::Note(format!("{name}　未登录"))),
+                    Some("failed") => lines.push(Entry::Note(format!("{name}　没查到用量"))),
+                    _ => {}
+                }
+            }
         }
     }
-    entries
+    let today_line = (!today.is_empty()).then(|| Entry::Note(today.join(" · ")));
+    lines.truncate(MAX_LINES - usize::from(today_line.is_some()));
+    lines.extend(today_line);
+    if !lines.is_empty() {
+        lines.push(Entry::All);
+    }
+    lines
 }
 
-/// A line per window with how much of it is left; a model's own weekly window is named for it.
-fn window_entries(windows: &[UsageWindow], now: i64) -> Vec<Entry> {
-    windows
-        .iter()
-        .map(|window| {
-            let name = match window.kind.as_str() {
-                "five_hour" => "5 小时".to_string(),
-                "seven_day" => "7 天".to_string(),
-                _ => format!("{} 7 天", window.model.as_deref().unwrap_or("Claude")),
-            };
-            let left = left_text(window.percent);
-            let text = match window.resets_at.as_deref().and_then(parse_rfc3339) {
-                Some(at) => format!("{name}：剩 {left}（{}）", reset_text(at - now)),
-                None => format!("{name}：剩 {left}"),
-            };
-            Entry::Window {
-                text,
-                left: (100.0 - window.percent).clamp(0.0, 100.0),
-                level: level_of(window.percent),
-            }
-        })
-        .collect()
+/// The last part of a directory path: `/Users/a/.claude-b` is `.claude-b`.
+fn dir_name(dir: &str) -> Option<&str> {
+    dir.rsplit(['/', '\\']).find(|part| !part.is_empty())
+}
+
+/// An account's name: Claude by its plan and who it is (`Claude Max · a@x.com`), the others by
+/// their name and plan, with the directory only when the agent has several accounts to tell apart.
+fn account_name(agent: &UsageAgent, account: &UsageAccount, several: bool) -> String {
+    let plan = account.plan.as_deref().map(plan_name).unwrap_or_default();
+    let dir = account.config_dir.as_deref().and_then(dir_name);
+    let mut name = if agent.runner == "claude_code" {
+        "Claude".to_string()
+    } else {
+        agent.label.clone()
+    };
+    if !plan.is_empty() {
+        name = format!("{name} {plan}");
+    }
+    if agent.runner == "claude_code" {
+        if let Some(who) = account.email.as_deref().or(dir) {
+            name = format!("{name} · {who}");
+        }
+    } else if let (true, Some(dir)) = (several, dir) {
+        name = format!("{name} · {dir}");
+    }
+    name
+}
+
+/// A window's length in the menu's words: `5h`, `7d`, `30m`.
+fn window_span(minutes: Option<f64>) -> String {
+    match minutes {
+        Some(m) if m == 300.0 => "5h".to_string(),
+        Some(m) if m == 10080.0 => "7d".to_string(),
+        Some(m) if m >= 1440.0 => format!("{}d", (m / 1440.0).round() as i64),
+        Some(m) if m >= 60.0 => format!("{}h", (m / 60.0).round() as i64),
+        Some(m) => format!("{}m", m.round() as i64),
+        None => "窗口".to_string(),
+    }
 }
 
 /// Worth a look from three quarters used, nearly gone from nine tenths, as in the sidebar.
@@ -540,77 +438,11 @@ fn plan_name(plan: &str) -> String {
     }
 }
 
-/// How long until a window starts over, in the menu's words.
-fn reset_text(left: i64) -> String {
-    if left <= 60 {
-        return "即将重置".to_string();
-    }
-    let minutes = (left + 59) / 60;
-    if minutes < 24 * 60 {
-        let (hours, minutes) = (minutes / 60, minutes % 60);
-        return if hours > 0 {
-            format!("{hours} 小时 {minutes} 分后重置")
-        } else {
-            format!("{minutes} 分钟后重置")
-        };
-    }
-    let hours = minutes / 60;
-    format!("{} 天 {} 小时后重置", hours / 24, hours % 24)
-}
-
-/// `2026-10-08T15:49:59.889937+00:00` or `…Z` to Unix seconds; None for anything else.
-fn parse_rfc3339(text: &str) -> Option<i64> {
-    let (date, rest) = text.split_once('T')?;
-    let mut date = date.splitn(3, '-').map(|part| part.parse::<i64>().ok());
-    let (year, month, day) = (date.next()??, date.next()??, date.next()??);
-    if rest.len() < 8 {
-        return None;
-    }
-    let (clock, mut zone) = rest.split_at(8);
-    let mut clock = clock.splitn(3, ':').map(|part| part.parse::<i64>().ok());
-    let (hour, minute, second) = (clock.next()??, clock.next()??, clock.next()??);
-    if let Some(fraction) = zone.strip_prefix('.') {
-        zone = fraction.trim_start_matches(|c: char| c.is_ascii_digit());
-    }
-    let offset = match zone {
-        "Z" | "z" => 0,
-        _ => {
-            let sign = match zone.chars().next()? {
-                '+' => 1,
-                '-' => -1,
-                _ => return None,
-            };
-            let (h, m) = zone[1..].split_once(':')?;
-            sign * (h.parse::<i64>().ok()? * 3600 + m.parse::<i64>().ok()? * 60)
-        }
-    };
-    if !(1..=12).contains(&month)
-        || !(1..=31).contains(&day)
-        || hour > 23
-        || minute > 59
-        || second > 60
-    {
-        return None;
-    }
-    Some(days_from_civil(year, month, day) * 86_400 + hour * 3600 + minute * 60 + second - offset)
-}
-
-/// Days since 1970-01-01 for a proleptic Gregorian date (Howard Hinnant's algorithm).
-fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
-    let year = if month <= 2 { year - 1 } else { year };
-    let era = year.div_euclid(400);
-    let yoe = year - era * 400;
-    let mp = (month + 9) % 12;
-    let doy = (153 * mp + 2) / 5 + day - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    era * 146_097 + doe - 719_468
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn usage(json: &str) -> Usage {
+    fn usage(json: &str) -> UsageResponse {
         serde_json::from_str(json).unwrap()
     }
 
@@ -618,138 +450,143 @@ mod tests {
         entries
             .iter()
             .map(|entry| match entry {
-                Entry::Account(text) => format!("[Claude] {text}"),
-                Entry::Agent(text) => format!("[agent] {text}"),
+                Entry::Line { text, .. } => format!("[ring] {text}"),
                 Entry::Note(text) => format!("[note] {text}"),
-                Entry::Window { text, .. } => format!("[ring] {text}"),
-                Entry::Separator => "---".to_string(),
+                Entry::All => "[all]".to_string(),
             })
             .collect()
     }
 
-    #[test]
-    fn other_agents_their_windows_or_their_day_here() {
-        let agents: AgentUsageResponse = serde_json::from_str(r#"{"items":[
-            {"runner":"codex","label":"Codex","available":true,"plan":"plus","config_dir":null,
-             "windows":[{"minutes":300,"percent":12.4,"resets_at":null},{"minutes":10080,"percent":80,"resets_at":null}],
-             "today":{"turns":2,"tokens":15000}},
-            {"runner":"grok","label":"Grok","available":false,"reason":"no_plan","windows":[],"today":{"turns":3,"tokens":1200500}},
-            {"runner":"opencode","label":"OpenCode","available":false,"reason":"no_plan","windows":[],"today":{"turns":0,"tokens":0}}
-        ]}"#).unwrap();
-        assert_eq!(texts(&agent_entries(&agents, 0)), vec![
-            "[agent] Codex Plus",
-            "[ring] 5 小时：剩 87%",
-            "[ring] 7 天：剩 20%",
-            "---",
-            "[agent] Grok",
-            "[note] 今天 3 轮 · 1.2M token",
-        ]);
-        // After Claude's groups, with a separator between.
-        assert_eq!(joined(vec![Entry::Account("Claude".into())], vec![Entry::Agent("Codex".into())]).len(), 3);
-        assert!(agent_entries(&AgentUsageResponse::default(), 0).is_empty());
-    }
+    const CLAUDE: &str = r#"{"runner":"claude_code","custom_id":null,"label":"Claude Agent","today":{"turns":5,"tokens":9,"estimated_usd":0},"accounts":[
+      {"config_dir":"/Users/a/.claude","email":"a@x.com","available":true,"reason":null,"plan":"claude max","credits":null,
+       "windows":[{"minutes":10080,"model":null,"percent":19,"resets_at":null},
+                  {"minutes":300,"model":null,"percent":38,"resets_at":null},
+                  {"minutes":10080,"model":"Opus","percent":96,"resets_at":null}]}]}"#;
 
     #[test]
-    fn reads_claude_codes_timestamps() {
-        assert_eq!(parse_rfc3339("1970-01-01T00:00:00Z"), Some(0));
-        assert_eq!(
-            parse_rfc3339("2026-10-08T15:49:59.889937+00:00"),
-            Some(1_791_474_599)
-        );
-        assert_eq!(
-            parse_rfc3339("2026-10-08T23:49:59+08:00"),
-            Some(1_791_474_599)
-        );
-        assert_eq!(parse_rfc3339("2026-10-08"), None);
-        assert_eq!(parse_rfc3339("soon"), None);
-        assert_eq!(parse_rfc3339("2026-13-08T00:00:00Z"), None);
-    }
-
-    #[test]
-    fn one_account_its_name_then_what_is_left_of_each_window() {
-        let now = parse_rfc3339("2026-10-08T11:00:00Z").unwrap();
-        // As a daemon older than accounts answers: no name beyond the plan.
-        let answer = usage(
-            r#"{"available":true,"reason":null,"plan":"pro","checked_at":"2026-10-08T11:00:00.000Z","error":null,"windows":[
-              {"kind":"five_hour","model":null,"percent":2,"resets_at":"2026-10-08T15:50:00.000Z"},
-              {"kind":"seven_day","model":null,"percent":91.4,"resets_at":"2026-10-11T02:00:00+00:00"},
-              {"kind":"model","model":"Fable","percent":0.4,"resets_at":null},
-              {"kind":"model","model":"Opus","percent":76,"resets_at":"2026-10-08T11:20:00Z"}]}"#,
-        );
-        let entries = usage_entries(&answer, now);
+    fn claude_one_line_with_email_and_the_tightest_ring() {
+        let entries = usage_entries(&usage(&format!(r#"{{"agents":[{CLAUDE}]}}"#)));
+        // Shortest window first; Opus's own window is not in the text, but it is the tightest ring.
         assert_eq!(
             texts(&entries),
-            vec![
-                "[Claude] Claude Pro",
-                "[ring] 5 小时：剩 98%（4 小时 50 分后重置）",
-                "[ring] 7 天：剩 8%（2 天 15 小时后重置）",
-                "[ring] Fable 7 天：剩 99%",
-                "[ring] Opus 7 天：剩 24%（20 分钟后重置）",
-            ]
+            vec!["[ring] Claude Max · a@x.com　5h 62% · 7d 81%", "[all]"]
         );
-        let levels: Vec<Level> = entries
-            .iter()
-            .filter_map(|entry| match entry {
-                Entry::Window { level, .. } => Some(*level),
-                _ => None,
-            })
-            .collect();
+        match &entries[0] {
+            Entry::Line { left, level, .. } => {
+                assert_eq!(*left, 4.0);
+                assert_eq!(*level, Level::Danger);
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn claude_without_email_names_its_directory() {
+        let answer = usage(
+            r#"{"agents":[{"runner":"claude_code","label":"Claude Agent","today":{"turns":0,"tokens":0,"estimated_usd":0},"accounts":[
+              {"config_dir":"/Users/a/.claude-b","email":null,"available":true,"plan":null,"windows":[{"minutes":300,"model":null,"percent":99.6}]}]}]}"#,
+        );
         assert_eq!(
-            levels,
-            vec![Level::Normal, Level::Danger, Level::Normal, Level::Warn]
+            texts(&usage_entries(&answer)),
+            vec!["[ring] Claude · .claude-b　5h <1%", "[all]"]
         );
     }
 
     #[test]
-    fn each_account_a_group_of_its_own() {
-        let now = parse_rfc3339("2026-10-08T11:00:00Z").unwrap();
-        let answer = usage(
-            r#"{"available":true,"windows":[{"kind":"five_hour","model":null,"percent":2,"resets_at":null}],"accounts":[
-              {"available":true,"reason":null,"config_dir":null,"plan":"pro","email":"pro@a.c","windows":[
-                {"kind":"five_hour","model":null,"percent":2,"resets_at":null},
-                {"kind":"seven_day","model":null,"percent":91,"resets_at":"2026-10-08T11:20:00Z"}]},
-              {"available":true,"reason":null,"config_dir":"/Users/a/.claude-b","plan":"claude team","email":null,"windows":[
-                {"kind":"five_hour","model":null,"percent":40,"resets_at":null},
-                {"kind":"model","model":"Fable","percent":99.6,"resets_at":null}]},
-              {"available":false,"reason":"signed_out","config_dir":"/Users/a/.claude-c","email":null,"windows":[]},
-              {"available":false,"reason":"failed","config_dir":"/Users/a/.claude-d","email":null,"windows":[]}]}"#,
+    fn codex_its_plan_and_its_directory_only_among_several() {
+        let one = usage(
+            r#"{"agents":[{"runner":"codex","label":"Codex","today":{"turns":2},"accounts":[
+              {"config_dir":"/Users/a/.codex","available":true,"plan":"plus","windows":[{"minutes":300,"model":null,"percent":12.4},{"minutes":43200,"model":null,"percent":80}]}]}]}"#,
         );
         assert_eq!(
-            texts(&usage_entries(&answer, now)),
+            texts(&usage_entries(&one)),
+            vec!["[ring] Codex Plus　5h 87% · 30d 20%", "[all]"]
+        );
+        let two = usage(
+            r#"{"agents":[{"runner":"codex","label":"Codex","accounts":[
+              {"config_dir":"/Users/a/.codex","available":true,"plan":"plus","windows":[{"minutes":300,"model":null,"percent":10}]},
+              {"config_dir":"/Users/a/.codex-work","available":true,"plan":"pro","windows":[{"minutes":300,"model":null,"percent":50}]}]}]}"#,
+        );
+        assert_eq!(
+            texts(&usage_entries(&two)),
             vec![
-                "[Claude] Claude Pro · pro@a.c",
-                "[ring] 5 小时：剩 98%",
-                "[ring] 7 天：剩 9%（20 分钟后重置）",
-                "---",
-                "[Claude] Claude Team · /Users/a/.claude-b",
-                "[ring] 5 小时：剩 60%",
-                "[ring] Fable 7 天：剩 <1%",
-                "---",
-                "[Claude] Claude · /Users/a/.claude-c：未登录",
+                "[ring] Codex Plus · .codex　5h 90%",
+                "[ring] Codex Pro · .codex-work　5h 50%",
+                "[all]"
             ]
         );
-        // One account in the list reads as before, under its name.
-        let one = usage(
-            r#"{"available":true,"windows":[],"accounts":[
-              {"available":true,"config_dir":null,"plan":"max","email":"me@a.c","windows":[{"kind":"five_hour","model":null,"percent":2,"resets_at":null}]}]}"#,
+    }
+
+    #[test]
+    fn signed_out_and_unreadable_accounts_say_so_the_rest_say_nothing() {
+        let answer = usage(
+            r#"{"agents":[{"runner":"claude_code","label":"Claude Agent","accounts":[
+              {"config_dir":"/Users/a/.claude-c","email":null,"available":false,"reason":"signed_out","plan":null,"windows":[]},
+              {"config_dir":"/Users/a/.claude-d","email":"d@x.com","available":false,"reason":"failed","plan":null,"windows":[]},
+              {"config_dir":"/Users/a/.claude-e","email":null,"available":false,"reason":"no_plan","plan":null,"windows":[]},
+              {"config_dir":null,"email":null,"available":false,"reason":null,"plan":null,"windows":[]}]}]}"#,
         );
         assert_eq!(
-            texts(&usage_entries(&one, now)),
-            vec!["[Claude] Claude Max · me@a.c", "[ring] 5 小时：剩 98%"]
+            texts(&usage_entries(&answer)),
+            vec![
+                "[note] Claude · .claude-c　未登录",
+                "[note] Claude · d@x.com　没查到用量",
+                "[all]"
+            ]
         );
+    }
+
+    #[test]
+    fn agents_with_only_a_day_share_one_line() {
+        let answer = usage(
+            r#"{"agents":[
+              {"runner":"grok","label":"Grok","today":{"turns":12,"tokens":1},"accounts":[]},
+              {"runner":"antigravity","label":"Antigravity","today":{"turns":0,"tokens":0},"accounts":[]},
+              {"runner":"opencode","label":"OpenCode","today":{"turns":3,"tokens":1},"accounts":[]}]}"#,
+        );
+        assert_eq!(
+            texts(&usage_entries(&answer)),
+            vec!["[note] Grok 12 轮 · OpenCode 3 轮", "[all]"]
+        );
+    }
+
+    #[test]
+    fn four_lines_at_most_the_day_line_kept() {
+        let account = r#"{"config_dir":null,"email":"e@x.com","available":true,"plan":"pro","windows":[{"minutes":300,"model":null,"percent":10}]}"#;
+        let accounts = vec![account; 5].join(",");
+        let answer = usage(&format!(
+            r#"{{"agents":[{{"runner":"claude_code","label":"Claude Agent","accounts":[{accounts}]}},
+              {{"runner":"grok","label":"Grok","today":{{"turns":1}},"accounts":[]}}]}}"#
+        ));
+        let lines = texts(&usage_entries(&answer));
+        assert_eq!(lines.len(), 5);
+        assert_eq!(lines[3], "[note] Grok 1 轮");
+        assert_eq!(lines[4], "[all]");
+        assert_eq!(lines.iter().filter(|l| l.starts_with("[ring]")).count(), 3);
+        // Without a day line, four accounts.
+        let only = usage(&format!(
+            r#"{{"agents":[{{"runner":"claude_code","label":"Claude Agent","accounts":[{accounts}]}}]}}"#
+        ));
+        assert_eq!(usage_entries(&only).len(), 5);
     }
 
     #[test]
     fn nothing_to_show_is_no_lines() {
+        assert!(usage_entries(&UsageResponse::default()).is_empty());
         let none = usage(
-            r#"{"available":false,"reason":"unused","plan":null,"windows":[],"checked_at":null,"error":null,"accounts":[]}"#,
+            r#"{"agents":[{"runner":"grok","label":"Grok","today":{"turns":0},"accounts":[]},
+              {"runner":"codex","label":"Codex","accounts":[{"available":false,"reason":"no_plan","windows":[]}]}]}"#,
         );
-        assert!(usage_entries(&none, 0).is_empty());
-        let out = usage(
-            r#"{"available":false,"windows":[],"accounts":[{"available":false,"reason":"signed_out","windows":[]}]}"#,
-        );
-        assert!(usage_entries(&out, 0).is_empty());
-        assert_eq!(reset_text(30), "即将重置");
+        assert!(usage_entries(&none).is_empty());
+    }
+
+    #[test]
+    fn windows_are_named_by_their_length() {
+        assert_eq!(window_span(Some(300.0)), "5h");
+        assert_eq!(window_span(Some(10080.0)), "7d");
+        assert_eq!(window_span(Some(120.0)), "2h");
+        assert_eq!(window_span(Some(30.0)), "30m");
+        assert_eq!(window_span(None), "窗口");
     }
 
     #[test]
@@ -771,15 +608,5 @@ mod tests {
         // Nothing drawn outside the ring.
         assert_eq!(alpha(&full, 18, 18), 0);
         assert_eq!(alpha(&full, 0, 0), 0);
-    }
-
-    #[test]
-    fn claudes_mark_is_a_36_px_square() {
-        assert_eq!(CLAUDE_SPARK.len(), 36 * 36 * 4);
-        assert_eq!(
-            &CLAUDE_SPARK[(18 * 36 + 18) * 4..(18 * 36 + 18) * 4 + 4],
-            &[217, 119, 87, 255]
-        );
-        assert_eq!(CLAUDE_SPARK[3], 0);
     }
 }

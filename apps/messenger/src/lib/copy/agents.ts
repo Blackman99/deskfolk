@@ -91,18 +91,7 @@ export const zh = {
   unreachable: "没查到其他 Agent 的状态。电脑上的 Deskfolk 版本较旧时，先在电脑上更新，手机上才能看到和设置。",
   loading: "正在查…",
   loadFailed: "没查到，再试一次",
-  retry: "再查一次",
-  /** The sidebar strip: what is left of an agent's plan windows, or what it did today. */
-  usage: {
-    title: "Agent 用量",
-    left: (percent: string) => `剩${percent}`,
-    hours: (count: number) => `${count} 小时`,
-    days: (count: number) => `${count} 天`,
-    minutes: (count: number) => `${count} 分钟`,
-    window: "额度",
-    today: (turns: string, tokens: string) => `今天 ${turns} 轮 · ${tokens} token`,
-    own: "默认账号"
-  }
+  retry: "再查一次"
 };
 
 export const en: CopyShape<typeof zh> = {
@@ -187,15 +176,5 @@ export const en: CopyShape<typeof zh> = {
   unreachable: "Could not read the other agents' status. If the computer runs an older Deskfolk, update it there first to see and set this up from here.",
   loading: "Checking…",
   loadFailed: "Could not check; try again",
-  retry: "Check again",
-  usage: {
-    title: "Agent usage",
-    left: (percent: string) => `${percent} left`,
-    hours: (count: number) => `${count}-hour`,
-    days: (count: number) => `${count}-day`,
-    minutes: (count: number) => `${count}-minute`,
-    window: "Limit",
-    today: (turns: string, tokens: string) => `Today ${turns} turns · ${tokens} tokens`,
-    own: "Default account"
-  }
+  retry: "Check again"
 };

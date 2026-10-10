@@ -42,31 +42,7 @@ export const zh = {
     api_key_helper: "apiKeyHelper（按 token 计费）",
     third_party: "第三方平台（Bedrock / Vertex / Foundry）",
     none: "未登录"
-  } as Record<string, string>,
-  /** Your Claude plan's usage, as your Claude Code reads it: the sidebar meter and this card. */
-  usage: {
-    title: "Claude 用量",
-    fiveHour: "5 小时",
-    sevenDay: "7 天",
-    fiveHourShort: "5小时",
-    sevenDayShort: "7天",
-    left: (percent: string) => `剩${percent}`,
-    model: (name: string) => `${name} · 7 天`,
-    resetsIn: (wait: string) => `${wait}后重置`,
-    resetsAt: (when: string) => `${when} 重置`,
-    resetsSoon: "即将重置",
-    hoursMinutes: (hours: number, minutes: number) => (hours > 0 ? `${hours} 小时 ${minutes} 分` : `${minutes} 分钟`),
-    checkedAt: (time: string) => `${time} 查的 · 由你本机的 Claude Code 读取`,
-    stale: (time: string) => `这次没查到，显示的是 ${time} 的数据`,
-    refresh: "刷新",
-    refreshing: "刷新中…",
-    expand: "展开 Claude 用量",
-    collapse: "收起 Claude 用量",
-    noPlan: "这个登录方式没有套餐额度：用量按 token 计费。",
-    failed: "没查到用量：Claude Code 可能太旧，在终端里运行 claude update 后再刷新。",
-    signedOut: "这个账号还没登录。",
-    own: "默认账号"
-  }
+  } as Record<string, string>
 };
 
 export const en: CopyShape<typeof zh> = {
@@ -110,28 +86,5 @@ export const en: CopyShape<typeof zh> = {
     api_key_helper: "apiKeyHelper (billed per token)",
     third_party: "Third-party platform (Bedrock / Vertex / Foundry)",
     none: "Not signed in"
-  } as Record<string, string>,
-  usage: {
-    title: "Claude usage",
-    fiveHour: "5-hour",
-    sevenDay: "7-day",
-    fiveHourShort: "5h",
-    sevenDayShort: "7d",
-    left: (percent: string) => `${percent} left`,
-    model: (name: string) => `${name} · 7-day`,
-    resetsIn: (wait: string) => `Resets in ${wait}`,
-    resetsAt: (when: string) => `Resets ${when}`,
-    resetsSoon: "Resets shortly",
-    hoursMinutes: (hours: number, minutes: number) => (hours > 0 ? `${hours} h ${minutes} min` : `${minutes} min`),
-    checkedAt: (time: string) => `Checked ${time} · read by your own Claude Code`,
-    stale: (time: string) => `Could not check this time; showing what it said at ${time}`,
-    refresh: "Refresh",
-    refreshing: "Refreshing…",
-    expand: "Show Claude usage",
-    collapse: "Hide Claude usage",
-    noPlan: "This sign-in has no plan limits: usage is billed per token.",
-    failed: "Could not read the usage: Claude Code may be too old. Run claude update in a terminal, then refresh.",
-    signedOut: "This account is not signed in.",
-    own: "Default account"
-  }
+  } as Record<string, string>
 };

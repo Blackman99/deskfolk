@@ -55,33 +55,34 @@ test("a daemon without the route (an older Mac over the relay) gets a note inste
   view.close();
 });
 
-test("the card shows the plan's usage under the facts, or says the sign-in has no plan to show", async () => {
-  const usage = {
-    available: true, reason: null, plan: "pro", checked_at: "2026-10-08T11:00:00.000Z", error: null,
-    windows: [{ kind: "five_hour" as const, model: null, percent: 18, resets_at: "2026-10-08T15:40:00.000Z" }],
+test("under each account something runs on, one line of its usage; the whole of it is the widget's", async () => {
+  const account = {
+    config_dir: null, email: "you@example.com", available: true, reason: null, plan: "pro", credits: null, checked_at: "2026-10-08T11:00:00.000Z", error: null,
+    windows: [
+      { minutes: 10_080, model: null, percent: 40, resets_at: null },
+      { minutes: 300, model: null, percent: 18, resets_at: "2026-10-08T15:40:00.000Z" },
+      { minutes: 10_080, model: "Opus", percent: 95, resets_at: null },
+    ],
   };
-  const refreshes: boolean[] = [];
-  const shown = render(ClaudeAgentCard, {
-    api: { ...apiOf(async () => status()), claudeUsage: async (refresh = false) => { refreshes.push(refresh); return usage; } }, t,
-  });
+  const usage = { runner: "claude_code" as const, custom_id: null, label: "Claude Agent", today: { turns: 0, tokens: 0, estimated_usd: 0 }, accounts: [account] };
+  const shown = render(ClaudeAgentCard, { api: apiOf(async () => status()), t, usage });
   await sleep(0);
-  const block = shown.host.querySelector("[data-claude-card-usage]");
-  expect(block?.querySelector(".usage-name")?.textContent).toBe(t.claudeAgent.usage.fiveHour);
-  expect(block?.querySelector(".usage-percent")?.textContent).toBe("剩82%");
-  expect(refreshes).toEqual([false]);
+  const line = shown.host.querySelector("[data-claude-account] [data-claude-card-usage]");
+  // The plan's own windows, shortest first; the ring is the tightest window, the model's own.
+  expect(line?.textContent?.replace(/\s+/g, " ").trim()).toBe("5h 82% · 7d 60%");
+  expect(line?.querySelector(".usage-ring")?.classList.contains("is-danger")).toBe(true);
   shown.close();
 
   const noPlan = render(ClaudeAgentCard, {
-    api: { ...apiOf(async () => status({ auth_method: "api_key" })), claudeUsage: async () => ({ ...usage, available: false, reason: "no_plan" as const, windows: [] }) }, t,
+    api: apiOf(async () => status({ auth_method: "api_key" })), t,
+    usage: { ...usage, accounts: [{ ...account, available: false, reason: "no_plan" as const, windows: [] }] },
   });
   await sleep(0);
-  expect(noPlan.host.querySelector("[data-claude-card-usage]")?.textContent).toContain(t.claudeAgent.usage.noPlan);
+  expect(noPlan.host.querySelector("[data-claude-card-usage]")?.textContent).toContain(t.usage.noPlan);
   noPlan.close();
 
-  // No Bot runs on Claude Agent: the card says nothing about usage.
-  const unused = render(ClaudeAgentCard, {
-    api: { ...apiOf(async () => status()), claudeUsage: async () => ({ ...usage, available: false, reason: "unused" as const, windows: [] }) }, t,
-  });
+  // Nothing runs on Claude Agent: the card says nothing about usage.
+  const unused = render(ClaudeAgentCard, { api: apiOf(async () => status()), t });
   await sleep(0);
   expect(unused.host.querySelector("[data-claude-card-usage]")).toBeNull();
   unused.close();
@@ -137,22 +138,20 @@ test("other accounts are listed with their sign-in, added and removed as a whole
   view.close();
 });
 
-test("with Bots on two accounts each account's usage sits in that account's group, with one refresh", async () => {
-  const windows = [{ kind: "five_hour" as const, model: null, percent: 18, resets_at: null }];
-  const one = { available: true, reason: null, plan: "pro", checked_at: "2026-10-08T11:00:00.000Z", error: null, windows, config_dir: null, email: "you@example.com" };
-  const two = { ...one, plan: "team", config_dir: "/Users/you/.claude-b", email: "team@example.com" };
+test("with Bots on two accounts each account's usage line sits in that account's group", async () => {
+  const windows = [{ minutes: 300, model: null, percent: 18, resets_at: null }];
+  const one = { available: true, reason: null, plan: "pro", credits: null, checked_at: "2026-10-08T11:00:00.000Z", error: null, windows, config_dir: null, email: "you@example.com" };
+  const two = { ...one, plan: "team", config_dir: "/Users/you/.claude-b", email: "team@example.com", windows: [{ ...windows[0]!, percent: 60 }] };
+  const usage = { runner: "claude_code" as const, custom_id: null, label: "Claude Agent", today: { turns: 0, tokens: 0, estimated_usd: 0 }, accounts: [one, two] };
   const own = { config_dir: null, config_directory: "/Users/you/.claude", logged_in: true, auth_method: "claude.ai", subscription_type: "pro", email: "you@example.com", error: null, login_command: "claude auth login" };
   const team = { ...own, config_dir: "/Users/you/.claude-b", config_directory: "/Users/you/.claude-b", subscription_type: "team", email: "team@example.com",
     login_command: "CLAUDE_CONFIG_DIR=/Users/you/.claude-b claude auth login" };
-  const view = render(ClaudeAgentCard, { api: { ...apiOf(async () => status({ accounts: [own, team] })), claudeUsage: async () => ({ ...one, accounts: [one, two] }) }, t });
+  const view = render(ClaudeAgentCard, { api: apiOf(async () => status({ accounts: [own, team] })), t, usage });
   await sleep(0);
   const ownGroup = view.host.querySelector("[data-claude-account]")!;
   const teamGroup = view.host.querySelector('[data-claude-account-dir="/Users/you/.claude-b"]')!;
-  expect(ownGroup.textContent).toContain("you@example.com");
-  expect(ownGroup.querySelectorAll("[data-claude-usage-rows]")).toHaveLength(1);
-  expect(teamGroup.textContent).toContain("team@example.com");
-  expect(teamGroup.querySelectorAll("[data-claude-usage-rows]")).toHaveLength(1);
-  expect(view.host.querySelectorAll("[data-claude-accounts] .usage-foot button")).toHaveLength(1);
+  expect(ownGroup.querySelector("[data-usage-line]")?.textContent?.trim()).toBe("5h 82%");
+  expect(teamGroup.querySelector("[data-usage-line]")?.textContent?.trim()).toBe("5h 40%");
   view.close();
 });
 

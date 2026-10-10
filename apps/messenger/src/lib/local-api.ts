@@ -41,6 +41,7 @@ import type {
   AgentStatus,
   AgentsStatusResponse,
   AgentUsageResponse,
+  UsageResponse,
   ClaudeCodeStatus,
   ClaudeUsage,
   CustomAgent,
@@ -387,6 +388,11 @@ export class LocalApi extends ApiBase<PendingRequest> {
   /** Your local agents' usage: plan windows where the agent reports them (Codex), today's records otherwise. */
   async agentUsage(refresh = false): Promise<AgentUsageResponse> {
     return this.get<AgentUsageResponse>(`/v1/agent-usage${refresh ? "?refresh=1" : ""}`);
+  }
+
+  /** Every agent's usage in one answer (ADR 0080); a daemon from before it answers 404. */
+  async usage(refresh = false): Promise<UsageResponse> {
+    return this.get<UsageResponse>(`/v1/usage${refresh ? "?refresh=1" : ""}`);
   }
 
   /** One plan whole: the switcher row plus its spec, revision and tickets with their artifacts. */

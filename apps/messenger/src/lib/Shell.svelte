@@ -85,6 +85,7 @@
 	import ChatTabLabel from './chat/ChatTabLabel.svelte';
 	import ChatStage from './chat/ChatStage.svelte';
 	import { trackPointerDrag } from './pointer-drag.ts';
+	import UsageWidget from './usage/UsageWidget.svelte';
 	// SettingsModal.svelte (with its tabs, provider/MCP/notification sub-panels and editor flyout) is
 	// loaded lazily below on first `runtime.settingsOpen`, and stays mounted after that — its own
 	// template is already gated on `runtime.settingsOpen` (an `{#if runtime.settingsOpen}` inside
@@ -1362,6 +1363,11 @@
 			onDelete={() => sessionMenu.handleMenuDelete(activeMenu.session)}
 			onShowJobView={(view) => void sessionMenu.handleMenuShowJobView(activeMenu.session, view)}
 		/>
+	{/if}
+
+	<!-- Every agent's usage, floating over a wide window (ADR 0080); a phone has the page in Tools. -->
+	{#if !narrow}
+		<UsageWidget {runtime} {t} />
 	{/if}
 </div>
 {/if}

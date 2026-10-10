@@ -1,13 +1,10 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import type { ClaudeAccountUsage, ClaudeCodeStatus, ClaudeUsage } from '@real-bot/protocol';
+	import type { ClaudeCodeStatus, UsageAgent } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
-	import { localeTag } from '../locale-tag.ts';
+	import UsageLine from '../usage/UsageLine.svelte';
 	import AgentLogo from './AgentLogo.svelte';
 	import { claudeAccountLabel, claudeAgentPaysPerToken } from './claude-agent.ts';
-	import { usageAccountNote, usageAccounts, usageCheckedTime, usageLatestCheck } from './claude-usage.ts';
-	import ClaudeUsageFoot from './ClaudeUsageFoot.svelte';
-	import ClaudeUsageRows from './ClaudeUsageRows.svelte';
 	import HelpTip from './HelpTip.svelte';
 
 	/**
@@ -21,8 +18,6 @@
 		setClaudeCodePath: (path: string | null) => Promise<ClaudeCodeStatus>;
 		/** The other accounts' config directories, the whole list; absent from an older client. */
 		setClaudeCodeAccounts?: (configDirs: string[]) => Promise<ClaudeCodeStatus>;
-		/** Your plan's usage, as that Claude Code reads it; absent from an older client. */
-		claudeUsage?: (refresh?: boolean) => Promise<ClaudeUsage>;
 	};
 
 	interface Props {
@@ -33,9 +28,11 @@
 		onstatus?: (status: ClaudeCodeStatus) => void;
 		/** Opened from Settings › Agents' list, whose row already names it: no heading or frame of its own. */
 		embedded?: boolean;
+		/** Claude's usage (ADR 0080), one line under each account something runs on; the whole of it is the usage widget's. */
+		usage?: UsageAgent | null;
 	}
 
-	let { api, t, locale = 'zh', onstatus, embedded = false }: Props = $props();
+	let { api, t, locale = 'zh', onstatus, embedded = false, usage = null }: Props = $props();
 
 	let status = $state<ClaudeCodeStatus | null>(null);
 	let busy = $state(false);
@@ -47,9 +44,6 @@
 	/** The path field and the account field wait behind a link: Claude Code is mostly found, on one account. */
 	let pathOpen = $state(false);
 	let accountOpen = $state(false);
-	let usage = $state<ClaudeUsage | null>(null);
-	let usageBusy = $state(false);
-	let now = $state(Date.now());
 
 	async function run(work: (api: ClaudeAgentApi) => Promise<ClaudeCodeStatus>): Promise<void> {
 		if (!api || busy) return;
@@ -88,27 +82,11 @@
 		}
 	}
 
-	async function loadUsage(refresh: boolean): Promise<void> {
-		if (!api?.claudeUsage || usageBusy) return;
-		usageBusy = true;
-		try {
-			usage = await api.claudeUsage(refresh);
-		} catch {
-			// Not there over the relay from an older daemon: the card simply shows no usage.
-		} finally {
-			usageBusy = false;
-			now = Date.now();
-		}
-	}
-
 	// Asks once per client. `run` reads and writes `busy`, so it runs untracked: tracked, every
 	// answer would set off the next ask.
 	$effect(() => {
 		if (!api) return;
-		untrack(() => {
-			void run((client) => client.claudeCode());
-			void loadUsage(false);
-		});
+		untrack(() => void run((client) => client.claudeCode()));
 	});
 
 	$effect(() => {
@@ -120,12 +98,10 @@
 	const ownDir = $derived(status?.accounts?.find((entry) => entry.config_dir === null)?.config_directory ?? null);
 	const listed = $derived(status?.accounts?.filter((entry) => entry.config_dir !== null) ?? []);
 	const listedDirs = $derived(listed.map((entry) => entry.config_dir!));
-	const usageShown = $derived(usage ? usageAccounts(usage) : []);
-	/** An account's usage when there is something to show for it: its windows, or why it has none. */
-	function usageOf(dir: string | null): ClaudeAccountUsage | null {
-		return usageShown.find((entry) => (entry.config_dir ?? null) === dir && (entry.available || entry.reason === 'no_plan' || entry.reason === 'failed')) ?? null;
+	/** An account's usage when something runs on it; signed out is said above it already. */
+	function usageOf(dir: string | null) {
+		return usage?.accounts.find((entry) => (entry.config_dir ?? null) === dir && entry.reason !== 'signed_out') ?? null;
 	}
-	const usageListed = $derived(status?.path ? [usageOf(null), ...listedDirs.map(usageOf)].filter((entry) => entry !== null) : []);
 </script>
 
 <section class="claude-card" class:is-embedded={embedded} aria-label={t.claudeAgent.title} data-claude-agent>
@@ -196,9 +172,6 @@
 							{@render accountUsage(usageOf(entry.config_dir))}
 						</section>
 					{/each}
-					{#if usageListed.length > 0}
-						<ClaudeUsageFoot checkedAt={usageLatestCheck(usageListed)} stale={false} {t} locale={localeTag(locale)} busy={usageBusy} onRefresh={() => void loadUsage(true)} />
-					{/if}
 					{#if accountError}
 						<p class="claude-error" role="alert" data-claude-account-error={accountError}>{accountError === 'in_use' ? t.claudeAgent.accounts.inUse : t.claudeAgent.accounts.invalid}</p>
 					{/if}
@@ -251,15 +224,9 @@
 </section>
 
 
-{#snippet accountUsage(entry: ClaudeAccountUsage | null)}
-	{#if entry?.available}
-		{@const failedAt = entry.error !== null ? usageCheckedTime(entry.checked_at, localeTag(locale)) : null}
-		<div class="claude-account-usage" data-claude-card-usage>
-			<ClaudeUsageRows usage={entry} {t} locale={localeTag(locale)} {now} busy={usageBusy} foot={false} />
-			{#if failedAt}<p class="claude-stale">{t.claudeAgent.usage.stale(failedAt)}</p>{/if}
-		</div>
-	{:else if entry}
-		<p class="claude-note" data-claude-card-usage>{usageAccountNote(entry, t)}</p>
+{#snippet accountUsage(entry: ReturnType<typeof usageOf>)}
+	{#if entry}
+		<div class="claude-account-usage" data-claude-card-usage><UsageLine account={entry} {t} /></div>
 	{/if}
 {/snippet}
 
@@ -420,11 +387,6 @@
 		font-size: 11px;
 	}
 
-	.claude-stale {
-		margin: 4px 0 0;
-		color: var(--warn-text);
-		font-size: 11px;
-	}
 
 	.claude-path {
 		display: flex;

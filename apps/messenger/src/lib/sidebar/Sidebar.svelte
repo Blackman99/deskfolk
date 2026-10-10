@@ -19,8 +19,8 @@
 	import SessionRow from './SessionRow.svelte';
 	import PinnedRoster from './PinnedRoster.svelte';
 	import SidebarFoot from './SidebarFoot.svelte';
-	import ClaudeUsageMeter from './ClaudeUsageMeter.svelte';
-	import AgentUsageMeter from './AgentUsageMeter.svelte';
+	import UsagePage from '../usage/UsagePage.svelte';
+	import { usageWidget } from '../usage/usage-widget.svelte.ts';
 	import CreateFab from './CreateFab.svelte';
 	import WorkingFilter from './WorkingFilter.svelte';
 	import MobileArchivedHead from './MobileArchivedHead.svelte';
@@ -150,6 +150,8 @@
 	const pinnedWorking = $derived(workingIds !== null && pinnedSessions.some((session) => workingIds.has(session.id)));
 
 	let viewingArchived = $state(false);
+	/** A phone's usage page (ADR 0080), opened from Tools; wider windows have the floating widget instead. */
+	let viewingUsage = $state(false);
 
 	let phone = $state(false);
 	$effect(() => {
@@ -165,10 +167,6 @@
 	});
 
 	let fabEl = $state<HTMLElement | null>(null);
-	/** The Claude usage strip's height above the phone's bottom bar; the + button stands over it. */
-	let usageMeterHeight = $state(0);
-	/** The other agents' usage strip under it, which the + button clears as well. */
-	let agentMeterHeight = $state(0);
 
 	let toolsToggleBtnEl = $state<HTMLButtonElement | null>(null);
 	let toolsFocusLast = $state(false);
@@ -318,6 +316,9 @@
 	/>
 	{/if}
 	<div class="side-body relative flex-1 min-h-0 flex flex-col">
+	{#if phone && viewingUsage}
+		<UsagePage {runtime} {t} onBack={() => (viewingUsage = false)} />
+	{:else}
 	{#if phone && viewingArchived}
 		<MobileArchivedHead {t} count={archivedSessions.length} onBack={() => (viewingArchived = false)} />
 	{:else}
@@ -514,9 +515,8 @@
 			{/if}
 		{/if}
 	</div>
+	{/if}
 	</div>
-	<ClaudeUsageMeter {runtime} {t} bind:height={usageMeterHeight} />
-	<AgentUsageMeter {runtime} {t} bind:height={agentMeterHeight} />
 	{#if !phone}
 		<SidebarFoot
 			{runtime}
@@ -542,16 +542,25 @@
 		current={{
 			routines: !workbench && runtime.routinesOpen,
 			spend: !workbench && runtime.spendOpen,
+			usage: phone ? viewingUsage : usageWidget.open,
 			terminal: !workbench && runtime.terminalOpen,
 			screen: runtime.screenOpen,
 			archived: viewingArchived
 		}}
 		{onOpenRoutines}
 		{onOpenSpend}
+		onOpenUsage={() => {
+			if (!phone) return usageWidget.show();
+			viewingArchived = false;
+			viewingUsage = true;
+		}}
 		onOpenTerminal={() => (workbench ? onNewTerminal() : runtime.openTerminal())}
 		onOpenScreen={runtime.screenOffered ? () => runtime.openRemoteScreen() : null}
 		screenHost={runtime.screenHost}
-		onOpenArchived={() => (viewingArchived = true)}
+		onOpenArchived={() => {
+			viewingUsage = false;
+			viewingArchived = true;
+		}}
 		everything={snapshot.holdsOn ? (everythingHeld.length > 0 ? 'go-on' : 'stop') : null}
 		everythingDisabled={runtime.connection !== 'connected'}
 		onEverything={() => void everything()}
@@ -581,8 +590,8 @@
 	The headers' buttons are 22px targets at the top of a screen you hold from the bottom, and
 	there are two of them saying the same kind of thing; this asks which once, where your thumb is.
 -->
-{#if phone && !selected && !searchOpen && !viewingArchived && !workspaceOpen && !runtime.settingsOpen && !runtime.routinesOpen && !runtime.spendOpen && !runtime.terminalOpen && !runtime.screenOpen}
-	<CreateFab {t} bind:createMenuOpen bind:wrapEl={fabEl} lift={usageMeterHeight + agentMeterHeight} {onCreateBot} {onCreateGroup} />
+{#if phone && !selected && !searchOpen && !viewingArchived && !viewingUsage && !workspaceOpen && !runtime.settingsOpen && !runtime.routinesOpen && !runtime.spendOpen && !runtime.terminalOpen && !runtime.screenOpen}
+	<CreateFab {t} bind:createMenuOpen bind:wrapEl={fabEl} {onCreateBot} {onCreateGroup} />
 {/if}
 
 <style>

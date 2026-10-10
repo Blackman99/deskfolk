@@ -42,6 +42,10 @@ import CreateBotSheet from '../../src/lib/sidebar/CreateBotSheet.svelte';
 import SessionContextMenu from '../../src/lib/sidebar/SessionContextMenu.svelte';
 import Sidebar from '../../src/lib/sidebar/Sidebar.svelte';
 import SidebarRail from '../../src/lib/sidebar/SidebarRail.svelte';
+import UsageWidget from '../../src/lib/usage/UsageWidget.svelte';
+import UsagePage from '../../src/lib/usage/UsagePage.svelte';
+import { usageWidget } from '../../src/lib/usage/usage-widget.svelte.ts';
+import type { UsageResponse } from '@real-bot/protocol';
 import GlobalSearch from '../../src/lib/search/GlobalSearch.svelte';
 import ChatHeader from '../../src/lib/chat/ChatHeader.svelte';
 import ChatStage from '../../src/lib/chat/ChatStage.svelte';
@@ -673,6 +677,52 @@ const openPicker = (host: HTMLElement) => {
 	host.querySelector<HTMLButtonElement>('.real-select-trigger')?.click();
 	flushSync();
 };
+
+/** Every agent's usage as the widget and the phone's page are shot with: no clock in it. */
+const usageStory: UsageResponse = {
+	agents: [
+		{
+			runner: 'claude_code', custom_id: null, label: 'Claude Agent', today: { turns: 31, tokens: 1_234_567, estimated_usd: 0 },
+			accounts: [
+				{
+					config_dir: null, email: 'me@example.com', available: true, reason: null, plan: 'max', credits: null, checked_at: null, error: null,
+					windows: [
+						{ minutes: 300, model: null, percent: 38, resets_at: null },
+						{ minutes: 10_080, model: null, percent: 19, resets_at: null },
+						{ minutes: 10_080, model: 'Opus', percent: 45, resets_at: null }
+					]
+				},
+				{
+					config_dir: '/Users/me/.claude-b', email: 'team@example.com', available: true, reason: null, plan: 'team', credits: null, checked_at: null, error: null,
+					windows: [
+						{ minutes: 300, model: null, percent: 93, resets_at: null },
+						{ minutes: 10_080, model: null, percent: 60, resets_at: null }
+					]
+				}
+			]
+		},
+		{
+			runner: 'codex', custom_id: null, label: 'Codex', today: { turns: 4, tokens: 88_000, estimated_usd: 0 },
+			accounts: [
+				{
+					config_dir: null, email: null, available: true, reason: null, plan: 'plus', credits: '12', checked_at: null, error: null,
+					windows: [
+						{ minutes: 300, model: null, percent: 77, resets_at: null },
+						{ minutes: 10_080, model: null, percent: 10, resets_at: null }
+					]
+				}
+			]
+		},
+		{ runner: 'grok', custom_id: null, label: 'Grok', today: { turns: 12, tokens: 340_000, estimated_usd: 0 }, accounts: [] },
+		{ runner: 'opencode', custom_id: null, label: 'OpenCode', today: { turns: 3, tokens: 80_000, estimated_usd: 0 }, accounts: [] }
+	]
+};
+
+/** Waits for the first answer to land in the widget or the page. */
+async function usageSettled(host: HTMLElement, selector: string): Promise<void> {
+	for (let i = 0; i < 80 && !host.ownerDocument.querySelector(selector); i += 1) await new Promise((r) => setTimeout(r, 25));
+	flushSync();
+}
 
 const defs: Record<StoryName, Story> = {
 	'model-picker-sources': { component: ModelPicker as never, props: pickerProps('codex/gpt-5.6-terra'), afterMount: (host: HTMLElement) => {
@@ -1308,6 +1358,23 @@ const defs: Record<StoryName, Story> = {
 			],
 			focus: { zone: 'floating', leafId: 'f2' }
 		})
+	},
+	'usage-widget': {
+		component: UsageWidget as never,
+		props: { runtime: fakeRuntime(world, { client: { usage: async () => usageStory } }), t },
+		afterMount: async (host: HTMLElement) => {
+			usageWidget.hidden = false;
+			await usageSettled(host, '[data-usage-widget]');
+			usageWidget.show();
+			await usageSettled(host, '[data-usage-panel] .usage-row');
+			// The pill slides out of its tucked place as the panel opens: shot once it is still.
+			await new Promise((r) => setTimeout(r, 400));
+		}
+	},
+	'usage-page': {
+		component: UsagePage as never,
+		props: { runtime: fakeRuntime(world, { client: { usage: async () => usageStory } }), t, onBack: () => {} },
+		afterMount: (host: HTMLElement) => usageSettled(host, '[data-usage-page] .usage-row')
 	}
 };
 

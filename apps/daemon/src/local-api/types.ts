@@ -91,6 +91,8 @@ export type LocalApiOptions = {
   agents?: import("../agents/status").AgentProbe;
   /** Their usage; one is made when absent. */
   agentUsage?: import("../agents/usage").AgentUsageProbe;
+  /** Every agent's usage in one answer (ADR 0080); one is made from the two above when absent. */
+  usage?: import("../agents/usage-overview").UsageOverview;
 };
 
 export type LocalApi = {

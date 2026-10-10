@@ -337,6 +337,50 @@ export type AgentUsage = {
 
 export type AgentUsageResponse = { items: AgentUsage[] };
 
+/** One plan window, as every agent's is shown (ADR 0080). */
+export type UsageWindow = {
+  /** Its length in minutes: 300 is five hours, 10080 a week; null when the agent did not say. */
+  minutes: number | null;
+  /** The model a model's own window is for (Claude's `Opus`); null for the whole plan's. */
+  model: string | null;
+  /** How much of it is used, 0–100. */
+  percent: number;
+  resets_at: string | null;
+};
+
+/** One account of an agent that reports its plan's windows. */
+export type UsageAccount = {
+  /** The account's config directory as listed in Settings; null for the daemon's own environment. */
+  config_dir: string | null;
+  email: string | null;
+  /** Plan windows to show. */
+  available: boolean;
+  reason: "missing" | "signed_out" | "no_plan" | "failed" | null;
+  plan: string | null;
+  windows: UsageWindow[];
+  /** Credits left on the plan, as the agent says it. */
+  credits: string | null;
+  checked_at: string | null;
+  /** Why the latest ask failed, in English; the windows are then the last answer that came. */
+  error: string | null;
+};
+
+/**
+ * One agent something runs on, with what this app's own records hold of it today and, where the
+ * agent reports them (Claude, Codex), each account's plan windows. `accounts` is empty for an
+ * agent that reports none: never a percentage it did not give.
+ */
+export type UsageAgent = {
+  runner: BotRunner;
+  custom_id: string | null;
+  label: string;
+  today: { turns: number; tokens: number; estimated_usd: number };
+  accounts: UsageAccount[];
+};
+
+/** `GET /v1/usage` (ADR 0080): every agent's usage in one answer, Claude first. */
+export type UsageResponse = { agents: UsageAgent[] };
+
 export type ProfileRevision = {
   id: string;
   bot_id: string;

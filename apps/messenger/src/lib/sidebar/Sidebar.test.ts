@@ -392,11 +392,11 @@ test('desktop footer exposes three labelled entries and dispatches each tool', (
   expect(footer[0].title).toContain('⌘O');
   click(footer[0]); click(footer[2]);
   expect(created).toEqual(['workspace', 'settings']);
-  for (const [index, name] of ['routines', 'spend', 'terminal'].entries()) {
+  for (const [index, name] of [[0, 'routines'], [1, 'spend'], [3, 'terminal']] as const) {
     click(footer[1]);
     const items = [...host.querySelectorAll('.tools-menu-item')];
     expect(items.map((item) => item.textContent?.trim())).toEqual([
-      t.routines.title, spendCopyFor('zh').open, t.terminal.newTab, t.sidebar.archivedSessions,
+      t.routines.title, spendCopyFor('zh').open, t.usage.open, t.terminal.newTab, t.sidebar.archivedSessions,
     ]);
     expect(host.querySelector('[role="separator"]')).not.toBeNull();
     click(items[index]);
@@ -415,8 +415,8 @@ test("a tablet on the remote app is wider than a phone but has no workbench, so 
   click(tools);
   // Named as a phone names them: the page that opens, not a tab.
   const items = [...host.querySelectorAll<HTMLButtonElement>('.tools-menu-item')];
-  expect(items.slice(0, 3).map((item) => item.textContent?.trim())).toEqual([t.calendar.open, spendCopyFor('zh').open, t.terminal.title]);
-  click(items[2]);
+  expect(items.slice(0, 4).map((item) => item.textContent?.trim())).toEqual([t.calendar.open, spendCopyFor('zh').open, t.usage.open, t.terminal.title]);
+  click(items[3]);
   expect(runtime.calls.some((call) => call.name === 'openTerminal')).toBe(true);
   expect(created).not.toContain('terminal');
   // Its pages are marked in the menu the way a phone's are.
@@ -433,12 +433,12 @@ test('desktop tools support arrows, Home, End, Escape, Tab and outside dismissal
   const items = [...host.querySelectorAll<HTMLButtonElement>('.tools-menu-item')];
   expect(document.activeElement).toBe(items[0]);
   press(items[0], 'ArrowUp');
-  expect(document.activeElement).toBe(items[3]);
-  press(items[3], 'ArrowDown');
+  expect(document.activeElement).toBe(items[4]);
+  press(items[4], 'ArrowDown');
   expect(document.activeElement).toBe(items[0]);
   press(items[0], 'End');
-  expect(document.activeElement).toBe(items[3]);
-  press(items[3], 'Home');
+  expect(document.activeElement).toBe(items[4]);
+  press(items[4], 'Home');
   expect(document.activeElement).toBe(items[0]);
   press(items[0], 'Escape');
   expect(host.querySelector('.tools-menu')).toBeNull();
@@ -557,8 +557,9 @@ test("on a phone the calendar and the terminal live behind one button", () => {
     const items = Array.from(host.querySelectorAll('.tools-menu-item')).map((el) => el.textContent?.trim());
     expect(items.indexOf(t.calendar.open)).toBe(0);
     expect(items.indexOf(spendCopyFor("zh").open)).toBe(1);
-    expect(items.indexOf(t.terminal.title)).toBe(2);
-    expect(items.indexOf(t.sidebar.archivedSessions)).toBe(3);
+    expect(items.indexOf(t.usage.open)).toBe(2);
+    expect(items.indexOf(t.terminal.title)).toBe(3);
+    expect(items.indexOf(t.sidebar.archivedSessions)).toBe(4);
 
     const terminalItem = [...host.querySelectorAll<HTMLButtonElement>('.tools-menu-item')].find((item) => item.textContent?.includes(t.terminal.title));
     click(terminalItem);

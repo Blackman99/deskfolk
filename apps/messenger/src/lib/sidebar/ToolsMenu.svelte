@@ -6,7 +6,7 @@
 	import { spendCopyFor } from '../spend/spend-copy.ts';
 
 	/**
-	 * The 工具 popover: routines, spend, a terminal, the Mac's screen on a phone that can reach it,
+	 * The 工具 popover: routines, spend, usage, a terminal, the Mac's screen on a phone that can reach it,
 	 * and — after a line — the archived sessions and,
 	 * once the daemon has stops, 「全部停下」 with a line saying it lasts until lifted (「全部继续」
 	 * while everything is stopped). One
@@ -37,9 +37,11 @@
 		focusLast?: boolean;
 		archivedCount: number;
 		/** What is on screen now, for the phone's pages. */
-		current?: { routines?: boolean; spend?: boolean; terminal?: boolean; screen?: boolean; archived?: boolean };
+		current?: { routines?: boolean; spend?: boolean; usage?: boolean; terminal?: boolean; screen?: boolean; archived?: boolean };
 		onOpenRoutines: () => void;
 		onOpenSpend: () => void;
+		/** Every agent's usage (ADR 0080): the floating widget's panel, or a phone's page. */
+		onOpenUsage?: (() => void) | null;
 		onOpenTerminal: () => void;
 		/** The remote screen; null where this is not a phone on a Mac that offers it. */
 		onOpenScreen?: (() => void) | null;
@@ -66,6 +68,7 @@
 		current = {},
 		onOpenRoutines,
 		onOpenSpend,
+		onOpenUsage = null,
 		onOpenTerminal,
 		onOpenScreen = null,
 		screenHost = 'mac',
@@ -195,6 +198,22 @@
 			</svg>
 			<span>{spendCopy.open}</span>
 		</button>
+		{#if onOpenUsage}
+			<button
+				type="button"
+				class="tools-menu-item"
+				role="menuitem"
+				aria-current={current.usage ? 'true' : undefined}
+				data-tools-usage
+				onclick={() => choose(onOpenUsage)}
+			>
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<path d="M12 14l4-4"></path>
+					<path d="M3.34 19a10 10 0 1 1 17.32 0"></path>
+				</svg>
+				<span>{t.usage.open}</span>
+			</button>
+		{/if}
 		<button
 			type="button"
 			class="tools-menu-item"

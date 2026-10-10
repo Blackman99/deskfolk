@@ -14,6 +14,7 @@
 	import { sessionTitle } from './session-title.ts';
 	import { sessionUnreadCount, unreadBadge } from './unread.ts';
 	import ToolsMenu from './ToolsMenu.svelte';
+	import { usageWidget } from '../usage/usage-widget.svelte.ts';
 	import { loadWorkingOnly, onlyWorking, saveWorkingOnly, workingOrUnreadIds } from './working-only.ts';
 
 	/**
@@ -312,10 +313,12 @@
 	current={{
 		routines: !workbench && runtime.routinesOpen,
 		spend: !workbench && runtime.spendOpen,
+		usage: usageWidget.open,
 		terminal: !workbench && runtime.terminalOpen
 	}}
 	{onOpenRoutines}
 	{onOpenSpend}
+	onOpenUsage={() => usageWidget.show()}
 	onOpenTerminal={() => (workbench ? onNewTerminal() : runtime.openTerminal())}
 	{onOpenArchived}
 />

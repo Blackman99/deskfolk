@@ -1,7 +1,8 @@
 import { handleAgentMcp, isAgentMcpPath } from "./agent-mcp/bridge";
 import { createAgentProbe } from "./agents/status";
-import { createAgentUsageProbe } from "./agents/usage";
-import { isLadderAgentRung, isNonReceiptPath, LOCAL_API_NAME, type CapabilitiesResponse, type ClientEvent, type HealthResponse, type NotificationFilter, type RuntimeSnapshot, type SessionSnapshot, type StreamFrame, type ToolFrame, type WsAuthMessage } from "@real-bot/protocol";
+import { accountsInUse, createAgentUsageProbe } from "./agents/usage";
+import { createUsageOverview } from "./agents/usage-overview";
+import { isNonReceiptPath, LOCAL_API_NAME, type CapabilitiesResponse, type ClientEvent, type HealthResponse, type NotificationFilter, type RuntimeSnapshot, type SessionSnapshot, type StreamFrame, type ToolFrame, type WsAuthMessage } from "@real-bot/protocol";
 import { warmDisplayAvatar } from "./avatar-display";
 import { createClaudeCodeProbe } from "./claude-code/probe";
 import { createClaudeUsageProbe } from "./claude-code/usage";
@@ -58,11 +59,8 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
   const claudeCode = options.claudeCode!;
   options.claudeUsage ??= createClaudeUsageProbe({
     claudeCode,
-    inUse: () => [
-      ...options.store.listBots().filter((bot) => bot.runner === "claude_code").map((bot) => bot.agent_config_dir ?? null),
-      // A Claude rung of the model ladder spends its account too (ADR 0076).
-      ...options.store.modelLadder().flatMap((rung) => (isLadderAgentRung(rung) && rung.runner === "claude_code" ? [rung.config_dir] : [])),
-    ],
+    // Bots, Claude rungs of the model ladder (ADR 0076) and built-in calls alike (ADR 0080).
+    inUse: () => accountsInUse(options.store).filter((entry) => entry.runner === "claude_code").map((entry) => entry.configDir),
   });
   // Your other local agents (ADR 0079): what each is, and the usage of those something runs on.
   options.agents ??= createAgentProbe({
@@ -72,6 +70,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
     remembered: { load: () => options.store.agentStatusMemory(), save: (memory) => options.store.rememberAgentStatuses(memory) },
   });
   options.agentUsage ??= createAgentUsageProbe({ store: options.store });
+  options.usage ??= createUsageOverview({ store: options.store, claudeUsage: options.claudeUsage, agentUsage: options.agentUsage });
   const sockets = new Set<Bun.ServerWebSocket<SocketData>>();
   const timers = new Map<Bun.ServerWebSocket<SocketData>, ReturnType<typeof setTimeout>>();
 
