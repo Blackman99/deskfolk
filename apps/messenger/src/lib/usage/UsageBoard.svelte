@@ -32,6 +32,8 @@
 	let width = $state(0);
 	const columns = $derived(Math.max(1, Math.floor((width + GAP) / (CARD_MIN + GAP))));
 	const span = (agent: UsageAgent) => Math.min(columns, Math.max(1, agent.accounts.length));
+	/** Its head's row, then a row per line of cards, all on the board's rows so a row of cards is one height. */
+	const rows = (agent: UsageAgent) => 1 + Math.ceil(Math.max(1, agent.accounts.length) / span(agent));
 
 	const split = $derived(usageSplit(agents));
 	const key = (agent: UsageAgent) => `${agent.runner}:${agent.custom_id ?? ''}`;
@@ -44,7 +46,7 @@
 		<p class="usage-board-empty">{t.usage.empty}</p>
 	{/if}
 	{#each split.plans as agent (key(agent))}
-		<section class="usage-board-agent" data-usage-agent={agent.runner} style:--usage-span={span(agent)}>
+		<section class="usage-board-agent" data-usage-agent={agent.runner} style:--usage-span={span(agent)} style:--usage-rows={rows(agent)}>
 			<h3 class="usage-board-agent-head">
 				<AgentLogo runner={agent.runner} size={22} />
 				<span class="usage-board-agent-name">{name(agent)}</span>
@@ -109,7 +111,6 @@
 		display: grid;
 		grid-template-columns: repeat(var(--usage-columns, 1), minmax(0, 1fr));
 		gap: 28px 12px;
-		align-items: start;
 		min-width: 0;
 	}
 
@@ -121,13 +122,17 @@
 		line-height: 1.5;
 	}
 
-	/* Its head over its own columns, its cards on the board's columns. */
+	/*
+	 * Its head over its own columns, its cards on the board's columns and rows: every head in a row
+	 * of agents shares one track and every card the next, so cards side by side are one height.
+	 */
 	.usage-board-agent {
 		grid-column: span var(--usage-span, 1);
+		grid-row: span var(--usage-rows, 2);
 		display: grid;
 		grid-template-columns: subgrid;
+		grid-template-rows: subgrid;
 		gap: 12px;
-		align-content: start;
 		min-width: 0;
 	}
 
@@ -219,8 +224,9 @@
 
 	.usage-board-gauges {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
-		gap: 18px 8px;
+		/* As narrow as a dial, so four windows (Antigravity's) still sit in one row of a card. */
+		grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+		gap: 18px 6px;
 	}
 
 	.usage-board-today {
