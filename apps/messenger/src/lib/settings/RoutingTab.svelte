@@ -8,7 +8,7 @@
 	import PromptEditorPage from './PromptEditorPage.svelte';
 	import RoutingMap from './RoutingMap.svelte';
 	import RoutingNode from './RoutingNode.svelte';
-	import type { ModelsSection } from './ModelsTab.svelte';
+	import ModelLadderCard from './ModelLadderCard.svelte';
 	import { ModelLadder } from './model-ladder.svelte.ts';
 	import { firstLocale, type PromptView } from './prompts-view.ts';
 	import { askOnce, ROUTING_LANES, routingNodes, routingNodeView, type RoutingNodeId } from './routing-map.ts';
@@ -27,8 +27,8 @@
 		items: readonly PromptSummary[];
 		loadFailed?: boolean;
 		closeSettings?: () => void;
-		/** Another page of settings: the Bot's turn is set on Models › Model ladder and Prompts. */
-		openTab: (tab: 'models' | 'prompts', section?: ModelsSection) => void;
+		/** Another page of settings: every turn's prompts are on Prompts. */
+		openTab: (tab: 'prompts') => void;
 		/** What the dialog says over any page: pending credentials, a failed save, setup not done. */
 		notices?: Snippet;
 	}
@@ -45,9 +45,12 @@
 	let opened = $state(false);
 	let scroller = $state<HTMLElement>();
 
+	// The model ladder (ADR 0054) is set on the Bot's turn here. Read again when the endpoints change:
+	// a rung whose model is no longer listed is gone from it.
 	const ladder = new ModelLadder(() => runtime.client);
 	$effect(() => {
 		void runtime.client;
+		void providers.map((provider) => `${provider.id}:${provider.models.join(',')}`).join('|');
 		void ladder.load();
 	});
 	const turnModel = $derived(
@@ -180,12 +183,19 @@
 		<section class="routing-turn" aria-label={c.turn.name} data-routing-detail="turn">
 			<h3 class="routing-turn-name">{c.turn.name}</h3>
 			<p class="routing-turn-hint">{c.turn.hint}</p>
-			<p class="routing-turn-model">{turnModel}</p>
 			<div class="routing-turn-links">
-				{#if ladder.available}
-					<button type="button" class="btn btn-ghost btn-sm" data-routing-link="ladder" onclick={() => openTab('models', 'ladder')}>{c.turn.toLadder}</button>
+				<button type="button" class="routing-link" data-routing-link="prompts" onclick={() => openTab('prompts')}>{c.turn.toPrompts} ›</button>
+			</div>
+			<div class="routing-turn-part" data-routing-part="ladder">
+				<h4 class="routing-turn-part-title">{t.modelLadder.title}</h4>
+				{#if !ladder.available}
+					<p class="routing-turn-hint">{c.turn.ladderOff}</p>
+				{:else if providers.length === 0}
+					<p class="routing-turn-hint">{c.turn.ladderNoEndpoint}</p>
+				{:else}
+					<p class="routing-turn-hint">{t.modelLadder.hint}</p>
+					<ModelLadderCard {ladder} {providers} claudeCode={claudeStatus} {agents} {t} />
 				{/if}
-				<button type="button" class="btn btn-ghost btn-sm" data-routing-link="prompts" onclick={() => openTab('prompts')}>{c.turn.toPrompts}</button>
 			</div>
 		</section>
 	{:else}
@@ -336,15 +346,27 @@
 		font-weight: 600;
 	}
 
-	.routing-turn-hint,
-	.routing-turn-model {
+	.routing-turn-hint {
 		margin: 0;
 		font-size: 12px;
 		line-height: 1.45;
 		color: var(--muted);
 	}
 
-	.routing-turn-model {
+	.routing-turn-part {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		margin-top: 8px;
+		padding-top: 12px;
+		border-top: 1px solid var(--line);
+		min-width: 0;
+	}
+
+	.routing-turn-part-title {
+		margin: 0;
+		font-size: 12px;
+		font-weight: 600;
 		color: var(--ink-secondary);
 	}
 
@@ -352,7 +374,19 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 8px;
-		margin-top: 4px;
+	}
+
+	.routing-link {
+		padding: 0;
+		border: 0;
+		background: none;
+		color: var(--accent);
+		font-size: 12px;
+		cursor: pointer;
+	}
+
+	.routing-link:hover {
+		text-decoration: underline;
 	}
 
 	@media (max-width: 720px) {

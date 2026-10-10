@@ -107,21 +107,16 @@ const ladderClient = () => ({
 const sectionTabs = (host: HTMLElement) =>
   [...host.querySelectorAll<HTMLButtonElement>('.section-tabs [role="tab"]')].map((tab) => tab.dataset.section);
 
-test("Models shows its endpoints, model ladder and speech recognition as tabs over one page", async () => {
+test("Models shows its endpoints and speech recognition as tabs over one page; the model ladder is on Roles", async () => {
   const { host, close } = open({ client: ladderClient() });
   openModels(host);
   await sleep(0);
   flushSync();
-  expect(sectionTabs(host)).toEqual(["endpoints", "ladder", "speech"]);
+  expect(sectionTabs(host)).toEqual(["endpoints", "speech"]);
   expect(host.querySelector('[data-section="endpoints"]')?.getAttribute("aria-selected")).toBe("true");
-  expect(host.querySelector('[data-section="ladder"] .section-tab-count')?.textContent).toBe("2");
   expect(host.querySelector(".provider-card")).toBeTruthy();
   expect(host.querySelector("[data-model-ladder]")).toBeNull();
   expect(host.querySelector("[data-speech-settings]")).toBeNull();
-  click(host.querySelector('[data-section="ladder"]'));
-  expect(host.querySelector(".provider-card")).toBeNull();
-  expect([...host.querySelectorAll(".ladder-name")].map((el) => el.textContent)).toEqual(["gemini-3.8-flash", "grok-4.6"]);
-  expect(host.querySelector(".models-intro")?.textContent).toBe(t.modelLadder.hint);
   // Speech recognition is a section of its own, not a card under the endpoints.
   click(host.querySelector('[data-section="speech"]'));
   expect(host.querySelector('[data-section="speech"]')?.getAttribute("aria-selected")).toBe("true");
@@ -155,7 +150,39 @@ test("before setup is done, its banner shows on Models too, inside the page unde
   close();
 });
 
-test("an engine level without a ladder has no ladder tab, and with no endpoint only speech recognition is beside the endpoints", async () => {
+function openTurn(host: HTMLElement): void {
+  click(host.querySelector<HTMLButtonElement>('[data-settings-tab="routing"]'));
+  click(host.querySelector<HTMLButtonElement>('[data-routing-node="turn"]'));
+}
+
+test("the model ladder is set on Roles, on a Bot's turn; the turn's node names its rungs", async () => {
+  const { host, close } = open({ client: ladderClient() });
+  openTurn(host);
+  await sleep(0);
+  flushSync();
+  expect(host.querySelector('[data-routing-node="turn"]')?.textContent).toContain(t.routing.turn.ladder("gemini-3.8-flash → grok-4.6"));
+  const part = host.querySelector('[data-routing-detail="turn"] [data-routing-part="ladder"]')!;
+  expect(part.textContent).toContain(t.modelLadder.hint);
+  expect([...part.querySelectorAll(".ladder-name")].map((el) => el.textContent)).toEqual(["gemini-3.8-flash", "grok-4.6"]);
+  close();
+  // An engine level without a ladder says so, and so does a ladder with no endpoint to order.
+  const off = open();
+  openTurn(off.host);
+  await sleep(0);
+  flushSync();
+  expect(off.host.querySelector("[data-model-ladder]")).toBeNull();
+  expect(off.host.querySelector('[data-routing-part="ladder"]')?.textContent).toContain(t.routing.turn.ladderOff);
+  off.close();
+  const bare = open({ providers: [], client: ladderClient() });
+  openTurn(bare.host);
+  await sleep(0);
+  flushSync();
+  expect(bare.host.querySelector("[data-model-ladder]")).toBeNull();
+  expect(bare.host.querySelector('[data-routing-part="ladder"]')?.textContent).toContain(t.routing.turn.ladderNoEndpoint);
+  bare.close();
+});
+
+test("with or without an endpoint, speech recognition is beside the endpoints", async () => {
   const withEndpoint = open();
   openModels(withEndpoint.host);
   await sleep(0);
@@ -584,21 +611,20 @@ test("on a phone, Models lists its sections with what each is set to, and opens 
       flushSync();
       expect(host.querySelector(".section-tabs")).toBeNull();
       const rows = [...host.querySelectorAll<HTMLButtonElement>(".section-list-row")];
-      expect(rows.map((row) => row.dataset.section)).toEqual(["endpoints", "ladder", "speech"]);
+      expect(rows.map((row) => row.dataset.section)).toEqual(["endpoints", "speech"]);
       expect(rows.map((row) => row.querySelector(".section-list-summary")?.textContent)).toEqual([
         t.settings.modelsEndpointsSummary(1, "Default"),
-        "gemini-3.8-flash → grok-4.6",
         t.speech.unset,
       ]);
       expect(host.querySelector(".provider-card")).toBeNull();
       click(rows[1]);
-      expect(title()).toContain(t.modelLadder.title);
+      expect(title()).toContain(t.speech.title);
       expect(host.querySelector(".section-list")).toBeNull();
-      expect(host.querySelector("[data-model-ladder]")).toBeTruthy();
+      expect(host.querySelector("[data-speech-settings]")).toBeTruthy();
       // Back from a section goes to Models' list, then to the settings list.
       click(host.querySelector(".settings-mobile-back"));
       expect(title()).toContain(t.settings.tabModels);
-      expect(host.querySelectorAll(".section-list-row")).toHaveLength(3);
+      expect(host.querySelectorAll(".section-list-row")).toHaveLength(2);
       expect(host.querySelector(".settings-modal.is-mobile-detail")).toBeTruthy();
       expect(app.backWithinSettings()).toBe(true);
       flushSync();

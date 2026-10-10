@@ -458,11 +458,12 @@ const routingNode = (node?: string) => async (host: HTMLElement) => {
 	flushSync();
 };
 
-/** A client on an engine level with a model ladder, two models on it: Models has all three sections. */
+/** A client on an engine level with a model ladder, three rungs on it, set on Roles' Bot turn. */
 const ladderClient = {
 	listLessons: async () => [],
 	listPrompts: async () => [],
 	claudeCode: async () => claudeStatus,
+	agents: async () => ({ items: [], custom_agents: [] }),
 	modelLadder: async () => ({
 		items: [
 			{ provider_id: 'prov-1', model: 'gemini-3.8-flash' },
@@ -1208,22 +1209,22 @@ const defs: Record<StoryName, Story> = {
 		}
 	},
 	'settings-providers': { component: SettingsModal as never, props: settingsProps(), afterMount: settingsTab('models') },
-	// The model ladder's own tab, on an engine level that has one.
-	'settings-models-ladder': {
+	// The model ladder, on Roles' Bot turn, on an engine level that has one.
+	'settings-routing-ladder': {
 		component: SettingsModal as never,
 		props: settingsProps({ runtime: fakeRuntime(world, { settingsOpen: true, client: ladderClient }) }),
-		afterMount: modelsSection('ladder')
+		afterMount: routingNode('turn')
 	},
 	// Claude models on the ladder (ADR 0076): each Claude rung picks its effort and, with two accounts, its account.
-	'settings-models-ladder-claude': {
+	'settings-routing-ladder-claude': {
 		component: SettingsModal as never,
 		props: settingsProps({ runtime: fakeRuntime(world, { settingsOpen: true, client: ladderClaudeClient }) }),
-		afterMount: modelsSection('ladder')
+		afterMount: routingNode('turn')
 	},
-	'settings-models-ladder-claude-narrow': {
+	'settings-routing-ladder-claude-narrow': {
 		component: SettingsModal as never,
 		props: settingsProps({ runtime: fakeRuntime(world, { settingsOpen: true, client: ladderClaudeClient }) }),
-		afterMount: modelsSection('ladder')
+		afterMount: routingNode('turn')
 	},
 	// Speech recognition's own tab, set up and ready: no title of its own under the tab, its switch first.
 	'settings-models-speech': {
@@ -1268,7 +1269,7 @@ const defs: Record<StoryName, Story> = {
 			host.querySelector<HTMLButtonElement>('.real-select-trigger')?.click();
 		}
 	},
-	// On a phone, Models is a list of its three sections, each saying what it is set to.
+	// On a phone, Models is a list of its two sections, each saying what it is set to.
 	'settings-models-narrow': {
 		component: SettingsModal as never,
 		props: settingsProps({ runtime: fakeRuntime(world, { settingsOpen: true, client: ladderClient }) }),

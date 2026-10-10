@@ -98,6 +98,7 @@
 <style>
 	/* The line's lane across the top; the lanes of one call each, two a row under it. */
 	.routing-map {
+		--routing-rail: 12px;
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: 10px;
@@ -148,7 +149,8 @@
 		gap: 3px;
 		padding-left: 12px;
 		border-left: 1px dashed var(--line-hover);
-		margin-left: 10px;
+		/* The rail sits where the down arrows run (`--routing-rail`), so a branch and the next step line up. */
+		margin-left: var(--routing-rail);
 	}
 
 	.routing-branch-edge {
@@ -326,7 +328,7 @@
 		justify-content: flex-end;
 		align-items: center;
 		gap: 8px;
-		padding: 2px 0 2px 14px;
+		padding: 2px 0 2px var(--routing-rail);
 	}
 
 	.routing-map.is-vertical .routing-edge-label {

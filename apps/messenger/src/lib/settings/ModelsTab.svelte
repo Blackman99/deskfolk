@@ -1,23 +1,21 @@
 <script lang="ts" module>
-	export type ModelsSection = 'endpoints' | 'ladder' | 'speech';
+	export type ModelsSection = 'endpoints' | 'speech';
 </script>
 
 <script lang="ts">
-	import { untrack, type Snippet } from 'svelte';
+	import type { Snippet } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import type { Snapshot } from '../snapshot.ts';
-	import ModelLadderCard from './ModelLadderCard.svelte';
 	import SettingsSectionList from './SettingsSectionList.svelte';
 	import SettingsSectionTabs from './SettingsSectionTabs.svelte';
 	import SpeechCard, { speechMissing } from './SpeechCard.svelte';
-	import { ModelLadder } from './model-ladder.svelte.ts';
 
 	/**
-	 * Settings › Models in three sections: the endpoints, the model ladder (ADR 0054) and the speech
-	 * recognition behind the message box's microphone (ADR 0073). The models of the calls the app
-	 * makes on its own are on Settings › Roles, with their prompts (ADR 0082). A wide window shows them as tabs over one page. A phone lists them with what each is set to and opens one as a page of its own,
+	 * Settings › Models in two sections: the endpoints and the speech recognition behind the message
+	 * box's microphone (ADR 0073). The models of the calls the app makes on its own, with their
+	 * prompts, and the model ladder (ADR 0054) for a Bot's turn are on Settings › Roles (ADR 0082). A wide window shows them as tabs over one page. A phone lists them with what each is set to and opens one as a page of its own,
 	 * one level deeper.
 	 */
 	type Props = {
@@ -28,39 +26,24 @@
 		endpoints: Snippet;
 		/** What the dialog says over any page: pending credentials, a failed save, setup not done. */
 		notices?: Snippet;
-		/** The section to open at, sent from another page (Roles' link to the ladder). */
-		initial?: ModelsSection | null;
 	};
 
-	let { runtime, t, snapshot, endpoints, notices, initial = null }: Props = $props();
+	let { runtime, t, snapshot, endpoints, notices }: Props = $props();
 
 	const phone = new MediaQuery('(max-width: 720px)');
 	const providers = $derived(snapshot.providers);
 
-	const ladder = new ModelLadder(() => runtime.client);
-	// Again when the endpoints change: a rung whose model is no longer listed is gone from it.
-	$effect(() => {
-		void providers.map((provider) => `${provider.id}:${provider.models.join(',')}`).join('|');
-		void ladder.load();
-	});
-
-	/**
-	 * With no endpoint there is nothing to order. Speech recognition is there either way: it has a
-	 * service and key of its own, not an endpoint.
-	 */
-	const sections = $derived<ModelsSection[]>(
-		providers.length > 0 && ladder.available ? ['endpoints', 'ladder', 'speech'] : ['endpoints', 'speech']
-	);
-	let picked = $state<ModelsSection>(untrack(() => initial) ?? 'endpoints');
-	const section = $derived(sections.includes(picked) ? picked : 'endpoints');
+	/** Speech recognition is there with or without an endpoint: it has a service and key of its own. */
+	const sections: ModelsSection[] = ['endpoints', 'speech'];
+	let picked = $state<ModelsSection>('endpoints');
+	const section = $derived(picked);
 	/** On a phone, a section's page is open over the list of them. */
-	let opened = $state(untrack(() => initial) !== null);
+	let opened = $state(false);
 	const listing = $derived(phone.current && sections.length > 1 && !opened);
 	let scroller = $state<HTMLElement>();
 
 	function label(of: ModelsSection): string {
 		if (of === 'endpoints') return t.settings.modelsSectionEndpoints;
-		if (of === 'ladder') return t.modelLadder.title;
 		return t.speech.title;
 	}
 
@@ -73,9 +56,6 @@
 				? t.settings.providerEmpty
 				: t.settings.modelsEndpointsSummary(providers.length, defaultProvider?.name ?? null);
 		}
-		if (of === 'ladder') {
-			return ladder.rungs.length === 0 ? t.modelLadder.unset : ladder.rungs.map((rung) => rung.model).join(' → ');
-		}
 		const speech = snapshot.settings.speech ?? null;
 		if (!speech) return t.speech.unset;
 		if (!speech.enabled) return t.speech.offShort;
@@ -83,7 +63,7 @@
 	}
 
 	function count(of: ModelsSection): number {
-		return of === 'endpoints' ? providers.length : of === 'ladder' ? ladder.rungs.length : 0;
+		return of === 'endpoints' ? providers.length : 0;
 	}
 
 	function open(next: ModelsSection): void {
@@ -112,10 +92,6 @@
 			<path d="M9 8V2"></path>
 			<path d="M15 8V2"></path>
 			<path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"></path>
-		{:else if of === 'ladder'}
-			<line x1="6" y1="20" x2="6" y2="15"></line>
-			<line x1="12" y1="20" x2="12" y2="10"></line>
-			<line x1="18" y1="20" x2="18" y2="4"></line>
 		{:else}
 			<rect x="9" y="2" width="6" height="12" rx="3"></rect>
 			<path d="M19 10v1a7 7 0 0 1-14 0v-1"></path>
@@ -144,9 +120,6 @@
 			>
 				{#if section === 'endpoints'}
 					{@render endpoints()}
-				{:else if section === 'ladder'}
-					<p class="muted models-intro">{t.modelLadder.hint}</p>
-					<ModelLadderCard {ladder} {providers} claudeCode={runtime.client ? () => runtime.client!.claudeCode() : null} agents={runtime.client ? () => runtime.client!.agents() : null} {t} />
 				{:else}
 					<p class="muted models-intro">{t.speech.hint}</p>
 					<SpeechCard speech={snapshot.settings.speech ?? null} {providers} patch={(patch) => runtime.patchSpeech(patch)} {t} />

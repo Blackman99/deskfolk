@@ -56,9 +56,9 @@ export const STORY_SIZES = {
 	'settings-general': { width: 1000, height: 720 },
 	'settings-open-placement': { width: 1000, height: 820 },
 	'settings-providers': { width: 1000, height: 720 },
-	'settings-models-ladder': { width: 1000, height: 720 },
-	'settings-models-ladder-claude': { width: 1000, height: 720 },
-	'settings-models-ladder-claude-narrow': { width: 390, height: 844 },
+	'settings-routing-ladder': { width: 1000, height: 720 },
+	'settings-routing-ladder-claude': { width: 1000, height: 720 },
+	'settings-routing-ladder-claude-narrow': { width: 390, height: 844 },
 	'settings-models-speech': { width: 1000, height: 720 },
 	'settings-models-narrow': { width: 390, height: 844 },
 	// The two-level model picker (endpoints, Claude, every local agent): sources and models, a search, the phone's sheet.

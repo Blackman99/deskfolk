@@ -27,7 +27,7 @@
 	import GeneralTab from './GeneralTab.svelte';
 	import BehaviorTab from './BehaviorTab.svelte';
 	import ProvidersTab from './ProvidersTab.svelte';
-	import ModelsTab, { type ModelsSection } from './ModelsTab.svelte';
+	import ModelsTab from './ModelsTab.svelte';
 	import RemoteTab from './RemoteTab.svelte';
 	import AboutTab from './AboutTab.svelte';
 	import ProviderEditorFlyout from './ProviderEditorFlyout.svelte';
@@ -126,8 +126,6 @@
 
 	let mcpSettings = $state<McpSettings>();
 	let modelsTab = $state<ModelsTab>();
-	/** The section Models opens at when another page sends you there; the list itself opens at none. */
-	let modelsInitial = $state<ModelsSection | null>(null);
 	let routingTab = $state<RoutingTab>();
 	let agentsTab = $state<AgentsTab>();
 
@@ -209,8 +207,7 @@
 		if (!runtime.settingsOpen) mobileSettingsDetail = false;
 	});
 
-	function openSettingsTab(tab: SettingsTab, section: ModelsSection | null = null): void {
-		modelsInitial = section;
+	function openSettingsTab(tab: SettingsTab): void {
 		activeSettingsTab = tab;
 		mobileSettingsDetail = typeof window !== 'undefined' && window.matchMedia('(max-width: 720px)').matches;
 	}
@@ -488,7 +485,7 @@
 				{:else if activeSettingsTab === 'behavior' && behaviorTabVisible}
 					<BehaviorTab {t} />
 				{:else if activeSettingsTab === 'models'}
-					<ModelsTab bind:this={modelsTab} {runtime} {t} {snapshot} notices={settingsNotices} initial={modelsInitial}>
+					<ModelsTab bind:this={modelsTab} {runtime} {t} {snapshot} notices={settingsNotices}>
 						{#snippet endpoints()}
 							<ProvidersTab
 								{t}
@@ -512,7 +509,7 @@
 						items={promptItems}
 						loadFailed={promptsFailed}
 						{closeSettings}
-						openTab={(tab, section) => openSettingsTab(tab, section ?? null)}
+						openTab={(tab) => openSettingsTab(tab)}
 						notices={settingsNotices}
 					/>
 				{:else if activeSettingsTab === 'agents'}
