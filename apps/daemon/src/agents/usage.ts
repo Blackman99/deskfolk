@@ -6,7 +6,7 @@
  * own stays `GET /v1/claude-usage` (ADR 0061); `GET /v1/usage` puts the two together (ADR 0080).
  */
 import { spawn } from "node:child_process";
-import { AGENT_KINDS, type AgentUsage, type AgentUsageResponse, type AgentUsageWindow, type BotRunner, type CustomAgent } from "@real-bot/protocol";
+import { AGENT_KINDS, type AgentStatus, type AgentUsage, type AgentUsageResponse, type AgentUsageWindow, type BotRunner, type ClaudeCodeStatus, type CustomAgent } from "@real-bot/protocol";
 import { claudeLaunch } from "../claude-code/spawn";
 import { rpcPeer } from "../engine/agent/jsonrpc";
 import type { Store } from "../store";
@@ -48,6 +48,39 @@ export function accountsInUse(store: Store): AccountInUse[] {
 }
 
 /**
+ * Every account of an agent that is connected (ADR 0080, 2026-10-10 addendum): found on this
+ * computer and not signed out, whether or not anything runs on it yet. An agent that cannot say
+ * whether it is signed in (`logged_in` null) counts as connected once found.
+ */
+export function connectedAccounts(agents: ReadonlyArray<AgentStatus>, claude: ClaudeCodeStatus | null): AccountInUse[] {
+  const out: AccountInUse[] = [];
+  const add = (runner: BotRunner, customId: string | null, configDir: string | null) => {
+    if (!out.some((seen) => seen.runner === runner && seen.customId === customId && seen.configDir === configDir)) out.push({ runner, customId, configDir });
+  };
+  if (claude?.path) {
+    if (claude.accounts && claude.accounts.length > 0) {
+      for (const account of claude.accounts) if (account.logged_in !== false) add("claude_code", null, account.config_dir);
+    } else if (claude.logged_in !== false) add("claude_code", null, null);
+  }
+  for (const status of agents) {
+    if (!status.path || status.runner === "claude_code" || !(status.runner in AGENT_KINDS)) continue;
+    const customId = status.runner === "custom" ? status.custom_id : null;
+    if (status.logged_in !== false) add(status.runner, customId, null);
+    for (const account of status.accounts ?? []) if (account.config_dir && account.logged_in !== false) add(status.runner, customId, account.config_dir);
+  }
+  return out;
+}
+
+/** Accounts in use and connected ones together, each once. */
+export function accountsShown(inUse: AccountInUse[], connected: AccountInUse[]): AccountInUse[] {
+  const out = [...inUse];
+  for (const entry of connected) {
+    if (!out.some((seen) => seen.runner === entry.runner && seen.customId === entry.customId && seen.configDir === entry.configDir)) out.push(entry);
+  }
+  return out;
+}
+
+/**
  * What this app's own records hold of an agent since local midnight: its spend rows under its name,
  * turns counted as distinct turns among them (Claude's turns write no `agent_*` route decision).
  */
@@ -61,15 +94,18 @@ export function agentToday(store: Store, label: string): AgentUsage["today"] {
 
 export function createAgentUsageProbe(deps: {
   store: Store;
+  /** Accounts of agents found and signed in (ADR 0080 addendum): shown even with nothing running on them. */
+  connected?: () => Promise<AccountInUse[]>;
   /** A test's stand-in for asking Codex. */
   askCodex?: (env: Record<string, string>, executable: string) => Promise<Pick<AgentUsage, "plan" | "windows" | "credits">>;
 }): AgentUsageProbe {
   const { store } = deps;
   const cache = new Map<string, { usage: AgentUsage; at: number }>();
 
-  /** Every agent account other than Claude's something runs on. */
-  function inUse(): InUse[] {
-    return accountsInUse(store).filter((entry): entry is InUse => entry.runner !== "claude_code");
+  /** Every agent account other than Claude's that something runs on or that is connected. */
+  async function inUse(): Promise<InUse[]> {
+    const connected = deps.connected ? await deps.connected().catch(() => []) : [];
+    return accountsShown(accountsInUse(store), connected).filter((entry): entry is InUse => entry.runner !== "claude_code");
   }
 
   const today = (label: string) => agentToday(store, label);
@@ -104,7 +140,7 @@ export function createAgentUsageProbe(deps: {
   return {
     async current(maxAgeMs = AGENT_USAGE_MAX_AGE_MS) {
       // Each account its own ask, all at once: a slow Codex holds up none of the others.
-      return { items: await Promise.all(inUse().map((entry) => usageOf(entry, maxAgeMs))) };
+      return { items: await Promise.all((await inUse()).map((entry) => usageOf(entry, maxAgeMs))) };
     },
   };
 }

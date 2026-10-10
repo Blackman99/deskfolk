@@ -36,7 +36,7 @@ export const zh = {
   noPlan: "按 token 计费，没有套餐额度",
   missing: "没找到这个程序",
   own: "默认账号",
-  empty: "还没有 Bot、模型阶梯或内置调用跑在本机 Agent 上。",
+  empty: "还没有连接上的本机 Agent：在 设置 › Agent 里装好、登录后，它的用量就出现在这里。",
   more: (count: number) => `还有 ${count} 个账号`
 };
 
@@ -74,6 +74,6 @@ export const en: CopyShape<typeof zh> = {
   noPlan: "Billed per token: no plan limits",
   missing: "Not found on this computer",
   own: "Default account",
-  empty: "No Bot, ladder rung or built-in call runs on a local agent yet.",
+  empty: "No local agent is connected yet: once one is installed and signed in (Settings › Agents), its usage shows here.",
   more: (count: number) => `${count} more accounts`
 };

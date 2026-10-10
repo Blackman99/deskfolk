@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
-import type { AgentUsageResponse, ClaudeUsage, UsageResponse } from "@real-bot/protocol";
-import { accountsInUse, type AgentUsageProbe } from "./agents/usage";
+import type { AgentStatus, AgentUsageResponse, ClaudeCodeStatus, ClaudeUsage, UsageResponse } from "@real-bot/protocol";
+import { accountsInUse, accountsShown, connectedAccounts, createAgentUsageProbe, type AgentUsageProbe } from "./agents/usage";
 import type { ClaudeUsageProbe } from "./claude-code/usage";
 import { ulid } from "./ids";
 import { createLocalApi } from "./local-api";
@@ -76,14 +76,44 @@ test("one answer for every agent: Claude first, accounts grouped under their age
   expect((await fetch(`${h.origin}/v1/usage`)).status).toBe(401);
 });
 
-test("Claude is not asked at all while nothing runs on it", async () => {
-  let asked = 0;
+test("Claude is left out when nothing runs on it and no account of it is connected", async () => {
   const h = start({
-    claudeUsage: { current: async () => { asked += 1; return claude; } },
+    claudeUsage: { current: async () => ({ available: false, reason: "unused", plan: null, windows: [], checked_at: null, error: null, accounts: [] }) },
     agentUsage: { current: async () => ({ items: [] }) },
   });
   expect(await (await h.get()).json()).toEqual({ agents: [] });
-  expect(asked).toBe(0);
+});
+
+test("connected accounts: found and not signed out, each once, whether or not anything runs on them", () => {
+  const status = (over: Partial<AgentStatus>): AgentStatus => ({ runner: "codex", custom_id: null, label: "Codex", path: "/bin/x", logged_in: true, accounts: [], ...over } as AgentStatus);
+  const claudeStatus = {
+    path: "/c", logged_in: true,
+    accounts: [{ config_dir: null, logged_in: true }, { config_dir: "/opt/claude-b", logged_in: true }, { config_dir: "/opt/claude-c", logged_in: false }],
+  } as unknown as ClaudeCodeStatus;
+  const connected = connectedAccounts([
+    status({ accounts: [{ config_dir: null, logged_in: true }, { config_dir: "/opt/codex-b", logged_in: true }, { config_dir: "/opt/codex-c", logged_in: false }] as AgentStatus["accounts"] }),
+    status({ runner: "grok", label: "Grok", logged_in: null }),
+    status({ runner: "opencode", label: "OpenCode", path: null }),
+    status({ runner: "antigravity", label: "Antigravity", logged_in: false }),
+    status({ runner: "custom", custom_id: "ca-1", label: "mine" }),
+  ], claudeStatus);
+  expect(connected.map((entry) => [entry.runner, entry.customId, entry.configDir])).toEqual([
+    ["claude_code", null, null], ["claude_code", null, "/opt/claude-b"],
+    ["codex", null, null], ["codex", null, "/opt/codex-b"],
+    ["grok", null, null], ["custom", "ca-1", null],
+  ]);
+  // In use and connected together, each once.
+  expect(accountsShown([{ runner: "codex", customId: null, configDir: null }], connected)).toHaveLength(connected.length);
+});
+
+test("the agents' usage lists a connected agent with nothing running on it", async () => {
+  const store = new Store({ endpointKey: memoryKeyStore() });
+  try {
+    const probe = createAgentUsageProbe({ store, connected: async () => [{ runner: "grok", customId: null, configDir: null }] });
+    expect((await probe.current()).items.map((item) => [item.runner, item.reason])).toEqual([["grok", "no_plan"]]);
+  } finally {
+    store.close();
+  }
 });
 
 test("a phone reads it too: the bare GET and a refresh are whitelisted, nothing else is", async () => {
@@ -95,7 +125,7 @@ test("a phone reads it too: the bare GET and a refresh are whitelisted, nothing 
   expect(() => validateBusiness({ v: 1, id, method: "POST", path: "/v1/usage" })).toThrow();
   const remote = await h.api.dispatchBusiness(new Request("http://remote.invalid/v1/usage"), { deviceId: "paired-device", requestId: ulid() });
   expect(remote.status).toBe(200);
-  expect((await remote.json() as UsageResponse).agents.map((agent) => agent.runner)).toEqual(["codex", "grok"]);
+  expect((await remote.json() as UsageResponse).agents.map((agent) => agent.runner)).toEqual(["claude_code", "codex", "grok"]);
 });
 
 test("a Claude account only a built-in call runs on is in use too", () => {
@@ -112,8 +142,7 @@ test("a Claude account only a built-in call runs on is in use too", () => {
 
 test("today counts an agent's turns as the distinct turns among its spend rows, Claude's included", async () => {
   const h = start({ claudeUsage: { current: async () => claude }, agentUsage: { current: async () => ({ items: [] }) } });
-  const bot = h.store.createBot({ name: "Coder", duties: "code", boundaries: "stay", runner: "claude_code" });
-  const session = h.store.listSessions().find((item) => item.kind === "direct" && item.bot_id === bot.id)!;
+  const { bot, direct_session: session } = h.store.createBot({ name: "Coder", duties: "code", boundaries: "stay", runner: "claude_code" });
   const spend = (turnId: string | null, tokens: number, at = new Date().toISOString()) => h.store.db.run(
     "INSERT INTO spend (id, session_id, bot_id, turn_id, judgement_id, kind, provider_name, total_tokens, created_at) VALUES (?, ?, ?, ?, ?, ?, 'Claude Agent', ?, ?)",
     [ulid(), session.id, bot.id, turnId, turnId ? null : ulid(), turnId ? "turn" : "judgement", tokens, at]);

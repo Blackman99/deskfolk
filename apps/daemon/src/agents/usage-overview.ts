@@ -6,7 +6,7 @@
 import { AGENT_KINDS, type AgentUsage, type BotRunner, type ClaudeAccountUsage, type ClaudeUsage, type ClaudeUsageWindow, type UsageAccount, type UsageAgent, type UsageResponse, type UsageWindow } from "@real-bot/protocol";
 import type { ClaudeUsageProbe } from "../claude-code/usage";
 import type { Store } from "../store";
-import { accountsInUse, agentToday, type AgentUsageProbe } from "./usage";
+import { agentToday, type AgentUsageProbe } from "./usage";
 
 export type UsageOverview = { current(maxAgeMs?: number): Promise<UsageResponse> };
 
@@ -17,13 +17,10 @@ export function createUsageOverview(deps: { store: Store; claudeUsage: ClaudeUsa
   const { store } = deps;
   return {
     async current(maxAgeMs) {
-      const claudeInUse = accountsInUse(store).some((entry) => entry.runner === "claude_code");
-      const [claude, others] = await Promise.all([
-        claudeInUse ? deps.claudeUsage.current(maxAgeMs) : Promise.resolve(null),
-        deps.agentUsage.current(maxAgeMs),
-      ]);
+      // Claude's probe answers `unused` at once when no account is in use or connected.
+      const [claude, others] = await Promise.all([deps.claudeUsage.current(maxAgeMs), deps.agentUsage.current(maxAgeMs)]);
       const agents: UsageAgent[] = [];
-      if (claude && claude.reason !== "unused") {
+      if (claude.reason !== "unused") {
         const label = AGENT_KINDS.claude_code.label;
         agents.push({ runner: "claude_code", custom_id: null, label, today: agentToday(store, label), accounts: claudeAccounts(claude).map(fromClaude) });
       }

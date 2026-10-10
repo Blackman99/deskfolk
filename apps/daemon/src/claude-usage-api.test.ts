@@ -49,21 +49,18 @@ test("a phone reads it too: the bare GET and a refresh are whitelisted, nothing 
   expect(await remote.json()).toEqual(usage);
 });
 
-test("until a Bot runs on Claude Agent, nothing about Claude Code is even looked up", async () => {
-  let looked = 0;
-  const status = { path: null } as unknown as ClaudeCodeStatus;
-  const claudeCode: ClaudeCodeProbe = {
-    last: () => null,
-    current: async () => { looked += 1; return status; },
-    detect: async () => { looked += 1; return status; },
-  };
+test("a Claude Code that is signed in is asked though no Bot runs on it; one not found or signed out is not", async () => {
+  let status = { path: null } as unknown as ClaudeCodeStatus;
+  const claudeCode: ClaudeCodeProbe = { last: () => status, current: async () => status, detect: async () => status };
   const h = start({ claudeCode });
   h.store.createBot({ name: "Writer", duties: "write", boundaries: "stay" });
+  // Not found: nothing connected, nothing asked.
   expect(await (await h.get()).json()).toMatchObject({ available: false, reason: "unused" });
-  expect(looked).toBe(0);
-  h.store.createBot({ name: "Coder", duties: "code", boundaries: "stay", runner: "claude_code" });
-  expect(await (await h.get()).json()).toMatchObject({ available: false, reason: "missing" });
-  expect(looked).toBe(1);
+  status = { path: "/c", logged_in: false } as unknown as ClaudeCodeStatus;
+  expect(await (await h.get("?refresh=1")).json()).toMatchObject({ available: false, reason: "unused" });
+  // Found and signed in: its account is asked for, no Bot needed (the stand-in has no claude to start).
+  status = { path: "/c", logged_in: true, auth_method: "api_key" } as unknown as ClaudeCodeStatus;
+  expect(await (await h.get("?refresh=1")).json()).toMatchObject({ available: false, reason: "no_plan" });
 });
 
 test("the accounts list comes back with each account's sign-in and keeps one a Bot runs on", async () => {

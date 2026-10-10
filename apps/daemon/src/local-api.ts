@@ -1,6 +1,6 @@
 import { handleAgentMcp, isAgentMcpPath } from "./agent-mcp/bridge";
 import { createAgentProbe } from "./agents/status";
-import { accountsInUse, createAgentUsageProbe } from "./agents/usage";
+import { accountsInUse, accountsShown, connectedAccounts, createAgentUsageProbe } from "./agents/usage";
 import { createUsageOverview } from "./agents/usage-overview";
 import { isNonReceiptPath, LOCAL_API_NAME, type CapabilitiesResponse, type ClientEvent, type HealthResponse, type NotificationFilter, type RuntimeSnapshot, type SessionSnapshot, type StreamFrame, type ToolFrame, type WsAuthMessage } from "@real-bot/protocol";
 import { warmDisplayAvatar } from "./avatar-display";
@@ -59,8 +59,12 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
   const claudeCode = options.claudeCode!;
   options.claudeUsage ??= createClaudeUsageProbe({
     claudeCode,
-    // Bots, Claude rungs of the model ladder (ADR 0076) and built-in calls alike (ADR 0080).
-    inUse: () => accountsInUse(options.store).filter((entry) => entry.runner === "claude_code").map((entry) => entry.configDir),
+    // Bots, Claude rungs of the model ladder (ADR 0076) and built-in calls alike, and every account
+    // Claude Code is signed in with even when nothing runs on it yet (ADR 0080).
+    inUse: async () => {
+      const status = await claudeCode.current().catch(() => null);
+      return accountsShown(accountsInUse(options.store), connectedAccounts([], status)).filter((entry) => entry.runner === "claude_code").map((entry) => entry.configDir);
+    },
   });
   // Your other local agents (ADR 0079): what each is, and the usage of those something runs on.
   options.agents ??= createAgentProbe({
@@ -69,7 +73,12 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
     customAgents: () => options.store.customAgents(),
     remembered: { load: () => options.store.agentStatusMemory(), save: (memory) => options.store.rememberAgentStatuses(memory) },
   });
-  options.agentUsage ??= createAgentUsageProbe({ store: options.store });
+  const agentProbe = options.agents;
+  options.agentUsage ??= createAgentUsageProbe({
+    store: options.store,
+    // The agents as Settings › Agents last saw them, looked at again behind the answer when old.
+    connected: async () => connectedAccounts((await agentProbe.list()).items, null),
+  });
   options.usage ??= createUsageOverview({ store: options.store, claudeUsage: options.claudeUsage, agentUsage: options.agentUsage });
   const sockets = new Set<Bun.ServerWebSocket<SocketData>>();
   const timers = new Map<Bun.ServerWebSocket<SocketData>, ReturnType<typeof setTimeout>>();

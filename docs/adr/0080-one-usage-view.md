@@ -31,3 +31,10 @@ You said (2026-10-10): "With this many agents supported, the subscription usage 
 - 侧栏底部的 `ClaudeUsageMeter`、`AgentUsageMeter` 去掉，手机上 + 按钮不用再给它们让位。/ The two sidebar meters are gone; the phone's + button no longer lifts for them.
 - 文案合并到 `t.usage`。/ Copy moves to one `t.usage` namespace.
 - 挂件只在主窗口；手机、窄窗口（≤680px）没有。/ Only the main window has the widget; narrow windows and phones have the page instead.
+
+## 补充：连接上的都展示 / Addendum: every connected agent is shown（2026-10-10）
+
+你看到挂件里只有 Claude，问为什么——你这台 Mac 上只有 Claude 有东西在用。你说：「只要连接上的都要展示用量。」于是决定 3 改成：**在用的，加上连接上的**。连接上 = 设置 › Agent 里找到了程序、没有登出（说不清是否登录的，比如 Grok，找到就算）；每个账号都算，包括你列的其他配置目录。Claude 的用 Claude Code 自己的状态（`claude auth status`，探针有缓存），其他 Agent 用设置 › Agent 那份状态（存着的那份马上给，旧了在后面再看一次）。所以 Codex 装了、登录了，没有 Bot 用它也会去问它的套餐窗口（不经过模型、不花额度，5 分钟最多问一次）；Grok 这类不报套餐的，今天没跑过也列出来（「今天 0 轮」），菜单栏那一行也不再省掉它们。挂件在没有任何连接上的 Agent 时才不出现。
+
+You asked why only Claude showed: only Claude had anything running on it. You said: "every connected one should show its usage." Decision 3 becomes **in use, plus connected**: found and not signed out (an agent that cannot say counts once found), every account including listed config directories; Claude's from Claude Code's own status, the others' from Settings › Agents' status (the kept one at once, re-checked behind it when old). Codex installed and signed in is asked for its windows with no Bot on it (no model, no quota, at most once per five minutes); agents with no plan are listed even with no turns today, in the menu bar too. The widget stays away only when no agent is connected.
+

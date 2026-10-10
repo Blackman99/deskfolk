@@ -4,7 +4,7 @@
 //! one `claude` per five minutes, and none at all until something runs on Claude Agent. An account
 //! with plan windows gets a ring as full as what is left of its tightest window and the 5-hour
 //! and 7-day numbers beside its name; one signed out, or one that could not be read, says so;
-//! agents that only report today's records share one line. At most four lines, then "查看全部用量…",
+//! agents that only report today's records, connected or in use, share one line. At most four lines, then "查看全部用量…",
 //! which shows the window and its usage panel. The lines go away when there is nothing to show.
 
 use serde::Deserialize;
@@ -262,9 +262,7 @@ pub fn usage_entries(usage: &UsageResponse) -> Vec<Entry> {
     let mut today = Vec::new();
     for agent in &usage.agents {
         if agent.accounts.is_empty() {
-            if agent.today.turns > 0 {
-                today.push(format!("{} {} 轮", agent.label, agent.today.turns));
-            }
+            today.push(format!("{} {} 轮", agent.label, agent.today.turns));
             continue;
         }
         let several = agent.accounts.len() > 1;
@@ -546,7 +544,7 @@ mod tests {
         );
         assert_eq!(
             texts(&usage_entries(&answer)),
-            vec!["[note] Grok 12 轮 · OpenCode 3 轮", "[all]"]
+            vec!["[note] Grok 12 轮 · Antigravity 0 轮 · OpenCode 3 轮", "[all]"]
         );
     }
 
@@ -574,10 +572,12 @@ mod tests {
     fn nothing_to_show_is_no_lines() {
         assert!(usage_entries(&UsageResponse::default()).is_empty());
         let none = usage(
-            r#"{"agents":[{"runner":"grok","label":"Grok","today":{"turns":0},"accounts":[]},
-              {"runner":"codex","label":"Codex","accounts":[{"available":false,"reason":"no_plan","windows":[]}]}]}"#,
+            r#"{"agents":[{"runner":"codex","label":"Codex","accounts":[{"available":false,"reason":"no_plan","windows":[]}]}]}"#,
         );
         assert!(usage_entries(&none).is_empty());
+        // A connected agent with no turns today is still listed.
+        let idle = usage(r#"{"agents":[{"runner":"grok","label":"Grok","today":{"turns":0},"accounts":[]}]}"#);
+        assert_eq!(texts(&usage_entries(&idle)), vec!["[note] Grok 0 轮", "[all]"]);
     }
 
     #[test]

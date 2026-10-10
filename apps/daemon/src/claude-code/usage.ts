@@ -53,7 +53,7 @@ export function createClaudeUsageProbe(deps: {
    * The accounts Bots on Claude Agent run on: their `agent_config_dir`, null for the daemon's own
    * environment. Nothing is asked while there are none.
    */
-  inUse: () => Array<string | null>;
+  inUse: () => Array<string | null> | Promise<Array<string | null>>;
   ask?: AskUsage;
   env?: Record<string, string | undefined>;
   now?: () => number;
@@ -106,8 +106,8 @@ export function createClaudeUsageProbe(deps: {
   }
 
   return {
-    current(maxAgeMs = CLAUDE_USAGE_MAX_AGE_MS) {
-      const dirs = [...new Set(deps.inUse())];
+    async current(maxAgeMs = CLAUDE_USAGE_MAX_AGE_MS) {
+      const dirs = [...new Set(await deps.inUse())];
       // Turning Claude Agent off for the last Bot stops the asking at once; nothing is kept for it.
       if (dirs.length === 0) return Promise.resolve({ ...unavailable("unused"), accounts: [] });
       const key = dirs.map((dir) => dir ?? "").sort().join("\n");
