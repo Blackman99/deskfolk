@@ -8,8 +8,6 @@ export type SessionStateKind =
   | "waiting_ask"
   | "failed"
   | "interrupted"
-  /** Nothing running, and a stop of yours holds it: the list marks this one itself (`holds-list.ts`). */
-  | "held"
   | "idle";
 
 export type SessionStatusResult = {

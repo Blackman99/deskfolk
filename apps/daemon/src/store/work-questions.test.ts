@@ -80,12 +80,12 @@ test("an answer goes on past your stop on the source conversation, though the wo
   h.store.setTurnStatus(from.id, "completed");
   const question = createWorkQuestion(h.ctx, { turnId: from.id, body: "Choose" });
   const hold = h.store.createHold({ scope: "session", scopeId: h.thread.id, source: "user_button" });
-  // Your answer is your word to the Bot (ADR 0071): a stop of yours over the conversation releases it.
+  // Your answer is your word to the Bot (ADR 0071): it ends a stop of yours over the conversation (ADR 0081).
   const answered = answerWorkQuestion(h.ctx, question.id, { body: "Answer", userActionId: "answer" });
   expect(answered.inbox_state).toBe("queued");
   h.store.refreshHeldInbox({ botId: h.bot.bot.id });
   expect(h.store.getInboxItem(answered.message.control?.kind === "work_question" ? answered.message.control.answer!.inbox_seq : 0)?.state).toBe("queued");
-  expect(h.store.getHold(hold.id).effect.released_bots).toContain(h.bot.bot.id);
+  expect(h.store.getHold(hold.id).lifted_at).not.toBeNull();
 });
 
 test("closed work and transcript-erased questions cannot resurrect or accept an answer", () => {

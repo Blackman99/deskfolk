@@ -108,13 +108,10 @@ export const zh = {
   thisGroup: "停下这个群里的工作",
   allBots: "停下所有 Bot",
   stopEverything: "全部停下",
-  stopEverythingHint: "先停下：对哪个 Bot 说话就放开哪个",
-  goOnEverything: "全部继续",
+  stopEverythingHint: "先停下：你再说话就接着",
   holdsTitle: "叫停中",
   lift: "解除",
   dropped: "作废",
-  liftOnNext: "你对它说话就放开它",
-  released: (names: string) => `（已放开 ${names}）`,
   scope: {
     global: "所有 Bot 的工作",
     bot: (who: string) => `${who}的全部工作`,
@@ -125,7 +122,6 @@ export const zh = {
     turn: (who: string) => `${who}的一段`,
     ticket: (title: string) => `「${title}」里的一个任务`
   },
-  rowHeld: "已叫停",
   join: "、"
 };
 
@@ -232,13 +228,10 @@ export const en: CopyShape<typeof zh> = {
   thisGroup: "Stop the work in this group",
   allBots: "Stop every Bot",
   stopEverything: "Stop everything",
-  stopEverythingHint: "Stops for now: speak to a Bot and it goes on",
-  goOnEverything: "All go on",
+  stopEverythingHint: "Stops for now: say anything and it goes on",
   holdsTitle: "Stopped",
   lift: "Lift",
   dropped: "Dropped",
-  liftOnNext: "Speak to a Bot and it goes on",
-  released: (names: string) => ` (going on: ${names})`,
   scope: {
     global: "Every Bot’s work",
     bot: (who: string) => `All of ${who}’s work`,
@@ -249,6 +242,5 @@ export const en: CopyShape<typeof zh> = {
     turn: (who: string) => `One turn of ${who}`,
     ticket: (title: string) => `A ticket in “${title}”`
   },
-  rowHeld: "Stopped",
   join: ", "
 };

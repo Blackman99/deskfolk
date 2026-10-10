@@ -125,9 +125,9 @@ export type Stop = {
    * Once your line has woken whom it wakes: the work the stops it lifted had ended that it did not
    * reach goes on from it too — for a line to a whole group, a Bot's stopped in a conversation of
    * its own while the group's stop held; for a go on, the job's work stopped in other conversations.
-   * Returns the turns that opened again.
+   * Returns the turns that opened again; `onlySaidTo` keeps a go on to the Bots the line is said to.
    */
-  goOnFromYourLine: (message: Message, lifted: Hold[], goOn?: boolean) => Turn[];
+  goOnFromYourLine: (message: Message, lifted: Hold[], goOn?: boolean, onlySaidTo?: boolean) => Turn[];
   /**
    * Stop on a turn's card, in a direct or a group: a hold on this Bot's work in its plan (on the
    * turn, when it has no plan) that your next line about that job lifts, and the turn ends under it.

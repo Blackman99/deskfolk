@@ -5,7 +5,8 @@ export type FolkMotion = "idle" | "running" | "replying" | "waiting" | "failed" 
 
 /**
  * Thinking sways, replying types and talks, waiting on you hops and waves, a failed or interrupted
- * turn slumps with a drop of sweat, a stop of yours puts it to sleep, and idle only blinks.
+ * turn slumps with a drop of sweat, and idle only blinks. A stop shows no state of its own (ADR
+ * 0081): a stopped Bot is idle until you speak to it.
  */
 export function folkMotion(kind: SessionStateKind | undefined): FolkMotion {
   switch (kind) {
@@ -19,8 +20,6 @@ export function folkMotion(kind: SessionStateKind | undefined): FolkMotion {
     case "failed":
     case "interrupted":
       return "failed";
-    case "held":
-      return "held";
     default:
       return "idle";
   }

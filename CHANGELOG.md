@@ -22,6 +22,11 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 - The 2:15 real-app demo film (`/media/deskfolk-zh.mp4`, `/media/deskfolk-en.mp4`) and the 1:26 motion tour (`/media/deskfolk-promo-<lang>.mp4`) are gone from the site and the README; the 0:30 mascot film is the one film left.
 - The home page's three clips and its first-screen still are re-filmed on today's app: the quieter chat, each view of a job (board, plan) as a tab of its own, a stop that lasts until your next word, and the Producer answering "How is it going?" itself. The README's four screenshots and the share images come from the same recording.
 
+### A stop is just a stop
+
+- Your next word ends a stop, however many Bots it covers: after "Stop every Bot", a line to any Bot; after a group's stop, any line in that group. The Bots you speak to go on from your line; the others are no longer held, and their stopped turns are not reopened. There is no more "the rest stay stopped; say \"all bots continue\"".
+- A stop leaves nothing to press: no "Stopped" bar with Lift above the conversation list, no "Stopped" on rows, and the tools menu's "Stop everything" no longer turns into "All go on". Only a stop you dropped a job with by a button is still listed, with its Lift. [ADR 0081](docs/adr/0081-a-stop-is-just-a-stop.md).
+
 ### Run Bots on Codex, Grok, OpenCode, ZCode, Antigravity or an ACP agent of your own
 
 - A Bot's Runner can now be your own Codex, Grok, OpenCode, ZCode (through its `zcode-acp` bridge) or Antigravity, besides Claude Agent, or any program that speaks the Agent Client Protocol that you add in Settings › Agents (a name, its full path and arguments). Each runs as you installed it, under your own sign-in; the app never signs you in, reads its tokens or changes its config.

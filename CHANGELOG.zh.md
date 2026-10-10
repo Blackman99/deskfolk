@@ -22,6 +22,11 @@
 - 网站上不再提供 2:15 的真实界面完整演示（`/media/deskfolk-zh.mp4`、`/media/deskfolk-en.mp4`）和 1:26 的动效完整介绍（`/media/deskfolk-promo-<lang>.mp4`）；README 也不再链它，只留 0:30 的吉祥物短片。
 - 首页的三段真实界面和首屏静帧按现在的应用重录：更安静的聊天、一件事的看板和要点各是一个标签页、叫停只到你下一句话为止、问「怎么样了」由制片自己回答。README 的四张截图和分享图也换成这次录的。
 
+### 停下就是停下
+
+- 你再开口，叫停就结束，不管它覆盖几个 Bot：「停下所有 Bot」之后对任何一个 Bot 说话，停下一个群之后在这个群里说话。你说到的 Bot 从你这句接着往下；别的 Bot 不再被挡，停下的那一轮也不重开。不再有「其余的接着停着；说「所有 Bot 继续」全部解除」。
+- 叫停之后没有要按的东西：会话列表上方不再有带「解除」的「叫停中」，会话行不标「已叫停」，工具菜单的「全部停下」也不再变成「全部继续」。只有你按「作废」建的叫停还列着，带「解除」。[ADR 0081](docs/adr/0081-a-stop-is-just-a-stop.md)。
+
 ### Bot 可以由 Codex、Grok、OpenCode、ZCode、Antigravity 或你自己的 ACP Agent 来跑
 
 - Bot 的「运行方式」除了 Claude Agent，现在还能选你本机的 Codex、Grok、OpenCode、ZCode（经它的 `zcode-acp` 桥）、Antigravity，以及你在设置 › Agent 里加的任何讲 Agent Client Protocol 的程序（填名字、完整路径和参数）。都是运行你自己装的那个、用你自己的登录；应用不替你登录，不读它的令牌，也不改它的配置。

@@ -10,7 +10,6 @@ test("every status a Bot shows has a motion, and no status means idle", () => {
     waiting_ask: "waiting",
     failed: "failed",
     interrupted: "failed",
-    held: "held",
     idle: "idle",
   };
   for (const [kind, motion] of Object.entries(motions)) {

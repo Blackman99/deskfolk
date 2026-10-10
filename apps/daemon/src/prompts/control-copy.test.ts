@@ -29,8 +29,8 @@ describe("stopReceiptBody", () => {
     expect(stopReceiptBody("zh", { ...quiet, scopes: ["所有 Bot 的工作"], said, stopped: [], global: true })).toContain("说「所有 Bot 继续」就解除");
     expect(stopReceiptBody("en", { ...quiet, scopes: ["every Bot's work"], said, stopped: [], global: true })).toContain(`Say "all bots continue"`);
     expect(stopReceiptBody("zh", { ...quiet, scopes: ["x"], said: null, stopped: [], liftOnNextLine: "job" })).toContain("你在这件事上再说话");
-    expect(stopReceiptBody("zh", { ...quiet, scopes: ["x"], said: null, stopped: [], liftOnNextLine: "group" }).split("\n").at(-1)).toBe("你在这个群里再说话，说到的 Bot 就从你这句接着往下（不点名就是所有人）。");
-    expect(stopReceiptBody("zh", { ...quiet, scopes: ["x"], said: null, stopped: [], liftOnNextLine: "bot" }).split("\n").at(-1)).toBe("你再对它说话就解除，它从你这句接着往下。");
+    expect(stopReceiptBody("zh", { ...quiet, scopes: ["x"], said: null, stopped: [], liftOnNextLine: "group" }).split("\n").at(-1)).toBe("你在这个群里再说话，叫停就结束，说到的 Bot 从你这句接着往下。");
+    expect(stopReceiptBody("zh", { ...quiet, scopes: ["x"], said: null, stopped: [], liftOnNextLine: "bot" }).split("\n").at(-1)).toBe("你再对它说话，它就从你这句接着往下。");
   });
 
   test("with nothing running says so, and a button's stop quotes no words", () => {
@@ -88,7 +88,7 @@ describe("the other lines", () => {
 
   test("a read-only turn is told whose stop it is under and that it can only answer", () => {
     expect(readOnlyLine("zh", { at: "10:45", body: "停下你所有的工作" })).toBe(
-      "用户已叫停这件工作（用户 10:45 说的「停下你所有的工作」），这一段只能回答：可以读文件、回复用户，改不了任何东西，也叫不动别人。用户要你接着做的话，直说它还停着：直接告诉你下一步、或在侧栏按解除，你就接着做；别说你在接着做。",
+      "用户已叫停这件工作（用户 10:45 说的「停下你所有的工作」），这一段只能回答：可以读文件、回复用户，改不了任何东西，也叫不动别人。用户要你接着做的话，直说它还停着：直接告诉你下一步，你就接着做；别说你在接着做。",
     );
     expect(readOnlyLine("en", null)).toContain("This turn can only answer");
   });

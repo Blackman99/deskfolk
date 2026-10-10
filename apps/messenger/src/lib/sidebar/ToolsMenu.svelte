@@ -8,8 +8,7 @@
 	/**
 	 * The 工具 popover: routines, spend, usage, a terminal, the Mac's screen on a phone that can reach it,
 	 * and — after a line — the archived sessions and,
-	 * once the daemon has stops, 「全部停下」 with a line saying it lasts until lifted (「全部继续」
-	 * while everything is stopped). One
+	 * once the daemon has stops, 「全部停下」 with a line saying it only stops for now. One
 	 * menu for every button that opens it: the list's footer, the phone's search row, and the rail
 	 * the list folds into. The button stays with its owner; this hangs off it, walks with the arrow
 	 * keys, closes on Escape, Tab or a click elsewhere, and hands focus back to the button.
@@ -48,8 +47,8 @@
 		/** Whose screen that is, for its name: a Mac's, or a Windows PC's. */
 		screenHost?: 'mac' | 'windows';
 		onOpenArchived: () => void;
-		/** Stop every Bot, or lift a stop on everything; null where the daemon has no stops. */
-		everything?: 'stop' | 'go-on' | null;
+		/** Stop every Bot, for now (ADR 0081); null where the daemon has no stops. */
+		everything?: 'stop' | null;
 		/** Shown but not pressable: with the daemon out of reach it could not be carried out. */
 		everythingDisabled?: boolean;
 		onEverything?: () => void;
@@ -266,24 +265,17 @@
 				would start: the line under it says so, read as its description, not its name. -->
 			<button
 				type="button"
-				class="tools-menu-item tools-menu-everything"
-				class:has-hint={everything === 'stop'}
+				class="tools-menu-item tools-menu-everything has-hint"
 				role="menuitem"
 				aria-labelledby="tools-menu-everything-label"
-				aria-describedby={everything === 'stop' ? 'tools-menu-everything-hint' : undefined}
+				aria-describedby="tools-menu-everything-hint"
 				disabled={everythingDisabled}
 				onclick={() => choose(onEverything)}
 			>
-				{#if everything === 'stop'}
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
-				{:else}
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="7 4 20 12 7 20 7 4"></polygon></svg>
-				{/if}
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
 				<span class="tools-menu-text">
-					<span id="tools-menu-everything-label">{everything === 'stop' ? t.control.stopEverything : t.control.goOnEverything}</span>
-					{#if everything === 'stop'}
-						<span id="tools-menu-everything-hint" class="tools-menu-hint">{t.control.stopEverythingHint}</span>
-					{/if}
+					<span id="tools-menu-everything-label">{t.control.stopEverything}</span>
+					<span id="tools-menu-everything-hint" class="tools-menu-hint">{t.control.stopEverythingHint}</span>
 				</span>
 			</button>
 		{/if}

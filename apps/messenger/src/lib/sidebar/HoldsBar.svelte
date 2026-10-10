@@ -4,9 +4,9 @@
 	import { formatFullTimestamp, formatMessageTime } from '../chat/chat-view.ts';
 
 	/**
-	 * Your stops in force, above the list (ADR 0040 P2): what each holds, since when, and a lift for
-	 * each. Only while there is one, or while a stop or lift from the list was refused and says so;
-	 * the list itself marks the conversations a stop holds.
+	 * Your stops that wait to be lifted, above the list (ADR 0040 P2): what each holds, since when, and
+	 * a lift for each. A stop for now is not among them — your next line is the end of it (ADR 0081) —
+	 * so this is only for one you dropped the job with by a button, which no line of yours ends.
 	 */
 	type Props = {
 		holds: readonly Hold[];
@@ -15,11 +15,9 @@
 		disabled?: boolean;
 		/** Resolves to a refusal to show on its row (an `ApiError`), or nothing. */
 		onLift: (hold: Hold) => Promise<unknown> | void;
-		/** 「全部停下」 or 「全部继续」 from the tools menu was refused. */
-		failed?: boolean;
 	};
 
-	let { holds, label, t, disabled = false, onLift, failed = false }: Props = $props();
+	let { holds, label, t, disabled = false, onLift }: Props = $props();
 	let lifting = $state<string | null>(null);
 	/** The stop whose lift was refused, said on its row until you try again. */
 	let liftFailed = $state<string | null>(null);
@@ -37,41 +35,36 @@
 	}
 </script>
 
-{#if holds.length > 0 || failed}
+{#if holds.length > 0}
 	<section class="holds" aria-label={t.control.holdsTitle}>
-		{#if failed}
-			<p class="holds-error holds-failed" role="status">{t.control.failed}</p>
-		{/if}
-		{#if holds.length > 0}
-			<div class="holds-head">
-				<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect></svg>
-				<span>{t.control.holdsTitle}</span>
-				<span class="holds-count">{holds.length}</span>
-			</div>
-			<ul class="holds-list">
-				{#each holds as hold (hold.id)}
-					<li class="holds-row" title={hold.lift_on_next_user_message ? t.control.liftOnNext : formatFullTimestamp(hold.created_at)}>
-						<span class="holds-label" title={label(hold)}>{label(hold)}</span>
-						{#if hold.action === 'cancel'}
-							<span class="holds-tag">{t.control.dropped}</span>
-						{/if}
-						{#if liftFailed === hold.id}
-							<span class="holds-error" role="status">{t.control.failed}</span>
-						{:else}
-							<span class="holds-time mono">{formatMessageTime(hold.created_at)}</span>
-						{/if}
-						<button
-							type="button"
-							class="holds-lift"
-							disabled={disabled || lifting === hold.id}
-							onclick={() => void lift(hold)}
-						>
-							{t.control.lift}
-						</button>
-					</li>
-				{/each}
-			</ul>
-		{/if}
+		<div class="holds-head">
+			<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect></svg>
+			<span>{t.control.holdsTitle}</span>
+			<span class="holds-count">{holds.length}</span>
+		</div>
+		<ul class="holds-list">
+			{#each holds as hold (hold.id)}
+				<li class="holds-row" title={formatFullTimestamp(hold.created_at)}>
+					<span class="holds-label" title={label(hold)}>{label(hold)}</span>
+					{#if hold.action === 'cancel'}
+						<span class="holds-tag">{t.control.dropped}</span>
+					{/if}
+					{#if liftFailed === hold.id}
+						<span class="holds-error" role="status">{t.control.failed}</span>
+					{:else}
+						<span class="holds-time mono">{formatMessageTime(hold.created_at)}</span>
+					{/if}
+					<button
+						type="button"
+						class="holds-lift"
+						disabled={disabled || lifting === hold.id}
+						onclick={() => void lift(hold)}
+					>
+						{t.control.lift}
+					</button>
+				</li>
+			{/each}
+		</ul>
 	</section>
 {/if}
 
@@ -146,10 +139,6 @@
 		margin: 0;
 		color: var(--danger-text);
 		font-size: var(--text-micro);
-	}
-
-	.holds-failed + .holds-head {
-		margin-top: 4px;
 	}
 
 	.holds-lift {

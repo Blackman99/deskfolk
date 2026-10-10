@@ -7,7 +7,9 @@
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { groupSessions, isFileDropSession, isSessionArchived, youBotPeer } from './session-groups.ts';
 	import { BOT_DM_VISIBLE, recentBotDms, resolveBotDmOrigin } from './bot-dm-source.ts';
-	import { botWorkStatus, sidebarStatus, type SessionStatusResult } from './session-status.ts';
+	import { botWorkStatus, sidebarStatus } from './session-status.ts';
+	import HoldsBar from './HoldsBar.svelte';
+	import { holdLabel, listedHolds } from './holds-list.ts';
 	import { loadWorkingOnly, onlyWorking, saveWorkingOnly, workingOrUnreadIds } from './working-only.ts';
 	import { sessionTitle } from './session-title.ts';
 	import { latestPreview } from '../chat/transcript.ts';
@@ -24,8 +26,6 @@
 	import CreateFab from './CreateFab.svelte';
 	import WorkingFilter from './WorkingFilter.svelte';
 	import MobileArchivedHead from './MobileArchivedHead.svelte';
-	import HoldsBar from './HoldsBar.svelte';
-	import { holdLabel, listedHolds, sessionHeld } from './holds-list.ts';
 	import { searchShortcutLabel } from '../search/shortcuts.ts';
 	import { formatShortcut } from '../keymap.ts';
 
@@ -184,51 +184,22 @@
 	}
 
 	function statusOf(session: SessionSummary) {
-		const status = sidebarStatus(
-			session,
-			snapshot.turns,
-			snapshot.approvals,
-			statusLabels,
-			snapshot.pendingJudgements,
-			snapshot.messages
-		);
-		// A stop of yours on the group or the Bot speaks where the last line would, like any state.
-		if (status.kind === 'idle' && sessionHeld(session, myHolds)) return { kind: 'held', label: t.control.rowHeld, isBusy: false } satisfies SessionStatusResult;
-		return status;
+		return sidebarStatus(session, snapshot.turns, snapshot.approvals, statusLabels, snapshot.pendingJudgements, snapshot.messages);
 	}
 
-	/** Your stops in force, for the bar above the list and the rows they hold. */
+	/** Your stops that wait to be lifted, for the bar above the list. */
 	const myHolds = $derived(snapshot.holdsOn ? listedHolds(snapshot.holds) : []);
-	const everythingHeld = $derived(snapshot.holds.filter((hold) => hold.scope === 'global'));
 
 	function labelOf(hold: Hold): string {
 		return holdLabel(hold, { bots: botsById, sessions: sessionsById, roster: rosterLabels, t: t.control });
 	}
 
-	/** The stops on everything as they stand, which 「全部停下」 or 「全部继续」 acts on. */
-	const everythingNow = $derived(everythingHeld.map((hold) => hold.id).join(' '));
 	/**
-	 * 「全部停下」 or 「全部继续」 was refused, with the stops on everything as they stood then: the
-	 * bar above the list says so until the next press, or until everything is stopped or let go some
-	 * other way (the menu bar, a row's lift, a stop menu), when the note would no longer be true.
+	 * 「全部停下」 from the tools menu. A stop is only "stop for now", and the list shows none: your
+	 * next line is the end of it (ADR 0081), so the menu never turns into a 「全部继续」.
 	 */
-	let everythingRefused = $state<string | null>(null);
-	const everythingFailed = $derived(everythingRefused === everythingNow);
-	// Forgotten as soon as the stops move on, so a later return to how they stood (stopped
-	// elsewhere, then lifted) does not bring back a refusal nobody has pressed again for.
-	$effect.pre(() => {
-		if (everythingRefused !== null && everythingRefused !== everythingNow) everythingRefused = null;
-	});
-
-	/** 「全部停下」 from the tools menu, or, while everything is stopped, lifting that. */
-	async function everything(): Promise<void> {
-		const over = everythingNow;
-		everythingRefused = null;
-		const refused =
-			everythingHeld.length > 0
-				? await Promise.all(everythingHeld.map((hold) => runtime.liftHold(hold.id)))
-				: [await runtime.stopScope('global', null, runtime.selectedId)];
-		everythingRefused = refused.some(Boolean) ? over : null;
+	function everything(): void {
+		void runtime.stopScope('global', null, runtime.selectedId);
 	}
 
 	function botStatusOf(botId: string) {
@@ -332,7 +303,7 @@
 			</div>
 			{#if phone && !viewingArchived}<WorkingFilter {t} {workingOnly} {toggleWorkingOnly} />{/if}
 		</div>
-		<HoldsBar holds={myHolds} label={labelOf} {t} disabled={runtime.connection !== 'connected'} failed={everythingFailed} onLift={(hold) => runtime.liftHold(hold.id)} />
+		<HoldsBar holds={myHolds} label={labelOf} {t} disabled={runtime.connection !== 'connected'} onLift={(hold) => runtime.liftHold(hold.id)} />
 	{/if}
 	<div class="groups">
 		{#if viewingArchived}
@@ -561,9 +532,9 @@
 			viewingUsage = false;
 			viewingArchived = true;
 		}}
-		everything={snapshot.holdsOn ? (everythingHeld.length > 0 ? 'go-on' : 'stop') : null}
+		everything={snapshot.holdsOn ? 'stop' : null}
 		everythingDisabled={runtime.connection !== 'connected'}
-		onEverything={() => void everything()}
+		onEverything={everything}
 	/>
 </aside>
 

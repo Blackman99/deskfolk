@@ -530,8 +530,8 @@ test("the board shows your stops over its job, lifts one, and its stop menu stop
     aHold({ id: "h-4", scope: "plan", scope_id: "task-2", plan_title: "上周的排期" }),
   ];
   flushSync();
-  // A stop on one Bot's whole work, or on another job, is not this board's.
-  expect([...view.host.querySelectorAll(".trace-hold-label")].map((label) => label.textContent)).toEqual(["「先出分镜」这件事", "分镜师在「先出分镜」上的工作"]);
+  // A stop on one Bot's whole work, or on another job, is not this board's; a Stop for now is not shown (ADR 0081).
+  expect([...view.host.querySelectorAll(".trace-hold-label")].map((label) => label.textContent)).toEqual(["「先出分镜」这件事"]);
   click(view.host.querySelector(".trace-hold-lift"));
   expect(lifts).toEqual(["h-1"]);
   expect(view.host.querySelector(".trace-hold-error")).toBeNull();

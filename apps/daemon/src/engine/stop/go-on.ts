@@ -2,7 +2,6 @@
 import { type Message, type Session, type ControlScope, type HeldTurn, type Hold, type ControlOffer, type Turn, type AnsweredLine, USER_MEMBER } from "@real-bot/protocol";
 import type { UserLineReading } from "../../line-reading";
 import { saidOf, continueReceiptBody, type SaidLine, resumeNote } from "../../prompts";
-import { onOneBot } from "../../store/holds";
 import type { StopDeps } from "../stop";
 import type { StopReach } from "./reach";
 import type { StopWords } from "./words";
@@ -10,8 +9,8 @@ import type { StopAnswers } from "./answers";
 
 export function createStopGoOn(deps: StopDeps, reach: StopReach, words: StopWords, answers: StopAnswers) {
   const { store, publishMessage, admission, startTurn, hearOrStart, wakes } = deps;
-  const { holdsToLift, stopsAbout, isWide, stopOnBot, stopBefore, stopsOnBots, scopeHolds, heldAbout, on, saidTo, saidToBots, landedPlan, messageSession } = reach;
-  const { authorIn, locale, scopeLabel, liftedLabel, holdSaid, turnLine, headingBots, botName, planTitle, planTag } = words;
+  const { holdsToLift, stopsAbout, isWide, stopOnBot, stopBefore, stopsOnBots, scopeHolds, heldAbout, on, saidTo, landedPlan, messageSession } = reach;
+  const { authorIn, locale, scopeLabel, holdSaid, turnLine, headingBots, botName, planTitle, planTag } = words;
   const { answerStatus } = answers;
 
   // ── Going on ──────────────────────────────────────────────────────────────────────────────────
@@ -51,23 +50,13 @@ export function createStopGoOn(deps: StopDeps, reach: StopReach, words: StopWord
     const ids = new Set([...named, ...about, ...away].map((hold) => hold.id));
     // Oldest first, the way they were made.
     const toLift = store.listHolds({ inForce: true }).reverse().filter((hold) => ids.has(hold.id));
-    // Words that name everything lift everything; otherwise a stop over more Bots lets go of the Bots
-    // the words name, or the line is said to (ADR 0071), and the rest stay stopped.
-    const goingOn = namedBots.length > 0 ? namedBots : saidToBots(message);
+    // A stop is gone once you speak past it (ADR 0081), however many Bots it was over; only the
+    // work of the Bots the words name opens again (`othersOnWide`).
     const { receipt, resumed } = store.transaction(() => {
       const said = saidOf(message);
-      const lifted = toLift.map((hold) =>
-        everything || onOneBot(hold) || goingOn.length === 0
-          ? store.liftHold(hold.id, { by, messageId: message.id })
-          : store.releaseHold(hold.id, goingOn, { by, messageId: message.id }),
-      );
+      const lifted = toLift.map((hold) => store.liftHold(hold.id, { by, messageId: message.id }));
       for (const hold of lifted) {
-        store.recordWorkEvent({
-          kind: hold.lifted_at ? "control.lift" : "control.release",
-          actor: "user",
-          sessionId: message.session_id,
-          payload: { hold: hold.id, by, ...(hold.lifted_at ? {} : { bots: goingOn }) },
-        });
+        store.recordWorkEvent({ kind: "control.lift", actor: "user", sessionId: message.session_id, payload: { hold: hold.id, by } });
       }
       const resumed = resumeLifted(lifted, said, { stops: true, leave: othersOnWide });
       const current = lifted.map((hold) => store.getHold(hold.id));
@@ -77,7 +66,7 @@ export function createStopGoOn(deps: StopDeps, reach: StopReach, words: StopWord
         kind: "system",
         author: authorIn(message.session_id, scopes),
         body: continueReceiptBody(locale(), {
-          lifted: current.map((hold) => ({ scope: liftedLabel(hold, message.session_id), said: holdSaid(hold) })),
+          lifted: current.map((hold) => ({ scope: scopeLabel(hold, message.session_id), said: holdSaid(hold) })),
           resumed: resumed.filter((row) => !row.line).map((row) => turnLine(row.record, message.session_id, headingBots(scopes))),
           takenUp: resumed.flatMap((row) => (row.line ? [{ bot: botName(row.record.bot_id), said: saidOf(row.line) }] : [])),
           resumedCheckBacks: current.reduce((sum, hold) => sum + (hold.effect.resumed_check_backs?.length ?? 0), 0),
@@ -275,10 +264,9 @@ export function createStopGoOn(deps: StopDeps, reach: StopReach, words: StopWord
   }
 
   /**
-   * Your line is your word to the Bots it is said to (ADR 0071): a stop is only "stop for now". One of
-   * yours on one Bot's work the line is about is lifted; one over more Bots — everything, a group, a
-   * job, a ticket — lets go of the Bots the line is said to, and is lifted once it has let go of every
-   * Bot it covers. Returns the holds it lifted or let go of the Bots from, as they now read. A line
+   * Your line is your word to the Bots it is said to (ADR 0071): a stop is only "stop for now". Every
+   * stop of yours the line is about is lifted whole — one over more Bots too: everything, a group, a
+   * job, a ticket (ADR 0081). Returns the holds it lifted, as they now read. A line
    * read as only asking where the work stands lifts none: asking is not telling it to go on, and the
    * Bot answers it read-only, still stopped.
    */
@@ -288,19 +276,17 @@ export function createStopGoOn(deps: StopDeps, reach: StopReach, words: StopWord
     if (reading?.statusOnly) return [];
     const about = stopsAbout(message);
     if (about.length === 0) return [];
-    const bots = saidToBots(message);
+    // Whole, however many Bots it was over (ADR 0081): your next line is the end of a stop.
     return store.transaction(() =>
-      about.flatMap((hold) => {
-        const after = onOneBot(hold)
-          ? store.liftHold(hold.id, { by: "user_text", messageId: message.id })
-          : store.releaseHold(hold.id, bots, { by: "user_text", messageId: message.id });
+      about.map((hold) => {
+        const after = store.liftHold(hold.id, { by: "user_text", messageId: message.id });
         store.recordWorkEvent({
-          kind: after.lifted_at ? "control.lift" : "control.release",
+          kind: "control.lift",
           actor: "user",
           sessionId: message.session_id,
-          payload: { hold: hold.id, by: "user_text", next_line: true, ...(after.lifted_at ? {} : { bots }) },
+          payload: { hold: hold.id, by: "user_text", next_line: true },
         });
-        return [after];
+        return after;
       }),
     );
   }
@@ -409,9 +395,11 @@ export function createStopGoOn(deps: StopDeps, reach: StopReach, words: StopWord
    * the lead, and 文案 sat stopped until the supervisor called it back three minutes later to
    * "answer" the old request. The receipt had said the Bots go on from your line. A line that names
    * Bots is for them alone, as 「@X 继续」 is: the others' work stays stopped. A go on (`goOn`) is
-   * about the job wherever its work stopped, so it opens that work again in any conversation.
+   * about the job wherever its work stopped, so it opens that work again in any conversation;
+   * `onlySaidTo` keeps it to the Bots the line is said to, for a stop over more Bots that the go on
+   * ended whole (ADR 0081): the others' work stays where it stopped.
    */
-  function goOnFromYourLine(message: Message, lifted: Hold[], goOn = false): Turn[] {
+  function goOnFromYourLine(message: Message, lifted: Hold[], goOn = false, onlySaidTo = false): Turn[] {
     if (lifted.length === 0 || !on()) return [];
     let group = false;
     try {
@@ -434,7 +422,7 @@ export function createStopGoOn(deps: StopDeps, reach: StopReach, words: StopWord
       resumeLifted(
         lifted.map((hold) => store.getHold(hold.id)),
         saidOf(message),
-        { stops: true, leave: reached },
+        { stops: true, leave: (record) => reached(record) || (onlySaidTo && !saidTo(message, record.bot_id)) },
       ),
     );
     return resumed.map((row) => row.turn);

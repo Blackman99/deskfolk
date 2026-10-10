@@ -355,44 +355,9 @@ export function migrateStopsForNow(db: Database): void {
 }
 
 /**
- * Releases Bots from a stop of yours over more than them (ADR 0071): your word to a Bot — a line
- * said to it, a change to your line, 直接插入, 退回 — is never held, so the stop no longer covers
- * that Bot's work, and still covers the rest's. Its appointments come back and what the stop held
- * for it is queued again. Once every Bot it covers is released it is lifted, `by` your line or your
- * button, and the plans it parked go back. A stop on everything covers Bots made later too, so it
- * stays until you lift it. Returns the hold as it now reads; one already lifted is left as it was.
- */
-export function releaseHold(
-  ctx: StoreContext,
-  id: string,
-  botIds: readonly string[],
-  input: { by: "user_text" | "user_button"; messageId?: string | null; now?: string },
-): Hold {
-  const hold = getHold(ctx, id);
-  if (hold.lifted_at || botIds.length === 0) return hold;
-  const now = input.now ?? isoNow();
-  return ctx.db.transaction(() => {
-    addEffect(ctx, id, { released_bots: [...botIds] });
-    const released = new Set(getHold(ctx, id).effect.released_bots ?? []);
-    const covered = coveredBots(ctx, hold);
-    if (covered !== "every" && covered.every((bot) => released.has(bot))) {
-      return liftHold(ctx, id, { by: input.by, messageId: input.messageId ?? null, now });
-    }
-    resumeUnheldCheckBacks(ctx);
-    refreshHeldInbox(ctx);
-    return getHold(ctx, id);
-  })();
-}
-
-/** A stop on one Bot's work: your word to that Bot lifts it outright, as there is no one else under it. */
-export function onOneBot(hold: Pick<Hold, "scope">): boolean {
-  return hold.scope === "bot" || hold.scope === "bot_plan" || hold.scope === "turn";
-}
-
-/**
  * Your word to a Bot — not a new line, which `stopsAbout` reads, but a change to your line, 直接插入,
- * 退回, your answer to its question — goes on past every stop of yours over that work (ADR 0071): one
- * on that Bot alone is lifted; one over more Bots releases this one. Returns the holds as they now
+ * 退回, your answer to its question — goes on past every stop of yours over that work (ADR 0071), and
+ * the stop is lifted whole, however many Bots it was over (ADR 0081). Returns the holds as they now
  * read. The app's own holds, and a stop that drops a job, are not yours to speak past.
  */
 export function goOnForYourWord(
@@ -406,11 +371,9 @@ export function goOnForYourWord(
   if (holds.length === 0) return [];
   return ctx.db.transaction(() =>
     holds.map((hold) => {
-      const after = onOneBot(hold)
-        ? liftHold(ctx, hold.id, { by: input.by, messageId: input.messageId ?? null })
-        : releaseHold(ctx, hold.id, [subject.botId], { by: input.by, messageId: input.messageId ?? null });
+      const after = liftHold(ctx, hold.id, { by: input.by, messageId: input.messageId ?? null });
       recordWorkEvent(ctx, {
-        kind: after.lifted_at ? "control.lift" : "control.release",
+        kind: "control.lift",
         actor: "user",
         botId: subject.botId,
         sessionId: input.sessionId ?? subject.sessionId ?? null,
@@ -419,40 +382,6 @@ export function goOnForYourWord(
       return after;
     }),
   )();
-}
-
-/**
- * The Bots a hold covers: its scope's — one Bot; a conversation's Bots and whoever works on its
- * plans; whoever works on a plan or a ticket — those whose work it ended, and its targets'. A stop on
- * everything covers every Bot, those made later included.
- */
-function coveredBots(ctx: StoreContext, hold: Hold): string[] | "every" {
-  if (hold.scope === "global") return "every";
-  const bots = new Set<string>((hold.effect.stopped_turns ?? []).map((row) => row.bot_id));
-  const ids = (sql: string, ...params: string[]) =>
-    ctx.db.query<{ bot_id: string }, string[]>(sql).all(...params).map((row) => row.bot_id);
-  const of = (scope: HoldTarget["scope"], scopeId: string): string[] => {
-    switch (scope) {
-      case "bot":
-        return [scopeId];
-      case "bot_plan":
-        return [scopeId.split(":")[0]!];
-      case "turn":
-        return ids(`SELECT bot_id FROM turns WHERE id = ?`, scopeId);
-      case "session":
-        return [
-          ...ids(`SELECT p.member AS bot_id FROM session_participants p JOIN bots b ON b.id = p.member WHERE p.session_id = ? AND p.left_at IS NULL`, scopeId),
-          ...ids(`SELECT DISTINCT t.bot_id FROM turns t JOIN tasks k ON k.id = t.task_id WHERE k.session_id = ?`, scopeId),
-        ];
-      case "plan":
-        return ids(`SELECT DISTINCT bot_id FROM turns WHERE task_id = ? UNION SELECT DISTINCT bot_id FROM work_items WHERE task_id = ?`, scopeId, scopeId);
-      case "ticket":
-        return ids(`SELECT DISTINCT bot_id FROM turns WHERE ticket_id = ? UNION SELECT DISTINCT bot_id FROM work_items WHERE ticket_id = ?`, scopeId, scopeId);
-    }
-  };
-  for (const bot of of(hold.scope as HoldTarget["scope"], hold.scope_id!)) bots.add(bot);
-  for (const target of hold.targets) for (const bot of of(target.scope, target.id)) bots.add(bot);
-  return [...bots];
 }
 
 /**

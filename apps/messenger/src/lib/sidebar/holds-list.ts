@@ -1,17 +1,15 @@
 import type { Bot, Hold, SessionSummary } from "@real-bot/protocol";
 import type { Copy } from "../copy.ts";
-import { classifySession, presentBotIds, youBotPeer } from "./session-groups.ts";
 import { sessionTitle, type RosterLabels } from "./session-title.ts";
 
 /**
- * Your stops as the list shows them: every one you made, by word, button or menu, while it still
- * holds something (ADR 0071). A stop is only "stop for now": whatever you say to a Bot lifts it for
- * that Bot, and until you do, this is where you see the Bot is stopped and go on with 解除. A plan
- * parked before holds existed, taken over as one, is shown where it lives — parked on the board —
- * and not here.
+ * Your stops as the list shows them: only those that wait for you to lift them, the ones you dropped
+ * a job with by a button. A stop for now is never listed (ADR 0081): it ends with your next line, as
+ * a stop does anywhere else. A plan parked before holds existed, taken over as one, is shown where it
+ * lives — parked on the board — and not here.
  */
 export function listedHolds(holds: readonly Hold[]): Hold[] {
-  return holds.filter((hold) => hold.source === "user_text" || hold.source === "user_button");
+  return holds.filter((hold) => (hold.source === "user_text" || hold.source === "user_button") && !hold.lift_on_next_user_message);
 }
 
 /** A stop in words, from the snapshot alone: whose work, which conversation, which job. */
@@ -21,10 +19,7 @@ export function holdLabel(
 ): string {
   const { t } = ctx;
   const botName = (id: string | undefined) => (id ? (ctx.bots.get(id)?.name ?? ctx.roster.deleted) : ctx.roster.deleted);
-  const released = hold.effect.released_bots ?? [];
-  const what = scopeLabel(hold, ctx, botName);
-  // The Bots you spoke to since are at work again (ADR 0071); the stop holds the rest.
-  return released.length > 0 ? `${what}${t.released(released.map((id) => botName(id)).join(t.join))}` : what;
+  return scopeLabel(hold, ctx, botName);
 }
 
 function scopeLabel(
@@ -54,19 +49,4 @@ function scopeLabel(
       // The turn's Bot is on the record of what the stop ended.
       return t.scope.turn(botName(hold.effect.stopped_turns?.[0]?.bot_id));
   }
-}
-
-/**
- * Whether a stop of yours holds a row's conversation itself, so the row says so where its last line
- * would be: a stop on the group, or on the Bot a direct is with. A stop on everything is shown once,
- * above the list, not on every row; one on a plan is shown on the board.
- */
-export function sessionHeld(session: SessionSummary, holds: readonly Hold[]): boolean {
-  const kind = classifySession(session);
-  const bots = kind === "you-bot" ? [youBotPeer(session)] : kind === "bot-bot" ? presentBotIds(session) : [];
-  return holds.some(
-    (hold) =>
-      (hold.scope === "session" && hold.scope_id === session.id) ||
-      (hold.scope === "bot" && bots.includes(hold.scope_id)),
-  );
 }

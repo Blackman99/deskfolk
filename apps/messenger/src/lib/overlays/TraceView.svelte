@@ -481,18 +481,21 @@
 	const changeLine = $derived(detail ? lastChangeLabel(detail, nowMs, t.plan) : null);
 	const heading = $derived(trace ? `${t.trace.title} · ${planTitle(detail ?? trace)}` : t.trace.title);
 	/**
-	 * Your stops over the job on the board: on it, on a Bot's work in it, on the conversation it
-	 * belongs to, on everything. Read from the live list, so a stop made anywhere shows at once.
+	 * What keeps the job parked on the board: its own parking, and any stop over it that waits to be
+	 * lifted — on a Bot's work in it, on the conversation it belongs to, on everything. A stop for now
+	 * there is not shown: your next line is the end of it (ADR 0081). Read from the live list, so a
+	 * stop made anywhere shows at once.
 	 */
 	const boardHolds = $derived.by(() => {
 		if (!holds || !currentId) return [];
 		const home = detail?.session_id ?? trace?.session_id ?? null;
 		return holds.filter(
 			(hold) =>
-				hold.scope === 'global' ||
-				(hold.scope === 'plan' && hold.scope_id === currentId) ||
-				(hold.scope === 'bot_plan' && hold.scope_id?.endsWith(`:${currentId}`)) ||
-				(hold.scope === 'session' && home !== null && hold.scope_id === home)
+				(hold.scope === 'plan' || !hold.lift_on_next_user_message) &&
+				(hold.scope === 'global' ||
+					(hold.scope === 'plan' && hold.scope_id === currentId) ||
+					(hold.scope === 'bot_plan' && hold.scope_id?.endsWith(`:${currentId}`)) ||
+					(hold.scope === 'session' && home !== null && hold.scope_id === home))
 		);
 	});
 	const stopItems = $derived(
@@ -906,7 +909,7 @@
 					{#if boardHolds.length > 0}
 						<ul class="trace-holds" aria-label={t.control.holdsTitle}>
 							{#each boardHolds as hold (hold.id)}
-								<li class="trace-hold" title={hold.lift_on_next_user_message ? t.control.liftOnNext : undefined}>
+								<li class="trace-hold">
 									<svg aria-hidden="true" width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect></svg>
 									<span class="trace-hold-label">{holdText(hold)}</span>
 									{#if liftFailed === hold.id}

@@ -935,11 +935,15 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         // The stopped work your line did not reach goes on from it, and hears it as work already at the job would have.
         // What a go on lifted is about the job wherever it stopped; what the line lifted otherwise goes
         // on only as far as the line reached (a group's stop, for 「@X 继续」, is X's alone to go on from).
-        // A go on that let one Bot go from a stop over more (ADR 0071) is about that Bot's stopped job too.
-        const letGo = fresh && reading?.control === "go_on" ? lifted.filter((hold) => !hold.lifted_at) : [];
+        // A go on that ended a stop over more Bots (ADR 0081) is about the stopped jobs of the Bots it
+        // is said to, and theirs alone. Any other line that ended a stop on everything reopens
+        // nothing: the work it stopped elsewhere waits for whatever wakes it next.
+        const wide = (hold: Hold) => hold.scope !== "bot" && hold.scope !== "bot_plan" && hold.scope !== "turn";
+        const letGo = fresh && reading?.control === "go_on" ? lifted.filter(wide) : [];
         const resumed = [
-          ...stops.goOnFromYourLine(filed, lifted.filter((hold) => hold.lifted_at)),
-          ...stops.goOnFromYourLine(filed, [...wentOn, ...letGo], true),
+          ...stops.goOnFromYourLine(filed, lifted.filter((hold) => !letGo.includes(hold) && hold.scope !== "global")),
+          ...stops.goOnFromYourLine(filed, wentOn, true),
+          ...stops.goOnFromYourLine(filed, letGo, true, true),
         ];
         if (resumed.length > 0) lifecycle.hearAcross(filed, { turnIds: resumed.map((turn) => turn.id) });
       } finally {
