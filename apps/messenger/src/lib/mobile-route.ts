@@ -143,7 +143,8 @@ export type BackLayer =
   | "spend"
   | "thread"
   | "workspace"
-  | "preview";
+  | "preview"
+  | "list-page";
 
 export type LayerState = {
   imageOpen: boolean;
@@ -166,6 +167,7 @@ export type LayerState = {
   threadOpen: boolean;
   workspaceOpen: boolean;
   artifactPreview: boolean;
+  listPageOpen: boolean;
 };
 
 const LAYER_ORDER: ReadonlyArray<[BackLayer, keyof LayerState]> = [
@@ -198,6 +200,9 @@ const LAYER_ORDER: ReadonlyArray<[BackLayer, keyof LayerState]> = [
   ["thread", "threadOpen"],
   ["workspace", "workspaceOpen"],
   ["preview", "artifactPreview"],
+  // Usage and the archived list lie over the conversation list in no URL. Last: anything else
+  // open is over them, and they only count while the list itself is on screen.
+  ["list-page", "listPageOpen"],
 ];
 
 export function topLayer(state: LayerState): BackLayer | null {

@@ -60,6 +60,7 @@
 	import { topLayer, type MobileDestination } from './mobile-route.ts';
 	import { closeEnlargedImage, imageEnlarged } from './chat/enlarged-images.ts';
 	import { closeMessageText, messageTextOpen } from './chat/message-text-pages.ts';
+	import { closeListPage, listPageOpen } from './sidebar/list-pages.ts';
 	import { closeFullscreenPreview, fullscreenPreviewOpen } from './overlays/fullscreen-preview.ts';
 	import { pageSlide } from './mobile-page-slide.ts';
 	import { updateChecker } from './update-checker.svelte.ts';
@@ -270,7 +271,8 @@
 			spendOpen: runtime.spendOpen,
 			threadOpen: runtime.threadOpen,
 			workspaceOpen: runtime.workspaceOpen,
-			artifactPreview: artifact.artifactPreview !== null
+			artifactPreview: artifact.artifactPreview !== null,
+			listPageOpen: listPageOpen()
 		})) {
 			case 'image':
 				// Not a screen: it goes back into the picture it grew out of, and the page stays.
@@ -278,6 +280,9 @@
 			case 'message-text':
 				// Not a screen either: the conversation it was opened from is still under it.
 				return closeMessageText();
+			case 'list-page':
+				// Usage or the archived list, over the conversation list in no URL.
+				return closeListPage();
 			case 'tools-menu':
 				toolsMenuOpen = false;
 				return true;

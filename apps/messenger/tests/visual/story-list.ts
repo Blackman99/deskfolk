@@ -90,7 +90,7 @@ export const STORY_SIZES = {
 	// The usage ball opened into its column of agents, Claude's card grown out of its bubble
 	// (ADR 0080): two Claude accounts, one nearly spent.
 	'usage-widget': { width: 900, height: 640 },
-	// The phone's usage page from Tools, with the same content.
+	// The phone's usage page from Tools: the usage tab's board in one column.
 	'usage-page': { width: 390, height: 844 },
 	// The workbench's usage tab: a card per account across the width, each window a dial.
 	'usage-tab': { width: 1280, height: 720 }

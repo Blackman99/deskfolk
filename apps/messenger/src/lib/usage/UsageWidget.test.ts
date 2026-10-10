@@ -153,12 +153,15 @@ test("its context menu hides it, and showing it again opens it; with nothing con
   none.close();
 });
 
-test("a phone's page holds what the panel holds, with Back", async () => {
+test("a phone's page is the tab's board in one column: each agent under its head, a dial per window, with Back", async () => {
   let back = 0;
   const view = open([claude, grok], UsagePage, { onBack: () => (back += 1) });
   await sleep(0);
-  expect(view.host.querySelectorAll("[data-usage-page] [data-usage-agent='claude_code'] .usage-row")).toHaveLength(3);
+  const agent = view.host.querySelector("[data-usage-page] [data-usage-agent='claude_code']")!;
+  expect(text(agent.querySelector(".usage-board-agent-name"))).toBe("Claude");
+  expect(agent.querySelectorAll(".usage-board-account .usage-gauge")).toHaveLength(3);
   expect(view.host.querySelector("[data-usage-page] [data-usage-today-only]")).not.toBeNull();
+  expect(text(view.host.querySelector("[data-usage-page] .usage-refresh"))).toBe(t.usage.refresh);
   click(view.host.querySelector(".usage-page-back"));
   expect(back).toBe(1);
   view.close();

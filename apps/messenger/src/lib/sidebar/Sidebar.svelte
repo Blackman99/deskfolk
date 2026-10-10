@@ -26,6 +26,7 @@
 	import CreateFab from './CreateFab.svelte';
 	import WorkingFilter from './WorkingFilter.svelte';
 	import MobileArchivedHead from './MobileArchivedHead.svelte';
+	import { holdListPage } from './list-pages.ts';
 	import { searchShortcutLabel } from '../search/shortcuts.ts';
 	import { formatShortcut } from '../keymap.ts';
 
@@ -152,6 +153,14 @@
 	let viewingArchived = $state(false);
 	/** A phone's usage page (ADR 0080), opened from Tools; wider windows have the floating widget instead. */
 	let viewingUsage = $state(false);
+	/** While usage or the archived list is what a phone shows, Back closes it first. */
+	$effect(() => {
+		if (!phone || selected || (!viewingUsage && !viewingArchived)) return;
+		return holdListPage(() => {
+			viewingUsage = false;
+			viewingArchived = false;
+		});
+	});
 
 	let phone = $state(false);
 	$effect(() => {
