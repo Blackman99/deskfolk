@@ -5,7 +5,7 @@
 //! with plan windows gets its agent's mark inside a ring as full as what is left of its tightest
 //! window, and the 5-hour and 7-day numbers beside its name; one signed out, or one that could not
 //! be read, says so beside its mark;
-//! agents that only report today's records, connected or in use, share one line. At most four lines, then "查看全部用量…",
+//! agents that only report today's records, connected or in use, share one line. At most eight lines, then "查看全部用量…",
 //! which shows the window and opens the usage tab where Settings › Behavior says. The lines go away when there is nothing to show.
 
 use serde::Deserialize;
@@ -22,10 +22,12 @@ const POLL: Duration = Duration::from_secs(60);
 /// Starting `claude` and its answer from claude.ai can take a while; the daemon gives up at 30 s.
 const FETCH_TIMEOUT: Duration = Duration::from_secs(40);
 pub const ITEM_PREFIX: &str = "usage-";
+/// The menu bar icon's id, by which the usage lines find its menu to mark (macOS).
+pub const TRAY_ID: &str = "deskfolk";
 /// The last item, which opens the usage panel; the page is told, not just the window shown.
 pub const ALL_ID: &str = "usage-all";
 /// Lines for accounts and today's records, before "查看全部用量…".
-const MAX_LINES: usize = 4;
+const MAX_LINES: usize = 8;
 
 /// Menu icons are drawn at 18 pt; these are 36 px, for a Retina screen.
 const ICON_PX: u32 = 36;
@@ -170,23 +172,28 @@ fn current_entries(app: &AppHandle) -> Vec<Entry> {
     entries
 }
 
+/// The image each line wears. On macOS menu items no longer draw their image (macOS 27), so it is
+/// left off there and put in the state column instead (`mark_lines`); elsewhere it is the item's image.
 fn icon_of(entry: &Entry) -> Option<Image<'static>> {
+    if cfg!(target_os = "macos") {
+        return None;
+    }
+    icon_rgba(entry).map(|rgba| Image::new_owned(rgba, ICON_PX, ICON_PX))
+}
+
+/// A line's icon as raw RGBA, `ICON_PX` square: its agent's mark in a ring, the mark alone, or none.
+fn icon_rgba(entry: &Entry) -> Option<Vec<u8>> {
     match entry {
         Entry::Line {
             left,
             level,
             runner,
             ..
-        } => Some(Image::new_owned(
-            match logo_of(runner) {
-                Some(logo) => logo_in_ring_rgba(Some((*left, *level)), logo),
-                None => ring_rgba(*left, *level),
-            },
-            ICON_PX,
-            ICON_PX,
-        )),
-        Entry::AgentNote { runner, .. } => logo_of(runner)
-            .map(|logo| Image::new_owned(logo_in_ring_rgba(None, logo), ICON_PX, ICON_PX)),
+        } => Some(match logo_of(runner) {
+            Some(logo) => logo_in_ring_rgba(Some((*left, *level)), logo),
+            None => ring_rgba(*left, *level),
+        }),
+        Entry::AgentNote { runner, .. } => logo_of(runner).map(|logo| logo_in_ring_rgba(None, logo)),
         Entry::Note(_) | Entry::All => None,
     }
 }
@@ -266,12 +273,71 @@ fn show(app: &AppHandle, entries: Vec<Entry>) {
             }
         }
     }
+    #[cfg(target_os = "macos")]
+    mark_lines(app, &entries);
     shown.entries = entries;
+}
+
+/**
+ * macOS 27 draws no menu item's image, but it still draws the state column's: each usage line's
+ * icon goes there, as the image of an "on" state, once the items are in place. Done on the main
+ * thread, against the menu the menu bar icon shows; the lines are the first items of it.
+ */
+#[cfg(target_os = "macos")]
+fn mark_lines(app: &AppHandle, entries: &[Entry]) {
+    let icons: Vec<Option<Vec<u8>>> = entries.iter().map(|entry| icon_rgba(entry).and_then(|rgba| png_of(&rgba))).collect();
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        use objc2::{AnyThread, MainThreadMarker};
+        use objc2_app_kit::{NSControlStateValueOff, NSControlStateValueOn, NSImage};
+        use objc2_foundation::{NSData, NSSize};
+        let Some(tray) = handle.tray_by_id(TRAY_ID) else {
+            return;
+        };
+        let _ = tray.with_inner_tray_icon(move |inner| {
+            // This runs on the main thread (`run_on_main_thread` above).
+            let Some(mtm) = MainThreadMarker::new() else { return };
+            let Some(menu) = inner.ns_status_item().and_then(|item| item.menu(mtm)) else {
+                return;
+            };
+            for (index, icon) in icons.iter().enumerate() {
+                let Some(item) = menu.itemAtIndex(index as isize) else { break };
+                let image = icon.as_ref().and_then(|png| NSImage::initWithData(NSImage::alloc(), &NSData::with_bytes(png)));
+                match image {
+                    Some(image) => {
+                        image.setSize(NSSize::new(18.0, 18.0));
+                        // SAFETY: an image for the item's on state, on the main thread, as AppKit asks.
+                        unsafe { item.setOnStateImage(Some(&image)) };
+                        item.setState(NSControlStateValueOn);
+                    }
+                    None => {
+                        // SAFETY: as above, clearing it.
+                        unsafe { item.setOnStateImage(None) };
+                        item.setState(NSControlStateValueOff);
+                    }
+                }
+            }
+        });
+    });
+}
+
+/// RGBA as PNG, for an `NSImage` (this crate decodes no images, but writing one is cheap).
+#[cfg(target_os = "macos")]
+fn png_of(rgba: &[u8]) -> Option<Vec<u8>> {
+    let mut out = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut out, ICON_PX, ICON_PX);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header().ok()?;
+        writer.write_image_data(rgba).ok()?;
+    }
+    Some(out)
 }
 
 /// The usage part of the menu: a line per account with plan windows (`Claude Max · a@x.com　5h 62%
 /// · 7d 81%`, the ring for the tightest window), a note for one signed out or unreadable, one
-/// shared line for agents that only report today's turns; four lines at most, then
+/// shared line for agents that only report today's turns; eight lines at most, then
 /// "查看全部用量…". Nothing when there is nothing to show.
 pub fn usage_entries(usage: &UsageResponse) -> Vec<Entry> {
     let mut lines = Vec::new();
@@ -647,23 +713,23 @@ mod tests {
     }
 
     #[test]
-    fn four_lines_at_most_the_day_line_kept() {
+    fn eight_lines_at_most_the_day_line_kept() {
         let account = r#"{"config_dir":null,"email":"e@x.com","available":true,"plan":"pro","windows":[{"minutes":300,"model":null,"percent":10}]}"#;
-        let accounts = vec![account; 5].join(",");
+        let accounts = vec![account; 9].join(",");
         let answer = usage(&format!(
             r#"{{"agents":[{{"runner":"claude_code","label":"Claude Agent","accounts":[{accounts}]}},
               {{"runner":"grok","label":"Grok","today":{{"turns":1}},"accounts":[]}}]}}"#
         ));
         let lines = texts(&usage_entries(&answer));
-        assert_eq!(lines.len(), 5);
-        assert_eq!(lines[3], "[note] Grok 1 轮");
-        assert_eq!(lines[4], "[all]");
-        assert_eq!(lines.iter().filter(|l| l.starts_with("[ring]")).count(), 3);
-        // Without a day line, four accounts.
+        assert_eq!(lines.len(), 9);
+        assert_eq!(lines[7], "[note] Grok 1 轮");
+        assert_eq!(lines[8], "[all]");
+        assert_eq!(lines.iter().filter(|l| l.starts_with("[ring]")).count(), 7);
+        // Without a day line, eight accounts.
         let only = usage(&format!(
             r#"{{"agents":[{{"runner":"claude_code","label":"Claude Agent","accounts":[{accounts}]}}]}}"#
         ));
-        assert_eq!(usage_entries(&only).len(), 5);
+        assert_eq!(usage_entries(&only).len(), 9);
     }
 
     #[test]

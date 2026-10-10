@@ -53,8 +53,10 @@ webview2-com = "0.38"
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = "0.6"
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSDockTile", "NSPasteboard", "NSWindow"] }
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSArray", "NSDictionary", "NSError", "NSBundle", "NSOperation"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSDockTile", "NSPasteboard", "NSWindow", "NSStatusItem", "NSMenu", "NSMenuItem", "NSImage", "NSCell"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSArray", "NSDictionary", "NSError", "NSBundle", "NSOperation", "NSData", "NSGeometry", "objc2-core-foundation"] }
+# Writes the usage lines' icons as PNG for NSImage (already in the lockfile through tauri).
+png = "0.17"
 objc2-user-notifications = { version = "0.3", default-features = false, features = [
     "std",
     "UNUserNotificationCenter",

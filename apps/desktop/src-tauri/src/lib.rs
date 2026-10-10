@@ -887,7 +887,7 @@ fn install_tray(app: &AppHandle) -> tauri::Result<()> {
         .cloned()
         .expect("default window icon");
 
-    TrayIconBuilder::new()
+    TrayIconBuilder::with_id(usage_tray::TRAY_ID)
         .icon(icon)
         .icon_as_template(false)
         .tooltip("Deskfolk")

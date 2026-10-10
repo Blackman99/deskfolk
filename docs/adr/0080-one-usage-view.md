@@ -65,3 +65,10 @@ You asked for the marks in the menu too. Decision 7's "the Spark for Claude, nam
 你说：「工具里的用量跟菜单里的查看全部用量都要打开新的标签页，注意这里的行为控制要跟设置里已有的结合。」工具菜单的「用量」和菜单栏的「查看全部用量…」不再展开挂件，改成在工作台打开一个「用量」标签页（内容同卡片，所有 Agent 排在一起）。它像花费一样只有一个，开着就切过去；没开着时放在哪由 设置 › 行为 ›「窗口打开方式」新加的「用量」一行决定（ADR 0074，默认新标签页）。挂件被隐藏后原来靠工具菜单找回，现在靠用量标签页底部的「显示用量挂件」。没有工作台的宽窗口（远程连上的平板）照旧展开挂件；手机照旧是一页。
 
 You asked for Tools › Usage and the menu bar's "Show all usage…" to open a new tab, following the existing Behavior settings. Both now open a single Usage tab on the workbench, placed by a new Usage row in Where windows open (ADR 0074; a new tab by default) and only brought forward when open. A hidden widget comes back from that tab's "Show the usage widget". A wide window with no workbench still opens the widget; a phone still gets its page.
+
+## 补充：macOS 27 上标放在勾选列 / Addendum: on macOS 27 the mark sits in the state column（2026-10-11）
+
+菜单里一直看不到标。在你这台 macOS 27 上实测（一个临时的菜单栏测试程序，同一张图四种放法）：菜单项自己的图片（`NSMenuItem.image`，Tauri/muda 的带图菜单项就是用它）一律不画，之前的 Claude 星标和圆环也不画；勾选列的图（`onStateImage`，状态为「开」）照常画。所以在 macOS 上，用量这几行不再设菜单项图片，每次更新完在主线程把图放进勾选列（托盘有了固定 id `deskfolk`，从它的 `NSStatusItem` 取菜单）；Windows 照旧用菜单项图片。同时菜单行数上限从 4 放到 8：你的账号多了，四行会把 Grok、Antigravity 挤掉。
+
+The marks never showed in the menu. Tried on your macOS 27 with a throwaway status item, one image four ways: a menu item's own image (`NSMenuItem.image`, which Tauri/muda icon items set) is not drawn at all, the old Spark and rings included; the state column's image (`onStateImage` with the state on) is. So on macOS the usage lines set no item image and get their icon in the state column after each update, on the main thread (the tray now has the id `deskfolk`, its `NSStatusItem` giving the menu); Windows keeps the item image. The menu also allows eight lines instead of four, which hid Grok and Antigravity once there were more accounts.
+

@@ -2842,6 +2842,7 @@ dependencies = [
  "objc2-app-kit",
  "objc2-foundation",
  "objc2-user-notifications",
+ "png 0.17.16",
  "rfd",
  "semver",
  "serde",
