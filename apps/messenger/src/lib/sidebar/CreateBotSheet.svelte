@@ -3,12 +3,17 @@
 	import { AGENT_KINDS, type AgentsStatusResponse } from '@real-bot/protocol';
 	import AvatarEditor from '../AvatarEditor.svelte';
 	import { backdropClick } from '../click-outside.ts';
+	import ModelPicker from '../ModelPicker.svelte';
 	import Select from '../Select.svelte';
 	import { thinkingLevelLabel, type Copy } from '../copy.ts';
 	import {
+		agentModelPicker,
 		applyModelPin,
 		botNameErrorCopy,
+		claudeModelPicker,
+		endpointModelPicker,
 		mapCreateBotError,
+		pickerValues,
 		pinnableThinkingLevels,
 		planCreateBot,
 		type CreateBotDraft,
@@ -16,17 +21,15 @@
 	} from '../panels/create-form.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { pageSlide } from '../mobile-page-slide.ts';
-	import type { SelectOption } from '../select-options.ts';
 	import { agentBlocker, agentLabelOf, agentStatusOf, parseRunnerValue, runnerOptions, setupRunnerOf } from '../runner-choice.ts';
 
 	type Props = {
 		runtime: MessengerRuntime;
-		modelOptions: SelectOption[];
 		t: Copy;
 		onClose: () => void;
 	};
 
-	let { runtime, modelOptions, t, onClose }: Props = $props();
+	let { runtime, t, onClose }: Props = $props();
 	/** A click outside closes the sheet; a text-selection drag that starts inside never does. */
 	const backdrop = backdropClick();
 
@@ -63,17 +66,30 @@
 	const runnerPick = $derived(parseRunnerValue(draft.runner));
 	const agentRunner = $derived(runnerPick.runner && runnerPick.runner !== 'claude_code' ? runnerPick.runner : null);
 	const agentName = $derived(agentRunner ? agentLabelOf(agentRunner, runnerPick.customId, agents) : '');
-	const agentBlocked = $derived(agentRunner ? agentBlocker(agentStatusOf(agents, agentRunner, runnerPick.customId)) : null);
+	const agentStatus = $derived(agentRunner ? agentStatusOf(agents, agentRunner, runnerPick.customId) : null);
+	const agentBlocked = $derived(agentBlocker(agentStatus));
 	let errors = $state<CreateBotFieldErrors>({});
 	let failed = $state(false);
 
 	const providers = $derived(runtime.snapshot.providers);
-	const modelValues = $derived(modelOptions.map((option) => option.value));
+	const endpointModels = $derived(endpointModelPicker(providers, t));
+	const modelValues = $derived(pickerValues(endpointModels));
 	const thinkingOptions = $derived(pinnableThinkingLevels(draft.model, providers));
 
 	function onInput(): void {
 		errors = {};
 		failed = false;
+	}
+
+	/** Another agent names its models its own way: a model picked for one is not carried to the next. */
+	function onRunnerChange(): void {
+		draft.agentModel = undefined;
+		onInput();
+	}
+
+	function onAgentModelChange(value: string): void {
+		draft.agentModel = value;
+		onInput();
 	}
 
 	function onModelChange(value: string): void {
@@ -163,14 +179,14 @@
 			</div>
 			<div class="modal-section">
 				<label for="bot-runner">{t.sidebar.botRunner}</label>
-				<Select id="bot-runner" bind:value={draft.runner} options={runnerChoices} error={!!errors.agentCustomId} onchange={onInput} />
+				<Select id="bot-runner" bind:value={draft.runner} options={runnerChoices} error={!!errors.agentCustomId} onchange={onRunnerChange} />
 				{#if errors.agentCustomId}
 					<p class="field-error">{t.sidebar.botRunnerCustomInvalid}</p>
 				{:else if agentRunner}
 					{#if agentBlocked === 'missing'}
 						<p class="field-error" data-runner-missing>{t.sidebar.botRunnerAgentMissing(agentName, AGENT_KINDS[agentRunner].command)}</p>
 					{:else if agentBlocked === 'signed_out'}
-						<p class="field-error" data-runner-signed-out>{t.sidebar.botRunnerAgentSignedOut(agentName, agentStatusOf(agents, agentRunner, runnerPick.customId)?.login_command ?? null)}</p>
+						<p class="field-error" data-runner-signed-out>{t.sidebar.botRunnerAgentSignedOut(agentName, agentStatus?.login_command ?? null)}</p>
 					{:else}
 						<p class="muted field-hint">{t.sidebar.botRunnerAgentCreateHint(agentName)}</p>
 					{/if}
@@ -184,12 +200,13 @@
 			{#if !draft.runner}
 			<div class="modal-section">
 				<label for="bot-model">{t.sidebar.botModel}</label>
-				<Select
+				<ModelPicker
 					id="bot-model"
 					bind:value={draft.model}
+					data={endpointModels}
+					{t}
 					placeholder={t.sidebar.botModelDefault}
-					emptyLabel={t.sidebar.botModelDefault}
-					options={modelOptions}
+					title={t.sidebar.botModel}
 					error={!!errors.model}
 					onchange={onModelChange}
 				/>
@@ -220,6 +237,40 @@
 					{/if}
 				</div>
 			{/if}
+			{:else if draft.runner === 'claude_code'}
+			<div class="modal-section">
+				<label for="bot-agent-model">{t.sidebar.botAgentModel}</label>
+				<ModelPicker
+					id="bot-agent-model"
+					value={draft.agentModel ?? ''}
+					data={claudeModelPicker(t, draft.agentModel ?? '')}
+					{t}
+					title={t.sidebar.botAgentModel}
+					error={!!errors.agentModel}
+					onchange={onAgentModelChange}
+				/>
+				{#if errors.agentModel}
+					<p class="field-error">{t.sidebar.botAgentModelInvalid}</p>
+				{/if}
+			</div>
+			{:else if agentRunner}
+			<div class="modal-section" data-agent-model>
+				<label for="bot-agent-model">{t.sidebar.botAgentModelOf(agentName)}</label>
+				<ModelPicker
+					id="bot-agent-model"
+					value={draft.agentModel ?? ''}
+					data={agentModelPicker(agents, t, agentRunner, runnerPick.customId, draft.agentModel ?? '')}
+					{t}
+					title={t.sidebar.botAgentModelOf(agentName)}
+					error={!!errors.agentModel}
+					onchange={onAgentModelChange}
+				/>
+				{#if errors.agentModel}
+					<p class="field-error">{t.sidebar.botAgentModelInvalidOf(agentName)}</p>
+				{:else}
+					<p class="muted field-hint">{t.sidebar.botAgentModelEmptyHint(agentName, agentStatus?.default_model ?? null)}</p>
+				{/if}
+			</div>
 			{/if}
 		</div>
 		<div class="modal-foot actions">

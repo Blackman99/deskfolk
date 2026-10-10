@@ -32,6 +32,8 @@ test("asks the daemon once when it opens and shows a card for each agent, then t
   await sleep(0);
   expect([...view.host.querySelectorAll("[data-agent-card]")].map((card) => card.getAttribute("data-agent-card"))).toEqual(["codex", "grok", "custom"]);
   expect(view.host.querySelector("[data-custom-agents]")).not.toBeNull();
+  // Each card wears its agent's logo before the name; an agent of your own the plain glyph.
+  expect([...view.host.querySelectorAll("[data-agent-card] .agent-title [data-agent-logo]")].map((logo) => logo.getAttribute("data-agent-logo"))).toEqual(["codex", "grok", "custom"]);
   // The custom agent's card shows its arguments, from the list.
   expect(view.host.querySelector('[data-agent-custom-id="ca-1"] [data-agent-args]')?.textContent).toBe("acp");
   await sleep(20);

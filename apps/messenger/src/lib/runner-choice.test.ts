@@ -84,3 +84,17 @@ test("the runner picker offers agents only once the daemon has listed them, neve
   // Where the daemon has not listed it (the phone): still a choice, under its name.
   expect(runnerOptions(t, null, "zcode").at(-1)).toMatchObject({ value: "zcode", label: "ZCode" });
 });
+
+test("every agent row wears its logo, Claude Agent the spark, your own ACP agent the plain glyph, and the app's own loop none", () => {
+  const agents = found([status("codex"), status("grok")], [{ id: "ca-1", name: "my-agent", command: "/bin/x", args: [] }]);
+  const options = runnerOptions(t, agents, "");
+  expect(options.find((option) => option.value === "")?.source).toBeUndefined();
+  expect(options.find((option) => option.value === "claude_code")?.source).toEqual({ kind: "claude-agent", name: t.claudeAgent.title });
+  expect(options.find((option) => option.value === "codex")?.source).toEqual({ kind: "agent", runner: "codex", name: "Codex" });
+  expect(options.find((option) => option.value === "custom:ca-1")?.source).toEqual({ kind: "agent", runner: "custom", name: "my-agent" });
+  // Every row but the app's own carries one, however the agents were listed.
+  expect(options.filter((option) => option.value !== "").every((option) => option.source !== undefined)).toBe(true);
+  // A runner kept only because a Bot is on it (not listed, or since removed) still wears its logo.
+  expect(runnerOptions(t, null, "zcode").at(-1)?.source).toEqual({ kind: "agent", runner: "zcode", name: "ZCode" });
+  expect(runnerOptions(t, agents, "custom:gone").at(-1)).toMatchObject({ value: "custom:gone", source: { kind: "agent", runner: "custom" } });
+});

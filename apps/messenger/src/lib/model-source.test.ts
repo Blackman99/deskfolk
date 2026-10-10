@@ -78,7 +78,7 @@ test("the picker draws each row's mark, and the chosen one's on the closed picke
   view.close();
 });
 
-test("a model run by another local agent is marked with the agent's name as text, never a logo; Claude keeps its spark", async () => {
+test("a model run by another local agent wears that agent's logo, your own ACP agent a plain prompt; Claude keeps its spark", async () => {
   expect(agentSource("codex", "Codex")).toEqual({ kind: "agent", runner: "codex", name: "Codex" });
   expect(runnerSource("claude_code", "Claude Agent", t)).toEqual(claudeAgentSource(t));
   expect(runnerSource("grok", "Grok", t)).toEqual({ kind: "agent", runner: "grok", name: "Grok" });
@@ -91,13 +91,15 @@ test("a model run by another local agent is marked with the agent's name as text
   const trigger = view.host.querySelector(".real-select-trigger")!;
   expect(trigger.querySelector("[data-model-source]")?.getAttribute("data-model-source")).toBe("agent");
   expect(trigger.querySelector("[data-model-source]")?.getAttribute("data-runner")).toBe("codex");
-  expect(trigger.querySelector(".model-source-custom")?.getAttribute("data-text")).toBe("Codex");
+  expect(trigger.querySelector("[data-agent-logo]")?.getAttribute("data-agent-logo")).toBe("codex");
+  expect(trigger.querySelector("[data-model-source]")?.getAttribute("title")).toBe("Codex");
   expect(trigger.querySelector(".connector-logo")).toBeNull();
   click(trigger);
   await sleep(0);
   const rows = [...view.host.querySelectorAll(".real-select-option")];
   expect(rows.map((row) => row.querySelector("[data-model-source]")?.getAttribute("data-model-source"))).toEqual(["agent", "claude-agent", "agent"]);
-  expect(rows[2]!.querySelector(".model-source-custom")?.getAttribute("data-text")).toBe("我的 ACP");
+  expect(rows[2]!.querySelector("[data-agent-logo]")?.getAttribute("data-agent-logo")).toBe("custom");
+  expect(rows[2]!.querySelector("[data-model-source]")?.getAttribute("title")).toBe("我的 ACP");
   // The row's text stays the model's name.
   expect(rows[0]!.textContent?.replace(/\s+/g, " ").trim()).toBe("gpt-5.5");
   view.close();

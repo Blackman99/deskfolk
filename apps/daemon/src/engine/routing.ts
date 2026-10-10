@@ -5,7 +5,7 @@
  * there is no routing agent to ask or nothing for it to read. Everything downstream that needs a
  * target for a call — a turn, a judgement, the organizer, a chain review — goes through here.
  */
-import { isLadderAgentRung, isLocalEndpoint, thinkingLevelRank, type ThinkingLevel } from "@real-bot/protocol";
+import { isLadderAgentRung, isLocalEndpoint, isTicketAgentModel, thinkingLevelRank, type ThinkingLevel } from "@real-bot/protocol";
 import { NO_ABLATION, type Ablation } from "../ablation";
 import type { CompletionsClient } from "../completions";
 import { classifyMessage, messageSignature, pickThinkingLevel } from "../route-decision";
@@ -303,6 +303,14 @@ export function createRouting(deps: RoutingDeps): Routing {
   }
 
   function decideRoute(botId: string, creds: Creds, text: string, turnId?: string): Routed | null {
+    // The ticket's model is a local agent's (ADR 0079): that agent runs the turn, as on a ladder rung.
+    const onAgent = turnId ? store.turnTicketModel(turnId) : null;
+    if (isTicketAgentModel(onAgent)) {
+      const base = baseRoute(botId, creds, text, turnId);
+      const target = base?.target ?? { baseUrl: "", apiKey: "", apiFormat: "openai" as const, workspaceId: null, providerId: "", providerName: "", model: onAgent.model, thinkingLevel: "low" as ThinkingLevel, locale: creds.locale };
+      return { target, agent: onAgent,
+        decision: { model: onAgent.model, providerId: "", thinkingLevel: onAgent.effort ?? "default", signature: classifyMessage(text), reasonCode: "ticket_override" } };
+    }
     const base = baseRoute(botId, creds, text, turnId);
     const routed = decideFrom(base, botId, creds, text, turnId);
     // Stepped up or moved for pictures: why the model was chosen in the first place is kept beside it.
@@ -463,7 +471,7 @@ export function createRouting(deps: RoutingDeps): Routing {
     };
     // The model you set on this turn's ticket comes first (ADR 0049): it is about the work, not the Bot.
     const override = turnId ? store.turnTicketModel(turnId) : null;
-    if (override) {
+    if (override && !isTicketAgentModel(override)) {
       const provider = creds.providers.find((row) => row.id === override.provider_id && row.models.includes(override.model));
       if (provider) return build(provider.id, override.model, bot.thinking_level, "ticket_override");
       // No endpoint lists it any more: the Bot's own model meanwhile, and you are told once.

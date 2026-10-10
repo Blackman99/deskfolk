@@ -1,15 +1,22 @@
 import {
+  CLAUDE_MODEL_ALIASES,
   THINKING_LEVELS,
   isAgentEffort,
   isAgentModelName,
   isClaudeModelName,
   isThinkingLevel,
   sortThinkingLevels,
+  type AgentsStatusResponse,
+  type BotRunner,
   type CreateBotRequest,
   type CreateGroupRequest,
   type ThinkingLevel,
 } from "@real-bot/protocol";
-import { parseRunnerValue } from "../runner-choice.ts";
+import type { Copy } from "../copy.ts";
+import { sourceRows, type PickerData, type PickerRow, type PickerSource } from "../model-picker.ts";
+import { agentPickerSources, claudePickerSource, endpointPickerSources, type EndpointLike } from "../model-picker-sources.ts";
+import { agentSource } from "../model-source.ts";
+import { agentLabelOf, agentStatusOf, parseRunnerValue } from "../runner-choice.ts";
 import { modelSelectValue, parseModelSelectValue } from "../settings/provider-form.ts";
 
 export type CreateBotDraft = {
@@ -164,6 +171,51 @@ export function mapCreateBotError(
   if (message.startsWith("agent_config_dir")) return { agentConfigDir: "invalid" };
   if (message.startsWith("agent_custom_id")) return { agentCustomId: "invalid" };
   return { top: true };
+}
+
+/** Every value a model picker offers, the rows that are not models too: what a save checks a pinned model against. */
+export function pickerValues(data: PickerData): string[] {
+  return [...data.specials, ...data.sources.flatMap(sourceRows)].map((row) => row.value);
+}
+
+/** A Bot on the app's own loop picks among every endpoint's models (`provider::model`); "automatic" stands above them. */
+export function endpointModelPicker(providers: readonly EndpointLike[], t: Copy): PickerData {
+  return {
+    specials: [{ value: "", label: t.sidebar.botModelDefault }],
+    sources: endpointPickerSources(providers, t, modelSelectValue),
+  };
+}
+
+/** A Bot on Claude Agent picks an alias (the value is the alias); a name it already holds that is none stays a row, so it still reads. */
+export function claudeModelPicker(t: Copy, current: string): PickerData {
+  const specials: PickerRow[] = [{ value: "", label: t.sidebar.botAgentModelDefault }];
+  if (current && !(CLAUDE_MODEL_ALIASES as readonly string[]).includes(current)) specials.push({ value: current, label: current });
+  return { specials, sources: [claudePickerSource(t, (model) => model)] };
+}
+
+/**
+ * A Bot on another local agent picks among the models that agent lists, or types one it knows (the
+ * value is the plain name). With nothing listed to type into — the agent not found, signed out, or
+ * not asked (the phone) — a source of its own takes the typed name, so a model can still be set.
+ */
+export function agentModelPicker(agents: AgentsStatusResponse | null, t: Copy, runner: BotRunner, customId: string | null, current: string): PickerData {
+  const status = agentStatusOf(agents, runner, customId);
+  const name = agentLabelOf(runner, customId, agents);
+  let sources = agentPickerSources(agents, t, (_runner, model) => model, { only: { runner, customId }, typed: true });
+  if (sources.length === 0) {
+    const typeOnly: PickerSource = {
+      key: `agent:${runner}${customId ? `:${customId}` : ""}`,
+      label: name,
+      mark: agentSource(runner, name),
+      note: t.modelPicker.typeShort,
+      groups: [],
+      custom: (typed) => (isAgentModelName(typed) ? typed : null),
+    };
+    sources = [typeOnly];
+  }
+  const specials: PickerRow[] = [{ value: "", label: t.sidebar.botAgentModelDefaultOf(name), ...(status?.default_model ? { detail: status.default_model } : {}) }];
+  if (current && !sources.some((source) => sourceRows(source).some((row) => row.value === current))) specials.push({ value: current, label: current });
+  return { specials, sources };
 }
 
 /**

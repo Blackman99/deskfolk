@@ -38,7 +38,7 @@ import type { SpendTracker } from "./spend";
 import type { BuiltinTargetOf } from "./builtin-models";
 import type { Tools } from "./tools";
 import type { InboxEntry, Live } from "./types";
-import { isBotRunner, type Spend } from "@real-bot/protocol";
+import { isBotRunner, isTicketAgentModel, type Spend } from "@real-bot/protocol";
 import type { ClaudeCodeProbe } from "../claude-code/probe";
 import type { ClaudeJudge } from "../claude-code/reading";
 import { createAgentRunner, type AgentQuery, type AgentRunnerDeps } from "./agent-runner";
@@ -505,7 +505,11 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
         try {
           publishTurn(turn);
           // A Claude Agent Bot's turns are Claude Code's to work (ADR 0061); everything around them is shared.
-          if (runsOnAgent(turn.bot_id)) await agentRunner.runAgentTurn(turn.id);
+          // The model you set on its ticket decides instead (ADR 0049, ADR 0079): a local agent's runs
+          // there, as a ladder rung does, an endpoint's in the app's own loop.
+          const ticketModel = store.turnTicketModel(turn.id);
+          if (isTicketAgentModel(ticketModel)) await agentRunner.runAgentTurn(turn.id, ticketModel);
+          else if (!ticketModel && runsOnAgent(turn.bot_id)) await agentRunner.runAgentTurn(turn.id);
           else await runTurn(turn.id);
         } catch (error) {
           if (!live.abort.signal.aborted) await crashTurn(turn.id, error);

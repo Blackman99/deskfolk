@@ -7,7 +7,9 @@ import { SPEECH_PRESETS, type Annotation } from '@real-bot/protocol';
 import { STORY_SIZES, type StoryName } from './story-list.ts';
 import { copyFor } from '../../src/lib/copy.ts';
 import Select from '../../src/lib/Select.svelte';
-import { claudeAgentSource, endpointModelOptions, speechServiceSource } from '../../src/lib/model-source.ts';
+import ModelPicker from '../../src/lib/ModelPicker.svelte';
+import { agentPickerSources, claudePickerSource, endpointPickerSources } from '../../src/lib/model-picker-sources.ts';
+import { speechServiceSource } from '../../src/lib/model-source.ts';
 import {
 	aBot,
 	aBotDirect,
@@ -580,7 +582,70 @@ const dockedRuntime: ReturnType<typeof fakeRuntime> = fakeRuntime(
 	}
 );
 
+/** Every kind of source a model picker shows: built-in connectors, Custom, Claude, each local agent — OpenCode's hundreds grouped. */
+function pickerStoryData() {
+	const agent = (runner: string, label: string, models: Array<{ id: string; name?: string }>, extra: Record<string, unknown> = {}) => ({
+		runner, custom_id: null, label, path: `/usr/local/bin/${runner}`, source: 'path', version: '1.0', logged_in: true, auth: null, login_command: null,
+		models: models.map((model) => ({ id: model.id, name: model.name ?? model.id, efforts: [] })), default_model: null, proxy: null, proxy_source: null,
+		checked_at: '2026-10-10T00:00:00.000Z', error: null, ...extra
+	});
+	const opencode = ['alibaba-cn', 'alibaba', 'nvidia', 'opencode-go', 'openai', 'xai'].flatMap((provider, p) =>
+		[...Array([18, 12, 10, 8, 6, 4][p])].map((_, i) => ({ id: `${provider}/${['qwen3.7', 'deepseek-v4', 'glm-5.3', 'kimi-k3', 'gpt-5.6', 'grok-4.7'][i % 6]}-${i}` })));
+	const agents = {
+		custom_agents: [],
+		items: [
+			agent('codex', 'Codex', [{ id: 'gpt-5.6-terra', name: 'GPT-5.6-Terra' }, { id: 'gpt-5.6-luna', name: 'GPT-5.6-Luna' }]),
+			agent('grok', 'Grok', ['grok-4.7', 'grok-4.7-build-fast', 'grok-4.6', 'grok-4.5'].map((id) => ({ id }))),
+			agent('opencode', 'OpenCode', opencode),
+			agent('dsh', 'DSH', []),
+			agent('antigravity', 'Antigravity', [{ id: 'gemini-3.8-flash-high', name: 'Gemini 3.8 Flash (High)' }, { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' }]),
+			agent('zcode', 'ZCode', [], { path: null, logged_in: null })
+		]
+	};
+	const providers = [
+		{ id: 'p-cpa', name: 'My CPA', base_url: 'https://cpa.example.com/v1', api_format: 'openai', models: ['gemini-3.8-flash-high', 'grok-4.7-build-fast'] },
+		{ id: 'p-anthropic', name: 'Anthropic', base_url: 'https://api.anthropic.com', api_format: 'anthropic', models: ['claude-opus-5-5', 'claude-sonnet-5-5'] },
+		{ id: 'p-qwen', name: '阿里百炼', base_url: 'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1', api_format: 'openai', models: ['qwen3.7-plus', 'deepseek-v4.1-flash'] }
+	];
+	return {
+		specials: [{ value: '', label: '跟随默认', detail: '端点的默认模型' }],
+		sources: [
+			...endpointPickerSources(providers as never, t, (id, model) => `${id}/${model}`),
+			claudePickerSource(t, (model) => `claude_code/${model}`),
+			...agentPickerSources(agents as never, t, (runner, model) => `${runner}/${model}`, { blocked: true, typed: true })
+		]
+	};
+}
+
+const pickerProps = (value: string) => ({ value, data: pickerStoryData(), t, ariaLabel: '读句用的模型', title: '读句用的模型' });
+const openPicker = (host: HTMLElement) => {
+	host.style.padding = '16px';
+	host.style.boxSizing = 'border-box';
+	host.querySelector<HTMLButtonElement>('.real-select-trigger')?.click();
+	flushSync();
+};
+
 const defs: Record<StoryName, Story> = {
+	'model-picker-sources': { component: ModelPicker as never, props: pickerProps('codex/gpt-5.6-terra'), afterMount: (host: HTMLElement) => {
+		host.style.width = '320px';
+		openPicker(host);
+	} },
+	'model-picker-search': { component: ModelPicker as never, props: pickerProps('p-cpa/grok-4.7-build-fast'), afterMount: (host: HTMLElement) => {
+		host.style.width = '320px';
+		openPicker(host);
+		const search = document.querySelector<HTMLInputElement>('.mp-search input');
+		if (search) {
+			search.value = 'grok';
+			search.dispatchEvent(new Event('input', { bubbles: true }));
+			flushSync();
+		}
+	} },
+	'model-picker-sheet': { component: ModelPicker as never, props: pickerProps('opencode/nvidia/glm-5.3-2'), afterMount: openPicker },
+	'model-picker-sheet-group': { component: ModelPicker as never, props: pickerProps('opencode/nvidia/glm-5.3-2'), afterMount: (host: HTMLElement) => {
+		openPicker(host);
+		document.querySelector<HTMLButtonElement>('.mp-sheet-nav[data-source-key="agent:opencode"]')?.click();
+		flushSync();
+	} },
 	shell: {
 		component: Shell as never,
 		props: {
@@ -851,10 +916,6 @@ const defs: Record<StoryName, Story> = {
 		component: CreateBotSheet as never,
 		props: {
 			runtime: fakeRuntime(world),
-			modelOptions: [
-				{ value: '', label: '自动' },
-				{ value: 'grok-4.6', label: 'grok-4.6' }
-			],
 			t,
 			onClose: () => {}
 		}
@@ -929,7 +990,6 @@ const defs: Record<StoryName, Story> = {
 			})(),
 			bot: bots[0]!,
 			t,
-			modelOptions: [],
 			selectedKind: 'you-bot',
 			profileFailed: false,
 			openDangerConfirm: () => {},
@@ -948,7 +1008,6 @@ const defs: Record<StoryName, Story> = {
 			})(),
 			bot: bots[0]!,
 			t,
-			modelOptions: [],
 			selectedKind: 'you-bot',
 			profileFailed: false,
 			mobileDetail: true,
@@ -1047,57 +1106,16 @@ const defs: Record<StoryName, Story> = {
 		}),
 		afterMount: modelsSection('speech')
 	},
-	// A model picker open over every kind of source: built-in connectors' logos, Custom, Claude Agent.
-	'model-picker-open': {
-		component: Select as never,
-		props: {
-			value: 'p-qwen/qwen3.7-plus',
-			size: 'sm',
-			options: [
-				...endpointModelOptions(
-					[
-						{ id: 'p-cpa', name: 'My CPA', base_url: 'https://cpa.example.com/v1', api_format: 'openai', models: ['grok-4.7-build-fast'] },
-						{ id: 'p-anthropic', name: 'Anthropic', base_url: 'https://api.anthropic.com', api_format: 'anthropic', models: ['claude-opus-5-5'] },
-						{ id: 'p-xiaomi', name: '小米', base_url: 'https://token-plan-cn.xiaomimimo.com/v1', api_format: 'openai', models: ['mimo-v2.6-pro'] },
-						{ id: 'p-qwen', name: '阿里百炼', base_url: 'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1', api_format: 'openai', models: ['qwen3.7-plus', 'deepseek-v4.1-flash'] }
-					] as never,
-					t,
-					(id, model) => `${id}/${model}`
-				),
-				{ value: 'claude/haiku', label: 'haiku', hint: t.claudeAgent.title, group: t.sidebar.botRunnerClaude, source: claudeAgentSource(t) }
-			]
-		},
-		afterMount: (host: HTMLElement) => {
-			host.style.padding = '16px';
-			host.style.boxSizing = 'border-box';
-			host.querySelector<HTMLButtonElement>('.real-select-trigger')?.click();
-		}
-	},
-	// The same menu from a field as narrow as a ticket card's, near the window's right edge and inside
-	// a box that clips: it is as wide as its rows, slides left to stay in the window, and is not cut.
+	// The model picker from a field as narrow as a ticket card's, near the window's right edge: the
+	// popover is placed against the window, slides left to stay in it, and is not cut by the field.
 	'model-picker-narrow': {
-		component: Select as never,
-		props: {
-			value: 'p-qwen/qwen3.7-plus',
-			size: 'sm',
-			options: endpointModelOptions(
-				[
-					{ id: 'p-cpa', name: 'My CPA', base_url: 'https://cpa.example.com/v1', api_format: 'openai', models: ['gemini-3.8-flash-high'] },
-					{ id: 'p-anthropic', name: 'Anthropic', base_url: 'https://api.anthropic.com', api_format: 'anthropic', models: ['claude-sonnet-5-5'] },
-					{ id: 'p-qwen', name: '阿里百炼', base_url: 'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1', api_format: 'openai', models: ['qwen3.7-plus'] }
-				] as never,
-				t,
-				(id, model) => `${id}/${model}`
-			)
-		},
+		component: ModelPicker as never,
+		props: { ...pickerProps('p-qwen/qwen3.7-plus'), size: 'sm' },
 		afterMount: (host: HTMLElement) => {
-			const field = host.querySelector<HTMLElement>('.real-select')!;
-			const box = document.createElement('div');
-			box.style.cssText = 'position:absolute;left:190px;top:16px;width:170px;height:80px;overflow:auto;padding:8px;box-sizing:border-box;border:1px dashed var(--line)';
-			host.append(box);
-			box.append(field);
-			field.style.width = '150px';
-			field.querySelector<HTMLButtonElement>('.real-select-trigger')?.click();
+			host.style.boxSizing = 'border-box';
+			host.style.padding = '16px 16px 0 calc(100% - 180px)';
+			host.querySelector<HTMLButtonElement>('.real-select-trigger')?.click();
+			flushSync();
 		}
 	},
 	// Speech recognition's service picker open: each service on its vendor's tile, Bailian's on Qwen's, Custom as Custom.

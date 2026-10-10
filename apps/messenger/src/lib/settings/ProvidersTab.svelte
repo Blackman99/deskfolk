@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { connectorFor, isLocalEndpoint } from '@real-bot/protocol';
 	import ConnectorLogo from './ConnectorLogo.svelte';
-	import Select from '../Select.svelte';
+	import ModelPicker from '../ModelPicker.svelte';
+	import { endpointPickerSources } from '../model-picker-sources.ts';
 	import type { Copy } from '../copy.ts';
 	import { botAvatarColor } from '../avatar.ts';
 	import { rosterLetter } from '../sidebar/roster-letter.ts';
@@ -128,25 +129,23 @@
 					</div>
 				</div>
 
-				<div class="provider-mobile-default">
-					<label for={`default-model-${provider.id}`}>{t.settings.defaultModel}</label>
-					<select id={`default-model-${provider.id}`} aria-label={`${t.settings.defaultModel}: ${provider.name}`} value={provider.default_model ?? ''} disabled={provider.models.length === 0 || providerSaving} onchange={(event) => void setProviderDefaultModel(provider.id, event.currentTarget.value)}>
-						<option value="" disabled>{provider.models.length ? t.settings.providerChooseDefault : t.settings.providerEnableFirst}</option>
-						{#each provider.models as model (model)}<option value={model}>{model}</option>{/each}
-					</select>
-				</div>
 				<div class="provider-model-rail">
-					<span class="provider-model-label">{t.settings.defaultModel}</span>
-					<Select
-						class="provider-default-select"
-						size="sm"
-						value={provider.default_model ?? ''}
-						options={provider.models}
-						placeholder={provider.models.length ? t.settings.providerChooseDefault : t.settings.providerEnableFirst}
-						disabled={provider.models.length === 0 || providerSaving}
-						ariaLabel={`${t.settings.defaultModel}: ${provider.name}`}
-						onchange={(model) => void setProviderDefaultModel(provider.id, model)}
-					/>
+					<div class="provider-default-field">
+						<label class="provider-model-label" for={`default-model-${provider.id}`}>{t.settings.defaultModel}</label>
+						<ModelPicker
+							id={`default-model-${provider.id}`}
+							class="provider-default-select"
+							size="sm"
+							value={provider.default_model ?? ''}
+							data={{ specials: [], sources: endpointPickerSources([provider], t, (_id, model) => model) }}
+							{t}
+							title={t.settings.defaultModel}
+							placeholder={provider.models.length ? t.settings.providerChooseDefault : t.settings.providerEnableFirst}
+							disabled={provider.models.length === 0 || providerSaving}
+							ariaLabel={`${t.settings.defaultModel}: ${provider.name}`}
+							onchange={(model) => void setProviderDefaultModel(provider.id, model)}
+						/>
+					</div>
 					<button
 						type="button"
 						class="provider-model-manage"
@@ -169,8 +168,6 @@
 		flex-direction: column;
 		gap: 14px;
 	}
-
-	.provider-mobile-default { display: none; }
 
 	.provider-list-head :global(.muted) {
 		margin: 0;
@@ -348,6 +345,13 @@
 		border-top: 1px solid var(--line-subtle);
 	}
 
+	.provider-default-field {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		min-width: 0;
+	}
+
 	.provider-model-label {
 		flex: none;
 		font-size: 12px;
@@ -411,6 +415,8 @@
 		.provider-badge-default { padding: 3px; }
 		.provider-badge-default span { display: none; }
 		.provider-model-rail { order: 2; flex: none; gap: 2px; padding-top: 0; border-top: none; }
+		/* The field's own box goes, so the picker is one of the rail's items, in line with the list's button. */
+		.provider-default-field { display: contents; }
 		/* A fixed width, so every card's picker lines up whether or not it offers "Set as default". */
 		.provider-card-acts { order: 3; width: 122px; justify-content: flex-end; gap: 4px; }
 		.provider-model-label { display: none; }
@@ -448,12 +454,13 @@
 		.btn-provider-action + .btn-provider-action { border-left: 1px solid var(--line); }
 		.btn-provider-action svg { width: 16px; height: 16px; }
 		.btn-provider-action.btn-provider-delete { flex: 0 0 52px; min-height: 48px; padding: 8px; border-left: 1px solid var(--line); }
-		.provider-mobile-default { display: flex; flex-direction: column; gap: 8px; padding: 0 16px 16px; }
-		.provider-mobile-default label { font-size: 12px; font-weight: 500; color: var(--muted); }
-		.provider-mobile-default select { width: 100%; min-width: 0; min-height: 48px; padding: 10px 12px; font-family: var(--font); font-size: 16px; color: var(--ink); background: var(--sidebar-bg); border: 1px solid var(--line); border-radius: var(--radius-md); text-overflow: ellipsis; }
-		.provider-model-rail { gap: 0; padding: 0; }
-		.provider-model-label, .provider-model-rail :global(.provider-default-select) { display: none; }
-		.provider-model-manage { flex: 1; gap: 8px; margin-left: 0; min-height: 56px; padding: 12px 16px; border-radius: 0; font-size: 15px; color: var(--ink); }
+		/* The default model on top, the way into the list under it; the picker opens as a sheet. */
+		.provider-model-rail { flex-direction: column; align-items: stretch; gap: 0; padding: 0; border-top: none; }
+		.provider-default-field { flex-direction: column; align-items: stretch; gap: 8px; padding: 0 16px 16px; }
+		.provider-model-label { font-size: 12px; font-weight: 500; }
+		.provider-model-rail :global(.provider-default-select) { flex: none; width: 100%; }
+		.provider-model-rail :global(.provider-default-select .real-select-trigger) { min-height: 48px; padding: 10px 12px; font-size: 16px; }
+		.provider-model-manage { flex: none; gap: 8px; margin-left: 0; min-height: 56px; padding: 12px 16px; border-top: 1px solid var(--line-subtle); border-radius: 0; font-size: 15px; color: var(--ink); }
 		.provider-model-manage-count { margin-left: auto; font-size: 12px; }
 		.provider-manage-chevron { width: 18px; height: 18px; flex-shrink: 0; color: var(--muted); }
 	}

@@ -37,6 +37,8 @@ test("arguments are one per line, trimmed, blank lines dropped, spaces inside a 
 test("your agents are listed with the command each runs, or the card says there are none", () => {
   const view = open([mine, other]);
   expect([...view.host.querySelectorAll("[data-custom-name]")].map((name) => name.textContent)).toEqual(["my-agent", "other"]);
+  // The plain glyph of an agent of your own leads each name, in the name's row.
+  expect([...view.host.querySelectorAll("[data-custom-agent]")].map((row) => row.querySelector(".custom-row")?.firstElementChild?.getAttribute("data-agent-logo"))).toEqual(["custom", "custom"]);
   expect([...view.host.querySelectorAll("[data-custom-command]")].map((command) => command.textContent)).toEqual(["/usr/local/bin/my-agent acp --stdio", "/opt/other"]);
   expect(view.host.querySelector("[data-custom-empty]")).toBeNull();
   view.close();
@@ -98,6 +100,8 @@ test("renaming keeps the id, the command and the arguments", async () => {
   click(view.host.querySelector("[data-custom-rename]"));
   const input = view.host.querySelector<HTMLInputElement>("[data-custom-rename-input]")!;
   expect(input.value).toBe("my-agent");
+  // The logo stays in the row, so the field does not jump left.
+  expect(view.host.querySelector(".custom-row")?.firstElementChild?.getAttribute("data-agent-logo")).toBe("custom");
   fill(input, "  renamed ");
   view.host.querySelector<HTMLFormElement>(".custom-row")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
   await sleep(0);

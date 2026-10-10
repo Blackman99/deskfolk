@@ -14,12 +14,15 @@
 	} from '@real-bot/protocol';
 	import { onMount, tick } from 'svelte';
 	import { flip } from 'svelte/animate';
+	import ModelPicker from '../ModelPicker.svelte';
 	import Select from '../Select.svelte';
 	import type { Copy } from '../copy.ts';
 	import type { ModelLadder } from './model-ladder.svelte.ts';
 	import { beginLadderDrag, ladderPlace, movedTo, type LadderDrag } from './ladder-drag.ts';
-	import { agentSource, claudeAgentSource, endpointModelOptions, endpointSource, runnerSource } from '../model-source.ts';
-	import { agentAccountOptions, agentAccountsOf, agentLabelOf, agentModelsOf, agentReady, agentStatusOf } from '../runner-choice.ts';
+	import { sourceCount, type PickerData } from '../model-picker.ts';
+	import { agentPickerSources, claudePickerSource, endpointPickerSources } from '../model-picker-sources.ts';
+	import { endpointSource, runnerSource } from '../model-source.ts';
+	import { agentAccountOptions, agentAccountsOf, agentLabelOf, agentModelsOf, agentStatusOf } from '../runner-choice.ts';
 	import { thinkingLevelLabel } from '../copy.ts';
 	import { claudeAccountOptions, claudeReady } from './claude-agent.ts';
 	import ModelSourceMark from '../ModelSourceMark.svelte';
@@ -98,40 +101,33 @@
 	const claudeRung = (model: string) => agentRung('claude_code', model);
 	const onLadder = (rung: ModelLadderRung) => ladder.rungs.some((kept) => sameLadderRung(kept, rung));
 
-	/** The other agents found on this computer and not signed out, which a model can be run on. */
-	const readyAgents = $derived((agentsFound?.items ?? []).filter((status) => status.runner !== 'claude_code' && agentReady(status)));
+	/** What the agents list, else the default model one named: the models a rung can be. */
+	const agentsOffered = $derived<AgentsStatusResponse | null>(
+		agentsFound ? { ...agentsFound, items: agentsFound.items.map((status) => ({ ...status, models: agentModelsOf(status) })) } : null
+	);
 
-	/** What is listed and not on the ladder yet, then the Claude models Agent settings offer, then each other agent's. */
-	const addable = $derived([
-		...endpointModelOptions(
-			providers.map((provider) => ({
-				...provider,
-				models: provider.models.filter((model) => !onLadder({ provider_id: provider.id, model }))
-			})),
-			t,
-			(provider_id, model) => key({ provider_id, model })
-		),
-		...(claudeReady(claudeStatus)
-			? CLAUDE_MODEL_ALIASES.filter((model) => !onLadder(claudeRung(model))).map((model) => ({
-					value: key(claudeRung(model)),
-					label: model,
-					hint: t.claudeAgent.title,
-					group: t.sidebar.botRunnerClaude,
-					source: claudeAgentSource(t)
-				}))
-			: []),
-		...readyAgents.flatMap((status) =>
-			agentModelsOf(status)
-				.filter((model) => !onLadder(agentRung(status.runner, model.id, status.custom_id)))
-				.map((model) => ({
-					value: key(agentRung(status.runner, model.id, status.custom_id)),
-					label: model.id,
-					hint: model.name !== model.id ? model.name : undefined,
-					group: status.label,
-					source: agentSource(status.runner, status.label)
-				}))
-		)
-	]);
+	/**
+	 * What is listed and not on the ladder yet: each endpoint, then the Claude models Agent settings
+	 * offer, then each other agent found and signed in, which also takes a model typed into the
+	 * search. A source with nothing left to add is left out.
+	 */
+	const addable = $derived.by((): PickerData => {
+		const claudeModels = CLAUDE_MODEL_ALIASES.filter((model) => !onLadder(claudeRung(model)));
+		const sources = [
+			...endpointPickerSources(
+				providers,
+				t,
+				(provider_id, model) => key({ provider_id, model }),
+				(provider_id, model) => !onLadder({ provider_id, model })
+			),
+			...(claudeReady(claudeStatus) && claudeModels.length > 0 ? [claudePickerSource(t, (model) => key(claudeRung(model)), claudeModels)] : []),
+			...agentPickerSources(agentsOffered, t, (runner, model, customId) => key(agentRung(runner, model, customId)), {
+				typed: true,
+				keep: (runner, model, customId) => !onLadder(agentRung(runner, model, customId))
+			})
+		];
+		return { specials: [], sources: sources.filter((source) => sourceCount(source) > 0 || source.custom) };
+	});
 
 	/** The effort levels a rung's agent takes; none for one that has none. */
 	const effortOptions = (rung: ModelLadderAgentRung) => [
@@ -199,7 +195,10 @@
 	function add(value: string): void {
 		picking = '';
 		if (!value) return;
-		void ladder.save([...ladder.rungs, JSON.parse(value) as ModelLadderRung]);
+		const rung = JSON.parse(value) as ModelLadderRung;
+		// A name typed into the search can be one already on the ladder.
+		if (onLadder(rung)) return;
+		void ladder.save([...ladder.rungs, rung]);
 	}
 </script>
 
@@ -291,9 +290,9 @@
 				{/each}
 			</ol>
 		{/if}
-		{#if addable.length > 0 && ladder.rungs.length < MODEL_LADDER_MAX}
+		{#if addable.sources.length > 0 && ladder.rungs.length < MODEL_LADDER_MAX}
 			<div class="ladder-add">
-				<Select bind:value={picking} options={addable} placeholder={t.modelLadder.add} size="sm" ariaLabel={t.modelLadder.add} disabled={ladder.busy} onchange={add} />
+				<ModelPicker bind:value={picking} data={addable} {t} placeholder={t.modelLadder.add} size="sm" title={t.modelLadder.add} ariaLabel={t.modelLadder.add} disabled={ladder.busy} onchange={add} />
 			</div>
 		{/if}
 	</section>

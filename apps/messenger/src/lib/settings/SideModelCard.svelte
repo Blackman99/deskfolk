@@ -12,12 +12,14 @@
 		type ReaderModel,
 		type SettingsPatch
 	} from '@real-bot/protocol';
+	import ModelPicker from '../ModelPicker.svelte';
 	import Select from '../Select.svelte';
 	import type { Copy } from '../copy.ts';
 	import { claudeAccountOptions, claudeReady } from './claude-agent.ts';
-	import { agentSource, claudeAgentSource, endpointModelOptions } from '../model-source.ts';
-	import { agentAccountOptions, agentAccountsOf, agentLabelOf, agentModelsOf, agentReady, agentStatusOf } from '../runner-choice.ts';
-	import type { SelectOption } from '../select-options.ts';
+	import type { PickerData, PickerRow, PickerSource } from '../model-picker.ts';
+	import { agentPickerSources, claudePickerSource, endpointPickerSources } from '../model-picker-sources.ts';
+	import { agentSource } from '../model-source.ts';
+	import { agentAccountOptions, agentAccountsOf, agentLabelOf, agentModelsOf, agentStatusOf } from '../runner-choice.ts';
 
 	/**
 	 * The picker of one built-in call's model (ADR 0077): reading lines (ADR 0055), organizing the
@@ -44,13 +46,13 @@
 		failed: string;
 		/**
 		 * Offers the Claude models of your Claude Code: what the daemon finds of it (absent or failing,
-		 * as on the phone, no Claude group is offered) and the note said under the picker beside it.
+		 * as on the phone, no Claude source is offered) and the note said under the picker beside it.
 		 * Absent, the setting takes endpoint models only.
 		 */
 		claude?: { status: (() => Promise<ClaudeCodeStatus>) | null; note: string } | null;
 		/**
 		 * Offers the models of your other local agents (ADR 0079) found on this computer and signed in,
-		 * each agent its own group: what the daemon finds of them. Absent or failing, none are offered,
+		 * each agent its own source: what the daemon finds of them. Absent or failing, none are offered,
 		 * and the one already chosen stays shown.
 		 */
 		agents?: (() => Promise<AgentsStatusResponse>) | null;
@@ -107,23 +109,21 @@
 	const claudeChosen = $derived(isReaderClaudeModel(chosen) ? chosen : null);
 	/** Offered once Claude Code is there and signed in, and kept while one of its models is what reads. */
 	const claudeOffered = $derived(claude !== null && (claudeReady(claudeStatus) || claudeChosen !== null));
-	/** The other agents' models, a group each: those found and signed in, and the one chosen even when it is neither (the phone cannot ask). */
-	const agentGroups = $derived.by(() => {
-		const groups: Array<{ runner: BotRunner; customId: string | null; label: string; models: string[] }> = [];
+	/**
+	 * What the agents list, else the default model one named, and the one chosen kept even when it is
+	 * no longer listed. The picker's sources are built from this.
+	 */
+	const agentsOffered = $derived.by((): AgentsStatusResponse | null => {
+		if (!agentsFound) return null;
 		const other = chosenAgent && chosenAgent.runner !== 'claude_code' ? chosenAgent : null;
-		for (const status of agentsFound?.items ?? []) {
-			if (status.runner === 'claude_code') continue;
-			const customId = status.custom_id ?? null;
-			const isChosen = other !== null && sameAgent(other, status.runner, customId);
-			if (!agentReady(status) && !isChosen) continue;
-			const models = agentModelsOf(status).map((model) => model.id);
-			if (other && isChosen && !models.includes(other.model)) models.push(other.model);
-			if (models.length > 0) groups.push({ runner: status.runner, customId, label: status.label, models });
-		}
-		if (other && !groups.some((group) => sameAgent(other, group.runner, group.customId))) {
-			groups.push({ runner: other.runner, customId: other.custom_id ?? null, label: agentLabelOf(other.runner, other.custom_id ?? null, agentsFound), models: [other.model] });
-		}
-		return groups;
+		return {
+			...agentsFound,
+			items: agentsFound.items.map((status) => {
+				const models = agentModelsOf(status);
+				const isChosen = other !== null && sameAgent(other, status.runner, status.custom_id ?? null);
+				return isChosen && !models.some((model) => model.id === other.model) ? { ...status, models: [...models, { id: other.model, name: other.model, efforts: [] }] } : { ...status, models };
+			})
+		};
 	});
 	/** The account picker's choices on the chosen agent, and how many accounts it has. */
 	const chosenAccounts = $derived.by(() => {
@@ -136,27 +136,34 @@
 	});
 	const chosenLabel = $derived(chosenAgent && chosenAgent.runner !== 'claude_code' ? agentLabelOf(chosenAgent.runner, chosenAgent.custom_id ?? null, agentsFound) : '');
 
-	const options = $derived<SelectOption[]>([
-		{ value: FOLLOW, label: followDefault(defaultModel) },
-		...endpointModelOptions(providers, t, (provider_id, model) => key({ provider_id, model })),
-		...(claudeOffered
-			? claudeModels.map((model) => ({
-					value: key({ runner: 'claude_code', model, config_dir: null }),
-					label: model,
-					hint: t.claudeAgent.title,
-					group: t.sidebar.botRunnerClaude,
-					source: claudeAgentSource(t)
-				}))
-			: []),
-		...agentGroups.flatMap((group) =>
-			group.models.map((model) => ({
-				value: key({ runner: group.runner, model, config_dir: null, custom_id: group.customId }),
-				label: model,
-				group: group.label,
-				source: agentSource(group.runner, group.label)
-			}))
-		)
-	]);
+	/**
+	 * What the picker offers: the follow-default row on top, then each endpoint, Claude Code once it is
+	 * there and signed in, and each other agent found and signed in, which also takes a model typed
+	 * into the search. The model chosen stays shown when nothing lists it (the phone cannot ask the
+	 * agents; an endpoint dropped a model).
+	 */
+	const data = $derived.by((): PickerData => {
+		const specials: PickerRow[] = [{ value: FOLLOW, label: followDefault(defaultModel) }];
+		const sources: PickerSource[] = [
+			...endpointPickerSources(providers, t, (provider_id, model) => key({ provider_id, model })),
+			...(claudeOffered ? [claudePickerSource(t, (model) => key({ runner: 'claude_code', model, config_dir: null }), claudeModels)] : []),
+			...agentPickerSources(agentsOffered, t, (runner, model, custom_id) => key({ runner, model, config_dir: null, custom_id }), { typed: true })
+		];
+		if (chosen) {
+			const value = key(chosen);
+			const listed = sources.some((source) => source.groups.some((group) => group.rows.some((row) => row.value === value)));
+			const other = chosenAgent && chosenAgent.runner !== 'claude_code' ? chosenAgent : null;
+			if (!listed && other) {
+				// An agent that was not found or is signed out, or that the phone cannot ask: a source of its own with the one model.
+				const customId = other.custom_id ?? null;
+				const label = agentLabelOf(other.runner, customId, agentsFound);
+				sources.push({ key: `agent:${other.runner}${customId ? `:${customId}` : ''}`, label, mark: agentSource(other.runner, label), groups: [{ key: '', label: null, rows: [{ value, id: other.model, label: other.model }] }] });
+			} else if (!listed) {
+				specials.push({ value, id: chosen.model, label: chosen.model });
+			}
+		}
+		return { specials, sources };
+	});
 
 	async function save(next: ReaderModel | null): Promise<void> {
 		if (busy) return;
@@ -193,7 +200,7 @@
 		<p class="side-model-error" role="alert">{failedText}</p>
 	{/if}
 	<div class="side-model-pick">
-		<Select value={chosen ? key(chosen) : FOLLOW} {options} size="sm" ariaLabel={title} disabled={busy} onchange={(value) => void choose(value)} />
+		<ModelPicker value={chosen ? key(chosen) : FOLLOW} {data} {t} size="sm" {title} ariaLabel={title} disabled={busy} onchange={(value) => void choose(value)} />
 	</div>
 	<!-- Only where an agent's model is chosen: nine rows of the same account picker say nothing. -->
 	{#if chosenAgent}

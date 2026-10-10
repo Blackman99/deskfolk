@@ -13,6 +13,7 @@ import {
   type ReaderModel,
 } from "@real-bot/protocol";
 import type { Copy } from "./copy.ts";
+import { claudeAgentSource, runnerSource } from "./model-source.ts";
 import type { SelectOption } from "./select-options.ts";
 
 /**
@@ -94,21 +95,23 @@ export function agentAccountOptions(status: AgentStatus | null, current: string,
 
 /**
  * The runner picker's rows: the app's own loop, Claude Agent, then every other agent by its label and
- * each of your own ACP agents by its name. An agent not found on this computer, or signed out, is
- * listed but cannot be picked, with the reason beside it; `current` is never disabled, so a Bot
- * already on it still reads right. Agents are listed once the daemon has said what it finds — an
- * older one, or the phone, does not, and then only the first two are choices.
+ * each of your own ACP agents by its name. Every agent wears its logo (`source`); the app's own loop
+ * has none. An agent not found on this computer, or signed out, is listed but cannot be picked, with
+ * the reason beside it; `current` is never disabled, so a Bot already on it still reads right. Agents
+ * are listed once the daemon has said what it finds — an older one, or the phone, does not, and then
+ * only the first two are choices.
  */
 export function runnerOptions(t: Copy, agents: AgentsStatusResponse | null, current: string): SelectOption[] {
   const options: SelectOption[] = [
     { value: "", label: t.sidebar.botRunnerApp },
-    { value: "claude_code", label: t.sidebar.botRunnerClaude },
+    { value: "claude_code", label: t.sidebar.botRunnerClaude, source: claudeAgentSource(t) },
   ];
-  const agentRow = (value: string, label: string, status: AgentStatus | null): SelectOption => {
+  const agentRow = (value: string, runner: BotRunner, label: string, status: AgentStatus | null): SelectOption => {
     const blocker = agentBlocker(status);
     return {
       value,
       label,
+      source: runnerSource(runner, label, t),
       disabled: blocker !== null && value !== current,
       hint: blocker === "missing" ? t.sidebar.botRunnerAgentMissingShort : blocker === "signed_out" ? t.sidebar.botRunnerAgentSignedOutShort : undefined,
     };
@@ -116,17 +119,19 @@ export function runnerOptions(t: Copy, agents: AgentsStatusResponse | null, curr
   if (agents) {
     for (const runner of BOT_RUNNERS) {
       if (runner === "claude_code" || runner === "custom") continue;
-      options.push(agentRow(runner, AGENT_KINDS[runner].label, agentStatusOf(agents, runner)));
+      options.push(agentRow(runner, runner, AGENT_KINDS[runner].label, agentStatusOf(agents, runner)));
     }
     for (const custom of agents.custom_agents) {
-      options.push(agentRow(runnerValueOf("custom", custom.id), custom.name, agentStatusOf(agents, "custom", custom.id)));
+      options.push(agentRow(runnerValueOf("custom", custom.id), "custom", custom.name, agentStatusOf(agents, "custom", custom.id)));
     }
   }
   if (current && !options.some((option) => option.value === current)) {
     const { runner, customId } = parseRunnerValue(current);
+    const label = runner ? agentLabelOf(runner, customId, agents) : current;
     options.push({
       value: current,
-      label: runner ? agentLabelOf(runner, customId, agents) : current,
+      label,
+      source: runner ? runnerSource(runner, label, t) : undefined,
       hint: runner === "custom" && agents && !agents.custom_agents.some((entry) => entry.id === customId) ? t.sidebar.botRunnerAgentGone : undefined,
     });
   }

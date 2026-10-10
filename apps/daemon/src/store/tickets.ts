@@ -6,7 +6,7 @@
  * a turn filed under it do ({@link observeTicketWork}). Bots see them in the situation block and
  * work in the ticket dir their turn was filed under.
  */
-import type { Ticket, TicketModel, TicketStatus } from "@real-bot/protocol";
+import { isBotRunner, isTicketAgentModel, type Ticket, type TicketModel, type TicketStatus } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { recordWorkEvent } from "./work-events";
@@ -14,7 +14,7 @@ import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import { takeCodePoints } from "../text";
 import { type StoreContext } from "./shared";
 import { getTask, isReservedTaskPath, slugify, taskTitle } from "./tasks";
-import { providerListsModel } from "./model-ladder";
+import { providerListsModel, rungOf } from "./model-ladder";
 
 export type { Ticket, TicketStatus } from "@real-bot/protocol";
 
@@ -36,24 +36,38 @@ export function toTicket(row: TicketRow): Ticket {
   return { ...row, depends_on: ticketDependencies(row.depends_on), model_override: ticketModel(row.model_override), sample: row.sample === 1 };
 }
 
-/** A stored override, or null for none or one that does not read. */
+/** A stored override, or null for none or one that does not read: an endpoint's model, or a local agent's (ADR 0079). */
 export function ticketModel(raw: string | null | undefined): TicketModel | null {
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw) as Partial<TicketModel>;
-    return typeof parsed.provider_id === "string" && typeof parsed.model === "string" ? { provider_id: parsed.provider_id, model: parsed.model } : null;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (typeof parsed.model !== "string") return null;
+    if ("runner" in parsed) {
+      if (!isBotRunner(parsed.runner)) return null;
+      const customId = typeof parsed.custom_id === "string" ? parsed.custom_id : null;
+      return { runner: parsed.runner, model: parsed.model, effort: typeof parsed.effort === "string" ? parsed.effort : null,
+        config_dir: typeof parsed.config_dir === "string" ? parsed.config_dir : null, ...(customId ? { custom_id: customId } : {}) };
+    }
+    return typeof parsed.provider_id === "string" ? { provider_id: parsed.provider_id, model: parsed.model } : null;
   } catch {
     return null;
   }
 }
 
-/** Your override as given: null, or a model an endpoint lists — only from level 7, where turns read it. */
+/**
+ * Your override as given: null, a model an endpoint lists, or a local agent's model on an account
+ * listed in Settings, checked as a ladder rung is (ADR 0079) — only from level 7, where turns read it.
+ */
 function cleanModelOverride(ctx: StoreContext, value: unknown): TicketModel | null {
   if (value === null) return null;
   if (readEngineLevel(ctx.db) < ENGINE_LEVELS.routing) throw new HttpError(409, "conflict", "a ticket's model needs engine level 7");
-  const raw = value as Partial<TicketModel> | undefined;
+  const raw = value as Record<string, unknown> | undefined;
+  if (raw && typeof raw === "object" && "runner" in raw) {
+    const rung = rungOf(ctx, { ...raw, effort: raw.effort ?? null, config_dir: raw.config_dir ?? null });
+    if (isTicketAgentModel(rung)) return rung;
+  }
   if (!raw || typeof raw !== "object" || typeof raw.provider_id !== "string" || typeof raw.model !== "string") {
-    throw new HttpError(422, "invalid_args", "model_override must be {provider_id, model} or null");
+    throw new HttpError(422, "invalid_args", "model_override must be {provider_id, model}, {runner, model, effort, config_dir} or null");
   }
   if (!providerListsModel(ctx, raw.provider_id, raw.model)) throw new HttpError(422, "invalid_args", "model_override names no model an endpoint lists");
   return { provider_id: raw.provider_id, model: raw.model };

@@ -48,7 +48,8 @@ test("a found agent says where it is, which version, how it is signed in, how it
   expect(view.host.querySelector("[data-agent-network]")?.textContent?.trim()).toBe(t.agents.direct);
   expect(view.host.querySelector("[data-agent-models]")?.textContent).toBe("2 个，默认 gpt-5.5");
   expect(view.host.querySelector("[data-agent-missing]")).toBeNull();
-  // Text only: Claude's mark is the one vendor mark in the app.
+  // Its own logo before its name; Claude's spark is Claude Agent's alone.
+  expect(view.host.querySelector(".agent-title")?.firstElementChild?.getAttribute("data-agent-logo")).toBe("codex");
   expect(view.host.querySelector("[data-claude-spark]")).toBeNull();
   view.close();
 
@@ -166,6 +167,8 @@ test("one of your own ACP agents shows its command and arguments, and no path fi
   const own: CustomAgent = { id: "ca-1", name: "my-agent", command: "/usr/local/bin/my-agent", args: ["acp", "--stdio"] };
   const view = open({ status: status({ runner: "custom", custom_id: "ca-1", label: "my-agent", path: "/usr/local/bin/my-agent", source: "custom", login_command: null, logged_in: null, auth: null }), custom: own });
   expect(view.host.querySelector("[data-agent-label]")?.textContent).toBe("my-agent");
+  // No vendor's mark: the plain glyph an agent of your own wears.
+  expect(view.host.querySelector(".agent-title")?.firstElementChild?.getAttribute("data-agent-logo")).toBe("custom");
   expect(view.host.querySelector("[data-agent-path]")?.textContent).toContain("/usr/local/bin/my-agent");
   expect(view.host.querySelector("[data-agent-args]")?.textContent).toBe("acp --stdio");
   expect(view.host.querySelector("[data-agent-path-input]")).toBeNull();

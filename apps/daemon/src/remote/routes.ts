@@ -125,7 +125,10 @@ add("POST", "holds/:id/lift", {});
 const sentControlOffers = CONTROL_OFFERS.filter((offer) => !CLIENT_ONLY_CONTROL_OFFERS.includes(offer));
 add("POST", "messages/:id/control", { action: one(...sentControlOffers), task_id: id, note: v => typeof v === "string" && [...v].length <= CONTROL_NOTE_MAX }, ["action"]);
 add("PATCH", "tickets/:id", { title: string, spec: string, status: ticketStatus, worker: nullable(id), depends_on: list(id), reviewer_bot_id: nullable(id),
-  model_override: nullable(object({ provider_id: id, model: string }, ["provider_id", "model"])), sample: one(true), if_revision: specRevision }, [], true);
+  // A ticket's model (ADR 0049): an endpoint's, or a local agent's shaped as a ladder rung (ADR 0079).
+  model_override: nullable(v => object({ provider_id: id, model: string }, ["provider_id", "model"])(v) ||
+    object({ runner, model: string, effort: nullable(effort), config_dir: nullable(string), custom_id: nullable(string) }, ["runner", "model"])(v)),
+  sample: one(true), if_revision: specRevision }, [], true);
 const checkKind: Check = one("exists", "contains", "matches", "command");
 const checkInput = {
   item: string,

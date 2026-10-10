@@ -12,11 +12,7 @@
 	import WorkspaceDragGhost from './WorkspaceDragGhost.svelte';
 	import { dangerCopy, shouldDropConfirm } from './overlays/danger-confirm.ts';
 	import { ShellDangerConfirm } from './overlays/danger-confirm.svelte.ts';
-	import {
-		modelSelectValue,
-		type ProviderEditorState
-	} from './settings/provider-form.ts';
-	import { endpointModelOptions } from './model-source.ts';
+	import type { ProviderEditorState } from './settings/provider-form.ts';
 	import TerminalPane from './overlays/TerminalPane.svelte';
 	// TaskTrace.svelte (the flow board) drags in @dagrejs/dagre and its own graph-layout code;
 	// it is only ever seen after `runtime.traceOpen` fires, so it is loaded with the same
@@ -512,7 +508,6 @@
 		selectedPeer ? (botsById.get(selectedPeer) ?? null) : null
 	);
 	const lockedComposer = $derived(composerLocked(selected, botsById));
-	const availableModelOptions = $derived(endpointModelOptions(snapshot.providers, t, modelSelectValue));
 	const profileBot = $derived(
 		runtime.profileBotId
 			? (snapshot.bots.find((bot) => bot.id === runtime.profileBotId) ?? null)
@@ -986,7 +981,6 @@
 		{narrow}
 		{botsById}
 		{sessionsById}
-		{availableModelOptions}
 		{danger}
 		{openProfile}
 		{closePaneSide}
@@ -1338,7 +1332,6 @@
 	{#if runtime.createBotOpen}
 		<CreateBotSheet
 			{runtime}
-			modelOptions={availableModelOptions}
 			{t}
 			onClose={() => (runtime.createBotOpen = false)}
 		/>

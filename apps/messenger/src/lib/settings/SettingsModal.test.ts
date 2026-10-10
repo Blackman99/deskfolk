@@ -220,8 +220,10 @@ test("each endpoint picks its default from its enabled models in one picker", as
   expect(picker.querySelector(".real-select-value")?.textContent?.trim()).toBe("grok-4.6");
   click(picker.querySelector(".real-select-trigger"));
   await sleep(0);
-  const options = [...picker.querySelectorAll<HTMLElement>(".real-select-option")];
-  expect(options.map((row) => row.textContent?.trim())).toEqual(["grok-4.6", "gemini-3.8-flash"]);
+  // One endpoint, one source: just its enabled models, in a popover with a search.
+  const options = [...picker.querySelectorAll<HTMLElement>(".mp-row")];
+  expect(options.map((row) => row.dataset.value)).toEqual(["grok-4.6", "gemini-3.8-flash"]);
+  expect(picker.querySelector(".mp-search input")).not.toBeNull();
   click(options[1]);
   await sleep(20);
   expect(runtime.calls.filter((c) => c.name === "patchProvider")).toEqual([
@@ -236,12 +238,12 @@ test("the model list and the connection open as separate editors", () => {
   click(host.querySelector(".provider-model-manage"));
   expect(host.querySelector(".provider-editor-modal h2")?.textContent).toContain(t.settings.providerModels);
   expect(host.querySelector("#provider-prov-1-name")).toBeNull();
-  expect(host.querySelector(".model-picker")).toBeTruthy();
+  expect(host.querySelector(".provider-editor-modal .model-picker")).toBeTruthy();
   click(host.querySelector(".provider-editor-modal .modal-close"));
   click(host.querySelector(".btn-provider-edit"));
   expect(host.querySelector(".provider-editor-modal h2")?.textContent).toContain(t.settings.providerConnection);
   expect(host.querySelector("#provider-prov-1-name")).toBeTruthy();
-  expect(host.querySelector(".model-picker")).toBeNull();
+  expect(host.querySelector(".provider-editor-modal .model-picker")).toBeNull();
   close();
 });
 
@@ -804,14 +806,6 @@ test("a copy that cannot replace itself only offers the browser download", () =>
 });
 
 
-function choose(el: Element | null | undefined, value: string): void {
-  if (!el) throw new Error("choose: no element");
-  const field = el as HTMLSelectElement;
-  field.value = value;
-  field.dispatchEvent(new Event("change", { bubbles: true }));
-  flushSync();
-}
-
 test("the phone default picker sends only the chosen model", async () => {
   await withMobileViewport(async () => {
     const provider = aProvider();
@@ -843,7 +837,12 @@ test("the phone default picker sends only the chosen model", async () => {
       closeSettings: () => {},
     });
     openEndpoints(host);
-    choose(host.querySelector("#default-model-prov-1"), "gemini-3.8-flash");
+    // The phone's picker is a sheet from the bottom, opened straight on the endpoint's models.
+    click(host.querySelector("#default-model-prov-1"));
+    await settle();
+    expect(host.querySelector(".mp-sheet")).not.toBeNull();
+    expect([...host.querySelectorAll(".mp-sheet .mp-row")].map((row) => (row as HTMLElement).dataset.value)).toEqual(["grok-4.6", "gemini-3.8-flash"]);
+    click(host.querySelector('.mp-sheet .mp-row[data-value="gemini-3.8-flash"]'));
     await settle();
     expect(runtime.calls.filter((call) => call.name === "patchProvider")).toEqual([
       { name: "patchProvider", args: ["prov-1", { default_model: "gemini-3.8-flash" }] },
@@ -921,7 +920,7 @@ test("phone back walks attributes, the model list, the endpoints, model services
       expect(host.querySelector(".provider-editor-modal h2")?.textContent).toContain(t.settings.modelSettings);
       expect(back()).toBe(true);
       expect(host.querySelector(".model-attributes-page")).toBeNull();
-      expect(host.querySelector(".model-picker")).toBeTruthy();
+      expect(host.querySelector(".provider-editor-modal .model-picker")).toBeTruthy();
       expect(back()).toBe(true);
       expect(host.querySelector(".provider-editor-modal")).toBeNull();
       expect(host.querySelector(".settings-main-title")?.textContent).toContain(t.settings.modelsSectionEndpoints);
@@ -955,11 +954,10 @@ test("the default picker waits for a closing list save to finish", async () => {
       click(host.querySelector(".provider-model-manage"));
       click(host.querySelector('.model-row-toggle[aria-label="claude-opus-5"]'));
       click(host.querySelector(".settings-subpage-back"));
-      expect((host.querySelector(".provider-mobile-default select") as HTMLSelectElement).disabled).toBe(true);
       expect(host.querySelector<HTMLButtonElement>(".provider-default-select .real-select-trigger")?.disabled).toBe(true);
       finish();
       await settle();
-      expect((host.querySelector(".provider-mobile-default select") as HTMLSelectElement).disabled).toBe(false);
+      expect(host.querySelector<HTMLButtonElement>(".provider-default-select .real-select-trigger")?.disabled).toBe(false);
     } finally {
       close();
     }

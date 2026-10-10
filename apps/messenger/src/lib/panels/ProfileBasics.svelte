@@ -1,19 +1,25 @@
 <script lang="ts">
-	import { AGENT_KINDS, CLAUDE_MODEL_ALIASES, isAgentEffort, type AgentsStatusResponse, type ClaudeCodeStatus } from '@real-bot/protocol';
+	import { AGENT_KINDS, isAgentEffort, type AgentsStatusResponse, type ClaudeCodeStatus } from '@real-bot/protocol';
 	import { claudeAccountLabel, claudeAccountOf, claudeAgentBlocker, claudeAgentPaysPerToken } from '../settings/claude-agent.ts';
 	import AvatarEditor from '../AvatarEditor.svelte';
+	import ModelPicker from '../ModelPicker.svelte';
 	import Select from '../Select.svelte';
 	import { thinkingLevelLabel, type Copy } from '../copy.ts';
-	import { applyModelPin, botNameErrorCopy, pinnableThinkingLevels, type CreateBotFieldErrors } from './create-form.ts';
+	import {
+		agentModelPicker,
+		applyModelPin,
+		botNameErrorCopy,
+		claudeModelPicker,
+		pinnableThinkingLevels,
+		type CreateBotFieldErrors
+	} from './create-form.ts';
 	import type { ProfileFields } from './roster-edit.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
-	import type { SelectOption } from '../select-options.ts';
-	import { claudeAgentSource } from '../model-source.ts';
+	import type { PickerData } from '../model-picker.ts';
 	import {
 		agentAccountOptions as otherAgentAccountOptions,
 		agentAccountsOf,
 		agentLabelOf,
-		agentModelsOf,
 		agentStatusOf,
 		parseRunnerValue,
 		runnerOptions,
@@ -29,7 +35,8 @@
 		profileSaving: boolean;
 		profileFailed: boolean;
 		profileSavedTick: number;
-		profileModelOptions: SelectOption[];
+		/** The endpoints' models, with a pin no endpoint lists any more kept as a row of its own. */
+		profileModelPicker: PickerData;
 		unlistedPin: string | null;
 		claudeStatus: ClaudeCodeStatus | null;
 		claudeUnavailable: boolean;
@@ -48,7 +55,7 @@
 		profileSaving,
 		profileFailed,
 		profileSavedTick,
-		profileModelOptions,
+		profileModelPicker,
 		unlistedPin,
 		claudeStatus,
 		claudeUnavailable,
@@ -83,17 +90,7 @@
 	const otherLoginCommand = $derived(agentAccount?.login_command ?? agentStatus?.login_command ?? null);
 	const agentAuth = $derived(agentAccount?.auth ?? agentStatus?.auth ?? null);
 	const agentOtherAccountOptions = $derived(otherAgentAccountOptions(agentStatus, profileDraft.agentConfigDir ?? '', t));
-	const agentModelChoices = $derived(agentModelsOf(agentStatus));
-	const agentModelOptions = $derived.by((): SelectOption[] => {
-		const source = claudeAgentSource(t);
-		return [
-			{ value: '', label: t.sidebar.botAgentModelDefault },
-			...CLAUDE_MODEL_ALIASES.map((alias) => ({ value: alias, label: alias, source })),
-			...(profileDraft.agentModel && !(CLAUDE_MODEL_ALIASES as readonly string[]).includes(profileDraft.agentModel)
-				? [{ value: profileDraft.agentModel, label: profileDraft.agentModel, source }]
-				: [])
-		];
-	});
+	const claudeModelData = $derived(claudeModelPicker(t, profileDraft.agentModel ?? ''));
 
 	/** The account this Bot's turns spend, as Claude Code reports it; the daemon's own while none is picked. */
 	const agentSignIn = $derived(claudeAccountOf(claudeStatus, profileDraft.agentConfigDir) ?? claudeStatus);
@@ -308,10 +305,12 @@
 		{/if}
 		<div class="form-group">
 			<label for="profile-agent-model">{t.sidebar.botAgentModel}</label>
-			<Select
+			<ModelPicker
 				id="profile-agent-model"
-				bind:value={profileDraft.agentModel}
-				options={agentModelOptions}
+				value={profileDraft.agentModel ?? ''}
+				data={claudeModelData}
+				{t}
+				title={t.sidebar.botAgentModel}
 				error={!!profileErrors.agentModel}
 				onchange={onProfileAgentModelChange}
 			/>
@@ -340,23 +339,16 @@
 		{/if}
 		<div class="form-group" data-agent-model>
 			<label for="profile-agent-model">{t.sidebar.botAgentModelOf(agentName)}</label>
-			<!-- Typed, with the models the agent lists to pick from: an agent names its models its own way, and may take ones it never listed. -->
-			<input
+			<!-- The models the agent lists, or one typed into the search: an agent names its models its own way, and may take ones it never listed. -->
+			<ModelPicker
 				id="profile-agent-model"
-				type="text"
-				list="profile-agent-models"
-				autocomplete="off"
-				spellcheck="false"
-				aria-invalid={!!profileErrors.agentModel}
-				bind:value={profileDraft.agentModel}
-				oninput={onProfileInput}
-				placeholder={agentStatus?.default_model ?? t.sidebar.botAgentModelDefaultOf(agentName)}
+				value={profileDraft.agentModel ?? ''}
+				data={agentModelPicker(agents, t, agentRunner, runnerPick.customId, profileDraft.agentModel ?? '')}
+				{t}
+				title={t.sidebar.botAgentModelOf(agentName)}
+				error={!!profileErrors.agentModel}
+				onchange={onProfileAgentModelChange}
 			/>
-			<datalist id="profile-agent-models">
-				{#each agentModelChoices as choice (choice.id)}
-					<option value={choice.id} label={choice.name !== choice.id ? choice.name : undefined}></option>
-				{/each}
-			</datalist>
 			{#if profileErrors.agentModel}
 				<p class="field-error">{t.sidebar.botAgentModelInvalidOf(agentName)}</p>
 			{:else}
@@ -371,12 +363,13 @@
 		{:else}
 		<div class="form-group">
 			<label for="profile-model">{t.sidebar.botModel}</label>
-			<Select
+			<ModelPicker
 				id="profile-model"
 				bind:value={profileDraft.model}
+				data={profileModelPicker}
+				{t}
 				placeholder={t.sidebar.botModelDefault}
-				emptyLabel={t.sidebar.botModelDefault}
-				options={profileModelOptions}
+				title={t.sidebar.botModel}
 				error={!!profileErrors.model}
 				onchange={onProfileModelChange}
 			/>

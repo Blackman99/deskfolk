@@ -1,10 +1,18 @@
 import { expect, test } from "bun:test";
+import { AGENT_KINDS, type AgentsStatusResponse, type BotRunner } from "@real-bot/protocol";
+import { copyFor } from "../copy.ts";
+import { findPicked, sourceRows } from "../model-picker.ts";
+import { aProvider } from "../test-fixtures.ts";
 import {
+  agentModelPicker,
+  claudeModelPicker,
+  endpointModelPicker,
   formatSkillUses,
   mapCreateBotError,
   mapCreateGroupError,
   mapSkillError,
   parseSkillUses,
+  pickerValues,
   pinnableThinkingLevels,
   applyModelPin,
   defaultThinkingLevel,
@@ -327,4 +335,76 @@ test("the runner as a picker holds it round-trips: '' the app, a runner's name, 
   expect(runnerValueOf("custom", null)).toBe("custom");
   expect(runnerValueOf("grok", "ignored")).toBe("grok");
   expect(runnerValueOf(null)).toBe("");
+});
+
+const t = copyFor("zh");
+
+test("the endpoint picker is one source per endpoint of provider::model values, with automatic above them; a save is checked against every value it offers", () => {
+  const providers = [aProvider({ id: "p-1", name: "First", models: ["grok-4.6"] }), aProvider({ id: "p-2", name: "Second", models: ["qwen-4"] }), aProvider({ id: "p-3", name: "Empty", models: [] })];
+  const data = endpointModelPicker(providers, t);
+  expect(data.specials).toEqual([{ value: "", label: t.sidebar.botModelDefault }]);
+  expect(data.sources.map((source) => [source.label, sourceRows(source).map((row) => row.value)])).toEqual([
+    ["First", ["p-1::grok-4.6"]],
+    ["Second", ["p-2::qwen-4"]],
+  ]);
+  expect(findPicked(data, "p-2::qwen-4")?.source?.label).toBe("Second");
+  expect(pickerValues(data)).toEqual(["", "p-1::grok-4.6", "p-2::qwen-4"]);
+  const draft = { name: "R", duties: "d", boundaries: "b", model: "p-2::qwen-4" };
+  expect(planCreateBot(draft, pickerValues(data))).toMatchObject({ ok: true, body: { model: "qwen-4", provider_id: "p-2" } });
+  expect(planCreateBot({ ...draft, model: "p-2::gone" }, pickerValues(data))).toEqual({ ok: false, errors: { model: "invalid" } });
+});
+
+test("the Claude picker is Claude Code's default above its aliases; a name that is none stays a row of its own", () => {
+  const plain = claudeModelPicker(t, "opus");
+  expect(plain.specials).toEqual([{ value: "", label: t.sidebar.botAgentModelDefault }]);
+  expect(plain.sources.map((source) => sourceRows(source).map((row) => row.value))).toEqual([["sonnet", "opus", "haiku", "fable"]]);
+  expect(claudeModelPicker(t, "").specials).toHaveLength(1);
+  const held = claudeModelPicker(t, "claude-opus-4-6");
+  expect(held.specials.map((row) => row.value)).toEqual(["", "claude-opus-4-6"]);
+  expect(findPicked(held, "claude-opus-4-6")?.source).toBeNull();
+});
+
+const agents = (over: Record<string, unknown> = {}): AgentsStatusResponse => ({
+  items: (["codex", "dsh", "custom"] as BotRunner[]).map((runner) => ({
+    runner, custom_id: runner === "custom" ? "acp-1" : null, label: runner === "custom" ? "我的 ACP" : AGENT_KINDS[runner].label,
+    path: `/usr/local/bin/${runner}`, source: "path", version: "1", logged_in: true, auth: null, login_command: null,
+    models: runner === "codex" ? [{ id: "gpt-5.5", name: "GPT-5.5", efforts: [] }] : [], default_model: runner === "codex" ? "gpt-5.5" : null,
+    proxy: null, proxy_source: null, checked_at: "2026-10-10T00:00:00.000Z", error: null, ...(runner === "codex" ? over : {}),
+  })),
+  custom_agents: [{ id: "acp-1", name: "我的 ACP", command: "my-acp", args: [] }],
+}) as unknown as AgentsStatusResponse;
+
+test("an agent's picker is its own listed models by plain name, its default above them, and a model it does not list stays a row", () => {
+  const data = agentModelPicker(agents(), t, "codex", null, "o9-private");
+  expect(data.specials).toEqual([
+    { value: "", label: t.sidebar.botAgentModelDefaultOf("Codex"), detail: "gpt-5.5" },
+    { value: "o9-private", label: "o9-private" },
+  ]);
+  expect(data.sources.map((source) => [source.label, sourceRows(source).map((row) => row.value)])).toEqual([["Codex", ["gpt-5.5"]]]);
+  // A listed model, or none, adds no row of its own.
+  expect(agentModelPicker(agents(), t, "codex", null, "gpt-5.5").specials).toHaveLength(1);
+  expect(agentModelPicker(agents(), t, "codex", null, "").specials).toHaveLength(1);
+  // It takes a name typed as it spells it, and refuses one with a space.
+  const source = data.sources[0]!;
+  expect(source.custom?.("openai/gpt-6")).toBe("openai/gpt-6");
+  expect(source.custom?.("gpt 6")).toBeNull();
+});
+
+test("an agent that lists nothing, is not found, or cannot be asked still takes a typed name; your own ACP agent is its own source", () => {
+  const dsh = agentModelPicker(agents(), t, "dsh", null, "");
+  expect(dsh.sources).toHaveLength(1);
+  expect(dsh.sources[0]).toMatchObject({ key: "agent:dsh", label: "DSH", note: t.modelPicker.typeShort });
+  expect(dsh.specials).toEqual([{ value: "", label: t.sidebar.botAgentModelDefaultOf("DSH") }]);
+  for (const found of [agents({ path: null }), agents({ logged_in: false }), null]) {
+    const data = agentModelPicker(found, t, "codex", null, "");
+    expect(data.sources).toHaveLength(1);
+    expect(sourceRows(data.sources[0]!)).toEqual([]);
+    expect(data.sources[0]!.custom?.("gpt-5.5")).toBe("gpt-5.5");
+    expect(data.sources[0]!.disabled).toBeUndefined();
+  }
+  const acp = agentModelPicker(agents(), t, "custom", "acp-1", "");
+  expect(acp.sources.map((source) => source.key)).toEqual(["agent:custom:acp-1"]);
+  expect(acp.specials[0]!.label).toBe(t.sidebar.botAgentModelDefaultOf("我的 ACP"));
+  // One removed from Settings: still a source to type into, under its kind's name.
+  expect(agentModelPicker(agents(), t, "custom", "acp-gone", "").sources[0]).toMatchObject({ key: "agent:custom:acp-gone", label: AGENT_KINDS.custom.label });
 });

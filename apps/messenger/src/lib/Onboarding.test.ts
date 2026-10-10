@@ -28,6 +28,13 @@ function open(stubs: Record<string, unknown> = {}) {
   return { ...view, runtime, calls: fixture.calls };
 }
 
+/** Open a model picker (`ModelPicker.svelte`) by its trigger's id and pick the row with this value. */
+async function pick(host: HTMLElement, id: string, value: string) {
+  click(host.querySelector(`#${id}`));
+  await settle();
+  click(host.querySelector(`.mp-row[data-value="${value}"]`));
+}
+
 function step(host: HTMLElement, title: string) {
   return [...host.querySelectorAll<HTMLButtonElement>('.step-bar-item')]
     .find((button) => button.textContent?.includes(title));
@@ -157,8 +164,7 @@ for (const probed of [false, true]) {
     await settle();
     expect(calls.filter((call) => call.name !== 'probeModels')).toEqual([]);
 
-    click(host.querySelector('#onboarding-default-model'));
-    click([...host.querySelectorAll('[role="option"]')].find((option) => option.textContent?.trim() === 'custom-model'));
+    await pick(host, 'onboarding-default-model', 'custom-model');
     expect(next.disabled).toBe(false);
     click(next);
     await settle();
@@ -314,7 +320,7 @@ test('on Claude Code, saving puts every built-in call on the Claude model, saves
   await settle();
   expect(host.querySelector('[data-claude-not-ready]')).toBeNull();
   click(buttonByText(host, `${t.onboarding.step2NextClaude} →`));
-  expect(host.querySelector('#onboarding-claude-model')).not.toBeNull();
+  expect(host.querySelector('#onboarding-claude-model')?.textContent).toContain('sonnet');
   expect(host.textContent).toContain(t.onboarding.claudeLimits);
   click(buttonByText(host, `${t.onboarding.step3Next} →`));
   await settle();
@@ -332,6 +338,23 @@ test('on Claude Code, saving puts every built-in call on the Claude model, saves
   const created = calls.filter((call) => call.name === 'createBot').map((call) => call.args[0]);
   expect(created).toHaveLength(1);
   expect(created[0]).toMatchObject({ runner: 'claude_code', agent_config_dir: null });
+});
+
+test('on Claude Code, the model is picked from Claude\'s aliases and saved as chosen', async () => {
+  const { host, calls } = open({ endpointUrl: '', endpointKey: '', client: claudeClient(true) });
+  click(buttonByText(host, `${t.onboarding.step1Next} →`));
+  click(host.querySelector('[data-connect-mode="claude"]'));
+  await settle();
+  click(buttonByText(host, `${t.onboarding.step2NextClaude} →`));
+  click(host.querySelector('#onboarding-claude-model'));
+  await settle();
+  expect([...host.querySelectorAll('.mp-row')].map((row) => row.getAttribute('data-value'))).toEqual(['sonnet', 'opus', 'haiku', 'fable']);
+  click(host.querySelector('.mp-row[data-value="opus"]'));
+  expect(host.querySelector('#onboarding-claude-model')?.textContent).toContain('opus');
+  click(buttonByText(host, `${t.onboarding.step3Next} →`));
+  await settle();
+  const saved = calls.filter((call) => call.name === 'patchSettings').map((call) => call.args[0]).at(-1) as { builtin_models: Record<string, unknown> };
+  expect(saved.builtin_models.reader).toEqual({ runner: 'claude_code', model: 'opus', config_dir: null });
 });
 
 /** ADR 0079: setup on another local agent found and signed in on this computer. */
@@ -356,11 +379,14 @@ test('on another local agent, saving puts every built-in call on its model and t
   // Only agents that are found and signed in are offered; Claude Code stays the first.
   const picks = [...host.querySelectorAll<HTMLButtonElement>('[data-agent-pick]')].map((button) => button.dataset.agentPick);
   expect(picks).toEqual(['claude_code', 'codex']);
+  // Each agent's chip leads with its logo.
+  expect([...host.querySelectorAll('[data-agent-pick]')].map((chip) => chip.querySelector('[data-agent-logo]')?.getAttribute('data-agent-logo'))).toEqual(['claude_code', 'codex']);
   expect(buttonByText(host, `${t.onboarding.step2NextClaude} →`).disabled).toBe(true);
   click(host.querySelector('[data-agent-pick="codex"]'));
   expect(host.querySelector('[data-claude-not-ready]')).toBeNull();
   click(buttonByText(host, `${t.onboarding.step2NextAgent.replace('{agent}', 'Codex')} →`));
-  expect(host.querySelector<HTMLSelectElement>('#onboarding-agent-model')).not.toBeNull();
+  // Starts on the agent's own default model.
+  expect(host.querySelector('#onboarding-agent-model')?.textContent).toContain('GPT-5.6 Luna');
   expect(host.querySelector('#onboarding-claude-model')).toBeNull();
   expect(host.textContent).toContain(t.onboarding.agentModelsDesc.replace('{agent}', 'Codex'));
   click(buttonByText(host, `${t.onboarding.step3Next} →`));
@@ -378,6 +404,21 @@ test('on another local agent, saving puts every built-in call on its model and t
   expect(created[0]).not.toHaveProperty('agent_config_dir');
 });
 
+test('on another local agent, a listed model can be picked instead of its default', async () => {
+  const { host, calls } = open({ endpointUrl: '', endpointKey: '', client: agentsClient() });
+  click(buttonByText(host, `${t.onboarding.step1Next} →`));
+  click(host.querySelector('[data-connect-mode="claude"]'));
+  await settle();
+  click(host.querySelector('[data-agent-pick="codex"]'));
+  click(buttonByText(host, `${t.onboarding.step2NextAgent.replace('{agent}', 'Codex')} →`));
+  await pick(host, 'onboarding-agent-model', 'gpt-5.6');
+  expect(host.querySelector('#onboarding-agent-model')?.textContent).toContain('GPT-5.6');
+  click(buttonByText(host, `${t.onboarding.step3Next} →`));
+  await settle();
+  const saved = calls.filter((call) => call.name === 'patchSettings').map((call) => call.args[0]).at(-1) as { builtin_models: Record<string, unknown> };
+  expect(saved.builtin_models.reader).toEqual({ runner: 'codex', model: 'gpt-5.6', config_dir: null });
+});
+
 test('on an agent that lists no models, saving waits for a model name typed as the agent spells it', async () => {
   const client = agentsClient();
   const listed = await client.agents();
@@ -388,11 +429,17 @@ test('on an agent that lists no models, saving waits for a model name typed as t
   await settle();
   click(host.querySelector('[data-agent-pick="codex"]'));
   click(buttonByText(host, `${t.onboarding.step2NextAgent.replace('{agent}', 'Codex')} →`));
-  const field = host.querySelector<HTMLInputElement>('input#onboarding-agent-model');
+  const field = host.querySelector<HTMLButtonElement>('#onboarding-agent-model');
   expect(field).not.toBeNull();
   const save = buttonByText(host, `${t.onboarding.step3Next} →`);
   expect(save.disabled).toBe(true);
-  fill(field!, 'o5-mini');
+  // The picker lists nothing: a name typed into its search is offered as a row, and taken as typed.
+  click(field);
+  await settle();
+  expect(host.querySelector('.mp-empty')?.textContent).toContain(t.modelPicker.noModels);
+  fill(host.querySelector('.mp-search input'), 'o5-mini');
+  expect([...host.querySelectorAll('.mp-row')].map((row) => row.querySelector('.mp-row-label')?.textContent?.trim())).toEqual([t.modelPicker.useTyped('o5-mini')]);
+  click(host.querySelector('.mp-row[data-value="o5-mini"]'));
   expect(save.disabled).toBe(false);
   click(save);
   await settle();

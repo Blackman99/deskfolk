@@ -1,10 +1,13 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import type { Bot, Provider, TaskDetail, TaskTraceNode, Ticket, TicketStatus, TicketWithArtifacts } from '@real-bot/protocol';
+	import { isTicketAgentModel, type AgentsStatusResponse, type Bot, type BotRunner, type ClaudeCodeStatus, type Provider, type TaskDetail, type TaskTraceNode, type Ticket, type TicketModel, type TicketStatus, type TicketWithArtifacts } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
 	import Select from '../Select.svelte';
-	import { endpointModelOptions } from '../model-source.ts';
+	import ModelPicker from '../ModelPicker.svelte';
+	import { findPicked, type PickerData } from '../model-picker.ts';
+	import { agentPickerSources, claudePickerSource, endpointPickerSources } from '../model-picker-sources.ts';
+	import { claudeReady } from '../settings/claude-agent.ts';
 	import {
 		TICKET_STATUS_ORDER,
 		actorFace,
@@ -276,18 +279,60 @@
 		void pump();
 	}
 
-	/** The models a ticket can be given (ADR 0049, level 7): every model an endpoint lists. */
-	const modelOptions = $derived(
-		endpointModelOptions(providers, t, (provider_id, model) => JSON.stringify({ provider_id, model }))
-	);
+	/** Your local agents, asked once the board offers a ticket's model: their models can be a ticket's too (ADR 0079). */
+	let agents = $state<AgentsStatusResponse | null>(null);
+	let claude = $state<ClaudeCodeStatus | null>(null);
+	let askedAgents = false;
+	$effect(() => {
+		if (!api || !detail.routing_on || askedAgents) return;
+		askedAgents = true;
+		void api.agents?.().then((list) => (agents = list), () => undefined);
+		void api.claudeCode?.().then((status) => (claude = status), () => undefined);
+	});
+
+	/** A ticket's model as the picker holds it: which endpoint's or which agent's, and its name. */
+	function modelKey(model: TicketModel): string {
+		return JSON.stringify(isTicketAgentModel(model)
+			? { runner: model.runner, model: model.model, ...(model.custom_id ? { custom_id: model.custom_id } : {}) }
+			: { provider_id: model.provider_id, model: model.model });
+	}
+
+	/**
+	 * The models a ticket can be given (ADR 0049, level 7): every model an endpoint lists, Claude
+	 * Code's when it is signed in, and those of your other local agents (ADR 0079), which then run
+	 * the ticket's turns.
+	 */
+	const modelData = $derived<PickerData>({
+		specials: [{ value: '', label: t.plan.modelOwn }],
+		sources: [
+			...endpointPickerSources(providers, t, (provider_id, model) => modelKey({ provider_id, model })),
+			...(claudeReady(claude) ? [claudePickerSource(t, (model) => modelKey({ runner: 'claude_code', model, effort: null, config_dir: null }))] : []),
+			...agentPickerSources(agents, t, (runner, model, customId) => modelKey({ runner, model, effort: null, config_dir: null, ...(customId ? { custom_id: customId } : {}) }), { typed: true })
+		]
+	});
+
+	/** The same, with the ticket's own model on top when nothing lists it any more, so it reads as its name. */
+	function modelDataFor(ticket: TicketWithArtifacts): PickerData {
+		const value = modelValue(ticket);
+		if (!value || findPicked(modelData, value) || !ticket.model_override) return modelData;
+		return { ...modelData, specials: [...modelData.specials, { value, label: ticket.model_override.model, hint: t.plan.modelUnlisted }] };
+	}
 
 	/** The picked ticket has a menu to show below it: a reviewer (level 5), a model (level 7) or what it waits for (level 4). */
 	const hasSettings = $derived(
-		Boolean(detail.submissions_on) || (Boolean(detail.routing_on) && modelOptions.length > 0) || (Boolean(detail.supervision_on) && detail.tickets.length > 1)
+		Boolean(detail.submissions_on) || (Boolean(detail.routing_on) && modelData.sources.length > 0) || (Boolean(detail.supervision_on) && detail.tickets.length > 1)
 	);
 
 	function modelValue(ticket: TicketWithArtifacts): string {
-		return ticket.model_override ? JSON.stringify({ provider_id: ticket.model_override.provider_id, model: ticket.model_override.model }) : '';
+		return ticket.model_override ? modelKey(ticket.model_override) : '';
+	}
+
+	/** What a picked value asks the daemon for: an endpoint's model, or an agent's at its default effort and account. */
+	function modelOf(value: string): TicketModel {
+		const parsed = JSON.parse(value) as { provider_id?: string; runner?: BotRunner; model: string; custom_id?: string };
+		return parsed.runner
+			? { runner: parsed.runner, model: parsed.model, effort: null, config_dir: null, ...(parsed.custom_id ? { custom_id: parsed.custom_id } : {}) }
+			: { provider_id: parsed.provider_id!, model: parsed.model };
 	}
 
 	async function changeModel(ticket: TicketWithArtifacts, value: string): Promise<void> {
@@ -296,7 +341,7 @@
 		requestsOut += 1;
 		errorId = null;
 		try {
-			const result = await api.patchTicket(ticket.id, { model_override: value ? (JSON.parse(value) as { provider_id: string; model: string }) : null, if_revision: detail.revision });
+			const result = await api.patchTicket(ticket.id, { model_override: value ? modelOf(value) : null, if_revision: detail.revision });
 			onPatched(result);
 		} catch (err) {
 			if (errorStatus(err) === 409) {
@@ -735,15 +780,16 @@
 										/>
 									</div>
 								{/if}
-								{#if detail.routing_on && modelOptions.length > 0}
+								{#if detail.routing_on && modelData.sources.length > 0}
 									<span class="ticket-setting-label">{t.plan.modelShort}</span>
 									<div class="ticket-select-wrap ticket-model-wrap">
-										<Select
+										<ModelPicker
 											value={modelValue(ticket)}
-											options={modelOptions}
-											emptyLabel={t.plan.modelOwn}
+											data={modelDataFor(ticket)}
+											{t}
 											size="sm"
 											ariaLabel={t.plan.modelOverride}
+											title={t.plan.modelOverride}
 											disabled={patchingId === ticket.id}
 											onchange={(value) => changeModel(ticket, value)}
 										/>

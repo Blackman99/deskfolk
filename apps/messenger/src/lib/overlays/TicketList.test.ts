@@ -100,6 +100,8 @@ function open(over: {
   bots?: Bot[];
   api?: Partial<{
     patchTicket: (ticketId: string, body: unknown) => Promise<Ticket>;
+    agents: () => Promise<unknown>;
+    claudeCode: () => Promise<unknown>;
   }> | null;
 } = {}) {
   const selected: Array<string | null> = [];
@@ -113,6 +115,8 @@ function open(over: {
     over.api === null
       ? null
       : {
+          ...(over.api?.agents ? { agents: over.api.agents } : {}),
+          ...(over.api?.claudeCode ? { claudeCode: over.api.claudeCode } : {}),
           patchTicket: async (ticketId: string, body: unknown) => {
             patchCalls.push({ ticketId, body });
             if (over.api?.patchTicket) return over.api.patchTicket(ticketId, body);
@@ -448,6 +452,33 @@ test("from level 7 a ticket's model is set from the endpoints' models, or put ba
   flushSync();
   expect(below.host.querySelector(".ticket-model-wrap")).toBeNull();
   below.close();
+});
+
+test("a ticket's model can be one of your local agents': picked from the agent's own list, sent as that agent's", async () => {
+  const codex = { runner: "codex", custom_id: null, label: "Codex", path: "/bin/codex", source: "path", version: "1", logged_in: true, auth: null, login_command: null,
+    models: [{ id: "gpt-5.6-terra", name: "GPT-5.6-Terra", efforts: [] }], default_model: null, proxy: null, proxy_source: null, checked_at: "", error: null };
+  const view = open({
+    api: { agents: async () => ({ items: [codex, { ...codex, runner: "zcode", label: "ZCode", path: null, models: [] }], custom_agents: [] }) },
+    detail: aDetail({ routing_on: true, tickets: [aTicket({ model_override: { runner: "grok", model: "grok-4.7", effort: null, config_dir: null } })] }),
+  });
+  view.props.providers = [{ id: "p-1", name: "主端点", models: ["grk"] }] as never;
+  await settle();
+  click(view.host.querySelector(".ticket-main"));
+  await settle();
+  const wrap = view.host.querySelector(".ticket-model-wrap")!;
+  // Grok is not found any more: its model still reads as its name.
+  expect(wrap.querySelector(".real-select-value")?.textContent).toContain("grok-4.7");
+  expect(wrap.querySelector(".real-select-value")?.textContent).toContain(t.plan.modelUnlisted);
+  click(wrap.querySelector(".real-select-trigger"));
+  await settle();
+  // Only agents that are found are offered.
+  expect([...document.querySelectorAll(".mp-source-label")].map((el) => el.textContent)).toEqual(["主端点", "Codex"]);
+  document.querySelectorAll<HTMLElement>(".mp-source")[1]!.dispatchEvent(new MouseEvent("mouseenter"));
+  await settle();
+  click(document.querySelector('.mp-row[data-value*="gpt-5.6-terra"]'));
+  await settle();
+  expect(view.patchCalls.at(-1)?.body).toMatchObject({ model_override: { runner: "codex", model: "gpt-5.6-terra", effort: null, config_dir: null } });
+  view.close();
 });
 
 test("the picked ticket says what it meets: nothing yet on a plan with no spec, ledger or checks; its button opens the spec", () => {

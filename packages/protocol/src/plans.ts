@@ -451,7 +451,22 @@ export type PatchTaskSpecRequest = {
 };
 
 /** A model on an endpoint, as a ticket's override names it. */
-export type TicketModel = { provider_id: string; model: string };
+export type TicketEndpointModel = { provider_id: string; model: string };
+
+/**
+ * A model of one of your local agents (ADR 0079), as a ticket's override names it: shaped as a
+ * ladder rung, and run the way one is — the ticket's turns go to that agent, whatever its Bot
+ * usually runs on.
+ */
+export type TicketAgentModel = ModelLadderAgentRung;
+
+/** The model you set on a ticket (ADR 0049): the work runs on it, on an endpoint or a local agent. */
+export type TicketModel = TicketEndpointModel | TicketAgentModel;
+
+/** A local agent's model on a ticket, told apart by a `runner` the app knows. */
+export function isTicketAgentModel(model: TicketModel | null | undefined): model is TicketAgentModel {
+  return Boolean(model) && "runner" in model! && isBotRunner((model as { runner?: unknown }).runner);
+}
 
 /** At most this many rungs on the model ladder: a short climb, not a catalog. */
 export const MODEL_LADDER_MAX = 8;

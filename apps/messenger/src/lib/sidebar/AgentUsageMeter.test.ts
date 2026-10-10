@@ -54,9 +54,23 @@ test("Codex's plan windows show what is left of each, rounded down, shortest fir
   expect(windows.map((window) => window.querySelector<HTMLElement>(".agent-usage-bar > span")?.style.width)).toEqual(["81.6%", "9%"]);
   expect(windows[0]!.classList.contains("is-normal")).toBe(true);
   expect(windows[1]!.classList.contains("is-danger")).toBe(true);
-  // Plan windows, so no day's line, and no vendor mark.
+  // Plan windows, so no day's line.
   expect(view.host.querySelector("[data-agent-usage-today]")).toBeNull();
-  expect(view.host.querySelector("svg")).toBeNull();
+  view.close();
+});
+
+test("each line leads with its agent's own logo, your own ACP agent's the plain glyph, and the name beside it stays text", async () => {
+  const view = open({ items: [codex, item(), item({ runner: "custom", custom_id: "ca-1", label: "my-agent" })] });
+  await sleep(0);
+  const names = [...view.host.querySelectorAll(".agent-usage-name")];
+  expect(names.map((name) => name.querySelector("[data-agent-logo]")?.getAttribute("data-agent-logo"))).toEqual(["codex", "grok", "custom"]);
+  // Before the name, inside the same cell, so the cell's tooltip and text are the name's.
+  expect(names.map((name) => name.firstElementChild?.hasAttribute("data-agent-logo"))).toEqual([true, true, true]);
+  expect(names.map((name) => name.querySelector(".agent-usage-label")?.textContent)).toEqual(["Codex", "Grok", "my-agent"]);
+  expect(names.map((name) => name.textContent)).toEqual(["Codex", "Grok", "my-agent"]);
+  expect(names.map((name) => name.getAttribute("title"))).toEqual(["Codex", "Grok", "my-agent"]);
+  // A logo per line and nothing else drawn: the windows' bars are spans.
+  expect(view.host.querySelectorAll("[data-agent-usage-item] svg")).toHaveLength(3);
   view.close();
 });
 

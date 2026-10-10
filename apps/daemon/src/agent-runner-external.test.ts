@@ -343,6 +343,36 @@ test("a job on the app's own loop that climbed onto a Grok rung of the ladder ha
   expect(route).toEqual({ model: "grok-4.7", thinking_level: "xhigh", reason_code: "agent_grok", base_reason_code: "escalation_model" });
 });
 
+function atRoutingLevel(store: Store): void {
+  for (const key of ["engine_level", "schema_min_compatible"]) {
+    const value = key === "schema_min_compatible" ? Math.min(ENGINE_LEVELS.routing, SCHEMA_LEVEL) : ENGINE_LEVELS.routing;
+    store.db.run("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [key, String(value)]);
+  }
+}
+
+test("the model you set on a ticket decides who runs its turns: a local agent's runs on that agent, from a Bot on the app's own loop (ADR 0049, ADR 0079)", async () => {
+  const h = await harness([[{ say: "Grok 按工单的模型做完了" }]], { appLoop: true });
+  atRoutingLevel(h.store);
+  Object.defineProperty(h.store, "turnTicketModel", { value: () => ({ runner: "grok", model: "grok-4.7", effort: null, config_dir: null }) });
+  await h.post("做这一张");
+  expect(h.lines("bot")).toEqual(["Grok 按工单的模型做完了"]);
+  expect(h.seen().some((entry) => entry.method === "session/set_config_option" && (entry.params as { value?: string }).value === "grok-4.7")).toBe(true);
+  const route = h.store.db.query<{ model: string; reason_code: string | null }, []>("SELECT model, reason_code FROM turn_route_decisions").get();
+  expect(route).toEqual({ model: "grok-4.7", reason_code: "agent_grok" });
+});
+
+test("an endpoint's model on a ticket runs a Bot that is usually Grok's in the app's own loop, on that model", async () => {
+  const h = await harness([[{ say: "Grok 不该接这一轮" }]]);
+  atRoutingLevel(h.store);
+  const provider = (await h.store.listProviders())[0]!;
+  Object.defineProperty(h.store, "turnTicketModel", { value: () => ({ provider_id: provider.id, model: "fixture" }) });
+  await h.post("做这一张");
+  expect(h.lines("bot")).toEqual(["the hop loop ran"]);
+  expect(h.seen().some((entry) => entry.method === "session/prompt")).toBe(false);
+  const route = h.store.db.query<{ model: string; reason_code: string | null }, []>("SELECT model, reason_code FROM turn_route_decisions").get();
+  expect(route).toEqual({ model: "fixture", reason_code: "ticket_override" });
+});
+
 test("a built-in call can run on another local agent: it answers once, with no tools, and a call it tries is cut off", async () => {
   const { createAgentJudge } = await import("./agents/judge");
   const store = new Store({ endpointKey: memoryKeyStore() });

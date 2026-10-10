@@ -3,8 +3,10 @@
 	import AvatarEditor from './AvatarEditor.svelte';
 	import { COPY, JAIL_COPY } from './copy.ts';
 	import Select from './Select.svelte';
+	import ModelPicker from './ModelPicker.svelte';
 	import WorkspacePicker from './settings/WorkspacePicker.svelte';
 	import ConnectorLogo from './settings/ConnectorLogo.svelte';
+	import AgentLogo from './settings/AgentLogo.svelte';
 	import WorkspaceField from './settings/WorkspaceField.svelte';
 	import { asksForWorkspace, planOrder, searchPlans } from './settings/connector-detect.ts';
 	import type { MessengerRuntime } from './runtime.svelte.ts';
@@ -31,16 +33,18 @@
 	} from './panels/create-form.ts';
 	import {
 		BUILTIN_MODEL_ROLES,
-		CLAUDE_MODEL_ALIASES,
 		connectorById,
 		connectorFor,
 		isLocalEndpoint,
 		type ApiFormat,
+		type BotRunner,
 		type ClaudeCodeStatus,
 		type CreateProviderRequest,
 		type ProbedModel
 	} from '@real-bot/protocol';
 	import { endpointSource } from './model-source.ts';
+	import { groupModels, type PickerData } from './model-picker.ts';
+	import { agentPickerSources, claudePickerSource } from './model-picker-sources.ts';
 	import ClaudeAgentCard from './settings/ClaudeAgentCard.svelte';
 	import AgentCard from './settings/AgentCard.svelte';
 	import { claudeAccountOptions, claudeReady } from './settings/claude-agent.ts';
@@ -109,7 +113,20 @@
 		if (!pickedStatus || agentModel) return;
 		agentModel = pickedStatus.default_model ?? pickedStatus.models[0]?.id ?? '';
 	});
-	const claudeModelOptions = CLAUDE_MODEL_ALIASES.map((alias) => ({ value: alias, label: alias }));
+	/** Claude Code's models, one source; a model's value is its alias. */
+	const claudeModelData: PickerData = $derived({ specials: [], sources: [claudePickerSource(t, (model) => model)] });
+	/**
+	 * The picked agent's models, one source: what it lists, else its default one, and a name typed as
+	 * the agent spells it when it lists none.
+	 */
+	const agentModelData = $derived.by((): PickerData => {
+		if (!pickedOther || !pickedStatus) return { specials: [], sources: [] };
+		const offered = { items: [{ ...pickedStatus, models: pickedModels }], custom_agents: otherAgents?.custom_agents ?? [] };
+		return {
+			specials: [],
+			sources: agentPickerSources(offered, t, (_runner, model) => model, { only: { runner: pickedOther, customId: picked.customId }, typed: true })
+		};
+	});
 	const claudeAccounts = $derived(claudeAccountOptions(claudeStatus, claudeConfigDir, t));
 	let fieldErrors = $state<SettingsFieldErrors & ProviderFieldErrors>({});
 	let saveFailed = $state(false);
@@ -145,11 +162,16 @@
 		apiKey: runtime.endpointKey.trim()
 	}, true));
 	const selectedModels = $derived(parseModelLines(runtime.endpointModelsText));
-	/** The default model's picker: the models chosen above, marked with the endpoint being set up. */
-	const defaultModelOptions = $derived.by(() => {
-		const source = endpointSource({ base_url: runtime.endpointUrl, api_format: apiFormat }, t);
-		return selectedModels.map((model) => ({ value: model, label: model, source }));
-	});
+	/** The default model's picker: the models chosen above, one source, marked with the endpoint being set up. */
+	const defaultModelData = $derived.by((): PickerData => ({
+		specials: [],
+		sources: [{
+			key: 'endpoint',
+			label: providerName.trim() || t.settings.defaultModel,
+			mark: endpointSource({ base_url: runtime.endpointUrl, api_format: apiFormat }, t),
+			groups: groupModels(selectedModels.map((model) => ({ value: model, label: model })))
+		}]
+	}));
 	const defaultModel = $derived(runtime.endpointDefaultModel.trim());
 	const modelErrors = $derived.by(() => {
 		const errors: ProviderFieldErrors = {};
@@ -836,10 +858,10 @@
 					{#if connectMode === 'claude'}
 						{#if readyAgents.length > 0}
 							<div class="agent-picks" role="radiogroup" aria-label={t.onboarding.agentPick} data-agent-picks>
-								{#each [{ value: 'claude_code', label: 'Claude Code' }, ...readyAgents.map((status) => ({ value: runnerValueOf(status.runner, status.custom_id), label: status.label }))] as option (option.value)}
+								{#each [{ value: 'claude_code', runner: 'claude_code' as BotRunner, label: 'Claude Code' }, ...readyAgents.map((status) => ({ value: runnerValueOf(status.runner, status.custom_id), runner: status.runner, label: status.label }))] as option (option.value)}
 									<button
 										type="button"
-										class="preset-chip"
+										class="preset-chip has-logo"
 										role="radio"
 										aria-checked={agentPick === option.value}
 										class:is-active={agentPick === option.value}
@@ -848,7 +870,7 @@
 											agentPick = option.value;
 											agentModel = '';
 										}}
-									>{option.label}</button>
+									><AgentLogo runner={option.runner} size={18} />{option.label}</button>
 								{/each}
 							</div>
 						{/if}
@@ -1032,17 +1054,13 @@
 					{#if connectMode === 'claude' && pickedOther}
 						<div class="modal-section">
 							<label for="onboarding-agent-model">{t.onboarding.claudeModel}</label>
-							{#if pickedModels.length > 0}
-								<Select id="onboarding-agent-model" bind:value={agentModel} options={pickedModels.map((model) => ({ value: model.id, label: model.name === model.id ? model.id : `${model.name} · ${model.id}` }))} />
-							{:else}
-								<input id="onboarding-agent-model" type="text" bind:value={agentModel} placeholder={t.onboarding.agentModelPlaceholder} />
-							{/if}
+							<ModelPicker id="onboarding-agent-model" bind:value={agentModel} data={agentModelData} {t} title={t.onboarding.claudeModel} placeholder={t.onboarding.agentModelPlaceholder} />
 						</div>
 						<p class="muted field-hint">{t.onboarding.agentLimits.replace('{agent}', pickedLabel)}</p>
 					{:else if connectMode === 'claude'}
 						<div class="modal-section">
 							<label for="onboarding-claude-model">{t.onboarding.claudeModel}</label>
-							<Select id="onboarding-claude-model" bind:value={claudeModel} options={claudeModelOptions} />
+							<ModelPicker id="onboarding-claude-model" bind:value={claudeModel} data={claudeModelData} {t} title={t.onboarding.claudeModel} />
 						</div>
 						{#if claudeAccounts.length > 1}
 							<div class="modal-section">
@@ -1135,12 +1153,13 @@
 					<!-- Default Model Dropdown -->
 					<div class="modal-section">
 						<label for="onboarding-default-model">{t.settings.defaultModel}</label>
-						<Select
+						<ModelPicker
 							id="onboarding-default-model"
 							bind:value={runtime.endpointDefaultModel}
+							data={defaultModelData}
+							{t}
+							title={t.settings.defaultModel}
 							placeholder={t.settings.defaultModelEmpty}
-							emptyLabel={t.settings.defaultModelEmpty}
-							options={defaultModelOptions}
 							error={!!fieldErrors.defaultModel}
 							onchange={() => {
 								if (fieldErrors.defaultModel) {
@@ -1576,6 +1595,10 @@
 		margin: -2px 0;
 		border-radius: 50%;
 		padding: 2px;
+	}
+
+	.preset-chip.has-logo :global(.agent-logo) {
+		margin: -2px 0;
 	}
 
 	.preset-chip:hover {

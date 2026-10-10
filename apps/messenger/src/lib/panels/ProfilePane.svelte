@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { endpointSource } from '../model-source.ts';
 	import MemoryCard from './MemoryCard.svelte';
 	import RoutineCard from './RoutineCard.svelte';
 	import SharedSkillsCard from './SharedSkillsCard.svelte';
@@ -14,9 +15,11 @@
 	import type { Copy } from '../copy.ts';
 	import {
 		emptySkillDraft,
+		endpointModelPicker,
 		formatSkillUses,
 		mapCreateBotError,
 		mapSkillError,
+		pickerValues,
 		planCreateBot,
 		planSkill,
 		reconcileSkillDraft,
@@ -34,8 +37,7 @@
 	} from './roster-edit.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import type { DangerAction } from '../overlays/danger-confirm.ts';
-	import type { SelectOption } from '../select-options.ts';
-	import { endpointSource } from '../model-source.ts';
+	import { findPicked, type PickerData } from '../model-picker.ts';
 	import { runnerValueOf } from '../runner-choice.ts';
 
 	type Props = {
@@ -43,7 +45,6 @@
 		/** Keyed on by the shell, so switching Bots remounts this pane rather than reconciling. */
 		bot: Bot;
 		t: Copy;
-		modelOptions: SelectOption[];
 		selectedKind: string | null;
 		/** The shell's delete writes this too, so it stays there. */
 		profileFailed: boolean;
@@ -60,7 +61,6 @@
 		runtime,
 		bot,
 		t,
-		modelOptions,
 		selectedKind,
 		profileFailed = $bindable(false),
 		mobileDetail = $bindable(false),
@@ -72,6 +72,7 @@
 	}: Props = $props();
 
 	const snapshot = $derived(runtime.snapshot);
+	const listedModels = $derived(endpointModelPicker(snapshot.providers, t));
 	/**
 	 * A pin no endpoint lists any more: from engine level 7 it outlives the list (ADR 0048), the turn
 	 * runs on the endpoint's default meanwhile. Offered as it is and marked, so the rest of the profile
@@ -79,15 +80,15 @@
 	 */
 	const unlistedPin = $derived.by(() => {
 		const value = botModelValue(bot);
-		return value && !modelOptions.some((option) => option.value === value) ? value : null;
+		return value && !findPicked(listedModels, value) ? value : null;
 	});
-	const profileModelOptions = $derived.by((): SelectOption[] => {
-		if (!unlistedPin || !bot.model) return modelOptions;
-		const endpoint = runtime.snapshot.providers.find((provider) => provider.id === bot.provider_id);
-		const source = endpoint ? endpointSource(endpoint, t) : undefined;
-		return [...modelOptions, { value: unlistedPin, label: bot.model, hint: t.sidebar.botModelUnlisted, source }];
+	const profileModelPicker = $derived.by((): PickerData => {
+		if (!unlistedPin || !bot.model) return listedModels;
+		const endpoint = snapshot.providers.find((provider) => provider.id === bot.provider_id);
+		const row = { value: unlistedPin, label: bot.model, hint: t.sidebar.botModelUnlisted, ...(endpoint ? { detail: endpoint.name, mark: endpointSource(endpoint, t) } : {}) };
+		return { ...listedModels, specials: [...listedModels.specials, row] };
 	});
-	const modelValues = $derived(profileModelOptions.map((option) => option.value));
+	const modelValues = $derived(pickerValues(profileModelPicker));
 	const profileSkills = $derived(snapshot.skills.filter((skill) => skill.bot_id === bot.id));
 	const profileMemories = $derived(snapshot.memories.filter((m) => m.bot_id === bot.id));
 
@@ -525,7 +526,7 @@
 	profileSaving={autosave.saving}
 	{profileFailed}
 	profileSavedTick={autosave.savedTick}
-	{profileModelOptions}
+	{profileModelPicker}
 	{unlistedPin}
 	{claudeStatus}
 	{claudeUnavailable}

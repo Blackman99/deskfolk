@@ -2,7 +2,7 @@ import type { CopyShape } from "./shape.ts";
 
 /**
  * The other local agents Bots can run on (ADR 0079): Codex, Grok, OpenCode, DSH, Antigravity, ZCode
- * and your own ACP agents. Text names only; Claude keeps its own words in `claude-agent.ts`.
+ * and your own ACP agents. Their names are words here, their logos `settings/AgentLogo.svelte`'s; Claude keeps its own words in `claude-agent.ts`.
  */
 export const zh = {
   help: (label: string) => `关于 ${label}`,

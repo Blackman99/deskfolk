@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
 import { AGENT_KINDS, BOT_RUNNERS, type BotRunner } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
-import { aBot, aSkill, fakeRuntime } from "../test-fixtures.ts";
-import { buttonByText, click, fill, render } from "../test-render.ts";
+import { aBot, aProvider, aSkill, fakeRuntime } from "../test-fixtures.ts";
+import { settle } from "../test-async.ts";
+import { buttonByText, click, fill, press, render } from "../test-render.ts";
 import ProfilePane from "./ProfilePane.svelte";
 
 const t = copyFor("zh");
@@ -22,7 +23,6 @@ function open(over: {
     runtime,
     bot,
     t,
-    modelOptions: [],
     selectedKind: "you-bot",
     profileFailed: false,
     initialTab: over.initialTab ?? "basics",
@@ -72,7 +72,7 @@ test("a save the server refuses says so beside the title, and the next edit trie
   const runtime = fakeRuntime({ bots: [bot], skills: [] }, { patchBot: async () => ((asked += 1), { status: 500, message: "boom" }) });
   runtime.profileBotId = bot.id;
   const { host, close } = render(ProfilePane, {
-    runtime, bot, t, modelOptions: [], selectedKind: "you-bot", profileFailed: false, initialTab: "basics",
+    runtime, bot, t, selectedKind: "you-bot", profileFailed: false, initialTab: "basics",
     openDangerConfirm: () => {}, clearDanger: () => {}, onDeleteBot: () => {}, onClearHistory: () => {},
   });
   fill(host.querySelector("#profile-name"), "Researcher 2");
@@ -87,30 +87,91 @@ test("a save the server refuses says so beside the title, and the next edit trie
   close();
 });
 
+/** Two endpoints: gpt-6-astra offers none/low/high, grok-4.7 only high and up; the second endpoint lists one more. */
+const endpoints = () => [
+  aProvider({
+    id: "p-cpa", name: "My CPA", models: ["gpt-6-astra", "grok-4.7"],
+    model_catalog: [
+      { name: "gpt-6-astra", price: 1, thinking_levels: ["none", "low", "high"], strengths: [] },
+      { name: "grok-4.7", price: 1, thinking_levels: ["high", "xhigh"], strengths: [] },
+    ],
+  }),
+  aProvider({ id: "p-two", name: "Second", base_url: "https://two.example.com/v1", models: ["qwen-4"], model_catalog: [] }),
+];
+
+function openOnEndpoints(bot: ReturnType<typeof aBot>) {
+  const runtime = fakeRuntime({ bots: [bot], providers: endpoints() });
+  const view = render(ProfilePane, {
+    runtime, bot, t, selectedKind: "you-bot", profileFailed: false, initialTab: "basics",
+    openDangerConfirm: () => {}, clearDanger: () => {}, onDeleteBot: () => {}, onClearHistory: () => {},
+  });
+  return { ...view, runtime };
+}
+
+const rowByValue = (host: HTMLElement, value: string) => host.querySelector<HTMLElement>(`.mp-row[data-value="${value}"]`);
+const rowLabels = (host: HTMLElement) => [...host.querySelectorAll(".mp-row .mp-row-label")].map(words);
+const chips = (host: HTMLElement) => [...host.querySelectorAll('[role=radiogroup][aria-labelledby="profile-thinking-label"] button')].map((el) => el.textContent?.trim());
+
 test("on the workbench, where the drawer's profileBotId stays unset, picking a model still saves it", async () => {
   const bot = aBot();
-  const runtime = fakeRuntime({ bots: [bot] });
-  const { host, close } = render(ProfilePane, {
-    runtime,
-    bot,
-    t,
-    modelOptions: [{ value: "gpt-6-astra", label: "gpt-6-astra" }],
-    selectedKind: "you-bot",
-    profileFailed: false,
-    initialTab: "basics",
-    openDangerConfirm: () => {},
-    clearDanger: () => {},
-    onDeleteBot: () => {},
-    onClearHistory: () => {},
-  });
+  const { host, runtime, close } = openOnEndpoints(bot);
   click(host.querySelector("#profile-model"));
-  click([...host.querySelectorAll("#profile-model-listbox [role=option]")].find((li) => li.textContent?.includes("gpt-6-astra")) ?? null);
+  await settle();
+  click(rowByValue(host, "p-cpa::gpt-6-astra"));
   await sleep(200);
   const saves = runtime.calls.filter((c) => c.name === "patchBot");
   expect(saves).toHaveLength(1);
   expect(saves[0]!.args[0]).toBe(bot.id);
-  expect((saves[0]!.args[1] as { model: string | null }).model).toBe("gpt-6-astra");
+  // The model and its thinking level are pinned together: the first level the app prefers that it offers.
+  expect(saves[0]!.args[1]).toMatchObject({ model: "gpt-6-astra", provider_id: "p-cpa", thinking_level: "low" });
   close();
+});
+
+test("the model picker has automatic on top and a source for every endpoint; picking a model of the second one saves its endpoint", async () => {
+  const { host, runtime, close } = openOnEndpoints(aBot());
+  expect(words(host.querySelector("#profile-model"))).toBe(t.sidebar.botModelDefault);
+  click(host.querySelector("#profile-model"));
+  await settle();
+  expect([...host.querySelectorAll(".mp-source .mp-source-label")].map(words)).toEqual(["My CPA", "Second"]);
+  expect(rowLabels(host)).toEqual([t.sidebar.botModelDefault, "gpt-6-astra", "grok-4.7"]);
+  host.querySelector(".mp-source[data-source-key='endpoint:p-two']")?.dispatchEvent(new MouseEvent("mouseenter"));
+  await settle();
+  expect(rowLabels(host)).toEqual([t.sidebar.botModelDefault, "qwen-4"]);
+  click(rowByValue(host, "p-two::qwen-4"));
+  await sleep(200);
+  expect(lastSave(runtime)).toMatchObject({ model: "qwen-4", provider_id: "p-two" });
+  close();
+});
+
+test("changing the model keeps the thinking level it offers and moves to its default otherwise; automatic clears both", async () => {
+  const pinned = { ...aBot(), model: "gpt-6-astra", provider_id: "p-cpa", thinking_level: "high" as const };
+  const same = openOnEndpoints(pinned);
+  expect(chips(same.host)).toEqual(["不思考", "低", "高"]);
+  click(same.host.querySelector("#profile-model"));
+  await settle();
+  click(rowByValue(same.host, "p-cpa::grok-4.7"));
+  // The chips already follow the new model, before the save goes out.
+  expect(chips(same.host)).toEqual(["高", "极高"]);
+  await sleep(200);
+  expect(lastSave(same.runtime)).toMatchObject({ model: "grok-4.7", provider_id: "p-cpa", thinking_level: "high" });
+  same.close();
+
+  const low = openOnEndpoints({ ...pinned, thinking_level: "low" as const });
+  click(low.host.querySelector("#profile-model"));
+  await settle();
+  click(rowByValue(low.host, "p-cpa::grok-4.7"));
+  await sleep(200);
+  expect(lastSave(low.runtime)).toMatchObject({ model: "grok-4.7", thinking_level: "high" });
+  low.close();
+
+  const auto = openOnEndpoints(pinned);
+  click(auto.host.querySelector("#profile-model"));
+  await settle();
+  click(rowByValue(auto.host, ""));
+  expect(auto.host.querySelector("#profile-thinking-label")).toBeNull();
+  await sleep(200);
+  expect(lastSave(auto.runtime)).toMatchObject({ model: null, provider_id: null, thinking_level: null });
+  auto.close();
 });
 
 test("on the workbench, adding a skill and archiving act on the Bot the pane shows", async () => {
@@ -169,7 +230,6 @@ test("opening a Bot from a group keeps archive and delete, not clear history", (
     runtime,
     bot,
     t,
-    modelOptions: [],
     selectedKind: "group",
     profileFailed: false,
     initialTab: "actions",
@@ -207,7 +267,6 @@ test("deleting a skill asks the shell for a confirm that knows which skill", asy
     runtime,
     bot,
     t,
-    modelOptions: [],
     selectedKind: "you-bot",
     profileFailed: false,
     initialTab: "skills",
@@ -232,7 +291,7 @@ test('a superseded skill delete cannot clear a newer confirmation or editor', as
   runtime.profileBotId = bot.id;
   let run!: (isCurrent: () => boolean) => Promise<void>;
   let cleared = 0;
-  const { host, close } = render(ProfilePane, { runtime, bot, t, modelOptions: [], selectedKind: 'you-bot', profileFailed: false,
+  const { host, close } = render(ProfilePane, { runtime, bot, t, selectedKind: 'you-bot', profileFailed: false,
     initialTab: 'skills',
     openDangerConfirm: (_kind, action) => { run = action; }, clearDanger: () => { cleared++; }, onDeleteBot: () => {}, onClearHistory: () => {} });
   click(host.querySelector('.skill-open')); click(buttonByText(host, t.sidebar.skillDelete));
@@ -266,7 +325,6 @@ test("row edit button opens the modal with skill data; row delete button invokes
     runtime,
     bot,
     t,
-    modelOptions: [],
     selectedKind: "you-bot",
     profileFailed: false,
     initialTab: "skills",
@@ -430,7 +488,6 @@ test("mobile skill delete button inside editor invokes danger confirm", async ()
     runtime,
     bot,
     t,
-    modelOptions: [],
     selectedKind: "you-bot",
     profileFailed: false,
     initialTab: "skills",
@@ -456,18 +513,25 @@ test("a pin no endpoint lists any more stays offered, marked, and the rest of th
   // From engine level 7 a pin outlives its model leaving an endpoint's list (ADR 0048); before, the
   // pane's check refused every edit of a Bot whose pinned model the list no longer named.
   const bot = { ...aBot(), model: "claude-opus-4-6-thinking", provider_id: "p-cpa", thinking_level: "low" as const };
-  const runtime = fakeRuntime({ bots: [bot] });
+  const runtime = fakeRuntime({ bots: [bot], providers: [aProvider({ id: "p-cpa", name: "My CPA", models: ["gemini-3.8-flash-high"], model_catalog: [] })] });
   runtime.profileBotId = bot.id;
   const { host, close } = render(ProfilePane, {
-    runtime, bot, t, modelOptions: [{ value: "p-cpa::gemini-3.8-flash-high", label: "gemini-3.8-flash-high" }],
-    selectedKind: "you-bot", profileFailed: false, initialTab: "basics",
+    runtime, bot, t, selectedKind: "you-bot", profileFailed: false, initialTab: "basics",
     openDangerConfirm: () => {}, clearDanger: () => {}, onDeleteBot: () => {}, onClearHistory: () => {},
   });
   expect(host.textContent).toContain(t.sidebar.botModelUnlistedHint);
+  expect(words(host.querySelector("#profile-model"))).toBe(`claude-opus-4-6-thinking ${t.sidebar.botModelUnlisted}`);
+  // It is a row of its own above the endpoint's models, so picking another model does not lose it.
+  click(host.querySelector("#profile-model"));
+  await settle();
+  expect(rowLabels(host)).toEqual([t.sidebar.botModelDefault, `claude-opus-4-6-thinking${t.sidebar.botModelUnlisted}`, "gemini-3.8-flash-high"]);
+  expect(rowByValue(host, "p-cpa::claude-opus-4-6-thinking")?.classList.contains("is-selected")).toBe(true);
+  press(host.querySelector(".mp-search input"), "Escape");
   fill(host.querySelector("#profile-duties"), "按分镜生成镜头");
   await sleep(750);
   const saves = runtime.calls.filter((c) => c.name === "patchBot");
   expect(saves).toHaveLength(1);
+  expect(saves[0]!.args[1]).toMatchObject({ model: "claude-opus-4-6-thinking", provider_id: "p-cpa", thinking_level: "low" });
   expect(host.textContent).not.toContain(t.sidebar.botModelInvalid);
   close();
 });
@@ -491,7 +555,7 @@ function openOnClaude(bot: ReturnType<typeof aBot>, status: ReturnType<typeof cl
     },
   };
   const view = render(ProfilePane, {
-    runtime, bot, t, modelOptions: [], selectedKind: "you-bot", profileFailed: false, initialTab: "basics",
+    runtime, bot, t, selectedKind: "you-bot", profileFailed: false, initialTab: "basics",
     openDangerConfirm: () => {}, clearDanger: () => {}, onDeleteBot: () => {}, onClearHistory: () => {},
   });
   return { ...view, runtime };
@@ -514,6 +578,38 @@ test("switching a Bot to Claude Agent saves it, and shows whose Claude account i
   expect(onClaude.host.querySelector("#profile-agent-model")).not.toBeNull();
   expect(onClaude.host.querySelector("[data-runner-account]")?.textContent).toContain("Claude Pro 订阅");
   onClaude.close();
+});
+
+test("a Claude Agent Bot picks its model among Claude's aliases, or Claude Code's default; a name it already holds stays a row", async () => {
+  const open = async (agentModel: string | null) => {
+    const view = openOnClaude(aBot({ runner: "claude_code", agent_model: agentModel }), claudeStatus());
+    await sleep(30);
+    click(view.host.querySelector("#profile-agent-model"));
+    await settle();
+    return view;
+  };
+  const fresh = await open(null);
+  expect(fresh.host.querySelector("#profile-agent-model")?.tagName).toBe("BUTTON");
+  expect(rowLabels(fresh.host)).toEqual([t.sidebar.botAgentModelDefault, "sonnet", "opus", "haiku", "fable"]);
+  expect(rowByValue(fresh.host, "")?.classList.contains("is-selected")).toBe(true);
+  click(rowByValue(fresh.host, "opus"));
+  expect(words(fresh.host.querySelector("#profile-agent-model"))).toContain("opus");
+  await sleep(200);
+  expect(lastSave(fresh.runtime)).toMatchObject({ runner: "claude_code", agent_model: "opus" });
+  fresh.close();
+
+  // Back to Claude Code's own default saves null.
+  const held = await open("sonnet");
+  click(rowByValue(held.host, ""));
+  await sleep(200);
+  expect(lastSave(held.runtime)).toMatchObject({ agent_model: null });
+  held.close();
+
+  // A full name that is no alias is a row of its own, chosen, so the Bot still reads right.
+  const full = await open("claude-opus-4-6");
+  expect(rowLabels(full.host)).toEqual([t.sidebar.botAgentModelDefault, "claude-opus-4-6", "sonnet", "opus", "haiku", "fable"]);
+  expect(rowByValue(full.host, "claude-opus-4-6")?.classList.contains("is-selected")).toBe(true);
+  full.close();
 });
 
 test("an effort picked for a Claude Agent Bot is saved as Claude Code's effort", async () => {
@@ -626,7 +722,7 @@ function openOnAgent(bot: ReturnType<typeof aBot>, agents: { items: unknown[]; c
     },
   };
   const view = render(ProfilePane, {
-    runtime, bot, t, modelOptions: [], selectedKind: "you-bot", profileFailed: false, initialTab: "basics",
+    runtime, bot, t, selectedKind: "you-bot", profileFailed: false, initialTab: "basics",
     openDangerConfirm: () => {}, clearDanger: () => {}, onDeleteBot: () => {}, onClearHistory: () => {},
   });
   return { ...view, runtime };
@@ -755,25 +851,98 @@ test("one of your own ACP agents is picked by its name and saved as runner custo
   gone.close();
 });
 
-test("a Bot on another agent types its model, with the models the agent lists to pick from; empty is the agent's default", async () => {
+test("a Bot on another agent picks its model among the ones the agent lists, or its default, or types one it knows", async () => {
   const items = agentItems({ codex: { models: [{ id: "gpt-5.5", name: "GPT-5.5", efforts: ["low", "high"] }, { id: "gpt-5.5-mini", name: "gpt-5.5-mini", efforts: [] }], default_model: "gpt-5.5" } });
-  const { host, runtime, close } = openOnAgent(aBot({ runner: "codex" }), withAcp(items));
-  await sleep(30);
-  const input = host.querySelector<HTMLInputElement>("#profile-agent-model")!;
-  expect(input.tagName).toBe("INPUT");
-  expect(input.placeholder).toBe("gpt-5.5");
-  expect([...host.querySelectorAll("#profile-agent-models option")].map((el) => [el.getAttribute("value"), el.getAttribute("label")])).toEqual([["gpt-5.5", "GPT-5.5"], ["gpt-5.5-mini", null]]);
+  const open = async (bot = aBot({ runner: "codex" }), agents: Parameters<typeof openOnAgent>[1] = withAcp(items)) => {
+    const view = openOnAgent(bot, agents);
+    await sleep(30);
+    return view;
+  };
+  const list = async (host: HTMLElement) => {
+    click(host.querySelector("#profile-agent-model"));
+    await settle();
+  };
+  const { host, runtime, close } = await open();
+  // A picker, not a text field: the agent's default reads as such, and only Codex's models are offered.
+  expect(host.querySelector("#profile-agent-model")?.tagName).toBe("BUTTON");
+  expect(words(host.querySelector("#profile-agent-model"))).toBe(t.sidebar.botAgentModelDefaultOf("Codex"));
   expect(host.querySelector("[data-agent-model]")?.textContent).toContain(t.sidebar.botAgentModelEmptyHint("Codex", "gpt-5.5"));
-  fill(input, "openai/gpt-5.5-mini");
-  await sleep(750);
-  expect(lastSave(runtime)).toMatchObject({ runner: "codex", agent_model: "openai/gpt-5.5-mini" });
-  // A name with a space is not one any agent takes: nothing is sent, and the field says so.
-  const before = runtime.calls.filter((c) => c.name === "patchBot").length;
-  fill(input, "gpt 5");
-  await sleep(750);
-  expect(runtime.calls.filter((c) => c.name === "patchBot")).toHaveLength(before);
-  expect(host.querySelector("[data-agent-model] .field-error")?.textContent).toBe(t.sidebar.botAgentModelInvalidOf("Codex"));
+  await list(host);
+  expect(host.querySelector(".mp-source")).toBeNull();
+  expect(rowLabels(host)).toEqual([t.sidebar.botAgentModelDefaultOf("Codex"), "GPT-5.5", "gpt-5.5-mini"]);
+  expect(words(host.querySelector(".mp-row-detail"))).toBe("gpt-5.5");
+  click(rowByValue(host, "gpt-5.5"));
+  // Picked, it wears Codex's logo.
+  expect(host.querySelector("#profile-agent-model [data-agent-logo='codex']")).not.toBeNull();
+  expect(words(host.querySelector("#profile-agent-model"))).toContain("GPT-5.5");
+  await sleep(200);
+  expect(lastSave(runtime)).toMatchObject({ runner: "codex", agent_model: "gpt-5.5" });
   close();
+
+  // Its default is the empty name: saved as null.
+  const held = await open(aBot({ runner: "codex", agent_model: "gpt-5.5-mini" }));
+  await list(held.host);
+  expect(rowByValue(held.host, "gpt-5.5-mini")?.classList.contains("is-selected")).toBe(true);
+  click(rowByValue(held.host, ""));
+  await sleep(200);
+  expect(lastSave(held.runtime)).toMatchObject({ runner: "codex", agent_model: null });
+  held.close();
+
+  // One the agent never listed is typed into the search, as it spells it, and saved as typed.
+  const typed = await open();
+  await list(typed.host);
+  const search = typed.host.querySelector<HTMLInputElement>(".mp-search input")!;
+  fill(search, "openai/gpt-5.5-turbo");
+  expect(rowLabels(typed.host)).toEqual([t.modelPicker.useTyped("openai/gpt-5.5-turbo")]);
+  press(search, "Enter");
+  await sleep(200);
+  expect(lastSave(typed.runtime)).toMatchObject({ runner: "codex", agent_model: "openai/gpt-5.5-turbo" });
+  typed.close();
+
+  // A name with a space is not one any agent takes: it is not offered, so nothing wrong is sent.
+  const spaced = await open();
+  await list(spaced.host);
+  fill(spaced.host.querySelector(".mp-search input"), "nosuch model");
+  expect(spaced.host.querySelector(".mp-row")).toBeNull();
+  expect(spaced.host.querySelector(".mp-empty")?.textContent).toBe(t.modelPicker.noMatch);
+  spaced.close();
+});
+
+test("a model the agent does not list stays a row of its own; an agent that lists none, or cannot be asked, still takes a typed name", async () => {
+  const listed = await (async () => {
+    const view = openOnAgent(aBot({ runner: "codex", agent_model: "o9-private" }), withAcp(agentItems({ codex: { models: [{ id: "gpt-5.5", name: "gpt-5.5", efforts: [] }] } })));
+    await sleep(30);
+    return view;
+  })();
+  expect(words(listed.host.querySelector("#profile-agent-model"))).toBe("o9-private");
+  click(listed.host.querySelector("#profile-agent-model"));
+  await settle();
+  expect(rowLabels(listed.host)).toEqual([t.sidebar.botAgentModelDefaultOf("Codex"), "o9-private", "gpt-5.5"]);
+  expect(rowByValue(listed.host, "o9-private")?.classList.contains("is-selected")).toBe(true);
+  listed.close();
+
+  // DSH lists no models: the picker says to type one.
+  const dsh = openOnAgent(aBot({ runner: "dsh" }), withAcp(agentItems()));
+  await sleep(30);
+  click(dsh.host.querySelector("#profile-agent-model"));
+  await settle();
+  expect(dsh.host.querySelector(".mp-empty")?.textContent).toContain(t.modelPicker.noModels);
+  fill(dsh.host.querySelector(".mp-search input"), "deepseek-v4-flash");
+  press(dsh.host.querySelector(".mp-search input"), "Enter");
+  await sleep(200);
+  expect(lastSave(dsh.runtime)).toMatchObject({ runner: "dsh", agent_model: "deepseek-v4-flash" });
+  dsh.close();
+
+  // The phone cannot ask the daemon what agents it finds, and still sets a model by name.
+  const phone = openOnAgent(aBot({ runner: "codex" }), null);
+  await sleep(30);
+  click(phone.host.querySelector("#profile-agent-model"));
+  await settle();
+  fill(phone.host.querySelector(".mp-search input"), "gpt-5.5");
+  press(phone.host.querySelector(".mp-search input"), "Enter");
+  await sleep(200);
+  expect(lastSave(phone.runtime)).toMatchObject({ runner: "codex", agent_model: "gpt-5.5" });
+  phone.close();
 });
 
 test("an agent that is not found, signed out, or cannot be asked says what to do, and Antigravity says it cannot use Deskfolk's tools", async () => {

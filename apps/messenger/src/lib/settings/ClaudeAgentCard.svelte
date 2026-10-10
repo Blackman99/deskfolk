@@ -3,9 +3,9 @@
 	import type { ClaudeAccountUsage, ClaudeCodeStatus, ClaudeUsage } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import { localeTag } from '../locale-tag.ts';
+	import AgentLogo from './AgentLogo.svelte';
 	import { claudeAccountLabel, claudeAgentPaysPerToken } from './claude-agent.ts';
 	import { usageAccountNote, usageAccounts, usageCheckedTime, usageLatestCheck } from './claude-usage.ts';
-	import ClaudeSpark from './ClaudeSpark.svelte';
 	import ClaudeUsageFoot from './ClaudeUsageFoot.svelte';
 	import ClaudeUsageRows from './ClaudeUsageRows.svelte';
 	import HelpTip from './HelpTip.svelte';
@@ -124,7 +124,7 @@
 
 <section class="claude-card" aria-label={t.claudeAgent.title} data-claude-agent>
 	<div class="claude-head">
-		<h3 class="claude-title"><ClaudeSpark size={16} />{t.claudeAgent.title}<HelpTip text={t.claudeAgent.hint} label={t.claudeAgent.help} /></h3>
+		<h3 class="claude-title"><AgentLogo runner="claude_code" size={20} />{t.claudeAgent.title}<HelpTip text={t.claudeAgent.hint} label={t.claudeAgent.help} /></h3>
 	</div>
 	{#if unavailable}
 		<p class="claude-note">{t.claudeAgent.unreachable}</p>

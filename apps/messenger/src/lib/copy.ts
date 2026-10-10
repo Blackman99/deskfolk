@@ -31,6 +31,7 @@ import * as sharedSkillsText from "./copy/shared-skills.ts";
 import * as modelLadderText from "./copy/model-ladder.ts";
 import * as claudeAgentText from "./copy/claude-agent.ts";
 import * as agentsText from "./copy/agents.ts";
+import * as modelPickerText from "./copy/model-picker.ts";
 import * as builtinModelsText from "./copy/builtin-models.ts";
 import * as connectorsText from "./copy/connectors.ts";
 import * as speechText from "./copy/speech.ts";
@@ -76,6 +77,7 @@ const zh = {
   modelLadder: modelLadderText.zh,
   claudeAgent: claudeAgentText.zh,
   agents: agentsText.zh,
+  modelPicker: modelPickerText.zh,
   builtinModels: builtinModelsText.zh,
   connectors: connectorsText.zh,
   speech: speechText.zh,
@@ -116,6 +118,7 @@ const en: CopyShape<typeof zh> = {
   modelLadder: modelLadderText.en,
   claudeAgent: claudeAgentText.en,
   agents: agentsText.en,
+  modelPicker: modelPickerText.en,
   builtinModels: builtinModelsText.en,
   connectors: connectorsText.en,
   speech: speechText.en,

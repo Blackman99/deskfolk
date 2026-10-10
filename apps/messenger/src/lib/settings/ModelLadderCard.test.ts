@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
 import { AGENT_KINDS, type AgentsStatusResponse, type BotRunner, type ClaudeCodeStatus, type ModelLadderRung, type Provider } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
-import { click, render } from "../test-render.ts";
+import { click, fill, press, render } from "../test-render.ts";
+import { settle } from "../test-async.ts";
 import ModelLadderCard from "./ModelLadderCard.svelte";
 import { ModelLadder, type ModelLadderApi } from "./model-ladder.svelte.ts";
 
@@ -36,6 +37,38 @@ function card(api: ModelLadderApi, claudeCode: (() => Promise<ClaudeCodeStatus>)
 }
 
 const names = (host: HTMLElement) => [...host.querySelectorAll(".ladder-name")].map((el) => el.textContent);
+
+/** The value a picker row carries: the rung it adds, as JSON. */
+const endpoint = (provider_id: string, model: string) => JSON.stringify({ provider_id, model });
+const agent = (runner: string, model: string, custom_id?: string) => JSON.stringify({ runner, model, effort: null, config_dir: null, ...(custom_id ? { custom_id } : {}) });
+
+const addTrigger = (host: HTMLElement) => host.querySelector(".ladder-add .real-select-trigger")!;
+const rowLabel = (el: Element) => el.querySelector(".mp-row-label")?.textContent?.trim();
+const rowFor = (host: HTMLElement, value: string) => [...host.querySelectorAll<HTMLElement>(".mp-row")].find((el) => el.dataset.value === value)!;
+const sourceEl = (host: HTMLElement, sourceKey: string) => host.querySelector<HTMLElement>(`.mp-source[data-source-key="${sourceKey}"]`)!;
+/** Points at one source of the open picker, as the pointer does, so its models are the rows. */
+async function point(host: HTMLElement, sourceKey: string): Promise<void> {
+  sourceEl(host, sourceKey).dispatchEvent(new MouseEvent("mouseenter"));
+  await settle();
+}
+const rowsShown = (host: HTMLElement) => [...host.querySelectorAll(".mp-columns .mp-row")].map(rowLabel);
+/** What the open picker offers, source by source: each one's name and the models it lists. */
+async function offered(host: HTMLElement) {
+  const found: Array<{ source: string; models: Array<string | undefined> }> = [];
+  for (const sourceKey of [...host.querySelectorAll<HTMLElement>(".mp-source")].map((el) => el.dataset.sourceKey!)) {
+    await point(host, sourceKey);
+    found.push({ source: sourceEl(host, sourceKey).querySelector(".mp-source-label")!.textContent!, models: rowsShown(host) });
+  }
+  return found;
+}
+/** Adds the model with this value, from the source it is listed under. */
+async function addModel(host: HTMLElement, sourceKey: string, value: string): Promise<void> {
+  click(addTrigger(host));
+  await settle();
+  await point(host, sourceKey);
+  click(rowFor(host, value));
+  await settle();
+}
 
 test("nothing shows below level 7", async () => {
   const { api } = fakeApi([], { available: false });
@@ -141,16 +174,34 @@ test("a model is added at the strong end from what is listed and not on it yet",
   const { api, saved } = fakeApi([{ provider_id: "p1", model: "light" }]);
   const view = card(api);
   await sleep(0);
-  click(view.host.querySelector(".ladder-add .real-select-trigger")!);
-  await sleep(0);
-  const options = [...view.host.querySelectorAll(".real-select-option")];
-  expect(options.map((el) => el.textContent?.replace(/\s+/g, " ").trim())).toEqual(["mid Default", "heavy Other"]);
-  click(options[1]!);
-  await sleep(0);
+  click(addTrigger(view.host));
+  await settle();
+  expect(await offered(view.host)).toEqual([
+    { source: "Default", models: ["mid"] },
+    { source: "Other", models: ["heavy"] },
+  ]);
+  click(rowFor(view.host, endpoint("p2", "heavy")));
+  await settle();
   expect(saved).toEqual([[{ provider_id: "p1", model: "light" }, { provider_id: "p2", model: "heavy" }]]);
   // The picker reads "add a model" again, not the choice it just added.
   expect(view.host.querySelector(".ladder-add .real-select-value")?.textContent?.trim()).toBe(t.modelLadder.add);
   view.close();
+});
+
+test("an endpoint with nothing left to add drops out of the picker, and with nothing left anywhere so does the picker", async () => {
+  const { api } = fakeApi([{ provider_id: "p2", model: "heavy" }]);
+  const view = card(api);
+  await sleep(0);
+  click(addTrigger(view.host));
+  await settle();
+  // One endpoint left: no list of sources, only its models.
+  expect(view.host.querySelector(".mp-source")).toBeNull();
+  expect(rowsShown(view.host)).toEqual(["light", "mid"]);
+  view.close();
+  const full = card(fakeApi([{ provider_id: "p1", model: "light" }, { provider_id: "p1", model: "mid" }, { provider_id: "p2", model: "heavy" }]).api);
+  await sleep(0);
+  expect(full.host.querySelector(".ladder-add")).toBeNull();
+  full.close();
 });
 
 test("a change that is not saved goes back, and says so", async () => {
@@ -189,18 +240,22 @@ function claudeStatus(accounts: NonNullable<ClaudeCodeStatus["accounts"]> = [{ c
     proxy: null, proxy_source: null, checked_at: "2026-10-08T00:00:00.000Z", error: null, accounts,
   };
 }
-const optionTexts = (host: HTMLElement) => [...host.querySelectorAll(".real-select-option")].map((el) => el.textContent?.replace(/\s+/g, " ").trim());
+const claude = (model: string) => agent("claude_code", model);
 
 test("with Claude Code signed in, the Claude models Agent settings offer can be added (ADR 0076), at the default effort on the default account", async () => {
   const { api, saved } = fakeApi([{ provider_id: "p1", model: "light" }]);
   const view = card(api, async () => claudeStatus());
   await sleep(0);
-  click(view.host.querySelector(".ladder-add .real-select-trigger")!);
-  await sleep(0);
-  expect([...view.host.querySelectorAll(".real-select-group")].at(-1)?.textContent).toBe(t.sidebar.botRunnerClaude);
-  expect(optionTexts(view.host).slice(-4)).toEqual(["sonnet", "opus", "haiku", "fable"].map((model) => `${model} ${t.claudeAgent.title}`));
-  click([...view.host.querySelectorAll(".real-select-option")].at(-3)!);
-  await sleep(0);
+  click(addTrigger(view.host));
+  await settle();
+  expect(await offered(view.host)).toEqual([
+    { source: "Default", models: ["mid"] },
+    { source: "Other", models: ["heavy"] },
+    { source: t.claudeAgent.title, models: ["sonnet", "opus", "haiku", "fable"] },
+  ]);
+  expect(sourceEl(view.host, "agent:claude_code").querySelector("[data-model-source]")?.getAttribute("data-model-source")).toBe("claude-agent");
+  click(rowFor(view.host, claude("opus")));
+  await settle();
   expect(saved).toEqual([[{ provider_id: "p1", model: "light" }, { runner: "claude_code", model: "opus", effort: null, config_dir: null }]]);
   view.close();
 
@@ -208,11 +263,29 @@ test("with Claude Code signed in, the Claude models Agent settings offer can be 
   for (const status of [async () => { throw new Error("404"); }, async () => claudeStatus([{ config_dir: null, config_directory: null, ...own, logged_in: false, error: null, login_command: "x" }])]) {
     const none = card(fakeApi([]).api, status);
     await sleep(0);
-    click(none.host.querySelector(".ladder-add .real-select-trigger")!);
-    await sleep(0);
-    expect(optionTexts(none.host)).toEqual(["light Default", "mid Default", "heavy Other"]);
+    click(addTrigger(none.host));
+    await settle();
+    expect(await offered(none.host)).toEqual([
+      { source: "Default", models: ["light", "mid"] },
+      { source: "Other", models: ["heavy"] },
+    ]);
     none.close();
   }
+});
+
+test("the Claude models and the other agents' already on the ladder are not offered again", async () => {
+  const { api } = fakeApi([{ runner: "claude_code", model: "opus", effort: null, config_dir: null }, { runner: "grok", model: "grok-4.7", effort: null, config_dir: null }]);
+  const view = card(api, async () => claudeStatus(), agentsOf(agentStatus("grok", { models: models("grok-4.7", "grok-4.7-fast") })));
+  await sleep(0);
+  click(addTrigger(view.host));
+  await settle();
+  expect(await offered(view.host)).toEqual([
+    { source: "Default", models: ["light", "mid"] },
+    { source: "Other", models: ["heavy"] },
+    { source: t.claudeAgent.title, models: ["sonnet", "haiku", "fable"] },
+    { source: "Grok", models: ["grok-4.7-fast"] },
+  ]);
+  view.close();
 });
 
 test("a Claude rung picks its own effort, and its account when there is more than one; each change saved in place", async () => {
@@ -257,9 +330,8 @@ function agentStatus(runner: BotRunner, over: Record<string, unknown> = {}) {
 }
 const models = (...ids: string[]) => ids.map((id) => ({ id, name: id, efforts: [] }));
 const agentsOf = (...items: ReturnType<typeof agentStatus>[]) => async () => ({ items, custom_agents: [] }) as unknown as AgentsStatusResponse;
-const groups = (host: HTMLElement) => [...host.querySelectorAll(".real-select-group")].map((el) => el.textContent);
 
-test("the models of the other local agents found and signed in can be rungs, a group each by the agent's name, with no logo of theirs", async () => {
+test("the models of the other local agents found and signed in can be rungs, a source each by the agent's name and logo", async () => {
   const { api, saved } = fakeApi([{ provider_id: "p1", model: "light" }]);
   const acp = agentStatus("custom", { custom_id: "acp-1", label: "我的 ACP", models: models("fast") });
   const view = card(api, null, agentsOf(
@@ -270,29 +342,58 @@ test("the models of the other local agents found and signed in can be rungs, a g
     acp,
   ));
   await sleep(0);
-  click(view.host.querySelector(".ladder-add .real-select-trigger")!);
-  await sleep(0);
+  click(addTrigger(view.host));
+  await settle();
   // Not found, or signed out: none of theirs. An agent that lists no models offers the default one it named.
-  expect(groups(view.host)).toEqual(["Grok", "OpenCode", "我的 ACP"]);
-  expect(optionTexts(view.host).slice(-4)).toEqual(["grok-4.7", "grok-4.7-fast", "openai/gpt-5.5", "fast"]);
-  const marks = [...view.host.querySelectorAll(".real-select-option")].slice(-4).map((el) => el.querySelector("[data-model-source]")?.getAttribute("data-model-source"));
-  expect(marks).toEqual(["agent", "agent", "agent", "agent"]);
-  expect(view.host.querySelector('.real-select-option [data-runner="grok"] .model-source-custom')?.getAttribute("data-text")).toBe("Grok");
-  expect(view.host.querySelector(".real-select-option .connector-logo")).toBeNull();
-  click([...view.host.querySelectorAll(".real-select-option")].at(-2)!);
-  await sleep(0);
+  expect(await offered(view.host)).toEqual([
+    { source: "Default", models: ["mid"] },
+    { source: "Other", models: ["heavy"] },
+    { source: "Grok", models: ["grok-4.7", "grok-4.7-fast"] },
+    { source: "OpenCode", models: ["openai/gpt-5.5"] },
+    { source: "我的 ACP", models: ["fast"] },
+  ]);
+  const marks = ["grok", "opencode", "custom"].map((runner) => sourceEl(view.host, runner === "custom" ? "agent:custom:acp-1" : `agent:${runner}`).querySelector("[data-model-source]")?.getAttribute("data-model-source"));
+  expect(marks).toEqual(["agent", "agent", "agent"]);
+  expect(sourceEl(view.host, "agent:grok").querySelector('[data-agent-logo="grok"]')).not.toBeNull();
+  // The agent's logo, not a text chip.
+  expect(sourceEl(view.host, "agent:grok").querySelector(".model-source-custom")).toBeNull();
+  await point(view.host, "agent:opencode");
+  click(rowFor(view.host, agent("opencode", "openai/gpt-5.5")));
+  await settle();
   expect(saved).toEqual([[{ provider_id: "p1", model: "light" }, { runner: "opencode", model: "openai/gpt-5.5", effort: null, config_dir: null }]]);
   view.close();
   // Your own ACP agent's rung names it by id.
   const own = fakeApi([]);
   const custom = card(own.api, null, agentsOf(acp));
   await sleep(0);
-  click(custom.host.querySelector(".ladder-add .real-select-trigger")!);
-  await sleep(0);
-  click([...custom.host.querySelectorAll(".real-select-option")].at(-1)!);
-  await sleep(0);
+  await addModel(custom.host, "agent:custom:acp-1", agent("custom", "fast", "acp-1"));
   expect(own.saved).toEqual([[{ runner: "custom", custom_id: "acp-1", model: "fast", effort: null, config_dir: null }]]);
   custom.close();
+});
+
+test("an agent that lists no model and names no default takes one typed into the search, and it joins the ladder once", async () => {
+  const { api, saved } = fakeApi([{ runner: "dsh", model: "deepseek-v4-flash", effort: null, config_dir: null }]);
+  const view = card(api, null, agentsOf(agentStatus("dsh")));
+  await sleep(0);
+  click(addTrigger(view.host));
+  await settle();
+  await point(view.host, "agent:dsh");
+  expect(sourceEl(view.host, "agent:dsh").querySelector(".mp-source-note")?.textContent).toBe(t.modelPicker.typeShort);
+  expect(view.host.querySelector(".mp-empty")?.textContent).toContain(t.modelPicker.noModels);
+  // One already on the ladder is not added twice.
+  const search = view.host.querySelector<HTMLInputElement>(".mp-search input")!;
+  fill(search, "deepseek-v4-flash");
+  press(search, "Enter");
+  await settle();
+  expect(saved).toEqual([]);
+  click(addTrigger(view.host));
+  await settle();
+  await point(view.host, "agent:dsh");
+  fill(view.host.querySelector<HTMLInputElement>(".mp-search input"), "deepseek-v4-pro");
+  press(view.host.querySelector<HTMLInputElement>(".mp-search input"), "Enter");
+  await settle();
+  expect(saved).toEqual([[{ runner: "dsh", model: "deepseek-v4-flash", effort: null, config_dir: null }, { runner: "dsh", model: "deepseek-v4-pro", effort: null, config_dir: null }]]);
+  view.close();
 });
 
 test("a rung of another agent offers that agent's efforts (none for one that has none) and its accounts when there are several; each change saved in place", async () => {

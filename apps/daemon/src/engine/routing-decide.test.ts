@@ -91,6 +91,29 @@ test("a model you set on the ticket comes before the Bot's pin, stays on a pictu
   expect(() => f.store.patchTicketByUser(ticketId, { modelOverride: { provider_id: "p-1", model: "blind" } })).toThrow("engine level 7");
 });
 
+test("a ticket's model can be a local agent's: checked as a ladder rung, and the ticket's turns go to that agent", () => {
+  const f = fixture([{ name: "m", price: null, thinking_levels: ["low"], strengths: [] }]);
+  const ticketId = f.store.getTurn(f.turn.id).ticket_id!;
+  f.store.patchTicketByUser(ticketId, { modelOverride: { runner: "codex", model: "gpt-5.6-terra" } });
+  expect(f.store.getTicket(ticketId).model_override).toEqual({ runner: "codex", model: "gpt-5.6-terra", effort: null, config_dir: null });
+  const routed = f.routing.decideRoute(f.bot.id, f.creds, "做", f.turn.id)!;
+  expect(routed.agent).toEqual({ runner: "codex", model: "gpt-5.6-terra", effort: null, config_dir: null });
+  expect(routed.decision).toMatchObject({ model: "gpt-5.6-terra", providerId: "", reasonCode: "ticket_override" });
+  // No endpoint at all (set up on an agent alone): still that agent's.
+  expect(f.routing.decideRoute(f.bot.id, { ...f.creds, providers: [] }, "做", f.turn.id)!.agent?.runner).toBe("codex");
+  expect(noted(f)).toEqual([]);
+  // Its effort is one the agent takes; an unknown runner, an unlisted account or a custom agent not listed are refused.
+  f.store.patchTicketByUser(ticketId, { modelOverride: { runner: "grok", model: "grok-4.7", effort: "high", config_dir: null } });
+  expect(f.store.getTicket(ticketId).model_override).toMatchObject({ runner: "grok", effort: "high" });
+  expect(() => f.store.patchTicketByUser(ticketId, { modelOverride: { runner: "grok", model: "grok-4.7", effort: "max" } })).toThrow("effort");
+  expect(() => f.store.patchTicketByUser(ticketId, { modelOverride: { runner: "nope", model: "x" } as never })).toThrow();
+  expect(() => f.store.patchTicketByUser(ticketId, { modelOverride: { runner: "codex", model: "gpt", config_dir: "/tmp/not-listed" } })).toThrow();
+  expect(() => f.store.patchTicketByUser(ticketId, { modelOverride: { runner: "custom", model: "x", custom_id: "gone" } })).toThrow();
+  // Cleared, the Bot's own route again.
+  f.store.patchTicketByUser(ticketId, { modelOverride: null });
+  expect(f.routing.decideRoute(f.bot.id, f.creds, "做", f.turn.id)!.agent).toBeUndefined();
+});
+
 test("whoever reviews the ticket keeps its own model, and a model no endpoint lists any more is told once and cleared with its endpoint", async () => {
   const f = fixture([{ name: "a", price: null, thinking_levels: ["low"], strengths: [] }, { name: "b", price: null, thinking_levels: ["low"], strengths: [] }],
     { other: [{ name: "c", price: null, thinking_levels: ["low"], strengths: [] }] });

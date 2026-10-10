@@ -3,6 +3,7 @@
 	import { AGENT_KINDS, type AgentStatus, type BotRunner, type CustomAgent } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import { agentAccountExample, agentCommand, agentFailure, type AgentFailure } from './agents.ts';
+	import AgentLogo from './AgentLogo.svelte';
 	import HelpTip from './HelpTip.svelte';
 
 	/**
@@ -10,7 +11,7 @@
 	 * which version, whether it is signed in, how it reaches the network and which models it lists,
 	 * with the other accounts' config directories a Bot may run on for an agent that has them.
 	 * Deskfolk only runs it and asks it about itself; signing in is the agent's own, in a terminal.
-	 * Text names only: Claude's mark is the one vendor mark in the app.
+	 * Its logo stands before its name (`AgentLogo.svelte`); one of your own ACP agents wears the plain prompt glyph.
 	 */
 	export type AgentCardApi = {
 		detectAgent: (runner: BotRunner, customId?: string | null) => Promise<AgentStatus>;
@@ -98,7 +99,7 @@
 
 <section class="agent-card" aria-label={status.label} data-agent-card={status.runner} data-agent-custom-id={status.custom_id ?? undefined}>
 	<div class="agent-head">
-		<h3 class="agent-title"><span data-agent-label>{status.label}</span><HelpTip text={t.agents.hint(status.label)} label={t.agents.help(status.label)} /></h3>
+		<h3 class="agent-title"><AgentLogo runner={status.runner} size={20} /><span data-agent-label>{status.label}</span><HelpTip text={t.agents.hint(status.label)} label={t.agents.help(status.label)} /></h3>
 	</div>
 	{#if failed}
 		<p class="agent-error" role="alert" data-agent-failed>{t.agents.failed}</p>

@@ -4,7 +4,8 @@ import { copyFor } from "../copy.ts";
 import { noBuiltinModels } from "../settings/builtin-models.ts";
 import { emptySnapshot } from "../snapshot.ts";
 import { aProvider, fakeRuntime } from "../test-fixtures.ts";
-import { click, render } from "../test-render.ts";
+import { settle } from "../test-async.ts";
+import { click, fill, press, render } from "../test-render.ts";
 import CreateBotSheet from "./CreateBotSheet.svelte";
 
 const t = copyFor("zh");
@@ -13,7 +14,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 function open() {
   const closed: true[] = [];
   const runtime = fakeRuntime();
-  const view = render(CreateBotSheet, { runtime, bots: [], t, modelOptions: [], onClose: () => closed.push(true) });
+  const view = render(CreateBotSheet, { runtime, bots: [], t, onClose: () => closed.push(true) });
   return { ...view, runtime, closed };
 }
 
@@ -43,7 +44,7 @@ test("the new-Bot form starts on Claude Agent when there is no endpoint a Bot co
     [[aProvider({ key_set: true })], t.sidebar.botRunnerApp],
   ] as const) {
     const runtime = fakeRuntime({ providers: [...providers] });
-    const view = render(CreateBotSheet, { runtime, bots: [], t, modelOptions: [], onClose: () => {} });
+    const view = render(CreateBotSheet, { runtime, bots: [], t, onClose: () => {} });
     expect(view.host.querySelector("#bot-runner")?.textContent?.trim()).toBe(runner);
     view.close();
   }
@@ -60,7 +61,7 @@ test("the new-Bot form starts on the agent the app was set up on when there is n
   ] as const) {
     const runtime = fakeRuntime({ providers: [...providers], settings });
     (runtime as unknown as { client: unknown }).client = { agents: async () => ({ items: [], custom_agents: [{ id: "acp-1", name: "我的 ACP", command: "my-acp", args: [] }] }) };
-    const view = render(CreateBotSheet, { runtime, bots: [], t, modelOptions: [], onClose: () => {} });
+    const view = render(CreateBotSheet, { runtime, bots: [], t, onClose: () => {} });
     // Before the daemon has said what it finds, the picker reads the runner's own name.
     expect(view.host.querySelector("#bot-runner")?.textContent?.trim()).toBe(runner === "我的 ACP" ? AGENT_KINDS.custom.label : runner);
     view.close();
@@ -83,7 +84,7 @@ const rowText = (el: Element) => el.textContent?.replace(/\s+/g, " ").trim();
 function openWithAgents(agents: unknown) {
   const runtime = fakeRuntime({ providers: [aProvider({ key_set: true })] });
   (runtime as unknown as { client: unknown }).client = { agents: async () => agents };
-  const view = render(CreateBotSheet, { runtime, bots: [], t, modelOptions: [], onClose: () => {} });
+  const view = render(CreateBotSheet, { runtime, bots: [], t, onClose: () => {} });
   return { ...view, runtime };
 }
 
@@ -105,8 +106,9 @@ test("the runner picker offers every local agent the daemon finds, and the form 
   click(rows.find((row) => rowText(row) === "Codex") ?? null);
   await sleep(0);
   expect(host.textContent).toContain(t.sidebar.botRunnerAgentCreateHint("Codex"));
-  // The endpoint's model is the app's own loop's: gone once another agent runs the Bot.
+  // The endpoint's model is the app's own loop's: gone once another agent runs the Bot, which has its own.
   expect(host.querySelector("#bot-model")).toBeNull();
+  expect(host.querySelector("#bot-agent-model")).not.toBeNull();
   fillIn(host);
   create(host);
   await sleep(0);
@@ -139,9 +141,109 @@ test("an agent not signed in says how to sign it in; the phone, which cannot ask
   expect(rows.map(rowText)).toContain("Codex 没登录");
   close();
   const runtime = fakeRuntime({ providers: [aProvider({ key_set: true })] });
-  const phone = render(CreateBotSheet, { runtime, bots: [], t, modelOptions: [], onClose: () => {} });
+  const phone = render(CreateBotSheet, { runtime, bots: [], t, onClose: () => {} });
   await sleep(30);
   click(phone.host.querySelector("#bot-runner"));
   expect([...phone.host.querySelectorAll("#bot-runner-listbox [role=option]")].map(rowText)).toEqual([t.sidebar.botRunnerApp, t.sidebar.botRunnerClaude]);
   phone.close();
+});
+
+const rowLabels = (host: HTMLElement) => [...host.querySelectorAll(".mp-row .mp-row-label")].map(rowText);
+const rowByValue = (host: HTMLElement, value: string) => host.querySelector<HTMLElement>(`.mp-row[data-value="${value}"]`);
+const pickRunner = async (host: HTMLElement, label: string) => {
+  click(host.querySelector("#bot-runner"));
+  click([...host.querySelectorAll("#bot-runner-listbox [role=option]")].find((row) => rowText(row) === label) ?? null);
+  await sleep(0);
+};
+const created = (runtime: { calls: { name: string; args: unknown[] }[] }) => runtime.calls.find((call) => call.name === "createBot")?.args[0] as Record<string, unknown>;
+
+test("on the app's own loop the model is picked among the endpoints' models, and its thinking level goes with it", async () => {
+  const providers = [
+    aProvider({ id: "p-1", name: "First", models: ["grok-4.6", "gemini-3.8-flash"] }),
+    aProvider({ id: "p-2", name: "Second", base_url: "https://two.example.com/v1", models: ["qwen-4"], model_catalog: [] }),
+  ];
+  const runtime = fakeRuntime({ providers });
+  const view = render(CreateBotSheet, { runtime, bots: [], t, onClose: () => {} });
+  const { host } = view;
+  expect(rowText(host.querySelector("#bot-model")!)).toBe(t.sidebar.botModelDefault);
+  click(host.querySelector("#bot-model"));
+  await settle();
+  expect([...host.querySelectorAll(".mp-source .mp-source-label")].map(rowText)).toEqual(["First", "Second"]);
+  expect(rowLabels(host)).toEqual([t.sidebar.botModelDefault, "grok-4.6", "gemini-3.8-flash"]);
+  click(rowByValue(host, "p-1::grok-4.6"));
+  // grok-4.6 offers none, low and high; the pin takes the first the app prefers.
+  expect(host.querySelector("#bot-thinking-label")).not.toBeNull();
+  expect(host.querySelector(".level-chip.active")?.textContent?.trim()).toBe("低");
+  fillIn(host);
+  create(host);
+  await sleep(0);
+  expect(created(runtime)).toMatchObject({ model: "grok-4.6", provider_id: "p-1", thinking_level: "low" });
+  view.close();
+});
+
+test("on Claude Agent the model is picked among Claude's aliases or left to Claude Code, and switching runner drops it", async () => {
+  const { host, runtime, close } = openWithAgents(found());
+  await sleep(30);
+  await pickRunner(host, t.sidebar.botRunnerClaude);
+  expect(host.querySelector("#bot-model")).toBeNull();
+  expect(host.querySelector("label[for=bot-agent-model]")?.textContent).toBe(t.sidebar.botAgentModel);
+  expect(rowText(host.querySelector("#bot-agent-model")!)).toBe(t.sidebar.botAgentModelDefault);
+  click(host.querySelector("#bot-agent-model"));
+  await settle();
+  expect(rowLabels(host)).toEqual([t.sidebar.botAgentModelDefault, "sonnet", "opus", "haiku", "fable"]);
+  click(rowByValue(host, "opus"));
+  expect(rowText(host.querySelector("#bot-agent-model")!)).toBe("opus");
+  fillIn(host);
+  create(host);
+  await sleep(0);
+  expect(created(runtime)).toMatchObject({ runner: "claude_code", agent_model: "opus" });
+  // Another agent names its models its own way: the one picked for Claude is not carried over.
+  await pickRunner(host, "Codex");
+  expect(rowText(host.querySelector("#bot-agent-model")!)).toBe(t.sidebar.botAgentModelDefaultOf("Codex"));
+  create(host);
+  await sleep(0);
+  const calls = runtime.calls.filter((call) => call.name === "createBot");
+  expect(calls.at(-1)?.args[0]).toMatchObject({ runner: "codex" });
+  expect("agent_model" in (calls.at(-1)!.args[0] as object)).toBe(false);
+  close();
+});
+
+test("on another agent the model is one it lists, its default, or a name typed into the search", async () => {
+  const models = [{ id: "gpt-5.5", name: "GPT-5.5", efforts: [] }, { id: "gpt-5.5-mini", name: "gpt-5.5-mini", efforts: [] }];
+  const { host, runtime, close } = openWithAgents(found({ codex: { models, default_model: "gpt-5.5" } }));
+  await sleep(30);
+  await pickRunner(host, "Codex");
+  expect(host.querySelector("label[for=bot-agent-model]")?.textContent).toBe(t.sidebar.botAgentModelOf("Codex"));
+  expect(host.querySelector("[data-agent-model]")?.textContent).toContain(t.sidebar.botAgentModelEmptyHint("Codex", "gpt-5.5"));
+  click(host.querySelector("#bot-agent-model"));
+  await settle();
+  expect(rowLabels(host)).toEqual([t.sidebar.botAgentModelDefaultOf("Codex"), "GPT-5.5", "gpt-5.5-mini"]);
+  click(rowByValue(host, "gpt-5.5-mini"));
+  expect(host.querySelector("#bot-agent-model [data-agent-logo='codex']")).not.toBeNull();
+  fillIn(host);
+  create(host);
+  await sleep(0);
+  expect(created(runtime)).toMatchObject({ runner: "codex", agent_model: "gpt-5.5-mini" });
+  // A name the agent never listed, typed as it spells it.
+  click(host.querySelector("#bot-agent-model"));
+  await settle();
+  const search = host.querySelector<HTMLInputElement>(".mp-search input")!;
+  fill(search, "openai/gpt-6");
+  press(search, "Enter");
+  create(host);
+  await sleep(0);
+  expect(runtime.calls.filter((call) => call.name === "createBot").at(-1)?.args[0]).toMatchObject({ runner: "codex", agent_model: "openai/gpt-6" });
+  close();
+  // An agent that lists none (DSH) takes a typed name, or none at all.
+  const dsh = openWithAgents(found());
+  await sleep(30);
+  await pickRunner(dsh.host, "DSH");
+  fillIn(dsh.host);
+  create(dsh.host);
+  await sleep(0);
+  expect(created(dsh.runtime)).toMatchObject({ runner: "dsh" });
+  click(dsh.host.querySelector("#bot-agent-model"));
+  await settle();
+  expect(dsh.host.querySelector(".mp-empty")?.textContent).toContain(t.modelPicker.noModels);
+  dsh.close();
 });

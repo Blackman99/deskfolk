@@ -14,8 +14,8 @@ export type VendorId = ConnectorId | "openai" | "groq" | "siliconflow" | "deepgr
  * Claude spark, and any other endpoint "Custom". It is read from the endpoint's address each time,
  * as the endpoint card does, so a connector added to the protocol shows in every picker without
  * touching any of them. A speech service (ADR 0073) is marked the same way, by its vendor. A model
- * run through any other local agent of yours (ADR 0079) wears that agent's name as plain text, no
- * logo. `name` is what the mark stands for, for its tooltip.
+ * run through any other local agent of yours (ADR 0079) wears that agent's logo (`AgentLogo.svelte`;
+ * an ACP agent of your own a plain prompt glyph). `name` is what the mark stands for, for its tooltip.
  */
 export type ModelSource =
   | { kind: "connector"; id: ConnectorId; name: string }
@@ -38,12 +38,12 @@ export function claudeAgentSource(t: Copy): ModelSource {
   return { kind: "claude-agent", name: t.claudeAgent.title };
 }
 
-/** A model run by one of your local agents other than Claude Code (ADR 0079): its name, as text. */
+/** A model run by one of your local agents other than Claude Code (ADR 0079): its logo, its name for the tooltip. */
 export function agentSource(runner: BotRunner, name: string): ModelSource {
   return { kind: "agent", runner, name };
 }
 
-/** The mark of whatever runs a Bot's turns: Claude's spark for Claude Agent, the agent's name for the rest. */
+/** The mark of whatever runs a Bot's turns: Claude's spark for Claude Agent, the agent's logo for the rest. */
 export function runnerSource(runner: BotRunner, name: string, t: Copy): ModelSource {
   return runner === "claude_code" ? claudeAgentSource(t) : agentSource(runner, name);
 }

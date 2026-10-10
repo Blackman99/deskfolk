@@ -39,7 +39,6 @@ function openProfile(routines: ReturnType<typeof aRoutine>[] = [], memories: Ret
     runtime,
     bot,
     t,
-    modelOptions: [],
     selectedKind: "you-bot",
     profileFailed: false,
     openDangerConfirm: () => {},

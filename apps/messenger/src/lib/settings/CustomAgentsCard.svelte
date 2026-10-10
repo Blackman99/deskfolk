@@ -2,6 +2,7 @@
 	import type { AgentsStatusResponse, CustomAgent } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import { agentFailure, CUSTOM_AGENTS_MAX, parseArgs, renamed, type AgentFailure } from './agents.ts';
+	import AgentLogo from './AgentLogo.svelte';
 	import HelpTip from './HelpTip.svelte';
 
 	/**
@@ -79,6 +80,7 @@
 				<li class="custom-agent" data-custom-agent={agent.id}>
 					{#if renaming?.id === agent.id}
 						<form class="custom-row" onsubmit={(event) => { event.preventDefault(); void rename(); }}>
+							<AgentLogo runner="custom" size={16} />
 							<input
 								type="text"
 								bind:value={renaming.name}
@@ -93,6 +95,7 @@
 						</form>
 					{:else}
 						<div class="custom-row">
+							<AgentLogo runner="custom" size={16} />
 							<span class="custom-name" data-custom-name>{agent.name}</span>
 							<button type="button" class="btn-xs" disabled={busy} onclick={() => (renaming = { id: agent.id, name: agent.name })} data-custom-rename>{t.agents.custom.rename}</button>
 							<button type="button" class="btn-xs" disabled={busy} onclick={() => void save(agents.filter((other) => other.id !== agent.id))} data-custom-remove>{t.agents.custom.remove}</button>

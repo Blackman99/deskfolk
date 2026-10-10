@@ -4,6 +4,7 @@
 	import type { Copy } from '../copy.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
+	import AgentLogo from '../settings/AgentLogo.svelte';
 	import {
 		AGENT_USAGE_POLL_MS,
 		agentHasWindows,
@@ -81,7 +82,7 @@
 		<ul>
 			{#each items as item, index (`${item.runner}:${item.custom_id ?? ''}:${item.config_dir ?? ''}`)}
 				<li class="agent-usage-item" data-agent-usage-item={item.runner} data-agent-usage-account={item.config_dir ?? ''}>
-					<span class="agent-usage-name" title={names[index]}>{names[index]}</span>
+					<span class="agent-usage-name" title={names[index]}><AgentLogo runner={item.runner} size={14} /><span class="agent-usage-label">{names[index]}</span></span>
 					{#if agentHasWindows(item)}
 						<span class="agent-usage-windows">
 							{#each agentWindowsSorted(item.windows) as window}
@@ -128,12 +129,20 @@
 		display: contents;
 	}
 
+	/* The agent's logo, then its name, cut short on its own so the logo always stays whole. */
 	.agent-usage-name {
+		display: flex;
+		align-items: center;
+		gap: 5px;
 		min-width: 0;
-		max-width: 9em;
-		overflow: hidden;
+		max-width: calc(9em + 19px);
 		color: var(--ink);
 		font-weight: 600;
+	}
+
+	.agent-usage-label {
+		min-width: 0;
+		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}

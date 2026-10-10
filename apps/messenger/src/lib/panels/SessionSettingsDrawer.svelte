@@ -4,7 +4,6 @@
 	import type { Copy } from '../copy.ts';
 	import type { ShellDangerConfirm } from '../overlays/danger-confirm.svelte.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
-	import type { SelectOption } from '../select-options.ts';
 	import { classifySession, youBotPeer, type SessionGroup } from '../sidebar/session-groups.ts';
 	import type { GroupDetailDraft } from './group-edit.ts';
 	import GroupPane from './GroupPane.svelte';
@@ -24,7 +23,6 @@
 		narrow: boolean;
 		botsById: ReadonlyMap<string, Bot>;
 		sessionsById: ReadonlyMap<string, SessionSummary>;
-		availableModelOptions: SelectOption[];
 		danger: ShellDangerConfirm;
 		openProfile: (botId: string, sessionId?: string) => void;
 		/** Settings beside this conversation on the workbench, for this Bot when one is named. Null for the drawer. */
@@ -49,7 +47,6 @@
 		narrow,
 		botsById,
 		sessionsById,
-		availableModelOptions,
 		danger,
 		openProfile,
 		beside,
@@ -95,7 +92,6 @@
 					{runtime}
 					bot={paneBot}
 					{t}
-					modelOptions={availableModelOptions}
 					selectedKind={paneKind}
 					bind:profileFailed
 					bind:mobileDetail={paneMobileDetail}
@@ -165,7 +161,6 @@
 						{runtime}
 						bot={profileBot}
 						{t}
-						modelOptions={availableModelOptions}
 						{selectedKind}
 						bind:profileFailed
 						bind:mobileDetail={paneMobileDetail}

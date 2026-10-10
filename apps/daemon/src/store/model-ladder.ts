@@ -40,8 +40,11 @@ export function modelLadder(ctx: StoreContext): ModelLadderRung[] {
   return parseLadder(ctx.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'model_ladder'").get()?.value);
 }
 
-/** One rung as a request names it: a model an endpoint lists, or a Claude model on an account listed in Settings. */
-function rungOf(ctx: StoreContext, item: unknown): ModelLadderRung {
+/**
+ * One rung as a request names it: a model an endpoint lists, or a local agent's model (Claude's or
+ * another's) on an account listed in Settings. A ticket's model is checked the same way (ADR 0079).
+ */
+export function rungOf(ctx: StoreContext, item: unknown): ModelLadderRung {
   const rung = item as Record<string, unknown> | null;
   if (rung && typeof rung === "object" && "runner" in rung) {
     if (rung.runner === "claude_code") {

@@ -84,7 +84,7 @@ export const zh = {
   botRunnerClaudeSignedOut: "你本机的 Claude Code 还没登录：在终端里运行 claude 登录。Deskfolk 不经手你的 Claude 登录。",
   botRunnerClaudeAccountSignedOut: (command: string) => `这个账号还没登录：在终端里运行 ${command}。Deskfolk 不经手你的 Claude 登录。`,
   botRunnerClaudeUnavailable: "没查到 Claude Code 的状态。电脑上的 Deskfolk 版本较旧时，先在电脑上更新。",
-  botRunnerClaudeCreateHint: "建好后每一轮由你本机安装并登录的 Claude Code 来跑；它用哪个 Claude 模型、思考强度多少，在 Bot 面板里选。",
+  botRunnerClaudeCreateHint: "建好后每一轮由你本机安装并登录的 Claude Code 来跑；思考强度多少，在 Bot 面板里选。",
   botAgentAccount: "Claude 账号",
   botAgentAccountDefault: "这台电脑的默认账号",
   botAgentAccountHint: "这个 Bot 的每一轮花哪个账号的额度。要用另一个账号，先在「设置 › Agents › Claude Agent」里添加它的配置目录。",
@@ -113,7 +113,7 @@ export const zh = {
     auth
       ? `每一轮由你本机安装并登录的 ${label} 来跑，用的是它登录的账号：${auth}。Deskfolk 不经手你的登录。`
       : `每一轮由你本机安装并登录的 ${label} 来跑，用的是它自己的登录。Deskfolk 不经手你的登录。`,
-  botRunnerAgentCreateHint: (label: string) => `建好后每一轮由你本机安装并登录的 ${label} 来跑；它用哪个模型、思考强度多少，在 Bot 面板里选。`,
+  botRunnerAgentCreateHint: (label: string) => `建好后每一轮由你本机安装并登录的 ${label} 来跑；思考强度多少，在 Bot 面板里选。`,
   botRunnerNoAppTools: (label: string) => `${label} 用不了 Deskfolk 的工具（交活、提问、结束这一轮等），只会回复文字，办不了事。要让这个 Bot 办事，换一个 Agent。`,
   botRunnerCustomInvalid: "选一个你添加的 ACP Agent。",
   botAgentAccountOf: (label: string) => `${label} 账号`,
@@ -122,8 +122,8 @@ export const zh = {
   botAgentModelDefaultOf: (label: string) => `${label} 的默认`,
   botAgentModelEmptyHint: (label: string, defaultModel: string | null) =>
     defaultModel
-      ? `留空用 ${label} 自己的默认模型（${defaultModel}）；也可以填它认得的任何模型名。`
-      : `留空用 ${label} 自己的默认模型；也可以填它认得的任何模型名。`,
+      ? `选「${label} 的默认」就用它自己的默认模型（${defaultModel}）；名单里没有的，在搜索框里填它认得的模型名。`
+      : `选「${label} 的默认」就用它自己的默认模型；名单里没有的，在搜索框里填它认得的模型名。`,
   botAgentModelInvalidOf: (label: string) => `这不是 ${label} 能认的模型名：别带空格。`,
   botAgentEffortHintOf: (label: string) => `能用哪几档取决于模型；不支持的档由 ${label} 自己处理。`,
   botAgentNoEffort: (label: string) => `${label} 没有思考强度这一档，由模型自己定。`,
@@ -317,7 +317,7 @@ export const en: CopyShape<typeof zh> = {
   botRunnerClaudeSignedOut: "Your Claude Code is not signed in: run claude in a terminal and sign in. Deskfolk never handles your Claude sign-in.",
   botRunnerClaudeAccountSignedOut: (command: string) => `This account is not signed in: run ${command} in a terminal. Deskfolk never handles your Claude sign-in.`,
   botRunnerClaudeUnavailable: "Could not read Claude Code's status. If the computer runs an older Deskfolk, update it there first.",
-  botRunnerClaudeCreateHint: "Once created, each turn is run by the Claude Code you installed and signed in to on this computer; pick its Claude model and effort in the Bot panel.",
+  botRunnerClaudeCreateHint: "Once created, each turn is run by the Claude Code you installed and signed in to on this computer; pick its effort in the Bot panel.",
   botAgentAccount: "Claude account",
   botAgentAccountDefault: "This computer's default account",
   botAgentAccountHint: "Whose plan this Bot's turns spend. To use another account, add its config directory under Settings › Agents › Claude Agent first.",
@@ -346,7 +346,7 @@ export const en: CopyShape<typeof zh> = {
     auth
       ? `Each turn is run by the ${label} you installed and signed in to on this computer, on the account it is signed in with: ${auth}. Deskfolk never handles your sign-in.`
       : `Each turn is run by the ${label} you installed and signed in to on this computer, on its own sign-in. Deskfolk never handles your sign-in.`,
-  botRunnerAgentCreateHint: (label: string) => `Once created, each turn is run by the ${label} you installed and signed in to on this computer; pick its model and effort in the Bot panel.`,
+  botRunnerAgentCreateHint: (label: string) => `Once created, each turn is run by the ${label} you installed and signed in to on this computer; pick its effort in the Bot panel.`,
   botRunnerNoAppTools: (label: string) => `${label} cannot use Deskfolk's tools (handing in work, asking you, ending a turn, and so on): it only replies in text and cannot get things done. For a Bot that does work, pick another agent.`,
   botRunnerCustomInvalid: "Pick one of the ACP agents you added.",
   botAgentAccountOf: (label: string) => `${label} account`,
@@ -355,8 +355,8 @@ export const en: CopyShape<typeof zh> = {
   botAgentModelDefaultOf: (label: string) => `${label}'s default`,
   botAgentModelEmptyHint: (label: string, defaultModel: string | null) =>
     defaultModel
-      ? `Left empty, it runs on ${label}'s own default model (${defaultModel}); you can also type any model name it knows.`
-      : `Left empty, it runs on ${label}'s own default model; you can also type any model name it knows.`,
+      ? `"${label}'s default" runs on its own default model (${defaultModel}); for one the list lacks, type a model name it knows into the search.`
+      : `"${label}'s default" runs on its own default model; for one the list lacks, type a model name it knows into the search.`,
   botAgentModelInvalidOf: (label: string) => `That is not a model name ${label} can take: no spaces.`,
   botAgentEffortHintOf: (label: string) => `Which levels a model offers varies; ${label} handles one it lacks.`,
   botAgentNoEffort: (label: string) => `${label} has no effort level; the model decides.`,
