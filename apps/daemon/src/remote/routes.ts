@@ -55,7 +55,7 @@ get("runtime/claude-code"); add("POST", "runtime/claude-code/detect");
 add("PUT", "runtime/claude-code/path", { path: nullable(string) }, ["path"]);
 add("PUT", "runtime/claude-code/accounts", { config_dirs: list(string) }, ["config_dirs"]);
 // Your other local agents (ADR 0079), seen and set up from the phone as on the Mac, and their usage.
-get("runtime/agents", { refresh: one("1") }); add("POST", "runtime/agents/detect", { runner, custom_id: nullable(string) }, ["runner"]);
+get("runtime/agents", { refresh: one("1"), wait: one("1") }); add("POST", "runtime/agents/detect", { runner, custom_id: nullable(string) }, ["runner"]);
 add("PUT", "runtime/agents/path", { runner, path: nullable(string) }, ["runner", "path"]);
 add("PUT", "runtime/agents/accounts", { runner, config_dirs: list(string) }, ["runner", "config_dirs"]);
 add("PUT", "runtime/custom-agents", { agents: list(object({ id: string, name: string, command: string, args: list(string) }, ["name", "command"])) }, ["agents"]);

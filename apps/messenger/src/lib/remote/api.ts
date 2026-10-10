@@ -533,8 +533,12 @@ export class RemoteApi extends ApiBase<PendingRemote> {
   }
 
   /** Your other local agents (ADR 0079): Codex, Grok, OpenCode, DSH, ZCode, Antigravity and your own ACP agents, as the daemon finds them. */
-  async agents(refresh = false): Promise<AgentsStatusResponse> {
-    return this.get<AgentsStatusResponse>(`/v1/runtime/agents${refresh ? "?refresh=1" : ""}`);
+  /**
+   * Your local agents as last seen; `refresh` asks every one afresh, `wait` waits for the looks the
+   * last answer said were going (`refreshing`).
+   */
+  async agents(refresh = false, wait = false): Promise<AgentsStatusResponse> {
+    return this.get<AgentsStatusResponse>(`/v1/runtime/agents${refresh ? "?refresh=1" : wait ? "?wait=1" : ""}`);
   }
 
   /** A fresh look at one agent (a custom one by its id). */

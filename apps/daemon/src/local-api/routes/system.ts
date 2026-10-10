@@ -78,7 +78,7 @@ export function systemRoutes(ctx: RouteCtx): Response | Promise<Response> | null
     };
     const customOf = (runner: OtherRunner) => (runner === "custom" ? (typeof body.custom_id === "string" ? body.custom_id : null) : null);
     if (method === "GET" && path === "/v1/runtime/agents") {
-      return agents.list(url.searchParams.get("refresh") === "1" ? 0 : undefined).then((list) => jsonResponse(list, 200, null));
+      return agents.list(url.searchParams.get("refresh") === "1" ? 0 : undefined, url.searchParams.get("wait") === "1").then((list) => jsonResponse(list, 200, null));
     }
     if (method === "POST" && path === "/v1/runtime/agents/detect") {
       const runner = runnerOf(body.runner);

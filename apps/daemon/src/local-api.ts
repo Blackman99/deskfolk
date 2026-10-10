@@ -69,6 +69,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
     path: (runner) => options.store.agentPath(runner),
     configDirs: (runner) => options.store.agentConfigDirs(runner),
     customAgents: () => options.store.customAgents(),
+    remembered: { load: () => options.store.agentStatusMemory(), save: (memory) => options.store.rememberAgentStatuses(memory) },
   });
   options.agentUsage ??= createAgentUsageProbe({ store: options.store });
   const sockets = new Set<Bun.ServerWebSocket<SocketData>>();

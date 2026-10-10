@@ -21,7 +21,7 @@
 	export type AgentsTabApi = ClaudeAgentApi &
 		AgentCardApi &
 		CustomAgentsApi & {
-			agents: (refresh?: boolean) => Promise<AgentsStatusResponse>;
+			agents: (refresh?: boolean, wait?: boolean) => Promise<AgentsStatusResponse>;
 		};
 
 	interface Props {
@@ -75,6 +75,23 @@
 			else failed = true;
 		} finally {
 			loading = false;
+		}
+		// Shown as last seen, some looked at again behind it: their fresh answers when they come.
+		if (list?.refreshing) void followUp(client);
+	}
+
+	/** Waiting on the looks the daemon has going, so the lines it showed from before catch up by themselves. */
+	let catchingUp = $state(false);
+	async function followUp(client: AgentsTabApi): Promise<void> {
+		if (catchingUp) return;
+		catchingUp = true;
+		try {
+			const fresh = await client.agents(false, true);
+			list = { ...fresh, refreshing: false };
+		} catch {
+			// The lines stay as last seen; "Check all again" asks afresh.
+		} finally {
+			catchingUp = false;
 		}
 	}
 
@@ -220,7 +237,7 @@
 		{:else}
 			<div class="agents-top">
 				<p class="agents-intro">{t.agents.list.intro}</p>
-				<button type="button" class="btn-xs" disabled={rechecking} onclick={() => void recheckAll()} data-agents-recheck-all>{rechecking ? t.agents.checking : t.agents.list.recheckAll}</button>
+				<button type="button" class="btn-xs" disabled={rechecking || catchingUp} onclick={() => void recheckAll()} data-agents-recheck-all>{rechecking || catchingUp ? t.agents.checking : t.agents.list.recheckAll}</button>
 			</div>
 			<ul class="agents-list" aria-label={t.settings.tabAgents}>
 				{#each shownRows as row (row.key)}

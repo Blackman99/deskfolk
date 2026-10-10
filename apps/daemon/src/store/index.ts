@@ -649,6 +649,8 @@ export class Store {
   readonly allAgentConfigDirs = this.bind(agents.allAgentConfigDirs);
   readonly setAgentConfigDirs = this.bind(agents.setAgentConfigDirs);
   readonly customAgents = this.bind(agents.customAgents);
+  readonly agentStatusMemory = this.bind(agents.agentStatusMemory);
+  readonly rememberAgentStatuses = this.bind(agents.rememberAgentStatuses);
   readonly customAgent = this.bind(agents.customAgent);
   readonly setCustomAgents = this.bind(agents.setCustomAgents);
   readonly botDefault = this.bind(modelDefaults.botDefault);

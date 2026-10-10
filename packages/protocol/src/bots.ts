@@ -299,7 +299,11 @@ export type AgentStatus = {
 };
 
 /** `GET /v1/runtime/agents`: every local agent other than Claude Code, and your own ACP agents. */
-export type AgentsStatusResponse = { items: AgentStatus[]; custom_agents: CustomAgent[] };
+/**
+ * Your local agents as last seen. `refreshing`: some were seen too long ago and are being looked at
+ * again (an agent takes seconds to ask); ask again with `wait=1` for the fresh answers.
+ */
+export type AgentsStatusResponse = { items: AgentStatus[]; custom_agents: CustomAgent[]; refreshing?: boolean };
 
 /** One usage window of an agent's plan (Codex's, ADR 0079): how much is used and when it starts over. */
 export type AgentUsageWindow = {

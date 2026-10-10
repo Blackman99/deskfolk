@@ -28,10 +28,21 @@ export type AgentProbeDeps = {
   env?: Record<string, string | undefined>;
   /** A test's stand-in for asking an agent about itself. */
   describe?: (runner: OtherRunner, custom: CustomAgent | null) => Promise<AgentStatus>;
+  /** What was last seen, kept across restarts (the store's settings), so the list has something to show at once. */
+  remembered?: { load: () => AgentStatusMemory; save: (memory: AgentStatusMemory) => void };
+  now?: () => number;
 };
 
+/** Each agent's last status and when it was seen (ms), by `runner\u0000customId`. */
+export type AgentStatusMemory = Record<string, { status: AgentStatus; at: number }>;
+
 export type AgentProbe = {
-  list(maxAgeMs?: number): Promise<AgentsStatusResponse>;
+  /**
+   * Every agent as last seen. One seen longer ago than `maxAgeMs` is shown as it was and looked at
+   * again behind it (`refreshing`); only one never seen is waited for. `maxAgeMs` 0 waits for all
+   * of them afresh ("Check again"); `wait` waits for the looks still going, asking nothing new.
+   */
+  list(maxAgeMs?: number, wait?: boolean): Promise<AgentsStatusResponse>;
   current(runner: OtherRunner, customId?: string | null, maxAgeMs?: number): Promise<AgentStatus>;
   detect(runner: OtherRunner, customId?: string | null): Promise<AgentStatus>;
   /** Models an agent offered in a session (an ACP agent's config options): kept for the next look. */
@@ -46,7 +57,13 @@ export function noteAgentModels(runner: OtherRunner, customId: string | null, mo
 }
 
 export function createAgentProbe(deps: AgentProbeDeps): AgentProbe {
+  const now = deps.now ?? Date.now;
   const cache = new Map<string, { status: AgentStatus; at: number }>();
+  try {
+    for (const [k, seen] of Object.entries(deps.remembered?.load() ?? {})) cache.set(k, seen);
+  } catch {
+    // Nothing kept, or nothing that reads: every agent is looked at on the first ask.
+  }
   const inFlight = new Map<string, Promise<AgentStatus>>();
   const key = (runner: OtherRunner, customId: string | null) => `${runner}\u0000${customId ?? ""}`;
 
@@ -59,7 +76,12 @@ export function createAgentProbe(deps: AgentProbeDeps): AgentProbe {
     const look = (async () => {
       try {
         const status = await (deps.describe ?? ((r, c) => describeAgent(r, c, deps)))(runner, custom);
-        cache.set(k, { status, at: Date.now() });
+        cache.set(k, { status, at: now() });
+        try {
+          deps.remembered?.save(Object.fromEntries(cache));
+        } catch {
+          // Kept for this run only.
+        }
         return status;
       } finally {
         inFlight.delete(k);
@@ -70,19 +92,33 @@ export function createAgentProbe(deps: AgentProbeDeps): AgentProbe {
   }
   function current(runner: OtherRunner, customId: string | null = null, maxAgeMs = AGENT_STATUS_MAX_AGE_MS): Promise<AgentStatus> {
     const cached = cache.get(key(runner, customId));
-    if (cached && Date.now() - cached.at < maxAgeMs) return Promise.resolve(cached.status);
+    if (cached && now() - cached.at < maxAgeMs) return Promise.resolve(cached.status);
     return detect(runner, customId);
   }
   return {
     current,
     detect,
-    async list(maxAgeMs = AGENT_STATUS_MAX_AGE_MS) {
+    async list(maxAgeMs = AGENT_STATUS_MAX_AGE_MS, wait = false) {
       const customs = deps.customAgents();
-      const items = await Promise.all([
-        ...OTHER_RUNNERS.map((runner) => current(runner, null, maxAgeMs)),
-        ...customs.map((agent) => current("custom", agent.id, maxAgeMs)),
-      ]);
-      return { items, custom_agents: customs };
+      const wanted: Array<[OtherRunner, string | null]> = [
+        ...OTHER_RUNNERS.map((runner): [OtherRunner, null] => [runner, null]),
+        ...customs.map((agent): [OtherRunner, string] => ["custom", agent.id]),
+      ];
+      let refreshing = false;
+      const items = await Promise.all(wanted.map(([runner, customId]) => {
+        const k = key(runner, customId);
+        const going = inFlight.get(k);
+        if (wait && going) return going;
+        const cached = cache.get(k);
+        if (!cached || maxAgeMs === 0) return detect(runner, customId);
+        // Seen, if long ago: shown as it was, and looked at again behind it.
+        if (!wait && now() - cached.at >= maxAgeMs) {
+          refreshing = true;
+          void detect(runner, customId).catch(() => undefined);
+        }
+        return Promise.resolve(cached.status);
+      }));
+      return { items, custom_agents: customs, ...(refreshing ? { refreshing } : {}) };
     },
     noteModels: noteAgentModels,
   };

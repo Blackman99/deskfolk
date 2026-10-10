@@ -197,3 +197,28 @@ test("a daemon without the route gets a note; any other failure a retry; no clie
   expect(none.host.textContent?.trim()).toBe("");
   none.close();
 });
+
+test("lines shown as last seen catch up by themselves when the daemon's new looks come in", async () => {
+  asPhone(false);
+  let answer: ((value: AgentsStatusResponse) => void) | null = null;
+  const asked: string[] = [];
+  const stale = { ...list, items: list.items.map((item) => (item.runner === "codex" ? { ...item, logged_in: false, auth: null } : item)), refreshing: true };
+  const c = client({
+    agents: (refresh?: boolean, wait?: boolean) => {
+      asked.push(wait ? "wait" : refresh ? "refresh" : "list");
+      return wait ? new Promise<AgentsStatusResponse>((resolve) => (answer = resolve)) : Promise.resolve(stale);
+    },
+  });
+  const view = render(AgentsTab, { api: c.api as never, t });
+  await sleep(0);
+  // At once, as last seen; the check-all button says it is looking.
+  expect(summaryOf(view.host, "codex")).toBe(t.agents.list.signedOut("codex login"));
+  expect(view.host.querySelector("[data-agents-recheck-all]")?.textContent).toBe(t.agents.checking);
+  expect(asked).toEqual(["list", "wait"]);
+  answer!(list);
+  await sleep(0);
+  expect(summaryOf(view.host, "codex")).toBe("ChatGPT Plus · 1 个模型");
+  expect(view.host.querySelector("[data-agents-recheck-all]")?.textContent).toBe(t.agents.list.recheckAll);
+  expect(asked).toEqual(["list", "wait"]);
+  view.close();
+});

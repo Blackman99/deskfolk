@@ -6,7 +6,7 @@
  * else about an agent is stored: Deskfolk runs it and asks it about itself, it never keeps its
  * credentials.
  */
-import { AGENT_KINDS, BUILTIN_MODEL_ROLES, type BotRunner, type CustomAgent } from "@real-bot/protocol";
+import { AGENT_KINDS, BUILTIN_MODEL_ROLES, isBotRunner, type AgentStatus, type BotRunner, type CustomAgent } from "@real-bot/protocol";
 import { CLAUDE_CONFIG_DIRS_MAX, normalizeConfigDir, sameConfigDir, tildeDir, tooWideForConfigDir } from "../claude-code/account";
 import { HttpError } from "../errors";
 import { ulid } from "../ids";
@@ -241,4 +241,22 @@ export function listedCustomAgent(ctx: StoreContext, value: unknown, field: stri
   const agent = customAgent(ctx, value.trim());
   if (!agent) throw new HttpError(422, "invalid_args", `${field} must name one of your custom agents`);
   return agent.id;
+}
+
+/** Where the agents' last statuses are kept: a cache, so Settings › Agents has them at once after a restart (ADR 0079). */
+const STATUS_MEMORY_KEY = "agent_status_cache";
+
+/** Each agent's last status and when it was seen; whatever does not read is left out. */
+export function agentStatusMemory(ctx: StoreContext): Record<string, { status: AgentStatus; at: number }> {
+  try {
+    const parsed = JSON.parse(setting(ctx, STATUS_MEMORY_KEY) || "{}") as Record<string, { status?: AgentStatus; at?: unknown }>;
+    return Object.fromEntries(Object.entries(parsed).filter(([, seen]) =>
+      seen && typeof seen.at === "number" && seen.status && typeof seen.status === "object" && isBotRunner(seen.status.runner)) as Array<[string, { status: AgentStatus; at: number }]>);
+  } catch {
+    return {};
+  }
+}
+
+export function rememberAgentStatuses(ctx: StoreContext, memory: Record<string, { status: AgentStatus; at: number }>): void {
+  setSetting(ctx, STATUS_MEMORY_KEY, JSON.stringify(memory));
 }
