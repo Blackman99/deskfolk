@@ -1317,6 +1317,10 @@
 		display: flex;
 		flex-direction: column;
 		align-items: flex-start;
+		/* One line (no shell yet, so no path under the name) would otherwise sit on the top of
+		   this 44px row, above the back and new buttons, which center their glyphs in the same
+		   row. Two lines already fill it, so centering does not move those. */
+		justify-content: center;
 		gap: 1px;
 		width: 100%;
 		min-width: 0;

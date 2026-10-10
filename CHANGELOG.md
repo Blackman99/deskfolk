@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### The phone's empty Terminal lines its title up
+
+- With no session open, "Terminal" sat above the back arrow and the new-session +. It now sits on the same line as those two.
+
 ### Usage in one place: a floating widget
 
 - Every local agent you have connected (installed and signed in) shows its usage, whether or not anything runs on it yet, all in one place now ([ADR 0080](docs/adr/0080-one-usage-view.md)). The two strips at the sidebar's foot are gone; instead a small ball floats top right of the window, ringed by the tightest window of all and outlined amber or red once one runs low. Point at it and it morphs into a column of your agents, each ringed by its own tightest window; point at one and a card grows out of it with all that agent's accounts — every window and when it resets, its turns and tokens today. Drag it anywhere; drop it by the left or right edge and it docks there half tucked away. A click pins it open; right-click hides it; "Show the usage widget" at the foot of the usage tab brings it back.

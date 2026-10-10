@@ -200,6 +200,22 @@ test("the phone's page names the shell it shows, and its title switches between 
   view.close();
 });
 
+test("an empty phone page centers its title on the line of the back and new buttons", async () => {
+  const { api } = fakeApi([]);
+  const view = render(TerminalView, {
+    api: api as never, workspacePath: "/work/real-bot", rows: [], t,
+    onStream: () => () => {}, onChanged: () => {}, onClose: () => {}, tabIds: "all",
+  });
+  await settle();
+  const title = view.host.querySelector<HTMLElement>(".terminal-title")!;
+  expect(title.textContent?.trim()).toBe(t.terminal.title);
+  expect(view.host.querySelector(".terminal-title-where")).toBeNull();
+  // One line in a 44px row. Left at the start, it draws above the back chevron and +, which
+  // center their glyphs in that same row.
+  expect(getComputedStyle(title).justifyContent).toBe("center");
+  view.close();
+});
+
 test("with one shell the title is only a title, and nothing drops from it", async () => {
   const { api } = fakeApi([older]);
   const view = render(TerminalView, {
