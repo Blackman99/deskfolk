@@ -412,7 +412,8 @@
 	function onBackdrop(ev: MouseEvent): void {
 		const target = ev.target;
 		if (!(target instanceof Element)) return;
-		if (target.closest('.msg-image-frame, .msg-image-close, .msg-image-save, .msg-image-original')) return;
+		// The picture closes it too, the way it was opened: only the buttons keep it up.
+		if (target.closest('.msg-image-close, .msg-image-save, .msg-image-original')) return;
 		requestClose();
 	}
 </script>
@@ -588,6 +589,7 @@
 		/* Follow the frame as it grows out of a cropped thumb and shrinks back into it. */
 		object-fit: cover;
 		background: var(--pane);
+		cursor: zoom-out;
 	}
 
 	.msg-image-caption,

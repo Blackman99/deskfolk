@@ -63,6 +63,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 - An approval you press on a card is now recorded as yours. Before, every approval was recorded as the app letting it through on its own.
 - Fixed: a Bot's card on the trace drew blank when its reply ended on a part with files only; it now shows the turn's last words. When a turn said nothing, the plan's organizer no longer reads the message that woke it as the Bot's own words.
 
+### A second click on an enlarged picture closes it
+
+- Clicking the enlarged picture itself now puts it back, the same as ✕, Esc or clicking outside it. Only the buttons (save, original, ✕) keep it open.
+
 ### Choose where each kind of window opens
 
 - Settings has a new tab, Behavior, after General, with the card Where windows open. Conversations, Bot ↔ Bot directs, the trace, board and plan, artifacts, the workspace, terminals, the calendar and spend each get a choice of where they go when they are not open yet. It is kept on this machine; narrow windows and phones do not have it. A change applies to the next window opened; changed ones say so, and one button puts the defaults back.

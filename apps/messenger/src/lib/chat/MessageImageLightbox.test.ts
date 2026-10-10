@@ -358,3 +358,18 @@ test("a local enlargement offers no save", async () => {
     close();
   }
 });
+
+/** Clicked once to enlarge, the picture is clicked once more to put it back. */
+test("a click on the enlarged picture closes it", async () => {
+  const { api } = fakeApi("local", async () => new Blob([new Uint8Array([1])], { type: "image/png" }));
+  let closed = 0;
+  const { host, close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => { closed += 1; } });
+  try {
+    await settle();
+    host.querySelector<HTMLImageElement>(".msg-image-full")!.click();
+    flushSync();
+    expect(closed).toBe(1);
+  } finally {
+    close();
+  }
+});
