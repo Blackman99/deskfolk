@@ -76,10 +76,6 @@
           <span class="version mono">v{version}</span>
         </div>
         <p>{t.quickstart.download.body}</p>
-        <div class="dl-note-row">
-          <pre class="mono dl-note">{t.quickstart.download.note}</pre>
-          <CopyButton text={t.quickstart.download.note} label={t.hero.copy} doneLabel={t.hero.copied} compact />
-        </div>
         <p class="dl-guides">
           <a class="text-link" href="{base}/{lang}/gatekeeper">{t.quickstart.download.faq}</a>
           <a class="text-link" href="{base}/{lang}/windows">{t.quickstart.download.windows}</a>
@@ -324,17 +320,6 @@
     padding: 2px 8px;
   }
 
-  .dl-note-row {
-    display: flex;
-    align-items: stretch;
-    gap: 8px;
-  }
-
-  .dl-note-row .dl-note {
-    flex: 1;
-    min-width: 0;
-  }
-
   .download p {
     margin: 0;
     color: var(--ink-2);
@@ -347,19 +332,6 @@
     flex-wrap: wrap;
     gap: 4px 16px;
     font-size: 14px;
-  }
-
-  .dl-note {
-    margin: 0;
-    padding: 10px 12px;
-    border-radius: var(--radius-md);
-    background: var(--ground);
-    border: 1px solid var(--line);
-    font-size: 13px;
-    line-height: 1.5;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    color: var(--ink);
   }
 
   .download .btn {

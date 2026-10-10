@@ -97,7 +97,7 @@ export type Dict = {
     step1: string;
     step2: string;
     firstRun: string[];
-    download: { title: string; body: string; link: string; note: string; faq: string; windows: string };
+    download: { title: string; body: string; link: string; faq: string; windows: string };
     linkDocs: string;
     linkDocsSite: string;
     linkGlossary: string;
@@ -181,7 +181,7 @@ const zh: Dict = {
       { label: '停下是状态。', body: '叫停只有你能解除，开轮、叫醒和有副作用的调用都先过它（以前说了停，Bot 还在送审）。' },
       { label: '停在半路有人追，也不烦你。', body: '监督器不调模型、重启不丢，只在需要你时找你（以前停了 7.6 小时没人知道）。' }
     ],
-    wipNote: 'Alpha 版本：macOS 未签名快照，Windows 为实验性预览；功能与数据结构仍会变化。',
+    wipNote: 'Alpha 版本：macOS 版已签名并经 Apple 公证，Windows 为实验性预览；功能与数据结构仍会变化。',
     ctaPrimary: '下载 Alpha',
     ctaSecondary: '从源码启动',
     runLabel: '本机运行',
@@ -324,7 +324,7 @@ const zh: Dict = {
   },
   quickstart: {
     heading: '下载，或从源码启动',
-    intro: 'MIT 协议开源。Alpha 快照未签名：macOS 是主要平台；Windows 是实验性预览，还没有远程访问、桌面通知和应用内安装更新；Linux 暂不支持。',
+    intro: 'MIT 协议开源。macOS 是主要平台，Alpha 快照已签名并经 Apple 公证；Windows 是实验性预览，还没有远程访问、桌面通知和应用内安装更新；Linux 暂不支持。',
     requirements: '需要 Node.js 22+、pnpm 12.3.4、Bun 1.2+、Rust / Cargo。macOS 上另装 Tauri 的 macOS 前置依赖（含 Xcode Command Line Tools）；Windows 上用 Rust 的 MSVC 工具链和 Visual Studio Build Tools（勾选 C++ 桌面开发），再先编一次终端 helper，见开发说明。',
     step1: '克隆并安装依赖',
     step2: '并行启动守护进程与桌面窗',
@@ -336,9 +336,8 @@ const zh: Dict = {
     ],
     download: {
       title: '下载 Alpha 快照',
-      body: '最新 GitHub Release 提供 Apple 芯片与 Intel 两种 .dmg，以及 Windows 预览版安装包 Deskfolk_<版本>_x64-setup.exe。构建都未签名：Windows 上 SmartScreen 会提示未知发布者，点「更多信息」→「仍要运行」；Mac 上首次打开若被 Gatekeeper 拦截，右键选「打开」，或在终端执行（应用里的昂贵动作仍会先问你）：',
+      body: '最新 GitHub Release 提供 Apple 芯片与 Intel 两种 .dmg，以及 Windows 预览版安装包 Deskfolk_<版本>_x64-setup.exe。Mac 版从 0.1.0-rc.16 起用 Developer ID 签名并经 Apple 公证，双击即可打开（应用里的昂贵动作仍会先问你）；Windows 安装包还未签名，SmartScreen 会提示未知发布者，点「更多信息」→「仍要运行」。',
       link: '前往最新 Release',
-      note: 'xattr -dr com.apple.quarantine "/Applications/Deskfolk.app"',
       faq: 'macOS 首次打开的完整说明',
       windows: 'Windows 预览版说明'
     },
@@ -393,8 +392,8 @@ const zh: Dict = {
       },
       gatekeeper: {
         title: 'macOS 首次打开',
-        blurb: '未公证的 .dmg 被 Gatekeeper 拦下时怎么放行。',
-        intro: 'Mac 版 Alpha 还没有经过 Apple 公证，首次打开会被 Gatekeeper 拦下：怎么放行，放行之后应用里还有哪些把关。'
+        blurb: '新版已公证，双击即开；更早的版本被 Gatekeeper 拦下时怎么放行。',
+        intro: 'Mac 版从 0.1.0-rc.16 起经过 Apple 公证，双击即可打开；更早的未签名版本首次打开会被 Gatekeeper 拦下：怎么放行，放行之后应用里还有哪些把关。'
       },
       windows: {
         title: 'Windows 预览版',
@@ -475,7 +474,7 @@ const en: Dict = {
       { label: 'Stop is a state.', body: 'Only you lift it; nothing starts or acts past it (a Bot once kept going after "hold on").' },
       { label: 'Stalls get chased, without pestering you.', body: 'Work picks back up; you hear when needed (a job once sat 7.6 h).' }
     ],
-    wipNote: 'Alpha: unsigned macOS snapshot, with Windows as an experimental preview. Features and data structures may still change.',
+    wipNote: 'Alpha: a signed, Apple-notarized macOS build, with Windows as an experimental preview. Features and data structures may still change.',
     ctaPrimary: 'Download alpha',
     ctaSecondary: 'Run from source',
     runLabel: 'Runs locally',
@@ -618,7 +617,7 @@ const en: Dict = {
   },
   quickstart: {
     heading: 'Download, or run from source',
-    intro: 'Open source under MIT. The alpha snapshot is unsigned: macOS is the primary platform; Windows is an experimental preview, without remote access, desktop notifications or in-app update install yet; Linux is not supported.',
+    intro: 'Open source under MIT. macOS is the primary platform, and its alpha snapshot is signed and notarized by Apple; Windows is an experimental preview, without remote access, desktop notifications or in-app update install yet; Linux is not supported.',
     requirements: 'Requires Node.js 22+, pnpm 12.3.4, Bun 1.2+ and Rust / Cargo. On macOS, add the Tauri macOS prerequisites (including Xcode Command Line Tools); on Windows, Rust\'s MSVC toolchain and Visual Studio Build Tools (Desktop development with C++), plus a one-time build of the terminal helper — see the development guide.',
     step1: 'Clone and install',
     step2: 'Start the daemon and the desktop window in parallel',
@@ -630,9 +629,8 @@ const en: Dict = {
     ],
     download: {
       title: 'Download the alpha snapshot',
-      body: 'The latest GitHub Release ships .dmg files for Apple silicon and Intel, and a Windows preview installer, Deskfolk_<version>_x64-setup.exe. Neither is signed: on Windows, SmartScreen warns about an unknown publisher (More info → Run anyway); on a Mac, if Gatekeeper blocks the first launch, right-click and choose Open, or run (expensive actions inside the app still ask first):',
+      body: 'The latest GitHub Release ships .dmg files for Apple silicon and Intel, and a Windows preview installer, Deskfolk_<version>_x64-setup.exe. From 0.1.0-rc.16 the Mac builds are signed with Developer ID and notarized by Apple, so they open with a double-click (expensive actions inside the app still ask first). The Windows installer is not signed yet: SmartScreen warns about an unknown publisher (More info → Run anyway).',
       link: 'Go to the latest release',
-      note: 'xattr -dr com.apple.quarantine "/Applications/Deskfolk.app"',
       faq: 'Full first-launch guide for macOS',
       windows: 'About the Windows preview'
     },
@@ -687,8 +685,8 @@ const en: Dict = {
       },
       gatekeeper: {
         title: 'First launch on macOS',
-        blurb: 'Getting an unnotarized .dmg past Gatekeeper.',
-        intro: 'The Mac alpha is not notarized by Apple yet, so Gatekeeper blocks the first launch: how to let it through, and what the app still guards after that.'
+        blurb: 'New builds are notarized and open with a double-click; getting an older one past Gatekeeper.',
+        intro: 'From 0.1.0-rc.16 the Mac alpha is notarized by Apple and opens with a double-click; Gatekeeper blocks the first launch of an older, unsigned build: how to let it through, and what the app still guards after that.'
       },
       windows: {
         title: 'Windows preview',

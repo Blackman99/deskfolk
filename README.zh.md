@@ -64,7 +64,7 @@
 
 macOS 13（Ventura）或更新版本，支持 Apple 芯片与 Intel。Windows x64 有一条刚起步的实验性预览（见下文）；Linux 暂不支持。
 
-- **下载**：[Releases](https://github.com/Blackman99/deskfolk/releases/latest) 提供未签名的 `.dmg`，不用另装别的。首次打开被 Gatekeeper 拦截时，右键选「打开」，或执行 `xattr -dr com.apple.quarantine "/Applications/Deskfolk.app"`（[Gatekeeper FAQ](docs/gatekeeper.zh.md)）。Windows 上运行同一个 Release 里的 `Deskfolk_<版本>_x64-setup.exe`：按当前用户安装，不要管理员权限；安装包没签名，SmartScreen 会提示未知发布者，点「更多信息」→「仍要运行」。
+- **下载**：[Releases](https://github.com/Blackman99/deskfolk/releases/latest) 提供 `.dmg`，不用另装别的。从 0.1.0-rc.16 起用 Developer ID 签名并经 Apple 公证，双击即可打开（旧版本见 [Gatekeeper FAQ](docs/gatekeeper.zh.md)）。Windows 上运行同一个 Release 里的 `Deskfolk_<版本>_x64-setup.exe`：按当前用户安装，不要管理员权限；安装包没签名，SmartScreen 会提示未知发布者，点「更多信息」→「仍要运行」。
 - **更新**：有新版本时，桌面侧栏底部带文字的「设置」上出现小红点，在 设置 → 关于 里下载并安装（Windows 上暂时是「关于」跳到浏览器下载）。外观在 设置 → 通用 → 外观。
 - **在 macOS 上从源码启动**（Node 22+、pnpm 12.3.4、Bun 1.2+、Rust、Xcode Command Line Tools）：
 

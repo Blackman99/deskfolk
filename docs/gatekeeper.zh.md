@@ -1,12 +1,14 @@
-# Gatekeeper 首次打开 FAQ（未签名 Alpha）
+# Gatekeeper 首次打开 FAQ
 
-Deskfolk 的 Alpha `.dmg` **尚未公证**。首次打开时 macOS Gatekeeper 会拦截，这在 [Apple 公证](notarization.md) 完成前是预期行为（跟踪：[issue #10](https://github.com/Blackman99/deskfolk/issues/10)）。
+从 **0.1.0-rc.16** 起，Deskfolk 的 `.dmg` 用 Developer ID 签名并**经 Apple 公证**：双击即可打开，不会再被拦。`spctl -a -vv /Applications/Deskfolk.app` 显示 `source=Notarized Developer ID`。签名方式见[公证](notarization.md)。
 
-## 为什么会提示
+本页其余部分适用于 **0.1.0-rc.15 及更早**的版本（ad-hoc 签名、未公证），以及没有 Developer ID 证书时自己打的包。
 
-未带 Developer ID + 公证的下载会被系统视为不可信。Alpha 刻意保持未签名，是为了先把签名路径走通，并不代表应用会回传或偷偷装后台。
+## 旧版本为什么会被拦
 
-## 首次打开（两步）
+未带 Developer ID + 公证的下载会被系统视为不可信。那些版本未签名，是因为签名路径当时还没走通，并不代表应用会回传或偷偷装后台。在「关于」里更新到 0.1.0-rc.16 或更新的版本后就不会再有。
+
+## 旧版本首次打开（两步）
 
 1. 在 Finder 里对 `Deskfolk.app` **右键**（或 Control-点击）→ **打开**。
 2. 在对话框里确认 **打开**。
@@ -39,9 +41,9 @@ xattr -dr com.apple.quarantine "/Applications/Deskfolk.app"
 
 Gatekeeper 管的是 **系统是否信任这个二进制**；批准卡管的是 **你是否信任每一次昂贵或危险动作**。
 
-## 尚未公证
+## 第一次更新到公证版本时钥匙串会再问一次
 
-在 Developer ID 构建真正发出之前，我们不会宣称应用已签名或已公证。进度与清单：[公证路径](notarization.md) · [issue #10](https://github.com/Blackman99/deskfolk/issues/10)。
+钥匙串过去只按一个每次发版都会变的哈希认旧版本，所以每次更新都要再输一次登录密码。公证版本按 Team ID 记录：第一次更新到公证版本时再问一次，之后的更新不再问。
 
 ## 相关
 

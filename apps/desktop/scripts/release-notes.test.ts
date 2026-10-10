@@ -77,6 +77,16 @@ test("the body carries the section first and the unsigned note after it", () => 
   expect(body.indexOf("- 新的一条。")).toBeLessThan(body.indexOf("Unsigned macOS snapshot"));
 });
 
+/** The notarized note is said only when release.yml really notarizes (MACOS_NOTARIZED). */
+test("a notarized release says so instead of the unsigned note, and still names the unsigned Windows installer", () => {
+  const body = releaseBody(CHANGELOG, null, "0.2.0", true);
+  expect(body).toContain("notarized by Apple");
+  expect(body).toContain("SmartScreen");
+  expect(body).not.toContain("Unsigned macOS snapshot");
+  expect(body.indexOf("- 新的一条。")).toBeLessThan(body.indexOf("notarized by Apple"));
+  expect(releaseBody(CHANGELOG, null, "0.2.0")).not.toContain("notarized by Apple");
+});
+
 /** One release, one body, two locales: the card picks, so the body has to carry both. */
 test("the body carries each language behind its own marker", () => {
   const body = releaseBody(ENGLISH, CHANGELOG_ZH, "0.2.0");

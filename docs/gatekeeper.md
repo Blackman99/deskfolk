@@ -1,12 +1,14 @@
-# Gatekeeper FAQ (unsigned alpha)
+# Gatekeeper FAQ
 
-Deskfolk’s alpha `.dmg` is **not notarized**. macOS Gatekeeper will warn on first open. That is expected until [Apple notarization](notarization.md) ships ([tracking issue #10](https://github.com/Blackman99/deskfolk/issues/10)).
+From **0.1.0-rc.16**, Deskfolk’s `.dmg` is signed with Developer ID and **notarized by Apple**: double-click opens it, with no warning to get past. `spctl -a -vv /Applications/Deskfolk.app` says `source=Notarized Developer ID`. How the builds are signed: [notarization](notarization.md).
 
-## Why the warning appears
+The rest of this page is for **0.1.0-rc.15 and earlier**, which were ad-hoc signed and not notarized, and for builds you make yourself without a Developer ID certificate.
 
-Apple treats downloads without Developer ID + notarization as untrusted. The alpha build is unsigned on purpose while we finish the signing path — not because the app phones home or installs a hidden helper.
+## Why an older build is blocked
 
-## First launch (2 steps)
+Apple treats downloads without Developer ID + notarization as untrusted. Those builds were unsigned while the signing path was being finished — not because the app phones home or installs a hidden helper. Updating to 0.1.0-rc.16 or later from the About card ends it.
+
+## First launch of an older build (2 steps)
 
 1. In Finder, **right-click** (or Control-click) `Deskfolk.app` → **Open**.
 2. In the dialog, confirm **Open**.
@@ -39,9 +41,9 @@ Opening the app past Gatekeeper is not a blank check. Inside Deskfolk:
 
 Gatekeeper is about **macOS trusting the binary**. Approval cards are about **you trusting each expensive or dangerous action**.
 
-## Not notarized yet
+## Keychain asks once more after the first notarized update
 
-We will not claim the app is signed or notarized until Developer ID builds ship. Progress and checklist: [notarization plan](notarization.md) · [issue #10](https://github.com/Blackman99/deskfolk/issues/10).
+The Keychain knew an older build only by a hash that changed with every release, so each update asked for the login password again. A notarized build is recorded by its Team ID instead: the first update to one asks once more, and later updates do not.
 
 ## Related
 

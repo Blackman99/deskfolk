@@ -1,7 +1,7 @@
 # Apple notarization / Developer ID path
 
 Tracking: [issue #10](https://github.com/Blackman99/deskfolk/issues/10).  
-Until this lands, installs follow the [Gatekeeper FAQ](gatekeeper.md).
+Builds before 0.1.0-rc.16 were not notarized; their installs follow the [Gatekeeper FAQ](gatekeeper.md).
 
 ## Goal
 
@@ -19,10 +19,11 @@ Ship macOS `.dmg` builds signed with **Developer ID Application** and **notarize
 - [x] CI imports the Developer ID certificate from repository secrets into a throwaway keychain before the build (`release.yml`, step "Developer ID signing (when configured)"). It has to come before the build: `build-native.ts` signs the bundled daemon, pty and helper before Tauri would import a certificate itself.
 - [x] `APPLE_SIGNING_IDENTITY` is exported only when the secret exists; Tauri reads it ahead of `signingIdentity: "-"` in `tauri.conf.json`, and `build-native.ts` signs the nested binaries with it plus `--timestamp` (notarization rejects Developer ID signatures without a secure timestamp).
 - [x] Notarize and staple: Tauri does both for the `.app` when `APPLE_ID`, `APPLE_PASSWORD` and `APPLE_TEAM_ID` are exported. With the certificate but without all three, the run signs, skips notarization and leaves a warning.
-- [ ] Add the repository secrets below (maintainer).
-- [ ] Verify on a clean Mac: double-click opens without Gatekeeper bypass; `spctl -a -vv /Applications/Deskfolk.app` says `source=Notarized Developer ID`.
-- [ ] Update [Gatekeeper FAQ](gatekeeper.md) when signed builds ship (remove “unsigned alpha” framing for those builds).
-- [ ] Release notes must say **signed + notarized** only after staple succeeds — never a fake badge. `apps/desktop/scripts/release-notes.ts` still appends the unsigned note; change it once a notarized build has been checked on a clean Mac.
+- [x] Add the repository secrets below (maintainer, 2026-10-10).
+- [x] A local Developer ID build was notarized (`Accepted` on the first submission) and stapled on 2026-10-10; `spctl -a -vv` says `source=Notarized Developer ID` for the `.dmg`, the `.app`, and the `.app` mounted from a quarantined copy of the `.dmg`.
+- [ ] Verify the CI-built release on a clean Mac: double-click opens without Gatekeeper bypass.
+- [x] [Gatekeeper FAQ](gatekeeper.md) says builds from 0.1.0-rc.16 are notarized; its bypass steps are kept for older builds.
+- [x] Release notes say **signed + notarized** only when `release.yml` notarizes: `MACOS_NOTARIZED` is `true` only with the certificate and all three notary secrets, and a failed notarization fails the macOS job, so nothing ships under the note un-notarized.
 
 ## Repository secrets
 
@@ -63,4 +64,4 @@ G-pack is **not run / blocked**, not passed: a buildable qualified sealed runtim
 
 ## Status
 
-**Unsigned alpha** is what GitHub Releases ship today (`v0.1.0-rc.1` and later until this checklist completes). The release workflow is ready to sign and notarize; it is waiting for the repository secrets.
+From **0.1.0-rc.16**, GitHub Releases ship macOS builds signed with Developer ID and notarized by Apple. `v0.1.0-rc.1` through `v0.1.0-rc.15` were ad-hoc signed and not notarized. The Windows installer is still unsigned.

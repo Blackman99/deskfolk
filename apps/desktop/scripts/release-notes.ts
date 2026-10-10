@@ -1,6 +1,6 @@
 /**
  * The body of a GitHub release: this version's CHANGELOG section in every language the repo
- * keeps, followed by the note about the build being unsigned.
+ * keeps, followed by a note on how the builds are signed.
  *
  * It used to be the note alone, pointing at CHANGELOG.md and ROADMAP.md. The app now renders the
  * release body in the About card when it finds an update, so the body has to carry what actually
@@ -15,6 +15,18 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+/**
+ * Said only when release.yml really notarizes: it sets `MACOS_NOTARIZED=true` when the repository
+ * has the Developer ID certificate and all three notary secrets, and a notarization that fails
+ * fails the macOS job, so no un-notarized `.dmg` ships under this note. The Windows job sets the
+ * same value, so whichever job creates the release writes the same body.
+ */
+const NOTARIZED_NOTE = `---
+
+The macOS \`.dmg\` builds are signed with Developer ID and notarized by Apple: they open with a double-click.
+
+The Windows installer is not signed yet: SmartScreen warns about an unknown publisher (More info → Run anyway). See CHANGELOG.md and ROADMAP.md.`;
 
 const UNSIGNED_NOTE = `---
 
@@ -78,13 +90,15 @@ export function releaseBody(
   changelogEn: string,
   changelogZh: string | null,
   version: string,
+  notarized = false,
 ): string {
   const en = escapeMentions(changelogSection(changelogEn, version));
   if (!en) return "";
   const zh = changelogZh ? escapeMentions(changelogSection(changelogZh, version)) : "";
   const sections: Section[] = [{ lang: "en", text: en, dropped: 0 }];
   if (zh) sections.push({ lang: "zh", text: zh, dropped: 0 });
-  let body = assemble(sections);
+  const note = notarized ? NOTARIZED_NOTE : UNSIGNED_NOTE;
+  let body = assemble(sections, note);
   // A long cycle can outgrow what GitHub accepts. Give up the oldest entries — the bottom of a
   // section — of whichever language is longest, and say how many are only in the changelog.
   while (body.length > RELEASE_BODY_LIMIT) {
@@ -93,7 +107,7 @@ export function releaseBody(
     if (cut <= 0) break;
     longest.text = longest.text.slice(0, cut).trimEnd();
     longest.dropped += 1;
-    body = assemble(sections);
+    body = assemble(sections, note);
   }
   return body;
 }
@@ -108,11 +122,11 @@ const MORE: Record<Section["lang"], (count: number) => string> = {
   zh: (count) => `- ……另有 ${count} 条，见 CHANGELOG.zh.md。`,
 };
 
-function assemble(sections: Section[]): string {
+function assemble(sections: Section[], note: string): string {
   const parts = sections.map(({ lang, text, dropped }) =>
     `${langMarker(lang)}\n\n${text}${dropped ? `\n\n${MORE[lang](dropped)}` : ""}`,
   );
-  parts.push(`${langMarker("common")}\n\n${UNSIGNED_NOTE}`);
+  parts.push(`${langMarker("common")}\n\n${note}`);
   return `${parts.join("\n\n")}\n`;
 }
 
@@ -141,6 +155,7 @@ if (import.meta.main) {
     readFileSync(join(root, "CHANGELOG.md"), "utf8"),
     readIfPresent(join(root, "CHANGELOG.zh.md")),
     version,
+    process.env.MACOS_NOTARIZED === "true",
   );
   if (!body) {
     // Releasing without rolling the changelog would ship an empty update card, so stop here
