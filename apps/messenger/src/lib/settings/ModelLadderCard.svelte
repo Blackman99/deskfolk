@@ -354,6 +354,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: var(--ladder-gap);
+		container: ladder / inline-size;
 	}
 
 	/* A node on the rail, then the rung's card. */
@@ -420,7 +421,7 @@
 		flex: 1 1 auto;
 		min-width: 0;
 		display: grid;
-		grid-template-columns: auto minmax(0, 1fr) auto auto;
+		grid-template-columns: auto minmax(0, 1fr) auto auto auto;
 		grid-template-rows: auto auto;
 		align-items: center;
 		column-gap: 6px;
@@ -474,15 +475,14 @@
 		color: var(--muted);
 	}
 
-	/* An agent rung's effort and account, on a line of their own under whose it is, as wide as the card. */
+	/* An agent rung's effort and account, beside its name and before its buttons, so every rung is as tall as the others. */
 	.ladder-tune {
-		grid-column: 1 / -1;
-		grid-row: 3;
+		grid-column: 3;
+		grid-row: 1 / span 2;
 		display: flex;
-		flex-wrap: wrap;
-		gap: 4px 6px;
+		gap: 6px;
 		min-width: 0;
-		padding: 4px 0 2px;
+		margin-left: 6px;
 	}
 
 	/* Each picker as wide as what it says, not the row. */
@@ -521,12 +521,12 @@
 	}
 
 	.ladder-remove {
-		grid-column: 3;
+		grid-column: 4;
 	}
 
 	/* Where a rung is taken hold of: a finger on it drags, it never scrolls the page. */
 	.ladder-grip {
-		grid-column: 4;
+		grid-column: 5;
 		cursor: grab;
 		touch-action: none;
 	}
@@ -542,6 +542,23 @@
 
 	.ladder-add {
 		max-width: 320px;
+	}
+
+	/* Where they do not fit beside the name, they take a line of their own under whose it is, as wide as the card. */
+	@container ladder (max-width: 560px) {
+		.ladder-tune {
+			grid-column: 1 / -1;
+			grid-row: 3;
+			flex-wrap: wrap;
+			gap: 4px 6px;
+			margin-left: 0;
+			padding: 4px 0 2px;
+		}
+
+		/* The pickers share their line, and one that wraps takes the whole of its own, rather than leaving a ragged edge. */
+		.ladder-tune > :global(.real-select) {
+			flex: 1 1 auto;
+		}
 	}
 
 	/* On a phone the buttons are big enough to tap. */
@@ -563,11 +580,6 @@
 
 		.ladder-model {
 			font-size: 13px;
-		}
-
-		/* The pickers share their line, and one that wraps takes the whole of its own, rather than leaving a ragged edge. */
-		.ladder-tune > :global(.real-select) {
-			flex: 1 1 auto;
 		}
 
 		.ladder-button {

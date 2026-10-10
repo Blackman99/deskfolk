@@ -89,6 +89,7 @@ Signed and notarized macOS rc, with an experimental, still unsigned Windows inst
 - A job that climbs onto a Claude rung has its next turn worked by your Claude Code on that rung, as a Claude Agent Bot's turns are; a rung above it on an endpoint takes it back. A Claude Agent Bot's own model still does not climb.
 - A Bot's `update_model_settings` can keep, move or drop a Claude rung, never add one. An account a rung spends cannot be taken off the list until that rung is gone.
 - Fixed: a Bot's `update_model_settings` with only `model_ladder` was refused.
+- Every rung on the ladder is the same height: an agent rung's effort and account sit beside its name, not on a line under it; only where the card is too narrow for them do they drop below.
 
 ### The board says what was dropped and when a job has ended
 
