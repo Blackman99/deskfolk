@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+(none)
+
+## 0.1.0-rc.17 — 2026-10-11
+
+Signed and notarized macOS rc, with an experimental, still unsigned Windows installer beside the `.dmg`s.
+
 ### Pinch to zoom an enlarged picture on the phone
 
 - A picture opened full screen on a phone now zooms with two fingers, around the point between them, and one finger drags it once it is larger than the screen. A tap goes back to the whole picture; at that size a tap closes it as before. The page itself never zooms.
