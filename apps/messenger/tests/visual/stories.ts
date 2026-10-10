@@ -1380,7 +1380,7 @@ const defs: Record<StoryName, Story> = {
 	'usage-tab': {
 		component: UsageTab as never,
 		props: { runtime: fakeRuntime(world, { client: { usage: async () => usageStory } }), t },
-		afterMount: (host: HTMLElement) => usageSettled(host, '[data-usage-tab] .usage-gauge')
+		afterMount: (host: HTMLElement) => usageSettled(host, '[data-usage-tab] .usage-meter')
 	}
 };
 

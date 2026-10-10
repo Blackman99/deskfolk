@@ -37,13 +37,14 @@ beforeEach(() => {
 });
 afterEach(() => window.localStorage.removeItem("real-bot-usage-widget"));
 
-test("the tab lays out a card per account, each window a dial, the agents with today's records only as chips", async () => {
+test("the tab lays out a card per account, each window a bar, the agents with today's records only as chips", async () => {
   const view = open([claude, grok]);
   await sleep(0);
   const cards = [...view.host.querySelectorAll(".usage-board-account")];
   expect(cards.map((card) => text(card.querySelector(".usage-account-plan")))).toEqual(["Pro", "Team"]);
-  const first = [...cards[0]!.querySelectorAll(".usage-gauge")];
-  expect(first.map((gauge) => text(gauge.querySelector(".usage-percent")))).toEqual(["94%", "3%", "96%"]);
+  const first = [...cards[0]!.querySelectorAll(".usage-meter")];
+  expect(first.map((gauge) => text(gauge.querySelector(".usage-percent")))).toEqual(["剩94%", "剩3%", "剩96%"]);
+  expect(cards[0]!.querySelector(".usage-gauge")).toBeNull();
   // A model's window on one line: its model, then the length.
   expect(first.map((gauge) => text(gauge.querySelector(".usage-gauge-span")))).toEqual(["5 小时", "7 天", "7 天"]);
   expect(first[2]!.querySelector(".usage-gauge-name")!.contains(first[2]!.querySelector(".usage-gauge-model"))).toBe(true);
@@ -65,5 +66,20 @@ test("Refresh asks for a younger answer; a hidden ball comes back from the bar",
   await sleep(0);
   expect(usageWidget.hidden).toBe(false);
   expect(view.host.querySelector(".usage-tab-widget")).toBeNull();
+  view.close();
+});
+
+test("a phone's dials: up to three a row, two a row from four", async () => {
+  const { default: UsagePage } = await import("./UsagePage.svelte");
+  const antigravity: UsageAgent = {
+    runner: "antigravity", custom_id: null, label: "Antigravity", today: { turns: 0, tokens: 0, estimated_usd: 0 },
+    accounts: [account("g@example.com", "", [[300, "Gemini Models", 0], [10_080, "Gemini Models", 1], [300, "Claude and GPT models", 0], [10_080, "Claude and GPT models", 13]])],
+  };
+  const asked: boolean[] = [];
+  const client = { usage: (refresh = false): Promise<UsageResponse> => { asked.push(refresh); return Promise.resolve({ agents: [claude, antigravity] }); } };
+  const view = render(UsagePage, { runtime: reactive(fakeRuntime({}, { client })), t, onBack: () => {} });
+  await sleep(0);
+  const columns = [...view.host.querySelectorAll<HTMLElement>(".usage-board-gauges")].map((ul) => ul.style.getPropertyValue("--usage-windows"));
+  expect(columns).toEqual(["3", "2", "2"]);
   view.close();
 });

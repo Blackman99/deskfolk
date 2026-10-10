@@ -160,6 +160,7 @@ test("a phone's page is the tab's board in one column: each agent under its head
   const agent = view.host.querySelector("[data-usage-page] [data-usage-agent='claude_code']")!;
   expect(text(agent.querySelector(".usage-board-agent-name"))).toBe("Claude");
   expect(agent.querySelectorAll(".usage-board-account .usage-gauge")).toHaveLength(3);
+  expect(agent.querySelector(".usage-meter")).toBeNull();
   expect(view.host.querySelector("[data-usage-page] [data-usage-today-only]")).not.toBeNull();
   expect(text(view.host.querySelector("[data-usage-page] .usage-refresh"))).toBe(t.usage.refresh);
   click(view.host.querySelector(".usage-page-back"));

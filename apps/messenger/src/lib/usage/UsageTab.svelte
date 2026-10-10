@@ -53,7 +53,7 @@
 	</header>
 	<div class="usage-tab-scroll">
 		{#if feed.agents}
-			<UsageBoard agents={feed.agents} {t} {locale} now={feed.now} />
+			<UsageBoard agents={feed.agents} {t} {locale} now={feed.now} meter="bar" />
 		{/if}
 	</div>
 </section>

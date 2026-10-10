@@ -42,7 +42,7 @@
 </div>
 <div class="usage-page-body" data-usage-page>
 	{#if feed.agents}
-		<UsageBoard agents={feed.agents} {t} {locale} now={feed.now} />
+		<UsageBoard agents={feed.agents} {t} {locale} now={feed.now} meter="dial" />
 		{#if feed.agents.length > 0}
 			<footer class="usage-page-foot">
 				<span class="usage-checked">{checked ? (feed.failed ? t.usage.stale(checked) : t.usage.checkedAt(checked)) : ''}</span>

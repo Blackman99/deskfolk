@@ -92,7 +92,7 @@ export const STORY_SIZES = {
 	'usage-widget': { width: 900, height: 640 },
 	// The phone's usage page from Tools: the usage tab's board in one column.
 	'usage-page': { width: 390, height: 844 },
-	// The workbench's usage tab: a card per account across the width, each window a dial.
+	// The workbench's usage tab: a card per account across the width, each window a bar.
 	'usage-tab': { width: 1280, height: 720 }
 } as const;
 

@@ -2,6 +2,7 @@
 	import type { UsageAgent } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import AgentLogo from '../settings/AgentLogo.svelte';
+	import UsageBar from './UsageBar.svelte';
 	import UsageGauge from './UsageGauge.svelte';
 	import {
 		usageAccountNote,
@@ -14,17 +15,19 @@
 
 	/**
 	 * Every agent's usage laid out for a whole tab (ADR 0080): a band per agent with its day here,
-	 * a card per account across the width, each window a dial; the agents with only this app's
-	 * records of today in one row of chips at the end.
+	 * a card per account across the width, each window a bar (the desktop's tab) or a dial (the
+	 * phone's page); the agents with only this app's records of today in one row of chips at the end.
 	 */
 	interface Props {
 		agents: UsageAgent[];
 		t: Copy;
 		locale: string;
 		now: number;
+		/** How each window is drawn: a bar on the desktop's tab, a dial on the phone's page. */
+		meter?: 'bar' | 'dial';
 	}
 
-	let { agents, t, locale, now }: Props = $props();
+	let { agents, t, locale, now, meter = 'dial' }: Props = $props();
 
 	/** The narrowest an account card gets; as many columns as fit, an agent's accounts side by side. */
 	const CARD_MIN = 360;
@@ -38,6 +41,8 @@
 	const split = $derived(usageSplit(agents));
 	const key = (agent: UsageAgent) => `${agent.runner}:${agent.custom_id ?? ''}`;
 	const name = (agent: UsageAgent) => (agent.runner === 'claude_code' ? 'Claude' : agent.label);
+	/** Dials a row holds: all of a card's up to three, two a row from four (Antigravity's 2 × 2). */
+	const dialColumns = (count: number) => (count > 3 ? 2 : Math.max(1, count));
 	const today = (agent: UsageAgent) => t.usage.today(String(agent.today.turns), usageTokenText(agent.today.tokens));
 </script>
 
@@ -66,11 +71,19 @@
 					{#if note}
 						<p class="usage-note">{note}</p>
 					{:else}
-						<ul class="usage-board-gauges" style:--usage-windows={account.windows.length}>
-							{#each usageWindowsSorted(account.windows) as window (`${window.minutes ?? ''}:${window.model ?? ''}`)}
-								<UsageGauge {window} {t} {locale} {now} />
-							{/each}
-						</ul>
+						{#if meter === 'bar'}
+							<ul class="usage-board-bars">
+								{#each usageWindowsSorted(account.windows) as window (`${window.minutes ?? ''}:${window.model ?? ''}`)}
+									<UsageBar {window} {t} {locale} {now} />
+								{/each}
+							</ul>
+						{:else}
+							<ul class="usage-board-gauges" style:--usage-windows={dialColumns(account.windows.length)}>
+								{#each usageWindowsSorted(account.windows) as window (`${window.minutes ?? ''}:${window.model ?? ''}`)}
+									<UsageGauge {window} {t} {locale} {now} />
+								{/each}
+							</ul>
+						{/if}
 					{/if}
 				</article>
 			{/each}
@@ -223,14 +236,21 @@
 	}
 
 	/*
-	 * The dials in one row, centred in their card: a column per window, each up to 128px (room for
-	 * "Fable · 7 天") and down to the dial's own width, so four (Antigravity's) still fit a phone.
+	 * The dials centred in their card, up to three a row, two a row from four: each column up to
+	 * 160px (room for "Fable · 7 天", and more of a model group's name two a row) and down to the
+	 * dial's own width.
 	 */
 	.usage-board-gauges {
 		display: grid;
-		grid-template-columns: repeat(var(--usage-windows, 1), minmax(76px, 128px));
+		grid-template-columns: repeat(var(--usage-windows, 1), minmax(76px, 160px));
 		justify-content: center;
 		gap: 18px 6px;
+	}
+
+	.usage-board-bars {
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
 	}
 
 	.usage-board-today {
