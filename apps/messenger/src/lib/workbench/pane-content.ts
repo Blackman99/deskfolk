@@ -49,7 +49,9 @@ export type PaneContent =
   | { kind: "workspace"; selected: string | null }
   | { kind: "routines" }
   /** One ledger. Like the calendar, asking for it again focuses the pane that already has it. */
-  | { kind: "spend" };
+  | { kind: "spend" }
+  /** Every agent's usage (ADR 0080). One, like the ledger; never in the URL. */
+  | { kind: "usage" };
 
 export type PaneKind = PaneContent["kind"];
 export type ChatContent = Extract<PaneContent, { kind: "chat" }>;
@@ -63,6 +65,7 @@ export const PANE_KINDS: readonly PaneKind[] = [
   "workspace",
   "routines",
   "spend",
+  "usage",
 ];
 
 export const PANE_KIND_SET: ReadonlySet<string> = new Set(PANE_KINDS);
@@ -112,6 +115,7 @@ export function contentToParams(content: PaneContent): Record<string, string> {
       return content.selected ? { selected: content.selected } : {};
     case "routines":
     case "spend":
+    case "usage":
       return {};
   }
 }
@@ -143,6 +147,8 @@ export function contentOfTab(tab: WorkbenchTab): PaneContent | null {
       return { kind: "routines" };
     case "spend":
       return { kind: "spend" };
+    case "usage":
+      return { kind: "usage" };
     default:
       return null;
   }

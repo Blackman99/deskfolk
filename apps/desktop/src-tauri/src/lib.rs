@@ -740,7 +740,7 @@ pub fn run() {
             // The pane commands belong to the messenger: it holds the arrangement, so it is the
             // only thing that can say what "close this" means right now.
             id if id.starts_with("pane-") || id == "view-spend" => send_pane_command(app, id),
-            // "查看全部用量…" also opens the usage panel; the other usage lines only show the window.
+            // "查看全部用量…" also opens the usage tab; the other usage lines only show the window.
             usage_tray::ALL_ID => {
                 show_main(app);
                 send_pane_command(app, "view-usage");

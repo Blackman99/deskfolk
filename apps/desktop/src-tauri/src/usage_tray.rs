@@ -6,7 +6,7 @@
 //! window, and the 5-hour and 7-day numbers beside its name; one signed out, or one that could not
 //! be read, says so beside its mark;
 //! agents that only report today's records, connected or in use, share one line. At most four lines, then "查看全部用量…",
-//! which shows the window and its usage panel. The lines go away when there is nothing to show.
+//! which shows the window and opens the usage tab where Settings › Behavior says. The lines go away when there is nothing to show.
 
 use serde::Deserialize;
 use std::f64::consts::TAU;

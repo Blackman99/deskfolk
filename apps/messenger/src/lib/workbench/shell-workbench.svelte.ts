@@ -256,6 +256,8 @@ export class ShellWorkbench {
         return t.routines.title;
       case "spend":
         return spendCopyFor(this.getRuntime().snapshot.settings.locale === "en" ? "en" : "zh").title;
+      case "usage":
+        return t.usage.title;
       case "trace": {
         const name = this.sessionName(content.sessionId);
         if (content.view === "board") return t.pane.boardOf(name);
@@ -449,6 +451,11 @@ export class ShellWorkbench {
     }
     if (id === "view-spend") {
       this.getRuntime().openSpend();
+      return;
+    }
+    // The menu bar icon's "Show all usage…".
+    if (id === "view-usage") {
+      this.getRuntime().openUsage();
       return;
     }
     if (id === "pane-close-tab" && allLeaves(this.layout).every((leaf) => leaf.tabs.length === 0)) {

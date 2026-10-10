@@ -513,7 +513,7 @@
 		current={{
 			routines: !workbench && runtime.routinesOpen,
 			spend: !workbench && runtime.spendOpen,
-			usage: phone ? viewingUsage : usageWidget.open,
+			usage: phone ? viewingUsage : !workbench && usageWidget.open,
 			terminal: !workbench && runtime.terminalOpen,
 			screen: runtime.screenOpen,
 			archived: viewingArchived
@@ -521,7 +521,7 @@
 		{onOpenRoutines}
 		{onOpenSpend}
 		onOpenUsage={() => {
-			if (!phone) return usageWidget.show();
+			if (!phone) return runtime.openUsage();
 			viewingArchived = false;
 			viewingUsage = true;
 		}}

@@ -36,6 +36,7 @@ const samples: PaneContent[] = [
   { kind: "workspace", selected: null },
   { kind: "routines" },
   { kind: "spend" },
+  { kind: "usage" },
 ];
 
 test("every kind round trips through a tab", () => {

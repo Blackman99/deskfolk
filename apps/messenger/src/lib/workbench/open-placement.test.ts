@@ -39,6 +39,7 @@ test("the defaults keep the conversation in view: its things beside it, terminal
     terminal: "side-down",
     routines: "tab",
     spend: "tab",
+    usage: "tab",
   });
 });
 

@@ -604,6 +604,7 @@ export class MessengerRuntime {
   closeRoutines(): void { this.overlayState.closeRoutines(); }
   openSpend(): void { this.overlayState.openSpend(); }
   closeSpend(): void { this.overlayState.closeSpend(); }
+  openUsage(): void { this.overlayState.openUsage(); }
   applyOverlay(overlay: UrlOverlay): void { this.overlayState.applyOverlay(overlay); }
   closeSheets(): void { this.overlayState.closeSheets(); }
 

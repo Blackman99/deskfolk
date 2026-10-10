@@ -4,7 +4,6 @@
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { isOutside } from '../click-outside.ts';
 	import { localeTag } from '../locale-tag.ts';
-	import { listenToWindow } from '../tauri.ts';
 	import AgentLogo from '../settings/AgentLogo.svelte';
 	import UsageAgentSection from './UsageAgentSection.svelte';
 	import { usageFeedOf } from './usage-feed.svelte.ts';
@@ -52,13 +51,6 @@
 		if (!api) return;
 		return feed.watch(api);
 	});
-
-	// The menu bar's "Show all usage…".
-	$effect(() =>
-		listenToWindow('pane-command', (id) => {
-			if (id === 'view-usage') usageWidget.show();
-		})
-	);
 
 	let viewW = $state(1280);
 	let viewH = $state(800);

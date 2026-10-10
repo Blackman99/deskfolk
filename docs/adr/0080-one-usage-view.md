@@ -59,3 +59,9 @@ You found the pill too big and hard to read with many accounts: a ball by defaul
 
 You asked for the marks in the menu too. Decision 7's "the Spark for Claude, names only for the others" becomes: each account's line wears its agent's mark (the widget's own, rendered once from `AgentLogo.svelte` at twice its size, cut round, kept as raw RGBA since menu icons take pixels) inside a thin ring as full as what is left of its tightest window; a signed-out or unreadable account shows the mark alone; the shared line for agents with no plan still has no icon. Marks only name the agent, as ADRs 0061, 0072 and 0079 say.
 
+
+## 补充：用量是一个标签页 / Addendum: usage is a tab（2026-10-11）
+
+你说：「工具里的用量跟菜单里的查看全部用量都要打开新的标签页，注意这里的行为控制要跟设置里已有的结合。」工具菜单的「用量」和菜单栏的「查看全部用量…」不再展开挂件，改成在工作台打开一个「用量」标签页（内容同卡片，所有 Agent 排在一起）。它像花费一样只有一个，开着就切过去；没开着时放在哪由 设置 › 行为 ›「窗口打开方式」新加的「用量」一行决定（ADR 0074，默认新标签页）。挂件被隐藏后原来靠工具菜单找回，现在靠用量标签页底部的「显示用量挂件」。没有工作台的宽窗口（远程连上的平板）照旧展开挂件；手机照旧是一页。
+
+You asked for Tools › Usage and the menu bar's "Show all usage…" to open a new tab, following the existing Behavior settings. Both now open a single Usage tab on the workbench, placed by a new Usage row in Where windows open (ADR 0074; a new tab by default) and only brought forward when open. A hidden widget comes back from that tab's "Show the usage widget". A wide window with no workbench still opens the widget; a phone still gets its page.

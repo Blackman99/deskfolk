@@ -313,12 +313,12 @@
 	current={{
 		routines: !workbench && runtime.routinesOpen,
 		spend: !workbench && runtime.spendOpen,
-		usage: usageWidget.open,
+		usage: !workbench && usageWidget.open,
 		terminal: !workbench && runtime.terminalOpen
 	}}
 	{onOpenRoutines}
 	{onOpenSpend}
-	onOpenUsage={() => usageWidget.show()}
+	onOpenUsage={() => runtime.openUsage()}
 	onOpenTerminal={() => (workbench ? onNewTerminal() : runtime.openTerminal())}
 	{onOpenArchived}
 />

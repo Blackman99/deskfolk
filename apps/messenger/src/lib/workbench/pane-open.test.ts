@@ -264,6 +264,16 @@ test("the spend ledger is single-instance too", () => {
   expect(again.focus.leafId).toBe("a");
 });
 
+test("usage is single-instance too: asking again from Tools or the menu bar comes back to it", () => {
+  const layout = layoutOf(makeBranch("r", "row", [
+    makeLeaf("a", [tabFor({ kind: "usage" }, "t-a")]),
+    makeLeaf("b", [tabFor(chat("s2"), "t-b")]),
+  ]), "b");
+  const again = openContent(layout, { kind: "usage" }, ids);
+  expect(tiledLeaves(again.root).map((leaf) => leaf.tabs.length)).toEqual([1, 1]);
+  expect(again.focus.leafId).toBe("a");
+});
+
 test("the calendar is single-instance too", () => {
   const layout = layoutOf(makeBranch("r", "row", [
     makeLeaf("a", [tabFor({ kind: "routines" }, "t-a")]),

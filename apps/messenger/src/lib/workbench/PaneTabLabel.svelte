@@ -4,7 +4,7 @@
 
 	/**
 	 * Every tab that is not a live conversation: its kind's picture before the name. The pictures
-	 * are the ones the app opens these from — the tools menu's terminal, calendar and ledger, the
+	 * are the ones the app opens these from — the tools menu's terminal, calendar, ledger and usage, the
 	 * workspace button's folder, the header's flow board — and its board and spec, the pictures their
 	 * switch shows. Marked `wb-tab-icon` like a conversation's avatar, so the strip shows them on the
 	 * same terms.
@@ -37,6 +37,9 @@
 				{:else if kind === 'spend'}
 					<line x1="12" y1="1" x2="12" y2="23"></line>
 					<path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+				{:else if kind === 'usage'}
+					<path d="M12 14l4-4"></path>
+					<path d="M3.34 19a10 10 0 1 1 17.32 0"></path>
 				{:else if kind === 'trace' && traceView === 'board'}
 					<rect x="3" y="3" width="5" height="18" rx="1"></rect>
 					<rect x="10" y="3" width="5" height="12" rx="1"></rect>

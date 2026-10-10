@@ -294,6 +294,10 @@
 			onOpenTrigger={(sessionId, messageId) => void runtime.openChat(sessionId, { messageId })}
 		/>
 	{/await}
+{:else if content.kind === 'usage'}
+	{#await import('../usage/UsageTab.svelte') then { default: UsageTab }}
+		<UsageTab {runtime} {t} />
+	{/await}
 {:else if content.kind === 'terminal'}
 	<TerminalView
 		api={runtime.client}

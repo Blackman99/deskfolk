@@ -88,6 +88,20 @@
 	</span>
 	<span class="wb-menu-name">{spendCopyFor(runtime.snapshot.settings.locale === 'en' ? 'en' : 'zh').title}</span>
 </button>
+<button
+	type="button"
+	class="wb-menu-row"
+	role="menuitem"
+	onclick={() => workbench.openInPane(leafId, { kind: 'usage' })}
+>
+	<span class="wb-menu-mark is-quiet" aria-hidden="true">
+		<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+			<path d="M12 14l4-4"></path>
+			<path d="M3.34 19a10 10 0 1 1 17.32 0"></path>
+		</svg>
+	</span>
+	<span class="wb-menu-name">{t.usage.title}</span>
+</button>
 <div class="wb-menu-section" role="presentation">{t.pane.runningTerminals}</div>
 {#each listed as row (row.id)}
 	<button

@@ -1153,6 +1153,9 @@
 					<button type="button" class="pane-open" onclick={() => workbench.openInPane(leafId, { kind: 'spend' })}>
 						{spendCopyFor(runtime.snapshot.settings.locale === 'en' ? 'en' : 'zh').title}
 					</button>
+					<button type="button" class="pane-open" onclick={() => workbench.openInPane(leafId, { kind: 'usage' })}>
+						{t.usage.title}
+					</button>
 				{/snippet}
 				{#snippet menuActions(leafId: string, query: string)}
 					<NewPaneMenu {runtime} {t} {workbench} {leafId} {query} />

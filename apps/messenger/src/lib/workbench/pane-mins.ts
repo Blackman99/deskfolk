@@ -27,6 +27,7 @@ export const PANE_MINS = {
   /** Seven day columns; the `routine-card` story is shot at 520 wide for the same reason. */
   routines: { width: 520, height: 420 },
   spend: { width: 280, height: 220 },
+  usage: { width: 280, height: 220 },
 } as const satisfies Record<string, PaneMin>;
 
 export type PaneKind = keyof typeof PANE_MINS;

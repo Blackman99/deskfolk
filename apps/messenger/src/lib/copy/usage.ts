@@ -3,11 +3,12 @@ import type { CopyShape } from "./shape.ts";
 /** Every agent's usage in one place (ADR 0080): the floating widget, its panel and the phone's page. */
 export const zh = {
   title: "用量",
-  /** The Tools menu's entry: the panel on a wide window, the page on a phone. */
+  /** The Tools menu's entry: a tab on the workbench, the page on a phone. */
   open: "用量",
   widget: "用量挂件",
   show: "查看全部用量",
   hide: "隐藏用量挂件",
+  showWidget: "显示用量挂件",
   close: "关闭用量",
   back: "返回",
   left: (percent: string) => `剩${percent}`,
@@ -46,6 +47,7 @@ export const en: CopyShape<typeof zh> = {
   widget: "Usage widget",
   show: "Show all usage",
   hide: "Hide the usage widget",
+  showWidget: "Show the usage widget",
   close: "Close usage",
   back: "Back",
   left: (percent: string) => `${percent} left`,

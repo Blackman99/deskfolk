@@ -28,7 +28,8 @@ export type OpenKind =
   | "workspace"
   | "terminal"
   | "routines"
-  | "spend";
+  | "spend"
+  | "usage";
 
 export const OPEN_KINDS: readonly OpenKind[] = [
   "chat",
@@ -41,6 +42,7 @@ export const OPEN_KINDS: readonly OpenKind[] = [
   "terminal",
   "routines",
   "spend",
+  "usage",
 ];
 
 /**
@@ -88,8 +90,8 @@ const KIND_SET: ReadonlySet<string> = new Set(OPEN_KINDS);
  * What a new install does. Going through conversations one after another replaces the one you are
  * reading instead of piling up tabs; what belongs to a conversation — its files, its job's views,
  * a direct between its Bots, the workspace — opens in a column beside it, so reading it never hides
- * the conversation; a terminal goes under, as in an editor; the calendar and the ledger are big
- * enough to want a pane to themselves.
+ * the conversation; a terminal goes under, as in an editor; the calendar, the ledger and the usage
+ * are big enough to want a pane to themselves.
  */
 export const OPEN_PLACEMENT_DEFAULTS: Readonly<Record<OpenKind, OpenPlacement>> = {
   chat: "replace",
@@ -102,6 +104,7 @@ export const OPEN_PLACEMENT_DEFAULTS: Readonly<Record<OpenKind, OpenPlacement>> 
   terminal: "side-down",
   routines: "tab",
   spend: "tab",
+  usage: "tab",
 };
 
 export function isOpenPlacement(value: unknown): value is OpenPlacement {

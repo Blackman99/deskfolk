@@ -5,6 +5,7 @@ import type { UrlOverlay } from "../session-url.ts";
 import type { PromptTarget } from "../settings/prompts-view.ts";
 import { youBotSession } from "../sidebar/session-groups.ts";
 import type { Snapshot } from "../snapshot.ts";
+import { usageWidget } from "../usage/usage-widget.svelte.ts";
 import type { PaneContent } from "../workbench/pane-content.ts";
 import type { TraceFocus } from "./task-trace.ts";
 import { saveTraceView, type TraceViewKind } from "./trace-view.ts";
@@ -415,6 +416,14 @@ export class OverlayState {
 
   closeSpend(): void {
     this.spendOpen = false;
+  }
+
+  /**
+   * Every agent's usage: a tab on the workbench, where the settings say. A wide window without one
+   * opens the floating widget's panel instead; the phone's page is the sidebar's own.
+   */
+  openUsage(): void {
+    if (!this.toPane({ kind: "usage" })) usageWidget.show();
   }
 
   /** Restore settings, the session drawer, or the workspace overlay from the URL. */

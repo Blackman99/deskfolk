@@ -66,12 +66,16 @@ class UsageWidgetState {
     write({ place: this.place, hidden: true });
   }
 
+  /** Shows the widget again, folded, as the usage tab's button does. */
+  unhide(): void {
+    if (!this.hidden) return;
+    this.hidden = false;
+    write({ place: this.place, hidden: false });
+  }
+
   /** Shows the widget again if it was hidden, and opens its panel. */
   show(): void {
-    if (this.hidden) {
-      this.hidden = false;
-      write({ place: this.place, hidden: false });
-    }
+    this.unhide();
     this.open = true;
   }
 }
