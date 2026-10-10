@@ -396,3 +396,15 @@ test("remote URLs keep session and overlay ids and drop file paths", () => {
   expect(attachmentFromUrl(at("?s=abc&a=att-1"))).toBe("att-1");
   expect(attachmentFromUrl(at("?s=abc&p=secret.txt"))).toBeNull();
 });
+
+test("a phone's usage page and archived list are pages in the URL, like the calendar", () => {
+  for (const kind of ["usage", "archived"] as const) {
+    const url = new URL(`http://x/?o=${kind}`);
+    expect(overlayFromUrl(url)).toEqual({ kind });
+    expect(overlayFromUrl(url, true)).toEqual({ kind });
+    expect(overlayFromFlags({ settingsOpen: false, sessionSettingsOpen: false, profileBotId: null, workspaceOpen: false, workspaceSelected: null, listPage: kind })).toEqual({ kind });
+    const back = sessionUrl(new URL("http://x/"), { selectedId: null, previewRelpath: null, previewAttachmentId: null, overlay: { kind } });
+    expect(back).not.toBeNull();
+    expect(new URL(back!, "http://x/").searchParams.get("o")).toBe(kind);
+  }
+});

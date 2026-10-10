@@ -60,7 +60,6 @@
 	import { topLayer, type MobileDestination } from './mobile-route.ts';
 	import { closeEnlargedImage, imageEnlarged } from './chat/enlarged-images.ts';
 	import { closeMessageText, messageTextOpen } from './chat/message-text-pages.ts';
-	import { closeListPage, listPageOpen } from './sidebar/list-pages.ts';
 	import { closeFullscreenPreview, fullscreenPreviewOpen } from './overlays/fullscreen-preview.ts';
 	import { pageSlide } from './mobile-page-slide.ts';
 	import { updateChecker } from './update-checker.svelte.ts';
@@ -266,13 +265,13 @@
 			sessionSettingsOpen: runtime.sessionSettingsOpen,
 			terminalOpen: runtime.terminalOpen,
 			screenOpen: runtime.screenOpen,
+			listPageOpen: runtime.listPage !== null,
 			traceOpen: runtime.traceOpen,
 			routinesOpen: runtime.routinesOpen,
 			spendOpen: runtime.spendOpen,
 			threadOpen: runtime.threadOpen,
 			workspaceOpen: runtime.workspaceOpen,
-			artifactPreview: artifact.artifactPreview !== null,
-			listPageOpen: listPageOpen()
+			artifactPreview: artifact.artifactPreview !== null
 		})) {
 			case 'image':
 				// Not a screen: it goes back into the picture it grew out of, and the page stays.
@@ -280,9 +279,6 @@
 			case 'message-text':
 				// Not a screen either: the conversation it was opened from is still under it.
 				return closeMessageText();
-			case 'list-page':
-				// Usage or the archived list, over the conversation list in no URL.
-				return closeListPage();
 			case 'tools-menu':
 				toolsMenuOpen = false;
 				return true;
@@ -325,6 +321,9 @@
 				return false;
 			case 'screen':
 				// The same: Back leaves the Mac's screen by walking the URL.
+				return false;
+			case 'list-page':
+				// Usage or the archived list on a phone: the same again, Back walks back to the list.
 				return false;
 			case 'trace':
 				// The flow is one entry in history, and nothing done on it adds another. A file opened

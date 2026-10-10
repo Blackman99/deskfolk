@@ -124,7 +124,7 @@ const runtime = new MessengerRuntime();
 	$effect(() => {
 		const wanted = overlayFromUrl(page.url, HOSTED_MESSENGER);
 		// These states need no snapshot validation; a late detail must not undo pane navigation.
-		if (wanted.kind === 'none' || wanted.kind === 'routines' || wanted.kind === 'spend' || wanted.kind === 'terminal' || wanted.kind === 'screen') {
+		if (wanted.kind === 'none' || wanted.kind === 'routines' || wanted.kind === 'spend' || wanted.kind === 'terminal' || wanted.kind === 'screen' || wanted.kind === 'usage' || wanted.kind === 'archived') {
 			untrack(() => {
 				if (overlayFromFlags(runtime).kind !== wanted.kind) runtime.applyOverlay(wanted);
 			});
@@ -160,7 +160,8 @@ const runtime = new MessengerRuntime();
 				routinesOpen: runtime.routinesOpen,
 				spendOpen: runtime.spendOpen,
 				terminalOpen: runtime.terminalOpen,
-				screenOpen: runtime.screenOpen
+				screenOpen: runtime.screenOpen,
+				listPage: runtime.listPage
 			});
 			const next = overlayApply(wanted, current, {
 				selectedId,
@@ -228,7 +229,8 @@ const runtime = new MessengerRuntime();
 			routinesOpen: runtime.routinesOpen,
 			spendOpen: runtime.spendOpen,
 			terminalOpen: runtime.terminalOpen,
-			screenOpen: runtime.screenOpen
+			screenOpen: runtime.screenOpen,
+			listPage: runtime.listPage
 		});
 		// Written once the restore of a cancelled Back has landed; see `restoring`.
 		if (restoring) return;

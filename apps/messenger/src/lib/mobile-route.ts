@@ -138,13 +138,13 @@ export type BackLayer =
   | "session-settings"
   | "terminal"
   | "screen"
+  | "list-page"
   | "trace"
   | "routines"
   | "spend"
   | "thread"
   | "workspace"
-  | "preview"
-  | "list-page";
+  | "preview";
 
 export type LayerState = {
   imageOpen: boolean;
@@ -161,13 +161,13 @@ export type LayerState = {
   sessionSettingsOpen: boolean;
   terminalOpen: boolean;
   screenOpen: boolean;
+  listPageOpen: boolean;
   traceOpen: boolean;
   routinesOpen: boolean;
   spendOpen: boolean;
   threadOpen: boolean;
   workspaceOpen: boolean;
   artifactPreview: boolean;
-  listPageOpen: boolean;
 };
 
 const LAYER_ORDER: ReadonlyArray<[BackLayer, keyof LayerState]> = [
@@ -194,15 +194,14 @@ const LAYER_ORDER: ReadonlyArray<[BackLayer, keyof LayerState]> = [
   ["terminal", "terminalOpen"],
   // The same: a page in the URL, which Back leaves for the roster.
   ["screen", "screenOpen"],
+  // Usage and the archived list on a phone: pages in the URL too, which Back leaves for the list.
+  ["list-page", "listPageOpen"],
   ["trace", "traceOpen"],
   ["routines", "routinesOpen"],
   ["spend", "spendOpen"],
   ["thread", "threadOpen"],
   ["workspace", "workspaceOpen"],
   ["preview", "artifactPreview"],
-  // Usage and the archived list lie over the conversation list in no URL. Last: anything else
-  // open is over them, and they only count while the list itself is on screen.
-  ["list-page", "listPageOpen"],
 ];
 
 export function topLayer(state: LayerState): BackLayer | null {

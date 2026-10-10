@@ -500,6 +500,15 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     closeTerminal: record("closeTerminal"),
     openRemoteScreen: record("openRemoteScreen"),
     closeRemoteScreen: record("closeRemoteScreen"),
+    // Written through `this`, so a `reactive()` copy (called through its proxy) re-renders.
+    openListPage(this: { listPage: "usage" | "archived" | null }, page: "usage" | "archived") {
+      calls.push({ name: "openListPage", args: [page] });
+      this.listPage = page;
+    },
+    closeListPage(this: { listPage: "usage" | "archived" | null }) {
+      calls.push({ name: "closeListPage", args: [] });
+      this.listPage = null;
+    },
     refreshTerminals: record("refreshTerminals"),
     terminalsLoaded: true,
     openRoutines: () => {
@@ -545,6 +554,7 @@ export function fakeRuntime(over: Partial<Snapshot> = {}, stubs: Record<string, 
     openPromptSettings: record("openPromptSettings"),
     terminalOpen: false,
     screenOpen: false,
+    listPage: null,
     screenOffered: false,
     terminals: [],
     traceReload: 0,

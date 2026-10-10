@@ -325,6 +325,7 @@ export class MessengerRuntime {
       closeSpend: () => runtime.closeSpend(),
       closeTerminal: () => runtime.closeTerminal(),
       closeRemoteScreen: () => runtime.closeRemoteScreen(),
+      closeListPage: () => runtime.closeListPage(),
       setHighlightedMessage: (messageId, sessionId) => runtime.setHighlightedMessage(messageId, sessionId),
       loadAnnotations: (filter) => runtime.loadAnnotations(filter),
       markSessionRead: (id) => runtime.markSessionRead(id),
@@ -588,6 +589,10 @@ export class MessengerRuntime {
   set screenOpen(value: boolean) { this.overlayState.screenOpen = value; }
   openRemoteScreen(): void { this.overlayState.openRemoteScreen(); }
   closeRemoteScreen(): void { this.overlayState.closeRemoteScreen(); }
+  get listPage(): "usage" | "archived" | null { return this.overlayState.listPage; }
+  set listPage(value: "usage" | "archived" | null) { this.overlayState.listPage = value; }
+  openListPage(page: "usage" | "archived"): void { this.overlayState.openListPage(page); }
+  closeListPage(): void { this.overlayState.closeListPage(); }
   watchTrace(taskId: string): () => void { return this.overlayState.watchTrace(taskId); }
   openTrace(taskId: string | null = null, focus: TraceFocus | null = null, opts: TraceOpenOptions = {}): void { this.overlayState.openTrace(taskId, focus, opts); }
   closeTrace(): void { this.overlayState.closeTrace(); }

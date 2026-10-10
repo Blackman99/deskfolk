@@ -132,13 +132,13 @@ function layers(over: Partial<LayerState> = {}): LayerState {
     toolsMenuOpen: false,
     terminalOpen: false,
     screenOpen: false,
+    listPageOpen: false,
     traceOpen: false,
     routinesOpen: false,
     spendOpen: false,
     threadOpen: false,
     workspaceOpen: false,
     artifactPreview: false,
-    listPageOpen: false,
     ...over,
   };
 }
@@ -222,7 +222,7 @@ test("the phone's tools menu is a menu: it goes before anything Back would navig
   expect(topLayer(layers({ toolsMenuOpen: true, createMenuOpen: true }))).toBe("tools-menu");
 });
 
-test("usage and the archived list close at Back before history moves, and only once nothing is over them", () => {
+test("usage and the archived list are pages in the URL on a phone, which Back walks like the calendar", () => {
   expect(topLayer(layers({ listPageOpen: true }))).toBe("list-page");
   expect(topLayer(layers({ listPageOpen: true, toolsMenuOpen: true }))).toBe("tools-menu");
   expect(topLayer(layers({ listPageOpen: true, settingsOpen: true }))).toBe("settings");

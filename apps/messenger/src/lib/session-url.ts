@@ -24,6 +24,9 @@ export const OVERLAY_SPEND = "spend";
 export const OVERLAY_TERMINAL = "terminal";
 /** The remote screen, a phone page. A link to it opens nothing in the Mac's own window. */
 export const OVERLAY_SCREEN = "screen";
+/** A phone's pages in place of the conversation list: usage and the archived conversations. */
+export const OVERLAY_USAGE = "usage";
+export const OVERLAY_ARCHIVED = "archived";
 
 export type UrlOverlay =
   | { kind: "none" }
@@ -35,7 +38,9 @@ export type UrlOverlay =
   | { kind: "routines" }
   | { kind: "spend" }
   | { kind: "terminal" }
-  | { kind: "screen" };
+  | { kind: "screen" }
+  | { kind: "usage" }
+  | { kind: "archived" };
 
 export type UrlView = {
   selectedId: string | null;
@@ -74,6 +79,8 @@ export function overlayFromUrl(url: URL, remote = false): UrlOverlay {
   if (raw === OVERLAY_SPEND) return { kind: "spend" };
   if (raw === OVERLAY_TERMINAL) return { kind: "terminal" };
   if (raw === OVERLAY_SCREEN) return remote ? { kind: "screen" } : { kind: "none" };
+  if (raw === OVERLAY_USAGE) return { kind: "usage" };
+  if (raw === OVERLAY_ARCHIVED) return { kind: "archived" };
   return { kind: "none" };
 }
 
@@ -102,6 +109,8 @@ export function overlayFromFlags(flags: {
   terminalOpen?: boolean;
   /** Optional for the same reason. Absent means the remote screen page is closed. */
   screenOpen?: boolean;
+  /** Optional for the same reason. Absent means no phone page is over the conversation list. */
+  listPage?: "usage" | "archived" | null;
 }): UrlOverlay {
   if (flags.settingsOpen) return { kind: "settings" };
   if (flags.sessionSettingsOpen) {
@@ -111,6 +120,7 @@ export function overlayFromFlags(flags: {
   if (flags.spendOpen) return { kind: "spend" };
   if (flags.terminalOpen) return { kind: "terminal" };
   if (flags.screenOpen) return { kind: "screen" };
+  if (flags.listPage) return { kind: flags.listPage };
   if (flags.routinesOpen) return { kind: "routines" };
   if (flags.workspaceOpen) {
     return { kind: "workspace", selected: sanitizePreviewPath(flags.workspaceSelected) };
@@ -166,7 +176,7 @@ export function sessionUrl(current: URL, view: UrlView, remote = false): string 
 
   // The calendar, the ledger, the phone's terminal and the remote screen each replace the main column. A
   // preview beside one, or over it on a phone, would cover that page, so it does not carry a file.
-  const roster = view.overlay.kind === "routines" || view.overlay.kind === "spend" || view.overlay.kind === "terminal" || view.overlay.kind === "screen";
+  const roster = view.overlay.kind === "routines" || view.overlay.kind === "spend" || view.overlay.kind === "terminal" || view.overlay.kind === "screen" || view.overlay.kind === "usage" || view.overlay.kind === "archived";
   if (remote) {
     next.searchParams.delete(PREVIEW_PARAM);
     next.searchParams.delete(WORKSPACE_FILE_PARAM);
@@ -239,6 +249,12 @@ function writeOverlay(url: URL, overlay: UrlOverlay): void {
   if (overlay.kind === "screen") {
     url.searchParams.set(OVERLAY_PARAM, OVERLAY_SCREEN);
   }
+  if (overlay.kind === "usage") {
+    url.searchParams.set(OVERLAY_PARAM, OVERLAY_USAGE);
+  }
+  if (overlay.kind === "archived") {
+    url.searchParams.set(OVERLAY_PARAM, OVERLAY_ARCHIVED);
+  }
 }
 
 function sameSearch(a: URL, b: URL): boolean {
@@ -297,7 +313,7 @@ export function overlayApply(
 }
 
 function resolveOverlay(wanted: UrlOverlay, ctx: OverlayContext): UrlOverlay | "wait" {
-  if (wanted.kind === "none" || wanted.kind === "settings" || wanted.kind === "routines" || wanted.kind === "spend" || wanted.kind === "terminal" || wanted.kind === "screen") return wanted;
+  if (wanted.kind === "none" || wanted.kind === "settings" || wanted.kind === "routines" || wanted.kind === "spend" || wanted.kind === "terminal" || wanted.kind === "screen" || wanted.kind === "usage" || wanted.kind === "archived") return wanted;
   if (wanted.kind === "workspace") {
     if (!ctx.snapshotReady) return "wait";
     if (!ctx.hasWorkspacePath) return { kind: "none" };

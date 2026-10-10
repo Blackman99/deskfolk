@@ -100,6 +100,7 @@ export class OverlayState {
     this.spendOpen = false;
     this.terminalOpen = false;
     this.screenOpen = false;
+    this.listPage = null;
     this.createBotOpen = true;
   }
 
@@ -112,6 +113,7 @@ export class OverlayState {
     this.spendOpen = false;
     this.terminalOpen = false;
     this.screenOpen = false;
+    this.listPage = null;
     this.createGroupOpen = true;
   }
 
@@ -128,6 +130,7 @@ export class OverlayState {
     this.spendOpen = false;
     this.terminalOpen = false;
     this.screenOpen = false;
+    this.listPage = null;
     this.profileBotId = null;
     this.sessionSettingsOpen = true;
   }
@@ -172,6 +175,7 @@ export class OverlayState {
     this.previewSiblings = null;
     void this.host.refreshTerminals();
     this.screenOpen = false;
+    this.listPage = null;
     this.terminalOpen = true;
   }
 
@@ -201,11 +205,37 @@ export class OverlayState {
     this.previewAttachmentId = null;
     this.previewTaskId = null;
     this.previewSiblings = null;
+    this.listPage = null;
     this.screenOpen = true;
   }
 
   closeRemoteScreen(): void {
     this.screenOpen = false;
+  }
+
+  /**
+   * A phone's page in place of the conversation list — usage or the archived conversations. A page
+   * in the URL like the remote screen, so the phone's Back walks out of it to the list.
+   */
+  listPage = $state<"usage" | "archived" | null>(null);
+
+  openListPage(page: "usage" | "archived"): void {
+    this.settingsOpen = false;
+    this.createBotOpen = false;
+    this.createGroupOpen = false;
+    this.host.closeSessionSettings();
+    this.workspaceOpen = false;
+    this.routinesOpen = false;
+    this.spendOpen = false;
+    this.terminalOpen = false;
+    this.screenOpen = false;
+    this.clearTrace();
+    this.threadOpen = false;
+    this.listPage = page;
+  }
+
+  closeListPage(): void {
+    this.listPage = null;
   }
 
   /** Jobs whose board is on screen outside the narrow overlay — a workbench pane — by job. */
@@ -260,6 +290,7 @@ export class OverlayState {
     this.spendOpen = false;
     this.terminalOpen = false;
     this.screenOpen = false;
+    this.listPage = null;
     this.traceSessionId = sessionId;
     this.traceTaskId = taskId ?? "";
     this.traceFocus = focus;
@@ -314,6 +345,7 @@ export class OverlayState {
     this.spendOpen = false;
     this.terminalOpen = false;
     this.screenOpen = false;
+    this.listPage = null;
     this.profileBotId = botId;
     this.sessionSettingsOpen = true;
   }
@@ -341,6 +373,7 @@ export class OverlayState {
     this.spendOpen = false;
     this.terminalOpen = false;
     this.screenOpen = false;
+    this.listPage = null;
     this.settingsOpen = !this.settingsOpen;
   }
 
@@ -359,6 +392,7 @@ export class OverlayState {
     this.spendOpen = false;
     this.terminalOpen = false;
     this.screenOpen = false;
+    this.listPage = null;
     this.workspaceOpen = true;
     if (selected) this.workspaceSelected = selected;
   }
@@ -381,6 +415,7 @@ export class OverlayState {
     this.spendOpen = false;
     this.terminalOpen = false;
     this.screenOpen = false;
+    this.listPage = null;
     this.clearTrace();
     this.threadOpen = false;
     this.previewRelpath = null;
@@ -404,6 +439,7 @@ export class OverlayState {
     this.routinesOpen = false;
     this.terminalOpen = false;
     this.screenOpen = false;
+    this.listPage = null;
     this.clearTrace();
     this.threadOpen = false;
     this.previewRelpath = null;
@@ -438,6 +474,7 @@ export class OverlayState {
       this.spendOpen = false;
       this.terminalOpen = false;
       this.screenOpen = false;
+      this.listPage = null;
       this.settingsOpen = true;
       return;
     }
@@ -451,6 +488,7 @@ export class OverlayState {
       this.spendOpen = false;
       this.terminalOpen = false;
       this.screenOpen = false;
+      this.listPage = null;
       this.profileBotId = null;
       this.sessionSettingsOpen = true;
       return;
@@ -465,6 +503,7 @@ export class OverlayState {
       this.spendOpen = false;
       this.terminalOpen = false;
       this.screenOpen = false;
+      this.listPage = null;
       this.profileBotId = overlay.botId;
       this.sessionSettingsOpen = true;
       return;
@@ -478,6 +517,7 @@ export class OverlayState {
       this.spendOpen = false;
       this.terminalOpen = false;
       this.screenOpen = false;
+      this.listPage = null;
       this.workspaceOpen = true;
       this.workspaceSelected = overlay.selected ?? "";
       return;
@@ -493,6 +533,7 @@ export class OverlayState {
       this.spendOpen = false;
       this.terminalOpen = false;
       this.screenOpen = false;
+      this.listPage = null;
       this.traceSessionId = this.traceSessionId ?? this.host.selectedId;
       this.traceTaskId = overlay.taskId ?? "";
       return;
@@ -506,6 +547,7 @@ export class OverlayState {
       this.spendOpen = false;
       this.terminalOpen = false;
       this.screenOpen = false;
+      this.listPage = null;
       this.clearTrace();
         this.threadOpen = false;
       this.previewRelpath = null;
@@ -524,6 +566,7 @@ export class OverlayState {
       this.routinesOpen = false;
       this.terminalOpen = false;
       this.screenOpen = false;
+      this.listPage = null;
       this.clearTrace();
       this.threadOpen = false;
       this.previewRelpath = null;
@@ -548,11 +591,16 @@ export class OverlayState {
       this.previewTaskId = null;
       this.previewSiblings = null;
       this.screenOpen = false;
+      this.listPage = null;
       this.terminalOpen = true;
       return;
     }
     if (overlay.kind === "screen") {
       this.host.openRemoteScreen();
+      return;
+    }
+    if (overlay.kind === "usage" || overlay.kind === "archived") {
+      this.openListPage(overlay.kind);
       return;
     }
     this.settingsOpen = false;
@@ -563,6 +611,7 @@ export class OverlayState {
     this.spendOpen = false;
     this.terminalOpen = false;
     this.screenOpen = false;
+    this.listPage = null;
   }
 
   closeSheets(): void {
@@ -576,5 +625,6 @@ export class OverlayState {
     this.spendOpen = false;
     this.terminalOpen = false;
     this.screenOpen = false;
+    this.listPage = null;
   }
 }

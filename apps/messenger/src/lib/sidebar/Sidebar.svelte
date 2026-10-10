@@ -26,7 +26,6 @@
 	import CreateFab from './CreateFab.svelte';
 	import WorkingFilter from './WorkingFilter.svelte';
 	import MobileArchivedHead from './MobileArchivedHead.svelte';
-	import { holdListPage } from './list-pages.ts';
 	import { searchShortcutLabel } from '../search/shortcuts.ts';
 	import { formatShortcut } from '../keymap.ts';
 
@@ -150,18 +149,6 @@
 	);
 	const pinnedWorking = $derived(workingIds !== null && pinnedSessions.some((session) => workingIds.has(session.id)));
 
-	let viewingArchived = $state(false);
-	/** A phone's usage page (ADR 0080), opened from Tools; wider windows have the floating widget instead. */
-	let viewingUsage = $state(false);
-	/** While usage or the archived list is what a phone shows, Back closes it first. */
-	$effect(() => {
-		if (!phone || selected || (!viewingUsage && !viewingArchived)) return;
-		return holdListPage(() => {
-			viewingUsage = false;
-			viewingArchived = false;
-		});
-	});
-
 	let phone = $state(false);
 	$effect(() => {
 		if (typeof window.matchMedia !== 'function') return;
@@ -174,6 +161,26 @@
 		query.addEventListener('change', apply);
 		return () => query.removeEventListener('change', apply);
 	});
+
+	/** The archived list in a wide window: part of the list, not a page of its own. */
+	let archivedInList = $state(false);
+	/**
+	 * On a phone, usage and the archived list are pages in the URL like the calendar (`?o=usage`,
+	 * `?o=archived`), so Back walks out of them to the list.
+	 */
+	const viewingArchived = $derived(phone ? runtime.listPage === 'archived' : archivedInList);
+	/** A phone's usage page (ADR 0080), opened from Tools; wider windows have the usage tab instead. */
+	const viewingUsage = $derived(phone && runtime.listPage === 'usage');
+
+	function openArchived(): void {
+		if (phone) runtime.openListPage('archived');
+		else archivedInList = true;
+	}
+
+	function closeArchived(): void {
+		if (phone) runtime.closeListPage();
+		else archivedInList = false;
+	}
 
 	let fabEl = $state<HTMLElement | null>(null);
 
@@ -245,7 +252,7 @@
 
 	/** The archived list, asked for from the rail's menu: the list opens already on it. */
 	export function showArchived(): void {
-		viewingArchived = true;
+		openArchived();
 	}
 
 </script>
@@ -289,10 +296,10 @@
 	{/if}
 	<div class="side-body relative flex-1 min-h-0 flex flex-col">
 	{#if phone && viewingUsage}
-		<UsagePage {runtime} {t} onBack={() => (viewingUsage = false)} />
+		<UsagePage {runtime} {t} onBack={() => runtime.closeListPage()} />
 	{:else}
 	{#if phone && viewingArchived}
-		<MobileArchivedHead {t} count={archivedSessions.length} onBack={() => (viewingArchived = false)} />
+		<MobileArchivedHead {t} count={archivedSessions.length} onBack={closeArchived} />
 	{:else}
 		<div class="search-wrap">
 			{#if phone}<div class="tools-entry-wrap"><ToolsToggle {t} {phone} bind:open={toolsMenuOpen} bind:focusLast={toolsFocusLast} bind:buttonEl={toolsToggleBtnEl} /></div>{/if}
@@ -310,7 +317,7 @@
 		{#if viewingArchived}
 			<div class="ghead archived-ghead flex items-center justify-between">
 				<span>{t.sidebar.archivedSessions}</span>
-				<button type="button" class="btn-back-sessions" onclick={() => (viewingArchived = false)}>
+				<button type="button" class="btn-back-sessions" onclick={closeArchived}>
 					{t.sidebar.backToSessions}
 				</button>
 			</div>
@@ -523,16 +530,12 @@
 		{onOpenSpend}
 		onOpenUsage={() => {
 			if (!phone) return runtime.openUsage();
-			viewingArchived = false;
-			viewingUsage = true;
+			runtime.openListPage('usage');
 		}}
 		onOpenTerminal={() => (workbench ? onNewTerminal() : runtime.openTerminal())}
 		onOpenScreen={runtime.screenOffered ? () => runtime.openRemoteScreen() : null}
 		screenHost={runtime.screenHost}
-		onOpenArchived={() => {
-			viewingUsage = false;
-			viewingArchived = true;
-		}}
+		onOpenArchived={openArchived}
 	/>
 </aside>
 
