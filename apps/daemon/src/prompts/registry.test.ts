@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Locale } from "@real-bot/protocol";
+import { BUILTIN_MODEL_ROLES, type Locale } from "@real-bot/protocol";
 import type { ToolShellKind } from "../platform";
 import { seamsJudgePrompt, seamsRulesText } from "../seams-check";
 import { standardJudgePrompt } from "../standard-check";
@@ -24,6 +24,11 @@ const LEVELS = [0, 1, 3, 5, 8];
 const SHELLS: ToolShellKind[] = ["sh", "bash", "powershell"];
 
 describe("the slots", () => {
+  test("each of the app's own calls names the built-in call it runs in, and every built-in call has one", () => {
+    for (const slot of SLOTS) expect(slot.role !== undefined).toBe(slot.group === "call");
+    for (const role of BUILTIN_MODEL_ROLES) expect(SLOTS.some((slot) => slot.role === role)).toBe(true);
+  });
+
   test("each has a unique id, a group, its languages and a title and summary in both", () => {
     expect(new Set(SLOTS.map((slot) => slot.id)).size).toBe(SLOTS.length);
     for (const slot of SLOTS) {

@@ -3,6 +3,7 @@
  * app ships to a model that you, or a Bot with your approval, can rewrite.
  */
 import type { Locale } from "./constants.ts";
+import type { BuiltinModelRole } from "./models.ts";
 
 /** Where a prompt sits: every turn, the Claude Agent preface, tool descriptions, the app's own calls. */
 export type PromptGroup = "turn" | "agent" | "tool" | "call";
@@ -30,6 +31,11 @@ export type PromptSummary = {
   group: PromptGroup;
   title: { zh: string; en: string };
   summary: { zh: string; en: string };
+  /**
+   * For one of the app's own calls, the built-in call whose model it runs on (ADR 0082); a daemon
+   * from before it sends none.
+   */
+  role?: BuiltinModelRole;
   locales: PromptLocaleState[];
 };
 

@@ -20,6 +20,9 @@ test("the prompts API lists every built-in prompt, edits one, guards edits by th
     expect(list.items.find((item) => item.id === "call.organizer")!.locales).toEqual([
       { locale: "zh", state: "default", last_actor: null, last_bot_id: null, updated_at: null, parse_failures: { since_edit: null, last_7_days: 0 } },
     ]);
+    // Each of the app's own calls says which built-in call it runs in; the others say none (ADR 0082).
+    expect(list.items.find((item) => item.id === "call.seams_text")!.role).toBe("judge");
+    expect("role" in system).toBe(false);
     expect(list.items.some((item) => item.id === "tool.send_message")).toBe(true);
 
     const before = (await (await request("GET", "/prompts/turn.memory/en")).json()) as PromptDetail;

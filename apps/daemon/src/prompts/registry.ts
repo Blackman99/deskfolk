@@ -9,7 +9,7 @@
  * built; what you write replaces that rendered text whole. The texts themselves stay in their own
  * modules; this one only lists them.
  */
-import type { Locale } from "@real-bot/protocol";
+import type { BuiltinModelRole, Locale } from "@real-bot/protocol";
 import type { ToolShellKind } from "../platform";
 import { ENGINE_LEVELS } from "../store/schema-gate";
 import { seamsJudgeFormat, seamsJudgeTemplate, type SeamJudgeMode } from "../seams-check";
@@ -64,6 +64,8 @@ export type SlotDef = {
   noBrace?: true;
   /** The editable text as shipped, rendered for a level and a shell. */
   defaultText: (locale: Locale, env: PromptEnv) => string;
+  /** For one of the app's own calls, the built-in call whose model it runs on (ADR 0077, ADR 0082). */
+  role?: BuiltinModelRole;
 };
 
 export const PLACEHOLDER_MEANING: Record<Placeholder, Localized> = {
@@ -73,6 +75,25 @@ export const PLACEHOLDER_MEANING: Record<Placeholder, Localized> = {
   workspace: { zh: "工作区根目录的绝对路径", en: "the workspace root's absolute path" },
   cwd: { zh: "这一轮的工作目录", en: "this turn's work dir" },
   agent: { zh: "运行这一轮的本机 Agent 的名字", en: "the name of the local agent running this turn" },
+};
+
+/** Which built-in call each of the app's own prompts runs in: where its model is chosen (ADR 0082). */
+const CALL_ROLES: Record<string, BuiltinModelRole> = {
+  "call.organizer": "organizer",
+  "call.read_user_line": "reader",
+  "call.read_bot_line": "reader",
+  "call.read_filing": "reader",
+  "call.read_scale": "reader",
+  "call.scribe": "scribe",
+  "call.judgement": "judgement",
+  "call.composer": "composer",
+  "call.reflection": "reflection",
+  "call.retrospective": "retrospective",
+  "call.compact": "compaction",
+  "call.seams_image": "judge",
+  "call.seams_text": "judge",
+  "call.seams_digest": "judge",
+  "call.standard": "judge",
 };
 
 const BOTH: readonly Locale[] = ["zh", "en"];
@@ -87,7 +108,18 @@ function call(
   format: (locale: Locale, env: PromptEnv) => string,
   extra: Partial<Pick<SlotDef, "placeholders" | "noBrace">> = {},
 ): SlotDef {
-  return { id, group: "call", locales, title, summary, placeholders: extra.placeholders ?? ["format"], format, defaultText: template, ...(extra.noBrace ? { noBrace: true } : {}) };
+  return {
+    id,
+    group: "call",
+    locales,
+    title,
+    summary,
+    placeholders: extra.placeholders ?? ["format"],
+    format,
+    defaultText: template,
+    role: CALL_ROLES[id],
+    ...(extra.noBrace ? { noBrace: true } : {}),
+  };
 }
 
 function seams(mode: SeamJudgeMode, title: Localized, summary: Localized): SlotDef {
@@ -258,6 +290,7 @@ const CALL_SLOTS: SlotDef[] = [
     },
     placeholders: [],
     defaultText: (l) => COMPACT_TEMPLATE[l],
+    role: CALL_ROLES["call.compact"],
   },
   seams(
     "image",
