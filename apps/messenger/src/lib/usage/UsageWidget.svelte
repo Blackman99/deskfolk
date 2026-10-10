@@ -26,7 +26,7 @@
 	let { runtime, t }: Props = $props();
 
 	/** The ball's box and each agent's slot in the column. */
-	const SLOT = 54;
+	const SLOT = 48;
 	const DRAG_PX = 4;
 	const MARGIN = 8;
 	/** Moving between the column and a card crosses a gap: this long before it all folds away. */
@@ -338,7 +338,7 @@
 				onclick={onBallClick}
 				oncontextmenu={onContextMenu}
 			>
-				<svg class="usage-ball-ring is-{usageLevel(worst)}" width="44" height="44" viewBox="0 0 28 28" aria-hidden="true">
+				<svg class="usage-ball-ring is-{usageLevel(worst)}" width="40" height="40" viewBox="0 0 28 28" aria-hidden="true">
 					<circle cx="14" cy="14" r="12" fill="none" stroke="var(--line)" stroke-width="2.5" />
 					{#if anyWindow}
 						<circle cx="14" cy="14" r="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset={100 - usageLeft(worst)} transform="rotate(-90 14 14)" />
@@ -362,7 +362,7 @@
 							onfocus={() => pointAt(agent)}
 							onclick={() => pick(agent)}
 						>
-							<svg class="usage-bubble-ring" width="48" height="48" viewBox="0 0 32 32" aria-hidden="true">
+							<svg class="usage-bubble-ring" width="42" height="42" viewBox="0 0 32 32" aria-hidden="true">
 								{#if tightest}
 									<circle cx="16" cy="16" r="14.5" fill="none" stroke="var(--line)" stroke-width="2" />
 									<circle cx="16" cy="16" r="14.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset={100 - usageLeft(tightest.percent)} transform="rotate(-90 16 16)" />
@@ -370,7 +370,7 @@
 									<circle cx="16" cy="16" r="14.5" fill="none" stroke="var(--line)" stroke-width="1.5" stroke-dasharray="3 3" />
 								{/if}
 							</svg>
-							<span class="usage-bubble-logo"><AgentLogo runner={agent.runner} size={32} /></span>
+							<span class="usage-bubble-logo"><AgentLogo runner={agent.runner} size={26} /></span>
 						</button>
 					</li>
 				{/each}
@@ -399,7 +399,7 @@
 				in:morph={{ duration: 260 }}
 				out:morph={{ duration: 140 }}
 			>
-				<UsageAgentSection agent={shownAgent} {t} {locale} now={feed.now} logoSize={20} />
+				<UsageAgentSection agent={shownAgent} {t} {locale} now={feed.now} logoSize={28} />
 				{#if shownAgent.accounts.length === 0}
 					<p class="usage-card-note">{t.usage.todayOnlyHint}</p>
 				{/if}
@@ -428,8 +428,8 @@
 	.usage-widget {
 		position: fixed;
 		z-index: 90;
-		width: 54px;
-		height: 54px;
+		width: 48px;
+		height: 48px;
 		transition: transform 0.2s ease;
 		touch-action: none;
 	}
@@ -454,17 +454,17 @@
 		position: absolute;
 		left: 0;
 		top: 0;
-		width: 54px;
+		width: 48px;
 		height: var(--column-h);
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		border: 1px solid var(--line);
-		border-radius: 27px;
+		border-radius: 24px;
 		background: var(--pane);
 		box-shadow: var(--shadow-md);
 		box-sizing: border-box;
-		clip-path: inset(0 0 calc(var(--column-h) - 54px) 0 round 27px);
+		clip-path: inset(0 0 calc(var(--column-h) - 48px) 0 round 24px);
 		transition: clip-path 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
 	}
 
@@ -472,12 +472,12 @@
 		top: auto;
 		bottom: 0;
 		flex-direction: column-reverse;
-		clip-path: inset(calc(var(--column-h) - 54px) 0 0 0 round 27px);
+		clip-path: inset(calc(var(--column-h) - 48px) 0 0 0 round 24px);
 	}
 
 	.is-expanded .usage-shell,
 	.is-upward.is-expanded .usage-shell {
-		clip-path: inset(0 0 0 0 round 27px);
+		clip-path: inset(0 0 0 0 round 24px);
 	}
 
 	.usage-shell.is-warn {
@@ -492,8 +492,8 @@
 		flex: none;
 		display: grid;
 		place-items: center;
-		width: 52px;
-		height: 52px;
+		width: 46px;
+		height: 46px;
 		padding: 0;
 		border: 0;
 		border-radius: 50%;
@@ -535,8 +535,8 @@
 	.usage-column li {
 		display: grid;
 		place-items: center;
-		width: 54px;
-		height: 54px;
+		width: 48px;
+		height: 48px;
 		opacity: 0;
 		transform: scale(0.6);
 		transition: opacity 0.12s ease, transform 0.12s ease;
@@ -552,8 +552,8 @@
 		position: relative;
 		display: grid;
 		place-items: center;
-		width: 48px;
-		height: 48px;
+		width: 42px;
+		height: 42px;
 		padding: 0;
 		border: 0;
 		border-radius: 50%;
