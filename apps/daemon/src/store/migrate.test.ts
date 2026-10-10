@@ -648,7 +648,7 @@ describe("a database an earlier build created", () => {
 });
 
 describe("bots from before local agents besides Claude Code (ADR 0079)", () => {
-  test("the runner and effort CHECKs go, every Bot and what points at it stays, and a Codex or DSH Bot then saves", () => {
+  test("the runner and effort CHECKs go, every Bot and what points at it stays, and a Codex or Grok Bot then saves", () => {
     const dir = mkdtempSync(join(tmpdir(), "real-bot-migrate-"));
     const file = join(dir, "state.sqlite");
     try {
@@ -674,8 +674,8 @@ describe("bots from before local agents besides Claude Code (ADR 0079)", () => {
       expect(() => store.createBot({ name: "Plain", duties: "x", boundaries: "y" })).toThrow();
       const codex = store.createBot({ name: "Codex 写手", duties: "write", boundaries: "none", runner: "codex", agent_model: "gpt-5.6-luna", agent_effort: "xhigh" });
       expect(codex.bot).toMatchObject({ runner: "codex", agent_model: "gpt-5.6-luna", agent_effort: "xhigh" });
-      expect(store.patchBot("bot-plain", { runner: "dsh", agent_effort: "off" })).toMatchObject({ runner: "dsh", agent_effort: "off" });
-      expect(() => store.patchBot("bot-plain", { agent_effort: "xhigh" })).toThrow(/off, low, high, max/);
+      expect(store.patchBot("bot-plain", { runner: "grok", agent_effort: "xhigh" })).toMatchObject({ runner: "grok", agent_effort: "xhigh" });
+      expect(() => store.patchBot("bot-plain", { agent_effort: "max" })).toThrow(/low, medium, high, xhigh/);
       expect(store.db.query<{ foreign_keys: number }, []>(`PRAGMA foreign_keys`).get()).toEqual({ foreign_keys: 1 });
       expect(store.db.query(`PRAGMA foreign_key_check`).all()).toEqual([]);
       expect(() => store.db.run(`DELETE FROM bots WHERE id = 'bot-claude'`)).toThrow(/FOREIGN KEY/);

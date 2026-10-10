@@ -33,7 +33,7 @@ function data(): PickerData {
       { key: "endpoint:cpa", label: "My CPA", mark: { kind: "custom", name: "Custom" }, groups: [{ key: "", label: null, rows: rows(["gemini-3.8", "grok-4.7"]) }] },
       { key: "agent:codex", label: "Codex", mark: { kind: "agent", runner: "codex", name: "Codex" }, groups: [{ key: "", label: null, rows: [{ value: "codex:gpt-5.6-terra", label: "GPT-5.6-Terra", detail: "gpt-5.6-terra" }] }] },
       { key: "agent:opencode", label: "OpenCode", mark: { kind: "agent", runner: "opencode", name: "OpenCode" }, groups: groupModels(rows(opencode)) },
-      { key: "agent:dsh", label: "DSH", mark: { kind: "agent", runner: "dsh", name: "DSH" }, groups: [], custom: (typed) => `dsh:${typed}` },
+      { key: "agent:custom:ca-1", label: "my-agent", mark: { kind: "agent", runner: "custom", name: "my-agent" }, groups: [], custom: (typed) => `custom:ca-1:${typed}` },
       { key: "agent:zcode", label: "ZCode", mark: null, groups: [], disabled: true, note: "没装" },
     ],
   };
@@ -62,7 +62,7 @@ test("on a wide window: sources on the left, the one pointed at on the right, th
   click(trigger);
   await settle();
   const sources = [...host.querySelectorAll<HTMLElement>(".mp-source")];
-  expect(sources.map((el) => el.querySelector(".mp-source-label")?.textContent)).toEqual(["My CPA", "Codex", "OpenCode", "DSH", "ZCode"]);
+  expect(sources.map((el) => el.querySelector(".mp-source-label")?.textContent)).toEqual(["My CPA", "Codex", "OpenCode", "my-agent", "ZCode"]);
   expect(host.querySelector(".mp-source.is-active")?.textContent).toContain("Codex");
   expect(visibleRows(host)).toEqual(["跟随默认", "GPT-5.6-Terra"]);
   // Pointing at another source shows its models, grouped.
@@ -101,15 +101,15 @@ test("a search looks through every source, and a source that takes typed names o
   expect(visibleRows(host)).toEqual(["grok-4.7"]);
   fill(search, "zzz");
   expect(host.querySelector(".mp-empty")?.textContent).toBe(t.modelPicker.noMatch);
-  // DSH lists nothing: pointed at, it takes the name typed.
+  // Your own ACP agent lists nothing: pointed at, it takes the name typed.
   fill(search, "");
   host.querySelectorAll<HTMLElement>(".mp-source")[3]!.dispatchEvent(new MouseEvent("mouseenter"));
   await settle();
   expect(host.querySelector(".mp-empty")?.textContent).toContain(t.modelPicker.noModels);
-  fill(search, "deepseek-v4-flash");
-  expect(visibleRows(host)).toEqual([t.modelPicker.useTyped("deepseek-v4-flash")]);
+  fill(search, "my-model");
+  expect(visibleRows(host)).toEqual([t.modelPicker.useTyped("my-model")]);
   press(search, "Enter");
-  expect(changes).toEqual(["dsh:deepseek-v4-flash"]);
+  expect(changes).toEqual(["custom:ca-1:my-model"]);
 });
 
 test("Escape clears the search first, then closes", async () => {
@@ -135,7 +135,7 @@ test("on a phone: a sheet from the bottom, one level at a time, Back going up", 
   expect(host.querySelector(".mp-panel")).toBeNull();
   expect(host.querySelector(".mp-sheet-title")?.textContent).toBe("模型");
   const navs = () => [...host.querySelectorAll<HTMLButtonElement>(".mp-sheet-nav")];
-  expect(navs().map((el) => el.querySelector(".mp-row-label")?.textContent)).toEqual(["My CPA", "Codex", "OpenCode", "DSH", "ZCode"]);
+  expect(navs().map((el) => el.querySelector(".mp-row-label")?.textContent)).toEqual(["My CPA", "Codex", "OpenCode", "my-agent", "ZCode"]);
   expect(navs()[4]!.disabled).toBe(true);
   // OpenCode lists 40: its providers are a level of their own.
   click(navs()[2]);

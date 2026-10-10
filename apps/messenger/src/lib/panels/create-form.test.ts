@@ -301,8 +301,8 @@ test("a Bot on a local agent (ADR 0079) is sent with its runner, a model as that
   expect(codex).toMatchObject({ ok: true, body: { runner: "codex", agent_model: null, agent_effort: null } });
   // The field only goes to a daemon that knows custom agents, and only for a custom one.
   if (codex.ok) expect("agent_custom_id" in codex.body).toBe(false);
-  // DSH has Off, Grok stops at extra high, OpenCode has no effort at all.
-  expect(planCreateBot({ ...agentBase, runner: "dsh", agentEffort: "off" })).toMatchObject({ ok: true, body: { agent_effort: "off" } });
+  // Codex goes up to max, Grok stops at extra high, OpenCode has no effort at all.
+  expect(planCreateBot({ ...agentBase, runner: "codex", agentEffort: "max" })).toMatchObject({ ok: true, body: { agent_effort: "max" } });
   expect(planCreateBot({ ...agentBase, runner: "grok", agentEffort: "max" })).toEqual({ ok: false, errors: { agentEffort: "invalid" } });
   expect(planCreateBot({ ...agentBase, runner: "opencode", agentEffort: "low" })).toEqual({ ok: false, errors: { agentEffort: "invalid" } });
   expect(planCreateBot({ ...agentBase, runner: "opencode", agentEffort: "" })).toMatchObject({ ok: true, body: { runner: "opencode", agent_effort: null } });
@@ -365,7 +365,7 @@ test("the Claude picker is Claude Code's default above its aliases; a name that 
 });
 
 const agents = (over: Record<string, unknown> = {}): AgentsStatusResponse => ({
-  items: (["codex", "dsh", "custom"] as BotRunner[]).map((runner) => ({
+  items: (["codex", "zcode", "custom"] as BotRunner[]).map((runner) => ({
     runner, custom_id: runner === "custom" ? "acp-1" : null, label: runner === "custom" ? "我的 ACP" : AGENT_KINDS[runner].label,
     path: `/usr/local/bin/${runner}`, source: "path", version: "1", logged_in: true, auth: null, login_command: null,
     models: runner === "codex" ? [{ id: "gpt-5.5", name: "GPT-5.5", efforts: [] }] : [], default_model: runner === "codex" ? "gpt-5.5" : null,
@@ -391,10 +391,10 @@ test("an agent's picker is its own listed models by plain name, its default abov
 });
 
 test("an agent that lists nothing, is not found, or cannot be asked still takes a typed name; your own ACP agent is its own source", () => {
-  const dsh = agentModelPicker(agents(), t, "dsh", null, "");
-  expect(dsh.sources).toHaveLength(1);
-  expect(dsh.sources[0]).toMatchObject({ key: "agent:dsh", label: "DSH", note: t.modelPicker.typeShort });
-  expect(dsh.specials).toEqual([{ value: "", label: t.sidebar.botAgentModelDefaultOf("DSH") }]);
+  const zcode = agentModelPicker(agents(), t, "zcode", null, "");
+  expect(zcode.sources).toHaveLength(1);
+  expect(zcode.sources[0]).toMatchObject({ key: "agent:zcode", label: "ZCode", note: t.modelPicker.typeShort });
+  expect(zcode.specials).toEqual([{ value: "", label: t.sidebar.botAgentModelDefaultOf("ZCode") }]);
   for (const found of [agents({ path: null }), agents({ logged_in: false }), null]) {
     const data = agentModelPicker(found, t, "codex", null, "");
     expect(data.sources).toHaveLength(1);

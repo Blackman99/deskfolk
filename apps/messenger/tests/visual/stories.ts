@@ -324,7 +324,6 @@ function agentsStoryList() {
 			agent('codex', 'Codex', { version: 'codex-cli 0.153.4', auth: 'ChatGPT Plus', login_command: 'codex login', models: models(['gpt-5.6-terra', 'gpt-5.6-luna']), default_model: 'gpt-5.6-terra' }),
 			agent('grok', 'Grok', { logged_in: false, login_command: 'grok login' }),
 			agent('opencode', 'OpenCode', { auth: 'OpenCode Go, Alibaba, DeepSeek, Nvidia, OpenAI', models: models([...Array(12)].map((_, i) => `nvidia/model-${i}`)) }),
-			agent('dsh', 'DSH', { logged_in: null }),
 			agent('zcode', 'ZCode', { path: null, source: null, version: null, logged_in: null }),
 			agent('custom', 'my-agent', { custom_id: 'ca-1', path: '/usr/local/bin/my-agent', source: 'custom', logged_in: null })
 		],
@@ -648,7 +647,6 @@ function pickerStoryData() {
 			agent('codex', 'Codex', [{ id: 'gpt-5.6-terra', name: 'GPT-5.6-Terra' }, { id: 'gpt-5.6-luna', name: 'GPT-5.6-Luna' }]),
 			agent('grok', 'Grok', ['grok-4.7', 'grok-4.7-build-fast', 'grok-4.6', 'grok-4.5'].map((id) => ({ id }))),
 			agent('opencode', 'OpenCode', opencode),
-			agent('dsh', 'DSH', []),
 			agent('antigravity', 'Antigravity', [{ id: 'gemini-3.8-flash-high', name: 'Gemini 3.8 Flash (High)' }, { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' }]),
 			agent('zcode', 'ZCode', [], { path: null, logged_in: null })
 		]

@@ -57,7 +57,9 @@ test("adding starts on the built-in connectors and a custom tile", () => {
   const { host, close } = open();
   click(buttonByText(host, t.settings.providerAdd));
   const names = [...host.querySelectorAll(".connector-pick-name")].map((el) => el.textContent);
-  expect(names).toEqual(["Anthropic", "小米 MiMo", "千问", t.connectors.custom]);
+  expect(names).toEqual(["Anthropic", "小米 MiMo", "千问", "DeepSeek", t.connectors.custom]);
+  // Each built-in one on its own logo, DeepSeek's whale among them.
+  expect(host.querySelector(".connector-pick .connector-logo.is-deepseek")).toBeTruthy();
   expect(host.querySelector("#provider-add-url")).toBeNull();
   close();
 });
@@ -69,7 +71,7 @@ test("a connector asks for the key alone, and back returns to the tiles", () => 
   expect(host.querySelector("#provider-add-url")).toBeNull();
   expect((host.querySelector("#provider-add-name") as HTMLInputElement).value).toBe("小米 MiMo");
   click(host.querySelector(".settings-subpage-head button"));
-  expect(host.querySelectorAll(".connector-pick")).toHaveLength(4);
+  expect(host.querySelectorAll(".connector-pick")).toHaveLength(5);
   close();
 });
 

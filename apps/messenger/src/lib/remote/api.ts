@@ -532,7 +532,7 @@ export class RemoteApi extends ApiBase<PendingRemote> {
     return this.get<ClaudeUsage>(`/v1/claude-usage${refresh ? "?refresh=1" : ""}`);
   }
 
-  /** Your other local agents (ADR 0079): Codex, Grok, OpenCode, DSH, ZCode, Antigravity and your own ACP agents, as the daemon finds them. */
+  /** Your other local agents (ADR 0079): Codex, Grok, OpenCode, ZCode, Antigravity and your own ACP agents, as the daemon finds them. */
   /**
    * Your local agents as last seen; `refresh` asks every one afresh, `wait` waits for the looks the
    * last answer said were going (`refreshing`).

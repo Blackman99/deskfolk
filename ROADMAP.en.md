@@ -36,7 +36,7 @@ Next:
 
 - Verify the full path from the task you put in, through Bots collaborating on their own, to delivered files, both for a team assembled by hand and for a Bot creating its own teammates.
 - Keep verifying compatibility, error recovery and collaboration consistency across different models and MCP servers.
-- Promise only OpenAI-compatible Chat Completions endpoints and Anthropic-compatible Messages endpoints, MCP (stdio / Streamable HTTP), and Bots run by an agent you installed and signed in to (Claude Code, Codex, Grok, OpenCode, DSH, ZCode, Antigravity and programs that speak ACP; [ADR 0061](docs/adr/0061-claude-agent-runner.md), [ADR 0079](docs/adr/0079-local-agents.md)) for models and tools, with the interface constraints written down; no promise of compatibility with any model or any tool.
+- Promise only OpenAI-compatible Chat Completions endpoints and Anthropic-compatible Messages endpoints, MCP (stdio / Streamable HTTP), and Bots run by an agent you installed and signed in to (Claude Code, Codex, Grok, OpenCode, ZCode, Antigravity and programs that speak ACP; [ADR 0061](docs/adr/0061-claude-agent-runner.md), [ADR 0079](docs/adr/0079-local-agents.md)) for models and tools, with the interface constraints written down; no promise of compatibility with any model or any tool.
 
 ## 2. Plans, tickets and done-when: the app holds it to account (main focus of current work)
 

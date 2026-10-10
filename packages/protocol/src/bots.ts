@@ -6,14 +6,14 @@ import type { SessionDetail } from "./sessions.ts";
  * Who runs a Bot's turns (ADR 0061, ADR 0079). Absent or null: the app's own hop loop on an
  * OpenAI-compatible endpoint. Any other value is a local agent: an agent CLI you installed and
  * signed in to yourself, run unmodified on this computer — `claude_code` is your Claude Code through
- * the Agent SDK ("Claude Agent"), `codex` your Codex through its app-server, `grok`, `opencode`,
- * `dsh` and `zcode` theirs over the Agent Client Protocol, `antigravity` your `agy` in print mode,
+ * the Agent SDK ("Claude Agent"), `codex` your Codex through its app-server, `grok`, `opencode`
+ * and `zcode` theirs over the Agent Client Protocol, `antigravity` your `agy` in print mode,
  * and `custom` an ACP command you named (`agent_custom_id`). Each runs on `agent_model` and
  * `agent_effort` (null: the agent's own defaults) and, where the agent has config directories, the
  * account in `agent_config_dir` (null: whichever one it finds in the daemon's environment). The
  * endpoint pin stays what the app's own calls about the Bot run on.
  */
-export const BOT_RUNNERS = ["claude_code", "codex", "grok", "opencode", "dsh", "antigravity", "zcode", "custom"] as const;
+export const BOT_RUNNERS = ["claude_code", "codex", "grok", "opencode", "antigravity", "zcode", "custom"] as const;
 export type BotRunner = (typeof BOT_RUNNERS)[number];
 
 /**
@@ -55,8 +55,6 @@ export const AGENT_KINDS: Record<BotRunner, AgentKindInfo> = {
     efforts: ["low", "medium", "high", "xhigh"], modelAliases: [], configDirVar: null, planUsage: false, appTools: true },
   opencode: { runner: "opencode", label: "OpenCode", protocol: "acp", command: "opencode",
     efforts: [], modelAliases: [], configDirVar: null, planUsage: false, appTools: true },
-  dsh: { runner: "dsh", label: "DSH", protocol: "acp", command: "dsh",
-    efforts: ["off", "low", "high", "max"], modelAliases: [], configDirVar: "DSH_HOME", planUsage: false, appTools: true },
   antigravity: { runner: "antigravity", label: "Antigravity", protocol: "agy_print", command: "agy",
     efforts: ["low", "medium", "high", "xhigh", "max"], modelAliases: [], configDirVar: null, planUsage: false, appTools: false },
   zcode: { runner: "zcode", label: "ZCode", protocol: "acp", command: "zcode-acp",
@@ -84,7 +82,7 @@ export function isAgentEffort(runner: BotRunner, value: unknown): value is strin
 
 /**
  * A model as a Bot may pin it on a local agent: up to 200 printable characters, no spaces. Agents
- * name models their own way (`openai/gpt-5.5`, `nvidia/z-ai/glm-5.3`, DSH's `["deepseek-official","deepseek-v4-flash"]`).
+ * name models their own way (`openai/gpt-5.5`, `nvidia/z-ai/glm-5.3`).
  */
 export function isAgentModelName(value: string): boolean {
   return /^[^\s\u0000-\u001f\u007f]{1,200}$/.test(value);

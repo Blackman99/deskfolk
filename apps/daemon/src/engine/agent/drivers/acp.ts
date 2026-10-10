@@ -1,6 +1,6 @@
 /**
  * Agents that speak the Agent Client Protocol (ADR 0079): Grok (`grok agent --no-leader stdio`),
- * OpenCode (`opencode acp`), DSH (`dsh --profile acp`), ZCode through its ACP bridge, and any ACP
+ * OpenCode (`opencode acp`), ZCode through its ACP bridge, and any ACP
  * command of your own. The app is the ACP client: it offers to read and write files and run
  * commands for the agent (`fs/*`, `terminal/*`), which puts those calls through the app's rules
  * before they run; it answers the agent's permission requests by the same rules; it mounts the
@@ -399,7 +399,7 @@ async function acpSession(host: AgentHost, child: ChildProcess, first: AgentInpu
     throw failureError(error);
   }
   sessionId = typeof created?.sessionId === "string" ? created.sessionId : null;
-  // The models it offers, kept for Settings: an ACP agent lists them nowhere else (DSH, ZCode, your own).
+  // The models it offers, kept for Settings: an ACP agent lists them nowhere else (ZCode, your own).
   try {
     const offered = modelsOffered(created);
     if (offered.models.length > 0) noteAgentModels(host.runner as Exclude<typeof host.runner, "claude_code">, host.custom?.id ?? null, offered.models, offered.current);

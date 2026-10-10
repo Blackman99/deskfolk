@@ -49,7 +49,7 @@ export type AgentProbe = {
   noteModels(runner: OtherRunner, customId: string | null, models: AgentModel[], defaultModel: string | null): void;
 };
 
-/** Models seen in sessions, for agents that list them nowhere else (DSH, ZCode, your own). */
+/** Models seen in sessions, for agents that list them nowhere else (ZCode, your own). */
 const seenModels = new Map<string, { models: AgentModel[]; defaultModel: string | null }>();
 
 export function noteAgentModels(runner: OtherRunner, customId: string | null, models: AgentModel[], defaultModel: string | null): void {
@@ -203,7 +203,6 @@ export async function describeAgent(runner: OtherRunner, custom: CustomAgent | n
         }
         break;
       }
-      case "dsh":
       case "zcode":
       case "custom": {
         const info = await askAcp(resolved.executable, resolved.args, resolved.env);

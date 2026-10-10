@@ -46,7 +46,6 @@ export function driverFor(runner: Exclude<BotRunner, "claude_code">): AgentDrive
           en: "In OpenCode, call these tools from code in its execute tool, e.g. `await tools.deskfolk.end_turn({})` or `await tools.deskfolk.ask_user({ question: \"…\", options: [\"…\"] })`. They are all there; do not assume they are missing.",
         },
       });
-    case "dsh":
     case "zcode":
     case "custom":
       return acpDriver();

@@ -337,7 +337,7 @@ test("the models of the other local agents found and signed in can be rungs, a s
   const view = card(api, null, agentsOf(
     agentStatus("grok", { models: models("grok-4.7", "grok-4.7-fast") }),
     agentStatus("codex", { path: null, models: models("gpt-5.5") }),
-    agentStatus("dsh", { logged_in: false, models: models("deepseek-v4") }),
+    agentStatus("antigravity", { logged_in: false, models: models("gemini-3.8-flash-high") }),
     agentStatus("opencode", { models: [], default_model: "openai/gpt-5.5" }),
     acp,
   ));
@@ -372,27 +372,27 @@ test("the models of the other local agents found and signed in can be rungs, a s
 });
 
 test("an agent that lists no model and names no default takes one typed into the search, and it joins the ladder once", async () => {
-  const { api, saved } = fakeApi([{ runner: "dsh", model: "deepseek-v4-flash", effort: null, config_dir: null }]);
-  const view = card(api, null, agentsOf(agentStatus("dsh")));
+  const { api, saved } = fakeApi([{ runner: "zcode", model: "glm-5.3", effort: null, config_dir: null }]);
+  const view = card(api, null, agentsOf(agentStatus("zcode")));
   await sleep(0);
   click(addTrigger(view.host));
   await settle();
-  await point(view.host, "agent:dsh");
-  expect(sourceEl(view.host, "agent:dsh").querySelector(".mp-source-note")?.textContent).toBe(t.modelPicker.typeShort);
+  await point(view.host, "agent:zcode");
+  expect(sourceEl(view.host, "agent:zcode").querySelector(".mp-source-note")?.textContent).toBe(t.modelPicker.typeShort);
   expect(view.host.querySelector(".mp-empty")?.textContent).toContain(t.modelPicker.noModels);
   // One already on the ladder is not added twice.
   const search = view.host.querySelector<HTMLInputElement>(".mp-search input")!;
-  fill(search, "deepseek-v4-flash");
+  fill(search, "glm-5.3");
   press(search, "Enter");
   await settle();
   expect(saved).toEqual([]);
   click(addTrigger(view.host));
   await settle();
-  await point(view.host, "agent:dsh");
-  fill(view.host.querySelector<HTMLInputElement>(".mp-search input"), "deepseek-v4-pro");
+  await point(view.host, "agent:zcode");
+  fill(view.host.querySelector<HTMLInputElement>(".mp-search input"), "glm-5.3-air");
   press(view.host.querySelector<HTMLInputElement>(".mp-search input"), "Enter");
   await settle();
-  expect(saved).toEqual([[{ runner: "dsh", model: "deepseek-v4-flash", effort: null, config_dir: null }, { runner: "dsh", model: "deepseek-v4-pro", effort: null, config_dir: null }]]);
+  expect(saved).toEqual([[{ runner: "zcode", model: "glm-5.3", effort: null, config_dir: null }, { runner: "zcode", model: "glm-5.3-air", effort: null, config_dir: null }]]);
   view.close();
 });
 

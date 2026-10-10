@@ -72,7 +72,7 @@ test("what 直接插入 cuts is said for who runs the Bot: Claude Code stops a r
 });
 
 test("any other local agent cuts a step short the same way, except Antigravity's print mode, where the line waits (ADR 0079)", () => {
-  for (const runner of ["codex", "grok", "opencode", "dsh", "zcode", "custom"] as const) {
+  for (const runner of ["codex", "grok", "opencode", "zcode", "custom"] as const) {
     const agent = stage([waiting()], { turns: [working()], runner });
     try {
       expect(buttonByText(agent.segment("line-1") as HTMLElement, t.chat.insertNow).title).toBe(t.chat.insertNowAgentTitle);

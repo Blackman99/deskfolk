@@ -233,7 +233,7 @@
 		{
 			id: 'deepseek',
 			name: 'DeepSeek',
-			url: 'https://api.deepseek.com/v1',
+			url: connectorById('deepseek')!.plans[0]!.baseUrl,
 			format: 'openai',
 			models: ['deepseek-chat', 'deepseek-reasoner'],
 			defaultModel: 'deepseek-chat'

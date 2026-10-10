@@ -1,6 +1,6 @@
 /**
  * A turn run by one of your local agents other than Claude Code (ADR 0079): Codex, Grok, OpenCode,
- * DSH, ZCode, Antigravity or an ACP agent of your own. One Deskfolk turn is one fresh session of
+ * ZCode, Antigravity or an ACP agent of your own. One Deskfolk turn is one fresh session of
  * the agent in the turn's work dir, as for a Claude Agent turn (ADR 0061), and wrapped in the same
  * things: the workspace boundary and your approvals, holds and Stop, the effect ledger and its
  * records, the app's own tools, the closing reply with its bounces. The driver (`drivers/*`) speaks
@@ -472,7 +472,7 @@ export async function runExternalSession(input: {
   // --- the app's side of the protocol --------------------------------------------------------
   const spawnRecorded = (command: string, args: string[], options: { cwd: string; env: Record<string, string> }): ChildProcess => {
     const windows = process.platform === "win32";
-    // npm's `codex.cmd` / `dsh.cmd` on Windows are batch files, run through cmd.exe (ADR 0061 decision 2).
+    // npm's `codex.cmd` on Windows are batch files, run through cmd.exe (ADR 0061 decision 2).
     const launch = claudeLaunch(command, args, options.env);
     const child = spawn(launch.command, launch.args, { cwd: options.cwd, env: options.env, stdio: ["pipe", "pipe", "pipe"], detached: !windows, windowsHide: true, windowsVerbatimArguments: launch.verbatim });
     if (child.pid) {

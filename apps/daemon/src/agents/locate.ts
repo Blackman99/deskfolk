@@ -2,7 +2,7 @@
  * Finding a local agent's command (ADR 0079), the way ADR 0061 finds `claude`: the path you set in
  * Settings, then the daemon's PATH, then the places the agent's installers put it, then your login
  * shell, asked once with a short timeout. A daemon the window started from Finder has launchd's
- * PATH, where none of them live; npm installs (Codex, DSH) usually sit under nvm's current Node, so
+ * PATH, where none of them live; npm installs (Codex) usually sit under nvm's current Node, so
  * those directories are looked at too, newest first. On Windows the app has your whole PATH, npm's
  * shims are `.cmd` files, and there is no login shell to ask. Everything that touches the machine
  * is injected, so the order is tested without one.
@@ -78,7 +78,7 @@ export function agentKnownPlaces(command: string, home: string, platform: string
   ];
 }
 
-/** nvm's Node installs, newest version first: where `npm i -g` put Codex or DSH for most people. */
+/** nvm's Node installs, newest version first: where `npm i -g` put Codex for most people. */
 function defaultNvmBins(home: string): string[] {
   const root = posix.join(home, ".nvm", "versions", "node");
   try {

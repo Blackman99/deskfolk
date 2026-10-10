@@ -734,12 +734,12 @@ const efforts = (host: HTMLElement) => [...host.querySelectorAll('[role=radiogro
 const lastSave = (runtime: ReturnType<typeof fakeRuntime>) => runtime.calls.filter((c) => c.name === "patchBot").at(-1)?.args[1] as Record<string, unknown>;
 
 test("the runner picker lists the app, Claude Agent, every other local agent by name, then your own ACP agents; one not installed or signed out cannot be picked", async () => {
-  const { host, runtime, close } = openOnAgent(aBot(), withAcp(agentItems({ grok: { path: null }, dsh: { logged_in: false } })));
+  const { host, runtime, close } = openOnAgent(aBot(), withAcp(agentItems({ grok: { path: null }, antigravity: { logged_in: false } })));
   await sleep(30);
   click(host.querySelector("#profile-runner"));
   const rows = runnerRows(host);
-  expect(rows.map(words)).toEqual([t.sidebar.botRunnerApp, t.sidebar.botRunnerClaude, "Codex", "Grok 没装", "OpenCode", "DSH 没登录", "Antigravity", "ZCode", "我的 ACP"]);
-  expect(rows.filter((row) => row.getAttribute("aria-disabled") === "true").map(words)).toEqual(["Grok 没装", "DSH 没登录"]);
+  expect(rows.map(words)).toEqual([t.sidebar.botRunnerApp, t.sidebar.botRunnerClaude, "Codex", "Grok 没装", "OpenCode", "Antigravity 没登录", "ZCode", "我的 ACP"]);
+  expect(rows.filter((row) => row.getAttribute("aria-disabled") === "true").map(words)).toEqual(["Grok 没装", "Antigravity 没登录"]);
   // A missing agent is not a choice.
   click(rows[3]!);
   await sleep(200);
@@ -775,7 +775,7 @@ test("choosing Codex saves runner codex; its effort is then one Codex takes, and
   onCodex.close();
 });
 
-test("the effort radios follow the agent: Grok stops at extra high, DSH has Off, OpenCode and your own ACP agents have none", async () => {
+test("the effort radios follow the agent: Grok stops at extra high, Antigravity goes up to max, OpenCode and your own ACP agents have none", async () => {
   const levels = async (runner: BotRunner, extra: Partial<Parameters<typeof aBot>[0]> = {}, agents = withAcp(agentItems())) => {
     const view = openOnAgent(aBot({ runner, ...extra }), agents);
     await sleep(30);
@@ -784,7 +784,6 @@ test("the effort radios follow the agent: Grok stops at extra high, DSH has Off,
     return out;
   };
   expect((await levels("grok")).radios).toEqual(["默认", "低", "中", "高", "极高"]);
-  expect((await levels("dsh")).radios).toEqual(["默认", "关", "低", "高", "最大"]);
   expect((await levels("antigravity")).radios).toEqual(["默认", "低", "中", "高", "极高", "最大"]);
   const opencode = await levels("opencode");
   expect(opencode.radios).toEqual([]);
@@ -921,17 +920,17 @@ test("a model the agent does not list stays a row of its own; an agent that list
   expect(rowByValue(listed.host, "o9-private")?.classList.contains("is-selected")).toBe(true);
   listed.close();
 
-  // DSH lists no models: the picker says to type one.
-  const dsh = openOnAgent(aBot({ runner: "dsh" }), withAcp(agentItems()));
+  // ZCode lists no models: the picker says to type one.
+  const zcode = openOnAgent(aBot({ runner: "zcode" }), withAcp(agentItems()));
   await sleep(30);
-  click(dsh.host.querySelector("#profile-agent-model"));
+  click(zcode.host.querySelector("#profile-agent-model"));
   await settle();
-  expect(dsh.host.querySelector(".mp-empty")?.textContent).toContain(t.modelPicker.noModels);
-  fill(dsh.host.querySelector(".mp-search input"), "deepseek-v4-flash");
-  press(dsh.host.querySelector(".mp-search input"), "Enter");
+  expect(zcode.host.querySelector(".mp-empty")?.textContent).toContain(t.modelPicker.noModels);
+  fill(zcode.host.querySelector(".mp-search input"), "glm-5.3");
+  press(zcode.host.querySelector(".mp-search input"), "Enter");
   await sleep(200);
-  expect(lastSave(dsh.runtime)).toMatchObject({ runner: "dsh", agent_model: "deepseek-v4-flash" });
-  dsh.close();
+  expect(lastSave(zcode.runtime)).toMatchObject({ runner: "zcode", agent_model: "glm-5.3" });
+  zcode.close();
 
   // The phone cannot ask the daemon what agents it finds, and still sets a model by name.
   const phone = openOnAgent(aBot({ runner: "codex" }), null);

@@ -2,7 +2,7 @@
  * What a turn on a local agent other than Claude Code runs (ADR 0079): the command found for the
  * runner (or your own, for a custom ACP agent) and the environment it gets — the daemon's own, less
  * the markers a Claude Code session leaves and the app's `REAL_BOT_*`, with the account's
- * directory, the command's own directory first on PATH (an npm install like Codex's or DSH's is a
+ * directory, the command's own directory first on PATH (an npm install like Codex's is a
  * Node script that needs the `node` beside it, which a daemon started from Finder does not have on
  * its PATH), and the system proxy when the environment names none (ADR 0061 decision 10).
  */

@@ -241,13 +241,13 @@ test("accounts are listed only for an agent that has config directories, added a
     expect(plain.host.querySelector("[data-agent-account-open]")).toBeNull();
     plain.close();
   }
-  const dsh = open({ status: status({ runner: "dsh", label: "DSH", accounts: [own] }) });
+  const codex = open({ status: status({ runner: "codex", label: "Codex", accounts: [own] }) });
   // With no other account yet there is no list, only the link to add one.
-  expect(dsh.host.querySelector("[data-agent-accounts]")).toBeNull();
-  click(dsh.host.querySelector("[data-agent-account-open]"));
-  expect(dsh.host.querySelector("[data-agent-accounts]")).not.toBeNull();
-  expect(dsh.host.querySelector<HTMLInputElement>("[data-agent-accounts] input")?.getAttribute("placeholder")).toBe(t.agents.accounts.placeholder("~/.dsh-b"));
-  dsh.close();
+  expect(codex.host.querySelector("[data-agent-accounts]")).toBeNull();
+  click(codex.host.querySelector("[data-agent-account-open]"));
+  expect(codex.host.querySelector("[data-agent-accounts]")).not.toBeNull();
+  expect(codex.host.querySelector<HTMLInputElement>("[data-agent-accounts] input")?.getAttribute("placeholder")).toBe(t.agents.accounts.placeholder("~/.codex-b"));
+  codex.close();
 });
 
 test("a config directory the daemon refuses says why, with its words under ours", async () => {

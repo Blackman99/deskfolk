@@ -23,7 +23,6 @@ export const AGENT_LAUNCH: Record<Exclude<BotRunner, "claude_code">, AgentLaunch
   codex: { args: ["app-server"], apiHost: "chatgpt.com", login: "codex login", homeDir: "~/.codex" },
   grok: { args: ["agent", "--no-leader", "stdio"], apiHost: "api.x.ai", login: "grok login", homeDir: "~/.grok" },
   opencode: { args: ["acp"], apiHost: "opencode.ai", login: "opencode auth login", homeDir: "~/.local/share/opencode" },
-  dsh: { args: ["--profile", "acp"], apiHost: "api.deepseek.com", login: null, homeDir: "~/.dsh" },
   antigravity: { args: [], apiHost: "cloudcode-pa.googleapis.com", login: "agy", homeDir: "~/.gemini" },
   zcode: { args: [], apiHost: "open.bigmodel.cn", login: null, homeDir: null },
   custom: { args: [], apiHost: "api.openai.com", login: null, homeDir: null },

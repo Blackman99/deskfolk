@@ -25,7 +25,6 @@ export const zh = {
     agent_codex: "由你的 Codex 来跑",
     agent_grok: "由你的 Grok 来跑",
     agent_opencode: "由你的 OpenCode 来跑",
-    agent_dsh: "由你的 DSH 来跑",
     agent_antigravity: "由你的 Antigravity 来跑",
     agent_zcode: "由你的 ZCode 来跑",
     agent_custom: "由你添加的 ACP Agent 来跑"
@@ -122,7 +121,6 @@ export const en: CopyShape<typeof zh> = {
     agent_codex: "Run by your Codex",
     agent_grok: "Run by your Grok",
     agent_opencode: "Run by your OpenCode",
-    agent_dsh: "Run by your DSH",
     agent_antigravity: "Run by your Antigravity",
     agent_zcode: "Run by your ZCode",
     agent_custom: "Run by an ACP agent you added"

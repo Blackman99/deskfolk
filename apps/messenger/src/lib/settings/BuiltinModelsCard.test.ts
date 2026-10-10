@@ -397,7 +397,7 @@ test("with other local agents found and signed in, every call offers each one's 
   const agents = agentsOf(
     agentStatus("codex", { models: listed("gpt-5.5", "gpt-5.5-mini") }),
     agentStatus("grok", { path: null, models: listed("grok-4.7") }),
-    agentStatus("dsh", { logged_in: false, models: listed("deepseek-v4") }),
+    agentStatus("antigravity", { logged_in: false, models: listed("gemini-3.8-flash-high") }),
     agentStatus("custom", { custom_id: "acp-1", label: "我的 ACP", models: listed("fast") }),
   );
   const { host, close } = show({ patch, agents, claudeCode: statusOf(claudeStatus()) });
@@ -427,23 +427,23 @@ test("with other local agents found and signed in, every call offers each one's 
 
 test("an agent that lists no model takes one typed into the search, as the agent spells it", async () => {
   const { sent, patch } = fakePatch();
-  const { host, close } = show({ patch, agents: agentsOf(agentStatus("dsh"), agentStatus("opencode", { default_model: "openai/gpt-5.5" })) });
+  const { host, close } = show({ patch, agents: agentsOf(agentStatus("zcode"), agentStatus("opencode", { default_model: "openai/gpt-5.5" })) });
   await sleep(0);
   await openPicker(host, "scribe");
   expect(await offered(host, "scribe")).toEqual([
     { source: "My CPA", models: ["grok-4.7-build-fast", "gemini-3.8-flash-high"] },
     { source: "阿里百炼", models: ["deepseek-v4.1-flash"] },
-    { source: "DSH", models: [] },
+    { source: "ZCode", models: [] },
     // An agent that names a default model offers it.
     { source: "OpenCode", models: ["openai/gpt-5.5"] },
   ]);
-  await point(host, "scribe", "agent:dsh");
-  expect(sourceEl(host, "scribe", "agent:dsh").querySelector(".mp-source-note")?.textContent).toBe(t.modelPicker.typeShort);
+  await point(host, "scribe", "agent:zcode");
+  expect(sourceEl(host, "scribe", "agent:zcode").querySelector(".mp-source-note")?.textContent).toBe(t.modelPicker.typeShort);
   const search = row(host, "scribe").querySelector<HTMLInputElement>(".mp-search input")!;
-  fill(search, "deepseek-v4-flash");
+  fill(search, "glm-5.3");
   press(search, "Enter");
   await settle();
-  expect(sent).toEqual([{ builtin_models: { scribe: { runner: "dsh", model: "deepseek-v4-flash", config_dir: null } } }]);
+  expect(sent).toEqual([{ builtin_models: { scribe: { runner: "zcode", model: "glm-5.3", config_dir: null } } }]);
   close();
 });
 

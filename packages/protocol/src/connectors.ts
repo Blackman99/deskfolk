@@ -6,7 +6,7 @@ import type { ApiFormat } from "./providers.ts";
  * is one of the connector's plans, so an endpoint typed in by hand at the same address is one too.
  * Display names and plan labels live in the messenger's copy, not here.
  */
-export const CONNECTOR_IDS = ["anthropic", "xiaomi", "qwen"] as const;
+export const CONNECTOR_IDS = ["anthropic", "xiaomi", "qwen", "deepseek"] as const;
 export type ConnectorId = (typeof CONNECTOR_IDS)[number];
 
 /** One address a vendor serves, with the keys sold for it: a subscription plan or pay-as-you-go, per region. */
@@ -55,6 +55,14 @@ export const CONNECTORS: readonly Connector[] = [
       { id: "payg-cn", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1" },
       { id: "payg-intl", baseUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1" },
     ],
+    workspace: false,
+  },
+  {
+    // DeepSeek's own API, at the address its docs give (`…/v1` is the same API). Its `dsh` harness
+    // is not a local agent the app runs (ADR 0079): its models are reached here.
+    id: "deepseek",
+    apiFormat: "openai",
+    plans: [{ id: "api", baseUrl: "https://api.deepseek.com" }],
     workspace: false,
   },
 ];

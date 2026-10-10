@@ -12,6 +12,7 @@ describe("connectorFor", () => {
       connector: { id: "qwen" },
       plan: { id: "payg-intl" },
     });
+    expect(connectorFor("https://api.deepseek.com/", "openai")).toMatchObject({ connector: { id: "deepseek" }, plan: { id: "api" } });
   });
 
   test("ignores case and trailing slashes, and a trailing /v1 in Anthropic's format", () => {

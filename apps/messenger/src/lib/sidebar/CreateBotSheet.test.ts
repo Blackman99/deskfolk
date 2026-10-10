@@ -102,7 +102,7 @@ test("the runner picker offers every local agent the daemon finds, and the form 
   await sleep(30);
   click(host.querySelector("#bot-runner"));
   const rows = [...host.querySelectorAll("#bot-runner-listbox [role=option]")];
-  expect(rows.map(rowText)).toEqual([t.sidebar.botRunnerApp, t.sidebar.botRunnerClaude, "Codex", "Grok 没装", "OpenCode", "DSH", "Antigravity", "ZCode", "我的 ACP"]);
+  expect(rows.map(rowText)).toEqual([t.sidebar.botRunnerApp, t.sidebar.botRunnerClaude, "Codex", "Grok 没装", "OpenCode", "Antigravity", "ZCode", "我的 ACP"]);
   click(rows.find((row) => rowText(row) === "Codex") ?? null);
   await sleep(0);
   expect(host.textContent).toContain(t.sidebar.botRunnerAgentCreateHint("Codex"));
@@ -234,16 +234,16 @@ test("on another agent the model is one it lists, its default, or a name typed i
   await sleep(0);
   expect(runtime.calls.filter((call) => call.name === "createBot").at(-1)?.args[0]).toMatchObject({ runner: "codex", agent_model: "openai/gpt-6" });
   close();
-  // An agent that lists none (DSH) takes a typed name, or none at all.
-  const dsh = openWithAgents(found());
+  // An agent that lists none (ZCode) takes a typed name, or none at all.
+  const zcode = openWithAgents(found());
   await sleep(30);
-  await pickRunner(dsh.host, "DSH");
-  fillIn(dsh.host);
-  create(dsh.host);
+  await pickRunner(zcode.host, "ZCode");
+  fillIn(zcode.host);
+  create(zcode.host);
   await sleep(0);
-  expect(created(dsh.runtime)).toMatchObject({ runner: "dsh" });
-  click(dsh.host.querySelector("#bot-agent-model"));
+  expect(created(zcode.runtime)).toMatchObject({ runner: "zcode" });
+  click(zcode.host.querySelector("#bot-agent-model"));
   await settle();
-  expect(dsh.host.querySelector(".mp-empty")?.textContent).toContain(t.modelPicker.noModels);
-  dsh.close();
+  expect(zcode.host.querySelector(".mp-empty")?.textContent).toContain(t.modelPicker.noModels);
+  zcode.close();
 });

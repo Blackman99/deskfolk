@@ -339,7 +339,7 @@ test("a turn run by your Claude Code says so, and one that climbed onto a Claude
 test("a turn run by another local agent (ADR 0079) names it by its reason code `agent_<runner>`, in both languages, and a failure says it was the local agent", () => {
   for (const locale of ["zh", "en"] as const) {
     const labels = copyFor(locale).routes;
-    const runners = { codex: "Codex", grok: "Grok", opencode: "OpenCode", dsh: "DSH", antigravity: "Antigravity", zcode: "ZCode" } as const;
+    const runners = { codex: "Codex", grok: "Grok", opencode: "OpenCode", antigravity: "Antigravity", zcode: "ZCode" } as const;
     const rows = routeLogRows(
       Object.keys(runners).map((runner, index) => record({ turn_id: `t${index}`, reason_code: `agent_${runner}`, base_reason_code: null })),
       { bots: BOTS, providers: [], labels },

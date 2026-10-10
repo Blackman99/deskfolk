@@ -46,5 +46,9 @@ On 2026-10-09, with an isolated runtime (a fresh data folder, port 17991, keys o
 ## 没做的 / Not done
 
 - 替你列出工作区：个人 key 调不了组织接口（403）。/ Listing the workspaces for you: a personal key cannot call the organization API (403).
-- 更多厂商（DeepSeek、Kimi、智谱……）：加一家就是在 `CONNECTORS` 里加一行、在文案里加名字和套餐名、配一个 LOGO。/ More vendors (DeepSeek, Kimi, Zhipu…): one more is a row in `CONNECTORS`, its name and plan labels in the copy, and a logo.
+- 更多厂商（Kimi、智谱……）：加一家就是在 `CONNECTORS` 里加一行、在文案里加名字和套餐名、配一个 LOGO。/ More vendors (Kimi, Zhipu…): one more is a row in `CONNECTORS`, its name and plan labels in the copy, and a logo.
 - 按 key 的前缀猜套餐：前缀没有文档，挨个问一遍也就一两秒。/ Guessing the plan from the key's prefix: prefixes are not documented, and asking each plan takes a second or two.
+
+## 补记：DeepSeek / Addendum: DeepSeek（2026-10-10）
+
+你说：「我之前提到 DSH，它应该去掉，应该放到默认的模型端点里作为 Deepseek 出现。」DeepSeek 成了第四个内置连接器：一个套餐「官方 API」，地址是它文档给的 `https://api.deepseek.com`（OpenAI 兼容；`…/v1` 是同一个接口，那样手填的端点不按 DeepSeek 显示），只填 key，模型列表用 key 从 `/models` 拉；LOGO 是 lobe-icons 的鲸鱼。向导里原来的 DeepSeek 预设改用这个地址。DSH 不再是本机 Agent（见 ADR 0079 补记）。没用真 key 测过：这台机器上 DeepSeek 的 key 只在 DSH 自己的凭据目录里，应用不读。/ DeepSeek is the fourth built-in connector: one plan, "DeepSeek API", at the address its docs give (`https://api.deepseek.com`, OpenAI-compatible; `…/v1` is the same API, but an endpoint typed that way is not shown as DeepSeek), key only, models fetched from `/models` with the key, lobe-icons' whale for its logo. The wizard's DeepSeek preset uses that address. DSH is no longer a local agent (ADR 0079 addendum). Not tried with a real key: the only DeepSeek key here is in DSH's own credential folder, which the app does not read.

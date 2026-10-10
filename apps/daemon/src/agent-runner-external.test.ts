@@ -245,10 +245,10 @@ test("an agent that cannot sign in fails the turn as signed out, named", async (
 });
 
 test("a prompt that runs out of balance fails the turn as the agent's limit", async () => {
-  const h = await harness([[{ fail: { code: -32603, message: "Internal error: turn failed: Insufficient Balance" } }]], { runner: "dsh" });
+  const h = await harness([[{ fail: { code: -32603, message: "Internal error: turn failed: Insufficient Balance" } }]], { runner: "opencode" });
   await h.post("hi");
   expect(h.store.db.query<{ fail_kind: string | null }, []>("SELECT fail_kind FROM notifications WHERE kind = 'failure'").get()?.fail_kind).toBe("agent_limit");
-  expect(h.lines("system").join("\n")).toContain("DSH");
+  expect(h.lines("system").join("\n")).toContain("OpenCode");
 });
 
 test("an agent that is not installed fails the turn as missing, named, and is not retried", async () => {

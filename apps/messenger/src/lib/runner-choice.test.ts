@@ -35,7 +35,7 @@ test("an agent's status, its name and its efforts come from the daemon's list an
   expect(agentLabelOf("codex", null, null)).toBe("Codex");
   expect(agentLabelOf("custom", "a", agents)).toBe("甲");
   expect(agentLabelOf("custom", "gone", agents)).toBe(AGENT_KINDS.custom.label);
-  expect(agentEffortsOf("dsh")).toEqual(["off", "low", "high", "max"]);
+  expect(agentEffortsOf("grok")).toEqual(["low", "medium", "high", "xhigh"]);
   expect(agentEffortsOf("opencode")).toEqual([]);
   // The app's own loop reads the agent fields as Claude's.
   expect(agentEffortsOf(null)).toEqual(AGENT_KINDS.claude_code.efforts);
@@ -80,7 +80,7 @@ test("the runner picker offers agents only once the daemon has listed them, neve
   const listed = runnerOptions(t, agents, "codex");
   expect(listed.find((option) => option.value === "codex")).toMatchObject({ disabled: false, hint: t.sidebar.botRunnerAgentMissingShort });
   expect(runnerOptions(t, agents, "").find((option) => option.value === "codex")).toMatchObject({ disabled: true });
-  expect(listed.map((option) => option.value)).toEqual(["", "claude_code", "codex", "grok", "opencode", "dsh", "antigravity", "zcode"]);
+  expect(listed.map((option) => option.value)).toEqual(["", "claude_code", "codex", "grok", "opencode", "antigravity", "zcode"]);
   // Where the daemon has not listed it (the phone): still a choice, under its name.
   expect(runnerOptions(t, null, "zcode").at(-1)).toMatchObject({ value: "zcode", label: "ZCode" });
 });
