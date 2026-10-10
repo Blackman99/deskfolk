@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { UsageWindow } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
-	import { usageLeft, usageLeftText, usageLevel, usageResetShort, usageResetText, usageSpan, usageWindowLabel } from './usage.ts';
+	import { usageLeft, usageLeftText, usageLevel, usageResetShort, usageResetText, usageSpan } from './usage.ts';
 
 	/**
 	 * One window as a dial on the usage tab: a ring as full as what is left, the number inside it,
@@ -32,9 +32,9 @@
 			<span class="usage-gauge-unit">{t.usage.leftLabel}</span>
 		</span>
 	</span>
-	<!-- One line: a model's window is "Fable · 7 天"; a long model name is cut, never the length. -->
-	<span class="usage-gauge-name" title={window.model ? usageWindowLabel(window, t) : undefined}>
-		{#if window.model}<span class="usage-gauge-model">{window.model}</span><span class="usage-gauge-sep" aria-hidden="true">·</span>{/if}<span class="usage-gauge-span">{usageSpan(window.minutes, t)}</span>
+	<!-- "Fable · 7 天" on one line when it fits; a long model name wraps, the length stays whole. -->
+	<span class="usage-gauge-name">
+		{#if window.model}<span class="usage-gauge-model">{window.model}</span>{' '}{/if}<span class="usage-gauge-tail">{#if window.model}<span class="usage-gauge-sep" aria-hidden="true">·</span>{' '}{/if}<span class="usage-gauge-span">{usageSpan(window.minutes, t)}</span></span>
 	</span>
 	{#if resetShort}
 		<span class="usage-reset" title={reset ?? undefined}>
@@ -110,31 +110,24 @@
 	}
 
 	.usage-gauge-name {
-		display: flex;
-		overflow: hidden;
-		justify-content: center;
-		gap: 4px;
 		max-width: 100%;
 		min-width: 0;
 		color: var(--ink);
 		font-size: 13px;
 		font-weight: 600;
-		white-space: nowrap;
+		line-height: 1.35;
+		overflow-wrap: anywhere;
+		text-align: center;
 	}
 
-	.usage-gauge-model {
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
+	/* "· 7 天" never splits from itself; the model name before it wraps at its spaces. */
+	.usage-gauge-tail {
+		white-space: nowrap;
 	}
 
 	.usage-gauge-sep {
 		color: var(--muted);
 		font-weight: 400;
-	}
-
-	.usage-gauge-span {
-		flex: none;
 	}
 
 	.usage-reset {

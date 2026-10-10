@@ -1,11 +1,11 @@
 <script lang="ts">
 	import type { UsageWindow } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
-	import { usageLeft, usageLeftText, usageLevel, usageResetShort, usageResetText, usageSpan, usageWindowLabel } from './usage.ts';
+	import { usageLeft, usageLeftText, usageLevel, usageResetShort, usageResetText, usageSpan } from './usage.ts';
 
 	/**
-	 * One window as a bar on the desktop's usage tab: its name on one line ("Fable · 7 天", a long
-	 * model name cut before the length is), when it starts over, what is left, and a bar of it.
+	 * One window as a bar on the desktop's usage tab: its name ("Fable · 7 天"; a long model name
+	 * wraps, the length stays whole), when it starts over, what is left, and a bar of it.
 	 */
 	interface Props {
 		window: UsageWindow;
@@ -21,8 +21,8 @@
 </script>
 
 <li class="usage-meter is-{usageLevel(window.percent)}" data-usage-window={window.model ?? window.minutes ?? ''}>
-	<span class="usage-gauge-name" title={window.model ? usageWindowLabel(window, t) : undefined}>
-		{#if window.model}<span class="usage-gauge-model">{window.model}</span><span class="usage-gauge-sep" aria-hidden="true">·</span>{/if}<span class="usage-gauge-span">{usageSpan(window.minutes, t)}</span>
+	<span class="usage-gauge-name">
+		{#if window.model}<span class="usage-gauge-model">{window.model}</span>{' '}{/if}<span class="usage-gauge-tail">{#if window.model}<span class="usage-gauge-sep" aria-hidden="true">·</span>{' '}{/if}<span class="usage-gauge-span">{usageSpan(window.minutes, t)}</span></span>
 	</span>
 	<span class="usage-reset" title={reset ?? undefined}>
 		{#if resetShort}
@@ -51,28 +51,21 @@
 	}
 
 	.usage-gauge-name {
-		display: flex;
-		gap: 4px;
 		min-width: 0;
-		overflow: hidden;
 		color: var(--ink);
 		font-weight: 600;
-		white-space: nowrap;
+		line-height: 1.35;
+		overflow-wrap: anywhere;
 	}
 
-	.usage-gauge-model {
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
+	/* "· 7 天" never splits from itself; the model name before it wraps at its spaces. */
+	.usage-gauge-tail {
+		white-space: nowrap;
 	}
 
 	.usage-gauge-sep {
 		color: var(--muted);
 		font-weight: 400;
-	}
-
-	.usage-gauge-span {
-		flex: none;
 	}
 
 	.usage-reset {
