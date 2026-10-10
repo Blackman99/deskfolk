@@ -69,6 +69,13 @@ export function stateChip(state: PromptLocaleState, botName: string | null, c: P
 	return { tone: 'default', label: c.state.default };
 }
 
+/** A prompt's mark in a list: who edited it, or the conflict; a default carries none. */
+export function promptChip(item: PromptSummary, botNames: ReadonlyMap<string, string>, c: PromptsCopy): ReturnType<typeof stateChip> {
+	const state = overallState(item);
+	const shown = item.locales.find((locale) => locale.state === state) ?? item.locales[0]!;
+	return stateChip(shown, shown.last_bot_id ? (botNames.get(shown.last_bot_id) ?? null) : null, c);
+}
+
 /** The language shown first: the app's when the prompt has it, else its only one. */
 export function firstLocale(item: Pick<PromptSummary, 'locales'>, ui: Locale): Locale {
 	return item.locales.some((state) => state.locale === ui) ? ui : item.locales[0]!.locale;
