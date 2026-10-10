@@ -1,4 +1,4 @@
-import { ANNOTATION_REMOTE_CROP_BASE64_MAX, CLIENT_ONLY_CONTROL_OFFERS, CONTROL_NOTE_MAX, CONTROL_OFFERS, FILE_DROP_SESSION_ID, SPEECH_AUDIO_BASE64_MAX, SPEECH_FORMATS, SPEECH_PRESET_IDS } from "@real-bot/protocol";
+import { ANNOTATION_REMOTE_CROP_BASE64_MAX, BUILTIN_MODEL_ROLES, CLIENT_ONLY_CONTROL_OFFERS, CONTROL_NOTE_MAX, CONTROL_OFFERS, FILE_DROP_SESSION_ID, SPEECH_AUDIO_BASE64_MAX, SPEECH_FORMATS, SPEECH_PRESET_IDS } from "@real-bot/protocol";
 import type { RemoteRequest } from "@real-bot/remote";
 import { HttpError } from "../errors";
 import { isUlid } from "../ids";
@@ -221,11 +221,14 @@ add("PUT", "sessions/:id/notification-preference", { muted: bool, if_revision: v
 add("POST", "notification-presence", { instance_id: string, visible: bool, focused: bool, session_id: nullable(id), at_latest: bool }, ["instance_id", "visible", "focused", "at_latest"]);
 add("PATCH", "notification-policy", { categories: object({ approval: bool, ask: bool, failure: bool, interrupted: bool, reply: bool, routine_result: bool }), quiet_hours: object({ enabled: bool, start: string, end: string, time_zone: string }), if_revision: v => typeof v === "number" && Number.isInteger(v) && v >= 0 }, ["if_revision"], true);
 add("PATCH", "notification-device", { badge: bool, sound: one("system"), preview: one("generic"), if_revision: v => typeof v === "number" && Number.isInteger(v) && v >= 0 }, ["if_revision"], true);
+// A built-in call's model (ADR 0055, 0077): an endpoint's, a Claude model of yours, or null.
+const sideModel = nullable(v => object({ provider_id: id, model: string }, ["provider_id", "model"])(v) ||
+  object({ runner: one("claude_code"), model: string, config_dir: nullable(string) }, ["runner", "model"])(v));
 add("PATCH", "settings", { endpoint_base_url: string, endpoint_api_key: string, endpoint_models: models, endpoint_default_model: string,
-  default_provider_id: nullable(id), reader_model: nullable(v => object({ provider_id: id, model: string }, ["provider_id", "model"])(v) ||
-    object({ runner: one("claude_code"), model: string, config_dir: nullable(string) }, ["runner", "model"])(v)),
-  // The model that organizes (ADR 0075): an endpoint's only; a Claude model reads lines, it does not organize.
+  default_provider_id: nullable(id), reader_model: sideModel,
+  // An older window's organizer (ADR 0075): an endpoint's only; builtin_models takes a Claude model too (ADR 0077).
   organizer_model: nullable(object({ provider_id: id, model: string }, ["provider_id", "model"])),
+  builtin_models: object(Object.fromEntries(BUILTIN_MODEL_ROLES.map((role) => [role, sideModel]))),
   launch_at_login: bool, locale: one("en", "zh"), theme: one("system", "light", "dark"),
   if_revision: v => typeof v === "number" && Number.isSafeInteger(v) && v >= 0 }, [], true);
 // The speech endpoint (ADR 0073): set up like the settings, under their revision; a transcription

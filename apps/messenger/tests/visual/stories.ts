@@ -44,6 +44,7 @@ import GlobalSearch from '../../src/lib/search/GlobalSearch.svelte';
 import ChatHeader from '../../src/lib/chat/ChatHeader.svelte';
 import ChatStage from '../../src/lib/chat/ChatStage.svelte';
 import SettingsModal from '../../src/lib/settings/SettingsModal.svelte';
+import { noBuiltinModels } from '../../src/lib/settings/builtin-models.ts';
 import { updateChecker } from '../../src/lib/update-checker.svelte.ts';
 import ArtifactPreview from '../../src/lib/overlays/ArtifactPreview.svelte';
 import ArtifactCodeEditor from '../../src/lib/overlays/ArtifactCodeEditor.svelte';
@@ -128,6 +129,7 @@ const settings = {
 	endpoint_model_catalog: [],
 	endpoint_default_model: 'grok-4.6',
 	default_provider_id: 'prov-1',
+	builtin_models: noBuiltinModels(),
 	launch_at_login: true,
 	locale: 'zh' as const,
 	theme: 'system' as const,

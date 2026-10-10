@@ -26,8 +26,10 @@ import { join } from "node:path";
 import { USER_MEMBER, traceNodeSaidNothing, type AcceptanceCheck, type ApiFormat, type AcceptanceCheckOutcome, type Message, type OrganizerRun, type ThinkingLevel, type Ticket, type Turn } from "@real-bot/protocol";
 import { NO_ABLATION, type Ablation } from "./ablation";
 import { describeCheck } from "./acceptance-eval";
+import type { ClaudeJudge, ClaudeReaderTarget, ClaudeReadingUsage } from "./claude-code/reading";
 import type { CompletionsClient, MappedUsage } from "./completions";
 import { HttpError } from "./errors";
+import { sideJudge } from "./engine/builtin-models";
 import { atomicWrite } from "./file-integrity";
 import { organizerPayload, parseOrganizerResult } from "./prompts/organizer";
 import { promptPage } from "./prompts/book";
@@ -83,10 +85,18 @@ export type OrganizerRouting = {
 export type OrganizerDeps = {
   store: Store;
   completions: CompletionsClient;
-  /** The organizing model (ADR 0075), else the default endpoint's default model, resolved when a call is about to be made. */
-  routing: () => Promise<OrganizerRouting | null>;
-  /** Returns the ledger row's id it billed the call as, or null when nothing was billable (see `engine/spend.ts`). */
-  recordSpend: (input: { sessionId: string; target: OrganizerRouting; usage: MappedUsage | null; responded: boolean }) => string | null;
+  /**
+   * The organizer's model (ADR 0075, 0077) — an endpoint's, or a Claude model of yours — else the
+   * default endpoint's default model, resolved when a call is about to be made.
+   */
+  routing: () => Promise<OrganizerRouting | ClaudeReaderTarget | null>;
+  /** Runs the call when the organizer's model is a Claude model of yours (ADR 0077). */
+  claudeJudge?: ClaudeJudge | null;
+  /**
+   * Returns the ledger row's id it billed the call as, or null when nothing was billable (see
+   * `engine/spend.ts`). A Claude model's call carries what Claude Code says it cost.
+   */
+  recordSpend: (input: { sessionId: string; target: OrganizerRouting | ClaudeReaderTarget; usage: MappedUsage | null; responded: boolean; claudeUsage?: ClaudeReadingUsage | null }) => string | null;
   draining: () => boolean;
   /** How long a plan has to be quiet after its last turn before it is filed. Tests shorten it. */
   settleQuietMs?: number;
@@ -285,12 +295,8 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
     const prompt = promptPage(store, "zh").resolve("call.organizer");
     let result;
     try {
-      result = await deps.completions.judge({
-        baseUrl: routing.baseUrl,
-        apiKey: routing.apiKey,
-        apiFormat: routing.apiFormat,
-        workspaceId: routing.workspaceId,
-        model: routing.model,
+      // Only the organizer's model you chose (ADR 0075, 0077) is told how hard to think; the default one thinks as it likes.
+      result = await sideJudge({ completions: deps.completions, claudeJudge: deps.claudeJudge }, routing, {
         prompt: prompt.ref,
         messages: [
           { role: "system", content: prompt.text },
@@ -299,8 +305,6 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
         signal: new AbortController().signal,
         timeoutMs: input.mode === "message" ? ORGANIZER_TIMEOUT_MS : ORGANIZER_SETTLE_TIMEOUT_MS,
         maxTokens: ORGANIZER_MAX_TOKENS,
-        // Only the organizing model you chose (ADR 0075) is told how hard to think; the default one thinks as it likes.
-        ...(routing.thinkingLevel ? { thinkingLevel: routing.thinkingLevel } : {}),
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -319,6 +323,7 @@ export function createOrganizer(deps: OrganizerDeps): Organizer {
         target: routing,
         usage: result.usage,
         responded: result.failKind === null || result.failKind === "incomplete",
+        claudeUsage: result.claudeUsage ?? null,
       });
     } catch {
       // the ledger is best-effort; the answer still counts

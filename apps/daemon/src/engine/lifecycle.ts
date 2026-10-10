@@ -35,10 +35,12 @@ import type { Participation } from "./participation";
 import type { PlanWatch } from "./plan-watch";
 import type { Routing } from "./routing";
 import type { SpendTracker } from "./spend";
+import type { BuiltinTargetOf } from "./builtin-models";
 import type { Tools } from "./tools";
 import type { InboxEntry, Live } from "./types";
 import type { Spend } from "@real-bot/protocol";
 import type { ClaudeCodeProbe } from "../claude-code/probe";
+import type { ClaudeJudge } from "../claude-code/reading";
 import { createAgentRunner, type AgentQuery } from "./agent-runner";
 import { createTurnEndings } from "./lifecycle/endings";
 import { createClosingReply } from "./lifecycle/closing-reply";
@@ -76,6 +78,10 @@ export type LifecycleDeps = {
   recordSpend: SpendTracker["recordSpend"];
   /** A short call's spend: the context compaction's summary call bills to its turn this way (ADR 0068). */
   recordResponseSpend: SpendTracker["recordResponseSpend"];
+  recordClaudeSpend?: SpendTracker["recordClaudeSpend"];
+  /** The compaction summary's model when you chose one (ADR 0077), run on `builtinClaude` when it is a Claude model. */
+  builtinTarget?: BuiltinTargetOf;
+  builtinClaude?: ClaudeJudge | null;
   closeChain: Chains["closeChain"];
   holdChain: Chains["holdChain"];
   chainTurnEnded: Chains["turnEnded"];

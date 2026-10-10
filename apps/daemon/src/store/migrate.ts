@@ -30,6 +30,7 @@ import { migrateSharedSkills } from "./shared-skills";
 import { migrateSpendLedger, migrateSpendPurpose } from "./spend-migration";
 import { migrateSubmissions, SUBMISSION_TRIGGERS } from "./submission-migration";
 import { migrateSupervisor } from "./supervisor-migration";
+import { migrateBuiltinModels } from "./builtin-models-migration";
 import { DORMANT_PLAN_TRIGGERS } from "./tasks";
 import { migrateToolExecutions } from "./tool-execution-migration";
 import { lapseSupersededWorkQuestions, WORK_QUESTION_TRIGGERS } from "./work-questions";
@@ -335,6 +336,7 @@ export function migrateSchema(db: Database): void {
   migrateDelegations(db);
   migrateEndReasons(db);
   migrateSupervisor(db);
+  migrateBuiltinModels(db);
   migrateToolExecutions(db);
   migrateSubmissions(db);
   // Before anything reads it: a draft's table of that name, without the columns readers use.

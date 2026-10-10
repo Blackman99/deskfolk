@@ -1,7 +1,7 @@
 import {
   USER_MEMBER,
   isLocalEndpoint,
-  isReaderClaudeModel,
+  type BuiltinModelRole,
   type ClientEvent,
   type ComposerSuggestion,
   type ControlActionResult,
@@ -18,7 +18,7 @@ import { createCompletionsClient, type CompletionsClient } from "./completions";
 import { createChains } from "./engine/chains";
 import { createPlanChecks } from "./engine/checks";
 import { createClosing } from "./engine/closing";
-import { createOrganizerTarget } from "./engine/organizer-target";
+import { createBuiltinTargets, recordSideSpend, type BuiltinTarget, type BuiltinTargetOf } from "./engine/builtin-models";
 import { createSeamsJudge, createStandardJudge } from "./engine/seams-judge";
 import { createScaleWatch } from "./engine/scale-watch";
 import { createComposer } from "./engine/composer";
@@ -32,7 +32,7 @@ import { createFire } from "./engine/fire";
 import { createIntake, INTAKE_CAP_MS } from "./engine/intake";
 import { createLifecycle } from "./engine/lifecycle";
 import type { ClaudeCodeProbe } from "./claude-code/probe";
-import { createClaudeJudge } from "./claude-code/reading";
+import { CLAUDE_BUILTIN_SLOTS, createClaudeJudge } from "./claude-code/reading";
 import type { AgentQuery } from "./engine/agent-runner";
 import { createParticipation } from "./engine/participation";
 import { createPlanWatch } from "./engine/plan-watch";
@@ -283,21 +283,26 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     ablation,
   });
 
-  // The model that keeps the board, trace and plan in order (ADR 0075): the one chosen in Settings, else the default.
-  const organizerTarget = createOrganizerTarget({ store, credentials: routing.credentials, routingTarget: routing.routingTarget });
+  // Each built-in call's model (ADR 0077): the one chosen in Settings, else what it ran on before.
+  const builtinTarget: BuiltinTargetOf = createBuiltinTargets({ store, credentials: routing.credentials });
+  /** The model chosen for a call, else the default endpoint's default model, as the board's calls always ran. */
+  async function chosenOrDefault(role: BuiltinModelRole, opts?: { pictures?: boolean }): Promise<BuiltinTarget | null> {
+    const chosen = await builtinTarget(role, opts);
+    if (chosen) return chosen;
+    const creds = await routing.credentials().catch(() => null);
+    return creds ? routing.routingTarget(creds) : null;
+  }
+  // Your Claude Code for the built-in calls chosen on it, reading aside: places of their own, so a
+  // long settle never holds up a line's reading (ADR 0077).
+  const builtinClaude = createClaudeJudge({ claudeCode: options.claudeCode, slots: CLAUDE_BUILTIN_SLOTS });
 
   const organizer = createOrganizer({
     store,
     completions,
-    routing: () => organizerTarget("organizer"),
-    recordSpend({ sessionId, target, usage, responded }) {
-      return spend.recordResponseSpend({
-        kind: "organize",
-        owner: spend.spendOwner(sessionId, null),
-        target: spend.callOf(target),
-        usage,
-        responded,
-      })?.id ?? null;
+    routing: () => chosenOrDefault("organizer"),
+    claudeJudge: builtinClaude,
+    recordSpend({ sessionId, target, ...spent }) {
+      return recordSideSpend(spend, { kind: "organize", owner: spend.spendOwner(sessionId, null), target, ...spent })?.id ?? null;
     },
     draining: () => Boolean(options.admission?.draining),
     settleQuietMs: options.settleQuietMs,
@@ -318,18 +323,12 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     store,
     completions,
     // The model chosen for reading in Settings, else the default one; thinking as little as it can,
-    // since a line of yours waits on its reading.
+    // since a line of yours waits on its reading. A Claude model of yours runs through your Claude
+    // Code, on no endpoint at all (ADR 0061).
     async routing() {
-      const chosen = store.settingsCached().reader_model;
-      // A Claude model of yours runs through your Claude Code, on no endpoint at all (ADR 0061).
-      if (isReaderClaudeModel(chosen)) return { kind: "claude_code" as const, model: chosen.model, configDir: chosen.config_dir };
-      const creds = await routing.credentials().catch(() => null);
-      if (!creds) return null;
-      const provider = chosen ? creds.providers.find((row) => row.id === chosen.provider_id) : undefined;
-      const target = provider && chosen
-        ? { baseUrl: provider.baseUrl, apiKey: provider.apiKey, apiFormat: provider.apiFormat, workspaceId: provider.workspaceId, providerId: provider.id, providerName: provider.name, model: chosen.model, thinkingLevel: null }
-        : routing.routingTarget(creds);
-      return target && { ...target, thinkingLevel: store.lightestThinkingLevelFor(target.model, target.providerId) };
+      const target = await chosenOrDefault("reader");
+      if (!target || "kind" in target) return target;
+      return { ...target, thinkingLevel: store.lightestThinkingLevelFor(target.model, target.providerId) };
     },
     // Billed as the organizer's kind (no Bot asked for it), with its own purpose.
     recordSpend({ sessionId, target, usage, responded }) {
@@ -385,18 +384,12 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   const scribe = createScribe({
     store,
     completions,
-    routing: () => organizerTarget("scribe"),
+    routing: () => chosenOrDefault("scribe"),
+    claudeJudge: builtinClaude,
     // Billed as the organizer's kind (no Bot asked for either), with its own purpose so the spend
     // view shows it apart (ADR 0042).
-    recordSpend({ sessionId, target, usage, responded }) {
-      spend.recordResponseSpend({
-        kind: "organize",
-        purpose: "scribe",
-        owner: spend.spendOwner(sessionId, null),
-        target: spend.callOf(target),
-        usage,
-        responded,
-      });
+    recordSpend({ sessionId, target, ...spent }) {
+      recordSideSpend(spend, { kind: "organize", purpose: "scribe", owner: spend.spendOwner(sessionId, null), target, ...spent });
     },
     draining: () => Boolean(options.admission?.draining),
     readQuote,
@@ -406,9 +399,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   // Large jobs (ADR 0060): your lines and the supervisor's signal read whether a job is one.
   const scaleWatch = createScaleWatch({ store, reader, track: core.track });
 
-  const seamsJudge = createSeamsJudge({ completions, store, routing: organizerTarget, spend });
+  const judgeDeps = { completions, store, routing: ({ pictures }: { pictures: boolean }) => chosenOrDefault("judge", { pictures }), claudeJudge: builtinClaude, spend };
+  const seamsJudge = createSeamsJudge(judgeDeps);
 
-  const judgeDeps = { completions, store, routing: organizerTarget, spend };
   const checks = createPlanChecks({
     store,
     admission: options.admission,
@@ -455,7 +448,10 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     completions,
     credentials: routing.credentials,
     recordResponseSpend: spend.recordResponseSpend,
+    recordClaudeSpend: spend.recordClaudeSpend,
     spendOwner: spend.spendOwner,
+    builtinTarget,
+    claudeJudge: builtinClaude,
   });
 
   const closing = createClosing({
@@ -486,6 +482,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     callOf: spend.callOf,
     spendOwner: spend.spendOwner,
     recordResponseSpend: spend.recordResponseSpend,
+    recordClaudeSpend: spend.recordClaudeSpend,
+    builtinTarget,
+    claudeJudge: builtinClaude,
     startTurn: (...args) => lifecycle.startTurn(...args),
     hearOrStart: (...args) => lifecycle.hearOrStart(...args),
     ablation,
@@ -582,6 +581,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     callOf: spend.callOf,
     recordSpend: spend.recordSpend,
     recordResponseSpend: spend.recordResponseSpend,
+    recordClaudeSpend: spend.recordClaudeSpend,
+    builtinTarget,
+    builtinClaude,
     closeChain: chains.closeChain,
     holdChain: chains.holdChain,
     chainTurnEnded: chains.turnEnded,
@@ -610,8 +612,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
 
   // Level 5's hand-overs and reviews (ADR 0046): checks run as a settle would, through the plan's runner.
   const jobPoller = createJobPoller({ store, mcp, track: core.track, dispatchQueued: () => lifecycle.dispatchQueued() });
-  const reflector = createReflector({ store, completions, routing, spend, track: core.track, publishMessage: core.publishMessage });
-  const retrospector = createRetrospector({ store, completions, routing, spend, track: core.track });
+  const reflector = createReflector({ store, completions, routing, spend, track: core.track, publishMessage: core.publishMessage, builtinTarget, claudeJudge: builtinClaude });
+  const retrospector = createRetrospector({ store, completions, routing, spend, track: core.track, builtinTarget, claudeJudge: builtinClaude });
   const submissions = createSubmissions({
     store,
     runChecks: (taskId, checkIds) => checks.run(taskId, { cause: "settle", checkIds }),

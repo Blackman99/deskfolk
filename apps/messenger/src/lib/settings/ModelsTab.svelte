@@ -1,27 +1,26 @@
 <script lang="ts" module>
-	export type ModelsSection = 'endpoints' | 'ladder' | 'reader' | 'organizer' | 'speech';
+	export type ModelsSection = 'endpoints' | 'ladder' | 'builtin' | 'speech';
 </script>
 
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
-	import { isReaderClaudeModel } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import type { Snapshot } from '../snapshot.ts';
+	import BuiltinModelsCard from './BuiltinModelsCard.svelte';
 	import ModelLadderCard from './ModelLadderCard.svelte';
-	import OrganizerModelCard from './OrganizerModelCard.svelte';
-	import ReaderModelCard from './ReaderModelCard.svelte';
 	import SettingsSectionList from './SettingsSectionList.svelte';
 	import SettingsSectionTabs from './SettingsSectionTabs.svelte';
 	import SpeechCard, { speechMissing } from './SpeechCard.svelte';
+	import { builtinChosenCount } from './builtin-models.ts';
 	import { ModelLadder } from './model-ladder.svelte.ts';
 
 	/**
-	 * Settings › Models in five sections: the endpoints, the model ladder (ADR 0054), the model that
-	 * reads lines (ADR 0055), the model that organizes the board (ADR 0075) and the speech
-	 * recognition behind the message box's microphone (ADR 0073). A wide window shows them as tabs
-	 * over one page. A phone lists them with what each is set to and opens one as a page of its own,
+	 * Settings › Models in four sections: the endpoints, the model ladder (ADR 0054), the built-in
+	 * models (every call the app makes on its own, ADR 0077: reading lines, organizing the board and
+	 * the rest, in one section grouped by what they are for) and the speech recognition behind the
+	 * message box's microphone (ADR 0073). A wide window shows them as tabs over one page. A phone lists them with what each is set to and opens one as a page of its own,
 	 * one level deeper.
 	 */
 	type Props = {
@@ -47,15 +46,15 @@
 	});
 
 	/**
-	 * With no endpoint there is nothing to order, to read or to organize with. Speech recognition is
+	 * With no endpoint there is nothing to order or to pick a built-in call's model from. Speech recognition is
 	 * there either way: it has a service and key of its own, not an endpoint.
 	 */
 	const sections = $derived<ModelsSection[]>(
 		providers.length === 0
 			? ['endpoints', 'speech']
 			: ladder.available
-				? ['endpoints', 'ladder', 'reader', 'organizer', 'speech']
-				: ['endpoints', 'reader', 'organizer', 'speech']
+				? ['endpoints', 'ladder', 'builtin', 'speech']
+				: ['endpoints', 'builtin', 'speech']
 	);
 	let picked = $state<ModelsSection>('endpoints');
 	const section = $derived(sections.includes(picked) ? picked : 'endpoints');
@@ -67,12 +66,10 @@
 	function label(of: ModelsSection): string {
 		if (of === 'endpoints') return t.settings.modelsSectionEndpoints;
 		if (of === 'ladder') return t.modelLadder.title;
-		if (of === 'reader') return t.readerModel.title;
-		return of === 'organizer' ? t.organizerModel.title : t.speech.title;
+		return of === 'builtin' ? t.builtinModels.title : t.speech.title;
 	}
 
 	const defaultProvider = $derived(providers.find((provider) => provider.id === snapshot.settings.default_provider_id) ?? null);
-	const providerName = (id: string) => providers.find((provider) => provider.id === id)?.name ?? id;
 
 	/** What a section is set to, under its name on the phone's list. */
 	function summary(of: ModelsSection): string {
@@ -90,15 +87,8 @@
 			if (!speech.enabled) return t.speech.offShort;
 			return speechMissing(speech, t.speech) ?? [t.speech.presets[speech.preset], speech.model].filter(Boolean).join(' · ');
 		}
-		if (of === 'organizer') {
-			const organizing = snapshot.settings.organizer_model ?? null;
-			if (!organizing) return t.organizerModel.followDefault(snapshot.settings.endpoint_default_model);
-			return providers.length > 1 ? `${organizing.model} · ${providerName(organizing.provider_id)}` : organizing.model;
-		}
-		const chosen = snapshot.settings.reader_model ?? null;
-		if (!chosen) return t.readerModel.followDefault(snapshot.settings.endpoint_default_model);
-		if (isReaderClaudeModel(chosen)) return t.readerModel.claudeModel(chosen.model);
-		return providers.length > 1 ? `${chosen.model} · ${providerName(chosen.provider_id)}` : chosen.model;
+		const chosen = builtinChosenCount(snapshot.settings);
+		return chosen > 0 ? t.builtinModels.chosenSummary(chosen) : t.builtinModels.unsetSummary;
 	}
 
 	function count(of: ModelsSection): number {
@@ -135,11 +125,7 @@
 			<line x1="6" y1="20" x2="6" y2="15"></line>
 			<line x1="12" y1="20" x2="12" y2="10"></line>
 			<line x1="18" y1="20" x2="18" y2="4"></line>
-		{:else if of === 'reader'}
-			<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-			<line x1="8" y1="8" x2="16" y2="8"></line>
-			<line x1="8" y1="12" x2="13" y2="12"></line>
-		{:else if of === 'organizer'}
+		{:else if of === 'builtin'}
 			<rect x="3" y="3" width="7" height="9" rx="1"></rect>
 			<rect x="14" y="3" width="7" height="5" rx="1"></rect>
 			<rect x="14" y="12" width="7" height="9" rx="1"></rect>
@@ -175,23 +161,14 @@
 				{:else if section === 'ladder'}
 					<p class="muted models-intro">{t.modelLadder.hint}</p>
 					<ModelLadderCard {ladder} {providers} claudeCode={runtime.client ? () => runtime.client!.claudeCode() : null} {t} />
-				{:else if section === 'reader'}
-					<p class="muted models-intro">{t.readerModel.hint}</p>
-					<ReaderModelCard
+				{:else if section === 'builtin'}
+					<p class="muted models-intro">{t.builtinModels.hint}</p>
+					<BuiltinModelsCard
 						{providers}
-						chosen={snapshot.settings.reader_model ?? null}
+						settings={snapshot.settings}
 						defaultModel={snapshot.settings.endpoint_default_model}
 						patch={(patch) => runtime.patchSettings(patch)}
 						claudeCode={runtime.client ? () => runtime.client!.claudeCode() : null}
-						{t}
-					/>
-				{:else if section === 'organizer'}
-					<p class="muted models-intro">{t.organizerModel.hint}</p>
-					<OrganizerModelCard
-						{providers}
-						chosen={snapshot.settings.organizer_model ?? null}
-						defaultModel={snapshot.settings.endpoint_default_model}
-						patch={(patch) => runtime.patchSettings(patch)}
 						{t}
 					/>
 				{:else}

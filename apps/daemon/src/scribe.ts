@@ -16,7 +16,9 @@
  * entries would each add what the other already had.
  */
 import { NO_ABLATION, type Ablation } from "./ablation";
-import type { CompletionsClient, JudgeResult, MappedUsage } from "./completions";
+import type { ClaudeJudge, ClaudeReaderTarget, ClaudeReadingUsage } from "./claude-code/reading";
+import type { CompletionsClient, MappedUsage } from "./completions";
+import { sideJudge, type SideAnswer } from "./engine/builtin-models";
 import type { UserLineReading } from "./line-reading";
 import type { OrganizerRouting } from "./organizer";
 import { parseScribeAnswer, scribeEditPayload, scribePayload, type ScribePayload } from "./prompts/scribe";
@@ -31,9 +33,11 @@ export const SCRIBE_MAX_TOKENS = 800;
 export type ScribeDeps = {
   store: Store;
   completions: CompletionsClient;
-  /** The organizing model (ADR 0075), else the default endpoint's default model, resolved when a call is about to be made; null when none is set. */
-  routing: () => Promise<OrganizerRouting | null>;
-  recordSpend: (input: { sessionId: string; target: OrganizerRouting; usage: MappedUsage | null; responded: boolean }) => void;
+  /** The scribe's model (ADR 0077), else the default endpoint's default model, resolved when a call is about to be made; null when none is set. */
+  routing: () => Promise<OrganizerRouting | ClaudeReaderTarget | null>;
+  /** Runs the call when the scribe's model is a Claude model of yours (ADR 0077). */
+  claudeJudge?: ClaudeJudge | null;
+  recordSpend: (input: { sessionId: string; target: OrganizerRouting | ClaudeReaderTarget; usage: MappedUsage | null; responded: boolean; claudeUsage?: ClaudeReadingUsage | null }) => void;
   draining: () => boolean;
   /** Where a line that came to nothing says why. Defaults to stderr. */
   log?: (line: string) => void;
@@ -159,7 +163,7 @@ export function createScribe(deps: ScribeDeps): Scribe {
    * `about`, which says what it read); null when `stop` came while it was out.
    */
   async function ask(input: {
-    routing: OrganizerRouting;
+    routing: OrganizerRouting | ClaudeReaderTarget;
     payload: ScribePayload;
     sessionId: string | null;
     taskId: string;
@@ -170,15 +174,10 @@ export function createScribe(deps: ScribeDeps): Scribe {
     const prompt = promptPage(store, "zh").resolve("call.scribe");
     const controller = new AbortController();
     inFlight.add(controller);
-    let result: JudgeResult | null = null;
+    let result: SideAnswer | null = null;
     let threw: string | null = null;
     try {
-      result = await deps.completions.judge({
-        baseUrl: routing.baseUrl,
-        apiKey: routing.apiKey,
-        apiFormat: routing.apiFormat,
-        workspaceId: routing.workspaceId,
-        model: routing.model,
+      result = await sideJudge({ completions: deps.completions, claudeJudge: deps.claudeJudge }, routing, {
         prompt: prompt.ref,
         messages: [
           { role: "system", content: prompt.text },
@@ -187,7 +186,6 @@ export function createScribe(deps: ScribeDeps): Scribe {
         signal: controller.signal,
         timeoutMs: SCRIBE_TIMEOUT_MS,
         maxTokens: SCRIBE_MAX_TOKENS,
-        ...(routing.thinkingLevel ? { thinkingLevel: routing.thinkingLevel } : {}),
       });
     } catch (error) {
       threw = error instanceof Error ? error.message : String(error);
@@ -202,6 +200,7 @@ export function createScribe(deps: ScribeDeps): Scribe {
           target: routing,
           usage: result.usage,
           responded: result.failKind === null || result.failKind === "incomplete",
+          claudeUsage: result.claudeUsage ?? null,
         });
       } catch {
         // the ledger of spend is best-effort; the answer still counts

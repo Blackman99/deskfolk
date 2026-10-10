@@ -354,3 +354,14 @@ test("the phone saves the model that organizes as an endpoint's, or null", () =>
     expect(() => validateBusiness(patch(bad))).toThrow();
   }
 });
+
+test("the phone saves any built-in call's model (ADR 0077) as an endpoint's, a Claude model on an account, or null", () => {
+  const patch = (builtin_models: unknown): RemoteRequest => ({ v: 1, id, method: "PATCH", path: "/v1/settings", body: { builtin_models } });
+  for (const good of [{}, { scribe: null }, { judge: { provider_id: id, model: "m" } }, { compaction: { runner: "claude_code", model: "opus", config_dir: "/opt/claude-b" } },
+    { reader: null, organizer: null, scribe: null, judge: null, composer: null, judgement: null, reflection: null, retrospective: null, compaction: null }]) {
+    expect(() => validateBusiness(patch(good))).not.toThrow();
+  }
+  for (const bad of [null, [], "m", { route_pick: null }, { scribe: { model: "m" } }, { judge: { runner: "claude_code" } }, { organizer: { provider_id: id, model: "m", extra: 1 } }]) {
+    expect(() => validateBusiness(patch(bad))).toThrow();
+  }
+});

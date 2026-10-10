@@ -1,6 +1,6 @@
 # 整理模型 / The organizing model
 
-Status: implemented 2026-10-10, at every engine level. Builds on [ADR 0055](0055-lines-read-by-a-model.md), which gave reading lines a model of its own; [ADR 0042](0042-requirements-ledger.md), where the organizer and the scribe keep the plan and the ledger; [ADR 0060](0060-large-jobs-sample-first.md), where the sample check is a gate; and [ADR 0066](0066-anthropic-format-endpoints.md), whose endpoints it can run on. A Claude model of yours (ADR 0061) is left for later.
+Status: implemented 2026-10-10, at every engine level; extended the same day by [ADR 0077](0077-built-in-models.md), which gives every built-in call (these three each) a model of its own, a Claude model of yours included. Builds on [ADR 0055](0055-lines-read-by-a-model.md), which gave reading lines a model of its own; [ADR 0042](0042-requirements-ledger.md), where the organizer and the scribe keep the plan and the ledger; [ADR 0060](0060-large-jobs-sample-first.md), where the sample check is a gate; and [ADR 0066](0066-anthropic-format-endpoints.md), whose endpoints it can run on. A Claude model of yours (ADR 0061) is left for later.
 
 ## 背景 / Context
 

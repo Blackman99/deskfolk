@@ -1,15 +1,18 @@
 /**
  * Runs the retrospective (ADR 0062) from the scheduler's tick: one due delivery and Bot at a time,
- * on the Bot's own model (its pin, its default, the endpoint's default — the level-7 decision with
- * no turn), billed as `organize` with the `retrospect` purpose. The store decides what is due and
+ * on the retrospective's model when you chose one (ADR 0077), else on the Bot's own (its pin, its
+ * default, the endpoint's default — the level-7 decision with no turn), billed as `organize` with
+ * the `retrospect` purpose. The store decides what is due and
  * writes what the answer becomes; this only makes the call. The changes reach the window through
  * the store's own change journal (memories, skills, and the plan the retrospective is shown on).
  */
 import { parseRetrospective } from "../store/retrospectives";
+import type { ClaudeJudge } from "../claude-code/reading";
 import type { CompletionsClient } from "../completions";
 import { retrospectivePayload } from "../prompts/retrospective";
 import { promptPage, type PromptUse } from "../prompts/book";
 import type { Store } from "../store";
+import { recordSideSpend, sideJudge, spentOf, type BuiltinTargetOf } from "./builtin-models";
 import type { Routing } from "./routing";
 import type { SpendTracker } from "./spend";
 
@@ -26,6 +29,9 @@ export function createRetrospector(deps: {
   routing: Pick<Routing, "credentials" | "decideRoute">;
   spend: SpendTracker;
   track: <T>(promise: Promise<T>) => Promise<T>;
+  /** The retrospective's model when you chose one (ADR 0077). */
+  builtinTarget?: BuiltinTargetOf;
+  claudeJudge?: ClaudeJudge | null;
 }): Retrospector {
   let running = false;
 
@@ -41,17 +47,16 @@ export function createRetrospector(deps: {
     let prompt: PromptUse | null = null;
     let cut = false;
     try {
-      const routed = deps.routing.decideRoute(due.botId, creds, due.plan.title);
-      if (routed) {
-        model = routed.target.model;
+      // The model you chose for retrospectives, told how hard to think (ADR 0077); else the Bot's
+      // own, which thinks as it likes, as before.
+      const chosen = (await deps.builtinTarget?.("retrospective").catch(() => null)) ?? null;
+      const own = chosen ? null : (deps.routing.decideRoute(due.botId, creds, due.plan.title)?.target ?? null);
+      const target = chosen ?? own;
+      if (target) {
+        model = target.model;
         const locale = deps.store.settingsCached().locale === "en" ? "en" : "zh";
         prompt = promptPage(deps.store, locale).resolve("call.retrospective");
-        const result = await deps.completions.judge({
-          baseUrl: routed.target.baseUrl,
-          apiKey: routed.target.apiKey,
-          apiFormat: routed.target.apiFormat,
-          workspaceId: routed.target.workspaceId,
-          model: routed.target.model,
+        const result = await sideJudge(deps, own ? { ...own, thinkingLevel: null } : target, {
           prompt: prompt.ref,
           messages: [
             { role: "system", content: prompt.text },
@@ -62,13 +67,12 @@ export function createRetrospector(deps: {
           maxTokens: RETROSPECT_MAX_TOKENS,
         });
         try {
-          deps.spend.recordResponseSpend({
+          recordSideSpend(deps.spend, {
             kind: "organize",
             purpose: "retrospect",
             owner: deps.spend.spendOwner(due.sessionId ?? "", due.botId),
-            target: deps.spend.callOf(routed.target),
-            usage: result.usage,
-            responded: result.failKind === null || result.failKind === "incomplete",
+            target,
+            ...spentOf(result),
           });
         } catch {
           // the ledger is best effort

@@ -329,6 +329,7 @@ describe("local API runtime", () => {
       default_provider_id: null,
       reader_model: null,
       organizer_model: null,
+      builtin_models: { reader: null, organizer: null, scribe: null, judge: null, composer: null, judgement: null, reflection: null, retrospective: null, compaction: null },
       speech: null,
       launch_at_login: true,
       locale: "zh",

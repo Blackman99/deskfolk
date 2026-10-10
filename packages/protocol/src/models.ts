@@ -152,3 +152,33 @@ export type ReaderModel = ReaderEndpointModel | ReaderClaudeModel;
 export function isReaderClaudeModel(value: ReaderModel | null | undefined): value is ReaderClaudeModel {
   return Boolean(value) && "runner" in value!;
 }
+
+/**
+ * The calls the app makes on its own whose model you choose (ADR 0077), in the order Settings ›
+ * Models › Built-in models shows them: reading your lines (读句), keeping the board in order (the
+ * organizer, the scribe and the picture checks), the composer's suggestions, and four calls made as
+ * a Bot — its judgement of whether to join, its reflection, its retrospective after a delivery and
+ * the summary when its context is compacted.
+ */
+export const BUILTIN_MODEL_ROLES = [
+  "reader",
+  "organizer",
+  "scribe",
+  "judge",
+  "composer",
+  "judgement",
+  "reflection",
+  "retrospective",
+  "compaction",
+] as const;
+export type BuiltinModelRole = (typeof BUILTIN_MODEL_ROLES)[number];
+
+/** The calls made as a Bot: with no model chosen they run on the Bot's own, not on the default one. */
+export const BOT_BUILTIN_MODEL_ROLES: readonly BuiltinModelRole[] = ["judgement", "reflection", "retrospective", "compaction"];
+
+/** Each built-in call's model; null runs it as before you chose one (the default model, or the Bot's). */
+export type BuiltinModels = Record<BuiltinModelRole, ReaderModel | null>;
+
+export function isBuiltinModelRole(value: unknown): value is BuiltinModelRole {
+  return typeof value === "string" && (BUILTIN_MODEL_ROLES as readonly string[]).includes(value);
+}

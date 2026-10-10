@@ -37,6 +37,9 @@ export type SpendTracker = {
     kind: SpendKind;
     purpose?: SpendPurpose | null;
     owner: SpendOwner;
+    /** The turn a compaction summary is billed to, the judgement a verdict is (ADR 0077). */
+    turnId?: string | null;
+    judgementId?: string | null;
     model: string;
     usage: { inputTokens: number; outputTokens: number; cachedTokens: number; costUsd: number };
   }) => Spend | null;
@@ -216,7 +219,7 @@ export function createSpend(deps: SpendDeps): SpendTracker {
     if (usage.inputTokens <= 0 && usage.outputTokens <= 0 && usage.costUsd <= 0) return null;
     const row = store.insertSpend({
       kind: input.kind, purpose: input.purpose ?? null, sessionId: input.owner.sessionId, sessionName: input.owner.sessionName,
-      botId: input.owner.botId, botName: input.owner.botName, turnId: null, judgementId: null, chainId: null,
+      botId: input.owner.botId, botName: input.owner.botName, turnId: input.turnId ?? null, judgementId: input.judgementId ?? null, chainId: null,
       providerId: "", providerName: "Claude Agent", model: input.model, thinkingLevel: null,
       inputTokens: Math.max(0, usage.inputTokens), outputTokens: Math.max(0, usage.outputTokens),
       totalTokens: Math.max(0, usage.inputTokens) + Math.max(0, usage.outputTokens), cachedTokens: Math.max(0, usage.cachedTokens),

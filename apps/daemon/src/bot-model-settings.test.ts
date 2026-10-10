@@ -95,6 +95,32 @@ test("the model that organizes (ADR 0075) is listed and changed beside the readi
   expect((await store.settings()).organizer_model).toBeNull();
 });
 
+test("every built-in call's model (ADR 0077) is listed, and a Bot sets the ones it names to an endpoint's model, never to a Claude model", async () => {
+  const { store, ctx, cloud } = await fixture();
+  const listed = await runCollabTool(ctx, "list_endpoints", {});
+  expect((listed.data as { builtin_models: Record<string, unknown> }).builtin_models).toEqual({
+    reader: null, organizer: null, scribe: null, judge: null, composer: null, judgement: null, reflection: null, retrospective: null, compaction: null,
+  });
+
+  const set = await runCollabTool(ctx, "update_model_settings", { builtin_models: { scribe: { endpoint_id: cloud.id, model: "small" }, reflection: { endpoint_id: cloud.id, model: "big" } } });
+  expect(set.ok).toBe(true);
+  expect(set.data).toMatchObject({ builtin_models: { scribe: { endpoint_id: cloud.id, model: "small" }, reflection: { endpoint_id: cloud.id, model: "big" }, organizer: null } });
+  expect(set.emitted).toContainEqual({ kind: "settings" });
+  expect((await store.settings()).builtin_models).toMatchObject({ scribe: { provider_id: cloud.id, model: "small" }, reflection: { provider_id: cloud.id, model: "big" } });
+
+  // A Claude model of the user's is shown as it is, and only the user chooses one.
+  store.db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('judge_model', 'opus'), ('judge_runner', 'claude_code'), ('judge_config_dir', '')");
+  expect(((await runCollabTool(ctx, "list_endpoints", {})).data as { builtin_models: Record<string, unknown> }).builtin_models.judge)
+    .toEqual({ runner: "claude_code", model: "opus", config_dir: null });
+  expect(await refusal(runCollabTool(ctx, "update_model_settings", { builtin_models: { organizer: { runner: "claude_code", model: "opus", config_dir: null } } }))).toContain("only the user");
+  expect(await refusal(runCollabTool(ctx, "update_model_settings", { builtin_models: { route_pick: null } }))).toContain("unknown built-in call");
+  expect(await refusal(runCollabTool(ctx, "update_model_settings", { builtin_models: { composer: { endpoint_id: cloud.id, model: "missing" } } }))).toContain("builtin_models.composer");
+
+  await runCollabTool(ctx, "update_model_settings", { builtin_models: { scribe: null } });
+  expect((await store.settings()).builtin_models?.scribe).toBeNull();
+  expect((await store.settings()).builtin_models?.reflection).toEqual({ provider_id: cloud.id, model: "big" });
+});
+
 test("list_endpoints carries the reading model and the ladder; update_model_settings changes them and the default endpoint", async () => {
   const { store, ctx, cloud, local, keyless } = await fixture();
   const listed = await runCollabTool(ctx, "list_endpoints", {});

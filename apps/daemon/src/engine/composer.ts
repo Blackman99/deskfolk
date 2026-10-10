@@ -1,25 +1,32 @@
 /**
- * The ✨ button: a short, cheap call on a light model that drafts what the user might send next.
+ * The ✨ button: a short, cheap call on a light model that drafts what the user might send next —
+ * the composer's model when you chose one (ADR 0077), an endpoint's or a Claude model of yours.
  * Nothing here posts to the transcript — a suggestion is only ever shown in the composer, and
  * typing again aborts the request before it is used.
  */
 import { USER_MEMBER, type ComposerSuggestion } from "@real-bot/protocol";
 import { composerAnswerReadable, parseComposerSuggestions } from "../composer-suggestions";
+import type { ClaudeJudge } from "../claude-code/reading";
 import type { CompletionsClient } from "../completions";
 import { assembleComposerSuggestUser } from "../context/judgement";
 import { resolveCompletionTarget } from "../models";
 import { promptPage } from "../prompts/book";
 import type { Store } from "../store";
+import { recordSideSpend, sideJudge, spentOf, type BuiltinTarget, type BuiltinTargetOf } from "./builtin-models";
 import type { Routing } from "./routing";
 import type { SpendTracker } from "./spend";
-import type { CallTarget, Creds } from "./types";
+import type { Creds } from "./types";
 
 export type ComposerDeps = {
   store: Store;
   completions: CompletionsClient;
   credentials: Routing["credentials"];
   recordResponseSpend: SpendTracker["recordResponseSpend"];
+  recordClaudeSpend?: SpendTracker["recordClaudeSpend"];
   spendOwner: SpendTracker["spendOwner"];
+  /** The composer's model, when you chose one (ADR 0077). */
+  builtinTarget?: BuiltinTargetOf;
+  claudeJudge?: ClaudeJudge | null;
 };
 
 export type Composer = {
@@ -38,30 +45,42 @@ export function createComposer(deps: ComposerDeps): Composer {
     // These draft what the user would send; in a Bot↔Bot direct they have nothing to draft.
     if (!store.isPresent(sessionId, USER_MEMBER)) return [];
     if (signal.aborted) return [];
-    let creds: Creds | null;
-    try {
-      creds = await credentials();
-    } catch {
-      return [];
+    const chosen = (await deps.builtinTarget?.("composer").catch(() => null)) ?? null;
+    let target: BuiltinTarget;
+    if (chosen) {
+      if (signal.aborted) return [];
+      guard?.();
+      target = chosen;
+    } else {
+      let creds: Creds | null;
+      try {
+        creds = await credentials();
+      } catch {
+        return [];
+      }
+      if (!creds || signal.aborted) return [];
+      guard?.();
+      const resolved = resolveCompletionTarget(creds.providers, {
+        botModel: null,
+        botProviderId: null,
+        defaultProviderId: creds.defaultProviderId,
+      });
+      if (!resolved) return [];
+      const provider = creds.providers.find((row) => row.id === resolved.providerId);
+      if (!provider) return [];
+      const lightModel =
+        provider.models.find((name) => /flash|mini|lite|fast/i.test(name)) ?? resolved.model;
+      target = {
+        baseUrl: provider.baseUrl,
+        apiKey: provider.apiKey,
+        apiFormat: provider.apiFormat,
+        workspaceId: provider.workspaceId,
+        providerId: provider.id,
+        providerName: provider.name,
+        model: lightModel,
+        thinkingLevel: null,
+      };
     }
-    if (!creds || signal.aborted) return [];
-    guard?.();
-    const resolved = resolveCompletionTarget(creds.providers, {
-      botModel: null,
-      botProviderId: null,
-      defaultProviderId: creds.defaultProviderId,
-    });
-    if (!resolved) return [];
-    const provider = creds.providers.find((row) => row.id === resolved.providerId);
-    if (!provider) return [];
-    const lightModel =
-      provider.models.find((name) => /flash|mini|lite|fast/i.test(name)) ?? resolved.model;
-    const target: CallTarget = {
-      providerId: provider.id,
-      providerName: provider.name,
-      model: lightModel,
-      thinkingLevel: null,
-    };
     const owned = spendOwner(sessionId, null);
     let user: string;
     try {
@@ -72,12 +91,7 @@ export function createComposer(deps: ComposerDeps): Composer {
     const prompt = promptPage(store, "zh").resolve("call.composer");
     let result;
     try {
-      result = await completions.judge({
-        baseUrl: provider.baseUrl,
-        apiKey: provider.apiKey,
-        apiFormat: provider.apiFormat,
-        workspaceId: provider.workspaceId,
-        model: lightModel,
+      result = await sideJudge({ completions, claudeJudge: deps.claudeJudge }, target, {
         prompt: prompt.ref,
         messages: [
           { role: "system", content: prompt.text },
@@ -92,13 +106,14 @@ export function createComposer(deps: ComposerDeps): Composer {
       return [];
     }
     // Typing again aborts the request, but a body that already came back was paid for.
-    recordResponseSpend({
-      kind: "composer_suggest",
-      owner: owned,
-      target,
-      usage: result.usage,
-      responded: result.failKind === null || result.failKind === "incomplete",
-    });
+    recordSideSpend(
+      {
+        callOf: ({ providerId, providerName, model, thinkingLevel }) => ({ providerId, providerName, model, thinkingLevel }),
+        recordResponseSpend,
+        recordClaudeSpend: deps.recordClaudeSpend ?? (() => null),
+      },
+      { kind: "composer_suggest", owner: owned, target, ...spentOf(result) },
+    );
     if (signal.aborted) return [];
     if (result.failKind || result.hadToolCalls) return [];
     if (!composerAnswerReadable(result.content ?? "")) {

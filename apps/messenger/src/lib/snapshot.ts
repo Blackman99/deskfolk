@@ -24,6 +24,7 @@ import {
   type Skill,
   type Turn,
 } from "@real-bot/protocol";
+import { noBuiltinModels } from "./settings/builtin-models.ts";
 
 export type Snapshot = {
   credentialOperations: CredentialOperation[];
@@ -78,6 +79,7 @@ export function emptySnapshot(): Snapshot {
       default_provider_id: null,
       reader_model: null,
       organizer_model: null,
+      builtin_models: noBuiltinModels(),
       launch_at_login: true,
       locale: "zh",
       theme: "system",

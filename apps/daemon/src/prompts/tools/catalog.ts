@@ -1,4 +1,4 @@
-import type { ToolDef } from "../tool-schema";
+import type { ToolDef, ToolProp } from "../tool-schema";
 
 /**
  * One entry of an endpoint's model list, as add_endpoint and update_endpoint take it. The window,
@@ -45,8 +45,8 @@ const MODEL_ENTRY_RULES = {
 export const LIST_ENDPOINTS: ToolDef = {
   name: "list_endpoints",
   description: {
-    zh: "列出名册级端点和模型设置。每个端点返回 id、名称、URL、接口格式、是否已配密钥、模型名单（model_catalog 里每个模型的价格、思考等级、上下文窗口、能否看图、输出上限和测出的速度）和是否为默认端点；另返回读句用的模型 reader_model（null 表示跟默认模型走；用户选了自己的 Claude 模型时是 { runner: \"claude_code\", model, config_dir }，只读，你改不了）、整理用的模型 organizer_model（整理器、书记员和看图判定用的；null 表示跟默认模型走）和模型阶梯 model_ladder（从弱到强；某一级可以是用户自己的 Claude 模型 { runner: \"claude_code\", model, effort, config_dir }，爬到那一级时由 Claude Code 来跑）。永不返回密钥。",
-    en: "List roster-level endpoints and the model settings. Each endpoint comes with id, name, URL, API format, whether a key is set, its model list (model_catalog: each model's prices, thinking levels, context window, whether it takes pictures, output cap and measured speed) and whether it is the default endpoint; also reader_model, the model that reads lines (null follows the default model; { runner: \"claude_code\", model, config_dir } when the user chose one of their own Claude models, which is read-only for you), organizer_model, the model that organizes (the organizer, the scribe and the picture checks; null follows the default model), and model_ladder, weaker to stronger (a rung may be a Claude model of the user's own, { runner: \"claude_code\", model, effort, config_dir }, which Claude Code runs once a job climbs to it). Never returns secrets.",
+    zh: "列出名册级端点和模型设置。每个端点返回 id、名称、URL、接口格式、是否已配密钥、模型名单（model_catalog 里每个模型的价格、思考等级、上下文窗口、能否看图、输出上限和测出的速度）和是否为默认端点；另返回读句用的模型 reader_model（null 表示跟默认模型走；用户选了自己的 Claude 模型时是 { runner: \"claude_code\", model, config_dir }，只读，你改不了）、整理器用的模型 organizer_model（null 表示跟默认模型走）、每个内置调用各自的模型 builtin_models（reader 读句、organizer 整理器、scribe 书记员、judge 看图判定、composer 输入建议、judgement 判断下场、reflection 反思、retrospective 完工复盘、compaction 压缩上下文；null 表示照旧：前五个跟默认模型，后四个跟 Bot 自己的模型；用户自己的 Claude 模型照 reader_model 的样子给出，只读）和模型阶梯 model_ladder（从弱到强；某一级可以是用户自己的 Claude 模型 { runner: \"claude_code\", model, effort, config_dir }，爬到那一级时由 Claude Code 来跑）。永不返回密钥。",
+    en: "List roster-level endpoints and the model settings. Each endpoint comes with id, name, URL, API format, whether a key is set, its model list (model_catalog: each model's prices, thinking levels, context window, whether it takes pictures, output cap and measured speed) and whether it is the default endpoint; also reader_model, the model that reads lines (null follows the default model; { runner: \"claude_code\", model, config_dir } when the user chose one of their own Claude models, which is read-only for you), organizer_model, the organizer's model (null follows the default model), builtin_models, each built-in call's own model (reader, organizer, scribe, judge for the picture checks, composer for its suggestions, judgement, reflection, retrospective, compaction; null runs it as before: the first five on the default model, the last four on the Bot's own; a Claude model of the user's shows as in reader_model and is read-only for you), and model_ladder, weaker to stronger (a rung may be a Claude model of the user's own, { runner: \"claude_code\", model, effort, config_dir }, which Claude Code runs once a job climbs to it). Never returns secrets.",
   },
   properties: {},
 };
@@ -172,8 +172,8 @@ export const MEASURE_MODEL: ToolDef = {
 export const UPDATE_MODEL_SETTINGS: ToolDef = {
   name: "update_model_settings",
   description: {
-    zh: "改全局的模型设置：哪个端点是默认端点、读句用哪个模型、整理用哪个模型、模型阶梯。至少给一项；只能在已配置的端点和名单上的模型里选。直接执行，不等批准：所有没钉模型的 Bot、读句和整理（没单独设时）、判断都跟着默认端点的默认模型走，改之前先 list_endpoints 看清现状，改完告诉用户改了什么。",
-    en: "Change the app-wide model settings: which endpoint is the default, which model reads lines, which model organizes, and the model ladder. Give at least one; choose only among configured endpoints and the models on their lists. Runs immediately, without approval: every Bot not pinned to a model, the readings and the organizing (unless set apart) and judgements follow the default endpoint's default model, so check list_endpoints first and tell the user what you changed.",
+    zh: "改全局的模型设置：哪个端点是默认端点、各个内置调用用哪个模型（读句、整理器、书记员、看图判定、输入建议、判断下场、反思、完工复盘、压缩上下文）、模型阶梯。至少给一项；只能在已配置的端点和名单上的模型里选。直接执行，不等批准：所有没钉模型的 Bot、没单独设模型的内置调用都跟着默认端点的默认模型走，改之前先 list_endpoints 看清现状，改完告诉用户改了什么。",
+    en: "Change the app-wide model settings: which endpoint is the default, which model each built-in call runs on (reading lines, the organizer, the scribe, the picture checks, the composer's suggestions, judgements, reflections, retrospectives, compaction), and the model ladder. Give at least one; choose only among configured endpoints and the models on their lists. Runs immediately, without approval: every Bot not pinned to a model and every built-in call not set apart follows the default endpoint's default model, so check list_endpoints first and tell the user what you changed.",
   },
   properties: {
     default_endpoint_id: {
@@ -200,8 +200,34 @@ export const UPDATE_MODEL_SETTINGS: ToolDef = {
       },
       required: ["endpoint_id", "model"],
       description: {
-        zh: "整理看板、流程和要点用的模型 { endpoint_id, model }：整理器、书记员，以及照样片和衔接的看图判定都用它，须在那个端点的名单上；null 回到跟默认模型走。要选强模型，整理一次大约输入 2 万、输出 6 千 token，比读句贵得多；判定要看图，选的模型没标「能看图」时判定仍用默认模型。只能选端点上的模型。",
-        en: "The model that keeps the board, trace and plan in order, { endpoint_id, model }: the organizer, the scribe, and the picture checks against a sample and between parts all run on it. It must be on that endpoint's list; null goes back to following the default model. Pick a strong one: a settle is about 20k tokens in and 6k out, far more than a reading. The picture checks need a model that takes pictures; one not marked so leaves them on the default model. Endpoint models only.",
+        zh: "整理器（看板和要点）用的模型 { endpoint_id, model }，同 builtin_models.organizer，须在那个端点的名单上；null 回到跟默认模型走。要选强模型，整理一次大约输入 2 万、输出 6 千 token，比读句贵得多。",
+        en: "The organizer's model (the board and the plan), { endpoint_id, model }, the same as builtin_models.organizer, on that endpoint's list; null goes back to following the default model. Pick a strong one: a settle is about 20k tokens in and 6k out, far more than a reading.",
+      },
+    },
+    builtin_models: {
+      type: "object",
+      properties: Object.fromEntries(([
+        ["reader", "读句", "reading lines"],
+        ["organizer", "整理器", "the organizer"],
+        ["scribe", "书记员", "the scribe"],
+        ["judge", "看图判定", "the picture checks"],
+        ["composer", "输入建议", "the composer's suggestions"],
+        ["judgement", "判断下场", "judgements"],
+        ["reflection", "反思", "reflections"],
+        ["retrospective", "完工复盘", "retrospectives"],
+        ["compaction", "压缩上下文", "compaction"],
+      ] as const).map(([role, zh, en]): [string, ToolProp] => [role, {
+        type: ["object", "null"],
+        properties: {
+          endpoint_id: { type: "string", description: { zh: "端点 id。", en: "Endpoint id." } },
+          model: { type: "string", description: { zh: "那个端点名单上的模型名。", en: "A model name on that endpoint's list." } },
+        },
+        required: ["endpoint_id", "model"],
+        description: { zh: `${zh}用的模型。`, en: `The model for ${en}.` },
+      }])),
+      description: {
+        zh: "只改给出的内置调用：每项 { endpoint_id, model }（须在那个端点的名单上）或 null（照旧：reader/organizer/scribe/judge/composer 跟默认模型，judgement/reflection/retrospective/compaction 跟 Bot 自己的模型）。读句、输入建议、判断下场要快；整理器、看图判定、反思、完工复盘要强；judge 要看图，选的模型没标「能看图」时看图仍用默认模型。用户自己的 Claude 模型只有用户能选：你只能把它换成端点上的模型或 null。",
+        en: "Sets only the built-in calls given: each { endpoint_id, model } (on that endpoint's list) or null (as before: reader/organizer/scribe/judge/composer on the default model, judgement/reflection/retrospective/compaction on the Bot's own). Reading, the composer and judgements want a fast model; the organizer, the picture checks, reflection and retrospectives a strong one; judge sends pictures, so a model not marked as taking them leaves those on the default model. A Claude model of the user's own is the user's to choose: you can only replace it with an endpoint's model or null.",
       },
     },
     model_ladder: {

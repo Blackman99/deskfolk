@@ -502,9 +502,11 @@ export function createHopLoop(deps: LifecycleDeps, endings: TurnEndings, closing
     live.streaming = true;
     let summary: string | null;
     try {
-      summary = await summarizeLoop({ completions, recordResponseSpend, callOf }, {
+      const chosen = (await deps.builtinTarget?.("compaction").catch(() => null)) ?? null;
+      summary = await summarizeLoop({ completions, recordResponseSpend, recordClaudeSpend: deps.recordClaudeSpend, callOf, claudeJudge: deps.builtinClaude }, {
         turnId,
         target,
+        chosen,
         owner,
         locale: live.locale,
         signal: live.abort.signal,

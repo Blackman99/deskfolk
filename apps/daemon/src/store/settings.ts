@@ -4,12 +4,16 @@
  * settings columns and keeps the flat settings mirror in sync with the current default provider.
  */
 import {
+  BUILTIN_MODEL_ROLES,
   KEYCHAIN_NAME,
   KEYCHAIN_REF,
+  isBuiltinModelRole,
   isClaudeModelName,
   isLocalEndpoint,
   isReaderClaudeModel,
   providerKeychainName,
+  type BuiltinModelRole,
+  type BuiltinModels,
   type PatchProviderRequest,
   type Provider,
   type ReaderClaudeModel,
@@ -79,19 +83,13 @@ export function settingsCached(ctx: StoreContext): Settings {
   const themeRaw = map.get("theme");
   const theme: Theme = themeRaw === "light" || themeRaw === "dark" ? themeRaw : "system";
   const launch_at_login = map.get("launch_at_login") !== "0";
-  // Kept as you chose it, read as null while its endpoint is gone or no longer lists the model.
-  const readerProvider = providers.find((provider) => provider.id === emptyToNull(map.get("reader_provider_id")));
-  const readerModel = emptyToNull(map.get("reader_model"));
-  // A Claude model of yours (ADR 0061) is kept as chosen: it names no endpoint to look up.
-  const reader_model: ReaderModel | null = readerModel && map.get("reader_runner") === "claude_code"
-    ? { runner: "claude_code", model: readerModel, config_dir: emptyToNull(map.get("reader_config_dir")) }
-    : readerProvider && readerModel && readerProvider.models.includes(readerModel)
-      ? { provider_id: readerProvider.id, model: readerModel } : null;
-  // The organizing model (ADR 0075) is kept the same way: as chosen, read as null while it is not listed.
-  const organizerProvider = providers.find((provider) => provider.id === emptyToNull(map.get("organizer_provider_id")));
-  const organizerModel = emptyToNull(map.get("organizer_model"));
-  const organizer_model: ReaderEndpointModel | null = organizerProvider && organizerModel && organizerProvider.models.includes(organizerModel)
-    ? { provider_id: organizerProvider.id, model: organizerModel } : null;
+  const builtin_models = Object.fromEntries(
+    BUILTIN_MODEL_ROLES.map((role) => [role, builtinModelRead(map, providers, role)]),
+  ) as BuiltinModels;
+  const reader_model = builtin_models.reader;
+  // Older windows know the organizing model as an endpoint's only (ADR 0075).
+  const organizer_model: ReaderEndpointModel | null = builtin_models.organizer && !isReaderClaudeModel(builtin_models.organizer)
+    ? builtin_models.organizer : null;
   return {
     settings_rev: ctx.db.query<{ settings_rev: number }, []>("SELECT settings_rev FROM request_meta WHERE singleton = 1").get()!.settings_rev,
     workspace_path,
@@ -103,6 +101,7 @@ export function settingsCached(ctx: StoreContext): Settings {
     default_provider_id: defaultProvider?.id ?? null,
     reader_model,
     organizer_model,
+    builtin_models,
     speech: speechSettings(ctx),
     launch_at_login,
     locale,
@@ -111,37 +110,67 @@ export function settingsCached(ctx: StoreContext): Settings {
   };
 }
 
+/**
+ * Where each built-in call's choice is kept (ADR 0077): `<role>_provider_id`, `_model`, `_runner`
+ * and `_config_dir`. The reader's and the organizer's are the keys they always had.
+ */
+export function builtinModelKeys(role: BuiltinModelRole): { provider: string; model: string; runner: string; configDir: string } {
+  return { provider: `${role}_provider_id`, model: `${role}_model`, runner: `${role}_runner`, configDir: `${role}_config_dir` };
+}
+
+/**
+ * A built-in call's model as you chose it: a Claude model of yours (ADR 0061) as kept, since it names
+ * no endpoint to look up; an endpoint's read as null while that endpoint is gone or no longer lists it.
+ */
+function builtinModelRead(map: Map<string, string>, providers: readonly Provider[], role: BuiltinModelRole): ReaderModel | null {
+  const keys = builtinModelKeys(role);
+  const model = emptyToNull(map.get(keys.model));
+  if (!model) return null;
+  if (map.get(keys.runner) === "claude_code") return { runner: "claude_code", model, config_dir: emptyToNull(map.get(keys.configDir)) };
+  const provider = providers.find((row) => row.id === emptyToNull(map.get(keys.provider)));
+  return provider && provider.models.includes(model) ? { provider_id: provider.id, model } : null;
+}
+
 /** The language the app speaks to the user in. */
 export function localeOf(ctx: StoreContext): "zh" | "en" {
   return settingsCached(ctx).locale === "en" ? "en" : "zh";
 }
 
 /**
- * The model a patch names for reading lines (ADR 0055): one an endpoint lists, a Claude model of
- * yours on one of the accounts listed in Settings (ADR 0061), or null to follow the default.
+ * The model a patch names for a built-in call (ADR 0055, 0077): one an endpoint lists, a Claude
+ * model of yours on one of the accounts listed in Settings (ADR 0061), or null to run it as before.
  */
-function readerModelOf(ctx: StoreContext, value: unknown): ReaderModel | null {
+function builtinModelOf(ctx: StoreContext, value: unknown, field: string): ReaderModel | null {
   if (value === null) return null;
   if (value && typeof value === "object" && "runner" in value) {
     const claude = value as Partial<ReaderClaudeModel>;
     if (claude.runner !== "claude_code" || typeof claude.model !== "string" || !isClaudeModelName(claude.model)) {
-      throw new HttpError(422, "invalid_args", "reader_model must be { runner: \"claude_code\", model, config_dir } with a Claude model name");
+      throw new HttpError(422, "invalid_args", `${field} must be { runner: "claude_code", model, config_dir } with a Claude model name`);
     }
-    return { runner: "claude_code", model: claude.model, config_dir: listedConfigDir(ctx, claude.config_dir, "reader_model.config_dir") };
+    return { runner: "claude_code", model: claude.model, config_dir: listedConfigDir(ctx, claude.config_dir, `${field}.config_dir`) };
   }
   const row = value as Partial<ReaderEndpointModel> | undefined;
   if (!row || typeof row !== "object" || typeof row.provider_id !== "string" || typeof row.model !== "string") {
-    throw new HttpError(422, "invalid_args", "reader_model must be null, { provider_id, model } or { runner, model, config_dir }");
+    throw new HttpError(422, "invalid_args", `${field} must be null, { provider_id, model } or { runner, model, config_dir }`);
   }
   const provider = providersCached(ctx).find((candidate) => candidate.id === row.provider_id);
   if (!provider) throw new HttpError(404, "not_found", "provider not found");
-  if (!provider.models.includes(row.model)) throw new HttpError(422, "invalid_args", "reader_model must be a model that endpoint lists");
+  if (!provider.models.includes(row.model)) throw new HttpError(422, "invalid_args", `${field} must be a model that endpoint lists`);
   return { provider_id: provider.id, model: row.model };
 }
 
+function setBuiltinModel(ctx: StoreContext, role: BuiltinModelRole, chosen: ReaderModel | null): void {
+  const keys = builtinModelKeys(role);
+  const claude = isReaderClaudeModel(chosen) ? chosen : null;
+  setSetting(ctx, keys.provider, chosen && !claude ? (chosen as ReaderEndpointModel).provider_id : "");
+  setSetting(ctx, keys.model, chosen?.model ?? "");
+  setSetting(ctx, keys.runner, claude ? "claude_code" : "");
+  setSetting(ctx, keys.configDir, claude?.config_dir ?? "");
+}
+
 /**
- * The model a patch names to organize with (ADR 0075): one an endpoint lists, or null to follow the
- * default. A Claude model of yours reads lines; it does not organize, so that shape is refused.
+ * The model an older window's patch names to organize with (ADR 0075): one an endpoint lists, or
+ * null to follow the default. `builtin_models.organizer` takes a Claude model of yours as well (ADR 0077).
  */
 function organizerModelOf(ctx: StoreContext, value: unknown): ReaderEndpointModel | null {
   if (value === null) return null;
@@ -179,6 +208,7 @@ export function patchSettingsSync(ctx: StoreContext, patch: SettingsPatch | Reco
       key !== "default_provider_id" &&
       key !== "reader_model" &&
       key !== "organizer_model" &&
+      key !== "builtin_models" &&
       key !== "launch_at_login" &&
       key !== "locale" &&
       key !== "theme"
@@ -213,19 +243,20 @@ export function patchSettingsSync(ctx: StoreContext, patch: SettingsPatch | Reco
       if (nextId) requireProvider(ctx, nextId);
       setSetting(ctx, "default_provider_id", nextId ?? "");
     }
-    if ("reader_model" in patch) {
-      const chosen = readerModelOf(ctx, patch.reader_model);
-      const claude = isReaderClaudeModel(chosen) ? chosen : null;
-      // One choice at a time: an endpoint's model clears the Claude keys, a Claude model the endpoint's.
-      setSetting(ctx, "reader_provider_id", chosen && !isReaderClaudeModel(chosen) ? chosen.provider_id : "");
-      setSetting(ctx, "reader_model", chosen?.model ?? "");
-      setSetting(ctx, "reader_runner", claude ? "claude_code" : "");
-      setSetting(ctx, "reader_config_dir", claude?.config_dir ?? "");
-    }
-    if ("organizer_model" in patch) {
-      const chosen = organizerModelOf(ctx, patch.organizer_model);
-      setSetting(ctx, "organizer_provider_id", chosen?.provider_id ?? "");
-      setSetting(ctx, "organizer_model", chosen?.model ?? "");
+    // One choice at a time: an endpoint's model clears the Claude keys, a Claude model the endpoint's.
+    if ("reader_model" in patch) setBuiltinModel(ctx, "reader", builtinModelOf(ctx, patch.reader_model, "reader_model"));
+    if ("organizer_model" in patch) setBuiltinModel(ctx, "organizer", organizerModelOf(ctx, patch.organizer_model));
+    if ("builtin_models" in patch) {
+      const given = patch.builtin_models;
+      if (!given || typeof given !== "object" || Array.isArray(given)) {
+        throw new HttpError(422, "invalid_args", "builtin_models must be an object of call → model or null");
+      }
+      // Validated whole before any is written: the transaction rolls back on a throw either way.
+      const chosen = Object.entries(given as Record<string, unknown>).map(([role, value]) => {
+        if (!isBuiltinModelRole(role)) throw new HttpError(422, "invalid_args", `unknown built-in call: ${role}`);
+        return [role, builtinModelOf(ctx, value, `builtin_models.${role}`)] as const;
+      });
+      for (const [role, model] of chosen) setBuiltinModel(ctx, role, model);
     }
   });
   const touchesEndpoint =

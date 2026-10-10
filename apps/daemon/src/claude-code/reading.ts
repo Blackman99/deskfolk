@@ -2,14 +2,18 @@
  * One reading (读句, ADR 0055) made by the user's own Claude Code instead of an endpoint's model
  * (ADR 0061): a single Agent SDK call with no tools, a system prompt of its own and one turn, on the
  * account the user picked. It answers with text, which the reader parses as it parses an endpoint's.
- * Never throws: what cannot be read says why, and the reader falls back to the word lists.
+ * Never throws: what cannot be read says why, and the reader falls back to the word lists. The
+ * other built-in calls run on it the same way when you chose a Claude model for them (ADR 0077),
+ * pictures included: those go as image blocks of the one user message.
  *
  * Readings have their own two places: they never take a Bot's `AGENT_SLOTS`, and a reading that
- * waits for one is bound by the same time limit as one that runs.
+ * waits for one is bound by the same time limit as one that runs. The other built-in calls get an
+ * instance of their own, so a long settle never holds up a line's reading.
  */
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
-import type { Options, Query, SDKMessage, SpawnedProcess, SpawnOptions } from "@anthropic-ai/claude-agent-sdk";
+import type { ClaudeEffort } from "@real-bot/protocol";
+import type { Options, Query, SDKMessage, SDKUserMessage, SpawnedProcess, SpawnOptions } from "@anthropic-ai/claude-agent-sdk";
 import daemonPackage from "../../package.json";
 import type { ClaudeCodeProbe } from "./probe";
 import { withSystemProxy } from "./proxy";
@@ -19,8 +23,19 @@ import { accountOf, claudeChildEnv } from "./status";
 /** Claude readings running at once. */
 export const CLAUDE_READING_SLOTS = 2;
 
-/** Which model of Claude, on which of your accounts (null: the daemon's own environment). */
-export type ClaudeReaderTarget = { kind: "claude_code"; model: string; configDir: string | null };
+/** Built-in calls running at once on the instance the readings do not use (ADR 0077). */
+export const CLAUDE_BUILTIN_SLOTS = 3;
+
+/**
+ * Which model of Claude, on which of your accounts (null: the daemon's own environment), and how
+ * hard it thinks (absent or null: Claude Code's own default; it lowers what a model cannot do).
+ */
+export type ClaudeReaderTarget = { kind: "claude_code"; model: string; configDir: string | null; effort?: ClaudeEffort | null };
+
+/** A part of the one user message: text, or a picture as a data URI's base64. */
+export type ClaudePromptBlock =
+  | { type: "text"; text: string }
+  | { type: "image"; source: { type: "base64"; media_type: "image/png" | "image/jpeg" | "image/gif" | "image/webp"; data: string } };
 
 /** What a reading cost, as the result reports it. */
 export type ClaudeReadingUsage = { inputTokens: number; outputTokens: number; cachedTokens: number; costUsd: number };
@@ -32,10 +47,15 @@ export type ClaudeReadingAnswer = {
   fail: "claude_unavailable" | "claude_failed" | null;
 };
 
-export type ClaudeJudge = (input: { target: ClaudeReaderTarget; system: string; prompt: string; signal: AbortSignal }) => Promise<ClaudeReadingAnswer>;
+export type ClaudeJudge = (input: { target: ClaudeReaderTarget; system: string; prompt: string | ClaudePromptBlock[]; signal: AbortSignal }) => Promise<ClaudeReadingAnswer>;
 
 /** The Agent SDK's `query`, or a stand-in a test scripts. */
-export type ReadingQuery = (params: { prompt: string; options: Options }) => Pick<Query, "close"> & AsyncIterable<SDKMessage>;
+export type ReadingQuery = (params: { prompt: string | AsyncIterable<SDKUserMessage>; options: Options }) => Pick<Query, "close"> & AsyncIterable<SDKMessage>;
+
+/** Blocks as the one user message of a streamed prompt: the SDK takes pictures only that way. */
+async function* asUserMessage(blocks: ClaudePromptBlock[]): AsyncIterable<SDKUserMessage> {
+  yield { type: "user", message: { role: "user", content: blocks }, parent_tool_use_id: null } as SDKUserMessage;
+}
 
 export type ClaudeReadingDeps = {
   claudeCode: ClaudeCodeProbe | undefined;
@@ -139,13 +159,15 @@ export function createClaudeJudge(deps: ClaudeReadingDeps): ClaudeJudge {
       env.CLAUDE_AGENT_SDK_CLIENT_APP = `deskfolk/${typeof daemonPackage.version === "string" ? daemonPackage.version : "dev"}`;
       const query = deps.query ?? (await loadQuery());
       session = query({
-        prompt,
+        // Text alone goes as it always has; blocks (pictures) as one streamed user message.
+        prompt: typeof prompt === "string" ? prompt : asUserMessage(prompt),
         options: {
           pathToClaudeCodeExecutable: status.path,
           spawnClaudeCodeProcess: deps.spawnProcess ?? spawnReading,
           cwd: tmpdir(),
           env,
           model: target.model,
+          ...(target.effort ? { effort: target.effort } : {}),
           settingSources: [],
           strictMcpConfig: true,
           persistSession: false,

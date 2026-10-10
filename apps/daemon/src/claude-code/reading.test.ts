@@ -21,7 +21,7 @@ const success = (result: string): SDKMessage => ({
   usage: { input_tokens: 20, output_tokens: 30, cache_read_input_tokens: 100, cache_creation_input_tokens: 0 },
 } as unknown as SDKMessage);
 
-function fakeQuery(messages: (options: Options) => SDKMessage[] | Promise<SDKMessage[]>, seen: Array<{ prompt: string; options: Options }> = []): ReadingQuery {
+function fakeQuery(messages: (options: Options) => SDKMessage[] | Promise<SDKMessage[]>, seen: Array<{ prompt: unknown; options: Options }> = []): ReadingQuery {
   return ({ prompt, options }) => {
     seen.push({ prompt, options });
     return {
@@ -37,7 +37,7 @@ const target = { kind: "claude_code" as const, model: "haiku", configDir: null }
 const asked = { target, system: "SYSTEM", prompt: '{"said":"停"}', signal: new AbortController().signal };
 
 test("a reading is one tool-less call on the account and model chosen, with the prompt as the system prompt", async () => {
-  const seen: Array<{ prompt: string; options: Options }> = [];
+  const seen: Array<{ prompt: unknown; options: Options }> = [];
   const judge = createClaudeJudge({ claudeCode: probeOf(status), query: fakeQuery(() => [success("ANSWER")], seen) });
   expect(await judge(asked)).toEqual({ content: "ANSWER", usage: { inputTokens: 120, outputTokens: 30, cachedTokens: 100, costUsd: 0.0004 }, fail: null });
   const { prompt, options } = seen[0]!;
@@ -58,7 +58,7 @@ test("a reading is one tool-less call on the account and model chosen, with the 
 });
 
 test("Claude Code missing, or the account signed out, is claude_unavailable without running claude; an error result is claude_failed", async () => {
-  const seen: Array<{ prompt: string; options: Options }> = [];
+  const seen: Array<{ prompt: unknown; options: Options }> = [];
   const query = fakeQuery(() => [success("A")], seen);
   expect((await createClaudeJudge({ claudeCode: undefined, query })(asked)).fail).toBe("claude_unavailable");
   expect((await createClaudeJudge({ claudeCode: probeOf({ ...status, path: null }), query })(asked)).fail).toBe("claude_unavailable");

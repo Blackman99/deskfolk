@@ -68,6 +68,11 @@ test("the model that reads lines can be a Claude model on a listed account; the 
   expect(stored("reader_provider_id")).toBe("");
   // Lines are read on that account: it stays listed until reading moves off it.
   expect(() => store.setClaudeCodeConfigDirs([])).toThrow("lines are read on");
+  // So does any other built-in call on it (ADR 0077).
+  await store.patchSettings({ builtin_models: { retrospective: { runner: "claude_code", model: "opus", config_dir: "/opt/claude-b" } } });
+  await store.patchSettings({ reader_model: { runner: "claude_code", model: "claude-haiku-4-5", config_dir: null } });
+  expect(() => store.setClaudeCodeConfigDirs([])).toThrow("the built-in call retrospective runs on");
+  await store.patchSettings({ builtin_models: { retrospective: null }, reader_model: { runner: "claude_code", model: "claude-haiku-4-5", config_dir: "/opt/claude-b" } });
 
   // Not a Claude model name, an account that is not listed, a runner nobody has.
   await expect(store.patchSettings({ reader_model: { runner: "claude_code", model: "not a model", config_dir: null } })).rejects.toThrow("Claude model name");

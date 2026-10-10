@@ -3,6 +3,7 @@
  * Claude accounts live in (ADR 0061). Nothing else about Claude Code is stored: Deskfolk runs it and
  * asks it about itself, it never keeps its credentials.
  */
+import { BUILTIN_MODEL_ROLES } from "@real-bot/protocol";
 import { CLAUDE_CONFIG_DIRS_MAX, normalizeConfigDir, sameConfigDir, tildeDir, tooWideForConfigDir } from "../claude-code/account";
 import { HttpError } from "../errors";
 import { setSetting, type StoreContext } from "./shared";
@@ -75,10 +76,16 @@ export function setClaudeCodeConfigDirs(ctx: StoreContext, value: unknown): stri
     if (users.length > 0) {
       throw new HttpError(409, "conflict", `${tildeDir(dir)} is the Claude account of ${users.join(", ")}: move ${users.length === 1 ? "that Bot" : "those Bots"} to another account first`);
     }
-    // Reading lines on it as well: taking it away would move that spending without you choosing.
-    const reading = ctx.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'reader_config_dir'").get()?.value ?? "";
-    if (reading && sameConfigDir(reading, dir)) {
-      throw new HttpError(409, "conflict", `${tildeDir(dir)} is the Claude account lines are read on: choose another reader model or account first`);
+    // A built-in call on it as well, reading lines among them (ADR 0077): taking it away would move
+    // that spending without you choosing.
+    for (const role of BUILTIN_MODEL_ROLES) {
+      const used = ctx.db.query<{ key: string; value: string }, [string, string]>("SELECT key, value FROM settings WHERE key IN (?, ?)")
+        .all(`${role}_runner`, `${role}_config_dir`);
+      const configDir = used.find((row) => row.key === `${role}_config_dir`)?.value ?? "";
+      if (used.find((row) => row.key === `${role}_runner`)?.value !== "claude_code" || !configDir || !sameConfigDir(configDir, dir)) continue;
+      throw new HttpError(409, "conflict", role === "reader"
+        ? `${tildeDir(dir)} is the Claude account lines are read on: choose another reader model or account first`
+        : `${tildeDir(dir)} is the Claude account the built-in call ${role} runs on: choose another model or account for it first`);
     }
     // A rung of the model ladder spends it too (ADR 0076).
     if (ladderConfigDirs(ctx).some((used) => sameConfigDir(used, dir))) {

@@ -1,7 +1,8 @@
 /**
  * Wires a `continuity` (衔接一致 / "Seams") acceptance check's judge to the real endpoint: the
- * organizing model when you chose one that can do the call, else the default endpoint's default
- * model (see `organizer-target.ts`, `engine/routing.ts`). One call per batch of
+ * picture checks' model when you chose one that can do the call (an endpoint's, or a Claude model of
+ * yours, ADR 0077), else the default endpoint's default model (see `builtin-models.ts`,
+ * `engine/routing.ts`). One call per batch of
  * seam evidence, or one call for the whole-set digest; a text-only or digest call never attaches an
  * `image_url` part, so it never actually requires the model to have vision. Every call bills the
  * ledger as `acceptance_check`, owned by the plan's session, never a Bot — `createPlanChecks` only
@@ -9,12 +10,12 @@
  * of pictures and carries the `vision` purpose, so the spend view shows it apart (ADR 0042).
  */
 import type { Locale } from "@real-bot/protocol";
+import type { ClaudeJudge } from "../claude-code/reading";
 import type { ChatContentPart, CompletionsClient } from "../completions";
 import { parseSeamsJudgeAnswer, SEAMS_JUDGE_TIMEOUT_MS, seamsJudgePrompt, seamsRulesText, type JudgeSeams, type SeamEvidence } from "../seams-check";
 import type { JudgeStandard, StandardEvidence } from "../standard-check";
+import { recordSideSpend, sideJudge, spentOf, type BuiltinTarget } from "./builtin-models";
 import type { SpendTracker } from "./spend";
-import type { OrganizerPurpose } from "./organizer-target";
-import type { CallTarget, EndpointTarget } from "./types";
 import { promptPage } from "../prompts/book";
 import type { Store } from "../store";
 
@@ -23,10 +24,12 @@ export type SeamsJudgeDeps = {
   /** Where your edits to the judges' prompts come from (ADR 0064), and where an unreadable answer is noted. */
   store?: Store;
   /**
-   * Resolves the model for a call (ADR 0075): `vision` when it is about to send frames, else
-   * `organizer`; null when no endpoint is configured.
+   * Resolves the model for a call (ADR 0075, 0077), told whether it is about to send frames; null
+   * when no endpoint is configured.
    */
-  routing: (purpose: OrganizerPurpose) => Promise<(EndpointTarget) | null>;
+  routing: (opts: { pictures: boolean }) => Promise<BuiltinTarget | null>;
+  /** Runs the call when the picture checks' model is a Claude model of yours (ADR 0077). */
+  claudeJudge?: ClaudeJudge | null;
   spend: SpendTracker;
 };
 
@@ -51,15 +54,10 @@ function evidenceContent(evidence: readonly SeamEvidence[], locale: Locale): Cha
 export function createSeamsJudge(deps: SeamsJudgeDeps): JudgeSeams {
   return async (evidence, rules, item, locale, sessionId) => {
     const mode = evidence[0]?.kind === "digest" ? "digest" : evidence[0]?.kind === "text" ? "text" : "image";
-    const target = await deps.routing(mode === "image" ? "vision" : "organizer").catch(() => null);
+    const target = await deps.routing({ pictures: mode === "image" }).catch(() => null);
     if (!target) throw new Error(locale === "en" ? "no model endpoint is configured" : "没有配置模型端点");
     const prompt = deps.store ? promptPage(deps.store, locale).resolve(`call.seams_${mode}`, { item, rules: seamsRulesText(rules, locale) }) : null;
-    const result = await deps.completions.judge({
-      baseUrl: target.baseUrl,
-      apiKey: target.apiKey,
-      apiFormat: target.apiFormat,
-      workspaceId: target.workspaceId,
-      model: target.model,
+    const result = await sideJudge(deps, target, {
       ...(prompt ? { prompt: prompt.ref } : {}),
       messages: [
         { role: "system", content: prompt?.text ?? seamsJudgePrompt(item, rules, locale, mode) },
@@ -68,17 +66,15 @@ export function createSeamsJudge(deps: SeamsJudgeDeps): JudgeSeams {
       signal: new AbortController().signal,
       timeoutMs: SEAMS_JUDGE_TIMEOUT_MS,
       maxTokens: 1024,
-      ...(target.thinkingLevel ? { thinkingLevel: target.thinkingLevel } : {}),
     });
     if (sessionId) {
       try {
-        deps.spend.recordResponseSpend({
+        recordSideSpend(deps.spend, {
           kind: "acceptance_check",
           purpose: mode === "image" ? "vision" : null,
           owner: deps.spend.spendOwner(sessionId, null),
-          target: deps.spend.callOf(target),
-          usage: result.usage,
-          responded: result.failKind === null || result.failKind === "incomplete",
+          target,
+          ...spentOf(result),
         });
       } catch {
         // the ledger is best-effort; the verdict still counts
@@ -103,17 +99,12 @@ export function createSeamsJudge(deps: SeamsJudgeDeps): JudgeSeams {
 export function createStandardJudge(deps: SeamsJudgeDeps): JudgeStandard {
   return async (evidence: StandardEvidence[], system: string, sessionId: string | null) => {
     const pictures = evidence.some((item) => item.kind === "image");
-    const target = await deps.routing(pictures ? "vision" : "organizer").catch(() => null);
+    const target = await deps.routing({ pictures }).catch(() => null);
     if (!target) throw new Error("no model endpoint is configured");
     const content: ChatContentPart[] = evidence.flatMap((item): ChatContentPart[] => item.kind === "image"
       ? [{ type: "text", text: `${item.label}:` }, { type: "image_url", image_url: { url: item.dataUri } }]
       : [{ type: "text", text: item.text }]);
-    const result = await deps.completions.judge({
-      baseUrl: target.baseUrl,
-      apiKey: target.apiKey,
-      apiFormat: target.apiFormat,
-      workspaceId: target.workspaceId,
-      model: target.model,
+    const result = await sideJudge(deps, target, {
       messages: [
         { role: "system", content: system },
         { role: "user", content },
@@ -121,17 +112,15 @@ export function createStandardJudge(deps: SeamsJudgeDeps): JudgeStandard {
       signal: new AbortController().signal,
       timeoutMs: SEAMS_JUDGE_TIMEOUT_MS,
       maxTokens: 1024,
-      ...(target.thinkingLevel ? { thinkingLevel: target.thinkingLevel } : {}),
     });
     if (sessionId) {
       try {
-        deps.spend.recordResponseSpend({
+        recordSideSpend(deps.spend, {
           kind: "acceptance_check",
           purpose: pictures ? "vision" : null,
           owner: deps.spend.spendOwner(sessionId, null),
-          target: deps.spend.callOf(target),
-          usage: result.usage,
-          responded: result.failKind === null || result.failKind === "incomplete",
+          target,
+          ...spentOf(result),
         });
       } catch {
         // the ledger is best-effort; the verdict still counts

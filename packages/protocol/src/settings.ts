@@ -1,5 +1,5 @@
 import type { Locale, Theme } from "./constants.ts";
-import type { EndpointModel, EndpointModelInput, ReaderEndpointModel, ReaderModel } from "./models.ts";
+import type { BuiltinModelRole, BuiltinModels, EndpointModel, EndpointModelInput, ReaderEndpointModel, ReaderModel } from "./models.ts";
 import type { SpeechSettings } from "./speech.ts";
 
 export type Settings = {
@@ -25,6 +25,13 @@ export type Settings = {
    */
   organizer_model?: ReaderEndpointModel | null;
   /**
+   * Every built-in call's model (ADR 0077), `reader` and `organizer` included: an endpoint's model or
+   * a Claude model of yours, null to run it as before. `reader_model` and `organizer_model` above
+   * stay for older windows (`organizer_model` is null when the organizer runs on a Claude model).
+   * Absent from a daemon older than that ADR.
+   */
+  builtin_models?: BuiltinModels;
+  /**
    * The speech endpoint the composer's microphone sends to (ADR 0073), changed through
    * `PATCH /v1/speech`; null until one is set up, absent from a daemon older than that ADR.
    */
@@ -46,6 +53,8 @@ export type SettingsPatch = {
   reader_model?: ReaderModel | null;
   /** Null follows the default model again. */
   organizer_model?: ReaderEndpointModel | null;
+  /** The calls named are set; null runs one as before you chose (ADR 0077). */
+  builtin_models?: Partial<Record<BuiltinModelRole, ReaderModel | null>>;
   launch_at_login?: boolean;
   locale?: Locale;
   theme?: Theme;

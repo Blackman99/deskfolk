@@ -13,6 +13,7 @@ import {
   type Turn,
 } from "@real-bot/protocol";
 import { ABLATED_JOIN_REASON, NO_ABLATION, type Ablation } from "../ablation";
+import type { ClaudeJudge } from "../claude-code/reading";
 import type { CompletionsClient } from "../completions";
 import { assembleJudgementUser, extractJudgement } from "../context/judgement";
 import { isoNow, ulid } from "../ids";
@@ -25,6 +26,7 @@ import { sessionUpsertFields } from "../session-events";
 import type { Store } from "../store";
 import { ENGINE_LEVELS } from "../store/schema-gate";
 import type { HeardItem } from "../turn-inbox";
+import { recordSideSpend, sideJudge, spentOf, type BuiltinTarget, type BuiltinTargetOf } from "./builtin-models";
 import { mayWake, wakeOn, type WakeCause } from "./control";
 import type { Routing } from "./routing";
 import type { SpendTracker } from "./spend";
@@ -42,6 +44,10 @@ export type ParticipationDeps = {
   callOf: SpendTracker["callOf"];
   spendOwner: SpendTracker["spendOwner"];
   recordResponseSpend: SpendTracker["recordResponseSpend"];
+  recordClaudeSpend?: SpendTracker["recordClaudeSpend"];
+  /** The judgement's model when you chose one (ADR 0077); else each Bot judges on its own. */
+  builtinTarget?: BuiltinTargetOf;
+  claudeJudge?: ClaudeJudge | null;
   /** Late-bound: lifecycle.ts is built after this module. Null when a hold turns the wake away. */
   startTurn: (
     sessionId: string,
@@ -440,7 +446,10 @@ export function createParticipation(deps: ParticipationDeps): Participation {
         return;
       }
       if (admission?.draining) return;
-      const target = creds ? (targetFor(botId, creds, message.body)?.target ?? null) : null;
+      // The model you chose for judgements, else the Bot's own, told nothing about thinking as before.
+      const chosen = creds ? ((await deps.builtinTarget?.("judgement").catch(() => null)) ?? null) : null;
+      const own = creds && !chosen ? (targetFor(botId, creds, message.body)?.target ?? null) : null;
+      const target: BuiltinTarget | null = chosen ?? (own && { ...own, thinkingLevel: null });
       if (!creds || !target) {
         try {
           const row = store.insertJudgement({
@@ -469,15 +478,9 @@ export function createParticipation(deps: ParticipationDeps): Participation {
       } catch {
         return;
       }
-      const billed = { ...callOf(target), thinkingLevel: null };
       const owned = spendOwner(message.session_id, botId);
       const prompt = promptPage(store, "zh").resolve("call.judgement");
-      const result = await completions.judge({
-        baseUrl: target.baseUrl,
-        apiKey: target.apiKey,
-        apiFormat: target.apiFormat,
-        workspaceId: target.workspaceId,
-        model: target.model,
+      const result = await sideJudge({ completions, claudeJudge: deps.claudeJudge }, target, {
         prompt: prompt.ref,
         messages: [
           { role: "system", content: prompt.text },
@@ -486,19 +489,16 @@ export function createParticipation(deps: ParticipationDeps): Participation {
         signal: new AbortController().signal,
         maxTokens: JUDGEMENT_MAX_TOKENS,
       });
+      const bill = (judgementId: string) => recordSideSpend(
+        { callOf, recordResponseSpend, recordClaudeSpend: deps.recordClaudeSpend ?? (() => null) },
+        { kind: "judgement", owner: owned, judgementId, target, ...spentOf(result) },
+      );
       // A cut-off verdict reads as a pass below; say so, since from the board it looks like a choice.
       if (result.truncated) {
         console.error(`[judgement] ${botId} on ${message.id}: the answer stopped at the ${JUDGEMENT_MAX_TOKENS}-token cap`);
       }
       if (admission?.draining) {
-        recordResponseSpend({
-          kind: "judgement",
-          owner: owned,
-          judgementId: pending.id,
-          target: billed,
-          usage: result.usage,
-          responded: result.failKind === null || result.failKind === "incomplete",
-        });
+        bill(pending.id);
         return;
       }
       let decision: "join" | "pass" = "pass";
@@ -531,24 +531,10 @@ export function createParticipation(deps: ParticipationDeps): Participation {
           error,
         });
       } catch {
-        recordResponseSpend({
-          kind: "judgement",
-          owner: owned,
-          judgementId: pending.id,
-          target: billed,
-          usage: result.usage,
-          responded: result.failKind === null || result.failKind === "incomplete",
-        });
+        bill(pending.id);
         return;
       }
-      recordResponseSpend({
-        kind: "judgement",
-        owner: owned,
-        judgementId: row.id,
-        target: billed,
-        usage: result.usage,
-        responded: result.failKind === null || result.failKind === "incomplete",
-      });
+      bill(row.id);
       if (decision === "join") startTurn(message.session_id, botId, message, "redirect", { cause: causeOf(message) });
       finish(row);
       publish({ event: "judgement.created", occurred_at: occurred(), ...row });

@@ -1,14 +1,17 @@
 /**
  * Runs the narrowed reflection (ADR 0051) from the scheduler's tick: one due reflection at a time,
- * on the Bot's own model (its pin, its default, the endpoint's default — the level-7 decision with no
- * turn), billed as `organize` with the `reflect` purpose. The store decides what is due and what the
+ * on the reflection's model when you chose one (ADR 0077), else on the Bot's own (its pin, its
+ * default, the endpoint's default — the level-7 decision with no turn), billed as `organize` with
+ * the `reflect` purpose. The store decides what is due and what the
  * answer becomes; this only makes the call.
  */
 import type { Message } from "@real-bot/protocol";
 import { parseReflection } from "../store/reflection";
+import type { ClaudeJudge } from "../claude-code/reading";
 import type { CompletionsClient } from "../completions";
 import { reflectionPayload } from "../prompts/reflection";
 import type { Store } from "../store";
+import { recordSideSpend, sideJudge, spentOf, type BuiltinTargetOf } from "./builtin-models";
 import type { Routing } from "./routing";
 import type { SpendTracker } from "./spend";
 import { promptPage } from "../prompts/book";
@@ -25,6 +28,9 @@ export function createReflector(deps: {
   spend: SpendTracker;
   track: <T>(promise: Promise<T>) => Promise<T>;
   publishMessage: (message: Message) => void;
+  /** The reflection's model when you chose one (ADR 0077). */
+  builtinTarget?: BuiltinTargetOf;
+  claudeJudge?: ClaudeJudge | null;
 }): Reflector {
   let running = false;
 
@@ -36,16 +42,15 @@ export function createReflector(deps: {
     if (!due) return;
     let outcome = null;
     try {
-      const routed = deps.routing.decideRoute(due.botId, creds, due.ticketTitle);
-      if (routed) {
+      // The model you chose for reflections, told how hard to think (ADR 0077); else the Bot's own,
+      // which thinks as it likes, as before.
+      const chosen = (await deps.builtinTarget?.("reflection").catch(() => null)) ?? null;
+      const own = chosen ? null : (deps.routing.decideRoute(due.botId, creds, due.ticketTitle)?.target ?? null);
+      const target = chosen ?? own;
+      if (target) {
         const locale = deps.store.settingsCached().locale === "en" ? "en" : "zh";
         const prompt = promptPage(deps.store, locale).resolve("call.reflection");
-        const result = await deps.completions.judge({
-          baseUrl: routed.target.baseUrl,
-          apiKey: routed.target.apiKey,
-          apiFormat: routed.target.apiFormat,
-          workspaceId: routed.target.workspaceId,
-          model: routed.target.model,
+        const result = await sideJudge(deps, own ? { ...own, thinkingLevel: null } : target, {
           prompt: prompt.ref,
           messages: [
             { role: "system", content: prompt.text },
@@ -57,13 +62,12 @@ export function createReflector(deps: {
         });
         try {
           const session = deps.store.db.query<{ session_id: string | null }, [string]>("SELECT session_id FROM tasks WHERE id = ?").get(due.taskId)?.session_id;
-          deps.spend.recordResponseSpend({
+          recordSideSpend(deps.spend, {
             kind: "organize",
             purpose: "reflect",
             owner: deps.spend.spendOwner(session ?? "", due.botId),
-            target: deps.spend.callOf(routed.target),
-            usage: result.usage,
-            responded: result.failKind === null || result.failKind === "incomplete",
+            target,
+            ...spentOf(result),
           });
         } catch {
           // the ledger is best effort

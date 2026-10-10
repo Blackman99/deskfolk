@@ -2,7 +2,6 @@ import { afterEach, expect, test } from "bun:test";
 import type { CompletionsClient, JudgeRequest } from "../completions";
 import type { EndpointTarget } from "./types";
 import { Store } from "../store";
-import type { OrganizerPurpose } from "./organizer-target";
 import { createSeamsJudge, createStandardJudge } from "./seams-judge";
 import { createSpend } from "./spend";
 
@@ -62,10 +61,10 @@ test("the judges ask for a model by what they send, and a chosen model is told h
       return { content: '{"seams":[]}', toolCalls: [], hadToolCalls: false, failKind: null, usage: null };
     },
   } as unknown as CompletionsClient;
-  const asked: OrganizerPurpose[] = [];
+  const asked: boolean[] = [];
   let thinkingLevel: string | null = "high";
-  const routing = async (purpose: OrganizerPurpose): Promise<EndpointTarget> => {
-    asked.push(purpose);
+  const routing = async ({ pictures }: { pictures: boolean }): Promise<EndpointTarget> => {
+    asked.push(pictures);
     return { baseUrl: "http://127.0.0.1:1/v1", apiKey: "k", apiFormat: "openai", workspaceId: null, providerId: "p", providerName: "P", model: "strong", thinkingLevel };
   };
   const deps = { completions, routing, spend: createSpend({ store, publishSpend: () => {} }) };
@@ -77,7 +76,7 @@ test("the judges ask for a model by what they send, and a chosen model is told h
   await seams([{ kind: "digest", text: "第一章：…" }], [], "前后连贯", "zh", session);
   await standard([{ kind: "image", label: "样片", dataUri: "data:image/png;base64,AA==" }, { kind: "text", text: "这次的交付" }], "对照样片", session);
   await standard([{ kind: "text", text: "样片的文字" }, { kind: "text", text: "这次的交付" }], "对照样片", session);
-  expect(asked).toEqual(["vision", "organizer", "organizer", "vision", "organizer"]);
+  expect(asked).toEqual([true, false, false, true, false]);
   expect(sent.map((request) => request.thinkingLevel)).toEqual(["high", "high", "high", "high", "high"]);
 
   // The default model, which names no level: nothing about thinking is sent, as before.

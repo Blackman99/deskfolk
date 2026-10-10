@@ -124,7 +124,7 @@ export const TERM_GROUPS: Record<ManifestoTopic, readonly string[]> = {
     'Claude Agent',
     'Model',
     'Default model',
-    'Organizing model',
+    'Built-in models',
     'Model choice log',
     'MCP',
     '向导',

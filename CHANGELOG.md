@@ -6,6 +6,14 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Every built-in model call, on one page
+
+- Settings › Models › Built-in models replaces the two pages "Model that reads lines" and "Organizing model". It lists every model call the app makes on its own, one row each, in four groups: reading your lines (reading); organizing and checking (organizer, scribe, picture checks); the composer (its ✨ suggestions); and as a Bot (joining in, reflection, retrospective, context compaction).
+- Each row takes a model from any endpoint, or a Claude model run through your Claude Code (the same models Claude Agent offers), on the account you pick. Picture checks on a Claude model get the pictures. A Claude model spends your Claude plan's usage on each call.
+- Left unset, a call runs as before: the first three groups on the default model, the calls made as a Bot on that Bot's own model.
+- The organizing model you chose before now also stays on the scribe and the picture checks, each of which can be changed on its own.
+- A Bot's `list_endpoints` shows `builtin_models`, and `update_model_settings` sets them to an endpoint's model or back to default; only you choose a Claude model.
+
 ### Claude Agent set up from the phone
 
 - The phone now sees your computer's Claude Code and sets it up as the computer does: Settings › Agents shows the whole card (where `claude` is, its version, network, accounts and their usage) with Check again, the path and adding or removing accounts; a Bot's panel checks Claude Code before it switches the Bot to Claude Agent; the model ladder, the reader model and the organizing model offer Claude models to add. Signing in still happens in a terminal on the computer.

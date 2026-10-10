@@ -15,11 +15,10 @@
 	import type { SelectOption } from '../select-options.ts';
 
 	/**
-	 * A model setting of its own beside the default one: the model that reads lines (读句, ADR 0055)
-	 * and the one that organizes the board (整理模型, ADR 0075) are the same card. Any model an
-	 * endpoint lists, or the default model; and, when `claude` is given, a Claude model run through
-	 * your own Claude Code (ADR 0061), the way only reading lines can. The page that holds the card
-	 * says what the setting is for.
+	 * The picker of one built-in call's model (ADR 0077): reading lines (ADR 0055), organizing the
+	 * board (ADR 0075) and the rest are all this card. Any model an endpoint lists, or the default
+	 * model; and, when `claude` is given, a Claude model run through your own Claude Code (ADR 0061).
+	 * The page that holds the card says what the call is for.
 	 */
 	interface Props {
 		/** Which setting this is; the section's own hook for tests and styles. */
@@ -44,10 +43,12 @@
 		 * Absent, the setting takes endpoint models only.
 		 */
 		claude?: { status: (() => Promise<ClaudeCodeStatus>) | null; note: string } | null;
+		/** False drops the card's own chrome, for a picker that sits as a row inside another card. */
+		framed?: boolean;
 		t: Copy;
 	}
 
-	let { kind, providers, chosen, defaultModel, patch, toPatch, title, followDefault, failed: failedText, claude = null, t }: Props = $props();
+	let { kind, providers, chosen, defaultModel, patch, toPatch, title, followDefault, failed: failedText, claude = null, framed = true, t }: Props = $props();
 
 	let busy = $state(false);
 	let failed = $state(false);
@@ -124,14 +125,15 @@
 	}
 </script>
 
-<section class="side-model-card" aria-label={title} data-side-model={kind}>
+<section class="side-model-card" class:is-framed={framed} aria-label={title} data-side-model={kind}>
 	{#if failed}
 		<p class="side-model-error" role="alert">{failedText}</p>
 	{/if}
 	<div class="side-model-pick">
 		<Select value={chosen ? key(chosen) : FOLLOW} {options} size="sm" ariaLabel={title} disabled={busy} onchange={(value) => void choose(value)} />
 	</div>
-	{#if claudeOffered}
+	<!-- Only where a Claude model is chosen: nine rows of the same account picker say nothing. -->
+	{#if claudeChosen}
 		{#if (claudeStatus?.accounts?.length ?? 0) > 1}
 			<div class="side-model-account" data-side-model-account>
 				<span class="side-model-account-label">{t.sidebar.botAgentAccount}</span>
@@ -147,12 +149,15 @@
 		display: flex;
 		flex-direction: column;
 		gap: 10px;
+		min-width: 0;
+	}
+
+	.side-model-card.is-framed {
 		padding: 12px 14px;
 		background: var(--pane);
 		border: 1px solid var(--line);
 		border-radius: var(--radius-md);
 		box-shadow: var(--shadow-xs);
-		min-width: 0;
 	}
 
 	.side-model-error {
@@ -173,7 +178,7 @@
 	}
 
 	@media (max-width: 720px) {
-		.side-model-card {
+		.side-model-card.is-framed {
 			padding: 12px;
 			box-shadow: none;
 		}

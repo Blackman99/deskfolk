@@ -64,7 +64,7 @@ test("a line is read by Claude with the prompt and payload an endpoint would get
   expect(h.inputs).toHaveLength(1);
   expect(h.inputs[0]!.target).toEqual({ kind: "claude_code", model: "haiku", configDir: "/opt/claude-b" });
   expect(h.inputs[0]!.system).toBe(READ_USER_LINE_SYSTEM);
-  expect(JSON.parse(h.inputs[0]!.prompt) as UserLinePayload).toMatchObject({ said: line.body, where: "direct" });
+  expect(JSON.parse(h.inputs[0]!.prompt as string) as UserLinePayload).toMatchObject({ said: line.body, where: "direct" });
   expect(h.claudeSpent).toEqual([{ sessionId: h.direct, model: "haiku", usage: USAGE }]);
   expect(h.answers()).toEqual([{ read: "user_line", message_id: line.id, source: "model", model: "haiku", fail: null, reading, raw: STOP }]);
 });
