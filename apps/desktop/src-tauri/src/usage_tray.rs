@@ -2,8 +2,9 @@
 //! line per account, read from the one `GET /v1/usage` the usage widget reads, asked once a minute
 //! while the daemon is up. The daemon keeps each answer for five minutes, so this starts at most
 //! one `claude` per five minutes, and none at all until something runs on Claude Agent. An account
-//! with plan windows gets a ring as full as what is left of its tightest window and the 5-hour
-//! and 7-day numbers beside its name; one signed out, or one that could not be read, says so;
+//! with plan windows gets its agent's mark inside a ring as full as what is left of its tightest
+//! window, and the 5-hour and 7-day numbers beside its name; one signed out, or one that could not
+//! be read, says so beside its mark;
 //! agents that only report today's records, connected or in use, share one line. At most four lines, then "查看全部用量…",
 //! which shows the window and its usage panel. The lines go away when there is nothing to show.
 
@@ -79,13 +80,16 @@ pub struct UsageWindow {
 /// One row of the usage part of the menu.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Entry {
-    /// An account and how much is left of its tightest window, under a ring as full as that.
+    /// An account and how much is left of its tightest window: its agent's mark in a ring as full as that.
     Line {
         text: String,
         left: f64,
         level: Level,
+        runner: String,
     },
-    /// A line with no ring: an account that is signed out, or the agents' day here.
+    /// An account that is signed out or could not be read, beside its agent's mark, with no ring.
+    AgentNote { text: String, runner: String },
+    /// A line with no icon: the agents' day here.
     Note(String),
     /// "查看全部用量…", last.
     All,
@@ -168,16 +172,28 @@ fn current_entries(app: &AppHandle) -> Vec<Entry> {
 
 fn icon_of(entry: &Entry) -> Option<Image<'static>> {
     match entry {
-        Entry::Line { left, level, .. } => {
-            Some(Image::new_owned(ring_rgba(*left, *level), ICON_PX, ICON_PX))
-        }
+        Entry::Line {
+            left,
+            level,
+            runner,
+            ..
+        } => Some(Image::new_owned(
+            match logo_of(runner) {
+                Some(logo) => logo_in_ring_rgba(Some((*left, *level)), logo),
+                None => ring_rgba(*left, *level),
+            },
+            ICON_PX,
+            ICON_PX,
+        )),
+        Entry::AgentNote { runner, .. } => logo_of(runner)
+            .map(|logo| Image::new_owned(logo_in_ring_rgba(None, logo), ICON_PX, ICON_PX)),
         Entry::Note(_) | Entry::All => None,
     }
 }
 
 fn text_of(entry: &Entry) -> &str {
     match entry {
-        Entry::Line { text, .. } | Entry::Note(text) => text,
+        Entry::Line { text, .. } | Entry::AgentNote { text, .. } | Entry::Note(text) => text,
         Entry::All => "查看全部用量…",
     }
 }
@@ -318,11 +334,18 @@ pub fn usage_entries(usage: &UsageResponse) -> Vec<Entry> {
                     text,
                     left: (100.0 - tightest).clamp(0.0, 100.0),
                     level: level_of(tightest),
+                    runner: agent.runner.clone(),
                 });
             } else if !account.available {
                 match account.reason.as_deref() {
-                    Some("signed_out") => lines.push(Entry::Note(format!("{name}　未登录"))),
-                    Some("failed") => lines.push(Entry::Note(format!("{name}　没查到用量"))),
+                    Some("signed_out") => lines.push(Entry::AgentNote {
+                        text: format!("{name}　未登录"),
+                        runner: agent.runner.clone(),
+                    }),
+                    Some("failed") => lines.push(Entry::AgentNote {
+                        text: format!("{name}　没查到用量"),
+                        runner: agent.runner.clone(),
+                    }),
                     _ => {}
                 }
             }
@@ -391,7 +414,59 @@ fn level_of(used: f64) -> Level {
 /// A ring filled clockwise from twelve o'clock as far as `left` percent, the rest a faint track,
 /// as 36 px RGBA. The colours read on a light and a dark menu alike: a menu icon cannot be a
 /// template image here, so it does not take the menu's own colour.
+/// Each agent's mark, cut round, as raw RGBA at `LOGO_PX`: rendered once from the messenger's
+/// `AgentLogo.svelte` at twice its 13 px, since this crate has no image decoder.
+const LOGO_PX: usize = 26;
+
+fn logo_of(runner: &str) -> Option<&'static [u8]> {
+    Some(match runner {
+        "claude_code" => include_bytes!("agent-logos/claude_code.rgba"),
+        "codex" => include_bytes!("agent-logos/codex.rgba"),
+        "grok" => include_bytes!("agent-logos/grok.rgba"),
+        "opencode" => include_bytes!("agent-logos/opencode.rgba"),
+        "antigravity" => include_bytes!("agent-logos/antigravity.rgba"),
+        "zcode" => include_bytes!("agent-logos/zcode.rgba"),
+        "custom" => include_bytes!("agent-logos/custom.rgba"),
+        _ => return None,
+    })
+}
+
+/// An agent's mark in the middle of the icon, inside a thin ring as full as what is left (`ring`),
+/// or alone when there is no window to show.
+fn logo_in_ring_rgba(ring: Option<(f64, Level)>, logo: &[u8]) -> Vec<u8> {
+    let size = ICON_PX as usize;
+    let mut rgba = match ring {
+        Some((left, level)) => ring_pixels(left, level, 17.5, 15.0),
+        None => vec![0u8; size * size * 4],
+    };
+    let offset = (size - LOGO_PX) / 2;
+    for y in 0..LOGO_PX {
+        for x in 0..LOGO_PX {
+            let from = (y * LOGO_PX + x) * 4;
+            let Some(src) = logo.get(from..from + 4) else { continue };
+            let a = src[3] as f64 / 255.0;
+            if a == 0.0 {
+                continue;
+            }
+            let at = ((y + offset) * size + x + offset) * 4;
+            let dst = &mut rgba[at..at + 4];
+            let da = dst[3] as f64 / 255.0;
+            let out = a + da * (1.0 - a);
+            for c in 0..3 {
+                dst[c] = ((src[c] as f64 * a + dst[c] as f64 * da * (1.0 - a)) / out).round() as u8;
+            }
+            dst[3] = (out * 255.0).round() as u8;
+        }
+    }
+    rgba
+}
+
 fn ring_rgba(left: f64, level: Level) -> Vec<u8> {
+    ring_pixels(left, level, 13.0, 9.0)
+}
+
+/// A ring between `outer` and `inner` radii, the part as full as `left` solid, the rest faint.
+fn ring_pixels(left: f64, level: Level, outer: f64, inner: f64) -> Vec<u8> {
     let (r, g, b) = match level {
         Level::Normal => (0x8b, 0x98, 0x9e),
         Level::Warn => (0xf5, 0x9e, 0x0b),
@@ -399,7 +474,6 @@ fn ring_rgba(left: f64, level: Level) -> Vec<u8> {
     };
     let size = ICON_PX as usize;
     let center = size as f64 / 2.0;
-    let (outer, inner) = (13.0, 9.0);
     let sweep = left.clamp(0.0, 100.0) / 100.0 * TAU;
     let mut rgba = vec![0u8; size * size * 4];
     for y in 0..size {
@@ -473,7 +547,7 @@ mod tests {
             .iter()
             .map(|entry| match entry {
                 Entry::Line { text, .. } => format!("[ring] {text}"),
-                Entry::Note(text) => format!("[note] {text}"),
+                Entry::AgentNote { text, .. } | Entry::Note(text) => format!("[note] {text}"),
                 Entry::All => "[all]".to_string(),
             })
             .collect()
@@ -603,6 +677,24 @@ mod tests {
             texts(&usage_entries(&answer)),
             vec!["[ring] Antigravity　Gemini Models 97% · Claude and GPT models 87%", "[all]"]
         );
+    }
+
+    #[test]
+    fn every_agent_has_its_mark_and_a_line_wears_it_inside_its_ring() {
+        for runner in ["claude_code", "codex", "grok", "opencode", "antigravity", "zcode", "custom"] {
+            assert_eq!(logo_of(runner).map(<[u8]>::len), Some(LOGO_PX * LOGO_PX * 4), "{runner}");
+        }
+        assert!(logo_of("someone_else").is_none());
+        let logo = logo_of("grok").unwrap();
+        let icon = logo_in_ring_rgba(Some((50.0, Level::Normal)), logo);
+        let px = |x: usize, y: usize| &icon[(y * ICON_PX as usize + x) * 4..][..4];
+        // Grok's mark is black in the middle; the ring is drawn outside it; the corners are clear.
+        assert_eq!(&px(18, 18)[3], &255);
+        assert!(px(18, 18)[0] < 40);
+        assert!(px(18, 1)[3] > 0);
+        assert_eq!(px(0, 0)[3], 0);
+        let entries = usage_entries(&usage(&format!(r#"{{"agents":[{CLAUDE}]}}"#)));
+        assert!(matches!(&entries[0], Entry::Line { runner, .. } if runner == "claude_code"));
     }
 
     #[test]

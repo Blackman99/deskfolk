@@ -53,3 +53,9 @@ You asked why Grok and Antigravity had no usage. ADR 0079 decision 10 took them 
 
 You found the pill too big and hard to read with many accounts: a ball by default, opening on hover into a row of agent kinds, each opening on hover into all its accounts, with morphing in between. Decision 5 becomes: a small ball (ringed by the tightest window of all); pointed at, it morphs into a column of agent bubbles (one shape, clip-path from the ball to the whole column, bubbles fading in in turn), each ringed by that agent's tightest window, dashed for today's records only; pointing at one grows a card out of its bubble (a circle inset opening into a rounded box) with all its accounts. Clicks pin it (touch), Escape or a click outside folds it; reduced motion turns the animation off. Docking, dragging, hiding and the Tools entry are unchanged, and so is the phone's page.
 
+## 补充：菜单栏也带上各家的标 / Addendum: the menu bar wears each agent's mark（2026-10-11）
+
+你说：「菜单里也要加上 LOGO。」决定 7 里「Claude 还是 Spark 标，别家照旧只写名字」改成：每个账号那一行的图标是它那家 Agent 的标（和挂件里同一套，`AgentLogo.svelte` 按 2 倍渲染一次、裁成圆形，存成 `src-tauri/src/agent-logos/<runner>.rgba`，菜单图标只收像素），外面一圈细环按最紧的窗口剩多少画、颜色同前；没登录、没查到的账号只有标没有环；不报套餐的那一行合在一起，仍没有图标。标只用来指明是哪家，和 ADR 0061、0072、0079 的商标说明一样。
+
+You asked for the marks in the menu too. Decision 7's "the Spark for Claude, names only for the others" becomes: each account's line wears its agent's mark (the widget's own, rendered once from `AgentLogo.svelte` at twice its size, cut round, kept as raw RGBA since menu icons take pixels) inside a thin ring as full as what is left of its tightest window; a signed-out or unreadable account shows the mark alone; the shared line for agents with no plan still has no icon. Marks only name the agent, as ADRs 0061, 0072 and 0079 say.
+
