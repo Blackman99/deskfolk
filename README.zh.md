@@ -15,6 +15,7 @@
 <p align="center">
   <a href="https://blackman99.github.io/deskfolk/zh"><b>官网</b></a> ·
   <a href="https://github.com/Blackman99/deskfolk/releases/latest"><b>下载 Alpha</b></a> ·
+  <a href="docs/overview.zh.md"><b>介绍与安装</b></a> ·
   <a href="README.md">English</a>
 </p>
 
@@ -25,78 +26,21 @@
   <a href="https://github.com/Blackman99/deskfolk/releases/latest"><img alt="Status: alpha" src="https://img.shields.io/badge/status-alpha-f0ab3d.svg"></a>
 </p>
 
-## 为什么放心交给它
+<table>
+  <tr>
+    <td width="50%"><img alt="工作区外的动作，先问你" src="docs/assets/app-zh-ask.jpg"><br><sub>工作区外的动作，先问你</sub></td>
+    <td width="50%"><img alt="说停就停，只有你能解除" src="docs/assets/app-zh-stop.jpg"><br><sub>说停就停，只有你能解除</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img alt="做完有定义：检查、审查和你的放行" src="docs/assets/app-zh-done.jpg"><br><sub>做完有定义：检查、审查和你的放行</sub></td>
+    <td width="50%"><img alt="回来看结果：会话、流程图、成品并排" src="docs/assets/app-zh-desk.jpg"><br><sub>回来看结果：会话、流程图、成品并排</sub></td>
+  </tr>
+</table>
 
-模型负责干活，应用负责当真：一件事走到哪一步，只由应用自己的记录说了算，Bot 说的话只算提议。下面四条，每条都来自一次真实的翻车。这四条是写在代码里的规矩，不在提示词里：Bot 怎么干活由你改（见下文「改成你自己的工作方式」），改哪段提示词都放宽不了它们。
+<p align="center">
+  <a href="https://blackman99.github.io/deskfolk/media/deskfolk-promo-zh.mp4"><img alt="观看完整介绍（1:26）" src="docs/assets/promo-zh.jpg"></a>
+  <br>
+  <sub>完整介绍（1:26）</sub>
+</p>
 
-- **你的要求不会丢。** 你说的每句话在记下它的同一步原样另存一份，Bot 写不了；你的要求一条一条记进需求台账，只增不删。整理时模型只能提补丁，引文必须是你原话里的字，由应用核对；要改一条只出待你确认的替代，旧的照样生效。以前要求记在一份每次整份重写的单子上，70 版修订里丢过 15 条规则，「机械臂是左手」「片长约 2 分钟」丢了就再没回来。
-- **做完有定义。** 任务只由交付、守护进程在本机跑的检查、有依据的审查和你的放行往前推；没人审时，检查都过了应用才放行，缺依据就问你。Bot 说一句「PASSED」什么都不动。验收里能机器判定的那几条（文件在不在、写没写到、正则对不对、一条命令跑不跑得通，几个 Bot 分头做的章节、图片、镜头接在一起连不连贯）挂成检查，结果标在流程图上；检查由你加，或由应用从这件事真跑成功过的命令里提，Bot 自己写不了。交文件之前，说了「随后给」要约好回看或点名交给谁，说了「测试通过」「验证过」这一轮得真跑过命令，不然退回去。以前审片员 Bot 把一条 107 秒的成片当成「约 2 分钟」放行，五次整片放行都被你推翻。一整集视频、很多章的书这类大活先拆再做：其中一件是你放行的样片，其余各件等它，交上来时拿它对照。
-- **停下是状态。** 叫停是一条只有你能解除的记录，开轮、叫醒和有副作用的工具调用都要先过它；进行中的一轮随时能 Stop。以前你说了「停一下」，视频导演还在另外两条私聊里接着送审，规划叫回又让它交了一个新镜头。
-- **停在半路有人追，也不烦你。** 监督器每 15 秒看一遍，不调模型，重启不丢：一件事静下来，它叫回球在谁手里的那个 Bot；重启打断的活自己接着做。应用只在要你放行、要只有你给得了的东西、或者活真停住时才找你；问一句「怎么样了」，它直接告诉你有什么在等你、谁在做、做到哪、哪条检查没过，不叫醒也不打断正在干活的 Bot。以前重启打断的长活停了 7.6 小时没人知道；后来又走到另一头，一天来了四张问默认模型的卡片。
-
-## 适合谁
-
-- **适合**：会自己配模型端点和 API key 的独立开发者、技术型个人和小工作室，手上有多天、多步、要返工、人又不能一直盯着的活，比如多集 AI 视频（镜头、渲染、审片、返工）、每天定点出的新闻简报、一套发布物料。一个 Bot 单干也行，几个 Bot 分工留给真要分工的活。
-- **暂不适合**：一次问答、半小时就能做完的小活（一个 Bot 就够，也有更轻的工具）；几个人共用一套、要 Linux、要 Mac 睡眠时也接着干活，或者不想自己接模型端点。Windows 有一条刚起步的实验性预览：每个 Release 都带未签名安装包，有些功能还没有——见下方「获取」。
-
-## 它做什么
-
-- **持久的队友。** Bot 有名字、职责和边界，可以私聊、进群、被 `@` 点名、彼此交接；正在干活的 Bot 被队友 `@` 时不会被打断，下一步就读到这句话；你连着发几句、或改了一句已经发出去的话，它也在下一步读到；还没读到的那句可以撤回，或直接插入让它马上读。一个 Bot 单干也行，要分工时再让它把队友建出来。
-- **做了什么都看得见。** 一个规划一张流程图：你发的每条消息由应用归到规划和任务，你的要求列在要点里，和需求台账是同一张单子；经过按谁叫醒了谁画出来，一轮一张卡片，交出的文件、干的任务、用的模型和原因都挂在卡片上。Bot 之间的私聊你也能打开看。
-- **危险动作先问你。** 新建端点或 MCP、工作区外读写和出站网络都要你批准；等你的事标在会话列表上，配合 macOS 横幅和 Dock 角标。
-- **执行和文件在你自己的电脑上。** 窗口、守护进程、会话和共享工作区都在本机，密钥进钥匙串（Windows 上是凭据管理器）。模型和 MCP 服务器由你接：任意 OpenAI 兼容或 Anthropic 兼容的端点都行，也可以是本机的 Ollama、LM Studio（见[用本地模型](#用本地模型)），每一轮的上下文发给你配置的那个端点。
-- **也可以让你自己的 Claude Code 来跑一个 Bot。** 把 Bot 的运行方式设成 Claude Agent，它的每一轮就由你本机安装并登录的 Claude Code 用它自己的工具来跑，用量记在它登录的账号上（Claude 订阅或 API key）；批准、Stop、交付和审查和别的 Bot 一样。之后侧边栏和菜单栏会显示你套餐的 5 小时、7 天窗口还剩多少，数据由你的 Claude Code 自己读。一台电脑上登录了几个 Claude 账号时，每个 Bot 可以各用你指定的那个（按 Claude Code 的配置目录）。这些在配对的手机上也都能设置。应用不登录 Claude、不碰它的凭据——[怎么用](docs/behavior.md#claude-agent)。
-- **改成你自己的工作方式。** Bot 每一轮读的系统指令和工具说明，以及整理、读句这些应用自己的调用，都是应用自带的提示词：在 设置 → 提示词 里能改、能恢复默认，每次修改都能撤销；也可以让 Bot 提改动，在批准卡上由你放行。代码要读的输出格式锁着，批准、叫停这些规矩不随提示词变——[怎么用](docs/behavior.md#built-in-prompt)。
-- **Bot 拿记录说话。** 让 Bot 分析哪类活常被退回、哪段提示词该改时，它能只读地查这台电脑上应用存下的记录（会话、轮次、需求台账、花费、工作记录……）和守护进程日志，按查到的提改动；只在你开口时做。远程访问的密钥、推送配置和你的终端不给它看——[怎么用](docs/behavior.md#records)。
-- **交付之后，Bot 自己复盘。** 你接受的一件事交付后，在里面交过东西、又出过错的 Bot 各回看一次这件事的记录，找出踩过的坑、让你返工的做法和下次该照做的，改进进它自己的记忆和技能：同一主题覆盖，讲一回事的合并，错了的改掉，不越堆越多。不发消息、不问你；流程图「要点」视图的「完工复盘」里列着，每处改动都能撤销——[怎么用](docs/behavior.md#learning)。
-- **办公文件预览。** 聊天文件、工作区与流程图产物可直接打开 `.docx`、`.xlsx`、`.pptx`，本地只读查看文档、切换工作表与翻阅幻灯片，支持全屏查看，Esc 或手机返回先退出全屏；[格式支持与限制](docs/development.md#办公文件预览)。
-- **说话代替打字。** 在 设置 → 模型 → 语音识别 里接一个语音转文字的服务——OpenAI、Groq、硅基流动、阿里云百炼（按量付费或 Token Plan，可直接沿用已接的百炼端点的密钥）、小米 MiMo（各套餐都行，同样可沿用已接的 MiMo 端点的密钥）、Deepgram、ElevenLabs，或任一种它们格式的地址，包括本机的 Whisper 服务——电脑和手机的输入框旁就有麦克风：说的话转成字放进输入框，你看过再发。录音经这台电脑发给那个服务，不保存——[ADR 0073](docs/adr/0073-speech-recognition.md)。
-- **在交付物上直接批注。** 文字或代码、Markdown 渲染态、图片或 PDF 上的一块、HTML 元素、音视频的一个时间点都能批；攒一批发出去是一条回复，Bot 逐条改完逐条标掉。
-- **模型按规则定，卡住了自己提档。** 每个 Bot 有默认模型，按它最近 7 天用得最多的定，也可以给它钉一个；要看图的活不落到标着看不了图的模型上。同一件活连着没过、或一轮里接连出错，先提一档思考，还不行再沿你在 设置 → 模型 里排的阶梯换更强的模型，也可以排你本机 Claude Code 跑的 Claude 模型（钉的不换）。每轮跑在哪个模型上、为什么，写在流程图那一轮的卡片上。出过的错按类型记下，不再问模型「是不是模型不行」；全盘搜索那种一超时再超时的命令，应用在下一次调用前先警告、再拦下。
-- **可分屏的工作台。** 桌面窗口可以分成多块窗格，放会话、终端、日程图、工作区和花费；每种窗口在哪打开（新标签、替换、往哪边分屏、开到旁边的窗格还是浮窗）在 设置 → 行为 → 窗口打开方式 里选，默认会话替换、产物和流程开在右边、终端开在下面。沿标签栏拖动标签页可调整顺序；右键标签页可关闭它、其他标签页、右侧标签页或所有标签页。空窗格可点右上角 × 关闭，也可在窗格右键菜单选择「关闭窗格」。工作区文件树里 ⌘ 点击或 Shift 点击可多选文件和文件夹，右键即可移到 Mac 的废纸篓，在 Finder 里还能放回；也能直接拖进聊天框，随下一条消息作为附件发出，挂的是原路径，不复制。搜索行最右边的按钮或 ⌘B 可把会话列表收成只有头像的窄栏；它左边的脉搏按钮（手机上在搜索框右边，窄栏里在搜索按钮下面）让列表只显示有 Bot 在工作的会话，等你批准或回答的也算。
-- **全局搜索。** 侧栏或头像窄栏点搜索，或按 ⌘K（Ctrl+K），在弹窗里筛选会话、消息、文件和日程，支持键盘选择；手机上铺满全屏。编辑器和终端里用 ⌘⇧K（Ctrl+Shift+K）。窄栏图标在悬停或键盘聚焦时显示名称和说明。
-- **你自己的终端。** 守护进程持有 shell，关窗不停；Bot 干活时，它的消息里是它说到哪了、跑完的命令收成一行，点开是一张卡片（每一条的输出也是点开才有，按代码上色），做完以后留在它的回复下面，末尾写着它正在读哪个文件、跑哪条命令和这一轮用了多久，点开看正在跑的命令此刻的输出。
-- **按模型、会话和 Bot 看花费。** 轮次、决策和反馈调用分别记录，实报与估算分开统计——[花费与计费单价](docs/spend.zh.md)。
-- **每日与每周日程。** Bot 按运行它的这台电脑的本地时间定点开工——[日程怎么用](docs/routines.zh.md)。
-- **手机上接着用（实验性，默认关闭）。** 经你自己部署的中继连回 Mac，端到端加密——[远程访问](docs/remote-access.zh.md)。打开 Mac 上的屏幕共享（Windows 上装一个 VNC 服务）后，还能在手机上看和操作 Mac 的屏幕，锁屏也行。
-
-## 获取
-
-macOS 13（Ventura）或更新版本，支持 Apple 芯片与 Intel。Windows x64 有一条刚起步的实验性预览（见下文）；Linux 暂不支持。
-
-- **下载**：[Releases](https://github.com/Blackman99/deskfolk/releases/latest) 提供 `.dmg`，不用另装别的。从 0.1.0-rc.16 起用 Developer ID 签名并经 Apple 公证，双击即可打开（旧版本见 [Gatekeeper FAQ](docs/gatekeeper.zh.md)）。Windows 上运行同一个 Release 里的 `Deskfolk_<版本>_x64-setup.exe`：按当前用户安装，不要管理员权限；安装包没签名，SmartScreen 会提示未知发布者，点「更多信息」→「仍要运行」。
-- **更新**：有新版本时，桌面侧栏底部带文字的「设置」上出现小红点，在 设置 → 关于 里下载并安装（Windows 上暂时是「关于」跳到浏览器下载）。外观在 设置 → 通用 → 外观。
-- **在 macOS 上从源码启动**（Node 22+、pnpm 12.3.4、Bun 1.2+、Rust、Xcode Command Line Tools）：
-
-```bash
-git clone https://github.com/Blackman99/deskfolk.git
-cd deskfolk
-pnpm install
-pnpm dev
-```
-
-- **在 Windows 上从源码启动：** 同样 `git clone` / `pnpm install` / `pnpm dev`，用 Rust 的 MSVC 工具链加 Visual Studio Build Tools（勾选 "Desktop development with C++"）代替 Xcode，另外先跑一次 `cargo build --manifest-path apps/conpty-helper/Cargo.toml` 编终端 helper。建议也装上 Git for Windows：Bot 的 shell 工具找得到 Git Bash 就在里面跑命令，找不到才用 PowerShell。本地打安装包用 `pnpm --filter @real-bot/desktop tauri build --bundles nsis`。
-- **Windows 上还没有的：** 独立运行时、应用内下载安装更新、桌面通知与角标、图片缩略图。数据在 `%LOCALAPPDATA%\real-bot`，密钥在 Windows 凭据管理器；装法、差异和缺口见 [Windows 预览版](docs/windows.zh.md)，前置条件和打包见[开发说明](docs/development.md#windows实验性)。
-
-拿源码版干要跑几个小时的活（比如多镜头视频）时，用 `pnpm dev:steady` 代替 `pnpm dev`：守护进程不会因为改代码或 `git pull` 重启，进行中的轮次不会被打断。
-
-首次使用：启动向导会带你选一个工作区目录、连接模型、建第一个 Bot；之后再让它把其他队友建出来。模型可以是端点加密钥（预设或自定义地址），也可以直接用这台电脑上装好并登录的 Claude Code：这样不用端点，第一个 Bot 是 Claude Agent，应用自己的调用也走 Claude 模型（[ADR 0078](docs/adr/0078-setup-on-claude-code.md)）。Anthropic、小米 MiMo、千问（阿里云百炼）是内置的：选它、贴上 key，应用会找出这把 key 属于那家的哪个套餐。没限定工作区的 Anthropic 个人 key 还要填 Anthropic 工作区 ID（`wrkspc_…`，在 Console → Settings → Workspaces 里），见 [ADR 0072](docs/adr/0072-built-in-connectors.md)。
-
-### 用本地模型
-
-Ollama、LM Studio、llama.cpp 的 `llama-server` 都能当端点用：向导里选对应的预设，或者在 设置 → 模型服务 里添加（地址填 `http://localhost:11434/v1` 这类）。本机和局域网的地址不用填密钥，模型名单和每个模型的上下文窗口从服务那里读。先知道这几件：
-
-- **上下文要够大。** Bot 一步的提示词常有 2–9 万 token，光人设、指令和工具定义就上万。把服务的上下文调到 64K 以上：Ollama 设环境变量 `OLLAMA_CONTEXT_LENGTH=65536`（或者在 Modelfile 里写 `PARAMETER num_ctx 65536`），LM Studio 在加载模型时调 Context Length，llama.cpp 用 `-c 65536`。一轮做得太长、窗口快装不下时，前面的工作会先压成摘要接着做；连指令、对话和工具定义都放不下时，这一轮才停下并写明这一步多大、窗口多大，不会拿着被截掉一半的提示词乱答。
-- **模型要会调工具。** Bot 的活全靠工具调用。在模型属性里点「测一下」，能看到每秒多少 token、多久出第一个字、给了工具会不会调；服务说不支持工具的模型，名单上标着「不支持工具」。
-- **混着用更顺。** 读你的每句话、整理规划这些后台调用默认都跑在默认模型上；本地服务一次只处理一个请求时，它们会排在 Bot 正在写的那一步后面。可以让默认端点和默认模型用云端的，再在 Bot 资料里把 Bot 固定到本地模型；或者只在 设置 → 模型服务 → 内置模型 里把 读句 和 整理器 换成云端的（整理器要用强模型）。
-- **本地慢得多。** 8B 模型在 M4 Pro 上每秒约 30 token。应用对本地端点放宽了时限（等第一个字最多 15 分钟），一步能写多久按测出的速度算。细节见 [ADR 0067](docs/adr/0067-local-model-servers.md)。
-
-## 状态
-
-Alpha，macOS 是主要目标，功能和数据格式在那边也仍会变化。Windows 是刚起步的实验性预览，还有不少毛边和缺失功能（见上文「获取」）。Linux 暂不支持。远程访问是默认关闭的原型（Windows 上还没在真机试过）：日常功能和 Web Push 已在 Android Chrome 真机上走通；iOS 主屏幕和 WebAuthn 用户验证还没做真机验收，独立安全复核也没有通过；安装的应用就能配对：Mac 的远控身份存在一个私有文件里而不是钥匙串，每台设备用触控 ID 批准，Windows 上用 Windows Hello（[ADR 0033](docs/adr/0033-remote-credentials-in-a-file.md)、[ADR 0059](docs/adr/0059-windows-remote-access-and-screen.md)）。
-
-[哪些已接入、哪些不做](https://blackman99.github.io/deskfolk/zh#boundaries) · [路线图](ROADMAP.md) · [领域语言](CONTEXT.md) · [中继部署](docs/deploy-remote.md)
-
-## 参与
-
-[开发说明](docs/development.md) · [参与贡献](CONTRIBUTING.md) · [安全说明](SECURITY.md)。MIT 协议开源，与 xAI / Grok 无官方附属关系。
+<p align="center"><sub><a href="docs/overview.zh.md">介绍与安装</a> · <a href="ROADMAP.md">路线图</a> · <a href="docs/development.md">开发说明</a> · <a href="CONTRIBUTING.md">参与贡献</a> · <a href="SECURITY.md">安全说明</a> · MIT</sub></p>

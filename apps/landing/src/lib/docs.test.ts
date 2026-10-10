@@ -117,7 +117,8 @@ test('docs paths and pager walk the sidebar order', () => {
   expect(flat[0]).toBe('docs');
   expect(flat[flat.length - 1]).toBe('roadmap');
   expect(new Set(flat).size).toBe(flat.length);
-  expect(docsNeighbors('docs')).toEqual({ next: 'gatekeeper' });
+  expect(docsNeighbors('docs')).toEqual({ next: 'overview' });
+  expect(docsNeighbors('gatekeeper')).toEqual({ prev: 'overview', next: 'windows' });
   expect(docsNeighbors('remote')).toEqual({ prev: 'spend', next: 'manifesto' });
   expect(docsNeighbors('manifesto')).toEqual({ prev: 'remote', next: 'people' });
   expect(docsNeighbors('roadmap')).toEqual({ prev: 'safety' });

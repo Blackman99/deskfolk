@@ -43,6 +43,7 @@ const EDITIONS = {
 
 /** The file each guide page is published from, per language. */
 export const GUIDE_SOURCES: Record<Guide, Record<Lang, string>> = {
+  overview: { zh: 'docs/overview.zh.md', en: 'docs/overview.md' },
   gatekeeper: { zh: 'docs/gatekeeper.zh.md', en: 'docs/gatekeeper.md' },
   windows: { zh: 'docs/windows.zh.md', en: 'docs/windows.md' },
   routines: { zh: 'docs/routines.zh.md', en: 'docs/routines.md' },
@@ -152,8 +153,6 @@ function repoRelative(href: string, dir: string): string | null {
 }
 
 /** The README section the site's home page carries as its download / run-from-source block. */
-const README_QUICKSTART = new Set(['get-it', '获取']);
-
 function sanitizeOptions(lang: Lang, targets: LinkTargets, dir = '', behaviorFragments = false): sanitizeHtml.IOptions {
   return {
     allowedTags: [
@@ -210,7 +209,7 @@ function sanitizeOptions(lang: Lang, targets: LinkTargets, dir = '', behaviorFra
           pathPart === 'README.en.md' ||
           pathPart === 'README.zh.md'
         ) {
-          href = withBase(`/${lang}`) + (README_QUICKSTART.has(decodeURIComponent(hash)) ? '#quickstart' : '');
+          href = withBase(`/${lang}`);
         } else if (GUIDE_PAGES[pathPart]) {
           const guide = GUIDE_PAGES[pathPart];
           href = withBase(`/${guide.lang}${guide.path}`) + (hash ? `#${hash}` : '');

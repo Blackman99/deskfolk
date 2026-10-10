@@ -21,7 +21,7 @@
     closeLabel: string;
     /** Behind the video until its first frame arrives. */
     ground: string;
-    /** A walkthrough step's clip: silent, round and round. */
+    /** A clip of the app: silent, round and round. */
     loop?: boolean;
   } = $props();
 
@@ -95,7 +95,7 @@
 </dialog>
 
 <style>
-  /* The page behind stays where it was: no scrolling the walkthrough on to another step. */
+  /* The page behind stays where it was. */
   :global(html:has(dialog.video-dialog[open])) {
     overflow: hidden;
   }

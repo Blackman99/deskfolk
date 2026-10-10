@@ -47,5 +47,5 @@ Gatekeeper 管的是 **系统是否信任这个二进制**；批准卡管的是 
 
 ## 相关
 
-- [README — 获取](../README.zh.md#获取)
+- [介绍与安装 — 获取](overview.zh.md#获取)
 - [开发说明](development.md)

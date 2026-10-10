@@ -10,18 +10,9 @@ export type StepCopy = {
   link?: { label: string; page: DocsPageKey };
 };
 
-export type BoundaryRow = {
-  dim: string;
-  live: string;
-  wip: string;
-  avoid: string;
-};
-
 export type Dict = {
   nav: {
-    demo: string;
-    boundaries: string;
-    quickstart: string;
+    overview: string;
     docs: string;
     glossary: string;
     roadmap: string;
@@ -46,63 +37,30 @@ export type Dict = {
     trustLabel: string;
     /** What the headline's promise rests on, one guarantee per item, each with the failure it came out of. */
     trust: { label: string; body: string }[];
-    wipNote: string;
     ctaPrimary: string;
-    ctaSecondary: string;
-    runLabel: string;
-    runCommand: string;
     copy: string;
     copied: string;
-    scrollHint: string;
   };
   demo: {
-    heading: string;
-    intro: string;
     steps: StepCopy[];
-    railLabel: string;
     /** What the first screen's still shows, for screen readers. */
     stillLabel: string;
-    /** On a step whose clip has not played yet on this visit (autoplay refused, or scrolled back up to). */
-    play: string;
-    replay: string;
-    /** Opens the step's clip bigger than the stage. */
-    enlarge: string;
   };
-  /** The full demo film (static/media/deskfolk-<lang>.mp4), played in a dialog. */
-  film: {
-    /** On the first screen's still. */
-    watch: string;
-    /** Beside the scroll hint. */
-    watchHint: string;
-    /** The film's length, shown beside both entries; change it with the film. */
-    duration: string;
-    title: string;
-    description: string;
+  /** The home page: one screen, the headline as the demo's player. */
+  home: {
+    /** Each beat is one line of the headline and one clip of the real app. */
+    beats: { line: string; caption: string }[];
+    stageLabel: string;
+    download: string;
+    film: string;
+    filmDuration: string;
+    filmTitle: string;
+    filmDescription: string;
+    note: string;
+    tour: string;
+    tourDuration: string;
+    tourTitle: string;
     close: string;
-  };
-  boundaries: {
-    heading: string;
-    intro: string;
-    colLive: string;
-    colWip: string;
-    colAvoid: string;
-    rows: BoundaryRow[];
-    /** [before roadmap link, between roadmap and glossary links, after] */
-    footnote: [string, string, string];
-  };
-  quickstart: {
-    heading: string;
-    intro: string;
-    requirements: string;
-    step1: string;
-    step2: string;
-    firstRun: string[];
-    download: { title: string; body: string; link: string; faq: string; windows: string };
-    linkDocs: string;
-    linkDocsSite: string;
-    linkGlossary: string;
-    linkRoadmap: string;
-    linkRemote: string;
   };
   footer: {
     tagline: string;
@@ -152,9 +110,7 @@ export type Dict = {
 
 const zh: Dict = {
   nav: {
-    demo: '完整流程',
-    boundaries: '边界',
-    quickstart: '从源码启动',
+    overview: '介绍与安装',
     docs: '文档',
     glossary: '术语表',
     roadmap: '路线图',
@@ -181,24 +137,12 @@ const zh: Dict = {
       { label: '停下是状态。', body: '叫停只有你能解除，开轮、叫醒和有副作用的调用都先过它（以前说了停，Bot 还在送审）。' },
       { label: '停在半路有人追，也不烦你。', body: '监督器不调模型、重启不丢，只在需要你时找你（以前停了 7.6 小时没人知道）。' }
     ],
-    wipNote: 'Alpha 版本：macOS 版已签名并经 Apple 公证，Windows 为实验性预览；功能与数据结构仍会变化。',
     ctaPrimary: '下载 Alpha',
-    ctaSecondary: '从源码启动',
-    runLabel: '本机运行',
-    runCommand: 'pnpm install && pnpm dev',
     copy: '复制',
-    copied: '已复制',
-    scrollHint: '往下滚动，看一遍完整流程'
+    copied: '已复制'
   },
   demo: {
-    heading: '一支宣传短片，从交出去到验收，一次走完',
-    intro:
-      '右侧是 Deskfolk 的真实界面，随你的滚动一步步播放。画面录自一个从空状态启动的演示实例：Bot 的回复来自真实模型，视频由经 MCP 接入的 Grok Imagine 生成。耗时长的步骤加速播放，右下角标着倍速；只有关窗走开那一步的桌面和托盘菜单是合成的。',
-    railLabel: '演示进度',
     stillLabel: 'Deskfolk 窗口：左边是群聊「发布」，下面是这件事的流程图，右边在播放做好的宣传短片',
-    play: '播放这一步',
-    replay: '从头播放',
-    enlarge: '放大看这一步',
     steps: [
       {
         title: '先选工作区和模型端点',
@@ -256,96 +200,23 @@ const zh: Dict = {
       }
     ]
   },
-  film: {
-    watch: '播放完整视频',
-    watchHint: '或者直接看完整视频',
-    duration: '2:15',
-    title: 'Deskfolk 完整演示',
-    description: '从首次配置到交出一支宣传短片：要求记下、检查由你确认、叫停又继续，回来看审过的成片。',
+  home: {
+    beats: [
+      { line: '交出去。', caption: '一句话交代，它先拆成任务：每张写明谁来做、谁来审。' },
+      { line: '离开。', caption: '关窗走开，应用替你盯着渲染。' },
+      { line: '回来看结果。', caption: '检查、审查、你的放行都过了，才算做完。' }
+    ],
+    stageLabel: 'Deskfolk 真实界面演示',
+    download: '下载 Alpha',
+    film: '看短片',
+    filmDuration: '0:30',
+    filmTitle: 'Deskfolk 短片',
+    filmDescription: '吉祥物麻薯（你）把活交给布丁（你的 Bot）；布丁接着干，要动工作区以外的东西先停下来问你；你离开，回来时活做完了，也查过了。',
+    note: 'macOS 已公证，Windows 预览版',
+    tour: '完整介绍',
+    tourDuration: '1:26',
+    tourTitle: 'Deskfolk 完整介绍',
     close: '关闭'
-  },
-  boundaries: {
-    heading: '哪些已经接入，哪些还在建，哪些不做',
-    intro: '「已接入」表示代码里有实现，不代表每种模型、工具组合和完整任务路径都通过了真实环境验收。',
-    colLive: '已接入',
-    colWip: '正在建设',
-    colAvoid: '明确不做',
-    rows: [
-      {
-        dim: '运行时底座',
-        live: 'macOS 桌面窗（Windows 为实验性预览）、常驻守护进程、本地共享工作区、SQLite 持久化；关窗不停，你自己的终端会话也由守护进程持有',
-        wip: '复杂真实场景下的长期稳定性验证',
-        avoid: '云电脑、云端计费、多用户 SaaS'
-      },
-      {
-        dim: '桌面工作台',
-        live: '主栏任意分屏，标签装会话、终端、日程图或工作区；一件事一张流程图；等你的事标在会话列表上，macOS 横幅与 Dock 角标',
-        wip: '几条会话同时可见时，只有当前那条会报在线，其余仍可能弹一次横幅',
-        avoid: '多窗口进程、手机上分屏'
-      },
-      {
-        dim: 'Bot 形态',
-        live: '持久名册、私聊、多 Bot 群、@ 点名、参与判断、异步交接；出了问题按类型记成质量事件，教训由应用在调用前执行；你接受的活交付后，在里面出过错的 Bot 复盘一次，改进自己的记忆和技能',
-        wip: '用长活实测这些保证：叫停之后还有没有副作用、规则丢没丢、打扰了你几次',
-        avoid: '用完即弃的对话框、中央裁决路由、轮数熔断'
-      },
-      {
-        dim: '模型与工具',
-        live: '多个 OpenAI 兼容或 Anthropic 兼容的端点，也可以让你本机登录的 Claude Code 跑一个 Bot（Claude Agent）；stdio 与 Streamable HTTP MCP；每个 Bot 有默认模型（按近 7 天用量推断，可以钉），要看图的活避开看不了图的模型，卡住了先提思考档、再沿你排的阶梯换模型；每轮的模型和原因记在流程图那一轮的卡片上',
-        wip: '阶梯和提档在真实长活里的效果，还没有实测',
-        avoid: '绑定单一厂商、供应商目录、假装兼容所有实现'
-      },
-      {
-        dim: '安全与权限',
-        live: '危险动作批准卡、密钥进钥匙串（Windows 上是凭据管理器）、Always allow 规则、私聊 Stop',
-        wip: '更细粒度的 MCP 权限治理',
-        avoid: '把 Bot 当安全沙箱、假装已具备完全自主权限'
-      },
-      {
-        dim: '对话管理应用',
-        live: '改人设和技能、建 Bot 和群、配端点、模型名单和 MCP，都可由 Bot 通过工具完成',
-        wip: '全部应用操作的对话覆盖（含首启向导）',
-        avoid: '每件事都要手点深层菜单'
-      },
-      {
-        dim: '工作方式模板',
-        live: '每一轮的系统指令、工具说明，以及整理、读句这些应用自己的调用，都是内置提示词：在设置里能改、能撤销、能恢复默认；Bot 能只读地查本机记录，拿依据提改动，在批准卡上由你放行；代码要读的输出格式锁着',
-        wip: '局面块、回路里的提示和转录文案也做成可改的提示词；用你改过的提示词跑评估',
-        avoid: '没人开口就在后台自我调优、Bot 不经你放行就改提示词、用提示词放宽批准或门禁'
-      },
-      {
-        dim: '远程访问',
-        live: '默认关闭的实验原型：自托管中继、端到端 Noise 加密；配对过的手机能看会话、回消息、处理批准、翻工作区、用终端；Android Chrome 真机上已走通，安装的应用即可登记中继、配对设备',
-        wip: '独立安全复核，iOS 主屏幕 Web Push 与 WebAuthn 用户验证的真机验收，把远控凭据从文件搬进钥匙串的打包门；在这之前公网配对保持关闭',
-        avoid: '项目方运营的云端中继、把实验原型当成可用的远控'
-      }
-    ],
-    footnote: ['详细方向见', '；领域词汇以', '为准。']
-  },
-  quickstart: {
-    heading: '下载，或从源码启动',
-    intro: 'MIT 协议开源。macOS 是主要平台，Alpha 快照已签名并经 Apple 公证；Windows 是实验性预览，还没有远程访问、桌面通知和应用内安装更新；Linux 暂不支持。',
-    requirements: '需要 Node.js 22+、pnpm 12.3.4、Bun 1.2+、Rust / Cargo。macOS 上另装 Tauri 的 macOS 前置依赖（含 Xcode Command Line Tools）；Windows 上用 Rust 的 MSVC 工具链和 Visual Studio Build Tools（勾选 C++ 桌面开发），再先编一次终端 helper，见开发说明。',
-    step1: '克隆并安装依赖',
-    step2: '并行启动守护进程与桌面窗',
-    firstRun: [
-      '选一个本机目录作为共享工作区，建议独立于源码仓库；不存在会自动创建。',
-      '首次打开的设置向导里选好工作区文件夹，再连接模型：选接口格式（OpenAI 兼容或 Anthropic 兼容），填端点 URL 和 API key，配好模型名单与默认模型；或者直接用这台电脑上已登录的 Claude Code，不用端点。',
-      '向导最后一步建第一个 Bot：名称、职责和边界已按通用助手填好，可直接创建或改成你要的样子，随即开始私聊。',
-      '让它创建其他 Bot、组群或提出 MCP 配置；需要批准时在应用里审核。'
-    ],
-    download: {
-      title: '下载 Alpha 快照',
-      body: '最新 GitHub Release 提供 Apple 芯片与 Intel 两种 .dmg，以及 Windows 预览版安装包 Deskfolk_<版本>_x64-setup.exe。Mac 版从 0.1.0-rc.16 起用 Developer ID 签名并经 Apple 公证，双击即可打开（应用里的昂贵动作仍会先问你）；Windows 安装包还未签名，SmartScreen 会提示未知发布者，点「更多信息」→「仍要运行」。',
-      link: '前往最新 Release',
-      faq: 'macOS 首次打开的完整说明',
-      windows: 'Windows 预览版说明'
-    },
-    linkDocs: '开发说明',
-    linkDocsSite: '文档',
-    linkGlossary: '术语表',
-    linkRoadmap: '路线图',
-    linkRemote: '远程访问'
   },
   footer: {
     tagline: '本机运行的单人 agent 协作应用，支持 macOS，Windows 为预览版。',
@@ -389,6 +260,11 @@ const zh: Dict = {
         title: '文档概览',
         blurb: '怎么装、怎么用，以及每个词指什么。',
         intro: '怎么装、怎么用 Deskfolk，以及它里面每个词指的是什么。先看「开始」，要细节去「指南」，词义以「术语表」为准。'
+      },
+      overview: {
+        title: '介绍与安装',
+        blurb: '它为什么可托付、适合谁、能做什么；下载、从源码启动、用本地模型，以及哪些已接入、哪些不做。',
+        intro: 'Deskfolk 把多天、多步、要返工的活交给 Bot，Bot 说做完的由应用先核过。这一页讲它凭什么可以托付、适合谁、能做什么，怎么装，以及现在哪些已经接入、哪些不做。'
       },
       gatekeeper: {
         title: 'macOS 首次打开',
@@ -445,9 +321,7 @@ const zh: Dict = {
 
 const en: Dict = {
   nav: {
-    demo: 'Full walkthrough',
-    boundaries: 'Boundaries',
-    quickstart: 'Run from source',
+    overview: 'About and install',
     docs: 'Docs',
     glossary: 'Glossary',
     roadmap: 'Roadmap',
@@ -474,24 +348,12 @@ const en: Dict = {
       { label: 'Stop is a state.', body: 'Only you lift it; nothing starts or acts past it (a Bot once kept going after "hold on").' },
       { label: 'Stalls get chased, without pestering you.', body: 'Work picks back up; you hear when needed (a job once sat 7.6 h).' }
     ],
-    wipNote: 'Alpha: a signed, Apple-notarized macOS build, with Windows as an experimental preview. Features and data structures may still change.',
     ctaPrimary: 'Download alpha',
-    ctaSecondary: 'Run from source',
-    runLabel: 'Runs locally',
-    runCommand: 'pnpm install && pnpm dev',
     copy: 'Copy',
-    copied: 'Copied',
-    scrollHint: 'Scroll to watch the full flow'
+    copied: 'Copied'
   },
   demo: {
-    heading: 'One promo film, from hand-off to sign-off',
-    intro:
-      'On the right is the real Deskfolk app, playing step by step as you scroll. It was recorded on a demo instance that started empty: the Bots answer with real models, and the video comes from Grok Imagine connected over MCP. Long steps play sped up, with the speed in the corner; only the desktop and tray menu in the walk-away step are composed.',
-    railLabel: 'Walkthrough progress',
     stillLabel: 'The Deskfolk window: the Launch group on the left with its flow below, and the finished promo film playing on the right',
-    play: 'Play this step',
-    replay: 'Play from the start',
-    enlarge: 'Enlarge this step',
     steps: [
       {
         title: 'Set the workspace and a model endpoint',
@@ -549,96 +411,23 @@ const en: Dict = {
       }
     ]
   },
-  film: {
-    watch: 'Play the full video',
-    watchHint: 'or watch the full video',
-    duration: '2:19',
-    title: 'Deskfolk, the full demo',
-    description: 'From first setup to a promo film handed off: asks kept, checks you confirm, a stop and a go-on, and a reviewed cut to come back to.',
+  home: {
+    beats: [
+      { line: 'Hand it off.', caption: 'One line, and it lays out tickets: who makes each, who reviews it.' },
+      { line: 'Walk away.', caption: 'Close the window; the app keeps an eye on the render.' },
+      { line: 'Return to results.', caption: 'Done means checks, a review and your OK all passed.' }
+    ],
+    stageLabel: 'Deskfolk, the real app',
+    download: 'Download alpha',
+    film: 'Watch the film',
+    filmDuration: '0:30',
+    filmTitle: 'The Deskfolk film',
+    filmDescription: 'Mochi (you) hands Pudding (your Bot) a job; Pudding takes it from there and stops to ask before touching anything outside the workspace; you walk away and come back to work that is done, and checked.',
+    note: 'macOS notarized, Windows preview',
+    tour: 'Full tour',
+    tourDuration: '1:26',
+    tourTitle: 'Deskfolk, the full tour',
     close: 'Close'
-  },
-  boundaries: {
-    heading: 'What is live, what is being built, what we will not do',
-    intro: '"Live" means the code exists. It does not mean every model, tool combination or full task path has been accepted in a real environment.',
-    colLive: 'Live',
-    colWip: 'In progress',
-    colAvoid: 'Not doing',
-    rows: [
-      {
-        dim: 'Runtime',
-        live: 'macOS window (Windows as an experimental preview), resident daemon, local shared workspace, SQLite state; closing the window stops nothing, and the daemon holds your own terminal sessions too',
-        wip: 'Long-running stability in complex real-world scenarios',
-        avoid: 'Cloud VMs, cloud billing, multi-user SaaS'
-      },
-      {
-        dim: 'Desktop workbench',
-        live: 'Split the main column any way; tabs hold a conversation, a terminal, the routine calendar or the workspace; one flow per job; what waits on you marked on the conversation list, with macOS banners and a Dock badge',
-        wip: 'With several conversations on screen only the current one reports presence, so the others can still post a banner once',
-        avoid: 'Multiple window processes, split panes on a phone'
-      },
-      {
-        dim: 'Bots',
-        live: 'Persistent roster, direct chats, multi-bot groups, @mentions, judgement, async handoffs; what goes wrong is filed by type as a quality event, with lessons enforced by the app before a call; once a job you accepted is delivered, each Bot that tripped up in it looks back once and improves its own memories and skills',
-        wip: 'Measuring these guarantees on long jobs: side effects after a stop, rules lost, how often you were interrupted',
-        avoid: 'Disposable chat boxes, a central dispatcher, turn-count breakers'
-      },
-      {
-        dim: 'Models and tools',
-        live: 'Multiple OpenAI-compatible or Anthropic-compatible endpoints, or a Bot run by your own signed-in Claude Code (Claude Agent); stdio and Streamable HTTP MCP; each Bot has a default model (inferred from the last 7 days of use, or pinned), work that needs to see images skips models that cannot, and a stuck job thinks harder, then climbs the ladder of models you order; each turn\'s model and why are kept on its card in the flow',
-        wip: 'How the ladder and stepping up do on real long jobs, not measured yet',
-        avoid: 'Vendor lock-in, a provider catalogue, pretending every implementation is compatible'
-      },
-      {
-        dim: 'Safety and permissions',
-        live: 'Approval cards for dangerous actions, secrets in the Keychain (Credential Manager on Windows), Always allow rules, Stop in direct chats',
-        wip: 'Finer-grained MCP permission policies',
-        avoid: 'Treating bots as security sandboxes, pretending full autonomy is safe'
-      },
-      {
-        dim: 'Managing the app by chat',
-        live: 'Bots edit profiles and skills, create bots and groups, configure endpoints, model lists and MCP through tools',
-        wip: 'Conversational coverage of every operation, including first-run setup',
-        avoid: 'Deep menus for everyday configuration'
-      },
-      {
-        dim: 'Way-of-working template',
-        live: 'Every turn\'s System section, the tool descriptions and the app\'s own calls, such as the organizer and the line readings, are built-in prompts: change them in Settings, undo a change or restore the default; a Bot reads this machine\'s records, read-only, and proposes a change from them that you let through on its approval card; the answer formats code reads stay locked',
-        wip: 'Making the situation block, in-loop notes and transcript lines editable prompts too; running evaluations on your edited prompts',
-        avoid: 'Tuning itself in the background unasked, Bots changing a prompt without your OK, prompts that loosen approvals or gates'
-      },
-      {
-        dim: 'Remote access',
-        live: 'A default-off experimental prototype: a self-hosted relay and end-to-end Noise encryption; a paired phone reads and answers conversations, handles approvals, browses the workspace and uses your terminals; checked on a real Android phone in Chrome; the installed app registers with a relay and pairs devices',
-        wip: 'Independent security review, real-device checks of iOS home-screen Web Push and WebAuthn user verification, and the packaging gate that moves remote credentials from a file into the Keychain; public pairing stays off until then',
-        avoid: 'A project-run cloud relay, passing a prototype off as working remote access'
-      }
-    ],
-    footnote: ['See the ', ' for direction; the ', ' is the source of truth for vocabulary.']
-  },
-  quickstart: {
-    heading: 'Download, or run from source',
-    intro: 'Open source under MIT. macOS is the primary platform, and its alpha snapshot is signed and notarized by Apple; Windows is an experimental preview, without remote access, desktop notifications or in-app update install yet; Linux is not supported.',
-    requirements: 'Requires Node.js 22+, pnpm 12.3.4, Bun 1.2+ and Rust / Cargo. On macOS, add the Tauri macOS prerequisites (including Xcode Command Line Tools); on Windows, Rust\'s MSVC toolchain and Visual Studio Build Tools (Desktop development with C++), plus a one-time build of the terminal helper — see the development guide.',
-    step1: 'Clone and install',
-    step2: 'Start the daemon and the desktop window in parallel',
-    firstRun: [
-      'Pick a local folder as the shared workspace, ideally outside the source checkout; missing folders are created.',
-      'In the setup wizard that opens on first launch, choose the workspace folder, then connect a model: pick the API format (OpenAI-compatible or Anthropic-compatible) and enter the endpoint URL and API key, then the model list and default model; or use the Claude Code signed in on this computer, with no endpoint.',
-      'The wizard\'s last step creates the first bot: its name, duties and boundaries come filled in for a general assistant, to create as is or make your own, and its direct chat opens.',
-      'Ask it to create other bots, form groups or propose MCP configuration; approve dangerous actions in the app.'
-    ],
-    download: {
-      title: 'Download the alpha snapshot',
-      body: 'The latest GitHub Release ships .dmg files for Apple silicon and Intel, and a Windows preview installer, Deskfolk_<version>_x64-setup.exe. From 0.1.0-rc.16 the Mac builds are signed with Developer ID and notarized by Apple, so they open with a double-click (expensive actions inside the app still ask first). The Windows installer is not signed yet: SmartScreen warns about an unknown publisher (More info → Run anyway).',
-      link: 'Go to the latest release',
-      faq: 'Full first-launch guide for macOS',
-      windows: 'About the Windows preview'
-    },
-    linkDocs: 'Development guide',
-    linkDocsSite: 'Docs',
-    linkGlossary: 'Glossary',
-    linkRoadmap: 'Roadmap',
-    linkRemote: 'Remote access'
   },
   footer: {
     tagline: 'A single-user agent collaboration app for macOS, with a Windows preview.',
@@ -682,6 +471,11 @@ const en: Dict = {
         title: 'Docs overview',
         blurb: 'Installing, using, and what each word means.',
         intro: 'How to install and use Deskfolk, and what each word in it means. Start with Get started, go to Guides for the details; the Glossary settles what a word means.'
+      },
+      overview: {
+        title: 'About and install',
+        blurb: 'Why it can be trusted with a job, who it is for, what it does; download, run from source, local models, and what is live and what is not.',
+        intro: 'Deskfolk hands multi-day, multi-step jobs that need rework to Bots, and checks first when a Bot says done. This page covers why you can hand it over, who it is for, what it does, how to install it, and what is live today and what is not.'
       },
       gatekeeper: {
         title: 'First launch on macOS',

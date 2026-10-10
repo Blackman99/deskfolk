@@ -47,5 +47,5 @@ The Keychain knew an older build only by a hash that changed with every release,
 
 ## Related
 
-- [README — Get it](../README.md#get-it)
+- [About and install — Get it](overview.md#get-it)
 - [Development guide](development.md)

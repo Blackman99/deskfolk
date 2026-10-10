@@ -6,7 +6,11 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
-(none)
+### Site and README
+
+- The home page is one screen: the headline "Hand it off. Walk away. Return to results." is the player, each line lighting up while its clip of the real app plays, round and round; click a line to jump to it. Below it: Download alpha, the 30-second film and the full tour (1:26).
+- The README is pictures and the films only. Its text, the "what is live and what is not" table and the install steps moved to a new **About and install** page (`docs/overview.md`, `/en/overview` on the site), which the nav now links in place of Full walkthrough, Boundaries and Run from source.
+- The 2:15 real-app demo film (`/media/deskfolk-zh.mp4`, `/media/deskfolk-en.mp4`) is gone from the site; the 0:30 film and the 1:26 tour remain.
 
 ## 0.1.0-rc.16 — 2026-10-10
 

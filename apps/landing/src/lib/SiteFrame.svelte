@@ -29,10 +29,11 @@
     return pathname.startsWith(prefix) ? pathname.slice(prefix.length) : pathname;
   });
   const onRoadmap = $derived(rest === '/roadmap');
-  /** Every docs page but the roadmap, which has its own entry. */
+  const onOverview = $derived(rest === docsPath('overview'));
+  /** Every docs page but the roadmap and the overview, which have their own entries. */
   const onDocs = $derived(
     DOCS_NAV.flatMap((g) => g.pages)
-      .filter((key) => key !== 'roadmap')
+      .filter((key) => key !== 'roadmap' && key !== 'overview')
       .some((key) => rest === docsPath(key) || rest.startsWith(`${docsPath(key)}/`))
   );
   const onHome = $derived(page.url.pathname.replace(/\/$/, '') === `${base}/${lang}`);
@@ -60,10 +61,8 @@
       </a>
 
       <nav class="links" aria-label="Sections">
-        <a href="{base}/{lang}#demo">{t.nav.demo}</a>
-        <a href="{base}/{lang}#boundaries">{t.nav.boundaries}</a>
         <a href={LATEST_RELEASE_URL} target="_blank" rel="noreferrer">{t.nav.download}</a>
-        <a href="{base}/{lang}#quickstart">{t.nav.quickstart}</a>
+        <a href="{base}/{lang}/overview" class:current={onOverview} aria-current={onOverview ? 'page' : undefined}>{t.nav.overview}</a>
         <a href="{base}/{lang}/docs" class:current={onDocs} aria-current={onDocs ? 'page' : undefined}>{t.nav.docs}</a>
         <a href="{base}/{lang}/roadmap" class:current={onRoadmap} aria-current={onRoadmap ? 'page' : undefined}>{t.nav.roadmap}</a>
       </nav>
@@ -94,10 +93,8 @@
 
     {#if menuOpen}
       <nav id="site-menu" class="menu" aria-label={t.nav.menu}>
-        <a href="{base}/{lang}#demo" onclick={() => (menuOpen = false)}>{t.nav.demo}</a>
-        <a href="{base}/{lang}#boundaries" onclick={() => (menuOpen = false)}>{t.nav.boundaries}</a>
         <a href={LATEST_RELEASE_URL} target="_blank" rel="noreferrer">{t.nav.download}</a>
-        <a href="{base}/{lang}#quickstart" onclick={() => (menuOpen = false)}>{t.nav.quickstart}</a>
+        <a href="{base}/{lang}/overview" class:current={onOverview} aria-current={onOverview ? 'page' : undefined}>{t.nav.overview}</a>
         <a href="{base}/{lang}/docs" class:current={onDocs} aria-current={onDocs ? 'page' : undefined}>{t.nav.docs}</a>
         <a href="{base}/{lang}/roadmap" class:current={onRoadmap} aria-current={onRoadmap ? 'page' : undefined}>{t.nav.roadmap}</a>
         <a href={switchedPath} hreflang={targetLang}>{t.nav.switchLang}</a>
@@ -119,7 +116,7 @@
       </div>
       <nav class="foot-links" aria-label="Footer">
         <a href={LATEST_RELEASE_URL} target="_blank" rel="noreferrer">{t.nav.download}</a>
-        <a href="{base}/{lang}#boundaries">{t.nav.boundaries}</a>
+        <a href="{base}/{lang}/overview">{t.nav.overview}</a>
         <a href="{base}/{lang}/docs">{t.nav.docs}</a>
         <a href="{base}/{lang}/manifesto">{t.nav.glossary}</a>
         <a href="{base}/{lang}/roadmap">{t.nav.roadmap}</a>
@@ -138,8 +135,8 @@
     flex-direction: column;
   }
 
-  /* The walkthrough's stage grows with a wide screen, up to the clips' own 1480px beside the copy;
-     the nav, the other sections and the footer line up with it. */
+  /* The hero's stage grows with a wide screen, up to the clips' own 1480px beside the headline;
+     the nav and the footer line up with it. */
   .site.home {
     --page-max: 2080px;
   }

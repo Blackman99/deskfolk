@@ -159,11 +159,11 @@ test('the remote-access guide renders per language, with its links resolved from
   expect(en.contentHtml).toContain('<div class="codeblock"><pre>');
 });
 
-test('the Gatekeeper guide shows its screenshot from the site and links home for downloads', () => {
+test('the Gatekeeper guide shows its screenshot from the site and links to the install section', () => {
   const zh = getDocumentContent('gatekeeper', 'zh');
   expect(zh.contentHtml).toContain('src="/docs-assets/gatekeeper-2step.png"');
-  expect(zh.contentHtml).toContain('href="/zh#quickstart"');
-  expect(getDocumentContent('gatekeeper', 'en').contentHtml).toContain('href="/en#quickstart"');
+  expect(zh.contentHtml).toContain(`href="/zh/overview#${encodeURIComponent('获取')}"`);
+  expect(getDocumentContent('gatekeeper', 'en').contentHtml).toContain('href="/en/overview#get-it"');
   expect(publishedAssets()).toEqual(['gatekeeper-2step.png']);
 });
 

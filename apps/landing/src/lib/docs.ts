@@ -13,7 +13,7 @@ export const MANIFESTO_TOPICS = [
 export type ManifestoTopic = (typeof MANIFESTO_TOPICS)[number];
 
 /** Guides published from docs/, each at `/<lang>/<key>`, in sidebar order. */
-export const GUIDES = ['gatekeeper', 'windows', 'routines', 'spend', 'remote'] as const;
+export const GUIDES = ['overview', 'gatekeeper', 'windows', 'routines', 'spend', 'remote'] as const;
 export type Guide = (typeof GUIDES)[number];
 
 export const DOCS_PAGE_KEYS = ['docs', ...GUIDES, 'manifesto', ...MANIFESTO_TOPICS, 'roadmap'] as const;
@@ -22,7 +22,7 @@ export type DocsPageKey = (typeof DOCS_PAGE_KEYS)[number];
 export type DocsNavGroupId = 'start' | 'guides' | 'glossary' | 'direction';
 
 export const DOCS_NAV: { group: DocsNavGroupId; pages: DocsPageKey[] }[] = [
-  { group: 'start', pages: ['docs', 'gatekeeper', 'windows'] },
+  { group: 'start', pages: ['docs', 'overview', 'gatekeeper', 'windows'] },
   { group: 'guides', pages: ['routines', 'spend', 'remote'] },
   { group: 'glossary', pages: ['manifesto', ...MANIFESTO_TOPICS] },
   { group: 'direction', pages: ['roadmap'] }
