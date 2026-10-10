@@ -162,7 +162,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
   const endings = createTurnEndings(deps);
   const closingReply = createClosingReply(deps, endings);
   // A job on a Claude rung of the model ladder (ADR 0076) runs its turn as a Claude Agent turn on that rung.
-  const hopLoop = createHopLoop(deps, endings, closingReply, (turnId, rung) => agentRunner.runAgentTurn(turnId, rung));
+  const hopLoop = createHopLoop(deps, endings, closingReply, (turnId, rung, why) => agentRunner.runAgentTurn(turnId, rung, why));
   const hearing = createHearing(deps);
   const { executionOf, crashTurn, interruptTurn, failTurn } = endings;
   const { settleClosingReply } = closingReply;
@@ -508,7 +508,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
           // The model you set on its ticket decides instead (ADR 0049, ADR 0079): a local agent's runs
           // there, as a ladder rung does, an endpoint's in the app's own loop.
           const ticketModel = store.turnTicketModel(turn.id);
-          if (isTicketAgentModel(ticketModel)) await agentRunner.runAgentTurn(turn.id, ticketModel);
+          if (isTicketAgentModel(ticketModel)) await agentRunner.runAgentTurn(turn.id, ticketModel, "ticket_override");
           else if (!ticketModel && runsOnAgent(turn.bot_id)) await agentRunner.runAgentTurn(turn.id);
           else await runTurn(turn.id);
         } catch (error) {

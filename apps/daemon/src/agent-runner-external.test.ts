@@ -357,8 +357,9 @@ test("the model you set on a ticket decides who runs its turns: a local agent's 
   await h.post("做这一张");
   expect(h.lines("bot")).toEqual(["Grok 按工单的模型做完了"]);
   expect(h.seen().some((entry) => entry.method === "session/set_config_option" && (entry.params as { value?: string }).value === "grok-4.7")).toBe(true);
-  const route = h.store.db.query<{ model: string; reason_code: string | null }, []>("SELECT model, reason_code FROM turn_route_decisions").get();
-  expect(route).toEqual({ model: "grok-4.7", reason_code: "agent_grok" });
+  // The record says why: the ticket's model, not a climb up the ladder.
+  const route = h.store.db.query<{ model: string; reason_code: string | null; base_reason_code: string | null }, []>("SELECT model, reason_code, base_reason_code FROM turn_route_decisions").get();
+  expect(route).toEqual({ model: "grok-4.7", reason_code: "agent_grok", base_reason_code: "ticket_override" });
 });
 
 test("an endpoint's model on a ticket runs a Bot that is usually Grok's in the app's own loop, on that model", async () => {

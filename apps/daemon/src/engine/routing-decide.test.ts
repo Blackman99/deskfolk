@@ -109,6 +109,12 @@ test("a ticket's model can be a local agent's: checked as a ladder rung, and the
   expect(() => f.store.patchTicketByUser(ticketId, { modelOverride: { runner: "nope", model: "x" } as never })).toThrow();
   expect(() => f.store.patchTicketByUser(ticketId, { modelOverride: { runner: "codex", model: "gpt", config_dir: "/tmp/not-listed" } })).toThrow();
   expect(() => f.store.patchTicketByUser(ticketId, { modelOverride: { runner: "custom", model: "x", custom_id: "gone" } })).toThrow();
+  // A custom agent a ticket still to be done runs on cannot be taken away; once it is done, it can.
+  const [kimi] = f.store.setCustomAgents([{ name: "Kimi", command: "/usr/local/bin/kimi", args: [] }]);
+  f.store.patchTicketByUser(ticketId, { modelOverride: { runner: "custom", model: "k3", custom_id: kimi!.id } });
+  expect(() => f.store.setCustomAgents([])).toThrow("母带");
+  f.store.db.run("UPDATE tickets SET status = 'done' WHERE id = ?", [ticketId]);
+  expect(f.store.setCustomAgents([])).toEqual([]);
   // Cleared, the Bot's own route again.
   f.store.patchTicketByUser(ticketId, { modelOverride: null });
   expect(f.routing.decideRoute(f.bot.id, f.creds, "做", f.turn.id)!.agent).toBeUndefined();

@@ -27,11 +27,12 @@ type Hop = "next" | "end" | "drop";
 type Listed = Awaited<ReturnType<McpHost["listForTurn"]>>;
 
 /**
- * `onAgentRung`: a job that climbed the model ladder onto a Claude rung (ADR 0076) has this turn
- * worked by Claude Code on that rung instead of the hop loop.
+ * `onAgentRung`: a job that climbed the model ladder onto a local agent's rung (ADR 0076), or whose
+ * ticket names an agent's model (ADR 0079), has this turn worked by that agent instead of the hop
+ * loop; `why` is the route's reason, kept as the record's first reason.
  */
 export function createHopLoop(deps: LifecycleDeps, endings: TurnEndings, closingReply: ClosingReply,
-  onAgentRung: (turnId: string, rung: ModelLadderAgentRung) => Promise<void>) {
+  onAgentRung: (turnId: string, rung: ModelLadderAgentRung, why: string) => Promise<void>) {
   const { store, publish, publishTurn, occurred, mcp, completions, lives, active, credentials, agentRoute, targetFor, decideRoute, routingTarget, spendOwner, callOf, recordSpend, recordResponseSpend, closeChain, holdChain, inspectForTurn, executeTools, completeSilent } = deps;
   const { failTurn, retryOrFail } = endings;
   const { settleClosingReply } = closingReply;
@@ -141,7 +142,7 @@ export function createHopLoop(deps: LifecycleDeps, endings: TurnEndings, closing
       return null;
     }
     if (routed.agent) {
-      await onAgentRung(turnId, routed.agent);
+      await onAgentRung(turnId, routed.agent, routed.decision.reasonCode ?? "escalation_model");
       return null;
     }
     const target = routed.target;

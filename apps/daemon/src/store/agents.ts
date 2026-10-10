@@ -111,6 +111,8 @@ export function setAgentConfigDirs(ctx: StoreContext, runner: BotRunner, value: 
     if (ladderAgentConfigDirs(ctx, runner).some((used) => sameConfigDir(used, dir))) {
       throw new HttpError(409, "conflict", `${tildeDir(dir)} is the ${label} account of a rung on the model ladder: take that rung off or move it to another account first`);
     }
+    const ticket = openTicketOn(ctx, (model) => model.runner === runner && typeof model.config_dir === "string" && sameConfigDir(model.config_dir, dir));
+    if (ticket) throw new HttpError(409, "conflict", `${tildeDir(dir)} is the ${label} account the ticket "${ticket}" runs on: give it another model first`);
   }
   setSetting(ctx, `${runner}_config_dirs`, dirs.length > 0 ? JSON.stringify(dirs) : "");
   return dirs;
@@ -164,6 +166,22 @@ export function customAgent(ctx: StoreContext, id: string | null | undefined): C
   return customAgents(ctx).find((agent) => agent.id === id) ?? null;
 }
 
+/** The title of a ticket still to be done whose model (ADR 0079) is one `uses` picks out; null when none. */
+function openTicketOn(ctx: StoreContext, uses: (model: Record<string, unknown>) => boolean): string | null {
+  const rows = ctx.db
+    .query<{ title: string; model_override: string }, []>("SELECT title, model_override FROM tickets WHERE model_override IS NOT NULL AND status NOT IN ('done', 'parked')")
+    .all();
+  for (const row of rows) {
+    try {
+      const model = JSON.parse(row.model_override) as Record<string, unknown>;
+      if (model && typeof model === "object" && uses(model)) return row.title;
+    } catch {
+      // Not a model at all: nothing it runs on.
+    }
+  }
+  return null;
+}
+
 /**
  * The whole list, as Settings sends it: each with a name, an absolute command and its arguments; an
  * entry without an id is new and gets one. One a Bot, a built-in call or a ladder rung runs on
@@ -202,6 +220,8 @@ export function setCustomAgents(ctx: StoreContext, value: unknown): CustomAgent[
         throw new HttpError(409, "conflict", `${gone.name} runs the built-in call ${role}: choose another model for it first`);
       }
     }
+    const ticket = openTicketOn(ctx, (model) => model.runner === "custom" && model.custom_id === gone.id);
+    if (ticket) throw new HttpError(409, "conflict", `${gone.name} runs the ticket "${ticket}": give it another model first`);
     try {
       const rungs = JSON.parse(setting(ctx, "model_ladder") || "[]") as unknown;
       if (Array.isArray(rungs) && rungs.some((rung) => rung?.runner === "custom" && rung.custom_id === gone.id)) {

@@ -165,5 +165,16 @@ test("on a phone, a picker of one source opens on its models, the rows that are 
   await settle();
   expect(view.host.querySelector(`[aria-label="${t.modelPicker.back}"]`)).toBeNull();
   expect(visibleRows(view.host)).toEqual(["Codex 默认", "GPT-5.6-Terra"]);
+  // Its search finds the row above the models too; Escape clears it, and goes no further than the sheet.
+  const search = view.host.querySelector<HTMLInputElement>(".mp-search input")!;
+  fill(search, "默认");
+  expect(visibleRows(view.host)).toEqual(["Codex 默认"]);
+  let leaked = 0;
+  const outside = (event: KeyboardEvent) => { if (event.key === "Escape") leaked += 1; };
+  document.addEventListener("keydown", outside);
+  press(search, "Escape");
+  document.removeEventListener("keydown", outside);
+  expect(leaked).toBe(0);
+  expect(search.value).toBe("");
 });
 

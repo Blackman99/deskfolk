@@ -39,14 +39,14 @@ import type { AgentDriver, AgentEvent, AgentHost, AgentSession, AppTerminal, Gat
 import { decideAction, type AppAction } from "./policy";
 import { AgentStartError } from "./drivers/acp";
 
-/** What the runner was asked for: from the Bot, or from the ladder rung the job climbed to. */
+/** What the runner was asked for: from the Bot, or from a ladder rung or the ticket's model (`baseReason` says which). */
 export type ExternalSettings = {
   runner: Exclude<BotRunner, "claude_code">;
   custom: CustomAgent | null;
   model: string | null;
   effort: string | null;
   configDir: string | null;
-  climbed: boolean;
+  baseReason: string | null;
 };
 
 /** The resolved command and environment (`agents/runtime.ts`). */
@@ -109,7 +109,7 @@ export async function runExternalSession(input: {
     store.recordTurnRoute({
       turnId,
       decision: { providerId: "", model: settings.model ?? "default", thinkingLevel: settings.effort ?? "default",
-        signature: classifyMessage(triggerBody), reasonCode: `agent_${settings.runner}`, ...(settings.climbed ? { baseReasonCode: "escalation_model" } : {}) },
+        signature: classifyMessage(triggerBody), reasonCode: `agent_${settings.runner}`, ...(settings.baseReason ? { baseReasonCode: settings.baseReason } : {}) },
       continuesPrevious: false,
     });
   } catch {

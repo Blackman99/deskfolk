@@ -121,14 +121,15 @@ export type AgentRunnerDeps = {
 
 export type AgentRunner = {
   /**
-   * `rung`: a local agent's rung of the model ladder the job climbed to (ADR 0076), worked on in
-   * place of the Bot's own agent settings — on whichever agent the rung names.
+   * `rung`: a local agent's rung of the model ladder the job climbed to (ADR 0076), or the agent's
+   * model set on the turn's ticket (ADR 0079), worked on in place of the Bot's own agent settings —
+   * on whichever agent it names. `why` is what the route record keeps as the first reason.
    */
-  runAgentTurn(turnId: string, rung?: ModelLadderAgentRung): Promise<void>;
+  runAgentTurn(turnId: string, rung?: ModelLadderAgentRung, why?: string): Promise<void>;
 };
 
 /** What a Claude Agent turn asks Claude Code for: the model, the effort, and the account it spends. */
-type AgentSettings = { model: string | null; effort: string | null; configDir: string | null; climbed: boolean };
+type AgentSettings = { model: string | null; effort: string | null; configDir: string | null; baseReason: string | null };
 
 type ModelTotals = { input: number; output: number; cached: number; cost: number };
 
@@ -311,7 +312,7 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
     return child as unknown as SpawnedProcess;
   }
 
-  async function runAgentTurn(turnId: string, rung?: ModelLadderAgentRung): Promise<void> {
+  async function runAgentTurn(turnId: string, rung?: ModelLadderAgentRung, why = "escalation_model"): Promise<void> {
     const live = lives.get(turnId);
     if (!live) return;
     live.agent = true;
@@ -332,13 +333,13 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
         model: rung ? rung.model : bot.agent_model ?? null,
         effort: rung ? rung.effort : bot.agent_effort ?? null,
         configDir: rung ? rung.config_dir : bot.agent_config_dir ?? null,
-        climbed: Boolean(rung),
+        baseReason: rung ? why : null,
       });
       return;
     }
     const settings: AgentSettings = rung
-      ? { model: rung.model, effort: rung.effort, configDir: rung.config_dir, climbed: true }
-      : { model: bot.agent_model ?? null, effort: bot.agent_effort ?? null, configDir: bot.agent_config_dir ?? null, climbed: false };
+      ? { model: rung.model, effort: rung.effort, configDir: rung.config_dir, baseReason: why }
+      : { model: bot.agent_model ?? null, effort: bot.agent_effort ?? null, configDir: bot.agent_config_dir ?? null, baseReason: null };
     const locale = store.settingsCached().locale;
     live.locale = locale;
     const status = deps.claudeCode ? await deps.claudeCode.current() : null;
@@ -425,7 +426,7 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
       store.recordTurnRoute({
         turnId,
         decision: { providerId: "", model: settings.model ?? "default", thinkingLevel: settings.effort ?? "default",
-          signature: classifyMessage(triggerBody), reasonCode: "claude_code", ...(settings.climbed ? { baseReasonCode: "escalation_model" } : {}) },
+          signature: classifyMessage(triggerBody), reasonCode: "claude_code", ...(settings.baseReason ? { baseReasonCode: settings.baseReason } : {}) },
         continuesPrevious: false,
       });
     } catch {

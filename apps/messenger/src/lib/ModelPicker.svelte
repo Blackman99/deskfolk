@@ -83,8 +83,8 @@
 	const activeSource = $derived(data.sources.find((source) => source.key === activeKey) ?? usable[0] ?? data.sources[0] ?? null);
 	const sheetAt = $derived(data.sources.find((source) => source.key === sheetSource) ?? null);
 	const sheetGroupAt = $derived(sheetAt?.groups.find((group) => group.key === sheetGroup) ?? null);
-	/** Where a search looks: everything, or the source the sheet is in. */
-	const scope = $derived(phone.current ? sheetSource : null);
+	/** Where a search looks: everything, or the source the sheet is in (a picker of one source: all of it, the rows above it too). */
+	const scope = $derived(phone.current && many ? sheetSource : null);
 	const trimmed = $derived(query.trim());
 	const results = $derived(trimmed ? searchPicker(data, trimmed, scope) : []);
 	/** The source a typed name would be for: the one in view, if it takes typed names. */
@@ -444,7 +444,7 @@
 				autocomplete="off"
 				autocapitalize="off"
 				spellcheck="false"
-				onkeydown={phone.current ? (event) => { if (event.key === 'Escape') { event.preventDefault(); if (query) query = ''; else sheetBack(); } } : onSearchKeydown}
+				onkeydown={phone.current ? (event) => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); if (query) query = ''; else sheetBack(); } } : onSearchKeydown}
 			/>
 		</div>
 	{/snippet}

@@ -76,6 +76,8 @@ On 2026-10-10 on this Mac, first with probe scripts, then through the real engin
 
 ## 缺口 / Not done
 
+- 任务上选的 Agent 模型用那个 Agent 的默认思考强度和默认账号：看板上还不能为一张任务单独选思考强度或账号（阶梯上的一级可以）。/ A ticket's agent model runs at the agent's default effort and on its default account; unlike a ladder rung, the board cannot set either per ticket.
+- 选择器里「运行方式」还是单独一个下拉，没有并进模型选择器：选 Bot 的模型时先定谁来跑，再在它的模型里选。/ The runner stays its own dropdown beside the model picker; the two are not merged.
 - 没问就做的调用只能事后查：查到会停下这一轮，但那一下已经做了（OpenCode 读区内文件不问，Antigravity 什么都不问）。/ A call made without asking is only checked afterwards: the turn stops, but that call has already run.
 - Antigravity 拿不到应用的工具，也不能被插话打断；它的工具权限按你在 `agy` 里设的，应用不改。/ Antigravity has no app tools and cannot be cut short; its tool permission is the one you set in `agy`.
 - ACP 只报上下文大小和费用：Grok、OpenCode 这一轮花了多少 token 没有记录，用量里只有轮数。/ ACP agents report context size and cost only, so Grok and OpenCode turns record no tokens.
