@@ -31,7 +31,30 @@ export const FAIL_REASON = {
   agent_signed_out: { zh: "本机的 Claude Code 没通过认证：在终端里运行 claude，确认它能用后再继续", en: "Your Claude Code could not authenticate: run claude in a terminal, check it works, then go on" },
   agent_limit: { zh: "Claude 的用量额度用完了", en: "Claude usage limit reached" },
   agent_exited: { zh: "Claude Code 中途退出了", en: "Claude Code exited mid-turn" },
+  // ADR 0079: a local agent that ran a call the app never saw, out of the workspace or on credentials.
+  agent_unguarded: {
+    zh: "本机 Agent 没先问就动了工作区外的东西或凭据，这一轮已停下",
+    en: "The local agent acted outside the workspace or on credentials without asking, so the turn was stopped",
+  },
 } as const;
+
+/**
+ * The same failures for a local agent other than Claude Code (ADR 0079), named as the app shows
+ * it (`Codex`, `Grok`, your own agent's name): the Claude wording above stays Claude's.
+ */
+const AGENT_FAIL_REASON: Partial<Record<FailKind, { zh: (agent: string) => string; en: (agent: string) => string }>> = {
+  agent_missing: { zh: (agent) => `这台电脑上没找到 ${agent}`, en: (agent) => `${agent} was not found on this computer` },
+  agent_signed_out: {
+    zh: (agent) => `本机的 ${agent} 没通过认证：在终端里登录它，确认能用后再继续`,
+    en: (agent) => `Your ${agent} could not authenticate: sign it in from a terminal, check it works, then go on`,
+  },
+  agent_limit: { zh: (agent) => `${agent} 的用量额度用完了`, en: (agent) => `${agent} usage limit reached` },
+  agent_exited: { zh: (agent) => `${agent} 中途退出了`, en: (agent) => `${agent} exited mid-turn` },
+  agent_unguarded: {
+    zh: (agent) => `${agent} 没先问就动了工作区外的东西或凭据，这一轮已停下`,
+    en: (agent) => `${agent} acted outside the workspace or on credentials without asking, so the turn was stopped`,
+  },
+};
 
 export type FailKind = keyof typeof FAIL_REASON;
 
@@ -62,9 +85,13 @@ export function contextFullDetail(locale: Locale, cut: { estimated: number; read
   return parts.join(en ? "; " : "，");
 }
 
-/** `detail` says more where the kind alone cannot, e.g. when a usage limit resets. */
-export function completionFailBody(locale: Locale, kind: FailKind, detail?: string | null): string {
-  const base = FAIL_REASON[kind][locale];
+/**
+ * `detail` says more where the kind alone cannot, e.g. when a usage limit resets. `agent`: the local
+ * agent other than Claude Code the turn ran on, named in its own failures.
+ */
+export function completionFailBody(locale: Locale, kind: FailKind, detail?: string | null, agent?: string | null): string {
+  const named = agent ? AGENT_FAIL_REASON[kind]?.[locale] : undefined;
+  const base = named ? named(agent!) : FAIL_REASON[kind][locale];
   const reason = detail ? (locale === "en" ? `${base} (${detail})` : `${base}（${detail}）`) : base;
   return locale === "en" ? COMPLETION_FAIL.en(reason) : COMPLETION_FAIL.zh(reason);
 }

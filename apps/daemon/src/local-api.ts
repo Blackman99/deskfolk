@@ -1,4 +1,7 @@
-import { isLadderClaudeRung, isNonReceiptPath, LOCAL_API_NAME, type CapabilitiesResponse, type ClientEvent, type HealthResponse, type NotificationFilter, type RuntimeSnapshot, type SessionSnapshot, type StreamFrame, type ToolFrame, type WsAuthMessage } from "@real-bot/protocol";
+import { handleAgentMcp, isAgentMcpPath } from "./agent-mcp/bridge";
+import { createAgentProbe } from "./agents/status";
+import { createAgentUsageProbe } from "./agents/usage";
+import { isLadderAgentRung, isNonReceiptPath, LOCAL_API_NAME, type CapabilitiesResponse, type ClientEvent, type HealthResponse, type NotificationFilter, type RuntimeSnapshot, type SessionSnapshot, type StreamFrame, type ToolFrame, type WsAuthMessage } from "@real-bot/protocol";
 import { warmDisplayAvatar } from "./avatar-display";
 import { createClaudeCodeProbe } from "./claude-code/probe";
 import { createClaudeUsageProbe } from "./claude-code/usage";
@@ -58,9 +61,16 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
     inUse: () => [
       ...options.store.listBots().filter((bot) => bot.runner === "claude_code").map((bot) => bot.agent_config_dir ?? null),
       // A Claude rung of the model ladder spends its account too (ADR 0076).
-      ...options.store.modelLadder().flatMap((rung) => (isLadderClaudeRung(rung) ? [rung.config_dir] : [])),
+      ...options.store.modelLadder().flatMap((rung) => (isLadderAgentRung(rung) && rung.runner === "claude_code" ? [rung.config_dir] : [])),
     ],
   });
+  // Your other local agents (ADR 0079): what each is, and the usage of those something runs on.
+  options.agents ??= createAgentProbe({
+    path: (runner) => options.store.agentPath(runner),
+    configDirs: (runner) => options.store.agentConfigDirs(runner),
+    customAgents: () => options.store.customAgents(),
+  });
+  options.agentUsage ??= createAgentUsageProbe({ store: options.store });
   const sockets = new Set<Bun.ServerWebSocket<SocketData>>();
   const timers = new Map<Bun.ServerWebSocket<SocketData>, ReturnType<typeof setTimeout>>();
 
@@ -261,7 +271,9 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
     // of reading it. So is a developer's raise of the engine level past an older installed app
     // (ADR 0041): that is for whoever sits at this Mac, never for a phone. Your Claude Code is the
     // one /v1/runtime route a phone reaches (ADR 0061): it sets Claude Agent up from there too.
-    const claudeCodeRoute = url.pathname === "/v1/runtime/claude-code" || url.pathname.startsWith("/v1/runtime/claude-code/");
+    // So are your other local agents and your own ACP agents (ADR 0079).
+    const claudeCodeRoute = url.pathname === "/v1/runtime/claude-code" || url.pathname.startsWith("/v1/runtime/claude-code/")
+      || url.pathname === "/v1/runtime/agents" || url.pathname.startsWith("/v1/runtime/agents/") || url.pathname === "/v1/runtime/custom-agents";
     if (
       !url.pathname.startsWith("/v1/") ||
       (url.pathname.startsWith("/v1/runtime") && !claudeCodeRoute) ||
@@ -662,6 +674,10 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
       }
       return undefined;
     }
+
+    // A local agent's own MCP connection to the app's tools (ADR 0079): its per-segment token is
+    // the credential, not the daemon's; loopback only, never on the relay.
+    if (isAgentMcpPath(path)) return handleAgentMcp(request, (held) => server.timeout(held, 0));
 
     const token = readBearer(request.headers.get("Authorization"));
     if (!token || token !== options.token) {

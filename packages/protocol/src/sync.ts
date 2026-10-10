@@ -127,6 +127,8 @@ export function isNonReceiptPath(path: string): boolean {
     || withoutQuery === "/v1/workspace/trash"
     || withoutQuery === "/v1/notification-presence"
     || withoutQuery.startsWith("/v1/runtime/claude-code/")
+    || withoutQuery.startsWith("/v1/runtime/agents/")
+    || withoutQuery === "/v1/runtime/custom-agents"
     || withoutQuery === "/v1/terminals"
     || withoutQuery.startsWith("/v1/terminals/")
     || withoutQuery.startsWith("/v1/streams/");

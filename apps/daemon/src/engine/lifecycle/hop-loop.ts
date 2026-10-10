@@ -1,5 +1,5 @@
 /** The app's own hop loop: a turn's model calls, tool calls and what it is told between them, until its closing reply. */
-import { isLocalEndpoint, type ModelLadderClaudeRung, type Turn, type Message } from "@real-bot/protocol";
+import { isLocalEndpoint, type ModelLadderAgentRung, type Turn, type Message } from "@real-bot/protocol";
 import type { ChatMessage, CompletionOk, CompletionResult } from "../../completions";
 import { nearWindow, planCompaction, capacityBytes, compactNote, hopsIn } from "../../compaction";
 import { assembleTurnMessages } from "../../context";
@@ -27,11 +27,11 @@ type Hop = "next" | "end" | "drop";
 type Listed = Awaited<ReturnType<McpHost["listForTurn"]>>;
 
 /**
- * `onClaudeRung`: a job that climbed the model ladder onto a Claude rung (ADR 0076) has this turn
+ * `onAgentRung`: a job that climbed the model ladder onto a Claude rung (ADR 0076) has this turn
  * worked by Claude Code on that rung instead of the hop loop.
  */
 export function createHopLoop(deps: LifecycleDeps, endings: TurnEndings, closingReply: ClosingReply,
-  onClaudeRung: (turnId: string, rung: ModelLadderClaudeRung) => Promise<void>) {
+  onAgentRung: (turnId: string, rung: ModelLadderAgentRung) => Promise<void>) {
   const { store, publish, publishTurn, occurred, mcp, completions, lives, active, credentials, agentRoute, targetFor, decideRoute, routingTarget, spendOwner, callOf, recordSpend, recordResponseSpend, closeChain, holdChain, inspectForTurn, executeTools, completeSilent } = deps;
   const { failTurn, retryOrFail } = endings;
   const { settleClosingReply } = closingReply;
@@ -140,8 +140,8 @@ export function createHopLoop(deps: LifecycleDeps, endings: TurnEndings, closing
       failTurn(turnId, "no_model");
       return null;
     }
-    if (routed.claude) {
-      await onClaudeRung(turnId, routed.claude);
+    if (routed.agent) {
+      await onAgentRung(turnId, routed.agent);
       return null;
     }
     const target = routed.target;

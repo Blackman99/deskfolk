@@ -44,6 +44,7 @@ import * as externalJobs from "./external-jobs";
 import * as modelDefaults from "./model-defaults";
 import * as modelLadder from "./model-ladder";
 import * as claudeCode from "./claude-code";
+import * as agents from "./agents";
 import * as escalation from "./escalation";
 import * as toolExecutions from "./tool-executions";
 import * as workQuestions from "./work-questions";
@@ -641,6 +642,15 @@ export class Store {
   readonly setClaudeCodePath = this.bind(claudeCode.setClaudeCodePath);
   readonly claudeCodeConfigDirs = this.bind(claudeCode.claudeCodeConfigDirs);
   readonly setClaudeCodeConfigDirs = this.bind(claudeCode.setClaudeCodeConfigDirs);
+  /** Your other local agents (ADR 0079): where each lives, its accounts, and your own ACP agents. */
+  readonly agentPath = this.bind(agents.agentPath);
+  readonly setAgentPath = this.bind(agents.setAgentPath);
+  readonly agentConfigDirs = this.bind(agents.agentConfigDirs);
+  readonly allAgentConfigDirs = this.bind(agents.allAgentConfigDirs);
+  readonly setAgentConfigDirs = this.bind(agents.setAgentConfigDirs);
+  readonly customAgents = this.bind(agents.customAgents);
+  readonly customAgent = this.bind(agents.customAgent);
+  readonly setCustomAgents = this.bind(agents.setCustomAgents);
   readonly botDefault = this.bind(modelDefaults.botDefault);
   readonly ensureBotDefault = this.bind(modelDefaults.ensureBotDefault);
   readonly noteModelOnce = this.bind(modelDefaults.noteModelOnce);

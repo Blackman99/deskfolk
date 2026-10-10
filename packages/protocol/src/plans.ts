@@ -1,4 +1,4 @@
-import type { ClaudeEffort } from "./bots.ts";
+import { isBotRunner, type BotRunner } from "./bots.ts";
 import type { AcceptanceCheck } from "./checks.ts";
 import { USER_MEMBER } from "./constants.ts";
 import type { Hold } from "./holds.ts";
@@ -460,29 +460,32 @@ export const MODEL_LADDER_MAX = 8;
 export type ModelLadderEndpointRung = { provider_id: string; model: string };
 
 /**
- * A rung run through your own Claude Code (ADR 0076): a Claude model (alias or full id), the effort
- * it asks for (null: Claude Code's default) and the account it spends (`config_dir`, one listed in
- * Settings; null: the daemon's own environment). A job that climbs onto it runs its next turn there.
+ * A rung run through one of your local agents (ADR 0076, ADR 0079): its model (alias or full id), the
+ * effort it asks for (null: the agent's default; one of `AGENT_KINDS[runner].efforts`) and the
+ * account it spends (`config_dir`, one listed in Settings; null: the daemon's own environment);
+ * `custom_id` for a custom ACP agent. A job that climbs onto it runs its next turn there.
  */
-export type ModelLadderClaudeRung = { runner: "claude_code"; model: string; effort: ClaudeEffort | null; config_dir: string | null };
+export type ModelLadderAgentRung = { runner: BotRunner; model: string; effort: string | null; config_dir: string | null; custom_id?: string | null };
 
 /**
- * One rung of the model ladder (ADR 0054, level 7): a listed model or a Claude model of yours, in the
- * order you put them, weaker to stronger.
+ * One rung of the model ladder (ADR 0054, level 7): a listed model or a local agent's model of yours,
+ * in the order you put them, weaker to stronger.
  */
-export type ModelLadderRung = ModelLadderEndpointRung | ModelLadderClaudeRung;
+export type ModelLadderRung = ModelLadderEndpointRung | ModelLadderAgentRung;
 
-export function isLadderClaudeRung(rung: ModelLadderRung | null | undefined): rung is ModelLadderClaudeRung {
-  return Boolean(rung) && "runner" in rung!;
+/** A local agent's rung, told apart by a `runner` the app knows (not just by having the key). */
+export function isLadderAgentRung(rung: ModelLadderRung | null | undefined): rung is ModelLadderAgentRung {
+  return Boolean(rung) && "runner" in rung! && isBotRunner((rung as { runner?: unknown }).runner);
 }
 
 /**
- * Two rungs are the same when they name the same model on the same endpoint, or the same Claude model
- * at the same effort on the same account — so one Claude model may climb its own efforts.
+ * Two rungs are the same when they name the same model on the same endpoint, or the same agent's
+ * model at the same effort on the same account — so one model may climb its own efforts.
  */
 export function sameLadderRung(a: ModelLadderRung, b: ModelLadderRung): boolean {
-  if (isLadderClaudeRung(a) || isLadderClaudeRung(b)) {
-    return isLadderClaudeRung(a) && isLadderClaudeRung(b) && a.model === b.model && (a.effort ?? null) === (b.effort ?? null) && (a.config_dir ?? null) === (b.config_dir ?? null);
+  if (isLadderAgentRung(a) || isLadderAgentRung(b)) {
+    return isLadderAgentRung(a) && isLadderAgentRung(b) && a.runner === b.runner && (a.custom_id ?? null) === (b.custom_id ?? null)
+      && a.model === b.model && (a.effort ?? null) === (b.effort ?? null) && (a.config_dir ?? null) === (b.config_dir ?? null);
   }
   return a.provider_id === b.provider_id && a.model === b.model;
 }

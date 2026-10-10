@@ -1,4 +1,4 @@
-import { connectorFor, type ApiFormat, type ConnectorId, type Provider, type SpeechPresetId } from "@real-bot/protocol";
+import { connectorFor, type ApiFormat, type BotRunner, type ConnectorId, type Provider, type SpeechPresetId } from "@real-bot/protocol";
 import type { Copy } from "./copy.ts";
 import type { SelectOption } from "./select-options.ts";
 
@@ -13,13 +13,15 @@ export type VendorId = ConnectorId | "openai" | "groq" | "siliconflow" | "deepgr
  * (ADR 0072) shows that vendor's logo, a model run through your own Claude Code (ADR 0061) the
  * Claude spark, and any other endpoint "Custom". It is read from the endpoint's address each time,
  * as the endpoint card does, so a connector added to the protocol shows in every picker without
- * touching any of them. A speech service (ADR 0073) is marked the same way, by its vendor. `name`
- * is what the mark stands for, for its tooltip.
+ * touching any of them. A speech service (ADR 0073) is marked the same way, by its vendor. A model
+ * run through any other local agent of yours (ADR 0079) wears that agent's name as plain text, no
+ * logo. `name` is what the mark stands for, for its tooltip.
  */
 export type ModelSource =
   | { kind: "connector"; id: ConnectorId; name: string }
   | { kind: "vendor"; id: VendorId; name: string }
   | { kind: "claude-agent"; name: string }
+  | { kind: "agent"; runner: BotRunner; name: string }
   | { kind: "custom"; name: string };
 
 export function endpointSource(
@@ -34,6 +36,16 @@ export function endpointSource(
 
 export function claudeAgentSource(t: Copy): ModelSource {
   return { kind: "claude-agent", name: t.claudeAgent.title };
+}
+
+/** A model run by one of your local agents other than Claude Code (ADR 0079): its name, as text. */
+export function agentSource(runner: BotRunner, name: string): ModelSource {
+  return { kind: "agent", runner, name };
+}
+
+/** The mark of whatever runs a Bot's turns: Claude's spark for Claude Agent, the agent's name for the rest. */
+export function runnerSource(runner: BotRunner, name: string, t: Copy): ModelSource {
+  return runner === "claude_code" ? claudeAgentSource(t) : agentSource(runner, name);
 }
 
 /**

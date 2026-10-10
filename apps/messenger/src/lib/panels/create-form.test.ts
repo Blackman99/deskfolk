@@ -12,6 +12,7 @@ import {
   planCreateGroup,
   planSkill,
 } from "./create-form.ts";
+import { parseRunnerValue, runnerValueOf } from "../runner-choice.ts";
 
 test("a pinned thinking level rides along; blank is null; an unknown level does not produce a request", () => {
   const base = { name: "Researcher", duties: "read", boundaries: "stay", model: "" };
@@ -279,4 +280,51 @@ test("maps daemon skill name-conflict onto the name field", () => {
   expect(mapSkillError(422, "description is required")).toEqual({ description: "empty" });
   expect(mapSkillError(422, "body is required")).toEqual({ body: "empty" });
   expect(mapSkillError(422, "a bot can have at most 32 skills")).toEqual({ top: true });
+});
+
+const agentBase = { name: "Researcher", duties: "read", boundaries: "stay", model: "" };
+
+test("a Bot on a local agent (ADR 0079) is sent with its runner, a model as that agent names it, and an effort that agent takes", () => {
+  expect(planCreateBot({ ...agentBase, runner: "codex", agentModel: "openai/gpt-5.5", agentEffort: "xhigh" })).toMatchObject({
+    ok: true,
+    body: { runner: "codex", agent_model: "openai/gpt-5.5", agent_effort: "xhigh" },
+  });
+  const codex = planCreateBot({ ...agentBase, runner: "codex", agentModel: "", agentEffort: "" });
+  expect(codex).toMatchObject({ ok: true, body: { runner: "codex", agent_model: null, agent_effort: null } });
+  // The field only goes to a daemon that knows custom agents, and only for a custom one.
+  if (codex.ok) expect("agent_custom_id" in codex.body).toBe(false);
+  // DSH has Off, Grok stops at extra high, OpenCode has no effort at all.
+  expect(planCreateBot({ ...agentBase, runner: "dsh", agentEffort: "off" })).toMatchObject({ ok: true, body: { agent_effort: "off" } });
+  expect(planCreateBot({ ...agentBase, runner: "grok", agentEffort: "max" })).toEqual({ ok: false, errors: { agentEffort: "invalid" } });
+  expect(planCreateBot({ ...agentBase, runner: "opencode", agentEffort: "low" })).toEqual({ ok: false, errors: { agentEffort: "invalid" } });
+  expect(planCreateBot({ ...agentBase, runner: "opencode", agentEffort: "" })).toMatchObject({ ok: true, body: { runner: "opencode", agent_effort: null } });
+  // Another agent's model is any name without spaces; Claude keeps its stricter one.
+  expect(planCreateBot({ ...agentBase, runner: "grok", agentModel: "nvidia/z-ai/glm-5.3" })).toMatchObject({ ok: true });
+  expect(planCreateBot({ ...agentBase, runner: "grok", agentModel: "two words" })).toEqual({ ok: false, errors: { agentModel: "invalid" } });
+  expect(planCreateBot({ ...agentBase, runner: "claude_code", agentModel: "openai/gpt-5.5" })).toEqual({ ok: false, errors: { agentModel: "invalid" } });
+  expect(planCreateBot({ ...agentBase, runner: "claude_code", agentModel: "opus", agentEffort: "max" })).toMatchObject({ ok: true, body: { runner: "claude_code", agent_model: "opus", agent_effort: "max" } });
+  // The app's own loop reads the agent fields as Claude's, as it always did.
+  expect(planCreateBot({ ...agentBase, runner: "", agentEffort: "off" })).toEqual({ ok: false, errors: { agentEffort: "invalid" } });
+  expect(planCreateBot({ ...agentBase, runner: "" })).toMatchObject({ ok: true, body: { runner: null } });
+});
+
+test("one of your own ACP agents is `custom:<id>`: sent as runner custom with agent_custom_id, and refused without an id", () => {
+  expect(planCreateBot({ ...agentBase, runner: "custom:acp-1" })).toMatchObject({ ok: true, body: { runner: "custom", agent_custom_id: "acp-1" } });
+  expect(planCreateBot({ ...agentBase, runner: "custom" })).toEqual({ ok: false, errors: { agentCustomId: "invalid" } });
+  expect(mapCreateBotError(422, "agent_custom_id must name one of your custom agents")).toEqual({ agentCustomId: "invalid" });
+  // An agent that takes no effort level says so by its own name first.
+  expect(mapCreateBotError(422, "OpenCode takes no effort level: agent_effort must be null")).toEqual({ agentEffort: "invalid" });
+  expect(mapCreateBotError(422, "agent_effort must be one of low, medium or null")).toEqual({ agentEffort: "invalid" });
+});
+
+test("the runner as a picker holds it round-trips: '' the app, a runner's name, custom:<id> for your own agent", () => {
+  expect(parseRunnerValue("")).toEqual({ runner: null, customId: null });
+  expect(parseRunnerValue("codex")).toEqual({ runner: "codex", customId: null });
+  expect(parseRunnerValue("custom:acp-1")).toEqual({ runner: "custom", customId: "acp-1" });
+  expect(parseRunnerValue("custom")).toEqual({ runner: "custom", customId: null });
+  expect(parseRunnerValue("some-future-agent")).toEqual({ runner: null, customId: null });
+  expect(runnerValueOf("custom", "acp-1")).toBe("custom:acp-1");
+  expect(runnerValueOf("custom", null)).toBe("custom");
+  expect(runnerValueOf("grok", "ignored")).toBe("grok");
+  expect(runnerValueOf(null)).toBe("");
 });

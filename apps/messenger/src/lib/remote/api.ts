@@ -1,6 +1,11 @@
 import type {
+  AgentStatus,
+  AgentsStatusResponse,
+  AgentUsageResponse,
+  BotRunner,
   ClaudeCodeStatus,
   ClaudeUsage,
+  CustomAgent,
   ClearSessionRequest,
   CatchupResponse,
   EventCursor,
@@ -525,6 +530,36 @@ export class RemoteApi extends ApiBase<PendingRemote> {
   /** Your Claude plan's usage; a phone sees the meter too. */
   async claudeUsage(refresh = false): Promise<ClaudeUsage> {
     return this.get<ClaudeUsage>(`/v1/claude-usage${refresh ? "?refresh=1" : ""}`);
+  }
+
+  /** Your other local agents (ADR 0079): Codex, Grok, OpenCode, DSH, ZCode, Antigravity and your own ACP agents, as the daemon finds them. */
+  async agents(refresh = false): Promise<AgentsStatusResponse> {
+    return this.get<AgentsStatusResponse>(`/v1/runtime/agents${refresh ? "?refresh=1" : ""}`);
+  }
+
+  /** A fresh look at one agent (a custom one by its id). */
+  async detectAgent(runner: BotRunner, customId: string | null = null): Promise<AgentStatus> {
+    return this.post<AgentStatus>("/v1/runtime/agents/detect", { runner, custom_id: customId });
+  }
+
+  /** Points the daemon at an agent's command; null lets it look for one again. */
+  async setAgentPath(runner: BotRunner, path: string | null): Promise<AgentStatus> {
+    return this.put<AgentStatus>("/v1/runtime/agents/path", { runner, path });
+  }
+
+  /** An agent's accounts besides the daemon's own environment, as config directories; the whole list. */
+  async setAgentAccounts(runner: BotRunner, configDirs: string[]): Promise<AgentStatus> {
+    return this.put<AgentStatus>("/v1/runtime/agents/accounts", { runner, config_dirs: configDirs });
+  }
+
+  /** Your own ACP agents, the whole list: an entry without an id is new. */
+  async setCustomAgents(agents: Array<Omit<CustomAgent, "id"> & { id?: string }>): Promise<AgentsStatusResponse> {
+    return this.put<AgentsStatusResponse>("/v1/runtime/custom-agents", { agents });
+  }
+
+  /** Your local agents' usage: plan windows where the agent reports them (Codex), today's records otherwise. */
+  async agentUsage(refresh = false): Promise<AgentUsageResponse> {
+    return this.get<AgentUsageResponse>(`/v1/agent-usage${refresh ? "?refresh=1" : ""}`);
   }
 
   /** One plan whole: the switcher row plus its spec, revision and tickets with their artifacts. */

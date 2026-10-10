@@ -88,7 +88,7 @@ export function learningOn(ctx: StoreContext): boolean {
 /** How a turn's reply failed, by the shape it took: the model's doing. */
 export const MODEL_FAIL_SHAPES: ReadonlySet<string> = new Set(["repeat", "declined", "truncated", "overtime", "incomplete"]);
 /** A turn that stopped making progress or broke: the app's doing, not the Bot's or its model's. */
-const ORCHESTRATION_FAILS = new Set(["stuck", "crashed", "agent_exited"]);
+const ORCHESTRATION_FAILS = new Set(["stuck", "crashed", "agent_exited", "agent_unguarded"]);
 /** The supervisor's repairs: work that stalled, a wait on nothing, a segment that ended without a word. */
 const SUPERVISOR_REPAIRS: Record<string, string> = {
   "supervisor.notice": "notice",

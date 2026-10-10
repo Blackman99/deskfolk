@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { AGENT_KINDS, BOT_RUNNERS, type BotRunner } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
 import { aBot, aSkill, fakeRuntime } from "../test-fixtures.ts";
 import { buttonByText, click, fill, render } from "../test-render.ts";
@@ -591,4 +592,238 @@ test("away from the computer the account a Bot runs on is still shown and can be
   const saved = old.runtime.calls.filter((c) => c.name === "patchBot")[0]!.args[1] as Record<string, unknown>;
   expect("agent_config_dir" in saved).toBe(false);
   old.close();
+});
+
+/** One of your other local agents as the daemon reports it (ADR 0079); the panel only reads it. */
+function agentStatus(runner: BotRunner, over: Record<string, unknown> = {}) {
+  return {
+    runner, custom_id: null, label: AGENT_KINDS[runner].label, path: `/usr/local/bin/${runner}`, source: "path", version: "1.0.0",
+    logged_in: true, auth: null, login_command: null, models: [], default_model: null, proxy: null, proxy_source: null,
+    checked_at: "2026-10-10T00:00:00.000Z", error: null, ...over,
+  };
+}
+
+/** Every agent but Claude, found and signed in; `over` changes some of them. */
+function agentItems(over: Partial<Record<BotRunner, Record<string, unknown>>> = {}) {
+  return BOT_RUNNERS.filter((runner) => runner !== "claude_code" && runner !== "custom").map((runner) => agentStatus(runner, over[runner]));
+}
+
+const acp = { id: "acp-1", name: "我的 ACP", command: "my-acp", args: ["--stdio"] };
+const withAcp = (items: ReturnType<typeof agentItems>) => ({
+  items: [...items, agentStatus("custom", { custom_id: acp.id, label: acp.name, path: "/usr/local/bin/my-acp", source: "custom" })],
+  custom_agents: [acp],
+});
+
+/** The panel with `agents` as the daemon answers (null: it cannot be asked, as on the phone). */
+function openOnAgent(bot: ReturnType<typeof aBot>, agents: { items: unknown[]; custom_agents: unknown[] } | null) {
+  const runtime = fakeRuntime({ bots: [bot] });
+  runtime.profileBotId = bot.id;
+  (runtime as unknown as { client: unknown }).client = {
+    claudeCode: async () => claudeStatus(),
+    agents: async () => {
+      if (!agents) throw Object.assign(new Error("not here"), { status: 404 });
+      return agents;
+    },
+  };
+  const view = render(ProfilePane, {
+    runtime, bot, t, modelOptions: [], selectedKind: "you-bot", profileFailed: false, initialTab: "basics",
+    openDangerConfirm: () => {}, clearDanger: () => {}, onDeleteBot: () => {}, onClearHistory: () => {},
+  });
+  return { ...view, runtime };
+}
+
+const words = (el: Element | null | undefined) => el?.textContent?.replace(/\s+/g, " ").trim();
+const runnerRows = (host: HTMLElement) => [...host.querySelectorAll("#profile-runner-listbox [role=option]")];
+const efforts = (host: HTMLElement) => [...host.querySelectorAll('[role=radiogroup][aria-labelledby="profile-agent-effort-label"] button')].map((el) => el.textContent?.trim());
+const lastSave = (runtime: ReturnType<typeof fakeRuntime>) => runtime.calls.filter((c) => c.name === "patchBot").at(-1)?.args[1] as Record<string, unknown>;
+
+test("the runner picker lists the app, Claude Agent, every other local agent by name, then your own ACP agents; one not installed or signed out cannot be picked", async () => {
+  const { host, runtime, close } = openOnAgent(aBot(), withAcp(agentItems({ grok: { path: null }, dsh: { logged_in: false } })));
+  await sleep(30);
+  click(host.querySelector("#profile-runner"));
+  const rows = runnerRows(host);
+  expect(rows.map(words)).toEqual([t.sidebar.botRunnerApp, t.sidebar.botRunnerClaude, "Codex", "Grok 没装", "OpenCode", "DSH 没登录", "Antigravity", "ZCode", "我的 ACP"]);
+  expect(rows.filter((row) => row.getAttribute("aria-disabled") === "true").map(words)).toEqual(["Grok 没装", "DSH 没登录"]);
+  // A missing agent is not a choice.
+  click(rows[3]!);
+  await sleep(200);
+  expect(runtime.calls.filter((c) => c.name === "patchBot")).toHaveLength(0);
+  close();
+  // The phone, or a daemon older than local agents, cannot say what is found: only the app and Claude are offered.
+  const phone = openOnAgent(aBot(), null);
+  await sleep(30);
+  click(phone.host.querySelector("#profile-runner"));
+  expect(runnerRows(phone.host).map(words)).toEqual([t.sidebar.botRunnerApp, t.sidebar.botRunnerClaude]);
+  phone.close();
+});
+
+test("choosing Codex saves runner codex; its effort is then one Codex takes, and saves as it is", async () => {
+  const { host, runtime, close } = openOnAgent(aBot(), withAcp(agentItems()));
+  await sleep(30);
+  click(host.querySelector("#profile-runner"));
+  click(runnerRows(host).find((row) => words(row) === "Codex") ?? null);
+  await sleep(200);
+  const saves = runtime.calls.filter((c) => c.name === "patchBot");
+  expect(saves).toHaveLength(1);
+  expect(saves[0]!.args[1]).toMatchObject({ runner: "codex", agent_model: null, agent_effort: null });
+  expect("agent_custom_id" in (saves[0]!.args[1] as object)).toBe(false);
+  close();
+
+  const onCodex = openOnAgent(aBot({ runner: "codex", agent_config_dir: undefined }), withAcp(agentItems()));
+  await sleep(30);
+  expect(onCodex.host.querySelector("#profile-model")).toBeNull();
+  expect(efforts(onCodex.host)).toEqual(["默认", "低", "中", "高", "极高", "最大"]);
+  click(buttonByText(onCodex.host, "极高"));
+  await sleep(200);
+  expect(lastSave(onCodex.runtime)).toMatchObject({ runner: "codex", agent_effort: "xhigh" });
+  onCodex.close();
+});
+
+test("the effort radios follow the agent: Grok stops at extra high, DSH has Off, OpenCode and your own ACP agents have none", async () => {
+  const levels = async (runner: BotRunner, extra: Partial<Parameters<typeof aBot>[0]> = {}, agents = withAcp(agentItems())) => {
+    const view = openOnAgent(aBot({ runner, ...extra }), agents);
+    await sleep(30);
+    const out = { radios: efforts(view.host), none: view.host.querySelector("[data-agent-no-effort]")?.textContent };
+    view.close();
+    return out;
+  };
+  expect((await levels("grok")).radios).toEqual(["默认", "低", "中", "高", "极高"]);
+  expect((await levels("dsh")).radios).toEqual(["默认", "关", "低", "高", "最大"]);
+  expect((await levels("antigravity")).radios).toEqual(["默认", "低", "中", "高", "极高", "最大"]);
+  const opencode = await levels("opencode");
+  expect(opencode.radios).toEqual([]);
+  expect(opencode.none).toBe(t.sidebar.botAgentNoEffort("OpenCode"));
+  expect((await levels("custom", { agent_custom_id: acp.id })).radios).toEqual([]);
+  // Claude's own radios are unchanged.
+  const claude = openOnAgent(aBot({ runner: "claude_code" }), withAcp(agentItems()));
+  await sleep(30);
+  expect(efforts(claude.host)).toEqual(["默认", "低", "中", "高", "极高", "最大"]);
+  claude.close();
+});
+
+test("moving a Bot to another agent clears its model and account, and keeps its effort only where that agent takes it", async () => {
+  const bot = aBot({ runner: "codex", agent_model: "gpt-5.5", agent_effort: "max", agent_config_dir: "/Users/you/.codex-b" });
+  const toGrok = openOnAgent(bot, withAcp(agentItems()));
+  await sleep(30);
+  click(toGrok.host.querySelector("#profile-runner"));
+  click(runnerRows(toGrok.host).find((row) => words(row) === "Grok") ?? null);
+  await sleep(200);
+  // Grok takes no "max", and the daemon would refuse it with the rest.
+  expect(lastSave(toGrok.runtime)).toMatchObject({ runner: "grok", agent_model: null, agent_effort: null, agent_config_dir: null });
+  toGrok.close();
+
+  const toAgy = openOnAgent(bot, withAcp(agentItems()));
+  await sleep(30);
+  click(toAgy.host.querySelector("#profile-runner"));
+  click(runnerRows(toAgy.host).find((row) => words(row) === "Antigravity") ?? null);
+  await sleep(200);
+  expect(lastSave(toAgy.runtime)).toMatchObject({ runner: "antigravity", agent_model: null, agent_effort: "max", agent_config_dir: null });
+  toAgy.close();
+
+  const toApp = openOnAgent(bot, withAcp(agentItems()));
+  await sleep(30);
+  click(toApp.host.querySelector("#profile-runner"));
+  click(runnerRows(toApp.host).find((row) => words(row) === t.sidebar.botRunnerApp) ?? null);
+  await sleep(0);
+  // The endpoint's model takes the place of the agent's fields at once, before the daemon has echoed the save.
+  expect(toApp.host.querySelector("#profile-model")).not.toBeNull();
+  expect(toApp.host.querySelector("#profile-agent-model")).toBeNull();
+  await sleep(200);
+  expect(lastSave(toApp.runtime)).toMatchObject({ runner: null, agent_model: null, agent_effort: null });
+  toApp.close();
+});
+
+test("one of your own ACP agents is picked by its name and saved as runner custom with its id", async () => {
+  const { host, runtime, close } = openOnAgent(aBot(), withAcp(agentItems()));
+  await sleep(30);
+  click(host.querySelector("#profile-runner"));
+  click(runnerRows(host).find((row) => words(row) === "我的 ACP") ?? null);
+  await sleep(200);
+  expect(lastSave(runtime)).toMatchObject({ runner: "custom", agent_custom_id: "acp-1", agent_effort: null });
+  close();
+  // Reopened on it: the picker reads its name, not "custom".
+  const on = openOnAgent(aBot({ runner: "custom", agent_custom_id: "acp-1" }), withAcp(agentItems()));
+  await sleep(30);
+  expect(words(on.host.querySelector("#profile-runner"))).toBe("我的 ACP");
+  expect(on.host.querySelector("[data-runner-account]")?.textContent).toContain("我的 ACP");
+  on.close();
+  // Its entry removed from Settings: still readable, marked, and the save names no agent it could run.
+  const gone = openOnAgent(aBot({ runner: "custom", agent_custom_id: "acp-gone" }), withAcp(agentItems()));
+  await sleep(30);
+  click(gone.host.querySelector("#profile-runner"));
+  expect(runnerRows(gone.host).at(-1) && words(runnerRows(gone.host).at(-1))).toBe(`${AGENT_KINDS.custom.label} ${t.sidebar.botRunnerAgentGone}`);
+  gone.close();
+});
+
+test("a Bot on another agent types its model, with the models the agent lists to pick from; empty is the agent's default", async () => {
+  const items = agentItems({ codex: { models: [{ id: "gpt-5.5", name: "GPT-5.5", efforts: ["low", "high"] }, { id: "gpt-5.5-mini", name: "gpt-5.5-mini", efforts: [] }], default_model: "gpt-5.5" } });
+  const { host, runtime, close } = openOnAgent(aBot({ runner: "codex" }), withAcp(items));
+  await sleep(30);
+  const input = host.querySelector<HTMLInputElement>("#profile-agent-model")!;
+  expect(input.tagName).toBe("INPUT");
+  expect(input.placeholder).toBe("gpt-5.5");
+  expect([...host.querySelectorAll("#profile-agent-models option")].map((el) => [el.getAttribute("value"), el.getAttribute("label")])).toEqual([["gpt-5.5", "GPT-5.5"], ["gpt-5.5-mini", null]]);
+  expect(host.querySelector("[data-agent-model]")?.textContent).toContain(t.sidebar.botAgentModelEmptyHint("Codex", "gpt-5.5"));
+  fill(input, "openai/gpt-5.5-mini");
+  await sleep(750);
+  expect(lastSave(runtime)).toMatchObject({ runner: "codex", agent_model: "openai/gpt-5.5-mini" });
+  // A name with a space is not one any agent takes: nothing is sent, and the field says so.
+  const before = runtime.calls.filter((c) => c.name === "patchBot").length;
+  fill(input, "gpt 5");
+  await sleep(750);
+  expect(runtime.calls.filter((c) => c.name === "patchBot")).toHaveLength(before);
+  expect(host.querySelector("[data-agent-model] .field-error")?.textContent).toBe(t.sidebar.botAgentModelInvalidOf("Codex"));
+  close();
+});
+
+test("an agent that is not found, signed out, or cannot be asked says what to do, and Antigravity says it cannot use Deskfolk's tools", async () => {
+  const missing = openOnAgent(aBot({ runner: "codex" }), withAcp(agentItems({ codex: { path: null } })));
+  await sleep(30);
+  expect(missing.host.querySelector("[data-runner-missing]")?.textContent).toContain("没找到 Codex（codex）");
+  missing.close();
+  const signedOut = openOnAgent(aBot({ runner: "codex" }), withAcp(agentItems({ codex: { logged_in: false, login_command: "codex login" } })));
+  await sleep(30);
+  expect(signedOut.host.querySelector("[data-runner-signed-out]")?.textContent).toContain("运行 codex login");
+  signedOut.close();
+  const signedIn = openOnAgent(aBot({ runner: "codex" }), withAcp(agentItems({ codex: { auth: "ChatGPT Plus" } })));
+  await sleep(30);
+  expect(signedIn.host.querySelector("[data-runner-account]")?.textContent).toContain("ChatGPT Plus");
+  expect(signedIn.host.querySelector("[data-runner-note]")).toBeNull();
+  signedIn.close();
+  const unreachable = openOnAgent(aBot({ runner: "codex" }), null);
+  await sleep(30);
+  expect(unreachable.host.textContent).toContain(t.sidebar.botRunnerAgentUnavailable("Codex"));
+  unreachable.close();
+  const agy = openOnAgent(aBot({ runner: "antigravity" }), withAcp(agentItems()));
+  await sleep(30);
+  expect(agy.host.querySelector("[data-runner-note]")?.textContent).toBe(t.sidebar.botRunnerNoAppTools("Antigravity"));
+  agy.close();
+});
+
+test("an agent with several accounts lets a Bot pick which one its turns spend; an agent without config directories has no such field", async () => {
+  const accounts = [
+    { config_dir: null, logged_in: true, auth: "ChatGPT Plus", error: null, login_command: "codex login" },
+    { config_dir: "/Users/you/.codex-b", logged_in: true, auth: "ChatGPT Pro", error: null, login_command: "CODEX_HOME=/Users/you/.codex-b codex login" },
+  ];
+  const { host, runtime, close } = openOnAgent(aBot({ runner: "codex", agent_config_dir: null }), withAcp(agentItems({ codex: { accounts } })));
+  await sleep(30);
+  expect(host.querySelector("label[for=profile-agent-account]")?.textContent).toBe(t.sidebar.botAgentAccountOf("Codex"));
+  click(host.querySelector("#profile-agent-account"));
+  expect([...host.querySelectorAll("#profile-agent-account-listbox [role=option]")].map(words)).toEqual([
+    `${t.sidebar.botAgentAccountDefault} · ChatGPT Plus`,
+    "ChatGPT Pro · /Users/you/.codex-b",
+  ]);
+  click([...host.querySelectorAll("#profile-agent-account-listbox [role=option]")].at(-1) ?? null);
+  await sleep(200);
+  expect(lastSave(runtime)).toMatchObject({ runner: "codex", agent_config_dir: "/Users/you/.codex-b" });
+  close();
+  // That account signed out: its own sign-in command.
+  const out = openOnAgent(aBot({ runner: "codex", agent_config_dir: "/Users/you/.codex-b" }), withAcp(agentItems({ codex: { accounts: [accounts[0], { ...accounts[1], logged_in: false }] } })));
+  await sleep(30);
+  expect(out.host.querySelector("[data-runner-signed-out]")?.textContent).toContain("CODEX_HOME=/Users/you/.codex-b codex login");
+  out.close();
+  const grok = openOnAgent(aBot({ runner: "grok", agent_config_dir: null }), withAcp(agentItems()));
+  await sleep(30);
+  expect(grok.host.querySelector("[data-agent-account]")).toBeNull();
+  grok.close();
 });

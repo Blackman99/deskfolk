@@ -12,6 +12,17 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 - The README is pictures and the films only. Its text, the "what is live and what is not" table and the install steps moved to a new **About and install** page (`docs/overview.md`, `/en/overview` on the site), which the nav now links in place of Full walkthrough, Boundaries and Run from source.
 - The 2:15 real-app demo film (`/media/deskfolk-zh.mp4`, `/media/deskfolk-en.mp4`) and the 1:26 motion tour (`/media/deskfolk-promo-<lang>.mp4`) are gone from the site and the README; the 0:30 mascot film is the one film left.
 
+### Run Bots on Codex, Grok, OpenCode, DSH, ZCode, Antigravity or an ACP agent of your own
+
+- A Bot's Runner can now be your own Codex, Grok, OpenCode, DSH, ZCode (through its `zcode-acp` bridge) or Antigravity, besides Claude Agent, or any program that speaks the Agent Client Protocol that you add in Settings › Agents (a name, its full path and arguments). Each runs as you installed it, under your own sign-in; the app never signs you in, reads its tokens or changes its config.
+- Pick the model as that agent names it, its effort levels and, for Codex and DSH, one of several accounts (config directories you list). Settings › Agents shows each agent's path, version, sign-in, models and network, with the sign-in command to run when it is signed out; the phone shows and sets the same.
+- The workspace boundary and approval cards are Claude Agent's: Grok has the app read, write and run everything, and OpenCode and Codex ask before every command and write — inside the workspace goes ahead, outside raises the card. A call an agent makes without asking and reports afterwards stops the turn if it went outside the workspace or touched any agent's credentials ("acted … without asking").
+- Endings, hand-overs, reviews, delegation and `ask_user` work as for any Bot: ACP agents get the app's tools as an MCP server, Codex as its own tools. Antigravity cannot be given them: its Bots answer with their closing reply only, and Antigravity runs in its own sandbox.
+- Lines you send while one works reach Codex at once and the others with their next app tool's result; insert-now cuts Codex and ACP agents short. Spend is recorded under the agent's name; the sidebar's usage strip shows what is left of Codex's own plan windows and, for the others, today's turns and tokens.
+- Built-in calls (reading lines, the organizer, judgements, …) and model ladder rungs may name any of these agents' models. Step 2 of the setup wizard, now "A local agent on this computer", lists every agent found and signed in beside Claude Code: pick one, then its model on step 3, and the app is set up on it with no endpoint, its first Bot and the new Bots after it running on that agent. Set up on an agent or on Claude Code with no endpoint, Settings › Models now shows Built-in models, to change each call's model; it used to appear only once an endpoint was added.
+- Your agents' own settings and credentials (`~/.codex`, `~/.grok`, `~/.claude`, OpenCode's folders, `~/.dsh`, `~/.gemini`) are now off limits to every Bot, Claude Agents included.
+- The model ladder's "Add a model" picker reads "Add a model" again after each pick; it used to show the raw choice it had just added.
+
 ## 0.1.0-rc.16 — 2026-10-10
 
 Signed and notarized macOS rc, with an experimental, still unsigned Windows installer beside the `.dmg`s.

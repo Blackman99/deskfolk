@@ -42,7 +42,10 @@
 	} from '@real-bot/protocol';
 	import { endpointSource } from './model-source.ts';
 	import ClaudeAgentCard from './settings/ClaudeAgentCard.svelte';
+	import AgentCard from './settings/AgentCard.svelte';
 	import { claudeAccountOptions, claudeReady } from './settings/claude-agent.ts';
+	import { agentLabelOf, agentModelsOf, agentReady, agentStatusOf, parseRunnerValue, runnerValueOf } from './runner-choice.ts';
+	import type { AgentsStatusResponse } from '@real-bot/protocol';
 
 	interface Props {
 		runtime: MessengerRuntime;
@@ -80,7 +83,32 @@
 	let claudeModel = $state<string>('sonnet');
 	/** A listed account's config directory; `''` the daemon's own environment. */
 	let claudeConfigDir = $state('');
-	const claudeOk = $derived(claudeReady(claudeStatus));
+	/**
+	 * Which local agent setup runs on (ADR 0078, ADR 0079): Claude Code, or another agent found and
+	 * signed in on this computer (`codex`, `custom:<id>`, …). Only Claude Code until the others are known.
+	 */
+	let agentPick = $state('claude_code');
+	let otherAgents = $state<AgentsStatusResponse | null>(null);
+	let agentModel = $state('');
+	const picked = $derived(parseRunnerValue(agentPick));
+	const pickedOther = $derived(picked.runner && picked.runner !== 'claude_code' ? picked.runner : null);
+	const pickedStatus = $derived(pickedOther ? agentStatusOf(otherAgents, pickedOther, picked.customId) : null);
+	const pickedLabel = $derived(pickedOther ? agentLabelOf(pickedOther, picked.customId, otherAgents) : 'Claude Code');
+	const pickedModels = $derived(agentModelsOf(pickedStatus));
+	/** The agents beside Claude Code that setup can run on: found and not signed out. */
+	const readyAgents = $derived((otherAgents?.items ?? []).filter((status) => agentReady(status)));
+	const claudeOk = $derived(pickedOther ? agentReady(pickedStatus) : claudeReady(claudeStatus));
+	$effect(() => {
+		if (connectMode !== 'claude' || otherAgents) return;
+		const client = runtime.client as { agents?: () => Promise<AgentsStatusResponse> } | null;
+		if (!client?.agents) return;
+		void client.agents().then((list) => (otherAgents = list), () => undefined);
+	});
+	$effect(() => {
+		// A model to start from: the one the agent runs on by default, else the first it lists.
+		if (!pickedStatus || agentModel) return;
+		agentModel = pickedStatus.default_model ?? pickedStatus.models[0]?.id ?? '';
+	});
 	const claudeModelOptions = CLAUDE_MODEL_ALIASES.map((alias) => ({ value: alias, label: alias }));
 	const claudeAccounts = $derived(claudeAccountOptions(claudeStatus, claudeConfigDir, t));
 	let fieldErrors = $state<SettingsFieldErrors & ProviderFieldErrors>({});
@@ -132,7 +160,7 @@
 	});
 	const canCompleteSetup = $derived(
 		(workspaceReadOnly || workspacePlan.ok) &&
-			(connectMode === 'claude' ? claudeOk : connectionPlan.ok && !modelErrors.models && !modelErrors.defaultModel)
+			(connectMode === 'claude' ? claudeOk && (!pickedOther || agentModel.trim().length > 0) : connectionPlan.ok && !modelErrors.models && !modelErrors.defaultModel)
 	);
 	const allKnownModels = $derived(
 		Array.from(new Set([...selectedModels, ...availableDiscoveredModels]))
@@ -520,7 +548,13 @@
 			currentStep = 2;
 			return;
 		}
-		const choice = { runner: 'claude_code' as const, model: claudeModel, config_dir: claudeConfigDir || null };
+		const choice = pickedOther
+			? { runner: pickedOther, model: agentModel.trim(), config_dir: null, ...(picked.customId ? { custom_id: picked.customId } : {}) }
+			: { runner: 'claude_code' as const, model: claudeModel, config_dir: claudeConfigDir || null };
+		if (!choice.model) {
+			currentStep = 3;
+			return;
+		}
 		holding = rosterEmpty;
 		if (!(await saveWorkspace(workspace))) {
 			holding = false;
@@ -598,7 +632,9 @@
 			avatar: '',
 			model: '',
 			// On Claude Code alone the first Bot is a Claude Agent, on the account chosen for setup.
-			...(connectMode === 'claude' ? { runner: 'claude_code', agentConfigDir: claudeConfigDir } : {})
+			...(connectMode === 'claude'
+				? pickedOther ? { runner: runnerValueOf(pickedOther, picked.customId) } : { runner: 'claude_code', agentConfigDir: claudeConfigDir }
+				: {})
 		};
 		botErrors = {};
 		botFailed = false;
@@ -798,10 +834,38 @@
 					</div>
 
 					{#if connectMode === 'claude'}
+						{#if readyAgents.length > 0}
+							<div class="agent-picks" role="radiogroup" aria-label={t.onboarding.agentPick} data-agent-picks>
+								{#each [{ value: 'claude_code', label: 'Claude Code' }, ...readyAgents.map((status) => ({ value: runnerValueOf(status.runner, status.custom_id), label: status.label }))] as option (option.value)}
+									<button
+										type="button"
+										class="preset-chip"
+										role="radio"
+										aria-checked={agentPick === option.value}
+										class:is-active={agentPick === option.value}
+										data-agent-pick={option.value}
+										onclick={() => {
+											agentPick = option.value;
+											agentModel = '';
+										}}
+									>{option.label}</button>
+								{/each}
+							</div>
+						{/if}
+						{#if pickedOther && pickedStatus}
+							<p class="step-pane-desc">{t.onboarding.agentCheckDesc.replace('{agent}', pickedLabel)}</p>
+							<AgentCard status={pickedStatus} api={runtime.client as never} {t} onChange={(status) => {
+								if (otherAgents) otherAgents = { ...otherAgents, items: otherAgents.items.map((item) => (item.runner === status.runner && item.custom_id === status.custom_id ? status : item)) };
+							}} />
+							{#if !claudeOk}
+								<p class="muted field-hint" data-claude-not-ready>{t.onboarding.agentNotReady.replace('{agent}', pickedLabel)}</p>
+							{/if}
+						{:else}
 						<p class="step-pane-desc">{t.onboarding.claudeCheckDesc}</p>
 						<ClaudeAgentCard api={runtime.client} {t} {locale} onstatus={(status) => (claudeStatus = status)} />
 						{#if claudeStatus && !claudeOk}
 							<p class="muted field-hint" data-claude-not-ready>{t.onboarding.claudeNotReady}</p>
+						{/if}
 						{/if}
 					{:else}
 					<p class="step-pane-desc">{t.onboarding.providerDesc}</p>
@@ -953,7 +1017,7 @@
 							disabled={connectMode === 'claude' ? !claudeOk : !connectionPlan.ok}
 							onclick={advanceFromStep2}
 						>
-							{connectMode === 'claude' ? t.onboarding.step2NextClaude : t.onboarding.step2Next} →
+							{connectMode === 'claude' ? (pickedOther ? t.onboarding.step2NextAgent.replace('{agent}', pickedLabel) : t.onboarding.step2NextClaude) : t.onboarding.step2Next} →
 						</button>
 					</div>
 				</div>
@@ -962,10 +1026,20 @@
 				<div class="step-pane">
 					<div class="step-pane-header">
 						<h2 class="step-pane-title">{t.onboarding.step3Title}</h2>
-						<p class="step-pane-desc">{connectMode === 'claude' ? t.onboarding.claudeModelsDesc : t.onboarding.stepModelsDesc}</p>
+						<p class="step-pane-desc">{connectMode === 'claude' ? (pickedOther ? t.onboarding.agentModelsDesc.replace('{agent}', pickedLabel) : t.onboarding.claudeModelsDesc) : t.onboarding.stepModelsDesc}</p>
 					</div>
 
-					{#if connectMode === 'claude'}
+					{#if connectMode === 'claude' && pickedOther}
+						<div class="modal-section">
+							<label for="onboarding-agent-model">{t.onboarding.claudeModel}</label>
+							{#if pickedModels.length > 0}
+								<Select id="onboarding-agent-model" bind:value={agentModel} options={pickedModels.map((model) => ({ value: model.id, label: model.name === model.id ? model.id : `${model.name} · ${model.id}` }))} />
+							{:else}
+								<input id="onboarding-agent-model" type="text" bind:value={agentModel} placeholder={t.onboarding.agentModelPlaceholder} />
+							{/if}
+						</div>
+						<p class="muted field-hint">{t.onboarding.agentLimits.replace('{agent}', pickedLabel)}</p>
+					{:else if connectMode === 'claude'}
 						<div class="modal-section">
 							<label for="onboarding-claude-model">{t.onboarding.claudeModel}</label>
 							<Select id="onboarding-claude-model" bind:value={claudeModel} options={claudeModelOptions} />
@@ -1140,7 +1214,8 @@
 						{#if botErrors.boundaries}
 							<p class="field-error">{t.sidebar.boundariesEmpty}</p>
 						{:else}
-							<p class="muted field-hint">{botDraft.runner === 'claude_code' ? t.onboarding.botClaudeHint : t.onboarding.botModelHint}</p>
+							<p class="muted field-hint">{botDraft.runner === 'claude_code' ? t.onboarding.botClaudeHint
+								: botDraft.runner && pickedOther ? t.onboarding.botAgentHint.replace('{agent}', pickedLabel) : t.onboarding.botModelHint}</p>
 						{/if}
 					</div>
 
@@ -1174,6 +1249,13 @@
 	 * window (the Bot step is) then starts at the top and scrolls, instead of overflowing both ends
 	 * with its top out of reach.
 	 */
+	.agent-picks {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		margin: 4px 0 12px;
+	}
+
 	.connect-modes {
 		display: grid;
 		grid-template-columns: 1fr 1fr;

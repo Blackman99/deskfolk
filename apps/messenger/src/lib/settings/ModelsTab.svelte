@@ -45,13 +45,16 @@
 		void ladder.load();
 	});
 
+	/** Set up on a local agent with no endpoint (ADR 0078, ADR 0079): the built-in calls are on its models. */
+	const onAgent = $derived(Object.values(snapshot.settings.builtin_models ?? {}).some((chosen) => chosen !== null && typeof chosen === 'object' && 'runner' in chosen));
 	/**
-	 * With no endpoint there is nothing to order or to pick a built-in call's model from. Speech recognition is
-	 * there either way: it has a service and key of its own, not an endpoint.
+	 * With no endpoint there is nothing to order. Nor a built-in call's model to pick, unless the app is
+	 * set up on a local agent, whose models they are on. Speech recognition is there either way: it has
+	 * a service and key of its own, not an endpoint.
 	 */
 	const sections = $derived<ModelsSection[]>(
 		providers.length === 0
-			? ['endpoints', 'speech']
+			? onAgent ? ['endpoints', 'builtin', 'speech'] : ['endpoints', 'speech']
 			: ladder.available
 				? ['endpoints', 'ladder', 'builtin', 'speech']
 				: ['endpoints', 'builtin', 'speech']
@@ -160,7 +163,7 @@
 					{@render endpoints()}
 				{:else if section === 'ladder'}
 					<p class="muted models-intro">{t.modelLadder.hint}</p>
-					<ModelLadderCard {ladder} {providers} claudeCode={runtime.client ? () => runtime.client!.claudeCode() : null} {t} />
+					<ModelLadderCard {ladder} {providers} claudeCode={runtime.client ? () => runtime.client!.claudeCode() : null} agents={runtime.client ? () => runtime.client!.agents() : null} {t} />
 				{:else if section === 'builtin'}
 					<p class="muted models-intro">{t.builtinModels.hint}</p>
 					<BuiltinModelsCard
@@ -169,6 +172,7 @@
 						defaultModel={snapshot.settings.endpoint_default_model}
 						patch={(patch) => runtime.patchSettings(patch)}
 						claudeCode={runtime.client ? () => runtime.client!.claudeCode() : null}
+						agents={runtime.client ? () => runtime.client!.agents() : null}
 						{t}
 					/>
 				{:else}

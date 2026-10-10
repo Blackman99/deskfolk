@@ -26,7 +26,19 @@ export async function claudeProxy(
   system: SystemProxy = systemProxyFor,
   platform: NodeJS.Platform = process.platform,
 ): Promise<ClaudeProxy | null> {
-  const host = anthropicHost(env);
+  return proxyForHost(anthropicHost(env), env, system, platform);
+}
+
+/**
+ * The same choice for any host a local agent reaches (ADR 0079): its service's API host stands in
+ * for `api.anthropic.com`.
+ */
+export async function proxyForHost(
+  host: string,
+  env: Record<string, string | undefined>,
+  system: SystemProxy = systemProxyFor,
+  platform: NodeJS.Platform = process.platform,
+): Promise<ClaudeProxy | null> {
   if (bypassesProxy(host, envValue(env, "NO_PROXY", platform))) return null;
   const named = envValue(env, "HTTPS_PROXY", platform) ?? envValue(env, "ALL_PROXY", platform);
   if (named) return { url: named, source: "env" };

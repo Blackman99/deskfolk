@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { ClaudeCodeStatus, ModelLadderRung, Provider } from "@real-bot/protocol";
+import { AGENT_KINDS, type AgentsStatusResponse, type BotRunner, type ClaudeCodeStatus, type ModelLadderRung, type Provider } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
 import { click, render } from "../test-render.ts";
 import ModelLadderCard from "./ModelLadderCard.svelte";
@@ -29,10 +29,10 @@ function fakeApi(items: ModelLadderRung[], opts: { available?: boolean; fail?: b
 }
 
 /** The card as Models shows it: the ladder read by the page that holds it. */
-function card(api: ModelLadderApi, claudeCode: (() => Promise<ClaudeCodeStatus>) | null = null) {
+function card(api: ModelLadderApi, claudeCode: (() => Promise<ClaudeCodeStatus>) | null = null, agents: (() => Promise<AgentsStatusResponse>) | null = null) {
   const ladder = new ModelLadder(() => api);
   void ladder.load();
-  return render(ModelLadderCard, { ladder, providers, claudeCode, t });
+  return render(ModelLadderCard, { ladder, providers, claudeCode, agents, t });
 }
 
 const names = (host: HTMLElement) => [...host.querySelectorAll(".ladder-name")].map((el) => el.textContent);
@@ -148,6 +148,8 @@ test("a model is added at the strong end from what is listed and not on it yet",
   click(options[1]!);
   await sleep(0);
   expect(saved).toEqual([[{ provider_id: "p1", model: "light" }, { provider_id: "p2", model: "heavy" }]]);
+  // The picker reads "add a model" again, not the choice it just added.
+  expect(view.host.querySelector(".ladder-add .real-select-value")?.textContent?.trim()).toBe(t.modelLadder.add);
   view.close();
 });
 
@@ -244,4 +246,113 @@ test("a Claude rung picks its own effort, and its account when there is more tha
   await sleep(0);
   expect(single.host.querySelectorAll("[data-rung-claude] .real-select-trigger")).toHaveLength(1);
   single.close();
+});
+
+/** One of your other local agents as the daemon reports it (ADR 0079). */
+function agentStatus(runner: BotRunner, over: Record<string, unknown> = {}) {
+  return {
+    runner, custom_id: null, label: AGENT_KINDS[runner].label, path: `/usr/local/bin/${runner}`, source: "path", version: "1", logged_in: true, auth: null,
+    login_command: null, models: [], default_model: null, proxy: null, proxy_source: null, checked_at: "2026-10-10T00:00:00.000Z", error: null, ...over,
+  };
+}
+const models = (...ids: string[]) => ids.map((id) => ({ id, name: id, efforts: [] }));
+const agentsOf = (...items: ReturnType<typeof agentStatus>[]) => async () => ({ items, custom_agents: [] }) as unknown as AgentsStatusResponse;
+const groups = (host: HTMLElement) => [...host.querySelectorAll(".real-select-group")].map((el) => el.textContent);
+
+test("the models of the other local agents found and signed in can be rungs, a group each by the agent's name, with no logo of theirs", async () => {
+  const { api, saved } = fakeApi([{ provider_id: "p1", model: "light" }]);
+  const acp = agentStatus("custom", { custom_id: "acp-1", label: "我的 ACP", models: models("fast") });
+  const view = card(api, null, agentsOf(
+    agentStatus("grok", { models: models("grok-4.7", "grok-4.7-fast") }),
+    agentStatus("codex", { path: null, models: models("gpt-5.5") }),
+    agentStatus("dsh", { logged_in: false, models: models("deepseek-v4") }),
+    agentStatus("opencode", { models: [], default_model: "openai/gpt-5.5" }),
+    acp,
+  ));
+  await sleep(0);
+  click(view.host.querySelector(".ladder-add .real-select-trigger")!);
+  await sleep(0);
+  // Not found, or signed out: none of theirs. An agent that lists no models offers the default one it named.
+  expect(groups(view.host)).toEqual(["Grok", "OpenCode", "我的 ACP"]);
+  expect(optionTexts(view.host).slice(-4)).toEqual(["grok-4.7", "grok-4.7-fast", "openai/gpt-5.5", "fast"]);
+  const marks = [...view.host.querySelectorAll(".real-select-option")].slice(-4).map((el) => el.querySelector("[data-model-source]")?.getAttribute("data-model-source"));
+  expect(marks).toEqual(["agent", "agent", "agent", "agent"]);
+  expect(view.host.querySelector('.real-select-option [data-runner="grok"] .model-source-custom')?.getAttribute("data-text")).toBe("Grok");
+  expect(view.host.querySelector(".real-select-option .connector-logo")).toBeNull();
+  click([...view.host.querySelectorAll(".real-select-option")].at(-2)!);
+  await sleep(0);
+  expect(saved).toEqual([[{ provider_id: "p1", model: "light" }, { runner: "opencode", model: "openai/gpt-5.5", effort: null, config_dir: null }]]);
+  view.close();
+  // Your own ACP agent's rung names it by id.
+  const own = fakeApi([]);
+  const custom = card(own.api, null, agentsOf(acp));
+  await sleep(0);
+  click(custom.host.querySelector(".ladder-add .real-select-trigger")!);
+  await sleep(0);
+  click([...custom.host.querySelectorAll(".real-select-option")].at(-1)!);
+  await sleep(0);
+  expect(own.saved).toEqual([[{ runner: "custom", custom_id: "acp-1", model: "fast", effort: null, config_dir: null }]]);
+  custom.close();
+});
+
+test("a rung of another agent offers that agent's efforts (none for one that has none) and its accounts when there are several; each change saved in place", async () => {
+  const grok = { runner: "grok" as const, model: "grok-4.7", effort: null, config_dir: null };
+  const opencode = { runner: "opencode" as const, model: "openai/gpt-5.5", effort: null, config_dir: null };
+  const codex = { runner: "codex" as const, model: "gpt-5.5", effort: null, config_dir: null };
+  const accounts = [
+    { config_dir: null, logged_in: true, auth: "ChatGPT Plus", error: null, login_command: "codex login" },
+    { config_dir: "/opt/codex-b", logged_in: true, auth: "ChatGPT Pro", error: null, login_command: "x" },
+  ];
+  const { api, saved } = fakeApi([grok, opencode, codex]);
+  const view = card(api, null, agentsOf(agentStatus("grok"), agentStatus("opencode"), agentStatus("codex", { accounts })));
+  await sleep(0);
+  // Every rung says whose it is, as text; the title carries the model and the agent.
+  expect(names(view.host)).toEqual(["grok-4.7", "openai/gpt-5.5", "gpt-5.5"]);
+  expect([...view.host.querySelectorAll(".ladder-name")].map((el) => el.getAttribute("title"))).toEqual(["grok-4.7 · Grok", "openai/gpt-5.5 · OpenCode", "gpt-5.5 · Codex"]);
+  expect([...view.host.querySelectorAll(".ladder-rung")].map((rung) => rung.querySelector("[data-model-source]")?.getAttribute("data-runner"))).toEqual(["grok", "opencode", "codex"]);
+  expect(view.host.querySelector('[data-rung-claude]')).toBeNull();
+  // OpenCode takes no effort, so its rung has nothing to tune; Codex has an account too, since there are two.
+  expect(view.host.querySelector('[data-rung="openai/gpt-5.5"] [data-rung-agent]')).toBeNull();
+  expect(view.host.querySelectorAll('[data-rung="gpt-5.5"] [data-rung-agent] .real-select-trigger')).toHaveLength(2);
+  expect(view.host.querySelectorAll('[data-rung="grok-4.7"] [data-rung-agent] .real-select-trigger')).toHaveLength(1);
+  // Grok's efforts end at extra high.
+  const effort = view.host.querySelector<HTMLElement>('[data-rung="grok-4.7"] [data-rung-agent] .real-select-trigger')!;
+  click(effort);
+  await sleep(0);
+  const levels = [...view.host.querySelectorAll('[data-rung="grok-4.7"] .real-select-option')].map((el) => el.textContent?.trim());
+  expect(levels).toEqual([t.modelLadder.effort(t.sidebar.botAgentEffortDefault), ...["低", "中", "高", "极高"].map((level) => t.modelLadder.effort(level))]);
+  click([...view.host.querySelectorAll('[data-rung="grok-4.7"] .real-select-option')].at(-1)!);
+  await sleep(0);
+  expect(saved.at(-1)).toEqual([{ ...grok, effort: "xhigh" }, opencode, codex]);
+  click(view.host.querySelectorAll<HTMLElement>('[data-rung="gpt-5.5"] [data-rung-agent] .real-select-trigger')[1]!);
+  await sleep(0);
+  const options = [...view.host.querySelectorAll('[data-rung="gpt-5.5"] .real-select-option')];
+  expect(options.map((el) => el.textContent?.trim())).toEqual([`${t.sidebar.botAgentAccountDefault} · ChatGPT Plus`, "ChatGPT Pro · /opt/codex-b"]);
+  click(options.at(-1)!);
+  await sleep(0);
+  expect(saved.at(-1)).toEqual([{ ...grok, effort: "xhigh" }, opencode, { ...codex, config_dir: "/opt/codex-b" }]);
+  view.close();
+});
+
+test("rungs of agents that cannot be asked (the phone) still read with the agent's name, and two of your ACP agents with one model name are two rungs", async () => {
+  const { api } = fakeApi([
+    { runner: "codex", model: "gpt-5.5", effort: "high", config_dir: null },
+    { runner: "custom", custom_id: "a", model: "m", effort: null, config_dir: null },
+    { runner: "custom", custom_id: "b", model: "m", effort: null, config_dir: null },
+  ]);
+  const view = card(api, null, async () => { throw new Error("404"); });
+  await sleep(0);
+  expect(view.host.querySelectorAll(".ladder-rung")).toHaveLength(3);
+  expect([...view.host.querySelectorAll(".ladder-name")].map((el) => el.getAttribute("title"))).toEqual(["gpt-5.5 · Codex", `m · ${AGENT_KINDS.custom.label}`, `m · ${AGENT_KINDS.custom.label}`]);
+  // Codex's rung keeps the effort it has.
+  expect(view.host.querySelector('[data-rung="gpt-5.5"] [data-rung-agent] .real-select-trigger')?.textContent).toContain(t.modelLadder.effort("高"));
+  view.close();
+  // The names you gave them, once the daemon is asked.
+  const named = card(fakeApi([
+    { runner: "custom", custom_id: "a", model: "m", effort: null, config_dir: null },
+    { runner: "custom", custom_id: "b", model: "m", effort: null, config_dir: null },
+  ]).api, null, async () => ({ items: [], custom_agents: [{ id: "a", name: "甲", command: "a", args: [] }, { id: "b", name: "乙", command: "b", args: [] }] }));
+  await sleep(0);
+  expect([...named.host.querySelectorAll(".ladder-name")].map((el) => el.getAttribute("title"))).toEqual(["m · 甲", "m · 乙"]);
+  named.close();
 });

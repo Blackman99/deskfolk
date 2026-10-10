@@ -33,6 +33,9 @@ Remote access works as on the Mac ([remote access](remote-access.md)), with two 
 
 Claude Agent ([how it works](behavior.en.md#claude-agent)) can be picked on Windows too. The `claude.exe` the official install script puts in place and npm's `claude.cmd` are both found; for one installed elsewhere, give its full path (`C:\…` or `~\…`) under Settings › Agents › Claude Agent. Claude Code itself needs [Git for Windows](https://gitforwindows.org/) on Windows. With no proxy environment variables set, it goes through the proxy switched on under Settings › Network & internet › Proxy. Stop ends Claude Code and every command it started. None of this has been tried on a real Windows PC yet ([ADR 0061](adr/0061-claude-agent-runner.md)).
 
+
+The other local agents ([how they work](behavior.en.md#local-agents)) can be picked on Windows too, but none of them has been run on a Windows PC yet. npm installs (Codex, DSH) are `codex.cmd` / `dsh.cmd` under `%APPDATA%\npm` and run through `cmd.exe`, as `claude.cmd` does; for one installed elsewhere, give its full path in Settings › Agents.
+
 ## Not there yet
 
 - The optional independent runtime (off by default on the Mac too).

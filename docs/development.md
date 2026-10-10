@@ -438,6 +438,21 @@ Bot 在正文里按它壳的视角写路径（刚 `echo ... > sales.csv` 之后�
 - **在开发会话里核对时用干净的环境**起守护进程（`env -i HOME=… USER=… SHELL=… TMPDIR=… LANG=… PATH=/usr/bin:/bin:/usr/sbin:/sbin bun <脚本>`）：Claude Code 自己的会话会在环境里留下 `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` 这类变量，原样传下去测到的就不是用户自己的登录了；干净环境也正好是从访达启动的样子。需要代理才能连上 Anthropic 的网络里，这时靠的是系统代理的回落，状态里应当是 `proxy_source: "system"`；看到 `403 Request not allowed` 先看这一项。
 
 
+
+## 本机 Agent（Codex、Grok、OpenCode、DSH、ZCode、Antigravity、自定义 ACP）
+
+`bots.runner` 是 `claude_code` 以外的 Agent 时，`agent-runner.ts` 的 `runAgentTurn` 把这一轮交给 `engine/agent/external-runner.ts`（[ADR 0079](adr/0079-local-agents.md)）。几处要知道的：
+
+- **两个 runner**：Claude 的照旧在 `agent-runner.ts`；别的 Agent 走 `external-runner.ts` 加驱动 `engine/agent/drivers/{acp,codex,agy}.ts`，`drivers/profiles.ts` 按 runner 选驱动和启动参数（`agents/registry.ts` 的 `AGENT_LAUNCH`：Grok `--no-leader`、Codex `app-server`、OpenCode `acp`、DSH `--profile acp`）。共用的是规则（`engine/agent/policy.ts` 的 `decideAction`，读写命令先统一成 app 的动作再判）、凭据（`engine/agent/credentials.ts`，Claude 的策略也用它）、前言（`prompts/agent-system.ts`，`agent` 参数和每个驱动的 `toolHint`）、失败（`transcript-copy.ts` 的 `AGENT_FAIL_REASON` 带 Agent 名，`Live.agentLabel`）。
+- **协议**：ACP 和 Codex 都用 `engine/agent/jsonrpc.ts`（NDJSON；Codex 不写 `jsonrpc` 字段），不引入 ACP SDK。Codex 的协议类型可以用 `codex app-server generate-ts --experimental --out <目录>` 生成来对照（不进仓库）。`agy` 是 `--input-format stream-json --output-format stream-json --print=`，输入每行 `{"event":"user","message":{"role":"user","content":[…]}}`。
+- **找命令和环境**：`agents/locate.ts`（照 `claude-code/locate.ts`，多看 nvm 下的 npm 全局包）、`agents/runtime.ts` 的 `resolveAgent`（去掉嵌套会话标记和 `REAL_BOT_*`、配置目录变量、命令所在目录放到 PATH 前面、系统代理）。设置的键：`<runner>_path`、`<runner>_config_dirs`、`custom_agents`（`store/agents.ts`）。
+- **应用的工具**：`agent-mcp/bridge.ts`（`/v1/agent-mcp/<令牌>`，在 `local-api.ts` 的 bearer 检查之前匹配；`setAgentMcpPort` 由 `runtime.ts` 绑定端口后设）和 `agent-mcp/shim.ts`（`main.ts --agent-mcp`，stdio ⇄ HTTP）。Codex 用 dynamic tools（`thread/start` 的 `dynamicTools`、`item/tool/call`）。
+- **状态和用量**：`agents/status.ts`（`describeAgent`：`--version`、Codex `account/read`/`model/list`、`grok models`、`opencode auth list`/`models`、`agy models`、ACP `initialize`），`agents/usage.ts`（Codex `account/rateLimits/read`，其余从 spend 和选路记录里数今天的），路由在 `local-api/routes/system.ts`。
+- **内置调用**：`agents/judge.ts` 的 `createAgentJudge`，经 `claude-code/reading.ts` 的 `eitherJudge` 和 Claude 的 judge 合成一个；目标 `{ kind: "agent", runner, … }` 由 `engine/builtin-models.ts` 的 `createBuiltinTargets` 给出。
+- **测试不起真 Agent**：`TurnEngineOptions.agentDrivers` 和 `resolveAgent`（换成 `process.execPath` 跑假进程）。假进程在 `src/fixtures/agents/`：`fake-acp-agent.ts`（按 `FAKE_ACP_SCRIPT` 的步骤读写、跑命令、要权限、没问就做、经 MCP 调应用工具，`@CWD` 换成会话目录）、`fake-codex.ts`、`fake-agy.ts`；测试在 `agent-runner-external.test.ts`、`agent-runner-codex.test.ts`、`agent-runner-agy.test.ts`、`agents-api.test.ts`。
+- **真机核对**花各家的额度，先问。照测试的样子在草稿目录写一个脚本：真的 `Store` + `createTurnEngine`（不传 `agentDrivers`/`resolveAgent`），自己起一个只转发 `/v1/agent-mcp/*` 的 `Bun.serve` 并 `setAgentMcpPort`，建一个 `runner` 是要测的 Agent 的 Bot，发几条话：一句话回答、写文件、读 `/etc/hosts`（出卡）、`ask_user`、`end_turn`、跑命令、读别家的凭据。`REAL_BOT_AGENT_TRACE=<目录>` 把每一轮的协议往来记成 `<turn>.jsonl`。2026-10-10 在这台 Mac 上：OpenCode 能用的模型是 `nvidia/z-ai/glm-5.3`（Go 订阅过期、xAI 登录失效），DSH 的 DeepSeek 余额不足，ZCode 没装。
+- **各家 CLI 会自动更新**（Grok、agy 一天里各更新了一次），协议细节变了先看 trace。
+
 ## 内置提示词槽位
 
 应用发给模型的每一段固定文字，凡是你或 Bot 能改的，都在 `apps/daemon/src/prompts/registry.ts` 里登记成一个槽位（[ADR 0064](adr/0064-built-in-prompts-you-and-your-bots-can-edit.md)）：`turn.*` 是每一跳的系统指令和技能 / 记忆 / MCP 段的开头，`agent.preface` 是 Claude Agent 的前言，`tool.<名字>` 是每个工具的说明（参数说明仍在代码里），`call.*` 是应用自己的调用（整理跳、四种读句、书记员、参与判断、输入建议、反思、复盘、衔接检查三种、照样片检查）。文字本身还在原来的模块里，注册表只列出它们。

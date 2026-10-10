@@ -335,3 +335,33 @@ test("a turn run by your Claude Code says so, and one that climbed onto a Claude
   );
   expect([climbed!.reasonLabel, agent!.reasonLabel]).toEqual([`${labels.reasonCode.escalation_model} · ${labels.reasonCode.claude_code}`, labels.reasonCode.claude_code]);
 });
+
+test("a turn run by another local agent (ADR 0079) names it by its reason code `agent_<runner>`, in both languages, and a failure says it was the local agent", () => {
+  for (const locale of ["zh", "en"] as const) {
+    const labels = copyFor(locale).routes;
+    const runners = { codex: "Codex", grok: "Grok", opencode: "OpenCode", dsh: "DSH", antigravity: "Antigravity", zcode: "ZCode" } as const;
+    const rows = routeLogRows(
+      Object.keys(runners).map((runner, index) => record({ turn_id: `t${index}`, reason_code: `agent_${runner}`, base_reason_code: null })),
+      { bots: BOTS, providers: [], labels },
+    );
+    // Newest first, so the log reads backwards.
+    expect(rows.map((row) => row.reasonLabel).reverse()).toEqual(Object.values(runners).map((name) => expect.stringContaining(name)));
+    // Your own ACP agent has no name of the app's to put in it.
+    const [custom] = routeLogRows([record({ reason_code: "agent_custom" })], { bots: BOTS, providers: [], labels });
+    expect(custom!.reasonLabel).toBe(labels.reasonCode.agent_custom);
+    expect(custom!.reasonLabel).not.toBe("agent_custom");
+    // Each local agent's failure kinds read the same whoever the agent is.
+    const [unguarded] = routeLogRows([record({ outcome: "failed", fail_kind: "agent_unguarded" })], { bots: BOTS, providers: [], labels });
+    expect(unguarded!.failReason).toBe(labels.failReason.agent_unguarded);
+    expect(unguarded!.failReason).not.toBe("agent_unguarded");
+  }
+  const zh = copyFor("zh").routes;
+  expect(zh.reasonCode.agent_codex).toBe("由你的 Codex 来跑");
+  expect(zh.failReason.agent_unguarded).toContain("本机 Agent");
+  // A climb onto a Codex rung says the climb first, as Claude's does.
+  const [climbed] = routeLogRows(
+    [record({ reason_code: "agent_codex", base_reason_code: "escalation_model" })],
+    { bots: BOTS, providers: [], labels: zh },
+  );
+  expect(climbed!.reasonLabel).toBe(`${zh.reasonCode.escalation_model} · ${zh.reasonCode.agent_codex}`);
+});

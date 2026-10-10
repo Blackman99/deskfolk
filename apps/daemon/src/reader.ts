@@ -21,7 +21,7 @@
 import { createHash } from "node:crypto";
 import { USER_MEMBER, type Message } from "@real-bot/protocol";
 import { NO_ABLATION, type Ablation } from "./ablation";
-import type { ClaudeJudge, ClaudeReaderTarget, ClaudeReadingAnswer, ClaudeReadingUsage } from "./claude-code/reading";
+import type { ClaudeJudge, LocalAgentTarget, ClaudeReadingAnswer, ClaudeReadingUsage } from "./claude-code/reading";
 import type { CompletionsClient, JudgeResult, MappedUsage } from "./completions";
 import {
   botLineByWords,
@@ -74,11 +74,11 @@ export type ReaderDeps = {
    * is set. Its `thinkingLevel` is sent with the reading: the lightest the model lists, since a line
    * of yours waits on the reading before it wakes anyone.
    */
-  routing: () => Promise<OrganizerRouting | ClaudeReaderTarget | null>;
+  routing: () => Promise<OrganizerRouting | LocalAgentTarget | null>;
   recordSpend: (input: { sessionId: string; target: OrganizerRouting; usage: MappedUsage | null; responded: boolean }) => void;
   /** One tool-less Claude Code call for a reading, when you chose a Claude model for it; none, and such a reading is `claude_unavailable`. */
   claudeJudge?: ClaudeJudge;
-  recordClaudeSpend?: (input: { sessionId: string; model: string; usage: ClaudeReadingUsage }) => void;
+  recordClaudeSpend?: (input: { sessionId: string; model: string; usage: ClaudeReadingUsage; providerName?: string }) => void;
   draining: () => boolean;
   /** Benchmark switches (see `ablation.ts`): `reader` makes no call, as if it had failed. */
   ablation?: Ablation;
@@ -229,7 +229,7 @@ export function createReader(deps: ReaderDeps): Reader {
     }
     if (claude && answered?.usage && asked.sessionId && deps.recordClaudeSpend) {
       try {
-        deps.recordClaudeSpend({ sessionId: asked.sessionId, model: claude.model, usage: answered.usage });
+        deps.recordClaudeSpend({ sessionId: asked.sessionId, model: claude.model, usage: answered.usage, ...(claude.kind === "agent" ? { providerName: claude.label } : {}) });
       } catch {
         // the ledger of spend is best-effort
       }

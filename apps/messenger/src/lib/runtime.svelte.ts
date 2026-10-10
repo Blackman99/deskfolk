@@ -19,7 +19,6 @@ import type {
   SettingsPatch,
   ThinkingLevel,
   BotRunner,
-  ClaudeEffort,
   CreateSkillRequest,
   PatchSkillRequest,
   CreateRoutineRequest,
@@ -660,7 +659,8 @@ export class MessengerRuntime {
       thinking_level?: ThinkingLevel | null;
       runner?: BotRunner | null;
       agent_model?: string | null;
-      agent_effort?: ClaudeEffort | null;
+      agent_effort?: string | null;
+      agent_custom_id?: string | null;
     },
   ): Promise<ApiError | null> { return this.adminMutations.patchBot(id, body); }
   archiveBot(id: string): Promise<ApiError | null> { return this.adminMutations.archiveBot(id); }

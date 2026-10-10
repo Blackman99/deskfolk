@@ -72,6 +72,7 @@ export const PLACEHOLDER_MEANING: Record<Placeholder, Localized> = {
   rules: { zh: "这个规划定过的规则", en: "the plan's rules" },
   workspace: { zh: "工作区根目录的绝对路径", en: "the workspace root's absolute path" },
   cwd: { zh: "这一轮的工作目录", en: "this turn's work dir" },
+  agent: { zh: "运行这一轮的本机 Agent 的名字", en: "the name of the local agent running this turn" },
 };
 
 const BOTH: readonly Locale[] = ["zh", "en"];

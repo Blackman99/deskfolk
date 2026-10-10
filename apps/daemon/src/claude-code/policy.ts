@@ -8,6 +8,7 @@
  */
 import { existsSync } from "node:fs";
 import { posix, win32 } from "node:path";
+import { isAgentCredentialPath, touchesAgentCredentials } from "../engine/agent/credentials";
 import { recursiveSearchGuard, searchGuardMessage } from "../search-guard";
 import { classifyPath, classifyShell, isAbsoluteHostPath, isWithinPath, nodePathHost, workspaceRelative, type PathHost } from "../workspace-paths";
 
@@ -81,6 +82,10 @@ export function decideAgentCall(call: AgentCall): AgentDecision {
     if (touchesClaudeCredentials(command, home, platform, call.configDirs)) {
       return { kind: "deny", reason: "Claude Code's own settings and credentials are off limits" };
     }
+    // Every other local agent's too (ADR 0079): a Bot reads no agent's sign-in, its own or another's.
+    if (touchesAgentCredentials(command, home, platform, call.configDirs)) {
+      return { kind: "deny", reason: "your local agents' own settings and credentials are off limits" };
+    }
     const hit = recursiveSearchGuard(call.workspace, command, call.cwd, host);
     if (hit) return { kind: "deny", reason: searchGuardMessage(hit) };
     // Claude Code's Bash on Windows is Git Bash, so `/c/Users/…` is read as Git Bash reads it.
@@ -96,6 +101,9 @@ export function decideAgentCall(call: AgentCall): AgentDecision {
   const named = [abs, ...(platform === "win32" && raw ? [gitBashToWindows(raw)].filter((path): path is string => path !== null) : [])];
   if (named.some((path) => isClaudeCredentialPath(path, home, platform, call.configDirs))) {
     return { kind: "deny", reason: "Claude Code's own settings and credentials are off limits" };
+  }
+  if (named.some((path) => isAgentCredentialPath(path, home, platform, call.configDirs))) {
+    return { kind: "deny", reason: "your local agents' own settings and credentials are off limits" };
   }
   // On Windows a path with no drive ("/work/a.md", "/c/Users/…") opens on whichever drive the
   // process is on, or as Git Bash would read it: which one is not ours to guess, nor yours to approve.
@@ -125,7 +133,7 @@ export function decideAgentCall(call: AgentCall): AgentDecision {
 }
 
 /** The path a file tool names: `file_path`, `notebook_path`, or a search's `path` (its cwd when absent). */
-function pathOf(call: AgentCall): string | null {
+export function pathOf(call: Pick<AgentCall, "input">): string | null {
   for (const key of ["file_path", "notebook_path", "path"]) {
     const value = call.input[key];
     if (typeof value === "string" && value.trim()) return value.trim();
@@ -133,7 +141,7 @@ function pathOf(call: AgentCall): string | null {
   return null;
 }
 
-function expandHome(path: string, home: string, platform: NodeJS.Platform): string {
+export function expandHome(path: string, home: string, platform: NodeJS.Platform): string {
   if (path === "~") return home;
   if (platform === "win32" ? /^~[\\/]/.test(path) : path.startsWith("~/")) return (platform === "win32" ? win32 : posix).join(home, path.slice(2));
   return path;
@@ -143,13 +151,13 @@ function expandHome(path: string, home: string, platform: NodeJS.Platform): stri
  * Where a file tool's path points from `cwd`. On Windows only a plain relative path is joined: a
  * rooted (`\x`) or drive-relative (`C:x`) one is anchored by the classifier, as Win32 opens it.
  */
-function anchorAt(cwd: string, path: string, platform: NodeJS.Platform): string {
+export function anchorAt(cwd: string, path: string, platform: NodeJS.Platform): string {
   if (platform !== "win32") return posix.resolve(cwd, path);
   return /^(?:[A-Za-z]:|[\\/])/.test(path) ? path : win32.join(cwd, path);
 }
 
 /** Git Bash's `/c/Users/…` as the Windows path it stands for; null for anything else. */
-function gitBashToWindows(path: string): string | null {
+export function gitBashToWindows(path: string): string | null {
   const match = /^\/([A-Za-z])(?:\/(.*))?$/s.exec(path);
   return match ? `${match[1]!.toUpperCase()}:\\${(match[2] ?? "").replace(/\//g, "\\")}` : null;
 }

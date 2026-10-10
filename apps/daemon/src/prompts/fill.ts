@@ -1,13 +1,14 @@
 /**
  * The placeholders a built-in prompt's editable text may carry (ADR 0064): `{format}` marks where the
  * app's fixed output format goes, `{item}` / `{rules}` the plan data a judge prompt is about, and
- * `{workspace}` / `{cwd}` the paths a Claude Agent turn runs in. Nothing else in braces is one — the
+ * `{workspace}` / `{cwd}` the paths a Claude Agent turn runs in, `{agent}` the local agent running it
+ * (ADR 0079). Nothing else in braces is one — the
  * JSON examples in a prompt stay text.
  */
-export const PLACEHOLDERS = ["format", "item", "rules", "workspace", "cwd"] as const;
+export const PLACEHOLDERS = ["format", "item", "rules", "workspace", "cwd", "agent"] as const;
 export type Placeholder = (typeof PLACEHOLDERS)[number];
 
-const PLACEHOLDER_RE = /\{(format|item|rules|workspace|cwd)\}/g;
+const PLACEHOLDER_RE = /\{(format|item|rules|workspace|cwd|agent)\}/g;
 
 /**
  * Fills the placeholders in one pass: what goes in is never read again, so a plan rule that happens to

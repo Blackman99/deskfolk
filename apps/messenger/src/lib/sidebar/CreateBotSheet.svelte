@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
-	import { isLocalEndpoint } from '@real-bot/protocol';
+	import { onMount, untrack } from 'svelte';
+	import { AGENT_KINDS, type AgentsStatusResponse } from '@real-bot/protocol';
 	import AvatarEditor from '../AvatarEditor.svelte';
 	import { backdropClick } from '../click-outside.ts';
 	import Select from '../Select.svelte';
@@ -17,6 +17,7 @@
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import { pageSlide } from '../mobile-page-slide.ts';
 	import type { SelectOption } from '../select-options.ts';
+	import { agentBlocker, agentLabelOf, agentStatusOf, parseRunnerValue, runnerOptions, setupRunnerOf } from '../runner-choice.ts';
 
 	type Props = {
 		runtime: MessengerRuntime;
@@ -30,7 +31,8 @@
 	const backdrop = backdropClick();
 
 	// The sheet is mounted only while it is open, so a fresh mount is the reset. With no endpoint a
-	// Bot could run on — set up on Claude Code alone (ADR 0078) — it starts on Claude Agent.
+	// Bot could run on — set up on Claude Code alone (ADR 0078), or on another local agent (ADR 0079)
+	// — it starts on that agent.
 	let draft = $state<CreateBotDraft>({
 		name: '',
 		duties: '',
@@ -38,14 +40,30 @@
 		avatar: '',
 		model: '',
 		thinkingLevel: '',
-		runner: untrack(() => runtime.snapshot.providers).some((provider) => provider.base_url && (provider.key_set || isLocalEndpoint(provider.base_url)))
-			? ''
-			: 'claude_code'
+		runner: untrack(() => {
+			const { providers, settings } = runtime.snapshot;
+			return setupRunnerOf(providers, settings.builtin_models?.reader ?? settings.reader_model);
+		})
 	});
-	const runnerOptions = $derived([
-		{ value: '', label: t.sidebar.botRunnerApp },
-		{ value: 'claude_code', label: t.sidebar.botRunnerClaude }
-	]);
+	/** What the daemon finds of your other local agents; the runner picker lists them. Asked once, on opening. */
+	let agents = $state<AgentsStatusResponse | null>(null);
+	onMount(() => {
+		const client = runtime.client;
+		if (!client) return;
+		void (async () => {
+			try {
+				agents = await client.agents();
+			} catch {
+				// The phone, or a daemon older than local agents: only the app's loop and Claude are offered.
+				agents = null;
+			}
+		})();
+	});
+	const runnerChoices = $derived(runnerOptions(t, agents, draft.runner ?? ''));
+	const runnerPick = $derived(parseRunnerValue(draft.runner));
+	const agentRunner = $derived(runnerPick.runner && runnerPick.runner !== 'claude_code' ? runnerPick.runner : null);
+	const agentName = $derived(agentRunner ? agentLabelOf(agentRunner, runnerPick.customId, agents) : '');
+	const agentBlocked = $derived(agentRunner ? agentBlocker(agentStatusOf(agents, agentRunner, runnerPick.customId)) : null);
 	let errors = $state<CreateBotFieldErrors>({});
 	let failed = $state(false);
 
@@ -145,10 +163,25 @@
 			</div>
 			<div class="modal-section">
 				<label for="bot-runner">{t.sidebar.botRunner}</label>
-				<Select id="bot-runner" bind:value={draft.runner} options={runnerOptions} onchange={onInput} />
-				<p class="muted field-hint">{draft.runner === 'claude_code' ? t.sidebar.botRunnerClaudeCreateHint : t.sidebar.botRunnerAppHint}</p>
+				<Select id="bot-runner" bind:value={draft.runner} options={runnerChoices} error={!!errors.agentCustomId} onchange={onInput} />
+				{#if errors.agentCustomId}
+					<p class="field-error">{t.sidebar.botRunnerCustomInvalid}</p>
+				{:else if agentRunner}
+					{#if agentBlocked === 'missing'}
+						<p class="field-error" data-runner-missing>{t.sidebar.botRunnerAgentMissing(agentName, AGENT_KINDS[agentRunner].command)}</p>
+					{:else if agentBlocked === 'signed_out'}
+						<p class="field-error" data-runner-signed-out>{t.sidebar.botRunnerAgentSignedOut(agentName, agentStatusOf(agents, agentRunner, runnerPick.customId)?.login_command ?? null)}</p>
+					{:else}
+						<p class="muted field-hint">{t.sidebar.botRunnerAgentCreateHint(agentName)}</p>
+					{/if}
+					{#if !AGENT_KINDS[agentRunner].appTools}
+						<p class="muted field-hint" data-runner-note>{t.sidebar.botRunnerNoAppTools(agentName)}</p>
+					{/if}
+				{:else}
+					<p class="muted field-hint">{draft.runner === 'claude_code' ? t.sidebar.botRunnerClaudeCreateHint : t.sidebar.botRunnerAppHint}</p>
+				{/if}
 			</div>
-			{#if draft.runner !== 'claude_code'}
+			{#if !draft.runner}
 			<div class="modal-section">
 				<label for="bot-model">{t.sidebar.botModel}</label>
 				<Select

@@ -26,7 +26,12 @@ import type {
   SpawnedProcess,
   SpawnOptions,
 } from "@anthropic-ai/claude-agent-sdk";
-import type { ClaudeEffort, ClientEvent, Message, ModelLadderClaudeRung, Spend, Turn } from "@real-bot/protocol";
+import type { BotRunner, ClaudeEffort, ClientEvent, Message, ModelLadderAgentRung, Spend, Turn } from "@real-bot/protocol";
+import { agentMcpPort } from "../agent-mcp/bridge";
+import { resolveAgent as resolveLocalAgent, type ResolvedAgent } from "../agents/runtime";
+import type { AgentDriver } from "./agent/driver";
+import { driverFor } from "./agent/drivers/profiles";
+import { agentLabel, runExternalSession, type ExternalSettings } from "./agent/external-runner";
 import { withSystemProxy } from "../claude-code/proxy";
 import { claudeLaunch, killsTree } from "../claude-code/spawn";
 import { tildeDir } from "../claude-code/account";
@@ -108,15 +113,22 @@ export type AgentRunnerDeps = {
   failTurn: (turnId: string, kind: FailKind, detail?: string | null) => void;
   /** Spawning Claude Code; the SDK's own spawn, made detached and recorded, unless a test brings one. */
   spawnProcess?: (options: SpawnOptions, turnId: string) => SpawnedProcess;
+  /** Local agents other than Claude Code (ADR 0079): a test's stand-in driver per runner. */
+  agentDrivers?: Partial<Record<BotRunner, AgentDriver>>;
+  /** Finding a local agent's command and environment; a test brings its own. */
+  resolveAgent?: (options: Parameters<typeof resolveLocalAgent>[0]) => Promise<ResolvedAgent>;
 };
 
 export type AgentRunner = {
-  /** `rung`: a Claude rung of the model ladder the job climbed to (ADR 0076), worked on in place of the Bot's own Claude settings. */
-  runAgentTurn(turnId: string, rung?: ModelLadderClaudeRung): Promise<void>;
+  /**
+   * `rung`: a local agent's rung of the model ladder the job climbed to (ADR 0076), worked on in
+   * place of the Bot's own agent settings — on whichever agent the rung names.
+   */
+  runAgentTurn(turnId: string, rung?: ModelLadderAgentRung): Promise<void>;
 };
 
 /** What a Claude Agent turn asks Claude Code for: the model, the effort, and the account it spends. */
-type AgentSettings = { model: string | null; effort: ClaudeEffort | null; configDir: string | null; climbed: boolean };
+type AgentSettings = { model: string | null; effort: string | null; configDir: string | null; climbed: boolean };
 
 type ModelTotals = { input: number; output: number; cached: number; cost: number };
 
@@ -299,7 +311,7 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
     return child as unknown as SpawnedProcess;
   }
 
-  async function runAgentTurn(turnId: string, rung?: ModelLadderClaudeRung): Promise<void> {
+  async function runAgentTurn(turnId: string, rung?: ModelLadderAgentRung): Promise<void> {
     const live = lives.get(turnId);
     if (!live) return;
     live.agent = true;
@@ -311,6 +323,19 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
       return;
     }
     const bot = store.getBot(current.bot_id);
+    // Another local agent than Claude Code, by the Bot or by the rung (ADR 0079).
+    const runner: BotRunner = rung ? rung.runner : (bot.runner ?? "claude_code");
+    if (runner !== "claude_code") {
+      await runExternalTurn(turnId, live, current, bot, {
+        runner,
+        custom: runner === "custom" ? store.customAgent(rung ? rung.custom_id : bot.agent_custom_id) : null,
+        model: rung ? rung.model : bot.agent_model ?? null,
+        effort: rung ? rung.effort : bot.agent_effort ?? null,
+        configDir: rung ? rung.config_dir : bot.agent_config_dir ?? null,
+        climbed: Boolean(rung),
+      });
+      return;
+    }
     const settings: AgentSettings = rung
       ? { model: rung.model, effort: rung.effort, configDir: rung.config_dir, climbed: true }
       : { model: bot.agent_model ?? null, effort: bot.agent_effort ?? null, configDir: bot.agent_config_dir ?? null, climbed: false };
@@ -339,6 +364,36 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
     if (!(await slot(turnId, live))) return;
     try {
       await runSession(turnId, live, current, bot, settings, status.path, status, root);
+    } finally {
+      release();
+    }
+  }
+
+  async function runExternalTurn(turnId: string, live: Live, current: Turn, bot: ReturnType<Store["getBot"]>, settings: ExternalSettings): Promise<void> {
+    const locale = store.settingsCached().locale;
+    live.locale = locale;
+    live.agentLabel = agentLabel(settings.runner, settings.custom);
+    const resolved = await (deps.resolveAgent ?? resolveLocalAgent)({
+      runner: settings.runner, custom: settings.custom, setting: store.agentPath(settings.runner), configDir: settings.configDir,
+    });
+    if (!active(turnId, live)) return;
+    if (!resolved.ok) {
+      deps.failTurn(turnId, "agent_missing", resolved.error);
+      return;
+    }
+    const root = store.workspacePath();
+    if (!root) {
+      deps.failTurn(turnId, "crashed", locale === "en" ? "no workspace is set" : "还没有设工作区");
+      return;
+    }
+    if (!(await slot(turnId, live))) return;
+    try {
+      await runExternalSession({
+        deps, turnId, live, current, bot, settings, root,
+        launch: { executable: resolved.executable, args: resolved.args, env: resolved.env },
+        driver: deps.agentDrivers?.[settings.runner] ?? driverFor(settings.runner),
+        daemonPort: agentMcpPort,
+      });
     } finally {
       release();
     }
@@ -804,7 +859,7 @@ export function createAgentRunner(deps: AgentRunnerDeps): AgentRunner {
       systemPrompt: { type: "preset", preset: "claude_code", append },
       maxTurns: AGENT_MAX_TURNS,
       ...(settings.model ? { model: settings.model } : {}),
-      ...(settings.effort ? { effort: settings.effort } : {}),
+      ...(settings.effort ? { effort: settings.effort as ClaudeEffort } : {}),
       hooks,
       canUseTool,
       abortController: live.abort,

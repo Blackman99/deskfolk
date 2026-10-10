@@ -33,6 +33,9 @@ Bot 的 `shell` 工具找得到 Git Bash 时用它跑命令，找不到才退到
 
 Claude Agent（[怎么用](behavior.md#claude-agent)）在 Windows 上也能选。用官方安装脚本装的 `claude.exe`、npm 装的 `claude.cmd` 都认，装在别处可以在 设置 › Agent › Claude Agent 里填完整路径（`C:\…` 或 `~\…`）。Claude Code 自己在 Windows 上要 [Git for Windows](https://gitforwindows.org/)。没设代理环境变量时，它走 设置 › 网络和 Internet › 代理 里开着的那个代理。Stop 会结束 Claude Code 和它起的所有命令。这些还没在真的 Windows 电脑上试过（[ADR 0061](adr/0061-claude-agent-runner.md)）。
 
+
+其他本机 Agent（[怎么用](behavior.md#本机-agent)）在 Windows 上也能选，但还都没在 Windows 电脑上跑过。npm 装的（Codex、DSH）是 `%APPDATA%\npm` 下的 `codex.cmd`、`dsh.cmd`，和 `claude.cmd` 一样经 `cmd.exe` 跑；装在别处的在 设置 › Agent 里填完整路径。
+
 ## 还没有的
 
 - 可选的独立运行时（Mac 上也默认关闭）。

@@ -1,7 +1,9 @@
-import { isLocalEndpoint, LOCAL_API_BIND, type ApiFormat, type CreateProviderRequest, type PatchProviderRequest, type RuntimeResponse } from "@real-bot/protocol";
+import { isBotRunner, isLocalEndpoint, LOCAL_API_BIND, type ApiFormat, type CreateProviderRequest, type PatchProviderRequest, type RuntimeResponse } from "@real-bot/protocol";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { CLAUDE_USAGE_REFRESH_MIN_MS } from "../../claude-code/usage";
+import type { OtherRunner } from "../../agents/status";
+import { AGENT_USAGE_REFRESH_MIN_MS } from "../../agents/usage";
 import { HttpError } from "../../errors";
 import { listHostDir } from "../../host-paths";
 import { emptyResponse, jsonResponse, matchPath } from "../../http";
@@ -62,6 +64,44 @@ export function systemRoutes(ctx: RouteCtx): Response | Promise<Response> | null
   if (path === "/v1/runtime/claude-code/accounts" && method === "PUT") {
     store.setClaudeCodeConfigDirs((input.body as Record<string, unknown>).config_dirs);
     return options.claudeCode!.detect().then((status) => jsonResponse(status, 200, null));
+  }
+
+  // Your other local agents (ADR 0079), from this Mac or a paired phone, as for Claude Code: each
+  // answer a fresh look (the agent run and asked about itself), the path, account list and custom
+  // agents set whole. No receipt (isNonReceiptPath).
+  if (options.agents && (path === "/v1/runtime/agents" || path.startsWith("/v1/runtime/agents/") || path === "/v1/runtime/custom-agents")) {
+    const agents = options.agents;
+    const body = (input.body ?? {}) as Record<string, unknown>;
+    const runnerOf = (value: unknown): OtherRunner => {
+      if (typeof value !== "string" || value === "claude_code" || !isBotRunner(value)) throw new HttpError(422, "invalid_args", "runner must name a local agent other than claude_code");
+      return value as OtherRunner;
+    };
+    const customOf = (runner: OtherRunner) => (runner === "custom" ? (typeof body.custom_id === "string" ? body.custom_id : null) : null);
+    if (method === "GET" && path === "/v1/runtime/agents") {
+      return agents.list(url.searchParams.get("refresh") === "1" ? 0 : undefined).then((list) => jsonResponse(list, 200, null));
+    }
+    if (method === "POST" && path === "/v1/runtime/agents/detect") {
+      const runner = runnerOf(body.runner);
+      return agents.detect(runner, customOf(runner)).then((status) => jsonResponse(status, 200, null));
+    }
+    if (method === "PUT" && path === "/v1/runtime/agents/path") {
+      const runner = runnerOf(body.runner);
+      store.setAgentPath(runner, body.path ?? null);
+      return agents.detect(runner, null).then((status) => jsonResponse(status, 200, null));
+    }
+    if (method === "PUT" && path === "/v1/runtime/agents/accounts") {
+      const runner = runnerOf(body.runner);
+      store.setAgentConfigDirs(runner, body.config_dirs);
+      return agents.detect(runner, null).then((status) => jsonResponse(status, 200, null));
+    }
+    if (method === "PUT" && path === "/v1/runtime/custom-agents") {
+      const saved = store.setCustomAgents(body.agents);
+      return agents.list(0).then((list) => jsonResponse({ ...list, custom_agents: saved }, 200, null));
+    }
+  }
+  if (method === "GET" && path === "/v1/agent-usage" && options.agentUsage) {
+    const refresh = url.searchParams.get("refresh") === "1";
+    return options.agentUsage.current(refresh ? AGENT_USAGE_REFRESH_MIN_MS : undefined).then((usage) => jsonResponse(usage, 200, null));
   }
 
   if (method === "POST" && path === "/v1/runtime/quit") {

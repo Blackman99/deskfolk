@@ -1,6 +1,7 @@
 import {
   THINKING_LEVELS,
-  isClaudeEffort,
+  isAgentEffort,
+  isAgentModelName,
   isClaudeModelName,
   isThinkingLevel,
   sortThinkingLevels,
@@ -8,6 +9,7 @@ import {
   type CreateGroupRequest,
   type ThinkingLevel,
 } from "@real-bot/protocol";
+import { parseRunnerValue } from "../runner-choice.ts";
 import { modelSelectValue, parseModelSelectValue } from "../settings/provider-form.ts";
 
 export type CreateBotDraft = {
@@ -18,12 +20,15 @@ export type CreateBotDraft = {
   model: string;
   /** Pinned thinking level; `''` lets the app pick. Omit to leave the field out of the request. */
   thinkingLevel?: string;
-  /** Who runs its turns (ADR 0061): `''` the app, `claude_code` Claude Agent. Omit to leave it out. */
+  /**
+   * Who runs its turns (ADR 0061, ADR 0079): `''` the app, a runner's name for a local agent, or
+   * `custom:<id>` for one of your own ACP agents (see `runner-choice.ts`). Omit to leave it out.
+   */
   runner?: string;
-  /** Claude Agent's model and effort; `''` leaves them to Claude Code. Omit to leave them out. */
+  /** The local agent's model and effort; `''` leaves them to the agent. Omit to leave them out. */
   agentModel?: string;
   agentEffort?: string;
-  /** The Claude account (a listed config directory); `''` the daemon's own environment. Omit to leave it out. */
+  /** The account on that agent (a listed config directory); `''` the daemon's own environment. Omit to leave it out. */
   agentConfigDir?: string;
 };
 
@@ -36,6 +41,8 @@ export type CreateBotFieldErrors = {
   agentModel?: "invalid";
   agentEffort?: "invalid";
   agentConfigDir?: "invalid";
+  /** Runs on one of your own ACP agents, and none is picked (or the one picked is gone). */
+  agentCustomId?: "invalid";
 };
 
 export type CreateBotPlan =
@@ -82,11 +89,15 @@ export function planCreateBot(
   if (rawThinking !== undefined && rawThinking.length > 0 && !isThinkingLevel(rawThinking)) {
     errors.thinkingLevel = "invalid";
   }
+  // The app's own loop reads the agent fields as Claude's, as the daemon does; any other agent names its own.
+  const { runner, customId } = parseRunnerValue(draft.runner);
+  const agentRunner = runner ?? "claude_code";
   const agentModel = draft.agentModel?.trim();
   const agentEffort = draft.agentEffort?.trim();
-  if (agentModel && !isClaudeModelName(agentModel)) errors.agentModel = "invalid";
-  if (agentEffort && !isClaudeEffort(agentEffort)) errors.agentEffort = "invalid";
-  if (errors.name || errors.duties || errors.boundaries || errors.model || errors.thinkingLevel || errors.agentModel || errors.agentEffort) {
+  if (agentModel && !(agentRunner === "claude_code" ? isClaudeModelName(agentModel) : isAgentModelName(agentModel))) errors.agentModel = "invalid";
+  if (agentEffort && !isAgentEffort(agentRunner, agentEffort)) errors.agentEffort = "invalid";
+  if (runner === "custom" && !customId) errors.agentCustomId = "invalid";
+  if (errors.name || errors.duties || errors.boundaries || errors.model || errors.thinkingLevel || errors.agentModel || errors.agentEffort || errors.agentCustomId) {
     return { ok: false, errors };
   }
   const body: CreateBotRequest = {
@@ -102,9 +113,11 @@ export function planCreateBot(
   if (avatar && avatar.length > 0) {
     body.avatar = avatar;
   }
-  if (draft.runner !== undefined) body.runner = draft.runner === "claude_code" ? "claude_code" : null;
+  if (draft.runner !== undefined) body.runner = runner;
+  // Only a daemon that knows custom agents is ever sent the field.
+  if (runner === "custom") body.agent_custom_id = customId;
   if (agentModel !== undefined) body.agent_model = agentModel.length > 0 ? agentModel : null;
-  if (agentEffort !== undefined) body.agent_effort = agentEffort && isClaudeEffort(agentEffort) ? agentEffort : null;
+  if (agentEffort !== undefined) body.agent_effort = agentEffort && isAgentEffort(agentRunner, agentEffort) ? agentEffort : null;
   if (draft.agentConfigDir !== undefined) body.agent_config_dir = draft.agentConfigDir.trim() || null;
   return {
     ok: true,
@@ -146,8 +159,10 @@ export function mapCreateBotError(
   }
   if (message.startsWith("thinking_level")) return { thinkingLevel: "invalid" };
   if (message.startsWith("agent_model")) return { agentModel: "invalid" };
-  if (message.startsWith("agent_effort")) return { agentEffort: "invalid" };
+  // An agent that takes no effort level says so by its own name first (`OpenCode takes no effort level: agent_effort must be null`).
+  if (message.startsWith("agent_effort") || message.includes("agent_effort must be")) return { agentEffort: "invalid" };
   if (message.startsWith("agent_config_dir")) return { agentConfigDir: "invalid" };
+  if (message.startsWith("agent_custom_id")) return { agentCustomId: "invalid" };
   return { top: true };
 }
 

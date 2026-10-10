@@ -10,18 +10,19 @@
  * retrospective. A call that sends pictures runs on an endpoint's model only when its catalog says
  * it takes them; every Claude model does, and gets them as image blocks.
  */
-import { isReaderClaudeModel, type BuiltinModelRole, type ClaudeEffort, type Spend, type SpendKind, type SpendPurpose, type ThinkingLevel } from "@real-bot/protocol";
-import type { ClaudeJudge, ClaudePromptBlock, ClaudeReaderTarget, ClaudeReadingUsage } from "../claude-code/reading";
+import { AGENT_KINDS, isReaderAgentModel, type BuiltinModelRole, type ClaudeEffort, type Spend, type SpendKind, type SpendPurpose, type ThinkingLevel } from "@real-bot/protocol";
+import type { ClaudeJudge, ClaudePromptBlock, ClaudeReadingUsage, LocalAgentTarget } from "../claude-code/reading";
 import type { ChatMessage, CompletionsClient, JudgeRequest, JudgeResult, MappedUsage } from "../completions";
 import type { Store } from "../store";
 import type { SpendTracker } from "./spend";
 import type { Creds, EndpointTarget, SpendOwner } from "./types";
 
-/** Where a built-in call runs: an endpoint's model, or a Claude model of yours. */
-export type BuiltinTarget = EndpointTarget | ClaudeReaderTarget;
+/** Where a built-in call runs: an endpoint's model, or a model of one of your local agents (ADR 0061, ADR 0079). */
+export type BuiltinTarget = EndpointTarget | LocalAgentTarget;
 
-export function isClaudeTarget(target: BuiltinTarget): target is ClaudeReaderTarget {
-  return "kind" in target && target.kind === "claude_code";
+/** A local agent's target, Claude Code's or another's: not an endpoint. */
+export function isClaudeTarget(target: BuiltinTarget): target is LocalAgentTarget {
+  return "kind" in target && (target.kind === "claude_code" || target.kind === "agent");
 }
 
 /** How hard a call's chosen model thinks. */
@@ -67,8 +68,15 @@ export function createBuiltinTargets(deps: BuiltinTargetDeps): BuiltinTargetOf {
     const chosen = store.settingsCached().builtin_models?.[role] ?? null;
     if (!chosen) return null;
     const effort = EFFORT[role];
-    if (isReaderClaudeModel(chosen)) {
+    if (isReaderAgentModel(chosen)) {
       const claudeEffort = CLAUDE_EFFORT[effort];
+      if (chosen.runner !== "claude_code") {
+        // The same three levels on another agent, where it takes them by these names.
+        const asked = claudeEffort && AGENT_KINDS[chosen.runner].efforts.includes(claudeEffort) ? claudeEffort : null;
+        const custom = chosen.runner === "custom" ? store.customAgent(chosen.custom_id ?? null) : null;
+        return { kind: "agent", runner: chosen.runner, customId: chosen.custom_id ?? null, label: custom?.name ?? AGENT_KINDS[chosen.runner].label,
+          model: chosen.model, configDir: chosen.config_dir, ...(asked ? { effort: asked } : {}) };
+      }
       return { kind: "claude_code", model: chosen.model, configDir: chosen.config_dir, ...(claudeEffort ? { effort: claudeEffort } : {}) };
     }
     const creds = await deps.credentials().catch(() => null);
@@ -204,7 +212,8 @@ export function recordSideSpend(
 ): Spend | null {
   const { kind, purpose = null, owner, turnId = null, judgementId = null, target } = input;
   if (isClaudeTarget(target)) {
-    return input.claudeUsage ? spend.recordClaudeSpend({ kind, purpose, owner, turnId, judgementId, model: target.model, usage: input.claudeUsage }) : null;
+    return input.claudeUsage ? spend.recordClaudeSpend({ kind, purpose, owner, turnId, judgementId, model: target.model, usage: input.claudeUsage,
+      ...(target.kind === "agent" ? { providerName: target.label } : {}) }) : null;
   }
   return spend.recordResponseSpend({ kind, purpose, owner, turnId, judgementId, target: spend.callOf(target), usage: input.usage, responded: input.responded });
 }

@@ -77,7 +77,7 @@ test("the model that reads lines can be a Claude model on a listed account; the 
   // Not a Claude model name, an account that is not listed, a runner nobody has.
   await expect(store.patchSettings({ reader_model: { runner: "claude_code", model: "not a model", config_dir: null } })).rejects.toThrow("Claude model name");
   await expect(store.patchSettings({ reader_model: { runner: "claude_code", model: "haiku", config_dir: "/opt/claude-x" } })).rejects.toThrow("listed in Settings");
-  await expect(store.patchSettings({ reader_model: { runner: "other", model: "haiku", config_dir: null } })).rejects.toThrow("Claude model name");
+  await expect(store.patchSettings({ reader_model: { runner: "other", model: "haiku", config_dir: null } })).rejects.toThrow("a runner the app knows");
   expect((await store.settings()).reader_model).toEqual({ runner: "claude_code", model: "claude-haiku-4-5", config_dir: "/opt/claude-b" });
 
   // An endpoint's model clears the Claude keys, and null clears everything.

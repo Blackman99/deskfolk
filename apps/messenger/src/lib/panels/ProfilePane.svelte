@@ -10,7 +10,7 @@
 	import BotActionsCard from './BotActionsCard.svelte';
 	import { untrack } from 'svelte';
 	import { Autosave } from '../autosave.svelte.ts';
-	import type { Bot, ClaudeCodeStatus } from '@real-bot/protocol';
+	import type { AgentsStatusResponse, Bot, ClaudeCodeStatus } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import {
 		emptySkillDraft,
@@ -36,6 +36,7 @@
 	import type { DangerAction } from '../overlays/danger-confirm.ts';
 	import type { SelectOption } from '../select-options.ts';
 	import { endpointSource } from '../model-source.ts';
+	import { runnerValueOf } from '../runner-choice.ts';
 
 	type Props = {
 		runtime: MessengerRuntime;
@@ -105,7 +106,7 @@
 			avatar: row.avatar ?? '',
 			model: botModelValue(row),
 			thinkingLevel: row.thinking_level ?? '',
-			runner: row.runner ?? '',
+			runner: runnerValueOf(row.runner, row.agent_custom_id),
 			agentModel: row.agent_model ?? '',
 			agentEffort: row.agent_effort ?? '',
 			// Left out of the save for a daemon that has no accounts, which would refuse the field.
@@ -155,6 +156,23 @@
 		if (profileDraft.runner === 'claude_code' && !claudeStatus && !claudeUnavailable) void untrack(() => checkClaudeCode());
 	});
 
+	/** What the daemon finds of your other local agents (ADR 0079): the runner picker lists them, so it is asked once, on opening. */
+	let agents = $state<AgentsStatusResponse | null>(null);
+	let agentsUnavailable = $state(false);
+
+	async function checkAgents(): Promise<void> {
+		const client = runtime.client;
+		if (!client) return;
+		try {
+			agents = await client.agents();
+			agentsUnavailable = false;
+		} catch {
+			// The phone, or a daemon older than local agents: only the app's loop and Claude are offered.
+			agentsUnavailable = true;
+		}
+	}
+	untrack(() => void checkAgents());
+
 	// Closing the drawer or switching Bots unmounts this pane; a pending autosave goes out first.
 	$effect(() => () => {
 		flushProfileSave();
@@ -175,7 +193,7 @@
 			avatar: live.avatar ?? '',
 			model: botModelValue(live),
 			thinkingLevel: live.thinking_level ?? '',
-			runner: live.runner ?? '',
+			runner: runnerValueOf(live.runner, live.agent_custom_id),
 			agentModel: live.agent_model ?? '',
 			agentEffort: live.agent_effort ?? '',
 			agentConfigDir: live.agent_config_dir === undefined ? undefined : (live.agent_config_dir ?? '')
@@ -376,7 +394,11 @@
 			profileErrors.duties ||
 			profileErrors.boundaries ||
 			profileErrors.model ||
-			profileErrors.thinkingLevel
+			profileErrors.thinkingLevel ||
+			profileErrors.agentModel ||
+			profileErrors.agentEffort ||
+			profileErrors.agentConfigDir ||
+			profileErrors.agentCustomId
 		)
 	);
 
@@ -507,6 +529,8 @@
 	{unlistedPin}
 	{claudeStatus}
 	{claudeUnavailable}
+	{agents}
+	{agentsUnavailable}
 	{onProfileInput}
 	{onProfilePick}
 />

@@ -16,7 +16,7 @@ import { settle } from "../test-async.ts";
 const t = copyFor("zh");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function open(over: { providers?: ReturnType<typeof aProvider>[]; client?: unknown; promptsTarget?: unknown; speech?: SpeechSettings; workbench?: boolean } = {}) {
+function open(over: { providers?: ReturnType<typeof aProvider>[]; client?: unknown; promptsTarget?: unknown; speech?: SpeechSettings; workbench?: boolean; builtinModels?: unknown } = {}) {
   const provider = over.providers?.[0] ?? aProvider();
   const runtime = fakeRuntime({
     providers: over.providers ?? [provider],
@@ -28,7 +28,7 @@ function open(over: { providers?: ReturnType<typeof aProvider>[]; client?: unkno
       endpoint_model_catalog: provider.model_catalog,
       endpoint_default_model: provider.default_model,
       default_provider_id: provider.id,
-      builtin_models: noBuiltinModels(),
+      builtin_models: (over.builtinModels ?? noBuiltinModels()) as never,
       launch_at_login: true,
       locale: "zh",
       theme: "system",
@@ -178,6 +178,16 @@ test("an engine level without a ladder has no ladder tab, and with no endpoint o
   empty.close();
 });
 
+test("set up on a local agent with no endpoint, the built-in models are there to change one by one", async () => {
+  const choice = { runner: "codex", model: "gpt-5.6", config_dir: null };
+  const { host, close } = open({ providers: [], builtinModels: { reader: choice, organizer: choice, scribe: choice, judge: choice, composer: choice, judgement: choice, reflection: choice, retrospective: choice, compaction: choice } });
+  openModels(host);
+  await sleep(0);
+  flushSync();
+  expect(sectionTabs(host)).toEqual(["endpoints", "builtin", "speech"]);
+  close();
+});
+
 test("editing an endpoint name saves itself a moment later", async () => {
   const { host, runtime, close } = open();
   openModels(host);
@@ -287,6 +297,35 @@ test("Claude Agent has a category of its own, Agent, and is no longer under mode
   await sleep(0);
   expect(host.querySelector(".settings-main-title")?.textContent).toContain(t.settings.tabAgents);
   expect(host.querySelector("[data-claude-agent] [data-claude-account]")?.textContent).toContain("you@example.com");
+  close();
+});
+
+test("the Agent tab asks for the other local agents once it opens: Claude's card first, a card for each of them, then your own ACP agents", async () => {
+  const claude = {
+    path: "/Users/you/.local/bin/claude", source: "known", version: "2.1.289", sdk_version: "2.1.289", outdated: false,
+    logged_in: true, auth_method: "claude.ai", subscription_type: "pro", email: "you@example.com", base_url_set: false,
+    proxy: null, proxy_source: null, checked_at: "2026-10-06T00:00:00.000Z", error: null,
+  };
+  const codex = {
+    runner: "codex", custom_id: null, label: "Codex", path: "/usr/local/bin/codex", source: "path", version: "0.130.0", logged_in: true, auth: "ChatGPT Plus",
+    login_command: "codex login", models: [], default_model: null, proxy: null, proxy_source: null, checked_at: "2026-10-10T00:00:00.000Z", error: null, accounts: [],
+  };
+  const grok = { ...codex, runner: "grok", label: "Grok", path: null, source: null, version: null, logged_in: null, auth: null, login_command: null };
+  let asked = 0;
+  const { host, close } = open({
+    client: {
+      claudeCode: async () => claude, detectClaudeCode: async () => claude, setClaudeCodePath: async () => claude,
+      agents: async () => { asked += 1; return { items: [codex, grok], custom_agents: [] }; },
+      listPrompts: async () => [], listLessons: async () => [],
+    },
+  });
+  expect(asked).toBe(0);
+  click(host.querySelector<HTMLButtonElement>('[data-settings-tab="agents"]'));
+  await sleep(0);
+  expect(asked).toBe(1);
+  const cards = [...host.querySelectorAll("[data-claude-agent], [data-agent-card], [data-custom-agents]")].map((card) =>
+    card.hasAttribute("data-claude-agent") ? "claude" : (card.getAttribute("data-agent-card") ?? "custom-agents"));
+  expect(cards).toEqual(["claude", "codex", "grok", "custom-agents"]);
   close();
 });
 

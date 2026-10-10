@@ -5,7 +5,7 @@
  * preface maps them onto this turn: the app's tools are under `mcp__deskfolk__`, and files and
  * commands go through Claude Code's own tools.
  */
-import type { Locale } from "@real-bot/protocol";
+import type { BotRunner, Locale } from "@real-bot/protocol";
 import {
   formatMcpGuides,
   formatMemoryDigest,
@@ -48,6 +48,50 @@ This turn is run by the user's own Claude Code. Every Deskfolk tool the System s
 
 export const AGENT_PREFACE: Record<Locale, string> = { zh: PREFACE_ZH, en: PREFACE_EN };
 
+/**
+ * The preface for a local agent other than Claude Code (ADR 0079): `{agent}` is its name. Agents
+ * show an MCP server's tools under their own spellings, so the tools are named by the server.
+ */
+const LOCAL_PREFACE_ZH = `# 在这一轮里
+
+这一轮由用户自己的 {agent} 运行。下面「系统指令」里写的 Deskfolk 工具，都是名为 deskfolk 的 MCP 服务器上的工具：send_message、end_turn、ask_user、check_back、work_on、delegate、submit、review、plan_items、remember、read_skill 等，{agent} 里可能显示成 deskfolk__send_message、deskfolk_send_message 这样的名字，都是同一个。
+
+- 这一轮没有 Deskfolk 的 read_file、write_file、delete_file、list_dir 和 shell。读写文件、找文件、跑命令用 {agent} 自己的工具，路径写绝对路径。工作区根目录是 {workspace}；命令从 {cwd} 开始，它就是系统指令里说的本轮工作目录。系统指令里「相对工作区根」的路径，就是相对 {workspace} 的路径；在消息里提到文件时也这样写，应用才认得出、挂得上。
+- 工作区外的读写和命令要用户批准，应用会替你问；被拒绝了就不要换办法再做同一件事。没经应用就动工作区外的东西或任何凭据，这一轮会被停下。
+- 问用户只能用 deskfolk 的 ask_user。
+- 这一轮最后一条不调用工具的回复，就是你发到会话里的消息，和系统指令说的一样会先过收尾检查；和工具调用写在同一条消息里的文字不会发出。
+- 不要读、改或打印任何 Agent 自己的设置和凭据（~/.codex、~/.grok、~/.claude、~/.config/opencode、~/.local/share/opencode、~/.dsh、~/.gemini、钥匙串），不要运行 {agent} 自己的命令，也不要用后台任务：命令和子任务都在前台跑完。`;
+
+const LOCAL_PREFACE_EN = `# In this turn
+
+This turn is run by the user's own {agent}. Every Deskfolk tool the System section below names is a tool of the MCP server named deskfolk: send_message, end_turn, ask_user, check_back, work_on, delegate, submit, review, plan_items, remember, read_skill and the rest — {agent} may show them as deskfolk__send_message, deskfolk_send_message or the like, which are the same tools.
+
+- This turn has no Deskfolk read_file, write_file, delete_file, list_dir or shell. Read, write and find files and run commands with {agent}'s own tools, using absolute paths. The workspace root is {workspace}; commands start in {cwd}, which is what the System section calls this turn's work dir. A path "relative to the workspace root" there is relative to {workspace}; write file paths in your messages that way too, or the app cannot recognize and attach them.
+- Reading, writing or running anything outside the workspace needs the user's OK, which the app asks for you; once denied, do not do the same thing another way. Touching anything outside the workspace, or any credentials, without the app stops the turn.
+- Ask the user only with deskfolk's ask_user.
+- Your last reply in this turn that calls no tool is the message you post, and it passes the closing check the System section describes; text in the same message as a tool call is never sent.
+- Never read, change or print any agent's own settings or credentials (~/.codex, ~/.grok, ~/.claude, ~/.config/opencode, ~/.local/share/opencode, ~/.dsh, ~/.gemini, the keychain), never run {agent}'s own command, and do not use background tasks: run commands and subtasks to the end in the foreground.`;
+
+/** For an agent the app cannot hand its tools to (Antigravity's print mode): the reply is all there is. */
+const REPLY_ONLY_PREFACE_ZH = `# 在这一轮里
+
+这一轮由用户自己的 {agent} 运行。它拿不到 Deskfolk 的工具：下面系统指令里的 end_turn、ask_user、submit、delegate 等这里都用不了，你最后的回复就是发到会话里的消息，交付、转交和提问都在回复里写明，由用户来处理。
+
+- 读写文件、找文件、跑命令用 {agent} 自己的工具，路径写绝对路径。工作区根目录是 {workspace}；本轮工作目录是 {cwd}。在消息里提到文件时写相对 {workspace} 的路径。
+- 只在工作区里读写和跑命令：动了工作区外的东西或任何凭据，这一轮会被停下。
+- 不要读、改或打印任何 Agent 自己的设置和凭据，不要用后台任务。`;
+
+const REPLY_ONLY_PREFACE_EN = `# In this turn
+
+This turn is run by the user's own {agent}. It has no Deskfolk tools: end_turn, ask_user, submit, delegate and the rest in the System section below are not available here. Your last reply is the message you post; say in it what you hand over, pass on or need to ask, and the user takes it from there.
+
+- Read, write and find files and run commands with {agent}'s own tools, using absolute paths. The workspace root is {workspace}; this turn's work dir is {cwd}. Write file paths in your messages relative to {workspace}.
+- Read, write and run only inside the workspace: touching anything outside it, or any credentials, stops the turn.
+- Never read, change or print any agent's own settings or credentials, and do not use background tasks.`;
+
+export const LOCAL_AGENT_PREFACE: Record<Locale, string> = { zh: LOCAL_PREFACE_ZH, en: LOCAL_PREFACE_EN };
+export const REPLY_ONLY_AGENT_PREFACE: Record<Locale, string> = { zh: REPLY_ONLY_PREFACE_ZH, en: REPLY_ONLY_PREFACE_EN };
+
 export function agentSystemPrompt(input: {
   locale: Locale;
   name: string;
@@ -61,20 +105,30 @@ export function agentSystemPrompt(input: {
   mcpGuides?: McpPromptGuide[];
   /** Built-in prompts you edited (ADR 0064): the System section and the section notes, and this preface. */
   texts?: TurnPromptTexts & { preface?: string };
+  /**
+   * A local agent other than Claude Code (ADR 0079): its own preface, naming it, and how that agent
+   * reaches the app's tools when it does not list them as tools of their own (`toolHint`).
+   */
+  agent?: { label: string; runner: BotRunner; appTools: boolean; toolHint?: Partial<Record<Locale, string>> };
 }): string {
   const en = input.locale === "en";
   const texts = input.texts ?? {};
   const profile = en
     ? `# Profile\n\n## Name\n\n${input.name}\n\n## Duties\n\n${input.duties}\n\n## Boundaries\n\n${input.boundaries}`
     : `# 人设\n\n## 名字\n\n${input.name}\n\n## 职责\n\n${input.duties}\n\n## 边界\n\n${input.boundaries}`;
-  const preface = fill(texts.preface ?? AGENT_PREFACE[input.locale], { workspace: input.workspace, cwd: input.cwd });
+  const local = input.agent && input.agent.runner !== "claude_code" ? input.agent : null;
+  const hint = local?.toolHint?.[input.locale];
+  const preface = local
+    ? fill((local.appTools ? LOCAL_AGENT_PREFACE : REPLY_ONLY_AGENT_PREFACE)[input.locale], { agent: local.label, workspace: input.workspace, cwd: input.cwd })
+      .replace(/\n\n- /, hint ? `\n\n${hint}\n\n- ` : "\n\n- ")
+    : fill(texts.preface ?? AGENT_PREFACE[input.locale], { workspace: input.workspace, cwd: input.cwd });
   const systemBody = texts.system ?? systemText(input.locale, "sh", input.engineLevel);
   const system = en ? `# System\n\n${systemBody}` : `# 系统指令\n\n${systemBody}`;
   const skills = formatSkillCatalog(input.locale, input.skills ?? [], texts.skills);
   // The shared MCP servers' tools are reached under the deskfolk MCP server here.
   const guides = (input.mcpGuides ?? []).map((guide) => ({
     ...guide,
-    tools: guide.tools.map((tool) => ({ ...tool, modelName: agentToolName(tool.modelName) })),
+    tools: guide.tools.map((tool) => ({ ...tool, modelName: local ? tool.modelName : agentToolName(tool.modelName) })),
   }));
   const mcp = formatMcpGuides(input.locale, guides, texts.mcp);
   const memory = formatMemoryDigest(input.locale, input.memories ?? [], texts.memory);

@@ -38,10 +38,10 @@ import type { SpendTracker } from "./spend";
 import type { BuiltinTargetOf } from "./builtin-models";
 import type { Tools } from "./tools";
 import type { InboxEntry, Live } from "./types";
-import type { Spend } from "@real-bot/protocol";
+import { isBotRunner, type Spend } from "@real-bot/protocol";
 import type { ClaudeCodeProbe } from "../claude-code/probe";
 import type { ClaudeJudge } from "../claude-code/reading";
-import { createAgentRunner, type AgentQuery } from "./agent-runner";
+import { createAgentRunner, type AgentQuery, type AgentRunnerDeps } from "./agent-runner";
 import { createTurnEndings } from "./lifecycle/endings";
 import { createClosingReply } from "./lifecycle/closing-reply";
 import { createHopLoop } from "./lifecycle/hop-loop";
@@ -114,6 +114,9 @@ export type LifecycleDeps = {
   claudeCode?: ClaudeCodeProbe;
   /** Stands in for the Agent SDK in tests. */
   agentQuery?: AgentQuery;
+  /** Stand in for other local agents in tests (ADR 0079). */
+  agentDrivers?: AgentRunnerDeps["agentDrivers"];
+  resolveAgent?: AgentRunnerDeps["resolveAgent"];
   openApprovalCard: Tools["openApprovalCard"];
   beforeEffect: Tools["beforeEffect"];
   noteWrites: Tools["noteWrites"];
@@ -166,9 +169,10 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
   const { runTurn } = hopLoop;
   const { hearIn, answersAsk, hearAcross } = hearing;
 
-  function runsOnClaudeCode(botId: string): boolean {
+  /** Run by one of your local agents (ADR 0061, ADR 0079), not the app's own loop. */
+  function runsOnAgent(botId: string): boolean {
     try {
-      return store.getBot(botId).runner === "claude_code";
+      return isBotRunner(store.getBot(botId).runner);
     } catch {
       return false;
     }
@@ -501,7 +505,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
         try {
           publishTurn(turn);
           // A Claude Agent Bot's turns are Claude Code's to work (ADR 0061); everything around them is shared.
-          if (runsOnClaudeCode(turn.bot_id)) await agentRunner.runAgentTurn(turn.id);
+          if (runsOnAgent(turn.bot_id)) await agentRunner.runAgentTurn(turn.id);
           else await runTurn(turn.id);
         } catch (error) {
           if (!live.abort.signal.aborted) await crashTurn(turn.id, error);
@@ -690,6 +694,8 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     mcp,
     claudeCode: deps.claudeCode,
     agentQuery: deps.agentQuery,
+    agentDrivers: deps.agentDrivers,
+    resolveAgent: deps.resolveAgent,
     closeChain,
     holdChain,
     spendOwner,

@@ -1,13 +1,14 @@
 <script lang="ts">
 	import {
-		CLAUDE_EFFORTS,
+		AGENT_KINDS,
 		CLAUDE_MODEL_ALIASES,
-		isLadderClaudeRung,
+		isLadderAgentRung,
 		MODEL_LADDER_MAX,
 		sameLadderRung,
+		type AgentsStatusResponse,
+		type BotRunner,
 		type ClaudeCodeStatus,
-		type ClaudeEffort,
-		type ModelLadderClaudeRung,
+		type ModelLadderAgentRung,
 		type ModelLadderRung,
 		type Provider
 	} from '@real-bot/protocol';
@@ -17,7 +18,8 @@
 	import type { Copy } from '../copy.ts';
 	import type { ModelLadder } from './model-ladder.svelte.ts';
 	import { beginLadderDrag, ladderPlace, movedTo, type LadderDrag } from './ladder-drag.ts';
-	import { claudeAgentSource, endpointModelOptions, endpointSource } from '../model-source.ts';
+	import { agentSource, claudeAgentSource, endpointModelOptions, endpointSource, runnerSource } from '../model-source.ts';
+	import { agentAccountOptions, agentAccountsOf, agentLabelOf, agentModelsOf, agentReady, agentStatusOf } from '../runner-choice.ts';
 	import { thinkingLevelLabel } from '../copy.ts';
 	import { claudeAccountOptions, claudeReady } from './claude-agent.ts';
 	import ModelSourceMark from '../ModelSourceMark.svelte';
@@ -34,17 +36,33 @@
 		 * none are offered, and the ones already on the ladder stay.
 		 */
 		claudeCode?: (() => Promise<ClaudeCodeStatus>) | null;
+		/**
+		 * What the daemon finds of your other local agents (ADR 0079): the models of those found and
+		 * signed in can be rungs too, grouped by agent. Absent or failing, none are offered.
+		 */
+		agents?: (() => Promise<AgentsStatusResponse>) | null;
 		t: Copy;
 	}
 
-	let { ladder, providers, claudeCode = null, t }: Props = $props();
+	let { ladder, providers, claudeCode = null, agents = null, t }: Props = $props();
 
 	let claudeStatus = $state<ClaudeCodeStatus | null>(null);
+	let agentsFound = $state<AgentsStatusResponse | null>(null);
 	onMount(() => {
 		void claudeCode?.().then(
 			(status) => (claudeStatus = status),
 			() => (claudeStatus = null)
 		);
+		if (agents) {
+			// Called inside the try: a client that has no such call (an older Mac, a fake) fails as an answer does.
+			void (async () => {
+				try {
+					agentsFound = await agents();
+				} catch {
+					agentsFound = null;
+				}
+			})();
+		}
 	});
 
 	let list = $state<HTMLOListElement | null>(null);
@@ -53,24 +71,37 @@
 
 	const key = (rung: ModelLadderRung) =>
 		JSON.stringify(
-			isLadderClaudeRung(rung)
-				? { runner: rung.runner, model: rung.model, effort: rung.effort, config_dir: rung.config_dir }
+			isLadderAgentRung(rung)
+				? { runner: rung.runner, model: rung.model, effort: rung.effort, config_dir: rung.config_dir, ...(rung.custom_id ? { custom_id: rung.custom_id } : {}) }
 				: { provider_id: rung.provider_id, model: rung.model }
 		);
 	const providerOf = (id: string) => providers.find((provider) => provider.id === id);
 	const providerName = (id: string) => providerOf(id)?.name ?? id;
+	/** Whose a rung is: Claude Agent, or the other agent's name (your own ACP agent by the name you gave it). */
+	const agentName = (rung: ModelLadderAgentRung) =>
+		rung.runner === 'claude_code' ? t.claudeAgent.title : agentLabelOf(rung.runner, rung.custom_id ?? null, agentsFound);
 	const named = (rung: ModelLadderRung) =>
-		isLadderClaudeRung(rung)
-			? `${rung.model} · ${t.claudeAgent.title}`
+		isLadderAgentRung(rung)
+			? `${rung.model} · ${agentName(rung)}`
 			: providers.length > 1
 				? `${rung.model} · ${providerName(rung.provider_id)}`
 				: rung.model;
 
-	/** Claude models are added at Claude Code's default effort, on this computer's default account; each rung then picks its own. */
-	const claudeRung = (model: string): ModelLadderClaudeRung => ({ runner: 'claude_code', model, effort: null, config_dir: null });
+	/** Agent models are added at the agent's default effort, on this computer's default account; each rung then picks its own. */
+	const agentRung = (runner: BotRunner, model: string, customId: string | null = null): ModelLadderAgentRung => ({
+		runner,
+		model,
+		effort: null,
+		config_dir: null,
+		...(customId ? { custom_id: customId } : {})
+	});
+	const claudeRung = (model: string) => agentRung('claude_code', model);
 	const onLadder = (rung: ModelLadderRung) => ladder.rungs.some((kept) => sameLadderRung(kept, rung));
 
-	/** What is listed and not on the ladder yet, then the Claude models Agent settings offer. */
+	/** The other agents found on this computer and not signed out, which a model can be run on. */
+	const readyAgents = $derived((agentsFound?.items ?? []).filter((status) => status.runner !== 'claude_code' && agentReady(status)));
+
+	/** What is listed and not on the ladder yet, then the Claude models Agent settings offer, then each other agent's. */
 	const addable = $derived([
 		...endpointModelOptions(
 			providers.map((provider) => ({
@@ -88,31 +119,50 @@
 					group: t.sidebar.botRunnerClaude,
 					source: claudeAgentSource(t)
 				}))
-			: [])
+			: []),
+		...readyAgents.flatMap((status) =>
+			agentModelsOf(status)
+				.filter((model) => !onLadder(agentRung(status.runner, model.id, status.custom_id)))
+				.map((model) => ({
+					value: key(agentRung(status.runner, model.id, status.custom_id)),
+					label: model.id,
+					hint: model.name !== model.id ? model.name : undefined,
+					group: status.label,
+					source: agentSource(status.runner, status.label)
+				}))
+		)
 	]);
 
-	const effortOptions = $derived([
+	/** The effort levels a rung's agent takes; none for one that has none. */
+	const effortOptions = (rung: ModelLadderAgentRung) => [
 		{ value: '', label: t.modelLadder.effort(t.sidebar.botAgentEffortDefault) },
-		...CLAUDE_EFFORTS.map((level) => ({ value: level, label: t.modelLadder.effort(thinkingLevelLabel(t.sidebar.thinkingLevels, level)) }))
-	]);
+		...AGENT_KINDS[rung.runner].efforts.map((level) => ({ value: level, label: t.modelLadder.effort(thinkingLevelLabel(t.sidebar.thinkingLevels, level)) }))
+	];
 	/**
-	 * The accounts a Claude rung can spend, named short enough to sit beside its effort: this
-	 * computer's default, else the account's email (its directory when there is none).
+	 * The accounts a rung can spend, named short enough to sit beside its effort: this computer's
+	 * default, else the account's email (Claude) or what it signs in with (the others), its directory
+	 * when there is none.
 	 */
-	const accountOptions = (current: string) =>
-		claudeAccountOptions(claudeStatus, current, t).map((option) => ({
+	const accountOptions = (rung: ModelLadderAgentRung) => {
+		const current = rung.config_dir ?? '';
+		if (rung.runner !== 'claude_code') return agentAccountOptions(agentStatusOf(agentsFound, rung.runner, rung.custom_id ?? null), current, t);
+		return claudeAccountOptions(claudeStatus, current, t).map((option) => ({
 			value: option.value,
 			label: option.value
 				? (claudeStatus?.accounts?.find((account) => account.config_dir === option.value)?.email ?? option.value)
 				: t.sidebar.botAgentAccountDefault
 		}));
+	};
 	/** An account is picked per rung only when there is more than one, or the rung is on one already. */
-	const accountsShown = (rung: ModelLadderClaudeRung) => (claudeStatus?.accounts?.length ?? 0) > 1 || Boolean(rung.config_dir);
+	const accountsShown = (rung: ModelLadderAgentRung) =>
+		(rung.runner === 'claude_code'
+			? (claudeStatus?.accounts?.length ?? 0)
+			: agentAccountsOf(agentStatusOf(agentsFound, rung.runner, rung.custom_id ?? null)).length) > 1 || Boolean(rung.config_dir);
 
-	/** A Claude rung's effort or account changed: the ladder is saved with it in its place. */
-	function retune(index: number, change: Partial<Pick<ModelLadderClaudeRung, 'effort' | 'config_dir'>>): void {
+	/** An agent rung's effort or account changed: the ladder is saved with it in its place. */
+	function retune(index: number, change: Partial<Pick<ModelLadderAgentRung, 'effort' | 'config_dir'>>): void {
 		const rung = ladder.rungs[index];
-		if (ladder.busy || !rung || !isLadderClaudeRung(rung)) return;
+		if (ladder.busy || !rung || !isLadderAgentRung(rung)) return;
 		void ladder.save(ladder.rungs.map((kept, at) => (at === index ? { ...rung, ...change } : kept)));
 	}
 
@@ -144,7 +194,10 @@
 		list?.querySelectorAll<HTMLElement>('.ladder-grip')[index + by]?.focus();
 	}
 
+	/** The add picker's choice, put back to its placeholder once added: the rung shows on the list. */
+	let picking = $state('');
 	function add(value: string): void {
+		picking = '';
 		if (!value) return;
 		void ladder.save([...ladder.rungs, JSON.parse(value) as ModelLadderRung]);
 	}
@@ -168,8 +221,8 @@
 			{/if}
 			<ol class="ladder-list" class:is-dragging={drag !== null} bind:this={list}>
 				{#each ladder.rungs as rung, index (key(rung))}
-					{@const claude = isLadderClaudeRung(rung) ? rung : null}
-					{@const provider = isLadderClaudeRung(rung) ? undefined : providerOf(rung.provider_id)}
+					{@const agent = isLadderAgentRung(rung) ? rung : null}
+					{@const provider = isLadderAgentRung(rung) ? undefined : providerOf(rung.provider_id)}
 					{@const place = placeOf(index)}
 					<!-- flip runs as a Web Animation, which the global reduced-motion rule does not reach. -->
 					<li
@@ -185,31 +238,35 @@
 					>
 						<span class="ladder-step" aria-hidden="true">{place + 1}</span>
 						<div class="ladder-body">
-							{#if claude}
-								<!-- A Claude rung (ADR 0076) is tuned as Agent settings tune a Bot: its effort, and the account it spends. -->
+							{#if agent}
+								<!-- An agent rung (ADR 0076, ADR 0079) is tuned as Agent settings tune a Bot: its effort where the agent takes one, and the account it spends. -->
 								<span class="ladder-name" title={named(rung)}><span class="ladder-model">{rung.model}</span></span>
-								<span class="ladder-source"><ModelSourceMark source={claudeAgentSource(t)} /></span>
-								<span class="ladder-tune" data-rung-claude>
-									<Select
-										value={claude.effort ?? ''}
-										options={effortOptions}
-										size="sm"
-										ariaLabel={t.modelLadder.effortOf(rung.model)}
-										disabled={ladder.busy}
-										onchange={(value) => retune(index, { effort: (value || null) as ClaudeEffort | null })}
-									/>
-									{#if accountsShown(claude)}
-										<Select
-											value={claude.config_dir ?? ''}
-											options={accountOptions(claude.config_dir ?? '')}
-											size="sm"
-											ariaLabel={t.modelLadder.accountOf(rung.model)}
-											disabled={ladder.busy}
-											onchange={(value) => retune(index, { config_dir: value || null })}
-										/>
-									{/if}
-								</span>
-							{:else if !isLadderClaudeRung(rung)}
+								<span class="ladder-source"><ModelSourceMark source={runnerSource(agent.runner, agentName(agent), t)} /></span>
+								{#if AGENT_KINDS[agent.runner].efforts.length > 0 || accountsShown(agent)}
+									<span class="ladder-tune" data-rung-agent={agent.runner} data-rung-claude={agent.runner === 'claude_code' ? '' : undefined}>
+										{#if AGENT_KINDS[agent.runner].efforts.length > 0}
+											<Select
+												value={agent.effort ?? ''}
+												options={effortOptions(agent)}
+												size="sm"
+												ariaLabel={t.modelLadder.effortOf(rung.model)}
+												disabled={ladder.busy}
+												onchange={(value) => retune(index, { effort: value || null })}
+											/>
+										{/if}
+										{#if accountsShown(agent)}
+											<Select
+												value={agent.config_dir ?? ''}
+												options={accountOptions(agent)}
+												size="sm"
+												ariaLabel={t.modelLadder.accountOf(rung.model)}
+												disabled={ladder.busy}
+												onchange={(value) => retune(index, { config_dir: value || null })}
+											/>
+										{/if}
+									</span>
+								{/if}
+							{:else if !isLadderAgentRung(rung)}
 								<span class="ladder-name" title={named(rung)}><span class="ladder-model">{rung.model}</span>{#if providers.length > 1}<span class="ladder-sep">{' · '}</span><span class="ladder-provider">{providerName(rung.provider_id)}</span>{/if}</span>
 								<!-- Where the model comes from, as in the picker that added it; an endpoint gone since has none. -->
 								{#if provider}
@@ -236,7 +293,7 @@
 		{/if}
 		{#if addable.length > 0 && ladder.rungs.length < MODEL_LADDER_MAX}
 			<div class="ladder-add">
-				<Select value="" options={addable} placeholder={t.modelLadder.add} size="sm" ariaLabel={t.modelLadder.add} disabled={ladder.busy} onchange={add} />
+				<Select bind:value={picking} options={addable} placeholder={t.modelLadder.add} size="sm" ariaLabel={t.modelLadder.add} disabled={ladder.busy} onchange={add} />
 			</div>
 		{/if}
 	</section>
@@ -417,7 +474,7 @@
 		color: var(--muted);
 	}
 
-	/* A Claude rung's effort and account, where an endpoint rung names its endpoint. */
+	/* An agent rung's effort and account, where an endpoint rung names its endpoint. */
 	.ladder-tune {
 		grid-column: 2;
 		grid-row: 2;

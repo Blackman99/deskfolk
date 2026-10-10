@@ -6,6 +6,7 @@
 	import PromptsSettings from './PromptsSettings.svelte';
 	import { editedCount } from './prompts-view.ts';
 	import ClaudeAgentCard from './ClaudeAgentCard.svelte';
+	import OtherAgents from './OtherAgents.svelte';
 	import { type Lesson, type PromptSummary } from '@real-bot/protocol';
 	import { backdropClick } from '../click-outside.ts';
 	import type ProviderForm from './ProviderForm.svelte';
@@ -480,9 +481,10 @@
 						{/snippet}
 					</ModelsTab>
 				{:else if activeSettingsTab === 'agents'}
-					<!-- Agents that run a Bot's turns themselves (ADR 0061): today your own Claude Code. -->
+					<!-- Agents that run a Bot's turns themselves (ADR 0061, ADR 0079): your own Claude Code, then Codex, Grok, OpenCode, DSH, Antigravity, ZCode and your own ACP agents. -->
 					<div class="settings-tab-pane">
 						<ClaudeAgentCard api={runtime.client} {t} {locale} />
+						<OtherAgents api={runtime.client} {t} />
 					</div>
 				{:else if activeSettingsTab === 'mcp'}
 					<McpSettings bind:this={mcpSettings} {runtime} {t} {closeSettings} />

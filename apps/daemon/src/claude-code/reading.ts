@@ -12,7 +12,7 @@
  */
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
-import type { ClaudeEffort } from "@real-bot/protocol";
+import type { BotRunner, ClaudeEffort } from "@real-bot/protocol";
 import type { Options, Query, SDKMessage, SDKUserMessage, SpawnedProcess, SpawnOptions } from "@anthropic-ai/claude-agent-sdk";
 import daemonPackage from "../../package.json";
 import type { ClaudeCodeProbe } from "./probe";
@@ -32,6 +32,15 @@ export const CLAUDE_BUILTIN_SLOTS = 3;
  */
 export type ClaudeReaderTarget = { kind: "claude_code"; model: string; configDir: string | null; effort?: ClaudeEffort | null };
 
+/**
+ * A built-in call on one of your other local agents (ADR 0079): Codex, Grok, OpenCode, … run once,
+ * with no tools, on the model and account chosen for the call.
+ */
+export type OtherAgentTarget = { kind: "agent"; runner: Exclude<BotRunner, "claude_code">; customId: string | null; label: string; model: string; configDir: string | null; effort?: string | null };
+
+/** Where a built-in call runs when it is not an endpoint's model: your Claude Code, or another local agent. */
+export type LocalAgentTarget = ClaudeReaderTarget | OtherAgentTarget;
+
 /** A part of the one user message: text, or a picture as a data URI's base64. */
 export type ClaudePromptBlock =
   | { type: "text"; text: string }
@@ -47,7 +56,14 @@ export type ClaudeReadingAnswer = {
   fail: "claude_unavailable" | "claude_failed" | null;
 };
 
-export type ClaudeJudge = (input: { target: ClaudeReaderTarget; system: string; prompt: string | ClaudePromptBlock[]; signal: AbortSignal }) => Promise<ClaudeReadingAnswer>;
+export type ClaudeJudge = (input: { target: LocalAgentTarget; system: string; prompt: string | ClaudePromptBlock[]; signal: AbortSignal }) => Promise<ClaudeReadingAnswer>;
+
+/** One judge for every local agent: Claude Code's for a Claude target, the other agents' for theirs. */
+export function eitherJudge(claude: ClaudeJudge, others: ClaudeJudge | null): ClaudeJudge {
+  return (input) => (input.target.kind === "agent"
+    ? (others ? others(input) : Promise.resolve({ content: null, usage: null, fail: "claude_unavailable" as const }))
+    : claude(input));
+}
 
 /** The Agent SDK's `query`, or a stand-in a test scripts. */
 export type ReadingQuery = (params: { prompt: string | AsyncIterable<SDKUserMessage>; options: Options }) => Pick<Query, "close"> & AsyncIterable<SDKMessage>;
@@ -140,6 +156,7 @@ export function createClaudeJudge(deps: ClaudeReadingDeps): ClaudeJudge {
   return async ({ target, system, prompt, signal }) => {
     const unavailable: ClaudeReadingAnswer = { content: null, usage: null, fail: "claude_unavailable" };
     const failed: ClaudeReadingAnswer = { content: null, usage: null, fail: "claude_failed" };
+    if (target.kind !== "claude_code") return unavailable;
     let status;
     try {
       status = deps.claudeCode ? await deps.claudeCode.current() : null;

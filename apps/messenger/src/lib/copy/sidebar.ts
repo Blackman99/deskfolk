@@ -73,7 +73,7 @@ export const zh = {
   botModelAutoHint: "自动：每条消息由应用挑模型，思考等级跟着那个模型走。挑一个模型就要同时定下思考等级。",
   botThinkingHint: "只列这个模型支持的档。换模型时会落到新模型的默认档。",
   botThinkingInvalid: "挑这个模型支持的思考等级。",
-  thinkingLevels: { none: "不思考", low: "低", medium: "中", high: "高", xhigh: "极高", max: "最大", minimal: "最低" },
+  thinkingLevels: { none: "不思考", off: "关", low: "低", medium: "中", high: "高", xhigh: "极高", max: "最大", minimal: "最低" },
   botRunner: "运行方式",
   botRunnerApp: "Deskfolk（端点上的模型）",
   botRunnerClaude: "Claude Agent（你本机的 Claude Code）",
@@ -96,6 +96,37 @@ export const zh = {
   botAgentEffortDefault: "默认",
   botAgentEffortHint: "能用哪几档取决于模型；不支持的档由 Claude Code 自己处理。",
   botAgentEffortInvalid: "挑一个列出来的档。",
+  botRunnerAgentMissingShort: "没装",
+  botRunnerAgentSignedOutShort: "没登录",
+  botRunnerAgentGone: "已删除",
+  botRunnerAgentChecking: (label: string) => `正在找你本机的 ${label}…`,
+  botRunnerAgentMissing: (label: string, command: string | null) =>
+    command
+      ? `这台电脑上没找到 ${label}（${command}）。装好以后在终端里登录它，再回来选。`
+      : `没找到 ${label} 的命令：先在「设置 › Agents」里检查它的命令和参数。`,
+  botRunnerAgentSignedOut: (label: string, command: string | null) =>
+    command
+      ? `你本机的 ${label} 还没登录：在终端里运行 ${command}。Deskfolk 不经手你的登录。`
+      : `你本机的 ${label} 还没登录：在终端里登录它。Deskfolk 不经手你的登录。`,
+  botRunnerAgentUnavailable: (label: string) => `没查到 ${label} 的状态。电脑上的 Deskfolk 版本较旧时，先在电脑上更新。`,
+  botRunnerAgentHint: (label: string, auth: string | null) =>
+    auth
+      ? `每一轮由你本机安装并登录的 ${label} 来跑，用的是它登录的账号：${auth}。Deskfolk 不经手你的登录。`
+      : `每一轮由你本机安装并登录的 ${label} 来跑，用的是它自己的登录。Deskfolk 不经手你的登录。`,
+  botRunnerAgentCreateHint: (label: string) => `建好后每一轮由你本机安装并登录的 ${label} 来跑；它用哪个模型、思考强度多少，在 Bot 面板里选。`,
+  botRunnerNoAppTools: (label: string) => `${label} 用不了 Deskfolk 的工具（交活、提问、结束这一轮等），只会回复文字，办不了事。要让这个 Bot 办事，换一个 Agent。`,
+  botRunnerCustomInvalid: "选一个你添加的 ACP Agent。",
+  botAgentAccountOf: (label: string) => `${label} 账号`,
+  botAgentAccountHintOf: (label: string) => `这个 Bot 的每一轮花哪个账号的额度。要用另一个账号，先在「设置 › Agents › ${label}」里添加它的配置目录。`,
+  botAgentModelOf: (label: string) => `${label} 的模型`,
+  botAgentModelDefaultOf: (label: string) => `${label} 的默认`,
+  botAgentModelEmptyHint: (label: string, defaultModel: string | null) =>
+    defaultModel
+      ? `留空用 ${label} 自己的默认模型（${defaultModel}）；也可以填它认得的任何模型名。`
+      : `留空用 ${label} 自己的默认模型；也可以填它认得的任何模型名。`,
+  botAgentModelInvalidOf: (label: string) => `这不是 ${label} 能认的模型名：别带空格。`,
+  botAgentEffortHintOf: (label: string) => `能用哪几档取决于模型；不支持的档由 ${label} 自己处理。`,
+  botAgentNoEffort: (label: string) => `${label} 没有思考强度这一档，由模型自己定。`,
   autoSaving: "保存中…",
   autoSaved: "已自动保存",
   autoSaveHint: "改动自动保存",
@@ -275,7 +306,7 @@ export const en: CopyShape<typeof zh> = {
   botModelAutoHint: "Automatic: the app picks a model per message and the thinking level that goes with it. Picking a model means picking its thinking level too.",
   botThinkingHint: "Only the levels this model supports. Changing the model moves the pin to the new model's default.",
   botThinkingInvalid: "Pick a thinking level this model supports.",
-  thinkingLevels: { none: "None", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max", minimal: "Minimal" },
+  thinkingLevels: { none: "None", off: "Off", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max", minimal: "Minimal" },
   botRunner: "Runs on",
   botRunnerApp: "Deskfolk (a model on your endpoint)",
   botRunnerClaude: "Claude Agent (your own Claude Code)",
@@ -298,6 +329,37 @@ export const en: CopyShape<typeof zh> = {
   botAgentEffortDefault: "Default",
   botAgentEffortHint: "Which levels a model offers varies; Claude Code handles one it lacks.",
   botAgentEffortInvalid: "Pick one of the listed levels.",
+  botRunnerAgentMissingShort: "Not installed",
+  botRunnerAgentSignedOutShort: "Signed out",
+  botRunnerAgentGone: "Removed",
+  botRunnerAgentChecking: (label: string) => `Looking for your ${label}…`,
+  botRunnerAgentMissing: (label: string, command: string | null) =>
+    command
+      ? `${label} (${command}) was not found on this computer. Install it, sign it in from a terminal, then pick this again.`
+      : `The command for ${label} was not found: check its command and arguments under Settings › Agents.`,
+  botRunnerAgentSignedOut: (label: string, command: string | null) =>
+    command
+      ? `Your ${label} is not signed in: run ${command} in a terminal. Deskfolk never handles your sign-in.`
+      : `Your ${label} is not signed in: sign it in from a terminal. Deskfolk never handles your sign-in.`,
+  botRunnerAgentUnavailable: (label: string) => `Could not read ${label}'s status. If the computer runs an older Deskfolk, update it there first.`,
+  botRunnerAgentHint: (label: string, auth: string | null) =>
+    auth
+      ? `Each turn is run by the ${label} you installed and signed in to on this computer, on the account it is signed in with: ${auth}. Deskfolk never handles your sign-in.`
+      : `Each turn is run by the ${label} you installed and signed in to on this computer, on its own sign-in. Deskfolk never handles your sign-in.`,
+  botRunnerAgentCreateHint: (label: string) => `Once created, each turn is run by the ${label} you installed and signed in to on this computer; pick its model and effort in the Bot panel.`,
+  botRunnerNoAppTools: (label: string) => `${label} cannot use Deskfolk's tools (handing in work, asking you, ending a turn, and so on): it only replies in text and cannot get things done. For a Bot that does work, pick another agent.`,
+  botRunnerCustomInvalid: "Pick one of the ACP agents you added.",
+  botAgentAccountOf: (label: string) => `${label} account`,
+  botAgentAccountHintOf: (label: string) => `Whose plan this Bot's turns spend. To use another account, add its config directory under Settings › Agents › ${label} first.`,
+  botAgentModelOf: (label: string) => `${label} model`,
+  botAgentModelDefaultOf: (label: string) => `${label}'s default`,
+  botAgentModelEmptyHint: (label: string, defaultModel: string | null) =>
+    defaultModel
+      ? `Left empty, it runs on ${label}'s own default model (${defaultModel}); you can also type any model name it knows.`
+      : `Left empty, it runs on ${label}'s own default model; you can also type any model name it knows.`,
+  botAgentModelInvalidOf: (label: string) => `That is not a model name ${label} can take: no spaces.`,
+  botAgentEffortHintOf: (label: string) => `Which levels a model offers varies; ${label} handles one it lacks.`,
+  botAgentNoEffort: (label: string) => `${label} has no effort level; the model decides.`,
   autoSaving: "Saving…",
   autoSaved: "Saved automatically",
   autoSaveHint: "Changes save automatically",

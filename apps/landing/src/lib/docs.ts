@@ -122,6 +122,7 @@ export const TERM_GROUPS: Record<ManifestoTopic, readonly string[]> = {
   models: [
     'Model endpoint',
     'Claude Agent',
+    'Local agent',
     'Model',
     'Default model',
     'Built-in models',

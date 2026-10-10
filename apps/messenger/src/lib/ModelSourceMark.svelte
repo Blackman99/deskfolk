@@ -8,13 +8,13 @@
 	let { source }: Props = $props();
 </script>
 
-<span class="model-source is-{source.kind}" title={source.name} aria-hidden="true" data-model-source={source.kind === 'connector' || source.kind === 'vendor' ? source.id : source.kind}>
+<span class="model-source is-{source.kind}" title={source.name} aria-hidden="true" data-model-source={source.kind === 'connector' || source.kind === 'vendor' ? source.id : source.kind} data-runner={source.kind === 'agent' ? source.runner : undefined}>
 	{#if source.kind === 'connector' || source.kind === 'vendor'}
 		<ConnectorLogo id={source.id} size={16} />
 	{:else if source.kind === 'claude-agent'}
 		<ClaudeSpark size={14} />
 	{:else}
-		<!-- Drawn, not written: an option's text stays the model's name, for type-to-find and copying. -->
+		<!-- Drawn, not written: an option's text stays the model's name, for type-to-find and copying. Another local agent (ADR 0079) is a word too, never a logo. -->
 		<span class="model-source-custom" data-text={source.name}></span>
 	{/if}
 </span>

@@ -3,7 +3,7 @@
  * and routing types that flow from `credentials()` through to a billed call. Nothing here runs
  * anything; it is the vocabulary the other files share.
  */
-import type { ApiFormat, AskAnswer, Locale, Message, ModelLadderClaudeRung, ThinkingLevel } from "@real-bot/protocol";
+import type { ApiFormat, AskAnswer, Locale, Message, ModelLadderAgentRung, ThinkingLevel } from "@real-bot/protocol";
 import type { ToolResult } from "../collab-tools";
 import type { ChatMessage } from "../completions";
 import type { RouteDecision } from "../route-decision";
@@ -110,6 +110,11 @@ export type Live = {
    * nothing up; failed hand-overs still climb the model ladder for the job's next turn (ADR 0076).
    */
   agent?: boolean;
+  /**
+   * The local agent other than Claude Code running this turn, as the app names it (ADR 0079): its
+   * failures are worded with that name. Unset for Claude Agent and the app's own loop.
+   */
+  agentLabel?: string;
   /** The last hop failed and went again with a note (hop-limits.ts); failing again in a row ends the turn. */
   retried?: boolean;
   /** The last reply was cut off at the output cap and the turn carried on from it; cut again in a row, it fails. */
@@ -198,4 +203,4 @@ export type SpendOwner = {
  * `claude`: the job climbed the model ladder onto a Claude rung (ADR 0076), so this turn is Claude
  * Code's to run on that rung; `target` is then only the endpoint it climbed from.
  */
-export type Routed = { target: ResolvedTarget; decision: RouteDecision; claude?: ModelLadderClaudeRung };
+export type Routed = { target: ResolvedTarget; decision: RouteDecision; agent?: ModelLadderAgentRung };

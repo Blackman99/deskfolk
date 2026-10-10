@@ -5,13 +5,14 @@ type RoleCopy = { name: string; hint: string };
 
 export const zh = {
   title: "内置模型",
-  hint: "应用自己发起的模型调用，每个都可以换一个模型：端点上的模型，或者走你本机 Claude Code 的 Claude 模型。不单独设就和以前一样：前三组跟默认模型，以 Bot 身份的跟这个 Bot 自己的模型。",
+  hint: "应用自己发起的模型调用，每个都可以换一个模型：端点上的模型，或者走你本机 Agent 的模型（Claude Code、Codex 等，装好并登录的才列出来）。不单独设就和以前一样：前三组跟默认模型，以 Bot 身份的跟这个 Bot 自己的模型。",
   unsetSummary: "全部照旧",
   chosenSummary: (count: number) => `单独设了 ${count} 项`,
   followDefault: (model: string | null) => (model ? `跟随默认模型（${model}）` : "跟随默认模型"),
   followBot: "跟随 Bot 自己的模型",
   claudeModel: (model: string) => `${model} · Claude Agent`,
   claudeNote: "选 Claude 模型，每调用一次就用掉一点你 Claude 套餐的额度。",
+  agentNote: (agent: string) => `选 ${agent} 的模型，每调用一次就用掉一点你在 ${agent} 上的额度。`,
   failed: "没存上，再试一次",
   groups: {
     reading: { title: "读你的话", hint: "你的话要等它读完才会叫醒 Bot，选个快的。" },
@@ -34,13 +35,14 @@ export const zh = {
 
 export const en: CopyShape<typeof zh> = {
   title: "Built-in models",
-  hint: "The model calls the app makes on its own, each of which can run on a model of its own: one an endpoint lists, or a Claude model run through your Claude Code. Left unset, a call runs as before: the first three groups on the default model, the calls made as a Bot on that Bot's own model.",
+  hint: "The model calls the app makes on its own, each of which can run on a model of its own: one an endpoint lists, or a model of one of your local agents (Claude Code, Codex and the rest; only those installed and signed in are listed). Left unset, a call runs as before: the first three groups on the default model, the calls made as a Bot on that Bot's own model.",
   unsetSummary: "All as before",
   chosenSummary: (count: number) => (count === 1 ? "1 set apart" : `${count} set apart`),
   followDefault: (model: string | null) => (model ? `Follow the default model (${model})` : "Follow the default model"),
   followBot: "Follow the Bot's own model",
   claudeModel: (model: string) => `${model} · Claude Agent`,
   claudeNote: "A Claude model spends a little of your Claude plan's usage on each call.",
+  agentNote: (agent: string) => `A ${agent} model spends a little of your usage on ${agent} on each call.`,
   failed: "Not saved; try again",
   groups: {
     reading: { title: "Reading your lines", hint: "Your line wakes no Bot until it is read, so pick a fast one." },

@@ -87,6 +87,10 @@ export type LocalApiOptions = {
   claudeUsage?: ClaudeUsageProbe;
   /** Stands in for the Agent SDK's `query` in tests, so no Claude Code is started. */
   agentQuery?: AgentQuery;
+  /** What the daemon knows of your other local agents (ADR 0079); one is made when absent. */
+  agents?: import("../agents/status").AgentProbe;
+  /** Their usage; one is made when absent. */
+  agentUsage?: import("../agents/usage").AgentUsageProbe;
 };
 
 export type LocalApi = {

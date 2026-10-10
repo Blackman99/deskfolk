@@ -42,6 +42,8 @@ export type SpendTracker = {
     judgementId?: string | null;
     model: string;
     usage: { inputTokens: number; outputTokens: number; cachedTokens: number; costUsd: number };
+    /** Another local agent than Claude Code (ADR 0079), by its name; Claude Agent when absent. */
+    providerName?: string;
   }) => Spend | null;
   recordSpend: (
     kind: "turn",
@@ -220,7 +222,7 @@ export function createSpend(deps: SpendDeps): SpendTracker {
     const row = store.insertSpend({
       kind: input.kind, purpose: input.purpose ?? null, sessionId: input.owner.sessionId, sessionName: input.owner.sessionName,
       botId: input.owner.botId, botName: input.owner.botName, turnId: input.turnId ?? null, judgementId: input.judgementId ?? null, chainId: null,
-      providerId: "", providerName: "Claude Agent", model: input.model, thinkingLevel: null,
+      providerId: "", providerName: input.providerName ?? "Claude Agent", model: input.model, thinkingLevel: null,
       inputTokens: Math.max(0, usage.inputTokens), outputTokens: Math.max(0, usage.outputTokens),
       totalTokens: Math.max(0, usage.inputTokens) + Math.max(0, usage.outputTokens), cachedTokens: Math.max(0, usage.cachedTokens),
       reasoningTokens: null, costUsdTicks: null, estimatedCostUsdTicks: Math.max(0, Math.round(usage.costUsd * 1e10)), missingReason: null,

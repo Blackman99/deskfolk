@@ -4,7 +4,7 @@
  * 重新编辑 to put its words back in the box.
  */
 import { expect, test } from "bun:test";
-import type { Message, MessageDelivery, SessionSummary, Turn } from "@real-bot/protocol";
+import type { BotRunner, Message, MessageDelivery, SessionSummary, Turn } from "@real-bot/protocol";
 import { flushSync } from "svelte";
 import { copyFor } from "../copy.ts";
 import { aBot, aDirect, aMessage, aTurn, fakeRuntime } from "../test-fixtures.ts";
@@ -14,7 +14,7 @@ import ChatStage from "./ChatStage.svelte";
 
 const t = copyFor("zh");
 
-function stage(messages: Message[], opts: { turns?: Turn[]; queuedLineActions?: boolean; runner?: "claude_code" | null; session?: SessionSummary } = {}) {
+function stage(messages: Message[], opts: { turns?: Turn[]; queuedLineActions?: boolean; runner?: BotRunner | null; session?: SessionSummary } = {}) {
   const session = opts.session ?? aDirect();
   const lines = messages.map((message) => ({ ...message, session_id: session.id }));
   const turns = (opts.turns ?? []).map((turn) => ({ ...turn, session_id: session.id }));
@@ -68,6 +68,23 @@ test("what 直接插入 cuts is said for who runs the Bot: Claude Code stops a r
     expect(buttonByText(loop.segment("line-1") as HTMLElement, t.chat.insertNow).title).toBe(t.chat.insertNowLoopTitle);
   } finally {
     loop.close();
+  }
+});
+
+test("any other local agent cuts a step short the same way, except Antigravity's print mode, where the line waits (ADR 0079)", () => {
+  for (const runner of ["codex", "grok", "opencode", "dsh", "zcode", "custom"] as const) {
+    const agent = stage([waiting()], { turns: [working()], runner });
+    try {
+      expect(buttonByText(agent.segment("line-1") as HTMLElement, t.chat.insertNow).title).toBe(t.chat.insertNowAgentTitle);
+    } finally {
+      agent.close();
+    }
+  }
+  const agy = stage([waiting()], { turns: [working()], runner: "antigravity" });
+  try {
+    expect(buttonByText(agy.segment("line-1") as HTMLElement, t.chat.insertNow).title).toBe(t.chat.insertNowWaitsTitle);
+  } finally {
+    agy.close();
   }
 });
 

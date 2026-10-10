@@ -26,7 +26,7 @@ import { join } from "node:path";
 import { USER_MEMBER, traceNodeSaidNothing, type AcceptanceCheck, type ApiFormat, type AcceptanceCheckOutcome, type Message, type OrganizerRun, type ThinkingLevel, type Ticket, type Turn } from "@real-bot/protocol";
 import { NO_ABLATION, type Ablation } from "./ablation";
 import { describeCheck } from "./acceptance-eval";
-import type { ClaudeJudge, ClaudeReaderTarget, ClaudeReadingUsage } from "./claude-code/reading";
+import type { ClaudeJudge, LocalAgentTarget, ClaudeReadingUsage } from "./claude-code/reading";
 import type { CompletionsClient, MappedUsage } from "./completions";
 import { HttpError } from "./errors";
 import { sideJudge } from "./engine/builtin-models";
@@ -89,14 +89,14 @@ export type OrganizerDeps = {
    * The organizer's model (ADR 0075, 0077) — an endpoint's, or a Claude model of yours — else the
    * default endpoint's default model, resolved when a call is about to be made.
    */
-  routing: () => Promise<OrganizerRouting | ClaudeReaderTarget | null>;
+  routing: () => Promise<OrganizerRouting | LocalAgentTarget | null>;
   /** Runs the call when the organizer's model is a Claude model of yours (ADR 0077). */
   claudeJudge?: ClaudeJudge | null;
   /**
    * Returns the ledger row's id it billed the call as, or null when nothing was billable (see
    * `engine/spend.ts`). A Claude model's call carries what Claude Code says it cost.
    */
-  recordSpend: (input: { sessionId: string; target: OrganizerRouting | ClaudeReaderTarget; usage: MappedUsage | null; responded: boolean; claudeUsage?: ClaudeReadingUsage | null }) => string | null;
+  recordSpend: (input: { sessionId: string; target: OrganizerRouting | LocalAgentTarget; usage: MappedUsage | null; responded: boolean; claudeUsage?: ClaudeReadingUsage | null }) => string | null;
   draining: () => boolean;
   /** How long a plan has to be quiet after its last turn before it is filed. Tests shorten it. */
   settleQuietMs?: number;

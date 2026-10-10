@@ -6,12 +6,15 @@ export type ProfileFields = {
   model: string;
   /** Pinned thinking level as the picker value; `''` lets the app pick per message. */
   thinkingLevel: string;
-  /** Who runs its turns (ADR 0061): `''` the app on an endpoint, `claude_code` Claude Agent. Absent reads as `''`. */
+  /**
+   * Who runs its turns (ADR 0061, ADR 0079): `''` the app on an endpoint, a runner's name for a local
+   * agent (`claude_code`, `codex`, …), `custom:<id>` for one of your own ACP agents. Absent reads as `''`.
+   */
   runner?: string;
-  /** Claude Agent's model and effort; `''` leaves them to Claude Code. */
+  /** The local agent's model and effort; `''` leaves them to the agent. */
   agentModel?: string;
   agentEffort?: string;
-  /** The Claude account it runs on (a config directory listed in Settings); `''` the daemon's own environment. */
+  /** The account it runs on (a config directory listed in Settings); `''` the daemon's own environment. */
   agentConfigDir?: string;
 };
 

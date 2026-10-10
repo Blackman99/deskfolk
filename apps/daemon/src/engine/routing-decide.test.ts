@@ -240,10 +240,10 @@ test("a climb onto a Claude rung (ADR 0076) hands the turn to Claude Code on tha
   f.store.db.run("UPDATE bots SET default_provider_id = 'p-1', default_model = 'light', default_thinking_level = 'low', default_source = 'confirmed' WHERE id = ?", [f.bot.id]);
   f.store.db.run("UPDATE work_items SET escalation = 2 WHERE id = ?", [f.turn.work_item_id!]);
   const onRung = f.routing.decideRoute(f.bot.id, f.creds, "看图", f.turn.id)!;
-  expect(onRung.claude).toEqual(sonnet);
+  expect(onRung.agent).toEqual(sonnet);
   expect(onRung.decision).toMatchObject({ providerId: "", model: "sonnet", thinkingLevel: "high", reasonCode: "escalation_model" });
   f.store.db.run("UPDATE work_items SET escalation = 3 WHERE id = ?", [f.turn.work_item_id!]);
   const past = f.routing.decideRoute(f.bot.id, f.creds, "看图", f.turn.id)!;
-  expect(past.claude).toBeUndefined();
+  expect(past.agent).toBeUndefined();
   expect(past.decision).toMatchObject({ providerId: "p-2", model: "heavy", reasonCode: "escalation_model" });
 });

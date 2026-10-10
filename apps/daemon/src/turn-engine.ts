@@ -32,7 +32,8 @@ import { createFire } from "./engine/fire";
 import { createIntake, INTAKE_CAP_MS } from "./engine/intake";
 import { createLifecycle } from "./engine/lifecycle";
 import type { ClaudeCodeProbe } from "./claude-code/probe";
-import { CLAUDE_BUILTIN_SLOTS, createClaudeJudge } from "./claude-code/reading";
+import { CLAUDE_BUILTIN_SLOTS, createClaudeJudge, eitherJudge } from "./claude-code/reading";
+import { createAgentJudge } from "./agents/judge";
 import type { AgentQuery } from "./engine/agent-runner";
 import { createParticipation } from "./engine/participation";
 import { createPlanWatch } from "./engine/plan-watch";
@@ -217,6 +218,9 @@ export type TurnEngineOptions = {
   claudeCode?: ClaudeCodeProbe;
   /** Stands in for the Agent SDK's `query` in tests, so no Claude Code is started. */
   agentQuery?: AgentQuery;
+  /** Local agents other than Claude Code (ADR 0079): a test's drivers and resolver, so none is started for real. */
+  agentDrivers?: import("./engine/agent-runner").AgentRunnerDeps["agentDrivers"];
+  resolveAgent?: import("./engine/agent-runner").AgentRunnerDeps["resolveAgent"];
 };
 
 /** Long enough to still be debugging last week's turn, short enough not to hoard. */
@@ -294,7 +298,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
   }
   // Your Claude Code for the built-in calls chosen on it, reading aside: places of their own, so a
   // long settle never holds up a line's reading (ADR 0077).
-  const builtinClaude = createClaudeJudge({ claudeCode: options.claudeCode, slots: CLAUDE_BUILTIN_SLOTS });
+  // Built-in calls on your local agents (ADR 0077, ADR 0079): Claude Code's, or another agent's.
+  const otherAgents = createAgentJudge({ store });
+  const builtinClaude = eitherJudge(createClaudeJudge({ claudeCode: options.claudeCode, slots: CLAUDE_BUILTIN_SLOTS }), otherAgents);
 
   const organizer = createOrganizer({
     store,
@@ -341,9 +347,9 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
         responded,
       });
     },
-    claudeJudge: createClaudeJudge({ claudeCode: options.claudeCode }),
-    recordClaudeSpend({ sessionId, model, usage }) {
-      spend.recordClaudeSpend({ kind: "organize", purpose: "reader", owner: spend.spendOwner(sessionId, null), model, usage });
+    claudeJudge: eitherJudge(createClaudeJudge({ claudeCode: options.claudeCode }), otherAgents),
+    recordClaudeSpend({ sessionId, model, usage, providerName }) {
+      spend.recordClaudeSpend({ kind: "organize", purpose: "reader", owner: spend.spendOwner(sessionId, null), model, usage, ...(providerName ? { providerName } : {}) });
     },
     draining: () => Boolean(options.admission?.draining),
     ablation,
@@ -605,6 +611,8 @@ export function createTurnEngine(options: TurnEngineOptions): TurnEngine {
     publishSpend: core.publishSpend,
     claudeCode: options.claudeCode,
     agentQuery: options.agentQuery,
+    agentDrivers: options.agentDrivers,
+    resolveAgent: options.resolveAgent,
     openApprovalCard: tools.openApprovalCard,
     beforeEffect: tools.beforeEffect,
     noteWrites: tools.noteWrites,

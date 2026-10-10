@@ -1,14 +1,15 @@
 import {
-  CLAUDE_EFFORTS,
+  AGENT_KINDS,
+  BOT_RUNNERS,
   USER_MEMBER,
   folkHash,
   generateBoringAvatar,
+  isAgentEffort,
+  isAgentModelName,
   isBotRunner,
-  isClaudeEffort,
   isClaudeModelName,
   type Bot,
   type BotRunner,
-  type ClaudeEffort,
   type CreateBotRequest,
   type ProfileRevision,
   type SessionDetail,
@@ -17,7 +18,7 @@ import {
 import { normalizeConfigDir } from "../claude-code/account";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
-import { listedConfigDir } from "./claude-code";
+import { customAgent, listedAgentConfigDir, listedCustomAgent } from "./agents";
 import { claudeOnlyAccount } from "./settings";
 import {
   carriedThinkingLevel,
@@ -59,35 +60,51 @@ export function getBot(ctx: StoreContext, id: string): Bot {
 /** `runner` as a request gives it: absent or null is the app's own loop, anything else must be a known runner. */
 function incomingRunner(value: unknown): BotRunner | null {
   if (value === undefined || value === null) return null;
-  if (!isBotRunner(value)) throw new HttpError(422, "invalid_args", "runner must be claude_code or null");
+  if (!isBotRunner(value)) throw new HttpError(422, "invalid_args", `runner must be one of ${BOT_RUNNERS.join(", ")} or null`);
   return value;
 }
 
-/** A Claude model name or alias for `agent_model` (ADR 0061); null or "" leaves it to Claude Code. */
-function incomingAgentModel(value: unknown): string | null {
+/**
+ * A model name or alias for `agent_model` (ADR 0061, ADR 0079), as the runner names its models;
+ * null or "" leaves it to the agent. Claude Code's are checked as before.
+ */
+function incomingAgentModel(runner: BotRunner | null, value: unknown): string | null {
   if (value === undefined || value === null) return null;
   if (typeof value !== "string") throw new HttpError(422, "invalid_args", "agent_model must be a string or null");
   const trimmed = value.trim();
-  if (trimmed && !isClaudeModelName(trimmed)) throw new HttpError(422, "invalid_args", "agent_model is not a Claude model name");
-  return trimmed || null;
+  if (!trimmed) return null;
+  if ((runner ?? "claude_code") === "claude_code" ? !isClaudeModelName(trimmed) : !isAgentModelName(trimmed)) {
+    throw new HttpError(422, "invalid_args", `agent_model is not a ${(runner ?? "claude_code") === "claude_code" ? "Claude" : AGENT_KINDS[runner!].label} model name`);
+  }
+  return trimmed;
 }
 
-/** One of Claude Code's effort levels for `agent_effort`; null leaves it to Claude Code. */
-function incomingAgentEffort(value: unknown): ClaudeEffort | null {
-  if (value === undefined || value === null) return null;
+/** One of the runner's effort levels for `agent_effort`; null leaves it to the agent. */
+function incomingAgentEffort(runner: BotRunner | null, value: unknown): string | null {
+  if (value === undefined || value === null || value === "") return null;
   const trimmed = typeof value === "string" ? value.trim() : value;
-  if (!isClaudeEffort(trimmed)) {
-    throw new HttpError(422, "invalid_args", `agent_effort must be one of ${CLAUDE_EFFORTS.join(", ")} or null`);
+  const kind = AGENT_KINDS[runner ?? "claude_code"];
+  if (!isAgentEffort(kind.runner, trimmed)) {
+    throw new HttpError(422, "invalid_args", kind.efforts.length > 0
+      ? `agent_effort must be one of ${kind.efforts.join(", ")} or null`
+      : `${kind.label} takes no effort level: agent_effort must be null`);
   }
   return trimmed;
 }
 
 /**
- * The account a Claude Agent's turns spend (ADR 0061): null or "" for the daemon's own environment,
- * otherwise one of the config directories listed in Settings, kept as the list keeps it.
+ * The account a local agent's turns spend (ADR 0061, ADR 0079): null or "" for the daemon's own
+ * environment, otherwise one of the config directories listed in Settings for that runner, kept as
+ * the list keeps it.
  */
-function incomingAgentConfigDir(ctx: StoreContext, value: unknown): string | null {
-  return listedConfigDir(ctx, value, "agent_config_dir");
+function incomingAgentConfigDir(ctx: StoreContext, runner: BotRunner | null, value: unknown): string | null {
+  return listedAgentConfigDir(ctx, runner ?? "claude_code", value, "agent_config_dir");
+}
+
+/** For `runner: "custom"`, which of your ACP agents; nothing for any other runner. */
+function incomingCustomId(ctx: StoreContext, runner: BotRunner | null, value: unknown): string | null {
+  if (runner !== "custom") return null;
+  return listedCustomAgent(ctx, value, "agent_custom_id");
 }
 
 /**
@@ -115,17 +132,19 @@ export function createBot(
       : generateBoringAvatar({ name });
   const asked = incomingRunner(input.runner);
   assertRunnerActor(actor, asked !== null);
-  const agentModel = incomingAgentModel(input.agent_model);
-  const agentEffort = incomingAgentEffort(input.agent_effort);
-  const askedConfigDir = incomingAgentConfigDir(ctx, input.agent_config_dir);
+  const agentModel = incomingAgentModel(asked, input.agent_model);
+  const agentEffort = incomingAgentEffort(asked, input.agent_effort);
+  const askedConfigDir = incomingAgentConfigDir(ctx, asked, input.agent_config_dir);
   assertRunnerActor(actor, askedConfigDir !== null);
+  const agentCustomId = incomingCustomId(ctx, asked, input.agent_custom_id);
   // Set up on Claude Code alone (ADR 0078): with no endpoint, a Bot made without saying what runs it
   // — a teammate another Bot hires included — is a Claude Agent on the account the app's own calls
   // use; on the app's own runner it could not take a single turn. You set that up, so a Bot asking
   // for nothing is not a Bot choosing your account.
   const claudeOnly = input.runner === undefined ? claudeOnlyAccount(ctx) : null;
-  const runner = claudeOnly ? "claude_code" : asked;
+  const runner = claudeOnly ? claudeOnly.runner : asked;
   const agentConfigDir = claudeOnly && input.agent_config_dir === undefined ? claudeOnly.configDir : askedConfigDir;
+  const setupCustomId = claudeOnly?.runner === "custom" ? claudeOnly.customId : null;
   const { model, providerId } = resolveIncomingBotTarget(ctx, input.model, input.provider_id);
   // Pinning a model pins a level too: a Bot is either on automatic for both or explicit about both.
   const thinkingLevel =
@@ -138,9 +157,9 @@ export function createBot(
   const revisionId = ulid();
   ctx.db.transaction(() => {
     ctx.db.run(
-      `INSERT INTO bots (id, name, duties, boundaries, avatar, model, provider_id, thinking_level, runner, agent_model, agent_effort, agent_config_dir, archived_at, deleted_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
-      [botId, name, duties, boundaries, avatar, model, providerId, thinkingLevel, runner, agentModel, agentEffort, agentConfigDir, now, now],
+      `INSERT INTO bots (id, name, duties, boundaries, avatar, model, provider_id, thinking_level, runner, agent_model, agent_effort, agent_config_dir, agent_custom_id, archived_at, deleted_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
+      [botId, name, duties, boundaries, avatar, model, providerId, thinkingLevel, runner, agentModel, agentEffort, agentConfigDir, runner === "custom" ? (agentCustomId ?? setupCustomId) : null, now, now],
     );
     ctx.db.run(
       `INSERT INTO profile_revisions (id, bot_id, name, duties, boundaries, avatar, actor, message_id, created_at)
@@ -179,8 +198,9 @@ export function patchBot(
     thinking_level?: ThinkingLevel | null;
     runner?: BotRunner | null;
     agent_model?: string | null;
-    agent_effort?: ClaudeEffort | null;
+    agent_effort?: string | null;
     agent_config_dir?: string | null;
+    agent_custom_id?: string | null;
   },
   actor: string = USER_MEMBER,
 ): Bot {
@@ -200,18 +220,28 @@ export function patchBot(
     const same = folkHash(avatar);
     if (avatar !== row.avatar && same !== null && same === folkHash(row.avatar)) avatar = row.avatar;
   }
-  const runner = "runner" in patch ? incomingRunner(patch.runner) : (isBotRunner(row.runner) ? row.runner : null);
-  assertRunnerActor(actor, runner !== (isBotRunner(row.runner) ? row.runner : null));
-  const agentModel = "agent_model" in patch ? incomingAgentModel(patch.agent_model) : row.agent_model;
-  const agentEffort = "agent_effort" in patch ? incomingAgentEffort(patch.agent_effort) : (isClaudeEffort(row.agent_effort) ? row.agent_effort : null);
+  const storedRunner = isBotRunner(row.runner) ? row.runner : null;
+  const runner = "runner" in patch ? incomingRunner(patch.runner) : storedRunner;
+  assertRunnerActor(actor, runner !== storedRunner);
+  // Moved to another agent, what was chosen for the last one means nothing to this one: its model,
+  // effort and account start over unless the request names this one's.
+  const moved = runner !== storedRunner && runner !== null && storedRunner !== null;
+  const agentModel = "agent_model" in patch ? incomingAgentModel(runner, patch.agent_model) : (moved ? null : row.agent_model);
+  const storedEffort = isAgentEffort(runner ?? "claude_code", row.agent_effort) ? row.agent_effort : null;
+  const agentEffort = "agent_effort" in patch ? incomingAgentEffort(runner, patch.agent_effort) : storedEffort;
   // The account it already has, sent back with the rest of the profile, is no change: it stays even
   // if the list no longer reads the same.
-  const storedDir = row.agent_config_dir ?? null;
+  const storedDir = moved ? null : row.agent_config_dir ?? null;
   const sentDir = patch.agent_config_dir;
   const keepsDir = !("agent_config_dir" in patch)
     || (storedDir === null ? sentDir === null || sentDir === "" : typeof sentDir === "string" && normalizeConfigDir(sentDir) === storedDir);
-  const agentConfigDir = keepsDir ? storedDir : incomingAgentConfigDir(ctx, sentDir);
-  assertRunnerActor(actor, agentConfigDir !== storedDir);
+  const agentConfigDir = keepsDir ? storedDir : incomingAgentConfigDir(ctx, runner, sentDir);
+  assertRunnerActor(actor, agentConfigDir !== (row.agent_config_dir ?? null));
+  const storedCustom = runner === "custom" && storedRunner === "custom" && customAgent(ctx, row.agent_custom_id) ? row.agent_custom_id : null;
+  const agentCustomId = runner !== "custom" ? null
+    : "agent_custom_id" in patch && patch.agent_custom_id !== storedCustom ? incomingCustomId(ctx, runner, patch.agent_custom_id)
+    : storedCustom ?? incomingCustomId(ctx, runner, patch.agent_custom_id);
+  assertRunnerActor(actor, agentCustomId !== (row.agent_custom_id ?? null));
   // The pin it already has, sent back with the rest of the profile (the Bot panel sends it whole, and
   // without the endpoint when it does not know it), is no change. From level 7 a pin outlives its
   // model leaving every list (ADR 0048), and checking it against the lists again here refused every
@@ -237,8 +267,8 @@ export function patchBot(
   const now = isoNow();
   ctx.db.transaction(() => {
     ctx.db.run(
-      `UPDATE bots SET name = ?, duties = ?, boundaries = ?, avatar = ?, model = ?, provider_id = ?, thinking_level = ?, runner = ?, agent_model = ?, agent_effort = ?, agent_config_dir = ?, updated_at = ? WHERE id = ?`,
-      [name, duties, boundaries, avatar, model, providerId, thinkingLevel, runner, agentModel, agentEffort, agentConfigDir, now, id],
+      `UPDATE bots SET name = ?, duties = ?, boundaries = ?, avatar = ?, model = ?, provider_id = ?, thinking_level = ?, runner = ?, agent_model = ?, agent_effort = ?, agent_config_dir = ?, agent_custom_id = ?, updated_at = ? WHERE id = ?`,
+      [name, duties, boundaries, avatar, model, providerId, thinkingLevel, runner, agentModel, agentEffort, agentConfigDir, agentCustomId, now, id],
     );
     ctx.db.run(
       `INSERT INTO profile_revisions (id, bot_id, name, duties, boundaries, avatar, actor, message_id, created_at)

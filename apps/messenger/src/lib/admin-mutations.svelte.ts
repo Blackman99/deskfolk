@@ -1,7 +1,6 @@
 import type {
   ApiFormat,
   BotRunner,
-  ClaudeEffort,
   CreateBotRequest,
   CreateGroupRequest,
   CreateProviderRequest,
@@ -263,7 +262,8 @@ export class AdminMutations {
       thinking_level?: ThinkingLevel | null;
       runner?: BotRunner | null;
       agent_model?: string | null;
-      agent_effort?: ClaudeEffort | null;
+      agent_effort?: string | null;
+      agent_custom_id?: string | null;
     },
   ): Promise<ApiError | null> {
     const api = this.host.api;

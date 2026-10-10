@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { CLAUDE_EFFORTS, CLAUDE_MODEL_ALIASES, type ClaudeCodeStatus } from '@real-bot/protocol';
+	import { AGENT_KINDS, CLAUDE_MODEL_ALIASES, isAgentEffort, type AgentsStatusResponse, type ClaudeCodeStatus } from '@real-bot/protocol';
 	import { claudeAccountLabel, claudeAccountOf, claudeAgentBlocker, claudeAgentPaysPerToken } from '../settings/claude-agent.ts';
 	import AvatarEditor from '../AvatarEditor.svelte';
 	import Select from '../Select.svelte';
@@ -9,6 +9,16 @@
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import type { SelectOption } from '../select-options.ts';
 	import { claudeAgentSource } from '../model-source.ts';
+	import {
+		agentAccountOptions as otherAgentAccountOptions,
+		agentAccountsOf,
+		agentLabelOf,
+		agentModelsOf,
+		agentStatusOf,
+		parseRunnerValue,
+		runnerOptions,
+		runnerValueOf
+	} from '../runner-choice.ts';
 
 	/** The basics tab. The draft and its autosave belong to ProfilePane, which outlives a tab switch. */
 	type Props = {
@@ -23,6 +33,9 @@
 		unlistedPin: string | null;
 		claudeStatus: ClaudeCodeStatus | null;
 		claudeUnavailable: boolean;
+		/** What the daemon finds of your other local agents (ADR 0079); null until asked, or away from the computer. */
+		agents?: AgentsStatusResponse | null;
+		agentsUnavailable?: boolean;
 		onProfileInput: () => void;
 		onProfilePick: () => void;
 	};
@@ -39,6 +52,8 @@
 		unlistedPin,
 		claudeStatus,
 		claudeUnavailable,
+		agents = null,
+		agentsUnavailable = false,
 		onProfileInput,
 		onProfilePick
 	}: Props = $props();
@@ -49,10 +64,26 @@
 		pinnableThinkingLevels(profileDraft.model, snapshot.providers)
 	);
 
-	const runnerOptions = $derived([
-		{ value: '', label: t.sidebar.botRunnerApp },
-		{ value: 'claude_code', label: t.sidebar.botRunnerClaude }
-	]);
+	const runnerChoices = $derived(runnerOptions(t, agents, profileDraft.runner ?? ''));
+	const runnerPick = $derived(parseRunnerValue(profileDraft.runner));
+	/** The local agent other than Claude this Bot runs on, when it does. */
+	const agentRunner = $derived(runnerPick.runner && runnerPick.runner !== 'claude_code' ? runnerPick.runner : null);
+	const agentKind = $derived(agentRunner ? AGENT_KINDS[agentRunner] : null);
+	const agentStatus = $derived(agentRunner ? agentStatusOf(agents, agentRunner, runnerPick.customId) : null);
+	const agentName = $derived(agentRunner ? agentLabelOf(agentRunner, runnerPick.customId, agents) : '');
+	const agentEfforts = $derived(agentKind?.efforts ?? []);
+	const agentAccounts = $derived(agentAccountsOf(agentStatus));
+	/** The account it runs on, when that is one listed; the daemon's own environment while none is picked. */
+	const agentAccount = $derived(agentAccounts.find((account) => account.config_dir === (profileDraft.agentConfigDir || null)) ?? null);
+	const agentBlockerNow = $derived.by((): 'missing' | 'signed_out' | null => {
+		if (!agentStatus) return null;
+		if (!agentStatus.path) return 'missing';
+		return (agentAccount ? agentAccount.logged_in : agentStatus.logged_in) === false ? 'signed_out' : null;
+	});
+	const otherLoginCommand = $derived(agentAccount?.login_command ?? agentStatus?.login_command ?? null);
+	const agentAuth = $derived(agentAccount?.auth ?? agentStatus?.auth ?? null);
+	const agentOtherAccountOptions = $derived(otherAgentAccountOptions(agentStatus, profileDraft.agentConfigDir ?? '', t));
+	const agentModelChoices = $derived(agentModelsOf(agentStatus));
 	const agentModelOptions = $derived.by((): SelectOption[] => {
 		const source = claudeAgentSource(t);
 		return [
@@ -87,8 +118,20 @@
 		onProfilePick();
 	}
 
+	/**
+	 * Another agent names its models and accounts its own way, so moving the Bot clears them; an
+	 * effort stays only where the new agent takes it. The daemon would refuse a model of one agent
+	 * sent along with another.
+	 */
 	function onProfileRunnerChange(value: string): void {
-		profileDraft.runner = value === 'claude_code' ? 'claude_code' : '';
+		const next = parseRunnerValue(value);
+		const before = parseRunnerValue(profileDraft.runner);
+		profileDraft.runner = runnerValueOf(next.runner, next.customId);
+		if (before.runner !== next.runner || before.customId !== next.customId) {
+			profileDraft.agentModel = '';
+			if (profileDraft.agentConfigDir !== undefined) profileDraft.agentConfigDir = '';
+			if (!next.runner || !isAgentEffort(next.runner, profileDraft.agentEffort)) profileDraft.agentEffort = '';
+		}
 		onProfilePick();
 	}
 
@@ -184,8 +227,9 @@
 			<label for="profile-runner">{t.sidebar.botRunner}</label>
 			<Select
 				id="profile-runner"
-				bind:value={profileDraft.runner}
-				options={runnerOptions}
+				value={profileDraft.runner ?? ''}
+				options={runnerChoices}
+				error={!!profileErrors.agentCustomId}
 				onchange={onProfileRunnerChange}
 			/>
 			{#if profileDraft.runner === 'claude_code'}
@@ -200,10 +244,49 @@
 				{:else}
 					<p class="muted field-hint" class:runner-pays={claudeAgentPaysPerToken(agentSignIn)} data-runner-account>{t.sidebar.botRunnerClaudeHint(claudeAccountLabel(agentSignIn ?? claudeStatus, t))}</p>
 				{/if}
+			{:else if agentRunner && agentKind}
+				{#if profileErrors.agentCustomId}
+					<p class="field-error">{t.sidebar.botRunnerCustomInvalid}</p>
+				{:else if agentsUnavailable}
+					<p class="muted field-hint">{t.sidebar.botRunnerAgentUnavailable(agentName)}</p>
+				{:else if !agents}
+					<p class="muted field-hint">{t.sidebar.botRunnerAgentChecking(agentName)}</p>
+				{:else if agentBlockerNow === 'missing'}
+					<p class="field-error" data-runner-missing>{t.sidebar.botRunnerAgentMissing(agentName, agentKind.command)}</p>
+				{:else if agentBlockerNow === 'signed_out'}
+					<p class="field-error" data-runner-signed-out>{t.sidebar.botRunnerAgentSignedOut(agentName, otherLoginCommand)}</p>
+				{:else}
+					<p class="muted field-hint" data-runner-account>{t.sidebar.botRunnerAgentHint(agentName, agentAuth)}</p>
+				{/if}
+				{#if !agentKind.appTools}
+					<p class="muted field-hint" data-runner-note>{t.sidebar.botRunnerNoAppTools(agentName)}</p>
+				{/if}
 			{:else}
 				<p class="muted field-hint">{t.sidebar.botRunnerAppHint}</p>
 			{/if}
 		</div>
+
+		{#snippet effortPicker(levels: readonly string[], hint: string)}
+		<div class="form-group">
+			<span class="field-label" id="profile-agent-effort-label">{t.sidebar.botAgentEffort}</span>
+			<div class="thinking-picker" role="radiogroup" aria-labelledby="profile-agent-effort-label">
+				{#each ['', ...levels] as level (level)}
+					<button
+						type="button"
+						class="btn-chip level-chip"
+						class:active={(profileDraft.agentEffort ?? '') === level}
+						role="radio"
+						aria-checked={(profileDraft.agentEffort ?? '') === level}
+						onclick={() => pickAgentEffort(level)}
+					>{level ? thinkingLevelLabel(t.sidebar.thinkingLevels, level) : t.sidebar.botAgentEffortDefault}</button>
+				{/each}
+			</div>
+			<p class="muted field-hint">{hint}</p>
+			{#if profileErrors.agentEffort}
+				<p class="field-error">{t.sidebar.botAgentEffortInvalid}</p>
+			{/if}
+		</div>
+		{/snippet}
 
 		{#if profileDraft.runner === 'claude_code'}
 		{#if profileDraft.agentConfigDir !== undefined}
@@ -236,25 +319,55 @@
 				<p class="field-error">{t.sidebar.botAgentModelInvalid}</p>
 			{/if}
 		</div>
-		<div class="form-group">
-			<span class="field-label" id="profile-agent-effort-label">{t.sidebar.botAgentEffort}</span>
-			<div class="thinking-picker" role="radiogroup" aria-labelledby="profile-agent-effort-label">
-				{#each ['', ...CLAUDE_EFFORTS] as level (level)}
-					<button
-						type="button"
-						class="btn-chip level-chip"
-						class:active={(profileDraft.agentEffort ?? '') === level}
-						role="radio"
-						aria-checked={(profileDraft.agentEffort ?? '') === level}
-						onclick={() => pickAgentEffort(level)}
-					>{level ? thinkingLevelLabel(t.sidebar.thinkingLevels, level) : t.sidebar.botAgentEffortDefault}</button>
-				{/each}
-			</div>
-			<p class="muted field-hint">{t.sidebar.botAgentEffortHint}</p>
-			{#if profileErrors.agentEffort}
-				<p class="field-error">{t.sidebar.botAgentEffortInvalid}</p>
+		{@render effortPicker(AGENT_KINDS.claude_code.efforts, t.sidebar.botAgentEffortHint)}
+		{:else if agentRunner && agentKind}
+		{#if profileDraft.agentConfigDir !== undefined && agentKind.configDirVar && agentAccounts.length > 0}
+		<div class="form-group" data-agent-account>
+			<label for="profile-agent-account">{t.sidebar.botAgentAccountOf(agentName)}</label>
+			<Select
+				id="profile-agent-account"
+				bind:value={profileDraft.agentConfigDir}
+				options={agentOtherAccountOptions}
+				error={!!profileErrors.agentConfigDir}
+				onchange={onProfileAgentAccountChange}
+			/>
+			{#if profileErrors.agentConfigDir}
+				<p class="field-error">{t.sidebar.botAgentAccountInvalid}</p>
+			{:else}
+				<p class="muted field-hint">{t.sidebar.botAgentAccountHintOf(agentName)}</p>
 			{/if}
 		</div>
+		{/if}
+		<div class="form-group" data-agent-model>
+			<label for="profile-agent-model">{t.sidebar.botAgentModelOf(agentName)}</label>
+			<!-- Typed, with the models the agent lists to pick from: an agent names its models its own way, and may take ones it never listed. -->
+			<input
+				id="profile-agent-model"
+				type="text"
+				list="profile-agent-models"
+				autocomplete="off"
+				spellcheck="false"
+				aria-invalid={!!profileErrors.agentModel}
+				bind:value={profileDraft.agentModel}
+				oninput={onProfileInput}
+				placeholder={agentStatus?.default_model ?? t.sidebar.botAgentModelDefaultOf(agentName)}
+			/>
+			<datalist id="profile-agent-models">
+				{#each agentModelChoices as choice (choice.id)}
+					<option value={choice.id} label={choice.name !== choice.id ? choice.name : undefined}></option>
+				{/each}
+			</datalist>
+			{#if profileErrors.agentModel}
+				<p class="field-error">{t.sidebar.botAgentModelInvalidOf(agentName)}</p>
+			{:else}
+				<p class="muted field-hint">{t.sidebar.botAgentModelEmptyHint(agentName, agentStatus?.default_model ?? null)}</p>
+			{/if}
+		</div>
+		{#if agentEfforts.length > 0}
+			{@render effortPicker(agentEfforts, t.sidebar.botAgentEffortHintOf(agentName))}
+		{:else}
+			<p class="muted field-hint" data-agent-no-effort>{t.sidebar.botAgentNoEffort(agentName)}</p>
+		{/if}
 		{:else}
 		<div class="form-group">
 			<label for="profile-model">{t.sidebar.botModel}</label>

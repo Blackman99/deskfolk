@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { BUILTIN_MODEL_ROLES, type ClaudeCodeStatus, type Provider, type Settings, type SettingsPatch } from "@real-bot/protocol";
+import { AGENT_KINDS, BUILTIN_MODEL_ROLES, type AgentsStatusResponse, type BotRunner, type ClaudeCodeStatus, type Provider, type Settings, type SettingsPatch } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
 import { emptySnapshot } from "../snapshot.ts";
 import { click, render } from "../test-render.ts";
@@ -31,7 +31,7 @@ const legacySettings = (over: Partial<Settings> = {}): Settings => {
   return { ...rest, ...over };
 };
 
-type Over = { settings?: Settings; patch?: (patch: SettingsPatch) => Promise<unknown | null>; claudeCode?: (() => Promise<ClaudeCodeStatus>) | null; defaultModel?: string | null };
+type Over = { settings?: Settings; patch?: (patch: SettingsPatch) => Promise<unknown | null>; claudeCode?: (() => Promise<ClaudeCodeStatus>) | null; agents?: (() => Promise<AgentsStatusResponse>) | null; defaultModel?: string | null };
 const show = (over: Over = {}) =>
   render(BuiltinModelsCard, {
     providers,
@@ -39,6 +39,7 @@ const show = (over: Over = {}) =>
     defaultModel: over.defaultModel === undefined ? "grok-4.7-build-fast" : over.defaultModel,
     patch: over.patch ?? fakePatch().patch,
     claudeCode: over.claudeCode ?? null,
+    agents: over.agents ?? null,
     t,
   });
 
@@ -318,4 +319,118 @@ test("the copy names the section in both languages, and says what the groups and
       expect(copy.builtinModels.roles[role].hint.length).toBeGreaterThan(0);
     }
   }
+});
+
+/** One of your other local agents as the daemon reports it (ADR 0079). */
+function agentStatus(runner: BotRunner, over: Record<string, unknown> = {}) {
+  return {
+    runner, custom_id: null, label: AGENT_KINDS[runner].label, path: `/usr/local/bin/${runner}`, source: "path", version: "1", logged_in: true, auth: null,
+    login_command: null, models: [], default_model: null, proxy: null, proxy_source: null, checked_at: "2026-10-10T00:00:00.000Z", error: null, ...over,
+  };
+}
+const listed = (...ids: string[]) => ids.map((id) => ({ id, name: id, efforts: [] }));
+const agentsOf = (...items: ReturnType<typeof agentStatus>[]) => async () => ({ items, custom_agents: [] }) as unknown as AgentsStatusResponse;
+const groupsOf = (host: HTMLElement, role: string) => [...row(host, role).querySelectorAll(".real-select-group")].map((el) => el.textContent);
+const marksOf = (host: HTMLElement, role: string) => optionEls(host, role).map((el) => el.querySelector("[data-model-source]")?.getAttribute("data-model-source") ?? null);
+
+test("with other local agents found and signed in, every call offers each one's models as a group of its own, and choosing one saves it with its runner", async () => {
+  const { sent, patch } = fakePatch();
+  const agents = agentsOf(
+    agentStatus("codex", { models: listed("gpt-5.5", "gpt-5.5-mini") }),
+    agentStatus("grok", { path: null, models: listed("grok-4.7") }),
+    agentStatus("dsh", { logged_in: false, models: listed("deepseek-v4") }),
+    agentStatus("custom", { custom_id: "acp-1", label: "我的 ACP", models: listed("fast") }),
+  );
+  const { host, close } = show({ patch, agents, claudeCode: statusOf(claudeStatus()) });
+  await sleep(0);
+  click(trigger(host, "scribe"));
+  await sleep(0);
+  // Claude's group first, then the others in the daemon's order; not found or signed out, none.
+  expect(groupsOf(host, "scribe")).toEqual([t.sidebar.botRunnerClaude, "Codex", "我的 ACP"]);
+  expect(optionEls(host, "scribe").map(text).slice(-3)).toEqual(["gpt-5.5", "gpt-5.5-mini", "fast"]);
+  expect(marksOf(host, "scribe").slice(-7)).toEqual(["claude-agent", "claude-agent", "claude-agent", "claude-agent", "agent", "agent", "agent"]);
+  // Plain text, never a logo.
+  expect(row(host, "scribe").querySelector('[data-runner="codex"] .model-source-custom')?.getAttribute("data-text")).toBe("Codex");
+  click(optionEls(host, "scribe").at(-2)!);
+  await sleep(0);
+  expect(sent).toEqual([{ builtin_models: { scribe: { runner: "codex", model: "gpt-5.5-mini", config_dir: null } } }]);
+  // A call made as a Bot takes one too, and your own ACP agent's goes with its id.
+  click(trigger(host, "compaction"));
+  await sleep(0);
+  click(optionEls(host, "compaction").at(-1)!);
+  await sleep(0);
+  expect(sent.at(-1)).toEqual({ builtin_models: { compaction: { runner: "custom", model: "fast", config_dir: null, custom_id: "acp-1" } } });
+  close();
+});
+
+test("a row on another agent's model says whose plan it spends, and its account is picked there when the agent has several", async () => {
+  const { sent, patch } = fakePatch();
+  const accounts = [
+    { config_dir: null, logged_in: true, auth: "ChatGPT Plus", error: null, login_command: "codex login" },
+    { config_dir: "/opt/codex-b", logged_in: true, auth: "ChatGPT Pro", error: null, login_command: "x" },
+  ];
+  const agents = agentsOf(agentStatus("codex", { models: listed("gpt-5.5"), accounts }));
+  const { host, close } = show({ patch, agents, claudeCode: statusOf(claudeStatus()), settings: settingsOf({ composer: { runner: "codex", model: "gpt-5.5", config_dir: null } }) });
+  await sleep(0);
+  expect(text(trigger(host, "composer"))).toBe("gpt-5.5");
+  expect(host.querySelectorAll("[data-side-model-agent-note]")).toHaveLength(1);
+  expect(row(host, "composer").querySelector("[data-side-model-agent-note]")?.textContent).toBe(t.builtinModels.agentNote("Codex"));
+  // It is not Claude's row: no Claude note, and Claude's models are not offered with Codex's one appended.
+  expect(host.querySelector("[data-side-model-claude-note]")).toBeNull();
+  click(trigger(host, "composer"));
+  await sleep(0);
+  expect(optionEls(host, "composer").map(text).filter((label) => label === "gpt-5.5")).toHaveLength(1);
+  click(trigger(host, "composer"));
+  const label = row(host, "composer").querySelector("[data-side-model-account] .side-model-account-label")?.textContent;
+  expect(label).toBe(t.sidebar.botAgentAccountOf("Codex"));
+  click(row(host, "composer").querySelector("[data-side-model-account] .real-select-trigger")!);
+  await sleep(0);
+  const options = [...row(host, "composer").querySelectorAll("[data-side-model-account] .real-select-option")];
+  expect(options.map(text)).toEqual([`${t.sidebar.botAgentAccountDefault} · ChatGPT Plus`, "ChatGPT Pro · /opt/codex-b"]);
+  click(options[1]!);
+  await sleep(0);
+  expect(sent).toEqual([{ builtin_models: { composer: { runner: "codex", model: "gpt-5.5", config_dir: "/opt/codex-b" } } }]);
+  close();
+});
+
+test("the agents are asked once for the whole card; none is offered where they cannot be asked, and the one chosen on the Mac stays shown", async () => {
+  let asked = 0;
+  const agents = async () => { asked += 1; return { items: [agentStatus("codex", { models: listed("gpt-5.5") })], custom_agents: [] } as unknown as AgentsStatusResponse; };
+  const { host, close } = show({ agents });
+  await sleep(0);
+  expect(asked).toBe(1);
+  for (const role of ["reader", "judge", "retrospective"]) {
+    click(trigger(host, role));
+    await sleep(0);
+    expect(groupsOf(host, role)).toEqual(["Codex"]);
+  }
+  close();
+  const phone = show({
+    agents: async () => { throw new Error("404"); },
+    settings: settingsOf({ reflection: { runner: "grok", model: "grok-4.7", config_dir: null } }),
+  });
+  await sleep(0);
+  expect(text(trigger(phone.host, "reflection"))).toBe("grok-4.7");
+  expect(row(phone.host, "reflection").querySelector("[data-side-model-account]")).toBeNull();
+  click(trigger(phone.host, "judge"));
+  await sleep(0);
+  expect(phone.host.querySelector('[data-builtin-role="judge"] .real-select-group')).toBeNull();
+  phone.close();
+});
+
+test("from an older daemon an agent's model is offered for reading and not for the organizer", async () => {
+  const { sent, patch } = fakePatch();
+  const agents = agentsOf(agentStatus("codex", { models: listed("gpt-5.5") }));
+  const { host, close } = show({ patch, settings: legacySettings({ reader_model: null, organizer_model: null }), agents });
+  await sleep(0);
+  click(trigger(host, "organizer"));
+  await sleep(0);
+  expect(row(host, "organizer").querySelector(".real-select-group")).toBeNull();
+  click(trigger(host, "reader"));
+  await sleep(0);
+  expect(groupsOf(host, "reader")).toEqual(["Codex"]);
+  click(optionEls(host, "reader").at(-1)!);
+  await sleep(0);
+  expect(sent).toEqual([{ reader_model: { runner: "codex", model: "gpt-5.5", config_dir: null } }]);
+  close();
 });

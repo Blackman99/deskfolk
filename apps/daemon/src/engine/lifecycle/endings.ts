@@ -8,8 +8,11 @@ import type { TurnExecution } from "../../store/routing";
 import type { Live } from "../types";
 import type { LifecycleDeps } from "../lifecycle";
 
-/** Claude Agent failures only the user can clear (ADR 0061): the supervisor does not retry them. */
-const USER_FIX_FAILS: ReadonlySet<FailKind> = new Set<FailKind>(["agent_missing", "agent_signed_out", "agent_limit"]);
+/**
+ * Local agent failures only the user can clear (ADR 0061, ADR 0079): the supervisor does not retry
+ * them. A turn stopped for acting outside the workspace unasked is yours to look at, not to repeat.
+ */
+const USER_FIX_FAILS: ReadonlySet<FailKind> = new Set<FailKind>(["agent_missing", "agent_signed_out", "agent_limit", "agent_unguarded"]);
 
 export function createTurnEndings(deps: LifecycleDeps) {
   const { store, publishMessage, publishTurn, lives } = deps;
@@ -82,7 +85,7 @@ export function createTurnEndings(deps: LifecycleDeps) {
         parentId: live?.parentId ?? null,
         kind: "system",
         author: current.bot_id,
-        body: completionFailBody(locale, kind, detail),
+        body: completionFailBody(locale, kind, detail, live?.agentLabel ?? null),
       });
       store.voidPendingTurnActions(turnId, "turn_failed", now);
       store.finishTurnRoute(turnId, "failed", kind, executionOf(live));

@@ -333,3 +333,69 @@ test('on Claude Code, saving puts every built-in call on the Claude model, saves
   expect(created).toHaveLength(1);
   expect(created[0]).toMatchObject({ runner: 'claude_code', agent_config_dir: null });
 });
+
+/** ADR 0079: setup on another local agent found and signed in on this computer. */
+function agentsClient() {
+  const codex = {
+    runner: 'codex', custom_id: null, label: 'Codex', path: '/usr/local/bin/codex', source: 'path', version: '0.153.4', logged_in: true,
+    auth: 'ChatGPT', login_command: 'codex login', models: [{ id: 'gpt-5.6', name: 'GPT-5.6', efforts: [] }, { id: 'gpt-5.6-luna', name: 'GPT-5.6 Luna', efforts: [] }],
+    default_model: 'gpt-5.6-luna', proxy: null, proxy_source: null, checked_at: new Date(0).toISOString(), error: null,
+  };
+  const grok = { ...codex, runner: 'grok', label: 'Grok', path: null, logged_in: null, models: [], default_model: null };
+  return {
+    ...claudeClient(false),
+    agents: async () => ({ items: [codex, grok], custom_agents: [] }),
+  };
+}
+
+test('on another local agent, saving puts every built-in call on its model and the first Bot runs on it', async () => {
+  const { host, calls } = open({ endpointUrl: '', endpointKey: '', client: agentsClient() });
+  click(buttonByText(host, `${t.onboarding.step1Next} →`));
+  click(host.querySelector('[data-connect-mode="claude"]'));
+  await settle();
+  // Only agents that are found and signed in are offered; Claude Code stays the first.
+  const picks = [...host.querySelectorAll<HTMLButtonElement>('[data-agent-pick]')].map((button) => button.dataset.agentPick);
+  expect(picks).toEqual(['claude_code', 'codex']);
+  expect(buttonByText(host, `${t.onboarding.step2NextClaude} →`).disabled).toBe(true);
+  click(host.querySelector('[data-agent-pick="codex"]'));
+  expect(host.querySelector('[data-claude-not-ready]')).toBeNull();
+  click(buttonByText(host, `${t.onboarding.step2NextAgent.replace('{agent}', 'Codex')} →`));
+  expect(host.querySelector<HTMLSelectElement>('#onboarding-agent-model')).not.toBeNull();
+  expect(host.querySelector('#onboarding-claude-model')).toBeNull();
+  expect(host.textContent).toContain(t.onboarding.agentModelsDesc.replace('{agent}', 'Codex'));
+  click(buttonByText(host, `${t.onboarding.step3Next} →`));
+  await settle();
+  const saves = calls.filter((call) => call.name === 'patchSettings').map((call) => call.args[0]);
+  const choice = { runner: 'codex', model: 'gpt-5.6-luna', config_dir: null };
+  expect(saves.at(-1)).toEqual({ builtin_models: { reader: choice, organizer: choice, scribe: choice, judge: choice, composer: choice,
+    judgement: choice, reflection: choice, retrospective: choice, compaction: choice } });
+  expect(calls.some((call) => call.name === 'createProvider' || call.name === 'patchProvider')).toBe(false);
+  expect(host.textContent).toContain(t.onboarding.botAgentHint.replace('{agent}', 'Codex'));
+  click(buttonByText(host, `${t.onboarding.createBot} ✓`));
+  await settle();
+  const created = calls.filter((call) => call.name === 'createBot').map((call) => call.args[0]);
+  expect(created[0]).toMatchObject({ runner: 'codex' });
+  expect(created[0]).not.toHaveProperty('agent_config_dir');
+});
+
+test('on an agent that lists no models, saving waits for a model name typed as the agent spells it', async () => {
+  const client = agentsClient();
+  const listed = await client.agents();
+  const bare = { ...listed.items[0]!, models: [], default_model: null };
+  const { host, calls } = open({ endpointUrl: '', endpointKey: '', client: { ...client, agents: async () => ({ items: [bare], custom_agents: [] }) } });
+  click(buttonByText(host, `${t.onboarding.step1Next} →`));
+  click(host.querySelector('[data-connect-mode="claude"]'));
+  await settle();
+  click(host.querySelector('[data-agent-pick="codex"]'));
+  click(buttonByText(host, `${t.onboarding.step2NextAgent.replace('{agent}', 'Codex')} →`));
+  const field = host.querySelector<HTMLInputElement>('input#onboarding-agent-model');
+  expect(field).not.toBeNull();
+  const save = buttonByText(host, `${t.onboarding.step3Next} →`);
+  expect(save.disabled).toBe(true);
+  fill(field!, 'o5-mini');
+  expect(save.disabled).toBe(false);
+  click(save);
+  await settle();
+  const saved = calls.filter((call) => call.name === 'patchSettings').map((call) => call.args[0]).at(-1) as { builtin_models: Record<string, unknown> };
+  expect(saved.builtin_models.reader).toEqual({ runner: 'codex', model: 'o5-mini', config_dir: null });
+});

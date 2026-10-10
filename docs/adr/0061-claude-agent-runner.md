@@ -119,3 +119,9 @@ On 2026-10-08 you asked whether the app could use both Claude accounts signed in
 - **界面 / The screens.** 手机的 `RemoteApi` 照本机一样调这四条，卡片、Bot 面板、模型阶梯、读句和整理模型的卡片不用改就和电脑上一样。连到还没有这些路由的旧版 Mac 时，卡片和 Bot 面板写「没查到 Claude Code 的状态……先在电脑上更新」，不再说「只能在电脑上查看」。 / The phone's `RemoteApi` calls the four routes as the window does, so the card, the Bot panel, the ladder and the reader and organizer cards work there unchanged. Paired with an older Mac without the routes, the card and the Bot panel say the status could not be read and to update the computer first, no longer "only visible on the computer".
 
 还是只在电脑上 / Still on the computer: 登录本身（`claude auth login`）在终端里做，手机上只看到要运行的那条命令。 / Signing in (`claude auth login`) happens in a terminal; the phone only shows the command to run.
+
+## 补记 / Addendum (2026-10-10, other agents)
+
+Claude Agent 不再是唯一的本机 Agent：Codex、Grok、OpenCode、DSH、ZCode、Antigravity 和你自己的 ACP Agent 也能跑一个 Bot，规则照这里（[ADR 0079](0079-local-agents.md)）。这里的凭据规则跟着补上了别家的：Claude Agent 的 Bot 现在也读不到 `~/.codex`、`~/.grok`、OpenCode 的目录、`~/.dsh`、`~/.gemini`；Grok 自带的技能目录（`~/.grok/bundled`）除外，那里能读。
+
+Claude Agent is no longer the only local agent: Codex, Grok, OpenCode, DSH, ZCode, Antigravity and ACP agents of your own can run a Bot too, under these rules ([ADR 0079](0079-local-agents.md)). The credential rule here grew with them: a Claude Agent Bot can no longer read `~/.codex`, `~/.grok`, OpenCode's folders, `~/.dsh` or `~/.gemini` either, except Grok's shipped skills (`~/.grok/bundled`), which may be read.

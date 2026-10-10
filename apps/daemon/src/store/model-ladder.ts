@@ -5,10 +5,11 @@
  * reference price is set on the models, so the app cannot tell which is stronger on its own. A rung
  * may also be a Claude model of yours run through Claude Code (ADR 0076), as Agent settings offer it.
  */
-import { isClaudeEffort, isClaudeModelName, isLadderClaudeRung, MODEL_LADDER_MAX, sameLadderRung, type ModelLadderRung } from "@real-bot/protocol";
+import { AGENT_KINDS, isAgentEffort, isAgentModelName, isBotRunner, isClaudeEffort, isClaudeModelName, isLadderAgentRung, MODEL_LADDER_MAX, sameLadderRung, type ModelLadderRung } from "@real-bot/protocol";
 import { HttpError } from "../errors";
 import { catalogNames, parseStoredCatalog } from "../models";
 import { listedConfigDir } from "./claude-code";
+import { listedAgentConfigDir, listedCustomAgent } from "./agents";
 import { ENGINE_LEVELS, readEngineLevel } from "./schema-gate";
 import { setSetting, type StoreContext } from "./shared";
 
@@ -24,7 +25,9 @@ function parseLadder(raw: string | null | undefined): ModelLadderRung[] {
     const parsed = JSON.parse(raw ?? "[]") as unknown;
     return Array.isArray(parsed)
       ? parsed.filter((rung): rung is ModelLadderRung => Boolean(rung) && typeof rung.model === "string"
-        && (rung.runner === "claude_code" ? (rung.effort === null || isClaudeEffort(rung.effort)) : typeof rung.provider_id === "string"))
+        && (rung.runner === "claude_code" ? (rung.effort === null || isClaudeEffort(rung.effort))
+          : isBotRunner(rung.runner) ? (rung.effort === null || rung.effort === undefined || isAgentEffort(rung.runner, rung.effort))
+          : typeof rung.provider_id === "string"))
       : [];
   } catch {
     return [];
@@ -41,12 +44,27 @@ export function modelLadder(ctx: StoreContext): ModelLadderRung[] {
 function rungOf(ctx: StoreContext, item: unknown): ModelLadderRung {
   const rung = item as Record<string, unknown> | null;
   if (rung && typeof rung === "object" && "runner" in rung) {
-    if (rung.runner !== "claude_code" || typeof rung.model !== "string" || !isClaudeModelName(rung.model)) {
-      throw new HttpError(422, "invalid_args", "a Claude rung must be { runner: \"claude_code\", model, effort, config_dir } with a Claude model name");
+    if (rung.runner === "claude_code") {
+      if (typeof rung.model !== "string" || !isClaudeModelName(rung.model)) {
+        throw new HttpError(422, "invalid_args", "a Claude rung must be { runner: \"claude_code\", model, effort, config_dir } with a Claude model name");
+      }
+      const effort = rung.effort ?? null;
+      if (effort !== null && !isClaudeEffort(effort)) throw new HttpError(422, "invalid_args", "a Claude rung's effort must be low, medium, high, xhigh, max or null");
+      return { runner: "claude_code", model: rung.model, effort, config_dir: listedConfigDir(ctx, rung.config_dir, "config_dir") };
     }
+    // Another local agent of yours (ADR 0079): its model as it names them, one of its efforts, one of its accounts.
+    if (!isBotRunner(rung.runner) || typeof rung.model !== "string" || !isAgentModelName(rung.model.trim())) {
+      throw new HttpError(422, "invalid_args", "an agent's rung must be { runner, model, effort, config_dir } with a runner the app knows and a model name");
+    }
+    const runner = rung.runner;
     const effort = rung.effort ?? null;
-    if (effort !== null && !isClaudeEffort(effort)) throw new HttpError(422, "invalid_args", "a Claude rung's effort must be low, medium, high, xhigh, max or null");
-    return { runner: "claude_code", model: rung.model, effort, config_dir: listedConfigDir(ctx, rung.config_dir, "config_dir") };
+    if (effort !== null && !isAgentEffort(runner, effort)) {
+      throw new HttpError(422, "invalid_args", AGENT_KINDS[runner].efforts.length > 0
+        ? `a ${AGENT_KINDS[runner].label} rung's effort must be one of ${AGENT_KINDS[runner].efforts.join(", ")} or null`
+        : `a ${AGENT_KINDS[runner].label} rung takes no effort: it must be null`);
+    }
+    const customId = runner === "custom" ? listedCustomAgent(ctx, rung.custom_id, "custom_id") : null;
+    return { runner, model: rung.model.trim(), effort, config_dir: listedAgentConfigDir(ctx, runner, rung.config_dir, "config_dir"), ...(customId ? { custom_id: customId } : {}) };
   }
   if (!rung || typeof rung !== "object" || typeof rung.provider_id !== "string" || typeof rung.model !== "string") {
     throw new HttpError(422, "invalid_args", "each rung must be {provider_id, model} or {runner, model, effort, config_dir}");
@@ -74,6 +92,6 @@ export function setModelLadder(ctx: StoreContext, items: unknown): ModelLadderRu
 export function dropUnknownLadderModels(ctx: StoreContext, providerId: string, models: string[]): void {
   const raw = ctx.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'model_ladder'").get()?.value;
   const rungs = parseLadder(raw);
-  const kept = rungs.filter((rung) => isLadderClaudeRung(rung) || rung.provider_id !== providerId || models.includes(rung.model));
+  const kept = rungs.filter((rung) => isLadderAgentRung(rung) || rung.provider_id !== providerId || models.includes(rung.model));
   if (kept.length !== rungs.length) setSetting(ctx, "model_ladder", JSON.stringify(kept));
 }

@@ -1,5 +1,5 @@
 /** Endpoint and model tools. */
-import { BUILTIN_MODEL_ROLES, isBuiltinModelRole, isLadderClaudeRung, isLocalEndpoint, isReaderClaudeModel, type ApiFormat, type BuiltinModelRole, type BuiltinModels, type ModelLadderClaudeRung, type ModelLadderRung, type Provider, type ReaderEndpointModel, type ReaderModel } from "@real-bot/protocol";
+import { BUILTIN_MODEL_ROLES, isBuiltinModelRole, isLadderAgentRung, isLocalEndpoint, isReaderAgentModel, type ApiFormat, type BuiltinModelRole, type BuiltinModels, type ModelLadderAgentRung, type ModelLadderRung, type Provider, type ReaderEndpointModel, type ReaderModel } from "@real-bot/protocol";
 import { runCollabTool, type ToolCtx, type ToolResult } from "../collab-tools";
 import { HttpError } from "../errors";
 import { normalizeModelCatalog } from "../models";
@@ -31,14 +31,14 @@ function modelSettingsView(store: Store, settings: { reader_model?: ReaderModel 
   const organizer = settings.organizer_model ?? null;
   // A Claude model of the user's (ADR 0061) names no endpoint; it is the user's to set, so it is only shown.
   const view = (chosen: ReaderModel | null) => !chosen ? null
-    : isReaderClaudeModel(chosen) ? { runner: chosen.runner, model: chosen.model, config_dir: chosen.config_dir }
+    : isReaderAgentModel(chosen) ? { runner: chosen.runner, model: chosen.model, config_dir: chosen.config_dir }
       : { endpoint_id: chosen.provider_id, model: chosen.model };
   return {
     reader_model: view(settings.reader_model ?? null),
     organizer_model: organizer ? { endpoint_id: organizer.provider_id, model: organizer.model } : null,
     builtin_models: Object.fromEntries(BUILTIN_MODEL_ROLES.map((role) => [role, view(settings.builtin_models?.[role] ?? null)])),
     // A Claude rung (ADR 0076) is shown as the user set it: the Bot may keep, move or drop it, never add one.
-    model_ladder: store.modelLadder().map((rung) => (isLadderClaudeRung(rung) ? { runner: rung.runner, model: rung.model, effort: rung.effort, config_dir: rung.config_dir }
+    model_ladder: store.modelLadder().map((rung) => (isLadderAgentRung(rung) ? { runner: rung.runner, model: rung.model, effort: rung.effort, config_dir: rung.config_dir }
       : { endpoint_id: rung.provider_id, model: rung.model })),
   };
 }
@@ -118,8 +118,8 @@ export async function updateModelSettings(ctx: ToolCtx, args: Record<string, unk
     ladder = args.model_ladder.map((rung) => {
       if (!rung || typeof rung !== "object" || !("runner" in rung)) return endpointModelOf(rung, "model_ladder");
       // Only the user puts their Claude plan on the ladder, as only the user moves a Bot onto it: one already there may stay.
-      const named = rung as ModelLadderClaudeRung;
-      const kept = current.find((existing) => isLadderClaudeRung(existing) && existing.model === named.model
+      const named = rung as ModelLadderAgentRung;
+      const kept = current.find((existing) => isLadderAgentRung(existing) && existing.model === named.model
         && existing.effort === (named.effort ?? null) && existing.config_dir === (named.config_dir ?? null));
       if (!kept) throw new HttpError(403, "forbidden", "only the user can put a Claude model on the ladder; it spends their Claude plan");
       return kept;

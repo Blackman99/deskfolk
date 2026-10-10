@@ -12,6 +12,17 @@
 - README 只放图片和宣传片。原来的文字、「哪些已接入、哪些不做」的表和安装说明移到新的「介绍与安装」页（`docs/overview.zh.md`，站内 `/zh/overview`），导航里用它代替了「完整流程」「边界」「从源码启动」。
 - 网站上不再提供 2:15 的真实界面完整演示（`/media/deskfolk-zh.mp4`、`/media/deskfolk-en.mp4`）和 1:26 的动效完整介绍（`/media/deskfolk-promo-<lang>.mp4`）；README 也不再链它，只留 0:30 的吉祥物短片。
 
+### Bot 可以由 Codex、Grok、OpenCode、DSH、ZCode、Antigravity 或你自己的 ACP Agent 来跑
+
+- Bot 的「运行方式」除了 Claude Agent，现在还能选你本机的 Codex、Grok、OpenCode、DSH、ZCode（经它的 `zcode-acp` 桥）、Antigravity，以及你在设置 › Agent 里加的任何讲 Agent Client Protocol 的程序（填名字、完整路径和参数）。都是运行你自己装的那个、用你自己的登录；应用不替你登录，不读它的令牌，也不改它的配置。
+- 模型按那个 Agent 自己的写法填，思考强度只列它认的档；Codex 和 DSH 还能在几个账号（你列的配置目录）里选。设置 › Agent 里每个 Agent 一张卡：位置、版本、登录、模型、网络，没登录时给出要在终端里运行的命令；手机上一样能看能改。
+- 工作区边界和批准卡照 Claude Agent：Grok 的读写和命令都由应用代办，OpenCode、Codex 每条命令、每次写之前都来问——工作区内的直接做，出界的出卡。Agent 没先问就做了、事后才报的，出了工作区或碰了任何 Agent 的凭据就停下这一轮（「没先问就动了……」）。
+- 收尾、交付、审查、委派和 `ask_user` 和别的 Bot 一样：ACP Agent 通过一个 MCP 服务器拿到应用的工具，Codex 当成它自己的工具。Antigravity 拿不到这些工具：它的 Bot 只能用最后的回复说话，并在它自己的沙箱里跑。
+- 它干活时你说的话，Codex 当场收到，别的跟在它调下一个应用工具的结果后面；直接插入能打断 Codex 和 ACP Agent。花费按 Agent 名记；侧边栏的用量条显示 Codex 自己报的套餐窗口还剩多少，别的显示今天在这里跑了几轮、多少 token。
+- 内置调用（读句、整理、判断……）和模型阶梯的一级都能选这些 Agent 的模型。设置向导第 2 步改叫「用本机 Agent」，Claude Code 旁边列出这台电脑上找到且已登录的每个 Agent：选一个，第 3 步选它的模型，就不用端点完成设置，第一个 Bot 和之后新建的 Bot 都由它跑。只用某个 Agent 或 Claude Code 完成设置、没有端点时，设置 › 模型服务里现在也有「内置模型」，可以逐个改调用的模型；以前要加了端点才出现。
+- 各个 Agent 自己的设置和凭据（`~/.codex`、`~/.grok`、`~/.claude`、OpenCode 的目录、`~/.dsh`、`~/.gemini`）现在对所有 Bot 一律拒绝，Claude Agent 也是。
+- 模型阶梯的「加一个模型」每选一个之后回到「加一个模型」，不再显示刚加进去的那一项的原始内容。
+
 ## 0.1.0-rc.16 — 2026-10-10
 
 已签名并经公证的 macOS rc，`.dmg` 旁边附实验性、仍未签名的 Windows 安装包。

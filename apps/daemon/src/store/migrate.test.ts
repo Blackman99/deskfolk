@@ -647,6 +647,54 @@ describe("a database an earlier build created", () => {
   });
 });
 
+describe("bots from before local agents besides Claude Code (ADR 0079)", () => {
+  test("the runner and effort CHECKs go, every Bot and what points at it stays, and a Codex or DSH Bot then saves", () => {
+    const dir = mkdtempSync(join(tmpdir(), "real-bot-migrate-"));
+    const file = join(dir, "state.sqlite");
+    try {
+      const old = new Database(file, { create: true, strict: true });
+      old.exec(readFileSync(join(FIXTURES, "schema-pre-agent-runners.sql"), "utf8"));
+      const now = "2026-10-01T00:00:00.000Z";
+      old.run(`INSERT INTO bots (id, name, duties, boundaries, runner, agent_model, agent_effort, agent_config_dir, created_at, updated_at)
+        VALUES ('bot-claude', 'Claude 写手', 'write', 'none', 'claude_code', 'sonnet', 'high', NULL, ?, ?)`, [now, now]);
+      old.run(`INSERT INTO bots (id, name, duties, boundaries, created_at, updated_at) VALUES ('bot-plain', 'Plain', 'x', 'y', ?, ?)`, [now, now]);
+      old.run(`INSERT INTO sessions (id, kind, name, last_read_at, created_at, updated_at) VALUES ('s-1', 'direct', NULL, ?, ?, ?)`, [now, now, now]);
+      old.run(`INSERT INTO session_participants (session_id, member, joined_at, left_at) VALUES ('s-1', 'bot-claude', ?, NULL)`, [now]);
+      old.run(`INSERT INTO profile_revisions (id, bot_id, name, duties, boundaries, avatar, actor, message_id, created_at)
+        VALUES ('rev-1', 'bot-claude', 'Claude 写手', 'write', 'none', NULL, 'user', NULL, ?)`, [now]);
+      expect(() => old.run(`UPDATE bots SET runner = 'codex' WHERE id = 'bot-plain'`)).toThrow(/CHECK/);
+      old.close();
+
+      const store = new Store({ filename: file });
+      const shape = store.db.query<{ sql: string }, []>(`SELECT sql FROM sqlite_master WHERE name = 'bots'`).get()!.sql;
+      expect(shape).not.toMatch(/CHECK\s*\(\s*(runner|agent_effort)/);
+      expect(store.getBot("bot-claude")).toMatchObject({ runner: "claude_code", agent_model: "sonnet", agent_effort: "high", agent_custom_id: null });
+      expect(store.getBot("bot-plain")).toMatchObject({ runner: null });
+      // The index that keeps live names unique came back with the table.
+      expect(() => store.createBot({ name: "Plain", duties: "x", boundaries: "y" })).toThrow();
+      const codex = store.createBot({ name: "Codex 写手", duties: "write", boundaries: "none", runner: "codex", agent_model: "gpt-5.6-luna", agent_effort: "xhigh" });
+      expect(codex.bot).toMatchObject({ runner: "codex", agent_model: "gpt-5.6-luna", agent_effort: "xhigh" });
+      expect(store.patchBot("bot-plain", { runner: "dsh", agent_effort: "off" })).toMatchObject({ runner: "dsh", agent_effort: "off" });
+      expect(() => store.patchBot("bot-plain", { agent_effort: "xhigh" })).toThrow(/off, low, high, max/);
+      expect(store.db.query<{ foreign_keys: number }, []>(`PRAGMA foreign_keys`).get()).toEqual({ foreign_keys: 1 });
+      expect(store.db.query(`PRAGMA foreign_key_check`).all()).toEqual([]);
+      expect(() => store.db.run(`DELETE FROM bots WHERE id = 'bot-claude'`)).toThrow(/FOREIGN KEY/);
+      store.close();
+
+      // Reopening finds no CHECK to drop and leaves the table alone.
+      const before = new Database(file, { strict: true });
+      const rebuilt = before.query<{ sql: string }, []>(`SELECT sql FROM sqlite_master WHERE name = 'bots'`).get()!.sql;
+      before.close();
+      new Store({ filename: file }).close();
+      const after = new Database(file, { strict: true });
+      expect(after.query<{ sql: string }, []>(`SELECT sql FROM sqlite_master WHERE name = 'bots'`).get()!.sql).toBe(rebuilt);
+      after.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 /**
  * An abandoned draft of ADR 0040 P4d left an `external_jobs` table in the user's database with
  * `id, request_id UNIQUE, args_digest, status, created_at, updated_at`. Plan dormancy only looked

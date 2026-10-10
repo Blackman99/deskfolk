@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { CONNECTORS, SPEECH_PRESETS, type Provider } from "@real-bot/protocol";
 import { copyFor } from "./copy.ts";
-import { claudeAgentSource, endpointModelOptions, endpointSource, speechServiceSource } from "./model-source.ts";
+import { agentSource, claudeAgentSource, endpointModelOptions, endpointSource, runnerSource, speechServiceSource } from "./model-source.ts";
 import Select from "./Select.svelte";
 import { click, render } from "./test-render.ts";
 
@@ -75,5 +75,30 @@ test("the picker draws each row's mark, and the chosen one's on the closed picke
   expect(rows.map((row) => row.querySelector("[data-model-source]")?.getAttribute("data-model-source"))).toEqual(["custom", "anthropic"]);
   expect(rows[0]!.querySelector(".model-source-custom")?.getAttribute("data-text")).toBe("Custom");
   expect(rows[0]!.textContent?.replace(/\s+/g, " ").trim()).toBe("grok My CPA");
+  view.close();
+});
+
+test("a model run by another local agent is marked with the agent's name as text, never a logo; Claude keeps its spark", async () => {
+  expect(agentSource("codex", "Codex")).toEqual({ kind: "agent", runner: "codex", name: "Codex" });
+  expect(runnerSource("claude_code", "Claude Agent", t)).toEqual(claudeAgentSource(t));
+  expect(runnerSource("grok", "Grok", t)).toEqual({ kind: "agent", runner: "grok", name: "Grok" });
+  const options = [
+    { value: "a", label: "gpt-5.5", source: agentSource("codex", "Codex") },
+    { value: "b", label: "opus", source: claudeAgentSource(t) },
+    { value: "c", label: "fast", source: agentSource("custom", "我的 ACP") },
+  ];
+  const view = render(Select, { value: "a", options });
+  const trigger = view.host.querySelector(".real-select-trigger")!;
+  expect(trigger.querySelector("[data-model-source]")?.getAttribute("data-model-source")).toBe("agent");
+  expect(trigger.querySelector("[data-model-source]")?.getAttribute("data-runner")).toBe("codex");
+  expect(trigger.querySelector(".model-source-custom")?.getAttribute("data-text")).toBe("Codex");
+  expect(trigger.querySelector(".connector-logo")).toBeNull();
+  click(trigger);
+  await sleep(0);
+  const rows = [...view.host.querySelectorAll(".real-select-option")];
+  expect(rows.map((row) => row.querySelector("[data-model-source]")?.getAttribute("data-model-source"))).toEqual(["agent", "claude-agent", "agent"]);
+  expect(rows[2]!.querySelector(".model-source-custom")?.getAttribute("data-text")).toBe("我的 ACP");
+  // The row's text stays the model's name.
+  expect(rows[0]!.textContent?.replace(/\s+/g, " ").trim()).toBe("gpt-5.5");
   view.close();
 });

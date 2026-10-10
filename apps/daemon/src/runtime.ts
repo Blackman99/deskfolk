@@ -1,3 +1,4 @@
+import { setAgentMcpPort } from "./agent-mcp/bridge";
 import { LOCAL_API_BIND, LOCAL_API_NAME } from "@real-bot/protocol";
 import {
   defaultDataDir,
@@ -251,6 +252,8 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
     await server.stop(true);
     throw new Error("server did not bind a port");
   }
+  // Where local agents reach the app's tools (ADR 0079).
+  setAgentMcpPort(port);
 
   const companionHost = companionLoopback(host);
   if (companionHost) {

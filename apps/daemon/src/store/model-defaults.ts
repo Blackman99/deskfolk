@@ -86,7 +86,7 @@ export function inferredDefault(ctx: StoreContext, botId: string, listed: Readon
   { providerId: string; model: string; thinkingLevel: ThinkingLevel; turns: number } | null {
   const since = isoPlus(now, -(DEFAULT_MODEL_WINDOW_DAYS * 24 * 60 * 60_000));
   const rows = ctx.db.query<{ provider_id: string | null; model: string; thinking_level: string; n: number }, [string, string]>(`SELECT provider_id, model,
-    thinking_level, COUNT(*) AS n FROM turn_route_decisions WHERE bot_id = ? AND created_at > ? AND COALESCE(reason_code, '') NOT IN ('ticket_override', 'escalation_model', 'claude_code') AND COALESCE(base_reason_code, '') <> 'ticket_override'
+    thinking_level, COUNT(*) AS n FROM turn_route_decisions WHERE bot_id = ? AND created_at > ? AND COALESCE(reason_code, '') NOT IN ('ticket_override', 'escalation_model', 'claude_code') AND COALESCE(reason_code, '') NOT LIKE 'agent!_%' ESCAPE '!' AND COALESCE(base_reason_code, '') <> 'ticket_override'
     GROUP BY provider_id, model, thinking_level`).all(botId, since)
     .filter((row) => row.provider_id && listed.some((entry) => entry.providerId === row.provider_id && entry.model === row.model));
   const byModel = new Map<string, { providerId: string; model: string; turns: number; levels: Map<string, number> }>();

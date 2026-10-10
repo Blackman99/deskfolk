@@ -1,4 +1,6 @@
-//! What is left of your Claude plan at the top of the menu bar menu (ADR 0061): the same
+//! What is left of your Claude plan at the top of the menu bar menu (ADR 0061), and of your other
+//! local agents' (ADR 0079, `GET /v1/agent-usage`: Codex's own windows, today's records for the
+//! rest, under their names in plain text — no other vendor's mark). The Claude part reads the same
 //! `GET /v1/claude-usage` the sidebar reads, asked once a minute while the daemon is up. The
 //! daemon keeps each answer for five minutes, so this starts at most one `claude` per five
 //! minutes, and none at all until a Bot runs on Claude Agent. Each account is a group of its own,
@@ -55,6 +57,41 @@ pub struct AccountUsage {
     pub config_dir: Option<String>,
 }
 
+/// `GET /v1/agent-usage` (ADR 0079): your other local agents something runs on.
+#[derive(Debug, Default, Deserialize)]
+pub struct AgentUsageResponse {
+    #[serde(default)]
+    pub items: Vec<AgentUsage>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AgentUsage {
+    pub label: String,
+    pub available: bool,
+    #[serde(default)]
+    pub plan: Option<String>,
+    #[serde(default)]
+    pub windows: Vec<AgentWindow>,
+    #[serde(default)]
+    pub config_dir: Option<String>,
+    pub today: AgentToday,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AgentWindow {
+    #[serde(default)]
+    pub minutes: Option<f64>,
+    pub percent: f64,
+    #[serde(default)]
+    pub resets_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AgentToday {
+    pub turns: i64,
+    pub tokens: i64,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct UsageWindow {
     pub kind: String,
@@ -68,6 +105,10 @@ pub struct UsageWindow {
 pub enum Entry {
     /// An account's name, under Claude's mark.
     Account(String),
+    /// Another local agent's name (ADR 0079), as plain text.
+    Agent(String),
+    /// A line with no ring: an agent's day here, when it has no plan windows to show.
+    Note(String),
     /// A window and how much of it is left, under a ring as full as that.
     Window {
         text: String,
@@ -117,9 +158,9 @@ pub fn start(
     std::thread::spawn(move || loop {
         let entries = match endpoint(&handle) {
             // A failed ask keeps the lines already shown; the next minute asks again.
-            Some(endpoint) => match fetch(&endpoint) {
-                Some(usage) => usage_entries(&usage, now_secs()),
-                None => current_entries(&handle),
+            Some(endpoint) => match (fetch(&endpoint), fetch_agents(&endpoint)) {
+                (Some(usage), agents) => joined(usage_entries(&usage, now_secs()), agent_entries(&agents.unwrap_or_default(), now_secs())),
+                (None, _) => current_entries(&handle),
             },
             None => Vec::new(),
         };
@@ -141,6 +182,88 @@ fn fetch(endpoint: &Endpoint) -> Option<Usage> {
         .ok()
 }
 
+/// Your other local agents' usage; an older daemon without the route answers nothing here.
+fn fetch_agents(endpoint: &Endpoint) -> Option<AgentUsageResponse> {
+    let url = format!("{}/v1/agent-usage", endpoint.origin);
+    ureq::AgentBuilder::new()
+        .timeout(FETCH_TIMEOUT)
+        .build()
+        .get(&url)
+        .set("Authorization", &format!("Bearer {}", endpoint.token))
+        .call()
+        .ok()?
+        .into_json()
+        .ok()
+}
+
+/// Claude's groups, then the other agents', a separator between.
+fn joined(mut claude: Vec<Entry>, agents: Vec<Entry>) -> Vec<Entry> {
+    if !claude.is_empty() && !agents.is_empty() {
+        claude.push(Entry::Separator);
+    }
+    claude.extend(agents);
+    claude
+}
+
+/// A group per agent: its name (`Codex Plus`), then what is left of each window it reports, or
+/// one line of its day here (`今天 3 轮 · 12k token`) when it reports none; an agent with neither
+/// a window nor a turn today is left out.
+pub fn agent_entries(usage: &AgentUsageResponse, now: i64) -> Vec<Entry> {
+    let mut entries = Vec::new();
+    for item in &usage.items {
+        let has_windows = item.available && !item.windows.is_empty();
+        if !has_windows && item.today.turns == 0 {
+            continue;
+        }
+        if !entries.is_empty() {
+            entries.push(Entry::Separator);
+        }
+        let plan = item.plan.as_deref().map(plan_name).unwrap_or_default();
+        let name = match (plan.is_empty(), item.config_dir.as_deref()) {
+            (false, Some(dir)) => format!("{} {plan} · {dir}", item.label),
+            (false, None) => format!("{} {plan}", item.label),
+            (true, Some(dir)) => format!("{} · {dir}", item.label),
+            (true, None) => item.label.clone(),
+        };
+        entries.push(Entry::Agent(name));
+        if has_windows {
+            for window in &item.windows {
+                let span = window_span(window.minutes);
+                let left = left_text(window.percent);
+                let text = match window.resets_at.as_deref().and_then(parse_rfc3339) {
+                    Some(at) => format!("{span}：剩 {left}（{}）", reset_text(at - now)),
+                    None => format!("{span}：剩 {left}"),
+                };
+                entries.push(Entry::Window { text, left: (100.0 - window.percent).clamp(0.0, 100.0), level: level_of(window.percent) });
+            }
+        } else {
+            entries.push(Entry::Note(format!("今天 {} 轮 · {} token", item.today.turns, tokens_text(item.today.tokens))));
+        }
+    }
+    entries
+}
+
+/// A window's length in the menu's words: `5 小时`, `7 天`, `30 天`.
+fn window_span(minutes: Option<f64>) -> String {
+    match minutes {
+        Some(m) if m >= 1440.0 => format!("{} 天", (m / 1440.0).round() as i64),
+        Some(m) if m >= 60.0 => format!("{} 小时", (m / 60.0).round() as i64),
+        Some(m) => format!("{} 分钟", m.round() as i64),
+        None => "窗口".to_string(),
+    }
+}
+
+/// Tokens as a menu reads them: `850`, `12k`, `1.2M`.
+fn tokens_text(tokens: i64) -> String {
+    if tokens >= 1_000_000 {
+        format!("{:.1}M", tokens as f64 / 1_000_000.0)
+    } else if tokens >= 1_000 {
+        format!("{}k", tokens / 1_000)
+    } else {
+        tokens.to_string()
+    }
+}
+
 fn current_entries(app: &AppHandle) -> Vec<Entry> {
     let state = app.state::<UsageTray>();
     let entries = state
@@ -154,6 +277,7 @@ fn current_entries(app: &AppHandle) -> Vec<Entry> {
 fn icon_of(entry: &Entry) -> Option<Image<'static>> {
     match entry {
         Entry::Account(_) => Some(Image::new(CLAUDE_SPARK, ICON_PX, ICON_PX)),
+        Entry::Agent(_) | Entry::Note(_) => None,
         Entry::Window { left, level, .. } => {
             Some(Image::new_owned(ring_rgba(*left, *level), ICON_PX, ICON_PX))
         }
@@ -163,7 +287,7 @@ fn icon_of(entry: &Entry) -> Option<Image<'static>> {
 
 fn text_of(entry: &Entry) -> &str {
     match entry {
-        Entry::Account(text) | Entry::Window { text, .. } => text,
+        Entry::Account(text) | Entry::Agent(text) | Entry::Note(text) | Entry::Window { text, .. } => text,
         Entry::Separator => "",
     }
 }
@@ -495,10 +619,34 @@ mod tests {
             .iter()
             .map(|entry| match entry {
                 Entry::Account(text) => format!("[Claude] {text}"),
+                Entry::Agent(text) => format!("[agent] {text}"),
+                Entry::Note(text) => format!("[note] {text}"),
                 Entry::Window { text, .. } => format!("[ring] {text}"),
                 Entry::Separator => "---".to_string(),
             })
             .collect()
+    }
+
+    #[test]
+    fn other_agents_their_windows_or_their_day_here() {
+        let agents: AgentUsageResponse = serde_json::from_str(r#"{"items":[
+            {"runner":"codex","label":"Codex","available":true,"plan":"plus","config_dir":null,
+             "windows":[{"minutes":300,"percent":12.4,"resets_at":null},{"minutes":10080,"percent":80,"resets_at":null}],
+             "today":{"turns":2,"tokens":15000}},
+            {"runner":"grok","label":"Grok","available":false,"reason":"no_plan","windows":[],"today":{"turns":3,"tokens":1200500}},
+            {"runner":"opencode","label":"OpenCode","available":false,"reason":"no_plan","windows":[],"today":{"turns":0,"tokens":0}}
+        ]}"#).unwrap();
+        assert_eq!(texts(&agent_entries(&agents, 0)), vec![
+            "[agent] Codex Plus",
+            "[ring] 5 小时：剩 87%",
+            "[ring] 7 天：剩 20%",
+            "---",
+            "[agent] Grok",
+            "[note] 今天 3 轮 · 1.2M token",
+        ]);
+        // After Claude's groups, with a separator between.
+        assert_eq!(joined(vec![Entry::Account("Claude".into())], vec![Entry::Agent("Codex".into())]).len(), 3);
+        assert!(agent_entries(&AgentUsageResponse::default(), 0).is_empty());
     }
 
     #[test]

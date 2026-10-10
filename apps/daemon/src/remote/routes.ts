@@ -1,4 +1,4 @@
-import { ANNOTATION_REMOTE_CROP_BASE64_MAX, BUILTIN_MODEL_ROLES, CLIENT_ONLY_CONTROL_OFFERS, CONTROL_NOTE_MAX, CONTROL_OFFERS, FILE_DROP_SESSION_ID, SPEECH_AUDIO_BASE64_MAX, SPEECH_FORMATS, SPEECH_PRESET_IDS } from "@real-bot/protocol";
+import { ANNOTATION_REMOTE_CROP_BASE64_MAX, BOT_RUNNERS, BUILTIN_MODEL_ROLES, CLIENT_ONLY_CONTROL_OFFERS, CONTROL_NOTE_MAX, CONTROL_OFFERS, FILE_DROP_SESSION_ID, SPEECH_AUDIO_BASE64_MAX, SPEECH_FORMATS, SPEECH_PRESET_IDS } from "@real-bot/protocol";
 import type { RemoteRequest } from "@real-bot/remote";
 import { HttpError } from "../errors";
 import { isUlid } from "../ids";
@@ -20,8 +20,11 @@ const models = list(v => string(v) || object({ name: string, price: nullable(v =
   max_output: nullable(v => positive(v) && Number.isInteger(v)), stream_tps_p10: nullable(positive), context_window: nullable(v => positive(v) && Number.isInteger(v)), reasoning_effective: nullable(bool), input_image: nullable(bool) }, ["name"])(v));
 const schedule: Check = v => object({ kind: one("daily"), time: string }, ["kind", "time"])(v) ||
   object({ kind: one("weekly"), time: string, weekdays: list(string) }, ["kind", "time", "weekdays"])(v);
-const bot = { name: string, duties: string, boundaries: string, avatar: nullable(string), model: nullable(string), provider_id: nullable(id), thinking_level: nullable(string), runner: nullable(one("claude_code")), agent_model: nullable(string),
-  agent_effort: nullable(one("low", "medium", "high", "xhigh", "max")), agent_config_dir: nullable(string) };
+// A local agent's effort level: a short word; the daemon checks it against the runner's own list (ADR 0079).
+const effort: Check = v => typeof v === "string" && /^[a-z]{2,12}$/.test(v);
+const runner = one(...BOT_RUNNERS);
+const bot = { name: string, duties: string, boundaries: string, avatar: nullable(string), model: nullable(string), provider_id: nullable(id), thinking_level: nullable(string), runner: nullable(runner), agent_model: nullable(string),
+  agent_effort: nullable(effort), agent_config_dir: nullable(string), agent_custom_id: nullable(string) };
 const apiFormat = one("openai", "anthropic");
 const provider = { name: string, base_url: string, api_format: apiFormat, api_key: string, models, available_models: list(string), default_model: nullable(string) };
 const mcp = { name: string, transport: one("stdio", "http"), command: string, args: list(string), url: string,
@@ -51,6 +54,12 @@ get("claude-usage", { refresh: one("1") });
 get("runtime/claude-code"); add("POST", "runtime/claude-code/detect");
 add("PUT", "runtime/claude-code/path", { path: nullable(string) }, ["path"]);
 add("PUT", "runtime/claude-code/accounts", { config_dirs: list(string) }, ["config_dirs"]);
+// Your other local agents (ADR 0079), seen and set up from the phone as on the Mac, and their usage.
+get("runtime/agents", { refresh: one("1") }); add("POST", "runtime/agents/detect", { runner, custom_id: nullable(string) }, ["runner"]);
+add("PUT", "runtime/agents/path", { runner, path: nullable(string) }, ["runner", "path"]);
+add("PUT", "runtime/agents/accounts", { runner, config_dirs: list(string) }, ["runner", "config_dirs"]);
+add("PUT", "runtime/custom-agents", { agents: list(object({ id: string, name: string, command: string, args: list(string) }, ["name", "command"])) }, ["agents"]);
+get("agent-usage", { refresh: one("1") });
 const pageLimit: Check = v => typeof v === "string" && /^[1-9][0-9]{0,2}$/.test(v) && Number(v) <= 200;
 get("sessions/:id/snapshot", { limit: pageLimit });
 get("sessions/:id/messages", { cursor: v => typeof v === "string" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z\|[0-9A-HJKMNP-TV-Z]{26}$/.test(v), limit: pageLimit });
@@ -191,7 +200,7 @@ add("POST", "allow-rules", { kind_key: string, scope: string }, ["kind_key", "sc
 add("POST", "turns/:id/mark-model"); add("DELETE", "turns/:id/mark-model");
 add("PATCH", "lessons/:id", { status: one("active", "retired"), action: one("warn", "block"), text: string }, [], true);
 get("model-ladder"); add("PUT", "model-ladder", { items: list(v => object({ provider_id: id, model: string }, ["provider_id", "model"])(v) ||
-  object({ runner: one("claude_code"), model: string, effort: nullable(one("low", "medium", "high", "xhigh", "max")), config_dir: nullable(string) }, ["runner", "model"])(v)) }, ["items"]);
+  object({ runner, model: string, effort: nullable(effort), config_dir: nullable(string), custom_id: nullable(string) }, ["runner", "model"])(v)) }, ["items"]);
 add("POST", "skills/:id/share"); add("PATCH", "shared-skills/:id", { enabled: bool }, ["enabled"], true); add("DELETE", "shared-skills/:id");
 // ADR 0062: taking back one change a retrospective made, from the plan's board.
 add("POST", "retrospectives/:id/changes/[0-9]{1,2}/undo");
@@ -221,9 +230,9 @@ add("PUT", "sessions/:id/notification-preference", { muted: bool, if_revision: v
 add("POST", "notification-presence", { instance_id: string, visible: bool, focused: bool, session_id: nullable(id), at_latest: bool }, ["instance_id", "visible", "focused", "at_latest"]);
 add("PATCH", "notification-policy", { categories: object({ approval: bool, ask: bool, failure: bool, interrupted: bool, reply: bool, routine_result: bool }), quiet_hours: object({ enabled: bool, start: string, end: string, time_zone: string }), if_revision: v => typeof v === "number" && Number.isInteger(v) && v >= 0 }, ["if_revision"], true);
 add("PATCH", "notification-device", { badge: bool, sound: one("system"), preview: one("generic"), if_revision: v => typeof v === "number" && Number.isInteger(v) && v >= 0 }, ["if_revision"], true);
-// A built-in call's model (ADR 0055, 0077): an endpoint's, a Claude model of yours, or null.
+// A built-in call's model (ADR 0055, 0077, 0079): an endpoint's, one of a local agent of yours, or null.
 const sideModel = nullable(v => object({ provider_id: id, model: string }, ["provider_id", "model"])(v) ||
-  object({ runner: one("claude_code"), model: string, config_dir: nullable(string) }, ["runner", "model"])(v));
+  object({ runner, model: string, config_dir: nullable(string), custom_id: nullable(string) }, ["runner", "model"])(v));
 add("PATCH", "settings", { endpoint_base_url: string, endpoint_api_key: string, endpoint_models: models, endpoint_default_model: string,
   default_provider_id: nullable(id), reader_model: sideModel,
   // An older window's organizer (ADR 0075): an endpoint's only; builtin_models takes a Claude model too (ADR 0077).

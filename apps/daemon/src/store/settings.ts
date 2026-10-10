@@ -8,15 +8,18 @@ import {
   KEYCHAIN_NAME,
   KEYCHAIN_REF,
   isBuiltinModelRole,
+  isAgentModelName,
+  isBotRunner,
+  type BotRunner,
   isClaudeModelName,
   isLocalEndpoint,
-  isReaderClaudeModel,
+  isReaderAgentModel,
   providerKeychainName,
   type BuiltinModelRole,
   type BuiltinModels,
   type PatchProviderRequest,
   type Provider,
-  type ReaderClaudeModel,
+  type ReaderAgentModel,
   type ReaderEndpointModel,
   type ReaderModel,
   type Settings,
@@ -33,6 +36,7 @@ import {
   unionProviderModels,
 } from "../models";
 import { listedConfigDir } from "./claude-code";
+import { listedAgentConfigDir, listedCustomAgent } from "./agents";
 import { hydrateSpeechKey, speechSettings } from "./speech";
 import { createProviderSync, listProviders, patchProviderSync, providersCached } from "./providers";
 import {
@@ -88,7 +92,7 @@ export function settingsCached(ctx: StoreContext): Settings {
   ) as BuiltinModels;
   const reader_model = builtin_models.reader;
   // Older windows know the organizing model as an endpoint's only (ADR 0075).
-  const organizer_model: ReaderEndpointModel | null = builtin_models.organizer && !isReaderClaudeModel(builtin_models.organizer)
+  const organizer_model: ReaderEndpointModel | null = builtin_models.organizer && !isReaderAgentModel(builtin_models.organizer)
     ? builtin_models.organizer : null;
   return {
     settings_rev: ctx.db.query<{ settings_rev: number }, []>("SELECT settings_rev FROM request_meta WHERE singleton = 1").get()!.settings_rev,
@@ -119,7 +123,7 @@ export function settingsCached(ctx: StoreContext): Settings {
  * it only runs in an endpoint Bot's turn, and Claude Code compacts its own.
  */
 export function setUpOnClaudeCode(models: BuiltinModels): boolean {
-  return BUILTIN_MODEL_ROLES.every((role) => role === "compaction" || isReaderClaudeModel(models[role]));
+  return BUILTIN_MODEL_ROLES.every((role) => role === "compaction" || isReaderAgentModel(models[role]));
 }
 
 /** An endpoint a turn can be sent to: an address, and a key unless it is on this computer or network. */
@@ -132,19 +136,22 @@ function hasUsableEndpoint(providers: ReturnType<typeof providersCached>): boole
  * app's own calls use, which a new Bot made without saying what runs it is put on. Null while there
  * is an endpoint, or the app is not set up on Claude Code.
  */
-export function claudeOnlyAccount(ctx: StoreContext): { configDir: string | null } | null {
+export function claudeOnlyAccount(ctx: StoreContext): { runner: BotRunner; configDir: string | null; customId: string | null } | null {
   const settings = settingsCached(ctx);
   if (hasUsableEndpoint(providersCached(ctx)) || !settings.builtin_models || !setUpOnClaudeCode(settings.builtin_models)) return null;
+  // Set up on another local agent alone (ADR 0079), the same way: the one lines are read on.
   const reader = settings.builtin_models.reader;
-  return { configDir: isReaderClaudeModel(reader) ? reader.config_dir : null };
+  return isReaderAgentModel(reader)
+    ? { runner: reader.runner, configDir: reader.config_dir, customId: reader.custom_id ?? null }
+    : { runner: "claude_code", configDir: null, customId: null };
 }
 
 /**
  * Where each built-in call's choice is kept (ADR 0077): `<role>_provider_id`, `_model`, `_runner`
  * and `_config_dir`. The reader's and the organizer's are the keys they always had.
  */
-export function builtinModelKeys(role: BuiltinModelRole): { provider: string; model: string; runner: string; configDir: string } {
-  return { provider: `${role}_provider_id`, model: `${role}_model`, runner: `${role}_runner`, configDir: `${role}_config_dir` };
+export function builtinModelKeys(role: BuiltinModelRole): { provider: string; model: string; runner: string; configDir: string; customId: string } {
+  return { provider: `${role}_provider_id`, model: `${role}_model`, runner: `${role}_runner`, configDir: `${role}_config_dir`, customId: `${role}_custom_id` };
 }
 
 /**
@@ -155,7 +162,10 @@ function builtinModelRead(map: Map<string, string>, providers: readonly Provider
   const keys = builtinModelKeys(role);
   const model = emptyToNull(map.get(keys.model));
   if (!model) return null;
-  if (map.get(keys.runner) === "claude_code") return { runner: "claude_code", model, config_dir: emptyToNull(map.get(keys.configDir)) };
+  const runner = map.get(keys.runner);
+  if (runner === "claude_code") return { runner: "claude_code", model, config_dir: emptyToNull(map.get(keys.configDir)) };
+  // Another local agent of yours (ADR 0079), kept as chosen: like Claude's, it names no endpoint.
+  if (isBotRunner(runner)) return { runner, model, config_dir: emptyToNull(map.get(keys.configDir)), custom_id: emptyToNull(map.get(keys.customId)) };
   const provider = providers.find((row) => row.id === emptyToNull(map.get(keys.provider)));
   return provider && provider.models.includes(model) ? { provider_id: provider.id, model } : null;
 }
@@ -172,11 +182,21 @@ export function localeOf(ctx: StoreContext): "zh" | "en" {
 function builtinModelOf(ctx: StoreContext, value: unknown, field: string): ReaderModel | null {
   if (value === null) return null;
   if (value && typeof value === "object" && "runner" in value) {
-    const claude = value as Partial<ReaderClaudeModel>;
-    if (claude.runner !== "claude_code" || typeof claude.model !== "string" || !isClaudeModelName(claude.model)) {
-      throw new HttpError(422, "invalid_args", `${field} must be { runner: "claude_code", model, config_dir } with a Claude model name`);
+    const agent = value as Partial<ReaderAgentModel>;
+    if (agent.runner === "claude_code") {
+      if (typeof agent.model !== "string" || !isClaudeModelName(agent.model)) {
+        throw new HttpError(422, "invalid_args", `${field} must be { runner: "claude_code", model, config_dir } with a Claude model name`);
+      }
+      return { runner: "claude_code", model: agent.model, config_dir: listedConfigDir(ctx, agent.config_dir, `${field}.config_dir`) };
     }
-    return { runner: "claude_code", model: claude.model, config_dir: listedConfigDir(ctx, claude.config_dir, `${field}.config_dir`) };
+    // Another local agent of yours (ADR 0079): its model as it names them, one of its accounts, and
+    // for your own ACP agent, which one.
+    if (!isBotRunner(agent.runner) || typeof agent.model !== "string" || !isAgentModelName(agent.model.trim())) {
+      throw new HttpError(422, "invalid_args", `${field} must be { runner, model, config_dir } with a runner the app knows and a model name`);
+    }
+    const customId = agent.runner === "custom" ? listedCustomAgent(ctx, agent.custom_id, `${field}.custom_id`) : null;
+    return { runner: agent.runner, model: agent.model.trim(), config_dir: listedAgentConfigDir(ctx, agent.runner, agent.config_dir, `${field}.config_dir`),
+      ...(customId ? { custom_id: customId } : {}) };
   }
   const row = value as Partial<ReaderEndpointModel> | undefined;
   if (!row || typeof row !== "object" || typeof row.provider_id !== "string" || typeof row.model !== "string") {
@@ -190,11 +210,12 @@ function builtinModelOf(ctx: StoreContext, value: unknown, field: string): Reade
 
 function setBuiltinModel(ctx: StoreContext, role: BuiltinModelRole, chosen: ReaderModel | null): void {
   const keys = builtinModelKeys(role);
-  const claude = isReaderClaudeModel(chosen) ? chosen : null;
-  setSetting(ctx, keys.provider, chosen && !claude ? (chosen as ReaderEndpointModel).provider_id : "");
+  const agent = isReaderAgentModel(chosen) ? chosen : null;
+  setSetting(ctx, keys.provider, chosen && !agent ? (chosen as ReaderEndpointModel).provider_id : "");
   setSetting(ctx, keys.model, chosen?.model ?? "");
-  setSetting(ctx, keys.runner, claude ? "claude_code" : "");
-  setSetting(ctx, keys.configDir, claude?.config_dir ?? "");
+  setSetting(ctx, keys.runner, agent ? agent.runner : "");
+  setSetting(ctx, keys.configDir, agent?.config_dir ?? "");
+  setSetting(ctx, keys.customId, agent?.custom_id ?? "");
 }
 
 /**

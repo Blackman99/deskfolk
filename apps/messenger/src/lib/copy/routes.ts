@@ -21,7 +21,14 @@ export const zh = {
     capability_filter: "这件活要看图，换了能看图的",
     escalation: "接连没过或出错，提了一档思考",
     escalation_model: "接连没过、思考档已到顶，换到阶梯上往上一个模型",
-    claude_code: "由你的 Claude Code 来跑"
+    claude_code: "由你的 Claude Code 来跑",
+    agent_codex: "由你的 Codex 来跑",
+    agent_grok: "由你的 Grok 来跑",
+    agent_opencode: "由你的 OpenCode 来跑",
+    agent_dsh: "由你的 DSH 来跑",
+    agent_antigravity: "由你的 Antigravity 来跑",
+    agent_zcode: "由你的 ZCode 来跑",
+    agent_custom: "由你添加的 ACP Agent 来跑"
   } as Record<string, string>,
   markModel: "记为模型问题",
   markedModel: "已记为模型问题",
@@ -82,10 +89,11 @@ export const zh = {
     context_full: "提示词超出了模型的上下文窗口",
     stuck: "卡住了，很久没有任何进展",
     crashed: "运行时出错",
-    agent_missing: "这台电脑上没找到 Claude Code",
-    agent_signed_out: "本机的 Claude Code 没通过认证",
-    agent_limit: "Claude 的用量额度用完了",
-    agent_exited: "Claude Code 中途退出了"
+    agent_missing: "这台电脑上没找到本机 Agent 的命令",
+    agent_signed_out: "本机 Agent 没通过认证",
+    agent_limit: "本机 Agent 的用量额度用完了",
+    agent_exited: "本机 Agent 中途退出了",
+    agent_unguarded: "本机 Agent 没先问就动了工作区外的东西或凭据，这一轮已停下"
   }
 };
 
@@ -110,7 +118,14 @@ export const en: CopyShape<typeof zh> = {
     capability_filter: "The work needs pictures seen; moved to a model that sees them",
     escalation: "Kept failing; one thinking level higher",
     escalation_model: "Kept failing at the top thinking level; one model up the ladder",
-    claude_code: "Run by your Claude Code"
+    claude_code: "Run by your Claude Code",
+    agent_codex: "Run by your Codex",
+    agent_grok: "Run by your Grok",
+    agent_opencode: "Run by your OpenCode",
+    agent_dsh: "Run by your DSH",
+    agent_antigravity: "Run by your Antigravity",
+    agent_zcode: "Run by your ZCode",
+    agent_custom: "Run by an ACP agent you added"
   } as Record<string, string>,
   markModel: "Mark as the model's problem",
   markedModel: "Marked as the model's problem",
@@ -172,9 +187,10 @@ export const en: CopyShape<typeof zh> = {
     context_full: "The prompt is larger than the model's context window",
     stuck: "It stopped making progress",
     crashed: "The runtime errored",
-    agent_missing: "Claude Code was not found on this computer",
-    agent_signed_out: "Your Claude Code could not authenticate",
-    agent_limit: "Claude usage limit reached",
-    agent_exited: "Claude Code exited mid-turn"
+    agent_missing: "The local agent's command was not found on this computer",
+    agent_signed_out: "Your local agent could not authenticate",
+    agent_limit: "The local agent's usage limit was reached",
+    agent_exited: "The local agent exited mid-turn",
+    agent_unguarded: "The local agent acted outside the workspace or on credentials without asking, so the turn was stopped"
   }
 };

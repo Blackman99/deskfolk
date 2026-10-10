@@ -1,3 +1,5 @@
+import { isBotRunner, type BotRunner } from "./bots.ts";
+
 /**
  * Fallback thinking levels when a catalog row does not list any. Endpoints may advertise others
  * (`xhigh`, `max`, `minimal`, …) as `reasoning_effort` values; those names are stored and sent as-is.
@@ -141,16 +143,24 @@ export type ProbeModelsResponse = {
 export type ReaderEndpointModel = { provider_id: string; model: string };
 
 /**
- * A Claude model run through your own Claude Code (ADR 0061), for reading lines: `config_dir` is
- * one of the Claude accounts listed in Settings, null for the daemon's own environment.
+ * A model run through one of your local agents (ADR 0061, ADR 0079) — your Claude Code, Codex, … —
+ * for reading lines or another built-in call: `config_dir` is one of that agent's accounts listed in
+ * Settings, null for the daemon's own environment; `custom_id` names the custom ACP agent when
+ * `runner` is `custom`.
  */
-export type ReaderClaudeModel = { runner: "claude_code"; model: string; config_dir: string | null };
+export type ReaderAgentModel = { runner: BotRunner; model: string; config_dir: string | null; custom_id?: string | null };
 
-/** The model that reads lines (`Settings.reader_model`): an endpoint's, or a Claude model of yours. */
-export type ReaderModel = ReaderEndpointModel | ReaderClaudeModel;
+/** The model that reads lines (`Settings.reader_model`): an endpoint's, or one of a local agent of yours. */
+export type ReaderModel = ReaderEndpointModel | ReaderAgentModel;
 
-export function isReaderClaudeModel(value: ReaderModel | null | undefined): value is ReaderClaudeModel {
-  return Boolean(value) && "runner" in value!;
+/** A local agent's model, told apart by a `runner` the app knows (not just by having the key). */
+export function isReaderAgentModel(value: ReaderModel | null | undefined): value is ReaderAgentModel {
+  return Boolean(value) && "runner" in value! && isBotRunner((value as { runner?: unknown }).runner);
+}
+
+/** A Claude Code model (ADR 0061): the one local agent every older client knows. */
+export function isReaderClaudeModel(value: ReaderModel | null | undefined): value is ReaderAgentModel & { runner: "claude_code" } {
+  return isReaderAgentModel(value) && value.runner === "claude_code";
 }
 
 /**

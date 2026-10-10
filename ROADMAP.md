@@ -36,7 +36,7 @@
 
 - 验证从任务输入、Bot 自主协作到交付文件的完整路径，包括人工组队与 Bot 创建队友两种方式。
 - 持续验证不同模型与 MCP 的兼容性、错误恢复和协作一致性。
-- 模型与工具只承诺 OpenAI 兼容的 Chat Completions 端点和 Anthropic 兼容的 Messages 端点、MCP（stdio / Streamable HTTP），以及由你本机安装并登录的 Claude Code 跑的 Bot（Claude Agent，[ADR 0061](docs/adr/0061-claude-agent-runner.md)），写清接口约束；不承诺兼容任何模型、任何工具。
+- 模型与工具只承诺 OpenAI 兼容的 Chat Completions 端点和 Anthropic 兼容的 Messages 端点、MCP（stdio / Streamable HTTP），以及由你本机安装并登录的 Agent 跑的 Bot（Claude Code、Codex、Grok、OpenCode、DSH、ZCode、Antigravity 和讲 ACP 的程序，[ADR 0061](docs/adr/0061-claude-agent-runner.md)、[ADR 0079](docs/adr/0079-local-agents.md)），写清接口约束；不承诺兼容任何模型、任何工具。
 
 ## 2. 规划、任务与验收：应用当真（重点建设中）
 

@@ -20,6 +20,7 @@
 	import PinnedRoster from './PinnedRoster.svelte';
 	import SidebarFoot from './SidebarFoot.svelte';
 	import ClaudeUsageMeter from './ClaudeUsageMeter.svelte';
+	import AgentUsageMeter from './AgentUsageMeter.svelte';
 	import CreateFab from './CreateFab.svelte';
 	import WorkingFilter from './WorkingFilter.svelte';
 	import MobileArchivedHead from './MobileArchivedHead.svelte';
@@ -166,6 +167,8 @@
 	let fabEl = $state<HTMLElement | null>(null);
 	/** The Claude usage strip's height above the phone's bottom bar; the + button stands over it. */
 	let usageMeterHeight = $state(0);
+	/** The other agents' usage strip under it, which the + button clears as well. */
+	let agentMeterHeight = $state(0);
 
 	let toolsToggleBtnEl = $state<HTMLButtonElement | null>(null);
 	let toolsFocusLast = $state(false);
@@ -513,6 +516,7 @@
 	</div>
 	</div>
 	<ClaudeUsageMeter {runtime} {t} bind:height={usageMeterHeight} />
+	<AgentUsageMeter {runtime} {t} bind:height={agentMeterHeight} />
 	{#if !phone}
 		<SidebarFoot
 			{runtime}
@@ -578,7 +582,7 @@
 	there are two of them saying the same kind of thing; this asks which once, where your thumb is.
 -->
 {#if phone && !selected && !searchOpen && !viewingArchived && !workspaceOpen && !runtime.settingsOpen && !runtime.routinesOpen && !runtime.spendOpen && !runtime.terminalOpen && !runtime.screenOpen}
-	<CreateFab {t} bind:createMenuOpen bind:wrapEl={fabEl} lift={usageMeterHeight} {onCreateBot} {onCreateGroup} />
+	<CreateFab {t} bind:createMenuOpen bind:wrapEl={fabEl} lift={usageMeterHeight + agentMeterHeight} {onCreateBot} {onCreateGroup} />
 {/if}
 
 <style>

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { BOT_BUILTIN_MODEL_ROLES, type ClaudeCodeStatus, type Provider, type Settings, type SettingsPatch } from '@real-bot/protocol';
+	import { BOT_BUILTIN_MODEL_ROLES, type AgentsStatusResponse, type ClaudeCodeStatus, type Provider, type Settings, type SettingsPatch } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import { BUILTIN_GROUPS, builtinModelsOf, builtinPatch } from './builtin-models.ts';
 	import SideModelCard from './SideModelCard.svelte';
@@ -7,9 +7,9 @@
 	/**
 	 * Which model each call the app makes on its own runs on (ADR 0077), grouped by what it is for:
 	 * reading your lines, organizing and checking, the composer, and the calls made as a Bot. Each is
-	 * a picker of an endpoint's models, or a Claude model of yours, or none to run as before. A
-	 * daemon older than the ADR only has the reading and organizing models, and takes no Claude model
-	 * for the organizer.
+	 * a picker of an endpoint's models, or a model of one of your local agents — Claude Code, Codex
+	 * and the rest (ADR 0079) — or none to run as before. A daemon older than the ADR only has the
+	 * reading and organizing models, and takes no agent model for the organizer.
 	 */
 	interface Props {
 		providers: readonly Provider[];
@@ -19,10 +19,12 @@
 		patch: (patch: SettingsPatch) => Promise<unknown | null>;
 		/** What the daemon finds of your Claude Code; absent or failing (the phone cannot ask), no Claude group is offered. */
 		claudeCode?: (() => Promise<ClaudeCodeStatus>) | null;
+		/** What the daemon finds of your other local agents; absent or failing, no agent group is offered. */
+		agents?: (() => Promise<AgentsStatusResponse>) | null;
 		t: Copy;
 	}
 
-	let { providers, settings, defaultModel, patch, claudeCode = null, t }: Props = $props();
+	let { providers, settings, defaultModel, patch, claudeCode = null, agents = null, t }: Props = $props();
 
 	const view = $derived(builtinModelsOf(settings));
 	const groups = $derived(
@@ -34,6 +36,9 @@
 	/** Every row asks for the Claude status on mount; the card asks the daemon once and hands them all the same answer. */
 	let status: Promise<ClaudeCodeStatus> | null = null;
 	const claudeStatusOnce = (): Promise<ClaudeCodeStatus> => (status ??= claudeCode!());
+	/** The same for the other agents. */
+	let found: Promise<AgentsStatusResponse> | null = null;
+	const agentsOnce = (): Promise<AgentsStatusResponse> => (found ??= agents!());
 </script>
 
 <div class="builtin-models" data-builtin-models>
@@ -60,6 +65,7 @@
 						followDefault={BOT_BUILTIN_MODEL_ROLES.includes(role) ? () => t.builtinModels.followBot : t.builtinModels.followDefault}
 						failed={t.builtinModels.failed}
 						claude={(view.legacy && role === 'organizer') || !claudeCode ? null : { status: claudeStatusOnce, note: t.builtinModels.claudeNote }}
+						agents={(view.legacy && role === 'organizer') || !agents ? null : agentsOnce}
 						{t}
 					/>
 				</div>

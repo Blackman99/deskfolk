@@ -16,7 +16,7 @@
  * entries would each add what the other already had.
  */
 import { NO_ABLATION, type Ablation } from "./ablation";
-import type { ClaudeJudge, ClaudeReaderTarget, ClaudeReadingUsage } from "./claude-code/reading";
+import type { ClaudeJudge, LocalAgentTarget, ClaudeReadingUsage } from "./claude-code/reading";
 import type { CompletionsClient, MappedUsage } from "./completions";
 import { sideJudge, type SideAnswer } from "./engine/builtin-models";
 import type { UserLineReading } from "./line-reading";
@@ -34,10 +34,10 @@ export type ScribeDeps = {
   store: Store;
   completions: CompletionsClient;
   /** The scribe's model (ADR 0077), else the default endpoint's default model, resolved when a call is about to be made; null when none is set. */
-  routing: () => Promise<OrganizerRouting | ClaudeReaderTarget | null>;
+  routing: () => Promise<OrganizerRouting | LocalAgentTarget | null>;
   /** Runs the call when the scribe's model is a Claude model of yours (ADR 0077). */
   claudeJudge?: ClaudeJudge | null;
-  recordSpend: (input: { sessionId: string; target: OrganizerRouting | ClaudeReaderTarget; usage: MappedUsage | null; responded: boolean; claudeUsage?: ClaudeReadingUsage | null }) => void;
+  recordSpend: (input: { sessionId: string; target: OrganizerRouting | LocalAgentTarget; usage: MappedUsage | null; responded: boolean; claudeUsage?: ClaudeReadingUsage | null }) => void;
   draining: () => boolean;
   /** Where a line that came to nothing says why. Defaults to stderr. */
   log?: (line: string) => void;
@@ -163,7 +163,7 @@ export function createScribe(deps: ScribeDeps): Scribe {
    * `about`, which says what it read); null when `stop` came while it was out.
    */
   async function ask(input: {
-    routing: OrganizerRouting | ClaudeReaderTarget;
+    routing: OrganizerRouting | LocalAgentTarget;
     payload: ScribePayload;
     sessionId: string | null;
     taskId: string;
