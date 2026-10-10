@@ -44,7 +44,9 @@ test("the tab lays out a card per account, each window a dial, the agents with t
   expect(cards.map((card) => text(card.querySelector(".usage-account-plan")))).toEqual(["Pro", "Team"]);
   const first = [...cards[0]!.querySelectorAll(".usage-gauge")];
   expect(first.map((gauge) => text(gauge.querySelector(".usage-percent")))).toEqual(["94%", "3%", "96%"]);
-  expect(first.map((gauge) => text(gauge.querySelector(".usage-gauge-name")))).toEqual(["5 小时", "7 天", "7 天"]);
+  // A model's window on one line: its model, then the length.
+  expect(first.map((gauge) => text(gauge.querySelector(".usage-gauge-span")))).toEqual(["5 小时", "7 天", "7 天"]);
+  expect(first[2]!.querySelector(".usage-gauge-name")!.contains(first[2]!.querySelector(".usage-gauge-model"))).toBe(true);
   expect(text(first[2]!.querySelector(".usage-gauge-model"))).toBe("Fable");
   expect(first[1]!.classList.contains("is-danger")).toBe(true);
   expect(text(view.host.querySelector('.usage-board-chip[data-usage-agent="grok"]'))).toBe("Grok 今天 12 轮 · 340k token");

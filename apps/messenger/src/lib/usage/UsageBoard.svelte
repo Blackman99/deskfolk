@@ -66,7 +66,7 @@
 					{#if note}
 						<p class="usage-note">{note}</p>
 					{:else}
-						<ul class="usage-board-gauges">
+						<ul class="usage-board-gauges" style:--usage-windows={account.windows.length}>
 							{#each usageWindowsSorted(account.windows) as window (`${window.minutes ?? ''}:${window.model ?? ''}`)}
 								<UsageGauge {window} {t} {locale} {now} />
 							{/each}
@@ -222,10 +222,14 @@
 		font-size: 13px;
 	}
 
+	/*
+	 * The dials in one row, centred in their card: a column per window, each up to 128px (room for
+	 * "Fable · 7 天") and down to the dial's own width, so four (Antigravity's) still fit a phone.
+	 */
 	.usage-board-gauges {
 		display: grid;
-		/* As narrow as a dial, so four windows (Antigravity's) still sit in one row of a card. */
-		grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+		grid-template-columns: repeat(var(--usage-windows, 1), minmax(76px, 128px));
+		justify-content: center;
 		gap: 18px 6px;
 	}
 

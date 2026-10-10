@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { UsageWindow } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
-	import { usageLeft, usageLeftText, usageLevel, usageResetShort, usageResetText, usageSpan } from './usage.ts';
+	import { usageLeft, usageLeftText, usageLevel, usageResetShort, usageResetText, usageSpan, usageWindowLabel } from './usage.ts';
 
 	/**
 	 * One window as a dial on the usage tab: a ring as full as what is left, the number inside it,
@@ -32,8 +32,10 @@
 			<span class="usage-gauge-unit">{t.usage.leftLabel}</span>
 		</span>
 	</span>
-	<span class="usage-gauge-name">{usageSpan(window.minutes, t)}</span>
-	{#if window.model}<span class="usage-gauge-model" title={window.model}>{window.model}</span>{/if}
+	<!-- One line: a model's window is "Fable · 7 天"; a long model name is cut, never the length. -->
+	<span class="usage-gauge-name" title={window.model ? usageWindowLabel(window, t) : undefined}>
+		{#if window.model}<span class="usage-gauge-model">{window.model}</span><span class="usage-gauge-sep" aria-hidden="true">·</span>{/if}<span class="usage-gauge-span">{usageSpan(window.minutes, t)}</span>
+	</span>
 	{#if resetShort}
 		<span class="usage-reset" title={reset ?? undefined}>
 			<!-- A turning arrow: when it starts over. -->
@@ -108,26 +110,37 @@
 	}
 
 	.usage-gauge-name {
+		display: flex;
+		overflow: hidden;
+		justify-content: center;
+		gap: 4px;
+		max-width: 100%;
+		min-width: 0;
 		color: var(--ink);
 		font-size: 13px;
 		font-weight: 600;
+		white-space: nowrap;
 	}
 
-	.usage-gauge-model,
+	.usage-gauge-model {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.usage-gauge-sep {
+		color: var(--muted);
+		font-weight: 400;
+	}
+
+	.usage-gauge-span {
+		flex: none;
+	}
+
 	.usage-reset {
 		max-width: 100%;
 		overflow: hidden;
 		font-size: 11px;
-	}
-
-	/* A model group's name can be long ("Claude and GPT models"): two lines, then it is cut. */
-	.usage-gauge-model {
-		display: -webkit-box;
-		-webkit-box-orient: vertical;
-		-webkit-line-clamp: 2;
-		line-clamp: 2;
-		line-height: 1.35;
-		color: var(--ink-secondary);
 	}
 
 	.usage-reset {
