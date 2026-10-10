@@ -51,7 +51,9 @@
     - 交互：`pointer-drag.ts`（拖动改宽高）、`dismissable-menu.ts`（右键菜单的收起）、`menu-roving.ts`（菜单方向键）、`autosave.svelte.ts`（边输边存）。
   - **信使：组件**
     - `Switch.svelte`。
-    - 设置页：`settings/SettingsSwitch`、`SettingsRow`、`SettingsCard`、`SettingsCardHeader`、`SettingsSubpageButton`、`AutosaveState`。
+    - 设置页：`settings/SettingsSwitch`、`SettingsRow`、`SettingsCard`、`SettingsCardHeader`、`SettingsSubpageButton`、`AutosaveState`；分块标签和手机列表 `SettingsSectionTabs`、`SettingsSectionList`。
+    - 提示词：`settings/PromptEditorPage`（编辑页，宽窗弹窗、手机内页）、`PromptRowList`（一行一条，带状态和读不懂次数），提示词页和「分工」页共用；`prompts-view.ts` 的 `promptChip`。
+    - 内置调用：`settings/SideModelCard`（一个调用的模型选择器）、`builtin-models.ts` 的 `builtinModelsOf` / `builtinPatch`；`routing-map.ts` 的 `routingNodeView`、`promptsTabItems`、`askOnce`（整页只问一次状态）。
     - 编辑页：`panels/EditorOwnerBadge`、`EditorSwitchRow`、`RequiredStar`。
   - **信使：测试**
     - `test-render.ts`、`test-async.ts`（`settleTimers`、`deferred`）、`test-mocks.ts`（`fakeApi`、Monaco / xterm 的 mock）。

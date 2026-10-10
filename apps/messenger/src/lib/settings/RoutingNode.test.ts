@@ -2,10 +2,12 @@ import { afterEach, expect, test } from "bun:test";
 import { AGENT_KINDS, BUILTIN_MODEL_ROLES, type AgentsStatusResponse, type BotRunner, type ClaudeCodeStatus, type Provider, type Settings, type SettingsPatch } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
 import { emptySnapshot } from "../snapshot.ts";
-import { click, fill, press, render } from "../test-render.ts";
+import { flushSync, mount, unmount } from "svelte";
+import { click, fill, press } from "../test-render.ts";
 import { settle } from "../test-async.ts";
-import BuiltinModelsCard from "./BuiltinModelsCard.svelte";
+import RoutingNode from "./RoutingNode.svelte";
 import { noBuiltinModels } from "./builtin-models.ts";
+import { askOnce, routingNodeView } from "./routing-map.ts";
 
 const t = copyFor("zh");
 const en = copyFor("en");
@@ -37,18 +39,51 @@ const legacySettings = (over: Partial<Settings> = {}): Settings => {
 };
 
 type Over = { settings?: Settings; patch?: (patch: SettingsPatch) => Promise<unknown | null>; claudeCode?: (() => Promise<ClaudeCodeStatus>) | null; agents?: (() => Promise<AgentsStatusResponse>) | null; defaultModel?: string | null };
-const show = (over: Over = {}) =>
-  render(BuiltinModelsCard, {
-    providers,
-    settings: over.settings ?? settingsOf(),
-    defaultModel: over.defaultModel === undefined ? "grok-4.7-build-fast" : over.defaultModel,
-    patch: over.patch ?? fakePatch().patch,
-    claudeCode: over.claudeCode ?? null,
-    agents: over.agents ?? null,
-    t,
-  });
+/**
+ * Every call's page at once, side by side, as Settings › Roles shows them one at a time (ADR 0082),
+ * handed the statuses the way the page hands them: asked once for all of them.
+ */
+function show(over: Over = {}) {
+  const settings = over.settings ?? settingsOf();
+  const claudeStatus = over.claudeCode ? askOnce(over.claudeCode) : null;
+  const agents = over.agents ? askOnce(over.agents) : null;
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const apps = BUILTIN_MODEL_ROLES.map((role) =>
+    mount(RoutingNode, {
+      target: host,
+      props: {
+        role,
+        view: routingNodeView(role, settings, []),
+        providers,
+        settings,
+        defaultModel: over.defaultModel === undefined ? "grok-4.7-build-fast" : over.defaultModel,
+        patch: over.patch ?? fakePatch().patch,
+        pickable: true,
+        claudeStatus,
+        agents,
+        promptsFailed: false,
+        ui: "zh" as const,
+        botNames: new Map<string, string>(),
+        onopenprompt: () => {},
+        t,
+      },
+    }),
+  );
+  flushSync();
+  return {
+    host,
+    close: () => {
+      for (const app of apps) void unmount(app);
+      flushSync();
+      host.remove();
+    },
+  };
+}
 
-const row = (host: HTMLElement, role: string) => host.querySelector<HTMLElement>(`[data-builtin-role="${role}"]`)!;
+const row = (host: HTMLElement, role: string) => host.querySelector<HTMLElement>(`[data-routing-detail="${role}"]`)!;
+/** The calls whose model can be chosen here: those with a picker. */
+const pickable = (host: HTMLElement) => [...host.querySelectorAll("[data-routing-detail]")].filter((el) => el.querySelector("[data-side-model]")).map((el) => el.getAttribute("data-routing-detail"));
 const trigger = (host: HTMLElement, role: string) => row(host, role).querySelector(".side-model-pick .real-select-trigger")!;
 /** What a row or the closed picker reads: the model, then where it runs (an endpoint, or Claude Agent). */
 const text = (el: Element | null | undefined) => el?.textContent?.replace(/\s+/g, " ").trim();
@@ -93,32 +128,15 @@ async function pick(host: HTMLElement, role: string, value: string, sourceKey?: 
   await settle();
 }
 
-test("the groups come in order, each with its own calls under their names", () => {
+test("each call's page names it, says what it does, and holds one picker of its own", () => {
   const { host, close } = show();
-  expect([...host.querySelectorAll("[data-builtin-group]")].map((el) => el.getAttribute("data-builtin-group"))).toEqual(["reading", "organizing", "composing", "asBot"]);
-  const groups = (["reading", "organizing", "composing", "asBot"] as const).map((key) => {
-    const group = host.querySelector(`[data-builtin-group="${key}"]`)!;
-    return {
-      title: group.querySelector(".builtin-group-title")?.textContent,
-      roles: [...group.querySelectorAll("[data-builtin-role]")].map((el) => el.getAttribute("data-builtin-role")),
-    };
-  });
-  expect(groups).toEqual([
-    { title: "读你的话", roles: ["reader"] },
-    { title: "整理与检查", roles: ["organizer", "scribe", "judge"] },
-    { title: "输入", roles: ["composer"] },
-    { title: "以 Bot 身份", roles: ["judgement", "reflection", "retrospective", "compaction"] },
-  ]);
-  // Every call is a row once, with its name and what it does, and one picker of its own.
-  expect([...host.querySelectorAll("[data-builtin-role]")].map((el) => el.getAttribute("data-builtin-role"))).toEqual([...BUILTIN_MODEL_ROLES]);
+  expect(pickable(host)).toEqual([...BUILTIN_MODEL_ROLES]);
   for (const role of BUILTIN_MODEL_ROLES) {
-    expect(row(host, role).querySelector(".builtin-row-name")?.textContent).toBe(t.builtinModels.roles[role].name);
+    expect(row(host, role).querySelector(".routing-detail-name")?.textContent).toBe(t.builtinModels.roles[role].name);
     expect(row(host, role).textContent).toContain(t.builtinModels.roles[role].hint);
     expect(row(host, role).querySelectorAll("[data-side-model]")).toHaveLength(1);
     expect(row(host, role).querySelector(`[data-side-model="${role}"]`)).toBeTruthy();
   }
-  expect(host.querySelector('[data-builtin-group="asBot"]')?.textContent).toContain(t.builtinModels.groups.asBot.hint);
-  expect(host.querySelector('[data-builtin-group="organizing"]')?.textContent).toContain(t.builtinModels.groups.organizing.hint);
   close();
 });
 
@@ -250,7 +268,7 @@ test("with Claude Code signed in, every call offers its models as a source of th
   chosen.close();
 });
 
-test("the Claude status is asked for once for the whole card, not once per row", async () => {
+test("the Claude status is asked for once for the whole page, not once per call", async () => {
   let asked = 0;
   const claudeCode = async () => { asked += 1; return claudeStatus(); };
   const { host, close } = show({ claudeCode });
@@ -326,8 +344,9 @@ test("with several accounts listed a row has an account select; changing it re-s
 test("from an older daemon only the reading and organizing models are there, saved in the settings of their own", async () => {
   const { sent, patch } = fakePatch();
   const { host, close } = show({ patch, settings: legacySettings({ reader_model: null, organizer_model: { provider_id: "p1", model: "gemini-3.8-flash-high" } }) });
-  expect([...host.querySelectorAll("[data-builtin-group]")].map((el) => el.getAttribute("data-builtin-group"))).toEqual(["reading", "organizing"]);
-  expect([...host.querySelectorAll("[data-builtin-role]")].map((el) => el.getAttribute("data-builtin-role"))).toEqual(["reader", "organizer"]);
+  expect(pickable(host)).toEqual(["reader", "organizer"]);
+  // The others say why there is no picker.
+  expect(row(host, "scribe").textContent).toContain(t.routing.older);
   expect(text(trigger(host, "organizer"))).toBe("gemini-3.8-flash-high My CPA");
   expect(text(trigger(host, "reader"))).toBe(t.builtinModels.followDefault("grok-4.7-build-fast"));
   await pick(host, "reader", endpoint("p2", "deepseek-v4.1-flash"), "endpoint:p2");
@@ -339,8 +358,7 @@ test("from an older daemon only the reading and organizing models are there, sav
   close();
   // Only one of the two settings: only that call.
   const reading = show({ settings: legacySettings({ reader_model: null }) });
-  expect([...reading.host.querySelectorAll("[data-builtin-role]")].map((el) => el.getAttribute("data-builtin-role"))).toEqual(["reader"]);
-  expect(reading.host.querySelector('[data-builtin-group="organizing"]')).toBeNull();
+  expect(pickable(reading.host)).toEqual(["reader"]);
   reading.close();
 });
 
@@ -360,18 +378,15 @@ test("from an older daemon a Claude model is offered for reading and not for the
   close();
 });
 
-test("the copy names the section in both languages, and says what the groups and the calls are for", () => {
-  expect(t.builtinModels.title).toBe("内置模型");
-  expect(en.builtinModels.title).toBe("Built-in models");
-  expect(t.builtinModels.groups.organizing.hint).toContain("输入 20k、输出 6k token");
-  expect(en.builtinModels.groups.organizing.hint).toContain("20k tokens in and 6k out");
+test("the copy names the page in both languages, and says what the calls are for", () => {
+  expect(t.routing.tab).toBe("分工");
+  expect(en.routing.tab).toBe("Roles");
+  expect(t.builtinModels.roles.organizer.hint).toContain("输入 20k、输出 6k token");
+  expect(en.builtinModels.roles.organizer.hint).toContain("20k tokens in and 6k out");
   expect(t.builtinModels.roles.organizer.name).toBe("整理器");
   expect(en.builtinModels.roles.organizer.name).toBe("Organizer");
   expect(en.builtinModels.followDefault("m")).toBe("Follow the default model (m)");
   expect(en.builtinModels.followBot).toBe("Follow the Bot's own model");
-  expect(t.builtinModels.chosenSummary(2)).toBe("单独设了 2 项");
-  expect(en.builtinModels.chosenSummary(1)).toBe("1 set apart");
-  expect(en.builtinModels.chosenSummary(3)).toBe("3 set apart");
   // Every call has a name and a hint in both languages.
   for (const role of BUILTIN_MODEL_ROLES) {
     for (const copy of [t, en]) {
@@ -500,7 +515,7 @@ test("the model chosen on an agent stays shown when the agent no longer lists it
   signedOut.close();
 });
 
-test("the agents are asked once for the whole card; none is offered where they cannot be asked, and the one chosen on the Mac stays shown", async () => {
+test("the agents are asked once for the whole page; none is offered where they cannot be asked, and the one chosen on the Mac stays shown", async () => {
   let asked = 0;
   const agents = async () => { asked += 1; return { items: [agentStatus("codex", { models: listed("gpt-5.5") })], custom_agents: [] } as unknown as AgentsStatusResponse; };
   const { host, close } = show({ agents });

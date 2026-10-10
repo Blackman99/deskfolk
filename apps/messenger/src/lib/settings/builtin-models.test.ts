@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { BUILTIN_MODEL_ROLES, type Settings } from "@real-bot/protocol";
 import { emptySnapshot } from "../snapshot.ts";
-import { BUILTIN_GROUPS, builtinChosenCount, builtinModelsOf, builtinPatch, noBuiltinModels } from "./builtin-models.ts";
+import { builtinModelsOf, builtinPatch, noBuiltinModels } from "./builtin-models.ts";
 
 const base = emptySnapshot().settings;
 const endpoint = { provider_id: "p1", model: "grok-4.7-build-fast" };
@@ -12,11 +12,6 @@ const legacySettings = (over: Partial<Settings> = {}): Settings => {
   const { builtin_models: _a, reader_model: _b, organizer_model: _c, ...rest } = base;
   return { ...rest, ...over };
 };
-
-test("the groups hold every built-in call once, in the order the page shows them", () => {
-  expect(BUILTIN_GROUPS.map((group) => group.key)).toEqual(["reading", "organizing", "composing", "asBot"]);
-  expect(BUILTIN_GROUPS.flatMap((group) => group.roles)).toEqual([...BUILTIN_MODEL_ROLES]);
-});
 
 test("a fresh snapshot starts with no call set apart", () => {
   expect(noBuiltinModels()).toEqual({
@@ -60,13 +55,4 @@ test("a choice is saved in the shape the daemon reads: builtin_models, or the ol
   expect(builtinPatch("reader", null, true)).toEqual({ reader_model: null });
   expect(builtinPatch("organizer", endpoint, true)).toEqual({ organizer_model: endpoint });
   expect(builtinPatch("organizer", null, true)).toEqual({ organizer_model: null });
-});
-
-test("the count is the calls with a model of their own", () => {
-  expect(builtinChosenCount(base)).toBe(0);
-  expect(builtinChosenCount({ ...base, builtin_models: { ...noBuiltinModels(), judge: endpoint, composer: claude } })).toBe(2);
-  expect(builtinChosenCount({ ...base, builtin_models: { ...noBuiltinModels(), ...Object.fromEntries(BUILTIN_MODEL_ROLES.map((role) => [role, endpoint])) } })).toBe(BUILTIN_MODEL_ROLES.length);
-  expect(builtinChosenCount(legacySettings({ reader_model: claude, organizer_model: null }))).toBe(1);
-  expect(builtinChosenCount(legacySettings({ reader_model: endpoint, organizer_model: endpoint }))).toBe(2);
-  expect(builtinChosenCount(legacySettings())).toBe(0);
 });

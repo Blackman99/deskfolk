@@ -1,26 +1,23 @@
 <script lang="ts" module>
-	export type ModelsSection = 'endpoints' | 'ladder' | 'builtin' | 'speech';
+	export type ModelsSection = 'endpoints' | 'ladder' | 'speech';
 </script>
 
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+	import { untrack, type Snippet } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import type { Snapshot } from '../snapshot.ts';
-	import BuiltinModelsCard from './BuiltinModelsCard.svelte';
 	import ModelLadderCard from './ModelLadderCard.svelte';
 	import SettingsSectionList from './SettingsSectionList.svelte';
 	import SettingsSectionTabs from './SettingsSectionTabs.svelte';
 	import SpeechCard, { speechMissing } from './SpeechCard.svelte';
-	import { builtinChosenCount } from './builtin-models.ts';
 	import { ModelLadder } from './model-ladder.svelte.ts';
 
 	/**
-	 * Settings › Models in four sections: the endpoints, the model ladder (ADR 0054), the built-in
-	 * models (every call the app makes on its own, ADR 0077: reading lines, organizing the board and
-	 * the rest, in one section grouped by what they are for) and the speech recognition behind the
-	 * message box's microphone (ADR 0073). A wide window shows them as tabs over one page. A phone lists them with what each is set to and opens one as a page of its own,
+	 * Settings › Models in three sections: the endpoints, the model ladder (ADR 0054) and the speech
+	 * recognition behind the message box's microphone (ADR 0073). The models of the calls the app
+	 * makes on its own are on Settings › Roles, with their prompts (ADR 0082). A wide window shows them as tabs over one page. A phone lists them with what each is set to and opens one as a page of its own,
 	 * one level deeper.
 	 */
 	type Props = {
@@ -31,9 +28,11 @@
 		endpoints: Snippet;
 		/** What the dialog says over any page: pending credentials, a failed save, setup not done. */
 		notices?: Snippet;
+		/** The section to open at, sent from another page (Roles' link to the ladder). */
+		initial?: ModelsSection | null;
 	};
 
-	let { runtime, t, snapshot, endpoints, notices }: Props = $props();
+	let { runtime, t, snapshot, endpoints, notices, initial = null }: Props = $props();
 
 	const phone = new MediaQuery('(max-width: 720px)');
 	const providers = $derived(snapshot.providers);
@@ -45,31 +44,24 @@
 		void ladder.load();
 	});
 
-	/** Set up on a local agent with no endpoint (ADR 0078, ADR 0079): the built-in calls are on its models. */
-	const onAgent = $derived(Object.values(snapshot.settings.builtin_models ?? {}).some((chosen) => chosen !== null && typeof chosen === 'object' && 'runner' in chosen));
 	/**
-	 * With no endpoint there is nothing to order. Nor a built-in call's model to pick, unless the app is
-	 * set up on a local agent, whose models they are on. Speech recognition is there either way: it has
-	 * a service and key of its own, not an endpoint.
+	 * With no endpoint there is nothing to order. Speech recognition is there either way: it has a
+	 * service and key of its own, not an endpoint.
 	 */
 	const sections = $derived<ModelsSection[]>(
-		providers.length === 0
-			? onAgent ? ['endpoints', 'builtin', 'speech'] : ['endpoints', 'speech']
-			: ladder.available
-				? ['endpoints', 'ladder', 'builtin', 'speech']
-				: ['endpoints', 'builtin', 'speech']
+		providers.length > 0 && ladder.available ? ['endpoints', 'ladder', 'speech'] : ['endpoints', 'speech']
 	);
-	let picked = $state<ModelsSection>('endpoints');
+	let picked = $state<ModelsSection>(untrack(() => initial) ?? 'endpoints');
 	const section = $derived(sections.includes(picked) ? picked : 'endpoints');
 	/** On a phone, a section's page is open over the list of them. */
-	let opened = $state(false);
+	let opened = $state(untrack(() => initial) !== null);
 	const listing = $derived(phone.current && sections.length > 1 && !opened);
 	let scroller = $state<HTMLElement>();
 
 	function label(of: ModelsSection): string {
 		if (of === 'endpoints') return t.settings.modelsSectionEndpoints;
 		if (of === 'ladder') return t.modelLadder.title;
-		return of === 'builtin' ? t.builtinModels.title : t.speech.title;
+		return t.speech.title;
 	}
 
 	const defaultProvider = $derived(providers.find((provider) => provider.id === snapshot.settings.default_provider_id) ?? null);
@@ -84,14 +76,10 @@
 		if (of === 'ladder') {
 			return ladder.rungs.length === 0 ? t.modelLadder.unset : ladder.rungs.map((rung) => rung.model).join(' → ');
 		}
-		if (of === 'speech') {
-			const speech = snapshot.settings.speech ?? null;
-			if (!speech) return t.speech.unset;
-			if (!speech.enabled) return t.speech.offShort;
-			return speechMissing(speech, t.speech) ?? [t.speech.presets[speech.preset], speech.model].filter(Boolean).join(' · ');
-		}
-		const chosen = builtinChosenCount(snapshot.settings);
-		return chosen > 0 ? t.builtinModels.chosenSummary(chosen) : t.builtinModels.unsetSummary;
+		const speech = snapshot.settings.speech ?? null;
+		if (!speech) return t.speech.unset;
+		if (!speech.enabled) return t.speech.offShort;
+		return speechMissing(speech, t.speech) ?? [t.speech.presets[speech.preset], speech.model].filter(Boolean).join(' · ');
 	}
 
 	function count(of: ModelsSection): number {
@@ -128,11 +116,6 @@
 			<line x1="6" y1="20" x2="6" y2="15"></line>
 			<line x1="12" y1="20" x2="12" y2="10"></line>
 			<line x1="18" y1="20" x2="18" y2="4"></line>
-		{:else if of === 'builtin'}
-			<rect x="3" y="3" width="7" height="9" rx="1"></rect>
-			<rect x="14" y="3" width="7" height="5" rx="1"></rect>
-			<rect x="14" y="12" width="7" height="9" rx="1"></rect>
-			<rect x="3" y="16" width="7" height="5" rx="1"></rect>
 		{:else}
 			<rect x="9" y="2" width="6" height="12" rx="3"></rect>
 			<path d="M19 10v1a7 7 0 0 1-14 0v-1"></path>
@@ -164,17 +147,6 @@
 				{:else if section === 'ladder'}
 					<p class="muted models-intro">{t.modelLadder.hint}</p>
 					<ModelLadderCard {ladder} {providers} claudeCode={runtime.client ? () => runtime.client!.claudeCode() : null} agents={runtime.client ? () => runtime.client!.agents() : null} {t} />
-				{:else if section === 'builtin'}
-					<p class="muted models-intro">{t.builtinModels.hint}</p>
-					<BuiltinModelsCard
-						{providers}
-						settings={snapshot.settings}
-						defaultModel={snapshot.settings.endpoint_default_model}
-						patch={(patch) => runtime.patchSettings(patch)}
-						claudeCode={runtime.client ? () => runtime.client!.claudeCode() : null}
-						agents={runtime.client ? () => runtime.client!.agents() : null}
-						{t}
-					/>
 				{:else}
 					<p class="muted models-intro">{t.speech.hint}</p>
 					<SpeechCard speech={snapshot.settings.speech ?? null} {providers} patch={(patch) => runtime.patchSpeech(patch)} {t} />

@@ -189,3 +189,22 @@ test("sent from a card, the prompt opens at its history with that change open, a
   expect(document.activeElement?.classList.contains("prompt-editor-backdrop")).toBe(true);
   close();
 });
+
+test("the prompts a call owns are on Roles with its model, so Prompts leaves them out and says where they are", () => {
+  const runtime = fakeRuntime({});
+  let opened = 0;
+  const owned = [...items.filter((one) => one.group !== "call"), { ...item("call.scribe", "call", "edited"), role: "scribe" as const }];
+  const { host, close } = render(PromptsSettings, { runtime, t, items: owned, openRouting: () => (opened += 1) });
+  expect(tabs(host).map((el) => el.dataset.section)).toEqual(["turn", "tool"]);
+  fill(host.querySelector(".prompts-search"), "scribe");
+  expect(shown(host)).toEqual([]);
+  expect(host.querySelector("[data-prompts-moved]")?.textContent).toContain(t.routing.promptsMoved);
+  click(host.querySelector("[data-prompts-moved] button"));
+  expect(opened).toBe(1);
+  close();
+  // A daemon that names no call for them: they stay here, and nothing points elsewhere.
+  const older = render(PromptsSettings, { runtime, t, items, openRouting: () => {} });
+  expect(tabs(older.host).map((el) => el.dataset.section)).toEqual(["turn", "call", "tool"]);
+  expect(older.host.querySelector("[data-prompts-moved]")).toBeNull();
+  older.close();
+});

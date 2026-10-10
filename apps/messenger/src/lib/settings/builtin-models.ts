@@ -6,18 +6,6 @@ import {
   type Settings,
   type SettingsPatch,
 } from "@real-bot/protocol";
-import type { Copy } from "../copy.ts";
-
-/** A group of the built-in calls on Settings › Models › Built-in models, named by its key in the copy. */
-export type BuiltinGroupKey = keyof Copy["builtinModels"]["groups"];
-
-/** The groups in the order the page shows them, each with its calls (ADR 0077). */
-export const BUILTIN_GROUPS: readonly { key: BuiltinGroupKey; roles: readonly BuiltinModelRole[] }[] = [
-  { key: "reading", roles: ["reader"] },
-  { key: "organizing", roles: ["organizer", "scribe", "judge"] },
-  { key: "composing", roles: ["composer"] },
-  { key: "asBot", roles: ["judgement", "reflection", "retrospective", "compaction"] },
-];
 
 /** Every built-in call with no model of its own, as a settings snapshot starts out. */
 export const noBuiltinModels = (): Record<BuiltinModelRole, ReaderModel | null> =>
@@ -54,10 +42,4 @@ export function builtinPatch(role: BuiltinModelRole, next: ReaderModel | null, l
   // An older daemon runs the organizer on an endpoint's model only, and the row offers no other.
   if (legacy && role === "organizer") return { organizer_model: next as ReaderEndpointModel | null };
   return { builtin_models: { [role]: next } };
-}
-
-/** How many calls have a model of their own, for the phone's list of sections. */
-export function builtinChosenCount(settings: Settings): number {
-  const { chosen, roles } = builtinModelsOf(settings);
-  return roles.filter((role) => (chosen[role] ?? null) !== null).length;
 }

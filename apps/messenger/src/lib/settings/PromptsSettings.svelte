@@ -6,6 +6,7 @@
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import PromptEditorPage from './PromptEditorPage.svelte';
 	import PromptRowList from './PromptRowList.svelte';
+	import { promptsTabItems } from './routing-map.ts';
 	import SettingsSectionList from './SettingsSectionList.svelte';
 	import SettingsSectionTabs from './SettingsSectionTabs.svelte';
 	import { editedCount, firstLocale, groupPrompts, promptChip, type PromptView } from './prompts-view.ts';
@@ -23,11 +24,17 @@
 		items: readonly PromptSummary[];
 		loadFailed?: boolean;
 		closeSettings?: () => void;
+		/** Opens Settings › Roles, where the app's own calls' prompts are. */
+		openRouting?: () => void;
 		/** What the dialog says over any page: pending credentials, a failed save, setup not done. */
 		notices?: Snippet;
 	}
 
-	let { runtime, t, items, loadFailed = false, closeSettings, notices }: Props = $props();
+	let { runtime, t, items: all, loadFailed = false, closeSettings, openRouting, notices }: Props = $props();
+	// The app's own calls' prompts are on Roles, with their models (ADR 0082); a daemon from before it
+	// names no call for them, and they stay here.
+	const items = $derived(promptsTabItems(all));
+	const moved = $derived(all.some((item) => item.role));
 	const c = $derived(t.prompts);
 	const ui = $derived<Locale>(runtime.snapshot.settings.locale === 'en' ? 'en' : 'zh');
 
@@ -203,6 +210,12 @@
 		<div class="prompts-top">
 			{@render notices?.()}
 			<p class="prompts-intro">{c.intro}</p>
+			{#if moved && openRouting}
+				<p class="prompts-intro" data-prompts-moved>
+					{t.routing.promptsMoved}
+					<button type="button" class="prompts-link" onclick={openRouting}>{t.routing.toRouting}</button>
+				</p>
+			{/if}
 			<div class="prompts-toolbar">
 				<input class="prompts-search" type="search" aria-label={c.search} placeholder={c.search} bind:value={query} />
 				{#if counts.edited > 0}
@@ -313,6 +326,19 @@
 		font-size: 12px;
 		line-height: 1.5;
 		color: var(--muted);
+	}
+
+	.prompts-link {
+		padding: 0;
+		border: 0;
+		background: none;
+		color: var(--accent);
+		font: inherit;
+		cursor: pointer;
+	}
+
+	.prompts-link:hover {
+		text-decoration: underline;
 	}
 
 	.prompts-toolbar {

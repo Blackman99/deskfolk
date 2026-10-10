@@ -144,6 +144,14 @@ const settings = {
 };
 
 const world = { bots, sessions, messages, turns, providers, mcpServers, settings, skills: [aSkill()] };
+/** Two of the app's own calls on a model of their own: the scribe on an endpoint's, the reader on Claude's. */
+const routingWorld = {
+	...world,
+	settings: {
+		...settings,
+		builtin_models: { ...noBuiltinModels(), scribe: { provider_id: 'prov-1', model: 'grok-4.6' }, reader: { runner: 'claude_code' as const, model: 'haiku', config_dir: null } }
+	}
+};
 
 /** One Bot answering in three messages a few seconds apart, which the transcript shows as one reply in parts. */
 const segmentsWorld = {
@@ -392,13 +400,27 @@ const promptState = (state: 'default' | 'edited' | 'conflict' = 'default', over:
 	parse_failures: null,
 	...over
 });
-const aPrompt = (id: string, group: string, title: string, summary: string, locales = [promptState()]) => ({
+const aPrompt = (id: string, group: string, title: string, summary: string, locales = [promptState()], role?: string) => ({
 	id,
 	group,
 	title: { zh: title, en: title },
 	summary: { zh: summary, en: summary },
+	...(role ? { role } : {}),
 	locales
 });
+
+/** The app's own calls' prompts, each naming its call (ADR 0082): one a Bot edited, with unreadable answers. */
+const callPrompts = () => [
+	aPrompt('call.organizer', 'call', '整理跳', '替会话记录规划要点和任务交接的后台调用。', [promptState('default', { parse_failures: { since_edit: null, last_7_days: 0 } })], 'organizer'),
+	aPrompt('call.read_user_line', 'call', '读句：你的话', '读你的一句话：是不是叫停或继续、是不是只问进度、哪几句在挑已交付成果的毛病。', undefined, 'reader'),
+	aPrompt('call.read_bot_line', 'call', '读句：Bot 的话', '读 Bot 的一句话：是不是许诺稍后给、是不是声称测过、是不是只有一句状态、是不是只在请你点头。', undefined, 'reader'),
+	aPrompt('call.read_filing', 'call', '读句：说的是哪件事', '读你的一句话在说哪件事，好交给做那件事的 Bot。', [promptState('edited')], 'reader'),
+	aPrompt('call.scribe', 'call', '书记员', '把你话里的要求记进需求台账的补丁。', [
+		promptState('edited', { last_actor: 'bot', last_bot_id: 'bot-1', parse_failures: { since_edit: 2, last_7_days: 2 } })
+	], 'scribe'),
+	aPrompt('call.judgement', 'call', '参与判断', '群里没点名时，Bot 判断要不要下场。', undefined, 'judgement'),
+	aPrompt('call.composer', 'call', '输入建议', '给你下一句要发的话起草建议。', undefined, 'composer')
+];
 
 /** The built-in prompts, a few of each group: one turn prompt edited by you, a call a Bot edited that has unreadable answers, a tool in conflict. */
 const promptsClient = {
@@ -409,20 +431,34 @@ const promptsClient = {
 		aPrompt('turn.memory', 'turn', '记忆段的开头', '记忆列表前的说明：记忆是以前的结论，和转录冲突时以转录为准，怎么记、怎么删。'),
 		aPrompt('turn.mcp', 'turn', '本轮 MCP 段的开头', 'MCP 服务器列表前的说明：用法备注优先，怎么挑工具，怎么把工作区里的图片交给工具。'),
 		aPrompt('agent.preface', 'agent', 'Claude Agent 前言', '由你的 Claude Code 跑的 Bot 每一轮多读的一段：应用的工具在 mcp__deskfolk__ 下。'),
-		aPrompt('call.organizer', 'call', '整理跳', '替会话记录规划要点和任务交接的后台调用。', [promptState('default', { parse_failures: { since_edit: null, last_7_days: 0 } })]),
-		aPrompt('call.read_user_line', 'call', '读句：你的话', '读你的一句话：是不是叫停或继续、是不是只问进度、哪几句在挑已交付成果的毛病。'),
-		aPrompt('call.scribe', 'call', '书记员', '把你话里的要求记进需求台账的补丁。', [
-			promptState('edited', { last_actor: 'bot', last_bot_id: 'bot-1', parse_failures: { since_edit: 2, last_7_days: 2 } })
-		]),
-		aPrompt('call.judgement', 'call', '参与判断', '群里没点名时，Bot 判断要不要下场。'),
-		aPrompt('call.composer', 'call', '输入建议', '给你下一句要发的话起草建议。'),
+		...callPrompts(),
 		...['read_file', 'write_file', 'delete_file', 'list_dir', 'shell', 'send_message', 'create_bot', 'list_bots'].map((name) =>
 			aPrompt(`tool.${name}`, 'tool', name, '', [promptState(name === 'shell' ? 'conflict' : 'default')])
 		)
 	]
 };
 
-/** A client on an engine level with a model ladder, two models on it: Models has all four sections. */
+/** Roles (ADR 0082): the calls' prompts, a ladder for the Bot's turn, and Claude Code signed in. */
+const routingClient = {
+	listLessons: async () => [],
+	listPrompts: async () => callPrompts(),
+	claudeCode: async () => claudeStatus,
+	agents: async () => ({ items: [], custom_agents: [] }),
+	modelLadder: async () => ({ items: [{ provider_id: 'prov-1', model: 'gemini-3.8-flash' }, { provider_id: 'prov-1', model: 'grok-4.6' }], available: true }),
+	setModelLadder: async (items: unknown) => ({ items, available: true })
+};
+
+/** Roles once the prompts have come in, a call picked when named. */
+const routingNode = (node?: string) => async (host: HTMLElement) => {
+	settingsTab('routing')(host);
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	flushSync();
+	if (node) host.querySelector<HTMLButtonElement>(`[data-routing-node="${node}"]`)?.click();
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	flushSync();
+};
+
+/** A client on an engine level with a model ladder, two models on it: Models has all three sections. */
 const ladderClient = {
 	listLessons: async () => [],
 	listPrompts: async () => [],
@@ -1232,7 +1268,7 @@ const defs: Record<StoryName, Story> = {
 			host.querySelector<HTMLButtonElement>('.real-select-trigger')?.click();
 		}
 	},
-	// On a phone, Models is a list of its four sections, each saying what it is set to.
+	// On a phone, Models is a list of its three sections, each saying what it is set to.
 	'settings-models-narrow': {
 		component: SettingsModal as never,
 		props: settingsProps({ runtime: fakeRuntime(world, { settingsOpen: true, client: ladderClient }) }),
@@ -1245,11 +1281,23 @@ const defs: Record<StoryName, Story> = {
 	// On a phone: the lines alone, each a page of its own.
 	'settings-agents-narrow': { component: SettingsModal as never, props: agentsStoryProps(), afterMount: agentsTab() },
 	'settings-mcp': { component: SettingsModal as never, props: settingsProps(), afterMount: settingsTab('mcp') },
-	// Prompts by group, on the app's own calls: each tab counts what is edited in it.
+	// Prompts by group, the calls' own on Roles: each tab counts what is edited in it, and a line points to Roles.
 	'settings-prompts': {
 		component: SettingsModal as never,
 		props: settingsProps({ runtime: fakeRuntime(world, { settingsOpen: true, client: promptsClient }) }),
-		afterMount: promptsSection('call')
+		afterMount: promptsSection('turn')
+	},
+	// Roles (ADR 0082): the map of the app's own calls, two of them with a model of their own, the organizer picked and its page brought into view.
+	'settings-routing': {
+		component: SettingsModal as never,
+		props: settingsProps({ runtime: fakeRuntime(routingWorld, { settingsOpen: true, client: routingClient }) }),
+		afterMount: routingNode('organizer')
+	},
+	// On a phone, Roles is the map alone, top to bottom; a call opens as a page of its own.
+	'settings-routing-narrow': {
+		component: SettingsModal as never,
+		props: settingsProps({ runtime: fakeRuntime(routingWorld, { settingsOpen: true, client: routingClient }) }),
+		afterMount: routingNode()
 	},
 	// On a phone, Prompts is a list of its groups, each saying how many it holds and how many are edited.
 	'settings-prompts-narrow': {

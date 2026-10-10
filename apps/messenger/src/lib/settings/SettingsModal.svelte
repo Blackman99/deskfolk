@@ -4,7 +4,9 @@
 	import McpSettings from './McpSettings.svelte';
 	import LessonsSettings from './LessonsSettings.svelte';
 	import PromptsSettings from './PromptsSettings.svelte';
+	import RoutingTab from './RoutingTab.svelte';
 	import { editedCount } from './prompts-view.ts';
+	import { promptsTabItems, routingCounts as countRouting } from './routing-map.ts';
 	import AgentsTab from './AgentsTab.svelte';
 	import { type Lesson, type PromptSummary } from '@real-bot/protocol';
 	import { backdropClick } from '../click-outside.ts';
@@ -25,7 +27,7 @@
 	import GeneralTab from './GeneralTab.svelte';
 	import BehaviorTab from './BehaviorTab.svelte';
 	import ProvidersTab from './ProvidersTab.svelte';
-	import ModelsTab from './ModelsTab.svelte';
+	import ModelsTab, { type ModelsSection } from './ModelsTab.svelte';
 	import RemoteTab from './RemoteTab.svelte';
 	import AboutTab from './AboutTab.svelte';
 	import ProviderEditorFlyout from './ProviderEditorFlyout.svelte';
@@ -124,6 +126,9 @@
 
 	let mcpSettings = $state<McpSettings>();
 	let modelsTab = $state<ModelsTab>();
+	/** The section Models opens at when another page sends you there; the list itself opens at none. */
+	let modelsInitial = $state<ModelsSection | null>(null);
+	let routingTab = $state<RoutingTab>();
 	let agentsTab = $state<AgentsTab>();
 
 	// Lessons the app learned (ADR 0050, engine level 8): the tab is there once there is one.
@@ -159,7 +164,9 @@
 			}
 		);
 	});
-	const promptCounts = $derived(editedCount(promptItems));
+	// The app's own calls' prompts are on Roles with their models (ADR 0082); Prompts counts the rest.
+	const promptCounts = $derived(editedCount(promptsTabItems(promptItems)));
+	const routingCounts = $derived(countRouting(snapshot.settings, promptItems));
 	let providerForm = $state<ProviderForm>();
 
 	export function backFromProviderEditor(): void {
@@ -187,7 +194,9 @@
 		}
 		if (mcpSettings?.backFromEditor()) return true;
 		if (promptsSettings?.backFromEditor()) return true;
+		if (routingTab?.backFromEditor()) return true;
 		if (activeSettingsTab === 'models' && modelsTab?.backFromSection()) return true;
+		if (activeSettingsTab === 'routing' && routingTab?.backFromSection()) return true;
 		if (activeSettingsTab === 'agents' && agentsTab?.backFromSection()) return true;
 		if (activeSettingsTab === 'prompts' && promptsSettings?.backFromSection()) return true;
 		if (!mobileSettingsDetail) return false;
@@ -200,16 +209,22 @@
 		if (!runtime.settingsOpen) mobileSettingsDetail = false;
 	});
 
-	function openSettingsTab(tab: SettingsTab): void {
+	function openSettingsTab(tab: SettingsTab, section: ModelsSection | null = null): void {
+		modelsInitial = section;
 		activeSettingsTab = tab;
 		mobileSettingsDetail = typeof window !== 'undefined' && window.matchMedia('(max-width: 720px)').matches;
 	}
 
 	// Asked to open at the prompts (a card's 「在设置里看」): the tab shows, and it opens the prompt itself.
+	// One of the app's own calls' prompts is on Roles, with that call (ADR 0082); until the list has
+	// loaded it is not known whose a prompt is, so the call prompts wait for it.
 	$effect(() => {
 		const target = runtime.promptsTarget;
 		if (!runtime.settingsOpen || !target) return;
-		openSettingsTab('prompts');
+		const id = target.prompt?.id;
+		if (id?.startsWith('call.') && promptItems.length === 0 && !promptsFailed) return;
+		const owned = id ? promptItems.some((item) => item.id === id && item.role) : false;
+		openSettingsTab(owned ? 'routing' : 'prompts');
 		if (!target.prompt) runtime.promptsTarget = null;
 	});
 
@@ -220,6 +235,8 @@
 				? t.settings.tabBehavior
 			: tab === 'models'
 				? t.settings.tabModels
+			: tab === 'routing'
+				? t.routing.tab
 				: tab === 'agents'
 					? t.settings.tabAgents
 				: tab === 'mcp'
@@ -238,6 +255,8 @@
 	const mainTitle = $derived(
 		(activeSettingsTab === 'models'
 			? modelsTab?.sectionTitle()
+			: activeSettingsTab === 'routing'
+				? routingTab?.sectionTitle()
 			: activeSettingsTab === 'agents'
 				? agentsTab?.sectionTitle()
 				: activeSettingsTab === 'prompts'
@@ -417,6 +436,7 @@
 				{generalHasError}
 				{modelsHasError}
 				{promptCounts}
+				{routingCounts}
 				{lessonsTabVisible}
 				{remoteTabVisible}
 				{behaviorTabVisible}
@@ -445,9 +465,9 @@
 					>✕</button>
 				</div>
 
-			<div class="modal-body" class:is-mcp={activeSettingsTab === 'mcp'} class:is-prompts={activeSettingsTab === 'prompts'} class:is-models={activeSettingsTab === 'models'}>
-				<!-- Models and Prompts scroll their own page under their tabs, so they show these there. -->
-				{#if activeSettingsTab !== 'models' && activeSettingsTab !== 'prompts'}{@render settingsNotices()}{/if}
+			<div class="modal-body" class:is-mcp={activeSettingsTab === 'mcp'} class:is-prompts={activeSettingsTab === 'prompts'} class:is-models={activeSettingsTab === 'models' || activeSettingsTab === 'routing'}>
+				<!-- Models, Roles and Prompts scroll their own page, so they show these there. -->
+				{#if activeSettingsTab !== 'models' && activeSettingsTab !== 'prompts' && activeSettingsTab !== 'routing'}{@render settingsNotices()}{/if}
 
 				{#if activeSettingsTab === 'general'}
 					<GeneralTab
@@ -468,7 +488,7 @@
 				{:else if activeSettingsTab === 'behavior' && behaviorTabVisible}
 					<BehaviorTab {t} />
 				{:else if activeSettingsTab === 'models'}
-					<ModelsTab bind:this={modelsTab} {runtime} {t} {snapshot} notices={settingsNotices}>
+					<ModelsTab bind:this={modelsTab} {runtime} {t} {snapshot} notices={settingsNotices} initial={modelsInitial}>
 						{#snippet endpoints()}
 							<ProvidersTab
 								{t}
@@ -483,6 +503,18 @@
 							/>
 						{/snippet}
 					</ModelsTab>
+				{:else if activeSettingsTab === 'routing'}
+					<RoutingTab
+						bind:this={routingTab}
+						{runtime}
+						{t}
+						{snapshot}
+						items={promptItems}
+						loadFailed={promptsFailed}
+						{closeSettings}
+						openTab={(tab, section) => openSettingsTab(tab, section ?? null)}
+						notices={settingsNotices}
+					/>
 				{:else if activeSettingsTab === 'agents'}
 					<!-- Agents that run a Bot's turns themselves (ADR 0061, ADR 0079): one line each, opened one at a time. -->
 					<div class="settings-tab-pane">
@@ -491,7 +523,7 @@
 				{:else if activeSettingsTab === 'mcp'}
 					<McpSettings bind:this={mcpSettings} {runtime} {t} {closeSettings} />
 				{:else if activeSettingsTab === 'prompts'}
-					<PromptsSettings bind:this={promptsSettings} {runtime} {t} items={promptItems} loadFailed={promptsFailed} {closeSettings} notices={settingsNotices} />
+					<PromptsSettings bind:this={promptsSettings} {runtime} {t} items={promptItems} loadFailed={promptsFailed} {closeSettings} openRouting={() => openSettingsTab('routing')} notices={settingsNotices} />
 				{:else if activeSettingsTab === 'notifications'}
 					<NotificationSettings {runtime} {t} />
 				{:else if activeSettingsTab === 'lessons' && lessonsTabVisible}

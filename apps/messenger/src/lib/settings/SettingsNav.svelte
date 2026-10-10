@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	export type SettingsTab = 'general' | 'behavior' | 'models' | 'agents' | 'mcp' | 'prompts' | 'notifications' | 'lessons' | 'remote' | 'about';
+	export type SettingsTab = 'general' | 'behavior' | 'models' | 'routing' | 'agents' | 'mcp' | 'prompts' | 'notifications' | 'lessons' | 'remote' | 'about';
 </script>
 
 <script lang="ts">
@@ -15,6 +15,8 @@
 		generalHasError: boolean;
 		modelsHasError: boolean;
 		promptCounts: { edited: number; conflict: boolean };
+		/** The app's own calls you changed (a model of their own or an edited prompt), ADR 0082. */
+		routingCounts: { changed: number; conflict: boolean };
 		lessonsTabVisible: boolean;
 		remoteTabVisible: boolean;
 		/** Only with the desktop workbench: what it holds is where windows open there. */
@@ -30,6 +32,7 @@
 		generalHasError,
 		modelsHasError,
 		promptCounts,
+		routingCounts,
 		lessonsTabVisible,
 		remoteTabVisible,
 		behaviorTabVisible,
@@ -112,6 +115,27 @@
 				<span class="tab-badge-error" aria-label="error">!</span>
 			{:else if snapshot.providers.length > 0}
 				<span class="tab-count text-11 font-semibold py-[1px] px-3 rounded-full bg-chip text-ink-secondary">{snapshot.providers.length}</span>
+			{/if}
+		</button>
+
+		<button
+			type="button"
+			class="settings-tab-btn"
+			class:is-active={activeSettingsTab === 'routing'}
+			data-settings-tab="routing"
+			onclick={() => openSettingsTab('routing')}
+		>
+			<svg class="tab-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+				<circle cx="5" cy="6" r="2"></circle>
+				<circle cx="19" cy="6" r="2"></circle>
+				<circle cx="12" cy="18" r="2"></circle>
+				<path d="M7 6h10"></path>
+				<path d="M6 8l5 8"></path>
+				<path d="M18 8l-5 8"></path>
+			</svg>
+			<span class="tab-name">{t.routing.tab}</span>
+			{#if routingCounts.changed > 0}
+				<span class="tab-count text-11 font-semibold py-[1px] px-3 rounded-full bg-chip text-ink-secondary" class:is-warn={routingCounts.conflict}>{routingCounts.changed}</span>
 			{/if}
 		</button>
 

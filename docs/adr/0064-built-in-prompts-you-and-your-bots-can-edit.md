@@ -26,7 +26,7 @@ You put it this way (2026-10-06): the app's built-in prompts should be editable 
 
 9. **只在你开口时 / Only when you ask.** 没有后台定时调优：Bot 只在你要它分析、改进时提这类改动；想定期做，就设一个日程。/ No background tuning: a Bot proposes such changes only when you ask it to analyze or improve something; a routine does it periodically if you want.
 
-10. **设置里的「提示词」 / The Prompts tab.** 按组列出（每一轮的系统指令 / Claude Agent / 工具说明 / 应用自己的调用），每条标着默认、谁改的、有没有冲突、读不懂几次；点开是编辑页：停手一秒自动保存，带着你看到的那次修订（别处改过就是 409，载入最新、你没保存的能复制走）；输出格式只读展示，能对比默认、看历史、撤销、恢复、恢复默认（先确认）。手机上同样能看能改。/ Listed by group, each with its state, who changed it, any conflict and unreadable answers; the editor saves a second after you stop, guarded by the revision you saw (a 409 loads the latest and lets you copy what you typed); the format is shown read-only; compare with the default, history, undo, restore, restore default after a confirm. The phone can do the same.
+10. **设置里的「提示词」 / The Prompts tab.**（应用自己的调用那一组已由 [ADR 0082](0082-roles-page.md) 移到「分工」页，和这些调用的模型一起；其余照旧。/ The app's own calls moved to the Roles page with their models in ADR 0082; the rest stands.） 按组列出（每一轮的系统指令 / Claude Agent / 工具说明 / 应用自己的调用），每条标着默认、谁改的、有没有冲突、读不懂几次；点开是编辑页：停手一秒自动保存，带着你看到的那次修订（别处改过就是 409，载入最新、你没保存的能复制走）；输出格式只读展示，能对比默认、看历史、撤销、恢复、恢复默认（先确认）。手机上同样能看能改。/ Listed by group, each with its state, who changed it, any conflict and unreadable answers; the editor saves a second after you stop, guarded by the revision you saw (a 409 loads the latest and lets you copy what you typed); the format is shown read-only; compare with the default, history, undo, restore, restore default after a confirm. The phone can do the same.
 
 ## 缺口 / Not done
 

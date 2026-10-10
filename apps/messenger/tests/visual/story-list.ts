@@ -74,6 +74,8 @@ export const STORY_SIZES = {
 	'settings-mcp': { width: 1000, height: 720 },
 	'settings-prompts': { width: 1000, height: 720 },
 	'settings-prompts-narrow': { width: 390, height: 844 },
+	'settings-routing': { width: 1000, height: 720 },
+	'settings-routing-narrow': { width: 390, height: 844 },
 	'settings-about': { width: 1000, height: 720 },
 	// The remote access tab before the Mac has a relay, with the deploy-your-own guide unfolded.
 	'settings-remote-guide': { width: 1000, height: 900 },
