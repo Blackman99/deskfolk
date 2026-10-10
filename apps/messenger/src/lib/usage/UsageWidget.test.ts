@@ -47,70 +47,103 @@ beforeEach(() => {
 });
 afterEach(() => window.localStorage.removeItem("real-bot-usage-widget"));
 
-test("the pill shows a ring and what is left of the tightest window for each account with windows, three at most", async () => {
-  const many = { ...claude, accounts: [...claude.accounts] };
-  const codexAgent: UsageAgent = { runner: "codex", custom_id: null, label: "Codex", today, accounts: [codex(null, 92), codex("/x/.codex-b", 10), codex("/x/.codex-c", 5)] };
-  const view = open([many, codexAgent, grok]);
+const hover = (node: Element | null) => {
+  node!.dispatchEvent(new PointerEvent("pointerenter", { bubbles: false }));
+  flushSync();
+};
+
+test("a ball by default; pointed at, it opens into a column of the agents, each ringed by its tightest window", async () => {
+  const codexAgent: UsageAgent = { runner: "codex", custom_id: null, label: "Codex", today, accounts: [codex(null, 92), codex("/x/.codex-b", 10)] };
+  const view = open([claude, codexAgent, grok]);
   await sleep(0);
   expect(view.asked).toEqual([false]);
-  const items = [...view.host.querySelectorAll("[data-usage-pill-item]")];
-  expect(items.map(text)).toEqual(["55%", "8%", "90%"]);
-  expect(text(view.host.querySelector(".usage-pill-more"))).toBe("+1");
-  // One window nearly gone: the pill is outlined in its colour.
-  expect(view.host.querySelector("[data-usage-widget]")?.classList.contains("is-danger")).toBe(true);
-  // Docked top right by default, tucked away until pointed at.
-  expect(view.host.querySelector("[data-usage-widget]")?.getAttribute("data-dock")).toBe("right");
-  expect(view.host.querySelector("[data-usage-widget]")?.getAttribute("data-tucked")).toBe("yes");
+  const widget = view.host.querySelector<HTMLElement>("[data-usage-widget]")!;
+  expect(widget.dataset.expanded).toBe("no");
+  // Docked top right by default, half tucked away.
+  expect([widget.dataset.dock, widget.dataset.tucked]).toEqual(["right", "yes"]);
+  // One nearly spent window anywhere: the ball's outline says so.
+  expect(view.host.querySelector(".usage-shell")?.classList.contains("is-danger")).toBe(true);
+  const bubbles = [...view.host.querySelectorAll<HTMLElement>("[data-usage-bubble]")];
+  expect(bubbles.map((bubble) => bubble.dataset.usageBubble)).toEqual(["claude_code:", "codex:", "grok:"]);
+  expect(bubbles.map((bubble) => [...bubble.classList].find((name) => name.startsWith("is-")))).toEqual(["is-normal", "is-danger", "is-today"]);
+  expect(bubbles.map((bubble) => bubble.getAttribute("aria-label"))).toEqual(["Claude 剩55%", "Codex 剩8%", "Grok"]);
+  hover(widget);
+  expect(widget.dataset.expanded).toBe("yes");
+  expect(widget.dataset.tucked).toBe("no");
   view.close();
 });
 
-test("a click opens the panel: each account's windows, the agent's day, then the agents with today's records only", async () => {
-  const view = open([claude, grok]);
+test("pointing at an agent opens its card with every account; another agent's replaces it", async () => {
+  const codexAgent: UsageAgent = { runner: "codex", custom_id: null, label: "Codex", today, accounts: [codex(null, 92), codex("/x/.codex-b", 10)] };
+  const view = open([claude, codexAgent, grok]);
   await sleep(0);
-  click(view.host.querySelector(".usage-pill"));
-  flushSync();
-  const panel = view.host.querySelector("[data-usage-panel]")!;
-  expect(panel).not.toBeNull();
-  expect(view.host.querySelector("[data-usage-widget]")?.getAttribute("data-tucked")).toBe("no");
-  const rows = [...panel.querySelectorAll("[data-usage-agent='claude_code'] .usage-row")];
+  hover(view.host.querySelector("[data-usage-widget]"));
+  hover(view.host.querySelector('[data-usage-bubble="claude_code:"]'));
+  let card = view.host.querySelector<HTMLElement>("[data-usage-card]")!;
+  expect(card.dataset.usageCard).toBe("claude_code:");
+  const rows = [...card.querySelectorAll(".usage-row")];
   expect(rows.map((row) => text(row.querySelector(".usage-name")))).toEqual(["5 小时", "7 天", "Opus · 7 天"]);
   expect(rows.map((row) => text(row.querySelector(".usage-percent")))).toEqual(["剩62%", "剩81%", "剩55%"]);
-  expect(text(panel.querySelector("[data-usage-agent='claude_code'] .usage-account-name"))).toBe("Max · a@example.com");
-  expect(text(panel.querySelector(".usage-agent-today"))).toBe("今天 31 轮 · 1.2M token");
-  // An agent with no plan to report: its day only, set apart, never a percentage.
-  const quiet = panel.querySelector("[data-usage-today-only]")!;
-  expect(text(quiet.querySelector("[data-usage-agent='grok']"))).toBe("Grok 今天 12 轮 · 340k token");
-  expect(quiet.querySelector(".usage-row")).toBeNull();
-  // Refresh asks for a younger answer; Escape closes the panel.
-  click(panel.querySelector(".usage-refresh"));
+  expect(text(card.querySelector(".usage-account-name"))).toBe("Max · a@example.com");
+  expect(text(card.querySelector(".usage-agent-today"))).toBe("今天 31 轮 · 1.2M token");
+  hover(view.host.querySelector('[data-usage-bubble="codex:"]'));
+  await sleep(200);
+  card = view.host.querySelector<HTMLElement>('[data-usage-card="codex:"]')!;
+  expect([...card.querySelectorAll(".usage-account-name")].map(text)).toEqual(["Plus · 默认账号", "Plus · .codex-b"]);
+  // An agent with today's records only: its day and why there is nothing more.
+  hover(view.host.querySelector('[data-usage-bubble="grok:"]'));
+  await sleep(200);
+  card = view.host.querySelector<HTMLElement>('[data-usage-card="grok:"]')!;
+  expect(text(card.querySelector(".usage-agent-today"))).toBe("今天 12 轮 · 340k token");
+  expect(text(card.querySelector(".usage-card-note"))).toBe(t.usage.todayOnlyHint);
+  expect(card.querySelector(".usage-row")).toBeNull();
+  // Refresh asks for a younger answer.
+  click(card.querySelector(".usage-card-refresh"));
   await sleep(0);
   expect(view.asked).toEqual([false, true]);
-  panel.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-  flushSync();
-  expect(view.host.querySelector("[data-usage-panel]")).toBeNull();
+  // Let the card finish growing: happy-dom throws on an animation cut short by unmounting.
+  await sleep(320);
   view.close();
 });
 
-test("its context menu hides it, and showing it again opens the panel; it stays away with nothing in use", async () => {
+test("a click pins it open, Escape folds it; Tools › Usage opens it on the first agent's card", async () => {
+  const view = open([claude, grok]);
+  await sleep(0);
+  const widget = view.host.querySelector<HTMLElement>("[data-usage-widget]")!;
+  click(view.host.querySelector(".usage-ball"));
+  flushSync();
+  expect(widget.dataset.expanded).toBe("yes");
+  widget.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  flushSync();
+  expect(widget.dataset.expanded).toBe("no");
+  flushSync(() => usageWidget.show());
+  await sleep(50);
+  flushSync();
+  expect(widget.dataset.expanded).toBe("yes");
+  expect(view.host.querySelector<HTMLElement>("[data-usage-card]")?.dataset.usageCard).toBe("claude_code:");
+  await sleep(320);
+  view.close();
+});
+
+test("its context menu hides it, and showing it again opens it; with nothing connected Tools says so", async () => {
   const view = open([claude]);
   await sleep(0);
-  view.host.querySelector(".usage-pill")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 900, clientY: 60 }));
+  view.host.querySelector(".usage-ball")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 900, clientY: 60 }));
   flushSync();
   click(view.host.querySelector(".usage-menu-item"));
   flushSync();
   expect(view.host.querySelector("[data-usage-widget]")).toBeNull();
   expect(JSON.parse(window.localStorage.getItem("real-bot-usage-widget")!).hidden).toBe(true);
   flushSync(() => usageWidget.show());
-  expect(view.host.querySelector("[data-usage-widget]")).not.toBeNull();
-  expect(view.host.querySelector("[data-usage-panel]")).not.toBeNull();
+  expect(view.host.querySelector("[data-usage-widget]")?.getAttribute("data-expanded")).toBe("yes");
   view.close();
 
+  usageWidget.open = false;
   const none = open([]);
   await sleep(0);
   expect(none.host.querySelector("[data-usage-widget]")).toBeNull();
-  // Tools › Usage with nothing in use still opens the panel, to say so.
   flushSync(() => usageWidget.show());
-  expect(text(none.host.querySelector("[data-usage-panel] .usage-empty"))).toBe(t.usage.empty);
+  expect(text(none.host.querySelector('[data-usage-card="empty"] .usage-empty'))).toBe(t.usage.empty);
   none.close();
 });
 

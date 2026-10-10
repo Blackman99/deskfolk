@@ -87,8 +87,8 @@ export const STORY_SIZES = {
 	'workbench-solo': { width: 600, height: 820 },
 	// Two panes lifted out of the tree, overlapping, so the z-order and the shadow are visible.
 	'workbench-float': { width: 1000, height: 700 },
-	// The floating usage widget with its panel open (ADR 0080): Claude and Codex accounts, one
-	// nearly spent, and an agent with today's records only.
+	// The usage ball opened into its column of agents, Claude's card grown out of its bubble
+	// (ADR 0080): two Claude accounts, one nearly spent.
 	'usage-widget': { width: 900, height: 640 },
 	// The phone's usage page from Tools, with the same content.
 	'usage-page': { width: 390, height: 844 }

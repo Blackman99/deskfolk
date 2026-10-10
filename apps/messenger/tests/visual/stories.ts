@@ -1366,9 +1366,9 @@ const defs: Record<StoryName, Story> = {
 			usageWidget.hidden = false;
 			await usageSettled(host, '[data-usage-widget]');
 			usageWidget.show();
-			await usageSettled(host, '[data-usage-panel] .usage-row');
-			// The pill slides out of its tucked place as the panel opens: shot once it is still.
-			await new Promise((r) => setTimeout(r, 400));
+			await usageSettled(host, '[data-usage-card] .usage-row');
+			// The ball slides out and morphs into the column, the card grows out of its bubble: shot once still.
+			await new Promise((r) => setTimeout(r, 700));
 		}
 	},
 	'usage-page': {
