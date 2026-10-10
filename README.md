@@ -36,30 +36,8 @@ The model does the work; the app holds it to account: where a job stands is deci
 
 ## Who it's for
 
-- **For** solo developers, technical individuals and small studios who can set up a model endpoint and API key themselves, with multi-day, multi-step work that needs rework and can't be watched all the time: a multi-episode AI video (shots, renders, review, rework), a daily news brief on a routine, a launch kit. One Bot on its own will do, and a team of Bots is for work that really splits; in the measurements below, one Bot finished small jobs as often as a team of three, for much less.
+- **For** solo developers, technical individuals and small studios who can set up a model endpoint and API key themselves, with multi-day, multi-step work that needs rework and can't be watched all the time: a multi-episode AI video (shots, renders, review, rework), a daily news brief on a routine, a launch kit. One Bot on its own will do, and a team of Bots is for work that really splits.
 - **Not yet for** a one-off question or a job done in half an hour (one Bot is plenty, and lighter tools exist); several people sharing one setup, Linux, work that has to carry on while the Mac sleeps, or anyone who would rather not bring their own model endpoint. Windows is an experimental preview: each release carries an unsigned installer, and some features are not there yet — see [Get it](#get-it).
-
-## Measured
-
-Results of the golden-path benchmark, run on 2026-09-29, before the kernel ([ADR 0040](docs/adr/0040-agent-kernel-the-job-owns-state.md)) landed. Three fixed jobs: a research report, launch copy with a single-file landing page, and a command-line tool with tests. Each job runs unattended until it settles, with every approval denied. A judge model (claude-sonnet-4-6) grades it item by item against the task set's fixed done-when, plus deterministic checks on the delivered files, their content and commands. A job counts as done at 80% coverage with every check passing.
-
-| Model | Team | Done | Cost per run | Approval cards per run |
-|---|---|---|---|---|
-| gemini-3.8-flash-high | three role Bots in a group | 9/9 | $0.55 | 0.3 |
-| gemini-3.8-flash-high | one Bot on its own | 9/9 | $0.37 | 0.4 |
-| grk-4.7-build-fast | three role Bots in a group | 6/6 | $2.31 | 2.8 |
-| grk-4.7-build-fast | one Bot on its own | 4/6 | $0.74 | 0.8 |
-
-grk on its own missed twice. One run timed out trying to check the landing page in a browser (Bots have no browser tool). In the other, the judge's answer could not be parsed, although the deliverable checks had all passed.
-
-How to read it:
-- One Bot can do these three kinds of job; a team of three does not finish them more often, and costs 1.5–3 times as much.
-- In the 2026-09-28 baseline (45 runs) the gemini team finished only 7 of 9. The model sometimes sent back an empty reply, which ended the turn silently; that is fixed.
-- Switching off the turn loop's side-calls (organizer, closing check, model pick, chain review, judgement, call-backs) finished no fewer jobs in 78 ablation runs, and switching all of them off was the fastest and cheapest; see [ADR 0037](docs/adr/0037-cut-the-core-loop-by-the-benchmark.md).
-- The samples are small (6–9 runs per cell), so only large differences show, and they speak only for these three small kinds of job. Long jobs that stall halfway, large groups and choosing between several models are not covered yet.
-- All three are small jobs, where the four points above have nothing to do; those came out of long jobs like multi-day video production. Measuring long jobs (injecting stops, complaints, restarts and rework, then counting side effects after a stop, rules lost and how often you were interrupted) is on the [roadmap](ROADMAP.en.md).
-
-How to run it and read the results: [Development · golden-path benchmark](docs/development.md#黄金路径基准).
 
 ## What it does
 
