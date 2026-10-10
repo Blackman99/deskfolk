@@ -870,6 +870,10 @@ test("actual relay + native confirmation fixture + signed mailbox grant + Noise 
   expect(snapshot.body.event_instance_id).toBe(c.ready.event_instance_id);
   expect(c.events.length).toBeGreaterThan(0);
   expect((await c.rpc({ v: 1, id: ulid(), method: "POST", path: "/v1/runtime/quit" })).status).toBe(404);
+  // Your Claude Code is the one /v1/runtime group the phone reaches (ADR 0061): a bad account
+  // directory gets the store's refusal over the link, not "unknown route".
+  const account = await c.rpc({ v: 1, id: ulid(), method: "PUT", path: "/v1/runtime/claude-code/accounts", body: { config_dirs: ["claude-b"] } });
+  expect(account.status).toBe(422);
   expect((await c.rpc({ v: 1, id: ulid(), method: "PATCH", path: "/v1/settings", body: { workspace_path: "/secret" } })).status).toBe(403);
   const bytes = randomBytes(100_000); writeFileSync(join(f.root, "fixture.bin"), bytes);
   const file = await c.rpc({ v: 1, id: ulid(), method: "GET", path: "/v1/workspace/file", query: { path: "fixture.bin" } });

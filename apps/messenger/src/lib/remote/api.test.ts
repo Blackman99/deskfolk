@@ -708,3 +708,28 @@ test("with no canvas to re-encode on, an oversized crop is dropped rather than c
   expect("crop" in (mac.sent[0]!.body ?? {})).toBe(false);
   expect(() => frameOf(mac.sent[0]!)).not.toThrow();
 });
+
+test("a phone reads and sets up Claude Code over the relay, and no setup holds a request slot", async () => {
+  const calls: RemoteRequest[] = [];
+  const api = new RemoteApi(enrollment, {
+    rpc: async (request) => {
+      calls.push(request);
+      return { v: 1, id: request.id, status: 200, body: { path: "/c", accounts: [] } } satisfies RemoteResponse;
+    },
+  });
+  expect(await api.claudeCode()).toMatchObject({ path: "/c" });
+  await api.detectClaudeCode();
+  await api.setClaudeCodePath("/opt/bin/claude");
+  await api.setClaudeCodePath(null);
+  await api.setClaudeCodeAccounts(["/Users/you/.claude-b"]);
+  await api.setClaudeCodeAccounts([]);
+  expect(calls.map((call) => [call.method, call.path, call.body ?? null])).toEqual([
+    ["GET", "/v1/runtime/claude-code", null],
+    ["POST", "/v1/runtime/claude-code/detect", {}],
+    ["PUT", "/v1/runtime/claude-code/path", { path: "/opt/bin/claude" }],
+    ["PUT", "/v1/runtime/claude-code/path", { path: null }],
+    ["PUT", "/v1/runtime/claude-code/accounts", { config_dirs: ["/Users/you/.claude-b"] }],
+    ["PUT", "/v1/runtime/claude-code/accounts", { config_dirs: [] }],
+  ]);
+  expect(api.pendingRequests()).toHaveLength(0);
+});

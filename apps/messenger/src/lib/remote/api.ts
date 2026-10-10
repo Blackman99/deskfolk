@@ -503,24 +503,26 @@ export class RemoteApi extends ApiBase<PendingRemote> {
     return this.get<TaskTrace>(`/v1/tasks/${encodeURIComponent(taskId)}/trace`);
   }
 
-  /** Your Claude Code is the Mac's to look at and point to (ADR 0061): never over the relay. */
+  /** Your Claude Code as the Mac finds it (ADR 0061): seen and set up from the phone too. */
   async claudeCode(): Promise<ClaudeCodeStatus> {
-    throw new ApiError(404, "not_found", "Claude Code is only visible on the Mac");
+    return this.get<ClaudeCodeStatus>("/v1/runtime/claude-code");
   }
 
   async detectClaudeCode(): Promise<ClaudeCodeStatus> {
-    throw new ApiError(404, "not_found", "Claude Code is only visible on the Mac");
+    return this.post<ClaudeCodeStatus>("/v1/runtime/claude-code/detect");
   }
 
-  async setClaudeCodePath(_path: string | null): Promise<ClaudeCodeStatus> {
-    throw new ApiError(404, "not_found", "Claude Code is only visible on the Mac");
+  /** Points the Mac's daemon at a `claude` executable; null lets it look for one again. */
+  async setClaudeCodePath(path: string | null): Promise<ClaudeCodeStatus> {
+    return this.put<ClaudeCodeStatus>("/v1/runtime/claude-code/path", { path });
   }
 
-  async setClaudeCodeAccounts(_configDirs: string[]): Promise<ClaudeCodeStatus> {
-    throw new ApiError(404, "not_found", "Claude Code is only visible on the Mac");
+  /** The Claude accounts besides the daemon's own environment, as their config directories; the whole list. */
+  async setClaudeCodeAccounts(configDirs: string[]): Promise<ClaudeCodeStatus> {
+    return this.put<ClaudeCodeStatus>("/v1/runtime/claude-code/accounts", { config_dirs: configDirs });
   }
 
-  /** The plan's usage is only read, never set: a phone sees the meter too. */
+  /** Your Claude plan's usage; a phone sees the meter too. */
   async claudeUsage(refresh = false): Promise<ClaudeUsage> {
     return this.get<ClaudeUsage>(`/v1/claude-usage${refresh ? "?refresh=1" : ""}`);
   }

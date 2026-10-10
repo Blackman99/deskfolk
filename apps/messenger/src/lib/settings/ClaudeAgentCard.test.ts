@@ -47,10 +47,10 @@ test("an API key in use is said plainly: every turn is billed per token", async 
   view.close();
 });
 
-test("over the relay the card only says it lives on the Mac", async () => {
+test("a daemon without the route (an older Mac over the relay) gets a note instead of the facts", async () => {
   const view = render(ClaudeAgentCard, { api: apiOf(async () => { throw Object.assign(new Error("not found"), { status: 404 }); }), t });
   await sleep(0);
-  expect(view.host.textContent).toContain(t.claudeAgent.localOnly);
+  expect(view.host.textContent).toContain(t.claudeAgent.unreachable);
   expect(view.host.querySelector("[data-claude-network]")).toBeNull();
   view.close();
 });

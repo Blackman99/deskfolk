@@ -47,6 +47,10 @@ get("lessons", { status: one("candidate", "active", "retired") });
 get("shared-skills");
 // ADR 0061: your Claude plan's usage, as your Claude Code reads it.
 get("claude-usage", { refresh: one("1") });
+// Your Claude Code (ADR 0061): seen and set up from the phone as on the Mac.
+get("runtime/claude-code"); add("POST", "runtime/claude-code/detect");
+add("PUT", "runtime/claude-code/path", { path: nullable(string) }, ["path"]);
+add("PUT", "runtime/claude-code/accounts", { config_dirs: list(string) }, ["config_dirs"]);
 const pageLimit: Check = v => typeof v === "string" && /^[1-9][0-9]{0,2}$/.test(v) && Number(v) <= 200;
 get("sessions/:id/snapshot", { limit: pageLimit });
 get("sessions/:id/messages", { cursor: v => typeof v === "string" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z\|[0-9A-HJKMNP-TV-Z]{26}$/.test(v), limit: pageLimit });

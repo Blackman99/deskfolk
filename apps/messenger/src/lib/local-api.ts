@@ -327,7 +327,7 @@ export class LocalApi extends ApiBase<PendingRequest> {
     return this.get<TaskTrace>(`/v1/tasks/${encodeURIComponent(taskId)}/trace`, signal);
   }
 
-  /** Your own Claude Code as the daemon finds it (ADR 0061); on this Mac only, never over the relay. */
+  /** Your own Claude Code as the daemon finds it (ADR 0061); a phone reaches the same routes over the relay. */
   async claudeCode(): Promise<ClaudeCodeStatus> {
     return this.get<ClaudeCodeStatus>("/v1/runtime/claude-code");
   }

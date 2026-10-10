@@ -26,6 +26,14 @@ test("a transcription carries no receipt", () => {
   expect(isNonReceiptPath("/v1/speech")).toBe(false);
 });
 
+/** Your Claude Code is looked up again on each (ADR 0061); its path and account list are set whole. */
+test("Claude Code's routes carry no receipt", () => {
+  expect(isNonReceiptPath("/v1/runtime/claude-code/detect")).toBe(true);
+  expect(isNonReceiptPath("/v1/runtime/claude-code/path")).toBe(true);
+  expect(isNonReceiptPath("/v1/runtime/claude-code/accounts")).toBe(true);
+  expect(isNonReceiptPath("/v1/runtime/quit")).toBe(false);
+});
+
 test("everything that writes a durable row still does", () => {
   for (const path of [
     "/v1/sessions/01J0000000000000000000000B/messages",

@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Claude Agent set up from the phone
+
+- The phone now sees your computer's Claude Code and sets it up as the computer does: Settings › Agents shows the whole card (where `claude` is, its version, network, accounts and their usage) with Check again, the path and adding or removing accounts; a Bot's panel checks Claude Code before it switches the Bot to Claude Agent; the model ladder, the reader model and the organizing model offer Claude models to add. Signing in still happens in a terminal on the computer.
+- Paired with a computer on an older Deskfolk, the card and the Bot panel say Claude Code's status could not be read and to update the computer first, instead of "only visible on the computer".
+
 ### Claude models on the model ladder
 
 - Settings › Models › Model ladder can hold the Claude models Claude Agent settings offer (sonnet, opus, haiku, fable) once your Claude Code is installed and signed in. Each Claude rung picks its own effort and, with several accounts listed, its account; the same model may take another rung at another effort.

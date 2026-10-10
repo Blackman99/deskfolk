@@ -66,7 +66,7 @@ test("until a Bot runs on Claude Agent, nothing about Claude Code is even looked
   expect(looked).toBe(1);
 });
 
-test("the accounts list is set on the computer only, comes back with each account's sign-in, and keeps one a Bot runs on", async () => {
+test("the accounts list comes back with each account's sign-in and keeps one a Bot runs on", async () => {
   let detected = 0;
   const claudeCode: ClaudeCodeProbe = {
     last: () => null,
@@ -86,8 +86,35 @@ test("the accounts list is set on the computer only, comes back with each accoun
   const refused = await put([]);
   expect(refused.status).toBe(409);
   expect(JSON.stringify(await refused.json())).toContain("Coder");
-  // A phone can move a Bot between listed accounts, but never list one.
+});
+
+test("a phone sets Claude Code up as the Mac does: status, look again, path and accounts", async () => {
+  const calls: string[] = [];
+  const claudeCode: ClaudeCodeProbe = {
+    last: () => null,
+    current: async () => { calls.push("current"); return { path: "/c" } as unknown as ClaudeCodeStatus; },
+    detect: async () => { calls.push("detect"); return { path: "/c", accounts: [] } as unknown as ClaudeCodeStatus; },
+  };
+  const h = start({ claudeCode });
   const id = ulid();
-  expect(() => validateBusiness({ v: 1, id, method: "PATCH", path: `/v1/bots/${ulid()}`, body: { agent_config_dir: null } })).not.toThrow();
-  expect(() => validateBusiness({ v: 1, id, method: "PUT", path: "/v1/runtime/claude-code/accounts", body: { config_dirs: [] } })).toThrow();
+  const remote = (method: "GET" | "POST" | "PUT", path: string, body?: Record<string, unknown>) => {
+    validateBusiness({ v: 1, id: ulid(), method, path, ...(body ? { body } : {}) });
+    return h.api.dispatchBusiness(new Request(`http://remote.invalid${path}`, {
+      method, headers: { "Content-Type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}),
+    }), { deviceId: "paired-device", requestId: ulid(), requireRevision: true });
+  };
+  expect((await remote("GET", "/v1/runtime/claude-code")).status).toBe(200);
+  expect((await remote("POST", "/v1/runtime/claude-code/detect")).status).toBe(200);
+  expect((await remote("PUT", "/v1/runtime/claude-code/path", { path: "/opt/zz-bin/claude" })).status).toBe(200);
+  expect(h.store.claudeCodePath()).toBe("/opt/zz-bin/claude");
+  expect((await remote("PUT", "/v1/runtime/claude-code/path", { path: null })).status).toBe(200);
+  expect(h.store.claudeCodePath()).toBeNull();
+  expect((await remote("PUT", "/v1/runtime/claude-code/accounts", { config_dirs: ["/opt/zz-claude-b"] })).status).toBe(200);
+  expect(h.store.claudeCodeConfigDirs()).toEqual(["/opt/zz-claude-b"]);
+  expect(calls).toEqual(["current", "detect", "detect", "detect", "detect"]);
+  // Only these shapes pass, and the rest of /v1/runtime stays on the Mac.
+  expect(() => validateBusiness({ v: 1, id, method: "PUT", path: "/v1/runtime/claude-code/accounts", body: { config_dirs: "/opt" } })).toThrow();
+  expect(() => validateBusiness({ v: 1, id, method: "PUT", path: "/v1/runtime/claude-code/path", body: {} })).toThrow();
+  expect(() => validateBusiness({ v: 1, id, method: "GET", path: "/v1/runtime" })).toThrow();
+  await expect(h.api.dispatchBusiness(new Request("http://remote.invalid/v1/runtime/drain"), { deviceId: "paired-device", requestId: ulid() })).rejects.toMatchObject({ status: 404 });
 });

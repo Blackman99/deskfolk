@@ -259,10 +259,12 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
     // /v1/debug is never on the remote whitelist either (remote/routes.ts); excluded here too, the
     // same way /v1/runtime is, so a call that somehow reached dispatchBusiness still 404s instead
     // of reading it. So is a developer's raise of the engine level past an older installed app
-    // (ADR 0041): that is for whoever sits at this Mac, never for a phone.
+    // (ADR 0041): that is for whoever sits at this Mac, never for a phone. Your Claude Code is the
+    // one /v1/runtime route a phone reaches (ADR 0061): it sets Claude Agent up from there too.
+    const claudeCodeRoute = url.pathname === "/v1/runtime/claude-code" || url.pathname.startsWith("/v1/runtime/claude-code/");
     if (
       !url.pathname.startsWith("/v1/") ||
-      url.pathname.startsWith("/v1/runtime") ||
+      (url.pathname.startsWith("/v1/runtime") && !claudeCodeRoute) ||
       url.pathname.startsWith("/v1/debug") ||
       url.pathname.startsWith("/v1/capabilities/")
     ) {
@@ -574,7 +576,8 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
     if (path === "/v1/terminals" || path.startsWith("/v1/terminals/") || path.startsWith("/v1/streams/")) {
       return terminalRoute(request, url, scope);
     }
-    return dispatch(request, url, options, publish, engine, mcp, { body: request.method === "POST" ? await readJson(request) as Record<string, unknown> : {}, files: [], multipart: false }, scope, notificationScheduler, presence);
+    const withBody = request.method === "POST" || request.method === "PUT";
+    return dispatch(request, url, options, publish, engine, mcp, { body: withBody ? await readJson(request) as Record<string, unknown> : {}, files: [], multipart: false }, scope, notificationScheduler, presence);
   }
 
   /**
@@ -692,27 +695,6 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
         if (request.method === "PUT") return jsonResponse(await options.screen.configure(await readJson(request)), 200, origin);
         await options.screen.probe();
         return jsonResponse(options.screen.status(), 200, origin);
-      }
-      // Your own Claude Code as the daemon finds it (ADR 0061). Local only, like the routes around
-      // it: reading it may run `claude --version` and `claude auth status`, never anything that
-      // touches its credentials, and a phone has no business pointing the daemon at a program.
-      if (path === "/v1/runtime/claude-code" && request.method === "GET") {
-        return jsonResponse(await claudeCode.current(), 200, origin);
-      }
-      if (path === "/v1/runtime/claude-code/detect" && request.method === "POST") {
-        return jsonResponse(await claudeCode.detect(), 200, origin);
-      }
-      if (path === "/v1/runtime/claude-code/path" && request.method === "PUT") {
-        const body = (await readJson(request)) as Record<string, unknown>;
-        options.store.setClaudeCodePath(body.path ?? null);
-        return jsonResponse(await claudeCode.detect(), 200, origin);
-      }
-      // The Claude accounts besides the daemon's own environment: the config directories a Bot may
-      // run on. The whole list each time; one a Bot runs on cannot be taken away (409).
-      if (path === "/v1/runtime/claude-code/accounts" && request.method === "PUT") {
-        const body = (await readJson(request)) as Record<string, unknown>;
-        options.store.setClaudeCodeConfigDirs(body.config_dirs);
-        return jsonResponse(await claudeCode.detect(), 200, origin);
       }
       if (request.method === "POST" && path === "/v1/remote/screen/disconnect" && options.screen) {
         options.screen.endAll();

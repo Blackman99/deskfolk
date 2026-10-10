@@ -20,7 +20,7 @@ export const zh = {
   pathPlaceholder: "claude 的完整路径，留空则自动查找",
   pathSave: "保存路径",
   failed: "没查到，再试一次",
-  localOnly: "只能在电脑上查看。",
+  unreachable: "没查到 Claude Code 的状态。电脑上的 Deskfolk 版本较旧时，先在电脑上更新，手机上才能看到和设置。",
   subscription: (plan: string) => `Claude ${plan} 订阅`,
   /** The Claude accounts besides the daemon's own environment, each a Claude Code config directory. */
   accounts: {
@@ -89,7 +89,7 @@ export const en: CopyShape<typeof zh> = {
   pathPlaceholder: "Full path to claude; leave empty to look for it",
   pathSave: "Save path",
   failed: "Could not check; try again",
-  localOnly: "Only visible on the computer itself.",
+  unreachable: "Could not read Claude Code's status. If the computer runs an older Deskfolk, update it there first to see and set this up from here.",
   subscription: (plan: string) => `Claude ${plan} subscription`,
   accounts: {
     heading: "Accounts",

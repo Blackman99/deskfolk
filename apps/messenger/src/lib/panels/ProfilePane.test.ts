@@ -536,10 +536,10 @@ test("a Claude Agent Bot whose Claude Code is missing or signed out says what to
   signedOut.close();
 });
 
-test("away from the computer the panel says Claude Code's status lives there", async () => {
+test("when Claude Code's status cannot be read, the panel says so and what an older Mac needs", async () => {
   const phone = openOnClaude(aBot({ runner: "claude_code" }), null);
   await sleep(30);
-  expect(phone.host.textContent).toContain("Claude Code 的状态只能在电脑上查看");
+  expect(phone.host.textContent).toContain("没查到 Claude Code 的状态");
   phone.close();
 });
 

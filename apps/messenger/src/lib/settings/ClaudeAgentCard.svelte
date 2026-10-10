@@ -53,7 +53,7 @@
 			unavailable = false;
 			pathDraft = status.source === 'setting' && status.path ? status.path : pathDraft;
 		} catch (error) {
-			// The route is the computer's own: over the relay it is not there at all.
+			// Not there: a phone paired with a Mac on a Deskfolk from before the relay carried it.
 			if ((error as { status?: number }).status === 404) unavailable = true;
 			else failed = true;
 		} finally {
@@ -121,7 +121,7 @@
 		<h3 class="claude-title"><ClaudeSpark size={16} />{t.claudeAgent.title}<HelpTip text={t.claudeAgent.hint} label={t.claudeAgent.help} /></h3>
 	</div>
 	{#if unavailable}
-		<p class="claude-note">{t.claudeAgent.localOnly}</p>
+		<p class="claude-note">{t.claudeAgent.unreachable}</p>
 	{:else}
 		{#if failed}
 			<p class="claude-error" role="alert">{t.claudeAgent.failed}</p>

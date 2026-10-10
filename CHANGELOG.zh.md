@@ -6,6 +6,11 @@
 
 ## Unreleased
 
+### 手机上也能设置 Claude Agent
+
+- 手机现在看得到电脑上的 Claude Code，设置起来和电脑上一样：设置 › Agent 显示整张卡片（`claude` 在哪、版本、网络、各个账号和它们的用量），能重新检测、填路径、加或移除账号；Bot 面板换成 Claude Agent 前会查 Claude Code 的状态；模型阶梯、读句用的模型、整理模型都能新加 Claude 模型。登录仍要在电脑的终端里做。
+- 连的电脑上 Deskfolk 版本较旧时，卡片和 Bot 面板写「没查到 Claude Code 的状态」并提示先在电脑上更新，不再说「只能在电脑上查看」。
+
 ### 模型阶梯能排 Claude 模型
 
 - 本机的 Claude Code 装好并登录后，设置 › 模型 › 模型阶梯 也能排 Claude Agent 设置里那些 Claude 模型（sonnet、opus、haiku、fable）。每个 Claude 级各自选思考强度，列了几个账号时还能选账号；同一个模型换个思考强度可以再排一级。

@@ -115,7 +115,9 @@ export type SequencedEvent = {
  * receipt; a repeat is harmless instead, since a path already gone is reported as trashed. A speed
  * test (ADR 0067) streams for up to minutes before it records anything, and a repeat only measures
  * again. A transcription (ADR 0073) waits on the speech endpoint and stores nothing; a repeat only
- * transcribes again.
+ * transcribes again. Your Claude Code's routes (ADR 0061) answer with what `claude` says after it
+ * is looked up again, which takes seconds; setting its path or its account list sets the whole
+ * value, so a repeat sets the same thing again.
  */
 export function isNonReceiptPath(path: string): boolean {
   const withoutQuery = path.split("?")[0] ?? "";
@@ -124,6 +126,7 @@ export function isNonReceiptPath(path: string): boolean {
     || withoutQuery === "/v1/speech/transcribe"
     || withoutQuery === "/v1/workspace/trash"
     || withoutQuery === "/v1/notification-presence"
+    || withoutQuery.startsWith("/v1/runtime/claude-code/")
     || withoutQuery === "/v1/terminals"
     || withoutQuery.startsWith("/v1/terminals/")
     || withoutQuery.startsWith("/v1/streams/");

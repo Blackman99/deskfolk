@@ -37,11 +37,31 @@ export function systemRoutes(ctx: RouteCtx): Response | Promise<Response> | null
     return jsonResponse(store.capabilities(), 200, null);
   }
 
-  // Your Claude plan's usage (ADR 0061): read-only, so a phone sees the meter too. It never points
-  // the daemon at a program or touches a credential, unlike /v1/runtime/claude-code.
+  // Your Claude plan's usage (ADR 0061), on this Mac and a paired phone alike.
   if (method === "GET" && path === "/v1/claude-usage" && options.claudeUsage) {
     const refresh = url.searchParams.get("refresh") === "1";
     return options.claudeUsage.current(refresh ? CLAUDE_USAGE_REFRESH_MIN_MS : undefined).then((usage) => jsonResponse(usage, 200, null));
+  }
+
+  // Your own Claude Code as the daemon finds it (ADR 0061), from this Mac or a paired phone.
+  // Reading it may run `claude --version` and `claude auth status`, never anything that touches
+  // its credentials. No receipt (isNonReceiptPath): each answer is a fresh look, and the path and
+  // the account list are set whole, so a repeat sets the same thing.
+  if (path === "/v1/runtime/claude-code" && method === "GET") {
+    return options.claudeCode!.current().then((status) => jsonResponse(status, 200, null));
+  }
+  if (path === "/v1/runtime/claude-code/detect" && method === "POST") {
+    return options.claudeCode!.detect().then((status) => jsonResponse(status, 200, null));
+  }
+  if (path === "/v1/runtime/claude-code/path" && method === "PUT") {
+    store.setClaudeCodePath((input.body as Record<string, unknown>).path ?? null);
+    return options.claudeCode!.detect().then((status) => jsonResponse(status, 200, null));
+  }
+  // The Claude accounts besides the daemon's own environment: the config directories a Bot may
+  // run on. The whole list each time; one a Bot or a ladder rung runs on cannot be taken away (409).
+  if (path === "/v1/runtime/claude-code/accounts" && method === "PUT") {
+    store.setClaudeCodeConfigDirs((input.body as Record<string, unknown>).config_dirs);
+    return options.claudeCode!.detect().then((status) => jsonResponse(status, 200, null));
   }
 
   if (method === "POST" && path === "/v1/runtime/quit") {
