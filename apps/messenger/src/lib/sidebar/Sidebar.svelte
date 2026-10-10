@@ -203,14 +203,6 @@
 		return holdLabel(hold, { bots: botsById, sessions: sessionsById, roster: rosterLabels, t: t.control });
 	}
 
-	/**
-	 * 「全部停下」 from the tools menu. A stop is only "stop for now", and the list shows none: your
-	 * next line is the end of it (ADR 0081), so the menu never turns into a 「全部继续」.
-	 */
-	function everything(): void {
-		void runtime.stopScope('global', null, runtime.selectedId);
-	}
-
 	function botStatusOf(botId: string) {
 		return botWorkStatus(
 			botId,
@@ -541,9 +533,6 @@
 			viewingUsage = false;
 			viewingArchived = true;
 		}}
-		everything={snapshot.holdsOn ? 'stop' : null}
-		everythingDisabled={runtime.connection !== 'connected'}
-		onEverything={everything}
 	/>
 </aside>
 

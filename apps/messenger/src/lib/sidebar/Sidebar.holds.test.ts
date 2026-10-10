@@ -48,13 +48,6 @@ function open(over: Partial<Snapshot>, refusal: unknown = null) {
   return { ...view, runtime, pressed };
 }
 
-/** The tools menu's stop-everything item, checked to read `label` (a line under it says more). */
-function everythingItem(host: HTMLElement, label: string): HTMLButtonElement {
-  const item = host.querySelector<HTMLButtonElement>(".tools-menu-everything");
-  expect(item && host.querySelector(`#${item.getAttribute("aria-labelledby")}`)?.textContent).toBe(label);
-  return item!;
-}
-
 test("a stop you dropped a job with sits above the list with its lift; a plan parked before stops existed is not there", () => {
   const holds = [
     aHold({ id: "h-plan", scope: "plan", scope_id: "task-1", plan_title: "EP01", source: "user_text", action: "cancel" }),
@@ -90,24 +83,6 @@ test("a stop for now is never listed and marks no row: your next line is the end
   }
 });
 
-test("the tools menu stops everything for now, and says so, with or without a stop in force", () => {
-  const { host, runtime, pressed, close } = open({ holdsOn: true });
-  try {
-    click(host.querySelector(".tools-entry"));
-    const item = everythingItem(host, "全部停下");
-    expect(host.querySelector(`#${item.getAttribute("aria-describedby")}`)?.textContent).toBe("先停下：你再说话就接着");
-    click(item);
-    expect(pressed).toEqual([["stopScope", "global", null, null]]);
-    runtime.snapshot = { ...runtime.snapshot, holds: [aHold({ id: "h-all", scope: "global", scope_id: null, lift_on_next_user_message: true })] };
-    flushSync();
-    click(host.querySelector(".tools-entry"));
-    click(everythingItem(host, "全部停下"));
-    expect(pressed.at(-1)).toEqual(["stopScope", "global", null, null]);
-  } finally {
-    close();
-  }
-});
-
 test("a lift the daemon refuses is said on the row it was for", async () => {
   const { host, close } = open({ holdsOn: true, holds: [aHold({ id: "h-bot", scope: "bot", scope_id: "bot-1", action: "cancel" })] }, { status: 422 });
   try {
@@ -120,27 +95,21 @@ test("a lift the daemon refuses is said on the row it was for", async () => {
   }
 });
 
-test("with the daemon out of reach the tools menu's stop is shown but cannot be pressed", () => {
-  const { host, runtime, pressed, close } = open({ holdsOn: true });
+test("before the daemon has stops there is no bar", () => {
+  const { host, close } = open({ holds: [aHold({ action: "cancel" })], holdsOn: false });
   try {
-    runtime.connection = "disconnected";
-    flushSync();
-    click(host.querySelector(".tools-entry"));
-    const item = host.querySelector<HTMLButtonElement>(".tools-menu-everything");
-    expect(item?.disabled).toBe(true);
-    click(item);
-    expect(pressed).toEqual([]);
+    expect(host.querySelector(".holds")).toBeNull();
   } finally {
     close();
   }
 });
 
-test("before the daemon has stops there is no bar and no stop in the tools menu", () => {
-  const { host, close } = open({ holds: [aHold({ action: "cancel" })], holdsOn: false });
+test("the tools menu has no stop of its own: every Bot is stopped from a conversation's or the board's stop, or the menu bar", () => {
+  const { host, close } = open({ holdsOn: true });
   try {
-    expect(host.querySelector(".holds")).toBeNull();
     click(host.querySelector(".tools-entry"));
-    expect(host.querySelector(".tools-menu-everything")).toBeNull();
+    expect(host.querySelector(".tools-menu")).not.toBeNull();
+    expect(host.textContent).not.toContain("全部停下");
   } finally {
     close();
   }

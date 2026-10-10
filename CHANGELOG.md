@@ -27,6 +27,7 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 - Your next word ends a stop, however many Bots it covers: after "Stop every Bot", a line to any Bot; after a group's stop, any line in that group. The Bots you speak to go on from your line; the others are no longer held, and their stopped turns are not reopened. There is no more "the rest stay stopped; say \"all bots continue\"".
 - A stop leaves nothing to press: no "Stopped" bar with Lift above the conversation list, no "Stopped" on rows, and the tools menu's "Stop everything" no longer turns into "All go on". Only a stop you dropped a job with by a button is still listed, with its Lift. [ADR 0081](docs/adr/0081-a-stop-is-just-a-stop.md).
+- The tools menu no longer has "Stop everything": every Bot is stopped from "Stop every Bot" in a conversation's stop menu or on the flow board, or from "Stop everything" in the menu bar icon's menu.
 
 ### Run Bots on Codex, Grok, OpenCode, ZCode, Antigravity or an ACP agent of your own
 

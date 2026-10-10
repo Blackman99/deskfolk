@@ -30,3 +30,8 @@ After ADR 0071 a stop already went on with your next word, but it still showed a
 ## 实现 / Implementation
 
 `engine/stop/go-on.ts`：`liftOnYourLine`、`continueByLine` 一律 `liftHold`；`goOnFromYourLine` 多一个 `onlySaidTo`，`turn-engine.ts` 对读成继续、结束了多 Bot 叫停的话用它，只重开说到的 Bot 的活。`store/holds.ts`：`goOnForYourWord` 一律 `liftHold`，删去 `releaseHold`、`onOneBot`、`coveredBots`。`prompts/control-copy.ts`：`nextLineLifts`、`readOnlyLine`。客户端：`sidebar/holds-list.ts` 的 `listedHolds` 只留不随下一句结束的，删去 `sessionHeld` 和行上的 `held`；`ToolsMenu` 删去「全部继续」；`TraceView` 的 `boardHolds` 跳过先停下的（这件事自己的搁置除外）。
+
+## 补充：工具菜单不再有「全部停下」 / Addendum: no "Stop everything" in the tools menu（2026-10-11）
+
+你问：「全部停下的按钮已经没有用了吧，可以去掉吗。」停下不再留状态之后，工具菜单那一项按了看不出变化，又和会话停止菜单、流程图上的「停下所有 Bot」重复，去掉。决定 3 里「工具菜单永远是『全部停下』」作废；菜单栏图标里的「全部停下」留着，当桌面上不用先进会话的急停。代价：手机上 Bot 在你没开的会话里做事时，要先进一个在做事的会话，再用它的停止菜单。/ You asked whether the tools menu's "Stop everything" still did anything. With stops leaving no state it showed no change and repeated "Stop every Bot" in the stop menus, so it is gone; decision 3's "the tools menu always reads Stop everything" no longer holds. The menu bar icon's "Stop everything" stays as the desktop's one-press stop. The cost: on a phone, with Bots at work in conversations you have not opened, you open one of them and use its stop menu.
+
