@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
+	import { isLocalEndpoint } from '@real-bot/protocol';
 	import AvatarEditor from '../AvatarEditor.svelte';
 	import { backdropClick } from '../click-outside.ts';
 	import Select from '../Select.svelte';
@@ -27,7 +29,8 @@
 	/** A click outside closes the sheet; a text-selection drag that starts inside never does. */
 	const backdrop = backdropClick();
 
-	// The sheet is mounted only while it is open, so a fresh mount is the reset.
+	// The sheet is mounted only while it is open, so a fresh mount is the reset. With no endpoint a
+	// Bot could run on — set up on Claude Code alone (ADR 0078) — it starts on Claude Agent.
 	let draft = $state<CreateBotDraft>({
 		name: '',
 		duties: '',
@@ -35,7 +38,9 @@
 		avatar: '',
 		model: '',
 		thinkingLevel: '',
-		runner: ''
+		runner: untrack(() => runtime.snapshot.providers).some((provider) => provider.base_url && (provider.key_set || isLocalEndpoint(provider.base_url)))
+			? ''
+			: 'claude_code'
 	});
 	const runnerOptions = $derived([
 		{ value: '', label: t.sidebar.botRunnerApp },

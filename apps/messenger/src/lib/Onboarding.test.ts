@@ -276,3 +276,60 @@ test('workspace persistence errors return to the failed step without saving the 
   expect(host.querySelector('#onboarding-bot-name')).not.toBeNull();
   expect(providerSaves).toBe(1);
 });
+
+/** ADR 0078: set up on the Claude Code on this computer, with no endpoint at all. */
+function claudeClient(signedIn: boolean) {
+  const status = {
+    path: '/usr/local/bin/claude', source: 'path', version: '2.1.0', outdated: false,
+    logged_in: signedIn, auth_method: signedIn ? 'claude.ai' : null, subscription_type: signedIn ? 'max' : null,
+    email: signedIn ? 'me@example.com' : null, error: null,
+  };
+  return {
+    claudeCode: async () => status,
+    detectClaudeCode: async () => status,
+    setClaudeCodePath: async () => status,
+  };
+}
+
+test('on Claude Code, Next waits for a signed-in Claude Code instead of an endpoint', async () => {
+  const { host } = open({ endpointUrl: '', endpointKey: '', client: claudeClient(false) });
+  click(buttonByText(host, `${t.onboarding.step1Next} →`));
+  click(host.querySelector('[data-connect-mode="claude"]'));
+  await settle();
+  expect(host.querySelector('#onboarding-endpoint')).toBeNull();
+  expect(host.querySelector('[data-claude-not-ready]')?.textContent).toBe(t.onboarding.claudeNotReady);
+  const next = buttonByText(host, `${t.onboarding.step2NextClaude} →`);
+  expect(next.disabled).toBe(true);
+  click(step(host, t.onboarding.step3Title));
+  expect(host.querySelector('#onboarding-claude-model')).toBeNull();
+  // Back to the endpoint: its fields and its own Next are there again.
+  click(host.querySelector('[data-connect-mode="endpoint"]'));
+  expect(host.querySelector('#onboarding-endpoint')).not.toBeNull();
+});
+
+test('on Claude Code, saving puts every built-in call on the Claude model, saves no endpoint, and the first Bot is a Claude Agent', async () => {
+  const { host, calls } = open({ endpointUrl: '', endpointKey: '', client: claudeClient(true) });
+  click(buttonByText(host, `${t.onboarding.step1Next} →`));
+  click(host.querySelector('[data-connect-mode="claude"]'));
+  await settle();
+  expect(host.querySelector('[data-claude-not-ready]')).toBeNull();
+  click(buttonByText(host, `${t.onboarding.step2NextClaude} →`));
+  expect(host.querySelector('#onboarding-claude-model')).not.toBeNull();
+  expect(host.textContent).toContain(t.onboarding.claudeLimits);
+  click(buttonByText(host, `${t.onboarding.step3Next} →`));
+  await settle();
+  const saves = calls.filter((call) => call.name === 'patchSettings').map((call) => call.args[0]);
+  const choice = { runner: 'claude_code', model: 'sonnet', config_dir: null };
+  expect(saves).toEqual([
+    { workspace_path: '/fixture' },
+    { builtin_models: { reader: choice, organizer: choice, scribe: choice, judge: choice, composer: choice,
+      judgement: choice, reflection: choice, retrospective: choice, compaction: choice } },
+  ]);
+  expect(calls.some((call) => call.name === 'createProvider' || call.name === 'patchProvider')).toBe(false);
+  expect(host.textContent).toContain(t.onboarding.botClaudeHint);
+  click(buttonByText(host, `${t.onboarding.createBot} ✓`));
+  await settle();
+  const created = calls.filter((call) => call.name === 'createBot').map((call) => call.args[0]);
+  expect(created).toHaveLength(1);
+  expect(created[0]).toMatchObject({ runner: 'claude_code', agent_config_dir: null });
+});

@@ -80,7 +80,7 @@ pnpm dev
 
 拿源码版干要跑几个小时的活（比如多镜头视频）时，用 `pnpm dev:steady` 代替 `pnpm dev`：守护进程不会因为改代码或 `git pull` 重启，进行中的轮次不会被打断。
 
-首次使用：启动向导会带你选一个工作区目录、填端点和密钥、建第一个 Bot；之后再让它把其他队友建出来。Anthropic、小米 MiMo、千问（阿里云百炼）是内置的：选它、贴上 key，应用会找出这把 key 属于那家的哪个套餐。没限定工作区的 Anthropic 个人 key 还要填 Anthropic 工作区 ID（`wrkspc_…`，在 Console → Settings → Workspaces 里），见 [ADR 0072](docs/adr/0072-built-in-connectors.md)。
+首次使用：启动向导会带你选一个工作区目录、连接模型、建第一个 Bot；之后再让它把其他队友建出来。模型可以是端点加密钥（预设或自定义地址），也可以直接用这台电脑上装好并登录的 Claude Code：这样不用端点，第一个 Bot 是 Claude Agent，应用自己的调用也走 Claude 模型（[ADR 0078](docs/adr/0078-setup-on-claude-code.md)）。Anthropic、小米 MiMo、千问（阿里云百炼）是内置的：选它、贴上 key，应用会找出这把 key 属于那家的哪个套餐。没限定工作区的 Anthropic 个人 key 还要填 Anthropic 工作区 ID（`wrkspc_…`，在 Console → Settings → Workspaces 里），见 [ADR 0072](docs/adr/0072-built-in-connectors.md)。
 
 ### 用本地模型
 

@@ -18,6 +18,7 @@ import { normalizeConfigDir } from "../claude-code/account";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { listedConfigDir } from "./claude-code";
+import { claudeOnlyAccount } from "./settings";
 import {
   carriedThinkingLevel,
   defaultThinkingLevelFor,
@@ -112,12 +113,19 @@ export function createBot(
     typeof input.avatar === "string" && input.avatar.trim().length > 0
       ? input.avatar.trim()
       : generateBoringAvatar({ name });
-  const runner = incomingRunner(input.runner);
-  assertRunnerActor(actor, runner !== null);
+  const asked = incomingRunner(input.runner);
+  assertRunnerActor(actor, asked !== null);
   const agentModel = incomingAgentModel(input.agent_model);
   const agentEffort = incomingAgentEffort(input.agent_effort);
-  const agentConfigDir = incomingAgentConfigDir(ctx, input.agent_config_dir);
-  assertRunnerActor(actor, agentConfigDir !== null);
+  const askedConfigDir = incomingAgentConfigDir(ctx, input.agent_config_dir);
+  assertRunnerActor(actor, askedConfigDir !== null);
+  // Set up on Claude Code alone (ADR 0078): with no endpoint, a Bot made without saying what runs it
+  // — a teammate another Bot hires included — is a Claude Agent on the account the app's own calls
+  // use; on the app's own runner it could not take a single turn. You set that up, so a Bot asking
+  // for nothing is not a Bot choosing your account.
+  const claudeOnly = input.runner === undefined ? claudeOnlyAccount(ctx) : null;
+  const runner = claudeOnly ? "claude_code" : asked;
+  const agentConfigDir = claudeOnly && input.agent_config_dir === undefined ? claudeOnly.configDir : askedConfigDir;
   const { model, providerId } = resolveIncomingBotTarget(ctx, input.model, input.provider_id);
   // Pinning a model pins a level too: a Bot is either on automatic for both or explicit about both.
   const thinkingLevel =

@@ -447,10 +447,11 @@ export function createParticipation(deps: ParticipationDeps): Participation {
       }
       if (admission?.draining) return;
       // The model you chose for judgements, else the Bot's own, told nothing about thinking as before.
-      const chosen = creds ? ((await deps.builtinTarget?.("judgement").catch(() => null)) ?? null) : null;
+      // A Claude model you chose needs no endpoint: set up on Claude Code alone, Bots still judge.
+      const chosen = (await deps.builtinTarget?.("judgement").catch(() => null)) ?? null;
       const own = creds && !chosen ? (targetFor(botId, creds, message.body)?.target ?? null) : null;
       const target: BuiltinTarget | null = chosen ?? (own && { ...own, thinkingLevel: null });
-      if (!creds || !target) {
+      if (!target) {
         try {
           const row = store.insertJudgement({
             sessionId: message.session_id,

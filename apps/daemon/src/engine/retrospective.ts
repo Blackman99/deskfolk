@@ -36,9 +36,11 @@ export function createRetrospector(deps: {
   let running = false;
 
   async function run(at: Date): Promise<void> {
-    // No endpoint, nothing claimed: what is due waits for one rather than failing for good.
+    // No model at all, nothing claimed: what is due waits for one rather than failing for good. A
+    // Claude model you chose needs no endpoint.
+    const chosen = (await deps.builtinTarget?.("retrospective").catch(() => null)) ?? null;
     const creds = await deps.routing.credentials().catch(() => null);
-    if (!creds) return;
+    if (!creds && !chosen) return;
     const due = deps.store.claimDueRetrospective(at.toISOString());
     if (!due) return;
     let model: string | null = null;
@@ -49,8 +51,7 @@ export function createRetrospector(deps: {
     try {
       // The model you chose for retrospectives, told how hard to think (ADR 0077); else the Bot's
       // own, which thinks as it likes, as before.
-      const chosen = (await deps.builtinTarget?.("retrospective").catch(() => null)) ?? null;
-      const own = chosen ? null : (deps.routing.decideRoute(due.botId, creds, due.plan.title)?.target ?? null);
+      const own = chosen || !creds ? null : (deps.routing.decideRoute(due.botId, creds, due.plan.title)?.target ?? null);
       const target = chosen ?? own;
       if (target) {
         model = target.model;

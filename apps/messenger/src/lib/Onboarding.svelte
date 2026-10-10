@@ -29,8 +29,20 @@
 		type CreateBotDraft,
 		type CreateBotFieldErrors
 	} from './panels/create-form.ts';
-	import { connectorById, connectorFor, isLocalEndpoint, type ApiFormat, type CreateProviderRequest, type ProbedModel } from '@real-bot/protocol';
+	import {
+		BUILTIN_MODEL_ROLES,
+		CLAUDE_MODEL_ALIASES,
+		connectorById,
+		connectorFor,
+		isLocalEndpoint,
+		type ApiFormat,
+		type ClaudeCodeStatus,
+		type CreateProviderRequest,
+		type ProbedModel
+	} from '@real-bot/protocol';
 	import { endpointSource } from './model-source.ts';
+	import ClaudeAgentCard from './settings/ClaudeAgentCard.svelte';
+	import { claudeAccountOptions, claudeReady } from './settings/claude-agent.ts';
 
 	interface Props {
 		runtime: MessengerRuntime;
@@ -59,6 +71,18 @@
 	$effect.pre(() => {
 		if (workspaceReadOnly && currentStep === 1) currentStep = 2;
 	});
+	/**
+	 * How setup reaches a model (ADR 0078): an endpoint, or the Claude Code on this computer alone —
+	 * every built-in call on one Claude model, and the first Bot a Claude Agent.
+	 */
+	let connectMode = $state<'endpoint' | 'claude'>('endpoint');
+	let claudeStatus = $state<ClaudeCodeStatus | null>(null);
+	let claudeModel = $state<string>('sonnet');
+	/** A listed account's config directory; `''` the daemon's own environment. */
+	let claudeConfigDir = $state('');
+	const claudeOk = $derived(claudeReady(claudeStatus));
+	const claudeModelOptions = CLAUDE_MODEL_ALIASES.map((alias) => ({ value: alias, label: alias }));
+	const claudeAccounts = $derived(claudeAccountOptions(claudeStatus, claudeConfigDir, t));
 	let fieldErrors = $state<SettingsFieldErrors & ProviderFieldErrors>({});
 	let saveFailed = $state(false);
 	let providerName = $state('Default');
@@ -107,7 +131,8 @@
 		return errors;
 	});
 	const canCompleteSetup = $derived(
-		(workspaceReadOnly || workspacePlan.ok) && connectionPlan.ok && !modelErrors.models && !modelErrors.defaultModel
+		(workspaceReadOnly || workspacePlan.ok) &&
+			(connectMode === 'claude' ? claudeOk : connectionPlan.ok && !modelErrors.models && !modelErrors.defaultModel)
 	);
 	const allKnownModels = $derived(
 		Array.from(new Set([...selectedModels, ...availableDiscoveredModels]))
@@ -354,6 +379,10 @@
 	}
 
 	function advanceFromStep2(): void {
+		if (connectMode === 'claude') {
+			if (claudeOk) currentStep = 3;
+			return;
+		}
 		if (!validateConnection()) return;
 		currentStep = 3;
 		if (availableDiscoveredModels.length <= 6 && runtime.endpointUrl && (runtime.endpointKey || keyless)) {
@@ -438,6 +467,10 @@
 			currentStep = 1;
 			return;
 		}
+		if (connectMode === 'claude') {
+			await completeOnClaude(workspace);
+			return;
+		}
 		if (!validateConnection()) {
 			currentStep = 2;
 			return;
@@ -478,21 +511,50 @@
 		if (holding) enterBotStep();
 	}
 
+	/**
+	 * Set up on Claude Code alone: the workspace, then every built-in call on the Claude model and
+	 * account chosen, which is what completes setup with no endpoint (ADR 0078).
+	 */
+	async function completeOnClaude(workspace: string): Promise<void> {
+		if (!claudeOk) {
+			currentStep = 2;
+			return;
+		}
+		const choice = { runner: 'claude_code' as const, model: claudeModel, config_dir: claudeConfigDir || null };
+		holding = rosterEmpty;
+		if (!(await saveWorkspace(workspace))) {
+			holding = false;
+			return;
+		}
+		const error = await runtime.patchSettings({
+			builtin_models: Object.fromEntries(BUILTIN_MODEL_ROLES.map((role) => [role, choice]))
+		});
+		if (error) {
+			holding = false;
+			saveFailed = true;
+			return;
+		}
+		if (holding) enterBotStep();
+	}
+
+	/** False, with the reason on screen, when the workspace is refused; a phone has none to save. */
+	async function saveWorkspace(workspace: string): Promise<boolean> {
+		if (workspaceReadOnly) return true;
+		const workspaceError = await runtime.patchSettings({ workspace_path: workspace });
+		if (!workspaceError) return true;
+		const mapped = mapSettingsError(workspaceError.message);
+		if ('workspace' in mapped) {
+			fieldErrors = { workspace: mapped.workspace };
+			currentStep = 1;
+			return false;
+		}
+		saveFailed = true;
+		return false;
+	}
+
 	/** Writes the workspace and the endpoint; false, with the reason on screen, when either is refused. */
 	async function saveSetup(workspace: string, provider: CreateProviderRequest): Promise<boolean> {
-		if (!workspaceReadOnly) {
-			const workspaceError = await runtime.patchSettings({ workspace_path: workspace });
-			if (workspaceError) {
-				const mapped = mapSettingsError(workspaceError.message);
-				if ('workspace' in mapped) {
-					fieldErrors = { workspace: mapped.workspace };
-					currentStep = 1;
-					return false;
-				}
-				saveFailed = true;
-				return false;
-			}
-		}
+		if (!(await saveWorkspace(workspace))) return false;
 		const existing = snapshot.providers[0];
 		const providerError = existing
 			? await runtime.patchProvider(existing.id, {
@@ -534,7 +596,9 @@
 			duties: t.onboarding.botDutiesSuggested,
 			boundaries: t.onboarding.botBoundariesSuggested,
 			avatar: '',
-			model: ''
+			model: '',
+			// On Claude Code alone the first Bot is a Claude Agent, on the account chosen for setup.
+			...(connectMode === 'claude' ? { runner: 'claude_code', agentConfigDir: claudeConfigDir } : {})
 		};
 		botErrors = {};
 		botFailed = false;
@@ -710,12 +774,37 @@
 				<div class="step-pane">
 					<div class="step-pane-header">
 						<h2 class="step-pane-title">{t.onboarding.stepProvider}</h2>
-						<p class="step-pane-desc">{t.onboarding.providerDesc}</p>
 					</div>
 
 					{#if workspaceReadOnly}
 						<p class="muted field-hint">{t.settings.workspaceHostOnly}</p>
 					{/if}
+
+					<div class="connect-modes" role="radiogroup" aria-label={t.onboarding.step2Title}>
+						{#each [['endpoint', t.onboarding.connectEndpoint, t.onboarding.connectEndpointDesc], ['claude', t.onboarding.connectClaude, t.onboarding.connectClaudeDesc]] as const as [mode, label, desc] (mode)}
+							<button
+								type="button"
+								class="connect-mode"
+								role="radio"
+								aria-checked={connectMode === mode}
+								class:is-active={connectMode === mode}
+								data-connect-mode={mode}
+								onclick={() => (connectMode = mode)}
+							>
+								<span class="connect-mode-label">{label}</span>
+								<span class="connect-mode-desc">{desc}</span>
+							</button>
+						{/each}
+					</div>
+
+					{#if connectMode === 'claude'}
+						<p class="step-pane-desc">{t.onboarding.claudeCheckDesc}</p>
+						<ClaudeAgentCard api={runtime.client} {t} {locale} onstatus={(status) => (claudeStatus = status)} />
+						{#if claudeStatus && !claudeOk}
+							<p class="muted field-hint" data-claude-not-ready>{t.onboarding.claudeNotReady}</p>
+						{/if}
+					{:else}
+					<p class="step-pane-desc">{t.onboarding.providerDesc}</p>
 
 					<div class="provider-presets-row flex flex-wrap gap-3">
 						{#each PRESETS as preset}
@@ -848,6 +937,7 @@
 							<span class="muted">{fetchError}</span>
 						</div>
 					{/if}
+					{/if}
 
 					<div class="step-nav-footer">
 						{#if workspaceReadOnly}
@@ -857,8 +947,13 @@
 								← {t.onboarding.prevStep}
 							</button>
 						{/if}
-						<button type="button" class="btn-step-primary" disabled={!connectionPlan.ok} onclick={advanceFromStep2}>
-							{t.onboarding.step2Next} →
+						<button
+							type="button"
+							class="btn-step-primary"
+							disabled={connectMode === 'claude' ? !claudeOk : !connectionPlan.ok}
+							onclick={advanceFromStep2}
+						>
+							{connectMode === 'claude' ? t.onboarding.step2NextClaude : t.onboarding.step2Next} →
 						</button>
 					</div>
 				</div>
@@ -867,9 +962,22 @@
 				<div class="step-pane">
 					<div class="step-pane-header">
 						<h2 class="step-pane-title">{t.onboarding.step3Title}</h2>
-						<p class="step-pane-desc">{t.onboarding.stepModelsDesc}</p>
+						<p class="step-pane-desc">{connectMode === 'claude' ? t.onboarding.claudeModelsDesc : t.onboarding.stepModelsDesc}</p>
 					</div>
 
+					{#if connectMode === 'claude'}
+						<div class="modal-section">
+							<label for="onboarding-claude-model">{t.onboarding.claudeModel}</label>
+							<Select id="onboarding-claude-model" bind:value={claudeModel} options={claudeModelOptions} />
+						</div>
+						{#if claudeAccounts.length > 1}
+							<div class="modal-section">
+								<label for="onboarding-claude-account">{t.onboarding.claudeAccount}</label>
+								<Select id="onboarding-claude-account" bind:value={claudeConfigDir} options={claudeAccounts} />
+							</div>
+						{/if}
+						<p class="muted field-hint">{t.onboarding.claudeLimits}</p>
+					{:else}
 					<!-- Models Selector -->
 					<div class="modal-section">
 						<div class="field-head-row">
@@ -978,6 +1086,7 @@
 							</p>
 						{/if}
 					</div>
+					{/if}
 
 					<div class="step-nav-footer">
 						<button type="button" class="btn-step-secondary" onclick={() => (currentStep = 2)}>
@@ -1031,7 +1140,7 @@
 						{#if botErrors.boundaries}
 							<p class="field-error">{t.sidebar.boundariesEmpty}</p>
 						{:else}
-							<p class="muted field-hint">{t.onboarding.botModelHint}</p>
+							<p class="muted field-hint">{botDraft.runner === 'claude_code' ? t.onboarding.botClaudeHint : t.onboarding.botModelHint}</p>
 						{/if}
 					</div>
 
@@ -1065,6 +1174,47 @@
 	 * window (the Bot step is) then starts at the top and scrolls, instead of overflowing both ends
 	 * with its top out of reach.
 	 */
+	.connect-modes {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 10px;
+	}
+
+	.connect-mode {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		text-align: left;
+		padding: 12px 14px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
+		background: var(--pane);
+		color: var(--ink);
+		cursor: pointer;
+	}
+
+	.connect-mode.is-active {
+		border-color: var(--accent);
+		box-shadow: 0 0 0 1px var(--accent);
+	}
+
+	.connect-mode-label {
+		font-size: 14px;
+		font-weight: 600;
+	}
+
+	.connect-mode-desc {
+		font-size: 12px;
+		line-height: 1.45;
+		color: var(--muted);
+	}
+
+	@media (max-width: 520px) {
+		.connect-modes {
+			grid-template-columns: 1fr;
+		}
+	}
+
 	.onboarding-card {
 		margin: auto;
 		width: 620px;

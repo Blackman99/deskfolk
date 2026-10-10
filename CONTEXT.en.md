@@ -247,7 +247,7 @@ One way a Bot can run: instead of the app's own loop, each of its turns is run b
 _Avoid_: "Claude Code engine" (the brand is not a feature name), calling the API with a subscription token, signing in to Claude inside the app, Claude Code as a completion endpoint, a Bot switching its own runner
 
 **Setup wizard**:
-The empty state of Settings: it is complete once the workspace path, the endpoint URL and a saved key are all in place. It has no route of its own; it slides out over the sidebar only and does not take over the main transcript.
+The empty state of Settings: it is complete once the workspace path is set and there is either a usable endpoint (its URL and a saved key; an address on this computer needs no key) or a signed-in Claude Code on this computer with the built-in calls on Claude models (ADR 0078). It has no route of its own; it slides out over the sidebar only and does not take over the main transcript.
 _Avoid_: /setup, full-screen onboarding, making Settings the main transcript
 
 **MCP**:

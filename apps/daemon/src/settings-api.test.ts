@@ -57,6 +57,52 @@ describe("empty roster and settings", () => {
     rmSync(workspace, { recursive: true, force: true });
   });
 
+  /** ADR 0078: set up on Claude Code alone, with no endpoint at all. */
+  test("with no endpoint, setup is complete once every built-in call but compaction is on a Claude model", async () => {
+    const h = await start();
+    const workspace = mkdtempSync(join(tmpdir(), "real-bot-ws-"));
+    const patch = async (body: unknown) => {
+      const res = await fetch(`${h.origin}/v1/settings`, {
+        method: "PATCH",
+        headers: auth(h, { "Content-Type": "application/json" }),
+        body: JSON.stringify(body),
+      });
+      expect(res.status).toBe(200);
+      return ((await res.json()) as { wizard_complete: boolean }).wizard_complete;
+    };
+    expect(await patch({ workspace_path: workspace })).toBe(false);
+    const sonnet = { runner: "claude_code", model: "sonnet", config_dir: null };
+    const roles = ["reader", "organizer", "scribe", "judge", "composer", "judgement", "reflection", "retrospective"];
+    expect(await patch({ builtin_models: Object.fromEntries(roles.slice(1).map((role) => [role, sonnet])) })).toBe(false);
+    expect(await patch({ builtin_models: { reader: { ...sonnet, model: "haiku" } } })).toBe(true);
+    // A call put back on the default model has no endpoint to fall back on, so setup opens again.
+    expect(await patch({ builtin_models: { judgement: null } })).toBe(false);
+    rmSync(workspace, { recursive: true, force: true });
+  });
+
+  /** ADR 0078: with no endpoint, a Bot made without saying what runs it is a Claude Agent. */
+  test("set up on Claude Code alone, a new Bot is a Claude Agent unless asked otherwise; with an endpoint, on the app", async () => {
+    const h = await start();
+    const workspace = mkdtempSync(join(tmpdir(), "real-bot-ws-"));
+    const send = async (method: string, path: string, body: unknown) => {
+      const res = await fetch(`${h.origin}${path}`, { method, headers: auth(h, { "Content-Type": "application/json" }), body: JSON.stringify(body) });
+      return { status: res.status, body: (await res.json()) as { bot: { runner: string | null; agent_config_dir: string | null } } };
+    };
+    const bot = (name: string, extra: object = {}) => send("POST", "/v1/bots", { name, duties: "d", boundaries: "b", ...extra });
+    // Not set up on Claude Code: a Bot asking for nothing is the app's, as before.
+    expect((await bot("Before")).body.bot.runner).toBeNull();
+    const haiku = { runner: "claude_code", model: "haiku", config_dir: null };
+    const roles = ["reader", "organizer", "scribe", "judge", "composer", "judgement", "reflection", "retrospective"];
+    await send("PATCH", "/v1/settings", { workspace_path: workspace, builtin_models: Object.fromEntries(roles.map((role) => [role, haiku])) });
+    expect((await bot("Hired")).body.bot).toMatchObject({ runner: "claude_code", agent_config_dir: null });
+    // Asked for the app's runner, it gets it.
+    expect((await bot("Asked", { runner: null })).body.bot.runner).toBeNull();
+    // With an endpoint to run on, nothing is put on Claude Code by itself.
+    await send("PATCH", "/v1/settings", { endpoint_base_url: "https://api.example/v1", endpoint_api_key: "sk-x" });
+    expect((await bot("After")).body.bot.runner).toBeNull();
+    rmSync(workspace, { recursive: true, force: true });
+  });
+
   test("workspace tree and file are read-only inside the jail", async () => {
     const h = await start();
     const unset = await fetch(`${h.origin}/v1/workspace/tree`, { headers: auth(h) });

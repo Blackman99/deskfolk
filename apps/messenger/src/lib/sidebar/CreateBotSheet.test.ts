@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { copyFor } from "../copy.ts";
-import { fakeRuntime } from "../test-fixtures.ts";
+import { aProvider, fakeRuntime } from "../test-fixtures.ts";
 import { click, render } from "../test-render.ts";
 import CreateBotSheet from "./CreateBotSheet.svelte";
 
@@ -28,4 +28,19 @@ test("the new-Bot form is a page on a phone, with a way back where a phone keeps
   click(back);
   expect(closed).toHaveLength(1);
   close();
+});
+
+/** ADR 0078: set up on Claude Code alone, a new Bot starts on Claude Agent; with an endpoint, on the app. */
+test("the new-Bot form starts on Claude Agent when there is no endpoint a Bot could run on", () => {
+  for (const [providers, runner] of [
+    [[], t.sidebar.botRunnerClaude],
+    [[aProvider({ key_set: false, base_url: "https://api.example.com/v1" })], t.sidebar.botRunnerClaude],
+    [[aProvider({ key_set: false, base_url: "http://localhost:11434/v1" })], t.sidebar.botRunnerApp],
+    [[aProvider({ key_set: true })], t.sidebar.botRunnerApp],
+  ] as const) {
+    const runtime = fakeRuntime({ providers: [...providers] });
+    const view = render(CreateBotSheet, { runtime, bots: [], t, modelOptions: [], onClose: () => {} });
+    expect(view.host.querySelector("#bot-runner")?.textContent?.trim()).toBe(runner);
+    view.close();
+  }
 });

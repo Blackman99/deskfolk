@@ -29,9 +29,11 @@
 		api: ClaudeAgentApi | null;
 		t: Copy;
 		locale?: 'zh' | 'en';
+		/** Told each status read, so a host (the setup wizard) can wait for a signed-in Claude Code. */
+		onstatus?: (status: ClaudeCodeStatus) => void;
 	}
 
-	let { api, t, locale = 'zh' }: Props = $props();
+	let { api, t, locale = 'zh', onstatus }: Props = $props();
 
 	let status = $state<ClaudeCodeStatus | null>(null);
 	let busy = $state(false);
@@ -101,6 +103,10 @@
 			void run((client) => client.claudeCode());
 			void loadUsage(false);
 		});
+	});
+
+	$effect(() => {
+		if (status) onstatus?.(status);
 	});
 
 	const account = $derived(status && status.path && status.logged_in !== false ? claudeAccountLabel(status, t) : null);

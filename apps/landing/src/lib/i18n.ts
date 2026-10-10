@@ -330,7 +330,7 @@ const zh: Dict = {
     step2: '并行启动守护进程与桌面窗',
     firstRun: [
       '选一个本机目录作为共享工作区，建议独立于源码仓库；不存在会自动创建。',
-      '首次打开的设置向导里选好工作区文件夹，再选接口格式（OpenAI 兼容或 Anthropic 兼容），填端点 URL 和 API key，配好模型名单与默认模型。',
+      '首次打开的设置向导里选好工作区文件夹，再连接模型：选接口格式（OpenAI 兼容或 Anthropic 兼容），填端点 URL 和 API key，配好模型名单与默认模型；或者直接用这台电脑上已登录的 Claude Code，不用端点。',
       '向导最后一步建第一个 Bot：名称、职责和边界已按通用助手填好，可直接创建或改成你要的样子，随即开始私聊。',
       '让它创建其他 Bot、组群或提出 MCP 配置；需要批准时在应用里审核。'
     ],
@@ -623,7 +623,7 @@ const en: Dict = {
     step2: 'Start the daemon and the desktop window in parallel',
     firstRun: [
       'Pick a local folder as the shared workspace, ideally outside the source checkout; missing folders are created.',
-      'In the setup wizard that opens on first launch, choose the workspace folder, then pick the API format (OpenAI-compatible or Anthropic-compatible) and enter the endpoint URL and API key, then the model list and default model.',
+      'In the setup wizard that opens on first launch, choose the workspace folder, then connect a model: pick the API format (OpenAI-compatible or Anthropic-compatible) and enter the endpoint URL and API key, then the model list and default model; or use the Claude Code signed in on this computer, with no endpoint.',
       'The wizard\'s last step creates the first bot: its name, duties and boundaries come filled in for a general assistant, to create as is or make your own, and its direct chat opens.',
       'Ask it to create other bots, form groups or propose MCP configuration; approve dangerous actions in the app.'
     ],

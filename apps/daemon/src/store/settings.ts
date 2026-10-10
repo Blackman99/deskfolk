@@ -106,8 +106,37 @@ export function settingsCached(ctx: StoreContext): Settings {
     launch_at_login,
     locale,
     theme,
-    wizard_complete: Boolean(workspace_path && providers.some((provider) => provider.base_url && (provider.key_set || isLocalEndpoint(provider.base_url)))),
+    wizard_complete: Boolean(
+      workspace_path &&
+        (hasUsableEndpoint(providers) || setUpOnClaudeCode(builtin_models)),
+    ),
   };
+}
+
+/**
+ * Set up on Claude Code alone (ADR 0078): every built-in call that can run on a Claude model is on
+ * one, so the app has a model for each call it makes without an endpoint. Compaction is left out:
+ * it only runs in an endpoint Bot's turn, and Claude Code compacts its own.
+ */
+export function setUpOnClaudeCode(models: BuiltinModels): boolean {
+  return BUILTIN_MODEL_ROLES.every((role) => role === "compaction" || isReaderClaudeModel(models[role]));
+}
+
+/** An endpoint a turn can be sent to: an address, and a key unless it is on this computer or network. */
+function hasUsableEndpoint(providers: ReturnType<typeof providersCached>): boolean {
+  return providers.some((provider) => provider.base_url && (provider.key_set || isLocalEndpoint(provider.base_url)));
+}
+
+/**
+ * Set up on Claude Code alone, with no endpoint to run a Bot on (ADR 0078): the Claude account the
+ * app's own calls use, which a new Bot made without saying what runs it is put on. Null while there
+ * is an endpoint, or the app is not set up on Claude Code.
+ */
+export function claudeOnlyAccount(ctx: StoreContext): { configDir: string | null } | null {
+  const settings = settingsCached(ctx);
+  if (hasUsableEndpoint(providersCached(ctx)) || !settings.builtin_models || !setUpOnClaudeCode(settings.builtin_models)) return null;
+  const reader = settings.builtin_models.reader;
+  return { configDir: isReaderClaudeModel(reader) ? reader.config_dir : null };
 }
 
 /**

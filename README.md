@@ -80,7 +80,7 @@ pnpm dev
 
 For long jobs on a source build (a multi-shot video, say), run `pnpm dev:steady` instead of `pnpm dev`: the daemon does not restart when the code changes or you `git pull`, so turns in progress are not interrupted.
 
-First run: the setup wizard walks you through picking a workspace folder, adding an endpoint and key, and creating the first Bot; then let it hire the rest. Anthropic, Xiaomi MiMo and Qwen (Alibaba Cloud Model Studio) are built in: pick one and paste a key, and the app finds which of the vendor's plans it belongs to. A personal Anthropic key not scoped to a workspace also needs the workspace ID (`wrkspc_…`, from Console → Settings → Workspaces); see [ADR 0072](docs/adr/0072-built-in-connectors.md).
+First run: the setup wizard walks you through picking a workspace folder, connecting a model, and creating the first Bot; then let it hire the rest. A model is either an endpoint and key (a preset or an address of your own) or the Claude Code already installed and signed in on this computer: with that, no endpoint is needed, the first Bot is a Claude Agent and the app's own calls run on a Claude model ([ADR 0078](docs/adr/0078-setup-on-claude-code.md)). Anthropic, Xiaomi MiMo and Qwen (Alibaba Cloud Model Studio) are built in: pick one and paste a key, and the app finds which of the vendor's plans it belongs to. A personal Anthropic key not scoped to a workspace also needs the workspace ID (`wrkspc_…`, from Console → Settings → Workspaces); see [ADR 0072](docs/adr/0072-built-in-connectors.md).
 
 ### Local models
 
