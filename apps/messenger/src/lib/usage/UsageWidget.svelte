@@ -27,12 +27,12 @@
 	let { runtime, t }: Props = $props();
 
 	/** The ball's box and each agent's slot in the column. */
-	const SLOT = 36;
+	const SLOT = 46;
 	const DRAG_PX = 4;
 	const MARGIN = 8;
 	/** Moving between the column and a card crosses a gap: this long before it all folds away. */
 	const LEAVE_MS = 320;
-	const CARD_W = 300;
+	const CARD_W = 340;
 
 	const feed = $derived(usageFeedOf(runtime));
 	const client = $derived(runtime.connection === 'connected' ? runtime.client : null);
@@ -73,7 +73,6 @@
 	/** The agent pointed at or picked, and where its bubble is, for the card to grow out of. */
 	let active = $state<string | null>(null);
 	let pinnedAgent = $state<string | null>(null);
-	let anchor = $state<DOMRect | null>(null);
 	let menuAt = $state<{ x: number; y: number } | null>(null);
 
 	let press: { id: number; x: number; y: number; dx: number; dy: number; moved: boolean } | null = null;
@@ -111,14 +110,13 @@
 		}, LEAVE_MS);
 	}
 
-	function pointAt(agent: UsageAgent, event: Event): void {
+	function pointAt(agent: UsageAgent): void {
 		if (pinnedAgent && pinnedAgent !== key(agent)) pinnedAgent = null;
 		active = key(agent);
-		anchor = (event.currentTarget as HTMLElement).getBoundingClientRect();
 	}
 
-	function pick(agent: UsageAgent, event: Event): void {
-		pointAt(agent, event);
+	function pick(agent: UsageAgent): void {
+		pointAt(agent);
 		pinnedAgent = pinnedAgent === key(agent) && usageWidget.open ? null : key(agent);
 		usageWidget.open = true;
 	}
@@ -233,12 +231,18 @@
 	$effect(() => {
 		if (!usageWidget.open || pinnedAgent || active || agents.length === 0 || !wrapEl) return;
 		const first = agents[0]!;
-		requestAnimationFrame(() => {
-			const bubble = wrapEl?.querySelector<HTMLElement>(`[data-usage-bubble="${key(first)}"]`);
-			if (!bubble || !usageWidget.open) return;
-			anchor = bubble.getBoundingClientRect();
-			pinnedAgent = key(first);
-		});
+		pinnedAgent = key(first);
+	});
+
+	/**
+	 * Where the shown agent's bubble stands once the column is open: worked out from where the ball
+	 * rests, not measured, since the ball may still be sliding out of its tuck.
+	 */
+	const anchor = $derived.by(() => {
+		const index = shownAgent ? agents.findIndex((agent) => key(agent) === key(shownAgent!)) : -1;
+		if (index < 0) return null;
+		const y = upward ? top - (index + 1) * SLOT : top + (index + 1) * SLOT;
+		return { left, right: left + SLOT, top: y, height: SLOT };
 	});
 
 	/** Where the card stands: beside its agent's bubble, toward the middle, kept on screen. */
@@ -342,7 +346,7 @@
 				onclick={onBallClick}
 				oncontextmenu={onContextMenu}
 			>
-				<svg class="usage-ball-ring is-{usageLevel(worst)}" width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+				<svg class="usage-ball-ring is-{usageLevel(worst)}" width="36" height="36" viewBox="0 0 28 28" aria-hidden="true">
 					<circle cx="14" cy="14" r="12" fill="none" stroke="var(--line)" stroke-width="2.5" />
 					{#if anyWindow}
 						<circle cx="14" cy="14" r="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset={100 - usageLeft(worst)} transform="rotate(-90 14 14)" />
@@ -362,11 +366,11 @@
 							data-usage-bubble={key(agent)}
 							aria-label={`${agent.runner === 'claude_code' ? 'Claude' : agent.label}${tightest ? ` ${t.usage.left(usageLeftText(tightest.percent))}` : ''}`}
 							tabindex={expanded ? 0 : -1}
-							onpointerenter={(event) => pointAt(agent, event)}
-							onfocus={(event) => pointAt(agent, event)}
-							onclick={(event) => pick(agent, event)}
+							onpointerenter={() => pointAt(agent)}
+							onfocus={() => pointAt(agent)}
+							onclick={() => pick(agent)}
 						>
-							<svg class="usage-bubble-ring" width="32" height="32" viewBox="0 0 32 32" aria-hidden="true">
+							<svg class="usage-bubble-ring" width="40" height="40" viewBox="0 0 32 32" aria-hidden="true">
 								{#if tightest}
 									<circle cx="16" cy="16" r="14.5" fill="none" stroke="var(--line)" stroke-width="2" />
 									<circle cx="16" cy="16" r="14.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset={100 - usageLeft(tightest.percent)} transform="rotate(-90 16 16)" />
@@ -374,7 +378,7 @@
 									<circle cx="16" cy="16" r="14.5" fill="none" stroke="var(--line)" stroke-width="1.5" stroke-dasharray="3 3" />
 								{/if}
 							</svg>
-							<span class="usage-bubble-logo"><AgentLogo runner={agent.runner} size={16} /></span>
+							<span class="usage-bubble-logo"><AgentLogo runner={agent.runner} size={20} /></span>
 						</button>
 					</li>
 				{/each}
@@ -432,8 +436,8 @@
 	.usage-widget {
 		position: fixed;
 		z-index: 90;
-		width: 36px;
-		height: 36px;
+		width: 46px;
+		height: 46px;
 		transition: transform 0.2s ease;
 		touch-action: none;
 	}
@@ -458,17 +462,17 @@
 		position: absolute;
 		left: 0;
 		top: 0;
-		width: 36px;
+		width: 46px;
 		height: var(--column-h);
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		border: 1px solid var(--line);
-		border-radius: 18px;
+		border-radius: 23px;
 		background: var(--pane);
 		box-shadow: var(--shadow-md);
 		box-sizing: border-box;
-		clip-path: inset(0 0 calc(var(--column-h) - 36px) 0 round 18px);
+		clip-path: inset(0 0 calc(var(--column-h) - 46px) 0 round 23px);
 		transition: clip-path 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
 	}
 
@@ -476,12 +480,12 @@
 		top: auto;
 		bottom: 0;
 		flex-direction: column-reverse;
-		clip-path: inset(calc(var(--column-h) - 36px) 0 0 0 round 18px);
+		clip-path: inset(calc(var(--column-h) - 46px) 0 0 0 round 23px);
 	}
 
 	.is-expanded .usage-shell,
 	.is-upward.is-expanded .usage-shell {
-		clip-path: inset(0 0 0 0 round 18px);
+		clip-path: inset(0 0 0 0 round 23px);
 	}
 
 	.usage-shell.is-warn {
@@ -496,8 +500,8 @@
 		flex: none;
 		display: grid;
 		place-items: center;
-		width: 34px;
-		height: 34px;
+		width: 44px;
+		height: 44px;
 		padding: 0;
 		border: 0;
 		border-radius: 50%;
@@ -539,8 +543,8 @@
 	.usage-column li {
 		display: grid;
 		place-items: center;
-		width: 36px;
-		height: 36px;
+		width: 46px;
+		height: 46px;
 		opacity: 0;
 		transform: scale(0.6);
 		transition: opacity 0.12s ease, transform 0.12s ease;
@@ -556,8 +560,8 @@
 		position: relative;
 		display: grid;
 		place-items: center;
-		width: 32px;
-		height: 32px;
+		width: 40px;
+		height: 40px;
 		padding: 0;
 		border: 0;
 		border-radius: 50%;
@@ -605,6 +609,20 @@
 		display: flex;
 		flex-direction: column;
 		gap: 10px;
+	}
+
+	/* A little larger than the phone's page: read at a glance, over whatever is under it. */
+	.usage-card :global(.usage-agent-head),
+	.usage-card :global(.usage-account-head),
+	.usage-card :global(.usage-row),
+	.usage-card :global(.usage-note) {
+		font-size: 13px;
+	}
+
+	.usage-card :global(.usage-agent-today),
+	.usage-card :global(.usage-credits),
+	.usage-card :global(.usage-reset) {
+		font-size: 12px;
 	}
 
 	.usage-card-note,
