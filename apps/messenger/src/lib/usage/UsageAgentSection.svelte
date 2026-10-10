@@ -25,16 +25,18 @@
 		t: Copy;
 		locale: string;
 		now: number;
+		/** The agent's mark beside its name: larger in the widget's card. */
+		logoSize?: number;
 	}
 
-	let { agent, t, locale, now }: Props = $props();
+	let { agent, t, locale, now, logoSize = 14 }: Props = $props();
 
 	const today = $derived(t.usage.today(String(agent.today.turns), usageTokenText(agent.today.tokens)));
 </script>
 
 <section class="usage-agent" data-usage-agent={agent.runner}>
 	<h3 class="usage-agent-head">
-		<AgentLogo runner={agent.runner} size={14} />
+		<AgentLogo runner={agent.runner} size={logoSize} />
 		<span class="usage-agent-name">{agent.runner === 'claude_code' ? 'Claude' : agent.label}</span>
 		<span class="usage-agent-today">{today}</span>
 	</h3>
