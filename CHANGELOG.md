@@ -9,7 +9,7 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 ### Roles: each built-in call's model and prompts on one map
 
 - Settings has a new Roles page, after Models ([ADR 0082](docs/adr/0082-roles-page.md)). A map draws every model call the app makes on its own where it runs: a line of yours is read first and wakes a Bot once read, the scribe writes it down beside that, compaction and the organizer run around the Bot's turn, the picture judge checks what is handed in; a group line naming nobody is judged first; a delivery you accept is looked back over, an approval you overturn is reflected on; ✨ asks the composer. Each node names its model (or what it follows) and marks edited, conflicting or unreadable prompts.
-- Picking a node shows what the call does, its model and the built-in prompts it runs with (reading's four, the picture judge's four), each opening in the same editor as before. On a phone the map runs top to bottom and a call opens as a page of its own.
+- The map runs down the left and the picked call sits on the right, each scrolling on its own: picking a node (or ↑ and ↓) only changes the right side, showing what the call does, its model and the built-in prompts it runs with (reading's four, the picture judge's four), each opening in the same editor as before. On a phone the map is a page of its own and a call opens as another.
 - Settings › Models no longer has a Built-in models section, and Prompts no longer lists the app's own calls; it points to Roles instead. A card's "View in Settings" about one of those prompts opens Roles at that call. The Roles number in the sidebar counts the calls you changed.
 
 ### The phone's empty Terminal lines its title up

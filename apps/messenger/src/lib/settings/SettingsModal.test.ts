@@ -147,7 +147,7 @@ test("before setup is done, its banner shows on Models too, inside the page unde
   // Roles shows it once too, over its map.
   click(host.querySelector<HTMLButtonElement>('[data-settings-tab="routing"]'));
   expect(host.querySelectorAll(".wizard-banner")).toHaveLength(1);
-  expect(host.querySelector(".routing-scroll > .wizard-banner")).toBeTruthy();
+  expect(host.querySelector(".routing-top > .wizard-banner")).toBeTruthy();
   // Prompts shows it once too, over its search and tabs.
   click(host.querySelector<HTMLButtonElement>('[data-settings-tab="prompts"]'));
   expect(host.querySelectorAll(".wizard-banner")).toHaveLength(1);
@@ -224,6 +224,15 @@ test("Roles sits after Models: a map of the app's own calls, each with its model
   expect([...host.querySelectorAll('[data-routing-detail="reader"] [data-prompt]')].map((el) => el.getAttribute("data-prompt"))).toEqual(["call.read_user_line", "call.read_bot_line"]);
   click(node(host, "organizer"));
   expect(host.querySelector('[data-routing-detail="organizer"] [data-side-model="organizer"]')).toBeTruthy();
+  // The call sits beside the map: the map and the call each scroll on their own, and ↓ walks on to the next call.
+  expect(host.querySelector(".routing-map-col [data-routing-map]")).toBeTruthy();
+  expect(host.querySelector(".routing-detail-col [data-routing-detail]")).toBeTruthy();
+  node(host, "organizer")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+  flushSync();
+  expect(node(host, "judge")?.getAttribute("aria-pressed")).toBe("true");
+  expect(host.querySelector('[data-routing-detail="judge"]')).toBeTruthy();
+  node(host, "judge")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
+  flushSync();
   expect(host.querySelector('[data-routing-detail="organizer"] [data-prompt="call.organizer"] .prompts-chip')).toBeTruthy();
   // The Bot's own turn is set elsewhere, and says where.
   click(node(host, "turn"));

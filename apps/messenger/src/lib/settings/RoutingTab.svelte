@@ -11,12 +11,13 @@
 	import type { ModelsSection } from './ModelsTab.svelte';
 	import { ModelLadder } from './model-ladder.svelte.ts';
 	import { firstLocale, type PromptView } from './prompts-view.ts';
-	import { askOnce, ROUTING_LANES, routingNodeView, type RoutingNodeId } from './routing-map.ts';
+	import { askOnce, ROUTING_LANES, routingNodes, routingNodeView, type RoutingNodeId } from './routing-map.ts';
 
 	/**
 	 * Settings › Roles (ADR 0082): the app's own calls on a map of where they run, and the one picked
-	 * with its model and its prompts under it. A phone shows the map alone and opens a call as a page
-	 * of its own; a prompt opens in the same editor as on Settings › Prompts.
+	 * with its model and its prompts beside it, each in a scroll of its own, so a pick changes what is
+	 * beside the map and moves nothing. A phone shows the map alone and opens a call as a page of its
+	 * own; a prompt opens in the same editor as on Settings › Prompts.
 	 */
 	interface Props {
 		runtime: MessengerRuntime;
@@ -72,18 +73,31 @@
 	const viewOf = (role: Exclude<RoutingNodeId, 'turn'>) => routingNodeView(role, snapshot.settings, items);
 	const nameOf = (node: RoutingNodeId) => (node === 'turn' ? c.turn.name : t.builtinModels.roles[node].name);
 
-	let detailEl = $state<HTMLElement>();
+	let detailScroll = $state<HTMLElement>();
+	let mapCol = $state<HTMLElement>();
+	const order = routingNodes(ROUTING_LANES);
 
-	async function pick(node: RoutingNodeId): Promise<void> {
+	function pick(node: RoutingNodeId): void {
 		selected = node;
 		if (!phone.current) {
-			// Under the map: brought into view, so a pick never seems to do nothing.
-			await tick();
-			detailEl?.scrollIntoView?.({ block: 'nearest' });
+			// Another call's page starts at its top; the map stays where it was. WebKit leaves focus
+			// where it was on a click, so the picked node takes it, for ↑ and ↓ to go on from there.
+			if (detailScroll) detailScroll.scrollTop = 0;
+			mapCol?.querySelector<HTMLElement>(`[data-routing-node="${node}"]`)?.focus({ preventScroll: true });
 			return;
 		}
 		opened = true;
 		if (scroller) scroller.scrollTop = 0;
+	}
+
+	/** On a wide window ↑ and ↓ walk the map's calls in its order, picking each as it goes. */
+	function onMapKeydown(event: KeyboardEvent): void {
+		if (phone.current || (event.key !== 'ArrowDown' && event.key !== 'ArrowUp')) return;
+		const at = order.indexOf(selected);
+		const next = order[Math.min(order.length - 1, Math.max(0, at + (event.key === 'ArrowDown' ? 1 : -1)))]!;
+		event.preventDefault();
+		pick(next);
+		mapCol?.querySelector<HTMLElement>(`[data-routing-node="${next}"]`)?.scrollIntoView({ block: 'nearest' });
 	}
 
 	/** The open call's name for the page head on a phone; null on the map, and on a wide window. */
@@ -195,22 +209,34 @@
 {/snippet}
 
 <div class="routing-tab">
-	<div class="routing-scroll" role="region" aria-label={c.tab} bind:this={scroller}>
-		{@render notices?.()}
-		{#if phone.current && opened}
-			<div class="routing-subpage">
-				{@render detail()}
-			</div>
-		{:else}
-			<p class="routing-intro">{c.intro}</p>
-			<RoutingMap lanes={ROUTING_LANES} {viewOf} {turnModel} selected={phone.current ? null : selected} vertical={phone.current} onpick={(node) => void pick(node)} {t} />
-			{#if !phone.current}
-				<div class="routing-detail-slot" bind:this={detailEl}>
+	{#if phone.current}
+		<div class="routing-scroll" role="region" aria-label={c.tab} bind:this={scroller}>
+			{@render notices?.()}
+			{#if opened}
+				<div class="routing-subpage">
 					{@render detail()}
 				</div>
+			{:else}
+				<p class="routing-intro">{c.intro}</p>
+				<RoutingMap lanes={ROUTING_LANES} {viewOf} {turnModel} selected={null} vertical onpick={pick} {t} />
 			{/if}
-		{/if}
-	</div>
+		</div>
+	{:else}
+		<div class="routing-top">
+			{@render notices?.()}
+			<p class="routing-intro">{c.intro}</p>
+		</div>
+		<div class="routing-split">
+			<!-- ↑ and ↓ from a focused node bubble up here; the nodes themselves are the buttons. -->
+			<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+			<div class="routing-map-col" role="region" aria-label={c.mapLabel} onkeydown={onMapKeydown} bind:this={mapCol}>
+				<RoutingMap lanes={ROUTING_LANES} {viewOf} {turnModel} {selected} vertical onpick={pick} {t} />
+			</div>
+			<div class="routing-detail-col" role="region" aria-label={nameOf(selected)} aria-live="polite" bind:this={detailScroll}>
+				{@render detail()}
+			</div>
+		</div>
+	{/if}
 </div>
 
 {#if open && openItem}
@@ -254,9 +280,37 @@
 		padding: 18px 24px 20px;
 	}
 
-	/* Clear of the scroll's bottom edge when brought into view. */
-	.routing-detail-slot {
-		scroll-margin-bottom: 20px;
+	.routing-top {
+		flex: none;
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		padding: 16px 24px 12px;
+	}
+
+	/* The map and the picked call side by side, each scrolling on its own under the intro. */
+	.routing-split {
+		flex: 1;
+		min-height: 0;
+		display: grid;
+		grid-template-columns: minmax(220px, 5fr) minmax(0, 7fr);
+		gap: 14px;
+		padding: 0 24px 20px;
+	}
+
+	.routing-map-col,
+	.routing-detail-col {
+		min-height: 0;
+		min-width: 0;
+		overflow-x: hidden;
+		overflow-y: auto;
+		overscroll-behavior: contain;
+	}
+
+	/* Room for the picked node's ring, which the scroll would otherwise clip. */
+	.routing-map-col {
+		padding: 2px;
+		margin: -2px;
 	}
 
 	.routing-intro {

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { MediaQuery } from 'svelte/reactivity';
 	import type { Locale, PromptSummary } from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import { failuresOf, promptChip } from './prompts-view.ts';
@@ -11,14 +12,17 @@
 		botNames: ReadonlyMap<string, string>;
 		t: Copy;
 		onopen: (item: PromptSummary, event: MouseEvent) => void;
+		/** Title over what it is, as on a phone: for a list in a narrow column. */
+		stacked?: boolean;
 	}
 
-	let { items: list, ui, botNames, t, onopen }: Props = $props();
+	let { items: list, ui, botNames, t, onopen, stacked = false }: Props = $props();
+	const phone = new MediaQuery('(max-width: 720px)');
 	const c = $derived(t.prompts);
 	const chipOf = (item: PromptSummary) => promptChip(item, botNames, c);
 </script>
 
-<ul class="prompts-list">
+<ul class="prompts-list" class:is-stacked={stacked || phone.current}>
 	{#each list as item (item.id)}
 		{@const chip = chipOf(item)}
 		{@const failures = failuresOf(item)}
@@ -157,36 +161,34 @@
 		outline-offset: -2px;
 	}
 
-	@media (max-width: 720px) {
-		/* A row is the title over one line of what it is; marks stay on the right. */
-		.prompts-list {
-			display: flex;
-			flex-direction: column;
-		}
+	/* Stacked (a phone, a narrow column): the title over one line of what it is; marks stay on the right. */
+	.prompts-list.is-stacked {
+		display: flex;
+		flex-direction: column;
+	}
 
-		.prompts-list > li {
-			display: block;
-		}
+	.prompts-list.is-stacked > li {
+		display: block;
+	}
 
-		.prompts-row {
-			width: 100%;
-			grid-template-columns: minmax(0, 1fr) auto;
-			grid-template-areas: 'title end' 'summary end';
-			row-gap: 2px;
-			column-gap: 10px;
-			padding: 10px 10px 10px 12px;
-		}
+	.is-stacked .prompts-row {
+		width: 100%;
+		grid-template-columns: minmax(0, 1fr) auto;
+		grid-template-areas: 'title end' 'summary end';
+		row-gap: 2px;
+		column-gap: 10px;
+		padding: 10px 10px 10px 12px;
+	}
 
-		.prompts-row-title {
-			grid-area: title;
-		}
+	.is-stacked .prompts-row-title {
+		grid-area: title;
+	}
 
-		.prompts-row-summary {
-			grid-area: summary;
-		}
+	.is-stacked .prompts-row-summary {
+		grid-area: summary;
+	}
 
-		.prompts-row-end {
-			grid-area: end;
-		}
+	.is-stacked .prompts-row-end {
+		grid-area: end;
 	}
 </style>

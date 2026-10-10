@@ -84,7 +84,7 @@
 	<div class="routing-detail-part" data-routing-part="prompts">
 		<h4 class="routing-part-title">{c.prompts}</h4>
 		{#if view.prompts.length > 0}
-			<PromptRowList items={view.prompts} {ui} {botNames} {t} onopen={onopenprompt} />
+			<PromptRowList items={view.prompts} {ui} {botNames} {t} onopen={onopenprompt} stacked />
 		{:else if promptsFailed}
 			<p class="field-error" role="alert">{c.promptsLoadFailed}</p>
 		{:else}
