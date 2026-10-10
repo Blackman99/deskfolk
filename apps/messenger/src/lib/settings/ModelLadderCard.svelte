@@ -241,6 +241,7 @@
 								<!-- An agent rung (ADR 0076, ADR 0079) is tuned as Agent settings tune a Bot: its effort where the agent takes one, and the account it spends. -->
 								<span class="ladder-name" title={named(rung)}><span class="ladder-model">{rung.model}</span></span>
 								<span class="ladder-source"><ModelSourceMark source={runnerSource(agent.runner, agentName(agent), t)} /></span>
+								<span class="ladder-provider">{agentName(agent)}</span>
 								{#if AGENT_KINDS[agent.runner].efforts.length > 0 || accountsShown(agent)}
 									<span class="ladder-tune" data-rung-agent={agent.runner} data-rung-claude={agent.runner === 'claude_code' ? '' : undefined}>
 										{#if AGENT_KINDS[agent.runner].efforts.length > 0}
@@ -473,15 +474,15 @@
 		color: var(--muted);
 	}
 
-	/* An agent rung's effort and account, where an endpoint rung names its endpoint. */
+	/* An agent rung's effort and account, on a line of their own under whose it is, as wide as the card. */
 	.ladder-tune {
-		grid-column: 2;
-		grid-row: 2;
+		grid-column: 1 / -1;
+		grid-row: 3;
 		display: flex;
 		flex-wrap: wrap;
 		gap: 4px 6px;
 		min-width: 0;
-		padding: 2px 0;
+		padding: 4px 0 2px;
 	}
 
 	/* Each picker as wide as what it says, not the row. */
@@ -562,6 +563,11 @@
 
 		.ladder-model {
 			font-size: 13px;
+		}
+
+		/* The pickers share their line, and one that wraps takes the whole of its own, rather than leaving a ragged edge. */
+		.ladder-tune > :global(.real-select) {
+			flex: 1 1 auto;
 		}
 
 		.ladder-button {

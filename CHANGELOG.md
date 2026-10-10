@@ -23,6 +23,7 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 - Built-in calls (reading lines, the organizer, judgements, …) and model ladder rungs may name any of these agents' models. Step 2 of the setup wizard, now "A local agent on this computer", lists every agent found and signed in beside Claude Code: pick one, then its model on step 3, and the app is set up on it with no endpoint, its first Bot and the new Bots after it running on that agent. Set up on an agent or on Claude Code with no endpoint, Settings › Models now shows Built-in models, to change each call's model; it used to appear only once an endpoint was added.
 - Your agents' own settings and credentials (`~/.codex`, `~/.grok`, `~/.claude`, OpenCode's folders, `~/.dsh`, `~/.gemini`) are now off limits to every Bot, Claude Agents included.
 - The model ladder's "Add a model" picker reads "Add a model" again after each pick; it used to show the raw choice it had just added.
+- An agent's rung on the model ladder reads like the others: its model, then its mark and the agent's name, then its effort and account pickers on a line of their own. On a phone they used to stack beside the mark, which sat alone halfway down the row.
 
 ### Each agent's logo, and a model picker for hundreds of models
 
