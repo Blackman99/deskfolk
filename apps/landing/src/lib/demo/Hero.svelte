@@ -14,8 +14,6 @@
    * plays; at a clip's end the next beat takes over, round and round.
    */
   const BEAT_CLIPS = ['04.mp4', '06.mp4', '09.mp4'];
-  /** The films are 1920×1080; the mascot one is drawn light, the tour per language. */
-  const FILM_GROUND: Record<Lang, string> = { zh: '#eef1f2', en: '#0f1416' };
 
   let beat = $state(0);
   let progress = $state(0);
@@ -26,7 +24,6 @@
   let visible = true;
   let stageEl: HTMLElement | undefined = $state();
   let film: VideoDialog | undefined = $state();
-  let tour: VideoDialog | undefined = $state();
   const videos: (HTMLVideoElement | undefined)[] = $state([]);
 
   const set = $derived(`${lang}-${dark ? 'dark' : 'light'}`);
@@ -150,7 +147,6 @@
       <p class="fine">
         <span>v{version}</span>
         <span>{t.home.note}</span>
-        <button type="button" class="text-link tour" onclick={() => tour?.open()}>{t.home.tour} {t.home.tourDuration}</button>
       </p>
     </div>
 
@@ -197,17 +193,6 @@
   closeLabel={t.home.close}
   ground="#eef1f2"
 />
-<VideoDialog
-  bind:this={tour}
-  src="{base}/media/deskfolk-promo-{lang}.mp4"
-  width={1920}
-  height={1080}
-  title={t.home.tourTitle}
-  badge={t.home.tourDuration}
-  closeLabel={t.home.close}
-  ground={FILM_GROUND[lang]}
-/>
-
 <style>
   .hero {
     min-height: calc(100svh - var(--nav-h));
@@ -350,20 +335,6 @@
     margin: 14px 0 0;
     font-size: 13px;
     color: var(--ink-3);
-  }
-
-  .tour {
-    all: unset;
-    cursor: pointer;
-    color: var(--teal);
-    text-decoration: underline;
-    text-decoration-color: var(--teal-line);
-    text-underline-offset: 3px;
-  }
-
-  .tour:focus-visible {
-    outline: 2px solid var(--teal);
-    outline-offset: 2px;
   }
 
   /* ── The stage: the app's own window ── */

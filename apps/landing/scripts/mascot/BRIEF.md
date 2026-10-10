@@ -44,4 +44,4 @@ apps/landing/scripts/mascot/build.sh en
   a poster (`.jpg`, 27.4 s) and a contact sheet. `SHIP=1 build.sh <lang>` also copies the film to
   `apps/landing/static/media/` (the README links to the site's copy) and, for zh, writes the README cover
   `docs/assets/mascots.jpg` with `cover.py` (the poster frame has no words, so both READMEs share it).
-- The README opens with this film since 2026-10-08; the 86 s tour (`deskfolk-promo-<lang>.mp4`) is linked under it.
+- The README opens with this film since 2026-10-08; since 2026-10-10 it is the only film the README and the site link.

@@ -3,7 +3,7 @@
     <img alt="Watch the Deskfolk film (0:30): the mascots Mochi (you) and Pudding (your Bot). Mochi hands Pudding a job; Pudding takes it from there and stops to ask before touching anything outside the workspace; you walk away and come back to work that is done, and checked." src="docs/assets/mascots.jpg">
   </a>
   <br>
-  <sub>Also in <a href="https://blackman99.github.io/deskfolk/media/deskfolk-mascots-zh.mp4">中文</a> · <a href="https://blackman99.github.io/deskfolk/media/deskfolk-promo-en.mp4">The full tour (1:26)</a></sub>
+  <sub>Also in <a href="https://blackman99.github.io/deskfolk/media/deskfolk-mascots-zh.mp4">中文</a></sub>
 </p>
 
 <h1 align="center">Deskfolk</h1>
@@ -36,11 +36,5 @@
     <td width="50%"><img alt="Come back to results: chat, flow board and the work, side by side" src="docs/assets/app-en-desk.jpg"><br><sub>Come back to results: chat, flow board and the work, side by side</sub></td>
   </tr>
 </table>
-
-<p align="center">
-  <a href="https://blackman99.github.io/deskfolk/media/deskfolk-promo-en.mp4"><img alt="Watch the full tour (1:26)" src="docs/assets/promo-en.jpg"></a>
-  <br>
-  <sub>The full tour (1:26)</sub>
-</p>
 
 <p align="center"><sub><a href="docs/overview.md">About and install</a> · <a href="ROADMAP.en.md">Roadmap</a> · <a href="docs/development.md">Development</a> · <a href="CONTRIBUTING.md">Contributing</a> · <a href="SECURITY.md">Security</a> · MIT</sub></p>

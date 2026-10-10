@@ -57,9 +57,6 @@ export type Dict = {
     filmTitle: string;
     filmDescription: string;
     note: string;
-    tour: string;
-    tourDuration: string;
-    tourTitle: string;
     close: string;
   };
   footer: {
@@ -213,9 +210,6 @@ const zh: Dict = {
     filmTitle: 'Deskfolk 短片',
     filmDescription: '吉祥物麻薯（你）把活交给布丁（你的 Bot）；布丁接着干，要动工作区以外的东西先停下来问你；你离开，回来时活做完了，也查过了。',
     note: 'macOS 已公证，Windows 预览版',
-    tour: '完整介绍',
-    tourDuration: '1:26',
-    tourTitle: 'Deskfolk 完整介绍',
     close: '关闭'
   },
   footer: {
@@ -424,9 +418,6 @@ const en: Dict = {
     filmTitle: 'The Deskfolk film',
     filmDescription: 'Mochi (you) hands Pudding (your Bot) a job; Pudding takes it from there and stops to ask before touching anything outside the workspace; you walk away and come back to work that is done, and checked.',
     note: 'macOS notarized, Windows preview',
-    tour: 'Full tour',
-    tourDuration: '1:26',
-    tourTitle: 'Deskfolk, the full tour',
     close: 'Close'
   },
   footer: {
