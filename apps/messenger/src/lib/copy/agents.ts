@@ -6,7 +6,7 @@ import type { CopyShape } from "./shape.ts";
  */
 export const zh = {
   help: (label: string) => `关于 ${label}`,
-  hint: (label: string) => `让 Bot 由你本机装好并登录的 ${label} 来跑：在 Bot 面板的「运行方式」里逐个开启。Deskfolk 只启动它、问它自己的状态，不经手它的登录和凭据。用量记在它登录的账号上；应用自己的判断（读句、分类、要不要接话）照旧用端点。`,
+  hint: (label: string) => `让 Bot 由你本机装好并登录的 ${label} 来跑：在 Bot 面板的「运行方式」里逐个开启。Deskfolk 只启动它、问它自己的状态，不经手它的登录和凭据。用量记在它登录的账号上；应用自己发起的调用（读句、整理、判断谁接话……）用哪个模型，在 设置 › 模型服务 › 内置模型 里选，它的模型也能选。`,
   path: "位置",
   version: "版本",
   signIn: "登录",
@@ -32,6 +32,28 @@ export const zh = {
   checking: "检测中…",
   pathPlaceholder: (command: string) => `${command} 的完整路径，留空则自动查找`,
   pathSave: "保存路径",
+  /** Behind a link until asked for: the path to point at, another account to add. */
+  editPath: "指定路径…",
+  addAccount: "添加账号…",
+  collapse: "收起",
+  /** Settings › Agents as a list: one line each, opened one at a time for the rest. */
+  list: {
+    intro: "Bot 可以交给这台电脑上装好并登录的 Agent 来跑。点开一个看详情、换路径或加账号。",
+    recheckAll: "全部重新检测",
+    state: { ready: "可用", signin: "要登录", missing: "没装", checking: "查询中" } as Record<"ready" | "signin" | "missing" | "checking", string>,
+    models: (count: number) => `${count} 个模型`,
+    bots: (count: number) => `${count} 个 Bot`,
+    notFound: (command: string) => `没找到 ${command}`,
+    signedOut: (command: string | null) => (command ? `没登录 · 运行 ${command}` : "没登录"),
+    signInLater: "登录在首轮时检查",
+    /** An agent signed in with several providers (OpenCode): the first, and how many in all. */
+    signedInMany: (first: string, count: number) => `${first} 等 ${count} 家`,
+    unreachable: "电脑上的 Deskfolk 较旧，查不到",
+    missingGroup: (count: number) => `没装的 ${count} 个`,
+    customRow: "你自己的 ACP Agent",
+    customSummary: (count: number) => (count > 0 ? `${count} 个 · 添加、改名或移除` : "添加任何讲 ACP 的命令"),
+    back: "全部 Agent",
+  },
   pathInvalid: "填完整路径（以 / 或 ~/ 开头）。",
   failed: "没查到，再试一次",
   /** The account list of an agent that has config directories, each a directory it signs in from. */
@@ -85,7 +107,7 @@ export const zh = {
 
 export const en: CopyShape<typeof zh> = {
   help: (label: string) => `About ${label}`,
-  hint: (label: string) => `Let a Bot be run by the ${label} you installed and signed in to on this computer: turn it on per Bot under "Runs on" in the Bot panel. Deskfolk only starts it and asks it about itself; it never handles its sign-in or credentials. Usage counts against the account it is signed in with; the app's own judgements (reading lines, filing, who joins in) still run on your endpoints.`,
+  hint: (label: string) => `Let a Bot be run by the ${label} you installed and signed in to on this computer: turn it on per Bot under "Runs on" in the Bot panel. Deskfolk only starts it and asks it about itself; it never handles its sign-in or credentials. Usage counts against the account it is signed in with; which model the app's own calls (reading lines, filing, who joins in…) run on is chosen in Settings › Models › Built-in models, its models included.`,
   path: "Location",
   version: "Version",
   signIn: "Sign-in",
@@ -111,6 +133,25 @@ export const en: CopyShape<typeof zh> = {
   checking: "Checking…",
   pathPlaceholder: (command: string) => `Full path to ${command}; leave empty to look for it`,
   pathSave: "Save path",
+  editPath: "Set the path…",
+  addAccount: "Add an account…",
+  collapse: "Hide",
+  list: {
+    intro: "Bots can be run by the agents installed and signed in on this computer. Open one for its details, its path or more accounts.",
+    recheckAll: "Check all again",
+    state: { ready: "Ready", signin: "Sign in", missing: "Not installed", checking: "Checking" },
+    models: (count: number) => `${count} ${count === 1 ? "model" : "models"}`,
+    bots: (count: number) => `${count} ${count === 1 ? "Bot" : "Bots"}`,
+    notFound: (command: string) => `${command} not found`,
+    signedOut: (command: string | null) => (command ? `Signed out · run ${command}` : "Signed out"),
+    signInLater: "Sign-in checked on the first turn",
+    signedInMany: (first: string, count: number) => `${first} and ${count - 1} more`,
+    unreachable: "The Deskfolk on the computer is older and cannot say",
+    missingGroup: (count: number) => `${count} not installed`,
+    customRow: "Your own ACP agents",
+    customSummary: (count: number) => (count > 0 ? `${count} · add, rename or remove` : "Add any command that speaks ACP"),
+    back: "All agents",
+  },
   pathInvalid: "Give the full path (starting with / or ~/).",
   failed: "Could not check; try again",
   accounts: {

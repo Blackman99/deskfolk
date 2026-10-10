@@ -298,11 +298,15 @@ test("Claude Agent has a category of its own, Agent, and is no longer under mode
   click(host.querySelector<HTMLButtonElement>('[data-settings-tab="agents"]'));
   await sleep(0);
   expect(host.querySelector(".settings-main-title")?.textContent).toContain(t.settings.tabAgents);
+  // A line that says how it is signed in; opened, its card with the account.
+  expect(host.querySelector('[data-agent-row="claude_code"] .agent-row-summary')?.textContent).toContain("you@example.com");
+  click(host.querySelector('[data-agent-row="claude_code"] .agent-row-head'));
+  await sleep(0);
   expect(host.querySelector("[data-claude-agent] [data-claude-account]")?.textContent).toContain("you@example.com");
   close();
 });
 
-test("the Agent tab asks for the other local agents once it opens: Claude's card first, a card for each of them, then your own ACP agents", async () => {
+test("the Agent tab asks for the other local agents once it opens: a line for Claude and each agent found, your own ACP agents, the rest folded", async () => {
   const claude = {
     path: "/Users/you/.local/bin/claude", source: "known", version: "2.1.289", sdk_version: "2.1.289", outdated: false,
     logged_in: true, auth_method: "claude.ai", subscription_type: "pro", email: "you@example.com", base_url_set: false,
@@ -325,9 +329,9 @@ test("the Agent tab asks for the other local agents once it opens: Claude's card
   click(host.querySelector<HTMLButtonElement>('[data-settings-tab="agents"]'));
   await sleep(0);
   expect(asked).toBe(1);
-  const cards = [...host.querySelectorAll("[data-claude-agent], [data-agent-card], [data-custom-agents]")].map((card) =>
-    card.hasAttribute("data-claude-agent") ? "claude" : (card.getAttribute("data-agent-card") ?? "custom-agents"));
-  expect(cards).toEqual(["claude", "codex", "grok", "custom-agents"]);
+  const rows = [...host.querySelectorAll<HTMLElement>(".agents-list:not(.is-missing) > [data-agent-row]")].map((row) => row.dataset.agentRow);
+  expect(rows).toEqual(["claude_code", "codex", "custom-agents"]);
+  expect(host.querySelector("[data-agents-missing-toggle]")?.textContent?.trim()).toBe(t.agents.list.missingGroup(1));
   close();
 });
 

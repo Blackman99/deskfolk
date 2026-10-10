@@ -21,9 +21,11 @@
 		t: Copy;
 		/** Told the daemon's new answer: the statuses and the list as it kept it. */
 		onChange?: (response: AgentsStatusResponse) => void;
+		/** Opened from Settings › Agents' list, whose row already names it: no heading or frame of its own. */
+		embedded?: boolean;
 	}
 
-	let { agents, api, t, onChange }: Props = $props();
+	let { agents, api, t, onChange, embedded = false }: Props = $props();
 
 	let busy = $state(false);
 	let failure = $state<AgentFailure | null>(null);
@@ -68,11 +70,15 @@
 	}
 </script>
 
-<section class="custom-card" aria-label={t.agents.custom.title} data-custom-agents>
-	<div class="custom-head">
-		<h3 class="custom-title">{t.agents.custom.title}<HelpTip text={t.agents.custom.hint} label={t.agents.custom.help} /></h3>
-	</div>
-	{#if agents.length === 0}
+<section class="custom-card" class:is-embedded={embedded} aria-label={t.agents.custom.title} data-custom-agents>
+	{#if embedded}
+		<p class="custom-note">{t.agents.custom.hint}</p>
+	{:else}
+		<div class="custom-head">
+			<h3 class="custom-title">{t.agents.custom.title}<HelpTip text={t.agents.custom.hint} label={t.agents.custom.help} /></h3>
+		</div>
+	{/if}
+	{#if agents.length === 0 && !embedded}
 		<p class="custom-note" data-custom-empty>{t.agents.custom.empty}</p>
 	{:else}
 		<ul class="custom-list">
@@ -154,6 +160,14 @@
 </section>
 
 <style>
+	/* In Settings › Agents' list: the row is its frame and its name. */
+	.custom-card.is-embedded {
+		padding: 0;
+		background: none;
+		border: 0;
+		box-shadow: none;
+	}
+
 	.custom-card {
 		display: flex;
 		flex-direction: column;

@@ -31,9 +31,11 @@
 		locale?: 'zh' | 'en';
 		/** Told each status read, so a host (the setup wizard) can wait for a signed-in Claude Code. */
 		onstatus?: (status: ClaudeCodeStatus) => void;
+		/** Opened from Settings › Agents' list, whose row already names it: no heading or frame of its own. */
+		embedded?: boolean;
 	}
 
-	let { api, t, locale = 'zh', onstatus }: Props = $props();
+	let { api, t, locale = 'zh', onstatus, embedded = false }: Props = $props();
 
 	let status = $state<ClaudeCodeStatus | null>(null);
 	let busy = $state(false);
@@ -42,6 +44,9 @@
 	let pathDraft = $state('');
 	let accountDraft = $state('');
 	let accountError = $state<'in_use' | 'invalid' | null>(null);
+	/** The path field and the account field wait behind a link: Claude Code is mostly found, on one account. */
+	let pathOpen = $state(false);
+	let accountOpen = $state(false);
 	let usage = $state<ClaudeUsage | null>(null);
 	let usageBusy = $state(false);
 	let now = $state(Date.now());
@@ -72,6 +77,7 @@
 		try {
 			status = await api.setClaudeCodeAccounts(configDirs);
 			accountDraft = '';
+			accountOpen = false;
 		} catch (error) {
 			const code = (error as { status?: number }).status;
 			if (code === 409) accountError = 'in_use';
@@ -122,10 +128,12 @@
 	const usageListed = $derived(status?.path ? [usageOf(null), ...listedDirs.map(usageOf)].filter((entry) => entry !== null) : []);
 </script>
 
-<section class="claude-card" aria-label={t.claudeAgent.title} data-claude-agent>
-	<div class="claude-head">
-		<h3 class="claude-title"><AgentLogo runner="claude_code" size={20} />{t.claudeAgent.title}<HelpTip text={t.claudeAgent.hint} label={t.claudeAgent.help} /></h3>
-	</div>
+<section class="claude-card" class:is-embedded={embedded} aria-label={t.claudeAgent.title} data-claude-agent>
+	{#if !embedded}
+		<div class="claude-head">
+			<h3 class="claude-title"><AgentLogo runner="claude_code" size={20} />{t.claudeAgent.title}<HelpTip text={t.claudeAgent.hint} label={t.claudeAgent.help} /></h3>
+		</div>
+	{/if}
 	{#if unavailable}
 		<p class="claude-note">{t.claudeAgent.unreachable}</p>
 	{:else}
@@ -194,7 +202,7 @@
 					{#if accountError}
 						<p class="claude-error" role="alert" data-claude-account-error={accountError}>{accountError === 'in_use' ? t.claudeAgent.accounts.inUse : t.claudeAgent.accounts.invalid}</p>
 					{/if}
-					{#if status.accounts && api?.setClaudeCodeAccounts}
+					{#if status.accounts && api?.setClaudeCodeAccounts && accountOpen}
 						<form class="claude-path" onsubmit={(event) => { event.preventDefault(); if (accountDraft.trim()) void saveAccounts([...listedDirs, accountDraft.trim()]); }}>
 							<input
 								type="text"
@@ -206,23 +214,38 @@
 								disabled={busy}
 							/>
 							<button type="submit" class="btn-xs" disabled={busy || !accountDraft.trim()}>{t.claudeAgent.accounts.add}</button>
+							<button type="button" class="btn-xs btn-quiet" onclick={() => { accountOpen = false; accountDraft = ''; accountError = null; }}>{t.agents.collapse}</button>
 						</form>
 					{/if}
 				</div>
 			{/if}
 		{/if}
-		<div class="claude-path">
-			<input
-				type="text"
-				bind:value={pathDraft}
-				placeholder={t.claudeAgent.pathPlaceholder}
-				aria-label={t.claudeAgent.pathPlaceholder}
-				spellcheck="false"
-				autocomplete="off"
-				disabled={busy}
-			/>
-			<button type="button" class="btn-xs" disabled={busy} onclick={() => void run((client) => client.setClaudeCodePath(pathDraft.trim() || null))}>{t.claudeAgent.pathSave}</button>
-			<button type="button" class="btn-xs" disabled={busy} onclick={() => void run((client) => client.detectClaudeCode())}>{busy ? t.claudeAgent.checking : t.claudeAgent.recheck}</button>
+		{#if pathOpen || (status && !status.path)}
+			<div class="claude-path">
+				<input
+					type="text"
+					bind:value={pathDraft}
+					placeholder={t.claudeAgent.pathPlaceholder}
+					aria-label={t.claudeAgent.pathPlaceholder}
+					spellcheck="false"
+					autocomplete="off"
+					disabled={busy}
+					data-claude-path-input
+				/>
+				<button type="button" class="btn-xs" disabled={busy} onclick={() => void run((client) => client.setClaudeCodePath(pathDraft.trim() || null))}>{t.claudeAgent.pathSave}</button>
+				{#if status?.path}
+					<button type="button" class="btn-xs btn-quiet" onclick={() => (pathOpen = false)}>{t.agents.collapse}</button>
+				{/if}
+			</div>
+		{/if}
+		<div class="claude-actions">
+			<button type="button" class="btn-xs" disabled={busy} onclick={() => void run((client) => client.detectClaudeCode())} data-claude-recheck>{busy ? t.claudeAgent.checking : t.claudeAgent.recheck}</button>
+			{#if status?.path && !pathOpen}
+				<button type="button" class="btn-link" onclick={() => (pathOpen = true)} data-claude-path-open>{t.agents.editPath}</button>
+			{/if}
+			{#if status?.path && status.accounts && api?.setClaudeCodeAccounts && !accountOpen}
+				<button type="button" class="btn-link" onclick={() => (accountOpen = true)} data-claude-account-open>{t.agents.addAccount}</button>
+			{/if}
 		</div>
 	{/if}
 </section>
@@ -241,6 +264,21 @@
 {/snippet}
 
 <style>
+	.claude-actions {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 12px;
+	}
+
+	/* In Settings › Agents' list: the row is its frame and its name. */
+	.claude-card.is-embedded {
+		padding: 0;
+		background: none;
+		border: 0;
+		box-shadow: none;
+	}
+
 	.claude-card {
 		display: flex;
 		flex-direction: column;

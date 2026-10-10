@@ -27,9 +27,11 @@
 		custom?: CustomAgent | null;
 		/** Told the daemon's new answer after a check, a path or an account list was set. */
 		onChange?: (status: AgentStatus) => void;
+		/** Opened from Settings › Agents' list, whose row already names it: no heading or frame of its own. */
+		embedded?: boolean;
 	}
 
-	let { status, api, t, custom = null, onChange }: Props = $props();
+	let { status, api, t, custom = null, onChange, embedded = false }: Props = $props();
 
 	let busy = $state(false);
 	let failed = $state(false);
@@ -37,6 +39,9 @@
 	let pathFailure = $state<AgentFailure | null>(null);
 	let accountDraft = $state('');
 	let accountFailure = $state<AgentFailure | null>(null);
+	/** The path field and the account field wait behind a link: most agents are found and have one account. */
+	let pathOpen = $state(false);
+	let accountOpen = $state(false);
 
 	const kind = $derived(AGENT_KINDS[status.runner]);
 	const isCustom = $derived(status.runner === 'custom');
@@ -86,6 +91,7 @@
 			async (client) => {
 				const next = await client.setAgentAccounts(status.runner, configDirs);
 				accountDraft = '';
+				accountOpen = false;
 				return next;
 			},
 			(error) => {
@@ -97,10 +103,12 @@
 	}
 </script>
 
-<section class="agent-card" aria-label={status.label} data-agent-card={status.runner} data-agent-custom-id={status.custom_id ?? undefined}>
-	<div class="agent-head">
-		<h3 class="agent-title"><AgentLogo runner={status.runner} size={20} /><span data-agent-label>{status.label}</span><HelpTip text={t.agents.hint(status.label)} label={t.agents.help(status.label)} /></h3>
-	</div>
+<section class="agent-card" class:is-embedded={embedded} aria-label={status.label} data-agent-card={status.runner} data-agent-custom-id={status.custom_id ?? undefined}>
+	{#if !embedded}
+		<div class="agent-head">
+			<h3 class="agent-title"><AgentLogo runner={status.runner} size={20} /><span data-agent-label>{status.label}</span><HelpTip text={t.agents.hint(status.label)} label={t.agents.help(status.label)} /></h3>
+		</div>
+	{/if}
 	{#if failed}
 		<p class="agent-error" role="alert" data-agent-failed>{t.agents.failed}</p>
 	{/if}
@@ -133,7 +141,7 @@
 	{#if status.runner === 'zcode'}
 		<p class="agent-note" data-agent-note="zcode">{t.agents.noteZcode}</p>
 	{/if}
-	{#if configDirVar && status.path}
+	{#if configDirVar && status.path && (listed.length > 0 || accountOpen)}
 		<div class="agent-accounts" data-agent-accounts>
 			<h4>{t.agents.accounts.heading}<HelpTip text={t.agents.accounts.hint(status.label, configDirVar)} label={t.agents.accounts.help} /></h4>
 			{#each listed as entry (entry.config_dir)}
@@ -148,15 +156,13 @@
 					{#if entry.error}<p class="agent-note">{entry.error}</p>{/if}
 				</section>
 			{/each}
-			{#if listed.length === 0}
-				<p class="agent-note">{t.agents.accounts.none}</p>
-			{/if}
 			{#if accountFailure}
 				<p class="agent-error" role="alert" data-agent-account-error={accountFailure.kind}>
 					{accountFailure.kind === 'in_use' ? t.agents.accounts.inUse : t.agents.accounts.invalid}
 					{#if accountFailure.detail}<span class="agent-error-detail">{accountFailure.detail}</span>{/if}
 				</p>
 			{/if}
+			{#if accountOpen}
 			<form class="agent-path" onsubmit={(event) => { event.preventDefault(); if (accountDraft.trim()) void saveAccounts([...listedDirs, accountDraft.trim()]); }}>
 				<input
 					type="text"
@@ -168,7 +174,9 @@
 					disabled={busy}
 				/>
 				<button type="submit" class="btn-xs" disabled={busy || !accountDraft.trim()}>{t.agents.accounts.add}</button>
+				<button type="button" class="btn-xs btn-quiet" onclick={() => { accountOpen = false; accountDraft = ''; accountFailure = null; }}>{t.agents.collapse}</button>
 			</form>
+			{/if}
 		</div>
 	{/if}
 	{#if pathFailure}
@@ -177,8 +185,8 @@
 			{#if pathFailure.detail}<span class="agent-error-detail">{pathFailure.detail}</span>{/if}
 		</p>
 	{/if}
-	<div class="agent-path">
-		{#if !isCustom}
+	{#if !isCustom && (pathOpen || !status.path)}
+		<div class="agent-path">
 			<input
 				type="text"
 				bind:value={pathDraft}
@@ -190,8 +198,19 @@
 				data-agent-path-input
 			/>
 			<button type="button" class="btn-xs" disabled={busy} onclick={() => void savePath()} data-agent-path-save>{t.agents.pathSave}</button>
-		{/if}
+			{#if status.path}
+				<button type="button" class="btn-xs btn-quiet" onclick={() => { pathOpen = false; pathFailure = null; }}>{t.agents.collapse}</button>
+			{/if}
+		</div>
+	{/if}
+	<div class="agent-actions">
 		<button type="button" class="btn-xs" disabled={busy} onclick={() => void detect()} data-agent-recheck>{busy ? t.agents.checking : t.agents.recheck}</button>
+		{#if !isCustom && status.path && !pathOpen}
+			<button type="button" class="btn-link" onclick={() => (pathOpen = true)} data-agent-path-open>{t.agents.editPath}</button>
+		{/if}
+		{#if configDirVar && status.path && !accountOpen}
+			<button type="button" class="btn-link" onclick={() => (accountOpen = true)} data-agent-account-open>{t.agents.addAccount}</button>
+		{/if}
 	</div>
 </section>
 
@@ -338,11 +357,24 @@
 		color: var(--muted);
 	}
 
-	.agent-path {
+	.agent-path,
+	.agent-actions {
 		display: flex;
 		flex-wrap: wrap;
 		gap: 8px;
 		align-items: center;
+	}
+
+	.agent-actions {
+		gap: 12px;
+	}
+
+	/* In Settings › Agents' list: the row is its frame and its name. */
+	.agent-card.is-embedded {
+		padding: 0;
+		background: none;
+		border: 0;
+		box-shadow: none;
 	}
 
 	.agent-path input {

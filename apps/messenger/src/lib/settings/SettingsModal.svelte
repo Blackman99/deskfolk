@@ -5,8 +5,7 @@
 	import LessonsSettings from './LessonsSettings.svelte';
 	import PromptsSettings from './PromptsSettings.svelte';
 	import { editedCount } from './prompts-view.ts';
-	import ClaudeAgentCard from './ClaudeAgentCard.svelte';
-	import OtherAgents from './OtherAgents.svelte';
+	import AgentsTab from './AgentsTab.svelte';
 	import { type Lesson, type PromptSummary } from '@real-bot/protocol';
 	import { backdropClick } from '../click-outside.ts';
 	import type ProviderForm from './ProviderForm.svelte';
@@ -125,6 +124,7 @@
 
 	let mcpSettings = $state<McpSettings>();
 	let modelsTab = $state<ModelsTab>();
+	let agentsTab = $state<AgentsTab>();
 
 	// Lessons the app learned (ADR 0050, engine level 8): the tab is there once there is one.
 	let lessons = $state<Lesson[]>([]);
@@ -188,6 +188,7 @@
 		if (mcpSettings?.backFromEditor()) return true;
 		if (promptsSettings?.backFromEditor()) return true;
 		if (activeSettingsTab === 'models' && modelsTab?.backFromSection()) return true;
+		if (activeSettingsTab === 'agents' && agentsTab?.backFromSection()) return true;
 		if (activeSettingsTab === 'prompts' && promptsSettings?.backFromSection()) return true;
 		if (!mobileSettingsDetail) return false;
 		mobileSettingsDetail = false;
@@ -233,13 +234,15 @@
 							? t.settings.tabRemote
 							: t.settings.tabAbout;
 	}
-	/** On a phone, a section of Models or a group of Prompts opened from its list names the page. */
+	/** On a phone, a section of Models, an agent or a group of Prompts opened from its list names the page. */
 	const mainTitle = $derived(
 		(activeSettingsTab === 'models'
 			? modelsTab?.sectionTitle()
-			: activeSettingsTab === 'prompts'
-				? promptsSettings?.sectionTitle()
-				: null) ?? settingsTabLabel(activeSettingsTab)
+			: activeSettingsTab === 'agents'
+				? agentsTab?.sectionTitle()
+				: activeSettingsTab === 'prompts'
+					? promptsSettings?.sectionTitle()
+					: null) ?? settingsTabLabel(activeSettingsTab)
 	);
 	const independentRuntime = new IndependentRuntimeController({
 		runtime: () => runtime,
@@ -481,10 +484,9 @@
 						{/snippet}
 					</ModelsTab>
 				{:else if activeSettingsTab === 'agents'}
-					<!-- Agents that run a Bot's turns themselves (ADR 0061, ADR 0079): your own Claude Code, then Codex, Grok, OpenCode, DSH, Antigravity, ZCode and your own ACP agents. -->
+					<!-- Agents that run a Bot's turns themselves (ADR 0061, ADR 0079): one line each, opened one at a time. -->
 					<div class="settings-tab-pane">
-						<ClaudeAgentCard api={runtime.client} {t} {locale} />
-						<OtherAgents api={runtime.client} {t} />
+						<AgentsTab bind:this={agentsTab} api={runtime.client} {t} {locale} bots={snapshot.bots} />
 					</div>
 				{:else if activeSettingsTab === 'mcp'}
 					<McpSettings bind:this={mcpSettings} {runtime} {t} {closeSettings} />

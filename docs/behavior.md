@@ -523,7 +523,7 @@ Bot 在哪读到它：每一轮的局面里都有「用户要求」一段，列�
 
 **开启**：Bot 面板「运行方式」里除了 Deskfolk 和 Claude Agent，还能选 Codex、Grok、OpenCode、DSH、ZCode、Antigravity，以及你在设置里加的 ACP Agent（按你起的名字）；新建 Bot 时也能选，只有你能改。选好后在面板里填模型（按那个 Agent 自己的写法，比如 `gpt-5.6-luna`、`grok-4.7`、`nvidia/z-ai/glm-5.3`；空着用它的默认，列得出模型的会给建议）、思考强度（只列它认的档，OpenCode 没有档）和账号（Codex、DSH 能列几个账号）。没装或没登录的灰着并写明原因。端点上钉的模型不动，应用自己关于这个 Bot 的判断仍跑在端点上（没有端点、只用 Agent 设置时跑在你选的那个 Agent 上）。
 
-**设置 › Agent**：Claude Agent 那张卡下面，每个 Agent 一张卡：找到的位置（和找 Claude Code 一样：设置里填的路径、PATH、常见安装位置——包括 nvm 装的 npm 全局包——再问你的登录 shell）、版本、登录状态（Codex 写套餐，Grok 写用什么登录，OpenCode 列它有凭据的服务商；DSH、ZCode 要到第一轮才知道）、它列出的模型数、网络（代理照 Claude 的规则）；没登录时给出在终端里要运行的命令。最下面一张「自定义 ACP Agent」：填名字、完整命令路径和参数，任何讲 Agent Client Protocol 的程序都能加（比如 `gemini --acp` 配 API key）；有 Bot、阶梯或内置调用在用的删不掉。手机上一样能看能改。
+**设置 › Agent**：每个 Agent 一行，先看全貌：它的标、能不能用（可用 / 要登录 / 没装）、一句摘要（登录的账号或套餐、列出几个模型；OpenCode 这种连了好几家的写「OpenCode Go 等 7 家」）、有几个 Bot 在用它；能用的在前、要登录的随后，没装的收在最下面「没装的 N 个」里，右上角「全部重新检测」。点开一行才看详情：宽窗口在原地展开，一次只开一个；手机上进到它自己的一页，返回键回列表。详情里是找到的位置（和找 Claude Code 一样：设置里填的路径、PATH、常见安装位置——包括 nvm 装的 npm 全局包——再问你的登录 shell）、版本、登录状态（Codex 写套餐，Grok 写用什么登录，OpenCode 列它有凭据的服务商；DSH、ZCode 要到第一轮才知道）、它列出的模型数、网络（代理照 Claude 的规则）；没登录时给出在终端里要运行的命令；「指定路径…」「添加账号…」点了才出输入框（没找到时直接给路径输入）。最后一行「你自己的 ACP Agent」，点开：填名字、完整命令路径和参数，任何讲 Agent Client Protocol 的程序都能加（比如 `gemini --acp` 配 API key）；有 Bot、阶梯或内置调用在用的删不掉。手机上一样能看能改。
 
 **一轮怎么跑**：和 Claude Agent 一样，一轮一个新会话，当前目录是本轮工作目录，第一条消息是局面块和转录窗口；应用的人设、技能、系统指令和记忆放在 Codex 的开发者指令里，ACP Agent 和 Antigravity 放在第一条消息开头（它们没有单独的系统提示）。你在这些 Agent 里自己配的东西尽量不进 Bot 的这一轮：Codex 的 hooks、记忆、插件、apps、AGENTS.md 和你的 MCP 服务器在这一轮里都关掉，Grok 不连共享的 leader 进程，OpenCode 用它自己起的私有服务；这些都只在启动时传，不改你的配置文件。
 

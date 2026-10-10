@@ -312,6 +312,57 @@ const settingsTab = (tab: string) => (host: HTMLElement) => {
 	host.querySelector<HTMLButtonElement>(`[data-settings-tab="${tab}"]`)?.click();
 };
 
+/** Your local agents as the daemon would list them (ADR 0079): ready, signed out, not installed, one of your own. */
+function agentsStoryList() {
+	const agent = (runner: string, label: string, over: Record<string, unknown> = {}) => ({
+		runner, custom_id: null, label, path: `/usr/local/bin/${runner}`, source: 'path', version: '1.0.0', logged_in: true, auth: null, login_command: null,
+		models: [], default_model: null, proxy: null, proxy_source: null, checked_at: '2026-10-10T00:00:00.000Z', error: null, accounts: [], ...over
+	});
+	const models = (ids: string[]) => ids.map((id) => ({ id, name: id, efforts: [] }));
+	return {
+		items: [
+			agent('codex', 'Codex', { version: 'codex-cli 0.153.4', auth: 'ChatGPT Plus', login_command: 'codex login', models: models(['gpt-5.6-terra', 'gpt-5.6-luna']), default_model: 'gpt-5.6-terra' }),
+			agent('grok', 'Grok', { logged_in: false, login_command: 'grok login' }),
+			agent('opencode', 'OpenCode', { auth: 'OpenCode Go, Alibaba, DeepSeek, Nvidia, OpenAI', models: models([...Array(12)].map((_, i) => `nvidia/model-${i}`)) }),
+			agent('dsh', 'DSH', { logged_in: null }),
+			agent('zcode', 'ZCode', { path: null, source: null, version: null, logged_in: null }),
+			agent('custom', 'my-agent', { custom_id: 'ca-1', path: '/usr/local/bin/my-agent', source: 'custom', logged_in: null })
+		],
+		custom_agents: [{ id: 'ca-1', name: 'my-agent', command: '/usr/local/bin/my-agent', args: ['acp'] }]
+	};
+}
+
+function agentsStoryProps() {
+	const list = agentsStoryList();
+	const status = list.items[0];
+	return settingsProps({
+		runtime: fakeRuntime({ ...world, bots: [...bots, aBot({ id: 'bot-codex', name: 'Coder', runner: 'codex' })] }, {
+			settingsOpen: true,
+			// The dialog lists lessons from any client it has; this one has none.
+			client: {
+				listLessons: async () => [],
+				listPrompts: async () => [],
+				claudeCode: async () => claudeStatus,
+				detectClaudeCode: async () => claudeStatus,
+				setClaudeCodePath: async () => claudeStatus,
+				agents: async () => list,
+				detectAgent: async () => status,
+				setAgentPath: async () => status,
+				setAgentAccounts: async () => status,
+				setCustomAgents: async () => list
+			}
+		})
+	});
+}
+
+/** The Agent tab once Claude and the other agents have answered; then one line opened, if named. */
+const agentsTab = (row?: string) => async (host: HTMLElement) => {
+	settingsTab('agents')(host);
+	for (let i = 0; i < 40 && !host.querySelector('[data-agent-row="codex"]'); i += 1) await new Promise((r) => setTimeout(r, 10));
+	if (row) host.querySelector<HTMLButtonElement>(`[data-agent-row="${row}"] .agent-row-head`)?.click();
+	flushSync();
+};
+
 /** Models once its ladder has been read and its sections are there; then one of them, if named. */
 const modelsSection = (section?: string) => async (host: HTMLElement) => {
 	settingsTab('models')(host);
@@ -1138,22 +1189,12 @@ const defs: Record<StoryName, Story> = {
 		props: settingsProps({ runtime: fakeRuntime(world, { settingsOpen: true, client: ladderClient }) }),
 		afterMount: modelsSection()
 	},
-	'settings-agents': {
-		component: SettingsModal as never,
-		props: settingsProps({
-			runtime: fakeRuntime(world, {
-				settingsOpen: true,
-				// The dialog lists lessons from any client it has; this one has none.
-				client: {
-					listLessons: async () => [],
-					claudeCode: async () => claudeStatus,
-					detectClaudeCode: async () => claudeStatus,
-					setClaudeCodePath: async () => claudeStatus
-				}
-			})
-		}),
-		afterMount: settingsTab('agents')
-	},
+	// Settings › Agents as a list: Claude and each agent found on a line, one to sign in, ZCode folded away.
+	'settings-agents': { component: SettingsModal as never, props: agentsStoryProps(), afterMount: agentsTab() },
+	// The same with Codex opened in place: its facts, and the links to its path and other accounts.
+	'settings-agents-open': { component: SettingsModal as never, props: agentsStoryProps(), afterMount: agentsTab('codex') },
+	// On a phone: the lines alone, each a page of its own.
+	'settings-agents-narrow': { component: SettingsModal as never, props: agentsStoryProps(), afterMount: agentsTab() },
 	'settings-mcp': { component: SettingsModal as never, props: settingsProps(), afterMount: settingsTab('mcp') },
 	// Prompts by group, on the app's own calls: each tab counts what is edited in it.
 	'settings-prompts': {

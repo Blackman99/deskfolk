@@ -108,6 +108,9 @@ test("signed in, signed out with the command to run in a terminal, or not known 
 test("a path you give is saved as typed, an empty one lets the daemon look again, and the answer goes to the host", async () => {
   const next = status({ path: "/opt/codex/bin/codex", source: "setting" });
   const view = open({ answer: async () => next });
+  // Found, it keeps its path field behind a link.
+  expect(view.host.querySelector("[data-agent-path-input]")).toBeNull();
+  click(view.host.querySelector("[data-agent-path-open]"));
   const input = view.host.querySelector<HTMLInputElement>("[data-agent-path-input]")!;
   expect(input.value).toBe("");
   fill(input, "  /opt/codex/bin/codex  ");
@@ -124,6 +127,7 @@ test("a path you give is saved as typed, an empty one lets the daemon look again
 
   // A path you set earlier fills the field.
   const set = open({ status: status({ source: "setting", path: "/opt/codex/bin/codex" }) });
+  click(set.host.querySelector("[data-agent-path-open]"));
   expect(set.host.querySelector<HTMLInputElement>("[data-agent-path-input]")?.value).toBe("/opt/codex/bin/codex");
   set.close();
 });
@@ -131,6 +135,7 @@ test("a path you give is saved as typed, an empty one lets the daemon look again
 test("a path the daemon refuses says so with its words under ours; a failed ask says to try again", async () => {
   let error: Error = new ApiError(422, "invalid_args", "path must be absolute");
   const view = open({ answer: async () => { throw error; } });
+  click(view.host.querySelector("[data-agent-path-open]"));
   fill(view.host.querySelector("[data-agent-path-input]"), "codex");
   click(view.host.querySelector("[data-agent-path-save]"));
   await sleep(0);
@@ -204,6 +209,9 @@ test("accounts are listed only for an agent that has config directories, added a
   expect(rows.map((row) => row.getAttribute("data-agent-account-dir"))).toEqual(["/Users/you/.codex-b", "/Users/you/.codex-c"]);
   expect(rows[0]!.textContent).toContain("已登录 · ChatGPT Team");
   expect(rows[1]!.textContent?.replace(/\s+/g, " ")).toContain("没登录，在终端运行 CODEX_HOME=/Users/you/.codex-c codex login");
+  // Another account's field waits behind a link.
+  expect(view.host.querySelector("[data-agent-accounts] input")).toBeNull();
+  click(view.host.querySelector("[data-agent-account-open]"));
   const input = view.host.querySelector<HTMLInputElement>("[data-agent-accounts] input")!;
   expect(input.getAttribute("placeholder")).toBe(t.agents.accounts.placeholder("~/.codex-b"));
 
@@ -211,7 +219,8 @@ test("accounts are listed only for an agent that has config directories, added a
   view.host.querySelector<HTMLFormElement>("[data-agent-accounts] form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
   await sleep(0);
   expect(view.calls[0]).toEqual({ name: "setAgentAccounts", args: ["codex", ["/Users/you/.codex-b", "/Users/you/.codex-c", "~/.codex-d"]] });
-  expect(input.value).toBe("");
+  // Added, the field folds away again.
+  expect(view.host.querySelector("[data-agent-accounts] input")).toBeNull();
   expect(view.changes).toHaveLength(1);
 
   refuse = true;
@@ -229,9 +238,13 @@ test("accounts are listed only for an agent that has config directories, added a
   for (const runner of ["grok", "opencode", "antigravity", "zcode"] as BotRunner[]) {
     const plain = open({ status: status({ runner, label: runner, accounts: [own] }) });
     expect(plain.host.querySelector("[data-agent-accounts]")).toBeNull();
+    expect(plain.host.querySelector("[data-agent-account-open]")).toBeNull();
     plain.close();
   }
   const dsh = open({ status: status({ runner: "dsh", label: "DSH", accounts: [own] }) });
+  // With no other account yet there is no list, only the link to add one.
+  expect(dsh.host.querySelector("[data-agent-accounts]")).toBeNull();
+  click(dsh.host.querySelector("[data-agent-account-open]"));
   expect(dsh.host.querySelector("[data-agent-accounts]")).not.toBeNull();
   expect(dsh.host.querySelector<HTMLInputElement>("[data-agent-accounts] input")?.getAttribute("placeholder")).toBe(t.agents.accounts.placeholder("~/.dsh-b"));
   dsh.close();
@@ -239,6 +252,7 @@ test("accounts are listed only for an agent that has config directories, added a
 
 test("a config directory the daemon refuses says why, with its words under ours", async () => {
   const view = open({ answer: async () => { throw new ApiError(422, "invalid_args", "~/ is your home folder or holds it: name the account's own directory"); } });
+  click(view.host.querySelector("[data-agent-account-open]"));
   fill(view.host.querySelector("[data-agent-accounts] input"), "~");
   view.host.querySelector<HTMLFormElement>("[data-agent-accounts] form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
   await sleep(0);

@@ -116,6 +116,9 @@ test("other accounts are listed with their sign-in, added and removed as a whole
   expect(rows[0]!.textContent).toContain("Claude Team 订阅 · team@example.com");
   expect(rows[1]!.textContent).toContain("CLAUDE_CONFIG_DIR=/Users/you/.claude-c claude auth login");
 
+  // Another account's field waits behind a link.
+  expect(view.host.querySelector("[data-claude-accounts] input")).toBeNull();
+  click(view.host.querySelector("[data-claude-account-open]"));
   const input = view.host.querySelector<HTMLInputElement>("[data-claude-accounts] input")!;
   input.value = "~/.claude-d";
   input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -123,7 +126,8 @@ test("other accounts are listed with their sign-in, added and removed as a whole
   view.host.querySelector<HTMLFormElement>("[data-claude-accounts] form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
   await sleep(0);
   expect(sent).toEqual([["/Users/you/.claude-b", "/Users/you/.claude-c", "~/.claude-d"]]);
-  expect(input.value).toBe("");
+  // Added, the field folds away again.
+  expect(view.host.querySelector("[data-claude-accounts] input")).toBeNull();
 
   refuse = true;
   click(view.host.querySelector<HTMLButtonElement>("[data-claude-account-dir] button")!);

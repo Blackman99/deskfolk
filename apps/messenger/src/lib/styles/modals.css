@@ -336,6 +336,35 @@
   color: var(--ink);
 }
 
+/* "Hide" beside a field opened from a link: as small as .btn-xs, without its frame. */
+.btn-xs.btn-quiet {
+  background: transparent;
+  border-color: transparent;
+}
+
+/* A step that opens more of a card ("Set the path…"): words in the interaction colour, no frame. */
+.btn-link {
+  padding: 3px 2px;
+  font: inherit;
+  font-size: 12px;
+  background: none;
+  border: 0;
+  color: var(--accent);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.btn-link:disabled {
+  color: var(--muted);
+  cursor: default;
+  text-decoration: none;
+}
+
 .modal-section label,
 .modal-section .field-head,
 .modal-section .field-label {

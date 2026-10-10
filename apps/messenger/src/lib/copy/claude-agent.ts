@@ -3,7 +3,7 @@ import type { CopyShape } from "./shape.ts";
 export const zh = {
   title: "Claude Agent",
   help: "关于 Claude Agent",
-  hint: "让 Bot 由你本机安装并登录的 Claude Code 来跑：在 Bot 面板的「运行方式」里逐个开启。Deskfolk 只启动它、问它自己的状态，不经手你的 Claude 登录和凭据。用量记在它登录的账号上；应用自己的判断（读句、分类、要不要接话）照旧用端点。",
+  hint: "让 Bot 由你本机安装并登录的 Claude Code 来跑：在 Bot 面板的「运行方式」里逐个开启。Deskfolk 只启动它、问它自己的状态，不经手你的 Claude 登录和凭据。用量记在它登录的账号上；应用自己发起的调用（读句、整理、判断谁接话……）用哪个模型，在 设置 › 模型服务 › 内置模型 里选，它的模型也能选。",
   path: "位置",
   version: "版本",
   network: "网络",
@@ -72,7 +72,7 @@ export const zh = {
 export const en: CopyShape<typeof zh> = {
   title: "Claude Agent",
   help: "About Claude Agent",
-  hint: "Let a Bot be run by the Claude Code you installed and signed in to on this computer: turn it on per Bot under \"Runs on\" in the Bot panel. Deskfolk only starts it and asks it about itself; it never handles your Claude sign-in or credentials. Usage counts against the account it is signed in with; the app's own judgements (reading lines, filing, who joins in) still run on your endpoints.",
+  hint: "Let a Bot be run by the Claude Code you installed and signed in to on this computer: turn it on per Bot under \"Runs on\" in the Bot panel. Deskfolk only starts it and asks it about itself; it never handles your Claude sign-in or credentials. Usage counts against the account it is signed in with; which model the app's own calls (reading lines, filing, who joins in…) run on is chosen in Settings › Models › Built-in models, its models included.",
   path: "Location",
   version: "Version",
   network: "Network",
