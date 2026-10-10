@@ -373,3 +373,48 @@ test("a click on the enlarged picture closes it", async () => {
     close();
   }
 });
+
+function touch(target: Element, type: string, id: number, x: number, y: number): void {
+  const event = new PointerEvent(type, { bubbles: true, pointerId: id, clientX: x, clientY: y });
+  // happy-dom drops these from the init dict.
+  Object.defineProperty(event, "pointerType", { value: "touch" });
+  Object.defineProperty(event, "pointerId", { value: id });
+  Object.defineProperty(event, "clientX", { value: x });
+  Object.defineProperty(event, "clientY", { value: y });
+  target.dispatchEvent(event);
+  flushSync();
+}
+
+/** On a phone two fingers zoom the picture; a tap goes back to the whole of it, the next closes. */
+test("a pinch zooms the enlargement and a tap brings it back before closing", async () => {
+  const { api } = fakeApi("local", async () => new Blob([new Uint8Array([1])], { type: "image/png" }));
+  let closed = 0;
+  const { host, close } = render(MessageImageLightbox, { attachment: picture, api: api as never, t, onClose: () => { closed += 1; } });
+  try {
+    await settle();
+    const frame = host.querySelector<HTMLElement>(".msg-image-frame")!;
+    expect(frame.style.transform).toBe("");
+    touch(frame, "pointerdown", 1, 400, 380);
+    touch(frame, "pointerdown", 2, 500, 380);
+    touch(frame, "pointermove", 1, 350, 380);
+    touch(frame, "pointermove", 2, 550, 380);
+    expect(frame.style.transform).toContain("scale(2)");
+    touch(frame, "pointerup", 1, 350, 380);
+    touch(frame, "pointerup", 2, 550, 380);
+    expect(frame.style.transform).toContain("scale(2)");
+    // The click the pinch ends with neither resets nor closes.
+    frame.click();
+    flushSync();
+    expect(frame.style.transform).toContain("scale(2)");
+    await new Promise((resolve) => setTimeout(resolve, 520));
+    frame.click();
+    flushSync();
+    expect(frame.style.transform).toBe("");
+    expect(closed).toBe(0);
+    frame.click();
+    flushSync();
+    expect(closed).toBe(1);
+  } finally {
+    close();
+  }
+});

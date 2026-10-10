@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. The project is curr
 
 ## Unreleased
 
+### Pinch to zoom an enlarged picture on the phone
+
+- A picture opened full screen on a phone now zooms with two fingers, around the point between them, and one finger drags it once it is larger than the screen. A tap goes back to the whole picture; at that size a tap closes it as before. The page itself never zooms.
+
 ### Roles: each built-in call's model and prompts on one map
 
 - Settings has a new Roles page, after Models ([ADR 0082](docs/adr/0082-roles-page.md)). A map draws every model call the app makes on its own where it runs: a line of yours is read first and wakes a Bot once read, the scribe writes it down beside that, compaction and the organizer run around the Bot's turn, the picture judge checks what is handed in; a group line naming nobody is judged first; a delivery you accept is looked back over, an approval you overturn is reflected on; ✨ asks the composer. Each node names its model (or what it follows) and marks edited, conflicting or unreadable prompts.

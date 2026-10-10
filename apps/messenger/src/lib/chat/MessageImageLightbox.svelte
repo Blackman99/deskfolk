@@ -7,6 +7,7 @@
 	import { fileProgressPercent, formatFileProgress, type FileLoadOptions, type FileProgress } from '../file-progress.ts';
 	import type { MessengerApi } from '../messenger-api.ts';
 	import { holdBack } from './enlarged-images.ts';
+	import { panBy, restView, settleView, viewTransform, zoomAround, zoomLimit, type PictureView, type Point } from './image-zoom.ts';
 	import { artifactKind, svgDisplayBlob } from '../overlays/artifacts.ts';
 	import { saveFile } from '../save-file.ts';
 
@@ -111,8 +112,25 @@
 		return settled;
 	});
 
+	/** Pinched on a phone (see image-zoom.ts). Null at rest. */
+	let zoom = $state<PictureView | null>(null);
+	/** Fingers on the picture: no easing while they move it. */
+	let pinching = $state(false);
+	const zoomed = $derived(zoom !== null && zoom.scale > 1);
+	const zoomStyle = $derived.by(() => {
+		if (!zoom || !settled || !grown || phase !== 'open' || !displayed) return '';
+		const transform = viewTransform(settled, settleView(stageRect(), settled, zoom));
+		return transform ? `transform:${transform};` : '';
+	});
+
 	function place(box: ImageOrigin): string {
 		return `top:${box.top}px;left:${box.left}px;width:${box.width}px;height:${box.height}px;`;
+	}
+
+	function stageRect(): ImageOrigin {
+		const bounds = root?.getBoundingClientRect();
+		if (bounds && bounds.width > 2) return { top: bounds.top, left: bounds.left, width: bounds.width, height: bounds.height };
+		return { top: 0, left: 0, width: window.innerWidth || 800, height: window.innerHeight || 600 };
 	}
 
 	/** A large centered box to hold the spinner until the picture's own size is known. */
@@ -386,6 +404,8 @@
 	function requestClose(): void {
 		if (closing) return;
 		closing = true;
+		// Back to the fitted box first: the frame shrinks into the thumbnail unscaled.
+		zoom = null;
 		if (instant || !origin || !grown) {
 			onClose();
 			return;
@@ -394,6 +414,75 @@
 		// write would otherwise remeasure the destination while the frame is already going back.
 		phase = 'back';
 		closeTimer = window.setTimeout(onClose, 360);
+	}
+
+	function onResize(): void {
+		zoom = null;
+		measure();
+	}
+
+	/** Touch points on the frame, by pointer id, in client pixels. */
+	const fingers = new Map<number, Point>();
+	let gesture: { from: PictureView; mid: Point; distance: number; at: Point } | null = null;
+	/** A pinch or a drag ends with a click the browser still sends: it neither closes nor resets. */
+	let swallowClickUntil = 0;
+	let travelled = 0;
+
+	function startGesture(): void {
+		const points = [...fingers.values()];
+		if (!settled || points.length === 0) {
+			gesture = null;
+			return;
+		}
+		const [a, b] = points;
+		const mid = b ? { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } : a;
+		// From what is on screen: a stored view can sit past an edge after the box moved.
+		const from = zoom ? settleView(stageRect(), settled, zoom) : restView(settled);
+		gesture = { from, mid, distance: b ? Math.hypot(a.x - b.x, a.y - b.y) : 0, at: mid };
+	}
+
+	function onFramePointerDown(ev: PointerEvent): void {
+		if (ev.pointerType !== 'touch' || phase !== 'open' || !grown || !displayed || !settled) return;
+		if (fingers.size === 0) travelled = 0;
+		fingers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+		if (fingers.size > 1) travelled = Infinity;
+		pinching = true;
+		startGesture();
+	}
+
+	function onFramePointerMove(ev: PointerEvent): void {
+		const was = fingers.get(ev.pointerId);
+		if (!was || !gesture || !settled) return;
+		fingers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+		const points = [...fingers.values()];
+		const stage = stageRect();
+		if (points.length >= 2) {
+			const [a, b] = points;
+			const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+			const distance = Math.hypot(a.x - b.x, a.y - b.y);
+			const scale = gesture.distance > 0 ? (gesture.from.scale * distance) / gesture.distance : gesture.from.scale;
+			const limit = zoomLimit(settled, frame?.naturalWidth ?? 0, window.devicePixelRatio);
+			const around = zoomAround(stage, settled, gesture.from, gesture.mid, scale, limit);
+			zoom = panBy(stage, settled, around, { x: mid.x - gesture.mid.x, y: mid.y - gesture.mid.y });
+			return;
+		}
+		travelled = Math.max(travelled, Math.hypot(ev.clientX - gesture.at.x, ev.clientY - gesture.at.y));
+		// One finger moves the picture only once it is larger than its box.
+		if (!zoomed) return;
+		zoom = panBy(stage, settled, gesture.from, { x: ev.clientX - gesture.at.x, y: ev.clientY - gesture.at.y });
+	}
+
+	function onFramePointerUp(ev: PointerEvent): void {
+		if (!fingers.delete(ev.pointerId)) return;
+		if (travelled > 8) swallowClickUntil = performance.now() + 500;
+		if (fingers.size > 0) {
+			startGesture();
+			return;
+		}
+		gesture = null;
+		pinching = false;
+		// Let go at about the fitted size: back to rest, not a hair larger.
+		if (zoom && zoom.scale < 1.05) zoom = null;
 	}
 
 	function onFrameEnd(ev: TransitionEvent): void {
@@ -414,11 +503,17 @@
 		if (!(target instanceof Element)) return;
 		// The picture closes it too, the way it was opened: only the buttons keep it up.
 		if (target.closest('.msg-image-close, .msg-image-save, .msg-image-original')) return;
+		if (performance.now() < swallowClickUntil) return;
+		// Zoomed in, a tap goes back to the whole picture; the next one closes.
+		if (zoomed) {
+			zoom = null;
+			return;
+		}
 		requestClose();
 	}
 </script>
 
-<svelte:window onkeydowncapture={onKeydown} onresize={measure} />
+<svelte:window onkeydowncapture={onKeydown} onresize={onResize} />
 
 {#snippet progressBar()}
 	<div
@@ -448,15 +543,22 @@
 	onclick={onBackdrop}
 >
 	<!-- The frame grows out of the clicked picture. The dialog role stays on the picture's box. -->
+	<!-- The pointer handlers are a phone's pinch; the keyboard closes the dialog with Escape. -->
+	<!-- svelte-ignore a11y_interactive_supports_focus -->
 	<div
 		class="msg-image-frame"
 		class:is-centered={!frameBox}
 		class:is-loading={loading && !displayed}
-		style={frameBox ? place(frameBox) : undefined}
+		class:is-pinching={pinching}
+		style={frameBox ? place(frameBox) + zoomStyle : undefined}
 		role="dialog"
 		aria-modal="true"
 		aria-label={name || path}
 		ontransitionend={onFrameEnd}
+		onpointerdown={onFramePointerDown}
+		onpointermove={onFramePointerMove}
+		onpointerup={onFramePointerUp}
+		onpointercancel={onFramePointerUp}
 	>
 		{#if displayed}
 			<img bind:this={frame} src={displayed} alt={name || path} class="msg-image-full" data-copy-image onload={measure} />
@@ -559,12 +661,20 @@
 		background: var(--pane);
 		/* Text and the bar appear once the box has grown past the thumbnail. */
 		container-type: size;
+		/* A pinch zooms the picture, not the page; one finger drags it once zoomed. */
+		touch-action: none;
+		transform-origin: 0 0;
 		transition:
 			top 220ms ease,
 			left 220ms ease,
 			width 220ms ease,
 			height 220ms ease,
-			border-radius 220ms ease;
+			border-radius 220ms ease,
+			transform 220ms ease;
+	}
+
+	.msg-image-frame.is-pinching {
+		transition: none;
 	}
 
 	.msg-image-lightbox.is-shown .msg-image-frame {
