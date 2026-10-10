@@ -1,6 +1,6 @@
 # 本机 Agent：Codex、Grok、OpenCode、DSH、ZCode、Antigravity 和你自己的 ACP Agent / Local agents: Codex, Grok, OpenCode, DSH, ZCode, Antigravity and ACP agents of your own
 
-Status: implemented 2026-10-10, at every engine level. Builds on [ADR 0061](0061-claude-agent-runner.md) (Claude Agent), [ADR 0076](0076-claude-models-on-the-model-ladder.md) (agent rungs on the ladder), [ADR 0077](0077-built-in-models.md) (built-in models) and [ADR 0078](0078-setup-on-claude-code.md) (setup without an endpoint). Where usage is shown (the sidebar meters, the menu bar lines, the settings card) is superseded by [ADR 0080](0080-one-usage-view.md).
+Status: implemented 2026-10-10, at every engine level. Builds on [ADR 0061](0061-claude-agent-runner.md) (Claude Agent), [ADR 0076](0076-claude-models-on-the-model-ladder.md) (agent rungs on the ladder), [ADR 0077](0077-built-in-models.md) (built-in models) and [ADR 0078](0078-setup-on-claude-code.md) (setup without an endpoint). Where usage is shown (the sidebar meters, the menu bar lines, the settings card) is superseded by [ADR 0080](0080-one-usage-view.md). Decision 10's "the others report none" no longer holds for Grok and Antigravity (ADR 0080 addendum).
 
 ## 背景 / Context
 

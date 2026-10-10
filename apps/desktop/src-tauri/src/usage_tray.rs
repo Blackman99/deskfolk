@@ -281,10 +281,34 @@ pub fn usage_entries(usage: &UsageResponse) -> Vec<Entry> {
                         .unwrap_or(f64::MAX)
                         .total_cmp(&b.minutes.unwrap_or(f64::MAX))
                 });
-                let summary: Vec<String> = shown
-                    .iter()
-                    .map(|w| format!("{} {}", window_span(w.minutes), left_text(w.percent)))
-                    .collect();
+                let summary: Vec<String> = if shown.is_empty() {
+                    // Only per-model windows (Antigravity's model groups): each group by its tightest.
+                    let mut groups: Vec<&str> = Vec::new();
+                    for w in &account.windows {
+                        if let Some(model) = w.model.as_deref() {
+                            if !groups.contains(&model) {
+                                groups.push(model);
+                            }
+                        }
+                    }
+                    groups
+                        .iter()
+                        .map(|model| {
+                            let used = account
+                                .windows
+                                .iter()
+                                .filter(|w| w.model.as_deref() == Some(*model))
+                                .map(|w| w.percent)
+                                .fold(f64::MIN, f64::max);
+                            format!("{model} {}", left_text(used))
+                        })
+                        .collect()
+                } else {
+                    shown
+                        .iter()
+                        .map(|w| format!("{} {}", window_span(w.minutes), left_text(w.percent)))
+                        .collect()
+                };
                 let text = if summary.is_empty() {
                     name
                 } else {
@@ -566,6 +590,19 @@ mod tests {
             r#"{{"agents":[{{"runner":"claude_code","label":"Claude Agent","accounts":[{accounts}]}}]}}"#
         ));
         assert_eq!(usage_entries(&only).len(), 5);
+    }
+
+    #[test]
+    fn model_groups_only_each_group_by_its_tightest() {
+        let answer = usage(
+            r#"{"agents":[{"runner":"antigravity","label":"Antigravity","accounts":[{"config_dir":null,"available":true,"windows":[
+              {"minutes":10080,"model":"Gemini Models","percent":2},{"minutes":300,"model":"Gemini Models","percent":3},
+              {"minutes":10080,"model":"Claude and GPT models","percent":13},{"minutes":300,"model":"Claude and GPT models","percent":0}]}]}]}"#,
+        );
+        assert_eq!(
+            texts(&usage_entries(&answer)),
+            vec!["[ring] Antigravity　Gemini Models 97% · Claude and GPT models 87%", "[all]"]
+        );
     }
 
     #[test]

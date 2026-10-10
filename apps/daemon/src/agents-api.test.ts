@@ -115,12 +115,13 @@ test("a phone reaches the same routes, and none of them takes a receipt", async 
   }
 });
 
-test("usage shows Codex's own windows, and only today's records for an agent with no plan to report", async () => {
+test("usage shows Codex's and Grok's own windows, and only today's records for an agent with no plan to report", async () => {
   const root = mkdtempSync(join(tmpdir(), "agent-usage-"));
   const store = new Store({ endpointKey: memoryKeyStore() });
   try {
     store.createBot({ name: "Codex Bot", duties: "x", boundaries: "y", runner: "codex" });
     store.createBot({ name: "Grok Bot", duties: "x", boundaries: "y", runner: "grok" });
+    store.createBot({ name: "Open Bot", duties: "x", boundaries: "y", runner: "opencode" });
     store.createBot({ name: "Plain", duties: "x", boundaries: "y" });
     // Built-in calls on the same Codex account count once, though settings keep an unset id as ''.
     const onCodex = { runner: "codex", model: "gpt-5.6", config_dir: null } as const;
@@ -128,15 +129,18 @@ test("usage shows Codex's own windows, and only today's records for an agent wit
     const probe = createAgentUsageProbe({
       store,
       askCodex: async () => ({ plan: "plus", windows: [{ minutes: 300, percent: 12, resets_at: "2026-10-10T15:00:00.000Z" }], credits: null }),
+      askGrok: async () => ({ plan: "SuperGrok Heavy", windows: [{ minutes: 10_080, percent: 41, resets_at: null }], credits: null }),
     });
     const usage = await probe.current() as AgentUsageResponse;
-    expect(usage.items.map((item) => item.runner).sort()).toEqual(["codex", "grok"]);
+    expect(usage.items.map((item) => item.runner).sort()).toEqual(["codex", "grok", "opencode"]);
     const codex = usage.items.find((item) => item.runner === "codex")!;
     // Found or not, the stand-in answers only once the command is found; a missing codex says so.
     if (codex.reason === "missing") expect(codex.available).toBe(false);
     else expect(codex).toMatchObject({ available: true, plan: "plus", windows: [{ minutes: 300, percent: 12 }] });
     const grok = usage.items.find((item) => item.runner === "grok")!;
-    expect(grok).toMatchObject({ available: false, reason: "no_plan", windows: [], today: { turns: 0, tokens: 0 } });
+    if (grok.reason !== "missing") expect(grok).toMatchObject({ available: true, plan: "SuperGrok Heavy", windows: [{ minutes: 10_080, percent: 41 }] });
+    const opencode = usage.items.find((item) => item.runner === "opencode")!;
+    expect(opencode).toMatchObject({ available: false, reason: "no_plan", windows: [], today: { turns: 0, tokens: 0 } });
   } finally {
     store.close();
     rmSync(root, { recursive: true, force: true });

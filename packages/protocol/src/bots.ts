@@ -39,7 +39,7 @@ export type AgentKindInfo = {
    * (as `CLAUDE_CONFIG_DIR` does for Claude Code); null when it has none the app knows of.
    */
   configDirVar: string | null;
-  /** Its plan reports usage windows the app can show (Claude's, Codex's); the others show spend only. */
+  /** Its plan reports usage windows the app can show (Claude's, Codex's, Grok's, Antigravity's); the others show spend only. */
   planUsage: boolean;
   /** The app's own tools (end_turn, submit, ask_user, …) reach it; not true of `agy`'s print mode. */
   appTools: boolean;
@@ -52,11 +52,11 @@ export const AGENT_KINDS: Record<BotRunner, AgentKindInfo> = {
   codex: { runner: "codex", label: "Codex", protocol: "codex_app_server", command: "codex",
     efforts: ["low", "medium", "high", "xhigh", "max"], modelAliases: [], configDirVar: "CODEX_HOME", planUsage: true, appTools: true },
   grok: { runner: "grok", label: "Grok", protocol: "acp", command: "grok",
-    efforts: ["low", "medium", "high", "xhigh"], modelAliases: [], configDirVar: null, planUsage: false, appTools: true },
+    efforts: ["low", "medium", "high", "xhigh"], modelAliases: [], configDirVar: null, planUsage: true, appTools: true },
   opencode: { runner: "opencode", label: "OpenCode", protocol: "acp", command: "opencode",
     efforts: [], modelAliases: [], configDirVar: null, planUsage: false, appTools: true },
   antigravity: { runner: "antigravity", label: "Antigravity", protocol: "agy_print", command: "agy",
-    efforts: ["low", "medium", "high", "xhigh", "max"], modelAliases: [], configDirVar: null, planUsage: false, appTools: false },
+    efforts: ["low", "medium", "high", "xhigh", "max"], modelAliases: [], configDirVar: null, planUsage: true, appTools: false },
   zcode: { runner: "zcode", label: "ZCode", protocol: "acp", command: "zcode-acp",
     efforts: [], modelAliases: [], configDirVar: null, planUsage: false, appTools: true },
   custom: { runner: "custom", label: "ACP Agent", protocol: "acp", command: null,
@@ -307,6 +307,8 @@ export type AgentsStatusResponse = { items: AgentStatus[]; custom_agents: Custom
 export type AgentUsageWindow = {
   /** The window's length in minutes (300 = five hours, 10080 = a week); null when it did not say. */
   minutes: number | null;
+  /** The models it is for, as the agent names them (Antigravity's `Gemini Models`); null or absent for the whole plan's. */
+  model?: string | null;
   /** How much of it is used, 0–100. */
   percent: number;
   resets_at: string | null;

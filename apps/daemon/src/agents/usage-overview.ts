@@ -62,7 +62,7 @@ function fromClaude(account: ClaudeAccountUsage): UsageAccount {
 function fromAgent(item: AgentUsage): UsageAccount {
   return {
     config_dir: item.config_dir, email: null, available: item.available, reason: item.reason, plan: item.plan,
-    windows: item.windows.map((window) => ({ minutes: window.minutes, model: null, percent: window.percent, resets_at: window.resets_at })),
+    windows: item.windows.map((window) => ({ minutes: window.minutes, model: window.model ?? null, percent: window.percent, resets_at: window.resets_at })),
     credits: item.credits, checked_at: item.checked_at, error: item.error,
   };
 }

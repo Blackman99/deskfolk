@@ -38,3 +38,12 @@ You said (2026-10-10): "With this many agents supported, the subscription usage 
 
 You asked why only Claude showed: only Claude had anything running on it. You said: "every connected one should show its usage." Decision 3 becomes **in use, plus connected**: found and not signed out (an agent that cannot say counts once found), every account including listed config directories; Claude's from Claude Code's own status, the others' from Settings › Agents' status (the kept one at once, re-checked behind it when old). Codex installed and signed in is asked for its windows with no Bot on it (no model, no quota, at most once per five minutes); agents with no plan are listed even with no turns today, in the menu bar too. The widget stays away only when no agent is connected.
 
+## 补充：Grok 和 Antigravity 也报额度 / Addendum: Grok and Antigravity report their plans too（2026-10-10）
+
+你问 Grok 跟 Antigravity 为什么拿不到用量。ADR 0079 第 10 条当时以为它们不报套餐，其实都能问，而且都不经过模型、不花额度：
+- **Grok**：`grok agent stdio` 握手后调 ACP 扩展方法 `_x.ai/billing`（不开会话），答的就是它 TUI 里 `/usage` 那份：套餐档（`subscription_tier`，如 SuperGrok Heavy）、本期额度用了百分之几（`creditUsagePercent`）、本期起止（`currentPeriod`，按周）、预付余额。显示成一个窗口：本期长度、用了多少、期末重置。这个方法 Grok 的公开文档里没有，换了形状那个账号就写「没查到」。
+- **Antigravity**：`agy -p "/quota"` 和 `agy -p "/credits"`。agy 从 1.1.11 起在 print 模式下自己回答这几个只读的斜杠命令（每行一条，制表符分隔）；**更早的版本会把它当提示词交给模型**，所以先看 `agy --version`，低于 1.1.11 的不问，账号写明要更新。`/quota` 按模型组给窗口（「Gemini Models」「Claude and GPT models」各有 5 小时和每周的剩余和重置时间），显示成按模型组的窗口，和 Claude 的 Fable 周额度一样；`/credits` 有余额时写在账号名后面。
+挂件、菜单栏和设置里它们都和 Codex 一样有圆环和剩余；只有模型组窗口的账号，摘要按组写（「Gemini Models 97% · Claude and GPT models 87%」）。OpenCode、ZCode 和你自己的 ACP Agent 仍只列今天的记录。
+
+You asked why Grok and Antigravity had no usage. ADR 0079 decision 10 took them for agents with no plan to report; both report one, with no model call and nothing spent. Grok answers the ACP extension `_x.ai/billing` right after `initialize` (no session): its tier, the share of this period's credits used and the period's ends — one window. It is not in Grok's public docs; another shape makes the account say it could not be read. Antigravity answers `agy -p "/quota"` and `/credits` itself from 1.1.11 (before that the line went to the model as a prompt, so an older `agy` is not asked and the account says to update): a 5-hour and a weekly window per model group, shown as model windows, and credits when there are any. A summary of an account with model-group windows only goes by group. OpenCode, ZCode and your own ACP agents still show today's records only.
+

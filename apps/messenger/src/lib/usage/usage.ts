@@ -18,9 +18,11 @@ export function usageWindowLabel(window: UsageWindow, t: Copy): string {
   return window.model ? t.usage.model(window.model, span) : span;
 }
 
-/** Windows as listed: the whole plan's shortest first, then each model's. */
+/** Windows as listed: the whole plan's shortest first, then each model's (or model group's) together, shortest first. */
 export function usageWindowsSorted(windows: UsageWindow[]): UsageWindow[] {
-  return [...windows].sort((a, b) => Number(a.model !== null) - Number(b.model !== null) || (a.minutes ?? Infinity) - (b.minutes ?? Infinity));
+  const groups = [...new Set(windows.map((window) => window.model))];
+  const rank = (window: UsageWindow) => (window.model === null ? -1 : groups.indexOf(window.model));
+  return [...windows].sort((a, b) => rank(a) - rank(b) || (a.minutes ?? Infinity) - (b.minutes ?? Infinity));
 }
 
 /** The window with the least left, which the pill's ring and the menu bar's show. */
@@ -155,9 +157,15 @@ export function usageMeterEntries(agents: ReadonlyArray<UsageAgent>): UsageMeter
 
 /** An account's windows in one short line, as the menu bar and Settings say them: `5h 62% · 7d 81%`. */
 export function usageSummary(account: UsageAccount, t: Copy): string {
-  return usageWindowsSorted(account.windows)
-    .filter((window) => window.model === null)
-    .map((window) => `${usageSpan(window.minutes, t, true)} ${usageLeftText(window.percent)}`)
+  const plan = usageWindowsSorted(account.windows).filter((window) => window.model === null);
+  if (plan.length > 0) return plan.map((window) => `${usageSpan(window.minutes, t, true)} ${usageLeftText(window.percent)}`).join(" · ");
+  // Only per-model windows (Antigravity's model groups): each group by its tightest window.
+  const groups = [...new Set(account.windows.map((window) => window.model))];
+  return groups
+    .map((model) => {
+      const tightest = usageTightest(account.windows.filter((window) => window.model === model))!;
+      return `${model} ${usageLeftText(tightest.percent)}`;
+    })
     .join(" · ");
 }
 
@@ -189,10 +197,11 @@ export function usageFromLegacy(claude: ClaudeUsage | null, others: AgentUsageRe
       agent = { runner: item.runner, custom_id: item.custom_id, label: item.label, today: item.today, accounts: [] };
       agents.push(agent);
     }
+    // A daemon from before ADR 0080 asked only Codex for its plan.
     if (item.runner === "codex") {
       agent.accounts.push({
         config_dir: item.config_dir, email: null, available: item.available, reason: item.reason, plan: item.plan, credits: item.credits,
-        checked_at: item.checked_at, error: item.error, windows: item.windows.map((window) => ({ ...window, model: null })),
+        checked_at: item.checked_at, error: item.error, windows: item.windows.map((window) => ({ ...window, model: window.model ?? null })),
       });
     }
   }

@@ -43,6 +43,17 @@ test("the plan's windows come shortest first, each model's after them; the summa
   ];
   expect(usageWindowsSorted(windows).map((window) => window.model ?? window.minutes)).toEqual([300, 10_080, "Opus"]);
   expect(usageSummary(account({ windows }), t)).toBe("5h 61% · 7d 81%");
+  // Only model groups (Antigravity): each group's windows together, and the summary by group.
+  const groups = [
+    { minutes: 10_080, model: "Gemini Models", percent: 2, resets_at: null },
+    { minutes: 300, model: "Gemini Models", percent: 3, resets_at: null },
+    { minutes: 10_080, model: "Claude and GPT models", percent: 13, resets_at: null },
+    { minutes: 300, model: "Claude and GPT models", percent: 0, resets_at: null },
+  ];
+  expect(usageWindowsSorted(groups).map((window) => `${window.model} ${window.minutes}`)).toEqual([
+    "Gemini Models 300", "Gemini Models 10080", "Claude and GPT models 300", "Claude and GPT models 10080",
+  ]);
+  expect(usageSummary(account({ windows: groups }), t)).toBe("Gemini Models 97% · Claude and GPT models 87%");
 });
 
 test("what is left reads rounded down, a sliver as <1%; levels from three quarters and nine tenths", () => {

@@ -531,7 +531,7 @@ Bot 在哪读到它：每一轮的局面里都有「用户要求」一段，列�
 
 **协作**：应用自己的工具（发消息、收尾、交付、审查、委派、问你、回看…）交给 ACP Agent 时是一个名叫 deskfolk 的 MCP 服务器，交给 Codex 时就是它自己的工具；Grok 要先在它的工具搜索里找，OpenCode 要在它的 `execute` 里用代码调，前言里会说明。Antigravity 拿不到这些工具：它的 Bot 只能用最后的回复说话，交付、转交和提问都写在回复里由你处理，收尾被退回两次后这一段就结束。你中途说的话：Codex 当场插进去；别的等它调下一个应用工具时跟在结果后面，或者到下一轮。直接插入能打断 Codex 和 ACP Agent；Antigravity 打断不了，那句排队等它这一步完。
 
-**记录和用量**：选路里原因记成 `agent_codex` 这类；花费按 Agent 名记（Codex、Antigravity 有 token，Grok、OpenCode 不报 token），金额是估算。有 Bot 用这些 Agent 之后，它们出现在用量挂件里（见下面 Claude Agent 一节的「用量」）：Codex 显示它自己报的套餐窗口还剩多少，别的只列今天在这里跑了几轮、用了多少 token，不编百分比。
+**记录和用量**：选路里原因记成 `agent_codex` 这类；花费按 Agent 名记（Codex、Antigravity 有 token，Grok、OpenCode 不报 token），金额是估算。这些 Agent 连接上（或有东西在用）之后，它们出现在用量挂件里（见下面 Claude Agent 一节的「用量」）：Codex、Grok、Antigravity 显示它们自己报的套餐窗口还剩多少（Codex 问它的 app-server；Grok 问 ACP 扩展 `_x.ai/billing`，一个按周的窗口；Antigravity 运行 `agy -p "/quota"`，按模型组各有 5 小时和每周的窗口，agy 低于 1.1.11 时不问，因为旧版会把它当提示词交给模型），都不经过模型、不花额度；OpenCode、ZCode 和你自己的 ACP Agent 只列今天在这里跑了几轮、用了多少 token，不编百分比。
 
 **内置调用和阶梯**：设置 › 模型的内置调用和模型阶梯都能选这些 Agent 的模型。内置调用在一个临时目录里让 Agent 答一次、不给工具，它要动工具就被掐掉；阶梯上的一级可以是任何 Agent 的模型和档位，爬到那一级的轮次由那个 Agent 跑。
 

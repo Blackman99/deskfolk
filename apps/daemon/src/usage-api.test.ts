@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import type { AgentStatus, AgentUsageResponse, ClaudeCodeStatus, ClaudeUsage, UsageResponse } from "@real-bot/protocol";
-import { accountsInUse, accountsShown, connectedAccounts, createAgentUsageProbe, type AgentUsageProbe } from "./agents/usage";
+import { accountsInUse, accountsShown, agyAnswersQuota, connectedAccounts, createAgentUsageProbe, readAgyCredits, readAgyQuota, readGrokBilling, type AgentUsageProbe } from "./agents/usage";
 import type { ClaudeUsageProbe } from "./claude-code/usage";
 import { ulid } from "./ids";
 import { createLocalApi } from "./local-api";
@@ -31,7 +31,7 @@ const claude: ClaudeUsage = {
 const today = { turns: 0, tokens: 0, estimated_usd: 0 };
 const others: AgentUsageResponse = {
   items: [
-    { runner: "grok", custom_id: null, label: "Grok", config_dir: null, available: false, reason: "no_plan", plan: null, windows: [], credits: null, today: { turns: 2, tokens: 900, estimated_usd: 0 }, checked_at: null, error: null },
+    { runner: "opencode", custom_id: null, label: "OpenCode", config_dir: null, available: false, reason: "no_plan", plan: null, windows: [], credits: null, today: { turns: 2, tokens: 900, estimated_usd: 0 }, checked_at: null, error: null },
     { runner: "codex", custom_id: null, label: "Codex", config_dir: null, available: true, reason: null, plan: "plus", windows: [{ minutes: 300, percent: 60, resets_at: null }], credits: "12", today, checked_at: null, error: null },
     { runner: "codex", custom_id: null, label: "Codex", config_dir: "/opt/codex-b", available: false, reason: "signed_out", plan: null, windows: [], credits: null, today, checked_at: null, error: "signed out" },
   ],
@@ -57,7 +57,7 @@ test("one answer for every agent: Claude first, accounts grouped under their age
   const response = await h.get();
   expect(response.status).toBe(200);
   const body = await response.json() as UsageResponse;
-  expect(body.agents.map((agent) => agent.runner)).toEqual(["claude_code", "codex", "grok"]);
+  expect(body.agents.map((agent) => agent.runner)).toEqual(["claude_code", "codex", "opencode"]);
   expect(body.agents[0]).toMatchObject({
     label: "Claude Agent",
     accounts: [{
@@ -70,7 +70,7 @@ test("one answer for every agent: Claude first, accounts grouped under their age
     }],
   });
   expect(body.agents[1]!.accounts.map((account) => [account.config_dir, account.reason, account.credits])).toEqual([[null, null, "12"], ["/opt/codex-b", "signed_out", null]]);
-  expect(body.agents[2]).toMatchObject({ label: "Grok", accounts: [], today: { turns: 2, tokens: 900 } });
+  expect(body.agents[2]).toMatchObject({ label: "OpenCode", accounts: [], today: { turns: 2, tokens: 900 } });
   expect((await h.get("?refresh=1")).status).toBe(200);
   expect(ages).toEqual([undefined, undefined, 30_000, 30_000]);
   expect((await fetch(`${h.origin}/v1/usage`)).status).toBe(401);
@@ -109,8 +109,8 @@ test("connected accounts: found and not signed out, each once, whether or not an
 test("the agents' usage lists a connected agent with nothing running on it", async () => {
   const store = new Store({ endpointKey: memoryKeyStore() });
   try {
-    const probe = createAgentUsageProbe({ store, connected: async () => [{ runner: "grok", customId: null, configDir: null }] });
-    expect((await probe.current()).items.map((item) => [item.runner, item.reason])).toEqual([["grok", "no_plan"]]);
+    const probe = createAgentUsageProbe({ store, connected: async () => [{ runner: "opencode", customId: null, configDir: null }] });
+    expect((await probe.current()).items.map((item) => [item.runner, item.reason])).toEqual([["opencode", "no_plan"]]);
   } finally {
     store.close();
   }
@@ -125,7 +125,7 @@ test("a phone reads it too: the bare GET and a refresh are whitelisted, nothing 
   expect(() => validateBusiness({ v: 1, id, method: "POST", path: "/v1/usage" })).toThrow();
   const remote = await h.api.dispatchBusiness(new Request("http://remote.invalid/v1/usage"), { deviceId: "paired-device", requestId: ulid() });
   expect(remote.status).toBe(200);
-  expect((await remote.json() as UsageResponse).agents.map((agent) => agent.runner)).toEqual(["claude_code", "codex", "grok"]);
+  expect((await remote.json() as UsageResponse).agents.map((agent) => agent.runner)).toEqual(["claude_code", "codex", "opencode"]);
 });
 
 test("a Claude account only a built-in call runs on is in use too", () => {
@@ -154,3 +154,50 @@ test("today counts an agent's turns as the distinct turns among its spend rows, 
   const body = await (await h.get()).json() as UsageResponse;
   expect(body.agents[0]).toMatchObject({ runner: "claude_code", today: { turns: 2, tokens: 165 } });
 });
+
+test("Grok's billing reads as one window over its billing period, its tier as the plan", () => {
+  expect(readGrokBilling({
+    config: {
+      creditUsagePercent: 41, prepaidBalance: { val: 0 },
+      currentPeriod: { type: "USAGE_PERIOD_TYPE_WEEKLY", start: "2026-10-05T05:02:04.120111+00:00", end: "2026-10-12T05:02:04.120111+00:00" },
+    },
+    subscription_tier: "SuperGrok Heavy",
+  })).toEqual({ plan: "SuperGrok Heavy", windows: [{ minutes: 10_080, percent: 41, resets_at: "2026-10-12T05:02:04.120Z" }], credits: null });
+  // A period type it does not name: the length from its two ends.
+  expect(readGrokBilling({ config: { creditUsagePercent: 5, currentPeriod: { start: "2026-10-01T00:00:00Z", end: "2026-10-02T00:00:00Z" }, prepaidBalance: { val: 25 } } }))
+    .toMatchObject({ plan: null, windows: [{ minutes: 1440, percent: 5 }], credits: "25" });
+  expect(() => readGrokBilling({ something: "else" })).toThrow();
+});
+
+test("Antigravity's /quota lines read as one window per model group and length; only an agy from 1.1.11 is asked", () => {
+  const out = [
+    "Gemini Models\tWeekly Limit Remaining\t98%\t2026-10-14T02:50:38Z",
+    "Gemini Models\tFive Hour Limit Remaining\t97%\t2026-10-10T15:38:12Z",
+    "Claude and GPT models\tWeekly Limit Remaining\t87%\t2026-10-17T09:07:38Z",
+    "something else",
+  ].join("\n");
+  expect(readAgyQuota(out)).toEqual([
+    { minutes: 10_080, model: "Gemini Models", percent: 2, resets_at: "2026-10-14T02:50:38.000Z" },
+    { minutes: 300, model: "Gemini Models", percent: 3, resets_at: "2026-10-10T15:38:12.000Z" },
+    { minutes: 10_080, model: "Claude and GPT models", percent: 13, resets_at: "2026-10-17T09:07:38.000Z" },
+  ]);
+  expect([readAgyCredits("Remaining credits\t0\nUpgrade\thttps://x"), readAgyCredits("Remaining credits\t120")]).toEqual([null, "120"]);
+  // Before 1.1.11 `-p "/quota"` went to the model as a prompt: such an agy is never asked.
+  expect(["1.3.3", "1.1.11", "1.1.10", "0.9.0", "2.0.0", "nonsense"].map(agyAnswersQuota)).toEqual([true, true, false, false, true, false]);
+});
+
+test("Antigravity's windows keep their model group through the one route", async () => {
+  const store = new Store({ endpointKey: memoryKeyStore() });
+  try {
+    const probe = createAgentUsageProbe({
+      store,
+      connected: async () => [{ runner: "antigravity", customId: null, configDir: null }],
+      askAntigravity: async () => ({ plan: null, windows: [{ minutes: 300, model: "Gemini Models", percent: 3, resets_at: null }], credits: null }),
+    });
+    const [item] = (await probe.current()).items;
+    if (item!.reason !== "missing") expect(item).toMatchObject({ available: true, windows: [{ minutes: 300, model: "Gemini Models", percent: 3 }] });
+  } finally {
+    store.close();
+  }
+});
+
