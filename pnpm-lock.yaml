@@ -288,6 +288,9 @@ importers:
       shiki:
         specifier: ^4.4.3
         version: 4.4.3
+      svelte-json-discovery:
+        specifier: ^0.3.0
+        version: 0.3.0(svelte@5.57.0)
       svelte5plus-calendar:
         specifier: 0.5.5
         version: 0.5.5(svelte@5.57.0)
@@ -2398,6 +2401,11 @@ packages:
     peerDependencies:
       svelte: ^4.0.0 || ^5.0.0-next.0
       typescript: ^5.0.0 || ^6.0.0
+
+  svelte-json-discovery@0.3.0:
+    resolution: {integrity: sha512-YgzPEhmA+WgRGJrawCRSIMYX+i0uA+Aa5k4Qm4pLfCMozV9B3NuEuE4CiVrjIfl9Iawi4RxGBC681I1ytpyx8w==}
+    peerDependencies:
+      svelte: ^5.0.0
 
   svelte5plus-calendar@0.5.5:
     resolution: {integrity: sha512-hnTVgQa0bWFcunxrL/Zs7flWZxLs6/1L2vx86EieROaLXIGzu6LBicN6egMU68u6BAkRcd9GqPJgFne9Qmg/vA==}
@@ -4594,6 +4602,10 @@ snapshots:
       typescript: 6.0.3
     transitivePeerDependencies:
       - picomatch
+
+  svelte-json-discovery@0.3.0(svelte@5.57.0):
+    dependencies:
+      svelte: 5.57.0
 
   svelte5plus-calendar@0.5.5(svelte@5.57.0):
     dependencies:

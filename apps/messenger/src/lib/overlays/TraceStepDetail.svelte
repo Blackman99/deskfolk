@@ -1,8 +1,10 @@
 <script lang="ts">
 	import type { BuiltinModelRole, CallRun, TraceStep } from '@real-bot/protocol';
+	import { JsonViewer } from 'svelte-json-discovery';
 	import type { Copy } from '../copy.ts';
 	import { formatFullTimestamp, formatMessageTime } from '../chat/chat-view.ts';
-	import { stepSaid, stepTitle, type TraceStepGroup } from './trace-steps.ts';
+	import { themeManager } from '../theme.ts';
+	import { answerJson, stepSaid, stepTitle, type TraceStepGroup } from './trace-steps.ts';
 
 	interface Props {
 		group: TraceStepGroup;
@@ -37,6 +39,11 @@
 			}
 		);
 	});
+
+	/** A JSON answer unfolds as a tree, in the app's light or dark rather than the system's. */
+	const rawJson = $derived(raw?.text ? answerJson(raw.text) : null);
+	let theme = $state(themeManager.resolved);
+	$effect(() => themeManager.subscribe(() => (theme = themeManager.resolved)));
 </script>
 
 <!-- Unfolded under its step, the way a turn's model choice is under its card. -->
@@ -91,6 +98,8 @@
 				<p class="trace-step-detail-note">{t.traceSteps.rawFailed}</p>
 			{:else if raw?.id !== step.id}
 				<p class="trace-step-detail-note">{t.traceSteps.rawLoading}</p>
+			{:else if rawJson}
+				<div class="trace-step-json"><JsonViewer data={rawJson} expanded={2} {theme} /></div>
 			{:else if raw.text}
 				<pre class="mono">{raw.text}</pre>
 			{:else}
@@ -234,6 +243,39 @@
 		font-size: 11px;
 		white-space: pre-wrap;
 		overflow-wrap: anywhere;
+	}
+
+	/* The tree keeps its own colours; its surface, font and size are the pane's, as the text's are. */
+	.trace-step-json {
+		--discovery-monospace-font-family: var(--mono);
+		--discovery-monospace-font-size: 11px;
+	}
+
+	.trace-step-json :global(.view-struct) {
+		max-height: 220px;
+		margin: 4px 0 0;
+		padding: 6px 8px;
+		border-radius: var(--radius-sm);
+		background: var(--chip);
+	}
+
+	/*
+	 * The pane is a column wide: a string wraps under its key rather than running off the side, and
+	 * a folded value stays the one line it is, cut at the edge, until it is unfolded.
+	 */
+	.trace-step-json :global(.view-struct .entry-line) {
+		white-space: normal;
+	}
+
+	.trace-step-json :global(.view-struct .value:not(.struct-expand-value) > .string) {
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+	}
+
+	.trace-step-json :global(.view-struct .struct-expand-value) {
+		max-width: 100%;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.trace-step-actions {

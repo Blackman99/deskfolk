@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { USER_MEMBER, type TaskTrace, type TaskTraceNode, type TraceStep } from "@real-bot/protocol";
-import { attachSteps, stepAnomalous } from "./trace-steps.ts";
+import { answerJson, attachSteps, stepAnomalous } from "./trace-steps.ts";
 import { traceFlow } from "./task-trace.ts";
 import { copyFor } from "../copy.ts";
 
@@ -149,4 +149,17 @@ test("each step says what it concluded, and how a call that came to nothing ende
   expect(en.verdict(steps.judged.verdict!)).toBe("Failed 1/2");
   expect(zh.failed("timeout")).toBe("没成：超时");
   expect(en.failed("something_new")).toBe("Did not work: something_new");
+});
+
+test("an answer unfolds as a value only when the whole of it is JSON, fenced or not", () => {
+  expect(answerJson('{"restates": false, "later": null}')).toEqual({ restates: false, later: null });
+  expect(answerJson('  [{"job": "J1"}]\n')).toEqual([{ job: "J1" }]);
+  expect(answerJson('```json\n{"large": true}\n```')).toEqual({ large: true });
+  expect(answerJson('```\n{"large": true}```')).toEqual({ large: true });
+  // Prose around it, an answer clipped mid-value, and a bare value stay text.
+  expect(answerJson('Here it is: {"large": true}')).toBeNull();
+  expect(answerJson('{"plan": {"goal": "用 Blender')).toBeNull();
+  expect(answerJson('"stop"')).toBeNull();
+  expect(answerJson("42")).toBeNull();
+  expect(answerJson("null")).toBeNull();
 });

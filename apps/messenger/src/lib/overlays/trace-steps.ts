@@ -172,6 +172,20 @@ export function stepSaid(step: TraceStep, t: Copy): string {
   return step.verdict ? t.traceSteps.verdict(step.verdict) : t.traceSteps.failed(step.fail_kind);
 }
 
+/**
+ * A step's answer as a value to unfold, when the whole of it is JSON — or JSON in one code fence,
+ * which models add unasked. Null for prose, an answer clipped mid-value, or a bare string or number.
+ */
+export function answerJson(raw: string): object | null {
+  const fenced = /^```[\w-]*\s*([\s\S]*?)\s*```$/.exec(raw.trim());
+  try {
+    const value: unknown = JSON.parse(fenced ? fenced[1]! : raw);
+    return value !== null && typeof value === "object" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 /** The board a line of its own is drawn as: the shape a job's is, named after the line. */
 export function lineBoard(line: LineTrace): TaskTrace {
   const card = line.nodes.find((node) => node.turn_id === `user:${line.message_id}`);

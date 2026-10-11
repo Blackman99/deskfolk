@@ -205,6 +205,8 @@ export function open(opts: {
   /** A line's own board (ADR 0083) instead of a job's, and what its endpoint answers. */
   line?: string | null;
   lineTrace?: LineTrace;
+  /** What a step's call answered; a line of text naming the step by default. */
+  raw?: (id: string) => string | null;
 } = {}) {
   const jumps: Array<[string, string]> = [];
   const settled: string[] = [];
@@ -220,7 +222,7 @@ export function open(opts: {
     callRun: async (id: string) => {
       fetchedRuns.push(id);
       const step = [...(opts.trace?.steps ?? []), ...(opts.lineTrace?.steps ?? [])].find((row) => row.id === id);
-      return { ...step, raw: `原始回答 ${id}` };
+      return { ...step, raw: opts.raw ? opts.raw(id) : `原始回答 ${id}` };
     },
     sessionTasks: async (sessionId: string) => {
       asked.push(sessionId);

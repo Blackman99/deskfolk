@@ -11,6 +11,8 @@ import { forgetSpentAsks } from "./trace-view.ts";
 import { forgetTraceSteps } from "./trace-steps.ts";
 import { click } from "../test-render.ts";
 import { settle } from "../test-async.ts";
+import { forgetStored } from "../storage.ts";
+import { THEME_STORAGE_KEY, themeManager } from "../theme.ts";
 import { open, picture, until } from "./task-trace-test-kit.ts";
 
 afterEach(() => {
@@ -97,6 +99,33 @@ test("a step opens in place with its model, prompt and time, fetches its answer,
   click(detail.querySelector("[data-edit-call]"));
   expect(view.edited).toEqual(["reader"]);
   view.close();
+});
+
+test("an answer that is JSON unfolds as a tree, light or dark as the app is", async () => {
+  const before = themeManager.preference;
+  const view = open({ trace: stepped(), pane: true, raw: () => '{"restates": false, "later": "先找能下的片源"}' });
+  await until(view.host, ".trace-step");
+  click(stepCards(view.host)[0]);
+  await settle();
+  const raw = view.host.querySelector<HTMLDetailsElement>(".trace-step-raw")!;
+  raw.open = true;
+  raw.dispatchEvent(new Event("toggle"));
+  await until(view.host, ".trace-step-raw .view-struct");
+  const tree = view.host.querySelector(".trace-step-raw .view-struct")!;
+  expect([...tree.querySelectorAll(".property")].map((key) => key.textContent)).toEqual(["restates", "later"]);
+  expect(view.host.querySelector(".trace-step-raw pre")).toBeNull();
+  try {
+    themeManager.setTheme("dark");
+    await settle();
+    expect(tree.classList.contains("sjd-theme-dark")).toBe(true);
+    themeManager.setTheme("light");
+    await settle();
+    expect(tree.classList.contains("sjd-theme-light")).toBe(true);
+  } finally {
+    themeManager.setTheme(before);
+    forgetStored(THEME_STORAGE_KEY);
+    view.close();
+  }
 });
 
 test("the steps hide with one press, and the ones that went wrong can be lit", async () => {
