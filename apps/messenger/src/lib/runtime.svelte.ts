@@ -86,7 +86,7 @@ import { MessageEdits, type MessageEditsHost } from "./chat/message-edits.svelte
 import { SessionHistory, type SessionHistoryHost } from "./chat/session-history.svelte.ts";
 import { ThreadState, type ThreadStateHost } from "./chat/thread-state.svelte.ts";
 import { ConnectionLoop, type ConnectionLoopHost } from "./connection/connection-loop.svelte.ts";
-import { OverlayState, type OverlayStateHost, type TraceOpenOptions } from "./overlays/overlay-state.svelte.ts";
+import { OverlayState, type OverlayStateHost, type RolesTarget, type TraceOpenOptions } from "./overlays/overlay-state.svelte.ts";
 import { TerminalList, type TerminalListHost } from "./overlays/terminal-list.svelte.ts";
 import { SearchStore, type SearchStoreHost } from "./search/search-store.svelte.ts";
 
@@ -428,6 +428,8 @@ export class MessengerRuntime {
   spendRevision = $state(0);
   /** Bumped on every `prompt.changed` (ADR 0064): the prompts settings reload on it. */
   promptsRevision = $state(0);
+  /** Bumped when an engine is changed, made or removed (ADR 0085): where they are shown, read them again. */
+  playbooksRevision = $state(0);
   pendingMutation = $state<{ id: string; code: string } | null>(null);
   workspacePath = $state("");
   endpointUrl = $state("");
@@ -557,8 +559,8 @@ export class MessengerRuntime {
   set traceSessionId(value: string | null) { this.overlayState.traceSessionId = value; }
   get traceFocus(): TraceFocus | null { return this.overlayState.traceFocus; }
   get traceLine(): string | null { return this.overlayState.traceLine; }
-  get rolesTarget(): { role: BuiltinModelRole | null } | null { return this.overlayState.rolesTarget; }
-  set rolesTarget(value: { role: BuiltinModelRole | null } | null) { this.overlayState.rolesTarget = value; }
+  get rolesTarget(): RolesTarget | null { return this.overlayState.rolesTarget; }
+  set rolesTarget(value: RolesTarget | null) { this.overlayState.rolesTarget = value; }
   set traceFocus(value: TraceFocus | null) { this.overlayState.traceFocus = value; }
   get traceFocusToken(): number { return this.overlayState.traceFocusToken; }
   set traceFocusToken(value: number) { this.overlayState.traceFocusToken = value; }
@@ -1272,6 +1274,7 @@ export class MessengerRuntime {
     }
     if (event.event === "spend.created" || event.event === "spend.repriced") this.spendRevision += 1;
     if (event.event === "prompt.changed") this.promptsRevision += 1;
+    if (event.event === "playbook.changed") this.playbooksRevision += 1;
     if (event.event === "turn.upsert") {
       this.claimFocus(event.session_id, event.trigger_message_id, event.id);
       // A finished turn keeps nothing of what it was doing: the transcript and its trace remain,

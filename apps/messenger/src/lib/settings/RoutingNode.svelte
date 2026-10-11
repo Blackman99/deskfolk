@@ -40,9 +40,11 @@
 		botNames: ReadonlyMap<string, string>;
 		onopenprompt: (item: PromptSummary, event: MouseEvent) => void;
 		t: Copy;
+		/** Shown inside an engine step's panel (ADR 0085), which names the step itself: no head of its own. */
+		headless?: boolean;
 	}
 
-	let { role, view, providers, settings, defaultModel, patch, pickable, claudeStatus, agents, promptsFailed, ui, botNames, onopenprompt, t }: Props = $props();
+	let { role, view, providers, settings, defaultModel, patch, pickable, claudeStatus, agents, promptsFailed, ui, botNames, onopenprompt, t, headless = false }: Props = $props();
 	const c = $derived(t.routing);
 	const name = $derived(t.builtinModels.roles[role].name);
 	const legacy = $derived(builtinModelsOf(settings).legacy);
@@ -50,11 +52,13 @@
 	const offersAgents = $derived(!(legacy && role === 'organizer'));
 </script>
 
-<section class="routing-detail" aria-label={name} data-routing-detail={role}>
-	<div class="routing-detail-head">
-		<h3 class="routing-detail-name">{name}</h3>
-		<p class="routing-hint">{t.builtinModels.roles[role].hint}</p>
-	</div>
+<section class="routing-detail" class:is-headless={headless} aria-label={name} data-routing-detail={role}>
+	{#if !headless}
+		<div class="routing-detail-head">
+			<h3 class="routing-detail-name">{name}</h3>
+			<p class="routing-hint">{t.builtinModels.roles[role].hint}</p>
+		</div>
+	{/if}
 
 	<div class="routing-detail-part" data-routing-part="model">
 		<h4 class="routing-part-title">{c.model}</h4>
@@ -104,6 +108,14 @@
 		background: var(--pane);
 		box-shadow: var(--shadow-xs);
 		min-width: 0;
+	}
+
+	/* Inside an engine step's panel, which is the frame. */
+	.routing-detail.is-headless {
+		padding: 0;
+		border: 0;
+		background: none;
+		box-shadow: none;
 	}
 
 	.routing-detail-head {

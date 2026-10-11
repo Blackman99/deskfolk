@@ -34,6 +34,11 @@ import type {
   PatchMessageAttributionRequest,
   PatchTaskSpecRequest,
   PatchTicketRequest,
+  Playbook,
+  PlaybookDiff,
+  PlaybookList,
+  PlaybookRevision,
+  PlaybookStepId,
   ProbeModelsResponse,
   TranscribeRequest,
   TranscribeResponse,
@@ -299,6 +304,45 @@ export abstract class ApiBase<Row extends PendingRow> {
   /** Takes back one change a retrospective made to its Bot's memories or skills (ADR 0062); the plan it is shown on comes back. */
   async undoRetrospectiveChange(retrospectiveId: string, index: number): Promise<TaskDetail> {
     return this.post<TaskDetail>(`/v1/retrospectives/${encodeURIComponent(retrospectiveId)}/changes/${index}/undo`, {});
+  }
+
+  /** Every engine and the default (ADR 0085). */
+  async listPlaybooks(): Promise<PlaybookList> {
+    return this.get<PlaybookList>("/v1/playbooks");
+  }
+
+  /** Your changes to an engine, as a whole diff from its built-in, guarded by the change you last saw. */
+  async savePlaybook(id: string, diff: PlaybookDiff, ifRevision: string | null): Promise<Playbook> {
+    return this.put<Playbook>(`/v1/playbooks/${encodeURIComponent(id)}`, { diff, if_revision: ifRevision });
+  }
+
+  /** One step of an engine back to its built-in, or the whole engine when `step` is null. */
+  async resetPlaybook(id: string, step: PlaybookStepId | null, ifRevision: string | null): Promise<Playbook> {
+    return this.post<Playbook>(`/v1/playbooks/${encodeURIComponent(id)}/reset`, { step, if_revision: ifRevision });
+  }
+
+  /** A new engine of your own, starting from another's changes. */
+  async createPlaybook(from: string, name: string): Promise<Playbook> {
+    return this.post<Playbook>("/v1/playbooks", { from, name });
+  }
+
+  async renamePlaybook(id: string, name: string, ifRevision: string | null): Promise<Playbook> {
+    return this.patch<Playbook>(`/v1/playbooks/${encodeURIComponent(id)}`, { name, if_revision: ifRevision });
+  }
+
+  /** A custom engine removed; the conversations that ran it follow the default again. */
+  async deletePlaybook(id: string): Promise<void> {
+    await this.request<void>("DELETE", `/v1/playbooks/${encodeURIComponent(id)}`);
+  }
+
+  /** An engine's changes, newest first. */
+  async playbookRevisions(id: string): Promise<PlaybookRevision[]> {
+    return (await this.get<{ items: PlaybookRevision[] }>(`/v1/playbooks/${encodeURIComponent(id)}/revisions`)).items;
+  }
+
+  /** The engine a conversation runs; null follows the default. */
+  async setSessionPlaybook(sessionId: string, playbookId: string | null): Promise<SessionDetail> {
+    return this.put<SessionDetail>(`/v1/sessions/${encodeURIComponent(sessionId)}/playbook`, { playbook_id: playbookId });
   }
 
   /** Every built-in prompt and its state (ADR 0064). */

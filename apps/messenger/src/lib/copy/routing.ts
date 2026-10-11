@@ -2,7 +2,7 @@ import type { CopyShape } from "./shape.ts";
 
 export const zh = {
   tab: "分工",
-  intro: "应用自己发起的每个模型调用，按什么时候跑排成一张图。选一个，设它用哪个模型、改它照哪几段提示词。",
+  intro: "应用自己的环节按什么时候跑排成一张图。选一个，看它在这个引擎里跑不跑、带什么数；会调模型的，还能设模型、改提示词。",
   mapLabel: "调用分工图",
   lanes: {
     line: "你的一句话",
@@ -34,7 +34,7 @@ export const zh = {
     hint: "Bot 自己干活的一轮，跑在这个 Bot 设的模型上；一件活连着没过时，按下面的模型阶梯往上换。每一轮都带着的系统指令、技能、记忆和工具说明在「提示词」页。",
     model: "Bot 自己的模型",
     ladder: (rungs: string) => `阶梯：${rungs}`,
-    ladderOff: "这个引擎级别没有模型阶梯：每一轮都跑在 Bot 自己的模型上。",
+    ladderOff: "这个数据目录还没升到有模型阶梯的那一级：每一轮都跑在 Bot 自己的模型上。",
     ladderNoEndpoint: "先在「模型服务」里加一个端点，才能排模型阶梯。",
     toPrompts: "改每一轮的提示词",
   },
@@ -45,7 +45,7 @@ export const zh = {
 
 export const en: CopyShape<typeof zh> = {
   tab: "Roles",
-  intro: "Every model call the app makes on its own, mapped by when it runs. Pick one to set its model and edit the prompts it runs with.",
+  intro: "The app's own steps, mapped by when they run. Pick one to see whether it runs in this engine and with what numbers; one that calls a model also has its model and prompts.",
   mapLabel: "Map of the app's calls",
   lanes: {
     line: "A line of yours",
@@ -77,7 +77,7 @@ export const en: CopyShape<typeof zh> = {
     hint: "A Bot working on its own, on the model set for that Bot; a job that keeps failing moves up the model ladder below. The system instructions, skills, memories and tool descriptions every turn carries are on the Prompts page.",
     model: "The Bot's own model",
     ladder: (rungs: string) => `Ladder: ${rungs}`,
-    ladderOff: "This engine level has no model ladder: every turn runs on the Bot's own model.",
+    ladderOff: "This data folder has not reached the level with a model ladder yet: every turn runs on the Bot's own model.",
     ladderNoEndpoint: "Add an endpoint under Models to order a model ladder.",
     toPrompts: "Edit every turn's prompts",
   },

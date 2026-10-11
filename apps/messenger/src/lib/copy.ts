@@ -36,6 +36,7 @@ import * as usageText from "./copy/usage.ts";
 import * as modelPickerText from "./copy/model-picker.ts";
 import * as builtinModelsText from "./copy/builtin-models.ts";
 import * as routingText from "./copy/routing.ts";
+import * as playbooksText from "./copy/playbooks.ts";
 import * as connectorsText from "./copy/connectors.ts";
 import * as speechText from "./copy/speech.ts";
 import * as lessonsText from "./copy/lessons.ts";
@@ -85,6 +86,7 @@ const zh = {
   modelPicker: modelPickerText.zh,
   builtinModels: builtinModelsText.zh,
   routing: routingText.zh,
+  playbooks: playbooksText.zh,
   connectors: connectorsText.zh,
   speech: speechText.zh,
   lessons: lessonsText.zh,
@@ -129,6 +131,7 @@ const en: CopyShape<typeof zh> = {
   modelPicker: modelPickerText.en,
   builtinModels: builtinModelsText.en,
   routing: routingText.en,
+  playbooks: playbooksText.en,
   connectors: connectorsText.en,
   speech: speechText.en,
   lessons: lessonsText.en,

@@ -43,6 +43,9 @@ export interface OverlayStateHost {
   openRemoteScreen(): void;
 }
 
+/** What Roles is asked to show: a call, picked as its step (ADR 0085). */
+export type RolesTarget = { role: BuiltinModelRole | null };
+
 /**
  * Which sheet, page or pane is open over or beside the chat — settings, the new-Bot and new-group
  * sheets, the session drawer and a Bot's profile, the trace board, the workspace, the calendar,
@@ -78,7 +81,7 @@ export class OverlayState {
   /** The line whose own flow the phone's trace page shows (ADR 0083); null for a job's. */
   traceLine = $state<string | null>(null);
   /** A call the Roles page should open on: a card's 「在设置里看」 about one of its prompts. */
-  rolesTarget = $state<{ role: BuiltinModelRole | null } | null>(null);
+  rolesTarget = $state<RolesTarget | null>(null);
   traceFocusToken = $state(0);
   profileBotId = $state<string | null>(null);
   profileRoutineId = $state<string | null>(null);

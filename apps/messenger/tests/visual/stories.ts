@@ -3,7 +3,7 @@
  * this" and not "the database happened to contain that". No daemon, no WebSocket, no real rows.
  */
 import { flushSync, type Component } from 'svelte';
-import { SPEECH_PRESETS, type Annotation } from '@real-bot/protocol';
+import { emptyPlaybookDiff, resolvePlaybook, SPEECH_PRESETS, type Annotation, type BuiltinPlaybookId, type Playbook, type PlaybookDiff, type PlaybookList } from '@real-bot/protocol';
 import { STORY_SIZES, type StoryName } from './story-list.ts';
 import { copyFor } from '../../src/lib/copy.ts';
 import Select from '../../src/lib/Select.svelte';
@@ -439,8 +439,18 @@ const promptsClient = {
 	]
 };
 
+/** The engines (ADR 0085): 视频 the default, its settle waiting a little longer than built in. */
+const playbookList = (): PlaybookList => {
+	const item = (id: BuiltinPlaybookId, diff: PlaybookDiff = emptyPlaybookDiff()): Playbook => ({
+		id, builtin: true, base_id: id, name: null, revision: Object.keys(diff.steps).length ? 2 : 0, revision_id: null, diff, resolved: resolvePlaybook(id, diff), updated_at: null
+	});
+	return { default_id: 'video', items: [item('general'), item('video', { v: 1, steps: { settle: { params: { quiet_s: 90 } } } }), item('coding')] };
+};
+const playbooksClient = { listPlaybooks: async () => playbookList() };
+
 /** Roles (ADR 0082): the calls' prompts, a ladder for the Bot's turn, and Claude Code signed in. */
 const routingClient = {
+	...playbooksClient,
 	listLessons: async () => [],
 	listPrompts: async () => callPrompts(),
 	claudeCode: async () => claudeStatus,
@@ -453,13 +463,14 @@ const routingClient = {
 const routingNode = (node?: string) => async (host: HTMLElement) => {
 	await new Promise((resolve) => setTimeout(resolve, 0));
 	flushSync();
-	if (node) host.querySelector<HTMLButtonElement>(`[data-routing-node="${node}"]`)?.click();
+	if (node) host.querySelector<HTMLButtonElement>(`[data-playbook-node="${node}"]`)?.click();
 	await new Promise((resolve) => setTimeout(resolve, 0));
 	flushSync();
 };
 
 /** A client on an engine level with a model ladder, three rungs on it, set on Roles' Bot turn. */
 const ladderClient = {
+	...playbooksClient,
 	listLessons: async () => [],
 	listPrompts: async () => [],
 	claudeCode: async () => claudeStatus,
@@ -1288,13 +1299,13 @@ const defs: Record<StoryName, Story> = {
 		props: settingsProps({ runtime: fakeRuntime(world, { settingsOpen: true, client: promptsClient }) }),
 		afterMount: promptsSection('turn')
 	},
-	// Roles (ADR 0082, a page of its own since ADR 0083): the map of the app's own calls, two of them with a model of their own, the organizer picked and its page brought into view.
+	// Roles (ADR 0082, a page of its own since ADR 0083) drawing an engine (ADR 0085): 视频, the default, as a flow of its steps; two calls with a model of their own; the organizer's settle picked, waiting longer than built in.
 	'roles': {
 		component: RolesPage as never,
 		props: { runtime: fakeRuntime(routingWorld, { client: routingClient }), t },
-		afterMount: routingNode('organizer')
+		afterMount: routingNode('settle')
 	},
-	// On a phone, Roles is a page in place of the list: the map alone, top to bottom; a call opens as a page of its own.
+	// On a phone, Roles is a page in place of the list: the engine's map alone, its steps hung down a spine; a step opens as a page of its own.
 	'roles-narrow': {
 		component: RolesPage as never,
 		props: { runtime: fakeRuntime(routingWorld, { client: routingClient }), t, host: 'page' },

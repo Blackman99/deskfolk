@@ -1,23 +1,37 @@
 <script lang="ts">
 	import { tick, type Snippet } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
-	import type { Locale, PromptSummary } from '@real-bot/protocol';
+	import {
+		builtinPlaybook,
+		emptyPlaybookDiff,
+		playbookDefaults,
+		type BuiltinModelRole,
+		type Locale,
+		type Playbook,
+		type PromptSummary
+	} from '@real-bot/protocol';
 	import type { Copy } from '../copy.ts';
 	import type { MessengerRuntime } from '../runtime.svelte.ts';
 	import type { Snapshot } from '../snapshot.ts';
 	import PromptEditorPage from './PromptEditorPage.svelte';
-	import RoutingMap from './RoutingMap.svelte';
+	import PlaybookHeader from './PlaybookHeader.svelte';
+	import PlaybookMap from './PlaybookMap.svelte';
+	import PlaybookStepDetail from './PlaybookStepDetail.svelte';
 	import RoutingNode from './RoutingNode.svelte';
 	import ModelLadderCard from './ModelLadderCard.svelte';
 	import { ModelLadder } from './model-ladder.svelte.ts';
 	import { firstLocale, type PromptView } from './prompts-view.ts';
-	import { askOnce, ROUTING_LANES, routingNodes, routingNodeView, type RoutingNodeId } from './routing-map.ts';
+	import { askOnce, routingNodeView } from './routing-map.ts';
+	import { PLAYBOOK_ORDER, stepOfRole, stepRole, type PlaybookNodeId } from './playbook-flow.ts';
+	import { playbookName, Playbooks } from './playbooks.svelte.ts';
 
 	/**
-	 * Roles (ADR 0082; its own page since ADR 0083, see RolesPage): the app's own calls on a map of where they run, and the one picked
-	 * with its model and its prompts beside it, each in a scroll of its own, so a pick changes what is
-	 * beside the map and moves nothing. A phone shows the map alone and opens a call as a page of its
-	 * own; a prompt opens in the same editor as on Settings › Prompts.
+	 * Roles (ADR 0082; its own page since ADR 0083, see RolesPage; engines since ADR 0085): one engine
+	 * drawn as the flow board draws a job — the things that set the app's own steps off, each step a
+	 * card — and the step picked beside it: whether it runs in that engine and with what numbers, and
+	 * for a step that makes one of the app's calls, that call's model and prompts. The two scroll on
+	 * their own, so a pick changes what is beside the map and moves nothing. A phone shows the map
+	 * alone and opens a step as a page of its own; a prompt opens in the same editor as on Prompts.
 	 */
 	interface Props {
 		runtime: MessengerRuntime;
@@ -40,7 +54,23 @@
 	const providers = $derived(snapshot.providers);
 	const botNames = $derived(new Map(snapshot.bots.map((bot) => [bot.id, bot.name])));
 
-	let selected = $state<RoutingNodeId>('reader');
+	let selected = $state<PlaybookNodeId>('reader');
+
+	// The engines (ADR 0085): read once, and again whenever one changes.
+	const playbooks = new Playbooks(() => runtime.client);
+	$effect(() => {
+		void runtime.client;
+		void runtime.playbooksRevision;
+		void playbooks.load();
+	});
+	/** The engine shown; until you pick one, the default. */
+	let shown = $state<string | null>(null);
+	const shownId = $derived(shown && playbooks.find(shown) ? shown : playbooks.defaultId);
+	/** A Mac older than engines: every step as it always ran, with nothing to change here. */
+	const allOn: Playbook = { id: 'general', builtin: true, base_id: 'general', name: null, revision: 0, revision_id: null, diff: emptyPlaybookDiff(), resolved: playbookDefaults(), updated_at: null };
+	const current = $derived(playbooks.find(shownId) ?? (playbooks.failed ? allOn : null));
+	const builtin = $derived(current && !playbooks.failed ? builtinPlaybook(current.base_id) : playbookDefaults());
+	const engineName = $derived(playbookName(current ?? undefined, t.playbooks.builtin));
 	/** On a phone, a call's page is open over the map. */
 	let opened = $state(false);
 	let scroller = $state<HTMLElement>();
@@ -73,20 +103,20 @@
 		return api ? askOnce(() => api.agents()) : null;
 	});
 
-	const viewOf = (role: Exclude<RoutingNodeId, 'turn'>) => routingNodeView(role, snapshot.settings, items);
-	const nameOf = (node: RoutingNodeId) => (node === 'turn' ? c.turn.name : t.builtinModels.roles[node].name);
+	const viewOf = (role: BuiltinModelRole) => routingNodeView(role, snapshot.settings, items);
+	const nameOf = (node: PlaybookNodeId) => (node === 'turn' ? c.turn.name : t.playbooks.steps[node]!.name);
 
 	let detailScroll = $state<HTMLElement>();
 	let mapCol = $state<HTMLElement>();
-	const order = routingNodes(ROUTING_LANES);
+	const order = PLAYBOOK_ORDER;
 
-	function pick(node: RoutingNodeId): void {
+	function pick(node: PlaybookNodeId): void {
 		selected = node;
 		if (!phone.current) {
 			// Another call's page starts at its top; the map stays where it was. WebKit leaves focus
 			// where it was on a click, so the picked node takes it, for ↑ and ↓ to go on from there.
 			if (detailScroll) detailScroll.scrollTop = 0;
-			mapCol?.querySelector<HTMLElement>(`[data-routing-node="${node}"]`)?.focus({ preventScroll: true });
+			mapCol?.querySelector<HTMLElement>(`[data-playbook-node="${node}"]`)?.focus({ preventScroll: true });
 			return;
 		}
 		opened = true;
@@ -100,7 +130,7 @@
 		const next = order[Math.min(order.length - 1, Math.max(0, at + (event.key === 'ArrowDown' ? 1 : -1)))]!;
 		event.preventDefault();
 		pick(next);
-		mapCol?.querySelector<HTMLElement>(`[data-routing-node="${next}"]`)?.scrollIntoView({ block: 'nearest' });
+		mapCol?.querySelector<HTMLElement>(`[data-playbook-node="${next}"]`)?.scrollIntoView({ block: 'nearest' });
 	}
 
 	/** The open call's name for the page head on a phone; null on the map, and on a wide window. */
@@ -142,13 +172,13 @@
 		runtime.promptsTarget = null;
 	});
 
-	// Sent here for one call — a card's 「在设置里看」 about one of its prompts: that call, picked.
+	// Sent here for one call — a card's 「在设置里看」 about one of its prompts: that call's step, picked.
 	$effect(() => {
 		const target = runtime.rolesTarget;
 		if (!target) return;
 		runtime.rolesTarget = null;
 		if (target.role) {
-			selected = target.role;
+			selected = stepOfRole(target.role);
 			if (phone.current) opened = true;
 		}
 	});
@@ -158,7 +188,7 @@
 		if (!focusEditor || !open || !openItem) return;
 		focusEditor = false;
 		if (openItem.role) {
-			selected = openItem.role;
+			selected = stepOfRole(openItem.role);
 			opened = true;
 		}
 		void tick().then(() => document.querySelector<HTMLElement>('.prompt-editor-backdrop')?.focus());
@@ -214,10 +244,30 @@
 				{/if}
 			</div>
 		</section>
-	{:else}
+	{:else if current}
+		{@const role = stepRole(selected)}
+		<PlaybookStepDetail
+			step={selected}
+			playbook={current}
+			{builtin}
+			{engineName}
+			onsave={(diff) => void playbooks.save(current.id, diff)}
+			onreset={(step) => void playbooks.reset(current.id, step)}
+			saving={playbooks.saving || playbooks.failed}
+			error={playbooks.error}
+			callHint={role ? t.builtinModels.roles[role].hint : null}
+			call={role ? callPart : undefined}
+			{t}
+		/>
+	{/if}
+{/snippet}
+
+{#snippet callPart()}
+	{@const role = stepRole(selected)}
+	{#if role}
 		<RoutingNode
-			role={selected}
-			view={viewOf(selected)}
+			{role}
+			view={viewOf(role)}
 			{providers}
 			settings={snapshot.settings}
 			defaultModel={snapshot.settings.endpoint_default_model}
@@ -230,7 +280,28 @@
 			{botNames}
 			onopenprompt={(item, event) => void openEditor(item, event)}
 			{t}
+			headless
 		/>
+	{/if}
+{/snippet}
+
+{#snippet header()}
+	{#if playbooks.failed}
+		<p class="routing-intro" role="note">{t.playbooks.older}</p>
+	{:else if playbooks.list}
+		<PlaybookHeader
+			{playbooks}
+			shown={shownId}
+			onshow={(id) => (shown = id)}
+			onmakedefault={(id) => void runtime.patchSettings({ default_playbook: id })}
+			{t}
+		/>
+	{/if}
+{/snippet}
+
+{#snippet map(picked: PlaybookNodeId | null)}
+	{#if current}
+		<PlaybookMap resolved={current.resolved} {builtin} {viewOf} {turnModel} selected={picked} onpick={pick} {t} />
 	{/if}
 {/snippet}
 
@@ -243,20 +314,22 @@
 					{@render detail()}
 				</div>
 			{:else}
+				{@render header()}
 				<p class="routing-intro">{c.intro}</p>
-				<RoutingMap lanes={ROUTING_LANES} {viewOf} {turnModel} selected={null} vertical onpick={pick} {t} />
+				{@render map(null)}
 			{/if}
 		</div>
 	{:else}
 		<div class="routing-top">
 			{@render notices?.()}
+			{@render header()}
 			<p class="routing-intro">{c.intro}</p>
 		</div>
 		<div class="routing-split">
 			<!-- ↑ and ↓ from a focused node bubble up here; the nodes themselves are the buttons. -->
 			<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 			<div class="routing-map-col" role="region" aria-label={c.mapLabel} onkeydown={onMapKeydown} bind:this={mapCol}>
-				<RoutingMap lanes={ROUTING_LANES} {viewOf} {turnModel} {selected} vertical onpick={pick} {t} />
+				{@render map(selected)}
 			</div>
 			<div class="routing-detail-col" role="region" aria-label={nameOf(selected)} aria-live="polite" bind:this={detailScroll}>
 				{@render detail()}
@@ -319,7 +392,7 @@
 		flex: 1;
 		min-height: 0;
 		display: grid;
-		grid-template-columns: minmax(220px, 5fr) minmax(0, 7fr);
+		grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
 		gap: 14px;
 		padding: 0 24px 20px;
 	}
